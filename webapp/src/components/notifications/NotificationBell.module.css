@@ -46,6 +46,12 @@
   color: var(--text); font-size: var(--fs-7);
   position: sticky; top: 0; background: var(--panel-float);
 }
+/* 🐞 ปุ่ม "อ่านทั้งหมด" (variant quiet = `.btn.ghost`) อยู่ใต้ `.topnav-system` — กฎ `.topnav-system .btn.ghost` ของ globals ระบาย
+   สีตัวอักษรของพื้นกรมท่า (ขาว 85%) ทับปุ่มบนพื้นครีมของกล่อง ⇒ คอนทราสต์ 1.01:1 มองไม่เห็นเลย (วัด 26/10 ตรวจจอ crew S22)
+   กล่องลอยเป็นพื้นผิวสว่าง ⇒ คืนสีของ ghost ปกติ (`.btn` / `.btn:hover:not(:disabled)`) · เปลี่ยนแค่สี ไม่แตะรูปทรง
+   (กติกา btnGhostSingleDefinition) · ตัวเลือก 0,4,0 / 0,6,0 หนักกว่ากฎของแถบบน (0,3,0 / 0,4,0) ไม่พึ่งลำดับไฟล์ CSS */
+.panel .head :global(.btn.ghost) { color: var(--text-2); }
+.panel .head :global(.btn.ghost:hover:not(:disabled)) { color: var(--text); background: var(--panel-2); }
 
 /* หัวกล่อง: ชื่อ + ขอบเขตที่กรองอยู่ ซ้อนกันสองบรรทัด */
 .headText { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }

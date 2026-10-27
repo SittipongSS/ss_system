@@ -173,9 +173,10 @@ const ZONES = [
   { id: 'H', name: 'ซ', surveyedAt: '2026-08-01', assessMethod: 'drawing', confirm: 'drawing', confirmTag: 'y' },
 ];
 // ผลของโค้ดก่อน S4 (รันจริงก่อนแก้) — ค่าตั้งต้นต้องตรงนี้ทุกตัวอักษร
+// ⚠️ ยกเว้น 'H': เหตุของไทล์จากแบบตัดคำของป้ายที่ซ้ำออก (มติเจ้าของ sales-q4 · S2b แก้หลังตรวจจอ — เดิม 'ประเมินจากแบบ — เสนอราคาได้เลย')
 const TODAY = [
   ['A', 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่'],
-  ['H', 'ประเมินจากแบบ — เสนอราคาได้เลย'],
+  ['H', 'เสนอราคาได้เลย'],
   ['B', 'ขายแล้วแต่ไม่เคยวัด — วัดเก็บไว้ได้ในรอบนี้'],
   ['C', 'เคยขาย รอบจบแล้ว — วัดซ้ำเพื่อต่ออายุได้'],
   ['D', 'ยังไม่เคยวัด'],
@@ -225,8 +226,10 @@ test('ฟอร์มส่งคำของวิธีที่เลือ�
   assert.match(site, /const wording = surveyZoneWording\(variant\);/);
   assert.match(site, /zonePickList\(restZones, takenZoneIds, \{ wording \}\)/);
   /* บรรทัดรองของแถวที่ติ๊กแล้ว: "…ซ้ำ" เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ถามแถวทะเบียนตัวเดียวกับที่ไทล์ใช้
-     (UAT S4 รอบ 4 ข้อ 5 · ไทล์ "ยังไม่เคยวัด" แล้วแถวบอก "วัดซ้ำ" = ขัดกันเอง) */
-  assert.match(site, /surveyZoneRowText\(wording, siteZones\.find\(\(z\) => z\.id === row\.zoneId\)\)/);
+     (UAT S4 รอบ 4 ข้อ 5 · ไทล์ "ยังไม่เคยวัด" แล้วแถวบอก "วัดซ้ำ" = ขัดกันเอง)
+     ⭐ S2b แก้หลังตรวจจอ sales-q5: คำชุดวัดของพื้นที่ที่ไม่เคยวัดหน้างาน (`zonePickedOnsiteText`) ตอบก่อน — ที่เหลือคำของ S4 */
+  assert.match(site, /const knownZoneText = \(registryZone\) => zonePickedOnsiteText\(registryZone, \{ wording \}\)\s*\|\| surveyZoneRowText\(wording, registryZone\);/);
+  assert.match(site, /knownZoneText\(siteZones\.find\(\(z\) => z\.id === row\.zoneId\)\)/);
   assert.doesNotMatch(site, /SURVEY_ZONE_REPEAT_TEXT/, 'คำ "ซ้ำ" ต้องผ่านตัวตัดสินที่ดูผลเดิมเท่านั้น');
   assert.doesNotMatch(site, /วัดซ้ำพื้นที่เดิม/);
 });
@@ -260,7 +263,12 @@ test('หลังส่ง (variantAskedOnly): ไม่มีคำแนะ�
   assert.match(form, /const deskZonesOnly = variantAskedOnly && Array\.isArray\(value\.zones\) && value\.zones\.length > 0\n\s*&& value\.zones\.every\(\(zone\) => !!zone\?\.methodTag\);/);
   /* คำใบ้ของฟอร์มวันเดียวพูดถึงอนาคต "…หลังรับเรื่อง" ⇒ รับเรื่องแล้วไม่วาด (UAT S4 รอบ 4 ข้อ 10 · `awaitingAck`) */
   assert.match(form, /resultDueHint=\{resultDateOnly\n\s*\? \(awaitingAck \? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : false\)\n\s*: deskZonesOnly \? false : undefined\}/);
-  assert.match(form, /dueHint=\{needsSite\n\s*\? \(deskZonesOnly \? null : "เจ้าหน้าที่จะยืนยันวัน\/เวลาจริงตอนกด/);
+  /* คำใบ้ใต้วันเข้าพื้นที่: มติเจ้าของ sales-q3 (S2b แก้หลังตรวจจอ) แทน "ไม่วาด" ของ T11b — ใบที่ส่งแล้วซึ่งไม่มีการนัดแล้ว
+     (`noVisit` ของหน้าคำร้อง · ด่าน `variantAskedOnly` ตัวเดียวกับ `deskZonesOnly` — ร่างสลับไทล์ได้ ⇒ ประโยคเดิม)
+     ได้ประโยคบอกว่าวันที่กรอกไว้ไม่ถูกใช้ · ที่เหลือประโยคเดิม (พฤติกรรมเต็มอยู่ที่ lib/service/surveyFixSales.test.mjs) */
+  assert.match(form, /const noVisitHint = isEdit && noVisit && variantAskedOnly;/);
+  assert.match(form, /dueHint=\{needsSite \? keepPhrases\(siteDueHint\(noVisitHint\), \["จะไม่ถูกใช้"\]\) : undefined\}/);
+  assert.doesNotMatch(form, /deskZonesOnly \? null/);
   // ป้ายวิธีปัจจุบันมาจากหน้าคำร้อง เฉพาะใบที่ส่งแล้ว (ร่างสลับไทล์ได้ ป้ายค้างจะขัดกับไทล์) ผ่านตัวถามของโมดูลใบ
   const page = code('app/requests/[id]/page.js');
   assert.match(page, /const drawingRows = requestVariantAskedOnly\(req\) \? surveyRequestDrawingSummary\(req\)\.rows : \{\};/);

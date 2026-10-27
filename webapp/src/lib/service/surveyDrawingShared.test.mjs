@@ -203,6 +203,12 @@ test('progress.desk: พาดหัวของงานโต๊ะที่�
     const files = Object.fromEntries(rows.slice(0, k).map((z) => [z.id, [file(`p-${z.id}`, 'survey_plan')]]));
     const view = control(rows, files);
     if (view.status.key !== 'desk-working') continue;
+    /* 🔄 head-rc-r2-22 ผลรีวิวรอบห้า — ทุกพื้นที่พร้อมแต่ทะเบียนขนาดอ่านไม่ขึ้น (ตัวช่วยนี้ไม่ส่ง `packageSizes`) = งานโต๊ะจบขั้นประเมินแล้ว
+       (ด่านทะเบียนเป็นเหตุของขั้นส่งผล) ⇒ พาดหัว "ประเมินจากแบบครบแล้ว — …" ไม่ใช่ "กำลังประเมินจากแบบ — n/n" (เดิมก่อนรอบห้า) */
+    if (view.progress.desk.done === view.progress.desk.total) {
+      assert.equal(view.status.headline, 'ประเมินจากแบบครบแล้ว — อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ', `k=${k}`);
+      continue;
+    }
     seenWorking += 1;
     assert.equal(view.status.headline, `กำลังประเมินจากแบบ — ${view.progress.desk.done}/${view.progress.desk.total} พื้นที่`, `k=${k}`);
   }
@@ -236,32 +242,36 @@ test('หัวงาน · ใบผสม: ข้อแรก "ลงหน้
   assert.deepEqual({ ...view, facts: null }, { ...today, facts: null }, 'คีย์อื่นของหัวงานไม่ขยับ');
 });
 
-test('หัวงาน · จากแบบทั้งใบ ไม่มีนัดที่ยังเปิด: "ประเมินจากแบบ" + ทั้งใบ n พื้นที่ · ไม่ลงคิว… · ข้อของนัดถูกแทนด้วยผู้รับผิดชอบและสองวัน', () => {
+test('หัวงาน · จากแบบทั้งใบ ไม่มีนัดที่ยังเปิด: "ประเมินจากแบบ" + ทั้งใบ n พื้นที่ · ไม่ลงคิว… · ข้อของนัดถูกแทนด้วยผู้ขอ ผู้รับผิดชอบ และสองวัน', () => {
   for (const visit of [null, { ...VISIT, status: 'done' }, { ...VISIT, status: 'partial' }, { ...VISIT, status: 'unable' }, { ...VISIT, status: 'cancelled' }, { ...VISIT, status: 'completed' }, { ...VISIT, status: 'rescheduled' }]) {
     const view = surveyJobHeaderView(headerInput({ visit, method: ALL_DRAWING }));
+    /* มติเจ้าของ head-r3-33 (ทำตามม็อก): ใบงานโต๊ะไม่มีใครไปหน้างาน ⇒ ไม่มี ให้เข้า · ฝากมา · ติดต่อ · โทร · นำทาง — ใส่ "ผู้ขอ" แทน
+       (S2b แก้หลังตรวจจอ) */
     assert.deepEqual(view.facts, [
       { key: 'method', label: 'วิธีประเมิน', value: 'ประเมินจากแบบ', sub: 'ทั้งใบ 3 พื้นที่ · ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่' },
+      { key: 'requester', label: 'ผู้ขอ', value: 'Lalida Chaiwanna' },
       { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Arnon Aunsapwilai' },
       { key: 'wantedResult', label: 'ผู้ขอต้องการผล', value: 'พฤ. 15 ต.ค.' },
       { key: 'resultDate', label: 'วันที่จะส่งผลประเมิน', value: 'พฤ. 15 ต.ค.' },
-      { key: 'access', label: 'ให้เข้า', value: view.facts[4].value, warn: null },
-      { key: 'note', label: 'ฝากมา', value: 'แลกบัตรที่ รปภ.' },
     ], String(visit?.status));
+    assert.equal(view.deskOnly, true, String(visit?.status));
+    assert.equal(view.call, null, String(visit?.status));
+    assert.equal(view.nav, null, String(visit?.status));
   }
   // ค่าว่าง = ขีด ไม่ใช่ค่าดิบ
   const blank = surveyJobHeaderView(headerInput({
-    visit: null, method: ALL_DRAWING, request: ask({ assigneeName: ' ', requestedResultDate: null, committedResultDate: 'ไม่ใช่วัน' }),
+    visit: null, method: ALL_DRAWING, request: ask({ assigneeName: ' ', requestedResultDate: null, committedResultDate: 'ไม่ใช่วัน', requestedByName: ' ' }),
   }));
-  assert.deepEqual(blank.facts.slice(1, 4).map((f) => f.value), ['—', '—', '—']);
+  assert.deepEqual(blank.facts.slice(1, 5).map((f) => f.value), ['—', '—', '—', '—']);
   // ยังไม่มอบหมาย = คนที่กดรับเรื่อง (requestAssignee ตัวเดียวกับหน้าคำร้อง) — หัวงานเคยขึ้นขีดขณะหน้าคำร้องขึ้นชื่อ (UAT S4 T14 head)
   const unassigned = surveyJobHeaderView(headerInput({
     visit: null, method: ALL_DRAWING, request: ask({ assigneeId: null, assigneeName: null, acknowledgedByName: 'Somchai Ackby' }),
   }));
-  assert.deepEqual(unassigned.facts[1], { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Somchai Ackby' });
+  assert.deepEqual(unassigned.facts[2], { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Somchai Ackby' });
   const nobody = surveyJobHeaderView(headerInput({
     visit: null, method: ALL_DRAWING, request: ask({ assigneeId: null, assigneeName: null, acknowledgedById: null, acknowledgedByName: null }),
   }));
-  assert.equal(nobody.facts[1].value, '—');
+  assert.equal(nobody.facts[2].value, '—');
 });
 
 test('หัวงาน · จากแบบทั้งใบ แต่ยังมีนัดเปิดอยู่ (ร่าง · นัดไว้ · กำลังทำ): ไม่พูดว่าไม่มีนัด และข้อของนัดอยู่ครบ', () => {

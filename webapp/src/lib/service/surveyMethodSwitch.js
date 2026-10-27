@@ -9,11 +9,14 @@
 //
 // 🔴 **ไฟล์ล้วน** — ไม่แตะฐานข้อมูล ไม่อ่าน `process.env` ไม่อ่านสวิตช์ `SURVEY_DRAWING_METHOD` เอง
 //   (จอจะดึงไฟล์นี้เข้า bundle · route เป็นคนส่ง `enabled` มา)
-// 🔴 **ดึงได้สี่โมดูลข้างล่างเท่านั้น** และ `survey.js` · `surveyMethod.js` · `attachmentTypes.js` ห้ามดึงไฟล์นี้กลับ
+// 🔴 **ดึงได้ห้าโมดูลข้างล่างเท่านั้น** และ `survey.js` · `surveyMethod.js` · `attachmentTypes.js` ห้ามดึงไฟล์นี้กลับ
 //   (วงกลม attachmentTypes → survey → surveyMethod — ยามอยู่ที่ `surveyMethodSwitch.test.mjs` ข้อ ⑮)
 //   ⇒ `surveyDeskCommitPatch` (`surveyVisit.js`) ดึงมาไม่ได้: patch ของ "รับปากวันส่งผล" ประกอบเองข้างล่าง
 //     และเทสต์ข้อ ② เทียบกับตัวจริงทุกคีย์
+//   ตัวที่ห้า `queueWords.js` (S2b แก้หลังตรวจจอ head-r3-21) — วันบนจอรูปเดียวกับหัวใบ/การ์ด ("อ. 13 ต.ค.") จากตัวจัดรูปกลางตัวเดิม
+//     ไฟล์ใบ (leaf) ที่ไม่ดึงอะไรจากโมดูลประเมินพื้นที่ ⇒ ไม่มีวงกลม · วันในเธรด (ข้อความเก็บถาวร อ่านข้ามปี) ยังเป็น `fmtDate`
 import { fmtDate } from '@/lib/format';
+import { dayText } from '@/lib/service/queueWords';
 import { VISIT_STATUS_LABELS, isClosedVisit } from '@/lib/service/visitStatus';
 import { surveyEditLockError, surveyZoneName } from '@/lib/service/survey';
 import { isDrawingZone, surveyMethodMix, surveyNeedsVisit, zoneMethod } from '@/lib/service/surveyMethod';
@@ -37,7 +40,8 @@ export const SURVEY_METHOD_CANCEL_ONLY_REASON = 'ใบนี้ประเม�
 export const SURVEY_METHOD_ERRORS = {
   off: 'ยังไม่เปิดใช้การประเมินจากแบบ',
   role: 'เปลี่ยนวิธีประเมินได้เฉพาะหัวหน้าฝ่ายบริการ',
-  notAcknowledged: 'กด “รับเรื่อง” ก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
+  /* (S2b แก้หลังตรวจจอ head-r3-8) หน้าใบประเมินไม่มีปุ่มรับเรื่อง — บอกว่าปุ่มอยู่ที่ไหน (หัวใบมีลิงก์ไปหน้าคำร้องอยู่แล้ว) */
+  notAcknowledged: 'ไปกด “รับเรื่อง” ที่หน้าคำร้องก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
   sentButton: 'ส่งผลไปแล้ว — ดึงผลกลับมาแก้ก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
   sentRoute: 'ส่งผลไปแล้ว — เปลี่ยนวิธีประเมินไม่ได้ โหลดหน้าใหม่',
   reason: 'ต้องบอกเหตุผลอย่างน้อย 10 ตัวอักษร',
@@ -150,7 +154,7 @@ const isDateKey = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v);
 const OPEN_VISIT = ['draft', 'scheduled', 'in_progress'];
 const CANCELLABLE_VISIT = ['draft', 'scheduled'];
 /* นัด "ไปถึงไซต์แล้ว" — เข้าแล้ว / ทำไม่ครบ · `unable` (ไปแล้วเข้าไม่ได้) ไม่นับ
-   ⚠️ กติกาเดียวกับ `visitReachedSite` (`surveyQueue.js`) — ดึงตัวนั้นมาไม่ได้ (ไฟล์นี้ดึงได้สี่โมดูล ดูหัวไฟล์)
+   ⚠️ กติกาเดียวกับ `visitReachedSite` (`surveyQueue.js`) — ดึงตัวนั้นมาไม่ได้ (ไฟล์นี้ดึงได้ห้าโมดูล ดูหัวไฟล์)
       เทสต์ข้อ ④ เทียบกับตัวจริงทุกสถานะของนัด */
 const reachedSite = (visit) => isClosedVisit(visit) && visit?.status !== 'unable';
 /* มติเจ้าของ 12/10 (O3) — บรรทัดของกล่องผลลัพธ์เมื่อใบที่เคยเข้าพื้นที่แล้วมีพื้นที่กลับเป็นลงหน้างาน: ใบไม่ถอยไปรอลงคิว
@@ -318,7 +322,12 @@ function visitAction({ kind, flip, visit, byThisAction }) {
     if (CANCELLABLE_VISIT.includes(status) || byThisAction) return 'cancel';
     return status === 'in_progress' ? 'keep-open' : 'history';
   }
-  if (kind === 'switch' && flip === null && (status === 'scheduled' || status === 'in_progress')) return 'stays';
+  /* `stays` = นัดที่ช่างถืออยู่ (นัดไว้ / กำลังทำ — ลงคิวแล้วต้องมีเจ้าหน้าที่เสมอ: `surveyScheduleGaps`) ยังอยู่หลังการกด
+     (S2b · มติเจ้าของ 26/10 — head-r3-54 กรณีข้างเคียง) ใบที่ **พลิกกลับมาต้องมีนัด** (`to-visit`) ก็นับด้วย: นัดที่ค้าง "กำลังทำ" จาก keep-open
+     รอบก่อน แล้วหัวหน้าสลับพื้นที่กลับเป็นลงหน้างาน — เดิมได้ `none` ⇒ ช่างที่อยู่หน้างานไม่ได้กระดิ่ง กล่องของหัวหน้าไม่มีบรรทัดของนัด
+     ทั้งที่ห้องนั้นต้องวัด · ได้ `stays` แล้วกระดิ่งกับบรรทัด "ต้องวัด … เพิ่ม" มาจากตัวสร้างเดิมของ head-r3-54 (ข้อ 6 · ข้อ 8) ไม่มีคำใหม่
+     ⚠️ นัดร่าง = ไม่มีช่างถือ ⇒ `none` (กติกาเดิม) · การกดที่มีทิศเป็นจากแบบพลิกใบกลับมาต้องมีนัดไม่ได้ (แถวนั้นเป็นลงหน้างานใน "ก่อน") */
+  if (kind === 'switch' && (flip === null || flip === 'to-visit') && (status === 'scheduled' || status === 'in_progress')) return 'stays';
   return 'none';
 }
 
@@ -472,10 +481,20 @@ export function surveyMethodSwitchPlan({
   }
 
   /* ── 6) กล่องผลลัพธ์ ────────────────────────────────────────────────── */
-  const visitDay = fmtDate(planVisit.scheduledDate);
+  /* (S2b แก้หลังตรวจจอ head-r3-21) วันบนจอรูปเดียวกับหัวใบ การ์ด และช่องวันในกล่อง ("อ. 13 ต.ค.") — เธรดข้างล่างยังเป็น `fmtDate` */
+  const visitDay = dayText(planVisit.scheduledDate);
   const crewName = planVisit.assigneeName || 'ยังไม่ระบุ';
   const sentBackCount = list(sendBack?.sentBack?.items).length;
   const closesSendBack = flip === 'to-desk' && !!sendBack?.pending;
+  /* (S2b แก้หลังตรวจจอ head-r3-10) คำเรียกพื้นที่ตามจำนวนที่สลับจริง — สลับสองสามพื้นที่แล้วจอเขียน "พื้นที่นี้" คือพูดผิดเรื่อง
+     `these` = ทิศเป็นจากแบบ (ไม่มีเลย เช่นการตัด = "พื้นที่นี้" ตามเดิม) · `backThese` = ทิศกลับเป็นลงหน้างาน (head-r3-54) */
+  const these = toDrawing.length > 1 ? 'พื้นที่เหล่านี้' : 'พื้นที่นี้';
+  const backThese = toOnsite.length > 1 ? 'พื้นที่เหล่านี้' : 'พื้นที่นี้';
+  const backNames = toOnsite.map((z) => z.name).join(' · ');
+  /* (S2b แก้หลังตรวจจอ head-r3-54) ใบยังผสม + นัดยังอยู่ (`stays`) แล้วมีพื้นที่กลับเป็นลงหน้างาน — ช่างของนัดต้องรู้ว่ามีห้องต้องวัดเพิ่ม
+     (มติ 26/10 กรณีข้างเคียง) ใบที่พลิกกลับมาต้องมีนัดบนนัดที่ช่างถือ (ค้างจาก keep-open) ได้ `stays` ด้วย — ดู `visitAction`
+     ⭐ เงื่อนไขเดียวของทั้งกระดิ่ง (ข้อ 8) และบรรทัดในกล่อง — กล่องไม่สัญญาว่า "ช่างได้รับแจ้ง" ในรอบที่กระดิ่งไม่ได้ยิง (นัดร่าง = ไม่มีทั้งคู่) */
+  const tellsCrewBack = action === 'stays' && toOnsite.length > 0;
   const lines = [];
   if (kind === 'cancel-only') {
     lines.push(`นัด ${sv} วันที่ ${visitDay} ของ ${crewName} จะถูกยกเลิก — ใบนี้ไม่มีพื้นที่ที่ต้องลงหน้างานแล้ว`);
@@ -484,8 +503,13 @@ export function surveyMethodSwitchPlan({
       lines.push(`${toDrawing.length} พื้นที่จะประเมินจากแบบ — ไม่ต้องมีภาพกว้าง จุดติดตั้ง และรูปจุด · ข้อมูลที่กรอกไว้ยังอยู่ครบ`);
     }
     if (flip === 'to-desk') {
-      lines.push('ไม่เหลือพื้นที่ที่ต้องลงหน้างาน — ใบออกจากคิวของผู้วางคิว'
-        + (dateOk ? ` · หัวหน้ารับปากส่งผล ${fmtDate(date)}` : ''));
+      /* (S2b แก้หลังตรวจจอ head-r3-10) "ใบออกจากคิวของผู้วางคิว" จริงเฉพาะตอนใบอยู่ในคิวรอลงคิวจริง: ไม่มีนัด · นัดที่การกดนี้ยกเลิก ·
+         นัดที่เป็นประวัติแต่ไม่เคยถึงไซต์ (ยกเลิก / เข้าไม่ได้ — ใบรอลงคิวใหม่อยู่) · ช่างกำลังทำนัด (`keep-open`) หรือนัดเข้าพื้นที่จบแล้ว
+         = ใบไม่ได้อยู่ในคิวนั้น (การ์ดรอลงคิวมีเฉพาะใบที่ยังไม่มีนัดที่ใช้อยู่) ⇒ ตัดท่อนนี้ทิ้ง */
+      const leavesQueue = action === 'none' || action === 'cancel' || (action === 'history' && !reachedSite(visit));
+      const tail = [leavesQueue ? 'ใบออกจากคิวของผู้วางคิว' : null, dateOk ? `หัวหน้ารับปากส่งผล ${dayText(date)}` : null]
+        .filter(Boolean).join(' · ');
+      lines.push(`ไม่เหลือพื้นที่ที่ต้องลงหน้างาน${tail ? ` — ${tail}` : ''}`);
     }
     if (action === 'cancel') {
       lines.push(`นัด ${sv} วันที่ ${visitDay} ของ ${crewName} จะถูกยกเลิก — งานหายจากงานของช่าง และช่างได้รับแจ้ง`);
@@ -494,14 +518,18 @@ export function surveyMethodSwitchPlan({
       /* ⚠️ ท่อน "ช่างได้รับแจ้ง…" พิมพ์เฉพาะตอนมีกระดิ่งจริง (ข้อ 8: กระดิ่งช่างชนิด zones ต้องมีพื้นที่ที่สลับเป็นจากแบบ)
          การตัดพื้นที่ไม่สลับวิธีของแถวไหน ⇒ ไม่มีกระดิ่งช่าง ⇒ บรรทัดเหลือแค่ท่อนแรกของประโยคเดียวกัน (ไม่สัญญาสิ่งที่ไม่ได้ส่ง) */
       lines.push(`ช่างกดเริ่มงานของนัด ${sv} แล้ว — นัดไม่ถูกยกเลิก`
-        + (toDrawing.length ? ' · ช่างได้รับแจ้งว่าไม่ต้องวัดพื้นที่นี้ แล้วกด “ส่งงาน” ได้เลย' : ''));
+        + (toDrawing.length ? ` · ช่างได้รับแจ้งว่าไม่ต้องวัด${these} แล้วกด “ส่งงาน” ได้เลย` : ''));
     }
     if (action === 'history') {
-      lines.push(`นัด ${sv} (${VISIT_STATUS_LABELS[status] || status}) คงอยู่เป็นประวัติ — ผลของพื้นที่นี้จะระบุว่าประเมินจากแบบ`);
+      lines.push(`นัด ${sv} (${VISIT_STATUS_LABELS[status] || status}) คงอยู่เป็นประวัติ — ผลของ${these}จะระบุว่าประเมินจากแบบ`);
     }
-    // ⚠️ บรรทัดนี้คือข้อความใหม่ข้อ 1 ของสเปค §7 (รอเจ้าของเคาะ) — ถ้าไม่เอา ลบเฉพาะบล็อกนี้ กระดิ่งช่างยังยิงตามเดิม
+    /* บรรทัดของนัดที่ยังอยู่ (มติเจ้าของ head-r3-54): มีพื้นที่เป็นจากแบบ = ประโยคเดิม (+ ท่อนพื้นที่ที่ต้องวัดเพิ่มเมื่อมีทิศกลับด้วย) ·
+       มีแต่ทิศกลับเป็นลงหน้างาน = ประโยคของนัดที่บอกว่าช่างรู้แล้วว่าต้องวัดเพิ่ม · บรรทัด "{n} พื้นที่กลับเป็นลงหน้างาน — …" ข้างล่างคงเดิม */
     if (action === 'stays' && toDrawing.length) {
-      lines.push(`นัด ${sv} วันที่ ${visitDay} ของ ${crewName} ยังอยู่ — ยังมีพื้นที่ที่ต้องวัด · ช่างได้รับแจ้งว่าไม่ต้องวัดพื้นที่นี้`);
+      lines.push(`นัด ${sv} วันที่ ${visitDay} ของ ${crewName} ยังอยู่ — ยังมีพื้นที่ที่ต้องวัด · ช่างได้รับแจ้งว่าไม่ต้องวัด${these}`
+        + (tellsCrewBack ? ` · ต้องวัด “${backNames}” เพิ่ม` : ''));
+    } else if (tellsCrewBack) {
+      lines.push(`นัด ${sv} วันที่ ${visitDay} ของ ${crewName} ยังอยู่ — ช่างได้รับแจ้งว่าต้องวัด “${backNames}” เพิ่ม`);
     }
     if (closesSendBack) {
       lines.push(`เรื่องที่ส่งกลับให้ช่างแก้${sentBackCount ? ` ${sentBackCount} ข้อ` : ''} ถูกปิดไปด้วย`);
@@ -511,7 +539,7 @@ export function surveyMethodSwitchPlan({
       lines.push(`${toOnsite.length} พื้นที่กลับเป็นลงหน้างาน — ${datesAction === 'keep' ? BACK_ONSITE_KEEP : BACK_ONSITE_VISIT}`);
     }
     if (datesAction === 'clear') {
-      const cleared = req.committedResultDate ? ` (${fmtDate(req.committedResultDate)})` : '';
+      const cleared = req.committedResultDate ? ` (${dayText(req.committedResultDate)})` : '';
       lines.push(`ใบกลับไปขั้น “รอลงคิว” — วันส่งผลที่รับปากไว้${cleared} ถูกล้าง · ผู้วางคิวลงวันเข้าพื้นที่และวันส่งผลใหม่`);
     }
     if (datesAction === 'keep') {
@@ -521,6 +549,7 @@ export function surveyMethodSwitchPlan({
 
   /* ── 7) บรรทัดเธรดของใบ + เหตุผลบนเธรดของนัด ─────────────────────────── */
   // ท้ายสองตัวนี้ใช้เงื่อนไขเดียวกันทั้งการสลับและการตัด — แผนที่ไม่ได้ยกเลิกนัดต้องไม่พิมพ์ว่ายกเลิก
+  // ⚠️ วันในเธรดคง `fmtDate` (มีปี) — ข้อความที่เก็บถาวรถูกอ่านข้ามปี (มติ head-r3-21: เปลี่ยนเฉพาะวันบนจอ)
   const cancelTail = action === 'cancel' ? ` · ยกเลิกนัด ${sv}` : '';
   const resultTail = datesAction === 'set' && dateOk ? ` · ส่งผล ${fmtDate(date)}` : '';
   const cutSentence = cutZone ? `ตัดพื้นที่ ${cutZone.name} ออก — ไม่เหลือพื้นที่ที่ต้องลงหน้างาน` : null;
@@ -549,9 +578,17 @@ export function surveyMethodSwitchPlan({
   let crew = null;
   if (action === 'cancel') {
     crew = { kind: 'cancel', title: `ยกเลิกนัด ${sv} — ใบนี้เปลี่ยนเป็นประเมินจากแบบ` };
-  } else if (toDrawing.length && (action === 'keep-open' || action === 'stays')) {
-    // กระดิ่งเดียวต่อการกดหนึ่งครั้ง — เอ่ยครบทุกชื่อ
-    crew = { kind: 'zones', title: `หัวหน้าเปลี่ยน “${toDrawing.map((z) => z.name).join(' · ')}” เป็นประเมินจากแบบ — ไม่ต้องวัดพื้นที่นี้` };
+  } else if ((toDrawing.length && (action === 'keep-open' || action === 'stays')) || tellsCrewBack) {
+    /* กระดิ่งเดียวต่อการกดหนึ่งครั้ง — เอ่ยครบทุกชื่อ · (S2b แก้หลังตรวจจอ head-r3-54) ทิศกลับเป็นลงหน้างานบนนัดที่ยังอยู่ก็ยิงด้วย
+       (ช่างไม่รู้ = เผื่อเวลาไว้แค่พื้นที่เดิม แล้วกลับมาโดยไม่ได้วัดห้องที่เพิ่ม) · สองทิศในการกดเดียว = ประโยคฝั่งจากแบบ + ท่อนทิศกลับ */
+    const drawingPart = toDrawing.length
+      ? `หัวหน้าเปลี่ยน “${toDrawing.map((z) => z.name).join(' · ')}” เป็นประเมินจากแบบ — ไม่ต้องวัด${these}`
+      : null;
+    const backPart = tellsCrewBack ? `“${backNames}” กลับเป็นลงหน้างาน — ต้องวัด${backThese}เพิ่ม` : null;
+    let title = drawingPart;
+    if (drawingPart && backPart) title = `${drawingPart} · ${backPart}`;
+    else if (backPart) title = `หัวหน้าเปลี่ยน ${backPart}`;
+    crew = { kind: 'zones', title };
   }
   const head = flip === 'to-desk' ? { title: surveyDeskReadyTitle(req) } : null;
 

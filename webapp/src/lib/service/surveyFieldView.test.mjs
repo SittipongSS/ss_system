@@ -22,11 +22,13 @@ import {
   surveyInitials,
   surveyJobHeaderView,
   surveyLeaveMessage,
+  surveyMethodVisitFact,
   surveyLeaveConfirm,
   surveyNextDimField,
   surveyNextStep,
   surveyNowKey,
   surveyPartsView,
+  surveySalesDrawingsView,
   surveySendBackItemsView,
   surveySendBackZoneIds,
   surveySheetHref,
@@ -34,6 +36,7 @@ import {
   surveySheetTotalsText,
   surveySubmitView,
   surveyVisitBadge,
+  surveyVisitBadgeShown,
   surveyZoneFooterView,
   surveyZoneActions,
   surveyZoneListView,
@@ -389,6 +392,9 @@ test('ของค้างเป็นคำสั้น: "ขนาด 2 ส�
   assert.equal(ask.message, `${T('ห้อง Treatment · ชั้น 05')}: ขนาด 2 ส่วน · จุด 2 จุด ยังไม่ได้บันทึก — รูปที่ถ่ายไว้ขึ้นระบบแล้ว ไม่หาย`);
   assert.equal(ask.cancelLabel, 'กลับไปบันทึก');
   assert.equal(ask.confirmLabel, 'ทิ้งแล้วไปต่อ');
+  // 🐞 UAT 26/10 (S01): พื้นที่จากแบบไม่มีใครถ่ายรูป — ภาพของมันคือภาพแบบที่แนบไว้ (B-2: ไม่มีคำหน้างาน)
+  const drawn = surveyDiscardConfirm({ zone: { ...treatment(), method: 'drawing' }, summary: 'จุด 3 จุด' });
+  assert.equal(drawn.message, `${T('ห้อง Treatment · ชั้น 05')}: จุด 3 จุด ยังไม่ได้บันทึก — ภาพแบบที่แนบไว้ขึ้นระบบแล้ว ไม่หาย`);
 });
 
 /* 🔄 PR-S (มติ 28–30/09) — หัวข้อ "ภาพจุดติดตั้ง" รวมเข้าแถวของจุด ⇒ ไม่มีป้าย `spotPhotos` แล้ว ·
@@ -1105,6 +1111,22 @@ test('เกี่ยวกับคำร้อง: ไฟล์แนบขอ
     'อ่านไม่สำเร็จ ≠ ไม่มีไฟล์ — ต้องพูดออกมา');
 });
 
+test('เกี่ยวกับคำร้อง (S2b แก้หลังตรวจจอ head-rc-q8 · ตรวจครบแผน): TIFF เป็นแถวไฟล์ ไม่ใช่ภาพย่อที่วาดไม่ขึ้น — ตัวตัดสินเดียวกับแผงไฟล์แนบ', () => {
+  const requestFiles = [
+    { id: 'T1', fileName: 'แปลนสแกน.tif', mimeType: 'image/tiff', driveFileId: 't1' },
+    { id: 'T2', fileName: 'แปลนเก่า.TIFF', driveFileId: 't2' },
+    { id: 'P1', fileName: 'หน้าร้าน.png', mimeType: 'image/png', driveFileId: 'p1' },
+    { id: 'H1', fileName: 'มุมห้อง.heic', mimeType: 'image/heic', driveFileId: 'h1' },
+  ];
+  const crew = surveyAboutView({ header: HEADER_REQ, requestId: 'DR-1', canWrite: true, requestFiles });
+  assert.deepEqual(crew.files.photos.map((p) => p.id), ['P1', 'H1'], 'รูปที่วาดได้ (HEIC คงเดิมตามแผนแก้) = ภาพย่อ');
+  assert.deepEqual(crew.files.docs.map((d) => [d.id, d.ariaLabel]), [
+    ['T1', 'เปิด แปลนสแกน.tif (เปิดแท็บใหม่)'],
+    ['T2', 'เปิด แปลนเก่า.TIFF (เปิดแท็บใหม่)'],
+  ], 'TIFF ทั้งจาก mime และจากนามสกุล (ไฟล์เก่าไม่มี mime) = แถวที่เปิดแท็บใหม่');
+  assert.equal(crew.files.sub, '4 ไฟล์ · ดูอย่างเดียว', 'ตัวนับเท่าเดิม — ย้ายฝั่ง ไม่ทิ้งไฟล์');
+});
+
 test('หน้า: ส่งไฟล์แนบของคำร้อง + ธงผูกรูปจุดจาก GET ลงจอ (server ตัดสิน · จอไม่เดาจาก role)', () => {
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
   assert.match(page, /requestFiles: data\?\.requestFiles \|\| \[\], filesUnknown: data\?\.unknown\?\.requestFiles === true/);
@@ -1311,4 +1333,144 @@ test('🐞 review 26/09 รอบสาม: ชื่อเสมอกันแ
   const lobby = [Z('1', 'Lift Lobby', '01', ''), Z('2', 'Lift Lobby', '02', 'หน้าห้องน้ำหญิง'), Z('3', 'Pantry', '02', 'หน้าห้องน้ำชาย')];
   assert.equal(linked(lobby, 'Lift Lobby หน้าห้องน้ำหญิง ขอรูปใกล้'), '2');
   assert.equal(linked(lobby, 'Lift Lobby หน้าห้องน้ำชาย ขอรูปใกล้'), null, 'จุดของพื้นที่อื่น (Pantry) ชนะชื่อที่เสมอกันไม่ได้');
+});
+
+/* ══ S2b แก้หลังตรวจจอ — กลุ่ม G (หัวงานของใบงานโต๊ะ · ป้ายนัด · บรรทัดใต้ชื่อโมดัลเปลี่ยนวิธี · ไฟล์แนบของคำร้อง · แผงแบบ) ══════ */
+
+const PAGE_SRC = () => readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+/* ใบจากแบบทั้งใบ (ตัวนับของการ์ด) · ใบผสม — รูปเดียวกับที่หน้าส่ง `{ mix, needsVisit }` */
+const DESK_METHOD = { mix: { onsite: 0, drawing: 3, mode: 'drawing' }, needsVisit: false };
+const MIXED_METHOD = { mix: { onsite: 2, drawing: 1, mode: 'mixed' }, needsVisit: true };
+const DESK_REQ = {
+  docNo: 'RQ-AS-26100345', title: 'ประเมินพื้นที่ตามแปลน', requestedByName: 'Lalida Chaiwanna',
+  assigneeId: 'u-head', assigneeName: 'Arnon Aunsapwilai', requestedResultDate: '2026-10-15', committedResultDate: '2026-10-16',
+};
+
+test('head-r3-33 · หัวงานของใบงานโต๊ะ: ไม่มีโทร/นำทาง · ไม่มีข้อ ให้เข้า · ฝากมา · ติดต่อ · มี "ผู้ขอ" ต่อจากวิธีประเมิน ก่อนผู้รับผิดชอบ', () => {
+  for (const v of [null, visit({ status: 'done', actualEndTime: '11:46:00' }), visit({ status: 'unable' }), visit({ status: 'cancelled' })]) {
+    for (const site of [SITE, { ...SITE, contactPhone: 'โทรหา รปภ. หน้าตึก' }]) {
+      const h = header({ request: DESK_REQ, visit: v, site, method: DESK_METHOD });
+      const at = `${v?.status ?? 'ไม่มีนัด'} · ${site.contactPhone}`;
+      assert.equal(h.deskOnly, true, at);
+      assert.equal(h.call, null, at);
+      assert.equal(h.nav, null, at);
+      assert.deepEqual(h.facts.map((f) => f.key), ['method', 'requester', 'assignee', 'wantedResult', 'resultDate'], at);
+      assert.deepEqual(h.facts[1], { key: 'requester', label: 'ผู้ขอ', value: 'Lalida Chaiwanna' }, at);
+      // ชื่อไซต์ ลิงก์ทะเบียน และที่อยู่ยังอยู่
+      assert.deepEqual([h.site.title, h.site.href, h.site.address], ['ST-1036-01-BKK-1160 · สำนักงานใหญ่', '/database/sites/SS-1', SITE.address], at);
+    }
+  }
+  // ไม่มีชื่อผู้ขอ = ขีด
+  assert.equal(header({ request: { ...DESK_REQ, requestedByName: '  ' }, visit: null, method: DESK_METHOD }).facts[1].value, '—');
+  // ใบที่ยื่นเป็นประเมินจากแบบ (S4): ผู้ขอวางต่อจาก "ฝ่ายขายขอ"
+  const filed = header({ request: { ...DESK_REQ, kind: 'site_survey', variant: 'drawing' }, visit: null, method: DESK_METHOD });
+  assert.deepEqual(filed.facts.map((f) => f.key), ['method', 'asked', 'requester', 'assignee', 'wantedResult', 'resultDate']);
+});
+
+test('head-rc-q10 · ใบงานโต๊ะที่ยังไม่มอบหมาย: ผู้รับผิดชอบ = คนที่กดรับเรื่อง (requestAssignee ตัวเดียวกับหน้าคำร้อง) · ค่าว่าง = ขีด', () => {
+  // ข้อ "ผู้ขอ" แทรกที่ facts[1] ⇒ ผู้รับผิดชอบอยู่ facts[2] (ยามเดิมของ surveyDrawingShared.test.mjs ยังนับจาก index เก่า — ส่งต่อให้ Integrate)
+  const at = (req) => header({ request: { ...DESK_REQ, ...req }, visit: null, method: DESK_METHOD }).facts;
+  const unassigned = at({ assigneeId: null, assigneeName: null, acknowledgedById: 'u-ack', acknowledgedByName: 'Somchai Ackby' });
+  assert.deepEqual(unassigned[2], { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Somchai Ackby' });
+  assert.equal(at({ assigneeId: null, assigneeName: null, acknowledgedById: null, acknowledgedByName: 'Somchai Ackby' })[2].value, 'Somchai Ackby');
+  assert.equal(at({ acknowledgedById: 'u-ack', acknowledgedByName: 'Somchai Ackby' })[2].value, 'Arnon Aunsapwilai', 'มอบหมายแล้ว = คนที่ถูกมอบ');
+  assert.equal(at({ assigneeId: null, assigneeName: null, acknowledgedById: null, acknowledgedByName: null })[2].value, '—');
+  // ค่าว่างทุกข้อ = ขีด ไม่ใช่ค่าดิบ (ผู้ขอ · ผู้รับผิดชอบ · สองวัน)
+  const blank = at({ requestedByName: null, assigneeId: null, assigneeName: ' ', requestedResultDate: null, committedResultDate: 'ไม่ใช่วัน' });
+  assert.deepEqual(blank.slice(1, 5).map((f) => [f.key, f.value]),
+    [['requester', '—'], ['assignee', '—'], ['wantedResult', '—'], ['resultDate', '—']]);
+});
+
+test('head-r3-33 · ใบที่ยังมีนัดเปิด (ร่าง · นัดไว้ · กำลังทำ) และใบผสม/ใบลงหน้างาน = หัวงานเดิมทุกคีย์ (มีโทร · นำทาง · ให้เข้า · ฝากมา)', () => {
+  const dropMethod = (h) => ({ ...h, facts: h.facts.filter((f) => f.key !== 'method') });
+  for (const status of ['draft', 'scheduled', 'in_progress']) {
+    const v = visit({ status, actualStartTime: status === 'in_progress' ? '10:12:00' : null });
+    const today = header({ request: DESK_REQ, visit: v });
+    const desk = header({ request: DESK_REQ, visit: v, method: DESK_METHOD });
+    assert.equal(desk.deskOnly, false, status);
+    assert.deepEqual(dropMethod(desk), today, status);
+    assert.deepEqual(today.facts.map((f) => f.key), ['visit', 'crew', 'access', 'note'], status);
+  }
+  for (const v of [null, visit({ status: 'done', actualEndTime: '11:46:00' }), visit()]) {
+    const today = header({ request: DESK_REQ, visit: v });
+    assert.deepEqual(dropMethod(header({ request: DESK_REQ, visit: v, method: MIXED_METHOD })), today, String(v?.status));
+    assert.equal(today.deskOnly, false);
+    assert.notEqual(today.call, null, 'ใบลงหน้างานยังมีปุ่มโทร');
+  }
+  // ช่องเบอร์ที่กดโทรไม่ได้ยังเป็นข้อ "ติดต่อ" บนใบที่ยังต้องลงหน้างาน (กติกาเดิม review 26/09)
+  const noDial = header({ request: DESK_REQ, site: { ...SITE, contactPhone: 'โทรหา รปภ. หน้าตึก' }, method: MIXED_METHOD });
+  assert.ok(noDial.facts.some((f) => f.key === 'phone'));
+});
+
+test('head-r3-33 · ป้ายนัดข้างรหัสคำร้อง: ใบงานโต๊ะไม่โชว์สถานะนัดเก่า เหลือ "นัดยังไม่ปิด" สีอำพัน · ใบอื่นโชว์ทุกป้ายเหมือนเดิม', () => {
+  for (const status of ['done', 'partial', 'unable', 'cancelled', 'rescheduled']) {
+    const badge = surveyVisitBadge(visit({ status }), { sent: true });
+    assert.equal(surveyVisitBadgeShown(badge, { deskOnly: true }), false, status);
+    assert.equal(surveyVisitBadgeShown(badge, { deskOnly: false }), true, status);
+    assert.equal(surveyVisitBadgeShown(badge), true, `${status} · ไม่ส่ง = ผลเดิม`);
+  }
+  const unclosed = surveyVisitBadge(visit({ status: 'in_progress' }), { sent: true });
+  assert.equal(unclosed.label, 'นัดยังไม่ปิด');
+  assert.equal(surveyVisitBadgeShown(unclosed, { deskOnly: true }), true, 'ตัวกันนัดค้างเงียบต้องขึ้นเสมอ');
+  assert.equal(surveyVisitBadgeShown(null, { deskOnly: false }), false);
+
+  const page = PAGE_SRC();
+  assert.match(page, /\{surveyVisitBadgeShown\(visitBadge, \{ deskOnly: headerView\.deskOnly \}\) \? \(\s*<StatusBadge tone=\{visitBadge\.tone\} dot/);
+  assert.equal((page.match(/\{visitBadge \? \(/g) || []).length, 0, 'ป้ายไม่ถูกวาดตรงจากธงอื่นอีกที่');
+});
+
+test('head-r3-9 · บรรทัดใต้ชื่อโมดัลเปลี่ยนวิธี: นัดที่ไม่เปิดแล้วต่อสถานะท้ายท่อนนัด "(ทำไม่ได้)" · นัดเปิด = บรรทัดเดิม', () => {
+  const at = (status, extra = {}) => {
+    const v = visit({ status, ...extra });
+    return surveyMethodVisitFact(header({ visit: v, method: MIXED_METHOD }), v)?.value ?? null;
+  };
+  assert.equal(at('unable'), 'SV-26090014 · จ. 28 ก.ย. 10:00 (ทำไม่ได้)');
+  assert.equal(at('done', { actualEndTime: '11:46:00' }), 'SV-26090014 · จ. 28 ก.ย. 10:00 (เข้าแล้ว)');
+  assert.equal(at('partial'), 'SV-26090014 · จ. 28 ก.ย. 10:00 (ทำไม่ครบ)');
+  assert.equal(at('cancelled'), 'SV-26090014 · จ. 28 ก.ย. 10:00 (ยกเลิก)');
+  for (const open of ['draft', 'scheduled', 'in_progress']) {
+    assert.equal(at(open), 'SV-26090014 · จ. 28 ก.ย. 10:00', `${open}: นัดยังเปิด = ไม่มีวงเล็บ`);
+  }
+  // ไม่มีนัด / ใบงานโต๊ะ (หัวงานไม่มีข้อนัด) = ไม่มีท่อนนัด
+  assert.equal(surveyMethodVisitFact(header({ visit: null }), null), null);
+  const deskVisit = visit({ status: 'unable' });
+  assert.equal(surveyMethodVisitFact(header({ request: DESK_REQ, visit: deskVisit, method: DESK_METHOD }), deskVisit), null);
+  // หน้าประกอบบรรทัดจากข้อนี้ (สูตรเดิม · ท่อนนัดเป็นก้อนเดียว)
+  const page = PAGE_SRC();
+  assert.match(page, /const visitFact = surveyMethodVisitFact\(headerView, visit\);/);
+  assert.match(page, /visitFact\?\.value \? `นัด\\u00a0\$\{visitFact\.value\.split\(" · "\)\.join\(" "\)\}` : null/);
+});
+
+test('planner-q11 · เกี่ยวกับคำร้อง: หน้าที่มีแผง "แบบจากฝ่ายขาย" ไม่มีแถวไฟล์แนบของคำร้อง · ช่าง (ไม่มีแผง) ยังเห็นแถวเดิม', () => {
+  const requestFiles = [{ id: 'A1', fileName: 'แปลนชั้น 1.jpg', mimeType: 'image/jpeg', driveFileId: 'd1' }];
+  const crew = surveyAboutView({ header: HEADER_REQ, requestId: 'DR-1', canWrite: true, requestFiles });
+  assert.equal(crew.files.sub, '1 ไฟล์ · ดูอย่างเดียว');
+  for (const filesUnknown of [false, true]) {
+    const withPanel = surveyAboutView({ header: HEADER_REQ, requestId: 'DR-1', canWrite: true, requestFiles, filesUnknown, salesPanel: true });
+    assert.equal(withPanel.files, null, `แผงลิสต์ไฟล์ชุดเดียวกันครบกว่า (อ่านไม่สำเร็จก็บอกที่แผง) · unknown=${filesUnknown}`);
+    assert.deepEqual({ ...withPanel, files: undefined }, { ...crew, files: undefined }, 'ส่วนอื่นของ "เกี่ยวกับคำร้อง" ไม่เปลี่ยน');
+  }
+  // "อ่านไม่สำเร็จก็บอกที่แผง" ต้องจริง: แผงรู้ตัวว่าอ่านไม่ครบ (ไม่ใช่ "ยังไม่มีไฟล์") และหน้ากางแผงไว้ให้เห็นกล่องเตือนเลย
+  // (ตอนพับ หัวการ์ดไม่มีตัวนับ — S2b แก้หลังตรวจจอ head-r3-31 × planner-q11)
+  for (const unknown of [{ requestFiles: true }, { threadFiles: true }]) {
+    const panel = surveySalesDrawingsView({ requestFiles, unknown });
+    assert.deepEqual([panel.unknown, panel.countText, panel.empty], [true, null, null], JSON.stringify(unknown));
+  }
+  const page = PAGE_SRC();
+  assert.match(page, /const showDrawings = \(canDecide \|\| planReader\) && view\.mix\.drawing > 0;\s*const aboutView = surveyAboutView\(\{/,
+    'ธงแผงคิดก่อน "เกี่ยวกับคำร้อง"');
+  assert.match(page, /filesUnknown: data\?\.unknown\?\.requestFiles === true, salesPanel: showDrawings,/);
+});
+
+test('head-r3-31 · หน้าส่ง `defaultOpen` ให้แผงแบบจากฝ่ายขาย: ผู้วางคิวพับทุกจอ · หัวหน้า <1000 พับ · ≥1000 กางเมื่อไม่เกิน 3 ไฟล์ · อ่านไม่สำเร็จ = กางทุกที่', () => {
+  const page = PAGE_SRC();
+  // อ่านรายชื่อไฟล์ไม่สำเร็จ = กางทุกที่ (กล่องเตือนอยู่ในตัวแผง · หน้านี้ไม่มีแถวไฟล์แนบของคำร้องบอกแทนแล้ว)
+  assert.match(page, /const drawingsAbovePanes = showDrawings && split\s*\? <SurveySalesDrawings view=\{drawingsView\} defaultOpen=\{\(canDecide && drawingsView\.files\.length <= 3\) \|\| drawingsView\.unknown\} \{\.\.\.reuseProps\} \/> : null;/);
+  // ในหน้าพื้นที่ (<1000) หน้าพื้นที่เกิดใหม่ทุกพื้นที่ ⇒ ค่าที่ผู้ใช้กาง/พับไว้จำที่หน้า (`zoneDrawingsOpen` · ยังไม่เคยกด = ค่าตั้งต้น)
+  assert.match(page, /const drawingsInZone = showDrawings && !split && shownDrawing\s*\? <SurveySalesDrawings view=\{drawingsView\} compact defaultOpen=\{zoneDrawingsOpen \?\? drawingsView\.unknown\} onOpenChange=\{setZoneDrawingsOpen\} \{\.\.\.reuseProps\} \/> : null;/);
+  assert.match(page, /const \[zoneDrawingsOpen, setZoneDrawingsOpen\] = useState\(null\);/);
+  assert.equal((page.match(/\bonOpenChange=/g) || []).length, 1, 'จำเฉพาะที่วางในหน้าพื้นที่ — สองที่วางที่เหลือไม่ถูกถอดตามพื้นที่');
+  assert.match(page, /const drawingsAboveList = showDrawings && !split\s*\? <SurveySalesDrawings view=\{drawingsView\} compact defaultOpen=\{drawingsView\.unknown\} \/> : null;/);
+  assert.equal((page.match(/<SurveySalesDrawings\b/g) || []).length, 3);
+  assert.equal((page.match(/<SurveySalesDrawings\b[^>]*\bdefaultOpen=/g) || []).length, 3, 'ทุกที่วางบอกค่าตั้งต้นเอง');
 });

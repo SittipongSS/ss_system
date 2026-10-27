@@ -591,6 +591,29 @@
   border-bottom: 0;
 }
 
+/* ⭐ **สี่ช่อง = 2 × 2** (S2b แก้หลังตรวจจอ sales-q10b) — งานจากแบบไม่มีสองช่องวันเข้าพื้นที่ (`dateFacts` · `deskJob`) ⇒ สี่ช่องในตาราง
+   สามคอลัมน์ทิ้งแถวที่สองไว้ช่องเดียว เส้นขอบแหว่ง (ม็อกวาด 2 × 2) · ตัดสินจากจำนวนช่องที่วาดจริง ไม่ใช่วิธีประเมิน
+   ⚠️ ใบลงหน้างาน (หกช่อง) ไม่โดนกฎนี้ = สามคอลัมน์ทรงเดิม · จอ ≤680 เป็นสองคอลัมน์อยู่แล้ว (กฎชุดเดียวกันข้างล่าง) */
+.facts:has(> div:nth-child(4):last-child) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.facts:has(> div:nth-child(4):last-child) > div:nth-child(3n) {
+  border-right: 1px solid var(--border);
+}
+
+.facts:has(> div:nth-child(4):last-child) > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.facts:has(> div:nth-child(4):last-child) > div:nth-last-child(-n + 3) {
+  border-bottom: 1px solid var(--border);
+}
+
+.facts:has(> div:nth-child(4):last-child) > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
 .facts dt {
   color: var(--text-3);
   font-size: var(--fs-3);
@@ -807,6 +830,17 @@
     content: attr(data-label);
     color: var(--text-3);
     font-size: var(--fs-4);
+  }
+
+  /* ป้ายที่ยาวกว่าช่องป้าย 5.5rem (`data-long-label` · "จุดติดตั้งโดยประมาณ" ของใบจากแบบทั้งใบที่ส่งผลแล้ว — S2b-O9) ขึ้นบรรทัดของตัวเอง
+     ไม่ตัดกลางคำ · ค่ายังอยู่คอลัมน์ขวาเหมือนทุกช่อง (S2b แก้หลังตรวจจอ head-r3-12 — ทรงเดียวกับตารางสรุปส่งผลของ TS) */
+  .zoneShell[data-surface][data-family] .zoneTable td[data-long-label]::before {
+    grid-column: 1 / -1;
+    white-space: nowrap;
+  }
+
+  .zoneShell[data-surface][data-family] .zoneTable td[data-long-label] > .cellValue {
+    grid-column: 2;
   }
 
   .zoneShell[data-surface][data-family] .zoneTable tr > td:first-child {

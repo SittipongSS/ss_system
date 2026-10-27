@@ -17,7 +17,10 @@ import {
   fileExt,
   missingDocsMessage,
   isInlineSafeMime,
+  isDrawableImage,
   isPreviewableImage,
+  isUndrawnImage,
+  UNDRAWN_IMAGE_OPEN_TEXT,
   requiredDocKeys,
   resolveUploadMime,
   RETIRED_METADATA_KEYS,
@@ -49,6 +52,35 @@ test('พรีวิวรูป: ไฟล์เก่าที่ไม่ม
 test('พรีวิวรูป: mimeType ที่ระบุมาชนะนามสกุลที่ขัดกัน', () => {
   // ไฟล์ชื่อ .png แต่ mime บอกว่าเป็น pdf → เชื่อ mime (ไม่เอาไปยัดใส่ <img>)
   assert.equal(isPreviewableImage({ mimeType: 'application/pdf', fileName: 'a.png' }), false);
+});
+
+/* ── รูปที่เบราว์เซอร์วาดในหน้าได้ (S2b แก้หลังตรวจจอ head-rc-q8 · sales-minor-7a) ─────────────────────
+   🐞 TIFF ในช่องภาพแบบได้แผ่น "เปิดรูปไม่ได้" + ป้ายเขียว "ขึ้นแล้ว" · ในเธรดเป็นกล่องเปล่าไม่มีชื่อ ⇒ จอแบ่งรูป/ไฟล์ด้วยชุดที่วาดได้
+   🔴 ชุด "รูปของระบบ" (`isPreviewableImage`) ไม่ขยับ — เอกสารประเมินพิมพ์ TIFF ของพื้นที่ลงหน้างาน (sharp ถอดได้) และ
+      "รูปของจุด" นับชุดนั้น ⇒ แก้ตัวนั้นแทน = กระดาษของใบลงหน้างานเปลี่ยนเงียบ ๆ */
+test('วาดในหน้าได้: TIFF ไม่ได้ (ตาม mime และตามนามสกุลเมื่อไม่มี mime) · รูปชนิดอื่นเหมือนชุดพรีวิว · HEIC คงเดิม', () => {
+  for (const mimeType of ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp', 'image/heic', 'image/heif', 'IMAGE/PNG']) {
+    assert.equal(isDrawableImage({ mimeType }), true, mimeType);
+    assert.equal(isUndrawnImage({ mimeType }), false, mimeType);
+  }
+  for (const item of [{ mimeType: 'image/tiff' }, { mimeType: 'IMAGE/TIFF', fileName: 'scan.tiff' }, { fileName: 'scan.tif' }, { fileName: 'แบบสแกนเดิม.TIFF' }]) {
+    assert.equal(isDrawableImage(item), false, JSON.stringify(item));
+    assert.equal(isUndrawnImage(item), true, `${JSON.stringify(item)} — เป็นรูปของระบบที่วาดไม่ขึ้น ⇒ แถวไฟล์บอก "เปิดในแท็บใหม่"`);
+    assert.equal(isPreviewableImage(item), true, `${JSON.stringify(item)} — ชุดรูปของระบบยังนับ TIFF (เอกสาร · รูปของจุด)`);
+  }
+  // mime ชนะนามสกุล — ลำดับเดียวกับ isPreviewableImage
+  assert.equal(isDrawableImage({ mimeType: 'image/png', fileName: 'plan.tiff' }), true);
+  assert.equal(isDrawableImage({ mimeType: 'image/tiff', fileName: 'plan.png' }), false);
+  // ไม่ใช่รูปเลย = ไม่ใช่ทั้งสองแบบ (PDF ยังเป็นแถวไฟล์หน้าตาเดิม ไม่มีคำ "เปิดในแท็บใหม่")
+  for (const item of [{ mimeType: 'application/pdf' }, { fileName: 'spec.pdf' }, { fileName: 'scan' }, {}, null, undefined]) {
+    assert.equal(isDrawableImage(item), false, JSON.stringify(item));
+    assert.equal(isUndrawnImage(item), false, JSON.stringify(item));
+  }
+  assert.equal(UNDRAWN_IMAGE_OPEN_TEXT, 'เปิดในแท็บใหม่', 'คำเดียวกับแผ่นลิงก์ของแผง "แบบจากฝ่ายขาย" — ไม่มีคำใหม่');
+  // อัปได้เท่าเดิม — แก้แค่หน้าตาบนจอ
+  assert.ok(ACCEPTED_UPLOAD_EXT.includes('tif') && ACCEPTED_UPLOAD_EXT.includes('tiff'));
+  assert.match(IMAGE_ACCEPT_ATTR, /image\/tiff/);
+  assert.match(UPLOAD_ACCEPT_ATTR, /\.tiff/);
 });
 
 // 🐞 ชุดชนิดไฟล์เดิมแคบเกินจริง: รูปจาก iPhone (.heic) และไฟล์ Artwork (.ai/.psd/.eps)

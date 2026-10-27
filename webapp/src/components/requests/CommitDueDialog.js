@@ -24,8 +24,8 @@
 // ⚠️ โหมดมาจากทะเบียนหัวข้อ (`commitDueMode` → `requestNeedsRef(kind,'site')`) และ "ลงคิวใหม่"
 //    มาจาก `surveyQueueStep` ตัวเดียวกับการ์ดบนหน้าจัดคิว — **ผู้เรียกส่งโหมดเองไม่ได้** ⇒ ส่งผิดไม่ได้
 // ⚠️ เจ้าหน้าที่ **บังคับ** ⇒ ตัวเลือกไม่มีแถว "ยังไม่มอบหมาย" (`allowUnassigned={false}`)
-// ⚠️ ปุ่มส่ง = `GatedAction` ของเปลือก — กดได้เสมอ ขาดอะไรบอกครบทุกช่องในครั้งเดียว (`commitDueGaps` ·
-//    ตัวเดียวกับที่ server ตอบข้อแรก) ไม่ใช่ปุ่มจางที่ไม่บอกเหตุ (กฎฟอร์มของ repo)
+// ⚠️ ปุ่มส่งกดได้เสมอ ขาดอะไรบอกครบทุกช่องในครั้งเดียว (`commitDueGaps` · ตัวเดียวกับที่ server ตอบข้อแรก) ไม่ใช่ปุ่มจาง
+//    ที่ไม่บอกเหตุ (กฎฟอร์มของ repo) · เหตุอยู่ที่บรรทัดใต้ปุ่มที่เดียว — ไม่มี toast ซ้ำ (S2b แก้หลังตรวจจอ head-r3-4 · ดู `primaryInBox`)
 // ⭐ **งานโต๊ะ — ใบประเมินที่ประเมินจากแบบทั้งใบ** (mig 0408 · งวด S2b กลุ่ม D-1) ใช้โมดัลตัวนี้สองทรง คอลัมน์เดียวทั้งคู่:
 //    · รับปากวันส่งผล — เส้นประ "ผู้ขอต้องการผล …" · วันที่จะส่งผลประเมิน · หมายเหตุถึงฝ่ายขาย (ป้ายทั้งชุดมาจาก `commitDueLabels`)
 //    · เลื่อนวันส่งผล (`mode="reschedule"`) — หัว · ป้ายวัน · ด่าน · **ก้อนที่ส่ง** มาจาก `deskRescheduleView` ทั้งก้อน
@@ -269,6 +269,15 @@ function CommitDueForm({
     onClick: submit,
     icon: siteMode ? <CalendarPlus size={15} aria-hidden="true" /> : undefined,
   };
+  /* 🐞 (S2b แก้หลังตรวจจอ head-r3-4) ด่านของปุ่มส่งให้เปลือกเป็น `blocker` ⇒ กดตอนติดด่านได้ toast ที่ทับชื่อกล่อง กากบาท และปุ่มท้าย
+        ทั้งที่บรรทัดผลลัพธ์ใต้ปุ่ม (`outcome` — `commitDueOutcome` / `reschedule.gaps`) พูดเหตุเดียวกันอยู่แล้ว = เหตุขึ้นสองที่
+     ⇒ เปลือกได้ปุ่มที่ไม่มี `blocker` (ไม่ผ่าน toast ของ `GatedAction`) · ติดด่าน = กดแล้วไม่ส่ง เหตุอยู่ใต้ปุ่มที่เดียว
+     ⚠️ ด่านยังประกาศที่ `primary.blocker` ตัวเดิม (ตัวเดียวกับที่ route ใช้) — เปลี่ยนแค่ทางที่บอกเหตุ ไม่แก้เปลือกกลาง (โมดัลนัดยังใช้ท่าเดิม) */
+  const primaryInBox = {
+    ...primary,
+    blocker: "",
+    onClick: () => { if (!primary.blocker) primary.onClick(); },
+  };
 
   return (
     <ScheduleModalShell
@@ -285,7 +294,7 @@ function CommitDueForm({
       main={main}
       tail={tail}
       secondary={[{ key: "cancel", label: "ยกเลิก", variant: "quiet", onClick: close }]}
-      primary={primary}
+      primary={primaryInBox}
       outcome={outcome}
     />
   );

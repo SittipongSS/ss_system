@@ -34,11 +34,13 @@ import GatedAction from "@/components/ui/GatedAction";
 import { kindMeta } from "@/components/ui/ActionButtons";
 import RichText from "@/components/ui/RichText";
 import ReadableText from "@/components/ui/ReadableText";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
+import { DRAWING_SPOT_LABEL } from "@/components/service/SurveyResultTable";
+import { surveyCardUnitNames, surveyCardUnits } from "@/components/service/surveyControlCardUnits";
 import { fmtNumber, naText } from "@/lib/format";
 import { requestKindLabel } from "@/lib/master/requestTypes";
-import { surveyJobView } from "@/lib/service/surveyJob";
+import { SURVEY_DRAWING_SPOTS_NOTE, surveyJobView } from "@/lib/service/surveyJob";
 import styles from "./surveyRequest.module.css";
 
 const num = (value) => (value == null ? null : fmtNumber(value, { maximumFractionDigits: 2 }));
@@ -128,7 +130,7 @@ function Timeline({ steps }) {
             <span className={styles.stepLine}>นัด {step.visitLink.code}</span>
           ) : null}
           {step.lines.map((line, i) => (
-            <span key={i} className={styles.stepLine} data-tone={line.tone || undefined}>{line.text}</span>
+            <span key={i} className={styles.stepLine} data-tone={line.tone || undefined}>{keepPhrases(line.text, line.keep)}</span>
           ))}
         </li>
       ))}
@@ -156,9 +158,10 @@ function Meter({ done, total, complete }) {
 /* ── ตารางพื้นที่ ─────────────────────────────────────────────────────────────────────── */
 /* เซลล์ที่มีป้าย — จอแคบตารางกลายเป็นการ์ด ป้ายซ้าย (`data-label`) ค่าขวา
    ⚠️ ค่าต้องอยู่ในก้อนเดียว (`cellValue`) — ไม่งั้นตัวเลขกับบรรทัด "สูตร n" แตกเป็นสองช่องของกริด */
-function Cell({ label, num: isNum = false, children }) {
+function Cell({ label, num: isNum = false, longLabel = false, children }) {
   return (
-    <td data-label={label} className={isNum ? "num" : undefined}>
+    /* `longLabel` — ป้ายยาวกว่าช่องป้ายของจอแคบ ⇒ CSS ให้ป้ายขึ้นบรรทัดของตัวเองไม่ตัดกลางคำ (head-r3-12) · ไม่ส่ง = ทรงเดิม */
+    <td data-label={label} data-long-label={longLabel ? "1" : undefined} className={isNum ? "num" : undefined}>
       <span className={styles.cellValue}>{children}</span>
     </td>
   );
@@ -189,7 +192,8 @@ export function SurveyDrawingBanner({ banner, onConfirm }) {
         <Button variant="outline" onClick={onConfirm} className={`${styles.action} ${styles.bannerAction}`}>{confirm.label}</Button>
       ) : null}
     >
-      {thaiText(banner.text)}
+      {/* `banner.keep` = วลีที่ห้ามตัดกลาง ("ไม่ต้องยืนยันหน้างาน" · ชื่อปุ่มใน “…”) — lib ประกาศ · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10) */}
+      {banner.keep?.length ? keepPhrases(banner.text, banner.keep) : thaiText(banner.text)}
       {banner.note ? <span className={styles.bannerNote}>{thaiText(banner.note)}</span> : null}
     </StatusNotice>
   );
@@ -201,6 +205,14 @@ export function SurveyDrawingBanner({ banner, onConfirm }) {
    ⚠️ `table.lastLabel` เป็นทั้งหัวคอลัมน์และป้ายของเซลล์บนจอแคบ (`data-label`) — สองที่ต้องเป็นคำเดียวกันเสมอ */
 function ZonesTable({ zones }) {
   const { rows, sent, totals, photos, table } = zones;
+  /* ⭐ ใบจากแบบทั้งใบที่ส่งผลแล้ว (`zones.drawingOnly` จาก lib — S2b-O9 · มติเจ้าของ 19/10) — จุดของพื้นที่จากแบบไม่บังคับและไม่มีการเลือก
+     ⇒ ช่องจุดเป็น "จุดติดตั้งโดยประมาณ" + "{n} จุด" (คำเดียวกับหัวคอลัมน์ของตารางสรุปส่งผลของ TS) ไม่ใช่ "เลือก / ทั้งหมด"
+     · ใบลงหน้างาน/ใบผสม = คำและตัวเลขเดิมทุกตัวอักษร */
+  const drawingOnly = sent && zones.drawingOnly === true;
+  const spotLabel = drawingOnly ? DRAWING_SPOT_LABEL : "จุดติดตั้ง";
+  const spotText = (selected, total) => (sent && !drawingOnly
+    ? naText(total ? `${selected} / ${total}` : null)
+    : naText(total ? `${total} จุด` : null));
   return (
     <TableScroll surface="embedded" cells="stacked" minWidth={860} className={styles.zoneShell}>
       <table className={styles.zoneTable}>
@@ -212,7 +224,7 @@ function ZonesTable({ zones }) {
             <th className="num">ตร.ม.</th>
             <th className="num">ลบ.ม.</th>
             {table.wideColumn && <th className="num">ภาพกว้าง</th>}
-            <th className="num">{sent ? "จุดติดตั้ง (เลือก / ทั้งหมด)" : "จุดติดตั้งได้"}</th>
+            <th className="num">{drawingOnly ? DRAWING_SPOT_LABEL : sent ? "จุดติดตั้ง (เลือก / ทั้งหมด)" : "จุดติดตั้งได้"}</th>
             <th className="num">แพ็คเกจ</th>
             <th>{table.lastLabel}</th>
           </tr>
@@ -239,11 +251,7 @@ function ZonesTable({ zones }) {
               <Cell label="ลบ.ม." num>{naText(num(row.volumeCbm))}</Cell>
               {/* แถวจากแบบในใบผสม: ภาพกว้างไม่ใช่ของวิธีนี้ ⇒ lib ส่งขีดมา (`wideText`) · แถวลงหน้างาน = ตัวนับเดิม */}
               {table.wideColumn && <Cell label="ภาพกว้าง" num>{row.wideText ?? photoText(row.photosWide)}</Cell>}
-              <Cell label="จุดติดตั้ง" num>
-                {sent
-                  ? naText(row.spotsTotal ? `${row.spotsSelected} / ${row.spotsTotal}` : null)
-                  : naText(row.spotsTotal ? `${row.spotsTotal} จุด` : null)}
-              </Cell>
+              <Cell label={spotLabel} num longLabel={drawingOnly}>{spotText(row.spotsSelected, row.spotsTotal)}</Cell>
               {/* ⭐ ขนาด + จำนวนที่หัวหน้าเคาะ ("SM · 1" · mig 0398) — ของที่ฝ่ายขายเอาไปตั้งราคา
                   · บรรทัดรองขึ้นเฉพาะเมื่อต่างจากที่ระบบเสนอ (ต่างได้ แต่ต้องเห็นว่าต่าง) · 🔄 แทน "สูตร N" เดิม
                   · ถ้อยคำมาจาก `surveyJobView` (กติกาหัวไฟล์) */}
@@ -282,11 +290,7 @@ function ZonesTable({ zones }) {
             <Cell label="ตร.ม." num>{naText(num(totals.areaSqm || null))}</Cell>
             <Cell label="ลบ.ม." num>{naText(num(totals.volumeCbm || null))}</Cell>
             {table.wideColumn && <Cell label="ภาพกว้าง" num>{photoText(table.wideTotal)}</Cell>}
-            <Cell label="จุดติดตั้ง" num>
-              {sent
-                ? naText(totals.spotsTotal ? `${totals.spotsSelected} / ${totals.spotsTotal}` : null)
-                : naText(totals.spotsTotal ? `${totals.spotsTotal} จุด` : null)}
-            </Cell>
+            <Cell label={spotLabel} num longLabel={drawingOnly}>{spotText(totals.spotsSelected, totals.spotsTotal)}</Cell>
             <Cell label="แพ็คเกจ" num>
               {naText(totals.packageQty || null)}
               {/* สัดส่วนขนาดของทั้งใบ ("SM 1 · ST 1") — จำนวนรวมเท่ากันแต่ขนาดต่าง = ราคาต่าง */}
@@ -573,9 +577,12 @@ export default function SurveyRequestView({
                 </>
               ) : null}
             </small>
-            <p className={styles.nowHeadline}>{job.now.headline}</p>
+            {/* วันที่ในพาดหัวของงานโต๊ะไม่ตัดกลางวันที่บนมือถือ — lib บอกท่อนที่ห้ามขาด (`now.headlineKeep` · S2b แก้หลังตรวจจอ sales-q10c)
+                · ขั้นอื่นไม่มีคีย์นี้ = ข้อความเดิม (`keepPhrases` คืนสตริงเดิมเมื่อไม่มีท่อน) */}
+            <p className={styles.nowHeadline}>{keepPhrases(job.now.headline, job.now.headlineKeep)}</p>
             {job.now.progress ? <Meter {...job.now.progress} /> : null}
-            {job.now.sub ? <p className={styles.nowSub}>{job.now.sub}</p> : null}
+            {/* `now.subKeep` — ตัวเลขไม่ขาดจากหน่วย/ป้าย ("2 / 3 พื้นที่" · "ปิดแล้ว 1/2") · เฉพาะใบที่มีพื้นที่จากแบบ · ไม่มีคีย์ = สตริงเดิม */}
+            {job.now.sub ? <p className={styles.nowSub}>{keepPhrases(job.now.sub, job.now.subKeep)}</p> : null}
             {job.now.next ? (
               <p className={styles.nowNext}><span>ต่อไป</span>{job.now.next}</p>
             ) : null}
@@ -613,8 +620,11 @@ export default function SurveyRequestView({
                 className={styles.bandAction}
               />
             ) : null}
+            {/* 🐞 UAT 26/10 (S18 request-mixed-in-work 1440 · head-r3-53): เหตุของใบผสมตัด "หัวหน้าต้อง" / "ทำ: ห้องประชุมชั้น 3" ที่หน้าคำร้อง
+                (การ์ดของใบประเมินแก้แล้ว — ประโยคเดียวกันมาจาก `surveyControlView.send`) ⇒ ชิ้นชุดเดียวกับการ์ด: ป้ายท่อน · ชื่อพื้นที่ · “…” · (…)
+                ⚠️ ห่อ span ตัวเดียว — `.blocked` เป็น flex: ชิ้นที่วางตรง ๆ จะกลายเป็นคอลัมน์แยกกัน (แบบเดียวกับ `.wait` ข้างล่าง) */}
             {sendBlocker ? (
-              <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{sendBlocker}</p>
+              <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" /><span>{keepPhrases(sendBlocker, surveyCardUnits(sendBlocker, surveyCardUnitNames(job.control)))}</span></p>
             ) : null}
             {bandPrimary?.disabled && typeof bandPrimary.disabledReason === "string" ? (
               <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{bandPrimary.disabledReason}</p>
@@ -658,7 +668,13 @@ export default function SurveyRequestView({
               <Metric label="พื้นที่รวม" value={`${num(zones.totals.areaSqm)} ตร.ม.`} />
               <Metric label="ปริมาตรรวม" value={`${num(zones.totals.volumeCbm)} ลบ.ม.`} />
               <Metric label="แพ็คเกจ" value={`${fmtNumber(zones.totals.packageQty)} แพ็คเกจ`} note={zones.packageMixText || null} />
-              <Metric label="จุดติดตั้ง" value={`${zones.totals.spotsSelected} / ${zones.totals.spotsTotal}`} note="เลือก / ที่ติดตั้งได้" />
+              {/* ใบจากแบบทั้งใบ (S2b-O9): "{n} จุด" · 0 = ขีด · หมายเหตุบอกว่าเป็นจุดโดยประมาณจากแบบ — ใบอื่นคำเดิม */}
+              <Metric label="จุดติดตั้ง"
+                value={zones.drawingOnly
+                  ? naText(zones.totals.spotsTotal ? `${zones.totals.spotsTotal} จุด` : null)
+                  : `${zones.totals.spotsSelected} / ${zones.totals.spotsTotal}`}
+                note={zones.drawingOnly ? SURVEY_DRAWING_SPOTS_NOTE : "เลือก / ที่ติดตั้งได้"}
+              />
             </MetricStrip>
           ) : null}
 

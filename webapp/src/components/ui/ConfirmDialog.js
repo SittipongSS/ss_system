@@ -97,7 +97,7 @@ export default function ConfirmDialog({
   const [internalError, setInternalError] = useState("");
   const cancelRef = useRef(null);
   const confirmRef = useRef(null);
-  const actionsRef = useRef(null);
+  const bodyRef = useRef(null);
   const descriptionId = useId();
   const destructive = danger || tone === "danger";
   const pending = busy || internalBusy;
@@ -115,14 +115,17 @@ export default function ConfirmDialog({
   /* ⭐ **ยืนยันแล้วล้ม = ข้อผิดพลาดกับแถวปุ่มต้องอยู่ในสายตา และโฟกัสต้องกลับเข้ากล่อง**
      🐞 UAT 2026-10-08 (กล่องส่งผล/ออกเอกสารของใบประเมิน · จอ 360): ข้อผิดพลาดต่อท้ายรายการที่ยาวเกินเนื้อกล่อง — กล่องแดงโผล่ครึ่งเดียว
         ที่ขอบล่าง แถวปุ่มอยู่ใต้จอ · และปุ่มยืนยันที่ถูก `disabled` ระหว่างรอทำโฟกัสหล่นไป `body` (กด Tab ต่อไม่ได้ ต้องแตะกล่องใหม่)
-     ⇒ รอจนเลิก "กำลังทำงาน" (ปุ่มกลับมากดได้) แล้วเลื่อนแถวปุ่มเข้ามา — กล่องแดงอยู่เหนือแถวปุ่มพอดี จึงเห็นคู่กัน — และคืนโฟกัสให้ปุ่มในกล่อง
+     ⇒ รอจนเลิก "กำลังทำงาน" (ปุ่มกลับมากดได้) แล้วเลื่อนกล่องแดงเข้ามา และคืนโฟกัสให้ปุ่มในกล่อง
+     🔄 (S2b แก้หลังตรวจจอ head-r3-19) แถวปุ่มย้ายไปโซน `footer` ที่ตรึงท้ายกล่องแล้ว ⇒ ไม่ต้องเลื่อนหาปุ่มอีก ตัวที่ต้องเลื่อนเข้ามาคือ
+        กล่องแดง (ชิ้นสุดท้ายของเนื้อ) — เลื่อนแล้วมันยืนติดเหนือแถวปุ่มพอดี จึงเห็นคู่กันเหมือนเดิม · `:scope >` = กล่องแดงของกล่องยืนยันเอง
+        ไม่ใช่ `role="alert"` ที่ผู้เรียกใส่มาใน `children`
      ⚠️ คืนโฟกัสเฉพาะตอนโฟกัสหลุดออกนอกกล่องแล้วเท่านั้น (คนที่ย้ายโฟกัสเองไม่ถูกดึงกลับ) · ไม่เลื่อนซ้ำ (`preventScroll`) */
   useEffect(() => {
     if (!open || !resolvedError || pending) return;
-    const actions = actionsRef.current;
-    if (!actions) return;
-    actions.scrollIntoView({ block: "nearest" });
-    const dialog = actions.closest('[role="dialog"]');
+    const body = bodyRef.current;
+    if (!body) return;
+    body.querySelector(':scope > [role="alert"]')?.scrollIntoView({ block: "nearest" });
+    const dialog = body.closest('[role="dialog"]');
     if (dialog && !dialog.contains(document.activeElement)) {
       (confirmRef.current || cancelRef.current)?.focus({ preventScroll: true });
     }
@@ -153,6 +156,37 @@ export default function ConfirmDialog({
     }
   };
 
+  /* ⭐ **แถวปุ่มตรึงท้ายกล่อง เนื้อเลื่อนอย่างเดียว** (S2b แก้หลังตรวจจอ head-r3-19 · ตรงกับโครงสามชั้นของ `Modal` มติผู้ใช้ 2026-08-08)
+     🐞 หัวหน้า UAT รอบ 3 ข้อ 19 (จอมือถือ · กล่องส่งผลของใบที่มีพื้นที่จากแบบ): ตัวเลือก "ยืนยันหน้างาน" สองช่องดันปุ่ม "ยกเลิก" / "ส่งผล"
+        ตกใต้ขอบจอ — กล่องเปิดมาโดยไม่มีปุ่มให้เห็น ต้องเลื่อนในกล่องหาเอง · เดิมแถวปุ่มเป็นชิ้นสุดท้ายของ `.drawer-body` (โซนที่เลื่อน)
+     ⇒ ส่งแถวปุ่มเป็น `footer` ของ `Modal` = โซน `.drawer-footer` ที่ไม่เลื่อน (พื้นทึบ · เส้นคั่นบน) ทุกกล่องยืนยันในระบบได้พร้อมกัน
+     ⚠️ กล่องสั้นที่ไม่ต้องเลื่อน: ปุ่มอยู่แถบท้ายแบบเดียวกับโมดัลฟอร์ม (ขอบบน 1px · ปุ่มกว้างขั้นต่ำ 96px ของ `.drawer-footer .btn`) ·
+        จอ ≤680 ปุ่มยังสูง 44px และยืดเต็มแถว (`.confirm-dialog-actions` กินเต็มกว้างของโซน — ดู globals.css) */
+  const actions = (
+    <div className="confirm-dialog-actions">
+      {!hideCancel ? (
+        <Button ref={cancelRef} variant="quiet" onClick={close} disabled={pending}>
+          {cancelLabel}
+        </Button>
+      ) : null}
+      {/* 🔴 2026-09-02 เดิมเป็น `accent` — โมดัลยืนยันทุกใบในระบบ (confirmAction ถูก
+          เรียกหลายสิบจุด) จึงได้ปุ่มยืนยันสี terracotta ที่ระบบใช้แปลว่า "เริ่มของใหม่"
+          ทั้งที่มันคือ "ยืนยันสิ่งที่ทำอยู่" เป๊ะตามนิยามของ `TONES` ใน Button.js
+          ⇒ `primary` · ฝั่งทำลายยังเป็น `danger` เหมือนเดิม
+          จุดเดียวนี้ผิดมากกว่าหน้าที่ทา accent เองรวมกัน และ grep `tone="accent"`
+          มองไม่เห็นเลยเพราะมันนับไฟล์ที่เรียกใช้ ไม่ได้นับจอที่เรนเดอร์ */}
+      <Button
+        ref={confirmRef}
+        tone={destructive ? "danger" : "primary"}
+        onClick={confirm}
+        disabled={pending}
+        aria-busy={pending || undefined}
+      >
+        {pending ? busyLabel : confirmLabel}
+      </Button>
+    </div>
+  );
+
   return (
     <Modal
       open={open}
@@ -161,11 +195,13 @@ export default function ConfirmDialog({
       size={size}
       dismissible={!pending && !hideCancel}
       initialFocusRef={hideCancel ? confirmRef : cancelRef}
-      /* กล่องเปิดที่บรรทัดแรกเสมอ — ปุ่มที่ได้โฟกัสแรกอยู่ท้ายเนื้อ กล่องที่ยาวกว่าจอมือถือจึงเคยเปิดมากลางเนื้อ (ดู `Modal`) */
+      /* กล่องเปิดที่บรรทัดแรกเสมอ (ดู `Modal`) — เดิมปุ่มที่ได้โฟกัสแรกอยู่ท้ายเนื้อ กล่องยาวจึงเปิดมากลางเนื้อ · ปุ่มย้ายไป `footer` แล้ว
+         (head-r3-19) ยังคงไว้: โฟกัสแรกต้องไม่เลื่อนเนื้อไม่ว่าปุ่มจะอยู่โซนไหน */
       initialFocusScroll={false}
       ariaDescribedBy={resolvedDescription || detail || resolvedError ? descriptionId : undefined}
+      footer={actions}
     >
-      <div className="confirm-dialog">
+      <div className="confirm-dialog" ref={bodyRef}>
         <div className={`confirm-dialog-icon${destructive ? " danger" : ""}`} aria-hidden="true">
           <Icon size={20} />
         </div>
@@ -174,31 +210,10 @@ export default function ConfirmDialog({
           {detail && <p className="confirm-dialog-detail">{thaiText(detail)}</p>}
         </div>
         {children ? <div className="confirm-dialog-extra">{children}</div> : null}
+        {/* กล่องแดงเป็นชิ้นสุดท้ายของเนื้อ — เลื่อนเข้ามาแล้วยืนติดเหนือแถวปุ่มที่ตรึงอยู่ (effect ข้างบน) */}
         {resolvedError ? (
           <StatusNotice tone="error" role="alert">{resolvedError}</StatusNotice>
         ) : null}
-        <div className="confirm-dialog-actions" ref={actionsRef}>
-          {!hideCancel ? (
-            <Button ref={cancelRef} variant="quiet" onClick={close} disabled={pending}>
-              {cancelLabel}
-            </Button>
-          ) : null}
-          {/* 🔴 2026-09-02 เดิมเป็น `accent` — โมดัลยืนยันทุกใบในระบบ (confirmAction ถูก
-              เรียกหลายสิบจุด) จึงได้ปุ่มยืนยันสี terracotta ที่ระบบใช้แปลว่า "เริ่มของใหม่"
-              ทั้งที่มันคือ "ยืนยันสิ่งที่ทำอยู่" เป๊ะตามนิยามของ `TONES` ใน Button.js
-              ⇒ `primary` · ฝั่งทำลายยังเป็น `danger` เหมือนเดิม
-              จุดเดียวนี้ผิดมากกว่าหน้าที่ทา accent เองรวมกัน และ grep `tone="accent"`
-              มองไม่เห็นเลยเพราะมันนับไฟล์ที่เรียกใช้ ไม่ได้นับจอที่เรนเดอร์ */}
-          <Button
-            ref={confirmRef}
-            tone={destructive ? "danger" : "primary"}
-            onClick={confirm}
-            disabled={pending}
-            aria-busy={pending || undefined}
-          >
-            {pending ? busyLabel : confirmLabel}
-          </Button>
-        </div>
       </div>
     </Modal>
   );

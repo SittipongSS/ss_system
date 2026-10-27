@@ -126,11 +126,17 @@ function middleStep(request) {
       ⚠️ ชื่อขั้นและบรรทัดใต้ขั้นยังเป็นชุดของงานหน้างาน — คำของงานโต๊ะมาพร้อมงวดจอ (แผน survey-desk-assessment §7) */
 const visitReached = (visit) => isClosedVisit(visit) && visit?.status !== 'unable';
 
-function fieldIndex(request, visit, needsVisit = true) {
+function fieldIndex(request, visit, needsVisit = true, deskReady = false) {
   if (request.status === 'draft') return 0;
   if (request.status === 'pending') return 1;
   if (request.status === 'acknowledged') {
-    if (needsVisit === false) return String(request.committedResultDate ?? '').trim() ? 3 : 2;
+    if (needsVisit === false) {
+      if (!String(request.committedResultDate ?? '').trim()) return 2;
+      /* ⭐ งานโต๊ะที่รับปากวันแล้วและด่านส่งผลผ่านครบ = ขั้นส่งผล (S2b แก้หลังตรวจจอ head-rc-r2-22) — เหมือนใบผสมที่พร้อมส่ง (ช่างเข้าพื้นที่แล้ว = 4)
+         🐞 เดิมค้าง "ขั้น 4/6 — ประเมินจากแบบ" จนกดส่ง เพราะไม่มีนัดให้ขยับขั้น ไม่ใช่เพราะงานยังไม่เสร็จ
+         ⚠️ รางไม่รู้ด่าน — ผู้เรียกที่ถือแถวพื้นที่เป็นคนบอก (`deskReady` · การ์ดควบคุม `stepOf`) · ไม่ส่ง = 3 ตามเดิม */
+      return deskReady === true ? 4 : 3;
+    }
     if (visitReached(visit)) return 4;
     if (holdsRequestSlot(visit)) return 3;
     return 2;
@@ -157,8 +163,8 @@ function fieldVisitHint(visit) {
   return null;
 }
 
-function fieldSteps(request, labels, visit, base, needsVisit = true) {
-  const index = fieldIndex(request, visit, needsVisit);
+function fieldSteps(request, labels, visit, base, needsVisit = true, deskReady = false) {
+  const index = fieldIndex(request, visit, needsVisit, deskReady);
   const live = holdsRequestSlot(visit) || visitReached(visit);
   const requeue = request.status === 'acknowledged' && !!visit && !live;
   const byId = Object.fromEntries(base.map((step) => [step.id, step]));
@@ -208,8 +214,10 @@ function fieldSteps(request, labels, visit, base, needsVisit = true) {
  * @param needsVisit เฉพาะรางหน้างาน — ใบนี้ต้องมีนัดเข้าพื้นที่ไหม (`surveyNeedsVisit` ของแถวพื้นที่)
  *                   ส่ง boolean มา = ใช้ค่านั้น · ไม่ส่ง = อ่านธง `request.surveyNeedsVisit` ที่ตัวโหลดติดมา
  *                   ⚠️ ไม่มีทั้งคู่ / ค่าอื่นที่ไม่ใช่ `false` ตรงตัว = ต้องมีนัด (รางของวันนี้ทุกค่า)
+ * @param deskReady  เฉพาะงานโต๊ะ (`needsVisit === false`) — ด่านส่งผลผ่านครบแล้วไหม (ผู้เรียกที่ถือแถวพื้นที่ตัดสิน · `true` ตรงตัวเท่านั้น)
+ *                   ⇒ ใบที่รับปากวันส่งผลแล้วชี้ขั้น "ส่งผล" แทน "ประเมินจากแบบ" · ไม่ส่ง = รางเดิม
  */
-export function requestRailSteps(request, { hasItems = false, visit, needsVisit } = {}) {
+export function requestRailSteps(request, { hasItems = false, visit, needsVisit, deskReady = false } = {}) {
   // ชื่อขั้น "กำหนดส่ง" ต่างตามหัวข้อ (ประเมินพื้นที่ = "ลงคิว") — อ่านจากทะเบียน
   const commitStepLabel = requestKindMeta(request.kind)?.form?.commitStepLabel || 'กำหนดส่ง';
 
@@ -320,7 +328,7 @@ export function requestRailSteps(request, { hasItems = false, visit, needsVisit 
   if (fieldRail) {
     const fieldNeedsVisit = typeof needsVisit === 'boolean' ? needsVisit : request.surveyNeedsVisit !== false;
     return fieldSteps(
-      request, fieldRail, visit !== undefined ? visit : (request.surveyVisit || null), steps, fieldNeedsVisit,
+      request, fieldRail, visit !== undefined ? visit : (request.surveyVisit || null), steps, fieldNeedsVisit, deskReady,
     );
   }
   return { steps, index };

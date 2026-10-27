@@ -5,37 +5,11 @@
    ⚠️ จุดตัดจอมีจุดเดียวคือ 680 (ชุดของระบบ): การ์ดไฟล์เปลี่ยนจาก "รูปซ้าย · รายละเอียดขวา" เป็น "รูปบน · รายละเอียดล่าง"
    ⚠️ ทุกอย่างที่กดได้สูงระดับนิ้ว (44px) — หัวหน้าเปิดบนแท็บเล็ตได้ */
 
-/* ── เนื้อ (ทั้งในการ์ดพับได้และบล็อกธรรมดา) ───────────────────────────────── */
+/* ── เนื้อของการ์ดพับได้ — ทุกที่วาง (S2b แก้หลังตรวจจอ head-r3-31: บล็อกหัวธรรมดาของ `compact` ถูกถอด หัวพับได้ทุกความกว้าง) ── */
 .cardBody {
   display: grid;
   gap: var(--space-3);
   padding-top: var(--panel-inset);
-}
-
-/* บล็อกธรรมดา (`compact`) — ในหน้าพื้นที่ / เหนือรายการบนจอแคบ: หัวหนึ่งแถว ไม่พับ */
-.block {
-  display: grid;
-  gap: var(--space-2-5);
-  min-width: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--panel-2);
-}
-
-.blockHead {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-1-5) var(--space-2);
-}
-
-.blockTitle {
-  margin: 0;
-  color: var(--text-1);
-  font-size: var(--fs-7);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-thai);
 }
 
 /* บรรทัดแรกของเนื้อ — วิธีใช้ชิดซ้าย · "พื้นที่ที่เปิดอยู่: …" ชิดขวา (ที่ไม่พอ = ตกลงมาทั้งชิ้น ไม่ตัดชื่อพื้นที่) */
@@ -190,7 +164,16 @@
 .docOpen > span { min-width: 0; }
 .docOpen > svg { flex: none; }
 
-.info .source { margin-top: var(--space-1); }
+/* ป้ายของการ์ด — ที่มา ("จากเธรด") กับ "ใช้แล้ว" อยู่แถวเดียวกัน ห่อได้ (S2b แก้หลังตรวจจอ head-r3-35: การ์ดเดียวมีได้สองป้าย) */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.source { flex: none; }
 
 /* ── ปุ่ม "ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้" — เต็มความกว้างของการ์ด ใต้รูปกับรายละเอียด ───────────── */
 .reuse {
@@ -232,18 +215,24 @@
   text-align: center;
 }
 
-/* ติดด่าน / กำลังคัดลอก: หน้าตาเท่าปุ่มที่ดับของระบบ แต่ยังถือโฟกัส (aria-disabled — ดูคอมเมนต์ในไฟล์ JS) */
+/* ติดด่าน / ใช้แล้ว / กำลังคัดลอก: หน้าตาเท่าปุ่มที่ดับของระบบ แต่ยังถือโฟกัส (aria-disabled — ดูคอมเมนต์ในไฟล์ JS) */
 .reuse .reuseBtn[aria-disabled="true"] {
   opacity: var(--op-disabled);
   cursor: not-allowed;
 }
 
-/* ── กล่องขยายรูป ───────────────────────────────────────────────────────── */
-.zoom {
-  display: grid;
-  gap: var(--space-3);
-  justify-items: center;
+/* ── กล่องขยายรูป ─────────────────────────────────────────────────────────
+   ⭐ หน้าตาเดียวกับตัวดูภาพแบบของหน้าพื้นที่ (`AttachmentsPanel` โหมดแผ่นรูป · S2b แก้หลังตรวจจอ planner-q12):
+      ลอกกฎมาไว้ที่นี่ ไม่แก้ไฟล์ของแผงไฟล์แนบ — ปุ่มปิดขนาดนิ้ว (ของกลาง 28px) · ปุ่ม "เปิดไฟล์ต้นฉบับ" ที่แถบท้ายสูงระดับนิ้ว */
+.zoomModal :global(.drawer-close) {
+  flex: none;
+  width: var(--ctl-h-touch);
+  height: var(--ctl-h-touch);
+  margin-block: calc(-1 * var(--space-2));
+  margin-inline-end: calc(-1 * var(--space-2));
 }
+
+.zoomBtn { min-height: var(--ctl-h-touch); justify-content: center; }
 
 .zoomFrame {
   display: grid;
@@ -261,20 +250,6 @@
   object-fit: contain;
 }
 
-.zoomLink {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1-5);
-  min-height: var(--ctl-h-touch);
-  color: var(--accent-ink);
-  font-size: var(--fs-6);
-  font-weight: var(--fw-semibold);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.zoomLink:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
-
 /* การ์ดในแถวเดียวกันสูงเท่ากัน (กริดยืดให้) แต่ชื่อไฟล์ยาวสั้นไม่เท่ากัน ⇒ ปุ่มใช้รูปของแต่ละใบเคยอยู่คนละระดับ (UAT S2b S01)
    ⇒ การ์ดที่มีปุ่ม: แถวบน (รูป + รายละเอียด) รับความสูงที่เหลือ ปุ่มเกาะขอบล่างของการ์ด · การ์ดที่ไม่มีปุ่ม (หน้ารายการ · ผู้วางคิว) = เดิม
    ⚠️ บนมือถือ (≤680) การ์ดเป็นคอลัมน์เดียว (รูป · รายละเอียด · ปุ่ม สามแถว) — ก้อนมือถือข้างล่างล้างแม่แบบแถวนี้คืน */
@@ -287,9 +262,10 @@
 .file:has(> .reuse) > .info { align-self: start; }
 .file:has(> .reuse) > .reuse { align-self: end; }
 
-/* ── มือถือ: รูปอยู่บน รายละเอียดอยู่ล่าง ปุ่มใช้รูปเต็มความกว้าง ─────────────────── */
+/* ── มือถือ: รูปอยู่บน รายละเอียดอยู่ล่าง ปุ่มใช้รูปเต็มความกว้าง · ปุ่มท้ายกล่องขยายรูปเต็มแถว (นิ้วโป้งเอื้อมถึง) ── */
 @media (max-width: 680px) {
   .file { grid-template-columns: minmax(0, 1fr); }
   .file:has(> .reuse) { grid-template-rows: none; align-content: start; }
   .media { aspect-ratio: 16 / 9; }
+  .zoomBtn { flex: 1 1 0; }
 }

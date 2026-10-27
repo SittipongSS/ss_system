@@ -283,7 +283,8 @@ test('🔴 D-3 แถบแจ้งเหนือตาราง: วาดจ
   assert.match(banner, /action=\{confirm \? \(/, 'ไม่มี confirm = ไม่มีปุ่มเลย (ไม่ใช่ปุ่มจาง)');
   assert.equal((VIEW.match(/\.action\?\.ready/g) || []).length, 1);
   assert.match(banner, /<StatusNotice\s+tone="info"/);
-  assert.match(banner, /\{thaiText\(banner\.text\)\}/);
+  // วลีที่ห้ามตัดกลางมาจาก lib (`banner.keep`) · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10)
+  assert.match(banner, /\{banner\.keep\?\.length \? keepPhrases\(banner\.text, banner\.keep\) : thaiText\(banner\.text\)\}/);
   assert.match(banner, /\{banner\.note \? <span className=\{styles\.bannerNote\}>\{thaiText\(banner\.note\)\}<\/span> : null\}/);
   // ไม่มีจอไหนของกลุ่มนี้พิมพ์ประโยค N26 หรือชื่อปุ่มของงวด S5 เอง
   for (const [name, src] of SCREENS) {
@@ -377,7 +378,8 @@ test('🔴 D-3 ตารางที่ยังไม่ส่งผล (มต
   assert.equal((ZONES_TABLE.match(/table\.wideColumn/g) || []).length, 3);
   // หัวคอลัมน์สุดท้าย + ป้ายของเซลล์บนจอแคบ (`data-label` — ตาราง ≤ 680px ไม่มีหัว) อ่านคำเดียวกัน
   assert.equal((ZONES_TABLE.match(/table\.lastLabel/g) || []).length, 2);
-  assert.match(VIEW, /<td data-label=\{label\} className=\{isNum \? "num" : undefined\}>/, 'Cell ส่ง label ลง data-label');
+  // (S2b แก้หลังตรวจจอ head-r3-12) `data-long-label` = ป้ายยาวขึ้นบรรทัดของตัวเองบนจอแคบ — ป้ายยังมาจาก `label` ตัวเดียว
+  assert.match(VIEW, /<td data-label=\{label\} data-long-label=\{longLabel \? "1" : undefined\} className=\{isNum \? "num" : undefined\}>/, 'Cell ส่ง label ลง data-label');
   // ช่องสุดท้ายของแถวที่ยังไม่ส่งผล: จำนวนภาพแบบของแถวจากแบบต่อจากป้ายสถานะ — แถวลงหน้างานได้ null = ไม่วาดอะไรเพิ่ม
   assert.match(ZONES_TABLE, /\{row\.missingText \? <span className=\{styles\.miss\}>\{row\.missingText\}<\/span> : null\}\s*\{row\.planText\}\s*<\/>/);
   assert.equal((ZONES_TABLE.match(/row\.planText/g) || []).length, 1);
