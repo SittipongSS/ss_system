@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BUNDLE_MISSING_FILE, buildSalesOrderBundle, bundleExtension, bundleFolderName, keepVisibleSelection, planSalesOrderBundle, uniqueSalesOrders,
+  BUNDLE_MISSING_FILE, buildSalesOrderBundle, bundleExtension, bundleFolderName, keepVisibleSelection, planSalesOrderBundle, salesOrderPdfAbsentReason, uniqueSalesOrders,
 } from './salesOrderBundle.js';
 import { buildSalesOrderDocuments } from './salesOrderDocuments.js';
 
@@ -195,4 +195,24 @@ test('ไฟล์ที่ขาด.txt แยก "ดึงไม่ได้"
   const text = zip.files.get(BUNDLE_MISSING_FILE);
   assert.match(text, /ดึงไม่ได้ 1 ไฟล์[^\n]*\r\nSO-26100002 · ใบสั่งขาย SO-26100002 — สร้าง PDF ไม่สำเร็จ: spawn ETXTBSY/);
   assert.match(text, /ยังไม่มีในระบบ 6 รายการ\r\nSO-26100001 · งวดที่ 1 ใบกำกับภาษี/);
+});
+
+/* 🐞 27/10 ใบรออนุมัติขึ้น "ดึงไม่ได้ · ลองโหลดใหม่" — ทั้งที่ไม่มี PDF ฉบับที่ออกจริงให้ดึงตั้งแต่แรก */
+test('PDF ใบสั่งขาย: ใบที่ไม่อยู่สถานะอนุมัติ = "ยังไม่มีในระบบ" ตั้งแต่ก่อนดึง · ไม่บอกสถานะ/อนุมัติแล้ว = ดึงตามปกติ', async () => {
+  assert.equal(salesOrderPdfAbsentReason('approved'), null);
+  assert.equal(salesOrderPdfAbsentReason(undefined), null);
+  assert.match(salesOrderPdfAbsentReason('pending_approval'), /^ใบยังไม่อนุมัติ — ยังไม่มีฉบับที่ออกจริง \(สถานะใบ: รออนุมัติ\)$/);
+  assert.match(salesOrderPdfAbsentReason('draft'), /ฉบับร่าง/);
+  assert.match(salesOrderPdfAbsentReason('cancelled'), /^ใบถูกยกเลิก/);
+  assert.match(salesOrderPdfAbsentReason('revised'), /Rev\./);
+  assert.match(salesOrderPdfAbsentReason('approval_revoked'), /ย้อนการอนุมัติ/);
+
+  const fetched = [];
+  const { missing } = await buildSalesOrderBundle([{ ...ORDER, status: 'pending_approval' }], {
+    loadDocuments: async (order) => docsOf(order, []),
+    fetchFile: async (href) => { fetched.push(href); return { type: 'application/pdf' }; },
+    JSZip: FakeZip,
+  });
+  assert.deepEqual(fetched, ['/api/sales-planning/quotations/Q-1/issued/pdf'], 'ไม่ยิงเส้น PDF ของใบที่ยังไม่อนุมัติ');
+  assert.deepEqual(missing.map((m) => [m.label, m.absent]), [['ใบสั่งขาย SO-26100001', true]]);
 });
