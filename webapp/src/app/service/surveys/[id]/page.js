@@ -1720,7 +1720,8 @@ export default function SurveySheetPage({ params }) {
           /* ใบงานโต๊ะ (งวด S2b): ปุ่มเขียนว่า "เพิ่มพื้นที่" (ไม่ส่ง = คำเดิมของรายการ) · ผู้วางคิวไม่มีปุ่ม ได้บรรทัดเหตุตรงที่ปุ่มเคยอยู่
              (ประโยคเดียวกับที่ server ตอบ) — ช่างไม่มีบรรทัดนี้ · ใบล็อกแล้วไม่มีใครเพิ่มได้ จึงไม่มีเหตุให้บอก */
           addLabel={deskSheet ? addWords.label : null}
-          addBlockedNote={planReader && view.needsVisit === false && !view.flags.locked ? SURVEY_DESK_ADD_HEAD_ONLY : null}
+          /* ชื่อตำแหน่ง "หัวหน้าฝ่ายบริการ" ห้ามขาดกลางบรรทัด (ที่ 375 เคยเหลือ "บริการ" บรรทัดเดียว · UAT S14 รอบสอง) */
+          addBlockedNote={planReader && view.needsVisit === false && !view.flags.locked ? keepPhrases(SURVEY_DESK_ADD_HEAD_ONLY, ["หัวหน้าฝ่ายบริการ"]) : null}
           /* ทางออกทั้งงาน — เปิดกล่องส่งงานที่เลือก "ไปแล้วเข้าไม่ได้" ไว้ให้ (กล่องยังถามเหตุผลก่อนปิดนัด) */
           escape={escape}
           onEscape={canReportUnable ? () => openSubmit("unable") : undefined}

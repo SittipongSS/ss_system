@@ -177,8 +177,10 @@ export default function SurveyZoneList({
             {addLabel ?? <>เพิ่มพื้นที่ที่เจอหน้างาน</>}
           </button>
         ) : addBlockedNote ? (
-          /* ไม่มีปุ่ม + ผู้เรียกบอกเหตุ = ประโยคเดียวตรงที่ปุ่มจะอยู่ (ติดด่านข้อมูล = บอกเหตุ · กติกา ui-visibility) */
-          <p className={styles.quiet}>{addBlockedNote}</p>
+          /* ไม่มีปุ่ม + ผู้เรียกบอกเหตุ = ประโยคเดียวตรงที่ปุ่มจะอยู่ (ติดด่านข้อมูล = บอกเหตุ · กติกา ui-visibility)
+             ⚠️ ห่อ `<span>` ชั้นเดียว — `.quiet` เป็น flex: ผู้เรียกส่งข้อความที่ห่อวลีไว้ (`keepPhrases`) = หลายลูก
+             แต่ละลูกกลายเป็นช่อง flex แยกกันมีช่องว่างคั่น (UAT S14 รอบสอง) */
+          <p className={styles.quiet}><span>{addBlockedNote}</span></p>
         ) : null}
       </section>
       {/* ⭐ **ทางออกของทั้งงานอยู่ใต้รายการ ไม่ซ่อนในกล่องส่งงาน** (pain B9 · ม็อก A-1 · AO-2 · AT-1 · AW-1) — 🐞 เดิม

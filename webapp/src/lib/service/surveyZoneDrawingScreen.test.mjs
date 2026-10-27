@@ -365,7 +365,7 @@ test('รายการ: ป้ายของแถว · บรรทัด�
 test('รายการ: ปุ่มเพิ่มรับคำจากผู้เรียก (คำเดิมยังอยู่ในไฟล์) · เหตุที่ไม่มีปุ่มขึ้นเฉพาะตอนไม่มีปุ่ม', () => {
   assert.ok(LIST.includes('addLabel = null, addBlockedNote = null,'));
   assert.match(LIST, /\{addLabel \?\? <>เพิ่มพื้นที่ที่เจอหน้างาน<\/>\}/);
-  assert.match(LIST, /\{onAdd \? \(\s*<button type="button" className=\{styles\.add\} onClick=\{onAdd\}>[\s\S]*?<\/button>\s*\) : addBlockedNote \? \(\s*<p className=\{styles\.quiet\}>\{addBlockedNote\}<\/p>\s*\) : null\}/);
+  assert.match(LIST, /\{onAdd \? \(\s*<button type="button" className=\{styles\.add\} onClick=\{onAdd\}>[\s\S]*?<\/button>\s*\) : addBlockedNote \? \(\s*<p className=\{styles\.quiet\}><span>\{addBlockedNote\}<\/span><\/p>\s*\) : null\}/);
   assert.equal(count(LIST, 'addBlockedNote'), 3, 'ค่าตั้งต้น + เงื่อนไข + ที่พิมพ์ — ไม่มีที่อื่น');
   assert.doesNotMatch(LIST, /เฉพาะหัวหน้าฝ่ายบริการ/, 'ไฟล์นี้ไม่รู้ว่าใครดู — ประโยคเป็นของผู้เรียก');
 });

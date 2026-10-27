@@ -293,7 +293,7 @@ test('🔴 ใบงานโต๊ะ: ด่านเพิ่มพื้น�
   assert.equal((PAGE.match(/\bADD_HEAD_ONLY\b/g) || []).length, 2, 'ประกาศ 1 · ใช้ 1 (ชื่อ SURVEY_DESK_ADD_HEAD_ONLY เป็นอีกคำ ไม่นับ)');
   for (const use of PAGE.match(/[^\n]*\baddGate\b[^\n]*/g).slice(1)) assert.match(use, /!addGate|addGate \?/, use.trim());
 
-  assert.match(PAGE, /addBlockedNote=\{planReader && view\.needsVisit === false && !view\.flags\.locked \? SURVEY_DESK_ADD_HEAD_ONLY : null\}/);
+  assert.match(PAGE, /addBlockedNote=\{planReader && view\.needsVisit === false && !view\.flags\.locked \? keepPhrases\(SURVEY_DESK_ADD_HEAD_ONLY, \["หัวหน้าฝ่ายบริการ"\]\) : null\}/);
   assert.match(PAGE, /import \{\s*SURVEY_DESK_ADD_HEAD_ONLY, SURVEY_METHOD_ERRORS, SURVEY_METHOD_RESULT_DATE_LABEL,\s*\} from "@\/lib\/service\/surveyMethodSwitch";/);
   assert.equal(PAGE.includes(SURVEY_DESK_ADD_HEAD_ONLY), false, 'ประโยคมาจากค่าคงที่ตัวเดียวกับที่ server ตอบ — หน้าไม่พิมพ์ซ้ำ');
   assert.equal(count(PAGE, 'SURVEY_DESK_ADD_HEAD_ONLY'), 2, 'import 1 · ใช้ 1 (ใต้ `planReader`)');
