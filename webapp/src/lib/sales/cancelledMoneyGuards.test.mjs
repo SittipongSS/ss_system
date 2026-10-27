@@ -298,7 +298,9 @@ test('🔴 โมดัลรับรอง/บันทึกการรั�
   assert.match(dialog, /orderStatus,\s*\}\);/);
   /* PR-C C5 (ย้ายโดยตั้งใจ · critique H2): ต่อท้ายได้สองคีย์ของบรรทัดด่านเงินของใบบริการ (serviceZones · serviceContractLinked)
      — ตัวคุมสองคีย์นั้นอยู่ที่ fnConfirmServiceLine.test.mjs · ที่นี่คุมสถานะใบตามเดิมทุกตัวอักษร */
-  assert.match(dialog, /installmentConfirmPrompt\(\{\s*row, multi, historical, opening, outlook, orderStatus: order\?\.status \?\? row\.orderStatus \?\? null(?:,\s*serviceZones: [^,{}]+,\s*serviceContractLinked: [^,{}]+,?)?\s*\}\)/);
+  /* mig 0412 (ย้ายโดยตั้งใจ): แทรก `actualMode` (แบบการนับ Actual ของใบ — บรรทัด Actual ของผลลัพธ์) หน้าสถานะใบได้ · สถานะใบยังคุมตามเดิมทุกตัวอักษร */
+  /* review รอบหก 27/10 (ย้ายโดยตั้งใจ · Actual รายงวด): ต่อได้อีกคีย์ `orderApprovedAt` (เวลาอนุมัติใบ — บรรทัด Actual แยกปุ่มกู้ "นับงวด 1") */
+  assert.match(dialog, /installmentConfirmPrompt\(\{\s*row, multi, historical, opening, outlook,(?: actualMode,)? orderStatus: order\?\.status \?\? row\.orderStatus \?\? null(?:,\s*orderApprovedAt: [^,{}]+)?(?:,\s*serviceZones: [^,{}]+,\s*serviceContractLinked: [^,{}]+,?)?\s*\}\)/);
   assert.match(code(PANEL), /row, multi: rows\.length > 1, historical, outlook: installmentConfirmOutlook\(row, saved\), orderStatus: order\?\.status,/);
   const fn = code(FN_PAGE);
   assert.match(fn, /approvedAt: confirmFor\.orderApprovedAt, historicalInvoiceRef: confirmFor\.historicalInvoiceRef,\s*status: confirmFor\.orderStatus,/);
@@ -327,10 +329,14 @@ test('🔴 แผงงวด: ยอด/เตือนนับจากงว
 // ── MONEY-1: อนุมัติใบของดีลที่มีเงินค้าง — ไม่ยืมสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรก (อ่านไม่ขึ้น = ไม่ยืม) ─────────────
 test('🔴 อนุมัติใบ: ถามเงินค้างของดีลก่อน freeze แล้วส่ง borrowConfirmation (อ่านพลาด = ไม่ยืม)', () => {
   const approve = slice(code(SO_ROUTE), "if (action === 'approve') {", "if (action === 'reject') {");
-  const ask = approve.indexOf('borrowConfirmation = !(await loadCarrySources(supabase, before)).length;');
+  /* ตัวตัดสินย้ายไปตัวกลาง confirmationBorrowable (review รอบสาม 26/10 — ทางกู้ "เริ่มติดตามการชำระ"/"นับงวด 1" ใช้ตัวเดียวกัน) */
+  const ask = approve.indexOf('const borrowConfirmation = await confirmationBorrowable(supabase, before);');
   const freeze = approve.indexOf('await freezeInstallments(supabase, {');
   assert.ok(ask > 0 && freeze > ask);
-  assert.match(approve, /catch \(strandedError\) \{\s*borrowConfirmation = false;/);
+  const store = code('lib/sales/salesOrderInstallmentsStore.js');
+  const helper = slice(store, 'export async function confirmationBorrowable(supabase, order) {', '\n}\n');
+  assert.match(helper, /return !\(await loadCarrySources\(supabase, order\)\)\.length;/);
+  assert.match(helper, /catch \(strandedError\) \{[\s\S]*return false;/, 'อ่านพลาด = ไม่ยืม');
   assert.match(slice(approve, 'await freezeInstallments(supabase, {', '});'), /borrowConfirmation,/);
 });
 

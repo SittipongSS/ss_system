@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   WORKFLOW_ERROR_CODES, documentWorkflowError, historicalDealWriteMessage, workflowErrorMessage,
 } from './documentWorkflowErrors.js';
@@ -283,6 +283,19 @@ test('ยกเงินเกินยอดใบ / ยกซ้ำกับ�
   assert.ok(dup.message.endsWith(CARRY_DUPLICATE_WAY_OUT), dup.message);
 });
 
+/* 🐞 review รอบสอง 26/10 (mig 0412): ยกเงินเข้าใบรายงวดแล้วติดงวดที่ยื่น/นับ Actual แล้วแต่ยังไม่มีเงิน — ไม่ใช่เงินเกินยอดใบ
+   ⇒ รหัสแยก · ไม่มีคำแนะนำ "ให้บัญชีบันทึกคืนเงิน" (เงินลูกค้าไม่ได้เกิน) · ข้อความเดียวกับที่จอ (applyCarryIn) บอก */
+test('ยกเงินเข้าใบรายงวดติดงวดที่นับ Actual แล้ว (0412 C2) = installment_carry_counted_locked ไม่ใช่คำแนะนำคืนเงิน', async () => {
+  const { CARRY_COUNTED_LOCKED } = await import('./installmentCarry.js');
+  const locked = documentWorkflowError({ message: 'P0001: installment_carry_counted_locked' });
+  assert.equal(locked.code, 'installment_carry_counted_locked');
+  assert.equal(locked.status, 409);
+  assert.ok(locked.message.endsWith(CARRY_COUNTED_LOCKED), locked.message);
+  assert.doesNotMatch(locked.message, /คืนเงิน/);
+  const sql = readFileSync(MIG_0412, 'utf8');
+  assert.match(sql, /RAISE EXCEPTION 'installment_carry_counted_locked'/);
+});
+
 /* mig 0392 (P2): ออก Rev. ยกงานบริการไปใบใหม่ — บรรทัดไม่ตรงกับใบเดิม = 409 ภาษาไทย ไม่ใช่ข้อความกลาง 500 */
 test('ยกงานบริการไปใบ Rev. ไม่ได้ (0392) แปลเป็นไทยพร้อมทางออก', () => {
   assert.deepEqual(documentWorkflowError({ message: 'P0001: service_setup_copy_line_mismatch' }), {
@@ -392,3 +405,43 @@ test('รหัสของ 0409 (ใบย้อนหลัง · เลขแ
     console.error = original;
   }
 });
+
+/* ── นับ Actual ทั้งใบ / รายงวด (mig 0412 · มติเจ้าของ 26/10) — รหัสชุดตายตัวที่ทุกชั้นใช้ร่วมกัน ─────────────────────
+   ⭐ ข้อความไทยของรหัสพวกนี้คือข้อความที่ด่านฝั่ง JS คืนด้วย (salesOrderActualMode อ่านผ่าน workflowErrorMessage) */
+const INSTALLMENT_ACTUAL_CODES = Object.freeze({
+  sales_order_actual_mode_invalid: ['แบบการนับ Actual ไม่ถูกต้อง', 400],
+  sales_order_actual_mode_ineligible: ['ใบนี้นับ Actual รายงวดไม่ได้ — ต้องเป็นใบที่ยอดมากกว่า 0 และแบ่งอย่างน้อย 2 งวด', 409],
+  installment_actual_not_approved: ['งวดนี้ยังไม่ได้อนุมัตินับ Actual — รอ AE Sup อนุมัตินับงวดนี้ก่อน บัญชีจึงรับรองเงินได้', 409],
+  installment_actual_order_not_installment: ['ใบนี้นับ Actual ทั้งใบ ไม่มีการยื่นรายงวด', 409],
+  installment_actual_order_not_approved: ['ใบสั่งขายยังไม่อยู่ในสถานะอนุมัติ — ยื่นหรืออนุมัติงวดไม่ได้', 409],
+  installment_actual_bad_state: ['สถานะงวดเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409],
+  installment_actual_previous_unconfirmed: ['งวดก่อนหน้ายังไม่ได้รับรองเงิน — ยื่นหรืออนุมัติงวดนี้ได้หลังบัญชีรับรองงวดก่อน', 409],
+  installment_actual_forbidden: ['ไม่มีสิทธิ์ทำรายการนี้กับงวด', 403],
+  installment_actual_self_approval: ['อนุมัติงวดที่ตัวเองยื่นไม่ได้ — ให้ผู้อนุมัติคนอื่นกด', 403],
+  installment_actual_reason_required: ['ใส่เหตุผล 10–500 ตัวอักษร', 400],
+  installment_actual_stale: ['งวดนี้ถูกแก้ไปแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409],
+  installment_actual_not_found: ['ไม่พบงวดนี้', 404],
+});
+
+test('รหัสของ 0412 (นับ Actual รายงวด) แปลเป็นไทยตามรายการตายตัว พร้อมสถานะ HTTP', () => {
+  for (const [code, [message, status]] of Object.entries(INSTALLMENT_ACTUAL_CODES)) {
+    assert.ok(WORKFLOW_ERROR_CODES.includes(code), code);
+    assert.equal(workflowErrorMessage(code), message, code);
+    // RAISE จากฐานมาเป็นข้อความดิบ (บางทีมีบริบทต่อท้าย) — ตัวแปลหาด้วย includes
+    assert.deepEqual(documentWorkflowError(new Error(code)), { message, status, code }, code);
+    assert.equal(documentWorkflowError({ message: `${code}: I-26100001-1` }).code, code, `${code} + บริบท`);
+  }
+  // CHECK รูปทรงของงวด — เขียนนอก RPC แล้วชน = ข้อความไทย ไม่ใช่ 500
+  assert.equal(documentWorkflowError({ code: '23514', message: 'violates check constraint "sales_order_installments_actual_shape"' }).status, 409);
+});
+
+/* ไฟล์ migration มาจากอีกส่วนของงานเดียวกัน — ยังไม่มีไฟล์ = ข้าม (รายการตายตัวข้างบนยังตรึงอยู่) */
+const MIG_0412 = new URL('../../../supabase/migrations/0412_so_installment_actual.sql', import.meta.url);
+test('ทุกรหัสของ 0412 ที่ขึ้นต้น installment_actual_ / sales_order_actual_ มีในตารางแปล (อ่านไฟล์ migration ตรง ๆ)',
+  { skip: !existsSync(MIG_0412) && 'ยังไม่มีไฟล์ 0412' }, () => {
+    const sql = readFileSync(MIG_0412, 'utf8').replace(/--[^\n]*/g, '');
+    // เฉพาะ RAISE — ชื่อฟังก์ชัน/trigger ที่อยู่ในเครื่องหมายคำพูด (เช่น 'sales_order_actual_trigger') ไม่ใช่รหัส error
+    const raised = new Set([...sql.matchAll(/RAISE EXCEPTION '((?:installment_actual|sales_order_actual)_[a-z0-9_]+)/g)].map((m) => m[1]));
+    assert.ok(raised.size >= 5, `ต้องหารหัสของ 0412 เจอ (เจอ ${raised.size})`);
+    for (const code of raised) assert.ok(WORKFLOW_ERROR_CODES.includes(code), `${code} ยังไม่มีข้อความไทย`);
+  });

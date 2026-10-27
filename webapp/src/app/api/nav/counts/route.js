@@ -61,6 +61,7 @@ import { deptOf, ownedStages } from '@/lib/excise/workflow';
 import { applyExciseListScope } from '@/lib/excise/listScope';
 import { isSystemAdmin } from '@/lib/issues/access';
 import { canEditProduction } from '@/lib/permissions';
+import { ledgerInConfirmQueue } from '@/lib/finance/paymentLedger';
 import {
   DEPT_QUEUE_COUNT_KEYS, LEAD_TODO_STATUS, deptRequestsTodoCount, myTasksTodoCount,
   requestsTodoCount, withCountStatus,
@@ -376,6 +377,16 @@ export const GET = withUser(async ({ user, supabase }) => {
         ? fetchAllResult(() => supabase.from('sales_orders').select('id, status, "totalAmount", "financeStatus"')
           .eq('status', 'approved').eq('financeStatus', 'pending').order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
+      /* ── นับ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — ใบ "Actual รายงวด" ที่อนุมัติอยู่และยังไม่ถูกแทน ─────────
+         ⭐ สองเลนของ helper ตัวเดียวกับทะเบียน (`actualRows` → isInstallmentActualWaitingOnMe):
+           · ผู้อนุมัติ: มีงวดยื่นรออนุมัตินับ Actual ที่ไม่ใช่ของตัวเอง (admin นับของตัวเองด้วย) — "ตัวเลขบนเมนูของผู้อนุมัติ" ของมติ
+           · เจ้าของดีลปัจจุบัน: มีงวดที่ยื่นขอนับได้แล้ว (งวดก่อนหน้ารับรองเงินครบ / ถูกตีกลับ) ⇒ ต้องพก `deal.ownerId`
+         ⚠️ ชุดเล็กโดยโครงสร้าง (เฉพาะใบที่ AE Sup เลือกรายงวด) ⇒ ดึงทุกใบแล้วให้ helper ตัดสิน · ใบย้อนหลังเป็นรายงวดไม่ได้ (CHECK ของ 0412)
+           แต่ยังกรองผ่าน pipelineRowsOnly ตัวกลาง (literal ของ origin มีบ้านเดียว) */
+      const actualLane = can(user.role, 'salesplan:view')
+        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "actualMode", "supersededById", deal:sales_deals(ownerId)'))
+          .eq('status', 'approved').eq('actualMode', 'installment').is('supersededById', null).order('id', { ascending: true }))
+        : Promise.resolve({ data: [] });
       const [
         { data: approvalRows, error: approvalError },
         { data: draftRows, error: draftError },
@@ -383,10 +394,35 @@ export const GET = withUser(async ({ user, supabase }) => {
         { data: reviewRows, error: reviewError },
         { data: backfillRows, error: backfillError },
         { data: financeRows, error: financeError },
-      ] = await Promise.all([approvalLane, draftLane, revokedLane, reviewLane, backfillLane, financeLane]);
+        { data: actualOrderRows, error: actualError },
+      ] = await Promise.all([approvalLane, draftLane, revokedLane, reviewLane, backfillLane, financeLane, actualLane]);
       // ทิ้ง error ที่นี่ = เลนนั้นกลายเป็น [] ⇒ ป้ายนับขาดเงียบ (เลนบัญชีเคยเป็นทั้งเลน)
       if (approvalError || draftError || revokedError || reviewError || backfillError || financeError) {
         throw approvalError || draftError || revokedError || reviewError || backfillError || financeError;
+      }
+      if (actualError) throw actualError;
+
+      /* งวดของใบรายงวด — ช่องที่สองเลนอ่าน (`id, seq, status, dueDate, actualStatus, actualSubmittedById, actualApprovedVia`) · ซอยก้อน + ไล่หน้า (ใบละหลายงวด)
+         · `actualApprovedVia` = สัญญาณ "กดนับที่เหลือทั้งหมดแล้ว" (มติข้อ 10 — ไม่มีงวดให้ยื่น ⇒ เลนเจ้าของดีลไม่นับ · installmentActualState 'auto')
+         · `frozenAt` = งวดยังไม่ตรึง (review รอบสี่ — ยื่นไม่ได้จน AE Sup กดปุ่มกู้ ⇒ เลนเจ้าของดีลไม่นับ · nextSubmittableInstallment)
+         🔴 อ่านไม่ขึ้น = โยน (ไม่ใช่ [] — ป้ายงวดรออนุมัติหายเงียบคือสิ่งที่เลนนี้เกิดมากัน)
+         🪤 ต้องมี "dueDate" — เลนเจ้าของดีลนับเฉพาะงวดที่ถึงเดือนครบกำหนด (installmentActualReadyForOwner) · ขาดช่องนี้ = ทุกงวด
+            ถูกอ่านเป็น "ไม่มีวันครบกำหนด" ⇒ ป้ายนับใบบริการ 12 งวดเกือบทั้งปีขณะที่ "รอฉัน" ในทะเบียนไม่มีแถว (ชุดเดียวกับ loadListInstallments) */
+      const actualOrders = actualOrderRows || [];
+      const actualInstallmentsByOrder = new Map();
+      if (actualOrders.length) {
+        const actualIds = actualOrders.map((row) => row.id);
+        const { data: actualInstallments, error: actualInstallmentError } = await fetchInChunks(actualIds, (chunk) => fetchAllResult(() => supabase
+          .from('sales_order_installments')
+          .select('id, "salesOrderId", seq, status, "dueDate", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt"')
+          .in('salesOrderId', chunk)
+          .order('id', { ascending: true })));
+        if (actualInstallmentError) throw actualInstallmentError;
+        for (const row of actualInstallments || []) {
+          const list = actualInstallmentsByOrder.get(row.salesOrderId) || [];
+          list.push(row);
+          actualInstallmentsByOrder.set(row.salesOrderId, list);
+        }
       }
 
       /* บรรทัดของใบสาย SERVICE ในเลนเจ้าของดีล — ตัวตัดสิน "ต้องตั้งย้อนหลังไหม" (D25) ต้องเห็นชนิดของทุกบรรทัด
@@ -417,6 +453,9 @@ export const GET = withUser(async ({ user, supabase }) => {
           ...(reviewRows || []).filter((row) => orderBusinessLineOf(row) === 'SERVICE')],
         backfillRows: backfillRows || [],
         backfillNeeded: (row) => serviceBackfillNeeded(row, backfillLinesByOrder.get(row.id) || []),
+        // นับ Actual รายงวด (mig 0412) — ใบเดียวกันที่อยู่หลายเลนนับครั้งเดียว (Set ของ id)
+        actualRows: actualOrders,
+        actualInstallmentsOf: (row) => actualInstallmentsByOrder.get(row.id) || [],
       };
       if (!(financeRows || []).length) return salesOrderIdsWaitingOnMe(lanes, waitingOptions).size;
 
@@ -579,16 +618,25 @@ export const GET = withUser(async ({ user, supabase }) => {
     }));
   }
 
-  /* งวดที่ฝ่ายขายแจ้งแล้ว รอบัญชีตรวจหลักฐาน — คิวบนหัวหน้า `/finance/payments`
-     ⚠️ สถานะ `reported` ที่เดียว ตรงกับ `pendingConfirmations` ของหน้านั้น
-     (`confirmed` = จบแล้ว · `rejected` = กลับไปอยู่มือฝ่ายขาย ไม่ใช่งานของบัญชี) */
+  /* งวดที่ฝ่ายขายแจ้งแล้ว รอบัญชีตรวจหลักฐาน — คิว "รอคุณรับรอง" บนหัวหน้า `/finance/payments`
+     ⭐ **ตัวตัดสินเดียวกับทะเบียน** (`ledgerInConfirmQueue` = `ledgerIncludes` ของ route ทะเบียน ∧ `ledgerAwaitsConfirm`) ⇒ เลขบนป้าย =
+       แถวที่ลิงก์ `countHref` (`?status=reported`) เปิดมาเจอ (กติกา #1921/#1922)
+     🐞 UAT FN 27/10 ข้อ 2: ป้ายเดิมนับ head-count ของ `reported` ทั้งตาราง − ก้อนที่ติดด่านนับ Actual (27) แต่ทะเบียนตัดใบยอด 0 · งวดโมฆะ ·
+       งวดที่ยังไม่ตรึง ออก (เห็น 21) — 6 แถวที่เกินคือสลิป ฿0 ค้างของใบยอด 0 (paymentNotRequired) · และ `?status=reported` เคยรวมงวดที่ติดด่าน
+       ขณะที่ป้ายไม่นับ ⇒ ตัวกรองนั้นแยกงวดที่ติดด่านไปสถานะ 'held' แล้ว (ledgerStatusKey)
+     ⚠️ ดึงแถว (ไม่ใช่ head-count) — ตัวตัดสินต้องรู้ใบของงวด (ยอดใบ · สถานะใบ · ที่มา · แบบการนับ) · ชุด `reported` คือคิวงานเล็ก ๆ
+       (หลักสิบ) แต่ไล่หน้าด้วย fetchAllResult กันเพดาน 1,000 แถว
+     ⚠️ alias `so` ไม่ใช่ `order` — `order` เป็นชื่อพารามิเตอร์เรียงลำดับของ PostgREST */
   if (canConfirmPayment(user)) {
     jobs.push(attempt('payments', async () => {
-      const { count, error: paymentError } = await supabase
-        .from('sales_order_installments').select('id', { count: 'exact', head: true })
-        .eq('status', 'reported');
+      const { data, error: paymentError } = await fetchAllResult(() => supabase
+        .from('sales_order_installments')
+        .select('id, status, kind, "frozenAt", "actualStatus", so:sales_orders!inner(id, status, origin, "totalAmount", "actualMode")')
+        .eq('status', 'reported')
+        .not('frozenAt', 'is', null)
+        .order('id', { ascending: true }));
       if (paymentError) throw paymentError;
-      return count || 0;
+      return (data || []).filter((row) => ledgerInConfirmQueue(row, row.so)).length;
     }));
   }
 

@@ -156,6 +156,9 @@ export function buildHistoryRows({ teams = [], users = [], savedRows = [], owner
  *    แถวบริษัท ⇒ เดิมยอดดีลไม่มีเจ้าของเขียนทับตัวเลขใบ้ของทั้งทีม
  * ⭐ **บวกเพิ่ม ไม่เขียนทับ** — คนเดียวกันมาได้หลายแถวที่ลงคีย์ (ทีม, คน) เดียวกัน
  *    (เช่น id เก่า/ชื่อเดิมที่ตัวหาเจ้าของรวมเป็นคนเดียว) ต้องรวมกัน ไม่ใช่แถวหลังชนะ
+ * ⭐ อ่านแค่ Actual ของเดือน (`totals.wonValue` · `won`) — แดชบอร์ดรวมจาก actualByMonth ของดีล (mig 0412)
+ *    ⇒ ใบ "Actual รายงวด" ได้ **ส่วนของเดือนนั้นพอดี** ต่อเดือน: ไม่ใช่ยอดคงเหลือ ไม่ซ้ำสองเดือน
+ *    ⛔ ไม่อ่าน pendingApproval / instRemaining / wonAwaitingSo — ปุ่ม "เติมยอดจากระบบ" เขียนช่องนี้ลง sales_history ถาวร
  */
 export function systemHintCells(months = []) {
   const sys = {};

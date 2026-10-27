@@ -11,8 +11,9 @@ import { businessDayKey, formatMonthLabel } from '@/lib/datePeriods';
 import { fmtMoney, fmtPercent } from '@/lib/format';
 import { NO_TEAM_LABEL } from '@/lib/sales/personSlice';
 import { BUSINESS_LINE_LABELS } from '@/lib/master/businessLines';
-import { FINANCE_STATE_BADGE, financeStateOf } from '@/lib/sales/reportOrderView';
+import { FINANCE_STATE_BADGE, financeStateOf, orderRowsLabel } from '@/lib/sales/reportOrderView';
 import { reportPeriodLabel } from '@/lib/sales/reportPeriod';
+import { installmentSeqText } from '@/lib/sales/reportRows';
 import { teamNameOf } from '@/lib/master/teams';
 
 const FONT = 'Leelawadee UI';
@@ -146,6 +147,8 @@ export const ORDER_SHEET_COLUMNS = [
 export function orderSheetRow(o, index, { teamLabel = (c) => c, overriddenMonths = new Set(), origin = null } = {}) {
   const notes = [];
   if (o.free) notes.push('ไม่คิดเงิน');
+  /* แถวงวดของใบ "Actual รายงวด" (mig 0412) — ใบเดียวมีได้หลายแถว (แถวละเดือนที่นับ) · ยอด/VAT/เก็บจริงเป็นของงวดในแถว */
+  if (o.actualMode === 'installment') notes.push(`Actual รายงวด · ${installmentSeqText(o.installmentSeqs)} (ยอดเฉพาะงวดที่นับในเดือนนี้)`);
   // ยอดกรอกมือของเดือนนั้นทับยอดใบ ⇒ ใบนี้ไม่อยู่ในขายจริง (บอกไว้ ไม่งั้นรวมคอลัมน์แล้วไม่ตรง)
   if (overriddenMonths.has(o.month)) notes.push('ไม่นับ · เดือนนี้ใช้ยอดกรอกย้อนหลัง');
   if (Number(o.awaitingAmount || 0) > 0) notes.push(`ค้างชำระรวมที่รอบัญชีรับรอง ${fmtMoney(o.awaitingAmount)}`);
@@ -338,14 +341,16 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
 
   /* ── ใบสั่งขาย ── ทุกใบในงวด (ไม่ใช่เฉพาะที่ค้นบนจอ — ตัวกรองของ Excel ทำหน้าที่นั้น) */
   const overriddenMonths = new Set(summary.monthRows.filter((r) => r.overridden).map((r) => r.month));
-  const orders = [...(data.orders || [])].sort((a, b) => String(a.approvedAt || '').localeCompare(String(b.approvedAt || '')) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
+  /* เรียงตามเวลาที่นับ — แถวงวดของใบ "Actual รายงวด" ใช้เวลาที่นับงวด (actualAt · mig 0412) · ใบทั้งใบ = approvedAt เท่าเดิม */
+  const countedAt = (o) => String(o.actualAt || o.approvedAt || '');
+  const orders = [...(data.orders || [])].sort((a, b) => countedAt(a).localeCompare(countedAt(b)) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
   const orderSheet = book.addWorksheet('ใบสั่งขาย');
   // ปัดสตางค์ — ผลบวกทศนิยมลอยได้ 5611903.140000001 ในเซลล์ (จอโชว์ถูกเพราะ numFmt แต่คนคัดลอกค่าไปใช้ต่อจะเห็นเศษ)
   const orderTotal = (key) => Math.round(orders.reduce((s, o) => s + Number(o[key] || 0), 0) * 100) / 100;
   writeTable(orderSheet, {
     info: [
       stamp,
-      `${orders.length} ใบ · เฉพาะใบที่อนุมัติแล้ว · กดเลข SO เพื่อเปิดใบในระบบ`,
+      `${orderRowsLabel(orders)} · เฉพาะใบที่อนุมัติแล้ว · กดเลข SO เพื่อเปิดใบในระบบ`,
       'ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดชำระที่บัญชีรับรองแล้ว (รวม VAT ณ เวลาดาวน์โหลด) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง (รวมที่รอบัญชีรับรอง) · ใบ "ไม่คิดเงิน" = ส่วนลดท้ายใบเต็มจำนวน นับรวมในจำนวนใบ',
     ],
     /* ⭐ ลำดับคอลัมน์ตามที่ผู้ใช้กำหนด (2026-09-22):
@@ -355,7 +360,8 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
     columns: ORDER_SHEET_COLUMNS,
     rows: orders.map((o, index) => orderSheetRow(o, index, { teamLabel, overriddenMonths, origin: meta.origin })),
     total: {
-      seq: `รวม ${orders.length} ใบ`,
+      /* นับแถวเหมือนบรรทัดหัว — ใบรายงวดแตกหลายแถว (ใบ, เดือน) ⇒ "n แถว · m ใบ" (review รอบห้า 27/10 · เดิมขึ้น "รวม 3 ใบ" ให้ใบเดียว) */
+      seq: `รวม ${orderRowsLabel(orders)}`,
       amount: orderTotal('amount'),
       vatAmount: orderTotal('vatAmount'),
       totalAmount: orderTotal('totalAmount'),
@@ -382,7 +388,8 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
         { key: 'amount', label: 'ยอดก่อน VAT', width: 16, money: true },
       ],
       rows: pending.orders.map((o) => ({
-        orderNumber: o.orderNumber,
+        // งวดที่ยื่นรอ AE Sup ของใบ "Actual รายงวด" (mig 0412) — บอกงวดต่อท้ายเลขใบ (ใบทั้งใบ = เลขใบเท่าเดิม)
+        orderNumber: o.actualMode === 'installment' ? `${o.orderNumber} · ${installmentSeqText(o.installmentSeqs)}` : o.orderNumber,
         quoteNumber: o.quoteNumber || NA,
         line: o.line ? (BUSINESS_LINE_LABELS[o.line] || o.line) : NA,
         dealType: o.dealType || NA,

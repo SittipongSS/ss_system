@@ -17,6 +17,14 @@
 // ที่รวมเข้าดีลฟังเฉพาะ `status/actualAmount/orderDate/dealId` ของ `sales_orders`
 // ⇒ ตารางงวดอยู่คนละแกน **ห้ามมีโค้ดไหนเอายอดที่เก็บได้ไปหัก Actual**
 // ไฟล์นี้จึงไม่ export อะไรที่ชื่อ `actual*` เลย และมีเทสต์ล็อกไว้
+//
+// ⭐ **ข้อยกเว้นเลือกเปิดรายใบ** (มติเจ้าของ 26/10/2026 · mig 0412 · docs/so-installment-actual.md)
+// AE Sup เลือก "Actual รายงวด" ตอนอนุมัติใบ (`sales_orders.actualMode = 'installment'`) ⇒ ใบนั้น Actual เข้าทีละงวด
+// เมื่อ AE Sup **อนุมัติงวด** (ยื่น → อนุมัติ → แจ้งสลิป → รับรอง) — ใบที่เลือก "ทั้งใบ" (ค่าตั้งต้น) ยังเป็นมติ 13/08 ทุกข้อ
+// ⚠️ แม้ในใบรายงวด **ยอดที่เก็บได้ก็ยังไม่ใช่ Actual** — Actual มาจากการอนุมัติงวดของ AE Sup (คนละคอลัมน์ `actualStatus`)
+//   ไม่ใช่จากการรับรองเงินของบัญชี · ตัวเลข/กติกาทั้งหมดอยู่ที่ salesOrderActualMode.js ไฟล์เดียว
+//   ไฟล์นี้แค่ถามมันที่ด่านเงิน: บัญชีรับรอง (และบันทึกรับชำระขั้นเดียว) ต้องรองานอนุมัติ · ฝ่ายขายแจ้งสลิปได้หลังงวดอนุมัติ
+//   ⇒ `paymentRollup` ยังไม่มีคีย์ actual/won (เทสต์ล็อกเดิมยังอยู่) และไฟล์นี้ยังไม่ export ชื่อ `actual*`
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
@@ -30,6 +38,11 @@ import {
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 // กำหนดวางบิล (mig 0389) — ตัวคิดวัน import แค่ paymentCoverage (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import { billingRequestLive } from '@/lib/sales/billingRule';
+// นับ Actual รายงวด (mig 0412) — ไฟล์กติกาล้วน ไม่ import ไฟล์นี้กลับ (ไม่มีวงวน · ฝั่ง client ใช้ได้)
+import {
+  INSTALLMENT_ACTUAL_ACTIONS, INSTALLMENT_ACTUAL_CONFIRM_BLOCKED, INSTALLMENT_ACTUAL_REPORT_BLOCKED,
+  installmentActualActionError, installmentActualCountRestDone, installmentActualPaymentGated, isInstallmentActualOrder,
+} from '@/lib/sales/salesOrderActualMode';
 
 export const INSTALLMENT_STATUSES = ['pending', 'reported', 'confirmed', 'rejected'];
 
@@ -404,7 +417,11 @@ export function installmentConfirmOutlook(row, rows = []) {
   return {
     paidThrough: through,
     collected,
-    next: next ? { label: next.label || '', amount: Number(next.amount) || 0, dueDate: next.dueDate || null } : null,
+    /* `actualStatus` ของงวดถัดไป (ใบ Actual รายงวด · mig 0412) — โมดัลรับรองพูด "ยื่นขอนับงวดถัดไปได้" เฉพาะเมื่องวดนั้นยังต้องยื่นจริง
+       (ยังไม่ยื่น/ถูกตีกลับ) · ยื่นแล้ว/นับแล้ว (นับที่เหลือทั้งหมด) = ไม่มีอะไรให้ยื่น (review 26/10) · ใบทั้งใบไม่อ่านช่องนี้ */
+    next: next ? {
+      label: next.label || '', amount: Number(next.amount) || 0, dueDate: next.dueDate || null, actualStatus: next.actualStatus ?? null,
+    } : null,
     gateOpenThrough: held ? String(held.dueDate) : through,
     gateHeldBy: held ? { seq: Number(held.seq) || null, dueDate: String(held.dueDate) } : null,
   };
@@ -630,8 +647,26 @@ export function installmentActionError(row, action, user, options = {}) {
      ใบ pipeline ที่ยกเลิก/ถูกออก Rev. ทับ (PR0): เหลือทางของบัญชี / บล็อกทุกคำสั่ง — รายคำสั่ง
      ⇒ ปุ่มบนแผงงวดกับ API ต้องตอบคำเดียวกันก่อนดูอะไรในแถว (ไม่งั้นได้ "ยังไม่มีการแจ้งชำระ" ที่ชี้ทางผิด) */
   if (options.orderLock) return options.orderLock;
+
+  /* ── ยื่น/ดึงกลับ/อนุมัติ/ตีกลับ "นับ Actual" ของงวด (mig 0412 · ใบที่เลือก Actual รายงวด) ─────────────────────
+     ⭐ กติกาอยู่ที่ installmentActualActionError (salesOrderActualMode) ตัวเดียว — ตรงกับ RPC
+       sales_order_installment_actual_action ทุกข้อ · ผู้เรียกต้องส่ง `order` (status · origin · actualMode · supersededById ·
+       deal.ownerId) + `rows` (ด่านงวดก่อนหน้ารับรองเงินครบ) + `reason` (ตีกลับ)
+     ⚠️ ล็อกทั้งใบข้างบนชนะก่อน (ใบยกเลิก/ถูกออก Rev. ทับ — คำสั่งพวกนี้ไม่อยู่ใน allowlist ของใบยกเลิก) */
+  if (Object.prototype.hasOwnProperty.call(INSTALLMENT_ACTUAL_ACTIONS, action)) {
+    return installmentActualActionError(row, action, user, {
+      order: options.order || null, rows: options.rows, reason: options.reason, dealOwnerId: options.dealOwnerId,
+    });
+  }
+
   if (!row) return 'ไม่พบงวดที่ระบุ';
   const status = row.status || 'pending';
+  /* ⭐ ใบ Actual รายงวด (mig 0412): งวดที่ AE Sup ยังไม่อนุมัตินับ Actual — บัญชีรับรองไม่ได้ (trigger ของงวดกันที่ฐานอีกชั้น)
+     และฝ่ายขายยังไม่แจ้งสลิป (ลำดับ ยื่น → อนุมัติ → แจ้งสลิป → รับรอง · มติข้อ 4)
+     ⚠️ งวดที่แจ้ง/บันทึกจ่ายไว้แล้ว (reported/prepaid) คงตามเดิม — ด่านนี้ไม่ถอยของที่อยู่ในคิวบัญชีแล้ว
+     ⚠️ ผู้เรียกส่ง `order` (หรือ `actualMode`) — ไม่ส่ง = ถือเป็นใบทั้งใบ (ฐานยังกันการรับรองไว้ชั้นสุดท้าย) */
+  const actualGated = !options.historical
+    && installmentActualPaymentGated(row, { order: options.order || null, actualMode: options.actualMode });
 
   /* ── งวดที่บัญชีบันทึกคืนเงินแล้ว (PR3 · mig 0378) — ถอนคำรับรอง/แก้ใบกำกับไม่ได้จนกว่าจะถอนการบันทึกคืนเงิน ─────
      ⭐ เงินก้อนนั้นออกจากบริษัทไปแล้ว: ถอนคำรับรองทับ = ทะเบียนบอกว่ารอบัญชีตรวจเงินที่คืนไปแล้ว · แก้/ล้างใบกำกับทับ =
@@ -804,6 +839,12 @@ export function installmentActionError(row, action, user, options = {}) {
     }
     if (status === 'confirmed') return 'งวดนี้บัญชีคอนเฟิร์มแล้ว แจ้งซ้ำไม่ได้';
     if (status === 'reported') return 'งวดนี้แจ้งไปแล้ว รอบัญชีตรวจ';
+    /* ใบ Actual รายงวด — บัญชี/แอดมินบันทึกรับชำระขั้นเดียว (ลง confirmed) ติดด่านเดียวกับการรับรอง · ฝ่ายขายรองานอนุมัติก่อนแจ้ง */
+    if (actualGated) {
+      return installmentReportOutcome(user, row) === 'confirmed'
+        ? INSTALLMENT_ACTUAL_CONFIRM_BLOCKED
+        : INSTALLMENT_ACTUAL_REPORT_BLOCKED;
+    }
     if (!options.paidOn) return 'ต้องระบุวันที่ลูกค้าชำระ';
     const sequence = installmentSequenceError(row, options.rows);
     if (sequence) return sequence;
@@ -896,6 +937,8 @@ export function installmentActionError(row, action, user, options = {}) {
         ? 'งวดนี้คอนเฟิร์มไปแล้ว'
         : 'ยังไม่มีการแจ้งชำระให้ตรวจ';
     }
+    /* ใบ Actual รายงวด (mig 0412): รับรองได้หลัง AE Sup อนุมัติงวด — ตีกลับยังได้เสมอ (สลิปผิดต้องถอยได้) */
+    if (action === 'confirm' && actualGated) return INSTALLMENT_ACTUAL_CONFIRM_BLOCKED;
     /* ── ใบงานบริการ: ไม่มีช่วงครอบ = รับรองไม่ได้ (มติผู้ใช้ 2026-08-31) ────
        🔴 **นี่คือการปิดกับดัก ไม่ใช่การเพิ่มขั้นตอน** — เจ้าของช่องช่วงครอบเปลี่ยนมือ
        เป็นบัญชีทันทีที่รับรอง ⇒ ของเดิมรับรองงวดที่ช่วงครอบว่างได้ตามปกติ แล้ว
@@ -1019,12 +1062,22 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
   const confirmed = list.filter((r) => r.status === 'confirmed');
   const reported = list.filter((r) => r.status === 'reported');
   if (action === 'revoke') {
+    /* 🐞 review รอบห้า 27/10: ใบ "Actual รายงวด" — สลิปของงวดที่ยังไม่นับ Actual ติดด่านเงินต่อหลังย้อน (ใบที่ย้อนยังเป็นรายงวด ·
+       ยื่น/อนุมัตินับบนใบนี้ไม่ได้แล้ว) ⇒ ไม่อยู่ในคิว "รอคุณรับรอง" ของบัญชี และรับรองไม่ได้จนเจ้าของดีลออก Rev.
+       แบ่งด้วยด่านตัวเดียวกับทะเบียนบัญชี/trigger (installmentActualPaymentGated · `order` ที่ส่งมาคือใบที่ยังอนุมัติอยู่)
+       · ใบทั้งใบ = ด่านไม่ติดเสมอ ⇒ คำเดิมทุกตัวอักษร */
+    const heldReported = reported.filter((r) => installmentActualPaymentGated(r, { order }));
+    const freeReported = reported.filter((r) => !installmentActualPaymentGated(r, { order }));
     return [
       confirmed.length
         ? `เงินที่บัญชีรับรองแล้ว ${confirmed.length} งวด ${fmtMoney(sumOf(confirmed, () => true))} ยังนับว่ารับแล้ว ไม่ต้องถอนคำรับรอง`
           + ` — ตอนออก Rev. งวดทั้ง ${list.length} งวด (สลิป · ใบกำกับภาษี · ช่วงครอบ) ย้ายไปอยู่กับใบ Rev. บัญชีไม่ต้องรับรองซ้ำ`
         : null,
-      reported.length ? `สลิปรอบัญชีตรวจ ${reported.length} งวดยังอยู่ในคิวบัญชีตามปกติ` : null,
+      freeReported.length ? `สลิปรอบัญชีตรวจ ${freeReported.length} งวดยังอยู่ในคิวบัญชีตามปกติ` : null,
+      heldReported.length
+        ? `สลิปของงวดที่ยังไม่นับ Actual ${heldReported.length} งวด ${fmtMoney(sumOf(heldReported, () => true))} บัญชีรับรองไม่ได้จนเจ้าของดีลออก Rev.`
+          + ' (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual ทั้งใบ แล้วบัญชีรับรองได้)'
+        : null,
       /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
       order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,
       /* รอบขายของโซนนับเฉพาะใบ approved ที่ยังไม่ถูกแทน (lib/service/terms.js)
@@ -1110,12 +1163,28 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
 /* คำอธิบายของโมดัล "ถอนคำรับรองการชำระ" — ผลที่ตรวจได้ ไม่ใช่คำปลอบ
    🐞 คำเดิมสัญญาว่า "ใบนี้จะย้อนการอนุมัติ/ออก Rev. ได้อีกครั้ง" — ตั้งแต่ PR1 งวดที่รับรองแล้วไม่ล็อกสองทางนั้นอีก
    ⭐ ใบบริการ: "จ่ายถึง" คิดด้วย `paidThrough` ตัวเดียวของระบบ (สมมติว่างวดนี้กลับเป็นรอตรวจ) — ขยับเมื่อไรต้องบอก
-     เพราะนัดบริการหลังวันนั้นจะลงคิวไม่ได้ทันที · ไม่ขยับ = ไม่พูด */
-export function installmentUnconfirmOutcome(row, rows = [], { serviceRounds = false } = {}) {
+     เพราะนัดบริการหลังวันนั้นจะลงคิวไม่ได้ทันที · ไม่ขยับ = ไม่พูด
+   ⭐ ใบ Actual รายงวด (review รอบสี่ 26/10 · มติข้อ 2): งวดถัดไปที่ยังไม่นับ ยื่น/อนุมัตินับ Actual ไม่ได้จนบัญชีรับรองงวดนี้ใหม่
+     (installmentPreviousConfirmed — ด่านเดียวกับ RPC) ⇒ บอกก่อนกด · ใบที่กดนับที่เหลือทั้งหมดแล้ว (มติข้อ 10 นับให้เอง) / งวดถัดไปนับแล้ว /
+     ใบที่ไม่ได้อนุมัติอยู่ = ไม่มีอะไรติด ⇒ ไม่พูด · ผู้เรียกส่ง `order` (ไม่ส่ง = ไม่รู้แบบการนับ ⇒ ไม่พูด) */
+export function installmentUnconfirmOutcome(row, rows = [], { serviceRounds = false, order = null } = {}) {
   const parts = [
     'งวดนี้จะกลับไปเป็น “รอบัญชีตรวจ” — หลักฐานยังอยู่ครบ',
     `ยอดเก็บแล้วของใบลดลง ${fmtMoney(row?.amount)}`,
   ];
+  const all = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  if (row && order && isInstallmentActualOrder(order) && order.status === 'approved' && !order.supersededById
+    && !installmentActualCountRestDone(all)) {
+    const seq = Number(row.seq) || 0;
+    const next = all
+      .filter((r) => r.id !== row.id && (Number(r.seq) || 0) > seq && r.actualStatus !== 'approved')
+      .sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0))[0];
+    if (next) {
+      parts.push(next.actualStatus === 'submitted'
+        ? `งวดที่ ${next.seq} ที่ยื่นขอนับไว้ AE Sup อนุมัตินับ Actual ไม่ได้จนบัญชีรับรองงวดนี้ใหม่`
+        : `งวดที่ ${next.seq} ยื่นขอนับ Actual ไม่ได้จนบัญชีรับรองงวดนี้ใหม่`);
+    }
+  }
   if (serviceRounds && row) {
     const list = Array.isArray(rows) ? rows : [];
     const before = paidThrough(list);

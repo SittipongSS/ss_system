@@ -125,6 +125,22 @@ test('ชีตใบสั่งขาย: ลำดับคอลัมน์
   assert.equal(freeRow[col('ประเภทดีล')], '—');
 });
 
+/* review รอบห้า 27/10: ใบ "Actual รายงวด" แตกแถวตาม (ใบ, เดือนที่นับ) — บรรทัดหัวชีตขึ้น "3 แถว · 1 ใบ" แล้ว
+   แต่แถวรวมยังเป็น "รวม 3 ใบ" (ชีตเดียวกันขัดกันเอง) ⇒ แถวรวมใช้ป้ายตัวเดียวกับบรรทัดหัว */
+test('ชีตใบสั่งขาย: ใบรายงวดหลายแถว — แถวรวมนับแถวเหมือนบรรทัดหัว ("รวม 3 แถว · 1 ใบ")', async () => {
+  const { data, summary } = fixture();
+  const base = { id: 'si', orderNumber: 'SO-I', ownerId: 'u1', ownerName: 'A', team: 'KA', lineCount: 1, financeStatus: 'approved', actualMode: 'installment' };
+  data.orders = ['2026-10', '2026-11', '2026-12'].map((month, i) => ({
+    ...base, month, day: `${month}-05`, approvedAt: '2026-10-01T03:00:00Z', actualAt: `${month}-05T03:00:00Z`,
+    amount: 1000 + i, vatAmount: 70, totalAmount: 1070 + i,
+  }));
+  const book = await readBook(await buildSalesReportBuffer(data, summary, {}));
+  const sheet = book.getWorksheet('ใบสั่งขาย');
+  assert.match(String(sheet.getRow(2).getCell(1).value), /^3 แถว · 1 ใบ · /);
+  assert.equal(lastRowValues(sheet)[0], 'รวม 3 แถว · 1 ใบ');
+  // ใบทั้งใบล้วน = คำเดิม ("รวม 3 ใบ" ในเทสต์ด้านบน)
+});
+
 test('โหมดช่วงวัน: มีคอลัมน์วันที่นับ/เป้าเต็มเดือน ไม่มีทบยอด', () => {
   const period = parseReportPeriod({ mode: 'range', from: '2026-09-09', to: '2026-09-22' }, { today: TODAY });
   const summary = summarizeSalesReport({

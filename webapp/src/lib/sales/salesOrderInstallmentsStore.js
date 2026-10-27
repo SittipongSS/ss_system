@@ -544,6 +544,21 @@ export async function loadCarrySources(supabase, order) {
   return carrySourcesFrom(orders, rows || []);
 }
 
+/**
+ * ยืมเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรกตอนตรึงงวดได้ไหม (freezeInstallments `borrowConfirmation`) — กติกาเดียวทุกทางที่ตรึง
+ * 🛑 review MONEY-1: ดีลที่มี "เงินค้างจากใบที่ยกเลิก" = ห้ามยืม (สลิปนั้นมักเป็นมัดจำก้อนเดียวกับเงินค้าง ⇒ นับสองครั้ง)
+ * ⚠️ อ่านไม่ขึ้น = ไม่ยืม (ทางที่ปลอดภัย — ฝ่ายขายแจ้งชำระงวดแรกเองได้เสมอ) · ผู้เรียก: อนุมัติใบ · "เริ่มติดตามการชำระ" ของใบที่อนุมัติแล้ว ·
+ *   ทางกู้ "นับงวด 1" (review รอบสาม 26/10 — ตรึงงวดที่ค้างก่อนนับ)
+ */
+export async function confirmationBorrowable(supabase, order) {
+  try {
+    return !(await loadCarrySources(supabase, order)).length;
+  } catch (strandedError) {
+    console.error('อ่านเงินค้างของดีลไม่สำเร็จ — ไม่ยืมสลิปมาตั้งงวดแรก', order?.id, strandedError);
+    return false;
+  }
+}
+
 /* ด่านลำดับ deploy ของ PR3 — บันทึกคืนเงินเขียนคอลัมน์ของ 0378 · ยังไม่รัน = PostgREST ตอบ PGRST204 (ไม่รู้จักคอลัมน์)
    ⇒ บอกให้รันมิก ไม่ใช่ 500 ดิบ · ⚠️ error อย่างอื่นห้ามโทษ migration (คนจะไปรันซ้ำผิดเรื่อง) */
 export const INSTALLMENT_REFUND_SCHEMA_MISSING = 'ฐานยังไม่ได้รัน 0378 (บันทึกคืนเงินของงวด) — แจ้งผู้ดูแลระบบ';

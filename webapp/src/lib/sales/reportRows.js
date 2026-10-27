@@ -1,6 +1,7 @@
 import { businessMonthKey } from '@/lib/datePeriods';
 import { historyRowKey } from '@/lib/sales/historyEntry';
 import { personSliceKey } from '@/lib/sales/personSlice';
+import { isInstallmentActualOrder, salesOrderActualEvents } from '@/lib/sales/salesOrderActualMode';
 
 /* ── แถวของรายงานยอดขาย (/sa/targets/report) — บริษัท · ทีม · รายคน ─────────────
  * ยกออกจาก api/sales-planning/report/route.js เพื่อให้เทสต์ได้ (route.js export ได้แค่ HTTP handler)
@@ -26,9 +27,67 @@ import { personSliceKey } from '@/lib/sales/personSlice';
 const money = (v) => Number(v || 0);
 
 /** งวดของยอด = เดือนที่หัวหน้าอนุมัติใบ ตามเวลาไทย (กติกาเดียวกับ mig 0279)
- *  ถอยไป orderDate เฉพาะแถวเก่าที่ไม่มี approvedAt */
-export const reportOrderMonth = (order) => businessMonthKey(order?.approvedAt)
+ *  ถอยไป orderDate เฉพาะแถวเก่าที่ไม่มี approvedAt
+ *  ⭐ แถวงวดของใบ "Actual รายงวด" (reportActualRows · mig 0412) = เดือนที่นับงวด (`actualMonth`) — ใบทั้งใบไม่มีช่องนี้ */
+export const reportOrderMonth = (order) => order?.actualMonth || businessMonthKey(order?.approvedAt)
   || (order?.orderDate ? String(order.orderDate).slice(0, 7) : null);
+
+/** "งวด 1" / "งวด 2, 3" — งวดในแถวของใบ "Actual รายงวด" (mig 0412) · จอรายงานกับไฟล์ Excel ใช้ตัวเดียวกัน */
+export const installmentSeqText = (seqs) => `งวด ${(Array.isArray(seqs) ? seqs : []).join(', ')}`;
+
+const toSatang = (v) => Math.round((Number(v) || 0) * 100) / 100;
+const laterOf = (a, b) => {
+  if (!a) return b || null;
+  if (!b) return a;
+  return Date.parse(b) > Date.parse(a) ? b : a;
+};
+
+/**
+ * แถวยอดของรายงานจากใบที่อนุมัติแล้ว — **ใบ "Actual รายงวด" แตกเป็นหนึ่งแถวต่อ (ใบ, เดือนที่นับ)** (mig 0412 · มติเจ้าของ 26/10/2026)
+ * ⭐ ใบทั้งใบ (ทุกใบวันนี้) = **ออบเจกต์เดิมตัวเดิม ลำดับเดิม** ไม่แตะสักช่อง ⇒ รายงานของใบทั้งใบเท่าเดิมทุกไบต์
+ * ⭐ ใบรายงวด: เหตุการณ์ Actual ของใบ (salesOrderActualEvents — งวดที่ AE Sup อนุมัติแล้ว · เวลาที่นับ =
+ *    GREATEST(อนุมัติงวด, อนุมัติใบ)) → คัดด้วย `keep` **ทีละเหตุการณ์** (ช่วงวันคลุมบางวันของเดือนได้) →
+ *    รวมเหตุการณ์ของเดือนเดียวกันเป็นแถวเดียว · ยอดของแถว (`actualAmount`) = ผลรวมงวดที่นับในเดือนนั้น
+ *    ช่องเพิ่มเฉพาะแถวงวด: `actualMonth` · `actualAt` (เวลานับล่าสุดในแถว) · `rowKey` ('<id>|<เดือน>') ·
+ *    `installmentIds` · `installmentSeqs` · `orderActualAmount` (ยอดก่อน VAT ของทั้งใบ)
+ * ⚠️ ใบรายงวดต้องส่งงวดมาด้วย (installmentsOf) — ไม่ส่ง = ใบไม่มีงวดที่นับ = ไม่มีแถว (ไม่เดาว่านับทั้งใบ)
+ * @param orders        ใบ approved (แถว sales_orders + embed)
+ * @param installmentsOf (order) => งวดของใบ `{ id, seq, actualStatus, actualAmount, actualApprovedAt }`
+ * @param keep          (row) => boolean — ตัวคัดงวด/ช่วงวันของผู้เรียก (ใช้กับแถวใบทั้งใบและเหตุการณ์ของใบรายงวด)
+ */
+export function reportActualRows(orders = [], { installmentsOf = () => [], keep = () => true } = {}) {
+  const out = [];
+  for (const order of orders || []) {
+    if (!isInstallmentActualOrder(order)) {
+      if (keep(order)) out.push(order);
+      continue;
+    }
+    const rows = installmentsOf(order);
+    const byMonth = new Map();
+    for (const event of salesOrderActualEvents(order, Array.isArray(rows) ? rows : [])) {
+      const part = { ...order, actualAmount: event.amount, actualAt: event.at, actualMonth: event.month };
+      if (!keep(part)) continue;
+      const key = `${order.id}|${event.month}`;
+      const row = byMonth.get(key);
+      if (!row) {
+        byMonth.set(key, {
+          ...part,
+          rowKey: key,
+          orderActualAmount: order.actualAmount,
+          installmentIds: [event.installmentId],
+          installmentSeqs: [event.seq],
+        });
+        continue;
+      }
+      row.actualAmount = toSatang(Number(row.actualAmount) + Number(event.amount));
+      row.actualAt = laterOf(row.actualAt, event.at);
+      row.installmentIds.push(event.installmentId);
+      row.installmentSeqs.push(event.seq);
+    }
+    out.push(...byMonth.values());
+  }
+  return out;
+}
 
 /** ทีมของใบอนุมัติแล้ว = ทีมบนดีลของใบ (embed `deal:sales_deals(team)`) — ไม่ใช่ทีมในบัญชีเจ้าของ */
 export const reportOrderTeam = (order) => order?.deal?.team || null;

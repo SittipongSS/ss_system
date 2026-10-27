@@ -59,6 +59,8 @@ import { formatMonthLabel } from '@/lib/datePeriods';
 import { isSalesManager } from '@/lib/permissions';
 import { latestTimestamp, serviceAgingOf } from '@/lib/sales/serviceBackfillAging';
 import { linePackQty, linePackQtyText } from '@/lib/sales/linePackView';
+/* นับ Actual ทั้งใบ / รายงวด (mig 0412) — ไฟล์กติกาล้วน ไม่ import ไฟล์นี้กลับ (serviceSetupImports ไล่กราฟให้) */
+import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
 
 /* ══ ค่าคงที่ ══════════════════════════════════════════════════════════════════════════════════════ */
 
@@ -552,6 +554,9 @@ export const SERVICE_DEFERRED_TEXT = Object.freeze({
   approveEffectAfter: 'หลังอนุมัติ ใบขึ้น ‘ยังไม่ตั้งงานบริการ’ ในคิว ‘รอฉันลงมือ’ ของเจ้าของดีล — ฝ่ายขายตั้งงานบริการ กด ‘ยื่นตรวจงานบริการ’ แล้วผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS',
   approveEffectComplete: 'ผู้ยื่นเลือกข้ามไว้ตอนยื่น แต่ตอนนี้งานบริการครบแล้ว — อนุมัติแล้วเปิดงานให้ TS ตามปกติ',
   approvedToast: 'อนุมัติแล้ว · นับ Actual แล้ว — ยังไม่ส่งงานให้ TS (ข้ามการตั้งงานบริการตอนยื่น)',
+  /* ใบที่อนุมัติแบบ "Actual รายงวด" (mig 0412 · มติข้อ 6 · review รอบห้า 27/10) — "นับ Actual แล้ว" ไม่จริง (นับเฉพาะงวดที่นับได้ตอนอนุมัติ)
+     ⇒ หน้าใบใช้ทักรายงวดแล้วต่อท้ายด้วยตัวนี้แทน approvedToast */
+  approvedInstallmentSuffix: ' · ยังไม่ส่งงานให้ TS (ข้ามการตั้งงานบริการตอนยื่น)',
   /* ── หลังอนุมัติ (เส้นตั้งย้อนหลัง) ── */
   bannerTitle: 'ข้ามการตั้งงานบริการตอนยื่น',
   /* ลำดับในวงเล็บ = ลำดับหัวตารางงานบริการ ②→⑤ (มติเจ้าของ 08/10 "สลับ ข้อ 4 กับ ข้อ 5": รอบละกี่แพ็คก่อนจำนวนรอบบริการ)
@@ -1753,6 +1758,14 @@ function predecessorMoveLine(ctx) {
     + (left ? ` · ไซต์ที่ใบนี้ไม่มีแล้ว ${left} ไซต์ TS จะเห็นเป็นรอบของใบเดิมให้ตัดสิน` : '');
 }
 
+/* ยอด Actual ที่ "เท่าเดิม" ในโมดัลอนุมัติ/เปิดแก้งานบริการ — ใบ "Actual รายงวด" (mig 0412) นับเฉพาะงวดที่ AE Sup อนุมัติแล้ว
+   คนละเดือนกันได้ ⇒ บอกยอดที่นับแล้วจากยอดเต็ม ไม่ใช่ "Actual <เดือนอนุมัติใบ> <ยอดเต็ม>" · ใบทั้งใบ = ประโยคเดิม */
+function unchangedActualText(order, month) {
+  return isInstallmentActualOrder(order)
+    ? `Actual รายงวด นับแล้ว ${fmtMoney(order.actualCountedAmount)} จาก ${fmtMoney(order.actualAmount)}`
+    : `Actual ${month} ${fmtMoney(order.actualAmount)}`;
+}
+
 /** ผลของการอนุมัติ (บรรทัด "สิ่งที่จะเกิดขึ้นทันที") — flow: 'pipeline' (อนุมัติใบ) | 'backfill' (อนุมัติงานบริการย้อนหลัง/เปิดแก้หลังอนุมัติ)
  *  ⭐ mig 0404: ใบรออนุมัติที่ผู้ยื่นเลือกข้ามการตั้งงานบริการ (`serviceSetupApprovalGate`) — ยังข้ามอยู่ = บอกว่า **ยังไม่ส่ง TS** + ทางเดินต่อ
  *    · เลือกข้ามไว้แต่ตอนนี้ครบแล้ว = บรรทัดเดิม + บอกว่าเปิดงานให้ TS ตามปกติ · ใบที่ไม่มีตราการข้าม = เหมือนเดิมทุกตัวอักษร
@@ -1777,7 +1790,7 @@ export function serviceSetupApprovalEffects(ctx = {}, { flow = 'pipeline', issue
       none ? `ไม่มีแพ็คเกจบริการรายรอบ — ไม่เปิดโซนให้ TS (ยืนยันว่าใบนี้ไม่มีงานบริการ) · ไม่ใช่งานบริการรายรอบ ${totals.notServiceLines} รายการ`
         : handoffLine(totals),
       'ไม่แตะยอด Actual · ยอดใบ · เอกสารที่ออกแล้ว · สถานะใบ (อนุมัติแล้วเหมือนเดิม)'
-        + ` — Actual ${month} ${fmtMoney(order.actualAmount)} · ยอดรวม ${fmtMoney(order.totalAmount)} · งวดชำระ ${live.length} งวด เท่าเดิม`,
+        + ` — ${unchangedActualText(order, month)} · ยอดรวม ${fmtMoney(order.totalAmount)} · งวดชำระ ${live.length} งวด เท่าเดิม`,
       none ? null
         : reopened ? SERVICE_REOPENED_TEXT.moneyLine(money.unconfirmedCovered)
           : `ด่านเงินของบัญชีเริ่มใช้กับใบนี้: งวดที่ยังไม่รับรองต้องมีช่วงครอบก่อนรับรอง (ครบแล้ว ${money.unconfirmedCovered} งวด)`,
@@ -2105,7 +2118,7 @@ export function serviceReopenPrompt(ctx = {}, { issues = null } = {}) {
         : 'ใบนี้ยังไม่มีโซนที่ส่งให้ TS — ไม่มีอะไรหายจาก “งานเข้าใหม่ › รอตั้งรอบ”',
       `ตารางงานบริการกลับมาแก้ได้ (${serviceReopenFieldsText(ctx)}) แล้วต้องกด ‘ยื่นตรวจงานบริการ’ ให้ผู้จัดการฝ่ายขายอนุมัติอีกครั้ง จึงส่ง TS`,
       'ไม่แตะ Actual · ยอดใบ · เอกสาร · งวดชำระ · สถานะใบ (อนุมัติแล้วเหมือนเดิม)'
-        + ` — Actual ${month} ${fmtMoney(order.actualAmount)} · ยอดรวม ${fmtMoney(order.totalAmount)} · งวดชำระ ${fmtNumber(liveInstallments(ctx).length)} งวด เท่าเดิม`,
+        + ` — ${unchangedActualText(order, month)} · ยอดรวม ${fmtMoney(order.totalAmount)} · งวดชำระ ${fmtNumber(liveInstallments(ctx).length)} งวด เท่าเดิม`,
       moneyGateRelaxes
         ? `ระหว่างแก้ ด่านช่วงครอบของบัญชีหลวมลงชั่วคราว — แพ็คเกจที่ตั้งให้รายการพิมพ์เอง ${fmtNumber(manualPackages)} รายการยังไม่นับจนผู้จัดการอนุมัติงานบริการอีกครั้ง`
         : null,

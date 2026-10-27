@@ -1011,7 +1011,17 @@ test('ภาพหลังรับรองงวดยกมา: จ่าย
   const outlook = installmentConfirmOutlook(OPENING, [OPENING, REGULAR]);
   assert.equal(outlook.paidThrough, '2026-09-30');
   assert.equal(outlook.collected, 196452);
-  assert.deepEqual(outlook.next, { label: '', amount: 65484, dueDate: '2026-10-01' });
+  assert.deepEqual(outlook.next, { label: '', amount: 65484, dueDate: '2026-10-01', actualStatus: null });
+});
+
+/* ใบ Actual รายงวด (review 26/10): งวดถัดไปพก `actualStatus` — โมดัลรับรองพูด "ยื่นงวดถัดไปได้" เฉพาะงวดที่ยังต้องยื่น */
+test('ภาพหลังรับรอง: งวดถัดไปพกสถานะการนับ Actual ของแถว (ไม่มี = null)', () => {
+  const rows = [
+    { id: 'a', seq: 1, status: 'reported', amount: 100, actualStatus: 'approved' },
+    { id: 'b', seq: 2, status: 'pending', amount: 100, actualStatus: 'approved' },
+  ];
+  assert.equal(installmentConfirmOutlook(rows[0], rows).next.actualStatus, 'approved');
+  assert.equal(installmentConfirmOutlook(rows[0], [rows[0], { ...rows[1], actualStatus: undefined }]).next.actualStatus, null);
 });
 
 test('ภาพหลังรับรองงวดปกติ: เก็บแล้วรวมงวดที่รับรองไปแล้ว · จ่ายถึงขยับไปปลายช่วงงวดนี้ · ไม่มีงวดถัดไป', () => {
@@ -1269,6 +1279,29 @@ test('โมดัลย้อนการอนุมัติ: เงินร
   const pendingOnly = salesOrderMoneyOutcome(APPROVED_SO, [MONEY_ROWS[2]], 'revoke');
   assert.deepEqual(pendingOnly, []);
   assert.deepEqual(salesOrderMoneyOutcome(APPROVED_SO, [], 'revoke'), []);
+});
+
+/* 🐞 review รอบห้า 27/10: ใบ "Actual รายงวด" — สลิปของงวดที่ยังไม่นับติดด่านเงินต่อหลังย้อน (ไม่อยู่ในคิว "รอคุณรับรอง" ·
+   ปุ่มรับรองดับ · trigger ปฏิเสธ) แต่โมดัลเคยบอก "สลิปรอบัญชีตรวจ n งวดยังอยู่ในคิวบัญชีตามปกติ" ทุกงวด */
+test('โมดัลย้อนการอนุมัติ (ใบรายงวด): สลิปของงวดที่นับแล้วอยู่ในคิวตามปกติ · งวดที่ยังไม่นับรับรองไม่ได้จนออก Rev. · ใบทั้งใบคำเดิม', () => {
+  const inst = { ...APPROVED_SO, actualMode: 'installment' };
+  const rows = [
+    { id: 'I1', seq: 1, amount: 53500, status: 'reported', actualStatus: 'approved' },
+    { id: 'I2', seq: 2, amount: 32100, status: 'reported', actualStatus: null },
+    { id: 'I3', seq: 3, amount: 21400, status: 'pending', actualStatus: null },
+  ];
+  const lines = salesOrderMoneyOutcome(inst, rows, 'revoke');
+  assert.ok(lines.includes('สลิปรอบัญชีตรวจ 1 งวดยังอยู่ในคิวบัญชีตามปกติ'), lines.join('\n'));
+  assert.ok(lines.includes('สลิปของงวดที่ยังไม่นับ Actual 1 งวด ฿32,100.00 บัญชีรับรองไม่ได้จนเจ้าของดีลออก Rev.'
+    + ' (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual ทั้งใบ แล้วบัญชีรับรองได้)'), lines.join('\n'));
+  // ทุกสลิปยังไม่นับ = ไม่มีบรรทัด "อยู่ในคิวตามปกติ"
+  const allHeld = salesOrderMoneyOutcome(inst, rows.map((r) => ({ ...r, actualStatus: null })), 'revoke');
+  assert.ok(!allHeld.some((l) => l.startsWith('สลิปรอบัญชีตรวจ')), allHeld.join('\n'));
+  assert.ok(allHeld.some((l) => l.startsWith('สลิปของงวดที่ยังไม่นับ Actual 2 งวด ฿85,600.00')));
+  // ใบทั้งใบ (actualMode order/ไม่มี) = บรรทัดเดิมบรรทัดเดียว
+  const whole = salesOrderMoneyOutcome({ ...APPROVED_SO, actualMode: 'order' }, rows, 'revoke');
+  assert.ok(whole.includes('สลิปรอบัญชีตรวจ 2 งวดยังอยู่ในคิวบัญชีตามปกติ'));
+  assert.ok(!whole.some((l) => /ยังไม่นับ Actual/.test(l)));
 });
 
 test('โมดัลย้อนการอนุมัติ: ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง + ยกงานบริการไปใบ Rev.)', () => {
@@ -1716,4 +1749,92 @@ test('🔴 โมดัลอนุมัติ: ดีลมีเงินค�
   const line = withPrepaid.find((l) => l.startsWith('งวดที่บันทึกการจ่ายไว้ตอนร่าง'));
   assert.ok(line, withPrepaid.join('\n'));
   assert.match(line, /1 งวด ฿32,100\.00 เข้าคิวบัญชีตามเดิม — ถ้าเป็นสลิปเดียวกับเงินค้าง ให้บัญชีตีกลับงวดนั้นก่อนแล้วจึงยกเงิน/);
+});
+
+/* ═══════════════════════════════════════════════════════════════════════
+   ⭐ ข้อยกเว้นเลือกเปิดรายใบของมติ 13/08 — "Actual รายงวด" (มติเจ้าของ 26/10/2026 · mig 0412)
+   ใบที่ AE Sup เลือกรายงวด: ยื่น → AE Sup อนุมัติ (นับ Actual) → แจ้งสลิป → บัญชีรับรอง
+   ⇒ บัญชีรับรอง/บันทึกรับชำระขั้นเดียวต้องรองานอนุมัติ · ฝ่ายขายแจ้งสลิปได้หลังอนุมัติ · ใบทั้งใบไม่เปลี่ยนสักข้อ
+   ═══════════════════════════════════════════════════════════════════════ */
+const INST_ORDER = Object.freeze({
+  id: 'SO-I', status: 'approved', origin: 'pipeline', actualMode: 'installment', totalAmount: 107000,
+  deal: { ownerId: 'u-sa' },
+});
+const NOT_APPROVED_MSG = 'งวดนี้ยังไม่ได้อนุมัตินับ Actual — รอ AE Sup อนุมัตินับงวดนี้ก่อน บัญชีจึงรับรองเงินได้';
+
+test('ใบรายงวด: บัญชีรับรองงวดที่ AE Sup ยังไม่อนุมัติไม่ได้ (ข้อความเดียวกับ trigger) · อนุมัติแล้วรับรองได้ · ตีกลับได้เสมอ', () => {
+  const reported = frozen({ status: 'reported', actualStatus: null });
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, { order: INST_ORDER }), NOT_APPROVED_MSG);
+  assert.equal(installmentActionError({ ...reported, actualStatus: 'submitted' }, 'confirm', FN_STAFF, { order: INST_ORDER }), NOT_APPROVED_MSG);
+  assert.equal(installmentActionError({ ...reported, actualStatus: 'rejected' }, 'confirm', ADMIN, { order: INST_ORDER }), NOT_APPROVED_MSG);
+  assert.equal(installmentActionError({ ...reported, actualStatus: 'approved' }, 'confirm', FN_STAFF, { order: INST_ORDER }), null);
+  assert.equal(installmentActionError(reported, 'reject', FN_STAFF, { order: INST_ORDER, reason: 'สลิปไม่ตรงกับยอดงวด' }), null);
+  // ส่งแค่ actualMode ได้ (ผู้เรียกที่ไม่มีทั้งใบ)
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, { actualMode: 'installment' }), NOT_APPROVED_MSG);
+  // ด่านสิทธิ์/สถานะเดิมยังมาก่อน
+  assert.match(installmentActionError(reported, 'confirm', SA, { order: INST_ORDER }), /เฉพาะฝ่ายบัญชี/);
+  assert.match(installmentActionError(frozen({ status: 'pending' }), 'confirm', FN_STAFF, { order: INST_ORDER }), /ยังไม่มีการแจ้งชำระ/);
+  // ใบที่ย้อนอนุมัติ/ยกเลิกแล้วยังเป็นรายงวด — ตรงกับ trigger ที่ดูแค่ actualMode
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, { order: { ...INST_ORDER, status: 'approval_revoked' } }), NOT_APPROVED_MSG);
+});
+
+test('ใบรายงวด: ฝ่ายขายแจ้งสลิปได้หลังงวดอนุมัติ · บัญชี/แอดมินบันทึกรับชำระขั้นเดียวติดด่านเดียวกับการรับรอง', () => {
+  const open = frozen({ seq: 2, status: 'pending', actualStatus: null });
+  const opts = { order: INST_ORDER, paidOn: '2026-10-20' };
+  assert.match(installmentActionError(open, 'report', SA, opts), /แจ้งสลิปงวดนี้ได้หลัง AE Sup อนุมัตินับ Actual งวดนี้แล้ว/);
+  assert.match(installmentActionError({ ...open, actualStatus: 'submitted' }, 'report', SA, opts), /หลัง AE Sup อนุมัติ/);
+  assert.equal(installmentActionError(open, 'report', FN_STAFF, opts), NOT_APPROVED_MSG);
+  assert.equal(installmentActionError(open, 'report', ADMIN, opts), NOT_APPROVED_MSG);
+  const approved = { ...open, actualStatus: 'approved' };
+  assert.equal(installmentActionError(approved, 'report', SA, opts), null);
+  assert.equal(installmentActionError(approved, 'report', FN_STAFF, opts), null);
+  // ด่านลำดับงวด/วันจ่ายเดิมยังทำงานหลังงวดอนุมัติ
+  assert.match(installmentActionError(approved, 'report', SA, { order: INST_ORDER }), /ต้องระบุวันที่ลูกค้าชำระ/);
+  assert.match(installmentActionError(approved, 'report', SA, { ...opts, rows: [frozen({ seq: 1, status: 'pending' }), approved] }),
+    /ต้องแจ้งงวดก่อนหน้าให้ครบก่อน/);
+});
+
+test('ใบรายงวด: งวดที่แจ้ง/บันทึกจ่ายไว้แล้วคงตามเดิม — ดึงกลับได้ · ด่านไม่ถอยของที่อยู่ในคิวบัญชี', () => {
+  const reported = frozen({ status: 'reported', reportedById: 'u-sa', actualStatus: null });
+  assert.equal(installmentActionError(reported, 'withdraw', SA, { order: INST_ORDER }), null);
+  assert.match(installmentActionError(reported, 'report', SA, { order: INST_ORDER, paidOn: '2026-10-20' }), /แจ้งไปแล้ว/);
+  const prepaid = { status: 'pending', paidOn: '2026-10-01', evidence: [{ storagePath: 'a' }], actualStatus: null };
+  assert.equal(installmentActionError(prepaid, 'withdraw', SA, { order: INST_ORDER }), null);
+  assert.match(installmentActionError(prepaid, 'report', SA, { order: INST_ORDER, paidOn: '2026-10-01' }), /บันทึกการจ่ายไว้แล้ว/);
+  // ตั้งวันงวด/ช่วงครอบไม่เกี่ยวกับการนับ Actual
+  assert.equal(installmentActionError(frozen({ status: 'pending' }), 'schedule', SA, { order: INST_ORDER }), null);
+});
+
+test('ใบทั้งใบ (ค่าตั้งต้น) และใบย้อนหลัง: ด่านเงินเดิมทุกข้อ ไม่มีด่านอนุมัติงวด', () => {
+  const reported = frozen({ status: 'reported' });
+  for (const order of [{ ...INST_ORDER, actualMode: 'order' }, { ...INST_ORDER, actualMode: undefined }, null]) {
+    assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, { order }), null);
+    assert.equal(installmentActionError(frozen({ status: 'pending' }), 'report', SA, { order, paidOn: '2026-10-20' }), null);
+  }
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, {}), null, 'ไม่ส่งใบ = ทั้งใบ (ฐานกันชั้นสุดท้าย)');
+  assert.equal(installmentActionError(reported, 'confirm', FN_STAFF, { historical: true, order: { ...INST_ORDER, origin: 'historical' } }), null);
+});
+
+test('คำสั่งรายงวด actual_* ผ่าน installmentActionError ตัวเดียวกับปุ่ม — ล็อกทั้งใบชนะก่อน', () => {
+  const rows = [frozen({ id: 'I1', seq: 1, status: 'confirmed', actualStatus: 'approved' }), frozen({ id: 'I2', seq: 2, status: 'pending' })];
+  const base = { order: INST_ORDER, rows };
+  assert.equal(installmentActionError(rows[1], 'actual_submit', SA, base), null);
+  assert.equal(installmentActionError(rows[1], 'actual_submit', SA_OTHER, base), 'ไม่มีสิทธิ์ทำรายการนี้กับงวด');
+  const submitted = { ...rows[1], actualStatus: 'submitted', actualSubmittedById: 'u-sa' };
+  assert.equal(installmentActionError(submitted, 'actual_approve', AE_SUP, base), null);
+  assert.equal(installmentActionError(submitted, 'actual_withdraw', SA, base), null);
+  assert.equal(installmentActionError(submitted, 'actual_reject', AE_SUP, { ...base, reason: 'สั้น' }), 'ใส่เหตุผล 10–500 ตัวอักษร');
+  assert.equal(installmentActionError(submitted, 'actual_approve', FN_STAFF, base), 'ไม่มีสิทธิ์ทำรายการนี้กับงวด');
+  // ใบยกเลิก/ถูก Rev. ทับ — ล็อกของใบชนะ (actual_* ไม่อยู่ใน allowlist ของใบยกเลิก)
+  const cancelled = { ...INST_ORDER, status: 'cancelled' };
+  assert.equal(installmentActionError(rows[1], 'actual_submit', SA, { ...base, order: cancelled, orderLock: pipelineInstallmentLock(cancelled, 'actual_submit') }),
+    pipelineInstallmentLock(cancelled, 'actual_submit'));
+  assert.ok(pipelineInstallmentLock(cancelled, 'actual_submit'));
+  // ใบทั้งใบ
+  assert.equal(installmentActionError(rows[1], 'actual_submit', SA, { ...base, order: { ...INST_ORDER, actualMode: 'order' } }),
+    'ใบนี้นับ Actual ทั้งใบ ไม่มีการยื่นรายงวด');
+});
+
+test('ไฟล์นี้ยังไม่ export ชื่อ actual* (กติกาอยู่ที่ salesOrderActualMode.js ไฟล์เดียว)', () => {
+  assert.deepEqual(Object.keys(payments).filter((name) => /^actual/i.test(name)), []);
 });

@@ -65,3 +65,41 @@ test('ว่าง/ไม่มีดีล → ศูนย์ทุกตั�
   assert.equal(r.totalValue, 0);
   assert.equal(r.nextForecastMonth, null);
 });
+
+/* ── ใบสั่งขาย "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) ─────────────────────────────────────
+   นับไปบางงวด — "มูลค่าโครงการ" ต้องไม่หด และ variance ต้องไม่ติดลบเท่างวดที่ยังไม่ถึงคิว
+   ⇒ totalValue / variance คิดจาก "ยอดปิดเต็ม" (Actual + งวดยื่นแล้ว + รอนับรายงวด) · actual ยังเป็น Actual ล้วน */
+test('rollupDeals: ใบรายงวดที่นับบางงวด — totalValue/variance ใช้ยอดปิดเต็ม · actual = Actual ล้วน', async () => {
+  const { rollupDeals } = await import('./projectRollup.js');
+  const instDeal = {
+    stage: 'won', dealType: 'NPD', projectValue: 300000, wonValue: 100000,
+    metadata: {
+      actualSource: 'sale_order', wonMonth: '2026-08', actualByMonth: { '2026-08': 100000 },
+      soInstPendingAmount: 100000, soInstPendingCount: 1, soInstRemainingByDue: { '2026-12': 100000 },
+    },
+  };
+  const open = { stage: 'quotation', dealType: 'NPD', projectValue: 50000, forecastMonth: '2026-11' };
+  const r = rollupDeals([instDeal, open]);
+  assert.equal(r.actual, 100000, 'Actual = งวดที่นับแล้วเท่านั้น');
+  assert.equal(r.closedValue, 300000);
+  assert.equal(r.instRemaining, 100000);
+  assert.equal(r.pendingApproval, 100000, 'งวดที่ยื่นแล้วอยู่ในรออนุมัติ');
+  assert.equal(r.totalValue, 350000, 'ยอดปิดเต็ม 300,000 + FC คงเหลือ 50,000');
+  assert.equal(r.variance, 0, 'ปิดตามแผน — ไม่ติดลบ 200,000 จากงวดที่ยังไม่ถึงคิว');
+  assert.equal(r.byType.find((b) => b.type === 'NPD').closedValue, 300000);
+});
+
+test('rollupDeals: ใบทั้งใบล้วน — totalValue/variance เท่าสูตรเดิม (actual + fcRemaining · actual − FC ของดีล Won)', async () => {
+  const { rollupDeals } = await import('./projectRollup.js');
+  const deals = [
+    { stage: 'won', dealType: 'NPD', projectValue: 120000, wonValue: 100000.29, metadata: { actualSource: 'sale_order', wonMonth: '2026-08' } },
+    { stage: 'won', dealType: 'SCENT', projectValue: 50000, wonValue: 0, metadata: { actualSource: 'sale_order', soPendingAmount: 45000, soPendingCount: 1 } },
+    { stage: 'quotation', dealType: 'NPD', projectValue: 70000, forecastMonth: '2026-11' },
+    { stage: 'lost', dealType: 'NPD', projectValue: 9999 },
+  ];
+  const r = rollupDeals(deals);
+  assert.equal(r.closedValue, r.actual);
+  assert.equal(r.totalValue, r.actual + r.fcRemaining);
+  assert.equal(r.variance, r.actual - (r.fcTotal - r.fcRemaining));
+  assert.equal(r.instRemaining, 0);
+});

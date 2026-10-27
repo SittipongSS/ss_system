@@ -1,3 +1,5 @@
+import { workflowErrorMessage } from '@/lib/sales/documentWorkflowErrors';
+
 export class SignatureEvidenceError extends Error {
   constructor(message, status = 500, code = 'signature_evidence_failed', extra = {}) {
     super(message);
@@ -39,6 +41,12 @@ export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
     ['sales_order_service_setup_incomplete', 'อนุมัติไม่ได้ — งานบริการของใบนี้ไม่ครบ (มีการเปลี่ยนหลังยื่น) · ตีกลับให้ฝ่ายขายแก้', 409, 'service_setup_incomplete', {}],
     /* term ที่ทางผูกโซนเดิมของ TS สร้างไว้ (ไม่ใช่ 'SZT-S…') ห้ามถูกเขียนทับ (D29) — ใบ pipeline ปกติไม่มีทางเจอ แต่ถ้าเจอต้องบอกตรง ๆ */
     ['service_setup_legacy_terms_exist', 'ใบนี้มีรอบขายที่ TS ผูกไว้ด้วยทางเดิม — เปิดงานบริการทับไม่ได้ · แจ้งผู้ดูแลระบบ', 409, 'service_setup_legacy_terms_exist', {}],
+    /* ── นับ Actual ทั้งใบ / รายงวด (mig 0412 · ตัวห่อ approve_sales_order_with_actual_mode) ─────────────────────
+       ⭐ ข้อความชุดเดียวกับ documentWorkflowErrors (workflowErrorMessage) — ปุ่มกับ API พูดคำเดียวกัน
+       ⚠️ ห้ามปล่อยตกไปข้อความกลาง "บันทึกหลักฐานลายเซ็นไม่สำเร็จ" — ชี้ผิดเรื่อง (ไม่เกี่ยวกับลายเซ็น)
+       · route ตรวจแบบ/สิทธิ์เลือกด้วยตัวตัดสิน JS ก่อนยิงแล้ว ⇒ ถึงตรงนี้ได้เมื่อใบเปลี่ยนระหว่างทาง หรือโค้ดลืมส่งแบบ */
+    ['sales_order_actual_mode_invalid', workflowErrorMessage('sales_order_actual_mode_invalid'), 400, 'actual_mode_invalid', {}],
+    ['sales_order_actual_mode_ineligible', workflowErrorMessage('sales_order_actual_mode_ineligible'), 409, 'actual_mode_ineligible', {}],
   ];
   const match = mappings.find(([token]) => raw.includes(token));
   if (match) {
@@ -76,8 +84,13 @@ export function approveQuotationWithSignatureEvidence(supabase, input) {
   });
 }
 
+/* อนุมัติใบสั่งขาย = เรียก **ตัวห่อ** approve_sales_order_with_actual_mode เสมอ (mig 0412 · docs/so-installment-actual.md)
+   ⭐ ตัวห่อเรียกตัวอนุมัติเดิม (approve_sales_order_with_signature_evidence_atomic) ทั้งตัวแล้วตั้ง "actualMode" ในทรานแซกชันเดียวกัน
+     ⇒ พารามิเตอร์ 10 ตัวแรกชุดเดิมทุกตัวอักษร + `p_actual_mode` · คืน jsonb รูปเดิม (document = แถวหลังตั้งแบบ · evidence) + `actualMode`
+   🔴 ส่งแบบทุกครั้ง — ใบทั้งใบก็ส่ง 'order' · ฐานปฏิเสธค่าว่าง (sales_order_actual_mode_invalid) ⇒ ผู้เรียกที่ลืมส่งต้องดัง ไม่ใช่นับทั้งใบเงียบ ๆ
+     (`input.actualMode` ว่าง = 'order' ที่นี่ — ทางเดียวที่ route ทุกทางของการอนุมัติใบ pipeline ผ่าน) */
 export function approveSalesOrderWithSignatureEvidence(supabase, input) {
-  return approveWithEvidence(supabase, 'approve_sales_order_with_signature_evidence_atomic', {
+  return approveWithEvidence(supabase, 'approve_sales_order_with_actual_mode', {
     p_order_id: input.documentId,
     p_evidence_id: input.evidenceId,
     p_expected_updated_at: input.expectedUpdatedAt,
@@ -88,6 +101,7 @@ export function approveSalesOrderWithSignatureEvidence(supabase, input) {
     p_actor_role: input.user.role || null,
     p_actor_team: input.user.team || null,
     p_separation_override_reason: input.overrideReason || null,
+    p_actual_mode: input.actualMode || 'order',
   });
 }
 
