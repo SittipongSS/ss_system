@@ -39,6 +39,7 @@ import styles from "./page.module.css";
 import { PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { InstRemainingAmount } from "@/components/salesPlanning/dashboard/performance/shared";
 import { sumProjectRollups } from "@/lib/pm/projectPendingApproval";
 import { fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
@@ -314,6 +315,8 @@ export default function ProjectsIndexPage() {
                     <td className="num mono" style={{ color: "var(--green)" }}>
                       {money(r.actual || 0)}
                       <PendingApprovalAmount amount={r.pendingApproval} count={r.pendingApprovalCount} />
+                      {/* กอง "รอนับรายงวด" (mig 0412 · มติข้อ 5 · review รอบสี่) — งวดของใบ Actual รายงวดที่ยังไม่ยื่น · ไม่ใช่ Actual */}
+                      <InstRemainingAmount amount={r.instRemaining} count={r.instRemainingCount} />
                     </td>
                     <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                     <td>{taskProgress(p)}</td>
@@ -364,6 +367,12 @@ export default function ProjectsIndexPage() {
                   count={totals.pendingApprovalCount}
                   className={styles.metricPending}
                 />
+                {/* กอง "รอนับรายงวด" (mig 0412 · review รอบสี่) — ขนาดตาม note ของการ์ด (inline) บนบรรทัดของตัวเอง */}
+                {totals.instRemaining > 0 ? (
+                  <span className={styles.metricInst}>
+                    <InstRemainingAmount amount={totals.instRemaining} count={totals.instRemainingCount} inline />
+                  </span>
+                ) : null}
               </>
             )}
             tone="good"

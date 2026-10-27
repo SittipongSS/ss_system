@@ -62,12 +62,16 @@ test('route replan: สิทธิ์ AE Sup/admin ก่อนโหลด · 
   const audit = slice(fn, 'await recordAudit({', '});');
   assert.match(audit, /entityType: 'sales_order_installments'/);
   assert.match(audit, /before: \{ installments: result\.before \}/);
-  assert.match(audit, /after: \{ installments: result\.after, reason \}/);
+  /* มติข้อ 10 (review รอบห้า 27/10): ฐานนับงวดใหม่ให้ตอน COMMIT ⇒ after = งวดที่อ่านสดหลัง RPC · ภาพของ RPC เก็บคู่ / ถอยเมื่ออ่านพลาด */
+  const committedRead = fn.indexOf('const committed = await loadCommittedInstallments(supabase, order.id);');
+  assert.ok(committedRead > rpc && committedRead < fn.indexOf('await recordAudit({'), 'อ่านงวดสดหลัง RPC ก่อนลง audit');
+  assert.match(audit, /after: committed\s*\? \{ installments: committed, rpcAfter: result\.after, reason \}\s*: \{ installments: result\.after, afterSource: 'rpc', reason \}/);
   assert.match(audit, /summary: replanAuditSummary\(\{/);
+  assert.match(audit, /\+ installmentActualAutoCountAuditText\(autoCounted\)/);
   assert.ok(fn.indexOf('await recordAudit({') > rpc, 'audit หลังเขียนสำเร็จ');
   assert.doesNotMatch(fn, /updateInstallment\(|\.from\('sales_order_installments'\)|\.from\('sales_orders'\)\s*\.update/,
     'ห้ามเขียนงวด/ใบเองทีละแถว — ทางเดียวคือ RPC 0377');
-  assert.match(fn, /return ok\(\{ installments: installmentsForScreen\(order, await loadInstallments\(supabase, order\.id\)\) \}\);/);
+  assert.match(fn, /return ok\(\{ installments: installmentsForScreen\(order, committed \?\? await loadInstallments\(supabase, order\.id\)\) \}\);/);
 });
 
 // ── 2. แผงงวดบนใบ ────────────────────────────────────────────────────────────────────────────

@@ -3,7 +3,8 @@ import { loadUserDirectory } from '@/lib/usersRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { reportPendingApproval } from '@/lib/sales/reportPendingApproval';
-import { buildReportRows, reportOrderMonth as orderMonth, reportOrderTeam } from '@/lib/sales/reportRows';
+import { buildReportRows, reportActualRows, reportOrderMonth as orderMonth, reportOrderTeam } from '@/lib/sales/reportRows';
+import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
 import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { historyAppliesTo, targetFactorOf } from '@/lib/sales/reportPeriod';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
@@ -24,6 +25,10 @@ import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
  * ⭐ ใบ **รออนุมัติ** (มติผู้ใช้ 2026-09-11 · mig 0353) คืนเป็นช่อง `pendingApproval` แยก
  * ไม่ปนเข้า actual[] / orders[] · ลงเดือนปัจจุบันเวลาไทยเสมอ ⇒ มีเฉพาะงวดที่คลุม "วันนี้"
  *
+ * ⭐ ใบ "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — **หนึ่งแถวต่อ (ใบ, เดือนที่นับ)** (reportActualRows):
+ *   ยอดของแถว = งวดที่ AE Sup อนุมัตินับในเดือนนั้น · วัน/เดือน = เวลาที่นับงวด · ใบที่อนุมัติก่อนงวดก็ต้องโหลด
+ *   (งวดของมันอาจนับในงวดนี้) · ส่วนรออนุมัติรวมงวดที่ยื่นแล้วรอ AE Sup · ใบทั้งใบได้ผลเท่าเดิมทุกไบต์
+ *
  * ⭐ งวด (lib/sales/reportPeriod · มติผู้ใช้ 2026-09-22):
  *   - แกน `axis` อาจยาวกว่าเดือนที่โชว์ — เดือนเดียวโหลดตั้งแต่ ม.ค. เพื่อคิดทบยอด
  *   - ช่วงวัน: ใบนับตามวันอนุมัติ (วันไทย) ในช่วง · เป้าปันตามวัน (targetFactor) ·
@@ -31,9 +36,11 @@ import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
  */
 
 const money = (v) => Number(v || 0);
+const toSatang = (v) => Math.round((Number(v) || 0) * 100) / 100;
 
-/** วันไทยของยอด — วันอนุมัติ · ถอยไป orderDate เฉพาะแถวเก่าที่ไม่มี approvedAt (กติกาเดียวกับ reportOrderMonth) */
-export const reportOrderDay = (order) => businessDayKey(order?.approvedAt)
+/** วันไทยของยอด — วันอนุมัติ · ถอยไป orderDate เฉพาะแถวเก่าที่ไม่มี approvedAt (กติกาเดียวกับ reportOrderMonth)
+ *  ⭐ แถวงวดของใบ "Actual รายงวด" (mig 0412) = วันที่นับงวด (`actualAt`) — ใบทั้งใบไม่มีช่องนี้ */
+export const reportOrderDay = (order) => businessDayKey(order?.actualAt || order?.approvedAt)
   || (order?.orderDate ? String(order.orderDate).slice(0, 10) : null);
 
 /** ขอบของคิวรีตาม approvedAt แบบครึ่งเปิด [from, until) — วันแรกของแกนถึงวันสุดท้ายของงวด
@@ -44,8 +51,41 @@ export function reportQueryWindow(period) {
   return { firstDay, lastDay, from: businessDayStart(firstDay), until: businessDayStart(addDays(lastDay, 1)) };
 }
 
-/** รูปของใบหนึ่งแถวที่จอและไฟล์ใช้ — ยอดที่รายงานนับ = actualAmount (= totalAmount − vatAmount) */
-function shapeOrder(o, { person, lineCount, payments = new Map() }) {
+/** รูปของใบหนึ่งแถวที่จอและไฟล์ใช้ — ยอดที่รายงานนับ = actualAmount (= totalAmount − vatAmount)
+ *  ⭐ แถวงวดของใบ "Actual รายงวด" (mig 0412) ได้ช่องเงินของ **งวดในแถวนั้น** (installmentShape) + ช่องเพิ่ม —
+ *     ใบทั้งใบได้รูปเดิมทุกช่อง (ไม่มีช่องเพิ่ม) */
+function shapeOrder(o, { person, lineCount, payments = new Map(), installmentById = new Map() }) {
+  if (o.rowKey) return installmentShape(o, shapeOrderRow(o, { person, lineCount, payments }), installmentById);
+  return shapeOrderRow(o, { person, lineCount, payments });
+}
+
+/* แถวงวดของใบรายงวด — เงินคิดจากงวดที่นับในแถวนี้เท่านั้น (ยอดหน้างวดรวม VAT · เก็บจริง = งวดที่บัญชีรับรองแล้ว)
+   ⇒ หลายแถวของใบเดียวไม่นับเงินของใบซ้ำ · นับครบทุกงวด = ผลรวมทุกแถวเท่ายอดหน้าใบ/VAT ของใบ (คลาดได้ไม่เกินสตางค์จากการปัด)
+   ⭐ VAT ของแถว = ยอดหน้างวด × (VAT ÷ ยอดรวม VAT ของใบ) — สัดส่วน VAT ของใบเอง (review รอบสี่ 26/10)
+   🐞 เดิม = ยอดหน้างวด − ยอดที่นับ (ก่อน VAT) หนีบที่ 0 — ถูกเฉพาะตอนยอดงวดยังเท่ากับส่วนแบ่งที่ตรึงตอนนับ ⇒ ยกเงิน (C2b ย้าย Actual ไปแถวที่ยก) ·
+      ปรับยอดงวดที่นับแล้ว (มติข้อ 9) · งวดที่นับให้เองด้วยส่วนแบ่ง 0 (มติข้อ 10) ทำ VAT ของแถวเพี้ยน (ทั้งแถวเป็น VAT · Σ VAT เกินของใบ) */
+function installmentShape(o, base, installmentById) {
+  const rows = (o.installmentIds || []).map((id) => installmentById.get(id)).filter(Boolean);
+  const total = toSatang(rows.reduce((s, r) => s + money(r.amount), 0));
+  const collected = toSatang(rows.filter((r) => r.status === 'confirmed').reduce((s, r) => s + money(r.amount), 0));
+  const awaiting = toSatang(rows.filter((r) => r.status === 'reported').reduce((s, r) => s + money(r.amount), 0));
+  return {
+    ...base,
+    vatAmount: base.totalAmount > 0 ? toSatang((total * base.vatAmount) / base.totalAmount) : 0,
+    totalAmount: total,
+    collectedAmount: collected,
+    awaitingAmount: awaiting,
+    outstandingAmount: toSatang(Math.max(0, total - collected)),
+    installmentCount: rows.length,
+    free: money(o.orderActualAmount) === 0,
+    actualMode: 'installment',
+    rowKey: o.rowKey,
+    actualAt: o.actualAt || null,
+    installmentSeqs: [...(o.installmentSeqs || [])].sort((a, b) => a - b),
+  };
+}
+
+function shapeOrderRow(o, { person, lineCount, payments = new Map() }) {
   return {
     id: o.id,
     orderNumber: o.orderNumber,
@@ -122,20 +162,47 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
         (โครงการเป็นเจ้าของค่าจริง ดีลเป็นสำเนา — กติกาเดียวกับทะเบียนการชำระ/คิว TS) ⇒ embed `project:projects(id, line)` (FK เดียว 0107 · service role
         ไม่โดน RLS) ⚠️ ห้ามแยกไปถาม `.in('id', dealIds)` — ลิสต์โตตามจำนวนใบ ชนเพดาน URL 16 KB
      ⛔ ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติ ณ เวลาคีย์แต่ไม่ใช่ยอดขาย — ไม่กรอง = งานเก่าทั้งกองโผล่เป็นยอดของเดือนที่คีย์ */
+  /* ⭐ ใบ "Actual รายงวด" (mig 0412) ที่อนุมัติ **ก่อน** งวดก็โหลดมาด้วย (`.or` ข้างล่าง) — งวดของมันนับในเดือนที่ AE Sup
+     อนุมัติงวด ซึ่งอาจอยู่ในงวดนี้ · ใบทั้งใบยังเป็นช่วงเดิม [from, until) · `status` / แบบการนับ / cache สองช่องมาด้วย
+     (ตัวแตกแถว + ส่วนรออนุมัติของงวดอ่าน) · ดีลพ่วง `stage` ให้ส่วนรออนุมัติของงวดนับเฉพาะดีล Won (กติกาเดียวกับแดชบอร์ด) */
   const { data: orders, error: orderError } = await fetchAllResult(() => pipelineRowsOnly(supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", metadata, project:projects(id, line), deal:sales_deals(team, id, line, "dealType")'))
+    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", status, "actualMode", "actualCountedAmount", "actualSubmittedAmount", metadata, project:projects(id, line), deal:sales_deals(team, id, line, "dealType", stage)'))
     .eq('status', 'approved')
-    .gte('approvedAt', window.from)
     .lt('approvedAt', window.until)
+    .or(`approvedAt.gte."${window.from}",actualMode.eq.installment`)
     .order('approvedAt', { ascending: true })
     .order('id', { ascending: true }));
   if (orderError) return { error: orderError.message, status: 500 };
 
-  /* ตัดให้ตรงงวดด้วยวันไทยในโค้ด (ขอบคิวรีเป็นต้นวันไทยแล้ว ตรงนี้กันแถวที่ไม่มี approvedAt) */
-  const inAxis = (orders || []).filter((o) => {
-    const day = reportOrderDay(o);
-    return day && day >= window.firstDay && day <= window.lastDay && slot.has(orderMonth(o));
+  /* งวดของใบ "Actual รายงวด" — เหตุการณ์ Actual (งวดที่นับแล้ว) + งวดที่ยื่นรอ AE Sup (ส่วนรออนุมัติ) + เงินของแถวงวด
+     ใบทั้งใบล้วน = ลิสต์ว่าง ⇒ ไม่ยิงคำถามเพิ่มเลย (fetchInChunks ข้ามเมื่อไม่มี id) */
+  const installmentOrders = (orders || []).filter(isInstallmentActualOrder);
+  const { data: actualInstallments, error: actualInstallmentError } = await fetchInChunks(
+    installmentOrders.map((o) => o.id),
+    (chunk) => fetchAllResult(() => supabase
+      .from('sales_order_installments')
+      .select('id, "salesOrderId", seq, amount, status, "actualStatus", "actualAmount", "actualApprovedAt", "actualSubmittedAt"')
+      .in('salesOrderId', chunk)
+      .order('salesOrderId', { ascending: true }).order('id', { ascending: true })),
+  );
+  if (actualInstallmentError) return { error: actualInstallmentError.message, status: 500 };
+  const installmentsByOrder = new Map();
+  const installmentById = new Map();
+  for (const row of actualInstallments || []) {
+    if (!installmentsByOrder.has(row.salesOrderId)) installmentsByOrder.set(row.salesOrderId, []);
+    installmentsByOrder.get(row.salesOrderId).push(row);
+    installmentById.set(row.id, row);
+  }
+
+  /* ตัดให้ตรงงวดด้วยวันไทยในโค้ด (ขอบคิวรีเป็นต้นวันไทยแล้ว ตรงนี้กันแถวที่ไม่มี approvedAt)
+     ⭐ ใบรายงวดแตกเป็นแถวต่อ (ใบ, เดือนที่นับ) ก่อน แล้วคัดด้วยวัน/เดือนที่นับงวด (reportActualRows) — ใบทั้งใบผ่านตัวคัดเดิม */
+  const inAxis = reportActualRows(orders || [], {
+    installmentsOf: (o) => installmentsByOrder.get(o.id) || [],
+    keep: (o) => {
+      const day = reportOrderDay(o);
+      return Boolean(day && day >= window.firstDay && day <= window.lastDay && slot.has(orderMonth(o)));
+    },
   });
   // เดือนนำ (ไว้คิดทบยอด) เข้าแถวยอด แต่ไม่เข้ารายการใบของงวดที่โชว์
   const inShown = inAxis.filter((o) => shown.has(orderMonth(o)));
@@ -241,9 +308,16 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
 
   // ประเภทธุรกิจของใบรออนุมัติ — ตัวกลางเดียวกับใบอนุมัติแล้ว (โครงการของใบก่อน แล้วดีล)
   const pendingDealById = new Map((pendingDeals || []).map((d) => [d.id, d]));
+  /* ⭐ งวดที่ยื่นแล้วรอ AE Sup ของใบ "Actual รายงวด" (mig 0412 · มติข้อ 5) อยู่ในส่วนรออนุมัติด้วย — ใบที่อนุมัติแล้ว
+     ทุกใบอยู่ในก้อน `orders` เมื่องวดคลุมวันนี้ (คิวรีโหลดใบรายงวดทุกใบที่อนุมัติก่อนสิ้นงวด) · แนบงวดให้นับจำนวนงวดได้ */
   const pendingApproval = reportPendingApproval({
     orders: (pendingOrders || []).map((o) => ({ ...o, line: orderBusinessLineOf({ ...o, deal: pendingDealById.get(o.dealId) || null }) })),
     deals: pendingDeals,
+    installmentOrders: installmentOrders.map((o) => ({
+      ...o,
+      line: orderBusinessLineOf(o),
+      installments: installmentsByOrder.get(o.id) || [],
+    })),
     months: coversToday ? axis : [],
     person,
     now,
@@ -266,7 +340,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     teams,
     people,
     pendingApproval,
-    orders: inShown.map((o) => shapeOrder(o, { person, lineCount, payments })),
+    orders: inShown.map((o) => shapeOrder(o, { person, lineCount, payments, installmentById })),
     byDay,
     historyDropped,
     generatedAt: now.toISOString(),

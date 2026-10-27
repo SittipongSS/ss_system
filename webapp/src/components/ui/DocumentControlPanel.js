@@ -146,7 +146,10 @@ export function WorkflowRail({ steps = [], label = "เส้นทางเอ�
    ผู้เรียกที่ไม่ส่งสองตัวนี้ได้หน้าตาเดิมทุก px
    ⭐ `zero` รายแถว — แถวที่เป็นศูนย์ **จางลงแต่ไม่หาย** (แกนสามแถวของการ์ดคำร้อง) ·
    ซ่อนเมื่อไร ตำแหน่งของแถวที่เหลือจะเลื่อน แล้วข้อดีของ "ตำแหน่งคงที่ สแกนข้ามใบได้"
-   ก็หมดไปทั้งอัน */
+   ก็หมดไปทั้งอัน
+   ⭐ `stack` รายแถว — ป้ายบรรทัดบน ค่าเต็มกว้างชิดขวาบรรทัดล่าง สำหรับค่าที่ยาวกว่าช่องข้างป้าย (หลายท่อน/มีชิป/บรรทัดรอง)
+     🐞 UAT 27/10 (ใบสั่งขาย "Actual รายงวด"): ค่า "฿x / ฿y [รายงวด]" + บรรทัดกอง บีบป้าย "Actual ก่อน VAT" ขาดสองบรรทัด
+        และชิปตกลงใต้ตัวเลข · ไม่ส่ง = หน้าตาเดิมทุก px */
 export function DocumentSummaryCard({
   title = "สรุปเอกสาร",
   total,
@@ -174,7 +177,8 @@ export function DocumentSummaryCard({
       {rows.length ? (
         <dl className={styles.summaryRows}>
           {rows.map((row, index) => (
-            <div key={row.id || row.label || index} className={row.zero ? styles.summaryZero : undefined}>
+            <div key={row.id || row.label || index}
+              className={[row.zero ? styles.summaryZero : "", row.stack ? styles.summaryStack : ""].filter(Boolean).join(" ") || undefined}>
               <dt>{row.label}</dt>
               <dd>{naText(row.value)}</dd>
             </div>

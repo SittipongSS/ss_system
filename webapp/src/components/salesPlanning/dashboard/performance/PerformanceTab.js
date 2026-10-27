@@ -160,6 +160,7 @@ export default function PerformanceTab({ year }) {
 
   // คลิกช่อง Actual ในบอร์ด → modal รายดีลชุดเดียวกับแดชบอร์ดเดิม (กติกา wonMonth ตรงกัน)
   // บรรทัด "รออนุมัติ" ใต้ Actual → modal เดียวกัน metric 'pendingApproval' เดือนปัจจุบัน (2026-09-11)
+  // บรรทัด "รอนับรายงวด" (mig 0412) → metric 'instRemaining' ของงวดที่ดู · ช่อง Actual แตกตามเดือนที่นับ (actualByMonth)
   const [dealFilter, setDealFilter] = useState(null);
 
   /* งวดของทั้งแท็บ — คำนวณที่เดียวแล้วส่งลงไป (แถบคุม + แถบความคืบหน้า + ตารางติดตาม)

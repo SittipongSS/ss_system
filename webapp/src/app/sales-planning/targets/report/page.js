@@ -49,10 +49,13 @@ import {
   filterOrders,
   financeStateOf,
   groupOrders,
+  orderRowsLabel,
+  orderRowsUnit,
   ordersForDrill,
   sortOrders,
 } from "@/lib/sales/reportOrderView";
 import { reportPeriodLabel } from "@/lib/sales/reportPeriod";
+import { installmentSeqText } from "@/lib/sales/reportRows";
 import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import styles from "./page.module.css";
@@ -511,7 +514,7 @@ function Breakdown({ loading, error, lens, onLens, summary, data, period, todayT
           <strong>ยังไม่มีข้อมูลของงวดนี้ — โหลดรายงานไม่สำเร็จ</strong>
         </EmptyState>
       ) : lens === "month" ? (
-        <MonthLens summary={summary} period={period} onDrill={onDrill} />
+        <MonthLens summary={summary} period={period} onDrill={onDrill} orders={data?.orders || []} />
       ) : (
         <GroupLens
           kind={lens}
@@ -528,7 +531,7 @@ function Breakdown({ loading, error, lens, onLens, summary, data, period, todayT
 }
 
 /* ── ตามเดือน ─────────────────────────────────────────────────────────── */
-function MonthLens({ summary, period, onDrill }) {
+function MonthLens({ summary, period, onDrill, orders = [] }) {
   const range = period.mode === "range";
   const [futureOpen, setFutureOpen] = useState(false);
   const thisMonth = currentMonth();
@@ -542,6 +545,10 @@ function MonthLens({ summary, period, onDrill }) {
   const cols = range ? 6 : 8;
   const split = summary.sourceSplit;
   const totalOrders = rows.filter((r) => r.closed && r.source === "orders").reduce((s, r) => s + r.orderCount, 0);
+  /* ป้ายของแถวรวม: แถวของเดือนที่จบแล้ว (ชุดเดียวกับที่กดเจาะ) — ใบรายงวดที่นับหลายเดือนไม่ถูกนับเป็นหลายใบ (review รอบสอง 26/10) */
+  const totalOrdersLabel = orderRowsLabel(ordersForDrill(orders, {
+    kind: "total", months: rows.filter((r) => r.closed && r.source === "orders").map((r) => r.month),
+  }));
   const [howOpen, setHowOpen] = useState(false);
 
   const actualCell = (r) => {
@@ -674,7 +681,7 @@ function MonthLens({ summary, period, onDrill }) {
                 {!range && <td className="num">{NA}</td>}
                 <td className="num">{m.target ? <Money value={m.target} /> : NA}</td>
                 {!range && <td className="num">{NA}</td>}
-                <td>{totalOrders > 0 ? <span className={styles.source}><ClipboardList size={13} aria-hidden="true" /> ใบสั่งขาย {totalOrders} ใบ</span> : NA}</td>
+                <td>{totalOrders > 0 ? <span className={styles.source}><ClipboardList size={13} aria-hidden="true" /> ใบสั่งขาย {totalOrdersLabel}</span> : NA}</td>
               </tr>
             </tfoot>
           )}
@@ -759,6 +766,8 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
       : { ...base, kind: "person", ownerId: row.ownerId, team: row.team || null, label: `${row.ownerName || row.ownerId} · ${teamName(row.team)}` };
   };
   const orderCountOf = (row) => ordersForDrill(orders, drillOf(row)).length;
+  /* ป้ายจำนวน — แถวรายงวดของใบเดียวหลายเดือนบอก "n แถว · m ใบ" (orderRowsLabel · review รอบสอง 26/10) */
+  const orderLabelOf = (row) => orderRowsLabel(ordersForDrill(orders, drillOf(row)));
   const orderSumOf = (row) => ordersForDrill(orders, drillOf(row)).reduce((s, o) => s + Number(o.amount || 0), 0);
 
   const t = group.total;
@@ -801,7 +810,7 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
                       <button
                         type="button"
                         className="table-metric-button"
-                        aria-label={`ดูใบสั่งขาย ${count} ใบของ${kind === "team" ? `ทีม ${teamName(row.team)}` : ` ${row.ownerName || ""}`}`}
+                        aria-label={`ดูใบสั่งขาย ${orderLabelOf(row)}ของ${kind === "team" ? `ทีม ${teamName(row.team)}` : ` ${row.ownerName || ""}`}`}
                         onClick={() => onDrill(drillOf(row))}
                       ><Money value={row.actual} /></button>
                     ) : <Money value={row.actual} />}
@@ -818,7 +827,7 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
                     )}
                   </td>
                   <td className="num">
-                    {count ? `${count} ใบ` : NA}
+                    {count ? orderLabelOf(row) : NA}
                     {manual > 1 && <span className="cell-sub">+ กรอกย้อนหลัง <Money value={manual} /></span>}
                   </td>
                 </tr>
@@ -915,6 +924,8 @@ function PendingPanel({ pendingApproval }) {
               <tr key={o.id}>
                 <td>
                   <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
+                  {/* งวดที่ยื่นรอ AE Sup ของใบ "Actual รายงวด" (mig 0412) — ใบอนุมัติแล้ว รอนับงวดนี้ */}
+                  {o.actualMode === "installment" && <span className="cell-sub">Actual รายงวด · {installmentSeqText(o.installmentSeqs)}</span>}
                   {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
                 </td>
                 <td className="num"><Money value={o.amount} /></td>
@@ -1024,9 +1035,10 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const pager = usePagination(ordered, { defaultSize: 10, resetKey });
   const pageGroups = useMemo(() => {
     if (!grouped) return [{ key: "all", label: null, orders: pager.pageRows }];
-    const onPage = new Set(pager.pageRows.map((o) => o.id));
+    // คีย์แถว = rowKey ของแถวงวด (ใบ "Actual รายงวด" มีได้หลายแถวต่อใบ · mig 0412) · ใบทั้งใบ = id เท่าเดิม
+    const onPage = new Set(pager.pageRows.map((o) => o.rowKey || o.id));
     return groups
-      .map((g) => ({ ...g, orders: g.orders.filter((o) => onPage.has(o.id)) }))
+      .map((g) => ({ ...g, allOrders: g.orders, orders: g.orders.filter((o) => onPage.has(o.rowKey || o.id)) }))
       .filter((g) => g.orders.length);
   }, [grouped, groups, pager.pageRows]);
 
@@ -1053,9 +1065,11 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const orderRow = (o) => {
     const badge = FINANCE_STATE_BADGE[financeStateOf(o)];
     return (
-      <tr key={o.id}>
+      <tr key={o.rowKey || o.id}>
         <td>
           <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
+          {/* แถวงวดของใบ "Actual รายงวด" (mig 0412) — ยอด/เงินในแถวเป็นของงวดที่นับในเดือนนี้เท่านั้น */}
+          {o.actualMode === "installment" && <span className="cell-sub">Actual รายงวด · {installmentSeqText(o.installmentSeqs)}</span>}
           {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
           {o.free && <span className={`ui-badge warning ${styles.docNo}`}>ไม่คิดเงิน</span>}
           {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
@@ -1096,7 +1110,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
       icon={<ClipboardList size={17} aria-hidden="true" />}
       title="ใบสั่งขายที่อนุมัติแล้ว"
       subtitle="อนุมัติในช่วงที่เลือก · งวดคิดจากวันที่อนุมัติ เวลาไทย · ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง"
-      count={loading || error ? null : `${filtered.length} ใบ`}
+      /* นับแถว (= แถวที่เห็นหลังกด · M10b) แต่ใบรายงวดที่แตกหลายเดือนบอก "n แถว · m ใบ" (orderRowsLabel · review รอบสอง 26/10) */
+      count={loading || error ? null : orderRowsLabel(filtered)}
       loading={loading}
       toolbar={(
         /* ลำดับตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
@@ -1226,7 +1241,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                       <TableGroupRow
                         colSpan={13}
                         label={group.label}
-                        badge={`${group.count} ใบ`}
+                        badge={orderRowsLabel(group.allOrders || group.orders)}
                         total={money(group.total)}
                         collapsed={isCollapsed}
                         onToggle={() => setCollapsed((prev) => {
@@ -1242,7 +1257,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
               })}
               <tfoot>
                 <tr>
-                  <td>รวม {filtered.length} ใบ{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
+                  <td>รวม {orderRowsLabel(filtered)}{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
                   <td className="num"><Money value={totals.amount} /></td>
                   <td colSpan={7} />
                   <td className="num"><Money value={totals.vat} /></td>
@@ -1260,7 +1275,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
             onPage={pager.setPage}
             pageSize={pager.pageSize}
             onPageSize={pager.setPageSize}
-            itemLabel="ใบ"
+            itemLabel={orderRowsUnit(filtered)}
           />
         </>
       )}

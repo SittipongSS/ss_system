@@ -302,3 +302,65 @@ test('เดือนที่ยังมาไม่ถึงไม่ถู�
   // แต่ยอดรายปีคิดจากค่าที่กรอกทั้งหมดตามที่ผู้ใช้เห็นบนจอ
   assert.equal(items.find((i) => i.periodType === 'year').actualAmount, 1009);
 });
+
+/* ── "เติมยอดจากระบบ" กับใบสั่งขาย "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) ───────────────────
+   ปุ่มคัดตัวเลขใบ้ของแถวบริษัทลง sales_history ถาวร (แถวกรอกมือทับยอดระบบบนแท็บผลงานขาย)
+   ⇒ ดีลที่ Actual แตกหลายเดือนต้องได้ **ส่วนของเดือนนั้นพอดี** ต่อเดือน — ไม่ใช่ wonValue ทั้งก้อนที่ wonMonth ·
+   ไม่ใช่ยอดคงเหลือ · ไม่ซ้ำสองเดือน · กองรออนุมัติ/รอนับรายงวด/Won รอยื่น SO ไม่หลุดเข้ามา
+   ตัวเลขใบ้มาจาก payload ของแดชบอร์ด — จำลองด้วยตัวรวมจริงของ route (rollupMonthActual · rollupInstRemaining) */
+test('เติมยอดจากระบบ: ใบรายงวดได้ส่วนของแต่ละเดือนพอดี · ไม่ใช่คงเหลือ · ไม่ซ้ำ · กองคาดการณ์ไม่ปน', async () => {
+  const { rollupMonthActual, rollupInstRemaining } = await import('./actualMonthRollup.js');
+  const now = new Date('2026-11-15T10:00:00+07:00');
+  const deals = [
+    // อนุมัติใบ ส.ค. (งวด 1) · งวด 2 อนุมัติ ต.ค. · งวด 3 ยังไม่ยื่น (ครบกำหนด ธ.ค.) · มีงวดยื่นรอ AE Sup
+    {
+      stage: 'won', team: 'KA', ownerId: 'u1', ownerName: 'หนึ่ง', wonValue: 62304.94,
+      metadata: {
+        actualSource: 'sale_order', wonMonth: '2026-08',
+        actualByMonth: { '2026-08': 31152.64, '2026-10': 31152.3 },
+        soInstPendingAmount: 500, soInstPendingCount: 1,
+        soInstRemainingByDue: { '2026-12': 31153 },
+      },
+    },
+    // ใบทั้งใบ (รูปของทุกดีลวันนี้) — ไม่มีคีย์ actualByMonth
+    { stage: 'won', team: 'ODM', ownerId: 'u2', ownerName: 'สอง', wonValue: 1000, metadata: { actualSource: 'sale_order', wonMonth: '2026-10' } },
+  ];
+  const months = ['2026-08', '2026-09', '2026-10', '2026-11', '2026-12'].map((month) => {
+    const owners = {};
+    const teams = {};
+    const wonValue = rollupMonthActual(deals, month, {
+      attribute: [
+        (d, amount) => { (owners[d.ownerId] ||= { ownerId: d.ownerId, team: d.team, won: 0 }).won += amount; },
+        (d, amount) => { (teams[d.team] ||= { team: d.team, won: 0 }).won += amount; },
+      ],
+    });
+    const inst = rollupInstRemaining(deals, month, { now });
+    // payload จริงมีกองคาดการณ์ด้วย — ตัวเลขใบ้ต้องไม่หยิบมา
+    return {
+      month,
+      totals: { wonValue, pendingApproval: 500, pendingApprovalCount: 1, ...inst, wonAwaitingSo: 7, wonAwaitingSoCount: 1 },
+      byTeam: Object.values(teams).map((t) => ({ ...t, ...inst })),
+      byOwner: Object.values(owners).map((o) => ({ ...o, instRemaining: 1, pendingApproval: 2 })),
+    };
+  });
+  const sys = systemHintCells(months);
+  assert.deepEqual(sys.company, { 7: 31152.64, 9: 32152.3 }, 'ส.ค. = งวด 1 · ต.ค. = งวด 2 + ใบทั้งใบ · ธ.ค. (รอนับ) ไม่มี');
+  assert.deepEqual(sys[historyRowKey({ team: 'KA' })], { 7: 31152.64, 9: 31152.3 });
+  assert.deepEqual(sys[historyRowKey({ team: 'KA', ownerId: 'u1' })], { 7: 31152.64, 9: 31152.3 });
+  assert.deepEqual(sys[historyRowKey({ team: 'ODM', ownerId: 'u2' })], { 9: 1000 });
+  // ผลรวมทุกเดือนของดีลรายงวด = wonValue พอดี (ไม่นับซ้ำ ไม่ตกหล่น)
+  const ka = sys[historyRowKey({ team: 'KA' })];
+  assert.equal(Math.round(Object.values(ka).reduce((s, v) => s + v, 0) * 100) / 100, 62304.94);
+
+  // จำลองปุ่ม: เติมเฉพาะเดือนที่ปิดแล้วลงช่องว่างของแถวบริษัท แล้วบันทึก
+  const filled = Array.from({ length: 12 }, (_, mi) => (isMonthClosed('2026', mi, now) && sys.company[mi] > 0 ? sys.company[mi] : ''));
+  const items = historySaveItems({
+    rows: [{ key: 'company', team: null, ownerId: null, ownerName: null }],
+    values: { company: { months: filled } },
+    year: '2026',
+    now,
+  });
+  const monthly = items.filter((it) => it.periodType === 'month');
+  assert.deepEqual(monthly.map((it) => [it.period, it.actualAmount]), [['2026-08', 31152.64], ['2026-10', 32152.3]]);
+  assert.equal(items.find((it) => it.periodType === 'year').actualAmount, 31152.64 + 32152.3);
+});

@@ -154,3 +154,36 @@
   vertical-align: -2px;
   color: var(--text-3);
 }
+
+/* ── ใบ "นับ Actual รายงวด" (mig 0412) — เหตุที่ปุ่ม "ยืนยันว่าเงินเข้า" ดับ (งวดยังไม่อนุมัตินับ Actual) ────────────────
+   บรรทัดที่สามของแถวคิว · โทนเตือน (ไม่แดง: ไม่ใช่ข้อมูลผิด แค่รอคนอื่น) · โทเคนเท่านั้น */
+.qlock {
+  color: var(--amber);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+
+/* ── แถบ "แจ้งชำระแล้ว…ยังรับรองไม่ได้" ของใบนับ Actual รายงวด (UAT FN 27/10 ข้อ 1 + 5) ──────────────────────────
+   รายใบ: เลขที่ (ลิงก์เข้าแท็บการชำระ) แล้วงวดที่ค้างพร้อมเหตุสั้น — ประโยคเต็มอยู่ที่ title ของงวด · โทเคนเท่านั้น */
+.heldList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  margin-top: var(--space-2);
+}
+.heldList > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+.heldRow {
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+}
+/* งานของบัญชีเอง (งวดก่อนหน้าที่นับแล้วรอรับรอง) — เน้นด้วยน้ำหนัก ไม่ใช่สีแดง (ไม่ใช่ข้อมูลผิด) */
+.heldYours {
+  margin-top: var(--space-1);
+  font-weight: var(--fw-semibold);
+}

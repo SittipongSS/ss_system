@@ -12,14 +12,13 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
 import {
-  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerFacetTally, ledgerReport, ledgerRow, ledgerSummary,
-  ledgerVoidInstallment, orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
+  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerFacetTally, ledgerIncludes, ledgerReport, ledgerRow,
+  ledgerSummary, orderStateIndex, sortLedger, stampActualHold, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
   stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
 import { holidaySet } from '@/lib/master/holidays';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
-import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -83,10 +82,13 @@ async function loadLedger(supabase, todayIso) {
      (`serviceFgCode`) เฉพาะใบที่ประทับแล้ว ⇒ ขาดช่องนี้ = ใบแพ็คเกจพิมพ์เองหลุดจากตัวกรอง/คอลัมน์ "ใบมีรอบบริการ" ของบัญชี */
   /* `supersededById` + `serviceContractId` (PR-C C5) = ใบยังมีผลไหม (`termOrderActive` ตัวเดียวของระบบ) + ผูกสัญญาแล้วไหม
      — บรรทัดด่านเงินของนัดบริการในโมดัลรับรองบนทะเบียน (ข้างล่าง `serviceTermZonesByOrder`) */
+  /* `actualMode` (mig 0412) = ใบ "Actual รายงวด" — งวดที่ AE Sup ยังไม่อนุมัตินับ บัญชีรับรองไม่ได้ (trigger ของงวด) ⇒ ทะเบียนตัดออกจาก
+     คิว "รอคุณรับรอง" และปุ่มรับรองบอกเหตุ (`ledgerRow` → `actualAwaitingApproval` · `ledgerRowLock`) · ขาดช่องนี้ = ทุกใบเป็นทั้งใบ
+     (ปุ่มเปิดให้กดแล้วไปตายที่ฐาน) */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -239,15 +241,15 @@ async function loadLedger(supabase, todayIso) {
   const ledger = rows
     .map((installment) => {
       const order = orderById.get(installment.salesOrderId);
-      if (!order) return null; // ใบถูกลบไปแล้วแต่แถวยังค้าง — ไม่ให้หลุดเป็นแถวไร้เลขที่
-      /* ใบยอด 0 ไม่มีขั้นยืนยันการชำระแล้ว (มติผู้ใช้ 2026-08-18) ⇒ ไม่ต้องเข้าทะเบียน
-         ของบัญชี · ใบเก่ายังมีแถวค้างอยู่จริง (prod 13 ใบ) — **ไม่ลบ** แค่ไม่เอามาโชว์
-         เป็นคิวงาน ไม่งั้นบัญชีเปิดมาเจอของที่ไม่มีวันมีเงินให้ตรวจ */
-      if (paymentNotRequired(order.totalAmount)) return null;
-      /* ⭐ งวดที่ยังไม่มีเงินของใบยกเลิก/ถูกออก Rev. ทับ = โมฆะ ไม่ใช่ยอดค้างรับ (PR0 · แผน so-payment-unlock-replan)
-         🐞 23/09 ทะเบียนนับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว · reported/confirmed ยังอยู่ครบ
-         ⚠️ ตัดก่อน `orderStateIndex`/"จ่ายถึง" (ประทับจาก `all`) — งวดโมฆะไม่ใช่งวดของใบอีกต่อไป */
-      if (ledgerVoidInstallment(installment, order)) return null;
+      /* ⭐ ตัวตัดสินเดียวกับป้ายบนเมนู (`ledgerIncludes` → `ledgerInConfirmQueue` · UAT FN 27/10 ข้อ 2 — เลขบนป้าย = แถวหลังกด):
+         · ใบถูกลบไปแล้วแต่แถวยังค้าง — ไม่ให้หลุดเป็นแถวไร้เลขที่
+         · ใบยอด 0 ไม่มีขั้นยืนยันการชำระแล้ว (มติผู้ใช้ 2026-08-18) ⇒ ไม่ต้องเข้าทะเบียนของบัญชี · ใบเก่ายังมีแถวค้างอยู่จริง
+           (prod 13 ใบ) — **ไม่ลบ** แค่ไม่เอามาโชว์เป็นคิวงาน ไม่งั้นบัญชีเปิดมาเจอของที่ไม่มีวันมีเงินให้ตรวจ
+         · งวดที่ยังไม่มีเงินของใบยกเลิก/ถูกออก Rev. ทับ = โมฆะ ไม่ใช่ยอดค้างรับ (PR0 · แผน so-payment-unlock-replan)
+           🐞 23/09 ทะเบียนนับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว · reported/confirmed ยังอยู่ครบ
+           ⚠️ ตัดก่อน `orderStateIndex`/"จ่ายถึง" (ประทับจาก `all`) — งวดโมฆะไม่ใช่งวดของใบอีกต่อไป
+         · งวดที่ยอดยังไม่หยุด — query กรองไว้แล้ว (`frozenAt`) ตัวตัดสินถามซ้ำให้ป้ายบนเมนูได้กติกาเดียวกัน */
+      if (!ledgerIncludes(installment, order)) return null;
       return ledgerRow({
         installment,
         order,
@@ -292,6 +294,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     stampOrderInstallmentCount(all);
     /* ภาพหลังรับรอง (จ่ายถึง · เก็บแล้ว · งวดถัดไป) ของงวดในคิว — ค่าระดับใบเหมือนกัน ประทับก่อนกรองด้วยเหตุผลเดียวกัน */
     stampConfirmOutlook(all);
+    /* ด่านนับ Actual รายงวด: งวดก่อนหน้าที่ยังไม่รับรอง + ใบกดนับที่เหลือทั้งหมดแล้ว (ค่าระดับใบ) — เหตุ "ใครต้องทำต่อ" ของงวดที่ติดด่าน
+       ต้องคิดก่อนกรอง (กรอง `?status=held` แล้วงวดก่อนหน้าหลุด = เหตุชี้ผิดคน · UAT FN 27/10 ข้อ 3) */
+    stampActualHold(all);
     const filters = {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,

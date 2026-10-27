@@ -2,50 +2,23 @@ import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
-import { canEditSalesTarget, canViewSalesPlanning, isWonStage, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
-import { dealActualFromSalesOrders } from '@/lib/sales/salesOrderWorkflow';
-import { wonMonthOf } from '@/lib/sales/dashboardMetrics';
+import { canEditSalesTarget, canViewSalesPlanning, normalizeTargetPeriod, resolveTargetRowScope, toMoney, yearKey } from '@/lib/salesPlanning';
+import { aggregateSystemActuals } from '@/lib/sales/systemActuals';
 import { isHistoricalDeal, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 export const dynamic = 'force-dynamic';
 
 // Sum won deals into a { [year]: { total, byTeam, byOwner, byTeamOwner, byMonth } } shape so
 // the wizard can pre-fill historical actuals for years the system already knows.
-//
-// ⭐ ทีมตามดีล (มติผู้ใช้ 2026-09-14) — ยอดของทีมมาจาก `sales_deals.team` ที่ประทับบนดีล
-// ไม่ใช่ทีมในบัญชีเจ้าของ · `byTeamOwner[team][ownerId]` = ยอดของคนนั้น *ในทีมนั้น*
-// (ตัวช่วยวางเป้าใช้ถ่วงสัดส่วนคนในทีม — คนย้ายทีม/อยู่หลายทีมต้องไม่ลากยอดทีมอื่นมาด้วย)
-// · `byOwner` ยังเป็นยอดข้ามทุกทีมตามเดิม · ดีลไม่ระบุทีมไม่ลง byTeam/byTeamOwner (เหมือนเดิม)
-//
-// ⛔ **Actual ล้วน — ห้ามมียอด SO "รออนุมัติ" ปน** (มติผู้ใช้ 2026-09-11 · mig 0353)
+// ⭐ ตัวรวมอยู่ที่ lib/sales/systemActuals (เทสต์ได้) — ทีมตามดีล · Actual รายเดือนของดีล (actualByMonth · mig 0412:
+//    งวดของใบ "Actual รายงวด" ลงปี/เดือนที่อนุมัติงวด ไม่ใช่ wonValue ทั้งก้อนที่ wonMonth) · Actual ล้วน
+// ⛔ **ห้ามมียอด SO "รออนุมัติ" / กอง "รอนับรายงวด" ปน** (มติผู้ใช้ 2026-09-11 · mig 0353 · 0412)
 // ตัวช่วยวางเป้าเอา systemActuals ไปเติมช่อง "ขายจริง" แล้ว POST ลง `sales_history`
 // ⇒ ยอดที่ยังไม่มีใครอนุมัติจะถูกแช่เป็นยอดจริงถาวร และแถวนั้นทับตัวเลขระบบในรายงาน
 // ผลงานขายต่อไปเรื่อย ๆ (ล็อกไว้ใน lib/sales/myDashboardPendingApproval.test.mjs)
-// ⭐ เดือน Won มาจาก wonMonthOf ตัวกลาง — เดิมก๊อปลำดับ fallback ไว้เอง แก้ที่กลางแล้วไม่ถึงที่นี่
 function aggregateWonDeals(deals) {
-  const wonAmt = dealActualFromSalesOrders;
-  const wonMonth = wonMonthOf;
-  const isWon = (d) => isWonStage(d.stage);
-  const years = {};
-  for (const d of deals || []) {
-    // ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่ยอดขาย — ยอดที่นี่ถูกคัดลงประวัติถาวรผ่าน "เติมยอดจากระบบ"
-    if (!isWon(d) || isHistoricalDeal(d)) continue;
-    const mk = wonMonth(d);
-    if (!mk) continue;
-    const yr = mk.slice(0, 4);
-    const mi = Number(mk.slice(5, 7)) - 1;
-    const amt = wonAmt(d);
-    const y = (years[yr] ||= { total: 0, byTeam: {}, byOwner: {}, byTeamOwner: {}, byMonth: Array(12).fill(0) });
-    y.total += amt;
-    if (d.team) y.byTeam[d.team] = (y.byTeam[d.team] || 0) + amt;
-    if (d.ownerId) y.byOwner[d.ownerId] = (y.byOwner[d.ownerId] || 0) + amt;
-    if (d.team && d.ownerId) {
-      const inTeam = (y.byTeamOwner[d.team] ||= {});
-      inTeam[d.ownerId] = (inTeam[d.ownerId] || 0) + amt;
-    }
-    if (mi >= 0 && mi < 12) y.byMonth[mi] += amt;
-  }
-  return years;
+  // ⛔ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่ยอดขาย — ยอดที่นี่ถูกคัดลงประวัติถาวรผ่าน "เติมยอดจากระบบ"
+  return aggregateSystemActuals((deals || []).filter((d) => !isHistoricalDeal(d)));
 }
 
 // GET /api/sales-planning/history?years=2568,2569,2570

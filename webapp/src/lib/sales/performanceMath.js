@@ -41,8 +41,18 @@ const PENDING_KEYS = ['pendingApproval', 'pendingApprovalCount'];
       ⇒ เดือนที่จบแล้วมีค่านี้ได้ · และเดือนที่ Actual กรอกมือ (sales_history) ยอดของดีลพวกนี้
       อยู่ในตัวเลขที่กรอกแล้ว ⇒ `overlayHistory` ต้องล้างเส้นนี้ในช่องที่มันทับ Actual */
 const WON_AWAITING_KEYS = ['wonAwaitingSo', 'wonAwaitingSoCount'];
+/* ── "รอนับรายงวด" (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) ─────────────────────────────────
+   แถวทุกระดับถืออีกสองเส้น: `instRemaining` (ยอดประมาณก่อน VAT) · `instRemainingCount` (จำนวนดีล)
+   = งวดของใบสั่งขาย "Actual รายงวด" ที่ยังไม่ยื่น/ถูกตีกลับ (งวดที่ยื่นแล้วรอ AE Sup อยู่ในรออนุมัติแล้ว)
+   ⭐ server วางยอดนี้ที่ **เดือนครบกำหนดของงวด** · ไม่มีวันครบกำหนด/เลยกำหนดแล้ว = เดือนปัจจุบันเวลาไทย
+      ⇒ เดือนที่จบแล้วเป็น 0 เสมอ (เหมือนรออนุมัติ) · เดือนอนาคตมีได้
+   ⭐ **เส้นแยกจาก `actual` เสมอ** — เข้าได้แค่ `projected` กับบรรทัดแสดงผล · `overlayHistory` ไม่แตะ (เหมือนรออนุมัติ:
+      ยอดที่กรอกมือเป็นของเดือนที่จบแล้ว ส่วนกองนี้เป็นสถานะสดของงวดที่ยังไม่นับ)
+   🪤 ไม่มีเส้นนี้ = ใบรายงวดที่นับไปบางงวด ยอดงวดที่ยังไม่ถึงคิวหายจากยอดคาด ⇒ "คาดขาด" บวมเท่ายอดนั้น
+      (คลาสเดียวกับบั๊ก 14/09 Won รอยื่น SO) */
+const INST_REMAINING_KEYS = ['instRemaining', 'instRemainingCount'];
 /** เส้นแสดงผลที่ไม่ใช่ Actual ทั้งหมด — ตัวรวมใน buildMatrix/rowHasValue วนชุดเดียวกัน */
-const SIDE_KEYS = [...PENDING_KEYS, ...WON_AWAITING_KEYS];
+const SIDE_KEYS = [...PENDING_KEYS, ...WON_AWAITING_KEYS, ...INST_REMAINING_KEYS];
 
 /** แถวว่างของแกนหนึ่ง ๆ — ที่เดียวที่ประกาศว่าแถวมีเส้นอะไรบ้าง
  *  (เดิมเขียนซ้ำใน buildMatrix กับ overlayHistory ⇒ เส้นใหม่หลุดเงียบจากที่หนึ่งได้) */
@@ -58,6 +68,10 @@ const blankRow = (axis, size) => ({
   pendingApprovalCount: zeros(size),
   wonAwaitingSo: zeros(size),
   wonAwaitingSoCount: zeros(size),
+  instRemaining: zeros(size),
+  instRemainingCount: zeros(size),
+  /* id ของดีลในกอง "รอนับรายงวด" ต่อเดือน — ช่วงหลายเดือนนับดีลไม่ซ้ำ (windowStat) · ไม่ใช่เส้นตัวเลข ⇒ ไม่อยู่ใน SIDE_KEYS */
+  instRemainingDealIds: Array.from({ length: size }, () => []),
 });
 
 /** ปีของงวดเดือน — ใช้ตัดรอบทบยอด (ทบไม่ข้ามปีปฏิทิน) */
@@ -80,8 +94,9 @@ export function monthsOfDashboards(dashboards) {
 // เพื่อคงพฤติกรรมเดิมของผู้เรียกที่ยังคิดเป็นรายปี) · เดือนที่ไม่มีข้อมูลได้ 0
 //
 // ยอดรออนุมัติอ่านจากช่อง `pendingApproval` / `pendingApprovalCount` ของ totals ·
-// byOwner · byTeam (มติ 2026-09-11) และยอด Won รอยื่น SO จาก `wonAwaitingSo` /
-// `wonAwaitingSoCount` (มติ 2026-09-14) — payload เก่าที่ค้างใน apiCache ไม่มีช่องพวกนี้
+// byOwner · byTeam (มติ 2026-09-11) ยอด Won รอยื่น SO จาก `wonAwaitingSo` /
+// `wonAwaitingSoCount` (มติ 2026-09-14) และกอง "รอนับรายงวด" จาก `instRemaining` /
+// `instRemainingCount` (mig 0412) — payload เก่าที่ค้างใน apiCache ไม่มีช่องพวกนี้
 // ⇒ ได้ 0 ไม่ใช่ NaN
 export function buildMatrix(yearDashboards, { months } = {}) {
   const axis = (Array.isArray(months) && months.length)
@@ -92,6 +107,8 @@ export function buildMatrix(yearDashboards, { months } = {}) {
   const blank = () => blankRow(axis, size);
   const addPending = (target, source, mi) => {
     for (const key of SIDE_KEYS) target[key][mi] += Number(source?.[key] || 0);
+    const ids = source?.instRemainingDealIds;
+    if (Array.isArray(ids) && ids.length) target.instRemainingDealIds[mi].push(...ids.map(String));
   };
 
   const company = blank();
@@ -172,6 +189,8 @@ export function buildMatrix(yearDashboards, { months } = {}) {
    ⛔ ยอดรออนุมัติ (`pendingApproval*`) **ไม่ถูกทับ/ไม่ roll up จากที่นี่เด็ดขาด**
    (มติ 2026-09-11) — แถวประวัติถือแค่ Actual ที่กรอกมือ ส่วนรออนุมัติเป็นสถานะสดของ
    ใบสั่งขายเสมอ · แถวที่ overlay สร้างใหม่ได้เส้นรออนุมัติเป็นศูนย์ครบความยาวแกน
+   ⛔ กอง "รอนับรายงวด" (`instRemaining*` · mig 0412) กติกาเดียวกับรออนุมัติ — ไม่ถูกทับ ไม่ roll up
+   ไม่ถูกเขียนลง Actual · server วางมันที่เดือนปัจจุบัน/เดือนอนาคตเท่านั้น (เลยกำหนดพับเข้าเดือนปัจจุบัน)
 
    ⭐ ยอด Won รอยื่น SO (`wonAwaitingSo*` · มติ 2026-09-14) **ตามช่องของ Actual ทุกช่อง**
    เดือนที่ Actual กรอกมือ = ยอดขายจริงของเดือนนั้นครบแล้ว รวมดีลที่ยังไม่ออก SO ในระบบ
@@ -338,11 +357,19 @@ export function unallocatedRow(matrix) {
     // เหตุผลเดียวกัน — บรรทัด "Won รอยื่น SO" ก็โผล่เมื่อยอด > 0
     wonAwaitingSo: minus('wonAwaitingSo').map(roundSatang),
     wonAwaitingSoCount: minus('wonAwaitingSoCount'),
+    // เหตุผลเดียวกัน — บรรทัด "รอนับรายงวด" (mig 0412)
+    instRemaining: minus('instRemaining').map(roundSatang),
+    instRemainingCount: minus('instRemainingCount'),
+    // ดีลของบริษัทที่ไม่อยู่ในทีมไหนของเดือนนั้น — ชุดที่ตรงกับจำนวนข้างบน (windowStat นับดีลไม่ซ้ำข้ามเดือน)
+    instRemainingDealIds: Array.from({ length: size }, (_, i) => {
+      const inTeams = new Set((matrix.teams || []).flatMap((t) => t.instRemainingDealIds?.[i] || []));
+      return (company.instRemainingDealIds?.[i] || []).filter((id) => !inTeams.has(id));
+    }),
   };
 }
 
 /** แถวนี้มีอะไรให้แสดงไหมในช่วง [startIdx..endIdx] (ทุกค่าเป็น 0 = ซ่อนแถวทิ้ง)
- *  นับยอดรออนุมัติ + Won รอยื่น SO ด้วย — แถวที่มีแต่สองเส้นนี้ยังมีของให้ดู
+ *  นับยอดรออนุมัติ + Won รอยื่น SO + รอนับรายงวด ด้วย — แถวที่มีแต่เส้นเสริมยังมีของให้ดู
  *  (ใบรออนุมัติ 0 บาท / ดีลมูลค่าว่าง นับจากจำนวน) */
 export function rowHasValue(row, startIdx, endIdx) {
   const keys = ['target', 'fcTotal', 'forecast', 'actual', ...SIDE_KEYS];
@@ -433,9 +460,11 @@ export function closedCountOnAxis(months, now) {
 // `wonAwaitingSoCount` — `actual` · `diff` · `pct` · `carry` · `fcPct` ยังเป็น Actual/FC ล้วน
 //
 // ข้อยกเว้นเดียวที่ตั้งใจ: `projected` (ยอดคาดจบงวด)
-//   = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ
+//   = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ + รอนับรายงวด
 // ทุกช่วงชีวิตของดีลอยู่ในสูตรนี้ช่องเดียวเสมอ ยอดคาดจึงไม่วูบระหว่างทาง:
 //   เปิดอยู่ → FC คงเหลือ · Won ยังไม่ยื่น SO → Won รอยื่น SO · ยื่นแล้ว → รออนุมัติ · อนุมัติ → Actual
+//   ใบ "Actual รายงวด" (mig 0412): งวดที่นับแล้ว → Actual · งวดที่ยื่นแล้ว → รออนุมัติ · งวดที่ยังไม่ยื่น → รอนับรายงวด
+//   (สามกองของใบเดียวรวมกันเท่า actualAmount ของใบพอดี — ไม่มีส่วนไหนหล่นหรือนับซ้ำ)
 // ถ้าขาดช่องใดช่องหนึ่ง "คาดขาด" เกินจริงเท่ามูลค่าทั้งก้อน (ก.ย. 2026 ทีม KA เกินจริง 993,000
 // จากรออนุมัติ · 14/09 ดีล Won ที่ยังไม่ยื่น SO อีก 42 ดีล 2,659,950)
 // ⚠️ ทุกช่องเป็นมูลค่าเต็ม — FC คงเหลือ (`forecast` / API `weightedForecast`) **ไม่ได้ถ่วง
@@ -444,6 +473,22 @@ export function closedCountOnAxis(months, now) {
 // 👀 ผู้ใช้ `projected` ที่ **เรนเดอร์จริง** มีสองที่: บรรทัด "คาดจบงวด · คาดขาด" ของ
 // YearProgressBar กับช่องว่างถึงขีดต้องปิดของ ProgressBar (ตารางติดตาม) — `statusOf` ข้างล่าง
 // อ่านมันด้วยแต่ป้ายสถานะ **ไม่ได้ถูกวาดที่ไหนแล้ว** (ถอดคอลัมน์สถานะ 2026-08-03)
+/* จำนวนดีลในกอง "รอนับรายงวด" ของช่วง — **ดีลไม่ซ้ำ** (review 26/10): ดีลเดียวมีงวดค้างได้หลายเดือน (ใบบริการรายเดือน)
+   บวกจำนวนรายเดือน = ดีลเดียวขึ้น "· 11 ดีล" บนไตรมาส/ทั้งปี ขณะที่ลิ้นชักโชว์ดีลเดียว
+   · เดือนที่มี id = ใช้ชุด id (union ข้ามเดือน) · เดือนที่ไม่มี id แต่มีจำนวน (payload เก่าที่ค้างใน apiCache) = บวกจำนวนของเดือนนั้นตามเดิม */
+function instRemainingDealCount(row, startIdx, endIdx) {
+  const counts = row.instRemainingCount || [];
+  const idsByMonth = Array.isArray(row.instRemainingDealIds) ? row.instRemainingDealIds : [];
+  const ids = new Set();
+  let unknown = 0;
+  for (let i = Math.max(0, startIdx); i <= endIdx; i += 1) {
+    const slot = Array.isArray(idsByMonth[i]) ? idsByMonth[i] : [];
+    if (slot.length) slot.forEach((id) => ids.add(String(id)));
+    else unknown += Number(counts[i] || 0);
+  }
+  return ids.size + unknown;
+}
+
 export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount = 12 }) {
   const target = sumRange(row.target, startIdx, endIdx);
   const targetPersonSum = sumRange(row.targetPersonSum || [], startIdx, endIdx);
@@ -456,6 +501,8 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
   const pendingApprovalCount = sumRange(row.pendingApprovalCount || [], startIdx, endIdx);
   const wonAwaitingSo = sumRange(row.wonAwaitingSo || [], startIdx, endIdx);
   const wonAwaitingSoCount = sumRange(row.wonAwaitingSoCount || [], startIdx, endIdx);
+  const instRemaining = sumRange(row.instRemaining || [], startIdx, endIdx);
+  const instRemainingCount = instRemainingDealCount(row, startIdx, endIdx);
   return {
     target,
     targetPersonSum,
@@ -468,7 +515,9 @@ export function windowStat(row, { startIdx, endIdx, carryOn = true, closedCount 
     pendingApprovalCount,
     wonAwaitingSo,
     wonAwaitingSoCount,
-    projected: actual + pendingApproval + wonAwaitingSo + forecast,
+    instRemaining,
+    instRemainingCount,
+    projected: actual + pendingApproval + wonAwaitingSo + forecast + instRemaining,
     diff: actual - mustClose,
     pct: mustClose > 0 ? (actual / mustClose) * 100 : null,
     fcPct: mustClose > 0 ? (forecast / mustClose) * 100 : null,
@@ -510,7 +559,7 @@ export function statusOf(stat, { periodKind }) {
     return { key: 'missed', label: '✗ ขาด', tone: 'red', amount: short };
   }
   if (periodKind === 'current') {
-    // projected ของ windowStat นับรออนุมัติ (2026-09-11) + Won รอยื่น SO (2026-09-14) แล้ว — รูปผลลัพธ์ไม่เปลี่ยน
+    // projected ของ windowStat นับรออนุมัติ (2026-09-11) + Won รอยื่น SO (2026-09-14) + รอนับรายงวด (0412) แล้ว — รูปผลลัพธ์ไม่เปลี่ยน
     if (stat.projected >= stat.mustClose - 1e-9) {
       return { key: 'running_on_track', label: 'กำลังวิ่ง · คาดจบถึงเป้า', tone: 'green', amount: 0 };
     }

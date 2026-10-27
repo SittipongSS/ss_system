@@ -4,10 +4,13 @@ import { Target } from "lucide-react";
 import { windowStat, periodKindOf } from "@/lib/sales/performanceMath";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
-import { WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
+import { INSTALLMENT_REMAINING_LABEL, WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
 import {
   barBreakdown,
   FC_REMAINING_LABEL,
+  INST_REMAINING_SEG_CLASS,
+  INST_REMAINING_SWATCH_CLASS,
+  InstRemainingAmount,
   money,
   pctFmt,
   periodLabel,
@@ -19,7 +22,11 @@ import {
 
 // แถบความคืบหน้าเทียบเป้า — ทั้งบริษัท (ส่วนบนสุดของแท็บผลงานขาย).
 // ส่วนในแถบเรียงตามความแน่นอน: Actual (เขียว) | รออนุมัติ (เขียวจางลายเฉียง) |
-// Won รอยื่น SO (ส้มลายเฉียง) | FC คงเหลือ (ส้มจาง) — เทียบตำแหน่งขีด "เป้า(+ทบ)".
+// รอนับรายงวด (เขียวจางลายตั้ง · mig 0412) | Won รอยื่น SO (ส้มลายเฉียง) | FC คงเหลือ (ส้มจาง)
+// — เทียบตำแหน่งขีด "เป้า(+ทบ)".
+//
+// ⭐ รอนับรายงวด (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) — งวดของใบ "Actual รายงวด" ที่ยังไม่ยื่น
+// ลงเดือนครบกำหนด (เลยกำหนด/ไม่มีวัน = เดือนนี้) · อยู่ในยอดคาดอย่างเดียว ไม่เข้า % / ต้องปิด
 //
 // งวดมาจากแถบคุมด้านบน (`PeriodBar`) — การ์ดนี้ไม่มีตัวคุมเวลาของตัวเองแล้ว
 // (2026-08-12) ของเดิมเป็น `useState` แยกที่ล็อกอยู่ที่ "ตอนนี้" และไม่เข้า URL
@@ -41,6 +48,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carry,
   const kind = periodKindOf({ year, ...range }, now);
   const hasPending = stat.pendingApproval > 0 || stat.pendingApprovalCount > 0;
   const hasWonAwaiting = stat.wonAwaitingSo > 0 || stat.wonAwaitingSoCount > 0;
+  const hasInstRemaining = stat.instRemaining > 0 || stat.instRemainingCount > 0;
   // งวดที่จบแล้วไม่มีอะไรให้ "คาด" — งวดที่วิ่ง/ยังไม่ถึงพูดยอดคาดเสมอ ทั้งตอนขาดและตอนถึง
   const showProjection = kind !== "past";
   const scale = Math.max(stat.mustClose, stat.projected, 1);
@@ -59,6 +67,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carry,
           items={[
             { label: "Actual", color: "var(--green)" },
             ...(hasPending ? [{ label: PENDING_APPROVAL_LABEL, swatchClass: "perf-swatch-pending" }] : []),
+            ...(stat.instRemaining > 0 ? [{ label: INSTALLMENT_REMAINING_LABEL, swatchClass: INST_REMAINING_SWATCH_CLASS }] : []),
             ...(stat.wonAwaitingSo > 0 ? [{ label: WON_AWAITING_SO_LABEL, swatchClass: "perf-swatch-won" }] : []),
             { label: FC_REMAINING_LABEL, color: "var(--amber)" },
           ]}
@@ -73,11 +82,13 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carry,
             display: "flex", overflow: "hidden", height: 14,
             borderRadius: 8, background: "var(--panel-2)", border: "1px solid var(--border)",
             "--perf-pending-w": w(stat.pendingApproval),
+            "--perf-inst-w": w(stat.instRemaining),
             "--perf-won-w": w(stat.wonAwaitingSo),
           }}
         >
           <i style={{ display: "block", height: "100%", width: w(stat.actual), background: "var(--green)", transition: "width var(--motion-slow)" }} />
           {stat.pendingApproval > 0 && <i className="perf-seg-pending perf-seg-animated" />}
+          {stat.instRemaining > 0 && <i className={INST_REMAINING_SEG_CLASS} />}
           {stat.wonAwaitingSo > 0 && <i className="perf-seg-won perf-seg-animated" />}
           <i style={{ display: "block", height: "100%", width: w(stat.forecast), background: "var(--amber)", opacity: 0.75, transition: "width var(--motion-slow)" }} />
         </div>
@@ -93,6 +104,7 @@ export default function YearProgressBar({ matrix, year, now, closedCount, carry,
       <div style={{ marginTop: 10, fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
         Actual {money(stat.actual)} ({pctFmt(stat.pct)})
         {hasPending && <> · <PendingApprovalAmount inline className="perf-pending-inline" amount={stat.pendingApproval} count={stat.pendingApprovalCount} /></>}
+        {hasInstRemaining && <> · <InstRemainingAmount inline amount={stat.instRemaining} count={stat.instRemainingCount} /></>}
         {hasWonAwaiting && <> · <WonAwaitingSoAmount inline amount={stat.wonAwaitingSo} count={stat.wonAwaitingSoCount} /></>}
         {" "}· {FC_REMAINING_LABEL} {money(stat.forecast)} · ต้องปิด {money(stat.mustClose)}
         {carry && stat.carry > 0 && <> (เป้า {money(stat.target)} + ทบยกมา {money(stat.carry)})</>}

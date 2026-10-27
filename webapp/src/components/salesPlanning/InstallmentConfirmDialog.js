@@ -21,6 +21,10 @@
 //   ต่างแค่ "โหมด" ผ่าน props: ผลลัพธ์ชุดของใบย้อนหลัง (ไม่มีบรรทัด Rev./Actual · จ่ายถึง · งวดถัดไป) และแถวที่
 //   บัญชีต้องเห็นก่อนรับรองเงินที่เก็บมาก่อนเข้าระบบ: ใบผ่าน AE Sup แล้วหรือยัง · เก็บแล้วเท่าไรจากยอดใบ · หมายเหตุจาก SA
 //   ⚠️ แถว "อนุมัติใบ" **ขึ้นเสมอ** กับใบย้อนหลัง แม้ข้อมูลไม่มา (ขีด) — แถวที่หายไปเงียบ ๆ อ่านเหมือน "ไม่มีเรื่องต้องตรวจ"
+//
+// ⭐ **ใบ "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026)** — โหมดของโมดัลตัวเดิมเช่นกัน: บรรทัด Actual ของผลลัพธ์บอกว่า
+//   งวดนี้นับไปแล้วตอน AE Sup อนุมัติงวด (คำเดิม "ยอดเต็มตั้งแต่ใบอนุมัติ" เป็นเท็จกับใบนี้) + แถว "นับ Actual" (ยอดก่อน VAT · เดือน)
+//   · งวดที่ AE Sup ยังไม่อนุมัติรับรองไม่ได้ (ปุ่มดับ + เหตุ — ข้อความเดียวกับ trigger ของ 0412)
 import { Paperclip } from "lucide-react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -30,6 +34,10 @@ import { fmtDate, fmtMoney, fmtPercent, naText, NA } from "@/lib/format";
 import { FN_SERVICE_GATE_UNREAD_MODAL, paymentConfirmPrompt } from "@/lib/approvalPrompt";
 import { OPENING_INSTALLMENT_LABEL, isOpeningInstallment } from "@/lib/sales/historicalOrders";
 import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
+import {
+  installmentActualAutoCounted, installmentActualCountedLate, installmentActualLockReason, installmentActualMonth,
+} from "@/lib/sales/salesOrderActualMode";
+import { formatMonthLabel } from "@/lib/datePeriods";
 import styles from "./InstallmentConfirmDialog.module.css";
 
 /**
@@ -42,8 +50,13 @@ import styles from "./InstallmentConfirmDialog.module.css";
  * @param serviceZones จำนวนโซนของรอบขายที่มีผลของใบ (server นับ — GET ใบ `serviceTermZones` / แถวทะเบียน · PR-C C5)
  *                     0/ไม่รู้ = ไม่มีบรรทัดด่านเงินของนัดบริการ
  * @param serviceContractLinked ใบผูกสัญญาแล้วไหม — ไม่ส่ง = true (ไม่รู้ ⇒ ไม่พูดเรื่องสัญญา)
+ * @param actualMode แบบการนับ Actual ของใบ (mig 0412) — 'installment' = งวดนี้นับ Actual ไปแล้วตอน AE Sup อนุมัติงวด
+ *                   (ไม่ใช่ "ยอดเต็มตั้งแต่ใบอนุมัติ") · ไม่ส่ง = ทั้งใบ (คำเดิม)
+ * @param orderApprovedAt เวลาอนุมัติใบ — แยกงวด `so_approval` ที่นับตอนคลิกอนุมัติ (เวลาเท่ากันพอดี) ออกจากที่ปุ่มกู้ "นับงวด 1" นับทีหลัง
+ *                   (review รอบหก 27/10) · ไม่ส่ง = อ่าน `row.orderApprovedAt` (แถวทะเบียน) · ไม่รู้ = คำเดิม
  */
 export function installmentConfirmPrompt({
+  actualMode = 'order', orderApprovedAt = null,
   row, multi = false, historical = false, opening = isOpeningInstallment(row), outlook = null, orderStatus = null,
   serviceZones = 0, serviceContractLinked = true,
 } = {}) {
@@ -68,12 +81,33 @@ export function installmentConfirmPrompt({
     serviceGateHeld: outlook?.gateHeldBy
       ? { seq: outlook.gateHeldBy.seq, dueLabel: fmtDate(outlook.gateHeldBy.dueDate) }
       : null,
+    /* ใบ Actual รายงวด (mig 0412) — บรรทัด Actual บอกว่างวดนี้นับไปแล้วตอน AE Sup อนุมัติงวด + ยื่นงวดถัดไปได้หลังรับรอง
+       (ชื่องวดถัดไปมาจาก `nextInstallmentLabel` ข้างบน) · ทั้งใบ = คำเดิม
+       ⭐ บรรทัด "ยื่นงวดถัดไป" ขึ้นเฉพาะเมื่องวดถัดไปยังต้องยื่นจริง (ยังไม่ยื่น/ถูกตีกลับ) — งวดสุดท้าย · นับที่เหลือทั้งหมดแล้ว ·
+         งวดถัดไปยื่น/นับแล้ว = ไม่มีบรรทัดนี้ (review 26/10) */
+    actualMode,
+    nextNeedsActualSubmit: Boolean(next) && (next.actualStatus == null || next.actualStatus === "rejected"),
+    /* ทางที่งวดนี้ถูกนับ — บรรทัด Actual บอก "นับตอนไหน" ตามจริง (อนุมัติงวด · อนุมัติใบ · นับที่เหลือทั้งหมด · ระบบนับเอง — UAT FN 27/10 ข้อ 4)
+       ⚠️ แถวทะเบียนพก `actualApprovedVia`/`actualNote` (ledgerRow) · แถวบนแผงงวดคือแถวดิบของฐาน */
+    actualApprovedVia: row?.actualStatus === "approved" ? row?.actualApprovedVia || null : null,
+    actualAutoCounted: installmentActualAutoCounted(row),
+    /* 🐞 review รอบหก 27/10: `so_approval` ที่ลงเวลา **หลัง** เวลาอนุมัติใบ = ปุ่มกู้ "นับงวด 1"/"นับงวดที่ค้าง" (RPC ลงเวลาที่กด) ไม่ใช่คลิกอนุมัติ
+       (route ส่งเวลาอนุมัติให้ RPC ⇒ เท่ากันพอดี · Rev. ที่รับงวดนับแล้วมา = เวลาเก่ากว่า · ยกเงิน C2b ลอกเวลาของงวดที่ถูกแทน)
+       ⇒ บรรทัด Actual ไม่อ้าง "ตอนอนุมัติใบ" (แถว "นับ Actual" ของโมดัลเดียวกันโชว์เดือนที่กด) */
+    actualCountedLate: installmentActualCountedLate(row, orderApprovedAt ?? row?.orderApprovedAt ?? null),
     serviceZoneCount: serviceZones,
     serviceContractLinked,
     /* สถานะใบ (review UI-1) — ใบยกเลิก/ย้อนการอนุมัติ/Rev. ที่ยังไม่อนุมัติ พูดผลคนละชุดกับใบที่อนุมัติอยู่ (เงินค้าง · Actual) */
     orderStatus,
   });
 }
+
+/* แถว "นับ Actual" ของใบรายงวดที่ไม่ได้อนุมัติอยู่ — ตรงกับผลลัพธ์ของ pipelineConfirmEffects (ใบที่ยกเลิก/ย้อนอนุมัติไม่นับ Actual) */
+const ACTUAL_NOT_LIVE_TEXT = Object.freeze({
+  cancelled: "ไม่นับ — ใบยกเลิกแล้ว",
+  approval_revoked: "ไม่นับ — ใบถูกย้อนการอนุมัติ (รอออก Rev.)",
+  other: "ไม่นับ — ใบไม่ได้อยู่ในสถานะอนุมัติ",
+});
 
 /**
  * @param row        งวดที่จะรับรอง — ต้องมี `id` · `seq` · `label` · `amount` และควรมี
@@ -94,8 +128,11 @@ export default function InstallmentConfirmDialog({
   /* จำนวนโซน/ธงสัญญาของบรรทัดด่านเงิน (PR-C C5): ใบจาก GET ใบ (หน้าใบ) ก่อน แถวทะเบียนรอง (หน้าทะเบียนส่งทั้งสองทาง)
      ⚠️ GET อ่านรอบขายไม่ขึ้น = `serviceTermZones: null` ⇒ 0 ⇒ ไม่มีบรรทัด (ไม่ใช่ "0 โซน") — แต่โมดัลบอกว่าไม่รู้
         (`serviceTermZonesError` → แถบเหลืองใต้คำนำ · review 29/09) ไม่ปล่อยให้หน้าตาเหมือนใบที่ไม่มีโซน */
+  /* แบบการนับ Actual ของใบ (mig 0412): ใบจาก GET ใบ (หน้าใบ) ก่อน แถวทะเบียนรอง (`actualMode` ของ ledgerRow = แบบของใบ) — ไม่รู้ = ทั้งใบ (คำเดิม) */
+  const actualMode = order?.actualMode ?? row.actualMode ?? "order";
   const prompt = installmentConfirmPrompt({
-    row, multi, historical, opening, outlook, orderStatus: order?.status ?? row.orderStatus ?? null,
+    row, multi, historical, opening, outlook, actualMode, orderStatus: order?.status ?? row.orderStatus ?? null,
+    orderApprovedAt: order?.approvedAt ?? row.orderApprovedAt ?? null,
     serviceZones: Number(order?.serviceTermZones ?? row.serviceTermZones) || 0,
     serviceContractLinked: order?.serviceContractLinked ?? row.serviceContractLinked ?? true,
   });
@@ -110,6 +147,19 @@ export default function InstallmentConfirmDialog({
     fileName: file?.fileName || `หลักฐาน ${i + 1}`,
   }));
   const orderId = order?.id || row.orderId;
+  /* ⭐ ใบ Actual รายงวด (mig 0412): บัญชีรับรองได้หลัง AE Sup อนุมัติงวด (trigger ของ 0412 กันอีกชั้น) — โมดัลบอกว่างวดนี้นับ Actual
+     เท่าไร เดือนไหน · งวดที่ยังไม่อนุมัติ = แถวบอกเหตุ + ปุ่มยืนยันดับ (ผู้เรียกไม่ควรเปิดโมดัลนี้ให้งวดแบบนั้นอยู่แล้ว —
+     แผงงวด/คิวทะเบียนถามด่านเดียวกันก่อน) · ⚠️ ดับเฉพาะเมื่อแถวพก `actualStatus` มาจริง (แถวทะเบียนรุ่นที่ยังไม่พก = ไม่เดา)
+     ⛔ ใบที่ยกเลิกไม่ติดด่านนี้ (installmentActualPaymentGated · trigger ของ 0412 — รับรองแล้วคืนเงินได้ · review 26/10) */
+  const installmentActual = actualMode === "installment" && !historical;
+  /* 🐞 review รอบสอง 26/10: แถว "นับ Actual" เคยอ่านแค่แบบของใบ — ใบยกเลิก/ย้อนอนุมัติ (แบบค้างเป็นรายงวด) โชว์ "นับ Actual ฿x · เดือน"
+     ทั้งที่ผลลัพธ์ข้างล่างบอก "ใบนี้ไม่นับ Actual" · หรือ "ยังไม่อนุมัติงวด" ทั้งที่ไม่มีใครอนุมัติได้แล้ว ⇒ ใบที่ไม่ได้อนุมัติอยู่ = บอกว่าไม่นับ
+     (ไม่รู้สถานะใบ = ถือว่าอนุมัติอยู่ — คำเดิม) */
+  const orderStatus = order?.status ?? row.orderStatus ?? null;
+  const actualLive = !orderStatus || orderStatus === "approved";
+  const actualMonth = installmentActual && actualLive && row.actualStatus === "approved" ? installmentActualMonth(row, order) : null;
+  const orderCancelled = orderStatus === "cancelled";
+  const actualBlocked = installmentActual && !orderCancelled && "actualStatus" in row && row.actualStatus !== "approved";
 
   return (
     <Modal open={open} onClose={busy ? undefined : onClose} title={prompt.title} size="sm">
@@ -137,6 +187,19 @@ export default function InstallmentConfirmDialog({
           {/* ⚠️ คงเงื่อนไข falsy ของ `row.percent` ไว้ — งวดที่ไม่มีสัดส่วนต้องไม่โผล่ " · 0.00%" */}
           <dt>งวด</dt><dd>{naText(row.label)}{row.percent ? ` · ${fmtPercent(row.percent)}` : ""}</dd>
           <dt>ยอด</dt><dd className="mono">{fmtMoney(row.amount)}</dd>
+          {/* ใบ Actual รายงวด — ยอดก่อน VAT ที่งวดนี้นับเข้า Actual + เดือนที่นับ (เวลาไทย · GREATEST ของเวลาอนุมัติงวด/ใบ) */}
+          {installmentActual ? (
+            <>
+              <dt>นับ Actual</dt>
+              <dd>
+                {!actualLive
+                  ? <span className="cell-quiet">{ACTUAL_NOT_LIVE_TEXT[orderStatus] || ACTUAL_NOT_LIVE_TEXT.other}</span>
+                  : row.actualStatus === "approved"
+                    ? `${fmtMoney(row.actualAmount)} (ก่อน VAT)${actualMonth ? ` · ${formatMonthLabel(actualMonth)}` : ""}`
+                    : <span className="cell-quiet">ยังไม่อนุมัติงวด</span>}
+              </dd>
+            </>
+          ) : null}
           {/* เก็บแล้วรวมงวดนี้ เทียบยอดทั้งใบ — งวดยกมา = เงินทั้งก้อนที่เก็บไปก่อนเข้าระบบ (mock FnConfirm) */}
           {historical ? (
             <>
@@ -204,11 +267,12 @@ export default function InstallmentConfirmDialog({
 
         <p className={`${styles.detail} pre-line`}>{prompt.detail}</p>
 
+        {actualBlocked ? <StatusNotice tone="warning">{installmentActualLockReason(row, order)}</StatusNotice> : null}
         {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
 
         <div className={styles.actions}>
           <Button variant="quiet" onClick={onClose} disabled={busy}>ยกเลิก</Button>
-          <Button tone="primary" onClick={() => onConfirm(row)} disabled={busy} aria-busy={busy || undefined}>
+          <Button tone="primary" onClick={() => onConfirm(row)} disabled={busy || actualBlocked} aria-busy={busy || undefined}>
             {busy ? "กำลังบันทึก…" : prompt.confirmLabel}
           </Button>
         </div>

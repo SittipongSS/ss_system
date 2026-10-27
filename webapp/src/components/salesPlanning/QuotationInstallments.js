@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { TableScroll } from "@/components/ui/Table";
 
-import { CalendarClock, Lock, Plus, Trash2 } from "lucide-react";
+import { BadgeCheck, CalendarClock, Lock, Plus, Trash2 } from "lucide-react";
 import {
   MAX_INSTALLMENTS,
   computeInstallments,
@@ -10,9 +10,10 @@ import {
   paymentScheduleRows,
 } from "@/lib/sales/paymentPlan";
 import {
-  REPLAN_VAT_NOTE, monthlyDueDates, replanEvenAmounts, replanEvenPercents, replanSwitchUnit,
+  REPLAN_COUNTED_LABEL, REPLAN_VAT_NOTE, monthlyDueDates, replanEvenAmounts, replanEvenPercents, replanSwitchUnit,
 } from "@/lib/sales/installmentReplan";
 import Button from "@/components/ui/Button";
+import GatedAction from "@/components/ui/GatedAction";
 import ChoiceChips from "@/components/ui/ChoiceChips";
 import DateInput from "@/components/ui/DateInput";
 import Input from "@/components/ui/Input";
@@ -35,6 +36,7 @@ const DEFAULT_INSTALLMENTS = () => evenPercents(2).map((percent, index) => ({
    ⭐ ตัวแก้งวด **ตัวเดียว** ของระบบ (กฎ AGENTS.md: ฟอร์มเดียวหลายทางเรียก · ต่างกันแค่โหมดผ่าน props) —
      โหมดใบเสนอราคาแก้ "แผน" (สัดส่วนล้วน ไม่มีวัน) · โหมดนี้แก้ "งวดจริง" ของใบ SO:
        · แถวล็อก (มีเงิน/เอกสารผูก) อ่านอย่างเดียวพร้อมเหตุ — `lockOf(row)` ของกฎ AGENTS.md มาจาก lib (`row.lock`)
+       · งวดที่นับ Actual แล้ว (`row.counted` · มติเจ้าของข้อ 9 "ปรับยอด/วันได้ ลบไม่ได้") แก้ได้เหมือนแถวเปิด แต่ปุ่มลบบอกเหตุแทนการลบ
        · ใส่เป็นบาทหรือ % (ChoiceChips) · วันครบกำหนดรายงวด + ตัวช่วยรายเดือน · ช่วงครอบ (ใบสายบริการ)
        · ยอดรวมวิ่งเทียบยอดใบ "ต้องเท่ากันพอดี" + คงเหลือให้แบ่ง
    ⚠️ ข้อยกเว้นที่มีเหตุผลด้านข้อมูล: โหมดนี้ **ไม่มีสวิตช์ "แบ่งชำระ/เต็มจำนวน"** — งวดจริงของใบมีตัวตน (id · สถานะ · หลักฐาน)
@@ -175,6 +177,9 @@ function ReplanInstallments({
                     <td>
                       <Input value={entry.label || ""} placeholder={name} disabled={disabled} aria-label={`ชื่อ${name}`}
                         onChange={(event) => patchRow(index, { label: event.target.value })} />
+                      {row.counted ? (
+                        <StatusBadge size="sm" tone="info" icon={BadgeCheck} label={REPLAN_COUNTED_LABEL} />
+                      ) : null}
                     </td>
                     <td>
                       {entryUnit === "percent" ? (
@@ -209,7 +214,10 @@ function ReplanInstallments({
                         onChange={(event) => patchRow(index, { note: event.target.value })} />
                     </td>
                     <td>
-                      <Button iconOnly variant="quiet" tone="danger" size="sm" disabled={disabled}
+                      {/* งวดที่นับ Actual แล้ว: ปุ่มลบอยู่ที่เดิม กดแล้วบอกเหตุ (กติกา "ติดด่าน = โชว์แล้วบอกเหตุ") — ด่านเดียวกับ
+                          buildReplanRows/trigger ลบของ 0412 */}
+                      <GatedAction iconOnly variant="quiet" tone="danger" size="sm" disabled={disabled}
+                        blocker={row.counted ? REPLAN_COUNTED_LABEL : ""} blockerKind="info"
                         icon={<Trash2 size={14} aria-hidden="true" />} aria-label={`ลบ${name}`}
                         onClick={() => removeRow(index)} />
                     </td>

@@ -143,19 +143,25 @@ const code = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8')
   .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const HISTORY = '../../app/api/sales-planning/history/route.js';
+const SYSTEM_ACTUALS = './systemActuals.js';
 const MY_DASHBOARD = '../../app/api/sales-planning/my-dashboard/route.js';
 const TOTALS = './myDashboardTotals.js';
 const MY_TAB = '../../components/salesPlanning/dashboard/MyDashboardTab.js';
 
 test('history route (systemActuals → sales_history ถาวร) ต้องไม่อ่านยอดรออนุมัติเลย', () => {
+  /* ตัวรวมย้ายจาก route ไป lib/sales/systemActuals (mig 0412 · Actual รายเดือน) — ยามทั้งสองไฟล์ */
   const src = code(HISTORY);
-  for (const banned of [/pendingApproval/i, /soPending/, /pending_approval/, /splitSalesOrderAmounts/]) {
-    assert.doesNotMatch(src, banned, `history route ห้ามอ้าง ${banned} — ตัวช่วยวางเป้าจะแช่ยอดนั้นเป็น Actual`);
+  const lib = code(SYSTEM_ACTUALS);
+  for (const [name, text] of [['history route', src], ['systemActuals', lib]]) {
+    for (const banned of [/pendingApproval/i, /soPending/, /pending_approval/, /splitSalesOrderAmounts/, /instRemaining|soInst/]) {
+      assert.doesNotMatch(text, banned, `${name} ห้ามอ้าง ${banned} — ตัวช่วยวางเป้าจะแช่ยอดนั้นเป็น Actual`);
+    }
   }
-  // เดือน Won มาจากตัวกลาง ไม่ใช่สำเนาลำดับ fallback ของตัวเอง
-  assert.match(src, /import \{ wonMonthOf \} from '@\/lib\/sales\/dashboardMetrics'/);
-  assert.doesNotMatch(src, /monthKey\(d\.metadata\?\.wonMonth\)/, 'สำเนาลำดับเดือน Won กลับมาแล้ว');
-  assert.match(src, /const wonAmt = dealActualFromSalesOrders;/, 'ยอดต้องเป็น Actual จาก SO อนุมัติแล้วเท่านั้น');
+  assert.match(src, /return aggregateSystemActuals\(/);
+  // เดือนมาจากตัวกลาง (Actual รายเดือน · เดือน Won) ไม่ใช่สำเนาลำดับ fallback ของตัวเอง
+  assert.match(lib, /wonMonthOf,\s*\} from '@\/lib\/sales\/dashboardMetrics'/);
+  assert.doesNotMatch(lib, /monthKey\(d\.metadata\?\.wonMonth\)/, 'สำเนาลำดับเดือน Won กลับมาแล้ว');
+  assert.match(lib, /Object\.entries\(actualByMonthOf\(deal\)\)/, 'ยอดต้องเป็น Actual (รายเดือน) จาก SO อนุมัติแล้วเท่านั้น');
 });
 
 test('my-dashboard route: targetGap / wonValue มาจากตัวสรุปตัวเดียว · ไม่มีสำเนาเดือน Won · นาฬิกาไทย', () => {
@@ -176,10 +182,17 @@ test('my-dashboard route: targetGap / wonValue มาจากตัวสรุ
   assert.match(src, /businessDayKey\(l\.meetingAt\)/);
 });
 
-test('ตัวสรุป: targetGap = เป้า − Actual ล้วน · wonValue รวมจาก wonAmountOf เท่านั้น', () => {
+test('ตัวสรุป: targetGap = เป้า − Actual ล้วน · wonValue รวมจาก Actual รายเดือน (actualInPeriodOf) เท่านั้น', () => {
   const src = code(TOTALS);
   assert.match(src, /targetGap: Number\(target \|\| 0\) - wonValue,/);
-  assert.match(src, /const wonValue = wonDeals\.reduce\(\(sum, d\) => sum \+ wonAmountOf\(d\), 0\);/);
+  /* mig 0412: Actual ของงวด = ส่วนของ actualByMonth ที่ตกเดือนในงวด (ใบ "Actual รายงวด" แตกหลายเดือน)
+     ไม่ใช่ wonValue ทั้งก้อนของดีลที่ wonMonth อยู่ในงวด · ใบทั้งใบได้ค่าเท่าเดิม (actualMonthRollup.test) */
+  assert.match(src, /const wonValue = list\.reduce\(\(sum, d\) => sum \+ actualInPeriodOf\(d, inPeriod\), 0\);/);
+  assert.doesNotMatch(src, /wonAmountOf|wonMonthOf/, 'ห้ามกลับไปคัด wonMonth แล้วบวก wonValue ทั้งก้อน');
+  // กอง "รอนับรายงวด" เป็นช่องแยก ไม่เข้า wonValue / targetGap
+  for (const line of src.split('\n').filter((l) => /wonValue|targetGap/.test(l))) {
+    assert.doesNotMatch(line, /instRemaining/, `กองรอนับรายงวดปนเข้า Actual/ส่วนต่างเป้า: ${line.trim()}`);
+  }
   // เดือนของยอดรออนุมัติต้องมาจาก pendingApprovalMonthOf (เดือนไทยปัจจุบัน) ไม่ใช่ wonMonthOf
   assert.match(src, /monthInPeriod\(pendingApprovalMonthOf\(d, now\), period\)/);
   assert.doesNotMatch(src, /businessMonthKey|toISOString/, 'เดือนต้องมาจาก currentMonth (เวลาไทย) ผ่านตัวกลาง');
@@ -196,6 +209,15 @@ test('การ์ดยอดปิดได้: % และ ขาดอีก
   const strip = src.match(/<MetricStrip[\s\S]*?<\/MetricStrip>/);
   assert.ok(strip, 'หาแถบยอดไม่เจอ');
   assert.equal([...strip[0].matchAll(/<Metric\b/g)].length, 4, 'แถบยอดต้องมี 4 ช่องเท่าเดิม (รออนุมัติเป็นบรรทัดในหมายเหตุ)');
+  /* review รอบสาม 26/10 (มติข้อ 5): กอง "รอนับรายงวด" ที่ route ส่งมาต้องถูกวาด — บรรทัดในหมายเหตุของ "ยอดปิดได้" ใต้รออนุมัติ
+     ⛔ ไม่แตะ actual / targetGap / targetPct */
+  assert.match(src, /const instRemaining = Number\(data\?\.instRemaining \|\| 0\);/);
+  /* UAT 27/10 ข้อ 7: ขนาดเท่าหมายเหตุ (className .metricInst — `.sub` ของชิ้นกลางเป็น fs-5 ใหญ่กว่าบรรทัดข้าง ๆ) */
+  assert.match(strip[0], /<PendingApprovalAmount[\s\S]*?\/>\s*<InstRemainingAmount amount=\{instRemaining\} count=\{instRemainingCount\} className=\{tabStyles\.metricInst\} \/>/);
+  assert.match(code('../../components/salesPlanning/dashboard/MyDashboardTab.module.css'), /\.metricInst\.metricInst \{\s*font-size: inherit;/);
+  for (const line of src.split('\n').filter((l) => /\b(?:targetGap|targetPct|actual)\s*=/.test(l))) {
+    assert.doesNotMatch(line, /instRemaining/, `กองรอนับรายงวดปนเข้า Actual/เป้า: ${line.trim()}`);
+  }
 });
 
 /* 🐞 รอบตรวจ 2026-09-11: ฉบับแรกตั้งบรรทัดรออนุมัติเป็น nowrap + ellipsis แล้วเขียนว่า

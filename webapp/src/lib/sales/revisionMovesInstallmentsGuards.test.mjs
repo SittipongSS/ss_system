@@ -98,7 +98,7 @@ test('แผงงวดของใบ revised: บอกว่างวดย�
 
 test('โมดัลถอนคำรับรอง: คำอธิบายมาจาก installmentUnconfirmOutcome (ยอดเก็บแล้วที่ลด · "จ่ายถึง" ที่ถอย)', () => {
   const panel = code(PANEL);
-  assert.match(panel, /description=\{unconfirmFor \? installmentUnconfirmOutcome\(live\(unconfirmFor\.row\), saved, \{ serviceRounds: showCoverage \}\) : ""\}/);
+  assert.match(panel, /description=\{unconfirmFor \? installmentUnconfirmOutcome\(live\(unconfirmFor\.row\), saved, \{ serviceRounds: showCoverage, order \}\) : ""\}/);
   assert.doesNotMatch(read(PANEL), /ย้อนการอนุมัติ\/ออก Rev\. ได้อีกครั้ง/, 'คำเก่าเป็นเท็จตั้งแต่ PR1');
 });
 

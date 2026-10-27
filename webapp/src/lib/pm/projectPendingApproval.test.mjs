@@ -57,7 +57,9 @@ test('sumProjectRollups: โครงการที่ไม่มี rollup / 
     { dealsRollup: null },
     { dealsRollup: { fcTotal: 10, actual: 4, fcRemaining: 6, dealCount: 2 } }, // ไม่มีสองคีย์ใหม่
   ]);
-  assert.deepEqual(t, { fcTotal: 10, actual: 4, pendingApproval: 0, pendingApprovalCount: 0, fcRemaining: 6, deals: 2 });
+  assert.deepEqual(t, {
+    fcTotal: 10, actual: 4, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0, instRemainingCount: 0, fcRemaining: 6, deals: 2,
+  });
   assert.deepEqual(sumProjectRollups(), sumProjectRollups([]));
   assert.equal(sumProjectRollups(null).actual, 0);
 });
@@ -91,7 +93,7 @@ test('แถวดีล Won อ่าน Actual ตัวเดียวกั�
 
 test('แถวดีลเปิด/แพ้: FC ตามเดิม · ไม่มียอดรออนุมัติ (FC อยู่ใน FC คงเหลือแล้ว)', () => {
   const open = projectDealValue({ stage: 'quotation', projectValue: 20000, metadata: { soPendingAmount: 999, soPendingCount: 1 } });
-  assert.deepEqual(open, { closed: false, value: 20000, pendingApproval: 0, pendingApprovalCount: 0 });
+  assert.deepEqual(open, { closed: false, value: 20000, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0 });
   const lost = projectDealValue({ stage: 'lost', projectValue: 5000, metadata: {} });
   assert.equal(lost.closed, false);
   assert.equal(lost.value, 5000);
@@ -121,6 +123,29 @@ test('แถว SO: ค่าขอบ — ยอดติดลบ/ว่าง
   assert.equal(projectSalesOrderAmount(null).statusLabel, '');
 });
 
+/* review รอบสี่ 26/10 (mig 0412 · มติข้อ 5): ใบ "Actual รายงวด" ที่นับไปบางงวด — ส่วนที่ยังไม่ยื่นต้องโผล่บนหน้าโครงการเป็นกอง "รอนับรายงวด"
+   🐞 เดิม rollupDeals คิด instRemaining ไว้แต่ไม่มีจอไหนอ่าน ⇒ ใบ 1.2M ที่นับงวด 1 (100,000) ขึ้น Actual 100,000 เฉย ๆ อีก 1.1M หายจากหน้าโครงการ */
+const instWon = (over = {}) => ({
+  stage: 'won', dealType: 'NPD', projectValue: 1200000, wonValue: 100000,
+  metadata: { actualSource: 'sale_order', wonMonth: '2026-10', actualByMonth: { '2026-10': 100000 }, soInstRemainingByDue: { '2026-11': 600000, none: 500000 } },
+  ...over,
+});
+
+test('ใบรายงวด: KPI รวม + แถวดีลพก "รอนับรายงวด" แยกจาก Actual · นับดีลที่มีกองนี้', () => {
+  const t = sumProjectRollups([
+    { dealsRollup: rollupDeals([instWon(), { stage: 'quotation', dealType: 'NPD', projectValue: 30000 }]) },
+    { dealsRollup: rollupDeals([instWon({ wonValue: 50000, metadata: { actualSource: 'sale_order', soInstRemainingByDue: { '2026-12': 25000 } } })]) },
+    { dealsRollup: rollupDeals([pendingWon()]) },
+  ]);
+  assert.equal(t.actual, 150000, 'Actual = งวดที่นับแล้วเท่านั้น');
+  assert.equal(t.instRemaining, 1100000 + 25000);
+  assert.equal(t.instRemainingCount, 2, 'สองดีลมีกองรอนับรายงวด');
+  assert.equal(t.pendingApproval, 108000, 'กองรออนุมัติไม่ปน');
+  const v = projectDealValue(instWon());
+  assert.deepEqual([v.closed, v.value, v.instRemaining], [true, 100000, 1100000]);
+  assert.equal(projectDealValue(pendingWon()).instRemaining, 0, 'ใบทั้งใบ = ไม่มีกองนี้');
+});
+
 /* ── ด่านซอร์ส: สองจอต้องเดินผ่านตัวกลาง ─────────────────────────────── */
 const HUB = 'src/components/pm/ProjectDealsHub.js';
 const LIST = 'src/app/sa/projects/page.js';
@@ -134,6 +159,9 @@ test('ProjectDealsHub: แถวดีลไม่อ่าน wonValue ดิ�
   assert.doesNotMatch(src, /draft: "ร่าง"/, 'ป้ายสถานะ SO มาจาก SALES_ORDER_STATUS_LABELS');
   assert.match(src, /<PendingApprovalAmount\b/);
   assert.match(src, /hint=\{hasPendingApproval\(r\)/, 'KPI Actual มีบรรทัดรองรออนุมัติ');
+  // review รอบสี่: กอง "รอนับรายงวด" บน KPI และแถวดีล (ชิ้นกลาง InstRemainingAmount)
+  assert.match(src, /<InstRemainingAmount amount=\{r\.instRemaining\} count=\{r\.instRemainingCount\} \/>/);
+  assert.match(src, /\{closed && <InstRemainingAmount amount=\{instRemaining\} \/>\}/);
 });
 
 test('/sa/projects: KPI + แถวใช้ชิ้นกลาง · ไม่เพิ่มคอลัมน์ · Actual ไม่บวกยอดรออนุมัติ', () => {

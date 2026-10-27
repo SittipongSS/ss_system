@@ -16,3 +16,11 @@
   font-size: inherit;
   white-space: normal;
 }
+
+/* ยอด "รอนับรายงวด" (InstRemainingAmount · mig 0412) ในหมายเหตุเดียวกัน — เหตุผลเดียวกับ .metricPending ข้างบน
+   🐞 UAT 27/10 ข้อ 7: `.sub` ของชิ้นกลางตั้ง fs-5 (บรรทัดรองในตาราง) ⇒ ใหญ่กว่า "ขาดอีก"/"รออนุมัติ" ข้าง ๆ ชัดเจน
+   ⭐ ซ้อนสองคลาส (0,2,0) ชนะ `.sub` ของ instRemaining.module.css (0,1,0) โดยไม่ขึ้นกับลำดับ chunk */
+.metricInst.metricInst {
+  font-size: inherit;
+  white-space: normal;
+}

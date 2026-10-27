@@ -19,6 +19,7 @@ import Toast, { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
+import OptionTiles from "@/components/ui/OptionTiles";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
@@ -77,6 +78,7 @@ import { isSalesOrderSelfApproval } from "@/lib/sales/salesOrderApprovalOverride
 // ลงจอ ทั้งที่หน้าดีล/คิวใช้ป้ายไทยกันหมด (ดู lib/salesPlanning.js)
 import { STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
+import { keepPhrases } from "@/components/ThaiText";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -124,8 +126,18 @@ import CountBadge from "@/components/ui/CountBadge";
 import { serviceContractHeadline } from "@/lib/sales/serviceContractLink";
 import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import {
-  cancelledMoneyRestoreBlock, installmentReportDoneMessage, installmentVoid, paymentRollup, salesOrderMoneyOutcome,
+  cancelledMoneyRestoreBlock, installmentReportDoneMessage, installmentVoid, paymentRollup, previewInstallments, salesOrderMoneyOutcome,
 } from "@/lib/sales/salesOrderPayments";
+/* ⭐ นับ Actual ทั้งใบ / รายงวด (mig 0412 · มติเจ้าของ 26/10/2026 · docs/so-installment-actual.md) — กติกาทั้งหมดอยู่ที่ไฟล์นี้ไฟล์เดียว
+   (สิทธิ์เลือกแบบ · งวดที่นับทันที · ส่วนแบ่งก่อน VAT คู่กับ SQL) · หน้านี้แค่วาดตัวเลือก/ผลลัพธ์ แล้วส่ง `actualMode` ไปกับการอนุมัติ */
+import {
+  ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_ORDER, INSTALLMENT_ACTUAL_START_LABEL, INSTALLMENT_ACTUAL_START_LEFT_LABEL, actualModeEligibility,
+  installmentActualCountRestDone, installmentActualNextStep, installmentActualProgress,
+  installmentActualStartPreview, isInstallmentActualOrder, nextSubmittableInstallment, salesOrderCountedActual,
+  salesOrderRemainingActual, salesOrderSubmittedActual,
+} from "@/lib/sales/salesOrderActualMode";
+import { installmentCountAtFreeze } from "@/lib/sales/salesOrderActualRoute";
+import { INSTALLMENT_REMAINING_LABEL } from "@/lib/sales/dashboardMetrics";
 import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
 import { CARRY_DONE_MESSAGE } from "@/lib/sales/installmentCarry";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
@@ -193,10 +205,126 @@ const ACTION_MESSAGE = {
      ⚠️ `finance_reject`/`finance_resubmit` ถอดออกแล้ว (มติ 2026-08-30: ไม่มีตีกลับทั้งใบ) */
   finance_approve: "ปิดใบสั่งขายแล้ว",
   // ⚠️ ข้อความเดียวใช้ได้ทั้งผูกและถอด — ตัวการ์ดโชว์ผลลัพธ์จริงอยู่แล้วหลังโหลดใหม่
+  /* นับ Actual รายงวด (mig 0412) — คำสั่งระดับใบจากการ์ดการชำระ (ผู้อนุมัติ) */
+  /* ข้อความสำรองเท่านั้น — ข้อความจริงประกอบจากงวดที่ route นับได้ (`counted` · `countedSeqs` — actualStartToast) */
+  actual_start: "นับ Actual งวดที่ค้างแล้ว — งวดถัดไปนับเมื่อ AE Sup อนุมัติงวด",
+  actual_count_rest: "นับ Actual ที่เหลือทั้งหมดแล้ว — เงินยังเก็บตามงวดเดิม",
   set_service_contract: "อัปเดตสัญญาของใบแล้ว",
   set_service_rounds: "บันทึกจำนวนรอบบริการแล้ว",
   set_delivery_due: "บันทึกกำหนดส่งสินค้าแล้ว",
 };
+
+/* ── นับ Actual ทั้งใบ / รายงวด ตอนอนุมัติ (mig 0412 · มติเจ้าของ 26/10/2026) ───────────────────────────────────────────
+   ⭐ ป้ายปุ่มยืนยันบอกผลของแบบที่เลือก (กติกาโมดัลอนุมัติ #1223) · ปุ่มหลักบนการ์ดจัดการยังเป็น "อนุมัติและนับ Actual" (เลือกแบบในโมดัล)
+   ⭐ อนุมัติแบบรายงวด: route ตรึงงวดแล้วนับงวดแรกต่อ (start RPC) — ขั้นนั้นล้ม = ใบอนุมัติแล้วแต่ยังไม่มีงวดไหนนับ
+     ⇒ ทักโทนเตือนพร้อมทางกู้ (ปุ่ม "นับงวด 1" บนการ์ดการชำระ · ผู้อนุมัติเท่านั้น) */
+const APPROVE_CONFIRM_ORDER_LABEL = "อนุมัติและนับ Actual";
+/* มติข้อ 10 (review รอบสี่ 26/10): Rev. ของใบที่กด "นับที่เหลือทั้งหมด" แล้ว — อนุมัติแบบรายงวด = นับทุกงวดที่ค้าง ไม่มีการยื่น/อนุมัติทีละงวด
+   ⇒ แผ่น/ปุ่ม/ทักต้องไม่สัญญา "งวดถัดไป ยื่น → AE Sup อนุมัติ" (installmentActualCountRestDone ของงวดก่อนอนุมัติ) */
+const APPROVE_CONFIRM_COUNT_REST_LABEL = "อนุมัติและนับ Actual ที่ค้างทั้งหมด";
+/* ป้ายปุ่มยืนยันของแผ่นรายงวด — งวดที่ขั้นนับตอนอนุมัติจะนับ **จริง** (`plan.start` = installmentActualStartPreview ภาพเดียวกับรายการผลลัพธ์)
+   🐞 UAT 27/10 ข้อ 10: เดิมตายตัว "อนุมัติและนับ Actual งวด 1" แม้ใบ Rev. ที่งวดต้น ๆ นับไว้ก่อนย้อนอนุมัติ (ไม่มีงวดใหม่ให้นับ — มติข้อ 7)
+      หรือขั้นนี้นับหลายงวด (งวด 1 + งวด 0 บาท/งวดที่รับรองเงินแล้ว)
+   ⭐ ใบก่อนหน้ากดนับที่เหลือทั้งหมด = "…ที่ค้างทั้งหมด" (คงเดิม) · ไม่มีงวดใหม่ = "(นับ Actual รายงวด)" · งวดเดียว = "งวด n" · หลายงวด = "n งวด"
+   · `override` = ปุ่มของโมดัล Admin Override (ขึ้นต้น "ยืนยัน Override") — สองโมดัลพูดตรงกัน */
+const approveInstallmentConfirmLabel = (plan, { override = false } = {}) => {
+  const head = override ? "ยืนยัน Override" : "อนุมัติ";
+  const counted = `${head}${override ? " " : ""}และนับ Actual`;
+  if (plan?.countRestDone) return override ? `${counted} ที่ค้างทั้งหมด` : APPROVE_CONFIRM_COUNT_REST_LABEL;
+  const seqs = (Array.isArray(plan?.start?.rows) ? plan.start.rows : []).map((row) => row.seq);
+  if (!seqs.length) return `${head} (นับ Actual รายงวด)`;
+  return `${counted} ${seqs.length === 1 ? `งวด ${seqs[0]}` : `${fmtNumber(seqs.length)} งวด`}`;
+};
+const APPROVE_INSTALLMENT_COUNT_REST_TOAST = "อนุมัติ SO แล้ว · นับ Actual งวดที่ค้างครบแล้ว — ใบนี้นับทั้งก้อนต่อ ไม่ต้องยื่นรายงวด";
+/* ทักหลังอนุมัติแบบรายงวด — งวดที่ route นับได้จริง (`installmentActualCounted.seqs`) ไม่ใช่ "งวด 1" ตายตัว (review รอบสี่)
+   🐞 review รอบห้า 27/10: ขั้นนับนับ 0 งวดได้ตามจริง (ใบ Rev. ที่งวดต้น ๆ นับไว้ก่อนย้อนการอนุมัติ — มติข้อ 7) แต่ทักเคยถอยไป
+      "นับ Actual งวด 1 แล้ว" ตายตัว ⇒ ประกอบจากงวดที่เพิ่งนับ (route) + งวดที่เคยนับกลับมาเป็น Actual เดือนนี้ (ภาพเดียวกับโมดัล —
+      approveActualLines) · "งวดถัดไป…" เฉพาะเมื่อยังเหลืองวดให้นับ · ไม่มีถ้อยคำตายตัวให้ถอยไปอีก
+   ⚠️ `rows` = งวดของใบ **ก่อนกด** (closure ของ requestAction) · ใบยังไม่มีงวด (ตั้งตอนอนุมัติ) = ถือว่ายังเหลือ (รายงวดต้อง ≥ 2 งวด)
+   ⭐ ขั้นนับล้ม = บอกแค่ว่าอนุมัติแล้ว (ทักเตือนแยกพาไปทางกู้) */
+const approveInstallmentToast = (data, { rows = [], countRestDone = false } = {}) => {
+  if (data?.installmentActualStartFailed) {
+    return data.installmentActualAlreadyCounted ? "อนุมัติ SO แล้ว — งวดที่ค้างตอนอนุมัติยังไม่ได้นับ" : "อนุมัติ SO แล้ว — ยังไม่ได้นับ Actual งวด 1";
+  }
+  if (countRestDone) return APPROVE_INSTALLMENT_COUNT_REST_TOAST;
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  const seqs = (Array.isArray(data?.installmentActualCounted?.seqs) ? data.installmentActualCounted.seqs : []).map(Number);
+  const back = list.filter((row) => row.actualStatus === "approved").map((row) => Number(row.seq))
+    .filter((seq) => !seqs.includes(seq)).sort((a, b) => a - b);
+  const left = !list.length || list.some((row) => row.actualStatus !== "approved" && !seqs.includes(Number(row.seq)));
+  return [
+    "อนุมัติ SO แล้ว",
+    seqs.length ? `นับ Actual งวด ${seqs.join(", ")} แล้ว` : null,
+    back.length ? `งวด ${back.join(", ")} ที่เคยนับก่อนย้อนการอนุมัติกลับมาเป็น Actual เดือนนี้` : null,
+  ].filter(Boolean).join(" · ") + (left ? " — งวดถัดไปนับเมื่อ AE Sup อนุมัติแต่ละงวด" : "");
+};
+/* ใบงานบริการที่อนุมัติแบบรายงวด (มติข้อ 6 · review รอบห้า 27/10): ทักงานบริการเดิมพูด "นับ Actual แล้ว" (ทั้งใบ) ⇒ ใบรายงวดใช้ทักรายงวด
+   แล้วต่อท้ายเรื่องงานบริการ — ข้ามการตั้งตอนยื่น = ยังไม่ส่ง TS · ฐานเปิดโซนให้ TS = จำนวนโซน · ใบอื่น = ไม่ต่อ */
+const approveServiceSuffix = (deferred, termsOpened) => (deferred
+  ? SERVICE_DEFERRED_TEXT.approvedInstallmentSuffix
+  : termsOpened > 0 ? ` · เปิดงานบริการ ${fmtNumber(termsOpened)} โซนให้ TS` : "");
+const APPROVE_INSTALLMENT_START_FAILED_TOAST = "อนุมัติ SO แล้ว แต่ยังนับ Actual งวด 1 ไม่สำเร็จ — "
+  + "เปิดแท็บการชำระแล้วกด “นับงวด 1” บนการ์ดการชำระ (ผู้อนุมัติ) เพื่อนับอีกครั้ง";
+/* ใบยังไม่มีงวด (ตัวหยุดยอดล้มหลังอนุมัติ · route ตอบ `installmentActualNoRows`) — ปุ่ม "นับงวด 1" โชว์เมื่อใบมีงวดแล้ว ⇒ บอกสองขั้น
+   · ระหว่างนั้นยอดทั้งใบอยู่กอง "รอนับรายงวด" (ไม่หายจากยอดคาดการณ์ · 0412 _deal_so_actual_extras) */
+const APPROVE_INSTALLMENT_NO_ROWS_TOAST = "อนุมัติ SO แล้ว แต่ใบยังไม่มีงวดชำระ — ยังไม่ได้นับ Actual งวด 1: "
+  + "เปิดแท็บการชำระ กด “เริ่มติดตามการชำระ” แล้วกด “นับงวด 1” (ผู้อนุมัติ)";
+/* ขั้นนับล้มบนใบที่มีงวดนับแล้ว (ใบ Rev. ที่งวด 1 ยกมานับไว้ · route ตอบ `installmentActualAlreadyCounted`) — งวด 1 นับแล้วจริง
+   ⇒ ห้ามพูดว่า "ยังนับงวด 1 ไม่สำเร็จ" · ปุ่มกู้ชื่อ "นับงวดที่ค้าง" (installmentActualStartButtonLabel) — review รอบสอง 26/10 */
+const APPROVE_INSTALLMENT_START_LEFT_TOAST = "อนุมัติ SO แล้ว แต่ขั้นนับงวดที่ค้างตอนอนุมัติ (งวดที่รับรองเงินแล้ว/งวด 0 บาท) ไม่สำเร็จ — "
+  + `เปิดแท็บการชำระแล้วกด “${INSTALLMENT_ACTUAL_START_LEFT_LABEL}” บนการ์ดการชำระ (ผู้อนุมัติ)`;
+/* ตัวหยุดยอดล้มตอนอนุมัติ (route ตอบ `installmentFreezeFailed` · review รอบสาม 26/10) — route **ไม่นับ** เมื่อตรึงงวดไม่ครบ
+   (งวดที่ไม่ตรึงแจ้งสลิป/รับรองเงินไม่ได้) ⇒ ปุ่มกู้ตรึงงวดก่อนนับ · ป้ายปุ่มตามงวดที่ค้าง */
+const approveFreezeFailedToast = (alreadyCounted) => "อนุมัติ SO แล้ว แต่ตรึงงวดชำระไม่ครบ — ยังไม่ได้นับ Actual: "
+  + `เปิดแท็บการชำระแล้วกด “${alreadyCounted ? INSTALLMENT_ACTUAL_START_LEFT_LABEL : INSTALLMENT_ACTUAL_START_LABEL}” บนการ์ดการชำระ`
+  + " (ผู้อนุมัติ · ตรึงงวดแล้วนับ)";
+/* ผลของปุ่มกู้ "นับงวด 1"/"นับงวดที่ค้าง" (action `actual_start`) — บอกงวดที่นับได้จริง · นับ 0 (อีกแท็บนับไปก่อน) = บอกตามจริง
+   🐞 review รอบสาม 26/10: เดิมขึ้น "นับ Actual งวดแรกแล้ว" ตายตัว แม้นับงวด 3 หรือไม่ได้นับอะไรเลย */
+/* review รอบสี่ 26/10: ใบที่กด "นับที่เหลือทั้งหมด" แล้ว (มติข้อ 10) ไม่มี "AE Sup อนุมัติงวด" อีก · ปุ่มกู้ตรึงงวดแล้วไม่มีอะไรให้นับ (`frozeInstallments`)
+   = บอกว่าตรึงแล้ว ไม่ใช่ "ไม่มีงวดค้างให้นับ" เฉย ๆ */
+const actualStartToast = (data, countRestDone = false) => {
+  if (Number(data?.counted) > 0) {
+    return `นับ Actual งวด ${(Array.isArray(data?.countedSeqs) ? data.countedSeqs : []).join(", ")} แล้ว — `
+      + (countRestDone ? "ใบนี้นับทั้งก้อน ไม่ต้องยื่นรายงวด" : "งวดถัดไปนับเมื่อ AE Sup อนุมัติงวด");
+  }
+  return data?.frozeInstallments
+    ? "ตรึงงวดชำระแล้ว — ไม่มีงวดค้างให้นับ · ยื่น/อนุมัตินับงวดและแจ้งสลิปได้ตามปกติ"
+    : "ไม่มีงวดค้างให้นับ — งวดเหล่านี้นับ Actual ไปแล้ว";
+};
+
+/* ตัวเลือก "นับ Actual ทั้งใบ / รายงวด" ในโมดัลอนุมัติ (ปกติ + Admin Override) — **สองแผ่นให้เห็นครบ ไม่ใช่ดรอปดาวน์**
+   (docs/form-design-rules.md §3 · ชุดตายตัว 2 ตัวเลือก = OptionTiles)
+   ⭐ เลือกรายงวดไม่ได้ = แผ่นจาง + เหตุเป็นตัวหนังสือใต้แผ่น (`actualModeEligibility` ตัวเดียวกับ route) — ไม่ซ่อนแผ่น
+     (ผู้อนุมัติต้องรู้ว่ามีตัวเลือกนี้และทำไมใบนี้ใช้ไม่ได้) */
+function ActualModeChoice({ value, onChange, eligibility, disabled = false }) {
+  const eligible = Boolean(eligibility?.eligible);
+  return (
+    <div className="form-field">
+      <span className="form-field-label">นับ Actual แบบไหน</span>
+      <OptionTiles
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        ariaLabel="แบบการนับ Actual ของใบนี้"
+        options={[
+          { value: ACTUAL_MODE_ORDER, label: "นับ Actual ทั้งใบ", description: "ยอดทั้งใบเข้า Actual เดือนนี้" },
+          {
+            value: ACTUAL_MODE_INSTALLMENT,
+            label: "นับ Actual รายงวด",
+            /* มติข้อ 10: Rev. ของใบที่กด "นับที่เหลือทั้งหมด" แล้ว — ไม่มีการยื่นรายงวด (eligibility.countRestDone · review รอบสี่) */
+            description: !eligible
+              ? "ใบนี้เลือกไม่ได้"
+              : eligibility?.countRestDone
+                ? "ใบก่อนหน้ากดนับที่เหลือทั้งหมดแล้ว — งวดที่ยังไม่นับนับให้เดือนนี้ทั้งหมด · ไม่ต้องยื่นรายงวด (มติข้อ 10)"
+                : "งวด 1 เข้าเดือนนี้ · งวดถัดไป ยื่น → AE Sup อนุมัติ → แจ้งสลิป → บัญชีรับรอง",
+            disabled: !eligible,
+          },
+        ]}
+      />
+      {eligibility && !eligible ? <p className="form-note">{eligibility.reason}</p> : null}
+    </div>
+  );
+}
 
 /* ── งานบริการย้อนหลังของใบที่อนุมัติแล้ว (ภาคผนวก A.5) — ข้อความทักหลังทำรายการสำเร็จ ── */
 const SERVICE_BACKFILL_TOAST = {
@@ -272,6 +400,8 @@ export default function SalesOrderDetailPage() {
      ถ้าอ่านจาก state ตรง ๆ จะส่งค่าว่างเสมอ (คนพิมพ์แล้วเหตุผลหายเงียบ) */
   const [overrideReason, setOverrideReason] = useState("");
   const overrideReasonRef = useRef("");
+  /* แบบการนับ Actual ที่เลือกในโมดัลอนุมัติ (mig 0412) — ref คู่ `confirmState.actualMode` (ดู chooseApproveActualMode) */
+  const approveActualModeRef = useRef(ACTUAL_MODE_ORDER);
   const [filingState, setFilingState] = useState({
     loading: true,
     filing: null,
@@ -511,6 +641,14 @@ export default function SalesOrderDetailPage() {
        · ใช้ทักกลางของแอป เพราะทาง revise พาไปหน้าใบใหม่ทันที ทักของหน้านี้จะหายไปกับหน้า */
     const warning = responseWarningText(data);
     if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
+    /* ⭐ อนุมัติแบบ Actual รายงวด (mig 0412): ใบอนุมัติแล้ว แต่ขั้นนับงวดแรก (start RPC — คำขอแยกหลังตรึงงวด) ล้ม
+       ⇒ ทักโทนเตือนพร้อมทางกู้ ไม่กลืนไปกับ "อนุมัติแล้ว" · ทักกลางของแอปค้างนานพอให้อ่านจบ (RESPONSE_WARNING_TOAST) */
+    if (action === "approve" && data?.installmentActualStartFailed) {
+      notifyToast.warning(data.installmentActualNoRows ? APPROVE_INSTALLMENT_NO_ROWS_TOAST
+        : data.installmentFreezeFailed ? approveFreezeFailedToast(data.installmentActualAlreadyCounted)
+          : data.installmentActualAlreadyCounted ? APPROVE_INSTALLMENT_START_LEFT_TOAST : APPROVE_INSTALLMENT_START_FAILED_TOAST,
+        RESPONSE_WARNING_TOAST);
+    }
     if (action === "revise" && data?.id) {
       setBusy("");
       setToast({ kind: "success", msg: ACTION_MESSAGE.revise });
@@ -521,8 +659,10 @@ export default function SalesOrderDetailPage() {
     if (action === "submit") setSubmitIssues(null);
     await load();
     setBusy("");
+    /* ใบที่อนุมัติโดยข้ามการตั้งงานบริการ (mig 0404) — ตัดสินจากแถวที่ route คืน (ดูคอมเมนต์ของ msg) · ใช้ทั้งกิ่งรายงวดและกิ่งงานบริการ */
+    const approvedDeferred = action === "approve" && setupRequired && serviceSetupDeferred(data)?.stage === "approved";
     setToast({
-      kind: action === "withdraw" ? "info" : "success",
+      kind: action === "withdraw" || (action === "actual_start" && !(Number(data?.counted) > 0)) ? "info" : "success",
       /* ⚠️ ข้อความของใบปกติพูดว่า "อัปเดต Actual แล้ว" ซึ่งไม่จริงกับใบย้อนหลังสักตัวอักษร —
          ของใบนี้บอกสิ่งที่เกิดจริง (อนุมัติ: เอกสารแทนสัญญาได้เลข CT · งวดขึ้นคิวบัญชี · โซนขึ้นคิว TS ·
          ยกเลิก: สัญญาถูกยกเลิกตาม · งวดยกมาเป็นโมฆะ · ทางคีย์ใหม่ — จากคำตอบของ route · มติ 24/09)
@@ -532,10 +672,19 @@ export default function SalesOrderDetailPage() {
             ตามปกติ แถวที่คืนจะประทับแล้ว ⇒ ตกไปกิ่ง "เปิดงานบริการ n โซนให้ TS" เอง · ยื่นแบบข้าม = ทักว่าข้ามไว้ ตั้งได้หลังอนุมัติ */
       msg: (action === "approve" && isHistoricalOrder(order)
         ? HISTORICAL_APPROVE_TOAST
-        : action === "approve" && setupRequired && serviceSetupDeferred(data)?.stage === "approved"
-          ? SERVICE_DEFERRED_TEXT.approvedToast
-          : action === "approve" && Number(data?.termsOpened) > 0
-            ? `อนุมัติแล้ว · เปิดงานบริการ ${fmtNumber(Number(data.termsOpened))} โซนให้ TS`
+        /* ใบที่เลือก "นับ Actual รายงวด" (mig 0412) — ข้อความทั้งใบ ("อัปเดต Actual แล้ว") ไม่จริง: นับเฉพาะงวดที่นับได้ตอนอนุมัติ
+           · ขั้นนับล้ม = ทักเตือนข้างบนพาไปทางกู้ ที่นี่บอกแค่ว่าใบอนุมัติแล้ว
+           🐞 review รอบห้า 27/10 (มติข้อ 6): กิ่งนี้มาก่อนกิ่งงานบริการ — ทักของใบที่ข้ามการตั้งงานบริการพูด "นับ Actual แล้ว" (ทั้งใบ)
+              ⇒ ใบงานบริการแบบรายงวดได้ทักรายงวด + ท้ายเรื่องงานบริการ (approveServiceSuffix) */
+        : action === "approve" && payload.actualMode === ACTUAL_MODE_INSTALLMENT
+          ? approveInstallmentToast(data, { rows: installments, countRestDone: installmentActualCountRestDone(installments) })
+            + approveServiceSuffix(approvedDeferred, Number(data?.termsOpened) || 0)
+          : approvedDeferred
+            ? SERVICE_DEFERRED_TEXT.approvedToast
+            : action === "approve" && Number(data?.termsOpened) > 0
+              ? `อนุมัติแล้ว · เปิดงานบริการ ${fmtNumber(Number(data.termsOpened))} โซนให้ TS`
+            : action === "actual_start"
+              ? actualStartToast(data, installmentActualCountRestDone(installments))
             : action === "submit" && payload.deferServiceSetup
               ? SERVICE_DEFER_TEXT.toast
               : action === "cancel" && isHistoricalOrder(order)
@@ -989,7 +1138,7 @@ export default function SalesOrderDetailPage() {
       /* งวด/ช่วงครอบเปลี่ยน = ข้อที่ยังขาดของงานบริการเปลี่ยน (การ์ดราง · หัวใบ) — ตัวใบไม่ขยับเวอร์ชันจึงต้องสั่งเอง */
       refreshServiceSetup();
       setToast({
-        kind: action === "reject" ? "info" : "success",
+        kind: ["reject", "actual_reject", "actual_withdraw"].includes(action) ? "info" : "success",
         msg: {
           // ตามปลายทางจริงของแถว — บัญชีบันทึกเองจบที่ "ชำระแล้ว" · งวดร่างยังไม่ถึงบัญชี
           report: installmentReportDoneMessage(data.installment?.status),
@@ -1006,8 +1155,17 @@ export default function SalesOrderDetailPage() {
           // เงินค้างจากใบที่ยกเลิก (PR3 · 0378)
           refund: "บันทึกคืนเงินแล้ว — งวดออกจากเงินค้างของใบที่ยกเลิก",
           "refund-clear": "ถอนการบันทึกคืนเงินแล้ว — งวดกลับเป็นเงินค้าง",
+          // นับ Actual รายงวด (mig 0412)
+          actual_submit: "ยื่นขอนับ Actual งวดนี้แล้ว — รอ AE Sup อนุมัติ",
+          actual_withdraw: "ดึงคำขอนับงวดกลับแล้ว",
+          actual_approve: "อนุมัติงวดแล้ว — ยอดเข้า Actual ของเดือนนี้",
+          actual_reject: "ตีกลับงวดแล้ว — ฝ่ายขายยื่นใหม่ได้",
         }[action] || "อัปเดตเรียบร้อยแล้ว",
       });
+      /* ⭐ นับ Actual รายงวด (mig 0412): cache ยอดของใบ (`actualCountedAmount` · `actualSubmittedAmount`) ขยับตามงวด
+         แต่คำตอบของ PATCH งวดพกมาแค่งวด ⇒ ดึงตัวใบสด (การ์ดสรุป · ราง "นับ Actual" · หัวการ์ดการชำระอ่าน cache นั้น)
+         · `refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง */
+      if (String(action).startsWith("actual_")) refreshOrder();
       return true;
     } catch (uploadError) {
       setError(uploadError.message || "อัปโหลดหลักฐานไม่สำเร็จ");
@@ -1171,6 +1329,83 @@ export default function SalesOrderDetailPage() {
     setEditMode(false);
   }
 
+  /* ── นับ Actual ทั้งใบ / รายงวด (mig 0412 · มติเจ้าของ 26/10/2026 · docs/so-installment-actual.md) ──────────────────────
+     ⭐ ภาพก่อนกดของสองแบบ — โมดัลอนุมัติปกติกับ Admin Override ใช้ชุดเดียวกัน (ผลลัพธ์ต้องพูดตรงกันทั้งสองทาง)
+       · สิทธิ์เลือก (`actualModeEligibility`) และงวดที่นับทันที (`installmentActualStartPreview`) มาจากไฟล์กติกาตัวเดียวกับ route/RPC
+       · จำนวนงวด = งวดที่ใบถืออยู่ (งวดร่าง · แถวที่ยกมากับใบ Rev.) — ยังไม่มีแถว = แผนของใบเสนอราคา (ชุดที่การอนุมัติจะตั้งให้)
+       · งวดที่เคยนับก่อนย้อนอนุมัติ (ใบ Rev. · มติข้อ 7) กลับมานับในเดือนที่อนุมัติ Rev. — บอกแยกบรรทัด
+     ⭐ ค่าเริ่ม = ทั้งใบ · ใบ Rev. = แบบของใบก่อนหน้า (`previousActualMode` ของ GET) เมื่อใบนี้ยังเลือกรายงวดได้ */
+  function approveActualPlan() {
+    /* จำนวนงวดหลังหยุดยอด — `installmentCountAtFreeze` ตัวเดียวกับที่ route ตัดสินสิทธิ์ (คู่กับทุกกิ่งของ freezeInstallments)
+       🪤 นับ `installments.length` ตรง ๆ ไม่ได้: แถวร่างที่จำนวนไม่ตรงแผนถูกลบแล้วตั้งใหม่ตามแผนตอนอนุมัติ ⇒ จอบอก "เลือกได้"
+          แต่ route ตอบ 409 (หรือกลับกัน) · ตั้งใหม่ = ภาพก่อนกดใช้แผนของ QT ชุดที่การอนุมัติจะตั้งให้ */
+    const plan = order?.quotation?.paymentPlan;
+    const frozenCount = installmentCountAtFreeze(installments, { plan, totalAmount: order?.totalAmount });
+    const planRows = installments.length && frozenCount === installments.length
+      ? installments
+      : previewInstallments(plan, order?.totalAmount);
+    const eligibility = actualModeEligibility(order, frozenCount);
+    const start = installmentActualStartPreview(order, planRows);
+    const counted = planRows.filter((row) => row?.actualStatus === "approved");
+    const countedAmount = Math.round(counted.reduce((sum, row) => sum + (Number(row.actualAmount) || 0), 0) * 100) / 100;
+    const rest = Math.max(0, Math.round(((Number(order?.actualAmount) || 0) - start.amount - countedAmount) * 100) / 100);
+    return {
+      eligibility,
+      start,
+      countedCount: counted.length,
+      countedAmount,
+      rest,
+      /* มติข้อ 10: Rev. ของใบที่กด "นับที่เหลือทั้งหมด" (งวด via count_rest ติดมา) — อนุมัติแบบรายงวดแล้วนับทุกงวดที่ค้าง ไม่มีการยื่นรายงวด */
+      countRestDone: installmentActualCountRestDone(planRows),
+      initialMode: order?.previousActualMode === ACTUAL_MODE_INSTALLMENT && eligibility.eligible
+        ? ACTUAL_MODE_INSTALLMENT
+        : ACTUAL_MODE_ORDER,
+    };
+  }
+
+  /* บรรทัดเรื่อง Actual ของการอนุมัติตามแบบที่เลือก — ข้อแรกของรายการผลลัพธ์ (กติกาโมดัลอนุมัติ #1223)
+     ⭐ เครื่องหมายคำพูดของบรรทัดรายงวด = “…” แบบเดียวกับโมดัลรายงวดใน lib/approvalPrompt (UAT 27/10 ข้อ 11) · บรรทัดทั้งใบคงประโยคเดิมทุกตัวอักษร
+     ⭐ ทั้งใบ = ประโยคเดิมทุกตัวอักษร (ยอดย้ายจาก "รออนุมัติ" เข้า Actual ของ **เดือนที่กด** — `currentMonth()` เวลาไทย)
+     ⭐ รายงวด = งวดที่นับทันที (ยอดก่อน VAT) · งวดที่เคยนับกลับมา · ที่เหลือรอ AE Sup อนุมัติรายงวด (กอง "รอนับรายงวด") · ลำดับการยื่น
+       · ผลข้างเคียงที่ใหญ่ที่สุดของแผ่นนี้ (review 26/10): งวดที่ยังไม่นับ แจ้งสลิป/บัญชีรับรองเงินไม่ได้จน AE Sup อนุมัติงวดนั้น
+         (installmentActionError + trigger ของ 0412) · ใบงานบริการ = "จ่ายถึง"/ด่านเงินของนัดช่างเดินตามสองขั้นนั้นทุกงวด
+         (`hasServiceRounds` ตัวเดียวกับด่านเงิน — ฟังก์ชันนี้ถูกเรียกตอนกด/ตอนวาดโมดัล Override เท่านั้น ⇒ อ่านค่าหลังตัวแปรถูกตั้งแล้ว) */
+  function approveActualLines(mode, plan) {
+    if (mode !== ACTUAL_MODE_INSTALLMENT) {
+      return [`ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`];
+    }
+    const month = formatMonthLabel(currentMonth());
+    const seqs = plan.start.rows.map((row) => row.seq);
+    return [
+      seqs.length
+        ? `งวด ${seqs.join(", ")} ${fmtMoney(plan.start.amount)} (ก่อน VAT) ย้ายจาก “${PENDING_APPROVAL_LABEL}” เข้าเป็น Actual ของเดือน ${month} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`
+        : null,
+      plan.countedCount
+        ? `งวดที่เคยนับก่อนย้อนการอนุมัติ ${fmtNumber(plan.countedCount)} งวด ${fmtMoney(plan.countedAmount)} กลับมานับเป็น Actual ของเดือน ${month}`
+        : null,
+      plan.rest > 0
+        ? `ที่เหลือ ${fmtMoney(plan.rest)} (ก่อน VAT) นับเมื่อ AE Sup อนุมัติแต่ละงวด — ระหว่างรอขึ้นเป็น “${INSTALLMENT_REMAINING_LABEL}” ตามเดือนครบกำหนด`
+        : null,
+      /* มติข้อ 10: ใบก่อนหน้ากด "นับที่เหลือทั้งหมด" ไว้แล้ว — Rev. นับทั้งก้อนต่อ (ไม่มีการยื่นรายงวด · ด่านเงินไม่รอ AE Sup) */
+      ...(plan.countRestDone ? [
+        "ใบก่อนหน้ากด “นับที่เหลือทั้งหมด” ไว้แล้ว — ใบนี้นับทั้งก้อนต่อ: งวดที่ยังไม่นับนับให้ทันที และงวดที่เพิ่มทีหลังระบบนับให้เอง ไม่ต้องยื่น (มติข้อ 10)",
+      ] : [
+        "ฝ่ายขายยื่นขอนับงวดถัดไปได้หลังบัญชีรับรองเงินงวดก่อน",
+        "งวดที่ยังไม่นับ: ฝ่ายขายแจ้งสลิป/บัญชีรับรองเงินได้หลัง AE Sup อนุมัตินับงวดนั้นแล้ว (ลูกค้าจ่ายมาก่อน = ยื่น → อนุมัติก่อน)",
+        hasServiceRounds
+          ? "ใบงานบริการ: “จ่ายถึง” และนัดช่างหลังช่วงที่รับรองแล้ว ขยับเมื่อ AE Sup อนุมัติงวดนั้นและบัญชีรับรองเงินแล้ว — ทุกงวด"
+          : null,
+      ]),
+    ].filter(Boolean);
+  }
+
+  /* แผ่นที่เลือกในโมดัลอนุมัติ — เก็บคู่ ref (ท่าเดียวกับ overrideReasonRef): `confirmState.action` ถูกสร้างตอน *เปิด* โมดัล
+     ⇒ closure ของมันเห็นค่าตอนนั้น ถ้าอ่าน state ตรง ๆ จะส่งแบบเริ่มต้นเสมอ (คนเลือก "รายงวด" แล้วได้ทั้งใบเงียบ ๆ) */
+  const chooseApproveActualMode = (mode) => {
+    approveActualModeRef.current = mode;
+    setConfirmState((current) => (current?.actualModes ? { ...current, actualMode: mode } : current));
+  };
+
   async function review(action) {
     if (action === "approve") {
       /* ⭐ งานบริการรายบรรทัด (mig 0392 · D10): การกดนี้เปิดงานให้ TS ในทรานแซกชันเดียวกัน ⇒ โมดัลต้องบอกผลนั้นด้วย
@@ -1184,29 +1419,43 @@ export default function SalesOrderDetailPage() {
          (`currentMonth()` เวลาไทย · ห้าม businessMonthKey ที่คืน YYMM ของเลขเอกสาร) */
       // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
       setError("");
+      /* ⭐ นับ Actual ทั้งใบ / รายงวด (mig 0412): ผลลัพธ์ + ป้ายปุ่มคิดแยกต่อแบบ (`actualModes`) แล้วกล่องวาดตามแผ่นที่เลือกอยู่
+         (`actualMode`) — เปลี่ยนแผ่น = รายการผลลัพธ์และปุ่มเปลี่ยนตามทันที · เลือกรายงวดไม่ได้ = ชุดของรายงวดคือชุดทั้งใบ (แผ่นดับอยู่แล้ว) */
+      const plan = approveActualPlan();
+      const promptFor = (mode) => approvalPrompt({
+        title: "อนุมัติ ใบสั่งขาย",
+        subject: `ใบสั่งขาย ${order.orderNumber}`,
+        /* "ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ" (ลำดับหัวตาราง · มติ 08/10) + คำเตือนรอบน้อย (มติ 29/09) — ใบที่ไม่มีแพ็คเกจ = ว่าง (ภาคผนวก A.5) */
+        checklist: service?.approvalChecklist || [],
+        effects: [
+          ...approveActualLines(mode, plan),
+          /* งวด + ขั้นบัญชี (PR1 · mig 0376): ใบ Rev. ที่ยกงวดมา = ใช้งวดเดิม ไม่สร้างจาก QT (freeze ไม่แตะแถวที่ตรึงแล้ว)
+             · เก็บครบแล้ว = เข้าคิวปิดใบของบัญชีทันที (financeStatus ของใบ Rev. เกิดเป็น NULL → pending · มติ D2) */
+          /* PR3 (มติ D4): ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้ยกเข้าหลังอนุมัติ (RPC 0378 รับเฉพาะใบ approved) */
+          ...salesOrderMoneyOutcome(order, installments, "approve", { strandedSources: order.carrySources }),
+          /* งานบริการ (mig 0392): เปิดโซนให้ TS · ช่วงบริการ/งวด · สัญญา · ต่ออายุ · ย้ายรอบของใบเดิม · ของที่ล็อก */
+          ...(service?.approvalEffects || []),
+          "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
+        ],
+        confirmLabel: mode === ACTUAL_MODE_INSTALLMENT ? approveInstallmentConfirmLabel(plan) : APPROVE_CONFIRM_ORDER_LABEL,
+      });
+      const actualModes = {
+        [ACTUAL_MODE_ORDER]: promptFor(ACTUAL_MODE_ORDER),
+        [ACTUAL_MODE_INSTALLMENT]: promptFor(plan.eligibility.eligible ? ACTUAL_MODE_INSTALLMENT : ACTUAL_MODE_ORDER),
+      };
+      approveActualModeRef.current = plan.initialMode;
       setConfirmState({
-        ...approvalPrompt({
-          title: "อนุมัติ ใบสั่งขาย",
-          subject: `ใบสั่งขาย ${order.orderNumber}`,
-          /* "ตรวจแพ็คเกจ · ไซต์ · โซน · รอบละกี่แพ็ค · จำนวนรอบบริการ ในการ์ดงานบริการ" (ลำดับหัวตาราง · มติ 08/10) + คำเตือนรอบน้อย (มติ 29/09) — ใบที่ไม่มีแพ็คเกจ = ว่าง (ภาคผนวก A.5) */
-          checklist: service?.approvalChecklist || [],
-          effects: [
-            `ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`,
-            /* งวด + ขั้นบัญชี (PR1 · mig 0376): ใบ Rev. ที่ยกงวดมา = ใช้งวดเดิม ไม่สร้างจาก QT (freeze ไม่แตะแถวที่ตรึงแล้ว)
-               · เก็บครบแล้ว = เข้าคิวปิดใบของบัญชีทันที (financeStatus ของใบ Rev. เกิดเป็น NULL → pending · มติ D2) */
-            /* PR3 (มติ D4): ดีลนี้มีเงินค้างจากใบที่ยกเลิก = เตือนให้ยกเข้าหลังอนุมัติ (RPC 0378 รับเฉพาะใบ approved) */
-            ...salesOrderMoneyOutcome(order, installments, "approve", { strandedSources: order.carrySources }),
-            /* งานบริการ (mig 0392): เปิดโซนให้ TS · ช่วงบริการ/งวด · สัญญา · ต่ออายุ · ย้ายรอบของใบเดิม · ของที่ล็อก */
-            ...(service?.approvalEffects || []),
-            "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
-          ],
-          confirmLabel: "อนุมัติและนับ Actual",
-        }),
+        ...actualModes[plan.initialMode],
+        actualModes,
+        actualMode: plan.initialMode,
+        /* countRestDone (มติข้อ 10) พกไปให้แผ่นรายงวดบอกว่าไม่มีการยื่นรายงวด (review รอบสี่) */
+        actualEligibility: { ...plan.eligibility, countRestDone: plan.countRestDone },
         /* 🐞 เหตุที่ RPC ตีกลับการอนุมัติต้องอ่านได้ในโมดัล — แถบของหน้าอยู่ใต้โมดัล · ด่านของ
            `approve` อ่านแถวสดทุกครั้ง (`expectedUpdatedAt` · ใบขยับไปแล้ว · ลายเซ็นไม่พร้อม)
            ⇒ ข้อความ "ใบนี้อนุมัติแล้ว" ต้องขึ้นตรงที่ผู้อนุมัติเพิ่งกด ไม่ใช่หลังปิดโมดัล */
         showsError: true,
-        action: () => requestAction("approve"),
+        /* ส่งแบบที่เลือกทุกครั้ง (route เรียก RPC ห่อตัวใหม่เสมอ · ทั้งใบก็ส่ง 'order') — อ่านจาก ref ไม่ใช่ state ของตอนเปิด */
+        action: () => requestAction("approve", { actualMode: approveActualModeRef.current }),
       });
       /* ของเปลี่ยนระหว่างรออนุมัติ (แพ็คเกจ/โซนถูกปิด · งวดถูกแก้) = route จะตีกลับ 409 ด้วยข้อเดียวกัน — บอกตั้งแต่เปิดโมดัล */
       if (service?.issues?.length) setError(issuesErrorText(serviceApproveBlockedText(service.issues.length), service.issues));
@@ -1252,9 +1501,29 @@ export default function SalesOrderDetailPage() {
 
   // เหตุผล override เป็น optional แล้ว (มติ 2026-07-25) — โมดัลเหลือหน้าที่ "ยืนยัน" อย่างเดียว
   // ระบบยังบันทึกหลักฐานว่าใครอนุมัติใบตัวเองเมื่อไหร่ (approvalMode=admin_override + contextSnapshot)
+  /* ⭐ แบบการนับ Actual (mig 0412): แผ่นที่เลือกในโมดัล Override อยู่ใน `overrideForm.actualMode` · ยังไม่แตะ = ค่าเริ่มของใบ
+     (ทั้งใบ · Rev. = แบบของใบก่อนหน้า) — ฟังก์ชันนี้ถูกเรียกจากปุ่มของ render ปัจจุบัน ⇒ อ่าน state ตรง ๆ ได้ */
   async function approveWithAdminOverride() {
-    const ok = await requestAction("approve", { overrideReason: "" });
+    const actualMode = overrideForm?.actualMode || approveActualPlan().initialMode;
+    const ok = await requestAction("approve", { overrideReason: "", actualMode });
     if (ok) setOverrideForm(null);
+  }
+
+  /* ── คำสั่งระดับใบของ Actual รายงวด (mig 0412) — "นับงวด 1" (`actual_start` · ทางกู้) · "นับที่เหลือทั้งหมด" (`actual_count_rest`) ──
+     ⭐ การ์ดการชำระเป็นเจ้าของโมดัล (บอกผลก่อนกด + เหตุผล) · ที่นี่แค่ยิง PATCH ของใบพร้อมเวอร์ชันที่ตาเห็น (กันแท็บค้าง) · ไม่ลองซ้ำ
+     ⭐ สำเร็จ = requestAction โหลดใบใหม่ทั้งใบ (cache Actual ของใบ + งวด) · ไม่ผ่าน = เหตุขึ้นในโมดัลของการ์ด (`error`)
+     ⚠️ requestAction ไม่จับ throw (เน็ตหลุด · PATCH ไม่ลองซ้ำ) ⇒ คืน busy + แถบ error ที่นี่ แล้วตอบ false ให้โมดัลค้างไว้ */
+  async function runActualOrderAction(action, { reason } = {}) {
+    try {
+      return Boolean(await requestAction(action, {
+        ...(reason === undefined ? {} : { reason }),
+        expectedUpdatedAt: order?.updatedAt,
+      }));
+    } catch (failure) {
+      setBusy("");
+      setError(failure?.message || "นับ Actual ไม่สำเร็จ");
+      return false;
+    }
   }
 
   // ยกเลิก SO ผ่าน modal (มติ 2026-07-18): เลือกเหตุผลมาตรฐาน + หมายเหตุ (บังคับเมื่อ "อื่น ๆ")
@@ -1623,13 +1892,43 @@ export default function SalesOrderDetailPage() {
   /* ⭐ ยอดของใบนี้อยู่กองไหน (มติผู้ใช้ 2026-09-11 · mig 0353) — ตัวตัดสินกลางตัวเดียวกับ
      ตาราง SO ทุกจอ: 'actual' | 'pending_approval' | 'excluded' */
   const amountKind = salesOrderAmountKind(order);
+  /* ⭐ ใบ "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — Actual ของใบ = งวดที่ AE Sup อนุมัติแล้ว (cache `actualCountedAmount`)
+     ไม่ใช่ยอดเต็ม · ที่เหลือแยกสองกอง: ยื่นแล้วรอ AE Sup ("รออนุมัติ") · ยังไม่ยื่น ("รอนับรายงวด") — ตัวอ่านเดียวกับตาราง SO/ดีล
+     · `instProgress` = x/y งวด ของราง "นับ Actual" (นับจากงวดของใบ) · ใบทั้งใบ = null ทุกตัว (หน้าตาเดิมทุกจุด) */
+  const instActual = isInstallmentActualOrder(order) && !historical;
+  const instProgress = instActual ? installmentActualProgress(order, installments) : null;
+  const instCounted = instActual ? salesOrderCountedActual(order) : 0;
+  const instSubmitted = instActual ? salesOrderSubmittedActual(order) : 0;
+  const instRemaining = instActual ? salesOrderRemainingActual(order) : 0;
+  const instProgressText = instProgress ? `${fmtNumber(instProgress.counted)}/${fmtNumber(instProgress.total)} งวด` : "";
+  /* บรรทัดกองใต้ "Actual ก่อน VAT" ของการ์ดสรุป — แต่ละท่อนห้ามขาดกลาง (keepPhrases · UAT 27/10 ข้อ 5) */
+  const instSummaryParts = instActual ? [
+    `นับแล้ว ${instProgressText}`,
+    instSubmitted > 0 ? `${PENDING_APPROVAL_LABEL} ${fmtMoney(instSubmitted)}` : "",
+    instRemaining > 0 ? `${INSTALLMENT_REMAINING_LABEL} ${fmtMoney(instRemaining)}` : "",
+  ].filter(Boolean) : [];
+  /* 🐞 review รอบสอง 26/10: เจ้าของดีลถูกป้ายเมนู/"รอฉันลงมือ" ส่งมา (เลนเจ้าของดีล — installmentActualReadyForOwner) แต่ภาพรวม
+     พูดแค่ "งวดที่เหลือนับเมื่อ AE Sup อนุมัติ" ⇒ ทุกจอบอกว่ารอคนอื่น ทั้งที่งานอยู่ที่เขา ("ยื่นขอนับงวดนี้" อยู่ในแท็บการชำระเท่านั้น)
+     ⇒ เจ้าของดีลที่มีงวดยื่นได้ตอนนี้ (nextSubmittableInstallment ตัวเดียวกับเลน) เห็นคำสั่งของตัวเองในคำอธิบายสถานะ
+     (ไม่ใส่ป้ายตัวเลขบนแท็บ — ป้ายแดงของแท็บมาจากข้อหลังกดยื่นเท่านั้น · กฎ 3 ของ soPageServiceSetup · ทะเบียน SO พาแถวมาแท็บนี้ตรง ๆ แล้ว) */
+  const ownerNextInst = instActual && order.status === "approved" && order.meId && order.meId === order.deal?.ownerId
+    && !instProgress?.complete ? nextSubmittableInstallment(order, installments) : null;
+  /* ขั้นถัดไปของสภาพพิเศษ (UAT 27/10 ข้อ 1 · 8) — งวดไม่ตรึง (ปุ่มกู้) · นับครบ · ใบนับทั้งก้อนที่มีงวดค้าง ("นับงวดที่ค้าง") · ยังไม่มีงวด
+     คำเดียวกับบรรทัดสรุปของการ์ดการชำระ (installmentActualNextStep) · null = ปกติ (เจ้าของดีลยื่นได้ / รอ AE Sup อนุมัติทีละงวด)
+     🐞 เดิมทุกสภาพที่ยังไม่ครบได้ "งวดที่เหลือนับเมื่อ AE Sup อนุมัติแต่ละงวด" — ผิดทั้งใบที่งวดไม่ตรึงและใบที่กดนับที่เหลือทั้งหมดแล้ว */
+  /* อ่านงวดไม่ขึ้น (GET `installmentsError` · review รอบหก) = ไม่รู้ว่ามีงวดอะไร ⇒ ไม่สั่ง "เริ่มติดตามการชำระ" (no_rows) — การ์ดการชำระบอกเหตุเอง */
+  const instNextStep = instActual && order.status === "approved" && !(order.installmentsError && !installments.length)
+    ? installmentActualNextStep(order, installments) : null;
   /* 🐞 แถบเน้นท้ายตารางรายการเคยเขียน "Actual ก่อน VAT" สีเขียว **ทุกสถานะ** ขณะที่การ์ดสรุป
      ข้าง ๆ บอก "ยังไม่นับ" ⇒ ใบเดียวกันพูดสองเรื่อง · ป้ายและสีเดินตามกองของยอดแล้ว:
      อนุมัติ = เขียว Actual · รออนุมัติ = amber (ห้ามเขียว) · ที่เหลือ = ยอดของใบเฉย ๆ สีกลาง */
   const amountHighlight = {
     id: "actual",
     value: fmtMoney(order.actualAmount),
-    ...(amountKind === "actual"
+    /* ใบรายงวด (mig 0412): นับแล้ว / เต็มใบ — เขียวเท่าที่นับจริง ป้ายบอกว่าเป็นรายงวด */
+    ...(amountKind === "actual" && instActual
+      ? { label: "Actual ก่อน VAT · รายงวด", tone: "success", value: `${fmtMoney(instCounted)} / ${fmtMoney(order.actualAmount)}` }
+      : amountKind === "actual"
       ? { label: "Actual ก่อน VAT", tone: "success" }
       : amountKind === "pending_approval"
         ? { label: `${PENDING_APPROVAL_LABEL} (ก่อน VAT)`, tone: "warning" }
@@ -1684,7 +1983,18 @@ export default function SalesOrderDetailPage() {
       color: HISTORICAL_TONE_COLOR[historicalCopy.tone] || "var(--text-3)",
       description: historicalCopy.description,
     }
-    : STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
+    /* ใบอนุมัติแบบรายงวด (mig 0412): "ยอดถูกนับเป็น Actual แล้ว" ไม่จริง — บอกว่านับแล้วกี่งวด เท่าไรจากยอดเต็ม */
+    : instActual && order.status === "approved"
+      ? {
+        ...STATUS.approved,
+        /* นับครบทุกงวดแล้ว = ไม่มี "งวดที่เหลือ" (review 26/10) */
+        description: `นับ Actual รายงวด — นับแล้ว ${instProgressText} ${fmtMoney(instCounted)} จาก ${fmtMoney(order.actualAmount)} (ก่อน VAT) · ${
+          instNextStep ? instNextStep.text
+            : ownerNextInst ? `งวดที่ ${ownerNextInst.seq} ${ownerNextInst.actualStatus === "rejected" ? "ถูกตีกลับ — แก้แล้วยื่นใหม่" : "ยื่นขอนับได้แล้ว"}`
+              + " ที่แท็บการชำระ (“ยื่นขอนับงวดนี้”)"
+              : "งวดที่เหลือนับเมื่อ AE Sup อนุมัติแต่ละงวด"}`,
+      }
+      : STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3
     : ["pending_approval", "approval_revoked"].includes(order.status) ? 1 : 0;
   const workflow = [
@@ -1693,8 +2003,12 @@ export default function SalesOrderDetailPage() {
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
     {
       label: "นับ Actual",
+      /* ใบรายงวดที่ยังนับไม่ครบ (review 26/10): ขั้นนี้ยังเดินอยู่ — คู่ขนานกับขั้นบัญชีปิดใบ (ปิดได้เมื่อทุกงวดรับรอง = ทุกงวดนับแล้ว)
+         ⇒ ประกาศ `current` เอง (workflowStepsFromIndex: state ที่ประกาศชนะ index · มติ 01/09) ไม่ให้ราง ✓ ทั้งที่ยังเหลืองวดรอนับ */
+      ...(order.status === "approved" && instProgress && !instProgress.complete ? { state: "current" } : {}),
       // เดินตามกองของยอด ไม่ใช่สถานะเปล่า ๆ — ใบย้อนหลังอนุมัติแล้วแต่ "ยังไม่นับ" (mig 0360)
-      hint: amountKind === "actual" ? fmtMoney(order.actualAmount)
+      /* ใบรายงวด (mig 0412 · docs: รางโชว์ x/y งวด) — นับแล้วกี่งวดจากทั้งหมด + ยอดที่นับแล้ว */
+      hint: amountKind === "actual" ? (instProgress ? `${instProgressText} · ${fmtMoney(instCounted)}` : fmtMoney(order.actualAmount))
         : amountKind === "pending_approval" ? `${PENDING_APPROVAL_LABEL} ${fmtMoney(order.actualAmount)}`
           : "ยังไม่นับ",
     },
@@ -1821,13 +2135,20 @@ export default function SalesOrderDetailPage() {
   /* ใบที่เปิดแก้หลังอนุมัติ (mig 0396 · `setupView.reopened` ของก้อน GET) พูดว่า "การแก้งานบริการ" ไม่ใช่ "ตั้งย้อนหลัง" (ภาคผนวก A.4) */
   /* ใบที่อนุมัติโดยข้ามการตั้งงานบริการตอนยื่น (mig 0404 · `setupView.deferred`) พูดว่า "การตั้งงานบริการทีหลัง" — ใบนี้ไม่ใช่ใบเก่าที่ตั้งย้อนหลัง
      · server ไม่ส่ง `reopened` กับ `deferred` พร้อมกัน (เหตุการณ์ที่เกิดทีหลังชนะ) · ไม่มีทั้งสอง = ประโยคของใบเดิมทุกตัวอักษร */
-  const backfillActualNote = showBackfillPanel
-    ? (setupView?.reopened
-      ? SERVICE_REOPENED_TEXT.actualNote(order.approvedAt)
-      : setupView?.deferred
-        ? SERVICE_DEFERRED_TEXT.actualNote(order.approvedAt)
-        : `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`)
-    : null;
+  /* 🐞 review รอบห้า 27/10 (มติข้อ 6): ใบงานบริการที่อนุมัติแบบ "Actual รายงวด" — สามประโยคข้างล่างพูด "ยอดถูกนับเป็น Actual แล้ว" (ทั้งใบ)
+     และเคยทับคำอธิบายรายงวด (นับแล้ว x/y · งวดที่ยื่นได้) จนกว่างานบริการจะอนุมัติ/ประทับ — ป้ายเดียวที่บอกเจ้าของดีลให้ยื่นงวดถัดไปหายไปด้วย
+     ⇒ ใบรายงวดคงคำอธิบายรายงวด แล้วต่อท้ายเรื่องงานบริการ (ยอดที่นับไม่ขยับตามงานบริการ — unchangedActualText ของโมดัล) */
+  const backfillServiceWord = setupView?.reopened ? "การแก้งานบริการ"
+    : setupView?.deferred ? "การตั้งงานบริการทีหลัง" : "การตั้งงานบริการย้อนหลัง";
+  const backfillActualNote = !showBackfillPanel
+    ? null
+    : instActual && order.status === "approved"
+      ? `${status.description} — ${backfillServiceWord}ไม่เปลี่ยนยอดที่นับ`
+      : (setupView?.reopened
+        ? SERVICE_REOPENED_TEXT.actualNote(order.approvedAt)
+        : setupView?.deferred
+          ? SERVICE_DEFERRED_TEXT.actualNote(order.approvedAt)
+          : `ยอดถูกนับเป็น Actual แล้ว (อนุมัติ ${fmtDate(order.approvedAt)}) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`);
   /* "ไปแก้" ของแผงแดง — สลับแท็บแล้วพาไปที่ช่อง (ข้อที่ไม่มีช่อง เช่น "ยังไม่มีงวด" = แค่สลับแท็บ) */
   /* ⚠️ สลับแท็บถามก่อนได้ (ร่างวันงวดค้างในแท็บการชำระ · #1846) ⇒ รอคำตอบ แล้วพาไปที่ช่องเฉพาะเมื่อสลับจริง
      (ไม่รอ = ตัวหาช่องหมดรอบระหว่างกล่องยืนยันเปิดอยู่ แล้วสลับเสร็จโดยไม่มีอะไรถูกโฟกัส) */
@@ -2143,6 +2464,14 @@ export default function SalesOrderDetailPage() {
   const cancelMoneyLines = historicalCancel
     ? historicalCancel.money
     : salesOrderMoneyOutcome(order, installments, "cancel");
+  /* ── นับ Actual ทั้งใบ / รายงวด (mig 0412) — ค่าที่สองโมดัลอนุมัติวาด ──────────────────────────────────────────────────
+     โมดัลอนุมัติปกติ: ผลลัพธ์ + ป้ายปุ่มของแผ่นที่เลือกอยู่ (`confirmState.actualModes[actualMode]`) ทับคำของตอนเปิด
+     โมดัล Admin Override ของใบ pipeline: แผ่นที่เลือก (`overrideForm.actualMode`) · ยังไม่แตะ = ค่าเริ่มของใบ */
+  const confirmView = confirmState?.actualModes
+    ? { ...confirmState, ...confirmState.actualModes[confirmState.actualMode || ACTUAL_MODE_ORDER] }
+    : confirmState;
+  const overridePlan = overrideForm && !historical ? approveActualPlan() : null;
+  const overrideActualMode = overrideForm?.actualMode || overridePlan?.initialMode || ACTUAL_MODE_ORDER;
   const dangerActions = [
     { id: "reject", kind: "reject", label: "ตีกลับให้แก้ไข", visible: canReviewThis && order.status === "pending_approval", onClick: () => review("reject") },
     { id: "delete", kind: "delete", icon: Trash2, label: "ลบฉบับร่างถาวร", visible: role === "admin" && canHardDeleteSalesOrder(order), onClick: remove },
@@ -2174,7 +2503,7 @@ export default function SalesOrderDetailPage() {
           description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
           /* ⭐ ป้าย "ย้อนหลัง" + "ไม่นับ Actual" บนหัวใบ (ม็อก SoStatus) — โทน info ตัวเดียวกับชิปในทะเบียน
              และคิวงานเข้าใหม่ของ TS · คนที่เปิดใบมาต้องรู้ตั้งแต่บรรทัดแรกว่ายอดนี้ไม่เข้า Actual/FC/เป้า */
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}{deferPending?.active && <StatusBadge size="sm" tone="warning" label={SERVICE_DEFERRED_TEXT.badge} />}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{instActual && <StatusBadge size="sm" tone="info" label="Actual รายงวด" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}{deferPending?.active && <StatusBadge size="sm" tone="warning" label={SERVICE_DEFERRED_TEXT.badge} />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -2282,10 +2611,26 @@ export default function SalesOrderDetailPage() {
                 /* ⭐ ใบรออนุมัติโชว์ยอดพร้อมคำว่า "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353)
                    — เดิม "ยังไม่นับ" เฉย ๆ จนอ่านเหมือนใบไม่มีมูลค่า · ผ่านชิ้นกลาง
                    PendingApprovalAmount ให้หน้าตาเดียวกับทุกจอ · ร่าง/ตีกลับ/ยกเลิก คงเดิม */
+                /* ⭐ ใบรายงวด (mig 0412): นับแล้ว / เต็มใบ + ป้าย "รายงวด" · บรรทัดรองบอกกองที่เหลือ (รออนุมัติ · รอนับรายงวด)
+                   · UAT 27/10 ข้อ 5: แถวเรียงซ้อน (`stack` — ป้ายบน ค่าล่าง) ป้ายไม่ขาดสองบรรทัด ชิปอยู่ข้างตัวเลข · คู่ "ป้าย ฿ยอด"
+                     ห่อไม่ให้ขาดกลางคำ ("รอ/นับรายงวด") ด้วย keepPhrases (ตัวหนังสือไม่ถูกแตะ — ค้น/คัดลอกได้คำเดิม) */
                 {
                   id: "actual",
                   label: "Actual ก่อน VAT",
-                  value: amountKind === "actual" ? fmtMoney(order.actualAmount)
+                  stack: amountKind === "actual" && instActual,
+                  value: amountKind === "actual" && instActual
+                    ? (
+                      <>
+                        <span className={styles.actualSplit}>
+                          {`${fmtMoney(instCounted)} / ${fmtMoney(order.actualAmount)}`}
+                          <StatusBadge size="sm" tone="info" label="รายงวด" />
+                        </span>
+                        <span className={styles.pendingSummaryNote}>
+                          {keepPhrases(instSummaryParts.join(" · "), instSummaryParts)}
+                        </span>
+                      </>
+                    )
+                    : amountKind === "actual" ? fmtMoney(order.actualAmount)
                     : amountKind === "pending_approval"
                       ? (
                         <>
@@ -2676,6 +3021,8 @@ export default function SalesOrderDetailPage() {
             onDatesDirty={setDatesDirty}
             /* กลับจากแท็บทะเบียนลูกค้า (ลิงก์ "ตั้งกำหนดวางบิล" · มติ 28/09) = ดึงใบสด — `refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง */
             onRefreshOrder={refreshOrder}
+            /* นับ Actual รายงวด (mig 0412): "นับงวด 1" (ทางกู้) · "นับที่เหลือทั้งหมด" — คำสั่งระดับใบ (PATCH ของใบ) โมดัลอยู่ในการ์ด */
+            onActualOrderAction={runActualOrderAction}
             /* 🐞 แถบ error ของหน้าอยู่บนสุดของคอลัมน์ ⇒ **โมดัลบังไว้หมด** — กดบันทึก
                งวดแล้วโมดัลค้างเงียบ ไม่มีอะไรบอกว่าทำไมไม่ผ่าน (ผู้ใช้แจ้ง 2026-08-27)
                อาการเดียวกับที่ `ReasonDialog.submitError` แก้ไว้เมื่อ 2026-08-19 —
@@ -2743,9 +3090,28 @@ export default function SalesOrderDetailPage() {
               <ShieldAlert size={20} color="var(--amber)" aria-hidden="true" />
               <div style={{ color: "var(--text-2)", fontSize: "var(--fs-7)" }}>
                 <strong style={{ color: "var(--text)" }}>กรณีพิเศษเมื่อยังไม่มีผู้ตรวจสอบคนที่สอง</strong>
-                <p style={{ margin: "4px 0 0" }}>คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — การอนุมัติจะย้ายยอด {fmtMoney(order.actualAmount)} จาก “{PENDING_APPROVAL_LABEL}” เข้า Actual ของเดือน {formatMonthLabel(currentMonth())} ทันที และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override</p>
+                <p style={{ margin: "4px 0 0" }}>
+                  คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — {overrideActualMode === ACTUAL_MODE_INSTALLMENT
+                    ? "การอนุมัติจะนับ Actual รายงวดตามรายการข้างล่าง"
+                    : <>การอนุมัติจะย้ายยอด {fmtMoney(order.actualAmount)} จาก “{PENDING_APPROVAL_LABEL}” เข้า Actual ของเดือน {formatMonthLabel(currentMonth())} ทันที</>}
+                  {" "}และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override
+                </p>
               </div>
             </div>
+            {/* ⭐ นับ Actual ทั้งใบ / รายงวด (mig 0412) — ตัวเลือกเดียวกับโมดัลอนุมัติปกติ · รายงวด = บอกผลครบชุด (งวดที่นับทันที · ที่เหลือ · ลำดับยื่น) */}
+            {overridePlan ? (
+              <ActualModeChoice
+                value={overrideActualMode}
+                onChange={(mode) => setOverrideForm((current) => (current ? { ...current, actualMode: mode } : current))}
+                eligibility={{ ...overridePlan.eligibility, countRestDone: overridePlan.countRestDone }}
+                disabled={!!busy}
+              />
+            ) : null}
+            {overridePlan && overrideActualMode === ACTUAL_MODE_INSTALLMENT ? (
+              <StatusNotice tone="info" title="นับ Actual รายงวด">
+                <span className="pre-line">{approveActualLines(ACTUAL_MODE_INSTALLMENT, overridePlan).map((line) => `· ${line}`).join("\n")}</span>
+              </StatusNotice>
+            ) : null}
             {/* ⭐ งานบริการ (mig 0392 · D10): อนุมัติ = เปิดงานให้ TS ในทรานแซกชันเดียวกัน — บอกผลเหมือนโมดัลอนุมัติปกติ (กฎ 4) */}
             {setupRequired && setupView?.approvalEffects?.length ? (
               <StatusNotice tone="info" title="งานบริการของใบนี้">
@@ -2756,7 +3122,9 @@ export default function SalesOrderDetailPage() {
             {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
             <div className="action-bar" style={{ marginTop: 0 }}>
               <button type="button" className="btn ghost" onClick={() => setOverrideForm(null)} disabled={!!busy}>ยกเลิก</button>
-              <button type="button" className="btn btn-warning" onClick={approveWithAdminOverride} disabled={!!busy}><ShieldAlert size={15} /> {busy === "approve" ? "กำลังอนุมัติ…" : "ยืนยัน Override และนับ Actual"}</button>
+              <button type="button" className="btn btn-warning" onClick={approveWithAdminOverride} disabled={!!busy}><ShieldAlert size={15} /> {busy === "approve" ? "กำลังอนุมัติ…" : overrideActualMode === ACTUAL_MODE_INSTALLMENT
+                ? approveInstallmentConfirmLabel(overridePlan, { override: true })
+                : "ยืนยัน Override และนับ Actual"}</button>
             </div>
           </div>
         </Modal>
@@ -2777,8 +3145,12 @@ export default function SalesOrderDetailPage() {
         detail={{
           /* ⭐ เรื่องเงินของการย้อน (PR1 · mig 0376): เงินที่รับแล้วยังนับว่ารับแล้ว + ย้ายไปใบ Rev. ทั้งชุดตอนออก Rev. ·
              สลิปรอตรวจยังอยู่ในคิว · ใบที่บัญชีปิดแล้ว (มติ D2) · ใบบริการ (ด่านนัดช่าง/ผูกโซนใหม่) — บรรทัดละข้อ (pre-line) */
+          /* ใบรายงวด (mig 0412 · มติข้อ 7): งวดที่นับแล้วหลุดหมด — ยอดที่หลุดคือยอดที่นับแล้ว ไม่ใช่ยอดเต็ม
+             · Rev. อนุมัติแล้วงวดที่เคยนับกลับมาในเดือนที่ Rev. อนุมัติ */
           revoke: [
-            `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
+            instActual
+              ? `ยอด Actual ที่นับแล้ว ${fmtMoney(instCounted)} (${instProgressText}) จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ — งวดที่เคยนับกลับมาในเดือนที่ Rev. อนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`
+              : `ยอด Actual ${fmtMoney(order.actualAmount)} จะถูกนำออกจนกว่า Rev. ใหม่จะอนุมัติ · เหตุผลนี้จะใช้ต่อในขั้นออก Rev. ไม่ต้องกรอกซ้ำ`,
             ...salesOrderMoneyOutcome(order, installments, "revoke", { serviceRounds: hasServiceRounds }),
           ].join("\n"),
         }[workflowForm?.action]
@@ -2947,17 +3319,30 @@ export default function SalesOrderDetailPage() {
           โมดัลอนุมัติใบย้อนหลังใส่ลิงก์ไฟล์เอกสารแทนสัญญา + หลักฐานงวดยกมาเข้ามาทางนี้
           ⚠️ ช่องเหตุผล Admin Override **ไม่บังคับ** จึงอยู่ในกล่องยืนยันได้ (กติกา ConfirmDialog)
              ถ้าวันไหนเจ้าของสั่งให้บังคับ ต้องย้ายไปเป็น ReasonDialog ไม่ใช่เติมด่านที่นี่ */}
+      {/* ⭐ โมดัลอนุมัติใบ pipeline (mig 0412): หัว/ผลลัพธ์/ปุ่มมาจาก `confirmView` = ชุดของแผ่น "นับ Actual ทั้งใบ / รายงวด" ที่เลือกอยู่
+          · กล่องกว้างขึ้น ("md") ให้สองแผ่นวางข้างกัน — โมดัลอื่นขนาดเดิม */}
       <ConfirmDialog
         open={!!confirmState}
-        title={confirmState?.title}
-        description={confirmState?.description}
-        detail={confirmState?.detail}
-        confirmLabel={confirmState?.confirmLabel}
+        title={confirmView?.title}
+        description={confirmView?.description}
+        detail={confirmView?.detail}
+        confirmLabel={confirmView?.confirmLabel}
         tone={confirmState?.tone}
+        size={confirmState?.actualModes ? "md" : undefined}
         busy={confirmBusy}
         error={confirmState?.showsError ? error : undefined}
         onConfirm={runConfirmed}
         onClose={() => { if (!confirmBusy) setConfirmState(null); }}
+        /* แผ่น "นับ Actual ทั้งใบ / รายงวด" อยู่ **เหนือ** รายการผลลัพธ์ (`lead` · UAT 27/10 ข้อ 9) — เดิมอยู่ใต้รายการ (children)
+           เลือก "รายงวด" แล้วรายการยาวขึ้น แผ่นเลื่อนหนีเคอร์เซอร์ ~53px · ตอนนี้ของที่เปลี่ยนอยู่ใต้แผ่นเสมอ */
+        lead={confirmState?.actualModes ? (
+          <ActualModeChoice
+            value={confirmState.actualMode}
+            onChange={chooseApproveActualMode}
+            eligibility={confirmState.actualEligibility}
+            disabled={confirmBusy}
+          />
+        ) : null}
       >
         {confirmState?.children || confirmState?.overrideReason ? (
           <>

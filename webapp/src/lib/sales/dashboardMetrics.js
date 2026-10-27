@@ -39,8 +39,100 @@ export const wonAmountOf = (d) => dealActualFromSalesOrders(d);
 // ⭐ นับเฉพาะดีล Won: ดีลที่ยังเปิดมี FC อยู่ใน FC คงเหลือแล้ว นับซ้ำไม่ได้ (ของจริงแทบ
 //    เกิดไม่ได้ — สร้าง SO ได้ต้องมีใบเสนอราคาที่รับแล้ว ซึ่งพาดีลเป็น Won ในจังหวะเดียวกัน)
 // ⛔ ห้ามบวกเข้า wonValue / won / actual / เป้า / % / ขาด-เกิน — ส่งเป็นช่องแยกเสมอ
+/* ⭐ รวม **งวดที่ยื่นแล้วรอ AE Sup** ของใบรายงวด (soInstPending* · mig 0412 · มติข้อ 5) — dealPendingApprovalAmount/Count
+   ของ salesOrderWorkflow บวกให้แล้ว (ตัวเดียวกับหน้าโครงการ) ⇒ ทุกจอที่อ่านสองตัวนี้ได้กอง "รออนุมัติ" ครบทั้งใบและงวด
+   ส่วนแยกของงวดอยู่ที่ installmentPendingAmountOf/CountOf ข้างล่าง (ไว้แตกบรรทัดบนจอ) */
 export const pendingApprovalAmountOf = (d) => (isWonDeal(d) ? dealPendingApprovalAmount(d) : 0);
 export const pendingApprovalCountOf = (d) => (isWonDeal(d) ? dealPendingApprovalCount(d) : 0);
+
+/* ── Actual รายงวด (mig 0412 · มติเจ้าของ 26/10 · docs/so-installment-actual.md) — ตัวอ่าน cache ของดีล ────────────────
+   ⭐ `metadata.actualByMonth` = `{ 'YYYY-MM': ยอด }` — ใบทั้งใบลงเดือนอนุมัติใบ · งวดลงเดือนที่ AE Sup อนุมัติงวด (เวลาไทย)
+     ⇒ Actual ของดีลหนึ่งอยู่ได้หลายเดือน · ตัวอ่าน "Actual ของเดือน" ทุกตัวต้องอ่านแผนที่นี้ ไม่ใช่ wonMonthOf + wonAmountOf
+     🪤 ถ้ายัง wonMonthOf: งวด 2 ที่อนุมัติ ธ.ค. ลากงวด 1 ของ ต.ค. ไปด้วย ("เติมยอดจากระบบ" บันทึกงวด 1 ซ้ำสองเดือน)
+   ⭐ ไม่ backfill: ดีลที่ trigger ยังไม่เคยเขียนคีย์นี้ = `{ wonMonth: wonValue }` (เท่ากันทุกดีลวันนี้ — ใบอนุมัติหนึ่งใบต่อดีล)
+   ⭐ `wonMonth` ยังเป็นเดือนที่อนุมัติ **ใบ** ล่าสุด (ความหมายเดิม — FC Total / wonCount / Won รอยื่น SO ยังอ่านตัวนั้น)
+   ⛔ ไม่ใช่ดีลที่ Actual มาจาก SO (`actualSource`) = {} — ด่านเดียวกับ wonAmountOf */
+const toSatang = (v) => Math.round((Number(v) || 0) * 100) / 100;
+const monthMapOf = (value) => (value && typeof value === 'object' && !Array.isArray(value) ? value : null);
+
+export function actualByMonthOf(deal) {
+  if (deal?.metadata?.actualSource !== 'sale_order') return {};
+  const stored = monthMapOf(deal.metadata.actualByMonth);
+  if (stored) {
+    const out = {};
+    for (const [key, value] of Object.entries(stored)) {
+      const month = monthKey(key);
+      const amount = Number(value);
+      if (!month || !Number.isFinite(amount)) continue;
+      out[month] = toSatang((out[month] || 0) + Math.max(0, amount));
+    }
+    return out;
+  }
+  const amount = wonAmountOf(deal);
+  const month = wonMonthOf(deal);
+  return amount > 0 && month ? { [month]: amount } : {};
+}
+
+/* Actual ของดีลที่ตกในชุดเดือน (`months` = อาร์เรย์หรือ Set ของ 'YYYY-MM') — ตัวรวมของแดชบอร์ด/ลิ้นชัก/แดชบอร์ดของฉัน */
+export function actualInMonths(deal, months) {
+  const wanted = months instanceof Set ? months : new Set(Array.isArray(months) ? months : []);
+  if (!wanted.size) return 0;
+  let sum = 0;
+  for (const [month, amount] of Object.entries(actualByMonthOf(deal))) {
+    if (wanted.has(month)) sum += amount;
+  }
+  return toSatang(sum);
+}
+
+/* งวดของใบรายงวดที่ **ยื่นแล้วรอ AE Sup** (soInstPending* · ยอดประมาณก่อน VAT) — อยู่ในกองรออนุมัติแล้ว (pendingApprovalAmountOf)
+   ตัวนี้ไว้แตกบรรทัด/นับงวด · ⭐ ดีล Won เท่านั้น (กติกาเดียวกับรออนุมัติ) */
+export const installmentPendingAmountOf = (d) => (isWonDeal(d)
+  ? Math.max(0, Number(d?.metadata?.soInstPendingAmount) || 0) : 0);
+export const installmentPendingCountOf = (d) => (isWonDeal(d)
+  ? Math.max(0, Math.trunc(Number(d?.metadata?.soInstPendingCount) || 0)) : 0);
+
+/* ป้ายของกองใหม่ "รอนับรายงวด" (คีย์ `instRemaining` บนแท็บผลงานขาย) */
+export const INSTALLMENT_REMAINING_LABEL = 'รอนับรายงวด';
+
+/**
+ * งวดของใบรายงวดที่ **ยังไม่ยื่น/ถูกตีกลับ** ตามเดือน — `{ 'YYYY-MM': ยอด }` (กอง "รอนับรายงวด" · มติข้อ 5)
+ * ⭐ ลงเดือนครบกำหนด · ไม่มีวันครบกำหนด ('none') และเดือนที่ผ่านมาแล้ว **พับเข้าเดือนปัจจุบัน** (เดือนที่ปิดแล้วไม่มีวันเห็นยอดนี้)
+ * ⛔ อยู่ในยอดคาดการณ์ (projected) เท่านั้น — ห้ามบวกเข้า Actual / เป้า / % / ขาด-เกิน / sales_history
+ * @param currentMonth 'YYYY-MM' เวลาไทย (ไม่ส่ง = เดือนนี้ตามนาฬิกาไทย)
+ */
+export function installmentRemainingByMonthOf(deal, thisMonth = currentMonth()) {
+  if (!isWonDeal(deal)) return {};
+  const stored = monthMapOf(deal?.metadata?.soInstRemainingByDue);
+  if (!stored) return {};
+  const floor = monthKey(thisMonth) || currentMonth();
+  const out = {};
+  for (const [key, value] of Object.entries(stored)) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+    const due = monthKey(key);
+    const month = due && due > floor ? due : floor;
+    out[month] = toSatang((out[month] || 0) + amount);
+  }
+  return out;
+}
+
+/* ยอดรวมของกอง "รอนับรายงวด" (ไม่สนเดือน — การพับเดือนไม่เปลี่ยนผลรวม) */
+export function installmentRemainingAmountOf(deal) {
+  if (!isWonDeal(deal)) return 0;
+  const stored = monthMapOf(deal?.metadata?.soInstRemainingByDue);
+  if (!stored) return 0;
+  return toSatang(Object.values(stored).reduce((sum, v) => {
+    const amount = Number(v);
+    return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
+  }, 0));
+}
+
+/* "ยอดปิดเต็ม" ของดีล = Actual + งวดที่ยื่นแล้ว + รอนับรายงวด — ฐานของส่วนต่างคาดการณ์/คำใต้การ์ดของดีล Won
+   ⭐ ใบรายงวดที่นับไปบางงวดต้องไม่ฟ้อง "ต่าง ฿(งวดที่ยังไม่ถึงคิว)" (คลาสเดียวกับบั๊ก 14/09 Won รอยื่น SO)
+   ⭐ ใบทั้งใบ = wonAmountOf เท่าเดิมทุกดีล (สองคีย์ใหม่ไม่มีค่า) */
+export function dealClosedValueOf(deal) {
+  return toSatang(wonAmountOf(deal) + installmentPendingAmountOf(deal) + installmentRemainingAmountOf(deal));
+}
 
 // เดือนของยอดรออนุมัติ = **เดือนปัจจุบัน (เวลาไทย) เสมอ** (มติผู้ใช้ 2026-09-11)
 // อนุมัติย้อนหลังไม่ได้ ถ้าอนุมัติวันนี้ Actual ก็ลงเดือนนี้ (wonMonth = เดือนของ approvedAt)

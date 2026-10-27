@@ -2,6 +2,7 @@ import { currentMonth } from '@/lib/datePeriods';
 import { isWonDeal } from '@/lib/sales/dashboardMetrics';
 import { NO_TEAM_ROW_KEY, reportPersonRowKey, reportTeamRowKey } from '@/lib/sales/reportRows';
 import { salesOrderAmountKind, salesOrderPendingApprovalAmount } from '@/lib/sales/salesOrderWorkflow';
+import { salesOrderSubmittedActual, salesOrderSubmittedCount } from '@/lib/sales/salesOrderActualMode';
 
 /* ── ยอด SO "รออนุมัติ" ของรายงานยอดขาย (/sa/targets/report) ─────────────────
  * มติผู้ใช้ 2026-09-11 (mig 0353): โชว์ยอดของใบสั่งขายที่ยื่นแล้วรออนุมัติด้วย
@@ -25,6 +26,15 @@ import { salesOrderAmountKind, salesOrderPendingApprovalAmount } from '@/lib/sal
  *    - ดีลไม่มีเจ้าของ = เข้ายอดบริษัทอย่างเดียว (เหมือนใบอนุมัติแล้วที่ไม่มีเจ้าของ) → `unassigned`
  *    - ดีลมีเจ้าของแต่ไม่ระบุทีม = บรรทัด `noTeam` (คู่กับแถวทีม "ไม่ระบุทีม" ของ route)
  *      ⇒ amount = Σ byOwner + unassigned = Σ byTeam + noTeam + unassigned เสมอ
+ *
+ * ⭐ **งวดที่ยื่นแล้วรอ AE Sup ของใบ "Actual รายงวด"** (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) อยู่ในก้อนนี้ด้วย
+ *    (`installmentOrders` = ใบรายงวดที่ **อนุมัติแล้ว** · ยอด = cache actualSubmittedAmount (ประมาณก่อน VAT) ·
+ *    จำนวน = **1 ใบ** ต่อใบที่มีงวดยื่นอยู่ — review รอบสาม 26/10: ป้ายเรียก "ใบ" และรายการมีแถวเดียวต่อใบ ⇒ นับงวดเคยได้
+ *    "2 ใบ" กับแถวเดียว) — กติกาเดียวกับ cache บนดีล (soInstPending* · Count นับใบ) และ splitSalesOrderAmounts
+ *    - ของใคร = **เจ้าของที่ตรึงบนใบตอนอนุมัติ** (sales_orders."ownerId") — งวดที่อนุมัติแล้วลงแถวนั้น (ยอดของใบรายงวด
+ *      ในรายงานเดินตามเจ้าของที่ตรึง) ⇒ อนุมัติงวดวันนี้ ยอดย้ายจากรออนุมัติไปขายจริงแถวเดียวกันพอดี
+ *    - ทีม = ทีมบนดีลของใบ (embed) · ดีลต้อง Won (กติกาเดียวกับแดชบอร์ด)
+ *    - แถวในรายการ: `actualMode: 'installment'` + `installmentSeqs` (งวดที่ยื่น) · ยื่นเมื่อ = เวลายื่นล่าสุด
  *
  * ⛔ คืนเป็นก้อนแยกเสมอ — ห้ามปนเข้า actual[] · orders[] · splitIdx · ทบยอด · % · ส่วนต่าง ·
  *    แถบเตือนยอดบริษัทไม่ตรงกับผลรวมรายคน (ยอดบริษัทรวมใบที่ดีลไม่มีเจ้าของ จึงไม่เท่ากันได้)
@@ -54,6 +64,8 @@ const compareText = (a, b) => String(a || '').localeCompare(String(b || ''), 'th
  * @param months แกนเดือนของรายงาน ['YYYY-MM', …]
  * @param person (userId) → { name } | null — บัญชีปัจจุบัน (loadUserDirectory) ใช้แค่ชื่อ
  * @param now    นาฬิกาตอนอ่าน — เดือนของยอดมาจากตรงนี้ ไม่ใช่จากคอลัมน์ใดของใบ
+ * @param installmentOrders ใบรายงวดที่อนุมัติแล้ว (แถว sales_orders + embed `deal: { team, stage, line, dealType }`
+ *                          + `installments` งวดของใบ) — ไม่ส่ง = ไม่มีงวดรออนุมัติ (พฤติกรรมเดิม)
  * @returns { month, amount, count, byOwner[], byTeam[], noTeam, unassigned, orders[] }
  *          byOwner = แถวละ (ทีมของดีล, เจ้าของ) · byTeam = เฉพาะทีมที่มีรหัส ·
  *          month = null เมื่อช่วงไม่มีเดือนปัจจุบัน (ทุกยอดเป็น 0 · ลิสต์ว่าง)
@@ -64,6 +76,7 @@ export function reportPendingApproval({
   months = [],
   person = () => null,
   now = new Date(),
+  installmentOrders = [],
 } = {}) {
   const month = currentMonth(now);
   const out = emptyPendingApproval();
@@ -73,6 +86,26 @@ export function reportPendingApproval({
   const dealById = new Map((deals || []).filter(Boolean).map((deal) => [deal.id, deal]));
   const owners = new Map();
   const teams = new Map();
+
+  /* ลงกลุ่มคน/ทีม/ไม่มีเจ้าของ — ตัวเดียวทั้งใบรออนุมัติและงวดรออนุมัติ (กติกาการจับแถวเดียวกัน) */
+  const attribute = ({ ownerId, ownerName, team, amount, count }) => {
+    out.amount += amount;
+    out.count += count;
+    if (ownerId) {
+      const key = reportPersonRowKey({ team, ownerId });
+      if (!owners.has(key)) owners.set(key, { key, ownerId, ownerName, team, amount: 0, count: 0 });
+      const row = owners.get(key);
+      row.amount += amount;
+      row.count += count;
+      if (team && !teams.has(team)) teams.set(team, { key: reportTeamRowKey(team), team, amount: 0, count: 0 });
+      const teamRow = team ? teams.get(team) : out.noTeam;
+      teamRow.amount += amount;
+      teamRow.count += count;
+    } else {
+      out.unassigned.amount += amount;
+      out.unassigned.count += count;
+    }
+  };
 
   for (const order of orders || []) {
     if (salesOrderAmountKind(order) !== 'pending_approval') continue;
@@ -84,23 +117,7 @@ export function reportPendingApproval({
     const ownerName = ownerId ? (person(ownerId)?.name || deal.ownerName || ownerId) : (deal.ownerName || null);
     const team = deal.team || null;
 
-    out.amount += amount;
-    out.count += 1;
-
-    if (ownerId) {
-      const key = reportPersonRowKey({ team, ownerId });
-      if (!owners.has(key)) owners.set(key, { key, ownerId, ownerName, team, amount: 0, count: 0 });
-      const row = owners.get(key);
-      row.amount += amount;
-      row.count += 1;
-      if (team && !teams.has(team)) teams.set(team, { key: reportTeamRowKey(team), team, amount: 0, count: 0 });
-      const teamRow = team ? teams.get(team) : out.noTeam;
-      teamRow.amount += amount;
-      teamRow.count += 1;
-    } else {
-      out.unassigned.amount += amount;
-      out.unassigned.count += 1;
-    }
+    attribute({ ownerId, ownerName, team, amount, count: 1 });
 
     out.orders.push({
       id: order.id,
@@ -121,6 +138,46 @@ export function reportPendingApproval({
       amount,
       vatAmount: money(order.vatAmount),
       totalAmount: money(order.totalAmount),
+    });
+  }
+
+  /* งวดที่ยื่นแล้วรอ AE Sup ของใบ "Actual รายงวด" ที่อนุมัติแล้ว (mig 0412) — เจ้าของที่ตรึงบนใบ · ทีมบนดีลของใบ */
+  for (const order of installmentOrders || []) {
+    const count = salesOrderSubmittedCount(order);
+    const amount = salesOrderSubmittedActual(order);
+    if (!(amount > 0) && !(count > 0)) continue;
+    const deal = order.deal || null;
+    if (!isWonDeal(deal)) continue;
+    const ownerId = order.ownerId || null;
+    const ownerName = ownerId ? (person(ownerId)?.name || order.ownerName || ownerId) : (order.ownerName || null);
+    const team = deal.team || null;
+    const submitted = (Array.isArray(order.installments) ? order.installments : [])
+      .filter((r) => r?.actualStatus === 'submitted');
+    const submittedTotal = submitted.reduce((sum, r) => sum + money(r.amount), 0);
+
+    attribute({ ownerId, ownerName, team, amount, count: 1 });
+
+    out.orders.push({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      quoteNumber: order.metadata?.quoteNumber || null,
+      quotationId: order.quotationId || null,
+      dealId: order.dealId,
+      customerId: order.customerId || null,
+      customerName: order.customerName || null,
+      ownerId,
+      ownerName,
+      team,
+      line: order.line !== undefined ? order.line : (deal.line || null),
+      dealType: deal.dealType || null,
+      // เวลายื่นล่าสุดของงวดที่ยื่นอยู่ (ไม่มีงวดแนบ = ไม่รู้ ⇒ ไปท้ายรายการ)
+      submittedAt: submitted.map((r) => r.actualSubmittedAt).filter(Boolean).sort().at(-1) || null,
+      amount,
+      // ยอดของงวดที่ยื่น (รวม VAT) − ยอดก่อน VAT · ไม่มีงวดแนบ = 0
+      vatAmount: submitted.length ? Math.max(0, Math.round((submittedTotal - amount) * 100) / 100) : 0,
+      totalAmount: Math.round(submittedTotal * 100) / 100,
+      actualMode: 'installment',
+      installmentSeqs: submitted.map((r) => Number(r.seq) || 0).sort((a, b) => a - b),
     });
   }
 

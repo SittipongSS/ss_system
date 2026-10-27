@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs';
 import { dealActualFromSalesOrders } from './salesOrderWorkflow.js';
 import { wonMonthOf } from './dashboardMetrics.js';
 import { isHistoricalDeal } from './historicalOrders.js';
+import { aggregateSystemActuals } from './systemActuals.js';
 import { isWonStage } from '../salesPlanning.js';
 import { splitByProportion } from '../salesForecast.js';
 
@@ -26,8 +27,10 @@ const aggregateWonDeals = (() => {
   const end = ROUTE.indexOf('\n}\n', start);
   assert.ok(start >= 0 && end > start, 'หา aggregateWonDeals ในซอร์ส route ไม่เจอ');
   const body = ROUTE.slice(start, end + 2);
-  return new Function('dealActualFromSalesOrders', 'wonMonthOf', 'isWonStage', 'isHistoricalDeal', `${body}\nreturn aggregateWonDeals;`)(
-    dealActualFromSalesOrders, wonMonthOf, isWonStage, isHistoricalDeal,
+  /* ตัวรวมย้ายไป lib/sales/systemActuals (mig 0412 · Actual รายเดือน) — route เหลือตัวห่อที่ตัดดีลย้อนหลัง
+     ⇒ ฉีดตัวรวมจริงเข้าไปแทนตัวช่วยชุดเดิม (เทสต์ยังรันซอร์สของ route จริง ไม่ใช่สำเนา) */
+  return new Function('aggregateSystemActuals', 'isHistoricalDeal', `${body}\nreturn aggregateWonDeals;`)(
+    aggregateSystemActuals, isHistoricalDeal,
   );
 })();
 
