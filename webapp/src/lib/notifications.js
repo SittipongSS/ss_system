@@ -209,6 +209,14 @@ export const SALES_ORDER_BELL_KINDS = Object.freeze([
   'sales_order_billing_cutoff',
   // สรุปต่อเส้นตาย (รวมทุกลูกค้า) → ทุกคนในฝ่าย FN → ทะเบียน `?billing=cutoff&on=<เส้นตาย>` (ข้อยกเว้นมติ 14 ชุดเดียวกัน)
   'sales_order_billing_cutoff_fn',
+  /* ⭐ นับ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — ยิงจาก `lib/sales/installmentActualNotify.js`
+     (PATCH `/sales-orders/[id]/installments`) */
+  // ฝ่ายขายยื่นขอนับงวด → AE Supervisor ที่บัญชีเปิดอยู่ (คิวงานของตำแหน่ง · ไม่มีเลย = admin) — หนึ่งแถวต่อรอบการยื่น
+  'sales_order_installment_actual_submitted',
+  // AE Sup อนุมัตินับงวด → ผู้ยื่น + เจ้าของดีลปัจจุบัน (แจ้งสลิปงวดนี้ต่อ)
+  'sales_order_installment_actual_approved',
+  // AE Sup ตีกลับงวด (พร้อมเหตุผล) → ผู้ยื่น + เจ้าของดีลปัจจุบัน (แก้แล้วยื่นใหม่)
+  'sales_order_installment_actual_rejected',
   /* 🚫 'sales_order_site_not_found' (TS แจ้งว่าไม่พบจุดติดตั้ง · มติ 16/09/2026 ข้อ 23.2) ถอดแล้ว
      (มติ 22/09) — บรรทัดของใบย้อนหลังผูกโซนจากทะเบียนตั้งแต่ตอนคีย์ ⇒ ไม่มีทางแจ้งให้ยิงกระดิ่งอีก */
 ]);

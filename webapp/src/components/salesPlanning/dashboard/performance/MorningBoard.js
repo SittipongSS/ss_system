@@ -7,8 +7,10 @@ import { periodKindOf, rowHasValue, unallocatedRow, windowStat, yearSummary } fr
 import { currentMonth } from "@/lib/datePeriods";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
-import { WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
-import { closedThroughLabel, money, pctFmt, periodLabel, ProgressBar, WonAwaitingSoAmount } from "./shared";
+import { INSTALLMENT_REMAINING_LABEL, WON_AWAITING_SO_LABEL } from "@/lib/sales/dashboardMetrics";
+import {
+  closedThroughLabel, INSTALLMENT_REMAINING_NOTE, InstRemainingAmount, money, pctFmt, periodLabel, ProgressBar, WonAwaitingSoAmount,
+} from "./shared";
 import { NA } from "@/lib/format";
 import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
 
@@ -41,6 +43,10 @@ import { NO_TEAM_LABEL } from "@/lib/sales/personSlice";
 // กดแล้วเปิดรายดีล metric 'wonAwaitingSo' ของ **งวดที่ดูอยู่** (เดือน/ทั้งปี ตามปุ่มตัวเลขอื่น)
 // ⚠️ ไม่บังคับเดือนปัจจุบันแบบรออนุมัติ — ยอดนี้อยู่ที่เดือนที่ปิด Won ของดีล (wonMonthOf)
 // แถบใน % ปิดได้ วาดเป็นส่วนส้มลายเฉียง ⇒ ช่องว่างถึงขีด = คาดขาด ที่นับทั้งรออนุมัติ + Won รอยื่น SO + FC คงเหลือ
+//
+// 🧩 **รอนับรายงวด** (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) — บรรทัดรองถัดจากรออนุมัติ · งวดของใบสั่งขาย
+// "Actual รายงวด" ที่ยังไม่ยื่นขอนับ ลงเดือนครบกำหนด (เลยกำหนด/ไม่มีวัน = เดือนนี้) · กดแล้วเปิดรายดีล metric
+// 'instRemaining' ของ **งวดที่ดูอยู่** · แถบวาดเป็นเขียวจางลายตั้ง · นับในคาดขาดเท่านั้น ไม่ใช่ Actual / ขาด-เกิน / %
 
 /* `now` มากับ {...common} — ใช้หา periodKind อย่างเดียว: งวดที่จบแล้วแถบเล็กไม่พูด
    "คาดจบงวด/คาดขาด" (กติกาเดียวกับแถบบนสุด · 2026-09-14) · คอลัมน์สถานะเดิมที่เคยใช้
@@ -89,6 +95,11 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
   const anyWonAwaiting = [matrix.company, ...matrix.teams, ...matrix.people].some((r) => {
     const st = statOf(r);
     return st.wonAwaitingSo > 0 || st.wonAwaitingSoCount > 0;
+  });
+  // รอนับรายงวด — overlayHistory ไม่แตะเส้นนี้ ดูบริษัทก็พอ (แต่ไล่ทุกแถวไว้ให้กติกาเดียวกับบรรทัดบน)
+  const anyInstRemaining = [matrix.company, ...matrix.teams, ...matrix.people].some((r) => {
+    const st = statOf(r);
+    return st.instRemaining > 0 || st.instRemainingCount > 0;
   });
 
   // Actual ปีก่อนของแถวเดียวกัน — ฐานของ YoY (ไม่มีฐาน = คอลัมน์แสดง "–")
@@ -190,6 +201,22 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
         {wonAwaitingAmount}
       </button>
     );
+    // บรรทัดรองที่สาม: งวดของใบ "Actual รายงวด" ที่ยังไม่ยื่น (mig 0412) — กติกาชื่อปุ่มเดียวกับสองบรรทัดบน
+    const hasInstRemaining = s.instRemaining > 0 || s.instRemainingCount > 0;
+    const instRemainingAmount = hasInstRemaining ? (
+      <InstRemainingAmount amount={s.instRemaining} count={s.instRemainingCount} />
+    ) : null;
+    const instRemainingName = `${INSTALLMENT_REMAINING_LABEL} ${money(s.instRemaining)}${s.instRemainingCount > 0 ? ` · ${s.instRemainingCount} ดีล` : ""}`;
+    const instRemainingLine = !hasInstRemaining || isRest ? instRemainingAmount : (
+      <button
+        type="button"
+        className="perf-pending-drill"
+        onClick={() => openMetricDeals(row, isTeam, "instRemaining")}
+        aria-label={`ดูรายละเอียด ${label} · ${instRemainingName}`}
+      >
+        {instRemainingAmount}
+      </button>
+    );
     return (
       <tr
         className={`premium-row${isRest ? " perf-rest-row" : ""}`}
@@ -233,7 +260,7 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
         {carry && <td className={cellClass("num mono")} style={{ fontWeight: "var(--fw-semibold)" }}>{money(s.mustClose)}</td>}
         <td className={cellClass("num")}>{metricButton(s.fcTotal, "fcTotal", "var(--blue)", "FC Total")}</td>
         <td className={cellClass("num")}>{metricButton(s.forecast, "remaining", "var(--amber)", "FC คงเหลือ")}</td>
-        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}{pendingLine}{wonAwaitingLine}</td>
+        <td className={cellClass("num")} style={{ fontWeight: "var(--fw-semibold)" }}>{metricButton(s.actual, "won", "var(--green)", "Actual")}{pendingLine}{instRemainingLine}{wonAwaitingLine}</td>
         <td className={cellClass("num mono")} style={{ color: s.diff >= 0 ? "var(--green)" : "var(--red)" }}>
           {s.diff >= 0 ? "+" : ""}{money(s.diff)}
         </td>
@@ -282,10 +309,11 @@ export default function MorningBoard({ matrix, prevMatrix, year, now, closedCoun
       <p style={{ margin: "0 0 12px", color: "var(--text-3)", fontSize: "var(--fs-6)" }}>
         สรุป Target, FC Total, FC คงเหลือ และ Actual รายคน/รายทีม
         {carry ? ' · "ต้องปิด" = เป้า + ยอดทบยกมา' : " · โหมดเป้าปกติ (ไม่ทบยอด)"}
-        {" "}· แถบ: เขียว = Actual{anyPending ? ` · เขียวจางลายเฉียง = ${PENDING_APPROVAL_LABEL}` : ""}{anyWonAwaiting ? ` · ส้มลายเฉียง = ${WON_AWAITING_SO_LABEL}` : ""} · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"}
-        {` · ช่องว่างจากปลายแถบถึงขีด = คาดขาด ซึ่งนับ Actual + ${PENDING_APPROVAL_LABEL} + ${WON_AWAITING_SO_LABEL} + FC คงเหลือ (มูลค่าดีลเต็ม ไม่ถ่วงโอกาสปิด) — ส่วน "ขาด / เกิน" และ "% ปิดได้" นับ Actual อย่างเดียว`}
+        {" "}· แถบ: เขียว = Actual{anyPending ? ` · เขียวจางลายเฉียง = ${PENDING_APPROVAL_LABEL}` : ""}{anyInstRemaining ? ` · เขียวจางลายตั้ง = ${INSTALLMENT_REMAINING_LABEL}` : ""}{anyWonAwaiting ? ` · ส้มลายเฉียง = ${WON_AWAITING_SO_LABEL}` : ""} · ส้ม = FC คงเหลือ · ขีดเข้ม = {carry ? "ต้องปิด" : "เป้า"}
+        {` · ช่องว่างจากปลายแถบถึงขีด = คาดขาด ซึ่งนับ Actual + ${PENDING_APPROVAL_LABEL} + ${INSTALLMENT_REMAINING_LABEL} + ${WON_AWAITING_SO_LABEL} + FC คงเหลือ (มูลค่าดีลเต็ม ไม่ถ่วงโอกาสปิด) — ส่วน "ขาด / เกิน" และ "% ปิดได้" นับ Actual อย่างเดียว`}
         {" "}· คลิกตัวเลขเพื่อดูรายการดีล
         {anyPending && ` · "${PENDING_APPROVAL_LABEL}" ใต้ Actual = ใบสั่งขายที่ยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับใน Actual, ขาด / เกิน และ % ปิดได้`}
+        {anyInstRemaining && ` · "${INSTALLMENT_REMAINING_LABEL}" ใต้ Actual = ${INSTALLMENT_REMAINING_NOTE}`}
         {anyWonAwaiting && ` · "${WON_AWAITING_SO_LABEL}" ใต้ Actual = ดีลที่ปิด Won แล้วแต่ยังไม่มียอดจากใบสั่งขาย (มูลค่าดีลเต็ม นับที่เดือนที่ปิด Won · ใบที่อนุมัติแล้วแม้ยอด 0 บาทถือว่าจบ ไม่อยู่ในบรรทัดนี้) — ยังไม่นับใน Actual, ขาด / เกิน และ % ปิดได้`}
         {isYear && ` · "ขาด / เกิน" เทียบเป้าทั้ง 12 เดือน ส่วน "สถานะ" เทียบเป้าเฉพาะเดือนที่จบแล้ว (${through}) — เดือนที่กำลังวิ่งไม่นับ`}
         {showRest && ' · แถว "ยังไม่ได้แยกทีม" คือเป้า/ยอดที่กรอกไว้ระดับบริษัทแต่ยังไม่ได้ลงรายทีม — แถวทีมทุกแถวบวกกับแถวนี้จะได้แถวรวมท้ายตารางพอดี'}

@@ -208,11 +208,13 @@ test('sales_order_actual_trigger ไม่ถูกคัดไปแก้ห�
 
 /* 🪤 ยามข้างบนตรึงแค่ **ตัวฟังก์ชัน** ของ trigger ไม่ใช่ CREATE TRIGGER ที่ทำให้มันยิง · ยามรันซ้ำได้ของ 0360
    บังคับแค่ "DROP ก่อน CREATE" ไม่ห้าม DROP ลอย ๆ ⇒ เติม `DROP TRIGGER IF EXISTS sales_orders_sync_actual_trg`
-   ในไฟล์นี้ = อนุมัติ/ยกเลิก/ย้อนใบ pipeline ไม่ขยับ wonValue/wonMonth/soPending* ของดีลอีกเลย โดยเทสต์เขียวหมด */
-test('🪤 trigger Actual/เจ้าของใบยังยิง — คำสั่งสุดท้ายของแต่ละตัวคือ CREATE เดิม (ไม่มี DROP/ALTER/DISABLE ตามหลัง)', () => {
+   ในไฟล์นี้ = อนุมัติ/ยกเลิก/ย้อนใบ pipeline ไม่ขยับ wonValue/wonMonth/soPending* ของดีลอีกเลย โดยเทสต์เขียวหมด
+   ⭐ 0412 (Actual รายงวด) สร้าง sales_orders_sync_actual_trg ใหม่โดยตั้งใจ: รายการคอลัมน์เดิมทุกตัว + "actualMode"
+      (ตัวห่อการอนุมัติตั้งแบบหลังสถานะเป็น approved ⇒ ต้องปลุก sync อีกรอบ) · ฟังก์ชันที่ยิงยังเป็นของ 0108 */
+test('🪤 trigger Actual/เจ้าของใบยังยิง — คำสั่งสุดท้ายของแต่ละตัวคือ CREATE ที่ตั้งใจ (ไม่มี DROP/ALTER/DISABLE ตามหลัง)', () => {
   const EXPECT = {
-    sales_orders_sync_actual_trg: ['0279_won_month_from_so_approval.sql',
-      'CREATE TRIGGER sales_orders_sync_actual_trg AFTER INSERT OR UPDATE OF status, "actualAmount", "orderDate", "approvedAt", "dealId" OR DELETE ON public.sales_orders FOR EACH ROW EXECUTE FUNCTION public.sales_order_actual_trigger()'],
+    sales_orders_sync_actual_trg: ['0412_so_installment_actual.sql',
+      'CREATE TRIGGER sales_orders_sync_actual_trg AFTER INSERT OR UPDATE OF status, "actualAmount", "orderDate", "approvedAt", "dealId", "actualMode" OR DELETE ON public.sales_orders FOR EACH ROW EXECUTE FUNCTION public.sales_order_actual_trigger()'],
     sales_deals_enforce_so_actual_trg: ['0110_enforce_approved_so_actual.sql',
       'CREATE TRIGGER sales_deals_enforce_so_actual_trg BEFORE INSERT OR UPDATE OF stage, "wonValue", metadata ON public.sales_deals FOR EACH ROW EXECUTE FUNCTION public.enforce_sales_order_actual_on_deal()'],
     sales_orders_snapshot_owner_trg: ['0294_sales_order_owner_snapshot.sql',

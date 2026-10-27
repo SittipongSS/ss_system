@@ -9,11 +9,14 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { snapForecastLevel, forecastToneClass, stageBadge, money } from "@/components/salesPlanning/ui";
 import { forecastAmount, monthKey } from "@/lib/salesPlanning";
 import {
-  isWonDeal, isOpenDeal, isRealLostDeal, wonAmountOf, wonMonthOf, dealMatchesOwner,
+  isWonDeal, isOpenDeal, isRealLostDeal, wonMonthOf, dealMatchesOwner,
   pendingApprovalAmountOf, pendingApprovalCountOf, pendingApprovalMonthOf,
-  WON_AWAITING_SO_LABEL, wonAwaitingSoAmountOf, isKpiDeal,
+  WON_AWAITING_SO_LABEL, wonAwaitingSoAmountOf, isKpiDeal, INSTALLMENT_REMAINING_LABEL,
 } from "@/lib/sales/dashboardMetrics";
 import { wonAwaitingSoInPeriod } from "@/lib/sales/wonAwaitingSoRollup";
+import { actualInPeriodOf, hasActualInPeriod, instRemainingInPeriodOf } from "@/lib/sales/actualMonthRollup";
+import { INSTALLMENT_REMAINING_NOTE, InstRemainingAmount } from "@/components/salesPlanning/dashboard/performance/shared";
+import { currentMonth } from "@/lib/datePeriods";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import { fmtDateTime, NA } from "@/lib/format";
@@ -43,6 +46,18 @@ const PENDING_APPROVAL_METRIC = "pendingApproval";
    (ถังเดียวกับที่ดีล Won นั้นอยู่) ⇒ ยอดบนแถว = มูลค่าดีล ไม่ใช่ Actual และไม่ใช่ยอดรออนุมัติ
    เปิดด้วย filter รูปเดียวกับ metric อื่น: { metric: "wonAwaitingSo", month | year, ownerId, ownerName, team, teamScoped, label } */
 const WON_AWAITING_SO_METRIC = "wonAwaitingSo";
+
+/* ⭐ metric "instRemaining" = กอง "รอนับรายงวด" (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5)
+   งวดของใบสั่งขาย "Actual รายงวด" ที่ยังไม่ยื่น/ถูกตีกลับ — กติกาชุดเดียวกับ API แดชบอร์ด (lib/sales/actualMonthRollup):
+   เดือน = เดือนครบกำหนด · ไม่มีวันครบกำหนด/เลยกำหนด = เดือนปัจจุบันเวลาไทย (พับด้วยนาฬิกาตอนโหลด)
+   ยอดบนแถว = ส่วนของงวดที่ตกในงวดที่ดู ไม่ใช่ Actual / ไม่ใช่รออนุมัติ / ไม่ใช่ FC */
+const INST_REMAINING_METRIC = "instRemaining";
+
+/* ⭐ metric "won" = Actual ของงวด (mig 0412) — ดีลหนึ่งมี Actual ได้หลายเดือน (ใบ "Actual รายงวด" ลงงวดในเดือนที่
+   AE Sup อนุมัติงวด) ⇒ ดีลโผล่ในทุกงวดที่มี Actual ของมัน **ด้วยยอดเฉพาะส่วนของงวดนั้น** (actualInPeriodOf) —
+   ตรงกับช่องที่กดซึ่ง API รวมจาก actualByMonth · ดีลที่ wonMonth อยู่ในงวดยังอยู่ในรายการแม้ Actual ของงวดเป็น 0
+   (Won รอยื่น SO / ใบ 0 บาท — พฤติกรรมเดิม) · ใบทั้งใบล้วน: รายการและยอดเท่าเดิมทุกดีล */
+const wonInPeriod = (d, inPeriod) => isWonDeal(d) && (inPeriod(wonMonthOf(d)) || hasActualInPeriod(d, inPeriod));
 
 // ป้ายแถวทีมของดีลที่ไม่มีทีม — ต้องตรงกับคีย์ที่ buildMatrix (lib/sales/performanceMath) ตั้งให้ถัง null
 const NO_TEAM_ROW = "ไม่ระบุทีม";
@@ -91,7 +106,10 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
         });
 
         if (filter.metric === "won") {
-          filtered = filtered.filter((d) => isWonDeal(d) && inPeriod(wonMonthOf(d)));
+          filtered = filtered.filter((d) => wonInPeriod(d, inPeriod));
+        } else if (filter.metric === INST_REMAINING_METRIC) {
+          // ตัวพับเดือนตัวเดียวกับ API (เลยกำหนด/ไม่มีวัน = เดือนปัจจุบันเวลาไทย ณ ตอนโหลด)
+          filtered = filtered.filter((d) => instRemainingInPeriodOf(d, inPeriod, currentMonth(now)) > 0);
         } else if (filter.metric === WON_AWAITING_SO_METRIC) {
           // ตัวจับคู่ตัวเดียวกับที่เทสต์ล็อกไว้กับถังเดือนของ API (ดีลไม่มีเดือน = ไม่นับ แม้งวด "ทุกงวด")
           filtered = filtered.filter((d) => wonAwaitingSoInPeriod(d, inPeriod));
@@ -186,20 +204,23 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
     remaining: "FC คงเหลือ",
     [PENDING_APPROVAL_METRIC]: PENDING_APPROVAL_LABEL,
     [WON_AWAITING_SO_METRIC]: WON_AWAITING_SO_LABEL,
+    [INST_REMAINING_METRIC]: INSTALLMENT_REMAINING_LABEL,
   }[filter.metric] || filter.metric;
 
   const metricDescription = {
-    won: "ยอดที่ปิดการขายแล้วในช่วงเวลาที่เลือก",
+    won: "ยอดที่ปิดการขายแล้วในช่วงเวลาที่เลือก — ใบสั่งขายแบบ Actual รายงวดนับเฉพาะงวดที่อนุมัตินับในช่วงนี้",
     lost: "มูลค่าคาดการณ์ของดีลที่แพ้ในช่วงเวลาที่เลือก",
     forecast: "ดีลที่ยังเปิดอยู่ในช่วงเวลาที่เลือก",
     fcTotal: "ยอดคาดการณ์เดิม: ดีลเปิด + Won + แพ้ ใช้ตรวจความแม่นยำของ FC",
     remaining: "เฉพาะดีลที่ยังเปิดอยู่ ใช้ติดตามยอดที่ยังมีโอกาสปิด",
     [PENDING_APPROVAL_METRIC]: "ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual · นับอยู่เดือนปัจจุบันจนกว่าจะอนุมัติ",
     [WON_AWAITING_SO_METRIC]: "ดีลปิด Won แล้ว แต่ยังไม่มีใบสั่งขายที่อนุมัติ (ยังไม่ออก · ร่าง · ถูกยกเลิก · มีแต่ใบที่ยื่นรออนุมัติยอด 0 บาท) — นับในยอดคาดการณ์ด้วยมูลค่าดีล ยังไม่ใช่ Actual",
+    [INST_REMAINING_METRIC]: INSTALLMENT_REMAINING_NOTE,
   }[filter.metric] || "รายการดีลตามระดับโอกาสและช่วงเวลาที่เลือก";
 
   const isPendingMetric = filter.metric === PENDING_APPROVAL_METRIC;
   const isWonAwaitingSoMetric = filter.metric === WON_AWAITING_SO_METRIC;
+  const isInstRemainingMetric = filter.metric === INST_REMAINING_METRIC;
   let summaryLabel = "มูลค่ารวม";
   let amountHeader = "มูลค่า (บาท)";
   if (isPendingMetric) {
@@ -208,12 +229,20 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
   } else if (isWonAwaitingSoMetric) {
     summaryLabel = "มูลค่าดีลรวม";
     amountHeader = "มูลค่าดีล (บาท)";
+  } else if (isInstRemainingMetric) {
+    summaryLabel = `ยอด${INSTALLMENT_REMAINING_LABEL}รวม`;
+    amountHeader = `${INSTALLMENT_REMAINING_LABEL} (บาท)`;
   }
   const inPeriod = periodMatcher(filter);
+  // เดือนปัจจุบันของตัวพับกอง "รอนับรายงวด" — นาฬิกาตอนโหลด (ตัวเดียวกับตอนกรอง) ไม่ใช่ตอนเรนเดอร์
+  const asOfMonth = pendingAsOf ? currentMonth(pendingAsOf) : null;
+  const instRemainingOf = (deal) => (asOfMonth ? instRemainingInPeriodOf(deal, inPeriod, asOfMonth) : 0);
   const amountOf = (deal) => {
     if (isPendingMetric) return pendingApprovalAmountOf(deal);
     if (isWonAwaitingSoMetric) return wonAwaitingSoAmountOf(deal);
-    return isWonDeal(deal) && filter.metric === "won" ? wonAmountOf(deal) : forecastAmount(deal);
+    if (isInstRemainingMetric) return instRemainingOf(deal);
+    // Actual ของงวด = ส่วนของเดือนในงวดเท่านั้น (ดีลที่แตกหลายเดือน · mig 0412) — ใบทั้งใบ = wonValue เท่าเดิม
+    return isWonDeal(deal) && filter.metric === "won" ? actualInPeriodOf(deal, inPeriod) : forecastAmount(deal);
   };
   // ⛔ ยอดรวมของรายการ "ยอด Won" = Actual ล้วน — บรรทัดรองรออนุมัติบนแถวไม่ถูกบวกเข้ามา
   const totalValue = deals.reduce((sum, deal) => sum + amountOf(deal), 0);
@@ -235,6 +264,9 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
     const pendingMonth = pendingApprovalMonthOf(deal, pendingAsOf);
     return Boolean(pendingMonth) && inPeriod(pendingMonth);
   };
+  /* แถวในรายการ "ยอด Won" ที่มีงวดรอนับในงวดนี้ (mig 0412) — บรรทัดรองบอกว่า Actual ของแถวยังไม่ครบใบ
+     ⛔ ไม่ถูกบวกเข้ายอดรวมของรายการ (ยอดรวม "ยอด Won" = Actual ล้วน) */
+  const showInstRemainingSubLine = (deal) => filter.metric === "won" && instRemainingOf(deal) > 0;
   const viewScope = salesPlanningViewScope(role);
   const scopeNote = viewScope === 'team'
     ? "รายการนี้แสดงเฉพาะดีลของทีมคุณ — ตัวเลขบนแผงเป็นยอดทั้งบริษัท จึงมากกว่ายอดรวมด้านล่างได้"
@@ -364,6 +396,8 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
                             className={styles.pendingSubLine}
                           />
                         )}
+                        {/* "รอนับรายงวด ฿X" (mig 0412) — งวดของใบรายงวดที่ยังไม่ยื่นในงวดนี้ · ไม่รวมกับ Actual ข้างบน */}
+                        {showInstRemainingSubLine(deal) && <InstRemainingAmount amount={instRemainingOf(deal)} />}
                         {/* "Won รอยื่น SO ฿มูลค่าดีล" — คำกำกับคือสัญญาณ ไม่ใช่สี · ไม่รวมกับ Actual ข้างบน */}
                         {showAwaitingSoSubLine(deal) && (
                           <span

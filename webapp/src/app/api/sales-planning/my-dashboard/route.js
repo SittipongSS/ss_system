@@ -203,6 +203,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
        (เวลาไทย) เพราะอนุมัติวันนี้ Actual ลงเดือนนี้ · จอวางไว้ใต้ยอดปิดได้ ไม่บวกรวม */
     pendingApproval: totals.pendingApproval,
     pendingApprovalCount: totals.pendingApprovalCount,
+    /* กอง "รอนับรายงวด" ของงวด (mig 0412) — งวดของใบ "Actual รายงวด" ที่ยังไม่ยื่น · **แยกจาก wonValue / targetGap** */
+    instRemaining: totals.instRemaining,
+    instRemainingCount: totals.instRemainingCount,
     pipelineValue: totals.pipelineValue,
     weightedForecast: totals.weightedForecast,
     // เป้า − Actual ล้วน — ขับทั้ง "ขาดอีก/เกินเป้า" และสีเขียวบนการ์ด (ห้ามหักยอดรออนุมัติ)

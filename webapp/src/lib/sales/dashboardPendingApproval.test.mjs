@@ -287,7 +287,8 @@ test('modal: metric ที่ไม่ได้ลงทะเบียนต้
 
 test('modal: รายการ "ยอด Won" ยอดรวมเป็น Actual ล้วน · รออนุมัติเป็นบรรทัดรองผ่านชิ้นกลาง', () => {
   assert.match(modal, /const totalValue = deals\.reduce\(\(sum, deal\) => sum \+ amountOf\(deal\), 0\);/);
-  assert.match(modal, /isWonDeal\(deal\) && filter\.metric === "won" \? wonAmountOf\(deal\) : forecastAmount\(deal\)/);
+  /* Actual ของแถว = ส่วนของเดือนในงวด (mig 0412 — ดีลใบ "Actual รายงวด" แตกหลายเดือน) · ใบทั้งใบ = wonValue เท่าเดิม */
+  assert.match(modal, /isWonDeal\(deal\) && filter\.metric === "won" \? actualInPeriodOf\(deal, inPeriod\) : forecastAmount\(deal\)/);
   assert.match(modal, /<PendingApprovalAmount[\s\S]*amount=\{pendingApprovalAmountOf\(deal\)\}/);
   const subLine = modal.slice(modal.indexOf('const showPendingSubLine'), modal.indexOf('const statusCounts'));
   assert.match(subLine, /if \(filter\.metric !== "won" \|\| !pendingAsOf\) return false;/, 'บรรทัดรองมีเฉพาะรายการ "ยอด Won"');

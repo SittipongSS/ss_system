@@ -44,6 +44,10 @@ const BLANK = {
   // Won รอยื่น SO (มติ 2026-09-14) — เส้นเดียวกับที่ blankRow ของ performanceMath มี
   wonAwaitingSo: Array(12).fill(0),
   wonAwaitingSoCount: Array(12).fill(0),
+  // รอนับรายงวด (mig 0412) — เส้นเดียวกับที่ blankRow ของ performanceMath มี
+  instRemaining: Array(12).fill(0),
+  instRemainingCount: Array(12).fill(0),
+  instRemainingDealIds: Array.from({ length: 12 }, () => []),
 };
 
 export default function DrillSection({ matrix, prevMatrix, year, now, closedCount, ytdCount, carry, scope, team, person, period, loading, onChange }) {

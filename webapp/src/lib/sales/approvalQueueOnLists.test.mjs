@@ -55,14 +55,19 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
   const quotes = read('app/api/sales-planning/quotations/route.js');
   const orders = read('app/api/sales-planning/sales-orders/route.js');
   assert.match(quotes, /_awaitingMyApproval: isQuotationAwaitingMyApproval\(/);
-  assert.match(orders, /_awaitingMyApproval: isSalesOrderReviewer\(user\.role\)/);
+  assert.match(orders, /_awaitingMyApproval: \(?isSalesOrderReviewer\(user\.role\)/);
   assert.match(orders, /!isSalesOrderSelfApproval\(row, user\.id\)/, 'ใบของตัวเองต้องถูกตัดที่ server');
+  /* ⭐ นับ Actual รายงวด (mig 0412): คิว "งวดรออนุมัติ" อยู่ในชุด "รอฉันอนุมัติ" ด้วย — ตัวตัดสินเดียวกับเลนผู้อนุมัติของ `_waitingOnMe`
+     (ตัดงวดที่ตัวเองยื่น ยกเว้น admin) · งวดมาจาก loadListInstallments เฉพาะใบรายงวด (ใบอื่น = null) */
+  assert.match(orders, /\|\| installmentActualAwaitingReview\(row, actualInstallmentsOf\(row\) \|\| \[\], \{ userId: user\.id, role: user\.role \}\),/);
+  assert.match(orders, /const actualInstallmentsOf = \(row\) => \(isInstallmentActualOrder\(row\) \? \(installmentsByOrder\.get\(row\.id\) \|\| \[\]\) : null\);/);
   // ธง "รอฉันลงมือ" ต้องส่ง role ตัวเดียวกับที่ป้ายบนเมนูส่ง — ไม่งั้น admin เห็นลิสต์กับป้ายไม่ตรงกัน
   // ⭐ แถวต้องแนบ deal — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · ไม่แนบ = ลิสต์ไม่ตรงป้ายบนเมนู
   /* ⭐ เลนงานบริการย้อนหลัง (mig 0392 · D26) — helper ต้องรู้ว่าใบนี้ **ต้องตั้งจริง** (`serviceBackfillNeeded` ใช้บรรทัด
      + สายธุรกิจ ซึ่ง helper ไม่มี) ⇒ route คิดครั้งเดียวแล้วส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
   /* ⭐ ใบที่สายเปลี่ยนเป็นอย่างอื่นระหว่างรอตรวจงานบริการ ไม่ใช่งานของผู้ตรวจ (RPC อนุมัติปฏิเสธ · หน้าใบไม่มีปุ่ม) ⇒ ตัดเลนผู้ตรวจ */
-  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \}, \{\s*userId: user\.id, reviewer: reviewer && !staleServiceReview\(row\), role: user\.role,\s*serviceBackfillNeeded: setupPendingIds\.has\(row\.id\),\s*\}\)/);
+  /* ⭐ + เลนนับ Actual รายงวด (mig 0412) — ส่งงวดของใบรายงวดให้ helper (ป้ายบนเมนูส่ง actualRows/actualInstallmentsOf ชุดเดียวกัน) */
+  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \}, \{\s*userId: user\.id, reviewer: reviewer && !staleServiceReview\(row\), role: user\.role,\s*serviceBackfillNeeded: setupPendingIds\.has\(row\.id\),\s*actualInstallments: actualInstallmentsOf\(row\),\s*\}\)/);
   assert.match(orders, /const reviewer = isSalesOrderReviewer\(user\.role\);/);
   /* แกนที่สองของใบเดียวกัน — ขั้นบัญชีปิดใบ (mig 0250)
      ⭐ ตั้งแต่มติ 2026-08-30 ด่านนี้ขึ้นกับ **งวดชำระ** ⇒ ต้องป้อนงวดของใบนั้นเข้าไปด้วย
@@ -185,7 +190,11 @@ test('⭐ คิวบนหัวทะเบียนใบสั่งขา�
   assert.match(page, /const serviceReviewRow = \(o\) => !financeShell && !!o\._awaitingMyServiceReview;/);
   const queue = slice(page, '<ApprovalQueue', 'renderAction=');
   /* ใบที่เปิดแก้หลังอนุมัติ (mig 0396) ป้าย "แก้งานบริการ (หลังอนุมัติ)" มากับแถว (`serviceReview.label` ของ server) · ไม่มี = "งานบริการ (ใบเดิม)" */
-  assert.match(queue, /primary=\{\(o\) => \(serviceReviewRow\(o\) \? `\$\{o\.serviceReview\?\.label \|\| SERVICE_REVIEW_LABEL\} · \$\{o\.orderNumber\}` : o\.orderNumber\)\}/);
+  /* + แถว "งวดรออนุมัติ" ของใบ Actual รายงวด (mig 0412) ต่อเป็นกิ่งที่สอง — ใบรออนุมัติปกติยังเป็นเลขที่ใบล้วน */
+  assert.match(queue, /primary=\{\(o\) => \(serviceReviewRow\(o\)\s*\? `\$\{o\.serviceReview\?\.label \|\| SERVICE_REVIEW_LABEL\} · \$\{o\.orderNumber\}`\s*: installmentReviewRow\(o\) \? `\$\{INSTALLMENT_REVIEW_LABEL\} · \$\{o\.orderNumber\}` : o\.orderNumber\)\}/);
+  assert.match(queue, /: installmentReviewRow\(o\)\s*\? installmentReviewLine\(o\)/, 'แถวงวดรออนุมัติพูดยอดงวดที่ยื่น ไม่ใช่ยอดเต็มใบ');
+  assert.match(page, /const installmentReviewRow = \(o\) => !financeShell && !!o\._awaitingMyApproval\s*&& o\.status === "approved" && isInstallmentActualOrder\(o\);/);
+  assert.ok(slice(page, 'const installmentReviewLine = (o) =>', '\n  };\n').includes('${fmtMoney(o.actualSubmittedAmount)} ก่อน VAT'));
   assert.match(queue, /: serviceReviewRow\(o\)\s*\? serviceReviewLine\(o\)/, 'บรรทัดรองของแถวงานบริการเป็นของมันเอง ไม่ใช่ยอดเงิน');
   assert.match(page, /const SERVICE_REVIEW_LABEL = "งานบริการ \(ใบเดิม\)";/);
 
@@ -295,7 +304,8 @@ test('ตามงานค้าง: แถวตารางมีบรรท
 
   /* คำค้น: ป้าย + คำข้างป้าย ต่อท้ายชุดเดิม (ชุดเดิมไม่ถูกแทรก — ยามของเลขเอกสารเดิมยังยึดรูปเดิมอยู่) */
   const memo = slice(page, 'const filtered = useMemo(', '\n\n');
-  assert.match(memo, /\.\.\.historicalRefsOf\(row\)\]\s*\.concat\(row\.serviceAging\?\.label, row\.serviceAging \? SERVICE_BACKFILL_AGING_TEXT\.rowLabel\[row\.serviceAging\.waitingOn\] : null\)\s*\.some\(/);
+  /* + บรรทัดรอง "Actual รายงวด · นับแล้ว …" ใต้ยอด (review 26/10) ต่อท้ายอีกก้อน — ชุดเดิมยังไม่ถูกแทรก */
+  assert.match(memo, /\.\.\.historicalRefsOf\(row\)\]\s*\.concat\(row\.serviceAging\?\.label, row\.serviceAging \? SERVICE_BACKFILL_AGING_TEXT\.rowLabel\[row\.serviceAging\.waitingOn\] : null\)\s*(?:\/\/[^\n]*\s*)?\.concat\(installmentActualSubLine\(row\)\)\s*\.some\(/);
   assert.match(page, /placeholder="ค้นหาเลข SO \/ QT \/ ลูกค้า \/ AR \/ ดีล \/ เอกสารอ้างอิง \/ เลขเดิม"/, 'คำใบ้ของช่องค้นหาไม่เปลี่ยน');
 
   /* จอไม่พิมพ์คำของเรื่องนี้เอง (คอมเมนต์ไม่นับ) และไม่อ่านนาฬิกา */
@@ -314,7 +324,17 @@ test('ตามงานค้าง: คิวผู้จัดการ — �
 
   /* ช่อง badge อยู่ระหว่าง rowHref กับ renderAction · บรรทัดหลัก/รองของคิวไม่ถูกแตะ (ยามข้างบนยึดไว้ตัวอักษรต่อตัวอักษร) */
   const queue = slice(page, '<ApprovalQueue', 'renderAction=');
-  assert.match(queue, /rowHref=\{\(o\) => `\/sa\/sales-orders\/\$\{o\.id\}`\}[\s\S]*badge=\{\(o\) => \(serviceReviewRow\(o\) \? <ServiceAgingChip aging=\{o\.serviceAging\} \/> : null\)\}\s*$/);
+  assert.match(queue, /rowHref=\{queueHref\}[\s\S]*badge=\{\(o\) => \(serviceReviewRow\(o\) \? <ServiceAgingChip aging=\{o\.serviceAging\} \/> : null\)\}\s*$/);
+  /* แถว "งวดรออนุมัติ" (ใบ Actual รายงวด) ไปแท็บการชำระตรง ๆ — ปุ่มอนุมัติงวดอยู่ที่นั่นที่เดียว (review 26/10) · แถวอื่นลิงก์เดิม */
+  /* + แถวเลนเจ้าของดีล (มีงวดยื่นขอนับได้แล้ว · ธง `_installmentReadyForMe` ของ server) ไปแท็บการชำระด้วย — ทั้งคิวและแถวตารางหลัก (review รอบสอง 26/10) */
+  assert.match(page, /const installmentTabRow = \(o\) => installmentReviewRow\(o\) \|\| \(!financeShell && !!o\._installmentReadyForMe\);/);
+  assert.match(page, /const queueHref = \(o\) => \(installmentTabRow\(o\) \? `\/sa\/sales-orders\/\$\{o\.id\}\?tab=payment` : `\/sa\/sales-orders\/\$\{o\.id\}`\);/);
+  assert.match(page, /<DetailRow key=\{row\.id\} href=\{queueHref\(row\)\} className="premium-row">/);
+  assert.match(page, /<Link prefetch=\{false\} href=\{queueHref\(row\)\} className="linklike mono"><strong>\{row\.orderNumber\}<\/strong><\/Link>/);
+  const api = read('app/api/sales-planning/sales-orders/route.js');
+  assert.match(api, /installmentActualReadyForOwner\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \},\s*actualInstallmentsOf\(row\) \|\| \[\], \{ userId: user\.id \}\)\s*\? \{ _installmentReadyForMe: true \}/,
+    'ธงของแถวมาจากตัวตัดสินเดียวกับเลนเจ้าของดีลของ "รอฉันลงมือ"');
+  assert.match(page, /<Button as=\{Link\} href=\{queueHref\(o\)\} tone="primary" size="sm">/);
 
   /* คิวกลาง: ช่องเสริม — ไม่ส่ง = DOM เดิม (อีกสี่ทะเบียนไม่ส่ง) · ป้ายอยู่ในลิงก์ของแถว หลังบรรทัดหลัก ก่อนบรรทัดรอง */
   const shared = read('components/ui/ApprovalQueue.js');

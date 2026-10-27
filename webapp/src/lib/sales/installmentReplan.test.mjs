@@ -6,9 +6,11 @@ import assert from 'node:assert/strict';
 
 import {
   REPLANNED_BADGE,
+  REPLAN_COUNTED_LABEL,
   REPLAN_DONE_MESSAGE,
   buildReplanRows,
   installmentReplanBlocker,
+  installmentReplanCounted,
   installmentReplanLock,
   installmentsReplanned,
   monthlyDueDates,
@@ -24,6 +26,7 @@ import {
   replanRequestRows,
   replanStale,
   replanSwitchUnit,
+  remainderOrphanedCents,
 } from './installmentReplan.js';
 
 const ORDER = Object.freeze({
@@ -71,6 +74,70 @@ test('installmentReplanLock: pending/rejected ที่ไม่มีอะไ�
   assert.equal(installmentReplanLock(row({ status: 'rejected', rejectedReason: 'สลิปไม่ชัดเจน อ่านไม่ออก', evidence: [{ storagePath: 'a' }], paidOn: '2026-09-01' })), null);
   assert.equal(installmentReplanLock(row({ taxInvoiceNo: '   ' })), null, 'เลขใบกำกับว่าง (ช่องว่าง) ไม่ใช่ใบกำกับ');
   assert.equal(installmentReplanLock(row({ billingRequestId: '' })), null);
+});
+
+/* ใบ Actual รายงวด (mig 0412): งวดที่ยื่นขอนับอยู่ล็อก (ข้อหก) · มติเจ้าของข้อ 9 (26/10): งวดที่นับแล้วแต่เงินยังไม่เข้า "ปรับยอด/วันได้
+   ลบไม่ได้" ⇒ ไม่ล็อก ยกเว้นงวดยอด 0 (ข้อเจ็ด — แถวเปิดต้องยอด > 0) · ตรงกับ `_so_installment_replan_locked` 8 พารามิเตอร์ */
+test('installmentReplanLock: ยื่นขอนับอยู่ = ล็อก · นับแล้วยอด > 0 = เปิด (ลบไม่ได้) · นับแล้วยอด 0 = ล็อก · ถูกตีกลับการยื่น = เปิด', () => {
+  assert.equal(installmentReplanLock(row({ actualStatus: 'approved', amount: 32100 })), null, 'มติข้อ 9: ปรับยอด/วันได้');
+  assert.equal(installmentReplanCounted(row({ actualStatus: 'approved', amount: 32100 })), true, 'แต่ลบไม่ได้');
+  assert.equal(REPLAN_COUNTED_LABEL, 'นับ Actual แล้ว — ปรับยอด/วันได้ ลบไม่ได้');
+  assert.equal(installmentReplanLock(row({ actualStatus: 'approved', amount: 0 })), 'นับ Actual แล้ว (งวดยอด 0 บาท)');
+  assert.equal(installmentReplanCounted(row({ actualStatus: 'approved', amount: 0 })), false, 'ยอด 0 = ล็อก ไม่ใช่แถวเปิด');
+  assert.equal(installmentReplanCounted(row({ actualStatus: 'approved', amount: 100, status: 'confirmed' })), false, 'มีเงิน = ล็อกเพราะเงิน');
+  assert.equal(installmentReplanCounted(row({ actualStatus: 'submitted', amount: 100 })), false);
+  assert.equal(installmentReplanLock(row({ actualStatus: 'submitted' })), 'ยื่นขอนับ Actual อยู่ — ผู้ยื่นดึงกลับหรือ AE Sup ตีกลับก่อน');
+  assert.equal(installmentReplanLock(row({ actualStatus: 'rejected', actualRejectedReason: 'ยังไม่ได้ส่งของงวดนี้' })), null);
+  assert.equal(installmentReplanLock(row({ actualStatus: null })), null);
+  // สถานะเงินมาก่อน (ลำดับเดิม) — งวดที่รับเงินแล้วบอก "รับเงินแล้ว" แม้นับ Actual แล้ว
+  assert.equal(installmentReplanLock(row({ status: 'confirmed', actualStatus: 'approved' })), 'รับเงินแล้ว');
+  assert.match(installmentReplanLock(row({ status: 'reported', actualStatus: 'approved' })), /^รอบัญชีตรวจ/);
+  // ยื่นขอนับมาก่อนเอกสารผูก · นับแล้วยอด > 0 ที่มีใบกำกับ = ล็อกเพราะใบกำกับ (มีเอกสาร = ไม่ใช่ "ยังไม่มีเงิน/เอกสาร")
+  assert.match(installmentReplanLock(row({ actualStatus: 'submitted', taxInvoiceNo: 'IV-1' })), /^ยื่นขอนับ Actual อยู่/);
+  assert.equal(installmentReplanLock(row({ actualStatus: 'approved', amount: 100, taxInvoiceNo: 'IV-1' })), 'มีใบกำกับภาษี IV-1');
+  // ทุกงวดนับแล้ว (ยังไม่มีเงิน) = ปรับได้ — ร่างมีทุกงวด
+  const counted = ROWS.map((r) => ({ ...r, status: 'pending', reportedAt: null, confirmedAt: null, actualStatus: 'approved' }));
+  assert.deepEqual(installmentReplanBlocker(ORDER, counted, SUP), { visible: true, blocker: null });
+  assert.deepEqual(replanDraftFrom(counted).map((d) => d.id), ['SOI-1', 'SOI-2', 'SOI-3']);
+  // ทุกงวดยื่นขอนับอยู่ = ปุ่มโชว์แต่บอกเหตุที่ล็อกจริง (ไม่ใช่ "รับเงิน/มีเอกสารผูก" · review รอบสอง)
+  const submitted = counted.map((r) => ({ ...r, actualStatus: 'submitted' }));
+  assert.equal(installmentReplanBlocker(ORDER, submitted, SUP).blocker, 'ทุกงวดรับเงิน มีเอกสารผูก หรือยื่น/นับ Actual แล้ว — ไม่มีงวดที่ปรับได้');
+});
+
+/* มติเจ้าของข้อ 9 (26/10/2026 "ปรับยอด/วันได้ ลบไม่ได้"): ตัวคิดแผนตัวเดียวกับจอและ route */
+test('buildReplanRows (มติข้อ 9): งวดที่นับแล้วแก้ยอด/วัน/ป้ายได้ · ลบออกจากร่าง = error · ลดถึง 0 = error · view บอก counted', () => {
+  const C1 = row({ id: 'C1', seq: 1, label: 'มัดจำ', percent: 30, amount: 70200, actualStatus: 'approved', actualAmount: 65607.48 });
+  const C2 = row({ id: 'C2', seq: 2, label: 'งวดที่ 2', percent: 40, amount: 93600, actualStatus: 'approved', actualAmount: 87476.64 });
+  const O3 = row({ id: 'O3', seq: 3, label: 'งวดที่ 3', percent: 30, amount: 70200 });
+  const base = [C1, C2, O3];
+  const ok = buildReplanRows(ORDER, base, [
+    { id: 'C1', label: 'มัดจำ', amount: 70200 },
+    { id: 'C2', label: 'งวดที่ 2', amount: 46800, dueDate: '2026-12-15' },
+    { id: 'O3', label: 'งวดที่ 3', amount: 70200 },
+    { id: null, label: '', amount: 46800, dueDate: '2027-01-15' },
+  ]);
+  assert.equal(ok.error, null);
+  assert.deepEqual(ok.rows.map((r) => [r.id, r.seq, r.amount, r.dueDate]),
+    [['C1', 1, 70200, null], ['C2', 2, 46800, '2026-12-15'], ['O3', 3, 70200, null], [null, 4, 46800, '2027-01-15']]);
+  assert.deepEqual(ok.view.map((r) => [r.id, r.counted, r.lock]),
+    [['C1', true, null], ['C2', true, null], ['O3', false, null], [null, false, null]]);
+  for (const r of ok.rows) assert.equal('actualAmount' in r || 'actualStatus' in r, false, 'แผนไม่พกช่อง Actual');
+  // ร่างที่ลบงวดที่นับแล้ว (โยกยอดไปงวดอื่น) = error ด้วยคำเดียวกับป้ายบนแถว
+  const dropped = buildReplanRows(ORDER, base, [
+    { id: 'C1', label: 'มัดจำ', amount: 70200 }, { id: 'O3', label: 'งวดที่ 3', amount: 163800 },
+  ]);
+  assert.match(dropped.error, /งวดที่ 2 นับ Actual แล้ว — ลบออกจากแผนไม่ได้ \(ปรับยอด\/วันได้\)/);
+  // ลดถึง 0 = ลบ (แถวเปิดต้อง > 0 — กติกาเดียวกับแกน 0377)
+  const zeroed = buildReplanRows(ORDER, base, [
+    { id: 'C1', label: 'มัดจำ', amount: 70200 }, { id: 'C2', label: 'งวดที่ 2', amount: 0 }, { id: 'O3', label: 'งวดที่ 3', amount: 163800 },
+  ]);
+  assert.match(zeroed.error, /ยอดงวดที่ 2 ต้องมากกว่า 0/);
+  // บรรทัดผลลัพธ์บอกว่า Actual ของงวดที่นับแล้วไม่ขยับ
+  const lines = replanPromptFacts(ORDER, base, ok.rows).changes;
+  assert.ok(lines.some((l) => /^งวดที่ 2: .*นับ Actual แล้ว — ยอด Actual คงเดิม$/.test(l)), lines.join('\n'));
+  assert.ok(!lines.some((l) => /^งวดที่ 3/.test(l) && /นับ Actual/.test(l)));
+  // ตัวแก้ส่งงวดที่นับแล้วไปกับคำขอ (ไม่ใช่แถวล็อก) — route สร้างชุดเดิมซ้ำได้
+  assert.deepEqual(replanRequestRows(ok).map((r) => r.id), ['C1', 'C2', 'O3', null]);
 });
 
 // ── 2. ใครเห็นปุ่ม / ปุ่มบอกเหตุ ─────────────────────────────────────────────────────────────────
@@ -293,6 +360,15 @@ test('replanReasonError · replanAuditSummary · ข้อความคงท�
     replanAuditSummary({ orderNumber: 'SO-26090001-0', beforeCount: 3, afterCount: 4, reason: 'ลูกค้าขอแบ่งจ่ายสามงวด' }),
     'ปรับแผนงวด SO-26090001-0: 3→4 งวด (Actual ไม่เปลี่ยน): ลูกค้าขอแบ่งจ่ายสามงวด',
   );
+  // มติข้อ 10 (review รอบห้า 27/10): ฐานนับงวดใหม่ให้ตอน COMMIT — ส่วนแบ่ง 0 ยังไม่เปลี่ยน · มียอด = ห้ามเขียนว่าไม่เปลี่ยน
+  assert.match(
+    replanAuditSummary({ orderNumber: 'SO-1', beforeCount: 3, afterCount: 4, reason: 'ลูกค้าขอแบ่งจ่ายสามงวด', autoCounted: { count: 1, amount: 0, seqs: [4] } }),
+    /\(Actual ไม่เปลี่ยน\)/,
+  );
+  assert.equal(
+    replanAuditSummary({ orderNumber: 'SO-1', beforeCount: 3, afterCount: 4, reason: 'ลูกค้าขอแบ่งจ่ายสามงวด', autoCounted: { count: 1, amount: 10000, seqs: [4] } }),
+    'ปรับแผนงวด SO-1: 3→4 งวด (Actual เปลี่ยนเฉพาะงวดที่ระบบนับอัตโนมัติ): ลูกค้าขอแบ่งจ่ายสามงวด',
+  );
   assert.equal(REPLAN_DONE_MESSAGE, 'ปรับแผนงวดแล้ว — ยอด Actual ไม่เปลี่ยน');
   assert.equal(REPLANNED_BADGE, 'ปรับแผนหลังอนุมัติ');
 });
@@ -346,4 +422,81 @@ test('replanSwitchUnit · replanEvenPercents: สลับบาท↔% คง�
   assert.deepEqual(replanEvenPercents(70, 3), [23.33, 23.33, 23.34]);
   assert.deepEqual(replanEvenPercents(100, 4), [25, 25, 25, 25]);
   assert.deepEqual(replanEvenPercents(70, 0), []);
+});
+
+/* 🐞 review รอบสอง 26/10: ทุกงวดล็อก แต่บางงวดติดเพราะการนับ Actual อย่างเดียว — เหตุเดิมบอก "ทุกงวดรับเงินหรือมีเอกสารผูกแล้ว"
+   ทั้งที่งวดยังไม่มีเงิน ⇒ บอกเหตุที่ล็อกจริง · มติข้อ 9: งวดที่นับแล้วยอด > 0 ไม่ล็อกแล้ว (เหลือยื่นขอนับอยู่ · นับแล้วยอด 0) */
+test('installmentReplanBlocker: ทุกงวดล็อกเพราะยื่นขอนับ/นับแล้วยอด 0 (ยังไม่มีเงิน) = บอกเหตุนี้ · นับแล้วยอด > 0 = ปรับได้ · ล็อกเพราะเงิน/เอกสารล้วน = คำเดิม', async () => {
+  const { installmentReplanBlocker } = await import('./installmentReplan.js');
+  const order = { id: 'SO-1', status: 'approved', origin: 'pipeline', totalAmount: 107000, financeStatus: 'pending', actualMode: 'installment' };
+  const sup = { id: 'u', role: 'ae_supervisor' };
+  const paid = { id: 'r1', seq: 1, status: 'confirmed', amount: 53500 };
+  const countedUnpaid = { id: 'r2', seq: 2, status: 'pending', amount: 53500, actualStatus: 'approved', actualApprovedVia: 'count_rest' };
+  assert.deepEqual(installmentReplanBlocker(order, [paid, countedUnpaid], sup), { visible: true, blocker: null }, 'มติข้อ 9: ปรับยอด/วันได้');
+  assert.deepEqual(installmentReplanBlocker(order, [paid, { ...countedUnpaid, actualStatus: 'submitted' }], sup),
+    { visible: true, blocker: 'ทุกงวดรับเงิน มีเอกสารผูก หรือยื่น/นับ Actual แล้ว — ไม่มีงวดที่ปรับได้' });
+  assert.deepEqual(installmentReplanBlocker(order, [paid, { ...countedUnpaid, amount: 0 }], sup),
+    { visible: true, blocker: 'ทุกงวดรับเงิน มีเอกสารผูก หรือยื่น/นับ Actual แล้ว — ไม่มีงวดที่ปรับได้' }, 'นับแล้วยอด 0 = ล็อก');
+  assert.deepEqual(installmentReplanBlocker(order, [paid, { ...countedUnpaid, actualStatus: null, status: 'reported' }], sup),
+    { visible: true, blocker: 'ทุกงวดรับเงินหรือมีเอกสารผูกแล้ว — ไม่มีงวดที่ปรับได้' }, 'ล็อกเพราะเงินล้วน = คำเดิม');
+});
+
+/* review รอบสาม 26/10 (0412 W1): มติข้อ 9 ให้ปรับยอดงวดที่นับแล้วและลบงวดที่ยังไม่นับได้ — แต่ส่วนแบ่งวางยอดที่ยังไม่นับไว้ที่งวดที่ยังไม่นับเท่านั้น
+   🐞 ใบ 107,000 / Actual 100,000 · งวด 1 นับตอนอนุมัติ 50,000 · ร่าง "งวด 1 = เต็มใบ" (ลบงวด 2) เดิมผ่าน ⇒ อีก 50,000 หายจากทุกกองถาวร */
+test('buildReplanRows (ใบรายงวด · review รอบสาม): แผนที่ไม่เหลืองวดที่ยังไม่นับทั้งที่ Actual ยังนับไม่ครบ = error · เหลือแถวใหม่/นับครบแล้ว = ผ่าน', () => {
+  const INST = { ...ORDER, totalAmount: 107000, actualAmount: 100000, actualMode: 'installment', actualCountedAmount: 50000 };
+  const I1 = row({ id: 'I1', seq: 1, label: 'งวดที่ 1', percent: 50, amount: 53500, actualStatus: 'approved', actualAmount: 50000,
+    actualApprovedVia: 'so_approval' });
+  const I2 = row({ id: 'I2', seq: 2, label: 'งวดที่ 2', percent: 50, amount: 53500 });
+  const merged = buildReplanRows(INST, [I1, I2], [{ id: 'I1', label: 'งวดที่ 1', amount: 107000 }]);
+  assert.match(merged.error, /Actual ของใบยังนับไม่ครบ ฿50,000\.00 — แผนต้องเหลืองวดที่ยังไม่นับ Actual อย่างน้อย 1 งวด/);
+  assert.equal(remainderOrphanedCents(INST, [I1, I2], merged.rows.map((r) => r.id)), 5000000);
+  // ลบงวด 2 แต่เติมแถวใหม่ (ยังไม่นับ) = ผ่าน · คงงวด 2 แล้วลดยอด = ผ่าน
+  assert.equal(buildReplanRows(INST, [I1, I2], [{ id: 'I1', label: 'งวดที่ 1', amount: 80250 }, { id: null, label: '', amount: 26750 }]).error, null);
+  assert.equal(buildReplanRows(INST, [I1, I2], [{ id: 'I1', label: 'งวดที่ 1', amount: 80250 }, { id: 'I2', label: 'งวดที่ 2', amount: 26750 }]).error, null);
+  // นับครบแล้ว (Σ = actualAmount) = ไม่มียอดที่ค้าง ⇒ ไม่ติดด่าน
+  const C2 = { ...I2, actualStatus: 'approved', actualAmount: 50000, actualApprovedVia: 'count_rest' };
+  assert.equal(buildReplanRows({ ...INST, actualCountedAmount: 100000 }, [I1, C2],
+    [{ id: 'I1', label: 'งวดที่ 1', amount: 53500, dueDate: '2026-12-01' }, { id: 'I2', label: 'งวดที่ 2', amount: 53500 }]).error, null);
+  // ใบทั้งใบ / ใบที่ไม่ใช่ approved = ไม่มีด่านนี้
+  assert.equal(remainderOrphanedCents({ ...INST, actualMode: 'order' }, [I1, I2], ['I1']), 0);
+  assert.equal(remainderOrphanedCents({ ...INST, status: 'approval_revoked' }, [I1, I2], ['I1']), 0);
+  // แถวที่จะถูกนับตอนเขียน (C2b ของยกเงิน) ไม่นับเป็นแถวที่ยังไม่นับ
+  assert.equal(remainderOrphanedCents(INST, [I1, I2], ['A1'], { countedIds: ['A1'] }), 5000000);
+  assert.equal(remainderOrphanedCents(INST, [I1, I2], ['A1']), 0);
+});
+
+/* มติเจ้าของข้อ 10 (26/10 "นับให้เอง ไม่ต้องยื่น"): ใบที่กด "นับที่เหลือทั้งหมด" แล้ว — งวดที่เพิ่มจากปรับแผนนับให้อัตโนมัติตอนบันทึก
+   (constraint trigger ของ 0412 · ฮาร์เนสข้อ 19c) ⇒ โมดัลยืนยันบอกผลนี้แทนกติกายื่น/อนุมัติรายงวด · ใบที่ยังเดินรายงวด = คำเดิม */
+test('มติข้อ 10: replanPromptFacts/paymentPlanEditPrompt — ใบที่กดนับที่เหลือทั้งหมดแล้ว งวดที่เพิ่มนับให้อัตโนมัติ (ส่วนแบ่ง 0 · ยังนับไม่ครบ = ยอดที่เหลือเข้าเดือนนี้) · ใบอื่นคำเดิม', async () => {
+  const { paymentPlanEditPrompt } = await import('../approvalPrompt.js');
+  const { autoCountLine } = await import('./installmentReplan.js');
+  const INST = { ...ORDER, totalAmount: 107000, actualAmount: 100000, actualMode: 'installment', actualCountedAmount: 100000 };
+  const I1 = row({ id: 'I1', seq: 1, label: 'งวดที่ 1', percent: 50, amount: 53500, actualStatus: 'approved', actualAmount: 50000,
+    actualApprovedVia: 'so_approval' });
+  const I2 = row({ id: 'I2', seq: 2, label: 'งวดที่ 2', percent: 50, amount: 53500, actualStatus: 'approved', actualAmount: 50000,
+    actualApprovedVia: 'count_rest', actualNote: 'ลูกค้าขอปิดยอดทั้งก้อนก่อนเงินเข้า' });
+  const split = buildReplanRows(INST, [I1, I2], [{ id: 'I1', label: 'งวดที่ 1', amount: 53500 }, { id: 'I2', label: 'งวดที่ 2', amount: 26750 },
+    { id: null, label: '', amount: 26750 }]);
+  assert.equal(split.error, null);
+  const facts = replanPromptFacts(INST, [I1, I2], split.rows);
+  assert.match(facts.actualAutoCountLine, /^ใบนี้กด “นับที่เหลือทั้งหมด” แล้ว — งวดที่เพิ่ม 1 งวดนับ Actual ให้อัตโนมัติตอนบันทึก ไม่ต้องยื่น \(มติข้อ 10\)/);
+  assert.match(facts.actualAutoCountLine, /ส่วนแบ่ง ฿0\.00 — Actual ของใบครบแล้ว ไม่ขยับ · บัญชีรับรองเงินงวดนั้นได้ทันทีที่ลูกค้าจ่าย$/);
+  const bullets = paymentPlanEditPrompt(facts).detail.split('\n').filter((l) => l.startsWith('· '));
+  assert.ok(bullets.some((l) => l.includes(facts.actualAutoCountLine)));
+  assert.ok(bullets.every((l) => !/ตอน AE Sup อนุมัติงวด/.test(l)), 'ไม่พูดกติกายื่น/อนุมัติรายงวดที่ไม่มีผลกับใบนี้แล้ว');
+  // ปรับแค่วัน (ไม่มีงวดใหม่) — ยังบอกกติกาของใบ
+  const dates = buildReplanRows(INST, [I1, I2], [{ id: 'I1', label: 'งวดที่ 1', amount: 53500, dueDate: '2026-12-01' },
+    { id: 'I2', label: 'งวดที่ 2', amount: 53500 }]);
+  assert.equal(replanPromptFacts(INST, [I1, I2], dates.rows).actualAutoCountLine,
+    'ใบนี้กด “นับที่เหลือทั้งหมด” แล้ว — งวดที่เพิ่มทีหลังนับ Actual ให้อัตโนมัติ ไม่ต้องยื่น (มติข้อ 10)');
+  // ยังนับไม่ครบ (เช่น Rev. ที่ยอดก่อน VAT เพิ่ม) — งวดใหม่รับยอดที่เหลือเข้า Actual เดือนที่บันทึก
+  assert.match(autoCountLine({ ...INST, actualAmount: 110000 }, [I1, I2], ['I1', 'I2', null]), /ยอด ฿10,000\.00 \(ก่อน VAT\) เข้า Actual เดือน /);
+  // ใบที่ยังเดินรายงวด / ใบทั้งใบ / ใบที่ไม่ได้อนุมัติอยู่ = ไม่มีบรรทัดนี้ (คำเดิม)
+  const plainI2 = { ...I2, actualStatus: null, actualAmount: null, actualApprovedVia: null };
+  const plain = replanPromptFacts({ ...INST, actualCountedAmount: 50000 }, [I1, plainI2], split.rows);
+  assert.equal(plain.actualAutoCountLine, '');
+  assert.ok(paymentPlanEditPrompt(plain).detail.includes('งวดที่ยังไม่นับคิดส่วนแบ่งจากยอดงวดใหม่ตอน AE Sup อนุมัติงวด'));
+  assert.equal(autoCountLine({ ...INST, actualMode: 'order' }, [I1, I2], [null]), '');
+  assert.equal(autoCountLine({ ...INST, status: 'approval_revoked' }, [I1, I2], [null]), '');
 });

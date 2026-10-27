@@ -2640,6 +2640,7 @@ test('0404 แคตตาล็อก: คีย์ตามสัญญาก�
     'unsavedDocument', 'failed', 'loadFailed', 'noSites']);
   assert.deepEqual(Object.keys(D), ['badge', 'who', 'pendingTitle', 'pendingLine', 'pendingHow', 'pendingComplete', 'pendingBlocked', 'pendingStuck',
     'strip', 'stripWarn', 'heroPending', 'approveCheck', 'approveEffectNoTs', 'approveEffectAfter', 'approveEffectComplete', 'approvedToast',
+    'approvedInstallmentSuffix', // review รอบห้า 27/10 (มติข้อ 6 ของ Actual รายงวด): ท้ายทักรายงวดของใบที่ข้ามการตั้ง
     'bannerTitle', 'bannerLine', 'railEyebrow', 'railTitle', 'railMeta', 'railLine', 'actualNote', 'cardMeta', 'cardMetaSubmitted', 'heroSuffix',
     'queueLabel', 'queueTag', 'auditTag', 'checklistLine', 'tsPrefix', 'tsSub', 'tsOrphanTitle']);
   assert.ok(Object.isFrozen(T) && Object.isFrozen(D));
@@ -2687,6 +2688,7 @@ test('0404 แคตตาล็อก: คีย์ตามสัญญาก�
   assert.equal(D.strip(1234), 'งานบริการ: ข้ามการตั้งตอนยื่น · ยังขาด 1,234 ข้อ · อนุมัติแล้วยังไม่ส่ง TS');
   assert.equal(D.approveEffectComplete, 'ผู้ยื่นเลือกข้ามไว้ตอนยื่น แต่ตอนนี้งานบริการครบแล้ว — อนุมัติแล้วเปิดงานให้ TS ตามปกติ');
   assert.equal(D.approvedToast, 'อนุมัติแล้ว · นับ Actual แล้ว — ยังไม่ส่งงานให้ TS (ข้ามการตั้งงานบริการตอนยื่น)');
+  assert.equal(D.approvedInstallmentSuffix, ' · ยังไม่ส่งงานให้ TS (ข้ามการตั้งงานบริการตอนยื่น)');
 
   /* หลังอนุมัติ (เส้นตั้งย้อนหลัง) · คิว · audit · แท็บ TS */
   const { roundsLabel, packsLabel } = SERVICE_SETUP_LINE_TEXT;

@@ -106,10 +106,11 @@ test('แผงงวด: ใบย้อนหลังไม่มี preview/
   assert.match(panel, /const orderLock = historicalInstallmentLock\(order\);/);
   /* ⚠️ แก้ยามโดยตั้งใจใน PR1 (mig 0376): ใบ revised ที่งวดย้ายไปใบ Rev. แล้วก็ไม่วาด preview (`movedAway`) —
      ใบย้อนหลังยังเป็นเงื่อนไขแรกของ `[]` ตามเดิม
-     ⚠️ แก้รอบสองโดยตั้งใจ (review UI-4): ใบ pipeline ที่ยกเลิก (`cancelledPipeline`) ก็ไม่วาด preview เช่นกัน */
-  assert.match(panel, /: \(historical \|\| movedAway \|\| cancelledPipeline \? \[\] : previewInstallments\(/);
+     ⚠️ แก้รอบสองโดยตั้งใจ (review UI-4): ใบ pipeline ที่ยกเลิก (`cancelledPipeline`) ก็ไม่วาด preview เช่นกัน
+     ⚠️ แก้รอบสามโดยตั้งใจ (review รอบหก 27/10 · Actual รายงวด): GET อ่านงวดพลาด (`installmentsReadError`) ก็ไม่วาด preview/ปุ่มเริ่มติดตาม */
+  assert.match(panel, /: installmentsReadError \? \[\]\s*: \(historical \|\| movedAway \|\| cancelledPipeline \? \[\] : previewInstallments\(/);
   assert.match(panel, /const drift = historical \? null : installmentPlanDrift\(/);
-  assert.match(panel, /\{isPreview && canStart && canTrackPayments && !historical \? \(/);
+  assert.match(panel, /\{isPreview && canStart && canTrackPayments && !historical && !installmentsReadError \? \(/);
   // ⚠️ ทุกจุดที่เรียกด่านต้องผ่าน `gate` ตัวเดียว (ซึ่งส่ง orderLock + historical เสมอ)
   const calls = panel.match(/installmentActionError\(/g) || [];
   assert.equal(calls.length, 1, 'เรียก installmentActionError ตรง ๆ ได้ที่เดียว — ใน gate');
