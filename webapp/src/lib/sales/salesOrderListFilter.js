@@ -8,7 +8,7 @@
 // ⭐ มิติของตารางอยู่ที่นี่ (หน้าเรียกตรง ๆ) · **คำค้นเป็นของหน้า** (`ctx.matchesSearch` — ชุดค้นอ่านสิ่งที่ตาเห็นบนแถว
 //   แบบ `dealListFilter`) · การ์ดล้างคำค้นเสมอ ⇒ คำค้นไม่มีผลกับเลขของการ์ด
 import { salesOrderTaxInvoiceNote } from '@/lib/sales/salesOrderPayments';
-import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE, isActualOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 /* สถานะการชำระของใบ — คำถามที่ตารางสถานะเอกสารตอบไม่ได้ ("ใบไหนเงินยังไม่ครบ")
    ⚠️ `tracked` เท็จ = ยังไม่เริ่มติดตาม ไม่ใช่ "ยังไม่จ่าย" — คนละเรื่องกัน */
@@ -47,7 +47,9 @@ export const INVOICE_FILTERS = {
    มีบ้านเดียว (ยาม historicalMoneyGuards) และตัวตัดสินคือ `isHistoricalOrder` ตัวเดียว
    กับที่รายงานเงินใช้กรองออก ⇒ สิ่งที่เห็นบนจอตรงกับที่ระบบคิด */
 export const ORIGIN_FILTERS = {
-  [ORIGIN_PIPELINE]: { label: 'ใบจากใบเสนอราคา', match: (row) => !isHistoricalOrder(row) },
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414) ก็มาจากใบเสนอราคา แต่ไม่ใช่ยอดขาย — ไม่อยู่ในกองนี้ (การ์ด "อนุมัติแล้ว"/"Actual ก่อน VAT"
+     ตั้งที่มานี้ ⇒ ถ้ามันปนเข้ามา ตารางที่กรองแล้วจะมีใบเกินเลขบนการ์ด) · ตัวตัดสินเดียวกับ Actual (`isActualOrder`) */
+  [ORIGIN_PIPELINE]: { label: 'ใบจากใบเสนอราคา', match: (row) => isActualOrder(row) },
   [ORIGIN_HISTORICAL]: { label: 'ใบย้อนหลัง', match: (row) => isHistoricalOrder(row) },
 };
 

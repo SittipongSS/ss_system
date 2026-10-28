@@ -21,6 +21,7 @@ import Button from "@/components/ui/Button";
 import OptionTiles from "@/components/ui/OptionTiles";
 import DealPicker from "@/components/pm/DealPicker";
 import { dealRequestEntries } from "@/lib/requests/dealRequestEntries";
+import { isExciseOrder } from "@/lib/sales/historicalOrders";
 import styles from "./RequestCreateButton.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -66,11 +67,15 @@ export default function RequestCreateButton({
   /* ⚠️ ในโหมดโครงการ ใบเสนอราคา/ใบสั่งขายที่ส่งเข้ามาเป็นของ **ทั้งโครงการ** —
      ต้องกรองให้เหลือของดีลที่เลือกก่อน ไม่งั้นบรีฟกลิ่นจะขึ้นว่าเปิดได้ทั้งที่ SO
      ใบนั้นเป็นของดีลอื่นในโครงการเดียวกัน */
-  const entries = useMemo(() => dealRequestEntries(activeDeal, {
-    quotations: activeDeal ? quotations.filter((row) => !row.dealId || row.dealId === activeDeal.id) : [],
-    salesOrders: activeDeal ? salesOrders.filter((row) => !row.dealId || row.dealId === activeDeal.id) : [],
-    returnTo,
-  }), [activeDeal, quotations, salesOrders, returnTo]);
+  /* ⛔ ใบค่าสรรพสามิต (mig 0414) ไม่มีดีลและไม่ใช่งานที่เปิดคำร้องได้ — `!row.dealId` ข้างล่างจะปล่อยมันผ่าน จึงตัดก่อน */
+  const entries = useMemo(() => {
+    const ofDeal = (row) => !isExciseOrder(row) && (!row.dealId || row.dealId === activeDeal.id);
+    return dealRequestEntries(activeDeal, {
+      quotations: activeDeal ? quotations.filter(ofDeal) : [],
+      salesOrders: activeDeal ? salesOrders.filter(ofDeal) : [],
+      returnTo,
+    });
+  }, [activeDeal, quotations, salesOrders, returnTo]);
 
   if (!canEdit) return null;
 

@@ -1,3 +1,6 @@
+import { isClosedStage } from '@/lib/salesPlanning';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+
 const EDITABLE_QUOTATION_STATUSES = new Set(['draft', 'sent', 'rejected']);
 
 // ใบ grandfather (mig 0114 ตั้งใจไม่ backfill) นับเป็น "อนุมัติแล้ว" ทุกด่านในระบบอยู่แล้ว
@@ -133,6 +136,16 @@ export function quotationRejectionNotice(quotation) {
    ⚠️ ร่างที่ยังไม่เคยยื่นไม่นับ — ตาฉันก็จริง แต่ไม่มีใครรออยู่ปลายทางและไม่มีอะไรทวง
    (กติกาเดียวกับใบร่างคำร้อง ม-112) */
 export const QUOTATION_ACTIONABLE_STATUSES = [...EDITABLE_QUOTATION_STATUSES];
+
+/* บริบทผู้อนุมัติของใบ — ตัวเดียวของทะเบียนใบเสนอราคากับป้ายบนเมนู (nav/counts) · แถวต้องมี `deal.ownerId` + `deal.stage`
+   ⭐ ใบค่าสรรพสามิต (mig 0414): ไม่มีดีล ⇒ ผู้อนุมัติ = เจ้าของดีลของ SO ต้นทาง (`sourceDeal` จาก attachSourceDeals) ·
+      ดีลนั้น Won เสมอ (มี SO แล้ว) ⇒ `dealClosed: false` — ใช้กติกา "ดีลปิดแล้วไม่นับ" = ใบไม่ขึ้นป้ายให้ใครเลย (ตรวจแผน 28/10) */
+export function quotationApprovalContext(quotation, userId) {
+  if (isExciseOrder(quotation)) {
+    return { userId, dealOwnerId: quotation?.sourceDeal?.ownerId ?? null, dealClosed: false };
+  }
+  return { userId, dealOwnerId: quotation?.deal?.ownerId ?? null, dealClosed: isClosedStage(quotation?.deal?.stage) };
+}
 
 export function isQuotationAwaitingMyApproval(quotation, { userId = '', dealOwnerId = null, dealClosed = false } = {}) {
   return Boolean(quotation) && Boolean(userId)

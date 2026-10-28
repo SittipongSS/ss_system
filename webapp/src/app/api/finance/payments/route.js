@@ -11,6 +11,7 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
+import { loadSourceDeals } from '@/lib/scopedRow';
 import {
   filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerFacetTally, ledgerIncludes, ledgerReport, ledgerRow,
   ledgerSummary, orderStateIndex, sortLedger, stampActualHold, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
@@ -90,7 +91,7 @@ async function loadLedger(supabase, todayIso) {
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode", "sourceSalesOrderId"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -107,6 +108,11 @@ async function loadLedger(supabase, todayIso) {
     if (dealError) throw dealError;
     (deals || []).forEach((d) => dealById.set(d.id, d));
   }
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — แถวจัดกลุ่มตามผู้ดูแล/ทีมของดีลของ SO ต้นทาง (ป้ายของแถวเท่านั้น ·
+     ไม่เข้า `dealsById` ของเกณฑ์ใบมีรอบบริการ ⇒ สายธุรกิจของดีลลูกค้าไม่ไหลมาติดใบค่าภาษี) */
+  const { data: sourceDealBySource, error: sourceDealError } = await loadSourceDeals(supabase,
+    (orders || []).filter((o) => !o.dealId && o.sourceSalesOrderId).map((o) => o.sourceSalesOrderId));
+  if (sourceDealError) throw sourceDealError;
 
   /* ── เกณฑ์ "ใบมีรอบบริการ" (มติผู้ใช้ 2026-08-30) ─────────────────────────
      สาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อยหนึ่งบรรทัด ⇒ ต้องรู้สองอย่าง:
@@ -256,7 +262,7 @@ async function loadLedger(supabase, todayIso) {
         order,
         quotation: quoteById.get(order.quotationId) || null,
         customer: customerById.get(order.customerId) || null,
-        deal: dealById.get(order.dealId) || null,
+        deal: dealById.get(order.dealId) || sourceDealBySource.get(order.sourceSalesOrderId) || null,
         todayIso,
         serviceRounds: serviceRoundsByOrder.get(order.id) || false,
         billingRequest: primaryInstallmentRequest(installment, billingRequestById),

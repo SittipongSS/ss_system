@@ -17,8 +17,50 @@
 // `scopeOf` เป็นตัวบอกว่าเอา object ไหนไปตรวจ ไม่ใช่แถวที่โหลดเสมอไป
 import { inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { inPmProjectScope, inScope, pmEditScope, viewScope } from '@/lib/permissions';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 
 const DEAL_JOIN = '*, deal:sales_deals(*)';
+
+/* ── ใบไม่มีดีล: ใบค่าสรรพสามิต (mig 0414 · มติ 28/10) ──────────────────────────
+   ใบเสนอราคา/ใบสั่งขายค่าสรรพสามิต `dealId` ว่าง แต่ผูก SO ลูกค้าต้นทาง (`sourceSalesOrderId`) ⇒ ตรวจสิทธิ์ด้วย
+   **ดีลของ SO ต้นทาง** — ใครดู/แก้ดีลลูกค้าได้ ก็ดู/แก้ใบค่าภาษีของ SO นั้นได้ (เกณฑ์เดิมทุกตัวอักษร)
+   ⛔ ดีลต้นทางใช้ตัดสินสิทธิ์อย่างเดียว **ห้ามเขียนลง `row.deal`** — หลายจุดใช้ `row.deal` ทำงานกับดีลจริง
+      (quotationCancelRepo ส่ง quote.deal เข้าตัวคิด FC ⇒ ใบค่าภาษีจะไปขยับ FC ของดีลลูกค้า) ⇒ แยกเก็บที่ `row.sourceDeal`
+   ⚠️ อ่านแยกอีกรอบ ไม่ embed — หลัง 0414 คู่ quotations ↔ sales_orders มี FK สองทิศ และ sales_orders อ้างตัวเองสามเส้น
+      (revisedFromId · supersededById · sourceSalesOrderId) ⇒ embed ที่ไม่ใส่ hint = PGRST201 ทั้ง query
+   ⚠️ ทุกจุดที่ตัดสินสิทธิ์ใบเสนอราคา/ใบสั่งขายต้องผ่าน `inSalesDocScope` — เรียก `inSales*Scope(user, row.deal)` ตรง ๆ
+      = ใบค่าภาษีไม่มีใครเห็น (เทสต์ salesDocScope.test.mjs ไล่ route ของสองตารางนี้) */
+export const salesDocScopeDeal = (row) => row?.deal || row?.sourceDeal || null;
+
+/** ด่านขอบเขตของใบเสนอราคา/ใบสั่งขาย — ไม่มีทั้งดีลของใบและดีลของ SO ต้นทาง = ปฏิเสธ (พิสูจน์สิทธิ์ไม่ได้) */
+export function inSalesDocScope(user, row, mode = 'view') {
+  const deal = salesDocScopeDeal(row);
+  if (!deal) return false;
+  return mode === 'view' ? inSalesViewScope(user, deal) : inSalesEditScope(user, deal);
+}
+
+/** ดีลของ SO ต้นทาง — `Map(sourceSalesOrderId → ดีล)` · ใบต้นทางที่ไม่มีดีล (ไม่ควรมี) ไม่อยู่ใน Map
+ *  ⭐ ดีลเอาเท่าที่ด่านขอบเขต (`team` · `ownerId`) + ป้ายบนจอใช้ — ไม่เอา `metadata` (ก้อนละหลายสิบ KB) ไปกับทุกแถว */
+export async function loadSourceDeals(supabase, sourceIds) {
+  const { data, error } = await fetchInChunks(sourceIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_orders')
+    .select('id, deal:sales_deals(id, code, title, stage, team, ownerId, ownerName, customerName, projectId)')
+    .in('id', chunk)
+    .order('id', { ascending: true })));
+  if (error) return { data: null, error };
+  return { data: new Map((data || []).filter((row) => row.deal).map((row) => [row.id, row.deal])), error: null };
+}
+
+/** เติม `sourceDeal` ให้แถวที่ไม่มีดีลแต่มี SO ต้นทาง (แก้แถวในที่) · แถวที่มีดีลอยู่แล้วไม่แตะ · คืน `{ error }` */
+export async function attachSourceDeals(supabase, rows) {
+  const pending = (rows || []).filter((row) => row && !row.deal && row.sourceSalesOrderId);
+  if (!pending.length) return { error: null };
+  const { data: dealBySource, error } = await loadSourceDeals(supabase, pending.map((row) => row.sourceSalesOrderId));
+  if (error) return { error };
+  for (const row of pending) row.sourceDeal = dealBySource.get(row.sourceSalesOrderId) || null;
+  return { error: null };
+}
 
 /**
  * ทะเบียนตารางที่คุมด้วย "เจ้าของ/ทีมของแถว"
@@ -35,17 +77,20 @@ export const SCOPED_TABLES = {
     view: inSalesViewScope,
     edit: inSalesEditScope,
   },
+  // ⭐ ใบค่าสรรพสามิต (ไม่มีดีล) ถอยไปดีลของ SO ต้นทาง — `sourceDeal: true` ให้ loadScoped อ่านดีลนั้นมาเติม
   quotations: {
     label: 'ใบเสนอราคา',
     select: DEAL_JOIN,
-    scopeOf: (row) => row?.deal,
+    sourceDeal: true,
+    scopeOf: salesDocScopeDeal,
     view: inSalesViewScope,
     edit: inSalesEditScope,
   },
   sales_orders: {
     label: 'ใบสั่งขาย',
     select: DEAL_JOIN,
-    scopeOf: (row) => row?.deal,
+    sourceDeal: true,
+    scopeOf: salesDocScopeDeal,
     view: inSalesViewScope,
     edit: inSalesEditScope,
   },
@@ -102,6 +147,10 @@ export async function loadScoped(supabase, table, id, user, mode = 'edit') {
     .from(table).select(entry.select).eq('id', id).maybeSingle();
   if (error) return { response: Response.json({ error: error.message }, { status: 500 }) };
   if (!row) return { response: Response.json({ error: `ไม่พบ${entry.label}` }, { status: 404 }) };
+  if (entry.sourceDeal) {
+    const { error: sourceError } = await attachSourceDeals(supabase, [row]);
+    if (sourceError) return { response: Response.json({ error: sourceError.message }, { status: 500 }) };
+  }
 
   const predicate = mode === 'view' ? entry.view : entry.edit;
   const target = entry.scopeOf(row);

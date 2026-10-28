@@ -1,7 +1,8 @@
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, inSalesEditScope, dealAuditLabel } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
+import { inSalesDocScope } from '@/lib/scopedRow';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { linePackGateMessage, linePackIssues } from '@/lib/sales/linePacks';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
@@ -33,7 +34,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
   if (!quote.deal) return badRequest('ใบเสนอราคานี้ไม่มีดีลผูกอยู่');
-  if (!inSalesEditScope(user, quote.deal)) return forbidden();
+  if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
 
   // ข้อความเฉพาะกรณีที่ผู้ใช้เจอบ่อย — ที่เหลือให้ RPC เป็นผู้ตัดสิน (กันสองแหล่งความจริง)
   if (quote.approvalStatus === 'pending') return badRequest('ใบเสนอราคานี้ยื่นอนุมัติไปแล้ว');

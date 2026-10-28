@@ -34,7 +34,7 @@ import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isHistoricalOrder,
+  EXCISE_STATUS_NOTE, HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isExciseOrder, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
@@ -571,6 +571,8 @@ export default function SalesOrdersPage() {
        ของ TS — หนึ่งป้ายหนึ่งโทนทุกจอ */
     const historical = isHistoricalOrder(row);
     const oldRefs = historical ? historicalRefsOf(row).join(" · ") : "";
+    /* ใบค่าสรรพสามิต (mig 0414) — ไม่มีดีล ⇒ บรรทัดรองของลูกค้าเป็นชื่อดีลของ SO ต้นทาง (`sourceDeal` จาก API) */
+    const excise = isExciseOrder(row);
     return (
                 <DetailRow key={row.id} href={queueHref(row)} className="premium-row">
                   {/* ช่องติ๊ก — DetailRow ไม่พาไปหน้าใบเมื่อกดโดน input (isInteractiveTarget) */}
@@ -589,6 +591,7 @@ export default function SalesOrdersPage() {
                         จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
                     <span className="cell-sub" title={(historical ? oldRefs : row.referenceDoc) || undefined}>
                       {historical ? <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /> : null}
+                      {excise ? <StatusBadge tone="info" size="sm" label="ค่าสรรพสามิต" /> : null}
                       <span className="cell-ellipsis">
                         {historical ? (oldRefs || NA) : naText(row.quotation?.quoteNumber)}
                         {!historical && row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
@@ -624,7 +627,7 @@ export default function SalesOrdersPage() {
                         พูดซ้ำชื่อลูกค้าบรรทัดบน และลูกค้ารายเดียวมีดีลภาชนะได้สองใบที่ต่างกัน
                         แค่ AE (มติข้อ 22 · 16/09) */}
                     <span className="cell-sub">
-                      {historical ? `AE ${naText(row.deal?.ownerName)}` : naText(row.deal?.title)}
+                      {historical ? `AE ${naText(row.deal?.ownerName)}` : naText((excise ? row.sourceDeal : row.deal)?.title)}
                     </span>
                   </td>
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
@@ -779,6 +782,7 @@ export default function SalesOrdersPage() {
                 ? installmentReviewLine(o)
                 : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)
             + (isHistoricalOrder(o) ? " · ใบย้อนหลัง · ไม่นับ Actual" : "")
+            + (isExciseOrder(o) ? ` · ${EXCISE_STATUS_NOTE}` : "")
             + (!financeShell && o.serviceDeferredTag ? ` · ${o.serviceDeferredTag}` : "")}
           /* แถว "งวดรออนุมัติ" ไปแท็บการชำระตรง ๆ (ปุ่ม "อนุมัติงวด" ของแถวงวดอยู่ที่นั่นที่เดียว · ลิงก์กระดิ่งก็ไปที่เดียวกัน · review 26/10) */
           rowHref={queueHref}

@@ -25,6 +25,10 @@ import { isSalesManager, SALES_ROLES } from '@/lib/permissions';
 
 export const ORIGIN_PIPELINE = 'pipeline';
 export const ORIGIN_HISTORICAL = 'historical';
+/* ใบเสนอราคา / ใบสั่งขาย "ค่าสรรพสามิต" (mig 0414 · แผน docs/excise-qt-so-rework-plan.md · มติเจ้าของ 28/10)
+   — แถวจริงในตาราง quotations / sales_orders · ไม่มีดีล · ชี้ SO ลูกค้าด้วย "sourceSalesOrderId" · **ไม่นับ Actual / FC / เป้า**
+   ⚠️ บ้านเดียวของ literal นี้คือไฟล์นี้เหมือน 'historical' (historicalMoneyGuards.test.mjs) */
+export const ORIGIN_EXCISE = 'excise';
 
 /* !! ตัวเลขชุดนี้ต้องตรงกับ CHECK/RPC ของ mig 0360 (historicalOrders.test.mjs อ่านไฟล์ SQL เทียบ) */
 export const HISTORICAL_REF_MAX = 200;          // sales_orders_historical_refs_len (= referenceDoc 0235)
@@ -39,6 +43,7 @@ export const DOC_DATE_MAX = '2100-12-31';
       0374 บังคับให้ใบย้อนหลังทุกใบมีค่าว่าง ⇒ ไม่มีทางกลับมามีค่าได้อีก */
 
 export const HISTORICAL_STATUS_NOTE = 'ใบสั่งขายย้อนหลัง · ไม่นับ Actual / FC / เป้า';
+export const EXCISE_STATUS_NOTE = 'ค่าสรรพสามิต · ไม่นับ Actual / FC / เป้า';
 /* ชื่อดีลภาชนะ — ⚠️ ห้ามคำว่า "ดีลเก่า" (ข้อ 19: คำนั้นเป็นของสวิตช์ในฟอร์มดีล · metadata.legacy) */
 export const HISTORICAL_DEAL_TITLE = (customerName) => `งานบริการย้อนหลัง · ${customerName || 'ไม่ระบุลูกค้า'}`;
 
@@ -74,6 +79,13 @@ export const historicalEditPath = (id) => `/sa/sales-orders/historical/${encodeU
 export const HISTORICAL_DEAL_NO_PROJECT_MESSAGE = 'ดีลของใบสั่งขายย้อนหลังผูกโครงการไม่ได้ — งานบริการย้อนหลังไม่มีโครงการ';
 
 export const isHistoricalOrder = (order) => order?.origin === ORIGIN_HISTORICAL;
+/* ใบค่าสรรพสามิต — ใช้ได้ทั้งแถว sales_orders และแถว quotations (คอลัมน์ origin ชื่อเดียวกัน · mig 0414) */
+export const isExciseOrder = (row) => row?.origin === ORIGIN_EXCISE;
+/* ⭐ แถวนี้นับเป็นยอดขาย (Actual / รออนุมัติ) ได้ไหม — **แบบตัดออก ไม่ใช่ "เฉพาะ pipeline"**
+   🔴 ตรวจแผน 28/10 (BLOCKER): query ของรายงานยอดขาย (`salesReportData.js`) กรอง pipeline ในตัว query แล้ว **จึงไม่ได้
+      select origin** — แถวที่ไม่มี origin ต้องยังนับ (= ใบ pipeline) ไม่งั้นรายงานยอดขายทั้งจอและ Excel เป็น 0 ·
+      ตัวตัดสินแบบ `origin === 'pipeline'` จึงห้ามใช้ที่นี่ */
+export const isActualOrder = (order) => !isHistoricalOrder(order) && !isExciseOrder(order);
 export const isHistoricalDeal = (deal) => deal?.origin === ORIGIN_HISTORICAL;
 /* ดีลที่นับเข้า KPI ได้ — ดีลภาชนะเป็น Won มูลค่า 0 ที่ไม่ใช่ยอดขาย */
 export const isKpiDeal = (deal) => !isHistoricalDeal(deal);
@@ -81,6 +93,10 @@ export const isKpiDeal = (deal) => !isHistoricalDeal(deal);
 /* ตัวกรองของ query builder — ต่อท้ายได้ทั้ง select และ update/delete */
 export const pipelineRowsOnly = (query) => query.eq('origin', ORIGIN_PIPELINE);
 export const historicalRowsOnly = (query) => query.eq('origin', ORIGIN_HISTORICAL);
+export const exciseRowsOnly = (query) => query.eq('origin', ORIGIN_EXCISE);
+/* ตัดใบค่าสรรพสามิตออก — ใช้กับ query ที่ต้องเห็นทั้ง pipeline และ historical (เช่น ตัวเลือกสัญญาจากใบเสนอราคา)
+   ⚠️ คอลัมน์ origin ของ quotations มีตั้งแต่ 0414 — ใช้หลังรัน 0414 เท่านั้น */
+export const nonExciseRowsOnly = (query) => query.neq('origin', ORIGIN_EXCISE);
 
 /* ── ใครทำอะไรกับใบย้อนหลัง (มติ 22/09 · mig 0374) ─────────────────────────────────────
    ⭐ **ผู้คีย์ ≠ ผู้อนุมัติ** — คีย์ = ฝ่ายขายทุกตำแหน่ง + Admin · อนุมัติ = isSalesOrderReviewer

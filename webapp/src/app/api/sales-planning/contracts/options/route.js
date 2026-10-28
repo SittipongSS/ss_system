@@ -1,4 +1,5 @@
 import { loadScoped } from '@/lib/scopedRow';
+import { nonExciseRowsOnly } from '@/lib/sales/historicalOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
@@ -62,9 +63,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
    (ไล่จากดีลทุกใบแล้วค่อยกรองคือกวาดทั้งตารางเพื่อเอาไม่กี่แถว)
    ⚠️ ด่านจริงยังเป็น contractEligibility ตัวเดิม — ที่นี่แค่คัดผู้เข้าชิงให้แคบลงก่อน */
 async function listDealsThatCanIssue({ user, supabase }) {
-  const { data: quotations, error } = await supabase
+  /* ⛔ ใบค่าสรรพสามิต (mig 0414) ไม่ออกสัญญา และไม่มีดีล — ตัดที่ query ไม่งั้นมันกินโควตา 500 ใบของใบจริงไปเงียบ ๆ */
+  const { data: quotations, error } = await nonExciseRowsOnly(supabase
     .from('quotations')
-    .select('id, "quoteNumber", status, "approvalStatus", "totalAmount", "customerId", "customerName", "createdAt", "dealId"')
+    .select('id, "quoteNumber", status, "approvalStatus", "totalAmount", "customerId", "customerName", "createdAt", "dealId"'))
     .eq('approvalStatus', 'approved')
     .order('createdAt', { ascending: false })
     .limit(500);
