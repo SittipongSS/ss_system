@@ -496,7 +496,8 @@ test('🔴 D-4 F14: ?confirms= ตรวจรูปก่อนเป็น pat
 });
 
 test('D-4 บันทึก: id ใบต้นทางไปทาง extra · บันทึกไม่ผ่าน = ถามแผนซ้ำหนึ่งครั้ง (ยัง 200 คงฟอร์ม · ถูกปฏิเสธ = กล่องแจ้ง)', () => {
-  assert.match(NEW, /createRequestDraft\(\n\s*form, confirmData \? \{ confirmsRequestId: confirms \} : linksInstallment \? \{ linkInstallmentId \} : \{\},\n\s*\)/);
+  // กิ่งงวดชำระ = ไทล์ที่เลือก (PR-2 ของขอเอกสารจากหน้า QT · 28/10) — ใบยืนยันหน้างานยังมาก่อนเสมอ
+  assert.match(NEW, /createRequestDraft\(\n\s*form, confirmData \? \{ confirmsRequestId: confirms \} : installmentExtra,\n\s*\)/);
   const save = between(NEW, 'const saveDraft = async', '} catch (e) {');
   const refetchAt = save.indexOf('if (error && confirmData) setConfirmTick((n) => n + 1);');
   const toastAt = save.indexOf('if (error) { setToast({ kind: "error", msg: confirmData ? refusalText(error) : error }); return; }');

@@ -130,6 +130,13 @@ export default function NewRequestPage() {
      ⚠️ ส่งเฉพาะตอนใบยังเป็น "ขอเอกสารการเงิน" ของ **ใบสั่งขาย + ใบเสนอราคาใบที่กดมา** — ผู้ใช้เปลี่ยนหัวข้อ/ใบในฟอร์ม
         แปลว่าไม่ใช่งานของงวดนั้นแล้ว (server ตรวจซ้ำทุกข้ออยู่ดี · ผูกไม่ได้ = ใบยังบันทึก + คำเตือน) */
   const linkInstallmentId = (searchParams.get("installmentId") || "").trim().slice(0, 120);
+  /* ⭐ งวดจากแผนของใบเสนอราคา (`?installmentSeq=` จากปุ่ม "ขอเอกสารงวดนี้" บนหน้า QT ที่ยังไม่มีงวดจริง · mig 0413) */
+  const linkInstallmentSeq = Number.parseInt(searchParams.get("installmentSeq") || "", 10) || null;
+  /* ⭐ ทั้งสองค่าเป็นแค่ **ค่าเติม** ของไทล์เลือกงวดในฟอร์ม (BillingInstallmentPicker · PR-2) — งวดที่ส่งไปจริงคืองวดที่ไทล์เลือกอยู่
+     ตอนกดบันทึก (ผู้ใช้เปลี่ยน/เลือก "ไม่ระบุงวด" ได้) · เติมเฉพาะเมื่อเป็นใบเสนอราคาเดียวกับที่กดมา */
+  const installmentPrefill = useMemo(() => ({
+    quotationId: defaults.quotationId, installmentId: linkInstallmentId, installmentSeq: linkInstallmentSeq,
+  }), [defaults.quotationId, linkInstallmentId, linkInstallmentSeq]);
   /* วันที่มากับลิงก์แต่ไม่ได้เติมเพราะผ่านไปแล้ว — ช่องว่างเฉย ๆ ดูเหมือนลิงก์พัง ⇒ รายการความพร้อมบอกเหตุ */
   const linkDueDate = calendarIso(searchParams.get("requiredDate"));
   const droppedDueDate = linkDueDate && !defaults.requestedDueDate ? linkDueDate : "";
@@ -295,11 +302,12 @@ export default function NewRequestPage() {
   // ปุ่มส่งเปิดเมื่อกรอกครบ — **ด่านเดียวกับข้อความที่ฟอร์มแสดง**
   // ห้ามเขียนเงื่อนไขเพิ่มที่นี่: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ = ปุ่มจางแบบไม่บอกเหตุผล
   const blocker = requestFormBlocker(form);
-  /* ⚠️ ต้องเทียบ **ใบเสนอราคา** ด้วย — ช่อง QT ของขอเอกสารการเงินยังเปลี่ยนได้ตอนสร้าง และเปลี่ยนแล้ว
-     ไม่ล้าง `salesOrderId` ⇒ เทียบแค่ SO = ท้ายแผงสัญญาว่าจะผูก แต่ server ตีกลับ "คนละใบเสนอราคา" */
-  const linksInstallment = !!linkInstallmentId && form.kind === "billing_doc"
-    && !!form.salesOrderId && form.salesOrderId === defaults.salesOrderId
-    && form.quotationId === defaults.quotationId;
+  /* ⭐ งวดที่ส่งไปกับคำร้อง = ไทล์ที่เลือกอยู่ในฟอร์ม (`form.installmentPick` · ล้างเองเมื่อเปลี่ยนใบเสนอราคา) — ไม่ใช่ค่าที่มากับลิงก์
+     · งวดจริง → `linkInstallmentId` (server ผูกหลังบันทึกร่าง) · แผนของ QT → `installmentSeq` (ผูกเมื่อเกิดงวดบนใบสั่งขาย)
+     ⚠️ ไม่ใช่ช่องของ `requestPayload` (whitelist) — ไปทาง `extra` ของ createRequestDraft เหมือนเดิม */
+  const installmentPick = form.kind === "billing_doc" ? form.installmentPick || null : null;
+  const installmentExtra = installmentPick?.installmentId ? { linkInstallmentId: installmentPick.installmentId }
+    : installmentPick?.installmentSeq ? { installmentSeq: installmentPick.installmentSeq } : {};
 
   /* ⭐ ไฟล์ที่ขึ้น Drive แล้วได้ ref คืนลงตะกร้า **ทันทีทีละไฟล์** (memory retry-must-not-reupload) — รูป `{ file, ref }`
      ที่ `uploadDraftFiles` รู้จักแล้วข้าม ⇒ ไม่มีวันอัปไฟล์เดิมซ้ำ แม้วันหนึ่งหน้านี้จะให้กดซ้ำได้ */
@@ -337,7 +345,7 @@ export default function NewRequestPage() {
       /* ใบยืนยันหน้างาน: id ของใบต้นทางไปทาง `extra` เท่านั้น (ทางเดียวกับงวดชำระ — ไม่ใช่ช่องของฟอร์ม) ·
          ไม่ใช่โหมดนั้น = ทางเดิมทุกตัวอักษร */
       const { id, error, warning } = await createRequestDraft(
-        form, confirmData ? { confirmsRequestId: confirms } : linksInstallment ? { linkInstallmentId } : {},
+        form, confirmData ? { confirmsRequestId: confirms } : installmentExtra,
       );
       /* บันทึกไม่ผ่าน (createRequestDraft ส่งมาแค่ประโยค ไม่มีสถานะ/รหัส · F8) — ถามแผนซ้ำหนึ่งครั้ง: ยังได้ 200 = คงฟอร์มที่พิมพ์ไว้ ·
          ถูกปฏิเสธแล้ว (เช่นมีใบเปิดอยู่แล้ว) = หน้าเปลี่ยนเป็นประโยคนั้นแทนฟอร์ม */
@@ -439,9 +447,11 @@ export default function NewRequestPage() {
       }]}
       busy={saving}
       // บอกล่วงหน้าว่าบันทึกแล้วงวดจะถูกผูก — ผูกแล้วงวดนั้นถูกล็อกจาก "ปรับแผนงวด" จนกว่าจะถอด
-      footer={linksInstallment
-        ? "บันทึกแล้วระบบผูกคำร้องนี้กับงวดชำระที่กดมาให้ แล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"
-        : "บันทึกแล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"}
+      footer={installmentPick?.installmentId
+        ? "บันทึกแล้วระบบผูกคำร้องนี้กับงวดชำระที่เลือกให้ แล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"
+        : installmentPick
+          ? "บันทึกแล้วระบบจำงวดที่เลือกไว้ และผูกกับงวดจริงให้เมื่อออกใบสั่งขาย — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"
+          : "บันทึกแล้วไปต่อที่หน้ารายละเอียด — เลขที่ออกตอนกดส่ง · ร่างที่ยังไม่ส่งลบได้ที่นั่น"}
     />
   );
 
@@ -486,6 +496,7 @@ export default function NewRequestPage() {
           value={form} onChange={setForm} disabled={saving}
           projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
           quotations={quotations} products={products} me={me}
+          installmentPrefill={installmentPrefill}
           scents={scents} formulas={formulas} productTypes={productTypes}
           mentionPeople={mentionPeople} people={people}
           // วิธีประเมินที่เปิดให้เลือก — มาจากคำตอบของ server (สวิตช์) · ยังไม่ได้คำตอบ = ปุ่มหยุดรอ

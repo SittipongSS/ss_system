@@ -1,0 +1,26 @@
+/* เอกสารบัญชีตามงวด — บล็อกใต้ตารางงวดในการ์ด "งวดการชำระ" ของหน้าใบเสนอราคา (PR-2 · มติ 28/10/2026)
+   ⚠️ ไม่ใช่ตาราง — รายการแน่นแถวละงวด (งวด · คำร้องที่มี · ปุ่ม) ให้อ่านต่อจากตารางแผนข้างบนโดยไม่แย่งสายตา */
+.block {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1-5) var(--space-3); }
+.title { color: var(--text); font-size: var(--fs-label); font-weight: var(--fw-bold); }
+.hint { color: var(--text-3); font-size: var(--fs-5); }
+.none { color: var(--text-3); font-size: var(--fs-5); }
+.list { display: grid; gap: var(--space-1-5); margin: 0; padding: 0; list-style: none; }
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+}
+.what { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-1); min-width: 0; }
+
+@media (max-width: 640px) {
+  .row { grid-template-columns: minmax(0, 1fr); }
+}

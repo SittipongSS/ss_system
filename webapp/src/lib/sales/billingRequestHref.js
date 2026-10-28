@@ -37,3 +37,25 @@ export function billingRequestHref(order, installment) {
   if (installment?.billingDate) params.set('requiredDate', String(installment.billingDate));
   return `/requests/new?${params.toString()}`;
 }
+
+/**
+ * ลิงก์ "ขอเอกสารงวดนี้" / "ขอเอกสารบัญชี" บนหน้าใบเสนอราคา (PR-2 · มติเจ้าของ 28/10/2026 ข้อ 4)
+ *
+ * @param quotation `{ id }` ของใบเสนอราคา
+ * @param row       แถวของตัวเลือกงวด (lib/requests/billingInstallmentChoices.js) — ไม่ส่ง = ปุ่มรวม (ไม่เติมงวด · เลือกในฟอร์ม)
+ *   · งวดจริงของ SO → `installmentId` · แผนของ QT → `installmentSeq` · เติมยอดของงวด (`billAmount`) ให้เห็น/แก้ได้
+ * ⚠️ ค่าทั้งหมดเป็นแค่ค่าเติมของไทล์เลือกงวดในฟอร์ม — งวดที่ส่งจริงคือไทล์ที่เลือกอยู่ตอนบันทึก
+ */
+export function quotationBillingRequestHref(quotation, row = null) {
+  const params = new URLSearchParams({
+    kind: BILLING_REQUEST_KIND,
+    quotationId: quotation?.id || '',
+    returnTo: `/sa/quotations/${quotation?.id || ''}`,
+  });
+  if (row) {
+    params.set('billAmount', String(row.amount ?? ''));
+    if (row.installmentId) params.set('installmentId', row.installmentId);
+    else if (row.seq) params.set('installmentSeq', String(row.seq));
+  }
+  return `/requests/new?${params.toString()}`;
+}
