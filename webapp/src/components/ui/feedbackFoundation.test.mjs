@@ -52,14 +52,39 @@ test("ConfirmDialog เปิดที่บรรทัดแรก · ยื�
 
   const effect = CONFIRM.slice(CONFIRM.indexOf("if (!open || !resolvedError || pending) return;"));
   assert.ok(effect.length > 0 && effect.length < CONFIRM.length, "ไม่มี effect ของข้อผิดพลาด");
-  assert.match(effect, /^if \(!open \|\| !resolvedError \|\| pending\) return;\s*const actions = actionsRef\.current;\s*if \(!actions\) return;\s*actions\.scrollIntoView\(\{ block: "nearest" \}\);/,
-    "รอจนปุ่มกลับมากดได้ (ไม่ pending) แล้วเลื่อนแถวปุ่มเข้ามา — กล่องแดงอยู่เหนือแถวปุ่มพอดี");
-  assert.match(effect, /if \(dialog && !dialog\.contains\(document\.activeElement\)\) \{\s*\(confirmRef\.current \|\| cancelRef\.current\)\?\.focus\(\{ preventScroll: true \}\);\s*\}\s*\}, \[open, resolvedError, pending\]\);/,
+  /* 🔄 (S2b แก้หลังตรวจจอ head-r3-19) แถวปุ่มตรึงอยู่โซน footer แล้ว — ตัวที่ต้องเลื่อนเข้ามาคือกล่องแดงของกล่องยืนยันเอง (ชิ้นสุดท้ายของเนื้อ) */
+  assert.match(effect, /^if \(!open \|\| !resolvedError \|\| pending\) return;\s*const body = bodyRef\.current;\s*if \(!body\) return;\s*body\.querySelector\(':scope > \[role="alert"\]'\)\?\.scrollIntoView\(\{ block: "nearest" \}\);/,
+    "รอจนปุ่มกลับมากดได้ (ไม่ pending) แล้วเลื่อนกล่องแดงเข้ามา — มันยืนติดเหนือแถวปุ่มที่ตรึงอยู่");
+  assert.match(effect, /const dialog = body\.closest\('\[role="dialog"\]'\);\s*if \(dialog && !dialog\.contains\(document\.activeElement\)\) \{\s*\(confirmRef\.current \|\| cancelRef\.current\)\?\.focus\(\{ preventScroll: true \}\);\s*\}\s*\}, \[open, resolvedError, pending\]\);/,
     "คืนโฟกัสเฉพาะตอนโฟกัสหลุดออกนอกกล่อง — คนที่ย้ายโฟกัสเองไม่ถูกดึงกลับ");
-  assert.match(CONFIRM, /<div className="confirm-dialog-actions" ref=\{actionsRef\}>/);
-  /* กล่องแดงต้องอยู่ติดเหนือแถวปุ่มใน DOM — เลื่อนแถวปุ่มเข้ามา = เห็นคู่กัน */
-  const alertAt = CONFIRM.indexOf('<StatusNotice tone="error" role="alert">');
-  assert.ok(alertAt !== -1 && alertAt < CONFIRM.indexOf('<div className="confirm-dialog-actions"'));
+  assert.match(CONFIRM, /<div className="confirm-dialog" ref=\{bodyRef\}>/);
+  /* กล่องแดงต้องเป็นชิ้นสุดท้ายของเนื้อ (ลูกตรงของ `.confirm-dialog`) — เลื่อนเข้ามา = ยืนติดเหนือแถวปุ่มที่ตรึงอยู่ */
+  const body = CONFIRM.slice(CONFIRM.indexOf('<div className="confirm-dialog" ref={bodyRef}>'), CONFIRM.indexOf("</Modal>"));
+  assert.match(body, /\{resolvedError \? \(\s*<StatusNotice tone="error" role="alert">\{resolvedError\}<\/StatusNotice>\s*\) : null\}\s*<\/div>\s*$/);
+  assert.doesNotMatch(CONFIRM, /actionsRef/, "ไม่มีการเลื่อนหาแถวปุ่มแล้ว — มันอยู่บนจอเสมอ");
+});
+
+/* 🐞 หัวหน้า UAT S2b รอบ 3 ข้อ 19 (head-r3-19 · จอมือถือ): กล่องส่งผลของใบที่มีพื้นที่จากแบบ — ตัวเลือก "ยืนยันหน้างาน" สองช่องดันปุ่ม
+   "ยกเลิก" / "ส่งผล" ตกใต้ขอบจอ กล่องเปิดมาโดยไม่มีปุ่มบนจอ · แถวปุ่มเคยเป็นชิ้นสุดท้ายของ `.drawer-body` (โซนที่เลื่อน)
+   ⇒ ส่งเป็น `footer` ของ Modal = โซน `.drawer-footer` ที่ไม่เลื่อน — ของกลาง แก้ทีเดียวทุกกล่องยืนยันในระบบ */
+test("ConfirmDialog: แถวปุ่มตรึงท้ายกล่อง (โซน footer ของ Modal) · เนื้อเลื่อนอย่างเดียว", () => {
+  assert.match(CONFIRM, /\n {2}const actions = \(\n {4}<div className="confirm-dialog-actions">/, "แถวปุ่มประกอบนอกเนื้อ");
+  assert.match(CONFIRM, /initialFocusScroll=\{false\}\s*ariaDescribedBy=\{[^}]*\}\s*footer=\{actions\}\s*>/, "ส่งแถวปุ่มเป็น footer ของ Modal");
+  const body = CONFIRM.slice(CONFIRM.indexOf('<div className="confirm-dialog" ref={bodyRef}>'), CONFIRM.indexOf("</Modal>"));
+  assert.ok(body.length > 0);
+  assert.doesNotMatch(body, /confirm-dialog-actions|<Button\b|\{actions\}/, "ไม่มีปุ่มในโซนที่เลื่อน");
+  assert.equal(CONFIRM.split("<Button").length - 1, 2, "ปุ่มสองตัวเดิม (ยกเลิก · ยืนยัน) ไม่มีชุดที่สอง");
+  // Modal วาด footer เป็นโซนพี่น้องของ .drawer-body (ไม่ใช่ลูก) — โซนที่เลื่อนมีชั้นเดียว
+  assert.match(MODAL, /<div className="drawer-body">\{children\}<\/div>\s*\{footer \? <div className="drawer-footer">\{footer\}<\/div> : null\}/);
+  const globals = readFileSync(new URL("../../app/globals.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(globals, /\n\.drawer \{[^}]*display: flex;\s*flex-direction: column;[^}]*overflow: hidden;/, "กล่องเป็นคอลัมน์ ไม่เลื่อนทั้งใบ");
+  assert.match(globals, /\n\.drawer-body \{[^}]*min-height: 0;\s*overflow-y: auto;/, "เนื้อเลื่อน");
+  assert.match(globals, /\n\.drawer-footer \{\s*flex: none;/, "แถบปุ่มไม่หด ไม่เลื่อน");
+  const actions = /\n\.confirm-dialog-actions \{([^}]*)\}/.exec(globals)?.[1] || "";
+  assert.match(actions, /flex: 1 1 auto;/, "กินเต็มกว้างของโซน — ปุ่มชิดขวาตามเดิม · ยืดเต็มแถวที่จอ ≤680 ได้");
+  assert.match(actions, /justify-content: flex-end;/);
+  assert.doesNotMatch(actions, /grid-column|margin-top/, "ไม่ใช่ชิ้นของกริดเนื้อแล้ว — ระยะเป็นของโซน");
+  assert.match(globals, /@media \(max-width: 680px\) \{[^}]*\}[\s\S]*?\.confirm-dialog-actions \.btn \{ min-height: var\(--ctl-h-touch\); flex: 1; \}/, "จอ ≤680 ปุ่มยังสูง 44px");
 });
 
 /* 🐞 UAT เอกสารประเมินพื้นที่ 2026-10-08: ตัวหนังสือของหน้าข้างหลังทะลุขึ้นมาซ้อนกับเนื้อโมดัล — พื้นของ `.drawer` เคยเป็น `--panel` (โปร่ง 6%)

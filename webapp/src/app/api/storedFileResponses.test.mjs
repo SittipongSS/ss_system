@@ -43,6 +43,7 @@ const STREAM_ROUTES = {
   'upload/commit/route.js': { kind: 'system', why: 'อ่านไบต์กลับมาตรวจตอนรับไฟล์ ไม่ได้ส่งออกให้เบราว์เซอร์' },
   // ── เส้นที่ไม่ได้เรียกตัวดึงเอง แต่ import โมดูลที่เรียก (ลึกหนึ่งชั้น) ──
   'sales-planning/quotations/[id]/issued/pdf/route.js': { kind: 'system', why: 'PDF ที่ระบบพิมพ์และตรึงเอง (issuedQuotationPdf) · application/pdf คงที่ + nosniff' },
+  'sales-planning/sales-orders/[id]/issued/pdf/route.js': { kind: 'system', why: 'PDF ใบสั่งขายที่ระบบพิมพ์จาก HTML ที่ตรึงเอง (issuedQuotationPdf ตัวเดียวกัน) · application/pdf คงที่ + nosniff' },
   'tax/reports/route.js': { kind: 'system', why: 'ไฟล์แนบของผู้ใช้ถูกห่อเป็น ZIP ที่ server สร้าง (registrationFiles) · application/zip คงที่ + attachment เสมอ — ไม่มีทางเปิดในหน้า' },
   'sales-planning/quotations/[id]/approval/route.js': { kind: 'system', why: 'ตรึงเอกสาร/สั่งพิมพ์ PDF ตอนอนุมัติ — ไบต์ลายเซ็นถูกฝังฝั่ง server ตอบเป็น JSON' },
   'sales-planning/quotations/[id]/route.js': { kind: 'system', why: 'ฝังลายเซ็นเป็น data URI ลงเอกสารที่ตรึง — ตอบเป็น JSON ไม่ส่งไบต์ออก' },

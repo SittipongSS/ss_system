@@ -24,8 +24,13 @@ async function loadLead(supabase, id) {
    actualSource = ด่านของ Actual (dealActualFromSalesOrders) · soPending* = ยอด SO รออนุมัติ
    ⚠️ ส่งเฉพาะคีย์เหล่านี้ ไม่ใช่ metadata ทั้งก้อน — คนเปิดหน้าลีดได้บางตำแหน่ง (marketing)
       ไม่มีสิทธิ์หน้าดีล · การ์ดต้องใช้คีย์ไหนเพิ่ม เติมที่ลิสต์นี้
-   ⭐ คีย์ที่ไม่มีค่าไม่ส่ง (ไม่มีใบรออนุมัติ = ไม่มีคีย์ · ตัวอ่านฝั่งจอถือว่า 0 เอง) */
-const DEAL_CARD_METADATA_KEYS = ['actualSource', 'soPendingAmount', 'soPendingCount'];
+   ⭐ คีย์ที่ไม่มีค่าไม่ส่ง (ไม่มีใบรออนุมัติ = ไม่มีคีย์ · ตัวอ่านฝั่งจอถือว่า 0 เอง)
+   ⭐ mig 0412 (Actual รายงวด): actualByMonth = Actual รายเดือน · soInstPending* = งวดที่ยื่นแล้วรอ AE Sup (ตัวอ่าน
+      รออนุมัติของการ์ดรวมให้ — ขาดคีย์ = การ์ดขาดยอดงวดที่ยื่นเงียบ ๆ) · soInstRemainingByDue = งวดที่ยังไม่ยื่น */
+const DEAL_CARD_METADATA_KEYS = [
+  'actualSource', 'soPendingAmount', 'soPendingCount',
+  'actualByMonth', 'soInstPendingAmount', 'soInstPendingCount', 'soInstRemainingByDue',
+];
 function dealCardMetadata(metadata) {
   const out = {};
   for (const key of DEAL_CARD_METADATA_KEYS) {

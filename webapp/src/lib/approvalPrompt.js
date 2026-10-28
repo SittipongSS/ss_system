@@ -179,11 +179,35 @@ export function historicalApprovalPrompt({ subject, checklist = [], effects, ove
  * @param serviceGateThroughLabel ใบ pipeline: วันที่ด่านเงินของนัดเปิดจริงหลังรับรอง (`installmentConfirmOutlook.gateOpenThrough`
  *                            ข้อความจัดรูปแล้ว) · ไม่ส่ง = ใช้ "จ่ายถึง"
  * @param serviceGateHeld     งวดที่ค้างซึ่งกดวันนั้นไว้ `{ seq, dueLabel }` · ไม่มี = null
+ * @param actualCountedLate   ใบรายงวด: งวด `so_approval` ที่นับ **หลัง** เวลาอนุมัติใบ (ปุ่มกู้ "นับงวด 1") — บรรทัด Actual ไม่อ้าง "ตอนอนุมัติใบ"
  */
 /* สองบรรทัดของใบ pipeline ตามสถานะใบ (review UI-1 / F2) — PR0/PR3 เปิดให้บัญชีรับรองงวดบนใบยกเลิก · มติ D3 บนใบที่ย้อนการอนุมัติ
    และใบ Rev. ที่ยังไม่อนุมัติ ⇒ คำของใบที่อนุมัติอยู่ ("ถ้าถูกย้อน… ย้ายไปกับใบ Rev." · "Actual เต็มตั้งแต่ใบอนุมัติ") เป็นเท็จกับใบเหล่านั้น
    ⚠️ ไม่รู้สถานะ (ผู้เรียกไม่ส่ง) / approved = คำเดิมทุกตัวอักษร (ภาพนิ่งตรึงไว้) · Actual นับเฉพาะใบ approved (salesOrderAmountKind) */
-function pipelineConfirmEffects(orderStatus) {
+/* บรรทัด Actual ของใบรายงวดตามทางที่งวดนี้ถูกนับ (`actualApprovedVia` ของงวด · UAT FN 27/10 ข้อ 4)
+   🐞 เดิม "นับไปแล้วตอน AE Sup อนุมัติงวด" ทุกงวด — เท็จกับงวดที่นับตอนอนุมัติใบ (`so_approval`: งวด 1/งวด 0 บาท/งวดที่รับรองแล้ว ·
+     แถวที่ยกเงินเข้ารับ Actual ของงวดที่ถูกแทน) และงวดของ "นับที่เหลือทั้งหมด" (`count_rest` — กดเอง หรือระบบนับให้ตามมติข้อ 10)
+   ⭐ ไม่รู้ทาง (แถวรุ่นที่ไม่พก/งวดยังไม่นับ) = ไม่อ้างว่านับตอนไหน
+   🐞 review รอบหก 27/10: `so_approval` มาได้สองทาง — คลิกอนุมัติใบ (route ส่งเวลาอนุมัติ ⇒ `actualApprovedAt` = `approvedAt` ของใบพอดี)
+     และปุ่มกู้ "นับงวด 1"/"นับงวดที่ค้าง" หลังขั้นนับตอนอนุมัติล้ม (RPC ลงเวลาที่กด · via ยังเป็น so_approval) ⇒ ทางหลังพูด "ตอนอนุมัติใบ" ไม่ได้
+     (แถว "นับ Actual" ของโมดัลเดียวกันโชว์เดือนที่กด) · ผู้เรียกบอกว่านับทีหลังด้วย `actualCountedLate` (installmentConfirmPrompt เทียบสองเวลา)
+     ⚠️ ป้ายปุ่มเขียนตรงตัว — ไฟล์นี้ import salesOrderActualMode ไม่ได้ (หัวไฟล์) · ตรงกับ INSTALLMENT_ACTUAL_START_LABEL/START_LEFT_LABEL (ยามในเทสต์) */
+const INSTALLMENT_ACTUAL_COUNTED_LINE = Object.freeze({
+  review: 'ยอด Actual ไม่เปลี่ยน — ใบนี้นับ Actual รายงวด งวดนี้นับไปแล้วตอน AE Sup อนุมัติงวด',
+  so_approval: 'ยอด Actual ไม่เปลี่ยน — ใบนี้นับ Actual รายงวด งวดนี้นับไปแล้วตอน AE Sup อนุมัติใบ',
+  so_recovery: 'ยอด Actual ไม่เปลี่ยน — ใบนี้นับ Actual รายงวด งวดนี้นับไปแล้วหลังอนุมัติใบ ตอน AE Sup กด “นับงวด 1”/“นับงวดที่ค้าง”',
+  count_rest: 'ยอด Actual ไม่เปลี่ยน — ใบนี้นับ Actual รายงวด งวดนี้นับไปแล้วตอน AE Sup กด “นับที่เหลือทั้งหมด”',
+  auto: 'ยอด Actual ไม่เปลี่ยน — ใบนี้นับ Actual รายงวด งวดนี้ระบบนับให้อัตโนมัติแล้ว (ใบกด “นับที่เหลือทั้งหมด” ไว้ · มติข้อ 10)',
+  unknown: 'ยอด Actual ไม่เปลี่ยน — ใบนี้นับ Actual รายงวด งวดนี้นับ Actual ไปแล้ว',
+});
+const installmentActualCountedLine = (via, auto, late = false) => (auto ? INSTALLMENT_ACTUAL_COUNTED_LINE.auto
+  : via === 'so_approval' && late ? INSTALLMENT_ACTUAL_COUNTED_LINE.so_recovery
+    : INSTALLMENT_ACTUAL_COUNTED_LINE[via] || INSTALLMENT_ACTUAL_COUNTED_LINE.unknown);
+
+function pipelineConfirmEffects(orderStatus, {
+  actualMode = 'order', nextInstallmentLabel = '', nextNeedsActualSubmit = false, actualApprovedVia = null, actualAutoCounted = false,
+  actualCountedLate = false,
+} = {}) {
   if (orderStatus === 'cancelled') {
     return [
       'ใบนี้ยกเลิกแล้ว — งวดนี้เป็น “เงินค้างจากใบที่ยกเลิก”: ยกเข้าใบใหม่ของดีลเดียวกัน (ปุ่ม “ยกเงินจากใบที่ยกเลิก” ที่ใบใหม่)'
@@ -200,6 +224,21 @@ function pipelineConfirmEffects(orderStatus) {
   if (orderStatus && orderStatus !== 'approved') {
     return [
       'ใบนี้ยังไม่อนุมัติ — Actual นับเมื่อ AE Sup อนุมัติใบ · งวดที่รับรองแล้วอยู่กับใบนี้ต่อ ไม่ต้องรับรองซ้ำ',
+    ];
+  }
+  /* ⭐ ใบ "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — ยอดเต็มตั้งแต่ใบอนุมัติ **ไม่จริง** กับใบนี้:
+     งวดนี้นับ Actual ไปแล้วตอน AE Sup อนุมัติงวด (ฐานกันการรับรองงวดที่ยังไม่อนุมัติ — installment_actual_not_approved)
+     และการรับรองคือด่านเปิดให้ฝ่ายขายยื่นงวดถัดไป (มติข้อ 2) ⇒ บอกผลนั้นแทน · ใบทั้งใบ = คำเดิมทุกตัวอักษร
+     ⚠️ บรรทัด "ยื่นงวดถัดไป" ขึ้นเฉพาะ `nextNeedsActualSubmit` (มีงวดถัดไปที่ยังไม่ยื่น/ถูกตีกลับ — ผู้เรียกคิดจากแถวงวด) ·
+       งวดสุดท้าย / นับที่เหลือทั้งหมดแล้ว / งวดถัดไปยื่นหรือนับแล้ว = ไม่มีบรรทัดนี้ (เคยพูดถึงขั้นที่ไม่มีวันเกิด · review 26/10) */
+  if (actualMode === 'installment') {
+    const next = String(nextInstallmentLabel || '').trim();
+    return [
+      'ถ้าใบนี้ถูกย้อนการอนุมัติ/ออก Rev. เงินงวดนี้ย้ายไปกับใบ Rev. — บัญชีไม่ต้องรับรองซ้ำ',
+      installmentActualCountedLine(actualApprovedVia, actualAutoCounted, actualCountedLate),
+      ...(nextNeedsActualSubmit
+        ? [next ? `ฝ่ายขายยื่นขอนับ Actual งวดถัดไป (${next}) ได้ทันทีหลังรับรอง` : 'ฝ่ายขายยื่นขอนับ Actual งวดถัดไปได้ทันทีหลังรับรอง']
+        : []),
     ];
   }
   return [
@@ -232,10 +271,18 @@ export const FN_SERVICE_GATE_UNREAD_PANEL = 'โมดัลรับรอง�
 export const FN_SERVICE_GATE_UNREAD_MODAL = 'อ่านรอบขายของใบไม่สำเร็จ — รายการข้างล่างไม่ได้บอกผลต่อด่านเงินของนัดบริการ '
   + '(ถ้าใบมีรอบขาย การรับรองยังเปิดด่านเงินของนัดตามปกติ) · เปิดหน้าใหม่อีกครั้ง';
 
+/* @param actualMode        ใบ pipeline: แบบการนับ Actual ของใบ ('order' | 'installment' · mig 0412) — ไม่ส่ง = ทั้งใบ (คำเดิม)
+ *                          ใบรายงวดที่อนุมัติอยู่พูดว่า "งวดนี้นับไปแล้วตอน AE Sup อนุมัติงวด" + ยื่นงวดถัดไปได้หลังรับรอง
+ *                          (ชื่องวดถัดไปมาจาก `nextInstallmentLabel` ตัวเดิม — ไม่มี = บรรทัดไม่มีชื่องวด)
+ * @param nextNeedsActualSubmit ใบรายงวด: งวดถัดไปยังต้องยื่นขอนับ (ยังไม่ยื่น/ถูกตีกลับ) — false/ไม่ส่ง = ไม่มีบรรทัด "ยื่นงวดถัดไป"
+ * @param actualApprovedVia ใบรายงวด: ทางที่งวดนี้ถูกนับ ('review' · 'so_approval' · 'count_rest') — บรรทัด Actual บอก "นับตอนไหน" ตามทางนั้น
+ *                          (UAT FN 27/10 ข้อ 4) · ไม่ส่ง = ไม่อ้างจังหวะ
+ * @param actualAutoCounted ใบรายงวด: งวดนี้ระบบนับให้เอง (มติข้อ 10 · installmentActualAutoCounted) — ชนะ `actualApprovedVia` */
 export function paymentConfirmPrompt({
   label, amount, historical = false, opening = false, paidThroughLabel = null, nextInstallmentLabel = null,
   orderStatus = null, serviceZoneCount = 0, serviceContractLinked = true,
-  serviceGateThroughLabel = null, serviceGateHeld = null,
+  serviceGateThroughLabel = null, serviceGateHeld = null, actualMode = 'order', nextNeedsActualSubmit = false,
+  actualApprovedVia = null, actualAutoCounted = false, actualCountedLate = false,
 } = {}) {
   if (historical) {
     const through = String(paidThroughLabel || '').trim();
@@ -280,7 +327,9 @@ export function paymentConfirmPrompt({
           heldBy: serviceGateHeld,
         })]
         : []),
-      ...pipelineConfirmEffects(orderStatus),
+      ...pipelineConfirmEffects(orderStatus, {
+        actualMode, nextInstallmentLabel, nextNeedsActualSubmit, actualApprovedVia, actualAutoCounted, actualCountedLate,
+      }),
       'ถ้ารับรองผิด บัญชีถอนได้ที่เมนู “ถอนคำรับรอง” ของงวดนี้ (ต้องใส่เหตุผล)',
     ],
     confirmLabel: 'ยืนยันว่าเงินเข้าแล้ว',
@@ -299,12 +348,17 @@ export function paymentConfirmPrompt({
  * @param changes            บรรทัดรายงวด (ก่อน→หลัง · เพิ่ม · ลบ) — **บังคับอย่างน้อย 1**
  * @param actualAmountLabel  ยอด Actual ของใบ (จัดรูปแล้ว) — บังคับ
  * @param actualMonthLabel   เดือน Actual = เดือนของ approvedAt เวลาไทย (จัดรูปแล้ว) — บังคับ
+ * @param installmentActualLabel ใบ "Actual รายงวด" (mig 0412): ยอดที่นับแล้ว (จัดรูปแล้ว) — มีค่า = บรรทัด Actual แบบรายงวด
+ *                           (งวดที่ยื่นขอนับอยู่ล็อก ไม่ถูกแตะ · งวดที่นับแล้วปรับยอด/วันได้แต่ Actual ที่นับไว้คงเดิม — มติข้อ 9 ·
+ *                           งวดที่ยังไม่นับคิดส่วนแบ่งจากยอดงวดใหม่) · ใบทั้งใบ = ''
+ * @param actualAutoCountLine มติข้อ 10: ใบที่กด "นับที่เหลือทั้งหมด" แล้ว — บรรทัด "งวดที่เพิ่มนับ Actual ให้อัตโนมัติตอนบันทึก ไม่ต้องยื่น"
+ *                           (จัดรูปแล้วจาก `autoCountLine` ของ installmentReplan.js) · มีค่า = ไม่พูดกติกายื่น/อนุมัติรายงวดของงวดที่ยังไม่นับ
  * @param complete           หลังปรับทุกงวดรับเงินแล้ว ⇒ ใบเข้าคิวปิดใบของบัญชี
  */
 export function paymentPlanEditPrompt({
   orderNumber = '', beforeCount = 0, afterCount = 0, changes = [], lockedCount = 0, lockedAmountLabel = '',
-  totalLabel = '', actualAmountLabel = '', actualMonthLabel = '', quotationNumber = '',
-  serviceRounds = false, paidThroughLabel = '', coverageNotes = [], contractNumber = null, complete = false,
+  totalLabel = '', actualAmountLabel = '', actualMonthLabel = '', installmentActualLabel = '', actualAutoCountLine = '',
+  quotationNumber = '', serviceRounds = false, paidThroughLabel = '', coverageNotes = [], contractNumber = null, complete = false,
 } = {}) {
   const rowLines = (Array.isArray(changes) ? changes : []).map((line) => String(line || '').trim()).filter(Boolean);
   if (!rowLines.length) throw new Error('paymentPlanEditPrompt: ต้องมีอย่างน้อย 1 งวดที่เปลี่ยน');
@@ -313,6 +367,7 @@ export function paymentPlanEditPrompt({
   if (!actual || !month) throw new Error('paymentPlanEditPrompt: ต้องบอกยอดและเดือนของ Actual ที่ไม่เปลี่ยน');
   const quote = String(quotationNumber || '').trim();
   const through = String(paidThroughLabel || '').trim();
+  const autoCount = String(actualAutoCountLine || '').trim();
   return approvalPrompt({
     title: 'ยืนยันปรับแผนงวดชำระ',
     verb: 'การปรับแผนงวด',
@@ -324,7 +379,12 @@ export function paymentPlanEditPrompt({
         ? `งวดที่รับเงินแล้ว/รอบัญชีตรวจ/มีเอกสารผูก ${lockedCount} งวด ${lockedAmountLabel} ไม่ถูกแตะ (ยอด หลักฐาน ใบกำกับคงเดิม)`
         : null,
       `ยอดรวมทุกงวด ${totalLabel} = ยอดใบ (รวม VAT)`,
-      `ยอด Actual ${actual} เดือน ${month} ไม่เปลี่ยน — ใบยังอนุมัติอยู่ ไม่ต้องย้อนการอนุมัติ`,
+      String(installmentActualLabel || '').trim()
+        ? `ยอด Actual รายงวดที่นับแล้ว ${String(installmentActualLabel).trim()} ไม่เปลี่ยน — งวดที่นับแล้วปรับยอด/วันได้แต่ Actual ที่นับไว้คงเดิม`
+          /* มติข้อ 10: ใบที่กดนับที่เหลือทั้งหมดแล้วไม่มีงวดที่ยื่นอยู่/รอยื่น — บรรทัดถัดไปบอกว่างวดที่เพิ่มนับให้เอง */
+          + (autoCount ? '' : ' · งวดที่ยื่นขอนับอยู่ไม่ถูกแตะ · งวดที่ยังไม่นับคิดส่วนแบ่งจากยอดงวดใหม่ตอน AE Sup อนุมัติงวด')
+        : `ยอด Actual ${actual} เดือน ${month} ไม่เปลี่ยน — ใบยังอนุมัติอยู่ ไม่ต้องย้อนการอนุมัติ`,
+      autoCount || null,
       'ทะเบียนรับชำระของบัญชีแสดงยอดใหม่ทันที',
       `ใบสั่งขายฉบับพิมพ์ยังแสดงแผนตามใบเสนอราคา${quote ? ` ${quote}` : ''} — แผงงวดและทะเบียนบัญชีขึ้นป้าย “ปรับแผนหลังอนุมัติ”`,
       serviceRounds
@@ -351,9 +411,13 @@ export function paymentPlanEditPrompt({
 export function paymentCarryPrompt({
   orderNumber = '', sourceNumber = '', count = 0, amountLabel = '', reportedCount = 0, reportedAmountLabel = '',
   invoiceNos = [], carriedLines = [], changes = [], totalLabel = '', actualAmountLabel = '', actualMonthLabel = '',
-  quotationNumber = '', remainingCount = 0, remainingAmountLabel = '', complete = false, warnings = [],
+  installmentActualLabel = '', actualMovedLine = '', actualAutoCountLine = '', quotationNumber = '', remainingCount = 0,
+  remainingAmountLabel = '', complete = false, warnings = [],
 } = {}) {
   if (!(Number(count) > 0)) throw new Error('paymentCarryPrompt: ต้องยกอย่างน้อย 1 งวด');
+  const moved = String(actualMovedLine || '').trim();
+  /* มติข้อ 10: ใบที่กด "นับที่เหลือทั้งหมด" แล้ว — แถวที่ยกมานับให้อัตโนมัติตอนยก (autoCountLine ของ installmentReplan.js) ⇒ แทนคำ "ต้องยื่นอีกรอบ" */
+  const autoCount = String(actualAutoCountLine || '').trim();
   const actual = String(actualAmountLabel || '').trim();
   const month = String(actualMonthLabel || '').trim();
   if (!actual || !month) throw new Error('paymentCarryPrompt: ต้องบอกยอดและเดือนของ Actual ที่ไม่เปลี่ยน');
@@ -372,7 +436,19 @@ export function paymentCarryPrompt({
       invoices.length ? `ใบกำกับภาษี ${invoices.join(', ')} ย้ายมากับงวด — ไม่ต้องออกใหม่` : null,
       ...(Array.isArray(changes) ? changes : []),
       `ยอดรวมทุกงวด ${totalLabel} = ยอดใบ (รวม VAT)`,
-      `ยอด Actual ${actual} เดือน ${month} ของใบนี้ไม่เปลี่ยน — ${sourceNumber} ยกเลิกแล้วไม่นับ Actual อยู่แล้ว`,
+      /* ใบ "Actual รายงวด" (mig 0412 · docs/so-installment-actual.md): แถวที่ยกมาถูกล้างช่อง Actual (RPC ยกเงินของ 0412)
+         ⇒ ต้องยื่น-อนุมัตินับในใบนี้อีกรอบ · ยอดที่นับแล้วของใบนี้ไม่เปลี่ยน */
+      /* (review รอบสอง 26/10) เงินที่ยกมาแทนงวดที่นับตอนอนุมัติใบทั้งงวด = Actual ของงวดนั้นย้ายมาอยู่กับแถวที่ยกแถวแรก (RPC 0412 C2)
+         ⇒ แถวนั้นไม่ต้องยื่นอีก · แถวที่ยกมาอื่นยังต้องยื่น-อนุมัติ */
+      moved || null,
+      String(installmentActualLabel || '').trim()
+        ? `ยอด Actual รายงวดที่นับแล้วของใบนี้ ${String(installmentActualLabel).trim()} ไม่เปลี่ยน — ${autoCount
+          ? 'ไม่มีงวดที่ยกมาต้องยื่นขอนับ'
+          : moved
+            ? (Number(count) > 1 ? 'งวดที่ยกมางวดอื่นต้องยื่นขอนับและให้ AE Sup อนุมัติในใบนี้อีกรอบ' : 'ไม่มีงวดที่ยกมาต้องยื่นขอนับเพิ่ม')
+            : 'งวดที่ยกมาต้องยื่นขอนับและให้ AE Sup อนุมัติในใบนี้อีกรอบ'} (${sourceNumber} ยกเลิกแล้วไม่นับ Actual อยู่แล้ว)`
+        : `ยอด Actual ${actual} เดือน ${month} ของใบนี้ไม่เปลี่ยน — ${sourceNumber} ยกเลิกแล้วไม่นับ Actual อยู่แล้ว`,
+      autoCount || null,
       remainingCount
         ? `${sourceNumber} ยังเหลือเงินค้าง ${remainingCount} งวด ${remainingAmountLabel} — ยกเพิ่มหรือให้บัญชีบันทึกคืนเงินได้ภายหลัง`
         : `${sourceNumber} ไม่เหลือเงินค้าง — ออกจากหัวข้อ “เงินค้างจากใบที่ยกเลิก” ของบัญชี`,
@@ -427,5 +503,185 @@ export function paymentRefundClearPrompt({ label = '', amount = '', creditNoteNo
       `ยอดเก็บได้ในทะเบียนบัญชีเพิ่มกลับ ${money}`,
     ],
     confirmLabel: 'ยืนยันถอนการบันทึก',
+  });
+}
+
+/* ══ นับ Actual รายงวด (mig 0412 · มติเจ้าของ 26/10/2026 · docs/so-installment-actual.md) ═════════════════════════════
+   วงจรงวด: ฝ่ายขาย "ยื่นขอนับงวดนี้" → AE Sup "อนุมัติงวดและนับ Actual" (หรือ "ตีกลับงวด") → ฝ่ายขายแจ้งสลิป → บัญชีรับรอง →
+   งวดถัดไปยื่นได้ · AE Sup "นับที่เหลือทั้งหมด" (ทางเดียว + เหตุผล) · "นับงวด 1" = ทางกู้เมื่อขั้นนับงวด 1 หลังอนุมัติใบล้ม
+   ⭐ ตัวเลขทุกตัวจัดรูปมาแล้วจากผู้เรียก — ส่วนแบ่งก่อน VAT มาจาก `salesOrderActualMode.js` (คู่กับ SQL ทุกสตางค์) ·
+     เดือนเป็น `formatMonthLabel(currentMonth())` เวลาไทย · ไฟล์นี้ import ต่อไม่ได้ (หัวไฟล์) จึงประกอบประโยคอย่างเดียว
+   ⭐ คำเรียกกอง "รออนุมัติ" / "รอนับรายงวด" ผู้เรียกส่งจากค่าคงที่ของระบบ (PENDING_APPROVAL_LABEL · INSTALLMENT_REMAINING_LABEL)
+     ค่าตั้งต้นที่นี่เป็นคำเดียวกัน — ใช้เมื่อผู้เรียกไม่ส่งเท่านั้น */
+
+/**
+ * ฝ่ายขาย **ยื่นขอนับ Actual งวดนี้** (ยังไม่ต้องมีสลิป · มติข้อ 4)
+ * @param label        ชื่องวด เช่น "งวดที่ 2"
+ * @param shareLabel   ยอดประมาณก่อน VAT ของงวด (ส่วนแบ่ง ณ ตอนนี้ — ตรึงจริงตอน AE Sup อนุมัติ)
+ * @param slipStatus   สถานะเงินของงวด 'reported' | 'confirmed' | null (แถวที่ยกมา/จ่ายก่อนอนุมัติใบ) · review รอบสาม 26/10:
+ *                     เดิมบอก "แจ้งสลิปงวดนี้ได้หลัง AE Sup อนุมัติ" ทั้งที่แจ้งไว้แล้ว (ทางเดียวกับที่รอบสองแก้ในโมดัลอนุมัติ)
+ *                     · review รอบสี่: รับรองแล้ว ≠ แจ้งไว้แล้ว (ธงเดิม `slipReported` = 'reported' — ยังรับเพื่อเข้ากันได้)
+ * @param selfApprover คนยื่นเป็นผู้อนุมัติ (AE Sup · CM · CD — ไม่ใช่ admin) ⇒ อนุมัติงวดที่ตัวเองยื่นไม่ได้ (RPC self_approval) · บอกก่อนกด
+ */
+/* 🐞 review รอบสี่ 26/10: เดิมรับ `slipReported` (reported/confirmed รวมเป็นธงเดียว) ⇒ งวดที่ยกมาจากใบที่ยกเลิกซึ่งบัญชีรับรองแล้ว (C1 ล้างช่อง Actual
+   ต้องยื่นใหม่) ถูกบอก "บัญชีรับรองเงินได้หลัง…อนุมัติ" ทั้งที่รับรองแล้ว ⇒ รับสถานะจริงของงวด (`slipStatus`)
+   @param slipStatus 'reported' | 'confirmed' | null — สถานะเงินของงวด (ผู้เรียกส่งเฉพาะสองค่านี้) · `slipReported` (เดิม) = 'reported' */
+const slipStatusOf = (slipStatus, slipReported) => (['reported', 'confirmed'].includes(slipStatus) ? slipStatus
+  : slipReported ? 'reported' : null);
+
+export function installmentActualSubmitPrompt({
+  label = '', shareLabel = '', pendingLabel = 'รออนุมัติ', remainingLabel = 'รอนับรายงวด', slipStatus = null, slipReported = false,
+  selfApprover = false,
+} = {}) {
+  const share = String(shareLabel || '').trim();
+  const slip = slipStatusOf(slipStatus, slipReported);
+  return approvalPrompt({
+    title: 'ยื่นขอนับ Actual งวดนี้',
+    verb: 'ยื่นขอนับ Actual',
+    subject: [label, share].filter(Boolean).join(' · '),
+    effects: [
+      `ยอดประมาณ ${share || 'ของงวดนี้'} (ก่อน VAT) ย้ายจาก “${remainingLabel}” ขึ้นเป็น “${pendingLabel}” — ยังไม่นับเป็น Actual จนกว่า AE Sup อนุมัติงวด`,
+      'แจ้งผู้อนุมัติ (AE Sup) ให้ตรวจ · อนุมัติแล้วยอดเข้า Actual ของเดือนที่อนุมัติงวด',
+      selfApprover ? 'งวดที่คุณยื่นเอง คุณอนุมัติเองไม่ได้ — ต้องให้ผู้อนุมัติคนอื่นกดอนุมัติ' : null,
+      (slip === 'confirmed'
+        ? 'งวดนี้บัญชีรับรองเงินแล้ว — อนุมัติแล้วนับ Actual ได้ทันที'
+        : slip === 'reported'
+          ? 'สลิปงวดนี้แจ้งไว้แล้ว — บัญชีรับรองเงินได้หลัง AE Sup อนุมัติงวด'
+          : 'แจ้งสลิปงวดนี้ได้หลัง AE Sup อนุมัติ')
+        + ' · ผู้ยื่นดึงคำขอกลับได้ก่อน AE Sup ตัดสิน',
+    ],
+    confirmLabel: 'ยื่นขอนับงวดนี้',
+  });
+}
+
+/** ผู้ยื่น **ดึงคำขอนับงวดกลับ** ก่อน AE Sup ตัดสิน */
+export function installmentActualWithdrawPrompt({
+  label = '', shareLabel = '', pendingLabel = 'รออนุมัติ', remainingLabel = 'รอนับรายงวด',
+} = {}) {
+  const share = String(shareLabel || '').trim();
+  return approvalPrompt({
+    title: 'ดึงคำขอนับงวดกลับ',
+    verb: 'ดึงคำขอนับ',
+    subject: [label, share].filter(Boolean).join(' · '),
+    effects: [
+      `ยอดประมาณ ${share || 'ของงวดนี้'} (ก่อน VAT) ออกจาก “${pendingLabel}” กลับไปกอง “${remainingLabel}”`,
+      'งวดกลับเป็น “ยังไม่ยื่น” — ยื่นใหม่ได้ทุกเมื่อ · AE Sup ไม่เห็นคำขอนี้ในคิวแล้ว',
+    ],
+    confirmLabel: 'ดึงคำขอกลับ',
+  });
+}
+
+/**
+ * AE Sup **อนุมัติงวดและนับ Actual** — ยอดของงวดตรึงเป็น Actual ของเดือนที่กด (มติข้อ 1)
+ * @param shareLabel        ยอดก่อน VAT ที่จะตรึง (installmentActualShareAtApproval)
+ * @param monthLabel        เดือนไทยที่ยอดเข้า (เดือนที่กด)
+ * @param countedAfterLabel Actual ของใบหลังนับงวดนี้ · @param totalLabel Actual เต็มของใบ (ก่อน VAT)
+ * @param progressAfterLabel "x/y งวด" หลังนับงวดนี้
+ */
+/* 🐞 review รอบสอง 26/10: บรรทัดสลิป/งวดถัดไปเคยตายตัว — อนุมัติงวดสุดท้ายก็สัญญา "งวดถัดไปยื่นได้…" ทั้งที่ไม่มีงวดถัดไป ·
+   งวดที่แจ้งสลิปไว้แล้ว (จ่ายก่อนอนุมัติใบ) ก็บอก "แจ้งสลิปงวดนี้ได้" ⇒ ผู้เรียกบอกสองข้อนี้จากแถวจริง (เกณฑ์เดียวกับโมดัลรับรองของบัญชี)
+   @param nextNeedsSubmit งวดถัดไป (เลขถัดไป) ยังไม่ยื่น/ถูกตีกลับ = ยังต้องยื่น · ไม่มี/ยื่นแล้ว/นับแล้ว = false
+   @param slipStatus     สถานะเงินของงวด 'reported' | 'confirmed' | null (review รอบสี่ — รับรองแล้ว ≠ แจ้งไว้แล้ว) · `slipReported` (เดิม) = 'reported'
+   ⭐ งวดที่บัญชีรับรองแล้ว: ไม่มีอะไรรอบัญชี และงวดถัดไปยื่นได้ทันที (ด่านยื่นดูแค่งวดก่อนหน้ารับรองเงินครบ) */
+export function installmentActualApprovePrompt({
+  label = '', shareLabel = '', monthLabel = '', countedAfterLabel = '', totalLabel = '', progressAfterLabel = '',
+  submittedByName = '', pendingLabel = 'รออนุมัติ', nextNeedsSubmit = false, slipStatus = null, slipReported = false,
+} = {}) {
+  const share = String(shareLabel || '').trim();
+  const slip = slipStatusOf(slipStatus, slipReported);
+  const month = String(monthLabel || '').trim();
+  const by = String(submittedByName || '').trim();
+  return approvalPrompt({
+    title: 'อนุมัติงวดและนับ Actual',
+    verb: 'อนุมัตินับ Actual',
+    subject: [label, share].filter(Boolean).join(' · '),
+    effects: [
+      `ยอด ${share || 'ของงวดนี้'} (ก่อน VAT) ย้ายจาก “${pendingLabel}” เข้าเป็น Actual ของเดือน ${month || 'นี้'} (เดือนที่อนุมัติงวด) — ขึ้นบนดีลทันที`,
+      countedAfterLabel && totalLabel
+        ? `Actual ของใบเป็น ${countedAfterLabel} จาก ${totalLabel}${progressAfterLabel ? ` (นับแล้ว ${progressAfterLabel})` : ''}`
+        : null,
+      slip === 'confirmed'
+        ? `งวดนี้บัญชีรับรองเงินแล้ว${nextNeedsSubmit ? ' — งวดถัดไปยื่นขอนับได้ทันที' : ''}`
+        : (slip === 'reported'
+          ? 'สลิปงวดนี้แจ้งไว้แล้ว — บัญชีรับรองเงินได้หลังอนุมัติ'
+          /* ชื่อในวงเล็บต้องมีวรรคก่อน "แจ้ง" (UAT 27/10 ข้อ 2 — เดิม "ฝ่ายขาย (ชื่อ)แจ้งสลิป") */
+          : `ฝ่ายขาย${by ? ` (${by}) ` : ''}แจ้งสลิปงวดนี้ได้ แล้วบัญชีรับรองเงิน`)
+          + (nextNeedsSubmit ? ' — งวดถัดไปยื่นได้หลังบัญชีรับรองงวดนี้' : ''),
+      'งวดที่นับแล้วถอนรายงวดไม่ได้ — ถอยได้ทางเดียวคือย้อนการอนุมัติทั้งใบ',
+    ],
+    confirmLabel: 'อนุมัติงวดและนับ Actual',
+  });
+}
+
+/** คำอธิบายในกล่องเหตุผลของ **ตีกลับงวด** (ReasonDialog · เหตุผล 10–500 ตัวอักษร) — บรรทัดละข้อ */
+export function installmentActualRejectLines({
+  shareLabel = '', pendingLabel = 'รออนุมัติ', remainingLabel = 'รอนับรายงวด',
+} = {}) {
+  const share = String(shareLabel || '').trim();
+  return [
+    `ยอดประมาณ ${share || 'ของงวดนี้'} (ก่อน VAT) ออกจาก “${pendingLabel}” กลับไปกอง “${remainingLabel}” — ไม่นับเป็น Actual`,
+    'งวดขึ้น “ตีกลับ” พร้อมเหตุผลนี้ — ฝ่ายขายแก้แล้วยื่นใหม่ได้',
+  ];
+}
+
+/**
+ * AE Sup **นับที่เหลือทั้งหมด** (มติข้อ 8 — ทางเดียว: รายงวด → ทั้งใบ) — บรรทัดผลในกล่องเหตุผล (ReasonDialog)
+ * @param count            จำนวนงวดที่ยังไม่นับ (รวมงวดที่ยื่นรออยู่)
+ * @param amountLabel      ยอดก่อน VAT ที่จะเข้า Actual (= Actual เต็ม − นับแล้ว)
+ * @param submittedCount   งวดที่ยื่นรอ AE Sup อยู่ในชุดนี้ (นับรวมไปด้วย ไม่ต้องอนุมัติทีละงวด)
+ */
+export function installmentActualCountRestLines({
+  count = 0, amountLabel = '', monthLabel = '', totalLabel = '', submittedCount = 0, freezeFirst = false,
+} = {}) {
+  const month = String(monthLabel || '').trim();
+  return [
+    /* review รอบสี่ 26/10: route ตรึงงวดที่ยังไม่ตรึงก่อนนับ (ตัวหยุดยอดล้มตอนอนุมัติ) — ไม่งั้นเงินของทุกงวดรับรองไม่ได้ */
+    freezeFirst ? 'ตรึงงวดชำระที่ยังไม่ตรึงก่อน — แผนงวดของใบนี้เป็นแผนจริง ฝ่ายขายแจ้งสลิป/บัญชีรับรองเงินได้' : null,
+    `งวดที่ยังไม่นับ ${count} งวด รวม ${amountLabel} (ก่อน VAT) เข้าเป็น Actual ของเดือน ${month || 'นี้'} ทันที — Actual ของใบครบ ${totalLabel}`,
+    submittedCount ? `งวดที่ยื่นรออนุมัติอยู่ ${submittedCount} งวด นับรวมไปด้วย` : null,
+    'เงินยังเก็บตามงวดเดิม — ฝ่ายขายแจ้งสลิป บัญชีรับรองทีละงวดตามปกติ',
+    /* มติข้อ 10 (26/10): กดแล้วใบนับทั้งก้อนถาวร — งวดที่โผล่ทีหลังฐานนับให้ตอนบันทึก · Rev. แบบรายงวดก็นับทุกงวดที่ค้างตอนอนุมัติ */
+    'ทางเดียว — ใบนี้นับทั้งก้อนจากนี้ไป: งวดที่เพิ่มทีหลัง (ปรับแผนแบ่งงวด · ยกเงินเข้า) ระบบนับ Actual ให้เองทันที ไม่ต้องยื่น'
+      + ' · Rev. ที่อนุมัติแบบรายงวดก็นับให้ทั้งหมด (กลับไปยื่นรายงวดไม่ได้)',
+  ].filter(Boolean);
+}
+
+/**
+ * ทางกู้ **"นับงวด 1" / "นับงวดที่ค้าง"** — ใบอนุมัติแบบรายงวดแล้วแต่ขั้นนับตอนอนุมัติล้ม (route ตอบ `installmentActualStartFailed`)
+ * @param startLabel   งวดที่จะนับ เช่น "งวด 1" (รวมงวดยอด 0 / งวดที่รับรองเงินแล้ว ถ้ามี — "งวด 1, 3") · หัวโมดัลใช้คำนี้
+ *                     (review รอบสาม 26/10: หัวตายตัว "นับ Actual งวดแรก" ขณะนับงวด 3 ของปุ่ม "นับงวดที่ค้าง")
+ * @param freezeFirst  ใบมีงวดที่ยังไม่ตรึง (ตัวหยุดยอดล้มตอนอนุมัติ) — route ตรึงก่อนนับ (แผนจริงของใบ · แจ้งสลิป/รับรองเงินได้)
+ */
+export function installmentActualStartPrompt({
+  startLabel = 'งวด 1', amountLabel = '', monthLabel = '', restAmountLabel = '', remainingLabel = 'รอนับรายงวด',
+  freezeFirst = false,
+} = {}) {
+  const month = String(monthLabel || '').trim();
+  const rest = String(restAmountLabel || '').trim();
+  /* review รอบสี่ 26/10: ปุ่มกู้โชว์ตราบที่มีงวดยังไม่ตรึง แม้ไม่มีงวดค้างให้นับ (เช่นงวดถูกนับไปตอนยังไม่ตรึง) — ผู้เรียกส่ง startLabel ว่าง
+     ⇒ โมดัลบอกผลจริง: ตรึงอย่างเดียว ไม่นับอะไร (ไม่ใช่ "นับ Actual งวด 1 ฿0") */
+  if (!String(startLabel || '').trim()) {
+    return approvalPrompt({
+      title: 'ตรึงงวดชำระ',
+      verb: 'ตรึงงวดชำระ',
+      subject: 'งวดที่ยังไม่ตรึงของใบนี้',
+      effects: [
+        'ตรึงงวดชำระที่ยังไม่ตรึง — แผนงวดของใบนี้เป็นแผนจริง ฝ่ายขายแจ้งสลิป/บัญชีรับรองเงินได้ และยื่น/อนุมัตินับงวดได้ต่อ',
+        'ไม่มีงวดค้างให้นับตอนนี้ — Actual ของใบไม่เปลี่ยน',
+      ],
+      confirmLabel: 'ตรึงงวดชำระ',
+    });
+  }
+  return approvalPrompt({
+    title: `นับ Actual ${startLabel}`,
+    verb: 'นับ Actual',
+    subject: [startLabel, amountLabel].filter(Boolean).join(' · '),
+    effects: [
+      freezeFirst ? 'ตรึงงวดชำระที่ยังไม่ตรึงก่อน — แผนงวดของใบนี้เป็นแผนจริง ฝ่ายขายแจ้งสลิป/บัญชีรับรองเงินได้' : null,
+      `${startLabel} ${amountLabel} (ก่อน VAT) เข้าเป็น Actual ของเดือน ${month || 'นี้'} — ขึ้นบนดีลทันที`,
+      rest ? `ที่เหลือ ${rest} (ก่อน VAT) ยังอยู่กอง “${remainingLabel}” จนกว่า AE Sup อนุมัติแต่ละงวด` : null,
+      'กดซ้ำได้ไม่นับซ้ำ — งวดที่นับแล้วถูกข้าม',
+    ],
+    confirmLabel: `นับ Actual ${startLabel}`,
   });
 }

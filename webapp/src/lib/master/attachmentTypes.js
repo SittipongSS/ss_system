@@ -722,8 +722,9 @@ export function overrideReasonError(reason) {
 }
 
 // ── พรีวิวรูปในหน้า ────────────────────────────────────────────────────
-// ไฟล์ที่แสดงเป็นภาพย่อ + คลิกขยายได้. ยึด mimeType เป็นหลัก แต่ไฟล์เก่าบางแถว
+// ไฟล์ที่ระบบนับเป็น "รูป" (ชนิดรูปทุกชนิดที่รับอัป). ยึด mimeType เป็นหลัก แต่ไฟล์เก่าบางแถว
 // ไม่มี mimeType (อัปก่อนที่ระบบจะเก็บ) จึงเดาจากนามสกุลชื่อไฟล์เป็นทางสำรอง
+// ⚠️ จอที่ตัดสินว่า "วาดเป็นภาพย่อ หรือเป็นแถวไฟล์" ใช้ `isDrawableImage` (ข้างล่าง) — ชุดนี้รวม TIFF ที่เบราว์เซอร์วาดไม่ขึ้น
 export function isPreviewableImage(item) {
   if (!item) return false;
   const mime = String(item.mimeType || '').toLowerCase();
@@ -731,6 +732,31 @@ export function isPreviewableImage(item) {
   const ext = String(item.fileName || '').toLowerCase().split('.').pop();
   return ACCEPTED_IMAGE_EXT.includes(ext);
 }
+
+/* ── รูปที่เบราว์เซอร์ **วาดในหน้าได้** (ภาพย่อ · กล่องดูรูปเต็ม) ─────────────────────────────
+   = `isPreviewableImage` ลบ TIFF — Chrome/Edge/Firefox วาด TIFF ไม่ขึ้น ⇒ ไฟล์นี้บนจอเป็น "ไฟล์" (แถวลิงก์เปิดแท็บใหม่)
+     ไม่ใช่ "รูป" (S2b แก้หลังตรวจจอ head-rc-q8 · sales-minor-7a)
+   🐞 เดิมแผงไฟล์แนบ/เธรดใช้ `isPreviewableImage` ตัดสินหน้าตา ⇒ TIFF ในช่องภาพแบบได้แผ่น "เปิดรูปไม่ได้" + ป้ายเขียว "ขึ้นแล้ว"
+      (ทั้งที่ไม่ปลดด่านภาพแบบ) · กดแล้วกล่องดูรูปขึ้นรูปแตก · ในเธรดเป็นกล่องเปล่าไม่มีชื่อไฟล์ ไม่มีทางเปิด
+   🔴 **ห้ามแก้ `isPreviewableImage` แทน** — ชุดนั้นคือ "รูปที่ระบบประมวลได้" ของงานฝั่ง server ไม่ใช่ของตา:
+      · เอกสารประเมิน (`surveyReportSnapshot`) ย่อรูปด้วย sharp ซึ่งถอด TIFF ได้ ⇒ TIFF บนพื้นที่ลงหน้างานลงกระดาษ
+        (งวด S3 ตรึงไว้: ใบลงหน้างานพิมพ์เหมือนเดิมทุกไบต์ — `surveyReportSnapshot.test.mjs` เคส "ไฟล์ชุดเดียวกันบนพื้นที่ลงหน้างาน")
+      · "รูปของจุด" (`isSpotPhoto`) ต้องเป็นชุดเดียวกับที่แผงส่งให้แถวของจุด (review 30/09) — แผงโหมด `photoGroups` จึงยังใช้ชุดกว้าง
+   ⚠️ HEIC ยังนับว่าวาดได้ (คงเดิมตามแผนแก้ S2b) — Safari บน iPhone ที่ถ่าย HEIC วาดได้
+   ⚠️ ตัดสินจาก mime ก่อน ไม่มีค่อยดูนามสกุล — ลำดับเดียวกับ `isPreviewableImage` (PNG ที่ตั้งชื่อ .tiff = วาดได้) */
+const UNDRAWN_IMAGE_MIME = Object.freeze(["image/tiff"]);
+const UNDRAWN_IMAGE_EXT = Object.freeze(["tif", "tiff"]);
+
+export function isDrawableImage(item) {
+  if (!isPreviewableImage(item)) return false;
+  const mime = String(item.mimeType || "").toLowerCase();
+  if (mime) return !UNDRAWN_IMAGE_MIME.includes(mime);
+  return !UNDRAWN_IMAGE_EXT.includes(String(item.fileName || "").toLowerCase().split(".").pop());
+}
+
+/** เป็นรูปของระบบแต่เบราว์เซอร์วาดไม่ขึ้น (TIFF) — แถวไฟล์ของมันบอกคำนี้ต่อท้ายชื่อ (คำเดียวกับแผง "แบบจากฝ่ายขาย") */
+export const isUndrawnImage = (item) => isPreviewableImage(item) && !isDrawableImage(item);
+export const UNDRAWN_IMAGE_OPEN_TEXT = "เปิดในแท็บใหม่";
 
 // ชนิดที่เลิกใช้แล้ว — **ไฟล์ที่แนบไว้ตอนนั้นยังอยู่ในฐานข้อมูลและยังต้องอ่านออก**
 // (AttachmentsPanel จับ docType ที่ไม่รู้จักลงการ์ด "เอกสารอื่นๆ" ให้อยู่แล้ว แต่ป้าย

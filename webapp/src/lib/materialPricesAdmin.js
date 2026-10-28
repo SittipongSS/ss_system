@@ -13,6 +13,7 @@ import {
 import { normalizePmType } from '@/lib/master/materialTypes';
 import { brandDisplayFromList } from '@/lib/master/brands';
 import { customerNameIn } from '@/lib/master/customerName';
+import { loadRequestInstallments } from '@/lib/sales/installmentRequestsStore';
 
 // โหลดวัสดุในทะเบียนพร้อมรุ่นราคา + ชั้นราคาของแต่ละรุ่น (ก้อนเดียว กัน N+1)
 // status: undefined = ที่ใช้งานได้จริง (active) · null = ทุกสถานะ · array = ตามที่ระบุ
@@ -618,14 +619,14 @@ export async function findRequest(supabase, id) {
 
   /* ⭐ **งวดชำระที่ใบนี้ถูกแขวนไว้** (ม-96 · ฝั่งกลับของ B-5) — B-5 ทำลิงก์ไว้ทางเดียว
      (จากใบสั่งขายเห็นคำร้อง) ⇒ บัญชีที่เปิดใบจากคิวไม่รู้เลยว่าใบนี้ผูกกับงวดไหน
-     ⚠️ ค้นด้วย `billingRequestId` ซึ่งไม่มี FK (โดยเจตนา · 0260) — ไม่เจอ = ยังไม่ผูก
-     ไม่ใช่ข้อมูลเสีย */
+     ⚠️ ไม่เจอ = ยังไม่ผูก ไม่ใช่ข้อมูลเสีย */
   let linkedInstallment = null;
   if (withBriefs.kind === 'billing_doc') {
-    const { data: inst } = await supabase
-      .from('sales_order_installments')
-      .select('id, seq, label, amount, "dueDate", status, "salesOrderId"')
-      .eq('billingRequestId', withBriefs.id).maybeSingle();
+    /* ⭐ mig 0413 — งวดอยู่ที่ `installmentId` ของคำร้องเอง (ลิงก์รุ่นเก่าถอยไปหาตามตัวชี้) · ไม่เจอ/เจอหลายแถว = ไม่ผูก ไม่เดา */
+    const { data: found } = await loadRequestInstallments(supabase, withBriefs, {
+      select: 'id, seq, label, amount, "dueDate", status, "salesOrderId"',
+    });
+    const inst = found.length === 1 ? found[0] : null;
     if (inst) {
       const { data: order } = await supabase
         .from('sales_orders').select('id, "orderNumber"').eq('id', inst.salesOrderId).maybeSingle();

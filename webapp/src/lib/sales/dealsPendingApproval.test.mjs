@@ -156,14 +156,15 @@ test('หน้ารายละเอียดดีล: การ์ด Won =
   /* ส่วนต่างเทียบ FC — มติผู้ใช้ 2026-09-14 (fix 1): สามกรณีตัดสินที่ wonDealForecastHint ตัวเดียว
      (เทสต์ตัวกติกาอยู่ที่ dealPagesGap.test.mjs) · ป้อนจากแถว SO สด + Actual ของดีล
      · ส่ง `deal` ด้วย — คำของดีลเก่าที่สร้างเป็น Won ตัดสินด้วยตัวบ่งชี้กลางในตัวเลือกคำ (มติผู้ใช้ 2026-09-15) */
-  assert.match(page, /import \{ wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
+  assert.match(page, /import \{ installmentActualSubLine, wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
   assert.match(page,
-    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*\}\)/);
+    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*instRemaining: soAmounts\.instRemaining,\s*\}\)/);
+  // ใบ "Actual รายงวด" (mig 0412) — งวดที่ยังไม่ยื่นมาจากแถว SO ชุดเดียวกัน (ไม่ฟ้อง "ต่าง" จากงวดที่ยังไม่ถึงคิว)
   /* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A) ซ่อนคำส่วนต่าง — บรรทัด "ยอดปิดในระบบเดิม" พูดแทน
      (มติผู้ใช้ 2026-09-14 · lib/sales/legacyDealSwitch) ⇒ คำส่วนต่างยังมาจาก wonHint.text ตัวเดียว
-     และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ */
+     และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ · UAT 27/10: ท่อน "ป้าย ฿ยอด" ของใบรายงวดห่อด้วย keepPhrases (wonHint.keep — ชนิดอื่นไม่มี = คำเดิม) */
   assert.match(page,
-    /\{legacyNote && !legacyNote\.stillInForecast \? null : wonHint\.text\}[\s\S]{0,900}?<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\}/,
+    /\{legacyNote && !legacyNote\.stillInForecast \? null : keepPhrases\(wonHint\.text, wonHint\.keep\)\}[\s\S]{0,900}?<PendingApprovalAmount amount=\{soAmounts\.pendingApproval\}/,
     'คำส่วนต่างตามด้วยบรรทัดรออนุมัติ');
   assert.doesNotMatch(page, /- dealActual\)\}/, 'สูตร "ต่าง ฿(FC − Actual)" แบบเดิมต้องไม่กลับมาในหน้า');
 });
@@ -175,7 +176,8 @@ test('หน้ารายละเอียดดีล: ตาราง SO �
   assert.doesNotMatch(page, /order\.status === "approved" \? order\.actualAmount : 0/,
     'ใบรออนุมัติต้องไม่ถูกตีเป็น ฿0.00 อีก');
   assert.match(page, /const kind = salesOrderAmountKind\(order\)/);
-  assert.match(page, /if \(kind === "actual"\) return money\(salesOrderActual\(order\)\)/);
+  /* ใบทั้งใบ = Actual ตามเดิม · ใบ "Actual รายงวด" = ยอดเต็ม + บรรทัดรองบอกกอง (review รอบสอง 26/10 · soInstallmentActualScreens) */
+  assert.match(page, /if \(kind === "actual"\) \{\s*const sub = installmentActualSubLine\(order\);[\s\S]{0,240}?: money\(salesOrderActual\(order\)\);\s*\}/);
   assert.match(page, /kind === "pending_approval"[\s\S]{0,120}<PendingApprovalAmount amount=\{salesOrderPendingApprovalAmount\(order\)\}/);
   assert.match(page, /· ไม่นับ/, 'ใบที่ไม่นับต้องมีคำกำกับ ไม่ใช่แค่สีจาง');
   assert.match(page, /<td className="num mono">\{soAmountCell\(order\)\}<\/td>/);
@@ -188,7 +190,8 @@ test('หน้าลีด: API ส่ง metadata ของดีล · กา
   assert.ok(select[1].split(',').map((c) => c.trim()).includes('metadata'),
     'ต้องมี metadata — Actual (actualSource) และยอดรออนุมัติอยู่ในนั้น');
   // ส่งเฉพาะคีย์ที่การ์ดอ่าน ไม่ใช่ metadata ทั้งก้อน (คนเปิดหน้าลีดบางตำแหน่งไม่มีสิทธิ์หน้าดีล)
-  assert.match(route, /DEAL_CARD_METADATA_KEYS = \['actualSource', 'soPendingAmount', 'soPendingCount'\]/);
+  /* mig 0412: คีย์ของ Actual รายงวด (Actual รายเดือน · งวดยื่นแล้ว · งวดรอนับ) ต้องมาด้วย — ตัวอ่านรออนุมัติของการ์ดรวม soInstPending* */
+  assert.match(route, /DEAL_CARD_METADATA_KEYS = \[\s*'actualSource', 'soPendingAmount', 'soPendingCount',\s*'actualByMonth', 'soInstPendingAmount', 'soInstPendingCount', 'soInstRemainingByDue',\s*\]/);
   assert.match(route, /relatedDeals: \(relatedDeals \|\| \[\]\)\.map\(\(deal\) => \(\{ \.\.\.deal, metadata: dealCardMetadata\(deal\.metadata\) \}\)\)/);
   /* supabase ไม่ throw — ดีลที่ผูกอ่านไม่ขึ้นแล้วตกเป็น [] = การ์ด "ยังไม่มีดีล" + canDelete เปิด
      ⇒ ต้องเช็ค error ของทั้งสองก้อนก่อนประกอบคำตอบ */

@@ -49,9 +49,13 @@ test('แถว SO: สามสถานะของยอด', () => {
 test('รวมยอดจากแถว SO: Actual กับรออนุมัติแยกกอง ร่าง/ตีกลับ/ย้อนอนุมัติไม่นับ', () => {
   const rows = ALL_STATUSES.map((status, i) => ({ status, actualAmount: (i + 1) * 100 }));
   assert.deepEqual(splitSalesOrderAmounts(rows), {
-    actual: 300, actualCount: 1, pendingApproval: 200, pendingApprovalCount: 1,
+    actual: 300, actualCount: 1, pendingApproval: 200, pendingApprovalCount: 1, instRemaining: 0,
+    pendingOrderCount: 1, pendingOrderAmount: 200, instPendingCount: 0, instPendingAmount: 0,
   });
-  assert.deepEqual(splitSalesOrderAmounts([]), { actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0 });
+  assert.deepEqual(splitSalesOrderAmounts([]), {
+    actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
+    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0,
+  });
 });
 
 test('ดีล: อ่าน cache ที่ DB เขียน — ไม่มีคีย์ = 0 (JS ขึ้นก่อนรัน migration ได้)', () => {

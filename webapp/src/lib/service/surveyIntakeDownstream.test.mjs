@@ -197,14 +197,18 @@ test('🔴 D-2 ลำดับ: งานโต๊ะที่ยื่นเป
   const rows = view.groups.find((g) => g.key === 'requests').rows;
   assert.equal(rows.find((r) => r.id === 'R-draw').dateLine, 'ต้องการผล ศ. 16 ต.ค.');
   assert.deepEqual(rows.map((r) => r.id), ['R-draw', 'R-far']);
-  // งานโต๊ะรูป RQ-AS-26100312 (ยื่นลงหน้างาน หัวหน้าสลับทุกพื้นที่) เรียงด้วยวันเข้าในคอลัมน์เท่าวันนี้
+  /* งานโต๊ะรูป RQ-AS-26100312 (ยื่นลงหน้างาน หัวหน้าสลับทุกพื้นที่) — 🔄 S2b แก้หลังตรวจจอ planner-q6: เรียงด้วยวันที่ต้องการผล
+     เหมือนงานโต๊ะทุกใบ (วันที่การ์ดพิมพ์) · เดิม (รั้วสวิตช์ปิดของ S4) เรียงด้วยวันเข้าในคอลัมน์ 10 พ.ย. ซึ่งการ์ดไม่ได้พิมพ์
+     ⇒ ใบที่ต้องการผลวันนี้ไปอยู่ใต้ใบที่ขอเข้า 5 พ.ย. */
   const switched312 = { ...std, id: 'R-312', docNo: 'RQ-AS-26100312', status: 'pending', acknowledgedAt: null, acknowledgedByName: null, requestedDueDate: '2026-11-10', requestedResultDate: '2026-10-15', surveyNeedsVisit: false };
   const legacyView = buildScheduleQueue({
     visits: [], sitesById, gateContext: {}, workload: {}, todayIso: TODAY, teamFilter: ALL_TEAMS,
     crewByUser: new Map(), crewPeople: crew, teamNames: new Map(), bucket: 'waiting',
     surveyRequests: [switched312, far],
   });
-  assert.deepEqual(legacyView.groups.find((g) => g.key === 'requests').rows.map((r) => r.id), ['R-far', 'R-312']);
+  const legacyRows = legacyView.groups.find((g) => g.key === 'requests').rows;
+  assert.equal(legacyRows.find((r) => r.id === 'R-312').dateLine, 'ต้องการผล พฤ. 15 ต.ค.');
+  assert.deepEqual(legacyRows.map((r) => r.id), ['R-312', 'R-far']);
 });
 
 test('D-2 ใบ standard ไม่มีบรรทัดฝ่ายขายขอบนการ์ดใดเลย', () => {

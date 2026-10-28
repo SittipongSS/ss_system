@@ -1,0 +1,45 @@
+/* ── "รอนับรายงวด" บนแท็บผลงานขาย (mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) ────────────────────────
+   งวดของใบสั่งขาย "Actual รายงวด" ที่ยังไม่ยื่น/ถูกตีกลับ — ใบอนุมัติแล้ว เงินก้อนนี้จะเป็น Actual เมื่อ AE Sup อนุมัติงวด
+   ⇒ อยู่ตระกูลเดียวกับ Actual (เขียว · CHART_SERIES ล็อก 3 สี) แยกด้วยสิ่งที่ไม่ใช่ hue สองชั้น:
+   จาง (--op-muted เหมือนรออนุมัติ) + ลายตั้ง 90° (รออนุมัติเป็นลายเฉียง 135° · Won รอยื่น SO 45°)
+   ⚠️ สีไม่ใช่สัญญาณเดียว: ทุกจุดที่วาดมีคำว่า "รอนับรายงวด" กำกับ (title / legend / aria-label)
+   ความกว้างของส่วนในแถบมาจากตัวแปร --perf-inst-w ที่รางตั้งให้ (แพตเทิร์นเดียวกับ --perf-pending-w) */
+.seg,
+.swatch {
+  background-color: var(--green);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0 2px,
+    color-mix(in srgb, var(--panel) 65%, transparent) 2px 4px
+  );
+  opacity: var(--op-muted);
+}
+.seg {
+  display: block;
+  flex: none;
+  height: 100%;
+  width: var(--perf-inst-w, 0);
+}
+.animated { transition: width var(--motion-slow); }
+
+/* บรรทัด "รอนับรายงวด ฿X · N ดีล" — หน้าตาคู่กับ .perf-won-sub / .so-pending-approval
+   .sub = บรรทัดรองใต้ Actual ของตารางติดตาม (เซลล์ตัวหนา ⇒ คืนน้ำหนักปกติ)
+   .inline = ต่อท้ายบรรทัดตัวเลขของแถบความคืบหน้า (ขนาดตามบรรทัดนั้น) */
+.sub,
+.inline {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--fw-normal);
+}
+.sub {
+  display: block;
+  font-size: var(--fs-5);
+}
+.inline { font-size: inherit; }
+/* คำกับตัวเลขห้ามแยกบรรทัด (บทเรียนเดียวกับ .so-pending-approval-main) */
+.main { white-space: nowrap; }
+.tag {
+  color: var(--blue);
+  font-weight: var(--fw-semibold);
+}
+.count { color: var(--text-3); }

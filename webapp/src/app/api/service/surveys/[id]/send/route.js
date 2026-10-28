@@ -77,6 +77,9 @@ import {
   surveyChangeCounts, surveyChangeText, surveyPackagesText, surveySendError, surveyTotals, surveyTotalsDiff,
 } from '@/lib/service/survey';
 import { surveySpotSendError } from '@/lib/service/surveySpotPhotos';
+/* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 กลุ่ม B · B-5) — ตัวอ่าน/เขียนของงวด (ไม่ throw) + ตัวสร้างบรรทัด (ล้วน) */
+import { appendSurveyConfirmLines, loadSurveyConfirmOriginal } from '@/lib/service/surveyConfirmRepo';
+import { surveyConfirmSentLines, surveyConfirmSentSummary } from '@/lib/service/surveyConfirmLink';
 
 export const dynamic = 'force-dynamic';
 /* ตัวย่อรูป (sharp) กับตัวต่อ Drive เป็นของ Node · รอบตรวจรูป 60 วิ + รอบเติมหลังล็อก 20 วิ + RPC ⇒ เพดานเท่า cron ที่เดินนานที่สุด */
@@ -244,6 +247,50 @@ async function surveySendIssue(supabase, { request, user, closedVisit, prepared,
     });
     return surveySendReport(null);
   }
+}
+
+/**
+ * งวด S5 B-5 — ผลของ **ใบยืนยันหน้างาน** ลงเธรดของใบต้นทาง: บรรทัดสรุปหนึ่งบรรทัด แล้วหนึ่งบรรทัดต่อพื้นที่ที่ยกมา
+ *   (ตามวิธีของแถวที่ส่งจริง: ตัวเลขเปลี่ยน → จากแบบอีกครั้ง → ตัดออก → ตรง) · ก้อนแรกยิงกระดิ่ง ก้อนต่อเงียบ (R8 · หนึ่งกระดิ่งต่อการส่ง)
+ * ⭐ เขียนเฉพาะใบต้นทางที่ยังอยู่ · ยังมีผลที่ส่งแล้ว · ตอบ "ต้องยืนยันหน้างาน" — ใบต้นทางที่ถูกดึงผลกลับ (ตัวเลขกำลังถูกแก้ ไม่มีผลจากแบบ
+ *    ให้เทียบ) หรือส่งใหม่เป็น "ไม่ต้องยืนยันหน้างาน" = ไม่มีบรรทัด ใบยืนยันจบเป็นใบลงหน้างานธรรมดา (O17)
+ * ⚠️ best effort (V9) — ตอบใบไปแล้ว: พลาดตรงไหนลง log อย่างเดียว · กดส่งรอบใหม่หลังดึงกลับได้ชุดใหม่ (กุญแจ = เวลาตอบรอบนั้น)
+ * @param childRows แถวพื้นที่ของใบนี้ที่ด่านอ่านไว้ (ตัวที่เพิ่งส่ง) · ไม่อ่านซ้ำ
+ */
+async function surveyConfirmSentThread(supabase, { id, child, childRows, nowIso, user }) {
+  const originalId = child.surveyConfirmOfId;
+  const { original, error } = await loadSurveyConfirmOriginal(supabase, originalId);
+  if (error) {
+    console.error('[surveyConfirm] อ่านใบต้นทางไม่สำเร็จ — ไม่เขียนผลลงเธรด', id, originalId, error);
+    return;
+  }
+  if (!original || !original.answeredAt || original.surveyConfirm !== 'needed') {
+    console.info('[surveyConfirm] ข้ามบรรทัดผล — ใบต้นทางหาย / ยังไม่มีผลที่ส่ง / ไม่ต้องยืนยันหน้างาน', id, originalId);
+    return;
+  }
+  let originalRows;
+  try {
+    originalRows = await loadSurveyZones(supabase, original.id);
+  } catch (e) {
+    console.error('[surveyConfirm] อ่านแถวพื้นที่ของใบต้นทางไม่สำเร็จ — ไม่เขียนผลลงเธรด', id, originalId, message(e));
+    return;
+  }
+  if (!originalRows.length) {
+    console.error('[surveyConfirm] ใบต้นทางไม่มีแถวพื้นที่ — ไม่เขียนผลลงเธรด', id, originalId);
+    return;
+  }
+  const lines = surveyConfirmSentLines({ child, childRows, originalRows });
+  if (!lines.length) return;
+  const written = await appendSurveyConfirmLines(supabase, {
+    originalId: original.id,
+    key: `sent:${id}:${nowIso}`,
+    event: 'sent',
+    child,
+    lines: [surveyConfirmSentSummary(child, lines), ...lines.map((l) => l.text)],
+    outcomes: lines.map(({ zoneId, outcome }) => ({ zoneId, outcome })),
+    user,
+  });
+  if (written.error) console.error('[surveyConfirm] เขียนผลลงเธรดของใบต้นทางไม่สำเร็จ', id, originalId, written.error);
 }
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
@@ -482,6 +529,16 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         + (closedVisit ? ` · ปิดนัด ${closedVisit.code || closedVisit.id}` : ''),
       request: req,
     });
+    /* งวด S5 B-5 — ผลของใบยืนยันหน้างานลงเธรดของใบต้นทาง · **หลัง** กระดิ่งและ audit ของใบนี้ ก่อนขั้นออกเลข (F13)
+       ⚠️ ไม่ใช่ใน `onVisitClosed` · `data` คือแถวเต็มหลังตอบ (ไม่อ่านเพิ่ม) · ใบที่ไม่ผูก = ไม่มีคำสั่งเพิ่มสักคำสั่ง
+       🔴 ห่อ try/catch — ตอบใบไปแล้ว อะไรล้มตรงนี้ต้องไม่เปลี่ยนคำตอบ */
+    if (data?.surveyConfirmOfId) {
+      try {
+        await surveyConfirmSentThread(supabase, { id, child: data, childRows: zones, nowIso, user });
+      } catch (e) {
+        console.error('[surveyConfirm] บรรทัดผลบนเธรดของใบต้นทางล้ม', id, data.surveyConfirmOfId, message(e));
+      }
+    }
     /* S8 — ออกเลขเอกสาร **หลัง** กระดิ่งและ audit (มติเจ้าของ 01/10 ข้อ 1) · ฝ่ายขายได้ผลไปแล้ว ⇒ ตรงนี้ล้มยังไงก็ตอบ 200
        ⚠️ ไม่มีอะไรใหม่คั่นระหว่าง "ตอบใบ" กับ "กระดิ่ง" — รูปที่เตรียมไว้ (`prepared`) กับลายเซ็น (`signatures`) มาจากรอบตรวจก่อนเขียน */
     const report = issueAtSend

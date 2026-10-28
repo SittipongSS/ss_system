@@ -380,7 +380,7 @@ test('⭐ O8 ข · ร่างจากแบบที่พื้นที่
       assert.deepEqual(row.spots, [{ id: 's1', selected: false }]);
       assert.equal(row.surveyedAt, '2026-10-07T02:00:00+00:00', 'ผลเดิมคงอยู่ — ช่างตรวจกับของจริงแล้วบันทึกทับ');
       assert.equal(surveyZoneNeedsResave(row), true);
-      assert.equal(surveyZoneResaveText(row, []), 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง');
+      assert.equal(surveyZoneResaveText(row, []), 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดและภาพกว้างแล้วกดบันทึกอีกครั้ง');
     }
     assert.ok(threadBodies(db).includes('ผู้ขอสลับวิธีประเมินเป็น ลงหน้างาน — ตรวจรายละเอียดอีกครั้งก่อนรับเรื่อง'), threadBodies(db).join('\n'));
 

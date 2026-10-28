@@ -15,8 +15,10 @@ function bufferSha256(buffer) {
 }
 
 // path ของไฟล์ต่อ snapshot — เสถียร (derive จาก quotationId + snapshotId) เพื่อให้ idempotent
-export function issuedQuotationPdfPath(quotationId, snapshotId) {
-  return `quotations/${safe(quotationId)}/issued/${safe(snapshotId)}.pdf`;
+// ⭐ `folder` = ชนิดเอกสาร — ใบสั่งขายใช้ bucket + ตาราง metadata ชุดเดียวกัน (snapshot อยู่ `issued_documents`
+//   ตารางเดียวกับใบเสนอราคา · แถว PDF ผูกด้วย issuedDocumentId) แค่แยกโฟลเดอร์ `sales-orders/`
+export function issuedQuotationPdfPath(quotationId, snapshotId, folder = 'quotations') {
+  return `${folder}/${safe(quotationId)}/issued/${safe(snapshotId)}.pdf`;
 }
 
 // เก็บ PDF ของ issued snapshot ลง bucket + บันทึกแถว metadata (idempotent).
@@ -24,7 +26,8 @@ export function issuedQuotationPdfPath(quotationId, snapshotId) {
 //   ที่ไม่ deterministic ระดับไบต์)
 // - upload upsert:false → ไฟล์ตัวแรกชนะและไม่ถูกเขียนทับ; แถว metadata อ้าง path เดียวกัน
 // html = artifact HTML ที่ตรึงไว้ (frozen, self-contained) — เรนเดอร์จากนี้เท่านั้น ไม่ใช่ข้อมูลสด
-export async function captureIssuedQuotationPdf(supabase, { quotationId, snapshotId, html }) {
+// ⭐ ใบสั่งขายเรียกตัวเดียวกัน (ชุดเอกสาร QT · SO · การชำระ) ด้วย `folder: 'sales-orders'` + id ของใบสั่งขายใน `quotationId`
+export async function captureIssuedQuotationPdf(supabase, { quotationId, snapshotId, html, folder }) {
   if (!snapshotId) throw new Error('captureIssuedQuotationPdf: missing snapshotId');
 
   const { data: existing, error: existingError } = await supabase
@@ -36,7 +39,7 @@ export async function captureIssuedQuotationPdf(supabase, { quotationId, snapsho
   if (existing) return { row: existing, reused: true };
 
   const buffer = await renderQuotationPdf(html);
-  const storagePath = issuedQuotationPdfPath(quotationId, snapshotId);
+  const storagePath = issuedQuotationPdfPath(quotationId, snapshotId, folder);
 
   const { error: uploadError } = await supabase.storage
     .from(ISSUED_QUOTATION_PDF_BUCKET)

@@ -5,6 +5,10 @@
 //    · ทุกคำสั่งเขียนงวดตั้ง frozenAt (แผนที่ปรับแล้ว = แผนจริง — freezeInstallments ไม่ทับจาก QT อีก)
 //    · p_expected ตรวจครบทุกแถว · ขยับเลขงวดสองจังหวะ (seq_uk ไม่ deferrable) · EXECUTE ให้ service_role เท่านั้น
 // ⚠️ อ่าน source เป็นสตริง (ตัดคอมเมนต์ก่อน) ⇒ พิสูจน์แค่ "รูปนี้ยังอยู่" — ของจริงอยู่ที่ PGlite
+// ⭐ 0412 (Actual รายงวด): ตัวล็อกได้ข้อหก (ยื่นขอนับอยู่) + ข้อเจ็ด (นับแล้วยอด 0) เป็นตัวใหม่ 8 พารามิเตอร์ ("actualStatus", amount)
+//    — มติเจ้าของข้อ 9 (26/10): งวดที่นับแล้วยอด > 0 ไม่ล็อก (ปรับยอด/วันได้ · ลบไม่ได้ = trigger ลบของ 0412) — และปะผู้เรียกบนฐาน
+//    (แกนเขียนแผนของไฟล์นี้ 5 จุด · ตัวยกเงินของ 0378 3 จุด) ด้วย pg_get_functiondef — ตัวไฟล์ 0377 จึงยังเป็นรูปเดิม
+//    · ยามตัวล็อกอ่าน **นิยามล่าสุด** (ข้อหกต้องตรงกับ installmentReplanLock) · ยามของแพตช์อยู่ที่ soInstallmentActualMigration.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -28,6 +32,16 @@ const fnBody = (name) => {
 };
 const LOCKED = fnBody('_so_installment_replan_locked');
 const CORE = fnBody('_so_installments_write_plan');
+
+/* นิยามล่าสุดของตัวล็อก (ไฟล์ใหม่สุดที่ CREATE มัน · ในไฟล์เดียวกันตัวหลังทับตัวหน้า) */
+function latestLockBody() {
+  const marker = 'CREATE OR REPLACE FUNCTION public._so_installment_replan_locked(';
+  const owner = readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()
+    .filter((n) => stripComments(mig(n)).includes(marker)).at(-1);
+  const text = stripComments(mig(owner));
+  const from = text.lastIndexOf(marker);
+  return { owner, body: text.slice(from, text.indexOf('\n$$;', from)) };
+}
 const RPC = fnBody('replan_sales_order_installments');
 const BODIES = [LOCKED, CORE, RPC];
 
@@ -35,10 +49,12 @@ test('0377 เป็นไฟล์สุดท้ายที่นิยาม
   /* ⚠️ นับเฉพาะนิยาม (CREATE [OR REPLACE] FUNCTION) หลังตัดคอมเมนต์ — review F3: REVOKE/GRANT/COMMENT ON FUNCTION ไม่ใช่นิยาม */
   const owners = (fn) => readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort()
     .filter((n) => new RegExp(`CREATE\\s+(OR\\s+REPLACE\\s+)?FUNCTION\\s+public\\.${fn}\\s*\\(`, 'i').test(stripComments(mig(n))));
-  for (const fn of ['replan_sales_order_installments', '_so_installments_write_plan', '_so_installment_replan_locked']) {
+  for (const fn of ['replan_sales_order_installments', '_so_installments_write_plan']) {
     const files = owners(fn);
     assert.equal(files[files.length - 1], FILE, `${fn} ถูกเขียนทับในไฟล์ใหม่ — ย้ายยามนี้ตามไป`);
   }
+  // ตัวล็อก: 0377 นิยามตัว 6 พารามิเตอร์ · 0412 เพิ่มตัว 8 พารามิเตอร์ (ข้อหก/เจ็ด) — ไฟล์อื่นเขียนทับ = ย้ายยามนี้ตามไป
+  assert.deepEqual(owners('_so_installment_replan_locked'), [FILE, '0412_so_installment_actual.sql']);
   assert.match(code, /CREATE OR REPLACE FUNCTION public\.replan_sales_order_installments\(\s*p_order_id text,\s*p_rows jsonb,\s*p_expected jsonb,\s*p_reason text,\s*p_actor_id text,\s*p_actor_name text,\s*p_actor_role text\s*\)\s*RETURNS jsonb/);
   assert.match(code, /CREATE OR REPLACE FUNCTION public\._so_installments_write_plan\(\s*p_order_id text,\s*p_rows jsonb,\s*p_now timestamptz,\s*p_actor_id text,\s*p_actor_name text\s*\)/);
 });
@@ -70,12 +86,20 @@ test('🔴 ทุกคำสั่งเขียนงวดตั้ง froze
   assert.match(CORE, /DELETE FROM public\.sales_order_installments i[\s\S]*?NOT public\._so_installment_replan_locked\(/);
 });
 
-test('แถวล็อก: นิยามเดียวกับ installmentReplanLock ของ lib (ห้าข้อ)', () => {
-  assert.match(LOCKED, /p_status IN \('confirmed', 'reported'\)/);
-  assert.match(LOCKED, /btrim\(COALESCE\(p_tax_invoice_no, ''\)\) <> ''/);
-  assert.match(LOCKED, /btrim\(COALESCE\(p_billing_request_id, ''\)\) <> ''/);
-  assert.match(LOCKED, /p_kind = 'opening'/);
-  assert.match(LOCKED, /p_status = 'pending' AND \(jsonb_array_length\(COALESCE\(p_evidence, '\[\]'::jsonb\)\) > 0 OR p_paid_on IS NOT NULL\)/);
+test('แถวล็อก: นิยามเดียวกับ installmentReplanLock ของ lib (ห้าข้อของ 0377 + ข้อหก/เจ็ดของ 0412 · มติข้อ 9)', () => {
+  const latest = latestLockBody();
+  assert.equal(latest.owner, '0412_so_installment_actual.sql');
+  for (const body of [LOCKED, latest.body]) {
+    assert.match(body, /p_status IN \('confirmed', 'reported'\)/);
+    assert.match(body, /btrim\(COALESCE\(p_tax_invoice_no, ''\)\) <> ''/);
+    assert.match(body, /btrim\(COALESCE\(p_billing_request_id, ''\)\) <> ''/);
+    assert.match(body, /p_kind = 'opening'/);
+    assert.match(body, /p_status = 'pending' AND \(jsonb_array_length\(COALESCE\(p_evidence, '\[\]'::jsonb\)\) > 0 OR p_paid_on IS NOT NULL\)/);
+  }
+  assert.match(latest.body, /p_paid_on date,\s*p_actual_status text,\s*p_amount numeric\s*\)/);
+  assert.match(latest.body, /OR p_actual_status = 'submitted'\s+OR \(p_actual_status = 'approved' AND COALESCE\(p_amount, 0\) <= 0\)/);
+  assert.doesNotMatch(latest.body, /p_actual_status IN \(/, 'มติข้อ 9: นับแล้วยอด > 0 ไม่ล็อกด้วย actualStatus อีก');
+  assert.doesNotMatch(latest.body, /'rejected'/, 'งวดที่ถูกตีกลับ = เปิด (แก้/ลบได้)');
   // ห้าข้อเดียวกันฝั่ง lib (ตัวแทนของแต่ละข้อ) — ขยายข้อหนึ่งฝั่งเดียวเมื่อไร ปุ่มกับ RPC ตอบคนละคำ
   const base = { status: 'pending', evidence: [], kind: 'regular' };
   assert.ok(installmentReplanLock({ ...base, status: 'reported' }));
@@ -84,6 +108,11 @@ test('แถวล็อก: นิยามเดียวกับ installment
   assert.ok(installmentReplanLock({ ...base, kind: 'opening' }));
   assert.ok(installmentReplanLock({ ...base, paidOn: '2026-09-01' }));
   assert.equal(installmentReplanLock({ ...base, status: 'rejected', paidOn: '2026-09-01', evidence: [{}] }), null);
+  // ข้อหก (0412) — ยื่นขอนับอยู่ = ล็อก · ตีกลับ = เปิด · ข้อเจ็ด นับแล้วยอด 0 = ล็อก · นับแล้วยอด > 0 = เปิด (มติข้อ 9)
+  assert.ok(installmentReplanLock({ ...base, actualStatus: 'submitted', amount: 100 }));
+  assert.ok(installmentReplanLock({ ...base, actualStatus: 'approved', amount: 0 }));
+  assert.equal(installmentReplanLock({ ...base, actualStatus: 'approved', amount: 100 }), null);
+  assert.equal(installmentReplanLock({ ...base, actualStatus: 'rejected' }), null);
   assert.match(CORE, /installment_replan_locked_changed/);
   assert.match(CORE, /IS NOT DISTINCT FROM i\.label/, 'แถวล็อกเทียบทีละช่อง');
 });
@@ -139,10 +168,32 @@ test('สิทธิ์: REVOKE จาก PUBLIC/anon/authenticated · GRANT EX
      reported/confirmed บนใบย้อนหลังที่ยกเลิกแล้ว — ทาง JS ทุกทางปฏิเสธกรณีนั้นอยู่แล้ว (historicalInstallmentLock) ⇒ ยิงได้แค่ตอน
      แข่งกับการยกเลิก (route งวดอ่านใบก่อนยกเลิก แล้วเขียนหลัง) · ยามรูปทรงของมันอยู่ที่ historicalCancelSettleMigration.test.mjs
      · trigger ตัวอื่น/ไฟล์อื่นบนตารางงวดยังห้ามทั้งหมด (ชื่อ + ไฟล์ต้องตรงรายการนี้เป๊ะ) */
+/* ⚠️ แก้ยามโดยตั้งใจ 26/10 — **ข้อยกเว้นที่สอง** ตามสัญญาเทคนิคของมติเจ้าของ (docs/so-installment-actual.md · mig 0412):
+     · `sales_order_installments_actual_guard` — ปฏิเสธอย่างเดียว ไม่เขียนทับแถว · ยิงเฉพาะแถวที่กำลังเข้า confirmed บนใบ
+       "นับ Actual รายงวด" ที่งวดยังไม่อนุมัติ (บัญชีรับรองงวดที่ AE Sup ยังไม่อนุมัติไม่ได้ — ด่านชั้นแรกอยู่ที่ installmentActionError)
+     · `sales_order_installments_actual_sync` — AFTER · **ไม่แตะแถวงวด** เขียนแค่ cache สองช่องของใบ (เมื่อค่าเปลี่ยน) และ sync ดีล
+       เฉพาะใบรายงวดที่อนุมัติแล้ว (ใบทั้งใบไม่แตะดีล = พฤติกรรมเดิม) — ถ้าไม่มีตัวนี้ อนุมัติงวด/ย้ายงวด/ปรับแผนไม่ขยับ Actual ของดีลเลย
+     ⇒ ยังห้าม trigger ที่เขียนทับแถวงวด (ทุกชื่อ + ไฟล์ต้องตรงรายการนี้เป๊ะ) */
+/* ⚠️ แก้ยามโดยตั้งใจ 26/10 — **ข้อยกเว้นที่สาม** ตามมติเจ้าของข้อ 9 ("งวดที่นับ Actual แล้วแต่เงินยังไม่เข้า ปรับยอด/วันได้ ลบไม่ได้"):
+     · `sales_order_installments_actual_delete_guard` — BEFORE DELETE · ปฏิเสธอย่างเดียว ไม่เขียนทับแถว · ยิงเฉพาะงวดที่นับแล้วของใบรายงวด
+       pipeline ที่อนุมัติอยู่ (ลบทั้งใบ = cascade ผ่าน — ใบหายก่อน) · ตัวล็อกปรับแผนปล่อยงวดนั้นเป็นแถวเปิดแล้ว ⇒ ด่าน "ต้องยังอยู่"
+       ต้องครอบทุกทางลบ (แกนเขียนแผนของปรับแผน/ยกเงิน · เขียนตรง) ตัวเดียว */
+/* ⚠️ แก้ยามโดยตั้งใจ 26/10 — **ข้อยกเว้นที่สี่ (ตัวเดียวที่เขียนแถวงวด)** ตามมติเจ้าของข้อ 10 ("นับให้เอง ไม่ต้องยื่น"):
+     · `sales_order_installments_actual_autocount` — CONSTRAINT TRIGGER · DEFERRABLE INITIALLY DEFERRED · AFTER INSERT / UPDATE OF
+       "salesOrderId", "actualStatus" · WHEN แถวยังไม่นับ — ใบรายงวด pipeline ที่อนุมัติอยู่และเคยกด "นับที่เหลือทั้งหมด" (มีงวด via count_rest)
+       = งวดที่โผล่ทีหลัง (ปรับแผน ⑤ INSERT · ยกเงินย้ายใบ) นับให้ตอน COMMIT · เขียนเฉพาะช่อง Actual รายงวดของแถวนั้น (+ updatedAt)
+     · ทำไมไม่อยู่ใน RPC: ตัวปรับแผน (replan RPC) อยู่ในลายนิ้วมือที่ห้ามแตะ · แกนเขียนแผนถูกเรียกกลางทางของตัวยกเงิน (ก่อน C2b — ส่วนแบ่ง
+       ของงวดที่ C2a ถอดชั่วคราวจะถูกแจกซ้ำ) ⇒ ต้องรอให้ RPC จบทั้งก้อนก่อน (ฮาร์เนส PGlite: ตัวเดียวกันแบบ NOT DEFERRABLE ทำให้ยกเงินล้มด้วย
+       installment_actual_counted_row_delete) · ยามรูปทรงอยู่ที่ soInstallmentActualMigration.test.mjs
+     ⇒ trigger อื่นที่เขียนทับแถวงวดยังห้ามทั้งหมด */
 const INSTALLMENT_TRIGGER_EXCEPTIONS = Object.freeze({
   '0387_historical_so_cancel_settles_opening.sql': ['sales_order_installments_historical_cancelled_guard'],
+  '0412_so_installment_actual.sql': [
+    'sales_order_installments_actual_guard', 'sales_order_installments_actual_sync', 'sales_order_installments_actual_delete_guard',
+    'sales_order_installments_actual_autocount',
+  ],
 });
-test('ทุก migration: ไม่มี CREATE TRIGGER บน sales_order_installments (ยกเว้นด่านปฏิเสธตัวเดียวของ 0387)', () => {
+test('ทุก migration: ไม่มี CREATE TRIGGER บน sales_order_installments (ยกเว้นด่านปฏิเสธของ 0387 และสี่ตัว Actual รายงวดของ 0412)', () => {
   const found = {};
   for (const n of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
     const names = [...stripComments(mig(n))

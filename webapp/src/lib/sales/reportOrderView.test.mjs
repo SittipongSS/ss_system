@@ -14,6 +14,8 @@ import {
   activeFilterCount,
   NONE_VALUE,
   ORDER_SORT_DEFAULT,
+  orderRowsLabel,
+  orderRowsUnit,
 } from './reportOrderView.js';
 
 const o = (over) => ({
@@ -232,4 +234,41 @@ test('M14: หน้าล้างคำค้น + ตัวกรองก่
   assert.doesNotMatch(panel.slice(0, panel.indexOf('\n}\n')), /useStickyState\("(q|filters)"/, 'OrdersPanel ห้ามถือคำค้น/ตัวกรองเอง (หน้าล้างไม่ถึง)');
   // ทุกปุ่มยอดใน "แยกยอด" เดินผ่าน openDrill ตัวเดียว
   assert.match(page, /onDrill=\{openDrill\}/);
+});
+
+/* 🐞 review รอบสอง 26/10: แถวรายงวด (mig 0412) โชว์วันที่นับงวด (actualAt) แต่เรียงด้วยวันอนุมัติใบ — งวดที่นับ 25/10 ของใบที่อนุมัติ ส.ค.
+   ไปอยู่ใต้แถว 03/10 ⇒ คอลัมน์ "อนุมัติเมื่อ" ดูสลับ · Excel เรียงด้วย actualAt อยู่แล้ว */
+test('เรียง "อนุมัติเมื่อ": แถวรายงวดใช้เวลาที่นับงวด (actualAt) · ใบทั้งใบเรียงเหมือนเดิม', () => {
+  const a = o({ id: 'A', orderNumber: 'SO-A', approvedAt: '2026-10-03T03:00:00Z' });
+  const b = o({ id: 'B', orderNumber: 'SO-B', approvedAt: '2026-10-10T03:00:00Z' });
+  const inst = o({ id: 'I', orderNumber: 'SO-INST', approvedAt: '2026-08-01T03:00:00Z', actualAt: '2026-10-25T03:00:00Z', rowKey: 'I|2026-10' });
+  assert.equal(ORDER_SORT_DEFAULT, 'approvedAt');
+  assert.deepEqual(sortOrders([a, b, inst]).map((r) => r.orderNumber), ['SO-INST', 'SO-B', 'SO-A'], 'ค่าตั้งต้น (ใหม่สุดก่อน)');
+  assert.deepEqual(sortOrders([a, b, inst], 'approvedAt', 'asc').map((r) => r.orderNumber), ['SO-A', 'SO-B', 'SO-INST']);
+  assert.deepEqual(sortOrders([b, a], 'approvedAt', 'desc').map((r) => r.orderNumber), ['SO-B', 'SO-A'], 'ใบทั้งใบล้วน = ลำดับเดิม');
+});
+
+/* 🐞 review รอบสอง 26/10: ใบรายงวดแตกแถวตามเดือนที่นับ — ป้าย "12 ใบ" ให้ใบบริการใบเดียวในมุมทั้งปี */
+test('orderRowsLabel: แถวหนึ่งคือใบหนึ่ง = "n ใบ" (คำเดิม) · ใบเดียวหลายแถว = "n แถว · m ใบ" · หน่วยของตัวแบ่งหน้าตามกัน', () => {
+  const whole = [o({ id: 'A' }), o({ id: 'B' })];
+  assert.equal(orderRowsLabel(whole), '2 ใบ');
+  assert.equal(orderRowsUnit(whole), 'ใบ');
+  const months = Array.from({ length: 12 }, (_, i) => o({ id: 'SVC', rowKey: `SVC|2026-${String(i + 1).padStart(2, '0')}` }));
+  assert.equal(orderRowsLabel(months), '12 แถว · 1 ใบ');
+  assert.equal(orderRowsLabel([...whole, ...months.slice(0, 2)]), '4 แถว · 3 ใบ');
+  assert.equal(orderRowsUnit(months), 'แถว');
+  assert.equal(orderRowsLabel([]), '0 ใบ');
+  const page = readFileSync(new URL('../../app/sales-planning/targets/report/page.js', import.meta.url), 'utf8');
+  for (const pattern of [
+    // ตอนติ๊กเลือกชุดเอกสาร ป้ายนับ **ใบ** ที่ไม่ซ้ำ (visibleIds) ไม่ใช่แถว — ไม่ติ๊ก = orderRowsLabel เหมือนเดิม
+    /count=\{loading \|\| error \? null\s*: selected\.size \? `เลือก \$\{selected\.size\}\/\$\{visibleIds\.length\} ใบ` : orderRowsLabel\(filtered\)\}/,
+    /badge=\{orderRowsLabel\(group\.allOrders \|\| group\.orders\)\}/,
+    /<td>รวม \{orderRowsLabel\(filtered\)\}/,
+    /itemLabel=\{orderRowsUnit\(filtered\)\}/,
+    /\{count \? orderLabelOf\(row\) : NA\}/,
+    /ใบสั่งขาย \{totalOrdersLabel\}<\/span>/,
+  ]) assert.match(page, pattern);
+  assert.doesNotMatch(page, /\$\{filtered\.length\} ใบ|\$\{count\} ใบ|\$\{group\.count\} ใบ/, 'ไม่เหลือป้าย "ใบ" ที่นับแถว');
+  const workbook = readFileSync(new URL('./salesReportWorkbook.js', import.meta.url), 'utf8');
+  assert.match(workbook, /`\$\{orderRowsLabel\(orders\)\} · เฉพาะใบที่อนุมัติแล้ว/);
 });

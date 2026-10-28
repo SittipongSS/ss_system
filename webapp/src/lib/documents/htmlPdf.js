@@ -15,6 +15,36 @@ import chromium from '@sparticuz/chromium';
 // เพื่อ forensics (รู้ว่าไฟล์ถูกเรนเดอร์ด้วย pipeline ไหน). bump เมื่อเปลี่ยน engine/ตัวเลือก.
 export const HTML_PDF_GENERATOR_VERSION = 'pdf-chromium-v1';
 
+/* ── คำขอ PDF ที่ซ้อนกันในเครื่องเดียว (🐞 27/10/2569 `spawn ETXTBSY`) ─────────────────────────────────
+   `chromium.executablePath()` แตก binary ลง /tmp/chromium ตอนเรียกครั้งแรก และเช็กแค่ "มีไฟล์แล้วหรือยัง" ⇒ คำขอที่สองที่เข้ามา
+   ระหว่างคำขอแรกยังเขียนไม่เสร็จได้ path ของไฟล์ที่ยังเปิดเขียนอยู่ไปสั่งรัน = ETXTBSY (text file busy) · Vercel Fluid ให้หลายคำขอ
+   ใช้ instance เดียวกัน และชุดเอกสาร SO ขอ PDF หลายใบติดกัน ⇒ ชนจริงบน production (ใบสั่งขายไม่มี PDF ในชุด)
+   ⇒ ① คำขอทั้งหมดใน instance รอ promise แตกไฟล์ตัวเดียวกัน (`onceAsync`) ② ยังชนอีก (เช่นแตกค้างจากรอบก่อน) = ลองใหม่สั้น ๆ (`retryBusy`) */
+export function onceAsync(fn) {
+  let pending = null;
+  return () => {
+    pending ??= Promise.resolve().then(fn).catch((error) => {
+      pending = null; // พลาด = ให้คำขอถัดไปลองแตกใหม่ ไม่ค้างความผิดพลาดไว้ทั้ง instance
+      throw error;
+    });
+    return pending;
+  };
+}
+
+export async function retryBusy(launch, { tries = 3, delayMs = 400 } = {}) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await launch();
+    } catch (error) {
+      const busy = /ETXTBSY/.test(`${error?.code || ''} ${error?.message || error}`);
+      if (!busy || attempt >= tries) throw error;
+      await new Promise((resolve) => { setTimeout(resolve, delayMs * attempt); });
+    }
+  }
+}
+
+const chromiumExecutablePath = onceAsync(() => chromium.executablePath());
+
 // เปิด headless chromium: บน Vercel/Lambda (sin1) ใช้ binary ของ @sparticuz/chromium;
 // dev เครื่องตัวเอง override ด้วย env PUPPETEER_EXECUTABLE_PATH ชี้ Chrome ที่ติดตั้งไว้
 // (การ generate จริงเกิดบน production — local เป็น best-effort สำหรับทดสอบ).
@@ -27,12 +57,13 @@ export async function launchBrowser() {
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
   }
-  return puppeteer.launch({
+  const executablePath = await chromiumExecutablePath();
+  return retryBusy(() => puppeteer.launch({
     args: chromium.args,
-    executablePath: await chromium.executablePath(),
+    executablePath,
     headless: chromium.headless,
     defaultViewport: chromium.defaultViewport,
-  });
+  }));
 }
 
 /**

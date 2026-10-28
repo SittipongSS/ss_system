@@ -36,7 +36,7 @@ import {
   Trash2, Undo2,
 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
@@ -82,6 +82,10 @@ const PLAN_DOC_TYPES = [{ key: SURVEY_DOC_PLAN, label: "ภาพแบบขอ
 /* 🐞 แผงไฟล์แนบส่ง `File` ของเบราว์เซอร์ (name / type) มาให้ด่าน แต่ตัวตัดสินอ่านทรงของแถวไฟล์แนบ (fileName / mimeType)
    ⇒ ต้องแปลงก่อนถาม ไม่งั้นทุกไฟล์ถูกทิ้ง รวม JPG/PNG — ตัวแปลงเดียวกับตารางสรุปส่งผล */
 const planFileTest = (file) => isJpgOrPngFile({ fileName: file?.name, mimeType: file?.type });
+/* ขีดของช่องอ่านอย่างเดียวที่ว่าง — ตัวเดียวกันทั้งหมายเหตุ (`ReadableText` · `empty`) และจุดติดตั้งโดยประมาณ ⇒ หน้าตาเดียวกันโดยโครงสร้าง
+   (S2b แก้หลังตรวจจอ planner-minor-4: จุดเคยเป็นตัวเทาเล็กของ `.empty` หมายเหตุเป็นตัวปกติ — ช่องว่างความหมายเดียวกันสองหน้าตา)
+   ⚠️ สตริงเปล่า ไม่ห่อแท็ก — `ReadableText` คืนค่า `empty` ตรง ๆ เมื่อไม่มีข้อความ ⇒ สองที่เป็นตัวหนังสือในเนื้อการ์ดแบบเดียวกันเป๊ะ */
+const EMPTY_DASH = naText(null);
 
 /* หัวข้อหนึ่งหัวข้อ — วงเลข (อำพันเมื่อค้าง · ติ๊กเขียวเมื่อบันทึกแล้ว/รูปขึ้นแล้ว) · ชื่อ · คำกำกับ · ป้ายขวา
    ⚠️ `h3` — h1 = รหัสคำร้อง · h2 = ชื่อพื้นที่ (ผังหัวข้อของหน้าต้องเรียงชั้น) */
@@ -182,6 +186,23 @@ export default function SurveyZonePage({
      แถวที่โหลดกลับมาอย่างเดียว พื้นที่ที่บันทึกแล้วจะค้าง "ยังไม่บันทึก" ตลอดกาล แล้ว **ปุ่มส่งถูกบล็อกถาวร** */
   const [sentSig, setSentSig] = useState(null);
   const [conflict, setConflict] = useState(false);
+  /* 🔴 **กดบันทึกแล้วชน = พาจอไปที่ป้ายชน** (S2b แก้หลังตรวจจอ head-r3-25) — ป้ายอยู่บนสุดของหน้า แต่คนกดบันทึกมักเลื่อนลงไปถึง
+     หมายเหตุแล้ว ⇒ เดิมจอนิ่ง ปุ่มบันทึกกลับมากดได้ทันที และกดซ้ำ = ทับงานของอีกคนโดยไม่เคยเห็นประโยค "กดบันทึกจะทับของเขา"
+     ⚠️ นับรอบ ไม่ใช่ธง — ชนซ้ำรอบสองต้องพากลับไปอีก · ⚠️ เฉพาะชนตอนกดบันทึก: แถวใหม่ที่ไหลเข้ามาเอง (`surveyDraftSync`)
+        ระหว่างที่คนกำลังพิมพ์ไม่ย้ายโฟกัส (ดึงโฟกัสออกจากช่องที่พิมพ์อยู่ = ตัวอักษรถัดไปหาย) · ท่าเดียวกับตารางสรุปส่งผล (`staleRef`) */
+  const conflictRef = useRef(null);
+  const [conflictJump, setConflictJump] = useState(0);
+  useEffect(() => {
+    if (!conflictJump) return;
+    conflictRef.current?.scrollIntoView({ block: "center" });
+    conflictRef.current?.focus({ preventScroll: true });
+  }, [conflictJump]);
+  /* ⭐ **ระหว่างบันทึก ช่องกรอกทุกช่องล็อก** (S2b แก้หลังตรวจจอ head-r3-26) — ไม่ใช่แค่ปุ่ม: ค่าที่พิมพ์แทรกระหว่างรอคำตอบไม่อยู่ใน
+     คำขอที่กำลังวิ่ง แต่ลายเซ็นของร่างที่จำว่า "ส่งแล้ว" เป็นของร่างตอนคำตอบกลับ ⇒ ค่าบนจอกับค่าในฐานไม่ตรงกันเงียบ ๆ
+     `sending` คลุมทั้งรอบของ `save` (รวมลองซ้ำหลัง 409) · `busy` ของหน้าแม่คลุมคำขอ + โหลดใบใหม่ — ช่องล็อกเมื่อตัวใดตัวหนึ่งยังวิ่ง
+     ⚠️ รูป (แผงไฟล์แนบ) ไม่ล็อก — รูปขึ้นระบบทันที ไม่ได้รอปุ่มนี้ (สองกฎการบันทึก) */
+  const [sending, setSending] = useState(false);
+  const saving = busy || sending;
 
   /* ไฟล์ที่เห็นจริงในตอนนี้ — `files` จาก GET เป็นค่าตั้งต้น แล้วให้แผงไฟล์แนบรายงานรายการสดกลับมา
      🐞 แผงเรียก `onItemsChange([])` ตั้งแต่ก่อนโหลดรายการเสร็จ ⇒ รับเฉพาะก้อนที่บอกว่าโหลดจบแล้ว
@@ -329,46 +350,53 @@ export default function SurveyZonePage({
     let base = conflict
       ? surveyZoneLatestRow(zoneRef.current, staleRowRef.current)?.updatedAt ?? null
       : baseRef.current?.at ?? null;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const saved = await onSave({ ...payload, baseUpdatedAt: base ?? undefined });
-        /* ⚠️ ลายเซ็นของ **ร่าง** ไม่ใช่ของ payload — ตัวรับแถวใหม่เทียบกับร่าง */
-        setSentSig(surveyZoneDraftSignature(draft));
-        /* บันทึกผ่าน = ของบนจอคือของล่าสุด ⇒ ป้าย "ถูกแก้จากที่อื่น" จบหน้าที่ (ผู้ใช้เลือกทับอย่างรู้ตัวแล้ว) */
-        setConflict(false);
-        /* ฐานของร่าง = แถวที่ server ถืออยู่ตอนนี้ (ส่วนที่เราส่ง + ส่วนที่คนอื่นเขียนไว้) — 🐞 รอบสาม: โหลดใหม่เบื้องหลังพัง
-           ⇒ ฐานค้างรุ่นเก่า แล้วบันทึกครั้งถัดไปเทียบส่วนที่แก้ผิดชุด (ส่วนที่ลบกลับเท่าฐานเก่าไม่ถูกส่ง ของเก่าค้างในฐาน) */
-        if (saved?.updatedAt) baseRef.current = { at: saved.updatedAt, sig: surveyZoneDraftSignature(saved) };
-        return;
-      } catch (e) {
-        const stale = surveyZoneStaleReply(e);
-        if (!stale) {
-          setError(e?.message || "บันทึกไม่สำเร็จ");
+    setSending(true);
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const saved = await onSave({ ...payload, baseUpdatedAt: base ?? undefined });
+          /* ⚠️ ลายเซ็นของ **ร่าง** ไม่ใช่ของ payload — ตัวรับแถวใหม่เทียบกับร่าง */
+          setSentSig(surveyZoneDraftSignature(draft));
+          /* บันทึกผ่าน = ของบนจอคือของล่าสุด ⇒ ป้าย "ถูกแก้จากที่อื่น" จบหน้าที่ (ผู้ใช้เลือกทับอย่างรู้ตัวแล้ว) */
+          setConflict(false);
+          /* ฐานของร่าง = แถวที่ server ถืออยู่ตอนนี้ (ส่วนที่เราส่ง + ส่วนที่คนอื่นเขียนไว้) — 🐞 รอบสาม: โหลดใหม่เบื้องหลังพัง
+             ⇒ ฐานค้างรุ่นเก่า แล้วบันทึกครั้งถัดไปเทียบส่วนที่แก้ผิดชุด (ส่วนที่ลบกลับเท่าฐานเก่าไม่ถูกส่ง ของเก่าค้างในฐาน) */
+          if (saved?.updatedAt) baseRef.current = { at: saved.updatedAt, sig: surveyZoneDraftSignature(saved) };
           return;
-        }
-        /* 409 ชนรุ่น — ค่าที่พิมพ์ไว้อยู่ครบ · เก็บแถวล่าสุดไว้ให้ปุ่ม "ใช้ค่าล่าสุดจากฐาน" และการกดทับรอบหน้า
-           แถวที่ชนมีค่าของช่างเท่าเดิม (หัวหน้าเคาะแพ็คเกจ · ผลบันทึกของเราเองที่ยังโหลดไม่ถึง) = ไม่มีของใครให้ทับ
-           ⇒ ลองซ้ำเองครั้งเดียวด้วยรุ่นนั้น · นอกนั้นขึ้นป้ายชนเดิม (ไม่ใช่ error — ป้ายบอกทางออกครบกว่า) */
-        staleRowRef.current = surveyZoneLatestRow(staleRowRef.current, stale.zone);
-        const next = stale.zone
-          ? surveyZoneNextBase(baseRef.current, {
-            at: stale.zone.updatedAt ?? null, sig: surveyZoneDraftSignature(stale.zone),
-          }, { sentSig })
-          : baseRef.current;
-        if (attempt === 0 && next !== baseRef.current) {
-          baseRef.current = next;
-          base = next.at;
-          /* ฐานขยับ = เทียบส่วนที่แก้ใหม่กับฐานนั้น (🐞 รอบสาม: ใช้ชุดเดิมที่เทียบกับฐานเก่า ⇒ ส่วนที่ผู้ใช้ย้อนกลับไม่ถูกส่ง) */
-          payload = pick(next.sig);
-          if (!payload) {
-            adoptRow(stale.zone);
+        } catch (e) {
+          const stale = surveyZoneStaleReply(e);
+          if (!stale) {
+            setError(e?.message || "บันทึกไม่สำเร็จ");
             return;
           }
-          continue;
+          /* 409 ชนรุ่น — ค่าที่พิมพ์ไว้อยู่ครบ · เก็บแถวล่าสุดไว้ให้ปุ่ม "ใช้ค่าล่าสุดจากฐาน" และการกดทับรอบหน้า
+             แถวที่ชนมีค่าของช่างเท่าเดิม (หัวหน้าเคาะแพ็คเกจ · ผลบันทึกของเราเองที่ยังโหลดไม่ถึง) = ไม่มีของใครให้ทับ
+             ⇒ ลองซ้ำเองครั้งเดียวด้วยรุ่นนั้น · นอกนั้นขึ้นป้ายชนเดิม (ไม่ใช่ error — ป้ายบอกทางออกครบกว่า) */
+          staleRowRef.current = surveyZoneLatestRow(staleRowRef.current, stale.zone);
+          const next = stale.zone
+            ? surveyZoneNextBase(baseRef.current, {
+              at: stale.zone.updatedAt ?? null, sig: surveyZoneDraftSignature(stale.zone),
+            }, { sentSig })
+            : baseRef.current;
+          if (attempt === 0 && next !== baseRef.current) {
+            baseRef.current = next;
+            base = next.at;
+            /* ฐานขยับ = เทียบส่วนที่แก้ใหม่กับฐานนั้น (🐞 รอบสาม: ใช้ชุดเดิมที่เทียบกับฐานเก่า ⇒ ส่วนที่ผู้ใช้ย้อนกลับไม่ถูกส่ง) */
+            payload = pick(next.sig);
+            if (!payload) {
+              adoptRow(stale.zone);
+              return;
+            }
+            continue;
+          }
+          setConflict(true);
+          /* พาจอไปที่ป้ายชน + โฟกัสป้าย (head-r3-25) — ปุ่มบันทึกกลับมากดได้ ต้องเห็นประโยคก่อนกดซ้ำ */
+          setConflictJump((n) => n + 1);
+          return;
         }
-        setConflict(true);
-        return;
       }
+    } finally {
+      setSending(false);
     }
   };
 
@@ -476,6 +504,7 @@ export default function SurveyZonePage({
                 onChange={(e) => patchSpot(spot.id, "label", e.target.value)}
                 placeholder="ชื่อจุด — เช่น มุมเตียงที่ 1" maxLength={100} autoComplete="off"
                 aria-label={`ชื่อจุดที่ ${i + 1}`}
+                disabled={saving}
               />
               {noteShown ? (
                 <Input
@@ -485,6 +514,7 @@ export default function SurveyZonePage({
                   onChange={(e) => patchSpot(spot.id, "note", e.target.value)}
                   placeholder="บันทึก — เช่น ปลั๊กอยู่ใต้เสา" maxLength={300} autoComplete="off"
                   aria-label={`บันทึกของจุดที่ ${i + 1}`}
+                  disabled={saving}
                 />
               ) : null}
             </>
@@ -497,13 +527,14 @@ export default function SurveyZonePage({
         </div>
         {edit && drawing ? (
           <button type="button" className={styles.iconBtn} data-tone="danger" aria-label={`ลบจุดที่ ${i + 1}`}
-            onClick={() => removeSpot(spot)}>
+            disabled={saving} onClick={() => removeSpot(spot)}>
             <Trash2 size={15} aria-hidden="true" />
           </button>
         ) : edit ? (
           <RowActionMenu
             className={styles.spotMenu}
             label={`จัดการจุดที่ ${i + 1}`}
+            busy={saving}
             items={[
               noteShown ? null : {
                 id: "note", label: "เพิ่มบันทึก", icon: MessageSquarePlus,
@@ -650,12 +681,14 @@ export default function SurveyZonePage({
       {drawing?.readOnlyReason ? (
         <StatusNotice tone="info" className={styles.reason}>{drawing.readOnlyReason}</StatusNotice>
       ) : null}
-      {/* 🔴 **มีคนแก้แถวนี้ระหว่างที่ค่าของเรายังไม่ได้บันทึก** — บอกตรง ๆ แล้วให้ทางออกสองทาง */}
+      {/* 🔴 **มีคนแก้แถวนี้ระหว่างที่ค่าของเรายังไม่ได้บันทึก** — บอกตรง ๆ แล้วให้ทางออกสองทาง
+          · รับโฟกัสจากโค้ดได้ (`tabIndex={-1}` · ไม่อยู่ในลำดับ Tab) — กดบันทึกแล้วชน จอพามาที่นี่ (S2b แก้หลังตรวจจอ head-r3-25) */}
       {conflict && !isCut ? (
-        <p className={styles.conflict} role="status">
+        <p className={styles.conflict} role="status" ref={conflictRef} tabIndex={-1}>
           <RefreshCw size={15} aria-hidden="true" />
           <span><b>แถวนี้ถูกแก้จากที่อื่น</b> ค่าที่คุณพิมพ์ไว้ยังอยู่ครบ — กดบันทึกจะทับของเขา</span>
-          <Button variant="outline" className={styles.touchBtn} onClick={() => adoptRow(zoneRef.current)}>ใช้ค่าล่าสุดจากฐาน</Button>
+          {/* ระหว่างบันทึก = ล็อกเหมือนทุกช่องของฟอร์ม (S2b แก้หลังตรวจจอ head-r3-26) */}
+          <Button variant="outline" className={styles.touchBtn} disabled={saving} onClick={() => adoptRow(zoneRef.current)}>ใช้ค่าล่าสุดจากฐาน</Button>
         </p>
       ) : null}
       {/* 🔴 บันทึกไม่สำเร็จต้องพูดออกมาทันทีที่ตรงนั้น — ไม่ใช่ toast ที่หายไปใน 4 วินาที */}
@@ -680,14 +713,18 @@ export default function SurveyZonePage({
           ) : null}
         </div>
       ) : (
-        <div className={styles.body}>
+        /* `data-drawings` = แผง "แบบจากฝ่ายขาย" อยู่ในช่องภาพแบบ (หน้าเต็มจอของพื้นที่จากแบบ · เงื่อนไขเดียวกับบรรทัดที่วาดแผงข้างล่าง)
+           ⇒ กริดสองคอลัมน์ (681–999) วาง ① ③ ④ ซ้ายต่อกัน · ② ขวาทั้งคอลัมน์ — แผงที่กางยาวไม่ดันหมายเหตุไปไว้หลังแผง
+           (S2b แก้หลังตรวจจอ head-r3-28 · กฎอยู่ที่ SurveyZonePage.module.css) */
+        <div className={styles.body} data-drawings={drawing && layout === "page" && drawings ? "" : undefined}>
           {/* ── ① ขนาด ─────────────────────────────────────────────── */}
           <Section area="size" id={sectionId("size")} number={1} title={drawing ? drawing.size.label : "ขนาด"}
             hint={edit ? "หน่วย ม. · ต้องมี" : "หน่วย ม."} state={sections.size}>
             {/* พื้นที่จากแบบ: ตัวเลขมาจากแบบ ไม่ได้มาจากตลับเมตร — บอกคนกรอกว่าอ่านจากไหน (คนที่แก้ไม่ได้ไม่ต้องอ่านคำสั่ง) */}
             {drawing && edit ? <p className={styles.hint}>{drawing.size.hint}</p> : null}
             {/* 🔄 เพิ่งสลับกลับมาเป็นลงหน้างาน — ประโยคของด่านขนาดอยู่ที่หัวข้อที่ต้องตรวจ (มือถือซ่อนบรรทัดสถานะของท้ายหน้า) */}
-            {edit && sections.size.note ? <StatusNotice tone="warning">{sections.size.note}</StatusNotice> : null}
+            {/* "กดบันทึกอีกครั้ง" ไม่ตัดกลาง — บานสองคอลัมน์ของช่าง (1440) เคยเหลือ "ครั้ง" คำเดียวบรรทัดสอง (ตรวจจอ crew 26/10) */}
+            {edit && sections.size.note ? <StatusNotice tone="warning">{keepPhrases(sections.size.note, ["กดบันทึกอีกครั้ง"])}</StatusNotice> : null}
             {partsView.rows.map((row, i) => {
               const part = parts[i];
               const open = labelOpen.has(part.id);
@@ -700,7 +737,7 @@ export default function SurveyZonePage({
                     </span>
                     {edit ? (
                       <button type="button" className={styles.iconBtn} aria-expanded={open}
-                        aria-label={`ตั้งชื่อ${row.name}`} onClick={() => {
+                        aria-label={`ตั้งชื่อ${row.name}`} disabled={saving} onClick={() => {
                           toggleIn(setLabelOpen, part.id, !open);
                           if (!open) focusSoon(`${dimInputId(zone.id, part.id, "label")}`);
                         }}>
@@ -710,7 +747,7 @@ export default function SurveyZonePage({
                     <span className={styles.partResult} data-state={row.state}>{row.resultText || naText(null)}</span>
                     {edit && row.removable ? (
                       <button type="button" className={styles.iconBtn} data-tone="danger" aria-label={`ลบ${row.name}`}
-                        onClick={() => setParts((rows) => rows.filter((p) => p.id !== part.id))}>
+                        disabled={saving} onClick={() => setParts((rows) => rows.filter((p) => p.id !== part.id))}>
                         <Trash2 size={15} aria-hidden="true" />
                       </button>
                     ) : null}
@@ -723,6 +760,7 @@ export default function SurveyZonePage({
                       onChange={(e) => patchPart(part.id, "label", e.target.value)}
                       placeholder="ชื่อส่วน (ไม่บังคับ) — เช่น ปีกทิศเหนือ" maxLength={60} autoComplete="off"
                       aria-label={`ชื่อ${row.name}`}
+                      disabled={saving}
                     />
                   ) : null}
                   <div className={styles.dims}>
@@ -743,6 +781,7 @@ export default function SurveyZonePage({
                               value={part[dim.field] ?? ""}
                               onChange={(e) => patchPart(part.id, dim.field, e.target.value)}
                               onKeyDown={(e) => onDimKeyDown(e, part.id, dim.field)}
+                              disabled={saving}
                             />
                           </label>
                         ) : (
@@ -759,7 +798,8 @@ export default function SurveyZonePage({
               );
             })}
             {edit ? (
-              <button type="button" className={styles.addRow} onClick={() => setParts((rows) => [...rows, emptyPart()])}>
+              <button type="button" className={styles.addRow} onClick={() => setParts((rows) => [...rows, emptyPart()])}
+                disabled={saving}>
                 <Plus size={16} aria-hidden="true" />
                 เพิ่มส่วน
               </button>
@@ -811,7 +851,8 @@ export default function SurveyZonePage({
             </div>
             {edit ? (
               <>
-                <button type="button" className={styles.addRow} onClick={() => setSpots((rows) => [...rows, emptySpot()])}>
+                <button type="button" className={styles.addRow} onClick={() => setSpots((rows) => [...rows, emptySpot()])}
+                  disabled={saving}>
                   <Plus size={16} aria-hidden="true" />
                   เพิ่มจุดที่ติดตั้งได้
                 </button>
@@ -867,7 +908,8 @@ export default function SurveyZonePage({
             ) : null}
             {/* อีกทางหนึ่งของคนที่แนบได้ — มีแผงให้ชี้เมื่อไรถึงพูด (สองบาน: แผงอยู่เหนือบาน · หน้าเต็มจอ: แผงอยู่ใต้บรรทัดนี้) */}
             {edit && drawing.plan.missing && salesReuseOffered ? (
-              <p className={styles.hint}>หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”</p>
+              /* ป้ายในเครื่องหมายคำพูดสองชิ้นห้ามขาดกลาง (UAT S2b รอบสอง S01 · 768/375: "“แบบจากฝ่าย" / "ขาย”") */
+              <p className={styles.hint}>{keepPhrases("หรือกด “ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้” ที่ไฟล์ในแผง “แบบจากฝ่ายขาย”", ["“ใช้รูปนี้เป็นภาพแบบของพื้นที่นี้”", "“แบบจากฝ่ายขาย”"])}</p>
             ) : null}
             {layout === "page" && drawings ? drawings : null}
             {/* ภาพกว้าง/ภาพจุดที่ค้างมาจากตอนพื้นที่นี้ยังลงหน้างาน — ไม่ลงเอกสาร ไม่นับในด่าน · พับไว้ (ไม่ใช่งานหลักของหน้า)
@@ -876,7 +918,8 @@ export default function SurveyZonePage({
               <details className={styles.old}>
                 <summary className={styles.oldHead}>
                   <ChevronRight size={16} className={styles.oldChev} aria-hidden="true" />
-                  <span>{thaiText(drawing.oldFiles.label)}</span>
+                  {/* "— ไม่ลงเอกสาร" ห้ามขาดกลาง (UAT S2b แก้หลังตรวจจอ 26/10 · S22 375: "ไม่ลง" / "เอกสาร") — ป้ายไม่มีคำทับศัพท์ที่ `thaiText` ต้องห่อ */}
+                  <span>{keepPhrases(drawing.oldFiles.label, ["— ไม่ลงเอกสาร"])}</span>
                 </summary>
                 <ul className={styles.oldList}>
                   {drawing.oldFiles.files.map((file) => (
@@ -908,9 +951,11 @@ export default function SurveyZonePage({
                 {spots.map((spot, i) => <li key={spot.id}>{spotRow(spot, i)}</li>)}
               </ul>
             ) : null}
-            {spots.length === 0 && !edit ? <p className={styles.empty}>{naText(null)}</p> : null}
+            {/* ว่าง = ขีดตัวเดียวกับหมายเหตุที่ว่าง (planner-minor-4) — ไม่ใช่ตัวเทาเล็กของ `.empty` (ตัวนั้นเป็นของประโยค "ยังไม่ได้ระบุจุด") */}
+            {spots.length === 0 && !edit ? EMPTY_DASH : null}
             {edit ? (
-              <button type="button" className={styles.addRow} onClick={() => setSpots((rows) => [...rows, emptySpot()])}>
+              <button type="button" className={styles.addRow} onClick={() => setSpots((rows) => [...rows, emptySpot()])}
+                disabled={saving}>
                 <Plus size={16} aria-hidden="true" />
                 เพิ่มจุด
               </button>
@@ -929,9 +974,10 @@ export default function SurveyZonePage({
                 aria-labelledby={sectionId("note")}
                 placeholder={drawing ? "เช่น ความสูงฝ้าอ่านจากแบบตกแต่ง" : "เช่น ลูกค้าขอให้เลี่ยงมุมเตียงที่ 2"}
                 onChange={(e) => setNote(e.target.value)}
+                disabled={saving}
               />
             ) : (
-              <ReadableText text={note} className={styles.readText} />
+              <ReadableText text={note} className={styles.readText} empty={EMPTY_DASH} />
             )}
           </Section>
 
@@ -978,7 +1024,9 @@ export default function SurveyZonePage({
               onClick={() => onNext?.(footer.next.target)}
             >
               <span className={styles.btnText}>
-                <span>{footer.next.label}</span>
+                {/* ชื่อพื้นที่เป็นชิ้นเดียว — 🐞 UAT 26/10 (S01 375): ตอนมีค่าค้าง "บันทึกก่อน" กินที่ ⇒ "กลับไปที่ โซนขายหน้า / ร้าน"
+                    ⇒ ตัดได้ที่ช่องว่างหน้าชื่อเท่านั้น (แบบเดียวกับปุ่มพาไปของการ์ด head-r3-12) · ชื่อยาวเกิน 30 ตัวตัดได้ตามปกติ (ไม่ล้นปุ่ม) */}
+                <span>{keepPhrases(footer.next.label, String(footer.next.target?.name || "").length <= 30 ? [footer.next.target?.name] : [])}</span>
                 {footer.next.blocker ? <small>{footer.next.blocker}</small> : null}
               </span>
               <ChevronRight size={16} aria-hidden="true" />

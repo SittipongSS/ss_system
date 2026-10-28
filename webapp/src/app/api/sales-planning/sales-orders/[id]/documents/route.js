@@ -9,9 +9,9 @@
  * ⚠️ การแนบ/ลบไม่อยู่ที่นี่ — ไปทาง `/api/attachments` ทางเดียวของทั้งระบบ (entity `sales_order`)
  */
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
-import { loadScoped } from '@/lib/scopedRow';
+import { inSalesDocScope, loadScoped, salesDocScopeDeal } from '@/lib/scopedRow';
 import { listAttachments } from '@/lib/master/attachments';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
 import { canViewSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
 import { SALES_ORDER_ATTACHMENT, salesOrderAttachBlock } from '@/lib/sales/salesOrderAttachmentAccess';
 import { buildSalesOrderDocuments } from '@/lib/sales/salesOrderDocuments';
@@ -22,8 +22,9 @@ export const dynamic = 'force-dynamic';
 /* แนบได้ไหม + เหตุ — ชุดเดียวกับ `canEdit` ของ SO GET (แก้ใบได้ = แนบได้) แล้วค่อยด่านสถานะ
    แอดมินข้ามด่านสถานะได้ (API POST ปล่อยเหมือนกัน) แต่ยังเห็นเหตุ — รู้ตัวว่ากำลังแนบลงใบที่ปิดแล้ว */
 function attachState(order, user) {
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ถอยไปดีลของ SO ต้นทาง (`loadScoped` เติม `sourceDeal` ให้แล้ว) */
   const canEdit = canEditSalesPlanning(user)
-    && (order.deal ? inSalesEditScope(user, order.deal) : user?.role === 'admin');
+    && (salesDocScopeDeal(order) ? inSalesDocScope(user, order, 'edit') : user?.role === 'admin');
   const reason = salesOrderAttachBlock(order);
   return { allowed: canEdit && (!reason || user?.role === 'admin'), reason };
 }
@@ -60,7 +61,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const contract = contractRes.row && canViewSalesAttachment(contractRes.row, user) ? contractRes.row : null;
     const contractFiles = contract ? await listAttachments('contract', contract.id, supabase) : [];
 
-    const { groups, total } = buildSalesOrderDocuments({
+    const { groups, total, installments: installmentFiles } = buildSalesOrderDocuments({
       order,
       quotation: quotationRes.row,
       installments,
@@ -68,7 +69,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       contract,
       contractFiles,
     });
-    return ok({ groups, total, attach: attachState(order, user) });
+    return ok({ groups, total, installments: installmentFiles, attach: attachState(order, user) });
   } catch (error) {
     // `listAttachments` / `loadInstallments` โยนเมื่ออ่านไม่สำเร็จ — ตอบ 500 ให้จอบอก ไม่ใช่กลุ่มว่าง
     return fail(`อ่านเอกสารของใบนี้ไม่สำเร็จ: ${error?.message || error}`, 500);

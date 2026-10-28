@@ -136,3 +136,42 @@ test('เปิดใบพี่น้องกลับ: บอกสถาน
   // ใบสั่งขายไม่มีเหตุการณ์นี้ — ทางยกเลิก SO พร้อมย้อน Won ไม่เปิดใบพี่น้อง (มติข้อ 4)
   assert.equal(onOrder('reopen'), null);
 });
+
+/* ── นับ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — งานของงวดในใบรายงวด ลงเธรดดีลแม่ ──────────────────
+   ⭐ ที่เดียวที่เหตุผลตีกลับงวด / นับที่เหลือทั้งหมด ถูกเก็บให้คนอ่าน (คอลัมน์บนงวดถูกทับเมื่อยื่นใหม่ · audit เปิดได้เฉพาะ supervisor)
+   ⭐ ใช้ชนิดเดิมของดีลทั้งหมด (ไม่เพิ่มชนิดในทะเบียน) · ใบสั่งขายเท่านั้น · คำศัพท์ล็อก ตีกลับ / ดึงกลับ */
+const ACTUAL_ACTIONS = ['actual_start', 'actual_submit', 'actual_withdraw', 'actual_approve', 'actual_reject', 'actual_count_rest'];
+
+test('0412: งานรายงวดทุกตัวมีเงาบนดีล · ชนิดอยู่ในทะเบียน · ใบเสนอราคาไม่มีเหตุการณ์นี้', () => {
+  for (const action of ACTUAL_ACTIONS) {
+    const event = onOrder(action, { seq: 2, seqs: [1], amount: 33000, reason: 'ลูกค้าจ่ายครบล่วงหน้าแล้ว' });
+    assert.ok(event, `sales_order/${action}: ไม่มีเงาบนดีล`);
+    assert.ok(isKnownUpdateKind('deal', event.kind), `sales_order/${action}: kind "${event.kind}" ไม่มีในทะเบียน`);
+    assert.ok(event.body.includes('SO-2569-001'), `sales_order/${action}: เลขที่ใบหาย`);
+    assert.doesNotMatch(event.body, /ถอน|ถอด/, `พบคำต้องห้ามใน: ${event.body}`);
+    assert.equal(event.meta.action, action);
+    assert.equal(onQuote(action, { seq: 1 }), null, `quotation/${action} ต้องไม่มี`);
+  }
+});
+
+test('0412: ข้อความของงานรายงวด — งวด · ยอดก่อน VAT · เหตุผลที่บังคับกรอก', () => {
+  assert.equal(onOrder('actual_submit', { seq: 2 }).body, 'ยื่นขอนับ Actual งวดที่ 2 ของ ใบสั่งขาย SO-2569-001');
+  assert.equal(onOrder('actual_withdraw', { seq: 2 }).body, 'คำขอนับ Actual งวดที่ 2 ของ ใบสั่งขาย SO-2569-001 ถูกดึงกลับ');
+  assert.match(onOrder('actual_approve', { seq: 2, amount: 33000 }).body,
+    /^อนุมัตินับ Actual งวดที่ 2 ของ ใบสั่งขาย SO-2569-001 — .*33,000\.00 \(ก่อน VAT\)$/);
+  const REASON = 'ยังไม่ได้ส่งของงวดนี้ให้ลูกค้า';
+  assert.equal(onOrder('actual_reject', { seq: 2, reason: REASON }).body,
+    `คำขอนับ Actual งวดที่ 2 ของ ใบสั่งขาย SO-2569-001 ถูกตีกลับ — ${REASON}`);
+  assert.equal(onOrder('actual_reject', { seq: 2 }).kind, 'doc_return');
+  assert.match(onOrder('actual_reject', { seq: 2 }).body, /ไม่ระบุเหตุผล$/);
+  assert.match(onOrder('actual_count_rest', { seqs: [2, 3], amount: 66000, reason: REASON }).body,
+    new RegExp(`^นับ Actual ที่เหลือทั้งหมดของ ใบสั่งขาย SO-2569-001 \\(งวดที่ 2, 3 .*66,000\\.00 \\(ก่อน VAT\\)\\) — ${REASON}$`));
+  assert.match(onOrder('actual_start', { seqs: [1], amount: 33000 }).body,
+    /^นับ Actual รายงวด ใบสั่งขาย SO-2569-001 — งวดที่ 1 .*33,000\.00 \(ก่อน VAT\) เข้า Actual แล้ว$/);
+  assert.deepEqual(onOrder('actual_count_rest', { seqs: [2, 3], amount: 66000 }).meta, {
+    docType: 'sales_order', docId: 'SO-1', docNumber: 'SO-2569-001', action: 'actual_count_rest',
+    seq: null, seqs: [2, 3], amount: 66000,
+  });
+  // งานเดิมของใบไม่พกคีย์ของงวด (meta เดิมทุกตัวอักษร)
+  assert.equal('seqs' in onOrder('approve').meta, false);
+});

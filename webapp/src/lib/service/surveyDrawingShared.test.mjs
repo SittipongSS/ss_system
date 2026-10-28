@@ -53,7 +53,8 @@ const SENT = { ...PROMISED, status: 'answered', answeredAt: '2026-10-14T03:00:00
 test('ค่าคงที่ของงวด S2b ตรงตัวตามแผน — ชิปคิว · บรรทัดที่มา · ประโยคปุ่มที่ยังไม่มี · ประโยคเพิ่มพื้นที่ของใบงานโต๊ะ', () => {
   assert.equal(SURVEY_QUEUE_DESK_CHIP, 'จากแบบ · ไม่ต้องลงคิว');
   assert.equal(SURVEY_METHOD_BACK_ORIGIN('ลูกค้าขอให้เข้าวัดจริง'), 'หัวหน้าเปลี่ยนเป็นลงหน้างาน: ลูกค้าขอให้เข้าวัดจริง');
-  assert.equal(SURVEY_CONFIRM_ACTION_READY, false, 'ปุ่มขอยืนยันหน้างานมากับงวด S5');
+  /* งวด S5 (Integrate §4.6 ข้อ 1): สวิตช์เปิดแล้ว — ค่าคงที่ของประโยคยังอยู่ (ย้อนกลับได้คำเดียว · ถอดทิ้งงวดหลัง §1.3) */
+  assert.equal(SURVEY_CONFIRM_ACTION_READY, true, 'ปุ่มขอยืนยันหน้างานเปิดใช้ตั้งแต่งวด S5');
   assert.equal(SURVEY_CONFIRM_PENDING_NOTE,
     'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้');
   assert.equal(SURVEY_DESK_ADD_HEAD_ONLY, 'ใบนี้หัวหน้าประเมินจากแบบ — เพิ่มพื้นที่ได้เฉพาะหัวหน้าฝ่ายบริการ');
@@ -67,7 +68,8 @@ test('ค่าคงที่ของงวด S2b ตรงตัวตาม
 
 test('สวิตช์เดียวของปุ่มขอยืนยันหน้างาน: แถบแจ้งของฝ่ายขายกับไทล์ของหัวหน้าได้ประโยคเดียวกัน และ action.ready ตามค่าคงที่', () => {
   const banner = surveyJobView({ request: ask({ ...SENT, surveyConfirm: 'needed' }), today: TODAY, viewer: SALES }).zones.drawingBanner;
-  assert.equal(banner.note, SURVEY_CONFIRM_PENDING_NOTE);
+  // งวด S5 เปิดสวิตช์ ⇒ ประโยค "ปุ่มจะเปิดใช้ในรอบถัดไป" หายจากแถบแจ้ง · `ready` ยังเท่าค่าคงที่
+  assert.equal(banner.note, null);
   assert.equal(banner.action.ready, SURVEY_CONFIRM_ACTION_READY);
   // "ไม่ต้องยืนยัน" ไม่เอ่ยถึงปุ่ม — ไม่มีประโยคต่อท้าย
   const plain = surveyJobView({ request: ask({ ...SENT, surveyConfirm: 'not_needed' }), today: TODAY, viewer: SALES }).zones.drawingBanner;
@@ -76,7 +78,8 @@ test('สวิตช์เดียวของปุ่มขอยืนย�
   const confirm = surveySendConfirm({
     docNo: 'RQ-AS-26100312', closesVisit: null, method: { mix: { onsite: 0, drawing: 3, mode: 'drawing' }, confirm: null, openVisit: null },
   });
-  assert.equal(confirm.choice.pendingNote, SURVEY_CONFIRM_PENDING_NOTE);
+  // …และหายจากไทล์ของหัวหน้าพร้อมกัน (สวิตช์ตัวเดียว)
+  assert.equal(confirm.choice.pendingNote, null);
   // คำบนไทล์ยังเป็นคำของแผน (มติเจ้าของ O1) — ประโยคใหม่อยู่ที่คีย์ของตัวเอง
   assert.deepEqual(confirm.choice.options.map((o) => o.value), ['needed', 'not_needed']);
   assert.equal(JSON.stringify(confirm.choice.options).includes('รอบถัดไป'), false);
@@ -203,6 +206,12 @@ test('progress.desk: พาดหัวของงานโต๊ะที่�
     const files = Object.fromEntries(rows.slice(0, k).map((z) => [z.id, [file(`p-${z.id}`, 'survey_plan')]]));
     const view = control(rows, files);
     if (view.status.key !== 'desk-working') continue;
+    /* 🔄 head-rc-r2-22 ผลรีวิวรอบห้า — ทุกพื้นที่พร้อมแต่ทะเบียนขนาดอ่านไม่ขึ้น (ตัวช่วยนี้ไม่ส่ง `packageSizes`) = งานโต๊ะจบขั้นประเมินแล้ว
+       (ด่านทะเบียนเป็นเหตุของขั้นส่งผล) ⇒ พาดหัว "ประเมินจากแบบครบแล้ว — …" ไม่ใช่ "กำลังประเมินจากแบบ — n/n" (เดิมก่อนรอบห้า) */
+    if (view.progress.desk.done === view.progress.desk.total) {
+      assert.equal(view.status.headline, 'ประเมินจากแบบครบแล้ว — อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ', `k=${k}`);
+      continue;
+    }
     seenWorking += 1;
     assert.equal(view.status.headline, `กำลังประเมินจากแบบ — ${view.progress.desk.done}/${view.progress.desk.total} พื้นที่`, `k=${k}`);
   }
@@ -236,32 +245,36 @@ test('หัวงาน · ใบผสม: ข้อแรก "ลงหน้
   assert.deepEqual({ ...view, facts: null }, { ...today, facts: null }, 'คีย์อื่นของหัวงานไม่ขยับ');
 });
 
-test('หัวงาน · จากแบบทั้งใบ ไม่มีนัดที่ยังเปิด: "ประเมินจากแบบ" + ทั้งใบ n พื้นที่ · ไม่ลงคิว… · ข้อของนัดถูกแทนด้วยผู้รับผิดชอบและสองวัน', () => {
+test('หัวงาน · จากแบบทั้งใบ ไม่มีนัดที่ยังเปิด: "ประเมินจากแบบ" + ทั้งใบ n พื้นที่ · ไม่ลงคิว… · ข้อของนัดถูกแทนด้วยผู้ขอ ผู้รับผิดชอบ และสองวัน', () => {
   for (const visit of [null, { ...VISIT, status: 'done' }, { ...VISIT, status: 'partial' }, { ...VISIT, status: 'unable' }, { ...VISIT, status: 'cancelled' }, { ...VISIT, status: 'completed' }, { ...VISIT, status: 'rescheduled' }]) {
     const view = surveyJobHeaderView(headerInput({ visit, method: ALL_DRAWING }));
+    /* มติเจ้าของ head-r3-33 (ทำตามม็อก): ใบงานโต๊ะไม่มีใครไปหน้างาน ⇒ ไม่มี ให้เข้า · ฝากมา · ติดต่อ · โทร · นำทาง — ใส่ "ผู้ขอ" แทน
+       (S2b แก้หลังตรวจจอ) */
     assert.deepEqual(view.facts, [
       { key: 'method', label: 'วิธีประเมิน', value: 'ประเมินจากแบบ', sub: 'ทั้งใบ 3 พื้นที่ · ไม่ลงคิว ไม่มีนัดบนตารางเจ้าหน้าที่' },
+      { key: 'requester', label: 'ผู้ขอ', value: 'Lalida Chaiwanna' },
       { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Arnon Aunsapwilai' },
       { key: 'wantedResult', label: 'ผู้ขอต้องการผล', value: 'พฤ. 15 ต.ค.' },
       { key: 'resultDate', label: 'วันที่จะส่งผลประเมิน', value: 'พฤ. 15 ต.ค.' },
-      { key: 'access', label: 'ให้เข้า', value: view.facts[4].value, warn: null },
-      { key: 'note', label: 'ฝากมา', value: 'แลกบัตรที่ รปภ.' },
     ], String(visit?.status));
+    assert.equal(view.deskOnly, true, String(visit?.status));
+    assert.equal(view.call, null, String(visit?.status));
+    assert.equal(view.nav, null, String(visit?.status));
   }
   // ค่าว่าง = ขีด ไม่ใช่ค่าดิบ
   const blank = surveyJobHeaderView(headerInput({
-    visit: null, method: ALL_DRAWING, request: ask({ assigneeName: ' ', requestedResultDate: null, committedResultDate: 'ไม่ใช่วัน' }),
+    visit: null, method: ALL_DRAWING, request: ask({ assigneeName: ' ', requestedResultDate: null, committedResultDate: 'ไม่ใช่วัน', requestedByName: ' ' }),
   }));
-  assert.deepEqual(blank.facts.slice(1, 4).map((f) => f.value), ['—', '—', '—']);
+  assert.deepEqual(blank.facts.slice(1, 5).map((f) => f.value), ['—', '—', '—', '—']);
   // ยังไม่มอบหมาย = คนที่กดรับเรื่อง (requestAssignee ตัวเดียวกับหน้าคำร้อง) — หัวงานเคยขึ้นขีดขณะหน้าคำร้องขึ้นชื่อ (UAT S4 T14 head)
   const unassigned = surveyJobHeaderView(headerInput({
     visit: null, method: ALL_DRAWING, request: ask({ assigneeId: null, assigneeName: null, acknowledgedByName: 'Somchai Ackby' }),
   }));
-  assert.deepEqual(unassigned.facts[1], { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Somchai Ackby' });
+  assert.deepEqual(unassigned.facts[2], { key: 'assignee', label: 'ผู้รับผิดชอบ', value: 'Somchai Ackby' });
   const nobody = surveyJobHeaderView(headerInput({
     visit: null, method: ALL_DRAWING, request: ask({ assigneeId: null, assigneeName: null, acknowledgedById: null, acknowledgedByName: null }),
   }));
-  assert.equal(nobody.facts[1].value, '—');
+  assert.equal(nobody.facts[2].value, '—');
 });
 
 test('หัวงาน · จากแบบทั้งใบ แต่ยังมีนัดเปิดอยู่ (ร่าง · นัดไว้ · กำลังทำ): ไม่พูดว่าไม่มีนัด และข้อของนัดอยู่ครบ', () => {

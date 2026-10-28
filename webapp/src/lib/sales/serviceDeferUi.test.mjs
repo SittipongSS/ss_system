@@ -558,11 +558,17 @@ test('หน้าใบ: requestAction — ข้ามไม่ผ่านโ
   assert.match(request, /if \(issues \|\| payload\.deferServiceSetup\) refreshServiceSetup\(\);/);
   assert.match(request, /refreshOrder\(\);\s*return false;/);
   /* ทัก: ใบที่อนุมัติโดยข้าม — จากแถวที่คืน (ตัวตัดสินกลาง) และอยู่ **ก่อน** กิ่ง "เปิดงานบริการ n โซน" */
-  const deferredAt = request.indexOf('action === "approve" && setupRequired && serviceSetupDeferred(data)?.stage === "approved"');
+  const deferredAt = request.indexOf('const approvedDeferred = action === "approve" && setupRequired && serviceSetupDeferred(data)?.stage === "approved";');
+  /* review รอบห้า 27/10 (มติข้อ 6): ใบที่เลือก "นับ Actual รายงวด" มาก่อนกิ่งงานบริการ (ทักงานบริการพูด "นับ Actual แล้ว" ทั้งใบ)
+     แล้วต่อท้ายเรื่องงานบริการด้วยธงเดียวกัน */
+  const installmentAt = request.indexOf(': action === "approve" && payload.actualMode === ACTUAL_MODE_INSTALLMENT');
+  const deferredToastAt = request.indexOf(': approvedDeferred\n');
   const openedAt = request.indexOf('action === "approve" && Number(data?.termsOpened) > 0');
   const skipToastAt = request.indexOf(': action === "submit" && payload.deferServiceSetup\n');
-  assert.ok(deferredAt > 0 && openedAt > deferredAt && skipToastAt > openedAt, 'ลำดับกิ่งของข้อความทัก');
-  assert.match(request, /serviceSetupDeferred\(data\)\?\.stage === "approved"\s*\? SERVICE_DEFERRED_TEXT\.approvedToast/);
+  assert.ok(deferredAt > 0 && installmentAt > deferredAt && deferredToastAt > installmentAt && openedAt > deferredToastAt
+    && skipToastAt > openedAt, 'ลำดับกิ่งของข้อความทัก');
+  assert.match(request, /: approvedDeferred\s*\? SERVICE_DEFERRED_TEXT\.approvedToast/);
+  assert.match(request, /\+ approveServiceSuffix\(approvedDeferred, Number\(data\?\.termsOpened\) \|\| 0\)/);
   assert.match(request, /action === "submit" && payload\.deferServiceSetup\s*\? SERVICE_DEFER_TEXT\.toast/);
   assert.match(request, /`อนุมัติแล้ว · เปิดงานบริการ \$\{fmtNumber\(Number\(data\.termsOpened\)\)\} โซนให้ TS`/, 'กิ่งเดิมคงอยู่');
   assert.equal(count(page, /serviceSetupDeferred\(/g), 1, 'หน้าใช้ตัวตัดสินแถวใบจุดเดียว (แถวที่ route คืน) — ที่เหลือถาม view ของ GET');
@@ -606,7 +612,11 @@ test('หน้าใบ: ท้ายแผงแดงเฉพาะแผง
   assert.equal(SERVICE_DEFERRED_TEXT.badge, 'ยังไม่ตั้งงานบริการ');
 
   /* คำใต้สถานะของใบที่อนุมัติแล้ว: เปิดแก้ → ข้ามตอนยื่น → ใบเดิม (ประโยคเดิมเป็นกิ่งสุดท้าย) */
-  assert.match(page, /const backfillActualNote = showBackfillPanel\s*\? \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว \(อนุมัติ \$\{fmtDate\(order\.approvedAt\)\}\) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`\)\s*: null;/);
+  /* review รอบห้า 27/10 (มติข้อ 6): ใบ "Actual รายงวด" ที่อนุมัติแล้วคงคำอธิบายรายงวด (นับแล้ว x/y · งวดที่ยื่นได้) + ท้ายเรื่องงานบริการ
+     — สามประโยค "ยอดถูกนับเป็น Actual แล้ว" เป็นของใบทั้งใบเท่านั้น */
+  assert.match(page, /const backfillServiceWord = setupView\?\.reopened \? "การแก้งานบริการ"\s*: setupView\?\.deferred \? "การตั้งงานบริการทีหลัง" : "การตั้งงานบริการย้อนหลัง";/);
+  assert.match(page, /const backfillActualNote = !showBackfillPanel\s*\? null\s*: instActual && order\.status === "approved"\s*\? `\$\{status\.description\} — \$\{backfillServiceWord\}ไม่เปลี่ยนยอดที่นับ`\s*: \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว \(อนุมัติ \$\{fmtDate\(order\.approvedAt\)\}\) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`\);/);
+  assert.ok(page.indexOf('const status = historicalCopy') < page.indexOf('const backfillActualNote = '), 'คำอธิบายสถานะคิดก่อนคำใต้สถานะ');
   assert.equal(SERVICE_DEFERRED_TEXT.actualNote('2026-10-08T04:00:00Z'), 'ยอดถูกนับเป็น Actual แล้ว (อนุมัติ 08/10/2026) — การตั้งงานบริการทีหลังไม่เปลี่ยนยอดนี้');
 });
 
@@ -616,7 +626,9 @@ test('หน้าใบ: โมดัลอนุมัติ/Admin Override �
   assert.match(approve, /\.\.\.\(service\?\.approvalEffects \|\| \[\]\),/);
   assert.match(approve, /if \(service\?\.issues\?\.length\) setError\(issuesErrorText\(serviceApproveBlockedText\(service\.issues\.length\), service\.issues\)\);/);
   assert.doesNotMatch(approve, /deferred|DEFER|skip/, 'ไม่แตกกิ่งที่จอ');
-  assert.match(approve, /action: \(\) => requestAction\("approve"\),/, 'การอนุมัติไม่ส่งอะไรเพิ่ม — ฐานตัดสินจากตราบนใบ');
+  /* ⭐ mig 0412: การอนุมัติส่งแบบการนับ Actual ที่ผู้อนุมัติเลือก (ทั้งใบ/รายงวด) อย่างเดียว — ไม่มีอะไรเรื่องการข้าม (ฐานตัดสินจากตราบนใบ) */
+  assert.match(approve, /action: \(\) => requestAction\("approve", \{ actualMode: approveActualModeRef\.current \}\),/,
+    'การอนุมัติส่งแค่แบบการนับ Actual — ไม่ส่งอะไรเรื่องการข้าม (ฐานตัดสินจากตราบนใบ)');
   assert.match(page, /\{setupRequired && setupView\?\.approvalEffects\?\.length \? \(\s*<StatusNotice tone="info" title="งานบริการของใบนี้">/);
 
   /* ของจริงที่โมดัลได้: ใบรออนุมัติที่ยังข้ามอยู่ — ข้อที่ต้องตรวจ = ใบนี้ข้าม (ใคร · เมื่อไร) · ผล = ยังไม่ส่ง TS + ทางเดินต่อ · ไม่มีข้อที่ติด */
@@ -652,10 +664,11 @@ test('หน้าใบ + ทะเบียน: ไม่พิมพ์คำ
 test('ทะเบียนใบสั่งขาย: แถวคิวของใบรออนุมัติที่ข้ามต่อท้ายป้ายของ server หลังยอด — ไม่แตะประโยคยอดก่อน VAT ที่ยามอื่นยึดไว้', () => {
   const list = code(LIST);
   const queue = slice(list, '<ApprovalQueue', 'rowHref=');
-  assert.match(queue, /: `\$\{naText\(o\.customerName\)\} · \$\{fmtMoney\(o\.actualAmount\)\} ก่อน VAT`\)\s*\+ \(isHistoricalOrder\(o\) \? " · ใบย้อนหลัง · ไม่นับ Actual" : ""\)\s*\+ \(!financeShell && o\.serviceDeferredTag \? ` · \$\{o\.serviceDeferredTag\}` : ""\)\}/);
+  assert.match(queue, /: `\$\{naText\(o\.customerName\)\} · \$\{fmtMoney\(o\.actualAmount\)\} ก่อน VAT`\)\s*\+ \(isHistoricalOrder\(o\) \? " · ใบย้อนหลัง · ไม่นับ Actual" : ""\)\s*\+ \(isExciseOrder\(o\) \? ` · \$\{EXCISE_STATUS_NOTE\}` : ""\)\s*\+ \(!financeShell && o\.serviceDeferredTag \? ` · \$\{o\.serviceDeferredTag\}` : ""\)\}/);
   assert.equal(count(list, /serviceDeferredTag/g), 2, 'จุดเดียว (เงื่อนไข + ค่า) — เปลือกบัญชีไม่ต่อ');
-  /* แถวรอตรวจงานบริการ: ป้ายมากับแถว (`serviceReview.label` ของ server = "งานบริการ (ข้ามตอนยื่น)") — บรรทัดเดิมไม่แตะ */
-  assert.match(queue, /primary=\{\(o\) => \(serviceReviewRow\(o\) \? `\$\{o\.serviceReview\?\.label \|\| SERVICE_REVIEW_LABEL\} · \$\{o\.orderNumber\}` : o\.orderNumber\)\}/);
+  /* แถวรอตรวจงานบริการ: ป้ายมากับแถว (`serviceReview.label` ของ server = "งานบริการ (ข้ามตอนยื่น)") — บรรทัดเดิมไม่แตะ
+     (+ กิ่ง "งวดรออนุมัติ" ของใบ Actual รายงวด · mig 0412 — ต่อหลังกิ่งงานบริการ ไม่แทรกก่อน) */
+  assert.match(queue, /primary=\{\(o\) => \(serviceReviewRow\(o\)\s*\? `\$\{o\.serviceReview\?\.label \|\| SERVICE_REVIEW_LABEL\} · \$\{o\.orderNumber\}`\s*: installmentReviewRow\(o\) \? `\$\{INSTALLMENT_REVIEW_LABEL\} · \$\{o\.orderNumber\}` : o\.orderNumber\)\}/);
   assert.equal(SERVICE_DEFERRED_TEXT.queueTag, 'ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น)');
   assert.equal(SERVICE_DEFERRED_TEXT.queueLabel, 'งานบริการ (ข้ามตอนยื่น)');
 });

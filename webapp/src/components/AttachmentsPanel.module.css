@@ -329,6 +329,18 @@ button.tile:focus-visible { outline: 2px solid var(--accent-ink); outline-offset
   margin-inline-start: auto;
 }
 
+/* "เปิดในแท็บใหม่" ท้ายชื่อของรูปที่เบราว์เซอร์วาดไม่ขึ้น (TIFF · S2b แก้หลังตรวจจอ head-rc-q8) — อยู่ในลิงก์ของแถวไฟล์
+   ⚠️ ไม่หด + บรรทัดเดียว (`flex: none` · `nowrap`) — ชื่อไฟล์ (`truncate`) ตัด "…" ก่อน · คำนี้ห้ามขาดกลางวลีที่จอ 375 */
+.rowOpenNew {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  white-space: nowrap;
+}
+
 /* ปุ่มลบของแถวไฟล์ — เป้ากด 24×24 (WCAG 2.2 SC 2.5.8 · layout-nits D4) · ไอคอน 13px เท่าเดิม
    ⚠️ ขอบลบบน/ล่างเท่า `py-1` ของแถว ⇒ ช่องที่ปุ่มกินในแถวสูง 16px (ต่ำกว่าบรรทัดชื่อไฟล์) แถวจึงไม่สูงขึ้น
       แต่พื้นที่กดยังเต็ม 24px (ลามเข้าระยะขอบของแถวตัวเอง ไม่ทับแถวข้าง)

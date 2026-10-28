@@ -594,6 +594,9 @@
   --shadow-sm: 0 2px 7px rgba(41, 35, 27, 0.05);
   --shadow-md: 0 12px 30px rgba(41, 35, 27, 0.09);
   --shadow-lg: 0 22px 60px rgba(41, 35, 27, 0.15);
+  /* สีเงาของ "ขอบที่เนื้อลอดเข้าไป" (คอลัมน์ตรึงของตารางที่ยังมีคอลัมน์ซ่อน · TableScroll `edgeHint`) — ผู้เรียกกำหนดทิศ/ระยะเอง
+     ⚠️ ต้องเป็นสีมืดทั้งสองธีม — `--text` ผสมโปร่งในธีมมืดกลายเป็นแสงเรือง ไม่ใช่เงา (UAT FN 27/10 ข้อ 6) */
+  --shadow-edge: rgba(41, 35, 27, 0.16);
   /* เงาของ "แผงลอย" (dropdown / เมนู / popover / ปฏิทิน) — คู่กับ --panel-float
 
      🐛 ตรวจ 2026-07-30: สามแผงที่อยู่ในสัญญาเดียวกัน (audit บังคับให้ใช้ --panel-float
@@ -814,6 +817,7 @@
   --shadow-sm: 0 2px 7px rgba(0, 0, 0, 0.18);
   --shadow-md: 0 12px 30px rgba(0, 0, 0, 0.24);
   --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.34);
+  --shadow-edge: rgba(0, 0, 0, 0.5);
   /* ค่านี้คือของเดิมที่ `.ui-select-menu` ใช้อยู่แล้วในธีมมืด (พิสูจน์แล้วว่าใช้ได้จริง)
      ยกขึ้นมาเป็นโทเคนให้แผงลอยตัวอื่นได้ด้วย */
   --shadow-float: 0 18px 48px rgba(0, 0, 0, .48);
@@ -1192,6 +1196,17 @@ button, select, input, textarea {
 /* pre-line: ช่อง detail ใช้บอก "สิ่งที่จะเกิดขึ้น" เป็นรายการบรรทัดละข้อ (ดู lib/approvalPrompt.js)
    ถ้าไม่ตั้งไว้ ทุกข้อจะไหลต่อกันเป็นพืดจนอ่านไม่ออกว่ามีกี่ข้อ */
 .confirm-dialog-detail { margin-top: var(--space-1-5) !important; color: var(--text-3) !important; font-size: var(--fs-6); white-space: pre-line; }
+/* ตัวเลือกที่เปลี่ยนรายการผลลัพธ์ (`lead` ของ ConfirmDialog · UAT 27/10) — ระหว่างคำถามกับรายการ ⇒ สลับตัวเลือกแล้วตัวมันไม่เลื่อน
+   · กล่องแบบนี้ยึดขอบบน (ไม่ใช่กึ่งกลาง) — กล่องกึ่งกลางที่โตขึ้นเลื่อนขึ้นครึ่งหนึ่งของส่วนที่โต ตัวเลือกจึงยังหนีเคอร์เซอร์ */
+.confirm-dialog-lead { display: grid; gap: var(--space-3); margin-top: var(--space-3); }
+/* 🐞 review รอบหก 27/10: ระยะบน 40px + เพดาน 90vh ของ `.drawer` = ขอบล่างของกล่องที่เนื้อเต็มเพดานอยู่ที่ 64 + 0.9H ⇒ จอสูงไม่ถึง 640
+   (แล็ปท็อป 1366×768 ที่ซูม 125%) ขอบล่าง/ปุ่มในโซนท้ายตกจอ (overlay ไม่เลื่อน) · เพดานจึงหักระยะบนออกจากกล่องเนื้อของ overlay
+   (`100%` = กล่องเนื้อของ overlay ที่สูงแน่นอน) — จอสูงคงเพดาน 90vh เดิม · กล่องที่ไม่มี `lead` ไม่แตะ */
+.overlay > .drawer.confirm-dialog-anchored {
+  align-self: flex-start;
+  margin-top: var(--space-9);
+  max-height: min(90vh, calc(100% - var(--space-9)));
+}
 /* ⭐ ของที่เลือกได้ในกล่องยืนยัน (มติผู้ใช้ 2026-09-02) — กินเต็มความกว้างเหมือน
    แถบ error และปุ่ม เพราะไอคอนกินคอลัมน์ซ้ายอยู่ · ดู `children` ของ ConfirmDialog */
 .confirm-dialog-extra {
@@ -1201,12 +1216,15 @@ button, select, input, textarea {
   margin-top: var(--space-2);
 }
 .confirm-dialog > [role="alert"] { grid-column: 1 / -1; }
+/* แถวปุ่มของกล่องยืนยัน = เนื้อของโซน `.drawer-footer` (ConfirmDialog ส่งเป็น `footer` ของ Modal — ตรึงท้ายกล่อง เนื้อเลื่อน ·
+   S2b แก้หลังตรวจจอ head-r3-19) · โซนเป็นแถว flex อยู่แล้ว ⇒ ก้อนนี้กินเต็มกว้างของโซน ปุ่มชิดขวาตามเดิม และยืดเต็มแถวได้ที่จอ ≤680
+   (กฎ `flex: 1` ข้างล่าง) · ไม่ใช่ชิ้นของกริด `.confirm-dialog` แล้ว — ไม่มี `grid-column` / ระยะบน (ระยะเป็นของโซน) */
 .confirm-dialog-actions {
-  grid-column: 1 / -1;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-  margin-top: var(--space-1-5);
 }
 @media (max-width: 680px) {
   .form-actions { bottom: max(8px, env(safe-area-inset-bottom)); align-items: stretch; flex-direction: column; }
@@ -6674,12 +6692,30 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   overflow-clip-margin: var(--space-0-5);
   margin-top: 1px;
   color: var(--text);
-  font-size: var(--fs-11);
+  font-size: clamp(var(--fs-4), calc(100cqi / (var(--metric-len, 8) * 0.54)), var(--metric-value-fs, var(--fs-11)));
   line-height: var(--lh-thai);
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* ⭐ **ยอดเงินบนการ์ดไม่ถูกตัดด้วย "…"** — ตัวเลขย่อตามความกว้างจริงของกล่องข้อความ (สูตรเดียวกับ `.ui-kpi-value`)
+   🐞 /finance/payments จอ 390: "฿10,648,762.…" · "฿27,934,367.…" (กติกา = เงินเต็มหลักเสมอ) — ช่อง 2 คอลัมน์เหลือที่ให้ตัวเลข ~111px
+   · กล่องข้อความเป็น container (กินที่เหลือทั้งหมดข้างกรอบไอคอน) · `data-len` มาจาก `metricValueLen` (Workspace.js) ·
+     ไม่มี = ค่าสั้น ได้ขั้นเต็มเหมือนเดิม · 0.54 = ความกว้างต่อตัวอักษรของฟอนต์ตัวเลข (วัดจริง 27/10: "฿10,648,762.25" = 0.508em/ตัว)
+   · ปลายล่าง `--fs-4` (11.5px) — แถบหกใบที่จอ 1024 เหลือช่องละ 85px ค่า 14 ตัวอักษรต้อง ≤ 11.9px ·
+     ปลายบน = ขั้นเดิมของแต่ละจอ (`--metric-value-fs`) · วัด 27/10 /finance/payments: 360 · 390 · 1024 · 1440 ไม่มีตัวเลขโดนตัด
+   ⚠️ ค่ายาวเกิน 18 ตัวอักษร (หายาก) ยังตัดด้วย … ตามเดิม */
+.ui-metric > span:not(.ui-metric-icon) { flex: 1 1 0; container-type: inline-size; }
+.ui-metric strong[data-len="9"] { --metric-len: 9; }
+.ui-metric strong[data-len="10"] { --metric-len: 10; }
+.ui-metric strong[data-len="11"] { --metric-len: 11; }
+.ui-metric strong[data-len="12"] { --metric-len: 12; }
+.ui-metric strong[data-len="13"] { --metric-len: 13; }
+.ui-metric strong[data-len="14"] { --metric-len: 14; }
+.ui-metric strong[data-len="15"] { --metric-len: 15; }
+.ui-metric strong[data-len="16"] { --metric-len: 16; }
+.ui-metric strong[data-len="17"] { --metric-len: 17; }
+.ui-metric strong[data-len="18"] { --metric-len: 18; }
 .ui-metric em { display: block; overflow: hidden; margin-top: var(--space-0-5); color: var(--text-3); font-size: var(--fs-1); font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .ui-metric.is-danger strong { color: var(--red); }
 .ui-metric.is-good strong,
@@ -6750,7 +6786,7 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   .ui-list-panel-toolbar > .segmented > button { flex: none; white-space: nowrap; }
   .ui-section-body { padding: var(--space-3-5); }
   .ui-metric { padding: var(--space-3); }
-  .ui-metric strong { font-size: var(--fs-10); }
+  .ui-metric { --metric-value-fs: var(--fs-10); }
   /* ปุ่มรองของการ์ดเยื้องตาม padding ช่องที่แคบลง (ไม่งั้นหลุดคอลัมน์ข้อความ) */
   .ui-metric-note-action { max-width: calc(100% - 2 * var(--space-3)); margin-right: var(--space-3); margin-left: var(--space-3); }
   .ui-metric-wrap.has-icon > .ui-metric-note-action {

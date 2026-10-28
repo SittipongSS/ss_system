@@ -18,7 +18,7 @@
  *    ⚠️ ไฟล์นี้ไม่ถามวิธีประเมินของแถวเอง และไม่พิมพ์คำของวิธีนี้เอง — วาดจากคีย์ข้างบนอย่างเดียว
  */
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2, Check, CircleDashed, ClipboardList, FileText, FolderKanban, Handshake, Lock,
   MapPin, MessageCircleQuestion, Route, UserRound,
@@ -34,11 +34,14 @@ import GatedAction from "@/components/ui/GatedAction";
 import { kindMeta } from "@/components/ui/ActionButtons";
 import RichText from "@/components/ui/RichText";
 import ReadableText from "@/components/ui/ReadableText";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
+import { SURVEY_CONFIRM_WRAP_KEEP } from "@/lib/service/surveyConfirmLink";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
+import { DRAWING_SPOT_LABEL } from "@/components/service/SurveyResultTable";
+import { surveyCardUnitNames, surveyCardUnits } from "@/components/service/surveyControlCardUnits";
 import { fmtNumber, naText } from "@/lib/format";
 import { requestKindLabel } from "@/lib/master/requestTypes";
-import { surveyJobView } from "@/lib/service/surveyJob";
+import { SURVEY_DRAWING_SPOTS_NOTE, surveyJobView } from "@/lib/service/surveyJob";
 import styles from "./surveyRequest.module.css";
 
 const num = (value) => (value == null ? null : fmtNumber(value, { maximumFractionDigits: 2 }));
@@ -128,7 +131,7 @@ function Timeline({ steps }) {
             <span className={styles.stepLine}>นัด {step.visitLink.code}</span>
           ) : null}
           {step.lines.map((line, i) => (
-            <span key={i} className={styles.stepLine} data-tone={line.tone || undefined}>{line.text}</span>
+            <span key={i} className={styles.stepLine} data-tone={line.tone || undefined}>{keepPhrases(line.text, line.keep)}</span>
           ))}
         </li>
       ))}
@@ -156,9 +159,10 @@ function Meter({ done, total, complete }) {
 /* ── ตารางพื้นที่ ─────────────────────────────────────────────────────────────────────── */
 /* เซลล์ที่มีป้าย — จอแคบตารางกลายเป็นการ์ด ป้ายซ้าย (`data-label`) ค่าขวา
    ⚠️ ค่าต้องอยู่ในก้อนเดียว (`cellValue`) — ไม่งั้นตัวเลขกับบรรทัด "สูตร n" แตกเป็นสองช่องของกริด */
-function Cell({ label, num: isNum = false, children }) {
+function Cell({ label, num: isNum = false, longLabel = false, children }) {
   return (
-    <td data-label={label} className={isNum ? "num" : undefined}>
+    /* `longLabel` — ป้ายยาวกว่าช่องป้ายของจอแคบ ⇒ CSS ให้ป้ายขึ้นบรรทัดของตัวเองไม่ตัดกลางคำ (head-r3-12) · ไม่ส่ง = ทรงเดิม */
+    <td data-label={label} data-long-label={longLabel ? "1" : undefined} className={isNum ? "num" : undefined}>
       <span className={styles.cellValue}>{children}</span>
     </td>
   );
@@ -174,24 +178,74 @@ function MethodTag({ row }) {
   return <SurveyMethodChip label={methodLabel} className={styles.methodTag} />;
 }
 
+/* หมายเหตุใต้แถบแจ้ง — วลีของงวด S5 ห้ามขาดกลาง (N15 "…โหลดหน้า" / "ใหม่" ที่ 375 · UAT S5 sales รอบ 2 K05) · ไม่มีวลี = thaiText เดิม */
+const keepNote = (note) => {
+  const kept = keepPhrases(note, SURVEY_CONFIRM_WRAP_KEEP);
+  return kept === note ? thaiText(note) : kept;
+};
+
 /* ── แถบแจ้งเหนือตารางผล: "มี n พื้นที่ที่ประเมินจากแบบ — …" (`zones.drawingBanner`) ─────────────────────
    ฝ่ายขายต้องรู้ก่อนเอาตัวเลขไปเสนอราคา ว่ากี่พื้นที่ไม่ได้วัดจากของจริง และหัวหน้าเลือกไว้ว่าต้องยืนยันหน้างานไหม
    · ประโยค + บรรทัดรอง (`note` — ระหว่างที่ปุ่มของฝ่ายขายยังไม่เปิดใช้) มาจาก lib ทั้งคู่ · ไฟล์นี้ไม่พิมพ์เอง
-   🔴 ปุ่ม "ขอยืนยันหน้างาน" วาด **เฉพาะเมื่อ lib บอกว่าเส้นของปุ่มมีจริง** (`action.ready`) และเปลือกส่งตัวกดมา —
-      งวดนี้ทั้งสองอย่างยังไม่มี (มากับงวด S5) ⇒ ไม่มีปุ่ม ไม่ใช่ปุ่มจาง
+   🔴 ปุ่ม "ขอยืนยันหน้างาน" วาด **เฉพาะเมื่อ lib บอกว่าเส้นของปุ่มมีจริง** (`action.ready`) · ก้อนปุ่มมีสภาพ (`action.state` —
+      แถว 0 ของ lib ไม่มี) · และเปลือกส่งตัวกดมา — ขาดข้อไหน = ไม่มีปุ่ม ไม่ใช่ปุ่มจาง
+   ✏️ งวด S5 (D-2) — **ปุ่มเดียวสองสภาพ ผ่าน `GatedAction`**: ติดด่าน (`state: 'blocked'` — มีใบยืนยันเปิดอยู่ · พื้นที่ถูกใบอื่นถือ)
+      = ปุ่มยังวาด กดแล้วบอกเหตุ (ประโยคของ server) ไม่พาไปไหน · พร้อม = ส่งก้อนปุ่มให้เปลือกพาไปฟอร์ม (`href`)
+      · มติเจ้าของ B (12/10): ฝ่ายขายยังไม่ปิดเรื่อง = ปุ่มรอง (outline ไม่มีโทน — "ปิดเรื่อง" เป็นปุ่มหลักของหน้า) · ปิดแล้ว = ปุ่มหลัก
+        (โทน `primary` = navy — `Button` ไม่มี variant ชื่อนั้น) · lib ตัดสินผ่าน `emphasis` จอไม่อ่าน `closedAt` เอง
+      · `refs` = เลขที่ของใบที่ถือตัวเลขแทนแล้ว (แถว 4–6) วาดเป็นลิงก์ต่อท้ายประโยค คั่นด้วย " · "
    ⭐ ส่งออกให้จอรายละเอียดรุ่นเก่า (`SurveyDetail`) วาดแถบตัวเดียวกัน — ตัวนั้นไม่ส่ง `onConfirm` จึงได้ประโยคล้วนเสมอ */
 export function SurveyDrawingBanner({ banner, onConfirm }) {
-  const confirm = banner.action?.ready === true && typeof onConfirm === "function" ? banner.action : null;
+  const confirm = banner.action?.ready === true && banner.action.state && typeof onConfirm === "function" ? banner.action : null;
   return (
     <StatusNotice
       tone="info"
       action={confirm ? (
-        <Button variant="outline" onClick={onConfirm} className={`${styles.action} ${styles.bannerAction}`}>{confirm.label}</Button>
+        <GatedAction
+          tone={confirm.emphasis === "primary" ? "primary" : undefined}
+          variant={confirm.emphasis === "primary" ? "filled" : "outline"}
+          blocker={confirm.state === "blocked" ? confirm.reason : ""}
+          onClick={() => onConfirm(confirm)}
+          aria-disabled={confirm.state === "blocked" ? "true" : undefined}
+          data-blocked={confirm.state === "blocked" ? "1" : undefined}
+          className={`${styles.action} ${styles.bannerAction}`}
+        ><span className={styles.actionLabel}>{confirm.label}</span></GatedAction>
       ) : null}
     >
-      {thaiText(banner.text)}
-      {banner.note ? <span className={styles.bannerNote}>{thaiText(banner.note)}</span> : null}
+      {/* `banner.keep` = วลีที่ห้ามตัดกลาง ("ไม่ต้องยืนยันหน้างาน" · ชื่อปุ่มใน “…”) — lib ประกาศ · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10) */}
+      {banner.keep?.length ? keepPhrases(banner.text, banner.keep) : thaiText(banner.text)}
+      {banner.refs?.length ? (
+        <>
+          {" "}
+          {banner.refs.map((ref, index) => (
+            <Fragment key={ref.href || index}>
+              {index ? " · " : null}
+              <Link className={`linklike ${styles.docRef} ${styles.bannerRef}`} href={ref.href}>{ref.docNo}</Link>
+            </Fragment>
+          ))}
+        </>
+      ) : null}
+      {banner.note ? <span className={styles.bannerNote}>{keepNote(banner.note)}</span> : null}
     </StatusNotice>
+  );
+}
+
+/* ── บรรทัดลิงก์สองทางของใบยืนยันหน้างาน (งวด S5 D-2 b) — `zones.confirmOf` (ใบนี้ยืนยันผลของใบไหน) · `zones.confirmLinks`
+   (ใบยืนยันที่ผูกกับใบนี้) · ประโยคและท่อนที่เป็นลิงก์มาจาก lib (`segments`) ไฟล์นี้ไม่ประกอบคำเอง
+   ⚠️ วาดได้ทั้งที่ไม่มีแถบแจ้ง (ใบยืนยันเองไม่มีแถบ) · ไม่มีคีย์ = ไม่วาดอะไร (ใบของวันนี้จอเดิม) */
+function ConfirmLinks({ zones }) {
+  const lines = [...(zones.confirmOf ? [zones.confirmOf] : []), ...(zones.confirmLinks || [])];
+  if (!lines.length) return null;
+  return (
+    <div className={styles.confirmLinks}>
+      {lines.map((line, index) => (
+        <p key={line.href || index} className={styles.confirmLink}>
+          {line.segments.map((part, at) => (part.href
+            ? <Link key={at} className={`linklike ${styles.docRef} ${styles.lineRef}`} href={part.href}>{part.text}</Link>
+            : <Fragment key={at}>{thaiText(part.text)}</Fragment>))}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -201,6 +255,14 @@ export function SurveyDrawingBanner({ banner, onConfirm }) {
    ⚠️ `table.lastLabel` เป็นทั้งหัวคอลัมน์และป้ายของเซลล์บนจอแคบ (`data-label`) — สองที่ต้องเป็นคำเดียวกันเสมอ */
 function ZonesTable({ zones }) {
   const { rows, sent, totals, photos, table } = zones;
+  /* ⭐ ใบจากแบบทั้งใบที่ส่งผลแล้ว (`zones.drawingOnly` จาก lib — S2b-O9 · มติเจ้าของ 19/10) — จุดของพื้นที่จากแบบไม่บังคับและไม่มีการเลือก
+     ⇒ ช่องจุดเป็น "จุดติดตั้งโดยประมาณ" + "{n} จุด" (คำเดียวกับหัวคอลัมน์ของตารางสรุปส่งผลของ TS) ไม่ใช่ "เลือก / ทั้งหมด"
+     · ใบลงหน้างาน/ใบผสม = คำและตัวเลขเดิมทุกตัวอักษร */
+  const drawingOnly = sent && zones.drawingOnly === true;
+  const spotLabel = drawingOnly ? DRAWING_SPOT_LABEL : "จุดติดตั้ง";
+  const spotText = (selected, total) => (sent && !drawingOnly
+    ? naText(total ? `${selected} / ${total}` : null)
+    : naText(total ? `${total} จุด` : null));
   return (
     <TableScroll surface="embedded" cells="stacked" minWidth={860} className={styles.zoneShell}>
       <table className={styles.zoneTable}>
@@ -212,7 +274,7 @@ function ZonesTable({ zones }) {
             <th className="num">ตร.ม.</th>
             <th className="num">ลบ.ม.</th>
             {table.wideColumn && <th className="num">ภาพกว้าง</th>}
-            <th className="num">{sent ? "จุดติดตั้ง (เลือก / ทั้งหมด)" : "จุดติดตั้งได้"}</th>
+            <th className="num">{drawingOnly ? DRAWING_SPOT_LABEL : sent ? "จุดติดตั้ง (เลือก / ทั้งหมด)" : "จุดติดตั้งได้"}</th>
             <th className="num">แพ็คเกจ</th>
             <th>{table.lastLabel}</th>
           </tr>
@@ -239,11 +301,7 @@ function ZonesTable({ zones }) {
               <Cell label="ลบ.ม." num>{naText(num(row.volumeCbm))}</Cell>
               {/* แถวจากแบบในใบผสม: ภาพกว้างไม่ใช่ของวิธีนี้ ⇒ lib ส่งขีดมา (`wideText`) · แถวลงหน้างาน = ตัวนับเดิม */}
               {table.wideColumn && <Cell label="ภาพกว้าง" num>{row.wideText ?? photoText(row.photosWide)}</Cell>}
-              <Cell label="จุดติดตั้ง" num>
-                {sent
-                  ? naText(row.spotsTotal ? `${row.spotsSelected} / ${row.spotsTotal}` : null)
-                  : naText(row.spotsTotal ? `${row.spotsTotal} จุด` : null)}
-              </Cell>
+              <Cell label={spotLabel} num longLabel={drawingOnly}>{spotText(row.spotsSelected, row.spotsTotal)}</Cell>
               {/* ⭐ ขนาด + จำนวนที่หัวหน้าเคาะ ("SM · 1" · mig 0398) — ของที่ฝ่ายขายเอาไปตั้งราคา
                   · บรรทัดรองขึ้นเฉพาะเมื่อต่างจากที่ระบบเสนอ (ต่างได้ แต่ต้องเห็นว่าต่าง) · 🔄 แทน "สูตร N" เดิม
                   · ถ้อยคำมาจาก `surveyJobView` (กติกาหัวไฟล์) */}
@@ -282,11 +340,7 @@ function ZonesTable({ zones }) {
             <Cell label="ตร.ม." num>{naText(num(totals.areaSqm || null))}</Cell>
             <Cell label="ลบ.ม." num>{naText(num(totals.volumeCbm || null))}</Cell>
             {table.wideColumn && <Cell label="ภาพกว้าง" num>{photoText(table.wideTotal)}</Cell>}
-            <Cell label="จุดติดตั้ง" num>
-              {sent
-                ? naText(totals.spotsTotal ? `${totals.spotsSelected} / ${totals.spotsTotal}` : null)
-                : naText(totals.spotsTotal ? `${totals.spotsTotal} จุด` : null)}
-            </Cell>
+            <Cell label={spotLabel} num longLabel={drawingOnly}>{spotText(totals.spotsSelected, totals.spotsTotal)}</Cell>
             <Cell label="แพ็คเกจ" num>
               {naText(totals.packageQty || null)}
               {/* สัดส่วนขนาดของทั้งใบ ("SM 1 · ST 1") — จำนวนรวมเท่ากันแต่ขนาดต่าง = ราคาต่าง */}
@@ -432,7 +486,8 @@ function DocumentBlock({ doc, sheetHref, onRefresh }) {
  * @param onRefresh ขอให้เปลือกอ่านใบใหม่ **เบื้องหลัง** (ไม่ล้างจอ) — บล็อกเอกสารเรียกเมื่อครบเวลารอไฟล์ · view ไม่ยิง API เอง
  * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว — ส่งต่อให้ `surveyJobView` (บล็อกเอกสารเลิกสัญญาว่าตรวจให้เอง)
  * @param stepNotes ประโยคที่ขึ้น **แทนปุ่มของก้าวปัจจุบัน** บนแถบตอนนี้ (เปลือกตัดสิน — เช่น งานประเมินจากแบบที่คนดูรับปากวันส่งผลไม่ได้)
- * @param onDrawingConfirm ตัวกดของปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้ง — ยังไม่มีผู้ส่ง (งวด S5) ⇒ ปุ่มไม่ถูกวาด
+ * @param onDrawingConfirm ตัวกดของปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้ง — รับก้อน `action` ของแถบ (มี `href` ของฟอร์ม) · เปลือกพาไป
+ *                         ฟอร์มเอง (view ไม่นำทาง ไม่ยิง API) · สภาพติดด่านไม่เคยถึงตัวนี้ (`GatedAction` บอกเหตุแทน) · ไม่ส่ง = ไม่มีปุ่ม
  */
 export default function SurveyRequestView({
   request, today, viewer = {}, people = [], peopleLoading = false, stepNotes = [], onDrawingConfirm,
@@ -573,9 +628,12 @@ export default function SurveyRequestView({
                 </>
               ) : null}
             </small>
-            <p className={styles.nowHeadline}>{job.now.headline}</p>
+            {/* วันที่ในพาดหัวของงานโต๊ะไม่ตัดกลางวันที่บนมือถือ — lib บอกท่อนที่ห้ามขาด (`now.headlineKeep` · S2b แก้หลังตรวจจอ sales-q10c)
+                · ขั้นอื่นไม่มีคีย์นี้ = ข้อความเดิม (`keepPhrases` คืนสตริงเดิมเมื่อไม่มีท่อน) */}
+            <p className={styles.nowHeadline}>{keepPhrases(job.now.headline, job.now.headlineKeep)}</p>
             {job.now.progress ? <Meter {...job.now.progress} /> : null}
-            {job.now.sub ? <p className={styles.nowSub}>{job.now.sub}</p> : null}
+            {/* `now.subKeep` — ตัวเลขไม่ขาดจากหน่วย/ป้าย ("2 / 3 พื้นที่" · "ปิดแล้ว 1/2") · เฉพาะใบที่มีพื้นที่จากแบบ · ไม่มีคีย์ = สตริงเดิม */}
+            {job.now.sub ? <p className={styles.nowSub}>{keepPhrases(job.now.sub, job.now.subKeep)}</p> : null}
             {job.now.next ? (
               <p className={styles.nowNext}><span>ต่อไป</span>{job.now.next}</p>
             ) : null}
@@ -613,8 +671,11 @@ export default function SurveyRequestView({
                 className={styles.bandAction}
               />
             ) : null}
+            {/* 🐞 UAT 26/10 (S18 request-mixed-in-work 1440 · head-r3-53): เหตุของใบผสมตัด "หัวหน้าต้อง" / "ทำ: ห้องประชุมชั้น 3" ที่หน้าคำร้อง
+                (การ์ดของใบประเมินแก้แล้ว — ประโยคเดียวกันมาจาก `surveyControlView.send`) ⇒ ชิ้นชุดเดียวกับการ์ด: ป้ายท่อน · ชื่อพื้นที่ · “…” · (…)
+                ⚠️ ห่อ span ตัวเดียว — `.blocked` เป็น flex: ชิ้นที่วางตรง ๆ จะกลายเป็นคอลัมน์แยกกัน (แบบเดียวกับ `.wait` ข้างล่าง) */}
             {sendBlocker ? (
-              <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{sendBlocker}</p>
+              <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" /><span>{keepPhrases(sendBlocker, surveyCardUnits(sendBlocker, surveyCardUnitNames(job.control)))}</span></p>
             ) : null}
             {bandPrimary?.disabled && typeof bandPrimary.disabledReason === "string" ? (
               <p className={styles.blocked} role="status"><Lock size={13} aria-hidden="true" />{bandPrimary.disabledReason}</p>
@@ -652,13 +713,23 @@ export default function SurveyRequestView({
         actions={<span className={styles.stepCount}>{zones.rows.filter((r) => !r.cut).length} พื้นที่</span>}
       >
         <div className={styles.zoneStack}>
+          {/* ✏️ งวด S5 (D-2 b): บรรทัดลิงก์ของใบยืนยันหน้างาน — คอมโพเนนต์เดียว วางที่เดียวต่อสภาพของใบ:
+              ยังไม่ส่งผล = อย่างแรกใต้หัวการ์ด (ใบยืนยันที่ยังไม่ส่งบอกก่อนอย่างอื่นว่ายืนยันผลของใบไหน) ·
+              ส่งผลแล้ว = ติดเหนือแถบแจ้ง (ข้างล่าง) ที่มันพูดถึง */}
+          {zones.sent ? null : <ConfirmLinks zones={zones} />}
           {zones.sent ? (
             <MetricStrip className={styles.summary}>
               <Metric label="พื้นที่" value={`${fmtNumber(zones.totals.zones)} พื้นที่`} note={zones.unchanged ? "ครบตามที่ขอ" : "มีตัด/เพิ่ม"} />
               <Metric label="พื้นที่รวม" value={`${num(zones.totals.areaSqm)} ตร.ม.`} />
               <Metric label="ปริมาตรรวม" value={`${num(zones.totals.volumeCbm)} ลบ.ม.`} />
               <Metric label="แพ็คเกจ" value={`${fmtNumber(zones.totals.packageQty)} แพ็คเกจ`} note={zones.packageMixText || null} />
-              <Metric label="จุดติดตั้ง" value={`${zones.totals.spotsSelected} / ${zones.totals.spotsTotal}`} note="เลือก / ที่ติดตั้งได้" />
+              {/* ใบจากแบบทั้งใบ (S2b-O9): "{n} จุด" · 0 = ขีด · หมายเหตุบอกว่าเป็นจุดโดยประมาณจากแบบ — ใบอื่นคำเดิม */}
+              <Metric label="จุดติดตั้ง"
+                value={zones.drawingOnly
+                  ? naText(zones.totals.spotsTotal ? `${zones.totals.spotsTotal} จุด` : null)
+                  : `${zones.totals.spotsSelected} / ${zones.totals.spotsTotal}`}
+                note={zones.drawingOnly ? SURVEY_DRAWING_SPOTS_NOTE : "เลือก / ที่ติดตั้งได้"}
+              />
             </MetricStrip>
           ) : null}
 
@@ -699,6 +770,7 @@ export default function SurveyRequestView({
             </StatusNotice>
           ) : null}
 
+          {zones.sent ? <ConfirmLinks zones={zones} /> : null}
           {/* ✏️ ใบที่ส่งผลแล้วและมีพื้นที่จากแบบ — แถบแจ้งอยู่ติดเหนือตารางที่มันพูดถึง (`null` = ไม่มีแถบ) */}
           {zones.drawingBanner ? <SurveyDrawingBanner banner={zones.drawingBanner} onConfirm={onDrawingConfirm} /> : null}
 

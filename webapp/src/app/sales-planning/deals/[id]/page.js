@@ -65,7 +65,9 @@ import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
-import { wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
+import { installmentActualSubLine, wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
+import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
+import { keepPhrases } from "@/components/ThaiText";
 import { legacyClosedNoteOf } from "@/lib/sales/legacyDealSwitch";
 import { DEAL_DELETE_LEAD_NOTE, LEAD_RELEASE_NOTE, canLinkLeadRole, dealLeadLinkBlocker, leadLabel, leadLinkEffects, leadLinkOptions } from "@/lib/sales/dealLeadLink";
 import { LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS } from "@/lib/sales/leads";
@@ -390,6 +392,9 @@ export default function DealOverviewPage() {
     actualCount: soAmounts.actualCount,
     pendingApproval: soAmounts.pendingApproval,
     pendingApprovalCount: soAmounts.pendingApprovalCount,
+    /* ใบ "Actual รายงวด" (mig 0412): งวดที่ยังไม่ยื่น = กอง "รอนับรายงวด" — คำใต้การ์ดพูด "นับแล้ว ฿a · รอนับรายงวด ฿b"
+       แทน "ต่าง ฿(งวดที่ยังไม่ถึงคิว)" · มาจากแถว SO ชุดเดียวกับรออนุมัติ (splitSalesOrderAmounts) */
+    instRemaining: soAmounts.instRemaining,
   });
   /* ช่องยอดของ SO หนึ่งใบ — สามสถานะ (salesOrderAmountKind):
        actual           อนุมัติแล้ว = Actual ตามเดิม
@@ -397,7 +402,14 @@ export default function DealOverviewPage() {
        excluded         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก = ยอดจาง + "ไม่นับ" */
   const soAmountCell = (order) => {
     const kind = salesOrderAmountKind(order);
-    if (kind === "actual") return money(salesOrderActual(order));
+    if (kind === "actual") {
+      /* ใบ "Actual รายงวด" (mig 0412 · review รอบสอง 26/10): คอลัมน์ "ยอดก่อน VAT" = ยอดเต็มของใบ + บรรทัดรองบอกกอง
+         (นับแล้ว · รออนุมัติ · รอนับรายงวด) — ตัวเดียวกับทะเบียน SO · ใบทั้งใบ = Actual ตามเดิม */
+      const sub = installmentActualSubLine(order);
+      return sub
+        ? <>{money(Math.max(0, Number(order?.actualAmount) || 0))}<InstallmentActualSubLine order={order} compact /></>
+        : money(salesOrderActual(order));
+    }
     if (kind === "pending_approval") {
       return <PendingApprovalAmount amount={salesOrderPendingApprovalAmount(order)} count={1} inline />;
     }
@@ -1128,7 +1140,7 @@ export default function DealOverviewPage() {
                     {/* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A): คำส่วนต่างเทียบ 0 กับ 0 ไม่ได้บอกอะไร — บรรทัดบันทึกข้างล่างพูดแทน
                         · ดีลที่ยังรอเจ้าของยืนยัน (stillInForecast · บล็อก B) โชว์คำของ wonDealForecastHint + บรรทัดบันทึก
                         · ดีลเก่าที่พิมพ์ 0 ตอนสร้าง (ไม่มีบันทึก) เหลือบรรทัดเดียว = คำชนิด legacy_no_so (มติผู้ใช้ 2026-09-15) */}
-                    {legacyNote && !legacyNote.stillInForecast ? null : wonHint.text}
+                    {legacyNote && !legacyNote.stillInForecast ? null : keepPhrases(wonHint.text, wonHint.keep)}
                     {legacyNote ? (
                       <div>
                         {`ยอดปิดในระบบเดิม ${money(legacyNote.value)}${legacyNote.date ? ` · ปิด ${fmtDate(legacyNote.date)}` : ""}`}
@@ -1592,10 +1604,11 @@ export default function DealOverviewPage() {
                 <thead><tr><th>เลขที่ SO</th><th>สถานะ</th><th className="num">ยอดก่อน VAT</th><th>ใบยื่นภาษี</th></tr></thead>
                 <tbody>{data.salesOrders.map((order) => (
                   <tr key={order.id} className="premium-row">
-                    <td className="mono"><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
+                    {/* เลขที่/ป้ายสถานะห้ามขาดบรรทัด (UAT 27/10 ข้อ 4 — บรรทัดรองของใบรายงวดเคยบีบจนขึ้น "SO- / 26100345-0") */}
+                    <td className={`mono ${styles.soNoWrap}`}><Link href={`/sa/sales-orders/${order.id}`} className="linklike">{order.orderNumber}</Link></td>
                     {/* ป้ายสถานะจากทะเบียนกลาง — map ที่เขียนเองเดิมขาด revised/approval_revoked
                         (ขึ้นคำอังกฤษดิบ) และเรียกร่างว่า "ร่าง" ต่างจากหน้า SO */}
-                    <td><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{SALES_ORDER_STATUS_LABELS[order.status] || order.status}</span></td>
+                    <td className={styles.soNoWrap}><span className="ui-badge" style={{ color: order.status === "approved" ? "var(--green)" : order.status === "pending_approval" ? "var(--amber)" : "var(--text-3)" }}>{SALES_ORDER_STATUS_LABELS[order.status] || order.status}</span></td>
                     <td className="num mono">{soAmountCell(order)}</td>
                     {/* ปลายทางของ SO — เดิมหน้าดีลจบที่ SO ต้องไปเปิดหน้า SO ถึงจะรู้ว่าภาษีเดินถึงไหน.
                         ว่าง = ไม่มีสินค้าสรรพสามิตต้องยื่น (คิวกลางกรองให้แล้ว) ไม่ใช่งานค้าง */}

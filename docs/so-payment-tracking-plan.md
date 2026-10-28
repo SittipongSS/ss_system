@@ -145,6 +145,13 @@ sales_order_installments
 
 > **ยืนยันกับผู้ใช้ 2026-08-13:** *"Actual ที่นับยอดให้ SA เป็นยอดเต็ม 100% นะ ถึงจะแบ่งจ่ายใน SO"*
 
+> ⚠️ **ข้อยกเว้นเลือกเปิดรายใบ (มติเจ้าของ 2026-10-26 · mig 0412 · [so-installment-actual.md](so-installment-actual.md))** —
+> ตอนอนุมัติใบ AE Sup เลือกได้ว่า "นับ Actual ทั้งใบ" (ค่าตั้งต้น = มติ 13/08 ข้างล่างทุกข้อ) หรือ "นับ Actual รายงวด"
+> (`sales_orders.actualMode = 'installment'`): ยอดงวดเข้า Actual ตอน **AE Sup อนุมัติงวด** ไม่ใช่ตอนบัญชีรับรองเงิน ·
+> ยื่นงวดถัดไปได้หลังบัญชีรับรองงวดก่อน · บัญชีรับรองงวดที่ยังไม่อนุมัติไม่ได้ (trigger ของงวด) ·
+> ⇒ ตารางข้างล่างเป็นความจริงของใบ "ทั้งใบ" เท่านั้น — ใบรายงวดรวมเข้าดีลจากงวดที่อนุมัติแล้ว (`actualCountedAmount`) ·
+> แม้ในใบรายงวด **ยอดที่เก็บเงินได้ก็ยังไม่ใช่ Actual** และ `salesOrderPayments.js` ยังไม่ export ชื่อ `actual*` (เทสต์ล็อกเดิมยังอยู่)
+
 ตรวจสายในโค้ดครบแล้ว — **งวดชำระไม่แตะ Actual เลย และแตะไม่ได้ด้วยโครงสร้าง**
 
 | จุด | ของจริงในโค้ด |
@@ -152,7 +159,7 @@ sales_order_installments
 | ตอนสร้าง SO จาก QT | `actualAmount = GREATEST(0, "totalAmount" - "vatAmount")` = ยอดเต็มก่อน VAT (mig 0107:202) |
 | รวมเข้าดีล | `sum("actualAmount") WHERE status = 'approved'` — ดูทั้งใบ ไม่รู้จักงวด (mig 0107:87) |
 | trigger ที่ปลุกการรวม | `AFTER … UPDATE OF status, "actualAmount", "orderDate", "dealId" ON sales_orders` — **ไม่ได้ฟังตารางงวดเลย** (mig 0107:126) |
-| ตัวอ่านฝั่งแอป | `salesOrderActual(order)` = `approved ? actualAmount : 0` เต็มจำนวน |
+| ตัวอ่านฝั่งแอป | `salesOrderActual(order)` = `approved ? actualAmount : 0` เต็มจำนวน (ใบรายงวด 0412: `actualCountedAmount` — ผ่าน `salesOrderCountedActual`) |
 
 ⇒ SA ได้ยอดเต็ม 100% ตั้งแต่ใบอนุมัติ · แบ่งจ่ายกี่งวดก็ตาม Actual ไม่ขยับ
 งวดชำระเป็น **แกนติดตามการเก็บเงิน** ล้วน ๆ

@@ -13,6 +13,7 @@
 import { ATTACHMENT_TYPES } from '@/lib/master/attachmentTypes';
 import { isGoogleDoc } from '@/lib/master/googleDocView';
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
+import { INSTALLMENT_STATUS_LABELS, installmentDisplayStatus } from '@/lib/sales/salesOrderPayments';
 
 /* ลำดับกลุ่ม = ลำดับบนจอ · "แนบเพิ่ม" ขึ้นก่อนเพราะเป็นกลุ่มเดียวที่ยังขยับได้ (แนบ/ลบ) ·
    ที่เหลือเป็นของที่ตรึงแล้วหรือจัดการที่แท็บอื่น (`manageTab`) */
@@ -66,6 +67,9 @@ function paymentRows(order, installments) {
     (Array.isArray(inst.evidence) ? inst.evidence : []).forEach((att, i) => {
       rows.push({
         id: `pay:${inst.id}:${i}`,
+        // seq · kind = ที่ตั้งชื่อไฟล์ในชุดเอกสาร (salesOrderBundle.js) — แท็บเอกสารไม่ได้อ่าน
+        seq: inst.seq ?? null,
+        kind: 'evidence',
         title: att?.fileName || `หลักฐาน ${i + 1}`,
         note: join(name, 'หลักฐานการชำระ'),
         href: `${base}&i=${i}`,
@@ -76,6 +80,9 @@ function paymentRows(order, installments) {
     if (inst.taxInvoiceFile?.storagePath) {
       rows.push({
         id: `tax:${inst.id}`,
+        seq: inst.seq ?? null,
+        kind: 'tax_invoice',
+        taxInvoiceNo: inst.taxInvoiceNo || null,
         title: inst.taxInvoiceFile.fileName || 'ไฟล์ใบกำกับภาษี',
         note: join(name, inst.taxInvoiceNo ? `ใบกำกับภาษี ${inst.taxInvoiceNo}` : 'ใบกำกับภาษี'),
         href: `${base}&doc=tax_invoice`,
@@ -86,14 +93,33 @@ function paymentRows(order, installments) {
   return rows;
 }
 
+/* สรุปงวดของใบ (ไม่มีไบต์ ไม่มีลิงก์) — ชุดเอกสาร SO บอก "งวดไหนยังไม่มีสลิป/ใบกำกับ เพราะอะไร" ได้
+   (🐞 27/10 เจ้าของ: "ไฟล์หลักฐานการชำระแต่ละงวดไม่มีหรอ" — งวดที่ยังไม่จ่ายไม่มีไฟล์ แต่ ZIP ไม่บอกอะไรเลย) */
+function installmentSummary(installments) {
+  return [...(installments || [])]
+    .sort((a, b) => (Number(a?.seq) || 0) - (Number(b?.seq) || 0))
+    .map((inst) => {
+      const status = installmentDisplayStatus(inst);
+      return {
+        id: inst.id,
+        seq: inst.seq ?? null,
+        status,
+        statusLabel: INSTALLMENT_STATUS_LABELS[status] || status || null,
+        evidenceCount: Array.isArray(inst.evidence) ? inst.evidence.length : 0,
+        taxInvoiceFile: Boolean(inst.taxInvoiceFile?.storagePath),
+        taxInvoiceNo: inst.taxInvoiceNo || null,
+      };
+    });
+}
+
 /**
- * รวมเอกสารทุกบ้านของใบเป็นกลุ่ม — คืน `{ groups, total }`
+ * รวมเอกสารทุกบ้านของใบเป็นกลุ่ม — คืน `{ groups, total, installments }`
  * กลุ่มว่างยังอยู่ในผลลัพธ์ (จอเลือกเองว่าจะซ่อน) · `total` นับทุกไฟล์ = ตัวเลขบนหัวแท็บ
  */
 export function buildSalesOrderDocuments({
   order, quotation = null, installments = [], extra = [], contract = null, contractFiles = [],
 } = {}) {
-  if (!order) return { groups: [], total: 0 };
+  if (!order) return { groups: [], total: 0, installments: [] };
   const rowsByKey = {
     extra: (extra || []).map((att) => attachmentRow(att, 'sales_order')),
     confirmation: confirmationRows(order, quotation),
@@ -103,7 +129,7 @@ export function buildSalesOrderDocuments({
       : [],
   };
   const groups = SALES_ORDER_DOC_GROUPS.map((g) => ({ ...g, rows: rowsByKey[g.key] }));
-  return { groups, total: groups.reduce((sum, g) => sum + g.rows.length, 0) };
+  return { groups, total: groups.reduce((sum, g) => sum + g.rows.length, 0), installments: installmentSummary(installments) };
 }
 
 /**

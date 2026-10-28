@@ -826,7 +826,7 @@ test('⭐ ภาพหลังรับรองประทับจากง�
   assert.deepEqual(opening.confirmOutlook, {
     paidThrough: '2026-09-30',
     collected: 196452,
-    next: { label: 'งวด ต.ค.–ธ.ค.', amount: 65484, dueDate: '2026-10-01' },
+    next: { label: 'งวด ต.ค.–ธ.ค.', amount: 65484, dueDate: '2026-10-01', actualStatus: null },
     /* PR-C (review 29/09): งวดถัดไปครบกำหนดหลัง "จ่ายถึง" ⇒ ด่านเงินของนัดเปิดถึงวันเดียวกัน · ไม่มีงวดกดไว้ */
     gateOpenThrough: '2026-09-30',
     gateHeldBy: null,

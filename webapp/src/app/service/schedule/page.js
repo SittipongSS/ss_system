@@ -31,7 +31,7 @@ import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import ScheduleQueueCard from "@/components/service/ScheduleQueueCard";
 /* ⭐ คำร้องรอลงคิว (มติเจ้าของ 23/09) — โมดัลลงคิวตัวเดียวกับหน้าใบ + ข้อความกล่องรับเรื่องชุดเดียวกัน */
 import CommitDueDialog from "@/components/requests/CommitDueDialog";
-import { acknowledgeConfirmCopy, acknowledgeDeskNext } from "@/lib/requests/acknowledgeConfirm";
+import { acknowledgeConfirmCopy, acknowledgeDeskToast } from "@/lib/requests/acknowledgeConfirm";
 import { commitDueLabels } from "@/lib/requests/commitDue";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -903,13 +903,13 @@ export default function ServiceSchedulePage() {
     }
     setAckRow(null);
     const warning = responseWarningText(data);
-    /* งานโต๊ะ (ประเมินจากแบบทั้งใบ): การ์ดไม่ได้เปลี่ยนปุ่ม — มันออกจากคิวนี้ไปเลย ⇒ บอกก้าวจริง (ประโยคเดียวกับกล่องยืนยัน) */
-    const deskNext = acknowledgeDeskNext(row.request);
+    /* งานโต๊ะ (ประเมินจากแบบทั้งใบ): การ์ดไม่ได้เปลี่ยนปุ่ม — มันออกจากคิวนี้ไปเลย ⇒ บอกก้าวจริง (ประโยคเดียวกับกล่องยืนยัน)
+       และค้างนานกว่าค่าตั้งต้น — ข้อความนี้เป็นร่องรอยเดียวที่เหลือหลังการ์ดหาย (S2b แก้หลังตรวจจอ planner-q8) */
+    const deskToast = acknowledgeDeskToast(row.request, row.code);
     setToast(warning
       ? { kind: "warning", msg: warning, duration: RESPONSE_WARNING_TOAST.duration }
-      : deskNext
-      ? { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — ${deskNext}` }
-      : { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — การ์ดเปลี่ยนเป็น “${commitDueLabels(row.request).action}”` });
+      : deskToast
+      ?? { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — การ์ดเปลี่ยนเป็น “${commitDueLabels(row.request).action}”` });
     await reloadAfterRequest();
   };
   const submitCommitDue = async (payload) => {

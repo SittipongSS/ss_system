@@ -120,13 +120,15 @@ export async function taxInvoiceConflict(supabase, { installmentId, no }) {
  * ⚠️ หนึ่งคำร้องมีบรรทัด `tax_invoice` ได้หลายบรรทัด (dedup ที่ docType+spec) ⇒
  * ชี้ที่ "ใบ" อย่างเดียวไม่ระบุว่าใบไหน · มีมากกว่าหนึ่งบรรทัด = ไม่เดา ปล่อยว่าง
  */
-export async function findLinkedTaxInvoiceItem(supabase, billingRequestId) {
-  const requestId = String(billingRequestId || '').trim();
-  if (!requestId) return null;
+export async function findLinkedTaxInvoiceItem(supabase, billingRequestIds) {
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — รับ id คำร้องทุกใบของงวด (รับ string เดี่ยวได้เหมือนเดิม) · บรรทัดเดียวทั้งชุดเท่านั้นที่เขียนตาม */
+  const requestIds = [...new Set((Array.isArray(billingRequestIds) ? billingRequestIds : [billingRequestIds])
+    .map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!requestIds.length) return null;
   const { data, error } = await supabase
     .from('dept_request_items')
     .select('id, "requestId", "lineKind", "docType"')
-    .eq('requestId', requestId)
+    .in('requestId', requestIds)
     .eq('docType', 'tax_invoice')
     .limit(2);
   if (error) throw error;

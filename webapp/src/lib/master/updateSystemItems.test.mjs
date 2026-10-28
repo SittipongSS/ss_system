@@ -118,3 +118,23 @@ test('⭐ dept_request/method: อยู่ในทะเบียน · เป
   // บรรทัดยกเลิกบนเธรดของนัด (ตัวที่พก `meta.methodKey`) ใช้ชนิดเดิมของนัด
   assert.equal(isKnownUpdateKind('service_visit', 'cancel'), true);
 });
+
+/* ── บรรทัด "ใบยืนยันหน้างาน" บนเธรดของใบต้นทาง (ประเมินจากแบบ งวด S5 §2.5 · R8) ──────────────────
+   ก้อนแรกของทุกเหตุการณ์ = `survey_confirm` (ยิงกระดิ่ง) · ก้อนต่อ ๆ ไปของการส่งผลที่ยาว = `survey_confirm_more` (เงียบ)
+   ⇒ หนึ่งเหตุการณ์ = หนึ่งกระดิ่ง · ป้ายเดียวกันให้เธรดอ่านเป็นเรื่องเดียว · คนเลือกโพสต์เองไม่ได้ทั้งคู่ */
+test('⭐ dept_request/survey_confirm(+_more): อยู่ในทะเบียน · บทสนทนา · ก้อนแรกยิงกระดิ่ง ก้อนต่อเงียบ · โพสต์เองไม่ได้', () => {
+  assert.deepEqual(UPDATE_KINDS.dept_request.survey_confirm,
+    { label: 'ใบยืนยันหน้างาน', color: 'var(--blue)', narrative: true });
+  assert.deepEqual(UPDATE_KINDS.dept_request.survey_confirm_more,
+    { label: 'ใบยืนยันหน้างาน', color: 'var(--blue)', narrative: true, quiet: true });
+  for (const kind of ['survey_confirm', 'survey_confirm_more']) {
+    assert.equal(isKnownUpdateKind('dept_request', kind), true, kind);
+    assert.equal(isNarrativeUpdateItem('dept_request', own(kind)), true, kind);
+    assert.equal(isAuthorableKind('dept_request', kind), false, kind);
+    assert.equal(authorableKinds('dept_request').includes(kind), false, kind);
+  }
+  assert.equal(isQuietUpdateKind('dept_request', 'survey_confirm'), false, 'ก้อนแรก = กระดิ่ง');
+  assert.equal(isQuietUpdateKind('dept_request', 'survey_confirm_more'), true, 'ก้อนต่อ = เงียบ');
+  // ชื่อห่างจาก `confirmed` (ลูกค้าคอนเฟิร์ม) ในบล็อกเดียวกัน — ไม่มีชนิดชื่อ `confirm` เฉย ๆ
+  assert.equal(isKnownUpdateKind('dept_request', 'confirm'), false);
+});

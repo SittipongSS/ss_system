@@ -11,21 +11,23 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { canAccessFinance } from '@/lib/permissions';
+import { loadSourceDeals } from '@/lib/scopedRow';
 import {
-  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerFacetTally, ledgerReport, ledgerRow, ledgerSummary,
-  ledgerVoidInstallment, orderStateIndex, sortLedger, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
+  filterLedger, ledgerBillingTally, ledgerCustomerOutlook, ledgerDueTally, ledgerFacetTally, ledgerIncludes, ledgerReport, ledgerRow,
+  ledgerSummary, orderStateIndex, sortLedger, stampActualHold, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
   stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
 import { holidaySet } from '@/lib/master/holidays';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
-import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
 import { billingCutoffOnIndex, billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
+import { primaryInstallmentRequest } from '@/lib/sales/installmentRequests';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -83,10 +85,13 @@ async function loadLedger(supabase, todayIso) {
      (`serviceFgCode`) เฉพาะใบที่ประทับแล้ว ⇒ ขาดช่องนี้ = ใบแพ็คเกจพิมพ์เองหลุดจากตัวกรอง/คอลัมน์ "ใบมีรอบบริการ" ของบัญชี */
   /* `supersededById` + `serviceContractId` (PR-C C5) = ใบยังมีผลไหม (`termOrderActive` ตัวเดียวของระบบ) + ผูกสัญญาแล้วไหม
      — บรรทัดด่านเงินของนัดบริการในโมดัลรับรองบนทะเบียน (ข้างล่าง `serviceTermZonesByOrder`) */
+  /* `actualMode` (mig 0412) = ใบ "Actual รายงวด" — งวดที่ AE Sup ยังไม่อนุมัตินับ บัญชีรับรองไม่ได้ (trigger ของงวด) ⇒ ทะเบียนตัดออกจาก
+     คิว "รอคุณรับรอง" และปุ่มรับรองบอกเหตุ (`ledgerRow` → `actualAwaitingApproval` · `ledgerRowLock`) · ขาดช่องนี้ = ทุกใบเป็นทั้งใบ
+     (ปุ่มเปิดให้กดแล้วไปตายที่ฐาน) */
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode", "sourceSalesOrderId"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -103,6 +108,11 @@ async function loadLedger(supabase, todayIso) {
     if (dealError) throw dealError;
     (deals || []).forEach((d) => dealById.set(d.id, d));
   }
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — แถวจัดกลุ่มตามผู้ดูแล/ทีมของดีลของ SO ต้นทาง (ป้ายของแถวเท่านั้น ·
+     ไม่เข้า `dealsById` ของเกณฑ์ใบมีรอบบริการ ⇒ สายธุรกิจของดีลลูกค้าไม่ไหลมาติดใบค่าภาษี) */
+  const { data: sourceDealBySource, error: sourceDealError } = await loadSourceDeals(supabase,
+    (orders || []).filter((o) => !o.dealId && o.sourceSalesOrderId).map((o) => o.sourceSalesOrderId));
+  if (sourceDealError) throw sourceDealError;
 
   /* ── เกณฑ์ "ใบมีรอบบริการ" (มติผู้ใช้ 2026-08-30) ─────────────────────────
      สาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อยหนึ่งบรรทัด ⇒ ต้องรู้สองอย่าง:
@@ -192,11 +202,10 @@ async function loadLedger(supabase, todayIso) {
        ไม่งั้นงวดที่คำร้องตายแล้วหลุดจาก "เลยรอบ ยังไม่ขอใบวางบิล" เงียบ ๆ
      ⚠️ เอาแค่ id + สถานะ · ไล่หน้า + ซอยก้อน (dept_requests อยู่ใน check:rowcap) · อ่านไม่ขึ้น = โยน (แบบทุกก้อนข้างบน)
        ไม่ใช่ถือว่า "ยังไม่ขอ" ทุกงวด ซึ่งจะทำให้การ์ด/ตัวกรองนับเลยรอบเกินจริงโดยไม่มีอะไรบอก */
-  const requestIds = [...new Set(rows.map((r) => r.billingRequestId).filter(Boolean))];
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับทุกจอ (คำร้องที่ชี้งวด ∪ คำร้องที่ตัวชี้ชี้อยู่) · ตัวแทนบนแถว = `primaryInstallmentRequest` */
   const billingRequestById = new Map();
-  if (requestIds.length) {
-    const { data: requests, error: requestError } = await fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase
-      .from('dept_requests').select('id, status').in('id', chunk).order('id', { ascending: true })));
+  {
+    const { data: requests, error: requestError } = await loadInstallmentRequests(supabase, rows, { select: 'id, status' });
     if (requestError) throw requestError;
     (requests || []).forEach((r) => billingRequestById.set(r.id, r));
   }
@@ -239,24 +248,24 @@ async function loadLedger(supabase, todayIso) {
   const ledger = rows
     .map((installment) => {
       const order = orderById.get(installment.salesOrderId);
-      if (!order) return null; // ใบถูกลบไปแล้วแต่แถวยังค้าง — ไม่ให้หลุดเป็นแถวไร้เลขที่
-      /* ใบยอด 0 ไม่มีขั้นยืนยันการชำระแล้ว (มติผู้ใช้ 2026-08-18) ⇒ ไม่ต้องเข้าทะเบียน
-         ของบัญชี · ใบเก่ายังมีแถวค้างอยู่จริง (prod 13 ใบ) — **ไม่ลบ** แค่ไม่เอามาโชว์
-         เป็นคิวงาน ไม่งั้นบัญชีเปิดมาเจอของที่ไม่มีวันมีเงินให้ตรวจ */
-      if (paymentNotRequired(order.totalAmount)) return null;
-      /* ⭐ งวดที่ยังไม่มีเงินของใบยกเลิก/ถูกออก Rev. ทับ = โมฆะ ไม่ใช่ยอดค้างรับ (PR0 · แผน so-payment-unlock-replan)
-         🐞 23/09 ทะเบียนนับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว · reported/confirmed ยังอยู่ครบ
-         ⚠️ ตัดก่อน `orderStateIndex`/"จ่ายถึง" (ประทับจาก `all`) — งวดโมฆะไม่ใช่งวดของใบอีกต่อไป */
-      if (ledgerVoidInstallment(installment, order)) return null;
+      /* ⭐ ตัวตัดสินเดียวกับป้ายบนเมนู (`ledgerIncludes` → `ledgerInConfirmQueue` · UAT FN 27/10 ข้อ 2 — เลขบนป้าย = แถวหลังกด):
+         · ใบถูกลบไปแล้วแต่แถวยังค้าง — ไม่ให้หลุดเป็นแถวไร้เลขที่
+         · ใบยอด 0 ไม่มีขั้นยืนยันการชำระแล้ว (มติผู้ใช้ 2026-08-18) ⇒ ไม่ต้องเข้าทะเบียนของบัญชี · ใบเก่ายังมีแถวค้างอยู่จริง
+           (prod 13 ใบ) — **ไม่ลบ** แค่ไม่เอามาโชว์เป็นคิวงาน ไม่งั้นบัญชีเปิดมาเจอของที่ไม่มีวันมีเงินให้ตรวจ
+         · งวดที่ยังไม่มีเงินของใบยกเลิก/ถูกออก Rev. ทับ = โมฆะ ไม่ใช่ยอดค้างรับ (PR0 · แผน so-payment-unlock-replan)
+           🐞 23/09 ทะเบียนนับยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิกแล้ว · reported/confirmed ยังอยู่ครบ
+           ⚠️ ตัดก่อน `orderStateIndex`/"จ่ายถึง" (ประทับจาก `all`) — งวดโมฆะไม่ใช่งวดของใบอีกต่อไป
+         · งวดที่ยอดยังไม่หยุด — query กรองไว้แล้ว (`frozenAt`) ตัวตัดสินถามซ้ำให้ป้ายบนเมนูได้กติกาเดียวกัน */
+      if (!ledgerIncludes(installment, order)) return null;
       return ledgerRow({
         installment,
         order,
         quotation: quoteById.get(order.quotationId) || null,
         customer: customerById.get(order.customerId) || null,
-        deal: dealById.get(order.dealId) || null,
+        deal: dealById.get(order.dealId) || sourceDealBySource.get(order.sourceSalesOrderId) || null,
         todayIso,
         serviceRounds: serviceRoundsByOrder.get(order.id) || false,
-        billingRequest: billingRequestById.get(installment.billingRequestId) || null,
+        billingRequest: primaryInstallmentRequest(installment, billingRequestById),
         billingRemind: remindIds.has(installment.id),
         dueRemind: dueRemindIds.has(installment.id),
         cutoffOn: cutoffOnById.get(installment.id) || null,
@@ -292,6 +301,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     stampOrderInstallmentCount(all);
     /* ภาพหลังรับรอง (จ่ายถึง · เก็บแล้ว · งวดถัดไป) ของงวดในคิว — ค่าระดับใบเหมือนกัน ประทับก่อนกรองด้วยเหตุผลเดียวกัน */
     stampConfirmOutlook(all);
+    /* ด่านนับ Actual รายงวด: งวดก่อนหน้าที่ยังไม่รับรอง + ใบกดนับที่เหลือทั้งหมดแล้ว (ค่าระดับใบ) — เหตุ "ใครต้องทำต่อ" ของงวดที่ติดด่าน
+       ต้องคิดก่อนกรอง (กรอง `?status=held` แล้วงวดก่อนหน้าหลุด = เหตุชี้ผิดคน · UAT FN 27/10 ข้อ 3) */
+    stampActualHold(all);
     const filters = {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,

@@ -19,6 +19,7 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isWonStage } from '@/lib/salesPlanning';
 import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
+import { detachRequestFromInstallments } from '@/lib/sales/installmentRequestsStore';
 
 /* ใบสั่งขายลูกของใบเสนอราคา — ประโยคของด่าน "งวดที่ย้ายไปจากใบนี้" ตอนลบใบเสนอราคา (route ใช้คำเดียวกับพรีวิว) */
 export const QUOTATION_CHILD_ORDERS = 'ใบสั่งขายของใบเสนอราคานี้';
@@ -700,11 +701,10 @@ export async function cleanupRequestOrphans(supabase, requestId) {
      และติดล็อก "ถอดคำร้องก่อน" ของการปรับแผน (0377) ถาวรโดยไม่มีปุ่มถอดให้กด
      ⭐ กำหนดวางบิล (26/09): ปุ่ม "ขอใบวางบิลงวดนี้" ผูกงวดตั้งแต่บันทึกร่าง ⇒ "ลบร่างที่ยังไม่ส่ง" กลายเป็นทางปกติ
      ไม่ใช่เคสหายาก · ร่องรอยอยู่ที่ audit ของการลบคำร้อง (before มี id) */
-  const { error: linkError } = await supabase
-    .from('sales_order_installments')
-    .update({ billingRequestId: null, updatedAt: new Date().toISOString() })
-    .eq('billingRequestId', requestId);
-  if (linkError) throw new Error(`ถอดคำร้องออกจากงวดชำระไม่สำเร็จ: ${linkError.message}`);
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวชี้ของงวดไม่ล้างทิ้งตรง ๆ แล้ว: คำร้องอื่นของงวดเดียวกันขึ้นเป็นตัวชี้แทน
+     (`detachRequestFromInstallments` → `syncBillingPointers` ตัวเขียนตัวชี้ที่เดียว) · ล้าง `installmentId` ของคำร้องนี้ก่อนลบด้วย */
+  const { error: linkError } = await detachRequestFromInstallments(supabase, requestId);
+  if (linkError) throw new Error(`ถอดคำร้องออกจากงวดชำระไม่สำเร็จ: ${linkError.message || linkError}`);
 }
 
 export async function formulaForcePreview(supabase, formula) {

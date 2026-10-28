@@ -7,8 +7,9 @@
 // ⚠️ supabase ไม่ throw เอง — ทุกตัวอ่าน `error` แล้วโยนเอง (อ่านพลาด ≠ ไม่มีข้อมูล) ยกเว้นตัวอ่านกติกาที่ตั้งใจไม่โยน (ข้างล่าง)
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { inSalesViewScope } from '@/lib/salesPlanning';
+import { inSalesDocScope, loadSourceDeals } from '@/lib/scopedRow';
 import { billingRequestedIds } from '@/lib/sales/salesOrderPayments';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 
 /* ใบที่ตายแล้ว (ยกเลิก · ถูกออก Rev. ทับ) — ไม่มีงวดให้ตามเก็บ ⇒ ไม่อยู่ในจอ "งวดที่วันจะเปลี่ยน" (ชุดเดียวกับ installmentVoid) */
@@ -21,11 +22,9 @@ const DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
    ⚠️ กรอง `kind` ชุดเดียวกับที่หน้าใบโหลดให้แผง (route ของใบ: คำร้อง billing_doc เท่านั้น) — แผนที่จอส่งมาคิดจากชุดนั้น
      ต่างชุดกันเมื่อไร = 409 วนไม่จบ */
 export async function loadBillingRequestedIds(supabase, rows) {
-  const ids = [...new Set((rows || []).map((row) => row.billingRequestId).filter(Boolean))];
-  if (!ids.length) return new Set();
-  const { data, error } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
-    .from('dept_requests').select('id, status').in('id', chunk).eq('kind', 'billing_doc')
-    .order('id', { ascending: true })));
+  if (!(rows || []).length) return new Set();
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับหน้าใบ (คำร้องที่ชี้งวด ∪ คำร้องที่ตัวชี้ชี้อยู่) ⇒ ชุดที่ด่านเห็น = ชุดที่แผงเห็น */
+  const { data, error } = await loadInstallmentRequests(supabase, rows, { select: 'id, status' });
   if (error) throw error;
   return billingRequestedIds(rows, new Map((data || []).map((request) => [request.id, request])));
 }
@@ -67,7 +66,7 @@ export async function billingSkipReady(supabase, rows) {
 
 /**
  * ใบ + ดีล (ด่านขอบเขตการเห็น) + ใบเสนอราคา + งวดทั้งใบ + คำร้องที่งวดผูก — ของหลายใบในคำขอเดียว
- * ⭐ ด่านขอบเขต = `inSalesViewScope(user, deal)` ตัวเดียวกับ route งวดของใบ (loadOrderForUser) — ใบที่คนนี้มองไม่เห็น
+ * ⭐ ด่านขอบเขต = `inSalesDocScope(user, order, 'view')` ตัวเดียวกับ route งวดของใบ (loadOrderForUser) — ใบที่คนนี้มองไม่เห็น
  *   **ไม่ถูกอ่านงวด** และนับไว้ใน `hidden` (จอบอกว่ามีใบที่ไม่เห็น ไม่ใช่แสร้งว่าไม่มี)
  * ⭐ ใบเสนอราคาเอา `status`/`quoteNumber` (ล็อกร่างที่ QT ถูกถอด Won — pipelineInstallmentLock) + `paymentPlan` (ยอดสดของงวดร่าง)
  * ⚠️ ไม่โหลดสายโซ่ Rev. (`revisionHistory`) — ใบ revised ไม่มีงวดเหลือ (0376 ย้ายทั้งแถว) ⇒ ไม่มีงวดให้ล็อกบอกเลขใบ
@@ -83,6 +82,11 @@ export async function loadOrdersBundle(supabase, user, orders = []) {
     .from('sales_deals').select('*').in('id', chunk).order('id', { ascending: true })));
   if (dealError) throw dealError;
   const dealById = new Map((deals || []).map((d) => [d.id, d]));
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ด่านขอบเขตถอยไปดีลของ SO ต้นทาง (`sourceDeal` · ตัดสินสิทธิ์อย่างเดียว · scopedRow.js) */
+  const { data: sourceDealBySource, error: sourceDealError } = await loadSourceDeals(
+    supabase, list.filter((o) => !o.dealId && o.sourceSalesOrderId).map((o) => o.sourceSalesOrderId),
+  );
+  if (sourceDealError) throw sourceDealError;
 
   const quoteIds = [...new Set(list.map((o) => o.quotationId).filter(Boolean))];
   const { data: quotes, error: quoteError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
@@ -91,8 +95,13 @@ export async function loadOrdersBundle(supabase, user, orders = []) {
   const quoteById = new Map((quotes || []).map((q) => [q.id, q]));
 
   const visible = list
-    .map((order) => ({ ...order, deal: dealById.get(order.dealId) || null, quotation: quoteById.get(order.quotationId) || null }))
-    .filter((order) => order.deal && inSalesViewScope(user, order.deal));
+    .map((order) => ({
+      ...order,
+      deal: dealById.get(order.dealId) || null,
+      ...(order.dealId ? {} : { sourceDeal: sourceDealBySource.get(order.sourceSalesOrderId) || null }),
+      quotation: quoteById.get(order.quotationId) || null,
+    }))
+    .filter((order) => inSalesDocScope(user, order, 'view'));
 
   const { data: installments, error: rowError } = await fetchInChunks(visible.map((o) => o.id), (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments').select('*').in('salesOrderId', chunk)

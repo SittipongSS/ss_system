@@ -436,7 +436,7 @@ test('0396: โมดัลเหตุผล = ReasonDialog (เหตุผล
 
 test('0396: หลังเปิดแก้ — คำใต้สถานะใบพูด "การแก้งานบริการ" · โมดัลอนุมัติของผู้จัดการมีเหตุที่เปิดแก้เป็นข้อแรก (มติ 30/09 ข้อ 4.3)', () => {
   /* mig 0404: สามทาง — เปิดแก้หลังอนุมัติ · ข้ามการตั้งงานบริการตอนยื่น (`setupView.deferred`) · ใบเดิม (ประโยคเดิมเป็นกิ่งสุดท้าย) */
-  assert.match(page, /\? \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว/);
+  assert.match(page, /: \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว/);
   assert.equal(SERVICE_REOPENED_TEXT.actualNote('2026-09-29T04:08:11Z'), 'ยอดถูกนับเป็น Actual แล้ว (อนุมัติ 29/09/2026) — การแก้งานบริการไม่เปลี่ยนยอดนี้');
   /* หน้าไม่อ่านคอลัมน์ 0396 เอง — ถาม `view.reopened` ของก้อน GET (ตัวตัดสินกลาง serviceSetupReopened) */
   assert.doesNotMatch(page, /serviceSetupReopened/);

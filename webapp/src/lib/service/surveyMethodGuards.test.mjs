@@ -92,6 +92,8 @@ const WRITES = 'src/lib/service/surveyMethodWrites.js';
 const PAPER_SNAPSHOT = 'src/lib/service/surveyReportSnapshot.js';
 const PAPER_VIEW = 'src/lib/service/surveyReportView.js';
 const PAPER_INPUTS = 'src/lib/service/surveyReportInputs.js';
+// งวด S5 — ตัวอ่าน/เขียนฐานทุกจุดของใบยืนยันหน้างาน
+const SURVEY_CONFIRM_REPO = 'src/lib/service/surveyConfirmRepo.js';
 const DOCUMENT_ROUTE = 'src/app/api/service/surveys/[id]/document/route.js';
 const SCRIPT = 'scripts/check-survey-report-inputs.mjs';
 /* งวด S4 (ฝ่ายขายเลือกวิธีตอนยื่น · สเปก S4 §3 Integrate ข้อ 1) — ไฟล์ใหม่ไฟล์เดียวที่เขียน method + สาม route ของคำร้องที่ถามสวิตช์ */
@@ -313,8 +315,10 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
   assert.deepEqual(hits(namedInList), ['src/lib/service/surveyQueueRepo.js', 'src/lib/service/visitsRepo.js', INTAKE_SEED].sort());
   assert.ok(read(INTAKE_SEED).includes(`.select('id, method, spots, "methodChangedAt", "methodReason", "surveyedAt", "updatedAt"')`));
 
-  // surveyConfirm ถูกระบุชื่อในคำสั่งอ่านจุดเดียว: คำร้องที่ค้างของทะเบียนโซนลูกค้า (ป้าย "รอยืนยันหน้างาน")
-  assert.deepEqual(hits(/select\([^)]*surveyConfirm[^)]*\)/), [CUSTOMER_ZONES_ROUTE]);
+  // surveyConfirm ถูกระบุชื่อในคำสั่งอ่านสองจุด: คำร้องที่ค้างของทะเบียนโซนลูกค้า (ป้าย "รอยืนยันหน้างาน")
+  // + งวด S5 §2.6 (b): ตัวอ่านของใบยืนยันหน้างาน — ใบแม่ของแถวพื้นที่ (`"surveyConfirm"` ตัดสินว่ายังรอยืนยันไหม)
+  //   ⚠️ regex ไม่มีขอบคำ ⇒ คอลัมน์ที่กลุ่ม C เพิ่มให้ route ทะเบียนลูกค้ายังนับเป็นจุดเดิม
+  assert.deepEqual(hits(/select\([^)]*surveyConfirm[^)]*\)/), [CUSTOMER_ZONES_ROUTE, SURVEY_CONFIRM_REPO].sort());
 
   /* ผู้เอ่ยชื่อคอลัมน์นอกโมดูลใบ — ทุกไฟล์อ่านจากแถว `select('*')` หรือเขียนลง patch (ไม่ใช่คำสั่งอ่านที่ระบุชื่อ)
      เพิ่มไฟล์ = เพิ่มในลิสต์นี้พร้อมเหตุ */
@@ -342,14 +346,29 @@ test('คอลัมน์ของ mig 0408: จุดที่ระบุช
       // + ตัวอย่างกระดาษของหน้าตั้งค่า (งวด S3 กลุ่ม C): คำร้องตัวอย่างในหน่วยความจำพก `surveyConfirm: 'needed'`
       //   ให้กล่องหมายเหตุพิมพ์ท้ายประโยค — ไม่อ่านคอลัมน์ ไม่เขียนฐาน
       'src/lib/service/surveyReportPreview.js',
+      // + ใบยืนยันหน้างาน (งวด S5 §2.6 d): ตัวจัดสภาพพื้นที่และตัวตัดสินปุ่มเทียบ `=== 'needed'` ตรงตัว — ฟังก์ชันล้วน ไม่อ่านฐาน
+      'src/lib/service/surveyConfirmLink.js',
+      // + ตัวอ่านของใบยืนยันหน้างาน (งวด S5 §2.6 d): ใบแม่ของแถวพื้นที่อ่านคอลัมน์นี้ · ตัวโหลดของหน้าคำร้องถามก่อนยิงคำสั่ง
+      SURVEY_CONFIRM_REPO,
     ],
-    // ผูกใบยืนยันหน้างานกับใบต้นทาง = งวด S5 — ยังไม่มีโค้ดไหนแตะ (รวมโมดูลใบ)
-    surveyConfirmOfId: [],
   };
   for (const [column, files] of Object.entries(NAMED)) {
     assert.deepEqual(hits(new RegExp(`\\b${column}\\b`), { except: [LEAF] }), [...files].sort(), column);
   }
-  assert.deepEqual(hits(/\bsurveyConfirmOfId\b/), [], 'งวด S5');
+  /* ผูกใบยืนยันหน้างานกับใบต้นทาง (งวด S5 §2.6 a) — ผู้เอ่ยชื่อคอลัมน์ต้องอยู่ในลิสต์ปิด · ทุกไฟล์ในลิสต์ยังไม่ต้องมีครบ
+     (กลุ่ม A–F ทยอยเข้า) — ตัวตรวจแบบตรงทั้งชุดอยู่ใน `surveyConfirmGuards.test.mjs` ของ Integrate
+     ⚠️ ตัวจัดสภาพ `surveyConfirmLink.js` **ไม่อยู่ในลิสต์** — ตัดสิน "ผูกแล้ว" จาก id ของ `children` ที่ตัวอ่านคัดมาด้วยคอลัมน์นี้ (F7) */
+  const SURVEY_CONFIRM_OF_FILES = [
+    SURVEY_CONFIRM_REPO,
+    'src/lib/service/zoneRegistry.js',
+    REQUESTS_ROUTE,
+    REQUEST_ROUTE,
+    SHEET_ROUTE,
+    SEND_ROUTE,
+    RECALL_ROUTE,
+    CUSTOMER_ZONES_ROUTE,
+  ];
+  assert.deepEqual(hits(/\bsurveyConfirmOfId\b/).filter((f) => !SURVEY_CONFIRM_OF_FILES.includes(f)), [], 'งวด S5 — ลิสต์ปิด');
 
   // เปิดใบใหม่ใช้ร่วมทุกชนิดคำร้อง — คีย์ surveyConfirm ถูกใส่เฉพาะคำร้องประเมินพื้นที่
   assert.match(stripComments(read(REQUEST_ROUTE)), /if \(before\.kind === 'site_survey'\) patch\.surveyConfirm = null;/);
@@ -519,10 +538,11 @@ test('🔑 แถวรายการของการ์ด (surveyZoneFacts)
 const importsOf = (code) => [...code.matchAll(/\b(?:import|export)\b[^;'"`]*?\bfrom\s*['"]([^'"]+)['"]|\bimport\s*\(?\s*['"]([^'"]+)['"]/g)]
   .map((m) => m[1] || m[2]);
 
-test('🔴 ⑦ surveyMethodSwitch.js ดึงได้สี่โมดูลเท่านั้น และสามโมดูลต้นน้ำไม่ดึงมันกลับ (กันวงกลม + กันของ server หลุดเข้า bundle)', () => {
+test('🔴 ⑦ surveyMethodSwitch.js ดึงได้ห้าโมดูลเท่านั้น และสามโมดูลต้นน้ำไม่ดึงมันกลับ (กันวงกลม + กันของ server หลุดเข้า bundle)', () => {
   const code = stripComments(read(SWITCH));
   assert.deepEqual(importsOf(code).sort(), [
     '@/lib/format',
+    '@/lib/service/queueWords', // S2b แก้หลังตรวจจอ head-r3-21: ตัวจัดรูปวันบนจอ (ไฟล์ใบ — ไม่มีวงกลม)
     '@/lib/service/survey',
     '@/lib/service/surveyMethod',
     '@/lib/service/visitStatus',

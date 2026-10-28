@@ -21,6 +21,8 @@ import {
   carrySourceError,
   carrySourcesFrom,
   carryStale,
+  CARRY_COUNTED_LOCKED,
+  CARRY_REMAINDER_WAY_OUT,
 } from './installmentCarry.js';
 
 const TARGET = Object.freeze({
@@ -369,4 +371,166 @@ test('applyCarryIn: ยกเกินยอดใบบอกทางที่
   assert.match(error, /ถ้ายกหลายงวดให้เลือกยกน้อยลง/);
   assert.match(error, /คืนบางส่วนไม่ได้/);
   assert.match(error, /บัญชีบันทึกคืนเงินทั้งงวดที่ใบที่ยกเลิก แล้วเก็บเงินของใบนี้ตามงวดปกติ/);
+});
+
+/* ── ใบปลายทาง "Actual รายงวด" (mig 0412 · review รอบสอง 26/10) ─────────────────────────────────────────────────────────
+   🐞 finding 14: งวด 1 ถูกนับตอนคลิกอนุมัติใบ (มติข้อ 3 · so_approval) แล้วล็อกเหมือนงวดที่มีเงิน ⇒ ยกมัดจำเข้ามาแล้วหักงวดถัดไปแทน
+      งวด "มัดจำ" ที่จ่ายแล้วค้างเป็นงวดเปิด (เลยกำหนด) และขวางการยื่นงวดถัดไป (มติข้อ 2)
+   🐞 finding 15: งวดที่นับแล้วแต่ยังไม่มีเงินถูกนับเป็น "งวดที่มีเงินอยู่แล้ว" แล้วจอสั่งให้บัญชีคืนเงินลูกค้า */
+const INST = Object.freeze({ ...TARGET, totalAmount: 107000, actualAmount: 100000, actualMode: 'installment', actualCountedAmount: 30000 });
+const counted = (over) => row({ actualStatus: 'approved', actualApprovedVia: 'so_approval', actualApprovedAt: '2026-10-26T03:00:00Z', ...over });
+const DEP30 = counted({ id: 'B1', seq: 1, label: 'มัดจำ 30%', percent: 30, amount: 32100, actualAmount: 30000 });
+const BAL70 = row({ id: 'B2', seq: 2, label: 'งวดที่ 2', percent: 70, amount: 74900 });
+const DEP_SRC = row({
+  id: 'A1', salesOrderId: SOURCE.id, seq: 1, label: 'มัดจำ 30%', percent: 30, amount: 32100, status: 'confirmed',
+  paidOn: '2026-09-20', evidence: [{ fileName: 'dep.jpg', storagePath: 'so/A/dep.jpg' }],
+});
+
+test('applyCarryIn (ใบรายงวด): มัดจำที่ยกมาแทนงวด 1 ที่นับตอนอนุมัติใบทั้งงวด — ไม่มีงวดมัดจำผี · Actual ย้ายไปแถวที่ยก', () => {
+  const built = applyCarryIn(INST, [DEP30, BAL70], [DEP_SRC]);
+  assert.equal(built.error, null);
+  assert.deepEqual(built.rows.map((r) => [r.id, r.seq, r.amount]), [['A1', 1, 32100], ['B2', 2, 74900]]);
+  assert.deepEqual(built.removed.map((r) => r.id), ['B1'], 'งวดมัดจำที่นับไว้ถูกแทน (ลบ)');
+  assert.deepEqual(built.actualMoved, { fromSeqs: [1], toId: 'A1', toSeq: 1, amount: 30000 });
+  const facts = carryPromptFacts(INST, SOURCE, [DEP30, BAL70], [DEP_SRC], built);
+  assert.match(facts.actualMovedLine, /^Actual ที่นับไว้ตอนอนุมัติใบของงวดที่ 1 ฿30,000\.00 \(ก่อน VAT\) ย้ายไปอยู่กับงวดที่ยกมา \(งวดที่ 1\) — ยอดและเดือน Actual ไม่เปลี่ยน/);
+  // ใบทั้งใบ (ไม่มีช่อง Actual รายงวด) = แผนเดิมทุกตัวอักษร
+  const whole = applyCarryIn({ ...INST, actualMode: 'order' }, [{ ...DEP30, actualStatus: null, actualApprovedVia: null }, BAL70], [DEP_SRC]);
+  assert.deepEqual(whole.rows, built.rows);
+  assert.equal(whole.actualMoved, null);
+});
+
+test('applyCarryIn (ใบรายงวด · มติข้อ 9): หักไม่หมดงวด = ไม่ถูกแทน (งวดเปิดรับก่อน) · งวดที่นับจากการยื่นไม่ถูกแทน · งวดยอด 0 คงล็อก · ไม่มีงวดที่นับแล้วหาย', () => {
+  const small = { ...DEP_SRC, amount: 20000, percent: 18.69 };
+  const partial = applyCarryIn(INST, [DEP30, BAL70], [small]);
+  assert.equal(partial.error, null);
+  // แถวที่ยกขึ้นก่อน (เงินจริง · ยื่นได้ทันที) · งวดที่นับแล้วไม่ถูกลด (งวดเปิดรับยอดที่ยกก่อน) แต่เลขงวดเดินตามลำดับ
+  assert.deepEqual(partial.rows.map((r) => [r.id, r.seq, r.amount]), [['A1', 1, 20000], ['B1', 2, 32100], ['B2', 3, 54900]]);
+  assert.equal(partial.actualMoved, null);
+  assert.deepEqual(partial.view.map((r) => [r.id, r.counted]), [['A1', false], ['B1', true], ['B2', false]]);
+  const reviewed = applyCarryIn(INST, [{ ...DEP30, actualApprovedVia: 'review' }, BAL70], [DEP_SRC]);
+  assert.equal(reviewed.error, null);
+  assert.deepEqual(reviewed.rows.map((r) => [r.id, r.amount]), [['A1', 32100], ['B1', 32100], ['B2', 42800]],
+    'อนุมัติจากการยื่น = ไม่ใช่งวดที่ยกแทนได้ — คงอยู่ · งวดเปิดถูกหักแทน');
+  assert.deepEqual(reviewed.removed, []);
+  const zero = counted({ id: 'Z0', seq: 3, label: 'งวดที่ 3', percent: 0, amount: 0, actualAmount: 0 });
+  const withZero = applyCarryIn(INST, [DEP30, BAL70, zero], [DEP_SRC]);
+  assert.ok(withZero.rows.some((r) => r.id === 'Z0' && r.seq === 3), 'งวดยอด 0 ที่นับแล้วไม่ถูกกวาดทิ้ง (ล็อก · เลขเดิม)');
+  assert.deepEqual(withZero.actualMoved?.fromSeqs, [1]);
+  const paid = applyCarryIn(INST, [{ ...DEP30, status: 'reported', paidOn: '2026-10-01' }, BAL70], [DEP_SRC]);
+  assert.deepEqual(paid.rows.map((r) => r.id).slice(0, 1), ['B1'], 'มีเงินแล้ว = ล็อกเพราะเงิน');
+});
+
+test('applyCarryIn (ใบรายงวด · มติข้อ 9): งวดเปิดไม่พอ = ลดยอดงวดที่นับแล้ว (ไม่ถึง 0) · ยอดที่ยังเหลือ = ติดงวดที่ลบไม่ได้ (บอกยอดที่รับได้ ไม่สั่งคืนเงิน)', () => {
+  const C1 = counted({ ...DEP30, actualApprovedVia: 'review' });
+  const big = { ...DEP_SRC, amount: 90000 };
+  const built = applyCarryIn(INST, [C1, BAL70], [big]);
+  assert.equal(built.error, null);
+  assert.deepEqual(built.rows.map((r) => [r.id, r.seq, r.amount]), [['A1', 1, 90000], ['B1', 2, 17000]]);
+  assert.deepEqual(built.removed.map((r) => r.id), ['B2'], 'งวดเปิดถูกหักจนหมดก่อน');
+  assert.equal(built.view.find((r) => r.id === 'B1').counted, true);
+  assert.equal(built.rows.reduce((sum, r) => sum + Math.round(r.amount * 100), 0), 10700000);
+  // ลดได้ถึง 0.01 (ไม่ถึง 0 = ไม่ถูกลบ)
+  const edge = applyCarryIn(INST, [C1, BAL70], [{ ...DEP_SRC, amount: 106999.99 }]);
+  assert.equal(edge.error, null);
+  assert.deepEqual(edge.rows.map((r) => [r.id, r.amount]), [['A1', 106999.99], ['B1', 0.01]]);
+  const over = applyCarryIn(INST, [C1, BAL70], [{ ...DEP_SRC, amount: 107000 }]).error;
+  assert.match(over, /เกินยอดที่ใบนี้ยังรับได้ ฿106,999\.99/);
+  assert.match(over, /งวดที่นับ Actual แล้วลดยอดได้แต่ลบไม่ได้ \(ไม่ใช่เงินเกินยอดใบ\)/);
+  assert.doesNotMatch(over, /คืนเงิน/);
+});
+
+test('applyCarryIn (ใบรายงวด): งวดที่นับแล้วแต่ยังไม่มีเงินลดยอดได้ (มติข้อ 9) · ยกเกินที่งวดนั้นรับไม่ได้ / ติดงวดที่ยื่นอยู่ = ไม่สั่งคืนเงิน · เงินเกินจริง = ทางคืนเงินเดิม', () => {
+  const paidFirst = row({ id: 'P1', seq: 1, label: 'งวดที่ 1', percent: 50, amount: 53500, status: 'confirmed', paidOn: '2026-10-01',
+    actualStatus: 'approved', actualApprovedVia: 'so_approval', actualAmount: 50000 });
+  const countedUnpaid = row({ id: 'P2', seq: 2, label: 'งวดที่ 2', percent: 50, amount: 53500,
+    actualStatus: 'approved', actualApprovedVia: 'review', actualAmount: 50000, actualApprovedAt: '2026-10-26T03:00:00Z' });
+  const carry = { ...DEP_SRC, amount: 20000 };
+  const ok = applyCarryIn(INST, [paidFirst, countedUnpaid], [carry]);
+  assert.equal(ok.error, null, 'ลดยอดงวดที่นับแล้วได้');
+  assert.deepEqual(ok.rows.map((r) => [r.id, r.seq, r.amount]), [['P1', 1, 53500], ['A1', 2, 20000], ['P2', 3, 33500]]);
+  const err = applyCarryIn(INST, [paidFirst, countedUnpaid], [{ ...DEP_SRC, amount: 53500 }]).error;
+  assert.doesNotMatch(err, /คืนเงิน/, err);
+  assert.match(err, /เกินยอดที่ใบนี้ยังรับได้ ฿53,499\.99/);
+  assert.match(err, /ลดยอดได้แต่ลบไม่ได้ \(ไม่ใช่เงินเกินยอดใบ\)/);
+  assert.match(err, /เลือกยกน้อยลง/);
+  // งวดที่ยื่นขอนับอยู่ = ล็อก (มติข้อ 9 ครอบเฉพาะงวดที่นับแล้ว) — ไม่มีงวดให้หักเลย
+  const submitted = applyCarryIn(INST, [paidFirst, { ...countedUnpaid, actualStatus: 'submitted', actualAmount: null }], [carry]).error;
+  assert.match(submitted, /เกินยอดที่ใบนี้ยังรับได้ ฿0\.00 — งวดที่ยื่นขอนับ Actual อยู่ปรับยอดไม่ได้/);
+  assert.doesNotMatch(submitted, /คืนเงิน/);
+  // ทั้งสองงวดมีเงินแล้ว = เงินเกินยอดใบจริง ⇒ ทางคืนเงินเดิม
+  const real = applyCarryIn(INST, [paidFirst, { ...countedUnpaid, status: 'confirmed', paidOn: '2026-10-20' }], [carry]).error;
+  assert.match(real, /รวมกับงวดที่มีเงินอยู่แล้ว ฿107,000\.00 เกินยอดใบ/);
+  assert.match(real, /บัญชีบันทึกคืนเงินทั้งงวด/);
+});
+
+/* review รอบสาม 26/10 (0412 C2o): เงินก้อนเดียวครอบทุกงวดที่ยังไม่นับ ⇒ แถวที่ยกแถวเดียวถือ Actual ของงวดที่ถูกแทน (C2b) และไม่เหลืองวดที่ยังไม่นับ
+   🐞 ใบ 107,000 / Actual 100,000 · งวด 53,500 ×2 · งวด 1 นับตอนอนุมัติ 50,000 · ยกเงินเต็มใบจากใบที่ยกเลิก ⇒ เดิมแผนผ่าน
+      ทุกงวดนับแล้วแต่ Σ = 50,000 · อีก 50,000 หายจากทุกกองถาวร (ไม่มีงวดให้ยื่น · นับที่เหลือทั้งหมดบอก "ครบแล้ว") */
+test('applyCarryIn (ใบรายงวด · review รอบสาม): ยกแล้วไม่เหลืองวดที่ยังไม่นับทั้งที่ Actual ยังนับไม่ครบ = error บอกยอดและทาง (ไม่นับให้เอง)', () => {
+  const B1 = counted({ id: 'B1', seq: 1, label: 'งวดที่ 1', percent: 50, amount: 53500, actualAmount: 50000 });
+  const B2 = row({ id: 'B2', seq: 2, label: 'งวดที่ 2', percent: 50, amount: 53500 });
+  const full = { ...DEP_SRC, amount: 107000, percent: 100, label: 'งวดที่ 1' };
+  const built = applyCarryIn({ ...INST, actualCountedAmount: 50000 }, [B1, B2], [full]);
+  assert.deepEqual(built.actualMoved, { fromSeqs: [1], toId: 'A1', toSeq: 1, amount: 50000 }, 'แผนเดิม: แทนงวด 1 + หักงวด 2 หมด');
+  assert.match(built.error, /ยกเงินก้อนนี้แล้วไม่เหลืองวดที่ยังไม่นับ Actual แต่ Actual ของใบยังนับไม่ครบ ฿50,000\.00/);
+  assert.ok(built.error.includes(CARRY_REMAINDER_WAY_OUT), built.error);
+  assert.doesNotMatch(built.error, /คืนเงิน/, 'ไม่ใช่เงินเกินยอดใบ');
+  // สองแถวที่ยก: แถวที่สองยังไม่นับ (C1) ⇒ รับยอดที่เหลือได้ = ยกได้
+  const two = applyCarryIn({ ...INST, actualCountedAmount: 50000 }, [B1, B2],
+    [{ ...full, amount: 53500, percent: 50 }, { ...DEP_SRC, id: 'A2', seq: 2, amount: 53500, percent: 50, paidOn: '2026-09-25', evidence: [] }]);
+  assert.equal(two.error, null);
+  // นับครบแล้ว (Σ = actualAmount) ไม่มีปัญหา — งวด 2 ถูกอนุมัติไปแล้ว (ยังไม่มีเงิน) ⇒ ยกแทนงวด 1 ได้ · งวด 2 ลดยอดได้แต่ต้องเหลือ
+  const reviewed = { ...B2, actualStatus: 'approved', actualApprovedVia: 'review', actualAmount: 50000, actualApprovedAt: '2026-10-26T03:00:00Z' };
+  const done = applyCarryIn({ ...INST, actualCountedAmount: 100000 }, [B1, reviewed], [{ ...full, amount: 53500, percent: 50 }]);
+  assert.equal(done.error, null);
+  // ใบทั้งใบ = ไม่มีด่านนี้ (แผนเดิมทุกตัวอักษร)
+  const whole = applyCarryIn({ ...INST, actualMode: 'order' }, [{ ...B1, actualStatus: null, actualApprovedVia: null, actualAmount: null }, B2], [full]);
+  assert.equal(whole.error, null);
+});
+
+const bulletsOf = (prompt) => prompt.detail.split('\n').filter((line) => line.startsWith('· '));
+/* มติเจ้าของข้อ 10 (26/10 "นับให้เอง ไม่ต้องยื่น"): ยกเงินเข้าใบที่กด "นับที่เหลือทั้งหมด" แล้ว — แถวที่ยกมานับให้อัตโนมัติตอนยก
+   (constraint trigger ของ 0412 · ฮาร์เนสข้อ 21) ⇒ โมดัลยืนยันต้องไม่บอก "ต้องยื่นขอนับอีกรอบ" · ใบที่ยังเดินรายงวด = คำเดิม
+   · คำถามค้างข้อ 1 (ค่าตั้งต้นคงเดิม): ยกก้อนเดียวเต็มใบหลังกดนับที่เหลือทั้งหมด = counted_locked ไม่ใช่ทางออก (ฮาร์เนสข้อ 24) */
+test('มติข้อ 10: ยกเงินเข้าใบที่กดนับที่เหลือทั้งหมดแล้ว — โมดัลบอก "นับให้อัตโนมัติ ไม่ต้องยื่น" · แถวที่รับ Actual ของงวดที่ถูกแทนไม่นับซ้ำ · ยกก้อนเดียวเต็มใบยังไม่ใช่ทางออก', async () => {
+  const { paymentCarryPrompt } = await import('../approvalPrompt.js');
+  const REST = { ...INST, actualCountedAmount: 100000 };
+  const restBal = { ...BAL70, actualStatus: 'approved', actualApprovedVia: 'count_rest', actualAmount: 70000,
+    actualApprovedAt: '2026-10-26T04:00:00Z', actualNote: 'ลูกค้าขอปิดยอดทั้งก้อนก่อนเงินเข้า' };
+  // (ก) มัดจำบางส่วน — แถวที่ยกนับให้เอง (ส่วนแบ่ง 0 · Actual ครบแล้ว)
+  const small = { ...DEP_SRC, amount: 20000, percent: 18.69 };
+  const partial = applyCarryIn(REST, [DEP30, restBal], [small]);
+  assert.equal(partial.error, null);
+  const facts = carryPromptFacts(REST, SOURCE, [DEP30, restBal], [small], partial);
+  assert.match(facts.actualAutoCountLine, /^ใบนี้กด “นับที่เหลือทั้งหมด” แล้ว — งวดที่ยกมา 1 งวดนับ Actual ให้อัตโนมัติตอนบันทึก ไม่ต้องยื่น \(มติข้อ 10\)/);
+  assert.match(facts.actualAutoCountLine, /ส่วนแบ่ง ฿0\.00 — Actual ของใบครบแล้ว ไม่ขยับ/);
+  const prompt = paymentCarryPrompt(facts);
+  assert.ok(bulletsOf(prompt).some((l) => l.includes(facts.actualAutoCountLine)));
+  assert.ok(bulletsOf(prompt).every((l) => !/ต้องยื่นขอนับและให้ AE Sup อนุมัติในใบนี้อีกรอบ/.test(l)), 'ไม่ต้องยื่นอีกรอบ');
+  // (ข) แถวแรกรับ Actual ของงวดที่ถูกแทน (C2b) · แถวที่สองนับให้เอง
+  const second = { ...DEP_SRC, id: 'A2', seq: 2, amount: 10700, percent: 10, paidOn: '2026-09-25', evidence: [] };
+  const two = applyCarryIn(REST, [DEP30, restBal], [DEP_SRC, second]);
+  assert.equal(two.error, null);
+  assert.deepEqual(two.actualMoved, { fromSeqs: [1], toId: 'A1', toSeq: 1, amount: 30000 });
+  assert.match(carryPromptFacts(REST, SOURCE, [DEP30, restBal], [DEP_SRC, second], two).actualAutoCountLine, /งวดที่ยกมา 1 งวดนับ Actual ให้อัตโนมัติ/,
+    'แถวที่รับ Actual ของงวดที่ถูกแทน (C2b) ไม่นับเป็นงวดที่นับให้เอง');
+  // ใบที่ยังเดินรายงวด = ไม่มีบรรทัดนี้ (คำเดิม "ต้องยื่นอีกรอบ")
+  const plain = carryPromptFacts(INST, SOURCE, [DEP30, BAL70], [small], applyCarryIn(INST, [DEP30, BAL70], [small]));
+  assert.equal(plain.actualAutoCountLine, '');
+  assert.ok(bulletsOf(paymentCarryPrompt(plain)).some((l) => /งวดที่ยกมาต้องยื่นขอนับและให้ AE Sup อนุมัติในใบนี้อีกรอบ/.test(l)));
+  assert.equal(carryPromptFacts({ ...REST, actualMode: 'order' }, SOURCE, [DEP30, restBal], [small], partial).actualAutoCountLine, '', 'ใบทั้งใบ');
+  // คำถามค้างข้อ 1: ยกเต็มใบก้อนเดียวหลังกดนับที่เหลือทั้งหมด — งวดที่นับแล้วลดได้ไม่ถึง 0 ⇒ ยังยกไม่ได้ (ไม่ใช่ทางออก)
+  const full = applyCarryIn(REST, [DEP30, restBal], [{ ...DEP_SRC, amount: 107000, percent: 100 }]);
+  assert.match(full.error, /เกินยอดที่ใบนี้ยังรับได้/);
+  assert.doesNotMatch(full.error, /Actual ของใบยังนับไม่ครบ/);
+  /* 🐞 review รอบสี่ 26/10: ยกงวดเดียว = ชิปเลือกงวดถอดไม่ได้ ⇒ "เลือกยกน้อยลง" อย่างเดียวคือคำแนะนำที่ทำไม่ได้ ·
+     ข้อความต้องบอกทางที่มีจริง (Rev. แบบทั้งใบ — ฮาร์เนสข้อ 24) และไม่สั่งคืนเงิน (ไม่ใช่เงินเกินยอดใบ) */
+  assert.ok(full.error.endsWith(CARRY_COUNTED_LOCKED), full.error);
+  assert.match(full.error, /ถ้ายกหลายงวดให้เลือกยกน้อยลง · ถ้ายกงวดเดียว: ย้อนการอนุมัติใบนี้แล้วออก Rev\. · อนุมัติ Rev\. แบบ “Actual ทั้งใบ” แล้วยกเงินเข้าใบ Rev\./);
+  assert.doesNotMatch(full.error, /คืนเงิน/);
+  assert.ok(CARRY_REMAINDER_WAY_OUT.endsWith(CARRY_COUNTED_LOCKED.slice(CARRY_COUNTED_LOCKED.indexOf('ย้อนการอนุมัติ'))),
+    'ทาง Rev. คำเดียวกับทางออกของ orphan');
+  assert.doesNotMatch(CARRY_REMAINDER_WAY_OUT, /นับที่เหลือทั้งหมด/, 'ทางออกของ orphan ไม่แนะนำกดนับที่เหลือทั้งหมดแล้วยก');
+  assert.match(CARRY_REMAINDER_WAY_OUT, /ย้อนการอนุมัติใบนี้แล้วออก Rev\. · อนุมัติ Rev\. แบบ “Actual ทั้งใบ” แล้วยกเงินเข้าใบ Rev\./);
 });

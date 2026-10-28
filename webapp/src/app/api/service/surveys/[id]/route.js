@@ -16,6 +16,8 @@ import { surveySendBackOnSheet } from '@/lib/service/survey';
 /* ประเมินจากแบบ (mig 0408 · งวด S2a) — สวิตช์อ่านผ่านตัวอ่านกลางตัวเดียว · จอรู้ค่าจาก payload ของเส้นนี้เท่านั้น */
 import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
 import { surveyMethodMix, surveyNeedsVisit } from '@/lib/service/surveyMethod';
+/* ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — ตัวอ่านของงวดไม่ throw และไม่ลากโมดูลกระดาษตัวหนัก (อ่านแค่ surveyReportRows/State) */
+import { loadSurveyConfirmSheetInfo } from '@/lib/service/surveyConfirmRepo';
 /* ⚠️ เอกสารประเมิน: import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — ช่างเปิดเส้นนี้ทุกครั้งที่บันทึกหน้างาน
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
 import { surveyDocumentSummary } from '@/lib/service/surveyReportRows';
@@ -77,18 +79,28 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        `drawingMethodEnabled`  ค่าสวิตช์ `SURVEY_DRAWING_METHOD` — ตอบทุกคนเสมอ (จออ่าน env ฝั่ง server ไม่ได้)
        ไฟล์ในเธรด              สวิตช์เปิด **หรือ** ใบมีพื้นที่จากแบบอยู่แล้ว — แถวที่เป็นจากแบบไปแล้วต้องเดินต่อได้
                                แม้สวิตช์ถูกปิดทีหลัง (หัวหน้ายังต้องเห็นแบบที่ฝ่ายขายส่งมาในเธรด)
-       นัดที่เข้าพื้นที่แล้ว      สวิตช์เปิด และใบยังไม่ส่งผล — ป้อนบรรทัดเตือนแถว 17a ของการ์ด (ด่านนั้นอยู่ใต้สวิตช์)
+       นัดที่เข้าพื้นที่แล้ว      สวิตช์เปิด และใบยังไม่ส่งผล — ป้อนบรรทัดเตือนแถว 17a ของการ์ด (ด่านนั้นอยู่ใต้สวิตช์) และพาดหัว
+                               "รอลงคิวเข้าพื้นที่" / "นัดยังไม่ขึ้นตาราง" ของการ์ด (S2b แก้หลังตรวจจอ head-r3-2)
        🔴 **ช่างไม่ทำให้เกิดการอ่านเพิ่มสักคำขอ** — ช่างเปิดเส้นนี้ทุกครั้งที่บันทึกหน้างาน
        ⭐ **คนที่แก้งานของฝ่ายได้แต่ไม่ใช่หัวหน้า (ผู้วางคิว · `canEditService`)** อ่านเธรด **เฉพาะใบที่มีพื้นที่จากแบบอยู่แล้ว**
           (มติเจ้าของ O4 · งวด S2b: เขาเห็นพื้นที่จากแบบแบบอ่านอย่างเดียว พร้อมแผง "แบบจากฝ่ายขาย") — ใบอื่นทุกใบยังไม่มีการอ่านเพิ่ม
-          · ด่านอ่านของตัวโหลดเอง (`canViewUpdates`) ยังเป็นคนตัดสิน: ไม่ผ่าน = `[]` · "นัดที่เข้าพื้นที่แล้ว" ยังเป็นของหัวหน้าเท่านั้น
+          · ด่านอ่านของตัวโหลดเอง (`canViewUpdates`) ยังเป็นคนตัดสิน: ไม่ผ่าน = `[]`
+       ⭐ **"นัดที่เข้าพื้นที่แล้ว" ถามให้หัวหน้า และคนที่แก้งานของฝ่ายได้ (ผู้วางคิว)** (ผลรีวิวรอบสี่ · head-r3-2) — พาดหัวของการ์ดไม่ผูกกับคนดู
+          (ใบที่ยังไม่มีนัดที่เข้าพื้นที่ = "รอลงคิวเข้าพื้นที่" — ผู้วางคิวคือคนที่ต้องลงคิว) แต่ตัดสินได้ต่อเมื่อรู้ค่านี้
+          🐞 เดิมถามให้หัวหน้าคนเดียว ⇒ ผู้วางคิวได้ `null` ทุกใบ: นัดล่าสุดยกเลิก/เข้าไม่ได้ = "ไม่ทราบ" ⇒ การ์ดของเขาขึ้น "พร้อมส่งผลให้ฝ่ายขาย"
+             + แถบเขียวเต็ม ข้างบรรทัดขั้น "SV-… ยกเลิก — รอ TS ลงคิวใหม่" ขณะที่หัวหน้าเห็น "รอลงคิวเข้าพื้นที่"
+          ⚠️ ช่างยังไม่ได้ค่านี้ (`canEditService` ของช่างเป็นเท็จ) — กติกา "ช่างไม่ทำให้เกิดการอ่านเพิ่ม" ข้างบนคงเดิม ·
+             บรรทัดเตือนแถว 17a ใต้ปุ่มส่งผลยังเป็นของคนที่ส่งผลได้เท่านั้น (การ์ดถาม `canDecide` เอง)
        ⚠️ `canDecide` · `canEditAll` อยู่ตรงนี้ (ก่อนก้อนอ่าน) เพราะคำสั่งอ่านข้างล่างต้องรู้ก่อนยิง */
     const canDecide = canSendSurveyResult(user);
     const canEditAll = canEditService(user);
     const drawingMethodEnabled = surveyDrawingMethodEnabled();
     const mix = surveyMethodMix(zones);
     const wantsThreadFiles = (canDecide && (drawingMethodEnabled || mix.drawing > 0)) || (canEditAll && mix.drawing > 0);
-    const wantsSiteVisit = canDecide && drawingMethodEnabled && !request.answeredAt;
+    const wantsSiteVisit = (canDecide || canEditAll) && drawingMethodEnabled && !request.answeredAt;
+    /* ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — เลขใบต้นทาง + ตัวเลขรอบจากแบบรายพื้นที่ ให้หัวงานและตารางสรุปส่งผล
+       เฉพาะใบที่ผูกกับใบต้นทาง และคนดูเป็นหัวหน้า/ผู้วางคิว · 🔴 ช่างไม่ทำให้เกิดการอ่านเพิ่ม (กติกาข้างบน) */
+    const wantsConfirmOf = !!request.surveyConfirmOfId && (canDecide || canEditAll);
 
     /* ── ทุกอย่างที่เหลือของใบ ยิงพร้อมกันรอบเดียว ────────────────────────────
        ① ไฟล์ของแต่ละพื้นที่ — ด่านนับรูปต้องการของจริง ไม่ใช่ตัวเลขที่จอเดา
@@ -119,8 +131,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           ⚠️ ส่ง `zones` ที่อ่านไว้แล้วให้ (ไม่อ่านซ้ำ) · ไฟล์/ทะเบียนขนาด/นัด ไม่ส่ง — กำลังอ่านขนานอยู่ในรอบเดียวกันนี้
              จะส่งได้ต้องรอให้เสร็จก่อน = เพิ่มรอบเดินทางให้ทุกคนที่มีสิทธิ์เอกสาร · ตัวตรวจอ่านเองเฉพาะตอนต้องตรวจ
           ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 (เหตุผลเดียวกับ ③ — ผลวัดอ่านได้แล้ว)
-       ⑧ ไฟล์ในเธรดของคำร้อง + "มีนัดที่เข้าพื้นที่แล้วไหม" (ประเมินจากแบบ งวด S2a) — ตามเงื่อนไขข้างบน (เธรด: หัวหน้า · ผู้วางคิวบนใบที่มีพื้นที่จากแบบ — นัด: หัวหน้าเท่านั้น)
+       ⑧ ไฟล์ในเธรดของคำร้อง + "มีนัดที่เข้าพื้นที่แล้วไหม" (ประเมินจากแบบ งวด S2a) — ตามเงื่อนไขข้างบน (เธรด: หัวหน้า · ผู้วางคิวบนใบที่มีพื้นที่จากแบบ — นัด: หัวหน้า · ผู้วางคิว)
           ไม่เข้าเงื่อนไข = ค่าตั้งต้น **โดยไม่ยิงอ่าน** · เธรดอ่านพัง = `unknown.threadFiles` · นัดอ่านพัง = `null`
+       ⑨ ใบต้นทางของใบยืนยันหน้างาน (งวด S5) — ตามเงื่อนไข wantsConfirmOf ข้างบน · ไม่ผูก/ไม่เข้าเงื่อนไข = null โดยไม่ยิงอ่าน
+          อ่านพัง = unknown.confirmOf และไม่มีคีย์ confirmOf (ไม่ตีทั้งเส้นเป็น 500 — เหตุผลเดียวกับ ③)
 
        ⭐ **ไม่มีก้อนไหนรอผลของอีกก้อน ⇒ ยิงขนานกัน** — จอนี้ถูกโหลดใหม่ทุกครั้ง
           ที่บันทึก/ส่ง/ดึงกลับ และทุกครั้งที่สลับกลับมาที่แท็บ (`useRevalidateOnFocus`)
@@ -128,7 +142,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ⚠️ `findSurveyVisit` ยัง throw ได้เหมือนเดิม ⇒ ทั้งเส้นยังเป็น 500 เท่าเดิม
           (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
     const [
-      files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc, threadFiles, siteVisitReached,
+      files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc, threadFiles, siteVisitReached, confirmInfo,
     ] = await Promise.all([
       Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
       findSurveyVisit(supabase, id, { preferOpen: true })
@@ -142,11 +156,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       }),
       wantsThreadFiles ? loadSurveyThreadFiles(supabase, request, user) : NO_THREAD_FILES,
       wantsSiteVisit ? loadSiteVisitReached(supabase, id) : null,
+      /* ตัวโหลดไม่ throw อยู่แล้ว (คืน error ในก้อน) — .catch กันเผื่อเหมือนสรุปเอกสาร ⑦: ชิ้นประกอบล้มต้องไม่พาทั้งใบเป็น 500 */
+      wantsConfirmOf ? loadSurveyConfirmSheetInfo(supabase, request).catch((e) => ({ error: e?.message || String(e) })) : null,
     ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
     if (crewRes.unknown) context.unknown.crew = true;
     if (requestFiles.unknown) context.unknown.requestFiles = true;
     if (threadFiles.unknown) context.unknown.threadFiles = true;
+    if (confirmInfo?.error) context.unknown.confirmOf = true;
 
     // ⚠️ ส่ง `canWrite` มาจาก server ไม่ให้จอคำนวณเอง (จอไม่รู้ user id ของตัวเอง)
     const access = (canEditAll || canDoFieldWork(user))
@@ -222,6 +239,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
          เฉพาะเมื่อเขาเป็นคนออกหน้างานเอง (Senior) · หัวหน้าที่เปิดมาเคาะแพ็คเกจไม่ใช่คนส่งงาน
          ⚠️ จอไม่รู้ user id ของตัวเอง ⇒ server ตอบให้ (ท่าเดียวกับ `canWrite`) */
       onVisit: isOnVisit(user, visit),
+      /* ⭐ **ใบยืนยันหน้างาน: ใบต้นทาง** (งวด S5 กลุ่ม E) — id · docNo · missing · previousByZone (zoneId → ข้อความรอบจากแบบ)
+         หัวงานขึ้นข้อของใบต้นทาง · ตารางสรุปส่งผลขึ้นบรรทัดรอบจากแบบใต้ชื่อพื้นที่ที่ยกมา
+         🔴 **มีคีย์เฉพาะเมื่อตัวโหลดคืนก้อนจริง** (กติกา R-KEYS): ใบที่ไม่ผูก · ช่าง · อ่านพัง = ไม่มีคีย์เลย ไม่ใช่ null
+            ⇒ คำตอบของใบอื่นทุกใบเท่าเดิมทุกไบต์ · อ่านพังบอกทาง unknown.confirmOf */
+      ...(confirmInfo && !confirmInfo.error ? { confirmOf: confirmInfo } : {}),
     });
   } catch (e) {
     return fail(e.message, 500);

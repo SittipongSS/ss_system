@@ -146,7 +146,7 @@ test('🔴 saveDraft: ร่างเกิดแล้ว (มี id) = พา�
   assert.doesNotMatch(afterId, /setToast\(/, 'หลังร่างเกิดห้ามใช้ Toast ของหน้า — หายไปพร้อมหน้า');
   // 🔴 ทางโยน: id ของร่างอยู่นอก try แล้วตั้งทันทีหลังสร้างผ่าน ⇒ catch ที่มี id ต้องพาไปหน้ารายละเอียดด้วย
   assert.ok(page.slice(start, page.indexOf('try {', start)).includes('let createdId = null;'), 'createdId ต้องประกาศก่อน try');
-  assert.match(body, /if \(error\) \{ setToast\(\{ kind: "error", msg: error \}\); return; \}\n\s*createdId = id \|\| null;/);
+  assert.match(body, /if \(error\) \{ setToast\(\{ kind: "error", msg: confirmData \? refusalText\(error\) : error \}\); return; \}\n\s*createdId = id \|\| null;/);
   const catchEnd = page.indexOf('} finally {', end);
   const catchBody = page.slice(end, catchEnd);
   assert.match(catchBody, /if \(createdId\) \{[\s\S]*?router\.push\(`\/requests\/\$\{createdId\}`\);[\s\S]*?\} else \{/);
@@ -173,9 +173,10 @@ const ZONES = [
   { id: 'H', name: 'ซ', surveyedAt: '2026-08-01', assessMethod: 'drawing', confirm: 'drawing', confirmTag: 'y' },
 ];
 // ผลของโค้ดก่อน S4 (รันจริงก่อนแก้) — ค่าตั้งต้นต้องตรงนี้ทุกตัวอักษร
+// ⚠️ ยกเว้น 'H': เหตุของไทล์จากแบบตัดคำของป้ายที่ซ้ำออก (มติเจ้าของ sales-q4 · S2b แก้หลังตรวจจอ — เดิม 'ประเมินจากแบบ — เสนอราคาได้เลย')
 const TODAY = [
   ['A', 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่'],
-  ['H', 'ประเมินจากแบบ — เสนอราคาได้เลย'],
+  ['H', 'เสนอราคาได้เลย'],
   ['B', 'ขายแล้วแต่ไม่เคยวัด — วัดเก็บไว้ได้ในรอบนี้'],
   ['C', 'เคยขาย รอบจบแล้ว — วัดซ้ำเพื่อต่ออายุได้'],
   ['D', 'ยังไม่เคยวัด'],
@@ -225,8 +226,10 @@ test('ฟอร์มส่งคำของวิธีที่เลือ�
   assert.match(site, /const wording = surveyZoneWording\(variant\);/);
   assert.match(site, /zonePickList\(restZones, takenZoneIds, \{ wording \}\)/);
   /* บรรทัดรองของแถวที่ติ๊กแล้ว: "…ซ้ำ" เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ถามแถวทะเบียนตัวเดียวกับที่ไทล์ใช้
-     (UAT S4 รอบ 4 ข้อ 5 · ไทล์ "ยังไม่เคยวัด" แล้วแถวบอก "วัดซ้ำ" = ขัดกันเอง) */
-  assert.match(site, /surveyZoneRowText\(wording, siteZones\.find\(\(z\) => z\.id === row\.zoneId\)\)/);
+     (UAT S4 รอบ 4 ข้อ 5 · ไทล์ "ยังไม่เคยวัด" แล้วแถวบอก "วัดซ้ำ" = ขัดกันเอง)
+     ⭐ S2b แก้หลังตรวจจอ sales-q5: คำชุดวัดของพื้นที่ที่ไม่เคยวัดหน้างาน (`zonePickedOnsiteText`) ตอบก่อน — ที่เหลือคำของ S4 */
+  assert.match(site, /const knownZoneText = \(registryZone\) => zonePickedOnsiteText\(registryZone, \{ wording \}\)\s*\|\| surveyZoneRowText\(wording, registryZone\);/);
+  assert.match(site, /knownZoneText\(siteZones\.find\(\(z\) => z\.id === row\.zoneId\)\)/);
   assert.doesNotMatch(site, /SURVEY_ZONE_REPEAT_TEXT/, 'คำ "ซ้ำ" ต้องผ่านตัวตัดสินที่ดูผลเดิมเท่านั้น');
   assert.doesNotMatch(site, /วัดซ้ำพื้นที่เดิม/);
 });
@@ -260,7 +263,12 @@ test('หลังส่ง (variantAskedOnly): ไม่มีคำแนะ�
   assert.match(form, /const deskZonesOnly = variantAskedOnly && Array\.isArray\(value\.zones\) && value\.zones\.length > 0\n\s*&& value\.zones\.every\(\(zone\) => !!zone\?\.methodTag\);/);
   /* คำใบ้ของฟอร์มวันเดียวพูดถึงอนาคต "…หลังรับเรื่อง" ⇒ รับเรื่องแล้วไม่วาด (UAT S4 รอบ 4 ข้อ 10 · `awaitingAck`) */
   assert.match(form, /resultDueHint=\{resultDateOnly\n\s*\? \(awaitingAck \? "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" : false\)\n\s*: deskZonesOnly \? false : undefined\}/);
-  assert.match(form, /dueHint=\{needsSite\n\s*\? \(deskZonesOnly \? null : "เจ้าหน้าที่จะยืนยันวัน\/เวลาจริงตอนกด/);
+  /* คำใบ้ใต้วันเข้าพื้นที่: มติเจ้าของ sales-q3 (S2b แก้หลังตรวจจอ) แทน "ไม่วาด" ของ T11b — ใบที่ส่งแล้วซึ่งไม่มีการนัดแล้ว
+     (`noVisit` ของหน้าคำร้อง · ด่าน `variantAskedOnly` ตัวเดียวกับ `deskZonesOnly` — ร่างสลับไทล์ได้ ⇒ ประโยคเดิม)
+     ได้ประโยคบอกว่าวันที่กรอกไว้ไม่ถูกใช้ · ที่เหลือประโยคเดิม (พฤติกรรมเต็มอยู่ที่ lib/service/surveyFixSales.test.mjs) */
+  assert.match(form, /const noVisitHint = isEdit && noVisit && variantAskedOnly;/);
+  assert.match(form, /dueHint=\{needsSite \? keepPhrases\(siteDueHint\(noVisitHint\), \["จะไม่ถูกใช้"\]\) : undefined\}/);
+  assert.doesNotMatch(form, /deskZonesOnly \? null/);
   // ป้ายวิธีปัจจุบันมาจากหน้าคำร้อง เฉพาะใบที่ส่งแล้ว (ร่างสลับไทล์ได้ ป้ายค้างจะขัดกับไทล์) ผ่านตัวถามของโมดูลใบ
   const page = code('app/requests/[id]/page.js');
   assert.match(page, /const drawingRows = requestVariantAskedOnly\(req\) \? surveyRequestDrawingSummary\(req\)\.rows : \{\};/);
@@ -302,7 +310,8 @@ test('รอบ 4 fix2: การ์ดฟอร์มแก้ให้ระ�
 
 test('รอบ 4 ข้อ 2: โหมดแก้วาดป้าย "ดีล" ครั้งเดียว (ป้ายของช่องเส้นประ) · ฟอร์มสร้างคงป้ายของตัวเลือก', () => {
   const form = code(FORM);
-  assert.match(form, /\{!isEdit && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
+  /* งวด S5 (F2): ฟอร์มล็อกของใบยืนยันหน้างานก็ไม่วาดป้ายของตัวเลือก — ช่องเส้นประของดีลมีป้ายของตัวเอง */
+  assert.match(form, /\{!isEdit && !confirmLock && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
   assert.match(form, /<DerivedField\n\s*label="ดีล" from="ผูกไว้ตอนเปิดใบ" value=\{lockedRefs\.deal \|\| ""\}\n\s*hint=\{freshDraft\n/);
   // ช่องเส้นประของดีลโหมดแก้อยู่ใน .form-group col-span-2 อยู่แล้ว ⇒ ต้องไม่ห่อกลุ่มซ้อน (margin ใต้ประโยคล็อกนับสองรอบ = 42px)
   assert.match(form, /: "เปลี่ยนดีลของคำร้องที่ส่งแล้วไม่ได้"\}\n\s*bare\n\s*\/>/);
@@ -406,4 +415,36 @@ test('รีวิวรอบ 4 ข้อ 12: ป้าย "(บังคับ
   assert.match(fields, /dueRequired = true,/, 'ค่าตั้งต้น = บังคับ (หัวข้ออื่นเท่าเดิม)');
   assert.match(fields, /<label htmlFor=\{`\$\{idPrefix\}-due`\}>\{dueLabel\}\{dueRequired \? " \(บังคับ\)" : ""\}<\/label>/);
   assert.doesNotMatch(fields, /\{dueLabel\} \(บังคับ\)/, 'ป้ายตายตัว = ขัดกับเกจก่อนเลือกวิธี');
+});
+
+/* ══ ประเมินจากแบบ งวด S5 (กลุ่ม D · F2) — โหมดล็อกของใบยืนยันหน้างานเป็นกิ่งของตัวเอง ═══════════════════════════════════
+   ⭐ นิพจน์ที่ S4 ตรึงไว้ข้างบน (ป้ายดีล · ช่องดีลโหมดแก้ · สองประโยค `freshDraft` · ป้ายสถานที่ 4 ที่ · แถวพื้นที่อ่านอย่างเดียว)
+      ยังเขียวโดยไม่แก้ — โหมดล็อกแทรกเป็นกิ่งก่อนหน้า ไม่ใช่แก้กิ่งเดิม (พฤติกรรม + ข้อความอยู่ที่ lib/requests/surveyConfirmScreen.test.mjs) */
+test('S5 F2: กิ่งดีลของโหมดล็อกมาก่อนกิ่งโหมดแก้ · ป้ายที่มามาจากค่าคงที่ของงวด', () => {
+  const form = code(FORM);
+  assert.match(form, /const dealLock = !!confirmLock && !confirmLock\.original\?\.missing;/);
+  const lockAt = form.indexOf('{dealLock ? (');
+  const editAt = form.indexOf(') : isEdit ? (', lockAt);
+  assert.ok(lockAt > -1 && editAt > lockAt, 'dealLock ? … : isEdit ? … : <DealPicker>');
+  const lock = form.slice(lockAt, editAt);
+  assert.match(lock, /from=\{SURVEY_CONFIRM_FROM_ORIGINAL\}/);
+  assert.match(lock, /hint=\{keepPhrases\(surveyConfirmDealHint\(confirmLock\.original\), SURVEY_CONFIRM_WRAP_KEEP\)\}/);
+  assert.match(lock, /\n\s*bare\n/);
+  assert.ok(form.indexOf('<DealPicker', editAt) > editAt, 'ตัวเลือกดีลยังเป็นกิ่งสุดท้าย');
+});
+
+test('S5 F2 · R3: โหมดล็อกไม่วาดบล็อกไทล์ของ S4 ทั้งสองกิ่ง — ช่องวิธีเส้นประขึ้นเฉพาะฟอร์มสร้าง/ร่าง', () => {
+  const form = code(FORM);
+  assert.match(form, /\{variants && !confirmLock && \(/);
+  assert.equal((form.match(/\{variants && \(/g) || []).length, 0, 'ไม่มีทางเข้าบล็อกไทล์ที่ไม่ถามโหมดล็อก');
+  assert.match(form, /\{\(confirmLock\.mode === "create" \|\| confirmLock\.showMethod\) && \(/);
+});
+
+test('S5 F2: SurveySiteFields — ประโยคล็อกของงวดเป็นกิ่งก่อนนิพจน์ freshDraft ที่ไม่ถูกแตะ', () => {
+  const site = code('components/requests/SurveySiteFields.js');
+  const lockAt = site.indexOf('{confirmLock && !confirmLock.original?.missing ? (');
+  const freshAt = site.indexOf('{freshDraft\n', lockAt);
+  assert.ok(lockAt > -1 && freshAt > lockAt, 'กิ่ง N19 มาก่อนประโยคของ S4');
+  assert.match(site.slice(lockAt, freshAt), /<small className=\{styles\.hint\}>\{keepPhrases\(surveyConfirmZonesLockText\(confirmLock\.original\), SURVEY_CONFIRM_WRAP_KEEP\)\}<\/small>/);
+  assert.match(site, /confirmLock = null,/);
 });

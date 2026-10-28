@@ -132,10 +132,12 @@ test('ใบจากแบบทั้งใบ: ขนาดกรอกไม
   });
 
   // ทุกพื้นที่ครบ แต่อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ (ด่านส่งผลอีกข้อ) — ไม่มีชื่อพื้นที่ให้เอ่ย
+  /* S2b แก้หลังตรวจจอ head-rc-r2-22 (ผลรีวิวรอบห้า): ด่านทะเบียนเป็นของขั้นส่งผล (หน้าคำร้องถามไม่ได้) ⇒ รางอยู่ขั้น "ส่งผล" และพาดหัวเอ่ยเรื่องที่ค้าง
+     (เดิม "กำลังประเมินจากแบบ — 2/2 พื้นที่" ที่ขั้นประเมิน) · บรรทัดรองว่างตามเดิม · ยังไม่ "พร้อมส่ง" (ยามจริงของข้อนี้อยู่ที่ `surveyFixCard.test.mjs`) */
   const all = [drawingReady('z1', 'Lobby'), drawingReady('z2', 'Lounge')];
   const unread = card(all, { packageSizes: null });
   assert.deepEqual(unread.status, {
-    key: 'desk-working', tone: 'warning', headline: 'กำลังประเมินจากแบบ — 2/2 พื้นที่', sub: '',
+    key: 'desk-working', tone: 'warning', headline: 'ประเมินจากแบบครบแล้ว — อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ', sub: '',
   });
   assert.equal(unread.send.allowed, false);
 
@@ -226,7 +228,8 @@ test('🔴 ใบผสม · พื้นที่จากแบบขาด�
     const v = card(zones, { viewer, filesByZone });
     assert.equal(v.send.reason.key, 'head-gaps', who);
     assert.notEqual(v.send.reason.key, 'crew-gaps', who);
-    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ ที่ Lobby', who);
+    /* S2b แก้หลังตรวจจอ head-r3-53: ใบผสมแยกชื่อเป็นท่อน "รอช่าง:" / "หัวหน้าต้องทำ:" — พื้นที่จากแบบอยู่ท่อนของหัวหน้า */
+    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · หัวหน้าต้องทำ: Lobby', who);
     assert.doesNotMatch(JSON.stringify(v.send.reason), /รอช่างเก็บงาน/, who);
     assert.deepEqual(v.send.reason.target, { kind: 'zone', zoneId: 'z3', label: 'เปิด Lobby' }, who);
     assert.deepEqual(v.zoneGaps.rows, [{
@@ -268,7 +271,8 @@ test('ใบผสม: ของฝั่งช่างที่ขาดจร
   const visit = scheduled({ status: 'done', actualDate: '2026-10-08' });
   const v = card(zones, { filesByZone, visit });
   assert.equal(v.send.reason.key, 'crew-gaps');
-  assert.match(v.send.reason.text, / · รอช่างเก็บงาน$/);
+  // head-r3-53: พื้นที่ที่ช่างค้างอยู่ท่อน "รอช่าง:" · พื้นที่จากแบบอยู่ท่อน "หัวหน้าต้องทำ:" (เดิม "… ที่ Studio 02 · Lobby · รอช่างเก็บงาน")
+  assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · รอช่าง: Studio 02 · หัวหน้าต้องทำ: Lobby');
   assert.deepEqual(v.send.reason.target, { kind: 'zone', zoneId: 'z2', label: 'เปิด Studio 02' }, 'พื้นที่ที่ช่างยังค้างก่อน');
   assert.deepEqual(v.zoneGaps.rows.map((row) => [row.zoneName, row.crew, row.head]), [
     ['Studio 02', ['ขนาด'], []],
@@ -305,12 +309,18 @@ test('🔴 แถว 17: ใบจากแบบทั้งใบ + นัด�
     assert.equal(on.send.allowed, false);
     assert.equal(on.send.show, true);
     assert.equal(on.send.closesVisit, null);
-    assert.equal(on.status.key, 'ready', 'ด่านครบ — ที่ขวางคือนัด');
+    /* ด่านของพื้นที่ครบ — ที่ขวางคือนัด ⇒ พาดหัวไม่พูด "พร้อมส่งผลให้ฝ่ายขาย" ข้างปุ่มที่ถูกตีกลับ (UAT S2b รอบสอง S09 ready-blocked)
+       รูปเดียวกับงานโต๊ะที่ครบแต่ติดเรื่องนอกพื้นที่ · รางยังอยู่ขั้นส่งผล (`deskReady`) */
+    assert.deepEqual(on.status, {
+      key: 'desk-visit-open', tone: 'warning', headline: 'ประเมินจากแบบครบแล้ว — นัด SV-26100011 ยังเปิดอยู่', sub: '',
+    }, status);
+    assert.equal(on.step.id, 'answered', 'รางยังชี้ขั้นส่งผล');
 
-    // สวิตช์ปิด: ประโยคเดิม ไม่มีปุ่ม (นัดยกเลิกที่หน้าจัดคิว)
+    // สวิตช์ปิด: ประโยคเดิม ไม่มีปุ่ม (นัดยกเลิกที่หน้าจัดคิว) · พาดหัวพูดเรื่องนัดเหมือนกัน (ส่งไม่ได้ทั้งสองแบบ)
     for (const off of [card(zones, { visit }), card(zones, { visit, drawingMethodEnabled: false })]) {
       assert.deepEqual(off.send.reason, { key: 'visit-open-desk', text, detail: text, target: null }, status);
       assert.equal(off.send.allowed, false);
+      assert.equal(off.status.key, 'desk-visit-open');
     }
   }
   // ด่านของพื้นที่ยังพูดก่อนเรื่องนัด (ลำดับเดียวกับ route)
@@ -323,6 +333,29 @@ test('🔴 แถว 17: ใบจากแบบทั้งใบ + นัด�
   assert.equal(draft.send.reason.key, 'visit-draft');
   assert.equal(draft.send.reason.target, null);
   assert.match(draft.send.reason.text, /ยังเป็นร่าง/);
+});
+
+test('⭐ S2b-O3-sub: นัดก่อนหน้าเข้าพื้นที่แล้ว นัดล่าสุดยกเลิก/ทำไม่ได้ + พื้นที่ที่สลับกลับยังไม่ครบ = "ต้องลงคิวใหม่" (คำของหน้าคำร้อง) ไม่ใช่ "กำลังวัดหน้างาน"', () => {
+  // UAT S2b รอบสอง S06 o3-sub-latest-cancelled / -unable: พาดหัว "กำลังวัดหน้างาน" ข้างบรรทัดขั้น "SV-… ยกเลิก — รอ TS ลงคิวใหม่"
+  const back = onsiteReady('z1', 'ล็อบบี้', { parts: [], methodChangedAt: '2026-10-08T02:30:00.000Z' });
+  const zones = [back, drawingReady('z2', 'ห้องอาหาร'), drawingReady('z3', 'ห้องประชุมชั้น 3')];
+  for (const status of ['cancelled', 'unable', 'rescheduled']) {
+    const visit = scheduled({ status, code: 'SV-26100012' });
+    const on = card(zones, { visit, drawingMethodEnabled: true, siteVisitReached: true });
+    assert.equal(on.status.key, 'requeue', status);
+    assert.equal(on.status.headline, 'ต้องลงคิวใหม่', status);
+    assert.equal(on.status.tone, 'warning');
+    assert.match(on.status.sub, /เหลือ ล็อบบี้/);
+    assert.equal(on.progress.complete, false);
+    // สวิตช์ปิด = พาดหัวเดิมทุกตัวอักษร
+    assert.equal(card(zones, { visit, siteVisitReached: true }).status.headline, 'กำลังวัดหน้างาน', `${status} · สวิตช์ปิด`);
+  }
+  // ไม่มีนัดไหนเข้าพื้นที่เลย = "รอลงคิวเข้าพื้นที่" ตามเดิม (head-r3-2 ข) · นัดล่าสุดเข้าแล้ว = งานของหัวหน้า (ไม่ใช่ requeue)
+  assert.equal(card(zones, { visit: scheduled({ status: 'cancelled' }), drawingMethodEnabled: true, siteVisitReached: false }).status.key, 'queue');
+  assert.notEqual(card(zones, { visit: scheduled({ status: 'done' }), drawingMethodEnabled: true, siteVisitReached: true }).status.key, 'requeue');
+  // ใบลงหน้างานล้วนที่ไม่เคยสลับ = ทางเดิม แม้สวิตช์เปิด
+  const plain = [onsiteReady('z1', 'ล็อบบี้', { parts: [] })];
+  assert.equal(card(plain, { visit: scheduled({ status: 'cancelled' }), drawingMethodEnabled: true, siteVisitReached: true }).status.headline, 'กำลังวัดหน้างาน');
 });
 
 // ══ 4. แถว 17a — พื้นที่ลงหน้างานยังไม่มีนัดที่เข้าพื้นที่ ══════════════════
@@ -531,11 +564,11 @@ test('surveyResultMethodCell: ลงหน้างาน = ป้ายอย�
 
   // เกิดมาเป็นจากแบบ (ฝ่ายขายขอประเมินจากแบบ) แล้วหัวหน้าบันทึก — 01:30 UTC = 08:30 เวลาไทย วันเดียวกัน
   const born = drawingReady('z1', 'Lobby', { surveyedAt: '2026-10-08T01:30:00.000Z', surveyedByName: 'หัวหน้า ก' });
-  assert.deepEqual(surveyResultMethodCell(born, null), drawing('จากแบบ · หัวหน้า ก 08/10/2026'));
+  assert.deepEqual(surveyResultMethodCell(born, null), drawing('จากแบบ · หัวหน้า ก พฤ. 8 ต.ค.'));
   // วันเป็นวันไทย: 18:30 UTC ของวันที่ 8 = ตีหนึ่งครึ่งของวันที่ 9
   assert.equal(
     surveyResultMethodCell({ ...born, surveyedAt: '2026-10-08T18:30:00.000Z' }, null).source,
-    'จากแบบ · หัวหน้า ก 09/10/2026',
+    'จากแบบ · หัวหน้า ก ศ. 9 ต.ค.',
   );
 
   // สลับมาแล้วยังไม่ได้บันทึกใหม่ — ชื่อช่างที่วัดไว้ก่อนสลับห้ามขึ้น ต้องเป็นชื่อคนสลับ
@@ -543,7 +576,7 @@ test('surveyResultMethodCell: ลงหน้างาน = ป้ายอย�
     surveyedAt: '2026-10-07T03:00:00.000Z', surveyedByName: 'ช่าง ก',
     methodChangedAt: '2026-10-08T04:00:00.000Z', methodChangedByName: 'หัวหน้า ข',
   });
-  assert.deepEqual(surveyResultMethodCell(switched, null), drawing('จากแบบ · หัวหน้า ข 08/10/2026'));
+  assert.deepEqual(surveyResultMethodCell(switched, null), drawing('จากแบบ · หัวหน้า ข พฤ. 8 ต.ค.'));
   // มีชื่อแต่ไม่มีเวลา = ชื่ออย่างเดียว
   assert.equal(
     surveyResultMethodCell({ ...switched, methodChangedAt: null, surveyedAt: null, surveyedByName: null }, null).source,
@@ -553,7 +586,7 @@ test('surveyResultMethodCell: ลงหน้างาน = ป้ายอย�
   const bare = drawingReady('z1', 'Lobby');
   assert.equal(
     surveyResultMethodCell(bare, { answeredByName: 'หัวหน้า ค', answeredAt: '2026-10-09T02:00:00.000Z' }).source,
-    'จากแบบ · หัวหน้า ค 09/10/2026',
+    'จากแบบ · หัวหน้า ค ศ. 9 ต.ค.',
   );
   // ไม่มีชื่อเลย = "จากแบบ" เฉย ๆ (ไม่มีจุดคั่นลอย ไม่มีขีด)
   assert.deepEqual(surveyResultMethodCell(bare, null), drawing('จากแบบ'));
@@ -741,7 +774,12 @@ test('🔴 ก่อนส่งผล: "พร้อมแล้ว" · แถ�
     assert.equal(gate.ok, true, kind);
     assert.deepEqual(gate, onsite.gates.find((g) => g.key === 'document'), kind);
     // กล่องคำเตือน (การส่งรอบนี้ออกฉบับลูกค้าแล้ว) — ก้อนเดียวกับใบลงหน้างาน · คำเตือนชุดดิบกลับไปกับคำขอ
-    assert.deepEqual(notice(v, 'document-warnings'), notice(onsite, 'document-warnings'), kind);
+    /* 🐞 UAT 26/10 (S05 send-warnings): บรรทัดปิดท้ายบอกชื่อแท็บที่มีอยู่บนจอจริง — ใบที่มีพื้นที่จากแบบแท็บแรกชื่อ "ข้อมูลพื้นที่" */
+    const { text: deskWhere, ...deskNotice } = notice(v, 'document-warnings');
+    const { text: onsiteWhere, ...onsiteNotice } = notice(onsite, 'document-warnings');
+    assert.deepEqual(deskNotice, onsiteNotice, kind);
+    assert.equal(deskWhere, 'หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บข้อมูลพื้นที่) · หรือส่งตามนี้ได้', kind);
+    assert.equal(onsiteWhere, 'หมายเหตุพื้นที่แก้ได้ที่หน้าพื้นที่ (แท็บหน้างาน) · หรือส่งตามนี้ได้', kind);
     assert.deepEqual(notice(v, 'document-warnings').items, [warn], kind);
     assert.deepEqual(v.send.seenWarnings, [warn], kind);
     assert.equal(v.send.issuesDocument, true, kind);
@@ -862,7 +900,7 @@ test('surveyResultMethodCell · `addedLabel`: พื้นที่จากแ�
 /* UAT S06 รอบหัวหน้า + มติ 12/10 ข้อ O3 — พื้นที่ที่สลับกลับเป็นลงหน้างานบนใบที่เคยเข้าพื้นที่แล้ว: การ์ดของหัวหน้าต้องพูดเรื่องเดียวกับ
    กล่องผลลัพธ์ของโมดัล ("ต้องวัดขนาดจริงแล้วบันทึกอีกครั้ง") และพาไปหน้าพื้นที่ที่กดบันทึกยืนยันได้ */
 test('🔑 พื้นที่ที่เพิ่งกลับเป็นลงหน้างาน (นัดปิดแล้ว): การ์ดของหัวหน้าเอ่ยชื่อพื้นที่ · เหตุเต็มคือประโยคของด่านขนาด · ปุ่มพาไปพื้นที่นั้น — บันทึกหลังสลับแล้วข้อขนาดผ่าน', () => {
-  const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง';
+  const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดและภาพกว้างแล้วกดบันทึกอีกครั้ง';
   const SWITCHED = '2026-10-09T03:00:00.000Z';
   const back = (extra = {}) => onsiteReady('z1', 'Studio 01', {
     methodChangedAt: SWITCHED, surveyedAt: '2026-10-08T03:00:00.000Z', surveyedByName: 'ช่าง ก', ...extra,
@@ -871,7 +909,7 @@ test('🔑 พื้นที่ที่เพิ่งกลับเป็น
     const v = card([back(), drawingReady('z2', 'Lobby')], { visit: scheduled({ status }) });
     assert.equal(v.send.allowed, false, status);
     /* มติ O3 (12/10) + 🐞 UAT S2b S06: นัดปิดแล้ว ไม่มีช่างคนไหนให้รอ — ข้อที่ค้างคือ "บันทึกอีกครั้ง" ของหัวหน้าเอง */
-    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ ที่ Studio 01', status);
+    assert.equal(v.send.reason.text, 'ยังส่งไม่ได้ — ติด 1 ข้อ · หัวหน้าต้องทำ: Studio 01', status);
     assert.equal(v.send.reason.key, 'head-gaps', status);
     assert.equal(v.send.reason.detail, `ยังส่งผลไม่ได้ — Studio 01: ${RESAVE}`, status);
     assert.deepEqual(v.send.reason.target, { kind: 'zone', zoneId: 'z1', label: 'เปิด Studio 01' }, status);
@@ -882,7 +920,7 @@ test('🔑 พื้นที่ที่เพิ่งกลับเป็น
     assert.equal(v.zoneGaps.crewPending, false, status);
     assert.equal(v.status.key, 'awaiting-decision', status);
     assert.equal(v.status.resave, true, status);
-    assert.equal(v.status.headline, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง', status);
+    assert.equal(v.status.headline, 'รอหัวหน้าตรวจขนาดและภาพกว้างแล้วบันทึกอีกครั้ง', status);
     assert.match(v.status.sub, /เหลือ Studio 01/, status);
     assert.doesNotMatch(`${v.status.headline} ${v.status.sub} ${v.send.reason.text}`, /กำลังวัดหน้างาน|รอช่าง/, status);
 
@@ -898,13 +936,21 @@ test('🐞 ใบจากแบบทั้งใบ ครบทุกพื�
   const sign = 'ยังไม่มีลายเซ็นของ หัวหน้า ก — บันทึกลายเซ็นที่หน้าโปรไฟล์ก่อนส่งผล';
   const v = sheetCard('desk', { document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }) });
   assert.equal(v.send.allowed, false);
+  /* 🔄 ผลรีวิวรอบสี่ (head-rc-r2-22) — รางของการ์ดใบนี้อยู่ขั้น "ส่งผล" แล้ว (ด่านของพื้นที่ผ่านครบ · เอกสารเป็นเรื่องของขั้นส่งผล)
+     ⇒ พาดหัวเอ่ยเรื่องเอกสาร รูปเดียวกับใบลงหน้างานที่ติดเฉพาะเอกสาร — ไม่ใช่ "กำลังประเมินจากแบบ — 2/2 พื้นที่" ข้าง "ขั้น 5/6 · ส่งผล" */
   assert.deepEqual(v.status, {
-    key: 'desk-working', tone: 'warning', headline: 'กำลังประเมินจากแบบ — 2/2 พื้นที่',
+    key: 'desk-working', tone: 'warning', headline: 'ประเมินจากแบบครบแล้ว — เอกสารประเมินยังออกไม่ได้',
     sub: 'เหลือแก้ข้อที่ทำให้เอกสารประเมินออกไม่ได้', // คำเดียวกับใบลงหน้างานที่ติดเฉพาะเอกสาร (`documentOnly`)
   });
-  // ด่านอื่นที่ไม่ผูกกับพื้นที่ติดด้วย (ทะเบียนขนาดอ่านไม่ขึ้น) = ไม่ใช่ "ติดเฉพาะเอกสาร" ⇒ บรรทัดรองว่างตามเดิม
+  assert.deepEqual([v.step.index + 1, v.step.label], [5, 'ส่งผล']);
+  const onsiteDoc = sheetCard('onsite', { document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }) });
+  assert.deepEqual([onsiteDoc.status.headline, onsiteDoc.step.index], ['วัดและเคาะครบแล้ว — เอกสารประเมินยังออกไม่ได้', v.step.index], 'คู่ของใบลงหน้างาน');
+  /* ด่านอื่นที่ไม่ผูกกับพื้นที่ติดด้วย (ทะเบียนขนาดอ่านไม่ขึ้น) = ไม่ใช่ "ติดเฉพาะเอกสาร" ⇒ พาดหัวเอ่ยเรื่องทะเบียนก่อน (ลำดับเดียวกับ route ส่งผล)
+     🔄 ผลรีวิวรอบห้า (head-rc-r2-22): ด่านทะเบียนเป็นของขั้นส่งผลเหมือนเอกสาร (หน้าคำร้องถามไม่ได้) ⇒ รางอยู่ขั้น "ส่งผล" — เดิม "กำลังประเมินจากแบบ — 2/2 พื้นที่"
+        ที่ขั้น 4 ขณะที่หน้าคำร้องของใบเดียวกันขั้น 5 (ยามเต็มอยู่ที่ `surveyFixCard.test.mjs`) */
   const both = sheetCard('desk', { packageSizes: null, document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }) });
-  assert.equal(both.status.sub, '');
+  assert.deepEqual([both.status.headline, both.status.sub], ['ประเมินจากแบบครบแล้ว — อ่านทะเบียนขนาดแพ็คเกจไม่สำเร็จ', '']);
+  assert.deepEqual([both.step.index + 1, both.step.label], [5, 'ส่งผล']);
   // ยังมีพื้นที่ค้าง = เอ่ยชื่อพื้นที่ (เรื่องที่ต้องทำก่อน) ไม่ใช่เรื่องเอกสาร
   const left = card([drawingReady('z1', 'Lobby'), drawingEmpty('z2', 'Lounge', { parts: [part(4, 5, 3)] })], {
     visit: null, document: notSent({ send: { ...OK_CHECK, blockers: [sign] } }),

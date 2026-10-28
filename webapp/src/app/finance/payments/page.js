@@ -43,8 +43,8 @@ import {
   LEDGER_BILLING_CUTOFF, LEDGER_BILLING_MISSING_TAG, LEDGER_BILLING_RULE_UNSET, LEDGER_BILLING_WAITING_TAG,
   LEDGER_BILLING_WINDOW_DAYS, LEDGER_DUE_FILTERS, ledgerBillingFilterOptions, ledgerCutoffOn,
   LEDGER_CANCELLED_TAG, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
-  LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupInstallmentNote, groupLedgerBuckets,
-  groupLedgerByOrder, groupNote, ledgerBillingFilter, ledgerBillingWhen, ledgerDueFilter, ledgerRowLock, ledgerSortDir,
+  LEDGER_HELD, LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupInstallmentNote, groupLedgerBuckets,
+  groupLedgerByOrder, groupNote, ledgerBillingFilter, ledgerBillingWhen, ledgerDueFilter, ledgerRowLock, ledgerSortDir, ledgerStatusKey,
   pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
 import { DUE_REMIND_DAYS, NO_BILLING_TEXT, billingStateTone, formatBillingDate, weekendNote } from "@/lib/sales/billingRule";
@@ -57,6 +57,8 @@ import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConf
 import TaxInvoiceDialog from "@/components/salesPlanning/TaxInvoiceDialog";
 import InstallmentRefundDialog from "@/components/salesPlanning/InstallmentRefundDialog";
 import { CARRY_BUTTON } from "@/lib/sales/installmentCarry";
+/* นับ Actual รายงวด (mig 0412) — ข้อความด่านเงินของใบรายงวด (ประโยคเดียวกับ trigger ของ 0412 · installment_actual_not_approved) */
+import { installmentActualLockReason } from "@/lib/sales/salesOrderActualMode";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
 import { REPLANNED_BADGE, REPLANNED_BADGE_TITLE } from "@/lib/sales/installmentReplan";
@@ -64,6 +66,7 @@ import { REPLANNED_BADGE, REPLANNED_BADGE_TITLE } from "@/lib/sales/installmentR
 import { isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
 import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
 import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -87,6 +90,11 @@ const POPOVER_FILTER_KEYS = FILTER_KEYS.filter((key) => !OUTSIDE_POPOVER_KEYS.in
    (จอแคบตัดท้ายด้วย ellipsis ⇒ ตัดยอดเงิน ไม่ตัดคำบอกสถานะ) */
 const CARD_ON_NOTE = "กำลังใช้ตัวกรองนี้";
 const CARD_ON_TITLE = "กำลังกรองอยู่ — กดอีกครั้งเพื่อถอด";
+
+/* แถบ "แจ้งชำระแล้ว…ยังรับรองไม่ได้" ของใบนับ Actual รายงวด (UAT FN 27/10 ข้อ 1 + 5) — ประโยคนำจริงกับทุกงวดในแถบ
+   (เหตุของแต่ละงวดอยู่ในรายการใบข้างล่าง ไม่ใช่วงเล็บรวมที่เท็จกับงวดแรก) · "AE Sup" ห้ามขาดกลางบรรทัด (ข้อ 6) */
+const HELD_LEAD = "ใบที่นับ Actual รายงวด — บัญชีรับรองเงินงวดได้หลังงวดนั้นนับ Actual แล้ว · รายการข้างล่างบอกว่าแต่ละงวดรอใคร";
+const HELD_KEEP = ["AE Sup"];
 
 /* ── เซลล์ "วางบิลถัดไป" (mig 0389 · ม็อก D) ─────────────────────────────────────────────────────────
    วันวางบิล · "งวด n · ระยะ" — ค่าระดับใบมาจาก `groupLedgerByOrder` (nextBilling ฯลฯ)
@@ -420,6 +428,15 @@ export default function FinancePaymentsPage() {
      ⚠️ นับจาก **แถวที่กรองแล้ว** — ตัวกรองบนหน้าคุมทั้งคิวและทะเบียน ไม่งั้นกรองดู
      ลูกค้ารายเดียวแล้วคิวยังโชว์ของคนอื่น = สองส่วนบนหน้าเดียวพูดคนละเรื่อง */
   const queue = useMemo(() => pendingConfirmations(rows), [rows]);
+  /* ⭐ งวดที่แจ้งชำระแล้วแต่ติดด่าน "นับ Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — ไม่อยู่ในคิวรับรอง (รับรองไม่ได้จนกว่า
+     งวดนับ Actual · `actualAwaitingApproval` ของแถวทะเบียน) แต่บัญชีต้องเห็นว่าเงินที่แจ้งมาแล้วรออะไร ไม่ใช่หายเงียบ
+     🐞 UAT FN 27/10 ข้อ 1 + 5: แถบเดิมนับจากแถวที่กรองแล้วและบอกแต่ยอดรวม — ทางเข้าจากป้ายบนเมนู (`?status=reported`) ไม่เห็นงวดพวกนี้เลย
+       (สถานะ 'held' ของตัวกรอง) · ไม่บอกว่าใบไหน · วงเล็บ "ยื่นได้หลังบัญชีรับรองงวดก่อนหน้า" เท็จกับงวดแรก/แถวที่ยกมา
+     ⇒ API สรุปรายใบ + เหตุรายงวด (`facetTally.held` · ledgerHeldSummary — ถอดตัวกรองสถานะออกก่อนนับ ตัวกรองอื่นคงไว้) ·
+       เหตุจาก installmentActualHold ตัวเดียวกับปุ่มรับรอง/แผงงวด (ใบที่ย้อนอนุมัติ = ออก Rev. · งวดก่อนหน้ายังไม่รับรอง = งานของบัญชีเอง) */
+  const held = facetTally?.held || { count: 0, amount: 0, kinds: {}, orders: [] };
+  const heldOn = statusFilter.length === 1 && statusFilter[0] === LEDGER_HELD;
+  const [heldOpen, setHeldOpen] = useState(false);
   /* ⭐ **คิวที่สอง: เงินเข้าแล้วแต่ยังไม่ออกใบกำกับ** (มติผู้ใช้ 2026-09-07)
      บริษัทเก็บ VAT ⇒ ทุกงวดที่ลูกค้าจ่ายต้องมีใบกำกับ ⇒ ของค้างชุดนี้เคลียร์ได้จริง
      ⚠️ **แยกจากคิวแรก** — ป้ายตัวเลขบนเมนูนับ `reported` อยู่ · เอามารวมกันเมื่อไร
@@ -483,6 +500,7 @@ export default function FinancePaymentsPage() {
   const invoiceShown = invoiceQueueOpen ? invoiceQueue : invoiceQueue.slice(0, QUEUE_PREVIEW);
   const invoiceTotal = invoiceQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   const strandedShown = strandedOpen ? strandedQueue : strandedQueue.slice(0, QUEUE_PREVIEW);
+  const heldShown = heldOpen ? held.orders : held.orders.slice(0, QUEUE_PREVIEW);
   const strandedTotal = strandedQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
   /* ── แถวของ "ใบ" หนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────────
@@ -611,7 +629,8 @@ export default function FinancePaymentsPage() {
             ? <span className="cell-sub">งวด {group.dueWaiting.seq} · {group.dueWaiting.event}</span>
             : null}
           {group.dueSoon ? <span className="cell-sub">ครบกำหนดใน {DUE_REMIND_DAYS} วัน · {group.dueSoon} งวด</span> : null}
-          {note ? <span className="cell-sub">{note.label}</span> : null}
+          {/* งวดที่ติดด่านนับ Actual: ป้าย "รอนับ Actual n งวด" + title = เหตุรายงวด (คนที่ต้องทำต่อ · UAT FN 27/10 ข้อ 1) */}
+          {note ? <span className="cell-sub" title={note.title}>{note.label}</span> : null}
         </td>
         {/* ⭐ คำขอใบวางบิล (รุ่นสี่ · §6) — ลำดับคอลัมน์ตามงานจริง: วันวางบิล → กำหนดชำระ → คำขอใบวางบิล → ยอด */}
         <td>
@@ -766,6 +785,44 @@ export default function FinancePaymentsPage() {
         {/* ── คิวงาน: สิ่งที่ต้องทำวันนี้ (มติผู้ใช้ 2026-08-13 · แบบ ข) ──────────
             ⚠️ ขึ้นเฉพาะตอนมีของให้ทำ — คิวว่างที่โชว์อยู่ตลอดคือเสียงรบกวน
             ⚠️ อยู่ **เหนือ** ทะเบียน เพราะคนเปิดหน้ามาเพื่อทำงาน ไม่ได้มาค้น */}
+        {/* ใบ "นับ Actual รายงวด" (mig 0412): สลิปที่แจ้งมาแล้วของงวดที่ยังไม่นับ Actual — บอกเหตุแทนปุ่มรับรอง (ไม่มีปุ่มที่กดแล้วไปตายที่ฐาน)
+            ⭐ รายใบ (ลิงก์เข้าแท็บการชำระของใบ) + เหตุสั้นรายงวด (ประโยคเต็มที่ title) · ขึ้นแม้กรอง `?status=reported` อยู่ (ทางเข้าจากป้าย
+              บนเมนู) — ปุ่ม "ดูในทะเบียน" สลับตัวกรองเป็น `held` (เลขบนแถบ = แถวหลังกด) · UAT FN 27/10 ข้อ 1 + 5 */}
+        {held.count > 0 && (
+          <StatusNotice tone="info"
+            title={`แจ้งชำระแล้ว ${held.count} งวด · ${fmtMoney(held.amount)} ยังรับรองไม่ได้ — รอนับ Actual รายงวด`}
+            action={heldOn ? null : (
+              <Button size="sm" variant="ghost" onClick={() => setFilter("status", LEDGER_HELD)}>ดูในทะเบียน</Button>
+            )}>
+            <p>{thaiText(HELD_LEAD)}</p>
+            {/* งานของบัญชีเอง: งวดก่อนหน้าที่นับแล้วแต่ยังไม่รับรอง (เช่นหลังถอนคำรับรอง) กันงวดถัดไปไว้ — รับรองในคิวข้างล่างก่อน */}
+            {held.kinds?.prev_confirm
+              ? <p className={styles.heldYours}>{`งานของคุณก่อน: รับรองเงินงวดก่อนหน้าของใบเดียวกัน — ${held.kinds.prev_confirm} งวดในรายการนี้รอข้อนี้อยู่`}</p>
+              : null}
+            <ul className={styles.heldList}>
+              {heldShown.map((order) => (
+                <li key={order.orderId || order.orderNumber}>
+                  <Link prefetch={false} href={`/sa/sales-orders/${order.orderId}?tab=payment`} target="_blank" rel="noreferrer"
+                    className={`linklike mono ${styles.openLink}`} title="เปิดแท็บการชำระของใบในแท็บใหม่">
+                    <strong>{order.orderNumber}</strong>
+                    <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
+                  </Link>
+                  {order.rows.map((row) => (
+                    <span key={row.id} className={styles.heldRow} title={row.text}>
+                      {`งวด ${row.seq} · ${fmtMoney(row.amount)} — `}
+                      {keepPhrases(row.short, HELD_KEEP)}
+                    </span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+            {held.orders.length > QUEUE_PREVIEW ? (
+              <Button size="sm" variant="quiet" onClick={() => setHeldOpen((v) => !v)}>
+                {heldOpen ? "ย่อรายการ" : `ดูอีก ${held.orders.length - QUEUE_PREVIEW} ใบ`}
+              </Button>
+            ) : null}
+          </StatusNotice>
+        )}
         {queue.length > 0 && (
           <WorkspaceSection
             icon={<Wallet size={17} />}
@@ -776,6 +833,14 @@ export default function FinancePaymentsPage() {
             <div className={styles.queue}>
               {queueShown.map((row) => {
                 const confirmLock = ledgerRowLock(row, "confirm");
+                /* ⭐ ใบ "นับ Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026): งวดที่ AE Sup ยังไม่อนุมัตินับ Actual รับรองไม่ได้
+                   (trigger ของ 0412) — ธง `actualAwaitingApproval` ของแถวทะเบียน (ledgerRow · installmentActualPaymentGated ตัวเดียวกับ
+                   ด่านของ PATCH งวด) · คิวนี้ตัดแถวแบบนั้นออกอยู่แล้ว (`pendingConfirmations`) ⇒ ที่นี่คือกันอีกชั้น: ถ้าหลุดมา
+                   = เหตุเป็นตัวหนังสือในแถว + โมดัลรับรองดับปุ่มยืนยัน (`InstallmentConfirmDialog` · ไม่ใช่ปุ่มที่กดแล้วไปตายที่ฐาน) */
+                /* เหตุบอกคนที่ต้องทำต่อตามสถานะการนับของงวด (ยื่นแล้ว = รอ AE Sup · ยังไม่ยื่น/ตีกลับ = รอฝ่ายขายยื่น · review 26/10) */
+                /* แถวทะเบียนพก `actualPreviousOpen`/`actualCountRestDone` (ประทับก่อนกรอง) — ตัวเดียวกับ ledgerRowLock (UAT FN 27/10 ข้อ 3) */
+                const actualLock = row.actualAwaitingApproval ? installmentActualLockReason(row, { status: row.orderStatus }) : null;
+                const actualLockId = actualLock ? `actual-lock-${row.id}` : undefined;
                 return (
                 <div key={row.id} className={`${styles.qrow} ${row.overdue ? styles.qrowLate : ""}`.trim()}>
                   <div className={styles.qmain}>
@@ -810,9 +875,11 @@ export default function FinancePaymentsPage() {
                       {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
                       {` · หลักฐาน ${row.evidenceCount} ไฟล์`}
                     </span>
+                    {actualLock ? <span id={actualLockId} className={styles.qlock}>{actualLock}</span> : null}
                   </div>
                   <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  <Button size="sm" tone="primary" disabled={acting || !!confirmLock} title={confirmLock || undefined} onClick={() => setConfirmFor(row)}>
+                  {/* ใบรายงวดที่ยังไม่อนุมัติงวด: เหตุอยู่บรรทัดที่สามของแถว (aria-describedby) · โมดัลรับรองดับปุ่มยืนยันของงวดแบบนั้นอีกชั้น */}
+                  <Button size="sm" tone="primary" aria-describedby={actualLockId} disabled={acting || !!confirmLock} title={confirmLock || undefined} onClick={() => setConfirmFor(row)}>
                     ยืนยันว่าเงินเข้า
                   </Button>
                   {/* ตีกลับเป็นการถอย ไม่ใช่ก้าวถัดไป ⇒ ปุ่มรอง ไม่ใช่ปุ่มเด่น */}
@@ -866,7 +933,8 @@ export default function FinancePaymentsPage() {
                     <span className="cell-sub">
                       {row.customerName}
                       {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
-                      {` · ${LEDGER_STATUS[row.status]?.label || row.status}`}
+                      {/* สถานะในมุมตัวกรอง — งวดที่ติดด่านนับ Actual = "รอนับ Actual" (คำเดียวกับตัวกรอง/ไฟล์ · ledgerStatusKey) */}
+                      {` · ${LEDGER_STATUS[ledgerStatusKey(row)]?.label || row.status}`}
                     </span>
                   </div>
                   <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
@@ -1165,6 +1233,8 @@ export default function FinancePaymentsPage() {
             approvedAt: confirmFor.orderApprovedAt, historicalInvoiceRef: confirmFor.historicalInvoiceRef,
             status: confirmFor.orderStatus,
             serviceTermZones: confirmFor.serviceTermZones, serviceContractLinked: confirmFor.serviceContractLinked,
+            /* แบบการนับ Actual ของใบ (mig 0412) — ใบรายงวด: ผลลัพธ์พูด "งวดนี้นับไปแล้วตอน AE Sup อนุมัติงวด" + แถว "นับ Actual" */
+            actualMode: confirmFor.actualMode,
           } : null}
           historical={isHistoricalOrder({ origin: confirmFor?.origin })}
           outlook={confirmRow?.confirmOutlook || null}

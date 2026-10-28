@@ -166,6 +166,20 @@
 .wrap[data-layout="split"] .codeLine[data-tagged] .area { display: none; }
 .wrap[data-layout="split"] .row:has(.codeLine[data-tagged]) .mark[data-key="size"] .markValue { display: inline; }
 
+/* S2b แก้หลังตรวจจอ planner-minor-3 (1440 · บานซ้าย ~318px): แถวลงหน้างานที่มีขนาดแล้วมีสามข้อ "✓ ขนาด 40 ตร.ม. · ✓ ภาพกว้าง 1 · ✓ จุด 1"
+   ไม่พอบรรทัดเดียว — "จุด" ตกบรรทัด แถวสูง 111px ขณะที่แถวจากแบบข้าง ๆ (สองข้อ) สูง 90px
+   ⇒ ข้อขนาดที่มีตัวเลขแล้ว: คำ "ขนาด" ซ่อนจากตา (ตร.ม. บอกอยู่แล้วว่าเป็นขนาด · โปรแกรมอ่านจอยังอ่านได้ — ท่าเดียวกับทรงคอลัมน์)
+     + ช่องไฟระหว่างข้อแคบลงหนึ่งขั้น · ผูกกับ `data-tagged` เหมือนกติกาข้างบน — แถวของใบลงหน้างานล้วนไม่ถูกแตะ */
+.wrap[data-layout="split"] .row:has(.codeLine[data-tagged]) .marks { column-gap: var(--space-2); }
+.wrap[data-layout="split"] .row:has(.codeLine[data-tagged]) .mark[data-key="size"]:has(.markValue) .markLabel {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .name {
   font-size: var(--fs-9);
   font-weight: var(--fw-bold);
@@ -349,8 +363,10 @@
 .wrap[data-layout="pages"] .mark[data-key="size"] .markValue { display: inline; }
 .wrap[data-layout="pages"] .mark[data-ok] .markValue { color: var(--text-1); font-weight: var(--fw-semibold); }
 .wrap[data-layout="pages"] .cutText { grid-column: 3 / 6; grid-row: 1; }
+/* `grid-row: auto` — ชื่อแถว missing/tags ของทรงซ้อนไม่มีในกริดนี้ (areas: none) ถ้าปล่อยไว้สองบรรทัดจะไปตกแถวเดียวกัน
+   ทับกัน ("ยังไม่ได้ผูกจุด" ใต้ป้าย "เพิ่มหน้างาน" · UAT S5 จอ 768) — auto = เรียงลงแถวถัดไปตามลำดับในหน้า */
 .wrap[data-layout="pages"] .missing,
-.wrap[data-layout="pages"] .tags { grid-column: 2 / 6; }
+.wrap[data-layout="pages"] .tags { grid-column: 2 / 6; grid-row: auto; }
 .wrap[data-layout="pages"] .chev { grid-column: 6; grid-row: 1 / span 3; }
 
 @media (max-width: 680px) {

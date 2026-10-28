@@ -13,6 +13,7 @@ import { INSTALLMENT_CARRY_SCHEMA_MISSING, carrySourcesFrom } from '@/lib/sales/
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { historicalSchemaMissing, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { claimPendingRequests, releaseInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 
 const TABLE = 'sales_order_installments';
 
@@ -124,7 +125,14 @@ export async function ensureInstallments(supabase, {
     }
     throw error;
   }
-  return { rows: (data || []).sort((a, b) => a.seq - b.seq), created: true };
+  const created = (data || []).sort((a, b) => a.seq - b.seq);
+  /* ⭐ คำร้องขอเอกสารที่เลือกงวดจากแผน QT ไว้ตอนยังไม่มีแถว (mig 0413 · ขอจากหน้า QT) — ผูกตอนนี้ที่เลขงวด = เลขในแผน QT เป๊ะ
+     ⚠️ ผูกไม่สำเร็จไม่ลากการสร้างงวดล้ม (ผู้เรียกคือการออก/อนุมัติใบ) — log ไว้ คำร้องยังแนบเองได้จากการ์ดการชำระ */
+  const claim = await claimPendingRequests(supabase, { order, rows: created });
+  if (claim.error) {
+    console.error('[installments] ผูกคำร้องที่เลือกงวดจากใบเสนอราคาไม่สำเร็จ', order.id, claim.error?.message || claim.error);
+  }
+  return { rows: created, created: true };
 }
 
 /**
@@ -231,6 +239,12 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
         .filter(([field, value]) => (field === 'billingSkip' ? value === true : value !== null && value !== '')),
     )]));
 
+    /* คำร้องที่ผูกแถวร่างชุดนี้ — ปล่อยก่อนลบ (ล้างทั้ง id และเลข · ไม่อุ้มตามกติกาข้างบน) ⇒ ชุดใหม่ไม่ผูกกลับตามเลขเงียบ ๆ
+       ⚠️ ปล่อยไม่สำเร็จไม่หยุดการอนุมัติ — FK ของ 0413 ล้าง id ให้ตอนลบแถวอยู่แล้ว เหลือแค่เลขที่อาจผูกกลับ (log ไว้ให้ตามได้) */
+    const release = await releaseInstallmentRequests(supabase, draft.map((r) => r.id));
+    if (release.error) {
+      console.error('[freezeInstallments] ปล่อยคำร้องออกจากงวดร่างไม่สำเร็จ', order.id, release.error?.message || release.error);
+    }
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
     if (error) throw error;
     const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp, borrowConfirmation });
@@ -542,6 +556,21 @@ export async function loadCarrySources(supabase, order) {
     .order('id', { ascending: true })));
   if (rowError) throw rowError;
   return carrySourcesFrom(orders, rows || []);
+}
+
+/**
+ * ยืมเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรกตอนตรึงงวดได้ไหม (freezeInstallments `borrowConfirmation`) — กติกาเดียวทุกทางที่ตรึง
+ * 🛑 review MONEY-1: ดีลที่มี "เงินค้างจากใบที่ยกเลิก" = ห้ามยืม (สลิปนั้นมักเป็นมัดจำก้อนเดียวกับเงินค้าง ⇒ นับสองครั้ง)
+ * ⚠️ อ่านไม่ขึ้น = ไม่ยืม (ทางที่ปลอดภัย — ฝ่ายขายแจ้งชำระงวดแรกเองได้เสมอ) · ผู้เรียก: อนุมัติใบ · "เริ่มติดตามการชำระ" ของใบที่อนุมัติแล้ว ·
+ *   ทางกู้ "นับงวด 1" (review รอบสาม 26/10 — ตรึงงวดที่ค้างก่อนนับ)
+ */
+export async function confirmationBorrowable(supabase, order) {
+  try {
+    return !(await loadCarrySources(supabase, order)).length;
+  } catch (strandedError) {
+    console.error('อ่านเงินค้างของดีลไม่สำเร็จ — ไม่ยืมสลิปมาตั้งงวดแรก', order?.id, strandedError);
+    return false;
+  }
 }
 
 /* ด่านลำดับ deploy ของ PR3 — บันทึกคืนเงินเขียนคอลัมน์ของ 0378 · ยังไม่รัน = PostgREST ตอบ PGRST204 (ไม่รู้จักคอลัมน์)

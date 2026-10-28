@@ -48,6 +48,7 @@ import { countRegistryDependents, countRegistryRefs } from '@/lib/master/scentFo
 import { deleteScentError } from '@/lib/master/scents';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { requestedLabel } from '@/lib/requests/rowLabel';
+import { loadRequestInstallments } from '@/lib/sales/installmentRequestsStore';
 
 export const dynamic = 'force-dynamic';
 
@@ -535,17 +536,17 @@ export async function PATCH(request, { params }) {
        ไม่งั้น FN ต้องพิมพ์เลขเดิมซ้ำอีกที่ = เลขมีสองบ้านทันที
 
        ⚠️ **หนึ่งงวดเท่านั้น** — คำร้องใบหนึ่งแขวนได้งวดเดียวโดยกติกา (route ของงวด
-       ตรวจตอน `link`) · เจอมากกว่าหนึ่งแถว = ข้อมูลเพี้ยน ไม่เดา ปล่อยให้ FN กรอกเอง
+       ตรวจตอน `link` · งวดหนึ่งมีได้หลายคำร้อง แต่ไม่กลับกัน) · เจอมากกว่าหนึ่งแถว = ข้อมูลเพี้ยน ไม่เดา ปล่อยให้ FN กรอกเอง
        ⚠️ **วันที่เติมให้เฉพาะตอนยังว่าง** — ของจริงคือวันบนใบกำกับซึ่งที่นี่ไม่รู้
        ใช้วันไทยของก้าวส่งเป็นค่าตั้งต้น แล้ว FN แก้ทีหลังได้ที่ทะเบียนการชำระ
        ⚠️ ล้มแล้ว **ไม่ throw** — ก้าวของแถวบันทึกสำเร็จไปแล้ว (เหตุผลเดียวกับสองบล็อกข้างบน) */
     if (hop === 'ready' && row.lineKind === 'billing_doc' && row.docType === 'tax_invoice'
       && patch.docNumber) {
-      const { data: linked, error: linkedError } = await supabase
-        .from('sales_order_installments')
-        .select('id, "taxInvoiceDate"')
-        .eq('billingRequestId', id)
-        .limit(2);
+      /* ⭐ mig 0413 — งวดของคำร้องอยู่ที่ `installmentId` ของคำร้องเอง (ลิงก์รุ่นเก่าถอยไปหาตามตัวชี้) */
+      const { data: requestRow } = await supabase.from('dept_requests').select('*').eq('id', id).maybeSingle();
+      const { data: linked, error: linkedError } = await loadRequestInstallments(supabase, requestRow || { id }, {
+        select: 'id, "taxInvoiceDate"',
+      });
       if (linkedError) {
         console.error('[requests] หางวดที่ผูกคำร้องใบกำกับไม่สำเร็จ:', linkedError.message);
       } else if (linked?.length === 1) {

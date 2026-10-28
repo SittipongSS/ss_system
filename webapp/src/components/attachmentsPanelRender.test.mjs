@@ -676,3 +676,77 @@ test('ปุ่มลบ: เป้ากด ≥ 24×24 (WCAG 2.2 SC 2.5.8) แ�
   assert.match(dot, /width: 100%;\s*height: 100%;/, 'วงกลมเต็มกล่องของปุ่ม — หน้าตาเท่ารอบก่อน');
   assert.match(dot, /pointer-events: none;/);
 });
+
+/* ══ TIFF = แถวไฟล์ ไม่ใช่แผ่นรูป (S2b แก้หลังตรวจจอ head-rc-q8 · sales-minor-7a) ═══════════════════════════════
+   🐞 ช่องภาพแบบ: TIFF ได้แผ่น "เปิดรูปไม่ได้" + ป้ายเขียว "ขึ้นแล้ว" ทั้งที่ไม่ปลดด่าน · กดแล้วกล่องดูรูปขึ้นรูปแตก
+      (แผง "แบบจากฝ่ายขาย" บนจอเดียวกันวาด TIFF เป็นแผ่นลิงก์ "เปิดในแท็บใหม่" ถูกอยู่แล้ว) · เธรด: กล่องเปล่าไม่มีชื่อไฟล์
+   ⇒ แผงแบ่งรูป/ไฟล์ด้วยชุดที่เบราว์เซอร์วาดได้ (`panelPhotoSplit` → `isDrawableImage`) · แถวของ TIFF บอก "เปิดในแท็บใหม่"
+   🔴 โหมดแถวของจุด (`photoGroups`) ใช้ชุดกว้างตัวเดียวกับ `isSpotPhoto` — ด่าน/แท็บผลนับชุดนั้น ไฟล์ที่นับต้องอยู่ในถาดให้ผูก */
+import { panelPhotoSplit } from '../lib/master/attachmentPhotoTiles.js';
+import { isSpotPhoto } from '../lib/service/surveySpotPhotos.js';
+import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT } from '../lib/service/survey.js';
+
+const surveyFile = (id, fileName, mimeType, docType = SURVEY_DOC_PLAN) => ({ id, fileName, mimeType, docType });
+
+test('ช่องภาพแบบ: TIFF (ตาม mime และตามนามสกุล) ลงแถวไฟล์ — ไม่มีแผ่นรูป ไม่มีป้าย "ขึ้นแล้ว" · PNG ยังเป็นแผ่นรูปพร้อมป้าย', () => {
+  const png = surveyFile('P1', 'แปลนแก้ไข.png', 'image/png');
+  const tiff = surveyFile('P2', 'ผังเดิม 1.tiff', 'image/tiff');
+  const tifNoMime = surveyFile('P3', 'scan.TIF', '');
+  const pdf = surveyFile('P4', 'แบบตกแต่ง.pdf', 'application/pdf');
+  const { photos, files } = panelPhotoSplit([png, tiff, tifNoMime, pdf]);
+  assert.deepEqual(photos.map((f) => f.id), ['P1']);
+  assert.deepEqual(files.map((f) => f.id), ['P2', 'P3', 'P4'], 'ลำดับเดิม · ทุกใบอยู่ฝั่งเดียว');
+
+  const { tiles } = photoTilesView({ photos, uploads: [], canAdd: true, canDelete: () => true });
+  assert.deepEqual(tiles.map((t) => t.kind), ['photo', 'add']);
+  assert.deepEqual(tiles.filter((t) => t.chip === 'ขึ้นแล้ว').map((t) => t.name), ['แปลนแก้ไข.png'],
+    'ป้ายเขียวอยู่บนรูปที่วาดได้เท่านั้น — TIFF ที่ไม่ปลดด่านภาพแบบไม่ได้ป้าย "ขึ้นแล้ว"');
+  // ไม่มีอะไรหลุด: ชุดว่าง/ไม่ใช่ลิสต์ = ว่างทั้งสองฝั่ง
+  assert.deepEqual(panelPhotoSplit(null), { photos: [], files: [] });
+  assert.deepEqual(panelPhotoSplit(), { photos: [], files: [] });
+});
+
+test('แถวของจุด (`grouped`): TIFF ยังอยู่ในชุดรูป — ชุดเดียวกับ `isSpotPhoto` ทุกใบ (ไฟล์ที่ด่านนับต้องอยู่ในถาดให้ผูก)', () => {
+  const spot = [
+    surveyFile('S1', 'IMG_1.jpg', 'image/jpeg', SURVEY_DOC_SPOT),
+    surveyFile('S2', 'scan.tiff', 'image/tiff', SURVEY_DOC_SPOT),
+    surveyFile('S3', 'scan.tif', '', SURVEY_DOC_SPOT),
+    surveyFile('S4', 'IMG_2.HEIC', 'image/heic', SURVEY_DOC_SPOT),
+    surveyFile('S5', 'note.pdf', 'application/pdf', SURVEY_DOC_SPOT),
+  ];
+  const grouped = panelPhotoSplit(spot, { grouped: true });
+  assert.deepEqual(grouped.photos.map((f) => f.id), spot.filter(isSpotPhoto).map((f) => f.id));
+  assert.deepEqual(grouped.files.map((f) => f.id), ['S5']);
+  // โหมดอื่นของแผง (ไม่ใช่แถวของจุด) — TIFF เป็นแถวไฟล์
+  assert.deepEqual(panelPhotoSplit(spot).files.map((f) => f.id), ['S2', 'S3', 'S5']);
+});
+
+test('แผง: ทุกจุดที่แบ่งรูป/ไฟล์ผ่าน `panelPhotoSplit` · แถวไฟล์ของ TIFF มี "เปิดในแท็บใหม่" ในลิงก์ · ภาพย่อของแถวไฟล์เฉพาะรูปที่วาดได้', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const css = code(fs.readFileSync(CSS, 'utf8'));
+  assert.doesNotMatch(source, /\bisPreviewableImage\b/, 'ตัดสินหน้าตาด้วยชุดที่วาดได้เท่านั้น — ชุดกว้างเข้าทาง `grouped` ของตัวแบ่ง');
+  assert.match(source, /photoGroups\(loading \? \[\] : panelPhotoSplit\(items\.filter\(\(it\) => it\.docType === groupType\), \{ grouped: true \}\)\.photos\)/);
+  assert.match(source, /const split = panelPhotoSplit\(shown, \{ grouped: !!groupsView \}\);\s*const tilePhotos = loading \? \[\] : split\.photos;/);
+  assert.match(source, /const \{ photos, files \} = split;/);
+
+  const row = renderBody(source, 'renderFileRow');
+  assert.match(row, /\) : isDrawableImage\(it\) \? \(\s*<button/, 'ภาพย่อ + กล่องดูรูปเต็มเฉพาะรูปที่วาดได้');
+  const cue = row.indexOf('{isUndrawnImage(it) && (');
+  assert.ok(cue > row.indexOf('<a') && cue < row.lastIndexOf('</a>'), 'คำบอกอยู่ในลิงก์ — ชื่อที่ได้ยินคือ "ชื่อไฟล์ เปิดในแท็บใหม่"');
+  assert.match(row, /\{isUndrawnImage\(it\) && \(\s*<span className=\{styles\.rowOpenNew\}>\s*\{UNDRAWN_IMAGE_OPEN_TEXT\}\s*<ExternalLink size=\{12\} aria-hidden="true" \/>\s*<\/span>\s*\)\}/);
+  const rule = cssRule(css, '.rowOpenNew');
+  assert.match(rule, /flex: none;/, 'ชื่อไฟล์ตัด "…" ก่อนคำบอก');
+  assert.match(rule, /white-space: nowrap;/, 'คำบอกไม่ขาดกลางวลีที่จอ 375');
+});
+
+test('เธรด: รูป/ไฟล์แบ่งด้วยชุดที่วาดได้ตัวเดียวกับแผง · TIFF = ลิงก์ชื่อไฟล์ + "เปิดในแท็บใหม่" (ไม่ใช่กล่องเปล่า "เปิดรูปไม่ได้")', () => {
+  const thread = code(fs.readFileSync(path.join(SRC, 'components/updates/UpdateThread.js'), 'utf8'));
+  const fn = thread.slice(thread.indexOf('function ThreadAttachments('), thread.indexOf('\n}\n', thread.indexOf('function ThreadAttachments(')));
+  assert.doesNotMatch(thread, /\bisPreviewableImage\b/);
+  assert.match(fn, /const photos = list\.map\(\(a, i\) => \(\{ a, i \}\)\)\.filter\(\(\{ a \}\) => isDrawableImage\(a\)\);/);
+  assert.match(fn, /const files = list\.map\(\(a, i\) => \(\{ a, i \}\)\)\.filter\(\(\{ a \}\) => !isDrawableImage\(a\)\);/);
+  const link = fn.slice(fn.indexOf('<a key={i} className={styles.fileLink}'), fn.indexOf('</a>'));
+  assert.match(link, /<span className="truncate">\{a\.fileName \|\| "ไฟล์แนบ"\}<\/span>/, 'ชื่อไฟล์เห็นบนจอ ไม่ใช่แค่ตอนชี้เมาส์');
+  assert.match(link, /\{isUndrawnImage\(a\) && \(\s*<span className="[^"]*\bwhitespace-nowrap\b[^"]*">\s*\{UNDRAWN_IMAGE_OPEN_TEXT\}\s*<ExternalLink size=\{12\} aria-hidden="true" \/>/);
+  assert.match(link, /target="_blank" rel="noreferrer"/);
+});
