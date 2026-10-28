@@ -67,3 +67,6 @@
 .submitGate { scroll-margin-top: var(--scroll-anchor-top); }
 /* "ครบ x/n" บนหัวแท็บภาพรวมก่อนกดยื่น — เป็นกลาง (กฎ 3: ไม่มีแดงก่อนกด) */
 .tabProgress { color: var(--text-3); font-size: var(--fs-4); font-weight: var(--fw-medium); font-variant-numeric: tabular-nums; }
+
+/* ⭐ นับ Actual รายงวด (mig 0412) — "นับแล้ว / เต็มใบ" + ป้าย "รายงวด" บนการ์ดสรุป (บรรทัดเดียว จอแคบตกบรรทัดเอง) */
+.actualSplit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-1-5); }

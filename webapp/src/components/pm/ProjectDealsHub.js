@@ -22,7 +22,10 @@ import { useCan } from "@/lib/roleContext";
 import { DEAL_TYPE_LABELS, STAGE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { InstRemainingAmount } from "@/components/salesPlanning/dashboard/performance/shared";
 import { hasPendingApproval, projectDealValue, projectSalesOrderAmount } from "@/lib/pm/projectPendingApproval";
+import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
+import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -96,7 +99,7 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
   /* Won = Actual (ตัวเดียวกับ KPI ข้างบน) + ยอด SO รออนุมัติเป็นบรรทัดแยก · เปิด/แพ้ = FC
      🐞 เดิมอ่าน `wonValue ?? projectValue` ดิบ ⇒ ดีล Won ที่ SO ยังรออนุมัติขึ้น ฿0.00
      "ปิดจริง" (มติผู้ใช้ 2026-09-11 · รายละเอียดใน lib/pm/projectPendingApproval) */
-  const { closed, value, pendingApproval, pendingApprovalCount } = projectDealValue(deal);
+  const { closed, value, pendingApproval, pendingApprovalCount, instRemaining } = projectDealValue(deal);
   const pct = seg.total ? Math.round((seg.done / seg.total) * 100) : 0;
   return (
     <>
@@ -127,6 +130,8 @@ function DealRow({ deal, seg, quotes, directory, expanded, onToggle, canReorder,
           {fmtMoney(value)}
           <div className={styles.valueNote}>{closed ? "Actual" : `FC${deal.forecastMonth ? ` · ${deal.forecastMonth}` : ""}`}</div>
           {closed && <PendingApprovalAmount amount={pendingApproval} count={pendingApprovalCount} />}
+          {/* กอง "รอนับรายงวด" (mig 0412 · มติข้อ 5 · review รอบสี่) — งวดของใบ Actual รายงวดที่ยังไม่ยื่น · ไม่ใช่ Actual · ไม่มี = ไม่วาด */}
+          {closed && <InstRemainingAmount amount={instRemaining} />}
         </td>
         <td className="num mono tabular-nums">{quotes.length || <span className={styles.muted}>{NA}</span>}</td>
         <td>
@@ -275,7 +280,10 @@ export function ProjectQuotationsCard({ project: p, canEdit = false }) {
                 {/* คำมาจากทะเบียนสถานะกลาง · สีป้าย = ผลต่อยอด (ข้อมูล ไม่ใช่สไตล์) */}
                 <td><span className="ui-badge" style={{ color: SO_AMOUNT_TONE[amount.kind] }}>{naText(amount.statusLabel)}</span></td>
                 <td className="num mono tabular-nums">
-                  {amount.kind === "actual" && fmtMoney(amount.amount)}
+                  {/* ใบ "Actual รายงวด" (mig 0412 · review รอบสอง 26/10): ยอดเต็มของใบ + บรรทัดรองบอกกอง — ตัวเดียวกับทะเบียน SO/หน้าดีล */}
+                  {amount.kind === "actual" && (installmentActualSubLine(order)
+                    ? <>{fmtMoney(amount.documentAmount)}<InstallmentActualSubLine order={order} /></>
+                    : fmtMoney(amount.amount))}
                   {amount.kind === "pending_approval" && <PendingApprovalAmount amount={amount.amount} count={1} inline />}
                   {amount.kind === "excluded" && (
                     <span className="cell-num-idle" title="สถานะนี้ไม่นับเป็น Actual และไม่นับเป็นยอดรออนุมัติ">
@@ -619,7 +627,13 @@ export default function ProjectDealsHub({ project: p, onChanged }) {
             label="Actual"
             value={fmtMoney(r.actual)}
             color="var(--green)"
-            hint={hasPendingApproval(r) ? <PendingApprovalAmount amount={r.pendingApproval} count={r.pendingApprovalCount} /> : null}
+            /* + กอง "รอนับรายงวด" (mig 0412 · มติข้อ 5 · review รอบสี่) — งวดของใบ Actual รายงวดที่ยังไม่ยื่น · ไม่รวมเข้าตัวเลข Actual */
+            hint={hasPendingApproval(r) || Number(r.instRemaining) > 0 ? (
+              <>
+                {hasPendingApproval(r) ? <PendingApprovalAmount amount={r.pendingApproval} count={r.pendingApprovalCount} /> : null}
+                <InstRemainingAmount amount={r.instRemaining} count={r.instRemainingCount} />
+              </>
+            ) : null}
           />
           <Kpi label="FC คงเหลือ" value={fmtMoney(r.fcRemaining)} color={r.fcRemaining > 0 ? "var(--amber)" : undefined} />
           <Kpi label="ใบเสนอที่รับแล้ว" value={fmtMoney(acceptedTotal)} hint={`ทั้งหมด ${(p.quotations || []).length} ใบ`} />

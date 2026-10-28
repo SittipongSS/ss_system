@@ -53,11 +53,104 @@
 
 /* ⭐ ท้ายแถว = **ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…"** (มติผู้ใช้ 2026-08-01)
    ก้าวถัดไปต้องเห็นโดยไม่ต้องเปิดเมนู · ที่เหลือ (ตั้งกำหนด/ดึงกลับ/ตีกลับ) อยู่ในเมนู */
-.actionCell {
-  width: 1%;
-  white-space: nowrap;
-}
+.actionCell { white-space: nowrap; }
 .actionCell > * + * { margin-left: var(--space-1-5); }
+
+/* ⭐ กลุ่มตรึงขวา = คอลัมน์ "สถานะ" + ช่องปุ่ม (UAT 27/10 ข้อ 3 · รอบสอง) — ตารางที่มีคอลัมน์วันวางบิลกว้างขั้นต่ำ 1010px
+   (minWidth ของ TableScroll) กล่องที่ 1440 กว้าง 1000 · ที่ 1280 กว้าง 840
+   · รอบแรกตรึงแค่ช่องปุ่ม ⇒ ที่ 1280 คอลัมน์สถานะ (ป้ายเงิน + ชิปนับ Actual + ยอดก่อน VAT = ของที่ต้องอ่านมากที่สุด)
+     ไปจมอยู่ใต้ช่องปุ่ม ต้องเลื่อนแนวนอนหา ⇒ ตรึงสองคอลัมน์ติดกัน คอลัมน์อื่นเลื่อนลอดข้างใต้
+   · ช่องปุ่มกว้างคงที่ `--pay-action-w` — ระยะตรึงของสถานะ = ความกว้างช่องปุ่ม **พอดีเป๊ะ** (ถ้าช่องปุ่มกว้างตามป้าย สถานะจะจมใต้มัน
+     หรือเหลือร่องให้ตัวเลขที่เลื่อนอยู่ลอดขึ้นมา) · 192 = ป้ายยาวสุด "บันทึกว่าลูกค้าจ่ายแล้ว" (ปุ่ม sm 128.5) + ช่องไฟ 6 + ⋯ 28
+     + padding 13×2 = 188.5 (วัด 27/10) ⇒ **เพิ่มป้ายก้าวถัดไปที่ยาวกว่านี้ต้องขยับค่านี้**
+   · สถานะกว้างตามเนื้อ แต่มีเพดาน `--pay-status-max` — เหตุยาว (ตัวหนังสือสีส้มของด่านนับ Actual) เคยดันคอลัมน์ไป ~270px
+     ⇒ กลุ่มตรึงกินกล่อง 840 เกินครึ่ง · มีเพดานแล้วเหตุตัดบรรทัดแทน (วัด 27/10 ที่ 1280: ใบรายงวด 133 · ใบนับทั้งก้อน 99 ·
+     ใบที่มีเหตุยาว 200 — เกินเพดานเพราะตารางมีที่เหลือแจกให้ทุกคอลัมน์) · ไม่ตรึงความกว้างตายตัว = ใบที่สถานะสั้นไม่เสียที่
+     (ที่ 1440 คอลัมน์อื่นเกือบพอดีกล่อง)
+   · ทึบเสมอ (มีคอลัมน์อื่นเลื่อนผ่านข้างใต้) — พื้นสูตรเดียวกับคอลัมน์ตรึงของ `family="matrix"` (Table.module.css) · สี hover ดูกฎข้างล่าง
+   · เส้นคั่นอยู่ขอบซ้ายของกลุ่มที่เดียว (ซ้ายของสถานะ ทั้งหัวและแถว) — ระหว่างสถานะกับช่องปุ่มไม่มีเส้น (กลุ่มเดียวกัน)
+   · หัวคอลัมน์ตรึงสองแกน (บน + ขวา) ⇒ อยู่เหนือหัวอื่น (5) และเหนือช่องตรึงของแถว · พื้นหัว = สูตรมุมของ primitive (ทึบทั้งสองธีม)
+   · จอ ≤640 ไม่ตรึง — กล่องแคบ กลุ่ม ~300–390px จะกินจอเกือบทั้งหมดตลอดการเลื่อน */
+.table {
+  --pay-action-w: 192px;
+  --pay-status-max: 184px;
+}
+/* 🪤 `width` เปล่าของเซลล์ = แค่ "ความกว้างที่อยากได้" — ตารางที่ถูกบีบอยู่ที่ minWidth (หลักฐานมีชื่อไฟล์ยาว) อัลกอริทึม auto
+   หดคอลัมน์ width คงที่ลงด้วย (วัด 27/10: ปุ่ม 192→172) ⇒ เกิดร่อง 20px ระหว่างสถานะกับช่องปุ่มให้ตัวเลขลอดขึ้นมา
+   ⇒ ต้องมี `min-width` คู่กันเสมอ (ตาราง LayoutNG ของ Chrome เคารพ min-width ของเซลล์) */
+.table > thead > tr > th.actionHead,
+.table > tbody > tr > td.actionCell { width: var(--pay-action-w); min-width: var(--pay-action-w); }
+/* เพดานสถานะ (ใต้แรงบีบหดได้ถึงชิปที่ยาวสุด — ชิป nowrap) · ⚠️ `.table.table` — กฎ stacked ของ primitive
+   (`.scroll[data-family="editable"][data-cells="stacked"] td` = 0,3,1) ตั้ง max-width: none */
+.table.table > tbody > tr > td.statusCell { max-width: var(--pay-status-max); }
+.table > tbody > tr > td.actionCell,
+.table > thead > tr > th.actionHead,
+.table > tbody > tr > td.statusCell,
+.table > thead > tr > th.statusHead {
+  position: sticky;
+  right: 0;
+}
+.table > tbody > tr > td.statusCell,
+.table > thead > tr > th.statusHead {
+  right: var(--pay-action-w);
+  box-shadow: inset 1px 0 0 var(--border);
+}
+.table > tbody > tr > td.actionCell,
+.table > tbody > tr > td.statusCell {
+  z-index: 1;
+  background: var(--panel-solid);
+}
+.table > thead > tr > th.actionHead,
+.table > thead > tr > th.statusHead {
+  z-index: 6;
+  background: linear-gradient(var(--panel-2), var(--panel-2)) var(--bg);
+}
+/* ⚠️ ซ้อน `.table` สองชั้น — กฎ hover ของ primitive (`.scroll[data-family] tbody tr:hover td` = 0,3,3) ทาสีโปร่งทับเซลล์ทุกตัว
+   🪤 สูตร hover ของคอลัมน์ตรึง matrix (`color-mix(… accent-soft 25%, panel-solid)`) **ไม่ทึบ** — accent-soft โปร่งเอง ผลผสมเหลือ
+   alpha 0.78 (วัด 27/10) ⇒ ตอนชี้แถวตัวเลขที่เลื่อนอยู่ข้างใต้ลอดขึ้นมาจาง ๆ · ที่นี่จึงวางสีจางชุดเดียวกับเซลล์อื่น
+   (`accent-soft 25%` บนใส) ทับพื้นทึบ panel-solid แทน — ทึบสนิท และสีเท่าแถวที่ชี้อยู่ */
+.table.table > tbody > tr:hover > td.actionCell,
+.table.table > tbody > tr:hover > td.statusCell {
+  background:
+    linear-gradient(color-mix(in srgb, var(--accent-soft) 25%, transparent), color-mix(in srgb, var(--accent-soft) 25%, transparent))
+    var(--panel-solid);
+}
+/* ⭐ คำใบ้ "เลื่อนได้" (UAT FN 27/10 ข้อ 6) — ที่ 1280 คอลัมน์หลักฐาน/ใบกำกับจมใต้กลุ่มตรึงโดยไม่มีอะไรบอก
+   ⇒ ตอนยังมีเนื้อซ่อนทางขวา (`data-hidden-edge` ของ TableScroll `edgeHint` มี "end") ขอบซ้ายของกลุ่มตรึงทอดเงาลงบนคอลัมน์ที่ลอดอยู่ข้างใต้
+   · เลื่อนสุดขวาแล้ว (ไม่มีอะไรซ่อน) = เส้นคั่นเดิมเส้นเดียว · `:global` — แอตทริบิวต์อยู่บนกล่องของ primitive ไม่ใช่ในโมดูลนี้
+   · สีเงาจากโทเคน `--shadow-edge` (มืดทั้งสองธีม · globals.css) — ไม่มีค่าดิบ
+   · จอ ≤640 ไม่ตรึง ⇒ ไม่มีกลุ่มให้ทอดเงา — ถอดในบล็อก ≤640 ข้างล่าง (ความจำเพาะเท่ากัน · มาทีหลังชนะ) */
+:global([data-hidden-edge~="end"]) .table > tbody > tr > td.statusCell,
+:global([data-hidden-edge~="end"]) .table > thead > tr > th.statusHead {
+  box-shadow:
+    inset 1px 0 0 var(--border),
+    calc(-1 * var(--space-3)) 0 var(--space-3) calc(-1 * var(--space-2)) var(--shadow-edge);
+}
+/* 🐞 review รอบหก 27/10: ไม่มีแถวไหนมีของในช่องปุ่ม (แผนจากใบเสนอราคาที่ยังไม่เริ่มติดตาม · คนดูที่ไม่มีคำสั่งให้กด · ใบที่ชำระครบแล้ว)
+   — เดิมจองช่องเปล่าทึบ 192px ตรึงขวาทุกใบ (ใบทั้งใบด้วย) ⇒ ที่ 1280 กลุ่มตรึงกินกล่อง 840 ได้ถึง ~45% ให้หลักฐาน/ใบกำกับลอดใต้ที่ว่าง
+   ⇒ ช่องปุ่มกลับไปกว้างตามเนื้อ (1% แบบเดิมก่อนตรึง) ไม่ตรึงขวา · สถานะตรึงชิดขอบแทน (right: 0 · จอ ≤640 ไม่ตรึงอยู่แล้ว)
+   · ตัดสินจาก DOM (ช่องปุ่มที่มีลูกเป็น element) ไม่ใช่เงื่อนไขซ้ำในโค้ด — ปุ่ม/ปุ่มที่ติดด่าน/เมนู ⋯ คือสิ่งเดียวที่วาดลงช่องนี้
+   · หัวช่องปุ่มคง sticky แนวตั้งของ primitive (ถอดแค่การตรึงขวา) · ความจำเพาะ (0,3,6) ชนะกฎตรึง (0,2,3) และกฎเงา (0,3,3) */
+.table:not(:has(> tbody > tr > td.actionCell > *)) > thead > tr > th.actionHead,
+.table:not(:has(> tbody > tr > td.actionCell > *)) > tbody > tr > td.actionCell {
+  width: 1%;
+  min-width: 0;
+  right: auto;
+}
+.table:not(:has(> tbody > tr > td.actionCell > *)) > tbody > tr > td.actionCell { position: static; }
+.table:not(:has(> tbody > tr > td.actionCell > *)) > tbody > tr > td.statusCell,
+.table:not(:has(> tbody > tr > td.actionCell > *)) > thead > tr > th.statusHead { right: 0; }
+@media (max-width: 640px) {
+  /* หัวสถานะของตารางที่ไม่มีปุ่ม — กฎ right: 0 ข้างบนหนักกว่าการถอดตรึงของจอนี้ ⇒ ถอดซ้ำด้วยน้ำหนักเท่ากัน (มาทีหลังชนะ) */
+  .table:not(:has(> tbody > tr > td.actionCell > *)) > thead > tr > th.statusHead { right: auto; }
+  /* หัวคอลัมน์คง sticky แนวตั้งของ primitive ไว้ — ถอดแค่การตรึงขวา */
+  .table > thead > tr > th.actionHead,
+  .table > thead > tr > th.statusHead { right: auto; box-shadow: none; }
+  .table > tbody > tr > td.actionCell,
+  .table > tbody > tr > td.statusCell { position: static; box-shadow: none; }
+  :global([data-hidden-edge]) .table > tbody > tr > td.statusCell,
+  :global([data-hidden-edge]) .table > thead > tr > th.statusHead { box-shadow: none; }
+}
 
 .evidence { display: flex; min-width: 0; flex-direction: column; gap: var(--space-1); }
 .none { color: var(--text-3); }
@@ -248,3 +341,17 @@
   font-variant-numeric: tabular-nums;
 }
 .timelineHead b { color: var(--text); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
+
+/* ── นับ Actual รายงวด (mig 0412 · มติเจ้าของ 26/10/2026) ─────────────────────────────────────────────────────────────
+   ชิปสถานะการนับของงวด + บรรทัดยอดก่อน VAT/เดือนที่นับ — อยู่ใต้ป้ายสถานะเงินในคอลัมน์ "สถานะ" (คนละแกน · ไม่เพิ่มคอลัมน์)
+   ⚠️ โทเคนเท่านั้น (เพดานเลขดิบของ audit:ui) · ไม่มีจุดตัดจอ — กองลงเอง */
+.actualCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  margin-top: var(--space-1-5);
+}
+/* เหตุที่ปุ่มของบัญชีดับ (งวดยังไม่อนุมัตินับ Actual) — `.table small` (จาง) ชนะคลาสเดี่ยว ⇒ ผูกกับ `.table` (ท่าเดียวกับ .issueNote) */
+.table .gateNote { color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }

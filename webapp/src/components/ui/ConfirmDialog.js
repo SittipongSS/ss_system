@@ -90,6 +90,13 @@ export default function ConfirmDialog({
      ฟอร์มจริง (เช่น "แจ้งกำหนดส่ง") ไม่ใช่ยัดลงกล่องยืนยันจนกลายเป็นฟอร์มปลอมที่
      ไม่มีใครตรวจค่า · ผู้เรียกที่ไม่ส่ง `children` ได้กล่องเดิมทุก px */
   children,
+  /* ⭐ **ตัวเลือกที่เปลี่ยนรายการผลลัพธ์** — วางระหว่างคำถามกับ `detail` (ไม่ใช่ท้ายกล่องแบบ `children`)
+     🐞 UAT 27/10 (โมดัลอนุมัติใบสั่งขาย · แผ่น "นับ Actual ทั้งใบ / รายงวด"): แผ่นอยู่ใต้รายการผลลัพธ์ เลือกแผ่นแล้วรายการยาวขึ้น
+        ⇒ แผ่นเลื่อนหนีเคอร์เซอร์ ~53px ทุกครั้งที่สลับ · วางเหนือรายการ = สิ่งที่เปลี่ยนอยู่ใต้ตัวเลือกเสมอ แผ่นอยู่กับที่
+     ⭐ กล่องที่มี `lead` ยึดขอบบนของจอ (`confirm-dialog-anchored`) ไม่ใช่กึ่งกลาง — กล่องกึ่งกลางที่สูงขึ้นจะเลื่อนขึ้นครึ่งหนึ่งของส่วนที่โต
+       ตัวเลือกข้างบนก็ยังหนีเคอร์เซอร์ (วัดซ้ำ 27/10: −53px) · ยึดบน = ส่วนที่โตไหลลงล่างอย่างเดียว ตัวเลือกอยู่กับที่จริง
+     ⚠️ ใช้กับตัวเลือกที่ผลลัพธ์ขึ้นกับมันเท่านั้น — ของกรอกอื่นยังเป็น `children` · ไม่ส่ง = DOM เดิมทุก px */
+  lead = null,
   /* ความกว้างของกล่อง — ค่าเดียวกับ `Modal` · ไม่ส่ง = "sm" ตัวเดิมของทุกผู้เรียก (งวด S2b: กล่องส่งผลที่มีไทล์สองใบขอ "md") */
   size = "sm",
 }) {
@@ -187,28 +194,42 @@ export default function ConfirmDialog({
     </div>
   );
 
+  /* มี `lead` = คำอธิบายคือคำถาม + รายการผลลัพธ์ (ไม่รวมป้ายของตัวเลือก — มันมีชื่อของมันเอง) */
+  const describedBy = lead
+    ? [resolvedDescription && `${descriptionId}-q`, detail && `${descriptionId}-d`].filter(Boolean).join(" ") || undefined
+    : resolvedDescription || detail || resolvedError ? descriptionId : undefined;
+
   return (
     <Modal
       open={open}
       onClose={close}
       title={title}
       size={size}
+      className={lead ? "confirm-dialog-anchored" : ""}
       dismissible={!pending && !hideCancel}
       initialFocusRef={hideCancel ? confirmRef : cancelRef}
       /* กล่องเปิดที่บรรทัดแรกเสมอ (ดู `Modal`) — เดิมปุ่มที่ได้โฟกัสแรกอยู่ท้ายเนื้อ กล่องยาวจึงเปิดมากลางเนื้อ · ปุ่มย้ายไป `footer` แล้ว
          (head-r3-19) ยังคงไว้: โฟกัสแรกต้องไม่เลื่อนเนื้อไม่ว่าปุ่มจะอยู่โซนไหน */
       initialFocusScroll={false}
-      ariaDescribedBy={resolvedDescription || detail || resolvedError ? descriptionId : undefined}
+      ariaDescribedBy={describedBy}
       footer={actions}
     >
       <div className="confirm-dialog" ref={bodyRef}>
         <div className={`confirm-dialog-icon${destructive ? " danger" : ""}`} aria-hidden="true">
           <Icon size={20} />
         </div>
-        <div className="confirm-dialog-copy" id={descriptionId}>
-          {resolvedDescription && <p>{thaiText(resolvedDescription)}</p>}
-          {detail && <p className="confirm-dialog-detail">{thaiText(detail)}</p>}
-        </div>
+        {lead ? (
+          <div className="confirm-dialog-copy">
+            {resolvedDescription && <p id={`${descriptionId}-q`}>{thaiText(resolvedDescription)}</p>}
+            <div className="confirm-dialog-lead">{lead}</div>
+            {detail && <p className="confirm-dialog-detail" id={`${descriptionId}-d`}>{thaiText(detail)}</p>}
+          </div>
+        ) : (
+          <div className="confirm-dialog-copy" id={descriptionId}>
+            {resolvedDescription && <p>{thaiText(resolvedDescription)}</p>}
+            {detail && <p className="confirm-dialog-detail">{thaiText(detail)}</p>}
+          </div>
+        )}
         {children ? <div className="confirm-dialog-extra">{children}</div> : null}
         {/* กล่องแดงเป็นชิ้นสุดท้ายของเนื้อ — เลื่อนเข้ามาแล้วยืนติดเหนือแถวปุ่มที่ตรึงอยู่ (effect ข้างบน) */}
         {resolvedError ? (

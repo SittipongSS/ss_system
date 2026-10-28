@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import SkeletonRows, { Skeleton } from "@/components/ui/Skeleton";
 import { NA, naText } from "@/lib/format";
+import { metricValueLen } from "@/lib/ui/metricValueLen";
 
 // Canonical shell for every application module. Sales management established
 // the visual hierarchy; keeping it here prevents module-specific drift.
@@ -193,6 +194,7 @@ export function Metric({
   className = "",
   ...props
 }) {
+  const shown = naText(value);
   const card = (
     <Element
       className={`ui-metric ${tone ? `is-${tone}` : ""} ${active ? "is-active" : ""} ${className}`.trim()}
@@ -204,7 +206,7 @@ export function Metric({
       {icon ? <span className="ui-metric-icon">{icon}</span> : null}
       <span>
         <small>{label}</small>
-        <strong>{naText(value)}</strong>
+        <strong data-len={metricValueLen(shown)}>{shown}</strong>
         {note && <em>{note}</em>}
       </span>
     </Element>

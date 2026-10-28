@@ -14,8 +14,9 @@ import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
       ที่รออนุมัติจริง (ถูกกฎตั้งแต่ mig 0197) ยังโชว์ เพราะส่ง count มาด้วย
 
    props
-   - amount   ยอดก่อน VAT (Σ actualAmount ของใบ pending_approval)
-   - count    จำนวนใบ (ไม่บังคับ) — โชว์ "· N ใบ" เมื่อมากกว่า 1
+   - amount   ยอดก่อน VAT (Σ actualAmount ของใบ pending_approval + งวดที่ยื่นรอ AE Sup ของใบ Actual รายงวด · mig 0412 มติข้อ 5)
+   - count    จำนวน **ใบ** (ไม่บังคับ) — โชว์ "· N ใบ" เมื่อมากกว่า 1 · ใบรายงวดที่มีงวดยื่นอยู่นับหนึ่งใบ (ไม่ใช่จำนวนงวด —
+              review รอบสาม 26/10 · ผู้เรียกทุกตัวส่งเลขที่นับใบ: splitSalesOrderAmounts / dealPendingApprovalCount / soInstPendingCount)
    - inline   true = วางต่อท้ายในบรรทัดเดียวกัน (ค่าตั้งต้นเป็นบรรทัดของตัวเอง)
    - prefix   ข้อความนำหน้า เช่น "+" ในที่ที่วางต่อจากยอด Actual */
 export default function PendingApprovalAmount({
@@ -31,7 +32,7 @@ export default function PendingApprovalAmount({
   return (
     <span
       className={["so-pending-approval", inline ? "" : "is-block", className].filter(Boolean).join(" ")}
-      title="ใบสั่งขายยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual (อนุมัติแล้วยอดจะเข้าเดือนที่อนุมัติ)"
+      title="ใบสั่งขาย (หรืองวดของใบที่นับ Actual รายงวด) ยื่นแล้ว รอ AE Supervisor อนุมัติ — ยังไม่นับเป็น Actual (อนุมัติแล้วยอดจะเข้าเดือนที่อนุมัติ)"
     >
       {prefix}
       {/* คำกับตัวเลขห้ามแยกบรรทัด — ในเซลล์แคบเคยขึ้น "รออนุมัติ" ลอยอยู่บรรทัดเดียว

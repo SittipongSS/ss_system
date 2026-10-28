@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronRight } from "lucide-react";
+import useHiddenEdges from "@/lib/ui/useHiddenEdges";
 import styles from "./Table.module.css";
 
 /* surface = "auto"     → ตัวมันเองเป็นพื้นข้อมูล (พื้นการ์ด + ขอบ + มุมมน + เงา)
@@ -35,17 +36,27 @@ export function TableScroll({
      ⇒ เปิดเป็นรายจุดที่ **วัดแล้วว่าได้ประโยชน์** เท่านั้น คือจุดที่ของเหนือตาราง
      เตี้ยพอให้กล่องพอดีจอจริง ๆ · จุดที่พกเพดานของตัวเองมาไม่ต้องเปิด */
   pinned = false,
+  /* ⭐ `edgeHint` = บอกว่าตารางยังมีคอลัมน์ซ่อนอยู่นอกกล่อง (UAT FN 27/10 ข้อ 6 — ตารางงวดที่ 1280 มีคอลัมน์จมใต้กลุ่มสถานะ/ปุ่มที่ตรึงขวา
+     โดยไม่มีอะไรบอกว่าเลื่อนแนวนอนได้) · วัดตำแหน่งเลื่อนของกล่อง ตอนเลื่อน + ตอนกล่อง/ตารางเปลี่ยนขนาด แล้วประทับ
+     `data-hidden-edge` ("start" · "end" · "start end") บนกล่อง
+     ⚠️ **ภาพของคำใบ้เป็นของผู้เรียก** — เงาต้องอยู่ตรงขอบที่เนื้อหายเข้าไป ซึ่งต่างกันตามสิ่งที่ตรึง (กลุ่มตรึงขวา = เงาซ้ายของกลุ่มนั้น ·
+       ตัวอย่าง: `.statusCell` ของ SalesOrderPaymentPanel.module.css) · ปิดเป็นค่าตั้งต้น — ตาราง 128 จุดไม่ต้องจ่ายค่าวัด */
+  edgeHint = false,
   minWidth,
   className = "",
   ...props
 }) {
+  /* วัดกล่องเดียว (lib/ui/useHiddenEdges) — ปิดอยู่ = ไม่ผูก listener/observer ใด ๆ */
+  const [boxRef, hiddenEdge] = useHiddenEdges(edgeHint);
   return (
     <div
+      ref={boxRef}
       className={`${styles.scroll} ${className}`.trim()}
       data-family={family}
       data-surface={surface}
       data-cells={cells}
       data-pinned={pinned ? "true" : undefined}
+      data-hidden-edge={edgeHint && hiddenEdge ? hiddenEdge : undefined}
       style={minWidth ? { "--table-min-width": `${minWidth}px` } : undefined}
       {...props}
     >

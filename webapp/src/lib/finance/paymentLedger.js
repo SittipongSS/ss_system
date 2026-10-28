@@ -18,10 +18,15 @@ import { NA, fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import {
-  installmentConfirmOutlook, installmentRefunded, installmentVoid, pipelineInstallmentLock, strandedInstallment,
+  installmentConfirmOutlook, installmentRefunded, installmentVoid, paymentNotRequired, pipelineInstallmentLock, strandedInstallment,
 } from '@/lib/sales/salesOrderPayments';
 import { installmentsReplanned } from '@/lib/sales/installmentReplan';
 import { taxInvoicePending } from '@/lib/sales/taxInvoice';
+/* นับ Actual รายงวด (mig 0412) — ด่านเงินของใบรายงวด (ตัวเดียวกับ installmentActionError ของงวด · trigger ของฐาน) */
+import {
+  installmentActualCountRestDone, installmentActualHold, installmentActualHoldShort, installmentActualHoldText,
+  installmentActualLockReason, installmentActualPaymentGated, installmentActualPreviousOpen,
+} from '@/lib/sales/salesOrderActualMode';
 import {
   OPENING_INSTALLMENT_LABEL, ORIGIN_PIPELINE, historicalRefsOf, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
@@ -35,9 +40,14 @@ import { dateOf } from '@/lib/sales/billingRuleV4';
 export const LEDGER_STATUS = {
   pending: { label: 'รอชำระ', tone: 'neutral' },
   reported: { label: 'รอบัญชีตรวจ', tone: 'info' },
+  /* ⭐ ไม่ใช่ค่าในฐาน — งวด `reported` ของใบ "Actual รายงวด" ที่ยังไม่อนุมัตินับ (`ledgerHeld` · mig 0412) บัญชีรับรองไม่ได้
+     ⇒ ตัวกรอง/การ์ด/ป้ายบนเมนูแยกเป็นสถานะของตัวเอง (UAT FN 27/10 ข้อ 2: ป้ายเมนูนับ "รอบัญชีรับรอง" = งวดที่รับรองได้ แต่ลิงก์
+     `?status=reported` เปิดมาเจองวดที่ติดด่านปนด้วย — เลขบนป้าย ≠ แถวหลังกด) · ค่าในฐานยังเป็น reported (`row.status` ไม่แตะ) */
+  held: { label: 'รอนับ Actual', tone: 'warning' },
   confirmed: { label: 'เก็บเงินแล้ว', tone: 'success' },
   rejected: { label: 'ถูกตีกลับ', tone: 'danger' },
 };
+export const LEDGER_HELD = 'held';
 
 export const LEDGER_STATUS_KEYS = Object.keys(LEDGER_STATUS);
 
@@ -240,6 +250,8 @@ export function ledgerRow({
   if (!installment || !order) return null;
   const status = installment.status || 'pending';
   const due = installment.dueDate || null;
+  /* ด่านนับ Actual รายงวด (mig 0412) — คิดครั้งเดียว ใช้ทั้งธงของแถวและคำสถานะในไฟล์ (งวดที่แจ้งแล้วแต่ติดด่าน = "รอนับ Actual") */
+  const actualGated = installmentActualPaymentGated(installment, { order });
   /* ── รอบวางบิล (mig 0389) — สถานะคิดที่ server ด้วย "วันนี้" ของนาฬิกาไทยตัวเดียวกับ `overdue` ──
      `billingRequest` = แถวคำร้องที่งวดผูกอยู่ (ผู้เรียกโหลดมา) · ไม่ส่ง/หาไม่เจอ = ยังไม่ขอ */
   const billingDate = installment.billingDate || null;
@@ -398,7 +410,10 @@ export function ledgerRow({
     paidOn: installment.paidOn || null,
     status,
     /* คืนเงินแล้ว (0378) — ค่าใน DB ยังเป็น confirmed แต่ในไฟล์/จอต้องไม่อ่านว่า "เก็บเงินแล้ว" */
-    statusLabel: installmentRefunded(installment) ? 'คืนเงินแล้ว' : (LEDGER_STATUS[status]?.label || status),
+    /* งวดที่แจ้งแล้วแต่ติดด่านนับ Actual รายงวด = "รอนับ Actual" (คำเดียวกับตัวกรองบนจอ · `ledgerStatusKey`) — ไฟล์ต้องพูดเหมือนจอ */
+    statusLabel: installmentRefunded(installment) ? 'คืนเงินแล้ว'
+      : status === 'reported' && actualGated ? LEDGER_STATUS[LEDGER_HELD].label
+        : (LEDGER_STATUS[status]?.label || status),
     /* ⭐ เงินค้างจากใบที่ยกเลิก / คืนเงินแล้ว (PR3 · 0378) — whitelist: ลืมเติม = คิว "เงินค้าง" ว่างเงียบ ๆ
        ⚠️ อ่านจาก select('*') — ก่อนรัน 0378 คอลัมน์ไม่มี (undefined) ⇒ ยังไม่คืน · ช่องว่าง (ไม่พัง) */
     stranded: strandedInstallment(installment, order),
@@ -436,7 +451,63 @@ export function ledgerRow({
     /* ⭐ ตัวล็อกของ PATCH งวด (optimistic lock · PR0) — คิวบนทะเบียนส่งค่านี้ของแถวที่ตาเห็นกลับไปทุกคำสั่ง
        ⚠️ whitelist: ลืมเติม = คำสั่งจากทะเบียนไม่มีตัวล็อก (เขียนทับงานของอีกหน้าต่างได้เงียบ ๆ) */
     updatedAt: installment.updatedAt || null,
+    /* ── นับ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — ⚠️ whitelist: ลืมเติม = ทะเบียนไม่รู้จักใบรายงวด ──────────
+       · `actualMode` = แบบการนับของใบ ('order' ค่าตั้งต้น · route เลือกคอลัมน์ "actualMode" มาให้)
+       · `actualStatus` / `actualAmount` = สถานะการนับของงวด (NULL · submitted · approved · rejected) / ยอดก่อน VAT ที่นับแล้ว
+       · `actualAwaitingApproval` = งวดของใบรายงวดที่ AE Sup ยังไม่อนุมัตินับ ⇒ **บัญชีรับรองไม่ได้** (trigger ของงวด ·
+         `installmentActualPaymentGated` ตัวเดียวกับด่านของ PATCH งวด) — ไม่อยู่ในคิว "รอคุณรับรอง" (`ledgerAwaitsConfirm`) ·
+         ปุ่มรับรองบอกเหตุ (`ledgerRowLock`) · ใบทั้งใบ = false เสมอ */
+    actualMode: order.actualMode || 'order',
+    actualStatus: installment.actualStatus || null,
+    actualAmount: installment.actualAmount ?? null,
+    // เวลาที่ AE Sup อนุมัตินับงวด — โมดัลรับรองบอกเดือนที่นับ (installmentActualMonth = GREATEST กับ approvedAt ของใบ)
+    actualApprovedAt: installment.actualApprovedAt || null,
+    /* ทางที่นับ ('so_approval' ตอนอนุมัติใบ · 'review' AE Sup อนุมัติงวด · 'count_rest' นับที่เหลือทั้งหมด/นับอัตโนมัติ) + หมายเหตุของการนับ
+       — โมดัลรับรองบอกว่างวดนี้นับไปแล้ว "ตอนไหน" (UAT FN 27/10 ข้อ 4) · สัญญาณมติข้อ 10 ของใบ (`stampActualHold`) */
+    actualApprovedVia: installment.actualApprovedVia || null,
+    actualNote: installment.actualNote || '',
+    actualAwaitingApproval: actualGated,
   };
+}
+
+/* แถวที่ **บัญชีรับรองได้ตอนนี้** — แจ้งแล้ว (`reported`) และไม่ติดด่าน Actual รายงวด (mig 0412)
+   ⭐ ตัวเดียวของคิว "รอคุณรับรอง" (`pendingConfirmations`) · ตัวนับ "รอรับรอง n งวด" ของก้อนใบ · ป้ายบนเมนู (nav/counts ลบก้อนเดียวกันที่ฐาน)
+   ⚠️ งวดที่ติดด่านยังเป็น `reported` ในฐาน — การ์ด/ตัวกรองสถานะ "รอบัญชีรับรอง" ยังนับตามสถานะ (เลขบนการ์ด = แถวที่เห็นหลังกด · M10b) */
+export function ledgerAwaitsConfirm(row) {
+  return Boolean(row) && row.status === 'reported' && !row.actualAwaitingApproval;
+}
+
+/* แถวที่ **แจ้งชำระแล้วแต่รับรองไม่ได้** เพราะติดด่านนับ Actual รายงวด (mig 0412) — คู่ตรงข้ามของ ledgerAwaitsConfirm ในงวด reported
+   ⭐ ต้องเห็นเสมอ พร้อมเหตุ (UAT FN 27/10 ข้อ 1): ป้ายของก้อนใบ "รอนับ Actual n งวด" · ถัง "รอนับ Actual" · แถบรายชื่อใบบนทะเบียน */
+export function ledgerHeld(row) {
+  return Boolean(row) && row.status === 'reported' && Boolean(row.actualAwaitingApproval);
+}
+
+/* สถานะของแถวในมุม **ตัวกรอง/การ์ด/ป้ายบนเมนู** — งวดที่ติดด่าน = 'held' ไม่ใช่ 'reported'
+   ⭐ `?status=reported` (การ์ด "รอบัญชีรับรอง" · ป้ายบนเมนู · การ์ด "งวดรอรับรอง" ของ /finance) = งวดที่บัญชีรับรองได้ตอนนี้เป๊ะ
+     = คิว "รอคุณรับรอง" = เลขบนป้าย (กติกา #1921/#1922 — เลขบนการ์ด/ป้าย = แถวที่เห็นหลังกด) · งวดที่ติดด่านอยู่ `?status=held` */
+export function ledgerStatusKey(row) {
+  return ledgerHeld(row) ? LEDGER_HELD : (row?.status || 'pending');
+}
+
+/**
+ * งวดนี้เข้าทะเบียนไหม (ตัดสินจากงวดดิบ + ใบ — ก่อน `ledgerRow`) — ตัวเดียวของ route ทะเบียนและป้ายบนเมนู (`ledgerInConfirmQueue`)
+ * ⭐ งวดที่ยอดหยุดแล้วเท่านั้น (B-4 · mig 0259) · ใบยอด 0 ไม่มีขั้นยืนยันการชำระ (มติ 2026-08-18 — แถวเก่าค้างอยู่จริง ไม่ลบ แค่ไม่โชว์) ·
+ *   งวดโมฆะของใบที่ตายแล้ว (PR0) · ใบหาย = ไม่เข้า
+ * 🐞 UAT FN 27/10 ข้อ 2: ป้ายบนเมนูนับงวด reported ทั้งตารางเอง (27) ขณะที่ทะเบียนตัดใบยอด 0 ออก (21) — เลขบนป้าย ≠ แถวหลังกด
+ */
+export function ledgerIncludes(installment, order) {
+  if (!installment || !order) return false;
+  if (!installment.frozenAt) return false;
+  if (paymentNotRequired(order.totalAmount)) return false;
+  return !ledgerVoidInstallment(installment, order);
+}
+
+/* งวดนี้อยู่ในคิว "รอคุณรับรอง" ไหม — จากงวดดิบ + ใบ (`status` · `kind` · `frozenAt` · `actualStatus` / `status` · `origin` · `totalAmount` · `actualMode`)
+   ⭐ = ledgerIncludes ∧ ledgerAwaitsConfirm(ledgerRow(...)) โดยไม่ต้องประกอบแถวเต็ม — ป้ายบนเมนูยิงทุกสองนาที */
+export function ledgerInConfirmQueue(installment, order) {
+  if (!ledgerIncludes(installment, order)) return false;
+  return (installment.status || 'pending') === 'reported' && !installmentActualPaymentGated(installment, { order });
 }
 
 /**
@@ -451,8 +522,9 @@ export function ledgerRow({
  * คนกรองดูลูกค้ารายเดียวแล้วคิวยังโชว์ของคนอื่นอยู่ = สองส่วนบนหน้าเดียวพูดคนละเรื่อง
  */
 export function pendingConfirmations(rows = []) {
+  /* ⭐ ไม่รวมงวดของใบ "Actual รายงวด" ที่ AE Sup ยังไม่อนุมัตินับ (mig 0412) — รับรองไม่ได้ ⇒ ไม่ใช่งานของบัญชีตอนนี้ (ledgerAwaitsConfirm) */
   return (Array.isArray(rows) ? rows : [])
-    .filter((row) => row && row.status === 'reported')
+    .filter(ledgerAwaitsConfirm)
     .sort((a, b) => {
       if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
       return (Number(b.amount) || 0) - (Number(a.amount) || 0);
@@ -550,11 +622,15 @@ export function ledgerSummary(rows = []) {
     totalAmount: sum(() => true),
     // เก็บได้ = confirmed ที่ยังไม่คืนเงิน (PR3) — เงินที่คืนลูกค้าไปแล้วไม่ใช่เงินที่เก็บได้
     collectedAmount: sum(collectedRow),
-    awaitingAmount: sum((r) => r.status === 'reported'),
+    /* "รอบัญชีรับรอง" = งวดที่บัญชีรับรองได้ตอนนี้ (ledgerAwaitsConfirm) — การ์ด "งวดรอรับรอง" ของ /finance เปิด `?status=reported`
+       ซึ่งไม่รวมงวดที่ติดด่านนับ Actual รายงวด (ledgerStatusKey) ⇒ เลขบนการ์ด = แถวหลังกด · งวดที่ติดด่านนับแยก (`held*`) */
+    awaitingAmount: sum(ledgerAwaitsConfirm),
     outstandingAmount: sum((r) => r.status !== 'confirmed'),
     overdueCount: list.filter((r) => r.overdue).length,
     overdueAmount: sum((r) => r.overdue),
-    awaitingCount: list.filter((r) => r.status === 'reported').length,
+    awaitingCount: list.filter(ledgerAwaitsConfirm).length,
+    heldCount: list.filter(ledgerHeld).length,
+    heldAmount: sum(ledgerHeld),
     /* ⭐ ของค้าง "เงินเข้าแล้วแต่ยังไม่มีใบกำกับ" (มติผู้ใช้ 2026-09-07 — บริษัทเก็บ VAT
        ⇒ ทุกงวดที่ลูกค้าจ่ายต้องมีใบ) · เป็น **คิวที่สอง** ของฝ่ายบัญชี คนละแกนกับคิว
        "รอรับรอง" ⇒ ต้องเป็นตัวเลขของตัวเอง ไม่ใช่เอาไปบวกรวมกัน */
@@ -753,7 +829,8 @@ export function filterLedger(rows = [], {
   const wantedLines = Array.isArray(line) ? line.filter(Boolean) : [];
   const needle = String(q || '').trim().toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((r) => {
-    if (wanted.length && !wanted.includes(r.status)) return false;
+    /* สถานะในมุมตัวกรอง — งวด reported ที่ติดด่านนับ Actual รายงวด = 'held' (ledgerStatusKey · UAT FN 27/10 ข้อ 2) */
+    if (wanted.length && !wanted.includes(ledgerStatusKey(r))) return false;
     if (wantedLines.length && !wantedLines.includes(r.serviceRounds ? 'service' : 'other')) return false;
     /* ⚠️ สถานะระดับ **ใบ** ต้องมาจากดัชนีที่คิดจากงวดทั้งหมดของใบ (`orderStateIndex`)
        ไม่ใช่จากงวดที่เหลือหลังกรอง — กรองสถานะงวดเป็น "รอชำระ" เมื่อไร ทุกใบจะดู
@@ -915,10 +992,79 @@ export function ledgerFacetTally(rows = [], filters = {}) {
     count: list.length,
     amount: list.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
   });
+  const anyStatus = filterLedger(rows, { ...filters, status: [] });
   return {
-    awaiting: tally(filterLedger(rows, { ...filters, status: [] }).filter((r) => r.status === 'reported')),
+    // ตัวตัดสินเดียวกับ filterLedger(status = reported) — งวดที่ติดด่านนับ Actual รายงวดไม่อยู่ในชุดนี้ (ledgerStatusKey)
+    awaiting: tally(anyStatus.filter((r) => ledgerStatusKey(r) === 'reported')),
     missingInvoice: tally(filterLedger(rows, { ...filters, taxInvoice: '' }).filter(ledgerInvoicePending)),
+    /* ⭐ งวดที่แจ้งแล้วแต่ติดด่านนับ Actual รายงวด (UAT FN 27/10 ข้อ 1) — แถบ "ยังรับรองไม่ได้" ต้องขึ้นแม้กำลังกรอง `?status=reported`
+       (ทางเข้าจากป้ายบนเมนู — แถวพวกนี้ไม่อยู่ในตาราง) จึงถอดตัวกรองสถานะออกก่อนนับ · บอกรายใบ + เหตุรายงวด (`ledgerHeldSummary`) */
+    held: ledgerHeldSummary(anyStatus.filter(ledgerHeld)),
   };
+}
+
+/**
+ * สรุปงวดที่ติดด่านนับ Actual รายงวดเป็น **รายใบ** — `{ count, amount, kinds: {kind: n}, orders: [{ orderId, orderNumber, count, amount,
+ * rows: [{ id, seq, label, amount, kind, short, text }] }] }` (ใบเรียงตามเลขที่ · งวดเรียงตามเลขงวด)
+ * ⭐ เหตุรายงวดจาก installmentActualHold ตัวเดียวกับแผงงวด/ปุ่มรับรอง (อ่าน `actualPreviousOpen` · `actualCountRestDone` ที่ประทับก่อนกรอง)
+ * 🐞 UAT FN 27/10 ข้อ 1 + 5: แถบเดิมบอกแต่ยอดรวม ("รอฝ่ายขายยื่นขอนับ n งวด (ยื่นได้หลังบัญชีรับรองงวดก่อนหน้าของใบเดียวกัน)") — ไม่บอกว่าใบไหน
+ *   และวงเล็บเป็นเท็จกับงวดที่ไม่มีงวดก่อนหน้าค้าง (งวดแรก/แถวที่ยกมา) ⇒ รายใบ + เหตุของงวดนั้นเอง (จริงเสมอ)
+ */
+export function ledgerHeldSummary(rows = []) {
+  const list = (Array.isArray(rows) ? rows : []).filter(ledgerHeld);
+  const byOrder = new Map();
+  const kinds = {};
+  for (const row of list) {
+    const hold = installmentActualHold(row);
+    kinds[hold.kind] = (kinds[hold.kind] || 0) + 1;
+    const key = row.orderId || row.orderNumber || 'unknown';
+    if (!byOrder.has(key)) byOrder.set(key, { orderId: row.orderId || null, orderNumber: row.orderNumber || '', count: 0, amount: 0, rows: [] });
+    const entry = byOrder.get(key);
+    entry.count += 1;
+    entry.amount += Number(row.amount) || 0;
+    entry.rows.push({
+      id: row.id, seq: row.seq, label: row.label || '', amount: Number(row.amount) || 0,
+      kind: hold.kind, short: installmentActualHoldShort(hold), text: installmentActualHoldText(hold),
+    });
+  }
+  const orders = [...byOrder.values()]
+    .map((entry) => ({ ...entry, rows: entry.rows.sort((a, b) => (Number(a.seq) || 0) - (Number(b.seq) || 0)) }))
+    .sort((a, b) => String(a.orderNumber).localeCompare(String(b.orderNumber)));
+  return {
+    count: list.length,
+    amount: list.reduce((sum, r) => sum + (Number(r.amount) || 0), 0),
+    kinds,
+    orders,
+  };
+}
+
+/**
+ * ประทับสัญญาณด่านนับ Actual รายงวด **ระดับใบ** ลงงวดที่ติดด่าน — คิดจากงวดทั้งใบก่อนกรอง (เหตุผลเดียวกับ `stampConfirmOutlook`)
+ * · `actualPreviousOpen` = งวดก่อนหน้าตัวแรกที่ยังไม่รับรองเงิน (installmentActualPreviousOpen) — กรอง `?status=reported`/`held` แล้วงวดก่อนหน้า
+ *   หลุดจากชุด ⇒ คิดหลังกรองเมื่อไร งวดที่ค้างเพราะงวดก่อนจะกลายเป็น "รอ AE Sup/ฝ่ายขาย" (UAT FN 27/10 ข้อ 3 — สองฝ่ายชี้กันไปมา)
+ * · `actualCountRestDone` = ใบกด "นับที่เหลือทั้งหมด" แล้ว (มติข้อ 10 — แถวทะเบียนพก `actualApprovedVia` แล้ว ⇒ ปิดความเสี่ยงเดิมที่แถบนี้
+ *   นับงวดค้างแบบนั้นเป็น "รอฝ่ายขายยื่น")
+ * ⚠️ ประทับเฉพาะงวดที่ติดด่าน (ตัวเดียวที่อ่าน) · ทะเบียนเห็นเฉพาะงวดที่ตรึงแล้ว — ใบที่งวดไม่ตรึงครบไม่มีงวดก่อนหน้าให้เทียบครบ (แผงงวดบอกปุ่มกู้เอง)
+ */
+export function stampActualHold(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const byOrder = new Map();
+  for (const row of list) {
+    if (!row?.orderId) continue;
+    const group = byOrder.get(row.orderId) || [];
+    group.push(row);
+    byOrder.set(row.orderId, group);
+  }
+  for (const [, group] of byOrder) {
+    if (!group.some((r) => r.actualAwaitingApproval)) continue;
+    const countRestDone = installmentActualCountRestDone(group);
+    for (const row of group) {
+      if (!row.actualAwaitingApproval) continue;
+      row.actualPreviousOpen = installmentActualPreviousOpen(row, group);
+      row.actualCountRestDone = countRestDone;
+    }
+  }
+  return list;
 }
 
 /**
@@ -928,7 +1074,8 @@ export function ledgerFacetTally(rows = [], filters = {}) {
  * (ไม่ใช่บนสุดแบบที่ค่าว่างมักจะเป็น) เพราะมันยังไม่ถูกนัด จึงยังไม่ใช่งานของสัปดาห์นี้
  */
 export function sortLedger(rows = []) {
-  const rank = (r) => (r.overdue ? 0 : r.status === 'reported' ? 1 : 2);
+  // รอบัญชีตรวจ = งวดที่รับรองได้ตอนนี้ (ledgerAwaitsConfirm) — งวดที่ติดด่านนับ Actual ไม่ใช่งานของบัญชีตอนนี้
+  const rank = (r) => (r.overdue ? 0 : ledgerAwaitsConfirm(r) ? 1 : 2);
   return [...(Array.isArray(rows) ? rows : [])].sort((a, b) => {
     const byRank = rank(a) - rank(b);
     if (byRank) return byRank;
@@ -1058,7 +1205,13 @@ export function groupLedgerByOrder(rows = []) {
         // ⚠️ ไม่ต่ำกว่าแถวที่เห็นเสมอ — "แสดง 3 จาก 2 งวด" คือค่าประทับค้าง ไม่ใช่ความจริง
         planCount: Math.max(group.planCount, rowsInOrder.length),
         overdue: rowsInOrder.some((r) => r.overdue),
-        awaiting: rowsInOrder.filter((r) => r.status === 'reported').length,
+        // งวดที่บัญชีรับรองได้ตอนนี้ (ตัวเดียวกับคิว "รอคุณรับรอง" — ไม่รวมงวดของใบรายงวดที่ยังไม่อนุมัตินับ · mig 0412)
+        awaiting: rowsInOrder.filter(ledgerAwaitsConfirm).length,
+        /* งวดที่แจ้งแล้วแต่ติดด่านนับ Actual รายงวด (UAT FN 27/10 ข้อ 1) — ป้าย "รอนับ Actual n งวด" + ถังของตัวเอง (ไม่ตกไป "รอลูกค้าชำระ")
+           · `heldReasons` = เหตุรายงวด (installmentActualHold ตัวเดียวกับปุ่มรับรอง) ⇒ title ของป้าย */
+        held: rowsInOrder.filter(ledgerHeld).length,
+        heldReasons: rowsInOrder.filter(ledgerHeld).sort((a, b) => (a.seq || 0) - (b.seq || 0))
+          .map((r) => ({ seq: r.seq, text: installmentActualLockReason(r) })),
         /* ใบกำกับที่ออกแล้ว / ที่ยังค้าง — คิดจากงวดใน **ก้อนที่ผ่านตัวกรองแล้ว** ต่างจาก
            `orderPaidThrough` เพราะนี่เป็นตัวเลขของ *แถวที่ตาเห็นอยู่* ไม่ใช่ค่าระดับใบ
            ที่ต้องนิ่งไม่ว่ากรองอะไร (กรอง "ยังไม่มีใบกำกับ" แล้วเห็น 0/2 คือคำตอบที่ถูก) */
@@ -1185,6 +1338,15 @@ export function groupNote(group) {
   if (group.overdue) return { label: 'เลยกำหนด', tone: 'danger' };
   if (group.rejected) return { label: `ตีกลับ ${group.rejected} งวด`, tone: 'danger' };
   if (group.awaiting) return { label: `รอรับรอง ${group.awaiting} งวด`, tone: 'warning' };
+  /* 🐞 UAT FN 27/10 ข้อ 1: งวดที่แจ้งแล้วแต่ติดด่านนับ Actual รายงวด ไม่นับใน `awaiting` (รับรองไม่ได้) ⇒ เคยตกไป "รอลูกค้าชำระ"
+     ทั้งที่ลูกค้าจ่ายแล้ว · ป้ายของตัวเอง + `title` = เหตุรายงวด (คนที่ต้องทำต่อ) */
+  if (group.held) {
+    return {
+      label: `รอนับ Actual ${group.held} งวด`,
+      tone: 'info',
+      title: (group.heldReasons || []).map((r) => `งวด ${r.seq}: ${r.text}`).join('\n') || undefined,
+    };
+  }
   if (group.complete) return { label: 'เก็บครบแล้ว', tone: 'success' };
   return { label: 'รอลูกค้าชำระ', tone: 'neutral' };
 }
@@ -1275,6 +1437,8 @@ const STATE_BUCKETS = [
   { key: 'overdue', label: 'เลยกำหนด', match: (g) => g.overdue },
   { key: 'rejected', label: 'มีงวดถูกตีกลับ', match: (g) => g.rejected > 0 },
   { key: 'awaiting', label: 'รอบัญชีรับรอง', match: (g) => g.awaiting > 0 },
+  // งวดที่แจ้งแล้วแต่ติดด่านนับ Actual รายงวด — ไม่ใช่ "รอลูกค้าชำระ" (UAT FN 27/10 ข้อ 1 · ป้ายเดียวกับ groupNote)
+  { key: LEDGER_HELD, label: LEDGER_STATUS[LEDGER_HELD].label, match: (g) => g.held > 0 },
   { key: 'complete', label: 'เก็บครบแล้ว', match: (g) => g.complete },
   { key: 'waiting', label: 'รอลูกค้าชำระ', match: () => true },
 ];
@@ -1330,9 +1494,22 @@ export function groupLedgerBuckets(groups = [], groupBy = 'none') {
  */
 export function ledgerRowLock(row, action) {
   if (!row) return null;
-  return pipelineInstallmentLock({
+  const orderLock = pipelineInstallmentLock({
     origin: row.origin,
     status: row.orderStatus,
     quotation: row.quotationStatus ? { quoteNumber: row.quoteNumber, status: row.quotationStatus } : null,
   }, action);
+  if (orderLock) return orderLock;
+  /* ⭐ ใบ "Actual รายงวด" (mig 0412): งวดที่ AE Sup ยังไม่อนุมัตินับ — บัญชีรับรอง/บันทึกรับชำระขั้นเดียวไม่ได้ (ข้อความเดียวกับ
+     trigger ของงวด · installment_actual_not_approved) · ใบกำกับ/ตีกลับไม่ติดด่านนี้ (ตีกลับสลิปผิดต้องถอยได้เสมอ) */
+  /* ใบที่ย้อนอนุมัติแล้ว — ไม่มีใครยื่น/อนุมัตินับงวดบนใบนั้นได้อีก ⇒ เหตุบอกทางออก Rev. (review รอบสอง 26/10) */
+  /* 🐞 review รอบสาม 26/10: เดิมตอบ "รอ AE Sup อนุมัติ" ทุกงวด — งวดที่ยังไม่มีใครยื่น (แถวที่ยกมา/จ่ายก่อนอนุมัติใบ) AE Sup ไม่มีอะไรในคิว
+     ⇒ เหตุตามสถานะการนับของงวด (installmentActualLockReason ตัวเดียวกับแผงงวด: ยื่นแล้ว = รอ AE Sup · ยังไม่ยื่น/ตีกลับ = รอฝ่ายขายยื่น ·
+     ใบที่ย้อนอนุมัติ = ออก Rev. — อ่าน `row.orderStatus`) */
+  /* 🐞 UAT FN 27/10 ข้อ 3: งวดที่ยื่นแล้วแต่งวดก่อนหน้ายังไม่รับรองเงิน (บัญชีถอนคำรับรอง) — เหตุชี้งานของบัญชีเอง (รับรองงวดก่อน)
+     ไม่ใช่ "รอ AE Sup" ที่ AE Sup กดไม่ได้ · อ่าน `actualPreviousOpen`/`actualCountRestDone` ที่ประทับจากชุดก่อนกรอง (stampActualHold) */
+  if (['confirm', 'report'].includes(action) && row.actualAwaitingApproval) {
+    return installmentActualLockReason(row);
+  }
+  return null;
 }

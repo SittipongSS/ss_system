@@ -74,7 +74,8 @@ test('อนุมัติ: ฐานตีกลับงานบริกา
   assert.match(caught, /\{ status: 409 \}/);
   assert.ok(caught.indexOf("'service_setup_incomplete'") < caught.indexOf('signatureEvidenceErrorResponse(approvalError)'),
     'แปลงานบริการก่อนตกไปตัวแปลลายเซ็น');
-  assert.match(approve, /return ok\(\{ \.\.\.data, termsOpened: setupCtx && data\?\.serviceTermsOpenedAt \? serviceSetupTotals\(setupCtx\)\.zones : 0 \}\);/);
+  /* mig 0412: คำตอบต่อท้ายผลของ Actual รายงวด (`actualReply` — งวดที่นับทันที / ขั้นนับล้ม) ก่อน termsOpened · ใบทั้งใบ = {} (คำตอบเดิม) */
+  assert.match(approve, /return ok\(\{ \.\.\.data, \.\.\.actualReply, termsOpened: setupCtx && data\?\.serviceTermsOpenedAt \? serviceSetupTotals\(setupCtx\)\.zones : 0 \}\);/);
 });
 
 test('ทุกจุดโหลดบริบทงานบริการใน route ของใบส่ง withFgOptions: true (fail-closed ของ fg_foreign)', () => {
@@ -187,7 +188,8 @@ test('0404 อนุมัติใบที่ข้าม: ด่านถา�
   /* สรุปเดิมของสองทาง (อนุมัติปกติ · Admin Override) ยังอยู่ครบ */
   assert.match(after, /summary: \(selfApproval\s*\? `admin override approve \$\{before\.orderNumber\}: \$\{overrideReason\}`\s*: `approve \$\{before\.orderNumber\}`\)/);
   /* คำตอบของการอนุมัติไม่เปลี่ยน (หน้าใบคิด toast จากแถวที่คืน) — บรรทัดเดิมทุกตัวอักษร (ยามข้างบนยึดไว้แล้ว) และเป็น return สุดท้าย */
-  assert.ok(after.trimEnd().endsWith('return ok({ ...data, termsOpened: setupCtx && data?.serviceTermsOpenedAt ? serviceSetupTotals(setupCtx).zones : 0 });\n  }'));
+  /* ⭐ mig 0412 (ตั้งใจ): ต่อท้ายคีย์ของ Actual รายงวดเท่านั้น (`...actualReply` — ใบทั้งใบเป็น {} ⇒ คำตอบเดิมทุกคีย์) · ยังเป็น return สุดท้าย */
+  assert.ok(after.trimEnd().endsWith('return ok({ ...data, ...actualReply, termsOpened: setupCtx && data?.serviceTermsOpenedAt ? serviceSetupTotals(setupCtx).zones : 0 });\n  }'));
   /* งานเงินระหว่าง RPC กับ audit ไม่รู้จักการข้าม (ฉบับตรึง · คิวบัญชี · หยุดยอดงวด เดินเหมือนเดิมทุกใบ) */
   const money = slice(after, 'const data = result.document;', "await logThread('approve', { overrideReason });");
   assert.doesNotMatch(money, /serviceSetupDeferred|deferServiceSetup|serviceSetupSkipState/);

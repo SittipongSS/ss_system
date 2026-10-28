@@ -65,3 +65,7 @@
   font-size: inherit;
   white-space: normal;
 }
+/* "รอนับรายงวด" ใต้ note ของการ์ด Actual (mig 0412 · review รอบสี่) — บรรทัดของตัวเอง · ขนาดตาม note (ชิ้นกลางวาดแบบ inline) */
+.metricInst {
+  display: block;
+}

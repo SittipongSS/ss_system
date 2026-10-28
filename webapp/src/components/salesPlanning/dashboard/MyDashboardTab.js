@@ -30,6 +30,7 @@ import {
   MY_QUEUE_KINDS, buildMyQueue, groupMyQueue, myQueueCounts,
 } from "@/lib/salesPlanning/myQueue";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { InstRemainingAmount } from "@/components/salesPlanning/dashboard/performance/shared";
 import ScheduleSection from "./ScheduleSection";
 import styles from "./DashboardShell.module.css";
 import tabStyles from "./MyDashboardTab.module.css";
@@ -129,6 +130,10 @@ export default function MyDashboardTab({ month, allMonths = false }) {
         ยังเป็น Actual ล้วน · route ส่งมาเฉพาะงวดที่ครอบเดือนปัจจุบัน (เวลาไทย) งวดอื่นเป็น 0 */
   const pendingApproval = Number(data?.pendingApproval || 0);
   const pendingApprovalCount = Number(data?.pendingApprovalCount || 0);
+  /* กอง "รอนับรายงวด" ของงวด (mig 0412 · มติข้อ 5) — งวดของใบ "Actual รายงวด" ที่ยังไม่ยื่น · review รอบสาม 26/10: route ส่งมาแต่จอไม่วาด
+     ⇒ งวดที่ครบกำหนดเดือนนี้ไม่โผล่ที่ไหนบนแท็บนี้เลย · ⛔ ช่องแยก ไม่แตะ actual / targetGap / targetPct (เหมือนรออนุมัติ) */
+  const instRemaining = Number(data?.instRemaining || 0);
+  const instRemainingCount = Number(data?.instRemainingCount || 0);
   /* ทุกป้ายของ "ตัวเลขงวด" ต้องบอกงวดเอง — ตัวเลือกเดือนกับติ๊ก "ทุกเดือน" อยู่บนหัวหน้า
      ส่วนตัวเลขอยู่กลางหน้า · เขียน "เดือนนี้" ตายตัวไม่ได้ ทั้งเพราะติ๊กทั้งปีได้ และ
      เพราะเลือกเดือนย้อนหลังได้อยู่แล้ว (ของเดิมเขียน "เดือนนี้" ทุกที่ = โกหกทั้งคู่) */
@@ -173,6 +178,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
                   amount={pendingApproval} count={pendingApprovalCount}
                   className={tabStyles.metricPending}
                 />
+                <InstRemainingAmount amount={instRemaining} count={instRemainingCount} className={tabStyles.metricInst} />
               </>
             )}
             tone={hasTarget && targetGap <= 0 ? "good" : undefined}
