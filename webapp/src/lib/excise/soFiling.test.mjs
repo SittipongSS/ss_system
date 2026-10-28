@@ -29,16 +29,45 @@ test("SO filing keeps only taxable lines from excise-enabled categories", () => 
   assert.equal(result.eligible, true);
 });
 
-test("tax is snapshotted from product rates and rounded per component", () => {
+/* ⭐ มติ Q2 + D1 (28/10): ภาษี/ชิ้นปัดครั้งเดียวจากอัตรารวม · สรรพสามิต/ชิ้นปัดจากอัตราสรรพสามิต · ท้องถิ่น = ส่วนที่เหลือ
+   1.005 + 0.335 = 1.34/ชิ้น · สรรพสามิต 1.005 → 1.01 (ปัดด้วยสตางค์ — float เดิมได้ 1.00) · ท้องถิ่น 0.33 */
+test("tax is snapshotted from product rates: rounded once, split from the rounded total", () => {
   const result = resolveSoFiling({
     salesOrder,
     productTypes,
     products: [{ id: "P-1", fgCode: products[0].fgCode, exciseTax: 1.005, localTax: 0.335 }],
     lines: [{ id: "L-1", productId: "P-1", qty: 3 }],
   });
-  assert.equal(result.lines[0].exciseRatePerUnit, 1);
-  assert.equal(result.lines[0].localTaxRatePerUnit, 0.34);
+  assert.equal(result.lines[0].taxPerUnit, 1.34);
+  assert.equal(result.lines[0].exciseRatePerUnit, 1.01);
+  assert.equal(result.lines[0].localTaxRatePerUnit, 0.33);
   assert.equal(result.totalTax, 4.02);
+  assert.equal(result.totalExciseTax + result.totalLocalTax, result.totalTax);
+});
+
+/* ตรวจระบบ 26/10 ข้อ H2: ทะเบียนที่อนุมัติแล้วเป็นคำตัดสินของฝ่าย RA ว่าเสียภาษีไหม (`taxableOverride` → `isExciseTaxable`)
+   ทางสร้างใบยื่นเองฟังธงนี้ (exciseTaxLineForRegistration) — ทางจาก SO ต้องฟังเหมือนกัน ทั้งยกเว้นและบังคับเก็บ */
+test("approved registration decides taxability: RA exemption drops the line, RA enforcement keeps it", () => {
+  const lines = [
+    { id: "L-1", productId: "P-1", fgCode: products[0].fgCode, qty: 10 },
+    { id: "L-2", productId: "P-2", fgCode: products[1].fgCode, qty: 10 },
+  ];
+  const result = resolveSoFiling({
+    salesOrder, productTypes, products, lines,
+    registrations: [
+      { id: "R-1", productId: "P-1", customerId: "C-1", status: "approved", isExciseTaxable: false },
+      { id: "R-2", productId: "P-2", customerId: "C-1", status: "approved", isExciseTaxable: true },
+    ],
+  });
+  assert.deepEqual(result.lines.map((line) => line.salesOrderLineId), ["L-2"]);
+  assert.equal(result.lines[0].registrationId, "R-2");
+  assert.equal(result.totalTax, 88);
+  // ทะเบียนที่ยังไม่อนุมัติไม่ใช่คำตัดสิน — ใช้ธงของสินค้าตามเดิม
+  const pending = resolveSoFiling({
+    salesOrder, productTypes, products, lines,
+    registrations: [{ id: "R-1", productId: "P-1", customerId: "C-1", status: "pending_legal", isExciseTaxable: false }],
+  });
+  assert.deepEqual(pending.lines.map((line) => line.salesOrderLineId), ["L-1"]);
 });
 
 test("approved registration is advisory and removes only its warning", () => {

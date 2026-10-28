@@ -126,6 +126,8 @@ function fakeDb(tables, rpcs = {}) {
         is(column, value) { q.filters.push(['is', column, value]); return builder; },
         in(column, values) { q.filters.push(['in', column, values]); return builder; },
         order() { return builder; },
+        // ไล่หน้า (fetchAll) — ด่านสินค้า 04-003 ของใบขาย (exciseChargeLinesAdded) อ่านทะเบียนสินค้าผ่าน fetchAllInChunks
+        range() { return builder; },
         limit() { return builder; },
         maybeSingle() { q.single = 'maybe'; return builder; },
         single() { q.single = 'one'; return builder; },

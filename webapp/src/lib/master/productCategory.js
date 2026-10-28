@@ -1,3 +1,5 @@
+import { EXCISE_CHARGE_CATEGORY_CODE } from '@/lib/excise/exciseCharge';
+
 export const PRODUCT_CATEGORY_LIMITS = Object.freeze({
   mainCategoryName: 50,
   nameTh: 100,
@@ -62,7 +64,11 @@ export function normalizeProductCategoryInput(input = {}, { partial = false } = 
 }
 
 export function isProductCategorySelectable(row, currentCode = '') {
-  return row?.isActive !== false || productCategoryCode(row) === currentCode;
+  const code = productCategoryCode(row);
+  /* ⛔ 04-003 "ค่าภาษีสรรพสามิต" ระบบสร้างสินค้าให้เอง (แผนรื้อสรรพสามิต หมวด 3.3) — ไม่ขึ้นในตัวเลือกหมวดของฟอร์มสินค้า
+     และหมวดของบรรทัดพิมพ์เองบนใบเสนอราคา · ยกเว้นค่าที่ถูกเลือกอยู่แล้ว (เปิดสินค้า 04-003 ที่มีอยู่ต้องเห็นหมวดตัวเอง) */
+  if (code === EXCISE_CHARGE_CATEGORY_CODE && code !== currentCode) return false;
+  return row?.isActive !== false || code === currentCode;
 }
 
 // ── ลบหมวดสินค้า (มติผู้ใช้ 2026-09-01) ──────────────────────────────────
@@ -82,6 +88,7 @@ export const PROTECTED_PRODUCT_CATEGORY_CODES = Object.freeze([
   '01-001', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js
   '02-010', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js
   '01-037', // GIFT_SET_CATEGORY_CODE — lib/master/giftSetFormulas.js (ชุดของขวัญผูกได้หลายสูตร · mig 0403)
+  '04-003', // EXCISE_CHARGE_CATEGORY_CODE — lib/excise/exciseCharge.js (สินค้าค่าภาษีสรรพสามิตที่ระบบสร้าง · แผนรื้อสรรพสามิต)
 ]);
 
 /**

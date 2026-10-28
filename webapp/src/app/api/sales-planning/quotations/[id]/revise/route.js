@@ -11,8 +11,9 @@ import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import {
-  customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
+  customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines,
 } from '@/lib/sales/quoteLines';
+import { exciseChargeLineMessage } from '@/lib/excise/exciseCharge';
 import {
   LinePackError, lineMoneyRuleMessage, linePackIssues, linePackMessage, withPackColumn,
 } from '@/lib/sales/linePacks';
@@ -78,9 +79,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     previousLines: quote.lines || [],
   });
   if (revMismatched.length) return badRequest(customerMismatchMessage(revMismatched));
+  // สินค้า 04-003 (ค่าภาษีสรรพสามิต) ใส่ในใบขายไม่ได้ — เฉพาะบรรทัดที่เพิ่งใส่ (แผนรื้อสรรพสามิต หมวด 3.3)
+  const revChargeLines = await exciseChargeLinesAdded(supabase, revLines, {
+    previousLines: quote.lines || [], origin: quote.origin,
+  });
+  if (revChargeLines.length) return badRequest(exciseChargeLineMessage(revChargeLines));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่
   body.lines = await enforceMasterPrices(supabase, revLines, quote.lines || [], {
-    customerId: quote.customerId,
+    customerId: quote.customerId, origin: quote.origin,
   });
   const revision = buildQuotationRevisionContent(quote, body);
   if (!revision.ok) return badRequest(revision.error);

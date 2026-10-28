@@ -16,6 +16,8 @@ import {
 } from '@/lib/master/productIdentity';
 import { attachCategoryNames, categoryNamesOf, loadProductTypeNames } from '@/lib/master/productCategoryNames';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
+import { isExciseChargeProduct } from '@/lib/excise/exciseCharge';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 
 export function productLabel(product) {
   return productDisplayName(product) || product?.fgCode || 'สินค้า';
@@ -347,6 +349,28 @@ export async function customerMismatchedLines(supabase, lines = [], {
     }));
 }
 
+// ── สินค้า "ค่าภาษีสรรพสามิต" (04-003) ใส่ในใบเสนอราคาขายไม่ได้ (แผนรื้อสรรพสามิต หมวด 3.3) ─────────────
+// ค่าภาษีเก็บด้วยใบเสนอราคาค่าสรรพสามิตที่ระบบสร้างจาก SO ลูกค้าเท่านั้น — ใบขายหยิบมาใส่เอง = เก็บซ้ำ
+// ⚠️ ตรวจเฉพาะบรรทัดที่เพิ่งใส่ (รูปเดียวกับ customerMismatchedLines) — วันนี้ไม่มีใบไหนมีบรรทัด 04-003 (prod 28/10 = 0)
+//    แต่ด่านแบบทั้งใบจะทำใบเก่าที่วันหนึ่งมีของค้าง บันทึกไม่ได้แม้แก้หมายเหตุ
+// ⭐ ใบค่าสรรพสามิต (origin 'excise') ไม่ผ่านด่านนี้ — บรรทัดของมันคือสินค้า 04-003 ทั้งใบ
+// @returns สินค้า 04-003 ที่เพิ่งถูกใส่ ([] = ผ่าน) · ผู้เรียกตอบ 400 ด้วย exciseChargeLineMessage
+export async function exciseChargeLinesAdded(supabase, lines = [], { previousLines = [], origin = null } = {}) {
+  if (isExciseOrder({ origin })) return [];
+  const known = new Set(previousLines.filter((l) => l?.productId).map((l) => l.productId));
+  const ids = [...new Set(
+    lines.filter((l) => l?.productId && !known.has(l.productId)).map((l) => l.productId),
+  )];
+  if (!ids.length) return [];
+  // ซอยก้อน + ไล่หน้า (ด่าน check:rowcap) — ชุดเล็กตามจำนวนบรรทัดของใบ แต่ยามนับทุกจุดอ่านที่ไม่มีขอบเขต
+  const rows = await fetchAllInChunks(ids, (chunk) => supabase
+    .from('products')
+    .select('id, fgCode, categoryCode')
+    .in('id', chunk)
+    .order('id', { ascending: true }));
+  return rows.filter(isExciseChargeProduct);
+}
+
 // ข้อความบอกผู้ใช้ว่าบรรทัดไหนผิดและทำไม — ใช้ร่วมทุก route ที่บันทึกบรรทัดใบเสนอราคา
 export function customerMismatchMessage(mismatched = []) {
   const detail = mismatched
@@ -366,7 +390,11 @@ export function customerMismatchMessage(mismatched = []) {
 //   ในใบ (previousLines); บรรทัดใหม่ = 0 จนกว่าจะตั้งราคาใน master (ส่ง/Won มี guard
 //   ยอด > 0 กันอยู่แล้ว) — ค่าที่ client ส่งมาไม่ถูกใช้เด็ดขาด
 // - สินค้าหายจาก master (ถูกลบ) → คงราคา/คำอธิบายเดิมที่บันทึกไว้ในใบ
-export async function enforceMasterPrices(supabase, lines = [], previousLines = [], { customerId = null } = {}) {
+/* ⭐ ใบค่าสรรพสามิต (`origin: 'excise'` · แผนรื้อสรรพสามิต หมวด 3.4): บรรทัดสินค้า 04-003 ของลูกค้าเจ้าของใบ **ไม่ถูกทับ** —
+   ราคา/ชิ้นคือภาษีที่ระบบคิดจาก FG ต้นทาง (buildExciseQuotationLines) ไม่ใช่ราคาในทะเบียน และทุกบรรทัดใช้สินค้าตัวเดียวกัน
+   ⇒ ตัวหาราคาเดิมด้วย productId จะยุบทุกบรรทัดเป็นราคาเดียว · ตัดสินจาก **แถวสินค้าในฐาน** (หมวด + เจ้าของ) ไม่ใช่ metadata
+   ที่จอส่งมา (metadata อยู่นอกลายนิ้วมืออนุมัติ ปลอมได้) · ใบขายปกติไม่มีทางเข้าเงื่อนไขนี้ (`origin` ไม่ใช่ excise) */
+export async function enforceMasterPrices(supabase, lines = [], previousLines = [], { customerId = null, origin = null } = {}) {
   const ids = [...new Set(lines.filter((l) => l.productId).map((l) => l.productId))];
   if (!ids.length) return lines;
   const { data, error } = await supabase
@@ -407,9 +435,11 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
   const prevById = new Map(
     previousLines.filter((l) => l?.productId).map((l) => [l.productId, l]),
   );
+  const exciseOrigin = isExciseOrder({ origin });
   return lines.map((line) => {
     if (!line.productId) return line;
     const master = productById.get(line.productId);
+    if (exciseOrigin && isExciseChargeProduct(master) && master.customerId === customerId) return line;
     const prev = prevById.get(line.productId);
     const masterPrice = master ? toMoney(master[QUOTE_PRICE_FIELD]) : 0;
     const unitPrice = masterPrice > 0

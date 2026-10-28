@@ -540,7 +540,19 @@ function draftDb({ products = [], projectRows = [], lineInsertError = MONEY_RULE
     calls,
     from(table) {
       calls.tables.push(table);
-      if (table === 'products') return { select: () => ({ in: async (_col, ids) => ({ data: products.filter((p) => ids.includes(p.id)), error: null }) }) };
+      /* `in()` ใช้ได้ทั้งแบบ await ตรง (enforceMasterPrices · customerMismatchedLines) และแบบไล่หน้า `.order().range()`
+         (ด่านสินค้า 04-003 ของใบขาย — exciseChargeLinesAdded อ่านผ่าน fetchAllInChunks) */
+      if (table === 'products') {
+        return {
+          select: () => ({
+            in: (_col, ids) => {
+              const result = { data: products.filter((p) => ids.includes(p.id)), error: null };
+              const page = { order: () => page, range: async () => result, then: (resolve) => resolve(result) };
+              return page;
+            },
+          }),
+        };
+      }
       if (table === 'product_types') return { select: async () => ({ data: [], error: null }) };
       if (table === 'project_products') return { select: () => ({ eq: async () => ({ data: projectRows, error: null }) }) };
       if (table === 'customers') return { select: () => ({ eq: () => maybeSingle({ taxId: null, nameEn: null, addresses: [], contacts: [] }) }) };
