@@ -2,7 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
 import { canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
-import { canWithdrawQuotationSubmission } from '@/lib/sales/quotationWorkflow';
+import { canWithdrawQuotationSubmission, quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
@@ -57,7 +57,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: id,
     before: quote,
     after: data,
-    summary: `ดึงกลับใบเสนอราคา ${quote.quoteNumber}: ${reason} (${dealAuditLabel(quote.deal)})`,
+    summary: `ดึงกลับใบเสนอราคา ${quote.quoteNumber}: ${reason} (${dealAuditLabel(quotationApprovalDeal(quote))})`,
     request: req,
   });
   return ok(data);

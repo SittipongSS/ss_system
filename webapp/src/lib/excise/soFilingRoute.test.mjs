@@ -32,7 +32,8 @@ test("eligible ผูกกับ status ของ SO — ตัดคอลั�
 });
 
 test("select ของลิสต์ SO ที่รอยื่นต้องมี status อยู่ในคอลัมน์", () => {
-  const select = routeSource.match(/\.select\("id, orderNumber,[^"]*"\)/);
+  // ⚠️ select มีคอลัมน์ในเครื่องหมายคำพูดด้วย (`\"exciseNotBilledKind\"` · แผนรื้อสรรพสามิต PR3) — จับถึงวงเล็บปิดของ select
+  const select = routeSource.match(/\.select\("id, orderNumber,.*?"\)\n/);
   assert.ok(select, "หา select ของ listAvailableSalesOrders ไม่เจอ");
   assert.match(select[0], /\bstatus\b/);
 });

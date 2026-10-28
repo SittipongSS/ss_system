@@ -243,6 +243,7 @@ test('🪤 trigger Actual/เจ้าของใบยังยิง — ค�
 
 /* 🪤 ตัวคำนวณในฐานที่อ่านใบอนุมัติ = ต้องกรอง origin หรือประกาศว่า "ตรวจสถานะรายใบ ไม่รวมยอด" */
 const SQL_STATE_CHECK_ONLY = new Map([
+  ['accept_excise_quotation_atomic', 'รับใบค่าสรรพสามิต — ตรวจสถานะ SO ต้นทางใบเดียว (ต้องเป็น pipeline ที่อนุมัติอยู่) ไม่รวมยอด (0415)'],
   ['approve_sales_order_with_signature_evidence_atomic', 'ขั้นอนุมัติใบร่าง/รออนุมัติ — ใบย้อนหลังเกิดเป็น approved ไม่เคยผ่าน (0197)'],
   ['cancel_sales_order_with_reversal_atomic', 'ย้อน Won ตอนยกเลิก — ดีลภาชนะติด CHECK stage = won ⇒ ทรานแซกชันล้ม (0170)'],
   ['capture_issued_sales_order_snapshot_atomic', 'ฉบับตรึงตอนอนุมัติ — ตรวจสถานะรายใบ ไม่รวมยอด (0148)'],

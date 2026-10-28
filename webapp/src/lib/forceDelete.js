@@ -88,6 +88,10 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ดีล')], blocked: true };
   }
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { dealId: id }); }
+  catch (exciseError) { return { cascade: [], notes: [exciseError.message], blocked: true }; }
+  if (exciseQuotes.length) return { cascade: [], notes: [exciseQuotationBlockMessage(exciseQuotes, 'ดีล')], blocked: true };
 
   // ตรวจไม่ได้ = บล็อกไว้ก่อน (ไม่ใช่ "ไม่มีสัญญา") — พรีวิวเป็นสิ่งที่ผู้ใช้อ่านก่อนกดทำลาย
   let contracts;
@@ -254,6 +258,35 @@ export async function exciseFilingsOfQuotation(supabase, quotationId) {
   return data || [];
 }
 
+// ── ใบเสนอราคาค่าสรรพสามิตที่อ้าง SO ลูกค้า (mig 0414 · `quotations.sourceSalesOrderId` ON DELETE RESTRICT) ────────
+// ทุกสถานะขวาง (FK ไม่สนสถานะ — ใบที่ยกเลิกแล้วก็ยังอ้างอยู่) · RPC บังคับลบไม่ล้างให้ ⇒ ดักก่อนทั้งพรีวิวและลบจริง
+// ไม่งั้นพังกลางทางด้วย 23503 ดิบ (แผนรื้อสรรพสามิต หมวด 5) · อ่านไม่ขึ้น = throw (ด่านหน้างานทำลาย ห้ามกลืนเป็น "ไม่มี")
+// @param scope `{ salesOrderId }` | `{ quotationId }` (SO ลูกของใบ) | `{ dealId }` (SO ทุกใบของดีล)
+export async function exciseQuotationsReferencingOrders(supabase, { salesOrderId = null, quotationId = null, dealId = null } = {}) {
+  let ids = salesOrderId ? [salesOrderId] : [];
+  if (!salesOrderId && (quotationId || dealId)) {
+    const { data, error } = await fetchAllResult(() => supabase
+      .from('sales_orders').select('id')
+      .eq(quotationId ? 'quotationId' : 'dealId', quotationId || dealId)
+      .order('id', { ascending: true }));
+    if (error) throw new Error(`ตรวจใบสั่งขายลูกไม่สำเร็จ: ${error.message}`);
+    ids = (data || []).map((row) => row.id);
+  }
+  if (!ids.length) return [];
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('quotations').select('id, "quoteNumber", status')
+    .in('sourceSalesOrderId', ids)
+    .order('id', { ascending: true }));
+  if (error) throw new Error(`ตรวจใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ: ${error.message}`);
+  return data || [];
+}
+
+export function exciseQuotationBlockMessage(quotes = [], documentLabel = 'เอกสาร') {
+  const list = quotes.map((row) => `${row.quoteNumber || row.id}${row.status ? ` (${row.status})` : ''}`).join(', ');
+  return `ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: มีใบเสนอราคาค่าสรรพสามิตอ้างใบสั่งขายในนี้อยู่ ${list}`
+    + ' (รวมใบที่ยกเลิกแล้ว) — ลบใบค่าสรรพสามิตเหล่านั้นก่อน แล้วจึงลบ' + documentLabel + 'นี้ได้';
+}
+
 // ── สัญญา: FK RESTRICT ทั้ง dealId และ quotationId (mig 0278) ──────────────
 // สัญญาเป็นเอกสารผูกพันตามกฎหมาย ⇒ ห้ามหายตามดีล/ใบเสนอราคาไปเงียบ ๆ และห้ามให้
 // break-glass ทำลายให้ด้วย · ปล่อยไว้เฉย ๆ = ลบจริงตายกลางทางด้วย error ดิบจาก
@@ -409,6 +442,10 @@ export async function quotationForcePreview(supabase, quote, { movedOut = [] } =
       blocked: true,
     };
   }
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { quotationId: quote.id }); }
+  catch (exciseError) { return { cascade: [], notes: [exciseError.message], blocked: true }; }
+  if (exciseQuotes.length) return { cascade: [], notes: [exciseQuotationBlockMessage(exciseQuotes, 'ใบเสนอราคา')], blocked: true };
   const cascade = [
     line('ใบสั่งขายที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
@@ -458,6 +495,10 @@ export async function salesOrderForcePreview(supabase, order, { movedOut = [] } 
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
   }
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { salesOrderId: order.id }); }
+  catch (exciseError) { return { cascade: [], notes: [exciseError.message], blocked: true }; }
+  if (exciseQuotes.length) return { cascade: [], notes: [exciseQuotationBlockMessage(exciseQuotes, 'ใบสั่งขาย')], blocked: true };
   const cascade = [
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
     line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),

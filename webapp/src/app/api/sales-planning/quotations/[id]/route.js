@@ -6,12 +6,14 @@ import { isSalesManager } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
   quotationForcePreview, cleanupQuotationOrphans, QUOTATION_CHILD_ORDERS,
-  exciseFilingBlockMessage, exciseFilingsOfQuotation,
+  exciseFilingBlockMessage, exciseFilingsOfQuotation, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
   contractsOfQuotation, contractBlockMessage,
 } from '@/lib/forceDelete';
 import { loadMovedOutOfOrders } from '@/lib/sales/salesOrderInstallmentsStore';
 import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
-import { canCancelQuotation, canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
+import {
+  canCancelQuotation, canSwitchQuotationDocLanguage, isQuotationAwaitingApproval, quotationApprovalDeal,
+} from '@/lib/sales/quotationWorkflow';
 import { quotationSignatureEvidence } from '@/lib/sales/quotationCancelRepo';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
@@ -21,6 +23,10 @@ import {
   normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import {
+  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, recalcExciseQuotationLines,
+} from '@/lib/excise/exciseQuotation';
 import {
   customerMismatchMessage, customerMismatchedLines,
   enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines, refreshFgLinesForDisplay,
@@ -167,7 +173,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
      ⚠️ อ่านไม่ขึ้น = `{ error }` ในก้อนนี้ ไม่ทำใบล้ม — ดู loadCreateFormBillingTerms */
   const withBillingTerms = new URL(req.url).searchParams.get('include') === 'billingTerms';
   const billingTerms = withBillingTerms ? await loadCreateFormBillingTerms(supabase, filledQuote.customerId, { user }) : undefined;
-  const canApprove = canApproveQuotation(user, filledQuote.deal);
+  const canApprove = canApproveQuotation(user, quotationApprovalDeal(filledQuote));
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
   return ok({
     ...filledQuote,
@@ -207,6 +213,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  /* ⭐ ใบค่าสรรพสามิต (แผนรื้อสรรพสามิต หมวด 3.4): บรรทัด = ภาษีที่ระบบคิดจาก SO ต้นทาง · VAT 7% ตรึง · ไม่มีส่วนลด ⇒ จอส่งมาเอง = ปฏิเสธ
+     แก้บรรทัดได้ทางเดียวคือ `action: 'recalc_from_sales_order'` — server คิดใหม่แล้วบันทึกผ่านทางเดียวกับการแก้บรรทัดปกติ
+     (ด่านสถานะ/ยังไม่ยื่นข้างล่างใช้ร่วม · enforceMasterPrices ข้ามบรรทัด 04-003 ของใบ excise) */
+  if (isExciseOrder(before)) {
+    if (['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
+      return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
+    }
+    if (body.action === 'recalc_from_sales_order') {
+      if (before.approvalStatus !== 'not_submitted') {
+        return fail('ใบนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงคิดใหม่จากใบสั่งขายได้', 409);
+      }
+      try {
+        const { lines: recalculated } = await recalcExciseQuotationLines({ supabase, user, quote: before, request: req });
+        delete body.action;
+        body.lines = recalculated;
+      } catch (recalcError) {
+        if (recalcError instanceof ExciseQuotationError) return fail(recalcError.message, recalcError.status);
+        throw recalcError;
+      }
+    } else if ('action' in body) {
+      return badRequest('คำสั่งนี้ใช้กับใบค่าสรรพสามิตไม่ได้');
+    }
+  }
   const bodyKeys = Object.keys(body);
   const statusOnlySend = body.status === 'sent'
     && before.status === 'draft'
@@ -551,6 +580,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // เป็น 500). ดักก่อนทุกเส้นทาง ทั้งลบปกติและ ?force=1
   const filings = await exciseFilingsOfQuotation(supabase, id);
   if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบเสนอราคา'), 409);
+  // ใบค่าสรรพสามิตที่อ้าง SO ลูกของใบนี้ (FK RESTRICT · mig 0414) — ดักก่อนเหมือนใบยื่น
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { quotationId: id }); }
+  catch (exciseError) { return fail(exciseError.message, 500); }
+  if (exciseQuotes.length) return fail(exciseQuotationBlockMessage(exciseQuotes, 'ใบเสนอราคา'), 409);
 
   /* 🐞 รูฝาแฝดของดีล (พบ 2026-08-28): `quotationForcePreview` ตรวจสัญญาและตอบ
      `blocked` ถูก แต่เส้นลบจริงไม่ตรวจ ⇒ `force_delete_quotation` ล้มด้วย 23503
@@ -582,7 +616,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⭐ ผู้อนุมัติของใบที่ยังเดินอยู่มีทางทิ้งใบแล้ว = "ยกเลิกใบ" (มติ 24/09) — ชี้ไปทางนั้นแทนการชวน
        ออก Rev. ซึ่งไม่ใช่สิ่งที่คนกดลบต้องการ · คนอื่นได้ข้อความเดิมทุกตัวอักษร */
     const cancellable = canCancelQuotation(before, {
-      approver: canApproveQuotation(user, before.deal),
+      approver: canApproveQuotation(user, quotationApprovalDeal(before)),
       canEdit: true,
       inScope: true,
       hasSignatureEvidence: true,

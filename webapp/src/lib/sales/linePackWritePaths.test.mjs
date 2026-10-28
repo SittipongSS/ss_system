@@ -359,6 +359,8 @@ test('🔴 INSERT ตรงลงตารางบรรทัดมีสอ�
   }
   assert.deepEqual(found.map((f) => `${f.file} ${f.table}.${f.verb}`).sort(), [
     `${REVISE_ROUTE} quotation_lines.insert`, `${DRAFT_LIB} quotation_lines.insert`,
+    // ใบเสนอราคาค่าสรรพสามิต (แผนรื้อสรรพสามิต PR3) — บรรทัดที่ระบบคิดจาก SO ไม่มีเลขแพ็ค (หมวด 04-003)
+    'lib/excise/exciseQuotation.js quotation_lines.insert',
   ].sort(), 'มีทางเขียนบรรทัดตรง ๆ เพิ่ม/หาย — ทางใหม่ต้องพก packQty ผ่าน withPackColumn แล้วมาขึ้นทะเบียนที่นี่');
   for (const { file, arg, src } of found) {
     const direct = /^withPackColumn\(/.test(arg);

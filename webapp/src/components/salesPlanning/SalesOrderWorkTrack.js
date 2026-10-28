@@ -10,6 +10,15 @@ import styles from "./SalesOrderWorkTrack.module.css";
    หน้า SO ไม่ตั้งสถานะให้ใคร
    ⚠️ อย่าสับสนกับรางก้าวใน "จัดการเอกสาร" — อันนั้นคือชีวิตของ *เอกสาร*
    อันนี้คือชีวิตของ *ของที่ขาย* */
+/* ปุ่มของช่วง — รูปเดิม (`actionLabel` + `onClick` ปุ่มเดียว) หรือหลายปุ่ม (`actions` · ช่วงค่าสรรพสามิตมีทั้ง "ออกใบ" และ "ไม่เรียกเก็บ") */
+function connectActions(connect) {
+  if (Array.isArray(connect?.actions)) return connect.actions.filter((action) => action?.label && action?.onClick);
+  if (connect?.actionLabel && connect?.onClick) {
+    return [{ label: connect.actionLabel, onClick: connect.onClick, disabled: connect.disabled, disabledReason: connect.disabledReason }];
+  }
+  return [];
+}
+
 export default function SalesOrderWorkTrack({ track }) {
   if (!track?.segments?.length) return null;
   const { segments, current } = track;
@@ -57,17 +66,21 @@ export default function SalesOrderWorkTrack({ track }) {
                   <Link href={segment.connect.href} className={styles.link}>
                     {segment.connect.actionLabel} →
                   </Link>
-                ) : segment.connect?.actionLabel && segment.connect?.onClick ? (
-                  <button
-                    type="button"
-                    className={styles.link}
-                    onClick={segment.connect.onClick}
-                    disabled={!!segment.connect.disabled}
-                    title={segment.connect.disabledReason || undefined}
-                  >
-                    {segment.connect.actionLabel} →
-                  </button>
-                ) : null}
+                ) : connectActions(segment.connect).map((action) => (
+                  <span key={action.label} className={styles.action}>
+                    <button
+                      type="button"
+                      className={styles.link}
+                      onClick={action.onClick}
+                      disabled={!!action.disabled}
+                      title={action.disabledReason || undefined}
+                    >
+                      {action.label} →
+                    </button>
+                    {/* ปุ่มกดไม่ได้ = โชว์เสมอ และบอกเหตุให้เห็น (ไม่ใช่ซ่อนไว้ใน tooltip อย่างเดียว) */}
+                    {action.disabled && action.disabledReason ? <small className={styles.reason}>{action.disabledReason}</small> : null}
+                  </span>
+                ))}
               </div>
             )}
 

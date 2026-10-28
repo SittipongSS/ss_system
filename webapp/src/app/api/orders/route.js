@@ -7,6 +7,7 @@ import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '
 import { recordAudit } from '@/lib/audit';
 import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
 import { naText } from "@/lib/format";
+import { FILING_CREATE_CLOSED_MESSAGE, SA_FILING_CREATE_OPEN } from '@/lib/excise/workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,8 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
+  /* ⛔ ปิดตั้งแต่ PR3 ของแผนรื้อสรรพสามิต — เหตุผลเต็มที่ FILING_CREATE_CLOSED_MESSAGE (lib/excise/workflow.js) */
+  if (!SA_FILING_CREATE_OPEN) return Response.json({ error: FILING_CREATE_CLOSED_MESSAGE }, { status: 403 });
   const supabase = getSupabaseAdmin();
   const user = await getCurrentUser();
   const body = await request.json();
