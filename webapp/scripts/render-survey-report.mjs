@@ -48,6 +48,10 @@
  *                        (ใน `--pipeline` = JPEG สีพื้นที่สร้างด้วย sharp — ไฟล์ละสี sha จึงไม่ซ้ำ)
  *                        ชุด: ไม่ใส่ / `onsite` = แฝดของ RQ-AS-26090186 · `mixed` = ใบผสม RQ-AS-26100352 · `drawing` = ใบประเมินจากแบบ
  *                        ทั้งใบ RQ-AS-26100345 (งวด S3 · BRIEF §B) — `--assert` ล็อกผลของแต่ละชุดตามตาราง `SURVEY_GOLDEN`
+ *                        · `confirm` = ใบยืนยันหน้างาน (งวด S5 กลุ่ม F — แฝดของ `onsite` ทุกตัวอักษร + เลขที่ใบต้นทาง
+ *                        RQ-AS-26100345 (SU-26100003-0)) · `confirm-rq` = รูปเดียวกันที่ใบต้นทางไม่มีเอกสารฉบับปัจจุบัน (เลข RQ อย่างเดียว)
+ *                        — สองชุดนี้ตรวจด้วยผลที่ล็อกของ `onsite` (`SURVEY_CONFIRM_GOLDEN`) + ข้อของแถว (`confirmRowFailures`)
+ *                        · ใช้กับ `--pipeline` ไม่ได้ (โลกในหน่วยความจำไม่มีใบต้นทาง)
  *   --drawing-method on|off  ค่าสวิตช์ประเมินจากแบบที่ส่งให้ตัวโหลด/ขั้นออกเลขตรง ๆ (harness ไม่อ่านสวิตช์) — ไม่ใส่ = `on` เมื่อใบมี
  *                        พื้นที่จากแบบ (แถวแบบนั้นเกิดได้เฉพาะตอนสวิตช์เปิด) · ผลเดียวของมันคือหางของบรรทัด "ไม่พบนัด"
  *   --case <ชื่อ>        (`--pipeline`) กรณีของลายเซ็นที่มี `pipeline: true` (`sign-drawing` · `sign-drawing-other` · `sign-mixed`)
@@ -99,8 +103,8 @@ import {
   SURVEY_REPORT_FIT_MARGIN, surveyReportCustomerHtmlIssues, surveyReportSignatureHtmlIssues, surveyReportState,
 } from '../src/lib/service/surveyReportState.js';
 import {
-  drawingSurveyFixture, mixedSurveyFixture, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture, surveySignCases,
-  surveyStressCases, syntheticSurveyFixture,
+  confirmSurveyFixture, drawingSurveyFixture, mixedSurveyFixture, signedSurveyInputs, stressSurveyInputs, surveyReportInputsFromFixture,
+  surveySignCases, surveyStressCases, syntheticSurveyFixture,
 } from '../src/lib/service/surveyReportTestKit.mjs';
 import { surveyReportSendWarnings, surveyReportView } from '../src/lib/service/surveyReportView.js';
 import { loadSurveyZones } from '../src/lib/service/surveyRepo.js';
@@ -122,22 +126,65 @@ export function parseArgs(argv) {
 
 const expand = (p) => resolve(String(p).replace(/^~(?=\/|$)/, homedir()));
 
-const USAGE = 'ใช้: render-survey-report.mjs (--fixture <json> [--photos <dir>] | --synthetic [onsite|mixed|drawing] | --stress [--case <ชื่อ>]) '
+const USAGE = 'ใช้: render-survey-report.mjs (--fixture <json> [--photos <dir>] | --synthetic [onsite|mixed|drawing|confirm|confirm-rq] | --stress [--case <ชื่อ>]) '
   + '--out <dir> [--doc-no SU-…] [--issued YYYY-MM-DD] [--assert] [--scale 2] [--no-spot-links] [--no-signatures] '
   + '[--drawing-method on|off] [--pipeline [--via send|issue_only] [--case <กรณีลายเซ็น>]]';
 
-/* fixture สังเคราะห์ของ `--synthetic <ชุด>` — ชื่อชุดคือแถวของตาราง `SURVEY_GOLDEN` ด้วย (ไม่ใส่ชื่อ = `onsite`) */
+/* fixture สังเคราะห์ของ `--synthetic <ชุด>` — ชื่อชุดคือแถวของตาราง `SURVEY_GOLDEN` ด้วย (ไม่ใส่ชื่อ = `onsite`)
+   · ยกเว้นชุดของใบยืนยันหน้างาน (งวด S5) ซึ่งใช้แถวของ `SURVEY_CONFIRM_GOLDEN` */
 const SYNTHETIC_FIXTURES = Object.freeze({
   onsite: syntheticSurveyFixture, mixed: mixedSurveyFixture, drawing: drawingSurveyFixture,
+  confirm: confirmSurveyFixture, 'confirm-rq': () => confirmSurveyFixture({ reportDocNo: null }),
 });
 
-/** `--synthetic` → `{ name, fixture() }` · ไม่ใส่ค่า = `onsite` (แฝดของวันนี้) · ชื่อที่ไม่รู้จัก = โยนพร้อมรายชื่อ */
+/**
+ * 🔑 **แผนหน้าที่บันทึกของใบยืนยันหน้างาน** (งวด S5 กลุ่ม F · `--assert`) — ชุด → แถวของ `SURVEY_GOLDEN` ที่ใช้ตรวจ
+ *   ใบยืนยันหน้างาน (กรณีปกติ: ลงหน้างานล้วน) = กระดาษของใบลงหน้างาน + แถวเดียวในภาคผนวก ง ของฉบับภายใน ⇒ **ผลที่ล็อกของ `onsite`
+ *   ทุกข้อ** (ลูกค้า 4 · ภายใน 6 หน้า · ลำดับหน้า · พื้นที่หน้า 2, 3 · ยอดรวม · ตารางหน้า 1 ตามค่าคงที่) — แถวต้องไม่ดันหน้า
+ *   ข้อของแถวเอง (ป้ายครั้งเดียวในฉบับภายใน · ฉบับลูกค้าไม่มีป้ายไม่มีเลข) อยู่ที่ `confirmRowFailures` ซึ่งตรวจ **ทุกรอบ**
+ *   (ชุดอื่นทุกชุด = ไม่มีแถวทั้งสองฉบับ — ตัวโหลดคืน null)
+ *   harness ได้ค่าอื่น = หยุดแล้วรายงาน **ห้ามแก้ตัวเลขให้ผ่าน**
+ */
+export const SURVEY_CONFIRM_GOLDEN = Object.freeze({ confirm: 'onsite', 'confirm-rq': 'onsite' });
+
+/** `--synthetic` → `{ name, fixture(), golden }` · ไม่ใส่ค่า = `onsite` (แฝดของวันนี้) · ชื่อที่ไม่รู้จัก = โยนพร้อมรายชื่อ
+ *  `golden` = แถวของ `SURVEY_GOLDEN` ที่ `--assert` ตรวจ (ชื่อชุดเอง · ชุดของใบยืนยัน = `SURVEY_CONFIRM_GOLDEN`) */
 export function syntheticOf(value) {
   const name = value === true || value === undefined ? 'onsite' : String(value);
   if (!Object.hasOwn(SYNTHETIC_FIXTURES, name)) {
     throw new Error(`--synthetic ไม่รู้จักชุด "${name}" — มี: ${Object.keys(SYNTHETIC_FIXTURES).join(' · ')}`);
   }
-  return { name, fixture: SYNTHETIC_FIXTURES[name] };
+  return { name, fixture: SYNTHETIC_FIXTURES[name], golden: SURVEY_CONFIRM_GOLDEN[name] || name };
+}
+
+/* แถวภาคผนวก ง ของใบยืนยันหน้างาน — ป้ายในรูปที่ตัวเรนเดอร์พิมพ์ (ตาราง kv) */
+const CONFIRM_ROW_TH = '<th>ยืนยันผลจากแบบของ</th>';
+const CONFIRM_ROW_LABEL = 'ยืนยันผลจากแบบของ';
+
+/**
+ * ข้อของแถว "ยืนยันผลจากแบบของ" (งวด S5 กลุ่ม F) — `[]` = ผ่าน · ตรวจทุกรอบของ `--assert`
+ * @param results        `[{ version, html }]`
+ * @param confirmsDocNo  ข้อความของแถวที่อินพุตพก (`inputs.confirmsDocNo`) · `null` = ใบไม่ผูก/ใบต้นทางหาย ⇒ ไม่มีแถวทั้งสองฉบับ
+ *   ฉบับภายใน: ป้ายครั้งเดียวพร้อมเลขทุกตัวของข้อความ (มี) · ไม่มีป้าย (ไม่มี)
+ *   ฉบับลูกค้า: ไม่มีป้าย และไม่มีเลข RQ/SU ของใบต้นทางสักตัว — ทุกกรณี
+ */
+export function confirmRowFailures(results, confirmsDocNo = null) {
+  const failures = [];
+  const expect = (ok, text) => { if (!ok) failures.push(text); };
+  const value = typeof confirmsDocNo === 'string' && confirmsDocNo.trim() ? confirmsDocNo.trim() : null;
+  const numbers = value ? value.match(/(?:RQ|SU)-[0-9A-Z-]+/g) || [] : [];
+  for (const r of results) {
+    const html = String(r.html ?? '');
+    const rows = html.split(CONFIRM_ROW_TH).length - 1;
+    if (r.version === 'internal') {
+      expect(rows === (value ? 1 : 0), `internal: แถว "${CONFIRM_ROW_LABEL}" ต้องมี ${value ? 1 : 0} แถว — พบ ${rows}`);
+      for (const number of numbers) expect(html.includes(number), `internal: แถว "${CONFIRM_ROW_LABEL}" ต้องพิมพ์ ${number}`);
+    } else {
+      expect(!html.includes(CONFIRM_ROW_LABEL), `${r.version}: ฉบับลูกค้าต้องไม่มี "${CONFIRM_ROW_LABEL}"`);
+      for (const number of numbers) expect(!html.includes(number), `${r.version}: ฉบับลูกค้าต้องไม่มีเลข ${number} ของใบต้นทาง`);
+    }
+  }
+  return failures;
 }
 
 /* ป้ายของรอบ (ชื่อโฟลเดอร์ในรายงาน) — ชุด `onsite` คงป้ายเดิม "synthetic" */
@@ -1207,8 +1254,8 @@ function loadRuns(args, outDir) {
     }));
   }
   if (args.synthetic) {
-    const { name, fixture } = syntheticOf(args.synthetic);
-    return [{ label: syntheticLabel(name), inputs: surveyReportInputsFromFixture(fixture()), bySha: {}, mode: 'freeze', dir: outDir, golden: name }];
+    const { name, fixture, golden } = syntheticOf(args.synthetic);
+    return [{ label: syntheticLabel(name), inputs: surveyReportInputsFromFixture(fixture()), bySha: {}, mode: 'freeze', dir: outDir, golden }];
   }
   const fixture = JSON.parse(readFileSync(expand(args.fixture), 'utf8'));
   const { photos, bySha } = typeof args.photos === 'string' ? loadPhotos(expand(args.photos)) : { photos: null, bySha: {} };
@@ -1300,7 +1347,11 @@ async function mainRender(args, outDir) {
       }
       const stale = known.filter((pattern) => !issues.some((text) => pattern.test(text)))
         .map((pattern) => `ข้อที่รู้อยู่แล้วไม่เกิดในรอบนี้ (${pattern}) — แก้รายการ known ของกรณี ${run.label}`);
-      const found = [...issues.filter((text) => !isKnown(text)), ...stale, ...(args.assert && run.golden ? goldenFailures(results, docNo, run.golden) : [])];
+      const found = [
+        ...issues.filter((text) => !isKnown(text)), ...stale, ...(args.assert && run.golden ? goldenFailures(results, docNo, run.golden) : []),
+        // งวด S5 — แถว "ยืนยันผลจากแบบของ": มีเฉพาะชุดที่อินพุตพกเลขที่ใบต้นทาง · ทุกชุดอื่นไม่มีทั้งสองฉบับ
+        ...(args.assert ? confirmRowFailures(results, run.inputs.confirmsDocNo ?? null) : []),
+      ];
       failures.push(...found.map((text) => (runs.length > 1 ? `[${run.label}] ${text}` : text)));
     }
   } finally {
@@ -1336,9 +1387,13 @@ async function mainPipeline(args, outDir) {
     ({ label, source, signed } = pipelineSignCase(args.case));
     files = syntheticDriveFiles(source);
   } else if (args.synthetic) {
-    const { name, fixture } = syntheticOf(args.synthetic);
+    const { name, fixture, golden: row } = syntheticOf(args.synthetic);
+    /* ใบยืนยันหน้างาน: ตัวโหลดอ่านใบต้นทางจากลิงก์บนแถวคำร้อง — โลกในหน่วยความจำไม่มีใบต้นทาง ⇒ กระดาษจะไม่มีแถวแล้วล้มแบบชวนเข้าใจผิด */
+    if (Object.hasOwn(SURVEY_CONFIRM_GOLDEN, name)) {
+      throw new Error(`--pipeline ใช้กับ --synthetic ${name} ไม่ได้ (โลกในหน่วยความจำไม่มีใบต้นทาง) — เรนเดอร์ด้วย --synthetic ${name} --assert`);
+    }
     label = syntheticLabel(name);
-    golden = name;
+    golden = row;
     source = surveyReportInputsFromFixture(fixture(), { withImages: false, spotLinks });
     files = syntheticDriveFiles(source);
   } else {

@@ -13,7 +13,7 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { termsSoldNow, zoneTermState } from '@/lib/service/terms';
 import { spotCounts, surveyZoneSize } from '@/lib/service/survey';
 import {
-  isDrawingZone, surveyConfirmState, surveyDropSupersededDrawing, zoneMethod,
+  isDrawingZone, surveyConfirmPending, surveyConfirmState, surveyDropSupersededDrawing, zoneMethod,
 } from '@/lib/service/surveyMethod';
 // ไฟล์ล้วน (ข้อความของฟีเจอร์ประเมินจากแบบ) — ป้ายบนทะเบียนต้องเป็นคำเดียวกับที่จออื่นใช้ ห้ามพิมพ์ซ้ำที่นี่
 import { SURVEY_ZONE_TAG } from '@/lib/service/surveyMethodSwitch';
@@ -77,7 +77,16 @@ export function zoneRegistryRow(zone = {}, {
   });
   const size = surveyZoneSize(latest?.parts);
   const spots = spotCounts(latest?.spots);
-  const confirm = surveyConfirmState(latest, requestOf(latest?.requestId));
+  const pending = pendingRequestOf(surveys, requestsById);
+  /* ใบยืนยันหน้างาน (งวด S5) = ใบที่ถือพื้นที่ไว้ **และ** ผูกกับใบของผลล่าสุด ⇒ สภาพ `'confirming'`
+     ⚠️ ลิงก์ใช้ตัดสินสภาพเท่านั้น ไม่เคยใช้จัดอันดับ — ผลลงหน้างานของใบรุ่นหลังแทนผลจากแบบได้ ผูกหรือไม่ผูกก็ตาม (`latestSurveyRow`)
+     ⚠️ ใบเปิดที่ไม่ผูก / ผูกกับใบอื่น = `'awaiting'` พร้อมล็อกแบบเดิม · สองใบถือพื้นที่เดียวกัน (ต้นทางถูกดึงกลับระหว่างใบยืนยันเปิดอยู่)
+        `pendingRequestOf` คืนใบแรกที่เจอ — ไม่ใช่ใบยืนยัน = `'awaiting'` และล็อก ซึ่งก็ยังจริง
+     ⚠️ `confirming` ถือใบไว้เฉพาะเมื่อสภาพออกมาเป็น `'confirming'` จริง — ผูกอยู่แต่ผลล่าสุดเป็นลงหน้างาน หรือใบต้นทางถูกส่งใหม่เป็น
+        "ไม่ต้องยืนยัน" ระหว่างใบยืนยันเปิดอยู่ = ป้ายไม่ใช่ "กำลังยืนยัน" ⇒ ไม่มีคีย์ `confirmRequest` (R-KEYS) */
+  const linked = pending && latest && pending.confirmOfId && pending.confirmOfId === latest.requestId ? pending : null;
+  const confirm = surveyConfirmState(latest, requestOf(latest?.requestId), { confirmation: linked });
+  const confirming = confirm === 'confirming' ? linked : null;
   // รอบที่ไม่ถูกตัด (ทุกใบ ส่งผลแล้วหรือยังก็ตาม) — ชุดเดียวที่ตัวนับรอบสองตัวข้างล่างใช้
   const rounds = (Array.isArray(surveys) ? surveys : []).filter((r) => r && r.status !== 'cut');
 
@@ -94,12 +103,15 @@ export function zoneRegistryRow(zone = {}, {
     surveyRequestId: latest?.requestId || null,
     /* ── วิธีประเมินของผลล่าสุด (mig 0408 · ประเมินจากแบบ งวด S2a) ─────────
        `assessMethod`  'onsite' | 'drawing' · ยังไม่เคยประเมิน = null (ไม่ใช่ 'onsite')
-       `confirm`       'none' | 'drawing' | 'awaiting' — ผลจากแบบที่ใบตอบว่าต้องยืนยันหน้างาน = 'awaiting'
+       `confirm`       'none' | 'drawing' | 'awaiting' | 'confirming' — ผลจากแบบที่ใบตอบว่าต้องยืนยันหน้างาน = 'awaiting'
+                       · มีใบยืนยันหน้างานผูกอยู่และยังเปิด = 'confirming' (งวด S5)
        `confirmTag`    ป้ายที่จอพิมพ์ (`SURVEY_ZONE_TAG`) · ลงหน้างาน / ยังไม่ประเมิน = null
+       `confirmRequest` ใบยืนยันที่ป้ายอ้างถึง `{ id, docNo }` — **มีคีย์เฉพาะตอน 'confirming'** (R-KEYS: เทสต์โกลเดนแฮชทั้งแถว)
        ⚠️ ตัวเลขข้างล่าง (ขนาด · จุด · แพ็คเกจ) เป็นของแถวเดียวกับสามคีย์นี้เสมอ — ทะเบียนไม่ผสมตัวเลขจากแบบกับป้ายวัดจริง */
     assessMethod: latest ? zoneMethod(latest) : null,
     confirm,
     confirmTag: SURVEY_ZONE_TAG[confirm] || null,
+    ...(confirming ? { confirmRequest: { id: confirming.id, docNo: confirming.docNo } } : {}),
     parts: size.parts,
     areaSqm: latest ? size.areaSqm : null,
     volumeCbm: latest ? size.volumeCbm : null,
@@ -122,7 +134,7 @@ export function zoneRegistryRow(zone = {}, {
     /* 🔒 **"มีใบอื่นสั่งวัดไว้แล้ว" เป็นสถานะของตัวเอง ไม่ใช่ "ยังไม่วัด"** (ม็อก §เจ็ดกรณี)
        ยุบรวมกับ "ยังไม่วัด" เมื่อไร สองใบจะสั่งวัดโซนเดียวกันซ้อนกัน แล้วช่างไปเสียเที่ยว
        ⚠️ "เปิดอยู่" ใช้ชุดเดียวกับระบบคำร้อง (`REQUEST_OPEN_STATUSES`) ห้ามเขียนเอง */
-    pendingRequest: pendingRequestOf(surveys, requestsById),
+    pendingRequest: pending,
 
     // ── การขาย (หน้าไซต์ใช้ก้อนเดียวกันผ่าน `zoneSaleFacts` · PR-C) ─────────
     ...zoneSaleFacts(zone.id, { terms, ordersById, todayIso, pendingOrders }),
@@ -209,9 +221,11 @@ function pendingRequestOf(surveys = [], requestsById) {
     /* `assessMethod` = วิธีของ **แถวที่ค้าง** — แถวจากแบบไม่มีนัดเข้าพื้นที่ และบนใบงานโต๊ะ `committedDueDate`
        คือวันส่งผลที่หัวหน้ารับปาก (`surveyDeskCommitPatch`) ⇒ ผู้อ่านที่จะเรียก `dueDate` ว่า "นัด" ต้องดูคีย์นี้ก่อน
        ⚠️ `dueDate` คงค่าเดิม (ผู้อ่านอื่นใช้อยู่) */
+    /* `confirmOfId` = ใบต้นทางที่ใบนี้ยืนยันผล (ใบยืนยันหน้างาน · งวด S5) — **มีคีย์เฉพาะใบที่ผูก** (R-KEYS: เทสต์โกลเดนแฮชก้อนนี้) */
     return {
       id: req.id, docNo: req.docNo || null, status: req.status, dueDate: req.committedDueDate || null,
       assessMethod: zoneMethod(row),
+      ...(req.surveyConfirmOfId ? { confirmOfId: req.surveyConfirmOfId } : {}),
     };
   }
   return null;
@@ -347,8 +361,9 @@ function registryTotals(zones = []) {
     volumeCbm: round2(measured.reduce((s, z) => s + (Number(z.volumeCbm) || 0), 0)),
     assessedPackages: zones.reduce((s, z) => s + (Number(z.assessedPackages) || 0), 0),
     soldPackages: zones.reduce((s, z) => s + (Number(z.soldPackages) || 0), 0),
-    // พื้นที่ที่ผลล่าสุดมาจากแบบและยังรอยืนยันหน้างาน (ประเมินจากแบบ งวด S2a) — นับจากป้ายของแถว ไม่คิดซ้ำ
-    awaitingConfirm: zones.filter((z) => z.confirm === 'awaiting').length,
+    // พื้นที่ที่ผลล่าสุดมาจากแบบและยังไม่ได้ยืนยันหน้างาน (ประเมินจากแบบ งวด S2a) — นับจากป้ายของแถว ไม่คิดซ้ำ
+    // ⚠️ กำลังยืนยัน (งวด S5) ยังเป็นตัวเลขที่ยังไม่ยืนยัน ⇒ นับด้วย (`surveyConfirmPending`)
+    awaitingConfirm: zones.filter((z) => surveyConfirmPending(z.confirm)).length,
   };
 }
 

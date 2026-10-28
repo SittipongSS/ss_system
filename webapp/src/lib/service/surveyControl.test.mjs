@@ -1192,7 +1192,7 @@ test('⭐ โมดัลส่งผลวาดผลทุกข้อจา�
   const dialog = page.slice(at, page.indexOf('</ConfirmDialog>', at));
   assert.match(dialog, /confirmLabel=\{view\.send\.allowed \? sendConfirm\.confirmLabel : "ปิด"\}/);
   assert.match(dialog, /hideCancel=\{!view\.send\.allowed\}/);
-  assert.match(dialog, /sendConfirm\.effects\.map\(\(line\) => <li key=\{line\}>\{thaiText\(line\)\}<\/li>\)/);
+  assert.match(dialog, /sendConfirm\.effects\.map\(\(line\) => <li key=\{line\}>\{sendEffectText\(line, !!sendConfirm\.choice\)\}<\/li>\)/);
   assert.match(dialog, /!view\.send\.show \? `\$\{view\.status\.headline\} — \$\{view\.status\.sub\}`/,
     'ใบถูกล็อกระหว่างที่กล่องเปิด = บอกสถานะล่าสุด ไม่ใช่ตัวเลขชวนส่ง');
   assert.doesNotMatch(dialog, /ใบจะปิดเมื่อฝ่ายขายกดรับผล/, 'ข้อความเดิมไม่บอกเรื่องนัดเลย');

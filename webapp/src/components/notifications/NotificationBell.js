@@ -125,7 +125,7 @@ export default function NotificationBell() {
                 const row = (
                   <>
                     <span className={styles.title}>{n.title}</span>
-                    {n.body && <span className={styles.body}>{n.body}</span>}
+                    {n.body && <span className={styles.body} data-lines={n.body.includes("\n") ? "1" : undefined}>{n.body}</span>}
                     <span className={styles.meta}>
                       {n.actorName ? `${n.actorName} · ` : ""}{fmtDateTime(n.createdAt)}
                     </span>

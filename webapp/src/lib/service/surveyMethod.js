@@ -202,19 +202,25 @@ export function isJpgOrPngFile(file) {
 // ── งวด S2a: สภาพ "ยืนยันหน้างาน" ของทะเบียนพื้นที่ + ตัวกรองผลจากแบบที่ถูกแทนแล้ว ─────────────
 
 /**
- * สภาพการยืนยันหน้างานของพื้นที่ในทะเบียน — `'none'` · `'drawing'` · `'awaiting'`
+ * สภาพการยืนยันหน้างานของพื้นที่ในทะเบียน — `'none'` · `'drawing'` · `'awaiting'` · `'confirming'`
  * `row` = แถวผลล่าสุดที่ส่งแล้วของพื้นที่ **หลังผ่าน `surveyDropSupersededDrawing`** · `request` = ใบของแถวนั้น
- *   ไม่มีแถว / แถวลงหน้างาน            ⇒ `'none'` (ค่าบนใบไม่เกี่ยว)
- *   แถวจากแบบ + ใบตอบว่า `'needed'`    ⇒ `'awaiting'` (รอยืนยันหน้างาน)
- *   แถวจากแบบ นอกนั้น (`'not_needed'` · ยังไม่เลือก · ไม่มีใบ) ⇒ `'drawing'`
+ * `confirmation` = ใบยืนยันหน้างานที่ **เปิดอยู่** และผูกกับใบของแถวนี้ (ผู้เรียกตัดสินมาแล้ว · ไม่มี = null)
+ *   ไม่มีแถว / แถวลงหน้างาน                          ⇒ `'none'` (ค่าบนใบไม่เกี่ยว)
+ *   แถวจากแบบ + ใบตอบว่า `'needed'` + มีใบยืนยันเปิดอยู่  ⇒ `'confirming'` (กำลังยืนยันหน้างาน · งวด S5)
+ *   แถวจากแบบ + ใบตอบว่า `'needed'`                  ⇒ `'awaiting'` (รอยืนยันหน้างาน)
+ *   แถวจากแบบ นอกนั้น (`'not_needed'` · ยังไม่เลือก · ไม่มีใบ) ⇒ `'drawing'` — ใบยืนยันที่ส่งมาไม่เปลี่ยนคำตอบนี้
  * ⚠️ `surveyConfirm` เทียบตรงตัว — ค่าที่ไม่รู้จักไม่ถูกเดาว่าเป็น "ต้องยืนยัน"
- * ⚠️ ค่าที่สี่ (`'confirming'` ของงวด S5) ต่อเป็นกิ่งใหม่ **ก่อน** บรรทัด `'needed'` ได้ โดยสามค่านี้ไม่ขยับ
+ * ⚠️ สามค่าแรกไม่ขยับ — ผู้เรียกที่ไม่ส่งอาร์กิวเมนต์ที่สามได้คำตอบเดิมทุกกรณี
  */
-export function surveyConfirmState(row, request = null) {
+export function surveyConfirmState(row, request = null, { confirmation = null } = {}) {
   if (!row || !isDrawingZone(row)) return 'none';
+  if (request?.surveyConfirm === 'needed' && confirmation) return 'confirming';
   if (request?.surveyConfirm === 'needed') return 'awaiting';
   return 'drawing';
 }
+
+/** `'awaiting'` กับ `'confirming'` แปลว่าเดียวกัน: "ตัวเลขจากแบบ ยังไม่ได้ยืนยันหน้างาน" — ตัวนับทุกตัวถามที่นี่ (งวด S5) */
+export const surveyConfirmPending = (confirm) => confirm === 'awaiting' || confirm === 'confirming';
 
 /**
  * ตัดแถว **จากแบบ** ที่ถูกผลลงหน้างานของใบรุ่นหลังแทนไปแล้ว — ทะเบียนต้องไม่ขึ้นป้าย "จากแบบ" ให้พื้นที่ที่วัดจริงแล้ว

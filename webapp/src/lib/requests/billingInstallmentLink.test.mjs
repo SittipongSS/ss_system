@@ -281,7 +281,8 @@ test('/requests/new: requiredDate เติมช่องวันที่ต�
      ⇒ ต้องประกอบวันกลับแล้วเทียบ (ห้ามถอยไปใช้ Date.parse เป็นด่าน) */
   assert.doesNotMatch(src, /isNaN\(Date\.parse\(/);
   assert.match(src, /date\.getUTCFullYear\(\) === year && date\.getUTCMonth\(\) === month - 1 && date\.getUTCDate\(\) === day/);
-  assert.match(src, /createRequestDraft\(\s*form, linksInstallment \? \{ linkInstallmentId \} : \{\},?\s*\)/);
+  /* งวด S5 (ใบยืนยันหน้างาน): id ของใบต้นทางไปทาง extra ตัวเดียวกัน ก่อนกิ่งงวดชำระ — กิ่งงวดชำระยังตรงตัวเดิม */
+  assert.match(src, /createRequestDraft\(\s*form, confirmData \? \{ confirmsRequestId: confirms \} : linksInstallment \? \{ linkInstallmentId \} : \{\},?\s*\)/);
   // ท้ายแผงสัญญาว่าจะผูกเฉพาะตอน SO **และ QT** ยังเป็นใบที่กดมา (เปลี่ยน QT แล้ว server ตีกลับ)
   assert.match(src, /form\.salesOrderId === defaults\.salesOrderId\s*&& form\.quotationId === defaults\.quotationId/);
   // วันที่มากับลิงก์แต่ผ่านไปแล้ว = รายการความพร้อมบอกเหตุ ไม่ปล่อยช่องว่างเงียบ

@@ -55,6 +55,18 @@
   opacity: var(--op-disabled);
 }
 
+/* ปุ่มติดด่านยังโฟกัสด้วยคีย์บอร์ดได้ (กดแล้วบอกเหตุ) — จางทั้งปุ่มทำให้วงโฟกัสจางตามจนมองไม่เห็น (~1.6:1 · UAT S5 sales รอบ 1 K04)
+   ⇒ ตอนโฟกัสคืนความทึบเต็ม วงโฟกัสของ `.btn` ชัดเท่าปุ่มปกติ
+   รอบ 2: ทึบทั้งปุ่มแล้วหน้าตาเท่าปุ่มพร้อมกด (K01 ready-focus) — คนใช้คีย์บอร์ดดูไม่ออกว่าติดด่าน ⇒ ป้ายในปุ่มยังจางเท่าเดิม
+   วงโฟกัสอย่างเดียวที่เต็ม */
+.action[data-blocked]:focus-visible {
+  opacity: 1;
+}
+
+.action[data-blocked]:focus-visible .actionLabel {
+  opacity: var(--op-disabled);
+}
+
 .bandAction {
   width: 100%;
 }
@@ -461,7 +473,41 @@
   line-height: var(--lh-thai);
 }
 
-/* ปุ่มบนแถบแจ้ง (ยังไม่ถูกวาดจนกว่าเส้นของปุ่มจะมี — งวด S5) — เป้ากด 40px · จอสัมผัส/จอแคบ 44px */
+/* บรรทัดลิงก์ของใบยืนยันหน้างาน (งวด S5 D-2 b) — บรรทัดรองเงียบ ๆ ตัวเท่าหมายเหตุของแถบแจ้ง · เลขที่เป็นลิงก์ (`linklike` มีวงโฟกัสของตัวเอง)
+   ⚠️ เลขที่ยาวไม่มีช่องว่างให้ตัด — `overflow-wrap: anywhere` กันแถวดันจอ 375 กว้างเกิน */
+.confirmLinks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.confirmLink {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-5);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+
+/* เลขที่ที่เป็นลิงก์ (แถบแจ้ง `refs` · บรรทัดลิงก์ `segments`) — เลขเอกสารห้ามขาดที่ขีด ("RQ-AS-" / "26100366" ที่ 375 ·
+   UAT S5 sales รอบ 1 K05) · ชนะ `overflow-wrap: anywhere` ของบรรทัด เลขยาวสุด ~15 ตัวไม่ดันจอ 375 */
+.docRef {
+  white-space: nowrap;
+}
+
+/* เลขที่ท้ายประโยคของแถบแจ้ง — ช่องว่างตัวเดียวแคบกว่าวงโฟกัสของ `.linklike` (เส้น 2px + ห่าง 2px) วงจึงทับ "บ" ของ "ใบ"
+   (UAT S5 sales รอบ 2 K05 focus) ⇒ เว้นหน้าลิงก์เท่าวงโฟกัส ตัวคำไม่ถูกแตะ */
+.bannerRef {
+  margin-inline-start: var(--space-1);
+}
+
+/* เลขที่กลางบรรทัดลิงก์ — มีตัวอักษรทั้งสองข้าง (": " ข้างหน้า · " · " ข้างหลัง) วงโฟกัสเคยทับ ":" กับ "·"
+   (UAT S5 head รอบ 1 K10/K03 focus) ⇒ เว้นทั้งสองข้างเท่าวงโฟกัส แบบเดียวกับ `.bannerRef` */
+.lineRef {
+  margin-inline: var(--space-1);
+}
+
+/* ปุ่มบนแถบแจ้ง (วาดเมื่อเส้นของปุ่มมีจริง — งวด S5) — เป้ากด 40px · จอสัมผัส/จอแคบ 44px */
 .bannerAction {
   min-height: var(--ctl-h);
 }

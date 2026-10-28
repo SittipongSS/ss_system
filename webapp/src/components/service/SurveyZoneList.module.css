@@ -363,8 +363,10 @@
 .wrap[data-layout="pages"] .mark[data-key="size"] .markValue { display: inline; }
 .wrap[data-layout="pages"] .mark[data-ok] .markValue { color: var(--text-1); font-weight: var(--fw-semibold); }
 .wrap[data-layout="pages"] .cutText { grid-column: 3 / 6; grid-row: 1; }
+/* `grid-row: auto` — ชื่อแถว missing/tags ของทรงซ้อนไม่มีในกริดนี้ (areas: none) ถ้าปล่อยไว้สองบรรทัดจะไปตกแถวเดียวกัน
+   ทับกัน ("ยังไม่ได้ผูกจุด" ใต้ป้าย "เพิ่มหน้างาน" · UAT S5 จอ 768) — auto = เรียงลงแถวถัดไปตามลำดับในหน้า */
 .wrap[data-layout="pages"] .missing,
-.wrap[data-layout="pages"] .tags { grid-column: 2 / 6; }
+.wrap[data-layout="pages"] .tags { grid-column: 2 / 6; grid-row: auto; }
 .wrap[data-layout="pages"] .chev { grid-column: 6; grid-row: 1 / span 3; }
 
 @media (max-width: 680px) {

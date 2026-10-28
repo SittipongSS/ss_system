@@ -5,7 +5,7 @@
 // RD/PC: รับเรื่อง → ตอบราคาราย "ชั้นจำนวน" ที่ผู้ขอระบุ หรือกด "ตอบไม่ได้" พร้อมเหตุผล
 // ราคาที่ตอบ = rev ใหม่ของวัสดุตัวเดิมในทะเบียน และเติมกลับบรรทัดในใบขอราคาผลิตให้เอง
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarClock, FileText, FolderKanban, Handshake, Hash, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
 } from "lucide-react";
@@ -175,6 +175,8 @@ const SURVEY_DOCUMENT_POLL_MAX_FAILS = 8;
 
 export default function RequestDetailPage() {
   const { id } = useParams();
+  /* ปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้งของหน้าหัวข้อ (งวด S5 D-3) พาไปฟอร์มล็อก — ตัวนำทางตัวเดียวของหน้านี้ */
+  const router = useRouter();
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
@@ -2101,6 +2103,14 @@ export default function RequestDetailPage() {
             savedVariant={requestVariantChosen(req)}
             variantSwitchNotes={surveyIntakeSwitchNotes(req)}
             freshDraft={!deleteRequestError(req)}
+            /* ⭐ ใบยืนยันหน้างาน (งวด S5 D-3) — ดีล/สถานที่/พื้นที่ยกมาจากใบต้นทาง ฟอร์มพูดประโยคล็อกของงวดแทนของ S4
+               · ช่อง "วิธีประเมิน = ลงหน้างาน" ขึ้นเฉพาะตอนยังเป็นร่าง: หลังรับเรื่องหัวหน้าอาจสลับบางพื้นที่เป็นจากแบบแล้ว
+                 (ป้าย "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวบอกแทน) · server ล็อกวิธีไว้ที่ 'standard' อยู่แล้ว (N25) */
+            confirmLock={req.surveyConfirmLink?.confirmOf ? {
+              mode: "edit",
+              original: { docNo: req.surveyConfirmLink.confirmOf.docNo, missing: req.surveyConfirmLink.confirmOf.missing },
+              showMethod: req.status === "draft",
+            } : null}
             awaitingAck={["draft", "pending"].includes(req.status)}
             /* ⭐ ใบประเมินที่พื้นที่ที่ยังใช้อยู่ทุกพื้นที่ประเมินจากแบบ — `deskJob` (`surveyNeedsVisit === false` ของตัวโหลด · ค่าเดียวกับที่ทำให้
                ขั้นงานขึ้น "ประเมินจากแบบ") ⇒ คำใบ้ใต้วันเข้าพื้นที่บอกว่าวันที่กรอกไว้ไม่ถูกใช้ (มติเจ้าของ sales-q3 · S2b แก้หลังตรวจจอ)
@@ -2240,6 +2250,9 @@ export default function RequestDetailPage() {
           attachments={attachmentsBlock}
           onRefresh={refreshQuietly}
           refreshStalled={refreshStalled}
+          /* ⭐ งวด S5: ปุ่มที่พร้อมพาไปฟอร์มของใบยืนยันหน้างาน (`action.href` จาก server) — ปุ่มที่ติดด่านไม่ถึงตัวนี้
+             (`GatedAction` ของ view บอกเหตุแทน) · ใครกดได้ server ตัดสินแล้วใน `surveyConfirmLink.action` */
+          onDrawingConfirm={(action) => router.push(action.href)}
         />
       ) : (
       <DetailPageLayout

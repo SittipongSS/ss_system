@@ -274,32 +274,33 @@ test('D-2 โมดัลกลางบนหน้าคำร้อง: ส�
 
 /* ══ D-3 หน้าคำร้องแบบไทม์ไลน์ ═══════════════════════════════════════════════════════════ */
 
-test('🔴 D-3 แถบแจ้งเหนือตาราง: วาดจาก `zones.drawingBanner` · ปุ่มอยู่หลัง `action.ready` เท่านั้น · พิมพ์ `note` ของ lib ไม่พิมพ์ประโยคเอง', () => {
+test('🔴 D-3 แถบแจ้งเหนือตาราง: วาดจาก `zones.drawingBanner` · ปุ่มอยู่หลัง `action.ready` + `action.state` + ตัวกด · พิมพ์ `note` ของ lib ไม่พิมพ์ประโยคเอง', () => {
   assert.match(VIEW, /\{zones\.drawingBanner \? <SurveyDrawingBanner banner=\{zones\.drawingBanner\} onConfirm=\{onDrawingConfirm\} \/> : null\}/);
   // อยู่เหนือตารางที่มันพูดถึง
   assert.ok(VIEW.indexOf('<SurveyDrawingBanner banner={zones.drawingBanner}') < VIEW.indexOf('<ZonesTable zones={zones} />'));
   const banner = VIEW.slice(VIEW.indexOf('export function SurveyDrawingBanner'), VIEW.indexOf('function ZonesTable'));
-  assert.match(banner, /const confirm = banner\.action\?\.ready === true && typeof onConfirm === "function" \? banner\.action : null;/);
+  // งวด S5 (D-2): สามเงื่อนไข — แถว 0 ของ lib (ไม่มี `state`) ไม่มีปุ่มแม้สวิตช์เปิด
+  assert.match(banner, /const confirm = banner\.action\?\.ready === true && banner\.action\.state && typeof onConfirm === "function" \? banner\.action : null;/);
   assert.match(banner, /action=\{confirm \? \(/, 'ไม่มี confirm = ไม่มีปุ่มเลย (ไม่ใช่ปุ่มจาง)');
   assert.equal((VIEW.match(/\.action\?\.ready/g) || []).length, 1);
   assert.match(banner, /<StatusNotice\s+tone="info"/);
   // วลีที่ห้ามตัดกลางมาจาก lib (`banner.keep`) · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10)
   assert.match(banner, /\{banner\.keep\?\.length \? keepPhrases\(banner\.text, banner\.keep\) : thaiText\(banner\.text\)\}/);
-  assert.match(banner, /\{banner\.note \? <span className=\{styles\.bannerNote\}>\{thaiText\(banner\.note\)\}<\/span> : null\}/);
+  assert.match(banner, /\{banner\.note \? <span className=\{styles\.bannerNote\}>\{keepNote\(banner\.note\)\}<\/span> : null\}/);
   // ไม่มีจอไหนของกลุ่มนี้พิมพ์ประโยค N26 หรือชื่อปุ่มของงวด S5 เอง
   for (const [name, src] of SCREENS) {
     assert.ok(!src.includes(SURVEY_CONFIRM_PENDING_NOTE), name);
     assert.doesNotMatch(src, /ขอยืนยันหน้างาน|จะเปิดใช้ในรอบถัดไป/, name);
   }
-  // เปลือกยังไม่ส่งตัวกดของปุ่ม (งวด S5) ⇒ ต่อให้สวิตช์เปิด ก็ไม่มีปุ่มที่กดแล้วไม่เกิดอะไร
-  assert.doesNotMatch(PAGE, /onDrawingConfirm/);
+  // งวด S5 (D-3): เปลือกส่งตัวกด — พาไปฟอร์มด้วย `href` ของก้อนปุ่ม (หน้านี้มี router ของตัวเองแล้ว)
+  assert.match(PAGE, /onDrawingConfirm=\{\(action\) => router\.push\(action\.href\)\}/);
+  assert.match(PAGE, /const router = useRouter\(\);/);
 
-  // ค่าที่จอวาด: ใบจากแบบที่ส่งผลแล้ว (ต้องยืนยัน) = ประโยค + บรรทัดรอง · งวดนี้ปุ่มยังไม่พร้อม
+  // ค่าที่จอวาด: ใบจากแบบที่ส่งผลแล้ว (ต้องยืนยัน) = ประโยค + บรรทัดรองตามสวิตช์ (เขียนเทียบค่าคงที่ — วันเปิดสวิตช์ไม่ต้องแก้ไฟล์นี้ · F18)
   const needed = job(desk({ ...SENT, surveyConfirm: 'needed' })).zones.drawingBanner;
   assert.equal(needed.text, 'มี 3 พื้นที่ที่ประเมินจากแบบ — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “ขอยืนยันหน้างาน” เพื่อให้ TS เข้าวัดจริง');
-  assert.equal(needed.note, SURVEY_CONFIRM_PENDING_NOTE);
+  assert.equal(needed.note, SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE);
   assert.equal(needed.action.ready, SURVEY_CONFIRM_ACTION_READY);
-  assert.equal(SURVEY_CONFIRM_ACTION_READY, false, 'งวด S2b: ปุ่มของฝ่ายขายยังไม่มี');
   const notNeeded = job(desk({ ...SENT, surveyConfirm: 'not_needed' })).zones.drawingBanner;
   assert.equal(notNeeded.text, 'มี 3 พื้นที่ที่ประเมินจากแบบ — TS แจ้งว่าไม่ต้องยืนยันหน้างาน ใช้ผลนี้เป็นผลสุดท้าย');
   assert.equal(notNeeded.action, null);

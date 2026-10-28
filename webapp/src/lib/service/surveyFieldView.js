@@ -62,6 +62,8 @@ import {
 } from './surveyMethodSwitch';
 /* "ฝ่ายขายขอ: ประเมินจากแบบ" (งวด 4) — สิ่งที่ฝ่ายขายขอตอนยื่น ไม่ใช่วิธีปัจจุบัน (วิธีปัจจุบันคือข้อ "วิธีประเมิน" ของหัวงาน) */
 import { SURVEY_SALES_ASKED, surveySalesAskedLine } from './surveyIntake';
+/* ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — ป้าย/คำของข้อใบต้นทางบนหัวงาน มาจากไฟล์คำของงวดที่เดียว (F1) · ไฟล์นั้นล้วน ไปถึงเบราว์เซอร์ได้ */
+import { SURVEY_CONFIRM_OF_LABEL, SURVEY_CONFIRM_ORIGINAL_MISSING } from './surveyConfirmLink';
 import { SPOT_TRAY_LABEL, spotGapNote, surveySpotPhotoGaps, surveySpotSubmitError } from './surveySpotPhotos';
 import { accessWarnText, dayText, relDayText, thaiDayOf } from './queueWords';
 import { VISIT_STATUS_LABELS, isClosedVisit, isOpenVisit } from './visitStatus';
@@ -1729,10 +1731,14 @@ const dayKey = (value) => {
  *       ยังมีนัดเปิดอยู่ (ร่าง · นัดไว้ · กำลังทำ) ⇒ ข้อของนัดอยู่ครบ และ **ไม่** พูดว่าไม่มีนัด — เกิดได้จริง: ช่างอยู่หน้างานแล้ว
  *         หัวหน้าสลับห้องสุดท้ายเป็นจากแบบ (นัดที่กำลังทำไม่ถูกยกเลิก) หรือนัดที่ค้างบนใบ · หัวหน้ายังต้องเห็นเลขนัด ทีม และเวลา
  *   ⚠️ "ยังมีนัดเปิดไหม" ดูจากนัดที่ส่งมา ไม่ใช่จาก `needsVisit` — ตัวนั้นอ่านแถวพื้นที่อย่างเดียว บอกไม่ได้ว่านัดยังค้างอยู่
- * @returns `{ site:{code,name,title,href,address,unknown}, call, nav, facts:[{key,label,value,sub?,warn?,people?}], deskOnly, request }`
+ * @param confirmOf ใบต้นทางของใบยืนยันหน้างาน (งวด S5 · คีย์ confirmOf ของ GET ใบประเมิน — มีเฉพาะใบที่ผูก และคนดูเป็นหัวหน้า/ผู้วางคิว)
+ *   มี ⇒ ข้อ "ยืนยันผลจากแบบของ" ต่อจากข้อวิธีประเมิน/ฝ่ายขายขอ ก่อนข้ออื่นทุกข้อ (ใบยืนยันลงหน้างานล้วน = ข้อแรก) · เลขที่เป็นลิงก์ (href)
+ *   ใบต้นทางถูกลบ ⇒ ค่าเป็นคำว่าใบต้นทางถูกลบ และไม่มีคีย์ href · อ่านไม่สำเร็จ (unknown.confirmOf) ⇒ ค่า "ไม่ทราบ" ไม่มี href
+ *   ไม่ส่ง และไม่มี unknown.confirmOf ⇒ ไม่มีข้อนี้ หัวงานเดิมทุกคีย์ (R-KEYS)
+ * @returns `{ site:{code,name,title,href,address,unknown}, call, nav, facts:[{key,label,value,sub?,warn?,people?,href?}], deskOnly, request }`
  */
 export function surveyJobHeaderView({
-  request = null, customer = null, site = null, visit = null, crew = [], unknown = {}, method = null,
+  request = null, customer = null, site = null, visit = null, crew = [], unknown = {}, method = null, confirmOf = null,
 } = {}) {
   const siteUnknown = unknown?.site === true;
   const phone = String(site?.contactPhone ?? '').trim();
@@ -1798,6 +1804,22 @@ export function surveyJobHeaderView({
   /* ── ฝ่ายขายขอ (งวด 4) — เฉพาะใบที่ยื่นเป็นประเมินจากแบบ · ต่อจากข้อวิธีประเมินทันที (สิ่งที่ขอ คู่กับสิ่งที่เป็นอยู่)
      ⚠️ ใบอื่น = ไม่มีข้อนี้และไม่มีคีย์ `asked` ใน `request` ⇒ หัวงานของใบวันนี้เท่าเดิมทุกคีย์ */
   const asked = surveySalesAskedLine(request);
+  /* ── ใบต้นทางของใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — ต่อจากวิธีประเมิน/ฝ่ายขายขอ (สองข้อนั้นไม่มีบนใบยืนยันลงหน้างานล้วน ⇒ ข้อแรก)
+     ⚠️ อ่านไม่สำเร็จเขียน "ไม่ทราบ" ไม่หายเงียบ (ใบที่ผูกแต่อ่านพัง ≠ ใบที่ไม่ได้ผูก) · ใบต้นทางถูกลบ = ไม่มีลิงก์ (ไม่มีหน้าให้ไป) */
+  const confirmLinked = !!confirmOf && typeof confirmOf === 'object';
+  let confirmFact = null;
+  if (confirmLinked && confirmOf.missing === true) {
+    confirmFact = { key: 'confirmOf', label: SURVEY_CONFIRM_OF_LABEL, value: SURVEY_CONFIRM_ORIGINAL_MISSING };
+  } else if (confirmLinked && idOf(confirmOf.id)) {
+    confirmFact = {
+      key: 'confirmOf',
+      label: SURVEY_CONFIRM_OF_LABEL,
+      value: naText(String(confirmOf.docNo ?? '').trim()),
+      href: `/requests/${encodeURIComponent(idOf(confirmOf.id))}`,
+    };
+  } else if (unknown?.confirmOf === true) {
+    confirmFact = { key: 'confirmOf', label: SURVEY_CONFIRM_OF_LABEL, value: SURVEY_UNKNOWN_TEXT };
+  }
   /* ── ใบงานโต๊ะ (`deskOnly`) ไม่มีใครไปหน้างาน (มติเจ้าของ head-r3-33 · ทำตามม็อก) — ไม่มีปุ่มโทร/นำทาง และไม่มีข้อ ให้เข้า · ฝากมา ·
      ติดต่อ (🐞 เดิมหัวเขียน "ไม่ลงคิว ไม่มีนัด" ข้างช่วงให้เข้า คำฝาก ปุ่มโทรสถานที่ — อ่านเหมือนยังมีคนจะไปหน้างาน)
      · สงสัยเรื่องแบบต้องถามผู้ขอ ⇒ ข้อ "ผู้ขอ" (คำเดียวกับหน้าคำร้อง) ต่อจากวิธีประเมิน/ฝ่ายขายขอ ก่อนผู้รับผิดชอบ
@@ -1828,6 +1850,7 @@ export function surveyJobHeaderView({
     facts: [
       ...(methodFact ? [methodFact] : []),
       ...(asked ? [{ key: 'asked', label: SURVEY_SALES_ASKED.label, value: SURVEY_SALES_ASKED.value }] : []),
+      ...(confirmFact ? [confirmFact] : []),
       ...(deskOnly
         ? [
           { key: 'requester', label: 'ผู้ขอ', value: naText(String(request?.requestedByName ?? '').trim()) },

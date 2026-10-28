@@ -10,7 +10,7 @@
 // 🔴 **โชว์พื้นที่เดิมทั้งหมด แต่ไม่ติ๊กให้** (ม็อก §12) — ไม่โชว์ = คนพิมพ์ชื่อซ้ำแล้วชน
 //   `UNIQUE (siteId, ชื่อ)` ของ mig 0297 · ติ๊กให้ = สั่งช่างไปเสียเที่ยว
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { SURVEY_METHOD_DRAWING } from '@/lib/service/surveyMethod';
+import { SURVEY_METHOD_DRAWING, surveyConfirmPending } from '@/lib/service/surveyMethod';
 
 /* ⭐ **กรณี ④ ต้องอยู่บนสุด** — "วัดแล้วยังไม่ขาย" คือของที่จ่ายค่าแรงไปแล้วแต่ยังไม่ได้เงิน
      ⇒ ชูขึ้นก่อนใครทั้งบนฟอร์มและบนหน้าลูกค้า (แผน §5A · ม็อก §12)
@@ -150,7 +150,9 @@ const onsiteRounds = (zone) => zone.onsiteSurveyCount ?? (zone.surveyCount || 0)
 const neverOnsite = (zone) => !!zone?.surveyedAt && (zone.onsiteSurveyCount ?? zone.surveyCount) === 0;
 
 function reasonOf(surveyState, soldState, zone, wording) {
-  const awaiting = confirmOf(zone) === 'awaiting' ? AWAITING_NOTE : '';
+  /* รอยืนยัน / กำลังยืนยัน (งวด S5) = ตัวเลขยังไม่ยืนยัน — พื้นที่ที่กำลังยืนยันมีใบค้างเสมอ จึงจบที่กิ่งล็อกก่อนถึงที่นี่
+     (ถามผ่าน `surveyConfirmPending` ตัวเดียวกับตัวนับอื่น ไม่เทียบค่าเอง) */
+  const awaiting = surveyConfirmPending(confirmOf(zone)) ? AWAITING_NOTE : '';
   if (surveyState === 'done' && soldState === 'active') {
     // รอบจากแบบไม่ใช่ "วัดมาแล้ว" — นับเฉพาะรอบที่ไปวัดจริง
     const rounds = onsiteRounds(zone);
