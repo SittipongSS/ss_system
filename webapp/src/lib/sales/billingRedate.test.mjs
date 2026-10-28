@@ -145,10 +145,13 @@ test('route งวด: redate-billing ถอดแล้ว (410) · ตัว�
     'ตัวอ่านย้ายไป lib ตัวเดียว — route งวด · PATCH กติกาลูกค้า · redate อ่านคำร้องชุดเดียวกัน');
   assert.match(route, /import \{ billingSkipReady, loadBillingRequestedIds, loadScheduleRule \} from '@\/lib\/sales\/installmentScheduleServer';/);
   const loader = slice(code('lib/sales/installmentScheduleServer.js'), 'export async function loadBillingRequestedIds(', '\n}\n');
-  assert.match(loader, /\.from\('dept_requests'\)\.select\('id, status'\)\.in\('id', chunk\)\.eq\('kind', 'billing_doc'\)\s*\.order\('id', \{ ascending: true \}\)/,
-    'ชุดคำร้องเดียวกับที่หน้าใบโหลดให้แผง (billing_doc) — ไม่งั้นแผนจอกับ server ต่างกันถาวร');
-  assert.doesNotMatch(loader, /\.neq\('status'/, 'คำร้องที่ยกเลิกต้องอ่านมาให้ตัวตัดสินเห็น');
-  assert.match(loader, /fetchInChunks\(ids, \(chunk\) => fetchAllResult\(/, 'ไล่หน้า + ซอยก้อน (rowcap · URL 16 KB)');
+  /* ⭐ mig 0413: ตัวโหลดกลางตัวเดียวกับหน้าใบ (ตามงวด ∪ ตามตัวชี้) — ไม่งั้นแผนจอกับ server ต่างกันถาวร */
+  assert.match(loader, /await loadInstallmentRequests\(supabase, rows, \{ select: 'id, status' \}\)/,
+    'ชุดคำร้องเดียวกับที่หน้าใบโหลดให้แผง (billing_doc)');
+  const shared = slice(code('lib/sales/installmentRequestsStore.js'), 'export async function loadInstallmentRequests(', '\n}\n');
+  assert.equal((shared.match(/\.eq\('kind', KIND\)/g) || []).length, 2, 'ทั้งสองเส้นกรอง billing_doc');
+  assert.doesNotMatch(shared, /\.neq\('status'/, 'คำร้องที่ยกเลิกต้องอ่านมาให้ตัวตัดสินเห็น');
+  assert.equal((shared.match(/fetchInChunks\([a-zA-Z]+, \(chunk\) => fetchAllResult\(/g) || []).length, 2, 'ไล่หน้า + ซอยก้อน (rowcap · URL 16 KB)');
   assert.match(loader, /if \(error\) throw error;/, 'อ่านคำร้องพลาด ≠ ยังไม่ขอ');
   assert.match(loader, /return billingRequestedIds\(rows, new Map\(/);
 });

@@ -278,7 +278,7 @@ test('หน้าใบ: นับงวดแรกล้มหลังอน
   assert.match(page, /onActualOrderAction=\{runActualOrderAction\}/);
   /* PATCH งวด actual_* = ดึงตัวใบสด (cache ยอดของใบขยับตามงวด) */
   const inst = slice(page, 'async function runInstallmentAction(', 'function leaveEditMode');
-  assert.match(inst, /if \(String\(action\)\.startsWith\("actual_"\)\) refreshOrder\(\);/);
+  assert.match(inst, /if \(String\(action\)\.startsWith\("actual_"\) \|\| action === "link" \|\| action === "unlink"\) refreshOrder\(\);/);
   for (const action of ['actual_submit', 'actual_withdraw', 'actual_approve', 'actual_reject']) {
     assert.match(inst, new RegExp(`${action}: "`), `toast ของ ${action}`);
   }

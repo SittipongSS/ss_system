@@ -35,6 +35,7 @@ import {
   calendarStatus, describeBillingRule, formatBillingDate, ledgerFlags, nagsMissingBilling, nextRunInfo,
 } from '@/lib/sales/billingRule';
 import { dateOf } from '@/lib/sales/billingRuleV4';
+import { installmentRequests } from '@/lib/sales/installmentRequests';
 
 /** สถานะงวด → ป้ายไทย + โทนสี (ชุดเดียวกับที่การ์ดในใบ SO ใช้) */
 export const LEDGER_STATUS = {
@@ -219,8 +220,9 @@ function billingSearchWords(r) {
  *     ⭐ ไม่มีวันวางบิล = ขีด ไม่ใช่ "ยังไม่ขอ" — ไม่ชวนขอใบของงวดที่ไม่มีวันวางบิล (มติเจ้าของ 28/09) · ลูกค้าไม่ต้องวางบิลจึงไม่มีป้ายชวน
  * ⚠️ คำร้องที่ยกเลิก/ถูกลบ/เป็นของงวดอื่น = ไม่มีคำร้อง (กติกาเดียวกับ `billingRequested`)
  */
-function billingRequestStateOf({ installment, billingRequest, billingDate, billingKey }) {
-  const linked = Boolean(installment.billingRequestId) && billingRequest?.id === installment.billingRequestId;
+function billingRequestStateOf({ billingRequest, billingDate, billingKey }) {
+  // `billingRequest` = ตัวแทนที่ ledgerRow ตรวจแล้วว่าเป็นของงวดนี้ (`ownRequest`) · null = ไม่มีคำร้อง
+  const linked = Boolean(billingRequest?.id);
   if (linked && billingRequestAlive(billingRequest)) return 'sent';
   if (linked && String(billingRequest.status || '') === 'draft') return 'draft';
   return billingDate && billingOpenKey(billingKey) && billingKey !== 'notNeeded' ? 'none' : '';
@@ -255,8 +257,12 @@ export function ledgerRow({
   /* ── รอบวางบิล (mig 0389) — สถานะคิดที่ server ด้วย "วันนี้" ของนาฬิกาไทยตัวเดียวกับ `overdue` ──
      `billingRequest` = แถวคำร้องที่งวดผูกอยู่ (ผู้เรียกโหลดมา) · ไม่ส่ง/หาไม่เจอ = ยังไม่ขอ */
   const billingDate = installment.billingDate || null;
-  const billingRequested = Boolean(installment.billingRequestId)
-    && billingRequestAlive(billingRequest) && billingRequest.id === installment.billingRequestId;
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — `billingRequest` = ตัวแทนของงวดที่ผู้เรียกเลือก (`primaryInstallmentRequest` — ส่งแล้วก่อน
+     · แล้วร่าง) ⇒ ตัวแทนยังมีชีวิต = มีอย่างน้อยหนึ่งใบที่ขอแล้ว
+     ⚠️ ยังไม่เชื่อผู้เรียก: ตัวแทนต้องเป็นของงวดนี้จริงตามกติกาเดียวกับทุกจอ (`installmentRequests` — `installmentId` ชี้งวด
+       หรือตัวชี้ชี้คำร้องรุ่นเก่า) · ส่งผิดแถว = ไม่มีคำร้อง */
+  const ownRequest = billingRequest ? installmentRequests(installment, [billingRequest])[0] || null : null;
+  const billingRequested = billingRequestAlive(ownRequest);
   /* ⭐ รุ่นสี่: สถานะรู้กติกาของลูกค้า (`customer.billingRule` · ไม่มี = ยังไม่ระบุ) — ลูกค้า/งวดที่ไม่ต้องวางบิลได้ 'notNeeded'
      (ไม่มี late/soon ไม่มีทางเข้าตัวกรองรอบวางบิล) · งวดที่มีวันวางบิลได้สถานะเดิมทุกตัวอักษร (วันที่เก็บไม่ถูกซ่อน)
      ธงชุดเดียวกับกระดิ่ง/แผงงวด (`ledgerFlags`) — ทะเบียนไม่คิดกติกาเอง */
@@ -264,7 +270,7 @@ export function ledgerRow({
   const billing = billingState(installment, rule, { todayIso, requested: billingRequested });
   const flags = ledgerFlags(installment, rule, { todayIso, requested: billingRequested });
   const billingOpen = billingOpenKey(billing.key) && Boolean(billingDate);
-  const billingRequestState = billingRequestStateOf({ installment, billingRequest, billingDate, billingKey: billing.key });
+  const billingRequestState = billingRequestStateOf({ billingRequest: ownRequest, billingDate, billingKey: billing.key });
   /* รอบของลูกค้า (v5) — route คิดมาครั้งเดียวต่อลูกค้า · ผู้เรียกที่ประกอบแถวเอง (เทสต์) ได้ค่าคิดสดจากกติกาตัวเดียวกัน */
   const outlook = customer?.billingOutlook || ledgerCustomerOutlook(rule, todayIso);
   return {
@@ -351,7 +357,7 @@ export function ledgerRow({
        · สามธงของตัวกรอง "รอบวางบิล" คิดที่นี่ครั้งเดียว (ตัวกรอง · ตัวนับบนการ์ด · ตัวนับในแผงตัวกรอง ใช้ธงชุดเดียวกัน) */
     billingDate,
     billingEvent: installment.billingEvent || '',
-    billingRequestId: installment.billingRequestId || null,
+    billingRequestId: ownRequest?.id || null,
     billingRequested,
     billingStateKey: billing.key,
     billingDays: billing.days,

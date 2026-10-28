@@ -55,8 +55,14 @@ test('PATCH งวด: updatedAt ที่จอส่งมาไม่ตร�
   assert.ok(stale < patch.indexOf('installmentActionError(row, action, user, {'), 'ต้องบอก "ข้อมูลเก่า" ก่อนด่านที่ตัดสินจากแถวสด');
   assert.match(patch, /updated = await updateInstallment\(supabase, installmentId, patch, \{ expectedUpdatedAt: row\.updatedAt \}\);/,
     'ชั้นสอง: เขียนเฉพาะเมื่อแถวยังเป็นรุ่นที่ด่านเพิ่งตัดสิน');
-  const miss = patch.indexOf('if (!updated) return fail(INSTALLMENT_STALE_MESSAGE, 409);');
-  assert.ok(miss > 0 && miss < patch.indexOf('await recordAudit('), 'เขียนไม่โดนต้องไม่ลง audit/กระดิ่ง');
+  const write = patch.indexOf('updated = await updateInstallment(supabase, installmentId, patch');
+  const miss = patch.indexOf('if (!updated) return fail(INSTALLMENT_STALE_MESSAGE, 409);', write);
+  assert.ok(miss > write && miss < patch.indexOf('await recordAudit(', write), 'เขียนไม่โดนต้องไม่ลง audit/กระดิ่ง');
+  /* ⭐ ผูก/ถอดคำร้อง (mig 0413) เขียนแถวคำร้องแบบ CAS ที่ลิงก์เดิม — ไม่โดน = 409 ก่อน audit */
+  const link = slice(patch, "} else if (action === 'link' || action === 'unlink') {", "} else if (action === 'tax-invoice') {");
+  assert.match(link, /write = ownInstallment \? write\.eq\('installmentId', ownInstallment\) : write\.is\('installmentId', null\);/);
+  const linkMiss = link.indexOf('if (!afterRequest) return fail(INSTALLMENT_STALE_MESSAGE, 409);');
+  assert.ok(linkMiss > 0 && linkMiss < link.indexOf('await recordAudit('), 'ผูกไม่โดนต้องไม่ลง audit');
 });
 
 // ── 3. POST เริ่มติดตาม: ด่านเดียวกับปุ่มบนแผง ─────────────────────────────────────────────

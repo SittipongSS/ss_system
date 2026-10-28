@@ -38,10 +38,11 @@ import { canEditCustomerBillingRule, caretakerTeamsOf, departmentOf, hasTeam } f
 import { historicalInstallmentLock, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 import { installmentVoid, paymentNotRequired, pipelineInstallmentLock } from '@/lib/sales/salesOrderPayments';
 import {
-  BELL, BILLING_REMIND_DAYS, CALENDAR_MANUAL_HINT, DUE_REMIND_DAYS, LEDGER_HREF, bellsFor, billingRequestLive, billingState,
+  BELL, BILLING_REMIND_DAYS, CALENDAR_MANUAL_HINT, DUE_REMIND_DAYS, LEDGER_HREF, bellsFor, billingState,
   calendarReminder, calendarStatus, canRequestBilling, cutoffDigest, formatBillingDate, ledgerFlags,
 } from '@/lib/sales/billingRule';
 import { billingRequestHref } from '@/lib/sales/billingRequestHref';
+import { installmentRequestLive } from '@/lib/sales/installmentRequests';
 import { hrefWithAction } from '@/lib/notificationAction';
 
 export const BILLING_DUE_KIND = 'sales_order_billing_due';
@@ -111,14 +112,14 @@ function orderCollecting(order) {
  * ⭐ ตัดสินที่ `billingRequestLive` (billingRule.js) ตัวเดียว — ร่างที่ยังไม่ส่ง/ยกเลิก = ยังไม่ขอ ·
  *   คำร้องที่หาไม่เจอใน Map (ถูกลบไปพร้อมดีล) = ลิงก์ตาย = ยังไม่ขอ
  *   (ปุ่ม "ขอใบวางบิลงวดนี้" ผูกงวดตั้งแต่บันทึกร่าง — ถ้านับร่าง กระดิ่งเงียบทั้งที่ FN ยังไม่ได้รับอะไร)
- * @param requestsById Map id → แถว `dept_requests` ({ id, status }) ของทุก `billingRequestId` ที่เจอ
+ * @param requestsById Map id → แถว `dept_requests` ({ id, status, installmentId }) ของคำร้องที่ผูกงวดเหล่านี้ (`loadInstallmentRequests`)
  * ⚠️ ชื่อไม่ซ้ำ `billingRequestAlive(request)` ของ lib/finance/paymentLedger.js โดยตั้งใจ — อาร์กิวเมนต์ต่างกัน
  *    (ตัวนี้รับงวด + Map) · auto-import ผิดตัวแล้วได้ false ("ยังไม่ขอ") เงียบ ๆ
  */
 export function installmentBillingRequested(installment, requestsById) {
-  const id = text(installment?.billingRequestId);
-  if (!id) return false;
-  return billingRequestLive(requestsById?.get?.(id));
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — คำร้องของงวดถาม `installmentRequests` ตัวเดียวกับแผงงวด/ทะเบียน
+     ⇒ ผู้เรียกต้องโหลดคำร้องผ่าน `loadInstallmentRequests` (ตามงวด ∪ ตามตัวชี้) ไม่ใช่ตามตัวชี้อย่างเดียว */
+  return installmentRequestLive(installment, requestsById);
 }
 
 /* "งวด 1 มัดจำ" — คำนำหน้าที่แค่ซ้ำเลขงวดตัดทิ้ง ("งวดที่ 2" บนงวด 2 → "งวด 2" · กติกาจากม็อก E)
@@ -730,6 +731,7 @@ export function calendarMissingNotices(customers = [], { todayIso, holidays = nu
  * ⚠️ งวดจบแล้ว · งวดยกมา = ไม่มีปุ่ม — ถาม `billingState` ตัวเดียวกับทุกจอ ไม่เขียนกติกาเอง
  */
 export function billingDueActionOpen(installment, rule = null) {
+  /* ⚠️ ตัวชี้ (`billingRequestId`) = มีคำร้องผูกอย่างน้อยหนึ่งใบ ทุกสถานะ (mig 0413 · syncBillingPointers) — ความหมายเท่าเดิมของปุ่มนี้ */
   if (!text(installment?.id) || text(installment.billingRequestId)) return false;
   /* ⭐ รุ่นสี่ (system-design §6 "สิ่งที่หายไปสำหรับลูกค้าไม่ต้องวางบิล"): ปุ่มในกระดิ่งถาม `canRequestBilling` ตัวเดียวกับเมนูแถว
        ของแผงงวด — งวดที่ไม่ต้องวางบิล (ติ๊ก `billingSkip` · ลูกค้าไม่ต้องวางบิลและงวดไม่มีวันวางบิล) = ไม่มีปุ่ม · งวดที่มีวันวางบิล

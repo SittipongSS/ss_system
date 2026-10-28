@@ -83,7 +83,9 @@ test('รอบวางบิล: ตัวนับ/ส่วนที่ซ�
   assert.match(PAGE, /onClick=\{\(\) => setFilter\("billing", billing7dOn \? "" : "7d"\)\}/);
   assert.match(slice(PAGE, 'key: "billing"', 'onChange'), /single: true,/);
   // คำร้องที่งวดผูกอยู่ต้องถึง ledgerRow — ไม่ส่ง = ทุกงวด "ยังไม่ขอ" แล้วเลยรอบนับเกินจริงเงียบ ๆ
-  assert.match(ROUTE, /billingRequest: billingRequestById\.get\(installment\.billingRequestId\) \|\| null,/);
+  // ⭐ mig 0413: หลายคำร้องต่องวด — ตัวแทนของงวด (ส่งแล้วก่อน) จากตัวโหลดกลาง (ตามงวด ∪ ตามตัวชี้)
+  assert.match(ROUTE, /billingRequest: primaryInstallmentRequest\(installment, billingRequestById\),/);
+  assert.match(ROUTE, /await loadInstallmentRequests\(supabase, rows, \{ select: 'id, status' \}\);/);
   // จำนวนงวดของทั้งใบประทับก่อนกรอง ("แสดง n จาก m งวด") — ต้องอยู่ก่อน filterLedger
   const stampAt = ROUTE.indexOf('stampOrderInstallmentCount(all);');
   assert.ok(stampAt > 0 && stampAt < ROUTE.indexOf('filterLedger(all, filters)'), 'ประทับจำนวนงวดหลังกรอง = นับแถวที่เหลือ');
