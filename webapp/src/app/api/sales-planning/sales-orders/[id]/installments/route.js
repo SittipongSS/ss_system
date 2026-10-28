@@ -51,6 +51,8 @@ import {
   OPENING_INSTALLMENT_LABEL, historicalInstallmentLock, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
+import { loadInstallmentRequests, syncBillingPointers } from '@/lib/sales/installmentRequestsStore';
 import { loadScoped } from '@/lib/scopedRow';
 
 export const dynamic = 'force-dynamic';
@@ -862,39 +864,97 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         confirmedById: null, confirmedByName: null, confirmedAt: null,
         note: `ถอนคำรับรอง (${actorName || 'บัญชี'}): ${reason}`,
       };
-    } else if (action === 'unlink') {
-      patch = { billingRequestId: null };
-    } else if (action === 'link') {
-      /* ── ผูกงวดเข้ากับคำร้องขอเอกสารการเงิน (B-5) ────────────────────────
-         ⚠️ ตรวจจาก **แถวจริงของคำร้อง** ไม่ใช่เชื่อ id ที่ส่งมา — สามข้อนี้ถ้าไม่ตรวจ
-         จะได้ใบวางบิลของลูกค้าอีกรายไปแขวนบนงวดนี้โดยไม่มีอะไรทัก */
+    } else if (action === 'link' || action === 'unlink') {
+      /* ── ผูก/ถอดคำร้องขอเอกสารการเงินกับงวด (B-5 · รื้อเป็นหลายคำร้องต่องวดที่ mig 0413) ─────────────────
+         ⭐ ความจริงอยู่ที่ **แถวคำร้อง** (`installmentId`) — งวดเก็บแค่ตัวชี้ (`billingRequestId` = คำร้องแรก · SQL ของ 0377/0378
+           อ่านตัดสินล็อกปรับแผน) ซึ่ง `syncBillingPointers` เขียนให้ที่เดียว ⇒ ทางนี้ไม่เขียนงวดเอง
+         ⚠️ ตรวจจาก **แถวจริงของคำร้อง** ไม่ใช่เชื่อ id ที่ส่งมา — ไม่ตรวจ = ใบวางบิลของลูกค้าอีกรายไปแขวนบนงวดนี้โดยไม่มีอะไรทัก */
+      const requestId = billingRequestId || (action === 'unlink' ? String(row.billingRequestId || '').trim() : '');
       const { data: request, error: reqError } = await supabase
         .from('dept_requests')
-        .select('id, kind, "docNo", "quotationId"')
-        .eq('id', billingRequestId).maybeSingle();
-      if (reqError) return fail(reqError.message, 500);
+        .select('id, kind, "docNo", status, "quotationId", "salesOrderId", "installmentId", "installmentSeq"')
+        .eq('id', requestId).maybeSingle();
+      if (reqError) {
+        const schema = billingInstallmentSchemaError(reqError);
+        return schema ? fail(schema, 503) : fail(reqError.message, 500);
+      }
       if (!request) return badRequest('ไม่พบคำร้องที่เลือก');
       if (request.kind !== 'billing_doc') return badRequest('ผูกได้เฉพาะคำร้องขอเอกสารการเงิน');
-      /* ⭐ **ต้องเป็นคำร้องของใบเสนอราคาเดียวกับใบสั่งขายนี้** — ทั้งสองฝั่งยึด QT
-         เป็นต้นทางอยู่แล้ว (ม-ค) ⇒ นี่คือเส้นเดียวที่พิสูจน์ได้ว่าเป็นงานเดียวกัน
-         ⚠️ ใบสั่งขายที่ไม่ได้มาจาก QT ผูกไม่ได้ — บอกให้ตรงว่าเพราะอะไร */
-      if (!order.quotationId) {
-        return badRequest('ใบสั่งขายนี้ไม่ได้อ้างใบเสนอราคา — ผูกคำร้องขอเอกสารการเงินไม่ได้');
+      const ownInstallment = String(request.installmentId || '').trim();
+      // ลิงก์รุ่นก่อน 0413: ตัวชี้ของงวดชี้คำร้องที่ยังไม่รู้งวดของตัวเอง (installmentRequests.js)
+      const legacyHere = !ownInstallment && String(row.billingRequestId || '') === request.id;
+
+      let requestPatch;
+      if (action === 'unlink') {
+        if (ownInstallment !== installmentId && !legacyHere) return badRequest(`คำร้อง ${request.docNo || ''} ไม่ได้ผูกกับงวดนี้`);
+        requestPatch = { installmentId: null, installmentSeq: null };
+      } else {
+        /* ⭐ **ต้องเป็นคำร้องของใบเสนอราคาเดียวกับใบสั่งขายนี้** — ทั้งสองฝั่งยึด QT เป็นต้นทาง (ม-ค)
+           ⇒ นี่คือเส้นเดียวที่พิสูจน์ได้ว่าเป็นงานเดียวกัน · ใบสั่งขายที่ไม่ได้มาจาก QT ผูกไม่ได้ — บอกให้ตรงว่าเพราะอะไร */
+        if (!order.quotationId) {
+          return badRequest('ใบสั่งขายนี้ไม่ได้อ้างใบเสนอราคา — ผูกคำร้องขอเอกสารการเงินไม่ได้');
+        }
+        if (request.quotationId !== order.quotationId) {
+          return badRequest('คำร้องนี้เป็นของใบเสนอราคาคนละใบกับใบสั่งขายนี้');
+        }
+        if (ownInstallment === installmentId || legacyHere) return badRequest(`คำร้อง ${request.docNo || ''} ผูกกับงวดนี้อยู่แล้ว`);
+        /* ⚠️ คำร้องใบเดียวแขวนได้งวดเดียว — ยอดอยู่ที่ใบคำร้อง (0257) ⇒ แขวนสองงวด = ยอดถูกนับซ้ำ
+           ⭐ แต่ **งวดเดียวมีได้หลายคำร้อง** (มติ 28/10 · 0413) — ใบวางบิลก่อน ใบเสร็จทีหลัง ⇒ ไม่ถามว่างวดนี้มีคำร้องอยู่ไหม
+           · ตรวจทั้งลิงก์ใหม่ (`installmentId`) และลิงก์รุ่นเก่า (ตัวชี้ของงวดอื่น) */
+        let takenSeq = null;
+        if (ownInstallment) {
+          const { data: other, error: otherError } = await supabase
+            .from('sales_order_installments').select('id, seq').eq('id', ownInstallment).maybeSingle();
+          if (otherError) return fail(otherError.message, 500);
+          takenSeq = other?.seq ?? '?';
+        } else {
+          const { data: taken, error: takenError } = await supabase
+            .from('sales_order_installments')
+            .select('id, seq').eq('billingRequestId', request.id).neq('id', installmentId);
+          if (takenError) return fail(takenError.message, 500);
+          if (taken?.length) takenSeq = taken[0].seq;
+        }
+        if (takenSeq !== null) {
+          return badRequest(`คำร้อง ${request.docNo || ''} ถูกผูกกับงวดที่ ${takenSeq} ไปแล้ว — ถอดออกจากงวดนั้นก่อน`);
+        }
+        requestPatch = {
+          installmentId,
+          installmentSeq: Math.min(Math.max(Number(row.seq) || 1, 1), 12),
+          // คำร้องที่ขอจากหน้า QT ยังไม่อ้างใบสั่งขาย — เติมให้ (อ้างใบอื่นอยู่แล้วไม่ทับ: ใบเดียวกันของ QT เดียว = ใบนี้หรือใบที่ยกเลิก)
+          ...(String(request.salesOrderId || '').trim() ? {} : { salesOrderId: order.id }),
+        };
       }
-      if (request.quotationId !== order.quotationId) {
-        return badRequest('คำร้องนี้เป็นของใบเสนอราคาคนละใบกับใบสั่งขายนี้');
+      /* CAS ที่ลิงก์เดิม — อีกหน้าต่างผูก/ถอดคำร้องใบนี้แทรกระหว่างด่านกับการเขียน = ไม่มีแถวโดน = 409 */
+      let write = supabase.from('dept_requests').update(requestPatch).eq('id', request.id);
+      write = ownInstallment ? write.eq('installmentId', ownInstallment) : write.is('installmentId', null);
+      const { data: afterRequest, error: writeError } = await write.select('*').maybeSingle();
+      if (writeError) {
+        const schema = billingInstallmentSchemaError(writeError);
+        return schema ? fail(schema, 503) : fail(writeError.message, 500);
       }
-      /* ⚠️ คำร้องใบเดียวแขวนได้งวดเดียว — ของจริงหนึ่งคำร้องคือการวางบิลหนึ่งรอบ
-         (ยอดอยู่ที่ใบคำร้อง ไม่ใช่รายบรรทัด · ดู 0257) ⇒ แขวนสองงวดแปลว่ายอดถูก
-         นับซ้ำตอนตอบว่า "งวดนี้ขอเอกสารไปหรือยัง" */
-      const { data: taken, error: takenError } = await supabase
-        .from('sales_order_installments')
-        .select('id, seq').eq('billingRequestId', request.id).neq('id', installmentId);
-      if (takenError) return fail(takenError.message, 500);
-      if (taken?.length) {
-        return badRequest(`คำร้อง ${request.docNo || ''} ถูกผูกกับงวดที่ ${taken[0].seq} ไปแล้ว`);
+      if (!afterRequest) return fail(INSTALLMENT_STALE_MESSAGE, 409);
+      const sync = await syncBillingPointers(supabase, [installmentId, ownInstallment], {
+        drop: action === 'unlink' ? [request.id] : [],
+      });
+      if (sync.error) {
+        console.error('[installments] เขียนตัวชี้คำร้องของงวดไม่สำเร็จ', installmentId, sync.error?.message || sync.error);
       }
-      patch = { billingRequestId: request.id };
+      await recordAudit({
+        user,
+        action: 'update',
+        entityType: 'dept_requests',
+        entityId: request.id,
+        before: request,
+        after: afterRequest,
+        summary: `${action === 'link' ? 'ผูก' : 'ถอด'}คำร้อง ${request.docNo || request.id} ${action === 'link' ? 'กับ' : 'ออกจาก'}งวด ${row.seq} ของ ${order.orderNumber}`
+          + (sync.changed?.length ? ` · ตัวชี้งวด: ${sync.changed.map((c) => `${c.before || 'ว่าง'} → ${c.after || 'ว่าง'}`).join(', ')}` : ''),
+        request: req,
+      });
+      const freshRows = await loadInstallments(supabase, order.id);
+      return ok({
+        installment: freshRows.find((r) => r.id === installmentId) || row,
+        installments: installmentsForScreen(order, freshRows),
+      });
     } else if (action === 'tax-invoice') {
       /* ── บันทึกใบกำกับภาษีของงวดนี้ (mig 0348 · มติผู้ใช้ 2026-09-07) ───────
          โปรเซสหลัก: FN ออกใบแล้วมาบันทึกที่นี่ **ไม่ต้องมีคำร้อง** · ถ้างวดนี้ผูก
@@ -925,10 +985,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
            (ทะเบียนส่งมาแค่ชื่อไฟล์) ⇒ ถ้าล้างตามที่ payload ว่างมา การแก้แค่เลขจะลบ
            ไฟล์ใบกำกับทิ้งเงียบ ๆ · ทางลบคือ action `tax-invoice-clear` */
         || row.taxInvoiceFile || null;
-      const linkedItem = await findLinkedTaxInvoiceItem(supabase, row.billingRequestId);
+      /* ⭐ หลายคำร้องต่องวด (mig 0413) — หาบรรทัดใบกำกับจากทุกคำร้องของงวด (ตัวโหลดเดียวกับแผง) · ไม่มี/มีหลายบรรทัด = ไม่เดา
+         ⚠️ อ่านคำร้องพลาด = ไม่เขียนสำเนา (ของหลักคือเลขบนงวด · สำเนาบนบรรทัดคำร้องเป็นของแถม) */
+      const { data: linkedRequests } = await loadInstallmentRequests(supabase, [row], { select: 'id, status' });
+      const linkedItem = await findLinkedTaxInvoiceItem(supabase, (linkedRequests || [])
+        .filter((r) => r.status !== 'cancelled').map((r) => r.id));
       patch = taxInvoicePatch({
         no: taxInvoiceNo, date: taxInvoiceDate, file,
-        requestId: linkedItem ? row.billingRequestId : null,
+        requestId: linkedItem?.requestId || null,
         itemId: linkedItem?.id || null,
         user, now,
       });

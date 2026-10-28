@@ -9,6 +9,7 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { inSalesViewScope } from '@/lib/salesPlanning';
 import { billingRequestedIds } from '@/lib/sales/salesOrderPayments';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 
 /* ใบที่ตายแล้ว (ยกเลิก · ถูกออก Rev. ทับ) — ไม่มีงวดให้ตามเก็บ ⇒ ไม่อยู่ในจอ "งวดที่วันจะเปลี่ยน" (ชุดเดียวกับ installmentVoid) */
@@ -21,11 +22,9 @@ const DEAD_ORDER_STATUSES = Object.freeze(['cancelled', 'revised']);
    ⚠️ กรอง `kind` ชุดเดียวกับที่หน้าใบโหลดให้แผง (route ของใบ: คำร้อง billing_doc เท่านั้น) — แผนที่จอส่งมาคิดจากชุดนั้น
      ต่างชุดกันเมื่อไร = 409 วนไม่จบ */
 export async function loadBillingRequestedIds(supabase, rows) {
-  const ids = [...new Set((rows || []).map((row) => row.billingRequestId).filter(Boolean))];
-  if (!ids.length) return new Set();
-  const { data, error } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
-    .from('dept_requests').select('id, status').in('id', chunk).eq('kind', 'billing_doc')
-    .order('id', { ascending: true })));
+  if (!(rows || []).length) return new Set();
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับหน้าใบ (คำร้องที่ชี้งวด ∪ คำร้องที่ตัวชี้ชี้อยู่) ⇒ ชุดที่ด่านเห็น = ชุดที่แผงเห็น */
+  const { data, error } = await loadInstallmentRequests(supabase, rows, { select: 'id, status' });
   if (error) throw error;
   return billingRequestedIds(rows, new Map((data || []).map((request) => [request.id, request])));
 }

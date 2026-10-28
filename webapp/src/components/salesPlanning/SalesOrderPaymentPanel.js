@@ -80,6 +80,7 @@ import {
   billingCutoffNote, calendarGapHead, dateLockView, dueSourceOf, fillInputRows, fillTargetsOf,
 } from "@/lib/sales/installmentDateDrafts";
 import { billingRequestHref } from "@/lib/sales/billingRequestHref";
+import { installmentRequests, primaryInstallmentRequest } from "@/lib/sales/installmentRequests";
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   billingRequestDead, billingRequestedIds, installmentActionError, installmentBillingRequested, installmentConfirmOutlook,
@@ -250,8 +251,15 @@ export default function SalesOrderPaymentPanel({
      เดาจาก % ที่ใกล้เคียงเมื่อไร ใบวางบิลจะไปแขวนผิดงวดโดยไม่มีใครรู้ (ม-ค) */
   const billingRequests = Array.isArray(order?.billingRequests) ? order.billingRequests : [];
   const requestById = new Map(billingRequests.map((r) => [r.id, r]));
-  const linkedIds = new Set(saved.map((r) => r.billingRequestId).filter(Boolean));
-  const linkableRequests = billingRequests.filter((r) => !linkedIds.has(r.id));
+  /* ⭐ หลายคำร้องต่องวด (mig 0413 · มติ 28/10) — คำร้องของงวดถาม `installmentRequests` ตัวเดียวกับทะเบียน FN/กระดิ่ง
+     (คำร้องที่ `installmentId` ชี้งวด ∪ คำร้องที่ตัวชี้ชี้อยู่) · ตัวแทนบนป้าย/เซลล์ = `primaryInstallmentRequest` (ส่งแล้วก่อน · แล้วร่าง)
+     · `hasLinks` = มีคำร้องผูกอย่างน้อยหนึ่งใบ ทุกสถานะ (ตัวชี้ไม่ว่าง — รวมใบที่ถูกลบ/อ่านไม่ขึ้น) */
+  const requestsOfRow = (row) => installmentRequests(row, requestById);
+  const primaryOf = (row) => primaryInstallmentRequest(row, requestById);
+  const hasLinks = (row) => Boolean(row?.billingRequestId) || requestsOfRow(row).length > 0;
+  const linkedIds = new Set(saved.flatMap((r) => requestsOfRow(r).map((q) => q.id)));
+  // ตัวเลือกของ "แนบคำร้องที่ขอไว้แล้ว" = คำร้องของ QT นี้ที่ยังไม่อยู่ในงวดไหนเลย (คำร้องหนึ่งใบเกาะได้งวดเดียว)
+  const linkableRequests = billingRequests.filter((r) => !linkedIds.has(r.id) && !String(r.installmentId || "").trim());
   /* ลิงก์เปิดคำร้องใหม่แบบเติมค่าให้แล้ว — ⚠️ **เติมค่าไม่ใช่ปลดด่าน** ฟอร์มกับ POST
      ยังตรวจครบทุกข้อ (ใบต้องอนุมัติแล้ว · ยอดต้องไม่เกินใบ) เหมือนเปิดเองจาก /requests
      ⭐ ประกอบที่ `lib/sales/billingRequestHref.js` ที่เดียว (กำหนดวางบิลรอบสอง) — ปุ่ม "ขอใบวางบิลงวดนี้" ในแถวกระดิ่ง
@@ -380,7 +388,7 @@ export default function SalesOrderPaymentPanel({
   /* ปุ่ม "ขอใบวางบิลงวดนี้" ในเซลล์วันวางบิล — งวดที่มีวันวางบิลและยังต้องวาง (ม็อก C) · ด่านเดียวกับเมนูแถว (`link`)
      ⇒ ฝ่ายบัญชีไม่เห็น (ขอใบวางบิลเป็นงานของฝ่ายขาย) · มีคำร้องผูกอยู่แล้ว (แม้ตายแล้ว) = ถอดก่อน ไม่ขอซ้อน */
   const billingAskInCell = (row) => {
-    if (!billingOn || row.preview || row.billingRequestId || !row.billingDate || !canRequestBilling(row, billingRule)) return false;
+    if (!billingOn || row.preview || hasLinks(row) || !row.billingDate || !canRequestBilling(row, billingRule)) return false;
     const key = billingStateOf(row).key;
     if (!BILLING_OPEN.includes(key) || (key === "upcoming" && row.id !== nextBillingId)) return false;
     return !gate(row, "link", { billingRequestId: "x" });
@@ -391,9 +399,9 @@ export default function SalesOrderPaymentPanel({
   const billingRequestNote = (row) => {
     if (!billingColumn || row.preview || !row.billingDate || installmentVoid(row, order) || billingUnknown(row)) return null;
     if (!["pending", "rejected"].includes(row.status || "pending")) return null;
-    const linked = row.billingRequestId ? requestById.get(row.billingRequestId) || null : null;
+    const linked = primaryOf(row);
     if (linked?.status === "draft") return { kind: "draft", linked };
-    if (row.billingRequestId || billingAskInCell(row) || !canRequestBilling(row, billingRule)) return null;
+    if (hasLinks(row) || billingAskInCell(row) || !canRequestBilling(row, billingRule)) return null;
     return { kind: "none" };
   };
   /* ── โหมดตั้งวันงวดในตาราง (แบบ C · มติเจ้าของ 28/09 · ม็อก mockups/billing-cycle/installment-v2) ─────────────────
@@ -413,7 +421,7 @@ export default function SalesOrderPaymentPanel({
   const dateLockOf = (row) => dateLockView(row, {
     order,
     requested: requestedIds.has(row.id),
-    requestNo: requestById.get(row.billingRequestId)?.docNo || "",
+    requestNo: primaryOf(row)?.docNo || "",
     requestUnknown: billingUnknown(row),
     gateError: gate(row, "schedule") || "",
   });
@@ -509,7 +517,7 @@ export default function SalesOrderPaymentPanel({
     }
     const state = billingStateOf(row);
     const requested = state.key === "requested";
-    const linked = row.billingRequestId ? requestById.get(row.billingRequestId) || null : null;
+    const linked = primaryOf(row);
     /* งวดโมฆะไม่มีอะไรให้วางบิล (ใบที่ตายไม่มีคอลัมน์นี้อยู่แล้ว — กันอีกชั้น) · คำร้องอ่านไม่ขึ้น = ไม่รู้สถานะ ไม่ขึ้นป้าย */
     const showBadge = !installmentVoid(row, order) && !billingUnknown(row)
       && (state.key !== "upcoming" || row.id === nextBillingId);
@@ -1525,9 +1533,11 @@ export default function SalesOrderPaymentPanel({
                      ส่วนเอกสารเป็นแกนคู่ขนานที่ไม่ได้ทำให้งวดเดินหน้า */
                   /* ปุ่มเดียวกันขึ้นในเซลล์วันวางบิลแล้ว (งวดที่ถึงคิววาง) = ไม่ซ้ำในเมนู */
                   /* ⭐ รุ่นสี่: ไม่ต้องวางบิล (ลูกค้า/ติ๊กงวดนี้) = ไม่ชวนขอใบวางบิล (§1 "ไม่ชวน") — ยังขอได้จาก /requests ตามปกติ */
-                  !row.billingRequestId && !billingAskInCell(row) && canRequestBilling(row, billingRule)
+                  /* ⭐ หลายคำร้องต่องวด (mig 0413): งวดที่มีคำร้องแล้วขอเพิ่มได้ (ใบเสร็จหลังเงินเข้า · มติ 28/10 ข้อ 3) —
+                     ไม่ถาม `canRequestBilling` (เอกสารที่ขอเพิ่มไม่ใช่การชวนวางบิล) */
+                  !billingAskInCell(row) && (hasLinks(row) || canRequestBilling(row, billingRule))
                     && !gate(row, "link", { billingRequestId: "x" }) && {
-                    id: "ask-doc", icon: Receipt, label: "ขอใบวางบิลงวดนี้",
+                    id: "ask-doc", icon: Receipt, label: hasLinks(row) ? "ขอเอกสารเพิ่มสำหรับงวดนี้" : "ขอใบวางบิลงวดนี้",
                     href: newBillingRequestHref(row),
                   },
                   /* ⭐ ข้อยกเว้นรายงวดสองทาง (รอบกรรมการ 29/09 · §2.3) — ด่านเดียวกับเซลล์วัน (สิทธิ์ schedule + ล็อกของงวด) ·
@@ -1546,15 +1556,18 @@ export default function SalesOrderPaymentPanel({
                       },
                     ];
                   })() : []),
-                  !row.billingRequestId && linkableRequests.length > 0
+                  linkableRequests.length > 0
                     && !gate(row, "link", { billingRequestId: "x" }) && {
                     id: "link-doc", icon: Link2, label: "แนบคำร้องที่ขอไว้แล้ว",
                     onClick: () => { onClearError?.(); setLinkFor({ row, billingRequestId: "" }); },
                   },
-                  !gate(row, "unlink") && {
-                    id: "unlink-doc", icon: Unlink, tone: "warning", label: "ถอดคำร้องออกจากงวด",
-                    onClick: () => onAction(row, "unlink"),
-                  },
+                  /* ถอดทีละใบ (หลายคำร้องต่องวด · 0413) — ใบที่ตามกลับไม่เจอ (ถูกลบ/อ่านไม่ขึ้น) ถอดผ่านตัวชี้ของงวด */
+                  ...(requestsOfRow(row).length ? requestsOfRow(row) : (row.billingRequestId ? [{ id: row.billingRequestId }] : []))
+                    .map((linked) => !gate(row, "unlink", { billingRequestId: linked.id }) && {
+                      id: `unlink-doc-${linked.id}`, icon: Unlink, tone: "warning",
+                      label: requestsOfRow(row).length > 1 ? `ถอด ${linked.docNo || "คำร้อง"} ออกจากงวด` : "ถอดคำร้องออกจากงวด",
+                      onClick: () => onAction(row, "unlink", { billingRequestId: linked.id }),
+                    }),
                   /* ── ใบกำกับภาษีของงวด (mig 0348 · มติผู้ใช้ 2026-09-07) ────────
                      ⭐ **ของฝ่ายบัญชี** — ด่านคือ `canConfirmPayment` ⇒ ฝ่ายขายเห็นข้อมูล
                      บนคอลัมน์และเปิดไฟล์ได้ แต่ไม่มีรายการนี้ในเมนู
@@ -1611,45 +1624,56 @@ export default function SalesOrderPaymentPanel({
                       {/* ⭐ กำหนดวางบิล: คำร้องที่ยังมีชีวิตของงวดที่ยังรอวางบิลย้ายไปอยู่คอลัมน์วันวางบิล (ป้าย "ขอใบวางบิลแล้ว")
                           — ไม่พูดซ้ำสองที่ (ม็อก C) · งวดที่เงินเข้าแล้ว (ใบเสร็จหลังจ่าย) / คำร้องที่ตาย ยังบอกที่นี่ตามเดิม */}
                       {/* ⚠️ งวดโมฆะไม่ส่งต่อให้คอลัมน์วันวางบิล — เซลล์นั้นซ่อนป้ายของงวดโมฆะ ⇒ ลิงก์คำร้องจะหายจากทั้งสองที่ */}
-                      {row.billingRequestId && !(billingColumn && !installmentVoid(row, order) && billingStateOf(row).key === "requested")
-                        && billingRequestNote(row)?.kind !== "draft" ? (() => {
-                        const linked = requestById.get(row.billingRequestId);
-                        /* อ่านคำร้องไม่ขึ้น ≠ ถูกลบ (review F3) — บอกตามจริง ไม่ชวนออกคำร้องซ้ำ */
-                        if (!linked) {
-                          return (
-                            <small className={styles.overdue}>
-                              {order?.billingRequestsError ? "อ่านคำร้องขอเอกสารไม่สำเร็จ" : "คำร้องขอเอกสารถูกลบไปแล้ว"}
-                            </small>
-                          );
-                        }
-                        /* ยกเลิกแล้ว ≠ ถูกลบ — route ของหน้าใบโหลดคำร้องที่งวดผูกอยู่รวมใบที่ยกเลิก (กำหนดวางบิล 26/09)
-                           ⇒ บอกตามจริง · งวดนี้นับว่า "ยังไม่ขอใบวางบิล" (installmentBillingRequested) */
-                        if (billingRequestDead(linked)) {
-                          return (
-                            <small className={styles.none}>
-                              <a className="linklike" href={`/requests/${linked.id}`}>{linked.docNo || "คำร้องขอเอกสาร"}</a>
-                              {!gate(row, "unlink") ? " · ยกเลิกแล้ว — ถอดออกจากงวด (เมนูของงวด) แล้วขอใหม่ได้" : " · ยกเลิกแล้ว"}
-                            </small>
-                          );
-                        }
-                        /* ร่างที่ยังไม่ส่ง = ยังไม่ขอ (billingRequestLive) — บอกให้ส่ง ไม่ปล่อยให้เข้าใจว่าขอไปแล้ว */
-                        if (linked.status === "draft") {
-                          return (
-                            <small className={styles.none}>
-                              <a className="linklike" href={`/requests/${linked.id}`}>{linked.docNo || "ร่างคำร้องขอเอกสาร"}</a>
-                              {" · ร่าง ยังไม่ส่งบัญชี"}
-                            </small>
-                          );
-                        }
+                      {/* ⭐ หลายคำร้องต่องวด (mig 0413) — ทุกใบของงวดเรียงเก่าก่อน · ตัวแทนที่ขึ้นในเซลล์วันวางบิลแล้ว (ขอแล้ว/ร่าง) ไม่พูดซ้ำที่นี่ */}
+                      {(() => {
+                        const list = requestsOfRow(row);
+                        const inBillingCell = billingColumn && !installmentVoid(row, order)
+                          && (billingStateOf(row).key === "requested" || billingRequestNote(row)?.kind === "draft")
+                          ? primaryOf(row)?.id : null;
+                        const rest = list.filter((linked) => linked.id !== inBillingCell);
+                        /* ตัวชี้ของงวดชี้คำร้องที่ตามกลับไม่เจอ — อ่านคำร้องไม่ขึ้น ≠ ถูกลบ (review F3) บอกตามจริง ไม่ชวนออกคำร้องซ้ำ */
+                        const missing = Boolean(row.billingRequestId) && !list.length;
+                        if (!rest.length && !missing) return null;
                         return (
-                          <small>
-                            <a className="linklike" href={`/requests/${linked.id}`}>
-                              {linked.docNo || "คำร้องขอเอกสาร"}
-                            </a>
-                            {` · ${requestDocsNote(linked)}`}
-                          </small>
+                          <>
+                            {missing ? (
+                              <small className={styles.overdue}>
+                                {order?.billingRequestsError ? "อ่านคำร้องขอเอกสารไม่สำเร็จ" : "คำร้องขอเอกสารถูกลบไปแล้ว"}
+                              </small>
+                            ) : null}
+                            {rest.map((linked) => {
+                              /* ยกเลิกแล้ว ≠ ถูกลบ — route ของหน้าใบโหลดคำร้องที่งวดผูกอยู่รวมใบที่ยกเลิก (กำหนดวางบิล 26/09)
+                                 ⇒ บอกตามจริง · ใบนี้ไม่นับว่า "ขอแล้ว" (installmentBillingRequested) */
+                              if (billingRequestDead(linked)) {
+                                return (
+                                  <small key={linked.id} className={styles.none}>
+                                    <a className="linklike" href={`/requests/${linked.id}`}>{linked.docNo || "คำร้องขอเอกสาร"}</a>
+                                    {!gate(row, "unlink", { billingRequestId: linked.id })
+                                      ? " · ยกเลิกแล้ว — ถอดออกจากงวด (เมนูของงวด) แล้วขอใหม่ได้" : " · ยกเลิกแล้ว"}
+                                  </small>
+                                );
+                              }
+                              /* ร่างที่ยังไม่ส่ง = ยังไม่ขอ (billingRequestLive) — บอกให้ส่ง ไม่ปล่อยให้เข้าใจว่าขอไปแล้ว */
+                              if (linked.status === "draft") {
+                                return (
+                                  <small key={linked.id} className={styles.none}>
+                                    <a className="linklike" href={`/requests/${linked.id}`}>{linked.docNo || "ร่างคำร้องขอเอกสาร"}</a>
+                                    {" · ร่าง ยังไม่ส่งบัญชี"}
+                                  </small>
+                                );
+                              }
+                              return (
+                                <small key={linked.id}>
+                                  <a className="linklike" href={`/requests/${linked.id}`}>
+                                    {linked.docNo || "คำร้องขอเอกสาร"}
+                                  </a>
+                                  {` · ${requestDocsNote(linked)}`}
+                                </small>
+                              );
+                            })}
+                          </>
                         );
-                      })() : null}
+                      })()}
                     </td>
                     {/* ⭐ ในโหมดตั้งวัน สองคอลัมน์วันเป็นเซลล์ร่าง (InstallmentDateCell — แตะแล้วเปิดตัวแก้ของงวดนั้น) ·
                         นอกโหมดเป็นตารางอ่านอย่างเดียวเดิม ตัววันเป็นทางเข้าโหมด (InstallmentDateEntry)

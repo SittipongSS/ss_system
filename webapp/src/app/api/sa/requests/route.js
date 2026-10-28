@@ -47,6 +47,8 @@ import {
 } from '@/lib/master/requestTypes';
 import { findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { linkNewBillingRequest } from '@/lib/requests/billingInstallmentLink';
+import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
+import { installmentsFromPaymentPlan } from '@/lib/sales/salesOrderPayments';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -84,7 +86,8 @@ export async function GET(request) {
 //   dealId? | salesOrderId? | scentId? | formulaId?,   ← ตามหัวข้อ
 //   productId?, formulaCode?, formulaName?, costingRequestId?,
 //   items?: ตามรูปร่างบรรทัดของหัวข้อ (พัฒนาสูตร: หมวด×กลิ่น · เอกสาร: ชนิด+รายละเอียด),
-//   linkInstallmentId?: งวดของ SO ที่ต้องผูกให้ (ปุ่ม "ขอใบวางบิลงวดนี้" — ดูขั้น 4 ท้าย handler) }
+//   linkInstallmentId?: งวดของ SO ที่ต้องผูกให้ (ปุ่ม "ขอใบวางบิลงวดนี้" — ดูขั้น 4 ท้าย handler),
+//   installmentSeq?: งวดที่เลือกจากแผนของ QT ตอนยังไม่มีแถวงวด (ขอเอกสารจากหน้า QT · mig 0413 — ผูกให้ตอนสร้างแถวงวด) }
 //
 // ⚠️ `title` บังคับทุกหัวข้อ · ของที่ต้องผูก**ต่างกันตามหัวข้อ** (ดู `needs` ใน
 // lib/master/requestTypes.js) — พัฒนากลิ่นผูก SO · พัฒนาสูตรผูกโครงการ+ดีล
@@ -242,11 +245,12 @@ export async function POST(request) {
   // ไม่ใช่เอามาเทียบ (เชื่อ client เมื่อไรก็เปิดทางให้ใบเกาะดีลที่ไม่ใช่ของ QT)
   let billBaseAmount = null;
   let bill = null;
+  let installmentSeq = null;
   if (requestNeedsRef(kind, 'quotation')) {
     const { data: qtRow, error: qtRowError } = await supabase
       .from('quotations')
       // ⚠️ ต้องมี `subtotal` ด้วย — ด่านใช้แยก "ให้ฟรี (ลดเต็ม)" ออกจาก "ใบยังไม่มีของ"
-      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal"')
+      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal", "paymentPlan"')
       .eq('id', body.quotationId).maybeSingle();
     if (qtRowError) return Response.json({ error: qtRowError.message }, { status: 500 });
     if (!qtRow) return Response.json({ error: 'ไม่พบใบเสนอราคาที่เลือก' }, { status: 400 });
@@ -265,6 +269,32 @@ export async function POST(request) {
       percent: body.billPercent, amount: body.billAmount, baseAmount: billBaseAmount,
     });
     if (bill.error) return Response.json({ error: bill.error }, { status: 400 });
+    /* งวดที่เลือกจากแผนของ QT (mig 0413 · มติ 28/10) — ใช้ได้เฉพาะตอนยังไม่มีแถวงวด · ไม่ส่ง = ไม่ระบุงวด (มติข้อ 1)
+       ⭐ แถวงวดเกิดเมื่อไร `ensureInstallments` ผูกให้ตามเลข (ณ ตอนนั้นเลขงวด = เลขในแผนนี้เป๊ะ)
+       ⚠️ มีแถวงวดแล้ว = ต้องเลือกงวดจริง (`linkInstallmentId`) — เลขหลังปรับแผน/ออก Rev. ไม่ใช่เลขในแผน QT อีกต่อไป
+       ⚠️ ส่ง `linkInstallmentId` มาด้วย = งวดจริงชนะ (เลขไม่ถูกใช้) */
+    const seqInput = body.installmentSeq;
+    if (seqInput !== undefined && seqInput !== null && seqInput !== '' && !String(body.linkInstallmentId || '').trim()) {
+      const seq = Number(seqInput);
+      const planRows = installmentsFromPaymentPlan(qtRow.paymentPlan, qtRow.totalAmount);
+      if (!Number.isInteger(seq) || seq < 1 || seq > planRows.length) {
+        return Response.json({ error: 'งวดที่เลือกไม่อยู่ในแผนการชำระของใบเสนอราคานี้' }, { status: 400 });
+      }
+      const { data: soRow, error: soLookupError } = await supabase
+        .from('sales_orders').select('id, "orderNumber"').eq('quotationId', qtRow.id).maybeSingle();
+      if (soLookupError) return Response.json({ error: soLookupError.message }, { status: 500 });
+      if (soRow) {
+        const { data: soRows, error: soRowsError } = await supabase
+          .from('sales_order_installments').select('id').eq('salesOrderId', soRow.id).limit(1);
+        if (soRowsError) return Response.json({ error: soRowsError.message }, { status: 500 });
+        if (soRows?.length) {
+          return Response.json({
+            error: `ใบเสนอราคานี้มีงวดชำระบนใบสั่งขาย ${soRow.orderNumber || ''} แล้ว — เลือกงวดจากใบสั่งขาย`,
+          }, { status: 400 });
+        }
+      }
+      installmentSeq = seq;
+    }
   }
 
   if (requestNeedsRef(kind, 'salesOrder')) {
@@ -524,6 +554,8 @@ export async function POST(request) {
         billAmount: bill.amount,
         billBaseAmount,
       } : {}),
+      // งวดที่เลือกจากแผน QT (mig 0413) — ใส่คีย์เฉพาะเมื่อเลือก ด้วยเหตุผลเดียวกับสองบรรทัดบน (ใบอื่นต้องเปิดได้ระหว่างรอมิก)
+      ...(installmentSeq ? { installmentSeq } : {}),
       // 🐞 เคยมี `productTypeId` ตรงนี้ — mig 0204 DROP คอลัมน์ทิ้งไปแล้วแต่ลืมถอด
       // ออกจาก insert ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST ปฏิเสธทั้ง
       // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)
@@ -573,7 +605,12 @@ export async function POST(request) {
       // เดียวทำให้คนเขียนต้องเดาว่าอะไรควรอยู่ช่องไหน และผู้ตอบต้องอ่านสองที่
       // · คอลัมน์ยังอยู่เพื่ออ่านของเก่า (หน้ารายละเอียดยังแสดงถ้ามีค่า) ไม่ DROP
     });
-    if (headError) throw headError;
+    if (headError) {
+      // ฐานยังไม่รัน 0413 แต่ผู้ใช้เลือกงวดจากแผน QT — บอกให้รันมิก ไม่ใช่ 500 ภาษาอังกฤษ (ใบไม่ระบุงวดเปิดได้ตามปกติ)
+      const schema = billingInstallmentSchemaError(headError);
+      if (schema) return Response.json({ error: schema }, { status: 503 });
+      throw headError;
+    }
 
     /* ⭐ **ฝ่ายของคนเปิดใบ** (mig 0270) — ป้ายบนคิวเลิกใช้คำว่า "ฝ่าย"/"ผู้ขอ" ลอย ๆ
        แล้วพูดชื่อฝ่ายจริงทั้งสองฝั่ง ("รอ RD ตอบ" / "รอ SA ตอบ" · มติผู้ใช้ 2026-08-20)
@@ -682,29 +719,18 @@ export async function POST(request) {
       request: { id: requestId, kind, quotationId, salesOrderId: salesOrderId || optionalSalesOrderId },
       installmentId: body.linkInstallmentId,
     });
-    if (link.after) {
-      // audit ของงวด before/after ทั้งแถว — รูปเดียวกับ PATCH `link` (ทางกู้ทางเดียว ระบบไม่มีถังขยะ)
-      // ทับลิงก์ตาย (คำร้องเดิมถูกลบ/ยกเลิก/ปฏิเสธ) = บอกในสรุปด้วย ไม่ต้องไปไล่เทียบ before/after เอง
-      const replaced = link.replaced
-        ? ` · แทนคำร้องเดิม ${link.replaced.docNo || link.replaced.id} (${link.replaced.status || 'ถูกลบแล้ว'})`
-        : '';
-      await recordAudit({
-        user,
-        action: 'update',
-        entityType: 'sales_order_installments',
-        entityId: link.after.id,
-        before: link.before,
-        after: link.after,
-        summary: `link งวด ${link.before.seq} ของ ${link.order.orderNumber} — ผูกอัตโนมัติตอนเปิดคำร้องจาก "ขอใบวางบิลงวดนี้"${replaced}`,
-        request,
-      });
-    }
 
+    /* audit ของการเปิดใบเก็บแถวคำร้อง **หลังผูก** (มี installmentId) — ความจริงของลิงก์อยู่ที่แถวคำร้อง (mig 0413)
+       · ตัวชี้ของงวดที่เปลี่ยน (`billingRequestId` · SQL ล็อกปรับแผนอ่าน) บอกในสรุป ไม่ต้องไล่เทียบเอง */
     const created = await findRequest(supabase, requestId);
+    const linkedNote = link.installment
+      ? ` · ผูกงวด ${link.installment.seq} ของ ${link.order?.orderNumber || ''}`
+        + (link.pointers?.length ? ` (ตัวชี้งวด ${link.pointers.map((c) => `${c.before || 'ว่าง'} → ${c.after || 'ว่าง'}`).join(', ')})` : '')
+      : installmentSeq ? ` · เลือกงวด ${installmentSeq} ของแผนใบเสนอราคา (ผูกเมื่อเกิดงวดบนใบสั่งขาย)` : '';
     await recordAudit({
       user, action: 'create', entityType: 'dept_request', entityId: requestId, after: created,
-      // ใบยืนยันหน้างานต่อท้าย " · ใบยืนยันหน้างานของ {RQ}" — ตามกลับไปใบต้นทางได้จากสรุปบรรทัดเดียว
-      summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)${confirmOf ? surveyConfirmAuditSuffix(confirmOf) : ''}`,
+      // ใบยืนยันหน้างานต่อท้าย " · ใบยืนยันหน้างานของ {RQ}" — ตามกลับไปใบต้นทางได้จากสรุปบรรทัดเดียว · ผูกงวด (mig 0413) ต่อท้ายอีกชิ้น
+      summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)${confirmOf ? surveyConfirmAuditSuffix(confirmOf) : ''}${linkedNote}`,
       request,
     });
     return Response.json(link.warning ? { ...created, _warning: link.warning } : created, { status: 201 });
