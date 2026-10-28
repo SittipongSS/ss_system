@@ -30,7 +30,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { openBillPrintWindow } from "@/lib/tax/billPrint";
 import { isExemptFiling, orderAmountToCollect, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { FILING_EDITABLE_STATUSES, statusMeta } from "@/lib/excise/workflow";
+import { FILING_EDITABLE_STATUSES, canTransitionFiling, statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
@@ -322,7 +322,8 @@ export default function FilingDetailPage() {
                   {
                     id: "reject", label: "ตีกลับให้แก้ไข", kind: "reject",
                     onClick: () => setRejectOpen(true),
-                    visible: canApprove && ["received", "filing"].includes(o.status),
+                    // ต้นทางที่ตีกลับได้มาจากตาราง FILING_TRANSITIONS ตัวเดียวกับด่านใน route
+                    visible: canApprove && canTransitionFiling(o.status, "rejected"),
                   },
                   {
                     id: "delete", label: "ลบเอกสาร", kind: "delete",
