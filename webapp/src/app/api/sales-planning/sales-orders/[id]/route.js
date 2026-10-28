@@ -331,19 +331,22 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   let billingRequests = [];
   if (order.quotationId) {
     // ⚠️ select เป็นสตริงตรง ๆ ทั้งสองเส้น (ไม่ส่งผ่านพารามิเตอร์) — ด่าน check:columns แกะได้เฉพาะค่าคงที่/ตัวหนังสือ
-    let { data: reqRows, error: reqError } = await supabase
+    // ⭐ ไล่หน้า (fetchAllResult · ลำดับนิ่ง createdAt แล้ว id) — dept_requests อยู่ใน check:rowcap
+    let { data: reqRows, error: reqError } = await fetchAllResult(() => supabase
       .from('dept_requests')
       .select(`${BILLING_REQUEST_COLUMNS}, "createdAt", "installmentId", "installmentSeq"`)
       .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
       .neq('status', 'cancelled')
-      .order('createdAt', { ascending: true });
+      .order('createdAt', { ascending: true })
+      .order('id', { ascending: true }));
     if (billingInstallmentSchemaError(reqError)) {
-      ({ data: reqRows } = await supabase
+      ({ data: reqRows } = await fetchAllResult(() => supabase
         .from('dept_requests')
         .select(`${BILLING_REQUEST_COLUMNS}, "createdAt"`)
         .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
         .neq('status', 'cancelled')
-        .order('createdAt', { ascending: true }));
+        .order('createdAt', { ascending: true })
+        .order('id', { ascending: true })));
     }
     billingRequests = reqRows || [];
   }

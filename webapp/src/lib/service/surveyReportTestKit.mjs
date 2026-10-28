@@ -13,10 +13,13 @@
 //      (sha ปลอมที่นิ่ง) · กรณีของลายเซ็นที่ harness วัดจริงใน Chrome (`--stress`)
 //   ⑦ `drawingSurveyFixture` · `mixedSurveyFixture`  ใบประเมินจากแบบทั้งใบ / ใบผสม (งวด S3 · BRIEF §B Case A / B) — รูปร่างเดียวกับ ②
 //      ผ่าน `surveyReportInputsFromFixture` ตัวเดียวกัน · harness เรียกด้วย `--synthetic drawing` / `--synthetic mixed`
+//   ⑧ `confirmSurveyFixture`  ใบยืนยันหน้างาน (งวด S5 กลุ่ม F) — แฝด ② ทุกตัวอักษร + เลขที่ใบต้นทาง (แถวภาคผนวก ง ของฉบับภายใน)
+//      · harness เรียกด้วย `--synthetic confirm` / `--synthetic confirm-rq`
 import { createHash } from 'node:crypto';
 import { suggestedPackageSize } from './packageSizes.js';
 import { surveyZoneSize } from './survey.js';
 import { surveyMethodMix } from './surveyMethod.js';
+import { surveyReportConfirmsDocNo } from './surveyReportSnapshot.js';
 
 /** ชุดตั้งต้นของทะเบียนขนาดแพ็คเกจ (0398) — XS ห้องน้ำ (เลือกเอง) · SM ≤ 300 · ST ≤ 2,400 · XL เกิน 2,400 */
 export const PACKAGE_SIZE_SEED = Object.freeze([
@@ -73,6 +76,8 @@ const TOOK_PLACE = ['done', 'partial'];
  * ⭐ **คอลัมน์ของงวด S3** (ติดไปเฉพาะเมื่อ fixture มี — `present`): `request.surveyConfirm` · `zones[].method` · `methodReason` ·
  *   `methodChangedByName` · `methodChangedAt` (`{ iso }` หรือ ISO) · `surveyedById` · และเมื่อ fixture มีคอลัมน์ใดของงวดนี้
  *   อินพุตได้ `otherVisits` กับ `drawingMethodEnabled` แบบที่ตัวโหลดคืน
+ * ⭐ **ใบยืนยันหน้างาน (งวด S5)** — fixture ที่มี `confirms: { requestDocNo, reportDocNo }` (รูปที่ `loadSurveyReportConfirms` คืน)
+ *   ได้อินพุต `confirmsDocNo` จากตัวประกอบข้อความตัวเดียวกับตัวโหลด (`surveyReportConfirmsDocNo`) · ไม่มี = ไม่มีคีย์ (เท่าเดิมทุกคีย์)
  * ⭐ **ใบประเมินจากแบบทั้งใบ** (ทุกพื้นที่ที่ไม่ถูกตัดเป็นจากแบบ) เดินแบบตัวโหลด: ไม่มีนัดให้รับรอง (`visit: null` · ไม่มีผู้ช่วย ·
  *   ไม่มีตำแหน่ง) · นัดที่ไม่ใช่ทำไม่ได้/ร่าง ไปอยู่ `otherVisits` (`{ code, status, date, planned }` ตามลำดับใน fixture)
  *   ⚠️ โลกในหน่วยความจำของ harness (`surveyPipelineWorld`) สร้างแถวนัดจาก `visit` กับ `priorUnable` เท่านั้น —
@@ -181,6 +186,9 @@ export function surveyReportInputsFromFixture(fixture, {
     filesByZone[row.id] = files;
   }
 
+  // งวด S5 — ข้อความเดียวกับที่ตัวโหลดประกอบ ("RQ (SU)" · "RQ") · fixture ที่ไม่มี `confirms` ไม่ได้คีย์นี้
+  const confirmsDocNo = surveyReportConfirmsDocNo(fixture.confirms);
+
   const history = (fixture.thread || [])
     .filter((t) => ['recall', 'send_back', 'send_back_done'].includes(t.kind))
     .map((t, i) => ({
@@ -216,6 +224,7 @@ export function surveyReportInputsFromFixture(fixture, {
     company,
     form,
     ...(s3 || typeof drawingMethodEnabled === 'boolean' ? { drawingMethodEnabled: drawingMethodEnabled ?? true } : {}),
+    ...(confirmsDocNo ? { confirmsDocNo } : {}),
   };
 }
 
@@ -314,6 +323,20 @@ export function syntheticSurveyFixture() {
       },
     ],
   };
+}
+
+/* ── ⑧ ใบยืนยันหน้างาน (งวด S5 กลุ่ม F) ──────────────────────────────────────────────────────────── */
+
+/** ใบต้นทางของ fixture ใบยืนยัน — ใบจากแบบล้วนของ ⑦ (`RQ-AS-26100345`) กับเลขเอกสารประเมินรูปเดียวกับที่เทสต์ของงวด S3 ใช้ */
+export const CONFIRM_ORIGINAL = Object.freeze({ requestDocNo: 'RQ-AS-26100345', reportDocNo: 'SU-26100003-0' });
+
+/**
+ * **ใบยืนยันหน้างาน** — แฝด ② (ลงหน้างานล้วน) **ทุกตัวอักษร** + `confirms` รูปที่ `loadSurveyReportConfirms` คืน
+ *   ⇒ กระดาษต่างจากแฝดแค่แถว "ยืนยันผลจากแบบของ" ในภาคผนวก ง ของฉบับภายใน (เทสต์เทียบทั้งไฟล์ได้ตรง ๆ)
+ * @param opts.reportDocNo  เลขเอกสารประเมินฉบับปัจจุบันของใบต้นทาง · `null` = ใบต้นทางไม่มีฉบับปัจจุบัน (แถวพิมพ์เลข RQ อย่างเดียว)
+ */
+export function confirmSurveyFixture({ reportDocNo = CONFIRM_ORIGINAL.reportDocNo } = {}) {
+  return { ...syntheticSurveyFixture(), confirms: { requestDocNo: CONFIRM_ORIGINAL.requestDocNo, reportDocNo } };
 }
 
 /* ── ⑦ ใบประเมินจากแบบ (งวด S3) — ตัวเลขของ BRIEF §B (mockups/survey-desk-assessment/BRIEF.md · ห้ามแก้ตัวเลข) ─────────────

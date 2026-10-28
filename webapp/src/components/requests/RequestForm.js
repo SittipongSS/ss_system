@@ -67,6 +67,11 @@ import {
   billingQuotationOptions, billingQuotationSkipHint, billingQuotationSkips,
 } from "@/lib/requests/billingQuotations";
 import { fmtNumber } from "@/lib/format";
+/* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-5) — ป้าย/ประโยคของโหมดล็อกมาจากไฟล์ล้วนไฟล์เดียว (F1) ฟอร์มไม่พิมพ์เอง */
+import {
+  SURVEY_CONFIRM_CHILD_LABEL, SURVEY_CONFIRM_FORM_HINT, SURVEY_CONFIRM_FROM_ORIGINAL, SURVEY_CONFIRM_OF_LABEL,
+  SURVEY_CONFIRM_ORIGINAL_MISSING, SURVEY_CONFIRM_WRAP_KEEP, surveyConfirmDealHint,
+} from "@/lib/service/surveyConfirmLink";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
@@ -292,8 +297,19 @@ export default function RequestForm({
   /* ⭐ ค่าที่ server ประกอบให้แบบฟอร์ม PDR ของใบนี้ (`req.pdrContext`) — โหมดแก้เท่านั้น
      (ฝั่งสร้างยังไม่มีใบ จึงคำนวณพรีวิวจากทะเบียนที่โหลดมาเอง) */
   pdrContext: pdrContextOfRequest = null,
+  /* ── ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-5) — **โหมดของฟอร์มนี้ ไม่ใช่ฟอร์มที่สอง** (กฎ AGENTS.md) ──
+     `{ mode: 'create' | 'edit', original, zones?, showMethod? }` · null = ฟอร์มปกติทุกช่อง
+       create  หน้าเปิดคำร้อง `?confirms=` — `original` = ใบต้นทางจาก GET confirm-plan (ป้ายดีล/ลูกค้า/สถานที่) · `zones` = พื้นที่ที่ยก
+       edit    หน้าคำร้องของใบยืนยัน — `original` = `{ docNo, missing }` · `showMethod` = ยังเป็นร่าง
+     ⚠️ เหตุผลด้านข้อมูลของทุกข้อที่ต่าง: server สร้างดีล/สถานที่/ชุดพื้นที่/วิธีเองจากใบต้นทางและไม่สนค่าที่โพสต์มา (A-2)
+        ⇒ ช่องพวกนั้นเป็นเส้นประอ่านอย่างเดียวพร้อมประโยคเดียวที่บอกว่าแก้ไม่ได้ (ไม่ใช่ตัวเลือกที่เลือกแล้วหายเงียบ)
+     ⚠️ วิธีประเมินตรึงที่ 'standard' ในค่าของฟอร์ม (ผู้เรียกใส่ — ด่านความพร้อม · POST · PATCH อ่านค่านั้น) ⇒ บล็อกไทล์ของ S4
+        **ไม่วาดทั้งสองกิ่ง** (R3) · ชื่อเรื่อง รายละเอียด วันที่ เวลา ด่วน ไฟล์ ทีม ยังแก้ได้ตามปกติ */
+  confirmLock = null,
 }) {
   const isEdit = mode === "edit";
+  /* ดีลของใบยืนยันหน้างานเป็นช่องล็อกของงวด S5 — เว้นใบที่ใบต้นทางถูกลบ (ไม่มีใบให้อ้าง ⇒ ช่องดีลของ S4 ตามเดิม) */
+  const dealLock = !!confirmLock && !confirmLock.original?.missing;
   const set = (patch) => onChange({ ...value, ...patch });
   /* ทีมของคนเปิดใบ — มาจาก `me` (/api/users/me) ไม่ใช่ context เพราะฟอร์มนี้ถูกใช้
      ทั้งในหน้าเปิดคำร้องและโมดัลของหน้าอื่น ซึ่งส่ง `me` มาให้อยู่แล้ว */
@@ -811,7 +827,7 @@ export default function RequestForm({
           เดียวกับ `source` ของสัญญา generated | external)
           ⚠️ ทะเบียนบอกว่าหัวข้อไหนมีรูปแบบ — ห้ามเทียบชื่อหัวข้อในไฟล์นี้ (มี ratchet)
           ⭐ ป้ายมาจากทะเบียน (`variantLabel`) — พัฒนาสูตร "รูปแบบงาน" · ประเมินพื้นที่ "วิธีประเมิน" (S4 B-1) */}
-      {variants && (
+      {variants && !confirmLock && (
         <div className="form-grid cols-1">
           {variantAskedOnly ? (
             /* 🔴 **หลังส่ง ไม่วาดปุ่มเลย** (S4 B-1) — `variant` บันทึกแค่ "สิ่งที่ฝ่ายขายขอ" หัวหน้า TS อาจสลับวิธี
@@ -848,6 +864,23 @@ export default function RequestForm({
               <StatusNotice tone="info" className={styles.variantNotice}>{variantNotice}</StatusNotice>
             ) : null}
           </div>
+          )}
+        </div>
+      )}
+      {/* ── ใบยืนยันหน้างาน (งวด S5 D-5 · R3): แทนบล็อกไทล์ของ S4 ทั้งสองกิ่ง — ช่องเส้นประ "ยืนยันผลจากแบบของ" เสมอ
+          · "วิธีประเมิน = ลงหน้างาน" เฉพาะฟอร์มสร้าง/ร่าง (`showMethod`): หลังรับเรื่องหัวหน้าอาจสลับบางพื้นที่เป็นจากแบบ — ป้าย
+            "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวบอกแทน · ป้ายกับค่ามาจากทะเบียนหัวข้อตัวเดียวกับบล็อกที่ซ่อน */}
+      {confirmLock && (
+        <div className="form-grid cols-2">
+          <DerivedField
+            label={SURVEY_CONFIRM_OF_LABEL}
+            value={confirmLock.original?.missing ? SURVEY_CONFIRM_ORIGINAL_MISSING : confirmLock.original?.docNo}
+          />
+          {(confirmLock.mode === "create" || confirmLock.showMethod) && (
+            <DerivedField
+              label={requestVariantFieldLabel(kind)} from={SURVEY_CONFIRM_CHILD_LABEL}
+              value={requestVariantLabel(value)} hint={SURVEY_CONFIRM_FORM_HINT}
+            />
           )}
         </div>
       )}
@@ -948,13 +981,22 @@ export default function RequestForm({
       <div className="form-group col-span-2">
         {/* ป้ายของตัวเลือก — โหมดแก้ไม่วาด เพราะช่องเส้นประ (`DerivedField`) มีป้าย "ดีล" ของตัวเองอยู่แล้ว
             (UAT S4 รอบ 4 ข้อ 2: ฟอร์มแก้ขึ้น "ดีล" สองบรรทัดซ้อนกัน) · ฟอร์มสร้างเท่าเดิม */}
-        {!isEdit && <span className={styles.fieldLabel}>ดีล</span>}
+        {!isEdit && !confirmLock && <span className={styles.fieldLabel}>ดีล</span>}
         {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
             ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
             อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ
             ⚠️ ในแผงค้นด้วย **ชื่อลูกค้า** ได้ (`dealSearchText` รวม customerName) —
             คนที่คิดจากลูกค้าก่อนพิมพ์ชื่อลูกค้าลงช่องค้นได้เลย ไม่ต้องมีช่องแยก */}
-        {isEdit ? (
+        {dealLock ? (
+          /* ⭐ ใบยืนยันหน้างาน (งวด S5 · R4): ดีลมาจากใบต้นทาง — ประโยคเดียวที่บอกว่าแก้ไม่ได้ (แทนประโยคของ S4)
+             ฟอร์มสร้างได้ป้ายดีลจาก GET confirm-plan · ฟอร์มแก้ได้จากป้ายที่หน้าคำร้องรู้อยู่แล้ว */
+          <DerivedField
+            label="ดีล" from={SURVEY_CONFIRM_FROM_ORIGINAL}
+            value={confirmLock.mode === "create" ? confirmLock.original?.dealLabel : (lockedRefs.deal || "")}
+            hint={keepPhrases(surveyConfirmDealHint(confirmLock.original), SURVEY_CONFIRM_WRAP_KEEP)}
+            bare
+          />
+        ) : isEdit ? (
           /* ⚠️ **เปลี่ยนดีลไม่ได้หลังบันทึก** — ลูกค้า โครงการ และขอบเขตทีมของใบนี้
              derive มาจากดีลแล้ว · เขียนด่านย้ายดีลใหม่ที่นี่ = มีสองชุดกฎที่ต้องคอย
              ให้ตรงกับ POST ตลอดไป ⇒ ผูกผิดให้ลบร่างแล้วเปิดใหม่ */
@@ -982,7 +1024,7 @@ export default function RequestForm({
             เดิมตรงนี้เป็นคำเตือนว่าเปิดไม่ได้ · ตอนนี้เหลือแค่บอกว่าใบนี้จะยังไม่
             เกาะโครงการไหน ซึ่งเป็นข้อเท็จจริง ไม่ใช่ด่าน (โครงการจะถูกเติมย้อนหลัง
             ให้เองเมื่อดีลผูกโครงการ — moveDealMirrors) */}
-        {value.dealId && !value.projectId && (
+        {value.dealId && !value.projectId && !dealLock && (
           <small className={styles.hint}>
             ดีลนี้ยังไม่ผูกโครงการ — เปิดคำร้องได้ตามปกติ ใบนี้จะเข้าโครงการเองเมื่อดีลผูกโครงการ
           </small>
@@ -995,10 +1037,11 @@ export default function RequestForm({
           server จะเขียนจริง ไม่ใช่ช่องให้แก้ (`requestPayload` ไม่ส่งสองค่านี้เลย) */}
       <DerivedField
         label="ลูกค้า" from="เติมจากดีลที่เลือก"
-        value={selectedDeal?.customerName || lockedRefs.customer || ""}
+        value={selectedDeal?.customerName || lockedRefs.customer || confirmLock?.original?.customerName || ""}
       />
+      {/* ใบยืนยันหน้างาน (ดีลล็อก): ไม่มีดีลให้เลือก — ช่องว่างต้องไม่ชวน "เติมจากดีลที่เลือก" (UAT S5 sales รอบ 1 · K06) */}
       <DerivedField
-        label="โครงการ" from="เติมจากดีลที่เลือก"
+        label="โครงการ" from={dealLock ? SURVEY_CONFIRM_FROM_ORIGINAL : "เติมจากดีลที่เลือก"}
         value={(() => {
           const project = projects.find((p) => p.id === selectedDeal?.projectId);
           if (project) return `${project.code ? `${project.code} — ` : ""}${project.name || project.id}`;
@@ -1229,7 +1272,8 @@ export default function RequestForm({
              เกจ "ยังขาด: สถานที่…" พาไปเปิดแท็บที่ระบุไว้ตรงนั้น (กับดักเดิมของยอดวางบิล) */}
       {needsSite && (
         <SurveySiteFields
-          customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
+          /* ใบยืนยันหน้างานโหมดสร้าง (R4): ไม่มีลิสต์ให้โหลด — บล็อกวาดจากแผนของใบต้นทาง และรายงาน "นิ่งแล้ว" ทันที */
+          customerId={confirmLock?.mode === "create" ? null : (selectedDeal?.customerId || lockedRefs.customerId || null)}
           customerName={selectedDeal?.customerName || lockedRefs.customer || ""}
           value={value}
           onChange={onChange}
@@ -1240,10 +1284,12 @@ export default function RequestForm({
              (`REQUEST_EDIT_PATCH_FIELDS`) ⇒ ถ้าปล่อยให้กดเปลี่ยนสถานที่/เพิ่มพื้นที่
              ตรงนี้ ของที่กรอกจะหายเงียบตอนกดบันทึก และปุ่ม "สร้างสถานที่ใหม่" จะได้
              **ไซต์กำพร้า** ที่เกิดจริงในทะเบียนแต่ไม่มีใบไหนอ้าง */
-          readOnly={isEdit}
+          readOnly={isEdit || !!confirmLock}
+          /* ใบยืนยันหน้างาน: พื้นที่ชุดเดียวกับใบต้นทาง — ประโยคล็อกของงวดแทนของ S4 · บรรทัดรหัส/ชั้น/รอบจากแบบ (โหมดสร้าง) */
+          confirmLock={confirmLock}
           /* ประโยคล็อกของโหมดอ่านอย่างเดียว — "ลบร่างแล้วเปิดใหม่" จริงเฉพาะร่างที่ยังไม่เคยส่ง (UAT S4 รอบ 4 ข้อ 3) */
           freshDraft={freshDraft}
-          canCreateSite={!isEdit && canCreateServiceSite(me)}
+          canCreateSite={confirmLock ? false : !isEdit && canCreateServiceSite(me)}
           /* โหลดของตัวเองจบ (ได้หรือพัง) — ปุ่ม "ยังขาด" รอจังหวะนี้ก่อนเลื่อนไปบล็อกไฟล์ที่อยู่ใต้บล็อกนี้ (รีวิวรอบ 4 ข้อ 9) */
           onSettledChange={onSitesSettled}
         />

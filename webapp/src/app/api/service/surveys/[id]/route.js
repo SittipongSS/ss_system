@@ -16,6 +16,8 @@ import { surveySendBackOnSheet } from '@/lib/service/survey';
 /* ประเมินจากแบบ (mig 0408 · งวด S2a) — สวิตช์อ่านผ่านตัวอ่านกลางตัวเดียว · จอรู้ค่าจาก payload ของเส้นนี้เท่านั้น */
 import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
 import { surveyMethodMix, surveyNeedsVisit } from '@/lib/service/surveyMethod';
+/* ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — ตัวอ่านของงวดไม่ throw และไม่ลากโมดูลกระดาษตัวหนัก (อ่านแค่ surveyReportRows/State) */
+import { loadSurveyConfirmSheetInfo } from '@/lib/service/surveyConfirmRepo';
 /* ⚠️ เอกสารประเมิน: import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — ช่างเปิดเส้นนี้ทุกครั้งที่บันทึกหน้างาน
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
 import { surveyDocumentSummary } from '@/lib/service/surveyReportRows';
@@ -96,6 +98,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     const mix = surveyMethodMix(zones);
     const wantsThreadFiles = (canDecide && (drawingMethodEnabled || mix.drawing > 0)) || (canEditAll && mix.drawing > 0);
     const wantsSiteVisit = (canDecide || canEditAll) && drawingMethodEnabled && !request.answeredAt;
+    /* ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — เลขใบต้นทาง + ตัวเลขรอบจากแบบรายพื้นที่ ให้หัวงานและตารางสรุปส่งผล
+       เฉพาะใบที่ผูกกับใบต้นทาง และคนดูเป็นหัวหน้า/ผู้วางคิว · 🔴 ช่างไม่ทำให้เกิดการอ่านเพิ่ม (กติกาข้างบน) */
+    const wantsConfirmOf = !!request.surveyConfirmOfId && (canDecide || canEditAll);
 
     /* ── ทุกอย่างที่เหลือของใบ ยิงพร้อมกันรอบเดียว ────────────────────────────
        ① ไฟล์ของแต่ละพื้นที่ — ด่านนับรูปต้องการของจริง ไม่ใช่ตัวเลขที่จอเดา
@@ -128,6 +133,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
           ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 (เหตุผลเดียวกับ ③ — ผลวัดอ่านได้แล้ว)
        ⑧ ไฟล์ในเธรดของคำร้อง + "มีนัดที่เข้าพื้นที่แล้วไหม" (ประเมินจากแบบ งวด S2a) — ตามเงื่อนไขข้างบน (เธรด: หัวหน้า · ผู้วางคิวบนใบที่มีพื้นที่จากแบบ — นัด: หัวหน้า · ผู้วางคิว)
           ไม่เข้าเงื่อนไข = ค่าตั้งต้น **โดยไม่ยิงอ่าน** · เธรดอ่านพัง = `unknown.threadFiles` · นัดอ่านพัง = `null`
+       ⑨ ใบต้นทางของใบยืนยันหน้างาน (งวด S5) — ตามเงื่อนไข wantsConfirmOf ข้างบน · ไม่ผูก/ไม่เข้าเงื่อนไข = null โดยไม่ยิงอ่าน
+          อ่านพัง = unknown.confirmOf และไม่มีคีย์ confirmOf (ไม่ตีทั้งเส้นเป็น 500 — เหตุผลเดียวกับ ③)
 
        ⭐ **ไม่มีก้อนไหนรอผลของอีกก้อน ⇒ ยิงขนานกัน** — จอนี้ถูกโหลดใหม่ทุกครั้ง
           ที่บันทึก/ส่ง/ดึงกลับ และทุกครั้งที่สลับกลับมาที่แท็บ (`useRevalidateOnFocus`)
@@ -135,7 +142,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ⚠️ `findSurveyVisit` ยัง throw ได้เหมือนเดิม ⇒ ทั้งเส้นยังเป็น 500 เท่าเดิม
           (ตั้งใจ: มันเป็นด่านตัดสิน `canWrite` — เดาแทนไม่ได้ ต้อง fail-closed) */
     const [
-      files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc, threadFiles, siteVisitReached,
+      files, [visit, crewRes], context, requestFiles, packageSizes, reportDoc, threadFiles, siteVisitReached, confirmInfo,
     ] = await Promise.all([
       Promise.all(zones.map((z) => listAttachments('service_survey_zone', z.id, supabase))),
       findSurveyVisit(supabase, id, { preferOpen: true })
@@ -149,11 +156,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       }),
       wantsThreadFiles ? loadSurveyThreadFiles(supabase, request, user) : NO_THREAD_FILES,
       wantsSiteVisit ? loadSiteVisitReached(supabase, id) : null,
+      /* ตัวโหลดไม่ throw อยู่แล้ว (คืน error ในก้อน) — .catch กันเผื่อเหมือนสรุปเอกสาร ⑦: ชิ้นประกอบล้มต้องไม่พาทั้งใบเป็น 500 */
+      wantsConfirmOf ? loadSurveyConfirmSheetInfo(supabase, request).catch((e) => ({ error: e?.message || String(e) })) : null,
     ]);
     const filesByZone = Object.fromEntries(zones.map((z, i) => [z.id, files[i] || []]));
     if (crewRes.unknown) context.unknown.crew = true;
     if (requestFiles.unknown) context.unknown.requestFiles = true;
     if (threadFiles.unknown) context.unknown.threadFiles = true;
+    if (confirmInfo?.error) context.unknown.confirmOf = true;
 
     // ⚠️ ส่ง `canWrite` มาจาก server ไม่ให้จอคำนวณเอง (จอไม่รู้ user id ของตัวเอง)
     const access = (canEditAll || canDoFieldWork(user))
@@ -229,6 +239,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
          เฉพาะเมื่อเขาเป็นคนออกหน้างานเอง (Senior) · หัวหน้าที่เปิดมาเคาะแพ็คเกจไม่ใช่คนส่งงาน
          ⚠️ จอไม่รู้ user id ของตัวเอง ⇒ server ตอบให้ (ท่าเดียวกับ `canWrite`) */
       onVisit: isOnVisit(user, visit),
+      /* ⭐ **ใบยืนยันหน้างาน: ใบต้นทาง** (งวด S5 กลุ่ม E) — id · docNo · missing · previousByZone (zoneId → ข้อความรอบจากแบบ)
+         หัวงานขึ้นข้อของใบต้นทาง · ตารางสรุปส่งผลขึ้นบรรทัดรอบจากแบบใต้ชื่อพื้นที่ที่ยกมา
+         🔴 **มีคีย์เฉพาะเมื่อตัวโหลดคืนก้อนจริง** (กติกา R-KEYS): ใบที่ไม่ผูก · ช่าง · อ่านพัง = ไม่มีคีย์เลย ไม่ใช่ null
+            ⇒ คำตอบของใบอื่นทุกใบเท่าเดิมทุกไบต์ · อ่านพังบอกทาง unknown.confirmOf */
+      ...(confirmInfo && !confirmInfo.error ? { confirmOf: confirmInfo } : {}),
     });
   } catch (e) {
     return fail(e.message, 500);

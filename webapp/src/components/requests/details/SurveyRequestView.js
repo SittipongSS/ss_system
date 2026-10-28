@@ -18,7 +18,7 @@
  *    ⚠️ ไฟล์นี้ไม่ถามวิธีประเมินของแถวเอง และไม่พิมพ์คำของวิธีนี้เอง — วาดจากคีย์ข้างบนอย่างเดียว
  */
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   Building2, Check, CircleDashed, ClipboardList, FileText, FolderKanban, Handshake, Lock,
   MapPin, MessageCircleQuestion, Route, UserRound,
@@ -35,6 +35,7 @@ import { kindMeta } from "@/components/ui/ActionButtons";
 import RichText from "@/components/ui/RichText";
 import ReadableText from "@/components/ui/ReadableText";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
+import { SURVEY_CONFIRM_WRAP_KEEP } from "@/lib/service/surveyConfirmLink";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import { DRAWING_SPOT_LABEL } from "@/components/service/SurveyResultTable";
 import { surveyCardUnitNames, surveyCardUnits } from "@/components/service/surveyControlCardUnits";
@@ -177,25 +178,74 @@ function MethodTag({ row }) {
   return <SurveyMethodChip label={methodLabel} className={styles.methodTag} />;
 }
 
+/* หมายเหตุใต้แถบแจ้ง — วลีของงวด S5 ห้ามขาดกลาง (N15 "…โหลดหน้า" / "ใหม่" ที่ 375 · UAT S5 sales รอบ 2 K05) · ไม่มีวลี = thaiText เดิม */
+const keepNote = (note) => {
+  const kept = keepPhrases(note, SURVEY_CONFIRM_WRAP_KEEP);
+  return kept === note ? thaiText(note) : kept;
+};
+
 /* ── แถบแจ้งเหนือตารางผล: "มี n พื้นที่ที่ประเมินจากแบบ — …" (`zones.drawingBanner`) ─────────────────────
    ฝ่ายขายต้องรู้ก่อนเอาตัวเลขไปเสนอราคา ว่ากี่พื้นที่ไม่ได้วัดจากของจริง และหัวหน้าเลือกไว้ว่าต้องยืนยันหน้างานไหม
    · ประโยค + บรรทัดรอง (`note` — ระหว่างที่ปุ่มของฝ่ายขายยังไม่เปิดใช้) มาจาก lib ทั้งคู่ · ไฟล์นี้ไม่พิมพ์เอง
-   🔴 ปุ่ม "ขอยืนยันหน้างาน" วาด **เฉพาะเมื่อ lib บอกว่าเส้นของปุ่มมีจริง** (`action.ready`) และเปลือกส่งตัวกดมา —
-      งวดนี้ทั้งสองอย่างยังไม่มี (มากับงวด S5) ⇒ ไม่มีปุ่ม ไม่ใช่ปุ่มจาง
+   🔴 ปุ่ม "ขอยืนยันหน้างาน" วาด **เฉพาะเมื่อ lib บอกว่าเส้นของปุ่มมีจริง** (`action.ready`) · ก้อนปุ่มมีสภาพ (`action.state` —
+      แถว 0 ของ lib ไม่มี) · และเปลือกส่งตัวกดมา — ขาดข้อไหน = ไม่มีปุ่ม ไม่ใช่ปุ่มจาง
+   ✏️ งวด S5 (D-2) — **ปุ่มเดียวสองสภาพ ผ่าน `GatedAction`**: ติดด่าน (`state: 'blocked'` — มีใบยืนยันเปิดอยู่ · พื้นที่ถูกใบอื่นถือ)
+      = ปุ่มยังวาด กดแล้วบอกเหตุ (ประโยคของ server) ไม่พาไปไหน · พร้อม = ส่งก้อนปุ่มให้เปลือกพาไปฟอร์ม (`href`)
+      · มติเจ้าของ B (12/10): ฝ่ายขายยังไม่ปิดเรื่อง = ปุ่มรอง (outline ไม่มีโทน — "ปิดเรื่อง" เป็นปุ่มหลักของหน้า) · ปิดแล้ว = ปุ่มหลัก
+        (โทน `primary` = navy — `Button` ไม่มี variant ชื่อนั้น) · lib ตัดสินผ่าน `emphasis` จอไม่อ่าน `closedAt` เอง
+      · `refs` = เลขที่ของใบที่ถือตัวเลขแทนแล้ว (แถว 4–6) วาดเป็นลิงก์ต่อท้ายประโยค คั่นด้วย " · "
    ⭐ ส่งออกให้จอรายละเอียดรุ่นเก่า (`SurveyDetail`) วาดแถบตัวเดียวกัน — ตัวนั้นไม่ส่ง `onConfirm` จึงได้ประโยคล้วนเสมอ */
 export function SurveyDrawingBanner({ banner, onConfirm }) {
-  const confirm = banner.action?.ready === true && typeof onConfirm === "function" ? banner.action : null;
+  const confirm = banner.action?.ready === true && banner.action.state && typeof onConfirm === "function" ? banner.action : null;
   return (
     <StatusNotice
       tone="info"
       action={confirm ? (
-        <Button variant="outline" onClick={onConfirm} className={`${styles.action} ${styles.bannerAction}`}>{confirm.label}</Button>
+        <GatedAction
+          tone={confirm.emphasis === "primary" ? "primary" : undefined}
+          variant={confirm.emphasis === "primary" ? "filled" : "outline"}
+          blocker={confirm.state === "blocked" ? confirm.reason : ""}
+          onClick={() => onConfirm(confirm)}
+          aria-disabled={confirm.state === "blocked" ? "true" : undefined}
+          data-blocked={confirm.state === "blocked" ? "1" : undefined}
+          className={`${styles.action} ${styles.bannerAction}`}
+        ><span className={styles.actionLabel}>{confirm.label}</span></GatedAction>
       ) : null}
     >
       {/* `banner.keep` = วลีที่ห้ามตัดกลาง ("ไม่ต้องยืนยันหน้างาน" · ชื่อปุ่มใน “…”) — lib ประกาศ · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10) */}
       {banner.keep?.length ? keepPhrases(banner.text, banner.keep) : thaiText(banner.text)}
-      {banner.note ? <span className={styles.bannerNote}>{thaiText(banner.note)}</span> : null}
+      {banner.refs?.length ? (
+        <>
+          {" "}
+          {banner.refs.map((ref, index) => (
+            <Fragment key={ref.href || index}>
+              {index ? " · " : null}
+              <Link className={`linklike ${styles.docRef} ${styles.bannerRef}`} href={ref.href}>{ref.docNo}</Link>
+            </Fragment>
+          ))}
+        </>
+      ) : null}
+      {banner.note ? <span className={styles.bannerNote}>{keepNote(banner.note)}</span> : null}
     </StatusNotice>
+  );
+}
+
+/* ── บรรทัดลิงก์สองทางของใบยืนยันหน้างาน (งวด S5 D-2 b) — `zones.confirmOf` (ใบนี้ยืนยันผลของใบไหน) · `zones.confirmLinks`
+   (ใบยืนยันที่ผูกกับใบนี้) · ประโยคและท่อนที่เป็นลิงก์มาจาก lib (`segments`) ไฟล์นี้ไม่ประกอบคำเอง
+   ⚠️ วาดได้ทั้งที่ไม่มีแถบแจ้ง (ใบยืนยันเองไม่มีแถบ) · ไม่มีคีย์ = ไม่วาดอะไร (ใบของวันนี้จอเดิม) */
+function ConfirmLinks({ zones }) {
+  const lines = [...(zones.confirmOf ? [zones.confirmOf] : []), ...(zones.confirmLinks || [])];
+  if (!lines.length) return null;
+  return (
+    <div className={styles.confirmLinks}>
+      {lines.map((line, index) => (
+        <p key={line.href || index} className={styles.confirmLink}>
+          {line.segments.map((part, at) => (part.href
+            ? <Link key={at} className={`linklike ${styles.docRef} ${styles.lineRef}`} href={part.href}>{part.text}</Link>
+            : <Fragment key={at}>{thaiText(part.text)}</Fragment>))}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -436,7 +486,8 @@ function DocumentBlock({ doc, sheetHref, onRefresh }) {
  * @param onRefresh ขอให้เปลือกอ่านใบใหม่ **เบื้องหลัง** (ไม่ล้างจอ) — บล็อกเอกสารเรียกเมื่อครบเวลารอไฟล์ · view ไม่ยิง API เอง
  * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว — ส่งต่อให้ `surveyJobView` (บล็อกเอกสารเลิกสัญญาว่าตรวจให้เอง)
  * @param stepNotes ประโยคที่ขึ้น **แทนปุ่มของก้าวปัจจุบัน** บนแถบตอนนี้ (เปลือกตัดสิน — เช่น งานประเมินจากแบบที่คนดูรับปากวันส่งผลไม่ได้)
- * @param onDrawingConfirm ตัวกดของปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้ง — ยังไม่มีผู้ส่ง (งวด S5) ⇒ ปุ่มไม่ถูกวาด
+ * @param onDrawingConfirm ตัวกดของปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้ง — รับก้อน `action` ของแถบ (มี `href` ของฟอร์ม) · เปลือกพาไป
+ *                         ฟอร์มเอง (view ไม่นำทาง ไม่ยิง API) · สภาพติดด่านไม่เคยถึงตัวนี้ (`GatedAction` บอกเหตุแทน) · ไม่ส่ง = ไม่มีปุ่ม
  */
 export default function SurveyRequestView({
   request, today, viewer = {}, people = [], peopleLoading = false, stepNotes = [], onDrawingConfirm,
@@ -662,6 +713,10 @@ export default function SurveyRequestView({
         actions={<span className={styles.stepCount}>{zones.rows.filter((r) => !r.cut).length} พื้นที่</span>}
       >
         <div className={styles.zoneStack}>
+          {/* ✏️ งวด S5 (D-2 b): บรรทัดลิงก์ของใบยืนยันหน้างาน — คอมโพเนนต์เดียว วางที่เดียวต่อสภาพของใบ:
+              ยังไม่ส่งผล = อย่างแรกใต้หัวการ์ด (ใบยืนยันที่ยังไม่ส่งบอกก่อนอย่างอื่นว่ายืนยันผลของใบไหน) ·
+              ส่งผลแล้ว = ติดเหนือแถบแจ้ง (ข้างล่าง) ที่มันพูดถึง */}
+          {zones.sent ? null : <ConfirmLinks zones={zones} />}
           {zones.sent ? (
             <MetricStrip className={styles.summary}>
               <Metric label="พื้นที่" value={`${fmtNumber(zones.totals.zones)} พื้นที่`} note={zones.unchanged ? "ครบตามที่ขอ" : "มีตัด/เพิ่ม"} />
@@ -715,6 +770,7 @@ export default function SurveyRequestView({
             </StatusNotice>
           ) : null}
 
+          {zones.sent ? <ConfirmLinks zones={zones} /> : null}
           {/* ✏️ ใบที่ส่งผลแล้วและมีพื้นที่จากแบบ — แถบแจ้งอยู่ติดเหนือตารางที่มันพูดถึง (`null` = ไม่มีแถบ) */}
           {zones.drawingBanner ? <SurveyDrawingBanner banner={zones.drawingBanner} onConfirm={onDrawingConfirm} /> : null}
 

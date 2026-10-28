@@ -96,11 +96,13 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ② ไทม์ไลน์ "ประวัติการประเมิน" บนแท็บ
        ③ ผลจากแบบ (mig 0408 · ประเมินจากแบบ งวด S2a): `surveyConfirm` = ใบตอบว่าต้องยืนยันหน้างานไหม (ป้ายบนแถวพื้นที่)
           · `createdAt` = ลำดับของใบ — ผลลงหน้างานของใบที่เปิดทีหลังแทนผลจากแบบ (`latestSurveyRow`)
+       ④ ใบยืนยันหน้างาน (งวด S5): `surveyConfirmOfId` = ใบต้นทางที่ใบนี้ยืนยันผล — ใบที่ยังเปิดอยู่และผูกกับใบของผลล่าสุด
+          ทำให้พื้นที่ขึ้นป้าย "กำลังยืนยันหน้างาน" · ใช้ตัดสินป้ายเท่านั้น ไม่ใช้จัดอันดับผล
        ⚠️ อ่านเท่าที่แถวผลวัดอ้างถึง — ดึงทั้งตารางคือดึงคำร้องทั้งบริษัท */
     const requestIds = [...new Set(surveys.map((r) => r.requestId).filter(Boolean))];
     const requests = await fetchAllInChunks(requestIds, (chunk) => supabase
       .from('dept_requests')
-      .select('id, "docNo", status, title, "dealId", "committedDueDate", "answeredAt", "closedAt", "createdAt", "surveyConfirm"')
+      .select('id, "docNo", status, title, "dealId", "committedDueDate", "answeredAt", "closedAt", "createdAt", "surveyConfirm", "surveyConfirmOfId"')
       .in('id', chunk)
       .order('id', { ascending: true }), { sort: byColumns('id') });
 

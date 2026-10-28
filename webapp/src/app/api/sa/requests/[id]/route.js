@@ -95,6 +95,15 @@ import { reseedSurveyZoneMethods } from '@/lib/service/surveyIntakeSeed';
 import { surveyDeskReadyTitle } from '@/lib/service/surveyMethodSwitch';
 import { notifySurveyDeskReady } from '@/lib/service/surveyMethodNotify';
 import { loadSurveyRequestExtras } from '@/lib/service/surveyRequestExtras';
+/* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 กลุ่ม B) — ทุกการอ่าน/เขียนฐานของงวดอยู่ที่ `surveyConfirmRepo` (ไม่ throw) ·
+   ทุกประโยคอยู่ที่ `surveyConfirmLink` · ตัวอ่านดึงโมดูลกระดาษได้แค่คู่เบา (`surveyReportRows` + `surveyReportState`) เหมือนไฟล์นี้ */
+import {
+  appendSurveyConfirmLines, loadSurveyConfirmContext, loadSurveyConfirmLink, loadSurveyConfirmOriginal,
+} from '@/lib/service/surveyConfirmRepo';
+import {
+  SURVEY_CONFIRM_VARIANT_ERROR, surveyConfirmEndedText, surveyConfirmOpenedText, surveyConfirmPlan,
+  surveyConfirmSubmitMismatch, surveyConfirmZoneStates,
+} from '@/lib/service/surveyConfirmLink';
 /* ⚠️ เอกสารประเมิน (mig 0401): import ได้เฉพาะตัวอ่านแถว (`surveyReportRows`) — เส้นนี้เป็นของคำร้อง **ทุกหัวข้อ**
    ⇒ ห้ามลาก sharp / chromium / ตัวเรนเดอร์เข้ามาที่หัวไฟล์ (สเปก PR-2 มติ 24 · ด่าน `check-doc-tracing.mjs`) */
 import { surveyDocumentSummary, surveyReportVoided } from '@/lib/service/surveyReportRows';
@@ -127,6 +136,92 @@ export const dynamic = 'force-dynamic';
 const deskDueBasis = (before) => (before?.committedResultDate && before?.committedDueDate
   ? { ...before, committedDueDate: before.committedResultDate }
   : before);
+
+/* ── ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 กลุ่ม B) ─────────────────────────────────────────────────────
+   ⭐ ใบยืนยันคือคำร้องประเมินพื้นที่ธรรมดาที่มี `surveyConfirmOfId` (เขียนครั้งเดียวตอนสร้างร่าง) — ชีวิตของลิงก์อยู่ในไฟล์นี้สามจุด:
+      ด่านตอนยื่น (`surveyConfirmSubmitGate`) · ล็อกวิธีประเมินใน `update` (N25) · บรรทัดบนเธรดของใบต้นทางหลัง action สำเร็จ
+   🔴 ไม่มีการปฏิเสธใหม่ของ "ยังไม่จบ" / ยกเลิก / ปิดโดยไม่ได้ประเมิน — ใบยืนยันแค่เขียนบรรทัดตามหลัง (แผน §2 แถว 29) */
+const SURVEY_CONFIRM_HOOK_ACTIONS = new Set(['submit', 'cancel', 'close-unassessed', 'reopen']);
+
+/**
+ * ด่านตอนยื่นของร่างใบยืนยันหน้างาน (B-2) — `{ refusal, original }` · `refusal` = `{ status, error }` หรือ null (ผ่าน)
+ * 🔴 **อ่านพัง = 500 เสมอ** (F4) — ไม่ใช่ "ลิงก์ลอย": ปล่อยผ่านเป็นใบธรรมดา = ข้ามทั้ง N2 · N3 · N11 (ด่านล็อกพื้นที่ตัวเดียว
+    ตอนยื่น — V2) · N6 · N25 · ลิงก์ลอยคือ `original === null` ที่อ่านสำเร็จเท่านั้น ⇒ ส่งเป็นใบธรรมดา ไม่มีด่าน ไม่มีบรรทัดเธรด
+ * ⚠️ ไม่เรียก `loadZoneSurveyLocks` / `surveyZoneBusyError` — แผนแถว 6 (`stage: 'submit'` + `selfId`) อ่านแถวชุดเดียวกันแล้ว
+ * ⚠️ ไม่เขียนอะไร — ผู้เรียกวางไว้ก่อนตัวตั้งวิธีของ S4 และ `materializeSurveyZones` ⇒ ตีกลับ/500 แล้วแถวพื้นที่ไม่ถูกแตะ
+ */
+async function surveyConfirmSubmitGate(supabase, { id, before }) {
+  const { original, error } = await loadSurveyConfirmOriginal(supabase, before.surveyConfirmOfId);
+  if (error) return { refusal: { status: 500, error }, original: null };
+  if (!original) {
+    console.error('[surveyConfirm] ใบต้นทางหาย — ส่งเป็นใบประเมินธรรมดา', id, before.surveyConfirmOfId);
+    return { refusal: null, original: null };
+  }
+  const ctx = await loadSurveyConfirmContext(supabase, original);
+  if (ctx.error) return { refusal: { status: 500, error: ctx.error }, original };
+  const plan = surveyConfirmPlan({ original, ...ctx, selfId: id, stage: 'submit' });
+  if (!plan.ok) return { refusal: { status: plan.status || 409, error: plan.error }, original };
+  const mismatch = surveyConfirmSubmitMismatch(plan, before, original);
+  if (mismatch) return { refusal: { status: 409, error: mismatch }, original };
+  return { refusal: null, original };
+}
+
+/**
+ * บรรทัดบนเธรดของใบต้นทาง หลัง action ของใบยืนยันสำเร็จแล้ว (B-2 opened · B-3 cancel / close-unassessed · B-4 reopen)
+ * ⭐ best effort (V9) — เขียนพลาดแค่ลง log: ไม่มีอะไรอ่านบรรทัดพวกนี้ (แบนเนอร์ · ทะเบียน · ทุกด่าน คิดจากแถว)
+ * 🔴 ผู้เรียกห่อ try/catch และวางไว้ **หลัง** audit + เหตุการณ์ของ route (F13) — โยนตรงนี้ต้องไม่กลายเป็น 500 ของ action ที่ commit แล้ว
+ * @param known ใบต้นทางที่ด่านตอนยื่นอ่านไว้แล้ว (เฉพาะ submit · null = ลิงก์ลอย ⇒ ไม่เขียน)
+ */
+async function surveyConfirmAfterAction(supabase, { id, action, before, after, known, nowIso, reason, user }) {
+  const child = after || before;
+  const log = (what, error) => console.error('[surveyConfirm]', what, id, before.surveyConfirmOfId, action, error || '');
+  let original = known;
+  let line = null;
+  let key = null;
+  let event = action;
+  let onlyIfKeyPrefix = null;
+
+  if (action === 'submit') {
+    if (!original) return;
+    line = surveyConfirmOpenedText(child);
+    key = `opened:${id}`;
+    event = 'opened';
+  } else {
+    // ร่างที่ไม่เคยส่ง ไม่มีอะไรบอกใบต้นทาง · "ยังไม่จบ" ของใบที่ยังไม่เคยตอบ ไม่มีผลอะไรให้ถอน
+    if ((action === 'cancel' || action === 'close-unassessed') && !before.submittedAt) return;
+    if (action === 'reopen' && !before.answeredAt) return;
+    const read = await loadSurveyConfirmOriginal(supabase, before.surveyConfirmOfId);
+    if (read.error) return log('อ่านใบต้นทางไม่สำเร็จ — ไม่เขียนบรรทัด', read.error);
+    original = read.original;
+    if (!original) return;
+    if (action === 'reopen') {
+      line = surveyConfirmEndedText(child, 'reopened');
+      key = `ended:${id}:reopened:${nowIso}`;
+      event = 'reopened';
+      // R12 — ถอนได้เฉพาะผลที่เคยประกาศบนเธรดของใบต้นทาง (ทาง O17 · ลิงก์ลอย = ไม่เคยประกาศ ⇒ ไม่เขียน)
+      onlyIfKeyPrefix = `sent:${id}:`;
+    } else {
+      /* หาง "— พื้นที่ยังรอยืนยันหน้างาน" เมื่อพื้นที่ที่ไม่ถูกตัดของใบนี้อย่างน้อยหนึ่งยังรออยู่ที่ใบต้นทาง
+         ⚠️ อ่านบริบทไม่ได้ = ไม่มีหาง (ไม่อ้างสิ่งที่พิสูจน์ไม่ได้) */
+      let stillAwaiting = false;
+      const ctx = await loadSurveyConfirmContext(supabase, original);
+      if (ctx.error) {
+        log('อ่านบริบทของใบต้นทางไม่สำเร็จ — เขียนโดยไม่มีหาง', ctx.error);
+      } else {
+        const awaiting = new Set(surveyConfirmZoneStates({ request: original, ...ctx }).awaiting.map((r) => r.zoneId));
+        stillAwaiting = (Array.isArray(before.surveyZones) ? before.surveyZones : [])
+          .some((z) => z && z.status !== 'cut' && z.zoneId && awaiting.has(z.zoneId));
+      }
+      line = surveyConfirmEndedText(child, action, { reason: reason || '', stillAwaiting });
+      key = `ended:${id}:${action}:${nowIso}`;
+    }
+  }
+
+  const res = await appendSurveyConfirmLines(supabase, {
+    originalId: original.id, key, event, child, lines: [line], user, onlyIfKeyPrefix,
+  });
+  if (res.error) log('เขียนบรรทัดบนเธรดของใบต้นทางไม่สำเร็จ', res.error);
+}
 
 // ── เติมค่าสดของทะเบียนให้แถวคำร้อง ──────────────────────────────────────
 // ⚠️ สอง query ต่อใบ (กลิ่น + สูตร) และยิงเฉพาะเมื่อมีแถวที่ผูกจริง — ใบสอบถาม/
@@ -232,14 +327,24 @@ export async function GET(request, { params }) {
              ตอบหรือจัดการใบนี้ได้: Planner เปิดใบกลับได้โดยไม่มีสิทธิ์เอกสาร ⇒ เขาได้ `{ access: 'none', voids }`
              พอให้โมดัลบอกผลของการกด (กติกา #1223) · ไม่มีผลตรวจ (`send`/`issue`) ที่เส้นนี้ — ของจอ TS เท่านั้น
           🔴 ไม่มีภาพนิ่ง · HTML · id ของแถว · ที่อยู่ไฟล์ — ตัวสรุปคัดคีย์ทีละตัว (เทสต์ไล่คีย์ทุกชั้นของคำตอบนี้)
-          ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 · สองก้อนนี้ไม่รอกัน ⇒ ยิงขนาน */
+          ⚠️ สรุปล้ม = `{ access: 'none', unknown: true }` ไม่ใช่ 500 · สองก้อนนี้ไม่รอกัน ⇒ ยิงขนาน
+
+       ⭐ **ใบยืนยันหน้างาน** (งวด S5 B-1 · §2.3) — คีย์ `surveyConfirmLink` เฉพาะหัวข้อ `site_survey` และ **ไม่มีคีย์** เมื่อตัวโหลดคืน
+          null (R-KEYS — ใบลงหน้างานที่ไม่ผูกอะไร payload เท่าเดิมทุกไบต์) · ตัวโหลดไม่ throw: อ่านพัง = `{ unknown: true }`
+          ⚠️ คำสั่งอ่านลูกหนึ่งคำสั่งบน partial index (`.limit(50)`) ยิงทุกหน้าคำร้องประเมินพื้นที่ */
     let surveyExtras = null;
-    const [extras, surveyDocument] = await Promise.all([
+    const [extras, surveyDocument, surveyConfirmLink] = await Promise.all([
       requestNeedsRef(row.kind, 'site') ? loadSurveyRequestExtras(getSupabaseAdmin(), row) : null,
       row.kind === 'site_survey'
         ? surveyDocumentSummary(getSupabaseAdmin(), row, user, { withVoids: true }).catch((e) => {
           console.error('[requests] สรุปเอกสารประเมินของใบล้ม', row.id, e?.message || e);
           return { access: 'none', unknown: true };
+        })
+        : null,
+      row.kind === 'site_survey'
+        ? loadSurveyConfirmLink(getSupabaseAdmin(), row, user).catch((e) => {
+          console.error('[requests] ก้อนใบยืนยันหน้างานล้ม', row.id, e?.message || e);
+          return { unknown: true };
         })
         : null,
     ]);
@@ -259,6 +364,7 @@ export async function GET(request, { params }) {
         ...row,
         ...surveyExtras,
         ...(surveyDocument ? { surveyDocument } : {}),
+        ...(surveyConfirmLink ? { surveyConfirmLink } : {}),
         /* ⭐ ค่าสวิตช์ "ประเมินจากแบบ" ให้ฟอร์มแก้ใบ (S4 A-7) — จอรู้ทางนี้ทางเดียว (สวิตช์อ่านได้ที่ server เท่านั้น)
            ⚠️ เฉพาะหัวข้อที่มีสถานที่ · หัวข้ออื่นไม่มีคีย์นี้ */
         ...(requestNeedsRef(row.kind, 'site') ? { drawingMethodEnabled: surveyDrawingMethodEnabled() } : {}),
@@ -349,6 +455,9 @@ export async function PATCH(request, { params }) {
   let npdRowsAck = null;
   let npdRowsWarning = null;
   let ackRowsWarning = null;
+  /* ใบต้นทางของใบยืนยันหน้างานที่ด่านตอนยื่นอ่านไว้ (งวด S5 B-2) — บรรทัด "เปิดใบ" ท้าย handler ใช้ตัวเดียวกัน ไม่อ่านซ้ำ
+     ⚠️ null = ไม่ใช่ใบยืนยัน หรือลิงก์ลอย ⇒ ไม่เขียนบรรทัด */
+  let surveyConfirmOf = null;
 
   try {
     /* ⭐ **ใบประเมินที่ประเมินจากแบบทั้งใบ แจ้ง/เลื่อนวันคนละเส้น** (mig 0408 · แผน survey-desk-assessment §2 แถว 21–22)
@@ -412,6 +521,16 @@ export async function PATCH(request, { params }) {
          ⚠️ ตัวมันรันซ้ำได้ (ข้ามแถวที่มี `zoneId` แล้ว) ⇒ ใบที่ถูกตีกลับแล้วส่งใหม่
             จะไม่สร้างโซนซ้อน */
       if (requestNeedsRef(before.kind, 'site')) {
+        /* ⭐ **ด่านของใบยืนยันหน้างาน** (งวด S5 B-2 · R2 · V2 · F4) — ใบเดิมยังส่งผลอยู่และตอบ "ต้องยืนยันหน้างาน" ·
+           พื้นที่ชุดนี้ยังรอยืนยันและไม่มีใบอื่นที่ยังเปิดถืออยู่ (ด่านล็อกพื้นที่ตัวเดียวตอนยื่น) · ชุดพื้นที่ยังตรง · วิธียังเป็นลงหน้างาน
+           ⚠️ **ก่อน** ตัวตั้งวิธีของ S4 และ `materializeSurveyZones` ⇒ ตีกลับหรือ 500 แล้วแถวพื้นที่ไม่ถูกแตะ ยังไม่ออกเลขที่ */
+        if (before.surveyConfirmOfId) {
+          const confirmGate = await surveyConfirmSubmitGate(supabase, { id, before });
+          if (confirmGate.refusal) {
+            return Response.json({ error: confirmGate.refusal.error }, { status: confirmGate.refusal.status });
+          }
+          surveyConfirmOf = confirmGate.original;
+        }
         if (!before.siteId) {
           return Response.json({ error: 'ใบนี้ยังไม่มีสถานที่ — แก้ใบแล้วเลือกสถานที่ก่อนส่ง' }, { status: 409 });
         }
@@ -664,6 +783,13 @@ export async function PATCH(request, { params }) {
       const variantPick = requestEditVariant(before, body.variant);
       if (variantPick.error) return Response.json({ error: variantPick.error }, { status: 400 });
       if (variantPick.variant !== undefined) next.variant = variantPick.variant;
+      /* 🔴 **ใบยืนยันหน้างานเปลี่ยนวิธีไม่ได้** (งวด S5 B-6 · R2 · N25) — S4 ให้ร่างประเมินพื้นที่ทุกใบสลับวิธีได้ ⇒ PATCH ตรงครั้งเดียว
+            จะทำให้ใบยืนยันกลายเป็นใบจากแบบ · ตีกลับก่อนด่านสวิตช์ของ S4 ก่อนรอบลองตั้งวิธี และก่อนเขียนอะไรทั้งนั้น
+         ⚠️ ฟอร์มแก้ส่ง `variant` มาทุกครั้ง — ใบยืนยันถือ `'standard'` ⇒ บันทึกปกติผ่าน · การสลับรายพื้นที่ของหัวหน้าหลังรับเรื่อง
+            เป็นอีก route (S2a) ยังทำได้ */
+      if (before.surveyConfirmOfId && next.variant !== undefined && next.variant !== 'standard') {
+        return Response.json({ error: SURVEY_CONFIRM_VARIANT_ERROR }, { status: 409 });
+      }
       /* ⭐ **ขอสลับไปประเมินจากแบบขณะสวิตช์ปิด = ตีกลับ** (ประเมินจากแบบ งวด 4 · S4 A-5 ①)
          ⚠️ ใบที่เป็นประเมินจากแบบอยู่แล้ว (`current`) บันทึกต่อได้ — สวิตช์ที่ถูกปิดทีหลังต้องไม่ทำให้ร่างเดิมแก้ไม่ได้ */
       const variantRefusal = requestNeedsRef(before.kind, 'site')
@@ -1845,6 +1971,19 @@ export async function PATCH(request, { params }) {
       user,
       mentions,
     });
+
+    /* ⭐ **บรรทัดบนเธรดของใบต้นทาง** (งวด S5 B-2 – B-4 · F13) — บล็อกเดียวของงวดในไฟล์นี้ หลัง audit และเหตุการณ์ของ route เสมอ
+       🔴 ห่อ try/catch — บั๊กในตัวสร้างประโยคหรือแถวหน้าตาแปลกต้องไม่ทำให้ส่ง / ยกเลิก / ปิด / "ยังไม่จบ" ที่ commit แล้วตอบ 500
+          (กดซ้ำจะได้ 409 และบรรทัดของ route เองหายไปด้วย) · ไม่เปลี่ยนคำตอบ */
+    if (before.surveyConfirmOfId && SURVEY_CONFIRM_HOOK_ACTIONS.has(action)) {
+      try {
+        await surveyConfirmAfterAction(supabase, {
+          id, action, before, after, known: surveyConfirmOf, nowIso, reason: eventReason, user,
+        });
+      } catch (e) {
+        console.error('[surveyConfirm] บรรทัดบนเธรดของใบต้นทางล้ม', id, before.surveyConfirmOfId, action, e?.message || e);
+      }
+    }
 
     return Response.json({
       ...after,

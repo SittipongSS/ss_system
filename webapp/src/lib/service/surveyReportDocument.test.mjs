@@ -31,10 +31,12 @@ import { SURVEY_REPORT_PX, paginateSurveyReport } from './surveyReportLayout.js'
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import { surveyReportCustomerHtmlIssues, surveyReportSignatureHtmlIssues } from './surveyReportState.js';
 import {
+  CONFIRM_ORIGINAL, confirmSurveyFixture,
   drawingSurveyFixture, fakeSha, fakeSignatureVersion, markedSurveyInputs, mixedSurveyFixture, signedSurveyInputs,
   stressSurveyInputs, surveyReportInputsFromFixture, surveySignCases, surveyStressCases, syntheticSurveyFixture, thaiText,
 } from './surveyReportTestKit.mjs';
 import { surveyReportView } from './surveyReportView.js';
+import { SURVEY_CONFIRM_GOLDEN, SURVEY_GOLDEN, confirmRowFailures, goldenFailures, syntheticOf } from '../../../scripts/render-survey-report.mjs';
 
 const DOC_NO = 'SU-26090001-0';
 
@@ -435,6 +437,8 @@ test('🔴 ทุกอักขระของกระดาษอยู่ใ
     ['twin', twin(), 'freeze'],
     ...surveyStressCases().map((c) => [c.name, stressSurveyInputs(c.spec), c.mode]),
     ['marked', markedSurveyInputs().inputs, 'freeze'],
+    // งวด S5 — ป้ายและเลขของแถว "ยืนยันผลจากแบบของ" (ฉบับภายใน)
+    ['confirm', surveyReportInputsFromFixture(confirmSurveyFixture()), 'freeze'],
   ];
   // ไฟล์ของจริงอยู่นอกรีโป (ชื่อลูกค้าจริง) — มีก็ตรวจด้วย ไม่มีก็ข้ามเฉพาะชุดนั้น
   if (existsSync(REAL_FIXTURE)) sets.push(['real', surveyReportInputsFromFixture(JSON.parse(readFileSync(REAL_FIXTURE, 'utf8'))), 'freeze']);
@@ -680,6 +684,9 @@ test('🔴 วัดจริงใน Chrome (แฝดสังเคราะ
     ['s3-heads5-signed', signedSurveyInputs(s3HeadsInputs(['Head Approver', 'หัวหน้า ข', 'หัวหน้า ค', 'หัวหน้า ง', 'หัวหน้า จ'])), 'freeze'],
     ['fx-mixed', surveyReportInputsFromFixture(mixedSurveyFixture()), 'freeze'],
     ['fx-drawing', surveyReportInputsFromFixture(drawingSurveyFixture()), 'freeze'],
+    // งวด S5 กลุ่ม F — ใบยืนยันหน้างาน (แถว "ยืนยันผลจากแบบของ" ในภาคผนวก ง ของฉบับภายใน) ทั้งสองรูป
+    ['fx-confirm', surveyReportInputsFromFixture(confirmSurveyFixture()), 'freeze'],
+    ['fx-confirm-rq', surveyReportInputsFromFixture(confirmSurveyFixture({ reportDocNo: null })), 'freeze'],
   ];
   const browser = await launchBrowser();
   try {
@@ -716,7 +723,10 @@ test('🔴 วัดจริงใน Chrome (แฝดสังเคราะ
           } else assert.ok(!page.notice, `${at}: แผนสั่งกล่องหมายเหตุแต่กระดาษไม่มี`);
           if (m.marks.zhead) {
             const z = SURVEY_REPORT_PX.zone;
-            assert.ok(Math.abs(m.marks.zhead.height - (z.head + z.tagLine)) <= 1.5, `${at}: หัวพื้นที่ ${m.marks.zhead.height}`);
+            /* แผนพก `headHeight` ของหัวที่มีป้าย (ชื่อหลายบรรทัดด้วย — กรณี `drawing-longname` 97 / 73) · ไม่มีคีย์ = หัวบรรทัดเดียว + ป้าย
+               (เดิมเทียบกับหัวบรรทัดเดียวเสมอ ⇒ ล้มที่ `drawing-longname` บนเครื่องที่มี Chrome — harness เทียบกับ `headHeight` อยู่แล้ว) */
+            const headPlan = page.headHeight ?? (z.head + z.tagLine);
+            assert.ok(Math.abs(m.marks.zhead.height - headPlan) <= 1.5, `${at}: หัวพื้นที่ ${m.marks.zhead.height} แผน ${headPlan}`);
           }
         });
         if (label === 'twin') {
@@ -876,7 +886,7 @@ test('🔴 CSS ของช่องลายเซ็น: สามกฎใน
   assert.equal(rules[2][1], 'height:45px;');
   assert.equal(SURVEY_REPORT_INTERNAL_CSS.includes('sig-img'), false);
   assert.equal(SURVEY_REPORT_CSS.includes('sign-last'), false, 'ก้อนร่วมห้ามเอ่ยชิ้นของฉบับภายใน — เทสต์รั่ว grep ทั้งไฟล์ของฉบับลูกค้า');
-  assert.equal(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-15a');
+  assert.equal(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-27a');
 });
 
 test('🔴 ไม่รั่ว: กระดาษสองฉบับไม่มีชื่อคลัง · ที่อยู่ไฟล์ · id ของฉบับลายเซ็น · sha ต้นฉบับ · id ของผู้ใช้ — ฉบับลูกค้ามีแค่ sha ของสองที่นั่งเพิ่มจากรูปของตัวเอง', () => {
@@ -1279,4 +1289,99 @@ test('S3 บรรทัดย่อยของแถวจากแบบ: ไ
     assert.ok(plan.includes('<table class="t cp">'), version);
     assert.equal(page.includes('ภาพกว้าง'), false, version);
   }
+});
+
+/* ══ ⑩ งวด S5 กลุ่ม F — ใบยืนยันหน้างาน: แถว "ยืนยันผลจากแบบของ" ในภาคผนวก ง ของฉบับภายใน ═══════════════════
+ * 🔴 ฉบับลูกค้าของใบยืนยัน = ฉบับลูกค้าของแฝดทุกไบต์ (ไม่มีป้าย ไม่มีเลข RQ/SU ของใบต้นทาง)
+ * ฉบับภายใน = ของแฝด + แถวเดียว · แผนหน้าของ fixture ใหม่ = ของแฝด (ลูกค้า 4 · ภายใน 6 · พื้นที่หน้า 2, 3) — บันทึกไว้ที่นี่และใน
+ * harness (`--synthetic confirm` ตรวจด้วยผลที่ล็อกของ `onsite`) */
+
+const CONFIRM_FULL = `${CONFIRM_ORIGINAL.requestDocNo} (${CONFIRM_ORIGINAL.reportDocNo})`;
+const CONFIRM_TH = '<th>ยืนยันผลจากแบบของ</th>';
+const confirmInputs = (opts) => surveyReportInputsFromFixture(confirmSurveyFixture(opts));
+
+test('🔴 S5 F สองฉบับของใบยืนยัน: ฉบับลูกค้าไม่มีป้าย/เลข RQ/เลข SU ของใบต้นทาง (เท่าแฝดทุกไบต์) · ฉบับภายในมีป้ายครั้งเดียวพร้อมเลข', () => {
+  for (const [label, opts, value] of [['RQ (SU)', {}, `${CONFIRM_ORIGINAL.requestDocNo} <span class="nw">(${CONFIRM_ORIGINAL.reportDocNo})</span>`], ['RQ อย่างเดียว', { reportDocNo: null }, CONFIRM_ORIGINAL.requestDocNo]]) {
+    const customer = paper(confirmInputs(opts), 'customer');
+    for (const needle of ['ยืนยันผลจากแบบของ', CONFIRM_ORIGINAL.requestDocNo, CONFIRM_ORIGINAL.reportDocNo]) {
+      assert.equal(customer.html.includes(needle), false, `${label}: ฉบับลูกค้ารั่ว ${needle}`);
+    }
+    assert.equal(customer.html, paper(twin(), 'customer').html, `${label}: ฉบับลูกค้าเท่าแฝดทุกไบต์`);
+    // ยามกันรั่วของ production (ตัวเดียวกับขั้นกระดาษ) ผ่านบนฉบับลูกค้าของใบยืนยัน
+    assert.deepEqual(surveyReportCustomerHtmlIssues({ html: customer.html, snapshot: customer.snapshot, layout: customer.layout }), [], label);
+
+    const internal = paper(confirmInputs(opts), 'internal');
+    assert.equal(count(internal.html, 'ยืนยันผลจากแบบของ'), 1, `${label}: ป้ายครั้งเดียว`);
+    assert.equal(count(internal.html, `${CONFIRM_TH}<td>${value}</td></tr>`), 1, `${label}: แถว kv ของภาคผนวก ง`);
+    // ถอดแถวออก = ฉบับภายในของแฝดทุกไบต์ (แถวเดียวไม่ดันหน้า — แผนหน้าเท่าเดิม)
+    const row = `\n              <tr>${CONFIRM_TH}<td>${value}</td></tr>`;
+    assert.equal(internal.html.replace(row, ''), paper(twin(), 'internal').html, `${label}: ต่างจากแฝดแค่แถวเดียว`);
+  }
+});
+
+test('S5 F แผนหน้าของใบยืนยัน (บันทึก): ลูกค้า 4 แผ่น · ภายใน 6 แผ่น · พื้นที่หน้า 2, 3 · แถวอยู่ในภาคผนวก ง หน้า 6 — เท่าแฝด', () => {
+  const customer = paper(confirmInputs(), 'customer');
+  const internal = paper(confirmInputs(), 'internal');
+  assert.deepEqual(sheets(customer.html).map((s) => s.kind), ['summary', 'zone', 'zone', 'signoff']);
+  assert.deepEqual(sheets(internal.html).map((s) => s.kind), ['summary', 'zone', 'zone', 'signoff', 'appendix', 'appendix']);
+  assert.deepEqual(Object.values(customer.layout.zonePage), [2, 3]);
+  assert.deepEqual(Object.values(internal.layout.zonePage), [2, 3]);
+  assert.deepEqual(customer.layout.overflow, []);
+  assert.deepEqual(internal.layout.overflow, []);
+  assert.ok(sheetHtml(internal.html, 6).includes(CONFIRM_TH), 'แถวอยู่หน้าภาคผนวก ง');
+  assert.equal(sheetHtml(internal.html, 5).includes(CONFIRM_TH), false);
+});
+
+test('🔴 S5 F ไม่ผูก / ใบต้นทางหาย (ตัวโหลดคืน null) และภาพนิ่งทุกฉบับก่อนกลุ่มนี้ (ไม่มีคีย์): ไม่มีแถวทั้งสองฉบับ · กระดาษเท่าเดิม', () => {
+  const built = buildSurveyReportSnapshot(confirmInputs(), { mode: 'freeze' });
+  const old = structuredClone(built.snapshot);
+  delete old.request.confirmsDocNo;
+  for (const version of ['customer', 'internal']) {
+    const plain = paper(twin(), version);
+    assert.equal(plain.html.includes('ยืนยันผลจากแบบของ'), false, version);
+    const view = surveyReportView(old, { version });
+    const html = renderSurveyReportHTML({ view, layout: paginateSurveyReport(view), docNo: DOC_NO, issuedAt: '2026-09-26' });
+    assert.equal(html, plain.html, `${version}: ภาพนิ่งที่ไม่มีคีย์ = กระดาษของแฝด`);
+  }
+});
+
+test('S5 F รุ่นตัวเรนเดอร์ขยับจาก 2026-10-15a (กระดาษที่ตรึงหลังกลุ่มนี้พกแถวใหม่ได้ — แถวของตารางเก็บรุ่น)', () => {
+  assert.equal(SURVEY_REPORT_RENDERER_VERSION, 'fm-ts-01@2026-10-27a');
+  assert.ok(SURVEY_REPORT_RENDERER_VERSION.slice('fm-ts-01@'.length) > '2026-10-15a');
+});
+
+test('S5 F harness: `--synthetic confirm|confirm-rq` ตรวจด้วยผลที่ล็อกของ onsite + confirmRowFailures — จับแถวหาย/แถวซ้ำ/รั่วลงฉบับลูกค้าได้จริง', () => {
+  assert.deepEqual(Object.keys(SURVEY_CONFIRM_GOLDEN), ['confirm', 'confirm-rq']);
+  assert.equal(syntheticOf('confirm').fixture, confirmSurveyFixture);
+  assert.deepEqual([syntheticOf('confirm').golden, syntheticOf('confirm-rq').golden, syntheticOf('mixed').golden], ['onsite', 'onsite', 'mixed']);
+  assert.deepEqual(Object.keys(SURVEY_GOLDEN), ['onsite', 'mixed', 'drawing'], 'ตารางทองคำของ S3 ไม่เพิ่มแถว');
+  assert.throws(() => syntheticOf('confirmed'), /--synthetic ไม่รู้จักชุด "confirmed" — มี: onsite · mixed · drawing · confirm · confirm-rq/);
+
+  const papersOf = (inputs) => ['customer', 'internal'].map((version) => ({ version, ...paper(inputs, version) }));
+  for (const [name, opts, value] of [['confirm', {}, CONFIRM_FULL], ['confirm-rq', { reportDocNo: null }, CONFIRM_ORIGINAL.requestDocNo]]) {
+    const inputs = surveyReportInputsFromFixture(syntheticOf(name).fixture());
+    assert.equal(inputs.confirmsDocNo, value, name);
+    const papers = papersOf(confirmInputs(opts));
+    assert.deepEqual(goldenFailures(papers, DOC_NO, syntheticOf(name).golden), [], `${name}: ผลที่ล็อกของ onsite ทุกข้อ`);
+    assert.deepEqual(confirmRowFailures(papers, value), [], name);
+  }
+  const papers = papersOf(confirmInputs());
+  const plain = papersOf(twin());
+  assert.deepEqual(confirmRowFailures(plain, null), [], 'ชุดที่ไม่ผูก: ไม่มีแถวทั้งสองฉบับ');
+  // แถวหาย (กระดาษของแฝดแต่อินพุตพกเลข) · แถวโผล่ในชุดที่ไม่ผูก · แถวซ้ำ · ฉบับลูกค้ารั่วป้ายและเลข
+  assert.deepEqual(confirmRowFailures(plain, CONFIRM_FULL), [
+    'internal: แถว "ยืนยันผลจากแบบของ" ต้องมี 1 แถว — พบ 0',
+    'internal: แถว "ยืนยันผลจากแบบของ" ต้องพิมพ์ RQ-AS-26100345',
+    'internal: แถว "ยืนยันผลจากแบบของ" ต้องพิมพ์ SU-26100003-0',
+  ]);
+  assert.deepEqual(confirmRowFailures(papers, null), ['internal: แถว "ยืนยันผลจากแบบของ" ต้องมี 0 แถว — พบ 1']);
+  const internal = papers.find((p) => p.version === 'internal');
+  const doubled = { ...internal, html: internal.html.replace('</tbody>', `<tr>${CONFIRM_TH}<td>x</td></tr></tbody>`) };
+  assert.deepEqual(confirmRowFailures([doubled], CONFIRM_FULL), ['internal: แถว "ยืนยันผลจากแบบของ" ต้องมี 1 แถว — พบ 2']);
+  const leaked = { version: 'customer', html: `${papers[0].html}<p>ยืนยันผลจากแบบของ ${CONFIRM_FULL}</p>` };
+  assert.deepEqual(confirmRowFailures([leaked], CONFIRM_FULL), [
+    'customer: ฉบับลูกค้าต้องไม่มี "ยืนยันผลจากแบบของ"',
+    'customer: ฉบับลูกค้าต้องไม่มีเลข RQ-AS-26100345 ของใบต้นทาง',
+    'customer: ฉบับลูกค้าต้องไม่มีเลข SU-26100003-0 ของใบต้นทาง',
+  ]);
 });

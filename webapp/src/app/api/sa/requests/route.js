@@ -30,6 +30,12 @@ import { surveyVariantRefusal, surveyVariantsOff } from '@/lib/service/surveyInt
 import { surveyZoneSeedPatch } from '@/lib/service/surveyIntakeSeed';
 import { requestImpliedVariant } from '@/lib/requests/variantSwitch';
 import { surveyZoneBusyError } from '@/lib/service/zonePickState';
+import { loadSurveyConfirmContext, loadSurveyConfirmOriginal } from '@/lib/service/surveyConfirmRepo';
+import {
+  SURVEY_CONFIRM_ID_PATTERN, SURVEY_CONFIRM_KIND_ERROR, SURVEY_CONFIRM_NO_ORIGINAL,
+  surveyConfirmAuditSuffix, surveyConfirmCreateBody, surveyConfirmForbiddenText, surveyConfirmPlan,
+} from '@/lib/service/surveyConfirmLink';
+import { canManageRequest } from '@/lib/requests/access';
 import {
   deptForRequest, requestDeptError,
   legacyKindError, requestLineShape, requestUsesPdr, requestKindLabel, requestNeedsRef,
@@ -100,8 +106,41 @@ export async function POST(request) {
     return Response.json({ error: 'ไม่มีสิทธิ์เปิดคำร้อง' }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  let body = await request.json().catch(() => ({}));
   const kind = body.kind;
+  /* ⭐ **ใบยืนยันหน้างาน** (ประเมินจากแบบ งวด S5 A-2 · R1) — ปุ่ม `ขอยืนยันหน้างาน` บนใบต้นทางส่ง `confirmsRequestId`
+     มาทาง `extra` ของ `createRequestDraft` (ไม่ใช่ช่องของฟอร์ม)
+     · ด่านทั้งชุดคือ `surveyConfirmPlan` ตัวเดียวกับปุ่ม/GET เติมฟอร์ม/ด่านตอนยื่น (stage 'open': ร่างของอีกคน = N1 ·
+       พื้นที่ที่ยกถูกใบที่ยังเปิดถืออยู่ = N11 ด้วยประโยคที่ไม่บอกให้ "เอารายการออก" — ฟอร์มล็อกพื้นที่ไว้)
+     · ผ่านแล้ว **server ประกอบ body เอง** (`surveyConfirmCreateBody`): หัวข้อ · วิธี 'standard' · ดีล · สถานที่ ·
+       ชุดพื้นที่ = ที่ยกจากใบต้นทางตามลำดับ — ของที่โพสต์มาสำหรับห้าช่องนี้ถูกทิ้ง ที่เหลือ (วัน · เวลา · รายละเอียด ·
+       ด่วน · ทีม · ชื่อเรื่องที่พิมพ์) คงตามที่โพสต์
+     🔴 **ต้องอยู่ก่อนส่วนวิธีประเมินของ S4 ข้างล่าง** — สวิตช์ `SURVEY_DRAWING_METHOD` เปิด = body ที่ไม่มี variant โดน
+        `requestShapeError` ตีกลับ และ `shaped` · `subject` · `surveyZoneSeedPatch(variant)` อ่านค่าที่โพสต์มา ⇒ ถ้าทับทีหลัง
+        แถวพื้นที่ที่ยกจะเกิดเป็นแถวจากแบบ · วางตรงนี้แล้ว 'standard' ผ่านด่านวิธีได้ทั้งสวิตช์เปิดและปิด
+     ⚠️ ใบที่ไม่ใช่ประเมินพื้นที่ = ไม่มีใบต้นทาง (N4) ตอบก่อนด่านสิทธิ์ · อ่านพัง = 500 ไม่ใช่ "ไม่มี" (ไม่มีอะไรถูกเขียน)
+     ⚠️ ไม่มีบรรทัดเธรดตอนสร้าง — ร่างยังไม่มีเลขและอาจถูกทิ้ง (บรรทัดแรกเขียนตอนยื่น) */
+  let confirmOf = null;
+  if (body.confirmsRequestId != null) {
+    if (kind !== 'site_survey') return Response.json({ error: SURVEY_CONFIRM_KIND_ERROR }, { status: 400 });
+    const noOriginal = () => Response.json(
+      { error: SURVEY_CONFIRM_NO_ORIGINAL, code: 'confirm_no_original', open: null }, { status: 404 },
+    );
+    const confirmsId = String(body.confirmsRequestId).trim();
+    if (!SURVEY_CONFIRM_ID_PATTERN.test(confirmsId)) return noOriginal();
+    const { original, error: originalError } = await loadSurveyConfirmOriginal(supabase, confirmsId);
+    if (originalError) return Response.json({ error: originalError }, { status: 500 });
+    if (!original || original.kind !== 'site_survey') return noOriginal();
+    if (!canManageRequest(user, original)) {
+      return Response.json({ error: surveyConfirmForbiddenText(original) }, { status: 403 });
+    }
+    const confirmCtx = await loadSurveyConfirmContext(supabase, original);
+    if (confirmCtx.error) return Response.json({ error: confirmCtx.error }, { status: 500 });
+    const plan = surveyConfirmPlan({ original, ...confirmCtx, stage: 'open' });
+    if (!plan.ok) return Response.json({ error: plan.error, code: plan.code, open: plan.open }, { status: plan.status });
+    body = surveyConfirmCreateBody(body, original, plan);
+    confirmOf = original;
+  }
   /* ⭐ **วิธีประเมินที่ฝ่ายขายเลือกตอนยื่น** (ประเมินจากแบบ งวด 4 · S4 A-2) — สวิตช์ `SURVEY_DRAWING_METHOD`
      อ่านที่นี่ (server) เท่านั้น
      · สวิตช์ปิด: เหลือทางเดียว ("ลงหน้างาน") ⇒ body ที่ไม่ได้ส่ง `variant` มา = ทางนั้น
@@ -505,6 +544,9 @@ export async function POST(request) {
       // คอลัมน์ที่ DB ยังไม่มี (mig 0225 ยังไม่รัน = ใบที่ไม่อ้าง QT ต้องยังเปิดได้)
       // บทเรียนเดียวกับ `productTypeId` ที่คอมเมนต์ล่างเล่าไว้
       ...(quotationId ? { quotationId } : {}),
+      /* ใบยืนยันหน้างาน (งวด S5 · คอลัมน์จาก mig 0408) — ลิงก์ไปใบต้นทาง **เขียนตอนสร้างครั้งเดียว** ไม่มีทางแก้ทีหลัง
+         ⚠️ ใส่คีย์เฉพาะใบยืนยัน ด้วยเหตุผลเดียวกับ `quotationId` บรรทัดบน — ใบปกติไม่พกคีย์นี้เลย */
+      ...(confirmOf ? { surveyConfirmOfId: confirmOf.id } : {}),
       // ยอดที่ขอวางบิล (mig 0257) — ใส่คีย์เฉพาะหัวข้อที่ยึด QT ด้วยเหตุผลเดียวกับ
       // บรรทัดบน: migration ยังไม่รัน = หัวข้ออื่นต้องยังเปิดใบได้ตามปกติ
       ...(bill ? {
@@ -687,7 +729,9 @@ export async function POST(request) {
       : installmentSeq ? ` · เลือกงวด ${installmentSeq} ของแผนใบเสนอราคา (ผูกเมื่อเกิดงวดบนใบสั่งขาย)` : '';
     await recordAudit({
       user, action: 'create', entityType: 'dept_request', entityId: requestId, after: created,
-      summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)${linkedNote}`, request,
+      // ใบยืนยันหน้างานต่อท้าย " · ใบยืนยันหน้างานของ {RQ}" — ตามกลับไปใบต้นทางได้จากสรุปบรรทัดเดียว · ผูกงวด (mig 0413) ต่อท้ายอีกชิ้น
+      summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)${confirmOf ? surveyConfirmAuditSuffix(confirmOf) : ''}${linkedNote}`,
+      request,
     });
     return Response.json(link.warning ? { ...created, _warning: link.warning } : created, { status: 201 });
   } catch (e) {

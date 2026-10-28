@@ -22,12 +22,13 @@ import { IN_CHUNK_SIZE, fetchInChunks } from '@/lib/supabaseInChunks';
 import { loadCrewNames, visitHelperIds } from './crew/visitCrew';
 import { loadPackageSizesOrNull } from './packageSizesRepo';
 import { SEND_BACK_DONE_KIND, SEND_BACK_KIND } from './survey';
+import { loadSurveyReportConfirms } from './surveyConfirmRepo';
 import { surveyMethodMix, surveyNeedsVisit } from './surveyMethod';
 import { paginateSurveyReport, surveyReportOverflowErrors } from './surveyReportLayout';
 import { surveyReportSignaturesOn } from './surveyReportSignFlag';
 import { SURVEY_SIGN_RULE, surveyReportSignerVersions } from './surveyReportSigners';
 import {
-  SURVEY_REPORT_INPUT_LABELS, SURVEY_REPORT_NO_VISIT, buildSurveyReportSnapshot, surveyReportFreezeIssues,
+  SURVEY_REPORT_INPUT_LABELS, SURVEY_REPORT_NO_VISIT, buildSurveyReportSnapshot, surveyReportConfirmsDocNo, surveyReportFreezeIssues,
 } from './surveyReportSnapshot';
 import { surveyReportSendWarnings, surveyReportView } from './surveyReportView';
 import { loadSurveyZones } from './surveyRepo';
@@ -207,6 +208,13 @@ function otherVisitsOf(visits, closed) {
  *   ⭐ **ใบที่มีพื้นที่ประเมินจากแบบ** ถูกถามเหมือนใบลงหน้างาน (งวด S3 §2.6): ใบผสมอ่านลายเซ็นของผู้ประเมินบนนัดกับผู้ส่งผล ·
  *     ใบจากแบบล้วนไม่มีนัด ⇒ อ่านของผู้ส่งผลคนเดียว (ที่นั่งที่ 1 ใช้ลายเซ็นเดียวกันเมื่อ `surveyDrawingSeatSigner` บอกว่าเป็นคนเดียวกัน)
  *   ⚠️ ไม่ใช้ `loadActiveSignatureAsset` ของใบเสนอราคา: ตัวนั้นกลืน error เป็น "ไม่มี" และลากเครื่องยนต์ใบเสนอราคาเข้า GET ที่เบา
+ *
+ * ⭐ **ใบยืนยันหน้างาน (งวด S5 กลุ่ม F)** — `inputs.confirmsDocNo` = ข้อความของแถว "ยืนยันผลจากแบบของ" ในภาคผนวก ง ของฉบับภายใน
+ *   ("{RQ-AS-…} ({SU-…})" · "{RQ-AS-…}" เมื่อใบต้นทางไม่มีเอกสารฉบับปัจจุบัน — `surveyReportConfirmsDocNo`) · **คีย์มีเฉพาะเมื่อเป็นสตริง**
+ *   ถามผ่าน `loadSurveyReportConfirms` ตัวเดียว (ไฟล์นี้ไม่เอ่ยชื่อคอลัมน์ลิงก์ — ลิสต์ปิดของ surveyMethodGuards) ซึ่ง **ไม่ยิงคำสั่ง**
+ *   เมื่อใบไม่ผูก · ใบต้นทางถูกลบ = `null` (ไม่มีคีย์ ไม่มีแถว — ไม่ใช่อ่านพลาด)
+ *   🔴 อ่านใบต้นทาง/เอกสารของมันไม่สำเร็จ = ชิ้น `confirms` เข้า `unknown` เหมือนชิ้นอื่น ⇒ ขั้นออกเลขไม่ออก · รอบตรวจก่อนส่งผลบอกว่าอ่านไม่สำเร็จ
+ *      (กระดาษที่ตรึงแล้วเติมแถวทีหลังไม่ได้ — ห้ามตกไปเป็น "ไม่ผูก") · รอบตรวจก่อนส่งผล (`surveyReportPrecheck`) ได้ชิ้นนี้จากตัวโหลดตัวนี้
  *
  * `unknown` = ชื่อชิ้นที่อ่านไม่สำเร็จ (คีย์ของ `SURVEY_REPORT_INPUT_LABELS`) · ชุดเดียวกันอยู่ใน `inputs.unknown` ด้วย
  *   ⇒ `surveyReportFreezeIssues(inputs)` เปลี่ยนข้อ "ไม่มี" ของชิ้นนั้นเป็น "อ่านไม่สำเร็จ" (ชนิด `system`) เอง
@@ -435,7 +443,7 @@ export async function loadSurveyReportInputs(supabase, {
     return { signatures, approver: signatures ? approver : null };
   })() : null;
 
-  const [zonePart, visitPart, site, customerRow, deal, history, sizeRows, company, standard, signPart] = await Promise.all([
+  const [zonePart, visitPart, site, customerRow, deal, history, sizeRows, company, standard, signPart, confirmsDocNo] = await Promise.all([
     zonesChain,
     visitChain,
     request?.siteId
@@ -471,6 +479,13 @@ export async function loadSurveyReportInputs(supabase, {
       .eq('documentKey', SURVEY_REPORT_STANDARD_KEY).eq('status', 'published')
       .order('versionNumber', { ascending: false }).limit(1)),
     signChain,
+    /* งวด S5 — ใบยืนยันหน้างาน: เลขที่ใบต้นทาง + เอกสารประเมินฉบับปัจจุบันของมัน (หัวฟังก์ชัน ⭐) · ตัวอ่านไม่ throw และคืน
+       `{ error }` เมื่ออ่านพลาด ⇒ ชิ้น `confirms` เข้า `unknown` · ใบไม่ผูก/ใบต้นทางหาย = `null` */
+    read('confirms', async () => {
+      const found = await loadSurveyReportConfirms(supabase, request);
+      if (found?.error) return { error: { message: String(found.error) } };
+      return { data: surveyReportConfirmsDocNo(found) };
+    }),
   ]);
 
   const form = documentStandardToForm((standard || [])[0] || null);
@@ -508,6 +523,8 @@ export async function loadSurveyReportInputs(supabase, {
     // งวด S3 — ค่าสวิตช์ที่ผู้เรียกส่งมา (ไฟล์นี้ไม่อ่านสวิตช์) · รอบตรวจก่อนส่ง (ทั้งกติกาลายเซ็นเปิดและปิด)
     drawingMethodEnabled: drawingMethodEnabled === true,
     ...(pendingAnswer && request ? { answerPending: true } : {}),
+    // งวด S5 — ข้อความของแถว "ยืนยันผลจากแบบของ" · ไม่ผูก / ใบต้นทางหาย / อ่านพลาด = ไม่มีคีย์ (อ่านพลาดอยู่ใน `unknown` แล้ว)
+    ...(typeof confirmsDocNo === 'string' ? { confirmsDocNo } : {}),
     /* กติกาลายเซ็นจริง — คีย์ทั้งชุดมีเฉพาะตอนเปิด (ปิด = ไม่มีคีย์ลายเซ็นสักตัว · ภาพนิ่งไม่มี `signatures`) */
     ...(signRule ? {
       signatureRule: SURVEY_SIGN_RULE,

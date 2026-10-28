@@ -53,7 +53,8 @@ const SENT = { ...PROMISED, status: 'answered', answeredAt: '2026-10-14T03:00:00
 test('ค่าคงที่ของงวด S2b ตรงตัวตามแผน — ชิปคิว · บรรทัดที่มา · ประโยคปุ่มที่ยังไม่มี · ประโยคเพิ่มพื้นที่ของใบงานโต๊ะ', () => {
   assert.equal(SURVEY_QUEUE_DESK_CHIP, 'จากแบบ · ไม่ต้องลงคิว');
   assert.equal(SURVEY_METHOD_BACK_ORIGIN('ลูกค้าขอให้เข้าวัดจริง'), 'หัวหน้าเปลี่ยนเป็นลงหน้างาน: ลูกค้าขอให้เข้าวัดจริง');
-  assert.equal(SURVEY_CONFIRM_ACTION_READY, false, 'ปุ่มขอยืนยันหน้างานมากับงวด S5');
+  /* งวด S5 (Integrate §4.6 ข้อ 1): สวิตช์เปิดแล้ว — ค่าคงที่ของประโยคยังอยู่ (ย้อนกลับได้คำเดียว · ถอดทิ้งงวดหลัง §1.3) */
+  assert.equal(SURVEY_CONFIRM_ACTION_READY, true, 'ปุ่มขอยืนยันหน้างานเปิดใช้ตั้งแต่งวด S5');
   assert.equal(SURVEY_CONFIRM_PENDING_NOTE,
     'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้');
   assert.equal(SURVEY_DESK_ADD_HEAD_ONLY, 'ใบนี้หัวหน้าประเมินจากแบบ — เพิ่มพื้นที่ได้เฉพาะหัวหน้าฝ่ายบริการ');
@@ -67,7 +68,8 @@ test('ค่าคงที่ของงวด S2b ตรงตัวตาม
 
 test('สวิตช์เดียวของปุ่มขอยืนยันหน้างาน: แถบแจ้งของฝ่ายขายกับไทล์ของหัวหน้าได้ประโยคเดียวกัน และ action.ready ตามค่าคงที่', () => {
   const banner = surveyJobView({ request: ask({ ...SENT, surveyConfirm: 'needed' }), today: TODAY, viewer: SALES }).zones.drawingBanner;
-  assert.equal(banner.note, SURVEY_CONFIRM_PENDING_NOTE);
+  // งวด S5 เปิดสวิตช์ ⇒ ประโยค "ปุ่มจะเปิดใช้ในรอบถัดไป" หายจากแถบแจ้ง · `ready` ยังเท่าค่าคงที่
+  assert.equal(banner.note, null);
   assert.equal(banner.action.ready, SURVEY_CONFIRM_ACTION_READY);
   // "ไม่ต้องยืนยัน" ไม่เอ่ยถึงปุ่ม — ไม่มีประโยคต่อท้าย
   const plain = surveyJobView({ request: ask({ ...SENT, surveyConfirm: 'not_needed' }), today: TODAY, viewer: SALES }).zones.drawingBanner;
@@ -76,7 +78,8 @@ test('สวิตช์เดียวของปุ่มขอยืนย�
   const confirm = surveySendConfirm({
     docNo: 'RQ-AS-26100312', closesVisit: null, method: { mix: { onsite: 0, drawing: 3, mode: 'drawing' }, confirm: null, openVisit: null },
   });
-  assert.equal(confirm.choice.pendingNote, SURVEY_CONFIRM_PENDING_NOTE);
+  // …และหายจากไทล์ของหัวหน้าพร้อมกัน (สวิตช์ตัวเดียว)
+  assert.equal(confirm.choice.pendingNote, null);
   // คำบนไทล์ยังเป็นคำของแผน (มติเจ้าของ O1) — ประโยคใหม่อยู่ที่คีย์ของตัวเอง
   assert.deepEqual(confirm.choice.options.map((o) => o.value), ['needed', 'not_needed']);
   assert.equal(JSON.stringify(confirm.choice.options).includes('รอบถัดไป'), false);

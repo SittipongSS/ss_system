@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import * as leaf from './surveyMethod.js';
 import {
   SURVEY_METHOD_DRAWING, SURVEY_METHOD_ONSITE,
-  isDrawingZone, isJpgOrPngFile, surveyConfirmState, surveyDrawingAssessor, surveyDropSupersededDrawing,
+  isDrawingZone, isJpgOrPngFile, surveyConfirmPending, surveyConfirmState, surveyDrawingAssessor,
+  surveyDropSupersededDrawing,
   surveyMethodMix, surveyNeedsVisit, surveyNewZoneMethod, surveyZoneChangeFlips, surveyZoneNeedsResave,
   surveyZoneSavedAsDrawing, zoneMethod,
 } from './surveyMethod.js';
@@ -415,6 +416,30 @@ test('surveyConfirmState: แถวลงหน้างาน / ไม่มี
   assert.equal(surveyConfirmState(dw()), 'drawing', 'อาร์กิวเมนต์ที่สองไม่บังคับ');
 });
 
+/* ── 8a') ค่าที่สี่ 'confirming' (งวด S5 §2.4) — มีใบยืนยันหน้างานที่เปิดอยู่ถือพื้นที่ไว้ ─────────────── */
+test('surveyConfirmState: อาร์กิวเมนต์ที่สาม confirmation — needed + มีใบยืนยัน = confirming · สามค่าเดิมไม่ขยับ', () => {
+  const child = { id: 'DR-child', docNo: 'RQ-AS-26100009' };
+  const cases = [
+    ['จากแบบ + needed + มีใบยืนยัน', dw(), { surveyConfirm: 'needed' }, child, 'confirming'],
+    ['จากแบบ + needed + ไม่มีใบยืนยัน (null)', dw(), { surveyConfirm: 'needed' }, null, 'awaiting'],
+    ['จากแบบ + not_needed + มีใบยืนยัน', dw(), { surveyConfirm: 'not_needed' }, child, 'drawing'],
+    ['จากแบบ + ยังไม่ได้เลือก + มีใบยืนยัน', dw(), { surveyConfirm: null }, child, 'drawing'],
+    ['จากแบบ + ไม่มีใบ + มีใบยืนยัน', dw(), null, child, 'drawing'],
+    ['ลงหน้างาน + needed + มีใบยืนยัน', on(), { surveyConfirm: 'needed' }, child, 'none'],
+    ['ไม่มีแถว + มีใบยืนยัน', null, { surveyConfirm: 'needed' }, child, 'none'],
+  ];
+  for (const [name, row, request, confirmation, want] of cases) {
+    assert.equal(surveyConfirmState(row, request, { confirmation }), want, name);
+  }
+  assert.equal(surveyConfirmState(dw(), { surveyConfirm: 'needed' }, {}), 'awaiting', 'ออบเจ็กต์ว่าง = ไม่มีใบยืนยัน');
+});
+
+test('surveyConfirmPending: awaiting กับ confirming = ตัวเลขจากแบบที่ยังไม่ได้ยืนยัน · ค่าอื่นไม่ใช่', () => {
+  assert.equal(surveyConfirmPending('awaiting'), true);
+  assert.equal(surveyConfirmPending('confirming'), true);
+  for (const v of ['none', 'drawing', null, undefined, '', 'Awaiting']) assert.equal(surveyConfirmPending(v), false, String(v));
+});
+
 /* ── 8b) surveyDropSupersededDrawing — ผลจากแบบที่ถูกผลลงหน้างานรุ่นหลังแทนแล้ว ─────────────── */
 test('surveyDropSupersededDrawing: ทิ้งแถวจากแบบเฉพาะเมื่อมีแถวลงหน้างานของใบที่ **เปิดทีหลัง**', () => {
   const at = { R1: '2026-10-01T03:00:00.000Z', R2: '2026-10-05T03:00:00+00:00', R3: '2026-10-09T03:00:00.000Z' };
@@ -483,6 +508,8 @@ test('ชื่อที่ส่งออกครบตามสเปค S1 �
     'surveyConfirmState', 'surveyDropSupersededDrawing',
     // งวด S3 §2.1
     'surveyZoneSavedAsDrawing',
+    // งวด S5 §2.4
+    'surveyConfirmPending',
   ];
   for (const name of fns) assert.equal(typeof leaf[name], 'function', name);
   assert.equal(typeof leaf.SURVEY_METHOD_ONSITE, 'string');
