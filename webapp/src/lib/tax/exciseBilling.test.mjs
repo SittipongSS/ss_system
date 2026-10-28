@@ -99,16 +99,42 @@ test("VAT คิดที่ lib เดียว — ห้ามฮาร์ด
 // ── ตัวคิดบรรทัดภาษี: ทางเดียวของทั้งระบบ (มติผู้ใช้ 2026-07-29) ────────────────
 // อัตรามาจากราคาขายปลีกของ FG ซึ่งเก็บที่ products.exciseTax/localTax — ราคาใน SO
 // เป็นราคาผลิต ใช้คิดภาษีไม่ได้ ทุกทางจึงต้องอ้างเลข FG กลับไปดึงอัตราจากสินค้า
-test('exciseTaxLine: ปัดอัตราต่อหน่วยก่อน แล้วคูณจำนวน (ภาษี/ชิ้น × จำนวน = ยอดรวม)', () => {
+/* ⭐ มติ Q2 (28/10/2026 · ข้อ ข): ภาษี/ชิ้น = ปัด(อัตรารวม 8.8%) ครั้งเดียว — ไม่ใช่ปัดสองอัตราแยกแล้วบวก
+   8.044 + 0.8044 = 8.8484 → 8.85/ชิ้น (สูตรเดิม 8.04 + 0.80 = 8.84 ⇒ ขาดสตางค์ต่อชิ้น) ·
+   มติ D1: สรรพสามิต/ชิ้น = ปัด(8.044) = 8.04 · ท้องถิ่น/ชิ้น = 8.85 − 8.04 = 0.81 (ช่อง ภส. สองช่องรวมกันเท่ายอดที่เก็บ) */
+test('exciseTaxLine: ภาษี/ชิ้นปัดครั้งเดียวจากอัตรารวม แล้วคูณจำนวน · แตกสองช่องจากยอดที่ปัดแล้ว', () => {
   const line = exciseTaxLine({ exciseRatePerUnit: 8.044, localTaxRatePerUnit: 0.8044, quantity: 10 });
+  assert.equal(line.taxPerUnit, 8.85);
   assert.equal(line.exciseRatePerUnit, 8.04);
-  assert.equal(line.localTaxRatePerUnit, 0.8);
+  assert.equal(line.localTaxRatePerUnit, 0.81);
+  assert.equal(line.totalTax, 88.5);
   assert.equal(line.totalExciseTax, 80.4);
-  assert.equal(line.totalLocalTax, 8);
-  assert.equal(line.totalTax, 88.4);
-  // กระทบยอดด้วยมือได้: อัตรา/ชิ้น × จำนวน ต้องเท่ากับยอดรวมของบรรทัดเป๊ะ
-  assert.equal(round2(line.exciseRatePerUnit * line.quantity), line.totalExciseTax);
-  assert.equal(round2(line.localTaxRatePerUnit * line.quantity), line.totalLocalTax);
+  assert.equal(line.totalLocalTax, 8.1);
+  // กระทบยอดด้วยมือได้: ภาษี/ชิ้น × จำนวน = ยอดรวมของบรรทัดเป๊ะ · สองช่องรวมกันเท่ายอด ทั้งรายชิ้นและทั้งบรรทัด
+  assert.equal(round2(line.taxPerUnit * line.quantity), line.totalTax);
+  assert.equal(round2(line.exciseRatePerUnit + line.localTaxRatePerUnit), line.taxPerUnit);
+  assert.equal(round2(line.totalExciseTax + line.totalLocalTax), line.totalTax);
+});
+
+// ตัวอย่างของแผน: ราคาขายปลีก 100 รวม VAT → ฐาน 93.4579… → 8.8% = 8.2243 → 8.22/ชิ้น (สูตรเดิมได้ 7.48 + 0.75 = 8.23)
+test('exciseTaxLine: ราคาขายปลีก 100 → ภาษี 8.22/ชิ้น · สรรพสามิต 7.48 · ท้องถิ่น 0.74', () => {
+  const rates = productTaxRates(100);
+  const line = exciseTaxLine({ exciseRatePerUnit: rates.exciseTax, localTaxRatePerUnit: rates.localTax, quantity: 1 });
+  assert.deepEqual(
+    { t: line.taxPerUnit, e: line.exciseRatePerUnit, l: line.localTaxRatePerUnit },
+    { t: 8.22, e: 7.48, l: 0.74 },
+  );
+});
+
+// 🐞 float: 1.005 × 100 = 100.49999… ⇒ สูตรเดิมปัดครึ่งสตางค์ลง · ปัดด้วยสตางค์จำนวนเต็มต้องขึ้น
+test('round2 ปัดครึ่งสตางค์ขึ้นจริง (ไม่ตกหลุม float)', () => {
+  assert.equal(round2(1.005), 1.01);
+  assert.equal(round2(1234.005), 1234.01);
+  assert.equal(round2(8.8484), 8.85);
+  assert.equal(round2(0.335), 0.34);
+  assert.equal(round2(1e-7), 0);
+  assert.equal(round2('2.5'), 2.5);
+  assert.equal(round2(null), 0);
 });
 
 // 🐞 สูตรเดิมของใบยื่นที่สร้างด้วยมือ: ปัด "ผลรวมต่อหน่วย" แล้วแตกกลับด้วยสัดส่วน

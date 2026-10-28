@@ -31,7 +31,17 @@ export const LOCAL_TAX_RATE_OF_EXCISE = 0.1; // ท้องถิ่น — % �
 /** อัตรารวมที่ยื่นจริง (8.8%) — เลขที่ธุรกิจใช้คุยกัน · derived ห้ามพิมพ์เอง */
 export const EXCISE_TOTAL_RATE = EXCISE_RATE * (1 + LOCAL_TAX_RATE_OF_EXCISE);
 
-export const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+/* ปัดสองตำแหน่งด้วย "สตางค์จำนวนเต็ม" — เลื่อนจุดทศนิยมผ่านสตริง ไม่ใช่ `× 100` ของ float
+   🐞 `Math.round(1.005 * 100) / 100` ได้ 1.00 (1.005 × 100 = 100.49999…) · ภาษี/ชิ้นที่ลงท้ายครึ่งสตางค์จะปัดลง
+   ทั้งที่กฎปัดคือปัดขึ้น ⇒ เลขบนใบยื่นต่างจากเลขที่ RA กดเครื่องคิดเลข (มติ Q2 28/10 · แผนรื้อสรรพสามิต หมวด 3.4) */
+const shiftDecimal = (value, places) => {
+  const [mantissa, exponent = '0'] = String(value).split('e');
+  return Number(`${mantissa}e${Number(exponent) + places}`);
+};
+export const round2 = (value) => {
+  const n = Number(value) || 0;
+  return shiftDecimal(Math.round(shiftDecimal(n, 2)), -2);
+};
 
 /**
  * อัตราภาษีต่อหน่วยของสินค้าหนึ่งตัว จากราคาขายปลีก — **สูตรเดียวของทั้งระบบ**
@@ -68,6 +78,11 @@ export function productTaxRates(retailPriceIncVat, { taxable = true } = {}) {
 //
 // กฎที่ยึด = กฎเดียวกับ billedTaxLine ข้างล่าง: **ปัดต่อหน่วยก่อน แล้วคูณจำนวน**
 // เพื่อให้เอกสารกระทบยอดด้วยมือได้ (ภาษี/ชิ้น × จำนวน = รวมภาษี พอดี)
+//
+// ⭐ **ภาษี/ชิ้นปัดครั้งเดียวจากอัตรารวม 8.8%** (มติ Q2 28/10/2026 · ข้อ ข) — เดิมปัดสรรพสามิตกับท้องถิ่นแยกกัน
+//    แล้วบวก (8.044 + 0.8044 → 8.04 + 0.80 = 8.84) ได้คนละเลขกับ "ฐาน × 8.8% แล้วปัด" (8.8484 → 8.85) ที่ลูกค้า/RA คิด
+//    แบบ ภส. ยังต้องกรอกสองช่อง ⇒ แตกจากยอดที่ปัดแล้ว (มติ D1): สรรพสามิต/ชิ้น = ปัด(อัตราสรรพสามิต) ·
+//    ท้องถิ่น/ชิ้น = ภาษี/ชิ้น − สรรพสามิต/ชิ้น ⇒ สองช่องรวมกันเท่ายอดที่เก็บเสมอ (ทั้งรายชิ้นและทั้งบรรทัด)
 // ── ธง "เสียภาษีไหม" ของสินค้าหนึ่งตัว ────────────────────────────────────
 // ค่าตั้งต้นมาจากธง isExcise ของหมวด (mig 0131) แต่ **การยกเว้น/บังคับรายตัวของฝ่าย
 // กฎหมาย (taxableOverride) ชนะเสมอ และต้องอยู่รอดการแก้สเปคทุกครั้ง**
@@ -82,17 +97,19 @@ export function resolveProductTaxable({ taxableOverride, autoTaxable } = {}) {
 
 export function exciseTaxLine({ exciseRatePerUnit, localTaxRatePerUnit, quantity } = {}) {
   const qty = Number(quantity) || 0;
-  const excisePerUnit = round2(exciseRatePerUnit);
-  const localPerUnit = round2(localTaxRatePerUnit);
+  const exciseRate = Number(exciseRatePerUnit) || 0;
+  const taxPerUnit = round2(exciseRate + (Number(localTaxRatePerUnit) || 0));
+  const excisePerUnit = Math.min(round2(exciseRate), taxPerUnit);
+  const totalTax = round2(taxPerUnit * qty);
   const totalExciseTax = round2(excisePerUnit * qty);
-  const totalLocalTax = round2(localPerUnit * qty);
   return {
     quantity: qty,
+    taxPerUnit,
     exciseRatePerUnit: excisePerUnit,
-    localTaxRatePerUnit: localPerUnit,
+    localTaxRatePerUnit: round2(taxPerUnit - excisePerUnit),
     totalExciseTax,
-    totalLocalTax,
-    totalTax: round2(totalExciseTax + totalLocalTax),
+    totalLocalTax: round2(totalTax - totalExciseTax),
+    totalTax,
   };
 }
 

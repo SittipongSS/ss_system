@@ -23,8 +23,9 @@ import {
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import {
   customerMismatchMessage, customerMismatchedLines,
-  enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
+  enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines, refreshFgLinesForDisplay,
 } from '@/lib/sales/quoteLines';
+import { exciseChargeLineMessage } from '@/lib/excise/exciseCharge';
 import {
   LinePackError, lineMoneyRuleMessage, linePackGateMessage, linePackIssues, linePackMessage,
 } from '@/lib/sales/linePacks';
@@ -343,10 +344,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       previousLines: before.lines || [],
     });
     if (mismatched.length) return badRequest(customerMismatchMessage(mismatched));
+    // สินค้า 04-003 (ค่าภาษีสรรพสามิต) ใส่ในใบขายไม่ได้ — เฉพาะบรรทัดที่เพิ่งใส่ (แผนรื้อสรรพสามิต หมวด 3.3)
+    const chargeLines = await exciseChargeLinesAdded(supabase, newLines, {
+      previousLines: before.lines || [], origin: before.origin,
+    });
+    if (chargeLines.length) return badRequest(exciseChargeLineMessage(chargeLines));
     // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
     // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
     newLines = await enforceMasterPrices(supabase, newLines, before.lines || [], {
-      customerId: before.customerId,
+      customerId: before.customerId, origin: before.origin,
     });
     /* ด่านเลขแพ็คบนบรรทัดชุดสุดท้ายที่จะส่งเข้า RPC (หลัง sync ราคา · ก่อนเขียนอะไรลงฐาน)
        ⭐ มติเจ้าของ 08/10 (A2–A4 · งวด PR-3): คำขอที่ **เขียนบรรทัดหรือยอด** ของใบ (ส่งบรรทัดมา · แก้ VAT · แก้ส่วนลดท้ายใบ) ต้องมีเลขแพ็ค 1–9,999

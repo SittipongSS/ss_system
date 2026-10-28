@@ -12,8 +12,9 @@ import {
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import {
   customerMismatchMessage, customerMismatchedLines,
-  enforceMasterPrices, normalizeManualLines, seedLinesFromProject,
+  enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines, seedLinesFromProject,
 } from '@/lib/sales/quoteLines';
+import { exciseChargeLineMessage } from '@/lib/excise/exciseCharge';
 import {
   LinePackError, QUOTE_PACK_INPUT_OPEN, lineMoneyRuleMessage, linePackIssues, linePackMessage, withPackColumn,
 } from '@/lib/sales/linePacks';
@@ -55,6 +56,9 @@ export async function createQuotationDraft({
     customerId: deal.customerId,
   });
   if (mismatched.length) throw new QuotationDraftError(customerMismatchMessage(mismatched));
+  // สินค้า 04-003 (ค่าภาษีสรรพสามิต) ใส่ในใบขายไม่ได้ (แผนรื้อสรรพสามิต หมวด 3.3) — ใบใหม่ ทุกบรรทัดคือบรรทัดใหม่
+  const chargeLines = await exciseChargeLinesAdded(supabase, manualLines);
+  if (chargeLines.length) throw new QuotationDraftError(exciseChargeLineMessage(chargeLines));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
   let lines = await enforceMasterPrices(supabase, manualLines, [], {
@@ -70,6 +74,8 @@ export async function createQuotationDraft({
        (ผ่าน `enforceMasterPrices` ด้วย เพื่อให้บรรทัด seed ได้ป้ายเจ้าของเหมือนกัน) */
     const seedMismatch = await customerMismatchedLines(supabase, lines, { customerId: deal.customerId });
     if (seedMismatch.length) throw new QuotationDraftError(customerMismatchMessage(seedMismatch));
+    const seedChargeLines = await exciseChargeLinesAdded(supabase, lines);
+    if (seedChargeLines.length) throw new QuotationDraftError(exciseChargeLineMessage(seedChargeLines));
     lines = await enforceMasterPrices(supabase, lines, [], { customerId: deal.customerId });
   }
   /* ด่านเลขแพ็คบน **บรรทัดชุดสุดท้าย** ที่จะถูกเขียน (รวมบรรทัดที่ตั้งต้นจากโครงการ ซึ่งไม่ผ่านตัว normalize) — ก่อนออกเลขใบ
