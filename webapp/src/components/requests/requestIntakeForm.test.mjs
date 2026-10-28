@@ -146,7 +146,7 @@ test('🔴 saveDraft: ร่างเกิดแล้ว (มี id) = พา�
   assert.doesNotMatch(afterId, /setToast\(/, 'หลังร่างเกิดห้ามใช้ Toast ของหน้า — หายไปพร้อมหน้า');
   // 🔴 ทางโยน: id ของร่างอยู่นอก try แล้วตั้งทันทีหลังสร้างผ่าน ⇒ catch ที่มี id ต้องพาไปหน้ารายละเอียดด้วย
   assert.ok(page.slice(start, page.indexOf('try {', start)).includes('let createdId = null;'), 'createdId ต้องประกาศก่อน try');
-  assert.match(body, /if \(error\) \{ setToast\(\{ kind: "error", msg: error \}\); return; \}\n\s*createdId = id \|\| null;/);
+  assert.match(body, /if \(error\) \{ setToast\(\{ kind: "error", msg: confirmData \? refusalText\(error\) : error \}\); return; \}\n\s*createdId = id \|\| null;/);
   const catchEnd = page.indexOf('} finally {', end);
   const catchBody = page.slice(end, catchEnd);
   assert.match(catchBody, /if \(createdId\) \{[\s\S]*?router\.push\(`\/requests\/\$\{createdId\}`\);[\s\S]*?\} else \{/);
@@ -428,7 +428,7 @@ test('S5 F2: กิ่งดีลของโหมดล็อกมาก่�
   assert.ok(lockAt > -1 && editAt > lockAt, 'dealLock ? … : isEdit ? … : <DealPicker>');
   const lock = form.slice(lockAt, editAt);
   assert.match(lock, /from=\{SURVEY_CONFIRM_FROM_ORIGINAL\}/);
-  assert.match(lock, /hint=\{surveyConfirmDealHint\(confirmLock\.original\)\}/);
+  assert.match(lock, /hint=\{keepPhrases\(surveyConfirmDealHint\(confirmLock\.original\), SURVEY_CONFIRM_WRAP_KEEP\)\}/);
   assert.match(lock, /\n\s*bare\n/);
   assert.ok(form.indexOf('<DealPicker', editAt) > editAt, 'ตัวเลือกดีลยังเป็นกิ่งสุดท้าย');
 });
@@ -445,6 +445,6 @@ test('S5 F2: SurveySiteFields — ประโยคล็อกของงว�
   const lockAt = site.indexOf('{confirmLock && !confirmLock.original?.missing ? (');
   const freshAt = site.indexOf('{freshDraft\n', lockAt);
   assert.ok(lockAt > -1 && freshAt > lockAt, 'กิ่ง N19 มาก่อนประโยคของ S4');
-  assert.match(site.slice(lockAt, freshAt), /<small className=\{styles\.hint\}>\{surveyConfirmZonesLockText\(confirmLock\.original\)\}<\/small>/);
+  assert.match(site.slice(lockAt, freshAt), /<small className=\{styles\.hint\}>\{keepPhrases\(surveyConfirmZonesLockText\(confirmLock\.original\), SURVEY_CONFIRM_WRAP_KEEP\)\}<\/small>/);
   assert.match(site, /confirmLock = null,/);
 });

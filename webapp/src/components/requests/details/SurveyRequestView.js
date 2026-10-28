@@ -35,6 +35,7 @@ import { kindMeta } from "@/components/ui/ActionButtons";
 import RichText from "@/components/ui/RichText";
 import ReadableText from "@/components/ui/ReadableText";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
+import { SURVEY_CONFIRM_WRAP_KEEP } from "@/lib/service/surveyConfirmLink";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
 import { DRAWING_SPOT_LABEL } from "@/components/service/SurveyResultTable";
 import { surveyCardUnitNames, surveyCardUnits } from "@/components/service/surveyControlCardUnits";
@@ -177,6 +178,12 @@ function MethodTag({ row }) {
   return <SurveyMethodChip label={methodLabel} className={styles.methodTag} />;
 }
 
+/* หมายเหตุใต้แถบแจ้ง — วลีของงวด S5 ห้ามขาดกลาง (N15 "…โหลดหน้า" / "ใหม่" ที่ 375 · UAT S5 sales รอบ 2 K05) · ไม่มีวลี = thaiText เดิม */
+const keepNote = (note) => {
+  const kept = keepPhrases(note, SURVEY_CONFIRM_WRAP_KEEP);
+  return kept === note ? thaiText(note) : kept;
+};
+
 /* ── แถบแจ้งเหนือตารางผล: "มี n พื้นที่ที่ประเมินจากแบบ — …" (`zones.drawingBanner`) ─────────────────────
    ฝ่ายขายต้องรู้ก่อนเอาตัวเลขไปเสนอราคา ว่ากี่พื้นที่ไม่ได้วัดจากของจริง และหัวหน้าเลือกไว้ว่าต้องยืนยันหน้างานไหม
    · ประโยค + บรรทัดรอง (`note` — ระหว่างที่ปุ่มของฝ่ายขายยังไม่เปิดใช้) มาจาก lib ทั้งคู่ · ไฟล์นี้ไม่พิมพ์เอง
@@ -202,7 +209,7 @@ export function SurveyDrawingBanner({ banner, onConfirm }) {
           aria-disabled={confirm.state === "blocked" ? "true" : undefined}
           data-blocked={confirm.state === "blocked" ? "1" : undefined}
           className={`${styles.action} ${styles.bannerAction}`}
-        >{confirm.label}</GatedAction>
+        ><span className={styles.actionLabel}>{confirm.label}</span></GatedAction>
       ) : null}
     >
       {/* `banner.keep` = วลีที่ห้ามตัดกลาง ("ไม่ต้องยืนยันหน้างาน" · ชื่อปุ่มใน “…”) — lib ประกาศ · ไม่มี = ทางเดิม (S2b แก้หลังตรวจจอ sales รอบ 27/10) */}
@@ -213,12 +220,12 @@ export function SurveyDrawingBanner({ banner, onConfirm }) {
           {banner.refs.map((ref, index) => (
             <Fragment key={ref.href || index}>
               {index ? " · " : null}
-              <Link className="linklike" href={ref.href}>{ref.docNo}</Link>
+              <Link className={`linklike ${styles.docRef} ${styles.bannerRef}`} href={ref.href}>{ref.docNo}</Link>
             </Fragment>
           ))}
         </>
       ) : null}
-      {banner.note ? <span className={styles.bannerNote}>{thaiText(banner.note)}</span> : null}
+      {banner.note ? <span className={styles.bannerNote}>{keepNote(banner.note)}</span> : null}
     </StatusNotice>
   );
 }
@@ -234,7 +241,7 @@ function ConfirmLinks({ zones }) {
       {lines.map((line, index) => (
         <p key={line.href || index} className={styles.confirmLink}>
           {line.segments.map((part, at) => (part.href
-            ? <Link key={at} className="linklike" href={part.href}>{part.text}</Link>
+            ? <Link key={at} className={`linklike ${styles.docRef}`} href={part.href}>{part.text}</Link>
             : <Fragment key={at}>{thaiText(part.text)}</Fragment>))}
         </p>
       ))}

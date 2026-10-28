@@ -23,7 +23,7 @@ import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentReadinessList } from "@/components/ui/DocumentControlPanel";
 import StatusNotice from "@/components/ui/StatusNotice";
 import SkeletonRows from "@/components/ui/Skeleton";
-import thaiText from "@/components/ThaiText";
+import thaiText, { keepPhrases } from "@/components/ThaiText";
 import { requiredChecks } from "@/lib/requests/formTabs";
 import Toast from "@/components/ui/Toast";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
@@ -35,9 +35,17 @@ import { requestImpliedVariant } from "@/lib/requests/variantSwitch";
 import { surveyVariantsOff } from "@/lib/service/surveyIntake";
 /* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-4) — ชื่อหน้า · คำโปรย · คำของลิงก์ · ประโยค N4 มาจากไฟล์ล้วนไฟล์เดียว (F1) */
 import {
-  SURVEY_CONFIRM_ACTION_LABEL, SURVEY_CONFIRM_ID_PATTERN, SURVEY_CONFIRM_NO_ORIGINAL, surveyConfirmBackLinkText,
-  surveyConfirmOpenLinkText, surveyConfirmSubtitle,
+  SURVEY_CONFIRM_ACTION_LABEL, SURVEY_CONFIRM_ID_PATTERN, SURVEY_CONFIRM_NO_ORIGINAL, SURVEY_CONFIRM_WRAP_KEEP,
+  surveyConfirmBackLinkText, surveyConfirmOpenLinkText, surveyConfirmSubtitle,
 } from "@/lib/service/surveyConfirmLink";
+/* ประโยคปฏิเสธของ server — วลีของงวดห้ามขาดกลาง ("หน้า|งาน" ที่ 375 · UAT S5 sales รอบ 1 K08) · ไม่มีวลี = ทาง thaiText เดิม
+   รอบ 2: ทาง keepPhrases ไม่ห่อรหัส (thaiText ห่อ) ⇒ "RQ-AS-" / "26100345" ขาดที่ขีด (N5 · confirm_none_left ที่ 375) — รหัสในประโยค
+   (เลขที่ใบ · รหัสสถานที่) เป็นวลีที่ห้ามขาดด้วย */
+const DOC_CODE = /[A-Z]{2,}(?:-[A-Z0-9]+)+/g;
+const refusalText = (text) => {
+  const kept = keepPhrases(text, [...SURVEY_CONFIRM_WRAP_KEEP, ...(String(text ?? "").match(DOC_CODE) || [])]);
+  return kept === text ? thaiText(text) : kept;
+};
 import { scentCountForOrder } from "@/lib/requests/scentDesignOrders";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -334,7 +342,7 @@ export default function NewRequestPage() {
       /* บันทึกไม่ผ่าน (createRequestDraft ส่งมาแค่ประโยค ไม่มีสถานะ/รหัส · F8) — ถามแผนซ้ำหนึ่งครั้ง: ยังได้ 200 = คงฟอร์มที่พิมพ์ไว้ ·
          ถูกปฏิเสธแล้ว (เช่นมีใบเปิดอยู่แล้ว) = หน้าเปลี่ยนเป็นประโยคนั้นแทนฟอร์ม */
       if (error && confirmData) setConfirmTick((n) => n + 1);
-      if (error) { setToast({ kind: "error", msg: error }); return; }
+      if (error) { setToast({ kind: "error", msg: confirmData ? refusalText(error) : error }); return; }
       createdId = id || null;
       /* ใบร่างเก็บแล้วแต่ผูกงวดไม่ได้ (server ตอบ 201 + `_warning`) — ทักโทนเตือนผ่านถาดกลาง
          (`notifyToast` อยู่ที่ layout ⇒ ไม่หายตอน router.push ต่างจาก Toast ของหน้านี้)
@@ -445,7 +453,7 @@ export default function NewRequestPage() {
   const confirmOriginal = confirmData?.original || confirmRefused?.original || null;
   const confirmBody = confirmLoading ? <SkeletonRows rows={6} /> : confirmRefused ? (
     <StatusNotice tone="warning">
-      {thaiText(confirmRefused.error)}
+      {refusalText(confirmRefused.error)}
       {confirmRefused.open?.id || confirmRefused.original ? (
         <span className={styles.refusalLinks}>
           {confirmRefused.open?.id ? (
@@ -466,9 +474,10 @@ export default function NewRequestPage() {
       icon={<MessageCircleQuestion size={22} />}
       title={confirms ? SURVEY_CONFIRM_ACTION_LABEL : "เปิดคำร้อง"}
       subtitle={confirms
-        ? (confirmOriginal ? surveyConfirmSubtitle(confirmOriginal) : undefined)
+        ? (confirmOriginal ? keepPhrases(surveyConfirmSubtitle(confirmOriginal), SURVEY_CONFIRM_WRAP_KEEP) : undefined)
         : "คำร้องจะถูกสร้างเป็นร่างก่อน — เลขที่จะออกตอนกดส่ง"}
-      back={{ href: confirms ? originalHref : returnTo, label: "กลับ" }}
+      /* N4 (ไม่มีใบต้นทาง — คำตอบไม่มี `original`) = ไม่มีใบให้กลับ ⇒ ลูกศรกลับทางเดิม (UAT S5 sales รอบ 1 · K08 refused-404) */
+      back={{ href: confirms && (!confirmRefused || confirmRefused.original) ? originalHref : returnTo, label: "กลับ" }}
     >
       {confirmBody || (
       <DetailPageLayout aside={controlPanel} asideLabel="ความพร้อมและการจัดการคำร้องใหม่">

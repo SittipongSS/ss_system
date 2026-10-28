@@ -12,9 +12,10 @@ import { readFileSync } from 'node:fs';
 import { surveyJobView, surveyRequestDrawingSummary } from '../service/surveyJob.js';
 import { SURVEY_CONFIRM_ACTION_READY, SURVEY_CONFIRM_PENDING_NOTE } from '../service/surveyMethodSwitch.js';
 import {
-  SURVEY_CONFIRM_ID_PATTERN, surveyConfirmBannerParts, surveyConfirmDealHint, surveyConfirmHref, surveyConfirmSubtitle,
-  surveyConfirmZonesLockText,
+  SURVEY_CONFIRM_ID_PATTERN, SURVEY_CONFIRM_NO_ORIGINAL, SURVEY_CONFIRM_WRAP_KEEP, surveyConfirmBannerParts, surveyConfirmDealHint,
+  surveyConfirmHref, surveyConfirmSubtitle, surveyConfirmZonesLockText,
 } from '../service/surveyConfirmLink.js';
+import { phraseRuns } from '../thaiWrap.js';
 import { requestClosure } from './closure.js';
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -359,14 +360,14 @@ test('D-2 refs: ลิงก์ต่อท้ายประโยค (หล�
   const refs = bannerSrc.slice(refsAt, noteAt);
   assert.match(refs, /\{" "\}/);
   assert.match(refs, /\{index \? " · " : null\}/);
-  assert.match(refs, /<Link className="linklike" href=\{ref\.href\}>\{ref\.docNo\}<\/Link>/);
+  assert.match(refs, /<Link className=\{`linklike \$\{styles\.docRef\} \$\{styles\.bannerRef\}`\} href=\{ref\.href\}>\{ref\.docNo\}<\/Link>/);
 });
 
 test('D-2 b บรรทัดลิงก์: คอมโพเนนต์เดียว วางตามสภาพของใบ (ยังไม่ส่ง = อย่างแรกใต้หัวการ์ด · ส่งแล้ว = ติดเหนือแถบ) · ลิงก์จาก segments', () => {
   const links = between(VIEW, 'function ConfirmLinks', 'function ZonesTable');
   assert.match(links, /zones\.confirmOf \? \[zones\.confirmOf\] : \[\]/);
   assert.match(links, /zones\.confirmLinks \|\| \[\]/);
-  assert.match(links, /<Link key=\{at\} className="linklike" href=\{part\.href\}>\{part\.text\}<\/Link>/);
+  assert.match(links, /<Link key=\{at\} className=\{`linklike \$\{styles\.docRef\}`\} href=\{part\.href\}>\{part\.text\}<\/Link>/);
   assert.match(links, /thaiText\(part\.text\)/);
   assert.equal((VIEW.match(/<ConfirmLinks zones=\{zones\} \/>/g) || []).length, 2, 'สองที่ที่สลับกันด้วยสภาพเดียว');
   const stack = between(VIEW, '<div className={styles.zoneStack}>', '<ZonesTable zones={zones} />');
@@ -374,7 +375,9 @@ test('D-2 b บรรทัดลิงก์: คอมโพเนนต์เ
   assert.match(stack, /\{zones\.sent \? <ConfirmLinks zones=\{zones\} \/> : null\}\s*\{zones\.drawingBanner \? <SurveyDrawingBanner/);
   // คลาสใหม่ใช้โทเคนเท่านั้น
   const sheet = css('../../components/requests/details/surveyRequest.module.css');
-  for (const selector of ['.confirmLinks', '.confirmLink']) {
+  // เลขที่ที่เป็นลิงก์ห้ามขาดที่ขีด (UAT S5 sales รอบ 1 · K05 375)
+  assert.match(rule(sheet, '.docRef'), /white-space: nowrap;/);
+  for (const selector of ['.confirmLinks', '.confirmLink', '.docRef']) {
     assert.doesNotMatch(rule(sheet, selector), /#[0-9a-fA-F]{3,8}\b|rgba?\(|line-height: [\d.]|\d+px/, selector);
   }
   // view ยังไม่นำทาง ไม่ยิง API เอง (เปลือกพาไป)
@@ -494,7 +497,7 @@ test('D-4 บันทึก: id ใบต้นทางไปทาง extra �
   assert.match(NEW, /createRequestDraft\(\n\s*form, confirmData \? \{ confirmsRequestId: confirms \} : linksInstallment \? \{ linkInstallmentId \} : \{\},\n\s*\)/);
   const save = between(NEW, 'const saveDraft = async', '} catch (e) {');
   const refetchAt = save.indexOf('if (error && confirmData) setConfirmTick((n) => n + 1);');
-  const toastAt = save.indexOf('if (error) { setToast({ kind: "error", msg: error }); return; }');
+  const toastAt = save.indexOf('if (error) { setToast({ kind: "error", msg: confirmData ? refusalText(error) : error }); return; }');
   assert.ok(refetchAt > -1 && toastAt > refetchAt);
   // ถามซ้ำได้ 200: คงที่พิมพ์ไว้ (ชื่อเรื่อง วันที่ รายละเอียด) เปลี่ยนเฉพาะช่องล็อก
   assert.match(NEW, /\.\.\.prev, kind: lock\.kind, variant: lock\.variant, dealId: lock\.dealId, siteId: lock\.siteId, zones: lock\.zones,/);
@@ -503,12 +506,16 @@ test('D-4 บันทึก: id ใบต้นทางไปทาง extra �
 
 test('D-4 จอ: ชื่อหน้า/คำโปรย/ลิงก์จากค่าคงที่ · ถูกปฏิเสธ = กล่องเตือนกล่องเดียว ไม่มีฟอร์ม · ฟอร์มล็อกไม่มีปุ่มเปลี่ยนหัวข้อ', () => {
   assert.match(NEW, /title=\{confirms \? SURVEY_CONFIRM_ACTION_LABEL : "เปิดคำร้อง"\}/);
-  assert.match(NEW, /confirmOriginal \? surveyConfirmSubtitle\(confirmOriginal\) : undefined/);
-  assert.match(NEW, /back=\{\{ href: confirms \? originalHref : returnTo, label: "กลับ" \}\}/);
+  assert.match(NEW, /confirmOriginal \? keepPhrases\(surveyConfirmSubtitle\(confirmOriginal\), SURVEY_CONFIRM_WRAP_KEEP\) : undefined/);
+  assert.match(NEW, /back=\{\{ href: confirms && \(!confirmRefused \|\| confirmRefused\.original\) \? originalHref : returnTo, label: "กลับ" \}\}/);
   assert.match(NEW, /const originalHref = confirms && !confirmsBad \? `\/requests\/\$\{encodeURIComponent\(confirms\)\}` : returnTo;/);
   const refusal = between(NEW, 'const confirmBody = ', 'return (');
   assert.match(refusal, /confirmLoading \? <SkeletonRows rows=\{6\} \/>/);
   assert.match(refusal, /<StatusNotice tone="warning">/);
+  // วลีของงวดห้ามขาดกลางในประโยคปฏิเสธ ("หน้า|งาน" ที่ 375 · UAT S5 sales รอบ 1 K08) — ไม่มีวลี = thaiText เดิม
+  assert.match(refusal, /\{refusalText\(confirmRefused\.error\)\}/);
+  assert.match(NEW, /const DOC_CODE = \/\[A-Z\]\{2,\}\(\?:-\[A-Z0-9\]\+\)\+\/g;\n\s*const refusalText = \(text\) => \{\n\s*const kept = keepPhrases\(text, \[\.\.\.SURVEY_CONFIRM_WRAP_KEEP, \.\.\.\(String\(text \?\? ""\)\.match\(DOC_CODE\) \|\| \[\]\)\]\);\s*return kept === text \? thaiText\(text\) : kept;/);
+  assert.match(FORM, /hint=\{keepPhrases\(surveyConfirmDealHint\(confirmLock\.original\), SURVEY_CONFIRM_WRAP_KEEP\)\}/);
   assert.match(refusal, /surveyConfirmOpenLinkText\(confirmRefused\.open\)/);
   assert.match(refusal, /href=\{`\/requests\/\$\{encodeURIComponent\(confirmRefused\.open\.id\)\}`\}/);
   assert.match(refusal, /\{confirmRefused\.original \? \(\s*<Link className="linklike" href=\{originalHref\}>\{surveyConfirmBackLinkText\(confirmRefused\.original\)\}<\/Link>/);
@@ -522,6 +529,21 @@ test('D-4 จอ: ชื่อหน้า/คำโปรย/ลิงก์จ
   assert.match(surveyConfirmZonesLockText({ docNo: ORIGINAL_DOC }), new RegExp(`^พื้นที่ชุดนี้ยกมาจากใบ ${ORIGINAL_DOC} ทั้งหมด`));
   const sheet = css('../../app/requests/new/page.module.css');
   assert.doesNotMatch(rule(sheet, '.refusalLinks'), /#[0-9a-fA-F]{3,8}\b|rgba?\(|\d+px/);
+});
+
+test('UAT S5 sales รอบ 2: วลีห้ามขาดของ N19 · N17 · N4 · N15 ถูกห่อจริง · ทุกจุดวาดผ่าน keepPhrases · ปุ่มติดด่านตอนโฟกัสป้ายยังจาง', () => {
+  const kept = (text) => phraseRuns(text, SURVEY_CONFIRM_WRAP_KEEP).filter((r) => r.keep).map((r) => r.text);
+  assert.deepEqual(kept(surveyConfirmZonesLockText({ docNo: ORIGINAL_DOC })), ['เพิ่มที่นี่ไม่ได้', 'ประเมินจากแบบ', 'ใบยืนยันหน้างาน']);
+  assert.deepEqual(kept(surveyConfirmSubtitle({ docNo: ORIGINAL_DOC })), ['ใบยืนยันหน้างาน', 'บันทึกเป็นร่างก่อน']);
+  assert.deepEqual(kept(SURVEY_CONFIRM_NO_ORIGINAL), ['ใบยืนยันหน้างาน', 'ถูกลบไปแล้ว']);
+  assert.deepEqual(kept('อ่านสถานะใบยืนยันหน้างานไม่สำเร็จ — โหลดหน้าใหม่'), ['ใบยืนยันหน้างาน', 'โหลดหน้าใหม่']);
+  assert.match(SITE, /\{keepPhrases\(surveyConfirmZonesLockText\(confirmLock\.original\), SURVEY_CONFIRM_WRAP_KEEP\)\}/);
+  assert.match(VIEW, /const keepNote = \(note\) => \{\n\s*const kept = keepPhrases\(note, SURVEY_CONFIRM_WRAP_KEEP\);\n\s*return kept === note \? thaiText\(note\) : kept;/);
+  assert.match(VIEW, /><span className=\{styles\.actionLabel\}>\{confirm\.label\}<\/span><\/GatedAction>/);
+  const sheet = css('../../components/requests/details/surveyRequest.module.css');
+  assert.match(rule(sheet, '.action[data-blocked]:focus-visible'), /opacity: 1;/);
+  assert.match(rule(sheet, '.action[data-blocked]:focus-visible .actionLabel'), /opacity: var\(--op-disabled\);/);
+  assert.match(rule(sheet, '.bannerRef'), /margin-inline-start: var\(--space-1\);/);
 });
 
 /* ══ F1: ไม่มีจอไหนของกลุ่มนี้พิมพ์ประโยคของงวดเอง · apiFetch เท่านั้น ═════════════════════════════════════ */

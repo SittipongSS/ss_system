@@ -33,7 +33,7 @@ import { zoneNameKey } from "@/lib/service/surveyRequest";
 import { sitePickSummary, zonePickedOnsiteText, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 // ประโยคล็อกของใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-6) — ไฟล์ล้วนไฟล์เดียวของงวด (F1) บล็อกนี้ไม่พิมพ์เอง
-import { surveyConfirmZonesLockText } from "@/lib/service/surveyConfirmLink";
+import { SURVEY_CONFIRM_WRAP_KEEP, surveyConfirmZonesLockText } from "@/lib/service/surveyConfirmLink";
 import styles from "./requestForm.module.css";
 
 // เกินเท่านี้แล้วแผ่นเลือกยาวกว่าหน้าจอ — ค่อยเปลี่ยนเป็นช่องค้นหา
@@ -345,7 +345,7 @@ export default function SurveySiteFields({
         {/* ประโยคปิดท้ายประโยคเดียว — ใบยืนยันหน้างาน (ใบต้นทางยังอยู่) พูดประโยคล็อกของงวด S5 แทนของ S4
             (ฟอร์มสร้างยังไม่มีร่างให้ "ลบแล้วเปิดใหม่") · ที่เหลือประโยคของ S4 ตามเดิม */}
         {confirmLock && !confirmLock.original?.missing ? (
-          <small className={styles.hint}>{surveyConfirmZonesLockText(confirmLock.original)}</small>
+          <small className={styles.hint}>{keepPhrases(surveyConfirmZonesLockText(confirmLock.original), SURVEY_CONFIRM_WRAP_KEEP)}</small>
         ) : (
           <small className={styles.hint}>
             {freshDraft

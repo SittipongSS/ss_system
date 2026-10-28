@@ -70,7 +70,7 @@ import { fmtNumber } from "@/lib/format";
 /* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-5) — ป้าย/ประโยคของโหมดล็อกมาจากไฟล์ล้วนไฟล์เดียว (F1) ฟอร์มไม่พิมพ์เอง */
 import {
   SURVEY_CONFIRM_CHILD_LABEL, SURVEY_CONFIRM_FORM_HINT, SURVEY_CONFIRM_FROM_ORIGINAL, SURVEY_CONFIRM_OF_LABEL,
-  SURVEY_CONFIRM_ORIGINAL_MISSING, surveyConfirmDealHint,
+  SURVEY_CONFIRM_ORIGINAL_MISSING, SURVEY_CONFIRM_WRAP_KEEP, surveyConfirmDealHint,
 } from "@/lib/service/surveyConfirmLink";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
@@ -993,7 +993,7 @@ export default function RequestForm({
           <DerivedField
             label="ดีล" from={SURVEY_CONFIRM_FROM_ORIGINAL}
             value={confirmLock.mode === "create" ? confirmLock.original?.dealLabel : (lockedRefs.deal || "")}
-            hint={surveyConfirmDealHint(confirmLock.original)}
+            hint={keepPhrases(surveyConfirmDealHint(confirmLock.original), SURVEY_CONFIRM_WRAP_KEEP)}
             bare
           />
         ) : isEdit ? (
@@ -1039,8 +1039,9 @@ export default function RequestForm({
         label="ลูกค้า" from="เติมจากดีลที่เลือก"
         value={selectedDeal?.customerName || lockedRefs.customer || confirmLock?.original?.customerName || ""}
       />
+      {/* ใบยืนยันหน้างาน (ดีลล็อก): ไม่มีดีลให้เลือก — ช่องว่างต้องไม่ชวน "เติมจากดีลที่เลือก" (UAT S5 sales รอบ 1 · K06) */}
       <DerivedField
-        label="โครงการ" from="เติมจากดีลที่เลือก"
+        label="โครงการ" from={dealLock ? SURVEY_CONFIRM_FROM_ORIGINAL : "เติมจากดีลที่เลือก"}
         value={(() => {
           const project = projects.find((p) => p.id === selectedDeal?.projectId);
           if (project) return `${project.code ? `${project.code} — ` : ""}${project.name || project.id}`;

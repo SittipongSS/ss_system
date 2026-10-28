@@ -52,6 +52,14 @@ export const surveyConfirmForbiddenText = (original) => `ขอยืนยั�
 export const surveyConfirmAuditSuffix = (original) => ` · ใบยืนยันหน้างานของ ${rqOf(original)}`;
 export const surveyConfirmSubtitle = (original) => `ใบยืนยันหน้างานของ ${rqOf(original)} — บันทึกเป็นร่างก่อน เลขที่ออกตอนกดส่ง`;
 export const surveyConfirmDealHint = (original) => `ดีล ลูกค้า และสถานที่ยกมาจากใบ ${rqOf(original)} — เปลี่ยนที่นี่ไม่ได้`;
+/* วลีที่จอห้ามตัดกลาง (`keepPhrases`) — UAT S5 sales รอบ 1 (27/10): 375 ขึ้น "…ยืนยันหน้า" / "งาน…" ในประโยคปฏิเสธ N2/N3
+   (ICU ตัด หน้า|งาน เป็นสองคำ) และ N18 ทิ้ง "ได้" ไว้บรรทัดเดียว — ตัวคำไม่ถูกแตะ */
+/* รอบ 2 (27/10): N19 ทิ้ง "ไม่ได้" ขึ้นต้นบรรทัด + ตัด "ประเมิน|จากแบบ" / "ใบ|ยืนยันหน้างาน" · N17 "ก่อน" หลุดวรรค · N4 "แล้ว" ·
+   R13 "ราย|อื่น" · N15 "โหลดหน้า|ใหม่" · N11 (toast ตอนบันทึก) "รอใบ|นั้น" — วลีที่ยาวกว่ามาก่อนเสมอ (`phraseRuns`) */
+export const SURVEY_CONFIRM_WRAP_KEEP = [
+  'เปลี่ยนที่นี่ไม่ได้', 'เพิ่มที่นี่ไม่ได้', 'ประเมินจากแบบ', 'ใบยืนยันหน้างาน', 'หน้างาน', 'บันทึกเป็นร่างก่อน',
+  'ถูกลบไปแล้ว', 'รายอื่น', 'โหลดหน้าใหม่', 'ใบนั้น',
+];
 export const surveyConfirmZonesLockText = (original) => `พื้นที่ชุดนี้ยกมาจากใบ ${rqOf(original)} ทั้งหมด`
   + ' เอาออกหรือเพิ่มที่นี่ไม่ได้ — พื้นที่ที่ยังไม่พร้อม หัวหน้า TS ตัดออกหรือเปลี่ยนเป็นประเมินจากแบบในใบยืนยันหน้างานได้';
 export const surveyConfirmOpenLinkText = (open) => `เปิดใบ ${open?.docNo || 'ร่าง'}`;
