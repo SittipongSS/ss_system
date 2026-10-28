@@ -3,7 +3,9 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
+import { inSalesDocScope } from '@/lib/scopedRow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 /* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
@@ -118,7 +120,11 @@ export const GET = withUser(async ({ user, supabase }) => {
     arById = new Map((customers || []).map((c) => [c.id, String(c.arCode || '').trim() || null]));
   }
 
-  const dealIds = [...new Set((orders || []).map((row) => row.dealId).filter(Boolean))];
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ด่านขอบเขตใช้ดีลของ SO ต้นทาง ซึ่งอยู่ในชุด `orders` นี้อยู่แล้ว (ทะเบียนอ่านทุกใบ)
+     ⇒ เติมแค่ดีลของใบต้นทางเข้า `dealIds` ไม่ต้องยิงเพิ่ม · ดีลนั้นไปที่ `sourceDeal` ไม่ใช่ `deal` (scopedRow.js) */
+  const orderById = new Map((orders || []).map((row) => [row.id, row]));
+  const sourceDealIdOf = (row) => (row.sourceSalesOrderId ? orderById.get(row.sourceSalesOrderId)?.dealId || null : null);
+  const dealIds = [...new Set((orders || []).flatMap((row) => [row.dealId, sourceDealIdOf(row)]).filter(Boolean))];
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
     dealIds.length
@@ -286,6 +292,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       customerArCode: arById.get(row.customerId) ?? null,
       lines: linesByOrder.get(row.id) || [],
       deal: dealById.get(row.dealId) || null,
+      ...(row.dealId ? {} : { sourceDeal: dealById.get(sourceDealIdOf(row)) || null }),
       quotation: quoteById.get(row.quotationId) || null,
       scentRequest: scentRequestByOrder.get(row.id) || null,
       // สรุปงวดพอให้ตารางวาดได้ — รายละเอียดเต็มอยู่ที่หน้ารายละเอียดใบ
@@ -387,7 +394,7 @@ export const GET = withUser(async ({ user, supabase }) => {
         roundsDone: roundsDoneByOrder.get(row.id) || 0,
       } : null,
     }))
-    .filter((row) => row.deal && inSalesViewScope(user, row.deal));
+    .filter((row) => inSalesDocScope(user, row, 'view'));
 
   return ok(visible);
 });
@@ -412,13 +419,15 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, origin, deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
+  /* ⛔ ใบค่าสรรพสามิต (mig 0414) ไม่ออก SO ทางนี้ — ทางนี้ผูกดีล/โครงการ/FC ทุกขั้น · ใบค่าภาษีมี RPC ของมันเอง (0416) */
+  if (isExciseOrder(quote)) return badRequest('ใบเสนอราคาค่าสรรพสามิตออกใบสั่งขายจากหน้าใบเสนอราคาค่าภาษีเท่านั้น');
   if (quote.status !== 'accepted') return badRequest('สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
-  if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
+  if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
   // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้
   const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออกใบสั่งขายใบใหม่');
   if (closedProject) return badRequest(closedProject);

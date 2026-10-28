@@ -1,9 +1,10 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { canViewSalesPlanning, inSalesViewScope, isClosedStage } from '@/lib/salesPlanning';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
-import { isQuotationAwaitingMyApproval, isQuotationWaitingOnMe } from '@/lib/sales/quotationWorkflow';
+import { isQuotationAwaitingMyApproval, isQuotationWaitingOnMe, quotationApprovalContext } from '@/lib/sales/quotationWorkflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +39,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     'rejectedBy', 'rejectedByName', 'rejectedAt', 'rejectionReason',
     'acceptedAt', 'acceptedBy',
     'wonDocType', 'wonDocNo', 'wonDocDate', 'wonPaymentDueDate',
+    /* ใบค่าสรรพสามิต (mig 0414) — ไม่มีดีล ผูก SO ลูกค้าต้นทาง ⇒ ด่านขอบเขต/ผู้อนุมัติถอยไปดีลของ SO นั้น */
+    'origin', 'sourceSalesOrderId',
   ].join(',');
   /* ดีลเอาเท่าที่ด่านขอบเขต + จอใช้ · `metadata` ของดีลทั้งก้อน = 80 KB แต่ที่ใช้จริง
      มีคีย์เดียว (`projectType` — ทางถอยของ `dealTypeOf` เมื่อ `dealType` ว่าง)
@@ -61,7 +64,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     ? { ...q, deal: { ...q.deal, projectType: undefined, metadata: { projectType: q.deal.projectType ?? null } } }
     : q));
 
-  const visibleRows = (data || []).filter((q) => q.deal && inSalesViewScope(user, q.deal));
+  const { error: sourceError } = await attachSourceDeals(supabase, data);
+  if (sourceError) return fail(sourceError.message, 500);
+  const visibleRows = (data || []).filter((q) => inSalesDocScope(user, q, 'view'));
   const rows = latestQuotationRevisions(visibleRows)
     .filter((q) => !status || status === 'all' || q.status === status)
     .map((q) => ({ ...q, lineCount: (q.lines || []).length, lines: undefined }));
@@ -88,11 +93,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ไม่รวม "ใบของฉันที่ถูกตีกลับ" — คิวบนหัวทะเบียนพูดคำว่า *อนุมัติ* จึงต้องนับ
      เฉพาะของที่กดอนุมัติได้จริง (ทรงเดียวกับทะเบียนลูกค้า/สินค้า) */
   return ok(rows.map((q) => {
-    const approvalCtx = {
-      userId: user.id,
-      dealOwnerId: q.deal?.ownerId ?? null,
-      dealClosed: isClosedStage(q.deal?.stage),
-    };
+    const approvalCtx = quotationApprovalContext(q, user.id);
     return {
       ...q,
       customerArCode: arById.get(q.customerId) ?? null,

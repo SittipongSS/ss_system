@@ -2,7 +2,8 @@
 import { isSalesManager } from '@/lib/permissions';
 // ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
-  HISTORICAL_UNAPPROVED_STATUSES, canKeyHistoricalSalesOrder, historicalOrderEditable, isHistoricalOrder,
+  HISTORICAL_UNAPPROVED_STATUSES, canKeyHistoricalSalesOrder, historicalOrderEditable, isActualOrder,
+  isExciseOrder, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
@@ -178,8 +179,10 @@ export function canEditSalesOrderContent(
 // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ย้อนอนุมัติ/ออก Rev. ไม่ได้ — ไม่มีใบเสนอราคาให้ออกฉบับใหม่
 //    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · อนุมัติแล้วข้อมูลผิด = ผู้จัดการฝ่ายขายยกเลิกใบแล้วคีย์ใหม่
 //    (HISTORICAL_CORRECTION_PATH · มติ 22/09 — ฐานยกเลิกเอกสารแทนสัญญาตามใบเอง)
+// ⛔ ใบค่าสรรพสามิต (mig 0414) ก็ย้อนอนุมัติไม่ได้ — ออก Rev. ไม่ได้ (CHECK สาย excise บังคับ revisionNo = 0) ถ้าปล่อยย้อน
+//    ใบจะค้าง approval_revoked ตลอดไป · แก้ = ยกเลิกแล้วออกใหม่ (มติ D3 28/10 · ฐานปิดซ้ำที่ 0416)
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
-  return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order);
+  return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order) && !isExciseOrder(order);
 }
 
 /* ออก Rev. = ขั้นที่ 2 · **AE เจ้าของดีล + ผู้รีวิว** (มติ 24/09) — ขั้นนี้ไม่ขยับ Actual แล้ว (หลุดไปตั้งแต่ย้อนอนุมัติ)
@@ -189,7 +192,7 @@ export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
    ⭐ เจ้าของดีล *ปัจจุบัน* (`deal.ownerId`) ไม่ใช่ผู้สร้างใบ — กติกาเดียวกับ canSubmitSalesOrder / ใบเสนอราคา (0165)
    ⚠️ ฐานเช็คซ้ำที่ revise_approved_sales_order_atomic (mig 0385) · route คูณ salesplan:edit + ขอบเขตดีลไว้แล้ว */
 export function canIssueSalesOrderRevision(order, { reviewer = false, userId = '', deal = null } = {}) {
-  if (!order || order.status !== 'approval_revoked' || isHistoricalOrder(order)) return false;
+  if (!order || order.status !== 'approval_revoked' || isHistoricalOrder(order) || isExciseOrder(order)) return false;
   if (reviewer) return true;
   return Boolean(userId) && userId === deal?.ownerId;
 }
@@ -304,8 +307,9 @@ export function salesOrderPendingApprovalAmount(order) {
 //   'pending_approval' ยื่นแล้วรออนุมัติ โชว์ยอดแยก ยังไม่นับ
 //   'excluded'         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก — ไม่นับทั้งสองกอง
 //                      + **ใบสั่งขายย้อนหลังทุกสถานะ** (mig 0360 · ไม่นับ Actual / FC / เป้า)
+//                      + **ใบค่าสรรพสามิตทุกสถานะ** (mig 0414 · เงินรับแทน ไม่ใช่ยอดขาย)
 export function salesOrderAmountKind(order) {
-  if (isHistoricalOrder(order)) return 'excluded';
+  if (!isActualOrder(order)) return 'excluded';
   if (order?.status === 'approved') return 'actual';
   if (order?.status === 'pending_approval') return 'pending_approval';
   return 'excluded';

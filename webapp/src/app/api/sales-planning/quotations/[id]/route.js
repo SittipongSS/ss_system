@@ -18,8 +18,9 @@ import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
 import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
-  inSalesEditScope, inSalesViewScope, normalizeDiscountValue, quoteTotals, toMoney,
+  normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import {
   customerMismatchMessage, customerMismatchedLines,
   enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
@@ -53,6 +54,9 @@ const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, st
 async function loadQuote(supabase, id) {
   const { data, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   if (error) throw error;
+  // ใบค่าสรรพสามิตไม่มีดีล — เติมดีลของ SO ต้นทางไว้ตัดสินสิทธิ์ (`sourceDeal` · ไม่แตะ `deal` · scopedRow.js)
+  const { error: sourceError } = await attachSourceDeals(supabase, data ? [data] : []);
+  if (sourceError) throw sourceError;
   if (data?.deal?.projectId) {
     const { data: project } = await supabase
       .from('projects')
@@ -124,7 +128,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
+  if (!inSalesDocScope(user, quote, 'view')) return forbidden();
   // ข้อมูลลูกค้าบนใบเป็น snapshot — ใบเก่าที่ snapshot ไม่ครบ (ผู้ติดต่อ/เลขภาษี) เติม
   // เฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้หน้ารายละเอียด/เอกสารแสดงครบโดยไม่ต้อง Revise
   const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
@@ -173,7 +177,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
     canCancel: canCancelQuotation(filledQuote, {
       approver: canApprove,
       canEdit: canEditSalesPlanning(user),
-      inScope: inSalesEditScope(user, filledQuote.deal),
+      inScope: inSalesDocScope(user, filledQuote, 'edit'),
       hasSignatureEvidence: Boolean(hasSignatureEvidence),
     }),
     proposerSignature,
@@ -189,7 +193,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
-  if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  if (!inSalesDocScope(user, before, 'edit')) return forbidden();
   if (!EDITABLE_STATUSES.has(before.status)) {
     if (before.status === 'closed') {
       return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — แก้ไขไม่ได้');
@@ -505,7 +509,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
-  if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  if (!inSalesDocScope(user, before, 'edit')) return forbidden();
 
   // force = ทางลัดผู้ดูแลระบบ (admin) ที่ลบใบ accepted ได้ทั้งที่เป็นแหล่งยอด Actual;
   // dryRun = พรีวิว Sale Order ที่จะ cascade หายตาม (admin เท่านั้น).

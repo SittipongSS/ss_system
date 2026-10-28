@@ -1,6 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { EVIDENCE_REFS_DROPPED_TEXT, evidenceRefsDropped, sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import {
   PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix,
@@ -53,7 +53,7 @@ import {
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
 import { loadInstallmentRequests, syncBillingPointers } from '@/lib/sales/installmentRequestsStore';
-import { loadScoped } from '@/lib/scopedRow';
+import { attachSourceDeals, inSalesDocScope, loadScoped } from '@/lib/scopedRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,7 +94,11 @@ async function loadOrderForUser(supabase, user, id) {
   const { data: deal, error: dealError } = await supabase
     .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
   if (dealError) throw dealError;
-  if (!deal || !inSalesViewScope(user, deal)) return { error: forbidden() };
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ด่านอ่านถอยไปดีลของ SO ต้นทาง (ตัดสินสิทธิ์อย่างเดียว · `deal` ของใบยังว่าง) */
+  const scoped = { ...order, deal };
+  const { error: sourceError } = await attachSourceDeals(supabase, [scoped]);
+  if (sourceError) throw sourceError;
+  if (!inSalesDocScope(user, scoped, 'view')) return { error: forbidden() };
 
   const { data: quotation, error: quoteError } = await supabase
     .from('quotations')

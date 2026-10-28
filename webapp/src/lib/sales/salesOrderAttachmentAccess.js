@@ -21,6 +21,7 @@
 // ⚠️ **เพิ่ม entity แนบไฟล์ใหม่ ต้องต่อครบ 5 จุด** — ดูหัวไฟล์ salesAttachmentAccess.js
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { purgeAttachments } from '@/lib/master/attachments';
+import { loadSourceDeals } from '@/lib/scopedRow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const SALES_ORDER_ATTACHMENT = 'sales_order';
@@ -50,9 +51,14 @@ export function canRemoveSalesOrderFile(attachment, user) {
   return !!attachment.uploadedBy && attachment.uploadedBy === user.id;
 }
 
-/* ดีลของใบ — คืน `{ deal, error }` ไม่ throw (supabase ไม่ throw อยู่แล้ว · ดูกฎ supabaseNeverThrows) */
+/* ดีลของใบ — คืน `{ deal, error }` ไม่ throw (supabase ไม่ throw อยู่แล้ว · ดูกฎ supabaseNeverThrows)
+   ⭐ ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล ⇒ ดีลของ SO ต้นทาง — ใช้ตัดสินสิทธิ์ไฟล์อย่างเดียว (scopedRow.js) */
 export async function loadSalesOrderDeal(supabase, order) {
-  if (!order?.dealId) return { deal: null, error: null };
+  if (!order?.dealId) {
+    if (!order?.sourceSalesOrderId) return { deal: null, error: null };
+    const { data, error } = await loadSourceDeals(supabase, [order.sourceSalesOrderId]);
+    return { deal: data?.get(order.sourceSalesOrderId) || null, error: error || null };
+  }
   const { data, error } = await supabase
     .from('sales_deals').select('id, team, ownerId').eq('id', order.dealId).maybeSingle();
   return { deal: data || null, error: error || null };

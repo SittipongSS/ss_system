@@ -1,0 +1,459 @@
+# แผนรื้อระบบภาษีสรรพสามิต v2 — ใบเสนอราคาค่าสรรพสามิต (ฟอร์ม QT · SA ออก · ไม่มีดีล) → SO ค่าสรรพสามิต (ไม่นับ Actual) → บัญชี → RA ยื่นกรม
+
+**สถานะ:** กำลังดำเนินการ · มติครบ 28/10 (Q1–Q8b + D1–D9) · 0414 + PR1 เขียนเสร็จบนแบรนช์ `claude/excise-pr1-guards` (28/10) · **0414 รันบน prod แล้ว 28/10** (ผลตรวจ q_cols 2 · so_cols 7 · chk 6 · trg 3 · deal_nullable 2 · excise_rows 0) · เลขเดิมของแผนเลื่อน +1 ทั้งชุด เพราะ 0413 ถูกใช้โดย `0413_billing_request_installment` (#1936) ก่อน · เหลือคำตอบ RA (D7) ก่อน PR5
+**เขียน:** 2026-10-28 · อ้างโค้ด `origin/main` ที่ `250648bc0` (migration ล่าสุด **0412**) · ตัวเลข prod อ่านเมื่อ 26–28/10 (อ่านอย่างเดียว)
+**แทน:** แผนฉบับ 27/09 (แบบ B — RA ออกใบ ET) ซึ่งตกไปตามมติ 28/10 · สำเนาเดิม `~/ss-team/audit/excise-rework-20260927/excise-qt-so-rework-plan-v1-20260927.md` (หมวด 3, 6, 10, 13–15 ของฉบับเดิมยังเป็นข้อมูลอ้างอิงที่ถูกต้อง)
+
+---
+
+## 0. สรุปหน้าเดียว
+
+**เส้นทาง:** SO ลูกค้าอนุมัติ → **SA ออกใบเสนอราคาค่าสรรพสามิต** ด้วยฟอร์ม QT เดิม (ระบบสร้างบรรทัดจาก SO ให้) → ผู้จัดการอนุมัติ → ลูกค้ารับ → SA สร้าง **SO ค่าสรรพสามิต** → ผู้จัดการอนุมัติ → **บัญชีเดินขั้นปกติ** (รับรองเงิน → ใบกำกับ → ปิดใบ) → **RA ยื่นกรม** แล้วส่งใบเสร็จให้ลูกค้า
+
+**เอกสารสองชิ้นเป็นแถวจริงในตารางเดิม ไม่มีดีล:**
+
+| เอกสาร | ตาราง | ต่างจากใบขายปกติ |
+|---|---|---|
+| ใบเสนอราคาค่าสรรพสามิต | `quotations` · `origin = 'excise'` · `dealId` ว่าง · `sourceSalesOrderId` = SO ลูกค้า | บรรทัดระบบสร้าง แก้ราคาไม่ได้ · ไม่แตะดีล/FC/Won |
+| SO ค่าสรรพสามิต | `sales_orders` · `origin = 'excise'` · `dealId` ว่าง · `sourceSalesOrderId` = SO ลูกค้า | `actualAmount = 0` บังคับด้วย CHECK · ไม่มี Rev. · ไม่มีโครงการ |
+
+**สิทธิ์ของใบไม่มีดีล = สิทธิ์ของดีลที่ SO ต้นทางสังกัด** — `quotations`/`sales_orders` ไม่มีคอลัมน์ทีมหรือเจ้าของของตัวเอง ดีลของ SO ลูกค้าคือที่เดียวที่มีทีมและเจ้าของ (หมวด 3.7)
+
+**สินค้า `FG-<รหัสลูกค้า>-04-003`** ลูกค้าละตัว ระบบสร้างให้ตอนออกใบแรก · บรรทัดละ FG ต้นทาง · ราคา/ชิ้น = ภาษี 8.8% ปัดครั้งเดียว
+
+**งานทั้งหมด:** migration 4 ไฟล์ (เลขชั่วคราว 0414–0417) · PR 6 ใบ ตามหมวด 7 · ผ่านตัวค้านตรวจกับโค้ดจริงหนึ่งรอบแล้ว (2 BLOCKER · 8 MAJOR · 12 MINOR แก้ลงแผนครบ — สรุปท้ายเอกสาร) · ไม่มีการย้ายข้อมูลเอกสาร (ตาราง `orders` ยังว่าง) · ใบค้าง 49 ใบเข้าคิวตอนเปิดระบบ
+
+---
+
+## 1. มติที่ใช้ (28/10/2026 · ถามทีละข้อในแชต)
+
+| เรื่อง | มติ | ต่างจากค่าแนะนำเดิม |
+|---|---|---|
+| ฟอร์ม (Q1/Q1b) | ใช้ฟอร์มเดียวกับใบเสนอราคา | ✔ (ค่าแนะนำเดิม = ใบ ET ของ RA) |
+| คนออกใบ | SA ในระบบขาย · RA รับช่วงเฉพาะทะเบียน/ยื่นกรม | ✔ |
+| ดีล | ไม่มีดีล ผูก SO ต้นทาง | — |
+| Actual | ไม่นับ | — |
+| บัญชี | ตรวจเหมือน SO ปกติ | — |
+| 04-003 (Q20) | สินค้า `FG-<ลูกค้า>-04-003` ลูกค้าละตัว · ระบบสร้างให้เอง | ✔ (ค่าแนะนำเดิม = บรรทัดไม่มีสินค้า) |
+| บรรทัด | บรรทัดละ FG ต้นทาง | — |
+| Q2 ปัดเศษ | 8.8% แล้วปัดครั้งเดียวต่อชิ้น | ✔ |
+| Q3 ทะเบียน | เตือนตอนออกใบ · บังคับตอนยื่นกรม (ข้ามได้ถ้าใส่เหตุผล) · ราคาขายปลีกบังคับตั้งแต่ออกใบ | — |
+| Q4 ราคา/ทะเบียน | SA กรอกราคาขายปลีก + ร่างทะเบียน · RA อนุมัติ (เส้นเดิม) | ✔ |
+| Q5 หน่วยใบ | 1 SO ลูกค้า = 1 ใบค่าสรรพสามิต (จำนวนเต็มทั้ง SO) | — |
+| Q6 ใบค้าง | เข้าคิวทั้งหมด ติดป้าย "ก่อนเปิดระบบ" + ทาง "ไม่เรียกเก็บในระบบ" | — |
+| Q7 QT ราคารวมภาษี | ยังทำได้ (ส่วนนั้นนับ Actual) → SA กด "ไม่เรียกเก็บ — ราคารวมแล้ว" · RA ยื่นกรมอย่างเดียว | ✔ |
+| Q8a สหมิตร | ตัดออกก่อน | — |
+| Q8b 01-015 | ถาม RA · คงธงไว้ระหว่างนี้ | — |
+
+**Q9–Q25** ใช้ค่าแนะนำ ปรับตามมติข้างบนแล้ว: เลข SO- ชุดเดิม · VAT 7% บนยอดภาษี · งานเกิดตอน SO ลูกค้าอนุมัติ · SA แจ้งชำระพร้อมสลิป → FN รับรอง · ลายเซ็นตามกติกา QT/SO ปกติ · แก้ใบค่าสรรพสามิตด้วย Rev. แบบ QT · RA ยื่นกรมก่อนลูกค้าจ่ายได้ถ้าใส่เหตุผล · RA ส่งใบเสร็จกรม · ถอด `ra:approve` รายคน · FN ลง 04-003 เป็นบัญชีรับแทน · admin สำรอง RA · คงงานไทม์ไลน์ SA "วางบิล + ค่าสรรพสามิต"
+
+**ข้อปลีกย่อย D1–D9** ตัดสินครบแล้ว 28/10 (หมวด 10) — ทุกข้อตามค่าแนะนำ · เหลือคำตอบจาก RA (D7: 01-015 · การยื่นจริงรายรอบ/รายเดือน) ต้องได้ก่อน PR5
+
+---
+
+## 2. เส้นทางทีละขั้น
+
+| # | ขั้น | ใคร | ที่ไหน | เกิดอะไร | ด่าน |
+|---|---|---|---|---|---|
+| 1 | SO ลูกค้าอนุมัติ | ผู้จัดการขาย | `/sa/sales-orders/[id]` (เดิม) | นับ Actual ตามเดิม | เดิม |
+| 2 | งานเข้าคิว SA | ระบบ | คิว "รอออกใบค่าสรรพสามิต" (หน้า SO รายการ + เส้นเดินงานบน SO + ป้ายเมนู) | คำนวณสด ไม่เก็บ | SO pipeline อนุมัติ · มีบรรทัดต้องเสียภาษี · ยังไม่มีใบค่าสรรพสามิตที่ยังมีผล · ยังไม่ตัดสิน "ไม่เรียกเก็บ" · ไม่ใช่สหมิตร |
+| 3a | ออกใบเสนอราคาค่าสรรพสามิต | SA (ทีมของดีลต้นทาง) | ปุ่มบน SO ลูกค้า → หน้า QT โหมดค่าสรรพสามิต | แถว `quotations` origin excise สถานะร่าง · ระบบสร้างสินค้า 04-003 ถ้ายังไม่มี · บรรทัดจาก SO | **ทุก FG ต้องมีราคาขายปลีก** (ไม่มี = ออกใบไม่ได้) · ไม่มีทะเบียนอนุมัติ = เตือน · ยอดรวม > 0 |
+| 3b | หรือ "ไม่เรียกเก็บในระบบ" | SA | เมนูบนแถวคิว / บน SO ลูกค้า | ประทับบน SO ลูกค้า: ชนิด (เก็บนอกระบบแล้ว · ราคารวมภาษีแล้ว · ไม่ต้องเสีย) + เหตุผล ≥ 10 ตัว + เลขอ้างอิง | ทำได้เมื่อไม่มีใบค่าสรรพสามิตที่ยังมีผล |
+| 4 | แก้ใบ | SA | หน้า QT โหมดค่าสรรพสามิต | แก้หัวใบได้ (วันที่ หมายเหตุ ผู้ติดต่อ ภาษาเอกสาร งวดชำระ) · บรรทัดแก้ไม่ได้ มีแต่ปุ่ม "คิดใหม่จาก SO" | ตามกติกา QT ร่าง |
+| 5 | ยื่นอนุมัติ → อนุมัติ | SA → เจ้าของดีลต้นทางหรือผู้จัดการขาย | RPC เดิมของ QT (ปะให้หาดีลผ่าน SO ต้นทาง) | ลายเซ็นผู้เสนอ/ผู้อนุมัติ · ตรึงเอกสาร FM-SA-01 | เดิม · โมดัลบอกผล |
+| 6 | ลูกค้ารับ | SA | ปุ่มรับใบบนหน้า QT | `accept_excise_quotation_atomic` (ไม่แตะดีล) | ใบอนุมัติแล้ว · SO ต้นทางยังอนุมัติและไม่ถูกแทน · ใบที่รับแล้วได้ใบเดียวต่อ SO ต้นทาง |
+| 7 | สร้าง SO ค่าสรรพสามิต | SA | `/sa/sales-orders/new?quotationId=` (เดิม) | `create_excise_sales_order_draft` · origin excise · ไม่มีดีล/โครงการ · Actual 0 · บรรทัดลอกจาก QT | QT รับแล้ว · ยังไม่มี SO ที่ยังมีผลของ QT ใบนี้ |
+| 8 | ยื่น → อนุมัติ SO | SA → ผู้จัดการขาย | ด่าน/RPC เดิม (ปะสาขา excise) | `financeStatus = 'pending'` · งวดตรึง · **ไม่นับ Actual** · `actualMode` = 'order' เสมอ | เดิม ยกเว้นข้อบังคับโครงการ/ดีล |
+| 9 | แจ้งชำระ + สลิป | SA | แท็บการชำระ (เดิม) | งวด → reported | เดิม |
+| 10 | รับรองเงิน · ใบกำกับ · ปิดใบ | FN | `/finance/payments` + การ์ดบัญชี (เดิม) | confirmed · `taxInvoiceNo` · `financeStatus approved` | เดิม |
+| 11 | งานเข้าคิว RA | ระบบ | `/tax` คิว "รอยื่นกรม" | คำนวณสด | SO ค่าสรรพสามิตอนุมัติแล้ว **หรือ** SO ลูกค้าตัดสิน "ไม่เรียกเก็บ" แบบเก็บนอกระบบ/ราคารวมแล้ว · ยังไม่มีใบยื่น |
+| 12 | สร้างใบยื่น + เริ่มยื่น | RA | `/tax/filings` | แถว `orders` ผูก SO ลูกค้า (+ SO ค่าสรรพสามิต) · รายการจากบรรทัดใบค่าสรรพสามิต | ทะเบียนอนุมัติครบ (ข้ามได้ใส่เหตุผล) · เงิน FN รับรองแล้ว (ข้ามได้ใส่เหตุผล) |
+| 13 | บันทึกยื่นเสร็จ → ส่งใบเสร็จ | RA | หน้าใบยื่น | complete → delivered | เลขใบเสร็จกรม (บังคับที่ server · #1925) |
+
+SA เข้า `/tax` เฉพาะร่างทะเบียน (เส้นเดิมตาม Q4 — `RegistrationFormModal` อยู่ใต้ `/tax/registrations`) ไม่แตะใบยื่น · RA ไม่เข้าหน้าขาย (อ่านสรุป SO ผ่าน API ของ `/tax`) · FN ใช้ `/finance` ตามเดิม
+"SA" ในขั้น 5–9 หมายถึงคนที่กติกาเดิมยอม: ยื่น QT/SO = เจ้าของดีลต้นทางหรือผู้จัดการขาย (`canSubmitSalesOrder` · `salesOrderWorkflow.js:37-43`) · ยกเลิก QT = ผู้อนุมัติ (กติกา 24/09)
+
+---
+
+## 3. แบบข้อมูล
+
+### 3.1 ใบเสนอราคาค่าสรรพสามิต (`quotations`)
+
+- คอลัมน์ใหม่ `origin` (`'pipeline'` | `'excise'` · ค่าตั้งต้น pipeline · แก้ไม่ได้หลังเกิด) และ `sourceSalesOrderId` (FK → `sales_orders` ON DELETE RESTRICT)
+- CHECK `quotations_origin_shape`: pipeline ⇔ มีดีล ไม่มี SO ต้นทาง · excise ⇔ ไม่มีดีล มี SO ต้นทาง · แล้วจึงปลด NOT NULL ของ `dealId`
+- ใบที่ **รับแล้ว** ได้ใบเดียวต่อ SO ต้นทาง (partial unique index) · ใบร่าง/ส่งแล้วที่ยังมีผลต้องไม่ซ้ำ — ตรวจในแอป (index บนสถานะร่างใช้ไม่ได้ เพราะเส้น Rev. แทรกใบใหม่ก่อนพลิกใบเดิม — `revise/route.js` ไม่ atomic)
+- เลข: ใช้ตัวนับและรูปแบบ QT- ชุดเดิม (`create_quotation_with_number` ไม่ผูกดีล · `quote_number_counters` คีย์ปีอย่างเดียว) — ค่าตั้งต้น ทักได้
+- หัวใบ: ลูกค้า/ที่อยู่/ผู้ติดต่อ/เลขผู้เสียภาษี/สาขาลอกจาก QT ต้นทางของ SO ลูกค้า (เหมือนกระดาษที่ลูกค้าเคยได้) · `vatRate = 7` (บวก VAT ท้ายใบ · `QUOTE_VAT_OPTIONS`) ตรึง · งวดชำระตั้งต้น 100% งวดเดียว แก้ได้แบบ QT · ภาษาเอกสารตาม QT ต้นทาง
+- เอกสาร: มาตรฐาน `quotation` (FM-SA-01) ตัวเดิม · บนกระดาษมีบรรทัดอ้างอิง "ค่าภาษีสรรพสามิตของ SO-xxxx / QT-xxxx"
+- ⚠️ `createQuotationDraft` ผูกดีลทั้งก้อน (ลูกค้า เจ้าของ ขั้นดีล ประวัติขั้น) — เส้นสร้างใบค่าสรรพสามิตเป็นฟังก์ชันพี่น้อง ใช้ `insertQuotationWithNumber` / `pickDocumentAddresses` / `pickQuotationContact` / `resolvePinnedPresetVersionIds` ร่วม แต่ไม่แตะดีล
+- เมตาดาต้าผู้เสนอ `metadata.salesOwnerId/Phone` = เจ้าของดีลต้นทาง
+
+### 3.2 SO ค่าสรรพสามิต (`sales_orders`)
+
+- `origin` เพิ่มค่า `'excise'` · `sourceSalesOrderId` (FK RESTRICT) · ปลด NOT NULL ของ `dealId` หลังมี CHECK `excise ⇔ dealId ว่าง`
+- สาขา excise ของ `sales_orders_origin_shape`: ไม่มีดีล ไม่มีโครงการ · มี `quotationId` (ใบค่าสรรพสามิต) และ `sourceSalesOrderId` · `actualAmount = 0` · `revisionNo = 0` (ไม่มี Rev. — แก้ด้วยยกเลิกแล้วออกใหม่) · ช่อง historical/paymentGateExempt ว่าง · **ยอม** `financeStatus` และลายเซ็น (ต่างจาก historical)
+- `actualMode` = 'order' เสมอ (CHECK ของ 0412 ยอมรายงวดเฉพาะ pipeline อยู่แล้ว)
+- เจ้าของ (`ownerId/ownerName`) = เจ้าของดีลต้นทาง — ⚠️ trigger `snapshot_sales_order_owner` (0294:41-46) อ่านดีลจาก `dealId` ตรง ๆ ใบไม่มีดีลจะถูก **เขียนทับเจ้าของเป็นค่าว่าง** ⇒ ปะให้ถอยไปดีลของ SO ต้นทาง (0416) · กระดิ่งวางบิล/ใบกำกับส่งถึง `[order.ownerId, deal.ownerId]` (`billingDueNotify.js:245` · `taxInvoiceNotify.js:49`) จึงถึง SA ได้
+- เลข SO- ชุดเดิม · ป้าย "ค่าสรรพสามิต · ไม่นับ Actual" ทุกที่ที่แสดงใบ
+
+### 3.3 สินค้า `FG-<รหัสลูกค้า>-04-003`
+
+- ตัวช่วยฝั่ง server `ensureExciseChargeProduct(supabase, { customerId, segmentHint })`:
+  - **หาด้วย `customerId` + `categoryCode = '04-003'`** ไม่ใช่ด้วยรหัส (รหัสลูกค้ามีทั้ง 3 และ 4 หลัก)
+  - ไม่เจอ → สร้างด้วย admin client: `fgCode` · `customerId` · `customerName` · `categoryCode '04-003'` · `approvalStatus 'approved'` · `isActive true` · `costPrice null` · `exciseTax/localTax 0` · **`isExciseTaxable false` ระบุชัด** (ค่าตั้งต้นของฐานเป็น TRUE — ถ้าปล่อย `resolveSoFiling` จะมองบรรทัดค่าสรรพสามิตเป็นของต้องเสียภาษี แล้ววนยื่นซ้ำ) + `recordAudit` + `recordProductPriceHistory`
+  - ชนกัน (23505 · ออกใบสองใบพร้อมกัน) → อ่านซ้ำแล้วใช้ตัวที่มีอยู่
+- **ส่วนรหัสลูกค้าในรหัสสินค้า** — `composeFgCode` เติมเป็น 4 หลักเสมอ (AR-108 → `FG-0108-04-003`) แต่ของจริงลูกค้า 3 หลักเขียน `FG-108-…` · prod 28/10: ส่วนรหัสลูกค้า 3 หลัก 123 · 4 หลัก 117 · ลูกค้า 35 รายใช้ปนทั้งสองแบบ ⇒ ค่าตั้งต้น: ใช้รูปเดียวกับสินค้ากลุ่ม 04 ตัวอื่นของลูกค้า ถ้าไม่มีใช้รูปของ FG ต้นทางบรรทัดแรกบน SO ถ้าไม่มีอีกใช้ `composeFgCode`
+- **ปิดทางเปิดด้วยมือ:** `POST /api/products` (หลัง `route.js:199`) และ PATCH ที่เปลี่ยนหมวด/รหัส (`[id]/route.js:211,289-297`) ปฏิเสธ 04-003 · `ProductCategorySelect` ซ่อน 04-003 (ใช้ทั้งฟอร์มสินค้าและหมวดของบรรทัดพิมพ์เองใน QT) · `PROTECTED_PRODUCT_CATEGORY_CODES` เพิ่ม 04-003 (`productCategory.test.mjs:102` 11 → 12)
+- **ไม่ขึ้นในตัวเลือก QT ขาย:** `GET /api/products` สาขาไม่ใช่โหมดจัดการ (`route.js:114,123`) ตัด 04-003 · server ของ QT pipeline ปฏิเสธบรรทัดที่ productId เป็นสินค้า 04-003 (กันเก็บซ้ำ)
+- ข้อมูลจริง 28/10: สินค้าหมวด 04-003 = 0 ตัว · บรรทัด QT/SO ที่รหัสเป็น 04-003 = 0 · บรรทัดที่คำอธิบายมีคำว่า "สรรพสามิต" = 0 ⇒ ด่าน "QT ขายใส่สินค้า 04-003 ไม่ได้" ใช้กับ **บรรทัดที่เพิ่มใหม่** เท่านั้น (ใบเก่าไม่มีให้พังอยู่แล้ว แต่ไม่เขียนด่านแบบทั้งใบ)
+- DML: `product_types` 04-003 `nameTh = 'ค่าภาษีสรรพสามิต'` · `nameEn = 'Excise tax recharge'` (ตอนนี้ `nameEn` เป็นคำไทย) · `isExcise` ยัง false (ห้ามติ๊ก)
+
+### 3.4 บรรทัดและสูตร
+
+**ตัวสร้างบรรทัดตัวเดียว** `buildExciseQuotationLines(customerSo)` (ต่อจาก `resolveSoFiling` เดิม):
+
+| ช่อง | ค่า |
+|---|---|
+| `productId` / `fgCode` | สินค้า 04-003 ของลูกค้า |
+| `description` | `ค่าภาษีสรรพสามิต 8.8% — <FG ต้นทาง> <ชื่อ>` (EN: `Excise tax 8.8% — …`) |
+| `qty` | หน่วยรวมของบรรทัด FG (`lineUnitsTotal` = แพ็ค × จำนวน) · `packQty` ว่าง (ทริกเกอร์ 0410 ดูเฉพาะ 02-001 จึงผ่าน) |
+| `unit` | หน่วยของบรรทัด FG |
+| `unitPrice` | ภาษี/ชิ้น = `round2(ราคาขายปลีก ÷ 1.07 × 8.8%)` |
+| `lineTotal` | `round2(qty × unitPrice)` (ตรงกับ CHECK `quotation_lines_line_money_rule` 0407) |
+| `metadata` | `lineKind 'excise_charge'` · `sourceSalesOrderLineId` · `sourceProductId` · `sourceFgCode` · `retailPriceIncVat` · `excisePerUnit` · `localPerUnit` · `registrationState` |
+
+**สูตรใหม่ (Q2):** ภาษี/ชิ้น = `round2(ฐาน × 8.8%)` ครั้งเดียว · แบบ ภส. ต้องกรอกสองช่อง ⇒ ค่าตั้งต้น: สรรพสามิต/ชิ้น = `round2(ฐาน × 8%)` · ท้องถิ่น/ชิ้น = ภาษี/ชิ้น − สรรพสามิต/ชิ้น (สองช่องรวมกันเท่ายอดที่เก็บเสมอ) · ปัดด้วยสตางค์จำนวนเต็มแทน `Math.round(v*100)/100` (เคส …5 เพี้ยนจาก float)
+
+ตัวคิดกลาง `exciseTaxLine` เปลี่ยนตาม → กระทบหน้า `/tax` ทั้งหมด (ใบยื่นจริงยังเป็น 0 ใบ ไม่มีใบเก่าเพี้ยน) · จอที่ตอนนี้บวกค่าดิบแล้วค่อยแสดง (หน้าสินค้า หน้าลูกค้า `RegistrationFormModal`) จะตรงกับใบยื่นพอดี
+
+**ล็อกบรรทัด:**
+- `enforceMasterPrices` (`quoteLines.js:369-476`) เขียนราคา/คำอธิบาย/หน่วยทับบรรทัดที่มี productId และหาราคาก่อนหน้า **ด้วย productId** — ทุกบรรทัดใช้สินค้าเดียวกันจะยุบเป็นราคาเดียว ⇒ ข้ามเมื่อใบเป็น origin excise **และ** productId เป็นสินค้า 04-003 ของลูกค้า (ตัดสินจากแถวในฐาน ไม่ใช่จาก metadata ที่จอส่งมา — metadata อยู่นอกลายนิ้วมืออนุมัติ ปลอมได้)
+- PATCH / Rev. ของใบ excise ปฏิเสธ `lines` จากจอ · บรรทัดเปลี่ยนได้ทางเดียวคือ `recalcFromSalesOrder` (แบบเดียวกับใบยื่น #1924) ระหว่างร่าง/ตีกลับ
+- จอ: `quoteLineLocks` (`quoteLines.js:296-303`) ล็อกทุกช่องของบรรทัด excise
+
+### 3.5 "ไม่เรียกเก็บในระบบ" บน SO ลูกค้า
+
+กฎความเป็นเจ้าของโมดูลข้อ 2 — ขั้นของ SA บนเอกสารเดิมเป็นคอลัมน์ ไม่ใช่เอกสารใหม่:
+`exciseNotBilledKind` (`collected_outside` | `included_in_price` | `not_liable`) · `exciseNotBilledReason` (≥ 10 ตัว) · `exciseNotBilledRef` (เลข Express / เลข QT) · `exciseNotBilledAt/ById/ByName` · CHECK ให้มีได้เฉพาะใบ pipeline · ถอนได้จนกว่า RA จะสร้างใบยื่น
+⚠️ ต้องตรวจตอนลงมือว่า trigger ล็อกใบอนุมัติแล้ว (ถ้ามี) ยอมให้เขียนคอลัมน์ชุดนี้
+
+### 3.6 ใบยื่นกรม (`orders`) — ของ RA
+
+- ยังผูก SO ลูกค้า (`orders.salesOrderId` · unique · FK RESTRICT — ล็อกยกเลิก/Rev./ย้อนอนุมัติ SO ลูกค้าอยู่แล้วที่ `sales-orders/[id]/route.js:1531-1546` · RPC 0376:156-160 · 0166:78-80)
+- เพิ่ม `exciseSalesOrderId` (FK RESTRICT · unique บางส่วน) · ช่องเหตุผลข้ามด่าน (`filingSkipMoneyReason` · `filingSkipRegistrationReason`) · `filingStartedAt/ById` · `updatedAt` (ไม่เคยมี) · `order_items.quantity` เป็น numeric (ตาราง 0 แถว)
+- **ผู้สร้าง = RA** (วันนี้ POST ต้องมี `sales:act` · `from-sales-order/route.js:248`) · 🔴 **ทางสร้างของ SA ต้องปิดใน PR3** ไม่ใช่รอ PR5 (ตรวจแผน · BLOCKER) — ถ้า SA สร้างใบยื่นบน SO ลูกค้าได้ระหว่างนั้น unique `orders_sales_order_unique_idx` (0160:13) จะกันใบของ RA และ ReceiveDialog เก็บเงินค่าภาษีซ้ำกับ SO ค่าสรรพสามิต
+- รายการ: จากบรรทัดใบค่าสรรพสามิต (ยอดที่ลูกค้าจ่ายจริง) · ใบ "ไม่เรียกเก็บ" คิดจาก SO ลูกค้าด้วยตัวสร้างบรรทัดตัวเดียวกัน
+  - `order_items.productId` = `metadata.sourceProductId` (FG ต้นทาง — ทะเบียนจับคู่ด้วยตัวนี้ · ห้ามใช้สินค้า 04-003)
+  - `order_items.salesOrderLineId` = บรรทัด SO ลูกค้า (`metadata.sourceSalesOrderLineId` · FK ไป `sales_order_lines` · 0160:21)
+  - ภาษี/ชิ้น = `unitPrice` ของบรรทัดใบค่าสรรพสามิต · แตกช่อง ภส. ด้วยกติกา D1
+  - การคิดใหม่จากใบสั่งขายของ #1924 (`orders/[id]/route.js:160-196` · คิดจากสินค้าปัจจุบัน + ต้องมีขอบเขตขาย) **ปิดสำหรับใบที่ผูก SO ค่าสรรพสามิต** (ยอดที่ลูกค้าจ่ายแล้วห้ามถูกคิดทับ) · ใบ "ไม่เรียกเก็บ" ย้ายสิทธิ์คิดใหม่ไปให้ RA
+- `orders.quotationId` (0349) คงความหมายเดิม = QT ลูกค้า · ใบค่าสรรพสามิตหาได้จาก `exciseSalesOrderId → quotationId`
+- ⚠️ trigger `orders_assign_excise_tax_notice_identity` (0162:151) ออกเลข ET / FM-TAX-01 "ใบแจ้งชำระค่าภาษีสรรพสามิต" ให้ทุกแถว `orders` และ `billPrint` พิมพ์เป็นเอกสารถึงลูกค้า ⇒ ขัด Q1 (เอกสารถึงลูกค้าคือใบเสนอราคา) · ใบยื่นกลายเป็นเอกสารภายในของ RA: ปุ่ม "ออกใบแจ้งชำระค่าภาษี" ถอดออก · เลข ET ใช้เป็นเลขอ้างอิงภายในของใบยื่น (ไม่ส่งลูกค้า)
+- ทางเดินใหม่ (เขียน `FILING_TRANSITIONS` ของ #1925 ใหม่): `draft → filing → complete → delivered` + `rejected`(ภายใน RA) · ขั้น "รับเงิน" ของ SA (ReceiveDialog) ตัดทิ้ง — "เงินเข้าแล้ว" อ่านจากงวดที่ FN รับรองบน SO ค่าสรรพสามิต
+- ด่านเริ่มยื่น: ทะเบียนอนุมัติครบ **หรือ** เหตุผลข้าม · เงินรับรองแล้ว **หรือ** เหตุผลข้าม (Q15) · ใบ `not_liable` ไม่ต้องยื่น
+- RA อ่าน SO ไม่ได้ (ไม่มี `salesplan:view` · `permissions.js:688`) ⇒ สรุป SO/ใบค่าสรรพสามิต/สถานะเงินมาทาง API ของ `/tax` · ลิงก์ "ใบสั่งขายต้นทาง" บนหน้าใบยื่น (`tax/filings/[id]/page.js:339`) เปลี่ยนเป็นแผงสรุปในหน้า
+
+### 3.7 สิทธิ์ของใบไม่มีดีล
+
+ปัญหา: ทุกด่านของ QT/SO ตัดสินผ่าน `row.deal` (`scopedRow.js:41-50,110-127` · ลิสต์ QT/SO · GET/PATCH · งวด · ไฟล์แนบ · `privateEvidence`) และ `inSalesViewScope(user, null)` ตอบ **true** ให้ role ที่เห็นทุกทีม แต่ false ให้ role ทีม/ของตัวเอง
+
+ทางแก้ — ตัวตัดสินเดียว:
+- `SCOPED_TABLES.quotations/sales_orders` select ดีลของ SO ต้นทางมาด้วย (embed ต้อง **ระบุชื่อ FK** — คู่ `quotations ↔ sales_orders` จะมีสองความสัมพันธ์ · `sales_orders` อ้างตัวเอง · กัน PGRST201) และ `scopeOf = row.deal ?? row.sourceSalesOrder?.deal`
+- `salesDocDeal(row)` / `salesDocAccess(user, row, mode)` ใน `lib/scopedRow.js` ให้ทุก route เรียกตัวเดียว · ใบที่หาดีลไม่ได้เลย = ปฏิเสธ (ยกเว้น admin) ตามกติกาเดิม
+- FN: เห็นและทำงานฝั่งบัญชีตามเดิม (ขอบเขต 'all') · RA: ไม่เห็นหน้าขาย
+- ratchet: ห้ามเรียก `inSales*Scope(user, row.deal)` ตรง ๆ กับใบที่อาจไม่มีดีล
+- ⚠️ **ดีลของ SO ต้นทางใช้ตัดสินสิทธิ์อย่างเดียว ห้ามเอาไปใส่ `row.deal`** — โค้ดหลายจุดใช้ `quote.deal` ทำงานกับดีลจริง (เช่น `quotationCancelRepo.js:151-156` ส่งดีลเข้าตัวคิด FC) ถ้าเติมดีลต้นทางลงไป ใบ excise จะไปขยับ FC ของดีลลูกค้า
+- "รอฉันอนุมัติ" (`isQuotationAwaitingMyApproval` · `quotationWorkflow.js:141` · ใช้ที่ `quotations/route.js:90` · `nav/counts/route.js:196`) ตัดใบของดีลที่ปิดแล้ว — ดีลต้นทางของ SO อนุมัติเป็น Won เสมอ ⇒ ใบ excise ต้องส่ง `dealClosed: false` ไม่งั้นไม่ขึ้นป้ายผู้อนุมัติเลย
+- จุดที่ต้องต่อเข้าตัวตัดสินเพิ่ม (ตรวจแผน): ตารางวางบิล/เลื่อนวันของลูกค้า (`installmentScheduleServer.js:95`) · แท็บเอกสารของ SO (`sales-orders/[id]/documents/route.js:26` วันนี้ admin อย่างเดียว) · แท็บเอกสารรวมของดีลต้นทาง (`documents/all/route.js:78-79` กรองด้วย dealId) · สมุดชำระของ FN จัดกลุ่มตามเจ้าของดีล (`finance/payments/route.js:99-106`) → ใช้เจ้าของดีลต้นทาง
+
+---
+
+## 4. กัน Actual
+
+**ชั้น 1 ฐานข้อมูล (ปิดเองโดยโครงสร้าง):** `sync_sales_order_actual` · `enforce_sales_order_actual_on_deal` · `_deal_so_actual_extras` (0412:421,513,562) กรองเฉพาะ `dealId = X AND origin = 'pipeline'` · ใบ excise ไม่มีดีลและไม่ใช่ pipeline ⇒ ไม่เข้า wonValue / actualByMonth / soPending · CHECK `actualAmount = 0` · `actualMode` รายงวดได้เฉพาะ pipeline (0412:231-236)
+
+**ชั้น 2 ตัวตัดสินระดับแถว — ต้องตัดใบ excise ออกเพิ่ม (วันนี้รั่ว):**
+- `salesOrderAmountKind` (`salesOrderWorkflow.js:307-312`) · `splitSalesOrderAmounts` (:328) · `salesOrderCountedActual` (`salesOrderActualMode.js:343`) · `salesOrderActualEvents` (:539) — ทุกตัวถือว่า "ไม่ใช่ historical = Actual"
+- จุดที่รั่วถ้าไม่แก้: การ์ด "Actual ก่อน VAT" หน้ารายการ SO (`sales-orders/page.js:546,568,781,972`) · ชิปกรองที่จัดใบ excise เป็น "ใบจากใบเสนอราคา" (`salesOrderListFilter.js:50,87-88`) · หน้า SO (`[id]/page.js:1894,2011,2633` + ถ้อยคำอนุมัติ/ย้อน/ยกเลิก :673-690,739,1375,3096,3153) · ช่อง SO บนหน้า QT (`quotations/[id]/page.js:1157-1163`)
+- 🔴 **ห้ามกลับเป็น `origin === 'pipeline'`** (ตรวจแผน 28/10 · BLOCKER) — query รายงานยอดขาย (`salesReportData.js:170,245`) ไม่ได้ select `origin` เพราะกรอง `pipelineRowsOnly` ในตัว query แล้ว · แถวพวกนั้นไหลเข้า `salesOrderActualEvents` (`reportRows.js:67`) และ `salesOrderAmountKind` (`reportPendingApproval.js:111`) ⇒ ถ้าตัดสินแบบ "เฉพาะ pipeline" แถวที่ไม่มี `origin` จะกลายเป็นไม่นับ **รายงานยอดขายทั้งจอและ Excel เป็น 0** · ใช้แบบตัดออก: `isActualOrder = (o) => !isHistoricalOrder(o) && !isExciseOrder(o)` (ไม่มี origin = นับเหมือนเดิม) และเทสต์ guard บังคับให้ทุก select ที่ไม่ได้กรองใน query ต้องมี `origin`
+- ตัวช่วยใหม่ใน `lib/sales/historicalOrders.js` (บ้านเดียวของ literal origin): `ORIGIN_EXCISE` · `isExciseOrder` · `isActualOrder` (แบบตัดออกข้างบน) · `exciseRowsOnly` · `EXCISE_STATUS_NOTE`
+- ตัวอ่านที่ใช้ `pipelineRowsOnly` อยู่แล้วตัดใบ excise ทิ้งเอง: รายงานยอดขาย (จอ/Excel) · งานผลิต · ลิสต์ใบยื่นเดิม · เลนย้อนอนุมัติ · บริการ
+
+**ชั้น 3 ฝั่งใบเสนอราคา:** FC / พยากรณ์ / คิว FC (`forecast-review:38` · `forecast-report:90,142` · `forecastSourceRepo.js:34`) ข้ามใบที่ไม่มีดีลอยู่แล้ว · มูลค่าดีลมาจาก `accept_quotation_atomic` ซึ่งใบ excise ไม่เรียก · ต้องกรองเพิ่ม: ตัวเลือกสัญญา (`contracts/options/route.js:66-74` กิน `.limit(500)`) · ปุ่มสร้างคำร้องจาก QT (`RequestCreateButton.js:70`) · คิว "Won รอยื่น SO" (`handoffQueueData.js:20-30` — ตัดสินว่าใบ excise เข้าคิว SA ตัวใหม่แทน)
+
+ข้อระวังบัญชี: ยอดในสมุดชำระของ FN รวมเงินค่าภาษี (เงินรับแทน) · ติดป้าย origin · FN ลง Express เป็นบัญชีรับแทน (Q23)
+
+---
+
+## 5. ผลกับ SO ลูกค้า
+
+- **ล็อกเมื่อมีใบค่าสรรพสามิตที่ยังมีผล** (Q16): ย้อนอนุมัติ / Rev. / ยกเลิก SO ลูกค้าถูกบล็อกพร้อมบอกเลขใบค่าสรรพสามิตที่ต้องยกเลิกก่อน · ด่าน JS ใน `sales-orders/[id]/route.js` (RPC ถูกเรียกผ่าน route เท่านั้น) · ลบถูกกันด้วย FK RESTRICT · การลบดีล/QT แบบบังคับ (`forceDelete.js:383-470`) ต้องนับใบค่าสรรพสามิตลูก ๆ ในหน้าพรีวิว ไม่งั้นชน 23503 ดิบกลางทาง (ลบทีละใบ ไม่ atomic)
+- **ยกเลิกใบค่าสรรพสามิต = ปลดล็อก** · ผู้ยกเลิกตามกติกา QT 24/09 = ผู้อนุมัติ (`canCancelQuotation` · `quotationWorkflow.js:178`) SA ขอยกเลิกได้ · ⚠️ วันนี้ยกเลิกได้เฉพาะ `draft/sent/rejected` (`quotationCancelRepo.js:37` · `quotationCancel.js:63` "accepted → ย้อนการรับก่อน") และใบ excise ย้อนการรับไม่ได้ ⇒ **ต้องมีสาขายกเลิกของใบ excise ที่ยอม `accepted`** เมื่อไม่มี SO ค่าสรรพสามิตที่ยังมีผล (ไม่งั้น SO ลูกค้าล็อกตาย) · ถ้ามี SO ค่าสรรพสามิตแล้วต้องยกเลิก SO ก่อน (เงินที่รับแล้วคืนผ่านเส้นคืนเงินเดิมของ FN)
+- **SO ค่าสรรพสามิตย้อนอนุมัติไม่ได้เลย** — Rev. เกิดไม่ได้ (CHECK `revisionNo = 0`) ถ้าปล่อยย้อน ใบจะค้าง `approval_revoked` ตลอดไป · แก้ด้วยยกเลิกแล้วออกใหม่เท่านั้น และยกเลิกได้เมื่อ RA ยังไม่ได้สร้างใบยื่น (ด่านยกเลิก/ย้อน/Rev./ลบบังคับต้องดู `orders.exciseSalesOrderId` ด้วย ไม่ใช่แค่ `orders.salesOrderId` — `sales-orders/[id]/route.js:1531-1546` · 0166:78 · 0376:156-160 · `forceDelete.js:237`)
+- **เริ่มยื่นกรมแล้ว = SO ลูกค้าล็อกถาวร** (กลไกเดิมของ `orders.salesOrderId`)
+- แก้หลังรับเงินแล้ว (D8): ยกเลิก + FN คืนเงิน + เก็บใหม่ · การโอนงวด (carry 0378:209-225) ต้องดีลเดียวกันและ pipeline จึงใช้ไม่ได้
+- SO ค่าสรรพสามิตไม่แตะดีลลูกค้าเลย: Actual · FC · Won · เธรดดีล (`documentThread.js` เขียนเธรดเมื่อมี dealId เท่านั้น) · ปิดโครงการ
+- `cancel_sales_order_with_reversal_atomic` ยกเลิก QT ที่รับแล้ว **ตามดีล** (0170:101-102) — ใบ excise ไม่มีดีลจึงไม่โดน · SO ค่าสรรพสามิตยกเลิกได้แบบไม่ย้อน Won เท่านั้น
+
+---
+
+## 6. Migration (เลขชั่วคราว · เอาเลขจริงตอน merge · ทุกไฟล์ทดสอบใน PGlite ก่อน)
+
+⚠️ **ห้ามลอกเนื้อ RPC จากไฟล์ migration** — ตัวที่รันจริงถูกปะด้วยการแทนสตริงใน `prosrc` หลายรอบ (0382/0385/0392/0396/0400/0404/0407/0412) ⇒ เนื้อที่จะแก้ต้องมาจาก `pg_get_functiondef` บน prod · การปะใช้แบบ "หาข้อความยึด เจอครั้งเดียวเท่านั้น ไม่งั้น RAISE" ตามแบบ 0407 §4
+⚠️ ห้ามมีข้อความ `FUNCTION public.<ชื่อ RPC เดิม>` ในไฟล์ใหม่ที่ไม่ได้นิยามฟังก์ชันนั้นเต็มตัว (เทสต์ `serviceRoundsCopyPaths.latestDefinitionOf`)
+
+### 0414 `excise_documents_origin` — โครงสร้างล้วน · รันก่อน PR1
+
+```sql
+BEGIN;
+-- §1 quotations ─────────────────────────────────────────────────────────
+ALTER TABLE public.quotations
+  ADD COLUMN IF NOT EXISTS origin text NOT NULL DEFAULT 'pipeline',
+  ADD COLUMN IF NOT EXISTS "sourceSalesOrderId" text
+    REFERENCES public.sales_orders(id) ON DELETE RESTRICT;
+ALTER TABLE public.quotations DROP CONSTRAINT IF EXISTS quotations_origin_check;
+ALTER TABLE public.quotations ADD CONSTRAINT quotations_origin_check
+  CHECK (origin IN ('pipeline', 'excise'));
+ALTER TABLE public.quotations DROP CONSTRAINT IF EXISTS quotations_origin_shape;
+ALTER TABLE public.quotations ADD CONSTRAINT quotations_origin_shape CHECK (
+  (origin = 'pipeline' AND "dealId" IS NOT NULL AND "sourceSalesOrderId" IS NULL)
+  OR (origin = 'excise' AND "dealId" IS NULL AND "sourceSalesOrderId" IS NOT NULL));
+ALTER TABLE public.quotations ALTER COLUMN "dealId" DROP NOT NULL;      -- หลัง CHECK เท่านั้น
+DROP TRIGGER IF EXISTS quotations_origin_immutable_trg ON public.quotations;
+CREATE TRIGGER quotations_origin_immutable_trg BEFORE UPDATE OF origin ON public.quotations
+  FOR EACH ROW EXECUTE FUNCTION public.guard_record_origin_immutable();   -- ฟังก์ชันกลางของ 0360 (ใช้ TG_TABLE_NAME)
+CREATE INDEX IF NOT EXISTS quotations_source_sales_order_idx
+  ON public.quotations ("sourceSalesOrderId") WHERE "sourceSalesOrderId" IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS quotations_one_accepted_excise_per_source_uidx
+  ON public.quotations ("sourceSalesOrderId") WHERE origin = 'excise' AND status = 'accepted';
+
+-- §2 sales_orders ───────────────────────────────────────────────────────
+ALTER TABLE public.sales_orders
+  ADD COLUMN IF NOT EXISTS "sourceSalesOrderId" text
+    REFERENCES public.sales_orders(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS "exciseNotBilledKind" text,
+  ADD COLUMN IF NOT EXISTS "exciseNotBilledReason" text,
+  ADD COLUMN IF NOT EXISTS "exciseNotBilledRef" text,
+  ADD COLUMN IF NOT EXISTS "exciseNotBilledAt" timestamptz,
+  ADD COLUMN IF NOT EXISTS "exciseNotBilledById" text,
+  ADD COLUMN IF NOT EXISTS "exciseNotBilledByName" text;
+ALTER TABLE public.sales_orders DROP CONSTRAINT IF EXISTS sales_orders_origin_check;
+ALTER TABLE public.sales_orders ADD CONSTRAINT sales_orders_origin_check
+  CHECK (origin IN ('pipeline', 'historical', 'excise'));
+-- origin_shape: สาขา pipeline + historical ลอกจาก 0374 **ตัวต่อตัว** แล้ว OR สาขา excise
+ALTER TABLE public.sales_orders DROP CONSTRAINT IF EXISTS sales_orders_origin_shape;
+ALTER TABLE public.sales_orders ADD CONSTRAINT sales_orders_origin_shape CHECK (
+  ( /* pipeline — 0374 verbatim */ ) OR ( /* historical — 0374 verbatim */ )
+  OR ( origin = 'excise' AND "dealId" IS NULL AND "projectId" IS NULL
+       AND "quotationId" IS NOT NULL AND "sourceSalesOrderId" IS NOT NULL
+       AND "actualAmount" = 0 AND "revisionNo" = 0 AND "revisedFromId" IS NULL
+       AND "historicalQuoteRef" IS NULL AND "historicalExpressRef" IS NULL
+       AND "historicalInvoiceRef" IS NULL AND "historicalIntakeHash" IS NULL
+       AND "paymentGateExemptAt" IS NULL AND "exciseNotBilledKind" IS NULL ));
+ALTER TABLE public.sales_orders DROP CONSTRAINT IF EXISTS sales_orders_deal_by_origin;
+ALTER TABLE public.sales_orders ADD CONSTRAINT sales_orders_deal_by_origin CHECK (
+  (origin = 'excise') = ("dealId" IS NULL)
+  AND ("sourceSalesOrderId" IS NULL OR origin = 'excise'));
+ALTER TABLE public.sales_orders ALTER COLUMN "dealId" DROP NOT NULL;    -- หลัง CHECK เท่านั้น
+ALTER TABLE public.sales_orders DROP CONSTRAINT IF EXISTS sales_orders_excise_not_billed_shape;
+ALTER TABLE public.sales_orders ADD CONSTRAINT sales_orders_excise_not_billed_shape CHECK (
+  -- ทั้งชุดหรือไม่มีเลย (ถอนการตัดสิน = ล้างทุกช่อง) · ความยาวเหตุผล 10–500 ตามแบบ payment_gate_exempt_sane (0360)
+  ( "exciseNotBilledKind" IS NULL AND "exciseNotBilledReason" IS NULL AND "exciseNotBilledRef" IS NULL
+    AND "exciseNotBilledAt" IS NULL AND "exciseNotBilledById" IS NULL AND "exciseNotBilledByName" IS NULL )
+  OR ( origin = 'pipeline'
+       AND "exciseNotBilledKind" IN ('collected_outside', 'included_in_price', 'not_liable')
+       AND char_length(btrim("exciseNotBilledReason")) BETWEEN 10 AND 500
+       AND ("exciseNotBilledRef" IS NULL OR char_length("exciseNotBilledRef") <= 100)
+       AND "exciseNotBilledAt" IS NOT NULL AND "exciseNotBilledById" IS NOT NULL ));
+CREATE INDEX IF NOT EXISTS sales_orders_source_sales_order_idx
+  ON public.sales_orders ("sourceSalesOrderId") WHERE "sourceSalesOrderId" IS NOT NULL;
+
+-- §3 ลิงก์ SO ต้นทางคือสมอของสิทธิ์ ⇒ แก้ไม่ได้หลังเกิด (ทั้งสองตาราง) ───────────────
+CREATE OR REPLACE FUNCTION public.guard_source_sales_order_immutable() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."sourceSalesOrderId" IS DISTINCT FROM OLD."sourceSalesOrderId" THEN
+    RAISE EXCEPTION 'source_sales_order_immutable' USING DETAIL = TG_TABLE_NAME || ':' || OLD.id;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS quotations_source_so_immutable_trg ON public.quotations;
+CREATE TRIGGER quotations_source_so_immutable_trg BEFORE UPDATE OF "sourceSalesOrderId" ON public.quotations
+  FOR EACH ROW EXECUTE FUNCTION public.guard_source_sales_order_immutable();
+DROP TRIGGER IF EXISTS sales_orders_source_so_immutable_trg ON public.sales_orders;
+CREATE TRIGGER sales_orders_source_so_immutable_trg BEFORE UPDATE OF "sourceSalesOrderId" ON public.sales_orders
+  FOR EACH ROW EXECUTE FUNCTION public.guard_source_sales_order_immutable();
+
+-- §4 ชื่อหมวด 04-003 (DML) ────────────────────────────────────────────────
+UPDATE public.product_types SET "nameTh" = 'ค่าภาษีสรรพสามิต', "nameEn" = 'Excise tax recharge'
+ WHERE "mainCategoryCode" = '04' AND "typeCode" = '003';
+NOTIFY pgrst, 'reload schema';
+COMMIT;
+-- SELECT ท้าย: คอลัมน์ใหม่ครบ · CHECK ใหม่ 5 ตัว · trigger ใหม่ 3 ตัว · dealId nullable ทั้งสองตาราง · 0 แถว origin excise
+```
+
+รันก่อน PR1 ได้ทันที — เพิ่มอย่างเดียว · แถวเดิมเป็น pipeline/historical ทั้งหมดผ่าน CHECK ใหม่ (ตัวค้านยืนยันแล้ว) · ไม่มีแถว excise จนกว่า PR3 ขึ้น · คอลัมน์ของใบยื่นกรมแยกไป 0417 (ไม่ผูกด่าน "ตาราง orders ต้องว่าง" ไว้กับ PR1)
+
+### 0415 `excise_quotation_rpcs` — รันก่อน PR3
+
+- **ปะ** `submit_quotation_with_signature_evidence_atomic` (0156:104-106) · `approve_quotation_with_signature_evidence_atomic` (0165:57-62 + ปะ 0382) · `withdraw_quotation_submission_atomic` (0161:126-131 + 0382) · `reject_quotation_submission_atomic` (0164:93-98 + 0382): จุดอ่านดีลจาก `v_quote."dealId"` → `COALESCE(v_quote."dealId", (SELECT so."dealId" FROM public.sales_orders so WHERE so.id = v_quote."sourceSalesOrderId"))` · ผลคือเจ้าของดีลต้นทาง/ผู้จัดการขายเป็นผู้อนุมัติตามกติกาเดิม · ข้อความยึดต้องยืนยันกับ `pg_get_functiondef` ตอนเขียน (ชื่อตัวแปรอาจต่างกันรายฟังก์ชัน)
+- **ใหม่** `accept_excise_quotation_atomic(p_quotation_id, p_actor_id, p_actor_name, p_expected_updated_at, p_evidence jsonb)`: ล็อก QT · origin excise · อนุมัติแล้ว + sent · SO ต้นทางยังอนุมัติ ไม่ถูกแทน เป็น pipeline · ตั้ง accepted + หลักฐานแบบใบปกติ · **ไม่แตะดีล/FC/ใบพี่น้อง**
+- REVOKE จาก PUBLIC/anon/authenticated → GRANT `service_role` ตามแบบ 0382 · คำแปลไทยของ RAISE code ใหม่ใน `documentWorkflowErrors`
+- `unaccept_quotation_atomic` (0380/0388) ผูกดีลทั้งก้อน — ใบ excise ไม่ใช้ (ยกเลิกแทน) · route unaccept ปฏิเสธใบ excise
+
+### 0416 `excise_sales_order_rpcs` — รันก่อน PR4
+
+- **ใหม่** `create_excise_sales_order_draft(...)`: ลอกจาก `pg_get_functiondef('create_sales_order_draft')` ตัวที่รันจริง (0363 + ปะ 0407) แล้วเปลี่ยน: ต้องเป็น QT origin excise ที่รับแล้ว · `origin = 'excise'` · `dealId/projectId = NULL` · `sourceSalesOrderId` จาก QT · `actualAmount = 0` · เจ้าของ = เจ้าของดีลต้นทาง · บรรทัดลอกครบรวม metadata และ packQty · ตัวนับ SO เดิม
+- **ปะ** RPC ยื่น/อนุมัติ SO (`submit_…` 0197:63 + 0404 · `approve_…` 0197:168 + 0382/0392/0396/0400/0404): ข้อ "ต้องมี projectId" และ "QT ที่รับแล้วบนดีลเดียวกัน" เพิ่มสาขา excise = `q.id = o."quotationId" AND q.origin = 'excise' AND q.status = 'accepted'` · `approve_sales_order_with_actual_mode` (0412:872) ไม่ต้องแก้ (excise ส่ง 'order')
+- **ปะ** `snapshot_sales_order_owner` (0294:41-46): ดีลที่ใช้ = `COALESCE(NEW."dealId", (SELECT "dealId" FROM sales_orders WHERE id = NEW."sourceSalesOrderId"))` · ใบอื่นทำงานเหมือนเดิม
+- **ปะ** `revoke_sales_order_approval_atomic` (0166 + ปะ): ใบ origin excise ย้อนอนุมัติไม่ได้ (`sales_order_revoke_excise_forbidden`) — ถ้าปล่อย ใบจะค้าง `approval_revoked` เพราะ Rev. เกิดไม่ได้ · ด่าน JS ซ้ำอีกชั้นใน route
+- ไม่แตะ `revise_approved_sales_order_atomic` — ใบ excise ออก Rev. ไม่ได้ทั้ง CHECK (`revisionNo = 0`) และด่าน JS
+
+### 0417 `excise_filing_links` — รันก่อน PR5
+
+```sql
+BEGIN;
+-- ทางสร้างใบยื่นของ SA ปิดตั้งแต่ PR3 ⇒ ถ้ามีแถวโผล่ = มีทางรั่ว หยุดดูก่อน
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM public.orders) THEN RAISE EXCEPTION 'orders_not_empty'; END IF;
+END $$;
+ALTER TABLE public.orders
+  ADD COLUMN IF NOT EXISTS "exciseSalesOrderId" text
+    REFERENCES public.sales_orders(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS "filingSkipMoneyReason" text,
+  ADD COLUMN IF NOT EXISTS "filingSkipRegistrationReason" text,
+  ADD COLUMN IF NOT EXISTS "filingStartedAt" timestamptz,
+  ADD COLUMN IF NOT EXISTS "filingStartedById" uuid,        -- ชนิดเดียวกับ orders."ownerId" / "filedBy"
+  ADD COLUMN IF NOT EXISTS "updatedAt" timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS orders_excise_sales_order_uidx
+  ON public.orders ("exciseSalesOrderId") WHERE "exciseSalesOrderId" IS NOT NULL;
+ALTER TABLE public.order_items ALTER COLUMN quantity TYPE numeric;
+-- ด่าน "SO มีใบยื่นอยู่" ของย้อนอนุมัติ/Rev. (0166:78 · 0376:156-160) ดูแค่ salesOrderId →
+-- ปะให้ดู "exciseSalesOrderId" ด้วย (ข้อความยึดจาก pg_get_functiondef)
+NOTIFY pgrst, 'reload schema';
+COMMIT;
+```
+
+---
+
+## 7. แผน PR
+
+| PR | เนื้อหา | ต้องรัน | ต้องรอ |
+|---|---|---|---|
+| **PR1** รั้ว Actual + ตัวตัดสินสิทธิ์ใบไม่มีดีล | ตัวช่วย origin ใน `historicalOrders.js` · 4 ตัวตัดสิน Actual ระดับแถวตัดใบ excise ออก (แบบตัดออก ไม่ใช่ "เฉพาะ pipeline" — หมวด 4) + ถ้อยคำบนหน้า SO/QT · ป้าย "รอฉันอนุมัติ" ของใบไม่มีดีล (`dealClosed: false`) · ตารางวางบิลลูกค้า · แท็บเอกสาร SO/ดีล · สมุดชำระ FN จัดกลุ่ม · `salesDocAccess` + `SCOPED_TABLES` ถอยไปดีลของ SO ต้นทาง · ลิสต์ QT/SO · GET/PATCH · งวด (`installments/route.js:92-95`) · ไฟล์แนบ (`salesOrderAttachmentAccess.js:54-66`) · `privateEvidence` · ป้ายเมนู QT (ผู้อนุมัติของใบไม่มีดีล) · กรองตัวเลือกสัญญา/ปุ่มคำร้อง · ratchet + จัดชั้นตัวอ่านใน `historicalMoneyGuards` ใหม่ · **ไม่มีอะไรเปลี่ยนบน prod** (ยังไม่มีแถว excise) | 0414 | — |
+| **PR2** สูตร 8.8% + สินค้า 04-003 | `exciseTaxLine` ปัดครั้งเดียว + แตกช่อง ภส. + ปัดด้วยสตางค์ · `ensureExciseChargeProduct` · ปิดเปิด 04-003 ด้วยมือ (POST/PATCH/ตัวเลือกหมวด/ตัวเลือกสินค้า) · `PROTECTED_PRODUCT_CATEGORY_CODES` · QT pipeline ปฏิเสธสินค้า 04-003 · `enforceMasterPrices` ข้ามบรรทัด excise · `buildExciseQuotationLines` | 0414 | PR1 |
+| **PR3** ใบเสนอราคาค่าสรรพสามิต | route สร้างจาก SO ลูกค้า · คิว SA "รอออกใบค่าสรรพสามิต" + ช่วงบนเส้นเดินงาน SO + ป้ายเมนู · หน้า QT โหมด excise (บรรทัดล็อก · คิดใหม่จาก SO · ชิป) · submit/approve/withdraw/reject/cancel/revise แตกสาขา · accept → `accept_excise_quotation_atomic` · unaccept ปฏิเสธ · "ไม่เรียกเก็บในระบบ" บน SO ลูกค้า · ล็อก SO ลูกค้า (Q16) · สาขายกเลิกใบ excise ที่รับแล้ว · พรีวิวลบบังคับนับใบ excise ลูก · 🔴 **ปิดทางสร้างใบยื่นของ SA** (`POST /api/tax/orders/from-sales-order` · `POST /api/orders` · ปุ่มบนเส้นเดินงาน · คิว "รอยื่นภาษี" ของ SA) | 0415 | PR2 |
+| **PR4** SO ค่าสรรพสามิต | สร้าง SO จากใบที่รับแล้ว → `create_excise_sales_order_draft` · หน้า SO โหมด excise (ซ่อนดีล/โครงการ/ผลิต/บริการ/สเปค/สัญญา/Rev./ย้อน Won · ชิป "ไม่นับ Actual") · ยื่น/อนุมัติผ่าน RPC ที่ปะ · งวด/แจ้งชำระ/FN ครบ · ยกเลิกแบบไม่ย้อน Won เท่านั้น · ย้อนอนุมัติไม่ได้ · กระดิ่งถึงเจ้าของดีลต้นทาง | 0416 | PR3 |
+| **PR5** เส้นยื่นกรมของ RA | RA สร้างใบยื่นจากคิว `/tax` (SO ค่าสรรพสามิตอนุมัติ / ไม่เรียกเก็บ) · รายการจากใบค่าสรรพสามิต · `FILING_TRANSITIONS` ใหม่ (ด่านเงินจาก FN · ด่านทะเบียน · ข้ามได้ใส่เหตุผล · RA ส่งใบเสร็จ) · proxy: การเขียน `/api/orders` และ from-sales-order เหลือ RA · ถอดทางเข้าของ SA (ปุ่มบนเส้นเดินงาน · `SalesOrderFilingModal` ย้ายไป RA · `ReceiveDialog` ลบ) · แผงสรุป SO ในหน้าใบยื่น (RA ไม่เข้าหน้าขาย) · คิว "รอยื่นภาษี" ย้ายเป็นของ RA · รายการใบยื่นจากใบค่าสรรพสามิต (productId/ลิงก์บรรทัดตามหมวด 3.6) · ปิดคิดใหม่ของ #1924 บนใบที่ผูก SO ค่าสรรพสามิต · ถอดปุ่มพิมพ์ใบแจ้งชำระ ET ถึงลูกค้า · ด่านยกเลิก/ย้อน/ลบของ SO ค่าสรรพสามิตดู `exciseSalesOrderId` | 0417 | PR4 · #1925 merge |
+| **PR6** ใบค้าง + เทมเพลต + เอกสาร | ป้าย "ก่อนเปิดระบบ" (49 ใบ ณ 26/10) · Q21 คงงาน SA แต่ผูกกับคิวใหม่ · DML ถอด `ra:approve` รายคน (Q22) · `docs/excise-filing-plan.md` v3 · บันทึก "ใบไม่มีดีล" ใน `docs/module-ownership-rule.md` · `docs/INDEX.md` | DML | PR5 + มีใบทดลองถึง delivered |
+
+ทุก PR: เทสต์ห้ามต่อฐานจริง (ส่งตัวจำลอง) · `recordAudit` ทุกการเขียน · โมดัลบอกผลทุกการอนุมัติ · ไม่มีสิทธิ์ = ไม่แสดง / ติดด่าน = แสดงพร้อมเหตุผล · เปิดจอจริงก่อนบอกว่าเสร็จ
+
+---
+
+### 7.1 PR1 — สิ่งที่ทำจริง (28/10) และของที่ย้ายไป PR หลัง
+
+ทำแล้ว:
+- ตัวตัดสิน Actual: `isActualOrder` (แบบตัดออก) ใน `salesOrderAmountKind` · `salesOrderCountedActual` · `salesOrderActualEvents` · `actualModeEligibility` · `actualStartBlocker` · ชิปที่มา "ใบจากใบเสนอราคา" · ย้อนอนุมัติ/ออก Rev. ปฏิเสธใบ excise
+- ตัวตัดสินสิทธิ์: `salesDocScopeDeal` / `inSalesDocScope` / `loadSourceDeals` / `attachSourceDeals` ใน `lib/scopedRow.js` (ดีลต้นทางลง `row.sourceDeal` ไม่ใช่ `row.deal` · อ่านแยกอีกรอบ ไม่ embed — กัน PGRST201) · `loadScoped` ของสองตาราง · ลิสต์ QT/SO · GET/PATCH/DELETE QT · submit/revise/unaccept QT · GET/PATCH SO · งวด (`loadOrderForUser`) · ตารางวางบิล (`loadOrdersBundle`) · แท็บเอกสาร SO · ไฟล์แนบ SO · `privateEvidence` · สมุดชำระ FN จัดกลุ่มตามเจ้าของดีลต้นทาง
+- "รอฉันอนุมัติ": `quotationApprovalContext` (ทะเบียน QT + nav/counts) · ใบ excise ส่ง `dealClosed: false`
+- กรองออก: ตัวเลือกสัญญา (`nonExciseRowsOnly` ก่อน `.limit(500)`) · ปุ่มคำร้อง · คิว "Won รอยื่น SO" · POST สร้าง SO จาก QT ปฏิเสธใบ excise
+- ยาม: `exciseDocGuards.test.mjs` (ตัวตัดสิน · ขอบเขต · ratchet ห้าม `inSales*Scope(user, x.deal)` ใน route สองตาราง) · `historicalMoneyGuards` ข้อ 5b (คำสั่งอ่าน SO ที่ไม่กรอง origin ต้อง select origin · 4 จุดยกเว้นพร้อมเหตุผล) + literal `origin 'excise'` บ้านเดียว
+- ⚠️ ก่อนรัน 0414 `check:columns` แดง 7 จุด (คอลัมน์ใหม่ล้วน) — รันบน prod แล้ว 28/10 ⇒ PR1 merge ได้ (deploy ก่อนรัน = ทะเบียน QT + ป้ายเมนู + สมุดชำระ FN พัง 42703)
+
+ย้ายไป PR หลัง (ใบ excise ยังไม่มีจนถึง PR3 ⇒ ไม่มีจอไหนเห็นของพวกนี้ก่อนเวลา):
+- ถ้อยคำ Actual บนหน้า SO รายใบ (สถานะ/ทัก/การ์ด) + ช่อง SO บนหน้า QT → PR3 (หน้า QT) / PR4 (หน้า SO)
+- แท็บเอกสารรวมของดีลต้นทาง (`documents/all` กรองด้วย dealId) · ชิปที่มา "ใบค่าสรรพสามิต" บนทะเบียน SO → PR4
+- route ย่อยของ QT ที่ `loadScoped` เปิดขอบเขตให้ใบ excise แล้ว (cancel · reject · withdraw · issued · file) แต่ยังไม่ได้ทวนตรรกะของใบไม่มีดีล (เช่น cancel ส่ง `quote.deal` เข้า FC) → PR3 ทวนทุกตัว · accept/approval ยังปฏิเสธใบไม่มีดีลอยู่ (ตั้งใจ — PR3 แตกสาขา)
+
+## 8. เทสต์ที่จะแดงโดยตั้งใจ (ต้องเขียนใหม่ ห้ามข้าม)
+
+| เทสต์ | ทำไม |
+|---|---|
+| `historicalSalesOrderMigration.test.mjs:404-423` | ล็อกว่าไฟล์ล่าสุดที่นิยาม `sales_orders_origin_shape` คือ 0374 → เป็น 0414 · :425-430 (สาขา pipeline ต้องตรงกับ 0360 ตัวต่อตัว) ต้องยังผ่าน |
+| `historicalSalesOrderMigration.test.mjs:245-272` | ฟังก์ชันฐานที่อ่าน SO อนุมัติต้องกรอง pipeline หรืออยู่ใน `SQL_STATE_CHECK_ONLY` → ตัวใหม่ใน 0415/0416 ต้องจัดชั้น |
+| `historicalMoneyGuards.test.mjs` | จัดชั้นตัวอ่าน `sales_orders` ใหม่: `PER_ID_GUARDED` (from-sales-order · SO [id] · งวด) · `SEES_HISTORICAL` (เหตุผลหลายข้อไม่จริงกับ excise) · `SCOPED_SAFE` quotations/[id] ("ใบย้อนหลังไม่มี QT" — excise มี) · literal guard :326 ขยายให้ครอบ `'excise'` |
+| `productCategory.test.mjs:102` | 11 → 12 |
+| `exciseBilling.test.mjs:102-111,140-155` · `soFiling.test.mjs` · `soFilingRecalc.test.mjs` · `registrationRoute.test.mjs` | ตัวเลขปัดแยก → ปัดครั้งเดียว |
+| `filingTransitions.test.mjs` (#1925) | ทางเดินใหม่ของ RA |
+| `proxy.test.mjs` | ล็อกว่า SA สร้างใบยื่นได้ |
+| `salesOrderWorkTrack.test.mjs` · `handoffQueue.test.mjs` | ช่วงยื่นภาษีย้ายเป็นของ RA · คิวใหม่ของ SA |
+| `documentWorkflowErrors` · `serviceRoundsCopyPaths` · `selectExpression` (PGRST201) | RAISE code ใหม่ · ALTER TABLE/FUNCTION ใหม่ · embed ที่ต้องระบุชื่อ FK |
+| `saveQuotationContentColumns.test.mjs` | ถ้ามีคอลัมน์หัวใบใหม่ที่ต้องผ่าน `save_quotation_content` |
+
+เทสต์ใหม่ที่ต้องมี: fixture ใบ excise อนุมัติแล้วได้ Actual 0 ทุกตัวตัดสิน · **แถวที่ไม่มี `origin` (รายงานยอดขาย) ยังนับ Actual** · guard: select ที่ป้อนตัวตัดสิน Actual และไม่ได้กรองใน query ต้องมี `origin` · ใบไม่มีดีลเห็นได้เฉพาะทีมของดีลต้นทาง (role ทีม/ของตัวเอง/ทุกทีม) · `enforceMasterPrices` ไม่ทับบรรทัด excise แต่ยังทับ QT ขาย · QT ขายใส่สินค้า 04-003 ไม่ได้ · กระดิ่งใบ excise ถึงเจ้าของดีลต้นทาง · RA ไม่มีทางอ่าน `/api/sales-planning`
+
+---
+
+## 9. ความเสี่ยง
+
+| ความเสี่ยง | ทางลด |
+|---|---|
+| ปลด `dealId` NOT NULL แล้วตัวอ่านที่ลืมพังหรือรั่ว (59 ไฟล์แตะ `quotations` · ทุก route SO ผูกดีล) | PR1 ต้องขึ้นก่อนมีใบ excise ใบแรก · ตัวตัดสินเดียว `salesDocAccess` · ratchet ห้ามเรียก scope กับดีลที่อาจว่าง |
+| Actual รั่วผ่านตัวตัดสินกลับด้านที่หลุดรอด | ชั้นฐานข้อมูลปิดเอง + CHECK `actualAmount = 0` + fixture ทุกตัวตัดสิน |
+| ปะ RPC ที่รันอยู่ผิดตัว (เนื้อจริงต่างจากไฟล์) | อ่าน `pg_get_functiondef` บน prod ก่อนเขียน · ข้อความยึดต้องเจอครั้งเดียว · PGlite |
+| PGRST201 — สองความสัมพันธ์ `quotations ↔ sales_orders` · `sales_orders` อ้างตัวเอง · `orders` → `sales_orders` สองเส้น | embed ทุกจุดระบุชื่อ FK · เทสต์ `selectExpression` |
+| SA เก็บซ้ำ: ใส่สินค้า 04-003 / บรรทัดพิมพ์เองเรื่องสรรพสามิตใน QT ขาย | สินค้าไม่ขึ้นในตัวเลือก + server ปฏิเสธ · บรรทัดพิมพ์เองยังพิมพ์ได้ (Q7 ยอมราคารวมภาษี) → ทางเดียวที่กันคือ SA กด "ไม่เรียกเก็บ — ราคารวมแล้ว" |
+| ใบค้างมีราคาขายปลีกไม่ครบ (101/220 สินค้า · 37 บรรทัดใน 22 SO ณ 26/10) | ออกใบไม่ได้จนกว่าเติมราคา (ด่าน Q3) · คิวบอกรายการที่ขาด |
+| ทะเบียนขาดเยอะ (79 บรรทัดไม่มีเลย) → RA ข้ามด่านจนเป็นนิสัย | ทุกการข้ามมีเหตุผลบนใบ · รายงาน · ทบทวนรายสัปดาห์ |
+| RA คนเดียว / FN ลายเซ็นคนเดียว | admin สำรอง RA (Q25) · FN อัปลายเซ็นเพิ่มก่อนเปิดระบบ |
+| เงินค่าภาษีไหลในสมุดชำระของ FN | ป้าย origin · ลงบัญชีรับแทน |
+| เลข migration ชน (หลายเซสชัน) | เอาเลขตอน merge · ตรวจ `ls migrations` และแบรนช์ที่ค้าง |
+| dev DB = prod DB · ทดลองทุกครั้งเผาเลข QT/SO จริง | ทดลองกับใบค้างจริงหนึ่งใบที่ราคา/ทะเบียนครบ เดินครบเส้นพร้อม SA/ผู้จัดการ/FN/RA · ตรวจ wonValue/รายงานยอดขายก่อนและหลัง |
+
+---
+
+## 10. ข้อที่ตัดสินเพิ่ม (D1–D9 · ตอบครบ 28/10 · เหลือรอคำตอบ RA ข้อ D7 ก่อน PR5)
+
+| # | เรื่อง | ค่าตั้งต้นในแผน | ใคร |
+|---|---|---|---|
+| D1 | แตกยอดสรรพสามิต/ท้องถิ่นตอนกรอก ภส. หลังปัด 8.8% ครั้งเดียว | ✅ **มติ 28/10:** สรรพสามิต = round2(ฐาน × 8%) · ท้องถิ่น = ภาษี/ชิ้น − สรรพสามิต/ชิ้น | เจ้าของ |
+| D2 | เลขใบค่าสรรพสามิต | ✅ **มติ 28/10:** QT- ชุดเดิม + ป้าย "ค่าสรรพสามิต" · มาตรฐาน FM-SA-01 ตัวเดิม | เจ้าของ |
+| D3 | SO ค่าสรรพสามิตออก Rev. ได้ไหม | ✅ **มติ 28/10:** ไม่มี Rev. · แก้ = ยกเลิก SO (ถ้า RA ยังไม่ยื่น) → ยกเลิก/Rev. ใบเสนอราคา → ออก SO ใหม่ | เจ้าของ |
+| D4 | ด่านเอกสารยืนยันคำสั่งซื้อของ SO ค่าสรรพสามิต | ✅ **มติ 28/10:** เหมือน SO ปกติ (ไม่มีข้อยกเว้น) | เจ้าของ |
+| D5 | ส่วนรหัสลูกค้าในรหัส 04-003 (3/4 หลัก) | ✅ **มติ 28/10:** ตามรูปที่ลูกค้าใช้อยู่ — สินค้ากลุ่ม 04 ของลูกค้า → FG ต้นทางบน SO → 4 หลัก (`composeFgCode`) | เจ้าของ |
+| D6 | วันเปิดระบบ | ✅ **มติ 28/10:** เปิดทันทีที่ PR6 ขึ้น (ไม่กำหนดวันตายตัว) · ก่อนหน้านั้นทดลองกับใบค้างจริงหนึ่งใบให้เดินครบเส้นหลัง PR5 · ใบค้างทั้งหมดเข้าคิวตอน PR6 พร้อมป้าย "ก่อนเปิดระบบ" | เจ้าของ |
+| D7 | 01-015 ต้องเสียภาษีไหม · ยื่นกรมจริงรายรอบ/รายเดือน | ✅ **มติ 28/10:** ใช้ค่าตั้งต้นไปก่อน (คงธง · 1 SO = 1 ใบยื่น) · เจ้าของถาม RA · ⏳ **ต้องได้คำตอบก่อน PR5** (PR1–PR4 ไม่ขึ้นกับข้อนี้) | RA |
+| D8 | แก้ใบหลังลูกค้าจ่ายแล้ว (ไม่มี Rev. + โอนงวดข้ามใบไม่ได้) | ✅ **มติ 28/10:** ยกเลิก + FN คืนเงิน + เก็บใหม่ (เส้นคืนเงินเดิม) · ถ้าเกิดบ่อยค่อยเพิ่มการโอนงวดระหว่าง SO ค่าสรรพสามิตของ SO ต้นทางเดียวกัน | เจ้าของ |
+| D9 | SO ลูกค้าที่ตัดสิน "ไม่เรียกเก็บ" แล้วออก Rev. | ✅ **มติ 28/10:** ไม่ตามไป · Rev. ใหม่เข้าคิวให้ SA ตัดสินใหม่ (ประกาศใน `serviceRoundsCopyPaths` ว่าคอลัมน์ชุด `exciseNotBilled*` ไม่ลอก) | เจ้าของ |
+
+---
+
+## 11. การเปลี่ยนผ่าน
+
+**ก่อนเริ่ม:** ตัดสิน D1–D5 · FN อัปลายเซ็นเพิ่ม · ตั้ง admin เป็นตัวสำรอง RA · merge #1925 ก่อน PR5
+**ลำดับรัน:** 0414 → PR1 → PR2 → 0415 → PR3 → 0416 → PR4 → 0417 → PR5 → PR6 · migration รันมือใน SQL Editor ก่อน merge PR ที่ใช้เสมอ (deploy อัตโนมัติวันละ 3 รอบ — โค้ดที่อ่านคอลัมน์ที่ยังไม่มีจะพังทั้ง query)
+**ไม่มีการย้ายข้อมูลเอกสาร** (`orders` ว่าง) · DML: ชื่อหมวด 04-003 (ใน 0414) · ถอด `ra:approve` รายคน (PR6)
+**ใบค้าง:** 49 SO (14 ลูกค้า · ก.ค. 1 / ส.ค. 20 / ก.ย. 22 / ต.ค. 6 ณ 26/10) เข้าคิว SA พร้อมป้าย "ก่อนเปิดระบบ" · ลำดับ: ใบที่ราคา/ทะเบียนครบ (7 ใบ) → ใบที่เก็บนอกระบบแล้ว → ใบที่รอเติมราคา · นับตัวเลขใหม่ตอนเปิดระบบ (ตัวเลขเปลี่ยนทุกวัน)
+**ทดลอง:** ใบจริงหนึ่งใบเดินครบ 13 ขั้น · เปิดจอด้วยบัญชีจริงของแต่ละฝ่าย (admin ผ่านทุกด่าน บังบั๊ก proxy) · ตรวจ wonValue/wonMonth ของดีลลูกค้า รายงานยอดขาย แดชบอร์ด ไม่ขยับ
+
+---
+
+## ภาคผนวก — ข้อเท็จจริงจากโค้ดที่ผูกแผน (main `250648bc0`)
+
+- `quotations.dealId` NOT NULL + FK CASCADE (0065:8) · `sales_orders.dealId` NOT NULL (0107:9) · `quotations` ไม่มีคอลัมน์ origin / ownerId / team · RLS ไม่มี policy (service role ล้วน)
+- RPC ที่ผูกดีล: submit QT (0156:104-106) · approve QT (0165:57-62 · ปะ 0382) · withdraw (0161:126-131) · reject (0164:93-98) · accept (0361:93-170 · ปะ 0388) · unaccept (0380:60-134) · create SO draft (0363:177 · ปะ 0407) · submit/approve SO (0197:63,168 · ปะ 0382/0392/0396/0400/0404) · cancel with reversal (0170:95-102) · ที่ไม่ผูก: `create_quotation_with_number` (0328) · `save_quotation_content` (0343 · ปะ 0407) · `force_delete_quotation` (0381:80 กันค่าว่างแล้ว) · `finance_approve_…` (0251) · snapshot เอกสาร (0130)
+- Actual ชั้นฐานข้อมูล: 0412:421,513,562 กรอง pipeline + ดีล · ตัวตัดสินระดับแถวกลับด้าน: `salesOrderWorkflow.js:307-312,328` · `salesOrderActualMode.js:343,539`
+- สิทธิ์: RA = `customers:view, products:view, products:margin, ra:view, ra:approve, history:view` (`permissions.js:688`) · FN = `salesplan:view` ('all') + `payments:confirm` · การแจ้งชำระ: `salesplan:edit` หรือ `canConfirmPayment` (`salesOrderPayments.js:823-829`) แต่ `loadOrderForUser` ตัดใบไม่มีดีลทุกคน (`installments/route.js:92-95`)
+- สินค้า: รหัสลูกค้า `customers.arCode` → `customerCodeSegment` เติม 4 หลัก (`masterCodes.js:151-155`) · กลุ่ม 03/04 ไม่มีเลขรัน (`:116,173`) · ตัวเลือกสินค้ากรอง `approvalStatus` approved/ว่าง + `isActive` (`api/products/route.js:114,123`) · `enforceMasterPrices` ไม่ดู approval (`quoteLines.js:372-375`)
+- เส้นยื่นเดิม: `orders.salesOrderId` unique + FK RESTRICT (0160) · `order_items.salesOrderLineId` FK RESTRICT · `order_items.quantity` integer (0002) · POST from-sales-order ต้องมี `sales:act` (`route.js:248`)
+
+---
+
+## ผลตรวจแผนรอบที่ 1 (ตัวค้านอิสระ · 28/10) — แก้ลงแผนแล้ว
+
+| ระดับ | เรื่อง | แก้ที่ |
+|---|---|---|
+| BLOCKER | ตัดสิน Actual แบบ "เฉพาะ pipeline" ทำรายงานยอดขายเป็น 0 (query ไม่ได้ select `origin`) | หมวด 4 ใช้แบบตัดออก + guard |
+| BLOCKER | ทางสร้างใบยื่นของ SA เปิดค้างระหว่าง PR3–PR5 → ชน unique + เก็บเงินซ้ำ | หมวด 3.6 · PR3 ปิดทาง |
+| MAJOR | SO ค่าสรรพสามิตย้อนอนุมัติ/ยกเลิกได้หลัง RA ยื่น (ด่านดูแค่ `salesOrderId`) | หมวด 5 · 0416 ปะ revoke · 0417 |
+| MAJOR | ใบ excise ที่รับแล้วยกเลิกไม่ได้ → SO ลูกค้าล็อกตาย | หมวด 5 · PR3 |
+| MAJOR | ใบ excise ไม่ขึ้น "รอฉันอนุมัติ" (ดีลต้นทาง Won = ปิด) | หมวด 3.7 · PR1 |
+| MAJOR | รายการใบยื่นจากบรรทัดใบค่าสรรพสามิต: productId/ลิงก์บรรทัด/คิดใหม่ของ #1924 | หมวด 3.6 · PR5 |
+| MAJOR | trigger 0162 ออกเลข ET + ใบแจ้งชำระถึงลูกค้าให้ทุกใบยื่น (ขัด Q1) | หมวด 3.6 · PR5 |
+| MAJOR | หมวด 04-003 อาจมีของเดิมบน prod | ตรวจแล้ว 0 ทุกตาราง · ด่านเฉพาะบรรทัดใหม่ (หมวด 3.3) |
+| MAJOR | จุดที่ PR1 ตกหล่น: ตารางวางบิล · แท็บเอกสาร · ลบบังคับ · ห้ามเติม `row.deal` | หมวด 3.7 · หมวด 5 · PR1/PR3 |
+| MAJOR | แก้หลังจ่ายเงิน = คืนเงิน + เก็บใหม่ | D8 |
+| MINOR | ด่าน `orders_not_empty` ใน 0414 ผูก PR1 กับ PR5 · ไม่มี NOTIFY · ลิงก์ SO ต้นทางแก้ได้ · CHECK ไม่เรียกเก็บไม่ครบชุด · ชนิด id ปน · PR1 ไม่ต้องรอ #1925 · SA ยังเข้า `/tax` ร่างทะเบียน · ผู้ยกเลิก QT = ผู้อนุมัติ · ผู้ยื่น SO = เจ้าของดีลต้นทาง/ผู้จัดการ · Rev. ของ SO ที่ตัดสินไม่เรียกเก็บ · แท็บเอกสารดีล/สมุดชำระจัดกลุ่ม · ความหมาย `orders.quotationId` | หมวด 2 · 3.6 · 3.7 · 6 · 7 · 10 |
+
+ยืนยันแล้วว่าถูก: ชนิด id เป็น text · `guard_record_origin_immutable()` ใช้ได้ทุกตาราง · CHECK boolean ใช้ได้ · แถวเดิมผ่าน CHECK ใหม่ทุกตัว · `origin_shape` นิยามแค่ 0360/0374 (0412 ไม่ชน) · ชื่อคอลัมน์ `orders`/`order_items`/`product_types` ถูก · ปัญหาเจ้าของ 0294 มีจริง · Actual ชั้นฐานข้อมูลของ 0412 กรองจริง · trigger 0410 ดูแค่ 02-001 · ตัวอ่าน FC ข้ามใบไม่มีดีล · `create_quotation_with_number` รับคอลัมน์ใหม่ได้ · ยังไม่มี embed คู่ quotations↔sales_orders ที่จะชน PGRST201 วันนี้
