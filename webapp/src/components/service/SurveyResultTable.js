@@ -46,6 +46,7 @@ import Link from "next/link";
 import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Lightbulb, Link2, Minus, Pencil, Plus, Undo2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { KeepTogether } from "@/components/service/ScheduleModalParts";
+import { keepPhrases } from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import PhotoThumb from "@/components/ui/PhotoThumb";
@@ -62,6 +63,7 @@ import {
 } from "@/lib/service/surveyControl";
 import { surveyDrawingZoneView, surveyZoneTitle } from "@/lib/service/surveyFieldView";
 import { isJpgOrPngFile } from "@/lib/service/surveyMethod";
+import { surveyConfirmPreviousRoundKeep } from "@/lib/service/surveyConfirmLink";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
   surveyPackageCell, surveyPendingDecisions,
@@ -457,8 +459,9 @@ export default function SurveyResultTable({
                         🐞 UAT 26/10 (head-r3-21): ช่อง 182px (1440) / 104px (768) ตัดวันเป็น "พฤ. 8" / "ต.ค." ⇒ วันไทยเป็นก้อนเดียว (`KeepTogether`) */}
                     {m.source ? <span className={styles.source}><KeepTogether text={m.source} /></span> : null}
                     {tags ? <span className={styles.sub}>{tags}</span> : null}
-                    {/* ใบยืนยันหน้างาน: ตัวเลขรอบจากแบบ ไว้เทียบกับผลที่วัดรอบนี้ — บรรทัดรองกลางของเซลล์ตาราง (จาง · 12px) */}
-                    {previousRound ? <span className="cell-sub">{previousRound}</span> : null}
+                    {/* ใบยืนยันหน้างาน: ตัวเลขรอบจากแบบ ไว้เทียบกับผลที่วัดรอบนี้ — บรรทัดรองกลางของเซลล์ตาราง (จาง · 12px)
+                        🐞 UAT S5 head รอบ 1 K12: เลขที่ขาดที่ขีด / ตัวเลขขาดจากหน่วย ⇒ วลีห้ามขาดจาก lib (`surveyConfirmPreviousRoundKeep`) */}
+                    {previousRound ? <span className="cell-sub">{keepPhrases(previousRound, surveyConfirmPreviousRoundKeep(previousRound))}</span> : null}
                     {!cut && (cell.figures || cell.dims) ? (
                       <span className={styles.figures}>
                         {cell.figures ? <b>{cell.figures}</b> : null}

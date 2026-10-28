@@ -12,7 +12,7 @@ import {
   surveyConfirmAuditSuffix, surveyConfirmAwaitingRows, surveyConfirmBackLinkText, surveyConfirmBannerParts,
   surveyConfirmChildLine, surveyConfirmCreateBody, surveyConfirmDealHint, surveyConfirmEndedText,
   surveyConfirmForbiddenText, surveyConfirmHref, surveyConfirmLinkView, surveyConfirmOfLine, surveyConfirmOpenLinkText,
-  surveyConfirmOpenedText, surveyConfirmPlan, surveyConfirmPreviousRoundText, surveyConfirmSentLines,
+  surveyConfirmOpenedText, surveyConfirmPlan, surveyConfirmPreviousRoundKeep, surveyConfirmPreviousRoundText, surveyConfirmSentLines,
   surveyConfirmSentSummary, surveyConfirmSubmitMismatch, surveyConfirmSubtitle, surveyConfirmTitle,
   surveyConfirmZoneStates, surveyConfirmZonesLockText,
 } from './surveyConfirmLink.js';
@@ -531,6 +531,17 @@ test('surveyConfirmPreviousRoundText: ครบ / ขาดบางส่วน
   assert.equal(surveyConfirmPreviousRoundText(r({ parts: [part(6, 8)] }), ''), 'รอบจากแบบ: 48 ตร.ม. · —');
 });
 
+test('surveyConfirmPreviousRoundKeep: เลขที่+วงเล็บ+โคลอนก้อนเดียว · ตัวเลข+หน่วย · ขนาด+จำนวน (UAT S5 head รอบ 1 K12)', () => {
+  assert.deepEqual(surveyConfirmPreviousRoundKeep(`รอบจากแบบ (${ORIG_DOC}): 48 ตร.ม. · SM 1`), [`(${ORIG_DOC}):`, '48 ตร.ม.', 'SM 1']);
+  assert.deepEqual(surveyConfirmPreviousRoundKeep(`รอบจากแบบ (${ORIG_DOC}): — · 2`), [`(${ORIG_DOC}):`]);
+  assert.deepEqual(surveyConfirmPreviousRoundKeep('รอบจากแบบ: 1,234.5 ตร.ม. · —'), ['1,234.5 ตร.ม.']);
+  assert.deepEqual(surveyConfirmPreviousRoundKeep(''), []);
+  assert.deepEqual(surveyConfirmPreviousRoundKeep(null), []);
+  // ทุกวลีอยู่ในข้อความจริง — ไม่มีวลีไหนที่ keepPhrases หาไม่เจอ
+  const text = surveyConfirmPreviousRoundText({ areaSqm: 1234.5, packageSize: 'ST', packageQty: 3 }, ORIG_DOC);
+  for (const phrase of surveyConfirmPreviousRoundKeep(text)) assert.ok(text.includes(phrase), phrase);
+});
+
 test('ประโยคส่งออก (F1): มีเลขที่ / มีแต่ id · ค่าคงที่ตรงตามตาราง §8.2', () => {
   const withDoc = { id: 'DR-O', docNo: ORIG_DOC, title: 'ร้านกาแฟสาขาหนึ่ง' };
   const idOnly = { id: 'DR-O' };
@@ -617,7 +628,7 @@ test('ชื่อที่ส่งออกครบตามสเปก S5 �
     'surveyConfirmChildLine', 'surveyConfirmOfLine', 'surveyConfirmZoneStates', 'surveyConfirmAwaitingRows', 'surveyConfirmPlan',
     'surveyConfirmSubmitMismatch', 'surveyConfirmCreateBody', 'surveyConfirmLinkView', 'surveyConfirmBannerParts',
     'surveyConfirmOpenedText', 'surveyConfirmSentLines', 'surveyConfirmSentSummary', 'surveyConfirmEndedText',
-    'surveyConfirmPreviousRoundText',
+    'surveyConfirmPreviousRoundText', 'surveyConfirmPreviousRoundKeep',
   ];
   for (const name of fns) assert.equal(typeof link[name], 'function', name);
   const strings = [

@@ -449,3 +449,18 @@ export function surveyConfirmPreviousRoundText(originalRow, originalDocNo) {
   const doc = String(originalDocNo ?? '').trim();
   return `รอบจากแบบ${doc ? ` (${doc})` : ''}: ${numbersText(originalRow)}`;
 }
+
+/**
+ * วลีที่ห้ามขาดของบรรทัด "รอบจากแบบ (…): …" — ส่งให้ `keepPhrases` ของจอ (ตัวหนังสือไม่ถูกแตะ)
+ * 🐞 UAT S5 head รอบ 1 K12: ช่องพื้นที่ 768/1440 ตัดเป็น "(RQ-AS-" / "26100345):" และ "30" / "ตร.ม." ⇒ เลขที่พร้อมวงเล็บ+โคลอน
+ *    ก้อนหนึ่ง · ตัวเลข+หน่วย/ขนาด+จำนวน ก้อนละท่อน (ท่อนที่มีช่องว่าง) · ตัดได้แค่ระหว่างก้อน
+ * รับข้อความจาก `surveyConfirmPreviousRoundText` (server ส่งมาเป็นสตริง) · ไม่ใช่รูปนั้น = [] (จอวาดข้อความเดิม)
+ */
+export function surveyConfirmPreviousRoundKeep(text) {
+  const source = String(text ?? '');
+  const at = source.indexOf(': ');
+  if (at < 0) return [];
+  const doc = source.slice(0, at + 1).match(/\([^()]*\):$/);
+  const parts = source.slice(at + 2).split(' · ').filter((part) => part.includes(' '));
+  return [...(doc ? [doc[0]] : []), ...parts];
+}

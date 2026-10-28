@@ -241,7 +241,7 @@ function ConfirmLinks({ zones }) {
       {lines.map((line, index) => (
         <p key={line.href || index} className={styles.confirmLink}>
           {line.segments.map((part, at) => (part.href
-            ? <Link key={at} className={`linklike ${styles.docRef}`} href={part.href}>{part.text}</Link>
+            ? <Link key={at} className={`linklike ${styles.docRef} ${styles.lineRef}`} href={part.href}>{part.text}</Link>
             : <Fragment key={at}>{thaiText(part.text)}</Fragment>))}
         </p>
       ))}

@@ -333,7 +333,7 @@ test('ตาราง — prop `previousRounds` ค่าตั้งต้น n
   assert.match(table, /const previousRound = !cut && zone\.zoneId && previousRounds \? previousRounds\[zone\.zoneId\] \|\| null : null;/);
   /* ใต้บรรทัดป้าย ก่อนตัวเลขผลวัด — คลาสบรรทัดรองกลางของเซลล์ตาราง */
   /* (คอมเมนต์ JSX ถูกตัดเหลือ `{}` — ยอมให้มีคั่นได้) */
-  assert.match(table, /\{tags \? <span className=\{styles\.sub\}>\{tags\}<\/span> : null\}\s*(?:\{\}\s*)?\{previousRound \? <span className="cell-sub">\{previousRound\}<\/span> : null\}\s*\{!cut && \(cell\.figures \|\| cell\.dims\) \? \(/);
+  assert.match(table, /\{tags \? <span className=\{styles\.sub\}>\{tags\}<\/span> : null\}\s*(?:\{\}\s*)?\{previousRound \? <span className="cell-sub">\{keepPhrases\(previousRound, surveyConfirmPreviousRoundKeep\(previousRound\)\)\}<\/span> : null\}\s*\{!cut && \(cell\.figures \|\| cell\.dims\) \? \(/);
   assert.doesNotMatch(table, /รอบจากแบบ/, 'ข้อความมาจาก surveyConfirmPreviousRoundText (server)');
 });
 

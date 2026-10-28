@@ -367,7 +367,7 @@ test('D-2 b บรรทัดลิงก์: คอมโพเนนต์เ
   const links = between(VIEW, 'function ConfirmLinks', 'function ZonesTable');
   assert.match(links, /zones\.confirmOf \? \[zones\.confirmOf\] : \[\]/);
   assert.match(links, /zones\.confirmLinks \|\| \[\]/);
-  assert.match(links, /<Link key=\{at\} className=\{`linklike \$\{styles\.docRef\}`\} href=\{part\.href\}>\{part\.text\}<\/Link>/);
+  assert.match(links, /<Link key=\{at\} className=\{`linklike \$\{styles\.docRef\} \$\{styles\.lineRef\}`\} href=\{part\.href\}>\{part\.text\}<\/Link>/);
   assert.match(links, /thaiText\(part\.text\)/);
   assert.equal((VIEW.match(/<ConfirmLinks zones=\{zones\} \/>/g) || []).length, 2, 'สองที่ที่สลับกันด้วยสภาพเดียว');
   const stack = between(VIEW, '<div className={styles.zoneStack}>', '<ZonesTable zones={zones} />');
@@ -377,7 +377,9 @@ test('D-2 b บรรทัดลิงก์: คอมโพเนนต์เ
   const sheet = css('../../components/requests/details/surveyRequest.module.css');
   // เลขที่ที่เป็นลิงก์ห้ามขาดที่ขีด (UAT S5 sales รอบ 1 · K05 375)
   assert.match(rule(sheet, '.docRef'), /white-space: nowrap;/);
-  for (const selector of ['.confirmLinks', '.confirmLink', '.docRef']) {
+  // เลขที่กลางบรรทัดลิงก์เว้นสองข้างเท่าวงโฟกัส — วงเคยทับ ":" กับ "·" (UAT S5 head รอบ 1 K10/K03 focus)
+  assert.match(rule(sheet, '.lineRef'), /margin-inline: var\(--space-1\);/);
+  for (const selector of ['.confirmLinks', '.confirmLink', '.docRef', '.lineRef']) {
     assert.doesNotMatch(rule(sheet, selector), /#[0-9a-fA-F]{3,8}\b|rgba?\(|line-height: [\d.]|\d+px/, selector);
   }
   // view ยังไม่นำทาง ไม่ยิง API เอง (เปลือกพาไป)

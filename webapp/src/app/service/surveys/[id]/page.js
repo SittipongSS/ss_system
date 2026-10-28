@@ -26,7 +26,7 @@
 //   ⚠️ **หน้าพื้นที่เปิดได้ทีละหน้า และไม่มีร่างในเครื่อง** (มติเจ้าของ) — ทุกทางออกจากพื้นที่ที่มีค่าค้าง (แถว · ‹ › ·
 //      ถัดไป · ปุ่มย้อนของเครื่อง · สลับแท็บ · ลิงก์ · รีเฟรช) ถามก่อนทิ้งด้วยกล่องเดียว · กติกาการย้าย/ย้อนอยู่ที่
 //      `surveyZoneRouteStep` (ของล้วน · เทสต์ทุกแถว) ต่อสายโดย `useSurveyZoneRoute`
-import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MapPinPlus, PencilRuler, Search } from "lucide-react";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
@@ -128,6 +128,18 @@ const DOC_ISSUED_STATES = ["issued", "frozen", "ready"];
 const DOC_POLL_MAX_FAILS = 8;
 /* ชื่อที่คำกำกับไทล์ "ต้องเข้ายืนยันหน้างานภายหลังไหม" เอ่ยถึง — เป็นชิ้นเดียว ไม่ตัดกลาง (ป้ายในคำพูดกับ "ฝ่ายขาย" มาจาก `surveyCardUnits` เอง) */
 const SEND_TILE_UNITS = ["ใบยืนยันหน้างาน", "ขอยืนยันหน้างาน"];
+/* ข้อหนึ่งของรายการผลในโมดัลส่งผล
+   · ใบที่มีพื้นที่จากแบบ (โมดัลมีไทล์ · `withUnits`) — ห่อชิ้นห้ามขาดชุดเดียวกับคำโปรยไทล์ (UAT S5 head รอบ 1 K14: เคยขาด
+     “ใบ / ยืนยันหน้างาน” · “ดึง / ผลกลับมาแก้”) และท่อนระหว่างชิ้นยังผ่าน `thaiText` แบบ `keepUnits` ของการ์ด — เลขที่เอกสาร
+     (RQ-AS-… · SV-… · SU-…) กับคำทับศัพท์ (แท็บ · ผลกลับ) ไม่ขาด · ข้อที่ไม่มีชิ้นเลย = `thaiText` ทั้งข้อ
+   · ใบลงหน้างานล้วน (ไม่มีไทล์) = `thaiText` เดิมทุกตัวอักษร — 🐞 UAT S5 head รอบ 2 J: ห่อชิ้นทุกใบทำให้โมดัลของใบที่ไม่ผูก
+     ต่างจาก 197de43a (1440/768 เงาตัวอักษรเลื่อน · 375 ตัดบรรทัดใหม่) และข้อที่ไม่มีชิ้นหลุด `thaiText` ไปทั้งข้อ */
+function sendEffectText(line, withUnits) {
+  if (!withUnits || typeof line !== "string") return thaiText(line);
+  const kept = keepPhrases(line, surveyCardUnits(line, SEND_TILE_UNITS));
+  if (kept === line) return thaiText(line);
+  return kept.map((part, index) => (typeof part === "string" ? <Fragment key={`t${index}`}>{thaiText(part)}</Fragment> : part));
+}
 /* ไอคอนของบานขวาว่าง ตามเหตุที่รายการว่าง (`listView.emptyReason` ของตัวตัดสิน) — เหตุ "ที่เหลือเป็นจากแบบทั้งหมด" ได้ไอคอนเดียวกับ
    บรรทัดเดียวกันบนรายการ (`SurveyZoneList`) · เหตุอื่น/ไม่มีเหตุ = แว่นขยายเดิม (ตรวจจอ crew 26/10) */
 const EMPTY_PANE_ICON = Object.freeze({ drawing: PencilRuler });
@@ -2083,7 +2095,8 @@ export default function SurveySheetPage({ params }) {
             <div className={styles.effects}>
               <p className={styles.effectsTitle}>กดแล้วเกิดขึ้นทันที</p>
               <ul className={styles.effectList}>
-                {sendConfirm.effects.map((line) => <li key={line}>{thaiText(line)}</li>)}
+                {/* ใบจากแบบ: ชื่อในเครื่องหมายคำพูด · ใบยืนยันหน้างาน · ฝ่ายขาย ห้ามขาด (UAT S5 head รอบ 1 K14) · ใบลงหน้างานล้วน = thaiText เดิม (รอบ 2 J) */}
+                {sendConfirm.effects.map((line) => <li key={line}>{sendEffectText(line, !!sendConfirm.choice)}</li>)}
               </ul>
             </div>
           </>

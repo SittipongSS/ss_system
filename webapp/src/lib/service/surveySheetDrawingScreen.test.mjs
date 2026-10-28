@@ -361,6 +361,14 @@ test('🔴 โมดัลส่งผล: ตัวตัดสินได้ 
   assert.match(dialog, /\{sendConfirm\.choice\.pendingNote \? \(\s*<p className=\{styles\.fieldNote\}>\{thaiText\(sendConfirm\.choice\.pendingNote\)\}<\/p>\s*\) : null\}/);
   assert.match(dialog, /\{sendConfirm\.choice \? \(/, 'ไทล์ขึ้นจากผลของตัวตัดสิน — ไม่มี = ไม่มีไทล์');
   assert.ok(dialog.indexOf('<OptionTiles') < dialog.indexOf('sendConfirm.effects.map('), 'ไทล์อยู่เหนือรายการผล (ม็อก B3)');
+  // รายการผลห่อชิ้นห้ามขาดชุดเดียวกับคำโปรยไทล์ — เคยขาด "ใบ" / "ยืนยันหน้างาน" · "“ดึง" / "ผลกลับมาแก้”" (UAT S5 head รอบ 1 K14)
+  // 🐞 UAT S5 head รอบ 2 J: ห่อเฉพาะใบที่มีไทล์ (ใบจากแบบ) — ใบลงหน้างานล้วนได้ thaiText เดิมทุกตัวอักษร (พิกเซลเท่า 197de43a)
+  //    และท่อนระหว่างชิ้นยังผ่าน thaiText (เลขที่เอกสาร · คำทับศัพท์ไม่ขาด) แบบ keepUnits ของการ์ด
+  assert.match(PAGE, /\{sendConfirm\.effects\.map\(\(line\) => <li key=\{line\}>\{sendEffectText\(line, !!sendConfirm\.choice\)\}<\/li>\)\}/);
+  const effectFn = PAGE.slice(PAGE.indexOf('function sendEffectText('), PAGE.indexOf('\n}\n', PAGE.indexOf('function sendEffectText(')));
+  assert.match(effectFn, /if \(!withUnits \|\| typeof line !== "string"\) return thaiText\(line\);/, 'ไม่มีไทล์ = thaiText ทั้งข้อ');
+  assert.match(effectFn, /const kept = keepPhrases\(line, surveyCardUnits\(line, SEND_TILE_UNITS\)\);\s*if \(kept === line\) return thaiText\(line\);/, 'ไม่มีชิ้น = thaiText ทั้งข้อ');
+  assert.match(effectFn, /typeof part === "string" \? <Fragment key=\{`t\$\{index\}`\}>\{thaiText\(part\)\}<\/Fragment> : part/, 'ท่อนระหว่างชิ้นผ่าน thaiText');
   assert.doesNotMatch(dialog, /<select|<Select\b|SearchableSelect/);
   for (const text of [SURVEY_CONFIRM_MISSING, 'ต้องเข้ายืนยันหน้างานภายหลังไหม', 'ต้องยืนยันหน้างาน']) {
     assert.equal(PAGE.includes(`"${text}"`), false, `"${text}" เป็นคำของตัวตัดสิน — หน้าไม่พิมพ์เอง`);
