@@ -6,7 +6,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะฐาน — RPC/การอ่านอยู่ที่ route
 import { fmtMoney } from '@/lib/format';
 import { isSalesManager } from '@/lib/permissions';
-import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { isActualOrder } from '@/lib/sales/historicalOrders';
 import { documentWorkflowError, workflowErrorMessage } from '@/lib/sales/documentWorkflowErrors';
 import {
   ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_ORDER, INSTALLMENT_ACTUAL_AFTER_COUNT_REST, INSTALLMENT_ACTUAL_START_LEFT_LABEL,
@@ -79,7 +79,7 @@ export function previousActualModeOf(order, history = []) {
    ⭐ ลำดับเดียวกับ RPC: ผู้อนุมัติ → ใบ pipeline ที่อนุมัติอยู่และไม่ถูกแทน → แบบรายงวด · คืน `{ status, error }` หรือ null */
 export function actualStartBlocker(order, user) {
   if (!isSalesManager(user?.role)) return { status: 403, error: msg('installment_actual_forbidden') };
-  if (!order || isHistoricalOrder(order) || order.status !== 'approved' || order.supersededById) {
+  if (!order || !isActualOrder(order) || order.status !== 'approved' || order.supersededById) {
     return { status: 409, error: msg('installment_actual_order_not_approved') };
   }
   if (!isInstallmentActualOrder(order)) return { status: 409, error: msg('installment_actual_order_not_installment') };

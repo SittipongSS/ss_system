@@ -169,7 +169,9 @@ const rpc = (name) => stripComments(latestDefinitionOf(name).body);
 function originBranches(shape) {
   const at = shape.indexOf(") OR ( origin = 'historical'");
   assert.ok(at > 0, 'หาจุดแยกสาย pipeline/historical ไม่เจอ');
-  return [shape.slice(0, at), shape.slice(at)];
+  // สายที่สาม (0414 · ใบค่าสรรพสามิต) — นิยามก่อน 0414 มีแค่สองสาย ⇒ ตัวที่สามเป็น undefined
+  const ex = shape.indexOf(") OR ( origin = 'excise'", at);
+  return ex > 0 ? [shape.slice(0, at), shape.slice(at, ex), shape.slice(ex)] : [shape.slice(0, at), shape.slice(at)];
 }
 
 // ═══ 1) cache Actual / ยอดรออนุมัติของดีล ═══════════════════════════════════════
@@ -399,12 +401,23 @@ test('🪤 RPC สร้างใบ: ชนดีลภาชนะที่เ
 
 // ═══ 4) รูปทรงใบสั่งขาย ══════════════════════════════════════════════════════
 
-/* นิยามล่าสุด (0374): ใบย้อนหลังเป็นร่าง/รออนุมัติ/ตีกลับได้แล้ว — approvedAt ผูกกับ approved เท่านั้น
-   · ย้อนอนุมัติ/ออก Rev./ขั้นบัญชี/หลักฐานลายเซ็น/ยกเว้นด่านเงิน ยังตายที่ CHECK · คืนเป็นร่างหลังอนุมัติ = trigger ของ 0374 */
-test('ใบสั่งขาย: CHECK สองสาย — pipeline ต้องมีใบเสนอราคา · historical ย้อนอนุมัติ/Rev./ขั้นบัญชีไม่ได้', () => {
+/* นิยามล่าสุด (0414): สองสายของ 0374 ลอกตัวต่อตัว + สายที่สาม excise (ใบค่าสรรพสามิต · แผน docs/excise-qt-so-rework-plan.md)
+   · 0374: ใบย้อนหลังเป็นร่าง/รออนุมัติ/ตีกลับได้แล้ว — approvedAt ผูกกับ approved เท่านั้น · ย้อนอนุมัติ/ออก Rev./ขั้นบัญชี/
+     หลักฐานลายเซ็น/ยกเว้นด่านเงิน ยังตายที่ CHECK · คืนเป็นร่างหลังอนุมัติ = trigger ของ 0374 */
+test('ใบสั่งขาย: CHECK สามสาย — pipeline ต้องมีใบเสนอราคา · historical ย้อนอนุมัติ/Rev./ขั้นบัญชีไม่ได้ · excise ไม่มีดีล Actual 0', () => {
   const { file, body: shape } = latestConstraintBody('sales_orders_origin_shape');
-  assert.equal(file, '0374_historical_so_approval_flow.sql');
-  const [pipeline, historical] = originBranches(shape);
+  assert.equal(file, '0414_excise_documents_origin.sql');
+  const [pipeline, historical, excise] = originBranches(shape);
+  /* สาย excise — ใบค่าสรรพสามิต: ไม่มีดีล/โครงการ · ชี้ใบเสนอราคาค่าสรรพสามิต + SO ต้นทาง · Actual 0 · ไม่มี Rev. ·
+     ช่องย้อนหลัง/ยกเว้นด่านเงิน/ไม่เรียกเก็บว่าง · **ยอม financeStatus และลายเซ็น** (บัญชีเดินขั้นปกติ — ต่างจาก historical) */
+  for (const piece of [
+    `origin = 'excise'`, '"dealId" IS NULL', '"projectId" IS NULL', '"quotationId" IS NOT NULL',
+    '"sourceSalesOrderId" IS NOT NULL', '"actualAmount" = 0', '"revisionNo" = 0', '"revisedFromId" IS NULL',
+    '"historicalIntakeHash" IS NULL', '"paymentGateExemptAt" IS NULL', '"exciseNotBilledKind" IS NULL',
+  ]) {
+    assert.ok(excise?.includes(piece), `สาย excise ขาด ${piece}`);
+  }
+  assert.ok(!excise.includes('financeStatus') && !excise.includes('signatureEvidenceId'), 'สาย excise ต้องยอมขั้นบัญชีและลายเซ็น');
   for (const piece of [`origin = 'pipeline'`, '"quotationId" IS NOT NULL', '"historicalIntakeHash" IS NULL', '"paymentGateExemptAt" IS NULL']) {
     assert.ok(pipeline.includes(piece), `สาย pipeline ขาด ${piece}`);
   }

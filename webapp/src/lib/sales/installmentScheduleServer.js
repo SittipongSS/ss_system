@@ -7,7 +7,7 @@
 // ⚠️ supabase ไม่ throw เอง — ทุกตัวอ่าน `error` แล้วโยนเอง (อ่านพลาด ≠ ไม่มีข้อมูล) ยกเว้นตัวอ่านกติกาที่ตั้งใจไม่โยน (ข้างล่าง)
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { inSalesViewScope } from '@/lib/salesPlanning';
+import { inSalesDocScope, loadSourceDeals } from '@/lib/scopedRow';
 import { billingRequestedIds } from '@/lib/sales/salesOrderPayments';
 import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 
@@ -67,7 +67,7 @@ export async function billingSkipReady(supabase, rows) {
 
 /**
  * ใบ + ดีล (ด่านขอบเขตการเห็น) + ใบเสนอราคา + งวดทั้งใบ + คำร้องที่งวดผูก — ของหลายใบในคำขอเดียว
- * ⭐ ด่านขอบเขต = `inSalesViewScope(user, deal)` ตัวเดียวกับ route งวดของใบ (loadOrderForUser) — ใบที่คนนี้มองไม่เห็น
+ * ⭐ ด่านขอบเขต = `inSalesDocScope(user, order, 'view')` ตัวเดียวกับ route งวดของใบ (loadOrderForUser) — ใบที่คนนี้มองไม่เห็น
  *   **ไม่ถูกอ่านงวด** และนับไว้ใน `hidden` (จอบอกว่ามีใบที่ไม่เห็น ไม่ใช่แสร้งว่าไม่มี)
  * ⭐ ใบเสนอราคาเอา `status`/`quoteNumber` (ล็อกร่างที่ QT ถูกถอด Won — pipelineInstallmentLock) + `paymentPlan` (ยอดสดของงวดร่าง)
  * ⚠️ ไม่โหลดสายโซ่ Rev. (`revisionHistory`) — ใบ revised ไม่มีงวดเหลือ (0376 ย้ายทั้งแถว) ⇒ ไม่มีงวดให้ล็อกบอกเลขใบ
@@ -83,6 +83,11 @@ export async function loadOrdersBundle(supabase, user, orders = []) {
     .from('sales_deals').select('*').in('id', chunk).order('id', { ascending: true })));
   if (dealError) throw dealError;
   const dealById = new Map((deals || []).map((d) => [d.id, d]));
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ด่านขอบเขตถอยไปดีลของ SO ต้นทาง (`sourceDeal` · ตัดสินสิทธิ์อย่างเดียว · scopedRow.js) */
+  const { data: sourceDealBySource, error: sourceDealError } = await loadSourceDeals(
+    supabase, list.filter((o) => !o.dealId && o.sourceSalesOrderId).map((o) => o.sourceSalesOrderId),
+  );
+  if (sourceDealError) throw sourceDealError;
 
   const quoteIds = [...new Set(list.map((o) => o.quotationId).filter(Boolean))];
   const { data: quotes, error: quoteError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
@@ -91,8 +96,13 @@ export async function loadOrdersBundle(supabase, user, orders = []) {
   const quoteById = new Map((quotes || []).map((q) => [q.id, q]));
 
   const visible = list
-    .map((order) => ({ ...order, deal: dealById.get(order.dealId) || null, quotation: quoteById.get(order.quotationId) || null }))
-    .filter((order) => order.deal && inSalesViewScope(user, order.deal));
+    .map((order) => ({
+      ...order,
+      deal: dealById.get(order.dealId) || null,
+      ...(order.dealId ? {} : { sourceDeal: sourceDealBySource.get(order.sourceSalesOrderId) || null }),
+      quotation: quoteById.get(order.quotationId) || null,
+    }))
+    .filter((order) => inSalesDocScope(user, order, 'view'));
 
   const { data: installments, error: rowError } = await fetchInChunks(visible.map((o) => o.id), (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments').select('*').in('salesOrderId', chunk)

@@ -97,7 +97,8 @@ test('🔴 GET ของใบสั่งขายต้องส่ง canEdit
     new URL('../../app/api/sales-planning/sales-orders/[id]/route.js', import.meta.url),
     'utf8',
   );
-  assert.match(route, /canEdit: canEditSalesPlanning\(user\) && inSalesEditScope\(user, order\.deal\)/);
+  // ขอบเขตผ่าน inSalesDocScope — ใบค่าสรรพสามิต (ไม่มีดีล) ถอยไปดีลของ SO ต้นทาง (lib/scopedRow.js)
+  assert.match(route, /canEdit: canEditSalesPlanning\(user\) && inSalesDocScope\(user, order, 'edit'\)/);
   const page = readFileSync(
     new URL('../../app/sales-planning/sales-orders/[id]/page.js', import.meta.url),
     'utf8',

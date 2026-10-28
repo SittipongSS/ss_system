@@ -323,17 +323,57 @@ test('ตัวอ่าน KPI ระดับดีลที่ระบุช
 });
 
 // ── 5. literal มีบ้านเดียว ────────────────────────────────────────────────────────────────
-test('🪤 literal "historical" และตัวกรอง .eq("origin") มีบ้านเดียวคือ lib/sales/historicalOrders.js', () => {
+test('🪤 literal "historical" · origin "excise" และตัวกรอง .eq("origin") มีบ้านเดียวคือ lib/sales/historicalOrders.js', () => {
   const offenders = [];
   for (const rel of FILES) {
     if (rel === 'lib/sales/historicalOrders.js') continue;
     const text = code(rel);
     if (/['"`]historical['"`]/.test(text)) offenders.push(`${rel} — literal 'historical'`);
     if (/\.(n?eq)\(\s*['"]origin['"]/.test(text)) offenders.push(`${rel} — .eq('origin', …)`);
+    // ใบค่าสรรพสามิต (mig 0414) — ตัวตัดสินคือ isExciseOrder / isActualOrder · ตัวกรองคือ exciseRowsOnly / nonExciseRowsOnly
+    if (/\borigin\s*[!=]==?\s*['"`]excise['"`]|['"`]excise['"`]\s*[!=]==?\s*[\w$.?]*origin\b|\borigin\s*:\s*['"`]excise['"`]/.test(text)) {
+      offenders.push(`${rel} — literal origin 'excise'`);
+    }
   }
   assert.deepEqual(offenders, [],
-    'ใช้ ORIGIN_HISTORICAL / isHistoricalOrder / isHistoricalDeal / pipelineRowsOnly / historicalRowsOnly แทน\n'
+    'ใช้ ORIGIN_HISTORICAL / isHistoricalOrder / isHistoricalDeal / pipelineRowsOnly / historicalRowsOnly · '
+    + 'ORIGIN_EXCISE / isExciseOrder / isActualOrder / exciseRowsOnly / nonExciseRowsOnly แทน\n'
     + offenders.join('\n'));
+});
+
+// ── 5b. ใบค่าสรรพสามิต (mig 0414) — ตัวตัดสินระดับแถวต้องเห็น origin ──────────────────────────────────
+/* 🔴 ใบค่าสรรพสามิตเป็น `approved` + มียอดเหมือนใบขาย แต่ไม่ใช่ยอดขาย (เงินรับแทน) · ตัวตัดสินระดับแถว (`isActualOrder` ·
+   `salesOrderAmountKind`) **ตัดออกเมื่อเห็น origin เท่านั้น** — แถวที่ไม่พก origin ถือเป็นใบ pipeline (กติกาแบบตัดออก
+   ที่กันรายงานยอดขายเป็น 0) ⇒ คำสั่งอ่านที่ไม่กรอง origin ใน query และไม่ select origin = ใบค่าภาษีไหลเข้ายอดเงียบ ๆ
+   ⭐ ทุกคำสั่งผู้ต้องสงสัย (ชุดเดียวกับยามข้อ 1) ที่ไม่ห่อ pipelineRowsOnly/historicalRowsOnly ต้อง select origin (หรือ `*`)
+      หรืออยู่ในรายการข้างล่างพร้อมเหตุผลว่าทำไมใบค่าภาษีเข้ามาไม่ได้/ไม่เป็นไร · count ตรึงไว้เหมือนยามข้อ 1 */
+const EXCISE_NO_ORIGIN = new Map([
+  ['app/api/nav/counts/route.js', { count: 2, reason: 'เลนบัญชี (financeStatus pending — ใบค่าภาษีไปบัญชีเหมือนใบปกติ · มติ 28/10 · นับจำนวนใบ) · ป้ายงานเข้าใหม่ของ TS (planQueue ตัดสินจากบรรทัด/โซน — ใบค่าภาษีไม่มีบรรทัดบริการ · นับแถว ไม่รวมยอด)' }],
+  ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ใบของดีลในโครงการ (`dealId`) — ใบค่าภาษีไม่มีดีล (CHECK sales_orders_deal_by_origin)' }],
+  ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'ใบของโครงการ/ดีลในโครงการ — ใบค่าภาษีไม่มีทั้งโครงการและดีล (CHECK sales_orders_origin_shape)' }],
+]);
+
+test('🪤 ใบค่าสรรพสามิต: คำสั่งอ่านใบสั่งขายที่ไม่กรอง origin ใน query ต้องพก origin ให้ตัวตัดสินระดับแถว', () => {
+  const offenders = [];
+  const tally = new Map();
+  for (const rel of FILES) {
+    const text = code(rel);
+    if (!SO_FROM.test(text)) continue;
+    for (const { line, body } of salesOrderStatements(text)) {
+      if (!isCandidate(body)) continue;
+      if (/\b(pipelineRowsOnly|historicalRowsOnly|exciseRowsOnly)\(/.test(body)) continue;
+      if (/\borigin\b/.test(body) || /\.select\(\s*['"`]\*/.test(body)) continue;
+      tally.set(rel, (tally.get(rel) || 0) + 1);
+      if (!EXCISE_NO_ORIGIN.has(rel)) offenders.push(`${rel}:${line}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'select origin มาด้วย (หรือห่อ pipelineRowsOnly) แล้วตัดสินด้วย isActualOrder / salesOrderAmountKind — '
+    + 'หรือเพิ่มเข้า EXCISE_NO_ORIGIN พร้อมเหตุผลว่าทำไมใบค่าภาษีเข้ามาไม่ได้\n' + offenders.join('\n'));
+  const ghosts = [...EXCISE_NO_ORIGIN]
+    .filter(([rel, { count }]) => (tally.get(rel) || 0) !== count)
+    .map(([rel, { count }]) => `${rel}: คาด ${count} คำสั่ง เจอ ${tally.get(rel) || 0}`);
+  assert.deepEqual(ghosts, []);
 });
 
 // ── 6–8. ผลิต · ภาษี · หลักฐาน ─────────────────────────────────────────────────────────────

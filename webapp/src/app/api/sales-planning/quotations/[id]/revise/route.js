@@ -1,7 +1,8 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning } from '@/lib/salesPlanning';
+import { inSalesDocScope } from '@/lib/scopedRow';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
@@ -37,7 +38,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
+  if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
   // ใบ grandfather (not_required) ออก Rev. ได้เหมือนใบ approved — เป็นทางเดียวที่ใบเก่า
   // ยังแก้ได้ (มติ 2026-07-26) เพราะทุกด่านในระบบนับใบพวกนี้เป็น "อนุมัติแล้ว" อยู่แล้ว
   if (!isRevisableQuotationApprovalStatus(quote.approvalStatus)) {
@@ -151,6 +152,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .insert({
       id: newId,
       dealId: quote.dealId,
+      /* ใบเสนอราคาค่าสรรพสามิต (mig 0414) — ฉบับ Rev. ยังเป็นใบค่าสรรพสามิตของ SO ต้นทางเดิม · ทั้งคู่แก้ไม่ได้หลังเกิด
+         (trigger) จึงต้องติดไปตั้งแต่ INSERT · ใบขายปกติได้ 'pipeline' / ว่าง ตามเดิม (CHECK quotations_origin_shape) */
+      origin: quote.origin || 'pipeline',
+      sourceSalesOrderId: quote.sourceSalesOrderId || null,
       quoteNumber: `${base}${revSeparator}${nextRev}`,
       baseNumber: base,
       revisionNo: nextRev,

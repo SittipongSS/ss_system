@@ -16,8 +16,6 @@ import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicyS
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
-  inSalesEditScope,
-  inSalesViewScope,
 } from '@/lib/salesPlanning';
 import {
   canHardDeleteSalesOrder,
@@ -78,7 +76,7 @@ import {
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder, isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
-import { loadScoped } from '@/lib/scopedRow';
+import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
@@ -451,8 +449,15 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     }
   }
 
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ดีลของ SO ต้นทางไว้ตัดสินสิทธิ์ (`sourceDeal` · ไม่ใช่ `deal` · scopedRow.js) */
+  const { data: sourceDeals, error: sourceDealError } = !order.dealId && order.sourceSalesOrderId
+    ? await loadSourceDeals(supabase, [order.sourceSalesOrderId])
+    : { data: null, error: null };
+  if (sourceDealError) throw sourceDealError;
+
   return {
     ...order,
+    ...(sourceDeals ? { sourceDeal: sourceDeals.get(order.sourceSalesOrderId) || null } : {}),
     billingRequests,
     billingRequestsError,
     ...(historicalExtras || {}),
@@ -598,7 +603,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try { order = await loadOrder(supabase, id, { extras: true }); }
   catch (error) { return fail(`โหลดใบสั่งขายไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ ใบสั่งขาย');
-  if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
+  if (!inSalesDocScope(user, order, 'view')) return forbidden();
   // ข้อมูลลูกค้าบนเอกสารมาจาก snapshot ในใบเสนอราคาที่ผูก — ใบเก่าที่ snapshot ไม่ครบ
   // (ผู้ติดต่อ/เลขภาษี) เติมเฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้เอกสารแสดงครบ
   if (order.quotation) {
@@ -646,7 +651,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ทุกตัวใน PATCH ตรวจ `canEditSalesPlanning(user) && inSalesEditScope(user, deal)`
        ⇒ วันไหนขอบเขตแก้แคบกว่าขอบเขตอ่าน (role ใหม่) ปุ่มจะโผล่แล้วเด้ง 409 เงียบ ๆ
        · แพตเทิร์นเดียวกับ `/contracts/[id]` และ `/addenda/[id]` ที่ส่งค่านี้มาให้อยู่แล้ว */
-    canEdit: canEditSalesPlanning(user) && inSalesEditScope(user, order.deal),
+    canEdit: canEditSalesPlanning(user) && inSalesDocScope(user, order, 'edit'),
     /* สิทธิ์ตั้งรอบวางบิลของลูกค้าของใบ (mig 0389 · มติข้อ 4: ฝ่ายขายทีมที่ดูแล + FN) — ตัวตัดสินตัวเดียวกับ
        `/api/customers/[id]/billing-rule` ⇒ แผงไม่ชวน "ตั้งรอบวางบิล" คนที่ไปถึงทะเบียนแล้วกดแก้ไม่ได้ (ไม่มีสิทธิ์ = ไม่วาด) */
     canEditBillingRule: canEditCustomerBillingRule(user, order.customer),
@@ -679,9 +684,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      เหมือน `withdraw` · ด่านจริงของแต่ละคำสั่งคือ `financeActionError` ซึ่งแคบด้วย
      **ฝ่าย** อีกชั้น และ RPC ที่ปลายทางก็ตรวจฝ่ายซ้ำอีกที (mig 0251) */
   const readerAction = !salesOrderActionNeedsEditScope(action);
-  if (!before.deal || !(readerAction
-    ? inSalesViewScope(user, before.deal)
-    : canEditSalesPlanning(user) && inSalesEditScope(user, before.deal))) return forbidden();
+  if (!(readerAction
+    ? inSalesDocScope(user, before, 'view')
+    : canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit'))) return forbidden();
   const reviewer = isSalesOrderReviewer(user.role);
 
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้ action
@@ -721,7 +726,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      ⚠️ ด่านอยู่ที่ `serviceContractLinkError` ตัวเดียวกับที่การ์ดบนจอถาม */
   if (action === 'set_service_contract') {
     const contractId = body.contractId ? String(body.contractId).trim() : null;
-    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const canEdit = canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit');
 
     /* โหลดสัญญาจริงมาตรวจ ไม่ใช่เชื่อ id ที่ยิงมา — ด่านต้องรู้ว่ามันเป็นของดีลไหน
        และมีผลแล้วหรือยัง (จอส่ง id อะไรมาก็ได้) */
@@ -764,7 +769,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        `validateServiceRoundsPatch` = "บรรทัดที่ส่งมาเป็นของใบนี้และเป็นหมวดบริการจริงไหม"
      ⚠️ **แก้ได้แม้ใบอนุมัติแล้ว** โดยตั้งใจ — ไม่ต้องออก Rev. เพื่อแก้เลขตัวเดียว */
   if (action === 'set_service_rounds') {
-    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const canEdit = canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit');
     const gate = serviceRoundsEditError(before, { canEdit });
     if (gate) return fail(gate, 409);
 
@@ -819,7 +824,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        `deliveryDueAmendError`) · ด่านตัวเดียวกับดินสอบนจอ · ใบร่าง/ตีกลับแก้ที่ action `save` ตามเดิม
      ⚠️ FM-SA-04 ที่ยื่นแล้วถ่ายวันส่งไว้ในภาพนิ่ง — ที่นี่ไม่แตะเอกสารเหล่านั้น (ร่างอ่านสดจาก SO) */
   if (action === 'set_delivery_due') {
-    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const canEdit = canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit');
     const gate = deliveryDueAmendError(before, { canEdit });
     if (gate) return fail(gate, 409);
     const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);

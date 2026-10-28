@@ -9,7 +9,7 @@
 // ⚠️ ไฟล์นี้ห้าม import salesOrderWorkflow / salesOrderPayments / dashboardMetrics — สามไฟล์นั้น import ไฟล์นี้ (วง)
 import { isSalesManager } from '@/lib/permissions';
 import { businessMonthKey, currentMonth } from '@/lib/datePeriods';
-import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { isActualOrder, isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { workflowErrorMessage } from '@/lib/sales/documentWorkflowErrors';
 
 export const ACTUAL_MODE_ORDER = 'order';
@@ -325,6 +325,9 @@ export function actualModeEligibility(order, installmentCount) {
   if (isHistoricalOrder(order)) {
     return { eligible: false, reason: 'ใบสั่งขายย้อนหลังไม่นับ Actual — ไม่มีตัวเลือกรายงวด' };
   }
+  if (isExciseOrder(order)) {
+    return { eligible: false, reason: 'ใบค่าสรรพสามิตไม่นับ Actual — ไม่มีตัวเลือกรายงวด' };
+  }
   if (!(toCents(order.totalAmount) > 0)) {
     return { eligible: false, reason: 'ใบนี้ยอดรวม 0 บาท ไม่มีงวดชำระ — นับ Actual ได้ทั้งใบเท่านั้น' };
   }
@@ -341,7 +344,8 @@ export function actualModeEligibility(order, installmentCount) {
    ⭐ ใบทั้งใบ = `actualAmount` เต็ม · ใบรายงวด = `actualCountedAmount` (cache ที่ trigger ของงวดดูแล)
    ⛔ ใบย้อนหลัง/ใบที่ไม่ใช่ approved = 0 (origin = 'pipeline' + status = 'approved' ของ SQL) */
 export function salesOrderCountedActual(order) {
-  if (!order || isHistoricalOrder(order) || order.status !== 'approved') return 0;
+  // ใบค่าสรรพสามิต (0414) = 0 เสมอ — CHECK บังคับ actualAmount = 0 อยู่แล้ว ตัดที่ตัวตัดสินด้วยกันแถวที่ select มาไม่ครบ
+  if (!order || !isActualOrder(order) || order.status !== 'approved') return 0;
   return isInstallmentActualOrder(order)
     ? nonNegative(order.actualCountedAmount)
     : nonNegative(order.actualAmount);
@@ -537,7 +541,7 @@ function orderDateMonth(value) {
  *   (ยอดรวมถูก เดือนอาจผิด) · ส่งอาร์เรย์ว่าง = ใบไม่มีงวด = []
  */
 export function salesOrderActualEvents(order, rows) {
-  if (!order || isHistoricalOrder(order) || order.status !== 'approved') return [];
+  if (!order || !isActualOrder(order) || order.status !== 'approved') return [];
   const orderAt = order.approvedAt || null;
   const orderMonth = orderAt ? businessMonthKey(orderAt) : orderDateMonth(order.orderDate);
   if (!isInstallmentActualOrder(order)) {

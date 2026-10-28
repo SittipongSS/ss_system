@@ -664,7 +664,7 @@ test('หน้าใบ + ทะเบียน: ไม่พิมพ์คำ
 test('ทะเบียนใบสั่งขาย: แถวคิวของใบรออนุมัติที่ข้ามต่อท้ายป้ายของ server หลังยอด — ไม่แตะประโยคยอดก่อน VAT ที่ยามอื่นยึดไว้', () => {
   const list = code(LIST);
   const queue = slice(list, '<ApprovalQueue', 'rowHref=');
-  assert.match(queue, /: `\$\{naText\(o\.customerName\)\} · \$\{fmtMoney\(o\.actualAmount\)\} ก่อน VAT`\)\s*\+ \(isHistoricalOrder\(o\) \? " · ใบย้อนหลัง · ไม่นับ Actual" : ""\)\s*\+ \(!financeShell && o\.serviceDeferredTag \? ` · \$\{o\.serviceDeferredTag\}` : ""\)\}/);
+  assert.match(queue, /: `\$\{naText\(o\.customerName\)\} · \$\{fmtMoney\(o\.actualAmount\)\} ก่อน VAT`\)\s*\+ \(isHistoricalOrder\(o\) \? " · ใบย้อนหลัง · ไม่นับ Actual" : ""\)\s*\+ \(isExciseOrder\(o\) \? ` · \$\{EXCISE_STATUS_NOTE\}` : ""\)\s*\+ \(!financeShell && o\.serviceDeferredTag \? ` · \$\{o\.serviceDeferredTag\}` : ""\)\}/);
   assert.equal(count(list, /serviceDeferredTag/g), 2, 'จุดเดียว (เงื่อนไข + ค่า) — เปลือกบัญชีไม่ต่อ');
   /* แถวรอตรวจงานบริการ: ป้ายมากับแถว (`serviceReview.label` ของ server = "งานบริการ (ข้ามตอนยื่น)") — บรรทัดเดิมไม่แตะ
      (+ กิ่ง "งวดรออนุมัติ" ของใบ Actual รายงวด · mig 0412 — ต่อหลังกิ่งงานบริการ ไม่แทรกก่อน) */

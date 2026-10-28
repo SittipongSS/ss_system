@@ -10,7 +10,7 @@ import { customerTaxSiblingIdMap } from '@/lib/master/customerTaxSiblings';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
-import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { nonExciseRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 
 const LIST_CAP = 100;
 
@@ -24,10 +24,11 @@ async function loadAwaitingSalesOrder(supabase, dealIds) {
   /* ⚠️ ไล่ทีละหน้า — `dealIds = null` (การ์ดสรุปเช้า) = อ่านใบที่ Won **ทั้งทะเบียน**
      ซึ่งโตขึ้นเรื่อย ๆ ไม่มีวันลด · โดนตัดที่ 1,000 เมื่อไร คิวส่งมอบจะขาดใบเก่าไป
      เงียบ ๆ แล้วไม่มีใครรู้ว่ามีใบค้างอยู่ */
+  /* ⛔ ใบค่าสรรพสามิต (mig 0414) ไม่เข้าคิวนี้ — ไม่มีดีลให้ส่งมอบ และออก SO ด้วยทางของมันเอง (คิวของ SA แยก · แผนรื้อสรรพสามิต PR4) */
   const { data: quotations, error } = await fetchAllResult(() => {
-    let query = supabase
+    let query = nonExciseRowsOnly(supabase
       .from('quotations')
-      .select('id, quoteNumber, customerName, dealId, totalAmount, acceptedAt')
+      .select('id, quoteNumber, customerName, dealId, totalAmount, acceptedAt'))
       .eq('status', 'accepted')
       .order('id', { ascending: true });
     if (dealIds) query = query.in('dealId', dealIds);

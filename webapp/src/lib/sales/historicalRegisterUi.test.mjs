@@ -86,7 +86,8 @@ test('บรรทัดรองของเลขที่ใบ: ใบย้
 /* ชื่อดีล "งานบริการย้อนหลัง · {ลูกค้า}" พูดซ้ำชื่อลูกค้าบรรทัดบน และลูกค้ารายเดียวมี
    ดีลภาชนะได้สองใบที่ต่างกันแค่ AE (มติข้อ 22) */
 test('บรรทัดรองใต้ลูกค้าของใบย้อนหลัง = "AE {ชื่อ}" แทนชื่อดีล', () => {
-  assert.match(code(REGISTER), /historical \? `AE \$\{naText\(row\.deal\?\.ownerName\)\}` : naText\(row\.deal\?\.title\)/);
+  // ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล ⇒ ชื่อดีลของ SO ต้นทาง (`sourceDeal` จาก API) — ใบอื่นเหมือนเดิม
+  assert.match(code(REGISTER), /historical \? `AE \$\{naText\(row\.deal\?\.ownerName\)\}` : naText\(\(excise \? row\.sourceDeal : row\.deal\)\?\.title\)/);
 });
 
 // ── 2. ชุดค้น ────────────────────────────────────────────────────────────────────
@@ -122,7 +123,8 @@ test('🪤 ตัวกรองที่มาของใบถูกร้อ
 test('ตัวเลือกที่มาของใบใช้ค่าคงที่กลางและ isHistoricalOrder ตัวเดียวกับตัวกรองเงิน', () => {
   // ตัวเลือก + ตัวตัดสินย้ายไป lib/sales/salesOrderListFilter (ตรวจตัวเลข L11) — หน้า import ไปใช้
   const group = slice(code(FILTER_LIB), 'export const ORIGIN_FILTERS', '};');
-  assert.match(group, /\[ORIGIN_PIPELINE\]: \{ label: 'ใบจากใบเสนอราคา', match: \(row\) => !isHistoricalOrder\(row\) \}/);
+  // ⭐ "ใบจากใบเสนอราคา" = isActualOrder (ไม่ใช่ใบย้อนหลัง และไม่ใช่ใบค่าสรรพสามิต · mig 0414) — กองเดียวกับการ์ด Actual
+  assert.match(group, /\[ORIGIN_PIPELINE\]: \{ label: 'ใบจากใบเสนอราคา', match: \(row\) => isActualOrder\(row\) \}/);
   assert.match(group, /\[ORIGIN_HISTORICAL\]: \{ label: 'ใบย้อนหลัง', match: \(row\) => isHistoricalOrder\(row\) \}/);
   assert.match(code(REGISTER), /EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,/);
   assert.doesNotMatch(code(REGISTER), /const ORIGIN_FILTERS/, 'นิยามเดียวที่ lib');

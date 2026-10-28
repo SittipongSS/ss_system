@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { canConfirmPayment } from '@/lib/permissions';
 import { DEFAULT_EVIDENCE_BUCKET } from '@/lib/sales/orderConfirmationDocs';
+import { loadSourceDeals } from '@/lib/scopedRow';
 
 export const PRIVATE_EVIDENCE_BUCKET = process.env.SUPABASE_PRIVATE_STORAGE_BUCKET
   || DEFAULT_EVIDENCE_BUCKET;
@@ -320,16 +321,23 @@ export async function checkPrivateEvidenceScope(user, entityType, entityId) {
 
   const supabase = getSupabaseAdmin();
   const { data: row, error: rowError } = await supabase
-    .from(target.table).select('id, dealId, status').eq('id', entityId).maybeSingle();
+    .from(target.table).select('id, dealId, status, "sourceSalesOrderId"').eq('id', entityId).maybeSingle();
   if (rowError) return { ok: false, error: rowError.message, status: 500 };
   if (!row) return { ok: false, error: target.notFound, status: 404 };
 
   const gateError = target.gate(row);
   if (gateError) return { ok: false, error: gateError, status: 409 };
 
-  const { data: deal, error: dealError } = await supabase
+  const { data: ownDeal, error: dealError } = await supabase
     .from('sales_deals').select('*').eq('id', row.dealId).maybeSingle();
   if (dealError) return { ok: false, error: dealError.message, status: 500 };
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ขอบเขตถอยไปดีลของ SO ต้นทาง (ตัดสินสิทธิ์อย่างเดียว · scopedRow.js) */
+  let deal = ownDeal;
+  if (!row.dealId && row.sourceSalesOrderId) {
+    const { data: sourceDeals, error: sourceError } = await loadSourceDeals(supabase, [row.sourceSalesOrderId]);
+    if (sourceError) return { ok: false, error: sourceError.message, status: 500 };
+    deal = sourceDeals.get(row.sourceSalesOrderId) || null;
+  }
   /* ⚠️ ใบที่ไม่มีดีล (`dealId` ว่าง) ยังผ่านได้ถ้าโฟลเดอร์นั้นไม่ได้ใช้ขอบเขตดีล —
      ด่านตั้งต้นยังตกที่ `inSalesEditScope(user, null)` = false เหมือนเดิม */
   if (!privateEvidenceAllows(entityType, user, { deal })) {

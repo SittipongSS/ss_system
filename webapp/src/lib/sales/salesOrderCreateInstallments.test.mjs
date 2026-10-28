@@ -305,7 +305,7 @@ test('POST ตรวจวันของงวดก่อนออกเลข
   /* รุ่นสี่: กติกาของลูกค้าอ่านสดที่ server (ลูกค้าของใบเสนอราคา = ของใบที่ RPC สร้าง) — ไม่เชื่อจอ · ติ๊กก่อน 0393 = 503 ก่อนออกเลข */
   const rule = route.indexOf('const billingRule = await loadScheduleRule(supabase, quote.customerId);');
   assert.ok(rule > 0 && rule < parse);
-  assert.match(route, /\.select\('id, quoteNumber, status, paymentPlan, totalAmount, customerId, deal:sales_deals\(\*\)'\)/);
+  assert.match(route, /\.select\('id, quoteNumber, status, paymentPlan, totalAmount, customerId, origin, deal:sales_deals\(\*\)'\)/);
   const probe = route.indexOf('probeBillingSkip(supabase)');
   assert.ok(probe > parse && probe < rpc, 'ฐานยังไม่มีคอลัมน์ติ๊ก = บอกก่อนออกเลขใบ');
   /* ธงรุ่นสี่ต้องเป็น boolean ก่อนถึงตัวตรวจ (สตริง "true" = truthy) · ข้อยกเว้นคิดที่ route ด้วยตัวเดียวกับ schedule แล้วลงประวัติของการสร้างใบ */

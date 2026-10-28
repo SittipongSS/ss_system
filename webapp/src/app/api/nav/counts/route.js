@@ -33,7 +33,7 @@ import { awaitingPriceCount } from '@/lib/rd/priceBoard';
 import { loadVisibleRequests, answerableDepts } from '@/lib/requests/visibleRows';
 import { deptHasOwnModule, deptsInSharedQueue } from '@/lib/requests/modules';
 import {
-  QUOTATION_ACTIONABLE_STATUSES, isQuotationWaitingOnMe,
+  QUOTATION_ACTIONABLE_STATUSES, isQuotationWaitingOnMe, quotationApprovalContext,
 } from '@/lib/sales/quotationWorkflow';
 import { isSalesOrderReviewer, salesOrderIdsWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 import { historicalRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
@@ -43,7 +43,7 @@ import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
-import { inSalesViewScope, isClosedStage, isWonStage } from '@/lib/salesPlanning';
+import { inSalesViewScope, isWonStage } from '@/lib/salesPlanning';
 import {
   FORECAST_ELIGIBLE_APPROVALS, FORECAST_ELIGIBLE_STATUSES, forecastSourceView,
 } from '@/lib/sales/forecastSource';
@@ -60,6 +60,7 @@ import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { deptOf, ownedStages } from '@/lib/excise/workflow';
 import { applyExciseListScope } from '@/lib/excise/listScope';
 import { isSystemAdmin } from '@/lib/issues/access';
+import { attachSourceDeals } from '@/lib/scopedRow';
 import { canEditProduction } from '@/lib/permissions';
 import { ledgerInConfirmQueue } from '@/lib/finance/paymentLedger';
 import {
@@ -186,15 +187,14 @@ export const GET = withUser(async ({ user, supabase }) => {
          ต่างจากเลข 0 ที่อ่านเหมือน "ไม่มีงานค้าง" (ดู [[nav-count-badges]]) */
       const { data, error: quoteError } = await fetchAllResult(() => supabase
         .from('quotations')
-        .select('id, status, approvalStatus, createdBy, rejectionReason, deal:sales_deals(ownerId, stage)')
+        /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ผู้อนุมัติมาจากดีลของ SO ต้นทาง (quotationApprovalContext) */
+        .select('id, status, approvalStatus, createdBy, rejectionReason, origin, "sourceSalesOrderId", deal:sales_deals(ownerId, stage)')
         .in('status', QUOTATION_ACTIONABLE_STATUSES)
         .order('id', { ascending: true }));
       if (quoteError) throw quoteError;
-      return (data || []).filter((row) => isQuotationWaitingOnMe(row, {
-        userId: user.id,
-        dealOwnerId: row.deal?.ownerId ?? null,
-        dealClosed: isClosedStage(row.deal?.stage),
-      })).length;
+      const { error: sourceError } = await attachSourceDeals(supabase, data);
+      if (sourceError) throw sourceError;
+      return (data || []).filter((row) => isQuotationWaitingOnMe(row, quotationApprovalContext(row, user.id))).length;
     }));
 
     /* ── ที่มาของ FC: ดีลที่มีใบอนุมัติแล้วแต่ FC ยังไม่เดินตามใบ (mig 0337) ────
