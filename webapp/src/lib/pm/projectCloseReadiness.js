@@ -45,7 +45,7 @@ export function summarizeProjectCloseReadiness({
     },
     {
       key: 'salesOrdersAwaitingFiling',
-      label: 'ใบสั่งขายที่ยังไม่ออกใบยื่นชำระภาษี',
+      label: 'ใบสั่งขายที่ยังไม่ออกใบเสนอราคาค่าสรรพสามิต',
       count: awaitingFiling.length,
       refs: awaitingFiling.map((row) => row.orderNumber).filter(Boolean),
     },

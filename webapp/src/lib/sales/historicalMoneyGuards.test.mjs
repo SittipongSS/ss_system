@@ -107,6 +107,8 @@ const PER_ID_GUARDED = new Map([
   ['app/api/tax/orders/from-sales-order/route.js', 'GET ตอบ "ไม่เข้าเกณฑ์" · POST ปฏิเสธ'],
   ['app/api/sales-planning/sales-orders/[id]/route.js',
     'loadOrder — ส่งอนุมัติ/อนุมัติใบย้อนหลังแยกกิ่ง (historicalOrderWorkflow · ไม่นับ Actual) · แก้ใบ/ย้อนอนุมัติ/ออก Rev./คืนร่าง/ย้อน Won/ลบ ตัดสินจาก before · งวดไม่ทับยอดตามแผน'],
+  ['lib/excise/exciseQuotation.js',
+    'SO ลูกค้าต้นทางของใบค่าสรรพสามิต (สร้างใบ · คิดใหม่) — exciseQuotationBlocker ปฏิเสธใบย้อนหลัง/ใบค่าภาษี · ไม่รวมยอด'],
   ['app/api/sales-planning/sales-orders/[id]/installments/route.js',
     'loadOrderForUser — งวดของใบย้อนหลังล็อกจนอนุมัติ (historicalInstallmentLock) · ไม่ทับยอดตามแผน · ไม่มีทางเพิ่มงวด/ทางกู้จากใบเสนอราคา'],
 ]);

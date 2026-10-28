@@ -319,34 +319,90 @@ function filingSegment(excise, { approved }) {
     };
   }
 
-  // ⚠️ ใบที่ยังไม่อนุมัติ "ยังไม่มีใบยื่น" เป็นเรื่องปกติ ไม่ใช่สิ่งที่ต้องชวนให้กด
-  // (เหตุผลเดียวกับช่วงผลิต) — และ `eligible` ของ resolveSoFiling รวมเงื่อนไขนี้ไว้แล้ว
+  /* ⭐ แผนรื้อสรรพสามิต PR3 (มติ 28/10): ฝ่ายขายเก็บค่าภาษีด้วย **ใบเสนอราคาค่าสรรพสามิต** (ไม่มีดีล · ผูก SO นี้) หรือตัดสินว่า
+     "ไม่เรียกเก็บในระบบ" บน SO นี้ — ใบยื่นกรมเป็นงานของ RA (ทางสร้างของฝ่ายขายปิดแล้ว · FILING_CREATE_CLOSED_MESSAGE)
+     ⇒ ช่วงนี้ตอนยังไม่มีใบยื่น = สถานะของใบค่าสรรพสามิต · `excise.exciseQuote` มาจาก GET …/excise-quotation */
+  const exciseQuote = excise.exciseQuote || {};
+  if (exciseQuote.notBilled) {
+    return {
+      key: 'filing',
+      label: 'ค่าสรรพสามิต',
+      state: 'done',
+      connect: {
+        message: `ไม่เรียกเก็บในระบบ — ${exciseQuote.notBilledLabel || exciseQuote.notBilled.kind}`,
+        actions: excise.onClearNotBilled ? [{ label: 'ถอนการตัดสิน', onClick: excise.onClearNotBilled, disabled: !!excise.actionDisabled }] : [],
+      },
+      meta: `${lines.length} FG`,
+    };
+  }
+  if (exciseQuote.liveQuote) {
+    const quote = exciseQuote.liveQuote;
+    const accepted = quote.status === 'accepted';
+    return {
+      key: 'filing',
+      label: 'ค่าสรรพสามิต',
+      state: accepted ? 'done' : 'live',
+      connect: {
+        message: `ใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber || ''} — ${EXCISE_QUOTE_STATUS_TEXT(quote)}`.trim(),
+        actionLabel: 'เปิดใบค่าสรรพสามิต',
+        href: `/sales-planning/quotations/${encodeURIComponent(quote.id)}`,
+      },
+      meta: excise.amountToCollect ? `ภาษี+VAT ${fmtMoney(excise.amountToCollect)}` : null,
+      ...(notes.length ? { notes } : {}),
+    };
+  }
+
+  // ⚠️ ใบที่ยังไม่อนุมัติ "ยังไม่มีใบค่าภาษี" เป็นเรื่องปกติ ไม่ใช่สิ่งที่ต้องชวนให้กด (เหตุผลเดียวกับช่วงผลิต)
   if (!approved || !excise.eligible) {
     return {
       key: 'filing',
-      label: 'ยื่นชำระสรรพสามิต',
+      label: 'ค่าสรรพสามิต',
       state: 'todo',
-      connect: { message: approved ? 'ใบนี้ยังไม่มีรายการที่พร้อมสร้างใบยื่น' : 'สร้างใบยื่นได้หลังใบนี้อนุมัติ' },
+      connect: { message: approved ? 'ใบนี้ไม่มีรายการสินค้าสรรพสามิตให้เรียกเก็บ' : 'ออกใบเสนอราคาค่าสรรพสามิตได้หลังใบนี้อนุมัติ' },
       meta: `${lines.length} FG`,
       ...(notes.length ? { notes } : {}),
     };
   }
 
+  /* ปุ่มกดไม่ได้ = โชว์เสมอ บอกเหตุ (กติกาหน้าดีล) — ไม่มีราคาขายปลีก (มติ Q3: บังคับตอนออกใบ) · ด่านของ SO (exciseQuotationBlocker) · สิทธิ์ */
+  const missingBase = lines.some((line) => line.taxBaseMissing);
+  const createBlocked = excise.createDisabledReason
+    || (missingBase ? 'ใส่ราคาขายปลีกของสินค้าที่ภาษี ฿0 ที่ทะเบียนสินค้าก่อน' : null)
+    || exciseQuote.blocker
+    || null;
   return {
     key: 'filing',
-    label: 'ยื่นชำระสรรพสามิต',
+    label: 'ค่าสรรพสามิต',
     state: 'todo',
     connect: {
-      message: `พร้อมสร้างใบยื่นจาก ${lines.length} รายการ`,
-      actionLabel: excise.createLabel || 'สร้างใบยื่นชำระ',
-      onClick: excise.onCreateFiling || null,
-      disabled: !!excise.createDisabled,
-      disabledReason: excise.createDisabledReason || null,
+      message: `พร้อมออกใบเสนอราคาค่าสรรพสามิตจาก ${lines.length} รายการ`,
+      actions: [
+        {
+          label: excise.createLabel || 'ออกใบเสนอราคาค่าสรรพสามิต',
+          onClick: excise.onCreateQuote || null,
+          disabled: !!createBlocked || !!excise.actionDisabled,
+          disabledReason: createBlocked,
+        },
+        ...(excise.onNotBilled ? [{
+          label: 'ไม่เรียกเก็บในระบบ',
+          onClick: excise.onNotBilled,
+          disabled: !!excise.createDisabledReason || !!excise.actionDisabled,
+          disabledReason: excise.createDisabledReason || null,
+        }] : []),
+      ],
     },
-    meta: excise.amountToCollect ? `เรียกเก็บ ${fmtMoney(excise.amountToCollect)}` : null,
+    meta: excise.amountToCollect ? `ภาษี+VAT ${fmtMoney(excise.amountToCollect)}` : null,
     ...(notes.length ? { notes } : {}),
   };
 }
+
+const EXCISE_QUOTE_STATUS_TEXT = (quote) => {
+  if (quote.status === 'accepted') return 'ลูกค้ารับแล้ว';
+  if (quote.approvalStatus === 'pending') return 'รออนุมัติ';
+  if (quote.approvalStatus === 'approved') return 'อนุมัติแล้ว รอลูกค้ารับ';
+  if (quote.status === 'rejected') return 'ลูกค้าตีกลับ';
+  return 'ร่าง ยังไม่ยื่น';
+};
 
 /**
  * รวมเป็นเส้นเดียว — คืน `{ segments, current }` หรือ `null` เมื่อไม่มีช่วงไหนเกี่ยวเลย

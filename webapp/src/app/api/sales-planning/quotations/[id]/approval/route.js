@@ -4,7 +4,8 @@ import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } fro
 import { canApproveQuotation, canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { linePackGateMessage, linePackIssues } from '@/lib/sales/linePacks';
-import { isQuotationSubmitter } from '@/lib/sales/quotationWorkflow';
+import { isQuotationSubmitter, quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
+import { attachSourceDeals } from '@/lib/scopedRow';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import {
   approveQuotationWithSignatureEvidence,
@@ -36,10 +37,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal) return badRequest('ใบเสนอราคานี้ไม่มีดีลผูกอยู่');
+  /* ใบค่าสรรพสามิต (mig 0414/0415) ไม่มีดีล — ผู้อนุมัติ = เจ้าของดีลของ SO ต้นทาง / ผู้จัดการขาย (RPC ถอยแบบเดียวกัน) */
+  const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+  if (sourceError) return fail(sourceError.message, 500);
+  const approvalDeal = quotationApprovalDeal(quote);
+  if (!approvalDeal) return badRequest('ใบเสนอราคานี้ไม่มีดีลผูกอยู่');
   // โครงการที่ผูกดีล — snapshot ตอนตรึงต้องมี deal.project ไม่งั้นแถว "โครงการ" ในใบ
   // ออกเป็น '-' ถาวร (เหมือนที่ loadQuote ของ detail GET แนบ). โหลดไม่ได้ = แถวว่างตามเดิม.
-  if (quote.deal.projectId) {
+  if (quote.deal?.projectId) {
     const { data: project } = await supabase
       .from('projects')
       .select('id, code, name')
@@ -50,11 +55,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   // ผู้อนุมัติ = เจ้าของดีล (ownerId) หรือ superuser เท่านั้น — ผู้สร้างที่ไม่ใช่เจ้าของ
   // (เช่น AC/AE ทีมเดียวกัน) อนุมัติไม่ได้; เจ้าของสร้างเอง = เซ็นเองได้.
-  if (!canApproveQuotation(user, quote.deal)) {
+  if (!canApproveQuotation(user, approvalDeal)) {
     return forbidden('อนุมัติใบเสนอราคาได้เฉพาะ AE เจ้าของดีล (หรือผู้ดูแลระบบ)');
   }
 
-  if (quote.deal.stage === 'lost') return badRequest('ดีลนี้ Lost แล้ว — อนุมัติใบเสนอราคาไม่ได้');
+  if (approvalDeal.stage === 'lost') return badRequest('ดีลนี้ Lost แล้ว — อนุมัติใบเสนอราคาไม่ได้');
   if (!['draft', 'sent', 'rejected'].includes(quote.status)) {
     return badRequest(`ใบสถานะ "${quote.status}" อนุมัติไม่ได้`);
   }
@@ -126,7 +131,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   await recordAudit({
     user, action: 'update', entityType: 'quotation', entityId: id, before: quote, after: data,
-    summary: `อนุมัติใบเสนอราคา ${quote.quoteNumber} (${dealAuditLabel(quote.deal)})`,
+    summary: `อนุมัติใบเสนอราคา ${quote.quoteNumber} (${dealAuditLabel(approvalDeal)})`,
     request: req,
   });
   /* FC ของดีลเดินตามใบที่อนุมัติแล้ว (mig 0337 — มติผู้ใช้ 2026-09-02)
@@ -135,7 +140,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      เงียบ — ส่ง forecast กลับไปให้จอบอกผู้ใช้ว่ายอดขยับเป็นเท่าไร (หรือยังไม่ขยับ) */
   let forecast = null;
   try {
-    forecast = await applyForecastSource(supabase, quote.dealId, { cause: 'quotation_approved' });
+    // ใบค่าสรรพสามิตไม่มีดีล = ไม่มี FC ให้ขยับ (ไม่นับ Actual / FC · แผนรื้อสรรพสามิต หมวด 4)
+    if (quote.dealId) forecast = await applyForecastSource(supabase, quote.dealId, { cause: 'quotation_approved' });
   } catch (forecastError) {
     console.error('forecast source apply failed', id, forecastError);
     forecast = { changed: false, warning: forecastError.message };

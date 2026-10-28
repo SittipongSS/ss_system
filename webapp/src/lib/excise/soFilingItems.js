@@ -28,13 +28,13 @@ export async function resolveSalesOrderFiling(supabase, salesOrder) {
       : Promise.resolve({ data: [], error: null }),
     supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
     productIds.length && ownerCustomerIds.length
-      ? supabase.from("excise_registrations").select("id, productId, customerId, status").in("customerId", ownerCustomerIds).in("productId", productIds)
+      ? supabase.from("excise_registrations").select("id, productId, customerId, status, isExciseTaxable").in("customerId", ownerCustomerIds).in("productId", productIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (productError) throw productError;
   if (typeError) throw typeError;
   if (registrationResult.error) throw registrationResult.error;
-  return resolveSoFiling({
+  const resolved = resolveSoFiling({
     salesOrder,
     lines: salesOrder.lines || [],
     products: products || [],
@@ -42,6 +42,8 @@ export async function resolveSalesOrderFiling(supabase, salesOrder) {
     registrations: registrationResult.data || [],
     ownerCustomerIds,
   });
+  /* สินค้า FG ต้นทางที่อ่านมาแล้ว — ตัวสร้างบรรทัดใบเสนอราคาค่าสรรพสามิตใช้ชื่อ EN/หน่วย/ราคาขายปลีก (ไม่ต้องอ่านซ้ำ) */
+  return { ...resolved, products: products || [] };
 }
 
 /** บรรทัดที่ resolve แล้ว → แถว order_items · id ใหม่ทุกครั้ง (ทางคิดใหม่ใส่ชุดใหม่ก่อนแล้วค่อยลบชุดเก่า

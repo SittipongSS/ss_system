@@ -242,3 +242,18 @@ test('ทุกทางที่บันทึกบรรทัดใบเ�
   assert.match(create, /exciseChargeLinesAdded\(supabase, manualLines\)/);
   assert.match(create, /exciseChargeLinesAdded\(supabase, lines\)/);
 });
+
+/* 🐞 PR2 แก้ H2 ที่ตัวตัดสินแล้ว แต่ตัวโหลดทะเบียนสามตัวไม่ได้ select `isExciseTaxable` ⇒ คำตัดสินของ RA ไม่เคยถึงตัวตัดสินจริง
+   (ค่า undefined = เสียภาษีตามปกติ) · พบตอนทำ PR3 (28/10) — ทุกตัวโหลดที่ป้อน resolveSoFiling ต้องพกช่องนี้ */
+test('🔴 ตัวโหลดทะเบียนที่ป้อนใบยื่นจาก SO พก isExciseTaxable (คำตัดสินของ RA ต้องถึงตัวตัดสิน)', () => {
+  for (const path of [
+    './soFilingItems.js',
+    '../../app/api/tax/orders/from-sales-order/route.js',
+    '../sales/handoffQueueData.js',
+  ]) {
+    const src = code(path);
+    const selects = [...src.matchAll(/from\(\s*["']excise_registrations["']\s*\)\s*\.select\(([^)]*)\)/g)].map((m) => m[1]);
+    assert.ok(selects.length > 0, `${path}: หา select ของทะเบียนไม่เจอ`);
+    for (const select of selects) assert.match(select, /isExciseTaxable|\*/, `${path}: ${select}`);
+  }
+});

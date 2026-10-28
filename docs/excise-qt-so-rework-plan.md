@@ -1,6 +1,6 @@
 # แผนรื้อระบบภาษีสรรพสามิต v2 — ใบเสนอราคาค่าสรรพสามิต (ฟอร์ม QT · SA ออก · ไม่มีดีล) → SO ค่าสรรพสามิต (ไม่นับ Actual) → บัญชี → RA ยื่นกรม
 
-**สถานะ:** กำลังดำเนินการ · มติครบ 28/10 (Q1–Q8b + D1–D9) · **0414 รันบน prod แล้ว · PR1 (#1937) ขึ้น prod 28/10 `f4c4bca0`** · PR2 เขียนเสร็จ 28/10 (แบรนช์ `claude/excise-pr2-calc-product` · ไม่มี migration) · เลขแผนเลื่อน +1 ทั้งชุด เพราะ 0413 ถูกใช้โดย #1936 · เหลือคำตอบ RA (D7) ก่อน PR5
+**สถานะ:** กำลังดำเนินการ · มติครบ 28/10 (Q1–Q8b + D1–D9) · **0414 รันบน prod แล้ว · PR1 (#1937) ขึ้น prod 28/10 `f4c4bca0` · PR2 (#1939) ขึ้น prod 28/10 `e8fee650`** · 0415 + PR3 เขียนเสร็จ 28/10 (แบรนช์ `claude/excise-pr3-quotation` · 0415 ต้องรันก่อน merge) · เลขแผนเลื่อน +1 ทั้งชุด เพราะ 0413 ถูกใช้โดย #1936 · เหลือคำตอบ RA (D7) ก่อน PR5
 **เขียน:** 2026-10-28 · อ้างโค้ด `origin/main` ที่ `250648bc0` (migration ล่าสุด **0412**) · ตัวเลข prod อ่านเมื่อ 26–28/10 (อ่านอย่างเดียว)
 **แทน:** แผนฉบับ 27/09 (แบบ B — RA ออกใบ ET) ซึ่งตกไปตามมติ 28/10 · สำเนาเดิม `~/ss-team/audit/excise-rework-20260927/excise-qt-so-rework-plan-v1-20260927.md` (หมวด 3, 6, 10, 13–15 ของฉบับเดิมยังเป็นข้อมูลอ้างอิงที่ถูกต้อง)
 
@@ -296,6 +296,8 @@ COMMIT;
 
 ### 0415 `excise_quotation_rpcs` — รันก่อน PR3
 
+> **ที่เขียนจริง (28/10):** ปะทั้งสี่ตัวด้วยการแทนข้อความยึด `SELECT * INTO v_deal FROM public.sales_deals WHERE id = v_quote."dealId"` ครั้งเดียวต่อฟังก์ชัน (เครื่องหมาย `-- 0415/E1` · รันซ้ำได้) · RPC รับใบใช้ลายเซ็น `accept_excise_quotation_atomic(p_quote_id, p_current_fingerprint, p_actor_id, p_actor_name)` — ตรวจลายนิ้วมืออนุมัติแทน `updatedAt` (แบบเดียวกับ accept ปกติ) · ไม่รับหลักฐานแนบ · คำแปลไทยของ RAISE อยู่ใน `lib/excise/exciseQuotation.js` (`ACCEPT_ERRORS`) ไม่ใช่ `documentWorkflowErrors` · ทดสอบใน PGlite บนสำเนาโครงสร้าง prod หลัง 0414 ผ่าน 31/31
+
 - **ปะ** `submit_quotation_with_signature_evidence_atomic` (0156:104-106) · `approve_quotation_with_signature_evidence_atomic` (0165:57-62 + ปะ 0382) · `withdraw_quotation_submission_atomic` (0161:126-131 + 0382) · `reject_quotation_submission_atomic` (0164:93-98 + 0382): จุดอ่านดีลจาก `v_quote."dealId"` → `COALESCE(v_quote."dealId", (SELECT so."dealId" FROM public.sales_orders so WHERE so.id = v_quote."sourceSalesOrderId"))` · ผลคือเจ้าของดีลต้นทาง/ผู้จัดการขายเป็นผู้อนุมัติตามกติกาเดิม · ข้อความยึดต้องยืนยันกับ `pg_get_functiondef` ตอนเขียน (ชื่อตัวแปรอาจต่างกันรายฟังก์ชัน)
 - **ใหม่** `accept_excise_quotation_atomic(p_quotation_id, p_actor_id, p_actor_name, p_expected_updated_at, p_evidence jsonb)`: ล็อก QT · origin excise · อนุมัติแล้ว + sent · SO ต้นทางยังอนุมัติ ไม่ถูกแทน เป็น pipeline · ตั้ง accepted + หลักฐานแบบใบปกติ · **ไม่แตะดีล/FC/ใบพี่น้อง**
 - REVOKE จาก PUBLIC/anon/authenticated → GRANT `service_role` ตามแบบ 0382 · คำแปลไทยของ RAISE code ใหม่ใน `documentWorkflowErrors`
@@ -374,6 +376,17 @@ COMMIT;
 - **ปิดทางมือ:** POST สินค้าปฏิเสธ 04-003 · PATCH ปฏิเสธย้ายเข้า/ออก/เปลี่ยนรหัส-เจ้าของ (แก้ชื่อ/พักใช้ได้) · ตัวเลือกหมวดซ่อน 04-003 (ยกเว้นค่าที่เลือกอยู่) · ตัวเลือกสินค้าของจอขายตัด 04-003 · `PROTECTED_PRODUCT_CATEGORY_CODES` 11 → 12
 - **ใบขาย:** `exciseChargeLinesAdded` ปฏิเสธบรรทัดสินค้า 04-003 ที่เพิ่งใส่ (PATCH · Rev. · สร้างใบ · seed จากโครงการ) · `enforceMasterPrices({ origin })` ข้ามบรรทัด 04-003 ของลูกค้าเจ้าของใบเมื่อใบเป็น excise (ตัดสินจากแถวสินค้าในฐาน) · ใบยื่นจาก SO ตัดบรรทัด 04-003 ทิ้ง (กันภาษีซ้อนภาษี)
 - ยังไม่ทำ (PR3): ล็อกบรรทัดบนจอ (`quoteLineLocks`) · PATCH/Rev. ของใบ excise ปฏิเสธ `lines` · `recalcFromSalesOrder` ของใบเสนอราคา
+
+### 7.3 PR3 — สิ่งที่ทำจริง (28/10)
+
+- **ออกใบ:** `POST /api/sales-planning/sales-orders/[id]/excise-quotation` (สิทธิ์แก้ SO ลูกค้า) → `createExciseQuotationDraft` ใน `lib/excise/exciseQuotation.js` · บรรทัดจากใบยื่นจำลองของ SO (`resolveSalesOrderFiling`) · ราคาขายปลีกขาด = ออกไม่ได้ (Q3) · หัวใบลอกจาก QT ต้นทาง · VAT 7% · ชำระเต็มงวดเดียว · ผู้ติดต่อฝ่ายขาย = เจ้าของดีลต้นทาง · สินค้า 04-003 สร้างผ่าน `ensureExciseChargeProduct` · ใบที่ยังมีผลซ้ำ = ปฏิเสธ (ตรวจในแอป)
+- **หน้า QT โหมด excise:** บรรทัดล็อก + ปุ่ม "คิดใหม่จากใบสั่งขาย" (PATCH `action: 'recalc_from_sales_order'` — เซิร์ฟเวอร์สร้างบรรทัดเอง) · PATCH ปฏิเสธ `lines`/ส่วนลด/VAT ที่ส่งมาเอง · การ์ดใบสั่งขายต้นทาง · "ลูกค้ารับแล้ว" แทน Won · ซ่อนย้อนการรับ
+- **วงจรอนุมัติ:** submit/approval/withdraw/reject/cancel/revise อ่านดีลผ่าน `quotationApprovalDeal` (ดีลของ SO ต้นทาง) · FC เดินเฉพาะใบที่มีดีล · accept แตกสาขาไป `acceptExciseQuotation` ก่อนอ่านดีล · unaccept ปฏิเสธใบ excise · ใบ excise ที่รับแล้วยกเลิกได้ (ปลดล็อก SO ลูกค้า)
+- **"ไม่เรียกเก็บในระบบ" (Q6/Q7):** action `set_excise_not_billed` / `clear_excise_not_billed` บน PATCH SO (CAS ด้วย `updatedAt` · audit) · กล่องเลือกเหตุแบบไทล์ (`ExciseNotBilledDialog`) · ถอนได้จนกว่า RA สร้างใบยื่น
+- **ล็อก SO ลูกค้า (Q16):** ย้อนอนุมัติ/ออก Rev./ยกเลิก ปฏิเสธเมื่อมีใบค่าสรรพสามิตที่ยังมีผล (ร่าง/ยื่น/ตีกลับ/รับแล้ว) · ลบดีล/QT/SO ปฏิเสธเมื่อมีใบ excise ลูก (รวมพรีวิวลบบังคับ)
+- **ปิดทางสร้างใบยื่นของ SA:** `SA_FILING_CREATE_OPEN = false` ใน `lib/excise/workflow.js` ปิดทั้ง `POST /api/tax/orders/from-sales-order` และ `POST /api/orders` · ปุ่มบนเส้นเดินงานเปลี่ยนเป็นช่วง "ค่าสรรพสามิต" (ออกใบ / ไม่เรียกเก็บ / ลิงก์ใบที่ยังมีผล) · คิวรอยื่นภาษีและแบนเนอร์หน้ารายการ SO ตัด SO ที่จัดการแล้ว (`exciseHandledOrderIds`)
+- **H2 ตกหล่นจาก PR2:** ตัวโหลดสามจุดไม่ได้ select `isExciseTaxable` ⇒ ทะเบียน override ไม่มีผล · เติมแล้ว + เทสต์ยาม
+- ยังไม่ทำ: คำร้องขอเอกสารบัญชีจากใบ excise (`POST /api/sa/requests` ปฏิเสธใบไม่มีดีล · รอมติว่า `dept_requests.dealId` ใช้ดีลต้นทางไหม) → PR4
 
 ## 8. เทสต์ที่จะแดงโดยตั้งใจ (ต้องเขียนใหม่ ห้ามข้าม)
 

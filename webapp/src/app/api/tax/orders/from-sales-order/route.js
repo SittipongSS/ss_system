@@ -12,6 +12,8 @@ import { customerTaxSiblingIdMap } from "@/lib/master/customerTaxSiblings";
 import { filingItemRows, resolveSalesOrderFiling } from "@/lib/excise/soFilingItems";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { NA } from "@/lib/format";
+import { FILING_CREATE_CLOSED_MESSAGE, SA_FILING_CREATE_OPEN } from "@/lib/excise/workflow";
+import { exciseHandledOrderIds } from "@/lib/excise/exciseQuotation";
 import { isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
 
 // ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
@@ -89,7 +91,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
       // ⚠️ ต้องมี status ในลิสต์คอลัมน์: resolveSoFiling ตัดสิน eligible ด้วย
       // salesOrder.status === 'approved' — ไม่ดึงมา = undefined = ลิสต์ว่างเสมอ
       // (บั๊กจริงที่ทำให้ปุ่ม "สร้างใบยื่นจาก Sale Order" ไม่เคยมีตัวเลือกให้เลือก)
-      .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt")
+      .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt, exciseNotBilledKind")
       .eq("status", "approved")
       .order("createdAt", { ascending: false })
       .order("id", { ascending: true });
@@ -112,6 +114,8 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
 
   const dealById = new Map((deals || []).map((deal) => [deal.id, deal]));
   const used = new Set((filingResult.data || []).map((filing) => filing.salesOrderId).filter(Boolean));
+  /* แผนรื้อสรรพสามิต PR3: SO ที่ออกใบค่าสรรพสามิตแล้ว/ตัดสินไม่เรียกเก็บแล้ว ไม่ใช่งานค้างของฝ่ายขาย (แถบเตือนทะเบียน SO นับจากลิสต์นี้) */
+  for (const orderId of await exciseHandledOrderIds(supabase, salesOrders || [])) used.add(orderId);
   const available = (salesOrders || [])
     .filter((salesOrder) => {
       const deal = dealById.get(salesOrder.dealId);
@@ -134,7 +138,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
     fetchInChunks(productIds, (chunk) => supabase.from("products").select("*").in("id", chunk)),
     supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
     fetchInChunks(productIds, (chunk) => supabase.from("excise_registrations")
-      .select("id, productId, customerId, status").eq("status", "approved").in("productId", chunk)),
+      .select("id, productId, customerId, status, isExciseTaxable").eq("status", "approved").in("productId", chunk)),
   ]);
   if (productError) throw productError;
   if (typeError) throw typeError;
@@ -245,6 +249,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
+  /* ⛔ ปิดตั้งแต่ PR3 ของแผนรื้อสรรพสามิต — เหตุผลเต็มที่ FILING_CREATE_CLOSED_MESSAGE (lib/excise/workflow.js) */
+  if (!SA_FILING_CREATE_OPEN) return Response.json({ error: FILING_CREATE_CLOSED_MESSAGE }, { status: 403 });
   if (!can(user.role, "sales:act")) return forbidden();
   const body = await req.json().catch(() => ({}));
   const salesOrderId = String(body.salesOrderId || "").trim();

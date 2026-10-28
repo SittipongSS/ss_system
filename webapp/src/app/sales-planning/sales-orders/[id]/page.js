@@ -164,6 +164,8 @@ import HistoricalZonesCard from "@/components/salesPlanning/HistoricalZonesCard"
 import HistoricalDuplicateReviewCard from "@/components/salesPlanning/HistoricalDuplicateReviewCard";
 import { historicalDuplicateReviewOf, historicalDuplicateReviewView } from "@/lib/sales/historicalDuplicates";
 import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
+import ExciseNotBilledDialog from "@/components/excise/ExciseNotBilledDialog";
+import { EXCISE_NOT_BILLED_KINDS } from "@/lib/excise/exciseNotBilled";
 
 /* โทนของ `historicalStatusCopy` → สีของป้ายสถานะบนหัวใบ/การ์ดจัดการ (ชิ้นพวกนั้นรับ `color` ไม่ใช่ tone)
    ⚠️ แผนที่ของ **การแสดงผล** เท่านั้น — ตัวตัดสินว่าสถานะไหนโทนอะไรอยู่ที่ historicalOrderCopy ที่เดียว */
@@ -212,6 +214,8 @@ const ACTION_MESSAGE = {
   set_service_contract: "อัปเดตสัญญาของใบแล้ว",
   set_service_rounds: "บันทึกจำนวนรอบบริการแล้ว",
   set_delivery_due: "บันทึกกำหนดส่งสินค้าแล้ว",
+  set_excise_not_billed: "บันทึกว่าไม่เรียกเก็บค่าสรรพสามิตในระบบแล้ว",
+  clear_excise_not_billed: "ถอนการตัดสินไม่เรียกเก็บแล้ว — ออกใบเสนอราคาค่าสรรพสามิตได้",
 };
 
 /* ── นับ Actual ทั้งใบ / รายงวด ตอนอนุมัติ (mig 0412 · มติเจ้าของ 26/10/2026) ───────────────────────────────────────────
@@ -364,7 +368,6 @@ export default function SalesOrderDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const canEditCap = useCan("salesplan:edit");
-  const canCreateFiling = useCan("sales:act");
   // เปิดคำร้องได้ = สาขาฝ่ายขายของด่าน POST /api/sa/requests (costing:edit) —
   // RD/PC ผ่านด่านนั้นทางสาขา "รับคำร้องของฝ่ายตนได้" ซึ่งไม่ใช่งานของหน้า SO
   const canOpenRequest = useCan("costing:edit");
@@ -402,6 +405,9 @@ export default function SalesOrderDetailPage() {
   const overrideReasonRef = useRef("");
   /* แบบการนับ Actual ที่เลือกในโมดัลอนุมัติ (mig 0412) — ref คู่ `confirmState.actualMode` (ดู chooseApproveActualMode) */
   const approveActualModeRef = useRef(ACTUAL_MODE_ORDER);
+  const [exciseQuoteState, setExciseQuoteState] = useState({});
+  const [notBilledOpen, setNotBilledOpen] = useState(false);
+  const [notBilledError, setNotBilledError] = useState("");
   const [filingState, setFilingState] = useState({
     loading: true,
     filing: null,
@@ -440,10 +446,14 @@ export default function SalesOrderDetailPage() {
 
   const load = useCallback(async () => {
     setError("");
-    const [res, filingRes] = await Promise.all([
+    const [res, filingRes, exciseQuoteRes] = await Promise.all([
       apiFetch(`/api/sales-planning/sales-orders/${id}`),
       apiFetch(`/api/tax/orders/from-sales-order?salesOrderId=${encodeURIComponent(id)}`),
+      /* ใบเสนอราคาค่าสรรพสามิตของ SO นี้ (แผนรื้อสรรพสามิต PR3) — ใบที่ยังมีผล · เหตุที่ออกไม่ได้ · การตัดสินไม่เรียกเก็บ */
+      apiFetch(`/api/sales-planning/sales-orders/${id}/excise-quotation`),
     ]);
+    const exciseQuoteData = await exciseQuoteRes.json().catch(() => ({}));
+    setExciseQuoteState(exciseQuoteRes.ok ? exciseQuoteData : { blocker: exciseQuoteData.error || "ตรวจใบค่าสรรพสามิตไม่สำเร็จ" });
     const data = await res.json().catch(() => ({}));
     const filingData = await filingRes.json().catch(() => ({}));
     setFilingState(filingRes.ok
@@ -551,43 +561,47 @@ export default function SalesOrderDetailPage() {
     checkedAt: new Date().toISOString(),
   });
 
-  async function createFiling() {
-    setBusy("filing");
-    setError("");
-    setToast(null);
-    const res = await apiFetch("/api/tax/orders/from-sales-order", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ salesOrderId: id }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      setBusy("");
-      setError(data.error || "สร้างใบยื่นสรรพสามิตไม่สำเร็จ");
-      return false;
-    }
-    setFilingState((prev) => ({
-      loading: false,
-      filing: data,
-      eligible: false,
-      schemaReady: true,
-      // บรรทัดสรรพสามิตไม่ได้เปลี่ยนเพราะสร้างใบยื่น — ทิ้งไปแล้วจุด "ขึ้นทะเบียน" บนเส้นเดินงาน
-      // จะหายทั้งช่วงทันทีที่กดสร้าง ทั้งที่ทะเบียนอาจยังค้างอยู่
-      lines: prev.lines,
-      warnings: data.warnings || [],
-      amountToCollect: orderAmountToCollect(data),
-      error: "",
-    }));
-    setBusy("");
-    setToast({ kind: "success", msg: "สร้างใบยื่นสรรพสามิตจากใบสั่งขายเรียบร้อยแล้ว" });
-    return true;
-  }
-
   function updateField(key, value) {
     setForm((current) => ({ ...current, [key]: value }));
     setDirty(true);
     setSaveState("dirty");
     setToast(null);
+  }
+
+  /* ── ใบเสนอราคาค่าสรรพสามิต (แผนรื้อสรรพสามิต PR3 · มติ 28/10) — ออกจาก SO นี้แล้วไปทำต่อที่หน้าใบเสนอราคา ── */
+  async function createExciseQuote() {
+    setBusy("excise_quote");
+    setError("");
+    setToast(null);
+    try {
+      const data = await apiJson(`/api/sales-planning/sales-orders/${id}/excise-quotation`, {
+        method: "POST", fallbackError: "ออกใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ",
+      });
+      router.push(`/sales-planning/quotations/${encodeURIComponent(data.quote.id)}`);
+      return true;
+    } catch (createError) {
+      setBusy("");
+      setError(createError.message || "ออกใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ");
+      return false;
+    }
+  }
+
+  async function confirmNotBilled(value) {
+    setNotBilledError("");
+    const ok = await requestAction("set_excise_not_billed", { ...value, expectedUpdatedAt: order?.updatedAt });
+    if (ok) setNotBilledOpen(false);
+    else setNotBilledError("บันทึกไม่สำเร็จ — ดูข้อความด้านบนของหน้า");
+  }
+
+  function clearNotBilled() {
+    setError("");
+    setConfirmState({
+      title: "ถอนการตัดสินไม่เรียกเก็บในระบบ",
+      description: `${order?.orderNumber || "ใบนี้"} จะกลับมาออกใบเสนอราคาค่าสรรพสามิตได้`,
+      confirmLabel: "ถอนการตัดสิน",
+      showsError: true,
+      action: () => requestAction("clear_excise_not_billed", { expectedUpdatedAt: order?.updatedAt }),
+    });
   }
 
   async function requestAction(action, payload = {}) {
@@ -1750,14 +1764,23 @@ export default function SalesOrderDetailPage() {
      ⭐ **สรรพสามิตเข้ามาอยู่บนเส้นเดียวกันด้วย** (มติผู้ใช้ 2026-08-17) — เดิมเป็นการ์ด
      แยกล่างสุดของหน้า ทั้งที่ตอบคำถามเดียวกับเส้นนี้คือ "ใบนี้ติดอยู่ตรงไหน"
      และเรื่องทะเบียนถูกยุบเหลือตัวนับในบรรทัดเทาบรรทัดเดียวที่ไม่บอกว่า FG ตัวไหนค้าง */
+  /* ⭐ แผนรื้อสรรพสามิต PR3: ช่วงค่าสรรพสามิต = ออกใบเสนอราคาค่าสรรพสามิต / ไม่เรียกเก็บในระบบ — ใบยื่นกรมเป็นงานของ RA
+     (ทางสร้างใบยื่นของฝ่ายขายปิดแล้ว) · สิทธิ์ = สิทธิ์แก้ใบนี้ (`order.canEdit` ของ server) */
+  const exciseCanEdit = !!order?.canEdit;
   const exciseTrack = useMemo(() => ({
     ...filingState,
-    onCreateFiling: createFiling,
-    createLabel: busy === "filing" ? "กำลังสร้าง…" : "สร้างใบยื่นชำระ",
-    createDisabled: busy === "filing" || !canCreateFiling,
-    createDisabledReason: canCreateFiling ? null : "ต้องมีสิทธิ์งานขายจึงสร้างใบยื่นได้",
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- createFiling ประกาศเป็น function ธรรมดา อ้างอิงคงที่ต่อ render
-  }), [filingState, busy, canCreateFiling]);
+    exciseQuote: {
+      ...exciseQuoteState,
+      notBilledLabel: exciseQuoteState?.notBilled ? EXCISE_NOT_BILLED_KINDS[exciseQuoteState.notBilled.kind]?.label : null,
+    },
+    onCreateQuote: createExciseQuote,
+    onNotBilled: () => { setNotBilledError(""); setNotBilledOpen(true); },
+    onClearNotBilled: exciseCanEdit ? clearNotBilled : null,
+    createLabel: busy === "excise_quote" ? "กำลังออกใบ…" : "ออกใบเสนอราคาค่าสรรพสามิต",
+    actionDisabled: !!busy,
+    createDisabledReason: exciseCanEdit ? null : "ต้องมีสิทธิ์แก้ใบสั่งขายนี้จึงออกใบค่าสรรพสามิตได้",
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- handler ประกาศเป็น function ธรรมดา อ้างอิงคงที่ต่อ render
+  }), [filingState, exciseQuoteState, busy, exciseCanEdit]);
 
   const workTrack = useMemo(
     () => salesOrderWorkTrack({
@@ -2587,6 +2610,16 @@ export default function SalesOrderDetailPage() {
         </ContextGrid>
 
         <SalesOrderWorkTrack track={workTrack} />
+        {notBilledOpen ? (
+          <ExciseNotBilledDialog
+            open
+            orderNumber={order.orderNumber}
+            busy={busy === "set_excise_not_billed"}
+            error={notBilledError}
+            onConfirm={confirmNotBilled}
+            onClose={() => setNotBilledOpen(false)}
+          />
+        ) : null}
 
         {/* 🪤 เส้นเดินงานซ่อนช่วงสรรพสามิตเมื่อระบบเชื่อมเอกสารไม่พร้อม/โหลดพัง —
             เงียบไปเฉย ๆ จะอ่านเหมือน "ใบนี้ไม่มีสินค้าสรรพสามิต" ⇒ ต้องดังตรงนี้แทน */}

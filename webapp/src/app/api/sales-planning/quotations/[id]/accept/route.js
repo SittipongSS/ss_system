@@ -9,6 +9,9 @@ import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { validateDocumentReadiness } from '@/lib/documentWorkflow';
 import { quotationWonAmount } from '@/lib/sales/quotationWonAmount';
 import { linkDealToProject } from '@/lib/sales/dealProjectLink';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { acceptExciseQuotation } from '@/lib/excise/exciseQuotation';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +35,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (quote.status === 'accepted') return badRequest('ใบเสนอราคานี้ถูกรับแล้ว');
   if (quote.status === 'closed') return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น)');
   if (['cancelled', 'rejected', 'revised'].includes(quote.status)) return badRequest('quotation cannot be accepted');
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414/0415) — ไม่มีดีล ⇒ ไม่ผูกโครงการ ไม่ปิด Won ไม่แตะ FC · RPC แยก (accept_excise_quotation_atomic) */
+  if (isExciseOrder(quote)) {
+    const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+    if (sourceError) return fail(sourceError.message, 500);
+    if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
+    const accepted = await acceptExciseQuotation({ supabase, user, quote, request: req });
+    if (accepted.error) return fail(accepted.error, accepted.status || 500);
+    return ok(accepted.data);
+  }
   // ยอดก่อน VAT 0 บาทปิด Won ได้ (มติผู้ใช้ 2026-08-03) — ใบที่ลด/แถมจนเหลือ 0 ก็เป็นดีล
   // ที่ปิดได้จริง ยอด Won 0 ที่เขียนลงดีลคือค่าที่ถูกต้องของใบนั้น ไม่ใช่ข้อมูลหาย
 

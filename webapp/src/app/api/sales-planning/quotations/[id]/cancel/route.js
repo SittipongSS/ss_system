@@ -2,7 +2,7 @@ import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/h
 import { isDryRun } from '@/lib/forceDelete';
 import { loadScoped } from '@/lib/scopedRow';
 import { canApproveQuotation, canEditSalesPlanning } from '@/lib/salesPlanning';
-import { canCancelQuotation } from '@/lib/sales/quotationWorkflow';
+import { canCancelQuotation, quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
 import { quotationCancelStateError } from '@/lib/sales/quotationCancel';
 import { normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
@@ -41,7 +41,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(contextError.message, 500);
   }
 
-  const approver = canApproveQuotation(user, quote.deal);
+  const approver = canApproveQuotation(user, quotationApprovalDeal(quote));
   const allowed = canCancelQuotation(quote, {
     approver,
     canEdit: true, // ผ่าน canEditSalesPlanning ข้างบนแล้ว
@@ -50,7 +50,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
   if (!allowed) {
     if (!approver) {
-      return forbidden(`ยกเลิกใบได้เฉพาะผู้อนุมัติของใบนี้ (เจ้าของดีลหรือผู้จัดการฝ่ายขาย) — ส่งต่อให้ ${quote.deal?.ownerName || 'เจ้าของดีล'}`);
+      return forbidden(`ยกเลิกใบได้เฉพาะผู้อนุมัติของใบนี้ (เจ้าของดีลหรือผู้จัดการฝ่ายขาย) — ส่งต่อให้ ${quotationApprovalDeal(quote)?.ownerName || 'เจ้าของดีล'}`);
     }
     return badRequest(quotationCancelStateError(quote));
   }

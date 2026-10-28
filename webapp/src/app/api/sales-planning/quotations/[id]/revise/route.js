@@ -2,7 +2,10 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning } from '@/lib/salesPlanning';
-import { inSalesDocScope } from '@/lib/scopedRow';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { EXCISE_LINES_LOCKED_MESSAGE } from '@/lib/excise/exciseQuotation';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
@@ -39,6 +42,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
+  // ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ขอบเขต + เบอร์ผู้เสนอราคาถอยไปดีลของ SO ต้นทาง
+  const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+  if (sourceError) return fail(sourceError.message, 500);
   if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
   // ใบ grandfather (not_required) ออก Rev. ได้เหมือนใบ approved — เป็นทางเดียวที่ใบเก่า
   // ยังแก้ได้ (มติ 2026-07-26) เพราะทุกด่านในระบบนับใบพวกนี้เป็น "อนุมัติแล้ว" อยู่แล้ว
@@ -63,6 +69,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
+  /* ⭐ ใบค่าสรรพสามิต: Rev. สืบบรรทัดเดิมทั้งชุด (ภาษีที่ระบบคิด) — จอส่งบรรทัด/ส่วนลด/VAT มา = ปฏิเสธ · แก้บรรทัดใน Rev. ร่าง
+     ด้วย "คิดใหม่จากใบสั่งขาย" (PATCH) · 1 SO = 1 ใบที่มีผล: ใบเดิมกลายเป็น revised ⇒ ฉบับใหม่เป็นใบที่มีผลใบเดียว */
+  if (isExciseOrder(quote) && ['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
+    return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
+  }
   /* เลขแพ็ค (mig 0407): ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด (รวมบรรทัดที่สืบทอดจากใบเดิม) = ปฏิเสธพร้อมเลขรายการ
      — ไม่ตัดทิ้งแล้วออก Rev. ต่อ: ฉบับใหม่จะได้ยอดที่หดเงียบ */
   let revLines;
@@ -131,7 +142,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const revEditableMeta = stripRetiredPeople(revBody);
 
   // เบอร์เจ้าของดีล ณ วันออก Rev. — อ่านสดทุกครั้ง เพราะเจ้าของดีลเปลี่ยนมือได้
-  const ownerContact = await loadDealOwnerContact(supabase, quote.deal?.ownerId);
+  const ownerContact = await loadDealOwnerContact(supabase, quotationApprovalDeal(quote)?.ownerId);
 
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน

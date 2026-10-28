@@ -71,6 +71,7 @@ import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 import QuotationBillingRequests from "@/components/salesPlanning/QuotationBillingRequests";
 import { billingQuotationError } from "@/lib/requests/billingQuotations";
+import { EXCISE_STATUS_NOTE, isExciseOrder } from "@/lib/sales/historicalOrders";
 import { quotationBillingRequestHref } from "@/lib/sales/billingRequestHref";
 
 const money = (v) => fmtMoney(v);
@@ -238,6 +239,8 @@ export default function QuotationEditorPage() {
   const rejectionNotice = quotationRejectionNotice(quote);
   // ใบ approved + ใบ grandfather (not_required) — ทั้งคู่แก้ทับไม่ได้ ต้องออก Rev.
   // (มติ 2026-07-26); เงื่อนไขเดียวกับด่านฝั่ง API เพื่อไม่ให้ปุ่มกับ server เพี้ยนหากัน
+  /* ใบเสนอราคาค่าสรรพสามิต (mig 0414 · แผนรื้อสรรพสามิต PR3) — ไม่มีดีล · บรรทัดคิดจาก SO ต้นทาง · ไม่นับ Actual */
+  const excise = isExciseOrder(quote);
   const canReviseDocument = !!quote && canEditCap && isRevisableQuotation(quote);
   // ดีล Lost = จบแล้ว ฝั่ง API ปฏิเสธการออก Rev. (revise/route.js) — ปุ่มต้องรู้ด้วย
   // ไม่งั้นมันชวนผู้ใช้เดินเข้าทางตัน: กรอกเหตุผล กดยืนยัน แล้วโดนตีกลับ 400
@@ -304,8 +307,10 @@ export default function QuotationEditorPage() {
     : { type: "full", paymentMethod: payment.paymentMethod.trim() || null });
   const updatePayment = (nextPayment) => { setPayment(nextPayment); setDirty(true); };
 
+  /* ⭐ ใบค่าสรรพสามิต (แผนรื้อสรรพสามิต PR3): บรรทัด/ส่วนลด/VAT คิดจาก SO ต้นทางที่ server เท่านั้น — route ปฏิเสธถ้าส่งมา
+     ⇒ ไม่ส่งสี่คีย์นั้น (บันทึก/ออก Rev.) · แก้บรรทัดด้วยปุ่ม "คิดใหม่จากใบสั่งขาย" */
   const quotationPayload = (extra = {}) => ({
-    lines: lines.map((line) => {
+    ...(excise ? {} : { lines: lines.map((line) => {
       const payloadLine = { ...line };
       delete payloadLine._lineKind;
       delete payloadLine._noteOpen;
@@ -316,15 +321,17 @@ export default function QuotationEditorPage() {
       if (note) payloadLine.metadata.note = note;
       else { delete payloadLine.metadata.note; delete payloadLine.metadata.noteEn; delete payloadLine.metadata.noteAuto; }
       return payloadLine;
-    }),
+    }) }),
     quoteDate: form.quoteDate,
     validUntil: form.validUntil || null,
     paymentTerms: payment.paymentTerms,
     notes: form.notes,
     referenceNote: form.referenceNote,
-    discountType: form.discountType || null,
-    discountValue: form.discountValue || 0,
-    vatRate: form.vatRate,
+    ...(excise ? {} : {
+      discountType: form.discountType || null,
+      discountValue: form.discountValue || 0,
+      vatRate: form.vatRate,
+    }),
     // ที่อยู่: ส่งแค่ "เลือกอันไหน" — ข้อความ server อ่านสดจากทะเบียนลูกค้าเอง (0203)
     billingAddressId: form.billingAddressId || null,
     shippingAddressId: form.shippingAddressId || null,
@@ -503,16 +510,51 @@ export default function QuotationEditorPage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
+  /* ใบค่าสรรพสามิต: ยืนยันอย่างเดียว (ไม่มีดีลให้ผูกโครงการ/ปิด Won) — ขั้นถัดไปคือออก SO ค่าสรรพสามิต (PR4) */
+  const acceptExcise = () => setConfirmState({
+    title: "ลูกค้ารับใบเสนอราคาค่าสรรพสามิต",
+    description: `บันทึกว่าลูกค้ารับ ${quote.quoteNumber} แล้วหรือไม่`,
+    detail: "ไม่แตะดีลของลูกค้า (ไม่ปิด Won · ไม่ขยับ FC / Actual) · ใบนี้จะล็อก ใบสั่งขายต้นทางยังย้อน/ยกเลิกไม่ได้จนกว่าจะยกเลิกใบนี้",
+    confirmLabel: "ลูกค้ารับแล้ว",
+    action: async () => {
+      const data = await act("accept", `/api/sales-planning/quotations/${id}/accept`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
+      });
+      if (data) {
+        await load();
+        setToast({ kind: "success", msg: "บันทึกว่าลูกค้ารับใบค่าสรรพสามิตแล้ว" });
+      }
+      return !!data;
+    },
+  });
+  /* คิดบรรทัดใหม่จาก SO ต้นทาง (ราคาขายปลีก/ทะเบียนเปลี่ยน) — ได้เฉพาะร่างที่ยังไม่ยื่น · server คิดและบันทึกเอง */
+  const recalcExcise = () => setConfirmState({
+    title: "คิดใหม่จากใบสั่งขาย",
+    description: `คิดรายการของ ${quote.quoteNumber} ใหม่จากใบสั่งขายต้นทางตอนนี้`,
+    detail: "ภาษี/ชิ้นคิดจากราคาขายปลีกของสินค้า ณ ตอนนี้ · รายการเดิมของใบนี้ถูกแทนทั้งชุด",
+    confirmLabel: "คิดใหม่",
+    action: async () => {
+      const data = await act("recalc", `/api/sales-planning/quotations/${id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "recalc_from_sales_order" }),
+      });
+      if (data) {
+        await load();
+        setToast({ kind: "success", msg: "คิดรายการใหม่จากใบสั่งขายแล้ว" });
+      }
+      return !!data;
+    },
+  });
   // ย้อนการรับ = เจ้าของดีลปัจจุบัน + ผู้มีอำนาจตัดสิน (มติ 24/09) กรณีรับใบผิดก่อนมี SO — มี SO ที่ยังมีชีวิต
   // (ไม่ยกเลิก · ไม่ถูกแทนด้วย Rev.) ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ · 0380); เหตุผลบังคับ 10–500 ตัวอักษร
   /* ⚠️ คูณ canEditCap — เจ้าของดีล Won ที่ถูกย้ายไปตำแหน่งดูอย่างเดียว (โอนงานไม่ย้ายดีล Won) ยังเป็น ownerId
      ถ้าไม่คูณ ปุ่มจะกดได้แล้วโดน 403 ทุกครั้ง (ผู้จัดการมี salesplan:edit ครบอยู่แล้ว — ช่องนี้เพิ่งเกิดจากกิ่งเจ้าของดีล) */
-  const unacceptAllowed = canEditCap && canUnacceptQuotation({ id: quote?.meId, role }, quote?.deal);
+  // ใบค่าสรรพสามิตย้อนการรับไม่ได้ (ยกเลิกใบแทน · route ปฏิเสธ) — ไม่วาดปุ่มเลย
+  const unacceptAllowed = !excise && canEditCap && canUnacceptQuotation({ id: quote?.meId, role }, quote?.deal);
   const canUnaccept = quote?.status === "accepted" && unacceptAllowed
     && !quote.hasLiveSalesOrder;
   /* ติดด่าน = โชว์ปุ่มจางแล้วบอกเหตุ (กติกา "ปุ่มกดไม่ได้ = โชว์เสมอ") — ไม่งั้นเจ้าของดีลที่มี SO ค้างอยู่
      จะคิดว่าปุ่มหายหรือระบบพัง · คนในทีมที่ไม่ใช่เจ้าของดีลได้ชื่อคนที่ต้องส่งต่อ (แบบปุ่ม "ยื่นอนุมัติ" ของ SO) */
-  const unacceptBlockedReason = quote?.status !== "accepted" || canUnaccept || !canEditCap ? ""
+  const unacceptBlockedReason = excise || quote?.status !== "accepted" || canUnaccept || !canEditCap ? ""
     : !unacceptAllowed
       ? `ย้อนการรับได้เฉพาะเจ้าของดีลหรือ AE Supervisor — ส่งต่อให้ ${quote.deal?.ownerName || "เจ้าของดีล"}`
       /* ⚠️ ไม่ระบุว่าใครยกเลิก SO ได้ — ขึ้นกับสถานะ SO + งวดที่มีเงิน (salesOrderCancelNeedsReviewer) ซึ่งหน้านี้ไม่ได้โหลด
@@ -681,7 +723,7 @@ export default function QuotationEditorPage() {
     draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
     // sent = "อนุมัติแล้ว" (มติผู้ใช้ 2026-08-17) — ดูเหตุผลที่ QUOTE_STATUS_LABELS
     sent: { label: "อนุมัติแล้ว", color: "var(--blue)" },
-    accepted: { label: "Won", color: "var(--green)" },
+    accepted: { label: excise ? "ลูกค้ารับแล้ว" : "Won", color: "var(--green)" },
     rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
@@ -764,11 +806,12 @@ export default function QuotationEditorPage() {
           ? {
               id: "won",
               kind: "approve",
-              label: "Won",
+              // ใบค่าสรรพสามิตไม่มีดีล — "ลูกค้ารับแล้ว" ไม่ใช่ปิด Won (ไม่แตะดีล/FC · RPC 0415)
+              label: excise ? "ลูกค้ารับแล้ว" : "Won",
               disabled: dirty,
               disabledReason: dirty ? "บันทึกการแก้ไขก่อนปิด Won" : undefined,
-              title: "ปิด Won ผ่านใบเสนอราคานี้",
-              onClick: doAccept,
+              title: excise ? "บันทึกว่าลูกค้ารับใบเสนอราคาค่าสรรพสามิต" : "ปิด Won ผ่านใบเสนอราคานี้",
+              onClick: excise ? acceptExcise : doAccept,
             }
           : null;
   const secondaryActions = [
@@ -781,6 +824,15 @@ export default function QuotationEditorPage() {
       href: `/sa/quotations/${id}?edit=1`,
     },
     { id: "leave-edit", kind: "cancel", label: "ยกเลิกแก้ไข", variant: "ghost", visible: editable, onClick: leaveEditMode },
+    {
+      // ใบค่าสรรพสามิต: แก้รายการได้ทางเดียว — คิดใหม่จาก SO ต้นทาง (ร่างที่ยังไม่ยื่น · route ตรวจซ้ำ)
+      id: "excise-recalc",
+      kind: "reedit",
+      label: "คิดใหม่จากใบสั่งขาย",
+      variant: "outline",
+      visible: excise && canEditDocument && !editMode && quote?.approvalStatus === "not_submitted",
+      onClick: recalcExcise,
+    },
     {
       id: "withdraw",
       kind: "withdraw",
@@ -1012,7 +1064,10 @@ export default function QuotationEditorPage() {
             <div className={styles.sectionHeading}>
               <Package size={17} aria-hidden="true" />
               <h2>รายการสินค้า/บริการ</h2>
-              {editable && (
+              {excise ? (
+                <span className={styles.exciseNote}>{EXCISE_STATUS_NOTE} · รายการคิดจากใบสั่งขายต้นทาง แก้เองไม่ได้</span>
+              ) : null}
+              {editable && !excise && (
                 <div className={styles.lineActions}>
                   <button type="button" className="btn btn-primary sm" onClick={addProductLine}><Plus size={13} aria-hidden="true" /> เพิ่มสินค้า</button>
                   <button type="button" className="btn ghost sm" onClick={addLine}><Plus size={13} aria-hidden="true" /> เพิ่มรายการเอง</button>
@@ -1022,7 +1077,7 @@ export default function QuotationEditorPage() {
             <QuotationLineItems
               lines={lines}
               onChange={updateLines}
-              editable={editable}
+              editable={editable && !excise}
               products={products}
               discountType={form.discountType}
               discountValue={form.discountValue}
@@ -1117,6 +1172,18 @@ export default function QuotationEditorPage() {
                 />
               </>}
             />
+
+            {excise && quote.metadata?.exciseSource ? (
+              <RelatedDocumentCard
+                icon={ClipboardList}
+                eyebrow="SOURCE SALES ORDER"
+                title={`ค่าภาษีสรรพสามิตของ ${quote.metadata.exciseSource.orderNumber || "ใบสั่งขาย"}`}
+                meta={EXCISE_STATUS_NOTE}
+                actions={<Button as={Link} href={`/sa/sales-orders/${encodeURIComponent(quote.sourceSalesOrderId)}`} size="sm" variant="ghost">เปิด SO ต้นทาง <ExternalLink size={13} /></Button>}
+              >
+                {[quote.metadata.exciseSource.quoteNumber, quote.sourceDeal?.title].filter(Boolean).join(" · ") || NA}
+              </RelatedDocumentCard>
+            ) : null}
 
             {quote.deal ? (
               <RelatedDocumentCard

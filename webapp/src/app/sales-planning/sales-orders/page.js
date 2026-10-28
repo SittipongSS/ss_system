@@ -701,14 +701,14 @@ export default function SalesOrdersPage() {
         {awaitingFiling > 0 && (
           <StatusNotice
             tone="warning"
-            title={`ใบสั่งขาย ${awaitingFiling} ใบรอออกใบยื่นชำระภาษี`}
+            title={`ใบสั่งขาย ${awaitingFiling} ใบรอออกใบเสนอราคาค่าสรรพสามิต`}
             /* 🐞 เดิมเป็น `<Link className="linklike">` ตัวเดียวในระบบที่นั่งในสล็อต
                `action` ของ StatusNotice — กฎ `.action :global(.btn)` แจก width:100%
                + `--ctl-h-touch` (44px, WCAG §2.5.5) ให้เฉพาะ `.btn` ⇒ ลิงก์ตัวนี้
                ไม่ได้เป้าสัมผัสตามเกณฑ์ที่ระบบตั้งเอง · ยังเป็น <a href> เหมือนเดิม */
-            action={<Button as={Link} href="/tax/filings" size="sm" variant="ghost">เปิดหน้ายื่นชำระ</Button>}
           >
-            อนุมัติแล้วและมีสินค้าสรรพสามิตอยู่ในใบ แต่ยังไม่ได้สร้างใบยื่นต่อกรมสรรพสามิต
+            อนุมัติแล้วและมีสินค้าสรรพสามิตอยู่ในใบ แต่ยังไม่ได้ออกใบเสนอราคาค่าสรรพสามิต — เปิดใบสั่งขายแล้วกด
+            “ออกใบเสนอราคาค่าสรรพสามิต” (หรือ “ไม่เรียกเก็บในระบบ”) บนเส้นเดินงานของใบ
           </StatusNotice>
         )}
 

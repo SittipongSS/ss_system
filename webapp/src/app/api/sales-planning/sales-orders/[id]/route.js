@@ -73,10 +73,15 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
 import {
-  exciseFilingBlockMessage, exciseFilingsOfSalesOrder, isDryRun, isForceRequest, salesOrderForcePreview,
+  exciseFilingBlockMessage, exciseFilingsOfSalesOrder, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
+  isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
+import { exciseSourceLock, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
+import {
+  EXCISE_NOT_BILLED_KINDS, exciseNotBilledBlocker, exciseNotBilledInput, exciseNotBilledPatch,
+} from '@/lib/excise/exciseNotBilled';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
@@ -947,6 +952,49 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       request: req,
     });
     return ok(data);
+  }
+
+  /* ⭐ Q16 (แผนรื้อสรรพสามิต หมวด 5): SO ลูกค้าที่มีใบเสนอราคาค่าสรรพสามิตที่ยังมีผล ย้อนอนุมัติ/ออก Rev./ยกเลิกไม่ได้
+     — ใบค่าภาษีคิดจากบรรทัดของ SO ใบนี้ ถ้าปล่อยให้ SO เปลี่ยน ลูกค้าจะจ่ายภาษีของของที่ไม่ได้ซื้อ · ยกเลิกใบค่าภาษี = ปลดล็อก */
+  if (action === 'revoke' || action === 'revise' || action === 'cancel') {
+    const lock = await exciseSourceLock(supabase, before, action);
+    if (lock) return fail(lock.error, lock.status);
+  }
+
+  /* ⭐ "ไม่เรียกเก็บค่าสรรพสามิตในระบบ" (แผน หมวด 3.5 · มติ Q6/Q7) — SA ตัดสินบน SO ลูกค้าแทนการออกใบค่าภาษี · ถอนได้จนกว่า RA สร้างใบยื่น
+     ⚠️ ค่าทั้งชุดต้องตรงกับ CHECK sales_orders_excise_not_billed_shape (0414) — ตรวจที่ exciseNotBilledInput ก่อนให้ได้ข้อความไทย */
+  if (action === 'set_excise_not_billed' || action === 'clear_excise_not_billed') {
+    if (!canEditSalesPlanning(user) || !user.id) return forbidden();
+    const clearing = action === 'clear_excise_not_billed';
+    const input = clearing ? { value: null } : exciseNotBilledInput(body);
+    if (input.error) return badRequest(input.error);
+    const [{ data: liveQuote, error: liveError }, { data: filing, error: filingError }] = await Promise.all([
+      loadLiveExciseQuotation(supabase, id),
+      supabase.from('orders').select('id, status').eq('salesOrderId', id).limit(1).maybeSingle(),
+    ]);
+    if (liveError || filingError) return fail((liveError || filingError).message, 500);
+    const blocker = exciseNotBilledBlocker(before, { liveQuote, clearing, filing });
+    if (blocker) return fail(blocker, 409);
+    const expected = resolveExpectedUpdatedAt(body);
+    if (!expected.ok) return badRequest(expected.error);
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabase
+      .from('sales_orders')
+      .update({ ...exciseNotBilledPatch(input.value, { user, at: now }), updatedAt: now })
+      .eq('id', id)
+      .eq('updatedAt', expected.value)
+      .select()
+      .maybeSingle();
+    if (updateError) return fail(updateError.message, 500);
+    if (!updated) return fail('ใบนี้ถูกแก้จากที่อื่นระหว่างนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409);
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id, before, after: updated,
+      summary: clearing
+        ? `ถอนการตัดสินไม่เรียกเก็บค่าสรรพสามิตในระบบ ${before.orderNumber}`
+        : `ตัดสินไม่เรียกเก็บค่าสรรพสามิตในระบบ ${before.orderNumber} (${EXCISE_NOT_BILLED_KINDS[input.value.kind].label}): ${input.value.reason}`,
+      request: req,
+    });
+    return ok(updated);
   }
 
   // ขั้นที่ 1 (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ · Actual หลุดที่ขั้นนี้
@@ -2011,6 +2059,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ซึ่งใบยื่นก็บล็อกเหมือนกัน = ผู้ใช้วนกลับที่เดิม)
   const filings = await exciseFilingsOfSalesOrder(supabase, id);
   if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบสั่งขาย'), 409);
+  // ใบค่าสรรพสามิตที่อ้างใบนี้ (FK RESTRICT · mig 0414) — ดักก่อนเหมือนใบยื่น ไม่งั้นได้ 23503 ดิบกลางทาง
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { salesOrderId: id }); }
+  catch (exciseError) { return fail(exciseError.message, 500); }
+  if (exciseQuotes.length) return fail(exciseQuotationBlockMessage(exciseQuotes, 'ใบสั่งขาย'), 409);
   /* ── ใบสั่งขายย้อนหลัง (mig 0360 → 0374): ลบแบบปกติ = ทาง undo ของคนคีย์ ─────────────────────────────
      ⭐ ได้เฉพาะตอนยังไม่มีอะไรปลายน้ำผูก (historicalDeleteBlock) — ติดเมื่อไรใช้บังคับลบหลังอ่านพรีวิว
      ⭐ 0374: ใบที่ยังไม่เคยอนุมัติ (ร่าง/รออนุมัติ/ตีกลับ/ยกเลิกก่อนอนุมัติ) ลบแบบปกติได้ (canHardDeleteSalesOrder)
