@@ -1,5 +1,6 @@
 import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { canViewSalesPlanning, inSalesViewScope, isClosedStage } from '@/lib/salesPlanning';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { isQuotationAwaitingMyApproval, isQuotationWaitingOnMe } from '@/lib/sales/quotationWorkflow';
@@ -15,7 +16,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const params = new URL(req.url).searchParams;
   const status = params.get('status');
 
-  /* ⚠️ **ระบุคอลัมน์เอง ห้ามกลับไปใช้ `select('*')`** — ลิสต์นี้ 500 ใบ และคอลัมน์
+  /* ⚠️ **ระบุคอลัมน์เอง ห้ามกลับไปใช้ `select('*')`** — ลิสต์นี้ทุกใบ (734 ใบ 28/10) และคอลัมน์
      หนักที่จอไม่ได้ใช้กินเกือบทั้งก้อน (วัด 27/08 บน 213 ใบ: `notes` 152 KB ·
      `paymentTerms` 61 KB · `metadata` 67 KB · ที่อยู่บิล/ส่ง 82 KB · `paymentPlan`
      36 KB · `wonAttachments` 21 KB · `approvalFingerprint` 15 KB) ⇒ `select('*')`
@@ -43,12 +44,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ⇒ ดึงเฉพาะคีย์นั้นแล้วประกอบ `metadata` กลับข้างล่าง ให้จอเห็นทรงเดิมเป๊ะ */
   const DEAL_COLUMNS = 'id,title,stage,dealType,team,ownerId,ownerName,customerName,projectType:metadata->>projectType';
 
-  let query = supabase
+  /* ⭐ ดึงครบทุกใบ ไล่ทีละหน้า — 🐞 เดิม `.limit(500)` ตัดใบเก่าทิ้งเงียบ ๆ (28/10/2569 มี 734 ใบ
+     ⇒ ใบที่สร้างก่อน 28/08 ไม่ถึงจอเลย ค้น QT-26080103-0 ไม่เจอ ทั้งที่ใบอยู่ครบในฐาน) · จอค้นหา/กรอง
+     ฝั่งเบราว์เซอร์ทั้งหมด ⇒ แถวที่ไม่ถูกส่งมา = หาไม่เจอทุกทาง ไม่มีข้อความเตือน
+     `id` ต่อท้าย = ลำดับที่นิ่ง (`createdAt` ซ้ำกันได้ · ไล่หน้าโดยไม่มีมัน = แถวซ้ำ/หาย) */
+  const { data: rawRows, error } = await fetchAllResult(() => supabase
     .from('quotations')
     .select(`${LIST_COLUMNS},lines:quotation_lines(id),deal:sales_deals(${DEAL_COLUMNS})`)
     .order('createdAt', { ascending: false })
-    .limit(500);
-  const { data: rawRows, error } = await query;
+    .order('id', { ascending: true }));
   if (error) return fail(error.message, 500);
 
   // คืนทรง `deal.metadata.projectType` ให้เหมือนตอน select ทั้งก้อน — `dealTypeOf()`
@@ -65,7 +69,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   /* ⭐ รหัสลูกค้า (AR) คู่ชื่อกิจการ (มติผู้ใช้ IS-26080003) — ตัวเชื่อมกับรหัสกลิ่น/MU
      ⚠️ อ่านสดจากทะเบียนเสมอ ไม่ใช่ค่าที่ใบประทับไว้ — `customerName` บนใบคือชื่อ ณ วันที่
      ออกใบ (หลักฐานบนเอกสารที่ส่งลูกค้าไปแล้ว) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน
-     ⚠️ query เดียวหลังกรองแล้ว — ดึงรายใบ = 500 query ต่อการเปิดหน้าหนึ่งครั้ง */
+     ⚠️ query เดียวหลังกรองแล้ว — ดึงรายใบ = หลายร้อย query ต่อการเปิดหน้าหนึ่งครั้ง */
   const customerIds = [...new Set(rows.map((q) => q.customerId).filter(Boolean))];
   let arById = new Map();
   if (customerIds.length) {
