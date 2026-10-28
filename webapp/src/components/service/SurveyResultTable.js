@@ -46,6 +46,7 @@ import Link from "next/link";
 import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Lightbulb, Link2, Minus, Pencil, Plus, Undo2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { KeepTogether } from "@/components/service/ScheduleModalParts";
+import { keepPhrases } from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import PhotoThumb from "@/components/ui/PhotoThumb";
@@ -62,6 +63,7 @@ import {
 } from "@/lib/service/surveyControl";
 import { surveyDrawingZoneView, surveyZoneTitle } from "@/lib/service/surveyFieldView";
 import { isJpgOrPngFile } from "@/lib/service/surveyMethod";
+import { surveyConfirmPreviousRoundKeep } from "@/lib/service/surveyConfirmLink";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
   surveyPackageCell, surveyPendingDecisions,
@@ -200,6 +202,10 @@ export default function SurveyResultTable({
   mix = null,
   request = null,
   locked = false,
+  /* ── ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — แผนที่ zoneId → ข้อความรอบจากแบบของใบต้นทาง (server ประกอบจาก
+     surveyConfirmPreviousRoundText · คีย์ confirmOf.previousByZone ของ GET ใบประเมิน) ⇒ บรรทัดจางใต้ชื่อ/ป้ายของแถวที่ยกมา
+     ⚠️ แถวที่หัวหน้าเพิ่มเองไม่มีรายการ ⇒ ไม่มีบรรทัด · แถวที่ตัดออกไม่มีบรรทัด · ไม่ส่ง = ตารางเดิมทุกจุด */
+  previousRounds = null,
 }) {
   /* ร่างของหัวหน้า — key = id ของพื้นที่ · ค่าที่ไม่มีในนี้แปลว่า "ยังไม่ถูกแตะ"
      ⚠️ ห้ามเติมค่าตั้งต้นลงไปตอนเปิดจอ — ของที่เติมไว้ล่วงหน้าแยกไม่ออกจากของที่คนพิมพ์
@@ -401,6 +407,8 @@ export default function SurveyResultTable({
                     แถวลงหน้างานคงคำเดิมของตารางนี้ */
               const tags = [m.source ? m.addedLabel : (zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null),
                 zone.zoneId ? null : "พื้นที่ใหม่"].filter(Boolean).join(" · ");
+              /* ตัวเลขรอบจากแบบของใบต้นทาง (ใบยืนยันหน้างาน) — ผูกด้วยรหัสพื้นที่ในทะเบียน · ตัดออกแล้ว = ไม่เทียบ */
+              const previousRound = !cut && zone.zoneId && previousRounds ? previousRounds[zone.zoneId] || null : null;
               /* การบันทึกรอบล่าสุดของแถวนี้ชนกับการแก้จากที่อื่น — ประโยคของ server (ดู `saveAll`) */
               const staleText = staleRow && staleRow.zoneId === String(zone.id) ? staleRow.message : null;
 
@@ -451,6 +459,9 @@ export default function SurveyResultTable({
                         🐞 UAT 26/10 (head-r3-21): ช่อง 182px (1440) / 104px (768) ตัดวันเป็น "พฤ. 8" / "ต.ค." ⇒ วันไทยเป็นก้อนเดียว (`KeepTogether`) */}
                     {m.source ? <span className={styles.source}><KeepTogether text={m.source} /></span> : null}
                     {tags ? <span className={styles.sub}>{tags}</span> : null}
+                    {/* ใบยืนยันหน้างาน: ตัวเลขรอบจากแบบ ไว้เทียบกับผลที่วัดรอบนี้ — บรรทัดรองกลางของเซลล์ตาราง (จาง · 12px)
+                        🐞 UAT S5 head รอบ 1 K12: เลขที่ขาดที่ขีด / ตัวเลขขาดจากหน่วย ⇒ วลีห้ามขาดจาก lib (`surveyConfirmPreviousRoundKeep`) */}
+                    {previousRound ? <span className="cell-sub">{keepPhrases(previousRound, surveyConfirmPreviousRoundKeep(previousRound))}</span> : null}
                     {!cut && (cell.figures || cell.dims) ? (
                       <span className={styles.figures}>
                         {cell.figures ? <b>{cell.figures}</b> : null}

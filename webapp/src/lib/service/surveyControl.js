@@ -53,6 +53,7 @@ import {
   surveyZoneAddedLabel,
 } from '@/lib/service/surveyMethodSwitch';
 import { surveyFiledAsDrawing } from '@/lib/service/surveyIntake';
+import { SURVEY_CONFIRM_OF_LABEL } from '@/lib/service/surveyConfirmLink';
 import {
   surveySendDocumentRefusal, surveySendDocumentRefusalList, surveySendSiteVisitError, surveySendVisitStep,
 } from '@/lib/service/surveySendClose';
@@ -79,6 +80,8 @@ export const SURVEY_UNKNOWN_LABELS = {
   requestFiles: 'ไฟล์แนบของคำร้อง',
   /* ไฟล์ที่แนบในเธรดของคำร้อง (GET `threadFiles` · ประเมินจากแบบ งวด S2a) — แผง "แบบจากฝ่ายขาย" ของหัวหน้าอ่านจากชุดนี้ */
   threadFiles: 'ไฟล์แนบในเธรดของคำร้อง',
+  /* ใบต้นทางของใบยืนยันหน้างาน (GET `confirmOf` · งวด S5) — ข้อเท็จจริงบนหัวใบเขียน "ไม่ทราบ" ใต้ป้ายเดียวกัน */
+  confirmOf: SURVEY_CONFIRM_OF_LABEL,
 };
 
 /* ชิ้นที่จอ **ไม่ได้** เขียนค่าเป็น "ไม่ทราบ" แต่บอกเหตุในแถวของมันเอง — แถวไฟล์แนบของคำร้องเขียน

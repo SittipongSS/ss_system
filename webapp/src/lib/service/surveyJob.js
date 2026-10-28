@@ -36,6 +36,11 @@ import {
   SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveySalesAskedLine, surveyWishedVisit,
 } from './surveyIntake';
 import { VISIT_STATUS_LABELS, holdsRequestSlot, isClosedVisit } from './visitStatus';
+/* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-1) — ชื่อปุ่ม · ชิ้นประโยคของแถบแจ้ง · บรรทัดลิงก์สองทาง มาจากไฟล์ล้วนไฟล์เดียว
+   ⚠️ ไฟล์นี้ไม่ประกอบประโยคไทยของงวด S5 เอง (F1) — `surveyConfirmLink.js` ไปถึงเบราว์เซอร์ได้ (ดึงแต่โมดูลล้วน) */
+import {
+  SURVEY_CONFIRM_ACTION_LABEL, surveyConfirmBannerParts, surveyConfirmChildLine, surveyConfirmOfLine,
+} from './surveyConfirmLink';
 
 const join = (...parts) => parts.flat().filter(Boolean).join(' · ');
 const clock = (value) => {
@@ -362,19 +367,64 @@ function gateCard(gates, owner) {
      'not_needed'  ประโยคล้วน ไม่มีปุ่ม
      ค่าอื่น        ไม่มีแถบ — ข้อมูลเก่า/ยังไม่เลือก ไม่ถูกเดาว่า "ต้องยืนยัน" (เทียบค่าตรงตัว)
    ⚠️ `count` = พื้นที่จากแบบที่ **ยังใช้อยู่** เท่านั้น (ใบผสมไม่นับพื้นที่ลงหน้างาน · แถวที่ถูกตัดไม่นับ)
-   🔴 ห้ามมีประโยคไหนพูดว่า "ไม่ได้เข้าพื้นที่" — พื้นที่จากแบบอาจมาหลังช่างเข้าไปจริงแล้วห้องยังไม่พร้อม (มติ D3) */
-const CONFIRM_ACTION_LABEL = 'ขอยืนยันหน้างาน';
+   🔴 ห้ามมีประโยคไหนพูดว่า "ไม่ได้เข้าพื้นที่" — พื้นที่จากแบบอาจมาหลังช่างเข้าไปจริงแล้วห้องยังไม่พร้อม (มติ D3)
+   ✏️ **งวด S5 (D-1) — 'needed' อ่าน `request.surveyConfirmLink` ที่ GET หน้าคำร้องแนบมา** (เรียก `link`) ไม่มีตัวเลือกใหม่
+      ไม่มี `viewer` — ผู้เรียกสองที่ (`surveyRequestDrawingSummary` · `surveyJobView`) ได้แถบเดียวกันทุกคนดู · ใครกดได้อยู่ใน
+      `link.action` แล้ว (server ถาม `canManageRequest`) · แถวแรกที่เข้า (ตาราง D-1 ของสเปก):
+        0 ไม่มีคีย์ `link` (ฟิกซ์เจอร์เดิมทุกตัว · หัวข้ออื่น)      ของวันนี้ทุกไบต์ — `action` ไม่มี `state` ⇒ จอไม่วาดปุ่ม
+        1 `link.unknown` (อ่านสถานะไม่สำเร็จ)                  ประโยคของวันนี้ · ไม่มีปุ่ม
+        2 ยังรอยืนยันอย่างเดียว                                ประโยค + หมายเหตุของวันนี้ · ปุ่มจาก `link.action`
+        3 ยังรอ + มีที่ยืนยัน/ย้ายไปแล้ว                        ประโยคของวันนี้ · หมายเหตุนับสามกอง · ปุ่มจาก `link.action`
+        4–7 ไม่เหลือพื้นที่รอ                                  ประโยค/keep/หมายเหตุ/`refs` ของ `surveyConfirmBannerParts` · ไม่มีปุ่ม
+   ⚠️ **สวิตช์ยังปิด = แถว 0–3 พูดของวันนี้ทุกไบต์** (F5): ประโยคบอกให้กด “ขอยืนยันหน้างาน” ⇒ ต้องมีหมายเหตุว่าปุ่มยังไม่เปิด
+      (แถว 1 กับ 3 ใช้หมายเหตุของตัวเองหลังเปิดสวิตช์เท่านั้น) · แถว 4–7 ไม่เอ่ยชื่อปุ่ม จึงไม่ต้องมีหมายเหตุนั้น
+   ⚠️ `ready` อยู่ท้ายสุดของก้อน `action` ทั้งสองแบบ (ยาม `surveyDrawingShared.test.mjs`) · `refs` มีคีย์เฉพาะตอนมีของ (R-KEYS) */
 function surveyDrawingBanner(request, { show = false, count = 0, dept = 'TS' } = {}) {
   if (!show || !(count > 0)) return null;
   const lead = `มี ${count} พื้นที่ที่ประเมินจากแบบ`;
   if (request.surveyConfirm === 'needed') {
+    const text = `${lead} — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “${SURVEY_CONFIRM_ACTION_LABEL}” เพื่อให้ ${dept} เข้าวัดจริง`;
+    /* `keep` = วลีที่จอห้ามตัดกลาง — ชื่อปุ่มในเครื่องหมายคำพูด (375 เคยขึ้น "“ขอยืนยัน" / "หน้างาน”") · S2b แก้หลังตรวจจอ sales รอบ 27/10 */
+    const keep = [`“${SURVEY_CONFIRM_ACTION_LABEL}”`];
+    const link = request.surveyConfirmLink;
+    if (!link) {
+      return {
+        text,
+        keep,
+        /* งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 ⇒ จอพิมพ์ `note` ต่อท้าย (สวิตช์เดียวกับกล่องส่งผลของหัวหน้า) */
+        note: SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE,
+        action: { label: SURVEY_CONFIRM_ACTION_LABEL, ready: SURVEY_CONFIRM_ACTION_READY },
+      };
+    }
+    const parts = surveyConfirmBannerParts(link, { n: count });
+    if (parts.text) {
+      /* แถว 4–7 — ไม่เหลือพื้นที่รอยืนยันแล้ว: ประโยคไม่เอ่ยชื่อปุ่ม ⇒ ไม่มีปุ่ม ไม่มีหมายเหตุของปุ่ม
+         ⚠️ หมายเหตุของแถว 5–6 (N22 "ขอยืนยันหน้างาน…ได้ที่ใบนั้น") ชี้ไปที่การกระทำของปุ่ม ⇒ ขึ้นหลังเปิดสวิตช์เท่านั้น
+            สวิตช์ปิด (ก่อนเปิด/ถอยสวิตช์ §5) = ไม่มีหมายเหตุ — อีกใบพูด "ปุ่มจะเปิดใช้ในรอบถัดไป" ไม่ขัดกัน */
+      return {
+        text: parts.text,
+        keep: parts.keep,
+        note: SURVEY_CONFIRM_ACTION_READY ? (parts.note ?? null) : null,
+        ...(parts.refs.length ? { refs: parts.refs } : {}),
+        action: null,
+      };
+    }
+    /* แถว 1–3 — ประโยคของวันนี้ · หมายเหตุของตัวเอง (แถว 1 · 3) ขึ้นหลังเปิดสวิตช์เท่านั้น */
+    const confirm = link.unknown ? null : link.action || null;
     return {
-      text: `${lead} — ใช้ตัวเลขเสนอราคาได้เลย · เมื่อพื้นที่พร้อม กด “${CONFIRM_ACTION_LABEL}” เพื่อให้ ${dept} เข้าวัดจริง`,
-      /* `keep` = วลีที่จอห้ามตัดกลาง — ชื่อปุ่มในเครื่องหมายคำพูด (375 เคยขึ้น "“ขอยืนยัน" / "หน้างาน”") · S2b แก้หลังตรวจจอ sales รอบ 27/10 */
-      keep: [`“${CONFIRM_ACTION_LABEL}”`],
-      /* งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 ⇒ จอพิมพ์ `note` ต่อท้าย (สวิตช์เดียวกับกล่องส่งผลของหัวหน้า) */
-      note: SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE,
-      action: { label: CONFIRM_ACTION_LABEL, ready: SURVEY_CONFIRM_ACTION_READY },
+      text,
+      keep,
+      note: parts.note === undefined
+        ? (SURVEY_CONFIRM_ACTION_READY ? null : SURVEY_CONFIRM_PENDING_NOTE)
+        : (SURVEY_CONFIRM_ACTION_READY ? parts.note : SURVEY_CONFIRM_PENDING_NOTE),
+      action: confirm ? {
+        label: SURVEY_CONFIRM_ACTION_LABEL,
+        state: confirm.state,
+        reason: confirm.reason ?? null,
+        href: confirm.href,
+        /* มติเจ้าของ B (12/10): ฝ่ายขายยังไม่ปิดเรื่อง = "ปิดเรื่อง" เป็นปุ่มหลักของหน้า ปุ่มนี้รอง · ปิดแล้ว = ปุ่มนี้เป็นปุ่มหลัก */
+        emphasis: request.closedAt ? 'primary' : 'secondary',
+        ready: SURVEY_CONFIRM_ACTION_READY } : null,
     };
   }
   if (request.surveyConfirm === 'not_needed') {
@@ -382,6 +432,37 @@ function surveyDrawingBanner(request, { show = false, count = 0, dept = 'TS' } =
     return { text: `${lead} — ${dept} แจ้งว่าไม่ต้องยืนยันหน้างาน ใช้ผลนี้เป็นผลสุดท้าย`, keep: ['ไม่ต้องยืนยันหน้างาน'], action: null };
   }
   return null;
+}
+
+/* ── บรรทัดลิงก์สองทางของใบยืนยันหน้างาน (งวด S5 D-1 · คีย์ของ `surveyJobView(...).zones` เท่านั้น) ─────────────────
+   `confirmLinks` ใบยืนยันที่ผูกกับใบนี้ (ใหม่ก่อน · ร่างมาเฉพาะคนจัดการได้ — server คัดแล้ว) · `confirmOf` ใบนี้ยืนยันผลของใบไหน
+   ⚠️ คีย์มีเฉพาะตอนมีของ (R-KEYS) — ใบที่ไม่ผูกอะไรได้ `zones` รูปเดิมทุกคีย์ (ยาม surveyMethodGolden)
+   ⚠️ ไม่ขึ้นที่ `surveyRequestDrawingSummary` — ผลของมันถูกตรึงทั้งก้อน และจอรุ่นเก่าที่อ่านมันไม่เปลี่ยน
+   `segments` = ประโยคเดียวกันซอยเป็นท่อน ท่อนเลขที่ (หรือคำแทนเลขของร่าง) พก `href` ให้จอวาดเป็นลิงก์ — ซอยตามเครื่องหมาย
+   `: ` กับ ` · ` ของตัวประกอบประโยค ไม่ตามคำไทย · ไม่มี `href` (ใบต้นทางถูกลบ) = ท่อนเดียว ไม่มีลิงก์ */
+function linkSegments(text, href) {
+  const start = text.indexOf(': ');
+  if (!href || start < 0) return [{ text }];
+  const from = start + 2;
+  const stop = text.indexOf(' · ', from);
+  const to = stop < 0 ? text.length : stop;
+  return [{ text: text.slice(0, from) }, { text: text.slice(from, to), href }, ...(to < text.length ? [{ text: text.slice(to) }] : [])];
+}
+
+function surveyConfirmLinkLines(link) {
+  const confirmLinks = (Array.isArray(link?.children) ? link.children : []).map((child) => {
+    const text = surveyConfirmChildLine(child);
+    return { text, docNo: child.docNo || null, href: child.href, statusLabel: child.statusLabel, segments: linkSegments(text, child.href) };
+  });
+  const of = link?.confirmOf || null;
+  const ofHref = of && !of.missing ? of.href || null : null;
+  const confirmOf = of ? {
+    text: surveyConfirmOfLine(of),
+    docNo: of.missing ? null : of.docNo || null,
+    ...(ofHref ? { href: ofHref } : {}),
+    segments: linkSegments(surveyConfirmOfLine(of), ofHref),
+  } : null;
+  return { ...(confirmLinks.length ? { confirmLinks } : {}), ...(confirmOf ? { confirmOf } : {}) };
 }
 
 /* ── ช่องรูปของแถวรวมบนตารางผล เมื่อใบมีพื้นที่จากแบบ (งวด S2b §2.5 d) ─────────────────────────────────────────
@@ -1226,6 +1307,8 @@ export function surveyJobView({
       unchanged: !changeCounts.cut && !changeCounts.added,
       /* แถบแจ้งเหนือตารางผล — เฉพาะใบที่ส่งผลแล้วและมีพื้นที่จากแบบ · `null` = ไม่มีแถบ (`surveyDrawingBanner`) */
       drawingBanner: surveyDrawingBanner(request, { show: sent && stage !== 'cancelled', count: mix.drawing, dept }),
+      /* ✏️ งวด S5: บรรทัดลิงก์ไปใบยืนยันหน้างาน / ใบต้นทาง (`confirmLinks` · `confirmOf` — มีคีย์เฉพาะใบที่ผูก) */
+      ...surveyConfirmLinkLines(request.surveyConfirmLink),
       /* ⭐ ใบที่ส่งผลแล้วและทุกพื้นที่ที่ยังใช้อยู่ประเมินจากแบบ (เงื่อนไขเดียวกับหัวคอลัมน์ของตารางสรุปส่งผล `drawnHead` · `mix.mode`)
          ⇒ ช่องจุดของตารางผลเป็น "จุดติดตั้งโดยประมาณ · {n} จุด" ไม่ใช่ "เลือก / ทั้งหมด" (S2b-O9 · มติเจ้าของ 19/10) — จอไม่นับเอง
          ⚠️ คีย์มีเฉพาะใบแบบนั้น — ใบลงหน้างาน/ใบผสมรูปเดิมทุกคีย์ */

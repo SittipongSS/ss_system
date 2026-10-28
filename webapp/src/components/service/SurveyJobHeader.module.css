@@ -148,6 +148,21 @@
   color: var(--text-3);
 }
 
+/* ลิงก์ในค่าของข้อเท็จจริง (เลขใบต้นทางของใบยืนยันหน้างาน · งวด S5) — สี เส้นใต้ และวงโฟกัสมาจาก .linklike ตัวกลาง (globals.css)
+   ที่นี่แค่ไม่ให้เลขที่หักกลางที่ขีด (ค่าของข้อเท็จจริงห่อได้ทุกตัวอักษร) */
+.factLink {
+  white-space: nowrap;
+}
+
+/* ป้ายของข้อใบต้นทางยาวกว่าคอลัมน์ป้าย 3.75rem (ชุดนัด · ทีม · ให้เข้า · ฝากมา) — ป้ายเต็มคำบรรทัดเดียว ค่าต่อท้าย */
+.fact[data-key="confirmOf"] {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.fact[data-key="confirmOf"] > dt {
+  white-space: nowrap;
+}
+
 .stamp {
   color: var(--text-3);
   white-space: nowrap;

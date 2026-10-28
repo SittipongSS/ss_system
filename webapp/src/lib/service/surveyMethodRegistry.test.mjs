@@ -26,6 +26,8 @@ const code = (url) => readFileSync(new URL(url, import.meta.url), 'utf8')
 /* ข้อความที่ผู้ใช้เห็น — เขียนตรงตัวที่นี่โดยตั้งใจ (สเปก S2a กลุ่ม C ข้อ 6) · โค้ดแก้คำเมื่อไร เทสต์ต้องแดง */
 const TAG_AWAITING = 'ประเมินจากแบบ · รอยืนยันหน้างาน';
 const TAG_DRAWING = 'ประเมินจากแบบ';
+/* ใบยืนยันหน้างานเปิดอยู่ (งวด S5 · R6) — กรณีของมันอยู่ที่ surveyConfirmRegistry.test.mjs */
+const TAG_CONFIRMING = 'ประเมินจากแบบ · กำลังยืนยันหน้างาน';
 const HOT_TODAY = 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่';
 /* เหตุของไทล์จากแบบไม่ขึ้นต้นด้วยคำของป้ายซ้ำ (มติเจ้าของ sales-q4 · S2b แก้หลังตรวจจอ — ป้ายอยู่เหนือบรรทัดเหตุเสมอ) */
 const HOT_AWAITING = 'เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง';
@@ -125,7 +127,7 @@ test('ผลลงหน้างานเก่า + ใบจากแบบ�
 });
 
 test('ป้ายยืนยันหน้างาน: needed = รอยืนยัน · not_needed / ยังไม่เลือก = ประเมินจากแบบ · คำเดียวกับ SURVEY_ZONE_TAG', () => {
-  assert.deepEqual(SURVEY_ZONE_TAG, { awaiting: TAG_AWAITING, drawing: TAG_DRAWING });
+  assert.deepEqual(SURVEY_ZONE_TAG, { awaiting: TAG_AWAITING, drawing: TAG_DRAWING, confirming: TAG_CONFIRMING });
   const cases = [
     ['needed', 'awaiting', TAG_AWAITING],
     ['not_needed', 'drawing', TAG_DRAWING],

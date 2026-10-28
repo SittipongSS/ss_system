@@ -41,13 +41,13 @@ test('GET ทะเบียนลูกค้า: ใบแม่มีตร�
 /* ประเมินจากแบบ (mig 0408 · งวด S2a): ป้าย "รอยืนยันหน้างาน" มาจาก `surveyConfirm` ของใบ · ผลลงหน้างานของใบที่เปิดทีหลัง
    แทนผลจากแบบด้วย `createdAt` ของใบ — select ไม่พกสองคอลัมน์นี้ = ทะเบียนตอบ "ประเมินจากแบบ" เฉย ๆ ทุกพื้นที่
    และไม่ตัดผลจากแบบที่ถูกวัดจริงแทนแล้ว โดยไม่มี error ให้เห็น
-   ⚠️ คอลัมน์ผูกใบยืนยันหน้างานเป็นของงวด S5 — งวดนี้ select ต้องยังไม่ขอ */
+   ⭐ งวด S5: + `surveyConfirmOfId` — ใบเปิดที่ผูกกับใบของผลล่าสุดทำให้พื้นที่ขึ้น "กำลังยืนยันหน้างาน" · ไม่พก = ป้ายค้าง
+      "รอยืนยันหน้างาน" ตลอดเวลาที่ใบยืนยันเปิดอยู่ โดยไม่มี error ให้เห็น */
 test('🔴 ใบประเมินของทะเบียนลูกค้าพก surveyConfirm + createdAt — ป้ายจากแบบและตัวกรองผลที่ถูกแทนอ่านจากสองคอลัมน์นี้', () => {
   const cols = CUSTOMER_ROUTE.match(/\.from\('dept_requests'\)\s*\.select\('([^']*)'\)/)?.[1] || '';
-  for (const col of ['"surveyConfirm"', '"createdAt"', '"answeredAt"', '"committedDueDate"', '"docNo"', 'status']) {
+  for (const col of ['"surveyConfirm"', '"createdAt"', '"answeredAt"', '"committedDueDate"', '"docNo"', 'status', '"surveyConfirmOfId"']) {
     assert.ok(cols.includes(col), `select ใบต้องมี ${col}`);
   }
-  assert.equal(cols.includes('surveyConfirmOfId'), false);
 });
 
 /* 🐞 review 29/09: ตัวรวมข้ามใบ (`termsSoldNow`) ใช้ช่วงบริการของใบที่ประทับเป็นหน้าต่าง — select ใบแม่ต้องพกช่วงมาด้วย

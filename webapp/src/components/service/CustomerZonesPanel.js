@@ -82,6 +82,7 @@ function roundsText(zone) {
 /* ตัวเลขของช่อง "ประเมินแล้วยังไม่ขาย" กับจำนวนในหมายเหตุของมัน — นับจาก **รายการพื้นที่ชุดเดียวกัน**
    `unsold`   พื้นที่ที่มีผลแล้ว (สูตร "ประเมินแล้ว" ตัวเดียวกับ `registryTotals` ของทะเบียน) และยังไม่มีรอบขาย (`termState` none)
    `awaiting` ในชุดนั้น ตัวที่ตัวเลขมาจากแบบและยังรอยืนยันหน้างาน (`confirm` — คีย์ที่ทะเบียนเตรียมไว้ · แท็บไม่ถามวิธีประเมินเอง)
+              รวมที่กำลังยืนยัน (`"confirming"` · งวด S5) — เทียบสองค่าในบรรทัดเดียว ไม่ดึง `surveyConfirmPending` (ข้อห้ามข้างล่าง)
    🐞 เดิมหมายเหตุนับ `registry.awaitingConfirm` (รอยืนยันทุกพื้นที่ รวมที่ขายแล้ว/รอบจบแล้ว) และช่องคิดเลข ประเมินแล้ว − ขายแล้ว − รอบจบ
       — พื้นที่ที่ขายแล้วแต่ไม่เคยวัด (มีในข้อมูลนำเข้า) ถูกหักออกทั้งที่ไม่เคยอยู่ในตัวตั้ง ⇒ ช่องนับขาด และหมายเหตุมากกว่าตัวเลขของช่องได้
       (S2b แก้หลังตรวจจอ sales-q6 · ตรวจรอบสอง) ⇒ สองค่านับจากรายการเดียว — `awaiting` ไม่มีวันเกิน `unsold`
@@ -91,7 +92,7 @@ function unsoldCounts(registry) {
   const zones = (Array.isArray(registry?.sites) ? registry.sites : [])
     .flatMap((site) => (Array.isArray(site?.zones) ? site.zones : []))
     .filter((zone) => zone && (zone.surveyedAt || zone.volumeCbm !== null) && (zone.termState || "none") === "none");
-  return { unsold: zones.length, awaiting: zones.filter((zone) => zone.confirm === "awaiting").length };
+  return { unsold: zones.length, awaiting: zones.filter((zone) => zone.confirm === "awaiting" || zone.confirm === "confirming").length };
 }
 
 /* คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย" — มีพื้นที่ที่ตัวเลขมาจากแบบและยังรอยืนยันหน้างาน = บอกจำนวนไว้ด้วย

@@ -25,7 +25,8 @@ export const SURVEY_METHOD_LABEL = { onsite: 'ลงหน้างาน', draw
 export const SURVEY_METHOD_CHIP = { onsite: 'ลงหน้างาน', drawing: 'จากแบบ' };
 export const SURVEY_CONFIRM_LABEL = { needed: 'ต้องยืนยันหน้างาน', not_needed: 'ไม่ต้องยืนยันหน้างาน' };
 export const SURVEY_CONFIRM_MISSING = 'ยังไม่ได้เลือกว่าต้องยืนยันหน้างานไหม';
-export const SURVEY_ZONE_TAG = { awaiting: 'ประเมินจากแบบ · รอยืนยันหน้างาน', drawing: 'ประเมินจากแบบ' };
+// `confirming` (งวด S5) = ใบยืนยันหน้างานที่ผูกกับใบของผลนี้ยังเปิดอยู่ · ไม่มีเลขใบ — เลขพิมพ์ข้างชิปแล้วบนทั้งสองผิว
+export const SURVEY_ZONE_TAG = { awaiting: 'ประเมินจากแบบ · รอยืนยันหน้างาน', drawing: 'ประเมินจากแบบ', confirming: 'ประเมินจากแบบ · กำลังยืนยันหน้างาน' };
 export const SURVEY_METHOD_BUTTON = 'เปลี่ยนวิธีประเมิน';
 export const SURVEY_METHOD_MODAL_TITLE = 'วิธีประเมินรายพื้นที่';
 export const SURVEY_METHOD_REASON_LABEL = 'เหตุผล (ฝ่ายขายจะเห็น)';
@@ -91,7 +92,7 @@ export const SURVEY_METHOD_BACK_ORIGIN = (reason) => `หัวหน้าเ�
 /* ⭐ **สวิตช์เดียวของ "ปุ่มขอยืนยันหน้างานมีจริงหรือยัง"** — เส้นของปุ่มมากับงวด S5 · ระหว่างนี้แถบแจ้งของฝ่ายขายกับกล่องส่งผลของ
    หัวหน้าต่อประโยคเดียวกันนี้ท้ายคำที่เอ่ยถึงปุ่ม (ไม่งั้นทั้งสองฝ่ายถูกบอกให้กดปุ่มที่ยังไม่มี)
    งวด S5 พลิกค่าคงที่ตัวเดียว ⇒ `action.ready` เป็นจริง และประโยคนี้หายจากทั้งสองจอพร้อมกัน */
-export const SURVEY_CONFIRM_ACTION_READY = false;
+export const SURVEY_CONFIRM_ACTION_READY = true;
 export const SURVEY_CONFIRM_PENDING_NOTE = 'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้';
 /* ใบงานโต๊ะ (ไม่เหลือพื้นที่ที่ต้องลงหน้างาน) — คนที่ไม่ใช่หัวหน้าฝ่ายเพิ่มพื้นที่ไม่ได้ (แผน §3.4)
    เส้นเพิ่มพื้นที่ตอบประโยคนี้ และจอใบประเมินพิมพ์ประโยคเดียวกันให้ผู้วางคิวตรงที่ปุ่มเพิ่มพื้นที่เคยอยู่ */
