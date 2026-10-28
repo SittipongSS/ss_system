@@ -26,6 +26,8 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerNameIn } from '@/lib/master/customerName';
 import { billingCutoffOnIndex, billingDueCandidates, dueSoonCandidates } from '@/lib/sales/billingDueNotify';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
+import { primaryInstallmentRequest } from '@/lib/sales/installmentRequests';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -200,11 +202,10 @@ async function loadLedger(supabase, todayIso) {
        ไม่งั้นงวดที่คำร้องตายแล้วหลุดจาก "เลยรอบ ยังไม่ขอใบวางบิล" เงียบ ๆ
      ⚠️ เอาแค่ id + สถานะ · ไล่หน้า + ซอยก้อน (dept_requests อยู่ใน check:rowcap) · อ่านไม่ขึ้น = โยน (แบบทุกก้อนข้างบน)
        ไม่ใช่ถือว่า "ยังไม่ขอ" ทุกงวด ซึ่งจะทำให้การ์ด/ตัวกรองนับเลยรอบเกินจริงโดยไม่มีอะไรบอก */
-  const requestIds = [...new Set(rows.map((r) => r.billingRequestId).filter(Boolean))];
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับทุกจอ (คำร้องที่ชี้งวด ∪ คำร้องที่ตัวชี้ชี้อยู่) · ตัวแทนบนแถว = `primaryInstallmentRequest` */
   const billingRequestById = new Map();
-  if (requestIds.length) {
-    const { data: requests, error: requestError } = await fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase
-      .from('dept_requests').select('id, status').in('id', chunk).order('id', { ascending: true })));
+  {
+    const { data: requests, error: requestError } = await loadInstallmentRequests(supabase, rows, { select: 'id, status' });
     if (requestError) throw requestError;
     (requests || []).forEach((r) => billingRequestById.set(r.id, r));
   }
@@ -264,7 +265,7 @@ async function loadLedger(supabase, todayIso) {
         deal: dealById.get(order.dealId) || sourceDealBySource.get(order.sourceSalesOrderId) || null,
         todayIso,
         serviceRounds: serviceRoundsByOrder.get(order.id) || false,
-        billingRequest: billingRequestById.get(installment.billingRequestId) || null,
+        billingRequest: primaryInstallmentRequest(installment, billingRequestById),
         billingRemind: remindIds.has(installment.id),
         dueRemind: dueRemindIds.has(installment.id),
         cutoffOn: cutoffOnById.get(installment.id) || null,

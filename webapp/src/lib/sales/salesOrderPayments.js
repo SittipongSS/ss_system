@@ -37,7 +37,7 @@ import {
 // เอกสารยืนยันคำสั่งซื้อของใบ (อ่านสองบ้าน) — ไฟล์นั้นไม่มี import (ไม่มีวงวน)
 import { orderConfirmationOf } from '@/lib/sales/orderConfirmationDocs';
 // กำหนดวางบิล (mig 0389) — ตัวคิดวัน import แค่ paymentCoverage (ไม่มีวงวน · ฝั่ง client ใช้ได้)
-import { billingRequestLive } from '@/lib/sales/billingRule';
+import { installmentRequestLive } from '@/lib/sales/installmentRequests';
 // นับ Actual รายงวด (mig 0412) — ไฟล์กติกาล้วน ไม่ import ไฟล์นี้กลับ (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
   INSTALLMENT_ACTUAL_ACTIONS, INSTALLMENT_ACTUAL_CONFIRM_BLOCKED, INSTALLMENT_ACTUAL_REPORT_BLOCKED,
@@ -898,7 +898,10 @@ export function installmentActionError(row, action, user, options = {}) {
     if (action === 'link' && !String(options.billingRequestId || '').trim()) {
       return 'ต้องเลือกคำร้องที่จะผูก';
     }
-    if (action === 'unlink' && !row.billingRequestId) return 'งวดนี้ยังไม่ได้ผูกคำร้อง';
+    /* ⭐ หลายคำร้องต่องวด (mig 0413) — ถอดทีละใบ ต้องบอกว่าใบไหน · ไม่บอก = ใบเดียวที่ตัวชี้ชี้อยู่ (จอรุ่นก่อน 0413) */
+    if (action === 'unlink' && !String(options.billingRequestId || row.billingRequestId || '').trim()) {
+      return 'งวดนี้ยังไม่ได้ผูกคำร้อง';
+    }
     return null;
   }
 
@@ -980,13 +983,13 @@ export function installmentActionError(row, action, user, options = {}) {
 export const billingRequestDead = (request) => String(request?.status || '') === 'cancelled';
 
 /**
- * งวดนี้ "ขอใบวางบิลแล้ว" ไหม = ผูกคำร้อง **และ** คำร้องนั้นส่งถึงบัญชีแล้ว ยังไม่ถูกยกเลิก
+ * งวดนี้ "ขอใบวางบิลแล้ว" ไหม = มีคำร้องของงวด **อย่างน้อยหนึ่งใบ** ที่ส่งถึงบัญชีแล้ว ยังไม่ถูกยกเลิก
+ * ⭐ หลายคำร้องต่องวด (mig 0413) — "คำร้องของงวด" ถาม `installmentRequests` ตัวเดียว (installmentRequests.js:
+ *   คำร้องที่ `installmentId` ชี้งวด ∪ คำร้องที่ตัวชี้ `billingRequestId` ชี้อยู่แต่ยังไม่รู้งวดของตัวเอง)
  * @param requestById Map id → คำร้อง (`order.billingRequests` ของหน้าใบ) · หาไม่เจอ (ถูกลบ/อ่านไม่ขึ้น) = ยังไม่ขอ
  */
 export function installmentBillingRequested(row, requestById) {
-  const id = String(row?.billingRequestId || '').trim();
-  if (!id) return false;
-  return billingRequestLive(requestById?.get?.(id) || null);
+  return installmentRequestLive(row, requestById);
 }
 
 /* ⚠️ "เติมตามรอบ เดือนละงวด" / "จัดวันใหม่ตามรอบปัจจุบัน" ของทั้งใบ (`fill-billing` · `redate-billing`) **ถอดแล้ว** (รุ่นสี่ ·

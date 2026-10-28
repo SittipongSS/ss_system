@@ -13,6 +13,7 @@ import { INSTALLMENT_CARRY_SCHEMA_MISSING, carrySourcesFrom } from '@/lib/sales/
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { historicalSchemaMissing, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { claimPendingRequests, releaseInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 
 const TABLE = 'sales_order_installments';
 
@@ -124,7 +125,14 @@ export async function ensureInstallments(supabase, {
     }
     throw error;
   }
-  return { rows: (data || []).sort((a, b) => a.seq - b.seq), created: true };
+  const created = (data || []).sort((a, b) => a.seq - b.seq);
+  /* ⭐ คำร้องขอเอกสารที่เลือกงวดจากแผน QT ไว้ตอนยังไม่มีแถว (mig 0413 · ขอจากหน้า QT) — ผูกตอนนี้ที่เลขงวด = เลขในแผน QT เป๊ะ
+     ⚠️ ผูกไม่สำเร็จไม่ลากการสร้างงวดล้ม (ผู้เรียกคือการออก/อนุมัติใบ) — log ไว้ คำร้องยังแนบเองได้จากการ์ดการชำระ */
+  const claim = await claimPendingRequests(supabase, { order, rows: created });
+  if (claim.error) {
+    console.error('[installments] ผูกคำร้องที่เลือกงวดจากใบเสนอราคาไม่สำเร็จ', order.id, claim.error?.message || claim.error);
+  }
+  return { rows: created, created: true };
 }
 
 /**
@@ -231,6 +239,12 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
         .filter(([field, value]) => (field === 'billingSkip' ? value === true : value !== null && value !== '')),
     )]));
 
+    /* คำร้องที่ผูกแถวร่างชุดนี้ — ปล่อยก่อนลบ (ล้างทั้ง id และเลข · ไม่อุ้มตามกติกาข้างบน) ⇒ ชุดใหม่ไม่ผูกกลับตามเลขเงียบ ๆ
+       ⚠️ ปล่อยไม่สำเร็จไม่หยุดการอนุมัติ — FK ของ 0413 ล้าง id ให้ตอนลบแถวอยู่แล้ว เหลือแค่เลขที่อาจผูกกลับ (log ไว้ให้ตามได้) */
+    const release = await releaseInstallmentRequests(supabase, draft.map((r) => r.id));
+    if (release.error) {
+      console.error('[freezeInstallments] ปล่อยคำร้องออกจากงวดร่างไม่สำเร็จ', order.id, release.error?.message || release.error);
+    }
     const { error } = await supabase.from(TABLE).delete().in('id', draft.map((r) => r.id));
     if (error) throw error;
     const seeded = await ensureInstallments(supabase, { order, user, now: stamp, frozenAt: stamp, borrowConfirmation });

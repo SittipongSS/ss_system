@@ -94,11 +94,15 @@ import {
   voidedContractLabel,
 } from '@/lib/sales/historicalOrderWorkflow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import {
   activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
 } from '@/lib/sales/productSpecStore';
+
+/* คอลัมน์คำร้องขอเอกสารการเงินที่แผงงวดใช้ (เลขที่ · สถานะ · ยอด · เลขเอกสารที่บัญชีออกให้) — ชุดเดียวทั้งสองเส้นของ GET */
+const BILLING_REQUEST_COLUMNS = 'id, docNo, status, title, "billAmount", "billPercent", items:dept_request_items(id, "docType", "docNumber", "docDueDate")';
 
 /* ── จังหวะของเอกสาร FM-SA-04 ที่ตามหลัง SO (mig 0370 · docs/fm-sa-04-document-model.md) ──
    · SO ยกเลิก ⇒ เอกสารทุกใบของ SO นั้นเป็น void (เลขที่ไม่นำกลับมาใช้)
@@ -320,14 +324,28 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
      คำร้องอะไรรออยู่บ้าง แล้วให้ SA กดแนบเข้ากับงวดเอง — **ไม่เดาจับคู่ให้**
      ⚠️ อ่านด้วย service-role ด้วยเหตุผลเดียวกับคำร้องพัฒนากลิ่นข้างบน — ที่คืนออกไป
      มีแค่เลขที่/สถานะ/ยอด/เลขเอกสารที่บัญชีออกให้ ซึ่งเป็นข้อมูลของงานใบนี้อยู่แล้ว */
+  /* ⭐ `installmentId`/`installmentSeq` (mig 0413 · หลายคำร้องต่องวด) — ก่อนรัน 0413 = 42703 ⇒ ถอยไป select ชุดเดิม
+     (แผงตัดสินด้วยตัวชี้ของงวดแทน — `installmentRequests` ถอยเองเมื่อแถวไม่มีคีย์ `installmentId`) */
   let billingRequests = [];
   if (order.quotationId) {
-    const { data: reqRows } = await supabase
+    // ⚠️ select เป็นสตริงตรง ๆ ทั้งสองเส้น (ไม่ส่งผ่านพารามิเตอร์) — ด่าน check:columns แกะได้เฉพาะค่าคงที่/ตัวหนังสือ
+    // ⭐ ไล่หน้า (fetchAllResult · ลำดับนิ่ง createdAt แล้ว id) — dept_requests อยู่ใน check:rowcap
+    let { data: reqRows, error: reqError } = await fetchAllResult(() => supabase
       .from('dept_requests')
-      .select('id, docNo, status, title, "billAmount", "billPercent", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
+      .select(`${BILLING_REQUEST_COLUMNS}, "createdAt", "installmentId", "installmentSeq"`)
       .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
       .neq('status', 'cancelled')
-      .order('createdAt', { ascending: true });
+      .order('createdAt', { ascending: true })
+      .order('id', { ascending: true }));
+    if (billingInstallmentSchemaError(reqError)) {
+      ({ data: reqRows } = await fetchAllResult(() => supabase
+        .from('dept_requests')
+        .select(`${BILLING_REQUEST_COLUMNS}, "createdAt"`)
+        .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
+        .neq('status', 'cancelled')
+        .order('createdAt', { ascending: true })
+        .order('id', { ascending: true })));
+    }
     billingRequests = reqRows || [];
   }
 
@@ -370,25 +388,24 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
      แผงจึงขึ้น "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่คำร้องยังอยู่ = ชวนออกคำร้องซ้ำให้เงินที่วางบิล/เก็บไปแล้ว
      ⇒ อ่านเพิ่มด้วย id (แบ่งก้อน · เงื่อนไขชุดเดียวกับข้างบน) · อ่านพลาด = บอกบนแผง (`billingRequestsError`) ไม่ใช่ "ถูกลบ" */
   let billingRequestsError = null;
-  const knownRequestIds = new Set(billingRequests.map((r) => r.id));
-  const linkedRequestIds = [...new Set(installmentRows.map((r) => r?.billingRequestId)
-    .filter((requestId) => requestId && !knownRequestIds.has(requestId)))];
-  if (linkedRequestIds.length) {
+  {
     /* ⭐ **รวมคำร้องที่ยกเลิกแล้วด้วย** (กำหนดวางบิล 26/09) — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด ⇒ ถ้ากรองทิ้ง แผงขึ้น
        "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่แค่ยกเลิก และบอกไม่ได้ว่าลิงก์นี้ตายเพราะอะไร · ตัวตัดสิน "ขอใบวางบิลแล้ว"
-       (installmentBillingRequested) ตัดคำร้องที่ตายทิ้งเอง · เฉพาะ **id ที่งวดผูกอยู่** — ชุดตามใบเสนอราคาข้างบน
-       (ตัวเลือกของ "แนบคำร้องที่ขอไว้แล้ว") ยังตัดใบที่ยกเลิกเหมือนเดิม */
-    const { data: linkedRows, error: linkedError } = await fetchInChunks(linkedRequestIds, (chunk) => fetchAllResult(() => supabase
-      .from('dept_requests')
-      .select('id, docNo, status, title, "billAmount", "billPercent", "quotationId", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
-      .in('id', chunk).eq('kind', 'billing_doc')
-      .order('id', { ascending: true })));
+       (installmentBillingRequested) ตัดคำร้องที่ตายทิ้งเอง · เฉพาะ **คำร้องที่ผูกงวดของใบนี้** — ชุดตามใบเสนอราคาข้างบน
+       (ตัวเลือกของ "แนบคำร้องที่ขอไว้แล้ว") ยังตัดใบที่ยกเลิกเหมือนเดิม
+       ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับทะเบียน FN/กระดิ่ง: คำร้องที่ `installmentId` ชี้งวด ∪ ตัวชี้ของงวด
+       (งวดที่ยกมาจากใบของ QT อื่น หาตามใบเสนอราคาข้างบนไม่เจอ — เส้นนี้เก็บให้) · ชุดตามใบเสนอราคาที่โหลดแล้วไม่โหลดซ้ำ
+       แต่แทนด้วยแถวที่ตัวโหลดได้ (มีคีย์ของ 0413 ครบ) */
+    const { data: linkedRows, error: linkedError } = await loadInstallmentRequests(supabase, installmentRows, {
+      select: `${BILLING_REQUEST_COLUMNS}, "quotationId"`,
+    });
     if (linkedError) {
-      console.error('[sales-order] โหลดคำร้องวางบิลของงวดที่ยกมาไม่สำเร็จ:', id, linkedError);
+      console.error('[sales-order] โหลดคำร้องวางบิลของงวดไม่สำเร็จ:', id, linkedError);
       billingRequestsError = `อ่านคำร้องขอเอกสารของงวดไม่สำเร็จ: ${linkedError.message || linkedError}`;
-    } else {
-      billingRequests = [...billingRequests, ...(linkedRows || [])];
     }
+    const merged = new Map(billingRequests.map((r) => [r.id, r]));
+    (linkedRows || []).forEach((r) => merged.set(r.id, { ...merged.get(r.id), ...r }));
+    billingRequests = [...merged.values()];
   }
 
   /* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) ────────────────────────────────────────────────

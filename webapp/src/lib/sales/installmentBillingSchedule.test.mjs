@@ -290,8 +290,11 @@ test('หน้าใบ: GET โหลดรอบวางบิลของ�
   // ⭐ rework v4 — ธง 0393 ของแผง (ติ๊ก "งวดนี้ไม่ต้องวางบิล" + ปุ่มของแถบ "ต้องวางบิลไหม") ต้องมาจาก GET ใบ
   assert.match(load, /billingSkipReadyOf\(installmentRows\) \?\? \(await probeBillingSkip\(supabase\)\)\.ready/);
   assert.match(load, /billingSkipReady,/);
-  const linked = slice(load, 'fetchInChunks(linkedRequestIds', 'if (linkedError)');
+  // ⭐ mig 0413: คำร้องที่ผูกงวดอ่านผ่านตัวโหลดกลาง (ตามงวด ∪ ตามตัวชี้) — ตัวโหลดไม่กรองสถานะ (ยกเลิก ≠ ถูกลบ)
+  const linked = slice(load, 'await loadInstallmentRequests(supabase, installmentRows', 'if (linkedError)');
   assert.doesNotMatch(linked, /\.neq\('status', 'cancelled'\)/, 'ยกเลิกคำร้อง ≠ ถูกลบ — แผงต้องบอกตามจริง');
+  const loader = slice(code('lib/sales/installmentRequestsStore.js'), 'export async function loadInstallmentRequests(', '\n}\n');
+  assert.doesNotMatch(loader, /\.neq\('status'/, 'ตัวโหลดกลางต้องคืนคำร้องที่ยกเลิกด้วย');
 });
 
 test('แผงงวด: โหมดตั้งวัน (แบบ C · มติ 28/09) บันทึกผ่าน schedule-many ทางเดียว · ล็อกประโยคเดียวกับ route · ลิงก์ขอใบวางบิล · หน้าใบส่งฝ่าย', () => {
@@ -422,7 +425,8 @@ test('แผงงวด (review S3): คำร้องอ่านไม่ข
   // ใบย้อนหลังที่ยกเลิกก็ตาย — และงวดโมฆะไม่ส่งลิงก์คำร้องไปคอลัมน์ที่ซ่อนป้ายของมัน
   assert.match(panel, /const deadOrder = deadPipeline \|\| \(historical && order\?\.status === "cancelled"\);/);
   assert.match(panel, /const billingOn = order\?\.billingSchemaReady !== false && !deadOrder && !movedAway;/);
-  assert.match(panel, /row\.billingRequestId && !\(billingColumn && !installmentVoid\(row, order\) && billingStateOf\(row\)\.key === "requested"\)/);
+  // ⭐ mig 0413: ใต้ชื่องวดไล่ทุกคำร้องของงวด · ตัวแทนที่ขึ้นในเซลล์วันวางบิลแล้ว (ขอแล้ว/ร่าง) ไม่พูดซ้ำ
+  assert.match(panel, /&& \(billingStateOf\(row\)\.key === "requested" \|\| billingRequestNote\(row\)\?\.kind === "draft"\)\s*\? primaryOf\(row\)\?\.id : null;/);
   /* ⭐ มติ 28/09 ข้อ 17: คอลัมน์วันวางบิลขึ้นทุกใบที่ยังเดิน (ไม่ขึ้นกับรอบของลูกค้า/ว่ามีงวดไหนมีวันแล้ว) — เดิมซ่อนเมื่อไม่มีรอบ/
      ไม่มีเครดิต ⇒ ใบสินค้าเกือบทั้งหมดไม่มีช่องวันวางบิล · ลิงก์คำร้องของงวดโมฆะยังกลับไปช่องรายละเอียดเมื่อคอลัมน์ไม่ขึ้น (ใบที่ตาย) */
   assert.match(panel, /const billingColumn = billingOn;/);
@@ -473,8 +477,9 @@ test('แผงงวด (review S3): คำร้องอ่านไม่ข
   assert.doesNotMatch(panel, /pickerRuleOf|effectiveBillingRule|billingRuleOf\(/);
   assert.doesNotMatch(panel, /billingRule\??\.billing\.mode|\.payment\.day|\.billing\.day|\.monthOffset|\.need\b/);
   /* ⭐ รุ่นสี่: ไม่ต้องวางบิล = ไม่ชวนขอใบวางบิล (เมนูแถว + ปุ่มในเซลล์) · ข้อยกเว้นรายงวดสองทางในเมนูแถว (ด่านเดียวกับเซลล์วัน) */
-  assert.match(panel, /!row\.billingRequestId && !billingAskInCell\(row\) && canRequestBilling\(row, billingRule\)/);
-  assert.match(panel, /if \(!billingOn \|\| row\.preview \|\| row\.billingRequestId \|\| !row\.billingDate \|\| !canRequestBilling\(row, billingRule\)\) return false;/);
+  // ⭐ mig 0413: งวดที่มีคำร้องแล้วขอเอกสารเพิ่มได้ (ไม่ใช่การชวนวางบิล ⇒ ไม่ถาม canRequestBilling) · ยังไม่มีคำร้อง = ถามตามเดิม
+  assert.match(panel, /!billingAskInCell\(row\) && \(hasLinks\(row\) \|\| canRequestBilling\(row, billingRule\)\)/);
+  assert.match(panel, /if \(!billingOn \|\| row\.preview \|\| hasLinks\(row\) \|\| !row\.billingDate \|\| !canRequestBilling\(row, billingRule\)\) return false;/);
   assert.match(panel, /id: "require-billing", icon: Receipt, label: "งวดนี้ต้องวางบิล…",/);
   assert.match(panel, /billingSkipReady && \(ex\.skip \|\| ex\.unskip\) && \{/, 'ติ๊กเฉพาะฐานที่รัน 0393');
   assert.match(panel, /\.\.\.\(dateMode\.available && !dateMode\.isLocked\(row\) \? \(\(\) => \{/, 'งวดล็อก/ไม่มีสิทธิ์ = ไม่มีเมนูข้อยกเว้น');
@@ -490,7 +495,7 @@ test('⭐ รุ่นสี่ (แบบ A · มติ 29/09): แผงง�
   assert.match(panel, /row\.billingSkip === true && billingNeedOf !== "none" \? <small>\{NO_BILLING_TEXT\} · เฉพาะงวดนี้<\/small>/);
   assert.match(panel, /ledgerFlags\(row, billingRule, \{ todayIso \}\)\.missingBilling/, 'คำเดียวกับทะเบียนบัญชี');
   assert.match(panel, /requestNote\?\.kind === "draft"/);
-  assert.match(panel, /billingRequestNote\(row\)\?\.kind !== "draft"/, 'ร่างคำร้องไม่พูดซ้ำใต้ชื่องวด');
+  assert.match(panel, /billingRequestNote\(row\)\?\.kind === "draft"\)\s*\? primaryOf\(row\)\?\.id : null;/, 'ร่างคำร้องไม่พูดซ้ำใต้ชื่องวด');
   assert.match(panel, /<RequireBillingModal/);
   assert.match(panel, /dateMode\.requireBilling\(target\.id, scope\);/);
   // แดง "เลยกำหนด" ยังอ่านกำหนดชำระช่องเดียว (must-not-regress 1)

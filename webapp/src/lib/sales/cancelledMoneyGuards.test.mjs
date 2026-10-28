@@ -351,9 +351,13 @@ test('ตารางรายการ SO: เลือก refundedAt ของ
 // ── F3: งวดที่ยกมาจากใบอื่น (QT คนละใบ) ยังเห็นคำร้องวางบิลของตัวเอง — ไม่ใช่ "คำร้องขอเอกสารถูกลบไปแล้ว" ───────────────────
 test('🔴 หน้าใบ: โหลดคำร้องวางบิลที่งวดผูกอยู่ด้วย id (แบ่งก้อน) แม้เป็นของใบเสนอราคาอื่น · อ่านพลาดบอกบนแผง ไม่ใช่ "ถูกลบ"', () => {
   const load = slice(code(SO_ROUTE), 'async function loadOrder(', '\n}\n');
-  assert.match(load, /const linkedRequestIds = \[\.\.\.new Set\(installmentRows\.map\(\(r\) => r\?\.billingRequestId\)/);
-  assert.match(load, /fetchInChunks\(linkedRequestIds, \(chunk\) => fetchAllResult\(\(\) => supabase\s*\.from\('dept_requests'\)/);
-  assert.match(load, /\.in\('id', chunk\)/);
+  // ⭐ mig 0413: ตัวโหลดกลาง — คำร้องที่ `installmentId` ชี้งวด ∪ คำร้องที่ตัวชี้ชี้อยู่ (ทั้งสองเส้นแบ่งก้อน · ไม่ขึ้นกับใบเสนอราคา)
+  assert.match(load, /await loadInstallmentRequests\(supabase, installmentRows, \{/);
+  const loader = slice(code('lib/sales/installmentRequestsStore.js'), 'export async function loadInstallmentRequests(', '\n}\n');
+  assert.match(loader, /fetchInChunks\(installmentIds, \(chunk\) => fetchAllResult\(\(\) => supabase\s*\.from\(REQUESTS\)/);
+  assert.match(loader, /\.in\('installmentId', chunk\)/);
+  assert.match(loader, /fetchInChunks\(missing, \(chunk\) => fetchAllResult\(\(\) => supabase\s*\.from\(REQUESTS\)/);
+  assert.match(loader, /\.in\('id', chunk\)/);
   assert.match(load, /billingRequestsError,/);
   assert.match(code(PANEL), /order\?\.billingRequestsError \? "อ่านคำร้องขอเอกสารไม่สำเร็จ" : "คำร้องขอเอกสารถูกลบไปแล้ว"/);
 });

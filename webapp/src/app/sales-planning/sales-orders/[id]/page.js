@@ -1165,7 +1165,9 @@ export default function SalesOrderDetailPage() {
       /* ⭐ นับ Actual รายงวด (mig 0412): cache ยอดของใบ (`actualCountedAmount` · `actualSubmittedAmount`) ขยับตามงวด
          แต่คำตอบของ PATCH งวดพกมาแค่งวด ⇒ ดึงตัวใบสด (การ์ดสรุป · ราง "นับ Actual" · หัวการ์ดการชำระอ่าน cache นั้น)
          · `refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง */
-      if (String(action).startsWith("actual_")) refreshOrder();
+      /* ⭐ ผูก/ถอดคำร้อง (mig 0413) เขียนที่ **แถวคำร้อง** (`installmentId`) ไม่ใช่งวด ⇒ `order.billingRequests` ที่จอถือไว้ล้าสมัยทันที
+         (แผงจัดคำร้องเข้างวดจากช่องนั้น) · ดึงใบสดพร้อมคำร้องชุดใหม่ */
+      if (String(action).startsWith("actual_") || action === "link" || action === "unlink") refreshOrder();
       return true;
     } catch (uploadError) {
       setError(uploadError.message || "อัปโหลดหลักฐานไม่สำเร็จ");
