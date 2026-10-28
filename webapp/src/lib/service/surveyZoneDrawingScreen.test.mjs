@@ -329,6 +329,8 @@ test('รายการ: หัว · แถบหัวคอลัมน์ �
   assert.match(LIST_CSS, /\.codeLine\[data-tagged\] \{\s*flex-wrap: wrap;/, 'จอ 375: ป้ายตกลงมาใต้รหัสเมื่อบรรทัดเต็ม');
   assert.match(LIST_CSS, /\.codeLine \{\s*display: flex;\s*justify-content: space-between;\s*gap: var\(--space-2\);\s*\}/, 'กติกาเดิมของบรรทัดรหัสอยู่ครบ');
   assert.match(LIST_CSS, /\.row \{[^}]*min-height: 56px;/, 'แถวยังเป็นปุ่มเดียวสูงระดับนิ้ว');
+  // ทรงคอลัมน์ (areas: none) — บรรทัด "ยังไม่ได้ผูกจุด" กับป้ายต้องได้แถวของตัวเอง ไม่ตกแถวชื่อเดียวกันทับกัน (UAT S5 จอ 768)
+  assert.match(LIST_CSS, /\.wrap\[data-layout="pages"\] \.missing,\s*\.wrap\[data-layout="pages"\] \.tags \{ grid-column: 2 \/ 6; grid-row: auto; \}/);
 });
 
 test('รายการ: ป้ายของแถว · บรรทัดเงียบ · ประโยคใบว่าง ตามคีย์ของตัวตัดสิน — ใบลงหน้างานล้วนได้ค่าว่างทุกคีย์', () => {
