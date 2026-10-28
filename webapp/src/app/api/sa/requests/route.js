@@ -49,6 +49,7 @@ import { findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { linkNewBillingRequest } from '@/lib/requests/billingInstallmentLink';
 import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
 import { installmentsFromPaymentPlan } from '@/lib/sales/salesOrderPayments';
+import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -280,9 +281,12 @@ export async function POST(request) {
       if (!Number.isInteger(seq) || seq < 1 || seq > planRows.length) {
         return Response.json({ error: 'งวดที่เลือกไม่อยู่ในแผนการชำระของใบเสนอราคานี้' }, { status: 400 });
       }
-      const { data: soRow, error: soLookupError } = await supabase
-        .from('sales_orders').select('id, "orderNumber"').eq('quotationId', qtRow.id).maybeSingle();
+      /* ใบสั่งขายที่ยังมีชีวิตของ QT นี้ — ⚠️ ห้าม maybeSingle: UNIQUE ของ quotationId ถอดตั้งแต่ 0161/0169 (สาย Rev. · ออกใหม่หลังยกเลิก)
+         ⇒ QT ที่มีหลายใบได้ error แล้วตอบ 500 · ใบที่ยกเลิก/ถูกแทนไม่นับ (`isLiveSalesOrder` นิยามเดียวกับด่าน 0169) */
+      const { data: soCandidates, error: soLookupError } = await supabase
+        .from('sales_orders').select('id, "orderNumber", status, "supersededById"').eq('quotationId', qtRow.id).limit(50);
       if (soLookupError) return Response.json({ error: soLookupError.message }, { status: 500 });
+      const soRow = (soCandidates || []).find(isLiveSalesOrder) || null;
       if (soRow) {
         const { data: soRows, error: soRowsError } = await supabase
           .from('sales_order_installments').select('id').eq('salesOrderId', soRow.id).limit(1);

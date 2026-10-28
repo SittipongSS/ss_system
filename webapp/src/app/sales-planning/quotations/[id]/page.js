@@ -69,6 +69,9 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalPrompt } from "@/lib/approvalPrompt";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import QuotationBillingRequests from "@/components/salesPlanning/QuotationBillingRequests";
+import { billingQuotationError } from "@/lib/requests/billingQuotations";
+import { quotationBillingRequestHref } from "@/lib/sales/billingRequestHref";
 
 const money = (v) => fmtMoney(v);
 
@@ -80,6 +83,8 @@ export default function QuotationEditorPage() {
   // ซึ่งคูณกับ `canEditDocument` (ดูเหตุผลเต็มที่บรรทัดนั้น · IS-26080011)
   const editRequested = searchParams.get("edit") === "1";
   const canEditCap = useCan("salesplan:edit");
+  // เปิดคำร้องขอเอกสารบัญชี (PR-2 · มติ 28/10) — ด่านเดียวกับ POST /api/sa/requests (`costing:edit`)
+  const canOpenRequest = useCan("costing:edit");
   const role = useRole();
 
   const [quote, setQuote] = useState(null);
@@ -817,6 +822,17 @@ export default function QuotationEditorPage() {
       onClick: () => setContractOpen(true),
     },
     {
+      /* ⭐ ขอเอกสารบัญชีจากใบนี้ (PR-2 · มติเจ้าของ 28/10/2026 ข้อ 4) — ปุ่มรวม: ไม่เติมงวด เลือกงวด/ไม่ระบุในฟอร์ม
+         (ปุ่มรายงวดอยู่ใต้ตารางงวด) · ด่านเดียวกับ POST: ใบอนุมัติแล้ว ยอด > 0 ไม่ยกเลิก (`billingQuotationError`) ·
+         ใบที่ติดด่านไม่โชว์ปุ่ม (ไม่ใช่ปุ่มจาง) — คนที่ไม่มีอะไรให้ขอไม่ต้องเห็นทางเข้า */
+      id: "billing-request",
+      kind: "goto",
+      label: "ขอเอกสารบัญชี",
+      variant: "outline",
+      visible: !!quote && !billingQuotationError(quote) && !editMode && canOpenRequest,
+      href: quote ? quotationBillingRequestHref(quote) : undefined,
+    },
+    {
       id: "download",
       kind: "download",
       label: "ดาวน์โหลด PDF",
@@ -1026,6 +1042,11 @@ export default function QuotationEditorPage() {
               totalAmount={packPending ? null : totals.totalAmount}
               disabled={!editable}
             />
+            {/* ⭐ เอกสารบัญชีตามงวด (PR-2 · มติเจ้าของ 28/10/2026) — เฉพาะใบที่ขอเอกสารได้ (ด่านเดียวกับ POST: billingQuotationError)
+                และไม่อยู่ในโหมดแก้ (แผนข้างบนยังขยับได้ระหว่างแก้ ⇒ ปุ่มรายงวดชี้ของที่ยังไม่บันทึก) */}
+            {quote && !billingQuotationError(quote) && !editMode ? (
+              <QuotationBillingRequests quotation={quote} canRequest={canOpenRequest} />
+            ) : null}
           </section>
 
           {/* เงื่อนไขการชำระ — เทมเพลตเติมเฉพาะวิธีและข้อความ */}

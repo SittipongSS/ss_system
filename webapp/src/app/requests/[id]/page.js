@@ -2135,6 +2135,11 @@ export default function RequestDetailPage() {
               customerId: req.customerId || null,
               quotation: req.refQuotation?.quoteNumber || req.quotationId || "",
               salesOrder: req.refSalesOrder?.orderNumber || req.salesOrderId || "",
+              /* งวดที่ผูก (mig 0413) — งวดจริง (`linkedInstallment` ที่ server ประกอบ) หรือเลขในแผนของ QT ที่ยังรอใบสั่งขาย
+                 · ฟอร์มแก้โชว์ให้อ่าน · แนบ/ถอดที่การ์ดการชำระของ SO */
+              installment: req.linkedInstallment
+                ? `งวด ${req.linkedInstallment.seq}${req.linkedInstallment.label ? ` · ${req.linkedInstallment.label}` : ""}${req.linkedInstallment.orderNumber ? ` (${req.linkedInstallment.orderNumber})` : ""}`
+                : req.installmentSeq ? `งวด ${req.installmentSeq} ตามแผนใบเสนอราคา — ผูกเมื่อออกใบสั่งขาย` : "",
             }}
             billBaseAmount={req.billBaseAmount ?? null}
             /* ค่าที่แบบฟอร์ม PDR เติมให้ (ผู้ติดต่อ · ที่อยู่ 1.7 · ดีล) — server ประกอบไว้แล้ว

@@ -284,9 +284,10 @@ test('/requests/new: requiredDate เติมช่องวันที่ต�
   assert.doesNotMatch(src, /isNaN\(Date\.parse\(/);
   assert.match(src, /date\.getUTCFullYear\(\) === year && date\.getUTCMonth\(\) === month - 1 && date\.getUTCDate\(\) === day/);
   /* งวด S5 (ใบยืนยันหน้างาน): id ของใบต้นทางไปทาง extra ตัวเดียวกัน ก่อนกิ่งงวดชำระ — กิ่งงวดชำระยังตรงตัวเดิม */
-  assert.match(src, /createRequestDraft\(\s*form, confirmData \? \{ confirmsRequestId: confirms \} : linksInstallment \? \{ linkInstallmentId \} : \{\},?\s*\)/);
-  // ท้ายแผงสัญญาว่าจะผูกเฉพาะตอน SO **และ QT** ยังเป็นใบที่กดมา (เปลี่ยน QT แล้ว server ตีกลับ)
-  assert.match(src, /form\.salesOrderId === defaults\.salesOrderId\s*&& form\.quotationId === defaults\.quotationId/);
+  /* ⭐ PR-2 (28/10): งวดที่ส่ง = ไทล์ที่เลือกอยู่ในฟอร์ม (ค่าในลิงก์เป็นแค่ค่าเติมของไทล์) · เปลี่ยนใบเสนอราคา = ไทล์ถูกล้าง
+     ⇒ ไม่ต้องเทียบ SO/QT กับลิงก์อีก (เดิมเทียบเพื่อกันส่งงวดของใบที่ไม่ใช่ใบที่กดมา) */
+  assert.match(src, /createRequestDraft\(\s*form, confirmData \? \{ confirmsRequestId: confirms \} : installmentExtra,?\s*\)/);
+  assert.match(src, /const installmentPick = form\.kind === "billing_doc" \? form\.installmentPick \|\| null : null;/);
   // วันที่มากับลิงก์แต่ผ่านไปแล้ว = รายการความพร้อมบอกเหตุ ไม่ปล่อยช่องว่างเงียบ
   assert.match(src, /droppedDueDate && c\.tab === "due" && c\.label === dueLabel/);
 });

@@ -26,6 +26,7 @@ import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
 import PendingFiles from "@/components/ui/PendingFiles";
 import OptionTiles from "@/components/ui/OptionTiles";
+import BillingInstallmentPicker from "@/components/requests/BillingInstallmentPicker";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import Input from "@/components/ui/Input";
@@ -243,6 +244,9 @@ export default function RequestForm({
   lockedRefs = {},
   // ฐานยอดวางบิลตอนที่ใบถูกล็อก QT ไว้แล้ว (โหมดแก้) — ฝั่งสร้างอ่านจากใบที่เพิ่งเลือก
   billBaseAmount = null,
+  /* งวดที่มากับลิงก์ (ฝั่งสร้าง · ขอเอกสารจากหน้า QT / แผงงวด SO) — `{ quotationId, installmentId, installmentSeq }`
+     ไทล์เลือกงวดเลือกให้ครั้งเดียวเมื่อเป็นใบเดียวกัน (BillingInstallmentPicker) */
+  installmentPrefill = null,
   /* ⭐ **แบบฟอร์ม PDR มีด่านของตัวเอง และสลับมือคนละจังหวะกับหัวใบ** —
      `_canEdit` เป็นของผู้ขอถึงก่อน "รับเรื่อง" · `_canEditPdr` ย้ายไปฝ่ายปลายทาง
      ตอนรับเรื่อง ⇒ มีขั้นที่คนคนหนึ่งแก้ได้แค่ส่วนเดียว
@@ -928,8 +932,8 @@ export default function RequestForm({
                     quotationId: v,
                     dealId: qt?.dealId || "",
                     projectId: deals.find((d) => d.id === qt?.dealId)?.projectId || "",
-                    // ใบเปลี่ยน = ฐานเปลี่ยน ⇒ ยอดเดิมไม่มีความหมายอีกต่อไป
-                    billPercent: null, billAmount: null,
+                    // ใบเปลี่ยน = ฐานเปลี่ยน ⇒ ยอดเดิมไม่มีความหมายอีกต่อไป · งวดเดิมเป็นของใบเก่า
+                    billPercent: null, billAmount: null, installmentPick: null,
                   });
                 }}
                 /* ⚠️ `SearchableSelect` ไม่มีบรรทัดรอง — ยอดกับชื่อลูกค้าจึงอยู่ในป้าย
@@ -950,6 +954,32 @@ export default function RequestForm({
               {skipHint && <small className={styles.hint}>{skipHint}</small>}
             </div>
             )}
+
+            {/* ⭐ งวดชำระ (มติเจ้าของ 28/10/2026 · mig 0413) — เลือกงวด หรือไม่ระบุก็ได้ · เลือกแล้วเติมยอดของงวดลงช่องยอด
+                (แท็บรายละเอียด) ให้แก้ต่อได้ · งวดเดียวมีหลายคำร้องได้
+                ⚠️ **โหมดแก้เปลี่ยนงวดทางนี้ไม่ได้** (เหตุด้านข้อมูล ไม่ใช่ความสะดวก): ผูก/ถอดงวดเขียนตัวชี้ของงวดที่ SQL ล็อกปรับแผน
+                (0377) อ่านอยู่ และต้องผ่านด่านของงวด (สิทธิ์ salesplan:edit · ล็อกทั้งใบ) ⇒ ทางเดียวคือเมนูแถวบนการ์ดการชำระของ SO
+                (แนบ/ถอดคำร้อง) · ฟอร์มแก้โชว์งวดที่ผูกไว้ให้อ่าน แบบเดียวกับใบเสนอราคาที่ล็อกข้างบน */}
+            {isEdit ? (
+              lockedRefs.installment ? (
+                <div className="form-group col-span-2">
+                  <DerivedField label="งวดชำระ" from="แนบ/ถอดที่การ์ดการชำระของใบสั่งขาย" value={lockedRefs.installment} />
+                </div>
+              ) : null
+            ) : value.quotationId ? (
+              <div className="form-group col-span-2">
+                <span className={styles.fieldLabel}>งวดชำระ</span>
+                <BillingInstallmentPicker
+                  key={value.quotationId}
+                  quotationId={value.quotationId}
+                  value={value.installmentPick || null}
+                  prefill={installmentPrefill}
+                  disabled={disabled}
+                  /* เลือกงวด = ยอดของงวดในโหมดยอดเงิน (แก้ต่อได้ · มติข้อ 2) · ไม่ระบุ = ช่องยอดว่างให้พิมพ์เองแบบเดิม */
+                  onPick={(pick) => set({ installmentPick: pick, billPercent: null, billAmount: pick ? pick.amount : null })}
+                />
+              </div>
+            ) : null}
 
             {/* ⚠️ โหมดแก้ไม่ได้โหลดทะเบียนใบ/ดีลมา — ป้ายมาจากใบที่ server ประกอบให้แล้ว */}
             <DerivedField label="ลูกค้า" from="เติมจากใบเสนอราคา"
@@ -1419,7 +1449,7 @@ export default function RequestForm({
                (ต้องค้างไว้แม้ค่าไม่ผ่านด่าน) ⇒ เปลี่ยนใบแล้วต้อง **remount** ไม่งั้น
                ยอดของใบเก่าค้างอยู่ในช่องทั้งที่ฐานเปลี่ยนไปแล้ว · remount ตรงกับ
                กติกาของรีโปที่ห้าม sync ด้วย effect (มันกระโดดใต้มือคนที่กำลังพิมพ์) */
-            key={value.quotationId || "no-quotation"}
+            key={`${value.quotationId || "no-quotation"}|${value.installmentPick?.key || "none"}`}
             value={value}
             onChange={onChange}
             baseAmount={billBase}
