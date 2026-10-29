@@ -51,9 +51,9 @@ export const REGISTRATION_STEPS = TRACKS.registration.stages.filter((s) => s.key
 export const FILING_STEPS = TRACKS.payment.stages.filter((s) => s.key !== 'rejected').map((s) => s.key);
 
 const SHORT_REGISTRATION = { draft: 'ร่างทะเบียน', pending_legal: 'รอนิติกรรม', approved: 'ขึ้นทะเบียนแล้ว' };
+/* เส้นของ RA ทั้งเส้นตั้งแต่ PR5 (draft → filing → complete → delivered) — pending/received เลิกใช้แล้ว */
 const SHORT_FILING = {
-  draft: 'เตรียมใบยื่น', pending: 'รอรับเงิน', received: 'รอยื่น',
-  filing: 'กำลังยื่น', complete: 'ชำระแล้ว', delivered: 'ส่งเอกสารแล้ว',
+  draft: 'เตรียมใบยื่น', filing: 'กำลังยื่น', complete: 'ชำระแล้ว', delivered: 'ส่งเอกสารแล้ว',
 };
 
 /** สถานะทะเบียนจาก lib/excise/soFiling.js → จุดที่ยืนอยู่บนราง 3 จุด */
@@ -304,8 +304,9 @@ function filingSegment(excise, { approved }) {
   const notes = taxBaseNotes(lines);
 
   if (excise.filing) {
-    const index = Math.max(0, FILING_STEPS.indexOf(excise.filing.status));
     const rejected = excise.filing.status === 'rejected';
+    // ตีกลับเกิดระหว่างยื่น (RA ตีกลับเองแล้วยื่นใหม่) ⇒ ยืนที่จุด "กำลังยื่น" แบบช้า ไม่ใช่ถอยไปจุดแรก
+    const index = Math.max(0, FILING_STEPS.indexOf(rejected ? 'filing' : excise.filing.status));
     const done = excise.filing.status === FILING_STEPS.at(-1);
     return {
       key: 'filing',
@@ -348,7 +349,8 @@ function filingSegment(excise, { approved }) {
           label: 'ค่าสรรพสามิต',
           state: order.status === 'approved' ? 'done' : 'live',
           connect: {
-            message: `ใบสั่งขายค่าสรรพสามิต ${order.orderNumber || ''} — ${EXCISE_ORDER_STATUS_TEXT(order)}`,
+            message: `ใบสั่งขายค่าสรรพสามิต ${order.orderNumber || ''} — ${EXCISE_ORDER_STATUS_TEXT(order)}`
+              + (order.status === 'approved' ? ' · รอฝ่าย RA ยื่นกรม' : ''),
             actionLabel: 'เปิดใบสั่งขายค่าสรรพสามิต',
             href: `/sales-planning/sales-orders/${encodeURIComponent(order.id)}`,
           },

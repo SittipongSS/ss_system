@@ -31,7 +31,7 @@ const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : f
 export default function FilingsPage() {
   const role = useRole();
   const router = useRouter();
-  const canAct = useCan("sales:act");       // SA: create / receive / edit
+  const canFile = useCan("ra:approve");     // RA: สร้างใบยื่นจากคิวรอยื่นกรม (PR5 — ฝ่ายขายไม่สร้าง/ไม่รับเงินบนใบยื่นแล้ว)
 
   const { data: orders, loading, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload } = useApiList("/api/orders");
 
@@ -42,7 +42,7 @@ export default function FilingsPage() {
     () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
+  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "mine" : "all"));
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");
@@ -54,9 +54,16 @@ export default function FilingsPage() {
     if (toParam) setTo(toParam);
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
+    // `?create=<คีย์งาน>` — มาจากคิว "รอยื่นกรม" บนภาพรวม /tax: เปิดโมดัลสร้างพร้อมเลือกงานนั้นไว้
+    const createKey = params.get("create");
+    if (createKey) {
+      setCreateKey(createKey === "new" ? "" : createKey);
+      setFormOpen(true);
+    }
   }, [router]);
   const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
+  const [createKey, setCreateKey] = useState("");
   /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
      — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
   const [customerIds, setCustomerIds] = useState([]);
@@ -239,9 +246,9 @@ export default function FilingsPage() {
         rowCount={rows.length}
         printMeta={{ from, to, customerName }}
       />
-      {canAct && (
-        <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFormOpen(true)}>
-          <Plus size={16} /> ยื่นชำระ
+      {canFile && (
+        <button className="btn btn-primary flex items-center gap-1.5" onClick={() => { setCreateKey(""); setFormOpen(true); }}>
+          <Plus size={16} /> สร้างใบยื่น
         </button>
       )}
     </>
@@ -251,7 +258,7 @@ export default function FilingsPage() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title="การยื่นชำระภาษีสรรพสามิต"
-      subtitle="สร้างใบยื่น รับเงิน และยื่นชำระภาษีต่อกรมสรรพสามิต พร้อมบันทึกใบเสร็จ"
+      subtitle="ฝ่าย RA สร้างใบยื่นจากคิวรอยื่นกรม ยื่นชำระภาษีต่อกรมสรรพสามิต และบันทึกใบเสร็จ"
       headerRight={headerRight}
     >
       {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
@@ -323,6 +330,7 @@ export default function FilingsPage() {
 
       <SalesOrderFilingModal
         open={formOpen}
+        initialKey={createKey}
         onClose={() => setFormOpen(false)}
         onSaved={async (filing) => {
           await reload();

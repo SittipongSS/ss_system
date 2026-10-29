@@ -743,44 +743,19 @@ test("ใบยื่นชำระ: โหลดใบไม่ขึ้นห
   for (const s of sources) assert.ok(["page", "edit"].includes(s.blocks), `${s.label}: blocks ต้องเป็น "page" หรือ "edit"`);
   assert.deepEqual(sources.filter((s) => s.blocks === "page").map((s) => s.label), [orders.label],
     "สายที่บล็อกทั้งหน้ามีได้สายเดียว คือตัวใบเอง");
-  assert.ok(ast.readsIn("editAvailable").has("canAct") && ast.readsIn("editAvailable").has("o"),
-    "editAvailable ต้องมาจากสิทธิ์ (canAct) + สถานะใบ — เงื่อนไขเดียวกับปุ่มที่เปิดฟอร์มแก้ไข");
+  /* ⭐ PR5 (ตรวจระบบ 26/10 ข้อย่อย): สามสายรอง (ทะเบียน · ลูกค้า · สินค้าทั้งตาราง) ป้อนแค่ฟอร์มแก้ไขแบบเลือกทะเบียนของฝ่ายขาย
+     (OrderFormModal) ซึ่งถอดแล้ว — ใบยื่นเป็นของ RA และแก้รายการได้ทางเดียวคือคิดใหม่จาก SO ⇒ ห้ามโหลดสามลิสต์นี้กลับมา */
   for (const url of ['"/api/excise-registrations"', '"/api/customers"', '"/api/products"']) {
-    const h = hook(url);
-    const s = h && ast.sourceFor(h);
-    assert.ok(s, `ไม่พบสาย ${url} ในก้อน sources`);
-    assert.equal(ast.field(s, "blocks"), "edit", `${url}: สายรองป้อนแค่ฟอร์มแก้ไข — ซ่อนทั้งหน้าเพราะมันล้ม = เสียจอที่ยังถูกอยู่`);
-    assert.ok(ast.bindingsOf(s, "empty").has(h.b.loaded) && ast.field(s, "empty").startsWith("!"), `${url}: ความว่างต้องมาจาก !loaded`);
-    /* 🐞 RA / ใบที่รับเงินแล้ว ไม่มีปุ่มแก้ไขเลย — ป้ายแดง "ยังแก้ไขใบยื่นนี้ไม่ได้ เพราะ…" คือเหตุผลปลอมของสิ่งที่ไม่มีอยู่
-       ⇒ สายรองพูดเฉพาะตอน editAvailable (ของบนหน้าที่เหลือไม่ได้อ่านสามลิสต์นี้) */
-    assert.equal(ast.failureOf(s).gate, "editAvailable",
-      `${url}: ความล้มของสายรองต้องพูดเฉพาะตอนคนดูมีปุ่มแก้ไข (\`editAvailable ? error || staleError : null\`)`);
-    // ยังโหลดอยู่ = ฟอร์มที่เปิดตอนนี้ขาดข้อมูลเท่าตอนล้ม ⇒ ปุ่มต้องพักรอ
-    const pending = ast.bindingsOf(s, "pending");
-    assert.ok(pending.has(h.b.loading) && pending.has(h.b.loaded), `${url}: pending ต้องมาจาก loading + !loaded ของฮุกตัวเอง`);
+    assert.equal(hook(url), undefined, `${url}: จอนี้ไม่ใช้ลิสต์ทั้งตารางแล้ว — โหลดกลับมา = ของหนักที่ไม่มีใครอ่าน`);
   }
-  // ประโยค "(ไม่ได้แปลว่า…ถูกลบไปแล้ว)" เป็นของสายใบยื่นเท่านั้น — ทุกสายต้องมี blockedNote ของตัวเอง
+  assert.ok(ast.readsIn("editAvailable").has("canApprove") && ast.readsIn("editAvailable").has("o"),
+    "editAvailable ต้องมาจากสิทธิ์ (canApprove — RA) + สถานะใบ — เงื่อนไขเดียวกับปุ่มคิดใหม่");
   for (const s of sources) assert.ok(s.blockedNote, `${s.label}: ไม่มี blockedNote`);
-  assert.deepEqual(sources.filter((s) => s.blockedNote.includes("ถูกลบ")).map((s) => s.label), [orders.label],
-    "ประโยค 'ไม่ได้แปลว่าถูกลบ' ต้องอยู่กับสายใบยื่นเท่านั้น — สายรองล้มแล้วพูดเรื่องใบถูกลบ = ตอบคำถามที่ไม่มีใครถาม");
-  assert.ok(ast.readsIn("pageBlocked").has("blocked") && ast.readsIn("editBlocked").has("blocked"),
-    "pageBlocked/editBlocked ต้องมาจาก blocked (error + ไม่มีของในมือ) ไม่ใช่ error เดี่ยว ๆ");
-  // "ยังแก้ไขไม่ได้" คู่กับ "ฟอร์มแก้ไขจะใช้รายการรอบก่อน" ขัดกันเอง ⇒ ตัวเลือกประโยคต้องรู้ว่ามีสายรองถูกบล็อก
-  assert.ok(ast.readsIn("said").has("editBlocked"), "said ต้องตัด staleNote ของสายรองทิ้งเมื่อมีสายรองพักฟอร์มไปแล้ว");
-
-  // ปุ่มที่เปิดฟอร์มแก้ไข: โชว์เสมอ แต่พักพร้อมเหตุผล (ติดด่าน = โชว์แล้วบอกเหตุ)
-  assert.ok(ast.readsIn("editPaused").has("editBlocked") && ast.readsIn("editPaused").has("editPending"),
-    "editPaused ต้องมาจากสายรองที่ถูกบล็อก **และ** สายรองที่ยังโหลดไม่เสร็จ");
-  // สำนวนเดียวกับป้าย: ชื่อสายอยู่หลัง "ดึงข้อมูลไม่ได้:" — แทรกกลาง "ดึง…ไม่สำเร็จ" จุดคั่นตกกลางกริยา
-  const before = ast.textBefore("editPausedReason", "editBlocked.map");
-  assert.ok(before.length > 0 && before.every((t) => t.endsWith("ดึงข้อมูลไม่ได้: ")),
-    `เหตุผลที่ปุ่มพักต้องขึ้นชื่อสายหลัง "ดึงข้อมูลไม่ได้: " (เจอ: ${JSON.stringify(before)})`);
-  for (const id of ["edit", "resubmit"]) {
-    const actions = ast.actions(id);
-    assert.equal(actions.length, 1, `ปุ่ม "${id}" หาไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?`);
-    assert.equal(actions[0].disabled, "editPaused", `ปุ่ม "${id}" เปิดฟอร์มแก้ไข ⇒ ต้องพักเมื่อสายรองไม่มีของในมือ`);
-    assert.equal(actions[0].disabledReason, "editPausedReason", `ปุ่ม "${id}" พักแล้วต้องบอกเหตุ ไม่ใช่ดับเงียบ`);
-  }
+  assert.ok(ast.readsIn("pageBlocked").has("blocked"),
+    "pageBlocked ต้องมาจาก blocked (error + ไม่มีของในมือ) ไม่ใช่ error เดี่ยว ๆ");
+  // ปุ่มคิดใหม่: โชว์เสมอ (ใบร่างของ RA) แต่ติดด่าน = พักพร้อมเหตุผลจากตัวตัดสินเดียวกับ route (filingRecalcBlock)
+  const recalc = ast.actions("recalc");
+  assert.equal(recalc.length, 1, 'ปุ่ม "recalc" หาไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?');
   // หัวจอ (รหัส AR) ต้องไม่อ่านลิสต์ลูกค้า — ลิสต์ล้มแล้วหัวจอแหว่งโดยไม่มีอะไรบอก
   assert.ok(!ast.readsInAttr("subtitle").has("customers"), "subtitle อ่านจาก `customer` รายตัว ไม่ใช่ find จากลิสต์ `customers`");
 });

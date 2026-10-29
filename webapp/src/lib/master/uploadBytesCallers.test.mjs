@@ -34,8 +34,6 @@ const ALLOWED_CALLERS = {
     'หลักฐานยืนยันคำสั่งซื้อตอนสร้างใบ — ปลายทางเดียวกับหน้ารายละเอียด',
   'components/excise/FileTaxDialog.js':
     'ใบเสร็จยื่นภาษี — ref ลงคอลัมน์ `receiptUrl` ของใบยื่น',
-  'components/excise/ReceiveDialog.js':
-    'ไฟล์ตอนรับแสตมป์ — ยิง POST /api/master/attachments เองในบรรทัดถัดไป',
   'components/service/CloseVisitSheet.js':
     'รูปหน้างาน/ลายเซ็นผู้รับงาน — ref ลงคอลัมน์ของ `service_visits`',
   'components/salesPlanning/TaxInvoiceDialog.js':

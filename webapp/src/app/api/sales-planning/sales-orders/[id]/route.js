@@ -1612,22 +1612,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        · RPC ย้อน Won (0170) และ UPDATE ยกเลิกธรรมดาไม่เปลี่ยน · StatusNotice ในโมดัลบอกผลเรื่องเงินก่อนกด (salesOrderMoneyOutcome) */
     // Once Tax owns a downstream filing, cancelling/reversing the source would
     // invalidate its immutable snapshot. Delete the eligible filing first.
+    /* ⭐ PR5 (mig 0417): ใบยื่นผูกได้สองทาง — SO ลูกค้า ("salesOrderId") หรือ SO ค่าสรรพสามิต ("exciseSalesOrderId")
+       ฐานกัน SO ค่าสรรพสามิตที่มีใบยื่นอีกชั้น (sales_orders_excise_filed_no_cancel_trg) · ตรงนี้ตอบทางออกเป็นภาษาคน */
     const { data: filing, error: filingError } = await supabase
       .from('orders')
       .select('id, status')
-      .eq('salesOrderId', id)
+      .or(`salesOrderId.eq.${id},exciseSalesOrderId.eq.${id}`)
       .limit(1)
       .maybeSingle();
-    const filingSchemaMissing = filingError
-      && (filingError.code === 'PGRST204' || filingError.code === '42703' || (filingError.message || '').includes('salesOrderId'));
-    if (filingError && !filingSchemaMissing) return fail(filingError.message, 500);
+    if (filingError) return fail(filingError.message, 500);
     if (filing) {
       // บอกทางออกด้วย ไม่ใช่แค่บอกว่าไม่ได้ — ปุ่มอื่นทุกปุ่มที่แก้ใบนี้ก็ถูกใบยื่นบล็อก
       // เหมือนกัน (ย้อนการอนุมัติ/ออก Rev./ลบถาวร) ผู้ใช้จึงวนหาปุ่มไม่เจอถ้าไม่ชี้ทาง
-      return badRequest(
-        `ยกเลิกใบสั่งขายไม่ได้ เพราะมีใบยื่นชำระภาษี ${filing.id} (${filing.status}) ผูกอยู่`
-        + ' — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิก SO ได้',
-      );
+      return badRequest(filing.status === 'draft'
+        ? `ยกเลิกใบสั่งขายไม่ได้ เพราะฝ่าย RA สร้างใบยื่นกรม ${filing.id} ผูกอยู่ (ยังไม่เริ่มยื่น)`
+          + ' — ให้ฝ่าย RA ลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิกได้'
+        : `ยกเลิกใบสั่งขายไม่ได้ — ฝ่าย RA ยื่นกรมสรรพสามิตตามใบนี้แล้ว (ใบยื่น ${filing.id} · ${filing.status})`);
     }
     // เหตุผลยกเลิกแบบมีโครงสร้าง (มติ 2026-07-18): เลือกรหัสจากตัวเลือกมาตรฐาน +
     // หมายเหตุอิสระ (บังคับหมายเหตุเมื่อเลือก "อื่น ๆ"). เก็บทั้ง code + note.

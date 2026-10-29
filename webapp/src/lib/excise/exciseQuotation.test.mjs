@@ -211,16 +211,24 @@ test('ใบค่าสรรพสามิตที่ลูกค้าร�
 });
 
 // ── 6. ทาง route — ต่อสายถูกที่ (ยึดรูปจาก source) ──────────────────────────────────────────────
-test('🔴 ปิดทางสร้างใบยื่นของฝ่ายขาย — ทั้งสอง POST ตอบข้อความเดียวกันก่อนทำอะไร · สวิตช์ปิด', () => {
+/* PR3 ปิดทางสร้างของฝ่ายขาย · PR5 เปิดทางของ RA เป็นเส้นใหม่: from-sales-order POST = ra:approve เท่านั้น ·
+   POST /api/orders (สร้างเองแบบเลือกทะเบียน) ยังปิดถาวร */
+test('🔴 ปิดทางสร้างใบยื่นของฝ่ายขาย — สร้างเองปิดถาวร · จาก SO เหลือ RA (ด่านมาก่อนอ่านคำขอ/ฐาน) · สวิตช์ปิด', () => {
   assert.equal(SA_FILING_CREATE_OPEN, false, 'ห้ามเปิดกลับ — ทางของ RA (PR5) เป็นเส้นใหม่');
   assert.match(FILING_CREATE_CLOSED_MESSAGE, /ใบเสนอราคาค่าสรรพสามิต/);
-  for (const path of ['../../app/api/tax/orders/from-sales-order/route.js', '../../app/api/orders/route.js']) {
+  const gates = [
+    ['../../app/api/orders/route.js', 'if (!SA_FILING_CREATE_OPEN) return Response.json({ error: FILING_CREATE_CLOSED_MESSAGE }, { status: 403 });'],
+    ['../../app/api/tax/orders/from-sales-order/route.js', 'if (!can(user.role, "ra:approve")) return forbidden();'],
+  ];
+  for (const [path, line] of gates) {
     const src = code(path);
     const post = src.slice(src.search(/export (const|async function) POST/));
-    const gate = post.indexOf('if (!SA_FILING_CREATE_OPEN) return Response.json({ error: FILING_CREATE_CLOSED_MESSAGE }, { status: 403 });');
-    assert.ok(gate > 0, `${path}: ไม่มีด่านปิด`);
-    assert.ok(gate < post.indexOf('await '), `${path}: ด่านปิดต้องมาก่อนอ่านคำขอ/ฐานทุกอย่าง`);
+    const gate = post.indexOf(line);
+    assert.ok(gate > 0, `${path}: ไม่มีด่าน`);
+    assert.ok(gate < post.indexOf('await '), `${path}: ด่านต้องมาก่อนอ่านคำขอ/ฐานทุกอย่าง`);
   }
+  assert.doesNotMatch(code('../../app/api/tax/orders/from-sales-order/route.js').slice(
+    code('../../app/api/tax/orders/from-sales-order/route.js').search(/export const POST/)), /sales:act/, 'ฝ่ายขายต้องไม่มีทางสร้างกลับมา');
 });
 
 test('route ใบเสนอราคาแตกสาขาใบค่าสรรพสามิต: PATCH ล็อกบรรทัด + คิดใหม่ · Rev. ล็อกบรรทัด · รับใบ → RPC แยก · ย้อนการรับปฏิเสธ', () => {
