@@ -120,6 +120,7 @@ test('⭐ ทุกสาขาที่แถวแม่หาย: ผ่า�
     ['ขอราคา/คำร้อง', 'parentRow', 'parentError', 'const allowed = parentRow'],
     ['ดีล/โครงการ/สัญญา', 'deal', 'dealError', 'const allowed = deal ?'],
     ['PARENT_TABLE', 'parent', 'parentError', 'const canEditParent ='],
+    ['ใบสั่งขาย', 'order', 'orderError', 'const allowed = order ?'],
   ];
   for (const [label, row, err, decider] of branches) {
     const check = new RegExp(
@@ -134,13 +135,13 @@ test('⭐ ทุกสาขาที่แถวแม่หาย: ผ่า�
     assert.doesNotMatch(guard.slice(found.index + found[0].length, at), /return /, `สาขา ${label}`);
   }
 
-  // สาขาใบสั่งขายมีกติกาของตัวเอง (คนแนบหรือแอดมิน) ผูกกับ && ทั้งกรณีมีใบและใบหาย
+  // สาขาใบสั่งขาย: ใบยังอยู่ = คนแก้ใบได้ (มติ 29/10 · ไม่ใช่คนแนบเองอีกแล้ว) · ใบหาย = ด่านแม่หายข้างบน + ด่านระบบ
   assert.match(
     guard,
-    /const allowed = canRemoveSalesOrderFile\(att, user\)\s*&& \(order \? await canAttachToSalesOrder\(supabase, order, user\) : canViewSalesPlanning\(user\)\);/,
+    /const allowed = order \? await canAttachToSalesOrder\(supabase, order, user\) : canViewSalesPlanning\(user\);/,
   );
 
-  /* นับการอ่านแถวแม่: 4 ทาง = 3 ทางในตาราง + ใบสั่งขาย · เพิ่มทางที่ 5 โดยไม่เพิ่มด่าน = เทสต์นี้ตก */
+  /* นับการอ่านแถวแม่: 4 ทาง = 4 สาขาในตาราง · เพิ่มทางที่ 5 โดยไม่เพิ่มด่าน = เทสต์นี้ตก */
   const reads = guard.match(/\.eq\('id', att\.entityId\)\.maybeSingle\(\)/g) || [];
   assert.equal(reads.length, 4, 'จำนวนทางที่อ่านแถวแม่เปลี่ยน — ทางใหม่ต้องมีด่านแม่หายของตัวเอง แล้วแก้เลขนี้');
   assert.equal((guard.match(/return orphanDenied\(\);/g) || []).length, branches.length);

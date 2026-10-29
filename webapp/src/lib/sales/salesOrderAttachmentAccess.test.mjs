@@ -6,8 +6,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  SALES_ORDER_ATTACHMENT_TABLE, canAttachToSalesOrder, canRemoveSalesOrderFile, canViewSalesOrderAttachment,
+  SALES_ORDER_ATTACHMENT_TABLE, canAttachToSalesOrder, canViewSalesOrderAttachment, findConfirmAttachmentIndex,
   isSalesOrderAttachment, moveSalesOrderAttachments, purgeSalesOrderFiles, salesOrderAttachBlock,
+  salesOrderConfirmRemoveBlock,
 } from './salesOrderAttachmentAccess.js';
 import { SALES_ATTACHMENT_TABLE } from './salesAttachmentAccess.js';
 import { PARENT_TABLE } from '../master/attachments.js';
@@ -16,6 +17,7 @@ import { ATTACHMENT_TYPES } from '../master/attachmentTypes.js';
 const admin = { id: 'u-admin', role: 'admin' };
 const ae = { id: 'u-ae', role: 'ae', teams: ['KA'] };
 const otherAe = { id: 'u-ae2', role: 'ae', teams: ['KA'] };
+const seniorAe = { id: 'u-sae', role: 'senior_ae', teams: ['KA'] };
 const viewer = { id: 'u-viewer', role: 'viewer' };
 const order = { id: 'SO-1', dealId: 'D-1', status: 'approved', ownerId: null };
 
@@ -59,14 +61,40 @@ test('อ่านดีลพัง = ไม่ผ่าน (fail closed) · �
   assert.equal(await canAttachToSalesOrder(fakeDb(), null, admin), false);
 });
 
-test('ลบ = คนแนบเองหรือแอดมิน (มติ 25/09) — คนในทีมเดียวกันลบไฟล์ของคนอื่นไม่ได้', () => {
-  const mine = { id: 'A-1', uploadedBy: 'u-ae' };
-  assert.equal(canRemoveSalesOrderFile(mine, ae), true);
-  assert.equal(canRemoveSalesOrderFile(mine, otherAe), false);
-  assert.equal(canRemoveSalesOrderFile(mine, admin), true);
-  // แถวเก่าที่ไม่มีผู้แนบ — ไม่มีใครเป็นเจ้าของ ⇒ แอดมินเท่านั้น (ไม่ใช่ทุกคนเพราะ undefined === undefined)
-  assert.equal(canRemoveSalesOrderFile({ id: 'A-2', uploadedBy: null }, { id: undefined, role: 'ae' }), false);
-  assert.equal(canRemoveSalesOrderFile(null, admin), false);
+test('ลบ = คนแก้ใบได้ (มติ 29/10 แทน "คนแนบเอง") — เจ้าของดีล · หัวหน้าในทีม · แอดมิน ใช่ · AE คนอื่นในทีมไม่ใช่', async () => {
+  // ด่านลบของ DELETE/PATCH `/api/attachments/[id]` คือ canAttachToSalesOrder ตัวเดียวกับแนบ (ไม่ดู uploadedBy แล้ว)
+  assert.equal(await canAttachToSalesOrder(fakeDb(), order, ae), true, 'AE เจ้าของดีล');
+  assert.equal(await canAttachToSalesOrder(fakeDb(), order, seniorAe), true, 'หัวหน้าทีมเดียวกับดีล');
+  assert.equal(await canAttachToSalesOrder(fakeDb(), order, admin), true);
+  assert.equal(await canAttachToSalesOrder(fakeDb(), order, otherAe), false, 'AE คนอื่นในทีม (ขอบเขตแก้ = ดีลตัวเอง)');
+  assert.equal(await canAttachToSalesOrder(fakeDb({ deal: { id: 'D-1', team: 'BD', ownerId: 'u-x' } }), order, seniorAe), false, 'หัวหน้าทีมอื่น');
+});
+
+test('ไฟล์ยืนยันคำสั่งซื้อ: ลบได้ทุกสถานะ ยกเว้นรออนุมัติ (ห้ามแม้แอดมิน) · ยกเลิก/Rev. แอดมินข้ามได้ · ใบย้อนหลังไม่มีชุดนี้', () => {
+  for (const status of ['draft', 'approved', 'rejected', 'approval_revoked']) {
+    assert.equal(salesOrderConfirmRemoveBlock({ status }, ae), null, status);
+  }
+  assert.match(salesOrderConfirmRemoveBlock({ status: 'pending_approval' }, ae), /รออนุมัติ/);
+  assert.match(salesOrderConfirmRemoveBlock({ status: 'pending_approval' }, admin), /รออนุมัติ/, 'ผู้อนุมัติกำลังดูชุดนี้');
+  assert.match(salesOrderConfirmRemoveBlock({ status: 'cancelled' }, ae), /ยกเลิก/);
+  assert.match(salesOrderConfirmRemoveBlock({ status: 'revised' }, ae), /ฉบับล่าสุด/);
+  assert.equal(salesOrderConfirmRemoveBlock({ status: 'cancelled' }, admin), null);
+  assert.match(salesOrderConfirmRemoveBlock({ status: 'approved', origin: 'historical' }, admin), /ย้อนหลัง/);
+  assert.ok(salesOrderConfirmRemoveBlock(null, admin));
+});
+
+test('หาไฟล์ยืนยันที่จะลบด้วย storagePath ไม่ใช่ลำดับ — รายการบนจอเก่าแล้วต้องไม่ลบไฟล์ข้างเคียง', () => {
+  const list = [{ storagePath: 'q/1/a.pdf' }, { storagePath: 'q/1/b.pdf' }, { storagePath: 'q/1/a.pdf' }];
+  assert.equal(findConfirmAttachmentIndex(list, { index: 1, storagePath: 'q/1/b.pdf' }), 1);
+  // อีกหน้าต่างลบไฟล์แรกไปแล้ว: จอยังส่ง index 1 ของ b แต่ในแถวปัจจุบัน b อยู่ 0
+  assert.equal(findConfirmAttachmentIndex([{ storagePath: 'q/1/b.pdf' }], { index: 1, storagePath: 'q/1/b.pdf' }), 0);
+  // path ซ้ำในชุด — index ที่ตรงเลือกตัวที่ถูก · index ไม่ตรง = ตัวแรกที่เจอ
+  assert.equal(findConfirmAttachmentIndex(list, { index: 2, storagePath: 'q/1/a.pdf' }), 2);
+  assert.equal(findConfirmAttachmentIndex(list, { index: 1, storagePath: 'q/1/a.pdf' }), 0);
+  // ไม่มีในชุด / ไม่ส่ง path / ชุดไม่ใช่อาร์เรย์ = -1 (route ตอบ 409 ไม่เดา)
+  assert.equal(findConfirmAttachmentIndex(list, { index: 0, storagePath: 'q/1/zz.pdf' }), -1);
+  assert.equal(findConfirmAttachmentIndex(list, { index: 0 }), -1);
+  assert.equal(findConfirmAttachmentIndex(null, { storagePath: 'q/1/a.pdf' }), -1);
 });
 
 test('ด่านสถานะ: แนบได้ทุกสถานะ ยกเว้นใบยกเลิกและฉบับที่ถูก Rev. แทน — และบอกทางไปต่อ', () => {
@@ -116,13 +144,14 @@ test('จุด 1–2: GET/POST /api/attachments รู้จักแถวแ�
   assert.match(ladder, /canAttachToSalesOrder\(supabase, parent, user\)/);
 });
 
-test('จุด 3: DELETE/PATCH ดักใบสั่งขาย **นอก** บล็อก `if (table)` + ใช้กติกาคนแนบ', () => {
+test('จุด 3: DELETE/PATCH ดักใบสั่งขาย **นอก** บล็อก `if (table)` + ใช้กติกาคนแก้ใบ', () => {
   const src = read('../../app/api/attachments/[id]/route.js');
   const branch = src.indexOf('isSalesOrderAttachment(att.entityType)');
   assert.ok(branch > 0, 'ต้องมีสาขาใบสั่งขายใน guardAttachmentWrite');
   assert.ok(branch < src.indexOf('const table = PARENT_TABLE[att.entityType]'), 'ต้องมาก่อนบล็อก PARENT_TABLE');
-  // คนแนบ/แอดมิน **และ** ยังแก้ใบได้ — ต้องเป็นเงื่อนไขของ `allowed` ไม่ใช่แค่โผล่ในข้อความ error
-  assert.match(src, /const allowed = canRemoveSalesOrderFile\(att, user\)\s*&& \(order \? await canAttachToSalesOrder\(supabase, order, user\)/);
+  // แก้ใบได้ (มติ 29/10) — ต้องเป็นเงื่อนไขของ `allowed` ไม่ใช่แค่โผล่ในข้อความ error · ใบหาย = ด่านแม่หายกลาง
+  assert.match(src, /const allowed = order \? await canAttachToSalesOrder\(supabase, order, user\)/);
+  assert.match(src, /if \(!order && !canSweepOrphan\) return orphanDenied\(\);/);
   assert.match(src, /salesOrderAttachBlock\(order\)/);
 });
 

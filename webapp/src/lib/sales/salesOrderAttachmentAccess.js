@@ -15,14 +15,19 @@
 //   อ่าน  = เห็นใบได้ (`canViewSalesPlanning` + ขอบเขตอ่านของดีล)
 //   แนบ  = แก้ใบได้ (`canEditSalesPlanning` + ขอบเขตแก้ของดีล — ชุดเดียวกับ `canEdit` ของ SO GET)
 //          ทุกสถานะ **ยกเว้นใบที่ยกเลิก** (และฉบับที่ถูก Rev. แทนแล้ว — ไฟล์ย้ายไปฉบับใหม่)
-//   ลบ   = **คนแนบเอง** (ที่ยังแก้ใบได้) หรือแอดมิน — กันไฟล์ของคนอื่นหายเงียบ
+//   ลบ   = **คนที่แก้ใบได้** (เจ้าของดีล · หัวหน้าในสาย · แอดมิน) — มติ 29/10 แทน "คนแนบเองหรือแอดมิน" ของ 25/09
+//          (ไฟล์ที่ลูกน้องแนบผิด หัวหน้า/เจ้าของดีลต้องเก็บกวาดได้โดยไม่ต้องตามคนแนบ) · ใบถูกลบไปแล้ว = คนแนบ/ผู้ดูแล
+//          (ด่านแม่หายกลางของ DELETE/PATCH `/api/attachments/[id]` — `canSweepOrphan`)
 //   แอดมินข้ามด่านสถานะได้ (เก็บกวาดไฟล์ที่แนบผิดใบ · กติกาเดียวกับไฟล์ผลวัดพื้นที่)
+//   ไฟล์ยืนยันคำสั่งซื้อ (`confirmAttachments`) ลบทีละไฟล์ได้ด้วยกติกาคนเดียวกัน (มติ 29/10) — ด่านสถานะของชุดนั้น
+//   อยู่ที่ `salesOrderConfirmRemoveBlock` (เพิ่มไฟล์เข้าชุดหลังยื่นยังไม่ได้ ตามมติ 25/09)
 //
 // ⚠️ **เพิ่ม entity แนบไฟล์ใหม่ ต้องต่อครบ 5 จุด** — ดูหัวไฟล์ salesAttachmentAccess.js
 import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { loadSourceDeals } from '@/lib/scopedRow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 export const SALES_ORDER_ATTACHMENT = 'sales_order';
 export const SALES_ORDER_ATTACHMENT_TABLE = { [SALES_ORDER_ATTACHMENT]: 'sales_orders' };
@@ -42,13 +47,31 @@ export function salesOrderAttachBlock(order) {
 }
 
 /**
- * ลบ/แก้ไฟล์ใบนี้ได้ไหม — **คนแนบเองหรือแอดมิน** (มติ 25/09)
- * ⚠️ นี่คือด่านชั้นที่สอง ต่อจาก "แก้ใบได้" — คนแนบที่หลุดขอบเขตแก้ของดีลไปแล้วก็ลบไม่ได้
+ * เหตุที่ลบไฟล์ยืนยันคำสั่งซื้อของใบนี้ไม่ได้ (null = ได้) — มติ 29/10: ใบที่อนุมัติแล้วลบได้ (แนบผิด/ไฟล์ซ้ำ) ไม่ต้องออก Rev.
+ * ⚠️ รออนุมัติ = ห้ามทุกคน **รวมแอดมิน** — ผู้อนุมัติกำลังตรวจชุดนี้ ลบตอนนี้ = อนุมัติด้วยชุดที่ไม่ใช่ชุดที่เห็น
+ * ⚠️ ยกเลิก/ถูก Rev. แทน = ด่านเดียวกับแนบเพิ่ม (แอดมินข้ามได้ — เก็บกวาด)
+ * ⚠️ ใบย้อนหลัง (0374) ไม่มีชุดนี้ (CHECK บังคับว่าง)
  */
-export function canRemoveSalesOrderFile(attachment, user) {
-  if (!user || !attachment) return false;
-  if (user.role === 'admin') return true;
-  return !!attachment.uploadedBy && attachment.uploadedBy === user.id;
+export function salesOrderConfirmRemoveBlock(order, user) {
+  if (!order) return 'ไม่พบใบสั่งขาย';
+  if (isHistoricalOrder(order)) return 'ใบสั่งขายย้อนหลังไม่มีเอกสารยืนยันคำสั่งซื้อ';
+  if (order.status === 'pending_approval') {
+    return 'ใบนี้รออนุมัติอยู่ — ผู้อนุมัติกำลังตรวจไฟล์ชุดนี้ ลบได้หลังอนุมัติหรือตีกลับ';
+  }
+  if (user?.role === 'admin') return null;
+  return salesOrderAttachBlock(order);
+}
+
+/**
+ * ตำแหน่งของไฟล์ยืนยันที่จะลบในชุด **ปัจจุบันของแถว** — ไม่เจอ = -1
+ * ⭐ ตัดสินด้วย `storagePath` ไม่ใช่ลำดับ — จอถือรายการที่อาจเก่า (อีกหน้าต่างลบไปก่อน ลำดับขยับ) ⇒ ลำดับล้วนลบไฟล์ข้างเคียง
+ *   `index` ใช้แค่เลือกตัวที่ถูกเมื่อ path เดียวกันอยู่ในชุดซ้ำ
+ * ⚠️ ref ที่ไม่มี `storagePath` ลบทางนี้ไม่ได้ (วัด 09/10: ทุก ref อยู่ใน bucket) — จอไม่ยื่นปุ่มให้แถวแบบนั้น
+ */
+export function findConfirmAttachmentIndex(list, { index, storagePath } = {}) {
+  if (!Array.isArray(list) || typeof storagePath !== 'string' || !storagePath) return -1;
+  if (Number.isInteger(index) && index >= 0 && list[index]?.storagePath === storagePath) return index;
+  return list.findIndex((att) => att?.storagePath === storagePath);
 }
 
 /* ดีลของใบ — คืน `{ deal, error }` ไม่ throw (supabase ไม่ throw อยู่แล้ว · ดูกฎ supabaseNeverThrows)

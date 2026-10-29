@@ -48,6 +48,17 @@ test('ไฟล์ยืนยันของใบเอง → confirm-file ·
   assert.match(rows[0].note, /อยู่ที่ใบเสนอราคา QT-26080001/);
 });
 
+test('ไฟล์ยืนยันที่ลบได้ (มติ 29/10) = ไฟล์ของใบเองที่อยู่ใน bucket · ไฟล์ที่ยังอยู่ที่ใบเสนอราคาไม่มีตัวชี้ให้ลบ', () => {
+  const two = { ...order, confirmAttachments: [{ fileName: 'a.pdf', storagePath: 'q/a' }, { fileName: 'b.pdf' }] };
+  const own = groupOf(buildSalesOrderDocuments({ order: two }), 'confirmation').rows;
+  assert.deepEqual(own.map((r) => [r.index, r.removeRef]), [[0, 'q/a'], [1, null]]);
+
+  const legacy = { id: 'SO-2', quotationId: 'QT-7', confirmAttachments: [] };
+  const quotation = { wonDocType: 'po', wonAttachments: [{ fileName: 'po.pdf', storagePath: 'quotations/QT-7/won/po.pdf' }] };
+  const rows = groupOf(buildSalesOrderDocuments({ order: legacy, quotation }), 'confirmation').rows;
+  assert.equal(rows[0].removeRef, null, 'ไฟล์ของใบเสนอราคา ไม่ใช่ของใบนี้');
+});
+
 test('หลักฐานงวด + ใบกำกับภาษี เรียงตามงวด · ใบกำกับที่ไม่มีไฟล์จริงไม่ขึ้น (proxy ตอบ 404)', () => {
   const res = buildSalesOrderDocuments({
     order,
