@@ -21,7 +21,7 @@ export function exciseSalesOrderCreateError(error) {
   return code ? CREATE_ERRORS[code] : null;
 }
 
-/* ทางที่ SO ค่าสรรพสามิตไม่มี — route ตอบข้อความนี้ก่อนถึงฐาน (ฐานกันซ้ำอีกชั้น: CHECK revisionNo = 0 · 0416/E4) */
+/* ทางที่ SO ค่าสรรพสามิตไม่มี — route ตอบข้อความนี้ก่อนถึงฐาน (ฐานกันซ้ำอีกชั้น: CHECK revisionNo = 0 · trigger `sales_orders_excise_no_revoke_trg` 0416) */
 const BLOCKED = Object.freeze({
   revoke: 'ใบสั่งขายค่าสรรพสามิตย้อนการอนุมัติไม่ได้ — ยกเลิกใบแล้วออกใหม่จากใบเสนอราคาค่าสรรพสามิตใบเดิม',
   revise: 'ใบสั่งขายค่าสรรพสามิตออก Rev. ไม่ได้ — ยกเลิกใบแล้วออกใหม่จากใบเสนอราคาค่าสรรพสามิตใบเดิม',

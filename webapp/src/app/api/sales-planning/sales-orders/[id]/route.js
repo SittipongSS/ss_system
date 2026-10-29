@@ -1002,7 +1002,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'revoke') {
     // ใบย้อนหลังต้องได้เหตุจริงก่อนด่านสิทธิ์ — ไม่งั้น AE Sup เจอ "ได้เฉพาะ AE Supervisor" ซึ่งผิดความจริง
     if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
-    // SO ค่าสรรพสามิต (0416/E4): Rev. เกิดไม่ได้ ⇒ ย้อนแล้วใบค้างตลอดไป — บอกทางออกจริงก่อนด่านสิทธิ์
+    // SO ค่าสรรพสามิต (ฐานกันซ้ำ: trigger sales_orders_excise_no_revoke_trg · 0416): Rev. เกิดไม่ได้ ⇒ ย้อนแล้วใบค้างตลอดไป — บอกทางออกจริงก่อนด่านสิทธิ์
     const exciseRevoke = exciseSalesOrderBlock(before, 'revoke');
     if (exciseRevoke) return fail(exciseRevoke, 409);
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
