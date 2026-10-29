@@ -734,6 +734,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ฝ่ายขายแจ้งสลิปได้หลังงวดอนุมัติ · ไม่ส่ง = ถือเป็นใบทั้งใบ (เหลือ trigger ของฐานกันชั้นเดียว → installment_actual_not_approved
          ซึ่ง documentWorkflowError ข้างล่างแปลเป็น 409 ไทย) */
       order, dealOwnerId: order.deal?.ownerId ?? null,
+      /* แนบหลักฐานเพิ่ม (มติ 29/10) — ด่านนับว่าชุดใหม่ล้นเพดานของงวดไหม */
+      evidenceCount: Array.isArray(body.evidence) ? body.evidence.length : 0,
     });
     if (gate) return badRequest(gate);
 
@@ -840,6 +842,31 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
           : {}),
         // เคลียร์ร่องรอยการตีกลับรอบก่อน — งวดนี้กลับเข้าคิวตรวจใหม่แล้ว
         rejectedById: null, rejectedByName: null, rejectedAt: null, rejectedReason: null,
+      };
+    } else if (action === 'evidence-add') {
+      /* ⭐ แนบหลักฐานเพิ่ม (มติเจ้าของ 29/10 — ลูกค้าโอนงวดเดียวหลายรอบ) — **ต่อท้าย** ชุดเดิม ไม่แตะสถานะ/วันจ่าย/ผู้แจ้ง
+         · ด่านไฟล์ชุดเดียวกับ `report` (ไฟล์ของใบนี้ใน bucket ส่วนตัว · ต้องมีอยู่จริง · ตัดทิ้งบางไฟล์ = ปฏิเสธทั้งคำขอ)
+         · ประทับ `addedAt`/`addedByName` รายไฟล์ — แผงบอกได้ว่าไฟล์ไหนตามมาทีหลังและใครแนบ (ไฟล์ชุดแรกไม่มีสองช่องนี้)
+         · ลำดับไฟล์เดิมคงที่ ⇒ ลิงก์ `payment-file?i=` ของไฟล์เดิมยังชี้ไฟล์เดิม
+         ⚠️ ไฟล์ที่อยู่ในงวดแล้ว (path ซ้ำ) ไม่ถูกเพิ่มซ้ำ — กดส่งซ้ำหลังเน็ตสะดุดไม่ได้สลิปสองแถว */
+      const added = sanitizeEvidenceAttachments(body.evidence, {
+        allowedStorageBucket: PRIVATE_EVIDENCE_BUCKET,
+        allowedStoragePathPrefix: privateEvidencePrefix('sales_order_payment_evidence', order.id),
+        privateOnly: true,
+      });
+      if (!added.length) return badRequest('ต้องแนบหลักฐานอย่างน้อย 1 ไฟล์');
+      if (evidenceRefsDropped(body.evidence, added)) return badRequest(EVIDENCE_REFS_DROPPED_TEXT);
+      const addedMiss = await missingStoredEvidence(supabase, PRIVATE_EVIDENCE_BUCKET, added);
+      if (addedMiss) return badRequest(addedMiss);
+      const current = Array.isArray(row.evidence) ? row.evidence : [];
+      const known = new Set(current.map((att) => att?.storagePath).filter(Boolean));
+      const fresh = added.filter((att) => !known.has(att.storagePath));
+      if (!fresh.length) return badRequest('ไฟล์ที่เลือกแนบอยู่ในงวดนี้แล้ว');
+      patch = {
+        evidence: [
+          ...current,
+          ...fresh.map((att) => ({ ...att, addedAt: now, addedById: user.id, addedByName: actorName })),
+        ],
       };
     } else if (action === 'withdraw') {
       patch = {
