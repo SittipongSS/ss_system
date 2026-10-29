@@ -1,8 +1,8 @@
 import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
-import { billedTaxTotals, exciseTaxLine, resolveProductTaxable } from "@/lib/tax/exciseBilling";
+import { billedTaxTotals, exciseTaxLine, resolveProductTaxable, round2 } from "@/lib/tax/exciseBilling";
 import { lineUnitsTotal } from "@/lib/sales/linePacks";
+import { isExciseChargeProduct } from "@/lib/excise/exciseCharge";
 
-const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
 
 /* สถานะทะเบียนของ FG หนึ่งตัวเท่าที่ใบนี้มองเห็น — เรียงตาม "ใกล้ยื่นได้ที่สุดชนะ"
@@ -71,7 +71,11 @@ export function resolveSoFiling({
   const warnings = [];
   for (const line of lines) {
     const product = productById.get(line.productId) || productByFg.get(normalizedKey(line.fgCode));
-    const fgCode = line.fgCode || product?.fgCode || "";
+    // ⚠️ trim — รหัส FG บนบรรทัด SO เก่ามีแท็บท้ายรหัส (ตามไปถึงคำอธิบายบรรทัดใบค่าสรรพสามิต · ใบทดลอง QT-26100568-0)
+    const fgCode = String(line.fgCode || product?.fgCode || "").trim();
+    /* ⛔ บรรทัด "ค่าภาษีสรรพสามิต" (04-003) ไม่ใช่ของที่ต้องเสียภาษี — เป็นตัวภาษีเอง · ปล่อยเข้าไป = ยื่นภาษีซ้อนภาษี
+       (ใบค่าสรรพสามิตเป็น SO จริง · หมวดนี้ห้ามติ๊ก isExcise อยู่แล้ว ตัดที่นี่อีกชั้นเผื่อธงถูกติ๊กผิด) */
+    if (isExciseChargeProduct(product || { fgCode })) continue;
     const flags = categoryFlags(categoryOf(fgCode), productTypes);
     /* 🐞 **แก้ 2026-08-16:** เดิมเขียน `!flags.isExcise || product?.isExciseTaxable === false`
        ซึ่งเอาธงของ **หมวด** เป็นตัวตั้ง ⇒ override ของฝ่าย RA ทำงานทางเดียว:
@@ -84,10 +88,16 @@ export function resolveSoFiling({
        สินค้า (`resolveProductTaxable` รวม override เข้าไปแล้วทั้งสองทาง) — ไม่ใช่
        `taxableOverride` ดิบ ๆ ที่แถวเก่าจำนวนมากไม่มีค่า · ไม่มีธง (แถวก่อน mig 0131)
        จึงถอยไปใช้ธงของหมวดตามเดิม */
-    const taxable = resolveProductTaxable({
+    const productTaxable = resolveProductTaxable({
       taxableOverride: product?.isExciseTaxable,
       autoTaxable: flags.isExcise,
     });
+    /* ⭐ ทะเบียนที่อนุมัติแล้ว **ตัดสินว่าเสียภาษีไหม** (ตรวจระบบ 26/10 ข้อ H2) — ฝ่าย RA ยกเว้น/บังคับรายทะเบียนได้
+       (`taxableOverride` → `isExciseTaxable` ที่ resolve แล้วบนทะเบียน) · ทางสร้างใบยื่นเองฟังธงนี้อยู่แล้ว
+       (exciseTaxLineForRegistration) แต่ทางนี้เคยดูแค่ธงของสินค้า ⇒ สินค้าที่ RA ยกเว้นบนทะเบียนยังถูกเก็บภาษี
+       ⚠️ เฉพาะทะเบียนที่อนุมัติแล้ว — ร่าง/รอนิติกรรม/ตีกลับยังไม่ใช่คำตัดสิน ⇒ ใช้ธงของสินค้าตามเดิม */
+    const approvedRegistration = product ? approvedRegistrationByProduct.get(product.id) || null : null;
+    const taxable = approvedRegistration ? approvedRegistration.isExciseTaxable !== false : productTaxable;
     if (!taxable) continue;
 
     /* ⭐ จำนวนที่ยื่นภาษี = หน่วยรวมของบรรทัด (`lineUnitsTotal` = แพ็ค × จำนวน · mig 0407) — บรรทัด 2 แพ็ค × 12 เดือน คือของ 24 หน่วย
@@ -111,7 +121,14 @@ export function resolveSoFiling({
       localTaxRatePerUnit: product.localTax,
       quantity,
     });
-    const registration = approvedRegistrationByProduct.get(product.id) || null;
+    /* 🔴 **ภาษีต่อชิ้น 0 บนสินค้าที่ต้องเสียภาษี = ไม่มีฐานภาษี ไม่ใช่ยกเว้น** (ตรวจระบบ 2026-10-26)
+       อัตราบนสินค้าคิดจากราคาขายปลีก (productTaxRates) — ไม่มีราคา ⇒ 0 ⇒ ยื่นขาดเงียบ ๆ
+       (SO อนุมัติแล้ว 22 ใบมีบรรทัดแบบนี้ · 21 ใบเป็น 0 ทั้งใบ) · ด่านราคาขายปลีกที่ "ยื่นขึ้นทะเบียน"
+       ไม่ช่วย เพราะใบยื่นจาก SO ไม่บังคับทะเบียน ⇒ เตือนรายบรรทัดที่นี่ ไม่บล็อก (บล็อกต้องได้มติก่อน)
+       ⚠️ ตัดสินจาก **อัตราที่ปัดแล้ว** (ตัวที่จะลงใบจริง) ไม่ใช่ราคาดิบ — ราคามีแต่อัตราค้าง 0 ก็ยื่นขาดเท่ากัน */
+    const taxBaseMissing = taxLine.taxPerUnit === 0;
+    const retailMissing = !(Number(product.retailPriceIncVat) > 0);
+    const registration = approvedRegistration;
     const needsRegistration = !registration;
     const productRegistrations = registrationsByProduct.get(product.id) || [];
     const registrationState = registrationStateOf(productRegistrations);
@@ -128,7 +145,19 @@ export function resolveSoFiling({
       description: line.description || product.name || product.productName || fgCode,
       ...taxLine,
       needsRegistration,
+      taxBaseMissing,
     });
+    if (taxBaseMissing) {
+      warnings.push({
+        code: "missing_tax_base",
+        salesOrderLineId: line.id,
+        productId: product.id,
+        fgCode,
+        message: retailMissing
+          ? `${fgCode || line.description} ยังไม่มีราคาขายปลีก (ฐานภาษี) — ภาษีคิดออกมา ฿0`
+          : `${fgCode || line.description} อัตราภาษีบนสินค้าเป็น 0 ทั้งที่มีราคาขายปลีก — ตรวจทะเบียนสินค้าก่อนยื่น`,
+      });
+    }
     if (needsRegistration) {
       warnings.push({
         code: "registration_missing",
@@ -142,9 +171,9 @@ export function resolveSoFiling({
   }
 
   const totals = filingLines.reduce((result, line) => ({
-    totalExciseTax: roundMoney(result.totalExciseTax + line.totalExciseTax),
-    totalLocalTax: roundMoney(result.totalLocalTax + line.totalLocalTax),
-    totalTax: roundMoney(result.totalTax + line.totalTax),
+    totalExciseTax: round2(result.totalExciseTax + line.totalExciseTax),
+    totalLocalTax: round2(result.totalLocalTax + line.totalLocalTax),
+    totalTax: round2(result.totalTax + line.totalTax),
   }), { totalExciseTax: 0, totalLocalTax: 0, totalTax: 0 });
 
   return {

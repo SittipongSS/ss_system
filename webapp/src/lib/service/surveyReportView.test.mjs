@@ -8,7 +8,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildSurveyReportSnapshot } from './surveyReportSnapshot.js';
 import { customerFreeTextWarnings, surveyReportSendWarnings, surveyReportView } from './surveyReportView.js';
+import { SURVEY_CONFIRM_OF_LABEL } from './surveyConfirmLink.js';
 import {
+  CONFIRM_ORIGINAL, confirmSurveyFixture,
   drawingSurveyFixture, fakeSha, fakeSignatureVersion, markedSurveyInputs, mixedSurveyFixture, signedSurveyInputs, stressSurveyInputs,
   surveyReportInputsFromFixture, surveySignCases, surveyStressCases, syntheticSurveyFixture,
 } from './surveyReportTestKit.mjs';
@@ -1094,4 +1096,75 @@ test('S3 คำเตือนก่อนส่ง: สาม fixture (ลง�
       else assert.deepEqual(got, [], `${label}/${version}`);
     }
   }
+});
+
+/* ══ งวด S5 กลุ่ม F — แถว "ยืนยันผลจากแบบของ" ในภาคผนวก ง ของฉบับภายใน ═══════════════════════════════════
+ * ภาพนิ่งที่มี `request.confirmsDocNo` (ใบยืนยันหน้างาน) ⇒ หนึ่งแถว ต่อจาก "ยืนยันหน้างานภายหลัง" ก่อน "ผู้บันทึกผลวัด" (แถว 4 กับ 5)
+ * 🔴 ฉบับลูกค้าไม่ได้คีย์ใหม่ (รายการอนุญาตของงวด S3 ไม่ถูกขยาย) · ไม่มีคีย์ = แถวไม่ขึ้น (ไม่พิมพ์ขีด) */
+
+const CONFIRM_FULL = `${CONFIRM_ORIGINAL.requestDocNo} (${CONFIRM_ORIGINAL.reportDocNo})`;
+const confirmSnapshot = (opts) => snapshotOf(surveyReportInputsFromFixture(confirmSurveyFixture(opts)));
+/* ภาพนิ่งของแฝดที่มีคีย์ (ใส่ตรงลงภาพนิ่ง — ตัวกรองอ่านจากภาพนิ่งเท่านั้น) */
+const withConfirms = (snapshot, value = CONFIRM_FULL) => ({ ...snapshot, request: { ...snapshot.request, confirmsDocNo: value } });
+
+test('S5 F ใบยืนยันลงหน้างานล้วน (กรณีปกติ): ฉบับภายในมีแถวเดียว ระหว่าง "เวลาเข้าไซต์" กับ "ผู้บันทึกผลวัด" · RQ อย่างเดียวเมื่อใบต้นทางไม่มีฉบับปัจจุบัน', () => {
+  const view = surveyReportView(confirmSnapshot(), { version: 'internal' });
+  assert.deepEqual(view.appendix.notes.map((n) => n.label), [
+    'รายละเอียดคำร้อง (ฝ่ายขาย)', 'เวลาเข้าไซต์', SURVEY_CONFIRM_OF_LABEL, 'ผู้บันทึกผลวัด', 'นัดที่ทำไม่ได้ก่อนหน้า',
+  ]);
+  assert.equal(view.appendix.notes.filter((n) => n.label === SURVEY_CONFIRM_OF_LABEL).length, 1);
+  assert.deepEqual(noteOf(view, SURVEY_CONFIRM_OF_LABEL), { label: 'ยืนยันผลจากแบบของ', lines: [CONFIRM_FULL] });
+  const rqOnly = surveyReportView(confirmSnapshot({ reportDocNo: null }), { version: 'internal' });
+  assert.deepEqual(noteOf(rqOnly, SURVEY_CONFIRM_OF_LABEL).lines, [CONFIRM_ORIGINAL.requestDocNo]);
+
+  // ทุกอย่างอื่นของฉบับภายในเท่าแฝด · ฉบับลูกค้าเท่าแฝดทั้งก้อน
+  const plain = surveyReportView(twinSnapshot(), { version: 'internal' });
+  assert.deepEqual({ ...view, appendix: { ...view.appendix, notes: view.appendix.notes.filter((n) => n.label !== SURVEY_CONFIRM_OF_LABEL) } }, plain);
+  assert.deepEqual(surveyReportView(confirmSnapshot(), { version: 'customer' }), surveyReportView(twinSnapshot(), { version: 'customer' }));
+});
+
+test('🔴 S5 F ฉบับลูกค้า: ไม่มีคีย์ confirmsDocNo ที่ชั้นไหน ไม่มีป้าย ไม่มีเลข RQ/SU ของใบต้นทาง — ทั้งสองรูปของ fixture', () => {
+  for (const opts of [{}, { reportDocNo: null }]) {
+    const view = surveyReportView(confirmSnapshot(opts), { version: 'customer' });
+    assert.equal(allKeys(view).has('confirmsDocNo'), false);
+    const json = JSON.stringify(view);
+    for (const needle of [SURVEY_CONFIRM_OF_LABEL, CONFIRM_ORIGINAL.requestDocNo, CONFIRM_ORIGINAL.reportDocNo]) {
+      assert.equal(json.includes(needle), false, needle);
+    }
+    // ฉบับที่ไม่รู้จัก = ฉบับลูกค้า (ทางที่ปลอดภัยที่สุด) — ก็ไม่ได้แถวนี้
+    assert.equal(JSON.stringify(surveyReportView(confirmSnapshot(opts), { version: 'nope' })).includes(SURVEY_CONFIRM_OF_LABEL), false);
+  }
+});
+
+test('S5 F ไม่มีคีย์ / คีย์ว่าง = ไม่มีแถว (ไม่พิมพ์ขีด) — ภาพนิ่งทุกฉบับที่ออกก่อนกลุ่มนี้พิมพ์เท่าเดิม', () => {
+  const plain = twinSnapshot();
+  for (const snapshot of [plain, withConfirms(plain, null), withConfirms(plain, ''), withConfirms(plain, '   ')]) {
+    const view = surveyReportView(snapshot, { version: 'internal' });
+    assert.deepEqual(view.appendix.notes.map((n) => n.label), TODAY_NOTES);
+    assert.deepEqual(view, surveyReportView(plain, { version: 'internal' }));
+  }
+  // ช่องว่างหัวท้ายถูกตัด (ภาพนิ่งที่ตัวสร้างตรึงไม่มีทางมีช่องว่าง — ตัวกรองไม่เชื่อภาพนิ่ง)
+  assert.deepEqual(noteOf(surveyReportView(withConfirms(plain, '  RQ-AS-26100345  '), { version: 'internal' }), SURVEY_CONFIRM_OF_LABEL).lines, ['RQ-AS-26100345']);
+});
+
+test('S5 F ลำดับ: แถวใหม่ต่อจาก "ยืนยันหน้างานภายหลัง" ทันที (ใบผสม · จากแบบล้วน) — แถวอื่นไม่ขยับ', () => {
+  for (const [label, which] of [['ผสม', [1]], ['จากแบบล้วน', [0, 1]]]) {
+    const base = snapshotOf(s3Inputs({ which }));
+    const before = surveyReportView(base, { version: 'internal' }).appendix.notes.map((n) => n.label);
+    const after = surveyReportView(withConfirms(base), { version: 'internal' }).appendix.notes.map((n) => n.label);
+    const at = before.indexOf('ยืนยันหน้างานภายหลัง');
+    assert.ok(at > 0, label);
+    assert.deepEqual(after, [...before.slice(0, at + 1), SURVEY_CONFIRM_OF_LABEL, ...before.slice(at + 1)], label);
+    assert.equal(surveyReportView(withConfirms(base), { version: 'customer' }).appendix, undefined, label);
+  }
+});
+
+test('S5 F ตัวกรองไม่แก้ภาพนิ่ง · ผลนิ่ง · ลง JSON ได้ตรง ๆ', () => {
+  const snapshot = confirmSnapshot();
+  const frozen = structuredClone(snapshot);
+  const a = surveyReportView(snapshot, { version: 'internal' });
+  const b = surveyReportView(snapshot, { version: 'internal' });
+  assert.deepEqual(snapshot, frozen);
+  assert.deepEqual(a, b);
+  assert.deepEqual(JSON.parse(JSON.stringify(a)), a);
 });

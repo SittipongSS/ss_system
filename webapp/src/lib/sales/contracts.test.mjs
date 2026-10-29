@@ -910,7 +910,7 @@ test('⭐ หน้าใบสั่งขายออกสัญญาได�
   /* ใบที่ตายแล้ว/โหมดแก้ไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
      ⚠️ 0374 เพิ่มใบย้อนหลังเข้ามาอีกกรณี: สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างและอนุมัติ
      พร้อมใบ ⇒ ฉบับที่สองที่ออกจากที่นี่ผูกกับใบไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่) */
-  assert.match(page, /const canCreateContract = canEdit && !historical && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\);/);
+  assert.match(page, /const canCreateContract = canEdit && !historical && !exciseOrder && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\);/);
 });
 
 /* 🔴 รีวิว 25/09: ข้อความ "ยังไม่มีสัญญาที่ผูกได้" ของการ์ดผูกสัญญาบริการเคยชี้ "การ์ด สัญญา ด้านล่าง" ทุกกรณี
@@ -1482,4 +1482,128 @@ test('หน้าสัญญา: ใบที่ล็อกซ่อนปุ
   assert.match(page, /visible: canEdit && canDeleteContract\(contract\) && !lockReason/);
   assert.match(page, /href=\{`\/sa\/sales-orders\/\$\{linkedOrder\.id\}`\}/);
   assert.match(page, /canEdit=\{canEdit && !filesFrozen\}/);
+});
+
+/* ── ตรวจตัวเลข L2 (26/10): การ์ด "ค้างเกิน 14 วัน" ของทะเบียนสัญญา = แถวที่ตารางเหลือหลังกด ──────────────────────── */
+test('🔴 L2: isSignatureLate — เท่าเกณฑ์พอดียังไม่สาย · เกินหนึ่งวันคือสาย · สถานะอื่น/ไม่มีวันออกเลข ไม่สาย', async () => {
+  const { SIGNATURE_LATE_DAYS, isSignatureLate } = await import('./contracts.js');
+  const now = new Date('2026-10-26T05:00:00Z');
+  const at = (days) => new Date(now.getTime() - days * 86400000).toISOString();
+  assert.equal(isSignatureLate({ status: 'awaiting_signature', issuedAt: at(SIGNATURE_LATE_DAYS) }, now), false);
+  assert.equal(isSignatureLate({ status: 'awaiting_signature', issuedAt: at(SIGNATURE_LATE_DAYS + 1) }, now), true);
+  assert.equal(isSignatureLate({ status: 'signed', issuedAt: at(40) }, now), false);
+  assert.equal(isSignatureLate({ status: 'awaiting_approval', issuedAt: at(40) }, now), false);
+  assert.equal(isSignatureLate({ status: 'awaiting_signature', issuedAt: null }, now), false);
+  assert.equal(isSignatureLate(null, now), false);
+});
+
+test('🔴 L2: ทุกการ์ดบนแถบ × ตัวกรองที่ค้าง (คำค้น · สถานะ · ชนิด · ที่มา · รอฉันลงมือ · เกินเกณฑ์) — ตารางเหลือเท่าเลขบนการ์ด', async () => {
+  const {
+    CONTRACT_CARD_PICKS, EMPTY_CONTRACT_FILTERS, SIGNATURE_LATE_DAYS, contractPassesListFilters, contractPickActive, isSignatureLate,
+  } = await import('./contracts.js');
+  const now = new Date('2026-10-26T05:00:00Z');
+  const at = (days) => new Date(now.getTime() - days * 86400000).toISOString();
+  const rows = [];
+  let n = 0;
+  for (const status of ['draft', 'awaiting_signature', 'awaiting_approval', 'signed', 'cancelled']) {
+    for (const days of [0, SIGNATURE_LATE_DAYS, SIGNATURE_LATE_DAYS + 1, 40]) {
+      for (const kind of ['scent_design', 'service']) {
+        for (const source of ['generated', 'external']) {
+          n += 1;
+          rows.push({
+            id: `C${n}`, status, kind, source, issuedAt: status === 'draft' ? null : at(days),
+            contractNo: status === 'draft' ? null : `CT-${n}`, customerName: n % 2 ? 'ลูกค้า ก' : 'ลูกค้า ข',
+            _waitingOnMe: n % 3 === 0,
+          });
+        }
+      }
+    }
+  }
+  // = summary ของหน้า (ทั้งหมด · รอลงนาม · ค้างเกิน n วัน · ลงนามแล้ว)
+  const cards = {
+    total: rows.length,
+    awaiting: rows.filter((row) => row.status === 'awaiting_signature').length,
+    late: rows.filter((row) => isSignatureLate(row, now)).length,
+    signed: rows.filter((row) => row.status === 'signed').length,
+  };
+  assert.ok(cards.late > 0 && cards.late < cards.awaiting, 'ชุดทดสอบต้องมีทั้งใบสายและใบรอที่ยังไม่สาย');
+  const tableRows = (filters) => rows.filter((row) => contractPassesListFilters(row, filters, { now }));
+  const STALE = [
+    {}, { query: 'ลูกค้า ก' }, { status: ['signed'] }, { status: ['awaiting_signature'] }, { kind: ['service'] },
+    { source: ['external'] }, { waitingOnMe: true }, { late: true },
+    { query: 'CT-1', status: ['draft'], kind: ['scent_design'], source: ['generated'], waitingOnMe: true, late: true },
+  ];
+  assert.deepEqual(Object.keys(CONTRACT_CARD_PICKS).sort(), Object.keys(cards).sort());
+  for (const [key, pick] of Object.entries(CONTRACT_CARD_PICKS)) {
+    // การ์ดระบุครบทุกมิติของตัวตัดสิน — เพิ่มมิติใหม่แล้วลืมใส่ = ของค้างหลุดรอด
+    assert.deepEqual(Object.keys(pick).sort(), Object.keys(EMPTY_CONTRACT_FILTERS).sort(), key);
+    for (const stale of STALE) {
+      assert.equal(tableRows({ ...EMPTY_CONTRACT_FILTERS, ...stale, ...pick }).length, cards[key], `${key} หลัง ${JSON.stringify(stale)}`);
+    }
+    assert.equal(contractPickActive(pick, pick), true, `${key}: หลังกด การ์ดต้องขึ้นว่ากำลังใช้`);
+    for (const other of Object.keys(CONTRACT_CARD_PICKS).filter((k) => k !== key)) {
+      assert.equal(contractPickActive(pick, CONTRACT_CARD_PICKS[other]), false, `${key} ทำให้ ${other} ขึ้นว่าใช้อยู่ไม่ได้`);
+    }
+  }
+  // 🐞 ของเดิม: ตัวเลือกที่ใกล้สุดคือ "รอลงนาม" ซึ่งได้ทุกใบที่รอ (ไม่ใช่เฉพาะที่เกินเกณฑ์)
+  assert.ok(tableRows({ status: ['awaiting_signature'] }).length > cards.late);
+  // ตัวกรองที่ค้างมิติเดียวก็ไม่ใช่ "การ์ดที่ใช้อยู่"
+  assert.equal(contractPickActive({ ...CONTRACT_CARD_PICKS.late, kind: ['service'] }, CONTRACT_CARD_PICKS.late), false);
+  assert.equal(contractPickActive({ ...CONTRACT_CARD_PICKS.late, query: '  ' }, CONTRACT_CARD_PICKS.late), true);
+  // คำค้นยังค้นเลขอ้างอิงของเอกสารภายนอกได้ (ชุดค้นเดิม)
+  assert.equal(contractPassesListFilters({ status: 'signed', externalRef: 'PO-7781' }, { query: 'po-7781' }, { now }), true);
+});
+
+test('🔴 รีวิว L2: ใบที่ข้ามเกณฑ์ระหว่างเปิดหน้าค้าง — การ์ด · ตาราง · รางตัดสินด้วยเวลาอ้างอิงเดียวกัน', async () => {
+  const { CONTRACT_CARD_PICKS, contractPassesListFilters, isSignatureLate, SIGNATURE_LATE_DAYS } = await import('./contracts.js');
+  const { contractListTrack } = await import('./contractListTrack.js');
+  // ออกเลข 15 วันก่อน เวลา 10:00 ⇒ โหลดหน้าตอน 09:00 ยังไม่สาย · กดการ์ดตอน 11:00 สายแล้ว (ถ้าอ่านนาฬิกาใหม่)
+  const loadedAt = new Date('2026-10-26T02:00:00Z'); // 09:00 ไทย
+  const clickedAt = new Date('2026-10-26T04:00:00Z'); // 11:00 ไทย
+  const issuedAt = new Date(loadedAt.getTime() - (SIGNATURE_LATE_DAYS + 1) * 86400000 + 3600000).toISOString(); // 10:00 ไทย
+  const rows = [{ id: 'C1', status: 'awaiting_signature', contractNo: 'CT-1', issuedAt }];
+  assert.equal(isSignatureLate(rows[0], loadedAt), false);
+  assert.equal(isSignatureLate(rows[0], clickedAt), true, 'ชุดทดสอบต้องข้ามเกณฑ์ระหว่างสองเวลา');
+  const asOf = loadedAt; // หน้าเก็บเวลาอ้างอิงตอนโหลด แล้วส่งตัวเดียวกันให้ทุกผิว
+  const card = rows.filter((row) => isSignatureLate(row, asOf)).length;
+  const table = rows.filter((row) => contractPassesListFilters(row, CONTRACT_CARD_PICKS.late, { now: asOf })).length;
+  assert.equal(table, card);
+  const issue = (now) => contractListTrack(rows[0], { now }).steps.find((s) => s.key === 'issue');
+  assert.equal(issue(asOf).state, 'now', 'รางต้องไม่แดงทั้งที่การ์ดยังไม่นับ');
+  assert.equal(issue(clickedAt).state, 'bad');
+  assert.match(issue(clickedAt).note, new RegExp(`รอมา ${SIGNATURE_LATE_DAYS + 1} วัน`));
+});
+
+test('ด่านซอร์ส L2: ทะเบียนกรองด้วย contractPassesListFilters · การ์ดสี่ใบเป็นปุ่มตั้งตัวกรองทั้งชุด · ทุกผิวเรียก isSignatureLate', () => {
+  const page = readSrc('../../app/sales-planning/contracts/page.js');
+  assert.match(page, /return rows\.filter\(\(row\) => contractPassesListFilters\(row, filters, \{ now: asOf \}\)\);/);
+  assert.match(page, /waitingOnMe: waitingOnMeOnly, late: lateOnly,/);
+  assert.match(page, /\}, \[rows, asOf, query, statusFilter, kindFilter, sourceFilter, waitingOnMeOnly, lateOnly\]\);/);
+  assert.match(page, /overdue: rows\.filter\(\(row\) => isSignatureLate\(row, asOf\)\)\.length,/);
+  // 🐞 รีวิว L2: การ์ด · ตาราง · รางอ่านเวลาอ้างอิงตัวเดียวต่อการโหลด (ไม่ใช่ `new Date()` คนละจังหวะ)
+  assert.match(page, /const \[asOf, setAsOf\] = useState\(\(\) => new Date\(\)\);/);
+  assert.match(page, /setRows\(Array\.isArray\(data\) \? data : \[\]\);\n\s*setAsOf\(new Date\(\)\);/);
+  assert.match(page, /\}\), \[rows, asOf\]\);/);
+  assert.match(page, /contractListTrack\(row, \{ now: asOf \}\)/);
+  assert.match(page, /\$\{waitingOnMeOnly\}\|\$\{lateOnly\}`/, 'เปลี่ยนชุดแถว = กลับหน้า 1');
+  const apply = page.slice(page.indexOf('const applyContractPick = (pick) => {'), page.indexOf('const activeFilters'));
+  for (const setter of ['setQuery(pick.query)', 'setStatusFilter([...pick.status])', 'setKindFilter([...pick.kind])',
+    'setSourceFilter([...pick.source])', 'setWaitingOnMeOnly(pick.waitingOnMe)', 'setLateOnly(pick.late)']) {
+    assert.ok(apply.includes(setter), `การ์ดต้องตั้ง ${setter}`);
+  }
+  assert.match(page, /const pickCard = \(key\) => applyContractPick\(cardActive\(key\) \? EMPTY_CONTRACT_FILTERS : CONTRACT_CARD_PICKS\[key\]\);/);
+  const strip = page.slice(page.indexOf('<SaMetricStrip>'), page.indexOf('</SaMetricStrip>'));
+  assert.equal((strip.match(/as="button" type="button"/g) || []).length, 4, 'การ์ดทั้งสี่กดได้');
+  for (const key of ['total', 'awaiting', 'late', 'signed']) {
+    assert.ok(strip.includes(`active={cardActive("${key}")} aria-pressed={cardActive("${key}")} onClick={() => pickCard("${key}")}`), key);
+  }
+  assert.match(page, /กรอง: รอลงนามเกิน \{SIGNATURE_LATE_DAYS\} วัน ×/);
+  assert.match(page, /setSourceFilter\(\[\]\); setLateOnly\(false\); \}\}/, 'ล้างตัวกรองล้างมิตินี้ด้วย');
+  assert.match(page, /useState\(params\.get\("late"\) === "1"\)/);
+  assert.doesNotMatch(page, /> SIGNATURE_LATE_DAYS/, 'ห้ามเทียบเกณฑ์เองในหน้า');
+  for (const rel of ['../../app/sales-planning/contracts/[id]/page.js', './contractListTrack.js', './contractNotify.js']) {
+    const src = readSrc(rel);
+    assert.match(src, /isSignatureLate\(/, `${rel} ต้องเรียก isSignatureLate`);
+    assert.doesNotMatch(src, /[<>]=? SIGNATURE_LATE_DAYS/, `${rel} ห้ามเทียบเกณฑ์เอง`);
+  }
 });

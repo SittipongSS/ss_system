@@ -307,30 +307,94 @@ test('ใบยังไม่อนุมัติไม่ชวนให้�
   assert.match(filing.connect.message, /หลังใบนี้อนุมัติ/);
 });
 
-test('พร้อมยื่น = ปุ่มสร้างใบยื่นอยู่บนเส้นเดินงาน พร้อมยอดเรียกเก็บ', () => {
-  const onCreateFiling = () => {};
+/* ⭐ แผนรื้อสรรพสามิต PR3 (มติ 28/10): ฝ่ายขายเก็บค่าภาษีด้วยใบเสนอราคาค่าสรรพสามิต — ทางสร้างใบยื่นของฝ่ายขายปิดแล้ว (RA ยื่นกรม)
+   ⇒ พร้อมแล้ว = สองปุ่มบนเส้น: ออกใบเสนอราคาค่าสรรพสามิต · ไม่เรียกเก็บในระบบ */
+test('พร้อมแล้ว = ปุ่มออกใบเสนอราคาค่าสรรพสามิต + ไม่เรียกเก็บในระบบ พร้อมยอดภาษี+VAT', () => {
+  const onCreateQuote = () => {};
+  const onNotBilled = () => {};
   const track = salesOrderWorkTrack({
     scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
-    excise: excise({ lines: [exciseLine('FG-1', 'approved')], eligible: true, amountToCollect: 856, onCreateFiling }),
+    excise: excise({ lines: [exciseLine('FG-1', 'approved')], eligible: true, amountToCollect: 856, onCreateQuote, onNotBilled }),
     approved: true,
   });
   const filing = track.segments.at(-1);
-  assert.equal(filing.connect.actionLabel, 'สร้างใบยื่นชำระ');
-  assert.equal(filing.connect.onClick, onCreateFiling);
+  assert.equal(filing.label, 'ค่าสรรพสามิต');
+  assert.deepEqual(filing.connect.actions.map((a) => [a.label, a.onClick, a.disabled]), [
+    ['ออกใบเสนอราคาค่าสรรพสามิต', onCreateQuote, false],
+    ['ไม่เรียกเก็บในระบบ', onNotBilled, false],
+  ]);
   assert.equal(filing.connect.href, undefined, 'ปุ่มสร้างต้องเป็น onClick ไม่ใช่ลิงก์');
   assert.match(filing.meta, /856/);
 });
 
+test('มีใบค่าสรรพสามิตที่ยังมีผล = ลิงก์เปิดใบ · รับแล้ว = ออก SO ค่าสรรพสามิตต่อ · SO อนุมัติ = เสร็จช่วง · ไม่เรียกเก็บ = เสร็จช่วงพร้อมเหตุ', () => {
+  const base = { scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD, approved: true };
+  const live = salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true,
+    exciseQuote: { liveQuote: { id: 'QT-X', quoteNumber: 'QT-26100099-0', status: 'sent', approvalStatus: 'pending' } },
+  }) }).segments.at(-1);
+  assert.equal(live.state, 'live');
+  assert.equal(live.connect.href, '/sales-planning/quotations/QT-X');
+  assert.match(live.connect.message, /QT-26100099-0 — รออนุมัติ/);
+  const accepted = salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true,
+    exciseQuote: { liveQuote: { id: 'QT-X', quoteNumber: 'QT-26100099-0', status: 'accepted', approvalStatus: 'approved' } },
+  }) }).segments.at(-1);
+  // PR4: รับแล้วแต่ยังไม่มี SO ค่าสรรพสามิต = งานถัดไปของฝ่ายขาย (ลิงก์ฟอร์มสร้าง SO จากใบนี้)
+  assert.equal(accepted.state, 'live');
+  assert.match(accepted.connect.href, /^\/sa\/sales-orders\/new\?quotationId=QT-X&returnTo=/);
+  assert.match(accepted.connect.message, /ลูกค้ารับใบเสนอราคาค่าสรรพสามิต QT-26100099-0 แล้ว/);
+  const ordered = (status) => salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true,
+    exciseQuote: {
+      liveQuote: { id: 'QT-X', quoteNumber: 'QT-26100099-0', status: 'accepted', approvalStatus: 'approved' },
+      exciseOrder: { id: 'SOR-X', orderNumber: 'SO-26100100-0', status },
+    },
+  }) }).segments.at(-1);
+  assert.equal(ordered('pending_approval').state, 'live');
+  assert.match(ordered('pending_approval').connect.message, /ใบสั่งขายค่าสรรพสามิต SO-26100100-0 — รออนุมัติ/);
+  assert.equal(ordered('approved').state, 'done');
+  assert.equal(ordered('approved').connect.href, '/sales-planning/sales-orders/SOR-X');
+  const onClear = () => {};
+  const notBilled = salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true, onClearNotBilled: onClear,
+    exciseQuote: { notBilled: { kind: 'included_in_price' }, notBilledLabel: 'รวมในราคาสินค้าแล้ว' },
+  }) }).segments.at(-1);
+  assert.equal(notBilled.state, 'done');
+  assert.match(notBilled.connect.message, /ไม่เรียกเก็บในระบบ — รวมในราคาสินค้าแล้ว/);
+  assert.equal(notBilled.connect.actions[0].onClick, onClear);
+});
+
+test('ออกใบไม่ได้ = ปุ่มยังโชว์ กดไม่ได้ พร้อมเหตุ (ด่านของ SO · ไม่มีสิทธิ์)', () => {
+  const base = { scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD, approved: true };
+  const blocked = salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true, onCreateQuote: () => {},
+    exciseQuote: { blocker: 'ใบสั่งขายย้อนหลังไม่ออกใบเสนอราคาค่าสรรพสามิตในระบบ' },
+  }) }).segments.at(-1);
+  assert.equal(blocked.connect.actions[0].disabled, true);
+  assert.match(blocked.connect.actions[0].disabledReason, /ย้อนหลัง/);
+  const noRight = salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true, onCreateQuote: () => {}, onNotBilled: () => {},
+    createDisabledReason: 'ต้องมีสิทธิ์แก้ใบสั่งขายนี้จึงออกใบค่าสรรพสามิตได้',
+  }) }).segments.at(-1);
+  assert.deepEqual(noRight.connect.actions.map((a) => a.disabled), [true, true]);
+});
+
+/* PR5: เส้นของ RA สี่จุด (เตรียมใบยื่น → กำลังยื่น → ชำระแล้ว → ส่งเอกสารแล้ว) · ตีกลับ = ยืนที่ "กำลังยื่น" แบบช้า */
 test('มีใบยื่นแล้ว = รางขั้นของโมดูลภาษี + ลิงก์เปิดใบยื่น', () => {
-  const track = salesOrderWorkTrack({
+  const at = (status) => salesOrderWorkTrack({
     scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
-    excise: excise({ lines: [exciseLine('FG-1', 'approved')], filing: { id: 'ORD-9', status: 'received' } }),
+    excise: excise({ lines: [exciseLine('FG-1', 'approved')], filing: { id: 'ORD-9', status } }),
     approved: true,
-  });
-  const filing = track.segments.at(-1);
+  }).segments.at(-1);
+  const filing = at('filing');
   assert.equal(filing.state, 'live');
   assert.equal(filing.link.href, '/tax/filings/ORD-9');
-  assert.deepEqual(filing.steps.map((s) => s.state), ['done', 'done', 'live', 'todo', 'todo', 'todo']);
+  assert.deepEqual(filing.steps.map((s) => s.state), ['done', 'live', 'todo', 'todo']);
+  const rejected = at('rejected');
+  assert.equal(rejected.state, 'late');
+  assert.equal(rejected.steps[1].state === 'todo', false, 'ตีกลับต้องยืนที่จุดกำลังยื่น ไม่ใช่ถอยไปจุดแรก');
+  assert.equal(at('delivered').state, 'done');
 });
 
 /* 🪤 ระบบยอมให้สร้างใบยื่นทั้งที่ทะเบียนยังไม่อนุมัติ ⇒ ใบที่ยื่นแล้วยังต้องเห็นว่าทะเบียนค้าง */
@@ -351,4 +415,32 @@ test('current ชี้ช่วงขึ้นทะเบียนเมื่
     excise: excise({ lines: [exciseLine('FG-1', 'none')] }), approved: true,
   });
   assert.equal(track.current.key, 'registration');
+});
+
+/* 🔴 ตรวจระบบ 2026-10-26 — ใบยื่นตรึงอัตราไว้ตอนสร้าง ⇒ บรรทัดที่ภาษี ฿0 เพราะยังไม่มีราคาขายปลีก
+   ต้องเห็นบนเส้นเดินงาน **ก่อน** กดปุ่มสร้าง ไม่งั้นยอดที่ยื่นขาดถาวร */
+test('ก่อนออกใบค่าสรรพสามิต — บรรทัดไม่มีราคาขายปลีกขึ้นเป็นกลุ่ม และปุ่มออกใบกดไม่ได้', () => {
+  const track = salesOrderWorkTrack({
+    scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
+    excise: excise({
+      lines: [exciseLine('FG-1', 'approved'), { ...exciseLine('FG-2', 'approved'), taxBaseMissing: true }],
+      eligible: true, amountToCollect: 9.42, onCreateQuote: () => {},
+    }),
+    approved: true,
+  });
+  const filing = track.segments.at(-1);
+  /* มติ Q3 (28/10): ราคาขายปลีก **บังคับตอนออกใบค่าสรรพสามิต** — ปุ่มโชว์แต่กดไม่ได้ พร้อมเหตุ (route ปฏิเสธด้วยรายการ FG เดียวกัน) */
+  assert.equal(filing.connect.actions[0].label, 'ออกใบเสนอราคาค่าสรรพสามิต');
+  assert.equal(filing.connect.actions[0].disabled, true);
+  assert.match(filing.connect.actions[0].disabledReason, /ราคาขายปลีก/);
+  assert.deepEqual(filing.notes.map((n) => [n.state, n.count, n.codes]), [['no_tax_base', 1, ['FG-2']]]);
+});
+
+test('ไม่มีบรรทัดขาดราคา = ไม่มีกลุ่มเตือนบนช่วงยื่นชำระ', () => {
+  const track = salesOrderWorkTrack({
+    scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
+    excise: excise({ lines: [exciseLine('FG-1', 'approved')], eligible: true, amountToCollect: 856, onCreateQuote: () => {} }),
+    approved: true,
+  });
+  assert.equal(track.segments.at(-1).notes, undefined);
 });

@@ -200,7 +200,8 @@ test('loadOrdersBundle: ใบที่มองไม่เห็น (inSalesVi
     sales_deals: [{ id: 'D1', team: 'KA', ownerId: 'u-sa' }, { id: 'D2', team: 'KA', ownerId: 'u-other' }],
     quotations: [{ id: 'Q1', quoteNumber: 'QT-1', status: 'accepted', paymentPlan: null }],
     sales_order_installments: [inst('A1', 'SOR-0001', 1, { billingRequestId: 'RQ-1' })],
-    dept_requests: [{ id: 'RQ-1', status: 'pending' }],
+    // ⭐ mig 0413: คำร้องรู้งวดของตัวเอง (installmentId) — ตัวโหลดกลางถามตามงวดก่อน
+    dept_requests: [{ id: 'RQ-1', status: 'pending', installmentId: 'A1' }],
   };
   const supabase = {
     from(table) {
@@ -224,7 +225,7 @@ test('loadOrdersBundle: ใบที่มองไม่เห็น (inSalesVi
   assert.equal(res.hidden, 1);
   const installmentQuery = asked.find(([table]) => table === 'sales_order_installments');
   assert.deepEqual(installmentQuery[1], [['salesOrderId', ['SOR-0001']]], 'อ่านงวดเฉพาะใบที่เห็น');
-  assert.deepEqual(asked.find(([table]) => table === 'dept_requests')[1], [['id', ['RQ-1']], ['kind', 'billing_doc']]);
+  assert.deepEqual(asked.find(([table]) => table === 'dept_requests')[1], [['installmentId', ['A1']], ['kind', 'billing_doc']]);
   assert.deepEqual([...res.requestedIds], ['A1']);
 });
 

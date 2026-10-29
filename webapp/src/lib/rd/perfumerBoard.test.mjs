@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   UNASSIGNED, compareBoardRows, isOverdue, perfumerBoardRows, perfumerBoardTotals, perfumerGroups,
   rowPerfumerKey,
@@ -82,14 +83,38 @@ test('ไม่มีวันที่ฝ่ายรับปาก ให้�
 /* ── เลยกำหนด ─────────────────────────────────────────────────────────────── */
 
 test('เลยกำหนดวัดจากวันไทยที่ผู้เรียกส่งมา', () => {
-  assert.equal(isOverdue({ dueDate: '2026-09-07' }, TODAY), true);
-  assert.equal(isOverdue({ dueDate: '2026-09-08' }, TODAY), false);
-  assert.equal(isOverdue({ dueDate: null }, TODAY), false);
-  assert.equal(isOverdue({ dueDate: '2026-09-07' }, null), false, 'ไม่รู้วันนี้ = ไม่ตัดสิน');
+  assert.equal(isOverdue({ dueDate: '2026-09-07', committed: true }, TODAY), true);
+  assert.equal(isOverdue({ dueDate: '2026-09-08', committed: true }, TODAY), false);
+  assert.equal(isOverdue({ dueDate: null, committed: true }, TODAY), false);
+  assert.equal(isOverdue({ dueDate: '2026-09-07', committed: true }, null), false, 'ไม่รู้วันนี้ = ไม่ตัดสิน');
 });
 
 test('กลิ่นที่ส่งไปแล้วไม่นับว่าเลยกำหนด — งานจบไปแล้ว', () => {
-  assert.equal(isOverdue({ dueDate: '2026-01-01', sent: true }, TODAY), false);
+  assert.equal(isOverdue({ dueDate: '2026-01-01', committed: true, sent: true }, TODAY), false);
+});
+
+/* 🔴 L14 · มติเจ้าของ 26/10 (แบบ A) — "เลยกำหนด" = เลยวันที่ RD รับปากไว้เท่านั้น เหมือนคิวคำร้องและหน้าภาพรวม RD
+   วันที่ผู้ขอต้องการ (ถอยมาใช้เรียงเมื่อยังไม่มีใครให้วัน) ไม่ทำให้กลิ่นเลยกำหนด — ทั้งแถบ · หัวกอง · วันที่สีแดง */
+test('🔴 L14: ยังไม่มีใครให้วัน แม้วันที่ผู้ขอต้องการผ่านไปแล้ว = ไม่เลยกำหนด (แถวยังเรียงตามวันนั้น)', () => {
+  const [askedOnly] = perfumerBoardRows([request({ committedDueDate: null, requestedDueDate: '2026-09-01' })]);
+  assert.equal(askedOnly.dueDate, '2026-09-01', 'ยังโชว์/เรียงตามวันที่ผู้ขอต้องการ');
+  assert.equal(askedOnly.committed, false);
+  assert.equal(isOverdue(askedOnly, TODAY), false);
+  const [promised] = perfumerBoardRows([request({ id: 'RQ-2', committedDueDate: '2026-09-01' })]);
+  assert.equal(promised.committed, true);
+  assert.equal(isOverdue(promised, TODAY), true);
+  // ยอดแถบ = ผลรวมป้ายหัวกอง = แถวที่ตารางระบายแดง — ตัวตัดสินตัวเดียว
+  const rows = [askedOnly, promised];
+  const red = rows.filter((r) => isOverdue(r, TODAY)).length;
+  assert.equal(perfumerBoardTotals(rows, { todayIso: TODAY }).overdue, 1);
+  assert.equal(perfumerGroups(rows, { todayIso: TODAY }).reduce((n, g) => n + g.overdue, 0), red);
+  assert.equal(red, 1);
+});
+
+test('🔴 L14 ด่านซอร์ส: หมายเหตุใต้ยอด "เลยกำหนด" บอกว่านับเฉพาะกลิ่นที่ฝ่ายให้วันไว้แล้ว', () => {
+  const page = readFileSync(new URL('../../app/rd/perfumers/page.js', import.meta.url), 'utf8');
+  assert.match(page, /note="นับเฉพาะกลิ่นที่ยังไม่ส่ง และฝ่ายให้วันไว้แล้ว"/);
+  assert.match(page, /isOverdue\(row, today\) \? styles\.overdue/, 'วันที่สีแดงใช้ตัวตัดสินเดียวกับยอด');
 });
 
 /* ── จัดกลุ่ม ─────────────────────────────────────────────────────────────── */
@@ -123,9 +148,9 @@ test('คนที่ถือเยอะกว่าขึ้นก่อน �
 
 test('ทุกช่องนับเป็นกลิ่นหน่วยเดียวกัน', () => {
   const rows = [
-    { briefId: 'a', perfumer: { id: null, name: '' }, dueDate: '2026-09-01', sent: false },
-    { briefId: 'b', perfumer: { id: 'u1', name: 'ริสา' }, dueDate: '2026-09-01', sent: true },
-    { briefId: 'c', perfumer: { id: 'u1', name: 'ริสา' }, dueDate: '2026-09-30', sent: false },
+    { briefId: 'a', perfumer: { id: null, name: '' }, dueDate: '2026-09-01', committed: true, sent: false },
+    { briefId: 'b', perfumer: { id: 'u1', name: 'ริสา' }, dueDate: '2026-09-01', committed: true, sent: true },
+    { briefId: 'c', perfumer: { id: 'u1', name: 'ริสา' }, dueDate: '2026-09-30', committed: true, sent: false },
   ];
   assert.deepEqual(perfumerBoardTotals(rows, { todayIso: TODAY }), {
     scents: 3, unassigned: 1, overdue: 1, sent: 1,

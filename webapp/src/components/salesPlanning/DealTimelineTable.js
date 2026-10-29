@@ -33,6 +33,10 @@ import Link from "next/link";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestsByStepKey, stepPinSummary } from "@/lib/deptRequests";
 import { stepPinHref } from "@/lib/requests/dealLink";
+import {
+  EMPTY_STEP_FILTER, TIMELINE_STEP_STATUS_OPTIONS, timelinePhaseGroups, timelineStepMatches,
+  timelineSummaryActive, timelineSummaryCounts, timelineSummaryPick,
+} from "@/lib/pm/timelineFilter";
 import { requestKindLabel } from "@/lib/master/requestTypes";
 import { businessDate } from "@/lib/businessDate";
 import { apiFetch } from "@/lib/apiFetch";
@@ -137,6 +141,11 @@ export default function TimelineWorkspace({
   panelSubtitle = "ติดตามขั้นตอน ผู้รับผิดชอบ และวันตามแผนเทียบวันจริง",
   panelActions = null,
   toolbarStart = null,
+  /* ตัวกรองสถานะ/ฝ่ายแบบ controlled (ไม่ส่ง = แผงถือเอง เหมือนเดิม · หน้าดีลใช้แบบนั้น)
+     หน้าโครงการถือเองเพื่อให้เลขบนตัวเลือก "ดีลที่แสดง" นับด้วยตัวกรองเดียวกับแผง (ตรวจตัวเลข M18a)
+     รูป `{ statuses, depts, overdue }` — กติกาอยู่ที่ `lib/pm/timelineFilter.timelineStepMatches` */
+  stepFilter: controlledStepFilter = null,
+  onStepFilterChange,
   // โครงการที่ปิด/พักอยู่ — จางเฉพาะเนื้อแผง หัวแผงยังกดพิมพ์/ดูประวัติเวอร์ชันได้
   locked = false,
   onChanged,
@@ -168,11 +177,19 @@ export default function TimelineWorkspace({
   // 2026-07-18: ตัวกรองทั้งระบบเลือกหลายค่าได้) — ว่าง = ทั้งหมด; ขั้นที่ไม่ระบุฝ่าย/ALL
   // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
   const myDept = useDepartment();
-  const [statusFilter, setStatusFilter] = useState([]);
-  const [deptFilter, setDeptFilter] = useState([]);
-  const matchDept = (task) => !deptFilter.length || !task.role || task.role === "ALL" || deptFilter.includes(task.role);
-  const statusKeyOf = (task) => (task.status === "In Progress" ? "progress" : task.status === "Completed" ? "completed" : "pending");
-  const matchStatus = (task) => !statusFilter.length || statusFilter.includes(statusKeyOf(task));
+  /* ⭐ กติกาการกรองอยู่ที่ `timelineStepMatches` ตัวเดียว — หน้าโครงการนับเลขบนตัวเลือกดีลด้วยตัวเดียวกัน */
+  const [ownStepFilter, setOwnStepFilter] = useState(EMPTY_STEP_FILTER);
+  const stepFilter = controlledStepFilter || ownStepFilter;
+  const setStepFilter = (next) => {
+    if (!controlledStepFilter) setOwnStepFilter(next);
+    onStepFilterChange?.(next);
+  };
+  const statusFilter = stepFilter.statuses;
+  const deptFilter = stepFilter.depts;
+  const setStatusFilter = (statuses) => setStepFilter({ ...stepFilter, statuses });
+  const setDeptFilter = (depts) => setStepFilter({ ...stepFilter, depts });
+  const setOverdueFilter = (overdue) => setStepFilter({ ...stepFilter, overdue });
+  const stepMatches = (task) => timelineStepMatches(task, stepFilter);
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   // ปฏิทินวันหยุดจริงจาก DB ต้องเข้า module-global ของ dateHelpers ก่อนพรีวิว recalc —
@@ -217,21 +234,12 @@ export default function TimelineWorkspace({
   }, [canEdit]);
 
   // เลขขั้น 1.1/1.2 ตามกลุ่มเฟส (แบบเดียวกับตารางโครงการ) + map ไว้แปลชิป "ขึ้นกับ"
-  const { groups, numberOf } = useMemo(() => {
-    const groups = [];
-    const numberOf = new Map();
-    for (const t of tasks) {
-      const last = groups[groups.length - 1];
-      if (!last || last.phase !== (t.phase || "")) groups.push({ phase: t.phase || "", tasks: [t] });
-      else last.tasks.push(t);
-    }
-    groups.forEach((g, gi) => g.tasks.forEach((t, ti) => numberOf.set(t.id, `${gi + 1}.${ti + 1}`)));
-    return { groups, numberOf };
-  }, [tasks]);
+  // ⭐ ทุกกลุ่มพก `index` (ลำดับเฟสก่อนกรอง) — หัวเฟส/สีเฟสของทั้งสองมุมมองใช้เลขนี้ ไม่ใช่ลำดับหลังกรอง (ตรวจตัวเลข L13)
+  const { groups, numberOf } = useMemo(() => timelinePhaseGroups(tasks), [tasks]);
 
   const phases = useMemo(() => [...new Set(tasks.map((t) => t.phase).filter(Boolean))], [tasks]);
   const tableGroups = useMemo(() => groups.map((group) => {
-    const filtered = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
+    const filtered = group.tasks.filter(stepMatches);
     const statusRank = { "In Progress": 0, Pending: 1, Completed: 2 };
     const sorted = [...filtered].sort((a, b) => {
       if (tableSort === "due") return String(a.finishDate || "9999").localeCompare(String(b.finishDate || "9999"));
@@ -239,9 +247,10 @@ export default function TimelineWorkspace({
       if (tableSort === "name") return String(a.name || "").localeCompare(String(b.name || ""), "th");
       return (a.stepOrder ?? 0) - (b.stepOrder ?? 0);
     });
+    // `...group` พก `index` เดิมมาด้วย — กรองเฟสที่ว่างทิ้งแล้วเลขหัวเฟสยังตรงกับเลขขั้น (ตรวจตัวเลข L13)
     return { ...group, tasks: sorted };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- matchDept/matchStatus ผันตาม statusFilter/deptFilter ที่อยู่ใน deps แล้ว
-  }).filter((group) => group.tasks.length), [groups, tableSort, statusFilter, deptFilter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- stepMatches ผันตาม stepFilter ที่อยู่ใน deps แล้ว
+  }).filter((group) => group.tasks.length), [groups, tableSort, stepFilter]);
   // PredecessorPicker แสดงเลขขั้นจาก displayNumber — เติมจาก map เลข 1.1/1.2 ของตารางนี้
   const tasksWithNumbers = useMemo(
     () => tasks.map((t) => ({ ...t, displayNumber: numberOf.get(t.id) })),
@@ -352,15 +361,21 @@ export default function TimelineWorkspace({
   };
 
   const assigneeOptions = users.map((u) => ({ id: u.id, name: u.name }));
-  const done = tasks.filter((task) => task.status === "Completed").length;
-  const inProgress = tasks.filter((task) => task.status === "In Progress").length;
+  /* ⭐ ป้ายสรุปสี่ตัว (ตรวจตัวเลข L1 · 26/10) — นับด้วยตัวตัดสินเดียวกับตัวกรอง (`timelineSummaryCounts`) และกดได้:
+     กด = ตัวกรองขั้นชุดใหม่ทั้งชุด (`timelineSummaryPick` · ล้างฝ่ายที่ค้าง เพราะป้ายนับทุกฝ่าย) ⇒ เลขบนป้าย = ขั้นที่เหลือหลังกด
+     · กดป้ายที่ใช้อยู่ซ้ำ = ล้างตัวกรอง · "วันนี้" ของเลยกำหนดมาจากนาฬิกาไทย (`businessDate`) */
+  const today = businessDate();
+  const summaryCounts = timelineSummaryCounts(tasks, today);
+  const done = summaryCounts.completed;
   /* ⚠️ **เก็บค่าดิบไม่ปัด** — ตัวเดียวกันนี้ถูกใช้สองงาน: เลขใหญ่ที่คนอ่าน (จัดรูปเป็น
      2 ตำแหน่งตอนพิมพ์) กับ `width` ของแถบความคืบหน้าซึ่งเป็นหน่วย CSS ต้องเป็นตัวเลขดิบ
      ⇒ ห้ามแปลงตัวแปรนี้เป็นสตริงที่จัดรูปแล้ว · ของเดิมปัดตรงนี้ (8 จาก 12 = 66.67 → 67) */
   const progressPct = tasks.length ? (done / tasks.length) * 100 : 0;
   const milestones = tasks.filter((task) => task.isMilestone);
-  const today = businessDate();
-  const overdue = tasks.filter((task) => task.status !== "Completed" && task.finishDate && task.finishDate < today).length;
+  const overdue = summaryCounts.overdue;
+  const pickSummary = (kind) => setStepFilter(timelineSummaryActive(stepFilter, kind) ? EMPTY_STEP_FILTER : timelineSummaryPick(kind));
+  // คำบนป้ายสถานะ = คำของตัวเลือกเดียวกันในแผงกรอง (ป้ายกับตัวเลือกคือตัวกรองชุดเดียวกัน — คำเดียวทั้งแผง)
+  const statusOptionLabel = (kind) => TIMELINE_STEP_STATUS_OPTIONS.find((option) => option.value === kind).label;
   const togglePhase = (key) => setCollapsedPhases((current) => {
     const next = new Set(current);
     next.has(key) ? next.delete(key) : next.add(key);
@@ -399,15 +414,15 @@ export default function TimelineWorkspace({
     const ordered = myDept && present.includes(myDept) ? [myDept, ...present.filter((d) => d !== myDept)] : present;
     return ordered.map((dep) => ({ value: dep, label: dep === myDept ? `ฝ่ายของฉัน (${dep})` : dep }));
   }, [tasks, myDept]);
-  const filterCount = statusFilter.length + deptFilter.length;
+  const filterCount = statusFilter.length + deptFilter.length + (stepFilter.overdue ? 1 : 0);
   const filterControl = (
     <FilterPopover
       count={filterCount}
-      onClear={() => { setStatusFilter([]); setDeptFilter([]); }}
+      onClear={() => setStepFilter(EMPTY_STEP_FILTER)}
       groups={[
         {
           key: "status", label: "สถานะ",
-          options: [{ value: "pending", label: "รอดำเนินการ" }, { value: "progress", label: "กำลังทำ" }, { value: "completed", label: "เสร็จแล้ว" }],
+          options: TIMELINE_STEP_STATUS_OPTIONS,
           selected: statusFilter,
           onChange: setStatusFilter,
         },
@@ -417,6 +432,13 @@ export default function TimelineWorkspace({
           selected: deptFilter,
           onChange: setDeptFilter,
         }] : []),
+        /* มิติเลยกำหนด (ตรวจตัวเลข L1) — ป้าย "เลยกำหนด n" ตั้งตัวนี้ ⇒ ต้องเห็นและถอดได้จากแผงกรองด้วย */
+        {
+          key: "due", label: "กำหนด",
+          options: [{ value: "overdue", label: "เลยกำหนด" }],
+          selected: stepFilter.overdue ? ["overdue"] : [],
+          onChange: (values) => setOverdueFilter(values.includes("overdue")),
+        },
       ]}
     />
   );
@@ -429,6 +451,14 @@ export default function TimelineWorkspace({
      ⚠️ แถบบันทึก `.timeline-save-bar` (position: fixed) และโมดัลวางนอกแผงโดยเจตนา */
   const shownCount = view === "document" ? tasks.length : tableGroups.reduce((sum, group) => sum + group.tasks.length, 0);
   const countText = view !== "document" && filterCount ? `${shownCount} / ${tasks.length} ขั้นตอน` : `${tasks.length} ขั้นตอน`;
+  /* ⭐ มีขั้นแต่ตัวกรองไม่เหลือสักขั้น (รีวิว L1) — ป้ายสรุปกดได้แม้เลข 0 ⇒ กด "กำลังทำ 0" แล้วแผงว่างเปล่า
+     ต้องบอกว่าว่างเพราะตัวกรอง + มีปุ่มล้างในที่เดียวกัน (ไม่ใช่ให้ไปเดาจากเลข "0 / n ขั้นตอน" บนหัวแผง)
+     · มุมมองรายการกับตารางใช้ก้อนเดียวกัน · `shownCount` นับจาก `tableGroups` ซึ่งกรองด้วย `stepMatches` ตัวเดียวกับรายการ */
+  const filteredEmpty = view !== "document" && tasks.length > 0 && shownCount === 0 ? (
+    <EmptyState plain icon={ChartGantt} action={{ label: "ล้างตัวกรอง", onClick: () => setStepFilter(EMPTY_STEP_FILTER) }}>
+      ไม่มีขั้นตอนที่ตรงตัวกรอง
+    </EmptyState>
+  ) : null;
   const panelActionNodes = panelActions || showViewSwitcher ? (
     <>
       {panelActions}
@@ -486,10 +516,23 @@ export default function TimelineWorkspace({
                     <span style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", display: "inline-flex", alignItems: "center", gap: 6 }}><TrendingUp size={15} color="var(--accent)" /> เสร็จแล้ว {done} จาก {tasks.length} ขั้นตอน</span>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <span className="ui-badge" style={{ color: "var(--text-3)" }}><CircleDashed size={12} /> รอดำเนินการ {tasks.length - done - inProgress}</span>
-                    <span className="ui-badge" style={{ color: "var(--accent)" }}><Clock size={12} /> กำลังทำ {inProgress}</span>
-                    <span className="ui-badge" style={{ color: "var(--green)" }}><CheckCircle2 size={12} /> เสร็จสิ้น {done}</span>
-                    {overdue > 0 && <span className="ui-badge" style={{ color: "var(--red)" }}><AlertTriangle size={12} /> เลยกำหนด {overdue}</span>}
+                    {/* ป้าย = ปุ่มตัวกรอง (ตรวจตัวเลข L1) — สีมาจากข้อมูลสถานะ · ป้ายที่ใช้อยู่ได้ขอบ/พื้นเข้ม (aria-pressed) */}
+                    {[
+                      { kind: "pending", color: "var(--text-3)", icon: CircleDashed, label: statusOptionLabel("pending") },
+                      { kind: "progress", color: "var(--accent)", icon: Clock, label: statusOptionLabel("progress") },
+                      { kind: "completed", color: "var(--green)", icon: CheckCircle2, label: statusOptionLabel("completed") },
+                      // เลยกำหนดขึ้นเมื่อมีของ หรือกำลังกรองอยู่ (ซ่อนตอนกรอง = ถอดจากป้ายไม่ได้)
+                      ...(overdue > 0 || stepFilter.overdue ? [{ kind: "overdue", color: "var(--red)", icon: AlertTriangle, label: "เลยกำหนด" }] : []),
+                    ].map(({ kind, color, icon: Icon, label }) => {
+                      const pressed = timelineSummaryActive(stepFilter, kind);
+                      return (
+                        <button key={kind} type="button" className="ui-badge" aria-pressed={pressed} onClick={() => pickSummary(kind)}
+                          title={pressed ? "กดอีกครั้งเพื่อล้างตัวกรอง" : `แสดงเฉพาะขั้นที่${label}`}
+                          style={{ color, cursor: "pointer", borderColor: pressed ? "currentColor" : undefined, background: pressed ? "color-mix(in srgb, currentColor 22%, transparent)" : undefined }}>
+                          <Icon size={12} aria-hidden="true" /> {label} {summaryCounts[kind]}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="progress" style={{ height: 8, marginBottom: milestones.length ? 16 : 0 }}><span className={done === tasks.length && tasks.length ? "done" : undefined} style={{ width: `${progressPct}%` }} /></div>
@@ -516,20 +559,21 @@ export default function TimelineWorkspace({
               </div>
 
               {!tasks.length && <EmptyState plain icon={ChartGantt}>ยังไม่มีขั้นตอนในไทม์ไลน์นี้</EmptyState>}
-              {groups.map((group, groupIndex) => {
-                const phaseTasks = group.tasks.filter((task) => matchDept(task) && matchStatus(task));
+              {filteredEmpty}
+              {groups.map((group) => {
+                const phaseTasks = group.tasks.filter(stepMatches);
                 if (!phaseTasks.length) return null;
-                const phaseKey = `${group.phase}|${groupIndex}`;
+                const phaseKey = `${group.phase}|${group.index}`;
                 const collapsed = collapsedPhases.has(phaseKey);
                 const phaseDone = phaseTasks.filter((task) => task.status === "Completed").length;
                 const phasePct = phaseTasks.length ? Math.round((phaseDone / phaseTasks.length) * 100) : 0;
                 const phaseActive = phaseTasks.some((task) => task.status === "In Progress");
-                const phaseColor = PHASE_COLORS[groupIndex % PHASE_COLORS.length];
+                const phaseColor = PHASE_COLORS[group.index % PHASE_COLORS.length];
                 return (
                   <section key={phaseKey}>
                     <button type="button" onClick={() => togglePhase(phaseKey)} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "9px 14px", marginBottom: collapsed ? 0 : 8, background: `color-mix(in srgb, ${phaseColor} 7%, var(--panel))`, border: "none", borderLeft: `3px solid ${phaseColor}`, borderRadius: 10, cursor: "pointer", textAlign: "left" }}>
                       {collapsed ? <ChevronRight size={14} color={phaseColor} /> : <ChevronDown size={14} color={phaseColor} />}
-                      <span style={{ flex: 1, fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>{groupIndex + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
+                      <span style={{ flex: 1, fontSize: "var(--fs-7)", fontWeight: "var(--fw-bold)" }}>{group.index + 1}. {group.phase || "ไม่ระบุเฟส"}</span>
                       <span style={{ fontSize: "var(--fs-5)", fontWeight: "var(--fw-semibold)", color: phaseDone === phaseTasks.length ? "var(--green)" : phaseActive ? "var(--accent)" : "var(--text-3)" }}>{phaseDone}/{phaseTasks.length}</span>
                       {phaseDone === phaseTasks.length ? <CheckCircle2 size={13} color="var(--green)" /> : <div style={{ width: 52, height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${phasePct}%`, background: phaseActive ? "var(--accent)" : phaseColor }} /></div>}
                     </button>
@@ -596,13 +640,13 @@ export default function TimelineWorkspace({
               </tr>
             </thead>
             <tbody>
-              {tableGroups.map((g, gi) => (
-                <FragmentGroup key={`${g.phase}|${gi}`}>
+              {tableGroups.map((g) => (
+                <FragmentGroup key={`${g.phase}|${g.index}`}>
                   <tr className="timeline-phase-row">
                     <td colSpan={canEdit ? 11 : 10} style={{ background: "var(--panel-2)", borderTop: "2px solid var(--border)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: "var(--fw-bold)", fontSize: "var(--fs-7)" }}>
-                        <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[gi % PHASE_COLORS.length] }} />
-                        {gi + 1}. {g.phase || "ไม่ระบุเฟส"}
+                        <span style={{ width: 9, height: 9, borderRadius: 3, background: PHASE_COLORS[g.index % PHASE_COLORS.length] }} />
+                        {g.index + 1}. {g.phase || "ไม่ระบุเฟส"}
                         <span style={{ marginLeft: "auto", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", fontSize: "var(--fs-3)" }}>{g.tasks.filter((t) => t.status === "Completed").length}/{g.tasks.length}</span>
                       </div>
                     </td>
@@ -699,6 +743,7 @@ export default function TimelineWorkspace({
                   ))}
                 </FragmentGroup>
               ))}
+              {filteredEmpty && <tr><td colSpan={canEdit ? 11 : 10}>{filteredEmpty}</td></tr>}
             </tbody>
           </table></TableScroll>
           {canAdd && (

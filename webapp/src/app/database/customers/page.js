@@ -12,6 +12,8 @@ import { isSuperuser } from "@/lib/permissions";
    ที่เพิ่งสร้างไม่ได้จากจอ ทั้งที่ API รับแล้ว */
 import { activeSalesTeams, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
+import { approvalStatCounts, isPendingApproval } from "@/lib/master/pendingApprovalLinks";
+import { customerFilterFacets, filterCustomers } from "@/lib/master/customerFilter";
 import Modal from "@/components/Modal";
 import FilterPopover from "@/components/ui/FilterPopover";
 import CustomerForm, { EMPTY_CUSTOMER } from "@/components/database/CustomerForm";
@@ -20,7 +22,7 @@ import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/ui/ApprovalQueue";
-import { brandTh, brandEn, brandBothOf } from "@/lib/master/brands";
+import { brandBothOf } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, naText, NA } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
@@ -65,6 +67,9 @@ export default function CustomerDirectory() {
   // so the team check matters here — hide the buttons for other teams' records.
   // กฎเดียวกับหน้าสินค้าและหน้ารายละเอียด — อยู่ที่ lib/master/approvalControl ที่เดียว
   const canApproveRow = (rec) => canApproveMasterRecord(role, myTeams, rec);
+  /* ใบที่บัญชีนี้กดอนุมัติ/ตีกลับได้ตรงนี้ — คิวข้างทะเบียน · ปุ่มบนการ์ด · ปุ่มในตาราง ถามตัวเดียวกัน
+     ⚠️ "รออนุมัติ" มาจาก `isPendingApproval` ตัวเดียวกับเลขบนการ์ด/ป้ายเมนู ไม่เขียนเงื่อนไขสด (H3) */
+  const canDecideRow = (rec) => isPendingApproval(rec) && canApproveRow(rec);
   const [customers, setCustomers] = useState(() => apiCache.get(MANAGE_KEY) ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,7 +81,10 @@ export default function CustomerDirectory() {
      ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียน 121 รายให้ไล่หาเอง
      ⚠️ ตั้งเป็นค่าตั้งต้นของตัวกรองจริง (ไม่ใช่ตัวกรองซ่อน) — FilterPopover ขึ้นเลข 1
      และล้างได้จากที่เดิม ⇒ ไม่ต้องมีปุ่มล้างซ้ำอีกตัว
-     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า (แพตเทิร์นเดียวกับ `?count=` ของคิว RD) */
+     ⚠️ ตอนนี้ยังอ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — **เป็นงานค้างที่รู้อยู่** (H3 · ภาคผนวก ม-115 ใน
+        docs/requests-rd-decision-log.md): กติกา "อ่านครั้งเดียว" ของ ม-115 ถูกแทนแล้วด้วย "URL เป็นแหล่งเดียว ·
+        × เขียน URL ใหม่" (`productionJobsLink` #1915 · `projectListFilter` M17a) ⇒ ย้ายหน้านี้ตามแพตเทิร์นนั้น
+        อย่าก๊อปการอ่านครั้งเดียวไปหน้าอื่น */
   const fromNavCount = useSearchParams().get("count") === "customers";
   const [statusFilter, setStatusFilter] = useState(fromNavCount ? ["pending"] : []);
   const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
@@ -212,12 +220,12 @@ export default function CustomerDirectory() {
   };
 
   const q = search.trim().toLowerCase();
-  const counts = {
-    pending: customers.filter((c) => approvalStatusOf(c) === "pending").length,
-    approved: customers.filter((c) => approvalStatusOf(c) === "approved").length,
-    rejected: customers.filter((c) => approvalStatusOf(c) === "rejected").length,
-    inactive: customers.filter((c) => c.isActive === false).length,
-  };
+  /* แถบตัวเลขข้างทะเบียน — แต่ละเลข = แถวหลังตั้งตัวกรองที่ตรงกัน (ตรวจตัวเลข M20b · `approvalStatCounts`)
+     ⚠️ "รออนุมัติ" ตัวนับเดียวกับป้ายเมนู/การ์ดภาพรวม และเท่าแถวของตัวกรอง "รออนุมัติ" (รวมใบเลิกใช้ · H3)
+     🐞 เดิม "ทั้งหมด" = customers.length และ "อนุมัติแล้ว/ไม่อนุมัติ" รวมใบเลิกใช้ที่ทะเบียนซ่อน */
+  const counts = useMemo(() => approvalStatCounts(customers), [customers]);
+  // มีใบเลิกใช้ในทะเบียนไหม — ตัดสินว่าตัวเลือก "รวมลูกค้าที่เลิกใช้" ขึ้นหรือไม่ (เลขบนตัวเลือกมาจาก facets)
+  const inactiveInRegistry = customers.some((c) => c.isActive === false);
 
   // Distinct teams present — the team filter only appears when this user can see
   // more than one (supervisor/admin); team-scoped roles see a single team.
@@ -225,23 +233,17 @@ export default function CustomerDirectory() {
     () => [...new Set(customers.flatMap((c) => teamsOf(c)).filter(Boolean))].sort(),
     [customers],
   );
-  const filteredCustomers = customers.filter((c) => {
-    if (!showInactive && c.isActive === false) return false;
-    if (statusFilter.length && !statusFilter.includes(approvalStatusOf(c))) return false;
-    if (teamFilter.length && !teamsOf(c).some((t) => teamFilter.includes(t))) return false;
-    if (!q) return true;
-    // ⚠️ ชื่ออังกฤษต้องค้นเจอด้วย (กติกา entity: ค้นหาต้องเจอทุกภาษาที่มี) — ลูกค้าที่
-    // มีแต่ชื่ออังกฤษจะหาไม่เจอเลยถ้าลืมคีย์นี้
-    // รหัสสาขาเป็นคอลัมน์บนตารางและเป็นครึ่งหนึ่งของคีย์ซ้ำ (เลขผู้เสียภาษี + สาขา)
-    // ⇒ คนที่ถือเลขสาขาจากเอกสารต้องค้นเจอใบที่ถูกต้องได้
-    return [c.arCode, c.name, c.nameEn, c.taxId, c.branchCode, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])]
-      .some((v) => (v || "").toLowerCase().includes(q));
-  });
+  /* ⭐ ตัวกรองอยู่ที่ `lib/master/customerFilter` ตัวเดียว (ตรวจตัวเลข M21b) — คู่แฝดของ productFilter
+     ใบเลิกใช้ซ่อนเป็นค่าตั้งต้น แต่ใบที่รออนุมัติยังขึ้นในตัวกรอง "รออนุมัติ" (มติเจ้าของ 19/10 · H3)
+     ⇒ `?count=customers` เปิดเจอครบทุกใบที่ป้ายเมนู/การ์ดภาพรวมนับ · ค้นได้ทุกช่องที่ตาเห็น (AR · ชื่อสองภาษา ·
+     เลขผู้เสียภาษี · สาขา · โทร · แบรนด์สองภาษา) */
+  const filterState = { search: q, statuses: statusFilter, teams: teamFilter, showInactive };
+  const filteredCustomers = filterCustomers(customers, filterState);
+  // "รวมลูกค้าที่เลิกใช้ (n)" = แถวที่เพิ่มขึ้นเมื่อติ๊ก ภายใต้คำค้น/ทีม/สถานะที่ติดอยู่
+  const facets = customerFilterFacets(customers, filterState);
 
   // Pending records this user may approve — surfaced at the top as a queue.
-  const approvalQueue = customers.filter(
-    (c) => approvalStatusOf(c) === "pending" && canApproveRow(c),
-  );
+  const approvalQueue = customers.filter(canDecideRow);
 
   const sort = useSortableTable(filteredCustomers, {
     arCode: (c) => c.arCode || "",
@@ -302,9 +304,10 @@ export default function CustomerDirectory() {
             options: teams.map((t) => ({ value: t, label: t })),
             selected: teamFilter, onChange: setTeamFilter,
           }] : []),
-          ...(counts.inactive > 0 ? [{
+          /* ขึ้นเมื่อทะเบียนมีใบเลิกใช้ (หรือติ๊กค้างอยู่ ให้เอาออกได้) · เลขในวงเล็บนับพร้อมตัวกรองอื่น (M21b) */
+          ...(inactiveInRegistry || showInactive ? [{
             key: "inactive", label: "ที่เลิกใช้", icon: Archive,
-            options: [{ value: "show", label: `รวมลูกค้าที่เลิกใช้ (${counts.inactive})` }],
+            options: [{ value: "show", label: `รวมลูกค้าที่เลิกใช้ (${facets.inactive})` }],
             selected: showInactive ? ["show"] : [],
             onChange: (vals) => setShowInactive(vals.includes("show")),
           }] : []),
@@ -328,7 +331,7 @@ export default function CustomerDirectory() {
         <>
           <StatCards
             items={[
-              { label: "ทั้งหมด", value: customers.length },
+              { label: "ทั้งหมด", value: counts.total },
               { label: "รออนุมัติ", value: counts.pending, tone: counts.pending ? "warn" : undefined },
               { label: "อนุมัติแล้ว", value: counts.approved, tone: "success" },
               { label: "ไม่อนุมัติ", value: counts.rejected, tone: counts.rejected ? "danger" : undefined },
@@ -363,14 +366,15 @@ export default function CustomerDirectory() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {pageRows.map((c) => {
             const status = approvalStatusOf(c);
-            const showActions = status === "pending" && canApproveRow(c);
+            const showActions = canDecideRow(c);
+            // จางเฉพาะใบเลิกใช้ที่ไม่มีปุ่มอนุมัติ — เหตุผลเดียวกับแถวในมุมมองตาราง (H3)
             const inactive = c.isActive === false;
             return (
               /* การ์ดใบนี้ห่อทั้งใบด้วย <Link> ไม่ได้ — มี <ApprovalActions> (สองปุ่ม) โผล่มา
                  ตอน pending && canApproveRow และ `<a>` ห้ามมี interactive descendant
                  ⇒ ท่า C: ทางเข้าจริงคือ <Link> ที่บล็อก "รหัสบน · ชื่อล่าง" ส่วน onClick
                  ของ <ClickableCard> เป็น **ทางลัดของเมาส์** (ดูหัวไฟล์ ui/ClickableCard.js) */
-              <ClickableCard key={c.id} href={detailHref(c)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive ? { opacity: 0.6 } : undefined}>
+              <ClickableCard key={c.id} href={detailHref(c)} className="glass-panel clickable-row cursor-pointer p-4 flex flex-col gap-2" style={inactive && !showActions ? { opacity: 0.6 } : undefined}>
                 <div className="flex items-start justify-between gap-2">
                   {/* ทรงเดียวกับเซลล์แรกของมุมมองตาราง · prefetch={false}: ทะเบียนยาว — กัน RSC prefetch ต่อการ์ด
                       🪤 **ไม่แปลงบรรทัดชื่อเป็น `<strong>`** ต่างจากมุมมองตาราง — `.linklike-block > strong`
@@ -434,8 +438,10 @@ export default function CustomerDirectory() {
               {pageRows.map((c) => (
                 /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก — onClick บนแถวเป็นทางลัด
                    ของเมาส์เท่านั้น (ดูคอมเมนต์หัวไฟล์ ui/DetailRow.js) · ปุ่มอนุมัติ/
-                   ตีกลับในเซลล์สถานะเป็นคนละปลายทาง จึงยกเว้นให้แถวนี้ไม่ได้ */
-                <DetailRow key={c.id} href={`/database/customers/${c.id}`} className="clickable-row" style={c.isActive === false ? { opacity: "var(--op-muted)" } : undefined}>
+                   ตีกลับในเซลล์สถานะเป็นคนละปลายทาง จึงยกเว้นให้แถวนี้ไม่ได้
+                   ใบเลิกใช้จางทั้งแถว — **ยกเว้นแถวที่มีปุ่มอนุมัติ** (ใบเลิกใช้ที่ยังรออนุมัติขึ้นในตาราง `?count=` · H3)
+                   ปุ่มที่จางตามแถวอ่านเป็น "กดไม่ได้" และตัวอักษรต่ำกว่า AA · ป้าย "เลิกใช้" ข้างปุ่มบอกสถานะแทน */
+                <DetailRow key={c.id} href={`/database/customers/${c.id}`} className="clickable-row" style={c.isActive === false && !canDecideRow(c) ? { opacity: "var(--op-muted)" } : undefined}>
                   <td>
                     {/* รหัสบน · ชื่อล่าง (มติ 2026-08-12 — ทุกตารางทรงเดียว)
                         prefetch={false}: ลิสต์ยาว — กัน RSC prefetch ต่อแถว */}
@@ -462,17 +468,19 @@ export default function CustomerDirectory() {
                     <div className="text-[11px] whitespace-normal leading-relaxed">{c.address}</div>
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    {approvalStatusOf(c) === "pending" && canApproveRow(c) ? (
-                      <ApprovalActions onDecide={(status) => decide(c, status)} />
-                    ) : (
-                      <div className="flex flex-col gap-1 items-start">
+                    {/* ป้าย "เลิกใช้" อยู่นอกทางแยก ปุ่มอนุมัติ/ป้ายสถานะ — ใบเลิกใช้ที่ยังรออนุมัติขึ้นในตัวกรอง "รออนุมัติ" (H3)
+                        ⇒ ปุ่มอนุมัติต้องไม่กลบป้ายเลิกใช้ · แถวที่มีปุ่มชิดขวาตามแถบปุ่ม (`.action-bar` ชิดขวา) */}
+                    <div className={`flex flex-col gap-1 ${canDecideRow(c) ? "items-end" : "items-start"}`}>
+                      {canDecideRow(c) ? (
+                        <ApprovalActions onDecide={(status) => decide(c, status)} />
+                      ) : (
                         <ApprovalBadge status={approvalStatusOf(c)} />
-                        {c.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
-                        {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
-                          <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
-                        )}
-                      </div>
-                    )}
+                      )}
+                      {c.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                      {approvalStatusOf(c) === "rejected" && c.rejectionReason && (
+                        <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {c.rejectionReason}</div>
+                      )}
+                    </div>
                   </td>
                 </DetailRow>
               ))}

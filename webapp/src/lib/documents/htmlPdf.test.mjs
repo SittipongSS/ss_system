@@ -41,6 +41,41 @@ test('ตัวเลือกการพิมพ์ชุดเดิมอ�
   assert.ok(wrapper.includes("from '@/lib/documents/htmlPdf'"));
   assert.deepEqual(
     Object.keys(htmlPdf).sort(),
-    ['HTML_PDF_GENERATOR_VERSION', 'launchBrowser', 'measureSheets', 'openHtmlPage', 'renderHtmlPdf'],
+    // onceAsync · retryBusy = ด่านคำขอ PDF ซ้อนกัน (ETXTBSY · 27/10) — ส่งออกให้เทสต์ล่างยิงได้ตรง ๆ
+    ['HTML_PDF_GENERATOR_VERSION', 'launchBrowser', 'measureSheets', 'onceAsync', 'openHtmlPage', 'renderHtmlPdf', 'retryBusy'],
   );
+});
+
+/* 🐞 27/10/2569 `spawn ETXTBSY` — คำขอ PDF ซ้อนกันใน instance เดียว: คำขอที่สองได้ /tmp/chromium ที่ยังเขียนไม่เสร็จ */
+test('onceAsync: คำขอที่ซ้อนกันรอการแตกไฟล์ตัวเดียว · พลาดแล้วคำขอถัดไปลองใหม่', async () => {
+  let calls = 0;
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const once = htmlPdf.onceAsync(async () => { calls += 1; await gate; return '/tmp/chromium'; });
+  const both = Promise.all([once(), once(), once()]);
+  release();
+  assert.deepEqual(await both, ['/tmp/chromium', '/tmp/chromium', '/tmp/chromium']);
+  assert.equal(calls, 1);
+
+  let fails = 0;
+  const flaky = htmlPdf.onceAsync(async () => { fails += 1; if (fails === 1) throw new Error('inflate failed'); return 'ok'; });
+  await assert.rejects(flaky, /inflate failed/);
+  assert.equal(await flaky(), 'ok');
+});
+
+test('retryBusy: ลองใหม่เฉพาะ ETXTBSY · ข้อผิดพลาดอื่นโยนทันที · ครบจำนวนแล้วโยนตัวจริง', async () => {
+  let n = 0;
+  const ok = await htmlPdf.retryBusy(async () => {
+    n += 1;
+    if (n < 3) throw Object.assign(new Error('spawn ETXTBSY'), { code: 'ETXTBSY' });
+    return 'browser';
+  }, { delayMs: 1 });
+  assert.equal(ok, 'browser');
+  assert.equal(n, 3);
+
+  let other = 0;
+  await assert.rejects(htmlPdf.retryBusy(async () => { other += 1; throw new Error('ENOENT'); }, { delayMs: 1 }), /ENOENT/);
+  assert.equal(other, 1);
+
+  await assert.rejects(htmlPdf.retryBusy(async () => { throw new Error('spawn ETXTBSY'); }, { tries: 2, delayMs: 1 }), /ETXTBSY/);
 });

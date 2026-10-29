@@ -20,6 +20,10 @@ import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
+import {
+  EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
+  historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,
+} from "@/lib/sales/salesOrderListFilter";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import {
   PENDING_APPROVAL_LABEL, SALES_ORDER_STATUS_LABELS, salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts,
@@ -30,11 +34,38 @@ import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  HISTORICAL_NEW_PATH, ORIGIN_HISTORICAL, ORIGIN_PIPELINE, canKeyHistoricalSalesOrder, historicalRefsOf,
-  isHistoricalOrder,
+  EXCISE_STATUS_NOTE, HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isExciseOrder, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
+import SalesOrderBundleButton from "@/components/salesPlanning/SalesOrderBundleButton";
+import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
+import { isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
+import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
+import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
+
+/* ป้ายแถวคิวของใบ Actual รายงวดที่มีงวดยื่นขอนับ (mig 0412) — ชี้ไปปุ่ม "อนุมัติงวด" ของแถวงวดที่หน้าใบ (โมดัลของมัน = "อนุมัติงวดและนับ Actual") */
+const INSTALLMENT_REVIEW_LABEL = "งวดรออนุมัติ";
+/* งวดที่ยื่นรอ AE Sup ของใบรายงวดที่อนุมัติแล้ว (มติข้อ 5 · กองรออนุมัติ) — หน่วยเป็น "งวด" ไม่ใช่ "ใบ" · อยู่นอกเลขของการ์ด/ป้าย n ใบ
+   (review รอบสาม 26/10 · การ์ดกับหัวกลุ่มใช้คำเดียวกัน) */
+const instPendingNote = (count, amount) => `${INSTALLMENT_REVIEW_LABEL} ${fmtMoney(amount)} (${count} งวด · ใบอนุมัติแล้ว)`;
+/* หมายเหตุของการ์ด "รอตรวจอนุมัติ" — `{ note, title }` (UAT 27/10 ข้อ 6)
+   🐞 หมายเหตุของการ์ดเป็นบรรทัดเดียวตัดด้วย "…" (.ui-metric em) — ต่อท้ายงวดของใบรายงวดแล้วขาดเป็น "…(1 งวด · ใ…" และไม่มี title ให้อ่านต่อ
+   ⇒ `note` สั้น (มีงวดรายงวด = ยอดรอของใบ + งวดรออนุมัติ ไม่ซ้ำคำอธิบาย) · `title` = ประโยคเต็มเดิม (หัวกลุ่มยังใช้ instPendingNote เต็ม) */
+const pendingCardNoteOf = (summary) => {
+  const base = summary.pending
+    ? `ใบจากใบเสนอราคา · ${fmtMoney(summary.pendingApproval)} ก่อน VAT · ยังไม่นับ Actual`
+    : "รอ AE Supervisor ดำเนินการ";
+  if (!summary.instPending) return { note: base, title: base };
+  const inst = `${INSTALLMENT_REVIEW_LABEL} ${fmtMoney(summary.instPendingAmount)} (${summary.instPending} งวด)`;
+  return {
+    note: summary.pending ? `${fmtMoney(summary.pendingApproval)} ก่อน VAT · ${inst}` : inst,
+    title: `${base} · ${instPendingNote(summary.instPending, summary.instPendingAmount)}`,
+  };
+};
+/* บรรทัดรองใต้ยอดของใบรายงวดที่อนุมัติแล้ว (review 26/10) — ยอดหลักยังเป็นยอดเอกสารเต็มใบ (คอลัมน์ "ยอดก่อน VAT" · มติ 11/09)
+   แต่หัวกลุ่ม/การ์ด "Actual ก่อน VAT" นับเฉพาะงวดที่นับแล้ว ⇒ บอกยอดที่นับแล้ว + กองที่เหลือ · ตัวกลางอยู่ dealAmountDisplay
+   (ตาราง SO หน้าดีล/โครงการใช้ตัวเดียวกัน — review รอบสอง 26/10) · ใบอื่น = null (หน้าตาเดิม) */
 /* ⭐ "ค้าง n วัน" (มติเจ้าของ 08/10 "ตามงานค้าง") — คำ + ตัวเรียงจากไฟล์ใบไม้ (ไม่พก serviceSetup.js เข้า bundle ของทะเบียน)
    · ก้อนอายุของแต่ละแถว (`row.serviceAging`) คิดที่ server ด้วยวันไทย — จอนี้ไม่อ่านนาฬิกาและไม่พิมพ์คำของชิปเอง */
 import {
@@ -221,46 +252,8 @@ const GROUP_OPTIONS = [
   { value: "status", label: "สถานะเอกสาร" },
 ];
 
-/* สถานะการชำระของใบ — คำถามที่ตารางสถานะเอกสารตอบไม่ได้ ("ใบไหนเงินยังไม่ครบ")
-   ⚠️ `tracked` เท็จ = ยังไม่เริ่มติดตาม ไม่ใช่ "ยังไม่จ่าย" — คนละเรื่องกัน */
-const PAYMENT_FILTERS = {
-  complete: { label: "เก็บเงินครบแล้ว", match: (row) => row.payment?.complete },
-  overdue: { label: "มีงวดเลยกำหนด", match: (row) => (row.payment?.overdue || 0) > 0 },
-  rejected: { label: "มีงวดถูกตีกลับ", match: (row) => (row.payment?.rejected || 0) > 0 },
-  untracked: { label: "ยังไม่เริ่มติดตาม", match: (row) => !row.payment?.tracked },
-};
-
-/* ── ตัวกรองใบกำกับภาษี (mig 0348 · มติผู้ใช้ 2026-09-09) ──────────────────
-   ⭐ **กลุ่มของตัวเอง ไม่ใช่ตัวเลือกที่ห้าของ "การชำระ"** — ตัวเลือกในกลุ่มเดียวกัน
-   เป็น OR กัน (`.some`) ⇒ ยัดรวมเมื่อไร "เก็บเงินครบแล้ว + ยังไม่ออกใบกำกับ" จะกลาย
-   เป็น "อย่างใดอย่างหนึ่ง" ซึ่งตรงข้ามกับที่คนกดคาดหวัง · คนละกลุ่ม = AND กัน
-   (เงินกับเอกสารเป็นคนละแกน — เหตุผลเดียวกับที่แยกคอลัมน์ออกมาใน #1677)
-
-   ⚠️ **อ่านจาก `salesOrderTaxInvoiceNote` ตัวเดียวกับที่คอลัมน์ใช้** ไม่คิดเงื่อนไขเอง —
-   ตัวส่วนคือ "งวดที่จ่ายแล้ว" ซึ่งเป็นกติกาที่เขียนไว้ที่นั่นแล้ว · เขียนซ้ำที่นี่
-   เมื่อไร วันหนึ่งชิปตัวกรองกับตัวเลขในคอลัมน์จะไม่ตรงกันโดยไม่มีใครรู้ */
-const INVOICE_FILTERS = {
-  missing: {
-    label: "ยังไม่ออกใบกำกับ",
-    match: (row) => salesOrderTaxInvoiceNote(row.payment)?.tone === "warning",
-  },
-  complete: {
-    label: "ออกใบกำกับครบ",
-    match: (row) => salesOrderTaxInvoiceNote(row.payment)?.tone === "success",
-  },
-};
-
-/* ── ที่มาของใบ (mig 0360 · มติผู้ใช้ 16/09/2026) ─────────────────────────
-   ⭐ **กลุ่มของตัวเอง ไม่ใช่ตัวเลือกของ "สถานะเอกสาร"** — ใบย้อนหลังเกิดเป็น "อนุมัติแล้ว"
-   ทุกใบ ⇒ ยัดรวมกันเมื่อไร "อนุมัติแล้ว + ใบย้อนหลัง" จะกลายเป็น "อย่างใดอย่างหนึ่ง"
-   ซึ่งตรงข้ามกับที่คนกดคาดหวัง (เหตุผลเดียวกับที่ใบกำกับภาษีแยกกลุ่มออกมา)
-   ⚠️ ค่าของตัวเลือกใช้ค่าคงที่จาก `lib/sales/historicalOrders` — literal 'historical'
-   มีบ้านเดียว (ยาม historicalMoneyGuards) และตัวตัดสินคือ `isHistoricalOrder` ตัวเดียว
-   กับที่รายงานเงินใช้กรองออก ⇒ สิ่งที่เห็นบนจอตรงกับที่ระบบคิด */
-const ORIGIN_FILTERS = {
-  [ORIGIN_PIPELINE]: { label: "ใบจากใบเสนอราคา", match: (row) => !isHistoricalOrder(row) },
-  [ORIGIN_HISTORICAL]: { label: "ใบย้อนหลัง", match: (row) => isHistoricalOrder(row) },
-};
+/* ตัวกรองการชำระ · ใบกำกับภาษี · ที่มาของใบ (ตัวเลือก + ตัวตัดสิน) อยู่ที่ `lib/sales/salesOrderListFilter`
+   พร้อมเหตุผลของแต่ละกลุ่ม — ตารางกับการ์ดบนแถบกรองด้วย `salesOrderPassesListFilters` ตัวเดียว (ตรวจตัวเลข L11) */
 
 /* ⚠️ **ใบที่ยังไม่มีกำหนดชำระอยู่ท้ายเสมอ ไม่ว่าเรียงขึ้นหรือลง** — กติกาเดียวกับ
    ทะเบียนการชำระ: ยังไม่ถูกนัดวัน = ยังไม่ใช่งานของสัปดาห์นี้
@@ -376,19 +369,45 @@ export default function SalesOrdersPage() {
   const queueSortAuto = serviceSetupPendingOnly && sortKey === SORT_DEFAULT && !queueSortChosen;
   const activeSortKey = queueSortAuto ? SERVICE_QUEUE_SORT : sortKey;
   const activeSortDir = queueSortAuto ? sortDirOf(SERVICE_QUEUE_SORT) : sortDir;
+  /* ⭐ เปิดชิป "ยังไม่ตั้งงานบริการ n" = **ล้างตัวกรองอื่นทุกตัว รวม "รอฉันลงมือ"** (มติเจ้าของ 20/10 · ตรวจตัวเลข M15)
+     เลขบนชิปคงที่ (นับจาก `rows` ทั้งหมด · มติ 08/10) ⇒ กดแล้วตารางต้องเหลือเท่าเลขนั้นพอดี
+     🐞 เดิมสลับธงอย่างเดียว ⇒ มุมมองสินค้า · สถานะ=รออนุมัติ · ที่มา=ย้อนหลัง · คำค้นที่ค้าง ทำให้ได้ 0 แถวทั้งที่ชิปบอก 59
+     · ทุกใบของคิวนี้อนุมัติแล้วและอยู่สาย SERVICE (`serviceBackfillNeeded`) ⇒ มุมมอง "ทุกสาย"/"บริการ" เห็นครบ · "สินค้า" สลับไปบริการ
+     · อยากดูเฉพาะของตัวเอง = ติ๊ก "รอฉันลงมือ" ตามทีหลัง · ปิดชิป = ถอดธงเฉย ๆ (ไม่คืนตัวกรองเดิม) */
+  const toggleServiceSetupPending = () => {
+    setQueueSortChosen(false);
+    if (serviceSetupPendingOnly) { setServiceSetupPendingOnly(false); return; }
+    setQuery(""); setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
+    setWaitingOnMeOnly(false);
+    if (lineView === "PRODUCT") setLineView("SERVICE");
+    setServiceSetupPendingOnly(true);
+  };
+  /* ⭐ การ์ดบนแถบ = ตัวกรองชุดใหม่ **ทั้งชุด** (ตรวจตัวเลข L11 · `SALES_ORDER_CARD_PICKS`) — ตั้ง state ทุกตัวที่ตารางกรองจาก pick
+     (แบบเดียวกับ applyQuotationPick) ⇒ "รอตรวจอนุมัติ n" กดแล้วตารางเหลือ n ใบพอดี · กดการ์ดที่ใช้อยู่ซ้ำ = ล้างตัวกรองทั้งชุด
+     ⚠️ เลขบนการ์ดนับจาก `rows` ทั้งหมดและตัดใบย้อนหลัง (`splitSalesOrderAmounts` · mig 0360) ⇒ pick ตั้งที่มา = ใบจากใบเสนอราคา */
+  const applyOrderPick = (pick) => {
+    setQuery(pick.query); setStatusFilter([...pick.status]); setPaymentFilter([...pick.payment]); setInvoiceFilter([...pick.invoice]);
+    setOriginFilter([...pick.origin]); setLineView(pick.lineView); setWaitingOnMeOnly(pick.waitingOnMe);
+    setServiceSetupPendingOnly(pick.serviceSetupPending);
+    // ไม่ต้องล้าง queueSortChosen — การ์ดไม่เปิดคิวงานบริการ (ทางเข้าคิวทางเดียวคือชิป ซึ่งล้างธงนั้นเองตอนเปิด)
+  };
+  const activeFilters = {
+    query, status: statusFilter, payment: paymentFilter, invoice: invoiceFilter, origin: originFilter,
+    lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly,
+  };
+  const cardActive = (key) => salesOrderPickActive(activeFilters, SALES_ORDER_CARD_PICKS[key]);
+  const pickCard = (key) => applyOrderPick(cardActive(key) ? EMPTY_SALES_ORDER_FILTERS : SALES_ORDER_CARD_PICKS[key]);
   const [collapsed, setCollapsed] = useState(() => new Set());
 
+  /* ตัวตัดสินของตาราง = `salesOrderPassesListFilters` (lib/sales/salesOrderListFilter) — ตัวเดียวกับที่เทสต์ใช้พิสูจน์ว่า
+     แถวหลังกดการ์ดบนแถบ = เลขบนการ์ด · มิติทั้งหมดอยู่ที่ lib · **ชุดค้นเป็นของหน้า** (สิ่งที่ตาเห็นบนแถว) ส่งเป็น matchesSearch */
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (waitingOnMeOnly && !row._waitingOnMe) return false;
-      if (serviceSetupPendingOnly && !row._serviceSetupPending) return false;
-      if (lineView !== "all" && row.businessLine !== lineView) return false;
-      if (statusFilter.length && !statusFilter.includes(row.status)) return false;
-      // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
-      if (paymentFilter.length && !paymentFilter.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;
-      if (invoiceFilter.length && !invoiceFilter.some((key) => INVOICE_FILTERS[key]?.match(row))) return false;
-      if (originFilter.length && !originFilter.some((key) => ORIGIN_FILTERS[key]?.match(row))) return false;
+    const filters = {
+      status: statusFilter, payment: paymentFilter, invoice: invoiceFilter, origin: originFilter,
+      lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly,
+    };
+    const matchesSearch = (row) => {
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
       // "ลูกค้าถามถึง PO เลขนี้ ใบไหน" ซึ่งตอบไม่ได้ตอนที่เลขไปกองอยู่ในหมายเหตุ
       // ⚠️ รหัส AR ขึ้นเป็นชิปบนทุกแถวแล้ว (ดูเซลล์ลูกค้าข้างล่าง) จึงต้องค้นเจอด้วย
@@ -400,8 +419,11 @@ export default function SalesOrdersPage() {
       //    (ตาเห็นบนแถว = ต้องค้นเจอ · คำบอกเมื่อชี้ที่ป้ายไม่อยู่ในชุดค้น เพราะตาไม่เห็นบนแถว) · ต่อท้ายชุดเดิม ไม่แทรกกลาง
       return !q || [row.orderNumber, row.customerName, row.customerArCode, row.deal?.title, row.deal?.ownerName, row.quotation?.quoteNumber, row.referenceDoc, ...historicalRefsOf(row)]
         .concat(row.serviceAging?.label, row.serviceAging ? SERVICE_BACKFILL_AGING_TEXT.rowLabel[row.serviceAging.waitingOn] : null)
+        // บรรทัด "Actual รายงวด · นับแล้ว …" ใต้ยอด (review 26/10) — ตาเห็นบนแถว = ต้องค้นเจอ
+        .concat(installmentActualSubLine(row))
         .some((value) => String(value || "").toLowerCase().includes(q));
-    });
+    };
+    return rows.filter((row) => salesOrderPassesListFilters(row, filters, { matchesSearch }));
   }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, serviceSetupPendingOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
@@ -446,7 +468,23 @@ export default function SalesOrdersPage() {
   /* ⚠️ colSpan ต้องเดินตามจำนวนคอลัมน์จริง ไม่ใช่เลข 4 ที่พิมพ์ค้างไว้ — หัวกลุ่ม/แถวว่าง
      ที่ colSpan สั้นกว่าตารางจะเปิดช่องว่างท้ายแถวให้เห็นเลย */
   const serviceView = lineView === "SERVICE";
-  const columnCount = serviceView ? 8 : 5;
+  const columnCount = (serviceView ? 8 : 5) + 1; // +1 = ช่องติ๊กของชุดเอกสาร
+
+  /* ── ติ๊กเลือกใบ → ชุดเอกสาร QT · SO · การชำระ (มติเจ้าของ 27/10/2569) ──────────────
+     ⭐ ติ๊กหัวตาราง = ทุกใบหลังค้นหา/กรอง **ทุกหน้า** (ชุดเดียวกับป้ายจำนวน) · ตัวกรองขยับ = ตัดใบที่หลุดจากรายการออก
+       ไม่งั้นโหลดใบที่มองไม่เห็นออกไปโดยไม่รู้ตัว · ไม่ล้างทั้งชุด — โหลดรายการใหม่แล้วใบเดิมยังอยู่ = ที่ติ๊กต้องอยู่ (keepVisibleSelection)
+     ⭐ ใบในชุดเรียงตามลำดับที่ตารางเรียงอยู่ (`sorted`) */
+  const [selected, setSelected] = useState(() => new Set());
+  const [bundleNotice, setBundleNotice] = useState(null);
+  const visibleIds = useMemo(() => filtered.map((row) => row.id), [filtered]);
+  useEffect(() => { setSelected((prev) => keepVisibleSelection(prev, visibleIds)); }, [visibleIds]);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const selectedRows = useMemo(() => sorted.filter((row) => selected.has(row.id)), [sorted, selected]);
+  const toggleSelected = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
@@ -482,22 +520,41 @@ export default function SalesOrdersPage() {
   );
   // เปลือกบัญชีไม่มีแถวชนิดนี้ — ใบเดียวกันอาจติดคิวปิดใบของบัญชีด้วย (admin) ซึ่งต้องพูดเรื่องเงินตามเดิม
   const serviceReviewRow = (o) => !financeShell && !!o._awaitingMyServiceReview;
+  /* ⭐ แถว "งวดรออนุมัติ" ของใบ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — ใบอนุมัติแล้วที่ติดคิวเพราะมีงวดยื่นขอนับ
+     (`_awaitingMyApproval` ของ server รวมเลนนี้) ⇒ ยอดที่พูดคืองวดที่ยื่น (`actualSubmittedAmount` ก่อน VAT) ไม่ใช่ยอดเต็มใบ
+     ซึ่งนับ Actual ไปแล้วบางส่วน · ใบรออนุมัติปกติ (`pending_approval`) ไม่เข้ากิ่งนี้ */
+  const installmentReviewRow = (o) => !financeShell && !!o._awaitingMyApproval
+    && o.status === "approved" && isInstallmentActualOrder(o);
+  /* 🐞 review รอบสอง 26/10: เจ้าของดีลที่ป้ายเมนู/"รอฉันลงมือ" ส่งมาเพราะมีงวดยื่นขอนับได้แล้ว (`_installmentReadyForMe` ของ server) เคยลงภาพรวม
+     ซึ่งไม่มีปุ่ม "ยื่นขอนับงวดนี้" ⇒ พาไปแท็บการชำระเหมือนแถวคิวของผู้อนุมัติ (เปลือกบัญชีไม่มีเลนนี้) */
+  const installmentTabRow = (o) => installmentReviewRow(o) || (!financeShell && !!o._installmentReadyForMe);
+  const queueHref = (o) => (installmentTabRow(o) ? `/sa/sales-orders/${o.id}?tab=payment` : `/sa/sales-orders/${o.id}`);
+  const installmentReviewLine = (o) => {
+    const count = Number(o.actualSubmittedCount) || 0;
+    return `${naText(o.customerName)} · ${INSTALLMENT_REVIEW_LABEL}${count > 1 ? ` ${count} งวด` : ""} ${fmtMoney(o.actualSubmittedAmount)} ก่อน VAT`;
+  };
 
   /* ⭐ ตัวเลขบนการ์ดทั้งแถบคิดจาก `rows` ชุดเดียวกัน (ทุกใบในขอบเขตที่ดูได้ ไม่ใช่ตามตัวกรอง)
      ผ่าน `splitSalesOrderAmounts` ตัวกลาง — กติกาเดียวกับ cache บนดีล (mig 0353)
      · Actual = ใบอนุมัติแล้วเท่านั้น (เหมือนเดิม)
      · รออนุมัติ = `pending_approval` เท่านั้น **ยอดแยก ไม่บวกเข้า Actual** (มติผู้ใช้ 2026-09-11)
        ⚠️ ห้ามนับด้วย `status !== "approved"` — ร่าง/ตีกลับ/ยกเลิกมี actualAmount ตั้งแต่ร่าง */
+  /* 🐞 review รอบสาม 26/10 (ตรวจตัวเลข L11 ของ #1922): การ์ด "รอตรวจอนุมัติ" เคยนับงวดที่ยื่นของใบรายงวดที่อนุมัติแล้วด้วย
+     แต่กดแล้วกรองสถานะ pending_approval ⇒ เลขบนการ์ด ≠ แถวหลังกด ⇒ เลข/ยอดของการ์ด = ใบ pending_approval ล้วน
+     · งวดที่ยื่นของใบรายงวด (มติข้อ 5: อยู่กองรออนุมัติ) บอกแยกในหมายเหตุ ไม่เข้าเลขของการ์ด */
   const summary = useMemo(() => {
     const amounts = splitSalesOrderAmounts(rows);
     return {
       total: rows.length,
-      pending: amounts.pendingApprovalCount,
-      pendingApproval: amounts.pendingApproval,
+      pending: amounts.pendingOrderCount,
+      pendingApproval: amounts.pendingOrderAmount,
+      instPending: amounts.instPendingCount,
+      instPendingAmount: amounts.instPendingAmount,
       approved: amounts.actualCount,
       actual: amounts.actual,
     };
   }, [rows]);
+  const pendingCardNote = pendingCardNoteOf(summary);
 
   /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
@@ -514,15 +571,27 @@ export default function SalesOrdersPage() {
        ของ TS — หนึ่งป้ายหนึ่งโทนทุกจอ */
     const historical = isHistoricalOrder(row);
     const oldRefs = historical ? historicalRefsOf(row).join(" · ") : "";
+    /* ใบค่าสรรพสามิต (mig 0414) — ไม่มีดีล ⇒ บรรทัดรองของลูกค้าเป็นชื่อดีลของ SO ต้นทาง (`sourceDeal` จาก API) */
+    const excise = isExciseOrder(row);
     return (
-                <DetailRow key={row.id} href={`/sa/sales-orders/${row.id}`} className="premium-row">
+                <DetailRow key={row.id} href={queueHref(row)} className="premium-row">
+                  {/* ช่องติ๊ก — DetailRow ไม่พาไปหน้าใบเมื่อกดโดน input (isInteractiveTarget) */}
+                  <td className="w-9 text-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleSelected(row.id)}
+                      aria-label={`เลือก ${row.orderNumber || row.id}`}
+                    />
+                  </td>
                   <td>
-                    <Link prefetch={false} href={`/sa/sales-orders/${row.id}`} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
+                    <Link prefetch={false} href={queueHref(row)} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
                     {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
                         เอกสารฝั่งลูกค้า (PO/สัญญา) ต่อท้ายเมื่อมี · ยาวได้ 200 ตัวอักษร
                         จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
                     <span className="cell-sub" title={(historical ? oldRefs : row.referenceDoc) || undefined}>
                       {historical ? <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /> : null}
+                      {excise ? <StatusBadge tone="info" size="sm" label="ค่าสรรพสามิต" /> : null}
                       <span className="cell-ellipsis">
                         {historical ? (oldRefs || NA) : naText(row.quotation?.quoteNumber)}
                         {!historical && row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
@@ -558,7 +627,7 @@ export default function SalesOrdersPage() {
                         พูดซ้ำชื่อลูกค้าบรรทัดบน และลูกค้ารายเดียวมีดีลภาชนะได้สองใบที่ต่างกัน
                         แค่ AE (มติข้อ 22 · 16/09) */}
                     <span className="cell-sub">
-                      {historical ? `AE ${naText(row.deal?.ownerName)}` : naText(row.deal?.title)}
+                      {historical ? `AE ${naText(row.deal?.ownerName)}` : naText((excise ? row.sourceDeal : row.deal)?.title)}
                     </span>
                   </td>
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
@@ -570,7 +639,8 @@ export default function SalesOrdersPage() {
                         ที่เหลือ    = หรี่ + "ยังไม่นับเป็น Actual" เหมือนเดิม */}
                   <td className={`num mono ${amountKind === "excluded" ? "cell-num-idle" : ""}`.trim()}>
                     {fmtMoney(row.actualAmount)}
-                    {amountKind === "actual" ? null
+                    {amountKind === "actual"
+                      ? <InstallmentActualSubLine order={row} />
                       : amountKind === "pending_approval"
                         ? (
                           <span className="cell-sub">
@@ -631,33 +701,58 @@ export default function SalesOrdersPage() {
         {awaitingFiling > 0 && (
           <StatusNotice
             tone="warning"
-            title={`ใบสั่งขาย ${awaitingFiling} ใบรอออกใบยื่นชำระภาษี`}
+            title={`ใบสั่งขาย ${awaitingFiling} ใบรอออกใบค่าสรรพสามิต`}
             /* 🐞 เดิมเป็น `<Link className="linklike">` ตัวเดียวในระบบที่นั่งในสล็อต
                `action` ของ StatusNotice — กฎ `.action :global(.btn)` แจก width:100%
                + `--ctl-h-touch` (44px, WCAG §2.5.5) ให้เฉพาะ `.btn` ⇒ ลิงก์ตัวนี้
                ไม่ได้เป้าสัมผัสตามเกณฑ์ที่ระบบตั้งเอง · ยังเป็น <a href> เหมือนเดิม */
-            action={<Button as={Link} href="/tax/filings" size="sm" variant="ghost">เปิดหน้ายื่นชำระ</Button>}
           >
-            อนุมัติแล้วและมีสินค้าสรรพสามิตอยู่ในใบ แต่ยังไม่ได้สร้างใบยื่นต่อกรมสรรพสามิต
+            อนุมัติแล้วและมีสินค้าสรรพสามิตอยู่ในใบ แต่ยังไม่ได้ออกใบเสนอราคาค่าสรรพสามิต — เปิดใบสั่งขายแล้วกด
+            “ออกใบเสนอราคาค่าสรรพสามิต” (หรือ “ไม่เรียกเก็บในระบบ”) บนเส้นเดินงานของใบ
           </StatusNotice>
         )}
 
         <SaMetricStrip>
-          <SaMetric icon={<ClipboardList />} label="ใบสั่งขายทั้งหมด" value={summary.total} note="เอกสารในขอบเขตที่คุณดูได้" />
+          {/* ⭐ การ์ดทั้งสี่เป็นปุ่มตัวกรอง (ตรวจตัวเลข L11 · 26/10) — กด = ตัวกรองชุดใหม่ทั้งชุด (`pickCard`) ⇒ ตารางเหลือเท่าเลขบนการ์ด
+              · การ์ดเงินนับเฉพาะ **ใบจากใบเสนอราคา** (ใบย้อนหลังไม่นับ Actual · mig 0360) — หมายเหตุใต้เลขบอกชุดตรง ๆ
+                เพราะตัวเลือกสถานะคำเดียวกัน ("รออนุมัติ" · "อนุมัติแล้ว") รวมใบย้อนหลังด้วย */}
+          <SaMetric
+            as="button" type="button"
+            icon={<ClipboardList />}
+            label="ใบสั่งขายทั้งหมด"
+            value={summary.total}
+            note="เอกสารในขอบเขตที่คุณดูได้"
+            active={cardActive("total")} aria-pressed={cardActive("total")} onClick={() => pickCard("total")}
+          />
           {/* ⭐ ยอดของใบรออนุมัติอยู่ใต้จำนวนใบ (มติผู้ใช้ 2026-09-11 · mig 0353) — ก่อนนี้
               993,000 บาทของ 8 ใบหายจากทั้งแถบ · ยอดก่อน VAT ฐานเดียวกับ Actual ข้าง ๆ
               แต่ **ไม่รวมเข้าการ์ด Actual** — คนละกองเสมอ */}
           <SaMetric
+            as="button" type="button"
             icon={<ClipboardCheck />}
             label="รอตรวจอนุมัติ"
             value={summary.pending}
-            note={summary.pending
-              ? `${fmtMoney(summary.pendingApproval)} ก่อน VAT · ยังไม่นับ Actual`
-              : "รอ AE Supervisor ดำเนินการ"}
+            note={pendingCardNote.note}
+            title={pendingCardNote.title}
             tone={summary.pending ? "warning" : "good"}
+            active={cardActive("pending")} aria-pressed={cardActive("pending")} onClick={() => pickCard("pending")}
           />
-          <SaMetric icon={<BadgeCheck />} label="อนุมัติแล้ว" value={summary.approved} note="เอกสารที่ถูกนับเป็น Actual" tone="good" />
-          <SaMetric icon={<CircleDollarSign />} label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะ SO ที่อนุมัติแล้ว" tone="good" />
+          <SaMetric
+            as="button" type="button"
+            icon={<BadgeCheck />}
+            label="อนุมัติแล้ว"
+            value={summary.approved}
+            note="ใบจากใบเสนอราคา · นับเป็น Actual"
+            tone="good"
+            active={cardActive("approved")} aria-pressed={cardActive("approved")} onClick={() => pickCard("approved")}
+          />
+          <SaMetric
+            as="button" type="button"
+            icon={<CircleDollarSign />}
+            label="Actual ก่อน VAT" value={fmtMoney(summary.actual)} note="รวมเฉพาะใบจากใบเสนอราคาที่อนุมัติแล้ว"
+            tone="good"
+            active={cardActive("approved")} aria-pressed={cardActive("approved")} onClick={() => pickCard("approved")}
+          />
         </SaMetricStrip>
 
         {/* คิว "รออนุมัติจากคุณ" — เหตุผลและทรงเดียวกับทะเบียนใบเสนอราคา/ลูกค้า/สินค้า
@@ -666,7 +761,9 @@ export default function SalesOrdersPage() {
           items={approvalQueue}
           unit="ใบ"
           title={financeShell ? "ต้องทำตอนนี้ — ใบที่เก็บครบแล้ว รอปิด" : "ต้องทำตอนนี้ — รออนุมัติจากคุณ"}
-          primary={(o) => (serviceReviewRow(o) ? `${o.serviceReview?.label || SERVICE_REVIEW_LABEL} · ${o.orderNumber}` : o.orderNumber)}
+          primary={(o) => (serviceReviewRow(o)
+            ? `${o.serviceReview?.label || SERVICE_REVIEW_LABEL} · ${o.orderNumber}`
+            : installmentReviewRow(o) ? `${INSTALLMENT_REVIEW_LABEL} · ${o.orderNumber}` : o.orderNumber)}
           /* ⭐ คิวรออนุมัติโชว์ **ยอดก่อน VAT** ตัวเดียวกับการ์ด "รอตรวจอนุมัติ" (มติ 2026-09-11)
              — เดิมเป็น totalAmount รวม VAT ⇒ ใบเดียวกันมีสองยอด "รออนุมัติ" บนหน้าเดียว
              ⚠️ คิวของเปลือกบัญชี (ใบเก็บครบรอปิด) ยังเป็นยอดรวม VAT = เงินที่เก็บจริง */
@@ -681,14 +778,18 @@ export default function SalesOrdersPage() {
             ? `${naText(o.customerName)} · ${fmtMoney(o.totalAmount)}`
             : serviceReviewRow(o)
               ? serviceReviewLine(o)
-              : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)
+              : installmentReviewRow(o)
+                ? installmentReviewLine(o)
+                : `${naText(o.customerName)} · ${fmtMoney(o.actualAmount)} ก่อน VAT`)
             + (isHistoricalOrder(o) ? " · ใบย้อนหลัง · ไม่นับ Actual" : "")
+            + (isExciseOrder(o) ? ` · ${EXCISE_STATUS_NOTE}` : "")
             + (!financeShell && o.serviceDeferredTag ? ` · ${o.serviceDeferredTag}` : "")}
-          rowHref={(o) => `/sa/sales-orders/${o.id}`}
+          /* แถว "งวดรออนุมัติ" ไปแท็บการชำระตรง ๆ (ปุ่ม "อนุมัติงวด" ของแถวงวดอยู่ที่นั่นที่เดียว · ลิงก์กระดิ่งก็ไปที่เดียวกัน · review 26/10) */
+          rowHref={queueHref}
           /* ⭐ ชิป "ค้าง n วัน" ของแถวงานบริการรอตรวจ (มติเจ้าของ 08/10) — นับจากวันที่ฝ่ายขายยื่นตรวจ · แถวใบรออนุมัติไม่มีชิปนี้ */
           badge={(o) => (serviceReviewRow(o) ? <ServiceAgingChip aging={o.serviceAging} /> : null)}
           renderAction={(o) => (
-            <Button as={Link} href={`/sa/sales-orders/${o.id}`} tone="primary" size="sm">
+            <Button as={Link} href={queueHref(o)} tone="primary" size="sm">
               {financeShell ? "เปิดใบเพื่อตรวจ" : "เปิดใบเพื่ออนุมัติ"}
             </Button>
           )}
@@ -700,7 +801,8 @@ export default function SalesOrdersPage() {
           icon={<ClipboardList size={17} aria-hidden="true" />}
           title="รายการใบสั่งขาย"
           subtitle={serviceSetupPendingOnly && serviceAgingSummary ? serviceAgingSummary : "ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"}
-          count={`${filtered.length} ใบ`}
+          count={selected.size ? `เลือก ${selected.size}/${filtered.length} ใบ` : `${filtered.length} ใบ`}
+          actions={<SalesOrderBundleButton orders={selectedRows} onNotice={setBundleNotice} />}
           toolbar={(
           <>
             <Segmented
@@ -710,7 +812,7 @@ export default function SalesOrdersPage() {
               onChange={setLineView}
             />
             {/* ⭐ ชิป "ยังไม่ตั้งงานบริการ n" (mig 0392 · D26 · ม็อก BackfillApproveModal) — ติดท้ายมุมมองสาย · ขึ้นเมื่อมีของ
-                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
+                หรือกำลังเปิดอยู่ (ซ่อนตอนเปิด = ปิดไม่ได้) · เปิด = ล้างตัวกรองอื่นทั้งหมด (M15) · กดซ้ำ = ถอด · ปุ่มตัวกรองล้างให้ด้วย */}
             {(serviceSetupPendingCount > 0 || serviceSetupPendingOnly) && (
               <Button
                 size="sm"
@@ -719,7 +821,7 @@ export default function SalesOrdersPage() {
                 icon={<Repeat size={14} aria-hidden="true" />}
                 aria-pressed={serviceSetupPendingOnly}
                 title="ใบที่อนุมัติแล้วแต่ยังไม่ได้ตั้งแพ็คเกจ · โซน · รอบ · ช่วงบริการ — ฝ่ายขายตั้งย้อนหลังที่หน้าใบ แล้วยื่นให้ผู้จัดการตรวจ"
-                onClick={() => { setServiceSetupPendingOnly((on) => !on); setQueueSortChosen(false); }}
+                onClick={toggleServiceSetupPending}
               >
                 ยังไม่ตั้งงานบริการ
                 <CountBadge count={serviceSetupPendingCount} label="ใบที่ยังไม่ตั้งงานบริการ" />
@@ -811,6 +913,16 @@ export default function SalesOrdersPage() {
               {error}
             </StatusNotice>
           )}
+          {bundleNotice && (
+            <StatusNotice
+              tone={bundleNotice.tone}
+              title={bundleNotice.title}
+              className="mb-4"
+              action={<Button size="sm" variant="ghost" onClick={() => setBundleNotice(null)}>ปิด</Button>}
+            >
+              {bundleNotice.text}
+            </StatusNotice>
+          )}
           {/* ── ตารางรายการ: รื้อใหม่แบบ ข (มติผู้ใช้ 2026-08-13) ──────────────
               9 → 5 คอลัมน์ · **ตัดคอลัมน์ที่ไม่มีข้อมูลจริงทิ้ง**:
                 · "เอกสารอ้างอิง" เป็น `-` แทบทุกแถว ⇒ ย้ายไปเป็นบรรทัดรองใต้เลข SO
@@ -819,12 +931,20 @@ export default function SalesOrdersPage() {
                 · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
               ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
               (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
-          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1220 : 980} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1256 : 1016} aria-busy={loading}>
             <table className="w-full text-sm">
               {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
                   ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
                   ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
               <thead><tr>
+                <th className="w-9 text-center">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={() => setSelected(allSelected ? new Set() : new Set(visibleIds))}
+                    aria-label="เลือกทุกใบที่แสดงอยู่"
+                  />
+                </th>
                 <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
                 {/* ⭐ "ยอดก่อน VAT" ไม่ใช่ "Actual ก่อน VAT" (มติผู้ใช้ 2026-09-11) — คอลัมน์นี้
                     โชว์ยอดของใบทุกสถานะ (รออนุมัติ/ร่าง/ตีกลับ) · แถวไหนเป็น Actual หรือไม่
@@ -851,20 +971,33 @@ export default function SalesOrdersPage() {
                      (weight ข้างบน) · รออนุมัติคิดจาก `bucket.items` ชุดเดียวกับแถวที่เห็น
                      ⇒ ถัง "รออนุมัติ" ของโหมดจัดตามสถานะไม่ขึ้น ฿0.00 เฉย ๆ อีก
                      ไม่มีใบรออนุมัติ = หน้าตาเดิมทุก px · มีแต่ใบรออนุมัติ = ไม่พิมพ์ "Actual ฿0.00" นำ */
+                  /* ⚠️ "· n ใบ" ของกองรออนุมัติ = ใบ pending_approval ล้วน (L11c) · งวดที่ยื่นของใบรายงวดที่อนุมัติแล้วบอกแยกเป็น "งวด"
+                     (review รอบสาม 26/10 — เคยบวกงวดเข้า "ใบ" ของถัง "อนุมัติแล้ว") */
                   const pendingOfBucket = splitSalesOrderAmounts(bucket.items);
-                  const bucketTotal = pendingOfBucket.pendingApprovalCount
+                  const bucketInstNote = pendingOfBucket.instPendingCount
+                    ? ` · ${instPendingNote(pendingOfBucket.instPendingCount, pendingOfBucket.instPendingAmount)}` : "";
+                  /* ⭐ ใบย้อนหลังที่รออนุมัติในกลุ่ม (ตรวจตัวเลข L11c) — ป้าย "n ใบ" นับรวม แต่ยอดรออนุมัติไม่นับ ⇒ บอกแยก
+                     "(ไม่นับยอด)" · มีใบย้อนหลังด้วย = บอก "· 1 ใบ" ของกองรออนุมัติแม้มีใบเดียว (ชิ้นกลางโชว์เลขใบเมื่อเกิน 1) */
+                  const historicalPending = historicalPendingCount(bucket.items);
+                  const bucketTotal = pendingOfBucket.pendingOrderCount
                     ? (
                       <>
                         {bucket.total > 0 ? `Actual ${fmtMoney(bucket.total)}` : null}
                         <PendingApprovalAmount
                           inline
-                          amount={pendingOfBucket.pendingApproval}
-                          count={pendingOfBucket.pendingApprovalCount}
+                          amount={pendingOfBucket.pendingOrderAmount}
+                          count={pendingOfBucket.pendingOrderCount}
                           prefix={bucket.total > 0 ? " · " : ""}
                         />
+                        {/* คลาสเดียวกับ "· n ใบ" ของชิ้นกลาง (fs-5 · text-3) — ใบเดียวต้องหน้าตาเดียวกับหลายใบ (รีวิว L11c) */}
+                        {historicalPending && pendingOfBucket.pendingOrderCount === 1
+                          ? <span className="so-pending-approval"><span className="so-pending-approval-count"> · 1 ใบ</span></span>
+                          : null}
+                        {bucketInstNote || null}
+                        {historicalPendingNote(historicalPending) || null}
                       </>
                     )
-                    : fmtMoney(bucket.total);
+                    : `${fmtMoney(bucket.total)}${bucketInstNote}${historicalPendingNote(historicalPending)}`;
                   return (
                     <Fragment key={bucket.key}>
                       <TableGroupRow
@@ -873,7 +1006,7 @@ export default function SalesOrdersPage() {
                         sub={bucket.sub}
                         badge={`${bucket.count} ใบ`}
                         total={bucketTotal}
-                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual"
+                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual · ใบย้อนหลังไม่นับยอด"
                         collapsed={bucketCollapsed}
                         onToggle={() => toggleBucket(bucket.key)}
                       />

@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import SkeletonRows, { Skeleton } from "@/components/ui/Skeleton";
 import { NA, naText } from "@/lib/format";
+import { metricValueLen } from "@/lib/ui/metricValueLen";
 
 // Canonical shell for every application module. Sales management established
 // the visual hierarchy; keeping it here prevents module-specific drift.
@@ -174,6 +175,13 @@ export function MetricStrip({ children, className = "", ...props }) {
   );
 }
 
+/* `noteAction` = **ตัวเลขรองในการ์ดที่กดได้เอง** (ตรวจตัวเลข L3 · 2026-10-26) — `{ label, onClick, active }`
+ * 🐞 ที่มา: การ์ด "รอคนอื่น" บน /sa/tasks มีบรรทัดรอง "เลยกำหนดแล้ว n งาน" ซึ่งเป็น `<em>` ในปุ่มของการ์ด
+ *    ⇒ กดได้แค่ทั้งการ์ด (= งานรอคนอื่นทุกใบ) ไม่มีที่ไหนเปิดเจอ n ใบนั้น · และบรรทัดรองทับคำ "กำลังใช้ตัวกรองนี้"
+ * ⇒ ส่ง `noteAction` มาเมื่อไร การ์ดกลายเป็นกล่อง `.ui-metric-wrap` ที่มี **ปุ่มสองตัวเรียงกัน** (การ์ด · บรรทัดรอง)
+ *    ไม่ซ้อนปุ่มในปุ่ม · บรรทัด `note` ของการ์ดยังพูดเรื่องของการ์ดเหมือนเดิม
+ * ⚠️ ป้ายของปุ่มรองต้องอ่านรู้เรื่องเมื่อฟังเดี่ยว ๆ — โปรแกรมอ่านจอได้ "ชื่อการ์ด · ป้าย" (เช่น "รอคนอื่น · ในนี้เลยกำหนด 2 งาน")
+ * ⚠️ ไม่ส่ง = DOM เดิมทุกตัวอักษร (แถบตัวเลขทั้งระบบไม่เปลี่ยน) */
 export function Metric({
   as: Element = "div",
   icon,
@@ -182,10 +190,12 @@ export function Metric({
   note,
   tone,
   active = false,
+  noteAction = null,
   className = "",
   ...props
 }) {
-  return (
+  const shown = naText(value);
+  const card = (
     <Element
       className={`ui-metric ${tone ? `is-${tone}` : ""} ${active ? "is-active" : ""} ${className}`.trim()}
       {...props}
@@ -196,9 +206,25 @@ export function Metric({
       {icon ? <span className="ui-metric-icon">{icon}</span> : null}
       <span>
         <small>{label}</small>
-        <strong>{naText(value)}</strong>
+        <strong data-len={metricValueLen(shown)}>{shown}</strong>
         {note && <em>{note}</em>}
       </span>
     </Element>
+  );
+  if (!noteAction) return card;
+  const pressed = Boolean(noteAction.active);
+  return (
+    <div className={`ui-metric-wrap ${icon ? "has-icon" : ""}`.trim()}>
+      {card}
+      <button
+        type="button"
+        className={`text-action ui-metric-note-action ${pressed ? "is-active" : ""}`.trim()}
+        onClick={noteAction.onClick}
+        aria-pressed={pressed}
+        aria-label={typeof label === "string" ? `${label} · ${noteAction.label}` : undefined}
+      >
+        {noteAction.label}
+      </button>
+    </div>
   );
 }

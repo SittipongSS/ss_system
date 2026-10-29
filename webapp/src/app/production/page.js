@@ -5,7 +5,7 @@
 // (PD/PC/WH/QC กับ TS) · แต่ละระบบมีหน้าภาพรวมของตัวเองแทน
 //
 // ⭐ หน้านี้ตอบสามคำถามของ PC ตอนเช้า:
-//    1. มีงานอะไรที่ต้องตัดสินใจก่อน  2. โรงงานแน่นแค่ไหนสัปดาห์นี้  3. วันนี้ไลน์ไหนเดินอะไร
+//    1. มีงานอะไรที่ต้องตัดสินใจก่อน  2. โรงงานแน่นแค่ไหน 7 วันข้างหน้า  3. วันนี้ไลน์ไหนเดินอะไร
 // ⚠️ ทุกตัวเลขต้องกดต่อไปหางานได้ — ตัวเลขที่กดไม่ได้คือตัวเลขที่ไม่มีใครดูรอบสอง
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -94,7 +94,7 @@ export default function ProductionOverviewPage() {
       if (!isLatest()) return; // ช่วงวันเปลี่ยนระหว่างรอ — ตัวเลขทั้งแผงต้องมาจากรอบเดียวกัน
       setJobs(Array.isArray(queue?.jobs) ? queue.jobs : []);
       setLines(Array.isArray(board?.lines) ? board.lines : []);
-      // ⚠️ ใช้งานจากบอร์ด ไม่ใช่จากคิว — งานที่เริ่มก่อนสัปดาห์นี้แต่ยังเดินคร่อมเข้ามา
+      // ⚠️ ใช้งานจากบอร์ด ไม่ใช่จากคิว — งานที่เริ่มก่อนวันนี้แต่ยังเดินคร่อมเข้ามาใน 7 วันข้างหน้า
       // ต้องนับเข้ากำลังผลิตด้วย ไม่งั้นตัวเลข % จะต่ำกว่าความจริง
       setBoardJobs(Array.isArray(board?.jobs) ? board.jobs : []);
       setCapacityDays(Array.isArray(board?.capacityDays) ? board.capacityDays : []);
@@ -148,7 +148,7 @@ export default function ProductionOverviewPage() {
     <Workspace
       icon={<LayoutDashboard size={22} aria-hidden="true" />}
       title="ภาพรวมวางแผนผลิต"
-      subtitle="งานที่ต้องตัดสินใจก่อน · กำลังผลิตสัปดาห์นี้ · วันนี้ไลน์ไหนเดินอะไร"
+      subtitle="งานที่ต้องตัดสินใจก่อน · กำลังผลิต 7 วันข้างหน้า · วันนี้ไลน์ไหนเดินอะไร"
       headerRight={(
         <div className={styles.headerActions}>
           <Button tone="neutral" variant="quiet" onClick={() => router.push("/production/board")} icon={<CalendarRange size={15} aria-hidden="true" />}>
@@ -181,7 +181,9 @@ export default function ProductionOverviewPage() {
               icon={ListChecks}
               tone="info"
               hint="มีไลน์และวันเริ่มครบแล้ว"
-              onClick={() => router.push("/production/board")}
+              /* 🐞 M24f (ตรวจตัวเลข 20/10): เดิมพาไปกระดาน (งานสัปดาห์นี้ + กำลังผลิต) ⇒ ไม่ใช่ N งานบนการ์ด
+                 ⇒ คิวที่กรองสถานะ "วางคิวแล้ว" ตัวเดียวกับตัวนับ · กระดานยังเข้าได้จากปุ่มหัวหน้า/เมนู */
+              onClick={() => router.push(productionJobsHref("planned"))}
             />
             <KpiCard
               label="กำลังผลิต"
@@ -192,7 +194,7 @@ export default function ProductionOverviewPage() {
               onClick={() => router.push(productionJobsHref("running"))}
             />
             <KpiCard
-              label="กำลังผลิตสัปดาห์นี้"
+              label="กำลังผลิต 7 วันข้างหน้า"
               /* ⚠️ ไม่รู้ ≠ 0 — ไลน์ที่ยังไม่กรอกกำลังต้องขึ้น "—" ไม่ใช่ 0%
                  ⇒ ต้องเช็ก null ก่อนเสมอ ห้ามส่งเข้า fmtPercent ตรง ๆ เพราะข้างในมี
                  `Number(x) || 0` ที่จะกลืน null เป็น "0.00%" */

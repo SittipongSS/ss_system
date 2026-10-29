@@ -3,7 +3,7 @@ import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
 import { canApproveQuotation, canViewSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
-import { canRejectQuotationSubmission } from '@/lib/sales/quotationWorkflow';
+import { canRejectQuotationSubmission, quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
 
@@ -25,7 +25,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { row: quote, response } = await loadScoped(supabase, 'quotations', id, user, 'view');
   if (response) return response;
 
-  const approver = canApproveQuotation(user, quote.deal);
+  const approver = canApproveQuotation(user, quotationApprovalDeal(quote));
   if (!canRejectQuotationSubmission(quote, { approver, userId: user.id })) {
     return forbidden('ตีกลับได้เฉพาะผู้อนุมัติของใบเสนอราคาที่กำลังรออนุมัติ — ใบที่ยื่นเองให้ใช้ “ดึงกลับมาแก้ไข”');
   }
@@ -57,7 +57,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: id,
     before: quote,
     after: data,
-    summary: `ตีกลับใบเสนอราคา ${quote.quoteNumber}: ${reason} (${dealAuditLabel(quote.deal)})`,
+    summary: `ตีกลับใบเสนอราคา ${quote.quoteNumber}: ${reason} (${dealAuditLabel(quotationApprovalDeal(quote))})`,
     request: req,
   });
   // แจ้งทีมขายเหมือนฝั่งใบสั่งขาย — ผู้จัดทำต้องรู้ว่าต้องกลับมาแก้ ไม่ใช่รอเงียบ ๆ

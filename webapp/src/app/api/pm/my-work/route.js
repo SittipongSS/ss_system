@@ -1,12 +1,15 @@
-import { normalizeDepartment, pmTaskScopes, defaultScope, can, isRdRole } from '@/lib/permissions';
+import { normalizeDepartment, pmTaskScopes, defaultScope, can } from '@/lib/permissions';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { REQUEST_OPEN_STATUSES } from '@/lib/deptRequests';
 import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
-import { teamProjectIds } from '@/lib/pm/projectsRepo';
-import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
-import { whereTeamIn } from '@/lib/teamScope';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { attachReworkRows } from '@/lib/requests/reworkRows';
+import { loadTaskScopeClauses, whereForTaskClause } from '@/lib/pm/taskScope';
+import { idListParam, idParam } from '@/lib/pm/dealTaskLink';
+import { loadRequests } from '@/lib/materialPricesAdmin';
+import { loadVisibleRequests, answerableDepts } from '@/lib/requests/visibleRows';
+import { deptHasOwnModule, deptsInSharedQueue } from '@/lib/requests/modules';
+import { inquiryQueueCount, inquiryQueueHref } from '@/lib/pm/inquiryQueueLink';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,9 +34,12 @@ const allPersonal = (supabase, where = (q) => q) => fetchAllResult(() => where(
   supabase.from('personal_tasks').select('*'),
 ).order('createdAt', { ascending: false }).order('id', { ascending: true }));
 
-// GET /api/pm/my-work?scope=mine|team|all
-// คืน { scope, personalTasks, inquiries, projects, deals } — scope ถูกบังคับตาม role
+// GET /api/pm/my-work?scope=mine|team|all[&dealId=a,b][&projectId=p]
+// คืน { scope, personalTasks, inquiries, inquiryQueue, projects, deals } — scope ถูกบังคับตาม role
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
+// ⭐ `dealId` / `projectId` **ไม่ได้กรองงาน** — แค่การันตีว่าดีล/โครงการที่ลิงก์จากหน้าดีล/หน้าโครงการส่งมามีอยู่ใน
+//    แผนที่ `deals`/`projects` (พร้อม `projectId` ของดีล) แม้ยังไม่มีงานสักใบผูกตรง ๆ — ตัวกรองดีลของคิว (`isDealTask`)
+//    ต้องรู้โครงการของดีลถึงจะนับงานเดิมของโครงการ (ไม่มี dealId) ได้ตรงกับป้าย "ค้าง n" บนหน้าดีล (M8b/M8c)
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view')) return forbidden(); // PM เป็นเครื่องมือฝ่ายขาย — RA ไม่มีสิทธิ์
@@ -42,64 +48,34 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // ค่าตั้งต้นมาจากตัวกลาง `defaultScope` = แคบสุดที่ไม่ว่างโดยโครงสร้าง (มติผู้ใช้
   // 2026-09-08) — ตัวเดียวกับที่จอใช้ ⇒ จอกับ API ตอบตรงกันตั้งแต่รอบแรก ไม่ต้องรอ
   // ให้ API แก้ค่าให้แล้วโหลดซ้ำ · ผู้สังเกตการณ์มีขอบเขตเดียวคือ 'all' จึงไม่ตกไป 'mine'
-  const requested = new URL(req.url).searchParams.get('scope');
+  const searchParams = new URL(req.url).searchParams;
+  const requested = searchParams.get('scope');
   const scope = allowed.includes(requested) ? requested : defaultScope(allowed, user, 'tasks');
+  const facetDealIds = idListParam(searchParams.get('dealId'));
+  const facetProjectId = idParam(searchParams.get('projectId'));
 
   // ── งาน personal_tasks (ระบบติดตามงาน — ผู้มีสิทธิ์ต้องเห็น "งาน" ทั้งหมดในขอบเขต) ──
-  //   • mine = งานที่ฉันเป็นเจ้าของ หรือถูกมอบหมายให้ฉัน
-  //   • team = งานทุกงานที่คนในทีมฉันเป็นเจ้าของ/ผู้รับมอบ + งานที่ผูกโครงการของทีม
+  //   • mine = งานที่ฉันเป็นเจ้าของ ถูกมอบหมายให้ฉัน ดึงมาทำแทน (proxyBy) หรือฉันมอบหมาย (assignedBy)
+  //   • team = งานทุกงานที่คนในทีมฉันเป็นเจ้าของ/ผู้รับมอบ + งานที่ผูกโครงการ/ดีลของทีม
   //   • all  = ทุกงานในระบบ (admin / sales head ติดตามได้ทุกทีม — วัดผลได้)
   // เดิม team/all ดึงเฉพาะงานที่ "มอบหมาย/ผูกโครงการ" ทำให้งานที่ผู้ใช้สร้างให้ตัวเอง
   // (ไม่มอบหมาย + ไม่ผูกโครงการ เช่นผูกแค่ดีลหรือไม่ผูกเลย) หลุดจากสายตา admin — แก้แล้ว.
-  // งานของฉัน = เป็นเจ้าของ, ถูกมอบหมายให้, หรือ "ดึงมาทำแทน" (proxyBy) — งานที่ดึง
-  // มาทำต้องอยู่ในรายการของฉันด้วย เพราะฉันเป็นคนทำจริง (และได้เครดิต KPI).
-  const [{ data: byOwner }, { data: byAssignee }, { data: byProxy }, { data: byAssigner }] = await Promise.all([
-    allPersonal(supabase, (q) => q.eq('ownerId', user.id)),
-    allPersonal(supabase, (q) => q.eq('assigneeId', user.id)),
-    allPersonal(supabase, (q) => q.eq('proxyBy', user.id)),
-    allPersonal(supabase, (q) => q.eq('assignedBy', user.id)),
-  ]);
-  const minePersonal = [...(byOwner || []), ...(byAssignee || []), ...(byProxy || []), ...(byAssigner || [])];
-
-  let extraPersonal = [];
-  if (scope === 'all') {
-    /* 🔴 รับ `error` ด้วย — supabase ไม่ throw มันคืน { data: null, error }
-       ⇒ ทิ้ง error = แดชบอร์ดขาดงานไปเงียบ ๆ โดยไม่มีอะไรบอกว่าโหลดไม่ครบ */
+  /* ⭐ นิยามขอบเขตย้ายไป `lib/pm/taskScope.js` (ตรวจตัวเลข M8b · 20/10/2026) — ป้าย "ค้าง n" บนหน้าดีลต้องนับแถว
+     ชุดเดียวกับที่คิวนี้โหลด ⇒ ทั้งสองที่เรียกตัวโหลดตัวเดียวกัน ไม่ใช่คัดลอกกติกาไปเขียนซ้ำ
+     ⚠️ พฤติกรรมเดิมทุกสาขา: "ทั้งหมด" รับ error (supabase ไม่ throw — ทิ้ง error = แดชบอร์ดขาดงานเงียบ ๆ) ·
+        สาขาอื่นยังกลืน error เป็นลิสต์ว่างเหมือนเดิม (ไม่ได้ตั้งใจเปลี่ยนในงานนี้) · ตัดการโหลดสี่สาขา "ของฉัน"
+        ที่เดิมยิงทุกขอบเขตแล้วทิ้งเมื่อไม่ใช่ "ของฉัน" (ผลบนจอเท่าเดิม) */
+  const clauses = await loadTaskScopeClauses(supabase, user, scope);
+  let scopedPersonal = [];
+  if (clauses === null) {
     const { data, error } = await allPersonal(supabase);
     if (error) throw error;
-    extraPersonal = data || [];
-  } else if (scope === 'team') {
-    const dept = normalizeDepartment(user.department);
-    if (isRdRole(user.role) && dept) {
-      const deptIds = await departmentUserIds(supabase, dept);
-      const queries = deptIds.length ? [
-        (q) => q.in('ownerId', deptIds),
-        (q) => q.in('assigneeId', deptIds),
-        (q) => q.in('proxyBy', deptIds),
-      ] : [];
-      const results = await Promise.all(queries.map((where) => allPersonal(supabase, where)));
-      extraPersonal = results.flatMap((r) => r.data || []);
-    } else {
-    const [teamProjIds, teamIds, { data: teamDeals }] = await Promise.all([
-      teamProjectIds(supabase, user.teams),
-      teamUserIds(supabase, user.teams),
-      whereTeamIn(supabase.from('sales_deals').select('id'), user),
-    ]);
-    const teamDealIds = (teamDeals || []).map((d) => d.id);
-    const queries = [];
-    if (teamProjIds.length) queries.push((q) => q.in('projectId', teamProjIds));
-    if (teamDealIds.length) queries.push((q) => q.in('dealId', teamDealIds));
-    if (teamIds.length) {
-      queries.push((q) => q.in('assigneeId', teamIds));
-      queries.push((q) => q.in('ownerId', teamIds));
-      queries.push((q) => q.in('proxyBy', teamIds));
-    }
-    const results = await Promise.all(queries.map((where) => allPersonal(supabase, where)));
-    extraPersonal = results.flatMap((r) => r.data || []);
-    }
+    scopedPersonal = data || [];
+  } else {
+    const results = await Promise.all(clauses.map((clause) => allPersonal(supabase, whereForTaskClause(clause))));
+    scopedPersonal = results.flatMap((r) => r.data || []);
   }
   const seenP = new Set();
-  const scopedPersonal = scope === 'mine' ? minePersonal : extraPersonal;
   const personalTasks = (scopedPersonal || [])
     .filter((t) => (seenP.has(t.id) ? false : seenP.add(t.id)));
 
@@ -111,6 +87,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   // → ฝ่ายจัดซื้อ (PC) ไม่เคยเห็นคิวของตัวเองในหน้านี้เลยทั้งที่มีงานรออยู่จริง
   // ตอนนี้ทั้งสองฝ่ายใช้ตารางเดียวกัน จึงกั้นด้วย "ตอบคำร้องของฝ่ายนี้ได้ไหม" แทน
   let inquiries = [];
+  let inquiryQueue = null;
   {
     const myDept = normalizeDepartment(user.department);
     if (myDept && canQuoteMaterial(user, myDept)) {
@@ -126,11 +103,32 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       // ⚠️ เหตุผลเดียวกับ `/api/sales-planning/my-schedule` — ป้าย "เลยกำหนด" ของจอนี้
       // ต้องไม่นับวันของรอบที่ส่งไปแล้ว (ดู lib/requests/reworkRows.js)
       inquiries = await attachReworkRows(supabase, data || []);
+      /* ⭐ ป้าย "n รอตอบ" + ลิงก์ "ดูทั้งหมด" = แท็บ "รอตอบ" ของคิวปลายทาง (ตรวจตัวเลข M8d · 20/10/2026)
+         🐞 เดิมป้ายนับใบเปิดของฝ่าย (ที่ฉันรับไว้/ยังไม่มีใครรับ) แล้วลิงก์ไป `/requests` ซึ่ง **ไม่มีคิวของ RD เลย**
+            (`deptsInSharedQueue` ตัดฝ่ายที่มีโมดูลของตัวเองทิ้ง) ⇒ กดแล้วไม่เจอสักใบจาก n ใบ
+         ⇒ ปลายทาง = คิวในบ้านของฝ่าย (`/rd/requests?tab=todo`) หรือคิวรวม (`/requests?tab=todo`) · นับด้วยตัวตัดสินของแท็บนั้น
+            บนแถวชุดเดียวกับที่หน้านั้นโหลด (คิวฝ่าย = ตัวโหลดเดียวกับป้ายเมนู `deptRequestsTodoCount` · คิวรวม = ขอบเขต "ของฉัน")
+         ⚠️ ลิสต์ 8 แถวข้างล่างยังเป็นตัวอย่างของ "ที่ฉันรับไว้/ยังไม่มีใครรับ" ตามเดิม — ป้ายเป็นของลิงก์ ไม่ใช่ของลิสต์
+         ⚠️ คำนวณเฉพาะตอนมีแถวให้โชว์ (บล็อกนี้ขึ้นจอเฉพาะตอน `inquiries` ไม่ว่าง) — ไม่ยิงโหลดเพิ่มให้คนที่ไม่เห็นบล็อก
+         🔴 ตัวนับห้ามล้มทั้ง route — `loadRequests`/`loadVisibleRequests` **throw** เมื่อ PostgREST ตอบ error (`fetchAll`)
+            และ `withUser` ไม่จับ ⇒ ป้ายตัวเดียวพังแล้วจอได้ 500 → `loadWork` อ่านเป็น `{}` → คิวงานทั้งหน้าว่าง ("ยังไม่มีงาน")
+            ⇒ นับไม่ได้ = `count: null` (จอไม่โชว์เลข — ไม่ใช่ 0 ที่อ่านว่า "ไม่มีค้าง") · ลิงก์ยังพาไปคิวที่ถูกได้ (ไม่แตะ DB) */
+      if (inquiries.length) {
+        inquiryQueue = { href: inquiryQueueHref(myDept), count: null };
+        try {
+          const rows = deptHasOwnModule(myDept)
+            ? await loadRequests(supabase, { dept: myDept, lean: true })
+            : (await loadVisibleRequests(supabase, user, { scopeParam: 'mine', lean: true })).rows;
+          inquiryQueue.count = inquiryQueueCount(rows, { dept: myDept, myDepts: deptsInSharedQueue(answerableDepts(user)) });
+        } catch (countError) {
+          console.warn('[my-work] inquiry queue count failed:', countError?.message || countError);
+        }
+      }
     }
   }
 
   // ── projects map สำหรับแสดงรหัส/ชื่อ (รวมโครงการที่งานเพิ่มเติมผูกไว้ด้วย) ──
-  const projIds = [...new Set(personalTasks.map((t) => t.projectId).filter(Boolean))];
+  const projIds = [...new Set([...personalTasks.map((t) => t.projectId).filter(Boolean), facetProjectId].filter(Boolean))];
   let projects = {};
   if (projIds.length) {
     const { data: ps } = await supabase
@@ -139,11 +137,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 
   // ── deals map สำหรับงานที่ผูกดีล ──
-  const dealIds = [...new Set(personalTasks.map((t) => t.dealId).filter(Boolean))];
+  // ⚠️ `projectId` ต้องมาด้วย — ตัวกรองดีลของคิวตัดสินงานเดิมของโครงการ (ไม่มี dealId) จากโครงการของดีล (`isDealTask`)
+  const dealIds = [...new Set([...personalTasks.map((t) => t.dealId).filter(Boolean), ...facetDealIds])];
   let deals = {};
   if (dealIds.length) {
     const { data: ds } = await supabase
-      .from('sales_deals').select('id, title, customerName, team, stage').in('id', dealIds);
+      .from('sales_deals').select('id, title, customerName, team, stage, projectId').in('id', dealIds);
     deals = Object.fromEntries((ds || []).map((d) => [d.id, d]));
   }
 
@@ -153,6 +152,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     me: { id: user.id, name: user.name, role: user.role, team: user.team ?? null, teams: user.teams ?? [], department: normalizeDepartment(user.department) },
     personalTasks: personalTasks || [],
     inquiries,
+    inquiryQueue,
     projects,
     deals,
   });

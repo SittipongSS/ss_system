@@ -42,6 +42,7 @@ import { fmtDate, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { businessDate } from "@/lib/businessDate";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
+import { isExciseOrder } from "@/lib/sales/historicalOrders";
 import { previewInstallments } from "@/lib/sales/salesOrderPayments";
 import { NO_BILLING_TEXT, asksNeed, dateModeOf } from "@/lib/sales/billingRule";
 import {
@@ -330,6 +331,11 @@ function NewSalesOrderInner() {
 
   const deal = quote.deal || null;
   const project = deal?.project || null;
+  /* ⭐ ใบค่าสรรพสามิต (PR4 · mig 0416) — SO ที่ได้ไม่มีดีล/โครงการ · ไม่นับ Actual · ผู้ยื่น = เจ้าของดีลของ SO ต้นทาง
+     (`sourceDeal` ใช้บอกชื่อคนกดยื่นอย่างเดียว ไม่ใช่ดีลของใบ) */
+  const excise = isExciseOrder(quote);
+  const submitOwnerName = String((excise ? quote.sourceDeal?.ownerName : deal?.ownerName) || "").trim();
+  const exciseSourceNo = quote.metadata?.exciseSource?.orderNumber || quote.sourceSalesOrderId || "";
   const todayIso = businessDate();
   const customerHref = quote.customerId ? `/database/customers/${quote.customerId}` : "";
 
@@ -370,7 +376,7 @@ function NewSalesOrderInner() {
           customerHref={customerHref}
           onRegistryOpened={markRegistryOpened}
           onSaved={refreshTerms}
-          ownerName={String(deal?.ownerName || "").trim()}
+          ownerName={submitOwnerName}
         />
         {asksNeed(customerRule) && terms.creditTerms ? (
           <p className={styles.termsSub}>
@@ -407,8 +413,8 @@ function NewSalesOrderInner() {
         workflowSteps={[
           { id: "create", label: "สร้างใบสั่งขาย", hint: "คุณอยู่ตรงนี้ — เลขที่ใบออกตอนกดสร้าง", state: "current" },
           // ชื่อเจ้าของดีลติดมาตั้งแต่ราง — AC ที่ออกใบแทนจะได้รู้ตั้งแต่ก่อนกดสร้างว่าต้องส่งต่อให้ใคร
-          { id: "submit", label: "ยื่นอนุมัติ", hint: `ต้องมีเอกสารยืนยันคำสั่งซื้อ · ยื่นได้เฉพาะ AE เจ้าของดีล${deal?.ownerName ? ` (${deal.ownerName})` : ""}` },
-          { id: "approve", label: "อนุมัติใบ", hint: "Actual เข้าเดือนที่อนุมัติ · งวดถูกล็อกยอด" },
+          { id: "submit", label: "ยื่นอนุมัติ", hint: `ต้องมีเอกสารยืนยันคำสั่งซื้อ · ยื่นได้เฉพาะ AE เจ้าของดีล${submitOwnerName ? ` (${submitOwnerName})` : ""}` },
+          { id: "approve", label: "อนุมัติใบ", hint: excise ? "ค่าสรรพสามิตไม่นับ Actual · งวดถูกล็อกยอด" : "Actual เข้าเดือนที่อนุมัติ · งวดถูกล็อกยอด" },
           { id: "payment", label: "บัญชีรับรองการชำระ", hint: "ทีละงวดตามหลักฐานที่แนบ" },
           // ⭐ ขั้นสุดท้ายจริง ๆ (มติ 2026-08-30) — บัญชีปิดใบได้เมื่อเก็บครบทุกงวด
           { id: "close", label: "บัญชีปิดใบ", hint: "กดได้เมื่อรับรองครบทุกงวดแล้ว" },
@@ -455,28 +461,43 @@ function NewSalesOrderInner() {
           subtitle="ข้อมูลลูกค้าของเอกสาร"
           facts={[{ label: "ผู้ติดต่อ", value: naText(quote.contactName) }]}
         />
-        <ContextCard
-          icon={FolderKanban}
-          href={deal?.projectId ? `/sa/projects/${deal.projectId}` : undefined}
-          eyebrow="โครงการ"
-          title={project?.name || naText(project?.code)}
-          subtitle={project?.code || "โครงการที่ผูกกับดีล"}
-          facts={[{ label: "การเชื่อมโยง", value: deal?.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]}
-        />
-        <ContextCard
-          icon={Handshake}
-          href={deal?.id ? `/sa/deals/${deal.id}` : undefined}
-          eyebrow="ดีล"
-          title={naText(deal?.title)}
-          subtitle={`${naText(deal?.team)} · ${naText(deal?.ownerName)}`}
-          facts={[{ label: "สถานะ", value: deal?.stage === "won" ? "Won" : naText(deal?.stage) }]}
-        />
+        {excise ? (
+          <ContextCard
+            icon={ClipboardList}
+            href={quote.sourceSalesOrderId ? `/sa/sales-orders/${quote.sourceSalesOrderId}` : undefined}
+            eyebrow="ใบสั่งขายต้นทาง"
+            title={naText(exciseSourceNo)}
+            subtitle="ใบสั่งขายของลูกค้าที่ใบนี้เก็บค่าสรรพสามิต"
+            facts={[{ label: "เจ้าของดีลต้นทาง", value: naText(quote.sourceDeal?.ownerName) }]}
+          />
+        ) : (
+          <>
+            <ContextCard
+              icon={FolderKanban}
+              href={deal?.projectId ? `/sa/projects/${deal.projectId}` : undefined}
+              eyebrow="โครงการ"
+              title={project?.name || naText(project?.code)}
+              subtitle={project?.code || "โครงการที่ผูกกับดีล"}
+              facts={[{ label: "การเชื่อมโยง", value: deal?.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]}
+            />
+            <ContextCard
+              icon={Handshake}
+              href={deal?.id ? `/sa/deals/${deal.id}` : undefined}
+              eyebrow="ดีล"
+              title={naText(deal?.title)}
+              subtitle={`${naText(deal?.team)} · ${naText(deal?.ownerName)}`}
+              facts={[{ label: "สถานะ", value: deal?.stage === "won" ? "Won" : naText(deal?.stage) }]}
+            />
+          </>
+        )}
         <ContextCard
           icon={FileText}
           href={`/sa/quotations/${quote.id}`}
-          eyebrow="ใบเสนอราคา Won"
+          eyebrow={excise ? "ใบเสนอราคาค่าสรรพสามิต" : "ใบเสนอราคา Won"}
           title={naText(quote.quoteNumber)}
-          subtitle={quote.acceptedAt ? `ปิด Won ${fmtDate(quote.acceptedAt)}` : "ปิด Won แล้ว"}
+          subtitle={excise
+            ? (quote.acceptedAt ? `ลูกค้ารับ ${fmtDate(quote.acceptedAt)}` : "ลูกค้ารับแล้ว")
+            : (quote.acceptedAt ? `ปิด Won ${fmtDate(quote.acceptedAt)}` : "ปิด Won แล้ว")}
           facts={[{ label: "แผนชำระ", value: `${plannedInstallments.length || 1} งวด` }]}
         />
       </ContextGrid>

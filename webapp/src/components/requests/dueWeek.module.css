@@ -13,6 +13,7 @@
 
 .range { color: var(--text-2); font-size: var(--fs-6); font-weight: var(--fw-semibold); }
 .overdueNote { color: var(--red); font-size: var(--fs-4); }
+.turnNote { color: var(--text-3); font-size: var(--fs-3); }
 
 .week {
   display: grid;
@@ -65,6 +66,9 @@
 .job:hover { border-color: var(--accent); color: var(--accent-ink); }
 .job:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .job[data-overdue] { border-color: var(--red); color: var(--red); }
+/* ใบตาผู้ขอ (ฝ่ายส่งแล้ว รอผู้ขอทำต่อ) — ยังอยู่ในวันที่รับปากไว้ แต่ไม่ใช่งานค้างของฝ่าย ⇒ เส้นประจาง ไม่แดงแม้เลยวัน
+   (มติเจ้าของ 19/10: ตัวเลข "เลยกำหนดแล้ว" นับเฉพาะตาฝ่าย · สีแดงบนช่องต้องเป็นใบชุดเดียวกับตัวเลขนั้น) */
+.job[data-turn="requester"] { border-style: dashed; background: var(--panel); color: var(--text-3); }
 .jobLines { color: var(--text-3); }
 .jobUrgent { color: var(--red); font-weight: var(--fw-bold); }
 

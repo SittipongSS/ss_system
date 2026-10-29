@@ -284,5 +284,6 @@ test('modal: รายการ "ยอด Won" ได้บรรทัดร�
   assert.match(codeOnly(modalCss), /\.awaitingSoSubLine \{[^}]*line-height: var\(--lh-thai\);/);
   // ยอดรวมของรายการไม่รวมบรรทัดรอง
   assert.match(modal, /const totalValue = deals\.reduce\(\(sum, deal\) => sum \+ amountOf\(deal\), 0\);/);
-  assert.match(modal, /isWonDeal\(deal\) && filter\.metric === "won" \? wonAmountOf\(deal\) : forecastAmount\(deal\)/);
+  /* Actual ของแถว = ส่วนของเดือนในงวด (mig 0412 — ดีลใบ "Actual รายงวด" แตกหลายเดือน) · ใบทั้งใบ = wonValue เท่าเดิม */
+  assert.match(modal, /isWonDeal\(deal\) && filter\.metric === "won" \? actualInPeriodOf\(deal, inPeriod\) : forecastAmount\(deal\)/);
 });

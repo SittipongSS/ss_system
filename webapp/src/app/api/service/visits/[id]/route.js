@@ -256,7 +256,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (surveyField.request && !surveyEditLockError(surveyField.request)) {
         /* ⭐ ด่านรูปจุด (G1 · มติ 01/10) ต่อจากด่านหกข้อ — ทุกจุดมีรูป + ถาด "ยังไม่ได้ผูกจุด" ว่าง
            (ตัวเดียวกับกล่องส่งงาน/แถบบนจอ · ไฟล์จากฐาน `listAttachments` มี metadata.spotId ครบ) */
-        const blocked = surveyFieldSubmitError(surveyField.zones, surveyField.filesByZone)
+        /* `variant` = สิ่งที่ฝ่ายขายขอ (งวด 4) — ใบที่ยื่นเป็นประเมินจากแบบแล้วไม่มีพื้นที่ ได้ประโยค "ยังไม่มีพื้นที่ให้ประเมิน" */
+        const blocked = surveyFieldSubmitError(surveyField.zones, surveyField.filesByZone, { variant: surveyField.request?.variant })
           || surveySpotSubmitError(surveyField.zones, surveyField.filesByZone);
         if (blocked) return conflict(blocked);
       }

@@ -150,6 +150,9 @@ export default function ProductForm({
   creatorName = null,        // ป้าย "ผู้สร้าง" (เฉพาะตอนสร้าง)
   factoryPrice = "input",    // "input" | "readonly"
   currentCostPrice = null,   // โชว์ตอน readonly
+  // ⭐ สินค้าตัวนี้ต้องเสียภาษีสรรพสามิตตามธงที่บันทึกไว้ (`isExciseTaxable === true` — RA บังคับรายตัวในหมวดอื่นได้)
+  //    ⇒ ช่องราคาขายปลีกต้องโผล่แม้หมวดไม่ใช้ราคา: หน้ารายละเอียดเตือน "ต้องเติมราคาก่อน" ใบนี้อยู่ (ตรวจตัวเลข 26/10 · L16c)
+  taxable = false,
   // ── โหมดรหัสสินค้า (มติผู้ใช้ 2026-08-12 "แบบ A") ────────────────────────
   // onCodeMode = null (ค่าตั้งต้น) แปลว่าไม่มีสวิตช์ = โหมดแก้
   codeMode = CODE_MODE_MANUAL,
@@ -217,7 +220,7 @@ export default function ProductForm({
 
   const inRetailCategory = showsRetailPriceForCategory(categoryCode, productTypes);
   const hasRetailValue = form.retailPriceIncVat !== "" && form.retailPriceIncVat != null;
-  const showRetail = inRetailCategory || hasRetailValue;
+  const showRetail = inRetailCategory || hasRetailValue || taxable;
 
   // สูตรที่เก็บเข้ากรุแล้วไม่ให้เลือกใหม่ แต่ตัวที่สินค้านี้ผูกอยู่ต้องคงอยู่ในลิสต์
   // เสมอ ไม่งั้นแค่เปิดฟอร์มแก้ชื่อสินค้าแล้วกดบันทึก สูตรจะหลุดเงียบ ๆ
@@ -595,7 +598,9 @@ export default function ProductForm({
             <h3 className="font-semibold text-[var(--text)]">3. ราคาขายปลีก (Retail Price)</h3>
             {!inRetailCategory && (
               <span className="text-[11px] text-[var(--amber)]">
-                หมวดนี้ไม่ได้ใช้ราคาขายปลีก (ไม่ใช่กลุ่ม {RETAIL_PRICE_MAIN_CATEGORY} และไม่ได้ติ๊กสรรพสามิต) แต่สินค้าตัวนี้มีราคาค้างอยู่ — โชว์ไว้ให้เห็นและลบได้ ไม่ใช่ซ่อนทั้งที่ยังมีค่า
+                {taxable
+                  ? "สินค้าตัวนี้ถูกตั้งให้เสียภาษีสรรพสามิตรายตัว (ฝ่าย RA) — ราคาขายปลีกคือฐานคิดภาษี ไม่มีราคา = ภาษีคิดออกมา 0 และยื่นขึ้นทะเบียนไม่ได้"
+                  : <>หมวดนี้ไม่ได้ใช้ราคาขายปลีก (ไม่ใช่กลุ่ม {RETAIL_PRICE_MAIN_CATEGORY} และไม่ได้ติ๊กสรรพสามิต) แต่สินค้าตัวนี้มีราคาค้างอยู่ — โชว์ไว้ให้เห็นและลบได้ ไม่ใช่ซ่อนทั้งที่ยังมีค่า</>}
               </span>
             )}
           </div>

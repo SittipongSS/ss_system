@@ -10,6 +10,9 @@
 //   (นิยามแถวล็อกตัวเดียวกับ `public._so_installment_replan_locked` · เกณฑ์ Σ ตัวเดียวกับ RPC)
 // 🔴 **ไม่มีอะไรในไฟล์นี้แตะยอด Actual** — ผลลัพธ์เป็นแถวงวดล้วน (ไม่มี totalAmount/actualAmount/approvedAt)
 //   และ RPC ไม่เขียน sales_orders ⇒ trigger sync_sales_order_actual ไม่ตื่น (หัวไฟล์ salesOrderPayments.js)
+//   ⭐ ใบ Actual รายงวด (mig 0412): งวดที่ยื่นขอนับอยู่ล็อก (installmentReplanLock) · งวดที่นับแล้วแต่ยังไม่มีเงิน **ปรับยอด/วันได้
+//     ลบไม่ได้** (มติเจ้าของข้อ 9 · 26/10 — installmentReplanCounted · trigger ลบของ 0412) — ช่อง Actual ที่ตรึงไว้ไม่อยู่ในแผน
+//     ⇒ Actual ที่นับแล้วไม่ขยับ · งวดที่ยังไม่นับเปลี่ยนแค่ยอดประมาณของกอง "รอนับรายงวด" (trigger ของงวดคิดใหม่)
 import { fmtDate, fmtMoney, fmtPercent } from '@/lib/format';
 import { currentMonth, formatMonthLabel } from '@/lib/datePeriods';
 import { MAX_INSTALLMENTS } from '@/lib/sales/paymentPlan';
@@ -20,6 +23,8 @@ import {
 import { OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 import { contractInForce } from '@/lib/sales/contracts';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
+/* ใบ "Actual รายงวด" (mig 0412) — ยอดที่นับแล้วต่างจากยอดเต็มและกระจายหลายเดือน ⇒ โมดัลพูดยอดที่นับแล้วแทน (ไฟล์กติกาไม่ import ไฟล์นี้กลับ) */
+import { installmentActualCountRestDone, isInstallmentActualOrder, salesOrderCountedActual } from '@/lib/sales/salesOrderActualMode';
 
 /** ป้ายบนแผงงวดและทะเบียนบัญชี (มติ D5 — ฉบับพิมพ์ยังแสดงแผนตาม QT) */
 export const REPLANNED_BADGE = 'ปรับแผนหลังอนุมัติ';
@@ -45,7 +50,9 @@ const validDay = (v) => ISO_DAY.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:
 
 /**
  * แถวนี้ **ล็อก** ไหมตอนปรับแผน — คืนเหตุผลไทย หรือ null (= แถวเปิด)
- * ⚠️ นิยามเดียวกับ `public._so_installment_replan_locked` ของ 0377 ทุกข้อ (ปุ่ม · จอ · API · SQL ตอบคำเดียวกัน)
+ * ⚠️ นิยามเดียวกับ `public._so_installment_replan_locked` ทุกข้อ (ปุ่ม · จอ · API · SQL ตอบคำเดียวกัน) — 0377 ห้าข้อ
+ *   + 0412 ข้อหก `actualStatus = 'submitted'` + ข้อเจ็ด `actualStatus = 'approved'` ที่ยอด 0 (นับ Actual รายงวด)
+ * ⭐ มติเจ้าของข้อ 9 (26/10): งวดที่นับ Actual แล้ว **ยอด > 0** ไม่ล็อก — ปรับยอด/วันได้ ลบไม่ได้ (`installmentReplanCounted`)
  * ⭐ ลำดับ: สถานะเงินก่อนเอกสาร — งวดที่รับเงินแล้วบอก "รับเงินแล้ว" แม้มีใบกำกับด้วย
  * ⚠️ `rejected` = เปิด (มติแผน PR2): บัญชีตีกลับแล้ว เงินยังไม่ถูกนับ · สถานะคงไว้ให้ SA แจ้งใหม่
  * @param requestById Map|object ของคำร้องขอวางบิล (order.billingRequests) — ใช้บอกเลขคำร้องในเหตุผล
@@ -55,6 +62,12 @@ export function installmentReplanLock(row, { requestById = null } = {}) {
   const status = row.status || 'pending';
   if (status === 'confirmed') return 'รับเงินแล้ว';
   if (status === 'reported') return 'รอบัญชีตรวจ — ผู้แจ้งดึงกลับหรือบัญชีตีกลับก่อน';
+  /* ⭐ ใบ Actual รายงวด (mig 0412): งวดที่ยื่นขอนับอยู่ = ยอดที่รอ AE Sup (ส่วนแบ่งคิดตอนอนุมัติ) ⇒ ล็อกเหมือนงวดที่มีเงิน
+     ⭐ มติข้อ 9: งวดที่นับแล้วยอด > 0 = เปิด (ปรับยอด/วันได้ ลบไม่ได้ — ด่านลบอยู่ที่ buildReplanRows/applyCarryIn + trigger ของ 0412)
+       · ยอด 0 = ล็อก: แถวเปิดต้องยอด > 0 (แกน 0377) — ปล่อยเปิดแล้วเก็บ 0 ไว้ก็ไม่ได้ ลบก็ไม่ได้ = ปรับแผนใบนั้นไม่ได้เลย
+     ⚠️ `rejected` (ตีกลับการยื่น) = เปิด — ยังไม่มีอะไรนับ (เหมือนงวดที่บัญชีตีกลับ) */
+  if (row.actualStatus === 'approved' && toCents(row.amount) <= 0) return 'นับ Actual แล้ว (งวดยอด 0 บาท)';
+  if (row.actualStatus === 'submitted') return 'ยื่นขอนับ Actual อยู่ — ผู้ยื่นดึงกลับหรือ AE Sup ตีกลับก่อน';
   const invoice = text(row.taxInvoiceNo);
   if (invoice) return `มีใบกำกับภาษี ${invoice}`;
   const requestId = text(row.billingRequestId);
@@ -66,6 +79,16 @@ export function installmentReplanLock(row, { requestById = null } = {}) {
   const hasEvidence = Array.isArray(row.evidence) && row.evidence.length > 0;
   if (status === 'pending' && (hasEvidence || row.paidOn)) return 'มีหลักฐานการจ่ายค้างอยู่';
   return null;
+}
+
+/* ── งวดที่นับ Actual แล้วแต่ยังไม่มีเงิน (มติเจ้าของข้อ 9 · 26/10/2026 "ปรับยอด/วันได้ ลบไม่ได้") ──────────────────────────
+   ⭐ แถวเปิดที่ต้องอยู่ในแผนเสมอ — ยอด/วันครบกำหนด/ป้าย/สัดส่วนแก้ได้ · ช่อง Actual (actualAmount/actualApprovedAt) ไม่อยู่ในแผน
+     ⇒ Actual ของใบ/ดีลไม่ขยับ · ด่านเดียวกับ trigger `sales_order_installments_actual_delete_guard` ของ 0412 */
+export const REPLAN_COUNTED_LABEL = 'นับ Actual แล้ว — ปรับยอด/วันได้ ลบไม่ได้';
+
+/** งวดที่นับ Actual แล้วซึ่งปรับแผนได้ (ไม่ล็อก) — ลบออกจากแผนไม่ได้ */
+export function installmentReplanCounted(row, { requestById = null } = {}) {
+  return row?.actualStatus === 'approved' && !installmentReplanLock(row, { requestById });
 }
 
 /**
@@ -90,12 +113,20 @@ export function installmentReplanBlocker(order, rows = [], user = null) {
   const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
   if (!list.length) return { visible: true, blocker: 'ยังไม่มีงวดชำระ — กด ‘เริ่มติดตามการชำระ’ ก่อน' };
   if (list.every((r) => installmentReplanLock(r))) {
-    return { visible: true, blocker: 'ทุกงวดรับเงินหรือมีเอกสารผูกแล้ว — ไม่มีงวดที่ปรับได้' };
+    /* 🐞 review รอบสอง 26/10: งวดที่ติดเพราะการนับ Actual อย่างเดียว (ยังไม่มีเงิน/เอกสาร) ไม่ใช่ "รับเงิน/มีเอกสารผูก" ⇒ บอกเหตุนี้ด้วย
+       · มติข้อ 9: งวดที่นับแล้วยอด > 0 ไม่ล็อกแล้ว — เหลือแค่งวดที่ยื่นขอนับอยู่ และงวดนับแล้วยอด 0 */
+    const actualOnly = list.some((r) => !installmentReplanLock({ ...r, actualStatus: null }));
+    return {
+      visible: true,
+      blocker: actualOnly
+        ? 'ทุกงวดรับเงิน มีเอกสารผูก หรือยื่น/นับ Actual แล้ว — ไม่มีงวดที่ปรับได้'
+        : 'ทุกงวดรับเงินหรือมีเอกสารผูกแล้ว — ไม่มีงวดที่ปรับได้',
+    };
   }
   return { visible: true, blocker: null };
 }
 
-/** ร่างตั้งต้นของตัวแก้ = แถวเปิดของใบตามลำดับงวด (แถวล็อกไม่อยู่ในร่าง — คงเดิมเสมอ) */
+/** ร่างตั้งต้นของตัวแก้ = แถวเปิดของใบตามลำดับงวด (แถวล็อกไม่อยู่ในร่าง — คงเดิมเสมอ · งวดที่นับแล้วอยู่ในร่าง — ลบไม่ได้) */
 export function replanDraftFrom(rows = [], { requestById = null } = {}) {
   return sortedRows(rows)
     .filter((r) => !installmentReplanLock(r, { requestById }))
@@ -198,6 +229,64 @@ export function replanDiff(before = [], after = []) {
 }
 
 /**
+ * ยอด Actual ที่จะ **ไม่มีงวดไหนนับได้อีก** หลังเขียนแผน (สตางค์ · 0 = ไม่มีปัญหา) — กติกาเดียวกับ W1/C2o ของ 0412
+ * ⭐ ใบรายงวด: ส่วนแบ่ง (`_so_installment_actual_share` · `installmentActualShares`) วางยอดที่เหลือ (actualAmount − Σ ที่นับแล้ว)
+ *   ไว้ที่งวดที่ยังไม่นับเท่านั้น ⇒ แผนที่ไม่เหลืองวดที่ยังไม่นับ = ยอดนั้นหายจากทุกกอง (Actual · รออนุมัติ · รอนับรายงวด) ถาวร
+ * ⭐ Σ ที่นับแล้วไม่เปลี่ยนตามแผน (ช่อง Actual ไม่อยู่ในแผน · งวดที่ถูกแทนตอนยกเงินย้าย Actual ไปแถวที่ยก) ⇒ คิดจากแถวในฐาน
+ * @param rows       แถวงวดในฐานของใบนี้ (ก่อนเขียน)
+ * @param finalIds   id ของทุกแถวในแผนใหม่ (null = แถวใหม่ = ยังไม่นับ · id ที่ไม่ใช่ของใบนี้ = แถวที่ยกมา = ยังไม่นับ — C1)
+ * @param countedIds id ในแผนที่จะ **ถูกนับ** ตอนเขียน (แถวที่ยกมาแถวแรกที่รับ Actual ของงวดที่ถูกแทน — C2b)
+ */
+export function remainderOrphanedCents(order, rows = [], finalIds = [], { countedIds = [] } = {}) {
+  if (!isInstallmentActualOrder(order) || (order?.status != null && order.status !== 'approved')) return 0;
+  const byId = new Map(sortedRows(rows).map((r) => [r.id, r]));
+  const countedC = sortedRows(rows).filter((r) => r.actualStatus === 'approved')
+    .reduce((sum, r) => sum + Math.max(0, toCents(r.actualAmount)), 0);
+  const leftC = toCents(order?.actualAmount) - countedC;
+  if (leftC <= 0) return 0;
+  const willCount = new Set((Array.isArray(countedIds) ? countedIds : []).filter(Boolean));
+  const keepsOpen = (Array.isArray(finalIds) ? finalIds : []).some((id) => !id
+    || (!willCount.has(id) && byId.get(id)?.actualStatus !== 'approved'));
+  return keepsOpen ? 0 : leftC;
+}
+
+/**
+ * มติเจ้าของข้อ 10 (26/10 "นับให้เอง ไม่ต้องยื่น") — บรรทัดผลของโมดัลปรับแผน/ยกเงินบนใบที่กด "นับที่เหลือทั้งหมด" แล้ว · ไม่เกี่ยว = ''
+ * ⭐ งวดที่ยังไม่นับในแผนใหม่ (แถวใหม่ · แถวที่ยกมา) ฐานนับ Actual ให้ตอนบันทึก (constraint trigger ของ 0412 · via count_rest)
+ *   ยอดที่เข้า Actual = actualAmount − Σ ที่นับแล้ว (ปกติ 0 — นับครบแล้ว) ลงเดือนที่บันทึก · ไม่ต้องยื่น บัญชีรับรองเงินได้ทันที
+ * ⭐ Σ ที่นับแล้วไม่เปลี่ยนตามแผน (ช่อง Actual ไม่อยู่ในแผน · งวดที่ถูกแทนตอนยกเงินย้าย Actual ไปแถวที่ยก) ⇒ คิดจากแถวในฐาน
+ * @param rows       แถวในฐานของใบนี้ (ก่อนเขียน)
+ * @param finalIds   id ของทุกแถวในแผนใหม่ (null = แถวใหม่ · id ที่ไม่ใช่ของใบนี้ = แถวที่ยกมา — ยังไม่นับตอนเขียน · C1)
+ * @param countedIds id ในแผนที่จะถูกนับระหว่างเขียน (แถวที่ยกมาแถวแรกที่รับ Actual ของงวดที่ถูกแทน — C2b)
+ * @param noun       คำเรียกงวดพวกนั้น ("งวดที่เพิ่ม" · "งวดที่ยกมา")
+ */
+export function autoCountLine(order, rows = [], finalIds = [], { countedIds = [], noun = 'งวดที่เพิ่ม' } = {}) {
+  if (!isInstallmentActualOrder(order) || (order?.status != null && order.status !== 'approved')) return '';
+  const current = sortedRows(rows);
+  if (!installmentActualCountRestDone(current)) return '';
+  const byId = new Map(current.map((r) => [r.id, r]));
+  const willCount = new Set((Array.isArray(countedIds) ? countedIds : []).filter(Boolean));
+  const open = (Array.isArray(finalIds) ? finalIds : []).filter((id) => !id
+    || (!willCount.has(id) && byId.get(id)?.actualStatus !== 'approved'));
+  // ไม่มีงวดที่ยังไม่นับในแผนนี้ — ยังบอกกติกาของใบ (แทนคำ "ยื่น/อนุมัติรายงวด" ที่ไม่มีผลกับใบนี้แล้ว)
+  if (!open.length) return 'ใบนี้กด “นับที่เหลือทั้งหมด” แล้ว — งวดที่เพิ่มทีหลังนับ Actual ให้อัตโนมัติ ไม่ต้องยื่น (มติข้อ 10)';
+  const countedC = current.filter((r) => r.actualStatus === 'approved')
+    .reduce((sum, r) => sum + Math.max(0, toCents(r.actualAmount)), 0);
+  const leftC = Math.max(0, toCents(order?.actualAmount) - countedC);
+  return `ใบนี้กด “นับที่เหลือทั้งหมด” แล้ว — ${noun} ${open.length} งวดนับ Actual ให้อัตโนมัติตอนบันทึก ไม่ต้องยื่น (มติข้อ 10)`
+    + (leftC > 0
+      ? ` · ยอด ${fmtMoney(leftC / 100)} (ก่อน VAT) เข้า Actual เดือน ${formatMonthLabel(currentMonth())}`
+      : ` · ส่วนแบ่ง ${fmtMoney(0)} — Actual ของใบครบแล้ว ไม่ขยับ`)
+    + ' · บัญชีรับรองเงินงวดนั้นได้ทันทีที่ลูกค้าจ่าย';
+}
+
+/** คำของด่านข้างบน (ปรับแผน) — บอกยอดและทาง (ลูกค้าจ่ายพร้อมกันได้ ไม่ต้องรวมงวด) */
+export function remainderOrphanedText(cents) {
+  return `Actual ของใบยังนับไม่ครบ ${fmtMoney(cents / 100)} — แผนต้องเหลืองวดที่ยังไม่นับ Actual อย่างน้อย 1 งวด`
+    + ' (ไม่งั้นยอดนี้ไม่มีงวดไหนนับได้อีก) · ลูกค้าจ่ายพร้อมกันได้โดยตั้งวันครบกำหนดเดียวกัน ไม่ต้องรวมงวด';
+}
+
+/**
  * ชุดสุดท้าย **ทั้งใบ** ของการปรับแผน — ป้อนทั้งจอ (พรีวิว/ยอดวิ่ง) และ route (payload ของ RPC)
  *
  * @param rows   แถวงวดในฐานทั้งใบ (อ่านสด)
@@ -207,10 +296,13 @@ export function replanDiff(before = [], after = []) {
  * @returns `{ rows, view, error, errors, warnings, totals }`
  *   · rows  = payload ของ RPC เรียงตามเลขงวด `{ id, seq, label, percent, amount, dueDate, coversFrom, coversTo, note }`
  *            (แถวล็อกออกมาเท่าในฐานทุกช่อง — RPC เทียบทีละช่อง)
- *   · view  = rows + `lock` (เหตุผล) · `status` · `draftIndex` (ชี้กลับแถวร่าง) สำหรับวาดตาราง
+ *   · view  = rows + `lock` (เหตุผล) · `counted` (งวดที่นับ Actual แล้ว — ลบไม่ได้) · `status` · `draftIndex` (ชี้กลับแถวร่าง)
+ *            สำหรับวาดตาราง
  *   · error = ทุกข้อที่ยังไม่ผ่านในข้อความเดียว (กติกาฟอร์ม: ด่านรวมข้อความเดียว) หรือ null
  * ⭐ ยอดคิดเป็นสตางค์ (จำนวนเต็ม) — โหมด % แถวเปิดสุดท้ายรับเศษยอด · สัดส่วน = round2(ยอด/ยอดใบ) แถวเปิดสุดท้ายทำให้ Σ = 100
  * ⭐ เลขงวด: แถวล็อกคงเลขเดิม · แถวเปิดเติมเลขว่างที่น้อยสุดตามลำดับในตัวแก้ · ป้าย "งวดที่ N"/ว่าง เดินตามเลข
+ * ⭐ มติข้อ 9: งวดที่นับ Actual แล้ว (installmentReplanCounted) เป็นแถวเปิดที่ต้องอยู่ในร่างเสมอ — ไม่อยู่ = error (ลบไม่ได้)
+ *   ยอดต้อง > 0 เหมือนแถวเปิดอื่น (ลดถึง 0 = ลบ) · เลขงวดเดินตามลำดับในตัวแก้ (ตัวแก้ไม่สลับลำดับ ⇒ ลำดับสัมพัทธ์คงเดิม)
  */
 export function buildReplanRows(order, rows = [], draft = [], { unit = 'amount', serviceRounds = false, requestById = null } = {}) {
   const current = sortedRows(rows);
@@ -239,6 +331,12 @@ export function buildReplanRows(order, rows = [], draft = [], { unit = 'amount',
   }
   if (unknown) errors.push('มีงวดที่ไม่ใช่งวดของใบนี้ — โหลดใหม่แล้วลองอีกครั้ง');
   if (duplicate) errors.push('มีงวดซ้ำกันในแผน — โหลดใหม่แล้วลองอีกครั้ง');
+  // มติข้อ 9: งวดที่นับ Actual แล้วต้องอยู่ในแผน (trigger ลบของ 0412 ปฏิเสธอยู่แล้ว — ตอบก่อนด้วยคำเดียวกับป้ายบนแถว)
+  const countedOf = (r) => installmentReplanCounted(r, { requestById });
+  const droppedCounted = current.filter((r) => countedOf(r) && !seen.has(r.id)).map((r) => `งวดที่ ${r.seq}`);
+  if (droppedCounted.length) {
+    errors.push(`${droppedCounted.join(', ')} นับ Actual แล้ว — ลบออกจากแผนไม่ได้ (ปรับยอด/วันได้)`);
+  }
 
   const count = locked.length + entries.length;
   if (count < 1) errors.push('แผนต้องมีอย่างน้อย 1 งวด');
@@ -345,12 +443,19 @@ export function buildReplanRows(order, rows = [], draft = [], { unit = 'amount',
     note: r.note ?? null,
   });
   const view = [
-    ...locked.map((r) => ({ ...payload(r), lock: lockOf(r), status: r.status || 'pending', draftIndex: null })),
+    ...locked.map((r) => ({ ...payload(r), lock: lockOf(r), counted: false, status: r.status || 'pending', draftIndex: null })),
     ...open.map((r) => ({
-      ...payload(r), lock: null, status: byId.get(r.id)?.status || 'pending', draftIndex: r.draftIndex,
+      ...payload(r), lock: null, counted: Boolean(r.id && byId.has(r.id) && countedOf(byId.get(r.id))),
+      status: byId.get(r.id)?.status || 'pending', draftIndex: r.draftIndex,
     })),
   ].sort(bySeq);
   const finalRows = view.map(payload);
+
+  /* ใบรายงวด (review รอบสาม 26/10 · ด่าน W1 ของ 0412 ตรวจซ้ำใต้ล็อก): ส่วนแบ่งวางยอดที่ยังไม่นับไว้ที่ **งวดที่ยังไม่นับ** เท่านั้น
+     (งวดสุดท้ายที่ยังไม่นับรับเศษ) ⇒ แผนที่ไม่เหลืองวดที่ยังไม่นับ ทั้งที่ Σ ยอดที่นับแล้ว < actualAmount = ยอดที่เหลือหายจากทุกกองถาวร
+     🐞 ปรับงวด 1 (นับตอนอนุมัติ ยังไม่มีเงิน) เป็นเต็มใบแล้วลบงวด 2 — มติข้อ 9 อนุญาตทั้งสองข้อ แต่ Actual ค้าง 50% ตลอดไป */
+  const orphanC = remainderOrphanedCents(order, current, view.map((r) => r.id));
+  if (orphanC > 0) errors.push(remainderOrphanedText(orphanC));
 
   if (!errors.length && !replanDiff(current, finalRows).length) {
     errors.push('แผนยังไม่เปลี่ยน — แก้ยอด วันครบกำหนด หรือจำนวนงวดก่อนบันทึก');
@@ -418,6 +523,13 @@ export function actualMonthLabel(order) {
   return formatMonthLabel(key);
 }
 
+/* ยอด Actual ที่นับแล้วของใบ "Actual รายงวด" (จัดรูปแล้ว) — โมดัลปรับแผน/ยกเงินพูดบรรทัด Actual แบบรายงวดเมื่อมีค่า · ใบทั้งใบ = ''
+   ⭐ ปรับแผน/ยกเงินไม่แตะช่อง Actual ของงวดที่นับแล้ว (มติข้อ 9: ยอด/วันของงวดปรับได้ · Actual ที่ตรึงไว้คงเดิม) — ยอดที่นับแล้ว
+     ไม่เปลี่ยน แต่ไม่ใช่ "ยอดเต็ม เดือนอนุมัติใบ" */
+export function installmentActualLabelOf(order) {
+  return isInstallmentActualOrder(order) ? fmtMoney(salesOrderCountedActual(order)) : '';
+}
+
 /** บรรทัดก่อน→หลังของงวดหนึ่งแถว (ผลของ `replanDiff`) — โมดัลปรับแผนและโมดัลยกเงิน (PR3) ใช้ประโยคชุดเดียวกัน */
 export function replanChangeLine(change) {
   const { kind, before: b, after: a } = change;
@@ -439,6 +551,8 @@ export function replanChangeLine(change) {
   }
   if (fields.has('note')) parts.push(a.note ? 'แก้หมายเหตุ' : 'ล้างหมายเหตุ');
   if (!parts.length) parts.push(`ยอดคงเดิม ${fmtMoney(a.amount)}`);
+  // มติข้อ 9: งวดที่นับ Actual แล้วปรับยอด/วันได้ — คนกดต้องเห็นว่า Actual ของงวดนั้นไม่ขยับตาม
+  if (b.actualStatus === 'approved') parts.push('นับ Actual แล้ว — ยอด Actual คงเดิม');
   const head = Number(b.seq) === Number(a.seq) ? `งวดที่ ${a.seq}` : `งวดที่ ${b.seq} → งวดที่ ${a.seq}`;
   return `${head}: ${parts.join(' · ')}`;
 }
@@ -466,6 +580,9 @@ export function replanPromptFacts(order, before = [], after = [], { serviceRound
     totalLabel: fmtMoney(order?.totalAmount),
     actualAmountLabel: fmtMoney(order?.actualAmount),
     actualMonthLabel: actualMonthLabel(order),
+    installmentActualLabel: installmentActualLabelOf(order),
+    /* มติข้อ 10: ใบที่กดนับที่เหลือทั้งหมดแล้ว — งวดที่เพิ่มนับให้อัตโนมัติตอนบันทึก (ไม่ต้องยื่น) · ใบอื่น = '' */
+    actualAutoCountLine: autoCountLine(order, prev, next.map((r) => r.id ?? null)),
     quotationNumber: text(order?.quotation?.quoteNumber),
     serviceRounds: Boolean(serviceRounds),
     paidThroughLabel: serviceRounds && through ? fmtDate(through) : '',
@@ -491,9 +608,13 @@ export function replanReasonError(reason) {
   return null;
 }
 
-/** สรุป audit — บอกเสมอว่า Actual ไม่เปลี่ยน (คนอ่านประวัติจะถามข้อนี้ก่อน) */
-export function replanAuditSummary({ orderNumber, beforeCount, afterCount, reason } = {}) {
-  return `ปรับแผนงวด ${orderNumber}: ${beforeCount}→${afterCount} งวด (Actual ไม่เปลี่ยน): ${text(reason)}`;
+/** สรุป audit — บอกเสมอว่า Actual เปลี่ยนไหม (คนอ่านประวัติจะถามข้อนี้ก่อน)
+ * ⭐ ปกติ "Actual ไม่เปลี่ยน" (RPC 0377 ไม่แตะตัวใบ) · ยกเว้นใบที่กด "นับที่เหลือทั้งหมด" แล้ว (มติข้อ 10) ที่ฐานนับงวดใหม่ให้ตอน COMMIT
+ *   แล้วมียอด (`autoCounted.amount` > 0 — ใบ Rev. ที่ยอดสูงกว่าที่นับไว้) ⇒ ห้ามเขียนว่า "ไม่เปลี่ยน" (review รอบห้า 27/10)
+ *   · route ต่อท้ายรายละเอียดงวดที่นับเอง (installmentActualAutoCountAuditText) */
+export function replanAuditSummary({ orderNumber, beforeCount, afterCount, reason, autoCounted = null } = {}) {
+  const actual = Number(autoCounted?.amount) > 0 ? 'Actual เปลี่ยนเฉพาะงวดที่ระบบนับอัตโนมัติ' : 'Actual ไม่เปลี่ยน';
+  return `ปรับแผนงวด ${orderNumber}: ${beforeCount}→${afterCount} งวด (${actual}): ${text(reason)}`;
 }
 
 /**

@@ -9,10 +9,13 @@
 //   ผลจากแบบเป็นผลประเมินจริง เสนอราคา/ตั้งงานบริการได้) · แถวทะเบียนบอกมาเองว่าโซนไหนเป็นผลจากแบบ:
 //     `confirmTag` มีคำ = ผลล่าสุดมาจากแบบ ⇒ ต่อ " (จากแบบ)" ท้ายตัวเลข (`zoneAssessedSourceNote`)
 //     `confirm` เป็น 'awaiting' = ใบตอบว่าต้องยืนยันหน้างานและยังไม่ได้ยืนยัน ⇒ นับใน `plan.awaitingConfirm`
+//       · 'confirming' (มีใบยืนยันหน้างานเปิดอยู่ · งวด S5) ก็ยังไม่ได้ยืนยัน ⇒ นับด้วย (`surveyConfirmPending`)
 //   ⚠️ แถวที่ไม่มีสองคีย์นี้ (ผลลงหน้างาน · ยังไม่ประเมิน · ทะเบียนรายไซต์ของใบย้อนหลังที่พกแต่ตัวเลข) = ไม่มีคำต่อท้าย นับ 0
 import { naText } from '@/lib/format';
 // คำของวิธีประเมินมาจากที่เดียว — ไฟล์ล้วน (ไม่มีของ server)
 import { SURVEY_METHOD_CHIP, SURVEY_METHOD_LABEL } from '@/lib/service/surveyMethodSwitch';
+// รอยืนยัน / กำลังยืนยันหน้างาน — ถามที่โมดูลใบตัวเดียว (ไฟล์ล้วน) ไม่เทียบค่าเอง
+import { surveyConfirmPending } from '@/lib/service/surveyMethod';
 
 export const ZONES_BULK_PACKS_MIN = 1;
 export const ZONES_BULK_PACKS_MAX = 9999;
@@ -62,7 +65,7 @@ export function zonesBulkPlan({
   const assessed = equal ? 0 : rows.filter((row) => row.packsPerRound !== null).length;
   const awaitingConfirm = equal
     ? 0
-    : rows.filter((row) => row.packsPerRound !== null && zoneOf(row.zoneId)?.confirm === 'awaiting').length;
+    : rows.filter((row) => row.packsPerRound !== null && surveyConfirmPending(zoneOf(row.zoneId)?.confirm)).length;
   let error = null;
   if (!ids.length) error = ZONES_BULK_NONE_PICKED;
   else if (Number(existingCount || 0) + ids.length > cap) error = zonesBulkCapText(cap);

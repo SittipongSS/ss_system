@@ -26,11 +26,16 @@ const code = (url) => readFileSync(new URL(url, import.meta.url), 'utf8')
 /* ข้อความที่ผู้ใช้เห็น — เขียนตรงตัวที่นี่โดยตั้งใจ (สเปก S2a กลุ่ม C ข้อ 6) · โค้ดแก้คำเมื่อไร เทสต์ต้องแดง */
 const TAG_AWAITING = 'ประเมินจากแบบ · รอยืนยันหน้างาน';
 const TAG_DRAWING = 'ประเมินจากแบบ';
+/* ใบยืนยันหน้างานเปิดอยู่ (งวด S5 · R6) — กรณีของมันอยู่ที่ surveyConfirmRegistry.test.mjs */
+const TAG_CONFIRMING = 'ประเมินจากแบบ · กำลังยืนยันหน้างาน';
 const HOT_TODAY = 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่';
-const HOT_AWAITING = 'ประเมินจากแบบ · รอยืนยันหน้างาน — เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง';
-const HOT_DRAWING = 'ประเมินจากแบบ — เสนอราคาได้เลย';
+/* เหตุของไทล์จากแบบไม่ขึ้นต้นด้วยคำของป้ายซ้ำ (มติเจ้าของ sales-q4 · S2b แก้หลังตรวจจอ — ป้ายอยู่เหนือบรรทัดเหตุเสมอ) */
+const HOT_AWAITING = 'เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง';
+const HOT_DRAWING = 'เสนอราคาได้เลย';
 const AWAITING_TAIL = ' · ตัวเลขจากแบบ รอยืนยันหน้างาน';
 const ENDED_TODAY = 'เคยขาย รอบจบแล้ว — วัดซ้ำเพื่อต่ออายุได้';
+/* พื้นที่ที่ไม่เคยวัดหน้างาน (ผลมีแต่จากแบบ · รอบวัดหน้างาน 0) — "ซ้ำ" ไม่จริง (มติเจ้าของ sales-q5 · S2b แก้หลังตรวจจอ) */
+const ENDED_NEVER_ONSITE = 'เคยขาย รอบจบแล้ว — วัดใหม่เพื่อต่ออายุได้';
 
 /* ══ 1. ทะเบียน ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -122,7 +127,7 @@ test('ผลลงหน้างานเก่า + ใบจากแบบ�
 });
 
 test('ป้ายยืนยันหน้างาน: needed = รอยืนยัน · not_needed / ยังไม่เลือก = ประเมินจากแบบ · คำเดียวกับ SURVEY_ZONE_TAG', () => {
-  assert.deepEqual(SURVEY_ZONE_TAG, { awaiting: TAG_AWAITING, drawing: TAG_DRAWING });
+  assert.deepEqual(SURVEY_ZONE_TAG, { awaiting: TAG_AWAITING, drawing: TAG_DRAWING, confirming: TAG_CONFIRMING });
   const cases = [
     ['needed', 'awaiting', TAG_AWAITING],
     ['not_needed', 'drawing', TAG_DRAWING],
@@ -325,14 +330,17 @@ test('ป้ายจากแบบอยู่บนไทล์ทุกช�
 test('เหตุผลของไทล์จากแบบ: เด่นสองแบบ · ขายอยู่/รอบจบ ต่อท้ายเฉพาะตอนรอยืนยัน — พื้นที่ลงหน้างานคำเดิมทุกตัวอักษร', () => {
   assert.equal(zonePickState(fromDrawing('awaiting')).reason, HOT_AWAITING);
   assert.equal(zonePickState(fromDrawing('drawing')).reason, HOT_DRAWING);
-  assert.equal(HOT_AWAITING, `${SURVEY_ZONE_TAG.awaiting} — เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง`);
-  assert.equal(HOT_DRAWING, `${SURVEY_ZONE_TAG.drawing} — เสนอราคาได้เลย`);
+  // ป้ายบอกที่มาของตัวเลขอยู่แล้ว — เหตุไม่พูดคำของป้ายซ้ำ
+  assert.ok(!HOT_AWAITING.includes(SURVEY_ZONE_TAG.drawing) && !HOT_DRAWING.includes(SURVEY_ZONE_TAG.drawing));
 
   assert.equal(zonePickState(fromDrawing('awaiting', { termState: 'active' })).reason, `มีเครื่องอยู่${AWAITING_TAIL}`);
-  assert.equal(zonePickState(fromDrawing('awaiting', { termState: 'ended' })).reason, `${ENDED_TODAY}${AWAITING_TAIL}`);
+  // `fromDrawing` ไม่เคยวัดหน้างาน (onsiteSurveyCount 0) ⇒ "วัดใหม่…" (sales-q5) · วัดหน้างานมาแล้วอย่างน้อยรอบเดียว = คำเดิม
+  assert.equal(zonePickState(fromDrawing('awaiting', { termState: 'ended' })).reason, `${ENDED_NEVER_ONSITE}${AWAITING_TAIL}`);
+  assert.equal(zonePickState(fromDrawing('awaiting', { termState: 'ended', surveyCount: 3, onsiteSurveyCount: 2 })).reason,
+    `${ENDED_TODAY}${AWAITING_TAIL}`);
   // ไม่ต้องยืนยันหน้างาน = ผลสุดท้าย ⇒ ไม่มีอะไรต่อท้าย
   assert.equal(zonePickState(fromDrawing('drawing', { termState: 'active' })).reason, 'มีเครื่องอยู่');
-  assert.equal(zonePickState(fromDrawing('drawing', { termState: 'ended' })).reason, ENDED_TODAY);
+  assert.equal(zonePickState(fromDrawing('drawing', { termState: 'ended' })).reason, ENDED_NEVER_ONSITE);
 
   /* ลงหน้างาน — แถวทะเบียนรุ่นเก่า (ไม่มีคีย์ใหม่) กับรุ่นใหม่ (คีย์ใหม่ค่าว่าง) ได้คำเดียวกับวันนี้ */
   for (const extra of [{}, { assessMethod: 'onsite', confirm: 'none', confirmTag: null }]) {
@@ -521,9 +529,12 @@ test('GET · ช่าง: threadFiles ว่าง · siteVisitReached null · 
 
 /* งวด S2b · มติเจ้าของ O4 — ผู้วางคิวเห็นพื้นที่จากแบบแบบอ่านอย่างเดียว พร้อมแผง "แบบจากฝ่ายขาย"
    ⇒ อ่านเธรดเฉพาะใบที่มีพื้นที่จากแบบอยู่แล้ว (หนึ่งคำสั่งอ่าน) · ใบลงหน้างานล้วนยังไม่มีการอ่านเพิ่ม แม้สวิตช์เปิด */
-test('GET · ผู้วางคิว: ใบที่มีพื้นที่จากแบบ = ได้ไฟล์ในเธรด (อ่านหนึ่งครั้ง) · ใบลงหน้างานล้วน = ว่างและไม่อ่าน · ไม่ถามนัดที่เข้าพื้นที่แล้วทั้งสองแบบ', async () => {
+/* 🔄 ผลรีวิวรอบสี่ (head-r3-2) — "มีนัดที่เข้าพื้นที่แล้วไหม" ถามให้ผู้วางคิวด้วยเมื่อเปิดสวิตช์ (พาดหัว "รอลงคิวเข้าพื้นที่" ของการ์ดไม่ผูกกับคนดู ·
+   เดิมเขาได้ `null` ทุกใบ ⇒ นัดล่าสุดยกเลิก = "พร้อมส่งผลให้ฝ่ายขาย" บนการ์ดของเขา) · สวิตช์ปิด = ไม่ถามเหมือนเดิม */
+test('GET · ผู้วางคิว: ใบที่มีพื้นที่จากแบบ = ได้ไฟล์ในเธรด (อ่านหนึ่งครั้ง) · ใบลงหน้างานล้วน = ว่างและไม่อ่าน · นัดที่เข้าพื้นที่แล้ว = ถามเฉพาะเมื่อเปิดสวิตช์', async () => {
   for (const flag of ['on', undefined]) {
     await withFlag(flag, async () => {
+      const asked = flag === 'on';
       const mixed = sheet({ zones: [sheetZone('A'), sheetZone('B', { method: 'drawing', sortOrder: 2 })], visits: [visit('done')] });
       const withDrawing = await get(mixed, planner);
       assert.equal(withDrawing.status, 200, withDrawing.json.error);
@@ -532,16 +543,27 @@ test('GET · ผู้วางคิว: ใบที่มีพื้นท�
         createdAt: '2026-10-02T03:00:00+00:00', authorName: 'ฝ่ายขาย',
       }], String(flag));
       assert.equal(threadReads(mixed).length, 1, String(flag));
-      assert.equal(withDrawing.json.siteVisitReached, null);
-      assert.deepEqual(reachedReads(mixed), []);
+      assert.equal(withDrawing.json.siteVisitReached, asked ? true : null, String(flag));
+      assert.equal(reachedReads(mixed).length, asked ? 1 : 0, String(flag));
 
       const onsite = sheet({ zones: [sheetZone('A'), sheetZone('B', { sortOrder: 2 })], visits: [visit('done')] });
       const plain = await get(onsite, planner);
       assert.equal(plain.status, 200, plain.json.error);
       assert.deepEqual(plain.json.threadFiles, [], String(flag));
       assert.deepEqual(threadReads(onsite), [], String(flag));
-      assert.equal(plain.json.siteVisitReached, null);
-      assert.deepEqual(reachedReads(onsite), []);
+      assert.equal(plain.json.siteVisitReached, asked ? true : null, String(flag));
+      assert.equal(reachedReads(onsite).length, asked ? 1 : 0, String(flag));
+      // นัดล่าสุดยกเลิก / เข้าไม่ได้ = ยังไม่มีนัดที่เข้าพื้นที่ — ผู้วางคิวได้ค่าเดียวกับหัวหน้า (การ์ดของสองคนขึ้นพาดหัวเดียวกัน)
+      for (const other of ['cancelled', 'unable']) {
+        const db = sheet({ visits: [visit(other)] });
+        const [mine, heads] = [await get(db, planner), await get(db, head)];
+        assert.equal(mine.json.siteVisitReached, asked ? false : null, `${other} ${flag}`);
+        assert.equal(mine.json.siteVisitReached, heads.json.siteVisitReached, `${other} ${flag}`);
+      }
+      // ใบที่ส่งผลแล้ว = ไม่ถาม (ไม่มีอะไรให้ส่งอีก) — กติกาเดียวกับหัวหน้า
+      const sent = sheet({ req: { status: 'answered', answeredAt: '2026-10-05T03:00:00+00:00' }, visits: [visit('done')] });
+      assert.equal((await get(sent, planner)).json.siteVisitReached, null);
+      assert.deepEqual(reachedReads(sent), []);
       // พื้นที่จากแบบที่ถูกตัดไปแล้วไม่นับ — ไม่เหลือพื้นที่จากแบบให้เขาอ่าน
       const cut = sheet({ zones: [sheetZone('A'), sheetZone('B', { method: 'drawing', status: 'cut', sortOrder: 2 })] });
       assert.deepEqual((await get(cut, planner)).json.threadFiles, []);

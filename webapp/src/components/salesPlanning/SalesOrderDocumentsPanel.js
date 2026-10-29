@@ -1,8 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ExternalLink, Paperclip } from "lucide-react";
+import { ExternalLink, Paperclip, Trash2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Button from "@/components/ui/Button";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
 import StatusNotice from "@/components/ui/StatusNotice";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -52,17 +53,21 @@ export function useSalesOrderDocuments(orderId, orderKey) {
 /**
  * แท็บ "เอกสาร" ของใบสั่งขาย (มติเจ้าของ 25/09/2569)
  *
- * ⭐ กลุ่มแรก "แนบเพิ่มหลังออกใบ" เป็นกลุ่มเดียวที่แนบ/ลบได้ — ของที่ลูกค้าส่งมาทีหลัง
- *   กลุ่มที่เหลือ **อ่านอย่างเดียว** และบอกว่าจัดการที่ไหน (ยืนยันคำสั่งซื้อตรึงตอนอนุมัติ ·
- *   หลักฐานงวดอยู่แท็บการชำระ · ไฟล์สัญญาอยู่แท็บสัญญา) — ไม่เปิดทางแก้ที่สองให้ของที่มีบ้านแล้ว
- * ⭐ ลบได้เฉพาะไฟล์ที่ตัวเองแนบ (แอดมินลบได้ทุกไฟล์) — API ตัดสินจริง ที่นี่คือไม่ยื่นปุ่มที่จะเจอ 403
+ * ⭐ กลุ่มแรก "แนบเพิ่มหลังออกใบ" เป็นกลุ่มเดียวที่แนบได้ — ของที่ลูกค้าส่งมาทีหลัง
+ *   ลบได้ทุกคนที่แก้ใบได้ (เจ้าของดีล · หัวหน้าในสาย · แอดมิน — มติ 29/10 แทน "คนแนบเอง" ของ 25/09)
+ * ⭐ กลุ่ม "ยืนยันคำสั่งซื้อ" **ลบได้อย่างเดียว** (มติ 29/10 · กติกาคนเดียวกัน) — เพิ่มไฟล์หลังยื่นยังไม่ได้
+ *   ปุ่มมาตามที่ server บอก (`confirmRemove` + `removeRef` รายแถว) · รออนุมัติ = ไม่มีปุ่ม แต่บอกเหตุ
+ * ⭐ หลักฐานงวด/ไฟล์สัญญา **อ่านอย่างเดียว** และบอกว่าจัดการที่ไหน (แท็บการชำระ · แท็บสัญญา)
+ *   — ไม่เปิดทางแก้ที่สองให้ของที่มีบ้านแล้ว
  * ⚠️ ใบยกเลิก/ถูก Rev. แทน = ไม่มีปุ่มแนบ แต่บอกเหตุไว้เหนือกล่อง (ui-visibility-rule: ติดด่าน = บอกเหตุ)
  *
  * @param docs ผลของ `useSalesOrderDocuments` ที่หน้า SO ถือไว้
  * @param onOpenTab `(key) => void` — ปุ่ม "ไปแท็บ…" ของกลุ่มที่จัดการที่แท็บอื่น
  * @param tabKeys แท็บที่ใบนี้มีจริง (แท็บสัญญามีทุกใบยกเว้นใบย้อนหลังนอกเส้นบริการ · 25/09) — ไม่มีแท็บ = ไม่มีปุ่มพาไป
+ * @param onRemoveConfirmFile `(row) => Promise<unknown>` — ยิง action `remove_confirm_file` ผ่าน `requestAction` ของหน้า
+ *   (หน้าโหลดตัวใบใหม่หลังสำเร็จ ⇒ การ์ดยืนยันบนแท็บภาพรวมกับตัวเลขแท็บนี้ขยับตาม `updatedAt`) · ไม่ส่ง = ไม่มีปุ่มลบ
  */
-export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin, onOpenTab, tabKeys = [] }) {
+export default function SalesOrderDocumentsPanel({ orderId, docs, onOpenTab, tabKeys = [], onRemoveConfirmFile }) {
   const { data, error, reload, refreshIfStale } = docs;
   // แผงติดตั้งเมื่อเปิดแท็บ — ของที่เปลี่ยนจากแท็บอื่น (ไฟล์สัญญา) ต้องเห็นตอนเปิด ไม่ใช่รอสลับหน้าต่าง
   useEffect(() => { refreshIfStale?.(); }, [refreshIfStale]);
@@ -74,12 +79,29 @@ export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin,
     if (!seeded.current) { seeded.current = true; return; }
     reload();
   }, [reload]);
-  const canDeleteItem = useCallback((item) => isAdmin || (!!meId && item?.uploadedBy === meId), [isAdmin, meId]);
+  const [removing, setRemoving] = useState("");
+  const removeConfirmFile = async (row) => {
+    const ok = await confirmAction({
+      title: "ลบไฟล์ยืนยันคำสั่งซื้อ",
+      description: `ลบ "${row.title}" ออกจากชุดยืนยันคำสั่งซื้อของใบนี้? หลังยื่นแล้วเพิ่มไฟล์กลับเข้าชุดนี้ไม่ได้ — เอกสารใหม่แนบที่ "แนบเพิ่มหลังออกใบ"`,
+      confirmLabel: "ลบไฟล์",
+      danger: true,
+    });
+    if (!ok) return;
+    setRemoving(row.id);
+    try {
+      await onRemoveConfirmFile(row);
+    } finally {
+      setRemoving("");
+    }
+  };
 
   if (!data && !error) return <SkeletonRows rows={4} />;
   if (!data) return <StatusNotice tone="error">{error}</StatusNotice>;
 
   const attach = data.attach || { allowed: false, reason: null };
+  const confirmRemove = data.confirmRemove || { allowed: false, reason: null };
+  const canRemoveConfirm = confirmRemove.allowed && typeof onRemoveConfirmFile === "function";
   const groups = data.groups || [];
   const extraCount = groups.find((g) => g.key === "extra")?.rows?.length || 0;
 
@@ -108,7 +130,6 @@ export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin,
                   entityType="sales_order"
                   entityId={orderId}
                   canEdit={attach.allowed}
-                  canDeleteItem={canDeleteItem}
                   inlineUpload
                   showCount={false}
                   onItemsChange={onItemsChange}
@@ -120,6 +141,7 @@ export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin,
           // กลุ่มอ่านอย่างเดียวที่ว่าง = ไม่ต้องกินที่ (ใบสินค้าไม่มีสัญญา · ใบที่ยังไม่มีงวด)
           if (!group.rows.length) return null;
           const canJump = group.manageTab && tabKeys.includes(group.manageTab) && typeof onOpenTab === "function";
+          const isConfirm = group.key === "confirmation";
           return (
             <section key={group.key} className={styles.group} aria-labelledby={`so-docs-${group.key}`}>
               <GroupHead
@@ -131,6 +153,9 @@ export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin,
                   </Button>
                 ) : null}
               />
+              {isConfirm && confirmRemove.reason ? (
+                <StatusNotice tone="info" className={styles.notice}>{confirmRemove.reason}</StatusNotice>
+              ) : null}
               <ul className={styles.list}>
                 {group.rows.map((row) => (
                   <li key={row.id} className={styles.row}>
@@ -146,6 +171,17 @@ export default function SalesOrderDocumentsPanel({ orderId, docs, meId, isAdmin,
                         icon={<ExternalLink size={13} aria-hidden="true" />}
                       >
                         เปิดดู
+                      </Button>
+                    ) : null}
+                    {isConfirm && canRemoveConfirm && row.removeRef ? (
+                      <Button
+                        size="sm" variant="quiet" tone="danger"
+                        icon={<Trash2 size={13} aria-hidden="true" />}
+                        aria-label={`ลบ ${row.title}`}
+                        disabled={!!removing}
+                        onClick={() => removeConfirmFile(row)}
+                      >
+                        {removing === row.id ? "กำลังลบ…" : "ลบ"}
                       </Button>
                     ) : null}
                   </li>

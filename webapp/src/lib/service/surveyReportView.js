@@ -37,12 +37,17 @@
 //   🔴 **ใบลงหน้างานล้วนพิมพ์เหมือนเดิมทุกตัวอักษร** (มติเจ้าของ O3 = ข) — คีย์ใหม่ทุกตัวเป็น `null` / `'onsite'` (ไม่พิมพ์) /
 //      คำเดิมของวันนี้ (`planTitle`) · ไม่มีแถวภาคผนวกใหม่ · ภาพนิ่งก่อนงวด S3 (ไม่มี `assessment`) อ่านเป็นลงหน้างานทั้งใบ
 //
+// ⭐ **งวด S5 กลุ่ม F — ใบยืนยันหน้างาน**: ภาพนิ่งที่มี `request.confirmsDocNo` ⇒ ฉบับภายในได้แถว "ยืนยันผลจากแบบของ" ในภาคผนวก ง
+//   (ป้ายจาก `surveyConfirmLink.js` — ไม่ก๊อปลิเทอรัล) · ฉบับลูกค้าไม่อ่านคีย์นี้ (รายการอนุญาตไม่ถูกขยาย) · ไม่มีคีย์ = ไม่มีแถว
+//
 // คำเตือนก่อนส่งผล (PR-2 §8) อยู่ท้ายไฟล์: `surveyReportSendWarnings(view)` — เตือนอย่างเดียว ไม่บล็อก
 //   คำต้องห้ามในหมายเหตุพื้นที่ + อักขระที่ฟอนต์ของกระดาษไม่มี (ทุกข้อความที่ลูกค้าเห็น)
 import { documentFormLine } from '@/lib/documentBrand';
 import { uncoveredChars } from '@/lib/documents/documentFontRanges';
 import { fmtDate, fmtDateTime, fmtNumber, isoDateToWeekdayText } from '@/lib/format';
 import { packageMixText } from './packageSizes';
+/* ป้ายแถวภาคผนวก ง ของใบยืนยันหน้างาน (งวด S5 · F1: ประโยคของงวดอยู่ไฟล์นั้นที่เดียว) — ไฟล์นั้นเป็นตรรกะล้วน ไม่แตะฐาน */
+import { SURVEY_CONFIRM_OF_LABEL } from './surveyConfirmLink';
 import { surveyZoneTitle } from './surveyFieldView';
 import { isDrawingZone, surveyZoneSavedAsDrawing } from './surveyMethod';
 import { visitTimeText } from './surveyVisitTime';
@@ -340,7 +345,8 @@ function signoffPart(snapshot) {
 
 /* 🔴 ฉบับลูกค้า — หยิบทีละช่อง ห้ามกระจายภาพนิ่ง/พื้นที่ทั้งก้อน
    งวด S3 อ่านเพิ่มได้เฉพาะ: zones[].method · drawingBy · drawingAt · assessment.mode/onsiteZones/drawingZones/drawingBy/drawingAt ·
-   request.surveyConfirm — ไม่อ่าน methodReason · methodChangedByName/At · otherVisits · assessment.drawingById */
+   request.surveyConfirm — ไม่อ่าน methodReason · methodChangedByName/At · otherVisits · assessment.drawingById
+   งวด S5: ไม่อ่าน request.confirmsDocNo (เลขที่ใบต้นทาง/เอกสารประเมินของมันเป็นของภายใน — ภาคผนวก ง ของฉบับภายในเท่านั้น) */
 function customerView(snapshot) {
   const active = list(snapshot.zones).filter((z) => !isCut(z));
   const drawing = drawingZoneOf(snapshot);
@@ -477,10 +483,11 @@ function otherVisitLines(rows) {
 const CONFIRM_TEXT = { needed: 'ต้องยืนยันหน้างาน', not_needed: 'ไม่ต้องยืนยันหน้างาน' };
 
 /**
- * ภาคผนวก ง (หมายเหตุภายใน) — ลำดับสุดท้ายของงวด S3 · แถวที่มีเงื่อนไข **ไม่พิมพ์** (ไม่ใช่พิมพ์ขีด) เมื่อเงื่อนไขไม่จริง
- *   1 รายละเอียดคำร้อง · 2 เวลาเข้าไซต์ · 3 วิธีประเมินรายพื้นที่* · 4 ยืนยันหน้างานภายหลัง* · 5 ผู้บันทึกผลวัด* · 6 ผู้กรอกผลจากแบบ* ·
- *   7 นัดหน้างานของใบนี้* · 8 นัดที่ทำไม่ได้ก่อนหน้า
- * 🔴 ใบลงหน้างาน (รวมใบที่สลับไปจากแบบแล้วกลับ) = แถว 1 · 2 · 5 · 8 ของวันนี้ทุกไบต์
+ * ภาคผนวก ง (หมายเหตุภายใน) — ลำดับของงวด S3 + หนึ่งแถวของงวด S5 · แถวที่มีเงื่อนไข **ไม่พิมพ์** (ไม่ใช่พิมพ์ขีด) เมื่อเงื่อนไขไม่จริง
+ *   1 รายละเอียดคำร้อง · 2 เวลาเข้าไซต์ · 3 วิธีประเมินรายพื้นที่* · 4 ยืนยันหน้างานภายหลัง* · 4.5 ยืนยันผลจากแบบของ* (งวด S5) ·
+ *   5 ผู้บันทึกผลวัด* · 6 ผู้กรอกผลจากแบบ* · 7 นัดหน้างานของใบนี้* · 8 นัดที่ทำไม่ได้ก่อนหน้า   (เก้าแถว)
+ * 🔴 ใบลงหน้างาน (รวมใบที่สลับไปจากแบบแล้วกลับ) = แถว 1 · 2 · 5 · 8 ทุกไบต์ — **บวกแถว ยืนยันผลจากแบบของ เมื่อ snapshot มี
+ *    `request.confirmsDocNo`** (ใบยืนยันหน้างานที่ลงหน้างานล้วน = กรณีปกติ: แถวอยู่ระหว่าง เวลาเข้าไซต์ กับ ผู้บันทึกผลวัด)
  */
 function notesPart(snapshot, active, { body, prior }) {
   const s = snapshot.site || {};
@@ -500,6 +507,9 @@ function notesPart(snapshot, active, { body, prior }) {
     notes.push({ label: 'วิธีประเมินรายพื้นที่', lines: methodHistoryLines(active, drawing) });
   }
   if (any) notes.push({ label: 'ยืนยันหน้างานภายหลัง', lines: [CONFIRM_TEXT[r.surveyConfirm] || DASH] });
+  // งวด S5 — ใบยืนยันหน้างาน: เลขที่ใบต้นทาง (+ เลขเอกสารประเมินของมัน) · ต่อจากแถว 4 ทันที ก่อนก้อนผู้บันทึกผลวัด
+  const confirmsDocNo = typeof r.confirmsDocNo === 'string' ? text(r.confirmsDocNo) : null;
+  if (confirmsDocNo) notes.push({ label: SURVEY_CONFIRM_OF_LABEL, lines: [confirmsDocNo] });
   if (!any || onsiteZones.length || presavedText.length) {
     const onsite = onsiteZones.length ? saverLines(onsiteZones) : [];
     const lines = [...(presavedText.length && onsite.length === 1 && onsite[0] === DASH ? [] : onsite), ...presavedText];

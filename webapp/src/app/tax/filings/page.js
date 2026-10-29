@@ -8,11 +8,13 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtMoney, naText } from "@/lib/format";
+import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
 import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
+import { dayParam, withinDateRange } from "@/lib/tax/period";
 import ReportExportActions from "@/components/excise/ReportExportActions";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -23,12 +25,13 @@ import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
 import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 
-const taxText = (o) => ((o.totalTax || 0) === 0 ? "ยกเว้นภาษี" : fmtMoney(o.totalTax));
+// ยอด 0 ≠ ยกเว้น — ใบที่สินค้าไม่มีราคาขายปลีกต้องเห็น ฿0.00 ตามจริง (isExemptFiling · ตรวจระบบ 2026-10-26)
+const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : fmtMoney(o.totalTax || 0));
 
 export default function FilingsPage() {
   const role = useRole();
   const router = useRouter();
-  const canAct = useCan("sales:act");       // SA: create / receive / edit
+  const canFile = useCan("ra:approve");     // RA: สร้างใบยื่นจากคิวรอยื่นกรม (PR5 — ฝ่ายขายไม่สร้าง/ไม่รับเงินบนใบยื่นแล้ว)
 
   const { data: orders, loading, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload } = useApiList("/api/orders");
 
@@ -39,16 +42,28 @@ export default function FilingsPage() {
     () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "received" : deptOf(role) === "SA" ? "pending" : "all"));
+  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "mine" : "all"));
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const s = params.get("status");
     if (s && FILING_FILTERS.some((f) => f.key === s)) setFilter(s);
+    /* ⭐ ช่วงวันจากการ์ดบนภาพรวม (`?from=&to=` · ตรวจตัวเลข M7) — ลงช่องจาก–ถึงที่มองเห็นและล้างได้ · ค่าผิดรูปถูกเมิน */
+    const fromParam = dayParam(params.get("from"));
+    const toParam = dayParam(params.get("to"));
+    if (fromParam) setFrom(fromParam);
+    if (toParam) setTo(toParam);
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
+    // `?create=<คีย์งาน>` — มาจากคิว "รอยื่นกรม" บนภาพรวม /tax: เปิดโมดัลสร้างพร้อมเลือกงานนั้นไว้
+    const createKey = params.get("create");
+    if (createKey) {
+      setCreateKey(createKey === "new" ? "" : createKey);
+      setFormOpen(true);
+    }
   }, [router]);
   const [search, setSearch] = useStickyState("search", "");
   const [formOpen, setFormOpen] = useState(false);
+  const [createKey, setCreateKey] = useState("");
   /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
      — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
   const [customerIds, setCustomerIds] = useState([]);
@@ -127,9 +142,8 @@ export default function FilingsPage() {
         if (!isTaxWaitingOnMe(o, "payment", myDept)) return false;
       } else if (filter !== "all" && o.status !== filter) return false;
       if (customerIds.length && !customerIds.includes(o.customerId)) return false;
-      const day = (o.createdAt || "").slice(0, 10);
-      if (from && day && day < from) return false;
-      if (to && day && day > to) return false;
+      // วันไทยของวันที่สร้าง — ตัวตัดสินเดียวกับการ์ดบนภาพรวมและไฟล์ที่โหลด (ตรวจตัวเลข M7 · ดูหน้าคิวขึ้นทะเบียน)
+      if (!withinDateRange(o.createdAt, from, to)) return false;
       if (!q) return true;
       return [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber].some((v) => (v || "").toLowerCase().includes(q));
     });
@@ -232,9 +246,9 @@ export default function FilingsPage() {
         rowCount={rows.length}
         printMeta={{ from, to, customerName }}
       />
-      {canAct && (
-        <button className="btn btn-primary flex items-center gap-1.5" onClick={() => setFormOpen(true)}>
-          <Plus size={16} /> ยื่นชำระ
+      {canFile && (
+        <button className="btn btn-primary flex items-center gap-1.5" onClick={() => { setCreateKey(""); setFormOpen(true); }}>
+          <Plus size={16} /> สร้างใบยื่น
         </button>
       )}
     </>
@@ -244,7 +258,7 @@ export default function FilingsPage() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title="การยื่นชำระภาษีสรรพสามิต"
-      subtitle="สร้างใบยื่น รับเงิน และยื่นชำระภาษีต่อกรมสรรพสามิต พร้อมบันทึกใบเสร็จ"
+      subtitle="ฝ่าย RA สร้างใบยื่นจากคิวรอยื่นกรม ยื่นชำระภาษีต่อกรมสรรพสามิต และบันทึกใบเสร็จ"
       headerRight={headerRight}
     >
       {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
@@ -316,6 +330,7 @@ export default function FilingsPage() {
 
       <SalesOrderFilingModal
         open={formOpen}
+        initialKey={createKey}
         onClose={() => setFormOpen(false)}
         onSaved={async (filing) => {
           await reload();

@@ -31,10 +31,12 @@ import StartHereCard from "@/components/requests/StartHereCard";
 import OwnerWorkloadPanel from "@/components/requests/OwnerWorkloadPanel";
 import DueWeekPanel from "@/components/requests/DueWeekPanel";
 import AlertBanner from "@/components/ui/AlertBanner";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { Metric, MetricStrip } from "@/components/ui/Workspace";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  deptOverdueByTurn, deptPipeline, deptStageQueueHref, ownerWorkload, stageNote, stageValue,
+  deptCountByTurn, deptOverdueByTurn, deptPipeline, deptStageQueueHref, deptTurnCountHref, ownerWorkload,
+  stageNote, stageValue,
 } from "@/lib/requests/deptOverview";
 
 const DEPT = "RD";
@@ -68,9 +70,19 @@ export default function RdOverviewPage() {
     () => requests.filter((r) => r.dept === DEPT && r.status !== "draft"),
     [requests],
   );
-  /* ⭐ "เลยวันที่รับปากไว้" แยกตามตาใคร (ตรวจตัวกรอง 08/10 · H9) — ปุ่มแต่ละปุ่มพาไปแท็บของมันพร้อมตัวกรอง
-     "เลยกำหนด" ⇒ เลขบนปุ่ม = แถวที่เปิดเจอ · 🐞 เดิมนับรวมสองแท็บแล้วพาไปแท็บรอ RD ตอบเปล่า ๆ (57 → เจอ 24) */
-  const overdue = deptOverdueByTurn(requests, { dept: DEPT, todayIso: today });
+  /* ⭐ "เลยวันที่รับปากไว้" + "ยังไม่ได้ให้วัน" แยกตามตาใคร (ตรวจตัวกรอง 08/10 · H9 M6) — ปุ่มแต่ละปุ่มพาไป
+     แท็บของมันพร้อมตัวกรองแถบตัวเลข ⇒ เลขบนปุ่ม = แถวที่เปิดเจอ · 🐞 เดิมนับรวมสองแท็บ (57 → เจอ 24 · 15 → เจอ 9)
+     ⭐ **มติเจ้าของ 19/10: ตัวเลขหลักนับเฉพาะตา RD** — ใบตาผู้ขอมีปุ่มรองของมันเอง ไม่บวกเข้าหัวป้าย/ปุ่มหลัก
+     ⚠️ คำนวณที่นี่ที่เดียวแล้วส่งให้ทั้งแถบเตือนและปฏิทิน — สองก้อนบนหน้าเดียวกันต้องพูดเลขเดียวกัน
+     (useMemo เหมือนค่าอื่นของหน้า — แต่ละตัวไล่ทุกใบสองแท็บ · ไม่คำนวณใหม่ทุกครั้งที่สลับมุมมอง/เรียงตาราง) */
+  const overdue = useMemo(
+    () => deptOverdueByTurn(requests, { dept: DEPT, todayIso: today }),
+    [requests, today],
+  );
+  const undated = useMemo(
+    () => deptCountByTurn(requests, "undated", { dept: DEPT, todayIso: today }),
+    [requests, today],
+  );
   /* ใบของฝ่ายที่ยังเป็นคำสัญญาค้าง — ปฏิทินรับแต่ชุดนี้ (ม-145): ใบที่จบแล้ว (ตัวตัดสินเดียว
      กับแท็บประวัติ) และใบที่มีฝั่งปิดแล้ว (ตัวเดียวกับช่องกำหนดส่ง/แถบตัวเลขที่เลิกนับ
      "เลยกำหนด") ไม่ใช่คำสัญญาที่ต้องตามอีก */
@@ -140,29 +152,44 @@ export default function RdOverviewPage() {
 
       {/* ⚠️ **เลยกำหนดเป็นธง ไม่ใช่ขั้นของงาน** — ใบที่เลยวันที่ฝ่ายรับปากไว้เองอยู่
           ในขั้น "กำลังปรุง" อยู่แล้ว · แยกเป็นแถบเตือนที่กดไปคิวได้ ดีกว่ายัดเป็น
-          ช่องที่ห้าแล้วทำให้สายพานอ่านเหมือนมีห้าขั้น */}
-      {!loading && !loadError && overdue.total > 0 && (
+          ช่องที่ห้าแล้วทำให้สายพานอ่านเหมือนมีห้าขั้น
+          ⭐ **หัวป้ายนับเฉพาะตา RD** (มติเจ้าของ 19/10 · H9) — ใบที่ส่งแล้วรอผู้ขอก็เลยวันที่รับปากไว้จริง แต่ไม่ใช่
+          งานค้างของ RD ⇒ อยู่เป็นปุ่มรอง (quiet) ของป้าย ไม่บวกเข้าหัวป้าย · หัวป้าย = ปุ่ม "รอ RD" = แถวที่ปุ่มเปิดเจอ */}
+      {!loading && !loadError && overdue.dept > 0 && (
         <AlertBanner
           tone="danger"
           icon={AlarmClock}
           action={(
             <>
-              {overdue.dept > 0 && (
-                <Button size="sm" onClick={() => router.push("/rd/requests?tab=todo&count=overdue")}>
-                  รอ RD {overdue.dept} ใบ
-                </Button>
-              )}
+              <Button size="sm" onClick={() => router.push(deptTurnCountHref("dept", "overdue", { queueHref: "/rd/requests" }))}>
+                รอ RD {overdue.dept} ใบ
+              </Button>
               {overdue.requester > 0 && (
-                <Button size="sm" onClick={() => router.push("/rd/requests?tab=waiting&count=overdue")}>
+                <Button size="sm" variant="quiet" onClick={() => router.push(deptTurnCountHref("requester", "overdue", { queueHref: "/rd/requests" }))}>
                   ส่งแล้ว รอผู้ขอ {overdue.requester} ใบ
                 </Button>
               )}
             </>
           )}
         >
-          <strong>เลยวันที่รับปากไว้ {overdue.total} ใบ</strong>
-          {" — วันที่นี้ RD เป็นคนให้เอง ไม่ใช่วันที่ลูกค้าขอ"}
+          <strong>เลยวันที่รับปากไว้ {overdue.dept} ใบ</strong>
+          {" — งานที่ยังรอ RD · วันที่นี้ RD เป็นคนให้เอง ไม่ใช่วันที่ลูกค้าขอ"}
         </AlertBanner>
+      )}
+      {/* ไม่มีใบตา RD ที่เลยวัน แต่มีใบที่ส่งแล้วรอผู้ขอเลยวันที่รับปากไว้ ⇒ **ไม่มีแถบแดง** (ไม่ใช่งานค้างของ RD ·
+          มติเจ้าของ 19/10) แต่ยังบอกเป็นกล่องเทาพร้อมปุ่มไปแท็บรอผู้ขอ — ซ่อนไปเลย = ใบพวกนี้หายจากหน้าภาพรวมเงียบ ๆ */}
+      {!loading && !loadError && overdue.dept === 0 && overdue.requester > 0 && (
+        <StatusNotice
+          tone="neutral"
+          icon={AlarmClock}
+          action={(
+            <Button size="sm" onClick={() => router.push(deptTurnCountHref("requester", "overdue", { queueHref: "/rd/requests" }))}>
+              ส่งแล้ว รอผู้ขอ {overdue.requester} ใบ
+            </Button>
+          )}
+        >
+          {`ไม่มีงานของ RD ที่เลยวันที่รับปากไว้ · ที่เลยวันแล้วคือใบที่ส่งแล้ว รอผู้ขอทำต่อ ${overdue.requester} ใบ — ไม่ใช่งานค้างของเรา แต่ต้องตามได้`}
+        </StatusNotice>
       )}
 
       {/* ⭐ **สายพาน 4 ขั้น นับเป็นกลิ่น** (แบบ ค) — ใช้ `MetricStrip` ตัวกลางเดียวกับ
@@ -196,9 +223,14 @@ export default function RdOverviewPage() {
           ไม่ใช่แค่ห้าใบถัดไป
           🐞 **แต่เฉพาะใบที่ยังไม่จบ** (ม-145) — สัญญาของ `dueCalendar` บอกไว้ว่ารับแต่ใบที่
           ยังเดินอยู่ · ของเดิมป้อนใบที่ปิด/ยกเลิกไปด้วย ⇒ ใบที่ปิดแล้วขึ้นปฏิทินเป็น "เลย
-          กำหนด" และใบยกเลิกที่ไม่มีวันไปบวก "ยังไม่ได้ให้วัน" */}
+          กำหนด" และใบยกเลิกที่ไม่มีวันไปบวก "ยังไม่ได้ให้วัน"
+          ⭐ ตัวเลข "ยังไม่ได้ให้วัน" / "เลยกำหนดแล้ว" ของปฏิทินมาจากชุดเดียวกับแถบเตือนข้างบน (`undated` · `overdue`
+          แยกตามตาใคร · มติเจ้าของ 19/10 · M6) — ตัวเลขหลัก = ตา RD = แถวที่ปุ่มเปิดเจอ */}
       {!loading && !loadError && (
-        <DueWeekPanel rows={openDeptRows} todayIso={today} queueHref="/rd/requests" />
+        <DueWeekPanel
+          rows={openDeptRows} todayIso={today} queueHref="/rd/requests"
+          undated={undated} overdue={overdue}
+        />
       )}
 
       {/* ⭐ **ตารางเดียวกับคิว** (มติผู้ใช้ 2026-08-08) — เดิมหน้านี้เขียนตารางของตัวเอง

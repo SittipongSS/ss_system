@@ -395,10 +395,10 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
     return can(role, 'customers:edit');
   }
   if (path.startsWith('/api/orders')) {
-    if (method === 'DELETE') return can(role, 'sales:delete');
-    // PATCH covers both sales clearance (sales:act) and RA tax payment (ra:approve)
-    if (method === 'PATCH') return can(role, 'sales:act') || can(role, 'ra:approve');
-    return can(role, 'sales:act'); // create
+    /* ⭐ แผนรื้อสรรพสามิต PR5: ใบยื่นกรมเป็นงานของฝ่าย RA ทั้งเส้น (สร้างจากคิว · เริ่มยื่น · ใบเสร็จ · ลบร่าง)
+       ฝ่ายขายเก็บค่าภาษีด้วยใบเสนอราคา/SO ค่าสรรพสามิต — ไม่เขียนตารางนี้อีก (อ่านได้ตามเดิมผ่าน OPEN_READ_APIS)
+       ⚠️ alias /api/tax/orders/* ถูกยุบมาที่นี่ (normalizePath) — รวม POST /api/tax/orders/from-sales-order */
+    return can(role, 'ra:approve');
   }
   // Project management (SALES only). Row-level team scope enforced in handlers.
   // วางแผนผลิต — ระบบแยกจาก PM ของฝ่ายขาย (มติ 2026-07-30). คนวางคิวคือฝ่าย PC/PD

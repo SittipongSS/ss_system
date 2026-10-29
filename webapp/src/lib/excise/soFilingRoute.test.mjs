@@ -32,7 +32,8 @@ test("eligible ผูกกับ status ของ SO — ตัดคอลั�
 });
 
 test("select ของลิสต์ SO ที่รอยื่นต้องมี status อยู่ในคอลัมน์", () => {
-  const select = routeSource.match(/\.select\("id, orderNumber,[^"]*"\)/);
+  // ⚠️ select มีคอลัมน์ในเครื่องหมายคำพูดด้วย (`\"exciseNotBilledKind\"` · แผนรื้อสรรพสามิต PR3) — จับถึงวงเล็บปิดของ select
+  const select = routeSource.match(/\.select\("id, orderNumber,.*?"\)\n/);
   assert.ok(select, "หา select ของ listAvailableSalesOrders ไม่เจอ");
   assert.match(select[0], /\bstatus\b/);
 });
@@ -88,7 +89,9 @@ test("โมดัลสร้างใบยื่นวาดตาราง�
     new URL("../../components/excise/SalesOrderFilingModal.js", import.meta.url),
     "utf8",
   );
-  assert.match(modal, /resolution\.lines\.map\(/, "ต้องวาดรายการจริง");
+  // PR5: โมดัลเป็นของ RA — พรีวิวจากคิวรอยื่นกรม (GET /api/tax/orders/queue?…)
+  assert.match(modal, /preview\.lines\.map\(/, "ต้องวาดรายการจริง");
+  assert.match(modal, /\/api\/tax\/orders\/queue/, "รายการและพรีวิวมาจากคิวของ RA");
   assert.match(modal, /<TableScroll/, "ตารางต้องอยู่ใน TableScroll ตามสัญญาตารางกลาง");
   assert.doesNotMatch(modal, /style=\{\{/, "ห้าม inline style — ใช้ CSS module");
 });

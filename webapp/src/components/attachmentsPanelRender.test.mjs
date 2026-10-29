@@ -25,7 +25,7 @@ test('ฟังก์ชันวาดของแผงไม่ถูกใ�
 });
 
 /* ══ โหมดแผ่นรูป `photoTiles` (แผน §10.5 จอหน้างานแบบ A · S6 · ม็อก A-3 · AT-2 · AW-1) ═════════════
-   ⭐ สิ่งที่ต้องไม่หลุด: แผ่นสุดท้ายคือ "ถ่าย / เลือกรูป" · รูปที่กำลังส่งบอก % รายรูป · **ไม่มีปุ่มลบ 22px
+   ⭐ สิ่งที่ต้องไม่หลุด: แผ่นสุดท้ายคือ "ถ่าย / เลือกรูป" · รูปที่กำลังส่งบอก % รายรูป · **ไม่มีปุ่มลบ 24px
    บนแผ่นรูป** (ต่ำกว่าเป้านิ้ว 44px — กดพลาดโดนรูปข้าง ๆ) ⇒ ลบอยู่ในกล่องดูรูปเต็ม ปุ่ม 44px ·
    โหมดเดิม (ตะแกรง/รายแถว) ต้องเหมือนเดิมเป๊ะ — ผู้เรียกที่ไม่ได้ขอแผ่นรูปมีอยู่ทั่วระบบ
    ⚠️ แผงเป็น JSX (เทสต์รันใต้ Node ดิบ เรนเดอร์ไม่ได้) ⇒ ตรรกะอยู่ที่ `lib/master/attachmentPhotoTiles.js`
@@ -240,7 +240,9 @@ test('แผง: โหมดแผ่นรูปวาดจากตัวต
 test('แผง: โหมดเดิมไม่เปลี่ยน — ตะแกรง/รายแถวยังวาดแผ่นรูปตัวเดิม (ปุ่มลบมุมรูปอยู่ที่เดิม)', () => {
   const source = code(fs.readFileSync(FILE, 'utf8'));
   const tile = renderBody(source, 'renderPhotoTile');
-  assert.match(tile, /width: 22, height: 22/);
+  /* 22 → 24 (layout-nits D4 · WCAG 2.2 SC 2.5.8) — ปุ่มยังอยู่มุมรูปที่เดิม แค่เป้ากดเป็นจัตุรัสถึงเกณฑ์
+     · style object ของปุ่มเหลือแค่ตำแหน่ง/ขนาด (วงกลมย้ายลง `.tileDeleteDot` — เหตุผลอยู่ที่เทสต์ "ปุ่มลบ: เป้ากด ≥ 24×24") */
+  assert.match(tile, /className=\{styles\.tileDelete\}\s*style=\{\{ position: "absolute", top: 4, right: 4, width: 24, height: 24 \}\}/);
   assert.match(tile, /handleDelete\(it\.id\)/);
   assert.match(source, /!tilesMode && photos\.length > 0 && \(rowsOf \? renderPhotoRows\(\{ photos, rows: rowsOf \}\) : renderPhotoGrid\(\{ photos \}\)\)/);
   // แถวหัว (คำใบ้ลากวาง · ปุ่มถ่ายรูป · ตัวนับ) ยังอยู่ในโหมดเดิม — โหมดแผ่นรูปเท่านั้นที่ไม่มี
@@ -541,4 +543,210 @@ test('fileGate · แผง: ป้ายแผ่นสุดท้ายแล
      โหลดใหม่เฉพาะตอนเลข **เปลี่ยนจากที่เห็นล่าสุด** */
   assert.match(source, /const seenReloadKey = useRef\(reloadKey\);\s*useEffect\(\(\) => \{\s*if \(reloadKey === seenReloadKey\.current\) return;\s*seenReloadKey\.current = reloadKey;\s*fetchItems\(\);\s*\}, \[reloadKey, fetchItems\]\);/);
   assert.doesNotMatch(source, /if \(reloadKey\) fetchItems\(\)/);
+});
+
+
+/* ══ ตะแกรงรูปของโหมด inline: ชื่อไฟล์ · ป้ายชนิดเอกสาร (ผู้เรียกเปิดเอง) · ปุ่มลบ 24px (layout-nits D4 — ของเก่าบน main) ═════════
+   🐞 การ์ด "ไฟล์แนบของคำร้อง" ที่ 375: รูปไม่บอกชื่อ (อยู่แค่ alt/title — มือถือไม่มี hover) · ไม่บอกว่าเป็นสเปกหรือรูปอ้างอิง
+      ทั้งที่การ์ดกองทุกชนิดไว้ด้วยกัน · ปุ่มลบของแถวไฟล์ 17×17 ชื่อ "ลบ" เฉย ๆ · ปุ่มลบมุมรูป 22×22 ติดขอบปุ่มเปิดรูป
+   ⚠️ แผงเป็น JSX (Node ดิบเรนเดอร์ไม่ได้) ⇒ ยามด้วยซอร์สของฟังก์ชันวาดแต่ละตัว + กฎ CSS ที่ทำให้ "บรรทัดเดียว" เป็นจริง */
+const SRC = path.join(process.cwd(), 'src');
+
+test('ตะแกรงรูป: ชื่อไฟล์บรรทัดเดียวใต้รูป ("…" + ชื่อเต็มที่ title) · ไม่อ่านออกเสียงซ้ำ · รายการรายแถวไม่ซ้ำชื่อของผู้เรียก', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const css = code(fs.readFileSync(CSS, 'utf8'));
+  const tile = renderBody(source, 'renderPhotoTile');
+  assert.match(tile, /const renderPhotoTile = \(\{ it, caption = false \}\) =>/, 'ไม่ส่ง caption = หน้าตาเดิม');
+  assert.match(tile, /\{caption && \(\s*<span className=\{styles\.thumbCaption\}>\s*<span className=\{styles\.thumbName\} title=\{it\.fileName \|\| "รูปแนบ"\} aria-hidden="true">\{it\.fileName \|\| "รูปแนบ"\}<\/span>/,
+    'ชื่อใต้รูปเป็นของตาอย่างเดียว — ชื่อของปุ่มเปิดรูปมาจาก alt (= ชื่อไฟล์) แล้ว ไม่ซ่อน = ได้ยินชื่อซ้ำสองรอบติดกัน');
+  assert.match(tile, /alt=\{it\.fileName \|\| "รูปแนบ"\}/, 'ชื่อที่โปรแกรมอ่านจอได้ยินยังอยู่ที่ปุ่มเปิดรูป');
+  assert.ok(tile.indexOf('styles.thumbCaption') > tile.indexOf('</button>'), 'คำบรรยายอยู่หลังปุ่มเปิดรูป ไม่ใช่ข้างใน');
+  assert.equal((tile.match(/style=\{\{/g) || []).length, 4, 'ห้ามเพิ่ม inline style (audit:ui นับเพดานไว้) — ของใหม่อยู่ใน module');
+  assert.match(renderBody(source, 'renderPhotoGrid'), /renderPhotoTile\(\{ it, caption: true \}\)/);
+  assert.match(renderBody(source, 'renderPhotoRows'), /renderPhotoTile\(\{ it \}\)/,
+    'รายการรายแถว (ใบสเปค) เขียน "ภาพที่ n · ชื่อไฟล์" ไว้ฝั่งขวาเองแล้ว');
+
+  const name = cssRule(css, '.thumbName');
+  for (const rule of [/white-space: nowrap;/, /text-overflow: ellipsis;/, /overflow: hidden;/, /max-width: 100%;/]) {
+    assert.match(name, rule, `ชื่อไฟล์ต้องบรรทัดเดียว: ${rule}`);
+  }
+  assert.match(name, /line-height: var\(--lh-thai\);/, 'overflow: hidden + กล่องบรรทัดเตี้ย = สระบน/ล่างของไทยขาด');
+  assert.match(cssRule(css, '.thumbCaption'), /min-width: 0;/, 'ช่องของตะแกรงเป็น minmax(0, 148px) — ชื่อยาวต้องไม่ดันช่องกว้าง');
+});
+
+test('ป้ายชนิดเอกสาร: ค่าตั้งต้นปิด (`typePills`) · ชนิดตั้งต้นไม่มีป้ายทั้งรูปและ PDF · รูปและแถวไฟล์วาดผ่านตัวเดียว', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const css = code(fs.readFileSync(CSS, 'utf8'));
+  /* 🔴 โหมด inline ไม่มีที่ให้เลือกชนิด — ทุกไฟล์ที่แนบผ่านแผงลง `types[0]` ⇒ เปิดให้ทุกแผง = รูปสลิปมัดจำของดีลขึ้น
+     "บรีฟจากลูกค้า" · ทุกรูปของ SO ขึ้น "เอกสารจากลูกค้า" (ค่าตั้งต้นที่ไม่มีใครเลือก บนจอขาย) */
+  assert.match(source, /\n  typePills = false,\n\}\) \{/, 'ค่าตั้งต้นต้องปิด — ผู้เรียกเปิดเอง');
+  assert.match(source, /const pillsOn = typePills && inlineUpload && !tilesMode && !scoped && types\.length > 1;/,
+    'แผงหัวข้อเดียว / ทะเบียนชนิดเดียว / แผ่นรูป = ป้ายซ้ำหัวข้อของผู้เรียกทุกรูป');
+  assert.equal((source.match(/const inlineType = /g) || []).length, 1, 'ชนิดตั้งต้นของ inline ประกาศที่เดียว (ป้ายกับปุ่มแนบถามตัวเดียวกัน)');
+  assert.match(source, /const inlineType = types\[0\]\?\.key \|\| "other";/);
+  assert.equal((source.match(/const scoped = /g) || []).length, 1);
+
+  /* 🔴 ป้ายขึ้นเฉพาะชนิดที่มีคนเลือก — สองชนิดตั้งต้นไม่มีป้าย **ทั้งรูปและ PDF**
+     · `inlineType`: การ์ดคำร้องลงทุกไฟล์เป็น "รูปอ้างอิง / ตัวอย่าง" (ผัง/บรีฟก็ด้วย)
+     · `other`: `uploadDraftFiles` ของ /requests/new ลงทุกไฟล์เป็น `other`
+     ⇒ รอบแรกยกเว้นแค่ PDF ที่เป็น `inlineType` = รูปเดียวกันขึ้นคนละป้ายตามจอที่แนบ (ป้ายบอกทาง ไม่ใช่ชนิด) */
+  const pill = source.slice(source.indexOf('const typePillOf = '), source.indexOf('const [rawItems, setItems]'));
+  assert.match(pill, /if \(!pillsOn \|\| !it\) return null;/);
+  assert.match(pill, /const own = types\.find\(\(t\) => t\.key === it\.docType\);\s*if \(!own \|\| own\.key === inlineType \|\| own\.key === "other"\) return null;\s*return own\.label;/,
+    'ชนิดตั้งต้นของแผง · `other` · docType ที่ทะเบียนไม่รู้จัก (= กองของ "อื่น ๆ") ไม่มีป้าย');
+  assert.doesNotMatch(pill, /isPreviewableImage/, 'กติกาไม่แยกรูปกับ PDF — ชนิดตั้งต้นบนรูปก็ไม่มีใครเลือกเหมือนกัน');
+  assert.doesNotMatch(pill, /attachmentTypeLabel/, 'ไม่ตกไปหาป้ายของทะเบียนกลาง — ชนิดที่แผงไม่รู้จักไม่มีป้าย');
+
+  /* ทะเบียนของคำร้อง (ผู้เรียกที่เดียวของ `typePills`) — กติกาข้างบนเหลือป้ายให้ `spec` ชนิดเดียว ต่อเมื่อลำดับยังเป็นแบบนี้:
+     ชนิดแรก (= `inlineType` ที่การ์ดลงให้ทุกไฟล์) เป็นรูปอ้างอิง · ย้าย `spec` ขึ้นเป็นชนิดแรก = ทุกไฟล์บนการ์ดกลายเป็น "สเปก" เงียบ ๆ */
+  assert.deepEqual(ATTACHMENT_TYPES.dept_request.map((t) => t.key), ['reference_image', 'spec', 'other']);
+
+  assert.match(renderBody(source, 'renderTypePill'),
+    /\(label\s*\?\s*<span className=\{`\$\{styles\.typePill\} \$\{extraClass\}`\.trim\(\)\} title=\{label\}>\{label\}<\/span>\s*:\s*null\)/);
+  const tile = renderBody(source, 'renderPhotoTile');
+  assert.match(tile, /const typeLabel = caption \? typePillOf\(it\) : null;/, 'บนรูปมีป้ายเฉพาะคำบรรยายของตะแกรง');
+  assert.match(tile, /\{renderTypePill\(typeLabel\)\}/);
+  const row = renderBody(source, 'renderFileRow');
+  const at = row.indexOf('{renderTypePill(typePillOf(it), styles.rowPill)}');
+  assert.ok(at > row.lastIndexOf('</a>') && at < row.indexOf('flex items-center gap-1 shrink-0'),
+    'แถวไฟล์: ป้ายอยู่ระหว่างชื่อไฟล์กับกลุ่มปุ่ม — ไม่อยู่ในลิงก์ (ชื่อของลิงก์ = ชื่อไฟล์เท่านั้น)');
+
+  const rule = cssRule(css, '.typePill');
+  assert.match(rule, /font-size: var\(--fs-2\);/);
+  assert.match(rule, /white-space: nowrap;/, 'ป้ายยาวกว่าช่อง 148px ("สเปก / แบบงาน / บรีฟ" ที่จอแคบ) = "…" ไม่ตัดบรรทัด');
+  assert.match(rule, /text-overflow: ellipsis;/);
+  assert.doesNotMatch(rule, /min-height/, 'ป้ายย่อ — ไม่ใช่ .status-pill เต็มขนาด (24px) ใต้รูปทุกช่อง');
+  const rowRule = cssRule(css, '.rowPill');
+  assert.match(rowRule, /flex: none;/, 'ชื่อไฟล์ (truncate) ตัด "…" ก่อนป้าย');
+  assert.match(rowRule, /margin-inline-start: auto;/, 'แถวเป็น justify-between — ไม่ดัน = ป้ายลอยกลางที่ว่าง');
+  assert.match(rowRule, /max-width: 10rem;/);
+  assert.ok(css.indexOf('.rowPill {') > css.indexOf('.typePill {'), '.rowPill ต้องตามหลัง .typePill (max-width ทับกัน — ลำดับตัดสิน)');
+});
+
+test('ป้ายชนิดเอกสาร: เปิดที่การ์ด "ไฟล์แนบของคำร้อง" ที่เดียว — แผงที่ผู้เรียกไม่เปิด (ดีล) ไม่มีป้าย', () => {
+  const users = fs.readdirSync(SRC, { recursive: true })
+    .filter((f) => f.endsWith('.js') && !f.endsWith('AttachmentsPanel.js'))
+    .filter((f) => /\btypePills\b/.test(code(fs.readFileSync(path.join(SRC, f), 'utf8'))))
+    .map((f) => f.split(path.sep).join('/'));
+  assert.deepEqual(users, ['app/requests/[id]/page.js'],
+    'เปิดป้ายที่แผงใหม่ = ชนิดของ entity นั้นต้องมีทางเขียนอื่นจริง ไม่ใช่ค่าตั้งต้นของแผงทุกไฟล์ (เหตุผลอยู่ที่ prop `typePills`)');
+
+  const page = code(fs.readFileSync(path.join(SRC, 'app/requests/[id]/page.js'), 'utf8'));
+  const from = page.indexOf('title="ไฟล์แนบของคำร้อง"');
+  assert.notEqual(from, -1);
+  assert.match(page.slice(from, page.indexOf('</DetailCard>', from)),
+    /<AttachmentsPanel\s+entityType="dept_request"[\s\S]*?\binlineUpload\s+(?:\{\.\.\.\(requiredFilesSpec \? \{ onItemsChange: onAttachmentsChange, reloadKey: attachmentsReloadKey \} : \{\}\)\}\s+)?typePills\s*\/>/);
+  // ⤴ ช่องว่างระหว่าง inlineUpload กับ typePills = ตัวซิงก์กับบล็อกไฟล์บังคับของ S4 (ประเมินจากแบบ) เท่านั้น
+
+  // ตัวอย่างฝั่งลบ: แผงดีลเป็นทางเขียนไฟล์ของดีลทางเดียว ⇒ ทุกรูปเป็นชนิดตั้งต้น "บรีฟจากลูกค้า"
+  const deal = code(fs.readFileSync(path.join(SRC, 'components/salesPlanning/EntityDocumentsPanel.js'), 'utf8'));
+  assert.match(deal, /<AttachmentsPanel/);
+  assert.doesNotMatch(deal, /typePills/);
+});
+
+test('ปุ่มลบ: เป้ากด ≥ 24×24 (WCAG 2.2 SC 2.5.8) และชื่อที่อ่านออกเสียงบอกว่าลบไฟล์ไหน', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const css = code(fs.readFileSync(CSS, 'utf8'));
+  // แถวไฟล์ (โหมด inline · โหมดการ์ด)
+  const row = renderBody(source, 'renderFileRow');
+  assert.match(row, /className=\{`\$\{styles\.rowDelete\} text-\[var\(--red\)\] hover:opacity-70`\}\s*aria-label=\{`ลบ \$\{it\.fileName \|\| "ไฟล์แนบ"\}`\}/);
+  assert.doesNotMatch(row, /p-0\.5/, 'ปุ่มเดิม 17×17 (ไอคอน 13px + p-0.5)');
+  const del = cssRule(css, '.rowDelete');
+  assert.match(del, /width: var\(--space-6\);\s*height: var\(--space-6\);/, '24px');
+  assert.match(del, /margin-block: calc\(-1 \* var\(--space-1\)\);/, 'ขอบลบเท่า py-1 ของแถว — แถวไม่สูงขึ้น');
+  assert.match(del, /border-radius: 0;/, 'มุมโค้งตัดมุมกล่องออกจากพื้นที่กด — จัตุรัส 24×24 ต้องอยู่ในเป้าทั้งตัว');
+  /* มุมรูปของตะแกรง/รายแถว — 2.5.8 ต้องมี **จัตุรัส** 24×24 ทั้งตัวอยู่ในพื้นที่กด (docs/wcag-2.2-reference.md §4.3)
+     🐞 รอบแรก: กล่อง 24×24 แต่ `borderRadius: "50%"` บนตัวปุ่ม ⇒ พื้นที่กด = วงกลม 24px · กดมุมกล่องเข้า 1px = เปิดรูปแทน
+        และข้อยกเว้นระยะห่างใช้ไม่ได้ (× วางทับปุ่มเปิดรูป) ⇒ ขอบโค้งต้องไม่อยู่บนตัวปุ่ม — วงกลมที่ตาเห็นเป็นของ span ข้างใน */
+  const tile = renderBody(source, 'renderPhotoTile');
+  assert.match(tile, /aria-label=\{`ลบ \$\{it\.fileName \|\| "รูปแนบ"\}`\}/);
+  assert.doesNotMatch(tile, /width: 22|height: 22/);
+  const delBtn = tile.slice(tile.indexOf('onClick={() => handleDelete(it.id)}'), tile.indexOf('</button>', tile.indexOf('handleDelete(it.id)')));
+  assert.match(delBtn, /style=\{\{ position: "absolute", top: 4, right: 4, width: 24, height: 24 \}\}/, 'กล่องของปุ่ม = 24×24');
+  assert.doesNotMatch(delBtn, /borderRadius/, 'ขอบโค้งบนตัวปุ่มตัดพื้นที่กดเป็นวงกลม');
+  assert.match(delBtn, /<span className=\{styles\.tileDeleteDot\} aria-hidden="true">\s*<Trash2 size=\{12\} \/>\s*<\/span>/,
+    'วงกลมสีกรมที่ตาเห็นอยู่บน span ข้างใน');
+  const square = cssRule(css, '.tileDelete');
+  assert.match(square, /border-radius: 0;/, 'ต้องเขียนเอง — ไม่พึ่ง preflight');
+  assert.match(square, /background: transparent;/);
+  assert.match(square, /padding: 0;/);
+  assert.doesNotMatch(square, /^\s*(?:width|height):/m, 'ขนาดอยู่ใน style object ของปุ่ม (ด่าน audit:ui นับเลขดิบสองทาง) — สองที่ = เพี้ยนกันวันหนึ่ง');
+  const dot = cssRule(css, '.tileDeleteDot');
+  assert.match(dot, /border-radius: var\(--radius-full\);/);
+  assert.match(dot, /width: 100%;\s*height: 100%;/, 'วงกลมเต็มกล่องของปุ่ม — หน้าตาเท่ารอบก่อน');
+  assert.match(dot, /pointer-events: none;/);
+});
+
+/* ══ TIFF = แถวไฟล์ ไม่ใช่แผ่นรูป (S2b แก้หลังตรวจจอ head-rc-q8 · sales-minor-7a) ═══════════════════════════════
+   🐞 ช่องภาพแบบ: TIFF ได้แผ่น "เปิดรูปไม่ได้" + ป้ายเขียว "ขึ้นแล้ว" ทั้งที่ไม่ปลดด่าน · กดแล้วกล่องดูรูปขึ้นรูปแตก
+      (แผง "แบบจากฝ่ายขาย" บนจอเดียวกันวาด TIFF เป็นแผ่นลิงก์ "เปิดในแท็บใหม่" ถูกอยู่แล้ว) · เธรด: กล่องเปล่าไม่มีชื่อไฟล์
+   ⇒ แผงแบ่งรูป/ไฟล์ด้วยชุดที่เบราว์เซอร์วาดได้ (`panelPhotoSplit` → `isDrawableImage`) · แถวของ TIFF บอก "เปิดในแท็บใหม่"
+   🔴 โหมดแถวของจุด (`photoGroups`) ใช้ชุดกว้างตัวเดียวกับ `isSpotPhoto` — ด่าน/แท็บผลนับชุดนั้น ไฟล์ที่นับต้องอยู่ในถาดให้ผูก */
+import { panelPhotoSplit } from '../lib/master/attachmentPhotoTiles.js';
+import { isSpotPhoto } from '../lib/service/surveySpotPhotos.js';
+import { SURVEY_DOC_PLAN, SURVEY_DOC_SPOT } from '../lib/service/survey.js';
+
+const surveyFile = (id, fileName, mimeType, docType = SURVEY_DOC_PLAN) => ({ id, fileName, mimeType, docType });
+
+test('ช่องภาพแบบ: TIFF (ตาม mime และตามนามสกุล) ลงแถวไฟล์ — ไม่มีแผ่นรูป ไม่มีป้าย "ขึ้นแล้ว" · PNG ยังเป็นแผ่นรูปพร้อมป้าย', () => {
+  const png = surveyFile('P1', 'แปลนแก้ไข.png', 'image/png');
+  const tiff = surveyFile('P2', 'ผังเดิม 1.tiff', 'image/tiff');
+  const tifNoMime = surveyFile('P3', 'scan.TIF', '');
+  const pdf = surveyFile('P4', 'แบบตกแต่ง.pdf', 'application/pdf');
+  const { photos, files } = panelPhotoSplit([png, tiff, tifNoMime, pdf]);
+  assert.deepEqual(photos.map((f) => f.id), ['P1']);
+  assert.deepEqual(files.map((f) => f.id), ['P2', 'P3', 'P4'], 'ลำดับเดิม · ทุกใบอยู่ฝั่งเดียว');
+
+  const { tiles } = photoTilesView({ photos, uploads: [], canAdd: true, canDelete: () => true });
+  assert.deepEqual(tiles.map((t) => t.kind), ['photo', 'add']);
+  assert.deepEqual(tiles.filter((t) => t.chip === 'ขึ้นแล้ว').map((t) => t.name), ['แปลนแก้ไข.png'],
+    'ป้ายเขียวอยู่บนรูปที่วาดได้เท่านั้น — TIFF ที่ไม่ปลดด่านภาพแบบไม่ได้ป้าย "ขึ้นแล้ว"');
+  // ไม่มีอะไรหลุด: ชุดว่าง/ไม่ใช่ลิสต์ = ว่างทั้งสองฝั่ง
+  assert.deepEqual(panelPhotoSplit(null), { photos: [], files: [] });
+  assert.deepEqual(panelPhotoSplit(), { photos: [], files: [] });
+});
+
+test('แถวของจุด (`grouped`): TIFF ยังอยู่ในชุดรูป — ชุดเดียวกับ `isSpotPhoto` ทุกใบ (ไฟล์ที่ด่านนับต้องอยู่ในถาดให้ผูก)', () => {
+  const spot = [
+    surveyFile('S1', 'IMG_1.jpg', 'image/jpeg', SURVEY_DOC_SPOT),
+    surveyFile('S2', 'scan.tiff', 'image/tiff', SURVEY_DOC_SPOT),
+    surveyFile('S3', 'scan.tif', '', SURVEY_DOC_SPOT),
+    surveyFile('S4', 'IMG_2.HEIC', 'image/heic', SURVEY_DOC_SPOT),
+    surveyFile('S5', 'note.pdf', 'application/pdf', SURVEY_DOC_SPOT),
+  ];
+  const grouped = panelPhotoSplit(spot, { grouped: true });
+  assert.deepEqual(grouped.photos.map((f) => f.id), spot.filter(isSpotPhoto).map((f) => f.id));
+  assert.deepEqual(grouped.files.map((f) => f.id), ['S5']);
+  // โหมดอื่นของแผง (ไม่ใช่แถวของจุด) — TIFF เป็นแถวไฟล์
+  assert.deepEqual(panelPhotoSplit(spot).files.map((f) => f.id), ['S2', 'S3', 'S5']);
+});
+
+test('แผง: ทุกจุดที่แบ่งรูป/ไฟล์ผ่าน `panelPhotoSplit` · แถวไฟล์ของ TIFF มี "เปิดในแท็บใหม่" ในลิงก์ · ภาพย่อของแถวไฟล์เฉพาะรูปที่วาดได้', () => {
+  const source = code(fs.readFileSync(FILE, 'utf8'));
+  const css = code(fs.readFileSync(CSS, 'utf8'));
+  assert.doesNotMatch(source, /\bisPreviewableImage\b/, 'ตัดสินหน้าตาด้วยชุดที่วาดได้เท่านั้น — ชุดกว้างเข้าทาง `grouped` ของตัวแบ่ง');
+  assert.match(source, /photoGroups\(loading \? \[\] : panelPhotoSplit\(items\.filter\(\(it\) => it\.docType === groupType\), \{ grouped: true \}\)\.photos\)/);
+  assert.match(source, /const split = panelPhotoSplit\(shown, \{ grouped: !!groupsView \}\);\s*const tilePhotos = loading \? \[\] : split\.photos;/);
+  assert.match(source, /const \{ photos, files \} = split;/);
+
+  const row = renderBody(source, 'renderFileRow');
+  assert.match(row, /\) : isDrawableImage\(it\) \? \(\s*<button/, 'ภาพย่อ + กล่องดูรูปเต็มเฉพาะรูปที่วาดได้');
+  const cue = row.indexOf('{isUndrawnImage(it) && (');
+  assert.ok(cue > row.indexOf('<a') && cue < row.lastIndexOf('</a>'), 'คำบอกอยู่ในลิงก์ — ชื่อที่ได้ยินคือ "ชื่อไฟล์ เปิดในแท็บใหม่"');
+  assert.match(row, /\{isUndrawnImage\(it\) && \(\s*<span className=\{styles\.rowOpenNew\}>\s*\{UNDRAWN_IMAGE_OPEN_TEXT\}\s*<ExternalLink size=\{12\} aria-hidden="true" \/>\s*<\/span>\s*\)\}/);
+  const rule = cssRule(css, '.rowOpenNew');
+  assert.match(rule, /flex: none;/, 'ชื่อไฟล์ตัด "…" ก่อนคำบอก');
+  assert.match(rule, /white-space: nowrap;/, 'คำบอกไม่ขาดกลางวลีที่จอ 375');
+});
+
+test('เธรด: รูป/ไฟล์แบ่งด้วยชุดที่วาดได้ตัวเดียวกับแผง · TIFF = ลิงก์ชื่อไฟล์ + "เปิดในแท็บใหม่" (ไม่ใช่กล่องเปล่า "เปิดรูปไม่ได้")', () => {
+  const thread = code(fs.readFileSync(path.join(SRC, 'components/updates/UpdateThread.js'), 'utf8'));
+  const fn = thread.slice(thread.indexOf('function ThreadAttachments('), thread.indexOf('\n}\n', thread.indexOf('function ThreadAttachments(')));
+  assert.doesNotMatch(thread, /\bisPreviewableImage\b/);
+  assert.match(fn, /const photos = list\.map\(\(a, i\) => \(\{ a, i \}\)\)\.filter\(\(\{ a \}\) => isDrawableImage\(a\)\);/);
+  assert.match(fn, /const files = list\.map\(\(a, i\) => \(\{ a, i \}\)\)\.filter\(\(\{ a \}\) => !isDrawableImage\(a\)\);/);
+  const link = fn.slice(fn.indexOf('<a key={i} className={styles.fileLink}'), fn.indexOf('</a>'));
+  assert.match(link, /<span className="truncate">\{a\.fileName \|\| "ไฟล์แนบ"\}<\/span>/, 'ชื่อไฟล์เห็นบนจอ ไม่ใช่แค่ตอนชี้เมาส์');
+  assert.match(link, /\{isUndrawnImage\(a\) && \(\s*<span className="[^"]*\bwhitespace-nowrap\b[^"]*">\s*\{UNDRAWN_IMAGE_OPEN_TEXT\}\s*<ExternalLink size=\{12\} aria-hidden="true" \/>/);
+  assert.match(link, /target="_blank" rel="noreferrer"/);
 });

@@ -78,8 +78,9 @@ test('ใบที่ปิด/ยกเลิกแล้วไม่ถูก�
 test('⭐ ใบที่ถูกตีกลับต้องแยกจากร่างที่ไม่เคยส่ง — ทั้งป้ายและตัวเลข', async () => {
   const { bouncedDaysText } = await import('./queueBoard.js');
   const t = { todayIso: '2026-08-11' };
-  const fresh = req({ id: 'A', status: 'draft' });
-  const bounced = req({ id: 'B', status: 'draft', bouncedAt: '2026-08-08T03:00:00Z', bounceReason: 'ยังไม่แนบสเปก' });
+  const fresh = req({ id: 'A', status: 'draft', _mine: true });
+  // ⚠️ `_mine` — กล่อง "ตีกลับ รอคุณแก้" นับเฉพาะใบของตัวเอง (ตรวจตัวเลข 20/10/2026 M5 · ดูเทสต์ถัดไป)
+  const bounced = req({ id: 'B', status: 'draft', _mine: true, bouncedAt: '2026-08-08T03:00:00Z', bounceReason: 'ยังไม่แนบสเปก' });
 
   assert.equal(requestNextStep(fresh).label, 'ยังไม่ได้ส่ง');
   assert.equal(requestNextStep(fresh).bounced, undefined);
@@ -102,9 +103,62 @@ test('⭐ ใบที่ถูกตีกลับต้องแยกจา�
   assert.equal(bouncedDaysText(bounced, { todayIso: '2026-08-08' }).note, 'ตีกลับวันนี้');
   assert.equal(bouncedDaysText(fresh, t), null, 'ร่างที่ไม่เคยส่งไม่มีวันตีกลับ');
   // ใบที่ส่งใหม่แล้ว (pending) ไม่ใช่ใบตีกลับอีกต่อไป แม้ยังมี bouncedAt ติดอยู่
-  const resent = req({ id: 'C', status: 'pending', bouncedAt: '2026-08-08T03:00:00Z' });
+  const resent = req({ id: 'C', status: 'pending', _mine: true, bouncedAt: '2026-08-08T03:00:00Z' });
   assert.equal(bouncedDaysText(resent, t), null);
   assert.equal(queueCounts([resent], t).bounced, 0);
+});
+
+/* 🐞 ตรวจตัวเลข 20/10/2026 M5 — ขอบเขตทีม/ทั้งหมด (AE/AC · ผู้ดูแลระบบ) ได้ร่างตีกลับของเพื่อนร่วมทีมมาด้วย
+   แถบเตือนบน `/requests` นับใบของเรา แต่กล่อง "ตีกลับ รอคุณแก้" นับทั้งทีม ⇒ แถบบอก 1 กดแล้วตารางขึ้น 2
+   ⇒ กล่องใช้กติกาเดียวกับแถบเตือน · `waitingOnMeRows` · ป้ายเมนู: ใบตีกลับของเพื่อนไม่ใช่ของค้างของเรา */
+test('🔴 กล่อง "ตีกลับ รอคุณแก้" นับเฉพาะใบของตัวเอง — ใบของเพื่อนร่วมทีมไม่ใช่ (M5)', async () => {
+  const { waitingOnMeRows } = await import('./queueBoard.js');
+  const t = { todayIso: '2026-08-11' };
+  const at = '2026-08-08T03:00:00Z';
+  const mine = req({ id: 'B1', status: 'draft', _mine: true, bouncedAt: at });
+  const teammate = req({ id: 'B2', status: 'draft', _mine: false, bouncedAt: at });
+  const noFlag = req({ id: 'B3', status: 'draft', bouncedAt: at });
+  assert.equal(matchesQueueCount(mine, 'bounced', t), true);
+  assert.equal(matchesQueueCount(teammate, 'bounced', t), false, 'ใบตีกลับของเพื่อนร่วมทีมไม่ใช่ของค้างของเรา');
+  assert.equal(matchesQueueCount(noFlag, 'bounced', t), false, 'ไม่รู้ว่าเป็นของใคร = ไม่นับว่าเป็นของเรา');
+  assert.equal(queueCounts([mine, teammate, noFlag], t).bounced, 1);
+  // กล่องกับ "รอฉันลงมือ" (ป้ายเมนู/การ์ดเริ่มที่นี่) ตอบตรงกันว่าใบตีกลับใบไหนเป็นของเรา
+  const bouncedInWaiting = waitingOnMeRows([mine, teammate, noFlag], { myDepts: [] }).filter((r) => r.status === 'draft');
+  assert.deepEqual(bouncedInWaiting.map((r) => r.id), [mine, teammate, noFlag].filter((r) => matchesQueueCount(r, 'bounced', t)).map((r) => r.id));
+  // ใบของเพื่อนยังเป็น "ตีกลับ" บนแถว (ป้ายแดง/กลุ่มแรก) — ที่เปลี่ยนคือกล่องนับเท่านั้น
+  assert.equal(requestNextStep(teammate).bounced, true);
+});
+
+/* ⭐ ป้ายเมนู/การ์ดเริ่มที่นี่ (`waitingOnMeRows`) ต้อง **เรียก** ตัวตัดสินของกล่อง ไม่ใช่มีสำเนาเงื่อนไขของตัวเอง
+   (ผลตรวจรอบสอง M5) — สองสำเนาตรงกันวันนี้เพราะเขียนเหมือนกัน แต่วันที่ฝั่งหนึ่งเปลี่ยน ป้ายเมนูจะบอกคนละเลขกับแถบเตือนเงียบ ๆ
+   ⇒ เทียบบนชุดที่ครอบทุกทางแยก (ของเรา/ของเพื่อน/ไม่รู้เจ้าของ × ร่าง/ส่งซ้ำแล้ว/ยกเลิก × มี/ไม่มี bouncedAt)
+   + ยามโครงสร้างว่าตัวบวกใบตีกลับใน `waitingOnMeRows` คือ `matchesQueueCount(r, 'bounced')` */
+test('⭐ ใบตีกลับใน "รอฉันลงมือ" = ใบที่กล่อง "ตีกลับ รอคุณแก้" นับ ทุกทางแยก (M5)', async () => {
+  const { waitingOnMeRows } = await import('./queueBoard.js');
+  const at = '2026-08-08T03:00:00Z';
+  const rows = [];
+  for (const mine of [true, false, undefined]) {
+    for (const status of ['draft', 'pending', 'cancelled']) {
+      for (const bouncedAt of [at, null]) {
+        const row = req({ id: `${String(mine)}-${status}-${bouncedAt ? 'b' : 'x'}`, status, bouncedAt });
+        if (mine !== undefined) row._mine = mine;
+        rows.push(row);
+      }
+    }
+  }
+  // `myDepts` ว่าง + ไม่มีใบไหนเป็นงานรอผู้ขอ ⇒ ก้อนแรก (แท็บ "รอฉันตอบ") ว่าง เหลือแต่ก้อนใบตีกลับ
+  const fromWaiting = waitingOnMeRows(rows, { myDepts: [] }).filter((r) => r.status === 'draft').map((r) => r.id);
+  const fromBox = rows.filter((r) => matchesQueueCount(r, 'bounced')).map((r) => r.id);
+  assert.deepEqual(fromWaiting, fromBox);
+  assert.deepEqual(fromBox, ['true-draft-b'], 'ใบตีกลับที่เป็นของเราและยังเป็นร่างเท่านั้น');
+  assert.equal(queueCounts(rows, { todayIso: '2026-08-11' }).bounced, fromBox.length);
+
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('./queueBoard.js', import.meta.url), 'utf8');
+  const body = src.slice(src.indexOf('export function waitingOnMeRows'));
+  const fnBody = body.slice(0, body.indexOf('\n}\n'));
+  assert.match(fnBody, /matchesQueueCount\(r, 'bounced'\)/, 'ตัวบวกใบตีกลับต้องเรียกตัวตัดสินของกล่อง');
+  assert.doesNotMatch(fnBody, /r\.bouncedAt/, 'ห้ามมีสำเนาเงื่อนไขใบตีกลับใน waitingOnMeRows');
 });
 
 test('⭐ ใบตีกลับต้องอยู่บนสุดของคิว ไม่ใช่ตกกลุ่ม "จบแล้ว" กับใบที่ปิดไปจริง', async () => {

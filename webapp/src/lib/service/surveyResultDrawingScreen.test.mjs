@@ -67,7 +67,7 @@ test('ตารางถามตัวตัดสินรายแถว (sur
   assert.match(TABLE, /count=\{drawing \? drawing\.plan\.files\.filter\(\(f\) => f\.printable\)\.length : cell\.photos\.plan\}/);
   assert.match(TABLE, /canUploadPlan=\{drawing \? drawing\.editable : canUploadPlan\}/);
   // ช่องจุด: ทางเดิม ("ช่างยังไม่แจ้งจุดสักจุด" · ปุ่มติ๊ก · "เลือก n / m") อยู่หลังทางของแถวจากแบบ
-  const spotCell = between(TABLE, '<td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} className="ui-cell-wide">', '<td data-label="แพ็คเกจ/เดือน"');
+  const spotCell = between(TABLE, '<td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} data-long-label={m.source ? "1" : undefined} className="ui-cell-wide">', '<td data-label="แพ็คเกจ/เดือน"');
   assert.match(spotCell, /\{m\.source \? \(/);
   assert.match(spotCell, /\) : spots\.length === 0 \? \(\s*<span className=\{styles\.warnText\}>ช่างยังไม่แจ้งจุดสักจุด<\/span>/);
   assert.ok(spotCell.indexOf('{m.source ? (') < spotCell.indexOf('ช่างยังไม่แจ้งจุดสักจุด'));
@@ -91,7 +91,8 @@ test('ตารางถามตัวตัดสินรายแถว (sur
 
 test('แถวจากแบบ: บรรทัดที่มาใต้ชื่อพื้นที่ · ไม่มีแถบ "รูปจากช่าง" และไม่มีตัวนับภาพกว้าง/ภาพจุด', () => {
   const zoneCell = between(TABLE, '<td data-label="พื้นที่"', '{cut ? (');
-  assert.match(zoneCell, /\{m\.source \? <span className=\{styles\.source\}>\{m\.source\}<\/span> : null\}/);
+  // 🐞 UAT 26/10 (head-r3-21): วันไทย "พฤ. 8 ต.ค." ขาดเป็น "พฤ. 8" / "ต.ค." ในช่อง 182px ⇒ วาดผ่าน `KeepTogether` (วันเป็นก้อนเดียว)
+  assert.match(zoneCell, /\{m\.source \? <span className=\{styles\.source\}><KeepTogether text=\{m\.source\} \/><\/span> : null\}/);
   assert.ok(zoneCell.indexOf('surveyZoneTitle(zone)') < zoneCell.indexOf('styles.source'), 'อยู่ใต้ชื่อพื้นที่');
   assert.ok(zoneCell.indexOf('styles.source') < zoneCell.indexOf('cell.figures'), 'อยู่เหนือตัวเลขผลวัด');
   // แถบรูป + ตัวนับ อยู่ในก้อนเดียวที่แขวนกับ "ไม่ใช่แถวจากแบบ" — มีที่เดียวในตาราง
@@ -166,7 +167,7 @@ test('ช่องภาพแบบของแถวจากแบบ: ชื
 });
 
 test('ช่องจุดของแถวจากแบบ: ไม่บังคับ ไม่มีการเลือก ไม่มีภาพย่อ ไม่มีบรรทัด "ยังไม่ได้ผูกจุด"', () => {
-  const spotCell = between(TABLE, '<td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} className="ui-cell-wide">', '<td data-label="แพ็คเกจ/เดือน"');
+  const spotCell = between(TABLE, '<td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} data-long-label={m.source ? "1" : undefined} className="ui-cell-wide">', '<td data-label="แพ็คเกจ/เดือน"');
   const drawnBranch = between(spotCell, '{m.source ? (', ') : spots.length === 0 ? (');
   assert.match(drawnBranch, /\{spots\.length === 0 \? \(\s*<span>\{NA\}<\/span>/, 'ไม่มีจุด = ขีด ไม่ใช่คำเตือน');
   assert.match(drawnBranch, /\{spots\.map\(\(s\) => \(\s*<span key=\{s\.id\} className=\{styles\.spotChip\}>\{naText\(s\.label\)\}<\/span>/, 'มีจุด = ชื่อเป็นตัวหนังสือ');
@@ -192,7 +193,8 @@ test('หัวคอลัมน์: "ผลวัดจากช่าง" ก
   assert.doesNotMatch(drawnTh, /styles\.star/);
   /* 🐞 review S2b — ตารางพับเป็นการ์ด (≤680px หัวตารางหาย): ป้ายช่องของแถวจากแบบต้องไม่ใช่ "เลือกจุด" / "ภาพผัง"
      (ไม่มีอะไรให้เลือก · ด่านเลือกจุดไม่ใช้กับแถวนี้) — คำเดียวกับหัวคอลัมน์ของใบจากแบบทั้งใบ · แถวลงหน้างานป้ายเดิม */
-  assert.match(TABLE, /\nconst DRAWING_SPOT_LABEL = "จุดติดตั้งโดยประมาณ";\n/);
+  /* S2b-O9: ส่งออกให้ตารางผลบนหน้าคำร้องของฝ่ายขายใช้คำเดียวกัน (ไม่พิมพ์ซ้ำที่จอนั้น) */
+  assert.match(TABLE, /\nexport const DRAWING_SPOT_LABEL = "จุดติดตั้งโดยประมาณ";\n/);
   assert.equal(count(TABLE, 'จุดติดตั้งโดยประมาณ'), 1, 'คำเดียว ที่เดียว');
   assert.equal(count(TABLE, 'data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"}'), 1);
   assert.equal(count(TABLE, 'data-label={m.source && m.planTitle ? m.planTitle : "ภาพผัง"}'), 1);

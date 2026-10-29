@@ -1428,7 +1428,9 @@ const todayCases = () => [
 test('⭐ วันนี้ทุกคนมีทีมเดียว ⇒ matrix เท่าตรรกะเดิมทุกช่อง (ก่อน/หลัง overlay + แถวที่ยังไม่แยกทีม) — ต่างแค่ id กับช่อง ownerId', () => {
   /* `targetPersonSum` = เส้นเตือนอย่างเดียว (มติผู้ใช้ 2026-09-16: เป้าทีมชนะเป้ารายคน แต่ต้องบอกบนจอ)
      ไม่มีในตรรกะเดิมและไม่เข้ายอดไหนเลย ⇒ ตัดออกก่อนเทียบ ไม่งั้น parity ตกทั้งที่ยอดเท่าเดิมทุกช่อง */
-  const dropWarn = ({ targetPersonSum, ...row }) => row;
+  /* เส้น "รอนับรายงวด" (mig 0412) ก็ไม่มีในตรรกะเดิม — ยอดคาดการณ์ล้วน ไม่เข้า Actual/เป้า (เทสต์ของเส้นนี้อยู่ท้ายไฟล์)
+     ⇒ ตัดออกก่อนเทียบด้วย · ไม้บรรทัดข้างบนห้ามแก้ */
+  const dropWarn = ({ targetPersonSum, instRemaining, instRemainingCount, instRemainingDealIds, ...row }) => row;
   const strip = (m) => ({
     ...m,
     company: dropWarn(m.company),
@@ -1452,4 +1454,205 @@ test('⭐ วันนี้ทุกคนมีทีมเดียว ⇒ ma
     assert.deepEqual(strip(overlaid), strip(legacyOverlaid), `${name}: overlayHistory`);
     assert.deepEqual(unallocatedRow(overlaid), unallocatedRow(legacyOverlaid), `${name}: unallocatedRow`);
   }
+});
+
+/* ── "รอนับรายงวด" (`instRemaining*` · mig 0412 · มติเจ้าของ 26/10/2026 ข้อ 5) ────────────────────
+   งวดของใบสั่งขาย "Actual รายงวด" ที่ยังไม่ยื่น/ถูกตีกลับ — server วางที่เดือนครบกำหนด (เลยกำหนด/ไม่มีวัน = เดือนปัจจุบัน)
+   ล็อกไว้: อ่านจาก payload · เข้า projected · ไม่เข้า Actual/ขาด-เกิน/%/ทบยอด/yearSummary · overlayHistory ไม่แตะ ·
+   unallocatedRow กระทบกันได้ · rowHasValue เห็นแถวที่มีแต่เส้นนี้ · วงจรงวดไม่ทำให้ยอดคาดวูบ */
+const OCT = 9;
+const DEC = 11;
+const instDashboards = () => [
+  {
+    month: '2026-10',
+    totals: { targetAmount: 1000, fullForecast: 0, weightedForecast: 0, wonValue: 300, pendingApproval: 200, pendingApprovalCount: 1, instRemaining: 150.5, instRemainingCount: 2 },
+    byOwner: [
+      { ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 1000, won: 300, weighted: 0, fcTotal: 0, pendingApproval: 200, pendingApprovalCount: 1, instRemaining: 100.5, instRemainingCount: 1 },
+      { ownerId: 'u2', ownerName: 'บี', team: 'SV', target: 0, won: 0, weighted: 0, fcTotal: 0, instRemaining: 50, instRemainingCount: 1 },
+    ],
+    byTeam: [
+      { team: 'KA', target: 1000, won: 300, weighted: 0, fcTotal: 0, pendingApproval: 200, pendingApprovalCount: 1, instRemaining: 100.5, instRemainingCount: 1 },
+      { team: 'SV', target: 0, won: 0, weighted: 0, fcTotal: 0, instRemaining: 50, instRemainingCount: 1 },
+    ],
+  },
+  {
+    month: '2026-12',
+    totals: { targetAmount: 0, fullForecast: 0, weightedForecast: 0, wonValue: 0, instRemaining: 400, instRemainingCount: 1 },
+    byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 0, won: 0, weighted: 0, fcTotal: 0, instRemaining: 400, instRemainingCount: 1 }],
+    byTeam: [{ team: 'KA', target: 0, won: 0, weighted: 0, fcTotal: 0, instRemaining: 400, instRemainingCount: 1 }],
+  },
+];
+const withoutInstRemaining = (dashboards) => dashboards.map((d) => {
+  const strip = ({ instRemaining, instRemainingCount, ...rest }) => rest;
+  return { ...d, totals: strip(d.totals), byOwner: d.byOwner.map(strip), byTeam: d.byTeam.map(strip) };
+});
+
+test('รอนับรายงวด: buildMatrix อ่านช่องของ totals/byOwner/byTeam · payload เก่าไม่มีช่อง = 0 ไม่ใช่ NaN', () => {
+  const m = buildMatrix(instDashboards());
+  for (const r of [m.company, ...m.teams, ...m.people]) {
+    assert.equal(r.instRemaining.length, 12);
+    assert.equal(r.instRemainingCount.length, 12);
+  }
+  assert.equal(m.company.instRemaining[OCT], 150.5);
+  assert.equal(m.company.instRemainingCount[OCT], 2);
+  assert.equal(m.company.instRemaining[DEC], 400, 'เดือนครบกำหนดในอนาคตมีได้');
+  assert.equal(teamOf(m, 'KA').instRemaining[OCT], 100.5);
+  assert.equal(teamOf(m, 'SV').instRemainingCount[OCT], 1);
+  assert.equal(personOf(m, 'u1').instRemaining[DEC], 400);
+  assert.equal(personOf(m, 'u2').instRemaining[OCT], 50, 'คนที่มีแต่กองนี้ยังมีแถว');
+  const old = buildMatrix(withoutInstRemaining(instDashboards()));
+  assert.deepEqual(old.company.instRemaining, fill(0));
+  assert.deepEqual(old.company.instRemainingCount, fill(0));
+});
+
+test('รอนับรายงวด: windowStat แยกช่อง · projected นับด้วย · Actual/ขาด-เกิน/%/ทบยอด/yearSummary ไม่ขยับ', () => {
+  const opts = { startIdx: OCT, endIdx: OCT, carryOn: true, closedCount: OCT };
+  const withLine = windowStat(buildMatrix(instDashboards()).company, opts);
+  const withoutLine = windowStat(buildMatrix(withoutInstRemaining(instDashboards())).company, opts);
+  assert.equal(withLine.instRemaining, 150.5);
+  assert.equal(withLine.instRemainingCount, 2);
+  assert.equal(withLine.projected, 300 + 200 + 0 + 0 + 150.5, 'คาดจบงวด = Actual + รออนุมัติ + Won รอยื่น SO + FC คงเหลือ + รอนับรายงวด');
+  for (const key of ['target', 'carry', 'mustClose', 'fcTotal', 'forecast', 'actual', 'pendingApproval', 'wonAwaitingSo', 'diff', 'pct', 'fcPct']) {
+    assert.equal(withLine[key], withoutLine[key], `${key} ต้องไม่ขยับ`);
+  }
+  assert.equal(withLine.projected - withoutLine.projected, 150.5, 'ต่างกันแค่ยอดคาด');
+  const year = windowStat(buildMatrix(instDashboards()).company, { startIdx: 0, endIdx: 11, carryOn: false, closedCount: OCT });
+  assert.equal(year.instRemaining, 550.5);
+  assert.equal(year.instRemainingCount, 3);
+  const ys = { closedCount: OCT, ytdCount: OCT + 1 };
+  assert.deepEqual(
+    yearSummary(buildMatrix(instDashboards()).company, ys),
+    yearSummary(buildMatrix(withoutInstRemaining(instDashboards())).company, ys),
+    'yearSummary = Actual ล้วน',
+  );
+});
+
+test('รอนับรายงวด: overlayHistory ไม่ทับ ไม่ roll up ไม่ล้าง (เหมือนรออนุมัติ) · แถวที่สร้างใหม่ได้ศูนย์ครบแกน', () => {
+  const m = overlayHistory(buildMatrix(instDashboards()), [
+    { period: '2026-10', team: null, ownerId: null, actualAmount: 999 },
+    { period: '2026-10', team: 'KA', ownerId: 'u1', ownerName: 'เอ', actualAmount: 700 },
+    { period: '2026-10', team: 'RT', ownerId: 'u7', ownerName: 'เจ็ด', actualAmount: 5 },
+  ]);
+  assert.equal(m.company.actual[OCT], 999);
+  assert.equal(m.company.instRemaining[OCT], 150.5, 'แถวบริษัทกรอกมือแล้ว กองนี้ยังอยู่ (สถานะสดของงวด)');
+  assert.equal(personOf(m, 'u1').instRemaining[OCT], 100.5);
+  assert.equal(teamOf(m, 'KA').instRemaining[OCT], 100.5, 'ไม่ roll up จากแถวคน');
+  assert.deepEqual(personOf(m, 'u7').instRemaining, fill(0), 'แถวที่ overlay สร้างใหม่');
+  assert.deepEqual(teamOf(m, 'RT').instRemainingCount, fill(0));
+});
+
+test('รอนับรายงวด: unallocatedRow กระทบกันได้ + ปัดสตางค์ · rowHasValue เห็นแถวที่มีแต่เส้นนี้', () => {
+  const m = buildMatrix(instDashboards());
+  const rest = unallocatedRow(m);
+  for (const key of ['instRemaining', 'instRemainingCount']) {
+    for (let i = 0; i < 12; i += 1) {
+      const teams = m.teams.reduce((sum, t) => sum + Number(t[key][i] || 0), 0);
+      assert.equal(teams + rest[key][i], m.company[key][i], `${key} เดือน ${i + 1}`);
+    }
+  }
+  const zeros = () => Array(12).fill(0);
+  const blankOf = () => ({
+    target: zeros(), fcTotal: zeros(), forecast: zeros(), actual: zeros(),
+    pendingApproval: zeros(), pendingApprovalCount: zeros(), wonAwaitingSo: zeros(), wonAwaitingSoCount: zeros(),
+    instRemaining: zeros(), instRemainingCount: zeros(),
+  });
+  const company = blankOf();
+  company.instRemaining[OCT] = 0.3;
+  const team = (v) => Object.assign(blankOf(), { instRemaining: Object.assign(zeros(), { [OCT]: v }) });
+  assert.equal(unallocatedRow({ company, teams: [team(0.1), team(0.2)] }).instRemaining[OCT] > 0, false, 'เศษทศนิยมไม่โผล่เป็น "รอนับรายงวด ฿0.00"');
+  const only = blankOf();
+  only.instRemainingCount[DEC] = 1;
+  assert.equal(rowHasValue(only, DEC, DEC), true);
+  assert.equal(rowHasValue(only, 0, OCT), false);
+});
+
+test('🐞 ใบ "Actual รายงวด": ทุกช่วงของงวดอยู่ในสูตรยอดคาดช่องเดียว — นับไปบางงวดแล้วยอดคาดไม่วูบ', () => {
+  // ใบเดียว Actual 300 แบ่งสามงวด 100 · เป้า 300 · ดูเดือนที่วิ่ง (งวดที่เหลือครบกำหนดเดือนนี้/เลยกำหนด)
+  const stage = (patch) => {
+    const r = {
+      target: fill(0), fcTotal: fill(0), forecast: fill(0), actual: fill(0),
+      pendingApproval: fill(0), pendingApprovalCount: fill(0), wonAwaitingSo: fill(0), wonAwaitingSoCount: fill(0),
+      instRemaining: fill(0), instRemainingCount: fill(0),
+    };
+    r.target[OCT] = 300;
+    patch(r);
+    return windowStat(r, { startIdx: OCT, endIdx: OCT, carryOn: false, closedCount: OCT });
+  };
+  const lifecycle = {
+    อนุมัติใบนับงวด1: stage((r) => { r.actual[OCT] = 100; r.instRemaining[OCT] = 200; r.instRemainingCount[OCT] = 1; }),
+    ยื่นงวด2: stage((r) => { r.actual[OCT] = 100; r.pendingApproval[OCT] = 100; r.pendingApprovalCount[OCT] = 1; r.instRemaining[OCT] = 100; r.instRemainingCount[OCT] = 1; }),
+    อนุมัติงวด2: stage((r) => { r.actual[OCT] = 200; r.instRemaining[OCT] = 100; r.instRemainingCount[OCT] = 1; }),
+    นับที่เหลือทั้งหมด: stage((r) => { r.actual[OCT] = 300; }),
+  };
+  for (const [name, s] of Object.entries(lifecycle)) {
+    assert.equal(s.projected, 300, name);
+    assert.equal(projectionGap(s).shortfall, 0, name);
+  }
+  assert.equal(lifecycle.อนุมัติใบนับงวด1.pct, (100 / 300) * 100, '% เทียบ Actual ล้วน');
+  // ไม่มีเส้นนี้ = อาการ: ใบรายงวดที่นับงวด 1 แล้ว "คาดขาด" เท่างวดที่ยังไม่ถึงคิว
+  const hole = stage((r) => { r.actual[OCT] = 100; });
+  assert.equal(projectionGap(hole).shortfall, 200);
+});
+
+/* 🐞 review 26/10: "รอนับรายงวด · N ดีล" ของไตรมาส/ทั้งปีเคยบวกจำนวนรายเดือน — ดีลเดียวที่มีงวดค้าง พ.ย. + ธ.ค. ขึ้น "2 ดีล"
+   ขณะที่ลิ้นชักโชว์ดีลเดียว ⇒ server ส่ง id ดีลต่อเดือน (`instRemainingDealIds`) แล้ว windowStat นับดีลไม่ซ้ำข้ามเดือน */
+test('รอนับรายงวด: ช่วงหลายเดือนนับดีลไม่ซ้ำ (instRemainingDealIds) · payload เก่าไม่มี id = บวกจำนวนรายเดือนตามเดิม', () => {
+  const NOV = 10;
+  const month = (key, ids, amount) => ({
+    month: key,
+    totals: { targetAmount: 0, wonValue: 0, instRemaining: amount, instRemainingCount: ids.length, instRemainingDealIds: ids },
+    byOwner: [{ ownerId: 'u1', ownerName: 'เอ', team: 'KA', target: 0, won: 0, weighted: 0, fcTotal: 0,
+      instRemaining: amount, instRemainingCount: ids.length, instRemainingDealIds: ids }],
+    byTeam: [{ team: 'KA', target: 0, won: 0, weighted: 0, fcTotal: 0, instRemaining: amount, instRemainingCount: ids.length, instRemainingDealIds: ids }],
+  });
+  const m = buildMatrix([month('2026-11', ['D-1'], 1000), month('2026-12', ['D-1', 'D-2'], 1500)]);
+  const q4 = { startIdx: OCT, endIdx: DEC, carryOn: false, closedCount: OCT };
+  for (const row of [m.company, m.teams[0], m.people[0]]) {
+    const s = windowStat(row, q4);
+    assert.equal(s.instRemaining, 2500, 'ยอดยังบวกตามเดือน');
+    assert.equal(s.instRemainingCount, 2, 'D-1 สองเดือน + D-2 = 2 ดีล (ไม่ใช่ 3)');
+    assert.equal(windowStat(row, { ...q4, startIdx: NOV, endIdx: NOV }).instRemainingCount, 1, 'เดือนเดียว = จำนวนของเดือน');
+  }
+  // payload เก่าใน apiCache (ไม่มี id) — ถอยไปบวกจำนวนรายเดือน ไม่ใช่ 0
+  const old = buildMatrix([
+    { month: '2026-11', totals: { instRemaining: 1000, instRemainingCount: 1 }, byOwner: [], byTeam: [] },
+    { month: '2026-12', totals: { instRemaining: 1500, instRemainingCount: 2 }, byOwner: [], byTeam: [] },
+  ]);
+  assert.equal(windowStat(old.company, q4).instRemainingCount, 3);
+  // แถวที่ยังไม่แยกทีม: ดีลของบริษัทที่ไม่อยู่ทีมไหน — นับไม่ซ้ำเหมือนกัน · ไม่มี = 0
+  const mixed = buildMatrix([
+    { ...month('2026-11', ['D-1', 'D-9'], 1100), byTeam: [{ team: 'KA', instRemaining: 1000, instRemainingCount: 1, instRemainingDealIds: ['D-1'] }] },
+    { ...month('2026-12', ['D-1', 'D-9'], 1100), byTeam: [{ team: 'KA', instRemaining: 1000, instRemainingCount: 1, instRemainingDealIds: ['D-1'] }] },
+  ]);
+  const rest = unallocatedRow(mixed);
+  assert.deepEqual([rest.instRemainingDealIds[NOV], rest.instRemainingDealIds[DEC]], [['D-9'], ['D-9']]);
+  assert.equal(windowStat(rest, q4).instRemainingCount, 1);
+  assert.equal(windowStat(unallocatedRow(m), q4).instRemainingCount, 0);
+});
+
+/* 🐞 review รอบสอง 26/10: การแก้รอบแรก (instRemainingDealIds) ไม่ถึงจอจริง — `DEAL_COLUMNS` ของแดชบอร์ดไม่มี `id`
+   (`.order('id')` ไม่พา id มาให้) ⇒ rollupInstRemaining ได้ id = undefined ทุกดีล · ทุกถังได้ [] · windowStat ถอยไปบวกจำนวนรายเดือน
+   ⇒ ดีลเดียวที่มีงวดค้าง พ.ย. + ธ.ค. ขึ้น "รอนับรายงวด · 2 ดีล" · เทสต์รอบแรกผ่านเพราะ fixture มี id
+   ⇒ ยามนี้สร้างดีล **จากคอลัมน์ที่ route เลือกจริง** (อ่านจากซอร์ส) แล้ววิ่งเส้นเดียวกับจอ: rollupInstRemaining → buildMatrix → windowStat */
+test('DEAL_COLUMNS ของแดชบอร์ดพา id — ดีลรูปเดียวกับ select จริงนับ "รอนับรายงวด · N ดีล" ไม่ซ้ำข้ามเดือน', async () => {
+  const { rollupInstRemaining } = await import('./actualMonthRollup.js');
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../app/api/sales-planning/dashboard/route.js'), 'utf8');
+  const match = /const DEAL_COLUMNS = '([^']+)';/.exec(src);
+  assert.ok(match, 'route ประกาศ DEAL_COLUMNS เป็นสตริงเดียว');
+  const cols = match[1].split(',').map((c) => c.trim());
+  assert.ok(cols.includes('id'), 'DEAL_COLUMNS ต้องมี id (กุญแจของ instRemainingDealIds)');
+  const full = {
+    id: 'D-1', stage: 'won', projectValue: 20000, probability: 100, forecastMonth: '2026-10', wonValue: 0,
+    metadata: { actualSource: 'sale_order', wonMonth: '2026-10', actualByMonth: {}, soInstRemainingByDue: { '2026-11': 10000, '2026-12': 10000 } },
+    confirmedAt: '2026-10-05T03:00:00Z', dealType: 'SERVICE', ownerId: 'u1', ownerName: 'เอ', team: 'KA',
+    origin: 'pipeline', title: 'ไม่ได้เลือก',
+  };
+  const shaped = Object.fromEntries(cols.map((c) => [c, full[c]]));
+  const now = new Date('2026-10-26T05:00:00Z');
+  const dashboards = monthsForYear(2026).map((m) => ({ month: m, totals: rollupInstRemaining([shaped], m, { now }), byOwner: [], byTeam: [] }));
+  const matrix = buildMatrix(dashboards);
+  const q4 = windowStat(matrix.company, { startIdx: OCT, endIdx: DEC, carryOn: false, closedCount: OCT });
+  assert.equal(q4.instRemaining, 20000);
+  assert.equal(q4.instRemainingCount, 1, 'ดีลเดียวสองเดือน = 1 ดีล (ไม่ใช่ 2)');
+  assert.equal(windowStat(matrix.company, { startIdx: 0, endIdx: DEC, carryOn: false, closedCount: OCT }).instRemainingCount, 1, 'ทั้งปี = 1 ดีล');
 });

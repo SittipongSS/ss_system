@@ -25,17 +25,33 @@ import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billing
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import { normalizeSurveyRequest, surveyZoneNameClash } from '@/lib/service/surveyRequest';
 import { insertSurveyZones, loadSiteZones, loadSurveySite, loadZoneSurveyLocks } from '@/lib/service/surveyRepo';
+import { surveyDrawingMethodEnabled } from '@/lib/service/surveyDrawingFlag';
+import { surveyVariantRefusal, surveyVariantsOff } from '@/lib/service/surveyIntake';
+import { surveyZoneSeedPatch } from '@/lib/service/surveyIntakeSeed';
+import { requestImpliedVariant } from '@/lib/requests/variantSwitch';
 import { surveyZoneBusyError } from '@/lib/service/zonePickState';
+import { loadSurveyConfirmContext, loadSurveyConfirmOriginal } from '@/lib/service/surveyConfirmRepo';
+import {
+  SURVEY_CONFIRM_ID_PATTERN, SURVEY_CONFIRM_KIND_ERROR, SURVEY_CONFIRM_NO_ORIGINAL,
+  surveyConfirmAuditSuffix, surveyConfirmCreateBody, surveyConfirmForbiddenText, surveyConfirmPlan,
+} from '@/lib/service/surveyConfirmLink';
+import { canManageRequest } from '@/lib/requests/access';
 import {
   deptForRequest, requestDeptError,
   legacyKindError, requestLineShape, requestUsesPdr, requestKindLabel, requestNeedsRef,
   requestPdrRowsPickScent, requestUsesScentBriefs,
   requestVariantKey,
+  requestNormalizeDates,
   requestShapeError,
   requestStepKey,
 } from '@/lib/master/requestTypes';
 import { findRequest, loadRequests } from '@/lib/materialPricesAdmin';
 import { linkNewBillingRequest } from '@/lib/requests/billingInstallmentLink';
+import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
+import { installmentsFromPaymentPlan } from '@/lib/sales/salesOrderPayments';
+import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { loadSourceDeals } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -73,7 +89,8 @@ export async function GET(request) {
 //   dealId? | salesOrderId? | scentId? | formulaId?,   ← ตามหัวข้อ
 //   productId?, formulaCode?, formulaName?, costingRequestId?,
 //   items?: ตามรูปร่างบรรทัดของหัวข้อ (พัฒนาสูตร: หมวด×กลิ่น · เอกสาร: ชนิด+รายละเอียด),
-//   linkInstallmentId?: งวดของ SO ที่ต้องผูกให้ (ปุ่ม "ขอใบวางบิลงวดนี้" — ดูขั้น 4 ท้าย handler) }
+//   linkInstallmentId?: งวดของ SO ที่ต้องผูกให้ (ปุ่ม "ขอใบวางบิลงวดนี้" — ดูขั้น 4 ท้าย handler),
+//   installmentSeq?: งวดที่เลือกจากแผนของ QT ตอนยังไม่มีแถวงวด (ขอเอกสารจากหน้า QT · mig 0413 — ผูกให้ตอนสร้างแถวงวด) }
 //
 // ⚠️ `title` บังคับทุกหัวข้อ · ของที่ต้องผูก**ต่างกันตามหัวข้อ** (ดู `needs` ใน
 // lib/master/requestTypes.js) — พัฒนากลิ่นผูก SO · พัฒนาสูตรผูกโครงการ+ดีล
@@ -92,8 +109,59 @@ export async function POST(request) {
     return Response.json({ error: 'ไม่มีสิทธิ์เปิดคำร้อง' }, { status: 403 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  let body = await request.json().catch(() => ({}));
   const kind = body.kind;
+  /* ⭐ **ใบยืนยันหน้างาน** (ประเมินจากแบบ งวด S5 A-2 · R1) — ปุ่ม `ขอยืนยันหน้างาน` บนใบต้นทางส่ง `confirmsRequestId`
+     มาทาง `extra` ของ `createRequestDraft` (ไม่ใช่ช่องของฟอร์ม)
+     · ด่านทั้งชุดคือ `surveyConfirmPlan` ตัวเดียวกับปุ่ม/GET เติมฟอร์ม/ด่านตอนยื่น (stage 'open': ร่างของอีกคน = N1 ·
+       พื้นที่ที่ยกถูกใบที่ยังเปิดถืออยู่ = N11 ด้วยประโยคที่ไม่บอกให้ "เอารายการออก" — ฟอร์มล็อกพื้นที่ไว้)
+     · ผ่านแล้ว **server ประกอบ body เอง** (`surveyConfirmCreateBody`): หัวข้อ · วิธี 'standard' · ดีล · สถานที่ ·
+       ชุดพื้นที่ = ที่ยกจากใบต้นทางตามลำดับ — ของที่โพสต์มาสำหรับห้าช่องนี้ถูกทิ้ง ที่เหลือ (วัน · เวลา · รายละเอียด ·
+       ด่วน · ทีม · ชื่อเรื่องที่พิมพ์) คงตามที่โพสต์
+     🔴 **ต้องอยู่ก่อนส่วนวิธีประเมินของ S4 ข้างล่าง** — สวิตช์ `SURVEY_DRAWING_METHOD` เปิด = body ที่ไม่มี variant โดน
+        `requestShapeError` ตีกลับ และ `shaped` · `subject` · `surveyZoneSeedPatch(variant)` อ่านค่าที่โพสต์มา ⇒ ถ้าทับทีหลัง
+        แถวพื้นที่ที่ยกจะเกิดเป็นแถวจากแบบ · วางตรงนี้แล้ว 'standard' ผ่านด่านวิธีได้ทั้งสวิตช์เปิดและปิด
+     ⚠️ ใบที่ไม่ใช่ประเมินพื้นที่ = ไม่มีใบต้นทาง (N4) ตอบก่อนด่านสิทธิ์ · อ่านพัง = 500 ไม่ใช่ "ไม่มี" (ไม่มีอะไรถูกเขียน)
+     ⚠️ ไม่มีบรรทัดเธรดตอนสร้าง — ร่างยังไม่มีเลขและอาจถูกทิ้ง (บรรทัดแรกเขียนตอนยื่น) */
+  let confirmOf = null;
+  if (body.confirmsRequestId != null) {
+    if (kind !== 'site_survey') return Response.json({ error: SURVEY_CONFIRM_KIND_ERROR }, { status: 400 });
+    const noOriginal = () => Response.json(
+      { error: SURVEY_CONFIRM_NO_ORIGINAL, code: 'confirm_no_original', open: null }, { status: 404 },
+    );
+    const confirmsId = String(body.confirmsRequestId).trim();
+    if (!SURVEY_CONFIRM_ID_PATTERN.test(confirmsId)) return noOriginal();
+    const { original, error: originalError } = await loadSurveyConfirmOriginal(supabase, confirmsId);
+    if (originalError) return Response.json({ error: originalError }, { status: 500 });
+    if (!original || original.kind !== 'site_survey') return noOriginal();
+    if (!canManageRequest(user, original)) {
+      return Response.json({ error: surveyConfirmForbiddenText(original) }, { status: 403 });
+    }
+    const confirmCtx = await loadSurveyConfirmContext(supabase, original);
+    if (confirmCtx.error) return Response.json({ error: confirmCtx.error }, { status: 500 });
+    const plan = surveyConfirmPlan({ original, ...confirmCtx, stage: 'open' });
+    if (!plan.ok) return Response.json({ error: plan.error, code: plan.code, open: plan.open }, { status: plan.status });
+    body = surveyConfirmCreateBody(body, original, plan);
+    confirmOf = original;
+  }
+  /* ⭐ **วิธีประเมินที่ฝ่ายขายเลือกตอนยื่น** (ประเมินจากแบบ งวด 4 · S4 A-2) — สวิตช์ `SURVEY_DRAWING_METHOD`
+     อ่านที่นี่ (server) เท่านั้น
+     · สวิตช์ปิด: เหลือทางเดียว ("ลงหน้างาน") ⇒ body ที่ไม่ได้ส่ง `variant` มา = ทางนั้น
+       🔴 กันแท็บ `/requests/new` ที่โหลดไว้ก่อน deploy (ยังไม่มีปุ่มเลือกวิธีบนจอ) ไม่ให้ถูกตีกลับด้วย
+          "ต้องเลือกวิธีประเมิน" ซึ่งเอ่ยถึงช่องที่จอนั้นไม่มี
+     · สวิตช์เปิด: ไม่เติมให้ ⇒ ว่าง = `requestShapeError` ตีกลับด้วยประโยคบังคับเลือกของทะเบียน
+     · ขอประเมินจากแบบขณะสวิตช์ปิด = 409 **ก่อนอ่าน/เขียนอะไรทั้งนั้น** */
+  /* ⚠️ ตัดช่องว่างครั้งเดียวตรงนี้ (ผลรีวิวรอบแก้ S4) — ตัวอ่าน `variant` ข้างล่างไม่ตรงกัน: `requestShapeError` ตัด แต่
+     `surveyVariantRefusal` (=== ตรงตัว) กับ `requestVariantKey` (หาคีย์ตรงตัว) ไม่ตัด ⇒ `' drawing'` ผ่านด่าน "ต้องเลือกวิธี"
+     แต่ถูกเก็บเป็นลงหน้างาน และหลบ 409 ตอนสวิตช์ปิด · ทาง PATCH ตัดอยู่แล้ว (`requestEditVariant`) */
+  if (body.variant != null) body.variant = String(body.variant).trim();
+  const drawingOn = surveyDrawingMethodEnabled();
+  const implied = requestImpliedVariant(kind, { off: surveyVariantsOff(drawingOn) });
+  if (implied && !String(body.variant ?? '').trim()) body.variant = implied;
+  const variantRefusal = requestNeedsRef(kind, 'site')
+    ? surveyVariantRefusal({ variant: body.variant, enabled: drawingOn, current: null })
+    : null;
+  if (variantRefusal) return Response.json({ error: variantRefusal }, { status: 409 });
   /* ⭐ **รูปแบบงานของหัวข้อที่มีสองแบบ** (พัฒนาสูตร standard | npd · mig 0351) —
      ว่าง = รูปแบบตั้งต้นของหัวข้อ · ค่าที่ไม่มีในทะเบียนถูก `requestShapeError`
      ตีกลับข้างล่าง (ไม่มี CHECK ที่ DB โดยเจตนา — เหตุผลเดียวกับ `kind`)
@@ -105,8 +173,13 @@ export async function POST(request) {
   const retired = legacyKindError(kind);
   if (retired) return Response.json({ error: retired }, { status: 400 });
 
+  /* 🔴 **วันของใบที่มีแต่วันรับผล** (ประเมินจากแบบ) — server เขียน `requestedDueDate` = วันรับผล และล้างเวลาเอง
+     ไม่เชื่อกระจกที่ client ส่งมา · ด่าน · ตัวตรวจใบประเมิน · ค่าที่ insert อ่านจาก `shaped` ตัวเดียว
+     ⚠️ หัวข้อ/รูปแบบอื่น `shaped` = body เดิมทุกช่อง */
+  const shaped = requestNormalizeDates({ ...body, kind });
+
   // ด่านตามชนิด — ที่เดียวของระบบ (หัวเรื่อง/ดีล/กลิ่น/สูตร/บรรทัด)
-  const shapeError = requestShapeError(kind, body);
+  const shapeError = requestShapeError(kind, shaped);
   if (shapeError) return Response.json({ error: shapeError }, { status: 400 });
 
   // ฝ่ายผู้ตอบ: ชนิดที่ล็อกไว้ใช้ค่านั้น · ชนิดที่ไม่ล็อกอนุมานจากรายการ/ที่ผู้ขอเลือก
@@ -146,7 +219,7 @@ export async function POST(request) {
         ส่วน "ของที่เลือกมีจริงและเป็นของลูกค้ารายเดียวกันไหม" ต้องอ่าน DB จึงอยู่ที่นี่ */
   let survey = null;
   if (kind === 'site_survey') {
-    const parsed = normalizeSurveyRequest(body);
+    const parsed = normalizeSurveyRequest(shaped);
     if (parsed.error) return Response.json({ error: parsed.error }, { status: 400 });
     survey = parsed.value;
     /* ⭐ **ไซต์ต้องมีแถวจริงก่อนใบจะอ้างได้** — สถานที่ใหม่ถูกสร้างจากโมดัลใน *ฟอร์มใบนี้*
@@ -175,29 +248,67 @@ export async function POST(request) {
   // ไม่ใช่เอามาเทียบ (เชื่อ client เมื่อไรก็เปิดทางให้ใบเกาะดีลที่ไม่ใช่ของ QT)
   let billBaseAmount = null;
   let bill = null;
+  let installmentSeq = null;
   if (requestNeedsRef(kind, 'quotation')) {
     const { data: qtRow, error: qtRowError } = await supabase
       .from('quotations')
       // ⚠️ ต้องมี `subtotal` ด้วย — ด่านใช้แยก "ให้ฟรี (ลดเต็ม)" ออกจาก "ใบยังไม่มีของ"
-      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal"')
+      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal", "paymentPlan", origin, "sourceSalesOrderId"')
       .eq('id', body.quotationId).maybeSingle();
     if (qtRowError) return Response.json({ error: qtRowError.message }, { status: 500 });
     if (!qtRow) return Response.json({ error: 'ไม่พบใบเสนอราคาที่เลือก' }, { status: 400 });
     // ด่านตัวเดียวกับที่ฟอร์มใช้กรองลิสต์ — ป้ายช่องกับของที่ผ่านจริงต้องตรงกันเสมอ
     const qtGate = billingQuotationError(qtRow);
     if (qtGate) return Response.json({ error: qtGate }, { status: 400 });
-    if (!qtRow.dealId) {
+    /* ⭐ ใบค่าสรรพสามิต (ไม่มีดีล · mig 0414) ผูกคำร้องกับดีลของ SO ลูกค้าต้นทาง (มติเจ้าของ 29/10/2026) —
+       ทีม/สิทธิ์/ลูกค้าของคำร้องเดินตามดีลนั้น เกณฑ์เดียวกับสิทธิ์ของใบ (`sourceDeal` ใน lib/scopedRow.js) */
+    let qtDealId = qtRow.dealId || null;
+    if (!qtDealId && isExciseOrder(qtRow) && qtRow.sourceSalesOrderId) {
+      const { data: sourceDeals, error: sourceError } = await loadSourceDeals(supabase, [qtRow.sourceSalesOrderId]);
+      if (sourceError) return Response.json({ error: sourceError.message }, { status: 500 });
+      qtDealId = sourceDeals.get(qtRow.sourceSalesOrderId)?.id || null;
+    }
+    if (!qtDealId) {
       return Response.json({
         error: 'ใบเสนอราคานี้ไม่ได้ผูกดีล — ขอเอกสารการเงินจากใบนี้ไม่ได้',
       }, { status: 400 });
     }
-    dealId = qtRow.dealId;
+    dealId = qtDealId;
     billBaseAmount = Number(qtRow.totalAmount);
     // ยอดที่ขอ — คิดจาก **ฐานของแถวจริง** ไม่ใช่ `billBaseAmount` ที่ฟอร์มแนบมา
     bill = resolveBillAmount({
       percent: body.billPercent, amount: body.billAmount, baseAmount: billBaseAmount,
     });
     if (bill.error) return Response.json({ error: bill.error }, { status: 400 });
+    /* งวดที่เลือกจากแผนของ QT (mig 0413 · มติ 28/10) — ใช้ได้เฉพาะตอนยังไม่มีแถวงวด · ไม่ส่ง = ไม่ระบุงวด (มติข้อ 1)
+       ⭐ แถวงวดเกิดเมื่อไร `ensureInstallments` ผูกให้ตามเลข (ณ ตอนนั้นเลขงวด = เลขในแผนนี้เป๊ะ)
+       ⚠️ มีแถวงวดแล้ว = ต้องเลือกงวดจริง (`linkInstallmentId`) — เลขหลังปรับแผน/ออก Rev. ไม่ใช่เลขในแผน QT อีกต่อไป
+       ⚠️ ส่ง `linkInstallmentId` มาด้วย = งวดจริงชนะ (เลขไม่ถูกใช้) */
+    const seqInput = body.installmentSeq;
+    if (seqInput !== undefined && seqInput !== null && seqInput !== '' && !String(body.linkInstallmentId || '').trim()) {
+      const seq = Number(seqInput);
+      const planRows = installmentsFromPaymentPlan(qtRow.paymentPlan, qtRow.totalAmount);
+      if (!Number.isInteger(seq) || seq < 1 || seq > planRows.length) {
+        return Response.json({ error: 'งวดที่เลือกไม่อยู่ในแผนการชำระของใบเสนอราคานี้' }, { status: 400 });
+      }
+      /* ใบสั่งขายที่ยังมีชีวิตของ QT นี้ — ⚠️ ห้าม maybeSingle: UNIQUE ของ quotationId ถอดตั้งแต่ 0161/0169 (สาย Rev. · ออกใหม่หลังยกเลิก)
+         ⇒ QT ที่มีหลายใบได้ error แล้วตอบ 500 · ใบที่ยกเลิก/ถูกแทนไม่นับ (`isLiveSalesOrder` นิยามเดียวกับด่าน 0169) */
+      const { data: soCandidates, error: soLookupError } = await supabase
+        .from('sales_orders').select('id, "orderNumber", status, "supersededById"').eq('quotationId', qtRow.id).limit(50);
+      if (soLookupError) return Response.json({ error: soLookupError.message }, { status: 500 });
+      const soRow = (soCandidates || []).find(isLiveSalesOrder) || null;
+      if (soRow) {
+        const { data: soRows, error: soRowsError } = await supabase
+          .from('sales_order_installments').select('id').eq('salesOrderId', soRow.id).limit(1);
+        if (soRowsError) return Response.json({ error: soRowsError.message }, { status: 500 });
+        if (soRows?.length) {
+          return Response.json({
+            error: `ใบเสนอราคานี้มีงวดชำระบนใบสั่งขาย ${soRow.orderNumber || ''} แล้ว — เลือกงวดจากใบสั่งขาย`,
+          }, { status: 400 });
+        }
+      }
+      installmentSeq = seq;
+    }
   }
 
   if (requestNeedsRef(kind, 'salesOrder')) {
@@ -447,6 +558,9 @@ export async function POST(request) {
       // คอลัมน์ที่ DB ยังไม่มี (mig 0225 ยังไม่รัน = ใบที่ไม่อ้าง QT ต้องยังเปิดได้)
       // บทเรียนเดียวกับ `productTypeId` ที่คอมเมนต์ล่างเล่าไว้
       ...(quotationId ? { quotationId } : {}),
+      /* ใบยืนยันหน้างาน (งวด S5 · คอลัมน์จาก mig 0408) — ลิงก์ไปใบต้นทาง **เขียนตอนสร้างครั้งเดียว** ไม่มีทางแก้ทีหลัง
+         ⚠️ ใส่คีย์เฉพาะใบยืนยัน ด้วยเหตุผลเดียวกับ `quotationId` บรรทัดบน — ใบปกติไม่พกคีย์นี้เลย */
+      ...(confirmOf ? { surveyConfirmOfId: confirmOf.id } : {}),
       // ยอดที่ขอวางบิล (mig 0257) — ใส่คีย์เฉพาะหัวข้อที่ยึด QT ด้วยเหตุผลเดียวกับ
       // บรรทัดบน: migration ยังไม่รัน = หัวข้ออื่นต้องยังเปิดใบได้ตามปกติ
       ...(bill ? {
@@ -454,6 +568,8 @@ export async function POST(request) {
         billAmount: bill.amount,
         billBaseAmount,
       } : {}),
+      // งวดที่เลือกจากแผน QT (mig 0413) — ใส่คีย์เฉพาะเมื่อเลือก ด้วยเหตุผลเดียวกับสองบรรทัดบน (ใบอื่นต้องเปิดได้ระหว่างรอมิก)
+      ...(installmentSeq ? { installmentSeq } : {}),
       // 🐞 เคยมี `productTypeId` ตรงนี้ — mig 0204 DROP คอลัมน์ทิ้งไปแล้วแต่ลืมถอด
       // ออกจาก insert ⇒ **เปิดคำร้องไม่ได้เลยทุกหัวข้อ** เพราะ PostgREST ปฏิเสธทั้ง
       // ก้อนเมื่อ body มีคอลัมน์ที่ไม่มีจริง (ไม่ใช่แค่เมินค่านั้นทิ้ง)
@@ -478,7 +594,7 @@ export async function POST(request) {
       costingRequestId: body.costingRequestId || null,
       requestedById: user?.id ?? null,
       requestedByName: user?.name ?? null,
-      requestedDueDate: body.requestedDueDate || null,
+      requestedDueDate: shaped.requestedDueDate || null,
       /* ประเมินพื้นที่ (mig 0314) — สถานที่ที่จะเข้า + **เวลา** ที่อยากให้เข้า
          วันที่ยังเป็น `requestedDueDate` ตัวเดิม เปลี่ยนแค่ป้ายบนฟอร์ม
          ⚠️ ใส่คีย์เฉพาะหัวข้อนี้ ด้วยเหตุผลเดียวกับ `quotationId` ข้างบน */
@@ -503,7 +619,12 @@ export async function POST(request) {
       // เดียวทำให้คนเขียนต้องเดาว่าอะไรควรอยู่ช่องไหน และผู้ตอบต้องอ่านสองที่
       // · คอลัมน์ยังอยู่เพื่ออ่านของเก่า (หน้ารายละเอียดยังแสดงถ้ามีค่า) ไม่ DROP
     });
-    if (headError) throw headError;
+    if (headError) {
+      // ฐานยังไม่รัน 0413 แต่ผู้ใช้เลือกงวดจากแผน QT — บอกให้รันมิก ไม่ใช่ 500 ภาษาอังกฤษ (ใบไม่ระบุงวดเปิดได้ตามปกติ)
+      const schema = billingInstallmentSchemaError(headError);
+      if (schema) return Response.json({ error: schema }, { status: 503 });
+      throw headError;
+    }
 
     /* ⭐ **ฝ่ายของคนเปิดใบ** (mig 0270) — ป้ายบนคิวเลิกใช้คำว่า "ฝ่าย"/"ผู้ขอ" ลอย ๆ
        แล้วพูดชื่อฝ่ายจริงทั้งสองฝั่ง ("รอ RD ตอบ" / "รอ SA ตอบ" · มติผู้ใช้ 2026-08-20)
@@ -554,6 +675,9 @@ export async function POST(request) {
         requestId,
         zones: surveyZoneRows.zones,
         existingZones: surveyZoneRows.existingZones,
+        /* ⭐ ใบที่ยื่นเป็นประเมินจากแบบ: ทุกพื้นที่เกิดมาจากแบบในคำสั่งเดียวกันนี้ (ไม่มีก้าวที่สอง) ·
+           ใบลงหน้างานได้ `{}` = แถวเท่าเดิมทุกตัวอักษร (S4 A-2) */
+        seed: surveyZoneSeedPatch(variant),
       });
       if (zoneError) {
         await supabase.from('dept_requests').delete().eq('id', requestId);
@@ -609,28 +733,19 @@ export async function POST(request) {
       request: { id: requestId, kind, quotationId, salesOrderId: salesOrderId || optionalSalesOrderId },
       installmentId: body.linkInstallmentId,
     });
-    if (link.after) {
-      // audit ของงวด before/after ทั้งแถว — รูปเดียวกับ PATCH `link` (ทางกู้ทางเดียว ระบบไม่มีถังขยะ)
-      // ทับลิงก์ตาย (คำร้องเดิมถูกลบ/ยกเลิก/ปฏิเสธ) = บอกในสรุปด้วย ไม่ต้องไปไล่เทียบ before/after เอง
-      const replaced = link.replaced
-        ? ` · แทนคำร้องเดิม ${link.replaced.docNo || link.replaced.id} (${link.replaced.status || 'ถูกลบแล้ว'})`
-        : '';
-      await recordAudit({
-        user,
-        action: 'update',
-        entityType: 'sales_order_installments',
-        entityId: link.after.id,
-        before: link.before,
-        after: link.after,
-        summary: `link งวด ${link.before.seq} ของ ${link.order.orderNumber} — ผูกอัตโนมัติตอนเปิดคำร้องจาก "ขอใบวางบิลงวดนี้"${replaced}`,
-        request,
-      });
-    }
 
+    /* audit ของการเปิดใบเก็บแถวคำร้อง **หลังผูก** (มี installmentId) — ความจริงของลิงก์อยู่ที่แถวคำร้อง (mig 0413)
+       · ตัวชี้ของงวดที่เปลี่ยน (`billingRequestId` · SQL ล็อกปรับแผนอ่าน) บอกในสรุป ไม่ต้องไล่เทียบเอง */
     const created = await findRequest(supabase, requestId);
+    const linkedNote = link.installment
+      ? ` · ผูกงวด ${link.installment.seq} ของ ${link.order?.orderNumber || ''}`
+        + (link.pointers?.length ? ` (ตัวชี้งวด ${link.pointers.map((c) => `${c.before || 'ว่าง'} → ${c.after || 'ว่าง'}`).join(', ')})` : '')
+      : installmentSeq ? ` · เลือกงวด ${installmentSeq} ของแผนใบเสนอราคา (ผูกเมื่อเกิดงวดบนใบสั่งขาย)` : '';
     await recordAudit({
       user, action: 'create', entityType: 'dept_request', entityId: requestId, after: created,
-      summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)`, request,
+      // ใบยืนยันหน้างานต่อท้าย " · ใบยืนยันหน้างานของ {RQ}" — ตามกลับไปใบต้นทางได้จากสรุปบรรทัดเดียว · ผูกงวด (mig 0413) ต่อท้ายอีกชิ้น
+      summary: `เปิดคำร้อง "${requestKindLabel(kind)}" ถึงฝ่าย ${dept} (ร่าง)${confirmOf ? surveyConfirmAuditSuffix(confirmOf) : ''}${linkedNote}`,
+      request,
     });
     return Response.json(link.warning ? { ...created, _warning: link.warning } : created, { status: 201 });
   } catch (e) {

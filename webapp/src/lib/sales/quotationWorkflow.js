@@ -1,3 +1,6 @@
+import { isClosedStage } from '@/lib/salesPlanning';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+
 const EDITABLE_QUOTATION_STATUSES = new Set(['draft', 'sent', 'rejected']);
 
 // ใบ grandfather (mig 0114 ตั้งใจไม่ backfill) นับเป็น "อนุมัติแล้ว" ทุกด่านในระบบอยู่แล้ว
@@ -134,6 +137,22 @@ export function quotationRejectionNotice(quotation) {
    (กติกาเดียวกับใบร่างคำร้อง ม-112) */
 export const QUOTATION_ACTIONABLE_STATUSES = [...EDITABLE_QUOTATION_STATUSES];
 
+/* บริบทผู้อนุมัติของใบ — ตัวเดียวของทะเบียนใบเสนอราคากับป้ายบนเมนู (nav/counts) · แถวต้องมี `deal.ownerId` + `deal.stage`
+   ⭐ ใบค่าสรรพสามิต (mig 0414): ไม่มีดีล ⇒ ผู้อนุมัติ = เจ้าของดีลของ SO ต้นทาง (`sourceDeal` จาก attachSourceDeals) ·
+      ดีลนั้น Won เสมอ (มี SO แล้ว) ⇒ `dealClosed: false` — ใช้กติกา "ดีลปิดแล้วไม่นับ" = ใบไม่ขึ้นป้ายให้ใครเลย (ตรวจแผน 28/10) */
+export function quotationApprovalContext(quotation, userId) {
+  if (isExciseOrder(quotation)) {
+    return { userId, dealOwnerId: quotation?.sourceDeal?.ownerId ?? null, dealClosed: false };
+  }
+  return { userId, dealOwnerId: quotation?.deal?.ownerId ?? null, dealClosed: isClosedStage(quotation?.deal?.stage) };
+}
+
+/* ดีลที่ "ถือสิทธิ์อนุมัติ" ใบนี้ — ใบปกติ = ดีลของใบ · ใบค่าสรรพสามิต = ดีลของ SO ต้นทาง (`sourceDeal` · 0415 ถอยแบบเดียวกันในฐาน)
+   ⚠️ ใช้ตัดสินสิทธิ์/ป้าย/ผู้รับกระดิ่งเท่านั้น — ห้ามส่งเข้า FC/Won/เธรดของดีล (ใบค่าภาษีไม่แตะดีลลูกค้า · scopedRow.js) */
+export function quotationApprovalDeal(quotation) {
+  return isExciseOrder(quotation) ? (quotation?.sourceDeal || null) : (quotation?.deal || null);
+}
+
 export function isQuotationAwaitingMyApproval(quotation, { userId = '', dealOwnerId = null, dealClosed = false } = {}) {
   return Boolean(quotation) && Boolean(userId)
     && quotation.approvalStatus === 'pending'
@@ -188,6 +207,9 @@ export function canReviseQuotation(
 const CANCELLABLE_APPROVAL_STATUSES = new Set(['pending', 'approved', 'not_required']);
 
 export function isCancellableQuotation(quotation, { hasSignatureEvidence = false } = {}) {
+  /* ⭐ ใบค่าสรรพสามิตที่ลูกค้ารับแล้วยกเลิกได้ (แผนรื้อสรรพสามิต หมวด 5 · ตรวจแผน MAJOR) — ย้อนการรับไม่มีสำหรับใบไม่มีดีล
+     ถ้าไม่เปิดทางนี้ SO ลูกค้าที่ถูกล็อกด้วยใบค่าภาษี (Q16) จะล็อกตาย · ใบที่มี SO ค่าภาษีที่ยังใช้อยู่ ด่าน quotationCancelBlock กันไว้ */
+  if (isExciseOrder(quotation) && quotation.status === 'accepted') return true;
   if (!quotation || !EDITABLE_QUOTATION_STATUSES.has(quotation.status)) return false;
   return CANCELLABLE_APPROVAL_STATUSES.has(quotation.approvalStatus) || Boolean(hasSignatureEvidence);
 }

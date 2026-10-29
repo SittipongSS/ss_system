@@ -9,7 +9,7 @@
 //
 // ⚠️ **ไม่มีฟิลด์ใหม่ในฐานข้อมูลเลย** — ทุกอย่างคำนวณจากสิ่งที่ `/api/sa/requests`
 // ส่งมาอยู่แล้ว (`items` · `acknowledgedById/Name` · `committedDueDate` · `closedAt`)
-import { deptQueueRows, queueCounts, requestNextStep, requestDueText } from '@/lib/requests/queueBoard';
+import { deptQueueRows, matchesQueueCount, requestNextStep, requestDueText } from '@/lib/requests/queueBoard';
 import { FACET_NONE } from '@/lib/requests/queueList';
 import { requestAssignee } from '@/lib/requests/assign';
 import { requestClosedOn } from '@/lib/requests/closure';
@@ -154,19 +154,78 @@ export function deptStageQueueHref(stageKey, { queueHref = '/rd/requests', month
   return `${queueHref}?${params}`;
 }
 
+/* ── ตัวเลขบนหน้าภาพรวมที่แยกตามตาใคร → แท็บ + `?count=` ของคิว (ตรวจตัวกรอง 08/10 · H9 M6) ──────
+   ⭐ **มติเจ้าของ 19/10: ตัวเลขหลักนับเฉพาะใบที่เป็นตาฝ่าย** — "เลยวันที่รับปากไว้" และ "ยังไม่ได้ให้วัน"
+      ของหน้าภาพรวม/ปฏิทิน = แท็บ "รอ <ฝ่าย> ตอบ" เท่านั้น · ใบตาผู้ขอมีปุ่มของมันเองพาไปแท็บ "รอผู้ขอทำต่อ"
+      แต่ไม่ถูกบวกเข้าตัวเลขหลัก (ส่งของไปแล้ว ไม่ใช่งานค้างของฝ่าย)
+   🐞 ของเดิมนับรวมสองตา ⇒ ป้าย "เลย 57 ใบ" (ตาฝ่าย 24 + ตาผู้ขอ 33) · ปุ่ม "ยังไม่ได้ให้วัน 15" เปิดแท็บรอฝ่ายตอบ
+      เจอ 9 (อีก 6 ใบอยู่แท็บรอผู้ขอ)
+   ⚠️ ตัวนับ = ตัวกรองของคิวตัวเดียวกันเป๊ะ: แท็บ = `deptQueueRows` · `?count=` = `matchesQueueCount`
+      (ตัวเดียวกับที่ `queueCounts` ใช้นับแถบของแท็บนั้น) ⇒ เลขบนปุ่ม = แถวที่ปุ่มเปิดให้เห็น
+      (deptOverview.test.mjs จำลองหน้าคิวจากลิงก์แล้วนับเทียบ) */
+
+/** ตาใคร → แท็บของคิวฝ่ายที่ใบตานั้นอยู่ (ตัวเดียวกับ `owner` ของ `requestNextStep`) */
+export const DEPT_TURN_TAB = Object.freeze({ dept: 'todo', requester: 'waiting' });
+
+/** ใบนี้อยู่ตาใคร — `'dept'` · `'requester'` · `null` (จบแล้ว) · ตัวเดียวกับที่ `deptQueueRows` ใช้แบ่งแท็บ */
+export const requestTurn = (request) => requestNextStep(request)?.owner || null;
+
 /**
- * "เลยวันที่รับปากไว้" แยกตามตาใคร — ป้ายเตือนบนหน้าภาพรวม (ตรวจตัวกรอง 08/10 · H9)
+ * ใบนี้นับเข้าตัวเลข `countKey` ของตา `turn` ไหม — **ตัวตัดสินรายใบตัวเดียว** ของ `deptCountByTurn`
+ * และสีแดงบนช่องรายวันของปฏิทิน (`DueWeekPanel`)
  *
- * 🐞 ป้ายเคยนับจากทุกใบของฝ่ายแล้วพาไปแท็บรอฝ่ายตอบ ⇒ "เลย 57 ใบ" เปิดมาเจอ 24 (อีก 33 ใบส่งแล้ว
- *    รอผู้ขอ อยู่อีกแท็บ) · นับแยกด้วยแท็บเดียวกับคิว (`deptQueueRows`) และตัวเลข "เลยกำหนด" ตัวเดียวกับ
- *    แถบในคิว (`queueCounts`) ⇒ ปุ่มแต่ละปุ่มพาไปแถวที่เลขของมันบอกเป๊ะ · `total` = ผลรวมสองแท็บ
- *    (ใบในประวัติไม่มีทาง "เลยกำหนด" — ตัวนับไม่นับใบที่จบแล้ว) ⇒ ตรงกับ "เลยกำหนดแล้ว N ใบ" ของปฏิทิน
+ * 🐞 ปฏิทินเคยทาแดงตาม `dueCalendar` (ทุกใบที่เลยวัน ไม่ดูตา) ⇒ ตา RD = 0 · ไม่มีแถบแดง · กล่องเทาบอก
+ *    "ไม่มีงานของ RD ที่เลยวัน" แต่ช่องรายวันข้างล่างยังแดงสองใบ (ใบตาผู้ขอ · รีวิว 19/10)
+ */
+export function matchesTurnCount(request, countKey, turn, { todayIso = null } = {}) {
+  return !!DEPT_TURN_TAB[turn] && requestTurn(request) === turn && matchesQueueCount(request, countKey, { todayIso });
+}
+
+/**
+ * นับใบที่เข้าตัวเลข `countKey` ของแถบคิว (`overdue` · `undated` · …) แยกตามตาใคร — `{ dept, requester }`
+ *
+ * ⚠️ ไม่มี `total` โดยตั้งใจ — ผลรวมสองตาคือเลขที่ไม่มีลิงก์ไหนเปิดเจอ (บั๊ก H9/M6) · ตัวเลขหลักของจอ = `dept`
+ */
+export function deptCountByTurn(rows = [], countKey, { dept, todayIso = null } = {}) {
+  const countIn = (turn) => deptQueueRows(rows, { dept, tab: DEPT_TURN_TAB[turn] })
+    .filter((r) => matchesTurnCount(r, countKey, turn, { todayIso })).length;
+  return { dept: countIn('dept'), requester: countIn('requester') };
+}
+
+/**
+ * ป้ายบนช่องรายวันของปฏิทินคำสัญญา — `{ deptOverdue, requesterTurn }` (Set ของ id)
+ *
+ * `rows` = ใบของฝ่ายที่ยังไม่จบ (ชุดเดียวกับที่ป้อน `dueCalendar`)
+ * · `deptOverdue` = ใบแดง = `matchesTurnCount(…, 'overdue', 'dept')` ⇒ ใบแดงทุกใบอยู่ในตัวเลข "เลยกำหนดแล้ว" /
+ *   หัวแถบเตือน และเปิดเจอจากปุ่ม "รอ RD" · ใบตาผู้ขอไม่แดงแม้เลยวัน (มติเจ้าของ 19/10)
+ * · `requesterTurn` = ใบที่ส่งแล้ว รอผู้ขอทำต่อ — ยังอยู่ในวันของมัน แต่วาดจาง (ไม่ใช่งานค้างของฝ่าย)
+ */
+export function deptCalendarMarks(rows = [], { todayIso = null } = {}) {
+  const deptOverdue = new Set();
+  const requesterTurn = new Set();
+  for (const request of rows) {
+    if (matchesTurnCount(request, 'overdue', 'dept', { todayIso })) deptOverdue.add(request.id);
+    if (requestTurn(request) === 'requester') requesterTurn.add(request.id);
+  }
+  return { deptOverdue, requesterTurn };
+}
+
+/** ลิงก์ของตัวเลขจาก `deptCountByTurn` — แท็บของตานั้น + ตัวกรองแถบตัวเลขคีย์เดียวกัน */
+export function deptTurnCountHref(turn, countKey, { queueHref = '/rd/requests' } = {}) {
+  const tab = DEPT_TURN_TAB[turn];
+  if (!tab) return queueHref;
+  const params = new URLSearchParams({ tab });
+  if (countKey) params.set('count', countKey);
+  return `${queueHref}?${params}`;
+}
+
+/**
+ * "เลยวันที่รับปากไว้" แยกตามตาใคร — ป้ายเตือนบนหน้าภาพรวม + โน้ต "เลยกำหนดแล้ว" ของปฏิทิน (H9)
+ *
+ * ⭐ หัวป้าย = `dept` เท่านั้น (มติเจ้าของ 19/10) · `requester` = ปุ่มรองพาไปแท็บรอผู้ขอ ไม่บวกเข้าหัวป้าย
  */
 export function deptOverdueByTurn(rows = [], { dept, todayIso = null } = {}) {
-  const overdueIn = (tab) => queueCounts(deptQueueRows(rows, { dept, tab }), { todayIso }).overdue;
-  const deptTurn = overdueIn('todo');
-  const requesterTurn = overdueIn('waiting');
-  return { dept: deptTurn, requester: requesterTurn, total: deptTurn + requesterTurn };
+  return deptCountByTurn(rows, 'overdue', { dept, todayIso });
 }
 
 /**

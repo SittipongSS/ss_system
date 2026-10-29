@@ -8,7 +8,7 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans,
   dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
-  exciseFilingsOfDeal, exciseFilingBlockMessage,
+  exciseFilingsOfDeal, exciseFilingBlockMessage, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
   contractsOfDeal, contractBlockMessage,
 } from '@/lib/forceDelete';
 import { resolveProbability } from '@/lib/sales/dealProbability';
@@ -693,6 +693,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ทั้งสองเส้นทาง ไม่งั้น error ดิบจาก Postgres หลุดขึ้นหน้าดีลเป็น 500
   const filings = await exciseFilingsOfDeal(supabase, id);
   if (filings.length) return conflict(exciseFilingBlockMessage(filings, 'ดีล'));
+  // ใบค่าสรรพสามิตที่อ้าง SO ของดีลนี้ (FK RESTRICT · mig 0414) — ดักก่อนเหมือนใบยื่น
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { dealId: id }); }
+  catch (exciseError) { return fail(exciseError.message, 500); }
+  if (exciseQuotes.length) return conflict(exciseQuotationBlockMessage(exciseQuotes, 'ดีล'));
 
   /* 🐞 **สัญญาเป็น FK RESTRICT เหมือนกัน แต่เส้นลบจริงไม่เคยตรวจ** (พบ 2026-08-28)
      `dealForcePreview` (?dryRun=1) ตรวจและตอบ `blocked:true` ถูกต้อง แต่พอกดลบจริง

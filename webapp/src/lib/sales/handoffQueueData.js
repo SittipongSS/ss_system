@@ -10,7 +10,8 @@ import { customerTaxSiblingIdMap } from '@/lib/master/customerTaxSiblings';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
-import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { nonExciseRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { exciseHandledOrderIds } from '@/lib/excise/exciseQuotation';
 
 const LIST_CAP = 100;
 
@@ -24,10 +25,11 @@ async function loadAwaitingSalesOrder(supabase, dealIds) {
   /* ⚠️ ไล่ทีละหน้า — `dealIds = null` (การ์ดสรุปเช้า) = อ่านใบที่ Won **ทั้งทะเบียน**
      ซึ่งโตขึ้นเรื่อย ๆ ไม่มีวันลด · โดนตัดที่ 1,000 เมื่อไร คิวส่งมอบจะขาดใบเก่าไป
      เงียบ ๆ แล้วไม่มีใครรู้ว่ามีใบค้างอยู่ */
+  /* ⛔ ใบค่าสรรพสามิต (mig 0414) ไม่เข้าคิวนี้ — ไม่มีดีลให้ส่งมอบ และออก SO ด้วยทางของมันเอง (คิวของ SA แยก · แผนรื้อสรรพสามิต PR4) */
   const { data: quotations, error } = await fetchAllResult(() => {
-    let query = supabase
+    let query = nonExciseRowsOnly(supabase
       .from('quotations')
-      .select('id, quoteNumber, customerName, dealId, totalAmount, acceptedAt')
+      .select('id, quoteNumber, customerName, dealId, totalAmount, acceptedAt'))
       .eq('status', 'accepted')
       .order('id', { ascending: true });
     if (dealIds) query = query.in('dealId', dealIds);
@@ -56,7 +58,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
   const { data: approved, error } = await fetchAllResult(() => {
     let query = supabase
       .from('sales_orders')
-      .select('id, orderNumber, customerId, customerName, dealId, status, supersededById, approvedAt, totalAmount')
+      .select('id, orderNumber, customerId, customerName, dealId, status, supersededById, approvedAt, totalAmount, "exciseNotBilledKind"')
       .eq('status', 'approved')
       .is('supersededById', null)
       .order('id', { ascending: true });
@@ -75,7 +77,12 @@ async function loadAwaitingFiling(supabase, dealIds) {
     .not('salesOrderId', 'is', null);
   raise('โหลดใบยื่นชำระภาษีไม่สำเร็จ', filingError);
 
-  const candidates = salesOrdersAwaitingFiling({ salesOrders: approved, filings: filings || [] });
+  /* ⭐ แผนรื้อสรรพสามิต PR3: ขาฝ่ายขายจบที่ "ออกใบเสนอราคาค่าสรรพสามิต" หรือ "ไม่เรียกเก็บในระบบ" — SO ที่ทำอย่างใดอย่างหนึ่งแล้ว
+     ไม่ใช่งานค้างของ SA อีก (ใบยื่นกรมเป็นงานของ RA) · คิวนี้จึงหมายถึง "รอออกใบค่าสรรพสามิต" (ใบเสนอราคา หรือ SO ของใบที่ลูกค้ารับแล้ว · PR4) */
+  const pending = salesOrdersAwaitingFiling({ salesOrders: approved, filings: filings || [] });
+  if (!pending.length) return [];
+  const handled = await exciseHandledOrderIds(supabase, pending);
+  const candidates = pending.filter((order) => !handled.has(order.id));
   if (!candidates.length) return [];
 
   const { data: lines, error: lineError } = await fetchInChunks(candidates.map((order) => order.id), (chunk) => fetchAllResult(() => supabase
@@ -93,7 +100,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
     fetchInChunks(productIds, (chunk) => supabase.from('products').select('*').in('id', chunk)),
     supabase.from('product_types').select('mainCategoryCode, typeCode, isExcise, requiresFdaNotice'),
     fetchInChunks(productIds, (chunk) => supabase.from('excise_registrations')
-      .select('id, productId, customerId, status').eq('status', 'approved').in('productId', chunk)),
+      .select('id, productId, customerId, status, "isExciseTaxable"').eq('status', 'approved').in('productId', chunk)),
   ]);
   raise('โหลดข้อมูลสินค้าไม่สำเร็จ', productResult.error);
   raise('โหลดหมวดสินค้าไม่สำเร็จ', typeResult.error);

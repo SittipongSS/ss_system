@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { AUTO_CLOSE_DAYS } from './model.js';
+import { AUTO_CLOSE_DAYS, isBlockedOpenIssue } from './model.js';
+import { ISSUE_IMPACTS, ISSUE_OPEN_STATUSES, ISSUE_STATUSES } from './statuses.js';
 import { UPDATE_KINDS } from '../master/updateTypes.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -68,6 +69,39 @@ test('คิวแอดมินอยู่ในหน้า /support เด�
 test('ตัวนับกับสามแท็บแรกมาจากผลลัพธ์ก้อนเดียว', () => {
   assert.match(listSrc, /"\/api\/issues\?status=open"/);
   assert.match(listSrc, /open\.filter\(\(r\) => r\.status === tab\)/);
+});
+
+/* ⭐ L5 (ตรวจตัวเลข 26/10/2026): การ์ด "ทำงานต่อไม่ได้" = แถวของแท็บ "ทำงานต่อไม่ได้"
+   🐞 เดิมการ์ดนับ `impact === 'blocked'` เองในหน้า แต่ไม่มีแท็บ/ตัวกรองไหนแสดงชุดนั้น ⇒ ใบกระจายอยู่สามแท็บสถานะ
+   และการ์ดทั้งสี่ใบกดไม่ได้ */
+test('⭐ L5: "ทำงานต่อไม่ได้" = blocked + ยังเดินอยู่ · การ์ดกับแท็บเรียกตัวตัดสินเดียวกัน', () => {
+  for (const status of ISSUE_STATUSES) {
+    for (const impact of ISSUE_IMPACTS) {
+      assert.equal(
+        isBlockedOpenIssue({ status, impact }),
+        impact === 'blocked' && ISSUE_OPEN_STATUSES.includes(status),
+        `${status} · ${impact}`,
+      );
+    }
+  }
+  assert.equal(isBlockedOpenIssue(null), false);
+  // จำลองหน้า: `open` = ผลของ /api/issues?status=open — เลขบนการ์ด/แท็บกับแถวของแท็บมาจากก้อนเดียวกัน
+  const open = ISSUE_OPEN_STATUSES.flatMap((status, i) => ISSUE_IMPACTS.map((impact, j) => ({ id: `${i}-${j}`, status, impact })));
+  const card = open.filter(isBlockedOpenIssue).length;
+  assert.equal(card, ISSUE_OPEN_STATUSES.length, 'ใบ blocked หนึ่งใบต่อสถานะที่ยังเดิน');
+  assert.equal(card, open.filter((r) => r.impact === 'blocked').length, 'ชุดเดิมของการ์ดไม่เปลี่ยน — แค่มีแท็บรับแล้ว');
+
+  // ยามซอร์ส: ตัวนับ · แถวของแท็บ · แท็บ · การ์ดกดได้
+  assert.match(listSrc, /blocked: open\.filter\(isBlockedOpenIssue\)\.length,/);
+  assert.match(listSrc, /tab === "blocked" \? open\.filter\(isBlockedOpenIssue\)/);
+  assert.match(listSrc, /\{ key: "blocked", label: "ทำงานต่อไม่ได้" \}/);
+  assert.doesNotMatch(listSrc, /r\.impact === "blocked"/, 'ห้ามมีเงื่อนไขสำเนาที่สองในหน้า');
+  for (const key of ['blocked', 'pending', 'acknowledged', 'resolved']) {
+    assert.match(listSrc, new RegExp(`<Metric \\{\\.\\.\\.metricProps\\("${key}"\\)\\}`), `การ์ด ${key} ต้องกดได้`);
+  }
+  assert.match(listSrc, /as: "button", type: "button", active: tab === key, "aria-pressed": tab === key,/);
+  // เลขบนแท็บอ่านจาก counts[key] ตัวเดียวกับการ์ด
+  assert.match(listSrc, /label: counts\[t\.key\] \? `\$\{t\.label\} \(\$\{counts\[t\.key\]\}\)` : t\.label,/);
 });
 
 test('"รับเรื่อง" กดได้จากคิวโดยไม่ต้องเปิดเรื่องก่อน', () => {

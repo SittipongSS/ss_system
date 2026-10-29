@@ -51,8 +51,42 @@ test('sales order evidence RPC receives the explicit separation override reason'
     user: { id: 'USR-1', name: 'Admin Info', role: 'admin', team: 'Admin' },
   });
 
-  assert.equal(called.name, 'approve_sales_order_with_signature_evidence_atomic');
+  /* mig 0412: ตัวห่อ approve_sales_order_with_actual_mode เสมอ (เรียกตัวเดิมทั้งตัวในทรานแซกชันเดียวกัน) */
+  assert.equal(called.name, 'approve_sales_order_with_actual_mode');
   assert.equal(called.params.p_separation_override_reason, 'ยังไม่มีผู้ตรวจสอบคนที่สอง');
+  // ไม่ส่งแบบ = ทั้งใบ ('order') — ฐานปฏิเสธค่าว่าง ⇒ ต้องส่งค่าจริงเสมอ
+  assert.equal(called.params.p_actual_mode, 'order');
+});
+
+/* ── นับ Actual ทั้งใบ / รายงวด (mig 0412) ─────────────────────────────────────────────────────────────── */
+test('0412: ส่งแบบการนับ Actual ไปตัวห่อ · พารามิเตอร์ 10 ตัวแรกชุดเดิมของตัวอนุมัติใบ', async () => {
+  let called;
+  const supabase = {
+    rpc: async (name, params) => {
+      called = { name, params };
+      return { data: { document: { id: 'SO-1', actualMode: 'installment' }, evidence: { id: 'DSE-1' }, actualMode: 'installment' }, error: null };
+    },
+  };
+  const data = await approveSalesOrderWithSignatureEvidence(supabase, {
+    documentId: 'SO-1', evidenceId: 'DSE-1', expectedUpdatedAt: '2026-10-26T00:00:00.000Z',
+    documentFingerprint: `sha256:${'b'.repeat(64)}`, note: 'ok', actualMode: 'installment',
+    user: { id: 'USR-2', name: 'AE Sup', role: 'ae_supervisor', team: 'A' },
+  });
+  assert.equal(called.name, 'approve_sales_order_with_actual_mode');
+  assert.deepEqual(Object.keys(called.params), [
+    'p_order_id', 'p_evidence_id', 'p_expected_updated_at', 'p_document_fingerprint', 'p_approval_note',
+    'p_actor_id', 'p_actor_name', 'p_actor_role', 'p_actor_team', 'p_separation_override_reason', 'p_actual_mode',
+  ]);
+  assert.equal(called.params.p_actual_mode, 'installment');
+  assert.equal(data.document.actualMode, 'installment');
+});
+
+test('0412: รหัสแบบการนับ Actual ของตัวห่อแปลเป็นไทย — ไม่ตกไปข้อความกลางของลายเซ็น', () => {
+  const invalid = signatureEvidenceRpcError({ message: 'sales_order_actual_mode_invalid' });
+  assert.deepEqual([invalid.status, invalid.code, invalid.message], [400, 'actual_mode_invalid', 'แบบการนับ Actual ไม่ถูกต้อง']);
+  const ineligible = signatureEvidenceRpcError({ message: 'sales_order_actual_mode_ineligible' });
+  assert.deepEqual([ineligible.status, ineligible.code], [409, 'actual_mode_ineligible']);
+  assert.equal(ineligible.message, 'ใบนี้นับ Actual รายงวดไม่ได้ — ต้องเป็นใบที่ยอดมากกว่า 0 และแบ่งอย่างน้อย 2 งวด');
 });
 
 test('unknown database details are not exposed', () => {

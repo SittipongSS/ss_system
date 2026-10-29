@@ -5,6 +5,7 @@
 //   (สลิป · คำรับรอง · ใบกำกับ · คำร้องวางบิล · ช่วงครอบคงเดิม) บัญชีไม่ต้องรับรองซ้ำ · ทางที่สอง = บัญชีบันทึกคืนเงิน
 // ⭐ หลักการ "เงินหนึ่งก้อน = งวดหนึ่งแถว": แผนที่เหลือของใบใหม่ **หักงวดเปิดแรก ๆ ก่อน** (applyCarryIn) — งวดที่หักจนหมดถูกลบ
 //   แถวที่มีเงิน/เอกสารผูกของใบใหม่ไม่ถูกแตะ (installmentReplanLock ตัวเดียวกับปรับแผน) · Σ = ยอดใบ (รวม VAT) ถึงสตางค์
+//   · ใบ Actual รายงวด: งวดที่นับแล้วแต่ยังไม่มีเงิน ลดยอดได้แต่ลบไม่ได้ (มติเจ้าของข้อ 9 · 26/10) — หักหลังงวดเปิด ไม่ถึง 0
 // ⭐ ไฟล์นี้คำนวณ "ชุดสุดท้ายทั้งใบ" ให้ทั้งโมดัล (พรีวิวก่อน/หลัง) และ route (payload ของ RPC) — RPC 0378 + แกน 0377 เป็นยาม
 // 🔴 ไม่มีอะไรในไฟล์นี้แตะยอด Actual — ผลลัพธ์เป็นแถวงวดล้วน · RPC ไม่เขียน sales_orders (ใบที่ยกเลิกหลุด Actual ไปตั้งแต่ยกเลิก)
 import { fmtDate, fmtMoney } from '@/lib/format';
@@ -12,7 +13,8 @@ import { canConfirmPayment } from '@/lib/permissions';
 import { MAX_INSTALLMENTS } from '@/lib/sales/paymentPlan';
 import { installmentRefunded, paymentNotRequired, strandedInstallment } from '@/lib/sales/salesOrderPayments';
 import {
-  actualMonthLabel, installmentReplanLock, replanChangeLine, replanDiff, replanExpected, replanStale,
+  actualMonthLabel, autoCountLine, installmentActualLabelOf, installmentReplanCounted, installmentReplanLock, remainderOrphanedCents,
+  replanChangeLine, replanDiff, replanExpected, replanStale,
 } from '@/lib/sales/installmentReplan';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
@@ -23,6 +25,34 @@ export const CARRY_FORBIDDEN = 'ยกเงินจากใบที่ยก
 export const CARRY_STALE_MESSAGE = 'งวดของใบนี้หรือใบที่ยกเลิกเพิ่งถูกแก้จากอีกหน้าต่าง — โหลดใหม่แล้วยกอีกครั้ง';
 /* RPC 0378 ยังไม่มีบนฐาน (PGRST202) — ห้ามถอยไปย้ายแถวเองทีละแถว (ข้ามด่านดีลเดียวกัน/ยกเกิน/Σ/ข้อมูลเก่า) */
 export const INSTALLMENT_CARRY_SCHEMA_MISSING = 'ฐานยังไม่ได้รัน 0378 (ยกเงินจากใบที่ยกเลิก) — แจ้งผู้ดูแลระบบ';
+/* ยกแล้วไม่เหลืองวดที่ยังไม่นับ Actual ทั้งที่ Actual ของใบยังนับไม่ครบ (review รอบสาม 26/10 · ด่าน C2o ของ 0412) — เงินก้อนเดียวครอบทุกงวด
+   ที่ยังไม่นับ ⇒ ยอดที่เหลือไม่มีงวดไหนนับได้อีก · ไม่นับให้เอง (มติข้อ 1: Actual เข้าตอน AE Sup อนุมัติงวด · บัญชีก็ยกได้)
+   ⇒ ทางออก: ใบ Rev. ที่อนุมัติแบบทั้งใบ (เงินก้อนเดียวครอบทั้งใบ = ทั้งใบ) แล้วยกเข้าใบนั้น
+   · คำถามค้างข้อ 1 — ค่าตั้งต้นนี้คงเดิม (เจ้าของยังไม่ตอบ) · ⛔ ห้ามแนะนำ "กดนับที่เหลือทั้งหมดก่อนแล้วยก" (มติข้อ 10 ทำให้ไม่ orphan ก็จริง
+     แต่งวดที่นับแล้วลดได้ไม่ถึง 0 ⇒ เงินก้อนเดียวเต็มใบติด installment_carry_counted_locked — ฮาร์เนส 0412 ข้อ 24 พิสูจน์ทั้งสองทาง) */
+const CARRY_REV_WHOLE_ORDER = 'ย้อนการอนุมัติใบนี้แล้วออก Rev. · อนุมัติ Rev. แบบ “Actual ทั้งใบ” แล้วยกเงินเข้าใบ Rev.';
+export const CARRY_REMAINDER_WAY_OUT = `ยกเข้าใบรายงวดนี้ไม่ได้ — ${CARRY_REV_WHOLE_ORDER}`;
+/* ยกเกินเพราะติดงวดที่ยื่นขอนับอยู่ (ล็อก) หรืองวดที่นับ Actual แล้ว (ยังไม่มีเงิน · มติข้อ 9 ลดยอดได้แต่ลบไม่ได้) — ไม่ใช่เงินเกินยอดใบ
+   ไม่มีทางคืนเงิน (ประโยคท้ายของ installment_carry_counted_locked — สองไฟล์ต้องตรงกันทุกตัวอักษร · documentWorkflowErrors.test)
+   🐞 review รอบสี่ 26/10: เดิมจบที่ "เลือกยกน้อยลง" อย่างเดียว ⇒ ยกงวดเดียว (เช่นเงินเต็มใบก้อนเดียวหลังกดนับที่เหลือทั้งหมด) ชิปเลือกงวดถอดไม่ได้ =
+      คำแนะนำที่ทำไม่ได้และไม่มีทางออก ⇒ สองกิ่งแบบ CARRY_OVERPAID_WAY_OUT: หลายงวด = ยกน้อยลง · งวดเดียว = Rev. แบบทั้งใบ (ฮาร์เนสข้อ 24 พิสูจน์ทางนี้)
+      · งวดที่ยื่นอยู่ = ดึงคำขอกลับ/ตีกลับก่อน (กลับเป็นงวดเปิด หักได้ตามปกติ) */
+export const CARRY_COUNTED_LOCKED = 'งวดที่ยื่นขอนับ Actual อยู่ปรับยอดไม่ได้ (ดึงคำขอกลับ/ตีกลับก่อนแล้วยกใหม่ได้)'
+  + ' · งวดที่นับ Actual แล้วลดยอดได้แต่ลบไม่ได้ (ไม่ใช่เงินเกินยอดใบ) · ถ้ายกหลายงวดให้เลือกยกน้อยลง'
+  + ` · ถ้ายกงวดเดียว: ${CARRY_REV_WHOLE_ORDER}`;
+
+/**
+ * งวดของใบปลายทางที่ **เงินที่ยกมาแทนได้ทั้งงวด** แม้นับ Actual แล้ว — นับตอนคลิกอนุมัติใบ (`actualApprovedVia = 'so_approval'`)
+ * และไม่มีเงิน/เอกสารผูก · กติกาเดียวกับ RPC ยกเงินของ 0412 (C2) — ข้อยกเว้นเดียวของ "งวดที่นับแล้วลบไม่ได้" (มติข้อ 9):
+ *   Actual ไม่หาย ย้ายไปอยู่กับเงินก้อนเดียวกัน (แถวที่ยกมา) · ครอบไม่หมดงวด = ลดยอดตามมติข้อ 9 (ไม่ถูกแทน)
+ * ⚠️ งวดที่ AE Sup อนุมัติจากการยื่น (review) / นับที่เหลือทั้งหมด (count_rest) ไม่อยู่ในกติกานี้ — ลดยอดได้ ลบไม่ได้
+ * ⚠️ งวดยอด 0 ไม่อยู่ในกติกานี้ — การหักกวาดงวดเปิดยอด 0 ทิ้งเสมอ ถ้านับเป็น "ถูกแทน" แถวที่ยกมาจะถูกตีว่านับแล้ว (Actual 0) ทั้งที่ไม่ได้แทนอะไร
+ */
+export function carryConsumableRow(row, { requestById = null } = {}) {
+  return row?.actualStatus === 'approved' && row?.actualApprovedVia === 'so_approval' && toCents(row?.amount) > 0
+    && !installmentReplanLock({ ...row, actualStatus: null }, { requestById });
+}
+
 /* ทางออกของสองด่านเงิน — ประโยคเดียวกับข้อความของ RPC (documentWorkflowErrors: installment_carry_overpaid/_duplicate) */
 export const CARRY_OVERPAID_WAY_OUT = 'ถ้ายกหลายงวดให้เลือกยกน้อยลง · ถ้าเหลืองวดเดียว (คืนบางส่วนไม่ได้)'
   + ' ให้บัญชีบันทึกคืนเงินทั้งงวดที่ใบที่ยกเลิก แล้วเก็บเงินของใบนี้ตามงวดปกติ';
@@ -161,13 +191,20 @@ export function carrySourceError(target, source) {
  * @param order   ใบปลายทาง (ยอดรวม VAT)
  * @param rows    งวดของใบปลายทางทั้งใบ (อ่านสด)
  * @param carried แถวเงินค้างของใบต้นทางที่เลือกยก
- * @returns `{ rows, view, removed, error, errors, totals }`
+ * @returns `{ rows, view, removed, actualMoved, error, errors, totals }`
  *   · rows    = payload ของ RPC เรียงตามเลขงวด `{ id, seq, label, percent, amount, dueDate, coversFrom, coversTo, note }`
  *               (แถวล็อก + แถวที่ยก ออกมาเท่าในฐานทุกช่องยกเว้นเลขงวด/ป้าย/สัดส่วนของแถวที่ยก — แกน 0377 เทียบทีละช่อง)
- *   · view    = rows + `carried` · `lock` · `status` · `beforeSeq`/`beforeAmount` (แถวเดิมของใบนี้) สำหรับตารางในโมดัล
- *   · removed = งวดเปิดที่ถูกหักจนหมด (ถูกลบ — ยังไม่มีการชำระ)
- * ⭐ แถวที่ยกมาก่อน (ตามเลขงวดเดิม) แล้วงวดเปิดที่เหลือ — เติมเลขว่างที่น้อยสุด ข้ามเลขของแถวล็อก
+ *   · view    = rows + `carried` · `lock` · `counted` · `status` · `beforeSeq`/`beforeAmount` (แถวเดิมของใบนี้) สำหรับตารางในโมดัล
+ *   · removed = งวดเปิดที่ถูกหักจนหมด (ถูกลบ — ยังไม่มีการชำระ) + งวดที่นับตอนอนุมัติใบซึ่งเงินที่ยกมาแทนทั้งงวด
+ * ⭐ แถวที่ยกมาก่อน (ตามเลขงวดเดิม) แล้วงวดที่เหลือของใบนี้ (ลำดับเดิม) — เติมเลขว่างที่น้อยสุด ข้ามเลขของแถวล็อก
  * ⭐ ยอด: หักงวดเปิดแรก ๆ ก่อนจนครบยอดที่ยก · สัดส่วน = round2(ยอด/ยอดใบ) · แถวเปิดสุดท้าย (ไม่มี = แถวที่ยกสุดท้าย) รับเศษให้ Σ = 100
+ * ⭐ ใบ "Actual รายงวด" (มติเจ้าของข้อ 9 · 26/10 — งวดที่นับแล้วแต่เงินยังไม่เข้า "ปรับยอด/วันได้ ลบไม่ได้"):
+ *   รอบ ก — งวดเปิด (ลบได้) + งวดที่นับตอนอนุมัติใบซึ่งเงินที่ยกมาครอบ **ทั้งงวด** (แทน — Actual ย้ายไปแถวที่ยกแถวแรก · RPC C2)
+ *           ตามลำดับงวด · งวดที่นับแล้วอื่น ๆ และงวด so_approval ที่ครอบไม่หมดงวด = ข้ามไว้รอบ ข
+ *   รอบ ข — ยอดที่ยังเหลือหักจากงวดที่นับแล้วตามลำดับงวด **ลดยอดได้แต่ไม่ถึง 0** (เหลืออย่างน้อย 0.01 · ลดถึง 0 = ลบ) — ช่อง Actual
+ *           ที่ตรึงไว้ไม่อยู่ในแผน ⇒ Actual ของใบ/ดีลไม่ขยับ
+ *   ยังเหลือ = ยกเกิน: เงินที่มีอยู่จริง + ยอดที่ยก > ยอดใบ = ทางคืนเงินเดิม · นอกนั้น = ติดงวดที่ยื่นขอนับอยู่/งวดที่นับแล้วลบไม่ได้
+ *   (CARRY_COUNTED_LOCKED + ยอดที่ใบยังรับได้ · กติกาเดียวกับด่าน installment_carry_counted_locked ของ RPC)
  */
 export function applyCarryIn(order, rows = [], carried = [], { requestById = null } = {}) {
   const current = sortedRows(rows);
@@ -175,6 +212,11 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
   const totalC = toCents(order?.totalAmount);
   const errors = [];
   const lockOf = (r) => installmentReplanLock(r, { requestById });
+  /* งวดที่นับ Actual แล้ว (ยอด > 0 · ไม่มีเงิน/เอกสาร) — ไม่ล็อกแล้ว (มติข้อ 9) แต่ลบไม่ได้ · ยกเว้นกรณีเดียวของ RPC 0412 C2:
+     งวดที่นับตอนคลิกอนุมัติใบ (so_approval) ซึ่งเงินที่ยกมาครอบทั้งงวด = มัดจำก้อนเดียวกัน ⇒ ถูกแทน Actual ไม่หาย ย้ายไปแถวที่ยก
+     🐞 (review รอบสอง 26/10) เดิมงวดนี้ล็อก ⇒ หักงวดถัดไปแทน · งวด "มัดจำ" ที่จ่ายแล้วค้างเป็นงวดเปิดและขวางการยื่นงวดถัดไป (มติข้อ 2) */
+  const countedRow = (r) => installmentReplanCounted(r, { requestById });
+  const consumable = (r) => carryConsumableRow(r, { requestById });
   if (totalC <= 0) errors.push('ใบนี้ยอดรวม 0 บาท — รับเงินที่ยกมาไม่ได้');
   if (!moving.length) errors.push('ยังไม่ได้เลือกงวดที่จะยกมา');
   if (!current.length) errors.push('ยังไม่มีงวดชำระ — กด ‘เริ่มติดตามการชำระ’ ก่อน');
@@ -185,18 +227,51 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
   }
 
   const locked = current.filter(lockOf);
-  const open = current.filter((r) => !lockOf(r));
+  const flexible = current.filter((r) => !lockOf(r));
   const lockedC = locked.reduce((sum, r) => sum + toCents(r.amount), 0);
-  const openC = open.reduce((sum, r) => sum + toCents(r.amount), 0);
+  const flexibleC = flexible.reduce((sum, r) => sum + toCents(r.amount), 0);
   const carriedC = moving.reduce((sum, r) => sum + toCents(r.amount), 0);
-  if (current.length && totalC > 0 && lockedC + openC !== totalC) {
-    errors.push(`งวดชำระของใบนี้รวม ${fmtMoney((lockedC + openC) / 100)} ไม่เท่ายอดใบ ${fmtMoney(totalC / 100)} — ให้แอดมินตรวจงวดก่อน`);
+  if (current.length && totalC > 0 && lockedC + flexibleC !== totalC) {
+    errors.push(`งวดชำระของใบนี้รวม ${fmtMoney((lockedC + flexibleC) / 100)} ไม่เท่ายอดใบ ${fmtMoney(totalC / 100)} — ให้แอดมินตรวจงวดก่อน`);
+  }
+
+  // ── หัก: รอบ ก งวดเปิด/งวดที่ถูกแทนทั้งงวด ตามลำดับงวด · รอบ ข งวดที่นับแล้ว (ลดได้ ไม่ถึง 0) ──
+  let left = carriedC;
+  const removed = new Set();
+  const replaced = new Set();
+  const reduced = new Map();
+  for (const r of flexible) {
+    const amountC = toCents(r.amount);
+    if (consumable(r)) {
+      if (left >= amountC) { left -= amountC; replaced.add(r); }
+      continue;
+    }
+    if (countedRow(r)) continue;
+    if (left >= amountC) { left -= amountC; removed.add(r); continue; }
+    if (left > 0) reduced.set(r, amountC - left);
+    left = 0;
+  }
+  for (const r of flexible) {
+    if (left <= 0) break;
+    if (!countedRow(r) || replaced.has(r)) continue;
+    const take = Math.min(left, Math.max(0, toCents(r.amount) - 1));
+    if (take > 0) { reduced.set(r, toCents(r.amount) - take); left -= take; }
   }
   /* ⚠️ ทางออกต้องมีอยู่จริง (review UI-5) — คืนเงินได้ทั้งงวดเท่านั้น (refundValueError/CHECK ไม่มียอด) · งวดที่ยกเหลืองวดเดียว
-     ชิปเลือกงวดถอดไม่ได้ ⇒ "คืนเงินส่วนที่เกิน" คือทางที่ไม่มี · ข้อความเดียวกับ installment_carry_overpaid ของ RPC */
-  if (totalC > 0 && lockedC + carriedC > totalC) {
-    errors.push(`ยอดที่ยกมา ${fmtMoney(carriedC / 100)} รวมกับงวดที่มีเงินอยู่แล้ว ${fmtMoney(lockedC / 100)} เกินยอดใบ`
-      + ` ${fmtMoney(totalC / 100)} — ${CARRY_OVERPAID_WAY_OUT}`);
+     ชิปเลือกงวดถอดไม่ได้ ⇒ "คืนเงินส่วนที่เกิน" คือทางที่ไม่มี · ข้อความเดียวกับ installment_carry_overpaid ของ RPC
+     🐞 review รอบสอง 26/10: งวดที่ติดเพราะ "ยื่น/นับ Actual แล้ว" อย่างเดียว (ยังไม่มีเงิน/เอกสาร) ไม่ใช่ "งวดที่มีเงิน" — แยกเหตุ:
+     เงินเกินจริง (แถวมีเงิน/เอกสาร + ยก > ยอดใบ) = ทางคืนเงินเดิม · ติดงวดที่ยื่นขอนับอยู่/งวดที่นับแล้วลบไม่ได้ = บอกยอดที่ใบยังรับได้
+     ไม่มีคำแนะนำคืนเงิน (คำเดียวกับ installment_carry_counted_locked ของ RPC) */
+  if (totalC > 0 && left > 0) {
+    const moneyLockedC = locked.filter((r) => installmentReplanLock({ ...r, actualStatus: null }, { requestById }))
+      .reduce((sum, r) => sum + toCents(r.amount), 0);
+    if (moneyLockedC + carriedC > totalC) {
+      errors.push(`ยอดที่ยกมา ${fmtMoney(carriedC / 100)} รวมกับงวดที่มีเงินอยู่แล้ว ${fmtMoney(moneyLockedC / 100)} เกินยอดใบ`
+        + ` ${fmtMoney(totalC / 100)} — ${CARRY_OVERPAID_WAY_OUT}`);
+    } else {
+      errors.push(`ยอดที่ยกมา ${fmtMoney(carriedC / 100)} เกินยอดที่ใบนี้ยังรับได้ ${fmtMoney((carriedC - left) / 100)}`
+        + ` — ${CARRY_COUNTED_LOCKED}`);
+    }
   }
   /* เงินก้อนเดียวนับสองครั้ง (review MONEY-1 · carryDuplicates) — บล็อกเฉพาะที่ชัด · ชื่อไฟล์ตรงอย่างเดียวเป็นคำเตือน */
   const warnings = [];
@@ -211,21 +286,11 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
     }
   }
 
-  // ── หักงวดเปิดแรก ๆ ก่อน ──
-  let left = carriedC;
-  const kept = [];
-  const removed = [];
-  for (const r of open) {
-    const amountC = toCents(r.amount);
-    if (left >= amountC) { left -= amountC; removed.push(r); continue; }
-    kept.push({ row: r, amountC: amountC - left });
-    left = 0;
-  }
-
+  const kept = flexible.filter((r) => !removed.has(r) && !replaced.has(r));
   const count = locked.length + moving.length + kept.length;
   if (count > MAX_INSTALLMENTS) errors.push(`แบ่งงวดได้ไม่เกิน ${MAX_INSTALLMENTS} งวด (หลังยก ${count} งวด)`);
 
-  // ── เลขงวด: แถวล็อกคงเดิม · แถวที่ยกก่อน แล้วงวดเปิดที่เหลือ เติมเลขว่างที่น้อยสุด ──
+  // ── เลขงวด: แถวล็อกคงเดิม · แถวที่ยกก่อน แล้วงวดที่เหลือของใบนี้ เติมเลขว่างที่น้อยสุด ──
   const lockedSeqs = new Set(locked.map((r) => Number(r.seq)));
   let next = 1;
   const nextSeq = () => {
@@ -261,21 +326,30 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
     const seq = nextSeq();
     return { ...payload(r), seq, label: labelFor(r.label, seq), percent: 0, _carried: true, _status: r.status };
   });
-  const keptRows = kept.map(({ row, amountC }) => {
+  /* Actual ของงวดที่ถูกแทนทั้งงวด → แถวที่ยกมาแถวแรก (เลขงวดน้อยสุด) · ยอดรวม (ก่อน VAT) — ตรงกับ RPC 0412 C2 */
+  const replacedRows = sortedRows([...replaced]);
+  const actualMoved = replacedRows.length && movedRows.length ? {
+    fromSeqs: replacedRows.map((r) => Number(r.seq)),
+    toId: [...movedRows].sort(bySeq)[0].id,
+    toSeq: Math.min(...movedRows.map((r) => r.seq)),
+    amount: replacedRows.reduce((sum, r) => sum + Math.max(0, toCents(r.actualAmount)), 0) / 100,
+  } : null;
+  const keptRows = kept.map((row) => {
     const seq = nextSeq();
+    const amountC = reduced.has(row) ? reduced.get(row) : toCents(row.amount);
     return {
       ...payload(row), seq, label: labelFor(row.label, seq), percent: 0, amount: amountC / 100,
-      _status: row.status || 'pending', _beforeSeq: Number(row.seq), _beforeAmount: Number(row.amount) || 0,
+      _status: row.status || 'pending', _counted: countedRow(row), _beforeSeq: Number(row.seq), _beforeAmount: Number(row.amount) || 0,
     };
   });
 
   // ── สัดส่วน: round2(ยอด/ยอดใบ) · แถวเปิดสุดท้าย (ไม่มี = แถวที่ยกสุดท้าย) รับเศษ ──
   const lockedPct = locked.reduce((sum, r) => sum + (Number(r.percent) || 0), 0);
-  const flexible = [...movedRows, ...keptRows];
-  flexible.forEach((r) => { r.percent = totalC > 0 ? round2((toCents(r.amount) / totalC) * 100) : 0; });
+  const adjustable = [...movedRows, ...keptRows];
+  adjustable.forEach((r) => { r.percent = totalC > 0 ? round2((toCents(r.amount) / totalC) * 100) : 0; });
   const absorber = keptRows.length ? keptRows[keptRows.length - 1] : movedRows[movedRows.length - 1];
   if (absorber) {
-    const others = flexible.filter((r) => r !== absorber).reduce((sum, r) => sum + r.percent, 0);
+    const others = adjustable.filter((r) => r !== absorber).reduce((sum, r) => sum + r.percent, 0);
     absorber.percent = round2(100 - lockedPct - others);
     if (absorber.percent < 0 || absorber.percent > 100) {
       errors.push(`สัดส่วนของงวดที่ ${absorber.seq} ออกนอกช่วง 0–100% — ตรวจยอดของงวดที่ล็อก`);
@@ -283,19 +357,34 @@ export function applyCarryIn(order, rows = [], carried = [], { requestById = nul
   }
 
   const view = [
-    ...locked.map((r) => ({ ...payload(r), carried: false, lock: lockOf(r), status: r.status || 'pending', beforeSeq: Number(r.seq), beforeAmount: Number(r.amount) || 0 })),
-    ...movedRows.map(({ _carried, _status, ...r }) => ({ ...r, carried: true, lock: null, status: _status, beforeSeq: null, beforeAmount: null })),
-    ...keptRows.map(({ _status, _beforeSeq, _beforeAmount, ...r }) => ({
-      ...r, carried: false, lock: null, status: _status, beforeSeq: _beforeSeq, beforeAmount: _beforeAmount,
+    ...locked.map((r) => ({
+      ...payload(r), carried: false, lock: lockOf(r), counted: false, status: r.status || 'pending',
+      beforeSeq: Number(r.seq), beforeAmount: Number(r.amount) || 0,
+    })),
+    ...movedRows.map(({ _carried, _status, ...r }) => ({
+      ...r, carried: true, lock: null, counted: false, status: _status, beforeSeq: null, beforeAmount: null,
+    })),
+    ...keptRows.map(({ _status, _counted, _beforeSeq, _beforeAmount, ...r }) => ({
+      ...r, carried: false, lock: null, counted: _counted, status: _status, beforeSeq: _beforeSeq, beforeAmount: _beforeAmount,
     })),
   ].sort(bySeq);
   const finalRows = view.map(payload);
   const sumC = finalRows.reduce((sum, r) => sum + toCents(r.amount), 0);
+  /* ใบรายงวด: ยกแล้วต้องเหลืองวดที่ยังไม่นับ Actual ถ้า Actual ของใบยังนับไม่ครบ (กติกาเดียวกับ C2o ของ RPC) — แถวที่ยกมายังไม่นับ (C1)
+     ยกเว้นแถวแรกที่รับ Actual ของงวดที่ถูกแทน (C2b) ⇒ เกิดได้เมื่อแถวที่ยกแถวเดียวครอบทุกงวดที่ยังไม่นับ */
+  const orphanC = remainderOrphanedCents(order, current, finalRows.map((r) => r.id),
+    { countedIds: actualMoved ? [actualMoved.toId] : [] });
+  if (orphanC > 0) {
+    errors.push(`ยกเงินก้อนนี้แล้วไม่เหลืองวดที่ยังไม่นับ Actual แต่ Actual ของใบยังนับไม่ครบ ${fmtMoney(orphanC / 100)}`
+      + ` — ยอดนั้นจะไม่มีงวดไหนนับได้อีก · ${CARRY_REMAINDER_WAY_OUT}`);
+  }
 
   return {
     rows: finalRows,
     view,
-    removed: removed.map((r) => ({ id: r.id, seq: Number(r.seq), label: text(r.label), amount: Number(r.amount) || 0 })),
+    removed: sortedRows([...removed, ...replaced])
+      .map((r) => ({ id: r.id, seq: Number(r.seq), label: text(r.label), amount: Number(r.amount) || 0 })),
+    actualMoved,
     errors,
     error: errors.length ? errors.join(' · ') : null,
     warnings,
@@ -350,6 +439,15 @@ export function carryPromptFacts(order, source, before = [], carried = [], built
     totalLabel: fmtMoney(order?.totalAmount),
     actualAmountLabel: fmtMoney(order?.actualAmount),
     actualMonthLabel: actualMonthLabel(order),
+    installmentActualLabel: installmentActualLabelOf(order),
+    /* Actual ที่นับไว้ตอนอนุมัติใบของงวดที่ถูกแทนทั้งงวด ย้ายไปอยู่กับแถวที่ยกมา (applyCarryIn.actualMoved · RPC 0412 C2) */
+    actualMovedLine: built?.actualMoved
+      ? `Actual ที่นับไว้ตอนอนุมัติใบของงวดที่ ${built.actualMoved.fromSeqs.join(', ')} ${fmtMoney(built.actualMoved.amount)} (ก่อน VAT)`
+        + ` ย้ายไปอยู่กับงวดที่ยกมา (งวดที่ ${built.actualMoved.toSeq}) — ยอดและเดือน Actual ไม่เปลี่ยน · งวดที่ถูกแทนหายจากแผน`
+      : '',
+    /* มติข้อ 10: ใบที่กดนับที่เหลือทั้งหมดแล้ว — แถวที่ยกมา (ยกเว้นแถวที่รับ Actual ของงวดที่ถูกแทน) นับให้อัตโนมัติตอนยก ไม่ต้องยื่น · ใบอื่น = '' */
+    actualAutoCountLine: autoCountLine(order, before, finalRows.map((r) => r.id ?? null),
+      { countedIds: built?.actualMoved ? [built.actualMoved.toId] : [], noun: 'งวดที่ยกมา' }),
     quotationNumber: text(order?.quotation?.quoteNumber),
     remainingCount: remaining.length,
     remainingAmountLabel: fmtMoney(sumOf(remaining)),

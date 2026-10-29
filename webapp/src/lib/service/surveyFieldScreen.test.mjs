@@ -324,7 +324,8 @@ test('🐞 ปุ่มท้ายหน้าที่ยังกดไม่
   const zoneCss = css('../../components/service/SurveyZonePage.module.css');
   assert.match(zoneCss, /\.foot \.saveBtn:disabled,\s*\.foot \.nextBtn:disabled \{\s*opacity: 1;/);
   assert.doesNotMatch(zoneCss, /\.btnText small \{[^}]*opacity/);
-  assert.match(ZONE, /<Button variant="outline" className=\{styles\.touchBtn\} onClick=\{\(\) => adoptRow\(zoneRef\.current\)\}>/);
+  // ระหว่างบันทึกปุ่มนี้ล็อกด้วย (S2b แก้หลังตรวจจอ head-r3-26 — ทุกช่องของฟอร์มล็อกระหว่างบันทึก)
+  assert.match(ZONE, /<Button variant="outline" className=\{styles\.touchBtn\} disabled=\{saving\} onClick=\{\(\) => adoptRow\(zoneRef\.current\)\}>/);
 });
 
 test('🐞 กรมท่าปุ่มเดียวต่อจอ: ปุ่มส่งผลของการ์ดที่ติดด่านเป็นหน้าตาติดด่าน · แถบรู้ว่าการ์ดเป็นปุ่มหลัก (UAT 25/09)', () => {
@@ -498,7 +499,7 @@ test('🔑 ตารางสรุปส่งผล: รูปของแต�
   assert.match(tableCss, /\.thumb \{[^}]*width: var\(--ctl-h-touch\);/, 'ภาพย่อเป็นลิงก์ที่แตะได้ — ขนาดนิ้ว');
   /* 🐞 UAT 01/10 — ใบล็อก/ดูอย่างเดียว ชิปเป็นตัวหนังสือ ⇒ ข้อยกเว้นเซลล์ที่มีคอนโทรลไม่โดน · เพดาน 220px ตัดชื่อจุด */
   // (งวด S2b) ป้ายช่องของแถวจากแบบเป็นคำของพื้นที่จากแบบ — แถวลงหน้างานยังเป็น "เลือกจุด" · คลาสกันเพดานอยู่ทั้งสองทาง
-  assert.match(table, /<td data-label=\{m\.source \? DRAWING_SPOT_LABEL : "เลือกจุด"\} className="ui-cell-wide">/, 'ช่องเลือกจุดไม่โดนเพดานข้อความ 220px');
+  assert.match(table, /<td data-label=\{m\.source \? DRAWING_SPOT_LABEL : "เลือกจุด"\} data-long-label=\{m\.source \? "1" : undefined\} className="ui-cell-wide">/, 'ช่องเลือกจุดไม่โดนเพดานข้อความ 220px');
 });
 
 /* 🐞 UAT 01/10 — บรรทัด "ยังไม่ได้ผูกจุด n รูป" บนแท็บสรุปเป็นตัวหนังสือ ⇒ หัวหน้าต้องสลับแท็บ เปิดพื้นที่ เลื่อนหาถาดเอง */

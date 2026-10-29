@@ -19,6 +19,8 @@ import {
   canWithdrawSalesOrderSubmission,
   cancelReasonLabel,
   dealActualFromSalesOrders,
+  dealPendingApprovalAmount,
+  dealPendingApprovalCount,
   isCustomerCancelReason,
   isForeignKeyViolation,
   isSalesOrderReviewer,
@@ -448,7 +450,10 @@ const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
 
 test('ปุ่มยื่นที่กดไม่ได้ บอกชื่อเจ้าของดีลที่ต้องไปตาม', () => {
   const page = read('app/sales-planning/sales-orders/[id]/page.js');
-  assert.match(page, /const dealOwnerName = livePersonName\(directory, order\.deal\?\.ownerId, order\.deal\?\.ownerName\)/,
+  // PR4: ดีลของผู้ยื่น = `salesOrderApprovalDeal` (ใบปกติ = ดีลของใบ · SO ค่าสรรพสามิต = ดีลของ SO ต้นทาง)
+  assert.match(page, /const approvalDeal = salesOrderApprovalDeal\(order\);/);
+  assert.match(page, /const canSubmitThis = canSubmitSalesOrder\(\{ id: order\.meId, role \}, approvalDeal\);/);
+  assert.match(page, /const dealOwnerName = livePersonName\(directory, approvalDeal\?\.ownerId, approvalDeal\?\.ownerName\)/,
     'ชื่อมาจาก directory สด แล้วถอยไปชื่อที่เก็บในแถว — ชุดเดียวกับการ์ดดีล');
   assert.match(page, /ส่งต่อให้ \$\{dealOwnerName\} กดยื่น/, 'ข้อความติดปุ่มต้องมีชื่อคน');
   assert.match(page, /ส่งต่อให้เจ้าของดีลกดยื่น/, 'ไม่มีชื่อ (directory ยังไม่มา/บัญชีถูกลบ) ต้องถอยไปข้อความเดิม');
@@ -457,7 +462,8 @@ test('ปุ่มยื่นที่กดไม่ได้ บอกชื�
 test('ด่านฝั่ง API บอกชื่อเจ้าของดีลด้วย — ข้อความสองฝั่งต้องไม่ขัดกัน', () => {
   const route = read('app/api/sales-planning/sales-orders/[id]/route.js');
   assert.match(route, /ส่งต่อให้ \$\{ownerName\} กดยื่น/, 'ข้อความ 403 ต้องมีชื่อคน');
-  assert.match(route, /const ownerName = String\(before\.deal\?\.ownerName \|\| ''\)\.trim\(\)/,
+  assert.match(route, /const submitDeal = salesOrderApprovalDeal\(before\);\s*if \(!canSubmitSalesOrder\(user, submitDeal\)\)/);
+  assert.match(route, /const ownerName = String\(submitDeal\?\.ownerName \|\| ''\)\.trim\(\)/,
     'อ่านชื่อจากดีลที่ route โหลดมาแล้ว ไม่ยิงถามใหม่');
 });
 
@@ -469,7 +475,8 @@ test('ใบย้อนหลังอนุมัติแล้ว: ไม่
   assert.equal(salesOrderActual(HISTORICAL_APPROVED), 0);
   assert.deepEqual(
     splitSalesOrderAmounts([HISTORICAL_APPROVED, { status: 'approved', actualAmount: 250 }]),
-    { actual: 250, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0 },
+    { actual: 250, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
+      pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0 },
   );
   // ใบ pipeline ไม่ขยับ — 'legacy'/ว่าง ก็ไม่ใช่ใบย้อนหลัง
   for (const origin of [undefined, 'pipeline', 'legacy']) {
@@ -560,4 +567,103 @@ test('salesOrderRestoreBlock: มีใบอื่นจาก QT เดีย�
 test('salesOrderRestoreBlock: ไม่มีใบเสนอราคาให้ตรวจ = กู้คืนไม่ได้ (ไม่เดาว่าปลอดภัย)', () => {
   assert.match(salesOrderRestoreBlock({ id: 'SOR-A', status: 'cancelled', quotation: null }) || '', /ไม่พบใบเสนอราคา/);
   assert.equal(salesOrderRestoreBlock(null), null);
+});
+
+/* ── นับ Actual ทั้งใบ / รายงวด (mig 0412 · มติเจ้าของ 26/10) ───────────────────────────────────────────────────── */
+const INSTALLMENT_SO = Object.freeze({
+  id: 'SO-I', status: 'approved', origin: 'pipeline', actualMode: 'installment',
+  totalAmount: 107000, actualAmount: 100000, actualCountedAmount: 60000, actualSubmittedAmount: 25000,
+  approvedAt: '2026-10-05T03:00:00Z', deal: { ownerId: 'USR-AE' },
+});
+
+test('salesOrderActual: ใบรายงวด = ยอดงวดที่อนุมัติแล้ว (actualCountedAmount) · ใบทั้งใบเท่าเดิม', () => {
+  assert.equal(salesOrderActual(INSTALLMENT_SO), 60000);
+  assert.equal(salesOrderActual({ ...INSTALLMENT_SO, actualMode: 'order' }), 100000);
+  assert.equal(salesOrderActual({ ...INSTALLMENT_SO, status: 'approval_revoked' }), 0, 'ย้อนอนุมัติ = งวดที่นับแล้วหลุดหมด (มติข้อ 7)');
+  assert.equal(salesOrderActual({ ...INSTALLMENT_SO, status: 'cancelled' }), 0);
+});
+
+test('splitSalesOrderAmounts: ตรงกับ cache บนดีลทุกกอง — ใบรายงวดแบ่งเป็น Actual / รออนุมัติ / รอนับรายงวด', () => {
+  const rows = [
+    INSTALLMENT_SO,
+    { id: 'SO-W', status: 'approved', origin: 'pipeline', actualMode: 'order', actualAmount: 5000 },
+    { id: 'SO-P', status: 'pending_approval', origin: 'pipeline', actualMode: 'order', actualAmount: 2000 },
+    { ...INSTALLMENT_SO, id: 'SO-X', status: 'cancelled' },
+    { ...INSTALLMENT_SO, id: 'SO-H', origin: 'historical', actualMode: 'order' },
+  ];
+  const split = splitSalesOrderAmounts(rows);
+  assert.deepEqual(split, {
+    actual: 65000, actualCount: 2, pendingApproval: 27000, pendingApprovalCount: 2, instRemaining: 15000,
+    pendingOrderCount: 1, pendingOrderAmount: 2000, instPendingCount: 1, instPendingAmount: 25000,
+  });
+  /* review รอบสาม 26/10: ใบรายงวดที่มีงวดยื่นอยู่สองงวด (แถวที่ยกมา) = **หนึ่งใบ** ใน pendingApprovalCount (ทุกจอวาด "· n ใบ") ·
+     จำนวนงวดอยู่ที่ instPendingCount (ป้าย "งวด") · cache ของดีล soInstPendingCount นับใบชุดเดียวกัน (0412 count(DISTINCT)) */
+  const two = splitSalesOrderAmounts([{ ...INSTALLMENT_SO, actualSubmittedCount: 2 }, rows[2]]);
+  assert.deepEqual([two.pendingApprovalCount, two.pendingOrderCount, two.instPendingCount], [2, 1, 2]);
+  assert.equal(two.pendingApprovalCount, dealPendingApprovalCount({ metadata: { soPendingCount: 1, soInstPendingCount: 1 } }),
+    'ใบ = cache ของดีล แม้ยื่นสองงวด');
+  // cache ที่ trigger ของ 0412 เขียนให้ดีลเดียวกัน — สามกองต้องเท่ากัน
+  const deal = {
+    stage: 'won', wonValue: 65000,
+    metadata: {
+      actualSource: 'sale_order', soPendingAmount: 2000, soPendingCount: 1,
+      soInstPendingAmount: 25000, soInstPendingCount: 1, soInstRemainingByDue: { none: 15000 },
+    },
+  };
+  assert.equal(split.actual, dealActualFromSalesOrders(deal));
+  assert.equal(split.pendingApproval, dealPendingApprovalAmount(deal));
+  assert.equal(split.pendingApprovalCount, dealPendingApprovalCount(deal));
+  assert.equal(split.instRemaining, Object.values(deal.metadata.soInstRemainingByDue).reduce((a, b) => a + b, 0));
+  // นับครบทุกงวดแล้ว = ใบรายงวดหน้าตาเหมือนใบทั้งใบ
+  assert.deepEqual(splitSalesOrderAmounts([{ ...INSTALLMENT_SO, actualCountedAmount: 100000, actualSubmittedAmount: 0 }]), {
+    actual: 100000, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
+    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0,
+  });
+});
+
+test('dealPendingApprovalAmount/Count: รวมงวดที่ยื่นแล้วของใบรายงวด (soInstPending*) · ไม่มีคีย์ใหม่ = ค่าเดิม', () => {
+  assert.equal(dealPendingApprovalAmount({ metadata: { soPendingAmount: 0.1, soInstPendingAmount: 0.2 } }), 0.3);
+  assert.equal(dealPendingApprovalCount({ metadata: { soPendingCount: 2, soInstPendingCount: 1 } }), 3);
+  assert.equal(dealPendingApprovalAmount({ metadata: { soInstPendingAmount: -4 } }), 0);
+  assert.equal(dealPendingApprovalAmount({ metadata: { soPendingAmount: 993000 } }), 993000);
+  assert.equal(dealPendingApprovalCount({ metadata: { soPendingCount: 8 } }), 8);
+});
+
+test('รอฉันลงมือ — สองเลนของ Actual รายงวด: ผู้อนุมัติ (งวดที่คนอื่นยื่น) · เจ้าของดีล (งวดยื่นได้) · ไม่ส่งงวด = ไม่นับ', async () => {
+  const { isSalesOrderWaitingOnMe, isInstallmentActualWaitingOnMe, salesOrderIdsWaitingOnMe } = await import('./salesOrderWorkflow.js');
+  const submitted = [
+    { id: 'I1', seq: 1, status: 'confirmed', actualStatus: 'approved' },
+    { id: 'I2', seq: 2, status: 'pending', actualStatus: 'submitted', actualSubmittedById: 'USR-AE' },
+  ];
+  const ready = [
+    { id: 'I1', seq: 1, status: 'confirmed', actualStatus: 'approved' },
+    { id: 'I2', seq: 2, status: 'pending', actualStatus: null },
+  ];
+  const sup = { userId: 'USR-SUP', reviewer: true, role: 'ae_supervisor' };
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { ...sup, actualInstallments: submitted }), true);
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, sup), false, 'ไม่ส่งงวด = ไม่เดา');
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { ...sup, actualInstallments: ready }), false, 'ไม่มีงวดรออนุมัติ');
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { userId: 'USR-AE', reviewer: true, role: 'ae_supervisor', actualInstallments: submitted }),
+    false, 'ผู้อนุมัติที่ยื่นเองไม่ได้รอตัวเอง');
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { userId: 'USR-AE', role: 'ae', actualInstallments: ready }), true, 'เจ้าของดีลยื่นงวดถัดไปได้');
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { userId: 'USR-AC', role: 'ac', actualInstallments: ready }), false);
+  assert.equal(isSalesOrderWaitingOnMe({ ...INSTALLMENT_SO, actualMode: 'order' }, { ...sup, actualInstallments: submitted }), false);
+  assert.equal(isInstallmentActualWaitingOnMe(INSTALLMENT_SO, null, sup), false);
+  // ทะเบียนตัด `reviewer` ด้วยเหตุของงานบริการ (staleServiceReview) — คิวงวดยังเดินตาม role
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { ...sup, reviewer: false, actualInstallments: submitted }), true);
+  assert.equal(isSalesOrderWaitingOnMe(INSTALLMENT_SO, { userId: 'USR-AC', role: 'ac', reviewer: false, actualInstallments: submitted }), false);
+  // เลนเดิมยังอยู่ — เลนใหม่บวกเพิ่ม ไม่ตัด
+  assert.equal(isSalesOrderWaitingOnMe({ status: 'pending_approval', submittedBy: 'USR-X' }, { ...sup, actualInstallments: [] }), true);
+
+  // ป้ายบนเมนู: แถวเลนใหม่นับใบละหนึ่ง · ซ้ำกับเลนอื่นไม่นับซ้ำ
+  const ids = salesOrderIdsWaitingOnMe({
+    rows: [{ id: 'SO-I', status: 'pending_approval', submittedBy: 'USR-X' }],
+    actualRows: [INSTALLMENT_SO, { ...INSTALLMENT_SO, id: 'SO-J' }, { ...INSTALLMENT_SO, id: 'SO-K' }],
+    actualInstallmentsOf: (row) => (row.id === 'SO-K' ? ready : submitted),
+  }, sup);
+  assert.deepEqual([...ids].sort(), ['SO-I', 'SO-J']);
+  // แถวเลนใหม่ไม่พาเลนอื่นกลับเข้ามา (เช่นรอตรวจงานบริการที่ rows กรองสายธุรกิจไว้แล้ว)
+  const reviewOnly = { ...INSTALLMENT_SO, id: 'SO-S', serviceSetupState: 'submitted', serviceSetupSubmittedById: 'USR-AE' };
+  assert.equal(salesOrderIdsWaitingOnMe({ actualRows: [reviewOnly], actualInstallmentsOf: () => ready }, sup).size, 0);
+  assert.equal(salesOrderIdsWaitingOnMe({ actualRows: [INSTALLMENT_SO] }, sup).size, 0, 'ไม่ให้ตัวอ่านงวด = ไม่นับ');
 });

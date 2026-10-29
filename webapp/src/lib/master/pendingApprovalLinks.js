@@ -6,10 +6,73 @@
 // ⇒ ลิงก์ชุดเดียวกับ `countHref` ของเมนู (เทสต์ยึดให้เท่ากัน) · ทะเบียนปลายทางอ่าน `?count=<entity>` แล้ว
 //    ตั้งตัวกรองสถานะเป็น "รออนุมัติ" (ตัวกรองจริงในแผง ล้างได้จากที่เดิม)
 //
-// ⚠️ นิยามตัวนับ = `approvalStatus === 'pending'` ทุกใบ (เท่ากับป้ายบนเมนู · api/nav/counts) — ทะเบียน
-//    ปลายทางซ่อนใบ "เลิกใช้" เป็นค่าตั้งต้น ⇒ ใบที่เลิกใช้แต่ยังรออนุมัติ (วันนี้ 0 ใบ) นับบนการ์ดแต่ไม่ขึ้นในตาราง
-//    — ยังรอเจ้าของเลือก (19/10): ตาราง `?count=` รวมใบเลิกใช้ด้วย หรือการ์ด/ป้ายเลิกนับใบเลิกใช้
+// ⭐ นิยามตัวนับ = `approvalStatus === 'pending'` ทุกใบ **รวมใบที่เลิกใช้** (เท่ากับป้ายบนเมนู · api/nav/counts)
+//    🐞 เดิมทะเบียนปลายทางตัดใบ "เลิกใช้" ก่อนดูสถานะ ⇒ ใบที่เลิกใช้แต่ยังรออนุมัติ นับบนการ์ด/ป้าย
+//       แต่ไม่ขึ้นในตาราง `?count=` (วันนี้ 0 ใบ — ช่องว่างที่รอวันเกิด)
+//    ⇒ มติเจ้าของ 19/10: ตาราง "รออนุมัติ" โชว์ใบเลิกใช้ด้วย — ของที่รออนุมัติต้องอนุมัติ/ตีกลับได้
+//       (แถวยังมีป้าย "เลิกใช้" · จางเฉพาะแถวที่ไม่มีปุ่มอนุมัติ — ปุ่มที่จางอ่านเป็นกดไม่ได้)
+//       · ทะเบียนเปล่า ๆ ยังซ่อนใบเลิกใช้ตามเดิม
+//    ⚠️ ตัวนับทุกที่ (การ์ดภาพรวม · แถบตัวเลขในทะเบียน · คิวรออนุมัติ) ต้องเรียก `isPendingApproval` ตัวนี้
+//       และตารางต้องกรองด้วย `passesApprovalFilters` ตัวนี้ — เขียนเงื่อนไขสดที่หน้าไหนเมื่อไร เลขกับแถวเดินหนีกันเงียบ ๆ
+//    ⚠️ การ์ดภาพรวมนับจาก **ทะเบียนเต็ม** ไม่ผ่านตัวกรองทีม/ช่วงเวลาของหน้าภาพรวม — ลิงก์ส่งตัวกรองพวกนั้น
+//       ตามไปไม่ได้ ⇒ นับในตัวกรอง = เลขบนการ์ดไม่เท่าแถวที่เปิดเจอ (และไม่เท่าป้ายเมนูที่นับทุกทีม)
+//       · การ์ด "ทั้งหมด" ก็เช่นกัน (มติเจ้าของ 20/10 · M19a) — นับแถวของทะเบียนเปล่า (`registryDefaultCount`)
+import { approvalStatusOf } from './approvalStatus';
+
 export const PENDING_APPROVAL_HREF = Object.freeze({
   products: '/database/products?count=products',
   customers: '/database/customers?count=customers',
 });
+
+/** ใบนี้นับเป็น "รออนุมัติ" ไหม — ไม่ดู `isActive` (ใบเลิกใช้ที่ยังรออนุมัติก็ยังรอคนตัดสิน)
+ *  แถวเก่าก่อน mig 0027 (`approvalStatus` NULL) = อนุมัติแล้ว ไม่นับ — ตรงกับ `.eq('approvalStatus', 'pending')` ของป้ายเมนู */
+export function isPendingApproval(record) {
+  return approvalStatusOf(record) === 'pending';
+}
+
+/** เลข "รออนุมัติ" ของการ์ด/แถบตัวเลข — นับด้วยตัวตัดสินเดียวกับตาราง */
+export function pendingApprovalCount(records = []) {
+  return records.filter(isPendingApproval).length;
+}
+
+/**
+ * สองมิติของทะเบียนสินค้า/ลูกค้าที่ผูกกับเลข "รออนุมัติ": สถานะอนุมัติ + ใบที่เลิกใช้
+ *
+ * @param statuses     สถานะอนุมัติที่เลือก — ว่าง = ทั้งหมด
+ * @param showInactive true = ติ๊ก "รวม…ที่เลิกใช้"
+ *
+ * - ใบเลิกใช้ซ่อนเป็นค่าตั้งต้น (ทะเบียนเปล่า ๆ ไม่เปลี่ยน) จนกว่าจะติ๊กรวม
+ * - ยกเว้นใบที่รออนุมัติ **ขณะกรองสถานะ "รออนุมัติ"** — ชุดที่ `?count=` เปิด = ทุกใบที่ป้าย/การ์ดนับ
+ *   ⚠️ ตัวกรอง "รออนุมัติ" ที่ติ๊กเองได้ผลเดียวกับที่มาจากลิงก์ (สถานะตัวกรองบนจอเหมือนกันทุกช่อง
+ *      ต้องได้แถวเหมือนกัน) และเท่ากับเลข "รออนุมัติ" ในแถบตัวเลขข้างทะเบียน
+ */
+export function passesApprovalFilters(record, { statuses = [], showInactive = false } = {}) {
+  if (statuses.length && !statuses.includes(approvalStatusOf(record))) return false;
+  if (showInactive || record?.isActive !== false) return true;
+  return statuses.includes('pending') && isPendingApproval(record);
+}
+
+/* ── เลขที่คู่กับ "ทะเบียนเปล่า ๆ" (ตรวจตัวเลข M19a/M20b · 20/10) ───────────────────────────────
+   🐞 การ์ด "สินค้าทั้งหมด / ลูกค้าทั้งหมด" บน /database และ StatCards "ทั้งหมด / อนุมัติแล้ว / ไม่อนุมัติ" ข้างทะเบียน
+      นับ `list.length` / `approvalStatusOf(x) === …` ทุกแถว **รวมใบเลิกใช้** — แต่ทะเบียนเปล่าซ่อนใบเลิกใช้
+      (`passesApprovalFilters`) ⇒ การ์ดบอก N กดแล้วเห็น N − เลิกใช้ · ติ๊ก "อนุมัติแล้ว" ได้น้อยกว่าเลขบนการ์ด
+   ⭐ แต่ละเลข = แถวหลังตั้งตัวกรองที่ตรงกับเลขนั้น (ไม่มีตัวกรองอื่น) — ใช้ตัวตัดสินเดียวกับตาราง
+   ⚠️ "รออนุมัติ" รวมใบเลิกใช้ตามมติเจ้าของ 19/10 ⇒ รออนุมัติ + อนุมัติแล้ว + ไม่อนุมัติ อาจมากกว่า "ทั้งหมด"
+      เท่าจำนวนใบเลิกใช้ที่ยังรออนุมัติ — แต่ละเลขยังเท่าแถวของมันเอง */
+
+/** จำนวนแถวที่ทะเบียนเปล่า ๆ (ไม่มีตัวกรอง) โชว์ — ใบเลิกใช้ซ่อน */
+export function registryDefaultCount(records = []) {
+  return (records || []).filter((r) => passesApprovalFilters(r)).length;
+}
+
+/** เลขแถบตัวเลขข้างทะเบียนสินค้า/ลูกค้า — `{ total, pending, approved, rejected }` */
+export function approvalStatCounts(records = []) {
+  const list = records || [];
+  const withStatus = (status) => list.filter((r) => passesApprovalFilters(r, { statuses: [status] })).length;
+  return {
+    total: registryDefaultCount(list),
+    pending: pendingApprovalCount(list),
+    approved: withStatus('approved'),
+    rejected: withStatus('rejected'),
+  };
+}

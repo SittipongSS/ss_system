@@ -8,7 +8,7 @@
 //   ⚠️ แก้คอลัมน์ของตารางบนหน้าไซต์เมื่อไร ต้องแก้ haystack ที่นี่ในคอมมิตเดียวกัน
 import { floorLabel } from '@/lib/service/zoneCode';
 import { ASSET_KIND_LABELS } from '@/lib/service/assetKinds';
-import { ASSET_STATUS_LABELS } from '@/lib/service/sites';
+import { ASSET_CONDITION_LABELS, ASSET_STATUS_LABELS, assetRollup, isAssetOnSite } from '@/lib/service/sites';
 
 /* ชิปอาคารกดตรงได้เมื่อมี 2–6 กลุ่ม (กติกา direct controls: ชุดเล็กเห็นทุกตัว) · เกินนั้นไม่วาดชิป —
    ชื่ออาคารอยู่ใน haystack อยู่แล้ว พิมพ์ค้นหาแทนได้ */
@@ -116,7 +116,53 @@ export const assetModelLabel = (key) => {
   return colour ? `${model} ${colour}` : model;
 };
 
-/** สรุปจำนวนตามรุ่น/สี (ไม่นับปลดระวาง) — มากไปน้อย */
+/* ── ตัวตัดสินของตัวเลขบนหน้าไซต์ที่ต้องเท่ากับแถว (ตรวจตัวเลข L7 · L7b · 26/10/2026) ─────────────────────
+
+   🐞 แถบ backfill "อุปกรณ์ N รายการยังไม่ระบุโซน" นับ `status !== 'removed' && !zoneId` เป็นข้อความกดไม่ได้ และไม่มี
+      ตัวกรองไหนให้ชุดนี้: ชิป "ไม่ระบุอาคาร" รวมเครื่องในโซนที่ไม่กรอกอาคาร + ปลดระวาง · ค้น "ยังไม่ระบุโซน" ก็ติดปลดระวาง
+      และ `status !== 'removed'` นับเครื่อง "ว่าง" (in_stock) ด้วย ทั้งที่ไม่ได้อยู่หน้างาน ไม่ต้องมีโซนเพื่อนับยอดต่อรอบ
+   ⭐ "อยู่หน้างานแต่ยังไม่สังกัดโซน" = `isAssetOnSite` (ตัวตัดสินตัวเดียวของระบบ · ห้ามเทียบสตริงสถานะเอง) + ไม่มีโซน
+      ตัวเดียวกันทั้งเลขบนแถบ และตัวกรอง `unzoned` ของตาราง ⇒ กด "ดู N รายการ" แล้วป้ายจำนวนแผงขึ้น N */
+export const isUnzonedOnSiteAsset = (asset) => isAssetOnSite(asset) && !asset?.zoneId;
+
+/* ⭐ "เครื่องของโซน" ที่ตัวเลขนับ = ไม่นับปลดระวาง — คอลัมน์ "อุปกรณ์" ของแถวโซนบนหน้าไซต์ กับ "อุปกรณ์ในโซน M ตัว"
+   ของหน้าโซนถามตัวนี้ตัวเดียว
+   🐞 เดิมแถวโซนไม่นับปลดระวาง แต่หน้าโซนนับทุกเครื่องที่ zoneId ตรง (ปลดระวางไม่ล้างที่อยู่เดิม) ⇒ กด "3 เครื่อง" ไปเจอ "4 ตัว"
+   ⚠️ ประวัติการเข้า/ยอดใช้ของหน้าโซนยังผูกกับเครื่องทุกสถานะ — ของที่ปลดระวางแล้วเคยถูกเติมในโซนนี้จริง */
+export const countsAsZoneAsset = (asset) => asset?.status !== 'removed';
+
+/** จำนวนเครื่องต่อโซน (Map zoneId → n) ด้วย `countsAsZoneAsset` */
+export function zoneAssetCounts(assets = []) {
+  const counts = new Map();
+  for (const asset of assets) {
+    if (asset?.zoneId && countsAsZoneAsset(asset)) counts.set(asset.zoneId, (counts.get(asset.zoneId) || 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * สรุปหัวแผง "อุปกรณ์ในไซต์" — ใช้ **คำเดียวกับตัวเลือก "สถานะ" ในตัวกรองและป้ายบนแถว** (ASSET_STATUS_LABELS)
+ * ⇒ เลขข้างคำไหน = แถวที่ได้จากตัวเลือกชื่อเดียวกัน (ตอนไม่มีตัวกรองอื่น)
+ * 🐞 เดิมเขียนคำเอง "ใช้งาน · อยู่ในคลัง · ส่งซ่อม" ขณะที่ตัวเลือก/ป้ายแถวเป็น "ใช้งานอยู่ · ว่าง · ซ่อม" (มติผู้ใช้ 03/09)
+ *    ⇒ หา "อยู่ในคลัง 2" ในตัวกรองไม่เจอ · "ชำรุด" เป็นแกนสภาพ (ไม่มีตัวกรอง) จึงนำหน้าด้วย "สภาพ" ให้ไม่อ่านเป็นสถานะที่ห้า
+ * ⚠️ ต้องครบทุกกองสถานะ ไม่งั้นตัวเลขไม่รวมกันเป็น total (mig 0332) · กองที่เป็นศูนย์ตัดทิ้ง ยกเว้นใช้งานอยู่/ซ่อม (ขึ้นเสมอแบบเดิม)
+ * @returns {{ key: string, label: string, count: number, status?: string }[]}
+ */
+export function assetPanelSummary(assets = []) {
+  const rollup = assetRollup(assets);
+  return [
+    { status: 'active', count: rollup.active, always: true },
+    { status: 'in_stock', count: rollup.inStock },
+    { status: 'repair', count: rollup.repair, always: true },
+    { status: 'removed', count: rollup.removed },
+  ]
+    .filter((part) => part.always || part.count > 0)
+    .map(({ status, count }) => ({ key: status, status, label: ASSET_STATUS_LABELS[status], count }))
+    .concat(rollup.broken ? [{ key: 'broken', label: `สภาพ${ASSET_CONDITION_LABELS.broken}`, count: rollup.broken }] : []);
+}
+
+/** สรุปจำนวนตามรุ่น/สี (ไม่นับปลดระวาง) — มากไปน้อย
+ *  ⚠️ ตัวเลือก "รุ่น" ในตัวกรองเห็นปลดระวางด้วย ⇒ บรรทัดสรุปบนจอต้องขึ้นต้นด้วย MODEL_SUMMARY_PREFIX (L7b) */
 export function assetModelSummary(assets = []) {
   const counts = new Map();
   for (const asset of assets) {
@@ -127,6 +173,9 @@ export function assetModelSummary(assets = []) {
   return [...counts].map(([key, count]) => ({ key, label: assetModelLabel(key), count }))
     .sort((a, b) => b.count - a.count || naturalCompare(a.label, b.label));
 }
+
+/** คำนำหน้าบรรทัดสรุปรุ่นบนจอ — บอกว่าเลขไม่รวมปลดระวาง (ตัวเลือก "รุ่น" ในตัวกรองรวม ⇒ กดแล้วอาจเห็นมากกว่าเลข) */
+export const MODEL_SUMMARY_PREFIX = 'ไม่นับปลดระวาง:';
 
 /** เครื่องเรียง: ปลดระวางไว้ท้าย → ตามลำดับโซน (ไม่มีโซนไว้ท้าย) → จุด → รหัส */
 export function sortSiteAssets(assets = [], zones = []) {
@@ -142,11 +191,13 @@ export function sortSiteAssets(assets = [], zones = []) {
  * @param filters.building ALL_BUILDINGS | ชื่ออาคาร | NO_BUILDING
  * @param filters.models   คีย์รุ่นที่เลือก (ว่าง = ทุกรุ่น)
  * @param filters.statuses สถานะที่เลือก (ว่าง = ทุกสถานะ)
+ * @param filters.unzoned  true = เฉพาะ `isUnzonedOnSiteAsset` (ปุ่ม "ดู N รายการ" ของแถบยังไม่ระบุโซน)
  */
 export function filterSiteAssets(assets = [], zonesById = new Map(), {
-  query = '', building = ALL_BUILDINGS, models = [], statuses = [],
+  query = '', building = ALL_BUILDINGS, models = [], statuses = [], unzoned = false,
 } = {}) {
   return assets.filter((asset) => (building === ALL_BUILDINGS || assetBuildingKey(asset, zonesById) === building)
+    && (!unzoned || isUnzonedOnSiteAsset(asset))
     && (!models.length || models.includes(assetModelKey(asset)))
     && (!statuses.length || statuses.includes(asset.status))
     && matchesQuery(assetHaystack(asset, asset.zoneId ? zonesById.get(asset.zoneId) : null), query));

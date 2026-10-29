@@ -89,7 +89,8 @@ test('ยอดหัวกลุ่ม: weight = Actual ล้วน · รอ�
   assert.equal(pendingBucket.total, 0, 'weight ของถังต้องเป็น Actual ล้วน — ไม่งั้นหัวกลุ่มอ่านเป็น Actual');
   assert.deepEqual(
     splitSalesOrderAmounts(pendingBucket.items),
-    { actual: 0, actualCount: 0, pendingApproval: 993000, pendingApprovalCount: 2 },
+    { actual: 0, actualCount: 0, pendingApproval: 993000, pendingApprovalCount: 2, instRemaining: 0,
+      pendingOrderCount: 2, pendingOrderAmount: 993000, instPendingCount: 0, instPendingAmount: 0 },
   );
 
   // จัดตามลูกค้า — ถังเดียวมีทั้งสองกองได้ (Actual ฿X · รออนุมัติ ฿Y)
@@ -150,13 +151,15 @@ test('หน้าใบเสนอราคา: การ์ด "สร้า�
 test('ทะเบียน SO: การ์ด KPI คิดจาก rows ชุดเดียวผ่าน splitSalesOrderAmounts', () => {
   const page = code(SO_LIST);
   assert.match(page, /const amounts = splitSalesOrderAmounts\(rows\);/, 'ฐานเดียวกับการ์ดอื่นทั้งแถบ (rows ไม่ใช่ filtered)');
-  assert.match(page, /pendingApproval: amounts\.pendingApproval,/);
+  /* review รอบสาม 26/10: การ์ด "รอตรวจอนุมัติ" = ใบ pending_approval ล้วน (ชุดเดียวกับที่กดแล้วกรอง · L11) — งวดที่ยื่นของใบรายงวดบอกแยก */
+  assert.match(page, /pendingApproval: amounts\.pendingOrderAmount,/);
   assert.match(page, /actual: amounts\.actual,/);
-  // การ์ด Actual ไม่ถูกแตะ — อ่าน summary.actual ตัวเดิม
-  assert.match(page, /label="Actual ก่อน VAT" value=\{fmtMoney\(summary\.actual\)\} note="รวมเฉพาะ SO ที่อนุมัติแล้ว"/);
-  // ยอดรออนุมัติอยู่ใต้การ์ด "รอตรวจอนุมัติ" พร้อมบอกว่ายังไม่นับ
+  // การ์ด Actual อ่าน summary.actual ตัวเดิม · หมายเหตุบอกชุดตรง ๆ (ตรวจตัวเลข L11b: ใบจากใบเสนอราคาเท่านั้น)
+  assert.match(page, /label="Actual ก่อน VAT" value=\{fmtMoney\(summary\.actual\)\} note="รวมเฉพาะใบจากใบเสนอราคาที่อนุมัติแล้ว"/);
+  // ยอดรออนุมัติอยู่ใต้การ์ด "รอตรวจอนุมัติ" พร้อมบอกว่ายังไม่นับ — และบอกว่าเป็นใบจากใบเสนอราคา (L11a)
   assert.match(page, /label="รอตรวจอนุมัติ"/);
-  assert.match(page, /`\$\{fmtMoney\(summary\.pendingApproval\)\} ก่อน VAT · ยังไม่นับ Actual`/);
+  assert.match(page, /`ใบจากใบเสนอราคา · \$\{fmtMoney\(summary\.pendingApproval\)\} ก่อน VAT · ยังไม่นับ Actual`/);
+  assert.match(page, /label="อนุมัติแล้ว"\s+value=\{summary\.approved\}\s+note="ใบจากใบเสนอราคา · นับเป็น Actual"/);
   // 🛑 กับดักหลัก: status !== 'approved' ดึงร่าง/ตีกลับ/ยกเลิกมาปน
   assert.doesNotMatch(page, /status\s*!==?\s*["']approved["']/);
   assert.doesNotMatch(page, /status\s*===?\s*["']approved["']\s*\?\s*Number\(row\.actualAmount\)/,
@@ -169,8 +172,17 @@ test('ทะเบียน SO: หัวกลุ่มแยกสองกอ
   assert.equal((page.match(/weight: salesOrderActual\(row\)/g) || []).length, 3);
   assert.doesNotMatch(page, /weight:[^\n]*[Pp]endingApproval/, 'ยอดรออนุมัติห้ามเข้า weight ของถัง');
   assert.match(page, /splitSalesOrderAmounts\(bucket\.items\)/, 'รออนุมัติของหัวกลุ่มคิดจากแถวในถังชุดเดียวกัน');
-  assert.match(page, /<PendingApprovalAmount[\s\S]{0,200}amount=\{pendingOfBucket\.pendingApproval\}/);
+  assert.match(page, /<PendingApprovalAmount[\s\S]{0,200}amount=\{pendingOfBucket\.pendingOrderAmount\}/);
   assert.match(page, /total=\{bucketTotal\}/);
+  /* L11c (26/10): ป้าย "n ใบ" ของหัวกลุ่มนับรวมใบย้อนหลัง แต่ยอดรออนุมัติไม่นับ ⇒ หัวกลุ่มบอกจำนวนใบย้อนหลังที่รออนุมัติแยก */
+  assert.match(page, /const historicalPending = historicalPendingCount\(bucket\.items\);/);
+  assert.equal((page.match(/historicalPendingNote\(historicalPending\)/g) || []).length, 2, 'ทั้งกลุ่มที่มี/ไม่มีใบรออนุมัติจากใบเสนอราคา');
+  // "· 1 ใบ" ใช้คลาสของชิ้นกลาง (`.so-pending-approval` › `.so-pending-approval-count`) — ไม่ใช่สตริงเปล่าในฟอนต์ยอดกลุ่ม (รีวิว L11c)
+  assert.match(page, /\{historicalPending && pendingOfBucket\.pendingOrderCount === 1\s*\? <span className="so-pending-approval"><span className="so-pending-approval-count"> · 1 ใบ<\/span><\/span>\s*: null\}/);
+  assert.doesNotMatch(page, /\? " · 1 ใบ" : null/, 'ห้ามกลับเป็นสตริงเปล่า');
+  const chip = raw('components/salesPlanning/PendingApprovalAmount.js');
+  assert.match(chip, /<span className="so-pending-approval-count"> · \{orders\} ใบ<\/span>/, 'คลาสต้องตรงกับชิ้นกลาง');
+  assert.match(page, /totalTitle="[^"]*ใบย้อนหลังไม่นับยอด"/);
 
   // เซลล์ยอด: ตัดสินด้วยตัวกลาง · ใบรออนุมัติบอกคำว่า "รออนุมัติ" (amber) ไม่ใช่คำกลาง ๆ
   assert.match(page, /const amountKind = salesOrderAmountKind\(row\);/);
@@ -249,7 +261,9 @@ test('route ใบเสนอราคาหาใบสั่งขายไ�
   assert.match(route, /\.order\('createdAt', \{ ascending: false \}\)\s*\n\s*\.order\('id', \{ ascending: true \}\)/, 'ลำดับต้องนิ่ง');
   assert.match(route, /if \(salesOrderError\) throw salesOrderError;/, 'อ่านไม่ขึ้น ≠ ไม่มีใบ');
   assert.match(route, /data\.salesOrder = rows\.find\(isLiveSalesOrder\) \|\| rows\[0\] \|\| null;/);
-  assert.match(route, /select\('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt'\)/);
+  /* + origin / actualMode / cache สองช่อง (mig 0412) — ยอด Actual ของใบ "Actual รายงวด" ผ่านตัวกลาง (ขาด actualMode = นับเต็มใบ) */
+  /* + totalAmount/vatAmount (PR4) — SO ค่าสรรพสามิต Actual = 0 เสมอ ⇒ การ์ดบนหน้า QT คิดยอดก่อน VAT จากยอดรวม − VAT */
+  assert.match(route, /select\('id, orderNumber, status, orderDate, actualAmount, totalAmount, vatAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"'\)/);
 });
 
 test('แถบเตือนบนทะเบียนใบเสนอราคาบอกทางสามขั้น: ยื่น → รออนุมัติ → Actual', () => {

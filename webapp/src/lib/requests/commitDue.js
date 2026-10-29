@@ -23,6 +23,9 @@ import {
   SURVEY_DESK_RESCHEDULE_REASON_ERROR, SURVEY_VISIT_KIND, surveyDeskResultDate, surveyScheduleGaps, surveyVisitDraft,
 } from '@/lib/service/surveyVisit';
 import { SURVEY_METHOD_RESULT_DATE_LABEL } from '@/lib/service/surveyMethodSwitch';
+/* วันที่ผู้ขออยากให้เข้า (ประเมินจากแบบ งวด 4) — ใบที่ยื่นเป็นจากแบบเก็บ `requestedDueDate` = กระจกของวันรับผล
+   ⇒ ค่าตั้งต้น · แถว "ต้องการ" · ชิปผู้ขอ ถามตัวนี้ตัวเดียว (ห้ามเสนอวันรับผลเป็นวันเข้าพื้นที่) */
+import { SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveyWishedVisit } from '@/lib/service/surveyIntake';
 import { toHHMM } from '@/lib/service/sites';
 import { MAX_ASSETS_PER_DAY, assigneeOverloaded } from '@/lib/service/visitLoad';
 import { VISIT_KIND_LABELS, visitTimeText } from '@/lib/service/rounds';
@@ -169,13 +172,16 @@ export function commitDueDefaults(request, { requeue = false, today } = {}) {
     const date = req.committedResultDate || req.requestedResultDate || '';
     return { date, time: '', resultDate: date, assigneeId: '', reason: '' };
   }
+  /* ⭐ งวด 4: วันที่ผู้ขออยากให้เข้ามาจาก `surveyWishedVisit` — ใบที่ยื่นเป็นจากแบบ (หัวหน้าสลับเป็นลงหน้างาน) ไม่รู้วันนี้
+        ⇒ ตั้งต้นวันนี้ เวลาว่าง เหมือนใบที่ผู้ขอไม่ระบุ · ใบอื่นได้ค่าเดิมทุกตัว */
+  const wish = surveyWishedVisit(req);
   return {
     date: requeue
       ? req.committedDueDate
-      : ((site && req.requestedDueDate) || today || businessDate()),
+      : ((site && wish.date) || today || businessDate()),
     time: requeue
       ? String(req.committedDueTime || '').slice(0, 5)
-      : (site ? (req.requestedDueTime || '') : ''),
+      : (site ? wish.time : ''),
     resultDate: req.committedResultDate || req.requestedResultDate || '',
     assigneeId: req.assigneeId || '',
     reason: '',
@@ -281,7 +287,8 @@ export function commitDueJobRows(request, { site = null, todayIso, siteLoad = nu
   if (commitDueMode(request) !== 'site') return [];
   const req = request || {};
   const step = surveyQueueStep(req);
-  const wantTime = toHHMM(req.requestedDueTime);
+  const wish = surveyWishedVisit(req);
+  const wantTime = toHHMM(wish.time);
   return [
     {
       key: 'kind', label: 'งาน', value: VISIT_KIND_LABELS[SURVEY_VISIT_KIND], kind: SURVEY_VISIT_KIND,
@@ -292,9 +299,10 @@ export function commitDueJobRows(request, { site = null, todayIso, siteLoad = nu
     { key: 'requester', label: 'ผู้ขอ', value: req.requestedByName || NA, sub: requestAgeText(req, todayIso) },
     {
       key: 'wants', label: 'ต้องการ',
-      value: req.requestedDueDate
-        ? `เข้า ${dayText(req.requestedDueDate)}${wantTime ? ` · ช่วง ${wantTime}` : ''}`
-        : 'ผู้ขอไม่ระบุวันที่ต้องการ',
+      /* ยื่นเป็นจากแบบ = ฝ่ายขายไม่เคยให้วันเข้า (ไม่ใช่ "ไม่ระบุ") ⇒ บอกที่มาและชี้ไปเธรด (งวด 4) */
+      value: wish.known
+        ? `เข้า ${dayText(wish.date)}${wantTime ? ` · ช่วง ${wantTime}` : ''}`
+        : (surveyFiledAsDrawing(req) ? SURVEY_NO_VISIT_WISH_TEXT : 'ผู้ขอไม่ระบุวันที่ต้องการ'),
       sub: req.requestedResultDate ? `ผล ${dayText(req.requestedResultDate)}` : '',
     },
     {
@@ -317,11 +325,13 @@ export function commitDueWishes(request, form) {
   if (commitDueMode(request) !== 'site') return { visit: null, result: null };
   const req = request || {};
   const f = form || {};
-  const wantDate = req.requestedDueDate || '';
-  const wantTime = toHHMM(req.requestedDueTime);
+  /* ⭐ งวด 4: ไม่มีชิป "ใช้ตามผู้ขอ" ของวันที่ฝ่ายขายไม่เคยให้ (ใบที่ยื่นเป็นจากแบบ) — ชิปวันส่งผลยังอยู่ตามเดิม */
+  const wish = surveyWishedVisit(req);
+  const wantDate = wish.date;
+  const wantTime = toHHMM(wish.time);
   const wantResult = req.requestedResultDate || '';
   return {
-    visit: wantDate ? {
+    visit: wish.known ? {
       key: 'visit',
       lead: 'ผู้ขอต้องการ',
       value: [dayText(wantDate), wantTime].filter(Boolean).join(' · '),

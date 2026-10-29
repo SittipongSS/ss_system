@@ -173,3 +173,10 @@
     width: 100%;
   }
 }
+
+/* ใบเสนอราคาค่าสรรพสามิต — ป้ายข้างหัวรายการ (แผนรื้อสรรพสามิต PR3) */
+.exciseNote {
+  margin-left: auto;
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}

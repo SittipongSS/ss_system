@@ -15,11 +15,11 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import { Eye, FileText } from "lucide-react";
-import thaiText from "@/components/ThaiText";
 import Segmented from "@/components/ui/Segmented";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { DocumentActionGroup } from "@/components/ui/DocumentControlPanel";
+import { keepUnits } from "./SurveyCardText";
 import JumpButton from "./SurveyJumpButton";
 import styles from "./SurveyControlCard.module.css";
 
@@ -31,6 +31,8 @@ import styles from "./SurveyControlCard.module.css";
  * @param documentRef        ref ของส่วนนี้ — หน้าย้ายโฟกัสมาที่นี่หลังออกเอกสารสำเร็จ (ปุ่มที่เพิ่งกดหายไปพร้อมสถานะ "ยังไม่ออก")
  *                           ⚠️ การ์ดกับบล็อกเดี่ยวไม่มีวันวาดพร้อมกัน (การ์ด = คนส่งผลได้ · บล็อก = คนที่ส่งไม่ได้) ⇒ ref มีเจ้าของเดียว
  * @param standalone         วาดนอกการ์ด (ผู้วางคิว) — กรอบของตัวเอง แทนเส้นคั่นของส่วนในการ์ด
+ * @param unitNames          ชื่อพื้นที่ที่ห้ามขาดกลางบรรทัด (`surveyCardUnitNames` ของ view การ์ด) — ร้อยแก้วของส่วนนี้วาดผ่าน `keepUnits`
+ *                           ตัวเดียวกับการ์ด (S2b แก้หลังตรวจจอ head-r3-12) · ไม่ส่ง = ห่อเฉพาะป้ายใน “…” · วงเล็บสั้น · คำคงที่
  */
 export default function SurveyDocumentSection({
   view,
@@ -39,7 +41,11 @@ export default function SurveyDocumentSection({
   onRecheckDocument,
   documentRef = null,
   standalone = false,
+  unitNames = [],
 }) {
+  /* ⚠️ ชื่อ `thaiText` ตามเดิมโดยตั้งใจ — ยามของส่วนนี้ (surveyDocumentSheet ฯลฯ) ตรึงว่าร้อยแก้วผ่าน `thaiText(...)` · ตัวจริงคือ
+     `keepUnits` ของการ์ด (ไม่มีชิ้น = ผลของ `thaiText` กลางเป๊ะ) */
+  const thaiText = (text) => keepUnits(text, unitNames);
   /* ฉบับที่กำลังดู (ตั้งต้นฉบับลูกค้า) + รายการ Rev ก่อนหน้าที่กางอยู่ · ของจอล้วน ไม่เก็บลงเบราว์เซอร์ */
   const [docVersion, setDocVersion] = useState("customer");
   const [historyOpen, setHistoryOpen] = useState(false);

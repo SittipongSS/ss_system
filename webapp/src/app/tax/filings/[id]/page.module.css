@@ -1,0 +1,43 @@
+/* รายการที่ภาษี ฿0 ทั้งที่ไม่ได้รับยกเว้น — ตอนสร้างใบ สินค้ายังไม่มีราคาขายปลีก (untaxedFilingItems)
+   ⚠️ ป้ายต่อแถวในตารางรายการสินค้า · คู่กับ StatusNotice หัวตารางที่บอกจำนวนรวม */
+.untaxed {
+  font-size: var(--fs-4);
+  color: var(--amber);
+}
+
+/* แผงสรุป SO บนการ์ดเอกสารต้นทาง (PR5) — RA ไม่เข้าหน้าขาย ⇒ ต้นทาง/เงิน/ทะเบียนวางเป็นคู่ หัวข้อ–ค่า */
+.sourceList {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-size: var(--fs-5);
+}
+
+.sourceList dt {
+  color: var(--text-3);
+}
+
+.sourceList dd {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sourceMuted {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.sourceError {
+  color: var(--red);
+  font-size: var(--fs-5);
+}
+
+.gateOk {
+  color: var(--green);
+}
+
+.gateWarn {
+  color: var(--amber);
+}

@@ -13,6 +13,8 @@ import { accessConflict } from './sites';
 import { dayLoad, overlaps, sortByTime } from './rounds';
 import { businessDate } from '@/lib/businessDate';
 import { isOpenVisit } from './visitStatus';
+/* ไฟล์เบา (ไม่ใช่ scheduleQueue.js) — หน้าภาพรวมต้องไม่ลากตัวตัดสินด่านเข้า bundle */
+import { isVisitToday } from './scheduleQueueLink';
 
 /* 🐞 เดิมประกาศ `OPEN_STATUSES = ['scheduled']` ที่นี่เอง = นิยาม "งานที่ยังรอลงมือ"
    ชุดที่สองของโมดูล (อีกชุดคือ isLive ใน rounds.js) ⇒ พอเพิ่ม in_progress เข้ามา
@@ -31,6 +33,9 @@ const shiftDays = (iso, days) => {
 //
 // ⚠️ นับเฉพาะนัดที่ยัง "เปิด" อยู่ — ที่ปิด/ยกเลิก/เลื่อนแล้วไม่ใช่งานค้าง ·
 // ถ้านับรวม ตัวเลข "ค้าง" จะโตขึ้นตลอดกาลจนไม่มีความหมาย
+// ⚠️ `week` = หน้าต่าง 7 วันแบบเลื่อน (วันนี้ … วันนี้ + 6) **ไม่ใช่สัปดาห์ อา.–ส.** — การ์ดจึงชื่อ "นัด 7 วันข้างหน้า"
+//    ตรงกับชิป "7 วัน" ของรายการงานที่การ์ดเปิด (มติเจ้าของ 26/10/2026 · ตรวจตัวเลข L21 — ชื่อเดิม "นัดสัปดาห์นี้"
+//    ขัดมติ 26/09 สัปดาห์เริ่มวันอาทิตย์: วันพฤหัสนับไปถึงพุธหน้า)
 export function serviceCounts(visits = [], todayIso = businessDate()) {
   const weekEnd = shiftDays(todayIso, 6);
   let overdue = 0;
@@ -42,10 +47,12 @@ export function serviceCounts(visits = [], todayIso = businessDate()) {
     if (!isOpen(visit)) continue;
     const date = String(visit.scheduledDate || '');
     if (date && date < todayIso) overdue += 1;
-    else if (date === todayIso) today += 1;
+    /* ⭐ "นัดวันนี้" ใช้ตัวตัดสินเดียวกับช่วง "เฉพาะวันนี้" ของรายการงานที่การ์ดเปิด (H15 · มติเจ้าของ 19/10)
+       ⇒ เลขบนการ์ด = จำนวนแถวที่เปิดเจอ · แก้นิยามที่ `isVisitToday` ที่เดียว */
+    else if (isVisitToday(visit, todayIso)) today += 1;
     if (date >= todayIso && date <= weekEnd) {
       week += 1;
-      // ไม่มีเจ้าหน้าที่ = ยังไม่มีใครรับผิดชอบ · นับเฉพาะในสัปดาห์นี้เพราะนัดไกล ๆ
+      // ไม่มีเจ้าหน้าที่ = ยังไม่มีใครรับผิดชอบ · นับเฉพาะใน 7 วันข้างหน้า (วันนี้ … วันนี้ + 6) เพราะนัดไกล ๆ
       // ยังไม่ต้องมอบหมายก็ปกติ (ตารางเจ้าหน้าที่ยังไม่นิ่ง)
       if (!visit.assigneeId) unassigned += 1;
     }
@@ -91,7 +98,7 @@ export function serviceAttention(visits = [], sitesById = new Map(), todayIso = 
     });
     if (conflict) reasons.push({ kind: conflict.kind, message: conflict.message });
 
-    // ยังไม่มอบหมาย: ฟ้องเฉพาะนัดที่ถึงคิวภายในสัปดาห์นี้ (รวมที่ค้างมาแล้ว)
+    // ยังไม่มอบหมาย: ฟ้องเฉพาะนัดที่ถึงคิวภายใน 7 วันข้างหน้า (วันนี้ + 6 · รวมที่ค้างมาแล้ว)
     if (!visit.assigneeId && date && date <= soonEnd) {
       reasons.push({ kind: 'unassigned', message: 'ยังไม่ได้มอบหมายเจ้าหน้าที่' });
     }
@@ -153,6 +160,19 @@ export function refillWatchView(sites = [], { all = false, limit = 8 } = {}) {
   return { rows: truncated ? list.slice(0, limit) : list, sites: list.length, machines, truncated };
 }
 
+/**
+ * แผง "ต้องจัดการก่อน" — ตั้งต้นย่อเหลือ `limit` แถว · `all` = แสดงครบ (ตรวจตัวเลข L8 · 26/10/2026)
+ *
+ * 🐞 เดิมตัดเหลือ 8 แล้วคำอธิบายชี้ "ที่เหลืออยู่ในตารางเข้าบริการ" — ชื่อเก่าของหน้าจัดคิว (F-1) ซึ่งไม่มีตัวกรองชุดนี้
+ *    (นัดค้าง · เวลาทับ · ชนช่วงเข้าไซต์ · ยังไม่มอบหมาย) ⇒ "แสดง 8 จาก N" แต่หา N ที่เหลือไม่เจอที่ไหน
+ * ⭐ ท่าเดียวกับแผงไซต์ที่น้ำหอมกำลังจะหมด (`refillWatchView` · H14) — ปุ่ม "ดูทั้งหมด" ขยายในแผงเดียวกัน
+ *    `total` = จำนวนแถวของ `serviceAttention` = แถวที่เห็นตอนขยาย
+ */
+export function attentionView(rows = [], { all = false, limit = 8 } = {}) {
+  const truncated = !all && rows.length > limit;
+  return { rows: truncated ? rows.slice(0, limit) : rows, total: rows.length, truncated };
+}
+
 // รวมจำนวนเครื่องที่ต้องเข้าเติม — ตัวเลขเดียวบนการ์ดหัวหน้าจอ
 export function refillTotals(sites = []) {
   let overdue = 0;
@@ -171,7 +191,8 @@ export function refillTotals(sites = []) {
 // ⚠️ นัดที่ยังไม่มอบหมายรวมเป็นแถว "ยังไม่มอบหมาย" แถวเดียว ไม่ใช่ซ่อนหาย —
 //    ของที่ไม่มีเจ้าของคือของที่ต้องเห็นที่สุด
 export function todayByTechnician(visits = [], todayIso = businessDate()) {
-  const rows = visits.filter((v) => isOpen(v) && String(v.scheduledDate || '') === todayIso);
+  // ตัวตัดสินเดียวกับการ์ด "นัดวันนี้" ⇒ ป้าย "n นัด" ของแผงนี้ = เลขบนการ์ดเสมอ
+  const rows = visits.filter((v) => isVisitToday(v, todayIso));
   return dayLoad(rows)
     .map((entry) => ({ ...entry, visits: sortByTime(entry.visits) }))
     .sort((a, b) => {

@@ -19,6 +19,7 @@ import { appendUpdate } from '@/lib/master/updates';
 import { notifyUsers } from '@/lib/notifications';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { dealAuditLabel } from '@/lib/salesPlanning';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import { previewForecastSource } from '@/lib/sales/forecastSource';
@@ -35,6 +36,8 @@ import {
 
 // สถานะที่ยังเดินอยู่ — ตัวเดียวกับ EDITABLE_QUOTATION_STATUSES (quotationWorkflow.js) ใช้เป็นเงื่อนไขของคำสั่ง update
 const LIVE_STATUSES = ['draft', 'sent', 'rejected'];
+/* ใบค่าสรรพสามิตที่รับแล้วยกเลิกได้ (isCancellableQuotation) — เงื่อนไขของการเขียนต้องยอมสถานะนั้นด้วย เฉพาะใบ excise */
+const liveStatusesOf = (quote) => (isExciseOrder(quote) ? [...LIVE_STATUSES, 'accepted'] : LIVE_STATUSES);
 
 const STALE_MESSAGE = 'ใบเสนอราคานี้ถูกเปลี่ยนจากอีกหน้าต่าง — โหลดหน้าใหม่แล้วลองอีกครั้ง';
 
@@ -195,7 +198,7 @@ export async function cancelQuotation(supabase, {
       updatedAt: now,
     })
     .eq('id', quote.id)
-    .in('status', LIVE_STATUSES)
+    .in('status', liveStatusesOf(quote))
     .eq('updatedAt', expectedUpdatedAt)
     .select('id, status, "approvalStatus", "updatedAt", metadata')
     .maybeSingle();

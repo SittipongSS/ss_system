@@ -116,6 +116,19 @@ const REVISION_RESETS = new Set([
      ของใบเดิม · ใบ Rev. เป็นร่าง (CHECK `sales_orders_service_setup_defer_shape` ห้ามร่าง/ตีกลับมีตรา ⇒ ก๊อปมา = INSERT ตายที่ CHECK)
      และผู้ยื่นต้องเลือกข้ามใหม่เองทุกครั้งที่ยื่น · ก๊อปมา = ใบ Rev. ถูกอนุมัติแบบไม่ส่งงานให้ TS ทั้งที่ไม่มีใครเลือก */
   'serviceSetupDeferredAt', 'serviceSetupDeferredById', 'serviceSetupDeferredByName',
+  /* แบบการนับ Actual (mig 0412) — ตั้งใจไม่ก๊อป: แบบเป็นของ *การอนุมัติแต่ละรอบ* · ใบ Rev. เป็นร่าง (CHECK
+     `sales_orders_actual_mode_valid` ห้ามร่างเป็น 'installment' ⇒ ก๊อปมา = INSERT ตายที่ CHECK) · ค่าตั้งต้นของตัวเลือก
+     ตอนอนุมัติใบ Rev. (= แบบของใบก่อนหน้า) จออ่านจาก revisedFromId ไม่ใช่จากคอลัมน์นี้
+     · cache สองช่อง (Σ งวดที่นับแล้ว / ยื่นแล้ว) คิดจากแถวงวดโดย trigger — แถวที่ย้ายมาใบ Rev. (0376) ปลุก trigger ให้คิดของใบ Rev. เอง */
+  'actualMode', 'actualCountedAmount', 'actualSubmittedAmount',
+  /* ใบค่าสรรพสามิต (mig 0414) — ตั้งใจไม่ก๊อป:
+     · "sourceSalesOrderId" มีได้เฉพาะใบ origin 'excise' (CHECK `sales_orders_deal_by_origin`) และใบ excise ออก Rev. ไม่ได้
+       (`sales_orders_origin_shape` สาย excise บังคับ revisionNo = 0) ⇒ ใบ Rev. ทุกใบเป็น pipeline ที่ไม่มี SO ต้นทาง
+     · "ไม่เรียกเก็บค่าสรรพสามิตในระบบ" เป็นการตัดสินของ *ใบรุ่นนั้น* (มติ D9 28/10) — Rev. อาจเปลี่ยนรายการ/จำนวน
+       ⇒ ใบ Rev. เข้าคิวให้ฝ่ายขายตัดสินใหม่ · ก๊อปมา = ภาษีของรุ่นใหม่ไม่ถูกเก็บโดยไม่มีใครตั้งใจ */
+  'sourceSalesOrderId',
+  'exciseNotBilledKind', 'exciseNotBilledReason', 'exciseNotBilledRef',
+  'exciseNotBilledAt', 'exciseNotBilledById', 'exciseNotBilledByName',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -213,6 +226,15 @@ const DRAFT_OWNED = new Set([
   /* ตรา "ยื่นโดยยังไม่ตั้งงานบริการ" (mig 0404) — เขียนได้ที่เดียวคือ RPC ยื่นแบบข้าม (submit_sales_order_deferring_service_setup)
      ตอนใบออกจากร่าง · ใบใหม่จากใบเสนอราคาเป็นร่าง ⇒ ว่างโดยนิยาม (CHECK `sales_orders_service_setup_defer_shape` ห้ามร่างมีตรา) */
   'serviceSetupDeferredAt', 'serviceSetupDeferredById', 'serviceSetupDeferredByName',
+  /* แบบการนับ Actual (mig 0412) — ตั้งได้ทางเดียวคือตัวห่อการอนุมัติ (approve_sales_order_with_actual_mode) ⇒ ใบร่างเป็น 'order'
+     จาก DEFAULT เสมอ (CHECK ห้ามร่างเป็นรายงวด) · cache สองช่องเริ่ม 0 แล้ว trigger ของงวดดูแล */
+  'actualMode', 'actualCountedAmount', 'actualSubmittedAmount',
+  /* ใบค่าสรรพสามิต (mig 0414) — ใบจากใบเสนอราคาขายเป็นสาย pipeline เสมอ ⇒ ไม่มี SO ต้นทาง (CHECK `sales_orders_deal_by_origin`)
+     · ใบค่าสรรพสามิตเกิดจาก RPC แยก (create_excise_sales_order_draft · 0416) ไม่ใช่เส้นนี้
+     · "ไม่เรียกเก็บในระบบ" ตัดสินได้หลังใบอนุมัติแล้วเท่านั้น ⇒ ใบร่างว่างโดยนิยาม */
+  'sourceSalesOrderId',
+  'exciseNotBilledKind', 'exciseNotBilledReason', 'exciseNotBilledRef',
+  'exciseNotBilledAt', 'exciseNotBilledById', 'exciseNotBilledByName',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง

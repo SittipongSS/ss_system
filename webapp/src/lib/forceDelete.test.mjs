@@ -556,11 +556,16 @@ test('dealForcePreview: คำร้องที่ส่งแล้วขึ�
   assert.match(note, /1 ใบ \(RQ-IQ-26090026\)/);
 });
 
-test('ลบคำร้อง = ถอดลิงก์ billingRequestId บนงวดชำระด้วย (กำหนดวางบิล 26/09 — ปุ่มขอใบวางบิลผูกตั้งแต่ร่าง)', async () => {
+test('ลบคำร้อง = ถอดลิงก์บนงวดชำระด้วย (กำหนดวางบิล 26/09 · หลายคำร้องต่องวดที่ mig 0413)', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('./forceDelete.js', import.meta.url), 'utf8');
   const body = src.slice(src.indexOf('export async function cleanupRequestOrphans'), src.indexOf('export async function formulaForcePreview'));
-  assert.match(body, /\.from\('sales_order_installments'\)/);
-  assert.match(body, /billingRequestId: null/);
-  assert.match(body, /\.eq\('billingRequestId', requestId\)/);
+  // ⭐ ตัวชี้ของงวดไม่ล้างตรง ๆ แล้ว — คำร้องอื่นของงวดขึ้นเป็นตัวชี้แทน (ตัวเขียนตัวชี้ที่เดียว) · ถอดพลาด = หยุดการลบ
+  assert.match(body, /const \{ error: linkError \} = await detachRequestFromInstallments\(supabase, requestId\);/);
+  assert.match(body, /if \(linkError\) throw new Error\(/);
+  const store = readFileSync(new URL('./sales/installmentRequestsStore.js', import.meta.url), 'utf8');
+  const detach = store.slice(store.indexOf('export async function detachRequestFromInstallments'));
+  assert.match(detach, /update\(\{ installmentId: null, installmentSeq: null \}\)/);
+  assert.match(detach, /\.from\(INSTALLMENTS\)\.select\('id'\)\.eq\('billingRequestId', id\)/);
+  assert.match(detach, /syncBillingPointers\(supabase, ids, \{ drop: \[id\] \}\)/);
 });

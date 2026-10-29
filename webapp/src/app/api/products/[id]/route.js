@@ -25,6 +25,7 @@ import { clearedBrandFields } from '@/lib/master/brands';
 import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { isGiftSetCategory, sameGiftSetFormulas } from '@/lib/master/giftSetFormulas';
+import { EXCISE_CHARGE_MANUAL_MESSAGE, isExciseChargeProduct } from '@/lib/excise/exciseCharge';
 import {
   loadProductFormulaRows, loadProductFormulas, planGiftSetFormulas, replaceProductFormulas,
 } from '@/lib/master/giftSetFormulasStore';
@@ -288,6 +289,19 @@ export async function PATCH(request, { params }) {
   // Also backfills legacy rows saved before categoryCode existed (migration 0006).
   if (body.categoryCode === undefined && (body.fgCode !== undefined || !updated.categoryCode)) {
     updated.categoryCode = categoryOf(updated.fgCode) || updated.categoryCode || null;
+  }
+
+  /* ⛔ สินค้า "ค่าภาษีสรรพสามิต" (04-003) ระบบสร้างให้ลูกค้าละตัวตอนออกใบค่าสรรพสามิต (แผนรื้อสรรพสามิต หมวด 3.3) —
+     ย้ายสินค้าอื่นเข้าหมวดนี้ · ย้ายตัวนี้ออก · เปลี่ยนรหัส/เจ้าของ = บรรทัดของใบค่าภาษีชี้ผิดตัว ⇒ ปฏิเสธ
+     ⭐ แก้ช่องอื่นของตัวนี้ (ชื่อ · พักใช้) ยังได้ตามปกติ */
+  const chargeBefore = isExciseChargeProduct(product);
+  const chargeAfter = isExciseChargeProduct({ categoryCode: updated.categoryCode, fgCode: updated.fgCode });
+  if ((chargeBefore || chargeAfter) && (
+    chargeBefore !== chargeAfter
+    || updated.fgCode !== product.fgCode
+    || updated.customerId !== product.customerId
+  )) {
+    return Response.json({ error: EXCISE_CHARGE_MANUAL_MESSAGE }, { status: 400 });
   }
 
   // Historic products may retain a category that was later deactivated. Only a

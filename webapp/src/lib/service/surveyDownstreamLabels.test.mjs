@@ -4,7 +4,8 @@
 //   ทุกจออ่านคีย์ที่ view-model / ทะเบียนเตรียมไว้ให้แล้ว:
 //     การ์ดคำร้องบนหน้าจัดคิว      `row.methodChip`                       (scheduleQueueView · surveyRequestRow)
 //     ไทล์พื้นที่เดิมบนฟอร์มเปิดใบ   `tile.tag` · สรุปสถานที่ `sum.drawing`    (zonePickState · sitePickSummary)
-//     แท็บพื้นที่บริการของลูกค้า    `zone.confirmTag` · `registry.awaitingConfirm` · `zone.onsiteSurveyCount` (zoneRegistry)
+//     แท็บพื้นที่บริการของลูกค้า    `zone.confirmTag` · `zone.confirm` + `zone.termState` (นับรอยืนยันที่ยังไม่ขาย · sales-q6) ·
+//                                 `zone.onsiteSurveyCount` (zoneRegistry)
 //     ตารางงานบริการของใบสั่งขาย   `zoneAssessedSourceNote(zone)`           (อ่าน `confirmTag` ของแถวทะเบียน)
 //     หน้าต่างเพิ่มหลายโซน          `zoneAssessedSourceNote(zone)` · `plan.awaitingConfirm` (zonesBulkPlan · อ่าน `confirm`)
 // 🔴 **แถวที่ไม่มีคีย์ = จอเดิมทุกตัวอักษร** — ผลลงหน้างาน · ยังไม่ประเมิน · แถวทะเบียนรุ่นก่อนงวด S2a ·
@@ -200,8 +201,14 @@ test('E-4 ไทล์พื้นที่เดิม: ป้ายใต้�
   assert.equal(tiles.get('ZN-MIX').tag, 'ประเมินจากแบบ · รอยืนยันหน้างาน');
   // เหตุของไทล์ (ฟอร์มไม่แต่งคำเอง — พิมพ์ tile.reason)
   assert.equal(tiles.get('ZN-ON').reason, 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่');
-  assert.equal(tiles.get('ZN-DR').reason, 'ประเมินจากแบบ — เสนอราคาได้เลย');
-  assert.equal(tiles.get('ZN-AW').reason, 'ประเมินจากแบบ · รอยืนยันหน้างาน — เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง');
+  /* มติเจ้าของ sales-q4 (S2b แก้หลังตรวจจอ): เหตุไม่ขึ้นต้นด้วยคำของป้ายซ้ำ — ป้ายอยู่เหนือบรรทัดเหตุบนไทล์เดียวกันเสมอ */
+  assert.equal(tiles.get('ZN-DR').reason, 'เสนอราคาได้เลย');
+  assert.equal(tiles.get('ZN-AW').reason, 'เสนอราคาได้ ตัวเลขอาจเปลี่ยนเมื่อวัดจริง');
+  for (const id of ['ZN-DR', 'ZN-AW', 'ZN-MIX']) {
+    const tile = tiles.get(id);
+    assert.ok(tile.tag, `${id}: ไทล์จากแบบมีป้ายเสมอ (เหตุที่ตัดคำซ้ำได้)`);
+    assert.doesNotMatch(tile.reason, new RegExp(SURVEY_METHOD_LABEL.drawing), `${id}: เหตุไม่พูดคำของป้ายซ้ำ`);
+  }
   // แถวรุ่นก่อน S2a / ทะเบียนลงหน้างานล้วน = ไม่มีป้าย เหตุเดิม
   assert.equal(zonePickState(LEGACY_ZONE).tag, null);
   assert.equal(zonePickState(LEGACY_ZONE).reason, 'วัดแล้วยังไม่ขาย — เสนอราคาได้เลย ไม่ต้องไปวัดใหม่');
@@ -211,9 +218,11 @@ test('E-4 ไทล์พื้นที่เดิม: ป้ายใต้�
   assert.match(form, /import SurveyMethodChip from "@\/components\/service\/SurveyMethodChip";/);
   const tile = form.slice(form.indexOf('{pickTiles.map((tile) => ('), form.indexOf('</button>', form.indexOf('{pickTiles.map((tile) => (')));
   assert.match(tile, /<b>\{tile\.name\}<\/b>\s*<SurveyMethodChip label=\{tile\.tag\} className=\{styles\.zoneTileMethod\} \/>/, 'ป้ายอยู่ใต้ชื่อพื้นที่');
-  assert.match(tile, /<small className=\{styles\.tileWhy\}>\{tile\.reason\}<\/small>/);
+  assert.match(tile, /<small className=\{styles\.tileWhy\}>\{keepPhrases\(tile\.reason, \["รอยืนยันหน้างาน"\]\)\}<\/small>/);
   assert.equal((tile.match(/<button\b/g) || []).length, 1, 'ป้ายอยู่ในปุ่มไทล์ ไม่ใช่ปุ่มซ้อนปุ่ม');
-  assert.equal((form.match(/<SurveyMethodChip\b/g) || []).length, 1);
+  // ตัวที่สอง: รายการพื้นที่อ่านอย่างเดียวของฟอร์มแก้ (ใบที่ส่งแล้ว · UAT S4 T11b) — คำมาจาก `row.methodTag` ของหน้าคำร้อง
+  assert.equal((form.match(/<SurveyMethodChip\b/g) || []).length, 2);
+  assert.match(form, /<b>\{zoneName\(row\)\}<\/b>\s*<SurveyMethodChip label=\{row\.methodTag\} className=\{styles\.zoneTileMethod\} \/>/);
 
   const css = read('components/requests/requestForm.module.css');
   assert.match(css, /\.zoneTileMethod \{ align-self: flex-start; margin-block: var\(--space-0-5\); \}/, 'ไทล์เป็น flex แนวตั้ง — ไม่ตรึงชิดซ้ายป้ายจะยืดเต็มไทล์');
@@ -254,13 +263,16 @@ test('E-5 แท็บ: ป้ายในช่องพื้นที่ · �
   assert.match(panel, /if \(!zone\.confirmTag\) return zone\.surveyCount > 1 \? `ประเมินมาแล้ว \$\{zone\.surveyCount\} รอบ` : "ประเมินรอบแรก";/);
   assert.match(panel, /const onsite = Number\(zone\.onsiteSurveyCount\) \|\| 0;\s*return onsite > 1 \? `ประเมินมาแล้ว \$\{onsite\} รอบ` : null;/);
   assert.match(panel, /const rounds = roundsText\(zone\);/);
-  // ④ คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย"
-  assert.match(panel, /note=\{unsoldNote\(registry, unsold\)\}/);
+  // ④ คำใต้ตัวเลข "ประเมินแล้วยังไม่ขาย" — ประโยคสั้นบรรทัดเดียว (มติเจ้าของ sales-q7) · นับเฉพาะที่ยังไม่ขาย (sales-q6 · surveyFixSales.test.mjs)
+  assert.match(panel, /note=\{keepPhrases\(unsoldNote\(unsoldSet\), \["รอยืนยันหน้างาน"\]\)\}/);
   assert.match(panel, /if \(!\(unsold > 0\)\) return undefined;/);
-  assert.match(panel, /const awaiting = Number\(registry\.awaitingConfirm\) \|\| 0;/);
-  assert.match(panel, /\? `มีตัวเลขครบแล้ว เสนอราคาได้ · \$\{fmtNumber\(awaiting\)\} พื้นที่\$\{SURVEY_METHOD_LABEL\.drawing\} รอยืนยันหน้างาน`\s*: "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";/);
-  assert.equal(`มีตัวเลขครบแล้ว เสนอราคาได้ · ${2} พื้นที่${SURVEY_METHOD_LABEL.drawing} รอยืนยันหน้างาน`,
-    'มีตัวเลขครบแล้ว เสนอราคาได้ · 2 พื้นที่ประเมินจากแบบ รอยืนยันหน้างาน');
+  assert.match(panel, /function unsoldNote\(\{ unsold, awaiting \}\) \{/);
+  // ทางสำรองของมติ sales-q7 (UAT sales 27/10): ประโยคที่มี "จากแบบ" ยังขึ้นสองบรรทัดที่ 1440 ⇒ "เสนอราคาได้ · {k} พื้นที่รอยืนยันหน้างาน"
+  assert.match(panel, /\? `เสนอราคาได้ · \$\{fmtNumber\(awaiting\)\} พื้นที่รอยืนยันหน้างาน`\s*: "มีตัวเลขครบแล้ว เสนอราคาได้โดยไม่ต้องกลับไปวัดใหม่";/);
+  assert.doesNotMatch(panel, /พื้นที่\$\{SURVEY_METHOD_CHIP\.drawing\} รอยืนยันหน้างาน/, 'ประโยคหลักของมติ (ยังสองบรรทัดที่ 1440) ไม่เหลือ');
+  assert.doesNotMatch(panel, /มีตัวเลขครบแล้ว เสนอราคาได้ ·/, 'ประโยคสองบรรทัดเดิมไม่เหลือ');
+  // ตัดบรรทัดแทนจุดไข่ปลา (.noteWrap) — เงื่อนไขชุดเดียวกับที่เลือกประโยคที่มีจำนวน
+  assert.match(panel, /className=\{unsold > 0 && unsoldSet\.awaiting > 0 \? styles\.noteWrap : undefined\}/);
   // ตัวเลข "พื้นที่ที่ประเมินแล้ว" ไม่เปลี่ยน
   assert.match(panel, /label="พื้นที่ที่ประเมินแล้ว" value=\{registry\.measuredCount\}/);
   // แท็บยังอ่านอย่างเดียว — ไม่มีปุ่ม/ช่องกรอกใหม่
@@ -358,7 +370,8 @@ test('E-7 หน้าต่าง: บรรทัดเตือนเป็�
   assert.match(foot, /role=\{blocked \? "alert" : undefined\}/);
   // ตัวคิด: นับจากคีย์ `confirm` ของแถวทะเบียน และไม่ผูกกับ error
   const plan = code(PLAN);
-  assert.match(plan, /: rows\.filter\(\(row\) => row\.packsPerRound !== null && zoneOf\(row\.zoneId\)\?\.confirm === 'awaiting'\)\.length;/);
+  // งวด S5 (F17): รอยืนยัน + กำลังยืนยัน — ถามผ่าน `surveyConfirmPending` ของโมดูลใบ ไม่เทียบค่าเอง
+  assert.match(plan, /: rows\.filter\(\(row\) => row\.packsPerRound !== null && surveyConfirmPending\(zoneOf\(row\.zoneId\)\?\.confirm\)\)\.length;/);
   assert.match(plan, /export const zoneAssessedSourceNote = \(zone\) => \(zone\?\.confirmTag \? ` \(\$\{SURVEY_METHOD_CHIP\.drawing\}\)` : ''\);/);
   assert.match(plan, /return count > 0 \? `\$\{count\} โซนใช้ตัวเลขที่\$\{SURVEY_METHOD_LABEL\.drawing\} ยังไม่ยืนยันหน้างาน` : null;/);
 
@@ -388,7 +401,9 @@ test('E-8 ห้าจอไม่ถามวิธีประเมินเ�
   assert.match(code(FORM), /tile\.tag/);
   assert.match(code(FORM), /sum\.drawing/);
   assert.match(code(PANEL), /zone\.confirmTag/);
-  assert.match(code(PANEL), /registry\.awaitingConfirm/);
+  // หมายเหตุใต้ "ประเมินแล้วยังไม่ขาย" นับจากคีย์ `confirm` ในรายการที่ยังไม่ขาย (`unsoldCounts` · sales-q6)
+  // งวด S5 (R7): + กำลังยืนยัน — เทียบสองค่าในบรรทัดเดียว (ฟังก์ชันล้วนที่เทสต์หยิบไปรันเอง ดึงชื่ออื่นไม่ได้)
+  assert.match(code(PANEL), /\(zone\.termState \|\| "none"\) === "none"\);\s*return \{ unsold: zones\.length, awaiting: zones\.filter\(\(zone\) => zone\.confirm === "awaiting" \|\| zone\.confirm === "confirming"\)\.length \};/);
   assert.match(code(PANEL), /zone\.onsiteSurveyCount/);
   assert.match(code(GRID), /zoneAssessedSourceNote\(zone\)/);
   assert.match(code(BULK), /zoneAssessedSourceNote\(zone\)/);
@@ -397,9 +412,10 @@ test('E-8 ห้าจอไม่ถามวิธีประเมินเ�
 
 test('E-8 ทุกจุดที่วาด SurveyMethodChip: ส่ง label จาก view-model · ไม่มี prop method / variant (ค่าตั้งต้น = หน้าตาของ "จากแบบ")', () => {
   const tags = SCREENS.flatMap((rel) => [...code(rel).matchAll(/<SurveyMethodChip\b[^>]*\/>/g)].map((m) => ({ rel, tag: m[0] })));
-  assert.deepEqual(tags.map((t) => t.rel), [CARD, FORM, PANEL], 'สามจอวาดป้าย · ตารางงานบริการกับหน้าต่างเพิ่มหลายโซนต่อคำท้ายตัวเลข');
+  // ฟอร์มวาดสองที่: ไทล์ของตัวเลือก (`tile.tag`) · รายการอ่านอย่างเดียวของฟอร์มแก้ใบที่ส่งแล้ว (`row.methodTag` · UAT S4 T11b)
+  assert.deepEqual(tags.map((t) => t.rel), [CARD, FORM, FORM, PANEL], 'สามจอวาดป้าย · ตารางงานบริการกับหน้าต่างเพิ่มหลายโซนต่อคำท้ายตัวเลข');
   for (const { rel, tag } of tags) {
-    assert.match(tag, /\blabel=\{(?:methodLabel|tile\.tag|zone\.confirmTag)\}/, `${rel}: ${tag}`);
+    assert.match(tag, /\blabel=\{(?:methodLabel|tile\.tag|row\.methodTag|zone\.confirmTag)\}/, `${rel}: ${tag}`);
     assert.doesNotMatch(tag, /\bmethod\s*=/, `${rel}: prop ชื่อ method ชนยามเขียนของงวด S2a`);
     assert.doesNotMatch(tag, /\bvariant\s*=/, `${rel}: จอนอกใบประเมินวาดได้หน้าตาเดียว`);
     assert.doesNotMatch(tag, /label=["']/, `${rel}: คำบนป้ายห้ามเป็นสตริงลอย`);

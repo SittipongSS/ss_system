@@ -34,6 +34,13 @@ export const NONE_VALUE = '__none__';
 
 export const ORDER_KIND_OPTIONS = [{ value: 'free', label: 'ไม่คิดเงิน' }];
 
+/** ตัวกรองรายการใบว่างทั้งชุด — ทุกกลุ่มที่ `filterOrders` รู้จัก (ว่าง = ไม่กรองกลุ่มนั้น)
+ *  ⭐ กดยอดใน "แยกยอด" = ตั้งชุดนี้ + ล้างคำค้นก่อนเจาะ (ตรวจตัวเลข M14 · 2026-10-20) — ไม่งั้นตัวกรอง/คำค้นที่ค้าง
+ *     ทำให้รายการเหลือน้อยกว่า "8 ใบ" ที่เพิ่งกด และบรรทัดเทียบยอด ✓/✗ หายเงียบ */
+export const EMPTY_ORDER_FILTERS = Object.freeze({
+  owners: [], teams: [], finance: [], months: [], kinds: [], lines: [], dealTypes: [],
+});
+
 /* ทิศทางตั้งต้นของแต่ละแบบเรียง — เปลี่ยนแบบเรียงต้องตั้งทิศให้ด้วย
    เงินคนอ่านคาดหวังมากไปน้อย · งวดคาดหวังใหม่ไปเก่า · ชื่อคาดหวัง ก→ฮ
    (กติกาเดียวกับทะเบียนการชำระ — คงทิศเดิมข้ามแบบแล้วกดครั้งแรกได้ลำดับที่ไม่มีใครอยากได้) */
@@ -143,6 +150,24 @@ export function drillCheck(expected, drilled = [], { historyMonths = [] } = {}) 
   return { ok: false, total, gap, reason: historyMonths.length ? 'history' : null };
 }
 
+/**
+ * ป้ายจำนวนของรายการใบ — นับ **แถว** เสมอ (จำนวน = แถวที่เห็นหลังกด · ตรวจ M10b) แต่เรียก "ใบ" เฉพาะเมื่อแถวหนึ่งคือใบหนึ่ง
+ * ⭐ ใบ "Actual รายงวด" (mig 0412) แตกแถวตาม (ใบ, เดือนที่นับ) — ใบบริการ 12 งวดในมุมทั้งปีเป็นได้ถึง 12 แถว
+ *   🐞 review รอบสอง 26/10: เดิมขึ้น "12 ใบ" ให้ใบเดียว ⇒ ผู้จัดการอ่านว่าคนนั้นปิดหลายใบ · มีแถวซ้ำใบ = "n แถว · m ใบ"
+ * ⚠️ ใบทั้งใบล้วน = คำเดิมทุกตัวอักษร ("n ใบ")
+ */
+export function orderRowsLabel(rows = []) {
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  const docs = new Set(list.map((o) => o.id ?? o.orderNumber)).size;
+  return docs === list.length ? `${list.length} ใบ` : `${list.length} แถว · ${docs} ใบ`;
+}
+
+/* หน่วยของตัวแบ่งหน้า — "แถว" เมื่อมีแถวรายงวด (ใบเดียวหลายแถว) · ไม่งั้น "ใบ" */
+export function orderRowsUnit(rows = []) {
+  const list = (Array.isArray(rows) ? rows : []).filter(Boolean);
+  return new Set(list.map((o) => o.id ?? o.orderNumber)).size === list.length ? 'ใบ' : 'แถว';
+}
+
 /** เรียงใบ — เทียบข้อความด้วย localeCompare ภาษาไทย ไม่ใช่ `<` ดิบ (ลำดับ ก-ฮ ผิด) */
 export function sortOrders(orders = [], key = ORDER_SORT_DEFAULT, dir = ORDER_SORT_DIR[key]) {
   const sign = dir === 'asc' ? 1 : -1;
@@ -150,7 +175,10 @@ export function sortOrders(orders = [], key = ORDER_SORT_DEFAULT, dir = ORDER_SO
     if (key === 'amount') return Number(order?.amount || 0);
     if (key === 'customer') return String(order?.customerName || '');
     if (key === 'orderNumber') return String(order?.orderNumber || '');
-    if (key === 'approvedAt') return String(order?.approvedAt || '');
+    /* ⭐ แถวรายงวด (mig 0412 · reportActualRows) พก `actualAt` = เวลาที่งวดนับ — ช่องวันที่ของแถวโชว์วันนั้น (reportOrderDay)
+       ⇒ เรียงด้วยเวลาเดียวกับที่ตาเห็น (Excel เรียงแบบนี้อยู่แล้ว) · ใบทั้งใบไม่มี actualAt = เรียงเหมือนเดิมทุกแถว
+       🐞 review รอบสอง 26/10: เดิมเรียงด้วย approvedAt ของใบ ⇒ งวดที่นับ 25/10 ของใบที่อนุมัติ ส.ค. ไปอยู่ใต้แถว 03/10 */
+    if (key === 'approvedAt') return String(order?.actualAt || order?.approvedAt || '');
     return String(order?.month || '');
   };
   return [...orders].sort((a, b) => {

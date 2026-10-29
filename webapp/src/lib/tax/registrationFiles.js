@@ -6,20 +6,12 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { listAttachments } from '@/lib/master/attachments';
 import { applyTeamScope } from '@/lib/tax/reportFilters';
+import { withinDateRange } from '@/lib/tax/period';
 import JSZip from 'jszip';
 import { apiFetch } from "@/lib/apiFetch";
 
 const sanitize = (s) =>
   String(s || '').replace(/[\\/:*?"<>|\n\r\t]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 90) || 'item';
-
-const inRange = (v, from, to) => {
-  if (!from && !to) return true;
-  const t = new Date(v).getTime();
-  if (isNaN(t)) return false;
-  if (from && t < new Date(from).getTime()) return false;
-  if (to && t > new Date(to).getTime() + 86399999) return false;
-  return true;
-};
 
 const uniqueName = (used, base) => {
   if (!used.has(base)) { used.add(base); return base; }
@@ -45,7 +37,8 @@ export async function buildRegistrationFilesZip(filter = {}) {
   const { data, error } = await q;
   if (error) throw error;
   const idSet = ids && ids.length ? new Set(ids) : null;
-  const regs = (data || []).filter((r) => inRange(r.createdAt, from, to) && (!idSet || idSet.has(r.id)));
+  // ช่วงวันตัดตามวันไทยด้วยตัวเดียวกับตาราง/Excel (ตรวจตัวเลข M7 20/10) — เดิมเที่ยงคืน UTC และทิ้งแถวไม่มีวันที่
+  const regs = (data || []).filter((r) => withinDateRange(r.createdAt, from, to) && (!idSet || idSet.has(r.id)));
   const typeSet = docTypes && docTypes.length ? new Set(docTypes) : null;
 
   const zip = new JSZip();

@@ -22,6 +22,7 @@ import {
   pendingApprovalCountOf,
   pendingApprovalMonthOf,
 } from '@/lib/sales/dashboardMetrics';
+import { hasInstRemaining } from '@/lib/sales/actualMonthRollup';
 
 /** ช่องตั้งต้นของทุกถัง — ไม่มีใบรออนุมัติก็ต้องมีช่องเป็น 0 (สัญญากับจอ: ห้ามขาดช่อง) */
 export const pendingApprovalFields = () => ({ pendingApproval: 0, pendingApprovalCount: 0 });
@@ -63,6 +64,8 @@ export const hasPendingApproval = (b) => Number(b?.pendingApproval) > 0 || Numbe
 /* แถว "ผี" ของ byOwner/byTeam: ไม่มีทั้งเป้า/won/คาดการณ์/จำนวนดีล — เกิดจาก target
    ค้างค่า 0 หรือถังที่ถูกสร้างโดยไม่มีข้อมูลจริง → ตัดทิ้งไม่ให้โผล่บนหน้า
    ⭐ ถังที่มีแต่ยอดรออนุมัติ **ไม่ใช่ผี** — คนที่เดือนนี้มีแค่ใบรออนุมัติ (ดีล Won เดือนก่อน)
-      ต้องยังมีแถว ไม่งั้นยอดรออนุมัติรายคนรวมไม่เท่ายอดบริษัท */
+      ต้องยังมีแถว ไม่งั้นยอดรออนุมัติรายคนรวมไม่เท่ายอดบริษัท
+   ⭐ ถังที่มีแต่กอง "รอนับรายงวด" (mig 0412) ก็ไม่ใช่ผี — เหตุผลเดียวกัน (งวดครบกำหนดเดือนหน้าของดีลที่ Won ไปแล้ว)
+      · ถังที่มีแต่ Actual ของงวด (ดีล Won เดือนก่อน งวดอนุมัติเดือนนี้) มี `won` > 0 อยู่แล้ว */
 export const isEmptyDashboardBucket = (b) => !b.target && !b.won && !b.weighted && !b.lost
-  && !b.openCount && !b.wonCount && !hasPendingApproval(b);
+  && !b.openCount && !b.wonCount && !hasPendingApproval(b) && !hasInstRemaining(b);

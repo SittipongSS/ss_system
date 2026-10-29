@@ -107,6 +107,8 @@ const PER_ID_GUARDED = new Map([
   ['app/api/tax/orders/from-sales-order/route.js', 'GET ตอบ "ไม่เข้าเกณฑ์" · POST ปฏิเสธ'],
   ['app/api/sales-planning/sales-orders/[id]/route.js',
     'loadOrder — ส่งอนุมัติ/อนุมัติใบย้อนหลังแยกกิ่ง (historicalOrderWorkflow · ไม่นับ Actual) · แก้ใบ/ย้อนอนุมัติ/ออก Rev./คืนร่าง/ย้อน Won/ลบ ตัดสินจาก before · งวดไม่ทับยอดตามแผน'],
+  ['lib/excise/exciseQuotation.js',
+    'SO ลูกค้าต้นทางของใบค่าสรรพสามิต (สร้างใบ · คิดใหม่) — exciseQuotationBlocker ปฏิเสธใบย้อนหลัง/ใบค่าภาษี · ไม่รวมยอด'],
   ['app/api/sales-planning/sales-orders/[id]/installments/route.js',
     'loadOrderForUser — งวดของใบย้อนหลังล็อกจนอนุมัติ (historicalInstallmentLock) · ไม่ทับยอดตามแผน · ไม่มีทางเพิ่มงวด/ทางกู้จากใบเสนอราคา'],
 ]);
@@ -114,7 +116,7 @@ const PER_ID_GUARDED = new Map([
    🐞 ของเดิมยกเว้นทั้งไฟล์ ⇒ เพิ่มยอด "ใบอนุมัติทั้งทะเบียน" ใหม่ในทะเบียนการชำระ/ทะเบียน SO แล้วเขียวต่อ
    (ใบย้อนหลัง approvedAt = เวลาคีย์ ⇒ ~220 ใบโผล่เป็นยอดเดือนนี้) · เลขตรึงไว้ ⇒ คำสั่งใหม่ต้องจัดชั้นใหม่เสมอ */
 const SEES_HISTORICAL = new Map([
-  ['app/api/nav/counts/route.js', { count: 7, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09 · ถังผูกโซนถอดแล้วใน 0392) — นับแถว ไม่รวมยอด · เลนตั้งงานบริการย้อนหลัง (เจ้าของดีล · ผู้จัดการตรวจ) ผ่าน pipelineRowsOnly — นับจำนวนใบ ไม่รวมยอด' }],
+  ['app/api/nav/counts/route.js', { count: 8, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09 · ถังผูกโซนถอดแล้วใน 0392) — นับแถว ไม่รวมยอด · เลนตั้งงานบริการย้อนหลัง (เจ้าของดีล · ผู้จัดการตรวจ) ผ่าน pipelineRowsOnly — นับจำนวนใบ ไม่รวมยอด · เลนนับ Actual รายงวด (mig 0412 · ใบ approved + actualMode installment ของเลนผู้อนุมัติ/เจ้าของดีล) ผ่าน pipelineRowsOnly — ใบย้อนหลังเป็นรายงวดไม่ได้ (CHECK ของ 0412) · นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังที่อนุมัติแล้วมาพร้อมโซนที่ผูกตอนอนุมัติ (ถังตั้งรอบ · มติ 22/09) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่ออกไปกับ response' }],
   ['lib/service/gateContext.js', { count: 1, reason: 'บริบทด่านเข้าไซต์ — ใบของรอบขาย (ใบย้อนหลังที่อนุมัติแล้วด้วยโดยตั้งใจ) · ยอดใช้ตัดสินใบ ฿0 ของข้อ② เท่านั้น (paymentNotRequired) ส่งออกเป็น 0/null ไม่รวมยอด (มติ 22/09)' }],
   ['app/api/finance/payments/route.js', { count: 1, reason: 'ทะเบียนการชำระ — งวดที่ยังต้องเก็บของใบย้อนหลังเป็นเงินจริง (คำตอบข้อ 2) · แถวพก origin' }],
@@ -135,6 +137,11 @@ const SCOPED_SAFE = new Map([
   ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ดีลของโครงการ — เหตุผลเดียวกัน' }],
   ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'projectId / ดีลของโครงการ — ใบย้อนหลังไม่มีโครงการ' }],
   ['app/api/sales-planning/quotations/[id]/route.js', { count: 1, reason: 'quotationId ใบเดียว — ใบย้อนหลังไม่มีใบเสนอราคา' }],
+  /* PR4: คิว "รอออกใบค่าสรรพสามิต" (exciseHandledOrderIds) หา SO ค่าสรรพสามิตของใบที่รับแล้วผ่าน exciseRowsOnly + quotationId —
+     ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด · count รวมคำสั่งโหลดใบเดียวของ PER_ID_GUARDED ในไฟล์เดียวกัน */
+  ['lib/excise/exciseQuotation.js', { count: 3, reason: 'SO ค่าสรรพสามิตของใบที่รับแล้ว (exciseRowsOnly + quotationId) — ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด' }],
+  ['lib/excise/exciseSalesOrder.js', { count: 1, reason: 'quotationId ของใบค่าสรรพสามิตใบเดียว — ได้แต่ SO ค่าสรรพสามิต (ใบย้อนหลังไม่มีใบเสนอราคา) · ไม่รวมยอด' }],
+  ['lib/excise/raFiling.js', { count: 4, reason: 'คิวรอยื่นกรมของ RA (PR5): SO ค่าสรรพสามิต (exciseRowsOnly) · SO ลูกค้าไม่เรียกเก็บ (pipelineRowsOnly) · SO ต้นทางของแถวคิว + แผงสรุปใบยื่น (ตาม id ที่ผูกใบยื่น) — ไม่รวมยอด · ใบย้อนหลังถูกปฏิเสธที่ loadFilingSource (origin ต้องเป็น pipeline)' }],
 ]);
 
 test('🪤 ทุกคำสั่งอ่านใบสั่งขายที่แตะยอด/สถานะ ถูกจัดชั้นแล้ว — ของใหม่ต้องกรอง pipeline หรือบอกเหตุผล', () => {
@@ -240,6 +247,10 @@ test('ตัวแยกคำสั่งเห็นตัวห่อบร�
 const DEAL_KPI_FROM_METRICS = new Set([
   'isWonDeal', 'wonAmountOf', 'wonMonthOf', 'isWonAwaitingSo', 'wonAwaitingSoAmountOf', 'wonAwaitingSoCountOf',
   'forecastAccuracyRollup',
+  /* ตัวอ่าน Actual รายเดือน / งวดรออนุมัติ / กอง "รอนับรายงวด" ของดีล (mig 0412 · docs/so-installment-actual.md) — อ่าน cache
+     ชุดเดียวกับ wonAmountOf ⇒ ผู้เรียกต้องตัดดีลภาชนะเหมือนกัน (ดีลภาชนะไม่มีคีย์พวกนี้วันนี้ แต่ wonValue ของมันมีได้ → fallback) */
+  'actualByMonthOf', 'actualInMonths', 'installmentPendingAmountOf', 'installmentPendingCountOf',
+  'installmentRemainingByMonthOf', 'installmentRemainingAmountOf', 'dealClosedValueOf',
 ]);
 function dealKpiImports(text) {
   const names = [];
@@ -259,6 +270,7 @@ const DEAL_KPI_ALLOWLIST = new Map([
   ['lib/sales/wonAwaitingSoRollup.js', 'ตัวรวมล้วน — isWonAwaitingSo ตัดดีลภาชนะเองอีกชั้น'],
   ['lib/sales/reportPendingApproval.js', 'ดีลมาจากใบรออนุมัติที่รายงานกรอง pipeline แล้ว — ใบย้อนหลังไม่มีสถานะรออนุมัติ'],
   ['lib/sales/projectRollup.js', 'ดีลของโครงการ — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL)'],
+  ['lib/pm/projectPendingApproval.js', 'ดีลของโครงการ (แถวดีล/KPI หน้าโครงการ) — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL) · กติกาเดียวกับ projectRollup'],
   ['app/sales-planning/leads/[id]/page.js', 'ดีลของลีดใบเดียว — ดีลภาชนะไม่มีลีด (CHECK "leadId" IS NULL)'],
   ['app/sales-planning/deals/[id]/page.js', 'หน้าดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts (ใบย้อนหลัง excluded) · คำใต้การ์ดจาก wonDealForecastHint (kind historical)'],
 ]);
@@ -318,17 +330,57 @@ test('ตัวอ่าน KPI ระดับดีลที่ระบุช
 });
 
 // ── 5. literal มีบ้านเดียว ────────────────────────────────────────────────────────────────
-test('🪤 literal "historical" และตัวกรอง .eq("origin") มีบ้านเดียวคือ lib/sales/historicalOrders.js', () => {
+test('🪤 literal "historical" · origin "excise" และตัวกรอง .eq("origin") มีบ้านเดียวคือ lib/sales/historicalOrders.js', () => {
   const offenders = [];
   for (const rel of FILES) {
     if (rel === 'lib/sales/historicalOrders.js') continue;
     const text = code(rel);
     if (/['"`]historical['"`]/.test(text)) offenders.push(`${rel} — literal 'historical'`);
     if (/\.(n?eq)\(\s*['"]origin['"]/.test(text)) offenders.push(`${rel} — .eq('origin', …)`);
+    // ใบค่าสรรพสามิต (mig 0414) — ตัวตัดสินคือ isExciseOrder / isActualOrder · ตัวกรองคือ exciseRowsOnly / nonExciseRowsOnly
+    if (/\borigin\s*[!=]==?\s*['"`]excise['"`]|['"`]excise['"`]\s*[!=]==?\s*[\w$.?]*origin\b|\borigin\s*:\s*['"`]excise['"`]/.test(text)) {
+      offenders.push(`${rel} — literal origin 'excise'`);
+    }
   }
   assert.deepEqual(offenders, [],
-    'ใช้ ORIGIN_HISTORICAL / isHistoricalOrder / isHistoricalDeal / pipelineRowsOnly / historicalRowsOnly แทน\n'
+    'ใช้ ORIGIN_HISTORICAL / isHistoricalOrder / isHistoricalDeal / pipelineRowsOnly / historicalRowsOnly · '
+    + 'ORIGIN_EXCISE / isExciseOrder / isActualOrder / exciseRowsOnly / nonExciseRowsOnly แทน\n'
     + offenders.join('\n'));
+});
+
+// ── 5b. ใบค่าสรรพสามิต (mig 0414) — ตัวตัดสินระดับแถวต้องเห็น origin ──────────────────────────────────
+/* 🔴 ใบค่าสรรพสามิตเป็น `approved` + มียอดเหมือนใบขาย แต่ไม่ใช่ยอดขาย (เงินรับแทน) · ตัวตัดสินระดับแถว (`isActualOrder` ·
+   `salesOrderAmountKind`) **ตัดออกเมื่อเห็น origin เท่านั้น** — แถวที่ไม่พก origin ถือเป็นใบ pipeline (กติกาแบบตัดออก
+   ที่กันรายงานยอดขายเป็น 0) ⇒ คำสั่งอ่านที่ไม่กรอง origin ใน query และไม่ select origin = ใบค่าภาษีไหลเข้ายอดเงียบ ๆ
+   ⭐ ทุกคำสั่งผู้ต้องสงสัย (ชุดเดียวกับยามข้อ 1) ที่ไม่ห่อ pipelineRowsOnly/historicalRowsOnly ต้อง select origin (หรือ `*`)
+      หรืออยู่ในรายการข้างล่างพร้อมเหตุผลว่าทำไมใบค่าภาษีเข้ามาไม่ได้/ไม่เป็นไร · count ตรึงไว้เหมือนยามข้อ 1 */
+const EXCISE_NO_ORIGIN = new Map([
+  ['app/api/nav/counts/route.js', { count: 2, reason: 'เลนบัญชี (financeStatus pending — ใบค่าภาษีไปบัญชีเหมือนใบปกติ · มติ 28/10 · นับจำนวนใบ) · ป้ายงานเข้าใหม่ของ TS (planQueue ตัดสินจากบรรทัด/โซน — ใบค่าภาษีไม่มีบรรทัดบริการ · นับแถว ไม่รวมยอด)' }],
+  ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ใบของดีลในโครงการ (`dealId`) — ใบค่าภาษีไม่มีดีล (CHECK sales_orders_deal_by_origin)' }],
+  ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'ใบของโครงการ/ดีลในโครงการ — ใบค่าภาษีไม่มีทั้งโครงการและดีล (CHECK sales_orders_origin_shape)' }],
+]);
+
+test('🪤 ใบค่าสรรพสามิต: คำสั่งอ่านใบสั่งขายที่ไม่กรอง origin ใน query ต้องพก origin ให้ตัวตัดสินระดับแถว', () => {
+  const offenders = [];
+  const tally = new Map();
+  for (const rel of FILES) {
+    const text = code(rel);
+    if (!SO_FROM.test(text)) continue;
+    for (const { line, body } of salesOrderStatements(text)) {
+      if (!isCandidate(body)) continue;
+      if (/\b(pipelineRowsOnly|historicalRowsOnly|exciseRowsOnly)\(/.test(body)) continue;
+      if (/\borigin\b/.test(body) || /\.select\(\s*['"`]\*/.test(body)) continue;
+      tally.set(rel, (tally.get(rel) || 0) + 1);
+      if (!EXCISE_NO_ORIGIN.has(rel)) offenders.push(`${rel}:${line}`);
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'select origin มาด้วย (หรือห่อ pipelineRowsOnly) แล้วตัดสินด้วย isActualOrder / salesOrderAmountKind — '
+    + 'หรือเพิ่มเข้า EXCISE_NO_ORIGIN พร้อมเหตุผลว่าทำไมใบค่าภาษีเข้ามาไม่ได้\n' + offenders.join('\n'));
+  const ghosts = [...EXCISE_NO_ORIGIN]
+    .filter(([rel, { count }]) => (tally.get(rel) || 0) !== count)
+    .map(([rel, { count }]) => `${rel}: คาด ${count} คำสั่ง เจอ ${tally.get(rel) || 0}`);
+  assert.deepEqual(ghosts, []);
 });
 
 // ── 6–8. ผลิต · ภาษี · หลักฐาน ─────────────────────────────────────────────────────────────
@@ -345,8 +397,12 @@ test('ยื่นภาษีจากใบสั่งขาย: GET แล�
   const post = slice(route, 'export const POST');
   assert.ok(get.includes('isHistoricalOrder(salesOrder)'));
   assert.ok(get.indexOf('isHistoricalOrder(salesOrder)') < get.indexOf('resolveContext('), 'GET ต้องตอบก่อนคำนวณสินค้า');
-  assert.ok(post.includes('isHistoricalOrder(salesOrder)'));
-  assert.ok(post.indexOf('isHistoricalOrder(salesOrder)') < post.indexOf('insertOrder('), 'POST ต้องปฏิเสธก่อนสร้างใบยื่น');
+  /* PR5: POST เป็นทางของ RA — ตัวโหลดกลางปฏิเสธทุกใบที่ไม่ใช่ pipeline (รวมใบย้อนหลัง) ก่อนคำนวณ · POST เรียกตัวนั้นก่อนสร้างใบ */
+  assert.ok(post.indexOf('loadFilingSource(') > 0 && post.indexOf('loadFilingSource(') < post.indexOf('insertOrder('), 'POST ต้องผ่านตัวโหลดกลางก่อนสร้างใบยื่น');
+  const loader = code('lib/excise/raFiling.js');
+  const source = slice(loader, 'export async function loadFilingSource', 'export async function findFilingFor');
+  assert.ok(source.indexOf('salesOrder.origin !== ORIGIN_PIPELINE') > 0, 'ตัวโหลดต้องปฏิเสธใบที่ไม่ใช่ pipeline (ใบย้อนหลัง)');
+  assert.ok(source.indexOf('salesOrder.origin !== ORIGIN_PIPELINE') < source.indexOf('resolveSalesOrderFiling('), 'ปฏิเสธก่อนคำนวณสินค้า');
 });
 
 /* ⚠️ แก้ยามโดยตั้งใจใน PR1 (mig 0376): payment-file ไม่ต่อ id เองแล้ว — ถามตัวตัดสินกลาง `isInstallmentEvidencePath`
@@ -457,8 +513,9 @@ test('เส้นคีย์/ส่ง/อนุมัติใบย้อน
 // ── 13. จอ ────────────────────────────────────────────────────────────────────────────────────
 test('หน้าใบสั่งขาย: ป้าย Actual เดินตามกองของยอด · ไม่เสนอย้อน Won/คืนร่าง · ไม่ลิงก์ใบเสนอราคาที่ไม่มี', () => {
   const page = code('app/sales-planning/sales-orders/[id]/page.js');
-  assert.match(page, /hint: amountKind === "actual" \? fmtMoney\(order\.actualAmount\)/);
-  assert.match(page, /value: amountKind === "actual" \? fmtMoney\(order\.actualAmount\)/);
+  /* ⭐ ใบ "Actual รายงวด" (mig 0412) แทรกกิ่งของตัวเอง (นับแล้ว x/y งวด) — กิ่งของใบทั้งใบยังเดินตามกองของยอดตัวอักษรเดิม */
+  assert.match(page, /hint: amountKind === "actual" \? \(instProgress \? [^\n]+ : fmtMoney\(order\.actualAmount\)\)/);
+  assert.match(page, /value: amountKind === "actual" && instActual\s*\?[\s\S]{0,1200}?: amountKind === "actual" \? fmtMoney\(order\.actualAmount\)/);
   assert.doesNotMatch(page, /(hint|value): approved \?/);
   assert.match(page, /const showReversal = [^;]*!isHistoricalOrder\(order\)/);
   assert.match(page, /\{ id: "restore",[^\n]*!isHistoricalOrder\(order\)/);

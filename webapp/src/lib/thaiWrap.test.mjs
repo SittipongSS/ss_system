@@ -4,7 +4,7 @@
 //   ตัดบรรทัด** ⇒ ยืนยันของจริงได้โดยไม่ต้องเปิดเบราว์เซอร์
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { THAI_KEEP_TOGETHER, THAI_LOANWORDS, splitThai, thaiWrapText } from './thaiWrap.js';
+import { THAI_KEEP_TOGETHER, THAI_LOANWORDS, phraseRuns, splitThai, thaiWrapText } from './thaiWrap.js';
 
 const segments = (s) => [...new Intl.Segmenter('th', { granularity: 'word' }).segment(s)]
   .map((x) => x.segment);
@@ -200,4 +200,30 @@ test('🔴 Input ต้องแปลง placeholder ด้วย thaiWrapText'
   const { readFileSync: read } = await import('node:fs');
   const src = read(new URL('../components/ui/Input.js', import.meta.url), 'utf8');
   assert.match(src, /thaiWrapText\(props\.placeholder\)/);
+});
+
+/* ⭐ UAT S4 รอบ 4 ข้อ 13 — วลีที่ผู้เรียกประกาศเอง (ทะเบียนหัวข้อ `summaryKeep`) ห่อ nowrap ทั้งวลี
+   ต่างจาก THAI_KEEP_TOGETHER: ICU ตัดถูกตามพจนานุกรม ("ลง|หน้างาน") แต่วลีเป็นชื่อของสิ่งเดียว ⇒ ของข้อความนั้น ไม่ใช่ทั้งระบบ */
+test('phraseRuns: แยกวลีที่ประกาศเป็นชิ้น keep · ตัวหนังสือรวมกลับได้ข้อความเดิมเป๊ะ (ไม่มี ZWSP/WORD JOINER)', () => {
+  const text = 'ให้ TS ประเมินพื้นที่ — ลงหน้างานหรือจากแบบ';
+  const runs = phraseRuns(text, ['ลงหน้างาน', 'จากแบบ']);
+  assert.deepEqual(runs, [
+    { text: 'ให้ TS ประเมินพื้นที่ — ', keep: false },
+    { text: 'ลงหน้างาน', keep: true },
+    { text: 'หรือ', keep: false },
+    { text: 'จากแบบ', keep: true },
+  ]);
+  assert.equal(runs.map((r) => r.text).join(''), text, 'Ctrl+F หาคำบนจอต้องยังเจอ');
+  assert.ok(runs.every((r) => !/[​⁠]/.test(r.text)));
+  // วลีซ้อนกัน: ตัวยาวชนะ · ไม่เจอ = ชิ้นเดียว keep: false · ไม่มีวลี = เหมือนกัน
+  assert.deepEqual(phraseRuns('ประเมินจากแบบ', ['จากแบบ', 'ประเมินจากแบบ']), [{ text: 'ประเมินจากแบบ', keep: true }]);
+  assert.deepEqual(phraseRuns('ไม่มีวลี', ['จากแบบ']), [{ text: 'ไม่มีวลี', keep: false }]);
+  assert.deepEqual(phraseRuns('ข้อความ', []), [{ text: 'ข้อความ', keep: false }]);
+  assert.deepEqual(phraseRuns('', ['ก']), []);
+  // ขอบนอกของวลีที่ประกาศตรงกับขอบคำของ ICU (ห่อแล้วไม่สร้างจุดตัดใหม่กลางคำ) — ข้อความจริงของการ์ด
+  const segs = [...new Intl.Segmenter('th', { granularity: 'word' }).segment(text)].map((x) => x.index);
+  for (const phrase of ['ลงหน้างาน', 'จากแบบ']) {
+    const at = text.indexOf(phrase);
+    assert.ok(segs.includes(at) && (segs.includes(at + phrase.length) || at + phrase.length === text.length), phrase);
+  }
 });

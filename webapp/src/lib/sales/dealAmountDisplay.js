@@ -10,6 +10,7 @@
 //    (ไม่ใช่ null) ให้ทุกดีลตั้งแต่ INSERT ⇒ `??` ไม่เคยถอยไป FC และดีลเปิดที่ไม่กรองด้วยขั้น
 //    Won จะขึ้น ฿0.00 (การ์ดดีลบนหน้าลีดเป็นแบบนั้นมาตลอด)
 import {
+  INSTALLMENT_REMAINING_LABEL,
   isLegacyWonAtCreate,
   isWonDeal,
   pendingApprovalAmountOf,
@@ -17,10 +18,18 @@ import {
   pendingApprovalMonthOf,
   wonAmountOf,
 } from '@/lib/sales/dashboardMetrics';
+import { PENDING_APPROVAL_LABEL, salesOrderActual, salesOrderAmountKind } from '@/lib/sales/salesOrderWorkflow';
+import {
+  isInstallmentActualOrder, salesOrderRemainingActual, salesOrderSubmittedActual,
+} from '@/lib/sales/salesOrderActualMode';
 import { isMonthValue, yearOfMonth } from '@/lib/datePeriods';
 import { fmtMoney } from '@/lib/format';
 import { ORIGIN_HISTORICAL, isHistoricalDeal } from '@/lib/sales/historicalOrders';
 
+/* ⚠️ ใบ "Actual รายงวด" (mig 0412): ตัวเลขหลักของดีล Won = Actual ที่นับแล้ว **ทุกเดือนรวมกัน** (wonValue = Σ งวดที่ AE Sup
+   อนุมัติแล้ว) — ตั้งใจ: แถวของหน้ารายการ/การ์ดลีดเป็นมุม "ดีลนี้" ไม่ใช่ Actual ของงวด (Actual รายเดือนอยู่ที่แดชบอร์ด/รายงาน ·
+   actualByMonthOf) · งวดที่ยื่นแล้วขึ้นเป็นยอดรออนุมัติข้าง ๆ (pendingApprovalAmountOf รวม soInstPending*) · ห้ามบวก
+   "รอนับรายงวด" เข้าตัวเลขนี้ (ยังไม่มีใครอนุมัติ — คนละกองกับ Actual) */
 export function dealDisplayValue(deal) {
   if (isWonDeal(deal)) return wonAmountOf(deal);
   return Number(deal?.projectValue) || 0;
@@ -109,10 +118,17 @@ export function sumDealDisplay(deals = [], { inPeriod = null, now } = {}) {
         ดู lib/sales/legacyDealSwitch)
    ⭐ ส่วนต่างปัดเป็นสตางค์ก่อนเทียบศูนย์ — V−A−P ของทศนิยมเหลือเศษ 1e-11 ได้
    ⛔ ส่วนต่างติดลบ (ปิดเกินคาดการณ์) โชว์ตามจริง ไม่ตัดเป็น 0
-   ⛔ ใบรออนุมัติไม่ถูกบวกเข้า Actual — มันลบออกจากส่วนต่างเฉพาะในคำว่า "เมื่ออนุมัติครบ" */
+   ⛔ ใบรออนุมัติไม่ถูกบวกเข้า Actual — มันลบออกจากส่วนต่างเฉพาะในคำว่า "เมื่ออนุมัติครบ"
+   ⭐ 'installment' (mig 0412 · มติเจ้าของ 26/10/2026) — ใบ "Actual รายงวด" ที่ยังมีงวดรอนับ (`instRemaining` > 0 =
+      splitSalesOrderAmounts().instRemaining ของแถว SO ที่หน้าโหลดมา) → "นับแล้ว ฿A · รอนับรายงวด ฿R" (รออนุมัติ ฿P อยู่บรรทัด
+      <PendingApprovalAmount> ของการ์ดเอง — ไม่ซ้ำในคำ · review รอบสาม 26/10)
+      + "ต่างเมื่อนับครบ ฿(V−A−P−R)" เฉพาะเมื่อไม่เป็นศูนย์ · ส่วนต่างเทียบ **ยอดปิดเต็ม** (Actual + งวดยื่นแล้ว + รอนับ)
+      🐞 ไม่มีกรณีนี้ = ใบรายงวดที่นับงวด 1 แล้วขึ้น "ต่าง ฿(งวดที่ยังไม่ถึงคิว)" อ่านเป็นปิดต่ำกว่าคาด (คลาสเดียวกับ 14/09)
+      ⭐ ใบทั้งใบล้วนไม่มีกองนี้ (instRemaining = 0) ⇒ ทุกกรณีเดิมได้คำเดิมทุกตัวอักษร */
 export const WON_HINT_KINDS = Object.freeze({
   ACTUAL: 'actual',
   WHEN_APPROVED: 'when_approved',
+  INSTALLMENT: 'installment',
   AWAITING_SO: 'awaiting_so',
   LEGACY_NO_SO: 'legacy_no_so',
   HISTORICAL: ORIGIN_HISTORICAL,
@@ -132,6 +148,7 @@ export function wonDealForecastHint({
   actualCount,
   pendingApproval,
   pendingApprovalCount,
+  instRemaining = 0,
 } = {}) {
   // ดีลของใบสั่งขายย้อนหลังมาก่อนทุกกรณี — ยอดใบของมันไม่เคยเป็น Actual/รออนุมัติ ⇒ คำอื่นทุกคำผิดหมด
   if (isHistoricalDeal(deal)) return { kind: WON_HINT_KINDS.HISTORICAL, gap: null, text: HISTORICAL_DEAL_HINT_TEXT };
@@ -142,6 +159,23 @@ export function wonDealForecastHint({
   const actualCountValue = Number(actualCount) || 0;
   const hasApproved = actualValue > 0 || actualCountValue > 0;
   const forecastText = `คาดการณ์ ${fmtMoney(forecastValue)}`;
+  const remainingValue = Math.max(0, Number(instRemaining) || 0);
+
+  /* ใบ "Actual รายงวด" ที่ยังมีงวดรอนับ (mig 0412) — มาก่อนทุกกรณีที่มีใบอนุมัติ: ยอดปิดเต็ม = A + P + R
+     (งวดที่ยื่นแล้วอยู่ใน P แล้ว · splitSalesOrderAmounts) ⇒ ไม่ฟ้อง "ต่าง" จากงวดที่ยังไม่ถึงคิว
+     ⚠️ P **ไม่อยู่ในคำ** (review รอบสาม 26/10) — การ์ด Won ของหน้าดีลวาด <PendingApprovalAmount> ใต้คำนี้เสมอ (ทุกชนิดของคำ)
+       ใส่ซ้ำ = "รออนุมัติ ฿P" สองบรรทัด อ่านเป็นยอดรอสองก้อน · P ยังอยู่ในส่วนต่าง */
+  if (remainingValue > 0) {
+    const gap = toSatang(forecastValue - actualValue - pendingValue - remainingValue) || 0;
+    const parts = [
+      `นับแล้ว ${fmtMoney(actualValue)}`,
+      `${INSTALLMENT_REMAINING_LABEL} ${fmtMoney(remainingValue)}`,
+      ...(gap !== 0 ? [forecastText, `ต่างเมื่อนับครบ ${fmtMoney(gap)}`] : []),
+    ];
+    /* `keep` = ท่อน "ป้าย ฿ยอด" ที่ห้ามขาดกลาง (UAT 27/10 ข้อ 5 — การ์ด Won ของหน้าดีลขึ้น "รอนับราย / งวด") · ผู้วาดส่งเข้า keepPhrases
+       · ชนิดอื่นไม่มี `keep` (คำเดิมทุกตัวอักษร · keepPhrases คืนข้อความเดิมเมื่อไม่มีวลี) */
+    return { kind: WON_HINT_KINDS.INSTALLMENT, gap, text: parts.join(' · '), keep: parts };
+  }
 
   if (!hasApproved && !hasPending) {
     if (isLegacyWonAtCreate(deal)) {
@@ -189,4 +223,33 @@ export function wonDealForecastHint({
     gap,
     text: gap === 0 ? 'ตรงกับคาดการณ์' : `${forecastText} · ต่าง ${fmtMoney(gap)}`,
   };
+}
+
+/**
+ * บรรทัดรองใต้ยอดของ **ใบ SO รายงวดที่อนุมัติแล้ว** (mig 0412) — "Actual รายงวด · นับแล้ว ฿x · รออนุมัติ ฿y · รอนับรายงวด ฿z" · ใบอื่น = null
+ * ⭐ ตาราง SO ทุกจอ (ทะเบียน SO · หน้าดีล · หน้าโครงการ) โชว์ยอดเอกสารเต็มใบในคอลัมน์ "ยอดก่อน VAT" แล้วบอกกองด้วยบรรทัดนี้
+ *   🐞 review รอบสอง 26/10: หน้าดีล/โครงการเคยโชว์แค่ยอดที่นับแล้ว (salesOrderActual) ในคอลัมน์ยอดก่อน VAT โดยไม่มีคำกำกับ
+ *      ⇒ ใบ ฿93k ที่นับงวดแรก ฿31k อ่านเป็นใบ ฿31k (คอลัมน์นี้ก่อน 0412 = ยอดเต็มของใบเสมอ)
+ * ⚠️ ตัวอ่านชุดเดียวกับ splitSalesOrderAmounts — ผลรวมของกองเท่ายอดเต็ม (ไม่บวกเพิ่ม)
+ */
+export function installmentActualSubLine(order) {
+  const parts = installmentActualSubParts(order);
+  return parts ? parts.join(' · ') : null;
+}
+
+/**
+ * ท่อนของบรรทัดรองข้างบน (ท่อนละหนึ่งคู่ "ป้าย ฿ยอด") — ผู้วาดห่อแต่ละท่อนด้วย `keepPhrases` (components/ThaiText) ไม่ให้ขาดกลาง
+ * 🐞 UAT 27/10 ข้อ 4–5: ในคอลัมน์แคบ (ตาราง SO ของหน้าดีล) "รอนับรายงวด" ขาดเป็น "รอนับราย / งวด" และป้ายแยกจากตัวเลข
+ * ⭐ ตัดบรรทัดได้เฉพาะที่ " · " ระหว่างท่อน · ข้อความรวม (installmentActualSubLine — ช่องค้นหา/เทสต์) ไม่เปลี่ยน
+ */
+export function installmentActualSubParts(order) {
+  if (salesOrderAmountKind(order) !== 'actual' || !isInstallmentActualOrder(order)) return null;
+  const submitted = salesOrderSubmittedActual(order);
+  const remaining = salesOrderRemainingActual(order);
+  return [
+    'Actual รายงวด',
+    `นับแล้ว ${fmtMoney(salesOrderActual(order))}`,
+    submitted > 0 ? `${PENDING_APPROVAL_LABEL} ${fmtMoney(submitted)}` : '',
+    remaining > 0 ? `${INSTALLMENT_REMAINING_LABEL} ${fmtMoney(remaining)}` : '',
+  ].filter(Boolean);
 }

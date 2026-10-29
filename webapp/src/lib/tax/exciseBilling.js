@@ -31,7 +31,17 @@ export const LOCAL_TAX_RATE_OF_EXCISE = 0.1; // ท้องถิ่น — % �
 /** อัตรารวมที่ยื่นจริง (8.8%) — เลขที่ธุรกิจใช้คุยกัน · derived ห้ามพิมพ์เอง */
 export const EXCISE_TOTAL_RATE = EXCISE_RATE * (1 + LOCAL_TAX_RATE_OF_EXCISE);
 
-export const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+/* ปัดสองตำแหน่งด้วย "สตางค์จำนวนเต็ม" — เลื่อนจุดทศนิยมผ่านสตริง ไม่ใช่ `× 100` ของ float
+   🐞 `Math.round(1.005 * 100) / 100` ได้ 1.00 (1.005 × 100 = 100.49999…) · ภาษี/ชิ้นที่ลงท้ายครึ่งสตางค์จะปัดลง
+   ทั้งที่กฎปัดคือปัดขึ้น ⇒ เลขบนใบยื่นต่างจากเลขที่ RA กดเครื่องคิดเลข (มติ Q2 28/10 · แผนรื้อสรรพสามิต หมวด 3.4) */
+const shiftDecimal = (value, places) => {
+  const [mantissa, exponent = '0'] = String(value).split('e');
+  return Number(`${mantissa}e${Number(exponent) + places}`);
+};
+export const round2 = (value) => {
+  const n = Number(value) || 0;
+  return shiftDecimal(Math.round(shiftDecimal(n, 2)), -2);
+};
 
 /**
  * อัตราภาษีต่อหน่วยของสินค้าหนึ่งตัว จากราคาขายปลีก — **สูตรเดียวของทั้งระบบ**
@@ -68,6 +78,11 @@ export function productTaxRates(retailPriceIncVat, { taxable = true } = {}) {
 //
 // กฎที่ยึด = กฎเดียวกับ billedTaxLine ข้างล่าง: **ปัดต่อหน่วยก่อน แล้วคูณจำนวน**
 // เพื่อให้เอกสารกระทบยอดด้วยมือได้ (ภาษี/ชิ้น × จำนวน = รวมภาษี พอดี)
+//
+// ⭐ **ภาษี/ชิ้นปัดครั้งเดียวจากอัตรารวม 8.8%** (มติ Q2 28/10/2026 · ข้อ ข) — เดิมปัดสรรพสามิตกับท้องถิ่นแยกกัน
+//    แล้วบวก (8.044 + 0.8044 → 8.04 + 0.80 = 8.84) ได้คนละเลขกับ "ฐาน × 8.8% แล้วปัด" (8.8484 → 8.85) ที่ลูกค้า/RA คิด
+//    แบบ ภส. ยังต้องกรอกสองช่อง ⇒ แตกจากยอดที่ปัดแล้ว (มติ D1): สรรพสามิต/ชิ้น = ปัด(อัตราสรรพสามิต) ·
+//    ท้องถิ่น/ชิ้น = ภาษี/ชิ้น − สรรพสามิต/ชิ้น ⇒ สองช่องรวมกันเท่ายอดที่เก็บเสมอ (ทั้งรายชิ้นและทั้งบรรทัด)
 // ── ธง "เสียภาษีไหม" ของสินค้าหนึ่งตัว ────────────────────────────────────
 // ค่าตั้งต้นมาจากธง isExcise ของหมวด (mig 0131) แต่ **การยกเว้น/บังคับรายตัวของฝ่าย
 // กฎหมาย (taxableOverride) ชนะเสมอ และต้องอยู่รอดการแก้สเปคทุกครั้ง**
@@ -82,17 +97,19 @@ export function resolveProductTaxable({ taxableOverride, autoTaxable } = {}) {
 
 export function exciseTaxLine({ exciseRatePerUnit, localTaxRatePerUnit, quantity } = {}) {
   const qty = Number(quantity) || 0;
-  const excisePerUnit = round2(exciseRatePerUnit);
-  const localPerUnit = round2(localTaxRatePerUnit);
+  const exciseRate = Number(exciseRatePerUnit) || 0;
+  const taxPerUnit = round2(exciseRate + (Number(localTaxRatePerUnit) || 0));
+  const excisePerUnit = Math.min(round2(exciseRate), taxPerUnit);
+  const totalTax = round2(taxPerUnit * qty);
   const totalExciseTax = round2(excisePerUnit * qty);
-  const totalLocalTax = round2(localPerUnit * qty);
   return {
     quantity: qty,
+    taxPerUnit,
     exciseRatePerUnit: excisePerUnit,
-    localTaxRatePerUnit: localPerUnit,
+    localTaxRatePerUnit: round2(taxPerUnit - excisePerUnit),
     totalExciseTax,
-    totalLocalTax,
-    totalTax: round2(totalExciseTax + totalLocalTax),
+    totalLocalTax: round2(totalTax - totalExciseTax),
+    totalTax,
   };
 }
 
@@ -133,6 +150,35 @@ export function billedTaxTotals(items = []) {
   const totalTax = round2(rows.reduce((sum, row) => sum + row.tax, 0));
   const vat = round2(totalTax * EXCISE_VAT_RATE);
   return { totalTax, vat, amountToCollect: round2(totalTax + vat) };
+}
+
+// ── ใบยื่น "ยกเว้นภาษี" ไหม — ตัดสินจากคำตัดสินของฝ่าย RA ไม่ใช่จากยอด 0 ──────────
+//
+// 🐞 ตรวจระบบ 2026-10-26: ทุกจอเคยถือว่า `totalTax === 0` = ยกเว้น ⇒ ใบที่ภาษีเป็น 0
+// เพราะสินค้า **ยังไม่มีราคาขายปลีก** (ฐานภาษีว่าง) ถูกพาเข้าทางลัดของใบยกเว้น — ข้าม
+// เลขใบเสร็จของ S&S · ข้ามขั้น "กำลังยื่น" · ปิดงานโดยไม่มีใบเสร็จสรรพสามิต · ป้ายบนจอ
+// ก็เขียนว่า "ยกเว้นภาษี" ทั้งที่ของจริงคือยื่นขาด (SO อนุมัติแล้ว 21 ใบเป็นแบบนี้ทั้งใบ)
+//
+// ยกเว้นจริงมีทางเดียว: **ทุกรายการผูกทะเบียนที่ฝ่าย RA ตัดสินว่าไม่เสียภาษี**
+// (`registration.isExciseTaxable === false`) และยอดรวมเป็น 0 จริง — ยอด 0 เป็นเงื่อนไข
+// ที่ต้องมี แต่ไม่พอ · รายการที่ไม่มีทะเบียน (ใบยื่นจาก SO ยอมให้มี) ไม่มีใครตัดสินให้ยกเว้น
+//
+// ⚠️ ต้องมี `item.registration` ที่ผูกแล้ว (attachRegistrations) — แถวโหมด slim ไม่มี
+// รายการ จึงอ่านธง `taxExempt` ที่ server คิดด้วยฟังก์ชันนี้มาให้แทน
+export function isExemptFiling(order) {
+  if (!order) return false;
+  if (!Array.isArray(order.items)) return order.taxExempt === true;
+  if (!order.items.length || round2(order.totalTax) !== 0) return false;
+  return order.items.every((item) => item?.registration?.isExciseTaxable === false);
+}
+
+// รายการของใบยื่นที่ภาษีเป็น 0 ทั้งที่ไม่ได้รับยกเว้น = ตอนสร้างใบ สินค้ายังไม่มีฐานภาษี
+// (ราคาขายปลีก) · ใบยื่นตรึงอัตราไว้ที่รายการ ⇒ เติมราคาทีหลัง ยอดในใบนี้ไม่ขยับตาม
+export function untaxedFilingItems(order) {
+  return (Array.isArray(order?.items) ? order.items : []).filter((item) =>
+    item?.registration?.isExciseTaxable !== false
+    && (Number(item?.quantity) || 0) > 0
+    && round2(item?.totalTax) === 0);
 }
 
 // ยอดที่เรียกเก็บของใบยื่นใบหนึ่ง: ค่าที่ตรึงไว้บนใบมาก่อน แล้วจึงคิดจากรายการ

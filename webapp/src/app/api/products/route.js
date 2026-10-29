@@ -21,6 +21,7 @@ import { branchKeyOf } from '@/lib/master/customerTaxId';
 import { customerTaxSiblings } from '@/lib/master/customerTaxSiblings';
 import { attachCategoryNames, loadProductTypeNames } from '@/lib/master/productCategoryNames';
 import { naText } from "@/lib/format";
+import { EXCISE_CHARGE_CATEGORY_CODE, EXCISE_CHARGE_MANUAL_MESSAGE, isExciseChargeProduct } from '@/lib/excise/exciseCharge';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 
@@ -120,7 +121,11 @@ export async function GET(request) {
   // Hide retired (isActive=false) products from downstream pickers; keep them in
   // the management view. Filtered in JS so it stays resilient before migration
   // 0036 runs (missing column reads as undefined → treated as active).
-  const rows = manage ? (data || []) : (data || []).filter((p) => p.isActive !== false);
+  /* ตัวเลือกสินค้าของจอขาย (ไม่ใช่โหมดจัดการ) ตัดสินค้า 04-003 — ค่าภาษีสรรพสามิตเก็บด้วยใบเสนอราคาค่าสรรพสามิตที่ระบบสร้างเท่านั้น
+     (หยิบใส่ใบขายเอง = เก็บซ้ำ · server ของใบเสนอราคาปฏิเสธอีกชั้น — exciseChargeLinesAdded) */
+  const rows = manage
+    ? (data || [])
+    : (data || []).filter((p) => p.isActive !== false && p.categoryCode !== EXCISE_CHARGE_CATEGORY_CODE);
   /* ป้าย "FG ตัวนี้เป็นของใบลูกค้าใบไหน" — ติดเฉพาะตัวที่ **ไม่ใช่** ของใบที่ถามมา
      ⇒ มีป้าย = ของอีกใบของนิติบุคคลเดียวกัน · ไม่มีป้าย = ของใบนี้เอง
      แนบทีหลังแบบเดียวกับ `registrationStatus` ข้างล่าง จึงไม่ต้องแตะ
@@ -197,6 +202,10 @@ export async function POST(request) {
   const categoryCode = body.categoryCode || categoryOf(body.fgCode);
   const categoryError = await activeProductTypeError(categoryCode);
   if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
+  /* ⛔ 04-003 "ค่าภาษีสรรพสามิต" ระบบสร้างเอง (ensureExciseChargeProduct) — สร้างด้วยมือ = ตัวที่สองของลูกค้า/ราคาตั้งเอง */
+  if (isExciseChargeProduct({ categoryCode, fgCode: body.fgCode })) {
+    return Response.json({ error: EXCISE_CHARGE_MANUAL_MESSAGE }, { status: 400 });
+  }
 
   // ⚠️ **โหมด auto ยังไม่มีรหัสตรงนี้** — เลขรันจองพร้อม insert ในฟังก์ชัน SQL ท้าย
   // ฟังก์ชัน (mig 0237) ตรงนี้เตรียมได้แค่ "ท่อนหน้าเลขรัน" ซึ่งเป็นตัวเดียวกับที่

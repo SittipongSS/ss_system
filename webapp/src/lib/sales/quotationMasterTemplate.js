@@ -10,6 +10,7 @@ import { lineNoteFor } from '@/lib/sales/quoteLines';
 import { packFactorOf, packLineUnit } from '@/lib/sales/linePacks';
 import { hasPackColumn, linePackQty } from '@/lib/sales/linePackView';
 import { dealTypeOf } from '@/lib/salesPlanning';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import {
   DEFAULT_NUMBERING_PATTERNS,
   formatDocumentNumber,
@@ -1290,10 +1291,18 @@ export function buildQuotationMasterPreview(
 // — ของเดิมยุบเป็น "รหัส · ชื่อ" แถวเดียว อ่านง่ายบนจอแต่ค้นหา/กระทบยอดกับระบบอื่นยาก
 const projectOf = (quote) => quote?.deal?.project || quote?.project || null;
 export const quotationProjectCode = (quote) => String(projectOf(quote)?.code || '').trim() || '-';
+/* ⭐ ใบค่าสรรพสามิต (origin excise · ไม่มีดีล · มติเจ้าของ 29/10 จากกระดาษใบทดลอง) — แถว "โครงการ" = "ค่าภาษีสรรพสามิต" ·
+   "ประเภทโครงการ" = OTHER (ไม่ใช่ขีด) · ใช้ร่วมกับกระดาษ SO ค่าสรรพสามิต (salesOrderPrint) ⇒ สองใบพูดคำเดียวกัน */
+export const EXCISE_PAPER_PROJECT = Object.freeze({ th: 'ค่าภาษีสรรพสามิต', en: 'Excise tax recharge' });
+export const EXCISE_PAPER_PROJECT_TYPE = 'OTHER';
+export const excisePaperProject = (doc, language = 'th') => (isExciseOrder(doc) && !doc?.deal
+  ? EXCISE_PAPER_PROJECT[language === 'en' ? 'en' : 'th'] : null);
 export const quotationDealTitle = (quote) =>
-  String(quote?.deal?.title || quote?.dealTitle || '').trim() || '-';
-// ไม่มีดีลจริง (snapshot เก่าที่เหลือแต่ชื่อ) → ห้ามเดาประเภทให้
-export const quotationDealType = (quote) => (quote?.deal ? dealTypeOf(quote.deal) || '-' : '-');
+  String(quote?.deal?.title || quote?.dealTitle || excisePaperProject(quote) || '').trim() || '-';
+// ไม่มีดีลจริง (snapshot เก่าที่เหลือแต่ชื่อ) → ห้ามเดาประเภทให้ · ใบค่าสรรพสามิต = OTHER เสมอ
+export const quotationDealType = (quote) => (quote?.deal
+  ? dealTypeOf(quote.deal) || '-'
+  : excisePaperProject(quote) ? EXCISE_PAPER_PROJECT_TYPE : '-');
 
 // อัตราส่วนลดท้ายใบที่พิมพ์บนกระดาษ ("หัก ส่วนลด X%") — % ตัดที่ 100 ให้ตรงกับยอดที่หัก
 // จริง (discountAmountOf clamp ไว้เหมือนกัน) ฝั่งบันทึกก็ clamp แล้ว (normalizeDiscountValue)
@@ -1411,7 +1420,8 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
   const referenceNote = String(quote.referenceNote || '').trim();
   // ⚠️ เดิม "ผู้เสนอราคา" = คนที่สร้างใบ ซึ่งผิดเมื่อคนทำใบไม่ใช่ AE เจ้าของดีล
   // (มติผู้ใช้ 2026-08-05): ผู้เสนอราคา = AE เจ้าของดีล — เอกสารไม่มีบทบาท "ผู้จัดทำ" แล้ว
-  const salesOwner = quote.deal?.ownerName || quote.metadata?.salesOwner || '-';
+  // ใบค่าสรรพสามิต (ไม่มีดีล) = เจ้าของดีลของ SO ต้นทาง — ตรึงชื่อไว้ใน metadata ตอนออกใบ · ใบรุ่นก่อนตรึง อ่าน sourceDeal ที่ route แนบมา
+  const salesOwner = quote.deal?.ownerName || quote.metadata?.salesOwner || quote.sourceDeal?.ownerName || '-';
   // ผู้จัดทำ = **คนที่กดยื่นอนุมัติ** (มติผู้ใช้ 2026-08-17) — การกดยื่นคือจุดที่ผู้จัดทำ
   // ลงนาม (mig 0155/0156 เขียน approvalRequestedByName ให้ตอนนั้น) ไม่ใช่คนที่กดสร้างร่าง:
   // ร่างเปิดค้างได้ทั้งทีม (submit gate = inSalesEditScope) คนสร้างกับคนยื่นจึงคนละคนได้
@@ -1531,7 +1541,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       // ของตัวเอง ไม่ได้แยกชั้นโครงการแม่/ดีลแบบที่ฝ่ายขายใช้ · เลขที่โครงการยังเป็นรหัส
       // PJ ของโครงการแม่ ซึ่งเป็นเลขที่ที่อ้างอิงกันจริงทั้งสองฝั่ง
       { label: L.t('projectCode'), value: quotationProjectCode(quote) },
-      { label: L.t('project'), value: quotationDealTitle(quote) },
+      { label: L.t('project'), value: excisePaperProject(quote, language) || quotationDealTitle(quote) },
       { label: L.t('projectType'), value: quotationDealType(quote) },
       { label: L.t('salesOwner'), value: salesOwner },
       ...(salesOwnerPhone ? [{ label: L.t('phone'), value: salesOwnerPhone }] : []),

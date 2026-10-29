@@ -35,7 +35,7 @@ import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { brandLabel } from "@/lib/master/brands";
 import { customerNameIn } from "@/lib/master/customerName";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { statusMeta } from "@/lib/excise/workflow";
+import { REGISTRATION_LINK_EDITABLE_STATUSES, REGISTRATION_LINK_LOCKED_MESSAGE, statusMeta } from "@/lib/excise/workflow";
 import {
   EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, EXCISE_TOTAL_RATE, EXCISE_VAT_RATE,
   exciseTaxLineForRegistration, productTaxRates,
@@ -133,7 +133,13 @@ export default function RegistrationDetailPage() {
   const { data: products, loading: lProducts, error: productsError, staleError: productsStale, errorDetail: productsDetail, loaded: productsLoaded, reload: reloadProducts } = useApiList(pickerReady ? "/api/products" : null);
   const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList(pickerReady ? "/api/customers" : null);
   const { data: allRegs, loading: lRegs, error: regsError, staleError: regsStale, errorDetail: regsDetail, loaded: regsLoaded, reload: reloadRegs } = useApiList(pickerReady ? "/api/excise-registrations" : null);
-  const openForm = () => { setPickerReady(true); setFormOpen(true); };
+  const linkLocked = !!s && s.status !== "approved" && !REGISTRATION_LINK_EDITABLE_STATUSES.includes(s.status);
+  /* ปุ่มแก้ไขโชว์ทุกสถานะก่อนอนุมัติ แต่ฟอร์ม (เลือก FG/ลูกค้า) เปิดได้เฉพาะก่อนยื่น — รอ RA ตรวจ = บอกเหตุตอนกด
+     (กติกา GatedAction · ข้อความชุดเดียวกับที่ PATCH ตอบ · ตรวจระบบ 26/10 ข้อ 6) */
+  const openForm = () => {
+    if (linkLocked) { notifyToast.error(REGISTRATION_LINK_LOCKED_MESSAGE); return; }
+    setPickerReady(true); setFormOpen(true);
+  };
 
   /* ── โหลดใบพัง ≠ ไม่พบทะเบียน · picker ที่ดึงไม่ได้ ≠ "ไม่มีลูกค้า/สินค้าให้เลือก" ─────────────────────────
      ท่าเดียวกับหน้ารายละเอียดใบยื่นชำระ (tax/filings/[id]) — ป้ายเดียวของจอ ทุกแหล่งข้อมูลอยู่ในก้อน sources
@@ -159,7 +165,7 @@ export default function RegistrationDetailPage() {
   const recordError = recordFault?.message ?? null;
   const recordStale = recordStaleFault?.message ?? null;
   const recordDetail = (recordFault || recordStaleFault)?.detail ?? null;
-  const editAvailable = canEdit && !!s && s.status !== "approved";
+  const editAvailable = canEdit && !!s && REGISTRATION_LINK_EDITABLE_STATUSES.includes(s.status);
   const sources = [
     {
       label: "ทะเบียนใบนี้", error: recordError || recordStale, empty: !s && !!recordError, detail: recordDetail, reload, blocks: "page",
@@ -392,7 +398,7 @@ export default function RegistrationDetailPage() {
       // แก้ไข/ขอแก้ไข/ลบ = action ระดับ entity — ไอคอนแถวเดียวกับปุ่มย้อนกลับ ตามกติกา Page Header
       backActions={s ? (
         <>
-          {canEdit && s.status !== "approved" && <ActionButton kind="edit" iconOnly title="แก้ไข" onClick={openForm} />}
+          {canEdit && s.status !== "approved" && <ActionButton kind="edit" iconOnly title={linkLocked ? REGISTRATION_LINK_LOCKED_MESSAGE : "แก้ไข"} onClick={openForm} />}
           {/* ลบ: ยึด s.canDelete จาก server (อำนาจราย record — scope 'own' เทียบ
               user.id ที่ client ไม่มี) ไม่ใช่ products:edit ซึ่งกว้างกว่าจริง */}
           {s.canDelete && s.status === "draft" && <ActionButton kind="delete" iconOnly title="ลบ" onClick={() => setDeleteOpen(true)} />}

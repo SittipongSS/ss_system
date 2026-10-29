@@ -21,7 +21,9 @@
 //   request { id, docNo, title, body, requestedById, requestedByName, team, submittedAt, assignedByName,
 //             requestedDueDate/Time, committedDueDate/Time, requestedResultDate, committedResultDate,
 //             answeredAt/ById/ByName, closedAt/ByName,
-//             surveyConfirm ('needed' | 'not_needed' | null — งวด S3) }
+//             surveyConfirm ('needed' | 'not_needed' | null — งวด S3),
+//             confirmsDocNo ⭐ **คีย์เสริม (งวด S5)** — มีเฉพาะใบยืนยันหน้างานที่ใบต้นทางยังอยู่: "{RQ-AS-…} ({SU-…})" หรือ "{RQ-AS-…}"
+//               (`surveyReportConfirmsDocNo`) · ไม่มีคีย์ = ใบไม่ผูก/ใบต้นทางหาย/ภาพนิ่งรุ่นก่อน ⇒ ไม่มีแถว "ยืนยันผลจากแบบของ" (ยัง v1) }
 //   deal { code } · customer { id, arCode, name }
 //   site { code, name, address, contactName, contactPhone, accessText, accessNote }
 //   visit { code, statusLabel, scheduledDate, startTime, endTime, actualDate, actualStartTime, actualEndTime,
@@ -60,6 +62,8 @@ import {
   surveyZoneName, surveyZoneSize,
 } from './survey';
 import { isDrawingZone, isJpgOrPngFile, surveyDrawingAssessor, surveyMethodMix, zoneMethod } from './surveyMethod';
+/* วันนัดที่ผู้ขอขอ (ประเมินจากแบบ งวด 4 · สเปก S4 D-7) — ตัวอ่านเดียวของ "วันที่อยากให้เข้า" · ไฟล์นั้นไม่ import ไฟล์กระดาษ (ไม่มีวงจร) */
+import { surveyWishedVisit } from './surveyIntake';
 import {
   SURVEY_SIGN_RULE, SURVEY_SIGN_SEATS, surveyDrawingSeatSigner, surveyReportSeatEligible, surveyReportSignatureIssues,
   surveyReportSigners,
@@ -256,7 +260,23 @@ export const SURVEY_REPORT_INPUT_LABELS = Object.freeze({
   sizes: 'ทะเบียนขนาดแพ็คเกจ',
   company: 'ข้อมูลบริษัท',
   form: 'มาตรฐานเอกสาร',
+  // งวด S5 — เลขที่ใบต้นทาง + เอกสารประเมินฉบับปัจจุบันของมัน (แถว "ยืนยันผลจากแบบของ" ของฉบับภายใน · `loadSurveyReportConfirms`)
+  confirms: 'ใบต้นทางของใบยืนยันหน้างาน',
 });
+
+/**
+ * ข้อความของแถว "ยืนยันผลจากแบบของ" (งวด S5 กลุ่ม F) — ตัวประกอบเดียวของตัวโหลดกับชุดทดสอบ
+ * @param confirms  ผลของ `loadSurveyReportConfirms`: `{ requestDocNo, reportDocNo }` | null
+ * @returns `"{RQ} ({SU})"` · `"{RQ}"` เมื่อใบต้นทางไม่มีเอกสารฉบับปัจจุบัน · `null` เมื่อไม่ผูก/ใบต้นทางหาย/ไม่มีเลข RQ
+ * ⚠️ `{ error }` ไม่ใช่หน้าที่ของตัวนี้ — ผู้เรียกแยกก่อน (อ่านไม่สำเร็จ ≠ ไม่ผูก)
+ */
+export function surveyReportConfirmsDocNo(confirms) {
+  if (!confirms || typeof confirms !== 'object' || Array.isArray(confirms)) return null;
+  const requestDocNo = text(confirms.requestDocNo);
+  if (!requestDocNo) return null;
+  const reportDocNo = text(confirms.reportDocNo);
+  return reportDocNo ? `${requestDocNo} (${reportDocNo})` : requestDocNo;
+}
 
 const unreadText = (name) => `อ่าน${SURVEY_REPORT_INPUT_LABELS[name] || ` ${name} `}ไม่สำเร็จ`;
 
@@ -404,13 +424,17 @@ export function surveyReportFreezeBlockers(inputs = {}) {
 
 /* ── ชิ้นส่วนของภาพนิ่ง ──────────────────────────────────────────────── */
 
-function requestPart(r = {}) {
+function requestPart(r = {}, confirmsDocNo = null) {
+  /* ⭐ งวด 4: ใบที่ยื่นเป็นประเมินจากแบบเก็บ `requestedDueDate` = กระจกของวันรับผล ⇒ ไม่ตรึงเป็นวันนัดที่ขอ
+        (แถว "วันนัด ขอ / รับ" พิมพ์ "–" ผ่านขีดเดิมของ view) · ใบอื่น: `dayOnly`/`hhmm` ของ '' กับ null = null ⇒ ภาพนิ่งเท่าเดิมทุกตัว
+     ⚠️ รูปภาพนิ่งไม่เปลี่ยน — ห้ามขยับ SURVEY_REPORT_SNAPSHOT_VERSION */
+  const wish = surveyWishedVisit(r);
   return {
     id: r.id ?? null, docNo: text(r.docNo), title: text(r.title), body: text(r.body),
     requestedById: r.requestedById != null ? String(r.requestedById) : null,
     requestedByName: text(r.requestedByName), team: text(r.team),
     submittedAt: r.submittedAt || null, assignedByName: text(r.assignedByName),
-    requestedDueDate: dayOnly(r.requestedDueDate), requestedDueTime: hhmm(r.requestedDueTime),
+    requestedDueDate: dayOnly(wish.date), requestedDueTime: hhmm(wish.time),
     committedDueDate: dayOnly(r.committedDueDate), committedDueTime: hhmm(r.committedDueTime),
     requestedResultDate: dayOnly(r.requestedResultDate), committedResultDate: dayOnly(r.committedResultDate),
     answeredAt: r.answeredAt || null,
@@ -419,6 +443,9 @@ function requestPart(r = {}) {
     closedAt: r.closedAt || null, closedByName: text(r.closedByName),
     // งวด S3 — คำตอบของหัวหน้าตอนส่งผล · ค่าที่ไม่รู้จัก = ยังไม่เลือก (null)
     surveyConfirm: SURVEY_CONFIRM_CHOICES.includes(r.surveyConfirm) ? r.surveyConfirm : null,
+    /* งวด S5 — เลขที่ใบต้นทางของใบยืนยันหน้างาน (`inputs.confirmsDocNo` ของตัวโหลด) · **คีย์มีเฉพาะสตริงที่มีเนื้อ** (R-KEYS):
+       ใบที่ไม่ผูกได้ภาพนิ่งเท่าของงวด S3 ทุกไบต์ — ไม่ใช่ `null` */
+    ...(typeof confirmsDocNo === 'string' && text(confirmsDocNo) ? { confirmsDocNo: text(confirmsDocNo) } : {}),
   };
 }
 
@@ -617,6 +644,7 @@ const otherVisitsPart = (rows) => list(rows).filter(Boolean).map((v) => ({
  *   company        `{ name, address, taxId, tel, line, website }`
  *   form           `{ code, revision, effectiveDate }` (เช่น FM-TS-01 · 00 · 29/09/2569)
  *   unknown        `string[]` ชื่อชิ้นที่ตัวโหลดอ่านไม่สำเร็จ (`SURVEY_REPORT_INPUT_LABELS`) — มี = โหมด freeze/check ไม่ออกภาพนิ่ง
+ *   confirmsDocNo  (งวด S5 · ไม่บังคับ) ข้อความของแถว "ยืนยันผลจากแบบของ" (`surveyReportConfirmsDocNo`) — สตริงเท่านั้นที่ลงภาพนิ่ง
  *   ── กติกาลายเซ็นจริง (PR-SIG) — ตัวโหลดตั้งให้เมื่อสวิตช์เปิด · ไม่มีคีย์ = กระดาษแบบเดิม ──
  *   signatureRule  `'required'` = กติกาเปิด: ผู้ลงนามทุกที่นั่งต้องมีลายเซ็น และภาพนิ่งได้คีย์ `signatures`
  *   signatures     `{ [userId]: null | { versionId, versionNumber, storagePath, sha256, width, height } }` ฉบับที่ใช้อยู่ของผู้ลงนาม
@@ -755,7 +783,7 @@ export function buildSurveyReportSnapshot(inputs = {}, { mode = 'freeze' } = {})
   const snapshot = {
     v: SURVEY_REPORT_SNAPSHOT_VERSION,
     takenAt: text(inputs.takenAt),
-    request: requestPart(inputs.request || {}),
+    request: requestPart(inputs.request || {}, inputs.confirmsDocNo),
     deal: { code: text(inputs.deal?.code) },
     customer: {
       id: inputs.customer?.id != null ? String(inputs.customer.id) : null,

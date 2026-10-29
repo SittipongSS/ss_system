@@ -9,7 +9,7 @@
 //    `lib/sales/leadListFilter.js` #1877) ⇒ "รอเติมข้อมูล (n)" = ติ๊กแล้วตารางเหลือ n แถว
 import { forecastDueState } from '@/lib/sales/forecastDue';
 import { dealDeliveryState } from '@/lib/sales/dealPeriod';
-import { dealTypeOf } from '@/lib/salesPlanning';
+import { dealTypeOf, isClosedStage } from '@/lib/salesPlanning';
 
 /** ดีลที่ผู้ดูแลยังต้องเติมมูลค่า/เดือน (ธงจากงาน backfill โครงการ PM เก่า · ปลดเองเมื่อเติมมูลค่า) */
 export const isNeedsReviewDeal = (deal) => !!deal?.metadata?.needsReview;
@@ -20,8 +20,13 @@ export const DEAL_REVIEW_LIST_URL = '/api/sales-planning/deals?review=1';
 /** API: คำขอนี้ขอเฉพาะดีลรอเติมข้อมูลไหม */
 export const wantsReviewOnly = (searchParams) => searchParams?.get?.('review') === '1';
 
-/** ช่องของมิติ "เดือน FC" — ตัวเดียวกับป้ายในแถว (`forecastDueState`) */
+/** ช่องของมิติ "เดือน FC" — ตัวเดียวกับป้ายในแถว (`forecastDueState`)
+ *  ⭐ ดีลที่ปิดแล้ว (Won · เข้าโครงการ · Lost) = `null` — ไม่อยู่กลุ่มไหนเลย (ตรวจตัวเลข L10 · 26/10)
+ *  🐞 เดิมตกเป็น 'ontime' ทุกใบ ⇒ ติ๊ก "ตรงกำหนด" ได้ดีล Won/Lost ที่เดือน FC ผ่านไปนานแล้วหรือไม่เคยระบุ
+ *     ภายใต้คำว่า "ตรงกำหนด" · ดีลปิดแล้วไม่มีเดือน FC ให้ตามอีก (แบบเดียวกับดีลแพ้ในมิติวันรับของ)
+ *  ⇒ "ตรงกำหนด" = ดีลที่ยังเปิดและเดือน FC เป็นเดือนนี้หรือหลังจากนี้ */
 export function dealDueKey(deal, currentMonth) {
+  if (isClosedStage(deal?.stage)) return null;
   const due = forecastDueState(deal, currentMonth);
   return due.overdue ? 'overdue' : (due.missing ? 'missing' : 'ontime');
 }
@@ -36,6 +41,7 @@ export function dealDueKey(deal, currentMonth) {
 export function dealPassesListFilters(deal, filters = {}, ctx = {}, { except = null } = {}) {
   if (ctx.inScope && !ctx.inScope(deal)) return false;
   if (except !== 'review' && filters.review && !isNeedsReviewDeal(deal)) return false;
+  /* เดือน FC: ดีลที่ปิดแล้วไม่อยู่กลุ่มไหน (dealDueKey = null) ⇒ ติ๊กตัวเลือกใดก็ไม่ขึ้น */
   if (except !== 'due' && filters.due?.length && !filters.due.includes(dealDueKey(deal, ctx.currentMonth))) return false;
   /* วันรับของ: ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (dealDeliveryState = null) */
   if (except !== 'delivery' && filters.delivery?.length && !filters.delivery.includes(dealDeliveryState(deal))) return false;
@@ -53,4 +59,67 @@ export function reviewOptionCount(reviewRows, filters = {}, ctx = {}) {
   if (!Array.isArray(reviewRows)) return null;
   return reviewRows.filter((deal) => isNeedsReviewDeal(deal)
     && dealPassesListFilters(deal, filters, ctx, { except: 'review' })).length;
+}
+
+// ── ตัวเลขบนแถบเตือน/ตัวเลือกต้องเท่าแถวที่กดแล้วได้ (ตรวจตัวเลข M11 · M12 · 2026-10-20) ──────────
+//
+// 🐞 M11 แถบ "อีก n วันขึ้นเดือนใหม่ — มีดีล N ใบที่เดือน FC เลยกำหนด" นับจากขอบเขตอย่างเดียว แต่ปุ่ม
+//    "ดูรายการที่ต้องเลื่อน" ตั้งแค่มิติเดือน FC ⇒ สถานะ=Won / คำค้นที่ค้างไว้ยังกรองอยู่ ตารางเหลือน้อยกว่า N
+// 🐞 M12 เลขท้ายตัวเลือก "เดือน FC" / "วันรับของ" นับจากขอบเขตอย่างเดียว ⇒ ติ๊กสถานะ Won อยู่ ตัวเลือก
+//    "เลยกำหนด (N)" ติ๊กแล้วได้ 0 แถว · โหมดรอเติมข้อมูลนับดีล Won/คอนเทนเนอร์ย้อนหลังที่ตารางซ่อน
+// ⇒ แถบ/ปุ่ม = **ชุดตัวกรองทั้งชุด** (`dealListPick` แทนที่ ไม่ใช่เติม · ล้างคำค้นด้วย) นับด้วย `dealPickRows`
+//    ตัวตัดสินเดียวกับตาราง · เลขท้ายตัวเลือก = นับแยกมิติ (`dealFacetCounts`) แบบคิวลีด (#1877)
+
+/** ตัวกรองว่างทั้งชุด — ตัวเดียวกับตาราง (`filters` ของ dealPassesListFilters) */
+export const EMPTY_DEAL_FILTERS = Object.freeze({
+  review: false, due: [], delivery: [], stage: [], type: [],
+});
+
+/**
+ * แถบเตือน → ตัวกรองชุดใหม่ **ทั้งชุด** (มิติที่ไม่ได้ระบุ = ว่าง · ไม่รอเติมข้อมูล)
+ * 🔴 แทนที่ ไม่ใช่เติม — ตัวกรองที่ค้างจากครั้งก่อนคือเหตุที่เลขบนแถบกับแถวในตารางไม่ตรงกัน
+ * @param pick { due?, delivery? } ค่าเดียวหรืออาร์เรย์
+ */
+export function dealListPick({ due, delivery } = {}) {
+  return {
+    ...EMPTY_DEAL_FILTERS,
+    due: due ? [].concat(due) : [],
+    delivery: delivery ? [].concat(delivery) : [],
+  };
+}
+
+/**
+ * แถวที่ตารางจะเหลือหลังกดแถบ (ตัวกรองชุด `pick` · ไม่มีคำค้น เพราะปุ่มล้างคำค้นด้วย)
+ * คืนแถว ไม่ใช่แค่จำนวน — แถบวันรับของต้องรวมมูลค่าจากชุดเดียวกัน
+ * @param ctx { inScope(deal), currentMonth } — ขอบเขตของหน้า (ปุ่มไม่เปลี่ยนขอบเขต)
+ */
+export function dealPickRows(deals = [], pick = EMPTY_DEAL_FILTERS, { inScope, currentMonth } = {}) {
+  return (deals || []).filter((deal) => dealPassesListFilters(deal, pick, { inScope, currentMonth }));
+}
+
+/**
+ * เลขท้ายตัวเลือก "เดือน FC" / "วันรับของ" = **ติ๊กตัวนั้นแล้วตารางจะเหลือกี่แถว**
+ * ⭐ นับแยกมิติ: มิติหนึ่งนับจากดีลที่ผ่าน *ตัวกรองอื่นทุกตัว* (ขอบเขต · คำค้น · สถานะ · ประเภท · รอเติมข้อมูล
+ *    · อีกมิติ) ยกเว้นตัวเอง ⇒ ติ๊กค่าหนึ่งอยู่ ค่าอื่นของมิติเดียวกันยังโชว์จำนวนของตัวเอง (ติ๊กเพิ่มได้)
+ * @param deals ชุดเดียวกับที่ตารางกรอง (`deals` ที่โหลดมา)
+ * @returns { due: { overdue, missing, ontime }, delivery: { missing, known } }
+ */
+export function dealFacetCounts(deals = [], filters = {}, ctx = {}) {
+  const counts = {
+    due: { overdue: 0, missing: 0, ontime: 0 },
+    delivery: { missing: 0, known: 0 },
+  };
+  for (const deal of deals || []) {
+    if (dealPassesListFilters(deal, filters, ctx, { except: 'due' })) {
+      /* ดีลที่ปิดแล้วไม่อยู่กลุ่มไหน (null) — ติ๊กกลุ่มไหนก็ไม่ขึ้น จึงไม่นับ */
+      const key = dealDueKey(deal, ctx.currentMonth);
+      if (key) counts.due[key] += 1;
+    }
+    if (dealPassesListFilters(deal, filters, ctx, { except: 'delivery' })) {
+      /* ดีลแพ้ที่ไม่มีวันรับของไม่อยู่ทั้งสองกลุ่ม (null) — ติ๊กกลุ่มไหนก็ไม่ขึ้น จึงไม่นับ */
+      const state = dealDeliveryState(deal);
+      if (state) counts.delivery[state] += 1;
+    }
+  }
+  return counts;
 }

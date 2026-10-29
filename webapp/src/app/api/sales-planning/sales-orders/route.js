@@ -3,9 +3,16 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { exciseSalesOrderCreateError } from '@/lib/excise/exciseSalesOrder';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+/* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
+import {
+  installmentActualAwaitingReview, installmentActualReadyForOwner, isInstallmentActualOrder,
+} from '@/lib/sales/salesOrderActualMode';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
@@ -114,7 +121,11 @@ export const GET = withUser(async ({ user, supabase }) => {
     arById = new Map((customers || []).map((c) => [c.id, String(c.arCode || '').trim() || null]));
   }
 
-  const dealIds = [...new Set((orders || []).map((row) => row.dealId).filter(Boolean))];
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ด่านขอบเขตใช้ดีลของ SO ต้นทาง ซึ่งอยู่ในชุด `orders` นี้อยู่แล้ว (ทะเบียนอ่านทุกใบ)
+     ⇒ เติมแค่ดีลของใบต้นทางเข้า `dealIds` ไม่ต้องยิงเพิ่ม · ดีลนั้นไปที่ `sourceDeal` ไม่ใช่ `deal` (scopedRow.js) */
+  const orderById = new Map((orders || []).map((row) => [row.id, row]));
+  const sourceDealIdOf = (row) => (row.sourceSalesOrderId ? orderById.get(row.sourceSalesOrderId)?.dealId || null : null);
+  const dealIds = [...new Set((orders || []).flatMap((row) => [row.dealId, sourceDealIdOf(row)]).filter(Boolean))];
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
     dealIds.length
@@ -272,6 +283,9 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* ⭐ ค่า 'submitted' บนใบที่สายของโครงการ/ดีลเปลี่ยนไปแล้ว (ยื่นตอนเป็นบริการ แล้วแก้สายระหว่างรอตรวจ) — ไม่ใช่งานของผู้ตรวจ:
      RPC อนุมัติปฏิเสธ และหน้าใบไม่มีการ์ดงานบริการ ⇒ ขึ้นคิวแล้วเคลียร์ไม่ได้ · ค่าคงไว้ สายกลับเป็นบริการแล้วกลับมารอตรวจเอง */
   const staleServiceReview = (row) => serviceBackfillAwaitingReview(row) && businessLineById.get(row.id) !== 'SERVICE';
+  /* งวดของใบ "Actual รายงวด" (mig 0412) ให้สองเลนของ `_waitingOnMe` / `_awaitingMyApproval` — ใบอื่น = null (เลนไม่นับ · ไม่เดา)
+     ⚠️ งวดอ่านไม่ขึ้น (installmentError ข้างบน) = [] ⇒ เลนนี้ไม่นับ (ตรงกับคอลัมน์งวดที่ว่าง) — ป้ายบนเมนูโยน error ของมันเอง */
+  const actualInstallmentsOf = (row) => (isInstallmentActualOrder(row) ? (installmentsByOrder.get(row.id) || []) : null);
 
   const visible = (orders || [])
     .map((row) => ({
@@ -279,6 +293,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       customerArCode: arById.get(row.customerId) ?? null,
       lines: linesByOrder.get(row.id) || [],
       deal: dealById.get(row.dealId) || null,
+      ...(row.dealId ? {} : { sourceDeal: dealById.get(sourceDealIdOf(row)) || null }),
       quotation: quoteById.get(row.quotationId) || null,
       scentRequest: scentRequestByOrder.get(row.id) || null,
       // สรุปงวดพอให้ตารางวาดได้ — รายละเอียดเต็มอยู่ที่หน้ารายละเอียดใบ
@@ -304,16 +319,34 @@ export const GET = withUser(async ({ user, supabase }) => {
       /* ⚠️ แนบ deal ให้ helper — ใบที่ถูกย้อนอนุมัติตัดสินจากเจ้าของดีล (มติ 24/09) · แถวดิบไม่มี deal = ลิสต์กับป้ายไม่ตรงกัน */
       /* ⭐ เลนงานบริการย้อนหลัง (mig 0392 · D26): ผู้จัดการตรวจ (ตัวตัดสินอ่านจากแถว) + เจ้าของดีลตั้ง — เลนหลังต้องรู้ว่า
          ใบนี้ **ต้องตั้งจริง** (`serviceBackfillNeeded` ใช้บรรทัด + สายธุรกิจ) ⇒ ผู้เรียกคิดส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
+      /* ⭐ เลนนับ Actual รายงวด (mig 0412): ผู้อนุมัติ = มีงวดยื่นรอที่ไม่ใช่ของตัวเอง · เจ้าของดีล = มีงวดที่ยื่นขอนับได้แล้ว
+         — ส่งงวดของใบ (`id, seq, status, actualStatus, actualSubmittedById` จาก loadListInstallments) เฉพาะใบรายงวด · ใบอื่น = null */
       _waitingOnMe: isSalesOrderWaitingOnMe({ ...row, deal: dealById.get(row.dealId) || null }, {
         userId: user.id, reviewer: reviewer && !staleServiceReview(row), role: user.role,
         serviceBackfillNeeded: setupPendingIds.has(row.id),
+        actualInstallments: actualInstallmentsOf(row),
       })
         || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
-         (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว) */
-      _awaitingMyApproval: isSalesOrderReviewer(user.role)
+         (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว)
+         ⭐ + ใบรายงวดที่มี **งวดยื่นรออนุมัตินับ Actual** ที่ไม่ใช่ของตัวเอง (mig 0412 · คิว "งวดรออนุมัติ" ของมติ 26/10) —
+           ตัวตัดสินเดียวกับเลนผู้อนุมัติของ `_waitingOnMe` (installmentActualAwaitingReview · role ผู้อนุมัติเหมือน RPC) */
+      _awaitingMyApproval: (isSalesOrderReviewer(user.role)
         && row.status === 'pending_approval'
-        && !isSalesOrderSelfApproval(row, user.id),
+        && !isSalesOrderSelfApproval(row, user.id))
+        || installmentActualAwaitingReview(row, actualInstallmentsOf(row) || [], { userId: user.id, role: user.role }),
+      /* 🐞 review รอบสอง 26/10: เลนเจ้าของดีลของใบรายงวด (มีงวดยื่นขอนับได้แล้ว — ตัวตัดสินเดียวกับ `_waitingOnMe`) แยกเป็นธงของแถว
+         ⇒ จอพาแถวนี้ไปแท็บการชำระ (ปุ่ม "ยื่นขอนับงวดนี้" อยู่ที่นั่นที่เดียว) · ไม่ใช้ `_waitingOnMe` ตรง ๆ เพราะใบอนุมัติแล้วอาจอยู่เลน
+         งานบริการย้อนหลังของเจ้าของดีลด้วย (ต้องไปภาพรวม #service-setup) */
+      ...(isInstallmentActualOrder(row) && installmentActualReadyForOwner({ ...row, deal: dealById.get(row.dealId) || null },
+        actualInstallmentsOf(row) || [], { userId: user.id })
+        ? { _installmentReadyForMe: true }
+        : {}),
+      /* จำนวนงวดที่ยื่นรอ AE Sup ของใบรายงวด — `splitSalesOrderAmounts` นับ "รออนุมัติ n ใบ/งวด" จากค่านี้ (แถวใบไม่มีคอลัมน์นับ)
+         · ใบอื่น = ไม่มีคีย์ (ตัวคิดถอยไปตามกติกาเดิม) */
+      ...(isInstallmentActualOrder(row)
+        ? { actualSubmittedCount: (actualInstallmentsOf(row) || []).filter((r) => r.actualStatus === 'submitted').length }
+        : {}),
       /* ⭐ **แกนที่สองของใบเดียวกัน: ขั้นบัญชีตรวจ** (mig 0250 · `financeStatus`)
          ทะเบียนใบสั่งขายอยู่ในเมนูของฝ่ายบัญชีตั้งแต่มติ 2026-08-22 และหน้าสวมเปลือก
          ตามคนดู ⇒ คิวบนหัวหน้าต้องพูดงานของคนที่ยืนอยู่ ไม่ใช่ของสายขายเสมอ
@@ -362,7 +395,7 @@ export const GET = withUser(async ({ user, supabase }) => {
         roundsDone: roundsDoneByOrder.get(row.id) || 0,
       } : null,
     }))
-    .filter((row) => row.deal && inSalesViewScope(user, row.deal));
+    .filter((row) => inSalesDocScope(user, row, 'view'));
 
   return ok(visible);
 });
@@ -387,16 +420,27 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, origin, "sourceSalesOrderId", deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (quote.status !== 'accepted') return badRequest('สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
-  if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
-  // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้
-  const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออกใบสั่งขายใบใหม่');
-  if (closedProject) return badRequest(closedProject);
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414 · แผนรื้อสรรพสามิต PR4) ออก SO ค่าสรรพสามิตด้วย RPC ของมันเอง (0416) — ไม่มีดีล/โครงการ ·
+     สิทธิ์ถอยไปดีลของ SO ต้นทาง (`sourceDeal` — ใช้ตัดสินสิทธิ์อย่างเดียว ห้ามใส่ `quote.deal`) · ที่เหลือ (เอกสารยืนยัน · งวด) เส้นเดียวกับใบปกติ */
+  const excise = isExciseOrder(quote);
+  if (excise) {
+    const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+    if (sourceError) return fail(sourceError.message, 500);
+  }
+  if (quote.status !== 'accepted') {
+    return badRequest(excise ? 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ลูกค้ารับแล้ว' : 'สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
+  }
+  if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
+  // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้ · ใบค่าสรรพสามิตไม่มีโครงการ
+  if (!excise) {
+    const closedProject = await closedProjectBlock(supabase, quote.deal?.projectId, 'ออกใบสั่งขายใบใหม่');
+    if (closedProject) return badRequest(closedProject);
+  }
 
   /* หลักฐานต้องชี้เข้าโฟลเดอร์ของใบเสนอราคาใบนี้เท่านั้น — กันแนบไฟล์ของใบอื่นมาเป็นหลักฐานของใบนี้
      ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัว · ref แบบ URL/Drive ไม่ผ่านแล้ว
@@ -467,7 +511,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   const orderId = genId('SOR');
-  const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
+  const createArgs = {
     p_quote_id: quotationId,
     p_order_id: orderId,
     p_actor_id: user.id || null,
@@ -481,11 +525,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       confirmDocDate: confirmation?.docDate || null,
       confirmAttachments: confirmation?.attachments || [],
     },
-  });
+  };
+  // ใบค่าสรรพสามิต = RPC ของมันเอง (0416 · ไม่มีดีล/โครงการ · Actual 0) — อาร์กิวเมนต์ชุดเดียวกันทุกตัว
+  const { data: order, error } = excise
+    ? await supabase.rpc('create_excise_sales_order_draft', createArgs)
+    : await supabase.rpc('create_sales_order_draft', createArgs);
   if (error) {
     if (error.code === '23505' || error.message?.includes('already_exists')) {
       return conflict('ใบเสนอราคาใบนี้ออกใบสั่งขายไปแล้ว');
     }
+    const exciseError = excise ? exciseSalesOrderCreateError(error) : null;
+    if (exciseError) return badRequest(exciseError);
     return fail(error.message, /quotation_|sales_order_/.test(error.message || '') ? 400 : 500);
   }
   await recordAudit({
@@ -524,8 +574,20 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 });
 
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
-   `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว) */
+   `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว)
+   ⭐ `id, seq, "actualStatus", "actualSubmittedById"` (mig 0412) = สองเลนของ Actual รายงวด (`_waitingOnMe` · `_awaitingMyApproval`) +
+     จำนวนงวดที่ยื่นรอ (`actualSubmittedCount`) — ชุดเดียวกับที่ป้ายบนเมนูอ่าน · `"actualApprovedVia"` = สัญญาณ "กดนับที่เหลือทั้งหมดแล้ว"
+     (มติข้อ 10 — ใบแบบนั้นไม่มีงวดให้ยื่น ⇒ เลนเจ้าของดีลไม่ชี้งวดที่ยื่นไม่ได้) · `"frozenAt"` = งวดยังไม่ตรึง (review รอบสี่ —
+     ยื่นไม่ได้จน AE Sup กดปุ่มกู้ ⇒ เลนเจ้าของดีลไม่นับ · ป้ายเมนูอ่านชุดเดียวกัน) · ⚠️ ก่อนรัน 0412 = 42703 ⇒ ถอยเป็นชุดของ 0378
+     (ใบยังไม่มี "actualMode" ⇒ ทุกใบเป็นทั้งใบ · เลนไม่นับ) */
 async function loadListInstallments(supabase, orderIds) {
+  const withActual = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt"')
+    .in('salesOrderId', chunk)
+    .order('salesOrderId', { ascending: true })
+    .order('id', { ascending: true })));
+  if (withActual.error?.code !== '42703') return withActual;
   const withRefund = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments')
     .select('salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt"')

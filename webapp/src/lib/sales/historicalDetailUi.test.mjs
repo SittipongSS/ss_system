@@ -126,7 +126,7 @@ test('ปุ่มออกสัญญาไม่ขึ้นกับใบ�
   assert.match(page, /const canCreateContract = canEdit && !historical &&/);
   // ใบย้อนหลังไม่มีการ์ดสัญญาของดีลเลย (ดีลภาชนะ ⇒ ลิสต์ทั้งดีลพาเอกสารแทนสัญญาของใบพี่น้องมาปน)
   assert.match(page, /\{showDealContracts \? \(\s*\n\s*<DealContractsCard/);
-  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\);/);
+  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\) && !isExciseOrder\(order\);/);
 });
 
 // ── 4. ของใบปกติที่ต้องไม่โผล่ ────────────────────────────────────────────────────────
@@ -279,6 +279,8 @@ test('🔴 โมดัลยืนยันทุกตัวของหน้
     ['async function openBackfillApprove() {', '\n  }'],
     /* ยื่นโดยยังไม่ตั้งงานบริการ (mig 0404): โมดัลยืนยันของปุ่มข้ามบนแผงแดง — ปิดเสมอหลังยิง แต่ยังตั้งธง + ล้าง error ตอนเปิดตามกฎ */
     ['async function pressSkipSubmit() {', '\n  }\n'],
+    /* ถอนการตัดสิน "ไม่เรียกเก็บค่าสรรพสามิตในระบบ" (แผนรื้อสรรพสามิต PR3) */
+    ['function clearNotBilled() {', '\n  }'],
   ];
   /* ทั้งสองฝั่งต้องเท่ากับจำนวนตัวเปิดในลิสต์ — ฝั่งซ้ายกันตัวเปิดใหม่ที่ไม่ตั้งธงเลย
      ฝั่งขวากันตัวที่ตั้งธงแล้วไม่ถูกเติมเข้าลิสต์ (จะไม่มีใครตรวจ `setError("")` ของมัน) */

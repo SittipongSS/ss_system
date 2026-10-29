@@ -2,12 +2,18 @@
 import { isSalesManager } from '@/lib/permissions';
 // ใบสั่งขายย้อนหลัง (mig 0360 → 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
-  HISTORICAL_UNAPPROVED_STATUSES, canKeyHistoricalSalesOrder, historicalOrderEditable, isHistoricalOrder,
+  HISTORICAL_UNAPPROVED_STATUSES, canKeyHistoricalSalesOrder, historicalOrderEditable, isActualOrder,
+  isExciseOrder, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 /* งานบริการรายบรรทัด (mig 0392) — ตัวตัดสินล้วน ใช้ได้ทั้งจอและ API · ไฟล์นั้นไม่ import ไฟล์นี้กลับ (ไม่มีวง · serviceSetupImports) */
 import { serviceBackfillAwaitingReview } from '@/lib/sales/serviceSetup';
+/* นับ Actual ทั้งใบ / รายงวด (mig 0412) — ไฟล์กติกาล้วน ไม่ import ไฟล์นี้กลับ (ไม่มีวง) */
+import {
+  installmentActualAwaitingReview, installmentActualReadyForOwner, salesOrderCountedActual,
+  salesOrderRemainingActual, salesOrderSubmittedActual, salesOrderSubmittedCount,
+} from '@/lib/sales/salesOrderActualMode';
 
 export const SALES_ORDER_STATUS_LABELS = {
   draft: 'ฉบับร่าง',
@@ -43,6 +49,17 @@ export function isSalesOrderSubmitter(order, userId) {
     && order?.submittedBy === userId;
 }
 
+/* สองเลนของ Actual รายงวด (mig 0412 — รายละเอียดที่คอมเมนต์ของ isSalesOrderWaitingOnMe ข้างล่าง)
+   ⭐ ป้ายบนเมนู (salesOrderIdsWaitingOnMe · actualRows) กับธงของทะเบียนถามตัวนี้ตัวเดียว · ไม่มีงวด (ไม่ใช่อาร์เรย์) = false
+   ⭐ ผู้อนุมัติงวด = role (is_sales_manager_role ของ RPC) **หรือ** `reviewer` ที่ผู้เรียกส่ง — ทะเบียนส่ง `reviewer` ที่ถูกตัดด้วย
+     เหตุของเลนอื่น (staleServiceReview ของงานบริการ) ซึ่งไม่เกี่ยวกับงวด ⇒ ถ้าอ่าน `reviewer` อย่างเดียว คิวงวดของใบนั้นหายเงียบ */
+export function isInstallmentActualWaitingOnMe(order, installments, { userId = '', reviewer = false, role = '' } = {}) {
+  if (!order || !Array.isArray(installments)) return false;
+  return installmentActualAwaitingReview(order, installments, {
+    userId, role, reviewer: reviewer || isSalesOrderReviewer(role),
+  }) || installmentActualReadyForOwner(order, installments, { userId });
+}
+
 /* "รอฉันลงมือ" ของใบสั่งขาย — ใบที่ผู้รีวิว **ตีกลับ** มาให้คนสร้างแก้
    ⚠️ `draft` ไม่นับ แม้จะเป็นใบของตัวเอง — ร่างที่ยังไม่เคยยื่นไม่มีใครรออยู่ปลายทาง
    (กติกาเดียวกับใบร่างคำร้อง ม-112 และใบเสนอราคา) · ต่างกันตรงใบสั่งขายเก็บ "ตีกลับ"
@@ -64,10 +81,16 @@ export function isSalesOrderSubmitter(order, userId) {
      · เลนเจ้าของดีล: ใบต้องตั้งย้อนหลัง (`serviceBackfillNeeded` — **ผู้เรียกคิดมาให้** เพราะต้องใช้บรรทัด + สายธุรกิจ) ·
        เจ้าของดีลปัจจุบัน = คนที่ต้องลงมือ (ไม่ใช่ผู้สร้างใบ — กติกาเดียวกับเลนย้อนอนุมัติ) · ยื่นตรวจแล้วไม่นับ (รอผู้จัดการ)
    ⚠️ ไม่ส่ง `serviceBackfillNeeded` = เลนเจ้าของดีลไม่นับ (ผู้เรียกที่ไม่มีบรรทัด/สายธุรกิจห้ามเดา) */
+/* ⭐ **นับ Actual รายงวดสองเลน** (mig 0412 · docs/so-installment-actual.md) — ใบรายงวดที่อนุมัติแล้ว
+     · เลนผู้อนุมัติ: มีงวดยื่นแล้วรอ AE Sup ที่ไม่ใช่ของตัวเอง (admin นับของตัวเองด้วย — อนุมัติเองได้ตาม RPC)
+     · เลนเจ้าของดีลปัจจุบัน: มีงวดที่ยื่นขอนับได้แล้ว (งวดก่อนหน้ารับรองเงินครบ / ถูกตีกลับ) — ไม่ใช่ผู้สร้างใบ
+   ⚠️ ผู้เรียกต้องส่ง `actualInstallments` = งวดของใบ `{ id, seq, status, dueDate, actualStatus, actualSubmittedById }` (+ แนบ `deal`)
+     ไม่ส่ง = สองเลนนี้ไม่นับ (ไม่เดา — แถวใบไม่มีข้อมูลรายงวด) · เลนเหล่านี้ **บวกเพิ่ม** (OR) ไม่ตัดเลนเดิม */
 export function isSalesOrderWaitingOnMe(order, {
-  userId = '', reviewer = false, role = '', serviceBackfillNeeded = false,
+  userId = '', reviewer = false, role = '', serviceBackfillNeeded = false, actualInstallments = null,
 } = {}) {
   if (!order) return false;
+  if (isInstallmentActualWaitingOnMe(order, actualInstallments, { userId, reviewer, role })) return true;
   if (reviewer && serviceBackfillAwaitingReview(order)) {
     return role === 'admin' || order.serviceSetupSubmittedById !== userId;
   }
@@ -94,9 +117,12 @@ export function isSalesOrderWaitingOnMe(order, {
    @param rows         แถวของเลนที่ helper ตัดสินจากแถวล้วน (รออนุมัติ/ตีกลับ · ร่างใบย้อนหลัง · ย้อนอนุมัติ · รอตรวจงานบริการ)
    @param backfillRows แถวเลนเจ้าของดีล (ใบอนุมัติแล้วยังไม่ประทับ) — `backfillNeeded(row)` ผู้เรียกคิดจากบรรทัด + สายธุรกิจ
    @param financeRows  แถวเลนบัญชี — `financeWaiting(row)` = awaitsFinanceReview กับงวดของใบ (ผู้เรียกโหลดงวดมาแล้ว)
+   @param actualRows   แถวเลนนับ Actual รายงวด (mig 0412) — ใบ `approved` + `actualMode = 'installment'` ที่ยังไม่ถูกแทน
+                       (แนบ `deal.ownerId`) · `actualInstallmentsOf(row)` = งวดของใบ `{ id, seq, status, dueDate, actualStatus, actualSubmittedById }`
    → Set ของ id (ป้าย = `.size`) · ตรงกับทะเบียน: `_waitingOnMe || _awaitingMyApproval || _awaitingMyServiceReview || _awaitingFinanceReview` */
 export function salesOrderIdsWaitingOnMe({
   rows = [], backfillRows = [], backfillNeeded = () => false, financeRows = [], financeWaiting = () => false,
+  actualRows = [], actualInstallmentsOf = () => null,
 } = {}, { userId = '', reviewer = false, role = '' } = {}) {
   const ids = new Set();
   for (const row of rows || []) {
@@ -104,6 +130,11 @@ export function salesOrderIdsWaitingOnMe({
   }
   for (const row of backfillRows || []) {
     if (isSalesOrderWaitingOnMe(row, { userId, reviewer, role, serviceBackfillNeeded: !!backfillNeeded(row) })) ids.add(row.id);
+  }
+  /* ถามเฉพาะสองเลนของ Actual รายงวด — ไม่ผ่าน isSalesOrderWaitingOnMe ทั้งตัว ไม่งั้นแถวชุดนี้พาเลนอื่น
+     (เช่นรอตรวจงานบริการ ที่ rows กรองสายธุรกิจไว้แล้ว) กลับเข้ามาโดยไม่ผ่านตัวกรองของมัน */
+  for (const row of actualRows || []) {
+    if (isInstallmentActualWaitingOnMe(row, actualInstallmentsOf(row), { userId, reviewer, role })) ids.add(row.id);
   }
   for (const row of financeRows || []) {
     if (financeWaiting(row)) ids.add(row.id);
@@ -148,8 +179,10 @@ export function canEditSalesOrderContent(
 // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ย้อนอนุมัติ/ออก Rev. ไม่ได้ — ไม่มีใบเสนอราคาให้ออกฉบับใหม่
 //    (CHECK sales_orders_origin_shape ตรึงที่ฐานอีกชั้น) · อนุมัติแล้วข้อมูลผิด = ผู้จัดการฝ่ายขายยกเลิกใบแล้วคีย์ใหม่
 //    (HISTORICAL_CORRECTION_PATH · มติ 22/09 — ฐานยกเลิกเอกสารแทนสัญญาตามใบเอง)
+// ⛔ ใบค่าสรรพสามิต (mig 0414) ก็ย้อนอนุมัติไม่ได้ — ออก Rev. ไม่ได้ (CHECK สาย excise บังคับ revisionNo = 0) ถ้าปล่อยย้อน
+//    ใบจะค้าง approval_revoked ตลอดไป · แก้ = ยกเลิกแล้วออกใหม่ (มติ D3 28/10 · ฐานปิดซ้ำที่ 0416)
 export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
-  return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order);
+  return Boolean(order) && reviewer && order.status === 'approved' && !isHistoricalOrder(order) && !isExciseOrder(order);
 }
 
 /* ออก Rev. = ขั้นที่ 2 · **AE เจ้าของดีล + ผู้รีวิว** (มติ 24/09) — ขั้นนี้ไม่ขยับ Actual แล้ว (หลุดไปตั้งแต่ย้อนอนุมัติ)
@@ -159,7 +192,7 @@ export function canRevokeSalesOrderApproval(order, { reviewer = false } = {}) {
    ⭐ เจ้าของดีล *ปัจจุบัน* (`deal.ownerId`) ไม่ใช่ผู้สร้างใบ — กติกาเดียวกับ canSubmitSalesOrder / ใบเสนอราคา (0165)
    ⚠️ ฐานเช็คซ้ำที่ revise_approved_sales_order_atomic (mig 0385) · route คูณ salesplan:edit + ขอบเขตดีลไว้แล้ว */
 export function canIssueSalesOrderRevision(order, { reviewer = false, userId = '', deal = null } = {}) {
-  if (!order || order.status !== 'approval_revoked' || isHistoricalOrder(order)) return false;
+  if (!order || order.status !== 'approval_revoked' || isHistoricalOrder(order) || isExciseOrder(order)) return false;
   if (reviewer) return true;
   return Boolean(userId) && userId === deal?.ownerId;
 }
@@ -246,9 +279,10 @@ export function isValidReversalTarget(target) {
 
 // ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่ใช่ Actual แม้อนุมัติแล้ว — ยอดจริงอยู่ในใบ แต่ตัวคำนวณตัดทิ้ง
 //    (ตรงกับ sync_sales_order_actual ที่กรอง origin = 'pipeline')
+/* ⭐ ใบ "Actual รายงวด" (mig 0412) = ยอดของงวดที่ AE Sup อนุมัติแล้วเท่านั้น (`actualCountedAmount`) — ตัวคิดอยู่ที่
+   salesOrderCountedActual (salesOrderActualMode.js) ตัวเดียว · ใบทั้งใบได้ `actualAmount` เต็มเหมือนเดิม */
 export function salesOrderActual(order) {
-  if (isHistoricalOrder(order)) return 0;
-  return order?.status === 'approved' ? Math.max(0, Number(order.actualAmount) || 0) : 0;
+  return salesOrderCountedActual(order);
 }
 
 /* ── ยอด "รออนุมัติ" (มติผู้ใช้ 2026-09-11 · mig 0353) ─────────────────────────
@@ -273,8 +307,9 @@ export function salesOrderPendingApprovalAmount(order) {
 //   'pending_approval' ยื่นแล้วรออนุมัติ โชว์ยอดแยก ยังไม่นับ
 //   'excluded'         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก — ไม่นับทั้งสองกอง
 //                      + **ใบสั่งขายย้อนหลังทุกสถานะ** (mig 0360 · ไม่นับ Actual / FC / เป้า)
+//                      + **ใบค่าสรรพสามิตทุกสถานะ** (mig 0414 · เงินรับแทน ไม่ใช่ยอดขาย)
 export function salesOrderAmountKind(order) {
-  if (isHistoricalOrder(order)) return 'excluded';
+  if (!isActualOrder(order)) return 'excluded';
   if (order?.status === 'approved') return 'actual';
   if (order?.status === 'pending_approval') return 'pending_approval';
   return 'excluded';
@@ -282,16 +317,41 @@ export function salesOrderAmountKind(order) {
 
 // รวมยอดจากแถว SO ตรง ๆ (หน้ารายการ SO · ตาราง SO ในดีล/โครงการ · รายงาน)
 // ⭐ ผลต้องตรงกับ cache บนดีล (sync_sales_order_actual) — กติกาเดียวกันทุกตัวอักษร
+/* ⭐ ใบ "Actual รายงวด" ที่อนุมัติแล้ว (mig 0412 · มติข้อ 5) แบ่งยอดใบเป็นสามกองที่รวมกันเท่า `actualAmount` พอดี:
+     actual          += `actualCountedAmount` (งวดที่ AE Sup อนุมัติแล้ว) — ใบยังนับ actualCount หนึ่งใบเหมือนเดิม
+     pendingApproval += `actualSubmittedAmount` (งวดที่ยื่นแล้วรอ AE Sup = soInstPendingAmount ของดีล) ·
+                        pendingApprovalCount += **1 ใบ** เมื่อมีงวดยื่นอยู่ (ไม่ใช่จำนวนงวด — review รอบสาม 26/10:
+                        ทุกจอวาดตัวนี้เป็น "· n ใบ" · cache ของดีล soInstPendingCount นับใบชุดเดียวกัน)
+     instRemaining   += actualAmount − นับแล้ว − ยื่นแล้ว (กอง "รอนับรายงวด" = Σ soInstRemainingByDue ของดีล)
+   ⭐ แยกสองกองของ "รออนุมัติ" ไว้ให้จอที่ต้องแยก (review รอบสาม 26/10 · ตรวจตัวเลข L11 ของ #1922):
+     pendingOrderCount/Amount = ใบ `pending_approval` ล้วน (ชุดเดียวกับการ์ด "รอตรวจอนุมัติ" ที่กดแล้วกรองสถานะ)
+     instPendingCount/Amount  = **งวด** ที่ยื่นอยู่ของใบรายงวดที่อนุมัติแล้ว (จำนวนงวด · ป้าย "งวด")
+     ⇒ pendingApproval = pendingOrderAmount + instPendingAmount เสมอ
+   ⚠️ แถวต้องมี `actualMode` / `actualCountedAmount` / `actualSubmittedAmount` (select ของ route) — ขาด `actualMode`
+     = ถือเป็นใบทั้งใบ (ได้ actualAmount เต็ม ⇒ ยอดเกิน cache ของดีล) */
 export function splitSalesOrderAmounts(orders = []) {
-  const out = { actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0 };
+  const out = {
+    actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
+    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0,
+  };
   for (const order of orders || []) {
     const kind = salesOrderAmountKind(order);
     if (kind === 'actual') {
+      const submitted = salesOrderSubmittedActual(order);
+      const submittedCount = salesOrderSubmittedCount(order);
       out.actual += salesOrderActual(order);
       out.actualCount += 1;
+      out.pendingApproval += submitted;
+      out.pendingApprovalCount += submitted > 0 || submittedCount > 0 ? 1 : 0;
+      out.instPendingAmount += submitted;
+      out.instPendingCount += submittedCount;
+      out.instRemaining += salesOrderRemainingActual(order);
     } else if (kind === 'pending_approval') {
-      out.pendingApproval += salesOrderPendingApprovalAmount(order);
+      const amount = salesOrderPendingApprovalAmount(order);
+      out.pendingApproval += amount;
       out.pendingApprovalCount += 1;
+      out.pendingOrderAmount += amount;
+      out.pendingOrderCount += 1;
     }
   }
   return out;
@@ -301,12 +361,20 @@ export function splitSalesOrderAmounts(orders = []) {
 // ⭐ ไม่มีคีย์ = 0 — JS ขึ้น production ได้ก่อนรัน migration โดยไม่มีอะไรพัง
 // ⭐ ไม่ต้องดู actualSource: สองคีย์นี้มีแต่ trigger ฝั่ง DB เป็นคนเขียน (enforce ถอดค่าที่
 //    หน้าจอส่งมาทิ้งทุกครั้ง) · ตัวกรอง "นับเฉพาะดีล Won" อยู่ที่ตัวรวมยอด (dashboardMetrics)
+/* ⭐ รวม **งวดที่ยื่นแล้วรอ AE Sup** ของใบรายงวด (`soInstPendingAmount/Count` · mig 0412 · มติข้อ 5 "งวดที่ยื่นแล้ว = รออนุมัติ")
+   — กติกาเดียวกับ splitSalesOrderAmounts ของแถวใบ (pendingApproval += actualSubmittedAmount) ⇒ แดชบอร์ด หน้าโครงการ
+   และตาราง SO ได้กองรออนุมัติเท่ากัน · ใบทั้งใบไม่มีสองคีย์นี้ = ค่าเดิมทุกดีล */
 export function dealPendingApprovalAmount(deal) {
-  return Math.max(0, Number(deal?.metadata?.soPendingAmount) || 0);
+  const so = Math.max(0, Number(deal?.metadata?.soPendingAmount) || 0);
+  const installments = Math.max(0, Number(deal?.metadata?.soInstPendingAmount) || 0);
+  return installments ? Math.round((so + installments) * 100) / 100 : so;
 }
 
+/* จำนวน **ใบ** ที่มียอดรออนุมัติ — ใบรออนุมัติ (soPendingCount) + ใบรายงวดที่มีงวดยื่นอยู่ (soInstPendingCount นับใบ · 0412 review รอบสาม)
+   ⇒ ป้าย "· n ใบ" ของ <PendingApprovalAmount> ตรงทุกจอ (ใบหนึ่งอยู่กองเดียว — ไม่นับซ้ำ) */
 export function dealPendingApprovalCount(deal) {
-  return Math.max(0, Math.trunc(Number(deal?.metadata?.soPendingCount) || 0));
+  return Math.max(0, Math.trunc(Number(deal?.metadata?.soPendingCount) || 0))
+    + Math.max(0, Math.trunc(Number(deal?.metadata?.soInstPendingCount) || 0));
 }
 
 // sales_deals.wonValue is only a compatibility cache. Treat it as Actual only

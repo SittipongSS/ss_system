@@ -32,7 +32,7 @@ const T = {
   off: 'ยังไม่เปิดใช้การประเมินจากแบบ',
   notFound: 'ไม่พบใบประเมินพื้นที่',
   sent: 'ส่งผลไปแล้ว — เปลี่ยนวิธีประเมินไม่ได้ โหลดหน้าใหม่',
-  notAcknowledged: 'กด “รับเรื่อง” ก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
+  notAcknowledged: 'ไปกด “รับเรื่อง” ที่หน้าคำร้องก่อน แล้วค่อยเปลี่ยนวิธีประเมิน',
   cancelled: 'ใบนี้ถูกยกเลิกไปแล้ว — แก้ผลประเมินไม่ได้',
   closed: 'ใบนี้ถูกปิดไปแล้ว — แก้ผลประเมินไม่ได้ · ถ้าต้องประเมินใหม่ ให้เปิดใบใหม่',
   body: 'วิธีประเมินไม่ถูกต้อง',
@@ -606,7 +606,8 @@ const DIRECTIONS = {
     body: () => ({ changes: toOnsite('Z2') }),
     steps: () => ['1', '3b', '4', '5', '6'],
     plan: (v) => ({ kind: 'switch', flip: null, visitAction: liveCrew(v) ? 'stays' : 'none' }),
-    bells: () => ({ crew: null, head: false }),
+    // S2b แก้หลังตรวจจอ head-r3-54: นัดยังอยู่ ⇒ ช่างได้กระดิ่งว่าต้องวัดพื้นที่ที่กลับเพิ่ม (นัดร่าง / ปิดแล้ว = ไม่มี)
+    bells: (v) => ({ crew: liveCrew(v) ? 'zones' : null, head: false }),
     visitAfter: (v) => v,
   },
   'พื้นที่แรกกลับเป็นลงหน้างาน (ใบกลับมาต้องมีนัด)': {
@@ -615,8 +616,9 @@ const DIRECTIONS = {
     // มติ 12/10 (O3): นัดล่าสุดไปถึงไซต์แล้ว (เข้าแล้ว / ทำไม่ครบ) = ขั้น 4 แตะปิดท้ายอย่างเดียว ไม่มีคอลัมน์วัน
     // นัดค้าง = sync · นัดถึงไซต์แล้ว = keep ซึ่งเขียนคอลัมน์วันเข้าพื้นที่ชุดเดียวกับ sync (ไม่มีวันส่งผล) · ที่เหลือ = ล้าง
     steps: (v) => ['1', '3b', OPEN.includes(v) || REACHED.includes(v) ? '4(sync)' : '4(clear)', '5', '6'],
-    plan: () => ({ kind: 'switch', flip: 'to-visit', visitAction: 'none' }),
-    bells: () => ({ crew: null, head: false }),
+    // (S2b · มติเจ้าของ 26/10 head-r3-54 ข้างเคียง) นัดที่ช่างถือ (นัดไว้ / กำลังทำ เช่นค้างจาก keep-open) = `stays` + กระดิ่งต้องวัดเพิ่ม · ร่าง / ปิดแล้ว = ไม่มี
+    plan: (v) => ({ kind: 'switch', flip: 'to-visit', visitAction: liveCrew(v) ? 'stays' : 'none' }),
+    bells: (v) => ({ crew: liveCrew(v) ? 'zones' : null, head: false }),
     visitAfter: (v) => v,
   },
   'ยกเลิกนัดอย่างเดียว': {
@@ -853,6 +855,54 @@ test('กลับเป็นลงหน้างานตอนมีนั�
   assert.equal(draft.tables.dept_requests[0].assigneeId, 'U-HEAD2');
 }));
 
+/* (S2b · มติเจ้าของ 26/10 — head-r3-54 กรณีข้างเคียง) ทั้งสายผ่าน handler ตัวจริง: นัดค้าง "กำลังทำ" จาก keep-open แล้วพื้นที่กลับเป็นลงหน้างาน
+   เดิมการกดครั้งที่สองไม่มีกระดิ่งเลย — ช่างที่ยืนอยู่หน้างานไม่รู้ว่ามีห้องต้องวัดเพิ่ม */
+test('head-r3-54 ข้างเคียง: keep-open → พื้นที่กลับเป็นลงหน้างาน → สองทิศ บนนัดกำลังทำเดียวกัน = กระดิ่งช่างหนึ่งใบต่อการกด · ส่ง body เดิมซ้ำไม่ยิงอีก · นัดไม่ถูกแตะ', flagged(async () => {
+  const db = world({ zones: SHEETS.onsite(), visits: [visitRow('in_progress')] });
+  const visitBefore = clone(db.tables.service_visits[0]);
+
+  // ① ทุกพื้นที่เป็นจากแบบขณะช่างกดเริ่มงานแล้ว — นัดไม่ถูกยกเลิก (keep-open) ใบเป็นงานโต๊ะที่ยังมีนัดกำลังทำ
+  const first = await post(db, bodyFor(db, { actionId: ACTION.a, changes: toDrawing('Z1', 'Z2', 'Z3'), committedResultDate: DATE }));
+  assert.equal(first.status, 200, first.json.error);
+  assert.deepEqual(first.json.plan, { kind: 'switch', flip: 'to-desk', visitAction: 'keep-open' });
+
+  // ② พื้นที่แรกกลับเป็นลงหน้างาน — ใบพลิกกลับมาต้องมีนัด · ช่างของนัดได้กระดิ่ง "ต้องวัดเพิ่ม" (ตัวสร้างประโยคเดิมของ head-r3-54)
+  clock(1);
+  const backBody = bodyFor(db, { actionId: ACTION.b, changes: toOnsite('Z1') });
+  const back = await post(db, backBody);
+  assert.equal(back.status, 200, back.json.error);
+  assert.deepEqual(back.json.plan, { kind: 'switch', flip: 'to-visit', visitAction: 'stays' });
+  const backBells = bellRows(db).filter((n) => n.kind === CREW_KIND && n.updateId === `survey-method:RQ1:${keyOf(ACTION.b)}`);
+  assert.deepEqual(backBells.map((n) => n.userId).sort(), ['U-AST', 'U-TECH']);
+  assert.deepEqual([...new Set(backBells.map((n) => n.title))], ['หัวหน้าเปลี่ยน “ล็อบบี้” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่นี้เพิ่ม']);
+  assert.equal(backBells[0].body, `RQ-AS-26100312 ประเมินพื้นที่ชั้น 12 — ${REASON}`);
+  assert.equal(bellRows(db).filter((n) => n.kind === HEAD_KIND).length, 1, 'ใบพลิกกลับมาต้องมีนัดไม่ยิงกระดิ่งหัวหน้า (มีแต่ของการกดแรก)');
+  assert.equal(bellSends(db, CREW_KIND).length, 2);
+
+  // ส่ง body เดิม (เลขการกดเดิม) ซ้ำ = กดซ้ำ ไม่ใช่กดใหม่ ⇒ ไม่ยิงกระดิ่งอีก (ไม่ใช่ยิงแล้วให้ฐานกันซ้ำ)
+  clock(2);
+  const again = await post(db, backBody);
+  assert.equal(again.status, 200, again.json.error);
+  assert.equal(again.json.already, true);
+  assert.equal(bellSends(db, CREW_KIND).length, 2, 'กระดิ่งหนึ่งครั้งต่อการกดหนึ่งครั้ง');
+
+  // ③ กดถัดไปบนนัดเดียวกันเป็นสองทิศ (ใบผสม · ไม่พลิก) — รูปผสมเดิม: กระดิ่งเดียวเอ่ยทั้งสองทิศ
+  clock(3);
+  const both = await post(db, bodyFor(db, { actionId: ACTION.c, changes: [...toDrawing('Z1'), ...toOnsite('Z2')] }));
+  assert.equal(both.status, 200, both.json.error);
+  assert.deepEqual(both.json.plan, { kind: 'switch', flip: null, visitAction: 'stays' });
+  const tech = bellRows(db).filter((n) => n.kind === CREW_KIND && n.userId === 'U-TECH');
+  assert.deepEqual(tech.map((n) => n.updateId), [ACTION.a, ACTION.b, ACTION.c].map((a) => `survey-method:RQ1:${keyOf(a)}`));
+  assert.deepEqual(tech.map((n) => n.title), [
+    'หัวหน้าเปลี่ยน “ล็อบบี้ · ห้องประชุม · ห้องน้ำ” เป็นประเมินจากแบบ — ไม่ต้องวัดพื้นที่เหล่านี้',
+    'หัวหน้าเปลี่ยน “ล็อบบี้” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่นี้เพิ่ม',
+    'หัวหน้าเปลี่ยน “ล็อบบี้” เป็นประเมินจากแบบ — ไม่ต้องวัดพื้นที่นี้ · “ห้องประชุม” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่นี้เพิ่ม',
+  ]);
+  assert.equal(bellSends(db, CREW_KIND).length, 3);
+  assert.equal(threadRows(db).length, 3, 'เธรดของใบหนึ่งบรรทัดต่อการกด');
+  assert.deepEqual(db.tables.service_visits[0], visitBefore, 'นัดที่กำลังทำไม่ถูกยกเลิกและไม่ถูกแก้ทั้งสามการกด');
+}));
+
 test('ยกเลิกนัดอย่างเดียว: ยกเลิกหนึ่งครั้ง + เธรดของใบหนึ่งบรรทัด · ไม่มีนัดให้ยกเลิก = 409 ไม่มีอะไรให้ทำ', flagged(async () => {
   const db = world({ zones: SHEETS.desk(), req: deskRequest() });
   const out = await post(db, bodyFor(db, { reason: SURVEY_METHOD_CANCEL_ONLY_REASON, cancelVisitId: 'V1' }));
@@ -925,7 +975,7 @@ test('ท้ายเธรดทวงแบบ: เฉพาะใบที่
 
 /* ═══ กดซ้ำ ≠ กดใหม่ (§4.5) ═══════════════════════════════════════════════════════════════ */
 
-test('🔑 กดใหม่ที่เนื้อหาเหมือนเดิมไม่ใช่การกดซ้ำ: จากแบบ → กลับ → จากแบบด้วยชิปเดิม = เธรดสามบรรทัด กระดิ่งช่างสองใบคนละกุญแจ', flagged(async () => {
+test('🔑 กดใหม่ที่เนื้อหาเหมือนเดิมไม่ใช่การกดซ้ำ: จากแบบ → กลับ → จากแบบด้วยชิปเดิม = เธรดสามบรรทัด กระดิ่งช่างสามใบคนละกุญแจ (ครั้งกลาง = ต้องวัดเพิ่ม · head-r3-54)', flagged(async () => {
   const db = world();
   const first = await post(db, bodyFor(db, { actionId: ACTION.a, changes: toDrawing('Z3'), reason: CHIP }));
   assert.equal(first.status, 200, first.json.error);
@@ -941,9 +991,11 @@ test('🔑 กดใหม่ที่เนื้อหาเหมือนเ
   assert.deepEqual(threadRows(db).map((u) => u.body), [line('ประเมินจากแบบ'), line('ลงหน้างาน'), line('ประเมินจากแบบ')]);
   assert.deepEqual(threadRows(db).map((u) => u.meta.key), [keyOf(ACTION.a), keyOf(ACTION.b), keyOf(ACTION.c)]);
   // นัดไว้ + ใบยังผสม ⇒ ช่างได้กระดิ่ง "ไม่ต้องวัดพื้นที่นี้" ทั้งสองครั้งที่เป็นจากแบบ — กุญแจเดียวกัน = ครั้งที่สองถูกกลืนถาวร
+  // ครั้งกลาง (กลับเป็นลงหน้างานขณะนัดยังอยู่) ก็ได้กระดิ่ง "ต้องวัดพื้นที่นี้เพิ่ม" ด้วยกุญแจของตัวเอง (S2b แก้หลังตรวจจอ head-r3-54)
   const tech = bellRows(db).filter((n) => n.kind === CREW_KIND && n.userId === 'U-TECH');
-  assert.deepEqual(tech.map((n) => n.updateId), [`survey-method:RQ1:${keyOf(ACTION.a)}`, `survey-method:RQ1:${keyOf(ACTION.c)}`]);
-  assert.equal(bellSends(db, CREW_KIND).length, 2);
+  assert.deepEqual(tech.map((n) => n.updateId), [ACTION.a, ACTION.b, ACTION.c].map((a) => `survey-method:RQ1:${keyOf(a)}`));
+  assert.equal(tech[1].title, 'หัวหน้าเปลี่ยน “ห้องน้ำ” กลับเป็นลงหน้างาน — ต้องวัดพื้นที่นี้เพิ่ม');
+  assert.equal(bellSends(db, CREW_KIND).length, 3);
   assert.equal(rowOf(db, 'Z3').method, 'drawing');
   assert.equal(rowOf(db, 'Z3').methodChangedAt, clock(2));
 }));

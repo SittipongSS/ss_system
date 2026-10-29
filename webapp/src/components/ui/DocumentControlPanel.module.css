@@ -85,6 +85,13 @@
   text-align: right;
 }
 
+/* แถว `stack` — ป้ายบรรทัดบน ค่าเต็มกว้างชิดขวาบรรทัดล่าง (ค่าหลายท่อนที่ไม่พอที่ข้างป้าย · UAT 27/10)
+   · คอลัมน์ของ flex ยืดลูกเต็มกว้างเอง (align-items ตั้งต้น) ⇒ `text-align: right` ของ dd ชิดขวาสุดของการ์ด */
+.summaryRows > .summaryStack {
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
 .documentStatus,
 .controlStatus {
   display: flex;
@@ -540,6 +547,13 @@
         `tabletSplit` อีกสามหน้า (ใบสเปคสินค้า `database/products/[id]/spec` · เอกสารสเปค `sales-planning/spec-documents/[id]` ·
         หน้าตัวอย่างดีไซน์ `settings/design-preview`) ยังไม่ส่ง `footer` · หน้าไหนเพิ่ม `footer` วันหน้า = ได้กฎนี้ทันที (ส่วนรองกว้างเต็มการ์ดที่ ≤680) */
   .bodySplit > .footer {
+    align-self: stretch;
+  }
+
+  /* 🐞 UAT 26/10 (ประเมินจากแบบ S2b · S18 sheet-commit ที่ 375): บล็อกสถานะหดด้วย `align-items: start` ตัวเดียวกัน ⇒ ความกว้างของมัน
+     เท่าบรรทัดที่ยาวที่สุดข้างใน — ใบงานโต๊ะที่สถานะสั้น แถบวัดและแถววันส่งผลจบสั้นกว่าปุ่มระดับใบ 21px ทางขวา (สถานะยาวกลับเต็มการ์ด)
+     ⇒ ยืดเต็มการ์ดเหมือนส่วนรอง · ปุ่มระดับใบไม่แตะ (ข้อห้ามเดิมข้างบนยังอยู่) · ทุกการ์ดที่ขอ `tabletSplit` ได้กฎนี้ (บล็อกสถานะมีทุกการ์ด) */
+  .bodySplit > .controlStatus {
     align-self: stretch;
   }
 }

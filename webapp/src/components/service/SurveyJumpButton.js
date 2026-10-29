@@ -4,6 +4,7 @@
 // ⭐ **ยกออกจาก `SurveyControlCard` เพื่อให้สองผู้เรียกใช้ตัวเดียว** — การ์ด (บรรทัดเหตุ · แถวด่าน) กับส่วนเอกสารประเมิน
 //   (`SurveyDocumentSection` — ในการ์ดของหัวหน้า และเป็นบล็อกเดี่ยวของผู้วางคิว · มติเจ้าของ 19/10/2026)
 //   ⚠️ ไม่ประกาศในไฟล์การ์ดแล้ว export — ส่วนเอกสารถูกการ์ด import อยู่ ⇒ import กลับ = วงวนของโมดูล
+import { keepUnits } from "./SurveyCardText";
 
 /* ปุ่มพาไปจุดที่แก้ได้จริง — `target` มาจากตัวตัดสิน ไม่ได้คิดที่นี่ (กฎ "ไปไหนถึงจะ
    แก้ข้อนี้ได้" มีชุดเดียว อยู่ใน `surveyControl.js`) · การ์ดแค่แปลงเป็นปุ่ม */
@@ -21,7 +22,9 @@ export default function JumpButton({ target, onOpenZone, onGoTab, onReload, onSw
   };
   return (
     <button type="button" className={`text-action ${className || ""}`.trim()} onClick={go}>
-      {target.label}
+      {/* ป้ายของปุ่มพาไปเป็นชิ้นเดียว (S2b แก้หลังตรวจจอ head-r3-12) — "เปิด ห้องประชุมชั้น 3" ไม่ขาดเป็น "เปิด ห้อง" / "ประชุมชั้น 3"
+          ในบรรทัดเหตุที่แคบ: ทั้งปุ่มขึ้นบรรทัดใหม่แทน · ป้ายที่ยาวเกินเพดานของชิ้น (`surveyControlCardUnits.js`) ตัดได้ตามปกติ */}
+      {keepUnits(target.label, [target.label])}
     </button>
   );
 }

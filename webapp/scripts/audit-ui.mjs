@@ -634,7 +634,7 @@ const RAW_RADIUS_CAP = 21;
      src/components/salesPlanning/dashboard/performance/shared.js:71 → `height / 2`
      src/components/ui/Skeleton.js:5 → `radius` (มาจาก prop ค่าตั้งต้น 6)
    ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่ */
-const RAW_RADIUS_JSX_CAP = 72;
+const RAW_RADIUS_JSX_CAP = 71;
 
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -758,8 +758,10 @@ const RAW_OPACITY_JSX_CAP = 24;
    📉 757 → 754 (2026-09-06) — แถวย้อนกลับของหน้าสินค้ากับ shipment-prep เลิกเขียน inline style เอง ย้ายไปใช้ .ui-workspace-back-row ของกลาง
    📉 751 → 704 (2026-09-15) — ย้ายหน้ารายการเข้า ListPanel รอบแรก: กล่องกรอง/ข้อความผิดพลาด/โครงร่างที่เคยจัดระยะด้วย style เองหายไปพร้อมกัน (ฐานข้อมูล · ขาย · งานบริหาร · ตั้งค่า)
    📉 704 → 689 (2026-09-23) — กล่อง glass-panel สีแดงของสหมิตรห้าจอ (รอบ FC · วัสดุ · PO · กระทบยอด · ตรวจธง) ย้ายไปใช้ StatusNotice กลาง
-      ตามมติ "ไทยนำ + ดิบเป็นบรรทัดเล็ก" (padding/gap/marginBottom ดิบ 3 จุดต่อกล่อง) */
-const RAW_SPACING_JSX_CAP = 689;
+      ตามมติ "ไทยนำ + ดิบเป็นบรรทัดเล็ก" (padding/gap/marginBottom ดิบ 3 จุดต่อกล่อง)
+   📉 689 → 687 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): แถบการ์ดของ /sahamit/material เลิกเขียน `Stat` + แถว flex
+      ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้ */
+const RAW_SPACING_JSX_CAP = 684;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
@@ -770,8 +772,9 @@ const RAW_SPACING_JSX_CAP = 689;
    📉 321 → 310 (2026-09-15) — ช่องค้นหาของหน้ารายการอื่นเลิกตรึงความกว้างเองแบบเดียวกัน (ลูกค้า · สินค้า · ดีล · ลีด · ใบสั่งขาย · โครงการ · FilterBar ภาษี · งานบริหาร · บันทึกการใช้งาน) · 📉 310 → 309 (2026-09-15) — ช่องค้นหาของ /pm/tasks เลิกตรึง `width: "260px"` เอง (ย้ายเข้า ListPanel toolbar)
    📉 309 → 303 (2026-09-23) — ความกว้างหกคอลัมน์ของตารางรายการใบเสนอราคา (# · จำนวน · ราคา/หน่วย · ส่วนลดรายการ ·
    จำนวนเงิน · ปุ่มลบ) ย้ายจาก `style={{ width }}` บนหัวตารางไปเป็นคลาสของ QuotationLineItems.module.css ตอนยกเซลล์
-   ไปเป็น QuoteLineCells (ตัวเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง — มติเจ้าของ 23/09) */
-const RAW_SIZE_JSX_CAP = 303;
+   ไปเป็น QuoteLineCells (ตัวเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง — มติเจ้าของ 23/09)
+   📉 303 → 302 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): การ์ด `Stat` ของ /sahamit/material (`minWidth: 120`) ถูกแทนด้วย KpiCard กลาง */
+const RAW_SIZE_JSX_CAP = 300;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
@@ -877,8 +880,8 @@ const RAW_TAILWIND_TYPE_CAP = 148;
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1114                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:161     s.state === "current" ? 800 : 650
+     src/app/pm/tasks/page.js:1235                     isToday ? 700 : 500
+     src/app/sales-planning/deals/[id]/page.js:164     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:213   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
@@ -890,7 +893,9 @@ const RAW_TAILWIND_TYPE_CAP = 148;
    ⚠️ ledger นี้ผูกกับ **เลขบรรทัด** ⇒ แก้อะไรเหนือจุดพวกนี้ในไฟล์เดียวกัน เลขจะเลื่อน
    และ inlineScaleSurface.test.mjs จะแดงทันที · แดงแบบนั้น = งานอัปเดตเลข ไม่ใช่จุดใหม่
    ให้ยืนยันว่า *โค้ดยังเป็นตัวเดิม* ก่อนแก้เลขเสมอ (2026-09-02: pm/tasks 1047 → 1061
-   เพราะรอบแถวตารางแทรกลิงก์เข้าไปด้านบน — โค้ดบรรทัดนั้นไม่ได้แตะเลย)
+   เพราะรอบแถวตารางแทรกลิงก์เข้าไปด้านบน — โค้ดบรรทัดนั้นไม่ได้แตะเลย ·
+   2026-10-20: pm/tasks 1114 → 1235 · deals/[id] 161 → 162 เพราะตรวจตัวเลข M8/M8b แทรกตัวกรองดีล/โครงการ
+   และ import ลิงก์คิวงานด้านบน — โค้ดสองบรรทัดนั้นไม่ได้แตะ)
 
    🐞 **บั๊กจริงที่เจอจากการวัด ไม่ใช่ข้อสงสัย**: deals/[id]/page.js:152 =
    `s.state === "current" ? 800 : 650` แต่ globals.css โหลด @font-face มาแค่ 400/500/600/700

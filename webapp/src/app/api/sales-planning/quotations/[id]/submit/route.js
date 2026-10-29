@@ -1,7 +1,9 @@
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, inSalesEditScope, dealAuditLabel } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
 import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFingerprint';
 import { linePackGateMessage, linePackIssues } from '@/lib/sales/linePacks';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
@@ -32,8 +34,12 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal) return badRequest('ใบเสนอราคานี้ไม่มีดีลผูกอยู่');
-  if (!inSalesEditScope(user, quote.deal)) return forbidden();
+  /* ใบค่าสรรพสามิต (mig 0414/0415) ไม่มีดีล — ขอบเขต/ผู้อนุมัติถอยไปดีลของ SO ต้นทาง */
+  const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+  if (sourceError) return fail(sourceError.message, 500);
+  const approvalDeal = quotationApprovalDeal(quote);
+  if (!approvalDeal) return badRequest('ใบเสนอราคานี้ไม่มีดีลผูกอยู่');
+  if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
 
   // ข้อความเฉพาะกรณีที่ผู้ใช้เจอบ่อย — ที่เหลือให้ RPC เป็นผู้ตัดสิน (กันสองแหล่งความจริง)
   if (quote.approvalStatus === 'pending') return badRequest('ใบเสนอราคานี้ยื่นอนุมัติไปแล้ว');
@@ -82,7 +88,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     entityId: id,
     before: quote,
     after: data,
-    summary: `ยื่นอนุมัติใบเสนอราคา ${quote.quoteNumber} (ลงนามผู้เสนอราคา) (${dealAuditLabel(quote.deal)})`,
+    summary: `ยื่นอนุมัติใบเสนอราคา ${quote.quoteNumber} (ลงนามผู้เสนอราคา) (${dealAuditLabel(approvalDeal)})`,
     request: req,
   });
   // แจ้งผู้อนุมัติ: ใบรอเจ้าของดีลเซ็น — เดิมเงียบทั้งขั้นตอน (ผู้อนุมัติต้องเปิดหน้าเจอเอง)

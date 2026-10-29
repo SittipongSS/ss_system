@@ -26,6 +26,7 @@ import { describeResponseError } from "@/lib/fetchError";
 import { fmtDateTime, naText, NA } from "@/lib/format";
 import { useRole } from "@/lib/roleContext";
 import { isSystemAdmin } from "@/lib/issues/access";
+import { isBlockedOpenIssue } from "@/lib/issues/model";
 import {
   ISSUE_IMPACT_LABELS, ISSUE_IMPACT_TONES, ISSUE_KIND_LABELS,
   ISSUE_STATUS_LABELS, ISSUE_STATUS_TONES,
@@ -44,10 +45,13 @@ function ageOf(createdAt) {
 }
 
 // แท็บของแอดมิน — คีย์ตรงกับสถานะจริง ไม่ต้องมีตารางแปลอีกชั้น
+// ⭐ ยกเว้น `blocked` (ตรวจตัวเลข L5 · 2026-10-26) = ใบ "ทำงานต่อไม่ได้" ทุกสถานะที่ยังเดินอยู่ (`isBlockedOpenIssue`)
+//    — การ์ดตัวเลขใบแรกนับชุดนี้ ⇒ ต้องมีแท็บที่กดแล้วเจอชุดนี้พอดี (เดิมกระจายอยู่สามแท็บสถานะ) · อยู่หน้าสุดตามลำดับการ์ด
 const ADMIN_TABS = [
+  { key: "blocked", label: "ทำงานต่อไม่ได้" },
   { key: "pending", label: "รอรับเรื่อง" },
   { key: "acknowledged", label: "กำลังแก้" },
-  { key: "resolved", label: "รอยืนยัน" },
+  { key: "resolved", label: "รอผู้แจ้งยืนยัน" },
   { key: "mine", label: "ที่ฉันรับผิดชอบ" },
   { key: "all", label: "ทั้งหมด" },
 ];
@@ -111,7 +115,8 @@ export default function SupportPage() {
     pending: open.filter((r) => r.status === "pending").length,
     acknowledged: open.filter((r) => r.status === "acknowledged").length,
     resolved: open.filter((r) => r.status === "resolved").length,
-    blocked: open.filter((r) => r.impact === "blocked").length,
+    // ตัวตัดสินเดียวกับแท็บ "ทำงานต่อไม่ได้" (rows ข้างล่าง) — เลขบนการ์ด/แท็บ = แถวหลังกด
+    blocked: open.filter(isBlockedOpenIssue).length,
   }), [open]);
 
   /* ⚠️ **ก้อนของแท็บ "ทั้งหมด/ที่ฉันรับผิดชอบ" ต้องตรงแท็บที่เลือกอยู่** — `extra` ติดป้าย
@@ -123,7 +128,8 @@ export default function SupportPage() {
   const bucketStale = bucketTab && extra?.tab !== tab;
   const rows = !admin ? open
     : bucketTab ? (bucketStale ? [] : extra.items)
-      : open.filter((r) => r.status === tab);
+      : tab === "blocked" ? open.filter(isBlockedOpenIssue)
+        : open.filter((r) => r.status === tab);
 
   /* ⭐ ยังไม่มีแถวของชุดนี้ = แผงเป็น skeleton · ป้ายจำนวน/ตัวเลขการ์ดเป็นขีด
      ไม่ใช่ 0 — "รอรับเรื่อง 0" ระหว่างโหลดอ่านได้ว่าไม่มีงานค้าง (มติผู้ใช้ 2026-09-15:
@@ -133,6 +139,12 @@ export default function SupportPage() {
      โหลดซ้ำชุดเดิมที่ยังมีแถว (หลังกด "รับเรื่อง") ตารางค้างไว้พร้อม aria-busy ไม่กระพริบ */
   const firstLoad = !rows.length && (loading || (bucketStale && !error));
   const metric = (n) => (loading && !open.length ? NA : n);
+  /* ⭐ การ์ดตัวเลขสี่ใบ = **ปุ่มลัดไปแท็บของชุดนั้น** (ตรวจตัวเลข L5) — เลขบนการ์ด = `counts[key]` ตัวเดียวกับเลขบนแท็บ
+     = แถวที่แท็บนั้นแสดง · กดการ์ดที่เปิดอยู่ซ้ำ = กลับแท็บตั้งต้น "รอรับเรื่อง" (ท่าเดียวกับการ์ดของ /sa/tasks) */
+  const metricProps = (key) => ({
+    as: "button", type: "button", active: tab === key, "aria-pressed": tab === key,
+    onClick: () => setTab(tab === key && key !== "pending" ? "pending" : key),
+  });
 
   // "รับเรื่อง" = self-assign + ขยับสถานะในปุ่มเดียว (มติ Q18) — กดจากคิวได้เลย
   // ไม่ต้องเปิดเข้าไปในเรื่องก่อน เพราะขั้นนี้ไม่ต้องอ่านอะไรเพิ่มเพื่อตัดสิน
@@ -160,10 +172,10 @@ export default function SupportPage() {
       {admin && (
         <>
           <MetricStrip>
-            <Metric label="ทำงานต่อไม่ได้" value={metric(counts.blocked)} tone={counts.blocked ? "danger" : undefined} note="ทุกสถานะที่ยังเดินอยู่" />
-            <Metric label="รอรับเรื่อง" value={metric(counts.pending)} tone={counts.pending ? "warning" : undefined} />
-            <Metric label="กำลังแก้" value={metric(counts.acknowledged)} />
-            <Metric label="รอผู้แจ้งยืนยัน" value={metric(counts.resolved)} note="ปิดเองใน 7 วัน" />
+            <Metric {...metricProps("blocked")} label="ทำงานต่อไม่ได้" value={metric(counts.blocked)} tone={counts.blocked ? "danger" : undefined} note="ทุกสถานะที่ยังเดินอยู่" />
+            <Metric {...metricProps("pending")} label="รอรับเรื่อง" value={metric(counts.pending)} tone={counts.pending ? "warning" : undefined} />
+            <Metric {...metricProps("acknowledged")} label="กำลังแก้" value={metric(counts.acknowledged)} />
+            <Metric {...metricProps("resolved")} label="รอผู้แจ้งยืนยัน" value={metric(counts.resolved)} note="ปิดเองใน 7 วัน" />
           </MetricStrip>
 
           <Tabs

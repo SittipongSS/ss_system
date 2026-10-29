@@ -146,7 +146,15 @@ export function priceBoardGroups(rows = [], { todayIso = null } = {}) {
   });
 }
 
-/** ยอดเหนือตาราง — นับเป็นรายการทุกช่องยกเว้นช่อง "ใบคำร้อง" (บอกหน่วยบนป้ายเสมอ) */
+/**
+ * ยอดเหนือตาราง — นับเป็นรายการทุกช่องยกเว้นช่อง "ใบคำร้อง" (บอกหน่วยบนป้ายเสมอ)
+ *
+ * - `usable`  = แถวที่ปุ่ม "ใช้ราคา … นี้" **กดแล้วผ่าน** (มีราคาในทะเบียนที่พร้อมใช้)
+ * - `blocked` = แถวที่มีปุ่มนั้นแต่กดแล้วบอกเหตุ (หมดอายุ · วัสดุเก็บเข้ากรุ/ยังเป็นร่าง — ม-153 ข้อ 2)
+ *   ⇒ `usable + blocked` = แถวที่เห็นปุ่ม "ใช้ราคา … นี้" (`useCurrent` ไม่ว่าง) พอดี
+ * 🐞 เดิมการ์ดเขียน "มีราคาในทะเบียนแล้ว" แต่นับเฉพาะราคาที่พร้อมใช้ ⇒ ราคาหมดอายุมีปุ่ม มีราคาในทะเบียนจริง
+ *    แต่ไม่ถูกนับ (ตรวจตัวเลข 26/10 · L15)
+ */
 export function priceBoardTotals(rows = [], { todayIso = null } = {}) {
   const days = rows.map((r) => waitingDays(r, todayIso)).filter((d) => d != null);
   return {
@@ -154,5 +162,18 @@ export function priceBoardTotals(rows = [], { todayIso = null } = {}) {
     requests: new Set(rows.map((r) => r.requestId)).size,
     maxDays: days.length ? Math.max(...days) : null,
     usable: rows.filter((r) => r.useCurrent && !r.useCurrentBlocker).length,
+    blocked: rows.filter((r) => r.useCurrent && r.useCurrentBlocker).length,
   };
+}
+
+/**
+ * หมายเหตุใต้การ์ด "ใช้ราคาในทะเบียนได้เลย" — คำต้องจริงสำหรับ **คนที่กำลังดู**
+ * ⚠️ ปุ่ม "ใช้ราคา … นี้" วางเฉพาะคนที่ใส่ราคาได้ (`canPrice` — คนอื่นเห็นช่องจัดการเป็น "—")
+ *    ⇒ คนที่ไม่มีปุ่มต้องไม่ได้ยินคำว่า "ปุ่ม"/"กด" (ตรวจตัวเลข 26/10 · L15)
+ * @param totals ผลของ `priceBoardTotals` (อ่านแค่ `blocked`)
+ */
+export function usablePriceNote({ blocked = 0 } = {}, { canPrice = false } = {}) {
+  const blockedText = `อีก ${blocked} รายการมีราคาแต่ใช้ไม่ได้ (หมดอายุ/วัสดุยังไม่เปิดใช้)`;
+  if (canPrice) return blocked > 0 ? `${blockedText} — ปุ่มบอกเหตุ` : 'กด "ใช้ราคา … นี้" ไม่ต้องพิมพ์ซ้ำ';
+  return blocked > 0 ? blockedText : 'RD ผูกราคาในทะเบียนได้โดยไม่พิมพ์ซ้ำ';
 }

@@ -7,8 +7,20 @@
 //
 // ⚠️ **ตัวคำไม่ถูกแตะ** — `Ctrl+F` และ copy ยังได้คำเดิมเป๊ะ (ต่างจากการแทรก
 //   WORD JOINER ซึ่งได้ผลเหมือนกันแต่ทำให้ค้นหาคำนั้นบนหน้าไม่เจอ)
-import { splitThai } from "@/lib/thaiWrap";
+import { phraseRuns, splitThai } from "@/lib/thaiWrap";
 import styles from "./ThaiText.module.css";
+
+/**
+ * วลีที่ผู้เรียกประกาศว่าห้ามขาดกลางบรรทัด (เช่น `summaryKeep` ของทะเบียนหัวข้อ) — ห่อ `nowrap` ทั้งวลี ตัวหนังสือไม่ถูกแตะ
+ * ⚠️ ไม่มีวลี / ไม่เจอวลี = คืนข้อความเดิม (ผู้เรียกที่ไม่ประกาศอะไรได้ของเดิมทุกตัวอักษร) · ตรรกะอยู่ที่ `phraseRuns`
+ */
+export function keepPhrases(text, phrases = []) {
+  if (typeof text !== "string" || !phrases?.length) return text;
+  const runs = phraseRuns(text, phrases);
+  if (!runs.some((run) => run.keep)) return text;
+  /* key เป็น index ได้ — ลิสต์เกิดจากสตริงเดียว ไม่มีการสลับ/แทรกภายหลัง */
+  return runs.map((run, idx) => (run.keep ? <span key={idx} className={styles.word}>{run.text}</span> : run.text));
+}
 
 /**
  * @param {string} text ข้อความที่จะวาด

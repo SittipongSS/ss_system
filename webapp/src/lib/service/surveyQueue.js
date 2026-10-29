@@ -27,7 +27,9 @@ export const SURVEY_QUEUE_STEP_LABELS = Object.freeze({
 });
 
 /** ป้ายขั้น ("ขั้น 2/2") ของการ์ดคำร้องบนหน้าจัดคิว และแถว "ที่มา" ในโมดัลลงคิว — ชุดเดียวของสองจอ
- *  (ย้ายมาจาก `scheduleQueueView` · ⚠️ คนละชุดกับ `SURVEY_QUEUE_STEP_LABELS` ซึ่งเป็นคำของกลุ่ม) */
+ *  (ย้ายมาจาก `scheduleQueueView` · ⚠️ คนละชุดกับ `SURVEY_QUEUE_STEP_LABELS` ซึ่งเป็นคำของกลุ่ม)
+ *  ⚠️ เป็นป้ายของ **การ์ดลงหน้างาน** — การ์ดงานโต๊ะ (ทุกพื้นที่ประเมินจากแบบ) ไม่วาดป้ายชุดนี้ เพราะไม่มีขั้นสอง
+ *     ("ขั้น 1/2" ไม่จริง · S2b แก้หลังตรวจจอ planner-q4) — ตัดสินที่ `surveyRequestRow` ไม่ใช่ที่นี่ (โมดัลลงคิวไม่มีใบงานโต๊ะ) */
 export const SURVEY_QUEUE_STEP_BADGES = Object.freeze({
   acknowledge: Object.freeze({ label: 'ขั้น 1/2', tone: 'warning' }),
   queue: Object.freeze({ label: 'ขั้น 2/2', tone: 'info' }),

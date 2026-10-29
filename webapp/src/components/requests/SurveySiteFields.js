@@ -21,14 +21,19 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import ServiceSiteModal from "@/components/service/ServiceSiteModal";
 import SurveyMethodChip from "@/components/service/SurveyMethodChip";
+import { keepPhrases } from "@/components/ThaiText";
 import { apiJson } from "@/lib/apiFetch";
 import { naText } from "@/lib/format";
 import { surveyZonePackageText } from "@/lib/service/survey";
 // คำของวิธีประเมิน ("จากแบบ") มาจากที่เดียว — ฟอร์มไม่พิมพ์เอง (ประเมินจากแบบ · งวด S2b)
 import { SURVEY_METHOD_CHIP } from "@/lib/service/surveyMethodSwitch";
+// คำของรายการพื้นที่ตามวิธีที่ฝ่ายขายเลือก ("วัดซ้ำ" / "ประเมินซ้ำ" / "พื้นที่เดิมในทะเบียน") — ไฟล์ล้วน ใช้ได้ทั้งจอและ server (ประเมินจากแบบ · งวด 4)
+import { surveyZoneRowText, surveyZoneWording } from "@/lib/service/surveyIntake";
 import { zoneNameKey } from "@/lib/service/surveyRequest";
-import { sitePickSummary, zonePickList } from "@/lib/service/zonePickState";
+import { sitePickSummary, zonePickedOnsiteText, zonePickList } from "@/lib/service/zonePickState";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
+// ประโยคล็อกของใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-6) — ไฟล์ล้วนไฟล์เดียวของงวด (F1) บล็อกนี้ไม่พิมพ์เอง
+import { SURVEY_CONFIRM_WRAP_KEEP, surveyConfirmZonesLockText } from "@/lib/service/surveyConfirmLink";
 import styles from "./requestForm.module.css";
 
 // เกินเท่านี้แล้วแผ่นเลือกยาวกว่าหน้าจอ — ค่อยเปลี่ยนเป็นช่องค้นหา
@@ -45,8 +50,27 @@ export default function SurveySiteFields({
   /* โหมดอ่านอย่างเดียว (ทางแก้ใบ) — บล็อกนี้แสดงของที่ใบถืออยู่ แต่แก้ไม่ได้
      ⚠️ เหตุผลอยู่ที่ผู้เรียก (`RequestForm`) — ทางแก้ใบเขียนได้แค่หัวใบ */
   readOnly = false,
+  /* โหมดอ่านอย่างเดียว: ใบยังเป็นร่างที่ไม่เคยส่ง (ลบแล้วเปิดใหม่ได้ · ยังไม่กินเลขที่) — ผู้เรียกรู้จากแถวที่บันทึก
+     ⚠️ ใบที่ส่งแล้ว/ถูกตีกลับถือเลข RQ และลบไม่ได้ ⇒ ประโยคทางออกนั้นไม่จริง (UAT S4 รอบ 4 ข้อ 3) */
+  freshDraft = true,
+  /* ⭐ วิธีประเมินที่ฟอร์มเลือกไว้ (`requestVariantChosen` ของใบ · ยังไม่เลือก = null) — ประเมินจากแบบ งวด 4 (S4 B-7b)
+     ฟอร์มที่บอกว่า "ไม่มีการนัดเข้าพื้นที่" ต้องไม่ชวน "วัดซ้ำ" / "ไม่เคยวัด" ในรายการพื้นที่ของตัวเอง
+     ⚠️ ชื่อพร็อพคือ `variant` ไม่ใช่ `method` — ยามของวิธีประเมิน (surveyMethodGuards) · ค่านี้คือ "สิ่งที่ฝ่ายขายขอ"
+        ไม่ใช่วิธีของแถวพื้นที่ */
+  variant = null,
+  /* ⭐ ของที่บล็อกนี้โหลดเอง (ลิสต์ไซต์ + ทะเบียนพื้นที่) **จบแล้วหรือยัง** — `onSettledChange(bool)` (รีวิว UAT S4 รอบ 4 ข้อ 9)
+     ฟอร์มเลื่อนปุ่ม "ยังขาด" ไปบล็อกไฟล์แบบที่อยู่ **ใต้** บล็อกนี้ — เลื่อนก่อนไทล์สถานที่มา = ไทล์ดันบล็อกนั้นตกขอบจอ
+     ⚠️ โหลดพังนับว่าจบ (บล็อกไม่ขยับอีกแล้ว) · ไม่มีลูกค้า = จบทันที (ไม่มีอะไรให้โหลด) · ถูกถอด = รายงาน `false` */
+  onSettledChange = null,
+  /* ⭐ ใบยืนยันหน้างาน (งวด S5 D-6) — `{ mode, original, zones }` จาก `RequestForm` · มีผลเฉพาะโหมดอ่านอย่างเดียว
+     create  บล็อกไม่พึ่งลิสต์ที่โหลดเอง (ผู้เรียกส่ง `customerId` ว่าง ⇒ ไม่ยิงอะไร · นิ่งทันที) — สถานที่จาก `original.siteLabel`
+             แต่ละแถวได้ "{รหัส} · {ชั้น}" กับรอบจากแบบ (`previous`) จาก `zones` ของ GET confirm-plan
+     edit    บล็อกอ่านอย่างเดียวของวันนี้ทุกบรรทัด (ป้าย "จากแบบ" รายพื้นที่ยังบอกการสลับของหัวหน้า)
+     ทั้งสองโหมด ประโยคปิดท้ายเป็นประโยคล็อกของงวดแทนของ S4 (ฟอร์มพูด "แก้ไม่ได้" ครั้งเดียว) — ใบต้นทางถูกลบ = ของ S4 ตามเดิม */
+  confirmLock = null,
 }) {
   const siteId = value.siteId || "";
+  const wording = surveyZoneWording(variant);
   const zones = value.zones || [];
   const [sites, setSites] = useState([]);
   const [siteZones, setSiteZones] = useState([]);
@@ -62,6 +86,11 @@ export default function SurveySiteFields({
 
   const set = (patch) => onChange({ ...value, ...patch });
 
+  /* ลูกค้าที่ลิสต์ไซต์ / ทะเบียนพื้นที่ **โหลดจบแล้ว** (ได้หรือพัง) — ตัวบอก `onSettledChange` ของผู้เรียก
+     ⚠️ เก็บเป็นรหัสลูกค้า ไม่ใช่ธง true/false — `loading` เริ่มที่ false ก่อน effect ยิง ⇒ แยก "ยังไม่เริ่ม" กับ "จบแล้ว" ไม่ได้ */
+  const [sitesFor, setSitesFor] = useState(null);
+  const [registryFor, setRegistryFor] = useState(null);
+
   // ทะเบียนไซต์ของลูกค้าเจ้าของดีล — เปลี่ยนดีลข้ามลูกค้าแล้วต้องล้างที่เลือกไว้
   // (ไม่ล้าง = ใบไปเกาะไซต์ของลูกค้าคนก่อน แล้วโดน handler ตีกลับตอนกดบันทึก)
   useEffect(() => {
@@ -71,7 +100,7 @@ export default function SurveySiteFields({
     apiJson(`/api/service/sites?customerId=${encodeURIComponent(customerId)}&includeInactive=0`)
       .then((rows) => { if (alive) setSites(Array.isArray(rows) ? rows : []); })
       .catch(() => { if (alive) setSites([]); })
-      .finally(() => { if (alive) setLoading(false); });
+      .finally(() => { if (alive) { setLoading(false); setSitesFor(customerId); } });
     return () => { alive = false; };
   }, [customerId]);
 
@@ -116,9 +145,19 @@ export default function SurveySiteFields({
         if (!alive) return;
         setRegistry(null);
         setRegistryError(e?.message || "ดึงพื้นที่เดิมไม่สำเร็จ");
-      });
+      })
+      .finally(() => { if (alive) setRegistryFor(customerId); });
     return () => { alive = false; };
   }, [customerId, registryTick]);
+
+  /* ⭐ บอกผู้เรียกว่าบล็อกนี้นิ่งแล้วหรือยัง (ดูหัวพร็อพ `onSettledChange`) — cleanup รายงาน `false` ก่อนค่าใหม่ทุกครั้ง
+     และตอนถูกถอด (แท็บรายละเอียดปิด) ⇒ ผู้เรียกไม่มีวันถือ `true` ค้างของบล็อกที่ไม่อยู่บนจอแล้ว */
+  const settled = !customerId || (sitesFor === customerId && registryFor === customerId);
+  useEffect(() => {
+    onSettledChange?.(settled);
+    return () => onSettledChange?.(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settled]);
 
   /* พื้นที่ของไซต์ที่เลือก — อ่านจากทะเบียนที่โหลดมาแล้ว ไม่ยิงซ้ำ
      ⚠️ ต้องคง `siteZones` ไว้เป็นรูปเดิม (id/name/code) เพราะยามชื่อซ้ำและป้ายบนแถว
@@ -174,7 +213,7 @@ export default function SurveySiteFields({
   const restZones = siteZones.filter((z) => !takenZoneIds.has(z.id));
   /* ไทล์พื้นที่เดิมพร้อมสถานะสองแกน — เรียงตามความสำคัญที่ม็อกกำหนด
      (⭐ วัดแล้วยังไม่ขาย ขึ้นก่อน · 🔒 ที่ล็อกอยู่ล่างสุด แต่ยังต้องเห็น) */
-  const pickTiles = zonePickList(restZones, takenZoneIds);
+  const pickTiles = zonePickList(restZones, takenZoneIds, { wording });
   const lockedCount = pickTiles.filter((t) => t.locked).length;
   const pickableCount = pickTiles.length - lockedCount;
 
@@ -187,6 +226,12 @@ export default function SurveySiteFields({
   const zoneName = (row) => row.name
     || siteZones.find((z) => z.id === row.zoneId)?.name
     || row.zoneId;
+  /* บรรทัดรองของพื้นที่เดิมที่ติ๊กแล้ว (หลังรหัส ZN) — "…ซ้ำพื้นที่เดิม" / "พื้นที่เดิมในทะเบียน" ตัดสินที่ `surveyZoneRowText` (S4 รอบ 4 ข้อ 5)
+     ⭐ คำชุดวัด (`measure`) ของพื้นที่ที่ผลมีแต่จากแบบ (ไม่เคยวัดหน้างาน) = "วัดหน้างานพื้นที่เดิม" — "วัดซ้ำ" ทำให้ฝ่ายขายนึกว่า
+        ตัวเลขผ่านหน้างานมาแล้ว (S2b แก้หลังตรวจจอ sales-q5) · `zonePickedOnsiteText` ตอบก่อน · กรณีอื่น `null` ⇒ คำของ S4 ทุกตัวอักษร
+     ⚠️ แถวทะเบียนตัวเดียวกับที่ไทล์ใช้พิมพ์เหตุ (`siteZones`) ⇒ ไทล์ "…วัดใหม่เพื่อต่ออายุได้" กับแถวที่เพิ่งติ๊กพูดตรงกัน */
+  const knownZoneText = (registryZone) => zonePickedOnsiteText(registryZone, { wording })
+    || surveyZoneRowText(wording, registryZone);
 
   const submitDraft = () => {
     const name = draft.name.trim().replace(/\s+/g, " ");
@@ -217,10 +262,11 @@ export default function SurveySiteFields({
      ⭐ ทำให้คนเลือกไซต์ได้ถูกตั้งแต่ก่อนกด ไม่ต้องกดเข้าไปดูทีละใบ
      ⭐ สถานที่ที่มีพื้นที่ซึ่งผลล่าสุดมาจากแบบ (ประเมินจากแบบ · งวด S2b · แผน §5): ท่อนกลางแยกเป็น
         "วัดหน้างาน n · จากแบบ k" (n ไม่นับ k — `sitePickSummary` แยกสองช่องมาให้แล้ว) — พื้นที่จากแบบไม่ถูกเรียกว่า "วัดแล้ว"
-        ⚠️ ไม่มีพื้นที่จากแบบ (`sum.drawing` เป็น 0) = ประโยคเดิมทุกตัวอักษร */
-  const summaryOf = (siteRow) => {
+        ⚠️ ไม่มีพื้นที่จากแบบ (`sum.drawing` เป็น 0) = ประโยคเดิมทุกตัวอักษร
+     ⭐ คืนเป็น **รายการท่อน** (คู่ "คำ ตัวเลข" ทีละท่อน) ไม่ใช่สตริงที่ต่อแล้ว — ตัววาดต้องรู้ขอบของแต่ละคู่ (ดู `siteOptions`) */
+  const summaryPartsOf = (siteRow) => {
     const entry = (registry?.sites || []).find((x) => x.id === siteRow.id);
-    if (!entry || !entry.zoneCount) return null;
+    if (!entry || !entry.zoneCount) return [];
     const sum = sitePickSummary(entry);
     const assessed = sum.drawing > 0
       ? [sum.measured ? `วัดหน้างาน ${sum.measured}` : null, `${SURVEY_METHOD_CHIP.drawing} ${sum.drawing}`]
@@ -230,28 +276,41 @@ export default function SurveySiteFields({
       ...assessed,
       sum.sold ? `ขายแล้ว ${sum.sold}` : null,
       sum.pending ? `มีใบสั่งวัดค้าง ${sum.pending}` : null,
-    ].filter(Boolean).join(" · ");
+    ].filter(Boolean);
   };
 
-  const siteOptions = sites.map((s) => ({
-    value: s.id,
-    label: s.name || s.code || s.id,
-    description: [[s.code, s.address].filter(Boolean).join(" · "), summaryOf(s)]
-      .filter(Boolean).join(" — ") || undefined,
-    // ค้นด้วยรหัส SS หรือที่อยู่ได้ด้วย — คนจำสาขาจากถนน ไม่ใช่จากชื่อในทะเบียน
-    search: [s.name, s.code, s.address, s.routeZone].filter(Boolean).join(" "),
-  }));
+  const siteOptions = sites.map((s) => {
+    const summary = summaryPartsOf(s);
+    return {
+      value: s.id,
+      label: s.name || s.code || s.id,
+      /* 🐞 บนมือถือสรุปเคยตัดบรรทัดได้ทุกช่องว่าง ⇒ "วัดหน้างาน" อยู่บรรทัดหนึ่ง "2 · จากแบบ 1" อยู่อีกบรรทัด อ่านไม่ออกว่า 2 คืออะไร
+         (S2b แก้หลังตรวจจอ sales-minor-5) ⇒ ห่อ `nowrap` ทีละคู่ "คำ ตัวเลข" (`keepPhrases` · ตัวหนังสือไม่ถูกแตะ ไม่มีอักขระซ่อน
+         — `Ctrl+F` ยังเจอ) ⇒ ตัดบรรทัดได้แค่ที่ " · " ระหว่างคู่ · ไม่มีสรุป = ข้อความเดิม (รหัส · ที่อยู่) */
+      description: keepPhrases(
+        [[s.code, s.address].filter(Boolean).join(" · "), summary.join(" · ")].filter(Boolean).join(" — "),
+        summary,
+      ) || undefined,
+      // ค้นด้วยรหัส SS หรือที่อยู่ได้ด้วย — คนจำสาขาจากถนน ไม่ใช่จากชื่อในทะเบียน
+      search: [s.name, s.code, s.address, s.routeZone].filter(Boolean).join(" "),
+    };
+  });
 
   /* ── โหมดอ่านอย่างเดียว ─────────────────────────────────────────────────
      ⭐ แสดง **ของจริงที่ใบถืออยู่** ไม่ใช่ช่องเปล่า — ช่องเปล่าอ่านว่า "ยังไม่ได้เลือก"
         ทั้งที่ใบมีสถานที่อยู่ และถ้ากดบันทึกทับจะดูเหมือนของหาย */
   if (readOnly) {
     const picked = sites.find((row) => row.id === siteId) || null;
+    const fromPlan = confirmLock?.mode === "create";
+    const planOf = (row) => (confirmLock?.zones || []).find((z) => z.zoneId === row.zoneId) || null;
     return (
       <div className="form-group col-span-2">
-        <span className={styles.fieldLabel}>สถานที่และพื้นที่ที่ต้องประเมิน</span>
+        {/* ป้ายเดียวกับโหมดกรอก รายการความพร้อม และประโยค error (มติ O1 · UAT S4 รอบ 4 ข้อ 4 — เดิม "สถานที่และพื้นที่…") */}
+        <span className={styles.fieldLabel}>สถานที่ที่จะให้ประเมิน</span>
         <small className={styles.hint}>
-          {loading ? "กำลังโหลด…" : naText([picked?.code, picked?.name].filter(Boolean).join(" · "))}
+          {/* ใบยืนยันหน้างานโหมดสร้าง: ป้ายสถานที่ของใบต้นทาง (ไม่มีลิสต์ให้รอ) */}
+          {fromPlan ? naText(confirmLock.original?.siteLabel)
+            : loading ? "กำลังโหลด…" : naText([picked?.code, picked?.name].filter(Boolean).join(" · "))}
         </small>
         {zones.length > 0 && (
           <ol className={styles.zoneList}>
@@ -260,19 +319,40 @@ export default function SurveySiteFields({
                 <span className={styles.zoneNo}>{index + 1}</span>
                 <span className={styles.zoneBody}>
                   <b>{zoneName(row)}</b>
-                  <small className={styles.hint}>
-                    {row.zoneId
-                      ? (siteZones.find((z) => z.id === row.zoneId)?.code || "พื้นที่เดิม")
-                      : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"}`}
-                  </small>
+                  {/* ป้ายวิธีปัจจุบันของพื้นที่ — คำมาจากหน้าคำร้อง (`methodTag` ของใบที่ส่งแล้ว) · ไม่มีคำ = ไม่วาด */}
+                  <SurveyMethodChip label={row.methodTag} className={styles.zoneTileMethod} />
+                  {fromPlan ? (
+                    /* ใบยืนยันหน้างานโหมดสร้าง: "{รหัส} · {ชั้น}" จากแผน (ส่วนที่ขาดทิ้งพร้อมตัวคั่น — ไม่ใช้คำสำรอง "พื้นที่เดิม")
+                       แล้วรอบจากแบบของใบต้นทางเป็นบรรทัดที่สอง (มีเมื่อแผนส่งมา) */
+                    <>
+                      <small className={styles.hint}>
+                        {[planOf(row)?.code, floorLabel(planOf(row)?.floor)].filter(Boolean).join(" · ")}
+                      </small>
+                      {planOf(row)?.previous ? <small className={styles.hint}>{planOf(row).previous}</small> : null}
+                    </>
+                  ) : (
+                    <small className={styles.hint}>
+                      {row.zoneId
+                        ? (siteZones.find((z) => z.id === row.zoneId)?.code || "พื้นที่เดิม")
+                        : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"}`}
+                    </small>
+                  )}
                 </span>
               </li>
             ))}
           </ol>
         )}
-        <small className={styles.hint}>
-          สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)
-        </small>
+        {/* ประโยคปิดท้ายประโยคเดียว — ใบยืนยันหน้างาน (ใบต้นทางยังอยู่) พูดประโยคล็อกของงวด S5 แทนของ S4
+            (ฟอร์มสร้างยังไม่มีร่างให้ "ลบแล้วเปิดใหม่") · ที่เหลือประโยคของ S4 ตามเดิม */}
+        {confirmLock && !confirmLock.original?.missing ? (
+          <small className={styles.hint}>{keepPhrases(surveyConfirmZonesLockText(confirmLock.original), SURVEY_CONFIRM_WRAP_KEEP)}</small>
+        ) : (
+          <small className={styles.hint}>
+            {freshDraft
+              ? "สถานที่และพื้นที่แก้ที่นี่ไม่ได้ — ร่างที่ยังไม่ส่งลบแล้วเปิดใหม่ได้ (ยังไม่กินเลขที่)"
+              : "สถานที่และพื้นที่ของคำร้องที่ส่งแล้วแก้ที่นี่ไม่ได้"}
+          </small>
+        )}
       </div>
     );
   }
@@ -280,7 +360,7 @@ export default function SurveySiteFields({
   return (
     <>
       <div className="form-group col-span-2">
-        <span className={styles.fieldLabel}>สถานที่ที่จะให้เข้าไปประเมิน</span>
+        <span className={styles.fieldLabel}>สถานที่ที่จะให้ประเมิน</span>
         {!customerId ? (
           /* ⚠️ **ต้องบอกว่าดีลอยู่ที่ไหน ไม่ใช่แค่ว่าต้องมีดีล** — บล็อกนี้ย้ายมาอยู่แท็บ
              "รายละเอียด" แล้ว (มติ 2026-09-02) ส่วนช่องดีลอยู่แท็บ "งาน" ⇒ ข้อความเดิม
@@ -313,7 +393,7 @@ export default function SurveySiteFields({
             onChange={pickSite}
             disabled={disabled}
             placeholder="เลือกสถานที่"
-            ariaLabel="สถานที่ที่จะให้เข้าไปประเมิน"
+            ariaLabel="สถานที่ที่จะให้ประเมิน"
           />
         ) : (
           <OptionTiles
@@ -321,7 +401,7 @@ export default function SurveySiteFields({
             value={siteId}
             onChange={pickSite}
             disabled={disabled}
-            ariaLabel="สถานที่ที่จะให้เข้าไปประเมิน"
+            ariaLabel="สถานที่ที่จะให้ประเมิน"
           />
         )}
         {/* ⭐ จังหวะแรกต้องบอกว่าลูกค้ารายนี้มีของเดิมเท่าไร ไม่ใช่เริ่มที่ช่องเปล่า
@@ -389,8 +469,10 @@ export default function SurveySiteFields({
                   <span className={styles.zoneBody}>
                     <b>{zoneName(row)}</b>
                     <small className={styles.hint}>
+                      {/* "…ซ้ำพื้นที่เดิม" เฉพาะพื้นที่ที่ทะเบียนบอกว่าเคยมีผล — ข้อมูลเดียวกับที่ไทล์ใช้พิมพ์ "ยังไม่เคย…"
+                          ไม่งั้นไทล์บอก "ยังไม่เคยวัด" แล้วแถวที่เพิ่งติ๊กบอก "วัดซ้ำ" (UAT S4 รอบ 4 ข้อ 5) */}
                       {row.zoneId
-                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · วัดซ้ำพื้นที่เดิม`
+                        ? `${siteZones.find((z) => z.id === row.zoneId)?.code || row.zoneId} · ${knownZoneText(siteZones.find((z) => z.id === row.zoneId))}`
                         : `พื้นที่ใหม่ · ${floorLabel(row.floor) || "ยังไม่ระบุชั้น"} — ได้รหัส ZN ตอนกดส่งใบ`}
                       {row.note ? ` · ${row.note}` : ""}
                     </small>
@@ -539,7 +621,8 @@ export default function SurveySiteFields({
                   <small className={styles.hint}>
                     {[tile.code, floorLabel(tile.floor)].filter(Boolean).join(" · ")}
                   </small>
-                  <small className={styles.tileWhy}>{tile.reason}</small>
+                  {/* "รอยืนยันหน้างาน" ท้ายเหตุห้ามขาดเป็น "รอ" / "ยืนยันหน้างาน" (S2b แก้หลังตรวจจอ · UAT sales 27/10 ที่ 375) */}
+                  <small className={styles.tileWhy}>{keepPhrases(tile.reason, ["รอยืนยันหน้างาน"])}</small>
                   {tile.surveyState === "done" && (
                     <small className={styles.hint}>
                       {[

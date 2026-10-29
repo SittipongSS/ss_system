@@ -299,6 +299,19 @@ const FAILURES = [
     load: { signatureRule: 'required' }, seed: () => signatureTables(['U-lead', 'U-head']),
     back: (i) => i.signatures['U-lead'].versionId === 'signature-version-U-lead-1' && i.signatures['U-head'].versionNumber === 1,
   },
+  /* งวด S5 กลุ่ม F — ใบยืนยันหน้างาน (ใบนี้ผูกกับใบต้นทาง): อ่านใบต้นทางพลาด = "อ่านไม่สำเร็จ" ไม่ใช่ "ไม่ผูก" (ไม่มีคีย์ `confirmsDocNo`
+     ทั้งสองแบบ — ตัวบอกคือ `unknown`) · รอบสองได้เลขที่ใบต้นทาง + เอกสารประเมินฉบับปัจจุบันของมันกลับมา */
+  {
+    name: 'confirms', fail: { dept_requests: { times: 1 } }, nulls: [],
+    load: { request: { ...twin().request, siteId: 'SITE-1', customerId: 'CUS-1', dealId: 'DEAL-1', surveyConfirmOfId: 'DR-orig-0345' } },
+    seed: () => ({
+      dept_requests: [{ id: 'DR-orig-0345', docNo: 'RQ-AS-26100345', kind: 'site_survey', answeredAt: '2026-10-09T07:20:00.000+00:00' }],
+      service_survey_reports: [{
+        id: 'SSR-orig-1', requestId: 'DR-orig-0345', rev: 0, docNo: 'SU-26100003-0', status: 'current', approvedAt: '2026-10-09T07:20:00.000+00:00',
+      }],
+    }),
+    back: (i) => i.confirmsDocNo === 'RQ-AS-26100345 (SU-26100003-0)',
+  },
 ];
 
 test('ตารางความล้มเหลวครอบทุกชื่อที่มีป้าย — เพิ่มชิ้นใหม่ต้องเพิ่มแถวทดสอบ', () => {

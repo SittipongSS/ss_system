@@ -21,6 +21,8 @@ import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import { businessLineBadge, dealTypeBadge } from "@/components/salesPlanning/ui";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import SalesOrderBundleButton from "@/components/salesPlanning/SalesOrderBundleButton";
+import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -35,6 +37,7 @@ import { BUSINESS_LINES, businessLineLabel } from "@/lib/master/businessLines";
 import { DEAL_TYPES } from "@/lib/salesPlanning";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import {
+  EMPTY_ORDER_FILTERS,
   FINANCE_STATE_BADGE,
   FINANCE_STATE_OPTIONS,
   NONE_VALUE,
@@ -48,10 +51,13 @@ import {
   filterOrders,
   financeStateOf,
   groupOrders,
+  orderRowsLabel,
+  orderRowsUnit,
   ordersForDrill,
   sortOrders,
 } from "@/lib/sales/reportOrderView";
 import { reportPeriodLabel } from "@/lib/sales/reportPeriod";
+import { installmentSeqText } from "@/lib/sales/reportRows";
 import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import styles from "./page.module.css";
@@ -81,7 +87,7 @@ const LENSES = [
   { value: "person", label: "ตามคน" },
 ];
 
-const EMPTY_FILTERS = { owners: [], teams: [], finance: [], months: [], kinds: [], lines: [], dealTypes: [] };
+const EMPTY_FILTERS = EMPTY_ORDER_FILTERS;
 
 /* ประเภทธุรกิจ/ประเภทดีลของดีลของใบ (มติผู้ใช้ 2026-09-22) — ป้ายกลางชุดเดียวกับหน้ารวมดีล
    ⚠️ ค่าว่างต้องเป็นขีด — `dealTypeBadge(null)` ตีเป็น NPD (normalizeDealType) จะโกหกว่าดีลเป็น NPD */
@@ -123,6 +129,10 @@ export default function SalesReportPage() {
   const { period, query, today: todayTh, thisMonth, setMode: setPeriodMode, setRange } = periodState;
   const [lens, setLens] = useStickyState("lens", "month");
   const [drill, setDrill] = useState(null);
+  /* คำค้น + ตัวกรองของรายการใบอยู่ที่หน้า ไม่ใช่ใน OrdersPanel — กดยอดใน "แยกยอด" ต้องล้างสองตัวนี้ได้
+     (ตรวจตัวเลข M14 · 2026-10-20) · คีย์จำค่าเดิม ("q" / "filters" ผูก pathname) ค่าที่จำไว้จึงไม่หาย */
+  const [orderQ, setOrderQ] = useStickyState("q", "");
+  const [orderFilters, setOrderFilters] = useStickyState("filters", EMPTY_FILTERS);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -170,13 +180,18 @@ export default function SalesReportPage() {
   const breakdownRef = useRef(null);
   const chipRef = useRef(null);
 
+  /* ⭐ กดยอด = รายการเหลือ **ใบของยอดนั้นพอดี** (หัวไฟล์: "กรองรายการใบให้เหลือใบของยอดนั้น")
+     🐞 เดิมตั้งแค่ drill ⇒ คำค้น/ตัวกรองที่ค้างจากรอบก่อนยังกรองซ้อน — ปุ่ม "8 ใบ" กดแล้วเหลือ 3 และบรรทัดเทียบยอด
+        ✓/✗ ถูกซ่อนเงียบ (ซ่อนเมื่อมีตัวกรองอื่น) ⇒ ล้างทั้งคู่ก่อนเจาะเสมอ (ตรวจตัวเลข M14 · 2026-10-20) */
   const openDrill = useCallback((next) => {
+    setOrderQ("");
+    setOrderFilters(EMPTY_FILTERS);
     setDrill(next);
     requestAnimationFrame(() => {
       ordersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       chipRef.current?.focus({ preventScroll: true });
     });
-  }, []);
+  }, [setOrderQ, setOrderFilters]);
 
   const switchToRange = useCallback((from, to) => {
     setPeriodMode("range");
@@ -285,6 +300,10 @@ export default function SalesReportPage() {
             drill={drill}
             onClearDrill={() => setDrill(null)}
             chipRef={chipRef}
+            q={orderQ}
+            setQ={setOrderQ}
+            filters={orderFilters}
+            setFilters={setOrderFilters}
           />
         </div>
       </div>
@@ -497,7 +516,7 @@ function Breakdown({ loading, error, lens, onLens, summary, data, period, todayT
           <strong>ยังไม่มีข้อมูลของงวดนี้ — โหลดรายงานไม่สำเร็จ</strong>
         </EmptyState>
       ) : lens === "month" ? (
-        <MonthLens summary={summary} period={period} onDrill={onDrill} />
+        <MonthLens summary={summary} period={period} onDrill={onDrill} orders={data?.orders || []} />
       ) : (
         <GroupLens
           kind={lens}
@@ -514,7 +533,7 @@ function Breakdown({ loading, error, lens, onLens, summary, data, period, todayT
 }
 
 /* ── ตามเดือน ─────────────────────────────────────────────────────────── */
-function MonthLens({ summary, period, onDrill }) {
+function MonthLens({ summary, period, onDrill, orders = [] }) {
   const range = period.mode === "range";
   const [futureOpen, setFutureOpen] = useState(false);
   const thisMonth = currentMonth();
@@ -528,6 +547,10 @@ function MonthLens({ summary, period, onDrill }) {
   const cols = range ? 6 : 8;
   const split = summary.sourceSplit;
   const totalOrders = rows.filter((r) => r.closed && r.source === "orders").reduce((s, r) => s + r.orderCount, 0);
+  /* ป้ายของแถวรวม: แถวของเดือนที่จบแล้ว (ชุดเดียวกับที่กดเจาะ) — ใบรายงวดที่นับหลายเดือนไม่ถูกนับเป็นหลายใบ (review รอบสอง 26/10) */
+  const totalOrdersLabel = orderRowsLabel(ordersForDrill(orders, {
+    kind: "total", months: rows.filter((r) => r.closed && r.source === "orders").map((r) => r.month),
+  }));
   const [howOpen, setHowOpen] = useState(false);
 
   const actualCell = (r) => {
@@ -660,7 +683,7 @@ function MonthLens({ summary, period, onDrill }) {
                 {!range && <td className="num">{NA}</td>}
                 <td className="num">{m.target ? <Money value={m.target} /> : NA}</td>
                 {!range && <td className="num">{NA}</td>}
-                <td>{totalOrders > 0 ? <span className={styles.source}><ClipboardList size={13} aria-hidden="true" /> ใบสั่งขาย {totalOrders} ใบ</span> : NA}</td>
+                <td>{totalOrders > 0 ? <span className={styles.source}><ClipboardList size={13} aria-hidden="true" /> ใบสั่งขาย {totalOrdersLabel}</span> : NA}</td>
               </tr>
             </tfoot>
           )}
@@ -745,6 +768,8 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
       : { ...base, kind: "person", ownerId: row.ownerId, team: row.team || null, label: `${row.ownerName || row.ownerId} · ${teamName(row.team)}` };
   };
   const orderCountOf = (row) => ordersForDrill(orders, drillOf(row)).length;
+  /* ป้ายจำนวน — แถวรายงวดของใบเดียวหลายเดือนบอก "n แถว · m ใบ" (orderRowsLabel · review รอบสอง 26/10) */
+  const orderLabelOf = (row) => orderRowsLabel(ordersForDrill(orders, drillOf(row)));
   const orderSumOf = (row) => ordersForDrill(orders, drillOf(row)).reduce((s, o) => s + Number(o.amount || 0), 0);
 
   const t = group.total;
@@ -787,7 +812,7 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
                       <button
                         type="button"
                         className="table-metric-button"
-                        aria-label={`ดูใบสั่งขาย ${count} ใบของ${kind === "team" ? `ทีม ${teamName(row.team)}` : ` ${row.ownerName || ""}`}`}
+                        aria-label={`ดูใบสั่งขาย ${orderLabelOf(row)}ของ${kind === "team" ? `ทีม ${teamName(row.team)}` : ` ${row.ownerName || ""}`}`}
                         onClick={() => onDrill(drillOf(row))}
                       ><Money value={row.actual} /></button>
                     ) : <Money value={row.actual} />}
@@ -804,7 +829,7 @@ function GroupLens({ kind, summary, orders, period, todayTh, onDrill, onRange })
                     )}
                   </td>
                   <td className="num">
-                    {count ? `${count} ใบ` : NA}
+                    {count ? orderLabelOf(row) : NA}
                     {manual > 1 && <span className="cell-sub">+ กรอกย้อนหลัง <Money value={manual} /></span>}
                   </td>
                 </tr>
@@ -901,6 +926,8 @@ function PendingPanel({ pendingApproval }) {
               <tr key={o.id}>
                 <td>
                   <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
+                  {/* งวดที่ยื่นรอ AE Sup ของใบ "Actual รายงวด" (mig 0412) — ใบอนุมัติแล้ว รอนับงวดนี้ */}
+                  {o.actualMode === "installment" && <span className="cell-sub">Actual รายงวด · {installmentSeqText(o.installmentSeqs)}</span>}
                   {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
                 </td>
                 <td className="num"><Money value={o.amount} /></td>
@@ -932,10 +959,8 @@ function PendingPanel({ pendingApproval }) {
    ⭐ กางทันที แบ่งหน้า 10 แถว (แทนด่าน "กดค้นหาก่อน" ของ 2026-08-27) · ค้นหา/กรองมีผลทันที
    ⚠️ ใบทั้งงวดมากับ response อยู่แล้ว การกรองจึงทำในหน้า — ตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน
    ⭐ กดขายจริงในตาราง "แยกยอด" = ชิป "จากแยกยอด: …" + บรรทัดเทียบยอด ✓/✗ */
-function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDrill, chipRef }) {
+function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDrill, chipRef, q, setQ, filters, setFilters }) {
   const teamRegistry = useSalesTeams();
-  const [q, setQ] = useStickyState("q", "");
-  const [filters, setFilters] = useStickyState("filters", EMPTY_FILTERS);
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", ORDER_SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", ORDER_SORT_DIR[ORDER_SORT_DEFAULT]);
@@ -1012,11 +1037,28 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const pager = usePagination(ordered, { defaultSize: 10, resetKey });
   const pageGroups = useMemo(() => {
     if (!grouped) return [{ key: "all", label: null, orders: pager.pageRows }];
-    const onPage = new Set(pager.pageRows.map((o) => o.id));
+    // คีย์แถว = rowKey ของแถวงวด (ใบ "Actual รายงวด" มีได้หลายแถวต่อใบ · mig 0412) · ใบทั้งใบ = id เท่าเดิม
+    const onPage = new Set(pager.pageRows.map((o) => o.rowKey || o.id));
     return groups
-      .map((g) => ({ ...g, orders: g.orders.filter((o) => onPage.has(o.id)) }))
+      .map((g) => ({ ...g, allOrders: g.orders, orders: g.orders.filter((o) => onPage.has(o.rowKey || o.id)) }))
       .filter((g) => g.orders.length);
   }, [grouped, groups, pager.pageRows]);
+
+  /* ── ติ๊กเลือกใบ → ชุดเอกสาร QT · SO · การชำระ (มติเจ้าของ 27/10/2569 · ตัวเดียวกับทะเบียนใบสั่งขาย) ──────
+     ⭐ เลือกเป็น **ใบ** (คีย์ = id ของใบ) — ใบ Actual รายงวดมีหลายแถว ติ๊กแถวไหนก็ติ๊กทั้งใบ · ปุ่มยุบเป็นโฟลเดอร์เดียว
+     ⭐ ติ๊กหัวตาราง = ทุกใบหลังเจาะ/ค้นหา/กรอง **ทุกหน้า** · ชุดแถวขยับ = ตัดใบที่หลุดออก (ไม่โหลดใบที่มองไม่เห็น)
+       ⚠️ หน้านี้โหลดใหม่ตอนกลับมาที่แท็บ — ล้างทั้งชุดทุกครั้งที่ `filtered` เปลี่ยนตัว = ที่ติ๊กหายเอง (ดู keepVisibleSelection) */
+  const [selected, setSelected] = useState(() => new Set());
+  const [bundleNotice, setBundleNotice] = useState(null);
+  const visibleIds = useMemo(() => [...new Set(filtered.map((o) => o.id))], [filtered]);
+  useEffect(() => { setSelected((prev) => keepVisibleSelection(prev, visibleIds)); }, [visibleIds]);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const selectedRows = useMemo(() => ordered.filter((o) => selected.has(o.id)), [ordered, selected]);
+  const toggleSelected = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const filterCount = activeFilterCount(f);
   const extraFilters = filterCount > 0 || q.trim();
@@ -1041,9 +1083,19 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const orderRow = (o) => {
     const badge = FINANCE_STATE_BADGE[financeStateOf(o)];
     return (
-      <tr key={o.id}>
+      <tr key={o.rowKey || o.id}>
+        <td className="w-9 text-center">
+          <input
+            type="checkbox"
+            checked={selected.has(o.id)}
+            onChange={() => toggleSelected(o.id)}
+            aria-label={`เลือก ${o.orderNumber || o.id}`}
+          />
+        </td>
         <td>
           <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
+          {/* แถวงวดของใบ "Actual รายงวด" (mig 0412) — ยอด/เงินในแถวเป็นของงวดที่นับในเดือนนี้เท่านั้น */}
+          {o.actualMode === "installment" && <span className="cell-sub">Actual รายงวด · {installmentSeqText(o.installmentSeqs)}</span>}
           {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
           {o.free && <span className={`ui-badge warning ${styles.docNo}`}>ไม่คิดเงิน</span>}
           {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
@@ -1084,7 +1136,10 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
       icon={<ClipboardList size={17} aria-hidden="true" />}
       title="ใบสั่งขายที่อนุมัติแล้ว"
       subtitle="อนุมัติในช่วงที่เลือก · งวดคิดจากวันที่อนุมัติ เวลาไทย · ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดที่บัญชีรับรองแล้ว (รวม VAT) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง"
-      count={loading || error ? null : `${filtered.length} ใบ`}
+      /* นับแถว (= แถวที่เห็นหลังกด · M10b) แต่ใบรายงวดที่แตกหลายเดือนบอก "n แถว · m ใบ" (orderRowsLabel · review รอบสอง 26/10) */
+      count={loading || error ? null
+        : selected.size ? `เลือก ${selected.size}/${visibleIds.length} ใบ` : orderRowsLabel(filtered)}
+      actions={<SalesOrderBundleButton orders={selectedRows} onNotice={setBundleNotice} />}
       loading={loading}
       toolbar={(
         /* ลำดับตามกติกากลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
@@ -1160,6 +1215,16 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
         </EmptyState>
       ) : (
         <>
+          {bundleNotice && (
+            <StatusNotice
+              tone={bundleNotice.tone}
+              title={bundleNotice.title}
+              className="mb-4"
+              action={<Button size="sm" variant="ghost" onClick={() => setBundleNotice(null)}>ปิด</Button>}
+            >
+              {bundleNotice.text}
+            </StatusNotice>
+          )}
           {/* ประกาศเฉพาะผลเทียบยอดตอนเจาะ — ป้ายจำนวนของแผงกับ Pager ประกาศจำนวนอยู่แล้ว ไม่ต้องซ้ำทุกตัวอักษรที่พิมพ์ */}
           <div className={styles.resultNote} role={check ? "status" : undefined}>
             {check ? (
@@ -1191,6 +1256,14 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
             <table>
               <thead>
                 <tr>
+                  <th className="w-9 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() => setSelected(allSelected ? new Set() : new Set(visibleIds))}
+                      aria-label="เลือกทุกใบที่แสดงอยู่"
+                    />
+                  </th>
                   <th>ใบสั่งขาย</th>
                   <th className="num">ยอดที่นับ</th>
                   <th className={styles.colCustomer}>ลูกค้า</th>
@@ -1212,9 +1285,9 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                   <tbody key={group.key}>
                     {group.label && (
                       <TableGroupRow
-                        colSpan={13}
+                        colSpan={14}
                         label={group.label}
-                        badge={`${group.count} ใบ`}
+                        badge={orderRowsLabel(group.allOrders || group.orders)}
                         total={money(group.total)}
                         collapsed={isCollapsed}
                         onToggle={() => setCollapsed((prev) => {
@@ -1230,7 +1303,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
               })}
               <tfoot>
                 <tr>
-                  <td>รวม {filtered.length} ใบ{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
+                  <td />
+                  <td>รวม {orderRowsLabel(filtered)}{pager.pageCount > 1 ? " (ทุกหน้า)" : ""}</td>
                   <td className="num"><Money value={totals.amount} /></td>
                   <td colSpan={7} />
                   <td className="num"><Money value={totals.vat} /></td>
@@ -1248,7 +1322,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
             onPage={pager.setPage}
             pageSize={pager.pageSize}
             onPageSize={pager.setPageSize}
-            itemLabel="ใบ"
+            itemLabel={orderRowsUnit(filtered)}
           />
         </>
       )}

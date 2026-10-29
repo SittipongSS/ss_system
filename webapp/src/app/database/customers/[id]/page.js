@@ -38,11 +38,12 @@ import {
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { brandBothOf, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate, naText, NA } from "@/lib/format";
+import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
 import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formulas";
-import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
+import { isProductTaxable, productExciseBadge } from "@/lib/master/productFilter";
 import { apiCache } from "@/lib/apiCache";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -443,7 +444,9 @@ export default function CustomerDetails() {
     .filter((o) => ["pending", "received", "filing"].includes(o.status))
     .reduce((sum, o) => sum + (o.totalTax || 0), 0);
 
-  const hasTaxObligation = totalTaxAccrued > 0 || products.some((p) => p.isExciseTaxable !== false);
+  /* การ์ด "ภาระภาษีสรรพสามิต" ขึ้นเมื่อมีภาษีสะสม หรือมีสินค้าที่ต้องเสียภาษีตามกฎเดียวของระบบ (ธงรายตัวของ RA ชนะหมวด)
+     🐞 เดิม `isExciseTaxable !== false` ⇒ สินค้าแถวเก่าที่ธงว่างในหมวดที่ไม่เสียภาษีก็ทำให้การ์ด 0.00 ขึ้น (ตรวจตัวเลข 26/10 · L16c) */
+  const hasTaxObligation = totalTaxAccrued > 0 || products.some((p) => isProductTaxable(p, productTypes));
 
   if (loading) return <SkeletonRows rows={8} />;
 
@@ -799,8 +802,11 @@ export default function CustomerDetails() {
               ) : isPortrait ? (
                 <div className="grid grid-cols-1 gap-3">
                   {products.map((p) => {
-                    const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
-                    const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                    /* ป้าย/ภาษีต่อชิ้นถามกฎเดียวกับการ์ด "ภาระภาษีสรรพสามิต" ข้างบนและทะเบียนสินค้า (`productExciseBadge`)
+                       🐞 เดิมดูธงหมวดล้วน ⇒ ของที่ RA ยกเว้นขึ้น "ภาษีสรรพสามิต" · ของที่ RA บังคับในหมวดอื่นไม่มีป้าย
+                          ทั้งที่การ์ดภาระภาษีนับมัน (ตรวจตัวเลข 26/10 · L16b/L16c) */
+                    const exciseBadge = productExciseBadge(p, productTypes);
+                    const taxRate = exciseBadge === "taxable" ? (p.exciseTax || 0) + (p.localTax || 0) : 0;
                     return (
                       /* การ์ดทั้งใบเป็น <Link> ได้เพราะข้างในไม่มี interactive เลย —
                          `<ProductStatusPill>` คืน <span> ล้วน ที่เหลือเป็น div/span ข้อความ
@@ -817,11 +823,11 @@ export default function CustomerDetails() {
                         </div>
                         <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
                           <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"} · {fmtMoney(p.retailPriceIncVat)}</span>
-                          {/* ป้ายภาษีเฉพาะหมวดที่ติ๊กเสียภาษีสรรพสามิต — สินค้าหมวดอื่น (ส่วนใหญ่) ไม่ต้องพูดถึงภาษี */}
-                          {canViewTax && isExciseCat && (
+                          {/* ป้ายภาษีเฉพาะสินค้าที่ต้องเสีย/ถูกยกเว้นรายตัว — สินค้าที่ไม่เกี่ยวกับภาษี (ส่วนใหญ่) ไม่ต้องพูดถึงภาษี */}
+                          {canViewTax && exciseBadge && (
                             <span className="flex items-center gap-1.5">
                               {taxRate > 0 && <span className="font-mono text-[var(--text-2)]">{fmtMoney(taxRate)}</span>}
-                              <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
+                              <span className={`status-pill text-[10px]${exciseBadge === "taxable" ? " warning" : ""}`}>{exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>
                             </span>
                           )}
                         </div>
@@ -844,8 +850,9 @@ export default function CustomerDetails() {
                     </thead>
                     <tbody>
                       {products.map((p) => {
-                        const isExciseCat = isExciseCategory(p.categoryCode || categoryOf(p.fgCode), productTypes);
-                        const taxRate = p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0);
+                        // ตัวตัดสินเดียวกับมุมมองการ์ดข้างบน (`productExciseBadge`) — เหตุผลอยู่ที่นั่น
+                        const exciseBadge = productExciseBadge(p, productTypes);
+                        const taxRate = exciseBadge === "taxable" ? (p.exciseTax || 0) + (p.localTax || 0) : 0;
                         const detailHref = `/database/products/${p.id}`;
                         return (
                           /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก ส่วน onClick ของแถวเป็นทางลัดของเมาส์
@@ -865,10 +872,10 @@ export default function CustomerDetails() {
                             <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>
                             {canViewTax && (
                               <td className="num font-mono text-[var(--text-2)]">
-                                {isExciseCat ? (
+                                {exciseBadge ? (
                                   <div className="flex items-center justify-end gap-1.5">
                                     {taxRate > 0 && <span>{fmtMoney(taxRate)}</span>}
-                                    <span className="status-pill warning text-[10px]">ภาษีสรรพสามิต</span>
+                                    <span className={`status-pill text-[10px]${exciseBadge === "taxable" ? " warning" : ""}`}>{exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>
                                   </div>
                                 ) : <span className="text-[var(--text-3)]">{NA}</span>}
                               </td>
@@ -914,7 +921,7 @@ export default function CustomerDetails() {
               ) : isPortrait ? (
                 <div className="grid grid-cols-1 gap-3">
                   {orders.map((o) => {
-                    const isExempt = (o.totalTax || 0) === 0;
+                    const isExempt = isExemptFiling(o); // ยอด 0 ≠ ยกเว้น (สินค้าไม่มีราคาขายปลีก)
                     const itemCount = o.items?.length || 0;
                     return (
                       /* ── การ์ดนี้เป็น <button> ไม่ใช่ <Link> — ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง ──
@@ -958,7 +965,7 @@ export default function CustomerDetails() {
                     </thead>
                     <tbody>
                       {orders.map((o) => {
-                        const isExempt = (o.totalTax || 0) === 0;
+                        const isExempt = isExemptFiling(o); // ยอด 0 ≠ ยกเว้น (สินค้าไม่มีราคาขายปลีก)
                         const itemCount = o.items?.length || 0;
                         return (
                           /* ── แถวนี้ **ไม่มี** ทางลัดเมาส์บน <tr> โดยตั้งใจ (2026-09-03) ──────────────

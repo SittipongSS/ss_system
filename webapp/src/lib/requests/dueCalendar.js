@@ -7,7 +7,9 @@
 //
 // ⚠️ **ข้อจำกัดที่รู้อยู่ตั้งแต่ตอนเลือกแบบ** — วันที่ทำ 8 จาก 15 ใบในคิวจริง *ยังไม่มี
 // ใครให้วัน* ⇒ ปฏิทินจะโล่งกว่าความจริงมาก · จึงต้องคู่กับตัวเลข "ยังไม่ได้ให้วัน"
-// ที่กดไปคิวได้เสมอ (`undated`) ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง
+// ที่กดไปคิวได้เสมอ ไม่งั้นคนอ่านจะสรุปว่าสัปดาห์นี้ว่าง · ตัวเลขบนจอ (ปุ่ม "ยังไม่ได้ให้วัน" /
+// "เลยกำหนดแล้ว") มาจาก `deptCountByTurn` (`lib/requests/deptOverview.js`) ซึ่งนับเฉพาะตาฝ่าย
+// (มติเจ้าของ 2026-10-19 · ตรวจตัวเลข M6) — **ไม่ใช่** `undated`/`overdue` ข้างล่างที่รวมสองตา
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
 import { addDays, dayOfWeek, weekStartOf } from '@/lib/datePeriods';
@@ -27,6 +29,21 @@ export const WEEKDAY_LABELS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', '�
 export function weekStart(todayIso, offset = 0) {
   const start = weekStartOf(String(todayIso || '').slice(0, 10));
   return start ? addDays(start, Number(offset || 0) * 7) : null;
+}
+
+/**
+ * ชื่อสัปดาห์ที่กำลังดูอยู่ ตาม `offset` ของ `weekStart` — ใช้บนป้าย "N ใบใน…" ของปฏิทิน
+ *
+ * 🐞 เดิมป้ายเขียน "ใบในสัปดาห์นี้" ตายตัว ⇒ กดลูกศรไปสัปดาห์ก่อน/หน้า เลขเป็นของสัปดาห์นั้น
+ *    แต่คำยังบอกว่าสัปดาห์นี้ (ตรวจตัวเลข 26/10 · L9) · ไกลกว่าหนึ่งสัปดาห์ = "สัปดาห์ที่เลือก"
+ *    (แถวช่วงวันใต้หัวบอกวันจริงอยู่แล้ว)
+ */
+export function weekOffsetLabel(offset = 0) {
+  const n = Number(offset || 0);
+  if (n === 0) return 'สัปดาห์นี้';
+  if (n === -1) return 'สัปดาห์ก่อน';
+  if (n === 1) return 'สัปดาห์หน้า';
+  return 'สัปดาห์ที่เลือก';
 }
 
 /** เจ็ดวันของสัปดาห์ — `{ iso, label, weekend, today }` */
@@ -91,9 +108,12 @@ export function dueCalendar(rows = [], { startIso, todayIso = null } = {}) {
     start,
     end: days.at(-1)?.iso || start,
     days,
-    // จำนวนใบที่ตกอยู่ในสัปดาห์นี้จริง ๆ — ใช้บนหัวข้อ ไม่ใช่ `dated` ทั้งคิว
+    // จำนวนใบที่ตกอยู่ในสัปดาห์ที่กำลังดูจริง ๆ — ใช้บนหัวข้อ ไม่ใช่ `dated` ทั้งคิว
+    // ⚠️ ป้ายบนจอต้องพูดชื่อสัปดาห์ตาม offset (`weekOffsetLabel`) ไม่ใช่ "สัปดาห์นี้" ตายตัว
     inWeek: days.reduce((n, day) => n + day.items.length, 0),
     dated,
+    // ⚠️ สองตัวนี้รวมทั้งตาฝ่ายและตาผู้ขอ — ไม่มีจอไหนอ่านแล้ว (ปุ่มบนปฏิทินใช้ `deptCountByTurn`)
+    // คงไว้ให้เทสต์ "แยกตาแล้วไม่มีใบหาย" เทียบผลรวมเท่านั้น · ห้ามเอาไปโชว์เป็นตัวเลขของฝ่าย
     undated,
     overdue,
   };

@@ -17,6 +17,8 @@ import { requestKindMeta } from '@/lib/master/requestTypes';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
+/* ประเมินจากแบบ งวด 4 (S4 C-5) — วันที่ผู้ขออยากให้เข้าพื้นที่มีตัวอ่านเดียว (pure · ใช้ได้ทั้งเบราว์เซอร์และ server) */
+import { SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveyWishedVisit } from '@/lib/service/surveyIntake';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -64,8 +66,14 @@ export function countdownLabel(dueDate, now = new Date()) {
  * ⭐ ผู้ใช้ขอให้เห็นสองวันนี้พร้อมกันเสมอ (ม-101) — ของเดิมสลับกันใช้ช่องเดียว
  * พอฝ่ายรับปากวันแล้ว วันที่ผู้ขอขอจะหายไป ⇒ เทียบไม่ได้ว่าตรงกับที่ขอไหม
  * ทั้งที่นั่นคือสิ่งเดียวที่ผู้ขอต้องดู
+ * @param today วันไทยวันนี้ `YYYY-MM-DD` — ส่งมา = วันที่รับปากผ่านไปแล้วคืน `null` (ไม่มีบรรทัดเทียบ) · ไม่ส่ง = เทียบเสมอ (ผู้เรียกเดิม)
  */
-export function committedVsRequested(committedDate, requestedDate) {
+export function committedVsRequested(committedDate, requestedDate, { today = null } = {}) {
+  /* ⭐ **เลยวันที่รับปากแล้ว = ไม่เทียบกับวันที่ขอ** (S2b แก้หลังตรวจจอ sales-minor-3) — "เร็วกว่าที่ขอ 5 วัน" สีเขียวใต้วันที่พลาดไปแล้ว
+     ข้างหัวแดง "เลยวันที่จะส่งผลมา 2 วัน" อ่านไม่ออกว่าช้าหรือเร็ว · กติกาเดียวกับขั้นลงคิวที่ซ่อนบรรทัดนี้ตอนเลยวันนัดอยู่แล้ว
+     ⚠️ เทียบวันไทยแบบสตริง (`YYYY-MM-DD` ทั้งคู่ — ผู้เรียกส่ง "วันนี้" ของ `businessDate()`) · ไม่ส่ง `today` = พฤติกรรมเดิมทุกผู้เรียก */
+  const due = String(committedDate ?? '').trim();
+  if (today && due && due < String(today).trim()) return null;
   const days = dayDiff(committedDate, requestedDate);
   if (days === null) return null;
   if (days === 0) return { text: 'ตรงกับที่ขอ', tone: 'ok' };
@@ -145,7 +153,11 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
   }
 
   // ── สองวันกำหนด — อยู่คู่กันเสมอ ────────────────────────────────────
-  const wanted = String(request.requestedDueDate || '').trim();
+  /* 🔴 **ผ่าน `surveyWishedVisit` ไม่อ่านคอลัมน์ตรง ๆ** (S4 C-5) — ใบประเมินที่ยื่นเป็นประเมินจากแบบเก็บ `requestedDueDate`
+     = กระจกของวันรับผล (คอลัมน์ต้องมีค่า) ⇒ ตัวอ่านคืน "ไม่รู้" ให้ใบนั้นเสมอ · หัวข้ออื่น/ใบลงหน้างาน = ค่าคอลัมน์เดิม */
+  const noWish = surveyFiledAsDrawing(request);
+  const wish = surveyWishedVisit(request);
+  const wanted = wish.known ? String(wish.date).trim() : '';
   // ⚠️ วันของรอบก่อน = ยังไม่มีวันของรอบนี้ ⇒ การ์ดหัวใบต้องไม่ขัดกับรางใต้มัน
   const committed = liveDueDate(request) || '';
 
@@ -174,8 +186,10 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
     facts.push({
       key: 'requestedDue',
       label: twoDates ? `ผู้ขอ: ${copy.dueLabel}` : 'ผู้ขอต้องการรับงาน',
-      value: wanted ? fmtDate(wanted) : '—',
-      sub: wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
+      /* ⚠️ ยื่นเป็นประเมินจากแบบ (หัวหน้าสลับกลับเป็นลงหน้างานแล้วช่องนี้จึงขึ้น) — ไม่มีใครขอวันเข้า: บอกตรง ๆ และ
+         **sub เป็น null** · ทางสำรองของวันว่าง ("ใบเก่าที่เปิดก่อนกติกาบังคับวัน") จะเรียกใบที่เพิ่งยื่นว่าใบเก่า */
+      value: noWish ? SURVEY_NO_VISIT_WISH_TEXT : (wanted ? fmtDate(wanted) : '—'),
+      sub: noWish ? null : wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
     });
 
     const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;

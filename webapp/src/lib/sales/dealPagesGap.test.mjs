@@ -292,3 +292,46 @@ test('pendingPeriodMatcher: ช่วงวัน = นับเฉพาะช�
   // "รอเติมข้อมูล" ยังไม่กรองแม้ส่งช่วงมา
   assert.equal(pendingPeriodMatcher({ reviewOnly: true, period: { mode: 'range' } }), null);
 });
+
+/* ── ใบสั่งขาย "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) ─────────────────────────────────────
+   นับงวด 1 แล้วงวดที่เหลือยังไม่ถึงคิว — ห้ามขึ้น "ต่าง ฿(งวดที่ยังไม่ถึงคิว)" (อ่านเป็นปิดต่ำกว่าคาด)
+   ⇒ "นับแล้ว ฿a · รอนับรายงวด ฿b" · ส่วนต่างเทียบยอดปิดเต็ม (Actual + ยื่นแล้ว + รอนับ) และโชว์เฉพาะเมื่อไม่เป็นศูนย์ */
+test('คำใต้การ์ด Won: ใบรายงวดที่นับไปบางงวดไม่ฟ้อง "ต่าง" · บอกนับแล้ว/รออนุมัติ/รอนับรายงวด', () => {
+  const base = { deal: { stage: 'won' }, forecast: 300000, actual: 100000, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0 };
+  const counted = wonDealForecastHint({ ...base, instRemaining: 200000 });
+  assert.equal(counted.kind, WON_HINT_KINDS.INSTALLMENT);
+  assert.equal(counted.gap, 0);
+  assert.equal(counted.text, `นับแล้ว ${fmtMoney(100000)} · รอนับรายงวด ${fmtMoney(200000)}`);
+  assert.doesNotMatch(counted.text, /ต่าง/);
+  // งวด 2 ยื่นแล้ว (อยู่ในรออนุมัติ) — ยังครบยอดปิดเต็ม · รออนุมัติไม่อยู่ในคำ (หน้าดีลวาด <PendingApprovalAmount> ใต้คำนี้อยู่แล้ว
+  // — review รอบสาม 26/10: เคยขึ้น "รออนุมัติ ฿P" สองบรรทัด)
+  const submitted = wonDealForecastHint({ ...base, pendingApproval: 100000, pendingApprovalCount: 1, instRemaining: 100000 });
+  assert.equal(submitted.gap, 0);
+  assert.equal(submitted.text, `นับแล้ว ${fmtMoney(100000)} · รอนับรายงวด ${fmtMoney(100000)}`);
+  assert.doesNotMatch(submitted.text, /รออนุมัติ/);
+  // ยอดปิดเต็มต่างจากคาดการณ์จริง — บอกส่วนต่าง "เมื่อนับครบ"
+  const short = wonDealForecastHint({ ...base, forecast: 350000, instRemaining: 200000 });
+  assert.equal(short.gap, 50000);
+  assert.equal(short.text, `นับแล้ว ${fmtMoney(100000)} · รอนับรายงวด ${fmtMoney(200000)} · คาดการณ์ ${fmtMoney(350000)} · ต่างเมื่อนับครบ ${fmtMoney(50000)}`);
+  // นับครบแล้ว (ไม่มีกองรอนับ) = กติกาเดิม
+  assert.deepEqual(
+    wonDealForecastHint({ ...base, actual: 300000 }),
+    wonDealForecastHint({ ...base, actual: 300000, instRemaining: 0 }),
+  );
+  assert.equal(wonDealForecastHint({ ...base, actual: 300000 }).text, 'ตรงกับคาดการณ์');
+  // ใบย้อนหลังมาก่อนทุกกรณีเหมือนเดิม
+  assert.equal(wonDealForecastHint({ ...base, deal: { stage: 'won', origin: 'historical' }, instRemaining: 5 }).kind, WON_HINT_KINDS.HISTORICAL);
+});
+
+test('คำใต้การ์ด Won: ไม่ส่ง instRemaining = คำเดิมทุกกรณี (ใบทั้งใบ)', () => {
+  const cases = [
+    { forecast: 100, actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0 },
+    { forecast: 100, actual: 0, actualCount: 0, pendingApproval: 60, pendingApprovalCount: 1 },
+    { forecast: 100, actual: 80, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0 },
+    { forecast: 100, actual: 0, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0 },
+  ];
+  for (const c of cases) {
+    assert.deepEqual(wonDealForecastHint({ deal: { stage: 'won' }, ...c }), wonDealForecastHint({ deal: { stage: 'won' }, ...c, instRemaining: 0 }));
+    assert.notEqual(wonDealForecastHint({ deal: { stage: 'won' }, ...c }).kind, WON_HINT_KINDS.INSTALLMENT);
+  }
+});

@@ -1,6 +1,8 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, dealAuditLabel, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning, dealAuditLabel } from '@/lib/salesPlanning';
+import { inSalesDocScope } from '@/lib/scopedRow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import {
   canUnacceptQuotation, normalizeUnacceptReason, quotationReopenAuditSummary, unacceptReasonError,
 } from '@/lib/sales/quotationUnaccept';
@@ -37,7 +39,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const { data: before, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   if (error) return fail(error.message, 500);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
-  if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  /* ⛔ ใบค่าสรรพสามิตย้อนการรับไม่ได้ — RPC ย้อนการรับผูกดีลทั้งก้อน (เปิดดีล · FC · ใบพี่น้อง) · แก้ด้วยยกเลิกใบแทน (แผน หมวด 5) */
+  if (isExciseOrder(before)) {
+    return badRequest('ใบเสนอราคาค่าสรรพสามิตย้อนการรับไม่ได้ — ใช้ “ยกเลิกใบ” แทน (ถ้ามีใบสั่งขายค่าสรรพสามิตแล้ว ยกเลิกใบสั่งขายก่อน)');
+  }
+  if (!inSalesDocScope(user, before, 'edit')) return forbidden();
   // ⭐ ด่านเจ้าของดีลต้องรู้ดีลก่อน ⇒ ย้ายมาหลังโหลดใบ (เดิมเช็คตำแหน่งอย่างเดียวก่อนโหลด)
   if (!canUnacceptQuotation(user, before.deal)) {
     return forbidden('ย้อนการรับได้เฉพาะเจ้าของดีลหรือ AE Supervisor');

@@ -28,3 +28,208 @@ test('การ์ดรออนุมัติบน /database ใช้ลิ
   assert.match(page, /label="สินค้ารออนุมัติ"[^\n]*onClick=\{\(\) => router\.push\(PENDING_APPROVAL_HREF\.products\)\}/);
   assert.match(page, /label="ลูกค้ารออนุมัติ"[^\n]*onClick=\{\(\) => router\.push\(PENDING_APPROVAL_HREF\.customers\)\}/);
 });
+
+// ── ใบเลิกใช้ที่ยังรออนุมัติ (มติเจ้าของ 19/10): การ์ด == ป้าย == แถวที่ `?count=` เปิด ─────────────
+// วันนี้ไม่มีใบแบบนี้ในฐาน (0 ใบ) ⇒ พิสูจน์ด้วยชุดจำลองที่มีครบทุกมุม: เลิกใช้ × สถานะ × NULL ของแถวเก่า
+import { isPendingApproval, pendingApprovalCount, passesApprovalFilters } from './pendingApprovalLinks.js';
+import { filterProducts } from './productFilter.js';
+import { filterCustomers } from './customerFilter.js';
+
+const ROWS = [
+  { id: 'A', isActive: true, approvalStatus: 'pending' },
+  { id: 'B', isActive: false, approvalStatus: 'pending' },   // ← ใบที่เคยนับแต่เปิดไม่เจอ
+  { id: 'C', isActive: true, approvalStatus: 'approved' },
+  { id: 'D', isActive: false, approvalStatus: 'approved' },
+  { id: 'E', isActive: true, approvalStatus: 'rejected' },
+  { id: 'F', isActive: false, approvalStatus: 'rejected' },
+  { id: 'G', isActive: true, approvalStatus: null },         // แถวก่อน mig 0027 = อนุมัติแล้ว
+  { id: 'H', approvalStatus: 'pending' },                    // ไม่มีช่อง isActive = ยังใช้อยู่
+];
+const ids = (rows) => rows.map((r) => r.id);
+/* สถานะตัวกรองที่ลิงก์ `?count=` ตั้งให้ทะเบียน: สถานะ "รออนุมัติ" · ไม่ติ๊ก "รวมที่เลิกใช้" (ยามซอร์สข้างล่างยึดไว้) */
+const COUNT_STATE = Object.freeze({ statuses: ['pending'], showInactive: false });
+
+test('นิยาม "รออนุมัติ" ไม่ดูการเลิกใช้ · NULL ของแถวเก่าไม่นับ', () => {
+  assert.deepEqual(ids(ROWS.filter(isPendingApproval)), ['A', 'B', 'H']);
+  assert.equal(pendingApprovalCount(ROWS), 3);
+  assert.equal(pendingApprovalCount([]), 0);
+  assert.equal(pendingApprovalCount(), 0);
+  assert.equal(isPendingApproval(null), false);
+});
+
+test('ตาราง `?count=` เปิดเจอทุกใบที่นับ รวมใบเลิกใช้ — สินค้า (filterProducts) และลูกค้า (passesApprovalFilters)', () => {
+  const counted = ids(ROWS.filter(isPendingApproval));
+  // สินค้า: ตัวกรองของจอ + ไฟล์ส่งออก (filterProducts ตัวเดียว)
+  const products = filterProducts(ROWS, COUNT_STATE);
+  assert.equal(products.length, pendingApprovalCount(ROWS));
+  assert.deepEqual(ids(products), counted);
+  // ลูกค้า: หน้ากรองผ่าน filterCustomers ซึ่งเรียกตัวตัดสินนี้ (ยามซอร์สข้างล่าง)
+  const customers = ROWS.filter((r) => passesApprovalFilters(r, COUNT_STATE));
+  assert.equal(customers.length, pendingApprovalCount(ROWS));
+  assert.deepEqual(ids(customers), counted);
+  assert.deepEqual(ids(filterCustomers(ROWS, COUNT_STATE)), counted);
+});
+
+test('ทะเบียนเปล่า ๆ ไม่เปลี่ยน — ใบเลิกใช้ทุกสถานะยังซ่อน (รวมใบที่รออนุมัติ) จนกว่าจะติ๊กรวม', () => {
+  assert.deepEqual(ids(ROWS.filter((r) => passesApprovalFilters(r))), ['A', 'C', 'E', 'G', 'H']);
+  assert.deepEqual(ids(filterProducts(ROWS)), ['A', 'C', 'E', 'G', 'H']);
+  assert.deepEqual(ids(filterProducts(ROWS, { showInactive: true })), ids(ROWS));
+});
+
+test('ข้อยกเว้นแคบที่สุด: เฉพาะใบรออนุมัติ ขณะกรองสถานะรออนุมัติ — สถานะอื่นยังซ่อนใบเลิกใช้', () => {
+  const pass = (state) => ids(ROWS.filter((r) => passesApprovalFilters(r, state)));
+  assert.deepEqual(pass({ statuses: ['approved'] }), ['C', 'G']);
+  assert.deepEqual(pass({ statuses: ['rejected'] }), ['E']);
+  assert.deepEqual(pass({ statuses: ['pending', 'approved'] }), ['A', 'B', 'C', 'G', 'H']); // D (เลิกใช้·อนุมัติแล้ว) ยังซ่อน
+  assert.deepEqual(pass({ statuses: ['approved'], showInactive: true }), ['C', 'D', 'G']);
+  // ติ๊ก "รวมที่เลิกใช้" คู่กับ "รออนุมัติ" = ชุดเดียวกัน (ไม่มีใบซ้ำ ไม่มีใบหาย)
+  assert.deepEqual(pass({ statuses: ['pending'], showInactive: true }), pass(COUNT_STATE));
+});
+
+test('ป้ายเมนูนับนิยามเดียวกัน — `approvalStatus = pending` ไม่มีเงื่อนไข isActive', () => {
+  const route = src('../../app/api/nav/counts/route.js');
+  const block = route.slice(route.indexOf('const pendingApproval = (table)'), route.indexOf("jobs.push(attempt('products'"));
+  assert.ok(block.length > 50, 'หาบล็อกนับรออนุมัติของ nav/counts ไม่เจอ');
+  assert.match(block, /\.eq\('approvalStatus', 'pending'\)/);
+  assert.doesNotMatch(block, /isActive/, 'ป้ายนับใบเลิกใช้ด้วย — ถ้าเพิ่มเงื่อนไขนี้ ต้องแก้ isPendingApproval ให้ตรงกัน');
+});
+
+test('การ์ดภาพรวม · แถบตัวเลขข้างทะเบียน · ตารางทั้งสองหน้า ใช้ตัวตัดสินชุดนี้ ไม่เขียนเงื่อนไขสด', () => {
+  const overview = src('../../app/database/page.js');
+  assert.match(overview, /products: pendingApprovalCount\(rawProducts \|\| \[\]\)/);
+  assert.match(overview, /customers: pendingApprovalCount\(rawCustomers \|\| \[\]\)/);
+  // แถบตัวเลขข้างทะเบียน: "รออนุมัติ" มาจาก approvalStatCounts → pendingApprovalCount (M20b ย้ายการนับเข้า lib)
+  assert.match(src('./pendingApprovalLinks.js'), /pending: pendingApprovalCount\(list\),/);
+  const products = src('../../app/database/products/page.js');
+  assert.match(products, /const counts = useMemo\(\(\) => productStatCounts\(products, productTypes\), \[products, productTypes\]\);/);
+  assert.match(src('./productFilter.js'), /\.\.\.approvalStatCounts\(list\),/);
+  const customers = src('../../app/database/customers/page.js');
+  assert.match(customers, /const counts = useMemo\(\(\) => approvalStatCounts\(customers\), \[customers\]\);/);
+  // ตารางลูกค้ากรองผ่าน customerFilter (M21b) ซึ่งเรียกตัวตัดสินชุดนี้ — คู่แฝดของ productFilter
+  assert.match(customers, /const filteredCustomers = filterCustomers\(customers, filterState\);/);
+  const customerFilter = src('./customerFilter.js');
+  assert.match(customerFilter, /if \(!passesApprovalFilters\(c, \{ statuses, showInactive \}\)\) return false;/);
+  for (const file of [customers, customerFilter]) {
+    assert.doesNotMatch(file, /!showInactive && c\.isActive === false/, 'ตัดใบเลิกใช้ก่อนดูสถานะ = ใบรออนุมัติที่เลิกใช้หายจากตาราง `?count=`');
+  }
+  assert.match(src('./productFilter.js'), /passesApprovalFilters\(p, \{ statuses, showInactive \}\)/);
+  // `?count=` ไม่ได้ติ๊ก "รวมที่เลิกใช้" ให้ — ใบเลิกใช้ที่ไม่ได้รออนุมัติต้องไม่ติดมาด้วย (COUNT_STATE ข้างบน)
+  for (const page of [products, customers]) {
+    assert.match(page, /const \[showInactive, setShowInactive\] = useState\(false\);/);
+  }
+});
+
+test('แถวเลิกใช้ที่รออนุมัติยังมีป้าย "เลิกใช้" ข้างปุ่มอนุมัติในมุมมองตาราง', () => {
+  for (const [file, v] of [['../../app/database/products/page.js', 'p'], ['../../app/database/customers/page.js', 'c']]) {
+    const page = src(file);
+    const at = page.indexOf(`<ApprovalActions onDecide={(status) => decide(${v}, status)} />`);
+    assert.ok(at > 0, `${file}: หาปุ่มอนุมัติในตารางไม่เจอ`);
+    // ป้ายอยู่หลังปิดทางแยก `)}` ของปุ่ม/ป้ายสถานะ = ขึ้นทั้งแถวที่มีปุ่มและแถวที่ไม่มี (ไม่ได้ซ่อนอยู่ในกิ่ง "ไม่มีปุ่ม")
+    const after = page.slice(at, at + 400);
+    assert.match(after, new RegExp(`<ApprovalBadge status=\\{approvalStatusOf\\(${v}\\)\\} />\\s*\\)\\}\\s*\\{${v}\\.isActive === false && <span className="status-pill"[^>]*>เลิกใช้</span>\\}`));
+  }
+});
+
+// ── รอบตรวจซ้ำ (19/10): ทางอื่นบน /database ที่พาไปหาใบรออนุมัติ ต้องได้ชุดเดียวกัน ─────────────────────
+
+test('การ์ดรออนุมัติบนภาพรวมนับจากทะเบียนเต็ม — ตัวกรองทีม/ช่วงเวลาของหน้าไม่เปลี่ยนเลข (ลิงก์ส่งตัวกรองพวกนั้นไปไม่ได้)', () => {
+  const page = src('../../app/database/page.js');
+  // เลขบนการ์ดมาจาก `pendingAll` (ทะเบียนดิบ) ไม่ใช่ชุด `products`/`customers` ที่ผ่านตัวกรองของหน้าแล้ว
+  assert.match(page, /<KpiCard label="สินค้ารออนุมัติ" value=\{productsFailed \? NA : pendingAll\.products\}/);
+  assert.match(page, /<KpiCard label="ลูกค้ารออนุมัติ" value=\{customersFailed \? NA : pendingAll\.customers\}/);
+  assert.doesNotMatch(page, /pendingApprovalCount\((?:products|customers|list)\)/, 'นับจากชุดที่ผ่านตัวกรองของหน้า = การ์ดบอก 1 เปิดเจอ 3');
+  // ตัวกรองติดอยู่ ⇒ บอกใต้เลขว่าการ์ดนี้ไม่ตามตัวกรอง (การ์ด "ทั้งหมด" ข้าง ๆ ตามตัวกรอง)
+  assert.match(page, /const pageFiltered = timeframe\.length \+ teamFilter\.length > 0;/);
+  assert.match(page, /const pendingHint = pageFiltered \? "[^"]+" : undefined;/);
+  for (const flag of ['productsFailed', 'customersFailed']) {
+    assert.match(page, new RegExp(`hint=\\{${flag} \\? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint\\}`));
+  }
+  // ชุดที่การ์ดนับ = ชุดที่ตาราง `?count=` เปิดเจอ ไม่ว่าตัวกรองของภาพรวมจะเป็นอะไร (ทะเบียนปลายทางไม่รู้จักตัวกรองนั้น)
+  const raw = ROWS.map((r, i) => ({ ...r, team: i % 2 ? 'X' : 'Y', createdAt: i % 2 ? '2020-01-01' : '2026-10-01' }));
+  const teamX = raw.filter((r) => r.team === 'X');
+  assert.notEqual(pendingApprovalCount(teamX), pendingApprovalCount(raw), 'ชุดจำลองต้องให้ตัวกรองทีมเปลี่ยนเลขได้จริง');
+  assert.equal(pendingApprovalCount(raw), filterProducts(raw, COUNT_STATE).length);
+});
+
+test('คิวรออนุมัติบนภาพรวม: ปุ่มพาไปหน้าของใบนั้น ไม่ใช่ทะเบียนเปล่าที่ซ่อนใบเลิกใช้', () => {
+  const page = src('../../app/database/page.js');
+  const queue = page.slice(page.indexOf('const queue = useMemo('), page.indexOf('return q;'));
+  assert.ok(queue.length > 100, 'หาคิวรออนุมัติไม่เจอ');
+  assert.match(queue, /products\.filter\(isPendingApproval\)/);
+  assert.match(queue, /customers\.filter\(isPendingApproval\)/);
+  assert.match(queue, /onClick: \(\) => router\.push\(`\/database\/products\/\$\{x\.id\}`\)/);
+  assert.match(queue, /onClick: \(\) => router\.push\(`\/database\/customers\/\$\{x\.id\}`\)/);
+  assert.doesNotMatch(queue, /router\.push\("\/database\/(?:products|customers)"\)/,
+    'ทะเบียนเปล่าซ่อนใบเลิกใช้ — ใบเลิกใช้ที่ยังรออนุมัติจะหาไม่เจอจากคิวนี้');
+  // หน้าของใบไม่กั้นการตัดสินด้วย isActive (ปุ่มอนุมัติของใบเลิกใช้ยังขึ้น)
+  for (const detail of ['../../app/database/products/[id]/page.js', '../../app/database/customers/[id]/page.js']) {
+    const canDecide = src(detail).match(/const canDecide = ([^;]+);/);
+    assert.ok(canDecide, `${detail}: หา canDecide ไม่เจอ`);
+    assert.doesNotMatch(canDecide[1], /isActive/, `${detail}: ใบเลิกใช้ที่รออนุมัติต้องตัดสินได้`);
+  }
+});
+
+test('ไม่มีเงื่อนไข "รออนุมัติ" เขียนสดเหลือในสามหน้า — คิวข้างทะเบียน · ปุ่มบนการ์ด/ตาราง ถาม isPendingApproval', () => {
+  for (const file of ['../../app/database/page.js', '../../app/database/products/page.js', '../../app/database/customers/page.js']) {
+    assert.doesNotMatch(src(file), /approvalStatusOf\([^)]*\) === "pending"/, `${file}: ใช้ isPendingApproval แทน`);
+  }
+  for (const [file, list] of [['../../app/database/products/page.js', 'products'], ['../../app/database/customers/page.js', 'customers']]) {
+    const page = src(file);
+    assert.match(page, /const canDecideRow = \(rec\) => isPendingApproval\(rec\) && canApproveRow\(rec\);/);
+    assert.match(page, new RegExp(`const approvalQueue = ${list}\\.filter\\(canDecideRow\\);`));
+  }
+});
+
+test('ใบเลิกใช้ที่มีปุ่มอนุมัติไม่จาง — ปุ่มที่จางตามแถวอ่านเป็นกดไม่ได้ (ตาราง `?count=` เปิดใบพวกนี้เป็นค่าตั้งต้นแล้ว)', () => {
+  const products = src('../../app/database/products/page.js');
+  assert.match(products, /<DetailRow key=\{p\.id\}[^\n]*style=\{p\.isActive === false && !showActions \? \{ opacity: "var\(--op-muted\)" \} : undefined\}>/);
+  assert.match(products, /const showActions = canDecideRow\(p\);\n\s*return \(/, 'แถวตารางต้องมี showActions ของตัวเอง');
+  const customers = src('../../app/database/customers/page.js');
+  assert.match(customers, /<DetailRow key=\{c\.id\}[^\n]*style=\{c\.isActive === false && !canDecideRow\(c\) \? \{ opacity: "var\(--op-muted\)" \} : undefined\}>/);
+  for (const page of [products, customers]) {
+    assert.match(page, /<ClickableCard [^\n]*style=\{inactive && !showActions \? \{ opacity: 0\.6 \} : undefined\}>/);
+    assert.match(page, /const showActions = canDecideRow\([pc]\);/);
+  }
+});
+
+// ── ตรวจตัวเลข M19a/M20b (20/10): การ์ด/แถบตัวเลข "ทั้งหมด · อนุมัติแล้ว · ไม่อนุมัติ" = แถวหลังตั้งตัวกรองที่ตรงกัน ──
+import { approvalStatCounts, registryDefaultCount } from './pendingApprovalLinks.js';
+
+test('🔴 M20b: แถบตัวเลขข้างทะเบียน — แต่ละเลข = แถวที่ตารางโชว์หลังตั้งตัวกรองที่ตรงกัน (สินค้า + ลูกค้า)', () => {
+  const stats = approvalStatCounts(ROWS);
+  for (const filter of [filterProducts, filterCustomers]) {
+    assert.equal(stats.total, filter(ROWS).length, 'ทั้งหมด = ทะเบียนเปล่า (ซ่อนใบเลิกใช้)');
+    assert.equal(stats.pending, filter(ROWS, { statuses: ['pending'] }).length, 'รออนุมัติ = ตัวกรองรออนุมัติ (รวมใบเลิกใช้ · H3)');
+    assert.equal(stats.approved, filter(ROWS, { statuses: ['approved'] }).length, 'อนุมัติแล้ว = ตัวกรองอนุมัติแล้ว');
+    assert.equal(stats.rejected, filter(ROWS, { statuses: ['rejected'] }).length, 'ไม่อนุมัติ = ตัวกรองไม่อนุมัติ');
+  }
+  assert.deepEqual(stats, { total: 5, pending: 3, approved: 2, rejected: 1 });
+  // ผลข้างเคียงที่ยอมรับ (มติ 19/10): ใบเลิกใช้ที่รออนุมัตินับใน "รออนุมัติ" แต่ไม่อยู่ใน "ทั้งหมด"
+  assert.equal(stats.pending + stats.approved + stats.rejected - stats.total, ROWS.filter((r) => r.isActive === false && isPendingApproval(r)).length);
+  assert.deepEqual(approvalStatCounts([]), { total: 0, pending: 0, approved: 0, rejected: 0 });
+  assert.deepEqual(approvalStatCounts(), { total: 0, pending: 0, approved: 0, rejected: 0 });
+});
+
+test('ด่านซอร์ส M20b: StatCards "ทั้งหมด" ของสองทะเบียนอ่าน counts.total ไม่ใช่ความยาวลิสต์', () => {
+  for (const [file, list] of [['../../app/database/products/page.js', 'products'], ['../../app/database/customers/page.js', 'customers']]) {
+    const page = src(file);
+    assert.match(page, /\{ label: "ทั้งหมด", value: counts\.total \}/);
+    assert.doesNotMatch(page, new RegExp(`label: "ทั้งหมด", value: ${list}\\.length`), `${file}: นับใบเลิกใช้ที่ทะเบียนซ่อน`);
+    assert.doesNotMatch(page, /approvalStatusOf\([pc]\) === "(?:approved|rejected)"\)\.length/, `${file}: นับสถานะสดรวมใบเลิกใช้`);
+  }
+});
+
+test('🔴 M19a: การ์ด "สินค้า/ลูกค้าทั้งหมด" บนภาพรวม = แถวของทะเบียนเปล่าที่การ์ดเปิด — ไม่ขึ้นกับตัวกรองทีม/ช่วงเวลา', () => {
+  const raw = ROWS.map((r, i) => ({ ...r, team: i % 2 ? 'X' : 'Y', createdAt: i % 2 ? '2020-01-01' : '2026-10-01' }));
+  // การ์ดกดแล้วเปิด /database/products หรือ /database/customers เปล่า ๆ (ทะเบียนไม่รู้จักตัวกรองของภาพรวม)
+  assert.equal(registryDefaultCount(raw), filterProducts(raw).length);
+  assert.equal(registryDefaultCount(raw), filterCustomers(raw).length);
+  assert.notEqual(registryDefaultCount(raw), raw.length, 'ชุดจำลองต้องมีใบเลิกใช้ให้เห็นว่า list.length ผิด');
+  assert.equal(registryDefaultCount([]), 0);
+  const page = src('../../app/database/page.js');
+  assert.match(page, /products: registryDefaultCount\(rawProducts \|\| \[\]\),/);
+  assert.match(page, /customers: registryDefaultCount\(rawCustomers \|\| \[\]\),/);
+  assert.match(page, /<KpiCard label="สินค้าทั้งหมด" value=\{productsFailed \? NA : totalAll\.products\} hint=\{productsFailed \? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint\}[^\n]*router\.push\("\/database\/products"\)/);
+  assert.match(page, /<KpiCard label="ลูกค้าทั้งหมด" value=\{customersFailed \? NA : totalAll\.customers\} hint=\{customersFailed \? "ดึงข้อมูลไม่ได้ — ดูข้อความด้านบน" : pendingHint\}[^\n]*router\.push\("\/database\/customers"\)/);
+  assert.doesNotMatch(page, /pStats|cStats|countOf\(/, 'การ์ดทั้งหมดเคยนับชุดที่ผ่านตัวกรองของหน้า + ใบเลิกใช้');
+});

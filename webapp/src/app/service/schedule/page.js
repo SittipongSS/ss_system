@@ -31,7 +31,7 @@ import ServiceVisitModal from "@/components/service/ServiceVisitModal";
 import ScheduleQueueCard from "@/components/service/ScheduleQueueCard";
 /* ⭐ คำร้องรอลงคิว (มติเจ้าของ 23/09) — โมดัลลงคิวตัวเดียวกับหน้าใบ + ข้อความกล่องรับเรื่องชุดเดียวกัน */
 import CommitDueDialog from "@/components/requests/CommitDueDialog";
-import { acknowledgeConfirmCopy, acknowledgeDeskNext } from "@/lib/requests/acknowledgeConfirm";
+import { acknowledgeConfirmCopy, acknowledgeDeskToast } from "@/lib/requests/acknowledgeConfirm";
 import { commitDueLabels } from "@/lib/requests/commitDue";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
@@ -69,10 +69,13 @@ import {
   QUEUE_BUCKET_UNITS,
   QUEUE_RANGES,
   QUEUE_RANGE_LABELS,
+  QUEUE_RANGE_TODAY,
+  QUEUE_RANGE_TODAY_LABEL,
   addDaysIso,
   crewLoadPeople,
   freeCrewOn,
   queueBucketOf,
+  queueRangeFrom,
   queueWindow,
   staffLoadOn,
 } from "@/lib/service/scheduleQueue";
@@ -126,8 +129,11 @@ export default function ServiceSchedulePage() {
   /* ── สถานะใน URL (เปิดลิงก์แล้วได้หน้าเดิม · KPI ของหน้าภาพรวมลิงก์ตรงมาที่ถัง) ── */
   const bucketParam = searchParams.get("tab");
   const bucket = QUEUE_BUCKETS.includes(bucketParam) ? bucketParam : "waiting";
+  /* ⭐ อ่านจาก useSearchParams ทุกรอบวาด (ไม่ใช่ state ที่ตั้งครั้งเดียวตอนเมานต์) ⇒ ลิงก์ที่พามาขณะอยู่บนหน้านี้แล้วก็ติดตัวกรอง
+     · `today` = ช่วงที่มากับลิงก์ของการ์ด "นัดวันนี้" (H15 · มติเจ้าของ 19/10) — ไม่อยู่บนแถบเลือกช่วง โชว์เป็นป้าย "กรอง: … ×" */
   const rangeParam = searchParams.get("range");
-  const range = QUEUE_RANGES.includes(rangeParam) ? rangeParam : "all";
+  const range = queueRangeFrom(rangeParam);
+  const todayOnly = range === QUEUE_RANGE_TODAY;
   const weekParam = searchParams.get("week");
   const weekIso = (isRealDay(weekParam) && weekStartOf(weekParam)) || weekStartOf(todayIso);
   const visitParam = searchParams.get("visit");
@@ -535,7 +541,9 @@ export default function ServiceSchedulePage() {
       ? "คำร้องประเมินพื้นที่ที่ยังไม่มีนัด + ร่างที่ยังไม่ขึ้นตาราง — ร่างไม่นับภาระ และยังไม่โผล่ในงานวันนี้ของใคร"
       : "ร่างที่ยังไม่ขึ้นตาราง — ไม่นับภาระ และยังไม่โผล่ในงานวันนี้ของใคร",
     overdue: "นัดที่เลยวันแล้วยังไม่ปิดงาน",
-    scheduled: "นัดที่ขึ้นตารางแล้ว ตั้งแต่วันนี้ไป — เรียงตามวัน",
+    scheduled: todayOnly
+      ? "นัดที่ขึ้นตารางแล้วของวันนี้ ที่ยังไม่ปิดงาน — เรียงตามเวลา"
+      : "นัดที่ขึ้นตารางแล้ว ตั้งแต่วันนี้ไป — เรียงตามวัน",
     closed: "ปิดงานใน 14 วันที่ผ่านมา — ทำไม่ครบ/ทำไม่ได้อยู่บนสุด",
   }[bucket];
   /* ไม่มีทั้งนัดและคำร้องรอลงคิว = ยังไม่มีงานให้วางจริง · มีคำร้องแต่ไม่มีนัด ≠ ว่าง (การ์ดคำร้องรออยู่) */
@@ -895,13 +903,13 @@ export default function ServiceSchedulePage() {
     }
     setAckRow(null);
     const warning = responseWarningText(data);
-    /* งานโต๊ะ (ประเมินจากแบบทั้งใบ): การ์ดไม่ได้เปลี่ยนปุ่ม — มันออกจากคิวนี้ไปเลย ⇒ บอกก้าวจริง (ประโยคเดียวกับกล่องยืนยัน) */
-    const deskNext = acknowledgeDeskNext(row.request);
+    /* งานโต๊ะ (ประเมินจากแบบทั้งใบ): การ์ดไม่ได้เปลี่ยนปุ่ม — มันออกจากคิวนี้ไปเลย ⇒ บอกก้าวจริง (ประโยคเดียวกับกล่องยืนยัน)
+       และค้างนานกว่าค่าตั้งต้น — ข้อความนี้เป็นร่องรอยเดียวที่เหลือหลังการ์ดหาย (S2b แก้หลังตรวจจอ planner-q8) */
+    const deskToast = acknowledgeDeskToast(row.request, row.code);
     setToast(warning
       ? { kind: "warning", msg: warning, duration: RESPONSE_WARNING_TOAST.duration }
-      : deskNext
-      ? { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — ${deskNext}` }
-      : { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — การ์ดเปลี่ยนเป็น “${commitDueLabels(row.request).action}”` });
+      : deskToast
+      ?? { kind: "success", msg: `รับเรื่อง ${row.code} แล้ว — การ์ดเปลี่ยนเป็น “${commitDueLabels(row.request).action}”` });
     await reloadAfterRequest();
   };
   const submitCommitDue = async (payload) => {
@@ -1000,6 +1008,13 @@ export default function ServiceSchedulePage() {
     }
     if (bucket === "overdue") return { title: `ไม่มีนัดค้าง — นัดที่เลยวันปิดงานครบแล้ว${teamNote}` };
     if (bucket === "scheduled") {
+      if (todayOnly) {
+        return {
+          title: `วันนี้ไม่มีนัดที่ยังไม่ปิดงาน${teamNote}`,
+          hint: "นัดที่ปิดงานแล้ววันนี้อยู่แท็บ ปิดแล้ว · นัดที่เลยวันอยู่แท็บ ค้าง",
+          clearToday: true,
+        };
+      }
       if (range === "7d") return { title: `ยังไม่มีนัดใน 7 วันข้างหน้า${teamNote}` };
       if (range === "unassigned") return { title: "นัดใน 7 วันข้างหน้ามีเจ้าหน้าที่ครบแล้ว", hint: "นัดที่ไกลกว่านั้นยังไม่ต้องมอบหมายก็ได้" };
       return { title: `ยังไม่มีนัดข้างหน้า${teamNote}`, hint: "นัดเกิดเมื่อตั้งรอบบริการที่ งานเข้าใหม่ › รอตั้งรอบ" };
@@ -1150,6 +1165,16 @@ export default function ServiceSchedulePage() {
                     className={styles.segWrap}
                   />
                 )}
+                {bucket === "scheduled" && todayOnly && (
+                  /* ตัวกรองที่มากับลิงก์เป็นปุ่มกดล้าง (ทรงเดียวกับ "กรอง: … ×" ของคิวคำร้อง/ภาษี/RD)
+                     ⚠️ ล้าง = เขียน URL ใหม่ (ถอด range) ไม่ใช่ state — กดการ์ดซ้ำต้องได้ตัวกรองกลับมา
+                     · ชื่อที่โปรแกรมอ่านจอขึ้นต้นด้วยข้อความที่ตาเห็น แล้วบอกว่ากดเพื่อล้าง — "×" ซ่อน (ไม่ให้อ่านว่า "คูณ")
+                       ทรงเดียวกับป้ายสัปดาห์ (`within`) ข้างล่าง */
+                  <Button size="sm" onClick={() => setQuery({ range: null })}
+                    aria-label={`กรอง: ${QUEUE_RANGE_TODAY_LABEL} ${dayText(todayIso)} — กดเพื่อล้างตัวกรอง`}>
+                    กรอง: {QUEUE_RANGE_TODAY_LABEL} {dayText(todayIso)} <span aria-hidden="true">×</span>
+                  </Button>
+                )}
                 {bucket === "waiting" && within && (
                   <Button size="sm" tone="neutral" onClick={() => setWithin(null)} icon={<X size={13} aria-hidden="true" />}
                     aria-label={`ล้างตัวกรอง ${weekChipText(within.from)}`}>
@@ -1158,13 +1183,18 @@ export default function ServiceSchedulePage() {
                 )}
                 <label className={`search-glass ${styles.search}`}>
                   <Search size={16} aria-hidden="true" />
+                  {/* 🐞 คำใบ้เดิม "ค้นหา รหัสนัด เลขคำร้อง ไซต์ ลูกค้า ผู้ขอ เจ้าหน้าที่ เหตุที่ติด" กว้าง 342px
+                      แต่ช่องนี้อยู่ในคอลัมน์รายการ (กว้างสุด 24rem) เหลือที่ 301px ที่จอ 1440 · 268px ที่ 375
+                      ⇒ ถูกตัดกลางตัวอักษรหลัง "เจ้าหน้าที่ เ" (UAT S4 T13) · ย่อคำใบ้อย่างเดียว ไม่แตะการค้น (haystack เดิมทุกคำ):
+                      "รหัส" = รหัสนัด และเลขคำร้องของการ์ดคำร้อง (ทั้งคู่คือ `row.code`) · "ชื่อคน" = ผู้ขอ เจ้าหน้าที่
+                      และ AE บนชิปใบสั่งขายของข้อด่าน · ไม่เหลือคำเฉพาะของคำร้องแล้ว ⇒ คนที่ไม่เห็นคำร้องใช้คำใบ้เดียวกัน
+                      ⚠️ ห้ามยาวกลับ — โน้ตบุ๊ก 1280 คอลัมน์รายการแคบลงเหลือ 20rem (ดู `.layoutGrid`) ช่องเหลือราว 237px (301 − 4rem)
+                      ยาวเกินเมื่อไรจะจบด้วย "…" (`.search input` ใน css) ไม่ใช่ตัดครึ่งตัว แต่ท้ายประโยคก็หายอยู่ดี */}
                   <input
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={canSeeRequests
-                      ? "ค้นหา รหัสนัด เลขคำร้อง ไซต์ ลูกค้า ผู้ขอ เจ้าหน้าที่ เหตุที่ติด"
-                      : "ค้นหา รหัสนัด ไซต์ ลูกค้า เจ้าหน้าที่ เหตุที่ติด"}
+                    placeholder="ค้นหา รหัส ไซต์ ลูกค้า ชื่อคน เหตุที่ติด"
                     aria-label="ค้นหารายการงาน"
                     autoComplete="off"
                   />
@@ -1197,6 +1227,7 @@ export default function ServiceSchedulePage() {
                 )}
                 {queueEmpty.clearSearch && <Button size="sm" variant="quiet" onClick={() => setSearch("")}>ล้างคำค้น</Button>}
                 {queueEmpty.clearWithin && <Button size="sm" variant="quiet" onClick={() => setWithin(null)}>ล้างตัวกรองสัปดาห์</Button>}
+                {queueEmpty.clearToday && <Button size="sm" variant="quiet" onClick={() => setQuery({ range: null })}>ดูนัดทุกวัน</Button>}
               </EmptyState>
             )}
 
@@ -1303,7 +1334,7 @@ export default function ServiceSchedulePage() {
                     <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ก่อนหน้า" onClick={() => shiftWeek(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
                     <strong className={styles.weekLabel}>{weekLabel}</strong>
                     <Button tone="neutral" variant="quiet" iconOnly aria-label="สัปดาห์ถัดไป" onClick={() => shiftWeek(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
-                    <Button tone="neutral" variant="quiet" size="sm" onClick={() => { setFocus(null); goToWeek(todayIso); }}>สัปดาห์นี้</Button>
+                    <Button tone="neutral" variant="quiet" size="sm" className={styles.thisWeek} onClick={() => { setFocus(null); goToWeek(todayIso); }}>สัปดาห์นี้</Button>
                   </div>
                   <div className="spacer" />
                   <Segmented
@@ -1384,7 +1415,12 @@ export default function ServiceSchedulePage() {
                     type="button"
                     className="text-action"
                     onClick={() => {
+                      /* ⭐ ล้างคำค้นด้วย (ตรวจตัวเลข 20/10 · M24e) — เลข n บนบรรทัดนี้ (`draftsInRange`) นับร่างของสัปดาห์
+                         หลังกรองทีม ไม่ขึ้นกับคำค้น ⇒ คำค้นที่ค้างอยู่ทำให้กดแล้วได้น้อยกว่า n (ค้น "SV-05" ได้ 0 จาก 2)
+                         ทรงเดียวกับปุ่มตัวเลขคำร้อง (`showRequestCards`) */
                       setWithin({ from: range7.from, to: range7.to });
+                      setSearch("");
+                      pagination.setPage(1);
                       setQuery({ tab: null, range: null });
                       document.getElementById("schedule-queue")?.scrollIntoView({ block: "start" });
                     }}

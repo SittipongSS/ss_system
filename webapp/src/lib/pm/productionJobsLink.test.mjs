@@ -94,6 +94,17 @@ test('🔴 การ์ดภาพรวมส่งลิงก์ที่ก
   const card = (label, filter) => new RegExp(`label="${label}"(?:(?!/>)[\\s\\S])*?onClick=\\{\\(\\) => router\\.push\\(productionJobsHref\\("${filter}"\\)\\)\\}`);
   assert.match(overview, card('งานร่างรอวางคิว', 'draft'));
   assert.match(overview, card('กำลังผลิต', 'running'));
+  // M24f (ตรวจตัวเลข 20/10): "วางคิวแล้ว" เดิมพาไปกระดาน (งานสัปดาห์นี้ + กำลังผลิต) ไม่ใช่ N งานบนการ์ด
+  assert.match(overview, card('วางคิวแล้ว', 'planned'));
+  assert.doesNotMatch(overview, /label="วางคิวแล้ว"(?:(?!\/>)[\s\S])*?router\.push\("\/production\/board"\)/);
+});
+
+test('🔴 M24f: การ์ด "วางคิวแล้ว" — เลขบนการ์ด = แถวที่หน้าคิวโชว์ (งาน planned ทุกวันเริ่ม ไม่รวมงานที่กำลังเดิน)', () => {
+  const counts = productionCounts(loaded);
+  assert.equal(counts.planned, 1);
+  assert.deepEqual(queueRowsFor(productionJobsHref('planned'), loaded).map((j) => j.id), ['P1']);
+  assert.equal(queueRowsFor(productionJobsHref('planned'), jobs).length, counts.planned);
+  assert.equal(productionJobsHref('planned'), '/production/jobs?filter=planned');
 });
 
 test('🔴 หน้าคิวอ่านตัวกรองจาก useSearchParams — ไม่ใช่ window.location ตอนเมานต์ (กดป้ายเมนูขณะอยู่บนหน้าแล้วตัวกรองไม่ติด)', () => {

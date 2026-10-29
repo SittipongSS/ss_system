@@ -46,7 +46,9 @@ function FactValue({ fact }) {
   }
   return (
     <dd>
-      {fact.value}
+      {/* ข้อที่มี href (ใบต้นทางของใบยืนยันหน้างาน · งวด S5) = ลิงก์ไปหน้าอื่น ⇒ คลาสลิงก์กลาง (เส้นใต้ + วงโฟกัส · UI_DESIGN_SYSTEM)
+          · ข้ออื่นทุกข้อไม่มี href ⇒ ตัวหนังสือทางเดิม */}
+      {fact.href ? <Link href={fact.href} className={`linklike ${styles.factLink}`}>{fact.value}</Link> : fact.value}
       {/* เวลาจริงไม่หักกลางช่วง ("10:12–" / "11:46") — ทั้งก้อนลงบรรทัดใหม่แทน
           ⚠️ จุดคั่นติดท้ายค่าก่อนหน้าด้วย NBSP (กติกาเดียวกับแถวทีม) — 🐞 UAT 25/09 จอ 390: บรรทัดที่สองขึ้นต้นด้วย "· เข้าแล้ว …" */}
       {fact.sub && fact.key !== "method" ? <>{"\u00a0· "}<span className={styles.stamp}>{fact.sub}</span></> : null}

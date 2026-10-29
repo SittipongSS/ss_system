@@ -1,0 +1,34 @@
+/* โมดัล "ไม่เรียกเก็บค่าสรรพสามิตในระบบ" — รูปเดียวกับ ReasonDialog (ระยะ · ตัวอักษร · กล่องเตือน) */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3-5);
+  padding: var(--space-4);
+}
+
+.description {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-8);
+  line-height: var(--lh-relaxed);
+}
+
+.danger {
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--red-soft);
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  line-height: var(--lh-relaxed);
+}
+
+.help,
+.error {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.error {
+  color: var(--red);
+}

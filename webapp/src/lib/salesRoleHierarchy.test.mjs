@@ -260,14 +260,14 @@ test('กระดิ่งขั้น AE Sup ยังไป AE Sup อย่�
 /* ── การกระทำที่ทำลาย/ถอยของที่ผูกยอดแล้ว = อำนาจของผู้มีอำนาจตัดสิน ไม่ใช่ "หัวหน้าที่เห็นทุกทีม" ──────
    เดิมกั้นด้วย `isSuperuser` ซึ่งตอนนั้นเท่ากับ admin + AE Sup พอดี · ผังใหม่ `isSuperuser` รวม AC Supervisor
    ⇒ ห้าจุดนี้ย้ายไป `isSalesManager` (route/หน้าจอ import ใต้ raw Node ไม่ได้ จึงตรวจจากซอร์ส) */
-test('ลบใบเสนอราคาที่ไม่ใช่ร่าง · ลบใบยื่นภาษีที่ล็อก · ลบโครงการ Won · พัก/เปิดสินค้า · backfill = isSalesManager', async () => {
+/* ลบใบยื่นภาษีออกจากชุดนี้แล้ว (PR5) — ใบยื่นเป็นของ RA: ลบได้เฉพาะร่างโดย ra:approve (แอดมินทุกสถานะ) ไม่ใช่ผู้จัดการฝ่ายขาย */
+test('ลบใบเสนอราคาที่ไม่ใช่ร่าง · ลบโครงการ Won · พัก/เปิดสินค้า · backfill = isSalesManager', async () => {
   const { readFileSync } = await import('node:fs');
   const src = (rel) => readFileSync(new URL(`../${rel}`, import.meta.url), 'utf8');
   const cases = {
     'app/api/sales-planning/quotations/[id]/route.js': /const elevated = isSalesManager\(user\.role\);/,
     'app/sales-planning/quotations/page.js': /r\.status === "draft" \|\| isSalesManager\(role\)/,
     'app/sales-planning/quotations/[id]/page.js': /quote\.status === "draft" \|\| isSalesManager\(role\)/,
-    'app/api/orders/[id]/route.js': /if \(locked && !isSalesManager\(user\?\.role\)\)/,
     'app/api/sales-planning/deals/[id]/route.js': /isWonStage\(before\.stage\) && !isSalesManager\(user\.role\)/,
     'app/database/products/[id]/page.js': /const canToggleActive = isSalesManager\(role\);/,
     'app/api/products/[id]/route.js': /body\.isActive !== undefined && !isSalesManager\(user\?\.role\)/,

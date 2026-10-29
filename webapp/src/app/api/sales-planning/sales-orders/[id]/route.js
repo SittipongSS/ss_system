@@ -1,7 +1,9 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
-import { moveSalesOrderAttachments, purgeSalesOrderFiles } from '@/lib/sales/salesOrderAttachmentAccess';
+import {
+  findConfirmAttachmentIndex, moveSalesOrderAttachments, purgeSalesOrderFiles, salesOrderConfirmRemoveBlock,
+} from '@/lib/sales/salesOrderAttachmentAccess';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -11,13 +13,11 @@ import {
 import {
   PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix, purgePrivateEvidence, removeEvidenceRefs,
 } from '@/lib/upload/privateEvidence';
-import { canEditCustomerBillingRule, departmentOf } from '@/lib/permissions';
+import { canEditCustomerBillingRule, departmentOf, isSalesManager } from '@/lib/permissions';
 import { billingSkipReadyOf, probeBillingSkip } from '@/lib/sales/billingPolicySchema';
 import {
   canEditSalesPlanning,
   canViewSalesPlanning,
-  inSalesEditScope,
-  inSalesViewScope,
 } from '@/lib/salesPlanning';
 import {
   canHardDeleteSalesOrder,
@@ -37,9 +37,17 @@ import {
   salesOrderRevisionChainDeleteBlock,
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+/* นับ Actual ทั้งใบ / รายงวด (mig 0412 · docs/so-installment-actual.md) — กติกาอยู่ที่ salesOrderActualMode · ตัวต่อสายของ route อยู่ที่ salesOrderActualRoute */
+import { ACTUAL_MODE_INSTALLMENT, countRestBlocker, installmentActualReasonError } from '@/lib/sales/salesOrderActualMode';
+import {
+  INSTALLMENT_ACTUAL_FREEZE_FAILED, actualModeApproveBlock, actualModeAuditText, actualStartBlocker, installmentActualCounted,
+  installmentActualOrderAuditSummary, installmentActualStartOutcome, installmentActualStartRecovery, installmentCountAtFreeze,
+  parseActualModeInput, previousActualModeOf, revokeActualDropText,
+} from '@/lib/sales/salesOrderActualRoute';
 import { DELIVERY_DUE_AMEND_TEXT, deliveryDueAmendError, parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import {
-  freezeInstallments, historicalCancelSettleReady, installmentMoveColumnError, loadCarrySources, loadInstallments, loadMovedOut,
+  confirmationBorrowable, freezeInstallments, historicalCancelSettleReady, installmentMoveColumnError, loadCarrySources, loadInstallments,
+  loadMovedOut,
 } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import {
@@ -67,11 +75,16 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFallback';
 import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
 import {
-  exciseFilingBlockMessage, exciseFilingsOfSalesOrder, isDryRun, isForceRequest, salesOrderForcePreview,
+  exciseFilingBlockMessage, exciseFilingsOfSalesOrder, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
+  isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
-import { fmtMoney } from '@/lib/format';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
-import { loadScoped } from '@/lib/scopedRow';
+import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
+import { exciseSourceLock, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
+import { exciseSalesOrderBlock, salesOrderApprovalDeal } from '@/lib/excise/exciseSalesOrder';
+import {
+  EXCISE_NOT_BILLED_KINDS, exciseNotBilledBlocker, exciseNotBilledInput, exciseNotBilledPatch,
+} from '@/lib/excise/exciseNotBilled';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
 import {
@@ -81,7 +94,7 @@ import {
 import { loadServiceSetupContext, submitOrderDeferringServiceSetup } from '@/lib/sales/serviceSetupRepo';
 import {
   HISTORICAL_CANCEL_SETTLE_STUCK, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
-  historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isHistoricalOrder,
+  historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isExciseOrder, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import { historicalOpeningVoidSummary } from '@/lib/sales/historicalOrderCopy';
 import {
@@ -89,13 +102,15 @@ import {
   voidedContractLabel,
 } from '@/lib/sales/historicalOrderWorkflow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { fetchInChunks } from '@/lib/supabaseInChunks';
+import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import {
   activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
 } from '@/lib/sales/productSpecStore';
 
-const soAmount = (o) => `${fmtMoney(o?.actualAmount)} บาท`;
+/* คอลัมน์คำร้องขอเอกสารการเงินที่แผงงวดใช้ (เลขที่ · สถานะ · ยอด · เลขเอกสารที่บัญชีออกให้) — ชุดเดียวทั้งสองเส้นของ GET */
+const BILLING_REQUEST_COLUMNS = 'id, docNo, status, title, "billAmount", "billPercent", items:dept_request_items(id, "docType", "docNumber", "docDueDate")';
 
 /* ── จังหวะของเอกสาร FM-SA-04 ที่ตามหลัง SO (mig 0370 · docs/fm-sa-04-document-model.md) ──
    · SO ยกเลิก ⇒ เอกสารทุกใบของ SO นั้นเป็น void (เลขที่ไม่นำกลับมาใช้)
@@ -303,9 +318,11 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   /* ⚠️ อ่าน QT พลาด ≠ ใบไม่มี QT (review R1) — เดิมกลืน error ⇒ quotation = null แล้วด่านที่พึ่งสถานะ QT
      (ยื่นอนุมัติ · กู้คืน `salesOrderRestoreBlock` · ล็อกงวดของร่างที่ QT ตาย) ตอบผิดเหตุ ฟังเหมือนถาวร */
   if (quotationError) throw quotationError;
+  /* `actualMode` + `supersededById` (mig 0412) = แบบการนับ Actual ของใบก่อนหน้า — ค่าตั้งต้นของตัวเลือกในโมดัลอนุมัติใบ Rev.
+     (`previousActualMode` ข้างล่าง · docs: "Rev. = แบบของใบก่อนหน้า") */
   const { data: revisionHistory, error: revisionHistoryError } = await supabase
     .from('sales_orders')
-    .select('id, orderNumber, revisionNo, status, orderDate, createdAt')
+    .select('id, orderNumber, revisionNo, status, orderDate, createdAt, "actualMode", "supersededById"')
     .eq('baseNumber', order.baseNumber || order.orderNumber)
     .order('revisionNo', { ascending: false });
   if (revisionHistoryError) throw revisionHistoryError;
@@ -315,14 +332,28 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
      คำร้องอะไรรออยู่บ้าง แล้วให้ SA กดแนบเข้ากับงวดเอง — **ไม่เดาจับคู่ให้**
      ⚠️ อ่านด้วย service-role ด้วยเหตุผลเดียวกับคำร้องพัฒนากลิ่นข้างบน — ที่คืนออกไป
      มีแค่เลขที่/สถานะ/ยอด/เลขเอกสารที่บัญชีออกให้ ซึ่งเป็นข้อมูลของงานใบนี้อยู่แล้ว */
+  /* ⭐ `installmentId`/`installmentSeq` (mig 0413 · หลายคำร้องต่องวด) — ก่อนรัน 0413 = 42703 ⇒ ถอยไป select ชุดเดิม
+     (แผงตัดสินด้วยตัวชี้ของงวดแทน — `installmentRequests` ถอยเองเมื่อแถวไม่มีคีย์ `installmentId`) */
   let billingRequests = [];
   if (order.quotationId) {
-    const { data: reqRows } = await supabase
+    // ⚠️ select เป็นสตริงตรง ๆ ทั้งสองเส้น (ไม่ส่งผ่านพารามิเตอร์) — ด่าน check:columns แกะได้เฉพาะค่าคงที่/ตัวหนังสือ
+    // ⭐ ไล่หน้า (fetchAllResult · ลำดับนิ่ง createdAt แล้ว id) — dept_requests อยู่ใน check:rowcap
+    let { data: reqRows, error: reqError } = await fetchAllResult(() => supabase
       .from('dept_requests')
-      .select('id, docNo, status, title, "billAmount", "billPercent", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
+      .select(`${BILLING_REQUEST_COLUMNS}, "createdAt", "installmentId", "installmentSeq"`)
       .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
       .neq('status', 'cancelled')
-      .order('createdAt', { ascending: true });
+      .order('createdAt', { ascending: true })
+      .order('id', { ascending: true }));
+    if (billingInstallmentSchemaError(reqError)) {
+      ({ data: reqRows } = await fetchAllResult(() => supabase
+        .from('dept_requests')
+        .select(`${BILLING_REQUEST_COLUMNS}, "createdAt"`)
+        .eq('quotationId', order.quotationId).eq('kind', 'billing_doc')
+        .neq('status', 'cancelled')
+        .order('createdAt', { ascending: true })
+        .order('id', { ascending: true })));
+    }
     billingRequests = reqRows || [];
   }
 
@@ -365,25 +396,24 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
      แผงจึงขึ้น "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่คำร้องยังอยู่ = ชวนออกคำร้องซ้ำให้เงินที่วางบิล/เก็บไปแล้ว
      ⇒ อ่านเพิ่มด้วย id (แบ่งก้อน · เงื่อนไขชุดเดียวกับข้างบน) · อ่านพลาด = บอกบนแผง (`billingRequestsError`) ไม่ใช่ "ถูกลบ" */
   let billingRequestsError = null;
-  const knownRequestIds = new Set(billingRequests.map((r) => r.id));
-  const linkedRequestIds = [...new Set(installmentRows.map((r) => r?.billingRequestId)
-    .filter((requestId) => requestId && !knownRequestIds.has(requestId)))];
-  if (linkedRequestIds.length) {
+  {
     /* ⭐ **รวมคำร้องที่ยกเลิกแล้วด้วย** (กำหนดวางบิล 26/09) — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด ⇒ ถ้ากรองทิ้ง แผงขึ้น
        "คำร้องขอเอกสารถูกลบไปแล้ว" ทั้งที่แค่ยกเลิก และบอกไม่ได้ว่าลิงก์นี้ตายเพราะอะไร · ตัวตัดสิน "ขอใบวางบิลแล้ว"
-       (installmentBillingRequested) ตัดคำร้องที่ตายทิ้งเอง · เฉพาะ **id ที่งวดผูกอยู่** — ชุดตามใบเสนอราคาข้างบน
-       (ตัวเลือกของ "แนบคำร้องที่ขอไว้แล้ว") ยังตัดใบที่ยกเลิกเหมือนเดิม */
-    const { data: linkedRows, error: linkedError } = await fetchInChunks(linkedRequestIds, (chunk) => fetchAllResult(() => supabase
-      .from('dept_requests')
-      .select('id, docNo, status, title, "billAmount", "billPercent", "quotationId", items:dept_request_items(id, "docType", "docNumber", "docDueDate")')
-      .in('id', chunk).eq('kind', 'billing_doc')
-      .order('id', { ascending: true })));
+       (installmentBillingRequested) ตัดคำร้องที่ตายทิ้งเอง · เฉพาะ **คำร้องที่ผูกงวดของใบนี้** — ชุดตามใบเสนอราคาข้างบน
+       (ตัวเลือกของ "แนบคำร้องที่ขอไว้แล้ว") ยังตัดใบที่ยกเลิกเหมือนเดิม
+       ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับทะเบียน FN/กระดิ่ง: คำร้องที่ `installmentId` ชี้งวด ∪ ตัวชี้ของงวด
+       (งวดที่ยกมาจากใบของ QT อื่น หาตามใบเสนอราคาข้างบนไม่เจอ — เส้นนี้เก็บให้) · ชุดตามใบเสนอราคาที่โหลดแล้วไม่โหลดซ้ำ
+       แต่แทนด้วยแถวที่ตัวโหลดได้ (มีคีย์ของ 0413 ครบ) */
+    const { data: linkedRows, error: linkedError } = await loadInstallmentRequests(supabase, installmentRows, {
+      select: `${BILLING_REQUEST_COLUMNS}, "quotationId"`,
+    });
     if (linkedError) {
-      console.error('[sales-order] โหลดคำร้องวางบิลของงวดที่ยกมาไม่สำเร็จ:', id, linkedError);
+      console.error('[sales-order] โหลดคำร้องวางบิลของงวดไม่สำเร็จ:', id, linkedError);
       billingRequestsError = `อ่านคำร้องขอเอกสารของงวดไม่สำเร็จ: ${linkedError.message || linkedError}`;
-    } else {
-      billingRequests = [...billingRequests, ...(linkedRows || [])];
     }
+    const merged = new Map(billingRequests.map((r) => [r.id, r]));
+    (linkedRows || []).forEach((r) => merged.set(r.id, { ...merged.get(r.id), ...r }));
+    billingRequests = [...merged.values()];
   }
 
   /* ── เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) ────────────────────────────────────────────────
@@ -444,8 +474,15 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     }
   }
 
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ดีลของ SO ต้นทางไว้ตัดสินสิทธิ์ (`sourceDeal` · ไม่ใช่ `deal` · scopedRow.js) */
+  const { data: sourceDeals, error: sourceDealError } = !order.dealId && order.sourceSalesOrderId
+    ? await loadSourceDeals(supabase, [order.sourceSalesOrderId])
+    : { data: null, error: null };
+  if (sourceDealError) throw sourceDealError;
+
   return {
     ...order,
+    ...(sourceDeals ? { sourceDeal: sourceDeals.get(order.sourceSalesOrderId) || null } : {}),
     billingRequests,
     billingRequestsError,
     ...(historicalExtras || {}),
@@ -458,6 +495,9 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     quotation: quotation || null,
     project: project || null,
     revisionHistory: revisionHistory || [],
+    /* ⭐ แบบการนับ Actual ของใบที่ใบนี้ออก Rev. แทน ('order' | 'installment') · ไม่ใช่ Rev. = null (mig 0412)
+       — โมดัลอนุมัติตั้งตัวเลือกตามนี้ (ใบปกติตั้งต้น "ทั้งใบ") · ค่าของใบนี้เองอยู่ที่ `actualMode` (select *) */
+    previousActualMode: previousActualModeOf(order, revisionHistory || []),
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
     scentRequest: scentRequest || null,
     carrySources,
@@ -467,6 +507,9 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     serviceTermZones,
     serviceTermZonesError,
     serviceContractLinked: !!order.serviceContractId,
+    /* 🐞 review รอบหก 27/10: อ่านงวดพลาด (ด้านบนกลืนเป็น []) เดิมบอกเฉพาะใบย้อนหลัง (`extrasError`) — ใบ pipeline เห็นงวดว่างเหมือน
+       "ยังไม่มีงวด" ⇒ หัวใบ/การ์ดการชำระสั่ง "กด “เริ่มติดตามการชำระ” แล้ว AE Sup กด “นับงวด 1”" ทั้งที่ใบมีงวดจริง · ส่งเหตุให้จอบอกว่าอ่านไม่ขึ้นแทน */
+    installmentsError: installmentsError ? `อ่านงวดชำระไม่สำเร็จ: ${installmentsError.message || installmentsError}` : null,
     installments: historical
       ? installmentRows
       : withLiveAmounts(installmentRows, quotation?.paymentPlan, order.totalAmount),
@@ -585,7 +628,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   try { order = await loadOrder(supabase, id, { extras: true }); }
   catch (error) { return fail(`โหลดใบสั่งขายไม่สำเร็จ: ${error.message}`, 500); }
   if (!order) return notFound('ไม่พบ ใบสั่งขาย');
-  if (!order.deal || !inSalesViewScope(user, order.deal)) return forbidden();
+  if (!inSalesDocScope(user, order, 'view')) return forbidden();
   // ข้อมูลลูกค้าบนเอกสารมาจาก snapshot ในใบเสนอราคาที่ผูก — ใบเก่าที่ snapshot ไม่ครบ
   // (ผู้ติดต่อ/เลขภาษี) เติมเฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้เอกสารแสดงครบ
   if (order.quotation) {
@@ -633,7 +676,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
        ทุกตัวใน PATCH ตรวจ `canEditSalesPlanning(user) && inSalesEditScope(user, deal)`
        ⇒ วันไหนขอบเขตแก้แคบกว่าขอบเขตอ่าน (role ใหม่) ปุ่มจะโผล่แล้วเด้ง 409 เงียบ ๆ
        · แพตเทิร์นเดียวกับ `/contracts/[id]` และ `/addenda/[id]` ที่ส่งค่านี้มาให้อยู่แล้ว */
-    canEdit: canEditSalesPlanning(user) && inSalesEditScope(user, order.deal),
+    canEdit: canEditSalesPlanning(user) && inSalesDocScope(user, order, 'edit'),
     /* สิทธิ์ตั้งรอบวางบิลของลูกค้าของใบ (mig 0389 · มติข้อ 4: ฝ่ายขายทีมที่ดูแล + FN) — ตัวตัดสินตัวเดียวกับ
        `/api/customers/[id]/billing-rule` ⇒ แผงไม่ชวน "ตั้งรอบวางบิล" คนที่ไปถึงทะเบียนแล้วกดแก้ไม่ได้ (ไม่มีสิทธิ์ = ไม่วาด) */
     canEditBillingRule: canEditCustomerBillingRule(user, order.customer),
@@ -666,9 +709,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      เหมือน `withdraw` · ด่านจริงของแต่ละคำสั่งคือ `financeActionError` ซึ่งแคบด้วย
      **ฝ่าย** อีกชั้น และ RPC ที่ปลายทางก็ตรวจฝ่ายซ้ำอีกที (mig 0251) */
   const readerAction = !salesOrderActionNeedsEditScope(action);
-  if (!before.deal || !(readerAction
-    ? inSalesViewScope(user, before.deal)
-    : canEditSalesPlanning(user) && inSalesEditScope(user, before.deal))) return forbidden();
+  if (!(readerAction
+    ? inSalesDocScope(user, before, 'view')
+    : canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit'))) return forbidden();
   const reviewer = isSalesOrderReviewer(user.role);
 
   // เหตุการณ์ลงเธรดของใบ — ไม่เช็ค error โดยเจตนา: เขียนเธรดพลาดต้องไม่ทำให้ action
@@ -708,7 +751,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      ⚠️ ด่านอยู่ที่ `serviceContractLinkError` ตัวเดียวกับที่การ์ดบนจอถาม */
   if (action === 'set_service_contract') {
     const contractId = body.contractId ? String(body.contractId).trim() : null;
-    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const canEdit = canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit');
 
     /* โหลดสัญญาจริงมาตรวจ ไม่ใช่เชื่อ id ที่ยิงมา — ด่านต้องรู้ว่ามันเป็นของดีลไหน
        และมีผลแล้วหรือยัง (จอส่ง id อะไรมาก็ได้) */
@@ -751,7 +794,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        `validateServiceRoundsPatch` = "บรรทัดที่ส่งมาเป็นของใบนี้และเป็นหมวดบริการจริงไหม"
      ⚠️ **แก้ได้แม้ใบอนุมัติแล้ว** โดยตั้งใจ — ไม่ต้องออก Rev. เพื่อแก้เลขตัวเดียว */
   if (action === 'set_service_rounds') {
-    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const canEdit = canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit');
     const gate = serviceRoundsEditError(before, { canEdit });
     if (gate) return fail(gate, 409);
 
@@ -806,7 +849,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        `deliveryDueAmendError`) · ด่านตัวเดียวกับดินสอบนจอ · ใบร่าง/ตีกลับแก้ที่ action `save` ตามเดิม
      ⚠️ FM-SA-04 ที่ยื่นแล้วถ่ายวันส่งไว้ในภาพนิ่ง — ที่นี่ไม่แตะเอกสารเหล่านั้น (ร่างอ่านสดจาก SO) */
   if (action === 'set_delivery_due') {
-    const canEdit = canEditSalesPlanning(user) && inSalesEditScope(user, before.deal);
+    const canEdit = canEditSalesPlanning(user) && inSalesDocScope(user, before, 'edit');
     const gate = deliveryDueAmendError(before, { canEdit });
     if (gate) return fail(gate, 409);
     const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);
@@ -829,6 +872,36 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       before: { deliveryDueDate: before.deliveryDueDate || null },
       after: { deliveryDueDate: deliveryDue.value },
       summary: `แก้กำหนดส่งสินค้าใบสั่งขาย ${before.orderNumber} (อนุมัติแล้ว): ${dateText(before.deliveryDueDate)} → ${dateText(deliveryDue.value)}`,
+      request: req,
+    });
+    return ok(data);
+  }
+
+  /* ── ลบไฟล์ยืนยันคำสั่งซื้อทีละไฟล์จากแท็บ "เอกสาร" (มติเจ้าของ 29/10/2569) ───────────────────────
+     ⭐ ใบที่อนุมัติแล้วลบได้ (แนบผิดใบ · ไฟล์ซ้ำ) ไม่ต้องออก Rev. — สิทธิ์ = คนแก้ใบได้ (ด่าน edit scope ต้น PATCH)
+     ⚠️ เพิ่มไฟล์เข้าชุดนี้หลังยื่นยังไม่ได้ (มติ 25/09 คงเดิม) — ของใหม่ไปกลุ่ม "แนบเพิ่มหลังออกใบ"
+     ⚠️ ถอดแค่ ref ในแถว **ไม่ลบ object ใน bucket** — ฉบับเดิมของ Rev. ถือ ref ชุดเดียวกัน (ก๊อปตอนออก Rev.) และ
+        audit (`before`) คือทางกู้ทางเดียว ⇒ ไฟล์ต้องยังเปิดได้ถ้าต้องคืน
+     ⚠️ ใบเก่าก่อน 0285 ที่ไฟล์อยู่ที่ใบเสนอราคา (`wonAttachments`) ไม่ใช่ของใบนี้ — ไม่มี ref ให้ลบที่นี่ (ตอบ "ไม่พบไฟล์")
+     `.eq('updatedAt')` = ด่านซ้ำที่แถวจริง: ชุดใหม่คิดจากชุดที่อ่านมา ⇒ อีกหน้าต่างแก้ระหว่างนั้น = 409 ไม่ใช่ทับไฟล์ของเขาหาย */
+  if (action === 'remove_confirm_file') {
+    const blocked = salesOrderConfirmRemoveBlock(before, user);
+    if (blocked) return fail(blocked, 409);
+    const list = Array.isArray(before.confirmAttachments) ? before.confirmAttachments : [];
+    const at = findConfirmAttachmentIndex(list, { index: body.index, storagePath: body.storagePath });
+    if (at < 0) return fail('ไม่พบไฟล์นี้ในใบแล้ว — อาจถูกลบจากหน้าต่างอื่น กรุณาโหลดหน้าใหม่', 409);
+    const next = list.filter((_, i) => i !== at);
+    const { data, error } = await supabase.from('sales_orders')
+      .update({ confirmAttachments: next, updatedAt: new Date().toISOString() })
+      .eq('id', id).eq('updatedAt', before.updatedAt).select().maybeSingle();
+    if (error) return fail(`ลบไฟล์ยืนยันคำสั่งซื้อไม่สำเร็จ: ${error.message}`, 500);
+    if (!data) return fail('ใบนี้ถูกแก้จากที่อื่นระหว่างนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409);
+    const fileName = list[at]?.fileName || `ไฟล์ที่ ${at + 1}`;
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      before: { status: before.status, confirmAttachments: list },
+      after: { status: data.status, confirmAttachments: next },
+      summary: `ลบไฟล์ยืนยันคำสั่งซื้อ "${fileName}" ของใบสั่งขาย ${before.orderNumber}`,
       request: req,
     });
     return ok(data);
@@ -914,10 +987,56 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return ok(data);
   }
 
+  /* ⭐ Q16 (แผนรื้อสรรพสามิต หมวด 5): SO ลูกค้าที่มีใบเสนอราคาค่าสรรพสามิตที่ยังมีผล ย้อนอนุมัติ/ออก Rev./ยกเลิกไม่ได้
+     — ใบค่าภาษีคิดจากบรรทัดของ SO ใบนี้ ถ้าปล่อยให้ SO เปลี่ยน ลูกค้าจะจ่ายภาษีของของที่ไม่ได้ซื้อ · ยกเลิกใบค่าภาษี = ปลดล็อก */
+  if (action === 'revoke' || action === 'revise' || action === 'cancel') {
+    const lock = await exciseSourceLock(supabase, before, action);
+    if (lock) return fail(lock.error, lock.status);
+  }
+
+  /* ⭐ "ไม่เรียกเก็บค่าสรรพสามิตในระบบ" (แผน หมวด 3.5 · มติ Q6/Q7) — SA ตัดสินบน SO ลูกค้าแทนการออกใบค่าภาษี · ถอนได้จนกว่า RA สร้างใบยื่น
+     ⚠️ ค่าทั้งชุดต้องตรงกับ CHECK sales_orders_excise_not_billed_shape (0414) — ตรวจที่ exciseNotBilledInput ก่อนให้ได้ข้อความไทย */
+  if (action === 'set_excise_not_billed' || action === 'clear_excise_not_billed') {
+    if (!canEditSalesPlanning(user) || !user.id) return forbidden();
+    const clearing = action === 'clear_excise_not_billed';
+    const input = clearing ? { value: null } : exciseNotBilledInput(body);
+    if (input.error) return badRequest(input.error);
+    const [{ data: liveQuote, error: liveError }, { data: filing, error: filingError }] = await Promise.all([
+      loadLiveExciseQuotation(supabase, id),
+      supabase.from('orders').select('id, status').eq('salesOrderId', id).limit(1).maybeSingle(),
+    ]);
+    if (liveError || filingError) return fail((liveError || filingError).message, 500);
+    const blocker = exciseNotBilledBlocker(before, { liveQuote, clearing, filing });
+    if (blocker) return fail(blocker, 409);
+    const expected = resolveExpectedUpdatedAt(body);
+    if (!expected.ok) return badRequest(expected.error);
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabase
+      .from('sales_orders')
+      .update({ ...exciseNotBilledPatch(input.value, { user, at: now }), updatedAt: now })
+      .eq('id', id)
+      .eq('updatedAt', expected.value)
+      .select()
+      .maybeSingle();
+    if (updateError) return fail(updateError.message, 500);
+    if (!updated) return fail('ใบนี้ถูกแก้จากที่อื่นระหว่างนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409);
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id, before, after: updated,
+      summary: clearing
+        ? `ถอนการตัดสินไม่เรียกเก็บค่าสรรพสามิตในระบบ ${before.orderNumber}`
+        : `ตัดสินไม่เรียกเก็บค่าสรรพสามิตในระบบ ${before.orderNumber} (${EXCISE_NOT_BILLED_KINDS[input.value.kind].label}): ${input.value.reason}`,
+      request: req,
+    });
+    return ok(updated);
+  }
+
   // ขั้นที่ 1 (mig 0166): ย้อนการอนุมัติ → สถานะกลางที่แก้ไม่ได้ · Actual หลุดที่ขั้นนี้
   if (action === 'revoke') {
     // ใบย้อนหลังต้องได้เหตุจริงก่อนด่านสิทธิ์ — ไม่งั้น AE Sup เจอ "ได้เฉพาะ AE Supervisor" ซึ่งผิดความจริง
     if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
+    // SO ค่าสรรพสามิต (ฐานกันซ้ำ: trigger sales_orders_excise_no_revoke_trg · 0416): Rev. เกิดไม่ได้ ⇒ ย้อนแล้วใบค้างตลอดไป — บอกทางออกจริงก่อนด่านสิทธิ์
+    const exciseRevoke = exciseSalesOrderBlock(before, 'revoke');
+    if (exciseRevoke) return fail(exciseRevoke, 409);
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
       return forbidden('ย้อนการอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
@@ -958,7 +1077,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       entityId: id,
       before,
       after: data,
-      summary: `ย้อนการอนุมัติ ${before.orderNumber} (Actual ${soAmount(before)} หลุดจากยอด): ${reason}`,
+      /* 🐞 review รอบสอง 26/10: ใบรายงวดหลุดแค่ยอดที่นับแล้ว (ส่วนที่เหลือไม่เคยเข้า Actual) — audit คือทางกู้/ประวัติทางเดียว ห้ามพูดยอดเต็ม */
+      summary: `ย้อนการอนุมัติ ${before.orderNumber} (Actual ${revokeActualDropText(before)} หลุดจากยอด): ${reason}`,
       request: req,
     });
     // แจ้งทีมขาย: Actual หายไปจากยอด ต้องไม่เงียบ
@@ -968,6 +1088,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ขั้นที่ 2: ออก Rev. จากใบที่ย้อนการอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
   if (action === 'revise') {
     if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
+    const exciseRevise = exciseSalesOrderBlock(before, 'revise');
+    if (exciseRevise) return fail(exciseRevise, 409);
     // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
     const closedProject = projectWriteBlockedError(before.project)
       ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. ใบสั่งขายไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
@@ -1116,10 +1238,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('SO ใบนี้ยื่นอนุมัติไม่ได้');
     // ช่อง "ฝ่ายขาย" บนใบเป็นของ AE เจ้าของดีล และการยื่น = การลงนามในช่องนั้น (mig 0153)
     // AC สร้างใบแทนได้ตามเดิม แต่ต้องส่งให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05)
-    if (!canSubmitSalesOrder(user, before.deal)) {
+    // ⭐ SO ค่าสรรพสามิตไม่มีดีล — เจ้าของดีลของ SO ต้นทางเป็นผู้ยื่น (`salesOrderApprovalDeal` · แผน หมวด 2 ขั้น 8)
+    const submitDeal = salesOrderApprovalDeal(before);
+    if (!canSubmitSalesOrder(user, submitDeal)) {
       // บอกชื่อเจ้าของดีลไปด้วย — ข้อความนี้ไปโผล่บนจอคนที่กดไม่ได้ ซึ่งคือคนที่ต้อง
       // ไปตามอีกคน (ชุดเดียวกับ disabledReason ของปุ่มในหน้าใบ)
-      const ownerName = String(before.deal?.ownerName || '').trim();
+      const ownerName = String(submitDeal?.ownerName || '').trim();
       return forbidden(ownerName
         ? `ยื่นอนุมัติใบสั่งขายได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้ ${ownerName} กดยื่น`
         : 'ยื่นอนุมัติใบสั่งขายได้เฉพาะ AE เจ้าของดีล — ผู้ที่สร้างแทนให้ส่งต่อให้เจ้าของดีลกดยื่น');
@@ -1129,7 +1253,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before.orderDate || !(before.lines?.length > 0)) {
       return badRequest('ข้อมูล SO ไม่ครบ: ต้องมีวันที่และรายการสินค้า');
     }
-    if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
+    if (isExciseOrder(before)) {
+      // ใบค่าสรรพสามิตไม่มีดีล/โครงการ (CHECK 0414) — อ้างอิงคือใบค่าสรรพสามิตที่รับแล้ว + SO ต้นทาง · ฐานตรวจซ้ำ (0416/E1–E2)
+      if (!before.quotation || before.quotation.status !== 'accepted' || !before.sourceSalesOrderId || !before.customerName) {
+        return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมีใบค่าสรรพสามิตที่ลูกค้ารับแล้ว ใบสั่งขายต้นทาง และลูกค้า');
+      }
+    } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
     }
     /* ⭐ **ด่านเอกสารยืนยันคำสั่งซื้ออยู่ตรงนี้ ไม่ใช่ตอนสร้างใบ** (มติผู้ใช้ 2026-08-24)
@@ -1256,6 +1385,24 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (reasonError) return badRequest(reasonError);
       overrideReason = normalizeAdminOverrideReason(body.overrideReason);
     }
+    /* ⭐ **แบบการนับ Actual** (mig 0412 · มติเจ้าของ 26/10 · docs/so-installment-actual.md) — `body.actualMode` 'order' | 'installment'
+       · ไม่ส่ง = 'order' (ทั้งใบ — ค่าตั้งต้นของตัวเลือก · ทางเดิมทุกตัวอักษร) · ค่าอื่น = 400 (ไม่เดาเป็นทั้งใบเงียบ ๆ)
+       · รายงวด: ตัวตัดสินเดียวกับตัวเลือกในโมดัล (actualModeEligibility) ด้วย **จำนวนงวดที่ตัวหยุดยอดจะทิ้งไว้** (installmentCountAtFreeze —
+         งวดที่มีอยู่/แผนของ QT ตามกิ่งของ freezeInstallments) · ฐานตรวจซ้ำแค่ pipeline + ยอด > 0 ⇒ จำนวนงวดกันได้ที่นี่ที่เดียว
+       ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็น [] (= "งวดเดียว" ปลอม)
+       ⚠️ อยู่ก่อนด่านงานบริการ (ก้อนนั้นถูกยามรันแยกเป็นฟังก์ชัน — salesOrderServiceGates.test) */
+    const actualModeInput = parseActualModeInput(body.actualMode);
+    if (!actualModeInput.ok) return Response.json({ error: actualModeInput.error, code: 'actual_mode_invalid' }, { status: 400 });
+    const actualMode = actualModeInput.mode;
+    if (actualMode === ACTUAL_MODE_INSTALLMENT) {
+      let liveRows;
+      try { liveRows = await loadInstallments(supabase, id); }
+      catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
+      const ineligible = actualModeApproveBlock(before, actualMode, {
+        installmentCount: installmentCountAtFreeze(liveRows, { plan: before.quotation?.paymentPlan, totalAmount: before.totalAmount }),
+      });
+      if (ineligible) return Response.json({ error: ineligible, code: 'actual_mode_ineligible' }, { status: 409 });
+    }
     /* ⭐ **งานบริการรายบรรทัด** (mig 0392 · D10) — อนุมัติ = เปิดรอบขายของโซนให้ TS ในทรานแซกชันเดียวกัน (P1 ของ 0392)
        ⇒ ตรวจซ้ำด้วยตัวตัดสินเดียวกับตอนยื่นก่อนยิง: ของที่เปลี่ยนระหว่างรออนุมัติ (สินค้าแพ็คเกจถูกปิด · งวดถูกแก้) ตอบ 409
        พร้อม `issues` แทนที่จะไปตายในฐาน · ฐานตรวจโครงสร้างซ้ำอีกชั้น (ไม่ครบ = ถอยทั้งการอนุมัติ → catch ข้างล่าง)
@@ -1282,6 +1429,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
         note: String(body.note || '').trim() || null,
         overrideReason,
+        // mig 0412: ตัวห่อตั้ง "actualMode" ในทรานแซกชันเดียวกับการอนุมัติ (ส่งทุกครั้ง — ทั้งใบก็ส่ง 'order')
+        actualMode,
         user,
       });
     } catch (approvalError) {
@@ -1345,13 +1494,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     /* 🛑 review MONEY-1: ดีลนี้มี "เงินค้างจากใบที่ยกเลิก" ⇒ ห้ามยืมสลิปจากเอกสารยืนยันคำสั่งซื้อมาตั้งงวดแรก — สลิปนั้นมักเป็น
        มัดจำก้อนเดียวกับเงินค้าง ยืมแล้วโมดัลก็บอกให้กด "ยกเงินจากใบที่ยกเลิก" = เงินก้อนเดียวนับสองครั้ง (SO-26080039-0 / -043-0)
        ⚠️ อ่านไม่ขึ้น = ไม่ยืม (ทางที่ปลอดภัย — ฝ่ายขายแจ้งชำระงวดแรกเองได้เสมอ) · โมดัลอนุมัติบอกผลนี้แล้ว (salesOrderMoneyOutcome) */
-    let borrowConfirmation = true;
-    try {
-      borrowConfirmation = !(await loadCarrySources(supabase, before)).length;
-    } catch (strandedError) {
-      borrowConfirmation = false;
-      console.error('sales order approve: อ่านเงินค้างของดีลไม่สำเร็จ — ไม่ยืมสลิปมาตั้งงวดแรก', id, strandedError);
-    }
+    const borrowConfirmation = await confirmationBorrowable(supabase, before);
+    /* `freezeFailed` — ตัวหยุดยอดล้ม: ใบอาจเหลือ 0 งวด หรือ **บางงวดยังไม่ตรึง** (ล้มกลางทาง)
+       🐞 review รอบสาม 26/10: ใบรายงวดเคยนับงวด 1 ต่อทั้งที่งวดยังไม่ตรึง ⇒ งวดที่ไม่ตรึงแจ้งสลิปได้แค่ 'pending' · บัญชีรับรองไม่ได้
+          (CHECK draft_pending) ⇒ งวด 2 เป็นต้นไปยื่นไม่ได้ตลอดไป และจอบอกสำเร็จ · ปุ่มกู้ "นับงวด 1" ก็หายเพราะงวด 1 นับไปแล้ว
+          ⇒ ใบรายงวด: ตรึงล้ม = **ไม่นับ** (ขั้นนับข้างล่างข้าม) · ตอบ `installmentActualStartFailed` + `installmentFreezeFailed` ·
+          ทางกู้ "นับงวด 1" (action `actual_start`) ตรึงงวดที่ค้างก่อนนับเสมอ · ใบยังไม่มีงวด = "เริ่มติดตามการชำระ" (ตรึงให้ใบที่อนุมัติแล้ว) */
+    let freezeFailed = false;
     try {
       await freezeInstallments(supabase, {
         order: { ...before, ...data, quotation: before.quotation },
@@ -1359,10 +1508,77 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         borrowConfirmation,
       });
     } catch (installmentError) {
+      freezeFailed = true;
       console.error('sales order installment freeze failed', id, installmentError);
     }
 
+    /* ⭐ **ใบรายงวด: นับงวด 1 ในคลิกเดียวกัน** (มติข้อ 3 · RPC start_sales_order_installment_actual · mig 0412)
+       — งวดเลขน้อยสุด + งวดยอด 0 + งวดที่บัญชีรับรองแล้ว (Rev. จากใบทั้งใบ) · ต้อง **หลัง** freezeInstallments (งวดเกิด/ตรึงตรงนั้น)
+       · อ่านแบบจากแถวที่ตัวห่อคืน (`data.actualMode`) ไม่ใช่จากคำขอ — ฐานคือคนตัดสินสุดท้าย
+       ⚠️ best-effort แบบเดียวกับงานเงินข้างบน: อนุมัติ commit ไปแล้ว ขั้นนี้ล้มต้องไม่ roll back · ตอบสำเร็จพร้อม
+         `installmentActualStartFailed: true` + log + ท้ายสรุป audit — ทางกู้คือปุ่ม "นับงวด 1" (action `actual_start` · RPC ตัวเดียวกัน รันซ้ำได้)
+       ⚠️ supabase ไม่ throw — อ่าน `error` เอง · ห่อ try กันข้อยกเว้นอื่น (ห้ามทำให้การอนุมัติที่สำเร็จแล้วตอบ 500)
+       🐞 review 26/10: RPC สำเร็จแต่ **ไม่มีงวดไหนนับ** (ใบยังไม่มีงวดเพราะตัวหยุดยอดล้ม — RPC นับ 0 ไม่ error) เคยตอบเหมือนสำเร็จ
+          ⇒ จอขึ้น "นับ Actual งวด 1 แล้ว" ทั้งที่ Actual = 0 · ตอนนี้ตัดสินจาก `after` (installmentActualStartOutcome — ใบ Rev. ที่งวด 1
+          นับมาแล้วยังสำเร็จ) · ไม่มีงวดสักแถว = `installmentActualNoRows` (ทางกู้: "เริ่มติดตามการชำระ" แล้ว "นับงวด 1") */
+    const appliedActualMode = data?.actualMode || result?.actualMode || actualMode;
+    let actualCounted = null;
+    let installmentActualStartFailed = false;
+    let installmentActualNoRows = false;
+    let installmentActualAlreadyCounted = false;
+    if (appliedActualMode === ACTUAL_MODE_INSTALLMENT && freezeFailed) {
+      /* ตรึงล้ม = ไม่นับ (ดูข้างบน) — ตัดสินจากงวดสด: ไม่มีงวด = ทางกู้สองขั้น · มีงวดนับมาแล้ว (Rev.) และไม่มีอะไรค้าง = สำเร็จตามจริง */
+      let liveRows = null;
+      try { liveRows = await loadInstallments(supabase, id); } catch { liveRows = null; }
+      const recovery = installmentActualStartRecovery(liveRows);
+      const unfrozen = Array.isArray(liveRows) && liveRows.some((row) => !row?.frozenAt);
+      installmentActualStartFailed = recovery.startFailed || unfrozen;
+      installmentActualNoRows = recovery.noRows;
+      installmentActualAlreadyCounted = recovery.alreadyCounted;
+      if (!installmentActualStartFailed) actualCounted = recovery.counted;
+      console.error('sales order installment freeze failed — ข้ามขั้นนับงวด 1 (กู้ด้วยปุ่มนับงวดบนการ์ดการชำระ)', id,
+        { unfrozen, leftToCount: recovery.leftToCount });
+    } else if (appliedActualMode === ACTUAL_MODE_INSTALLMENT) {
+      try {
+        const { data: started, error: startError } = await supabase.rpc('start_sales_order_installment_actual', {
+          p_order_id: id,
+          p_actor_id: user.id,
+          p_actor_name: user.name || user.email || null,
+          p_actor_role: user.role || null,
+          /* 🐞 review รอบสอง 26/10 (เส้นเดือน): ขั้นนี้เป็นทรานแซกชันถัดจากอนุมัติใบ (หลัง snapshot/ธงบัญชี/ตัวหยุดยอด) — ใช้ now()
+             ของตัวเอง = อนุมัติ 23:59:59 วันสิ้นเดือน งวด 1 ลงเดือนถัดไป ⇒ ส่งเวลาอนุมัติที่เพิ่ง commit ให้ RPC ลงเวลาของงวด
+             (RPC หนีบไว้ระหว่าง approvedAt ของใบ กับ now() — ส่งค่าเพี้ยนมาก็ออกนอกช่วงไม่ได้) · ปุ่มกู้ "นับงวด 1" ไม่ส่ง = เดือนที่กด (มติข้อ 1) */
+          p_counted_at: data?.approvedAt || null,
+        });
+        if (startError) throw startError;
+        const outcome = installmentActualStartOutcome(started);
+        actualCounted = outcome.counted;
+        if (outcome.startFailed) {
+          installmentActualStartFailed = true;
+          installmentActualNoRows = outcome.noRows;
+          console.error('sales order installment actual start counted nothing', id, { noRows: outcome.noRows, freezeFailed });
+        }
+      } catch (startError) {
+        /* 🐞 review รอบสอง 26/10: RPC ล้ม ≠ "ยังไม่มีอะไรนับ" — ใบ Rev. ที่งวดยกมานับไว้แล้วไม่เหลืออะไรให้ขั้นนี้นับ แต่จอเคยทัก
+           "ยังนับงวด 1 ไม่สำเร็จ กด ‘นับงวด 1’" ทั้งที่งวด 1 นับแล้วและปุ่มนั้นไม่มี ⇒ อ่านงวดสดแล้วตัดสินด้วยกติกาเดียวกับ RPC
+           (installmentActualStartRecovery) · อ่านไม่ขึ้น = ถือว่าล้ม (ทางที่ปลอดภัย — ทักให้ไปดูการ์ดการชำระ) */
+        let liveRows = null;
+        try { liveRows = await loadInstallments(supabase, id); } catch { liveRows = null; }
+        const recovery = installmentActualStartRecovery(liveRows);
+        installmentActualStartFailed = recovery.startFailed;
+        installmentActualNoRows = recovery.noRows;
+        installmentActualAlreadyCounted = recovery.alreadyCounted;
+        if (!recovery.startFailed) actualCounted = recovery.counted;
+        console.error('sales order installment actual start failed — กู้ด้วยปุ่มนับงวดบนการ์ดการชำระ', id,
+          startError?.message || startError, { leftToCount: recovery.leftToCount });
+      }
+    }
+
     await logThread('approve', { overrideReason });
+    /* เธรดดีลบอกแบบรายงวด + งวดที่นับทันที (ใบทั้งใบ = บรรทัดอนุมัติเดิมบรรทัดเดียว — Actual เต็มใบตามเดิม) */
+    if (appliedActualMode === ACTUAL_MODE_INSTALLMENT && actualCounted?.count) {
+      await logThread('actual_start', { seqs: actualCounted.seqs, amount: actualCounted.amount });
+    }
     /* ⭐ mig 0404: ท้ายสรุป audit ของใบที่อนุมัติโดยยังไม่ตั้งงานบริการ — **อ่านจากแถวที่ RPC คืน ไม่ใช่จากด่าน JS**
        (ฐานเห็นว่าครบแล้ว = เปิดรอบขาย + ประทับ ⇒ สรุปห้ามพูดว่ายังไม่ส่ง TS) */
     const approvedWithoutSetup = !!setupCtx && !data?.serviceTermsOpenedAt && serviceSetupDeferred(data)?.stage === 'approved';
@@ -1376,13 +1592,31 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       summary: (selfApproval
         ? `admin override approve ${before.orderNumber}: ${overrideReason}`
         : `approve ${before.orderNumber}`)
+        + actualModeAuditText(appliedActualMode, {
+          counted: actualCounted, startFailed: installmentActualStartFailed, noRows: installmentActualNoRows,
+          alreadyCounted: installmentActualAlreadyCounted, freezeFailed,
+        })
         + (approvedWithoutSetup ? ' · ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น) — ยังไม่ส่ง TS' : ''),
       request: req,
     });
     // แจ้งทีมขาย: SO อนุมัติแล้ว → ยอด Actual เข้าระบบ
     /* `termsOpened` = จำนวนโซนที่เปิดให้ TS (toast "อนุมัติแล้ว · เปิดงานบริการ n โซนให้ TS") — นับเฉพาะเมื่อฐานประทับจริง
-       (P1 อ่านใบซ้ำหลังเปิดรอบ ⇒ `document` พก "serviceTermsOpenedAt") · ใบสายอื่น = 0 */
-    return ok({ ...data, termsOpened: setupCtx && data?.serviceTermsOpenedAt ? serviceSetupTotals(setupCtx).zones : 0 });
+       (P1 อ่านใบซ้ำหลังเปิดรอบ ⇒ `document` พก "serviceTermsOpenedAt") · ใบสายอื่น = 0
+       ⭐ ใบรายงวด (mig 0412): `installmentActualCounted` = { count, amount (ก่อน VAT), seqs } ของงวดที่นับทันที ·
+         `installmentActualStartFailed: true` = อนุมัติสำเร็จแต่ยังไม่มีงวดไหนนับ (จอชวนกด "นับงวด 1") ·
+         `installmentActualNoRows: true` (คู่กับธงก่อนหน้า) = ใบยังไม่มีงวด (จอชวนกด "เริ่มติดตามการชำระ" ก่อน) · ใบทั้งใบไม่มีคีย์ชุดนี้
+       ⚠️ แถวใบที่คืน (`data`) เป็นภาพก่อนนับงวด — cache "actualCountedAmount" ของแถวนี้ยังไม่รวมงวดที่เพิ่งนับ (จอโหลดใบใหม่หลังอนุมัติ) */
+    const actualReply = appliedActualMode === ACTUAL_MODE_INSTALLMENT
+      ? (installmentActualStartFailed
+        ? {
+          installmentActualStartFailed: true,
+          ...(installmentActualNoRows ? { installmentActualNoRows: true } : {}),
+          ...(installmentActualAlreadyCounted ? { installmentActualAlreadyCounted: true } : {}),
+          ...(freezeFailed ? { installmentFreezeFailed: true } : {}),
+        }
+        : { installmentActualCounted: actualCounted })
+      : {};
+    return ok({ ...data, ...actualReply, termsOpened: setupCtx && data?.serviceTermsOpenedAt ? serviceSetupTotals(setupCtx).zones : 0 });
   }
 
   if (action === 'reject') {
@@ -1410,22 +1644,22 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
        · RPC ย้อน Won (0170) และ UPDATE ยกเลิกธรรมดาไม่เปลี่ยน · StatusNotice ในโมดัลบอกผลเรื่องเงินก่อนกด (salesOrderMoneyOutcome) */
     // Once Tax owns a downstream filing, cancelling/reversing the source would
     // invalidate its immutable snapshot. Delete the eligible filing first.
+    /* ⭐ PR5 (mig 0417): ใบยื่นผูกได้สองทาง — SO ลูกค้า ("salesOrderId") หรือ SO ค่าสรรพสามิต ("exciseSalesOrderId")
+       ฐานกัน SO ค่าสรรพสามิตที่มีใบยื่นอีกชั้น (sales_orders_excise_filed_no_cancel_trg) · ตรงนี้ตอบทางออกเป็นภาษาคน */
     const { data: filing, error: filingError } = await supabase
       .from('orders')
       .select('id, status')
-      .eq('salesOrderId', id)
+      .or(`salesOrderId.eq.${id},exciseSalesOrderId.eq.${id}`)
       .limit(1)
       .maybeSingle();
-    const filingSchemaMissing = filingError
-      && (filingError.code === 'PGRST204' || filingError.code === '42703' || (filingError.message || '').includes('salesOrderId'));
-    if (filingError && !filingSchemaMissing) return fail(filingError.message, 500);
+    if (filingError) return fail(filingError.message, 500);
     if (filing) {
       // บอกทางออกด้วย ไม่ใช่แค่บอกว่าไม่ได้ — ปุ่มอื่นทุกปุ่มที่แก้ใบนี้ก็ถูกใบยื่นบล็อก
       // เหมือนกัน (ย้อนการอนุมัติ/ออก Rev./ลบถาวร) ผู้ใช้จึงวนหาปุ่มไม่เจอถ้าไม่ชี้ทาง
-      return badRequest(
-        `ยกเลิกใบสั่งขายไม่ได้ เพราะมีใบยื่นชำระภาษี ${filing.id} (${filing.status}) ผูกอยู่`
-        + ' — ต้องลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิก SO ได้',
-      );
+      return badRequest(filing.status === 'draft'
+        ? `ยกเลิกใบสั่งขายไม่ได้ เพราะฝ่าย RA สร้างใบยื่นกรม ${filing.id} ผูกอยู่ (ยังไม่เริ่มยื่น)`
+          + ' — ให้ฝ่าย RA ลบใบยื่นที่หน้า "ภาษี › การยื่นชำระ" ก่อน แล้วจึงยกเลิกได้'
+        : `ยกเลิกใบสั่งขายไม่ได้ — ฝ่าย RA ยื่นกรมสรรพสามิตตามใบนี้แล้ว (ใบยื่น ${filing.id} · ${filing.status})`);
     }
     // เหตุผลยกเลิกแบบมีโครงสร้าง (มติ 2026-07-18): เลือกรหัสจากตัวเลือกมาตรฐาน +
     // หมายเหตุอิสระ (บังคับหมายเหตุเมื่อเลือก "อื่น ๆ"). เก็บทั้ง code + note.
@@ -1502,6 +1736,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (reverseTo && isHistoricalOrder(before)) {
       return badRequest('ใบสั่งขายย้อนหลังยกเลิกได้อย่างเดียว — ย้อน Won ไม่ได้ (ดีลของใบย้อนหลังถือใบทุกใบของลูกค้าและ AE นี้)');
     }
+    const exciseReverse = reverseTo ? exciseSalesOrderBlock(before, 'reverse') : null;
+    if (exciseReverse) return badRequest(exciseReverse);
     if (reverseTo) {
       if (!isValidReversalTarget(reverseTo)) return badRequest('ปลายทางการย้อน Won ไม่ถูกต้อง');
       if (before.status !== 'approved') return badRequest('ย้อน Won ได้เฉพาะ SO ที่อนุมัติแล้ว');
@@ -1690,6 +1926,84 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   }
 
+  /* ── นับ Actual รายงวด: ปุ่มระดับใบ (mig 0412 · docs/so-installment-actual.md) ─────────────────────────────────────
+     · `actual_start` = ทางกู้ "นับงวด 1" เมื่อขั้นนับงวดตอนคลิกอนุมัติล้ม (RPC start_sales_order_installment_actual — รันซ้ำได้:
+       งวดที่นับแล้วข้าม · ไม่มีอะไรให้นับ = counted 0 ไม่ใช่ error)
+     · `actual_count_rest` = "นับที่เหลือทั้งหมด" (มติข้อ 8 · ทางเดียวจากรายงวดกลับเป็นก้อนเดียว · ผู้อนุมัติ + เหตุผล 10–500 ·
+       ยอดที่เหลือเข้า Actual เดือนที่กด · เงินยังเก็บตามงวดเดิม) — RPC count_rest_sales_order_installment_actual
+     ⭐ ด่าน JS ลำดับเดียวกับ RPC (actualStartBlocker · countRestBlocker ตัวเดียวกับปุ่มบนจอ) — ฐานตรวจซ้ำใต้ล็อกแถว
+       (แข่งกับอีกหน้าต่าง = รหัสของฐาน → ข้อความไทยผ่าน documentWorkflowError)
+     ⭐ audit before/after ทุกงวด (ทางกู้ทางเดียวของระบบนี้ — ไม่มีถังขยะ) + เธรดดีล · ไม่มีงวดถูกนับ = ไม่ลงประวัติ
+     ⚠️ อ่านงวดสดแบบโยน error — `before.installments` ของ loadOrder กลืนการอ่านพังเป็น [] (= "นับครบแล้ว" ปลอม)
+     ⚠️ ไม่เขียนตัวใบ (cache บนใบ/ดีลขยับเองด้วย trigger ของงวด) ⇒ ไม่มี CAS ของใบ — RPC ล็อกใบก่อนงวดเอง */
+  if (action === 'actual_start' || action === 'actual_count_rest') {
+    const counting = action === 'actual_count_rest';
+    let live;
+    try { live = await loadInstallments(supabase, id); }
+    catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
+    if (counting) {
+      const gate = countRestBlocker(before, live, user);
+      if (gate.blocker) return fail(gate.blocker, isSalesManager(user.role) ? 409 : 403);
+    } else {
+      const gate = actualStartBlocker(before, user);
+      if (gate) return fail(gate.error, gate.status);
+    }
+    const reason = String(body.reason || '').trim();
+    if (counting) {
+      const reasonError = installmentActualReasonError(reason);
+      if (reasonError) return badRequest(reasonError);
+    }
+    /* 🐞 review รอบสาม 26/10: ทางกู้ "นับงวด 1" ต้อง **ตรึงงวดที่ยังไม่ตรึงก่อนนับ** — ใบรายงวดที่ตัวหยุดยอดล้มตอนอนุมัติ (ล้มกลางทาง ·
+       หรือใบที่งวดเกิดทีหลังจากปุ่ม "เริ่มติดตามการชำระ" ของรุ่นก่อน) มีงวดที่ frozenAt ว่างบนใบที่อนุมัติแล้ว ⇒ แจ้งสลิปค้าง 'pending'
+       บัญชีรับรองไม่ได้ (CHECK draft_pending) ⇒ งวดถัดไปยื่นไม่ได้ตลอดไป · ตัวเดียวกับการอนุมัติ (freezeInstallments idempotent —
+       ชุดที่มีแถวตรึงแล้วแค่ประทับ frozenAt) · ตรึงล้ม = ไม่นับ (ตอบ 500 · กดใหม่ได้)
+       🐞 review รอบสี่ 26/10: "นับที่เหลือทั้งหมด" ก็ต้องตรึงก่อน — เดิมข้ามขั้นนี้ (`!counting`) ⇒ นับทุกงวดที่ไม่ตรึง ⇒ เงินของทุกงวดรับรองไม่ได้
+          และปุ่มกู้หาย (ไม่มีงวดค้างให้นับ) · ตรึงหลังด่านสิทธิ์/เหตุผลข้างบน (คำขอที่ถูกตีกลับไม่ตรึงอะไร) · RPC กันอีกชั้น (installment_actual_unfrozen)
+       ⭐ ตอบ `frozeInstallments: true` เมื่อขั้นนี้ตรึงงวดจริง — จอบอก "ตรึงงวดแล้ว" แม้ไม่มีงวดค้างให้นับ (actualStartToast) */
+    let frozeInstallments = false;
+    if (live.some((row) => !row?.frozenAt)) {
+      try {
+        await freezeInstallments(supabase, { order: before, user, borrowConfirmation: await confirmationBorrowable(supabase, before) });
+        live = await loadInstallments(supabase, id);
+        frozeInstallments = true;
+      } catch (freezeError) {
+        console.error(`sales order ${action}: ตรึงงวดไม่สำเร็จ — ยังไม่นับ`, id, freezeError);
+        return fail(`${INSTALLMENT_ACTUAL_FREEZE_FAILED}: ${freezeError?.message || freezeError}`, 500);
+      }
+    }
+    const actor = { p_actor_id: user.id, p_actor_name: user.name || user.email || null, p_actor_role: user.role || null };
+    const { data: result, error } = counting
+      ? await supabase.rpc('count_rest_sales_order_installment_actual', { p_order_id: id, p_reason: reason, ...actor })
+      : await supabase.rpc('start_sales_order_installment_actual', { p_order_id: id, ...actor });
+    if (error) {
+      const mapped = documentWorkflowError(error, { context: `sales order ${action} ${id}` });
+      return fail(mapped.message, mapped.status);
+    }
+    const counted = installmentActualCounted(result);
+    if (counted.count) {
+      await logThread(action, { seqs: counted.seqs, amount: counted.amount, ...(counting ? { reason } : {}) });
+      await recordAudit({
+        user,
+        action: 'update',
+        entityType: 'sales_order_installments',
+        entityId: id,
+        before: { installments: result?.before || live },
+        after: { installments: result?.after || [], actualAction: action, ...(counting ? { reason } : {}) },
+        summary: installmentActualOrderAuditSummary(action, { order: before, counted, reason }),
+        request: req,
+      });
+    }
+    /* จอโหลดใบใหม่หลังกดอยู่แล้ว — คืนผลของงวด (ยอดก่อน VAT ที่เพิ่งเข้า Actual) + งวดสดชุดเดียวกับที่ RPC เห็น */
+    return ok({
+      action,
+      counted: counted.count,
+      countedAmount: counted.amount,
+      countedSeqs: counted.seqs,
+      ...(frozeInstallments ? { frozeInstallments: true } : {}),
+      installments: Array.isArray(result?.after) ? result.after : live,
+    });
+  }
+
   if (action === 'restore') {
     if (user.role !== 'admin') return forbidden('เฉพาะผู้ดูแลระบบที่คืนสถานะใบสั่งขายได้');
     /* ใบสั่งขายย้อนหลังที่ยกเลิกแล้วคืนเป็นร่างไม่ได้ — ตั้งแต่ 0374 ใบย้อนหลังมีร่างแล้ว (CHECK ยอมร่างที่ approvedAt ว่าง)
@@ -1792,6 +2106,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ซึ่งใบยื่นก็บล็อกเหมือนกัน = ผู้ใช้วนกลับที่เดิม)
   const filings = await exciseFilingsOfSalesOrder(supabase, id);
   if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบสั่งขาย'), 409);
+  // ใบค่าสรรพสามิตที่อ้างใบนี้ (FK RESTRICT · mig 0414) — ดักก่อนเหมือนใบยื่น ไม่งั้นได้ 23503 ดิบกลางทาง
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { salesOrderId: id }); }
+  catch (exciseError) { return fail(exciseError.message, 500); }
+  if (exciseQuotes.length) return fail(exciseQuotationBlockMessage(exciseQuotes, 'ใบสั่งขาย'), 409);
   /* ── ใบสั่งขายย้อนหลัง (mig 0360 → 0374): ลบแบบปกติ = ทาง undo ของคนคีย์ ─────────────────────────────
      ⭐ ได้เฉพาะตอนยังไม่มีอะไรปลายน้ำผูก (historicalDeleteBlock) — ติดเมื่อไรใช้บังคับลบหลังอ่านพรีวิว
      ⭐ 0374: ใบที่ยังไม่เคยอนุมัติ (ร่าง/รออนุมัติ/ตีกลับ/ยกเลิกก่อนอนุมัติ) ลบแบบปกติได้ (canHardDeleteSalesOrder)

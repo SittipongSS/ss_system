@@ -27,7 +27,8 @@ test('route ยกเลิกใบ: เข้าใบผ่าน loadScoped 
 test('route ยกเลิกใบ: ด่านผู้อนุมัติมาก่อนพรีวิว และมาจาก canCancelQuotation ตัวเดียวกับจอ', () => {
   const route = strip(read(ROUTE));
   const gate = route.indexOf('canCancelQuotation(');
-  const approver = route.indexOf('canApproveQuotation(user, quote.deal)');
+  // ใบค่าสรรพสามิต (mig 0414/0415) ไม่มีดีล — ผู้อนุมัติมาจากดีลของ SO ต้นทาง (quotationApprovalDeal)
+  const approver = route.indexOf('canApproveQuotation(user, quotationApprovalDeal(quote))');
   const dryRun = route.indexOf('isDryRun(req)');
   const preview = route.indexOf('previewQuotationCancel(');
   const write = route.indexOf('cancelQuotation(supabase');

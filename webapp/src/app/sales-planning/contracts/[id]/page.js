@@ -31,12 +31,11 @@ import {
   CONTRACT_SOURCE_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
   HISTORICAL_CONTRACT_FILES_FROZEN_MESSAGE,
   canDeleteContract, canSignContract, contractCancelledAfterSigning, contractKindLabel, daysAwaitingSignature,
-  isContractEditable,
+  isContractEditable, isSignatureLate,
   externalApproveError, externalApproveOpenError, externalDocKindLabel, isExternalContract,
   historicalContractFilesFrozen, historicalContractLockReason, isSubstituteContract,
   showExternalApprove,
   showSignedApprove, signedApproveError,
-  SIGNATURE_LATE_DAYS,
 } from "@/lib/sales/contracts";
 import { buildContractLifecycle } from "@/lib/sales/contractLifecycle";
 import { contractTemplateFields, missingContractFields } from "@/lib/sales/contractTemplates";
@@ -364,7 +363,7 @@ export default function ContractDetailPage() {
       <span key="missing" className="ui-badge ui-badge-warn">ยังกรอกไม่ครบ: {missing.join(" · ")}</span>
     ) : null,
     contract.status === "awaiting_signature" ? (
-      <span key="waiting" className={`ui-badge${waitingDays > SIGNATURE_LATE_DAYS ? ` ${styles.late}` : ""}`}>
+      <span key="waiting" className={`ui-badge${isSignatureLate(contract) ? ` ${styles.late}` : ""}`}>
         รอฉบับลงนามมา {waitingDays ?? 0} วัน
       </span>
     ) : null,

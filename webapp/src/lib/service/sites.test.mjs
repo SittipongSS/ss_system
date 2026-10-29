@@ -389,3 +389,49 @@ test('ไม่ส่ง status มา = normalizeAssetInput ตั้ง active
   assert.equal(stocked.error, null);
   assert.equal(stocked.value.status, 'in_stock');
 });
+
+// ── ตรวจตัวเลข M22 (20/10): ตัวเลข "ที่ไซต์ลูกค้า" บน /database/assets = แถวของตัวกรอง "อยู่ที่ไหน: ที่ไซต์ลูกค้า" ──
+import { readFileSync } from 'node:fs';
+import { ASSET_LOCATIONS, ASSET_LOCATION_LABELS, assetLocationOf } from './sites.js';
+
+const ids = (rows) => rows.map((r) => r.id);
+
+test('🔴 M22: ทุกสถานะ × ชนิดไซต์ × มี/ไม่มีไซต์ — ตัวเลข "ที่ไซต์ลูกค้า" = แถวของตัวกรอง · สามค่าแบ่งทุกเครื่องไม่ซ้อน', () => {
+  const assets = [];
+  for (const status of ASSET_STATUSES) {
+    for (const siteKind of [undefined, 'customer', 'warehouse']) {
+      for (const siteId of [null, 'S1']) {
+        assets.push({ id: `${status}|${siteKind}|${siteId}`, status, siteKind: siteId ? siteKind : undefined, siteId });
+      }
+    }
+  }
+  // ตัวเลขบนจอ (assets/page.js `stats.onSite`) กับตัวกรอง (locationFilter) — ถามตัวเดียวกัน
+  const metricOnSite = assets.filter((a) => assetLocationOf(a) === 'site');
+  const filterRows = (loc) => assets.filter((a) => [loc].includes(assetLocationOf(a)));
+  assert.deepEqual(ids(metricOnSite), ids(filterRows('site')));
+  // แบ่งทุกเครื่องครบ ไม่มีเครื่องตกหล่น/ซ้ำ
+  assert.equal(ASSET_LOCATIONS.reduce((sum, loc) => sum + filterRows(loc).length, 0), assets.length);
+  for (const a of assets) {
+    const loc = assetLocationOf(a);
+    assert.ok(ASSET_LOCATIONS.includes(loc));
+    if (a.status === 'removed') assert.equal(loc, 'retired', 'ปลดระวางที่ยังจำไซต์สุดท้ายไว้ ไม่ใช่ "ที่ไซต์ลูกค้า"');
+    if (loc === 'site') {
+      assert.equal(isAssetOnSite(a), true, '"ที่ไซต์ลูกค้า" ⊆ isAssetOnSite');
+      assert.notEqual(a.siteKind, 'warehouse', 'เครื่องที่ไซต์คลังไม่ใช่ "ที่ไซต์ลูกค้า"');
+    }
+  }
+  // สองรูปจากผลตรวจ
+  assert.equal(assetLocationOf({ status: 'removed', siteId: 'S1', siteKind: 'customer' }), 'retired');
+  assert.equal(assetLocationOf({ status: 'repair', siteId: 'W1', siteKind: 'warehouse' }), 'stock');
+  assert.equal(assetLocationOf({ status: 'active', siteId: 'S1', siteKind: 'customer' }), 'site');
+  assert.equal(assetLocationOf({ status: 'repair' }), 'stock', 'ซ่อมจากของว่าง (ไม่มีไซต์)');
+  assert.deepEqual(Object.keys(ASSET_LOCATION_LABELS), ASSET_LOCATIONS);
+});
+
+test('ด่านซอร์ส M22: หน้าทะเบียนเครื่องนับและกรอง "อยู่ที่ไหน" ด้วย assetLocationOf ตัวเดียว', () => {
+  const page = readFileSync(new URL('../../app/database/assets/page.js', import.meta.url), 'utf8');
+  assert.match(page, /if \(assetLocationOf\(a\) === "site"\) onSite \+= 1;/);
+  assert.match(page, /if \(locationFilter\.length && !locationFilter\.includes\(assetLocationOf\(a\)\)\) return false;/);
+  assert.match(page, /options: ASSET_LOCATIONS\.map\(\(value\) => \(\{ value, label: ASSET_LOCATION_LABELS\[value\] \}\)\)/);
+  assert.doesNotMatch(page, /a\.siteKind === "warehouse"\) \? "stock" : "site"/, 'ห้ามเขียนตัวตัดสินสดกลับในหน้า');
+});

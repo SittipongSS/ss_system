@@ -55,8 +55,14 @@ test('PATCH งวด: updatedAt ที่จอส่งมาไม่ตร�
   assert.ok(stale < patch.indexOf('installmentActionError(row, action, user, {'), 'ต้องบอก "ข้อมูลเก่า" ก่อนด่านที่ตัดสินจากแถวสด');
   assert.match(patch, /updated = await updateInstallment\(supabase, installmentId, patch, \{ expectedUpdatedAt: row\.updatedAt \}\);/,
     'ชั้นสอง: เขียนเฉพาะเมื่อแถวยังเป็นรุ่นที่ด่านเพิ่งตัดสิน');
-  const miss = patch.indexOf('if (!updated) return fail(INSTALLMENT_STALE_MESSAGE, 409);');
-  assert.ok(miss > 0 && miss < patch.indexOf('await recordAudit('), 'เขียนไม่โดนต้องไม่ลง audit/กระดิ่ง');
+  const write = patch.indexOf('updated = await updateInstallment(supabase, installmentId, patch');
+  const miss = patch.indexOf('if (!updated) return fail(INSTALLMENT_STALE_MESSAGE, 409);', write);
+  assert.ok(miss > write && miss < patch.indexOf('await recordAudit(', write), 'เขียนไม่โดนต้องไม่ลง audit/กระดิ่ง');
+  /* ⭐ ผูก/ถอดคำร้อง (mig 0413) เขียนแถวคำร้องแบบ CAS ที่ลิงก์เดิม — ไม่โดน = 409 ก่อน audit */
+  const link = slice(patch, "} else if (action === 'link' || action === 'unlink') {", "} else if (action === 'tax-invoice') {");
+  assert.match(link, /write = ownInstallment \? write\.eq\('installmentId', ownInstallment\) : write\.is\('installmentId', null\);/);
+  const linkMiss = link.indexOf('if (!afterRequest) return fail(INSTALLMENT_STALE_MESSAGE, 409);');
+  assert.ok(linkMiss > 0 && linkMiss < link.indexOf('await recordAudit('), 'ผูกไม่โดนต้องไม่ลง audit');
 });
 
 // ── 3. POST เริ่มติดตาม: ด่านเดียวกับปุ่มบนแผง ─────────────────────────────────────────────
@@ -131,9 +137,14 @@ test('โมดัลของแผงงวดและคิวบัญช�
 // ── 6. ทะเบียนบัญชี: งวดโมฆะของใบที่ตายแล้วไม่เข้าทะเบียน ─────────────────────────────────────
 test('ทะเบียนการชำระตัดงวดโมฆะ (ledgerVoidInstallment) ก่อนจัดรูปแถว', () => {
   const route = code(LEDGER_ROUTE);
-  const cut = route.indexOf('if (ledgerVoidInstallment(installment, order)) return null;');
+  /* UAT FN 27/10 ข้อ 2: ตัวตัดสินรวมเป็น `ledgerIncludes` (ใบหาย · ใบยอด 0 · งวดโมฆะ · งวดยังไม่ตรึง) — ป้ายบนเมนูถามตัวเดียวกัน */
+  const cut = route.indexOf('if (!ledgerIncludes(installment, order)) return null;');
   assert.ok(cut > 0, 'ยอดค้างรับเทียม ฿577,667.32 บนใบที่ยกเลิก (23/09)');
   assert.ok(cut < route.indexOf('return ledgerRow({'));
+  const lib = code('lib/finance/paymentLedger.js');
+  const includes = lib.slice(lib.indexOf('export function ledgerIncludes('), lib.indexOf('export function ledgerInConfirmQueue('));
+  assert.match(includes, /return !ledgerVoidInstallment\(installment, order\);/);
+  assert.match(includes, /if \(paymentNotRequired\(order\.totalAmount\)\) return false;/);
   // select ของใบต้องมี status (ตัวตัดสินอ่านจากตรงนั้น) — ลืม = ไม่มีใบไหนตายเลยเงียบ ๆ
   assert.match(route, /\.select\('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status,/);
 });

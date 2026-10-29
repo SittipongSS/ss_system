@@ -7,7 +7,7 @@ import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle 
 import { useRole, useCan } from "@/lib/roleContext";
 import KpiCard from "@/components/ui/KpiCard";
 import SkeletonRows from "@/components/ui/Skeleton";
-import { TASK_STATUS_LABELS } from "@/lib/mgmt/constants";
+import { TASK_STATUS_LABELS, mgmtTasksHref } from "@/lib/mgmt/constants";
 import Workspace from "@/components/ui/Workspace";
 import { fmtPercent, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
@@ -78,12 +78,12 @@ export default function MgmtOverviewPage() {
         <SkeletonRows rows={7} />
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>
-            <KpiCard label="ทั้งหมด" value={data?.total || 0} tone="neutral" icon={ListTodo} />
-            <KpiCard label="เสร็จสมบูรณ์" value={counts.done} hint={fmtPercent(percent)} tone="success" icon={CheckCircle2} />
-            <KpiCard label="กำลังดำเนิน" value={counts.in_progress} tone="info" icon={Clock3} />
-            <KpiCard label="รอเริ่ม" value={counts.todo} tone="neutral" icon={Circle} />
-            <KpiCard label="งานด่วน" value={(data?.urgent || []).length} tone="danger" icon={AlertTriangle} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 18 }}>{/* การ์ดกดได้ทุกใบ = รายการงานของปีที่เลือกอยู่ ตัวกรองเดียวกับที่นับ (L4 · เหตุผลเต็มที่หัวกล่องงานด่วน) */}
+            <KpiCard label="ทั้งหมด" value={data?.total || 0} tone="neutral" icon={ListTodo} onClick={() => router.push(mgmtTasksHref({ year }))} />
+            <KpiCard label="เสร็จสมบูรณ์" value={counts.done} hint={fmtPercent(percent)} tone="success" icon={CheckCircle2} onClick={() => router.push(mgmtTasksHref({ year, status: "done" }))} />
+            <KpiCard label="กำลังดำเนิน" value={counts.in_progress} tone="info" icon={Clock3} onClick={() => router.push(mgmtTasksHref({ year, status: "in_progress" }))} />
+            <KpiCard label="รอเริ่ม" value={counts.todo} tone="neutral" icon={Circle} onClick={() => router.push(mgmtTasksHref({ year, status: "todo" }))} />
+            <KpiCard label="งานด่วนที่ยังไม่เสร็จ" value={(data?.urgent || []).length} tone="danger" icon={AlertTriangle} onClick={() => router.push(mgmtTasksHref({ year, urgentOpen: true }))} />
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 18 }}>
@@ -134,9 +134,14 @@ export default function MgmtOverviewPage() {
                 เหมือนการ์ดใบอื่นในรอบนี้ เพราะทุกแถวชี้ `/mgmt/tasks` ปลายทางเดียวกันหมด
                 (ไม่ได้เปิดงานใบนั้น) ⇒ จะได้ลิงก์ N ตัวที่ชื่อต่างกันแต่ไปที่เดียวกัน =
                 ตก 2.4.4 Link Purpose และหลอกคนอ่านว่ากดแล้วเปิดงานใบที่เห็น
-                ⇒ ลิงก์ตัวเดียวที่หัวกล่อง (ชื่อกล่อง = ชื่อลิงก์) และแถวกลับเป็นข้อความ */}
+                ⇒ ลิงก์ตัวเดียวที่หัวกล่อง (ชื่อกล่อง = ชื่อลิงก์) และแถวกลับเป็นข้อความ
+                ⭐ **ลิงก์ (และการ์ด KPI ทั้งห้าใบ) พาไปรายการที่กรองไว้แล้ว** (ตรวจตัวเลข L4 · 2026-10-26) —
+                🐞 เดิมชี้ `/mgmt/tasks` เปล่า = งานทุกใบของปีปัจจุบัน ไม่สนปีที่เลือกบนหน้านี้ ทั้งที่ชื่อลิงก์สัญญา
+                "งานด่วน — ยังไม่เสร็จ" · ตอนนี้ `mgmtTasksHref` ส่งปีที่เลือก + มุมมอง `urgentOpen` (ตัวตัดสิน
+                `isUrgentOpenTask` ตัวเดียวกับที่ API นับกล่องนี้) ⇒ แถวที่เปิดเจอ = เลขบนการ์ด = แถวในกล่อง
+                · การ์ดสถานะ = `?status=` (ตัวกรองสถานะของหน้านั้น) · "ทั้งหมด" = ปีเดียว (รวมยกเลิก = เลข `total`) */}
             <div style={{ fontSize: "var(--fs-8)", fontWeight: "var(--fw-bold)", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-              <AlertTriangle size={16} color="var(--red)" /> <Link href="/mgmt/tasks" className="linklike">งานด่วน — ยังไม่เสร็จ</Link>
+              <AlertTriangle size={16} color="var(--red)" /> <Link href={mgmtTasksHref({ year, urgentOpen: true })} className="linklike">งานด่วน — ยังไม่เสร็จ</Link>
             </div>
             {(data?.urgent || []).length === 0 ? (
               <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)", textAlign: "center", padding: "18px 0" }}>ไม่มีงานด่วนที่ค้างอยู่ 🎉</div>

@@ -2,6 +2,7 @@
 
 import { MapPin, PencilRuler } from "lucide-react";
 import Tag from "@/components/ui/Tag";
+import { keepPhrases } from "@/components/ThaiText";
 
 /* ── ป้ายวิธีประเมินของพื้นที่ / ใบ (ประเมินจากแบบ · งวด S2b §2.1) ──────────────────────────
  *
@@ -24,5 +25,9 @@ export default function SurveyMethodChip({ variant = "drawing", label, size = "s
   if (!words) return null;
   const look = LOOKS[variant] || LOOKS.drawing;
   void size;
-  return <Tag tone={look.tone} icon={look.icon} label={words} className={className} />;
+  /* ป้ายสองท่อน ("ประเมินจากแบบ · รอยืนยันหน้างาน") ตัดบรรทัดได้ที่ " · " เท่านั้น — แต่ละท่อนห่อ nowrap (ตัวหนังสือไม่ถูกแตะ)
+     🐞 ไทล์พื้นที่ของฟอร์มที่ 768 (สามไทล์ต่อแถว) เคยขาดเป็น "…รอยืนยันหน้า" / "งาน" (S2b แก้หลังตรวจจอ E-4 · UAT sales 27/10)
+     · ป้ายท่อนเดียว = ข้อความเดิม */
+  const shown = words.includes(" · ") ? keepPhrases(words, words.split(" · ")) : words;
+  return <Tag tone={look.tone} icon={look.icon} label={shown} className={className} />;
 }

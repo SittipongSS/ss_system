@@ -169,7 +169,9 @@ const rpc = (name) => stripComments(latestDefinitionOf(name).body);
 function originBranches(shape) {
   const at = shape.indexOf(") OR ( origin = 'historical'");
   assert.ok(at > 0, 'หาจุดแยกสาย pipeline/historical ไม่เจอ');
-  return [shape.slice(0, at), shape.slice(at)];
+  // สายที่สาม (0414 · ใบค่าสรรพสามิต) — นิยามก่อน 0414 มีแค่สองสาย ⇒ ตัวที่สามเป็น undefined
+  const ex = shape.indexOf(") OR ( origin = 'excise'", at);
+  return ex > 0 ? [shape.slice(0, at), shape.slice(at, ex), shape.slice(ex)] : [shape.slice(0, at), shape.slice(at)];
 }
 
 // ═══ 1) cache Actual / ยอดรออนุมัติของดีล ═══════════════════════════════════════
@@ -208,11 +210,13 @@ test('sales_order_actual_trigger ไม่ถูกคัดไปแก้ห�
 
 /* 🪤 ยามข้างบนตรึงแค่ **ตัวฟังก์ชัน** ของ trigger ไม่ใช่ CREATE TRIGGER ที่ทำให้มันยิง · ยามรันซ้ำได้ของ 0360
    บังคับแค่ "DROP ก่อน CREATE" ไม่ห้าม DROP ลอย ๆ ⇒ เติม `DROP TRIGGER IF EXISTS sales_orders_sync_actual_trg`
-   ในไฟล์นี้ = อนุมัติ/ยกเลิก/ย้อนใบ pipeline ไม่ขยับ wonValue/wonMonth/soPending* ของดีลอีกเลย โดยเทสต์เขียวหมด */
-test('🪤 trigger Actual/เจ้าของใบยังยิง — คำสั่งสุดท้ายของแต่ละตัวคือ CREATE เดิม (ไม่มี DROP/ALTER/DISABLE ตามหลัง)', () => {
+   ในไฟล์นี้ = อนุมัติ/ยกเลิก/ย้อนใบ pipeline ไม่ขยับ wonValue/wonMonth/soPending* ของดีลอีกเลย โดยเทสต์เขียวหมด
+   ⭐ 0412 (Actual รายงวด) สร้าง sales_orders_sync_actual_trg ใหม่โดยตั้งใจ: รายการคอลัมน์เดิมทุกตัว + "actualMode"
+      (ตัวห่อการอนุมัติตั้งแบบหลังสถานะเป็น approved ⇒ ต้องปลุก sync อีกรอบ) · ฟังก์ชันที่ยิงยังเป็นของ 0108 */
+test('🪤 trigger Actual/เจ้าของใบยังยิง — คำสั่งสุดท้ายของแต่ละตัวคือ CREATE ที่ตั้งใจ (ไม่มี DROP/ALTER/DISABLE ตามหลัง)', () => {
   const EXPECT = {
-    sales_orders_sync_actual_trg: ['0279_won_month_from_so_approval.sql',
-      'CREATE TRIGGER sales_orders_sync_actual_trg AFTER INSERT OR UPDATE OF status, "actualAmount", "orderDate", "approvedAt", "dealId" OR DELETE ON public.sales_orders FOR EACH ROW EXECUTE FUNCTION public.sales_order_actual_trigger()'],
+    sales_orders_sync_actual_trg: ['0412_so_installment_actual.sql',
+      'CREATE TRIGGER sales_orders_sync_actual_trg AFTER INSERT OR UPDATE OF status, "actualAmount", "orderDate", "approvedAt", "dealId", "actualMode" OR DELETE ON public.sales_orders FOR EACH ROW EXECUTE FUNCTION public.sales_order_actual_trigger()'],
     sales_deals_enforce_so_actual_trg: ['0110_enforce_approved_so_actual.sql',
       'CREATE TRIGGER sales_deals_enforce_so_actual_trg BEFORE INSERT OR UPDATE OF stage, "wonValue", metadata ON public.sales_deals FOR EACH ROW EXECUTE FUNCTION public.enforce_sales_order_actual_on_deal()'],
     sales_orders_snapshot_owner_trg: ['0294_sales_order_owner_snapshot.sql',
@@ -239,6 +243,8 @@ test('🪤 trigger Actual/เจ้าของใบยังยิง — ค�
 
 /* 🪤 ตัวคำนวณในฐานที่อ่านใบอนุมัติ = ต้องกรอง origin หรือประกาศว่า "ตรวจสถานะรายใบ ไม่รวมยอด" */
 const SQL_STATE_CHECK_ONLY = new Map([
+  ['accept_excise_quotation_atomic', 'รับใบค่าสรรพสามิต — ตรวจสถานะ SO ต้นทางใบเดียว (ต้องเป็น pipeline ที่อนุมัติอยู่) ไม่รวมยอด (0415)'],
+  ['create_excise_sales_order_draft', 'สร้าง SO ค่าสรรพสามิต — ตรวจสถานะ SO ต้นทางใบเดียว (ต้องเป็น pipeline ที่อนุมัติอยู่) ไม่รวมยอด (0416)'],
   ['approve_sales_order_with_signature_evidence_atomic', 'ขั้นอนุมัติใบร่าง/รออนุมัติ — ใบย้อนหลังเกิดเป็น approved ไม่เคยผ่าน (0197)'],
   ['cancel_sales_order_with_reversal_atomic', 'ย้อน Won ตอนยกเลิก — ดีลภาชนะติด CHECK stage = won ⇒ ทรานแซกชันล้ม (0170)'],
   ['capture_issued_sales_order_snapshot_atomic', 'ฉบับตรึงตอนอนุมัติ — ตรวจสถานะรายใบ ไม่รวมยอด (0148)'],
@@ -397,12 +403,23 @@ test('🪤 RPC สร้างใบ: ชนดีลภาชนะที่เ
 
 // ═══ 4) รูปทรงใบสั่งขาย ══════════════════════════════════════════════════════
 
-/* นิยามล่าสุด (0374): ใบย้อนหลังเป็นร่าง/รออนุมัติ/ตีกลับได้แล้ว — approvedAt ผูกกับ approved เท่านั้น
-   · ย้อนอนุมัติ/ออก Rev./ขั้นบัญชี/หลักฐานลายเซ็น/ยกเว้นด่านเงิน ยังตายที่ CHECK · คืนเป็นร่างหลังอนุมัติ = trigger ของ 0374 */
-test('ใบสั่งขาย: CHECK สองสาย — pipeline ต้องมีใบเสนอราคา · historical ย้อนอนุมัติ/Rev./ขั้นบัญชีไม่ได้', () => {
+/* นิยามล่าสุด (0414): สองสายของ 0374 ลอกตัวต่อตัว + สายที่สาม excise (ใบค่าสรรพสามิต · แผน docs/excise-qt-so-rework-plan.md)
+   · 0374: ใบย้อนหลังเป็นร่าง/รออนุมัติ/ตีกลับได้แล้ว — approvedAt ผูกกับ approved เท่านั้น · ย้อนอนุมัติ/ออก Rev./ขั้นบัญชี/
+     หลักฐานลายเซ็น/ยกเว้นด่านเงิน ยังตายที่ CHECK · คืนเป็นร่างหลังอนุมัติ = trigger ของ 0374 */
+test('ใบสั่งขาย: CHECK สามสาย — pipeline ต้องมีใบเสนอราคา · historical ย้อนอนุมัติ/Rev./ขั้นบัญชีไม่ได้ · excise ไม่มีดีล Actual 0', () => {
   const { file, body: shape } = latestConstraintBody('sales_orders_origin_shape');
-  assert.equal(file, '0374_historical_so_approval_flow.sql');
-  const [pipeline, historical] = originBranches(shape);
+  assert.equal(file, '0414_excise_documents_origin.sql');
+  const [pipeline, historical, excise] = originBranches(shape);
+  /* สาย excise — ใบค่าสรรพสามิต: ไม่มีดีล/โครงการ · ชี้ใบเสนอราคาค่าสรรพสามิต + SO ต้นทาง · Actual 0 · ไม่มี Rev. ·
+     ช่องย้อนหลัง/ยกเว้นด่านเงิน/ไม่เรียกเก็บว่าง · **ยอม financeStatus และลายเซ็น** (บัญชีเดินขั้นปกติ — ต่างจาก historical) */
+  for (const piece of [
+    `origin = 'excise'`, '"dealId" IS NULL', '"projectId" IS NULL', '"quotationId" IS NOT NULL',
+    '"sourceSalesOrderId" IS NOT NULL', '"actualAmount" = 0', '"revisionNo" = 0', '"revisedFromId" IS NULL',
+    '"historicalIntakeHash" IS NULL', '"paymentGateExemptAt" IS NULL', '"exciseNotBilledKind" IS NULL',
+  ]) {
+    assert.ok(excise?.includes(piece), `สาย excise ขาด ${piece}`);
+  }
+  assert.ok(!excise.includes('financeStatus') && !excise.includes('signatureEvidenceId'), 'สาย excise ต้องยอมขั้นบัญชีและลายเซ็น');
   for (const piece of [`origin = 'pipeline'`, '"quotationId" IS NOT NULL', '"historicalIntakeHash" IS NULL', '"paymentGateExemptAt" IS NULL']) {
     assert.ok(pipeline.includes(piece), `สาย pipeline ขาด ${piece}`);
   }

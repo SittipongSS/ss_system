@@ -21,8 +21,9 @@
 //   4. `date_trunc('week', …)` ใน migration ใหม่ (> 0389) — Postgres ตัดสัปดาห์แบบ ISO = วันจันทร์
 //      ⇒ SQL ที่ต้องการต้นสัปดาห์ใช้ `d - extract(dow from d)::int` (dow ของ Postgres 0 = อาทิตย์)
 //
-// ⚠️ **หน้าต่าง 7 วันแบบเลื่อน (วันนี้ … วันนี้ + 6) ไม่ใช่เลขสัปดาห์** — "นัดสัปดาห์นี้" (lib/service/overview.js) ·
-//    "กำลังผลิตสัปดาห์นี้" (app/production/page.js) นับจากวันนี้ไปหกวัน ไม่ขึ้นกับว่าสัปดาห์เริ่มวันไหน
+// ⚠️ **หน้าต่าง 7 วันแบบเลื่อน (วันนี้ … วันนี้ + 6) ไม่ใช่เลขสัปดาห์** — "นัด 7 วันข้างหน้า" (lib/service/overview.js) ·
+//    "กำลังผลิต 7 วันข้างหน้า" (app/production/page.js) นับจากวันนี้ไปหกวัน ไม่ขึ้นกับว่าสัปดาห์เริ่มวันไหน
+//    (เดิมสองการ์ดชื่อ "…สัปดาห์นี้" ซึ่งขัดมติ อา.–ส. · มติเจ้าของ 26/10/2026 เปลี่ยนชื่อ ไม่เปลี่ยนวิธีนับ — ยาม 5 ท้ายไฟล์)
 //    ⇒ ยามไม่จับ `+ 6` เดี่ยว ๆ · จับเฉพาะ `+ 6) % 7` (แปลงเลขวันให้จันทร์เป็น 0) และเฉพาะไฟล์ที่ถามวันในสัปดาห์
 //    — `(i + 6) % 7` ที่หมุนดัชนีอย่างอื่นในไฟล์ที่ไม่แตะวันในสัปดาห์จึงไม่โดน
 // ⚠️ ไม่จับเลขวันที่เก็บในฐาน — service_sites."accessDays" เก็บตาม getDay() (0 = อาทิตย์) อยู่แล้ว ไม่ต้องย้ายข้อมูล
@@ -249,4 +250,22 @@ test("ยาม 4 จับ date_trunc('week') ทุกตัวพิมพ์
   assert.deepEqual(sqlWeekTruncLines("SELECT DATE_TRUNC( 'WEEK', now());"), [1]);
   assert.deepEqual(sqlWeekTruncLines("-- ห้าม date_trunc('week', d) เพราะเริ่มจันทร์\nselect date_trunc('month', d);"), []);
   assert.deepEqual(sqlWeekTruncLines("select d - extract(dow from d)::int as week_start;"), []);
+});
+
+/* ── ยาม 5: การ์ดที่นับหน้าต่างเลื่อน 7 วัน ต้องไม่เรียกตัวเองว่า "สัปดาห์นี้" (ตรวจตัวเลข L21 · มติเจ้าของ 26/10/2026) ──
+   🐞 "นัดสัปดาห์นี้" นับวันนี้ … วันนี้ + 6 ⇒ วันพฤหัสนับไปถึงพุธหน้า ขัดมติ อา.–ส. · ปลายทางของการ์ดคือชิป "7 วัน"
+   ⭐ มติ: เปลี่ยนชื่อเป็น "…7 วันข้างหน้า" นับเหมือนเดิม (ไม่ใช่ย้ายไปนับ อา.–ส. — วันศุกร์/เสาร์ยังเห็นงานล่วงหน้า)
+   ⚠️ การ์ดนับ อา.–ส. จริงเมื่อไร (weekStartOf) ค่อยใช้คำว่า "สัปดาห์นี้" ได้ — ลงทะเบียนการ์ดใหม่ที่นับหน้าต่างเลื่อนไว้ที่นี่ */
+const ROLLING_WINDOW_CARDS = [
+  { file: 'app/service/page.js', label: 'นัด 7 วันข้างหน้า', value: 'counts.week' },
+  { file: 'app/production/page.js', label: 'กำลังผลิต 7 วันข้างหน้า', value: 'glance.pct == null ? "—" : fmtPercent(glance.pct)' },
+];
+
+test('ยาม 5: การ์ดหน้าต่างเลื่อน 7 วันชื่อ "…7 วันข้างหน้า" ไม่ใช่ "สัปดาห์นี้"', () => {
+  for (const { file, label, value } of ROLLING_WINDOW_CARDS) {
+    const source = stripComments(readFileSync(path.join(srcRoot, file), 'utf8'));
+    const card = source.match(new RegExp(`<KpiCard\\s+label="${label}"(?:(?!/>)[\\s\\S])*/>`))?.[0] || '';
+    assert.ok(card.includes(`value={${value}}`), `${file}: การ์ด "${label}" ต้องแสดง ${value}`);
+    assert.doesNotMatch(source, /label="[^"]*สัปดาห์นี้"/, `${file}: ป้ายการ์ดยังเรียกหน้าต่าง 7 วันว่า "สัปดาห์นี้"`);
+  }
 });

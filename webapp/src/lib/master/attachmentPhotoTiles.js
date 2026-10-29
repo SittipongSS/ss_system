@@ -17,6 +17,7 @@
 //
 // ⚠️ ไฟล์นี้ไม่แตะ DOM/React และไม่ยิง API — แผงถือ state แล้วส่งฟังก์ชันเข้ามา ⇒ เทสต์ด้วยค่าล้วน
 //    (`components/attachmentsPanelRender.test.mjs`)
+import { isDrawableImage, isPreviewableImage } from '@/lib/master/attachmentTypes';
 
 export const PHOTO_TILE_ADD_LABEL = 'ถ่าย / เลือกรูป';
 /* คำใบ้ของจอที่มีเมาส์ (AW-1) — แผงซ่อนบนจอสัมผัสด้วยคลาส `pointerOnly` (ไม่มีอะไรให้ลาก) */
@@ -25,6 +26,24 @@ export const PHOTO_TILE_DONE_CHIP = 'ขึ้นแล้ว';
 export const PHOTO_DELETE_LABEL = 'ลบรูปนี้';
 
 const photoName = (item) => String(item?.fileName || '').trim() || 'รูปแนบ';
+
+/**
+ * 🔑 **แผงแบ่งไฟล์เป็น "รูป" กับ "ไฟล์" — ตัวตัดสินเดียวของทุกโหมด** (แผ่นรูป · ตะแกรง · รายการรายแถว · แถวไฟล์)
+ *   รูป = วาดเป็นภาพย่อ กดแล้วเปิดกล่องดูรูปเต็ม · ไฟล์ = แถวชื่อไฟล์ที่เปิดในแท็บใหม่ (ลบได้ที่ปุ่มของแถว)
+ * ⭐ ตั้งต้น: รูปคือ **ชนิดที่เบราว์เซอร์วาดได้** (`isDrawableImage`) — TIFF เป็นแถวไฟล์ (S2b แก้หลังตรวจจอ head-rc-q8)
+ *   🐞 เดิม TIFF ในช่องภาพแบบได้แผ่น "เปิดรูปไม่ได้" + ป้ายเขียว "ขึ้นแล้ว" ทั้งที่ไม่ปลดด่าน · กดแล้วกล่องดูรูปขึ้นรูปแตก
+ * ⚠️ `grouped` (โหมด `photoGroups` — แถวของจุดติดตั้ง + ถาด) ใช้ชุดกว้าง `isPreviewableImage` ตามเดิม:
+ *   "รูปของจุด" (`isSpotPhoto` — ด่านผูกจุด · แท็บผล · เอกสาร) นับชุดนั้น ⇒ แผงต้องส่งชุดเดียวกันให้แถวของจุด ไม่งั้นไฟล์ที่ด่านนับว่า
+ *   "ยังไม่ได้ผูกจุด" จะไม่อยู่ในถาดให้ผูก (บั๊ก review 30/09) · TIFF บนแถวของจุดจึงยังเป็นแผ่น — เปลี่ยนได้ต่อเมื่อเปลี่ยน `isSpotPhoto` ไปพร้อมกัน
+ * @returns `{ photos, files }` — ลำดับเดิม · ทุกใบอยู่ฝั่งเดียวเท่านั้น
+ */
+export function panelPhotoSplit(items = [], { grouped = false } = {}) {
+  const isPhoto = grouped ? isPreviewableImage : isDrawableImage;
+  const photos = [];
+  const files = [];
+  for (const item of Array.isArray(items) ? items : []) (isPhoto(item) ? photos : files).push(item);
+  return { photos, files };
+}
 
 /**
  * ความคืบหน้า 0–1 → เปอร์เซ็นต์ที่โชว์
@@ -79,7 +98,7 @@ export function photoUploadsRemove(uploads = [], keys = []) {
 
 /**
  * แผงจะวาดแผ่นอะไรบ้าง ตามลำดับ
- * @param photos    รูปที่ขึ้นระบบแล้ว (แถวไฟล์แนบที่เปิดดูเป็นรูปได้ · กรองตามหัวข้อของแผงมาแล้ว)
+ * @param photos    รูปที่ขึ้นระบบแล้ว (`panelPhotoSplit(...).photos` · กรองตามหัวข้อของแผงมาแล้ว)
  * @param uploads   กองกำลังส่ง (`photoUploadsAdd`/`photoUploadsProgress`)
  * @param canAdd    มีแผ่นถ่ายรูปไหม (แนบได้ + แผงเปิดทางอัปไฟล์)
  * @param canDelete (item) => ลบรูปนี้ได้ไหม — ใช้แค่ป้ายอ่านออกเสียง ปุ่มลบจริงอยู่ในกล่องดูรูปเต็ม

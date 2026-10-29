@@ -6,11 +6,14 @@ import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthor
 import { can, caretakerTeamsOf } from "@/lib/permissions";
 import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/salesPlanning";
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
-import { billedTaxTotals } from "@/lib/tax/exciseBilling";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
-import { customerTaxSiblingIdMap, customerTaxSiblingIds } from "@/lib/master/customerTaxSiblings";
+import { customerTaxSiblingIdMap } from "@/lib/master/customerTaxSiblings";
+import { filingItemRows, resolveSalesOrderFiling } from "@/lib/excise/soFilingItems";
 import { dealTypeOf } from "@/lib/salesPlanning";
 import { NA } from "@/lib/format";
+import { exciseHandledOrderIds } from "@/lib/excise/exciseQuotation";
+import { findFilingFor, loadFilingSource } from "@/lib/excise/raFiling";
+import { notBilledLabel } from "@/lib/excise/raFilingRules";
 import { isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
 
 // ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
@@ -88,7 +91,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
       // ⚠️ ต้องมี status ในลิสต์คอลัมน์: resolveSoFiling ตัดสิน eligible ด้วย
       // salesOrder.status === 'approved' — ไม่ดึงมา = undefined = ลิสต์ว่างเสมอ
       // (บั๊กจริงที่ทำให้ปุ่ม "สร้างใบยื่นจาก Sale Order" ไม่เคยมีตัวเลือกให้เลือก)
-      .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt")
+      .select("id, orderNumber, status, customerId, customerName, orderDate, totalAmount, actualAmount, dealId, quotationId, createdAt, exciseNotBilledKind")
       .eq("status", "approved")
       .order("createdAt", { ascending: false })
       .order("id", { ascending: true });
@@ -111,6 +114,8 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
 
   const dealById = new Map((deals || []).map((deal) => [deal.id, deal]));
   const used = new Set((filingResult.data || []).map((filing) => filing.salesOrderId).filter(Boolean));
+  /* แผนรื้อสรรพสามิต PR3: SO ที่ออกใบค่าสรรพสามิตแล้ว/ตัดสินไม่เรียกเก็บแล้ว ไม่ใช่งานค้างของฝ่ายขาย (แถบเตือนทะเบียน SO นับจากลิสต์นี้) */
+  for (const orderId of await exciseHandledOrderIds(supabase, salesOrders || [])) used.add(orderId);
   const available = (salesOrders || [])
     .filter((salesOrder) => {
       const deal = dealById.get(salesOrder.dealId);
@@ -133,7 +138,7 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
     fetchInChunks(productIds, (chunk) => supabase.from("products").select("*").in("id", chunk)),
     supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
     fetchInChunks(productIds, (chunk) => supabase.from("excise_registrations")
-      .select("id, productId, customerId, status").eq("status", "approved").in("productId", chunk)),
+      .select("id, productId, customerId, status, isExciseTaxable").eq("status", "approved").in("productId", chunk)),
   ]);
   if (productError) throw productError;
   if (typeError) throw typeError;
@@ -187,33 +192,8 @@ async function listAvailableSalesOrders(supabase, user, customerId) {
   };
 }
 
-async function resolveContext(supabase, salesOrder) {
-  const productIds = [...new Set((salesOrder.lines || []).map((line) => line.productId).filter(Boolean))];
-  // ใบลูกค้าทุกใบของนิติบุคคลนี้ — ทะเบียนอยู่ใต้ใบที่เป็นเจ้าของ FG ซึ่งอาจไม่ใช่ใบที่ขาย
-  const ownerCustomerIds = salesOrder.customerId
-    ? await customerTaxSiblingIds(supabase, salesOrder.customerId)
-    : [];
-  const [{ data: products, error: productError }, { data: productTypes, error: typeError }, registrationResult] = await Promise.all([
-    productIds.length
-      ? supabase.from("products").select("*").in("id", productIds)
-      : Promise.resolve({ data: [], error: null }),
-    supabase.from("product_types").select("mainCategoryCode, typeCode, isExcise, requiresFdaNotice"),
-    productIds.length && ownerCustomerIds.length
-      ? supabase.from("excise_registrations").select("id, productId, customerId, status").in("customerId", ownerCustomerIds).in("productId", productIds)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  if (productError) throw productError;
-  if (typeError) throw typeError;
-  if (registrationResult.error) throw registrationResult.error;
-  return resolveSoFiling({
-    salesOrder,
-    lines: salesOrder.lines || [],
-    products: products || [],
-    productTypes: productTypes || [],
-    registrations: registrationResult.data || [],
-    ownerCustomerIds,
-  });
-}
+// ตัวคิดย้ายไป lib/excise/soFilingItems ให้ทางคิดภาษีใหม่จากใบสั่งขาย (PATCH /api/orders/[id]) ใช้ตัวเดียวกัน
+const resolveContext = (supabase, salesOrder) => resolveSalesOrderFiling(supabase, salesOrder);
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
@@ -267,95 +247,87 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 });
 
+/* ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10 · D7 29/10 ยื่นทีละ SO): **ฝ่าย RA สร้างใบยื่นจากคิว "รอยื่นกรม"** ทางเดียว
+   body = `{ exciseSalesOrderId }` (SO ค่าสรรพสามิตที่อนุมัติแล้ว · รายการ = ยอดที่ลูกค้าจ่ายจริง)
+        หรือ `{ salesOrderId }` (SO ลูกค้าที่ตัดสินไม่เรียกเก็บ แบบเก็บนอกระบบ/รวมในราคา · รายการคิดจาก SO ลูกค้า)
+   ใบยื่นผูก SO ลูกค้าเสมอ ("salesOrderId" · unique ⇒ SO ลูกค้าล็อกย้อน/Rev./ยกเลิกตามเดิม) + SO ค่าสรรพสามิต (0417)
+   ⚠️ ทางสร้างเดิมของฝ่ายขาย (ปุ่มบนเส้นเดินงาน SO · ReceiveDialog) ถอดแล้ว — proxy เปิดการเขียน /api/orders ให้ ra:approve เท่านั้น */
+const LINK_ERRORS = {
+  orders_excise_link_invalid: 'ใบสั่งขายค่าสรรพสามิตไม่ได้ออกจากใบสั่งขายลูกค้าใบนี้ — สร้างใบยื่นไม่ได้',
+};
+
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!can(user.role, "sales:act")) return forbidden();
+  if (!can(user.role, "ra:approve")) return forbidden();
   const body = await req.json().catch(() => ({}));
-  const salesOrderId = String(body.salesOrderId || "").trim();
-  if (!salesOrderId) return badRequest("กรุณาระบุ ใบสั่งขาย");
+  const exciseSalesOrderId = String(body.exciseSalesOrderId || "").trim();
+  const requestedSalesOrderId = exciseSalesOrderId ? "" : String(body.salesOrderId || "").trim();
+  if (!exciseSalesOrderId && !requestedSalesOrderId) return badRequest("กรุณาระบุใบสั่งขาย");
 
-  let salesOrder;
-  let resolved;
+  let loaded;
+  let context;
   try {
-    salesOrder = await loadSalesOrderContext(supabase, salesOrderId);
-    if (!salesOrder) return notFound("ไม่พบ ใบสั่งขาย");
-    if (!salesOrder.deal || !inSalesEditScope(user, salesOrder.deal)) return forbidden();
-    if (isHistoricalOrder(salesOrder)) return badRequest("ใบสั่งขายย้อนหลังไม่ใช้สร้างใบยื่นชำระภาษี (ออกบิลนอกระบบไปแล้ว)");
-    if (salesOrder.status !== "approved") return badRequest("สร้างการยื่นชำระได้เมื่อใบสั่งขายอนุมัติแล้วเท่านั้น");
-
-    const existing = await findExistingFiling(supabase, salesOrderId);
-    if (!existing.schemaReady) return fail("ฐานข้อมูลยังไม่มี Migration 0160 กรุณารัน migration ก่อน", 503);
-    if (existing.filing) return conflict(`ใบสั่งขายนี้มีใบยื่น ${existing.filing.id} แล้ว`);
-
-    resolved = await resolveContext(supabase, salesOrder);
-    if (!resolved.eligible) return badRequest("ใบสั่งขายนี้ไม่มีสินค้าสรรพสามิตที่พร้อมสร้างใบยื่น");
+    loaded = await loadFilingSource(supabase, { exciseSalesOrderId, salesOrderId: requestedSalesOrderId });
+    if (loaded.error) return fail(loaded.error.message, loaded.error.status);
+    const existing = await findFilingFor(supabase, {
+      salesOrderId: loaded.salesOrder.id, exciseSalesOrderId: loaded.exciseOrder?.id,
+    });
+    if (existing) return conflict(`ใบสั่งขาย ${loaded.salesOrder.orderNumber || loaded.salesOrder.id} มีใบยื่น ${existing.id} แล้ว`);
+    if (!loaded.resolved.lines.length) return badRequest("ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตให้ยื่น");
+    // ข้อมูลที่ตรึงลงหัวใบ (ลูกค้า · ใบเสนอราคาลูกค้า · ดีล/โครงการ) — โหลดชุดเดิมของเส้นนี้
+    context = await loadSalesOrderContext(supabase, loaded.salesOrder.id);
   } catch (error) {
     return fail(`เตรียมข้อมูลการยื่นชำระไม่สำเร็จ: ${error.message}`, 500);
   }
+  const { exciseOrder, resolved } = loaded;
+  const salesOrder = context;
 
   const orderId = genId("TAX");
   const now = new Date().toISOString();
   const filing = {
     id: orderId,
-    salesOrderId,
-    /* ⭐ ใบเสนอราคาต้นทาง (มติผู้ใช้ 2026-09-07 · mig 0349) — ต้นทางของใบยื่นยังเป็น
-       **ใบสั่งขายที่อนุมัติแล้ว** เหมือนเดิม ตัวนี้คือ "QT ที่เกี่ยวข้อง" ผูกด้วย FK
-       ไม่ใช่สตริง `quotationRef` ที่ฝ่ายขายพิมพ์แก้เองได้
-       ⚠️ อ่านจาก `sales_orders."quotationId"` ตรง ๆ ไม่ใช่จาก snapshot ที่โหลดมา —
-       ค่า FK ต้องเป็นของจริงจากสาย QT→SO ไม่ใช่ค่าที่ผ่านการเลือก/ตกทอดมาอีกชั้น */
+    salesOrderId: salesOrder.id,
+    exciseSalesOrderId: exciseOrder?.id || null,
+    /* ⭐ ใบเสนอราคาต้นทางของ SO ลูกค้า (mig 0349 · ความหมายเดิม) — ใบค่าสรรพสามิตหาได้จาก exciseSalesOrderId → quotationId
+       ⚠️ อ่านจาก `sales_orders."quotationId"` ตรง ๆ — ค่า FK ต้องเป็นของจริงจากสาย QT→SO */
     quotationId: salesOrder.quotationId || null,
     customerId: salesOrder.customerId || null,
     customerName: salesOrder.customerName || null,
-    // ตรึงข้อมูลลูกค้าลงใบ: snapshot บนใบเสนอราคามาก่อน (ค่าที่ลูกค้าเห็นบนเอกสารต้นทาง)
-    // แล้วจึงตกมาที่ทะเบียนลูกค้าสดสำหรับใบเก่าที่ snapshot ไม่ครบ
+    // ตรึงข้อมูลลูกค้าลงใบ: snapshot บนใบเสนอราคามาก่อน แล้วจึงตกมาที่ทะเบียนลูกค้าสด (mig 0167)
     customerTaxId: salesOrder.quotation?.customerTaxId || salesOrder.customer?.taxId || null,
     customerAddress: salesOrder.quotation?.billingAddress || salesOrder.customer?.address || null,
     quotationRef: salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
-    // ตรึงโครงการลงใบตั้งแต่ตอนสร้าง (mig 0211) — เหตุผลเดียวกับที่ตรึงเลขผู้เสียภาษี/
-    // ที่อยู่ลูกค้า (mig 0167): ชื่อเปลี่ยนทีหลังต้องไม่ย้อนไปแก้ใบเก่า
-    // แยก 3 ค่าให้ตรงกับใบเสนอราคา/ใบสั่งขาย/ไทม์ไลน์ — เดิม (0208) ตรึงเป็นข้อความรวม
-    // "รหัส · ชื่อ" ซึ่งตัดกลับไม่ได้ปลอดภัยเมื่อชื่อมีจุดคั่นแบบเดียวกันเอง
-    // เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-" (ขีดเป็นเรื่องของการแสดงผล ไม่ใช่ข้อมูล)
+    // ตรึงโครงการลงใบ (mig 0211) — เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-"
     projectCode: refOrNull(salesOrder.project?.code),
     dealTitle: refOrNull(salesOrder.deal?.title),
     dealType: refOrNull(dealTypeOf(salesOrder.deal)),
     deliveryDate: NA,
-    remarks: `สร้างจาก ใบสั่งขาย ${salesOrder.orderNumber}`,
-    assignee: user.name || salesOrder.createdByName || "Sales",
-    // ทีมเจ้าภาพของใบยื่น: ดีลแม่มาก่อน (แหล่งที่ตรงที่สุด) แล้วถอยมาที่ทีมที่ดูแลลูกค้า
-    // เมื่อดีลไม่มีทีม/SO ไม่ผูกดีล — ใบที่ได้ team = null จะกลายเป็น "ของกลาง" ที่เห็นได้
-    // ทุกทีมแต่ไม่มีใครใน scope 'team' แก้ได้เลย · ลูกค้าหลายทีม = เดาไม่ได้ ปล่อย null
+    remarks: exciseOrder
+      ? `สร้างจากใบสั่งขายค่าสรรพสามิต ${exciseOrder.orderNumber} (ใบสั่งขายลูกค้า ${salesOrder.orderNumber})`
+      : `ไม่เรียกเก็บในระบบ — ${notBilledLabel(salesOrder.exciseNotBilledKind)} · ใบสั่งขาย ${salesOrder.orderNumber}`,
+    assignee: user.name || "RA",
+    // ทีมเจ้าภาพ = ทีมของดีลลูกค้า (ฝ่ายขายทีมนั้นเห็นใบยื่นของลูกค้าตัวเอง) → ถอยมาที่ทีมที่ดูแลลูกค้า
     team: salesOrder.deal?.team || soCaretakerTeam(salesOrder.customer),
     ownerId: user.id || null,
     totalExciseTax: resolved.totalExciseTax,
     totalLocalTax: resolved.totalLocalTax,
     totalTax: resolved.totalTax,
-    // ยอดที่เรียกเก็บจากลูกค้า = ค่าภาษี + VAT 7% (มติผู้ใช้ 2026-07-26) คิดด้วยสูตร
-    // เดียวกับที่เอกสารพิมพ์ ห้ามใช้ resolved.totalTax เปล่า ๆ (ต่างกัน 7%)
-    amountToCollect: billedTaxTotals(resolved.lines).amountToCollect,
+    amountToCollect: resolved.amountToCollect,
     status: "draft",
     createdAt: now,
+    updatedAt: now,
   };
-  const itemRows = resolved.lines.map((line) => ({
-    id: genId("TXI"),
-    orderId,
-    salesOrderLineId: line.salesOrderLineId,
-    registrationId: line.registrationId,
-    productId: line.productId,
-    quantity: line.quantity,
-    exciseRatePerUnit: line.exciseRatePerUnit,
-    localTaxRatePerUnit: line.localTaxRatePerUnit,
-    totalExciseTax: line.totalExciseTax,
-    totalLocalTax: line.totalLocalTax,
-    totalTax: line.totalTax,
-  }));
+  // แถวหน้าตาเดียวกับทางคิดใหม่จากใบสั่งขาย (lib/excise/soFilingItems) — ลิงก์ salesOrderLineId ติดไปเสมอ
+  const itemRows = filingItemRows(orderId, resolved.lines);
 
   const { error: orderError } = await insertOrder(supabase, filing);
   if (orderError?.code === "23505") {
-    const existing = await findExistingFiling(supabase, salesOrderId).catch(() => ({ filing: null }));
-    return conflict(existing.filing ? `ใบสั่งขายนี้มีใบยื่น ${existing.filing.id} แล้ว` : "ใบสั่งขายนี้มีใบยื่นแล้ว");
+    const existing = await findFilingFor(supabase, { salesOrderId: salesOrder.id, exciseSalesOrderId: exciseOrder?.id }).catch(() => null);
+    return conflict(existing ? `ใบสั่งขายนี้มีใบยื่น ${existing.id} แล้ว` : "ใบสั่งขายนี้มีใบยื่นแล้ว");
   }
+  const linkError = Object.keys(LINK_ERRORS).find((code) => String(orderError?.message || "").includes(code));
+  if (linkError) return badRequest(LINK_ERRORS[linkError]);
   if (orderError) return fail(`สร้างใบยื่นไม่สำเร็จ: ${orderError.message}`, 500);
 
   const { error: itemError } = await insertOrderItems(supabase, itemRows);
@@ -370,7 +342,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     entityType: "order",
     entityId: orderId,
     after: filing,
-    summary: `create excise filing from ${salesOrder.orderNumber}`,
+    summary: exciseOrder
+      ? `RA สร้างใบยื่นกรมจาก ${exciseOrder.orderNumber} (SO ลูกค้า ${salesOrder.orderNumber})`
+      : `RA สร้างใบยื่นกรมจาก ${salesOrder.orderNumber} (ไม่เรียกเก็บในระบบ)`,
     request: req,
   });
   return ok({ ...filing, items: itemRows, warnings: resolved.warnings }, 201);

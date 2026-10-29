@@ -98,7 +98,8 @@ test('🔴 ด่านเงินต้องยังอ่านเกณฑ
 /* ⭐ 25/09 แท็บสัญญาขึ้นทุกใบ (มติเจ้าของ "ทุกใบ") — เว้นใบย้อนหลังที่ไม่อยู่เส้นบริการ (ไม่มีการ์ดให้แสดง) */
 test('🔑 แท็บสัญญาขึ้นทุกใบ · แท็บงานบริการยังแคบ', () => {
   const page = code('../../app/sales-planning/sales-orders/[id]/page.js');
-  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\);/);
+  // ใบค่าสรรพสามิต (PR4) ไม่มีดีล ⇒ ไม่มีการ์ดสัญญาของดีลเช่นเดียวกับใบย้อนหลัง
+  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\) && !isExciseOrder\(order\);/);
   assert.match(page, /onServiceLine \|\| showDealContracts \? \["contract"\] : \[\]/);
   // การ์ดผูกสัญญาบริการยังเป็นของเส้นบริการเท่านั้น
   assert.match(page, /\{onServiceLine \? \(\s*\n\s*<ServiceContractCard/);

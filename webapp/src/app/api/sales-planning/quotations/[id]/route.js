@@ -6,24 +6,32 @@ import { isSalesManager } from '@/lib/permissions';
 import {
   isForceRequest, isDryRun, canForceDelete,
   quotationForcePreview, cleanupQuotationOrphans, QUOTATION_CHILD_ORDERS,
-  exciseFilingBlockMessage, exciseFilingsOfQuotation,
+  exciseFilingBlockMessage, exciseFilingsOfQuotation, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
   contractsOfQuotation, contractBlockMessage,
 } from '@/lib/forceDelete';
 import { loadMovedOutOfOrders } from '@/lib/sales/salesOrderInstallmentsStore';
 import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
-import { canCancelQuotation, canSwitchQuotationDocLanguage, isQuotationAwaitingApproval } from '@/lib/sales/quotationWorkflow';
+import {
+  canCancelQuotation, canSwitchQuotationDocLanguage, isQuotationAwaitingApproval, quotationApprovalDeal,
+} from '@/lib/sales/quotationWorkflow';
 import { quotationSignatureEvidence } from '@/lib/sales/quotationCancelRepo';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
 import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
 import {
   canApproveQuotation, canEditSalesPlanning, canViewSalesPlanning, dealAuditLabel,
-  inSalesEditScope, inSalesViewScope, normalizeDiscountValue, quoteTotals, toMoney,
+  normalizeDiscountValue, quoteTotals, toMoney,
 } from '@/lib/salesPlanning';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import {
+  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, exciseReferenceIsAuto, recalcExciseQuotationLines,
+} from '@/lib/excise/exciseQuotation';
 import {
   customerMismatchMessage, customerMismatchedLines,
-  enforceMasterPrices, normalizeManualLines, refreshFgLinesForDisplay,
+  enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines, refreshFgLinesForDisplay,
 } from '@/lib/sales/quoteLines';
+import { exciseChargeLineMessage } from '@/lib/excise/exciseCharge';
 import {
   LinePackError, lineMoneyRuleMessage, linePackGateMessage, linePackIssues, linePackMessage,
 } from '@/lib/sales/linePacks';
@@ -53,6 +61,9 @@ const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, st
 async function loadQuote(supabase, id) {
   const { data, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();
   if (error) throw error;
+  // ใบค่าสรรพสามิตไม่มีดีล — เติมดีลของ SO ต้นทางไว้ตัดสินสิทธิ์ (`sourceDeal` · ไม่แตะ `deal` · scopedRow.js)
+  const { error: sourceError } = await attachSourceDeals(supabase, data ? [data] : []);
+  if (sourceError) throw sourceError;
   if (data?.deal?.projectId) {
     const { data: project } = await supabase
       .from('projects')
@@ -69,9 +80,11 @@ async function loadQuote(supabase, id) {
        ⭐ เลือก **ใบที่ยังมีชีวิต** (`isLiveSalesOrder` — นิยามเดียวกับด่าน 0169) ก่อน · ไม่มีเลย
           ถอยไปใบล่าสุด = พฤติกรรมเดิมของ QT ที่มี SO ใบเดียว (ใบยกเลิกยังโชว์ป้าย "ยกเลิก")
        ⚠️ อ่านไม่ขึ้น ≠ ไม่มีใบ — โยนเหมือน query ใบเสนอราคาข้างบน ไม่งั้นจอชวนกด "สร้างใบสั่งขาย" ซ้ำ */
+    /* `origin` + `actualMode` + `actualCountedAmount` + `actualSubmittedAmount` (mig 0412) — ยอด Actual ของการ์ดใบสั่งขายผ่านตัวกลาง
+       (salesOrderActual / splitSalesOrderAmounts): ใบ "Actual รายงวด" นับเฉพาะงวดที่อนุมัติแล้ว · ขาด `actualMode` = ถือเป็นทั้งใบ (ยอดเกินจริง) */
     const { data: salesOrders, error: salesOrderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt')
+      .select('id, orderNumber, status, orderDate, actualAmount, totalAmount, vatAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"')
       .eq('quotationId', data.id)
       .order('createdAt', { ascending: false })
       .order('id', { ascending: true }));
@@ -122,7 +135,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const quote = await loadQuote(supabase, id);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal || !inSalesViewScope(user, quote.deal)) return forbidden();
+  if (!inSalesDocScope(user, quote, 'view')) return forbidden();
   // ข้อมูลลูกค้าบนใบเป็น snapshot — ใบเก่าที่ snapshot ไม่ครบ (ผู้ติดต่อ/เลขภาษี) เติม
   // เฉพาะช่องว่างจากทะเบียนลูกค้าสด เพื่อให้หน้ารายละเอียด/เอกสารแสดงครบโดยไม่ต้อง Revise
   const filledQuote = await fillCustomerSnapshotFromMaster(supabase, quote);
@@ -160,7 +173,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
      ⚠️ อ่านไม่ขึ้น = `{ error }` ในก้อนนี้ ไม่ทำใบล้ม — ดู loadCreateFormBillingTerms */
   const withBillingTerms = new URL(req.url).searchParams.get('include') === 'billingTerms';
   const billingTerms = withBillingTerms ? await loadCreateFormBillingTerms(supabase, filledQuote.customerId, { user }) : undefined;
-  const canApprove = canApproveQuotation(user, filledQuote.deal);
+  const canApprove = canApproveQuotation(user, quotationApprovalDeal(filledQuote));
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
   return ok({
     ...filledQuote,
@@ -171,7 +184,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
     canCancel: canCancelQuotation(filledQuote, {
       approver: canApprove,
       canEdit: canEditSalesPlanning(user),
-      inScope: inSalesEditScope(user, filledQuote.deal),
+      inScope: inSalesDocScope(user, filledQuote, 'edit'),
       hasSignatureEvidence: Boolean(hasSignatureEvidence),
     }),
     proposerSignature,
@@ -187,7 +200,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
-  if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  if (!inSalesDocScope(user, before, 'edit')) return forbidden();
   if (!EDITABLE_STATUSES.has(before.status)) {
     if (before.status === 'closed') {
       return badRequest('ใบนี้ถูกปิดแล้ว (ดีลจบด้วยใบเสนอราคาฉบับอื่น) — แก้ไขไม่ได้');
@@ -200,6 +213,37 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  /* ⭐ ใบค่าสรรพสามิต (แผนรื้อสรรพสามิต หมวด 3.4): บรรทัด = ภาษีที่ระบบคิดจาก SO ต้นทาง · VAT 7% ตรึง · ไม่มีส่วนลด ⇒ จอส่งมาเอง = ปฏิเสธ
+     แก้บรรทัดได้ทางเดียวคือ `action: 'recalc_from_sales_order'` — server คิดใหม่แล้วบันทึกผ่านทางเดียวกับการแก้บรรทัดปกติ
+     (ด่านสถานะ/ยังไม่ยื่นข้างล่างใช้ร่วม · enforceMasterPrices ข้ามบรรทัด 04-003 ของใบ excise) */
+  if (isExciseOrder(before)) {
+    if (['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
+      return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
+    }
+    if (body.action === 'recalc_from_sales_order') {
+      if (before.approvalStatus !== 'not_submitted') {
+        return fail('ใบนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงคิดใหม่จากใบสั่งขายได้', 409);
+      }
+      try {
+        const { lines: recalculated, header } = await recalcExciseQuotationLines({ supabase, user, quote: before, request: req });
+        delete body.action;
+        body.lines = recalculated;
+        // หัวใบที่มาจาก SO ต้นทาง (ผู้เสนอราคา · เบอร์ · คำอ้างอิงที่ระบบเขียนเอง) — คำอ้างอิงที่คนพิมพ์เองไม่แตะ
+        if (exciseReferenceIsAuto(before.referenceNote)) body.referenceNote = header.referenceNote;
+        body.metadata = {
+          ...header.metadata,
+          // ส่งชุดเงื่อนไขการค้าเดิมกลับไป — ทางรวม metadata ข้างล่างตรวจ/ตรึงสองคีย์นี้ใหม่ทุกครั้งที่มี metadata มากับคำขอ
+          paymentPresetVersionId: before.metadata?.paymentPresetVersionId || null,
+          remarksPresetVersionId: before.metadata?.remarksPresetVersionId || null,
+        };
+      } catch (recalcError) {
+        if (recalcError instanceof ExciseQuotationError) return fail(recalcError.message, recalcError.status);
+        throw recalcError;
+      }
+    } else if ('action' in body) {
+      return badRequest('คำสั่งนี้ใช้กับใบค่าสรรพสามิตไม่ได้');
+    }
+  }
   const bodyKeys = Object.keys(body);
   const statusOnlySend = body.status === 'sent'
     && before.status === 'draft'
@@ -337,10 +381,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       previousLines: before.lines || [],
     });
     if (mismatched.length) return badRequest(customerMismatchMessage(mismatched));
+    // สินค้า 04-003 (ค่าภาษีสรรพสามิต) ใส่ในใบขายไม่ได้ — เฉพาะบรรทัดที่เพิ่งใส่ (แผนรื้อสรรพสามิต หมวด 3.3)
+    const chargeLines = await exciseChargeLinesAdded(supabase, newLines, {
+      previousLines: before.lines || [], origin: before.origin,
+    });
+    if (chargeLines.length) return badRequest(exciseChargeLineMessage(chargeLines));
     // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — แก้ราคาต้องแก้ที่
     // ฐานข้อมูลสินค้า; สินค้าที่หายจาก master คงราคาเดิมของใบ (fallback before.lines)
     newLines = await enforceMasterPrices(supabase, newLines, before.lines || [], {
-      customerId: before.customerId,
+      customerId: before.customerId, origin: before.origin,
     });
     /* ด่านเลขแพ็คบนบรรทัดชุดสุดท้ายที่จะส่งเข้า RPC (หลัง sync ราคา · ก่อนเขียนอะไรลงฐาน)
        ⭐ มติเจ้าของ 08/10 (A2–A4 · งวด PR-3): คำขอที่ **เขียนบรรทัดหรือยอด** ของใบ (ส่งบรรทัดมา · แก้ VAT · แก้ส่วนลดท้ายใบ) ต้องมีเลขแพ็ค 1–9,999
@@ -503,7 +552,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
   const before = await loadQuote(supabase, id);
   if (!before) return notFound('ไม่พบใบเสนอราคา');
-  if (!before.deal || !inSalesEditScope(user, before.deal)) return forbidden();
+  if (!inSalesDocScope(user, before, 'edit')) return forbidden();
 
   // force = ทางลัดผู้ดูแลระบบ (admin) ที่ลบใบ accepted ได้ทั้งที่เป็นแหล่งยอด Actual;
   // dryRun = พรีวิว Sale Order ที่จะ cascade หายตาม (admin เท่านั้น).
@@ -539,6 +588,11 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // เป็น 500). ดักก่อนทุกเส้นทาง ทั้งลบปกติและ ?force=1
   const filings = await exciseFilingsOfQuotation(supabase, id);
   if (filings.length) return fail(exciseFilingBlockMessage(filings, 'ใบเสนอราคา'), 409);
+  // ใบค่าสรรพสามิตที่อ้าง SO ลูกของใบนี้ (FK RESTRICT · mig 0414) — ดักก่อนเหมือนใบยื่น
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { quotationId: id }); }
+  catch (exciseError) { return fail(exciseError.message, 500); }
+  if (exciseQuotes.length) return fail(exciseQuotationBlockMessage(exciseQuotes, 'ใบเสนอราคา'), 409);
 
   /* 🐞 รูฝาแฝดของดีล (พบ 2026-08-28): `quotationForcePreview` ตรวจสัญญาและตอบ
      `blocked` ถูก แต่เส้นลบจริงไม่ตรวจ ⇒ `force_delete_quotation` ล้มด้วย 23503
@@ -570,7 +624,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     /* ⭐ ผู้อนุมัติของใบที่ยังเดินอยู่มีทางทิ้งใบแล้ว = "ยกเลิกใบ" (มติ 24/09) — ชี้ไปทางนั้นแทนการชวน
        ออก Rev. ซึ่งไม่ใช่สิ่งที่คนกดลบต้องการ · คนอื่นได้ข้อความเดิมทุกตัวอักษร */
     const cancellable = canCancelQuotation(before, {
-      approver: canApproveQuotation(user, before.deal),
+      approver: canApproveQuotation(user, quotationApprovalDeal(before)),
       canEdit: true,
       inScope: true,
       hasSignatureEvidence: true,

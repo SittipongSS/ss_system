@@ -45,6 +45,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { AlertTriangle, Check, Circle, CircleCheck, ClipboardList, Lightbulb, Link2, Minus, Pencil, Plus, Undo2 } from "lucide-react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { KeepTogether } from "@/components/service/ScheduleModalParts";
+import { keepPhrases } from "@/components/ThaiText";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import PhotoThumb from "@/components/ui/PhotoThumb";
@@ -61,6 +63,7 @@ import {
 } from "@/lib/service/surveyControl";
 import { surveyDrawingZoneView, surveyZoneTitle } from "@/lib/service/surveyFieldView";
 import { isJpgOrPngFile } from "@/lib/service/surveyMethod";
+import { surveyConfirmPreviousRoundKeep } from "@/lib/service/surveyConfirmLink";
 import {
   surveyDecisionDraft, surveyDecisionDirty, surveyDecisionError, surveyDecisionPayload,
   surveyPackageCell, surveyPendingDecisions,
@@ -163,8 +166,9 @@ function PlanPhotos({ zoneId, count, canUploadPlan, onFiles, intakeFirst, drawin
    (เขียนไว้ก่อนตารางย้ายเข้าการ์ดเมื่อ 2026-09-15) ⇒ คำบรรยายแยกจากตารางที่มันอธิบาย
    ⚠️ ข้อความมาจาก `surveyChangeText` ตัวเดิม ตารางไม่ได้นับเอง — จอ TS · จอ SA ·
    กระดิ่ง ต้องเล่าตัวเลขชุดเดียวกัน */
-/* ชื่อช่องจุดของพื้นที่จากแบบ — หัวคอลัมน์ของใบจากแบบทั้งใบ และป้ายช่องตอนตารางพับเป็นการ์ด (จอแคบ) ใช้คำเดียวกัน */
-const DRAWING_SPOT_LABEL = "จุดติดตั้งโดยประมาณ";
+/* ชื่อช่องจุดของพื้นที่จากแบบ — หัวคอลัมน์ของใบจากแบบทั้งใบ และป้ายช่องตอนตารางพับเป็นการ์ด (จอแคบ) ใช้คำเดียวกัน
+   ⭐ ส่งออกให้ตารางผลบนหน้าคำร้องของฝ่ายขาย (`SurveyRequestView` · ใบจากแบบทั้งใบที่ส่งผลแล้ว — S2b-O9) พูดคำเดียวกัน ไม่พิมพ์ซ้ำ */
+export const DRAWING_SPOT_LABEL = "จุดติดตั้งโดยประมาณ";
 
 export default function SurveyResultTable({
   zones = [], filesByZone = {}, canDecide = false, busyZone, onSaveDecisions,
@@ -198,6 +202,10 @@ export default function SurveyResultTable({
   mix = null,
   request = null,
   locked = false,
+  /* ── ใบยืนยันหน้างาน (งวด S5 กลุ่ม E) — แผนที่ zoneId → ข้อความรอบจากแบบของใบต้นทาง (server ประกอบจาก
+     surveyConfirmPreviousRoundText · คีย์ confirmOf.previousByZone ของ GET ใบประเมิน) ⇒ บรรทัดจางใต้ชื่อ/ป้ายของแถวที่ยกมา
+     ⚠️ แถวที่หัวหน้าเพิ่มเองไม่มีรายการ ⇒ ไม่มีบรรทัด · แถวที่ตัดออกไม่มีบรรทัด · ไม่ส่ง = ตารางเดิมทุกจุด */
+  previousRounds = null,
 }) {
   /* ร่างของหัวหน้า — key = id ของพื้นที่ · ค่าที่ไม่มีในนี้แปลว่า "ยังไม่ถูกแตะ"
      ⚠️ ห้ามเติมค่าตั้งต้นลงไปตอนเปิดจอ — ของที่เติมไว้ล่วงหน้าแยกไม่ออกจากของที่คนพิมพ์
@@ -399,6 +407,8 @@ export default function SurveyResultTable({
                     แถวลงหน้างานคงคำเดิมของตารางนี้ */
               const tags = [m.source ? m.addedLabel : (zone.status === "added" ? "ช่างเพิ่มหน้างาน" : null),
                 zone.zoneId ? null : "พื้นที่ใหม่"].filter(Boolean).join(" · ");
+              /* ตัวเลขรอบจากแบบของใบต้นทาง (ใบยืนยันหน้างาน) — ผูกด้วยรหัสพื้นที่ในทะเบียน · ตัดออกแล้ว = ไม่เทียบ */
+              const previousRound = !cut && zone.zoneId && previousRounds ? previousRounds[zone.zoneId] || null : null;
               /* การบันทึกรอบล่าสุดของแถวนี้ชนกับการแก้จากที่อื่น — ประโยคของ server (ดู `saveAll`) */
               const staleText = staleRow && staleRow.zoneId === String(zone.id) ? staleRow.message : null;
 
@@ -445,9 +455,13 @@ export default function SurveyResultTable({
                     </span>
                     {/* ชื่อ + ชั้นครั้งเดียว — ตัวเดียวกับรายการ/หน้าพื้นที่ (🐞 ชื่อที่มีชั้นอยู่แล้วเคยขึ้น "ชั้น 5 · ชั้น 05") */}
                     <b className={styles.zoneName}>{surveyZoneTitle(zone)}</b>
-                    {/* แถวจากแบบ: ใครประเมิน เมื่อไร ("จากแบบ · ชื่อ วันที่") — ขึ้นต้นด้วยคำของวิธีอยู่แล้ว จึงไม่มีป้ายวิธีแยกอีกชิ้น */}
-                    {m.source ? <span className={styles.source}>{m.source}</span> : null}
+                    {/* แถวจากแบบ: ใครประเมิน เมื่อไร ("จากแบบ · ชื่อ วันที่") — ขึ้นต้นด้วยคำของวิธีอยู่แล้ว จึงไม่มีป้ายวิธีแยกอีกชิ้น
+                        🐞 UAT 26/10 (head-r3-21): ช่อง 182px (1440) / 104px (768) ตัดวันเป็น "พฤ. 8" / "ต.ค." ⇒ วันไทยเป็นก้อนเดียว (`KeepTogether`) */}
+                    {m.source ? <span className={styles.source}><KeepTogether text={m.source} /></span> : null}
                     {tags ? <span className={styles.sub}>{tags}</span> : null}
+                    {/* ใบยืนยันหน้างาน: ตัวเลขรอบจากแบบ ไว้เทียบกับผลที่วัดรอบนี้ — บรรทัดรองกลางของเซลล์ตาราง (จาง · 12px)
+                        🐞 UAT S5 head รอบ 1 K12: เลขที่ขาดที่ขีด / ตัวเลขขาดจากหน่วย ⇒ วลีห้ามขาดจาก lib (`surveyConfirmPreviousRoundKeep`) */}
+                    {previousRound ? <span className="cell-sub">{keepPhrases(previousRound, surveyConfirmPreviousRoundKeep(previousRound))}</span> : null}
                     {!cut && (cell.figures || cell.dims) ? (
                       <span className={styles.figures}>
                         {cell.figures ? <b>{cell.figures}</b> : null}
@@ -510,7 +524,9 @@ export default function SurveyResultTable({
                       {/* ── เลือกจุดที่จะติดตั้ง — ติ๊กจากที่ช่างแจ้งมา ────────────────
                           ⚠️ `ui-cell-wide` — 🐞 UAT 01/10: ใบที่ล็อก/คนดูอย่างเดียว ชิปเป็นตัวหนังสือ (ไม่มีปุ่ม) ⇒ ข้อยกเว้น
                              "เซลล์ที่มีคอนโทรล" ของ Table.module.css ไม่โดน ⇒ เพดาน 220px ตัดชื่อจุด + ภาพย่อของจุด (ท่าเดียวกับช่องพื้นที่) */}
-                      <td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} className="ui-cell-wide">
+                      {/* `data-long-label` — ป้าย "จุดติดตั้งโดยประมาณ" ยาวกว่าช่องป้าย 5.5rem ของจอซ้อนแถว ⇒ CSS ให้ป้ายขึ้นบรรทัดของตัวเอง
+                          ไม่ตัดเป็น "จุดติดตั้งโดย / ประมาณ" (S2b แก้หลังตรวจจอ head-r3-12) · แถวลงหน้างานไม่มีธง = ทรงเดิม */}
+                      <td data-label={m.source ? DRAWING_SPOT_LABEL : "เลือกจุด"} data-long-label={m.source ? "1" : undefined} className="ui-cell-wide">
                         {m.source ? (
                           /* ⭐ แถวจากแบบ: จุดติดตั้งเป็นตำแหน่งคร่าว ๆ ที่หัวหน้าพิมพ์เองจากแบบ — **ไม่บังคับ และไม่มีการเลือก**
                              (ด่าน "เลือกจุด" ไม่ใช้กับพื้นที่จากแบบ) ⇒ ไม่มีจุด = ขีด + "ไม่บังคับ" ไม่ใช่คำเตือน "ช่างยังไม่แจ้งจุด"

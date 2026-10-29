@@ -19,6 +19,7 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { isWonStage } from '@/lib/salesPlanning';
 import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
+import { detachRequestFromInstallments } from '@/lib/sales/installmentRequestsStore';
 
 /* ใบสั่งขายลูกของใบเสนอราคา — ประโยคของด่าน "งวดที่ย้ายไปจากใบนี้" ตอนลบใบเสนอราคา (route ใช้คำเดียวกับพรีวิว) */
 export const QUOTATION_CHILD_ORDERS = 'ใบสั่งขายของใบเสนอราคานี้';
@@ -87,6 +88,10 @@ export async function dealForcePreview(supabase, deal, { project = null } = {}) 
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ดีล')], blocked: true };
   }
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { dealId: id }); }
+  catch (exciseError) { return { cascade: [], notes: [exciseError.message], blocked: true }; }
+  if (exciseQuotes.length) return { cascade: [], notes: [exciseQuotationBlockMessage(exciseQuotes, 'ดีล')], blocked: true };
 
   // ตรวจไม่ได้ = บล็อกไว้ก่อน (ไม่ใช่ "ไม่มีสัญญา") — พรีวิวเป็นสิ่งที่ผู้ใช้อ่านก่อนกดทำลาย
   let contracts;
@@ -234,12 +239,24 @@ export async function forceDeleteProjectExcise(supabase, projectId) {
 // เจตนา: **ไม่ลบใบยื่นให้อัตโนมัติ** — ใบยื่นเป็นเอกสารภาษีที่อาจยื่นกรมสรรพสามิตแล้ว
 // การลากลบตามเอกสารต้นทางเป็นผลข้างเคียงที่เงียบเกินไป. เส้นทางเดียวกับด่านอื่นทั้งหมด
 // (ยกเลิก SO / ย้อนการอนุมัติ / ออก Rev. ก็ถูกใบยื่นบล็อกเหมือนกัน) คือให้จัดการใบยื่นก่อน
+/* ใบยื่นผูกได้สองทาง (mig 0417): SO ลูกค้า ("salesOrderId") หรือ SO ค่าสรรพสามิต ("exciseSalesOrderId") — ถามทีละคอลัมน์แล้วรวม
+   คอลัมน์ยังไม่มี (ยังไม่รัน mig 0160 / 0417) = ยังไม่มีใบยื่นผ่านทางนั้น → ไม่บล็อก */
+async function filingsByColumns(supabase, values) {
+  const many = Array.isArray(values);
+  const results = await Promise.all(['salesOrderId', 'exciseSalesOrderId'].map((col) => {
+    const query = supabase.from('orders').select('id, status');
+    return many ? query.in(col, values) : query.eq(col, values);
+  }));
+  const byId = new Map();
+  for (const { data, error } of results) {
+    if (error) continue;
+    for (const row of data || []) byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 export async function exciseFilingsOfSalesOrder(supabase, salesOrderId) {
-  const { data, error } = await supabase
-    .from('orders').select('id, status').eq('salesOrderId', salesOrderId);
-  // คอลัมน์ยังไม่มี (ยังไม่รัน mig 0160) = ยังไม่มีใบยื่นในระบบ → ไม่บล็อก
-  if (error) return [];
-  return data || [];
+  return filingsByColumns(supabase, salesOrderId);
 }
 
 export async function exciseFilingsOfQuotation(supabase, quotationId) {
@@ -247,10 +264,36 @@ export async function exciseFilingsOfQuotation(supabase, quotationId) {
     .from('sales_orders').select('id').eq('quotationId', quotationId);
   const ids = (orders || []).map((row) => row.id);
   if (!ids.length) return [];
-  const { data, error } = await supabase
-    .from('orders').select('id, status').in('salesOrderId', ids);
-  if (error) return [];
+  return filingsByColumns(supabase, ids);
+}
+
+// ── ใบเสนอราคาค่าสรรพสามิตที่อ้าง SO ลูกค้า (mig 0414 · `quotations.sourceSalesOrderId` ON DELETE RESTRICT) ────────
+// ทุกสถานะขวาง (FK ไม่สนสถานะ — ใบที่ยกเลิกแล้วก็ยังอ้างอยู่) · RPC บังคับลบไม่ล้างให้ ⇒ ดักก่อนทั้งพรีวิวและลบจริง
+// ไม่งั้นพังกลางทางด้วย 23503 ดิบ (แผนรื้อสรรพสามิต หมวด 5) · อ่านไม่ขึ้น = throw (ด่านหน้างานทำลาย ห้ามกลืนเป็น "ไม่มี")
+// @param scope `{ salesOrderId }` | `{ quotationId }` (SO ลูกของใบ) | `{ dealId }` (SO ทุกใบของดีล)
+export async function exciseQuotationsReferencingOrders(supabase, { salesOrderId = null, quotationId = null, dealId = null } = {}) {
+  let ids = salesOrderId ? [salesOrderId] : [];
+  if (!salesOrderId && (quotationId || dealId)) {
+    const { data, error } = await fetchAllResult(() => supabase
+      .from('sales_orders').select('id')
+      .eq(quotationId ? 'quotationId' : 'dealId', quotationId || dealId)
+      .order('id', { ascending: true }));
+    if (error) throw new Error(`ตรวจใบสั่งขายลูกไม่สำเร็จ: ${error.message}`);
+    ids = (data || []).map((row) => row.id);
+  }
+  if (!ids.length) return [];
+  const { data, error } = await fetchAllResult(() => supabase
+    .from('quotations').select('id, "quoteNumber", status')
+    .in('sourceSalesOrderId', ids)
+    .order('id', { ascending: true }));
+  if (error) throw new Error(`ตรวจใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ: ${error.message}`);
   return data || [];
+}
+
+export function exciseQuotationBlockMessage(quotes = [], documentLabel = 'เอกสาร') {
+  const list = quotes.map((row) => `${row.quoteNumber || row.id}${row.status ? ` (${row.status})` : ''}`).join(', ');
+  return `ลบถาวรไม่ได้แม้ใช้สิทธิ์ผู้ดูแลระบบ: มีใบเสนอราคาค่าสรรพสามิตอ้างใบสั่งขายในนี้อยู่ ${list}`
+    + ' (รวมใบที่ยกเลิกแล้ว) — ลบใบค่าสรรพสามิตเหล่านั้นก่อน แล้วจึงลบ' + documentLabel + 'นี้ได้';
 }
 
 // ── สัญญา: FK RESTRICT ทั้ง dealId และ quotationId (mig 0278) ──────────────
@@ -408,6 +451,10 @@ export async function quotationForcePreview(supabase, quote, { movedOut = [] } =
       blocked: true,
     };
   }
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { quotationId: quote.id }); }
+  catch (exciseError) { return { cascade: [], notes: [exciseError.message], blocked: true }; }
+  if (exciseQuotes.length) return { cascade: [], notes: [exciseQuotationBlockMessage(exciseQuotes, 'ใบเสนอราคา')], blocked: true };
   const cascade = [
     line('ใบสั่งขายที่อ้างใบนี้ — แหล่งยอด Actual', salesOrders),
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
@@ -457,6 +504,10 @@ export async function salesOrderForcePreview(supabase, order, { movedOut = [] } 
   if (filings.length) {
     return { cascade: [], notes: [exciseFilingBlockMessage(filings, 'ใบสั่งขาย')], blocked: true };
   }
+  let exciseQuotes;
+  try { exciseQuotes = await exciseQuotationsReferencingOrders(supabase, { salesOrderId: order.id }); }
+  catch (exciseError) { return { cascade: [], notes: [exciseError.message], blocked: true }; }
+  if (exciseQuotes.length) return { cascade: [], notes: [exciseQuotationBlockMessage(exciseQuotes, 'ใบสั่งขาย')], blocked: true };
   const cascade = [
     line('หลักฐานลายเซ็น (immutable) ของใบนี้', evidence),
     line('เอกสารฉบับตรึงที่ออกจริง + ไฟล์ PDF ถาวร', issued),
@@ -700,11 +751,10 @@ export async function cleanupRequestOrphans(supabase, requestId) {
      และติดล็อก "ถอดคำร้องก่อน" ของการปรับแผน (0377) ถาวรโดยไม่มีปุ่มถอดให้กด
      ⭐ กำหนดวางบิล (26/09): ปุ่ม "ขอใบวางบิลงวดนี้" ผูกงวดตั้งแต่บันทึกร่าง ⇒ "ลบร่างที่ยังไม่ส่ง" กลายเป็นทางปกติ
      ไม่ใช่เคสหายาก · ร่องรอยอยู่ที่ audit ของการลบคำร้อง (before มี id) */
-  const { error: linkError } = await supabase
-    .from('sales_order_installments')
-    .update({ billingRequestId: null, updatedAt: new Date().toISOString() })
-    .eq('billingRequestId', requestId);
-  if (linkError) throw new Error(`ถอดคำร้องออกจากงวดชำระไม่สำเร็จ: ${linkError.message}`);
+  /* ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวชี้ของงวดไม่ล้างทิ้งตรง ๆ แล้ว: คำร้องอื่นของงวดเดียวกันขึ้นเป็นตัวชี้แทน
+     (`detachRequestFromInstallments` → `syncBillingPointers` ตัวเขียนตัวชี้ที่เดียว) · ล้าง `installmentId` ของคำร้องนี้ก่อนลบด้วย */
+  const { error: linkError } = await detachRequestFromInstallments(supabase, requestId);
+  if (linkError) throw new Error(`ถอดคำร้องออกจากงวดชำระไม่สำเร็จ: ${linkError.message || linkError}`);
 }
 
 export async function formulaForcePreview(supabase, formula) {

@@ -11,6 +11,7 @@ import { notifyUsers } from '@/lib/notifications';
 import { businessDayKey } from '@/lib/datePeriods';
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { businessDate } from '@/lib/businessDate';
+import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { addDays } from '@/lib/sales/paymentCoverage';
 import { BILLING_REMIND_DAYS, DUE_REMIND_DAYS } from '@/lib/sales/billingRule';
@@ -213,7 +214,6 @@ async function loadBellContext(supabase, rows, { withRule = false } = {}) {
   const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const quoteIds = [...new Set((orders || []).map((o) => o.quotationId).filter(Boolean))];
-  const requestIds = [...new Set(rows.map((r) => r.billingRequestId).filter(Boolean))];
   /* ⚠️ `loadUserDirectory(...).catch` ต้องมาก่อน query ของ supabase ในลิสต์นี้ — ยาม supabaseNeverThrows
      ไล่จาก `supabase.from(` ไปหา `.catch(` ตัวถัดไป · วางไว้ท้ายแล้วยามอ่านว่า builder ถูกต่อ `.catch` */
   const [directory, dealResult, customerResult, quoteResult, requestResult] = await Promise.all([
@@ -232,11 +232,11 @@ async function loadBellContext(supabase, rows, { withRule = false } = {}) {
     // สถานะของ QT = ตัวตัดสิน "ร่างที่ใช้ต่อไม่ได้" ของ `pipelineInstallmentLock` (ไม่มีค่า = ด่านไม่ตัดสิน)
     fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
       .from('quotations').select('id, status, "quoteNumber"').in('id', chunk).order('id', { ascending: true }))),
-    /* "ขอใบวางบิลแล้ว" = ลิงก์ที่ชี้คำร้องที่ส่งแล้วและยังไม่ถูกยกเลิก — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด และปุ่มขอใบ
+    /* "ขอใบวางบิลแล้ว" = มีคำร้องของงวดที่ส่งแล้วและยังไม่ถูกยกเลิก — ยกเลิกคำร้องไม่ล้างลิงก์บนงวด และปุ่มขอใบ
        ผูกงวดตั้งแต่บันทึกร่าง ⇒ ต้องอ่านสถานะคำร้องจริง ไม่ใช่ดูแค่ว่า `billingRequestId` มีค่า
-       (กระดิ่งครบกำหนดก็ต้องรู้ — ขอใบแล้วกระดิ่งวางบิลหยุด ⇒ งวดชำระวันวางบิลได้กระดิ่งครบกำหนดแทนการรวม) */
-    fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase
-      .from('dept_requests').select('id, status').in('id', chunk).order('id', { ascending: true }))),
+       (กระดิ่งครบกำหนดก็ต้องรู้ — ขอใบแล้วกระดิ่งวางบิลหยุด ⇒ งวดชำระวันวางบิลได้กระดิ่งครบกำหนดแทนการรวม)
+       ⭐ หลายคำร้องต่องวด (mig 0413) — ตัวโหลดเดียวกับทุกจอ (ตามงวด ∪ ตามตัวชี้) */
+    loadInstallmentRequests(supabase, rows, { select: 'id, status' }),
   ]);
   const failed = dealResult.error || customerResult.error || quoteResult.error || requestResult.error;
   if (failed) return { error: failed.message };

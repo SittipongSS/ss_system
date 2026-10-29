@@ -66,12 +66,16 @@ test('ขาดวันรับของ = ไม่มีวันรับ�
   assert.match(page, /delivery: deliveryFilter/);
   const listFilter = readFileSync(join(process.cwd(), 'src/lib/sales/dealListFilter.js'), 'utf8');
   assert.match(listFilter, /filters\.delivery\.includes\(dealDeliveryState\(deal\)\)/);
-  assert.match(page, /inScopeDeal\(d\) && dealMissingDelivery\(d\)/);
-  // ล้างตัวกรองทั้งหมดต้องล้างวันรับของด้วย · ปุ่มบนแถบเตือนล้างตัวกรอง/คำค้นอื่นก่อน (จำนวนบนแถบจะได้ตรงกับตาราง)
+  /* แถบเตือนนับด้วยตัวตัดสินเดียวกับตาราง (ตรวจตัวเลข M11/M12 2026-10-20 · lib/sales/dealListFilter.js)
+     ตัวกรอง 'missing' ของตาราง = dealDeliveryState(d) === 'missing' = dealMissingDelivery(d) (เทสต์ข้างบน) */
+  assert.match(page, /const missingDeliveryPick = useMemo\(\(\) => dealListPick\(\{ delivery: "missing" \}\), \[\]\)/);
+  assert.match(page, /dealPickRows\(deals, missingDeliveryPick, pickCtx\)/);
+  // ล้างตัวกรองทั้งหมดต้องล้างวันรับของด้วย · ปุ่มบนแถบเตือนตั้งตัวกรองทั้งชุด + ล้างคำค้น (จำนวนบนแถบจะได้ตรงกับตาราง)
   assert.match(page, /onClear=\{\(\) => \{[^}]*setDeliveryFilter\(\[\]\)/);
-  const show = page.slice(page.indexOf('const showMissingDelivery'), page.indexOf('const showMissingDelivery') + 400);
-  for (const setter of ['setStageFilter([])', 'setTypeFilter([])', 'setDueFilter([])', 'setReviewFilter([])', 'setQuery("")', 'setDeliveryFilter(["missing"])']) {
-    assert.ok(show.includes(setter), `showMissingDelivery ต้องเรียก ${setter}`);
+  assert.match(page, /const showMissingDelivery = \(\) => applyDealPick\(missingDeliveryPick\);/);
+  const apply = page.slice(page.indexOf('const applyDealPick'), page.indexOf('const applyDealPick') + 400);
+  for (const setter of ['setStageFilter([...pick.stage])', 'setTypeFilter([...pick.type])', 'setDueFilter([...pick.due])', 'setReviewFilter(', 'setQuery("")', 'setDeliveryFilter([...pick.delivery])']) {
+    assert.ok(apply.includes(setter), `applyDealPick ต้องเรียก ${setter}`);
   }
   assert.match(page, /onClick=\{showMissingDelivery\}/);
 });

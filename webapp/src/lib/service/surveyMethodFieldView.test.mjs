@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { surveyCrewGaps } from './survey.js';
+import { surveyCrewGaps, surveyZoneSavePayload } from './survey.js';
 import { surveySpotSubmitReason } from './surveySpotPhotos.js';
 import {
   surveyDrawingZoneView,
@@ -293,7 +293,8 @@ test('🔴 แถบของช่างบนใบที่ไม่มีพ
 test('ใบผสม · ช่าง (hideDrawing): เห็นสองแถวที่ต้องวัด + บรรทัด "อีก 1 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด"', () => {
   const view = surveyZoneListView({ zones: mixedSheet(), filesByZone: mixedFiles(), ...CREW_LIST, hideDrawing: true });
   assert.deepEqual(view.rows.map((r) => r.id), ['z1', 'z2'], 'พื้นที่จากแบบไม่อยู่ในรายการของช่าง');
-  assert.deepEqual(view.rows.map((r) => r.index), [1, 2], 'เลขแถวนับเฉพาะแถวที่เห็น');
+  /* มติเจ้าของ S2b-O6 (19/10): เลขแถว = ลำดับในใบ ตรงกับเลขจุด "จุด 3.2" — ห้อง MD เป็นพื้นที่ที่สามของใบ (เดิมนับเฉพาะแถวที่เห็น = 2) */
+  assert.deepEqual(view.rows.map((r) => r.index), [1, 3], 'เลขแถวเป็นลำดับในใบ — เลขข้ามได้ บรรทัด drawingNote บอกเหตุ');
   assert.deepEqual(view.rows.map((r) => r.state), ['done', 'done']);
   assert.deepEqual(view.rows.map((r) => [r.method, r.chip]), [['onsite', 'ลงหน้างาน'], ['onsite', 'ลงหน้างาน']],
     'ชิปตามกติกาเดียวกับจอหัวหน้า (ใบมีพื้นที่จากแบบ) — จอของช่างจะวาดหรือไม่เป็นเรื่องของงวด S2b');
@@ -344,7 +345,7 @@ test('ใบผสม: เลขจุดในหมายเหตุยัง
   const files = mixedFiles({ mdFull: false });
   const crew = surveyZoneListView({ zones: mixedSheet(), filesByZone: files, ...CREW_LIST, hideDrawing: true });
   const row = crew.rows[1];
-  assert.deepEqual([row.id, row.index, row.state], ['z2', 2, 'todo']);
+  assert.deepEqual([row.id, row.index, row.state], ['z2', 3, 'todo'], 'เลขแถวตรงกับเลขจุดในหมายเหตุ (มติ S2b-O6)');
   assert.equal(row.spotNote, 'จุด 3.2 ยังไม่มีรูป', 'ห้อง MD เป็นพื้นที่ที่สามของใบ');
   assert.equal(surveySpotSubmitReason(mixedSheet(), files), 'ห้อง MD · จุด 3.2 ยังไม่มีรูป', 'แถบและ route พูดเลขเดียวกับแถว');
   assert.deepEqual(crew.leftNames, [], 'ขาดแค่รูปจุดไม่อยู่ใน "ยังขาด" (กติกาเดิม)');
@@ -428,14 +429,16 @@ test('ช่างบนใบที่ไม่เหลือพื้นท�
   const zones = [shop()];
   const list = surveyZoneListView({ zones, filesByZone: {}, ...CREW_LIST, hideDrawing: true });
   assert.deepEqual(list.rows, []);
-  assert.equal(list.drawingNote, 'อีก 1 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด');
+  // S2b แก้หลังตรวจจอ crew-q6: ไม่มีแถวให้เห็นเลย = "ทั้ง n …" (เดิม "อีก" ไม่มีอะไรนำหน้า)
+  assert.equal(list.drawingNote, 'ทั้ง 1 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด');
   assert.equal(list.emptyReason, 'drawing');
   assert.equal(list.progressText, 'จากแบบ 1 พื้นที่');
 
   // พื้นที่ลงหน้างานถูกตัดหมด เหลือแต่จากแบบ — ยังมีแถวที่ตัดให้เปิดดู แต่เหตุที่ไม่มีอะไรให้วัดคือเรื่องเดียวกัน
+  // ⇒ คำ "ทั้ง" ตามสัญญาณเดียวกับ `emptyReason` (แถวที่ตัดไม่ทำให้กลับเป็น "อีก" · crew-q6 รอบตรวจ)
   const allCut = surveyZoneListView({ zones: [cutZone(), shop(), restroom()], filesByZone: {}, ...CREW_LIST, hideDrawing: true });
   assert.deepEqual(allCut.rows.map((r) => [r.id, r.state]), [['z4', 'cut']]);
-  assert.equal(allCut.drawingNote, 'อีก 2 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด');
+  assert.equal(allCut.drawingNote, 'ทั้ง 2 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด');
   assert.equal(allCut.emptyReason, 'drawing');
 
   // หัวหน้า (ไม่ซ่อน) ไม่มีทั้งบรรทัดและเหตุ — เขาเห็นแถวจริง
@@ -863,7 +866,8 @@ test('ป้ายที่มาของพื้นที่ที่ถู�
 
 /* ── UAT ถ่ายจอ S2b · บทบาทช่าง (12/10) ─────────────────────────────────────────────────────────── */
 
-const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดกับของจริงแล้วกดบันทึกอีกครั้ง';
+/* ประโยคของด่านขนาด (`survey.js`) — S2b แก้หลังตรวจจอ crew-q3 + head-rc-q2 (รวมสองมติ · FIX-PLAN §0.1): บันทึกครั้งเดียวยืนยันทั้งขนาดและภาพกว้าง */
+const RESAVE = 'พื้นที่นี้เพิ่งกลับมาเป็นลงหน้างาน — ตรวจขนาดและภาพกว้างแล้วกดบันทึกอีกครั้ง';
 /* ห้อง MD ที่เคยเป็นจากแบบแล้วถูกสลับกลับ — ของครบทุกข้อจากรอบก่อน เหลือแค่ "ยังไม่ถูกบันทึกหลังสลับ" */
 const mdBack = (extra = {}) => md({ method: 'onsite', methodChangedAt: '2026-10-08T02:00:00.000Z', ...extra });
 
@@ -958,4 +962,145 @@ test('🐞 "ถัดไป" ของช่าง (hideDrawing) ไม่พา
   assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'd1', hideDrawing: true }).target, null);
   const next = surveyNextStep({ zones: [lobby(), md()], filesByZone: files, zoneId: 'd1', hideDrawing: true });
   assert.equal(next.label, 'ถัดไป: ห้อง MD');
+});
+
+/* ══ S2b แก้หลังตรวจจอ — กลุ่ม G (รายการ · ท้ายหน้าพื้นที่ · ตัวเลื่อน · "ถัดไป" · กล่องส่งงาน/ยอดรวม · จอของรายการ) ══════════ */
+
+test('S2b-O6 · ช่าง: พื้นที่จากแบบอยู่ลำดับแรก — แถวที่เห็นได้เลข 2 กับ 3 (ลำดับในใบ) ตรงกับเลขจุดในหมายเหตุ · หัวหน้าเห็นเลขเดียวกัน', () => {
+  const zones = [shop(), reception(), md()];
+  const files = { z1: receptionFiles(), z2: mdFilesShort() };
+  const crew = surveyZoneListView({ zones, filesByZone: files, ...CREW_LIST, hideDrawing: true });
+  assert.deepEqual(crew.rows.map((r) => [r.id, r.index]), [['z1', 2], ['z2', 3]]);
+  assert.equal(crew.rows[1].spotNote, 'จุด 3.2 ยังไม่มีรูป', 'เลขบนวงของแถว (3) = เลขหน้าจุด 3.x');
+  assert.equal(crew.drawingNote, 'อีก 1 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด', 'บรรทัดที่บอกเหตุที่เลข 1 หายไป');
+  const head = surveyZoneListView({ zones, filesByZone: files, canDecide: true, visit: VISIT });
+  assert.deepEqual(head.rows.map((r) => [r.id, r.index]), [['d2', 1], ['z1', 2], ['z2', 3]]);
+  // แถวที่ตัดนับอยู่ในลำดับใบ (ตัวนับ k ของรูปจุดก็นับ) — แถวหลังมันไม่เลื่อนเลข
+  const withCut = surveyZoneListView({ zones: [cutZone(), shop(), md()], filesByZone: files, ...CREW_LIST, hideDrawing: true });
+  assert.deepEqual(withCut.rows.map((r) => [r.id, r.index]), [['z4', 1], ['z2', 3]]);
+});
+
+test('crew-q6 · จอช่างของใบจากแบบทั้งใบ: บรรทัด "ทั้ง n …" · หัวรายการ "พื้นที่" · สองบานที่บานขวาว่างพิมพ์ประโยคที่เดียว', () => {
+  const desk = surveyZoneListView({ zones: caseA(), filesByZone: caseAFiles(), ...CREW_LIST, hideDrawing: true });
+  assert.deepEqual([desk.rows, desk.emptyReason], [[], 'drawing']);
+  assert.equal(desk.drawingNote, 'ทั้ง 3 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด');
+  // แถวที่ตัดหนึ่งแถว + ที่เหลือจากแบบ = ยังไม่มีอะไรให้วัด ⇒ "ทั้ง" — หัว · คำ · การพิมพ์ที่เดียว เดินตามสัญญาณเดียว (`emptyReason`)
+  // 🐞 รอบตรวจ: เดิมเลือกคำจากจำนวนแถวที่เห็น (นับแถวที่ตัด) ⇒ หัว "พื้นที่" แต่บานขวาว่างพิมพ์ "อีก 1 …" ไม่มีอะไรนำหน้า
+  const cutOnly = surveyZoneListView({ zones: [cutZone(), shop()], filesByZone: {}, ...CREW_LIST, hideDrawing: true });
+  assert.deepEqual([cutOnly.rows.length, cutOnly.emptyReason, cutOnly.drawingNote],
+    [1, 'drawing', 'ทั้ง 1 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด']);
+  // ยังมีพื้นที่ลงหน้างานให้วัด = "อีก" เดิม · ไม่มีเหตุว่าง (รายการพิมพ์บรรทัดเองตามเดิม)
+  const mixed = surveyZoneListView({ zones: [reception(), shop()], filesByZone: {}, ...CREW_LIST, hideDrawing: true });
+  assert.deepEqual([mixed.rows.length, mixed.emptyReason, mixed.drawingNote],
+    [1, null, 'อีก 1 พื้นที่หัวหน้าประเมินจากแบบ — ไม่ต้องวัด']);
+
+  const LIST = readFileSync(new URL('../../components/service/SurveyZoneList.js', import.meta.url), 'utf8');
+  const PAGE = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(LIST, /const deskOnlyForCrew = view\?\.emptyReason === "drawing";/);
+  assert.match(LIST, /\{labelled \|\| deskOnlyForCrew \? "พื้นที่" : "พื้นที่ที่ต้องวัด"\}/);
+  assert.match(LIST, /const view = paneEmpty && listView\?\.emptyReason === "drawing" \? \{ \.\.\.listView, drawingNote: null \} : listView;/,
+    'บานขวาว่างพูดประโยคนี้แล้ว ⇒ รายการไม่พิมพ์ซ้ำ');
+  assert.match(PAGE, /paneEmpty=\{split && !shownZone\}/);
+  assert.match(PAGE, /\{listView\.emptyReason === "drawing" \? listView\.drawingNote/, 'สถานะว่างของบานขวายังพูดบรรทัดของตัวตัดสิน');
+});
+
+test('crew-q5 · ท้ายหน้าของคนดูอย่างเดียว: พื้นที่จากแบบที่ยังว่าง = "ยังไม่มีผลประเมินจากแบบ" · ลงหน้างาน = "ยังไม่มีผลวัด" · คนแก้ได้คำเดิม', () => {
+  const drawingFoot = surveyZoneFooterView({ zone: restroom(), files: [], viewerKind: 'readonly' });
+  assert.deepEqual([drawingFoot.tone, drawingFoot.head, drawingFoot.sub], ['plain', 'ยังไม่มีผลประเมินจากแบบ', 'ขาด: ขนาด · ภาพแบบ']);
+  const onsiteFoot = surveyZoneFooterView({ zone: treatment(), files: [], viewerKind: 'readonly' });
+  assert.deepEqual([onsiteFoot.tone, onsiteFoot.head], ['plain', 'ยังไม่มีผลวัด']);
+  assert.equal(surveyZoneFooterView({ zone: restroom(), files: [], viewerKind: 'head' }).head, 'ยังไม่ได้บันทึกค่าของพื้นที่นี้');
+});
+
+test('head-r3-34 · พื้นที่จากแบบที่ยังไม่มีภาพแบบ: พิมพ์อยู่/กำลังบันทึก บรรทัดที่สองยังเป็น "ขาด: ภาพแบบ" · มีภาพแบบแล้ว = บรรทัดรูปเดิม', () => {
+  const typing = surveyZoneFooterView({ zone: shop(), files: [], viewerKind: 'head', dirty: true, draftSummary: 'ขนาด 1 ส่วน' });
+  assert.deepEqual([typing.head, typing.sub], ['กดบันทึกเพื่อเก็บ ขนาด 1 ส่วน', 'ขาด: ภาพแบบ']);
+  assert.equal(surveyZoneFooterView({ zone: shop(), files: [], viewerKind: 'head', busy: true }).sub, 'ขาด: ภาพแบบ');
+  // PDF ในช่องผังไม่ปลดข้อ · กำลังส่งรูป = ต่อจำนวนที่กำลังส่ง (คำเดิมของบรรทัดรูป)
+  const pdf = [planFile('ATT-9', 'แบบ.pdf', 'application/pdf')];
+  assert.equal(surveyZoneFooterView({ zone: shop(), files: pdf, viewerKind: 'head', dirty: true }).sub, 'ขาด: ภาพแบบ');
+  assert.equal(surveyZoneFooterView({ zone: shop(), files: [], viewerKind: 'head', dirty: true, uploading: 1 }).sub, 'ขาด: ภาพแบบ · กำลังส่ง 1');
+  assert.equal(surveyZoneFooterView({ zone: lobby(), files: caseAFiles().d1, viewerKind: 'head', dirty: true }).sub,
+    'ภาพแบบขึ้นแล้ว 1 · รูปไม่ต้องรอบันทึก');
+
+  // รอบตรวจ: ค่าที่พิมพ์ยังติดด่าน (พิมพ์กว้างช่องแรก — ของจริงจาก `surveyZoneSavePayload`) = "ขาด: ภาพแบบ" ยังอยู่หน้าคำแนะนำเดิม
+  const { blocker } = surveyZoneSavePayload({ parts: [{ id: 'p1', label: 'A', widthM: 4, lengthM: null, heightM: null }] });
+  assert.ok(blocker, 'ขนาดไม่ครบต้องติดด่าน');
+  const half = surveyZoneFooterView({ zone: shop(), files: [], viewerKind: 'head', dirty: true, saveBlocker: blocker });
+  assert.deepEqual([half.tone, half.head, half.sub, half.save.enabled], ['dirty', blocker,
+    'ขาด: ภาพแบบ · แก้ให้ครบแล้วกดบันทึก · ออกจากพื้นที่นี้ก่อนบันทึก ระบบจะถามก่อนทิ้งค่าที่พิมพ์', false]);
+  // มีภาพแบบแล้ว / ลงหน้างาน = คำแนะนำเดิมทุกตัวอักษร
+  for (const [zone, files] of [[lobby(), caseAFiles().d1], [treatment(), []]]) {
+    assert.equal(surveyZoneFooterView({ zone, files, viewerKind: 'head', dirty: true, saveBlocker: blocker }).sub,
+      'แก้ให้ครบแล้วกดบันทึก · ออกจากพื้นที่นี้ก่อนบันทึก ระบบจะถามก่อนทิ้งค่าที่พิมพ์');
+  }
+});
+
+test('crew-q8 · ช่างตามลิงก์เข้าพื้นที่จากแบบ: ไม่มีตัวเลื่อน (ไม่มีจุดกลวง ไม่มีลูกศรที่กดไม่ได้) · พื้นที่ของเขาเองยังเลื่อนได้', () => {
+  const zones = [reception(), shop(), md()];
+  const files = mixedFiles();
+  assert.deepEqual(surveyZoneNeighbors(zones, 'd2', files, { hideDrawing: true }),
+    { index: 0, total: 0, prev: null, next: null, dots: [], ariaLabel: '', compactText: null });
+  const own = surveyZoneNeighbors(zones, 'z1', files, { hideDrawing: true });
+  assert.deepEqual([own.index, own.total, own.next, own.dots.length], [1, 2, 'z2', 2]);
+  const head = surveyZoneNeighbors(zones, 'd2', files);
+  assert.deepEqual([head.index, head.total, head.prev, head.next], [2, 3, 'z1', 'z2'], 'หัวหน้า/ผู้วางคิวเลื่อนผ่านพื้นที่จากแบบตามเดิม');
+});
+
+test('head-rc-r2-3 · "ถัดไป" ของหัวหน้าที่กรอกพื้นที่จากแบบได้: พื้นที่สุดท้ายของใบจากแบบ = "กลับไปที่ {พื้นที่ที่ขาด}" · คนอื่นผลเดิม', () => {
+  const restroomDone = restroom({ parts: [part('dp3', 4, 3, 2.6)], surveyedAt: '2026-10-07T04:40:00.000Z', surveyedByName: 'Arnon Aunsapwilai' });
+  const sheet = [lobby(), shop(), restroomDone];
+  const files = { ...caseAFiles(), d3: [planFile('ATT-23', 'แปลนชั้น 2.jpg', 'image/jpeg')] }; // โซนขายหน้าร้าน (d2) ยังไม่มีภาพแบบ
+  const last = surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'd3', drawingEditable: true });
+  assert.deepEqual([last.target?.id, last.target?.back, last.label], ['d2', true, 'กลับไปที่ โซนขายหน้าร้าน']);
+  assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'd1', drawingEditable: true }).label, 'ถัดไป: โซนขายหน้าร้าน');
+  // ผู้วางคิว (ไม่ส่ง / false) = ผลเดิม: ยืนที่พื้นที่สุดท้ายไม่มีปลายทาง
+  assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'd3' }).target, null);
+  assert.equal(surveyNextStep({ zones: sheet, filesByZone: files, zoneId: 'd3', drawingEditable: false }).target, null);
+
+  // ใบผสม: งานของนัดมาก่อน — ช่างขาดที่อื่น > "ถัดไป: ส่งงาน" > พื้นที่จากแบบที่ยังขาด
+  const mixed = [reception(), shop(), md()];
+  const step = (extra) => surveyNextStep({ zones: mixed, filesByZone: mixedFiles(), zoneId: 'z1', drawingEditable: true, ...extra }).label;
+  assert.equal(step({ canSubmit: true }), 'ถัดไป: ส่งงาน');
+  assert.equal(step({ canSubmit: false }), 'ถัดไป: โซนขายหน้าร้าน');
+  const crewGap = surveyNextStep({
+    zones: [reception(), shop(), md({ parts: [] })], filesByZone: mixedFiles(), zoneId: 'z1', drawingEditable: true,
+  });
+  assert.equal(crewGap.label, 'ถัดไป: ห้อง MD', 'ของช่างที่ยังขาดมาก่อนพื้นที่จากแบบ');
+  // หน้าส่งธงนี้เฉพาะหัวหน้าบนใบที่ยังไม่ล็อก
+  const PAGE = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(PAGE, /drawingEditable: canDecide && !view\.flags\.locked,/);
+});
+
+test('crew-q4 · พื้นที่ที่สลับกลับยังไม่บันทึกยืนยัน: กล่องส่งงานไม่พิมพ์ขนาดเดิม · ยอดรวมและบรรทัดข้างแท็บไม่นับ ตร.ม./ลบ.ม. ของมัน · ภาพกว้างยังนับ', () => {
+  const zones = [reception(), mdBack()];
+  const files = { z1: receptionFiles(), z2: mdFilesFull() };
+  for (const viewerKind of ['crew', 'senior', 'head']) {
+    const view = surveySubmitView({ outcome: 'entered', visit: VISIT, zones, filesByZone: files, viewerKind, nowKey: NOW });
+    const row = view.rows.find((r) => r.id === 'z2');
+    assert.deepEqual([row.state, row.figures, row.note], ['miss', null, 'ขาด: ขนาด'], viewerKind);
+    assert.deepEqual(view.totals, { zones: 2, areaSqm: 48, volumeCbm: 144, wide: 3, spots: 5 }, viewerKind);
+    assert.deepEqual(view.totalsText, { label: 'รวม 2 พื้นที่', figures: '48 ตร.ม. · 144 ลบ.ม.', counts: 'ภาพกว้าง 3 · จุด 5' }, viewerKind);
+  }
+  for (const hideDrawing of [false, true]) {
+    assert.equal(surveySheetTotalsText({ zones, filesByZone: files, hideDrawing }), 'รวม 48 ตร.ม. · 144 ลบ.ม. · ภาพกว้าง 3 · จุด 5',
+      `hideDrawing = ${hideDrawing}`);
+  }
+  // บันทึกยืนยันหลังสลับแล้ว = นับตามเดิมทุกที่
+  const saved = [reception(), mdBack({ surveyedAt: '2026-10-08T03:00:00.000Z' })];
+  assert.equal(surveySheetTotalsText({ zones: saved, filesByZone: files }), 'รวม 78 ตร.ม. · 228 ลบ.ม. · ภาพกว้าง 3 · จุด 5');
+  const after = surveySubmitView({ outcome: 'entered', visit: VISIT, zones: saved, filesByZone: files, nowKey: NOW });
+  assert.equal(after.rows.find((r) => r.id === 'z2').figures, '30 ตร.ม. · 84 ลบ.ม.');
+  assert.equal(after.totals.areaSqm, 78);
+});
+
+test('planner-minor-3 · บานซ้ายของใบที่มีพื้นที่จากแบบ: ข้อขนาดที่มีตัวเลขซ่อนคำ "ขนาด" จากตา + ช่องไฟข้อแคบลง — สามข้อของแถวลงหน้างานอยู่บรรทัดเดียว', () => {
+  const CSS = readFileSync(new URL('../../components/service/SurveyZoneList.module.css', import.meta.url), 'utf8');
+  assert.match(CSS, /\.wrap\[data-layout="split"\] \.row:has\(\.codeLine\[data-tagged\]\) \.marks \{ column-gap: var\(--space-2\); \}/);
+  assert.match(CSS, /\.wrap\[data-layout="split"\] \.row:has\(\.codeLine\[data-tagged\]\) \.mark\[data-key="size"\]:has\(\.markValue\) \.markLabel \{\s*position: absolute;[^}]*clip-path: inset\(50%\);/,
+    'ซ่อนจากตาแบบเดียวกับทรงคอลัมน์ — โปรแกรมอ่านจอยังอ่าน "ขนาด"');
+  // ผูกกับ data-tagged — แถวของใบลงหน้างานล้วน (ไม่มีป้ายวิธี) ไม่ถูกแตะ
+  const rules = CSS.match(/[^{}]*\{[^}]*column-gap: var\(--space-2\)[^}]*\}/g) || [];
+  assert.equal(rules.length, 1);
+  assert.ok(rules.every((r) => r.includes('[data-tagged]')), rules.join('\n'));
 });

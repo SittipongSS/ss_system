@@ -329,3 +329,60 @@ test('⭐ หน้าจัดคิวส่งของที่โมดั�
   assert.match(tag, /rosterState=\{rosterState\}/);
   assert.match(live(page), /const rosterState = technicians\.length \? "ready"\s*: techStatus === "error" \? "error"\s*: techStatus === "idle" \|\| techStatus === "loading" \? "loading" : "ready";/);
 });
+
+/* ── บรรทัด "มีร่างที่เสนอวันใน… n ใบ — ดูในรายการงาน" (ตรวจตัวเลข 20/10 · M24e) ──
+   🐞 กดแล้วตั้งชิปสัปดาห์แต่ไม่ล้างคำค้น ⇒ n มาจาก `draftsInRange` (หลังกรองทีม ไม่ขึ้นกับคำค้น) แต่รายการตามคำค้นที่ค้างอยู่
+      (ค้น "SV-05" แล้วกด ⇒ ได้ 0 จาก 2) · ⭐ ทรงเดียวกับปุ่มตัวเลขคำร้อง (`showRequestCards`) ที่ล้างคำค้นอยู่แล้ว */
+test('🔴 M24e: ปุ่ม "ดูในรายการงาน" ของบรรทัดร่างสัปดาห์ล้างคำค้นพร้อมตั้งชิป — เลขบนบรรทัด = แถวที่ขึ้น', () => {
+  const src = live(page);
+  const handler = src.match(/setWithin\(\{ from: range7\.from, to: range7\.to \}\);[\s\S]*?scrollIntoView/);
+  assert.ok(handler, 'หาตัวรับคลิกของบรรทัดร่างสัปดาห์ไม่เจอ');
+  assert.match(handler[0], /setSearch\(""\);/, 'ต้องล้างคำค้น — n ไม่ขึ้นกับคำค้น');
+  assert.match(handler[0], /setQuery\(\{ tab: null, range: null \}\);/, 'ต้องพาไปถังรอจัด');
+  assert.match(src, /draftsInRange\(queue\.visits, range7, teamFilter, crewByUser\)/, 'n นับสัปดาห์เดียวกับชิป (range7) หลังกรองทีม');
+  // ปุ่มตัวเลขคำร้อง (ทรงต้นแบบ) ยังล้างคำค้นอยู่
+  assert.match(src.match(/const showRequestCards = \(\) => \{[\s\S]*?\n {2}\};/)[0], /setSearch\(""\);/);
+});
+
+/* ═══ แถบเครื่องมือสองแผง: คำใบ้ช่องค้นหา + ปุ่ม "สัปดาห์นี้" (UAT S4 T13 · งานเก็บกวาด layout nits) ═══
+   🐞 คำใบ้ช่องค้นหาเดิมกว้าง 342px ในช่อง 301px (1440) / 268px (375) ⇒ ตัดกลางตัวอักษรหลัง "เจ้าหน้าที่ เ"
+   🐞 ที่ 375 ป้ายสัปดาห์ขั้นต่ำ 190px บีบ "สัปดาห์นี้" เหลือ 56.6px ⇒ ขึ้นสองบรรทัดในปุ่มสูง 40px
+   ⚠️ ยามอ่านซอร์ส — ตัวเลขพิกเซลวัดจากจอจริงที่ mockups/layout-nits (ไม่ใช่ที่นี่) */
+const pageCss = readFileSync(new URL('../../app/service/schedule/page.module.css', import.meta.url), 'utf8');
+const cssLive = pageCss.replace(/\/\*[\s\S]*?\*\//g, '');
+/* อักษรที่กินที่แนวนอน — สระบน/ล่าง วรรณยุกต์ ไม้ทัณฑฆาต (U+0E31 · U+0E34–0E3A · U+0E47–0E4E) ซ้อนบนตัวหน้า ไม่นับ */
+const spacingGlyphs = (s) => [...s.replace(/[ัิ-ฺ็-๎]/g, '')].length;
+
+test('🔴 ช่องค้นหารายการงาน: คำใบ้สั้นพอดีช่อง · ชื่อที่โปรแกรมอ่านจอเดิม · การค้นไม่ถูกแตะ (UAT S4 T13)', () => {
+  const src = live(page);
+  const input = src.match(/<label className=\{`search-glass \$\{styles\.search\}`\}>[\s\S]*?<\/label>/)?.[0] || '';
+  assert.ok(input, 'ไม่พบช่องค้นหาของแผงรายการงาน');
+  assert.match(input, /type="search"/);
+  assert.match(input, /aria-label="ค้นหารายการงาน"/, 'ชื่อที่โปรแกรมอ่านจอต้องคงเดิม');
+  assert.match(input, /autoComplete="off"/);
+  assert.match(input, /onChange=\{\(e\) => setSearch\(e\.target\.value\)\}/);
+  const placeholder = input.match(/placeholder="([^"]+)"/)?.[1];
+  assert.ok(placeholder, 'คำใบ้ต้องเป็นสตริงเดียว (ไม่มีคำเฉพาะของคำร้องเหลือให้แยกตามสิทธิ์แล้ว)');
+  assert.equal(placeholder, 'ค้นหา รหัส ไซต์ ลูกค้า ชื่อคน เหตุที่ติด');
+  /* วัดจริง 214px ที่ 29 ตัวที่กินที่ · ช่องแคบสุดบนเดสก์ท็อปคือโน้ตบุ๊ก 1280 (คอลัมน์ 20rem) ราว 237px
+     คำใบ้เดิม 47 ตัว = 342px ⇒ เพิ่มคำเมื่อไรต้องวัดจอใหม่ก่อนขยับเพดานนี้ */
+  assert.ok(spacingGlyphs(placeholder) <= 30, `คำใบ้ยาว ${spacingGlyphs(placeholder)} ตัว — ยาวกลับเมื่อไรถูกตัดอีก`);
+  assert.doesNotMatch(src, /ค้นหา รหัสนัด เลขคำร้อง ไซต์ ลูกค้า ผู้ขอ เจ้าหน้าที่ เหตุที่ติด"/);
+  // การค้นยังเดินผ่านตัวประกอบรายการตัวเดิม (haystack อยู่ที่ scheduleQueueView — เทสต์พฤติกรรมอยู่ที่นั่น)
+  assert.match(src, /const queueView = useMemo\(\(\) => buildScheduleQueue\(\{[\s\S]*?\n\s*search,\n/);
+});
+
+test('🔴 คำใบ้ที่ยาวเกินช่องจบด้วย "…" ไม่ใช่ตัดกลางตัวอักษร — ตั้งทั้งที่ช่องและที่ ::placeholder', () => {
+  assert.match(cssLive, /\.search input,\s*\n\.search input::placeholder \{ text-overflow: ellipsis; \}/);
+});
+
+test('🔴 "สัปดาห์นี้" บรรทัดเดียวทุกจอ — ปุ่มไม่หด ป้ายสัปดาห์เป็นคนหดแทนบนจอแคบ (UAT S4 T13)', () => {
+  const nav = live(page).match(/<div className=\{styles\.weekNav\}>[\s\S]*?<\/div>/)?.[0] || '';
+  assert.match(nav, /<Button [^\n]*?className=\{styles\.thisWeek\}[^\n]*?>สัปดาห์นี้<\/Button>/);
+  const thisWeek = cssLive.match(/\.thisWeek \{[^}]*\}/)?.[0] || '';
+  assert.match(thisWeek, /white-space: nowrap;/);
+  assert.match(thisWeek, /flex: 0 0 auto;/);
+  // ขั้นต่ำ 190px ของป้ายยังอยู่บนจอกว้าง (ลูกศรไม่กระโดดตามความยาวป้าย) · จอแคบปลดเป็น 0
+  assert.match(cssLive, /\.weekLabel \{[^}]*min-width: 190px;/);
+  assert.match(cssLive, /@media \(max-width: 640px\) \{\s*\.weekLabel \{ flex: 1 1 auto; min-width: 0; \}\s*\}/);
+});

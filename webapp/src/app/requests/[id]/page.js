@@ -5,7 +5,7 @@
 // RD/PC: รับเรื่อง → ตอบราคาราย "ชั้นจำนวน" ที่ผู้ขอระบุ หรือกด "ตอบไม่ได้" พร้อมเหตุผล
 // ราคาที่ตอบ = rev ใหม่ของวัสดุตัวเดิมในทะเบียน และเติมกลับบรรทัดในใบขอราคาผลิตให้เอง
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   Building2, CalendarClock, FileText, FolderKanban, Handshake, Hash, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
 } from "lucide-react";
@@ -32,7 +32,11 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { VARIANT_SWITCHABLE_STATUSES, requestVariantLock, requestVariantSideLock } from "@/lib/requests/variantSwitch";
+/* ช่องไฟล์บังคับของรูปแบบคำร้อง (ประเมินจากแบบ = แบบ / ผังพื้นที่) — บล็อกเดียวกับในฟอร์ม โหมดใบที่บันทึกแล้ว (S4 C-2) */
+import RequiredFilesBlock from "@/components/requests/RequiredFilesBlock";
+import {
+  VARIANT_SWITCHABLE_STATUSES, requestVariantAskedOnly, requestVariantLock, requestVariantSideLock,
+} from "@/lib/requests/variantSwitch";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
@@ -41,17 +45,20 @@ import {
   canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService, canIssueSurveyReport, canSendSurveyResult, canViewVisitReport,
 } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
+import { attachmentsSyncStep } from "@/lib/requests/attachmentsSync";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
 import { briefBoard, briefBoardTotals } from "@/lib/requests/briefBoard";
 import submitScope from "@/lib/requests/submitScope";
 import { scentBriefNameError } from "@/lib/requests/scentBriefs";
-import { submitRequestError } from "@/lib/requests/stages";
+import { deleteRequestError, submitRequestError } from "@/lib/requests/stages";
 import { npdWorkRowsError, npdWorkRowsScentError, planNpdWorkRows } from "@/lib/requests/npdWorkRows";
 import { npdUncoveredError, npdUncoveredPairs } from "@/lib/requests/npdPairs";
 import { bulkReadyRows, formulaDevBoard } from "@/lib/requests/formulaDevBoard";
 import { documentBoard } from "@/lib/requests/documentBoard";
 import {
   requestUsesPdr, requestKindMeta, requestNeedsRef, requestPdrRowsPickScent, requestVariantKey,
+  requestRequiredFiles, requestSubmitGapsError, requestVariantChosen, requestVariantFieldLabel, requestVariantLabel,
+  requestVariantLockAfterSubmit,
 } from "@/lib/master/requestTypes";
 import { PDR_SIGNER_FIELDS, pdrValuesFrom } from "@/lib/requests/pdrFields";
 import { pdrTargetValuesFrom } from "@/lib/requests/pdrTargets";
@@ -121,6 +128,8 @@ import useLatestRun from "@/lib/ui/useLatestRun";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { surveyQueueStep } from "@/lib/service/surveyQueue";
+/* สวิตช์ "ประเมินจากแบบ" มาจาก GET ของใบ (`drawingMethodEnabled`) — จอไม่อ่านสวิตช์เอง (S4 §2.7) */
+import { surveyVariantsOff } from "@/lib/service/surveyIntake";
 /* บรรทัดเรื่องเอกสารประเมิน (SU) ในโมดัล "ยังไม่จบ" — ตัวตัดสินล้วน ไม่ลากโค้ดฝั่ง server เข้า bundle (PR-3 §5.2) */
 import { surveyReopenDocumentLine } from "@/lib/service/surveyDocumentView";
 /* ⭐ โมดัลลงคิว/แจ้งกำหนดส่ง + ข้อความกล่องรับเรื่อง — ตัวเดียวกับหน้าจัดคิว (มติเจ้าของ 23/09) */
@@ -128,6 +137,8 @@ import CommitDueDialog from "@/components/requests/CommitDueDialog";
 import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
 /* ชื่อขั้นของรางเมื่อใบประเมินเป็นงานโต๊ะ (ประเมินจากแบบทั้งใบ · งวด S2b กลุ่ม D-2) — ตัวแปลงคำล้วน ไม่มีของ server */
 import { surveyDeskRailSteps } from "@/lib/service/surveyMethodSwitch";
+/* ป้าย "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวในฟอร์มแก้ — view-model ตัวเดียวกับจอรายละเอียดรุ่นเก่า (จอไม่ตัดสินวิธีเอง) */
+import { surveyIntakeSwitchNotes, surveyRequestDeskReady, surveyRequestDrawingSummary } from "@/lib/service/surveyJob";
 import { acknowledgeConfirmCopy } from "@/lib/requests/acknowledgeConfirm";
 
 const STATUS_TONE = {
@@ -164,6 +175,8 @@ const SURVEY_DOCUMENT_POLL_MAX_FAILS = 8;
 
 export default function RequestDetailPage() {
   const { id } = useParams();
+  /* ปุ่ม "ขอยืนยันหน้างาน" บนแถบแจ้งของหน้าหัวข้อ (งวด S5 D-3) พาไปฟอร์มล็อก — ตัวนำทางตัวเดียวของหน้านี้ */
+  const router = useRouter();
   const role = useRole();
   const department = useDepartment();
   const me = useMemo(() => ({ role, department }), [role, department]);
@@ -257,6 +270,20 @@ export default function RequestDetailPage() {
     .sort((a, b) => String(a.name).localeCompare(String(b.name), "th")), [activePeople]);
   // แก้ข้อมูลคำร้อง — ช่องต้องตรงกับ REQUEST_EDITABLE_FIELDS
   const [editDraft, setEditDraft] = useState(null);
+  /* จำนวนไฟล์ในช่องไฟล์บังคับ (ประเมินจากแบบ · S4 C-2/C-3) — มาจากบล็อกบนหน้า (`onCountChange`)
+     ⚠️ `null` = ยังไม่รู้ (กำลังโหลด/โหลดพัง/ไม่มีบล็อก) ⇒ ด่านก่อนส่งข้ามส่วนไฟล์ ให้ server ตัดสิน · ห้ามแปลงเป็น 0 */
+  const [requiredFileCount, setRequiredFileCount] = useState(null);
+  /* 🔴 **แผงไฟล์แนบของใบนี้ซิงก์กัน** (ผลรีวิวรอบแก้ S4) — บล็อกไฟล์บังคับ (การ์ด DRAWINGS / ในฟอร์มแก้) กับการ์ด
+     "ไฟล์แนบของคำร้อง" อ่านไฟล์ชุดเดียวกันแต่ต่างคนต่างโหลด ⇒ แนบแบบในการ์ดทั่วไปแล้ว `requiredFileCount` ค้าง 0
+     (ด่านส่งตีกลับทั้งที่แนบแล้ว) · ลบในการ์ดทั่วไปแล้วบล็อกยังโชว์ (ด่านผ่าน แล้ว server ตอบ 409)
+     ⇒ ทุกแผงรายงานรายการ → ลายมือชื่อต่างจากที่จำ = ขยับ `attachmentsReloadKey` ให้ทุกแผงโหลดใหม่ (ชุดเดิม = หยุด ไม่วน) */
+  const [attachmentsReloadKey, setAttachmentsReloadKey] = useState(0);
+  const attachmentsSignatureRef = useRef(null);
+  const onAttachmentsChange = useCallback((items, { loaded } = {}) => {
+    const step = attachmentsSyncStep(attachmentsSignatureRef.current, items, { loaded });
+    attachmentsSignatureRef.current = step.signature;
+    if (step.bump) setAttachmentsReloadKey((k) => k + 1);
+  }, []);
   const [confirm, setConfirm] = useState(null);     // { kind }
   const [cancelReason, setCancelReason] = useState("");
   // ตีกลับ — ผู้รับเรื่องส่งคืนผู้ยื่นพร้อมเหตุผล (mig 0209)
@@ -952,6 +979,18 @@ export default function RequestDetailPage() {
   const confirmCopy = () => {
     if (!confirm) return {};
     if (confirm.kind === "submit") {
+      /* ⭐ **โมดัลบอกผลลัพธ์ของการส่ง** (S4 C-3b) — หัวข้อที่ล็อกวิธีทันทีหลังส่ง (ทะเบียน `variantLockAfterSubmit` ·
+         ไม่เทียบชื่อหัวข้อ) บอกวิธีที่กำลังจะยื่นต่อท้ายขอบเขต ("3 พื้นที่ · ประเมินจากแบบ → TS")
+         · ประโยค "หลังส่งแล้วเปลี่ยน…ได้ที่ฝ่ายบริการ" ขึ้นเฉพาะตอนสวิตช์เปิด (`drawingMethodEnabled === true` ตรงตัว) —
+           สวิตช์ปิด = ไม่มีใครเปลี่ยนวิธีได้ ประโยคนั้นจะไม่จริง
+         ⚠️ หัวข้ออื่นได้สองประโยคเดิมทุกตัวอักษร (O12) */
+      const variantLocks = requestVariantLockAfterSubmit(req.kind);
+      /* ⭐ **ประโยคของ S4 ขึ้นบรรทัดของตัวเอง** (UAT S4 รอบ 4 ข้อ 13b) — ต่อท้ายด้วย " · " แล้วประโยคเดิมขาดกลาง
+         "ไม่|ได้" ที่ 375px · `\n` เพราะรายละเอียดของกล่องยืนยันเป็น `pre-line` (`.confirm-dialog-detail`)
+         ⚠️ หัวข้ออื่นได้ประโยคเดิมทุกตัวอักษร (O12) — ไม่มีบรรทัดที่สอง */
+      const switchNote = variantLocks && req.drawingMethodEnabled === true
+        ? `\nหลังส่งแล้วเปลี่ยน${requestVariantFieldLabel(req.kind)}ได้ที่ฝ่ายบริการ (หัวหน้า TS)`
+        : "";
       return {
         title: "ส่งคำร้อง",
         /* ⭐ **ถามตัวเดียวกับที่เธรดใช้เล่า** (`submitScope`) — ของเดิมนับเองตรงนี้เป็น
@@ -960,8 +999,10 @@ export default function RequestDetailPage() {
            ทุกใบ** ทั้งที่บรีฟกรอกครบแล้ว ซึ่งอ่านเหมือนข้อมูลหาย · เธรดของใบเดียวกัน
            พูดถูกมาตลอด เพราะมันถามฟังก์ชันนี้ (ผู้ใช้เจอเอง 2026-09-03)
            ⚠️ หน่วยอยู่ในประโยคที่ได้มาแล้ว อย่าต่อ `requestLineNoun` ท้ายอีก */
-        description: `${submitScope(req)} → ${req.dept}`,
-        detail: "ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้",
+        description: variantLocks
+          ? `${submitScope(req)} · ${requestVariantLabel(req)} → ${req.dept}`
+          : `${submitScope(req)} → ${req.dept}`,
+        detail: `ระบบจะออกเลขที่และแจ้งฝ่ายปลายทางทันที — หลังส่งแล้วลบใบไม่ได้${switchNote}`,
         confirmLabel: "ส่งคำร้อง",
       };
     }
@@ -1033,7 +1074,9 @@ export default function RequestDetailPage() {
         confirmLabel: "ปิดเรื่อง",
       };
     }
-    if (req.status === "draft") {
+    /* ด่านเดียวกับ API (`deleteRequestError`) — ร่างที่ถูกตีกลับถือเลข RQ แล้ว (`submittedAt`) ⇒ "ยังไม่ถูกส่ง" ไม่จริง
+       และ server ตอบ 409 (UAT S4 รอบ 4 T09: ฟอร์มแก้บอก "ส่งแล้ว" แต่ปุ่มนี้บอก "ยังไม่ส่ง" ในหน้าเดียว) */
+    if (!deleteRequestError(req)) {
       return {
         title: "ลบคำร้องร่าง",
         description: "คำร้องนี้ยังไม่ถูกส่ง จึงลบทิ้งได้",
@@ -1093,7 +1136,11 @@ export default function RequestDetailPage() {
 
   // ⭐ ตรรกะการประกอบรางอยู่ที่ lib — เทสต์ครอบได้ (บั๊กป้ายซ้ำ/ไฮไลต์ผิดขั้นเกิดตอน
   // มันฝังอยู่ใน JSX ซึ่ง CI มองไม่เห็น)
-  const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, { hasItems });
+  /* งานโต๊ะที่ด่านส่งผลผ่านครบ = ขั้น 5 "ส่งผล" เหมือนไทม์ไลน์ของหน้าเดียวกัน (ตัวตัดสินเดียวกับการ์ดควบคุม · S2b แก้หลังตรวจจอ
+     head-rc-r2-22 — เดิมโหมดแก้ชี้ขั้น 4 ขณะไทม์ไลน์ชี้ขั้น 5) · ใบอื่น = `false` รางเดิมทุกขั้น */
+  const { steps: railSteps, index: workflowIndex } = requestRailSteps(req, {
+    hasItems, deskReady: deskJob && surveyRequestDeskReady(req, { today }),
+  });
   /* งานโต๊ะ: ชื่อขั้นเป็นชุดของงานประเมินจากแบบ (ส่งคำร้อง → รับเรื่อง → รับปากวันส่งผล → ประเมินจากแบบ → ส่งผล → ปิดเรื่อง)
      ชุดเดียวกับรางบนใบประเมิน · เปลี่ยนแค่คำ — ลำดับ รหัสขั้น และตัวชี้ขั้นปัจจุบันไม่ขยับ */
   const railShown = deskJob ? surveyDeskRailSteps(railSteps) : railSteps;
@@ -1164,7 +1211,9 @@ export default function RequestDetailPage() {
           /* ⚠️ บรรทัดถูกล็อก (รับเรื่องแล้ว) = **ไม่ส่ง `items` ไปเลย** — server ถือว่าไม่แตะบรรทัด ·
              🐞 เดิมส่งแถวกลับทุกครั้ง แล้วแถวที่เดินก้าวไปแล้ว (ส่งสูตรแล้ว · ลูกค้าขอแก้ = แถวซ้ำ
              หมวด × กลิ่น) ทำให้แก้แค่ชื่อเรื่องก็โดนตีกลับทั้งใบ (ผลรีวิวก่อน merge 2026-09-11) */
-          const { items: draftItems, ...draftRest } = editDraft;
+          /* ⚠️ ไฟล์ไม่ไปกับ body — `files` / `requiredFiles` เป็นตะกร้าของโหมดสร้าง (File serialize เป็น {} เปล่า)
+             · โหมดแก้อัปไฟล์ทันทีผ่านแผงไฟล์แนบของใบ (S4 C-1) */
+          const { items: draftItems, files: _files, requiredFiles: _requiredFiles, ...draftRest } = editDraft;
           const ok = await call("", {
             method: "PATCH",
             body: JSON.stringify({
@@ -1207,7 +1256,10 @@ export default function RequestDetailPage() {
            ฟังก์ชันตัวเดียวกับที่ route ใช้ตัดสิน 409 · ไม่ถามก่อน = โมดัลเปิดแล้วค่อยโดน
            ตีกลับเป็น toast ใต้โมดัล (บทเรียน 2026-09-03 ข้างบน) */
         const shapeError = submitRequestError(req, req.items || []);
-        const briefNameError = shapeError || scentBriefNameError(req.briefs || [], { stage: "submit" });
+        /* ⭐ ไฟล์บังคับ + วันรับผล ของรูปแบบที่มีวันเดียว (ประเมินจากแบบ · S4 C-3) — ฟังก์ชันตัวเดียวกับ route ส่งคำร้อง
+           ⇒ toast กับ 409 พูดประโยครวมเดียวกัน · จำนวนไฟล์ยังไม่รู้ (`null`) = ข้ามส่วนไฟล์ ให้ server ตัดสิน */
+        const gapsError = shapeError || requestSubmitGapsError(req, { count: requiredFileCount });
+        const briefNameError = gapsError || scentBriefNameError(req.briefs || [], { stage: "submit" });
         if (briefNameError) {
           setToast({ kind: "error", msg: briefNameError });
           return;
@@ -1478,6 +1530,11 @@ export default function RequestDetailPage() {
         kind: "edit",
         icon: Pencil,
         onClick: () => {
+          /* ป้ายวิธีปัจจุบันของพื้นที่ (S2b "จากแบบ") บนรายการอ่านอย่างเดียว — หลังส่งเท่านั้น (S4 T11b):
+             หัวหน้า TS สลับวิธีรายพื้นที่ได้ ⇒ บรรทัด "วิธีที่ฝ่ายขายขอ" ไม่ใช่วิธีปัจจุบัน ต้องมีตัวบอกที่รายการ
+             ⚠️ ร่างไม่ติดป้าย — ไทล์บนฟอร์มเดียวกันสลับได้ แล้วพื้นที่ถูกตั้งตามไทล์ตอนบันทึก (ป้ายค้างจะขัดกับไทล์)
+             server ไม่อ่าน `zones` ของทางแก้ (ใช้แถวจริงของใบ) ⇒ คีย์ `methodTag` ไม่ลงฐาน */
+          const drawingRows = requestVariantAskedOnly(req) ? surveyRequestDrawingSummary(req).rows : {};
           /* ⭐ **ค่าเดียวกับฟอร์มเปิดใบ** — `emptyRequestForm` เติมคีย์ที่เหลือให้ครบ
              (ฟอร์มเป็น controlled ล้วน · คีย์ที่ขาดกลายเป็น uncontrolled input) */
           setEditDraft(emptyRequestForm({
@@ -1506,6 +1563,7 @@ export default function RequestDetailPage() {
                 name: z.zoneId ? null : z.zoneName,
                 floor: z.floor || null,
                 note: z.note || null,
+                methodTag: drawingRows[z.id]?.chip || null,
               })),
               urgent: !!req.urgent,
               urgentReason: req.urgentReason || "",
@@ -1669,13 +1727,13 @@ export default function RequestDetailPage() {
         id: "delete",
         // ผู้ดูแลระบบลบได้ทุกสถานะ (break-glass) — คนอื่นได้เฉพาะร่างของตัวเอง
         // ป้ายต้องบอกตรง ๆ ว่ากำลังใช้สิทธิ์อะไร ไม่ใช่เขียน "ลบร่าง" แล้วลบใบจริง
-        label: isAdmin && req.status !== "draft"
+        label: isAdmin && deleteRequestError(req)
           ? "ลบคำร้อง (ผู้ดูแลระบบ)"
           : "ลบคำร้องร่าง",
         kind: "delete",
         icon: Trash2,
         onClick: () => setConfirm({ kind: "delete" }),
-        visible: isAdmin || (req._mine && req.status === "draft"),
+        visible: isAdmin || (req._mine && !deleteRequestError(req)),
       },
       {
         // ⚠️ อยู่ในกลุ่ม danger เพราะมันผลักงานกลับไปหาคนอื่น แต่ **ไม่ใช่
@@ -1825,7 +1883,37 @@ export default function RequestDetailPage() {
       </DetailCard>
     </>
   );
-  const attachmentsBlock = (
+  /* ช่องไฟล์บังคับของรูปแบบที่ใบนี้ยื่น (ประเมินจากแบบ → แบบ / ผังพื้นที่ · ทะเบียน `requiredFiles`) — ใบอื่น = null */
+  const requiredFilesSpec = requestRequiredFiles(req);
+  /* ⭐ **ไฟล์บังคับของรูปแบบ อยู่เหนือการ์ดไฟล์แนบทั่วไป** (S4 C-2) — บล็อกเดียวกับในฟอร์ม โหมดใบที่บันทึกแล้ว
+     (แผงไฟล์แนบที่ขอ docType เดียว อัป/ลบทันที) · ส่งจำนวนไฟล์ขึ้นมาให้ด่านก่อนส่ง (`requiredFileCount`)
+     ⚠️ **ไม่วาดซ้ำตอนฟอร์มแก้เปิด** — ฟอร์มวาดบล็อกเดียวกันอยู่แล้ว (จอเดียวมีบล็อกเดียว)
+     ⚠️ ไฟล์ที่แนบที่นี่ขึ้นในการ์ดไฟล์แนบทั่วไปด้วย (ป้ายชนิด "สเปก / แบบงาน / บรีฟ") — ยอมรับแล้ว (S4 V6)
+     · สิทธิ์แนบ = นิพจน์เดียวกับการ์ดไฟล์แนบของคำร้องข้างล่าง */
+  const requiredFilesCard = requiredFilesSpec && !editing ? (
+    /* "(บังคับ)" ย้ายจากบรรทัดป้ายของบล็อกขึ้นชื่อการ์ด — **เฉพาะร่าง** (ยังไม่ส่ง หรือถูกตีกลับ) ที่ผู้ขอยังต้องแนบก่อนส่ง
+       🐞 UAT S4 รอบ 4 ซ้ำ (T08): ซ่อนบรรทัดป้ายแล้ว ร่างที่ยังไม่มีไฟล์ไม่มีอะไรบอกว่าไฟล์นี้บังคับ ·
+       ใบที่ส่งแล้วผ่านด่าน ≥ 1 ไฟล์มาแล้ว ⇒ ไม่มีอะไรบังคับคนดูอีก (UAT S4 T15: ผู้วางคิวเห็น "(บังคับ)" บนใบที่รับเรื่องแล้ว) */
+    <DetailCard
+      icon={Paperclip}
+      eyebrow="DRAWINGS"
+      title={req.status === "draft" ? `${requiredFilesSpec.label} (บังคับ)` : requiredFilesSpec.label}
+    >
+      {/* ชื่อการ์ด = ป้ายของบล็อก ⇒ ไม่วาดซ้ำในการ์ด (`hideLabel` · UAT S4 รอบ 4 ข้อ 14) — คำบรรยายยังอยู่ ·
+          ฟอร์มแก้ยังวาดป้าย "(บังคับ)" ตามเดิม (บล็อกเดียวกัน ไม่มีชื่อการ์ดครอบ) */}
+      <RequiredFilesBlock
+        mode="saved"
+        hideLabel
+        spec={requiredFilesSpec}
+        requestId={req.id}
+        canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
+        onCountChange={setRequiredFileCount}
+        onAttachmentsChange={onAttachmentsChange}
+        reloadKey={attachmentsReloadKey}
+      />
+    </DetailCard>
+  ) : null;
+  const attachmentsCard = (
     <>
       {/* ⭐ ไฟล์แนบของ **ทั้งใบ** — ย้ายลงมาจากท้ายราง (2026-08-18)
           ⚠️ **ต้องอยู่ใต้เธรด ไม่ใช่ใต้การ์ดงาน** — ลองวางใต้การ์ดงานแล้ววัดจริงบน
@@ -1840,10 +1928,23 @@ export default function RequestDetailPage() {
           entityId={req.id}
           canEdit={(req._mine || owner) && REQUEST_OPEN_STATUSES.concat("draft").includes(req.status)}
           inlineUpload
+          /* ซิงก์กับบล็อกไฟล์บังคับเฉพาะใบที่มีบล็อกนั้น — ใบอื่นไม่ส่งอะไรเพิ่ม (แผงเดิมทุกตัวอักษร) */
+          {...(requiredFilesSpec ? { onItemsChange: onAttachmentsChange, reloadKey: attachmentsReloadKey } : {})}
+          /* การ์ดนี้กองทุกชนิดของคำร้องไว้ด้วยกัน ⇒ ไฟล์ที่ติดชนิด "สเปก / แบบงาน / บรีฟ" มีป้ายบอก (layout-nits D4)
+             ⚠️ ป้ายขึ้นเฉพาะชนิดที่มีคนเลือก — แนบจากการ์ดนี้ = รูปอ้างอิง · /requests/new = อื่น ๆ ⇒ ไม่มีป้าย ·
+                ไฟล์แบบ/ผังของบล็อกไฟล์บังคับ (ประเมินจากแบบ · S4) ลงชนิด `spec` ⇒ ขึ้นป้ายในการ์ดนี้ (ยอมรับแล้ว S4 V6)
+             (กติกาอยู่ที่ `typePillOf` · เหตุที่ไม่เปิดทุกแผงอยู่ที่ prop `typePills` ของ AttachmentsPanel) */
+          typePills
         />
       </DetailCard>
     </>
   );
+  /* ⚠️ **สองการ์ดห่อด้วย `.stack`** — คอลัมน์ไฟล์ของจอใบประเมิน (`filesCol` ของ SurveyRequestView) เป็น flex
+     ที่ไม่มี gap ⇒ วางสองการ์ดติดกันตรง ๆ = ขอบชนกัน 0px (โรคเดียวกับที่หัว `.stack` เล่าไว้)
+     · ใบที่ไม่มีช่องไฟล์บังคับ = การ์ดเดียวเหมือนเดิมทุกตัวอักษร ไม่มีตัวห่อ */
+  const attachmentsBlock = requiredFilesCard
+    ? <div className={styles.stack}>{requiredFilesCard}{attachmentsCard}</div>
+    : attachmentsCard;
 
   const showKindView = !!KindView && !editing;
   /* สิทธิ์ของคนดูที่หน้าของหัวข้อต้องรู้ — ลิงก์ที่เปิดไม่ได้ต้องไม่โชว์ (กติกา ui-visibility)
@@ -1988,7 +2089,38 @@ export default function RequestDetailPage() {
                กับที่ API ใช้ (`variantSwitchError`) ⇒ ปุ่มที่เทาไว้กับคำตอบของเซิร์ฟเวอร์
                พูดประโยคเดียวกัน · ถามด้วยรูปแบบที่ **กำลังเลือกอยู่ในฟอร์ม** เพื่อให้
                ข้อความอัปเดตตามของที่คนกำลังจะทำ ไม่ใช่ค่าที่บันทึกไว้เมื่อวาน */
-            variantLock={requestVariantLock(req) || requestVariantSideLock(!!req._mine)}
+            variantLock={requestVariantLock(req) || requestVariantSideLock(!!req._mine, req.kind)}
+            /* ⭐ ประเมินจากแบบ (S4 C-1 · §2.7) — ค่าต่างจากหน้าเปิดใบแค่ที่มา: สวิตช์มาจากคีย์ `drawingMethodEnabled`
+               ของ GET ใบนี้ (ไม่มี `variantsPending`) · ใบมี id แล้ว ⇒ บล็อกไฟล์บังคับในฟอร์มอัปทันที (`requestId`)
+               · หลังส่ง `variant` คือ "สิ่งที่ฝ่ายขายขอ" ไม่ใช่ตัวเลือก (`variantAskedOnly` — ด่านสถานะอยู่ที่ variantSwitch) */
+            requestId={req.id}
+            onAttachmentsChange={onAttachmentsChange}
+            attachmentsReloadKey={attachmentsReloadKey}
+            variantsOff={surveyVariantsOff(req.drawingMethodEnabled)}
+            variantAskedOnly={requestVariantAskedOnly(req)}
+            /* ── ของที่ใบที่บันทึกแล้วรู้ ฟอร์มรู้เองไม่ได้ (UAT S4 รอบ 4) ──
+               · วิธีที่บันทึกไว้ — ไทล์ของวิธีที่สวิตช์ปิดยังกดกลับได้ก่อนบันทึก (ข้อ 8 · server ยังตีกลับเหมือนเดิม)
+               · ราคาของการสลับ — ร่างที่หัวหน้าประเมินจากแบบไว้แล้ว สลับเป็นลงหน้างาน = ผลนั้นไม่ถูกใช้ (ข้อ 7 · O8)
+               · ร่างที่ยังไม่เคยส่ง = ลบแล้วเปิดใหม่ได้ (ด่านเดียวกับปุ่มลบ `deleteRequestError` · ข้อ 3)
+               · ยังไม่ถูกรับเรื่อง — คำใบ้ "หัวหน้า TS จะแจ้งวันส่งผลจริงหลังรับเรื่อง" จริงเฉพาะช่วงนี้ (ข้อ 10) */
+            savedVariant={requestVariantChosen(req)}
+            variantSwitchNotes={surveyIntakeSwitchNotes(req)}
+            freshDraft={!deleteRequestError(req)}
+            /* ⭐ ใบยืนยันหน้างาน (งวด S5 D-3) — ดีล/สถานที่/พื้นที่ยกมาจากใบต้นทาง ฟอร์มพูดประโยคล็อกของงวดแทนของ S4
+               · ช่อง "วิธีประเมิน = ลงหน้างาน" ขึ้นเฉพาะตอนยังเป็นร่าง: หลังรับเรื่องหัวหน้าอาจสลับบางพื้นที่เป็นจากแบบแล้ว
+                 (ป้าย "จากแบบ" รายพื้นที่ของรายการอ่านอย่างเดียวบอกแทน) · server ล็อกวิธีไว้ที่ 'standard' อยู่แล้ว (N25) */
+            confirmLock={req.surveyConfirmLink?.confirmOf ? {
+              mode: "edit",
+              original: { docNo: req.surveyConfirmLink.confirmOf.docNo, missing: req.surveyConfirmLink.confirmOf.missing },
+              showMethod: req.status === "draft",
+            } : null}
+            awaitingAck={["draft", "pending"].includes(req.status)}
+            /* ⭐ ใบประเมินที่พื้นที่ที่ยังใช้อยู่ทุกพื้นที่ประเมินจากแบบ — `deskJob` (`surveyNeedsVisit === false` ของตัวโหลด · ค่าเดียวกับที่ทำให้
+               ขั้นงานขึ้น "ประเมินจากแบบ") ⇒ คำใบ้ใต้วันเข้าพื้นที่บอกว่าวันที่กรอกไว้ไม่ถูกใช้ (มติเจ้าของ sales-q3 · S2b แก้หลังตรวจจอ)
+               ⚠️ ใบปน / ใบที่ยังต้องลงหน้างาน / หัวข้ออื่น = `false` ⇒ ประโยคเดิม
+               ⚠️ ร่างก็ได้ `true` ได้ (แถวพื้นที่ของร่างจากแบบ) — ฟอร์มรับไปใช้เฉพาะใบที่ส่งแล้ว (`variantAskedOnly` · `noVisitHint`)
+                  เพราะไทล์ของร่างยังสลับเป็นลงหน้างานได้ */
+            noVisit={deskJob}
             people={signerPeople}
             lockKind
             deferMentions
@@ -2006,6 +2138,11 @@ export default function RequestDetailPage() {
               customerId: req.customerId || null,
               quotation: req.refQuotation?.quoteNumber || req.quotationId || "",
               salesOrder: req.refSalesOrder?.orderNumber || req.salesOrderId || "",
+              /* งวดที่ผูก (mig 0413) — งวดจริง (`linkedInstallment` ที่ server ประกอบ) หรือเลขในแผนของ QT ที่ยังรอใบสั่งขาย
+                 · ฟอร์มแก้โชว์ให้อ่าน · แนบ/ถอดที่การ์ดการชำระของ SO */
+              installment: req.linkedInstallment
+                ? `งวด ${req.linkedInstallment.seq}${req.linkedInstallment.label ? ` · ${req.linkedInstallment.label}` : ""}${req.linkedInstallment.orderNumber ? ` (${req.linkedInstallment.orderNumber})` : ""}`
+                : req.installmentSeq ? `งวด ${req.installmentSeq} ตามแผนใบเสนอราคา — ผูกเมื่อออกใบสั่งขาย` : "",
             }}
             billBaseAmount={req.billBaseAmount ?? null}
             /* ค่าที่แบบฟอร์ม PDR เติมให้ (ผู้ติดต่อ · ที่อยู่ 1.7 · ดีล) — server ประกอบไว้แล้ว
@@ -2121,6 +2258,9 @@ export default function RequestDetailPage() {
           attachments={attachmentsBlock}
           onRefresh={refreshQuietly}
           refreshStalled={refreshStalled}
+          /* ⭐ งวด S5: ปุ่มที่พร้อมพาไปฟอร์มของใบยืนยันหน้างาน (`action.href` จาก server) — ปุ่มที่ติดด่านไม่ถึงตัวนี้
+             (`GatedAction` ของ view บอกเหตุแทน) · ใครกดได้ server ตัดสินแล้วใน `surveyConfirmLink.action` */
+          onDrawingConfirm={(action) => router.push(action.href)}
         />
       ) : (
       <DetailPageLayout

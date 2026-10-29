@@ -11,7 +11,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useResponsiveView } from '@/lib/useResponsiveView';
 import { requestSortDefaultDir } from '@/lib/requests/queueList';
-import { requestPriceSummary } from '@/lib/requests/rowPrices';
 
 /* `sortKey` = แบบเรียงตั้งต้นของหน้านั้น (ดูคำเตือนที่ `REQUEST_SORT_OPTIONS`)
    ⚠️ หน้าไหนส่งค่าอื่นมา **คำโปรยของหน้านั้นต้องพูดตรงกับลำดับที่เห็นจริง** */
@@ -66,29 +65,7 @@ export function useQueueBoard({ sortKey: initialSortKey = 'urgency' } = {}) {
   ]);
 }
 
-// ── ค้นหาในคิว — logic ล้วน ทดสอบได้โดยไม่ต้องมีจอ ────────────────────────
-//
-// ⚠️ **ค้นจากสิ่งที่ตาเห็นในตาราง** (เลขที่ · เรื่อง · ลูกค้า · ชนิด · ฝ่าย) ไม่ใช่จาก
-// ทุกฟิลด์ที่มี — ค้นเจอของที่มองไม่เห็นบนจอแล้วผู้ใช้จะไม่เข้าใจว่าทำไมแถวนี้ขึ้นมา
-export function matchesQueueSearch(request, term, { kindLabel = () => '' } = {}) {
-  const q = String(term ?? '').trim().toLowerCase();
-  if (!q) return true;
-  return [
-    request?.docNo,
-    request?.title,
-    request?.customerName,
-    // รหัสลูกค้า (AR) — ตาเห็นบนแถวแล้ว จึงต้องค้นเจอด้วย (กฎของฟังก์ชันนี้)
-    request?.customerArCode,
-    request?.formulaCode,
-    /* ดีลเป็นคอลัมน์บนคิว (รหัสบน ชื่อล่าง — ดู RequestQueuePanel) และ API ส่งมาครบ
-       ⇒ กติกาของฟังก์ชันนี้เอง ("ตาเห็นบนแถว = ต้องค้นเจอ") บังคับให้มีสองคีย์นี้ */
-    request?.dealCode,
-    request?.dealName,
-    // ⚠️ ส่ง **ทั้งใบ** — ป้ายบนแถวคือ "ชื่อหัวข้อ · รูปแบบ" (`requestKindLabelFull`)
-    // ⇒ ส่งแค่ `kind` แล้วพิมพ์ "NPD" จะหาไม่เจอทั้งที่คำนั้นอยู่บนจอ
-    kindLabel(request),
-    request?.dept,
-    // ชื่อรายการในคอลัมน์ราคา (ม-148) — ตาเห็นบนแถว = ต้องค้นเจอ
-    ...requestPriceSummary(request?.items).lines.map((line) => line.label),
-  ].filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
-}
+/* ── ค้นหาในคิว — ย้ายไป `queueFilter.js` แล้ว (ตรวจตัวเลข 20/10/2026) ───────────────
+   ตารางกับทุกตัวเลขบนหน้าคิวต้องเรียกตัวตัดสินเดียวกัน (`passesQueueFilters`) ซึ่งต้องเป็นไฟล์ล้วน
+   — ไฟล์นี้เป็น "use client" (import `useResponsiveView`) ⇒ ส่งต่อไว้ให้ผู้เรียกเดิมเท่านั้น */
+export { matchesQueueSearch } from '@/lib/requests/queueFilter';

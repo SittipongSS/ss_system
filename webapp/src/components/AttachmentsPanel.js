@@ -23,10 +23,11 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { describeResponseError } from "@/lib/fetchError";
 import {
   Plus, Trash2, Download, Paperclip, X, CheckCircle2, Circle,
-  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera, Check,
+  Eye, FileType, FileSpreadsheet, Link2, Lock, Camera, Check, ExternalLink,
 } from "lucide-react";
 import {
   PHOTO_DELETE_LABEL,
+  panelPhotoSplit,
   photoDeleteConfirm,
   photoTilesView,
   photoUploadsOf,
@@ -43,7 +44,9 @@ import {
   ATTACHMENT_META_FIELDS,
   attachmentTypeLabel,
   documentValidity,
-  isPreviewableImage,
+  isDrawableImage,
+  isUndrawnImage,
+  UNDRAWN_IMAGE_OPEN_TEXT,
   ISSUED_DATE_FIELD,
   MAX_UPLOAD_BYTES,
   MAX_UPLOAD_MB,
@@ -149,7 +152,7 @@ export default function AttachmentsPanel({
   /* โหมด inline + `photoCapture`: **แผ่นรูป** แทนตะแกรง (แผน §10.5 จอหน้างานแบบ A · ม็อก A-3/AT-2/AW-1)
      — รูปที่ขึ้นแล้ว → รูปที่กำลังส่ง ("กำลังส่ง 64%" รายรูป) → แผ่นสุดท้าย "ถ่าย / เลือกรูป"
      ⚠️ ไม่มีแถวหัว (คำใบ้ · ปุ่มถ่ายรูป · ตัวนับ) — แผ่นสุดท้ายคือปุ่ม และจำนวนรูปเป็นของหัวข้อผู้เรียก
-     ⚠️ แผ่นรูปแตะแล้ว **เปิดดูอย่างเดียว** · ลบอยู่ในกล่องดูรูปเต็ม ปุ่ม 44px (× 22px มุมรูปต่ำกว่าเป้านิ้ว)
+     ⚠️ แผ่นรูปแตะแล้ว **เปิดดูอย่างเดียว** · ลบอยู่ในกล่องดูรูปเต็ม ปุ่ม 44px (× 24px มุมรูปต่ำกว่าเป้านิ้ว)
      ⚠️ ขนาดแผ่นปรับผ่านตัวแปร CSS ของผู้เรียก `--attach-tile-cols` / `--attach-tile-h` (ไม่ใช่ prop — ขนาดที่ต้องการ
         ต่างตามจอ ตอบได้ใน media query เท่านั้น) · ใช้ `photoRows` ไม่ได้
      ตรรกะอยู่ที่ `lib/master/attachmentPhotoTiles.js` — ที่นี่วาดอย่างเดียว */
@@ -189,6 +192,13 @@ export default function AttachmentsPanel({
   /* ตัวเลขที่ผู้เรียกขยับเมื่อรายการไฟล์เปลี่ยนจากนอกแผง (ปุ่ม "ใช้รูปนี้เป็นภาพแบบ…" แนบไฟล์ผ่านเส้นคัดลอก) — เปลี่ยน = โหลดรายการใหม่
      ⚠️ 0 (ค่าตั้งต้น) ไม่โหลดซ้ำ — รอบแรกเป็นของ effect เดิม */
   reloadKey = 0,
+  /* โหมด inline: **ป้ายชนิดเอกสาร** ใต้รูปของตะแกรงและบนแถวไฟล์ (layout-nits D4) — ผู้เรียกเปิดเอง · ตอนนี้มีที่เดียว:
+     การ์ด "ไฟล์แนบของคำร้อง" (ทะเบียนมีสามชนิด: รูปอ้างอิง · สเปก/แบบงาน/บรีฟ · อื่น ๆ)
+     ⚠️ **ไม่ใช่ค่าตั้งต้นโดยเจตนา** — โหมด inline ไม่มีที่ให้เลือกชนิด ทุกไฟล์ที่แนบผ่านแผงลง `types[0]` (`inlineType`)
+        ⇒ entity ที่แผงนี้เป็นทางเขียนทางเดียว (ดีล · SO · costing · รายการคำร้อง) ป้ายคือค่าตั้งต้นที่ไม่มีใครเลือก
+        บนทุกรูป (รูปสลิปมัดจำ/PO ของดีลจะขึ้น "บรีฟจากลูกค้า") = ข้อมูลผิดบนจอขาย · เปิดที่ไหน = ชนิดต้องมีทางเขียนอื่นจริง
+     ⚠️ เปิดแล้วก็ขึ้นป้ายเฉพาะ **ชนิดที่มีคนเลือก** — สองชนิดตั้งต้นไม่มีป้ายเลย (กติกาอยู่ที่ `typePillOf`) */
+  typePills = false,
 }) {
   const types = (docTypes && docTypes.length ? docTypes : ATTACHMENT_TYPES[entityType]) || [];
   // แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย — คนที่เปิดดูไม่ได้ ไม่ควรทำลายหลักฐานได้
@@ -198,6 +208,28 @@ export default function AttachmentsPanel({
   const detailed = metaFields.length > 0; // order = ฟอร์มรายละเอียด; อื่นๆ = การ์ด
   // แผ่นรูปมีความหมายเฉพาะกล่องรูปของโหมด inline — ส่งมากับโหมดอื่น = ไม่มีผล (หน้าตาเดิม)
   const tilesMode = photoTiles && inlineUpload && photoCapture;
+  // แผงที่ประกาศหัวข้อเดียวของตัวเอง — โหมด inline โชว์เฉพาะไฟล์ของหัวข้อนั้น (เหตุผลอยู่ที่ `shown` ข้างล่าง)
+  const scoped = Array.isArray(docTypes) && docTypes.length === 1;
+  // ชนิดตั้งต้นของโหมด inline — ปุ่มแนบ · แผ่นถ่ายรูป · ลากมาวาง · Ctrl+V ลงชนิดนี้ทุกไฟล์ ไม่ว่าเป็นไฟล์อะไร
+  const inlineType = types[0]?.key || "other";
+  /* ⭐ ป้ายชนิดเอกสาร (`typePills` · layout-nits D4) — การ์ดที่กองหลายชนิดของ entity ไว้ด้วยกัน (คำร้อง: รูปอ้างอิง ·
+     สเปก/แบบงาน/บรีฟ · อื่น ๆ) ไม่เคยบอกว่ารูป/ไฟล์ไหนเป็นชนิดไหน ⇒ แบบที่แนบมาเป็นสเปกแยกไม่ออกจากรูปอ้างอิง
+     · การ์ดของโหมดอื่นมีป้ายอยู่แล้ว (หัวการ์ดรายชนิด · ป้ายของโหมดรายละเอียด)
+     ⚠️ **ผู้เรียกเปิดเอง** — เหตุผลที่ไม่เปิดให้ทุกแผงอยู่ที่ prop `typePills`
+     ⚠️ ปิดเมื่อแผงมีหัวข้อเดียว (`scoped`) / ทะเบียนมีชนิดเดียว / โหมดแผ่นรูป — ป้ายจะซ้ำหัวข้อของผู้เรียกทุกรูป
+     ⚠️ **ป้ายขึ้นเฉพาะชนิดที่มีคนเลือกจริง — สองชนิดตั้งต้นไม่มีป้าย ไม่ว่ารูปหรือ PDF**
+        · `inlineType` = ชนิดที่แผงนี้ลงให้ทุกไฟล์ที่แนบผ่านมัน (คำร้อง: ทุกไฟล์ที่แนบบนการ์ด = "รูปอ้างอิง / ตัวอย่าง"
+          ทั้งที่อาจเป็นผัง/บรีฟ) · `other` = ชนิดที่ทางเขียนอื่นลงให้โดยไม่ถาม (คำร้อง: `uploadDraftFiles` ของ
+          /requests/new ลง `other` ทุกไฟล์) ⇒ รูปเดียวกันจะขึ้นคนละป้ายตามว่าแนบจากจอไหน = ป้ายบอก "ทาง" ไม่ใช่ "ชนิด"
+        🐞 รอบแรกยกเว้นเฉพาะ PDF ที่เป็น `inlineType` ⇒ รูปทุกใบยังขึ้นป้ายค่าตั้งต้น (ผู้ตรวจ layout-nits D4)
+        · docType ที่ทะเบียนของแผงไม่รู้จัก = กองของ "อื่น ๆ" (กติกาเดียวกับโหมดการ์ด `panelItemsByType`) ⇒ ไม่มีป้ายเหมือนกัน */
+  const pillsOn = typePills && inlineUpload && !tilesMode && !scoped && types.length > 1;
+  const typePillOf = (it) => {
+    if (!pillsOn || !it) return null;
+    const own = types.find((t) => t.key === it.docType);
+    if (!own || own.key === inlineType || own.key === "other") return null;
+    return own.label;
+  };
 
   /* ⭐ `rawItems` = ทุกใบของ entity ตามที่ API ส่ง · `items` = ใบที่แผงนี้โชว์และนับ — ตัดชนิดที่ทะเบียนกลางประกาศว่า
      "ไม่ขึ้นแผง" (รูปของแถว checklist ใบสเปค · 08/10/2569) เว้นแต่ผู้เรียกขอชนิดนั้นมาเองผ่าน `docTypes`
@@ -563,6 +595,10 @@ export default function AttachmentsPanel({
        ช่องที่ผู้เรียกฝากมาใน `row.content` จึงหลุดโฟกัสทุกตัวอักษร (รูปย่อก็ถูกสร้างใหม่ทุกครั้งด้วย)
      ⇒ เรียกเป็นฟังก์ชันให้มันเป็นส่วนหนึ่งของต้นไม้ของแผงเอง · ห้ามเปลี่ยนกลับเป็น `<X />`
        (เทสต์ `attachmentsPanelRender.test.mjs` กันไว้) · ห้ามใช้ hook ข้างในฟังก์ชันพวกนี้ */
+  /* ป้ายชนิดเอกสารแบบย่อ — ตัวเดียวของใต้รูป (ตะแกรง) และแถวไฟล์ · ว่าง = ไม่วาด (กติกาว่าใครได้ป้ายอยู่ที่ `typePillOf`) */
+  const renderTypePill = (label, extraClass = "") => (label
+    ? <span className={`${styles.typePill} ${extraClass}`.trim()} title={label}>{label}</span>
+    : null);
   const renderFileRow = ({ it, compact }) => (
     <div className="flex items-center justify-between gap-2 text-xs py-1">
       {/* ⭐ เอกสารส่วนบุคคลของลูกค้าที่คนนอกทีมผู้ดูแลไม่มีสิทธิ์เปิด (มติผู้ใช้ 2026-08-16)
@@ -574,7 +610,8 @@ export default function AttachmentsPanel({
           <Lock size={14} className="shrink-0" />
           <span className="truncate">{it.fileName || "เอกสารส่วนบุคคล"}</span>
         </span>
-      ) : isPreviewableImage(it) ? (
+      ) : isDrawableImage(it) ? (
+        /* รูปที่เบราว์เซอร์วาดได้เท่านั้นที่ได้ภาพย่อ + กล่องดูรูปเต็ม — TIFF เป็นลิงก์ข้างล่าง (S2b แก้หลังตรวจจอ head-rc-q8) */
         <button
           type="button"
           onClick={() => setPreview(it)}
@@ -614,8 +651,19 @@ export default function AttachmentsPanel({
           {!compact && it.sizeBytes != null && (
             <span className="text-[10px] text-[var(--text-3)] shrink-0">({formatSize(it.sizeBytes)})</span>
           )}
+          {/* ⭐ รูปที่เบราว์เซอร์วาดไม่ขึ้น (TIFF) บอกว่ากดแล้วไปไหน — คำเดียวกับแผง "แบบจากฝ่ายขาย" ที่วาด TIFF เป็นแผ่นลิงก์
+              (S2b แก้หลังตรวจจอ head-rc-q8) · คนเห็นนามสกุลรูปแต่ไม่มีภาพย่อจะได้ไม่คิดว่าไฟล์พัง
+              ⚠️ อยู่ **ในลิงก์** — ชื่อที่โปรแกรมอ่านจอได้ยินเป็น "ชื่อไฟล์ เปิดในแท็บใหม่" · ไฟล์ชนิดอื่น (PDF ฯลฯ) หน้าตาเดิม */}
+          {isUndrawnImage(it) && (
+            <span className={styles.rowOpenNew}>
+              {UNDRAWN_IMAGE_OPEN_TEXT}
+              <ExternalLink size={12} aria-hidden="true" />
+            </span>
+          )}
         </a>
       )}
+      {/* ป้ายชนิดเอกสาร (layout-nits D4 · ผู้เรียกเปิดผ่าน `typePills`) — ชิดกลุ่มปุ่มขวา (`.rowPill`) ชื่อไฟล์ยอมตัด "…" ก่อน */}
+      {renderTypePill(typePillOf(it), styles.rowPill)}
       <div className="flex items-center gap-1 shrink-0">
         {/* ⭐ "ดู" = เปิดในหน้า (อ่านอย่างเดียว) · ชื่อไฟล์ด้านซ้ายยังพาไปแก้ที่ Google
             เหมือนเดิม — สองอย่างนี้ทำคนละเรื่อง ยุบเหลือปุ่มเดียวไม่ได้
@@ -631,15 +679,18 @@ export default function AttachmentsPanel({
           </button>
         )}
         {/* แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย (ดู `mayDelete`) — API ก็ปฏิเสธอยู่แล้วผ่าน
-            canEditAttachmentParent · ที่นี่คือไม่ยื่นปุ่มให้กด */}
+            canEditAttachmentParent · ที่นี่คือไม่ยื่นปุ่มให้กด
+            ⭐ เป้ากด 24×24 (WCAG 2.2 SC 2.5.8) + ชื่อที่บอกว่าลบไฟล์ไหน (layout-nits D4) — เดิมไอคอน 13px ล้วน
+               (ปุ่ม 17×17 · ชื่ออ่านออกเสียง "ลบ" จาก title) · แถวไม่สูงขึ้น: ขอบลบในกินระยะ py ของแถว (`.rowDelete`) */}
         {mayDelete(it) && (
           <button
             type="button"
             onClick={() => handleDelete(it.id)}
-            className="text-[var(--red)] p-0.5 hover:opacity-70"
+            className={`${styles.rowDelete} text-[var(--red)] hover:opacity-70`}
+            aria-label={`ลบ ${it.fileName || "ไฟล์แนบ"}`}
             title="ลบ"
           >
-            <Trash2 size={13} />
+            <Trash2 size={13} aria-hidden="true" />
           </button>
         )}
       </div>
@@ -685,48 +736,67 @@ export default function AttachmentsPanel({
   // ขนาดใช้งานได้จริง (แนวเดียวกับฟีดความเคลื่อนไหวของดีล) ส่วนไฟล์ที่ไม่ใช่รูป
   // (PDF/สเปก) ยังเป็นแถวรายชื่อเหมือนเดิม เพราะภาพย่อของมันไม่ได้บอกอะไร
   /* หนึ่งช่องรูป — ตัวเดียวที่ทั้งตะแกรง (`renderPhotoGrid`) และรายการรายแถว (`renderPhotoRows`)
-     ใช้ร่วมกัน ⇒ ปุ่มลบกับกล่องดูรูปเต็มมีทางเดียว ไม่ใช่สองชุดที่เพี้ยนหากันวันหนึ่ง */
-  const renderPhotoTile = ({ it }) => (
-    <div style={{ position: "relative" }}>
-      <button
-        type="button"
-        onClick={() => setPreview(it)}
-        title={it.fileName || "ดูรูปขนาดเต็ม"}
-        style={{
-          display: "block", width: "100%", aspectRatio: "1 / 1", padding: 0,
-          border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
-          background: "var(--panel-2)", cursor: "pointer",
-        }}
-      >
-        {/* ⚠️ ช่องที่เปิดรูปไม่ได้ต้องพูด — ตรรกะอยู่ใน `PhotoThumb` ตัวเดียวของระบบ
-            (เธรดอัปเดตใช้ตัวเดียวกัน · เหตุผลและกับดัก SSR อยู่ในไฟล์นั้น)
-            IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
-            จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */}
-        <PhotoThumb
-          src={fileHref(it)}
-          alt={it.fileName || "รูปแนบ"}
-          style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
-        />
-      </button>
-      {mayDelete(it) && (
+     ใช้ร่วมกัน ⇒ ปุ่มลบกับกล่องดูรูปเต็มมีทางเดียว ไม่ใช่สองชุดที่เพี้ยนหากันวันหนึ่ง
+     ⭐ `caption` (ตะแกรงเท่านั้น · layout-nits D4) — ชื่อไฟล์บรรทัดเดียวใต้รูป (ยาวเกิน = "…" ชื่อเต็มอยู่ที่ title)
+        + ป้ายชนิดเอกสาร (`typePillOf` — ผู้เรียกเปิดเอง) · 🐞 เดิมชื่ออยู่แค่ alt/title ⇒ มือถือไม่มี hover = ไม่มีทางรู้ว่ารูปไหนชื่ออะไร
+        ⚠️ รายการรายแถวไม่ใส่ — ผู้เรียกเขียนชื่อไฟล์ไว้ฝั่งขวาของแถวเองแล้ว (ใบสเปค: "ภาพที่ n · ชื่อไฟล์")
+        ⚠️ ชื่อเป็นของ **ตา** อย่างเดียว (`aria-hidden`) — ชื่อของปุ่มเปิดรูปมาจาก alt (= ชื่อไฟล์) อยู่แล้ว
+           ไม่ซ่อน = โปรแกรมอ่านจอได้ยินชื่อซ้ำสองรอบติดกัน (ปุ่ม → ข้อความถัดไป) · ป้ายชนิดไม่ซ้ำ alt ⇒ อ่านได้ตามปกติ */
+  const renderPhotoTile = ({ it, caption = false }) => {
+    const typeLabel = caption ? typePillOf(it) : null;
+    return (
+      <div style={{ position: "relative" }}>
         <button
           type="button"
-          onClick={() => handleDelete(it.id)}
-          aria-label={`ลบ ${it.fileName || "รูปแนบ"}`}
-          title="ลบ"
+          onClick={() => setPreview(it)}
+          title={it.fileName || "ดูรูปขนาดเต็ม"}
           style={{
-            position: "absolute", top: 4, right: 4, width: 22, height: 22,
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            border: "none", borderRadius: "50%", cursor: "pointer", lineHeight: "var(--lh-none)",
-            background: "color-mix(in srgb, var(--navy) 72%, transparent)",
-            color: "var(--navy-fg)",
+            display: "block", width: "100%", aspectRatio: "1 / 1", padding: 0,
+            border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden",
+            background: "var(--panel-2)", cursor: "pointer",
           }}
         >
-          <Trash2 size={12} />
+          {/* ⚠️ ช่องที่เปิดรูปไม่ได้ต้องพูด — ตรรกะอยู่ใน `PhotoThumb` ตัวเดียวของระบบ
+              (เธรดอัปเดตใช้ตัวเดียวกัน · เหตุผลและกับดัก SSR อยู่ในไฟล์นั้น)
+              IS-26080016: contain ไม่ใช่ cover — cover ครอปสกรีนช็อต/รูปสินค้าทิ้ง
+              จนดูไม่ออกว่าเป็นอะไร (เหตุผลเต็มใน UpdateThread.module.css) */}
+          <PhotoThumb
+            src={fileHref(it)}
+            alt={it.fileName || "รูปแนบ"}
+            style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
+          />
         </button>
-      )}
-    </div>
-  );
+        {caption && (
+          <span className={styles.thumbCaption}>
+            <span className={styles.thumbName} title={it.fileName || "รูปแนบ"} aria-hidden="true">{it.fileName || "รูปแนบ"}</span>
+            {renderTypePill(typeLabel)}
+          </span>
+        )}
+        {/* ⭐ เป้ากดเป็น **สี่เหลี่ยมจัตุรัส 24×24** (WCAG 2.2 SC 2.5.8 · layout-nits D4) — ตัวปุ่มคือสี่เหลี่ยมโปร่ง
+               (`.tileDelete` · มุมไม่โค้ง) วงกลมสีกรมที่ตาเห็นวาดบน `<span>` ข้างใน (`.tileDeleteDot`) ⇒ หน้าตาเท่าเดิม
+            🐞 เดิม 22px ติดขอบปุ่มเปิดรูป · รอบแรกขยายเป็น 24px แต่ยัง `borderRadius: "50%"` บนตัวปุ่ม ⇒ พื้นที่กดจริง =
+               วงกลม 24px (84% ของกล่อง) กดมุมกล่องเข้า 1px = เปิดรูปแทน · 2.5.8 ต้องมีจัตุรัส 24×24 ทั้งตัวอยู่ในเป้า
+               (docs/wcag-2.2-reference.md §4.3) และข้อยกเว้นระยะห่างใช้ไม่ได้เพราะ × วางทับปุ่มเปิดรูป (ระยะ 0)
+            ⚠️ ห้ามย้ายวงกลม (`border-radius`) กลับขึ้นตัวปุ่ม — ขอบโค้งของปุ่มตัดพื้นที่กดตามไปด้วย
+            ⚠️ ตำแหน่ง/ขนาดยังเป็นเลขใน style object ตามเดิม: ด่าน audit:ui นับเพดานเลขดิบสองทาง (ย้ายออกเป็นโทเคน =
+               เพดานต้องรูดลงพร้อมกันในไฟล์ด่าน) · ของที่ไม่ใช่เลข (พื้น · มุม · วงกลม) อยู่ใน module */}
+        {mayDelete(it) && (
+          <button
+            type="button"
+            onClick={() => handleDelete(it.id)}
+            aria-label={`ลบ ${it.fileName || "รูปแนบ"}`}
+            title="ลบ"
+            className={styles.tileDelete}
+            style={{ position: "absolute", top: 4, right: 4, width: 24, height: 24 }}
+          >
+            <span className={styles.tileDeleteDot} aria-hidden="true">
+              <Trash2 size={12} />
+            </span>
+          </button>
+        )}
+      </div>
+    );
+  };
 
   /* ⭐ **รูปกับของที่ผู้เรียกเขียนกำกับรูป อยู่บรรทัดเดียวกัน** (มติผู้ใช้ 2026-09-21)
      🐞 ใบสเปคสินค้า: คำบรรยายที่จะพิมพ์ใต้ภาพเคยเป็นตารางแยกใต้ตะแกรงรูป ⇒ คนกรอก
@@ -768,7 +838,7 @@ export default function AttachmentsPanel({
         gap: 8,
       }}
     >
-      {photos.map((it) => (<Fragment key={it.id}>{renderPhotoTile({ it })}</Fragment>))}
+      {photos.map((it) => (<Fragment key={it.id}>{renderPhotoTile({ it, caption: true })}</Fragment>))}
     </div>
   );
 
@@ -879,10 +949,11 @@ export default function AttachmentsPanel({
   };
 
   /* โหมด `photoGroups`: กลุ่มของรูปคิดครั้งเดียวต่อการวาด — แถวรายกลุ่มกับกล่องดูรูปเต็มอ่านก้อนเดียวกัน
-     ⚠️ หยิบเฉพาะรูปของหัวข้อแผง (docType ตัวแรก) — โหมดนี้มีความหมายกับแผงที่ประกาศหัวข้อเดียวเท่านั้น */
+     ⚠️ หยิบเฉพาะรูปของหัวข้อแผง (docType ตัวแรก) — โหมดนี้มีความหมายกับแผงที่ประกาศหัวข้อเดียวเท่านั้น
+     ⚠️ ชุด "รูป" ของโหมดนี้คือชุดกว้าง (`grouped` — TIFF ยังอยู่ในแถวของจุด/ถาด) ให้ตรงกับ `isSpotPhoto` (เหตุผลที่ `panelPhotoSplit`) */
   const groupType = types[0]?.key || "other";
   const groupsView = tilesMode && typeof photoGroups === "function"
-    ? photoGroups(loading ? [] : items.filter((it) => it.docType === groupType && isPreviewableImage(it)))
+    ? photoGroups(loading ? [] : panelPhotoSplit(items.filter((it) => it.docType === groupType), { grouped: true }).photos)
     : null;
   /* ย้ายรูปจากกล่องดูรูปเต็ม — ผ่านแล้วปิดกล่อง (รูปไปอยู่แถวอื่นแล้ว ตัวเลือกในกล่องเป็นของตำแหน่งเก่า) */
   const previewRelink = groupsView && preview
@@ -895,7 +966,7 @@ export default function AttachmentsPanel({
     : null;
 
   /* กล่องดูรูปขนาดเต็ม — ใช้ Modal ของระบบ (จัดการ Escape/โฟกัสให้แล้ว)
-     ⭐ โหมดแผ่นรูป: **ที่เดียวที่ลบรูปได้** — ปุ่มแถบท้ายสูง 44px (แผ่นรูปไม่มี × 22px) · ด่านรายไฟล์
+     ⭐ โหมดแผ่นรูป: **ที่เดียวที่ลบรูปได้** — ปุ่มแถบท้ายสูง 44px (แผ่นรูปไม่มี × 24px) · ด่านรายไฟล์
         `mayDelete` ตัวเดียวกับโหมดอื่น · ปุ่มเปิดไฟล์ต้นฉบับย้ายลงแถบท้ายคู่กัน (นิ้วเดียวกันกดได้ทั้งคู่)
         · ปุ่มปิด (×) ขนาดนิ้ว (`styles.lightbox` — ของกลาง 28px) · 🐞 UAT 01/10: กล่องนี้คือทางหลักของช่างบนมือถือ
      ⭐ โหมด `photoGroups`: ตัวเลือกย้ายกลุ่ม ("ย้ายไปจุด" / "ผูกกับจุด") **อยู่ในแถบท้าย ไม่ใช่ใต้รูป**
@@ -1014,7 +1085,6 @@ export default function AttachmentsPanel({
   );
 
   if (inlineUpload) {
-    const inlineType = types[0]?.key || "other";
     const busy = uploadingType === inlineType;
     /* 🐞 **พาเนลที่ประกาศหัวข้อของตัวเองแล้ว ยังโชว์ไฟล์ของหัวข้ออื่นด้วย** — จอบันทึก
        หน้างานมีพาเนลสามอัน (ภาพกว้าง · ภาพผัง · ภาพจุดติดตั้ง) ที่ชี้ entity เดียวกัน
@@ -1022,10 +1092,14 @@ export default function AttachmentsPanel({
          เท่ากันหมด ทั้งที่ตัวนับบนหัวข้อ (`surveyDocCounts`) นับแยกถูกต้อง
        ⇒ ช่างอ่านว่า "ภาพผังมีแล้ว" ทั้งที่ยังไม่มี
        ⚠️ กรองเฉพาะเมื่อผู้เรียก **ประกาศ `docTypes` มาเอง** — ผู้เรียกอีก 11 จุดที่ส่งแค่
-         `inlineUpload` ใช้ทะเบียนของ entity ทั้งชุด กรองแล้วไฟล์ของเขาจะหาย */
-    const scoped = Array.isArray(docTypes) && docTypes.length === 1;
+         `inlineUpload` ใช้ทะเบียนของ entity ทั้งชุด กรองแล้วไฟล์ของเขาจะหาย
+       (`scoped` · `inlineType` ประกาศไว้บนสุดของแผง — ป้ายชนิดเอกสาร `typePillOf` ถามตัวเดียวกัน) */
     const shown = scoped ? items.filter((it) => it.docType === inlineType) : items;
-    const tilePhotos = loading ? [] : shown.filter(isPreviewableImage);
+    /* รูป/ไฟล์ของโหมด inline แบ่งที่ตัวตัดสินเดียว (`panelPhotoSplit`) — แผ่นรูป · ตะแกรง · รายการรายแถว · แถวไฟล์อ่านก้อนเดียวกัน
+       ⇒ ไม่มีใบไหนอยู่สองที่หรือหายจากทั้งสองที่ · TIFF = แถวไฟล์ ไม่มีป้าย "ขึ้นแล้ว" (S2b แก้หลังตรวจจอ head-rc-q8)
+       ⚠️ โหมด `photoGroups` แบ่งด้วยชุดกว้างตัวเดียวกับแถวของจุด (`groupsView` ข้างบน) — ไม่งั้น TIFF ของจุดขึ้นซ้ำเป็นแถวไฟล์ */
+    const split = panelPhotoSplit(shown, { grouped: !!groupsView });
+    const tilePhotos = loading ? [] : split.photos;
 
     return (
       <div className="mt-1" {...(fileUploads ? intake.zoneProps : {})}>
@@ -1110,8 +1184,7 @@ export default function AttachmentsPanel({
         {tilesMode && !groupsView && renderPhotoTiles({ photos: tilePhotos, canAdd: canEdit && fileUploads, addType: inlineType })}
 
         {!loading && shown.length > 0 && (() => {
-          const photos = shown.filter(isPreviewableImage);
-          const files = shown.filter((it) => !isPreviewableImage(it));
+          const { photos, files } = split;
           const rowsOf = !tilesMode && typeof photoRows === "function" ? photoRows(photos) : null;
           return (
             <>

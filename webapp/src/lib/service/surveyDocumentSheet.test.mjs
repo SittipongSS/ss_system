@@ -464,7 +464,7 @@ test('🔑 การ์ดวาดส่วนเอกสารจาก `view
       `${name}: สถานะ → ปุ่ม/ข้อความ ตัดสินที่ตัวตัดสินแล้ว · จออ่านแค่ผล`);
   }
   assert.match(CARD, /const doc = view\.document;/);
-  assert.match(CARD, /const documentSection = doc\.show \? \(\s*<SurveyDocumentSection\s+view=\{doc\}\s+busy=\{busy\}\s+onIssueDocument=\{onIssueDocument\}\s+onRecheckDocument=\{recheckDocument\}\s+documentRef=\{documentRef\}\s*\/>\s*\) : null;/,
+  assert.match(CARD, /const documentSection = doc\.show \? \(\s*<SurveyDocumentSection\s+view=\{doc\}\s+busy=\{busy\}\s+onIssueDocument=\{onIssueDocument\}\s+onRecheckDocument=\{recheckDocument\}\s+documentRef=\{documentRef\}\s+unitNames=\{unitNames\}\s*\/>\s*\) : null;/,
     'การ์ดส่งตัวจัดการของหน้าต่อ — ไม่มีโหมด `standalone` ในการ์ด');
   assert.match(CARD, /import SurveyDocumentSection from "\.\/SurveyDocumentSection";/);
   assert.doesNotMatch(CARD, /docVersion|historyOpen|docActions/, 'ของจอของส่วนเอกสารอยู่ในชิ้นของมันเอง');
@@ -482,7 +482,7 @@ test('⭐ หน้า: ส่วนเอกสารของผู้วา�
   assert.match(PAGE, /import SurveyDocumentSection from "@\/components\/service\/SurveyDocumentSection";/);
   const block = between(PAGE, 'const issuerDoc = ', ') : null;');
   assert.match(block, /^const issuerDoc = !canDecide && view\.document\.show \? \(/, 'การ์ดกับบล็อกนี้ไม่มีวันวาดพร้อมกัน');
-  assert.match(block, /<SurveyDocumentSection\s+standalone\s+view=\{view\.document\}\s+busy=\{issueBusy\}\s+onIssueDocument=\{openIssueDialog\}\s+onRecheckDocument=\{recheckDocument\}\s+documentRef=\{docSectionRef\}\s*\/>/);
+  assert.match(block, /<SurveyDocumentSection\s+standalone\s+view=\{view\.document\}\s+busy=\{issueBusy\}\s+onIssueDocument=\{openIssueDialog\}\s+onRecheckDocument=\{recheckDocument\}\s+documentRef=\{docSectionRef\}\s+unitNames=\{surveyCardUnitNames\(view\)\}\s*\/>/);
   assert.equal(count(PAGE, '<SurveyDocumentSection'), 1, 'หน้าวาดชิ้นนี้ที่เดียว (ในการ์ดเป็นของการ์ด)');
   assert.match(PAGE, /const listBefore = noticeStack \|\| sendBackCard \|\| issuerDoc \|\| \(cardInList && controlFirst\) \|\| drawingsAboveList \? \(/);
   assert.match(PAGE, /\{noticeStack\}\s*\{sendBackCard\}\s*\{issuerDoc\}\s*\{cardInList && controlFirst \? controlCard : null\}/);
@@ -777,7 +777,11 @@ test('ผังสองคอลัมน์ของการ์ดกลา�
   assert.match(PANEL, /\{footer \? <div className=\{styles\.footer\}>\{footer\}<\/div> : null\}\s*<\/div>\s*<\/DetailCard>/);
   const narrow = PANEL_CSS.slice(PANEL_CSS.lastIndexOf('@media (max-width: 680px)'));
   assert.match(narrow, /\.bodySplit > \.footer \{\s*align-self: stretch;\s*\}/);
-  assert.equal(count(PANEL_CSS, 'align-self: stretch'), 1);
+  /* 🐞 UAT 26/10 (S18 ที่ 375): บล็อกสถานะหดด้วย `align-items: start` เหมือนส่วนรอง — สถานะสั้นของใบงานโต๊ะทำแถบวัด/แถววันส่งผลจบสั้นกว่าปุ่ม 21px
+     ⇒ ยืดสองชิ้นนี้เท่านั้น — ปุ่มระดับใบ (`.actionStack`) ไม่มีกฎยืด (การตัดสินใจเชิงดีไซน์ของการ์ด) */
+  assert.match(narrow, /\.bodySplit > \.controlStatus \{\s*align-self: stretch;\s*\}/);
+  assert.equal(count(PANEL_CSS, 'align-self: stretch'), 2);
+  assert.doesNotMatch(narrow, /\.actionStack \{[^}]*align-self/, 'ความกว้างของปุ่มระดับใบบนมือถือไม่แตะ');
   /* 🐞 บันทึกของผู้สร้างเคยเขียนว่า "มีแต่การ์ดใบประเมินที่ใช้ `tabletSplit`" — ไม่จริง (มีผู้เรียกอีกสามหน้า ซึ่งวันนี้ยังไม่ส่ง `footer`)
      ⇒ คำกำกับเหนือกฎต้องบอกขอบเขตจริง: หน้าไหนเพิ่ม `footer` วันหน้าก็ได้กฎนี้ทันที */
   const raw = read('../../components/ui/DocumentControlPanel.module.css');

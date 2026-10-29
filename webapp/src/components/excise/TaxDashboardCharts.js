@@ -67,9 +67,9 @@ export function OrdersComposedChart({ orders = [] }) {
   const data = useMemo(() => {
     // Group orders by status
     const grouped = {
+      // เส้นของ RA (PR5) — pending/received (ฝ่ายขายเก็บเงินบนใบยื่น) เลิกใช้แล้ว
       draft: { name: "เตรียมใบยื่น", count: 0, tax: 0, color: COLORS.neutral },
-      pending: { name: "รอรับเงิน", count: 0, tax: 0, color: COLORS.danger },
-      received: { name: "รอยื่น", count: 0, tax: 0, color: COLORS.warning },
+      rejected: { name: "ตีกลับ", count: 0, tax: 0, color: COLORS.danger },
       filing: { name: "กำลังยื่น", count: 0, tax: 0, color: COLORS.info },
       complete: { name: "ชำระแล้ว", count: 0, tax: 0, color: COLORS.success },
       delivered: { name: "ส่งเอกสารแล้ว", count: 0, tax: 0, color: COLORS.delivered },

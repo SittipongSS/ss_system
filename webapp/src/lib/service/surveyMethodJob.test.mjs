@@ -220,14 +220,19 @@ test('⭐ ราง · งานโต๊ะ: ชื่อขั้นหกข�
   assert.equal(DESK_LABELS[3], SURVEY_METHOD_LABEL.drawing, 'ชื่อขั้นกลางคือคำกลางของฟีเจอร์');
 });
 
-test('⭐ ราง · งานโต๊ะ: สองขั้นกลางไม่เล่าเรื่องนัด — ขั้น 3 เหลือเวลาที่รับปาก · ขั้น 4 ว่าง · นัดเดิมยังอยู่ที่คีย์ visit', () => {
+/* 🔄 S2b แก้หลังตรวจจอ sales-q2 — กล่องของสองขั้นกลางเคยว่าง (ขั้นปัจจุบันที่ไฮไลต์อยู่ดูเหมือนจอโหลดไม่ครบ) ⇒ ข้อเท็จจริงที่แถบหัวพูดอยู่แล้ว:
+   ขั้น 3 = หัวหน้าที่ถือใบ + "จะส่งผล {วัน}" · ขั้น 4 = "กรอกขนาดจากแบบแล้ว a / k พื้นที่" (ยังไม่รับปาก = ขั้นยังไม่เกิด ไม่มีของ) */
+test('⭐ ราง · งานโต๊ะ: สองขั้นกลางไม่เล่าเรื่องนัด — ขั้น 3 เวลาที่รับปาก + หัวหน้า + วันส่งผล · ขั้น 4 ตัวนับขนาดจากแบบ · นัดเดิมยังอยู่ที่คีย์ visit', () => {
   for (const [name, over] of Object.entries(DESK_SHAPES)) {
     const view = job(ask(over));
     const [promise, assess] = [view.steps[2], view.steps[3]];
     const promised = !!over.committedResultDate;
     assert.equal(promise.when, promised ? 'พฤ. 8 ต.ค. 16:00' : '', name);
-    assert.deepEqual([promise.people, promise.lines, promise.visitLink, promise.badge], [[], [], null, undefined], name);
-    assert.deepEqual([assess.when, assess.people, assess.lines, assess.badge], ['', [], [], undefined], name);
+    assert.deepEqual([promise.people, promise.lines, promise.visitLink, promise.badge], promised
+      ? [[{ name: 'Arnon Aunsapwilai', note: null }], [{ text: 'จะส่งผล พฤ. 15 ต.ค.', tone: null }], null, undefined]
+      : [[], [], null, undefined], name);
+    assert.deepEqual([assess.when, assess.people, assess.lines, assess.badge],
+      ['', [], promised ? [{ text: 'กรอกขนาดจากแบบแล้ว 2 / 3 พื้นที่', tone: null }] : [], undefined], name);
     // ไม่มีคำของงานหน้างานหลุดมาใต้ชื่อขั้นของงานโต๊ะ — "ประเมินจากแบบ — ยกเลิก" คือประโยคที่ไม่มีใครตั้งใจพูด
     assert.doesNotMatch(JSON.stringify([promise, assess]), /ลงคิว|นัด|SV-26100011|Phuwadol|ยกเลิก|เข้าแล้ว|ทำไม่ได้/, name);
   }
@@ -483,12 +488,17 @@ test('⭐ แถบแจ้ง · ใบที่ส่งผลแล้วแ
   for (const [who, viewer] of VIEWERS) {
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'needed' }), viewer).zones.drawingBanner, {
       text: NEEDED_TEXT,
-      // งวด S2b: ประโยคข้างบนเอ่ยถึงปุ่มที่ยังไม่มีจนถึงงวด S5 — จอพิมพ์ประโยคนี้ต่อท้าย (สวิตช์ `SURVEY_CONFIRM_ACTION_READY`)
-      note: 'ปุ่ม “ขอยืนยันหน้างาน” ของฝ่ายขายจะเปิดใช้ในรอบถัดไป — ระหว่างนี้ฝ่ายขายเปิดคำร้องประเมินพื้นที่แบบลงหน้างานของพื้นที่เดิมได้',
-      action: { label: 'ขอยืนยันหน้างาน', ready: false },
+      // ชื่อปุ่มใน “…” ไม่ขาดสองบรรทัด (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 375)
+      keep: ['“ขอยืนยันหน้างาน”'],
+      // งวด S5 เปิดสวิตช์ `SURVEY_CONFIRM_ACTION_READY` ⇒ ไม่มีประโยค "ปุ่มจะเปิดใช้ในรอบถัดไป" ต่อท้ายแล้ว
+      // (ไม่มีก้อน `surveyConfirmLink` = แถว 0: `action` ไม่มี `state` ⇒ จอไม่วาดปุ่ม — ปุ่มจริงมาจากก้อนที่ GET หน้าคำร้องแนบ)
+      note: null,
+      action: { label: 'ขอยืนยันหน้างาน', ready: true },
     }, who);
     assert.deepEqual(job(ask({ ...SENT, surveyConfirm: 'not_needed' }), viewer).zones.drawingBanner, {
       text: NOT_NEEDED_TEXT,
+      // "ไม่" ไม่ขาดจากกริยา — บรรทัดล่าง "ต้องยืนยันหน้างาน…" อ่านกลับความ (S2b แก้หลังตรวจจอ sales รอบ 27/10 · 375)
+      keep: ['ไม่ต้องยืนยันหน้างาน'],
       action: null,
     }, who);
     // ข้อมูลเก่า / ยังไม่เลือก / ค่าที่ไม่รู้จัก = ไม่มีแถบ (ไม่เดาว่าต้องยืนยัน)
@@ -540,7 +550,8 @@ test('⭐ การ์ดด่าน · ใบจากแบบทั้งใ
   }
 });
 
-test('การ์ดด่าน · ใบลงหน้างานและใบผสม: การ์ดของช่างไม่ซ่อน · การ์ดของหัวหน้ายังรอช่างส่งงานตามเดิม', () => {
+/* 🔄 S2b แก้หลังตรวจจอ head-rc-q11 — การ์ดของหัวหน้าบนใบผสมเปิดตั้งแต่ต้น (พื้นที่จากแบบเป็นงานของหัวหน้าตั้งแต่แรก) */
+test('การ์ดด่าน · ใบลงหน้างานและใบผสม: การ์ดของช่างไม่ซ่อน · ใบลงหน้างานการ์ดหัวหน้ายังรอช่างส่งงาน · ใบผสมเปิดตั้งแต่ต้น', () => {
   const onsite = job(ask({ surveyZones: zones(), surveyVisit: visit() }));
   assert.equal(onsite.zones.crewGate.hidden, false);
   assert.deepEqual(onsite.zones.headGate.badge, { label: 'ยังไม่เริ่ม', tone: 'neutral' });
@@ -549,7 +560,9 @@ test('การ์ดด่าน · ใบลงหน้างานและ�
   const mixed = job(ask({ surveyZones: mixedZones(), surveyVisit: visit() }));
   assert.equal(mixed.zones.crewGate.hidden, false);
   assert.equal(mixed.zones.crewGate.hasActive, true);
-  assert.equal(mixed.zones.headGate.text, 'เริ่มได้เมื่อช่างส่งงาน');
+  assert.deepEqual(mixed.zones.headGate.badge, { label: 'รอเคาะ', tone: 'info' });
+  /* ส่วนของพื้นที่จากแบบเอ่ยขนาดกับภาพแบบ · "ภาพผัง" นับพื้นที่ลงหน้างานล้วน (head-rc-q11 · ผลรีวิวรอบสาม) */
+  assert.equal(mixed.zones.headGate.text, 'กรอกขนาดจากแบบแล้ว 0 / 1 พื้นที่ · ภาพแบบ 0/1 · ภาพผัง 0/2 · เลือกจุด 0/2 · แพ็คเกจ 0/3');
 
   // ตัดออกหมดทั้งใบ (ทุกแถวจากแบบ) ไม่ใช่ "ใบจากแบบทั้งใบ" — การ์ดของช่างยังอยู่และเขียน "ไม่มีพื้นที่" เหมือนใบที่ตัดหมดของวันนี้
   const allCut = job(ask({ surveyZones: zones({ ...DRAWING, status: 'cut', cutReason: 'ลูกค้าไม่เอาแล้ว' }) }));
@@ -862,19 +875,19 @@ test('⭐ O3 · เหลือแค่บันทึกอีกครั้�
   for (const [who, viewer] of VIEWERS) {
     const view = job(ask({ ...PROMISED, surveyVisit: closed, surveyZones: rows, surveyFilesByZone: files }), viewer);
     assert.equal(view.stage, 'awaiting-decision', who);
-    assert.equal(view.now.headline, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง', who);
+    assert.equal(view.now.headline, 'รอหัวหน้าตรวจขนาดและภาพกว้างแล้วบันทึกอีกครั้ง', who);
     assert.equal(view.now.next, 'หัวหน้า TS เปิดพื้นที่ที่กลับมาเป็นลงหน้างานที่ใบประเมิน ตรวจขนาดแล้วกด “บันทึกพื้นที่นี้” → เคาะแล้วกด “ส่งผลให้ฝ่ายขาย”', who);
     assert.match(view.now.sub, /เหลือ Lobby ชั้น 1/, who);
     assert.doesNotMatch(JSON.stringify(view.now), /ช่างส่งงานแล้ว|ส่งกลับให้ช่างแก้|วัดครบแล้ว|กำลังวัดหน้างาน/, who);
-    assert.equal(view.zones.rows[0].missingText, 'กลับมาเป็นลงหน้างาน — รอตรวจขนาดแล้วบันทึกอีกครั้ง', who);
+    assert.equal(view.zones.rows[0].missingText, 'กลับมาเป็นลงหน้างาน — รอตรวจขนาดและภาพกว้างแล้วบันทึกอีกครั้ง', who);
     // การ์ดฝั่งช่างใต้ตารางต้องไม่สวนกับแถบ: ไม่มีช่างทำอยู่ ⇒ ไม่ขึ้น "กำลังทำ · เหลือ …" (🐞 UAT S06 รอบตรวจซ้ำ 12/10)
     assert.deepEqual(view.zones.crewGate.badge, { label: 'รอหัวหน้า', tone: 'warning' }, who);
-    assert.equal(view.zones.crewGate.text, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง', who);
+    assert.equal(view.zones.crewGate.text, 'รอหัวหน้าตรวจขนาดและภาพกว้างแล้วบันทึกอีกครั้ง', who);
   }
   // บันทึกหลังสลับแล้ว = กลับไปถ้อยคำเดิมของขั้นหัวหน้า
   const saved = rows.map((z, i) => (i === 0 ? { ...z, surveyedAt: '2026-10-09T03:05:00Z' } : z));
   const after = job(ask({ ...PROMISED, surveyVisit: closed, surveyZones: saved, surveyFilesByZone: files }), HEAD);
-  assert.notEqual(after.now.headline, 'รอหัวหน้าตรวจขนาดแล้วบันทึกอีกครั้ง');
+  assert.notEqual(after.now.headline, 'รอหัวหน้าตรวจขนาดและภาพกว้างแล้วบันทึกอีกครั้ง');
   assert.notEqual(after.zones.crewGate.badge.label, 'รอหัวหน้า');
   // นัดยังเปิด (ช่างอยู่หน้างาน) = ทางเดิม ช่างเป็นคนเก็บ
   const open = job(ask({ ...PROMISED, surveyVisit: visit({ status: 'in_progress' }), surveyZones: rows, surveyFilesByZone: files }), HEAD);

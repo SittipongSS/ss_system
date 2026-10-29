@@ -11,9 +11,9 @@ import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
 // FC Total / Actual / FC คงเหลือ ต่อแถว (rollup จากดีล — ห้ามกรอกมูลค่าที่โครงการ)
 // + ยอด SO "รออนุมัติ" เป็นบรรทัดรองใต้ Actual ทั้งแถบ KPI และต่อแถว — ตัวเลขแยก
 //   ไม่รวมเข้า Actual (มติผู้ใช้ 2026-09-11 · mig 0353 · lib/pm/projectPendingApproval)
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FolderKanban, Search, RefreshCw, Target, LineChart, BarChart3, Layers, Plus, Flag, GitBranch, UserRound } from "lucide-react";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
@@ -23,12 +23,23 @@ import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
-import { useCan } from "@/lib/roleContext";
+import { useCan, useRole } from "@/lib/roleContext";
+import { viewScope } from "@/lib/permissions";
+import {
+  PROJECT_SCOPE_DEFAULT,
+  UNSET_LINE,
+  filterProjects,
+  projectsClearedHref,
+  projectsWaitingOnMeFrom,
+  projectsWaitingOnMeHref,
+  withWaitingOnMe,
+} from "@/lib/pm/projectListFilter";
 import { dealTypeTooltip, summarizeProjectDealTypes } from "@/lib/sales/projectDealTypes";
 import styles from "./page.module.css";
-import { CLOSED_WORK_STATUSES, PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
+import { PROJECT_WORK_STATUSES, projectStatusLabel } from "@/lib/pm/projectLifecycle";
 import { dealTypeBadge } from "@/components/salesPlanning/ui";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import { InstRemainingAmount } from "@/components/salesPlanning/dashboard/performance/shared";
 import { sumProjectRollups } from "@/lib/pm/projectPendingApproval";
 import { fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { brandDisplayFromList } from "@/lib/master/brands";
@@ -64,7 +75,7 @@ const GROUP_OPTIONS = [
 /* ขอบเขตสถานะ — ค่าเดียวกับ dropdown เดิม แต่ย้ายเข้าปุ่มตัวกรองรวม
    ⚠️ เป็นกลุ่ม **เลือกค่าเดียว** (`single`) เพราะ "กำลังดำเนินการ" กับ "ปิดแล้ว"
    เป็นขอบเขตที่ทับกันไม่ได้ ต่างจากหมวดอื่นที่เลือกหลายค่าได้ */
-const SCOPE_DEFAULT = "active";
+const SCOPE_DEFAULT = PROJECT_SCOPE_DEFAULT;
 
 function compareProjects(a, b, key, dir) {
   const mul = dir === "desc" ? -1 : 1;
@@ -101,11 +112,19 @@ export default function ProjectsIndexPage() {
   /* ⭐ `?count=projectCloses` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "คำขอปิดที่รอ
      ฉันเซ็น" ไม่ใช่จำนวนโครงการ ⇒ กรองด้วยธง `_waitingOnMe` จาก server ซึ่งรู้ทั้ง
      closeStatus และว่าใครเป็นคนยื่น (คนยื่นเซ็นให้ตัวเองไม่ได้ จึงไม่นับใบของตัวเอง)
-     ⚠️ **ต้องเปิดสถานะเป็น "ทั้งหมด" ด้วย** — โครงการที่ขอปิดมักอยู่สถานะ Completed
-     ซึ่งค่าตั้งต้น "active" กรองทิ้ง ⇒ กดจากป้ายแล้วเจอลิสต์ว่างทั้งที่มีของรออยู่ */
-  const fromNavCount = useSearchParams().get("count") === "projectCloses";
-  const [statusFilter, setStatusFilter] = useState(fromNavCount ? "all" : SCOPE_DEFAULT); // active = ไม่รวม Done/Drop
-  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(fromNavCount);
+     ⭐ ตัวกรองนี้อยู่ใน **URL ที่เดียว** (ตรวจตัวเลข M17a · แทนกติกา "อ่านครั้งเดียว" ของ ม-115 ·
+        แพตเทิร์นเดียวกับ `productionJobsLink` #1915) — เดิมอ่านเข้า useState ตอนเมานต์ ⇒ อยู่บนหน้านี้แล้ว
+        กดป้ายเมนูไม่มีอะไรเปลี่ยน · ปุ่ม × ล้างแค่ state ⇒ URL ยังมี `?count=` กดป้ายซ้ำก็ไป URL เดิม
+        ตอนนี้: เปิด = ไป `?count=projectCloses` · × / เอาติ๊กออก = `router.replace` URL ที่ถอดพารามิเตอร์
+     ⚠️ **เปิดเมื่อไรต้องเปิดสถานะเป็น "ทั้งหมด" + ล้างค้นหา/สายธุรกิจ** (initializer + effect ข้างล่าง) — โครงการที่ขอปิด
+        มักอยู่สถานะ Completed ซึ่งค่าตั้งต้น "active" กรองทิ้ง และตัวกรองที่ค้างทำให้แถวน้อยกว่าเลขบนป้าย */
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const waitingOnMeOnly = projectsWaitingOnMeFrom(searchParams);
+  const setWaitingOnMeOnly = useCallback((on) => {
+    router.replace(on ? projectsWaitingOnMeHref(searchParams) : projectsClearedHref(searchParams), { scroll: false });
+  }, [router, searchParams]);
+  const [statusFilter, setStatusFilter] = useState(waitingOnMeOnly ? withWaitingOnMe().status : SCOPE_DEFAULT); // active = ไม่รวม Done/Drop
   const [lineFilter, setLineFilter] = useStickyState("lineFilter", EMPTY);
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
@@ -138,33 +157,46 @@ export default function ProjectsIndexPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  /* เปิด "รอฉันเซ็นปิด" **ขณะอยู่บนหน้านี้** (กดป้ายเมนูซ้ำ · ติ๊กในปุ่มตัวกรอง) = ล้างตัวกรองที่ค้าง —
+     ผูกกับ "จังหวะที่ค่าใน URL เปลี่ยนจากปิดเป็นเปิด" เพราะคอมโพเนนต์ไม่เมานต์ใหม่ (ค่าที่ล้างมาจาก `withWaitingOnMe`)
+     ⚠️ **ห้ามล้างตอนเมานต์** — เมานต์พร้อม `?count=` มีสองทาง: เข้าใหม่จากหน้าอื่น (useStickyState เริ่มค่าตั้งต้น
+        ให้เองอยู่แล้ว + initializer ของสถานะเป็น "ทั้งหมด") กับกดย้อน/F5 (useStickyState คืนค่าที่ผู้ใช้ตั้งไว้ตาม
+        มติ 2026-08-25 "ย้อนกลับ = กลับไปที่เดิม") · ล้างตอนเมานต์ = ลบค่าที่คืนมาทิ้งทุกครั้งที่กดย้อน */
+  const prevWaitingOnMe = useRef(waitingOnMeOnly);
+  useEffect(() => {
+    const turnedOn = waitingOnMeOnly && !prevWaitingOnMe.current;
+    prevWaitingOnMe.current = waitingOnMeOnly;
+    if (!turnedOn) return;
+    const cleared = withWaitingOnMe();
+    setStatusFilter(cleared.status);
+    setQuery(cleared.query);
+    setLineFilter(cleared.lines);
+  }, [waitingOnMeOnly, setQuery, setLineFilter]);
+
   /* การเดินสถานะ (ระงับ / ยกเลิก / ดึงกลับ / ขอปิด / อนุมัติปิด) และการแก้ไข-ลบ
      ย้ายไปอยู่บนการ์ด Record Control ของหน้ารายละเอียดทั้งหมดแล้ว (#902)
      หน้านี้จึงไม่ยิง PATCH / DELETE / POST close อีกต่อไป — โหลดอย่างเดียว */
 
-  /* ⭐ คนอยู่หลายทีมต้องเลือกดูทีละทีมได้ (IS-26080012 — ผู้ใช้อยู่ ODM+SV แจ้งเอง)
-     โผล่เฉพาะคนที่อยู่ตั้งแต่ 2 ทีมขึ้นไป · ค่าที่เลือกจำข้ามหน้าให้แล้วใน hook */
+  /* ⭐ คนอยู่หลายทีมต้องเลือกดูทีละทีมได้ (IS-26080012 — ผู้แจ้ง: role ปัจจุบัน ณ 20/10 = AC ขอบเขต team · ตรวจจากบัญชี)
+     โผล่เฉพาะคนที่อยู่ตั้งแต่ 2 ทีมขึ้นไป · ค่าที่เลือกจำข้ามหน้าให้แล้วใน hook
+     ⚠️ **เฉพาะขอบเขต 'team'** (ตรวจตัวเลข M17b) — กติกาเดียวกับหน้าดีล/ลีด/คำร้อง/ปฏิทิน (ADR 0015)
+        🐞 เดิมกรองทุกคนที่อยู่หลายทีม ⇒ หัวหน้า (ขอบเขต 'all') ที่อยู่ 2 ทีมไม่เห็นโครงการทีมอื่น/ไม่มีทีม
+        แม้เลือกครบทุกชิป ⇒ FC Total / "โครงการ / ดีล" ขาด และแถวน้อยกว่าป้ายเมนู "รอฉันเซ็นปิด" */
   const myTeams = useMyTeamsFilter();
+  const role = useRole();
+  const teamScoped = viewScope(role) === "team";
+  // ผู้อนุมัติปิด — server ติดธงเดียวกันให้ทุกแถว (ไม่มีสิทธิ์ = ไม่โชว์ตัวเลือก "รอฉันเซ็นปิด")
+  const canApproveCloses = useMemo(() => rows.some((p) => p.canApproveClose === true), [rows]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter((p) => {
-      /* 🐞 ของเดิมกรองด้วย ["Done","Drop"] ซึ่ง **ไม่ใช่ค่าที่มีอยู่จริง** — CHECK ของตาราง
-         ยอมแค่ New / In Progress / Completed / On Hold / Dropped
-         ผลคือ "กำลังดำเนินการ" ไม่เคยกรองอะไรออกเลย และเลือก Done/Drop แล้วตารางว่างตลอด */
-      if (!myTeams.matches(p.team)) return false;
-      if (waitingOnMeOnly && !p._waitingOnMe) return false;
-      if (statusFilter === "active" && CLOSED_WORK_STATUSES.includes(p.status)) return false;
-      if (statusFilter === "closed" && !CLOSED_WORK_STATUSES.includes(p.status)) return false;
-      if (!["active", "all", "closed"].includes(statusFilter) && p.status !== statusFilter) return false;
-      // สายธุรกิจ: "ยังไม่ระบุสาย" เป็นตัวเลือกจริง — ของที่ยังไม่กรอกต้องหาเจอ ไม่ใช่หายเงียบ
-      if (lineFilter.length && !lineFilter.includes(isBusinessLine(p.line) ? p.line : "__unset")) return false;
-      if (!q) return true;
-      const brand = brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand);
-      return [p.code, p.name, p.customerName, brand, p.formulaName, ...(p.deals || []).map((d) => d.title)]
-        .some((v) => (v || "").toLowerCase().includes(q));
-    });
-  }, [rows, query, statusFilter, lineFilter, waitingOnMeOnly, customers, myTeams]);
+  /* ตัวกรองแถวอยู่ที่ `lib/pm/projectListFilter` — ตัวเดียวกับที่เทสต์เทียบกับตัวนับของป้ายเมนู */
+  const filtered = useMemo(() => filterProjects(rows, {
+    query,
+    status: statusFilter,
+    lines: lineFilter,
+    waitingOnMe: waitingOnMeOnly,
+    teamMatches: teamScoped ? myTeams.matches : null,
+    brandOf: (p) => brandDisplayFromList(customers.find((customer) => customer.id === p.customerId)?.brands, p.metadata?.brand),
+  }), [rows, query, statusFilter, lineFilter, waitingOnMeOnly, customers, myTeams, teamScoped]);
 
   /* `recent` = ลำดับที่ API ส่งมา — ไม่คิดใหม่ที่นี่ · สลับทิศคือกลับลำดับเดิม */
   const sorted = useMemo(() => {
@@ -283,6 +315,8 @@ export default function ProjectsIndexPage() {
                     <td className="num mono" style={{ color: "var(--green)" }}>
                       {money(r.actual || 0)}
                       <PendingApprovalAmount amount={r.pendingApproval} count={r.pendingApprovalCount} />
+                      {/* กอง "รอนับรายงวด" (mig 0412 · มติข้อ 5 · review รอบสี่) — งวดของใบ Actual รายงวดที่ยังไม่ยื่น · ไม่ใช่ Actual */}
+                      <InstRemainingAmount amount={r.instRemaining} count={r.instRemainingCount} />
                     </td>
                     <td className="num mono" style={{ color: (r.fcRemaining || 0) > 0 ? "var(--amber)" : "var(--text-3)" }}>{money(r.fcRemaining || 0)}</td>
                     <td>{taskProgress(p)}</td>
@@ -333,6 +367,12 @@ export default function ProjectsIndexPage() {
                   count={totals.pendingApprovalCount}
                   className={styles.metricPending}
                 />
+                {/* กอง "รอนับรายงวด" (mig 0412 · review รอบสี่) — ขนาดตาม note ของการ์ด (inline) บนบรรทัดของตัวเอง */}
+                {totals.instRemaining > 0 ? (
+                  <span className={styles.metricInst}>
+                    <InstRemainingAmount amount={totals.instRemaining} count={totals.instRemainingCount} inline />
+                  </span>
+                ) : null}
               </>
             )}
             tone="good"
@@ -363,12 +403,12 @@ export default function ProjectsIndexPage() {
               /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบเดียวกับคิวคำร้อง */
               <Button size="sm" onClick={() => setWaitingOnMeOnly(false)}>กรอง: รอฉันเซ็นปิด ×</Button>
             )}
-            <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />
+            {teamScoped && <MyTeamsFilter teams={myTeams.teams} selected={myTeams.selected} onChange={myTeams.setSelected} />}
             {/* ตัวกรองรวมในปุ่มเดียว (มาตรฐานทั้งระบบ) — สถานะเป็นกลุ่มเลือกค่าเดียว
                 เพราะ "กำลังดำเนินการ / ปิดแล้ว / ทุกสถานะ" เป็นขอบเขตที่ทับกันไม่ได้ */}
             <FilterPopover
               count={filterCount}
-              onClear={() => { setStatusFilter(SCOPE_DEFAULT); setLineFilter([]); setWaitingOnMeOnly(false); }}
+              onClear={() => { setStatusFilter(SCOPE_DEFAULT); setLineFilter([]); if (waitingOnMeOnly) setWaitingOnMeOnly(false); }}
               groups={[
                 {
                   key: "status", label: "สถานะ", icon: Flag, single: true,
@@ -387,16 +427,18 @@ export default function ProjectsIndexPage() {
                   key: "line", label: "สายธุรกิจ", icon: GitBranch,
                   options: [
                     ...BUSINESS_LINES.map((line) => ({ value: line, label: businessLineLabel(line) })),
-                    { value: "__unset", label: businessLineLabel(null) },
+                    { value: UNSET_LINE, label: businessLineLabel(null) },
                   ],
                   selected: lineFilter, onChange: setLineFilter,
                 },
-                {
+                /* "รอฉันเซ็นปิด" มีได้เฉพาะผู้อนุมัติปิด (ธง `_waitingOnMe`) — คนอื่นติ๊กแล้วได้ 0 แถวเสมอ
+                   ⇒ ไม่มีสิทธิ์ = ไม่โชว์ (กฎการมองเห็นของ UI) · ยังโชว์ตอนเปิดค้างจากลิงก์เก่าให้เอาติ๊กออกได้ */
+                ...(canApproveCloses || waitingOnMeOnly ? [{
                   key: "mine", label: "งานของฉัน", icon: UserRound,
                   options: [{ value: "waiting", label: "รอฉันเซ็นปิด" }],
                   selected: waitingOnMeOnly ? ["waiting"] : [],
                   onChange: (values) => setWaitingOnMeOnly(values.length > 0),
-                },
+                }] : []),
               ]}
             />
             <GroupMenu

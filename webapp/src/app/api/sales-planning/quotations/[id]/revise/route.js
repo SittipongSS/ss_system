@@ -1,7 +1,11 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canEditSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
+import { canEditSalesPlanning } from '@/lib/salesPlanning';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
+import { quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { EXCISE_LINES_LOCKED_MESSAGE } from '@/lib/excise/exciseQuotation';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
@@ -10,8 +14,9 @@ import { buildQuotationRevisionContent } from '@/lib/sales/quotationRevision';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { syncContractsForQuotation } from '@/lib/sales/contractQuotationSync';
 import {
-  customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, normalizeManualLines,
+  customerMismatchMessage, customerMismatchedLines, enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines,
 } from '@/lib/sales/quoteLines';
+import { exciseChargeLineMessage } from '@/lib/excise/exciseCharge';
 import {
   LinePackError, lineMoneyRuleMessage, linePackIssues, linePackMessage, withPackColumn,
 } from '@/lib/sales/linePacks';
@@ -37,7 +42,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .maybeSingle();
   if (error) return fail(error.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  if (!quote.deal || !inSalesEditScope(user, quote.deal)) return forbidden();
+  // ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ขอบเขต + เบอร์ผู้เสนอราคาถอยไปดีลของ SO ต้นทาง
+  const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+  if (sourceError) return fail(sourceError.message, 500);
+  if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
   // ใบ grandfather (not_required) ออก Rev. ได้เหมือนใบ approved — เป็นทางเดียวที่ใบเก่า
   // ยังแก้ได้ (มติ 2026-07-26) เพราะทุกด่านในระบบนับใบพวกนี้เป็น "อนุมัติแล้ว" อยู่แล้ว
   if (!isRevisableQuotationApprovalStatus(quote.approvalStatus)) {
@@ -61,6 +69,11 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
+  /* ⭐ ใบค่าสรรพสามิต: Rev. สืบบรรทัดเดิมทั้งชุด (ภาษีที่ระบบคิด) — จอส่งบรรทัด/ส่วนลด/VAT มา = ปฏิเสธ · แก้บรรทัดใน Rev. ร่าง
+     ด้วย "คิดใหม่จากใบสั่งขาย" (PATCH) · 1 SO = 1 ใบที่มีผล: ใบเดิมกลายเป็น revised ⇒ ฉบับใหม่เป็นใบที่มีผลใบเดียว */
+  if (isExciseOrder(quote) && ['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
+    return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
+  }
   /* เลขแพ็ค (mig 0407): ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด (รวมบรรทัดที่สืบทอดจากใบเดิม) = ปฏิเสธพร้อมเลขรายการ
      — ไม่ตัดทิ้งแล้วออก Rev. ต่อ: ฉบับใหม่จะได้ยอดที่หดเงียบ */
   let revLines;
@@ -77,9 +90,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     previousLines: quote.lines || [],
   });
   if (revMismatched.length) return badRequest(customerMismatchMessage(revMismatched));
+  // สินค้า 04-003 (ค่าภาษีสรรพสามิต) ใส่ในใบขายไม่ได้ — เฉพาะบรรทัดที่เพิ่งใส่ (แผนรื้อสรรพสามิต หมวด 3.3)
+  const revChargeLines = await exciseChargeLinesAdded(supabase, revLines, {
+    previousLines: quote.lines || [], origin: quote.origin,
+  });
+  if (revChargeLines.length) return badRequest(exciseChargeLineMessage(revChargeLines));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (มติผู้ใช้ 2026-07-15) — enforce ก่อนคิดยอดฉบับใหม่
   body.lines = await enforceMasterPrices(supabase, revLines, quote.lines || [], {
-    customerId: quote.customerId,
+    customerId: quote.customerId, origin: quote.origin,
   });
   const revision = buildQuotationRevisionContent(quote, body);
   if (!revision.ok) return badRequest(revision.error);
@@ -124,7 +142,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const revEditableMeta = stripRetiredPeople(revBody);
 
   // เบอร์เจ้าของดีล ณ วันออก Rev. — อ่านสดทุกครั้ง เพราะเจ้าของดีลเปลี่ยนมือได้
-  const ownerContact = await loadDealOwnerContact(supabase, quote.deal?.ownerId);
+  const ownerContact = await loadDealOwnerContact(supabase, quotationApprovalDeal(quote)?.ownerId);
 
   const newId = genId('QT');
   // ใบ R ใหม่ดึงที่อยู่ลูกค้า "สดจาก master ณ ตอน revise" (มติผู้ใช้) — ที่อยู่เปลี่ยน
@@ -151,6 +169,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     .insert({
       id: newId,
       dealId: quote.dealId,
+      /* ใบเสนอราคาค่าสรรพสามิต (mig 0414) — ฉบับ Rev. ยังเป็นใบค่าสรรพสามิตของ SO ต้นทางเดิม · ทั้งคู่แก้ไม่ได้หลังเกิด
+         (trigger) จึงต้องติดไปตั้งแต่ INSERT · ใบขายปกติได้ 'pipeline' / ว่าง ตามเดิม (CHECK quotations_origin_shape) */
+      origin: quote.origin || 'pipeline',
+      sourceSalesOrderId: quote.sourceSalesOrderId || null,
       quoteNumber: `${base}${revSeparator}${nextRev}`,
       baseNumber: base,
       revisionNo: nextRev,

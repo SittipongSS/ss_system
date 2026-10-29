@@ -19,7 +19,7 @@ import {
   requestUsesScentBriefs,
 } from '../master/requestTypes.js';
 import {
-  requestEditVariant, requestVariantLock, requestVariantSideLock, requestVariantSwitchError,
+  VARIANT_SWITCHABLE_STATUSES, requestEditVariant, requestVariantLock, requestVariantSideLock, requestVariantSwitchError,
 } from './variantSwitch.js';
 import { assertKind } from './kinds/registry.js';
 
@@ -151,7 +151,9 @@ test('⭐ ที่มาของกลิ่นใน PDR: พัฒนาก�
 // 🔴 ผลรีวิวก่อน merge 2026-09-11 — ทางแก้ใบเขียน `variant: null` ลงคอลัมน์ NOT NULL ให้ทุกหัวข้อ
 //    ที่ไม่มีรูปแบบ (ฟอร์มแก้ส่ง variant มาทุกครั้ง) ⇒ แก้ใบหัวข้ออื่นทุกใบได้ 500
 test('⭐ ทางแก้ใบ: หัวข้อที่ไม่มีรูปแบบไม่แตะคอลัมน์ variant เลย · ค่าเพี้ยนตีกลับ ไม่ใช่แปลงเงียบ', () => {
-  for (const kind of ['scent_dev', 'info', 'document', 'billing_doc', 'site_survey']) {
+  /* ⚠️ `site_survey` ออกจากลูปนี้แล้ว (ประเมินจากแบบ งวด 4) — หัวข้อนี้มีรูปแบบ (วิธีประเมิน) และบังคับเลือก
+     ⇒ ไม่มี variant = ประโยคบังคับ ไม่ใช่ "เหมือนไม่มีคีย์" · ข้อของมันย้ายไป requestVariantIntake.test.mjs */
+  for (const kind of ['scent_dev', 'info', 'document', 'billing_doc']) {
     for (const asked of ['standard', '', 'npd', undefined]) {
       assert.deepEqual(
         requestEditVariant({ kind, variant: 'standard' }, asked),
@@ -188,7 +190,9 @@ test('⭐ ด่านรูปทรงไม่อ่าน variant ของ�
     title: 'ก', dealId: 'D-1', salesOrderId: 'SO-1', quotationId: 'Q-1', billAmount: 100,
     requestedDueDate: '2026-09-30', items: [{}], zones: [{}], siteId: 'S-1', scentId: 'SC-1', formulaId: 'F-1',
   };
-  for (const kind of ['scent_dev', 'info', 'document', 'billing_doc', 'site_survey']) {
+  /* ⚠️ `site_survey` ออกจากลูปนี้แล้ว (ประเมินจากแบบ งวด 4) — หัวข้อนี้มีรูปแบบ (วิธีประเมิน) และบังคับเลือก
+     ⇒ ไม่มี variant = ประโยคบังคับ ไม่ใช่ "เหมือนไม่มีคีย์" · ข้อของมันย้ายไป requestVariantIntake.test.mjs */
+  for (const kind of ['scent_dev', 'info', 'document', 'billing_doc']) {
     assert.equal(
       requestShapeError(kind, { ...body, variant: 'standard' }),
       requestShapeError(kind, body),
@@ -203,4 +207,28 @@ test('⭐ ด่านรูปทรงไม่อ่าน variant ของ�
 test('สลับรูปแบบได้เฉพาะฝั่งผู้ขอ — ฝ่ายปลายทางแก้หัวใบได้ตอนรอรับเรื่อง แต่สลับไม่ได้', () => {
   assert.equal(requestVariantSideLock(true), null);
   assert.match(requestVariantSideLock(false), /เฉพาะผู้เปิดคำร้อง/);
+});
+
+/* ── ประเมินพื้นที่ล็อกวิธีทันทีหลังส่ง (ประเมินจากแบบ งวด 4 · S4 §2.4) ─────────────────────── */
+test('ประเมินพื้นที่: ร่าง (รวมใบตีกลับ) สลับได้ · ส่งแล้วทุกสถานะ = ประโยคล็อก · ยกเลิก = ประโยคเดิม', () => {
+  const LOCK = 'ส่งคำร้องแล้ว — เปลี่ยนวิธีประเมินได้ที่ฝ่ายบริการ (หัวหน้า TS)';
+  const r = (status, extra = {}) => ({ kind: 'site_survey', status, variant: 'drawing', ...extra });
+  assert.equal(requestVariantLock(r('draft')), null);
+  // ใบที่ถูกตีกลับกลับเป็นร่าง (มีเลขที่และเวลาส่งค้างอยู่) — ยังสลับได้
+  assert.equal(requestVariantLock(r('draft', { docNo: 'RQ-AS-26100001', submittedAt: '2026-10-10T00:00:00Z' })), null);
+  for (const status of ['pending', 'acknowledged', 'answered', 'closed']) {
+    assert.equal(requestVariantLock(r(status)), LOCK, status);
+    assert.equal(requestVariantSwitchError(r(status), 'standard'), LOCK, `switch ${status}`);
+  }
+  assert.equal(requestVariantLock(r('cancelled')), 'คำร้องถูกยกเลิกแล้ว — สลับรูปแบบไม่ได้');
+  assert.equal(requestVariantSwitchError(r('draft'), 'standard'), null);
+});
+
+test('พัฒนาสูตรไม่ได้ล็อกหลังส่ง — รอรับเรื่องยังสลับได้ · รับเรื่องแล้วประโยคเดิม · ประโยคฝั่งผู้ขอเดิมเป๊ะ', () => {
+  assert.equal(requestVariantLock({ kind: 'formula_dev', status: 'pending' }), null);
+  assert.equal(requestVariantLock({ kind: 'formula_dev', status: 'acknowledged' }), 'รับเรื่องไปแล้ว — สลับรูปแบบไม่ได้ (งานเดินไปแล้ว)');
+  assert.deepEqual([...VARIANT_SWITCHABLE_STATUSES], ['draft', 'pending']);
+  assert.equal(requestVariantSideLock(false), 'สลับรูปแบบงานได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน');
+  assert.equal(requestVariantSideLock(false, 'formula_dev'), 'สลับรูปแบบงานได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน');
+  assert.equal(requestVariantSideLock(false, 'site_survey'), 'สลับวิธีประเมินได้เฉพาะผู้เปิดคำร้องหรือคนในทีมเดียวกัน');
 });

@@ -167,7 +167,7 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
     const rows = kpi?.byAssignee || [];
     const sum = (key) => rows.reduce((n, r) => n + (r[key] || 0), 0);
     return {
-      assigned: sum("assigned"), contacted: sum("contacted"), slaHit: sum("slaHit"),
+      assigned: sum("assigned"), contacted: sum("contacted"), slaChecked: sum("slaChecked"), slaHit: sum("slaHit"),
       meetings: sum("meetings"), qualified: sum("qualified"), pending: sum("pending"),
     };
   }, [kpi]);
@@ -235,19 +235,21 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
             ⚠️ "ผ่านนัดประชุม" เป็น **แขนง** ไม่ใช่ด่าน (สีคนละตัว) — create_deal ข้ามขั้นนัดได้
             จึงมีเดือนที่นัดน้อยกว่าเปิดลูกค้า · ใส่ไว้ให้เห็นจำนวน ไม่ได้แปลว่าต้องผ่าน
             ⚠️ ไม่มี "ตีกลับ" ในผัง (มติผู้ใช้ 2026-08-11) และ "ไม่ไปต่อ" อยู่ในแถบผลลัพธ์ข้างล่าง */}
-        <ChartCanvas className={styles.funnelChart} aria-busy={loading}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={funnelRows} layout="vertical" margin={{ top: 4, right: 44, bottom: 4, left: 4 }} barSize={16}>
-              <XAxis type="number" hide domain={[0, Math.max(1, f.total || 1)]} />
-              <YAxis type="category" dataKey="label" width={104} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
-              <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
-              <Bar dataKey="value" name="จำนวนลีด" radius={[0, 3, 3, 0]} isAnimationActive={false}>
-                {funnelRows.map((r) => <Cell key={r.label} fill={r.color} />)}
-                <LabelList dataKey="value" position="right" fill="var(--text-2)" fontSize={12} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCanvas>
+        <div className={styles.funnelChart}>
+          <ChartCanvas aria-busy={loading}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={funnelRows} layout="vertical" margin={{ top: 4, right: 44, bottom: 4, left: 4 }} barSize={16}>
+                <XAxis type="number" hide domain={[0, Math.max(1, f.total || 1)]} />
+                <YAxis type="category" dataKey="label" width={104} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
+                <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
+                <Bar dataKey="value" name="จำนวนลีด" radius={[0, 3, 3, 0]} isAnimationActive={false}>
+                  {funnelRows.map((r) => <Cell key={r.label} fill={r.color} />)}
+                  <LabelList dataKey="value" position="right" fill="var(--text-2)" fontSize={12} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCanvas>
+        </div>
         {/* เหตุผลที่แท่งล่างสองอันสวนทางกันต้องอยู่ **บนจอ** ไม่ใช่ในคอมเมนต์โค้ด —
             คนอ่านเห็นแท่งเรียงลงมาแล้วเจอ "นัด 2 · เปิดลูกค้า 4" จะอ่านว่าระบบคำนวณพัง
             สีที่ต่างกันบอกไม่ได้ว่ามันคนละชนิด (มีคนถามจริงตอนตรวจ 2026-08-12) */}
@@ -341,37 +343,39 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
       >
         {dayBuckets.length ? (
           <>
-            <ChartCanvas className={styles.dailyChart} aria-busy={loading}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dayBuckets} margin={{ top: 16, right: 8, bottom: 4, left: 4 }}>
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} interval="preserveStartEnd" />
-                  <YAxis width={30} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} allowDecimals={false} />
-                  <RTooltip
-                    cursor={{ fill: "var(--panel-3)" }}
-                    content={(
-                      <ChartTooltip
-                        /* ตารางตัวเลขถูกถอดออกตามที่ผู้ใช้สั่ง (2026-08-13) — ข้อมูลที่เคย
-                           อยู่ในคอลัมน์ "วันที่มีลีด" กับป้าย "ไม่เต็มสัปดาห์" จึงต้องย้าย
-                           มาอยู่ในทูลทิป ไม่ใช่หายไปเฉย ๆ */
-                        labelFormatter={(_, payload) => {
-                          const row = payload?.[0]?.payload;
-                          if (!row) return "";
-                          return dayUnit === "week" && row.partial ? `${row.name} (ไม่เต็มสัปดาห์)` : row.name;
-                        }}
-                        valueFormatter={(v, _n, entry) => (dayUnit === "week"
-                          ? `${v} ใบ · มีลีด ${entry?.payload?.withLeads ?? 0} วัน`
-                          : `${v} ใบ`)}
-                      />
-                    )}
-                  />
-                  {/* `minPointSize` = วันที่ได้ศูนย์ยังได้ตอขีดบาง ๆ ไม่ใช่หายไปจากผัง
-                      (recharts ไม่วาดสี่เหลี่ยมสูงศูนย์) — วันว่างคือข้อมูลที่ต้องเห็น */}
-                  <Bar dataKey="count" name="ลีดเข้า" fill={CHART_CATEGORICAL[0]} radius={[3, 3, 0, 0]} minPointSize={2} isAnimationActive={false}>
-                    <LabelList dataKey="count" position="top" fill="var(--text-2)" fontSize={11} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCanvas>
+            <div className={styles.dailyChart}>
+              <ChartCanvas aria-busy={loading}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dayBuckets} margin={{ top: 16, right: 8, bottom: 4, left: 4 }}>
+                    <XAxis dataKey="label" tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} interval="preserveStartEnd" />
+                    <YAxis width={30} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} allowDecimals={false} />
+                    <RTooltip
+                      cursor={{ fill: "var(--panel-3)" }}
+                      content={(
+                        <ChartTooltip
+                          /* ตารางตัวเลขถูกถอดออกตามที่ผู้ใช้สั่ง (2026-08-13) — ข้อมูลที่เคย
+                             อยู่ในคอลัมน์ "วันที่มีลีด" กับป้าย "ไม่เต็มสัปดาห์" จึงต้องย้าย
+                             มาอยู่ในทูลทิป ไม่ใช่หายไปเฉย ๆ */
+                          labelFormatter={(_, payload) => {
+                            const row = payload?.[0]?.payload;
+                            if (!row) return "";
+                            return dayUnit === "week" && row.partial ? `${row.name} (ไม่เต็มสัปดาห์)` : row.name;
+                          }}
+                          valueFormatter={(v, _n, entry) => (dayUnit === "week"
+                            ? `${v} ใบ · มีลีด ${entry?.payload?.withLeads ?? 0} วัน`
+                            : `${v} ใบ`)}
+                        />
+                      )}
+                    />
+                    {/* `minPointSize` = วันที่ได้ศูนย์ยังได้ตอขีดบาง ๆ ไม่ใช่หายไปจากผัง
+                        (recharts ไม่วาดสี่เหลี่ยมสูงศูนย์) — วันว่างคือข้อมูลที่ต้องเห็น */}
+                    <Bar dataKey="count" name="ลีดเข้า" fill={CHART_CATEGORICAL[0]} radius={[3, 3, 0, 0]} minPointSize={2} isAnimationActive={false}>
+                      <LabelList dataKey="count" position="top" fill="var(--text-2)" fontSize={11} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartCanvas>
+            </div>
             {/* ⚠️ ข้อความนี้ต้องอยู่ **บนจอ** ไม่ใช่ในคอมเมนต์ — คนเห็นแท่งศูนย์เรียงกัน
                 แล้วจะคิดว่ากราฟพัง ทั้งที่วันว่างคือข้อมูลที่เขาต้องการเห็น */}
             <p className={styles.chartNote}>
@@ -396,21 +400,23 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
           <>
             <div className={styles.channelFigure}>
               <div className={styles.channelCol}>
-              <ChartCanvas className={styles.donut}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    {/* 🐞 `isAnimationActive={false}` **จำเป็น** ไม่ใช่เรื่องความชอบ — Recharts 3.9.2
-                        เรนเดอร์ `<Pie>` ที่เปิดอนิเมชัน (ค่าเริ่มต้น) ออกมาเป็น sector เปล่าไม่มี
-                        path เลย = วงกลมหายทั้งวง และไม่มี error อะไรฟ้อง
-                        ⚠️ กราฟวงกลมเดิมของหน้าสหมิตร/ภาษี/ฐานข้อมูลติดบั๊กเดียวกันอยู่ตอนนี้
-                        (ตรวจ 2026-08-12: sector 1 อัน path 0) — ใครไปแก้ที่นั่นให้ใส่ prop นี้ด้วย */}
-                    <Pie data={groups} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="none" isAnimationActive={false}>
-                      {groups.map((g, i) => <Cell key={g.key} fill={GROUP_COLORS[i % GROUP_COLORS.length]} />)}
-                    </Pie>
-                    <RTooltip content={<ChartTooltip valueFormatter={(v) => `${v} ใบ (${pct(v, f.total)})`} />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartCanvas>
+              <div className={styles.donut}>
+                <ChartCanvas>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      {/* 🐞 `isAnimationActive={false}` **จำเป็น** ไม่ใช่เรื่องความชอบ — Recharts 3.9.2
+                          เรนเดอร์ `<Pie>` ที่เปิดอนิเมชัน (ค่าเริ่มต้น) ออกมาเป็น sector เปล่าไม่มี
+                          path เลย = วงกลมหายทั้งวง และไม่มี error อะไรฟ้อง
+                          ⚠️ กราฟวงกลมเดิมของหน้าสหมิตร/ภาษี/ฐานข้อมูลติดบั๊กเดียวกันอยู่ตอนนี้
+                          (ตรวจ 2026-08-12: sector 1 อัน path 0) — ใครไปแก้ที่นั่นให้ใส่ prop นี้ด้วย */}
+                      <Pie data={groups} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius="58%" outerRadius="82%" paddingAngle={2} stroke="none" isAnimationActive={false}>
+                        {groups.map((g, i) => <Cell key={g.key} fill={GROUP_COLORS[i % GROUP_COLORS.length]} />)}
+                      </Pie>
+                      <RTooltip content={<ChartTooltip valueFormatter={(v) => `${v} ใบ (${pct(v, f.total)})`} />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartCanvas>
+              </div>
               <ChartLegend
                 items={groups.map((g, i) => ({
                   key: `g-${g.key}`,
@@ -423,28 +429,30 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
               <ChartLegend
                 items={STATUS_SERIES.map((st) => ({ key: st.key, label: st.label, color: st.color }))}
               />
-              <ChartCanvas className={styles.channelBars}>
-                <ResponsiveContainer width="100%" height="100%">
-                  {/* แท่งซ้อน = สถานะ ณ ตอนนี้ ใบหนึ่งอยู่ได้ช่องเดียว ความยาวรวมจึงเท่าจำนวนลีด
-                      ของช่องทางนั้นพอดี (channelRollup มีเทสคุมไว้) */}
-                  <BarChart data={channels} layout="vertical" margin={{ top: 4, right: 8, bottom: 4, left: 4 }} barSize={14}>
-                    <XAxis type="number" hide />
-                    <YAxis type="category" dataKey="label" width={78} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
-                    <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
-                    {/* 🐞 `isAnimationActive={false}` **จำเป็น** เหมือน `<Pie>` ข้างบน — recharts 3.9.2
-                        ทำอนิเมชันของ `<Bar>` ที่ซ้อนกอง (stackId) ไม่จบ: เปิดหน้ามาแท่งไม่ขึ้นเลย
-                        สักอัน (path 0 ชิ้น) พอเลื่อนจอให้กราฟเข้ามาในสายตาถึงโผล่ แต่ค้างกลางทาง
-                        — ค่าสูงสุด 21 ใบวาดยาวแค่ ~55px บนผืนกว้าง 963px และไม่มี error อะไรฟ้อง
-                        ⚠️ พิสูจน์แล้วว่าไม่ใช่เรื่องขนาด: ตรึง `width={800}` ตัด ResponsiveContainer
-                        ออกก็ยังไม่ขึ้น · กราฟอื่นทุกอันในไฟล์นี้ปิดอนิเมชันไว้ตั้งแต่แรกจึงไม่เคยเจอ
-                        (เจอตอนตรวจด้วยตา 2026-08-13 · ผู้ใช้ทักว่ากราฟหน้าตาแปลก) */}
-                    {STATUS_SERIES.map((st, i) => (
-                      <Bar key={st.key} dataKey={st.key} name={st.label} stackId="s" fill={st.color}
-                        radius={i === STATUS_SERIES.length - 1 ? [0, 3, 3, 0] : 0} isAnimationActive={false} />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartCanvas>
+              <div className={styles.channelBars}>
+                <ChartCanvas>
+                  <ResponsiveContainer width="100%" height="100%">
+                    {/* แท่งซ้อน = สถานะ ณ ตอนนี้ ใบหนึ่งอยู่ได้ช่องเดียว ความยาวรวมจึงเท่าจำนวนลีด
+                        ของช่องทางนั้นพอดี (channelRollup มีเทสคุมไว้) */}
+                    <BarChart data={channels} layout="vertical" margin={{ top: 4, right: 8, bottom: 4, left: 4 }} barSize={14}>
+                      <XAxis type="number" hide />
+                      <YAxis type="category" dataKey="label" width={78} tickLine={false} axisLine={false} tick={CHART_AXIS_TICK} />
+                      <RTooltip cursor={{ fill: "var(--panel-3)" }} content={<ChartTooltip valueFormatter={(v) => `${v} ใบ`} />} />
+                      {/* 🐞 `isAnimationActive={false}` **จำเป็น** เหมือน `<Pie>` ข้างบน — recharts 3.9.2
+                          ทำอนิเมชันของ `<Bar>` ที่ซ้อนกอง (stackId) ไม่จบ: เปิดหน้ามาแท่งไม่ขึ้นเลย
+                          สักอัน (path 0 ชิ้น) พอเลื่อนจอให้กราฟเข้ามาในสายตาถึงโผล่ แต่ค้างกลางทาง
+                          — ค่าสูงสุด 21 ใบวาดยาวแค่ ~55px บนผืนกว้าง 963px และไม่มี error อะไรฟ้อง
+                          ⚠️ พิสูจน์แล้วว่าไม่ใช่เรื่องขนาด: ตรึง `width={800}` ตัด ResponsiveContainer
+                          ออกก็ยังไม่ขึ้น · กราฟอื่นทุกอันในไฟล์นี้ปิดอนิเมชันไว้ตั้งแต่แรกจึงไม่เคยเจอ
+                          (เจอตอนตรวจด้วยตา 2026-08-13 · ผู้ใช้ทักว่ากราฟหน้าตาแปลก) */}
+                      {STATUS_SERIES.map((st, i) => (
+                        <Bar key={st.key} dataKey={st.key} name={st.label} stackId="s" fill={st.color}
+                          radius={i === STATUS_SERIES.length - 1 ? [0, 3, 3, 0] : 0} isAnimationActive={false} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCanvas>
+              </div>
               </div>
             </div>
             <TableScroll surface="embedded" className={styles.channelTable}><table>
@@ -536,10 +544,12 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                   {/* 🐞 % เปล่า ๆ โกหกได้เต็มปาก — ตัวหารคือ "ใบที่ติดต่อแล้ว" ไม่ใช่ "ใบที่รับมอบ"
                       คนที่รับ 11 ใบ ติดต่อไป 2 ใบ ทันทั้งคู่ จึงขึ้น 100.00% ทั้งที่ค้างอยู่ 10 ใบ
                       (ส.ค. 2026 มีแถวแบบนี้จริง) · การ์ด SLA ข้างบนโชว์ "ทัน x/y" อยู่แล้ว
-                      คอลัมน์นี้ต้องโชว์ตัวหารเหมือนกัน ไม่งั้นสองที่บนจอเดียวกันเชื่อถือไม่เท่ากัน */}
+                      คอลัมน์นี้ต้องโชว์ตัวหารเหมือนกัน ไม่งั้นสองที่บนจอเดียวกันเชื่อถือไม่เท่ากัน
+                      ⚠️ ตัวหารคือ `slaChecked` ไม่ใช่ `contacted` — ใบที่ตีกลับแล้วยังไม่ได้ติดต่อ
+                      รอบใหม่ "เคยติดต่อ" แต่วัด SLA รอบนี้ไม่ได้ (ดู assigneeRollup) */}
                   <td className="num mono">
-                    {pct(a.slaHit, a.contacted)}
-                    {a.contacted ? <span className={styles.cellSub}>{a.slaHit}/{a.contacted}</span> : null}
+                    {pct(a.slaHit, a.slaChecked)}
+                    {a.slaChecked ? <span className={styles.cellSub}>{a.slaHit}/{a.slaChecked}</span> : null}
                   </td>
                   <td className="num mono">{a.meetings}</td>
                   <td className="num mono">{a.qualified}</td>
@@ -562,8 +572,8 @@ export default function KpiLeadsTab({ month, allMonths = false, teamFilter, rang
                 <td className="num mono"><strong>{aeTotals.assigned}</strong></td>
                 <td className="num mono"><strong>{aeTotals.contacted}</strong></td>
                 <td className="num mono">
-                  <strong>{pct(aeTotals.slaHit, aeTotals.contacted)}</strong>
-                  {aeTotals.contacted ? <span className={styles.cellSub}>{aeTotals.slaHit}/{aeTotals.contacted}</span> : null}
+                  <strong>{pct(aeTotals.slaHit, aeTotals.slaChecked)}</strong>
+                  {aeTotals.slaChecked ? <span className={styles.cellSub}>{aeTotals.slaHit}/{aeTotals.slaChecked}</span> : null}
                 </td>
                 <td className="num mono"><strong>{aeTotals.meetings}</strong></td>
                 <td className="num mono"><strong>{aeTotals.qualified}</strong></td>

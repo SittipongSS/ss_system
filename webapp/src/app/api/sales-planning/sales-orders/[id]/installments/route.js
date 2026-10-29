@@ -1,6 +1,6 @@
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
-import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { EVIDENCE_REFS_DROPPED_TEXT, evidenceRefsDropped, sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
 import {
   PRIVATE_EVIDENCE_BUCKET, missingStoredEvidence, privateEvidencePrefix,
@@ -17,7 +17,7 @@ import {
   withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
-  carryInstallments, ensureInstallments, installmentBillingSchemaError,
+  carryInstallments, confirmationBorrowable, ensureInstallments, freezeInstallments, installmentBillingSchemaError,
   installmentRefundSchemaError, loadInstallment, loadInstallments, replanInstallments, updateInstallment,
   writeCoverageFill,
 } from '@/lib/sales/salesOrderInstallmentsStore';
@@ -40,11 +40,20 @@ import {
 } from '@/lib/sales/installmentCarry';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
+import { appendDocumentEvent } from '@/lib/sales/documentThread';
+/* นับ Actual รายงวด (mig 0412 · docs/so-installment-actual.md) — คำสั่ง actual_* ของงวด → RPC sales_order_installment_actual_action */
+import { INSTALLMENT_ACTUAL_ACTIONS, installmentActualShareAtApproval } from '@/lib/sales/salesOrderActualMode';
+import {
+  actualGateStatus, installmentActualAuditSummary, installmentActualAutoCountAuditText, installmentActualAutoCountedAtCommit,
+} from '@/lib/sales/salesOrderActualRoute';
+import { notifyInstallmentActual } from '@/lib/sales/installmentActualNotify';
 import {
   OPENING_INSTALLMENT_LABEL, historicalInstallmentLock, isHistoricalOrder, isOpeningInstallment,
 } from '@/lib/sales/historicalOrders';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { loadScoped } from '@/lib/scopedRow';
+import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
+import { loadInstallmentRequests, syncBillingPointers } from '@/lib/sales/installmentRequestsStore';
+import { attachSourceDeals, inSalesDocScope, loadScoped } from '@/lib/scopedRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,6 +66,16 @@ const isDate = (v) => typeof v === 'string' && ISO_DATE.test(v) && !Number.isNaN
 const installmentsForScreen = (order, rows) => (isHistoricalOrder(order)
   ? rows
   : withLiveAmounts(rows, order.quotation?.paymentPlan, order.totalAmount));
+
+/* งวดสดหลัง RPC ปรับแผน/ยกเงินเข้าคืน (สถานะที่ COMMIT จริง — รวมงวดที่ trigger แบบเลื่อนของ 0412 นับให้เอง · มติข้อ 10)
+   ⚠️ อ่านพลาด = null (ไม่โยน): งานลงฐานแล้ว — audit ต้องลงต่อด้วยภาพของ RPC ไม่ใช่หลุดไป catch นอกแล้วตอบ 500 โดยไม่มีประวัติ */
+async function loadCommittedInstallments(supabase, orderId) {
+  try {
+    return await loadInstallments(supabase, orderId);
+  } catch {
+    return null;
+  }
+}
 
 /* สิทธิ์ **อ่าน** ของงวด = สิทธิ์อ่านใบสั่งขายใบนั้น (view-scope ของดีลเจ้าของ)
    ⚠️ ฝ่ายบัญชีถือ `salesplan:view` แบบ scope กว้าง จึงเห็นทุกใบตามที่ควรเป็น —
@@ -75,7 +94,11 @@ async function loadOrderForUser(supabase, user, id) {
   const { data: deal, error: dealError } = await supabase
     .from('sales_deals').select('*').eq('id', order.dealId).maybeSingle();
   if (dealError) throw dealError;
-  if (!deal || !inSalesViewScope(user, deal)) return { error: forbidden() };
+  /* ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล — ด่านอ่านถอยไปดีลของ SO ต้นทาง (ตัดสินสิทธิ์อย่างเดียว · `deal` ของใบยังว่าง) */
+  const scoped = { ...order, deal };
+  const { error: sourceError } = await attachSourceDeals(supabase, [scoped]);
+  if (sourceError) throw sourceError;
+  if (!inSalesDocScope(user, scoped, 'view')) return { error: forbidden() };
 
   const { data: quotation, error: quoteError } = await supabase
     .from('quotations')
@@ -198,7 +221,19 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     const startBlock = installmentStartBlock(order);
     if (startBlock) return badRequest(startBlock);
 
-    const { rows, created } = await ensureInstallments(supabase, { order, user });
+    /* 🐞 review รอบสาม 26/10: ใบที่ **อนุมัติแล้ว** (ทางกู้หลังตัวหยุดยอดล้มตอนอนุมัติ · ใบเก่าก่อน B-4) เคยได้งวดแบบร่าง (frozenAt ว่าง)
+       ⇒ แจ้งสลิปค้าง 'pending' ("ถึงบัญชีเมื่อใบอนุมัติ" ทั้งที่อนุมัติแล้ว) · บัญชีรับรองไม่ได้ (CHECK draft_pending) · ใบรายงวดยื่นงวด 2
+       เป็นต้นไปไม่ได้ตลอดไป ⇒ ใบที่อนุมัติแล้วตรึงทันทีด้วยตัวเดียวกับการอนุมัติ (freezeInstallments · ยืมสลิปตามกติกา MONEY-1 ·
+       ชุดที่มีแถวอยู่แล้วแค่ประทับ frozenAt) · ใบร่าง/รออนุมัติ = งวดร่างตามเดิม (ตรึงตอนอนุมัติ) */
+    let rows;
+    let created;
+    if (order.status === 'approved') {
+      const existing = await loadInstallments(supabase, order.id);
+      ({ rows } = await freezeInstallments(supabase, { order, user, borrowConfirmation: await confirmationBorrowable(supabase, order) }));
+      created = !existing.length && rows.length > 0;
+    } else {
+      ({ rows, created } = await ensureInstallments(supabase, { order, user }));
+    }
     if (!rows.length) return badRequest('ใบเสนอราคาต้นทางไม่มีแผนการชำระให้ยกมา');
     if (created) {
       await recordAudit({
@@ -523,6 +558,11 @@ async function replanOrderInstallments({ user, supabase, req, id, body }) {
       orderId: order.id, rows: built.rows, expected: body.expected, reason, user,
     });
     if (result.error) return fail(result.error, result.status);
+    /* มติข้อ 10 (review รอบห้า 27/10): ใบที่กด "นับที่เหลือทั้งหมด" แล้ว ฐานนับงวดที่โผล่ใหม่ให้ตอน COMMIT (constraint trigger แบบเลื่อน
+       §5f ของ 0412) ⇒ `result.after` ถ่ายก่อนนับ — audit ลงงวดที่อ่านสดหลัง RPC (สถานะที่ commit จริง) + บอกงวดที่ฐานนับเอง
+       · อ่านพลาด = ยังลง audit (ประวัติต้องมีเสมอ) ด้วยภาพของ RPC พร้อมธง afterSource:'rpc' */
+    const committed = await loadCommittedInstallments(supabase, order.id);
+    const autoCounted = committed ? installmentActualAutoCountedAtCommit(result.after, committed) : null;
     /* audit before/after ทุกแถว — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) · งวดเปิดที่ถูกลบอยู่ใน before ครบ */
     await recordAudit({
       user,
@@ -530,13 +570,15 @@ async function replanOrderInstallments({ user, supabase, req, id, body }) {
       entityType: 'sales_order_installments',
       entityId: order.id,
       before: { installments: result.before },
-      after: { installments: result.after, reason },
+      after: committed
+        ? { installments: committed, rpcAfter: result.after, reason }
+        : { installments: result.after, afterSource: 'rpc', reason },
       summary: replanAuditSummary({
-        orderNumber: order.orderNumber, beforeCount: result.before.length, afterCount: result.after.length, reason,
-      }),
+        orderNumber: order.orderNumber, beforeCount: result.before.length, afterCount: result.after.length, reason, autoCounted,
+      }) + installmentActualAutoCountAuditText(autoCounted),
       request: req,
     });
-    return ok({ installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)) });
+    return ok({ installments: installmentsForScreen(order, committed ?? await loadInstallments(supabase, order.id)) });
   } catch (replanError) {
     return fail(replanError.message, 500);
   }
@@ -583,13 +625,20 @@ async function carryIntoOrder({ user, supabase, req, id, body }) {
       sourceId: source.id, targetId: order.id, ids, rows: built.rows, expected: body.expected, reason, user,
     });
     if (result.error) return fail(result.error, result.status);
+    /* มติข้อ 10 (review รอบห้า 27/10): งวดที่ยกเข้าใบที่กด "นับที่เหลือทั้งหมด" แล้ว ฐานนับให้ตอน COMMIT — audit ลงงวดสดหลัง RPC
+       (ดู replanOrderInstallments) · อ่านพลาด = ลงภาพของ RPC พร้อมธง afterSource:'rpc' */
+    const committed = await loadCommittedInstallments(supabase, order.id);
+    const autoCounted = committed ? installmentActualAutoCountedAtCommit(result.after, committed) : null;
     const summary = carryAuditSummary({
       fromNumber: source.orderNumber, toNumber: order.orderNumber, carried: result.carried, reason,
-    });
+    }) + installmentActualAutoCountAuditText(autoCounted);
     /* audit before/after ทั้งสองใบ — ทางกู้ทางเดียวของระบบนี้ (ไม่มีถังขยะ) · งวดเปิดที่ถูกหักจนหมดอยู่ใน before ครบ */
     await recordAudit({
       user, action: 'update', entityType: 'sales_order_installments', entityId: order.id,
-      before: { installments: result.before }, after: { installments: result.after, carried: result.carried, reason },
+      before: { installments: result.before },
+      after: committed
+        ? { installments: committed, rpcAfter: result.after, carried: result.carried, reason }
+        : { installments: result.after, afterSource: 'rpc', carried: result.carried, reason },
       summary, request: req,
     });
     await recordAudit({
@@ -597,7 +646,7 @@ async function carryIntoOrder({ user, supabase, req, id, body }) {
       before: { installments: carried }, after: { movedTo: order.id, carried: result.carried, reason },
       summary, request: req,
     });
-    return ok({ installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)) });
+    return ok({ installments: installmentsForScreen(order, committed ?? await loadInstallments(supabase, order.id)) });
   } catch (carryError) {
     return fail(carryError.message, 500);
   }
@@ -620,6 +669,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (RETIRED_BILLING_ACTIONS.includes(action)) return fail(RETIRED_BILLING_MESSAGE, 410);
   if (action === 'fill-coverage') return fillCoverage({ user, supabase, req, id, body });
   if (action === 'schedule-many') return scheduleManyDates({ user, supabase, req, id, body });
+  /* นับ Actual รายงวด (mig 0412) — ยื่น/ดึงกลับ/อนุมัติ/ตีกลับ ของงวด ผ่าน RPC (ดูหัว installmentActualAction) */
+  if (Object.hasOwn(INSTALLMENT_ACTUAL_ACTIONS, action)) {
+    return installmentActualAction({ user, supabase, req, id, body, action });
+  }
   const installmentId = String(body.installmentId || '').trim();
   if (!installmentId) return badRequest('ไม่ได้ระบุงวดที่ต้องการ');
 
@@ -677,6 +730,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       /* ⭐ PR3: คืนเงินได้เฉพาะงวดของใบ pipeline ที่ยกเลิก — แผงงวดส่งค่าเดียวกันจากใบเดียวกัน */
       orderCancelled: order.status === 'cancelled' && !isHistoricalOrder(order),
       refundedOn, creditNoteNo,
+      /* ⭐ ใบ Actual รายงวด (mig 0412): `order` เปิดด่านของแบบการนับ — บัญชีรับรอง (และบันทึกรับชำระขั้นเดียว) ต้องรอ AE Sup อนุมัติงวด ·
+         ฝ่ายขายแจ้งสลิปได้หลังงวดอนุมัติ · ไม่ส่ง = ถือเป็นใบทั้งใบ (เหลือ trigger ของฐานกันชั้นเดียว → installment_actual_not_approved
+         ซึ่ง documentWorkflowError ข้างล่างแปลเป็น 409 ไทย) */
+      order, dealOwnerId: order.deal?.ownerId ?? null,
     });
     if (gate) return badRequest(gate);
 
@@ -811,39 +868,97 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         confirmedById: null, confirmedByName: null, confirmedAt: null,
         note: `ถอนคำรับรอง (${actorName || 'บัญชี'}): ${reason}`,
       };
-    } else if (action === 'unlink') {
-      patch = { billingRequestId: null };
-    } else if (action === 'link') {
-      /* ── ผูกงวดเข้ากับคำร้องขอเอกสารการเงิน (B-5) ────────────────────────
-         ⚠️ ตรวจจาก **แถวจริงของคำร้อง** ไม่ใช่เชื่อ id ที่ส่งมา — สามข้อนี้ถ้าไม่ตรวจ
-         จะได้ใบวางบิลของลูกค้าอีกรายไปแขวนบนงวดนี้โดยไม่มีอะไรทัก */
+    } else if (action === 'link' || action === 'unlink') {
+      /* ── ผูก/ถอดคำร้องขอเอกสารการเงินกับงวด (B-5 · รื้อเป็นหลายคำร้องต่องวดที่ mig 0413) ─────────────────
+         ⭐ ความจริงอยู่ที่ **แถวคำร้อง** (`installmentId`) — งวดเก็บแค่ตัวชี้ (`billingRequestId` = คำร้องแรก · SQL ของ 0377/0378
+           อ่านตัดสินล็อกปรับแผน) ซึ่ง `syncBillingPointers` เขียนให้ที่เดียว ⇒ ทางนี้ไม่เขียนงวดเอง
+         ⚠️ ตรวจจาก **แถวจริงของคำร้อง** ไม่ใช่เชื่อ id ที่ส่งมา — ไม่ตรวจ = ใบวางบิลของลูกค้าอีกรายไปแขวนบนงวดนี้โดยไม่มีอะไรทัก */
+      const requestId = billingRequestId || (action === 'unlink' ? String(row.billingRequestId || '').trim() : '');
       const { data: request, error: reqError } = await supabase
         .from('dept_requests')
-        .select('id, kind, "docNo", "quotationId"')
-        .eq('id', billingRequestId).maybeSingle();
-      if (reqError) return fail(reqError.message, 500);
+        .select('id, kind, "docNo", status, "quotationId", "salesOrderId", "installmentId", "installmentSeq"')
+        .eq('id', requestId).maybeSingle();
+      if (reqError) {
+        const schema = billingInstallmentSchemaError(reqError);
+        return schema ? fail(schema, 503) : fail(reqError.message, 500);
+      }
       if (!request) return badRequest('ไม่พบคำร้องที่เลือก');
       if (request.kind !== 'billing_doc') return badRequest('ผูกได้เฉพาะคำร้องขอเอกสารการเงิน');
-      /* ⭐ **ต้องเป็นคำร้องของใบเสนอราคาเดียวกับใบสั่งขายนี้** — ทั้งสองฝั่งยึด QT
-         เป็นต้นทางอยู่แล้ว (ม-ค) ⇒ นี่คือเส้นเดียวที่พิสูจน์ได้ว่าเป็นงานเดียวกัน
-         ⚠️ ใบสั่งขายที่ไม่ได้มาจาก QT ผูกไม่ได้ — บอกให้ตรงว่าเพราะอะไร */
-      if (!order.quotationId) {
-        return badRequest('ใบสั่งขายนี้ไม่ได้อ้างใบเสนอราคา — ผูกคำร้องขอเอกสารการเงินไม่ได้');
+      const ownInstallment = String(request.installmentId || '').trim();
+      // ลิงก์รุ่นก่อน 0413: ตัวชี้ของงวดชี้คำร้องที่ยังไม่รู้งวดของตัวเอง (installmentRequests.js)
+      const legacyHere = !ownInstallment && String(row.billingRequestId || '') === request.id;
+
+      let requestPatch;
+      if (action === 'unlink') {
+        if (ownInstallment !== installmentId && !legacyHere) return badRequest(`คำร้อง ${request.docNo || ''} ไม่ได้ผูกกับงวดนี้`);
+        requestPatch = { installmentId: null, installmentSeq: null };
+      } else {
+        /* ⭐ **ต้องเป็นคำร้องของใบเสนอราคาเดียวกับใบสั่งขายนี้** — ทั้งสองฝั่งยึด QT เป็นต้นทาง (ม-ค)
+           ⇒ นี่คือเส้นเดียวที่พิสูจน์ได้ว่าเป็นงานเดียวกัน · ใบสั่งขายที่ไม่ได้มาจาก QT ผูกไม่ได้ — บอกให้ตรงว่าเพราะอะไร */
+        if (!order.quotationId) {
+          return badRequest('ใบสั่งขายนี้ไม่ได้อ้างใบเสนอราคา — ผูกคำร้องขอเอกสารการเงินไม่ได้');
+        }
+        if (request.quotationId !== order.quotationId) {
+          return badRequest('คำร้องนี้เป็นของใบเสนอราคาคนละใบกับใบสั่งขายนี้');
+        }
+        if (ownInstallment === installmentId || legacyHere) return badRequest(`คำร้อง ${request.docNo || ''} ผูกกับงวดนี้อยู่แล้ว`);
+        /* ⚠️ คำร้องใบเดียวแขวนได้งวดเดียว — ยอดอยู่ที่ใบคำร้อง (0257) ⇒ แขวนสองงวด = ยอดถูกนับซ้ำ
+           ⭐ แต่ **งวดเดียวมีได้หลายคำร้อง** (มติ 28/10 · 0413) — ใบวางบิลก่อน ใบเสร็จทีหลัง ⇒ ไม่ถามว่างวดนี้มีคำร้องอยู่ไหม
+           · ตรวจทั้งลิงก์ใหม่ (`installmentId`) และลิงก์รุ่นเก่า (ตัวชี้ของงวดอื่น) */
+        let takenSeq = null;
+        if (ownInstallment) {
+          const { data: other, error: otherError } = await supabase
+            .from('sales_order_installments').select('id, seq').eq('id', ownInstallment).maybeSingle();
+          if (otherError) return fail(otherError.message, 500);
+          takenSeq = other?.seq ?? '?';
+        } else {
+          const { data: taken, error: takenError } = await supabase
+            .from('sales_order_installments')
+            .select('id, seq').eq('billingRequestId', request.id).neq('id', installmentId);
+          if (takenError) return fail(takenError.message, 500);
+          if (taken?.length) takenSeq = taken[0].seq;
+        }
+        if (takenSeq !== null) {
+          return badRequest(`คำร้อง ${request.docNo || ''} ถูกผูกกับงวดที่ ${takenSeq} ไปแล้ว — ถอดออกจากงวดนั้นก่อน`);
+        }
+        requestPatch = {
+          installmentId,
+          installmentSeq: Math.min(Math.max(Number(row.seq) || 1, 1), 12),
+          // คำร้องที่ขอจากหน้า QT ยังไม่อ้างใบสั่งขาย — เติมให้ (อ้างใบอื่นอยู่แล้วไม่ทับ: ใบเดียวกันของ QT เดียว = ใบนี้หรือใบที่ยกเลิก)
+          ...(String(request.salesOrderId || '').trim() ? {} : { salesOrderId: order.id }),
+        };
       }
-      if (request.quotationId !== order.quotationId) {
-        return badRequest('คำร้องนี้เป็นของใบเสนอราคาคนละใบกับใบสั่งขายนี้');
+      /* CAS ที่ลิงก์เดิม — อีกหน้าต่างผูก/ถอดคำร้องใบนี้แทรกระหว่างด่านกับการเขียน = ไม่มีแถวโดน = 409 */
+      let write = supabase.from('dept_requests').update(requestPatch).eq('id', request.id);
+      write = ownInstallment ? write.eq('installmentId', ownInstallment) : write.is('installmentId', null);
+      const { data: afterRequest, error: writeError } = await write.select('*').maybeSingle();
+      if (writeError) {
+        const schema = billingInstallmentSchemaError(writeError);
+        return schema ? fail(schema, 503) : fail(writeError.message, 500);
       }
-      /* ⚠️ คำร้องใบเดียวแขวนได้งวดเดียว — ของจริงหนึ่งคำร้องคือการวางบิลหนึ่งรอบ
-         (ยอดอยู่ที่ใบคำร้อง ไม่ใช่รายบรรทัด · ดู 0257) ⇒ แขวนสองงวดแปลว่ายอดถูก
-         นับซ้ำตอนตอบว่า "งวดนี้ขอเอกสารไปหรือยัง" */
-      const { data: taken, error: takenError } = await supabase
-        .from('sales_order_installments')
-        .select('id, seq').eq('billingRequestId', request.id).neq('id', installmentId);
-      if (takenError) return fail(takenError.message, 500);
-      if (taken?.length) {
-        return badRequest(`คำร้อง ${request.docNo || ''} ถูกผูกกับงวดที่ ${taken[0].seq} ไปแล้ว`);
+      if (!afterRequest) return fail(INSTALLMENT_STALE_MESSAGE, 409);
+      const sync = await syncBillingPointers(supabase, [installmentId, ownInstallment], {
+        drop: action === 'unlink' ? [request.id] : [],
+      });
+      if (sync.error) {
+        console.error('[installments] เขียนตัวชี้คำร้องของงวดไม่สำเร็จ', installmentId, sync.error?.message || sync.error);
       }
-      patch = { billingRequestId: request.id };
+      await recordAudit({
+        user,
+        action: 'update',
+        entityType: 'dept_requests',
+        entityId: request.id,
+        before: request,
+        after: afterRequest,
+        summary: `${action === 'link' ? 'ผูก' : 'ถอด'}คำร้อง ${request.docNo || request.id} ${action === 'link' ? 'กับ' : 'ออกจาก'}งวด ${row.seq} ของ ${order.orderNumber}`
+          + (sync.changed?.length ? ` · ตัวชี้งวด: ${sync.changed.map((c) => `${c.before || 'ว่าง'} → ${c.after || 'ว่าง'}`).join(', ')}` : ''),
+        request: req,
+      });
+      const freshRows = await loadInstallments(supabase, order.id);
+      return ok({
+        installment: freshRows.find((r) => r.id === installmentId) || row,
+        installments: installmentsForScreen(order, freshRows),
+      });
     } else if (action === 'tax-invoice') {
       /* ── บันทึกใบกำกับภาษีของงวดนี้ (mig 0348 · มติผู้ใช้ 2026-09-07) ───────
          โปรเซสหลัก: FN ออกใบแล้วมาบันทึกที่นี่ **ไม่ต้องมีคำร้อง** · ถ้างวดนี้ผูก
@@ -874,10 +989,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
            (ทะเบียนส่งมาแค่ชื่อไฟล์) ⇒ ถ้าล้างตามที่ payload ว่างมา การแก้แค่เลขจะลบ
            ไฟล์ใบกำกับทิ้งเงียบ ๆ · ทางลบคือ action `tax-invoice-clear` */
         || row.taxInvoiceFile || null;
-      const linkedItem = await findLinkedTaxInvoiceItem(supabase, row.billingRequestId);
+      /* ⭐ หลายคำร้องต่องวด (mig 0413) — หาบรรทัดใบกำกับจากทุกคำร้องของงวด (ตัวโหลดเดียวกับแผง) · ไม่มี/มีหลายบรรทัด = ไม่เดา
+         ⚠️ อ่านคำร้องพลาด = ไม่เขียนสำเนา (ของหลักคือเลขบนงวด · สำเนาบนบรรทัดคำร้องเป็นของแถม) */
+      const { data: linkedRequests } = await loadInstallmentRequests(supabase, [row], { select: 'id, status' });
+      const linkedItem = await findLinkedTaxInvoiceItem(supabase, (linkedRequests || [])
+        .filter((r) => r.status !== 'cancelled').map((r) => r.id));
       patch = taxInvoicePatch({
         no: taxInvoiceNo, date: taxInvoiceDate, file,
-        requestId: linkedItem ? row.billingRequestId : null,
+        requestId: linkedItem?.requestId || null,
         itemId: linkedItem?.id || null,
         user, now,
       });
@@ -966,3 +1085,88 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return fail(patchError.message, 500);
   }
 });
+
+/* ── นับ Actual รายงวดของงวดเดียว (mig 0412 · มติเจ้าของ 26/10 · docs/so-installment-actual.md) ───────────────────────
+   ใบที่ AE Sup เลือก "Actual รายงวด" ตอนอนุมัติ: ฝ่ายขาย **ยื่นขอนับ** งวด (ไม่ต้องมีสลิป) → AE Sup **อนุมัติ** (นับ Actual เดือนที่อนุมัติ)
+   หรือ **ตีกลับ** (เหตุผล) · ผู้ยื่น **ดึงกลับ** ได้ก่อนตัดสิน → ฝ่ายขายแจ้งสลิป → บัญชีรับรอง → ยื่นงวดถัดไปได้
+   ⭐ body `{ action: 'actual_submit' | 'actual_withdraw' | 'actual_approve' | 'actual_reject', installmentId, reason?, expectedUpdatedAt? }`
+   ⭐ ลำดับ: ใบ (view-scope) → งวด (อยู่ในใบนี้) → ข้อมูลเก่า (`updatedAt` ที่ตาเห็น) → งวดสดทั้งใบ (โยน error) →
+     ด่าน `installmentActionError` **ตัวเดียวกับปุ่มบนแผงงวด** (ส่งใบ + งวดทั้งใบ + เจ้าของดีล + เหตุผล ⇒ กติกาเดียวกับ RPC) →
+     RPC (ล็อกใบก่อนงวด · CAS `updatedAt` ของแถวที่ด่านเพิ่งตัดสิน) → audit before/after → เธรดดีล → กระดิ่ง
+   ⭐ ด่าน JS ตอบสถานะเดียวกับที่ฐานตอบรหัสเดียวกัน (`actualGateStatus`: ไม่มีสิทธิ์ 403 · เหตุผล 400 · สถานะ 409 · ไม่พบ 404)
+   🔴 ทางเขียนทางเดียวคือ RPC — ห้าม UPDATE ช่อง actual* ของงวดตรงที่นี่ (ส่วนแบ่งก่อน VAT คิดใต้ล็อกในฐาน · trigger ของงวดดูแล cache)
+   ⚠️ อนุมัติงวดไม่ตรึงลายเซ็นรายงวด (ค่าตั้งต้นของมติ) — หลักฐานคือ audit + เธรดดีล
+   ⚠️ วางท้ายไฟล์ (หลัง PATCH · function declaration ถูก hoist) โดยตั้งใจ — ยามหลายตัวตัดก้อน "POST → PATCH" / "carryIntoOrder → PATCH"
+     มานับ audit/คำต้องห้าม ถ้าวางคั่นตรงนั้นยามจะนับของฟังก์ชันนี้ปนไปด้วย */
+async function installmentActualAction({ user, supabase, req, id, body, action }) {
+  const installmentId = String(body.installmentId || '').trim();
+  if (!installmentId) return badRequest('ไม่ได้ระบุงวดที่ต้องการ');
+  try {
+    const { order, error } = await loadOrderForUser(supabase, user, id);
+    if (error) return error;
+    const row = await loadInstallment(supabase, installmentId);
+    if (!row || row.salesOrderId !== order.id) return notFound('ไม่พบงวดในใบสั่งขายนี้');
+    /* optimistic lock ชั้นแรก (ท่าเดียวกับ PATCH รายงวด) — แถวที่ตาเห็นเก่ากว่าแถวสด = 409 ก่อนด่าน */
+    if (installmentStale(row, body.expectedUpdatedAt)) return fail(INSTALLMENT_STALE_MESSAGE, 409);
+    const reason = String(body.reason || '').trim();
+    /* ⚠️ อ่านสดแบบโยน error — ด่าน "งวดก่อนหน้ารับรองเงินครบ" ต้องเห็นทั้งใบ (กลืนเป็น [] = ผ่านเงียบ ๆ) */
+    const siblings = await loadInstallments(supabase, order.id);
+    const gate = installmentActionError(row, action, user, {
+      order, rows: siblings, reason, dealOwnerId: order.deal?.ownerId ?? null,
+      orderLock: historicalInstallmentLock(order) || pipelineInstallmentLock(order, action),
+      historical: isHistoricalOrder(order),
+    });
+    if (gate) return fail(gate, actualGateStatus(gate));
+    /* ยอดประมาณที่จะนับถ้าอนุมัติ (กระดิ่งของผู้อนุมัติบอกยอด) — กติกาเดียวกับ RPC · คิดก่อนเขียน (ภาพที่ผู้ยื่นเห็น) */
+    const estimate = action === 'actual_submit' ? installmentActualShareAtApproval(order, siblings, row) : null;
+
+    const { data, error: rpcError } = await supabase.rpc('sales_order_installment_actual_action', {
+      p_installment_id: row.id,
+      p_action: INSTALLMENT_ACTUAL_ACTIONS[action],
+      p_reason: reason || null,
+      // ชั้นสอง: เขียนเฉพาะเมื่อแถวยังเป็นรุ่นที่ด่านข้างบนเพิ่งตัดสิน (อีกหน้าต่างเขียนแทรก = installment_actual_stale → 409)
+      p_expected_updated_at: row.updatedAt || null,
+      p_actor_id: user.id,
+      p_actor_name: user.name || user.email || null,
+      p_actor_role: user.role || null,
+    });
+    if (rpcError) {
+      const mapped = documentWorkflowError(rpcError, { context: `installment ${action} ${row.id}` });
+      return fail(mapped.message, mapped.status);
+    }
+    const updated = data?.after || null;
+    await recordAudit({
+      user,
+      action: 'update',
+      entityType: 'sales_order_installments',
+      entityId: row.id,
+      before: data?.before || row,
+      after: updated,
+      summary: installmentActualAuditSummary(action, { order, row, after: updated, reason }),
+      request: req,
+    });
+    /* เธรดดีลแม่ — ที่เดียวที่เหตุผลตีกลับงวดถูกเก็บให้คนอ่าน (คอลัมน์บนงวดถูกทับเมื่อยื่นใหม่ — audit เปิดได้เฉพาะ supervisor) */
+    await appendDocumentEvent(supabase, {
+      docType: 'sales_order', doc: order, action, user, dealId: order.dealId || order.deal?.id || null,
+      opts: {
+        seq: row.seq,
+        ...(action === 'actual_approve' ? { amount: updated?.actualAmount ?? null } : {}),
+        ...(action === 'actual_reject' ? { reason } : {}),
+      },
+    });
+    /* กระดิ่ง — ยื่น → ผู้อนุมัติ · อนุมัติ/ตีกลับ → ผู้ยื่น + เจ้าของดีล (ดึงกลับไม่แจ้ง) · fire-and-forget ไม่ throw */
+    notifyInstallmentActual(supabase, {
+      action, order, installment: updated || row, before: data?.before || row, actor: user, reason, estimate,
+    });
+    /* งวดสดให้จอ — อ่านพลาดหลังเขียนสำเร็จห้ามกลายเป็น 500 (บันทึก + audit แล้ว) ⇒ ถอยไปงวดเดิมที่แทนด้วยแถวที่เพิ่งเขียน */
+    let fresh;
+    try {
+      fresh = await loadInstallments(supabase, order.id);
+    } catch {
+      fresh = updated ? siblings.map((r) => (r.id === updated.id ? updated : r)) : siblings;
+    }
+    return ok({ installment: updated, installments: installmentsForScreen(order, fresh) });
+  } catch (actualError) {
+    return fail(actualError.message, 500);
+  }
+}

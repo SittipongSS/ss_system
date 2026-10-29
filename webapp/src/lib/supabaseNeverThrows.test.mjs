@@ -280,7 +280,9 @@ const countsGet = getHandlerOf(read("src/app/api/nav/counts/route.js"));
 
 test("ตัวนับบนเมนู — ทุก head-count ต้องรับ error ของตัวเอง", () => {
   const heads = [...countsGet.matchAll(/\{\s*count(?:,\s*error(?::\s*(\w+))?)?\s*\}/g)];
-  assert.ok(heads.length >= 8, `หา head-count ไม่เจอ (${heads.length}) — ตัวตรวจนี้ตายแล้วหรือรูปแบบเปลี่ยน`);
+  /* 8 → 7 (UAT FN 27/10 ข้อ 2): ป้าย `payments` เลิกเป็น head-count — ดึงงวด reported + ใบ แล้วถามตัวตัดสินของทะเบียน
+     (`{ data, error }` ⇒ uncheckedReads ข้างบนคุมแทน) */
+  assert.ok(heads.length >= 7, `หา head-count ไม่เจอ (${heads.length}) — ตัวตรวจนี้ตายแล้วหรือรูปแบบเปลี่ยน`);
   const bare = heads.filter((m) => !/error/.test(m[0]));
   assert.deepEqual(bare.map((m) => m[0]), [], "รับแค่ { count } = query พังแล้วป้ายขึ้น 0 เงียบ ๆ");
   for (const m of heads) {

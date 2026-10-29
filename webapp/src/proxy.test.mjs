@@ -281,21 +281,28 @@ test('ทะเบียนกลิ่น/สูตร: Rev + จัดระ�
 // เมื่อ POST /api/tax/orders/from-sales-order ซึ่งเป็นทางเดียวที่ปุ่ม "สร้างใบยื่นจาก
 // Sale Order" ใช้ · GET ผ่านเพราะ OPEN_READ_APIS มี `/api/tax` จึงเห็นรายการ SO ครบ
 // แต่กดสร้างแล้วเด้ง — ดูเหมือนระบบพังทั้งที่ handler ถูกทุกบรรทัด
-test('ทางสร้างใบยื่นจาก Sale Order เปิดให้ฝ่ายขาย ไม่ใช่แอดมินคนเดียว', () => {
-  for (const role of ['ae_supervisor', 'senior_ae', 'ac', 'ae']) {
+// ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10): ใบยื่นกรมเป็นงานของฝ่าย RA ทั้งเส้น — ฝ่ายขายไม่เขียน /api/orders อีก
+//    (เก็บค่าภาษีด้วยใบเสนอราคา/SO ค่าสรรพสามิต) · บทเรียนของบั๊กข้างบนยังอยู่: alias ต้องยุบ ไม่งั้น RA โดน 403 เหมือนเดิม
+test('ทางสร้างใบยื่นจาก SO เปิดให้ฝ่าย RA (ผ่าน alias /api/tax) ไม่ใช่ฝ่ายขาย', () => {
+  for (const role of ['ra', 'admin']) {
     assert.equal(
       lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true),
       false,
       `${role} ต้องสร้างใบยื่นจาก SO ได้`,
     );
     assert.equal(apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []), true, role);
+    for (const method of ['PATCH', 'DELETE']) {
+      assert.equal(apiWriteAllowed(method, '/api/orders/TAX-1', role, []), true, `${role} ${method}`);
+    }
   }
-  // role ที่ไม่ได้ทำงานขายยังเขียนไม่ได้ (ด่าน cap ต้องยังทำงาน ไม่ใช่เปิดหมด)
-  for (const role of ['viewer', 'executive', 'marketing', 'secretary', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts']) {
-    const open = !lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true)
-      && apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []);
-    assert.equal(open, false, `${role} ต้องไม่ผ่าน`);
+  for (const role of ['ae_supervisor', 'senior_ae', 'ac', 'ae', 'viewer', 'executive', 'marketing', 'secretary', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'fn']) {
+    for (const [method, path] of [['POST', '/api/tax/orders/from-sales-order'], ['POST', '/api/orders'], ['PATCH', '/api/orders/TAX-1'], ['DELETE', '/api/orders/TAX-1']]) {
+      const open = !lockedOut({ role, extraCaps: [] }, path, method, true) && apiWriteAllowed(method, path, role, []);
+      assert.equal(open, false, `${role} ${method} ${path} ต้องไม่ผ่าน`);
+    }
   }
+  // คิวรอยื่นกรมเป็นการอ่าน — เปิดตาม OPEN_READ_APIS (/api/tax) · ด่านจริง (ra:view) อยู่ใน handler
+  assert.equal(lockedOut({ role: 'ra', extraCaps: [] }, '/api/tax/orders/queue', 'GET', true), false);
 });
 
 // alias /api/tax/{registrations,orders} re-export handler ตัวเดียวกับชื่อเดิม และไฟล์
@@ -976,4 +983,44 @@ test('ช่องรอบวางบิลของฝ่ายบัญช�
   for (const role of ['marketing', 'viewer', 'executive', 'rd', 'ra', 'pc', 'ts']) {
     assert.equal(apiWriteAllowed('PATCH', '/api/customers/C1/billing-rule', role, []), false, role);
   }
+});
+
+/* ── ประเมินจากแบบ งวด 4 (S4 A-1): ตัวเลือกของฟอร์มเปิดคำร้องใบใหม่ ─────────────────────────────
+   `/requests/new` ถาม `GET /api/sa/requests/form-options` ก่อนวาดปุ่มเลือกวิธีประเมิน (ค่าสวิตช์อยู่ฝั่ง server)
+   ⇒ ฝ่ายขาย (คนเปิดใบ) และฝ่ายบริการ (คนตอบ · เปิดใบแทนได้) ต้องผ่าน proxy ถึง handler · ด่านจริงคือ `canViewRequests`
+   ⚠️ เส้นนี้พังเงียบได้: จอถือว่า "ยังไม่รู้ = สวิตช์ปิด" ⇒ ไม่มี error ให้เห็น แค่ไม่มีไทล์ "ประเมินจากแบบ" */
+test('GET /api/sa/requests/form-options ผ่าน proxy สำหรับฝ่ายขายและฝ่ายบริการ', async () => {
+  const { canViewRequests } = await import('@/lib/permissions');
+  for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'ts_planner', 'ts_manager', 'admin']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/sa/requests/form-options', 'GET', true), false, `${role} lockedOut`);
+    assert.equal(apiWriteAllowed('GET', '/api/sa/requests/form-options', role, []), true, role);
+    assert.equal(canViewRequests(user), true, `${role} ผ่านด่านของ handler`);
+  }
+});
+
+/* ── ประเมินจากแบบ งวด S5 (A-1): ค่าตั้งต้นของฟอร์ม "ขอยืนยันหน้างาน" ─────────────────────────────
+   `/requests/new?confirms=` ถาม `GET /api/sa/requests/[id]/confirm-plan` ก่อนวาดฟอร์มล็อก — เส้นลูกใต้ prefix เดียวกับ
+   ใบแม่ (`/api/sa/requests`) ⇒ ทุก role ต้องได้ผลจาก proxy **เท่ากับ** `GET /api/sa/requests/[id]` ทุกตัว
+   (บทเรียน api-rd-proxy-gap: เพิ่มเส้นแล้วด่าน proxy ตัดสินต่างจากใบแม่ = จอโชว์ปุ่มแต่กดแล้ว 403 / เด้งหน้า)
+   ⚠️ ด่านจริงอยู่ใน handler (`canViewRequests` ตัวเดียวกับใบแม่ + `canManageRequest` ของใบต้นทาง) — proxy เห็นแค่ path */
+test('GET /api/sa/requests/[id]/confirm-plan ผ่าน proxy เท่ากับใบแม่ — ฝ่ายบริการ · ฝ่ายขาย · role ที่ไม่ถือทั้งสองสิทธิ์', async () => {
+  const { canViewRequests } = await import('@/lib/permissions');
+  const PARENT = '/api/sa/requests/DR-1';
+  const CHILD = '/api/sa/requests/DR-1/confirm-plan';
+  const neither = ROLES.filter((role) => !can(role, 'costing:edit') && !can(role, 'costing:quote') && !can(role, 'requests:answer'));
+  assert.ok(neither.includes('viewer'), 'viewer ต้องไม่ถือทั้งสิทธิ์ฝ่ายขายและสิทธิ์ตอบคำร้อง');
+  assert.ok(can('ts_planner', 'requests:answer') && !can('ts_planner', 'costing:edit'), 'ts_planner = ฝ่ายบริการที่ตอบคำร้องได้');
+  assert.ok(can('ae', 'costing:edit'), 'ae = ฝ่ายขาย');
+  for (const role of new Set(['ts', 'ts_planner', 'ae', 'viewer', ...neither, ...ROLES])) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, CHILD, 'GET', true), lockedOut(user, PARENT, 'GET', true), `${role} lockedOut`);
+    assert.equal(apiWriteAllowed('GET', CHILD, role, []), apiWriteAllowed('GET', PARENT, role, []), `${role} apiWriteAllowed`);
+  }
+  // ค่าของวันนี้: ฝ่ายขาย (คนกดปุ่ม) ผ่าน proxy ถึง handler และผ่านด่านแรกของ handler
+  assert.equal(lockedOut({ role: 'ae', extraCaps: [] }, CHILD, 'GET', true), false);
+  assert.equal(apiWriteAllowed('GET', CHILD, 'ae', []), true);
+  assert.equal(canViewRequests({ role: 'ae', extraCaps: [] }), true);
+  // role ที่ไม่ถือทั้งสองสิทธิ์ ถูกตัดที่ด่านแรกของ handler (`canViewRequests`) เหมือนใบแม่ — ไม่ใช่ที่ proxy
+  assert.equal(canViewRequests({ role: 'viewer', extraCaps: [] }), false);
 });
