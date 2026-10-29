@@ -337,17 +337,49 @@ function filingSegment(excise, { approved }) {
   }
   if (exciseQuote.liveQuote) {
     const quote = exciseQuote.liveQuote;
-    const accepted = quote.status === 'accepted';
+    const meta = excise.amountToCollect ? `ภาษี+VAT ${fmtMoney(excise.amountToCollect)}` : null;
+    /* PR4: ลูกค้ารับใบแล้ว = งานถัดไปคือ **SO ค่าสรรพสามิต** (ไม่นับ Actual · เดินบัญชีปกติ) — ช่วงนี้ตามใบนั้นต่อ
+       `exciseQuote.exciseOrder` = SO ค่าสรรพสามิตที่ยังมีผลของใบนี้ (GET …/excise-quotation) */
+    if (quote.status === 'accepted') {
+      const order = exciseQuote.exciseOrder || null;
+      if (order) {
+        return {
+          key: 'filing',
+          label: 'ค่าสรรพสามิต',
+          state: order.status === 'approved' ? 'done' : 'live',
+          connect: {
+            message: `ใบสั่งขายค่าสรรพสามิต ${order.orderNumber || ''} — ${EXCISE_ORDER_STATUS_TEXT(order)}`,
+            actionLabel: 'เปิดใบสั่งขายค่าสรรพสามิต',
+            href: `/sales-planning/sales-orders/${encodeURIComponent(order.id)}`,
+          },
+          meta,
+          ...(notes.length ? { notes } : {}),
+        };
+      }
+      return {
+        key: 'filing',
+        label: 'ค่าสรรพสามิต',
+        state: 'live',
+        connect: {
+          message: `ลูกค้ารับใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber || ''} แล้ว — ออกใบสั่งขายค่าสรรพสามิตต่อ`,
+          actionLabel: 'ออกใบสั่งขายค่าสรรพสามิต',
+          href: `/sa/sales-orders/new?quotationId=${encodeURIComponent(quote.id)}`
+            + `&returnTo=${encodeURIComponent(`/sa/quotations/${quote.id}`)}`,
+        },
+        meta,
+        ...(notes.length ? { notes } : {}),
+      };
+    }
     return {
       key: 'filing',
       label: 'ค่าสรรพสามิต',
-      state: accepted ? 'done' : 'live',
+      state: 'live',
       connect: {
         message: `ใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber || ''} — ${EXCISE_QUOTE_STATUS_TEXT(quote)}`.trim(),
         actionLabel: 'เปิดใบค่าสรรพสามิต',
         href: `/sales-planning/quotations/${encodeURIComponent(quote.id)}`,
       },
-      meta: excise.amountToCollect ? `ภาษี+VAT ${fmtMoney(excise.amountToCollect)}` : null,
+      meta,
       ...(notes.length ? { notes } : {}),
     };
   }
@@ -395,6 +427,13 @@ function filingSegment(excise, { approved }) {
     ...(notes.length ? { notes } : {}),
   };
 }
+
+const EXCISE_ORDER_STATUS_TEXT = (order) => {
+  if (order.status === 'approved') return 'อนุมัติแล้ว รอเก็บเงิน';
+  if (order.status === 'pending_approval') return 'รออนุมัติ';
+  if (order.status === 'rejected') return 'ถูกตีกลับ';
+  return 'ร่าง ยังไม่ยื่น';
+};
 
 const EXCISE_QUOTE_STATUS_TEXT = (quote) => {
   if (quote.status === 'accepted') return 'ลูกค้ารับแล้ว';

@@ -4,8 +4,9 @@ import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
-import { inSalesDocScope } from '@/lib/scopedRow';
+import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { exciseSalesOrderCreateError } from '@/lib/excise/exciseSalesOrder';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 /* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
@@ -419,18 +420,27 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const { data: quote, error: quoteError } = await supabase
     .from('quotations')
-    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, origin, deal:sales_deals(*)')
+    .select('id, quoteNumber, status, paymentPlan, totalAmount, customerId, origin, "sourceSalesOrderId", deal:sales_deals(*)')
     .eq('id', quotationId)
     .maybeSingle();
   if (quoteError) return fail(quoteError.message, 500);
   if (!quote) return notFound('ไม่พบใบเสนอราคา');
-  /* ⛔ ใบค่าสรรพสามิต (mig 0414) ไม่ออก SO ทางนี้ — ทางนี้ผูกดีล/โครงการ/FC ทุกขั้น · ใบค่าภาษีมี RPC ของมันเอง (0416) */
-  if (isExciseOrder(quote)) return badRequest('ใบเสนอราคาค่าสรรพสามิตออกใบสั่งขายจากหน้าใบเสนอราคาค่าภาษีเท่านั้น');
-  if (quote.status !== 'accepted') return badRequest('สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
+  /* ⭐ ใบค่าสรรพสามิต (mig 0414 · แผนรื้อสรรพสามิต PR4) ออก SO ค่าสรรพสามิตด้วย RPC ของมันเอง (0416) — ไม่มีดีล/โครงการ ·
+     สิทธิ์ถอยไปดีลของ SO ต้นทาง (`sourceDeal` — ใช้ตัดสินสิทธิ์อย่างเดียว ห้ามใส่ `quote.deal`) · ที่เหลือ (เอกสารยืนยัน · งวด) เส้นเดียวกับใบปกติ */
+  const excise = isExciseOrder(quote);
+  if (excise) {
+    const { error: sourceError } = await attachSourceDeals(supabase, [quote]);
+    if (sourceError) return fail(sourceError.message, 500);
+  }
+  if (quote.status !== 'accepted') {
+    return badRequest(excise ? 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ลูกค้ารับแล้ว' : 'สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
+  }
   if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
-  // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้
-  const closedProject = await closedProjectBlock(supabase, quote.deal.projectId, 'ออกใบสั่งขายใบใหม่');
-  if (closedProject) return badRequest(closedProject);
+  // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้ · ใบค่าสรรพสามิตไม่มีโครงการ
+  if (!excise) {
+    const closedProject = await closedProjectBlock(supabase, quote.deal?.projectId, 'ออกใบสั่งขายใบใหม่');
+    if (closedProject) return badRequest(closedProject);
+  }
 
   /* หลักฐานต้องชี้เข้าโฟลเดอร์ของใบเสนอราคาใบนี้เท่านั้น — กันแนบไฟล์ของใบอื่นมาเป็นหลักฐานของใบนี้
      ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัว · ref แบบ URL/Drive ไม่ผ่านแล้ว
@@ -501,7 +511,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   const orderId = genId('SOR');
-  const { data: order, error } = await supabase.rpc('create_sales_order_draft', {
+  const createArgs = {
     p_quote_id: quotationId,
     p_order_id: orderId,
     p_actor_id: user.id || null,
@@ -515,11 +525,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       confirmDocDate: confirmation?.docDate || null,
       confirmAttachments: confirmation?.attachments || [],
     },
-  });
+  };
+  // ใบค่าสรรพสามิต = RPC ของมันเอง (0416 · ไม่มีดีล/โครงการ · Actual 0) — อาร์กิวเมนต์ชุดเดียวกันทุกตัว
+  const { data: order, error } = excise
+    ? await supabase.rpc('create_excise_sales_order_draft', createArgs)
+    : await supabase.rpc('create_sales_order_draft', createArgs);
   if (error) {
     if (error.code === '23505' || error.message?.includes('already_exists')) {
       return conflict('ใบเสนอราคาใบนี้ออกใบสั่งขายไปแล้ว');
     }
+    const exciseError = excise ? exciseSalesOrderCreateError(error) : null;
+    if (exciseError) return badRequest(exciseError);
     return fail(error.message, /quotation_|sales_order_/.test(error.message || '') ? 400 : 500);
   }
   await recordAudit({

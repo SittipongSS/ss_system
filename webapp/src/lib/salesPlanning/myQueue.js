@@ -304,7 +304,7 @@ export function buildMyQueue({
       // แผนรื้อสรรพสามิต PR3: ขาฝ่ายขาย = ออกใบเสนอราคาค่าสรรพสามิต (ใบยื่นกรมเป็นงานของ RA)
       step: 'ออกใบค่าสรรพสามิต',
       title: order.customerName || 'ลูกค้า',
-      sub: [order.orderNumber, 'อนุมัติแล้ว รอออกใบเสนอราคาค่าสรรพสามิต'].filter(Boolean).join(' · '),
+      sub: [order.orderNumber, 'อนุมัติแล้ว รอออกใบค่าสรรพสามิต'].filter(Boolean).join(' · '),
       due: order.approvedAt ? String(order.approvedAt).slice(0, 10) : null,
       basis: 'waiting',
       href: `/sa/sales-orders/${order.id}`,

@@ -3,6 +3,8 @@ import { isDryRun } from '@/lib/forceDelete';
 import { loadScoped } from '@/lib/scopedRow';
 import { canApproveQuotation, canEditSalesPlanning } from '@/lib/salesPlanning';
 import { canCancelQuotation, quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
+import { exciseQuotationCancelBlock, loadLiveExciseSalesOrder } from '@/lib/excise/exciseSalesOrder';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { quotationCancelStateError } from '@/lib/sales/quotationCancel';
 import { normalizeUnacceptReason, unacceptReasonError } from '@/lib/sales/quotationUnaccept';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
@@ -53,6 +55,14 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       return forbidden(`ยกเลิกใบได้เฉพาะผู้อนุมัติของใบนี้ (เจ้าของดีลหรือผู้จัดการฝ่ายขาย) — ส่งต่อให้ ${quotationApprovalDeal(quote)?.ownerName || 'เจ้าของดีล'}`);
     }
     return badRequest(quotationCancelStateError(quote));
+  }
+  /* ใบค่าสรรพสามิตที่รับแล้วมี SO ค่าสรรพสามิตที่ยังมีผล = ต้องยกเลิก SO ก่อน (แผน หมวด 5) — ไม่งั้น SO ค้างโดยใบต้นทางถูกยกเลิก
+     ⚠️ ตรวจก่อนพรีวิว — โมดัลต้องบอกเหตุตั้งแต่เปิด ไม่ใช่ตอนกดยืนยัน */
+  if (isExciseOrder(quote) && quote.status === 'accepted') {
+    const { data: liveOrder, error: liveError } = await loadLiveExciseSalesOrder(supabase, quote.id);
+    if (liveError) return fail(liveError.message, 500);
+    const block = exciseQuotationCancelBlock(quote, liveOrder);
+    if (block) return badRequest(block);
   }
 
   // พรีวิวผ่านด่านเดียวกับตอนกดจริง — ผลกระทบของใบ (ยอด FC · เลขเอกสารการเงิน) ไม่ใช่ของที่ใครก็อ่านได้

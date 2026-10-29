@@ -65,7 +65,7 @@ import {
   scentCountForOrder, scentDesignOrderOptions, scentDesignOrderSkipHint, scentDesignOrderSkips,
 } from "@/lib/requests/scentDesignOrders";
 import {
-  billingQuotationOptions, billingQuotationSkipHint, billingQuotationSkips,
+  billingDealIdOf, billingQuotationOptions, billingQuotationSkipHint, billingQuotationSkips,
 } from "@/lib/requests/billingQuotations";
 import { fmtNumber } from "@/lib/format";
 /* ใบยืนยันหน้างาน (ประเมินจากแบบ งวด S5 D-5) — ป้าย/ประโยคของโหมดล็อกมาจากไฟล์ล้วนไฟล์เดียว (F1) ฟอร์มไม่พิมพ์เอง */
@@ -902,7 +902,7 @@ export default function RequestForm({
            ปัดเหลือสองตำแหน่งบนจอแปลว่าเลขที่ผู้ใช้เห็นไม่ตรงกับที่คุยกับลูกค้า
            (ค่าที่เก็บไม่ปัดอยู่แล้ว — ดู billingQuotations.js) */
         const money = (n) => fmtNumber(n, { maximumFractionDigits: 3 });
-        const dealOfQt = deals.find((d) => d.id === picked?.dealId) || null;
+        const dealOfQt = deals.find((d) => d.id === billingDealIdOf(picked)) || null;
         const projectOfDeal = projects.find((p) => p.id === dealOfQt?.projectId) || null;
         return (
           <div className="form-grid cols-2">
@@ -930,8 +930,8 @@ export default function RequestForm({
                   const qt = quotations.find((q) => q.id === v) || null;
                   set({
                     quotationId: v,
-                    dealId: qt?.dealId || "",
-                    projectId: deals.find((d) => d.id === qt?.dealId)?.projectId || "",
+                    dealId: billingDealIdOf(qt),
+                    projectId: deals.find((d) => d.id === billingDealIdOf(qt))?.projectId || "",
                     // ใบเปลี่ยน = ฐานเปลี่ยน ⇒ ยอดเดิมไม่มีความหมายอีกต่อไป · งวดเดิมเป็นของใบเก่า
                     billPercent: null, billAmount: null, installmentPick: null,
                   });
@@ -1100,7 +1100,7 @@ export default function RequestForm({
                 value={value.quotationId} disabled={disabled || !value.dealId}
                 onChange={(v) => set({ quotationId: v })}
                 options={quotations
-                  .filter((q) => q.dealId === value.dealId)
+                  .filter((q) => billingDealIdOf(q) === value.dealId)
                   .map((q) => ({
                     value: q.id,
                     label: q.quoteNumber || q.id,
@@ -1121,7 +1121,7 @@ export default function RequestForm({
                 value={value.salesOrderId} disabled={disabled || !value.dealId}
                 onChange={(v) => set({ salesOrderId: v })}
                 options={salesOrders
-                  .filter((so) => so.dealId === value.dealId)
+                  .filter((so) => billingDealIdOf(so) === value.dealId)
                   .map((so) => ({
                     value: so.id,
                     label: so.orderNumber || so.id,

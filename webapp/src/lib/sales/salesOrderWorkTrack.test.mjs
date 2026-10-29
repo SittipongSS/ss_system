@@ -327,7 +327,7 @@ test('พร้อมแล้ว = ปุ่มออกใบเสนอร�
   assert.match(filing.meta, /856/);
 });
 
-test('มีใบค่าสรรพสามิตที่ยังมีผล = ลิงก์เปิดใบ · รับแล้ว = เสร็จช่วง · ไม่เรียกเก็บ = เสร็จช่วงพร้อมเหตุ', () => {
+test('มีใบค่าสรรพสามิตที่ยังมีผล = ลิงก์เปิดใบ · รับแล้ว = ออก SO ค่าสรรพสามิตต่อ · SO อนุมัติ = เสร็จช่วง · ไม่เรียกเก็บ = เสร็จช่วงพร้อมเหตุ', () => {
   const base = { scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD, approved: true };
   const live = salesOrderWorkTrack({ ...base, excise: excise({
     lines: [exciseLine('FG-1', 'approved')], eligible: true,
@@ -340,7 +340,21 @@ test('มีใบค่าสรรพสามิตที่ยังมี�
     lines: [exciseLine('FG-1', 'approved')], eligible: true,
     exciseQuote: { liveQuote: { id: 'QT-X', quoteNumber: 'QT-26100099-0', status: 'accepted', approvalStatus: 'approved' } },
   }) }).segments.at(-1);
-  assert.equal(accepted.state, 'done');
+  // PR4: รับแล้วแต่ยังไม่มี SO ค่าสรรพสามิต = งานถัดไปของฝ่ายขาย (ลิงก์ฟอร์มสร้าง SO จากใบนี้)
+  assert.equal(accepted.state, 'live');
+  assert.match(accepted.connect.href, /^\/sa\/sales-orders\/new\?quotationId=QT-X&returnTo=/);
+  assert.match(accepted.connect.message, /ลูกค้ารับใบเสนอราคาค่าสรรพสามิต QT-26100099-0 แล้ว/);
+  const ordered = (status) => salesOrderWorkTrack({ ...base, excise: excise({
+    lines: [exciseLine('FG-1', 'approved')], eligible: true,
+    exciseQuote: {
+      liveQuote: { id: 'QT-X', quoteNumber: 'QT-26100099-0', status: 'accepted', approvalStatus: 'approved' },
+      exciseOrder: { id: 'SOR-X', orderNumber: 'SO-26100100-0', status },
+    },
+  }) }).segments.at(-1);
+  assert.equal(ordered('pending_approval').state, 'live');
+  assert.match(ordered('pending_approval').connect.message, /ใบสั่งขายค่าสรรพสามิต SO-26100100-0 — รออนุมัติ/);
+  assert.equal(ordered('approved').state, 'done');
+  assert.equal(ordered('approved').connect.href, '/sales-planning/sales-orders/SOR-X');
   const onClear = () => {};
   const notBilled = salesOrderWorkTrack({ ...base, excise: excise({
     lines: [exciseLine('FG-1', 'approved')], eligible: true, onClearNotBilled: onClear,
