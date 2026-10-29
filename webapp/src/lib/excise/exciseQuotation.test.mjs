@@ -38,7 +38,9 @@ test('ใบที่ "ยังมีผล" = ร่าง/ส่งแล้�
   assert.equal(isLiveExciseQuotation({ origin: 'excise', status: 'accepted' }), true);
   assert.equal(isLiveExciseQuotation({ origin: 'excise', status: 'cancelled' }), false);
   assert.equal(isLiveExciseQuotation({ origin: 'pipeline', status: 'draft' }), false);
-  assert.equal(exciseQuotationReference({ orderNumber: 'SO-1' }, { quoteNumber: 'QT-1' }), 'ค่าภาษีสรรพสามิตของ SO-1 / QT-1');
+  // มติ 29/10: เลข SO / QT ต้นทางเท่านั้น (คำว่า "ค่าภาษีสรรพสามิต" อยู่ช่อง "โครงการ")
+  assert.equal(exciseQuotationReference({ orderNumber: 'SO-1' }, { quoteNumber: 'QT-1' }), 'SO-1 / QT-1');
+  assert.equal(exciseQuotationReference({ orderNumber: 'SO-1' }, null), 'SO-1');
 });
 
 /* supabase ปลอมของเส้นสร้างใบ — จดคำสั่งเขียนไว้ตรวจ · ไม่มีการเขียนฐานจริง */
@@ -94,7 +96,7 @@ test('createExciseQuotationDraft: ใบ origin excise ไม่มีดีล 
   assert.equal(row.vatRate, 7);
   assert.equal(row.discountType, null);
   assert.equal(row.approvalStatus, 'not_submitted');
-  assert.equal(row.referenceNote, 'ค่าภาษีสรรพสามิตของ SO-26100001-0 / QT-26100001-0');
+  assert.equal(row.referenceNote, 'SO-26100001-0 / QT-26100001-0');
   assert.deepEqual(row.paymentPlan, { type: 'full' });
   assert.equal(row.subtotal, 88.5, '10 × 8.85');
   assert.equal(row.totalAmount, 94.7, '+VAT 7%');

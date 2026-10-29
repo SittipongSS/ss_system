@@ -3,7 +3,7 @@
 // (ฟอร์ม/เลข/ป้ายวันที่/แถวอ้างอิง/ผู้ลงนาม) — หน้าตาเดียวกัน ไม่มี CSS ซ้ำ.
 import { fmtDate } from '@/lib/format';
 import { buildQuotationMasterHTML, buildQuotationMasterSwitchableHTML } from '@/lib/sales/quotationMasterDocument';
-import { docLanguageOf, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
+import { EXCISE_PAPER_PROJECT_TYPE, docLanguageOf, excisePaperProject, quotationDocLabels } from '@/lib/sales/quotationMasterTemplate';
 import { positionTitle } from '@/lib/documents/positionTitles';
 import { canSwitchSalesOrderDocLanguage } from '@/lib/sales/salesOrderWorkflow';
 import { dealTypeOf } from '@/lib/salesPlanning';
@@ -180,9 +180,10 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
       { label: L.t('refQuotation'), value: quotation.quoteNumber || '-' },
       { label: L.t('documentStatus'), value: statusLabel },
       { label: L.t('projectCode'), value: order.project?.code || '-' },
-      { label: L.t('projectTitle'), value: order.deal?.title || '-' },
-      { label: L.t('projectType'), value: (order.deal && dealTypeOf(order.deal)) || '-' },
-      { label: L.t('proposer'), value: order.deal?.ownerName || '-' },
+      // SO ค่าสรรพสามิต (ไม่มีดีล) — คำเดียวกับใบเสนอราคาค่าสรรพสามิต · ผู้เสนอ = เจ้าของดีลของ SO ต้นทาง
+      { label: L.t('projectTitle'), value: order.deal?.title || excisePaperProject(order, docLanguageOf(order.docLanguage)) || '-' },
+      { label: L.t('projectType'), value: (order.deal && dealTypeOf(order.deal)) || (excisePaperProject(order) ? EXCISE_PAPER_PROJECT_TYPE : '-') },
+      { label: L.t('proposer'), value: order.deal?.ownerName || order.sourceDeal?.ownerName || '-' },
     ],
     // ช่องลงชื่อ SO — ป้ายช่องเป็น "หน่วยงาน" ไม่ใช่บทบาทในเอกสาร
     // (มติผู้ใช้ 2026-08-05): ฝ่ายขาย / ผู้จัดการฝ่ายขาย / ฝ่ายบัญชี

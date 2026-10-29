@@ -25,7 +25,7 @@ import {
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import {
-  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, recalcExciseQuotationLines,
+  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, exciseReferenceIsAuto, recalcExciseQuotationLines,
 } from '@/lib/excise/exciseQuotation';
 import {
   customerMismatchMessage, customerMismatchedLines,
@@ -225,9 +225,17 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         return fail('ใบนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงคิดใหม่จากใบสั่งขายได้', 409);
       }
       try {
-        const { lines: recalculated } = await recalcExciseQuotationLines({ supabase, user, quote: before, request: req });
+        const { lines: recalculated, header } = await recalcExciseQuotationLines({ supabase, user, quote: before, request: req });
         delete body.action;
         body.lines = recalculated;
+        // หัวใบที่มาจาก SO ต้นทาง (ผู้เสนอราคา · เบอร์ · คำอ้างอิงที่ระบบเขียนเอง) — คำอ้างอิงที่คนพิมพ์เองไม่แตะ
+        if (exciseReferenceIsAuto(before.referenceNote)) body.referenceNote = header.referenceNote;
+        body.metadata = {
+          ...header.metadata,
+          // ส่งชุดเงื่อนไขการค้าเดิมกลับไป — ทางรวม metadata ข้างล่างตรวจ/ตรึงสองคีย์นี้ใหม่ทุกครั้งที่มี metadata มากับคำขอ
+          paymentPresetVersionId: before.metadata?.paymentPresetVersionId || null,
+          remarksPresetVersionId: before.metadata?.remarksPresetVersionId || null,
+        };
       } catch (recalcError) {
         if (recalcError instanceof ExciseQuotationError) return fail(recalcError.message, recalcError.status);
         throw recalcError;
