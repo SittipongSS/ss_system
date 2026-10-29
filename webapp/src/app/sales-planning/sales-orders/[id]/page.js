@@ -218,6 +218,7 @@ const ACTION_MESSAGE = {
   set_service_contract: "อัปเดตสัญญาของใบแล้ว",
   set_service_rounds: "บันทึกจำนวนรอบบริการแล้ว",
   set_delivery_due: "บันทึกกำหนดส่งสินค้าแล้ว",
+  remove_confirm_file: "ลบไฟล์ยืนยันคำสั่งซื้อแล้ว",
   set_excise_not_billed: "บันทึกว่าไม่เรียกเก็บค่าสรรพสามิตในระบบแล้ว",
   clear_excise_not_billed: "ถอนการตัดสินไม่เรียกเก็บแล้ว — ออกใบเสนอราคาค่าสรรพสามิตได้",
 };
@@ -3016,10 +3017,9 @@ export default function SalesOrderDetailPage() {
             <SalesOrderDocumentsPanel
               orderId={order.id}
               docs={salesOrderDocs}
-              meId={order.meId}
-              isAdmin={role === "admin"}
               onOpenTab={selectTab}
               tabKeys={tabKeys}
+              onRemoveConfirmFile={(row) => requestAction("remove_confirm_file", { index: row.index, storagePath: row.removeRef })}
             />
           )}
 

@@ -25,7 +25,7 @@ import { historicalContractFilesFrozenGate } from '@/lib/sales/historicalContrac
 import { isSpotLinkPatch } from '@/lib/service/surveySpotPhotos';
 import { runSurveySpotLink } from '@/lib/service/surveySpotLink';
 import {
-  SALES_ORDER_ATTACHMENT_TABLE, canAttachToSalesOrder, canRemoveSalesOrderFile, isSalesOrderAttachment,
+  SALES_ORDER_ATTACHMENT_TABLE, canAttachToSalesOrder, isSalesOrderAttachment,
   salesOrderAttachBlock,
 } from '@/lib/sales/salesOrderAttachmentAccess';
 
@@ -53,8 +53,7 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
      ผู้ดูแล (แอดมิน/หัวหน้าที่ขอบเขตทุกทีม · `isSuperuser`) เท่านั้น — และยังต้องผ่านด่านระบบของสาขานั้นด้วย
      🐞 เดิมเหลือด่านระบบล้วน: ใครถือสิทธิ์โมดูล (หรือแค่ผ่านด่านหยาบของ proxy ในสาขา PARENT_TABLE ซึ่งเขียนว่า
         `if (parent && …)`) ก็ลบ/แก้ไฟล์กำพร้าของคนอื่นได้ ทั้งที่ไม่เคยมีสิทธิ์ในระเบียนนั้นเลย
-     ⚠️ แถวเก่าที่ไม่มี `uploadedBy` = ผู้ดูแลเท่านั้น (ค่าว่างต้องไม่เท่ากับ id ว่างของใคร)
-     · สาขาใบสั่งขายมีกติกาเดียวกันอยู่แล้วในตัว (`canRemoveSalesOrderFile` — คนแนบหรือแอดมิน) */
+     ⚠️ แถวเก่าที่ไม่มี `uploadedBy` = ผู้ดูแลเท่านั้น (ค่าว่างต้องไม่เท่ากับ id ว่างของใคร) */
   const canSweepOrphan = isSuperuser(user?.role) || (!!att.uploadedBy && att.uploadedBy === user?.id);
   const orphanDenied = () => Response.json({
     error: `${actionLabel}ไม่ได้ — ระเบียนต้นทางของไฟล์นี้ถูกลบไปแล้ว เหลือเฉพาะคนที่แนบไฟล์นี้หรือผู้ดูแลระบบที่เก็บกวาดได้`,
@@ -101,17 +100,18 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
 
   /* ⚠️ ใบสั่งขาย: ไม่มี parent ใน PARENT_TABLE ของไฟล์นี้ — ไม่ดักตรงนี้ = บล็อก `if (table)` ข้างล่างถูกข้าม
      ทั้งก้อน = **ใครก็ลบไฟล์แนบของใบสั่งขายได้**
-     กติกา (มติ 25/09): ลบ/แก้ได้เฉพาะ **คนแนบเอง ที่ยังแก้ใบได้** หรือแอดมิน · ใบยกเลิก/ถูก Rev. แทน = แตะไม่ได้
-     (แอดมินข้ามด่านสถานะได้) · ใบถูกลบไปแล้ว = เหลือด่านระบบ + คนแนบ/แอดมิน (เก็บกวาดไฟล์ค้าง) */
+     กติกา (มติ 29/10 แทน "คนแนบเองหรือแอดมิน" ของ 25/09): ลบ/แก้ได้ทุกคนที่ **แก้ใบได้** (เจ้าของดีล · หัวหน้าในสาย ·
+     แอดมิน — ชุดเดียวกับคนแนบได้) · ใบยกเลิก/ถูก Rev. แทน = แตะไม่ได้ (แอดมินข้ามด่านสถานะได้) ·
+     ใบถูกลบไปแล้ว = ไม่มีดีลให้ตัดสิน ⇒ ด่านระบบ + คนแนบ/ผู้ดูแล (`canSweepOrphan` · เก็บกวาดไฟล์ค้าง) */
   if (isSalesOrderAttachment(att.entityType)) {
     const { data: order, error: orderError } = await supabase
       .from(SALES_ORDER_ATTACHMENT_TABLE[att.entityType]).select('*').eq('id', att.entityId).maybeSingle();
     if (orderError) return Response.json({ error: orderError.message }, { status: 500 });
-    const allowed = canRemoveSalesOrderFile(att, user)
-      && (order ? await canAttachToSalesOrder(supabase, order, user) : canViewSalesPlanning(user));
+    if (!order && !canSweepOrphan) return orphanDenied();
+    const allowed = order ? await canAttachToSalesOrder(supabase, order, user) : canViewSalesPlanning(user);
     if (!allowed) {
       return Response.json({
-        error: canRemoveSalesOrderFile(att, user) ? 'forbidden' : `${actionLabel}ได้เฉพาะคนที่แนบไฟล์นี้หรือแอดมิน`,
+        error: `${actionLabel}ได้เฉพาะคนที่แก้ใบสั่งขายนี้ได้ (เจ้าของดีล · หัวหน้าในสาย · แอดมิน)`,
       }, { status: 403 });
     }
     const blocked = order && user?.role !== 'admin' ? salesOrderAttachBlock(order) : null;
