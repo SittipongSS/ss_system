@@ -16,6 +16,13 @@ const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const code = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const CARD_RAW = read('./SurveyControlCard.js');
 const CARD = code(CARD_RAW);
+/* ตัววาดชิ้น (`keepUnits`) ยกออกไปไฟล์ของตัวเอง — การ์ด · ปุ่มพาไป · ส่วนเอกสารประเมิน (การ์ดของหัวหน้า + บล็อกเดี่ยวของผู้วางคิว) ใช้ตัวเดียว */
+const HELPER_RAW = read('./SurveyCardText.js');
+const HELPER = code(HELPER_RAW);
+const JUMP = code(read('./SurveyJumpButton.js'));
+const SECTION_RAW = read('./SurveyDocumentSection.js');
+const SECTION = code(SECTION_RAW);
+const PAGE = code(read('../../app/service/surveys/[id]/page.js'));
 
 const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
 /** ICU มีขอบคำ (= จุดที่เบราว์เซอร์ตัดบรรทัดได้) ข้างในชิ้นนี้ไหม */
@@ -90,13 +97,21 @@ test('ชื่อพื้นที่มาจาก view ของการ�
 
 test('การ์ดวาดร้อยแก้วทุกจุดผ่านตัววาดที่ห่อชิ้น — `thaiText` ของการ์ด = thaiText กลาง + keepPhrases', () => {
   // ตัวกลางเข้ามาในชื่อ `plainThaiText` ⇒ ทุก `thaiText(` ของไฟล์นี้คือตัวที่ห่อชิ้น (ยามเดิมที่ตรึง `thaiText(...)` ได้ชิ้นพร้อมกัน)
-  assert.match(CARD, /import plainThaiText, \{ keepPhrases \} from "@\/components\/ThaiText";/);
-  assert.doesNotMatch(CARD, /import thaiText from/);
-  assert.match(CARD, /import \{ surveyCardUnitNames, surveyCardUnits \} from "\.\/surveyControlCardUnits";/);
-  assert.match(CARD, /function keepUnits\(text, names\) \{[\s\S]*?const kept = keepPhrases\(text, surveyCardUnits\(text, names\)\);\s*if \(kept === text\) return plainThaiText\(text\);/,
+  assert.match(HELPER, /import plainThaiText, \{ keepPhrases \} from "@\/components\/ThaiText";/);
+  assert.match(HELPER, /import \{ surveyCardUnits \} from "\.\/surveyControlCardUnits";/);
+  assert.match(HELPER, /export function keepUnits\(text, names\) \{[\s\S]*?const kept = keepPhrases\(text, surveyCardUnits\(text, names\)\);\s*if \(kept === text\) return plainThaiText\(text\);/,
     'ไม่มีชิ้น = ผลของ thaiText กลางเป๊ะ');
-  assert.match(CARD, /typeof part === "string"\s*\? <Fragment key=\{`t\$\{index\}`\}>\{plainThaiText\(part\)\}<\/Fragment>/, 'ท่อนระหว่างชิ้นยังผ่าน thaiText กลาง (เลขที่เอกสาร · คำทับศัพท์)');
+  assert.match(HELPER, /typeof part === "string"\s*\? <Fragment key=\{`t\$\{index\}`\}>\{plainThaiText\(part\)\}<\/Fragment>/, 'ท่อนระหว่างชิ้นยังผ่าน thaiText กลาง (เลขที่เอกสาร · คำทับศัพท์)');
+  for (const [name, src] of [['การ์ด', CARD], ['ปุ่มพาไป', JUMP], ['ส่วนเอกสาร', SECTION]]) {
+    assert.doesNotMatch(src, /import thaiText from|import plainThaiText/, `${name} ต้องวาดร้อยแก้วผ่าน keepUnits ไม่ใช่ thaiText กลางตรง ๆ`);
+    assert.match(src, /import \{ keepUnits \} from "\.\/SurveyCardText";/, name);
+  }
+  assert.match(CARD, /import \{ surveyCardUnitNames \} from "\.\/surveyControlCardUnits";/);
   assert.match(CARD, /const unitNames = surveyCardUnitNames\(view\);\s*const thaiText = \(text\) => keepUnits\(text, unitNames\);/);
+  // ส่วนเอกสารประเมิน — ร้อยแก้วผ่านตัวเดียวกัน · ชื่อพื้นที่มาจาก view การ์ด ทั้งในการ์ด (หัวหน้า) และบล็อกเดี่ยว (ผู้วางคิว · มติ 19/10/2026)
+  assert.match(SECTION, /unitNames = \[\],\s*\}\) \{\s*const thaiText = \(text\) => keepUnits\(text, unitNames\);/);
+  assert.match(CARD, /<SurveyDocumentSection[^>]*?unitNames=\{unitNames\}/);
+  assert.match(PAGE, /<SurveyDocumentSection\s+standalone[^>]*?unitNames=\{surveyCardUnitNames\(view\)\}/);
   // บรรทัดที่ตัวตัดสินส่งเป็นสตริงดิบ: บรรทัดรองของสถานะ · คำใต้ปุ่มดึงกลับ · พาดหัว · กำหนดส่งผล · กล่องแจ้ง · "ขาด …" · ชื่อพื้นที่ที่ติด
   assert.match(CARD, /const status = \{ \.\.\.view\.status, sub: thaiText\(view\.status\.sub\) \};/);
   assert.match(CARD, /const recallAction = \{ \.\.\.view\.recallAction, hint: thaiText\(view\.recallAction\.hint\) \};/);
@@ -109,10 +124,10 @@ test('การ์ดวาดร้อยแก้วทุกจุดผ่�
   assert.match(CARD, /<small>\{thaiText\(`ขาด \$\{gate\.zones\.join\(" · "\)\}`\)\}<\/small>/);
   assert.match(CARD, /<b>\{thaiText\(row\.zoneName\)\}<\/b>/);
   // ป้ายของปุ่มพาไป ("เปิด ห้องประชุมชั้น 3") ทั้งป้ายเป็นชิ้นเดียว — ทั้งปุ่มขึ้นบรรทัดใหม่แทนการขาดกลางชื่อ
-  assert.match(CARD, /onClick=\{go\}>\s*(?:\{\}\s*)?\{keepUnits\(target\.label, \[target\.label\]\)\}\s*<\/button>/);
+  assert.match(JUMP, /onClick=\{go\}>\s*(?:\{\}\s*)?\{keepUnits\(target\.label, \[target\.label\]\)\}\s*<\/button>/);
   assert.deepEqual(keptOf('เปิด ห้องประชุมชั้น 3', ['เปิด ห้องประชุมชั้น 3']), ['เปิด ห้องประชุมชั้น 3']);
   // ห้ามแก้ด้วยอักขระซ่อน — Ctrl+F ต้องหาคำบนการ์ดเจอ (กติกา "ตาเห็น = ต้องค้นเจอ")
-  for (const src of [CARD_RAW, read('./surveyControlCardUnits.js')]) {
+  for (const src of [CARD_RAW, HELPER_RAW, SECTION_RAW, read('./SurveyJumpButton.js'), read('./surveyControlCardUnits.js')]) {
     assert.doesNotMatch(src, /[\u2060\u200b\u00a0]/);
   }
 });

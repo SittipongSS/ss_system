@@ -874,6 +874,77 @@ test('🔴 I4: ไฟล์ที่เปิดไม่ได้ (ถาวร
   assert.ok(result.reason.startsWith('รูป 1 รูปเปิดไม่ได้ (ชื่อไฟล์ 9047.jpg)'));
 });
 
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ผู้วางคิวกด "ออกเอกสาร" ได้ แต่ดึงผลกลับเองไม่ได้
+   ⇒ ทางออกที่ต้องดึงผลกลับ (เหตุเนื้อใบ · หน้าล้นซ้ำของ I5 · รูปถาวร) ชี้ไปที่หัวหน้า · รหัส · เหตุ · `retry` เท่าหัวหน้าทุกตัว
+     (หน้าล้นของ I3 เดินทาง `blocked()` เดียวกับเหตุเนื้อใบ ①)
+   · ผู้ใช้ของคำขอยังเป็นคนกด (`issuedBy`) — ไฟล์นี้ไม่ตัดสินสิทธิ์ (route เป็นคนตัด) */
+const PLANNER = { id: 'U-plan', name: 'Queue Planner', role: 'ts_planner', department: 'TS', team: 'TS' };
+const byPlanner = (world, opts = {}) => issue(world, { via: 'issue_only', requestId: world.request().id, user: PLANNER, ...opts });
+
+test('⭐ คนกดไม่ใช่หัวหน้า (Planner): ทางออกของการดึงผลกลับชี้ไปที่หัวหน้า — รหัส/เหตุ/retry เท่าหัวหน้า · เหตุของระบบประโยคเดิม', async () => {
+  // ① เหตุเนื้อใบ (ด่านส่งผลหลังล็อก)
+  const content = twinWorld();
+  content.tables.service_survey_zones[1].parts = [];
+  const { result: viaHead } = await byPlanner(content);
+  const headWorld = twinWorld();
+  headWorld.tables.service_survey_zones[1].parts = [];
+  const { result: head } = await issue(headWorld, { via: 'issue_only', requestId: headWorld.request().id });
+  assert.equal(viaHead.code, 'blocked');
+  assert.equal(viaHead.retry, false);
+  assert.deepEqual(viaHead.reasons, head.reasons);
+  assert.ok(viaHead.reason.endsWith(' · ถ้าต้องแก้ แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่'), viaHead.reason);
+  assert.ok(head.reason.endsWith(' · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่'), head.reason);
+  assert.equal(viaHead.reason.replace('แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับ', 'ให้ดึงผลกลับ'), head.reason, 'ต่างกันแค่ประโยคทางออก');
+
+  // ② รูปเปิดไม่ได้แบบถาวร
+  const broken = { 'att-z1-p1': { times: 9, reason: SURVEY_IMAGE_FAILURE.UNDECODABLE, permanent: true } };
+  const { result: img } = await byPlanner(twinWorld(), { prepareImages: fakePrepare(broken) });
+  assert.equal(img.code, 'undecodable');
+  assert.equal(img.retry, false);
+  assert.ok(img.reason.endsWith(' — ยังไม่ได้ออกเอกสาร · แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง'), img.reason);
+  const { result: headImg } = await issue(twinWorld(), { prepareImages: fakePrepare(broken) });
+  assert.ok(headImg.reason.endsWith(' — ยังไม่ได้ออกเอกสาร · ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง'), headImg.reason);
+
+  // ③ เหตุของระบบล้วน — ไม่ต้องดึงผลกลับ ⇒ ประโยคเดียวกันทั้งสองคน
+  const sys = twinWorld();
+  sys.tables.document_standard_versions = [];
+  const { result: sysPlanner } = await byPlanner(sys);
+  assert.equal(sysPlanner.code, 'blocked');
+  assert.equal(sysPlanner.retry, true);
+  assert.ok(sysPlanner.reason.endsWith(' · แก้แล้วกดออกเอกสารอีกครั้ง'), sysPlanner.reason);
+  assert.equal(sysPlanner.reason.includes('หัวหน้าฝ่ายบริการ'), false);
+
+  /* ④ หน้าล้นที่โผล่หลังตรึงรูปจริง (ด่านซ้ำของ I5) — ตัวจัดหน้าของวันนี้ไม่ดูขนาดรูป ข้อมูลจริงจึงล้นที่นี่โดยผ่าน I3 มาไม่ได้
+     ⇒ จำลองด้วยจุดเสียบ `paginate`: ภาพนิ่งที่มีรูปจริง (sha) ล้นหน้า 1 · ภาพนิ่งโหมด check (ยังไม่มีรูป) ผ่าน */
+  const frozenOverflow = (view) => {
+    const layout = paginateSurveyReport(view);
+    const frozen = (view.zones || []).some((z) => z.plan?.sha || (z.wide || []).some((w) => w.img?.sha));
+    if (!frozen) return layout;
+    const first = layout.pages[0];
+    return { ...layout, overflow: [...layout.overflow, { page: 1, kind: first.kind, bottom: first.limit + 12, limit: first.limit }] };
+  };
+  const overWorld = twinWorld();
+  const { result: over, prepareImages: overImages } = await byPlanner(overWorld, { paginate: frozenOverflow });
+  assert.equal(overImages.calls.length, 1, 'ผ่าน I3 ไปถึงขั้นรูปแล้ว — ที่ติดคือด่านซ้ำของ I5');
+  assert.equal(over.code, 'blocked');
+  assert.equal(over.retry, false);
+  assert.deepEqual(over.reasons.map((line) => line.split(' เนื้อหา')[0]), ['ฉบับลูกค้า: หน้า 1 (หน้า 1)', 'ฉบับภายใน: หน้า 1 (หน้า 1)']);
+  assert.ok(over.reason.endsWith(' · ถ้าต้องแก้ แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่'), over.reason);
+  assert.equal(overWorld.db.rpcLog.length, 0, 'ยังไม่มีเลขถูกออก');
+  const headOverWorld = twinWorld();
+  const { result: headOver } = await issue(headOverWorld, {
+    via: 'issue_only', requestId: headOverWorld.request().id, paginate: frozenOverflow,
+  });
+  assert.equal(over.reason.replace('แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับ', 'ให้ดึงผลกลับ'), headOver.reason, 'ต่างจากหัวหน้าแค่ประโยคทางออก');
+
+  // ⑤ ผ่านครบ = ออกเลขได้ · ผู้ออก = Planner (ผู้อนุมัติมาจากแถวคำร้องใต้ล็อกของ RPC)
+  const ok = twinWorld();
+  const { result: issued } = await byPlanner(ok);
+  assert.equal(issued.state, 'issued', issued.reason);
+  assert.equal(ok.reports()[0].issuedById, PLANNER.id);
+  assert.equal(ok.reports()[0].issuedByName, PLANNER.name);
+});
+
 test('I4: ชั่วคราว — งบหมด = timeout · อย่างอื่น = images_failed (นับรูป) · ตัวเตรียมรูปโยนหรือคืนของผิดรูปก็ไม่โยนต่อ', async () => {
   assert.equal(SURVEY_IMAGE_FAILURE.TIMEOUT, 'timeout', 'ขั้นออกเลขแยก "หมดงบเวลา" ด้วยคำนี้');
 
@@ -1943,8 +2014,9 @@ test('งวด S3: ไม่มีผลไหนพกคีย์ `hold` — 
 test('ซอร์ส: ของหนักโหลดแบบ lazy ที่เดียว · ไม่มี chromium · ไม่เขียนตารางเอง (มีแต่ RPC) · ไม่มีชื่อชนิดเธรดของปุ่มออกเอกสาร', () => {
   const src = code(SOURCE);
   const imports = [...src.matchAll(/^import\s+(?:[^;]*?\sfrom\s+)?'([^']+)';/gm)].map((m) => m[1]);
+  /* `@/lib/permissions` = `canSendSurveyResult` — เลือกประโยคทางออกของคนกดที่ไม่ใช่หัวหน้า (มติเจ้าของ 19/10/2026) · ไฟล์ล้วน ไม่มีของหนัก */
   assert.deepEqual(imports.sort(), [
-    '@/lib/audit', '@/lib/id', './packageSizes', './survey', './surveyReportDocument', './surveyReportInputs',
+    '@/lib/audit', '@/lib/id', '@/lib/permissions', './packageSizes', './survey', './surveyReportDocument', './surveyReportInputs',
     './surveyReportLayout', './surveyReportNumber', './surveyReportRows', './surveyReportSigners', './surveyReportSnapshot',
     './surveyReportState', './surveyReportView', './surveySpotPhotos', 'server-only',
   ].sort());

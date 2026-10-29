@@ -66,8 +66,9 @@ test('entityType ที่ไม่รู้จักไม่ผ่านด่
  * ⭐ FN เป็นคนออกใบกำกับ ⇒ ต้องอัปไฟล์ได้ · แต่ role `finance` **ไม่มี** `salesplan:edit`
  * ⇒ ด่านตั้งต้นของ `privateEvidence` ปฏิเสธเขาทุกครั้ง (403 จาก /api/upload/session
  * ที่ไปโผล่ใต้โมดัล มองไม่เห็น — อาการเดียวกับ IS-26080026)
- * ⚠️ และต้อง **ไม่กว้างเกินไป**: FN ยังอัปสลิปการชำระไม่ได้ เพราะคนรับรองเงินต้องไม่ใช่
- * คนส่งหลักฐานเงิน (ด่านนี้คือสิ่งที่กันไม่ให้ปุ่มกับไฟล์เดินคนละทางในทิศตรงข้าม)
+ * 🔁 สลิปการชำระ: เดิม (07/09) FN อัปไม่ได้ "คนรับรองเงินต้องไม่ใช่คนส่งหลักฐาน" — **มติเจ้าของ 29/10 เปิดแล้ว**
+ * (งวดที่รับรองแล้วแนบสลิปเพิ่มได้เฉพาะบัญชี · `evidence-add`) ⇒ ด่านไฟล์ต้องไม่แคบกว่าด่านคำสั่ง
+ * ⚠️ ยังต้อง **ไม่กว้างเกินไป**: FN ไม่ได้อัปโฟลเดอร์ของฝ่ายขายตัวอื่น (หลักฐาน Won · ยืนยันคำสั่งซื้อ)
  */
 const FN = { id: 'U-FN', role: 'finance', department: 'FN', permissions: null };
 const DEAL = { id: 'D-1', ownerId: 'U-1', team: 'A' };
@@ -76,8 +77,19 @@ test('ใบกำกับภาษี: ฝ่ายบัญชี (FN) อั
   assert.equal(privateEvidenceAllows('sales_order_tax_invoice', FN, { deal: DEAL }), true);
 });
 
-test('🔴 ใบกำกับภาษี: FN อัปได้เฉพาะโฟลเดอร์ของตัวเอง — สลิปการชำระยังอัปไม่ได้', () => {
-  assert.equal(privateEvidenceAllows('sales_order_payment_evidence', FN, { deal: DEAL }), false);
+test('สลิปการชำระ: FN อัปได้ (มติ 29/10 — บัญชีแนบสลิปเพิ่มในงวดที่รับรองแล้ว) · ไม่ต้องอยู่ในขอบเขตดีล', () => {
+  assert.equal(privateEvidenceAllows('sales_order_payment_evidence', FN, { deal: DEAL }), true);
+  assert.equal(privateEvidenceAllows('sales_order_payment_evidence', FN, { deal: null }), true);
+});
+
+test('🔴 FN อัปได้เฉพาะโฟลเดอร์ที่เปิดให้ — หลักฐาน Won/ยืนยันคำสั่งซื้อยังเป็นของฝ่ายขาย', () => {
+  assert.equal(privateEvidenceAllows('quotation_won_evidence', FN, { deal: DEAL }), false);
+  assert.equal(privateEvidenceAllows('sales_order_confirmation', FN, { deal: DEAL }), false);
+});
+
+test('สลิปการชำระ: ฝ่ายขายยังติดขอบเขตดีลเหมือนเดิม · ฝ่ายอื่นอัปไม่ได้', () => {
+  const PC = { id: 'U-PC', role: 'pc', department: 'PC', permissions: null };
+  assert.equal(privateEvidenceAllows('sales_order_payment_evidence', PC, { deal: DEAL }), false);
 });
 
 /* ⚠️ แก้โดยตั้งใจ (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09): ใบ pipeline ที่ยกเลิกแล้ว บัญชียัง

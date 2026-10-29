@@ -43,6 +43,9 @@ import {
   installmentVoidNote,
   MAX_REFUND_CREDIT_NOTE_NO,
   MIN_REJECT_REASON,
+  INSTALLMENT_EVIDENCE_MAX,
+  PIPELINE_CANCELLED_LOCK,
+  installmentEvidenceRoom,
 } from './salesOrderPayments.js';
 import * as payments from './salesOrderPayments.js';
 import { HISTORICAL_CORRECTION_PATH } from './historicalOrders.js';
@@ -1837,4 +1840,61 @@ test('คำสั่งรายงวด actual_* ผ่าน installmentActi
 
 test('ไฟล์นี้ยังไม่ export ชื่อ actual* (กติกาอยู่ที่ salesOrderActualMode.js ไฟล์เดียว)', () => {
   assert.deepEqual(Object.keys(payments).filter((name) => /^actual/i.test(name)), []);
+});
+
+/* ══ แนบหลักฐานเพิ่ม `evidence-add` (มติเจ้าของ 29/10 — ลูกค้าโอนงวดเดียวหลายรอบ) ═══════════════════════════════
+   ก่อนรับรอง: ฝ่ายขาย + บัญชี · รับรองแล้ว: บัญชีเท่านั้น · สถานะ/วันจ่ายไม่ขยับ (route ต่อท้ายอย่างเดียว) */
+const SLIP = { storagePath: 'sales-orders/SOR-P/payments/a.jpg', fileName: 'a.jpg' };
+const slips = (n) => Array.from({ length: n }, (_, i) => ({ ...SLIP, storagePath: `sales-orders/SOR-P/payments/${i}.jpg` }));
+const reportedRow = (over = {}) => frozen({
+  status: 'reported', reportedById: 'u-sa', reportedAt: NOW, paidOn: '2026-10-20', evidence: [SLIP], ...over,
+});
+
+test('evidence-add: งวดรอบัญชีตรวจ — ฝ่ายขาย (รวมคนที่ไม่ได้แจ้ง) และบัญชีแนบเพิ่มได้', () => {
+  for (const user of [SA, SA_OTHER, FN_ROLE, ADMIN]) {
+    assert.equal(installmentActionError(reportedRow(), 'evidence-add', user), null, user.id);
+  }
+  assert.equal(installmentActionError(reportedRow(), 'evidence-add', PC_STAFF), 'ไม่มีสิทธิ์แนบหลักฐานการชำระ');
+});
+
+test('🔴 evidence-add: งวดที่บัญชีรับรองแล้ว — แนบเพิ่มได้เฉพาะฝ่ายบัญชี (มติ 29/10)', () => {
+  const row = reportedRow({ status: 'confirmed', confirmedAt: NOW });
+  assert.equal(installmentActionError(row, 'evidence-add', FN_ROLE), null);
+  assert.equal(installmentActionError(row, 'evidence-add', ADMIN), null);
+  for (const user of [SA, AE_SUP]) {
+    assert.equal(installmentActionError(row, 'evidence-add', user), 'งวดนี้บัญชีรับรองแล้ว — แนบหลักฐานเพิ่มได้เฉพาะฝ่ายบัญชี', user.id);
+  }
+});
+
+test('evidence-add: งวดร่างที่บันทึกการจ่ายไว้แล้ว (prepaid) แนบเพิ่มได้ — สถานะยัง pending', () => {
+  const prepaid = { status: 'pending', paidOn: '2026-10-20', evidence: [SLIP] };
+  assert.equal(installmentPrepaid(prepaid), true);
+  assert.equal(installmentActionError(prepaid, 'evidence-add', SA), null);
+});
+
+test('evidence-add: งวดที่ยังไม่แจ้ง/ถูกตีกลับ/คืนเงินแล้ว ใช้ไม่ได้ — ชี้ทางที่ถูก', () => {
+  assert.match(installmentActionError(frozen({ status: 'pending', evidence: [] }), 'evidence-add', SA), /ยังไม่ได้แจ้งชำระ/);
+  assert.match(installmentActionError(reportedRow({ status: 'rejected', rejectedAt: NOW }), 'evidence-add', SA), /แจ้งชำระใหม่/);
+  const refunded = reportedRow({ status: 'confirmed', confirmedAt: NOW, refundedAt: NOW });
+  assert.match(installmentActionError(refunded, 'evidence-add', FN_ROLE), /บันทึกคืนเงินแล้ว/);
+});
+
+test('evidence-add: เพดานไฟล์ต่องวด — ช่องว่างนับจากชุดเดิม · ส่งเกินที่เหลือ = บอกจำนวนที่แนบได้', () => {
+  assert.equal(installmentEvidenceRoom({ evidence: slips(3) }), INSTALLMENT_EVIDENCE_MAX - 3);
+  assert.equal(installmentEvidenceRoom({ evidence: null }), INSTALLMENT_EVIDENCE_MAX);
+  const nearlyFull = reportedRow({ evidence: slips(INSTALLMENT_EVIDENCE_MAX - 2) });
+  assert.equal(installmentActionError(nearlyFull, 'evidence-add', SA, { evidenceCount: 2 }), null);
+  assert.equal(installmentActionError(nearlyFull, 'evidence-add', SA, { evidenceCount: 3 }), 'งวดนี้แนบเพิ่มได้อีก 2 ไฟล์');
+  assert.equal(
+    installmentActionError(reportedRow({ evidence: slips(INSTALLMENT_EVIDENCE_MAX) }), 'evidence-add', SA),
+    `งวดนี้มีหลักฐานครบ ${INSTALLMENT_EVIDENCE_MAX} ไฟล์แล้ว`,
+  );
+});
+
+test('evidence-add: ใบยกเลิก/ถูกออก Rev. ทับ/ยอด 0 บาท — ไม่เปิด (ด่านไฟล์ปิดสองสถานะแรกอยู่แล้ว)', () => {
+  const opts = (order) => ({ orderLock: pipelineInstallmentLock(order, 'evidence-add'), orderTotal: order.totalAmount });
+  assert.equal(installmentActionError(reportedRow(), 'evidence-add', SA, opts({ ...APPROVED_SO })), null);
+  assert.equal(installmentActionError(reportedRow(), 'evidence-add', FN_ROLE, opts(CANCELLED_SO)), PIPELINE_CANCELLED_LOCK);
+  assert.match(installmentActionError(reportedRow(), 'evidence-add', SA, opts({ ...APPROVED_SO, status: 'revised' })), /ย้ายไป/);
+  assert.match(installmentActionError(reportedRow(), 'evidence-add', SA, { orderTotal: 0 }), /ยอดรวม 0 บาท/);
 });

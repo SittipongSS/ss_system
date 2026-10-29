@@ -31,6 +31,10 @@ const count = (src, needle) => src.split(needle).length - 1;
 const PAGE_RAW = read('../../app/service/surveys/[id]/page.js');
 const PAGE = code(PAGE_RAW);
 const CARD = code(read('../../components/service/SurveyControlCard.js'));
+/* ⭐ ตัวส่วนเอกสารประเมิน — ยกออกจากการ์ดตามมติเจ้าของ 19/10/2026 (ผู้วางคิวออกเอกสารได้แต่ไม่มีการ์ด ⇒ หน้าวาดชิ้นเดียวกันเป็นบล็อกเดี่ยว)
+   เทสต์ที่เคยหั่นซอร์สของการ์ดตรงส่วนนี้ หั่นไฟล์นี้แทน · การ์ดเหลือแค่ "วางที่ไหน" */
+const DOC_SECTION = code(read('../../components/service/SurveyDocumentSection.js'));
+const SECTION_JSX = () => between(DOC_SECTION, '  return (\n    <section', '    </section>\n  );');
 const ZONE = code(read('../../components/service/SurveyZonePage.js'));
 const PANEL = code(read('../../components/ui/DocumentControlPanel.js'));
 const CARD_CSS = css('../../components/service/SurveyControlCard.module.css');
@@ -59,7 +63,7 @@ test('🔴 หน้าไม่ประกอบที่อยู่เอก
   assert.match(PAGE, /surveyIssueErrorSticky\(prev\.issueError\)/);
   assert.match(PAGE, /surveyIssueErrorSticky\(prev\.sendFailed\)/);
   assert.doesNotMatch(PAGE, /SURVEY_ISSUE_STICKY_CODES|undecodable|paper_blocked|rpc_failed/);
-  for (const src of [PAGE, CARD, ZONE]) assert.doesNotMatch(src, /AbortSignal\.timeout/);
+  for (const src of [PAGE, CARD, DOC_SECTION, ZONE]) assert.doesNotMatch(src, /AbortSignal\.timeout/);
 });
 
 /* ── POST เอกสาร ──────────────────────────────────────────────────────────────────── */
@@ -434,7 +438,10 @@ test('🐞 "ตรวจอีกครั้ง" / "โหลดใหม่" �
 test('ออกเอกสารสำเร็จ: โฟกัสที่หลุดไป body ย้ายมาที่ส่วนเอกสาร (รอกล่องยืนยันปิดก่อน) · หน้าพื้นที่ได้บรรทัดเรื่องผูกรูปจากตัวตัดสิน', () => {
   assert.match(PAGE, /documentRef=\{docSectionRef\}/);
   assert.match(PAGE, /if \(was === "missing" && DOC_ISSUED_STATES\.includes\(view\.document\.state\)\) docFocusDue\.current = true;\s*if \(!docFocusDue\.current \|\| issueDialog\) return;\s*docFocusDue\.current = false;\s*if \(document\.activeElement === document\.body\) docSectionRef\.current\?\.focus\(\);/);
-  assert.match(CARD, /<section\s+ref=\{documentRef\}\s+tabIndex=\{-1\}/);
+  assert.match(DOC_SECTION, /<section\s+ref=\{documentRef\}\s+tabIndex=\{-1\}/);
+  /* ref ตัวเดียว สองผู้ใช้ที่ไม่มีวันวาดพร้อมกัน — การ์ดของหัวหน้า · บล็อกเดี่ยวของผู้วางคิว (`canDecide` คนละขั้ว) */
+  assert.equal(count(PAGE, 'documentRef={docSectionRef}'), 2);
+  assert.match(CARD, /documentRef=\{documentRef\}/);
 
   assert.match(PAGE, /spotsNote=\{canLinkSpots && view\.flags\.sent \? view\.document\.relinkNote : null\}/,
     'เฉพาะคนที่ผูกรูปได้บนใบที่ส่งผลแล้ว — ช่างและใบที่ยังไม่ส่งไม่มีบรรทัดนี้');
@@ -449,21 +456,44 @@ test('ออกเอกสารสำเร็จ: โฟกัสที่ห
 /* ── การ์ดจัดการผล ─────────────────────────────────────────────────────────────────── */
 
 test('🔑 การ์ดวาดส่วนเอกสารจาก `view.document` อย่างเดียว — ไม่ยิง API ไม่ประกอบลิงก์ ไม่ถือสถานะของเอกสาร', () => {
-  assert.doesNotMatch(CARD, /apiFetch|apiJson|\bfetch\(/);
-  assert.doesNotMatch(CARD, /\/api\/|surveyDocumentHref|version=/);
-  assert.doesNotMatch(CARD, /surveyDocumentView|surveyReport|localStorage|sessionStorage/);
-  assert.doesNotMatch(CARD, /doc\.state|"missing"|"issuing"|"recalled"|"not_sent"|"stale"|issueAtSend|storeAllowed|\.access\b/,
-    'สถานะ → ปุ่ม/ข้อความ ตัดสินที่ตัวตัดสินแล้ว · การ์ดอ่านแค่ผล');
+  for (const [name, src] of [['การ์ด', CARD], ['ส่วนเอกสาร', DOC_SECTION]]) {
+    assert.doesNotMatch(src, /apiFetch|apiJson|\bfetch\(/, name);
+    assert.doesNotMatch(src, /\/api\/|surveyDocumentHref|version=/, name);
+    assert.doesNotMatch(src, /surveyDocumentView|surveyReport|localStorage|sessionStorage/, name);
+    assert.doesNotMatch(src, /doc\.state|"missing"|"issuing"|"recalled"|"not_sent"|"stale"|issueAtSend|storeAllowed|\.access\b/,
+      `${name}: สถานะ → ปุ่ม/ข้อความ ตัดสินที่ตัวตัดสินแล้ว · จออ่านแค่ผล`);
+  }
   assert.match(CARD, /const doc = view\.document;/);
-  assert.match(CARD, /const docShown = doc\.versions\.find\(\(v\) => v\.key === docVersion\) \|\| doc\.versions\[0\] \|\| null;/);
-  assert.match(CARD, /const docStatus = docShown \? docShown\.status : doc\.status;/,
+  assert.match(CARD, /const documentSection = doc\.show \? \(\s*<SurveyDocumentSection\s+view=\{doc\}\s+busy=\{busy\}\s+onIssueDocument=\{onIssueDocument\}\s+onRecheckDocument=\{recheckDocument\}\s+documentRef=\{documentRef\}\s+unitNames=\{unitNames\}\s*\/>\s*\) : null;/,
+    'การ์ดส่งตัวจัดการของหน้าต่อ — ไม่มีโหมด `standalone` ในการ์ด');
+  assert.match(CARD, /import SurveyDocumentSection from "\.\/SurveyDocumentSection";/);
+  assert.doesNotMatch(CARD, /docVersion|historyOpen|docActions/, 'ของจอของส่วนเอกสารอยู่ในชิ้นของมันเอง');
+  assert.match(DOC_SECTION, /const doc = view;\s*if \(!doc\?\.show\) return null;/);
+  assert.match(DOC_SECTION, /const docShown = doc\.versions\.find\(\(v\) => v\.key === docVersion\) \|\| doc\.versions\[0\] \|\| null;/);
+  assert.match(DOC_SECTION, /const docStatus = docShown \? docShown\.status : doc\.status;/,
     '🐞 อ่านแต่ `doc.status` = สลับฉบับแล้วกล่องสถานะยังเป็นของฉบับลูกค้า (ใบที่ตรึงแล้วมีไฟล์ฉบับเดียว)');
-  assert.match(CARD, /const \[docVersion, setDocVersion\] = useState\("customer"\);/);
-  assert.match(CARD, /const documentSection = doc\.show \? \(/);
+  assert.match(DOC_SECTION, /const \[docVersion, setDocVersion\] = useState\("customer"\);/);
+  assert.ok(DOC_SECTION.indexOf('const uid = useId();') < DOC_SECTION.indexOf('if (!doc?.show) return null;'), 'hook ก่อนทางออกเร็ว (rules of hooks)');
+});
+
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ผู้วางคิวไม่มีการ์ดจัดการผล ⇒ หน้าวาดส่วนเอกสารชิ้นเดียวกันเป็นบล็อกเดี่ยว
+   หัวรายการพื้นที่ (ต่อจากกล่องแจ้ง · การ์ดส่งกลับของช่าง) · ตัวจัดการชุดเดียวกับการ์ด: กล่องยืนยัน · ตรวจซ้ำที่บอกผล · ref ของโฟกัส */
+test('⭐ หน้า: ส่วนเอกสารของผู้วางคิว = ชิ้นเดียวกับการ์ด (โหมด `standalone`) · เฉพาะคนที่ส่งผลไม่ได้ · หัวรายการต่อจาก {sendBackCard}', () => {
+  assert.match(PAGE, /import SurveyDocumentSection from "@\/components\/service\/SurveyDocumentSection";/);
+  const block = between(PAGE, 'const issuerDoc = ', ') : null;');
+  assert.match(block, /^const issuerDoc = !canDecide && view\.document\.show \? \(/, 'การ์ดกับบล็อกนี้ไม่มีวันวาดพร้อมกัน');
+  assert.match(block, /<SurveyDocumentSection\s+standalone\s+view=\{view\.document\}\s+busy=\{issueBusy\}\s+onIssueDocument=\{openIssueDialog\}\s+onRecheckDocument=\{recheckDocument\}\s+documentRef=\{docSectionRef\}\s+unitNames=\{surveyCardUnitNames\(view\)\}\s*\/>/);
+  assert.equal(count(PAGE, '<SurveyDocumentSection'), 1, 'หน้าวาดชิ้นนี้ที่เดียว (ในการ์ดเป็นของการ์ด)');
+  assert.match(PAGE, /const listBefore = noticeStack \|\| sendBackCard \|\| issuerDoc \|\| \(cardInList && controlFirst\) \|\| drawingsAboveList \? \(/);
+  assert.match(PAGE, /\{noticeStack\}\s*\{sendBackCard\}\s*\{issuerDoc\}\s*\{cardInList && controlFirst \? controlCard : null\}/);
+  /* โหมดนอกการ์ด = กรอบของตัวเอง + ขอบเขตของกฎทั้งการ์ด (`.card`) · ในการ์ด = `.sec` เดิม */
+  assert.match(DOC_SECTION, /const placed = standalone\s*\? `\$\{styles\.card\} \$\{styles\.docStandalone\}`\s*: `\$\{styles\.sec\} \$\{doc\.placement === "pinned" \? styles\.docPinned : ""\}`\.trim\(\);/);
+  assert.match(CARD_CSS, /\.docStandalone \{\s*min-width: 0;\s*padding: var\(--space-3\) var\(--space-3-5\);\s*border: 1px solid var\(--border\);\s*border-radius: var\(--radius-lg\);\s*background: var\(--panel-solid\);\s*box-shadow: var\(--glass-shadow\);\s*\}/);
+  assert.doesNotMatch(CARD_CSS, /^\.card\s*\{/m, '`.card` ต้องไม่มีกฎของตัวเอง — บล็อกเดี่ยวยืมมันเป็นขอบเขตของกฎลูกเท่านั้น');
 });
 
 test('ส่วนเอกสาร: ลำดับตามสเปก §4.1 · สองฉบับ = แถบสองปุ่มที่เห็นทั้งคู่ · กล่องสถานะถือ id ที่ปุ่มจางชี้ไป', () => {
-  const section = between(CARD, 'const documentSection = doc.show ? (', 'const fold = view.fold;');
+  const section = SECTION_JSX();
   assert.match(section, /aria-label="เอกสารประเมินพื้นที่"/);
   const order = [
     'className={styles.secTitle}',
@@ -491,27 +521,28 @@ test('ส่วนเอกสาร: ลำดับตามสเปก §4.1
   assert.match(section, /<div id=\{docStatusId\} className=\{styles\.docBlock\}>\s*<StatusNotice tone=\{docStatus\.tone\} className=\{styles\.compactNotice\}>/);
   assert.match(section, /docStatus\.items\.map\(\(line\) => <li key=\{line\}>\{thaiText\(line\)\}<\/li>\)/);
   assert.match(section, /\{docStatus\.foot \? /);
-  assert.match(section, /<JumpButton target=\{docStatus\.action\} onReload=\{recheckDocument\} \/>/,
+  assert.match(section, /<JumpButton target=\{docStatus\.action\} onReload=\{onRecheckDocument\} \/>/,
     '"ตรวจอีกครั้ง" / "โหลดใหม่" = อ่านใบใหม่ **แล้วบอกผล** (ตัวจัดการของหน้า) — ไม่ใช่ `onReload` ที่เงียบ');
+  assert.match(CARD, /onRecheckDocument=\{recheckDocument\}/, 'การ์ดส่งตัวที่บอกผล (`onRecheckDocument || onReload`)');
   assert.doesNotMatch(section, /docStatus\.(items|action|foot)[^\n]*doc\.state/, 'ไม่ผูกรายการ/ทางออกกับสถานะ (สถานะดึงผลกลับก็มีรายการ)');
   assert.match(section, /describedBy=\{docStatus \? docStatusId : undefined\}/);
   assert.match(section, /label=\{docShown \? `เอกสาร\$\{docShown\.label\}` : "เอกสารประเมินพื้นที่"\}/,
     'ชื่อกลุ่มพกชื่อฉบับ — "ดูตัวอย่าง" เฉย ๆ บอกไม่ได้ว่าของฉบับไหน');
-  assert.match(CARD, /const docStatusId = `\$\{uid\}-doc-status`;/);
+  assert.match(DOC_SECTION, /const docStatusId = `\$\{uid\}-doc-status`;/);
 });
 
 test('ปุ่มของส่วนเอกสาร: ลิงก์และการจางมาจากตัวตัดสิน · "ออกเอกสาร" เปิดกล่องยืนยันของหน้า · ไม่มีสิทธิ์ = ไม่มีปุ่ม', () => {
-  const actions = between(CARD, 'const docActions = [', '].filter(Boolean);');
+  const actions = between(DOC_SECTION, 'const docActions = [', '].filter(Boolean);');
   assert.match(actions, /docShown\?\.preview \? \{\s*id: "doc-preview",\s*kind: "open",\s*icon: Eye,\s*label: docShown\.preview\.label,\s*variant: "outline",\s*href: docShown\.preview\.href,\s*external: true,\s*disabled: docShown\.preview\.blocked,\s*\} : null,/);
   assert.match(actions, /docShown\?\.download \? \{\s*id: "doc-download",\s*kind: "download",\s*label: docShown\.download\.label,\s*variant: docShown\.download\.blocked \? "outline" : "filled",\s*href: docShown\.download\.href,\s*external: true,\s*disabled: docShown\.download\.blocked,\s*\} : null,/);
   assert.match(actions, /doc\.issue \? \{\s*id: "doc-issue",\s*kind: "print",\s*label: "ออกเอกสาร",\s*variant: "filled",\s*disabled: !doc\.issue\.allowed,\s*onClick: onIssueDocument,\s*\} : null,/,
     'กำลังออก/ติดเหตุ = วาดแล้วจาง (มีสิทธิ์อยู่) · ไม่มี `doc.issue` = ไม่มีสิทธิ์ = ไม่วาด');
   assert.doesNotMatch(actions, /href: `|href: "/, 'การ์ดไม่มีที่อยู่ของตัวเอง');
-  assert.doesNotMatch(CARD, /\sdisabled=\{/, 'ปุ่มที่กดไม่ได้เป็น aria-disabled (ยัง Tab ถึง) ไม่ใช่ disabled');
+  for (const src of [CARD, DOC_SECTION]) assert.doesNotMatch(src, /\sdisabled=\{/, 'ปุ่มที่กดไม่ได้เป็น aria-disabled (ยัง Tab ถึง) ไม่ใช่ disabled');
 });
 
 test('🔴 รายการ Rev ก่อนหน้าไม่มีลิงก์สักแถว (มติเจ้าของ 01/10 ข้อ 5) · ปุ่มคลี่บอกสถานะกาง/หุบ', () => {
-  const history = between(CARD, '{doc.history ? (', 'const fold = view.fold;');
+  const history = between(DOC_SECTION, '{doc.history ? (', '    </section>');
   assert.doesNotMatch(history, /href|<a[\s>]|<Link|onClick=\{\(\) => on/, 'ฉบับที่ถูกแทนที่เปิดไม่ได้ (GET ตอบ 409) — มีไว้ให้รู้ว่าเคยออกอะไร');
   assert.match(history, /aria-expanded=\{historyOpen\}\s+aria-controls=\{docHistoryId\}/);
   assert.match(history, /\{historyOpen \? doc\.history\.hideLabel : doc\.history\.label\}/);
@@ -538,8 +569,9 @@ test('ตำแหน่งของส่วนเอกสาร: ก่อน
   assert.equal(count(footer, 'documentSection'), 2);
   assert.doesNotMatch(CARD_CSS, /\border\s*:/, 'ไม่สลับลำดับด้วย CSS — ลำดับ Tab ต้องตรงกับที่ตาเห็น');
   /* ส่วนเอกสารเป็น `.sec` ธรรมดา — ในส่วนรองได้เส้นคั่นจาก `.sec + .sec` เหมือนก้อนอื่น · ปักไว้ = ปิดท้ายด้วยเส้นของ `.docPinned` เอง */
-  assert.match(CARD, /className=\{`\$\{styles\.sec\} \$\{doc\.placement === "pinned" \? styles\.docPinned : ""\}`\.trim\(\)\}/);
-  assert.doesNotMatch(CARD, /styles\.doc\b/, 'คลาสที่ไม่มีในโมดูล CSS = `undefined` ในชื่อคลาส');
+  assert.match(DOC_SECTION, /: `\$\{styles\.sec\} \$\{doc\.placement === "pinned" \? styles\.docPinned : ""\}`\.trim\(\);/);
+  assert.match(SECTION_JSX(), /className=\{placed\}/);
+  for (const src of [CARD, DOC_SECTION]) assert.doesNotMatch(src, /styles\.doc\b/, 'คลาสที่ไม่มีในโมดูล CSS = `undefined` ในชื่อคลาส');
   /* กล่องเตือนของข้อความบนฉบับลูกค้าอยู่ในกล่องแจ้งของการ์ด (นอกส่วนที่พับ) — กางครบทุกข้อ แล้วปิดด้วยบรรทัด "แก้ได้ที่ไหน" */
   const notices = between(CARD, 'const noticeNodes = ', 'const sendReason = ');
   assert.match(notices, /\{notice\.items\?\.length \? \(/);
@@ -668,14 +700,16 @@ test('เหตุหลายข้อวาดเป็นรายการ�
 /* 🐞 UAT PR-3: ทรงปกติของกล่องแจ้ง (13px · วงไอคอน 32px) เหลือคอลัมน์ข้อความ 224px ในราง 330px ⇒ กล่องคำเตือน 3–5 ข้อสูง 345–460px
    กล่องสถานะที่มีรายการสูง ~200px — ดันปุ่มส่งผลกับปุ่มของส่วนเอกสารพ้นรางที่ปักหมุด ⇒ ทรงกะทัดรัดของกระดาน S-1 */
 test('กล่องแจ้งทรงกะทัดรัด: ทุกกล่องแจ้งของการ์ด (กล่องแจ้ง · กล่องของส่วนเอกสาร) ทรงเดียวกัน · โทนและ role ยังมาจากตัวกลาง', () => {
-  const section = between(CARD, 'const documentSection = doc.show ? (', 'const fold = view.fold;');
+  const section = SECTION_JSX();
   assert.equal(count(section, '<StatusNotice'), 2, 'กล่องสถานะ · กล่องข้อที่พิมพ์');
   assert.equal(count(section, 'className={styles.compactNotice}'), 2);
   assert.match(section, /<StatusNotice tone="info" title=\{doc\.printed\.title\} className=\{styles\.compactNotice\}>/);
   const notices = between(CARD, 'const noticeNodes = ', 'const sendReason = ');
   assert.match(notices, /<StatusNotice key=\{notice\.key\} tone=\{notice\.tone\} title=\{notice\.title\} className=\{styles\.compactNotice\}>/,
     'ทรงเดียวกันทั้งการ์ด — กล่องแจ้งสองขนาดในราง 330px อ่านเป็นของสองระบบ');
-  assert.equal(count(CARD, '<StatusNotice'), count(CARD, 'className={styles.compactNotice}'), 'ไม่มีกล่องแจ้งไหนของการ์ดหลุดทรง');
+  for (const src of [CARD, DOC_SECTION]) {
+    assert.equal(count(src, '<StatusNotice'), count(src, 'className={styles.compactNotice}'), 'ไม่มีกล่องแจ้งไหนของการ์ดหลุดทรง');
+  }
   /* CSS: สองคลาส (ชนะกฎของตัวกลางโดยไม่พึ่งลำดับไฟล์) · ไอคอนเล็กชิดบรรทัดแรก ไม่มีวง · ไม่มีสีใหม่ (ตรึงอยู่ในเทสต์ CSS ข้างล่าง) */
   assert.match(CARD_CSS, /\.card \.compactNotice \{\s*align-items: flex-start;\s*gap: var\(--space-2\);\s*padding: var\(--space-2-5\) var\(--space-3\);\s*font-size: var\(--fs-5\);\s*\}/);
   assert.match(CARD_CSS, /\.card \.compactNotice > span:first-child \{\s*width: 18px;\s*height: 18px;\s*flex-basis: 18px;\s*margin-top: var\(--space-0-5\);\s*border-radius: 0;\s*background: none;\s*\}/);
@@ -719,7 +753,8 @@ test('`DocumentActionGroup`: ปุ่มตัวเดียวกับช่
   assert.match(group, /<div className=\{styles\.actionGroup\} role="group" aria-label=\{label\}>/);
   assert.match(group, /<DocumentAction\s+key=\{action\.id\}\s+action=\{action\}\s+slot="secondary"\s+busy=\{busy\}\s+describedBy=\{action\.disabled \|\| busy \? describedBy : undefined\}/);
   assert.match(PANEL, /aria-disabled=\{unavailable \|\| undefined\}\s+aria-describedby=\{describedBy\}/, 'ปุ่มที่กดไม่ได้ยังอยู่ในลำดับ Tab');
-  assert.match(CARD, /import \{ DocumentActionGroup, DocumentControlCard, WorkflowRail \} from "@\/components\/ui\/DocumentControlPanel";/);
+  assert.match(CARD, /import \{ DocumentControlCard, WorkflowRail \} from "@\/components\/ui\/DocumentControlPanel";/);
+  assert.match(DOC_SECTION, /import \{ DocumentActionGroup \} from "@\/components\/ui\/DocumentControlPanel";/);
 
   const rules = [...PANEL_CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[1].includes('.actionGroup'));
   assert.equal(rules.length, 2, 'กฎของแถวปุ่มมีสองข้อ (กล่อง · ปุ่มข้างใน)');
@@ -784,11 +819,12 @@ test('CSS ของส่วนเอกสาร: ของที่กดไ�
     assert.doesNotMatch(sheet, /#[0-9a-fA-F]{3,8}\b|rgba?\(/, 'ใช้โทเคนสีที่มีอยู่เท่านั้น');
   }
   /* คลาสที่การ์ดเรียกต้องมีอยู่จริงในโมดูล — คลาสที่ไม่มี = `undefined` ในชื่อคลาส เงียบ ไม่มี error */
-  for (const name of ['sec', 'docPinned', 'docTitle', 'docBlock', 'docSeg', 'noticeList', 'noticeLine', 'gateList', 'gateRow', 'gateBody', 'refs', 'more', 'secLinks']) {
-    assert.match(CARD, new RegExp(`styles\\.${name}\\b`), `การ์ดไม่ได้ใช้ ${name}`);
+  for (const name of ['sec', 'docPinned', 'docTitle', 'docBlock', 'docSeg', 'docStandalone', 'noticeList', 'noticeLine', 'gateList', 'gateRow', 'gateBody', 'refs', 'more', 'secLinks']) {
+    assert.match(`${CARD}\n${DOC_SECTION}`, new RegExp(`styles\\.${name}\\b`), `การ์ด/ส่วนเอกสารไม่ได้ใช้ ${name}`);
     assert.match(CARD_CSS, new RegExp(`\\.${name}\\b`), `โมดูล CSS ไม่มี .${name}`);
   }
-  assert.doesNotMatch(between(CARD, 'const documentSection = doc.show ? (', 'const fold = view.fold;'), /style=\{/);
+  assert.match(DOC_SECTION, /import styles from "\.\/SurveyControlCard\.module\.css";/, 'ชีตเดียวกับการ์ด (โฟลเดอร์เดียวกัน)');
+  assert.doesNotMatch(DOC_SECTION, /style=\{/);
 });
 
 /* ── สัญญา: ก้อนที่หน้าเขียนลง `docLocal` คือรูปที่ตัวตัดสินอ่าน ──────────────────────────────── */

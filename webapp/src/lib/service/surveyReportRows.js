@@ -4,7 +4,7 @@
 //   GET/PATCH คำร้อง · ส่งผล · ดึงผลกลับ ⇒ **ห้าม import ของหนักที่หัวไฟล์** (สเปก PR-2 §14 · มติ 24)
 //   · `sharp` โยนตอนโหลดเมื่อไบนารีของแพลตฟอร์มหาย · `htmlPdf` ลาก puppeteer-core + chromium มาทั้งก้อน
 //   · ตัวโหลดข้อมูลเอกสาร (`surveyReportInputs`) ลากตัวประกอบภาพนิ่ง/ตัวจัดหน้าเข้ามา — โหลดด้วย `await import()`
-//     ข้างใน `surveyDocumentSummary` เฉพาะตอนที่ต้องตรวจจริง (หัวหน้าฝ่าย + `withChecks`)
+//     ข้างใน `surveyDocumentSummary` เฉพาะตอนที่ต้องตรวจจริง (คนที่ออกเอกสารได้ + `withChecks`)
 //   เทสต์อ่านซอร์สล็อกไว้ (`surveyReportRows.test.mjs`) · ด่าน `check-doc-tracing.mjs` ตรวจซ้ำที่ผล build
 //
 // 🔴 **dev DB = prod DB** ⇒ ของถาวรเขียนได้บน production deployment เท่านั้น (`surveyReportStoreAllowed` · §0)
@@ -18,6 +18,7 @@
 // ⚠️ supabase **ไม่ throw** — ทุก query ที่นี่อ่าน `{ data, error }` · ตัวอ่านทั้งสามไม่โยนออกไปหา route
 //   (อ่านเอกสารไม่สำเร็จต้องไม่ลากใบประเมิน/การดึงผลกลับล้มตาม) แต่ **บอกว่าไม่รู้** ไม่ใช่ตอบว่าไม่มี
 import { businessDate } from '@/lib/businessDate';
+import { canSendSurveyResult } from '@/lib/permissions';
 import { canAnswerRequest, canManageRequest } from '@/lib/requests/access';
 import { surveyDocAccess } from './surveyAccess';
 import { surveyReportSignaturesOn } from './surveyReportSignFlag';
@@ -332,9 +333,9 @@ async function documentChecks(supabase, {
  *                                 ready: { customer, internal } },
  *               history: [{ docNo, rev, issuedAt, supersededAt, supersededReason }],   ← คีย์มีเฉพาะ access.history
  *               nextDocNo,                                ← คีย์มีเฉพาะ access.issue · เลขฐานเดิม R ถัดไปเมื่อไม่มีฉบับที่ใช้อยู่
- *               send:  null | { blockers: string[], warnings: string[], unknown, selfSign?, signers? },   ← คีย์มีเฉพาะ access.issue
- *               issue: null | { blockers: [{ kind, text, sign?, self? }], warnings: string[], unknown, signers? },
- *               signRule: true,                           ← คีย์มีเฉพาะ access.issue **และ** กติกาลายเซ็นจริงเปิด
+ *               send:  null | { blockers: string[], warnings: string[], unknown, selfSign?, signers? },   ← คีย์มีเฉพาะ access.issue **และ** ส่งผลได้
+ *               issue: null | { blockers: [{ kind, text, sign?, self? }], warnings: string[], unknown, signers? },   ← คีย์มีเฉพาะ access.issue
+ *               signRule: true,                           ← คีย์มีเฉพาะ access.issue **และ** ส่งผลได้ **และ** กติกาลายเซ็นจริงเปิด
  *               unknown: true }                           ← เฉพาะเมื่ออ่านแถวเอกสารไม่สำเร็จ
  * ```
  *
@@ -344,10 +345,14 @@ async function documentChecks(supabase, {
  *            `kind: 'content'` = ต้องดึงผลกลับมาแก้แล้วส่งใหม่ · `'system'` = แก้แล้วกดออกเอกสารซ้ำได้
  * ⚠️ ทั้งสองตัวคิดเฉพาะ `withChecks` (GET ใบประเมิน) และเฉพาะคนที่ออกเอกสารได้ — ราคาคือการอ่านขนานของตัวโหลดข้อมูลเอกสาร
  * ⚠️ ตรวจล้ม = `unknown: true` ในก้อนนั้น ไม่ใช่ GET ล้ม
+ * ⭐ **ออกได้แต่ส่งไม่ได้ (ผู้วางคิว · มติเจ้าของ 19/10/2026)** — ไม่มีคีย์ `send` · `signRule` และไม่คิด `send` เลย:
+ *    ตัวตรวจก่อนส่งผลถือคนดูเป็นผู้อนุมัติที่รออยู่ (`pendingAnswer`) ⇒ ถ้าปล่อยให้คิด รายชื่อผู้ลงนาม/`selfSign` จะเอ่ยชื่อ Planner
+ *    ซึ่งไม่มีวันได้ที่นั่งนั้น และทุก GET ของใบที่ยังไม่ส่งจะจ่ายค่าตัวโหลด + ภาพนิ่ง + จัดหน้าโดยไม่มีใครใช้ผล
+ *    · `issue` ยังคิดตามปกติ (สถานะ `missing`) — ข้อลายเซ็นของผู้ประเมิน/ผู้ส่งผลยังขึ้น เพราะตัวตรวจได้ `signRule` ของจริง
  *
  * ⭐ **กติกาลายเซ็นจริง** (PR-SIG §5 · สวิตช์ `SURVEY_REPORT_SIGNATURES` — ถามผ่าน `surveyReportSignaturesOn` ครั้งเดียวต่อ GET และเฉพาะ
  *    คนที่ออกเอกสารได้) — **คีย์ใหม่มีเฉพาะตอนเป็นจริง/ไม่ว่าง และเฉพาะตอนกติกาเปิด** · ปิด = payload เท่าเดิมทุกคีย์ทุกไบต์:
- *    · `signRule: true`        การส่งผล/ออกเอกสารของระบบนี้ต้องมีลายเซ็นของผู้ประเมินและผู้ส่งผล (กล่องยืนยันดึงผลกลับอ่านคีย์นี้)
+ *    · `signRule: true`        การส่งผล/ออกเอกสารของระบบนี้ต้องมีลายเซ็นของผู้ประเมินและผู้ส่งผล (กล่องยืนยันดึงผลกลับอ่านคีย์นี้ ⇒ คนที่ส่งผลได้เท่านั้น)
  *    · `send.selfSign: true`   คนดูเป็นผู้ลงนามที่ยังไม่มีลายเซ็น (จอขึ้นลิงก์ไป “บัญชีของฉัน”)
  *    · `send.signers` / `issue.signers`  `[{ seats, name }]` — ผู้ลงนามที่เอกสารจะพิมพ์ลายเซ็น · มีเฉพาะเมื่อทุกที่นั่งที่พิมพ์ชื่อมีลายเซ็นแล้ว
  *    · `issue.blockers[].sign` = ข้อ "ยังไม่มีลายเซ็น" (ไม่ต้องดึงผลกลับ) · `.self` = ข้อนั้นเป็นของคนดูเอง
@@ -358,8 +363,9 @@ async function documentChecks(supabase, {
  *
  * @param opts.withChecks  คิด `send` / `issue` ด้วย (GET ใบประเมิน) — โหลดตัวตรวจด้วย `await import()` เฉพาะตอนนี้
  * @param opts.withVoids   เติม `voids: 'SU-…-n' | null` = ฉบับที่ใช้อยู่ซึ่ง "ยังไม่จบ"/ดึงผลกลับจะทำให้ใช้ไม่ได้ (GET คำร้อง)
- *                         ให้ทุกคนที่ตอบหรือจัดการใบนี้ได้ — Planner เปิดใบกลับได้โดยไม่มีสิทธิ์เอกสาร ⇒ เขาได้
+ *                         ให้ทุกคนที่ตอบหรือจัดการใบนี้ได้ — คนของฝ่ายที่ตอบใบได้แต่ไม่มีสิทธิ์เอกสาร (ช่าง) เปิดใบกลับได้ ⇒ เขาได้
  *                         `{ access: 'none', voids }` พอให้โมดัลบอกผลของการกด (กติกา #1223)
+ *                         (ผู้วางคิวมีสิทธิ์เอกสารตั้งแต่ 19/10 ⇒ ได้ก้อนเต็ม + `voids`)
  * @param opts.now         นาฬิกาของสถานะ `issuing` และของตัวตรวจ (เทสต์ตรึงได้)
  * @param opts.zones · opts.filesByZone · opts.sizes · opts.open  แถวที่ route อ่านไว้แล้ว — ไม่ส่ง = อ่านเองตอนตรวจ
  * @param opts.precheck    ตัวตรวจแทน (เทสต์) — ไม่ส่ง = `surveyReportPrecheck` ของ `surveyReportInputs`
@@ -403,20 +409,24 @@ export async function surveyDocumentSummary(supabase, request, user, {
   if (access.history) out.history = reports.filter((row) => row.status === 'superseded').map(historyPart);
 
   if (access.issue) {
+    /* ⭐ ออก ≠ ส่ง (มติเจ้าของ 19/10) — ผู้วางคิวออกเอกสารได้แต่ส่งผล/ดึงผลกลับไม่ได้ ⇒ คีย์ของสองทางนั้นเฉพาะคนที่ส่งผลได้ */
+    const decider = canSendSurveyResult(user);
     /* เลขของฉบับถัดไป — รู้ได้เมื่อคำร้องเคยมีเอกสารและตอนนี้ไม่มีฉบับที่ใช้อยู่ (RPC ใช้เลขฐานเดิม R ถัดไป · 0401 ④)
        ⚠️ ฉบับแรกของคำร้อง = `null`: เลขรันออกใต้ล็อกที่ฐาน ห้ามเดาฝั่ง JS (`surveyReportNumber.js`) */
     const latest = reports[0];
     out.nextDocNo = !current && latest?.baseNo && Number.isInteger(Number(latest.rev))
       ? `${latest.baseNo}-${Number(latest.rev) + 1}`
       : null;
-    out.send = null;
+    if (decider) out.send = null;
     out.issue = null;
     /* ⭐ กติกาลายเซ็นจริง — ถามเฉพาะคนที่ออกเอกสารได้ (ผู้ขอ · ผู้บริหาร · ช่าง ไม่ถึงบรรทัดนี้ ⇒ ไม่มีคีย์ ไม่อ่านสวิตช์)
-       คีย์มีเฉพาะตอนเปิด: ปิด = payload เท่าเดิมทุกคีย์ */
+       คีย์มีเฉพาะตอนเปิด: ปิด = payload เท่าเดิมทุกคีย์
+       ⚠️ คีย์ `signRule` ของ payload เฉพาะคนที่ส่งผลได้ (คนอ่านคือกล่องยืนยันดึงผลกลับ) — แต่ค่าในตัวแปรส่งต่อให้ตัวตรวจของ
+          ทุกคนที่ออกได้ ⇒ ผู้วางคิวยังเห็นข้อ "ยังไม่มีลายเซ็น" ของผู้ประเมิน/ผู้ส่งผลก่อนกดออก */
     const signRule = signatureRuleOn(signatureRule);
-    if (signRule) out.signRule = true;
+    if (signRule && decider) out.signRule = true;
 
-    const wantSend = issueAtSend && !request.answeredAt && !request.cancelledAt;
+    const wantSend = decider && issueAtSend && !request.answeredAt && !request.cancelledAt;
     const wantIssue = state === 'missing';
     if (withChecks && (wantSend || wantIssue)) {
       const checks = await documentChecks(supabase, {

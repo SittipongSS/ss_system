@@ -355,3 +355,6 @@
 }
 /* เหตุที่ปุ่มของบัญชีดับ (งวดยังไม่อนุมัตินับ Actual) — `.table small` (จาง) ชนะคลาสเดี่ยว ⇒ ผูกกับ `.table` (ท่าเดียวกับ .issueNote) */
 .table .gateNote { color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }
+
+/* ปุ่ม "แนบเพิ่ม" ใต้ไฟล์หลักฐานของงวด (evidence-add · มติ 29/10) — ชิดซ้ายตามแนวลิงก์ไฟล์ ไม่ยืดเต็มคอลัมน์ */
+.addEvidence { align-self: flex-start; }

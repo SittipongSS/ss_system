@@ -491,10 +491,17 @@ test('🔴 D-3 บล็อกเอกสาร: วาดจาก `job.docume
   const head = job(mixed({ ...SENT, surveyDocument: headDocument }), HEAD).document;
   assert.deepEqual(head.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
   assert.equal(head.sheetLink, true);
-  // ผู้วางคิวยังไม่มีบล็อก (ไม่มีสิทธิ์เอกสาร) — ใบจากแบบไม่เปลี่ยนกติกานี้
-  const PLANNER = { canWork: true };
+  // ช่าง (ไม่มีสิทธิ์เอกสาร) ไม่มีบล็อก — ใบจากแบบไม่เปลี่ยนกติกานี้
+  const CREW = { canWork: true };
   for (const request of [desk({ ...SENT, surveyDocument: { access: 'none', voids: null } }), mixed({ ...SENT, surveyDocument: { access: 'none', voids: null } })]) {
-    assert.equal(job(request, PLANNER).document, null);
+    assert.equal(job(request, CREW).document, null);
+  }
+  /* ⭐ ผู้วางคิวออกเอกสารได้ (มติเจ้าของ 19/10/2026) — ได้ก้อนเต็มจาก server ⇒ บล็อกเดียวกับหัวหน้า: กดที่ใบประเมิน + ลิงก์ (ใบจากแบบ/ใบผสมเท่ากัน) */
+  const PLANNER = { canWork: true, canIssue: true };
+  for (const request of [desk({ ...SENT, surveyDocument: headDocument }), mixed({ ...SENT, surveyDocument: headDocument })]) {
+    const planner = job(request, PLANNER).document;
+    assert.deepEqual(planner.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
+    assert.equal(planner.sheetLink, true);
   }
 });
 

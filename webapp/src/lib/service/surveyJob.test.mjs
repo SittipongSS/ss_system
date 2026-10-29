@@ -459,7 +459,7 @@ test('PR-3 · ผู้ขอ (ฝ่ายขาย): ปุ่มเดีย�
   assert.equal(flagOn.control.document.show, false);
 });
 
-test('PR-3 · ธงของคนดูเลือกข้อความเท่านั้น: ผู้ขอบนใบเปิดได้ช่องทางเธรด · Planner ไม่มีบล็อกแม้อ่านเอกสารไม่สำเร็จ', () => {
+test('PR-3 · ธงของคนดูเลือกข้อความเท่านั้น: ผู้ขอบนใบเปิดได้ช่องทางเธรด · ช่างไม่มีบล็อกแม้อ่านเอกสารไม่สำเร็จ · Planner (`canIssue`) ได้ "ไม่ทราบ"', () => {
   const missing = { access: { customer: true, internal: false, issue: false, draft: false, history: false }, issueAtSend: false, storeAllowed: true, state: 'missing', current: null };
   assert.equal(sentJob(missing, { isRequesterSide: true }).document.text.text,
     'ยังไม่มีเอกสารของใบนี้ — แจ้งหัวหน้าฝ่ายบริการให้กดออกเอกสาร (เขียนในเธรดด้านล่างได้)');
@@ -470,4 +470,13 @@ test('PR-3 · ธงของคนดูเลือกข้อความเ
   assert.equal(sentJob(unknown, { isRequesterSide: false, canDecide: false, canWork: true }).document, null);
   assert.equal(sentJob(unknown, { isRequesterSide: true }).document.state, 'unknown');
   assert.equal(sentJob(unknown, { canDecide: true }).document.state, 'unknown');
+  /* ⭐ มติเจ้าของ 19/10/2026 — ผู้วางคิวออกเอกสารได้ ⇒ อาจมีสิทธิ์จริง: อ่านไม่สำเร็จ = "ไม่ทราบ" (ส่งต่อ `canIssue` ถึงบล็อก) ·
+     `true` ตรงตัวเท่านั้น (ค่าอื่น = ไม่ส่งต่อ) */
+  assert.equal(sentJob(unknown, { isRequesterSide: false, canDecide: false, canIssue: true, canWork: true }).document.state, 'unknown');
+  assert.equal(sentJob(unknown, { isRequesterSide: false, canDecide: false, canIssue: 'yes', canWork: true }).document, null);
+  // ใบที่ตอบแล้วยังไม่มีเอกสาร — ผู้วางคิวถูกชี้ไปกดที่ใบประเมิน (เหมือนหัวหน้า) ไม่ใช่ประโยคทวงหัวหน้าของฝ่ายขาย
+  const full = { access: { customer: true, internal: true, issue: true, draft: true, history: true }, issueAtSend: false, storeAllowed: true, state: 'missing', current: null, history: [], nextDocNo: null, issue: null };
+  const planner = sentJob(full, { isRequesterSide: false, canDecide: false, canIssue: true, canWork: true }).document;
+  assert.equal(planner.text.text, 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน');
+  assert.equal(planner.sheetLink, true);
 });

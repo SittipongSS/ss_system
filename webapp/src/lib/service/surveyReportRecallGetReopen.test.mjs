@@ -4,7 +4,7 @@
 //   1. **ดึงผลกลับ** — กดซ้ำได้ผลครั้งเดียว (409 · ไม่มีแถวเธรด) · บรรทัดในเธรด/audit/คำตอบ เอ่ยเลข SU ที่เพิ่งใช้ไม่ได้
 //      · อ่านเลข **หลัง** update (เอกสารที่ RPC เขียนแทรกระหว่างอ่านใบกับ update ยังถูกเอ่ย) · เหตุผลยังแกะได้
 //   2. **GET ใบประเมิน / GET คำร้อง** — คีย์ `document` / `surveyDocument` ตามสิทธิ์: ช่างได้ `{ access: 'none' }` เป๊ะ
-//      โดยไม่มีการอ่านแถวเอกสาร · ผู้ขอไม่ได้ `history`/`send`/`issue` · Planner บน GET คำร้องได้แค่ `access` กับ `voids`
+//      โดยไม่มีการอ่านแถวเอกสาร · ผู้ขอไม่ได้ `history`/`send`/`issue` · Planner (มติเจ้าของ 19/10/2026) ได้ก้อนของคนออก ไม่มี `send`
 //      · ไล่คีย์ทุกชั้นของคำตอบ: ไม่มีภาพนิ่ง / HTML / id ของแถว / ที่อยู่ไฟล์ แม้แถวที่ฐานคืนมาจะมีครบ
 //   3. **"ยังไม่จบ"** — ใบประเมินที่ตอบแล้วมีเอกสาร: เธรดและ audit เอ่ยเลขที่ · หัวข้ออื่นไม่อ่านแถวเอกสารเลย
 //   4. น้ำหนักของสามเส้น — import ได้เฉพาะตัวอ่านแถว · เส้น import ทั้งสายไม่ถึง sharp / chromium / ตัวเรนเดอร์
@@ -20,6 +20,7 @@ import path from 'node:path';
 import { callRoute } from './crew/routeTestKit.mjs';
 import { ROLES, canSendSurveyResult } from '../permissions.js';
 import { surveyRecallRecord, surveyTotals } from './survey.js';
+import { surveyDocAccess } from './surveyAccess.js';
 
 const { POST: recallPost } = await import('../../app/api/service/surveys/[id]/recall/route.js');
 const { GET: surveyGet } = await import('../../app/api/service/surveys/[id]/route.js');
@@ -543,6 +544,18 @@ test('ด่านเดิมของการดึงกลับไม่�
   assert.equal((await recall(fakeDb(seed()), CREW)).json.error, 'ดึงผลกลับมาแก้ได้เฉพาะหัวหน้าฝ่ายบริการ');
 });
 
+/* ⭐ มติเจ้าของ 19/10/2026 — ผู้วางคิวออกเอกสารได้ (`access.issue`) แต่ **ดึงผลกลับไม่ได้** (ปุ่มนี้ยังเป็นของหัวหน้า · `canSendSurveyResult`) */
+test('🔴 Planner ที่ออกเอกสารได้ยังดึงผลกลับไม่ได้ — 403 ข้อความของด่านหัวหน้า · ไม่มีการเขียน ไม่อ่านแถวเอกสาร', async () => {
+  const db = fakeDb(seed({ reports: READY() }));
+  assert.equal(surveyDocAccess(PLANNER, REQ).issue, true, 'เงื่อนไขตั้งต้น: Planner ออกเอกสารของใบนี้ได้');
+  const res = await recall(db, PLANNER);
+  assert.equal(res.status, 403);
+  assert.equal(res.json.error, 'ดึงผลกลับมาแก้ได้เฉพาะหัวหน้าฝ่ายบริการ');
+  assert.deepEqual(db.calls.filter((c) => c.write), []);
+  assert.deepEqual(db.of('service_survey_reports'), []);
+  assert.equal(db.rows('dept_requests')[0].answeredAt, REQ.answeredAt, 'ใบยังตอบอยู่');
+});
+
 test('🔴 ดึงผลกลับเป็นของใบประเมินพื้นที่ของฝ่ายเราเท่านั้น — หัวข้ออื่น 404 · ใบของฝ่ายอื่น 403 · ไม่มีการเขียน ไม่มีกระดิ่ง', async () => {
   /* 🐞 เดิมด่านถามแค่ตำแหน่ง/สถานะ/เหตุผล ⇒ หัวหน้าฝ่ายบริการยิง id ของคำร้องที่ RD ตอบแล้วมาที่เส้นนี้: คำตอบกับตราปิดถูกล้าง
      ใบกลับเป็น `acknowledged` และผู้ขอได้กระดิ่ง "TS ดึงผลประเมินกลับมาแก้ … 0 พื้นที่ · 0 ตร.ม." */
@@ -595,8 +608,8 @@ test('ด่านฝ่ายไม่ปิดประตูใส่ใค�
 
 const READY = () => [reportRow({ id: 'SVR-SECRET-1', rev: 1, docNo: 'SU-26100001-1' }), oldRoundRow()];
 
-test('🔴 ช่าง / Planner บน GET ใบประเมิน ได้ `{ access: "none" }` เป๊ะ — ไม่มีการอ่านแถวเอกสารเลย', async () => {
-  for (const user of [CREW, PLANNER]) {
+test('🔴 ช่างบน GET ใบประเมิน ได้ `{ access: "none" }` เป๊ะ — ไม่มีการอ่านแถวเอกสารเลย', async () => {
+  for (const user of [CREW]) {
     const db = fakeDb(seed({ reports: READY() }));
     const { status, json } = await getSurvey(db, user);
     assert.equal(status, 200, json.error);
@@ -608,6 +621,30 @@ test('🔴 ช่าง / Planner บน GET ใบประเมิน ได�
       assert.ok(key in json, key);
     }
   }
+});
+
+/* ⭐ มติเจ้าของ 19/10/2026 — ผู้วางคิวได้ก้อนของคนออกเอกสาร (สองฉบับ · รายการ Rev · `issue`) แต่ไม่มี `send` · `signRule`
+   · `canDecide` ของคำตอบยังเป็นเท็จ (การ์ดจัดการผล/ส่งผล/ดึงกลับยังเป็นของหัวหน้า) */
+test('⭐ Planner บน GET ใบประเมิน — ก้อนของคนออกเอกสาร ไม่มี `send` · `canDecide` ยังเท็จ · ไม่มีภาพนิ่ง/HTML/id/ที่อยู่ไฟล์', async () => {
+  const db = fakeDb(seed({ reports: READY() }));
+  const { status, json } = await getSurvey(db, PLANNER);
+  assert.equal(status, 200, json.error);
+  assert.equal(json.canDecide, false);
+  const doc = json.document;
+  assert.deepEqual(doc.access, { customer: true, internal: true, issue: true, draft: true, history: true });
+  assert.equal('send' in doc, false);
+  assert.equal('signRule' in doc, false);
+  assert.equal(doc.issue, null, 'มีเอกสารแล้ว = ไม่มีอะไรให้ตรวจ');
+  assert.equal(doc.current.docNo, 'SU-26100001-1');
+  assert.ok(Array.isArray(doc.history));
+  assert.deepEqual(leaks(json), []);
+
+  /* ใบที่ยังไม่ตอบ = ไม่มีร่าง (draft) และไม่มีตัวตรวจก่อนส่งผล */
+  const openDb = fakeDb(seed({ request: OPEN_REQ, reports: [] }));
+  const open = (await getSurvey(openDb, PLANNER)).json.document;
+  assert.equal(open.access.draft, false);
+  assert.equal(open.state, 'not_sent');
+  assert.equal('send' in open, false);
 });
 
 test('⭐ หัวหน้าฝ่ายบน GET ใบประเมิน — สถานะ · ฉบับที่ใช้อยู่ · ประวัติฉบับที่ถูกแทนที่ · ไม่มีภาพนิ่ง/HTML/id/ที่อยู่ไฟล์', async () => {
@@ -670,7 +707,7 @@ test('⭐ ใบที่ตอบแล้วไม่มีเอกสาร 
   assert.deepEqual(crewDb.of('service_survey_reports'), []);
 });
 
-test('🔴 ธงปิด: ตัวตรวจเนื้อเอกสาร (ตัวโหลดข้อมูลเอกสารทั้งชุด) วิ่งเฉพาะ หัวหน้า × ใบที่ตอบแล้ว × ไม่มีเอกสาร — ที่อื่นไม่จ่าย', async () => {
+test('🔴 ธงปิด: ตัวตรวจเนื้อเอกสาร (ตัวโหลดข้อมูลเอกสารทั้งชุด) วิ่งเฉพาะ คนออกเอกสาร (หัวหน้า · Planner) × ใบที่ตอบแล้ว × ไม่มีเอกสาร — ที่อื่นไม่จ่าย', async () => {
   /* ราคาที่สเปก §10 ยอมรับ ("for heads only") และ docs/survey-report-doc.md จดไว้ใต้ "ราคาที่จ่ายแม้สวิตช์ปิด" — เทสต์นี้ล็อก **ขอบเขต**:
      ใครขยายให้ตัวตรวจวิ่งบนใบที่ยังไม่ตอบ / ใบที่มีเอกสาร / คนที่ออกเอกสารไม่ได้ ขณะธงปิด = จอช่างและฝ่ายขายช้าลงโดยไม่มีใครใช้ผล
      ⚠️ เครื่องหมายของ "ตัวโหลดวิ่ง" = การอ่านแบบฟอร์มเอกสาร — GET ใบประเมินเองไม่เคยอ่านตารางนี้ */
@@ -681,6 +718,13 @@ test('🔴 ธงปิด: ตัวตรวจเนื้อเอกสา�
     const { result } = await quiet(() => getSurvey(paid, HEAD));
     assert.equal(result.json.document.state, 'missing');
     assert.equal(loaderRan(paid), true, 'เครื่องหมายต้องจับได้จริงในเคสที่ตัวตรวจวิ่ง');
+    /* ⭐ Planner ออกเอกสารได้ตั้งแต่ 19/10 ⇒ ใบ `missing` ของเขาก็จ่ายค่าตัวตรวจของปุ่ม "ออกเอกสาร" (ราคาเดียวกับหัวหน้า) */
+    const plannerPaid = fakeDb(seed({ request: OLD, reports: [] }));
+    const { result: planner } = await quiet(() => getSurvey(plannerPaid, PLANNER));
+    assert.equal(planner.json.document.state, 'missing');
+    assert.equal(loaderRan(plannerPaid), true, 'Planner · ตอบแล้วไม่มีเอกสาร');
+    assert.ok(planner.json.document.issue, 'Planner ได้ผลตรวจของปุ่มออกเอกสาร');
+    assert.equal('send' in planner.json.document, false);
 
     for (const [label, user, state] of [
       ['หัวหน้า · ใบยังไม่ตอบ', HEAD, { request: OPEN_REQ, reports: [] }],
@@ -688,7 +732,8 @@ test('🔴 ธงปิด: ตัวตรวจเนื้อเอกสา�
       ['หัวหน้า · มีเอกสารพร้อม', HEAD, { request: REQ, reports: READY() }],
       ['ผู้ขอ · ตอบแล้วไม่มีเอกสาร', REQUESTER, { request: OLD, reports: [] }],
       ['ช่าง · ตอบแล้วไม่มีเอกสาร', CREW, { request: OLD, reports: [] }],
-      ['Planner · ตอบแล้วไม่มีเอกสาร', PLANNER, { request: OLD, reports: [] }],
+      ['Planner · ใบยังไม่ตอบ', PLANNER, { request: OPEN_REQ, reports: [] }],
+      ['Planner · มีเอกสารพร้อม', PLANNER, { request: REQ, reports: READY() }],
     ]) {
       const db = fakeDb(seed(state));
       const { result: res } = await quiet(() => getSurvey(db, user));
@@ -722,7 +767,7 @@ test('ธงออกเอกสารตอนส่งผลเปิด + �
   });
 });
 
-test('🔴 กติกาลายเซ็นจริงเปิด (PR-SIG): หัวหน้าได้ `signRule` + บรรทัดของตัวเองพร้อม `selfSign` · ฝ่ายขาย/ช่าง/Planner ไม่ได้คีย์ใหม่สักคีย์ — สอง GET', async () => {
+test('🔴 กติกาลายเซ็นจริงเปิด (PR-SIG): หัวหน้าได้ `signRule` + บรรทัดของตัวเองพร้อม `selfSign` · ฝ่ายขาย/ช่าง ไม่ได้คีย์ใหม่สักคีย์ · Planner ไม่ได้ `send`/`signRule` — สอง GET', async () => {
   const SIGN_KEYS = ['signRule', 'selfSign', 'signers', 'sign', 'self', 'userId', 'versionId', 'storagePath'];
   const keysDeep = (value, out = new Set()) => {
     if (Array.isArray(value)) value.forEach((v) => keysDeep(v, out));
@@ -757,9 +802,9 @@ test('🔴 กติกาลายเซ็นจริงเปิด (PR-SIG)
     assert.equal(onRequest.send, null);
     assert.deepEqual(requestDb.of('user_signatures'), []);
 
-    // ฝ่ายขาย · ช่าง · Planner — ไม่มีคีย์ของลายเซ็น ไม่มี `send` / `issue` และไม่อ่านตารางลายเซ็น
+    // ฝ่ายขาย · ช่าง — ไม่มีคีย์ของลายเซ็น ไม่มี `send` / `issue` และไม่อ่านตารางลายเซ็น
     for (const [user, request, reports] of [
-      [REQUESTER, OPEN_REQ, []], [REQUESTER, REQ, READY()], [CREW, OPEN_REQ, []], [PLANNER, OPEN_REQ, []], [PLANNER, REQ, READY()],
+      [REQUESTER, OPEN_REQ, []], [REQUESTER, REQ, READY()], [CREW, OPEN_REQ, []],
     ]) {
       const sheetDb = fakeDb(seed({ request, reports }));
       const onSheet = (await getSurvey(sheetDb, user)).json.document;
@@ -773,6 +818,20 @@ test('🔴 กติกาลายเซ็นจริงเปิด (PR-SIG)
         for (const key of SIGN_KEYS) assert.equal(keysDeep(payload).has(key), false, `${user.role}: ${key}`);
       }
       assert.deepEqual([...sheetDb.of('user_signatures'), ...pageDb.of('user_signatures')], [], user.role);
+    }
+    /* ⭐ Planner (มติเจ้าของ 19/10/2026) — ออกเอกสารได้ ⇒ มีคีย์ `issue` (ผลตรวจของปุ่มออกเอกสาร) แต่ **ไม่มี `send` · `signRule` · `selfSign`**
+       ใบที่ยังไม่ตอบ: ไม่มีตัวตรวจก่อนส่งผล (ตัวตรวจนั้นถือคนดูเป็นผู้อนุมัติที่รออยู่ — ชื่อ Planner ต้องไม่ขึ้นที่นั่งนั้น) ⇒ ไม่อ่านตารางลายเซ็น */
+    for (const [request, reports] of [[OPEN_REQ, []], [REQ, READY()]]) {
+      const sheetDb = fakeDb(seed({ request, reports }));
+      const onSheet = (await getSurvey(sheetDb, PLANNER)).json.document;
+      const pageDb = fakeDb(seed({ request, reports }));
+      const onPage = (await getRequest(pageDb, PLANNER)).json.surveyDocument;
+      for (const payload of [onSheet, onPage]) {
+        assert.equal('send' in payload, false, 'planner: send');
+        assert.equal(payload.issue ?? null, null, 'planner: ไม่มีอะไรให้ตรวจ (ยังไม่ส่ง / มีเอกสารแล้ว)');
+        for (const key of SIGN_KEYS) assert.equal(keysDeep(payload).has(key), false, `planner: ${key}`);
+      }
+      assert.deepEqual([...sheetDb.of('user_signatures'), ...pageDb.of('user_signatures')], [], 'planner');
     }
   });
   // สวิตช์ลายเซ็นปิด (ค่าตั้งต้น): หัวหน้าไม่มีคีย์ใหม่ และไม่มีคำสั่งอ่านตารางลายเซ็น
@@ -802,11 +861,15 @@ test('อ่านแถวเอกสารไม่สำเร็จ — GET
 
 /* ══ 3. GET คำร้อง — คีย์ `surveyDocument` (§10 · "Leak" ข้อ 6) ═════════════════════════════════════ */
 
-test('🔴 Planner บน GET คำร้อง ได้แค่ `access` กับ `voids` — พอให้โมดัล "ยังไม่จบ" บอกผลของการกด (#1223)', async () => {
+test('⭐ Planner บน GET คำร้อง — ก้อนของคนออกเอกสาร + `voids` (โมดัล "ยังไม่จบ" บอกผลของการกด · #1223) · ไม่มี `send` (มติเจ้าของ 19/10)', async () => {
   const db = fakeDb(seed({ reports: READY() }));
   const { status, json } = await getRequest(db, PLANNER);
   assert.equal(status, 200, json.error);
-  assert.deepEqual(json.surveyDocument, { access: 'none', voids: 'SU-26100001-1' });
+  const doc = json.surveyDocument;
+  assert.deepEqual(Object.keys(doc), ['access', 'issueAtSend', 'storeAllowed', 'state', 'current', 'history', 'nextDocNo', 'issue', 'voids']);
+  assert.deepEqual(doc.access, { customer: true, internal: true, issue: true, draft: true, history: true });
+  assert.equal(doc.voids, 'SU-26100001-1');
+  assert.equal(doc.issue, null, 'GET คำร้องไม่ตรวจ');
   assert.deepEqual(leaks(json), []);
 });
 

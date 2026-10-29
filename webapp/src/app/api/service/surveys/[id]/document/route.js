@@ -100,7 +100,7 @@ const DRAFT_WATERMARK = 'ฉบับร่าง';
 const TEXT = Object.freeze({
   unauthorized: 'กรุณาเข้าสู่ระบบก่อนเปิดเอกสาร',
   forbidden: 'คุณไม่มีสิทธิ์เปิดเอกสารนี้',
-  issueForbidden: 'ออกเอกสารประเมินได้เฉพาะหัวหน้าฝ่ายบริการที่ตอบใบนี้ได้',
+  issueForbidden: 'ออกเอกสารประเมินได้เฉพาะหัวหน้าฝ่ายบริการหรือผู้วางคิว (Planner) ที่ตอบใบนี้ได้',
   noRequest: 'ไม่พบใบคำร้อง',
   notSurvey: 'ใบนี้ไม่ใช่ใบประเมินพื้นที่ — ไม่มีเอกสารประเมิน',
   badFormat: 'รูปแบบไฟล์ไม่ถูกต้อง — เปิดได้เป็น PDF หรือ HTML',
@@ -192,9 +192,11 @@ function paperReason(paper, access) {
   return SURVEY_REPORT_PAPER_REASONS[paper?.code] || SURVEY_REPORT_PAPER_REASONS.paper_failed;
 }
 
-/* ══ ฉบับร่าง (หัวหน้าเท่านั้น · มติ 27) ════════════════════════════════════════════════════
+/* ══ ฉบับร่าง (คนที่ออกเอกสารได้ · มติ 27 + มติเจ้าของ 19/10) ════════════════════════════════════
    ไม่เก็บอะไร · ไม่มีเลข · ไม่เปิด chromium · ไม่โหลด `sharp` — รูปเป็นลิงก์ไปหา proxy ไฟล์แนบเดิม
-   (`/api/master/attachments/<attId>/file`) ซึ่งเบราว์เซอร์ของหัวหน้าเปิดด้วย session ของตัวเอง */
+   (`/api/master/attachments/<attId>/file`) ซึ่งเบราว์เซอร์ของคนดูเปิดด้วย session ของตัวเอง
+   ⚠️ ผู้วางคิว (Planner) ได้ร่างเฉพาะใบที่ส่งผลแล้ว (`surveyDocAccess.draft`) ⇒ ทาง `pendingAnswer` ข้างล่าง
+      (ผู้ตรวจสอบและอนุมัติ = คนที่กำลังดู) ถึงได้เฉพาะหัวหน้า — ไม่มีร่างที่พิมพ์ชื่อ Planner ในช่องนั้น */
 
 const draftImageSrc = (img) => (img?.attId ? `/api/master/attachments/${encodeURIComponent(String(img.attId))}/file` : null);
 const isCutZone = (zone) => (zone?.status || 'ok') === 'cut';
@@ -390,7 +392,8 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
     const request = read.request;
     if (!request) return docError(req, TEXT.noRequest, 404);
 
-    // ③ ด่านของฉบับที่ขอ — ก่อนอ่านแถวเอกสารเสมอ · ฉบับร่างใช้คีย์ `draft` (หัวหน้าที่ตอบใบนี้ได้ · เห็นทั้งสองฉบับ)
+    // ③ ด่านของฉบับที่ขอ — ก่อนอ่านแถวเอกสารเสมอ · ฉบับร่างใช้คีย์ `draft` (คนออกเอกสารที่ตอบใบนี้ได้ · เห็นทั้งสองฉบับ ·
+    //    ผู้วางคิวเฉพาะใบที่ส่งผลแล้ว)
     const access = surveyDocAccess(user, request);
     if (!access[draft ? 'draft' : version]) return docError(req, TEXT.forbidden, 403);
     if (request.kind !== 'site_survey') return docError(req, TEXT.notSurvey, 404);
@@ -510,7 +513,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     }
     const request = read.request;
     if (!request) return docError(req, TEXT.noRequest, 404);
-    /* 🔑 คู่เดียวกับปุ่มส่งผล: หัวหน้าฝ่ายบริการ **และ** ตอบใบนี้ได้ — ช่าง · Planner · ฝ่ายขายผ่าน proxy มาถึงตรงนี้แล้วได้ 403 */
+    /* 🔑 ตำแหน่งที่ออกได้ (หัวหน้าฝ่ายบริการ + ผู้วางคิว · มติเจ้าของ 19/10) **และ** ตอบใบนี้ได้ — ช่าง · ฝ่ายขาย ·
+          ผู้วางคิวของฝ่ายอื่นผ่าน proxy มาถึงตรงนี้แล้วได้ 403
+       ⚠️ ผู้วางคิวกดออกได้แต่ส่งผล/ดึงผลกลับไม่ได้ (สองทางนั้นถาม `canSendSurveyResult` เอง) · ลายเซ็นบนกระดาษยังเป็น
+          ผู้ประเมิน + หัวหน้าที่ส่งผล (`answeredBy` ของคำร้อง) — คนกดถูกจดเป็น `issuedBy` เท่านั้น */
     if (!surveyDocAccess(user, request).issue) return docError(req, TEXT.issueForbidden, 403);
     if (request.kind !== 'site_survey') return docError(req, TEXT.notSurvey, 404);
 

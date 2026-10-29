@@ -30,11 +30,12 @@ import { Fragment, use, useCallback, useEffect, useMemo, useRef, useState } from
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MapPinPlus, PencilRuler, Search } from "lucide-react";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
-import { surveyCardUnits } from "@/components/service/surveyControlCardUnits";
+import { surveyCardUnitNames, surveyCardUnits } from "@/components/service/surveyControlCardUnits";
 import EmptyState from "@/components/ui/EmptyState";
 import SkeletonRows from "@/components/ui/Skeleton";
 import SurveyAboutRequest from "@/components/service/SurveyAboutRequest";
 import SurveyControlCard from "@/components/service/SurveyControlCard";
+import SurveyDocumentSection from "@/components/service/SurveyDocumentSection";
 import SurveyFieldBar from "@/components/service/SurveyFieldBar";
 import SurveyFieldWorkspace, { SurveyBarColumn } from "@/components/service/SurveyFieldWorkspace";
 import SurveyJobHeader from "@/components/service/SurveyJobHeader";
@@ -1438,10 +1439,12 @@ export default function SurveySheetPage({ params }) {
        · หน้าที่มีแผงแบบจากฝ่ายขาย = ไม่มีแถวนี้ (แผงลิสต์ชุดเดียวกันครบกว่า · S2b แก้หลังตรวจจอ planner-q11) — ช่างไม่มีแผง จึงยังเห็นแถว */
     requestFiles: data?.requestFiles || [], filesUnknown: data?.unknown?.requestFiles === true, salesPanel: showDrawings,
   });
-  /* ⭐ ผูกรูปจุดติดตั้งกับจุดได้ไหม (PR-S · Q1a) — server ตอบ (ด่านเดียวกับ PATCH): ใบเปิด = คนเขียนได้ · ส่งผลแล้ว = หัวหน้าฝ่าย */
+  /* ⭐ ผูกรูปจุดติดตั้งกับจุดได้ไหม (PR-S · Q1a) — server ตอบ (ด่านเดียวกับ PATCH): ใบเปิด = คนเขียนได้ · ส่งผลแล้ว = หัวหน้าฝ่าย
+     ⚠️ ผู้วางคิวที่ออกเอกสารได้ (มติเจ้าของ 19/10) ยังผูกรูปบนใบที่ส่งแล้วไม่ได้ — ทางออกในส่วนเอกสารของเขาส่งไปหาหัวหน้า */
   const canLinkSpots = data?.canLinkSpotPhotos === true;
-  /* ⭐ กล่องแจ้งของคนที่ไม่มีการ์ด (ช่าง · คนอ่านอย่างเดียว · แผนลงมือ C15) — ใบล็อก · ดึงกลับ · อ่านอย่างเดียว · อ่านไม่สำเร็จ
-     ⚠️ หัวหน้าเห็นเรื่องเดียวกันในการ์ดจัดการผลแล้ว ⇒ ไม่วาดซ้ำ */
+  /* ⭐ กล่องแจ้งของคนที่ไม่มีการ์ด (ช่าง · ผู้วางคิว · คนอ่านอย่างเดียว · แผนลงมือ C15) — ใบล็อก · ดึงกลับ · อ่านอย่างเดียว · อ่านไม่สำเร็จ
+     ⚠️ หัวหน้าเห็นเรื่องเดียวกันในการ์ดจัดการผลแล้ว ⇒ ไม่วาดซ้ำ
+     ⭐ ผู้วางคิวได้ส่วนเอกสารประเมินเพิ่มอีกชิ้น (`issuerDoc` · มติเจ้าของ 19/10/2026) — กล่องแจ้งชุดนี้ไม่พูดเรื่องเอกสาร */
   const sheetNotices = canDecide ? [] : surveySheetNotices(view);
   const noticeStack = sheetNotices.length ? (
     <div className={styles.notices}>
@@ -1713,11 +1716,29 @@ export default function SurveySheetPage({ params }) {
         เริ่มใต้การ์ดสูง ~390px แถบจะค้างกลางจอทับเมนูล่าง (ลองแล้ว 25/09 ที่ 360×640)
      ⚠️ นัดยังเปิด (`submit`) = หัวงานอยู่บนตามเดิม — ช่างยังต้องใช้หัวงาน (โทร · นำทาง · เวลาเข้า) · สองบาน = หัวงานเป็นแถบบาง อยู่บนเสมอ */
   const headerLast = tab === "field" && !split && sendBackView?.mode === "report" && !!sendBackCard;
-  /* บนสุดของรายการ: กล่องแจ้ง (คนที่ไม่มีการ์ด) → การ์ดส่งกลับของช่าง (A-5: งานตอนนี้ของเขา) → การ์ดจัดการผล (หัวหน้า · controlFirst) */
-  const listBefore = noticeStack || sendBackCard || (cardInList && controlFirst) || drawingsAboveList ? (
+  /* ⭐ **ส่วนเอกสารประเมินของคนออกที่ไม่ใช่หัวหน้า** (ผู้วางคิว · มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย") — เขาไม่มีการ์ดจัดการผล
+     (การ์ด = ส่งผล/ดึงผลกลับ ของหัวหน้า) ⇒ ชิ้นเดียวกับส่วนในการ์ด (`SurveyDocumentSection`) วาดเป็นบล็อกเดี่ยวหัวรายการ
+     · ขึ้นเมื่อตัวตัดสินให้ (`view.document.show` — `access.issue` จาก server + ใบส่งผลแล้ว) · ช่าง/ผู้บริหารไม่มี
+     · กล่องยืนยัน · นาฬิกา "กำลังออก" · ตรวจซ้ำเมื่อไฟล์เปลี่ยน · โฟกัสหลังออก อ่าน `view.document` อยู่แล้ว ไม่ขึ้นกับการ์ด
+     ⚠️ การ์ดกับบล็อกนี้ไม่มีวันวาดพร้อมกัน (`canDecide` คนละขั้ว) ⇒ `docSectionRef` มีเจ้าของเดียว */
+  const issuerDoc = !canDecide && view.document.show ? (
+    <SurveyDocumentSection
+      standalone
+      view={view.document}
+      busy={issueBusy}
+      onIssueDocument={openIssueDialog}
+      onRecheckDocument={recheckDocument}
+      documentRef={docSectionRef}
+      unitNames={surveyCardUnitNames(view)}
+    />
+  ) : null;
+  /* บนสุดของรายการ: กล่องแจ้ง (คนที่ไม่มีการ์ด) → การ์ดส่งกลับของช่าง (A-5: งานตอนนี้ของเขา) → ส่วนเอกสารของผู้วางคิว →
+     การ์ดจัดการผล (หัวหน้า · controlFirst) */
+  const listBefore = noticeStack || sendBackCard || issuerDoc || (cardInList && controlFirst) || drawingsAboveList ? (
     <>
       {noticeStack}
       {sendBackCard}
+      {issuerDoc}
       {cardInList && controlFirst ? controlCard : null}
       {/* หน้าเดียว: แบบจากฝ่ายขายอยู่ติดเหนือรายการพื้นที่ (แกลเลอรีอ่านอย่างเดียว — ปุ่มใช้รูปอยู่ในหน้าพื้นที่) */}
       {drawingsAboveList}

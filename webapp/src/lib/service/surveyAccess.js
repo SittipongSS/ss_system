@@ -14,7 +14,7 @@
 // ⚠️ **ไม่ใช่การเปิดให้อ่านทุกใบ** — ช่างอ่านได้เฉพาะใบที่ส่งถึงฝ่ายตัวเอง และ
 //   *การเขียน* ยังแคบกว่านี้อีกชั้นที่นัด (เขียนได้เฉพาะงานที่ถูกมอบหมาย)
 import {
-  SERVICE_DEPARTMENT, canDoFieldWork, canSendSurveyResult, canViewRequests, departmentOf,
+  SERVICE_DEPARTMENT, canDoFieldWork, canIssueSurveyReport, canSendSurveyResult, canViewRequests, departmentOf,
 } from '@/lib/permissions';
 import { canAnswerRequest, canManageRequest, canReadRequestRow } from '@/lib/requests/access';
 
@@ -73,15 +73,23 @@ export function surveyReadError(user, request) {
 // 🔴 **ห้ามใช้ `surveyReadError` กับเอกสาร** — ด่านนั้นตั้งใจกว้าง: AE ผู้ขอ · ช่างหน้างาน · Planner ผ่านหมด
 //   ส่วนเอกสารมีฉบับภายใน (จุดติดตั้ง · แผงการเคาะผล · ภาคผนวก) ที่ฝ่ายขายห้ามได้ไม่ว่าทางไหน และช่างไม่ได้อะไรเลย
 // 🔴 **ห้ามใช้ `canAnswerRequest` เดี่ยว ๆ** — AE Sup / AC Sup ผ่านตัวนั้นทาง `isSuperuser`
-//   ⇒ "ออกเอกสาร" ต้องเป็นคู่เดียวกับที่ปุ่มส่งผลใช้: หัวหน้าฝ่ายบริการ **และ** ตอบใบนี้ได้
+//   ⇒ "ออกเอกสาร" = ตำแหน่งที่ออกได้ (`canIssueSurveyReport`) **และ** ตอบใบนี้ได้
+// ⭐ **ออก ≠ ส่ง (มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย")** — Planner (`ts_planner`) กดออกเอกสารได้
+//   แต่ส่งผล/ดึงผลกลับยังเป็นของหัวหน้าเท่านั้น (สองปุ่มนั้นถาม `canSendSurveyResult` เอง ไม่อ่านตัวนี้)
+//   ⇒ คนออกได้เปิดได้ทั้งสองฉบับ + เห็นรายการ Rev (เจ้าของตอบ "ได้ทั้งสองฉบับ" 19/10 — ขยายกติกา 01/10
+//     "ฉบับภายใน = หัวหน้า + ผู้บริหาร") · ออกโดยมองไม่เห็นฉบับภายในคือออกแบบปิดตา และผลของ POST
+//     ก็บอกเหตุของกระดาษฉบับภายในให้คนกดอยู่แล้ว
 //
 //   head     = canSendSurveyResult(user)        แอดมิน · หัวหน้าฝ่าย TS · CD/CM
 //   exec     = role 'executive'                 ไม่ใช่ `isReadOnlyObserver` — ตัวนั้นรับ `viewer` ด้วย
-//   customer = head || exec || canManageRequest ผู้ขอ · เพื่อนร่วมทีม · หัวหน้าฝ่ายขาย
-//   internal = head || exec
-//   issue    = head && canAnswerRequest         กด "ออกเอกสาร" (และลองใหม่)
-//   draft    = issue                            ดูตัวอย่างฉบับร่าง — ทั้งสองฉบับ
-//   history  = head                             รายการฉบับที่ถูกแทนที่ (เลขที่ · วันที่ · เหตุ)
+//   issue    = canIssueSurveyReport && canAnswerRequest   กด "ออกเอกสาร" (และลองใหม่) — หัวหน้า + Planner
+//   customer = head || exec || issue || canManageRequest  ผู้ขอ · เพื่อนร่วมทีม · หัวหน้าฝ่ายขาย
+//   internal = head || exec || issue
+//   draft    = issue && (head || ส่งผลแล้ว)     ดูตัวอย่างฉบับร่าง — ทั้งสองฉบับ
+//              ⚠️ ไม่ใช่หัวหน้า = หลังส่งผลเท่านั้น: ร่างของใบที่ยังไม่ตอบพิมพ์ "ผู้ตรวจสอบและอนุมัติ" เป็นคนดู
+//                 (ยังไม่มี `answeredBy`) ⇒ Planner จะเห็นชื่อตัวเองในช่องที่ไม่มีวันเป็นของเขา
+//   history  = head || issue                    รายการฉบับที่ถูกแทนที่ (เลขที่ · วันที่ · เหตุ)
+//   ⇒ issue ⇒ customer && internal && history · draft ⇒ issue (ไม่ใช่ draft === issue อีกต่อไป)
 //
 // ⚠️ เจ้าของดีลที่ไม่ใช่ผู้ขอและไม่อยู่ทีมของใบ ไม่ได้เอกสาร — เขาเปิดหน้าคำร้องไม่ได้อยู่แล้ว
 //   และกติกาของเจ้าของคือ "AE ผู้ขอ"
@@ -98,7 +106,7 @@ const NO_DOC_ACCESS = Object.freeze({ customer: false, internal: false, issue: f
  * 🔑 **ด่านของเอกสารประเมิน — ที่เดียว** route ถามคีย์ที่ตัวเองจะเสิร์ฟก่อนอ่านแถวเอกสารเสมอ
  *
  * @param user     ผู้ใช้ที่กำลังเปิด
- * @param request  แถว `dept_requests` (ต้องมี `dept` · `requestedById` · `team`)
+ * @param request  แถว `dept_requests` (ต้องมี `dept` · `requestedById` · `team` · `answeredAt` — ด่านร่างของคนออกที่ไม่ใช่หัวหน้า)
  * @returns `{ customer, internal, issue, draft, history }` — บูลีนทุกคีย์
  *   · `customer` / `internal` = เปิดฉบับนั้นได้ (คีย์ตรงกับ `surveyDocVersion`)
  *   · `issue` = กดออกเอกสารได้ · `draft` = ดูฉบับร่างได้ · `history` = เห็นรายการฉบับเก่า
@@ -111,13 +119,13 @@ export function surveyDocAccess(user, request) {
   if (!user || !request || !canOpenSurveyDocument(user)) return { ...NO_DOC_ACCESS };
   const head = canSendSurveyResult(user);
   const exec = user.role === 'executive';
-  const issue = head && canAnswerRequest(user, request);
+  const issue = canIssueSurveyReport(user) && canAnswerRequest(user, request);
   return {
-    customer: head || exec || canManageRequest(user, request),
-    internal: head || exec,
+    customer: head || exec || issue || canManageRequest(user, request),
+    internal: head || exec || issue,
     issue,
-    draft: issue,
-    history: head,
+    draft: issue && (head || !!request.answeredAt),
+    history: head || issue,
   };
 }
 

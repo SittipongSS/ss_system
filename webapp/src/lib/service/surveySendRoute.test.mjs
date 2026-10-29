@@ -438,6 +438,20 @@ test.afterEach(() => { flagOff(); delete globalThis.__sendRouteTest; });
 
 /* ══ 1. สวิตช์ปิด — เส้นเดิมทุกก้าว (ต้องเป็นเทสต์แรก: ยืนยันว่ายังไม่มีใครโหลด sharp) ═════════════════════════ */
 
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ผู้วางคิวกด "ออกเอกสาร" ได้ แต่ **ส่งผลไม่ได้** (การรับรองตัวเลขให้ฝ่ายขายเป็นของหัวหน้า)
+   ⇒ เส้นส่งผลยังถาม `canSendSurveyResult` เป็นด่านแรก ก่อนอ่านอะไร · ไม่อ่าน `surveyDocAccess` */
+test('🔴 Planner (ออกเอกสารได้) ส่งผลไม่ได้ — 403 ก่อนอ่านใบ · ไม่มีการเขียน ไม่ออกเลข', async () => {
+  const world = makeWorld();
+  flagOn();
+  const planner = { id: 'U-plan', name: 'Planner', role: 'ts_planner', department: 'TS', team: 'TS', teams: ['TS'] };
+  const res = await send(world, { user: planner, body: { seenWarnings: [] } });
+  assert.equal(res.status, 403);
+  assert.equal(res.json.error, 'ส่งผลประเมินได้เฉพาะหัวหน้าฝ่ายบริการ');
+  assert.deepEqual(world.writes(), []);
+  assert.equal(world.calls('issue').length, 0);
+  assert.equal(world.request().answeredAt ?? null, null, 'ใบยังไม่ถูกตอบ');
+});
+
 test('🔴 สวิตช์ปิด: ไม่ตรวจรูป ไม่ตรวจเอกสาร ไม่อ่านแถวเอกสาร ไม่เรียก RPC · report = off · ยังไม่มีใครโหลด sharp', async () => {
   assert.equal(heavyLoaded(), 0, 'เงื่อนไขตั้งต้น: import route แล้วต้องยังไม่มีของหนักถูกโหลด');
   assert.deepEqual(routeLoaded(), [], 'import route เฉย ๆ ต้องไม่โหลดตัวเตรียมรูป/ตัวตรวจ/ขั้นออกเลข');
