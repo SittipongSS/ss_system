@@ -78,6 +78,13 @@ const TARGETS = {
       ? 'ใบสั่งขายนี้ยกเลิก/ถูกออก Rev. ทับแล้ว — แนบหลักฐานการชำระไม่ได้'
       : null),
     prefix: (entityId) => `sales-orders/${safeId(entityId)}/payments/`,
+    /* ⭐ ฝ่ายขาย (ขอบเขตดีล) **หรือฝ่ายบัญชี** (มติเจ้าของ 29/10) — งวดที่บัญชีรับรองแล้วแนบสลิปเพิ่มได้เฉพาะบัญชี
+       (`evidence-add` ของ installmentActionError) ⇒ FN ต้องอัปไฟล์ได้ ไม่งั้นปุ่มขึ้นแต่ตายที่ 403 (คลาส IS-26080026)
+       · ผลข้างที่ตั้งใจ: "บัญชีบันทึกรับชำระเองจบในก้าวเดียว" (มติ 18/08 · `installmentReportOutcome`) ที่เคยตายเงียบเพราะ
+         ด่านนี้ปิด FN ใช้ได้จริงแล้ว
+       🔁 กลับคำกติกา 07/09 "FN อัปสลิปไม่ได้ — คนรับรองเงินต้องไม่ใช่คนส่งหลักฐาน" (#1666) — ด่านเงินที่กันฝ่ายขายรับรองเงินเอง
+         คือ `canConfirmPayment` ของคำสั่ง ไม่ใช่ด่านไฟล์ (ยาม: privateEvidenceGate.test) */
+    allow: (user, { deal }) => (canEditSalesPlanning(user) && inSalesEditScope(user, deal)) || canConfirmPayment(user),
   },
   /* ⭐ ใบกำกับภาษีของงวดชำระ (mig 0348 · มติผู้ใช้ 2026-09-07)
    *
@@ -299,7 +306,7 @@ export function privateEvidencePrefix(entityType, entityId) {
  * ⭐ ยกออกมาคู่กับ `privateEvidenceStatusError` ด้วยเหตุผลเดียวกัน: ทดสอบได้โดยไม่ต้องมี
  * DB · และเพราะโฟลเดอร์แต่ละอันไม่ได้เป็นของฝ่ายเดียวกันอีกต่อไป (ใบกำกับเป็นของบัญชี)
  * ⚠️ ตัวที่ไม่ประกาศ `allow` ใช้ด่านตั้งต้น = ฝ่ายขาย + ขอบเขตดีล **เหมือนเดิมเป๊ะ**
- * ⇒ FN ยังอัปสลิปการชำระไม่ได้ (คนรับรองเงินต้องไม่ใช่คนส่งหลักฐานเงิน)
+ * ⇒ FN อัปได้เฉพาะโฟลเดอร์ที่ประกาศ `allow` ให้ (ใบกำกับ · สลิปการชำระตั้งแต่มติ 29/10)
  */
 export function privateEvidenceAllows(entityType, user, { deal = null } = {}) {
   const target = TARGETS[entityType];

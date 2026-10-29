@@ -1136,7 +1136,8 @@ export default function SalesOrderDetailPage() {
     setToast(null);
     try {
       let evidence;
-      if (action === "report") {
+      /* แจ้งชำระ · แนบหลักฐานเพิ่ม (มติ 29/10) — อัปไฟล์ก่อนแล้วส่ง ref ไปกับคำสั่ง */
+      if (action === "report" || action === "evidence-add") {
         evidence = [];
         for (const file of options.files || []) evidence.push(await uploadPaymentEvidence(file));
       }
@@ -1162,6 +1163,7 @@ export default function SalesOrderDetailPage() {
         msg: {
           // ตามปลายทางจริงของแถว — บัญชีบันทึกเองจบที่ "ชำระแล้ว" · งวดร่างยังไม่ถึงบัญชี
           report: installmentReportDoneMessage(data.installment?.status),
+          "evidence-add": "แนบหลักฐานเพิ่มแล้ว",
           withdraw: "ดึงกลับแล้ว",
           confirm: "บัญชีรับรองการชำระแล้ว",
           reject: "ตีกลับให้ฝ่ายขายแก้แล้ว",

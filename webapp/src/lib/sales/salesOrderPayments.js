@@ -640,6 +640,13 @@ export function installmentReportDoneMessage(status) {
      ส่วนติดล็อกของใบ = วาดแล้วบอกเหตุ (กติกาเดียวกับทั้งระบบ) · ด่าน `schedule` ข้างล่างถามตัวนี้ตัวเดียว */
 export const installmentScheduleAllowed = (user) => canUser(user, 'salesplan:edit') || canConfirmPayment(user);
 
+/* เพดานหลักฐานต่องวด (คำสั่ง `evidence-add`) — แจ้งครั้งแรกได้ 8 ไฟล์ (MAX_CONFIRM_ATTACHMENTS) แล้วทยอยแนบเพิ่มจนถึงเพดานนี้
+   ⚠️ แผงงวดใช้ `installmentEvidenceRoom` ตั้ง max ของช่องเลือกไฟล์ — ด่านกับช่องเลือกนับจากตัวเดียวกัน */
+export const INSTALLMENT_EVIDENCE_MAX = 20;
+export const installmentEvidenceRoom = (row) => Math.max(
+  0, INSTALLMENT_EVIDENCE_MAX - (Array.isArray(row?.evidence) ? row.evidence.length : 0),
+);
+
 export function installmentActionError(row, action, user, options = {}) {
   /* ── ล็อกทั้งใบ (ผู้เรียกคำนวณมา = `historicalInstallmentLock(order) || pipelineInstallmentLock(order, action)`)
      — ชนะทุกคำสั่ง ─────────
@@ -740,7 +747,7 @@ export function installmentActionError(row, action, user, options = {}) {
      ⚠️ ต้องส่ง `orderTotal` มาถึงจะรู้ ไม่ส่ง = ไม่ตัดสิน (ผู้เรียกที่ไม่มีบริบทใบ) */
   const orderTotal = options.orderTotal;
   if (orderTotal !== undefined && paymentNotRequired(orderTotal)
-    && ['report', 'confirm', 'reject', 'withdraw', 'unconfirm'].includes(action)) {
+    && ['report', 'evidence-add', 'confirm', 'reject', 'withdraw', 'unconfirm'].includes(action)) {
     return 'ใบนี้ยอดรวม 0 บาท — ไม่มีขั้นยืนยันการชำระ จบที่การอนุมัติใบสั่งขาย';
   }
 
@@ -848,6 +855,32 @@ export function installmentActionError(row, action, user, options = {}) {
     if (!options.paidOn) return 'ต้องระบุวันที่ลูกค้าชำระ';
     const sequence = installmentSequenceError(row, options.rows);
     if (sequence) return sequence;
+    return null;
+  }
+
+  /* ── แนบหลักฐานเพิ่มในงวดที่แจ้งแล้ว (มติเจ้าของ 29/10 — ลูกค้าโอนงวดเดียวหลายรอบ) ─────────────────
+     ⭐ **ต่อท้ายชุดเดิม ไม่แตะสถานะ/ยอด/วันจ่าย** — งวดยังเป็นก้อนเดียว "จ่ายแล้ว/ยังไม่จ่าย" (มติ: ไม่บันทึกยอดรายครั้ง)
+       เดิมแจ้งแล้วเพิ่มไม่ได้ ต้องดึงกลับ (ล้างสลิปทั้งชุด) แล้วอัปใหม่หมด · งวดที่รับรองแล้วแตะไม่ได้เลย
+     ⭐ **เจ้าของเปลี่ยนมือตอนบัญชีรับรอง** (รูปเดียวกับ `coverage`): ก่อนรับรอง ฝ่ายขาย + บัญชี · รับรองแล้ว บัญชีเท่านั้น
+       — ชุดหลักฐานที่บัญชีตรวจผ่านแล้วต้องไม่ถูกฝ่ายอื่นเติมทับ
+     ⚠️ ด่านไฟล์ `sales_order_payment_evidence` (privateEvidence.js) เปิดให้ FN อัปสลิปด้วยมติเดียวกัน — แก้ด่านนี้ต้องเดินไปดูที่นั่น
+     ⚠️ งวดที่ยังไม่แจ้ง = ใช้ `report` (ต้องมีวันจ่าย) · ตีกลับแล้ว = แจ้งใหม่ทั้งชุด (บัญชีตีกลับเพราะชุดเดิมใช้ไม่ได้)
+     ⚠️ ใบยกเลิก/ถูกออก Rev. ทับ ไม่อยู่ใน allowlist ของ `pipelineInstallmentLock` — ด่านไฟล์ปิดสองสถานะนี้อยู่แล้ว
+     ⚠️ `options.evidenceCount` = จำนวนไฟล์ที่จะเพิ่ม (route ส่งจาก body) · ไม่ส่ง = ถามแค่ "ยังแนบได้ไหม" (ปุ่มบนแผง) */
+  if (action === 'evidence-add') {
+    if (status === 'confirmed') {
+      if (!canConfirmPayment(user)) return 'งวดนี้บัญชีรับรองแล้ว — แนบหลักฐานเพิ่มได้เฉพาะฝ่ายบัญชี';
+    } else if (!canUser(user, 'salesplan:edit') && !canConfirmPayment(user)) {
+      return 'ไม่มีสิทธิ์แนบหลักฐานการชำระ';
+    }
+    if (status === 'rejected') return 'งวดนี้บัญชีตีกลับแล้ว — แจ้งชำระใหม่พร้อมหลักฐานทั้งชุด';
+    if (status !== 'reported' && status !== 'confirmed' && !installmentPrepaid(row)) {
+      return 'งวดนี้ยังไม่ได้แจ้งชำระ — แนบหลักฐานพร้อมวันที่จ่ายตอนแจ้งชำระ';
+    }
+    if (installmentRefunded(row)) return 'งวดนี้บันทึกคืนเงินแล้ว — แนบหลักฐานการชำระเพิ่มไม่ได้';
+    const room = installmentEvidenceRoom(row);
+    if (!room) return `งวดนี้มีหลักฐานครบ ${INSTALLMENT_EVIDENCE_MAX} ไฟล์แล้ว`;
+    if ((Number(options.evidenceCount) || 0) > room) return `งวดนี้แนบเพิ่มได้อีก ${room} ไฟล์`;
     return null;
   }
 
