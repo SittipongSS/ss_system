@@ -1,7 +1,9 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
-import { moveSalesOrderAttachments, purgeSalesOrderFiles } from '@/lib/sales/salesOrderAttachmentAccess';
+import {
+  findConfirmAttachmentIndex, moveSalesOrderAttachments, purgeSalesOrderFiles, salesOrderConfirmRemoveBlock,
+} from '@/lib/sales/salesOrderAttachmentAccess';
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import {
@@ -870,6 +872,36 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       before: { deliveryDueDate: before.deliveryDueDate || null },
       after: { deliveryDueDate: deliveryDue.value },
       summary: `แก้กำหนดส่งสินค้าใบสั่งขาย ${before.orderNumber} (อนุมัติแล้ว): ${dateText(before.deliveryDueDate)} → ${dateText(deliveryDue.value)}`,
+      request: req,
+    });
+    return ok(data);
+  }
+
+  /* ── ลบไฟล์ยืนยันคำสั่งซื้อทีละไฟล์จากแท็บ "เอกสาร" (มติเจ้าของ 29/10/2569) ───────────────────────
+     ⭐ ใบที่อนุมัติแล้วลบได้ (แนบผิดใบ · ไฟล์ซ้ำ) ไม่ต้องออก Rev. — สิทธิ์ = คนแก้ใบได้ (ด่าน edit scope ต้น PATCH)
+     ⚠️ เพิ่มไฟล์เข้าชุดนี้หลังยื่นยังไม่ได้ (มติ 25/09 คงเดิม) — ของใหม่ไปกลุ่ม "แนบเพิ่มหลังออกใบ"
+     ⚠️ ถอดแค่ ref ในแถว **ไม่ลบ object ใน bucket** — ฉบับเดิมของ Rev. ถือ ref ชุดเดียวกัน (ก๊อปตอนออก Rev.) และ
+        audit (`before`) คือทางกู้ทางเดียว ⇒ ไฟล์ต้องยังเปิดได้ถ้าต้องคืน
+     ⚠️ ใบเก่าก่อน 0285 ที่ไฟล์อยู่ที่ใบเสนอราคา (`wonAttachments`) ไม่ใช่ของใบนี้ — ไม่มี ref ให้ลบที่นี่ (ตอบ "ไม่พบไฟล์")
+     `.eq('updatedAt')` = ด่านซ้ำที่แถวจริง: ชุดใหม่คิดจากชุดที่อ่านมา ⇒ อีกหน้าต่างแก้ระหว่างนั้น = 409 ไม่ใช่ทับไฟล์ของเขาหาย */
+  if (action === 'remove_confirm_file') {
+    const blocked = salesOrderConfirmRemoveBlock(before, user);
+    if (blocked) return fail(blocked, 409);
+    const list = Array.isArray(before.confirmAttachments) ? before.confirmAttachments : [];
+    const at = findConfirmAttachmentIndex(list, { index: body.index, storagePath: body.storagePath });
+    if (at < 0) return fail('ไม่พบไฟล์นี้ในใบแล้ว — อาจถูกลบจากหน้าต่างอื่น กรุณาโหลดหน้าใหม่', 409);
+    const next = list.filter((_, i) => i !== at);
+    const { data, error } = await supabase.from('sales_orders')
+      .update({ confirmAttachments: next, updatedAt: new Date().toISOString() })
+      .eq('id', id).eq('updatedAt', before.updatedAt).select().maybeSingle();
+    if (error) return fail(`ลบไฟล์ยืนยันคำสั่งซื้อไม่สำเร็จ: ${error.message}`, 500);
+    if (!data) return fail('ใบนี้ถูกแก้จากที่อื่นระหว่างนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409);
+    const fileName = list[at]?.fileName || `ไฟล์ที่ ${at + 1}`;
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      before: { status: before.status, confirmAttachments: list },
+      after: { status: data.status, confirmAttachments: next },
+      summary: `ลบไฟล์ยืนยันคำสั่งซื้อ "${fileName}" ของใบสั่งขาย ${before.orderNumber}`,
       request: req,
     });
     return ok(data);
