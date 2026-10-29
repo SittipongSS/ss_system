@@ -29,6 +29,9 @@ export const STATUS = {
   delivered: { label: "ส่งเอกสารให้ลูกค้าแล้ว", tone: "success", icon: "CheckCircle2", track: "payment" },
   // shared correction loop
   rejected: { label: "ตีกลับให้แก้ไข", tone: "danger", icon: "XCircle", track: null },
+  // แถวคิว "รอยื่นกรม" ของ RA (ยังไม่มีใบยื่น · PR5 + มติ 29/10) — ไม่ใช่สถานะของแถว orders
+  queued: { label: "รอสร้างใบยื่น", tone: "warning", icon: "Clock", track: null },
+  upcoming: { label: "กำลังมา", tone: "neutral", icon: "Clock", track: null },
 };
 
 export function statusMeta(status) {

@@ -39,16 +39,8 @@ async function findChargeProduct(supabase, customerId) {
  * @param sourceFgCodes  รหัส FG ต้นทางบน SO (ใช้เลือกแบบท่อนรหัสลูกค้า เมื่อลูกค้ายังไม่มีสินค้ากลุ่ม 04)
  * @returns `{ product, created }` หรือ `{ error, status }` (ข้อความไทย)
  */
-export async function ensureExciseChargeProduct(supabase, {
-  customer, sourceFgCodes = [], user = null, request = null,
-  audit = recordAudit, priceHistory = recordProductPriceHistory,
-} = {}) {
-  if (!customer?.id) return { error: 'ไม่พบลูกค้าเจ้าของใบสั่งขาย', status: 400 };
-
-  const existing = await findChargeProduct(supabase, customer.id);
-  if (existing.error) return { error: existing.error.message, status: 500 };
-  if (existing.product) return { product: existing.product, created: false };
-
+/* รหัส 04-003 ที่จะใช้กับลูกค้ารายนี้ — ตัวเดียวของทางสร้างจริงและทางพรีวิว · `{ fgCode }` หรือ `{ error, status }` */
+async function chargeFgCodeFor(supabase, customer, sourceFgCodes) {
   /* แบบท่อนรหัสลูกค้า: สินค้ากลุ่ม 04 ตัวอื่นของลูกค้าก่อน (มติ D5) — ชุดเล็ก (ลูกค้าหนึ่งราย) จำกัดไว้กันแถวเกิน */
   const { data: group04, error: group04Error } = await supabase
     .from('products')
@@ -70,6 +62,43 @@ export async function ensureExciseChargeProduct(supabase, {
       status: 400,
     };
   }
+  return { fgCode };
+}
+
+/**
+ * สินค้า 04-003 ของลูกค้าสำหรับ **พรีวิว** หน้าออกใบใหม่ (มติเจ้าของ 29/10: แก้ก่อนบันทึก) — มีแล้ว = ตัวจริง ·
+ * ยังไม่มี = แถวสมมุติ (ไม่ insert · ไม่ audit) รหัสเดียวกับที่ทางสร้างจริงจะออก · ตัวจริงเกิดตอนกดบันทึกเท่านั้น
+ */
+export async function peekExciseChargeProduct(supabase, { customer, sourceFgCodes = [] } = {}) {
+  if (!customer?.id) return { error: 'ไม่พบลูกค้าเจ้าของใบสั่งขาย', status: 400 };
+  const existing = await findChargeProduct(supabase, customer.id);
+  if (existing.error) return { error: existing.error.message, status: 500 };
+  if (existing.product) return { product: existing.product, created: false };
+  const code = await chargeFgCodeFor(supabase, customer, sourceFgCodes);
+  if (code.error) return code;
+  return {
+    product: { id: EXCISE_CHARGE_PREVIEW_ID, fgCode: code.fgCode, productDescription: EXCISE_CHARGE_PRODUCT_NAME, productDescriptionEn: EXCISE_CHARGE_PRODUCT_NAME_EN },
+    created: false,
+    pending: true,
+  };
+}
+
+/** id ของสินค้า 04-003 สมมุติบนพรีวิว — ห้ามลงฐาน (ทางบันทึกสร้าง/หาตัวจริงใหม่ทุกครั้ง) */
+export const EXCISE_CHARGE_PREVIEW_ID = 'PREVIEW-04-003';
+
+export async function ensureExciseChargeProduct(supabase, {
+  customer, sourceFgCodes = [], user = null, request = null,
+  audit = recordAudit, priceHistory = recordProductPriceHistory,
+} = {}) {
+  if (!customer?.id) return { error: 'ไม่พบลูกค้าเจ้าของใบสั่งขาย', status: 400 };
+
+  const existing = await findChargeProduct(supabase, customer.id);
+  if (existing.error) return { error: existing.error.message, status: 500 };
+  if (existing.product) return { product: existing.product, created: false };
+
+  const code = await chargeFgCodeFor(supabase, customer, sourceFgCodes);
+  if (code.error) return code;
+  const { fgCode } = code;
 
   /* รหัสนี้มีอยู่แล้วแต่หมวดไม่ใช่ 04-003 (แถวเก่าที่หมวดว่าง/ผิด) — ของลูกค้าเดียวกันใช้ได้ · ของคนอื่น = ข้อมูลชนกัน หยุด */
   const { data: sameCode, error: sameCodeError } = await supabase

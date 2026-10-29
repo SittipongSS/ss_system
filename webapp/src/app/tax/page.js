@@ -20,6 +20,7 @@ import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDash
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { NA, fmtNumber, naText } from "@/lib/format";
 import { isExemptFiling } from "@/lib/tax/exciseBilling";
+import { raQueueItem } from "@/lib/excise/raQueueItem";
 import { businessDate } from "@/lib/businessDate";
 import { PERIODS, taxQueueHref, withinPeriod } from "@/lib/tax/period";
 import {
@@ -184,15 +185,7 @@ export default function TaxDashboard() {
     /* ⭐ PR5: ใบยื่นเป็นงานของ RA ทั้งเส้น — งานที่ยังไม่มีใบ (คิวรอยื่นกรม) + ใบที่ค้างแต่ละขั้น · ฝ่ายขายไม่มีขั้นบนใบยื่นแล้ว */
     raQueue.forEach((x) => {
       const days = registrationAge({ createdAt: x.since }, todayIso);
-      queue.push({
-        id: `rq-${x.key}`, status: "draft",
-        title: `${x.salesOrder?.orderNumber || ""} · ${naText(x.salesOrder?.customerName)}`,
-        subtitle: x.exciseOrder
-          ? `ใบสั่งขายค่าสรรพสามิต ${x.exciseOrder.orderNumber} อนุมัติแล้ว — รอสร้างใบยื่นกรม`
-          : `ไม่เรียกเก็บในระบบ (${x.notBilled?.label || ""}) — รอสร้างใบยื่นกรม`,
-        cta: "สร้างใบยื่น", age: ageChip(days), sortDays: days,
-        onClick: () => router.push(`/tax/filings?create=${encodeURIComponent(x.key)}`),
-      });
+      queue.push(raQueueItem(x, { age: ageChip(days), sortDays: days, onCreate: () => router.push(`/tax/filings?create=${encodeURIComponent(x.key)}`) }));
     });
     orders.filter((x) => x.status === "draft").forEach((x) =>
       queue.push({ id: `od-${x.id}`, status: "draft", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ตรวจรายการแล้วเริ่มยื่น`, cta: "เริ่มยื่น", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("draft") }));
@@ -342,7 +335,12 @@ export default function TaxDashboard() {
               <div className="lg:col-span-2 grid grid-cols-2 gap-4">
                 <KpiCard label="เตรียมใบยื่น" value={getCountAndTax(o.draft).count} taxValue={getCountAndTax(o.draft).tax} tone="neutral" icon={ReceiptText} onClick={() => goFil("draft")} />
                 <KpiCard label="ตีกลับ (ยื่นใหม่)" value={getCountAndTax(o.rejected).count} taxValue={getCountAndTax(o.rejected).tax} tone="danger" icon={CircleDollarSign} onClick={() => goFil("rejected")} />
-                <KpiCard label="รอยื่นกรม (ยังไม่มีใบ)" value={canLG && raQueueLoaded ? raQueue.length : NA} tone="warning" icon={Clock3} onClick={canLG ? () => router.push("/tax/filings?create=new") : undefined} />
+                <KpiCard
+                  label="รอยื่นกรม (ยังไม่มีใบ)"
+                  value={canLG && raQueueLoaded ? raQueue.filter((x) => x.ready !== false).length : NA}
+                  hint={canLG && raQueueLoaded && raQueue.some((x) => x.ready === false) ? `กำลังมา ${raQueue.filter((x) => x.ready === false).length} ใบ` : undefined}
+                  tone="warning" icon={Clock3} onClick={canLG ? () => router.push("/tax/filings?create=new") : undefined}
+                />
                 <KpiCard label="กำลังยื่น" value={getCountAndTax(o.filing).count} taxValue={getCountAndTax(o.filing).tax} tone="info" icon={Send} onClick={() => goFil("filing")} />
                 <KpiCard label="ชำระแล้ว" value={getCountAndTax(o.complete).count} taxValue={getCountAndTax(o.complete).tax} tone="success" icon={BadgeCheck} onClick={() => goFil("complete")} />
                 <KpiCard label="ส่งเอกสารแล้ว" value={getCountAndTax(o.delivered).count} taxValue={getCountAndTax(o.delivered).tax} tone="success" onClick={() => goFil("delivered")} />
