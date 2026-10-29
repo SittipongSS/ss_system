@@ -581,8 +581,8 @@ test('⭐ ทะเบียนขนาดแพ็คเกจ: คนแก�
       เส้นนี้ **ไม่ต้องเพิ่มรายการ** เพราะอยู่ใต้ `/api/service` (OPEN_WRITE_APIS + กฎ service:edit/work) — เทสต์นี้ตรึงข้อเท็จจริงนั้นไว้
    ⭐ GET (เปิดไฟล์ · ฉบับร่าง) ต้องถึง handler ทุก role ที่ล็อกอิน — ผู้ขอฝ่ายขายและผู้บริหารไม่ถือ cap ของโมดูลบริการ
       แต่ได้ฉบับลูกค้า (ด่านจริง = `surveyDocAccess` ซึ่งดูแถวคำร้อง · proxy เห็นแค่ method + path)
-   ⭐ POST (ออกเอกสาร) = หัวหน้าฝ่ายบริการ (+ แอดมิน · CD/CM) ต้องผ่านทั้งสองด่าน
-   ⚠️ ช่าง (`ts` · service:work) · Planner · ฝ่ายขาย (service:edit) ผ่าน proxy ที่ POST ได้ แล้วได้ 403 จาก handler
+   ⭐ POST (ออกเอกสาร) = หัวหน้าฝ่ายบริการ (+ แอดมิน · CD/CM) + ผู้วางคิว (มติเจ้าของ 19/10/2026) ต้องผ่านทั้งสองด่าน
+   ⚠️ ช่าง (`ts` · service:work) · ฝ่ายขาย (service:edit) ผ่าน proxy ที่ POST ได้ แล้วได้ 403 จาก handler
       (`surveyDocAccess(...).issue`) — ไม่ใช่ช่องโหว่ แต่ห้ามมีใครถอดด่านใน handler เพราะคิดว่า proxy กันให้แล้ว */
 test('⭐ เอกสารประเมินพื้นที่: GET ถึง handler ทุก role · หัวหน้าฝ่ายบริการ POST ผ่าน proxy ทั้งสองด่าน · ด่านจริงอยู่ใน handler', () => {
   const path = '/api/service/surveys/DR-1/document';
@@ -599,6 +599,12 @@ test('⭐ เอกสารประเมินพื้นที่: GET ถ�
   for (const role of ['ts_manager', 'ts_audit', 'ts_senior']) {
     assert.equal(surveyDocAccess({ id: 'U-1', role, department: 'TS' }, request).issue, true, `${role} ออกเอกสาร`);
   }
+  /* ⭐ ผู้วางคิว (มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย") — ผ่าน proxy ทั้งสองด่านเหมือนหัวหน้า
+     (lockdown: `/api/service` อยู่ใน OPEN_WRITE_APIS · cap: service:edit) แล้ว handler ให้ออกได้ · ส่งผล/ดึงกลับยังไม่ได้ (handler ของสองเส้นนั้น) */
+  assert.equal(lockedOut({ role: 'ts_planner', extraCaps: [] }, path, 'POST', true), false, 'ts_planner POST: ด่าน lockdown');
+  assert.equal(apiWriteAllowed('POST', path, 'ts_planner', []), true, 'ts_planner POST: ด่าน cap');
+  assert.equal(surveyDocAccess({ id: 'U-pl', role: 'ts_planner', department: 'TS' }, request).issue, true, 'ts_planner ออกเอกสาร');
+  assert.equal(canSendSurveyResult({ role: 'ts_planner', department: 'TS' }), false, 'ts_planner ส่งผล/ดึงกลับไม่ได้');
 
   // GET: ไม่มี role ไหนถูก lockdown ตัดก่อนถึง handler — ผู้ขอ (ฝ่ายขาย) และผู้บริหารต้องเปิดฉบับลูกค้าได้
   for (const role of ROLES) {
@@ -609,8 +615,8 @@ test('⭐ เอกสารประเมินพื้นที่: GET ถ�
   assert.equal(surveyDocAccess({ id: 'U-requester', role: 'ae', department: 'SALES' }, request).internal, false);
   assert.equal(surveyDocAccess({ id: 'U-x', role: 'executive' }, request).internal, true);
 
-  // ช่าง · Planner · ฝ่ายขาย ถึง handler ที่ POST ได้ — handler ต้องเป็นคนตัด
-  for (const [role, department] of [['ts', 'TS'], ['ts_planner', 'TS'], ['ae', 'SALES'], ['ae_supervisor', 'SALES']]) {
+  // ช่าง · ฝ่ายขาย ถึง handler ที่ POST ได้ — handler ต้องเป็นคนตัด
+  for (const [role, department] of [['ts', 'TS'], ['ae', 'SALES'], ['ae_supervisor', 'SALES']]) {
     assert.equal(apiWriteAllowed('POST', path, role, []), true, `${role} ผ่าน proxy`);
     assert.equal(surveyDocAccess({ id: 'U-requester', role, department }, request).issue, false, `${role} ออกเอกสารไม่ได้`);
   }

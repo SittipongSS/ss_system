@@ -202,8 +202,9 @@ test('🔴 เหตุที่กดออกเอกสารซ้ำไม
     assert.match(SURVEY_REPORT_REASONS[key], /แจ้งผู้ดูแลระบบ$/, key);
   }
   const issue = readFileSync(new URL('./surveyReportIssue.js', import.meta.url), 'utf8');
-  // `undecodable` — รูปเปิดไม่ได้: ดึงผลกลับ อัปรูปใหม่ แล้วส่งผลอีกครั้ง
-  assert.match(issue, /return failed\('undecodable',[\s\S]{0,400}ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง',\s*retry: false,/);
+  // `undecodable` — รูปเปิดไม่ได้: ดึงผลกลับ อัปรูปใหม่ แล้วส่งผลอีกครั้ง · คนกดที่ไม่ใช่หัวหน้า (ผู้วางคิว · มติเจ้าของ 19/10) = ผ่านหัวหน้า
+  assert.match(issue, /return failed\('undecodable',[\s\S]{0,400}\+ UNDECODABLE_HINT\[hintKey\(viaHead\)\],\s*retry: false,/);
+  assert.match(issue, /const UNDECODABLE_HINT = Object\.freeze\(\{\s*head: 'ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง',\s*viaHead: 'แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง',\s*\}\);/);
   // `paper_blocked` ของยามกันรั่ว (ความผิดของระบบ) — แจ้งผู้ดูแลระบบ
   assert.match(issue, /ฉบับลูกค้ายังออกไม่ได้ — \$\{leaks\.join\(' \| '\)\} · ยังไม่ได้ออกเลขเอกสาร แจ้งผู้ดูแลระบบ`,\s*retry: false,/);
   // `paper_blocked` ของกระดาษล้น — ประโยคจบที่ "ยังไม่ได้ออกเลขเอกสาร" ไม่มีทางออก ⇒ จอต่อ `PAPER_BLOCKED_WAY_OUT`
@@ -271,7 +272,7 @@ test('toast หลังดึงผลกลับ: ประโยคเดิ
 
 test('บรรทัดเอกสารในโมดัล "ยังไม่จบ": มีเลข · ไม่ทราบบนใบที่ตอบแล้ว · ไม่ทราบบนใบที่ยังไม่ตอบ = ไม่มีบรรทัด', () => {
   const named = 'เอกสาร SU-26100001-1 จะถูกแทนที่ — ใช้ไม่ได้ทันทีที่กด ห้ามใช้ฉบับที่ส่งลูกค้าไปแล้ว · ฉบับใหม่ (Rev ถัดไป) ออกหลังฝ่ายบริการส่งผลอีกครั้ง';
-  // Planner ได้แค่ `{ access: 'none', voids }` — ยังได้บรรทัดนี้ (#1223)
+  // คนของฝ่ายที่ไม่มีสิทธิ์เอกสาร ได้แค่ `{ access: 'none', voids }` — ยังได้บรรทัดนี้ (#1223 · ผู้วางคิวได้ก้อนเต็มตั้งแต่ 19/10)
   assert.equal(surveyReopenDocumentLine({ access: 'none', voids: 'SU-26100001-1' }, sentRequest()), named);
   assert.equal(surveyReopenDocumentLine(bareDoc(SALES, { state: 'ready', voids: 'SU-26100001-1' }), sentRequest()), named);
   const unknown = 'อ่านสถานะเอกสารประเมินไม่สำเร็จ — ถ้าใบนี้มีเอกสาร SU เอกสารนั้นจะใช้ไม่ได้เมื่อกด';
@@ -306,7 +307,9 @@ test('payload ทุกรูปไม่ทำให้ล้ม และท�
         assert.deepEqual(Object.keys(view), SHEET_KEYS, JSON.stringify(document));
         assert.equal(typeof view.badge.label, 'string');
         assert.ok(Array.isArray(view.versions) && Array.isArray(view.rows));
-        if (!canDecide) assert.equal(view.show, false, 'การ์ดวาดให้คนที่ส่งผลได้เท่านั้น');
+        /* คนที่ส่งผลไม่ได้ได้ส่วนนี้เฉพาะเมื่อออกเอกสารได้ (`access.issue` · ผู้วางคิว · มติเจ้าของ 19/10) **และ** ใบส่งผลแล้ว */
+        const issuer = document?.access?.issue === true && !!req?.answeredAt;
+        if (!canDecide && !issuer) assert.equal(view.show, false, 'ส่งผลไม่ได้ + ออกไม่ได้/ยังไม่ส่ง = ไม่มีส่วนนี้');
       }
     }
   }
@@ -325,22 +328,116 @@ test('🔴 ไม่มีสิทธิ์ = ไม่แสดงส่วน
     assert.equal(view.recheckOnFiles, false);
     assert.deepEqual(hrefsIn(view), []);
   }
-  // มีสิทธิ์ครบแต่ไม่ใช่คนส่งผล (การ์ดไม่วาดให้) — ไม่มีลิงก์หลุดออกมาในผล
-  const crew = sheet({
-    document: headDoc({ state: 'ready', current: currentRow({ ready: { customer: true, internal: true } }) }),
-    request: sentRequest(), canDecide: false,
-  });
-  assert.equal(crew.show, false);
-  assert.deepEqual(hrefsIn(crew), []);
-  assert.equal(crew.relinkNote, null);
+  /* 🔴 เปิดได้สองฉบับแต่ออกไม่ได้และไม่ใช่คนส่งผล (ผู้บริหาร) — ไม่มีส่วนนี้บนใบประเมิน (มติเจ้าของ 08/10 Q3) · ไม่มีลิงก์หลุดออกมาในผล
+     ⚠️ ด่านของคนที่ไม่ใช่หัวหน้าถามคีย์ `issue` ตัวเดียว ไม่ใช่ "มีคีย์ไหนก็ได้" */
+  for (const state of ['ready', 'missing', 'issued']) {
+    const exec = sheet({
+      document: bareDoc(EXEC, { state, current: state === 'missing' ? null : currentRow({ ready: { customer: true, internal: true } }) }),
+      request: sentRequest(), canDecide: false,
+    });
+    assert.equal(exec.show, false, state);
+    assert.deepEqual(hrefsIn(exec), [], state);
+    assert.equal(exec.relinkNote, null, state);
+  }
 });
 
-test('payload ที่ GET ล็อกรูปไว้: Planner ได้แค่ access+voids · ผู้ขอไม่มี history/nextDocNo/send/issue · หัวหน้าบน GET คำร้องไม่มีผลตรวจ', () => {
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ผู้วางคิว (`access.issue` แต่ส่งผลไม่ได้) ได้ส่วนนี้ **เฉพาะใบที่ส่งผลแล้ว**
+   (จอวาดเป็นบล็อกเดี่ยวนอกการ์ด) · ก่อนส่ง ทุกประโยคเป็นเรื่องของการส่ง (ปุ่มที่เขาไม่มี) ⇒ ไม่มีส่วน */
+const PLANNER_DOC = (extra = {}) => ({
+  access: HEAD, issueAtSend: true, storeAllowed: true, state: 'missing', current: null,
+  history: [], nextDocNo: null, issue: null, ...extra,
+});
+const plannerSheet = (args = {}) => sheet({ canDecide: false, request: sentRequest(), ...args });
+
+test('⭐ Planner บนใบประเมิน: ส่วนนี้เฉพาะใบที่ส่งผลแล้ว · ก่อนส่ง/ดึงกลับ/อ่านสรุปไม่สำเร็จ = ไม่มีส่วน', () => {
+  // ก่อนส่งผล — ไม่มีส่วน ไม่มีลิงก์ร่าง (ร่างของใบที่ยังไม่ตอบพิมพ์คนดูเป็นผู้อนุมัติ)
+  for (const state of ['not_sent', 'recalled']) {
+    const view = plannerSheet({ request: request(), document: PLANNER_DOC({ state, access: { ...HEAD, draft: false }, history: HISTORY }) });
+    assert.equal(view.show, false, state);
+    assert.deepEqual(hrefsIn(view), [], state);
+  }
+  // อ่านสรุปไม่สำเร็จ (`access: 'none'`) — หน้าคำร้องบอกแทน
+  assert.equal(plannerSheet({ document: { access: 'none', unknown: true } }).show, false);
+  // ส่งผลแล้ว: ทุกสถานะที่ส่วนนี้มีให้หัวหน้า
+  const missing = plannerSheet({ document: PLANNER_DOC({ issue: OK_ISSUE }) });
+  assert.equal(missing.show, true);
+  assert.equal(missing.placement, 'pinned');
+  assert.equal(missing.issue.allowed, true);
+  assert.ok(missing.issue.confirm);
+  assert.equal(buttons(missing), 'draft | blocked | enabled', 'ร่างได้ (ใบส่งผลแล้ว) · ปุ่มออกเอกสาร');
+  assert.equal(buttons(missing, 'internal'), 'draft | blocked | enabled', 'เปิดได้ทั้งสองฉบับ (เจ้าของตอบ "ได้ทั้งสองฉบับ")');
+  const issuing = plannerSheet({ document: PLANNER_DOC({ state: 'issuing' }) });
+  assert.equal(issuing.show, true);
+  assert.equal(issuing.poll, true);
+  assert.deepEqual(issuing.issue, { allowed: false, confirm: null });
+  const issued = plannerSheet({ document: PLANNER_DOC({ state: 'ready', current: currentRow({ ready: { customer: true, internal: true } }), history: HISTORY }) });
+  assert.equal(issued.show, true);
+  assert.equal(buttons(issued), 'view | download | none');
+  assert.equal(buttons(issued, 'internal'), 'view | download | none');
+  assert.equal(issued.history.rows.length, 1, 'เห็นรายการ Rev');
+  const stale = plannerSheet({ document: PLANNER_DOC({ state: 'stale', current: currentRow() }) });
+  assert.equal(stale.show, true);
+  assert.equal(stale.status.text, SURVEY_DOC_STALE_TEXT);
+  // ใบที่จบแล้วแต่เคยมีเอกสาร = เห็นรายการ Rev (มติ 31)
+  const ended = plannerSheet({
+    request: sentRequest({ cancelledAt: ISSUED, status: 'cancelled' }), document: PLANNER_DOC({ state: 'missing', history: HISTORY }),
+  });
+  assert.equal(ended.show, true);
+  assert.equal(ended.history.rows.length, 1);
+});
+
+/* 🔴 ทุกทางออกของผู้วางคิวที่ต้องดึงผลกลับ ชี้ไปที่หัวหน้า — เขาไม่มีปุ่มดึงผลกลับ (และผูกรูปจุดบนใบที่ส่งแล้วไม่ได้) */
+const VIA_HEAD = 'แจ้งหัวหน้าฝ่ายบริการ';
+const bareRecall = (text) => String(text ?? '').replaceAll('หัวหน้าฝ่ายบริการให้ดึงผลกลับ', '').includes('ดึงผลกลับมาแก้');
+test('🔴 Planner: ทุกทางออกที่ต้องดึงผลกลับ = "แจ้งหัวหน้าฝ่ายบริการให้…" · ไม่มีประโยคสั่งให้ดึงผลกลับเอง · หัวหน้าได้ประโยคเดิมตรงตัว', () => {
+  const content = { ...OK_ISSUE, blockers: [{ kind: 'content', text: 'Studio 01: ยังไม่ได้เลือกจุดติดตั้ง' }] };
+  // ① ติดเหตุเนื้อใบ — มี/ไม่มีรูปจุดค้างในถาด
+  const stuck = plannerSheet({ document: PLANNER_DOC({ issue: content }) });
+  assert.equal(stuck.status.foot, 'แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่');
+  const spots = plannerSheet({ document: PLANNER_DOC({ issue: content }), spotsUnlinked: true });
+  assert.equal(spots.status.foot,
+    'รูปจุดที่ยังไม่ได้ผูก — แจ้งหัวหน้าฝ่ายบริการให้ผูกที่ถาด “ยังไม่ได้ผูกจุด” (ไม่ต้องดึงผลกลับ) แล้วกด “ตรวจอีกครั้ง” · เรื่องอื่นแจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่');
+  // ② กระดาษพิมพ์ไม่ได้แบบถาวร (ทางออกต่อท้ายกล่อง)
+  const paper = plannerSheet({
+    document: PLANNER_DOC(),
+    local: { round: ANSWERED, issueError: { code: 'paper_blocked', message: 'กระดาษของเอกสารยังพิมพ์ไม่ได้ — ฉบับลูกค้า: หน้า 2 ล้น · ยังไม่ได้ออกเลขเอกสาร', retry: false } },
+  });
+  assert.equal(paper.status.foot, 'แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่ — ถ้าไม่มีอะไรให้แก้ หรือแก้แล้วยังออกไม่ได้ ให้แจ้งผู้ดูแลระบบ');
+  // ③ ไฟล์ยังไม่ถูกจัดทำ / จัดทำไม่สำเร็จ
+  const waiting = plannerSheet({ document: PLANNER_DOC({ state: 'issued', current: currentRow() }) });
+  assert.equal(waiting.status.foot, 'ถ้าเปิดไม่ได้ซ้ำด้วยเหตุเดิม: แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่ หรือแจ้งผู้ดูแลระบบ');
+  const paperFailed = plannerSheet({
+    document: PLANNER_DOC({ state: 'issued', current: currentRow() }), local: { round: ANSWERED, paper: { busy: false, reason: 'จัดทำกระดาษไม่สำเร็จ' } },
+  });
+  assert.equal(paperFailed.status.foot,
+    'ถ้ากด “ดาวน์โหลด PDF” แล้วขึ้นเหตุเดิม: แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่ (ออกเป็น Rev ถัดไป) หรือแจ้งผู้ดูแลระบบ');
+  // ④ กล่องยืนยันออกเอกสาร — สามบรรทัดที่พูดถึงการดึงผลกลับ
+  const warned = plannerSheet({
+    document: PLANNER_DOC({ issue: { ...OK_ISSUE, warnings: ['หมายเหตุพื้นที่ Studio 01 พูดถึงเครื่อง', 'ชื่อลูกค้ายาวเกิน'] } }),
+  }).issue.confirm.effects;
+  assert.ok(warned.includes('หมายเหตุพื้นที่แก้ไม่ได้ขณะผลล็อกอยู่ — ถ้าต้องแก้ ปิดกล่องนี้แล้วแจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้ก่อน'));
+  assert.ok(warned.includes('ช่องอื่นแก้ที่ต้นทางของช่องนั้น (ทะเบียนลูกค้า · ไซต์ · บริษัท ไม่ต้องดึงผลกลับ · ชื่อพื้นที่ต้องให้หัวหน้าฝ่ายบริการดึงผลกลับ) แล้วเปิดกล่องนี้ใหม่'));
+  assert.equal(warned.at(-1), 'แก้เอกสารหลังออก = หัวหน้าฝ่ายบริการดึงผลกลับแล้วส่งใหม่ (ออกเป็น Rev ถัดไป)');
+
+  for (const [name, view] of Object.entries({ stuck, spots, paper, waiting, paperFailed })) {
+    const foot = view.status.foot;
+    assert.ok(foot.includes(VIA_HEAD), `${name}: ${foot}`);
+    assert.equal(bareRecall(foot), false, `${name}: ไม่สั่งให้ดึงผลกลับเอง`);
+  }
+  for (const line of warned) assert.equal(/(^|[^ห])ดึงผลกลับมาแก้/.test(line.replaceAll('หัวหน้าฝ่ายบริการให้ดึงผลกลับ', '')), false, line);
+
+  // หัวหน้า (คนส่งผลได้) บนสถานการณ์เดียวกัน = ประโยคเดิมตรงตัว
+  assert.equal(sheet({ document: PLANNER_DOC({ issue: content, send: null }), request: sentRequest() }).status.foot, 'ดึงผลกลับมาแก้แล้วส่งใหม่');
+  assert.equal(sheet({ document: PLANNER_DOC({ state: 'issued', current: currentRow(), send: null }), request: sentRequest() }).status.foot,
+    'ถ้าเปิดไม่ได้ซ้ำด้วยเหตุเดิม: ดึงผลกลับมาแก้แล้วส่งใหม่ หรือแจ้งผู้ดูแลระบบ');
+});
+
+test('payload ที่ GET ล็อกรูปไว้: คนของฝ่ายที่ไม่มีสิทธิ์เอกสารได้แค่ access+voids · ผู้ขอไม่มี history/nextDocNo/send/issue · หัวหน้าบน GET คำร้องไม่มีผลตรวจ', () => {
   const ready = currentRow({ docNo: 'SU-26100001-1', frozenAt: ISSUED, ready: { customer: true, internal: true } });
-  // Planner — ไม่มีบล็อก ไม่มีส่วน แต่โมดัล "ยังไม่จบ" ได้เลข
-  const planner = { access: 'none', voids: 'SU-26100001-1' };
-  assert.equal(sheet({ document: planner, request: sentRequest() }).show, false);
-  assert.equal(surveyRequestDocumentView({ surveyDocument: planner, request: sentRequest(), viewer: {} }), null);
+  // ไม่มีสิทธิ์เอกสาร (`{ access: 'none', voids }`) — ไม่มีบล็อก ไม่มีส่วน แต่โมดัล "ยังไม่จบ" ได้เลข
+  const none = { access: 'none', voids: 'SU-26100001-1' };
+  assert.equal(sheet({ document: none, request: sentRequest() }).show, false);
+  assert.equal(surveyRequestDocumentView({ surveyDocument: none, request: sentRequest(), viewer: {} }), null);
   // ผู้ขอ — ปุ่มเดียว ฉบับลูกค้า
   const requester = bareDoc(SALES, { state: 'ready', current: ready, voids: 'SU-26100001-1' });
   const block = surveyRequestDocumentView({ surveyDocument: requester, request: sentRequest(), viewer: { isRequesterSide: true } });
@@ -815,7 +912,7 @@ test('ส่งผลแล้วยังไม่มีเอกสาร · �
 test('ส่งผลแล้วยังไม่มีเอกสาร · หัวหน้าที่ออกเอกสารของใบนี้ไม่ได้: ไม่มีปุ่มร่าง ไม่มีปุ่มออกเอกสาร บอกว่าใครกดได้', () => {
   const view = sheet({ document: headDoc({ access: HEAD_NO_ISSUE, state: 'missing' }), request: sentRequest() });
   assert.deepEqual(view.badge, MISSING_BADGE);
-  assert.deepEqual(view.status, { tone: 'info', text: 'หัวหน้าฝ่ายบริการที่ตอบใบนี้ได้เป็นผู้กดออกเอกสาร', items: [], foot: null, action: null });
+  assert.deepEqual(view.status, { tone: 'info', text: 'หัวหน้าฝ่ายบริการหรือผู้วางคิว (Planner) ที่ตอบใบนี้ได้เป็นผู้กดออกเอกสาร', items: [], foot: null, action: null });
   assert.equal(buttons(view), 'none | blocked | none');
   assert.equal(view.issue, null);
   assert.deepEqual(hrefsIn(view), []);
@@ -1025,7 +1122,7 @@ test('ออกแล้ว · ไฟล์ยังไม่ถูกจัด�
   assert.equal(buttons(view, 'internal'), 'view | download | none');
   assert.deepEqual(view.versions.map((v) => [v.key, v.label, v.note]), [
     ['customer', 'ฉบับลูกค้า', 'ไม่มีจุดติดตั้งและข้อมูลภายใน · ฝ่ายขายผู้ขอดาวน์โหลดได้ที่หน้าคำร้อง'],
-    ['internal', 'ฉบับภายใน', 'มีแถบ “ฉบับภายใน — ห้ามส่งลูกค้า” ทุกหน้า · เฉพาะหัวหน้าฝ่ายบริการและผู้บริหาร'],
+    ['internal', 'ฉบับภายใน', 'มีแถบ “ฉบับภายใน — ห้ามส่งลูกค้า” ทุกหน้า · เฉพาะหัวหน้าฝ่ายบริการ ผู้วางคิว (Planner) และผู้บริหาร'],
   ]);
   assert.deepEqual(view.versions[0].preview, { label: 'ดูตัวอย่าง', href: '/api/service/surveys/DR-1/document?version=customer', blocked: false });
   assert.deepEqual(view.versions[1].download, { label: 'ดาวน์โหลด PDF', href: '/api/service/surveys/DR-1/document?version=internal&download=1', blocked: false });
@@ -1209,14 +1306,16 @@ test('🔴 สถานะที่ไม่มีฉบับที่ใช้
 const REQUESTER = { isRequesterSide: true, canDecide: false, canOpenSheet: false };
 const HEAD_VIEWER = { isRequesterSide: false, canDecide: true, canOpenSheet: true };
 const EXEC_VIEWER = { isRequesterSide: false, canDecide: false, canOpenSheet: false };
-const PLANNER = { isRequesterSide: false, canDecide: false, canOpenSheet: true };
+/* ผู้วางคิว — ออกเอกสารได้ (`canIssue` · มติเจ้าของ 19/10/2026) แต่ส่งผลไม่ได้ · ช่าง — เปิดใบประเมินได้ ไม่มีสิทธิ์เอกสาร */
+const PLANNER = { isRequesterSide: false, canDecide: false, canIssue: true, canOpenSheet: true };
+const CREW_VIEWER = { isRequesterSide: false, canDecide: false, canOpenSheet: true };
 const block = (surveyDocument, req = sentRequest(), viewer = REQUESTER) => surveyRequestDocumentView({ surveyDocument, request: req, viewer });
 const BLOCK_KEYS = ['state', 'badge', 'docNo', 'issuedText', 'issuedByName', 'text', 'foot', 'waitText', 'buttons', 'sheetLink'];
 const READY_CURRENT = currentRow({ frozenAt: ISSUED, ready: { customer: true, internal: true } });
 
 test('หน้าคำร้อง: ไม่มีบล็อก — ไม่มีคีย์ · ไม่มีสิทธิ์ · ยังไม่ส่งผล · จบแล้วไม่เคยมีเอกสาร · ไม่ล้มกับ payload แปลก', () => {
   for (const doc of [null, undefined, 'none', {}, [], { access: 'none' }, { access: 'none', voids: 'SU-1' }, bareDoc(SALES), headDoc()]) {
-    for (const viewer of [REQUESTER, HEAD_VIEWER, EXEC_VIEWER, PLANNER, {}, undefined]) {
+    for (const viewer of [REQUESTER, HEAD_VIEWER, EXEC_VIEWER, PLANNER, CREW_VIEWER, {}, undefined]) {
       assert.equal(surveyRequestDocumentView({ surveyDocument: doc, request: sentRequest(), viewer }), null, JSON.stringify(doc));
     }
   }
@@ -1226,14 +1325,45 @@ test('หน้าคำร้อง: ไม่มีบล็อก — ไม�
   assert.equal(block(headDoc({ state: 'missing' }), sentRequest({ cancelledAt: ISSUED, status: 'cancelled' }), HEAD_VIEWER), null);
 });
 
-test('🔴 หน้าคำร้อง · Planner ไม่มีบล็อกทุกกรณี — รวมตอนอ่านเอกสารไม่สำเร็จ', () => {
+test('🔴 หน้าคำร้อง · คนของฝ่ายที่ไม่มีสิทธิ์เอกสารไม่มีบล็อกทุกกรณี · Planner ได้บล็อก "ไม่ทราบ" (ออกเอกสารได้ตั้งแต่ 19/10)', () => {
   for (const doc of [
     { access: 'none', voids: 'SU-26100001-1', unknown: true }, { access: 'none', voids: null, unknown: true },
     { access: 'none', unknown: true }, { access: 'none', voids: 'SU-26100001-1' },
   ]) {
-    assert.equal(block(doc, sentRequest(), PLANNER), null, JSON.stringify(doc));
+    assert.equal(block(doc, sentRequest(), CREW_VIEWER), null, JSON.stringify(doc));
     assert.equal(block(doc, sentRequest(), EXEC_VIEWER), null, 'ผู้บริหารก็ไม่ได้บล็อกไม่ทราบ (ความเสี่ยงที่รับไว้ · โหลดใหม่คือทางออก)');
+    // ผู้วางคิวอาจมีสิทธิ์จริง (`canIssue`) ⇒ "ไม่ทราบ" ≠ "ไม่มี" — บอกเมื่ออ่านไม่สำเร็จ · ไม่มีอะไรให้บอกเมื่ออ่านได้แต่ไม่มีสิทธิ์
+    const planner = block(doc, sentRequest(), PLANNER);
+    if (doc.unknown) assert.equal(planner.state, 'unknown', JSON.stringify(doc));
+    else assert.equal(planner, null, JSON.stringify(doc));
   }
+  // ใบที่ยังไม่ตอบ = ไม่มีเอกสารให้ถามหา (ทุกคน)
+  assert.equal(block({ access: 'none', unknown: true }, request(), PLANNER), null);
+});
+
+/* ⭐ มติเจ้าของ 19/10/2026 — ผู้วางคิวได้ปุ่มสองฉบับ · `missing` ได้ "กดที่ใบประเมิน" + ลิงก์ · ไฟล์ที่เปิดไม่ได้ซ้ำ = ทางออกผ่านหัวหน้า
+   (ไม่มีลิงก์ใบประเมินตรงนั้น — ทางแก้คือการดึงผลกลับซึ่งเป็นของหัวหน้า) */
+test('⭐ หน้าคำร้อง · Planner: ปุ่มสองฉบับ · ยังไม่มีเอกสาร = กดที่ใบประเมิน + ลิงก์ · ไฟล์ยังไม่ถูกจัดทำ = ทางออกผ่านหัวหน้า ไม่มีลิงก์', () => {
+  const issued = block(headDoc({ state: 'issued', current: currentRow() }), sentRequest(), PLANNER);
+  assert.deepEqual(issued.buttons.map((b) => b.id), ['customer', 'internal']);
+  assert.deepEqual(issued.text, {
+    tone: 'info',
+    text: 'เปิดครั้งแรกรอประมาณ 10 วินาที (ระบบจัดทำไฟล์) · ถ้าเปิดไม่ได้ซ้ำด้วยเหตุเดิม: แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่ หรือแจ้งผู้ดูแลระบบ',
+  });
+  assert.equal(issued.sheetLink, false, 'ไม่มีอะไรให้เขาแก้ที่ใบประเมิน');
+  assert.match(issued.foot, /ฉบับภายในห้ามส่งลูกค้า$/);
+  // ผู้วางคิวที่บังเอิญอยู่ฝั่งผู้ขอก็ได้ประโยคของคนออก ไม่ใช่ "ในเธรดด้านล่าง"
+  assert.equal(block(headDoc({ state: 'issued', current: currentRow() }), sentRequest(), { ...PLANNER, isRequesterSide: true }).text.text, issued.text.text);
+
+  const missing = block(headDoc({ state: 'missing' }), sentRequest(), PLANNER);
+  assert.equal(missing.text.text, 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน');
+  assert.equal(missing.sheetLink, true);
+  assert.equal(block(headDoc({ state: 'missing' }), sentRequest(), { ...PLANNER, canOpenSheet: false }).sheetLink, false);
+
+  // หัวหน้า (ส่งผลได้) บนใบเดียวกัน = ประโยคเดิม + ลิงก์ — สองสาขาไม่ปนกัน
+  const head = block(headDoc({ state: 'issued', current: currentRow() }), sentRequest(), { ...HEAD_VIEWER, canIssue: true });
+  assert.match(head.text.text, /ดึงผลกลับมาแก้แล้วส่งใหม่ที่ใบประเมิน/);
+  assert.equal(head.sheetLink, true);
 });
 
 test('หน้าคำร้อง · ไม่ทราบ: บอกเฉพาะใบที่ตอบแล้ว และเฉพาะฝั่งผู้ขอกับหัวหน้า · ไม่มีปุ่ม · ไม่เคยขึ้น "ยังไม่มีเอกสาร"', () => {
@@ -1554,7 +1684,7 @@ test('S3 · ใบที่มีพื้นที่จากแบบ — ป
   assert.equal(missing.status.text, 'ส่งผลแล้ว แต่ยังไม่มีเอกสาร — กด “ออกเอกสาร” เพื่อออก SU-26100001-0');
   assert.equal(missing.issue.allowed, true, 'ใบที่ส่งระหว่างที่เอกสารถูกพัก (ไม่มีเลข) — หัวหน้ากดออกเอกสารได้ (สเปก S3 §4)');
   assert.equal(at('missing · วัดไม่ครบ').status.foot, `${DRAFT_DRAWING} (1/2)`);
-  assert.equal(at('missing · ไม่มีสิทธิ์ออก').status.text, 'หัวหน้าฝ่ายบริการที่ตอบใบนี้ได้เป็นผู้กดออกเอกสาร');
+  assert.equal(at('missing · ไม่มีสิทธิ์ออก').status.text, 'หัวหน้าฝ่ายบริการหรือผู้วางคิว (Planner) ที่ตอบใบนี้ได้เป็นผู้กดออกเอกสาร');
   assert.equal(buttons(at('issued')), 'view | download | none');
 });
 

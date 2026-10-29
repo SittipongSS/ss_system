@@ -4,7 +4,7 @@
 //   1. ยามเขียนของถาวร + ธงออกเอกสารตอนส่งผล — production เท่านั้น · ธงเปิดได้ด้วยคำเดียว
 //   2. ตัวอ่าน (`loadSurveyReports` · `surveyReportVoided`) รันกับฐานปลอม — รูป query · อ่านพลาด = บอกว่าไม่รู้ ไม่โยน
 //   3. **ของรั่ว** — สรุปของจอ (`surveyDocumentSummary`) ต่อ role: ช่างได้ `{ access: 'none' }` เป๊ะและไม่มี query ·
-//      ผู้ขอไม่ได้ `history`/`send`/`issue` · Planner บน GET คำร้องได้แค่ `access` กับ `voids` ·
+//      ผู้ขอไม่ได้ `history`/`send`/`issue` · Planner (มติเจ้าของ 19/10/2026) ได้ก้อนเต็มยกเว้น `send`/`signRule` ·
 //      ไม่มีคีย์ไหนพกภาพนิ่ง/HTML/id ของแถว/ที่อยู่ไฟล์ แม้แถวที่ฐานคืนมาจะมีครบ
 //   4. น้ำหนักของโมดูล — หัวไฟล์ไม่ import ของหนัก · ตัวตรวจโหลดด้วย `await import()` เฉพาะตอนต้องตรวจ
 import test from 'node:test';
@@ -182,6 +182,8 @@ function assertNoLeak(payload, label) {
 
 const BASE_KEYS = ['access', 'issueAtSend', 'storeAllowed', 'state', 'current'];
 const HEAD_KEYS = [...BASE_KEYS, 'history', 'nextDocNo', 'send', 'issue'];
+/* คนออกที่ไม่ใช่หัวหน้า (ผู้วางคิว · มติเจ้าของ 19/10/2026) — ไม่มีคีย์ `send` (ส่งผลไม่ได้) */
+const ISSUER_KEYS = [...BASE_KEYS, 'history', 'nextDocNo', 'issue'];
 const ALL_ACCESS = { customer: true, internal: true, issue: true, draft: true, history: true };
 
 /* ตัวตรวจปลอม — จำสิ่งที่ถูกส่งเข้ามา · ผลมีคีย์เกิน (จำลองตัวตรวจวันหน้าที่แนบของภายในมาด้วย) */
@@ -395,28 +397,50 @@ test('🔴 ผู้ขอ (ฝ่ายขาย) ได้ฉบับลู�
   });
 });
 
-test('🔴 Planner บน GET คำร้องได้แค่ `access` กับ `voids` · บน GET ใบประเมินได้ `{ access: "none" }` ไม่มี query', async () => {
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — Planner ได้ก้อนของคนออกเอกสาร (สองฉบับ · รายการ Rev · เลขถัดไป · `issue`)
+   🔴 แต่ไม่มีคีย์ `send` / `signRule` — ส่งผล/ดึงผลกลับยังเป็นของหัวหน้า · ตัวตรวจก่อนส่งผลไม่ถูกเรียกให้เขาเลย */
+test('⭐ Planner ทั้งสอง GET: ก้อนของคนออกเอกสาร + `voids` (GET คำร้อง) — ไม่มี `send` · ไม่มีตัวตรวจก่อนส่งผล', async () => {
   const db = reportsDb([reportRow({ rev: 1, docNo: 'SU-26100001-1' }), superseded(0)]);
-  assert.deepEqual(await surveyDocumentSummary(db, REQ, PLANNER, { withVoids: true, now: NOW }), { access: 'none', voids: 'SU-26100001-1' });
+  const onRequest = await surveyDocumentSummary(db, REQ, PLANNER, { withVoids: true, now: NOW });
+  assert.deepEqual(Object.keys(onRequest), [...ISSUER_KEYS, 'voids']);
+  assert.deepEqual(onRequest.access, ALL_ACCESS, 'ใบที่ส่งผลแล้ว = ร่างได้ด้วย');
+  assert.equal(onRequest.voids, 'SU-26100001-1');
+  assert.equal(onRequest.issue, null, 'GET คำร้องไม่ตรวจ');
+  assert.deepEqual(onRequest.history.map((h) => h.docNo), ['SU-26100001-0']);
   assert.equal(db.queries('service_survey_reports').length, 1);
+  assertNoLeak(onRequest, 'planner request');
 
-  /* ไม่มีฉบับที่ใช้อยู่ (ดึงกลับแล้ว / ยังไม่เคยออก) = `voids: null` */
-  assert.deepEqual(await surveyDocumentSummary(reportsDb([superseded(0)]), OPEN_REQ, PLANNER, { withVoids: true, now: NOW }), { access: 'none', voids: null });
-  assert.deepEqual(await surveyDocumentSummary(reportsDb([]), REQ, PLANNER, { withVoids: true, now: NOW }), { access: 'none', voids: null });
+  /* ไม่มีฉบับที่ใช้อยู่ (ดึงกลับแล้ว / ยังไม่เคยออก) = `voids: null` · ใบที่ยังไม่ตอบ = ไม่มีร่าง */
+  const open = await surveyDocumentSummary(reportsDb([superseded(0)]), OPEN_REQ, PLANNER, { withVoids: true, now: NOW });
+  assert.equal(open.voids, null);
+  assert.deepEqual(open.access, { ...ALL_ACCESS, draft: false });
+  assert.equal(open.nextDocNo, 'SU-26100001-1');
+  assert.equal((await surveyDocumentSummary(reportsDb([]), REQ, PLANNER, { withVoids: true, now: NOW })).voids, null);
 
   /* แถวค้างสถานะ (`stale` — ของคำตอบรอบก่อน) ไม่ถูกเอ่ย: กติกาเดียวกับ `surveyReportVoided` ที่เธรดใช้หลังกด */
   const staleDb = reportsDb([reportRow({ approvedAt: '2026-09-30T05:00:00+00:00' })]);
-  assert.deepEqual(await surveyDocumentSummary(staleDb, REQ, PLANNER, { withVoids: true, now: NOW }), { access: 'none', voids: null });
+  assert.equal((await surveyDocumentSummary(staleDb, REQ, PLANNER, { withVoids: true, now: NOW })).voids, null);
 
-  const surveyDb = reportsDb([reportRow()]);
-  assert.deepEqual(await surveyDocumentSummary(surveyDb, REQ, PLANNER, { withChecks: true, now: NOW }), { access: 'none' });
-  assert.equal(surveyDb.log.length, 0);
+  /* GET ใบประเมิน: ใบที่ยังไม่ตอบ = ไม่มีตัวตรวจก่อนส่งผล ไม่มีคีย์ `send` แม้สวิตช์ออกตอนส่งเปิด */
+  await withEnv(PROD_ON, async () => {
+    const precheck = fakePrecheck(PRECHECK_RESULT);
+    const onSurvey = await surveyDocumentSummary(reportsDb([]), OPEN_REQ, PLANNER, {
+      withChecks: true, now: NOW, precheck, zones: [], filesByZone: {}, sizes: [], open: null,
+    });
+    assert.deepEqual(Object.keys(onSurvey), ISSUER_KEYS);
+    assert.equal(onSurvey.state, 'not_sent');
+    assert.equal(onSurvey.issue, null);
+    assert.equal(precheck.calls.length, 0, 'ไม่จ่ายค่าตัวโหลด/ภาพนิ่ง/จัดหน้าให้ผลที่ไม่มีใครใช้');
+  });
 
   /* อ่านพลาด = บอกว่าไม่รู้ ไม่ใช่บอกว่าไม่มีฉบับที่จะถูกแทนที่ */
   const failed = await quiet(() => surveyDocumentSummary(
     reportsDb([reportRow()], { errors: { service_survey_reports: { message: 'boom' } } }), REQ, PLANNER, { withVoids: true, now: NOW },
   ));
-  assert.deepEqual(failed.result, { access: 'none', voids: null, unknown: true });
+  assert.equal(failed.result.unknown, true);
+  assert.equal(failed.result.voids, null);
+  assert.equal(failed.result.state, null);
+  assert.equal('send' in failed.result, false);
 });
 
 test('ผู้บริหาร (executive) ได้ทั้งสองฉบับ แต่ไม่มีรายการฉบับเก่า ไม่มีปุ่มออกเอกสาร และไม่มี `voids`', async () => {
@@ -818,10 +842,18 @@ test('🔴 ทุก role ในระบบ ทั้งสอง GET: คี�
           assert.deepEqual(Object.keys(onRequest), [...BASE_KEYS, 'voids'], where);
           assert.deepEqual(onSurvey.access, { customer: true, internal: false, issue: false, draft: false, history: false }, where);
         } else if (role === 'ts_planner') {
-          assert.deepEqual(onSurvey, { access: 'none' }, where);
-          assert.deepEqual(Object.keys(onRequest), ['access', 'voids'], where);
-          assert.equal(onRequest.access, 'none', where);
-          assert.equal(surveyDb.log.length, 0, where);
+          /* ⭐ มติเจ้าของ 19/10/2026 — ก้อนของคนออกเอกสาร ไม่มี `send` · ร่างเฉพาะใบที่ส่งผลแล้ว */
+          const access = request.answeredAt ? ALL_ACCESS : { ...ALL_ACCESS, draft: false };
+          assert.deepEqual(Object.keys(onSurvey), ISSUER_KEYS, where);
+          assert.deepEqual(onSurvey.access, access, where);
+          assert.deepEqual(Object.keys(onRequest), [...ISSUER_KEYS, 'voids'], where);
+          assert.equal(onRequest.issue, null, `${where}: GET คำร้องไม่ตรวจ`);
+          /* ตัวตรวจวิ่งให้เขาเฉพาะ "ตอบแล้ว ไม่มีเอกสาร" (ปุ่มออกเอกสาร) — ใบที่ตอบแล้วเสมอ ⇒ ไม่มีทางที่ตัวตรวจจะถือเขาเป็นผู้อนุมัติที่รออยู่ */
+          assert.equal(precheck.calls.length, label === 'ตอบแล้ว ไม่มีเอกสาร' ? 1 : 0, where);
+          for (const args of precheck.calls) {
+            assert.ok(args.request.answeredAt, where);
+            assert.equal(args.request.answeredById, 'u-head', where);
+          }
         } else {
           assert.deepEqual(onSurvey, { access: 'none' }, where);
           assert.deepEqual(onRequest, { access: 'none' }, where);
@@ -829,7 +861,7 @@ test('🔴 ทุก role ในระบบ ทั้งสอง GET: คี�
         }
 
         /* ตัวตรวจวิ่งให้เฉพาะคนที่ออกเอกสารได้ */
-        if (!HEADS.includes(role)) assert.equal(precheck.calls.length, 0, where);
+        if (!HEADS.includes(role) && role !== 'ts_planner') assert.equal(precheck.calls.length, 0, where);
         /* ทุก query ของตารางเอกสารใช้ค่าคงที่ ไม่ใช่ `*` */
         for (const q of [...surveyDb.queries('service_survey_reports'), ...requestDb.queries('service_survey_reports')]) {
           assert.equal(q.select, SURVEY_REPORT_COLUMNS, where);
@@ -1009,10 +1041,10 @@ test('กติกาลายเซ็นเปิด · ใบตอบแล�
   assertNoSignLeak(doc, 'issue.blockers');
 });
 
-test('🔴 กติกาลายเซ็นเปิด: ผู้ขอ (ฝ่ายขาย) · ผู้บริหาร · ช่าง · Planner ไม่ได้คีย์ `send` · `issue` · `signRule` — ทั้งสอง GET', async () => {
+test('🔴 กติกาลายเซ็นเปิด: ผู้ขอ (ฝ่ายขาย) · ผู้บริหาร · ช่าง ไม่ได้คีย์ `send` · `issue` · `signRule` — ทั้งสอง GET', async () => {
   await withEnv({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' }, async () => {
     for (const request of [REQ, OPEN_REQ]) {
-      for (const user of [REQUESTER, TEAMMATE, AE_SUP, EXEC, CREW, PLANNER, STRANGER]) {
+      for (const user of [REQUESTER, TEAMMATE, AE_SUP, EXEC, CREW, STRANGER]) {
         const precheck = fakePrecheck({ blockers: [signBlocker(LINE_ASSESSOR, user.id, ['assessor'])], warnings: [], unknown: [], signers: SIGNERS_BOTH });
         const onSurvey = await surveyDocumentSummary(reportsDb([]), request, user, { withChecks: true, now: NOW, precheck, zones: [], filesByZone: {}, sizes: [], open: null });
         const onRequest = await surveyDocumentSummary(reportsDb([]), request, user, { withVoids: true, now: NOW, precheck });
@@ -1024,6 +1056,32 @@ test('🔴 กติกาลายเซ็นเปิด: ผู้ขอ (�
           assertNoSignLeak(payload, user.role);
         }
         assert.equal(precheck.calls.length, 0, `${user.role}: ตัวตรวจไม่ถูกเรียก`);
+      }
+    }
+  });
+});
+
+/* ⭐ มติเจ้าของ 19/10/2026 — Planner ออกเอกสารได้ แต่ **ไม่ได้ `signRule`** (คนอ่านคือกล่องยืนยันดึงผลกลับ ซึ่งเขาไม่มี) และไม่ได้ `send`
+   · ตัวตรวจของปุ่มออกเอกสารยังได้กติกาลายเซ็นของจริง (`required`) ⇒ ข้อ "ยังไม่มีลายเซ็น" ของผู้ประเมิน/ผู้ส่งผลยังขึ้นก่อนเขากด */
+test('🔴 กติกาลายเซ็นเปิด · Planner: ไม่มีคีย์ `send` · `signRule` ทั้งสอง GET — แต่ `issue` ของใบที่ตอบแล้วยังได้ข้อลายเซ็นจากตัวตรวจที่ได้ `required`', async () => {
+  await withEnv({ ...PROD_ON, SURVEY_REPORT_SIGNATURES: 'on' }, async () => {
+    for (const request of [REQ, OPEN_REQ]) {
+      const precheck = fakePrecheck({ blockers: [signBlocker(LINE_ASSESSOR, 'u-lead', ['assessor'])], warnings: [], unknown: [] });
+      const onSurvey = await surveyDocumentSummary(reportsDb([]), request, PLANNER, { withChecks: true, now: NOW, precheck, zones: [], filesByZone: {}, sizes: [], open: null });
+      const onRequest = await surveyDocumentSummary(reportsDb([]), request, PLANNER, { withVoids: true, now: NOW, precheck });
+      for (const payload of [onSurvey, onRequest]) {
+        assert.equal('send' in payload, false, `${request.status}: send`);
+        assert.equal('signRule' in payload, false, `${request.status}: signRule`);
+        assert.equal(deepKeys(payload).has('selfSign'), false);
+        assertNoSignLeak(payload, `planner ${request.status}`);
+      }
+      if (request.answeredAt) {
+        assert.equal(precheck.calls.length, 1, 'ตัวตรวจของปุ่มออกเอกสาร (GET ใบประเมินเท่านั้น)');
+        assert.equal(precheck.calls[0].signatureRule, 'required');
+        assert.deepEqual(onSurvey.issue.blockers.filter((b) => b.sign), [{ kind: 'content', text: LINE_ASSESSOR, sign: true }]);
+      } else {
+        assert.equal(precheck.calls.length, 0, 'ใบที่ยังไม่ตอบ = ไม่มีตัวตรวจก่อนส่งผลให้เขา');
+        assert.equal(onSurvey.issue, null);
       }
     }
   });
@@ -1140,9 +1198,10 @@ test('⭐ งวด S3 §2.6: ใบจากแบบล้วนที่ผ�
 test('🔴 หัวไฟล์ไม่ import ของหนัก — ตัวตรวจ/ตัวอ่านประกอบโหลดด้วย `await import()` · อ่านอย่างเดียว · ทุก query มี limit', () => {
   const src = code(ROWS);
   const staticImports = [...src.matchAll(STATIC_IMPORT)].map((m) => m[1]).sort();
-  /* `./surveyReportSignFlag` = ตัวอ่านสวิตช์ลายเซ็นจริง (PR-SIG §1 — ไฟล์เล็ก ไม่มี import อื่นนอกจาก `server-only`) */
+  /* `./surveyReportSignFlag` = ตัวอ่านสวิตช์ลายเซ็นจริง (PR-SIG §1 — ไฟล์เล็ก ไม่มี import อื่นนอกจาก `server-only`)
+     `@/lib/permissions` = `canSendSurveyResult` (คีย์ `send`/`signRule` เฉพาะคนที่ส่งผลได้ · มติเจ้าของ 19/10) — อยู่บนสายของ `./surveyAccess` อยู่แล้ว */
   assert.deepEqual(staticImports, [
-    './surveyAccess', './surveyReportSignFlag', './surveyReportState', '@/lib/businessDate', '@/lib/requests/access',
+    './surveyAccess', './surveyReportSignFlag', './surveyReportState', '@/lib/businessDate', '@/lib/permissions', '@/lib/requests/access',
   ].sort());
 
   /* ของที่โหลดตอนต้องตรวจจริงเท่านั้น — รายชื่อเป๊ะ: เพิ่มตัวใหม่ต้องตั้งใจ (และต้องไม่ใช่ sharp/chromium/ขั้นออกเลข) */

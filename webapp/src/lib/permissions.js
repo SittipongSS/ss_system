@@ -337,6 +337,19 @@ export const canSendSurveyResult = (user) => user?.role === 'admin'
   || SERVICE_HEAD_ROLES.includes(normalizeRole(user?.role))
   || isServiceOverseer(normalizeRole(user?.role));
 
+/* ⭐ **ตำแหน่งที่กด "ออกเอกสาร" ประเมินพื้นที่ได้นอกจากหัวหน้า** — มติเจ้าของ 19/10/2026
+   *"ให้ apisith planner ออกให้ด้วย"* ⇒ ทั้ง role `ts_planner` (วันนี้มีคนเดียว)
+   🔴 **ลิสต์ role ไม่ใช่ cap โดยตั้งใจ** — `SERVICE_HEAD_CAPS` สืบ cap ของ Planner ทั้งชุด · `SALES_HEAD_CAPS`
+     รับ cap ใหม่ของแอดมินไปเอง · AE Sup/AC Sup ผ่าน `canAnswerRequest` ทาง `isSuperuser` ⇒ cap ใหม่รั่วได้สามทาง */
+export const SURVEY_REPORT_ISSUER_ROLES = ['ts_planner'];
+
+/** ⭐ **กด "ออกเอกสาร" ประเมินพื้นที่ได้ไหม (ระดับตำแหน่ง)** — หัวหน้า (`canSendSurveyResult`) + `SURVEY_REPORT_ISSUER_ROLES`
+ *  🔴 **ไม่ใช่สิทธิ์ส่งผล/ดึงผลกลับ** — สองปุ่มนั้นยังเป็นของหัวหน้าเท่านั้น (`canSendSurveyResult` ไม่เปลี่ยน · มติ 19/10)
+ *  ⚠️ **ไม่ใช่ด่านจริง** — ด่านรายใบคือ `surveyDocAccess(...).issue` ซึ่งถาม `canAnswerRequest` (ฝ่ายของใบ) ซ้อนอีกชั้น
+ *  ⚠️ ลายเซ็นบนกระดาษยังเป็นผู้ประเมิน + หัวหน้าที่ส่งผล (`answeredById`) — คนกดถูกจดเป็น `issuedBy` เท่านั้น */
+export const canIssueSurveyReport = (user) => canSendSurveyResult(user)
+  || SURVEY_REPORT_ISSUER_ROLES.includes(normalizeRole(user?.role));
+
 /** ⭐ **เพิ่ม · แก้ · ลบ ขนาดแพ็คเกจในทะเบียน** (`/database/package-sizes` · mig 0398 · มติเจ้าของ 01/10)
  *  = คนชุดเดียวกับที่เคาะขนาดบนผลประเมิน: แอดมิน + หัวหน้าฝ่ายบริการ (+ CD/CM)
  *  🔴 **ไม่ใช่ `canEditService`** — Planner ผ่านตัวนั้น และช่าง Operation ผ่าน proxy ของ `/api/service` ด้วย `service:work`

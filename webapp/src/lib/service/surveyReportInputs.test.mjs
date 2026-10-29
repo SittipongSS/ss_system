@@ -1095,13 +1095,22 @@ test('ผู้ส่งผลคือคนที่กดอยู่ (`actor
   const self = await loadSigned(sent, { actor: { id: 'U-head', role: 'ts_manager', department: 'TS' } });
   assert.equal(self.inputs.signerEligible.approver, true);
   assert.deepEqual(sent.db.authLog, ['U-lead']);
-  // เซสชันของคนที่ไม่มีสิทธิ์ส่งผล (ไม่ควรมาถึงได้ — ปุ่มถูกกันด้วยสิทธิ์เดียวกัน) ก็ยังตัดสินตามจริง
+  /* เซสชันของคนที่ไม่มีสิทธิ์ส่งผล **และเป็นผู้ตอบของใบเอง** ก็ยังตัดสินตามจริง (ผู้วางคิวกด "ออกเอกสาร" ได้ตั้งแต่มติเจ้าของ 19/10/2026
+     แต่ส่งผลไม่ได้ ⇒ ใบที่ `answeredById` เป็นผู้วางคิวมีได้แค่จากปุ่มทั่วไปก่อน 24/09 — ที่นั่งนั้นนั่งไม่ได้ ทางออกคือดึงผลกลับ) */
   const weak = signWorld(['U-lead', 'U-head']);
   assert.equal((await loadSigned(weak, { actor: { id: 'U-head', role: 'ts_planner', department: 'TS' } })).inputs.signerEligible.approver, false);
   // คนกดเป็นหัวหน้าอีกคน (ไม่ใช่ผู้ส่งผลของใบ) = อ่านบัญชีของผู้ส่งผลจริง
   const third = signWorld(['U-lead', 'U-head']);
   assert.equal((await loadSigned(third, { actor: HEAD })).inputs.signerEligible.approver, true);
   assert.deepEqual(third.db.authLog, ['U-lead', 'U-head']);
+  /* ⭐ คนกดเป็นผู้วางคิว (มติเจ้าของ 19/10/2026 — ไม่ใช่ผู้ส่งผลของใบ) = อ่านบัญชีของผู้ส่งผลจริง เหมือนหัวหน้าคนที่สาม ·
+     ที่นั่งของผู้ตรวจสอบและอนุมัติยังเป็นของผู้ส่งผล — สิทธิ์ของคนกดไม่ไหลไปที่ที่นั่ง */
+  const planner = signWorld(['U-lead', 'U-head', 'U-plan']);
+  const byPlanner = await loadSigned(planner, { actor: { id: 'U-plan', name: 'Queue Planner', role: 'ts_planner', department: 'TS' } });
+  assert.equal(byPlanner.inputs.signerEligible.approver, true, 'ผู้ส่งผลบนแถว (ts_manager) นั่งได้ แม้คนกดส่งผลไม่ได้');
+  assert.deepEqual(planner.db.authLog, ['U-lead', 'U-head'], 'อ่านบัญชีของผู้ส่งผล ไม่ใช่ของคนกด');
+  assert.deepEqual(surveyReportSignerVersions(byPlanner.inputs).map((row) => row.userId).sort(), ['U-head', 'U-lead'],
+    'ลายเซ็นของผู้วางคิวไม่ถูกเตรียม');
 
   // ตัวตรวจ (GET ใบประเมิน · ปุ่ม "ออกเอกสาร") ส่งคนดูต่อให้ตัวโหลดเอง — หัวหน้าที่เปิดใบที่ตัวเองส่งไม่ทำให้เกิดคำสั่งอ่านบัญชีของตัวเอง
   const mine = signWorld(['U-lead', 'U-head']);

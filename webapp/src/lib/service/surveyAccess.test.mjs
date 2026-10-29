@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ROLES } from '../permissions.js';
+import { ROLES, canIssueSurveyReport, canSendSurveyResult } from '../permissions.js';
 import {
   canOpenRequestPage, canOpenSurveyDocument, canOpenSurveySheet, surveyDocAccess, surveyDocVersion, surveyReadError,
 } from './surveyAccess.js';
@@ -69,7 +69,9 @@ test('🔴 ลิงก์ไปหน้าคำร้องต้องถา
 /* ══ เอกสารประเมิน (SU-…) — ตารางสิทธิ์ของ PR-2 §7 ══════════════════════════════════════════
    ⭐ ตารางเขียนเป็นตัวอักษรทีละตำแหน่ง **ไม่คำนวณจาก helper ตัวเดียวกับที่กำลังเทสต์** — เพิ่มตำแหน่งใหม่ใน `ROLES`
      เมื่อไร เทสต์แรกตกจนกว่าจะมีคนตัดสินว่าตำแหน่งนั้นได้เอกสารฉบับไหน
-   C = ฉบับลูกค้า · I = ฉบับภายใน · S = ออกเอกสาร (issue) · D = ฉบับร่าง · H = รายการฉบับเก่า */
+   C = ฉบับลูกค้า · I = ฉบับภายใน · S = ออกเอกสาร (issue) · D = ฉบับร่าง · H = รายการฉบับเก่า
+   ⭐ มติเจ้าของ 19/10/2026: ผู้วางคิว (`ts_planner`) ออกเอกสารได้ + สองฉบับ + รายการ Rev · ร่างได้เฉพาะใบที่ส่งผลแล้ว
+     (ใบในตารางนี้ยังไม่ตอบ ⇒ `CISH` ไม่มี D — ใบที่ตอบแล้วดูเทสต์ของ Planner ข้างล่าง) */
 const DOC_KEYS = { C: 'customer', I: 'internal', S: 'issue', D: 'draft', H: 'history' };
 const flags = (letters) => Object.fromEntries(Object.entries(DOC_KEYS).map(([k, key]) => [key, letters.includes(k)]));
 
@@ -88,7 +90,7 @@ const DOC_MATRIX = {
   secretary: '', marketing: '', ra: '',
   rd: '', rd_perfumer: '', rd_chemist: '', rd_coordinator: '', rd_supervisor: '',
   finance: '', pc: '', pd: '', wh: '', qc: '',
-  ts: '', ts_planner: '',
+  ts: '', ts_planner: 'CISH',
   viewer: '',
 };
 // ตำแหน่งที่เปิดระบบคำร้องไม่ได้เลย ⇒ เป็นผู้ขอของใบไม่ได้ และตกด่านชั้นนอกของเอกสารทุกกรณี
@@ -139,10 +141,26 @@ test('🔴 ช่างหน้างานไม่ได้เอกสาร
   assert.deepEqual(surveyDocAccess({ ...tech, id: 'sa-1' }, docRequest), none);
 });
 
-test('🔴 Planner กับหัวหน้าฝ่ายขายผ่าน canAnswerRequest แต่ออกเอกสารไม่ได้ — ต้องเป็นหัวหน้าฝ่ายบริการด้วย', () => {
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ออกได้ · เปิดได้สองฉบับ + รายการ Rev ("ได้ทั้งสองฉบับ") ·
+   ร่างเฉพาะใบที่ส่งผลแล้ว (ร่างของใบที่ยังไม่ตอบพิมพ์คนดูเป็นผู้ตรวจสอบและอนุมัติ) · ส่งผล/ดึงผลกลับยังไม่ได้ */
+test('⭐ Planner ออกเอกสารได้ (มติเจ้าของ 19/10) แต่ส่งผลไม่ได้ · ร่างเฉพาะใบที่ส่งผลแล้ว · ฝ่ายอื่นไม่ได้อะไร', () => {
   const planner = { id: 'u-pl', role: 'ts_planner' };
   assert.equal(canOpenSurveyDocument(planner), true, 'ผ่านด่านชั้นนอก (ตอบคิวคำร้องของฝ่ายได้)');
-  assert.deepEqual(surveyDocAccess(planner, docRequest), flags(''));
+  assert.equal(canSendSurveyResult(planner), false, '🔴 ส่งผล/ดึงผลกลับยังเป็นของหัวหน้า');
+  assert.equal(canIssueSurveyReport(planner), true);
+  assert.deepEqual(surveyDocAccess(planner, docRequest), flags('CISH'), 'ใบที่ยังไม่ตอบ = ไม่มีร่าง');
+  const answered = { ...docRequest, answeredAt: '2026-10-19T03:00:00.000Z', answeredById: 'u-head' };
+  assert.deepEqual(surveyDocAccess(planner, answered), flags('CISDH'), 'ใบที่ส่งผลแล้ว = ร่างได้ด้วย');
+  // ตำแหน่งเป็นด่านระดับตำแหน่ง — ด่านรายใบยังถามว่าตอบใบของฝ่ายนี้ได้ไหม
+  assert.deepEqual(surveyDocAccess({ ...planner, department: 'SALES' }, answered), flags(''), 'Planner ที่อยู่ฝ่ายอื่น');
+  assert.deepEqual(surveyDocAccess(planner, { ...answered, dept: 'RD' }), flags(''), 'ใบของฝ่ายอื่น');
+  // 🔴 ลิสต์ role ไม่ใช่ cap — ตำแหน่งอื่นที่ถือ cap ของ Planner (หัวหน้าฝ่าย TS สืบทั้งชุด) ไม่ได้ "ออก" มาทางนี้เพิ่ม · ช่างยังไม่ได้
+  assert.equal(canIssueSurveyReport({ role: 'ts' }), false);
+  assert.equal(canIssueSurveyReport({ role: 'ae_supervisor' }), false);
+  assert.equal(canIssueSurveyReport({ role: 'executive' }), false);
+});
+
+test('🔴 หัวหน้าฝ่ายขายผ่าน canAnswerRequest แต่ออกเอกสารไม่ได้ — ต้องเป็นตำแหน่งที่ออกได้ (หัวหน้าฝ่ายบริการ · Planner) ด้วย', () => {
   for (const role of ['ae_supervisor', 'ac_supervisor']) {
     const got = surveyDocAccess(stranger(role), docRequest);
     assert.equal(got.issue, false, role);
@@ -166,21 +184,29 @@ test('ผู้บริหารอ่านได้สองฉบับ แ�
   assert.doesNotMatch(src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''), /isReadOnlyObserver\(/);
 });
 
-test('ออกเอกสาร/ฉบับร่าง = คู่เดียวกับปุ่มส่งผล: หัวหน้า + ตอบใบของฝ่ายนั้นได้', () => {
+test('ออกเอกสาร/ฉบับร่าง = ตำแหน่งที่ออกได้ + ตอบใบของฝ่ายนั้นได้ · ร่างของคนที่ไม่ใช่หัวหน้าเฉพาะใบที่ส่งผลแล้ว', () => {
   const otherDept = { ...docRequest, dept: 'RD' };
   // หัวหน้าฝ่าย TS กับใบของฝ่ายอื่น: อ่านได้ตามตำแหน่ง แต่ออกเอกสารไม่ได้
   for (const role of ['ts_manager', 'ts_audit', 'ts_senior']) {
     assert.deepEqual(surveyDocAccess(stranger(role), otherDept), flags('CIH'), role);
   }
+  // Planner กับใบของฝ่ายอื่น: ไม่ได้อะไรเลย (สิทธิ์เอกสารของเขามาจากการออกได้ทางเดียว)
+  assert.deepEqual(surveyDocAccess(stranger('ts_planner'), otherDept), flags(''));
   // แอดมิน · CD · CM ตอบได้ทุกฝ่าย (superuser)
   for (const role of ['admin', 'commercial_director', 'commercial_manager']) {
     assert.deepEqual(surveyDocAccess(stranger(role), otherDept), flags('CISDH'), role);
   }
-  // draft เดินตาม issue เสมอ
+  /* draft ⇒ issue (ไม่ใช่ draft === issue อีกต่อไป · มติเจ้าของ 19/10) · issue ⇒ สองฉบับ + รายการ Rev
+     ใบที่ส่งผลแล้ว: ร่างเดินตาม issue ทุกตำแหน่ง · ใบที่ยังไม่ตอบ: ร่างเฉพาะคนที่ส่งผลได้ */
+  const answered = { ...docRequest, answeredAt: '2026-10-19T03:00:00.000Z' };
   for (const role of ROLES) {
     const got = surveyDocAccess(stranger(role), docRequest);
-    assert.equal(got.draft, got.issue, role);
+    if (got.draft) assert.equal(got.issue, true, role);
     if (got.issue) assert.equal(got.history && got.internal && got.customer, true, role);
+    assert.equal(got.draft, got.issue && canSendSurveyResult(stranger(role)), `${role} ยังไม่ตอบ`);
+    const after = surveyDocAccess(stranger(role), answered);
+    assert.equal(after.draft, after.issue, `${role} ส่งผลแล้ว`);
+    if (after.issue) assert.equal(after.history && after.internal && after.customer, true, `${role} ส่งผลแล้ว`);
   }
 });
 

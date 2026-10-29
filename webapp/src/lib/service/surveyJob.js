@@ -617,7 +617,8 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
  *                    · แถวพื้นที่พก `method` (mig 0408) — ใบที่ทุกพื้นที่ประเมินจากแบบ = "งานโต๊ะ": แถบตอนนี้ ชื่อขั้น
  *                      และช่องวันเป็นชุดของงานโต๊ะ · `surveyConfirm` ของใบ = ตัวเลือก "ต้องยืนยันหน้างานไหม" (`zones.drawingBanner`)
  * @param today       วันไทยวันนี้ `YYYY-MM-DD` (เปลือกจับใน effect) — `null` = ยังไม่รู้ ไม่นับเลยกำหนด
- * @param viewer      `{ canDecide, canWork, isOpener, isRequesterSide }` — ส่งผลได้ไหม · เปิดใบประเมินได้ไหม · เป็นคนเปิดใบเองไหม ·
+ * @param viewer      `{ canDecide, canIssue, canWork, isOpener, isRequesterSide }` — ส่งผลได้ไหม · ออกเอกสารประเมินได้ไหม (หัวหน้า +
+ *                    ผู้วางคิว · มติเจ้าของ 19/10/2026 — ใช้กับบล็อกเอกสารเท่านั้น) · เปิดใบประเมินได้ไหม · เป็นคนเปิดใบเองไหม ·
  *                    อยู่ฝั่งผู้ขอไหม (`_mine` ของ GET คำร้อง)
  * @param people      ทะเบียนคน `[{ id, name }]` (ชื่อผู้ช่วยบนนัด) · `peopleLoading` = ยังโหลดไม่เสร็จ
  * @param refreshStalled เปลือกอ่านใบเบื้องหลังพังติดกันจนเลิกตรวจซ้ำเองแล้ว (`refreshStalled` ของ `app/requests/[id]`)
@@ -1228,8 +1229,9 @@ export function surveyJobView({
     stage,
     status: STAGE_BADGE[stage] || STAGE_BADGE.queue,
     control,
-    /* ⭐ บล็อก "เอกสารประเมินพื้นที่" ของหน้าคำร้อง (PR-3 · สเปก §5.1) — `null` = ไม่มีบล็อก (ไม่มีสิทธิ์ · ยังไม่ส่งผล · Planner)
-       ปุ่มมาจากธง `surveyDocument.access` ของ server · ธงของคนดูที่ส่งต่อไปใช้เลือก **ข้อความ** เท่านั้น */
+    /* ⭐ บล็อก "เอกสารประเมินพื้นที่" ของหน้าคำร้อง (PR-3 · สเปก §5.1) — `null` = ไม่มีบล็อก (ไม่มีสิทธิ์ · ยังไม่ส่งผล)
+       ปุ่มมาจากธง `surveyDocument.access` ของ server · ธงของคนดูที่ส่งต่อไปใช้เลือก **ข้อความ** เท่านั้น
+       ⭐ `canIssue` (หัวหน้า + ผู้วางคิว · มติเจ้าของ 19/10/2026) แยก "คนออกที่ไม่ใช่หัวหน้า" ออกจากฝ่ายขาย — ทางออกของเขาผ่านหัวหน้า */
     document: surveyRequestDocumentView({
       surveyDocument: request.surveyDocument,
       request,
@@ -1237,6 +1239,7 @@ export function surveyJobView({
         canOpenSheet: viewer.canWork === true,
         isRequesterSide: viewer.isRequesterSide === true,
         canDecide: viewer.canDecide === true,
+        canIssue: viewer.canIssue === true,
       },
       pollStopped: refreshStalled === true,
       /* ใบที่มีพื้นที่จากแบบได้บล็อกเดียวกับใบลงหน้างาน (งวด S3 ถอดข้อพักเอกสาร) — ไม่มีอาร์กิวเมนต์ของวิธีประเมิน */

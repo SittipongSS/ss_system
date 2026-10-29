@@ -32,6 +32,7 @@
 import 'server-only';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
+import { canSendSurveyResult } from '@/lib/permissions';
 import { surveyPackageSizeSendError } from './packageSizes';
 import { surveySendError } from './survey';
 import { renderSurveyReportHTML } from './surveyReportDocument';
@@ -64,13 +65,25 @@ export const SURVEY_REPORT_ISSUE_CODES = Object.freeze([
 /* ข้อความไทยของเหตุที่เกิดในขั้นนี้ — เหตุของ RPC อยู่ใน `SURVEY_REPORT_REASONS` (ที่เดียวกับที่การ์ดควบคุมใช้) */
 const READ_FAILED = 'อ่านข้อมูลเอกสารของใบนี้ไม่สำเร็จ — กดออกเอกสารอีกครั้ง';
 const INTERNAL_FAILED = 'ออกเอกสารไม่สำเร็จ — กดออกเอกสารอีกครั้ง ถ้ายังไม่ได้ให้แจ้งผู้ดูแลระบบ';
-const RECALL_HINT = 'ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่';
+/* ทางออกของเหตุที่ต้องดึงผลกลับ — คนกดที่ไม่ใช่หัวหน้า (ผู้วางคิว · มติเจ้าของ 19/10/2026) ดึงผลกลับเองไม่ได้ ⇒ ได้รูปที่ส่งเขาไปหาหัวหน้า
+   🔴 ห้ามบอกคนที่ดึงกลับไม่ได้ให้ "ดึงผลกลับ" — ปุ่มนั้นไม่มีบนจอของเขา (กติกา ui-visibility: ไม่มีสิทธิ์ = ไม่โชว์) ประโยคจึงต้องชี้คนที่กดได้ */
+const RECALL_HINT = Object.freeze({
+  head: 'ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่',
+  viaHead: 'ถ้าต้องแก้ แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่',
+});
 const RETRY_HINT = 'แก้แล้วกดออกเอกสารอีกครั้ง';
 /* ผู้ลงนามยังไม่มีลายเซ็น (เหตุชนิด `content` ที่พก `sign`) — ทางออกคือเจ้าตัวเพิ่มลายเซ็น ไม่ใช่ดึงผลกลับ */
 const SIGN_ACCOUNT = `“${SURVEY_SIGN_ACCOUNT.label}”`;
 const SIGN_HINT = `ให้ผู้ที่มีชื่อในรายการเพิ่มลายเซ็นที่ ${SIGN_ACCOUNT} แล้วกดออกเอกสารอีกครั้ง`;
 const SIGN_NO_RECALL = 'ลายเซ็นเพิ่มได้เลยโดยไม่ต้องดึงผลกลับ';
 const SIGN_FILE_HINT = `ให้เจ้าของลายเซ็นอัปโหลดลายเซ็นใหม่ที่ ${SIGN_ACCOUNT} แล้วกดออกเอกสารอีกครั้ง`;
+/* รูปที่ถอดรหัสไม่ได้/หายจาก Drive — หางของประโยค (ทางออกเดียวคือดึงผลกลับ · คู่หัวหน้า/ไม่ใช่หัวหน้าเหมือน `RECALL_HINT`) */
+const UNDECODABLE_HINT = Object.freeze({
+  head: 'ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง',
+  viaHead: 'แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง',
+});
+/** คำแนะนำชุดไหน — `viaHead` = คนกดส่งผล/ดึงผลกลับเองไม่ได้ (ผู้วางคิว) ⇒ ทางออกต้องผ่านหัวหน้า */
+const hintKey = (viaHead) => (viaHead === true ? 'viaHead' : 'head');
 
 /* เหตุถาวรของรูป (`SURVEY_IMAGE_FAILURE` ของ surveyReportImages) → คำที่หัวหน้าอ่านออก
    ⚠️ เขียนเป็นสตริงตรง ๆ ไม่ import ค่าคงที่ — โมดูลรูปโหลดแบบ lazy เท่านั้น · เทสต์ล็อกว่าครบทุกเหตุถาวรและ `timeout` ตรงกัน */
@@ -125,8 +138,9 @@ const failed = (code, reasons, { reason = null, retry = false } = {}) => {
       `content` ที่ **ไม่** พก `sign` เท่านั้น
         มีข้อ content ที่ไม่ใช่ลายเซ็น              ทางออกเดิม (ดึงผลกลับ) · `retry: false` · มีข้อลายเซ็นปนอยู่ = นำด้วย "ลายเซ็นเพิ่มได้เลย…"
         ไม่มีข้อแบบนั้น แต่มีข้อลายเซ็นอย่างน้อยหนึ่ง  ชวนเพิ่มลายเซ็นที่ “บัญชีของฉัน” แล้วกดซ้ำ · `retry: true`
-      ธง `sign` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อลายเซ็นกลายเป็นเหตุให้ดึงผลกลับ */
-function blocked(issues) {
+      ธง `sign` อ่านจากทุกแถวก่อนยุบข้อความซ้ำ — แถวซ้ำที่ไม่มีธงต้องไม่ทำให้ข้อลายเซ็นกลายเป็นเหตุให้ดึงผลกลับ
+   ⭐ `viaHead` (คนกดไม่ใช่หัวหน้า · มติเจ้าของ 19/10) เปลี่ยนแค่ประโยคทางออกของการดึงผลกลับ — รหัส · เหตุ · `retry` เท่าเดิมทุกตัว */
+function blocked(issues, { viaHead = false } = {}) {
   const all = list(issues).filter((i) => i?.text);
   const seen = new Set();
   const rows = all.filter((i) => !seen.has(i.text) && seen.add(i.text));
@@ -136,7 +150,9 @@ function blocked(issues) {
   const texts = rows.map((i) => i.text);
   const lead = `ออกเอกสารไม่ได้ — ${texts.join(' | ')}`;
   if (content) {
-    return failed('blocked', texts, { reason: `${lead} · ${sign ? `${SIGN_NO_RECALL} · ` : ''}${RECALL_HINT}`, retry: false });
+    return failed('blocked', texts, {
+      reason: `${lead} · ${sign ? `${SIGN_NO_RECALL} · ` : ''}${RECALL_HINT[hintKey(viaHead)]}`, retry: false,
+    });
   }
   return failed('blocked', texts, { reason: `${lead} · ${sign ? SIGN_HINT : RETRY_HINT}`, retry: true });
 }
@@ -228,16 +244,16 @@ function preparedMap(prepared) {
 
 /* ── I4 ผลของการเตรียมรูป → เหตุ ─────────────────────────────────────────────── */
 
-function imageFailure(failedFiles) {
+function imageFailure(failedFiles, { viaHead = false } = {}) {
   const rows = list(failedFiles).filter(Boolean);
   const name = (f) => String(f.fileName || f.attId || 'ไฟล์ไม่มีชื่อ');
   const permanent = rows.filter((f) => f.permanent === true);
   if (permanent.length) {
     /* ตัวไฟล์เองคือปัญหา (ถอดรหัสไม่ได้ · หายจาก Drive) — ใบล็อกแล้ว หัวหน้าเปลี่ยนไฟล์ไม่ได้ ⇒ ทางออกเดียวคือดึงผลกลับ
-       กดออกเอกสารซ้ำจะล้มที่เดิม (§11 แถว 4) */
+       กดออกเอกสารซ้ำจะล้มที่เดิม (§11 แถว 4) · คนกดที่ไม่ใช่หัวหน้าได้หางที่ส่งเขาไปหาหัวหน้า (`viaHead`) */
     return failed('undecodable', permanent.map((f) => `${name(f)} — ${IMAGE_FAILURE_LABELS[f.reason] || 'เปิดไฟล์ไม่ได้'}`), {
       reason: `รูป ${permanent.length} รูปเปิดไม่ได้ (ชื่อไฟล์ ${permanent.map(name).join(' · ')}) — ยังไม่ได้ออกเอกสาร · `
-        + 'ดึงผลกลับ อัปรูปใหม่เป็น JPG แล้วส่งผลอีกครั้ง',
+        + UNDECODABLE_HINT[hintKey(viaHead)],
       retry: false,
     });
   }
@@ -349,11 +365,17 @@ async function conflictOutcome(supabase, { requestId, answeredAt, warnings, labe
 async function run(supabase, opts, ctx) {
   const {
     requestId = null, user = null, closedVisit = null, prepared = null, deadline = null, measure = null,
-    storeAllowed, now, newId, prepareImages, imageOptions, render,
+    storeAllowed, now, newId, prepareImages, imageOptions, render, paginate,
     signatures = null, signatureRule, prepareSignatures, signatureOptions, drawingMethodEnabled = false,
   } = opts;
   const renderHtml = typeof render === 'function' ? render : renderSurveyReportHTML;
+  /* ตัวจัดหน้าของ I3 กับ I5 เป็นตัวเดียวกันเสมอ — จุดเสียบนี้มีไว้ให้เทสต์ไปถึงด่านหน้าล้นซ้ำของ I5 (ภาพนิ่งที่ตรึงพร้อมรูปจริง)
+     ซึ่งตัวจัดหน้าของวันนี้ (นับช่องรูป ไม่ดูขนาดรูป) ไม่มีทางล้นต่างจาก I3 */
+  const layoutOf = typeof paginate === 'function' ? paginate : paginateSurveyReport;
   const { via } = ctx;
+  /* คนกดส่งผล/ดึงผลกลับเองได้ไหม — ไม่ได้ (ผู้วางคิวกด "ออกเอกสาร" · มติเจ้าของ 19/10/2026) = ประโยคทางออกที่ส่งไปหาหัวหน้า
+     ⚠️ ใช้กับคำแนะนำเท่านั้น — สิทธิ์กดออกตัดสินที่ route (`surveyDocAccess.issue`) ไฟล์นี้ไม่ตัดสินสิทธิ์ */
+  const viaHead = !canSendSurveyResult(user);
   /* โมดูลรูป (sharp · Drive) โหลดแบบ lazy **จุดเดียว** — ขั้นรูป (I4) กับขั้นลายเซ็น (I4b) ใช้ตัวเดียวกัน */
   let imagesLib = null;
   const loadImagesLib = async () => {
@@ -434,14 +456,14 @@ async function run(supabase, opts, ctx) {
   const checked = buildSurveyReportSnapshot(inputs, { mode: 'check' });
   if (checked.snapshot) {
     for (const [version, name] of VERSIONS) {
-      const layout = paginateSurveyReport(surveyReportView(checked.snapshot, { version }));
+      const layout = layoutOf(surveyReportView(checked.snapshot, { version }));
       for (const line of surveyReportOverflowErrors(layout)) issues.push({ kind: 'content', text: `${name}: ${line}` });
     }
   } else if (!issues.length) {
     // ตัวสร้างปฏิเสธด้วยเหตุที่ด่านข้างบนไม่ได้บอก — ไม่ควรเกิด (ใช้ตัวตรวจเดียวกัน) แต่ต้องไม่เดินต่อไปดึงรูป
     issues.push(...list(checked.errors).map((text) => ({ kind: 'system', text })));
   }
-  if (issues.length) return blocked(issues);
+  if (issues.length) return blocked(issues, { viaHead });
 
   /* ── I4 รูป: ใช้ของรอบตรวจก่อนส่งผล เติมเฉพาะไฟล์ที่ยังไม่มี ───────────────────────────
      ⚠️ ไฟล์ที่อัประหว่างรอบตรวจกับล็อก หรือใบเก่าที่ไม่เคยผ่านรอบตรวจ = เตรียมที่นี่ · `have` กันดึงซ้ำ */
@@ -464,7 +486,7 @@ async function run(supabase, opts, ctx) {
       reason: 'เตรียมรูปของเอกสารไม่สำเร็จ — ยังไม่ได้ออกเอกสาร กดอีกครั้ง', retry: true,
     });
   }
-  if (list(images.failed).length) return imageFailure(images.failed);
+  if (list(images.failed).length) return imageFailure(images.failed, { viaHead });
 
   /* ── I4b ลายเซ็นของผู้ลงนาม (กติกาลายเซ็นจริงเปิดเท่านั้น) — หลังรูป ก่อนภาพนิ่ง ─────────────────────
      ผ่าน I3 มาแล้ว = ทุกที่นั่งที่พิมพ์ชื่อมีลายเซ็น ⇒ ลิสต์นี้ไม่ว่าง · ฉบับที่เส้นส่งผลเตรียมไว้แล้ว (`have`) ไม่ถูกอ่านซ้ำ
@@ -513,12 +535,12 @@ async function run(supabase, opts, ctx) {
   const overflow = [];
   for (const [version, name] of VERSIONS) {
     const view = surveyReportView(built.snapshot, { version });
-    const layout = paginateSurveyReport(view);
+    const layout = layoutOf(view);
     overflow.push(...surveyReportOverflowErrors(layout).map((line) => ({ kind: 'content', text: `${name}: ${line}` })));
     // เลขที่กับวันที่ออกยังไม่มี — อยู่บรรทัดเดียวในหัวกระดาษและท้ายกระดาษ ไม่เปลี่ยนความสูงของอะไร
     paper[version] = { view, layout, html: renderHtml({ view, layout, docNo: null }) };
   }
-  if (overflow.length) return blocked(overflow);
+  if (overflow.length) return blocked(overflow, { viaHead });
 
   /* 🔴 ยามกันรั่วของฉบับลูกค้า — รูปจุดติดตั้ง · ชิ้นของฉบับภายใน (markup ของตัวเรนเดอร์) · จำนวนแผ่น · ตรวจซ้ำอีกครั้งก่อนตรึง
      (ขั้นกระดาษ P4b) · ยามนี้ดู **ตัวเรนเดอร์** ไม่ดูข้อความที่คนพิมพ์: หมายเหตุที่เขียนว่า "ดูฉบับภายใน" ผ่านรอบตรวจก่อนส่งผลมาแล้ว
@@ -697,7 +719,8 @@ async function reportFailure(ctx, result) {
  *   `audit` (ไม่ส่ง = `recordAudit`) · `now` (`() => Date`) · `newId` · `prepareImages` (แทนตัวเตรียมรูป) ·
  *   `imageOptions` (ตัวเลือกเสริมที่ส่งต่อให้ตัวเตรียมรูป เช่น `getFileStream`) ·
  *   `prepareSignatures` (แทนตัวเตรียมลายเซ็น) · `signatureOptions` (ตัวเลือกเสริมของตัวเตรียมลายเซ็น เช่น `log`) ·
- *   `render` (แทน `renderSurveyReportHTML` ของเรนเดอร์แห้งที่ I5 — เทสต์ใช้จำลองตัวเรนเดอร์ที่พิมพ์ของภายในลงฉบับลูกค้า)
+ *   `render` (แทน `renderSurveyReportHTML` ของเรนเดอร์แห้งที่ I5 — เทสต์ใช้จำลองตัวเรนเดอร์ที่พิมพ์ของภายในลงฉบับลูกค้า) ·
+ *   `paginate` (แทน `paginateSurveyReport` ของทั้ง I3 และ I5 — เทสต์ใช้จำลองหน้าที่ล้นเฉพาะภาพนิ่งที่ตรึงพร้อมรูปจริง)
  *
  * @returns คีย์ครบทุกครั้ง: `{ state, code, docNo, rev, reused, reasons, reason, retry, warnings }`
  *   · `state: 'issued'` — `docNo` · `rev` · `reused` (`true` = มีฉบับที่ใช้อยู่แล้ว ไม่ได้ออกเลขใหม่) · `warnings` · `code: null`
