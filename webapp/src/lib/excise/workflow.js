@@ -127,6 +127,51 @@ export function canTransitionFiling(from, to, { exempt = false } = {}) {
   return rule.from.includes(from) || (exempt && (rule.exemptFrom || []).includes(from));
 }
 
+/* ── ทางเดินสถานะของทะเบียน: ตารางเดียวของ PATCH /api/excise-registrations/[id] ─────────
+   🐞 ตรวจระบบ 2026-10-26 (ข้อ 5): route เขียน `status` ตาม body ตรง ๆ ให้ทุกคนที่ถือ ra:approve ⇒
+   อนุมัติร่างที่ยังไม่ยื่นได้ (ข้ามด่านเอกสารบังคับ) · ยื่นแทนฝ่ายขายโดยไม่ผ่านด่านเอกสาร · ตีกลับใบที่ยังไม่ยื่น ·
+   ตั้งค่าที่ไม่ใช่สถานะ · เลขอนุมัติบังคับแค่ใน ApproveDialog — ยิง API ตรงอนุมัติได้โดยไม่มีเลข
+   ⇒ รูปเดียวกับ FILING_TRANSITIONS: ทุกปลายทางประกาศ "มาจากไหน · ใครทำ · ต้องมีอะไร" ที่นี่ที่เดียว
+     by  SA = ฝ่ายขาย (products:edit) · RA = ฝ่าย RA (ra:approve)
+   ⚠️ อนุมัติแล้ว → ร่าง (ปลดอนุมัติ) ไม่อยู่ในตารางนี้ — route แยกเส้นของมันก่อนถึงตาราง (RA + เหตุผล + แจ้งเตือน)
+   ⚠️ ยื่น (`pending_legal`) ผ่านตารางแล้วยังต้องผ่านด่านเอกสารบังคับใน route */
+export const REGISTRATION_TRANSITIONS = {
+  pending_legal: { by: "SA", from: ["draft", "rejected"] },
+  approved: { by: "RA", from: ["pending_legal"], requires: [["approvalNumber", "เลขที่อนุมัติ"]] },
+  rejected: { by: "RA", from: ["pending_legal"], requires: [["rejectionReason", "เหตุผลที่ตีกลับ"]] },
+};
+
+/**
+ * ตัดสินการเปลี่ยนสถานะทะเบียนหนึ่งครั้ง — คืน `{ status, error }` เมื่อไม่ผ่าน หรือ null เมื่อผ่าน
+ * @param caps    `{ sales, ra }` — ถือ products:edit / ra:approve ไหม (แอดมินถือทั้งคู่)
+ * @param fields  ค่าหลังรวมของที่ส่งมากับที่เก็บไว้ `{ approvalNumber, rejectionReason }`
+ */
+export function registrationTransitionError({ from, to, caps = {}, fields = {} } = {}) {
+  const rule = REGISTRATION_TRANSITIONS[to];
+  const label = (key) => statusMeta(key).label;
+  if (!rule) return { status: 400, error: `เปลี่ยนสถานะทะเบียนเป็น "${label(to)}" ด้วยทางนี้ไม่ได้` };
+  const allowedBy = rule.by === "SA" ? caps.sales : caps.ra;
+  if (!allowedBy) return { status: 403, error: "ไม่อนุญาตให้เปลี่ยนสถานะนี้" };
+  if (!rule.from.includes(from)) {
+    return {
+      status: 400,
+      error: `เปลี่ยนเป็น "${label(to)}" จาก "${label(from)}" ไม่ได้ — ต้องมาจาก ${rule.from.map((key) => `"${label(key)}"`).join(" หรือ ")}`,
+    };
+  }
+  const missing = (rule.requires || []).filter(([key]) => !filled(fields[key])).map(([, name]) => name);
+  if (missing.length) return { status: 400, error: `กรุณาระบุ${missing.join(" และ ")}` };
+  return null;
+}
+
+/* ── สินค้า/ลูกค้าของทะเบียนแก้ได้เฉพาะก่อนยื่น ─────────────────────────────────────
+   🐞 ตรวจระบบ 2026-10-26 (ข้อ 6): ฝ่ายขายเปลี่ยน FG ได้ระหว่างฝ่าย RA ตรวจ — สถานะไม่ถอย และฉลาก/Artwork
+   ของ FG ตัวเดิมยังติดใบ ⇒ RA อาจอนุมัติ FG ตัวใหม่ด้วยเอกสารของตัวเก่า
+   ⇒ ชุดเดียวของปุ่ม "แก้ไข" บนหน้าทะเบียนและด่านใน PATCH — สองที่ต้องตรงกัน
+   (อนุมัติแล้วล็อกทั้งใบอยู่แล้ว — route ตอบข้อความ "ปลดอนุมัติก่อน" ของมันเอง) */
+export const REGISTRATION_LINK_EDITABLE_STATUSES = ["draft", "rejected"];
+export const REGISTRATION_LINK_LOCKED_MESSAGE =
+  "ทะเบียนนี้รอฝ่าย RA ตรวจอยู่ — เปลี่ยน FG หรือลูกค้าไม่ได้ · ถ้าเลือก FG ผิด ให้ฝ่าย RA ตีกลับก่อนแล้วค่อยแก้";
+
 // Map a role to its department code for stage-ownership + action gating.
 //   SA = sales lane, RA = regulatory lane, AD = admin (sees both, owns nothing)
 export function deptOf(role) {
