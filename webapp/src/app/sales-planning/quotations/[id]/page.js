@@ -72,6 +72,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import QuotationBillingRequests from "@/components/salesPlanning/QuotationBillingRequests";
 import { billingQuotationError } from "@/lib/requests/billingQuotations";
 import { EXCISE_STATUS_NOTE, isExciseOrder } from "@/lib/sales/historicalOrders";
+import { excisePreVatAmount } from "@/lib/excise/exciseSalesOrder";
 import { quotationBillingRequestHref } from "@/lib/sales/billingRequestHref";
 
 const money = (v) => fmtMoney(v);
@@ -1242,13 +1243,16 @@ export default function QuotationEditorPage() {
                   <span style={{ color: "var(--text-2)" }}>
                     {/* ⭐ ใบ "Actual รายงวด" (mig 0412) = นับเฉพาะงวดที่ AE Sup อนุมัติแล้ว (`salesOrderActual` ตัวกลาง) จากยอดเต็มของใบ
                         — select ของ route พก `actualMode` + cache สองช่องมาแล้ว · ใบทั้งใบ = ประโยคเดิม */}
-                    {salesOrderAmountKind(quote.salesOrder) === "actual"
-                      ? isInstallmentActualOrder(quote.salesOrder)
-                        ? `Actual รายงวด · นับแล้ว ${fmtMoney(salesOrderActual(quote.salesOrder))} จาก ${fmtMoney(quote.salesOrder.actualAmount)} ก่อน VAT`
-                        : `Actual ก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)}`
-                      : salesOrderAmountKind(quote.salesOrder) === "pending_approval"
-                        ? <><PendingApprovalAmount inline amount={quote.salesOrder.actualAmount} count={1} /> ก่อน VAT · ยังไม่นับ Actual</>
-                        : `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · ยังไม่นับ Actual`}
+                    {/* ใบค่าสรรพสามิต (PR4): Actual = 0 เสมอ (CHECK 0414) ⇒ ยอดก่อน VAT คิดจากยอดรวม − VAT */}
+                    {isExciseOrder(quote.salesOrder)
+                      ? `ยอดก่อน VAT ${fmtMoney(excisePreVatAmount(quote.salesOrder))} · ค่าสรรพสามิต ไม่นับ Actual`
+                      : salesOrderAmountKind(quote.salesOrder) === "actual"
+                        ? isInstallmentActualOrder(quote.salesOrder)
+                          ? `Actual รายงวด · นับแล้ว ${fmtMoney(salesOrderActual(quote.salesOrder))} จาก ${fmtMoney(quote.salesOrder.actualAmount)} ก่อน VAT`
+                          : `Actual ก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)}`
+                        : salesOrderAmountKind(quote.salesOrder) === "pending_approval"
+                          ? <><PendingApprovalAmount inline amount={quote.salesOrder.actualAmount} count={1} /> ก่อน VAT · ยังไม่นับ Actual</>
+                          : `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · ยังไม่นับ Actual`}
                   </span>
                 </div>
               </RelatedDocumentCard>

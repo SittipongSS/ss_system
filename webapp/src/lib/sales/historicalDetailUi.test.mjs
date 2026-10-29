@@ -126,7 +126,7 @@ test('ปุ่มออกสัญญาไม่ขึ้นกับใบ�
   assert.match(page, /const canCreateContract = canEdit && !historical &&/);
   // ใบย้อนหลังไม่มีการ์ดสัญญาของดีลเลย (ดีลภาชนะ ⇒ ลิสต์ทั้งดีลพาเอกสารแทนสัญญาของใบพี่น้องมาปน)
   assert.match(page, /\{showDealContracts \? \(\s*\n\s*<DealContractsCard/);
-  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\);/);
+  assert.match(page, /const showDealContracts = !isHistoricalOrder\(order\) && !isExciseOrder\(order\);/);
 });
 
 // ── 4. ของใบปกติที่ต้องไม่โผล่ ────────────────────────────────────────────────────────

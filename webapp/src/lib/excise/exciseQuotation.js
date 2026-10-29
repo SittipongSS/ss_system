@@ -297,8 +297,10 @@ export async function exciseSourceLock(supabase, order, action) {
 }
 
 /**
- * SO ลูกค้าที่ "จัดการค่าสรรพสามิตแล้ว" ในขาฝ่ายขาย — มีใบค่าสรรพสามิตที่ยังมีผล หรือถูกตัดสินไม่เรียกเก็บ
- * ⇒ ไม่อยู่ในคิว "รอออกใบเสนอราคาค่าสรรพสามิต" ของ SA (แดชบอร์ด · แถบเตือนทะเบียน SO · ด่านปิดโครงการ)
+ * SO ลูกค้าที่ "จัดการค่าสรรพสามิตแล้ว" ในขาฝ่ายขาย — ตัดสินไม่เรียกเก็บ · มีใบค่าสรรพสามิตที่ยังเดินอยู่ (ร่าง/ยื่น/ตีกลับ)
+ * · หรือลูกค้ารับใบแล้ว **และมี SO ค่าสรรพสามิตที่ยังมีผล** (PR4)
+ * ⇒ ไม่อยู่ในคิว "รอออกใบค่าสรรพสามิต" ของ SA (แดชบอร์ด · แถบเตือนทะเบียน SO · ด่านปิดโครงการ)
+ * ⚠️ ใบที่รับแล้วแต่ยังไม่ออก SO = **ยังค้าง** — เดิม (PR3) ถือว่าจบตั้งแต่รับ ⇒ ใบหลุดทุกคิวทั้งที่ยังไม่มีเอกสารเก็บเงิน
  * @param orders แถว SO ที่ select `exciseNotBilledKind` มาแล้ว
  * @returns Set ของ id · อ่านพลาด = throw (คิวงานต้องไม่บอกว่า "ไม่มีงาน" เพราะอ่านไม่ขึ้น)
  */
@@ -311,6 +313,20 @@ export async function exciseHandledOrderIds(supabase, orders = []) {
     .in('sourceSalesOrderId', chunk)
     .in('status', LIVE_EXCISE_QUOTATION_STATUSES)
     .order('id', { ascending: true }));
-  for (const row of rows) handled.add(row.sourceSalesOrderId);
+  const accepted = [];
+  for (const row of rows) {
+    if (row.status === 'accepted') accepted.push(row);
+    else handled.add(row.sourceSalesOrderId);
+  }
+  if (!accepted.length) return handled;
+  /* SO ค่าสรรพสามิตที่ยังมีผลของใบที่รับแล้ว (ไม่ยกเลิก · ไม่ถูกแทน — ใบละไม่เกินหนึ่ง · ด่าน 0416) */
+  const orderRows = await fetchAllInChunks(accepted.map((row) => row.id), (chunk) => exciseRowsOnly(supabase
+    .from('sales_orders').select('id, "quotationId"'))
+    .in('quotationId', chunk)
+    .neq('status', 'cancelled')
+    .is('supersededById', null)
+    .order('id', { ascending: true }));
+  const ordered = new Set(orderRows.map((row) => row.quotationId));
+  for (const row of accepted) if (ordered.has(row.id)) handled.add(row.sourceSalesOrderId);
   return handled;
 }

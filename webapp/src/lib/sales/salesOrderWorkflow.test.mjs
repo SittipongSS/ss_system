@@ -450,7 +450,10 @@ const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
 
 test('ปุ่มยื่นที่กดไม่ได้ บอกชื่อเจ้าของดีลที่ต้องไปตาม', () => {
   const page = read('app/sales-planning/sales-orders/[id]/page.js');
-  assert.match(page, /const dealOwnerName = livePersonName\(directory, order\.deal\?\.ownerId, order\.deal\?\.ownerName\)/,
+  // PR4: ดีลของผู้ยื่น = `salesOrderApprovalDeal` (ใบปกติ = ดีลของใบ · SO ค่าสรรพสามิต = ดีลของ SO ต้นทาง)
+  assert.match(page, /const approvalDeal = salesOrderApprovalDeal\(order\);/);
+  assert.match(page, /const canSubmitThis = canSubmitSalesOrder\(\{ id: order\.meId, role \}, approvalDeal\);/);
+  assert.match(page, /const dealOwnerName = livePersonName\(directory, approvalDeal\?\.ownerId, approvalDeal\?\.ownerName\)/,
     'ชื่อมาจาก directory สด แล้วถอยไปชื่อที่เก็บในแถว — ชุดเดียวกับการ์ดดีล');
   assert.match(page, /ส่งต่อให้ \$\{dealOwnerName\} กดยื่น/, 'ข้อความติดปุ่มต้องมีชื่อคน');
   assert.match(page, /ส่งต่อให้เจ้าของดีลกดยื่น/, 'ไม่มีชื่อ (directory ยังไม่มา/บัญชีถูกลบ) ต้องถอยไปข้อความเดิม');
@@ -459,7 +462,8 @@ test('ปุ่มยื่นที่กดไม่ได้ บอกชื�
 test('ด่านฝั่ง API บอกชื่อเจ้าของดีลด้วย — ข้อความสองฝั่งต้องไม่ขัดกัน', () => {
   const route = read('app/api/sales-planning/sales-orders/[id]/route.js');
   assert.match(route, /ส่งต่อให้ \$\{ownerName\} กดยื่น/, 'ข้อความ 403 ต้องมีชื่อคน');
-  assert.match(route, /const ownerName = String\(before\.deal\?\.ownerName \|\| ''\)\.trim\(\)/,
+  assert.match(route, /const submitDeal = salesOrderApprovalDeal\(before\);\s*if \(!canSubmitSalesOrder\(user, submitDeal\)\)/);
+  assert.match(route, /const ownerName = String\(submitDeal\?\.ownerName \|\| ''\)\.trim\(\)/,
     'อ่านชื่อจากดีลที่ route โหลดมาแล้ว ไม่ยิงถามใหม่');
 });
 

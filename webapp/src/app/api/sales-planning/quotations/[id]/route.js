@@ -84,7 +84,7 @@ async function loadQuote(supabase, id) {
        (salesOrderActual / splitSalesOrderAmounts): ใบ "Actual รายงวด" นับเฉพาะงวดที่อนุมัติแล้ว · ขาด `actualMode` = ถือเป็นทั้งใบ (ยอดเกินจริง) */
     const { data: salesOrders, error: salesOrderError } = await fetchAllResult(() => supabase
       .from('sales_orders')
-      .select('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"')
+      .select('id, orderNumber, status, orderDate, actualAmount, totalAmount, vatAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"')
       .eq('quotationId', data.id)
       .order('createdAt', { ascending: false })
       .order('id', { ascending: true }));

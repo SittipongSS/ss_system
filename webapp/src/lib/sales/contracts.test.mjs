@@ -910,7 +910,7 @@ test('⭐ หน้าใบสั่งขายออกสัญญาได�
   /* ใบที่ตายแล้ว/โหมดแก้ไม่ต้องมีปุ่ม — ออกสัญญาจากใบที่ยกเลิกไปแล้วอ่านแล้วสับสน
      ⚠️ 0374 เพิ่มใบย้อนหลังเข้ามาอีกกรณี: สัญญาของใบคือ "เอกสารแทนสัญญา" ที่ฟอร์มคีย์ใบสร้างและอนุมัติ
      พร้อมใบ ⇒ ฉบับที่สองที่ออกจากที่นี่ผูกกับใบไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่) */
-  assert.match(page, /const canCreateContract = canEdit && !historical && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\);/);
+  assert.match(page, /const canCreateContract = canEdit && !historical && !exciseOrder && !editMode && !\["cancelled", "revised"\]\.includes\(order\.status\);/);
 });
 
 /* 🔴 รีวิว 25/09: ข้อความ "ยังไม่มีสัญญาที่ผูกได้" ของการ์ดผูกสัญญาบริการเคยชี้ "การ์ด สัญญา ด้านล่าง" ทุกกรณี

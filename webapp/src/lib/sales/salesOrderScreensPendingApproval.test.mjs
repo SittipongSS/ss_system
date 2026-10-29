@@ -262,7 +262,8 @@ test('route ใบเสนอราคาหาใบสั่งขายไ�
   assert.match(route, /if \(salesOrderError\) throw salesOrderError;/, 'อ่านไม่ขึ้น ≠ ไม่มีใบ');
   assert.match(route, /data\.salesOrder = rows\.find\(isLiveSalesOrder\) \|\| rows\[0\] \|\| null;/);
   /* + origin / actualMode / cache สองช่อง (mig 0412) — ยอด Actual ของใบ "Actual รายงวด" ผ่านตัวกลาง (ขาด actualMode = นับเต็มใบ) */
-  assert.match(route, /select\('id, orderNumber, status, orderDate, actualAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"'\)/);
+  /* + totalAmount/vatAmount (PR4) — SO ค่าสรรพสามิต Actual = 0 เสมอ ⇒ การ์ดบนหน้า QT คิดยอดก่อน VAT จากยอดรวม − VAT */
+  assert.match(route, /select\('id, orderNumber, status, orderDate, actualAmount, totalAmount, vatAmount, supersededById, createdAt, origin, "actualMode", "actualCountedAmount", "actualSubmittedAmount"'\)/);
 });
 
 test('แถบเตือนบนทะเบียนใบเสนอราคาบอกทางสามขั้น: ยื่น → รออนุมัติ → Actual', () => {

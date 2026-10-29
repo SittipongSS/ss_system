@@ -143,11 +143,12 @@ test('acceptExciseQuotation: ต้องอนุมัติแล้ว · �
 });
 
 // ── 3. ล็อก SO ลูกค้า (Q16) + คิวของ SA ───────────────────────────────────────────────────
-const liveDb = (rows) => ({
-  from: () => {
+const liveDb = (rows, orderRows = []) => ({
+  from: (table) => {
+    const data = table === 'sales_orders' ? orderRows : rows;
     const b = {
-      select() { return b; }, eq() { return b; }, in() { return b; }, order() { return b; },
-      limit: async () => ({ data: rows, error: null }), range: async () => ({ data: rows, error: null }),
+      select() { return b; }, eq() { return b; }, in() { return b; }, order() { return b; }, neq() { return b; }, is() { return b; },
+      limit: async () => ({ data, error: null }), range: async () => ({ data, error: null }),
     };
     return b;
   },
@@ -171,6 +172,15 @@ test('exciseHandledOrderIds: ตัดสินไม่เรียกเก็
     { id: 'SO-1', exciseNotBilledKind: 'collected_outside' }, { id: 'SO-2' }, { id: 'SO-3' },
   ]);
   assert.deepEqual([...handled].sort(), ['SO-1', 'SO-2']);
+});
+
+test('exciseHandledOrderIds (PR4): ลูกค้ารับใบแล้วแต่ยังไม่ออก SO ค่าสรรพสามิต = ยังค้างคิว · มี SO แล้ว = จัดการแล้ว', async () => {
+  const quotes = [
+    { id: 'QX-A', sourceSalesOrderId: 'SO-A', status: 'accepted' },
+    { id: 'QX-B', sourceSalesOrderId: 'SO-B', status: 'accepted' },
+  ];
+  const handled = await exciseHandledOrderIds(liveDb(quotes, [{ id: 'SOR-B', quotationId: 'QX-B' }]), [{ id: 'SO-A' }, { id: 'SO-B' }]);
+  assert.deepEqual([...handled], ['SO-B']);
 });
 
 // ── 4. ไม่เรียกเก็บในระบบ ─────────────────────────────────────────────────────────────────

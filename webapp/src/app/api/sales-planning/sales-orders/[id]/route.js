@@ -79,6 +79,7 @@ import {
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { exciseSourceLock, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
+import { exciseSalesOrderBlock, salesOrderApprovalDeal } from '@/lib/excise/exciseSalesOrder';
 import {
   EXCISE_NOT_BILLED_KINDS, exciseNotBilledBlocker, exciseNotBilledInput, exciseNotBilledPatch,
 } from '@/lib/excise/exciseNotBilled';
@@ -91,7 +92,7 @@ import {
 import { loadServiceSetupContext, submitOrderDeferringServiceSetup } from '@/lib/sales/serviceSetupRepo';
 import {
   HISTORICAL_CANCEL_SETTLE_STUCK, HISTORICAL_CORRECTION_PATH, historicalCancelBlock, historicalCancelNoteError,
-  historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isHistoricalOrder,
+  historicalCancelOpening, historicalCancelSettleBlock, historicalDeleteBlock, historicalOpeningSettled, isExciseOrder, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import { historicalOpeningVoidSummary } from '@/lib/sales/historicalOrderCopy';
 import {
@@ -1001,6 +1002,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (action === 'revoke') {
     // ใบย้อนหลังต้องได้เหตุจริงก่อนด่านสิทธิ์ — ไม่งั้น AE Sup เจอ "ได้เฉพาะ AE Supervisor" ซึ่งผิดความจริง
     if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
+    // SO ค่าสรรพสามิต (0416/E4): Rev. เกิดไม่ได้ ⇒ ย้อนแล้วใบค้างตลอดไป — บอกทางออกจริงก่อนด่านสิทธิ์
+    const exciseRevoke = exciseSalesOrderBlock(before, 'revoke');
+    if (exciseRevoke) return fail(exciseRevoke, 409);
     if (!canRevokeSalesOrderApproval(before, { reviewer })) {
       return forbidden('ย้อนการอนุมัติได้เฉพาะ AE Supervisor หรือ Admin');
     }
@@ -1052,6 +1056,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   // ขั้นที่ 2: ออก Rev. จากใบที่ย้อนการอนุมัติแล้ว — เหตุผลใช้ค่าที่กรอกไว้ขั้นแรก
   if (action === 'revise') {
     if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
+    const exciseRevise = exciseSalesOrderBlock(before, 'revise');
+    if (exciseRevise) return fail(exciseRevise, 409);
     // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
     const closedProject = projectWriteBlockedError(before.project)
       ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. ใบสั่งขายไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
@@ -1200,10 +1206,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!['draft', 'rejected'].includes(before.status)) return badRequest('SO ใบนี้ยื่นอนุมัติไม่ได้');
     // ช่อง "ฝ่ายขาย" บนใบเป็นของ AE เจ้าของดีล และการยื่น = การลงนามในช่องนั้น (mig 0153)
     // AC สร้างใบแทนได้ตามเดิม แต่ต้องส่งให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05)
-    if (!canSubmitSalesOrder(user, before.deal)) {
+    // ⭐ SO ค่าสรรพสามิตไม่มีดีล — เจ้าของดีลของ SO ต้นทางเป็นผู้ยื่น (`salesOrderApprovalDeal` · แผน หมวด 2 ขั้น 8)
+    const submitDeal = salesOrderApprovalDeal(before);
+    if (!canSubmitSalesOrder(user, submitDeal)) {
       // บอกชื่อเจ้าของดีลไปด้วย — ข้อความนี้ไปโผล่บนจอคนที่กดไม่ได้ ซึ่งคือคนที่ต้อง
       // ไปตามอีกคน (ชุดเดียวกับ disabledReason ของปุ่มในหน้าใบ)
-      const ownerName = String(before.deal?.ownerName || '').trim();
+      const ownerName = String(submitDeal?.ownerName || '').trim();
       return forbidden(ownerName
         ? `ยื่นอนุมัติใบสั่งขายได้เฉพาะ AE เจ้าของดีล — ส่งต่อให้ ${ownerName} กดยื่น`
         : 'ยื่นอนุมัติใบสั่งขายได้เฉพาะ AE เจ้าของดีล — ผู้ที่สร้างแทนให้ส่งต่อให้เจ้าของดีลกดยื่น');
@@ -1213,7 +1221,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (!before.orderDate || !(before.lines?.length > 0)) {
       return badRequest('ข้อมูล SO ไม่ครบ: ต้องมีวันที่และรายการสินค้า');
     }
-    if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
+    if (isExciseOrder(before)) {
+      // ใบค่าสรรพสามิตไม่มีดีล/โครงการ (CHECK 0414) — อ้างอิงคือใบค่าสรรพสามิตที่รับแล้ว + SO ต้นทาง · ฐานตรวจซ้ำ (0416/E1–E2)
+      if (!before.quotation || before.quotation.status !== 'accepted' || !before.sourceSalesOrderId || !before.customerName) {
+        return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมีใบค่าสรรพสามิตที่ลูกค้ารับแล้ว ใบสั่งขายต้นทาง และลูกค้า');
+      }
+    } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
     }
     /* ⭐ **ด่านเอกสารยืนยันคำสั่งซื้ออยู่ตรงนี้ ไม่ใช่ตอนสร้างใบ** (มติผู้ใช้ 2026-08-24)
@@ -1691,6 +1704,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (reverseTo && isHistoricalOrder(before)) {
       return badRequest('ใบสั่งขายย้อนหลังยกเลิกได้อย่างเดียว — ย้อน Won ไม่ได้ (ดีลของใบย้อนหลังถือใบทุกใบของลูกค้าและ AE นี้)');
     }
+    const exciseReverse = reverseTo ? exciseSalesOrderBlock(before, 'reverse') : null;
+    if (exciseReverse) return badRequest(exciseReverse);
     if (reverseTo) {
       if (!isValidReversalTarget(reverseTo)) return badRequest('ปลายทางการย้อน Won ไม่ถูกต้อง');
       if (before.status !== 'approved') return badRequest('ย้อน Won ได้เฉพาะ SO ที่อนุมัติแล้ว');

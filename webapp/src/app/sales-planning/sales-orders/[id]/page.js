@@ -152,6 +152,7 @@ import {
 import {
   HISTORICAL_EDITABLE_STATUSES, HISTORICAL_STATUS_NOTE, OPENING_INSTALLMENT_LABEL,
   historicalCancelBlock, historicalCancelNoteError, historicalEditPath, historicalRefsOf, isHistoricalOrder,
+  isExciseOrder,
 } from "@/lib/sales/historicalOrders";
 /* ⭐ ถ้อยคำ/ตรรกะของใบย้อนหลังอยู่ที่ `historicalOrderCopy` ทั้งชุด — หน้านี้ยาว ~1,600 บรรทัด
    และใบย้อนหลังพูดคนละเรื่องกับใบปกติแทบทุกจุด ⇒ ที่นี่แตกกิ่ง JSX อย่างเดียว ไม่เขียนคำเอง */
@@ -166,6 +167,9 @@ import { historicalDuplicateReviewOf, historicalDuplicateReviewView } from "@/li
 import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
 import ExciseNotBilledDialog from "@/components/excise/ExciseNotBilledDialog";
 import { EXCISE_NOT_BILLED_KINDS } from "@/lib/excise/exciseNotBilled";
+import {
+  EXCISE_ORDER_MODAL_COPY, EXCISE_ORDER_STATUS_DESCRIPTION, excisePreVatAmount, exciseSourceOrderLabel, salesOrderApprovalDeal,
+} from "@/lib/excise/exciseSalesOrder";
 
 /* โทนของ `historicalStatusCopy` → สีของป้ายสถานะบนหัวใบ/การ์ดจัดการ (ชิ้นพวกนั้นรับ `color` ไม่ใช่ tone)
    ⚠️ แผนที่ของ **การแสดงผล** เท่านั้น — ตัวตัดสินว่าสถานะไหนโทนอะไรอยู่ที่ historicalOrderCopy ที่เดียว */
@@ -750,7 +754,8 @@ export default function SalesOrderDetailPage() {
   function submitMoneyLines() {
     return [
       "หลังยื่นแล้วเอกสารจะถูกล็อก ผู้ยื่นดึงเอกสารของตัวเองกลับได้",
-      `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
+      isExciseOrder(order) ? EXCISE_ORDER_MODAL_COPY.submit
+        : `ยอด ${fmtMoney(order.actualAmount)} (ก่อน VAT) จะขึ้นเป็น "${PENDING_APPROVAL_LABEL}" บนภาพรวม ดีล และโครงการ — ยังไม่นับเป็น Actual จนกว่าจะอนุมัติ`,
     ];
   }
 
@@ -1387,6 +1392,7 @@ export default function SalesOrderDetailPage() {
          (installmentActionError + trigger ของ 0412) · ใบงานบริการ = "จ่ายถึง"/ด่านเงินของนัดช่างเดินตามสองขั้นนั้นทุกงวด
          (`hasServiceRounds` ตัวเดียวกับด่านเงิน — ฟังก์ชันนี้ถูกเรียกตอนกด/ตอนวาดโมดัล Override เท่านั้น ⇒ อ่านค่าหลังตัวแปรถูกตั้งแล้ว) */
   function approveActualLines(mode, plan) {
+    if (isExciseOrder(order)) return [EXCISE_ORDER_MODAL_COPY.approve];
     if (mode !== ACTUAL_MODE_INSTALLMENT) {
       return [`ยอด ${fmtMoney(order.actualAmount)} ย้ายจาก "${PENDING_APPROVAL_LABEL}" เข้าเป็น Actual ของเดือน ${formatMonthLabel(currentMonth())} (เดือนที่อนุมัติ) — ขึ้นบนดีลทันที`];
     }
@@ -1576,7 +1582,9 @@ export default function SalesOrderDetailPage() {
   /* ผลต่อเอกสารแทนสัญญาเมื่อยกเลิก/ลบใบย้อนหลัง — ใบปกติคืน null (การ์ดหายเอง) */
   const cancelContractEffect = historicalCancelEffect(order, order?.serviceContract);
   // ใบสั่งขายย้อนหลัง (mig 0360) ยกเลิกได้อย่างเดียว — ไม่เสนอย้อน Won (API ปฏิเสธซ้ำ)
-  const showReversal = !!cancelForm && order?.status === "approved" && !isHistoricalOrder(order) && isCustomerCancelReason(cancelForm.code);
+  // ใบค่าสรรพสามิต (PR4) ไม่มีดีล — ยกเลิกได้แบบไม่ย้อนดีลเท่านั้น (route ปฏิเสธ reverseTo ซ้ำ)
+  const showReversal = !!cancelForm && order?.status === "approved" && !isHistoricalOrder(order) && !isExciseOrder(order)
+    && isCustomerCancelReason(cancelForm.code);
   async function doCancel() {
     if (!cancelForm?.code) { setError("กรุณาเลือกเหตุผลที่ยกเลิก"); return; }
     if (cancelForm.code === "other" && !cancelForm.note.trim()) { setError('เลือก "อื่น ๆ" ต้องระบุหมายเหตุ'); return; }
@@ -1858,7 +1866,7 @@ export default function SalesOrderDetailPage() {
      ของเดิมขึ้นเฉพาะใบบนเส้นบริการ ⇒ สัญญาออกแบบกลิ่นบนดีลที่มี SO (8 ใบวันนั้น · 4 ใบเป็นสายสินค้า)
      เปิดดูจาก SO ไม่ได้เลย · ในแท็บ: การ์ดผูกสัญญาบริการ (เฉพาะเส้นบริการ) + การ์ดสัญญาทุกฉบับของดีล
      ⚠️ ใบย้อนหลังที่ไม่อยู่เส้นบริการไม่มีอะไรให้แสดง (ไม่มีการ์ดสัญญาของดีล — ดู `showDealContracts`) */
-  const showDealContracts = !isHistoricalOrder(order);
+  const showDealContracts = !isHistoricalOrder(order) && !isExciseOrder(order);
   const tabKeys = ["overview", "documents", ...(onServiceLine || showDealContracts ? ["contract"] : []), "payment",
     ...(hasServiceRounds ? ["service"] : []), "history"];
   const urlTab = searchParams.get("tab");
@@ -1914,6 +1922,9 @@ export default function SalesOrderDetailPage() {
   const approved = order.status === "approved";
   /* ⭐ ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — เกือบทุกกิ่งของหน้านี้ถามตัวนี้ตัวเดียว */
   const historical = isHistoricalOrder(order);
+  /* ⭐ SO ค่าสรรพสามิต (PR4 · mig 0416) — ไม่มีดีล/โครงการ · ไม่นับ Actual · ไม่มี Rev./ย้อนอนุมัติ · ผู้ยื่น = เจ้าของดีลของ SO ต้นทาง */
+  const exciseOrder = isExciseOrder(order);
+  const approvalDeal = salesOrderApprovalDeal(order);
   /* ⭐ ยอดของใบนี้อยู่กองไหน (มติผู้ใช้ 2026-09-11 · mig 0353) — ตัวตัดสินกลางตัวเดียวกับ
      ตาราง SO ทุกจอ: 'actual' | 'pending_approval' | 'excluded' */
   const amountKind = salesOrderAmountKind(order);
@@ -1958,6 +1969,8 @@ export default function SalesOrderDetailPage() {
       : amountKind === "pending_approval"
         ? { label: `${PENDING_APPROVAL_LABEL} (ก่อน VAT)`, tone: "warning" }
         : { label: "ยอดก่อน VAT", tone: "neutral" }),
+    /* ใบค่าสรรพสามิต: actualAmount = 0 เสมอ (CHECK 0414) ⇒ ยอดก่อน VAT ของใบคิดจากยอดรวม − VAT ไม่ใช่ช่อง Actual */
+    ...(exciseOrder ? { value: fmtMoney(excisePreVatAmount(order)) } : {}),
   };
   /* ⭐ **สิทธิ์แก้ = cap ของคน × ขอบเขตของใบ** — `canEdit` ที่ server ส่งมาคิด
      `canEditSalesPlanning(user) && inSalesEditScope(user, deal)` ตัวเดียวกับที่ทุก action
@@ -1980,12 +1993,12 @@ export default function SalesOrderDetailPage() {
         ⇒ เส้นทางจริงคือ ออกสัญญา → ออกเลข → ลงนาม → AE Sup รับรอง → กลับมาผูก (โมดัลพาไปหน้าสัญญาเอง)
      ⚠️ ใบย้อนหลังไม่มีปุ่มนี้ — ออกฉบับที่สองจากใบนี้ = ฉบับที่ผูกไม่ได้ (ด่าน serviceContractLinkError ปิดอยู่)
         · ใบยกเลิก/ถูกแทนด้วย Rev. ไม่มีปุ่ม · ระหว่างโหมดแก้ไม่มีปุ่ม (เงื่อนไขเดิมของปุ่มบนการ์ดจัดการ) */
-  const canCreateContract = canEdit && !historical && !editMode && !["cancelled", "revised"].includes(order.status);
+  const canCreateContract = canEdit && !historical && !exciseOrder && !editMode && !["cancelled", "revised"].includes(order.status);
   // ยื่น = ลงนามช่อง "ฝ่ายขาย" ซึ่งเป็นของ AE เจ้าของดีล — AC สร้างใบแทนได้ แต่ต้องส่งต่อ
   // ให้เจ้าของดีลกดยื่นเอง (มติผู้ใช้ 2026-08-05) · server บังคับซ้ำที่ action submit
-  const canSubmitThis = canSubmitSalesOrder({ id: order.meId, role }, order.deal);
-  // ชื่อเจ้าของดีลที่ต้องเป็นคนกดยื่น — ใช้ตัวเดียวกับที่การ์ดดีลแสดง
-  const dealOwnerName = livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName);
+  const canSubmitThis = canSubmitSalesOrder({ id: order.meId, role }, approvalDeal);
+  // ชื่อเจ้าของดีลที่ต้องเป็นคนกดยื่น — ใช้ตัวเดียวกับที่การ์ดดีลแสดง (ใบค่าสรรพสามิต = เจ้าของดีลของ SO ต้นทาง)
+  const dealOwnerName = livePersonName(directory, approvalDeal?.ownerId, approvalDeal?.ownerName);
   const editable = canEditDocument && editMode;
   // ดึงกลับ = ของผู้ยื่นเท่านั้น (มติ 2026-07-26) — เงื่อนไขเดียวกับด่านฝั่ง API
   const canWithdraw = canWithdrawSalesOrderSubmission(order, { userId: order.meId });
@@ -2019,14 +2032,16 @@ export default function SalesOrderDetailPage() {
               + " ที่แท็บการชำระ (“ยื่นขอนับงวดนี้”)"
               : "งวดที่เหลือนับเมื่อ AE Sup อนุมัติแต่ละงวด"}`,
       }
-      : STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
+      : exciseOrder && STATUS[order.status]
+        ? { ...STATUS[order.status], description: EXCISE_ORDER_STATUS_DESCRIPTION[order.status] || STATUS[order.status].description }
+        : STATUS[order.status] || { label: order.status, color: "var(--text-3)", description: "" };
   const workflowIndex = order.status === "approved" ? 3
     : ["pending_approval", "approval_revoked"].includes(order.status) ? 1 : 0;
   const workflow = [
     { label: "จัดทำร่าง", hint: order.createdByName || "ผู้จัดทำ" },
     { label: "ยื่นอนุมัติ", hint: order.submittedAt ? fmtDate(order.submittedAt) : "รอผู้จัดทำ" },
     { label: "AE Supervisor ตรวจ", hint: order.status === "rejected" ? "ตีกลับแล้ว" : order.approvedByName ? `${order.approvedByName}${order.approvalMode === "admin_override" ? " · Admin Override" : ""}` : "รอตรวจ" },
-    {
+    exciseOrder ? { label: "ไม่นับ Actual", hint: "ค่าสรรพสามิต" } : {
       label: "นับ Actual",
       /* ใบรายงวดที่ยังนับไม่ครบ (review 26/10): ขั้นนี้ยังเดินอยู่ — คู่ขนานกับขั้นบัญชีปิดใบ (ปิดได้เมื่อทุกงวดรับรอง = ทุกงวดนับแล้ว)
          ⇒ ประกาศ `current` เอง (workflowStepsFromIndex: state ที่ประกาศชนะ index · มติ 01/09) ไม่ให้ราง ✓ ทั้งที่ยังเหลืองวดรอนับ */
@@ -2525,10 +2540,10 @@ export default function SalesOrderDetailPage() {
           title={order.orderNumber}
           /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — API แนบ `customer` ที่อ่านสด
              จากทะเบียนมาให้ ไม่ใช่ค่าที่ประทับไว้ในใบ */
-          description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${order.deal?.title || "ไม่ระบุดีล"}`}
+          description={`${customerHeadline(order.customerName, order.customer?.arCode) || "ไม่ระบุลูกค้า"} · ${exciseOrder ? `ค่าสรรพสามิตของ ${exciseSourceOrderLabel(order)}` : order.deal?.title || "ไม่ระบุดีล"}`}
           /* ⭐ ป้าย "ย้อนหลัง" + "ไม่นับ Actual" บนหัวใบ (ม็อก SoStatus) — โทน info ตัวเดียวกับชิปในทะเบียน
              และคิวงานเข้าใหม่ของ TS · คนที่เปิดใบมาต้องรู้ตั้งแต่บรรทัดแรกว่ายอดนี้ไม่เข้า Actual/FC/เป้า */
-          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{instActual && <StatusBadge size="sm" tone="info" label="Actual รายงวด" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}{deferPending?.active && <StatusBadge size="sm" tone="warning" label={SERVICE_DEFERRED_TEXT.badge} />}</>}
+          badges={<><SalesStateBadge label={status.label} color={status.color} />{historical && <StatusBadge size="sm" tone="info" label="ย้อนหลัง" />}{historical && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{exciseOrder && <StatusBadge size="sm" tone="info" label="ค่าสรรพสามิต" />}{exciseOrder && <StatusBadge size="sm" tone="neutral" label="ไม่นับ Actual" />}{instActual && <StatusBadge size="sm" tone="info" label="Actual รายงวด" />}{order.signatureEvidenceId && <span className="ui-badge" style={{ color: "var(--green)" }}>มีหลักฐานลายเซ็น</span>}{order.approvalMode === "admin_override" && <span className="ui-badge ui-badge-warn">Admin Override</span>}{financeStatus && <StatusBadge size="sm" tone={FINANCE_STATUS_TONES[financeStatus]} label={FINANCE_STATUS_LABELS[financeStatus]} />}{backfillAwaiting && <StatusBadge size="sm" tone="warning" label="งานบริการรอผู้จัดการตรวจ" />}{deferPending?.active && <StatusBadge size="sm" tone="warning" label={SERVICE_DEFERRED_TEXT.badge} />}</>}
           facts={[
             { icon: CalendarDays, label: "วันที่ SO", value: fmtDate(order.orderDate) },
             // กำหนดชำระขึ้นแถบหัวแทน "Actual ในระบบ" ที่พูดซ้ำกับการ์ดสรุปฝั่งขวา
@@ -2547,7 +2562,7 @@ export default function SalesOrderDetailPage() {
               sub: paymentSummary.nextDue && paymentSummary.nextDue < todayIso ? "เลยกำหนด" : undefined,
             },
             { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
-            { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(order.actualAmount) },
+            { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(exciseOrder ? excisePreVatAmount(order) : order.actualAmount) },
             /* ⭐ **สัญญาบริการอยู่บนหัวใบ ไม่ใช่หลังแท็บ** — งานบริการทั้งเส้นเดินได้ก็ต่อ
                เมื่อใบนี้มีสัญญาที่มีผล ⇒ เป็นคำถามแรกของคนเปิดใบ ไม่ใช่ของที่ต้องไปตาม
                ข้อมูลมากับ GET ของใบอยู่แล้ว (`order.serviceContract`) ไม่ต้องยิงเพิ่ม
@@ -2597,13 +2612,20 @@ export default function SalesOrderDetailPage() {
             พูดอยู่แล้ว ของเดิมพูดซ้ำสี่ที่ */}
         <ContextGrid>
           <ContextCard icon={Building2} href={order.customerId ? `/database/customers/${order.customerId}` : undefined} eyebrow="ลูกค้า" title={naText(customerHeadline(order.customerName, order.customer?.arCode))} subtitle="ข้อมูลลูกค้าของเอกสาร" facts={[{ label: "ผู้ติดต่อ", value: naText(order.quotation?.contactName) }]} />
-          <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
-          {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
-              snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
-          <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "สถานะ", value: naText(STAGE_LABELS[order.deal?.stage] || order.deal?.stage) }]} />
+          {/* ใบค่าสรรพสามิต (PR4) ไม่มีโครงการ/ดีลของตัวเอง — การ์ดเดียวชี้ SO ลูกค้าต้นทาง (ดีลต้นทางใช้ตัดสินสิทธิ์อย่างเดียว ไม่ใช่ของใบนี้) */}
+          {exciseOrder ? (
+            <ContextCard icon={ClipboardList} href={order.sourceSalesOrderId ? `/sa/sales-orders/${order.sourceSalesOrderId}` : undefined} eyebrow="ใบสั่งขายต้นทาง" title={naText(exciseSourceOrderLabel(order))} subtitle="ใบสั่งขายของลูกค้าที่ใบนี้เก็บค่าสรรพสามิต" facts={[{ label: "เจ้าของดีลต้นทาง", value: naText(livePersonName(directory, approvalDeal?.ownerId, approvalDeal?.ownerName)) }]} />
+          ) : (
+            <>
+              <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
+              {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
+                  snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
+              <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "สถานะ", value: naText(STAGE_LABELS[order.deal?.stage] || order.deal?.stage) }]} />
+            </>
+          )}
           {/* ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคา — การ์ดนี้บอกเลขเอกสารเดิมที่คีย์ไว้แทน (ลิงก์ไป /quotations/null ไม่ได้) */}
           {order.quotationId ? (
-            <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow="ใบเสนอราคา Won" title={naText(order.quotation?.quoteNumber)} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
+            <ContextCard icon={FileText} href={`/sa/quotations/${order.quotationId}`} eyebrow={exciseOrder ? "ใบเสนอราคาค่าสรรพสามิต" : "ใบเสนอราคา Won"} title={naText(order.quotation?.quoteNumber)} subtitle={`วันที่หลักฐาน ${fmtDate(order.quotation?.wonDocDate)}`} facts={[{ label: "ไฟล์หลักฐาน", value: `${order.quotation?.wonAttachments?.length || 0} ไฟล์` }]} />
           ) : (
             <ContextCard icon={FileText} eyebrow="เลขเอกสารเดิม" title={historicalRefsOf(order).join(" · ")} subtitle={HISTORICAL_STATUS_NOTE} facts={[{ label: "ใบเสนอราคาเดิม", value: order.historicalQuoteRef }, { label: "Express", value: order.historicalExpressRef }, { label: "ใบกำกับ", value: order.historicalInvoiceRef }]} />
           )}
@@ -2651,7 +2673,8 @@ export default function SalesOrderDetailPage() {
                      ห่อไม่ให้ขาดกลางคำ ("รอ/นับรายงวด") ด้วย keepPhrases (ตัวหนังสือไม่ถูกแตะ — ค้น/คัดลอกได้คำเดิม) */
                 {
                   id: "actual",
-                  label: "Actual ก่อน VAT",
+                  /* ใบค่าสรรพสามิต (PR4): ไม่มี Actual เลย — โชว์ยอดก่อน VAT ของใบพร้อมบอกว่าไม่นับ */
+                  label: exciseOrder ? "ยอดก่อน VAT · ไม่นับ Actual" : "Actual ก่อน VAT",
                   stack: amountKind === "actual" && instActual,
                   value: amountKind === "actual" && instActual
                     ? (
@@ -2673,7 +2696,7 @@ export default function SalesOrderDetailPage() {
                           <span className={styles.pendingSummaryNote}>ยังไม่นับเป็น Actual</span>
                         </>
                       )
-                      : "ยังไม่นับ",
+                      : exciseOrder ? fmtMoney(excisePreVatAmount(order)) : "ยังไม่นับ",
                 },
                 /* 🔴 บรรทัดนี้คือ **ยอดที่เก็บเงินได้** ไม่ใช่ Actual — Actual เป็นยอดเต็ม
                    ของใบเสมอ ต่อให้แบ่งจ่ายกี่งวด (ยืนยันกับผู้ใช้ 2026-08-13)
@@ -3128,6 +3151,7 @@ export default function SalesOrderDetailPage() {
                 <p style={{ margin: "4px 0 0" }}>
                   คุณเป็นผู้สร้างหรือผู้ยื่นใบนี้ — {overrideActualMode === ACTUAL_MODE_INSTALLMENT
                     ? "การอนุมัติจะนับ Actual รายงวดตามรายการข้างล่าง"
+                    : exciseOrder ? EXCISE_ORDER_MODAL_COPY.approve
                     : <>การอนุมัติจะย้ายยอด {fmtMoney(order.actualAmount)} จาก “{PENDING_APPROVAL_LABEL}” เข้า Actual ของเดือน {formatMonthLabel(currentMonth())} ทันที</>}
                   {" "}และบันทึกไว้กับหลักฐานลายเซ็นถาวรว่าเป็นการอนุมัติแบบ Admin Override
                 </p>
@@ -3191,6 +3215,7 @@ export default function SalesOrderDetailPage() {
         }[workflowForm?.action]
           /* ใบย้อนหลังไม่มียอดในกอง "รออนุมัติ" และไม่มีลายเซ็นให้ยื่นใหม่ — พูดเรื่องนั้นคือพูดของที่ไม่มี */
           || (historical ? historicalWithdrawDetail(order)
+            : exciseOrder ? EXCISE_ORDER_MODAL_COPY.withdraw
             : `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" จนกว่าจะยื่นใหม่ · หลักฐานการยื่นเดิมยังคงอยู่ในประวัติ หลังแก้ไขต้องยื่นและลงนามใหม่`)}
         label="เหตุผล"
         value={workflowForm?.reason || ""}
@@ -3217,6 +3242,7 @@ export default function SalesOrderDetailPage() {
            ⚠️ ใบย้อนหลังไม่เคยเข้ากองไหน ⇒ บอกสิ่งที่เกิดจริง: ใบกลับไปที่ฟอร์มคีย์ใบ เอกสารแทนสัญญายังเป็นร่าง */
         detail={historical
           ? historicalRejectDetail(order)
+          : exciseOrder ? EXCISE_ORDER_MODAL_COPY.reject
           : `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" — ใบกลับไปให้ผู้จัดทำแก้ไขแล้วยื่นใหม่ ยังไม่นับเป็น Actual`}
         label="เหตุผลที่ตีกลับ"
         value={rejectForm?.reason || ""}
@@ -3286,6 +3312,7 @@ export default function SalesOrderDetailPage() {
             <p style={{ color: "var(--text-2)", margin: 0 }}>
               {historicalCancel
                 ? historicalCancel.lead
+                : exciseOrder ? EXCISE_ORDER_MODAL_COPY.cancel
                 : amountKind === "pending_approval"
                   ? `ยอด ${fmtMoney(order.actualAmount)} จะออกจาก "${PENDING_APPROVAL_LABEL}" ทันที — เลือกเหตุผลที่ยกเลิก`
                   : "หากอนุมัติแล้ว ยอด Actual จะถูกนำออกทันที — เลือกเหตุผลที่ยกเลิก"}

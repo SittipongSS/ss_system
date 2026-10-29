@@ -137,6 +137,10 @@ const SCOPED_SAFE = new Map([
   ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ดีลของโครงการ — เหตุผลเดียวกัน' }],
   ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'projectId / ดีลของโครงการ — ใบย้อนหลังไม่มีโครงการ' }],
   ['app/api/sales-planning/quotations/[id]/route.js', { count: 1, reason: 'quotationId ใบเดียว — ใบย้อนหลังไม่มีใบเสนอราคา' }],
+  /* PR4: คิว "รอออกใบค่าสรรพสามิต" (exciseHandledOrderIds) หา SO ค่าสรรพสามิตของใบที่รับแล้วผ่าน exciseRowsOnly + quotationId —
+     ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด · count รวมคำสั่งโหลดใบเดียวของ PER_ID_GUARDED ในไฟล์เดียวกัน */
+  ['lib/excise/exciseQuotation.js', { count: 3, reason: 'SO ค่าสรรพสามิตของใบที่รับแล้ว (exciseRowsOnly + quotationId) — ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด' }],
+  ['lib/excise/exciseSalesOrder.js', { count: 1, reason: 'quotationId ของใบค่าสรรพสามิตใบเดียว — ได้แต่ SO ค่าสรรพสามิต (ใบย้อนหลังไม่มีใบเสนอราคา) · ไม่รวมยอด' }],
 ]);
 
 test('🪤 ทุกคำสั่งอ่านใบสั่งขายที่แตะยอด/สถานะ ถูกจัดชั้นแล้ว — ของใหม่ต้องกรอง pipeline หรือบอกเหตุผล', () => {

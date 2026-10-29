@@ -78,7 +78,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
   raise('โหลดใบยื่นชำระภาษีไม่สำเร็จ', filingError);
 
   /* ⭐ แผนรื้อสรรพสามิต PR3: ขาฝ่ายขายจบที่ "ออกใบเสนอราคาค่าสรรพสามิต" หรือ "ไม่เรียกเก็บในระบบ" — SO ที่ทำอย่างใดอย่างหนึ่งแล้ว
-     ไม่ใช่งานค้างของ SA อีก (ใบยื่นกรมเป็นงานของ RA) · คิวนี้จึงหมายถึง "รอออกใบเสนอราคาค่าสรรพสามิต" */
+     ไม่ใช่งานค้างของ SA อีก (ใบยื่นกรมเป็นงานของ RA) · คิวนี้จึงหมายถึง "รอออกใบค่าสรรพสามิต" (ใบเสนอราคา หรือ SO ของใบที่ลูกค้ารับแล้ว · PR4) */
   const pending = salesOrdersAwaitingFiling({ salesOrders: approved, filings: filings || [] });
   if (!pending.length) return [];
   const handled = await exciseHandledOrderIds(supabase, pending);

@@ -701,7 +701,7 @@ export default function SalesOrdersPage() {
         {awaitingFiling > 0 && (
           <StatusNotice
             tone="warning"
-            title={`ใบสั่งขาย ${awaitingFiling} ใบรอออกใบเสนอราคาค่าสรรพสามิต`}
+            title={`ใบสั่งขาย ${awaitingFiling} ใบรอออกใบค่าสรรพสามิต`}
             /* 🐞 เดิมเป็น `<Link className="linklike">` ตัวเดียวในระบบที่นั่งในสล็อต
                `action` ของ StatusNotice — กฎ `.action :global(.btn)` แจก width:100%
                + `--ctl-h-touch` (44px, WCAG §2.5.5) ให้เฉพาะ `.btn` ⇒ ลิงก์ตัวนี้

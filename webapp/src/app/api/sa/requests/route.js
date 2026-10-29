@@ -50,6 +50,8 @@ import { linkNewBillingRequest } from '@/lib/requests/billingInstallmentLink';
 import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
 import { installmentsFromPaymentPlan } from '@/lib/sales/salesOrderPayments';
 import { isLiveSalesOrder } from '@/lib/sales/handoffQueue';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { loadSourceDeals } from '@/lib/scopedRow';
 import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
@@ -251,19 +253,27 @@ export async function POST(request) {
     const { data: qtRow, error: qtRowError } = await supabase
       .from('quotations')
       // ⚠️ ต้องมี `subtotal` ด้วย — ด่านใช้แยก "ให้ฟรี (ลดเต็ม)" ออกจาก "ใบยังไม่มีของ"
-      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal", "paymentPlan"')
+      .select('id, "dealId", status, "approvalStatus", "totalAmount", "subtotal", "paymentPlan", origin, "sourceSalesOrderId"')
       .eq('id', body.quotationId).maybeSingle();
     if (qtRowError) return Response.json({ error: qtRowError.message }, { status: 500 });
     if (!qtRow) return Response.json({ error: 'ไม่พบใบเสนอราคาที่เลือก' }, { status: 400 });
     // ด่านตัวเดียวกับที่ฟอร์มใช้กรองลิสต์ — ป้ายช่องกับของที่ผ่านจริงต้องตรงกันเสมอ
     const qtGate = billingQuotationError(qtRow);
     if (qtGate) return Response.json({ error: qtGate }, { status: 400 });
-    if (!qtRow.dealId) {
+    /* ⭐ ใบค่าสรรพสามิต (ไม่มีดีล · mig 0414) ผูกคำร้องกับดีลของ SO ลูกค้าต้นทาง (มติเจ้าของ 29/10/2026) —
+       ทีม/สิทธิ์/ลูกค้าของคำร้องเดินตามดีลนั้น เกณฑ์เดียวกับสิทธิ์ของใบ (`sourceDeal` ใน lib/scopedRow.js) */
+    let qtDealId = qtRow.dealId || null;
+    if (!qtDealId && isExciseOrder(qtRow) && qtRow.sourceSalesOrderId) {
+      const { data: sourceDeals, error: sourceError } = await loadSourceDeals(supabase, [qtRow.sourceSalesOrderId]);
+      if (sourceError) return Response.json({ error: sourceError.message }, { status: 500 });
+      qtDealId = sourceDeals.get(qtRow.sourceSalesOrderId)?.id || null;
+    }
+    if (!qtDealId) {
       return Response.json({
         error: 'ใบเสนอราคานี้ไม่ได้ผูกดีล — ขอเอกสารการเงินจากใบนี้ไม่ได้',
       }, { status: 400 });
     }
-    dealId = qtRow.dealId;
+    dealId = qtDealId;
     billBaseAmount = Number(qtRow.totalAmount);
     // ยอดที่ขอ — คิดจาก **ฐานของแถวจริง** ไม่ใช่ `billBaseAmount` ที่ฟอร์มแนบมา
     bill = resolveBillAmount({
