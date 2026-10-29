@@ -4,7 +4,8 @@
 // "ดูเฉพาะใบที่ค้าง" แล้วได้ · เดิมเงื่อนไขทั้งหมดเขียนในหน้า เทสต์ได้แค่จับข้อความในซอร์ส/ลอกเงื่อนไขไปไว้ในเทสต์
 // ⇒ ย้ายมาเป็นฟังก์ชันบริสุทธิ์ที่หน้าเรียกตรง ๆ แล้วเทสต์พฤติกรรมกับตัวจริง (ไม่แตะ DB)
 import { quotesAwaitingSalesOrder } from '@/lib/sales/handoffQueue';
-import { dealTypeOf } from '@/lib/salesPlanning';
+import { EXCISE_LIST_LABEL, listDealOf, listDealTypeOf } from '@/lib/excise/exciseListRow';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 
 /**
  * ใบ Won ที่ยังไม่มี SO ที่ใช้งานอยู่ (id) — ตัวตัดสินกลาง `quotesAwaitingSalesOrder` (ตรง migration 0169)
@@ -42,15 +43,18 @@ export function quotationPassesListFilters(row, filters = EMPTY_QUOTATION_FILTER
   if (f.waitingOnMe && !row._waitingOnMe) return false;
   if (f.pendingSo && !(awaitingIds && awaitingIds.has(row.id))) return false;
   if (f.status.length && !f.status.includes(row.status)) return false;
-  if (f.type.length && !f.type.includes(dealTypeOf(row.deal))) return false;
-  if (f.owner.length && !f.owner.includes(row.deal?.ownerId || '')) return false;
+  // ใบค่าสรรพสามิต (ไม่มีดีล) = ดีลของ SO ต้นทาง · ประเภท OTHER — ตัวเดียวกับที่แถวโชว์ (exciseListRow)
+  const deal = listDealOf(row);
+  if (f.type.length && !f.type.includes(listDealTypeOf(row))) return false;
+  if (f.owner.length && !f.owner.includes(deal?.ownerId || '')) return false;
   const q = String(f.query || '').trim().toLowerCase();
   if (!q) return true;
   /* ⚠️ ค้นจากสิ่งที่ตาเห็นบนแถว — รหัส AR โผล่บนจอแล้ว จึงต้องค้นเจอด้วย
      ⭐ ข้อยกเว้นเดียว: `referenceNote` (เอกสารอ้างอิง · mig 0267) ไม่ได้อยู่บนแถว
      แต่ต้องค้นเจอ — มันคือที่ที่เลข PO ของลูกค้าถูกพิมพ์ลงไป และคำถามที่เข้ามาจริง
      คือ "อ้างถึง PO นี้ ใบไหน" (กติกาเดียวกับตารางรายการ SO · IS-26080017) */
-  const ownerName = typeof ownerNameOf === 'function' ? ownerNameOf(row) : row.deal?.ownerName;
-  return [row.quoteNumber, row.customerName, row.customerArCode, row.deal?.title, ownerName, row.referenceNote]
+  const ownerName = typeof ownerNameOf === 'function' ? ownerNameOf(row) : deal?.ownerName;
+  return [row.quoteNumber, row.customerName, row.customerArCode, deal?.title, ownerName, row.referenceNote,
+    isExciseOrder(row) ? EXCISE_LIST_LABEL : null]
     .some((v) => String(v || '').toLowerCase().includes(q));
 }

@@ -20,7 +20,8 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { isSalesManager } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { QUOTE_STATUS_LABELS, dealTypeBadge, quoteStatusBadge } from "@/components/salesPlanning/ui";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, dealTypeOf } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS } from "@/lib/salesPlanning";
+import { listDealLine, listDealOf, listDealTypeOf } from "@/lib/excise/exciseListRow";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -98,7 +99,8 @@ export default function QuotationsPage() {
   const [ownerFilter, setOwnerFilter] = useStickyState("ownerFilter", EMPTY);
   const directory = usePeopleDirectory();
   const ownerNameOf = useCallback(
-    (row) => livePersonName(directory, row?.deal?.ownerId, row?.deal?.ownerName),
+    // ใบค่าสรรพสามิต = เจ้าของดีลของ SO ต้นทาง (listDealOf)
+    (row) => livePersonName(directory, listDealOf(row)?.ownerId, listDealOf(row)?.ownerName),
     [directory],
   );
   // รอยต่อ Won → Sale Order: เดิมไม่มีที่ไหนบอกว่าใบไหนปิดได้แล้วแต่ยังไม่ได้ออก SO
@@ -200,7 +202,7 @@ export default function QuotationsPage() {
   const ownerOptions = useMemo(() => {
     const byId = new Map();
     for (const r of rows) {
-      const id = r.deal?.ownerId;
+      const id = listDealOf(r)?.ownerId;
       if (!id || byId.has(id)) continue;
       byId.set(id, ownerNameOf(r));
     }
@@ -230,10 +232,10 @@ export default function QuotationsPage() {
       if (groupBy === "owner") {
         // ⚠️ กุญแจเป็น ownerId ไม่ใช่ชื่อ — เหตุผลเดียวกับตัวกรองผู้ดูแลด้านบน
         const name = ownerNameOf(r);
-        return { key: r.deal?.ownerId || name, label: name || "ไม่ระบุผู้ดูแล", weight };
+        return { key: listDealOf(r)?.ownerId || name, label: name || "ไม่ระบุผู้ดูแล", weight };
       }
       if (groupBy === "type") {
-        const type = r.deal ? dealTypeOf(r.deal) : null;
+        const type = listDealTypeOf(r);
         return { key: type, label: type ? DEAL_TYPE_LABELS[type] || type : "ไม่ระบุประเภท", weight };
       }
       return { key: r.status, label: QUOTE_STATUS_LABELS[r.status] || r.status, weight };
@@ -259,7 +261,10 @@ export default function QuotationsPage() {
 
   /* ── แถวของใบเสนอราคาหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ──────────
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
-  const quoteRow = (r) => (
+  const quoteRow = (r) => {
+    const dealLine = listDealLine(r);
+    const dealType = listDealTypeOf(r);
+    return (
                 <DetailRow key={r.id} href={`/sa/quotations/${r.id}`} className="premium-row">
                   <td>
                     {/* prefetch={false} ลิงก์ในแถว — กัน RSC prefetch ต่อแถวของลิสต์ยาว */}
@@ -273,11 +278,13 @@ export default function QuotationsPage() {
                         ⚠️ ตารางอื่นในชุดนี้ (ดีล) รหัสอยู่ใต้ชื่อ — ต่างกันโดยตั้งใจตามที่สั่ง */}
                     {r.customerArCode ? <span className="ar-code ar-code-block">{r.customerArCode}</span> : null}
                     {naText(r.customerName)}
+                    {/* ใบค่าสรรพสามิต (ไม่มีดีล · มติ 29/10): "ค่าสรรพสามิต · <ดีลของ SO ต้นทาง>" — ดีลเปิดได้ตามเดิม */}
                     <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-                      <Link prefetch={false} href={`/sa/deals/${r.deal?.id}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{naText(r.deal?.title)}</Link>
+                      {dealLine.prefix ? <span className="shrink-0">{dealLine.prefix} ·</span> : null}
+                      <Link prefetch={false} href={`/sa/deals/${dealLine.dealId}`} className="linklike" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{naText(dealLine.title)}</Link>
                     </span>
                   </td>
-                  <td>{r.deal ? dealTypeBadge(dealTypeOf(r.deal), "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">{NA}</span>}</td>
+                  <td>{dealType ? dealTypeBadge(dealType, "ui-badge-cell ui-badge-w-deal-type") : <span className="muted">{NA}</span>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{fmtDate(r.quoteDate)}</td>
                   <td className="num mono">{fmtMoney(r.totalAmount)}</td>
                   <td>{statusBadge(r.status, "ui-badge-cell ui-badge-w-doc")}</td>
@@ -318,7 +325,8 @@ export default function QuotationsPage() {
                     </div>
                   </td>
                 </DetailRow>
-  );
+    );
+  };
 
   if (!canView) {
     return (

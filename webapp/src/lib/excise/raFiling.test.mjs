@@ -159,3 +159,50 @@ test("ยกเลิก SO: ด่านใบยื่นดูทั้งส
   assert.equal(mapped.status, 409);
   assert.match(mapped.message, /ฝ่าย RA สร้างใบยื่นกรม/);
 });
+
+/* ── แถวกำลังมา (มติเจ้าของ 29/10): ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว → RA เห็นในคิวพร้อมขั้นที่ถึง · สร้างใบยื่นยังไม่ได้ ── */
+test('คิวรอยื่นกรม: ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้วขึ้นเป็นแถวกำลังมา (ready: false) พร้อมขั้นที่ถึง · ใบที่มี SO อนุมัติแล้ว/ยื่นแล้วไม่ซ้ำ', async () => {
+  const tables = base();
+  tables.sales_orders.push(
+    { id: 'S5', orderNumber: 'SO-5', status: 'approved', origin: 'pipeline', customerId: 'C1', customerName: 'ลูกค้า', approvedAt: '2026-10-07', supersededById: null },
+    { id: 'S6', orderNumber: 'SO-6', status: 'approved', origin: 'pipeline', customerId: 'C1', customerName: 'ลูกค้า', approvedAt: '2026-10-08', supersededById: null },
+    { id: 'SX6', orderNumber: 'SO-X6', status: 'pending_approval', origin: 'excise', sourceSalesOrderId: 'S6', quotationId: 'QX6', customerId: 'C1',
+      supersededById: null, createdAt: '2026-10-09' },
+  );
+  tables.quotations.push(
+    { id: 'QX1x', quoteNumber: 'QT-X1', origin: 'excise', status: 'accepted', approvalStatus: 'approved', approvedAt: '2026-10-04', sourceSalesOrderId: 'S1', totalAmount: 107 },
+    { id: 'QX5', quoteNumber: 'QT-X5', origin: 'excise', status: 'sent', approvalStatus: 'approved', approvedAt: '2026-10-07', sourceSalesOrderId: 'S5', totalAmount: 50 },
+    { id: 'QX6', quoteNumber: 'QT-X6', origin: 'excise', status: 'accepted', approvalStatus: 'approved', approvedAt: '2026-10-08', sourceSalesOrderId: 'S6', totalAmount: 60 },
+    { id: 'QX7', quoteNumber: 'QT-X7', origin: 'excise', status: 'draft', approvalStatus: 'pending', approvedAt: null, sourceSalesOrderId: 'S5', totalAmount: 10 },
+  );
+  // QX1x อ้าง S1 ที่มี SX1 อนุมัติแล้ว (quotationId ของ SX1 = QX1) — ใบรับแล้วอีกใบของ S1 ไม่ควรเกิดจริง แต่ถ้ามี ต้องไม่ซ้ำกับแถวพร้อม
+  tables.sales_orders.find((r) => r.id === 'SX1').quotationId = 'QX1x';
+  const rows = await loadRaFilingQueue(fakeDb(tables));
+  const upcoming = rows.filter((r) => r.ready === false);
+  assert.deepEqual(upcoming.map((r) => r.key), ['upcoming:QX5', 'upcoming:QX6']);
+  assert.equal(upcoming[0].stage, 'quote_approved');
+  assert.match(upcoming[0].stageLabel, /รอลูกค้ารับใบ/);
+  assert.equal(upcoming[1].stage, 'order_pending');
+  assert.equal(upcoming[1].exciseOrder.orderNumber, 'SO-X6');
+  assert.ok(rows.filter((r) => r.ready).every((r) => r.source !== 'upcoming'));
+  assert.ok(!rows.some((r) => r.key === 'upcoming:QX1x'), 'ใบที่มี SO ค่าสรรพสามิตอนุมัติแล้ว = แถวพร้อม ไม่ใช่กำลังมา');
+  assert.ok(!rows.some((r) => r.key === 'upcoming:QX7'), 'ใบที่ยังไม่อนุมัติไม่ขึ้น');
+});
+
+test('แถวคิว → แถวของ WorkQueue: พร้อม = "สร้างใบยื่น" · กำลังมา = ป้ายกำลังมา + กดแล้วบอกเหตุ (ไม่เปิดโมดัล)', async () => {
+  const { raQueueItem, raQueueText, UPCOMING_CREATE_BLOCKER } = await import('./raQueueItem.js');
+  let opened = false;
+  const ready = raQueueItem({ key: 'excise:SX1', ready: true, salesOrder: { orderNumber: 'SO-1', customerName: 'ลูกค้า' }, exciseOrder: { orderNumber: 'SO-X1' } }, { onCreate: () => { opened = true; } });
+  assert.equal(ready.status, 'queued');
+  assert.equal(ready.cta, 'สร้างใบยื่น');
+  ready.onClick();
+  assert.equal(opened, true);
+  const upcoming = raQueueItem({ key: 'upcoming:QX5', ready: false, salesOrder: { orderNumber: 'SO-5', customerName: 'ลูกค้า' }, exciseQuote: { quoteNumber: 'QT-X5' }, stageLabel: 'รอลูกค้ารับใบ' }, { onCreate: () => { throw new Error('ห้ามเปิดโมดัล'); } });
+  assert.equal(upcoming.status, 'upcoming');
+  assert.equal(upcoming.cta, 'ยังสร้างไม่ได้');
+  assert.equal(typeof upcoming.onClick, 'function');
+  assert.match(raQueueText({ ready: false, salesOrder: { orderNumber: 'SO-5' }, exciseQuote: { quoteNumber: 'QT-X5' }, stageLabel: 'รอลูกค้ารับใบ' }).subtitle, /^QT-X5 · รอลูกค้ารับใบ$/);
+  assert.match(UPCOMING_CREATE_BLOCKER, /ใบสั่งขายค่าสรรพสามิต/);
+  const modal = readFileSync(new URL('../../components/excise/SalesOrderFilingModal.js', import.meta.url), 'utf8');
+  assert.match(modal, /filter\(\(row\) => row\.ready !== false\)/, 'โมดัลสร้างเลือกได้เฉพาะแถวพร้อม');
+});

@@ -33,7 +33,10 @@ async function existingFilingLinks(supabase) {
  * คิว "รอยื่นกรม" ของ RA — คำนวณสด ไม่เก็บ (แผน หมวด 2 ขั้น 11)
  *  · SO ค่าสรรพสามิตที่อนุมัติแล้ว ยังไม่มีใบยื่น (และ SO ลูกค้าต้นทางยังไม่มีใบยื่น — unique ฝั่ง SO ลูกค้า)
  *  · SO ลูกค้าที่ตัดสิน "ไม่เรียกเก็บ" แบบเก็บนอกระบบ/รวมในราคา ยังไม่มีใบยื่น
- * @returns แถวละหนึ่งงาน `{ key, source, salesOrder, exciseOrder?, notBilled? }` เก่าสุดก่อน
+ *  · ⭐ **แถวกำลังมา** (มติเจ้าของ 29/10 · `ready: false`): ใบเสนอราคาค่าสรรพสามิตที่อนุมัติแล้ว แต่ SO ค่าสรรพสามิตยังไม่อนุมัติ —
+ *    RA เห็นงานล่วงหน้าพร้อมขั้นที่ถึง (รอลูกค้ารับใบ · รอออก SO · SO รออนุมัติ) และเตรียมทะเบียนได้ก่อน · สร้างใบยื่นยังไม่ได้
+ *    (ใบยื่นผูก SO ค่าสรรพสามิต — 0417)
+ * @returns แถวละหนึ่งงาน `{ key, source, ready, salesOrder, exciseOrder?, exciseQuote?, notBilled?, stage? }` เก่าสุดก่อน
  */
 export async function loadRaFilingQueue(supabase) {
   const [exciseResult, notBilledResult, links] = await Promise.all([
@@ -77,6 +80,7 @@ export async function loadRaFilingQueue(supabase) {
     rows.push({
       key: `excise:${exciseOrder.id}`,
       source: FILING_SOURCE_EXCISE_ORDER,
+      ready: true,
       salesOrder,
       exciseOrder: { ...exciseOrder, quoteNumber: quoteNumberById.get(exciseOrder.quotationId) || null },
       since: exciseOrder.approvedAt || null,
@@ -87,6 +91,7 @@ export async function loadRaFilingQueue(supabase) {
     rows.push({
       key: `not_billed:${salesOrder.id}`,
       source: FILING_SOURCE_NOT_BILLED,
+      ready: true,
       salesOrder,
       notBilled: {
         kind: salesOrder.exciseNotBilledKind,
@@ -97,7 +102,68 @@ export async function loadRaFilingQueue(supabase) {
       since: salesOrder.exciseNotBilledAt || salesOrder.approvedAt || null,
     });
   }
+  const readyExciseOrderIds = new Set((exciseResult.data || []).map((row) => row.quotationId));
+  rows.push(...await loadUpcomingRows(supabase, { links, readyQuoteIds: readyExciseOrderIds }));
   return rows.sort((a, b) => String(a.since || '').localeCompare(String(b.since || '')));
+}
+
+/* ขั้นของแถวกำลังมา — ใครถือ · รออะไร (คำบนคิวของ RA) */
+export const UPCOMING_STAGE_TEXT = Object.freeze({
+  quote_approved: 'ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว — รอลูกค้ารับใบ',
+  quote_accepted: 'ลูกค้ารับใบแล้ว — รอฝ่ายขายออกใบสั่งขายค่าสรรพสามิต',
+  order_pending: 'ใบสั่งขายค่าสรรพสามิตรออนุมัติ',
+  order_draft: 'ใบสั่งขายค่าสรรพสามิตเป็นร่าง — รอฝ่ายขายยื่นอนุมัติ',
+});
+
+/** แถวกำลังมา: ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว (ส่ง/รับแล้ว) ที่ยังไม่มี SO ค่าสรรพสามิตอนุมัติ และ SO ต้นทางยังไม่มีใบยื่น */
+async function loadUpcomingRows(supabase, { links, readyQuoteIds }) {
+  const { data: quotes, error } = await fetchAllResult(() => exciseRowsOnly(supabase
+    .from('quotations')
+    .select('id, "quoteNumber", status, "approvalStatus", "approvedAt", "sourceSalesOrderId", "totalAmount", "customerName"'))
+    .eq('approvalStatus', 'approved')
+    .in('status', ['draft', 'sent', 'accepted'])
+    .order('approvedAt', { ascending: true })
+    .order('id', { ascending: true }));
+  if (error) throw error;
+  const waiting = (quotes || []).filter((quote) => !readyQuoteIds.has(quote.id) && !links.bySalesOrder.has(quote.sourceSalesOrderId));
+  if (!waiting.length) return [];
+  const [sourceRows, orderResult] = await Promise.all([
+    fetchAllInChunks(
+      waiting.map((quote) => quote.sourceSalesOrderId),
+      (chunk) => supabase.from('sales_orders').select(ORDER_FIELDS).in('id', chunk).order('id', { ascending: true }),
+    ),
+    fetchAllResult(() => exciseRowsOnly(supabase
+      .from('sales_orders')
+      .select('id, "orderNumber", status, "quotationId", "createdAt"')
+      .in('status', ['draft', 'pending_approval', 'rejected'])
+      .is('supersededById', null))
+      .order('createdAt', { ascending: true })
+      .order('id', { ascending: true })),
+  ]);
+  if (orderResult.error) throw orderResult.error;
+  const sourceById = new Map(sourceRows.map((row) => [row.id, row]));
+  const orderByQuote = new Map((orderResult.data || []).map((row) => [row.quotationId, row]));
+  const rows = [];
+  for (const quote of waiting) {
+    const salesOrder = sourceById.get(quote.sourceSalesOrderId);
+    if (!salesOrder || salesOrder.status !== 'approved') continue;
+    const order = quote.status === 'accepted' ? orderByQuote.get(quote.id) || null : null;
+    const stage = order
+      ? (order.status === 'pending_approval' ? 'order_pending' : 'order_draft')
+      : quote.status === 'accepted' ? 'quote_accepted' : 'quote_approved';
+    rows.push({
+      key: `upcoming:${quote.id}`,
+      source: 'upcoming',
+      ready: false,
+      salesOrder,
+      exciseQuote: { id: quote.id, quoteNumber: quote.quoteNumber, status: quote.status, totalAmount: Number(quote.totalAmount) || 0 },
+      exciseOrder: order ? { id: order.id, orderNumber: order.orderNumber, status: order.status } : null,
+      stage,
+      stageLabel: UPCOMING_STAGE_TEXT[stage],
+      since: quote.approvedAt || null,
+    });
+  }
+  return rows;
 }
 
 /* SO หนึ่งใบพร้อมบรรทัดครบคอลัมน์ (packQty · metadata) */

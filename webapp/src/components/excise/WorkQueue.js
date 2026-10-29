@@ -18,7 +18,10 @@ import { ListPanel } from "@/components/ui/Workspace";
 // ป้ายจำนวนเลิกอ้างยอดเต็ม และช่องว่างเปลี่ยนจาก "ไม่มีงานค้าง 🎉" เป็นคำบอกว่าคิวยังไม่ครบ
 // 🐞 ของจริง: /api/orders ตอบ 500 อยู่ 26 วัน คิวนี้ขึ้น "0 งาน · ไม่มีงานค้างที่ต้องทำ 🎉"
 //    ทุกวันทั้งที่ใบยื่นค้างเต็มระบบ — ตัวเลข 0 ที่มาจากความไม่รู้คือคำตอบที่ผิด ไม่ใช่ว่าง
-export default function WorkQueue({ items = [], incomplete = false }) {
+export default function WorkQueue({
+  items = [], incomplete = false,
+  title = "รายการงานของฉันตอนนี้", subtitle = "งานที่รอคุณลงมือ เรียงจากค้างนานสุด",
+}) {
   /* 🪤 ขีดเฉพาะตอน **ไม่มีอะไรให้นับจริง ๆ** — แปะขีดทับคิวที่ยังมีแถวโชว์อยู่ใต้หัวแผง
      อ่านเป็นป้ายเสียมากกว่า "ข้อมูลไม่ครบ" · มีแถวก็บอกไปว่าอย่างน้อยเท่านี้ แล้วปล่อยให้
      ป้าย error ด้านบนเป็นคนอธิบายว่าทำไมถึงยังไม่ใช่ตัวเลขเต็ม
@@ -29,8 +32,8 @@ export default function WorkQueue({ items = [], incomplete = false }) {
   return (
     <ListPanel
       icon={<ClipboardCheck size={17} aria-hidden="true" />}
-      title="รายการงานของฉันตอนนี้"
-      subtitle="งานที่รอคุณลงมือ เรียงจากค้างนานสุด"
+      title={title}
+      subtitle={subtitle}
       count={count}
     >
       {!items.length ? (

@@ -87,7 +87,7 @@ test('บรรทัดรองของเลขที่ใบ: ใบย้
    ดีลภาชนะได้สองใบที่ต่างกันแค่ AE (มติข้อ 22) */
 test('บรรทัดรองใต้ลูกค้าของใบย้อนหลัง = "AE {ชื่อ}" แทนชื่อดีล', () => {
   // ใบค่าสรรพสามิต (mig 0414) ไม่มีดีล ⇒ ชื่อดีลของ SO ต้นทาง (`sourceDeal` จาก API) — ใบอื่นเหมือนเดิม
-  assert.match(code(REGISTER), /historical \? `AE \$\{naText\(row\.deal\?\.ownerName\)\}` : naText\(\(excise \? row\.sourceDeal : row\.deal\)\?\.title\)/);
+  assert.match(code(REGISTER), /historical \? `AE \$\{naText\(row\.deal\?\.ownerName\)\}` : excise \? `ค่าสรรพสามิต · \$\{naText\(row\.sourceDeal\?\.title\)\}` : naText\(row\.deal\?\.title\)/);
 });
 
 // ── 2. ชุดค้น ────────────────────────────────────────────────────────────────────

@@ -627,7 +627,7 @@ export default function SalesOrdersPage() {
                         พูดซ้ำชื่อลูกค้าบรรทัดบน และลูกค้ารายเดียวมีดีลภาชนะได้สองใบที่ต่างกัน
                         แค่ AE (มติข้อ 22 · 16/09) */}
                     <span className="cell-sub">
-                      {historical ? `AE ${naText(row.deal?.ownerName)}` : naText((excise ? row.sourceDeal : row.deal)?.title)}
+                      {historical ? `AE ${naText(row.deal?.ownerName)}` : excise ? `ค่าสรรพสามิต · ${naText(row.sourceDeal?.title)}` : naText(row.deal?.title)}
                     </span>
                   </td>
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
