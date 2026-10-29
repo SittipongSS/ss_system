@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRightLeft, ArrowUpRight, BadgeCheck, CalendarClock, CalendarDays, CalendarRange, CheckCheck, Columns3, FileText, HandCoins, Link2,
-  Paperclip, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
+  Paperclip, Plus, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -84,7 +84,7 @@ import { installmentRequests, primaryInstallmentRequest } from "@/lib/sales/inst
 import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   billingRequestDead, billingRequestedIds, installmentActionError, installmentBillingRequested, installmentConfirmOutlook,
-  installmentDisplayStatus, installmentPlanDrift,
+  installmentDisplayStatus, installmentEvidenceRoom, installmentPlanDrift,
   installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentScheduleAllowed, installmentStartBlock,
   installmentUnconfirmOutcome,
   installmentVoid, installmentVoidNote, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
@@ -166,6 +166,8 @@ export default function SalesOrderPaymentPanel({
   dateFillRequest = null, onDateFillRequestDone,
 }) {
   const [reportFor, setReportFor] = useState(null);
+  /* แนบหลักฐานเพิ่มในงวดที่แจ้งแล้ว (มติ 29/10 — ลูกค้าโอนงวดเดียวหลายรอบ) · `{ row, files }` */
+  const [addEvidenceFor, setAddEvidenceFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
   const [unconfirmFor, setUnconfirmFor] = useState(null);
   const [confirmFor, setConfirmFor] = useState(null);
@@ -1819,12 +1821,24 @@ export default function SalesOrderPaymentPanel({
                               key={`${att.storagePath || "e"}-${i}`}
                               href={`/api/sales-planning/sales-orders/${order.id}/payment-file?installment=${encodeURIComponent(row.id)}&i=${i}`}
                               target="_blank" rel="noreferrer" className={styles.fileLink}
-                              title={att.fileName || `หลักฐาน ${i + 1}`}
+                              /* ไฟล์ที่แนบเพิ่มทีหลัง (`evidence-add`) พกผู้แนบ/เวลามาด้วย — ชุดแรกไม่มี (ผู้แจ้งอยู่ที่คอลัมน์สถานะแล้ว) */
+                              title={[att.fileName || `หลักฐาน ${i + 1}`,
+                                att.addedAt ? `แนบเพิ่ม ${fmtDate(att.addedAt)}${att.addedByName ? ` โดย ${att.addedByName}` : ""}` : ""]
+                                .filter(Boolean).join(" · ")}
                             >
                               <Paperclip size={13} aria-hidden="true" />
                               <span className="cell-ellipsis">{att.fileName || `หลักฐาน ${i + 1}`}</span>
                             </a>
                           ))}
+                          {/* ⭐ แนบเพิ่มอยู่ใต้ไฟล์ของงวดเลย (ไม่ซ่อนในเมนู "…") — ลูกค้าโอนรอบสองแล้วคนถือสลิปมองหาที่ช่องหลักฐาน
+                              · ด่านเดียวกับ API (`evidence-add`) — ไม่มีสิทธิ์/สถานะไม่ถึง = ไม่วาด (ก่อนรับรอง ฝ่ายขาย+บัญชี · หลังรับรอง บัญชี) */}
+                          {!row.preview && !gate(row, "evidence-add") ? (
+                            <Button size="sm" variant="quiet" className={styles.addEvidence} disabled={!!busy}
+                              icon={<Plus size={13} aria-hidden="true" />}
+                              onClick={() => { onClearError?.(); setAddEvidenceFor({ row, files: [] }); }}>
+                              แนบเพิ่ม
+                            </Button>
+                          ) : null}
                         </span>
                       ) : <span className={styles.none}>{NA}</span>}
                     </td>
@@ -2058,6 +2072,46 @@ export default function SalesOrderPaymentPanel({
                   if (done) setReportFor(null);
                 }}>
                 {busy ? "กำลังบันทึก…" : (prepayMode(reportRow) ? "บันทึกไว้" : prompt ? prompt.confirmLabel : "ส่งให้บัญชีตรวจ")}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+        );
+      })() : null}
+
+      {addEvidenceFor ? (() => {
+        /* แถวล่าสุดของตาราง (`live`) — จำนวนที่แนบได้อีกกับตัวล็อกที่ส่งขึ้น API มาจากแถวเดียวกัน */
+        const addRow = live(addEvidenceFor.row);
+        const have = Array.isArray(addRow.evidence) ? addRow.evidence.length : 0;
+        const room = Math.min(8, installmentEvidenceRoom(addRow));
+        return (
+        <Modal open onClose={() => setAddEvidenceFor(null)}
+          title={single ? "แนบหลักฐานการชำระเพิ่ม" : `แนบหลักฐานเพิ่ม งวดที่ ${addRow.seq}`}
+          size="sm" dismissible={!busy}>
+          <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
+            {/* บอกตรง ๆ ว่าอะไรไม่เปลี่ยน — คนแนบสลิปรอบสองต้องไม่เข้าใจว่าเป็นการแจ้งใหม่/ส่งเข้าคิวบัญชีอีกรอบ */}
+            <p className="form-note">
+              {`ยอด ${fmtMoney(addRow.amount)} · มีหลักฐานแล้ว ${have} ไฟล์ — ไฟล์ใหม่ต่อท้ายชุดเดิม`
+                + (addRow.status === "confirmed"
+                  ? " งวดยังเป็น “ชำระแล้ว” ตามเดิม"
+                  : addRow.status === "reported"
+                    ? " งวดยังรอบัญชีตรวจตามเดิม บัญชีเห็นไฟล์ใหม่ในการตรวจรอบเดียวกัน"
+                    : " วันที่จ่ายกับสถานะงวดไม่เปลี่ยน")}
+            </p>
+            <div className={styles.field}>
+              <span>{`หลักฐานเพิ่ม * (แนบได้อีก ${room} ไฟล์)`}</span>
+              <PendingFiles files={addEvidenceFor.files} disabled={!!busy} max={room}
+                onChange={(files) => setAddEvidenceFor((f) => ({ ...f, files }))} />
+            </div>
+            <div className="action-bar">
+              <Button variant="ghost" onClick={() => setAddEvidenceFor(null)} disabled={!!busy}>ยกเลิก</Button>
+              <Button tone="primary" disabled={!!busy || !addEvidenceFor.files.length}
+                onClick={async () => {
+                  const done = await onAction(live(addEvidenceFor.row), "evidence-add", { files: addEvidenceFor.files });
+                  if (done) setAddEvidenceFor(null);
+                }}>
+                {busy ? "กำลังบันทึก…" : "แนบเพิ่ม"}
               </Button>
             </div>
           </div>

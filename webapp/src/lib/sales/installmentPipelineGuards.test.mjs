@@ -195,3 +195,29 @@ test('loadOrder ไม่กลืน error ของการอ่าน QT �
   assert.match(load, /\{ data: quotation, error: quotationError \}/);
   assert.match(load, /if \(quotationError\) throw quotationError;/);
 });
+
+// ── แนบหลักฐานเพิ่ม `evidence-add` (มติเจ้าของ 29/10 — ลูกค้าโอนงวดเดียวหลายรอบ) ───────────────────────
+test('PATCH evidence-add: ต่อท้ายชุดเดิมอย่างเดียว — ไม่แตะสถานะ/วันจ่าย/ผู้แจ้ง · ด่านไฟล์ชุดเดียวกับ report · ไม่เพิ่มไฟล์ซ้ำ', () => {
+  const route = code(ROUTE);
+  const branch = slice(route, "} else if (action === 'evidence-add') {", "} else if (action === 'withdraw') {");
+  assert.ok(branch.includes('privateOnly: true'), 'สลิปต้องเป็นไฟล์ของใบนี้ใน bucket ส่วนตัวเท่านั้น');
+  assert.ok(branch.includes('evidenceRefsDropped(body.evidence, added)'), 'ตัดบางไฟล์ทิ้ง = ปฏิเสธทั้งคำขอ');
+  assert.ok(branch.includes('missingStoredEvidence('), 'ไฟล์ต้องมีอยู่จริงใน bucket');
+  assert.ok(branch.includes('...current,'), 'ไฟล์เดิมต้องอยู่หน้าเดิม — ลิงก์ payment-file?i= ของไฟล์เดิมชี้ที่เดิม');
+  assert.ok(branch.includes('!known.has(att.storagePath)'), 'กดส่งซ้ำต้องไม่ได้สลิปสองแถว');
+  for (const field of ['status', 'paidOn', 'reportedAt', 'reportedById', 'confirmedAt']) {
+    assert.ok(!new RegExp(`\\b${field}:`).test(branch), `evidence-add ห้ามเขียน ${field} — งวดยังเป็นก้อนเดียวตามเดิม`);
+  }
+  const gate = slice(slice(route, 'export const PATCH'), 'installmentActionError(row, action, user, {', '});');
+  assert.ok(gate.includes('evidenceCount:'), 'ด่านต้องรู้จำนวนไฟล์ที่จะเพิ่ม (เพดานต่องวด)');
+});
+
+test('จอ evidence-add: ปุ่มถามด่านเดียวกับ API · หน้าใบอัปไฟล์ก่อนยิงเหมือน report', () => {
+  const panel = code(PANEL);
+  assert.ok(panel.includes('!gate(row, "evidence-add")'), 'ปุ่มแนบเพิ่มต้องวาดตามด่านเดียวกับ API');
+  assert.ok(panel.includes('onAction(live(addEvidenceFor.row), "evidence-add"'), 'ยิงด้วยแถวสด (updatedAt ล่าสุด)');
+  assert.ok(panel.includes('max={room}'), 'ช่องเลือกไฟล์ต้องไม่ให้เลือกเกินที่ด่านรับ');
+  const page = code(SO_PAGE);
+  assert.ok(page.includes('if (action === "report" || action === "evidence-add") {'),
+    'ไม่อัปไฟล์ก่อน = ส่ง evidence ว่าง ⇒ 400 ทุกครั้ง');
+});
