@@ -38,7 +38,7 @@ import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, naText, NA } from "@/lib/format";
 import {
-  canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService, canSendSurveyResult, canViewVisitReport,
+  canAnswerRequestsFor, canBeServiceAssignee, canDoFieldWork, canEditService, canIssueSurveyReport, canSendSurveyResult, canViewVisitReport,
 } from "@/lib/permissions";
 import { requestRailSteps } from "@/lib/requests/requestRail";
 import { requestHeaderFacts, requestHeaderPeople } from "@/lib/requests/headerFacts";
@@ -1850,6 +1850,9 @@ export default function RequestDetailPage() {
      · ใบประเมิน: คนที่ทำงานหน้างาน/จัดคิวได้ · นัด: รายงานนัดเปิดให้ฝ่ายขายอ่านได้ (`canViewVisitReport`) */
   const kindViewer = {
     canDecide: canSendSurveyResult({ role, department }),
+    /* ⭐ กด "ออกเอกสาร" ประเมินได้ (หัวหน้า + ผู้วางคิว · มติเจ้าของ 19/10/2026) — ใช้เลือกข้อความของบล็อกเอกสารเท่านั้น
+       ⚠️ ไม่ใช่สิทธิ์ส่งผล: `canDecide` ยังเป็นหัวหน้าเท่านั้น · หน้านี้ไม่มีปุ่มออกเอกสาร (กดที่ใบประเมิน) */
+    canIssue: canIssueSurveyReport({ role, department }),
     canWork: canDoFieldWork({ role, department }) || canEditService({ role, department }),
     canOpenVisit: canViewVisitReport({ role, department }),
     isOpener: !!req._opener,
@@ -2324,8 +2327,8 @@ export default function RequestDetailPage() {
               </small>
             </div>
             {/* ⭐ **กดแล้วเอกสารประเมิน (SU) ใช้ไม่ได้ทันที** — โมดัลต้องบอกผลก่อนกด (กติกา #1223 · PR-3 §5.2)
-                ⚠️ อ่านคีย์ `surveyDocument` อย่างเดียว (หัวข้ออื่นไม่มีคีย์ ⇒ ไม่มีบรรทัด) · Planner ที่ไม่มีสิทธิ์เอกสาร
-                   ก็ได้ `voids` มาพอให้บรรทัดนี้ขึ้น · ใบที่ยังไม่ตอบ การเปิดกลับไม่แทนที่อะไร ⇒ lib คืน null */}
+                ⚠️ อ่านคีย์ `surveyDocument` อย่างเดียว (หัวข้ออื่นไม่มีคีย์ ⇒ ไม่มีบรรทัด) · คนของฝ่ายที่ไม่มีสิทธิ์เอกสาร
+                   ก็ได้ `voids` มาพอให้บรรทัดนี้ขึ้น (ผู้วางคิวได้ก้อนเต็มตั้งแต่ 19/10) · ใบที่ยังไม่ตอบ การเปิดกลับไม่แทนที่อะไร ⇒ lib คืน null */}
             {reopenDocumentLine ? <StatusNotice tone="warning">{reopenDocumentLine}</StatusNotice> : null}
             <div className={`action-bar ${styles.modalActions}`}>
               <Button variant="quiet" disabled={saving} onClick={() => setReopen(null)}>ยกเลิก</Button>

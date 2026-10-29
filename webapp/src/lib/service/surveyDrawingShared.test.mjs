@@ -495,7 +495,8 @@ test('🔴 surveyJobView ไม่ส่งอะไรเรื่องวิ�
   const from = src.indexOf('document: surveyRequestDocumentView({');
   assert.ok(from > 0, 'หาการเรียกบล็อกเอกสารไม่เจอ');
   const call = src.slice(from, src.indexOf('}),', from));
-  assert.deepEqual([...call.matchAll(/^\s*(\w+)(?::|,$)/gm)].map((m) => m[1]), ['document', 'surveyDocument', 'request', 'viewer', 'canOpenSheet', 'isRequesterSide', 'canDecide', 'pollStopped']);
+  /* `canIssue` = ธงของคนดูชุดที่สี่ (ผู้วางคิวออกเอกสารได้ · มติเจ้าของ 19/10/2026) — ไม่ใช่เรื่องวิธีประเมิน */
+  assert.deepEqual([...call.matchAll(/^\s*(\w+)(?::|,$)/gm)].map((m) => m[1]), ['document', 'surveyDocument', 'request', 'viewer', 'canOpenSheet', 'isRequesterSide', 'canDecide', 'canIssue', 'pollStopped']);
   // ตัวตัดสินเองก็ไม่มีพารามิเตอร์ของวิธีประเมิน — คีย์ที่ไม่รู้จักไม่เปลี่ยนผล
   const input = { surveyDocument: docOf('head', 'missing'), request: { id: 'r1', status: 'answered', answeredAt: SENT.answeredAt }, viewer: { canOpenSheet: true, canDecide: true } };
   assert.deepEqual(surveyRequestDocumentView({ ...input, hasDrawing: true }), surveyRequestDocumentView(input));

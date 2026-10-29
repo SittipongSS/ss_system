@@ -44,6 +44,7 @@ const sentRequest = (extra = {}) => request({ status: 'answered', answeredAt: AN
 const HEAD = { canWrite: true, canDecide: true };
 const HEAD_NO_WRITE = { canWrite: false, canDecide: true }; // CD / CM — ส่งผลได้ แต่เขียนผลวัดไม่ได้
 const CREW = { canWrite: true, canDecide: false };
+const PLANNER = { canWrite: true, canDecide: false }; // ผู้วางคิว — เขียนงานของฝ่ายได้ ส่งผลไม่ได้ · ออกเอกสารได้ (มติเจ้าของ 19/10/2026)
 
 const ACCESS = { customer: true, internal: true, issue: true, draft: true, history: true };
 const headDoc = (extra = {}) => ({
@@ -135,6 +136,36 @@ test('ส่วนเอกสารของการ์ด = ผลของ `
   assert.equal(notice(leaked, 'document-warnings'), null);
 });
 
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ผู้วางคิวได้ส่วนเอกสาร (บล็อกเดี่ยวนอกการ์ด) ของใบที่ส่งผลแล้ว
+   แต่ไม่มีอะไรของการส่ง/ดึงกลับ: ไม่มีแถวด่าน "เอกสารประเมินออกได้" · ไม่มีคำเตือนที่ต้องส่งกลับ · ไม่มีปุ่มส่งผล/ดึงกลับ */
+test('⭐ Planner: ส่วนเอกสารของใบที่ส่งผลแล้ว (ปุ่มออกเอกสาร) — ไม่มีแถวด่านเอกสาร · ไม่มีปุ่มส่งผล/ดึงกลับ · ก่อนส่งผล = ไม่มีส่วน', () => {
+  const plannerDoc = (extra = {}) => ({
+    access: ACCESS, issueAtSend: true, storeAllowed: true, state: 'missing', current: null,
+    history: [], nextDocNo: null, issue: OK, ...extra, // ไม่มีคีย์ `send` (ส่งผลไม่ได้)
+  });
+  const missing = view({ request: sentRequest(), document: plannerDoc(), viewer: PLANNER });
+  assert.equal(missing.document.show, true);
+  assert.equal(missing.document.issue.allowed, true);
+  assert.equal(docGate(missing), null, 'แถวด่านของเอกสารเป็นของคนส่งผล');
+  assert.equal(missing.send.show, false);
+  assert.equal(missing.recallAction.show, false);
+  assert.equal(missing.recallAllowed, false, 'ด่านดึงกลับของตัวตัดสินตอบเท็จเหมือน route');
+  assert.deepEqual(missing.send.seenWarnings, []);
+  assert.equal(notice(missing, 'document-warnings'), null);
+  // ติดเหตุของเนื้อใบ — ส่วนเอกสารบอกเหตุ (ทางออกผ่านหัวหน้า) แต่ยังไม่มีแถวด่าน
+  const stuck = view({
+    request: sentRequest(), viewer: PLANNER,
+    document: plannerDoc({ issue: { ...OK, blockers: [{ kind: 'content', text: 'Studio 01: ยังไม่ได้เลือกจุดติดตั้ง' }] } }),
+  });
+  assert.equal(stuck.document.status.foot, 'แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่');
+  assert.equal(docGate(stuck), null);
+  assert.deepEqual(stuck.gateNotes, []);
+  // ก่อนส่งผล — ไม่มีส่วน (ไม่มีอะไรให้เขาทำ)
+  const unsent = view({ document: plannerDoc({ state: 'not_sent', access: { ...ACCESS, draft: false }, issue: null }), viewer: PLANNER });
+  assert.equal(unsent.document.show, false);
+  assert.equal(docGate(unsent), null);
+});
+
 // ══ ผังของส่วนรอง + คำบนปุ่มคลี่ (มติเจ้าของ 08/10 ชุดสุดท้าย) ═══════════════════════════════
 //   ราง (≥1200) ก่อนส่งผล: ไม่มีปุ่มคลี่ ด่านกางที่เดิมเหมือนก่อน PR-3 ส่วนเอกสารต่อใต้ด่าน · ส่งผลแล้ว (ทุกความกว้าง): ส่วนเอกสารอยู่บน
 //   ด่าน · ขั้นตอน · เอกสารที่เกี่ยวข้อง พับหลังปุ่มคลี่ · ไม่มีราง (<1200) ก่อนส่งผล: พับเหมือนแท็บเล็ต (ส่วนเอกสารพับไปด้วย) ·
@@ -214,7 +245,12 @@ test('`fold`: พับทุกความกว้างเฉพาะกา
     labels: { gates: `ของที่ช่างต้องเก็บ (ติด ${crew.gatesFailed})`, document: null, steps: 'ขั้นตอน', refs: 'เอกสาร' },
   });
   assert.ok(crew.gatesFailed > 0);
-  const viewer = view({ viewer: { canWrite: false, canDecide: false }, request: sentRequest(), document: headDoc({ state: 'ready', current: currentRow() }) });
+  /* คนดูที่ส่งผลไม่ได้และออกเอกสารไม่ได้ (ผู้บริหาร: เปิดได้สองฉบับ) ไม่มีส่วนเอกสาร (มติเจ้าของ 08/10 Q3)
+     ⚠️ ผู้วางคิว (ออกได้ · มติ 19/10) ได้ส่วนนี้เป็นบล็อกเดี่ยว — การ์ดไม่ถูกวาดให้เขา ผังของการ์ดจึงไม่เกี่ยว (เทสต์ของเขาอยู่ข้างบน) */
+  const viewer = view({
+    viewer: { canWrite: false, canDecide: false }, request: sentRequest(),
+    document: headDoc({ access: { ...ACCESS, issue: false, draft: false, history: false }, state: 'ready', current: currentRow() }),
+  });
   assert.equal(viewer.document.show, false, 'คนดูที่ไม่ได้ส่งผลไม่มีส่วนเอกสาร');
   assert.deepEqual(viewer.fold, { wide: false, belowRail: false, labels: { gates: `${viewer.gatesTitle} (ผ่านครบ)`, document: null, steps: 'ขั้นตอน', refs: 'เอกสาร' } });
   /* หัวหน้าที่ไม่มีส่วนเอกสาร (สวิตช์/สิทธิ์ไม่ให้ · ใบจบแล้วที่ไม่เคยมีเอกสาร) ก็เหมือนเดิม */

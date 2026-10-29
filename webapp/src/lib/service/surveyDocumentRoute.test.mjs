@@ -536,7 +536,7 @@ test('GET: คำร้องไม่มีแล้ว = 404 ก่อนอ�
   assert.equal(other.tableCalls('service_survey_reports').length, 0);
 });
 
-test('🔴 GET: ผู้ขอได้ 403 ที่ฉบับภายใน **ก่อน** อ่านแถวเอกสาร — ทั้ง PDF และ HTML · Planner ไม่ได้อะไรเลย', async () => {
+test('🔴 GET: ผู้ขอได้ 403 ที่ฉบับภายใน **ก่อน** อ่านแถวเอกสาร — ทั้ง PDF และ HTML · Planner เปิดได้ทั้งสองฉบับ (มติเจ้าของ 19/10)', async () => {
   const world = makeWorld();
   await issueBySend(world);
   world.backend.calls.length = 0;
@@ -546,12 +546,15 @@ test('🔴 GET: ผู้ขอได้ 403 ที่ฉบับภายใ�
     assert.equal(res.json.error, 'คุณไม่มีสิทธิ์เปิดเอกสารนี้');
   }
   for (const who of [TEAMMATE]) assert.equal((await get(world, who, '?version=internal')).status, 403);
-  for (const query of ['', '?version=internal', '?format=html']) {
-    assert.equal((await get(world, PLANNER, query)).status, 403, `planner ${query}`);
-  }
   assert.equal(world.tableCalls('service_survey_reports').length, 0, 'ถูกตัดก่อนถึงแถวเอกสารทุกครั้ง');
   assert.equal(world.storageCalls().length, 0);
   assert.equal(world.renderer.prints.length, 0);
+
+  /* ⭐ ผู้วางคิวออกเอกสารได้ ⇒ เปิด/ดาวน์โหลดได้ทั้งสองฉบับ ("ได้ทั้งสองฉบับ" — ขยายกติกา 01/10 "ฉบับภายใน = หัวหน้า + ผู้บริหาร") */
+  for (const query of ['', '?version=internal', '?format=html', '?version=internal&format=html']) {
+    const res = await get(world, PLANNER, query);
+    assert.equal(res.status, 200, `planner ${query} ${res.json?.error || ''}`);
+  }
 });
 
 test('GET: ด่านของ handler ตรงกับตาราง §7 ทุก role — ฉบับที่ไม่มีสิทธิ์ = 403 · ที่มีสิทธิ์ = ไปถึงแถวเอกสาร (404 ยังไม่มี)', async () => {
@@ -957,9 +960,9 @@ test('ฉบับร่างของใบที่ยังไม่ส่�
   assert.equal(world.request().answeredAt, null);
 });
 
-test('ฉบับร่าง: ผู้ขอ · เพื่อนร่วมทีม · ผู้บริหาร · Planner · ช่าง = 403 · `format=pdf` = 400 · มีฉบับที่ใช้อยู่ = 409 · วัดไม่ครบ = 409 (n/m)', async () => {
+test('ฉบับร่าง: ผู้ขอ · เพื่อนร่วมทีม · ผู้บริหาร · ช่าง = 403 · `format=pdf` = 400 · มีฉบับที่ใช้อยู่ = 409 · วัดไม่ครบ = 409 (n/m)', async () => {
   const world = makeWorld();
-  for (const user of [REQUESTER, TEAMMATE, EXEC, PLANNER, CREW]) {
+  for (const user of [REQUESTER, TEAMMATE, EXEC, CREW]) {
     for (const query of ['?draft=1&format=html', '?draft=1&format=html&version=internal']) {
       assert.equal((await get(world, user, query)).status, 403, `${user.role} ${query}`);
     }
@@ -989,6 +992,32 @@ test('ฉบับร่าง: ผู้ขอ · เพื่อนร่ว�
   assert.equal(world.writes().length, 0);
 });
 
+/* ⭐ มติเจ้าของ 19/10/2026 — ผู้วางคิวได้ร่าง **เฉพาะใบที่ส่งผลแล้ว** (ผู้ตรวจสอบและอนุมัติบนร่าง = ผู้ส่งผลจริง) ·
+   ใบที่ยังไม่ตอบ = 403 ก่อนอ่านอะไร (ร่างของใบนั้นพิมพ์คนดูเป็นผู้ตรวจสอบและอนุมัติ — ไม่มีวันเป็นที่นั่งของ Planner) */
+test('⭐ ฉบับร่างของ Planner: ใบที่ส่งผลแล้ว = ทั้งสองฉบับ ผู้อนุมัติเป็นผู้ส่งผล · ใบที่ยังไม่ตอบ = 403 ไม่อ่านแถวเอกสาร', async () => {
+  const world = makeWorld();
+  const customer = await get(world, PLANNER, '?draft=1&format=html');
+  assert.equal(customer.status, 200, customer.json?.error);
+  assert.ok(customer.text.includes('ฉบับร่าง'));
+  assert.ok(customer.text.includes('Head Approver'), 'ผู้ตรวจสอบและอนุมัติ = ผู้ส่งผลบนแถว');
+  assert.equal(customer.text.includes(PLANNER.name), false, 'ชื่อ Planner ไม่ขึ้นที่นั่งไหนของร่าง');
+  const internal = await get(world, PLANNER, '?draft=1&format=html&version=internal');
+  assert.equal(internal.status, 200, internal.json?.error);
+  assert.ok(internal.text.includes('ฉบับภายใน'));
+  assert.equal(world.writes().length, 0);
+
+  const unanswered = makeWorld({ request: { answeredAt: null, answeredById: null, answeredByName: null, status: 'acknowledged' } });
+  for (const query of ['?draft=1&format=html', '?draft=1&format=html&version=internal']) {
+    const res = await get(unanswered, PLANNER, query);
+    assert.equal(res.status, 403, query);
+    assert.equal(res.json.error, 'คุณไม่มีสิทธิ์เปิดเอกสารนี้');
+  }
+  assert.equal(unanswered.tableCalls('service_survey_reports').length, 0);
+  assert.equal(unanswered.tableCalls('service_survey_zones').length, 0);
+  // หัวหน้ายังได้ร่างของใบที่ยังไม่ตอบ (ร่างของสิ่งที่จะออกถ้ากดส่งตอนนี้)
+  assert.equal((await get(unanswered, HEAD, '?draft=1&format=html')).status, 200);
+});
+
 test('ฉบับร่าง: ชิ้นข้อมูลที่อ่านไม่สำเร็จ = 500 บอกชื่อชิ้น — ไม่ออกร่างที่ข้อมูลหายเงียบ ๆ', async () => {
   const world = makeWorld();
   world.backend.hook = (c) => (c.type === 'table' && c.table === 'service_sites' ? { data: null, error: { message: 'ฐานล่ม' } } : undefined);
@@ -999,16 +1028,20 @@ test('ฉบับร่าง: ชิ้นข้อมูลที่อ่า
 
 /* ══ 6. POST ═════════════════════════════════════════════════════════════════ */
 
-test('🔴 POST: ช่างและ Planner ผ่าน proxy มาได้ แต่ handler ตอบ 403 — ผู้ขอ · ผู้บริหาร · AE Sup ก็เช่นกัน · ไม่มีการเขียน', async () => {
+test('🔴 POST: ช่างผ่าน proxy มาได้ แต่ handler ตอบ 403 — ผู้ขอ · ผู้บริหาร · AE Sup · Planner ของฝ่ายอื่น ก็เช่นกัน · ไม่มีการเขียน', async () => {
   const world = makeWorld();
   const crew = await post(world, CREW);
   assert.equal(crew.status, 403);
   assert.equal(world.backend.calls.length, 0, 'ช่าง: ไม่มี query สักตัว');
 
-  for (const user of [PLANNER, REQUESTER, TEAMMATE, EXEC, { id: 'U-sup', name: 'Sup', role: 'ae_supervisor', department: 'SALES', team: 'SV', teams: ['SV'] }]) {
+  for (const user of [
+    REQUESTER, TEAMMATE, EXEC, { id: 'U-sup', name: 'Sup', role: 'ae_supervisor', department: 'SALES', team: 'SV', teams: ['SV'] },
+    // ผู้วางคิวออกได้เฉพาะใบที่ตอบได้ (ฝ่ายของเขา) — ด่านรายใบยังถาม `canAnswerRequest`
+    { ...PLANNER, id: 'U-plan-sales', department: 'SALES' },
+  ]) {
     const res = await post(world, user);
     assert.equal(res.status, 403, user.role);
-    assert.equal(res.json.error, 'ออกเอกสารประเมินได้เฉพาะหัวหน้าฝ่ายบริการที่ตอบใบนี้ได้');
+    assert.equal(res.json.error, 'ออกเอกสารประเมินได้เฉพาะหัวหน้าฝ่ายบริการหรือผู้วางคิว (Planner) ที่ตอบใบนี้ได้');
   }
   assert.equal((await post(world, null)).status, 401);
   assert.equal(world.writes().length, 0);
@@ -1065,6 +1098,30 @@ test('⭐ POST ออกเลขใหม่: วัดกระดาษสอ
   assert.deepEqual(world.audits().map((a) => `${a.action}:${a.entityType}`), ['create:service_survey_report', 'update:service_survey_report']);
   assert.equal(world.audits('create')[0].after.via, 'issue_only');
   assert.deepEqual(world.backend.emptyWrites, []);
+});
+
+/* ⭐ มติเจ้าของ 19/10/2026 "ให้ apisith planner ออกให้ด้วย" — ผู้วางคิวกดออกได้ · ผู้อนุมัติบนกระดาษยังเป็นผู้ส่งผลเดิม · คนกดถูกจดเป็นผู้ออก */
+test('⭐ POST โดย Planner: ออกเลขได้ · ผู้อนุมัติ = ผู้ส่งผลเดิม (ไม่ใช่คนกด) · ผู้ออก = Planner · แจ้งผู้ขอเหมือนหัวหน้ากด', async () => {
+  const world = makeWorld();
+  const res = await post(world, PLANNER);
+  assert.equal(res.status, 200, res.json?.error);
+  assert.equal(res.json.report.state, 'ready');
+  assert.equal(res.json.report.docNo, FIRST_NO);
+  assert.equal(res.json.report.reused, false);
+  const row = world.report();
+  assert.equal(row.approvedById, 'U-head', 'ผู้อนุมัติ = ผู้ส่งผลบนแถวคำร้อง (RPC อ่านใต้ล็อก)');
+  assert.equal(row.approvedByName, 'Head Approver');
+  assert.equal(row.issuedById, PLANNER.id, 'ผู้ออกเอกสาร = คนกด');
+  assert.equal(row.issuedByName, PLANNER.name);
+  assert.equal(row.customerHtml.includes(PLANNER.name), false, 'ชื่อคนกดไม่ขึ้นกระดาษฉบับลูกค้า');
+  assert.equal(world.threadRows().length, 1, 'บรรทัดแจ้งผู้ขอ — ผู้เขียน = คนกด');
+  assert.equal(world.threadRows()[0].authorId, PLANNER.id);
+  assert.equal(world.threadRows()[0].authorName, PLANNER.name);
+  // กดซ้ำ = ฉบับเดิม
+  const again = await post(world, PLANNER);
+  assert.equal(again.status, 200);
+  assert.equal(again.json.report.reused, true);
+  assert.equal(world.rpcCalls().length, 1);
 });
 
 test('POST กับใบที่มีฉบับที่ใช้อยู่แล้ว (จอเรียกต่อจากการส่งผล): `reused` · ขั้นกระดาษยังเดิน · ไม่มี RPC ไม่ดึงรูปซ้ำ', async () => {
@@ -1672,6 +1729,63 @@ test('⭐ POST · ลายเซ็นครบ: ที่นั่งเป็
   }
   assert.equal(vault.downloads.length, before, 'การเปิดเอกสารไม่อ่านคลังลายเซ็น');
   assert.deepEqual(errors, []);
+});
+
+/* ⭐ มติเจ้าของ 19/10/2026 — **ผู้วางคิวกด "ออกเอกสาร"** ด้วยกติกาลายเซ็นเปิด (production เปิดตั้งแต่ 19/10): ที่นั่งยังเป็นผู้ประเมิน + ผู้ส่งผลเดิม
+   ลายเซ็นของ Planner ไม่ถูกอ่าน ไม่ช่วย ไม่ขึ้นกระดาษ · ทางออกที่ต้องดึงผลกลับส่งเขาไปหาหัวหน้า (เขาดึงกลับเองไม่ได้) */
+test('⭐ POST โดย Planner · ลายเซ็นครบ: ที่นั่งเป็นของผู้ประเมินกับผู้ส่งผลเดิม — ลายเซ็นของ Planner ไม่ถูกอ่าน · ผู้ออก = Planner', async () => {
+  signOn();
+  const world = makeWorld();
+  const { versions, vault } = signWorld(world, [SIGN_ASSESSOR, SIGN_SENDER, PLANNER.id]);
+  const res = await post(world, PLANNER);
+  assert.equal(res.status, 200, res.json?.error);
+  assert.equal(res.json.report.state, 'ready');
+  const row = world.report();
+  const { signatures } = row.snapshot;
+  assert.deepEqual([signatures.assessor.userId, signatures.approver.userId], [SIGN_ASSESSOR, SIGN_SENDER]);
+  assert.equal(row.approvedById, SIGN_SENDER);
+  assert.equal(row.issuedById, PLANNER.id);
+  assert.deepEqual([...vault.downloads].sort(), [versions[SIGN_ASSESSOR].storagePath, versions[SIGN_SENDER].storagePath].sort(),
+    'อ่านเฉพาะลายเซ็นของสองที่นั่ง');
+  assert.equal(JSON.stringify(row.snapshot).includes(versions[PLANNER.id].id), false, 'ฉบับลายเซ็นของ Planner ไม่เข้าภาพนิ่ง');
+  assert.equal(sigImgs(row.customerHtml), 2);
+  assert.equal(world.audits('create')[0].after.signatures.some((r) => r.userId === PLANNER.id), false);
+});
+
+test('🔴 POST โดย Planner · ผู้ส่งผลเดิมยังไม่มีลายเซ็น: 409 `blocked` กดซ้ำได้ — ลายเซ็นของ Planner ไม่ช่วย · ไม่มีเลข', async () => {
+  signOn();
+  const world = makeWorld();
+  signWorld(world, [SIGN_ASSESSOR, PLANNER.id]);
+  const res = await post(world, PLANNER);
+  assert.equal(res.status, 409, JSON.stringify(res.json));
+  assert.equal(res.json.code, 'blocked');
+  assert.equal(res.json.retry, true);
+  assert.deepEqual(res.json.reasons, [
+    'ผู้ตรวจสอบและอนุมัติ Head Approver (ผู้ส่งผล) ยังไม่มีลายเซ็นในระบบ — ให้เจ้าตัวเพิ่มที่ “บัญชีของฉัน” หรือดึงผลกลับแล้วให้หัวหน้าที่มีลายเซ็นส่งใหม่',
+  ]);
+  assert.match(res.json.error, / · ให้ผู้ที่มีชื่อในรายการเพิ่มลายเซ็นที่ “บัญชีของฉัน” แล้วกดออกเอกสารอีกครั้ง$/);
+  assert.equal(world.rpcCalls().length, 0);
+  assert.equal(world.reports().length, 0);
+  assert.equal(world.threadRows().length, 0);
+});
+
+test('🔴 POST โดย Planner · ใบที่ผู้ตอบไม่ใช่ผู้มีสิทธิ์ส่งผล: 409 `blocked` — ทางออกส่งไปหาหัวหน้า ("แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับ…")', async () => {
+  signOn();
+  const sup = { id: 'U-aesup', email: 'aesup@example.test', app_metadata: { role: 'ae_supervisor' }, user_metadata: { name: 'Sales Supervisor' } };
+  const world = makeWorld({ request: { answeredById: sup.id, answeredByName: 'Sales Supervisor' } });
+  const origin = world.db.auth.admin.getUserById;
+  world.db.auth.admin.getUserById = async (id) => (id === sup.id ? { data: { user: sup }, error: null } : origin(id));
+  signWorld(world, [SIGN_ASSESSOR, sup.id, PLANNER.id]);
+  const res = await post(world, PLANNER);
+  assert.equal(res.status, 409, JSON.stringify(res.json));
+  assert.equal(res.json.code, 'blocked');
+  assert.equal(res.json.retry, false);
+  assert.ok(res.json.error.endsWith(' · ถ้าต้องแก้ แจ้งหัวหน้าฝ่ายบริการให้ดึงผลกลับมาแก้แล้วส่งใหม่'), res.json.error);
+  assert.equal(res.json.error.includes('ถ้าต้องแก้ ให้ดึงผลกลับ'), false, 'ไม่สั่งให้ Planner กดปุ่มที่เขาไม่มี');
+  // หัวหน้ากดใบเดียวกัน = ทางออกเดิมตรงตัว
+  const head = await post(world, HEAD);
+  assert.ok(head.json.error.endsWith(' · ถ้าต้องแก้ ให้ดึงผลกลับมาแก้แล้วส่งใหม่'), head.json.error);
+  assert.equal(world.rpcCalls().length, 0);
 });
 
 test('🔴 เจ้าตัวเปลี่ยน/ยกเลิกลายเซ็นหลังเอกสารออกแล้ว: กระดาษไม่ขยับ — แถว · HTML · PDF เท่าเดิมทุกไบต์ · กดออกเอกสารซ้ำ = ฉบับเดิม', async () => {

@@ -32,6 +32,8 @@ const TABLE = code(TABLE_RAW);
 const TABLE_CSS = css('../../components/service/SurveyResultTable.module.css');
 const CARD_RAW = read('../../components/service/SurveyControlCard.js');
 const CARD = code(CARD_RAW);
+/* ปุ่มพาไปของการ์ด — ยกเป็นไฟล์ของตัวเองให้ส่วนเอกสารประเมินใช้ร่วม (มติเจ้าของ 19/10/2026: ส่วนนั้นวาดนอกการ์ดได้) */
+const JUMP = code(read('../../components/service/SurveyJumpButton.js'));
 const CARD_CSS = css('../../components/service/SurveyControlCard.module.css');
 
 /* ── ของจำลอง ───────────────────────────────────────────────────────────────────────────── */
@@ -261,9 +263,10 @@ test('การ์ด: ปุ่ม "เปลี่ยนวิธีประ�
   assert.equal(count(CARD, 'view.method'), 1, 'ที่เดียวในการ์ด');
   /* 🐞 UAT S2b S09 / S10 — ปุ่มทางออก "เปลี่ยนวิธีประเมิน" ในบรรทัดเหตุของปุ่มส่งผล (แถว 17 · 17a) กดแล้วเงียบ: `JumpButton` ไม่รู้จักเป้า
      ชนิด `method` และไม่ได้รับตัวจัดการ ⇒ ตัวจัดการตัวเดียวกับปุ่มของการ์ด ส่งต่อให้ปุ่มในบรรทัดเหตุด้วย */
-  assert.equal(count(CARD, 'onSwitchMethod'), 6, 'prop + ปุ่มของการ์ด + ปุ่มทางออกในบรรทัดเหตุ (รับ · เรียก · ส่งต่อ)');
-  assert.match(CARD, /function JumpButton\(\{ target, onOpenZone, onGoTab, onReload, onSwitchMethod, className \}\)/);
-  assert.match(CARD, /else if \(target\.kind === "method"\) onSwitchMethod\?\.\(\);/);
+  assert.equal(count(CARD, 'onSwitchMethod'), 4, 'prop + ปุ่มของการ์ด + ปุ่มทางออกในบรรทัดเหตุ (รับ · ส่งต่อ)');
+  assert.match(CARD, /import JumpButton from "\.\/SurveyJumpButton";/);
+  assert.match(JUMP, /export default function JumpButton\(\{ target, onOpenZone, onGoTab, onReload, onSwitchMethod, className \}\)/);
+  assert.match(JUMP, /else if \(target\.kind === "method"\) onSwitchMethod\?\.\(\);/);
   assert.match(CARD, /onReload=\{reasonReload\}\s+onSwitchMethod=\{onSwitchMethod\}\s+className=\{styles\.reasonJump\}/);
   assert.doesNotMatch(CARD, /เปลี่ยนวิธีประเมิน/, 'คำบนปุ่มมาจากค่าคงที่ ไม่พิมพ์ซ้ำ');
   const order = ['id: "recall"', 'id: "method"', 'id: "next-zone"'].map((needle) => CARD.indexOf(needle));

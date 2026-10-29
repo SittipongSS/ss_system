@@ -230,7 +230,9 @@ test('🔴 ขนาดถูกลบ / อ่านทะเบียนไม
   assert.doesNotMatch(code(TABLE), /ลองใหม่|โหลดหน้าใหม่/);
   assert.match(read('app/service/surveys/[id]/page.js'), /const reloadSheet = useCallback\(\(\) => load\(\{ background: true \}\), \[load\]\);/);
   assert.equal((read('app/service/surveys/[id]/page.js').match(/onReload=\{reloadSheet\}/g) || []).length, 2, 'การ์ด + ตาราง');
-  assert.match(read('components/service/SurveyControlCard.js'), /else if \(target\.kind === "reload"\) onReload\?\.\(\);/);
+  /* ปุ่มพาไปของการ์ดอยู่ไฟล์ของตัวเองแล้ว (ส่วนเอกสารประเมินใช้ร่วม · มติเจ้าของ 19/10/2026) — การ์ด import ตัวนั้น */
+  assert.match(read('components/service/SurveyControlCard.js'), /import JumpButton from "\.\/SurveyJumpButton";/);
+  assert.match(read('components/service/SurveyJumpButton.js'), /else if \(target\.kind === "reload"\) onReload\?\.\(\);/);
   // แผ่นแดงของขนาดที่ถูกลบ: แถบกลางส่งโทนเป็น data attribute ให้ CSS ของตารางแต่ง
   assert.match(read('components/ui/Segmented.js'), /data-tone=\{option\.tone\}/);
   assert.match(read('components/service/SurveyResultTable.module.css'), /\.sizeSeg:global\(\.segmented\) > button\[data-tone="danger"\]/);

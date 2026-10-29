@@ -71,6 +71,8 @@ const ACCESS = {
   sales: { customer: true, internal: false, issue: false, draft: false, history: false },
   exec: { customer: true, internal: true, issue: false, draft: false, history: false },
   head: { customer: true, internal: true, issue: true, draft: true, history: true },
+  // ผู้วางคิว — ออกเอกสารได้ (มติเจ้าของ 19/10/2026) · ใบที่ส่งผลแล้ว = ครบห้าธงเท่าหัวหน้า (ต่างกันที่ไม่มีคีย์ `send` ของ payload)
+  planner: { customer: true, internal: true, issue: true, draft: true, history: true },
 };
 const current = (ready = { customer: true, internal: true }) => ({
   docNo: 'SU-26090001-0', rev: 0, issuedAt: '2026-09-29T03:01:00.000Z', issuedByName: 'Apisith Pattangthani',
@@ -85,7 +87,8 @@ const VIEWER = {
   sales: { isRequesterSide: true, isOpener: true, canDecide: false, canWork: false },
   exec: { isRequesterSide: false, canDecide: false, canWork: false },
   head: { isRequesterSide: false, canDecide: true, canWork: true },
-  planner: { isRequesterSide: false, canDecide: false, canWork: true },
+  planner: { isRequesterSide: false, canDecide: false, canIssue: true, canWork: true },
+  crew: { isRequesterSide: false, canDecide: false, canWork: true },
 };
 const blockOf = (surveyDocument, viewer, over = {}) => surveyJobView({
   request: request({ surveyDocument, ...over }), today: '2026-09-30', viewer,
@@ -179,11 +182,14 @@ test('หัวหน้าฝ่ายบริการ · ยังไม่�
   assert.ok(doc.buttons.every((b) => b.label.startsWith('ดาวน์โหลด PDF')));
 });
 
-test('🔴 Planner ไม่มีบล็อกทุกกรณี · ไม่มีคีย์ / ไม่มีสิทธิ์ / ยังไม่ส่งผล = ไม่มีบล็อก', () => {
+test('🔴 คนของฝ่ายที่ไม่มีสิทธิ์เอกสารไม่มีบล็อกทุกกรณี · ไม่มีคีย์ / ไม่มีสิทธิ์ / ยังไม่ส่งผล = ไม่มีบล็อก', () => {
   const voids = { access: 'none', voids: 'SU-26090001-0' };
   const unknown = { access: 'none', voids: null, unknown: true };
+  assert.equal(blockOf(voids, VIEWER.crew), null);
+  assert.equal(blockOf(unknown, VIEWER.crew), null, 'อ่านเอกสารไม่สำเร็จก็ไม่ขึ้นบล็อก "ไม่ทราบ" ให้คนที่ไม่มีสิทธิ์เอกสาร');
+  // ⭐ ผู้วางคิวออกเอกสารได้ (`canIssue` · มติเจ้าของ 19/10) ⇒ อ่านไม่สำเร็จ = "ไม่ทราบ" ไม่ใช่ความเงียบ · อ่านได้แต่ไม่มีสิทธิ์ = ไม่มีบล็อก
+  assert.equal(blockOf(unknown, VIEWER.planner).state, 'unknown');
   assert.equal(blockOf(voids, VIEWER.planner), null);
-  assert.equal(blockOf(unknown, VIEWER.planner), null, 'อ่านเอกสารไม่สำเร็จก็ไม่ขึ้นบล็อก "ไม่ทราบ" ให้คนที่ไม่มีสิทธิ์เอกสาร');
   // …แต่โมดัล "ยังไม่จบ" ยังบอกผลของการกดให้เขา (กติกา #1223) — เปลือกอ่านคีย์เดียวกันนี้
   assert.match(surveyReopenDocumentLine(voids, request()), /^เอกสาร SU-26090001-0 จะถูกแทนที่ — ใช้ไม่ได้ทันทีที่กด/);
   assert.match(surveyReopenDocumentLine(unknown, request()), /^อ่านสถานะเอกสารประเมินไม่สำเร็จ/);
@@ -257,7 +263,7 @@ test('🐞 UAT · กำลังออก แต่เปลือกเลิ�
 });
 
 /* ⭐ งวด S3 — ใบที่มีพื้นที่ประเมินจากแบบ: บล็อกเดียวกับใบลงหน้างานทุกกลุ่มคนดู (เอกสารของใบแบบนี้ไม่ถูกพักแล้ว)
-   · ใบที่ส่งผลไประหว่างที่เอกสารถูกพัก = "ยังไม่มีเอกสาร": หัวหน้าถูกชี้ไปกดที่ใบประเมิน · ฝ่ายขาย/ผู้บริหารได้ประโยคทวงหัวหน้า · Planner ไม่มีบล็อก */
+   · ใบที่ส่งผลไประหว่างที่เอกสารถูกพัก = "ยังไม่มีเอกสาร": หัวหน้าและผู้วางคิวถูกชี้ไปกดที่ใบประเมิน · ฝ่ายขาย/ผู้บริหารได้ประโยคทวงหัวหน้า */
 const DRAWING_ZONES = {
   desk: [{
     id: 'z1', zoneName: 'Reception ชั้น 1', zoneCode: 'ZN-1160-10254', zoneFloor: '01', status: 'ok', method: 'drawing',
@@ -274,9 +280,12 @@ const DRAWING_ZONES = {
 
 test('⭐ งวด S3 · ใบจากแบบทั้งใบ / ใบผสม: บล็อกบนหน้าคำร้องเท่าใบลงหน้างาน — ผู้ขอ · ผู้บริหาร · หัวหน้า · Planner × ทุกสถานะ', () => {
   const states = ['missing', 'issuing', 'issued', 'frozen', 'ready', 'recalled', 'stale'];
-  const docFor = (who, state) => (who === 'planner' ? { access: 'none', voids: null } : payload(who, state, who === 'head'
-    ? { history: state === 'recalled' ? [{ docNo: 'SU-26090001-0' }] : [], nextDocNo: null, send: null, issue: null, voids: null }
-    : {}));
+  const docFor = (who, state) => payload(who, state, who === 'head' || who === 'planner'
+    ? {
+      history: state === 'recalled' ? [{ docNo: 'SU-26090001-0' }] : [], nextDocNo: null, issue: null, voids: null,
+      ...(who === 'head' ? { send: null } : {}), // ผู้วางคิวไม่มีคีย์ `send` (ส่งผลไม่ได้)
+    }
+    : {});
   for (const who of ['sales', 'exec', 'head', 'planner']) {
     for (const state of states) {
       const onsite = blockOf(docFor(who, state), VIEWER[who]);
@@ -291,7 +300,11 @@ test('⭐ งวด S3 · ใบจากแบบทั้งใบ / ใบผ
   const head = blockOf(payload('head', 'missing', { history: [], nextDocNo: null, send: null, issue: null, voids: null }), VIEWER.head, { surveyZones: DRAWING_ZONES.mixed });
   assert.deepEqual(head.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
   assert.equal(head.sheetLink, true);
-  assert.equal(blockOf({ access: 'none', voids: null }, VIEWER.planner, { surveyZones: DRAWING_ZONES.desk }), null, 'Planner ยังไม่มีบล็อก');
+  // ผู้วางคิว (มติเจ้าของ 19/10/2026) — ชี้ไปกดที่ใบประเมินเหมือนหัวหน้า
+  const planner = blockOf(docFor('planner', 'missing'), VIEWER.planner, { surveyZones: DRAWING_ZONES.desk });
+  assert.deepEqual(planner.text, { tone: 'info', text: 'ยังไม่มีเอกสารของใบนี้ — กด “ออกเอกสาร” ที่ใบประเมิน' });
+  assert.equal(planner.sheetLink, true);
+  assert.equal(blockOf({ access: 'none', voids: null }, VIEWER.crew, { surveyZones: DRAWING_ZONES.desk }), null, 'ช่างไม่มีบล็อก');
   const ready = blockOf(payload('sales', 'ready'), VIEWER.sales, { surveyZones: DRAWING_ZONES.desk });
   assert.deepEqual(ready.buttons.map((b) => [b.id, b.href]), [['customer', '/api/service/surveys/r1/document?version=customer&download=1']]);
   assert.equal(ready.foot, SALES_FOOT);
@@ -885,9 +898,21 @@ test('เปลือกส่ง onRefresh ให้หน้าของหั
   assert.match(kindView, /refreshStalled=\{refreshStalled\}/);
   assert.match(VIEW_CODE, /surveyJobView\(\{ request, today, viewer, people, peopleLoading, refreshStalled \}\)/);
   assert.match(VIEW_CODE, /\[request, today, viewer, people, peopleLoading, refreshStalled\],/, 'ธงเปลี่ยน = คิดบล็อกใหม่');
-  // ธงสามตัวที่ `surveyJobView` ส่งต่อให้บล็อกเอกสาร ต้องยังอยู่บน `kindViewer`
+  // ธงสี่ตัวที่ `surveyJobView` ส่งต่อให้บล็อกเอกสาร ต้องยังอยู่บน `kindViewer`
   const viewer = between(PAGE_CODE, 'const kindViewer = {', '};');
   for (const key of ['canDecide:', 'canWork:', 'isRequesterSide: !!req._mine']) assert.ok(viewer.includes(key), key);
+  /* ⭐ มติเจ้าของ 19/10/2026 — ผู้วางคิวออกเอกสารได้ (`canIssueSurveyReport` ตัวเดียวกับด่านระดับตำแหน่งของ server) · `canDecide` ยังเป็นสิทธิ์ส่งผล */
+  assert.ok(viewer.includes('canIssue: canIssueSurveyReport({ role, department })'), 'canIssue');
+  assert.ok(viewer.includes('canDecide: canSendSurveyResult({ role, department })'), 'canDecide ยังเป็นสิทธิ์ส่งผล');
+  /* 🐞 สัญญา `@param viewer` บน JSDoc ของ SurveyRequestView ต้องครบทุกธงที่จอนี้และ `surveyJobView` อ่าน — ผู้เรียกใหม่/ฟิกซ์เจอร์ของเทสต์จอ
+     ที่ประกอบ `viewer` ตามเอกสารแล้วตก `canIssue` = ผู้วางคิวได้ประโยคของฝ่ายขายเงียบ ๆ และไม่เห็นบล็อก "ไม่ทราบ" */
+  const contract = VIEW.match(/@param viewer\s+`\{([^}]*)\}`/);
+  assert.ok(contract, 'ไม่เจอ @param viewer ของ SurveyRequestView');
+  const documented = new Set(contract[1].split(',').map((key) => key.trim()));
+  const JOB_CODE = code(read('lib/service/surveyJob.js'));
+  const readKeys = new Set([...`${VIEW_CODE}\n${JOB_CODE}`.matchAll(/\bviewer\??\.([A-Za-z]+)/g)].map((m) => m[1]));
+  assert.ok(readKeys.has('canIssue') && readKeys.has('canOpenVisit'), [...readKeys].join(' · '));
+  for (const key of readKeys) assert.ok(documented.has(key), `@param viewer ของ SurveyRequestView ขาด ${key}`);
 
   assert.match(PAGE, /import \{ surveyReopenDocumentLine \} from "@\/lib\/service\/surveyDocumentView";/);
   assert.ok(PAGE_CODE.includes('surveyReopenDocumentLine(req?.surveyDocument, req)'));
