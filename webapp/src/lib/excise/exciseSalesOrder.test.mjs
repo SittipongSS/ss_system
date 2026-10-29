@@ -136,9 +136,14 @@ test('GET …/excise-quotation ส่ง SO ค่าสรรพสามิต
 });
 
 // ── 4. migration 0416 ──────────────────────────────────────────────────────────────────────────
-test('0416: สี่จุดปะมีป้าย · RPC สร้างไม่เปิดให้ anon/authenticated · ถอยกลับปฏิเสธเมื่อมี SO excise', () => {
+test('0416: สามจุดปะมีป้าย · ย้อนอนุมัติกันด้วย trigger · RPC สร้างไม่เปิดให้ anon/authenticated · ถอยกลับปฏิเสธเมื่อมี SO excise', () => {
   const sql = read('../../../supabase/migrations/0416_excise_sales_order_rpcs.sql');
-  for (const mark of ['0416/E1', '0416/E2', '0416/E3', '0416/E4']) assert.match(sql, new RegExp(mark));
+  for (const mark of ['0416/E1', '0416/E2', '0416/E3']) assert.match(sql, new RegExp(mark));
+  /* 🐞 29/10: ปะเนื้อ revoke ไม่เจอข้อความยึดบน prod ⇒ ห้ามกลับไปปะเนื้อฟังก์ชันนั้น — trigger ไม่ขึ้นกับเนื้อใด ๆ */
+  assert.doesNotMatch(sql.split('\nBEGIN;\n')[1], /ARRAY\['revoke_sales_order_approval_atomic'/);
+  assert.match(sql, /CREATE TRIGGER sales_orders_excise_no_revoke_trg\s+BEFORE UPDATE OF status ON public\.sales_orders/);
+  assert.match(sql, /WHEN \(NEW\.origin = 'excise' AND NEW\.status = 'approval_revoked'/);
+  assert.match(sql, /RAISE EXCEPTION 'sales_order_revoke_excise_forbidden';/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.create_excise_sales_order_draft\(text, text, text, text, jsonb\) FROM PUBLIC, anon, authenticated;/);
   assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.create_excise_sales_order_draft\(text, text, text, text, jsonb\) TO service_role;/);
   assert.match(sql, /'excise', v_source\.id,/);

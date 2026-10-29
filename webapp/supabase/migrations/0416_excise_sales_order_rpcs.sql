@@ -9,7 +9,9 @@
 --  · trigger เจ้าของ (0294) อ่านดีลจาก "dealId" ตรง ๆ ⇒ ใบไม่มีดีลจะได้เจ้าของว่างตอนอนุมัติ ⇒ ถอยไปดีลของ SO ต้นทาง
 --    (กระดิ่งวางบิล/ใบกำกับส่งถึง ownerId ของใบ จึงถึงฝ่ายขายเจ้าของดีลต้นทาง)
 --  · ย้อนอนุมัติ SO ค่าสรรพสามิตไม่ได้ — Rev. เกิดไม่ได้ (CHECK revisionNo = 0) ถ้าปล่อย ใบจะค้าง approval_revoked ตลอดไป
---    แก้ด้วยยกเลิกแล้วออกใหม่เท่านั้น · route ปฏิเสธซ้ำอีกชั้น
+--    แก้ด้วยยกเลิกแล้วออกใหม่เท่านั้น · route ปฏิเสธก่อนถึงฐาน · ฐานกันด้วย **trigger** บน sales_orders (ข้อ 3)
+--    🐞 29/10: รุ่นแรกปะเนื้อ `revoke_sales_order_approval_atomic` แล้วข้อความยึดไม่เจอบน prod (src=0 def=0 — เนื้อตัวที่รันจริง
+--       ต่างจากสายไฟล์ · ทั้งไฟล์ถอยกลับ ไม่มีอะไรเปลี่ยน) ⇒ เปลี่ยนเป็น trigger ที่ไม่ขึ้นกับเนื้อฟังก์ชันใด ๆ และกันทุกทางที่พาใบไป approval_revoked
 --  · ไม่แตะ `revise_approved_sales_order_atomic` (CHECK + ด่าน JS กันแล้ว) · `approve_sales_order_with_actual_mode` (0412)
 --    เรียกตัวอนุมัติที่ปะแล้วข้างใน และ route ส่ง 'order' ให้ใบ excise เสมอ (CHECK 0412 ยอมรายงวดเฉพาะ pipeline)
 --
@@ -20,23 +22,26 @@
 --  ✅ รันซ้ำได้ (ปะแล้วข้าม · CREATE OR REPLACE)
 --  🧪 พิสูจน์บนฮาร์เนส PGlite (นอก repo) — โหลด schema.sql + 0001–0415 จากไฟล์จริง แล้วรันไฟล์นี้สองรอบ + กรณีทดสอบ
 --
---  ── ตรวจหลังรัน (อ่านอย่างเดียว) ─ คาด: patched = 4 · create_fn = 1 · create_grant = 0 ──
+--  ── ตรวจหลังรัน (อ่านอย่างเดียว) ─ คาด: patched = 3 · create_fn = 1 · create_grant = 0 · revoke_guard = 1 ──
 --   SELECT
 --    (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 --      WHERE n.nspname = 'public' AND strpos(p.prosrc, '0416/E') > 0
 --        AND p.proname IN ('submit_sales_order_with_signature_evidence_atomic', 'approve_sales_order_with_signature_evidence_atomic',
---                          'snapshot_sales_order_owner', 'revoke_sales_order_approval_atomic')) AS patched,
+--                          'snapshot_sales_order_owner')) AS patched,
 --    (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 --      WHERE n.nspname = 'public' AND p.proname = 'create_excise_sales_order_draft') AS create_fn,
 --    (SELECT count(*) FROM information_schema.routine_privileges
 --      WHERE routine_schema = 'public' AND routine_name = 'create_excise_sales_order_draft'
---        AND grantee IN ('anon', 'authenticated', 'PUBLIC')) AS create_grant;
+--        AND grantee IN ('anon', 'authenticated', 'PUBLIC')) AS create_grant,
+--    (SELECT count(*) FROM pg_trigger WHERE tgname = 'sales_orders_excise_no_revoke_trg' AND NOT tgisinternal) AS revoke_guard;
 --
 --  ── ถอยกลับ (ใช้ได้ตราบที่ยังไม่มี SO excise — มีแล้ว ห้ามถอย) ─────────────────────────────────────
 --   BEGIN;
 --   DO $$ BEGIN IF EXISTS (SELECT 1 FROM public.sales_orders WHERE origin = 'excise')
 --     THEN RAISE EXCEPTION 'excise sales orders exist'; END IF; END $$;
 --   DROP FUNCTION IF EXISTS public.create_excise_sales_order_draft(text, text, text, text, jsonb);
+--   DROP TRIGGER IF EXISTS sales_orders_excise_no_revoke_trg ON public.sales_orders;
+--   DROP FUNCTION IF EXISTS public.guard_excise_sales_order_revoke();
 --   DO $undo$ DECLARE r record; v_def text; BEGIN
 --     FOR r IN SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
 --       WHERE n.nspname = 'public' AND strpos(p.prosrc, '0416/E') > 0 LOOP
@@ -47,15 +52,13 @@
 --         || ' AND q."sourceSalesOrderId" = v_order."sourceSalesOrderId")) /* 0416/E2 */', 'AND q."dealId" = v_order."dealId"');
 --       v_def := replace(v_def, 'WHERE d.id = COALESCE(NEW."dealId", (SELECT so."dealId" FROM public.sales_orders so'
 --         || ' WHERE so.id = NEW."sourceSalesOrderId")); -- 0416/E3', 'WHERE d.id = NEW."dealId";');
---       v_def := replace(v_def, chr(10) || '  IF v_order.origin = ''excise'' THEN -- 0416/E4' || chr(10)
---         || '    RAISE EXCEPTION ''sales_order_revoke_excise_forbidden'';' || chr(10) || '  END IF;', '');
 --       EXECUTE v_def;
 --     END LOOP; END $undo$;
 --   COMMIT;
 
 BEGIN;
 
--- ── 1) ปะสี่ RPC: ยื่น/อนุมัติ (ยกเว้นโครงการ + QT ของ SO ต้นทาง) · เจ้าของจากดีลต้นทาง · ย้อนอนุมัติปฏิเสธใบ excise ──
+-- ── 1) ปะสาม RPC: ยื่น/อนุมัติ (ยกเว้นโครงการ + QT ของ SO ต้นทาง) · เจ้าของจากดีลต้นทาง ─────────────────────────
 DO $patch$
 DECLARE
   v_patches constant text[][] := ARRAY[
@@ -76,12 +79,7 @@ DECLARE
     ARRAY['snapshot_sales_order_owner', '0416/E3',
       'WHERE d.id = NEW."dealId";',
       'WHERE d.id = COALESCE(NEW."dealId", (SELECT so."dealId" FROM public.sales_orders so'
-        || ' WHERE so.id = NEW."sourceSalesOrderId")); -- 0416/E3'],
-    ARRAY['revoke_sales_order_approval_atomic', '0416/E4',
-      'RAISE EXCEPTION ''sales_order_revoke_state_invalid'';' || chr(10) || '  END IF;',
-      'RAISE EXCEPTION ''sales_order_revoke_state_invalid'';' || chr(10) || '  END IF;' || chr(10)
-        || '  IF v_order.origin = ''excise'' THEN -- 0416/E4' || chr(10)
-        || '    RAISE EXCEPTION ''sales_order_revoke_excise_forbidden'';' || chr(10) || '  END IF;']
+        || ' WHERE so.id = NEW."sourceSalesOrderId")); -- 0416/E3']
   ];
   i integer;
   v_fn text;
@@ -279,6 +277,26 @@ $$;
 
 REVOKE ALL ON FUNCTION public.create_excise_sales_order_draft(text, text, text, text, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.create_excise_sales_order_draft(text, text, text, text, jsonb) TO service_role;
+
+-- ── 3) ย้อนอนุมัติ SO ค่าสรรพสามิตไม่ได้ — trigger กันทุกทางที่พาใบไป approval_revoked ───────────────────────────
+--  ไม่ปะเนื้อ revoke_sales_order_approval_atomic (เนื้อบน prod ต่างจากสายไฟล์ — ดูหัวไฟล์) · รหัสเดียวกับที่ route/จอแปลไทยไว้
+--  ⚠️ trigger กรองด้วย WHEN ⇒ ใบอื่นไม่เรียกฟังก์ชันนี้เลย · INSERT ไม่เกี่ยว (ใบเกิดเป็นร่างเสมอ)
+CREATE OR REPLACE FUNCTION public.guard_excise_sales_order_revoke()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+  RAISE EXCEPTION 'sales_order_revoke_excise_forbidden';
+END;
+$$;
+
+DROP TRIGGER IF EXISTS sales_orders_excise_no_revoke_trg ON public.sales_orders;
+CREATE TRIGGER sales_orders_excise_no_revoke_trg
+BEFORE UPDATE OF status ON public.sales_orders
+FOR EACH ROW
+WHEN (NEW.origin = 'excise' AND NEW.status = 'approval_revoked' AND OLD.status IS DISTINCT FROM 'approval_revoked')
+EXECUTE FUNCTION public.guard_excise_sales_order_revoke();
 
 COMMIT;
 
