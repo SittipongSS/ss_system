@@ -142,6 +142,7 @@ import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
 import { CARRY_DONE_MESSAGE } from "@/lib/sales/installmentCarry";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
+import { newExciseQuotationHref } from "@/lib/excise/exciseQuotationLinks";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
 import {
@@ -573,22 +574,10 @@ export default function SalesOrderDetailPage() {
     setToast(null);
   }
 
-  /* ── ใบเสนอราคาค่าสรรพสามิต (แผนรื้อสรรพสามิต PR3 · มติ 28/10) — ออกจาก SO นี้แล้วไปทำต่อที่หน้าใบเสนอราคา ── */
-  async function createExciseQuote() {
-    setBusy("excise_quote");
-    setError("");
-    setToast(null);
-    try {
-      const data = await apiJson(`/api/sales-planning/sales-orders/${id}/excise-quotation`, {
-        method: "POST", fallbackError: "ออกใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ",
-      });
-      router.push(`/sales-planning/quotations/${encodeURIComponent(data.quote.id)}`);
-      return true;
-    } catch (createError) {
-      setBusy("");
-      setError(createError.message || "ออกใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ");
-      return false;
-    }
+  /* ── ใบเสนอราคาค่าสรรพสามิต (แผนรื้อสรรพสามิต PR3 · มติ 28/10) — ปุ่มพาไปหน้าออกใบ ยังไม่บันทึกอะไร
+     (มติเจ้าของ 29/10 "อยู่ในขั้นแก้ไขก่อน แบบ new ใบเสนอราคา") · เลข QT + สินค้า 04-003 เกิดตอนกดบันทึกที่หน้านั้น ── */
+  function createExciseQuote() {
+    router.push(newExciseQuotationHref(id, `/sa/sales-orders/${encodeURIComponent(id)}`));
   }
 
   async function confirmNotBilled(value) {
@@ -1785,7 +1774,7 @@ export default function SalesOrderDetailPage() {
     onCreateQuote: createExciseQuote,
     onNotBilled: () => { setNotBilledError(""); setNotBilledOpen(true); },
     onClearNotBilled: exciseCanEdit ? clearNotBilled : null,
-    createLabel: busy === "excise_quote" ? "กำลังออกใบ…" : "ออกใบเสนอราคาค่าสรรพสามิต",
+    createLabel: "ออกใบเสนอราคาค่าสรรพสามิต",
     actionDisabled: !!busy,
     createDisabledReason: exciseCanEdit ? null : "ต้องมีสิทธิ์แก้ใบสั่งขายนี้จึงออกใบค่าสรรพสามิตได้",
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handler ประกาศเป็น function ธรรมดา อ้างอิงคงที่ต่อ render

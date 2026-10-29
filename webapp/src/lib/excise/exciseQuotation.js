@@ -13,14 +13,15 @@ import { quotationApprovalFingerprint } from '@/lib/sales/quotationApprovalFinge
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { businessDate } from '@/lib/businessDate';
 import { insertQuotationWithNumber, quoteTotals } from '@/lib/salesPlanning';
-import { normalizePaymentPlan } from '@/lib/sales/paymentPlan';
+import { normalizePaymentPlan, validatePaymentPlan } from '@/lib/sales/paymentPlan';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { ORIGIN_EXCISE, exciseRowsOnly, isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { lineMoneyRuleMessage, withPackColumn } from '@/lib/sales/linePacks';
 import { resolveSalesOrderFiling } from '@/lib/excise/soFilingItems';
 import { buildExciseQuotationLines } from '@/lib/excise/exciseCharge';
-import { ensureExciseChargeProduct } from '@/lib/excise/exciseChargeProduct';
+import { ensureExciseChargeProduct, peekExciseChargeProduct } from '@/lib/excise/exciseChargeProduct';
+import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 
 export class ExciseQuotationError extends Error {
   constructor(message, status = 400, extra = {}) {
@@ -114,39 +115,74 @@ export async function buildExciseLinesFromOrder({ supabase, user, order, request
   const lines = buildExciseQuotationLines({
     filing, chargeProduct: charge.product, sourceLines: withLines?.lines || [], products: filing.products || [],
   });
-  return { lines, filing, customer, sourceQuote, chargeProductCreated: Boolean(charge.created) };
+  return { lines, filing, customer, sourceQuote, chargeProductCreated: Boolean(charge.created), chargePending: Boolean(charge.pending) };
 }
 
-/**
- * สร้างใบเสนอราคาค่าสรรพสามิต (ร่าง · ยังไม่ยื่น) จาก SO ลูกค้า
- * ⚠️ ผู้เรียกตรวจ cap + ขอบเขตกับ SO ลูกค้ามาแล้ว (loadScoped 'edit') และส่ง `order` ที่มี `deal` มา
- * @returns `{ quote, lines, warnings, chargeProductCreated }` · ผิดกติกา = throw ExciseQuotationError
- */
-export async function createExciseQuotationDraft({
-  supabase, user, order, request = null,
-  audit = recordAudit, ensureProduct = ensureExciseChargeProduct,
-} = {}) {
-  const { data: liveQuote, error: liveError } = await loadLiveExciseQuotation(supabase, order?.id);
-  if (liveError) throw new ExciseQuotationError(liveError.message, 500);
-  const blocker = exciseQuotationBlocker(order, { liveQuote });
-  if (blocker) throw new ExciseQuotationError(blocker, liveQuote ? 409 : 400, liveQuote ? { quotationId: liveQuote.id } : {});
+/** วัน `YYYY-MM-DD` ที่ใช้ได้ หรือ null */
+const isoDay = (value) => {
+  const text = String(value ?? '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) && !Number.isNaN(Date.parse(`${text}T00:00:00Z`)) ? text : null;
+};
+const textOrNull = (value, max = 2000) => {
+  const text = String(value ?? '').trim();
+  return text ? text.slice(0, max) : null;
+};
 
-  const built = await buildExciseLinesFromOrder({ supabase, user, order, request, ensureProduct });
-  const { lines: builtLines, filing, customer, sourceQuote } = built;
+/**
+ * หัวใบที่ผู้ใช้แก้บนหน้าออกใบใหม่ก่อนบันทึก (มติเจ้าของ 29/10 "แก้ก่อนบันทึก แบบ new ใบเสนอราคา")
+ * ช่องเดียวกับที่ใบร่างแก้ได้: วันที่ · ยืนราคาถึง · งวดชำระ · เงื่อนไขชำระ · หมายเหตุ · เอกสารอ้างอิง · ภาษาเอกสาร
+ * + ชุดเงื่อนไขการค้าที่หยิบมาเป็นค่าตั้งต้น (`metadata.paymentPresetVersionId/remarksPresetVersionId` — ตรวจว่ามีจริงตอนบันทึก)
+ * ⚠️ บรรทัด/VAT/ส่วนลดไม่อยู่ในนี้ — มาจาก SO ต้นทางเท่านั้น · ค่าที่ไม่ส่ง/ผิดรูป = ค่าตั้งต้นของใบ
+ * @returns `{ value }` หรือ `{ error }` (ข้อความไทย)
+ */
+export function exciseQuotationOverrides(body = {}) {
+  const value = {};
+  if (body.quoteDate !== undefined) {
+    const day = isoDay(body.quoteDate);
+    if (!day) return { error: 'วันที่ใบเสนอราคาไม่ถูกต้อง' };
+    value.quoteDate = day;
+  }
+  if (body.validUntil !== undefined) {
+    const day = body.validUntil === null || body.validUntil === '' ? null : isoDay(body.validUntil);
+    if (body.validUntil && !day) return { error: 'วันยืนราคาไม่ถูกต้อง' };
+    value.validUntil = day;
+  }
+  if (value.validUntil && value.validUntil < (value.quoteDate || businessDate())) return { error: 'วันยืนราคาต้องไม่ก่อนวันที่ใบเสนอราคา' };
+  if (body.paymentPlan !== undefined) {
+    const plan = body.paymentPlan && typeof body.paymentPlan === 'object' ? body.paymentPlan : { type: 'full' };
+    const check = validatePaymentPlan(plan);
+    if (!check.ok) return { error: check.error };
+    value.paymentPlan = plan;
+  }
+  if (body.paymentTerms !== undefined) value.paymentTerms = textOrNull(body.paymentTerms);
+  if (body.notes !== undefined) value.notes = textOrNull(body.notes);
+  if (body.referenceNote !== undefined) value.referenceNote = textOrNull(body.referenceNote, 500);
+  if (body.docLanguage !== undefined) {
+    if (!['th', 'en'].includes(body.docLanguage)) return { error: 'ภาษาเอกสารต้องเป็น th หรือ en' };
+    value.docLanguage = body.docLanguage;
+  }
+  if (body.metadata && typeof body.metadata === 'object') {
+    value.presets = {
+      paymentPresetVersionId: textOrNull(body.metadata.paymentPresetVersionId, 200),
+      remarksPresetVersionId: textOrNull(body.metadata.remarksPresetVersionId, 200),
+    };
+  }
+  return { value };
+}
+
+/** แถวหัวใบของใบค่าสรรพสามิต (ไม่รวม id/เลขที่) — ตัวเดียวของพรีวิวและทางบันทึก ⇒ สิ่งที่เห็นบนหน้าออกใบ = สิ่งที่ลงฐาน */
+function exciseQuotationRow({ order, customer, sourceQuote, ownerContact, user, lines, overrides = {}, pinnedPresets = null }) {
   const vatRate = 7;
-  const totals = quoteTotals(builtLines, { vatRate });
-  const ownerContact = await loadDealOwnerContact(supabase, order.deal?.ownerId);
+  const totals = quoteTotals(lines, { vatRate });
   const source = sourceQuote || {};
-  const quoteId = genId('QT');
-  const { data: quote, error } = await insertQuotationWithNumber(supabase, {
-    id: quoteId,
+  return {
     origin: ORIGIN_EXCISE,
     dealId: null,
     sourceSalesOrderId: order.id,
     revisionNo: 0,
     status: 'draft',
-    quoteDate: businessDate(),
-    validUntil: null,
+    quoteDate: overrides.quoteDate || businessDate(),
+    validUntil: overrides.validUntil ?? null,
     /* หัวใบลอกจากใบเสนอราคาต้นทางของ SO (กระดาษแบบเดียวกับที่ลูกค้าเคยได้) — ลูกค้า/ที่อยู่/ผู้ติดต่อ/ภาษาเอกสาร */
     customerId: order.customerId || source.customerId || null,
     customerName: source.customerName || order.customerName || null,
@@ -166,12 +202,12 @@ export async function createExciseQuotationDraft({
     discountType: null,
     discountValue: 0,
     vatRate,
-    paymentPlan: normalizePaymentPlan({ type: 'full' }, totals.totalAmount),
-    paymentTerms: null,
-    docLanguage: source.docLanguage === 'en' ? 'en' : 'th',
+    paymentPlan: normalizePaymentPlan(overrides.paymentPlan || { type: 'full' }, totals.totalAmount),
+    paymentTerms: overrides.paymentTerms ?? null,
+    docLanguage: overrides.docLanguage || (source.docLanguage === 'en' ? 'en' : 'th'),
     approvalStatus: 'not_submitted',
-    notes: null,
-    referenceNote: exciseQuotationReference(order, sourceQuote),
+    notes: overrides.notes ?? null,
+    referenceNote: overrides.referenceNote !== undefined ? overrides.referenceNote : exciseQuotationReference(order, sourceQuote),
     metadata: {
       exciseSource: {
         salesOrderId: order.id,
@@ -183,10 +219,60 @@ export async function createExciseQuotationDraft({
       salesOwner: order.deal?.ownerName || null,
       salesOwnerId: ownerContact?.id || null,
       salesOwnerPhone: ownerContact?.phone || null,
+      ...(pinnedPresets ? { paymentPresetVersionId: pinnedPresets.payment || null, remarksPresetVersionId: pinnedPresets.remarks || null } : {}),
     },
     createdBy: user?.id || null,
     createdByName: user?.name || null,
     createdByPhone: user?.phone || null,
+  };
+}
+
+async function assertCanIssue(supabase, order) {
+  const { data: liveQuote, error: liveError } = await loadLiveExciseQuotation(supabase, order?.id);
+  if (liveError) throw new ExciseQuotationError(liveError.message, 500);
+  const blocker = exciseQuotationBlocker(order, { liveQuote });
+  if (blocker) throw new ExciseQuotationError(blocker, liveQuote ? 409 : 400, liveQuote ? { quotationId: liveQuote.id } : {});
+}
+
+/**
+ * พรีวิวใบเสนอราคาค่าสรรพสามิตของ SO ลูกค้า (หน้าออกใบใหม่ · ยังไม่บันทึก · ไม่ออกเลข · ไม่สร้างสินค้า 04-003)
+ * @returns `{ quote, warnings, chargeProductPending, sourceOrder, sourceQuote, sourceDeal }`
+ */
+export async function previewExciseQuotationDraft({ supabase, user, order, ensureProduct = peekExciseChargeProduct } = {}) {
+  await assertCanIssue(supabase, order);
+  const built = await buildExciseLinesFromOrder({ supabase, user, order, ensureProduct });
+  const ownerContact = await loadDealOwnerContact(supabase, order.deal?.ownerId);
+  const row = exciseQuotationRow({ order, customer: built.customer, sourceQuote: built.sourceQuote, ownerContact, user, lines: built.lines });
+  return {
+    quote: { ...row, lines: built.lines },
+    warnings: (built.filing.warnings || []).filter((w) => w.code === 'registration_missing'),
+    chargeProductPending: Boolean(built.chargePending),
+    sourceOrder: { id: order.id, orderNumber: order.orderNumber || null },
+    sourceQuote: built.sourceQuote ? { id: built.sourceQuote.id, quoteNumber: built.sourceQuote.quoteNumber || null } : null,
+    sourceDeal: order.deal ? { id: order.deal.id, title: order.deal.title || null, ownerName: order.deal.ownerName || null } : null,
+  };
+}
+
+/**
+ * สร้างใบเสนอราคาค่าสรรพสามิต (ร่าง · ยังไม่ยื่น) จาก SO ลูกค้า
+ * ⚠️ ผู้เรียกตรวจ cap + ขอบเขตกับ SO ลูกค้ามาแล้ว (loadScoped 'edit') และส่ง `order` ที่มี `deal` มา
+ * @param overrides หัวใบจากหน้าออกใบใหม่ (exciseQuotationOverrides) — ไม่ส่ง = ค่าตั้งต้น
+ * @returns `{ quote, lines, warnings, chargeProductCreated }` · ผิดกติกา = throw ExciseQuotationError
+ */
+export async function createExciseQuotationDraft({
+  supabase, user, order, request = null, overrides = {},
+  audit = recordAudit, ensureProduct = ensureExciseChargeProduct, resolvePresets = resolvePinnedPresetVersionIds,
+} = {}) {
+  await assertCanIssue(supabase, order);
+  const pinnedPresets = overrides.presets ? await resolvePresets(supabase, overrides.presets) : null;
+
+  const built = await buildExciseLinesFromOrder({ supabase, user, order, request, ensureProduct });
+  const { lines: builtLines, filing, customer, sourceQuote } = built;
+  const ownerContact = await loadDealOwnerContact(supabase, order.deal?.ownerId);
+  const quoteId = genId('QT');
+  const { data: quote, error } = await insertQuotationWithNumber(supabase, {
+    id: quoteId,
+    ...exciseQuotationRow({ order, customer, sourceQuote, ownerContact, user, lines: builtLines, overrides, pinnedPresets }),
   });
   if (error) throw new ExciseQuotationError(error.code === '23505' ? `เลขใบเสนอราคาซ้ำ (${quoteId})` : error.message, error.code === '23505' ? 409 : 500);
 

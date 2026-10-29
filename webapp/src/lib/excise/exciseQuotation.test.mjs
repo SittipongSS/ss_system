@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, LIVE_EXCISE_QUOTATION_STATUSES, acceptExciseQuotation,
-  createExciseQuotationDraft, exciseHandledOrderIds, exciseQuotationBlocker, exciseQuotationReference,
-  exciseSourceLock, isLiveExciseQuotation,
+  createExciseQuotationDraft, exciseHandledOrderIds, exciseQuotationBlocker, exciseQuotationOverrides, exciseQuotationReference,
+  exciseSourceLock, isLiveExciseQuotation, previewExciseQuotationDraft,
 } from './exciseQuotation.js';
+import { EXCISE_CHARGE_PREVIEW_ID } from './exciseChargeProduct.js';
+import { newExciseQuotationHref } from './exciseQuotationLinks.js';
 import {
   EXCISE_NOT_BILLED_KINDS, exciseNotBilledBlocker, exciseNotBilledInput, exciseNotBilledPatch,
 } from './exciseNotBilled.js';
@@ -123,6 +125,98 @@ test('createExciseQuotationDraft: มีใบที่มีผลแล้ว 
   for (const db of [live, unpriced, none]) {
     assert.equal(db.writes.filter((w) => w.rpc || w.table).length, 0, 'ปฏิเสธก่อนออกเลข/เขียนบรรทัด');
   }
+});
+
+// ── 1b. หน้าออกใบใหม่ "แก้ก่อนบันทึก" (มติเจ้าของ 29/10) ─────────────────────────────────────────────
+test('exciseQuotationOverrides: รับเฉพาะหัวใบ · วันผิดรูป/ยืนราคาก่อนวันออก/งวดไม่ครบ 100%/ภาษาแปลก = ข้อความไทย', () => {
+  assert.deepEqual(exciseQuotationOverrides({}), { value: {} }, 'ไม่ส่ง = ค่าตั้งต้นของใบ');
+  const ok = exciseQuotationOverrides({
+    quoteDate: '2026-10-29', validUntil: '2026-11-28', referenceNote: '  SO-1 / QT-1 ', notes: '', paymentTerms: 'โอน',
+    paymentPlan: { type: 'installment', installments: [{ label: 'มัดจำ', percent: 50 }, { label: 'ส่งมอบ', percent: 50 }] },
+    docLanguage: 'en', metadata: { remarksPresetVersionId: 'V-1' },
+    lines: [{ unitPrice: 1 }], vatRate: 0, discountValue: 99,
+  });
+  assert.equal(ok.error, undefined);
+  assert.equal(ok.value.quoteDate, '2026-10-29');
+  assert.equal(ok.value.validUntil, '2026-11-28');
+  assert.equal(ok.value.referenceNote, 'SO-1 / QT-1');
+  assert.equal(ok.value.notes, null, 'ช่องว่าง = null');
+  assert.equal(ok.value.docLanguage, 'en');
+  assert.deepEqual(ok.value.presets, { paymentPresetVersionId: null, remarksPresetVersionId: 'V-1' });
+  for (const key of ['lines', 'vatRate', 'discountValue', 'discountType']) assert.equal(key in ok.value, false, `${key} มาจาก SO ต้นทางเท่านั้น`);
+  assert.equal(exciseQuotationOverrides({ validUntil: '' }).value.validUntil, null);
+  assert.match(exciseQuotationOverrides({ quoteDate: '29/10/2026' }).error, /วันที่ใบเสนอราคา/);
+  assert.match(exciseQuotationOverrides({ quoteDate: '2026-10-29', validUntil: '2026-10-01' }).error, /ไม่ก่อนวันที่/);
+  assert.match(exciseQuotationOverrides({ paymentPlan: { type: 'installment', installments: [{ percent: 40 }] } }).error, /100%/);
+  assert.match(exciseQuotationOverrides({ docLanguage: 'jp' }).error, /th หรือ en/);
+});
+
+test('previewExciseQuotationDraft: ได้หัวใบ+บรรทัดแบบเดียวกับที่บันทึก · ไม่ออกเลข ไม่เขียนบรรทัด ไม่สร้างสินค้า 04-003', async () => {
+  const db = createDb({ lines: [SO_LINE], products: [FG] });
+  const preview = await previewExciseQuotationDraft({
+    supabase: db, user: { id: 'U-SA', name: 'SA' }, order: approvedOrder({ deal: { id: 'D-1', title: 'ดีลต้นทาง', ownerId: 'U-OWNER', ownerName: 'AE' } }),
+    ensureProduct: async () => ({ product: { id: EXCISE_CHARGE_PREVIEW_ID, fgCode: 'FG-0108-04-003', productDescription: 'ค่าภาษีสรรพสามิต' }, pending: true }),
+  });
+  assert.equal(db.writes.length, 0, 'พรีวิวไม่เขียนอะไรเลย');
+  assert.equal(preview.chargeProductPending, true);
+  assert.equal(preview.quote.origin, 'excise');
+  assert.equal(preview.quote.dealId, null);
+  assert.equal(preview.quote.quoteNumber, undefined, 'ยังไม่มีเลข');
+  assert.equal(preview.quote.referenceNote, 'SO-26100001-0 / QT-26100001-0');
+  assert.equal(preview.quote.subtotal, 88.5);
+  assert.equal(preview.quote.totalAmount, 94.7);
+  assert.equal(preview.quote.lines.length, 1);
+  assert.equal(preview.quote.lines[0].unitPrice, 8.85);
+  assert.deepEqual(preview.sourceOrder, { id: 'SO-1', orderNumber: 'SO-26100001-0' });
+  assert.deepEqual(preview.sourceDeal, { id: 'D-1', title: 'ดีลต้นทาง', ownerName: 'AE' });
+  // ด่านเดียวกับทางบันทึก — มีใบที่มีผลแล้ว = 409 พร้อมเลขใบให้หน้าเปิด
+  const live = createDb({ liveQuote: { id: 'QT-L', quoteNumber: 'QT-L', origin: 'excise', status: 'draft' }, lines: [SO_LINE], products: [FG] });
+  await assert.rejects(previewExciseQuotationDraft({ supabase: live, user: {}, order: approvedOrder(), ensureProduct: async () => ({ product: chargeProduct }) }),
+    (e) => e instanceof ExciseQuotationError && e.status === 409 && e.extra.quotationId === 'QT-L');
+});
+
+test('createExciseQuotationDraft + overrides: หัวใบที่แก้บนหน้าออกใบลงฐานตามนั้น · ชุดเงื่อนไขผ่านตัวตรวจที่ส่งเข้า · บรรทัดยังคิดจาก SO', async () => {
+  const db = createDb({ lines: [SO_LINE], products: [FG] });
+  const presetCalls = [];
+  const { value } = exciseQuotationOverrides({
+    quoteDate: '2026-10-30', validUntil: '2026-11-29', referenceNote: 'อ้างถึง PO-77', notes: 'หมายเหตุ', paymentTerms: 'เครดิต 30 วัน',
+    paymentPlan: { type: 'full', paymentMethod: 'โอน' }, metadata: { paymentPresetVersionId: 'PV-1', remarksPresetVersionId: 'RV-X' },
+  });
+  await createExciseQuotationDraft({
+    supabase: db, user: { id: 'U-SA' }, order: approvedOrder(), overrides: value,
+    audit: async () => {}, ensureProduct: async () => ({ product: chargeProduct }),
+    resolvePresets: async (_db, presets) => { presetCalls.push(presets); return { payment: 'PV-1', remarks: null }; },
+  });
+  const row = db.writes.find((w) => w.rpc === 'create_quotation_with_number').args.p_row;
+  assert.equal(row.quoteDate, '2026-10-30');
+  assert.equal(row.validUntil, '2026-11-29');
+  assert.equal(row.referenceNote, 'อ้างถึง PO-77', 'คนพิมพ์ทับ = ไม่ใช้คำอ้างอิงอัตโนมัติ');
+  assert.equal(row.notes, 'หมายเหตุ');
+  assert.equal(row.paymentTerms, 'เครดิต 30 วัน');
+  assert.deepEqual(row.paymentPlan, { type: 'full', paymentMethod: 'โอน' });
+  assert.equal(row.metadata.paymentPresetVersionId, 'PV-1');
+  assert.equal(row.metadata.remarksPresetVersionId, null, 'ชุดที่ตรวจไม่ผ่าน = ไม่ตรึง');
+  assert.equal(row.metadata.exciseSource.salesOrderId, 'SO-1');
+  assert.equal(presetCalls.length, 1);
+  assert.equal(row.subtotal, 88.5, 'บรรทัด/ยอดไม่ขยับตามหัวใบ');
+});
+
+test('ปุ่มบน SO ลูกค้าพาไปหน้าออกใบ (ไม่ยิง POST) · หน้าออกใบโหลดพรีวิวแล้วบันทึกทางเดิมพร้อมหัวใบ · route แยกพรีวิว', () => {
+  assert.equal(newExciseQuotationHref('SO-1', '/sa/sales-orders/SO-1'), '/sa/quotations/new-excise?salesOrderId=SO-1&returnTo=%2Fsa%2Fsales-orders%2FSO-1');
+  assert.equal(newExciseQuotationHref('SO-1'), '/sa/quotations/new-excise?salesOrderId=SO-1');
+  const soPage = code('../../app/sales-planning/sales-orders/[id]/page.js');
+  const createFn = soPage.match(/function createExciseQuote\(\) \{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.match(createFn, /router\.push\(newExciseQuotationHref\(id,/);
+  assert.doesNotMatch(soPage, /excise-quotation`,\s*\{\s*method:\s*"POST"/, 'SO ลูกค้าไม่ออกใบเองแล้ว');
+  const page = code('../../app/sales-planning/quotations/new-excise/page.js');
+  assert.match(page, /excise-quotation\?preview=1/);
+  assert.match(page, /method: "POST",\s*json: \{[\s\S]*?quoteDate,[\s\S]*?paymentPlan,[\s\S]*?\}/);
+  assert.match(page, /<QuotationLineItems[^>]*editable=\{false\}/, 'บรรทัดอ่านอย่างเดียว — คิดจาก SO');
+  for (const shared of ['QuotationInstallments', 'QuotationPaymentTerms', 'QuotationNotes', 'DateInput']) assert.match(page, new RegExp(`<${shared}[\\s>]`), `${shared} ตัวเดียวกับหน้าใบ`);
+  assert.match(page, /router\.push\(`\/sa\/quotations\/\$\{encodeURIComponent\(data\.quote\.id\)\}`\)/);
+  const route = code('../../app/api/sales-planning/sales-orders/[id]/excise-quotation/route.js');
+  assert.match(route, /searchParams\.get\('preview'\) === '1'[\s\S]*?canEditSalesPlanning\(user\)[\s\S]*?loadScoped\(supabase, 'sales_orders', id, user, 'edit'\)[\s\S]*?previewExciseQuotationDraft/);
+  assert.match(route, /exciseQuotationOverrides\(body \|\| \{\}\)[\s\S]*?if \(overrides\.error\) return fail\(overrides\.error, 400\)[\s\S]*?createExciseQuotationDraft\(\{[^}]*overrides: overrides\.value/);
 });
 
 // ── 2. รับใบ ─────────────────────────────────────────────────────────────────────────────
