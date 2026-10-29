@@ -64,11 +64,24 @@ test('buildExciseQuotationLines: บรรทัดละ FG ต้นทาง 
   assert.equal(first.metadata.sourceFgCode, fg.fgCode);
   assert.equal(first.metadata.excisePerUnit + first.metadata.localPerUnit, 8.85);
   assert.equal(first.metadata.retailPriceIncVat, 107.5);
-  assert.match(first.description, /^ค่าภาษีสรรพสามิต 8\.8% — FG-0108-01-002-00001 น้ำหอม A$/);
-  assert.match(first.metadata.descriptionEn, /^Excise tax 8\.8% — FG-0108-01-002-00001 Perfume A$/);
+  // มติ 29/10: คำอธิบาย = รหัส FG ต้นทาง + ชื่อ (ชื่อสินค้า 04-003 อยู่บรรทัดแรกของรายการแล้ว)
+  assert.equal(first.description, 'FG-0108-01-002-00001 น้ำหอม A');
+  assert.equal(first.metadata.descriptionEn, 'FG-0108-01-002-00001 Perfume A');
   assert.equal(second.unitPrice, 0);
   assert.equal(second.metadata.taxBaseMissing, true);
   assert.throws(() => buildExciseQuotationLines({ filing, chargeProduct: null }), /04-003/);
+});
+
+/* 🐞 ใบทดลอง QT-26100568-0 (29/10): รหัส FG บนบรรทัด SO เก่ามีแท็บท้ายรหัส ('FG-108-01-002-0738\t\t') ⇒ ตามไปถึงคำอธิบาย
+   บรรทัดใบค่าสรรพสามิตและ metadata.sourceFgCode · ตัดที่ตัวคิดของ SO (soFiling) ตัวเดียว ทุกปลายทางได้รหัสสะอาด */
+test('รหัส FG ที่มีแท็บ/ช่องว่างท้ายรหัส ไม่ตามไปถึงคำอธิบายบรรทัดและ sourceFgCode', () => {
+  const dirty = soLines.map((line, index) => (index === 0 ? { ...line, fgCode: `${line.fgCode}\t\t` } : line));
+  const filing = resolveSoFiling({ salesOrder, productTypes, products: [fg, fgNoPrice], lines: dirty });
+  assert.equal(filing.lines[0].fgCode, fg.fgCode);
+  const [first] = buildExciseQuotationLines({ filing, chargeProduct: charge, sourceLines: dirty, products: [fg, fgNoPrice] });
+  assert.equal(first.description, `${fg.fgCode} น้ำหอม A`);
+  assert.equal(first.metadata.sourceFgCode, fg.fgCode);
+  assert.doesNotMatch(first.description, /\t/);
 });
 
 test('ใบยื่นจาก SO ตัดบรรทัดค่าภาษีสรรพสามิตทิ้ง — ไม่ยื่นภาษีซ้อนภาษี แม้หมวดถูกติ๊กสรรพสามิตผิด', () => {

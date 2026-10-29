@@ -34,11 +34,17 @@ export class ExciseQuotationError extends Error {
 export const LIVE_EXCISE_QUOTATION_STATUSES = Object.freeze(['draft', 'sent', 'rejected', 'accepted']);
 export const isLiveExciseQuotation = (quote) => isExciseOrder(quote) && LIVE_EXCISE_QUOTATION_STATUSES.includes(quote?.status);
 
-/** คำอ้างอิงบนกระดาษ (ช่อง "เอกสารอ้างอิง" ของ FM-SA-01) — ลูกค้าเห็นว่าค่าภาษีนี้ของใบไหน */
+/** คำอ้างอิงบนกระดาษ (ช่อง "เอกสารอ้างอิง" ของ FM-SA-01) — ลูกค้าเห็นว่าค่าภาษีนี้ของใบไหน
+ *  มติเจ้าของ 29/10 (กระดาษใบทดลอง): เลข SO / QT ต้นทางเท่านั้น — คำว่า "ค่าภาษีสรรพสามิต" ย้ายไปช่อง "โครงการ" (excisePaperReference) */
 export function exciseQuotationReference(order, sourceQuote) {
-  return ['ค่าภาษีสรรพสามิตของ', order?.orderNumber, sourceQuote?.quoteNumber ? `/ ${sourceQuote.quoteNumber}` : null]
-    .filter(Boolean).join(' ');
+  return [order?.orderNumber, sourceQuote?.quoteNumber].filter(Boolean).join(' / ');
 }
+
+/** คำอ้างอิงนี้ระบบเขียนเอง (ว่าง หรือรูปเดิมก่อน 29/10 "ค่าภาษีสรรพสามิตของ …") — "คิดใหม่จากใบสั่งขาย" เขียนทับได้ · คนพิมพ์เอง = ไม่แตะ */
+export const exciseReferenceIsAuto = (note) => {
+  const text = String(note || '').trim();
+  return !text || text.startsWith('ค่าภาษีสรรพสามิตของ');
+};
 
 /**
  * ออกใบค่าสรรพสามิตจาก SO นี้ได้ไหม — ตัวตัดสินเดียวของปุ่มบนจอ (ปุ่มกดไม่ได้ = โชว์แล้วบอกเหตุ) กับ route
@@ -173,7 +179,8 @@ export async function createExciseQuotationDraft({
         quotationId: order.quotationId || null,
         quoteNumber: sourceQuote?.quoteNumber || null,
       },
-      // ผู้เสนอราคาบนกระดาษ = เจ้าของดีลต้นทาง (คนเดียวกับผู้อนุมัติ · ตรึงเบอร์แบบใบปกติ)
+      // ผู้เสนอราคาบนกระดาษ = เจ้าของดีลต้นทาง (คนเดียวกับผู้อนุมัติ · ตรึงชื่อ + เบอร์แบบใบปกติ — ใบไม่มีดีลให้อ่านสด)
+      salesOwner: order.deal?.ownerName || null,
       salesOwnerId: ownerContact?.id || null,
       salesOwnerPhone: ownerContact?.phone || null,
     },
@@ -273,8 +280,25 @@ export async function recalcExciseQuotationLines({ supabase, user, quote, reques
   if (error) throw new ExciseQuotationError(error.message, 500);
   const blocker = exciseQuotationBlocker(order);
   if (blocker) throw new ExciseQuotationError(blocker, 409);
-  const { lines } = await buildExciseLinesFromOrder({ supabase, user, order, request, ensureProduct });
-  return { lines };
+  const { lines, sourceQuote } = await buildExciseLinesFromOrder({ supabase, user, order, request, ensureProduct });
+  /* หัวใบที่มาจาก SO ต้นทางคิดใหม่ไปพร้อมบรรทัด (มติ 29/10 กระดาษใบทดลอง): ผู้เสนอราคา + เบอร์ = เจ้าของดีลต้นทาง ณ ตอนนี้ ·
+     คำอ้างอิง = SO / QT ต้นทาง (route เขียนทับเฉพาะเมื่อของเดิมเป็นคำที่ระบบเขียนเอง — exciseReferenceIsAuto) */
+  const { data: deal, error: dealError } = order.dealId
+    ? await supabase.from('sales_deals').select('id, ownerId, ownerName').eq('id', order.dealId).maybeSingle()
+    : { data: null, error: null };
+  if (dealError) throw new ExciseQuotationError(dealError.message, 500);
+  const ownerContact = await loadDealOwnerContact(supabase, deal?.ownerId);
+  return {
+    lines,
+    header: {
+      referenceNote: exciseQuotationReference(order, sourceQuote),
+      metadata: {
+        salesOwner: deal?.ownerName || null,
+        salesOwnerId: ownerContact?.id || null,
+        salesOwnerPhone: ownerContact?.phone || null,
+      },
+    },
+  };
 }
 
 const SOURCE_LOCK_VERBS = Object.freeze({ revoke: 'ย้อนการอนุมัติ', revise: 'ออก Rev.', cancel: 'ยกเลิก' });

@@ -71,7 +71,8 @@ export function resolveSoFiling({
   const warnings = [];
   for (const line of lines) {
     const product = productById.get(line.productId) || productByFg.get(normalizedKey(line.fgCode));
-    const fgCode = line.fgCode || product?.fgCode || "";
+    // ⚠️ trim — รหัส FG บนบรรทัด SO เก่ามีแท็บท้ายรหัส (ตามไปถึงคำอธิบายบรรทัดใบค่าสรรพสามิต · ใบทดลอง QT-26100568-0)
+    const fgCode = String(line.fgCode || product?.fgCode || "").trim();
     /* ⛔ บรรทัด "ค่าภาษีสรรพสามิต" (04-003) ไม่ใช่ของที่ต้องเสียภาษี — เป็นตัวภาษีเอง · ปล่อยเข้าไป = ยื่นภาษีซ้อนภาษี
        (ใบค่าสรรพสามิตเป็น SO จริง · หมวดนี้ห้ามติ๊ก isExcise อยู่แล้ว ตัดที่นี่อีกชั้นเผื่อธงถูกติ๊กผิด) */
     if (isExciseChargeProduct(product || { fgCode })) continue;
