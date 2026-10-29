@@ -81,8 +81,11 @@ export function buildExciseQuotationLines({ filing, chargeProduct, sourceLines =
     const unitPrice = Number(line.taxPerUnit) || 0;
     const nameTh = source.metadata?.descriptionTh || line.description || product.productDescription || line.fgCode;
     const nameEn = source.metadata?.descriptionEn || product.productDescriptionEn || nameTh;
-    const descriptionTh = `${EXCISE_CHARGE_PRODUCT_NAME} 8.8% — ${line.fgCode} ${nameTh}`.trim();
-    const descriptionEn = `Excise tax 8.8% — ${line.fgCode} ${nameEn}`.trim();
+    /* คำอธิบาย = รหัส FG ต้นทาง + ชื่อสินค้า (มติเจ้าของ 29/10 จากกระดาษใบทดลอง) — ชื่อสินค้า 04-003 "ค่าภาษีสรรพสามิต"
+       ขึ้นบรรทัดแรกของรายการอยู่แล้ว ⇒ ไม่ต้องพูดซ้ำ "ค่าภาษีสรรพสามิต 8.8% —" หน้าทุกบรรทัด */
+    const sourceFg = String(line.fgCode || '').trim();
+    const descriptionTh = `${sourceFg} ${nameTh}`.trim();
+    const descriptionEn = `${sourceFg} ${nameEn}`.trim();
     const money = quoteLineMoney({ qty, unitPrice });
     return {
       sortOrder: index,
@@ -103,7 +106,7 @@ export function buildExciseQuotationLines({ filing, chargeProduct, sourceLines =
         descriptionEn,
         sourceSalesOrderLineId: line.salesOrderLineId || null,
         sourceProductId: line.productId || null,
-        sourceFgCode: line.fgCode || null,
+        sourceFgCode: String(line.fgCode || '').trim() || null,
         retailPriceIncVat: Number(product.retailPriceIncVat) > 0 ? Number(product.retailPriceIncVat) : null,
         excisePerUnit: line.exciseRatePerUnit,
         localPerUnit: line.localTaxRatePerUnit,
