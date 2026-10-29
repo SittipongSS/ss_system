@@ -141,6 +141,7 @@ const SCOPED_SAFE = new Map([
      ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด · count รวมคำสั่งโหลดใบเดียวของ PER_ID_GUARDED ในไฟล์เดียวกัน */
   ['lib/excise/exciseQuotation.js', { count: 3, reason: 'SO ค่าสรรพสามิตของใบที่รับแล้ว (exciseRowsOnly + quotationId) — ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด' }],
   ['lib/excise/exciseSalesOrder.js', { count: 1, reason: 'quotationId ของใบค่าสรรพสามิตใบเดียว — ได้แต่ SO ค่าสรรพสามิต (ใบย้อนหลังไม่มีใบเสนอราคา) · ไม่รวมยอด' }],
+  ['lib/excise/raFiling.js', { count: 4, reason: 'คิวรอยื่นกรมของ RA (PR5): SO ค่าสรรพสามิต (exciseRowsOnly) · SO ลูกค้าไม่เรียกเก็บ (pipelineRowsOnly) · SO ต้นทางของแถวคิว + แผงสรุปใบยื่น (ตาม id ที่ผูกใบยื่น) — ไม่รวมยอด · ใบย้อนหลังถูกปฏิเสธที่ loadFilingSource (origin ต้องเป็น pipeline)' }],
 ]);
 
 test('🪤 ทุกคำสั่งอ่านใบสั่งขายที่แตะยอด/สถานะ ถูกจัดชั้นแล้ว — ของใหม่ต้องกรอง pipeline หรือบอกเหตุผล', () => {
@@ -396,8 +397,12 @@ test('ยื่นภาษีจากใบสั่งขาย: GET แล�
   const post = slice(route, 'export const POST');
   assert.ok(get.includes('isHistoricalOrder(salesOrder)'));
   assert.ok(get.indexOf('isHistoricalOrder(salesOrder)') < get.indexOf('resolveContext('), 'GET ต้องตอบก่อนคำนวณสินค้า');
-  assert.ok(post.includes('isHistoricalOrder(salesOrder)'));
-  assert.ok(post.indexOf('isHistoricalOrder(salesOrder)') < post.indexOf('insertOrder('), 'POST ต้องปฏิเสธก่อนสร้างใบยื่น');
+  /* PR5: POST เป็นทางของ RA — ตัวโหลดกลางปฏิเสธทุกใบที่ไม่ใช่ pipeline (รวมใบย้อนหลัง) ก่อนคำนวณ · POST เรียกตัวนั้นก่อนสร้างใบ */
+  assert.ok(post.indexOf('loadFilingSource(') > 0 && post.indexOf('loadFilingSource(') < post.indexOf('insertOrder('), 'POST ต้องผ่านตัวโหลดกลางก่อนสร้างใบยื่น');
+  const loader = code('lib/excise/raFiling.js');
+  const source = slice(loader, 'export async function loadFilingSource', 'export async function findFilingFor');
+  assert.ok(source.indexOf('salesOrder.origin !== ORIGIN_PIPELINE') > 0, 'ตัวโหลดต้องปฏิเสธใบที่ไม่ใช่ pipeline (ใบย้อนหลัง)');
+  assert.ok(source.indexOf('salesOrder.origin !== ORIGIN_PIPELINE') < source.indexOf('resolveSalesOrderFiling('), 'ปฏิเสธก่อนคำนวณสินค้า');
 });
 
 /* ⚠️ แก้ยามโดยตั้งใจใน PR1 (mig 0376): payment-file ไม่ต่อ id เองแล้ว — ถามตัวตัดสินกลาง `isInstallmentEvidencePath`

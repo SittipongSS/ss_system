@@ -18,7 +18,7 @@ import KpiCard from "@/components/ui/KpiCard";
 import WorkQueue from "@/components/excise/WorkQueue";
 import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDashboardCharts";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { fmtNumber, naText } from "@/lib/format";
+import { NA, fmtNumber, naText } from "@/lib/format";
 import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { businessDate } from "@/lib/businessDate";
 import { PERIODS, taxQueueHref, withinPeriod } from "@/lib/tax/period";
@@ -37,6 +37,8 @@ export default function TaxDashboard() {
   // order_items + master product เต็มแถว (ลด traffic ต่อการเปิดหลายเท่า)
   const { data: rawRegs, loading: l1, error: regsError, staleError: regsStale, errorDetail: regsDetail, loaded: regsLoaded, reload: reloadRegs } = useApiList("/api/excise-registrations?slim=1");
   const { data: rawOrders, loading: l2, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload: reloadOrders } = useApiList("/api/orders?slim=1");
+  /* คิว "รอยื่นกรม" (PR5) — งานที่ยังไม่มีใบยื่น (SO ค่าสรรพสามิตอนุมัติแล้ว / SO ลูกค้าไม่เรียกเก็บ) · โหลดเฉพาะฝ่าย RA */
+  const { data: raQueue, error: raQueueError, staleError: raQueueStale, errorDetail: raQueueDetail, loaded: raQueueLoaded, reload: reloadRaQueue } = useApiList(canLG ? "/api/tax/orders/queue" : null);
 
   /* ── โหลดพัง ≠ ไม่มีของ ─────────────────────────────────────────────────────
      🐞 26 วัน: `/api/orders?slim=1` ตอบ 500 (ORDER_SELECT_SLIM เลือกคอลัมน์ที่ไม่มีจริง)
@@ -62,11 +64,13 @@ export default function TaxDashboard() {
   const sources = [
     { label: "การขึ้นทะเบียน", error: regsError || regsStale, empty: !regsLoaded, detail: regsDetail, reload: reloadRegs },
     { label: "การยื่นชำระภาษี", error: ordersError || ordersStale, empty: !ordersLoaded, detail: ordersDetail, reload: reloadOrders },
+    ...(canLG ? [{ label: "คิวรอยื่นกรม", error: raQueueError || raQueueStale, empty: !raQueueLoaded, detail: raQueueDetail, reload: reloadRaQueue }] : []),
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
   const regsFailed = !!(regsError || regsStale) && !regsLoaded;
   const ordersFailed = !!(ordersError || ordersStale) && !ordersLoaded;
+  const raQueueFailed = canLG && !!(raQueueError || raQueueStale) && !raQueueLoaded;
   /* 🪤 พ่วง **ทุก** ข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ (สายหนึ่ง SQL ผิด
      อีกสายหมดเวลา/สิทธิ์) และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้ — คดี 26 วันนั้นแก้ได้
      เพราะสตริง `column orders.updatedAt does not exist` เท่านั้น
@@ -128,8 +132,7 @@ export default function TaxDashboard() {
 
   const o = {
     draft: orders.filter((x) => x.status === "draft"),
-    pending: orders.filter((x) => x.status === "pending"),
-    received: orders.filter((x) => x.status === "received"),
+    rejected: orders.filter((x) => x.status === "rejected"),
     filing: orders.filter((x) => x.status === "filing"),
     complete: orders.filter((x) => x.status === "complete"),
     delivered: orders.filter((x) => x.status === "delivered"),
@@ -174,22 +177,31 @@ export default function TaxDashboard() {
       queue.push({ id: `rd-${x.id}`, status: "draft", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${naText(x.customerName)} — แนบเอกสารแล้วยื่นขึ้นทะเบียน`, cta: "แนบ/ยื่น", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goReg("draft") }));
     regs.filter((x) => x.status === "rejected").forEach((x) =>
       queue.push({ id: `r-${x.id}`, status: "rejected", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${naText(x.customerName)} — ${x.rejectionReason || "ตีกลับให้แก้ไข"}`, cta: "แก้ไข", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goReg("rejected") }));
-    orders.filter((x) => x.status === "draft").forEach((x) =>
-      queue.push({ id: `od-${x.id}`, status: "draft", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ตรวจยอดก่อนส่งเก็บเงิน`, cta: "ตรวจใบยื่น", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("draft") }));
-    orders.filter((x) => x.status === "pending").forEach((x) =>
-      queue.push({ id: `o-${x.id}`, status: "pending", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: itemsLine(x), cta: "รับเงิน", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("pending") }));
-    orders.filter((x) => x.status === "rejected").forEach((x) =>
-      queue.push({ id: `ox-${x.id}`, status: "rejected", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ${x.rejectionReason || "ตีกลับ"}`, cta: "แก้ไข", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("rejected") }));
-    orders.filter((x) => x.status === "complete").forEach((x) =>
-      queue.push({ id: `oc-${x.id}`, status: "complete", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — รอส่งหลักฐานให้ลูกค้า`, cta: "ยืนยันส่งเอกสาร", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("complete") }));
   }
   if (canLG) {
     regs.filter((x) => x.status === "pending_legal").forEach((x) =>
       queue.push({ id: `rl-${x.id}`, status: "pending_legal", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${naText(x.customerName)} — รอตรวจขึ้นทะเบียน`, cta: "ตรวจอนุมัติ", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goReg("pending_legal") }));
-    orders.filter((x) => x.status === "received").forEach((x) =>
-      queue.push({ id: `or-${x.id}`, status: "received", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — รอยื่นกรมสรรพสามิต`, cta: "ไปยื่น", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("received") }));
+    /* ⭐ PR5: ใบยื่นเป็นงานของ RA ทั้งเส้น — งานที่ยังไม่มีใบ (คิวรอยื่นกรม) + ใบที่ค้างแต่ละขั้น · ฝ่ายขายไม่มีขั้นบนใบยื่นแล้ว */
+    raQueue.forEach((x) => {
+      const days = registrationAge({ createdAt: x.since }, todayIso);
+      queue.push({
+        id: `rq-${x.key}`, status: "draft",
+        title: `${x.salesOrder?.orderNumber || ""} · ${naText(x.salesOrder?.customerName)}`,
+        subtitle: x.exciseOrder
+          ? `ใบสั่งขายค่าสรรพสามิต ${x.exciseOrder.orderNumber} อนุมัติแล้ว — รอสร้างใบยื่นกรม`
+          : `ไม่เรียกเก็บในระบบ (${x.notBilled?.label || ""}) — รอสร้างใบยื่นกรม`,
+        cta: "สร้างใบยื่น", age: ageChip(days), sortDays: days,
+        onClick: () => router.push(`/tax/filings?create=${encodeURIComponent(x.key)}`),
+      });
+    });
+    orders.filter((x) => x.status === "draft").forEach((x) =>
+      queue.push({ id: `od-${x.id}`, status: "draft", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ตรวจรายการแล้วเริ่มยื่น`, cta: "เริ่มยื่น", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("draft") }));
+    orders.filter((x) => x.status === "rejected").forEach((x) =>
+      queue.push({ id: `ox-${x.id}`, status: "rejected", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ${x.rejectionReason || "ตีกลับ"}`, cta: "ยื่นใหม่", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("rejected") }));
     orders.filter((x) => x.status === "filing").forEach((x) =>
-      queue.push({ id: `of-${x.id}`, status: "filing", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — กำลังยื่น`, cta: "บันทึกชำระ", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("filing") }));
+      queue.push({ id: `of-${x.id}`, status: "filing", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — กำลังยื่น`, cta: "บันทึกใบเสร็จ", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("filing") }));
+    orders.filter((x) => x.status === "complete").forEach((x) =>
+      queue.push({ id: `oc-${x.id}`, status: "complete", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — รอส่งใบเสร็จ`, cta: "ยืนยันส่งเอกสาร", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("complete") }));
   }
   // เก่าสุดขึ้นก่อน — คิวที่เรียงตามลำดับที่เผอิญ push เข้ามาไม่ได้ตอบว่า "ทำอันไหนก่อน"
   queue.sort((a, b) => (b.sortDays ?? -1) - (a.sortDays ?? -1));
@@ -318,8 +330,8 @@ export default function TaxDashboard() {
             /* 🐞 ของเดิมโชว์ KPI หกใบเป็น 0 ทั้งแถว + กราฟเปล่า ซึ่งอ่านไม่ออกว่า
                "ยังไม่มีใบ" หรือ "ตัวเลขพัง" — ของจริงคือยังไม่เคยมีใบยื่นสักใบ */
             <EmptyState icon={ReceiptText}>
-              ยังไม่มีใบยื่นชำระภาษีในระบบ — ใบยื่นสร้างจากใบสั่งขายที่อนุมัติแล้ว
-              โดยกด “ยื่นชำระ” ที่หน้าการยื่นชำระภาษี
+              ยังไม่มีใบยื่นชำระภาษีในระบบ — ฝ่าย RA สร้างใบยื่นจากคิวรอยื่นกรม
+              (ใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว) โดยกด “สร้างใบยื่น” ที่หน้าการยื่นชำระภาษี
             </EmptyState>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -329,8 +341,8 @@ export default function TaxDashboard() {
               </div>
               <div className="lg:col-span-2 grid grid-cols-2 gap-4">
                 <KpiCard label="เตรียมใบยื่น" value={getCountAndTax(o.draft).count} taxValue={getCountAndTax(o.draft).tax} tone="neutral" icon={ReceiptText} onClick={() => goFil("draft")} />
-                <KpiCard label="รอรับเงิน" value={getCountAndTax(o.pending).count} taxValue={getCountAndTax(o.pending).tax} tone="danger" icon={CircleDollarSign} onClick={() => goFil("pending")} />
-                <KpiCard label="รอยื่น" value={getCountAndTax(o.received).count} taxValue={getCountAndTax(o.received).tax} tone="warning" icon={Clock3} onClick={() => goFil("received")} />
+                <KpiCard label="ตีกลับ (ยื่นใหม่)" value={getCountAndTax(o.rejected).count} taxValue={getCountAndTax(o.rejected).tax} tone="danger" icon={CircleDollarSign} onClick={() => goFil("rejected")} />
+                <KpiCard label="รอยื่นกรม (ยังไม่มีใบ)" value={canLG && raQueueLoaded ? raQueue.length : NA} tone="warning" icon={Clock3} onClick={canLG ? () => router.push("/tax/filings?create=new") : undefined} />
                 <KpiCard label="กำลังยื่น" value={getCountAndTax(o.filing).count} taxValue={getCountAndTax(o.filing).tax} tone="info" icon={Send} onClick={() => goFil("filing")} />
                 <KpiCard label="ชำระแล้ว" value={getCountAndTax(o.complete).count} taxValue={getCountAndTax(o.complete).tax} tone="success" icon={BadgeCheck} onClick={() => goFil("complete")} />
                 <KpiCard label="ส่งเอกสารแล้ว" value={getCountAndTax(o.delivered).count} taxValue={getCountAndTax(o.delivered).tax} tone="success" onClick={() => goFil("delivered")} />
@@ -342,7 +354,7 @@ export default function TaxDashboard() {
         {/* Action queue — WorkQueue วาดแผงรายการ (หัว · ป้ายจำนวน) ของตัวเอง (มติผู้ใช้ 2026-09-15)
             `incomplete` = คิวนี้ผสมสองแหล่ง สายไหนโหลดไม่ขึ้นก็ขาดแถวไปเงียบ ๆ ⇒ ป้ายจำนวน
             ต้องเป็นขีดไม่ใช่ "0 งาน" และช่องว่างต้องไม่ยินดีด้วยว่าเคลียร์งานหมดแล้ว */}
-        <WorkQueue items={queue} incomplete={regsFailed || ordersFailed} />
+        <WorkQueue items={queue} incomplete={regsFailed || ordersFailed || raQueueFailed} />
       </div>
     </Workspace>
   );

@@ -5,9 +5,11 @@
 //
 //   Track 1 (การขึ้นทะเบียน) — excise_registrations
 //       pending_legal → approved          (rejected = correction loop)
-//   Track 2 (การยื่นชำระภาษี) — orders
-//       draft → pending → received → filing → complete → delivered
-//       (rejected = correction loop)
+//   Track 2 (การยื่นชำระภาษี) — orders · เส้นของฝ่าย RA ทั้งเส้น (แผนรื้อสรรพสามิต PR5)
+//       draft → filing → complete → delivered
+//       (rejected = RA ตีกลับเองระหว่างยื่น แล้วยื่นใหม่)
+//       ⚠️ pending / received (เก็บเงินโดยฝ่ายขายบนใบยื่น) เลิกใช้แล้ว — เงินค่าภาษีเก็บด้วย SO ค่าสรรพสามิต
+//          ป้ายยังอยู่ใน STATUS ให้อ่านของเก่าออก (prod 29/10: ตาราง orders ว่าง)
 //
 // `tone` maps to the .status-pill CSS modifiers (success / warning / danger /
 // info). `icon` names a lucide-react component resolved by StatusBadge.
@@ -53,38 +55,37 @@ export const TRACKS = {
     label: "การยื่นชำระภาษี",
     href: "/tax/filings",
     stages: [
-      { key: "draft", label: "เตรียมใบยื่น", owner: "SA" },
-      { key: "pending", label: "รอรับเงิน", owner: "SA" },
-      { key: "received", label: "รอยื่น", owner: "RA" },
+      { key: "draft", label: "เตรียมใบยื่น", owner: "RA" },
+      { key: "rejected", label: "ตีกลับ (ยื่นใหม่)", owner: "RA" },
       { key: "filing", label: "กำลังยื่น", owner: "RA" },
-      { key: "complete", label: "ชำระแล้ว", owner: "SA" },
+      { key: "complete", label: "ชำระแล้ว (รอส่งใบเสร็จ)", owner: "RA" },
       { key: "delivered", label: "ส่งเอกสารแล้ว", owner: null, done: true },
     ],
   },
 };
 
-/* สถานะที่ฝ่ายขายยังแก้รายการ/หัวใบยื่นได้ — ก่อนยืนยันรับเงิน + รอบแก้หลังถูกตีกลับ
+/* สถานะที่ฝ่าย RA ยังแก้หัวใบ/คิดรายการใหม่ได้ — ก่อนเริ่มยื่น + รอบแก้หลังตีกลับ
    ⚠️ ชุดเดียวของปุ่ม "แก้ไขข้อมูล" บนหน้าใบยื่นและด่านใน PATCH /api/orders/[id] — สองที่ต้องตรงกัน
-   (`draft` เพิ่ม 2026-10-26: ใบจาก SO เกิดเป็นร่าง และเป็นจังหวะที่ควรคิดภาษีใหม่หลังเติมราคาขายปลีก) */
-export const FILING_EDITABLE_STATUSES = ["draft", "pending", "rejected"];
+   ⚠️ ใบที่ผูก SO ค่าสรรพสามิตคิดรายการใหม่ไม่ได้เลย (ยอดที่ลูกค้าจ่ายแล้ว) — ดู `filingRecalcBlock` (lib/excise/raFiling.js) */
+export const FILING_EDITABLE_STATUSES = ["draft", "rejected"];
 
 /* ── ทางเดินสถานะของใบยื่น: ตารางเดียวของ PATCH /api/orders/[id] และปุ่มบนหน้าใบยื่น ─────────
-   🐞 ตรวจระบบ 2026-10-26 (ข้อ 4): route เดิมเช็กสถานะต้นทางแค่ 3 ปลายทาง (pending · received ·
-   delivered) ⇒ ฝ่าย RA สั่ง "กำลังยื่น"/"ชำระแล้ว" จากร่างหรือรอรับเงินได้ตรง ๆ (ข้ามขั้นรับเงินจาก
-   ลูกค้า) · ตีกลับใบที่ชำระแล้วได้ · เลขใบเสร็จบังคับแค่ในโมดัล — ยิง API ตรงปิดงานได้โดยไม่มีใบเสร็จ
+   🐞 ตรวจระบบ 2026-10-26 (ข้อ 4): route เดิมเช็กสถานะต้นทางแค่ 3 ปลายทาง ⇒ ฝ่าย RA สั่ง "กำลังยื่น"/"ชำระแล้ว"
+   จากร่างได้ตรง ๆ · ตีกลับใบที่ชำระแล้วได้ · เลขใบเสร็จบังคับแค่ในโมดัล
    ⇒ ทุกปลายทางประกาศ "มาจากไหน · ใครทำ · ต้องมีอะไร" ที่นี่ที่เดียว
-     by          SA = ฝ่ายขาย (sales:act) · RA = ฝ่าย RA (ra:approve)
+   ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10): **ใบยื่นเป็นงานของ RA ทั้งเส้น** — RA สร้างจากคิว "รอยื่นกรม" · ไม่มีขั้น
+      "รับเงิน" บนใบยื่นแล้ว (เงินค่าภาษีเก็บด้วย SO ค่าสรรพสามิต · FN ปิดใบ) · ด่านเริ่มยื่นอีกสองข้อ (เงินปิดใบแล้ว ·
+      ทะเบียนครบ — ข้ามได้ใส่เหตุผล) อยู่ที่ `filingStartGateError` (lib/excise/raFiling.js) ไม่ใช่ในตารางนี้
+     by          RA = ฝ่าย RA (ra:approve) · (SA ไม่มีปลายทางไหนเหลือแล้ว)
      from        สถานะต้นทางที่ยอม
      exemptFrom  ต้นทางเพิ่มเติมเฉพาะใบยกเว้นภาษี (isExemptFiling) — ใบยกเว้นไม่มีขั้น "กำลังยื่น"
      taxableOnly ใบยกเว้นห้ามเข้า (ไม่มีภาษีให้ยื่น)
      requires    ช่องที่ต้องมีค่า (จาก body หรือที่เก็บไว้แล้ว) — ใบยกเว้นไม่ต้อง ยกเว้น alwaysRequires */
 export const FILING_TRANSITIONS = {
-  pending: { by: "SA", from: ["draft"] },
-  received: { by: "SA", from: ["pending", "rejected"], requires: [["receiptNumber", "เลขที่ Invoice/Receipt ของ S&S"]] },
-  filing: { by: "RA", from: ["received"], taxableOnly: true, requires: [["taxInvoiceNumber", "เลขที่ใบกำกับภาษี"]] },
-  complete: { by: "RA", from: ["filing"], exemptFrom: ["received"], requires: [["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"]] },
-  delivered: { by: "SA", from: ["complete"] },
-  rejected: { by: "RA", from: ["received", "filing"], alwaysRequires: [["rejectionReason", "เหตุผลที่ตีกลับ"]] },
+  filing: { by: "RA", from: ["draft", "rejected"], taxableOnly: true },
+  complete: { by: "RA", from: ["filing"], exemptFrom: ["draft"], requires: [["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"]] },
+  delivered: { by: "RA", from: ["complete"] },
+  rejected: { by: "RA", from: ["filing"], alwaysRequires: [["rejectionReason", "เหตุผลที่ตีกลับ"]] },
 };
 
 const filled = (value) => String(value ?? "").trim() !== "";
@@ -214,20 +215,18 @@ export const FILING_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
   MINE_FILTER,
   { key: "draft", label: "เตรียมใบยื่น" },
-  { key: "pending", label: "รอรับเงิน" },
-  { key: "received", label: "รอยื่น" },
   { key: "filing", label: "กำลังยื่น" },
   { key: "complete", label: "ชำระแล้ว" },
   { key: "delivered", label: "ส่งเอกสารแล้ว" },
   { key: "rejected", label: "ตีกลับ" },
 ];
 
-/* ── ปิดทางสร้างใบยื่นของฝ่ายขาย (แผนรื้อสรรพสามิต PR3 · ตรวจแผน BLOCKER) ─────────────────────────────────────
-   ค่าภาษีเก็บด้วยใบเสนอราคา → SO ค่าสรรพสามิตแล้ว ⇒ ใบยื่นที่ SA สร้างบน SO ลูกค้าระหว่าง PR3–PR5 จะ (1) ชน unique
-   orders_sales_order_unique_idx กันใบของ RA และ (2) เก็บเงินค่าภาษีซ้ำกับ SO ค่าสรรพสามิต (ReceiveDialog)
-   ⇒ ทั้ง POST /api/tax/orders/from-sales-order และ POST /api/orders ตอบข้อความนี้ทุกคน · ทางสร้างของ RA มากับ PR5
-   (prod 28/10: ตาราง orders ยังว่าง — ไม่มีใบเก่าค้าง) */
-/* สวิตช์ของทางสร้างเดิม (ฝ่ายขาย) — false ตั้งแต่ PR3 · 🔴 ห้ามเปิดกลับ: ทางสร้างของ RA (PR5) เป็นเส้นใหม่ ไม่ใช่สวิตช์นี้ */
+/* ── ปิดทางสร้างใบยื่นแบบเลือกทะเบียนเอง (แผนรื้อสรรพสามิต PR3 · ตรวจแผน BLOCKER) ──────────────────────────────
+   ค่าภาษีเก็บด้วยใบเสนอราคา → SO ค่าสรรพสามิตแล้ว ⇒ ใบยื่นที่สร้างนอกคิวของ RA จะ (1) ชน unique
+   orders_sales_order_unique_idx กันใบของ RA และ (2) เก็บเงินค่าภาษีซ้ำกับ SO ค่าสรรพสามิต
+   ⇒ POST /api/orders (สร้างเอง) ตอบข้อความนี้ทุกคน · ทางสร้างเดียวคือ RA สร้างจากคิว "รอยื่นกรม"
+   (POST /api/tax/orders/from-sales-order · PR5) */
+/* สวิตช์ของทางสร้างเดิม — false ตั้งแต่ PR3 · 🔴 ห้ามเปิดกลับ: ทางสร้างของ RA (PR5) เป็นเส้นใหม่ ไม่ใช่สวิตช์นี้ */
 export const SA_FILING_CREATE_OPEN = false;
-export const FILING_CREATE_CLOSED_MESSAGE = 'การสร้างใบยื่นชำระภาษีย้ายไปเป็นงานของฝ่าย RA (รอเปิดใช้) — ฝ่ายขายเก็บค่าภาษีด้วย '
-  + '“ใบเสนอราคาค่าสรรพสามิต” จากหน้าใบสั่งขายแทน';
+export const FILING_CREATE_CLOSED_MESSAGE = 'ใบยื่นชำระภาษีสร้างได้ทางเดียว — ฝ่าย RA สร้างจากคิว “รอยื่นกรม” ที่หน้าการยื่นชำระ '
+  + '(ฝ่ายขายเก็บค่าภาษีด้วย “ใบเสนอราคาค่าสรรพสามิต” จากหน้าใบสั่งขาย)';

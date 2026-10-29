@@ -634,7 +634,7 @@ const RAW_RADIUS_CAP = 21;
      src/components/salesPlanning/dashboard/performance/shared.js:71 → `height / 2`
      src/components/ui/Skeleton.js:5 → `radius` (มาจาก prop ค่าตั้งต้น 6)
    ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่ */
-const RAW_RADIUS_JSX_CAP = 72;
+const RAW_RADIUS_JSX_CAP = 71;
 
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -761,7 +761,7 @@ const RAW_OPACITY_JSX_CAP = 24;
       ตามมติ "ไทยนำ + ดิบเป็นบรรทัดเล็ก" (padding/gap/marginBottom ดิบ 3 จุดต่อกล่อง)
    📉 689 → 687 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): แถบการ์ดของ /sahamit/material เลิกเขียน `Stat` + แถว flex
       ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้ */
-const RAW_SPACING_JSX_CAP = 687;
+const RAW_SPACING_JSX_CAP = 684;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
@@ -774,7 +774,7 @@ const RAW_SPACING_JSX_CAP = 687;
    จำนวนเงิน · ปุ่มลบ) ย้ายจาก `style={{ width }}` บนหัวตารางไปเป็นคลาสของ QuotationLineItems.module.css ตอนยกเซลล์
    ไปเป็น QuoteLineCells (ตัวเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง — มติเจ้าของ 23/09)
    📉 303 → 302 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): การ์ด `Stat` ของ /sahamit/material (`minWidth: 120`) ถูกแทนด้วย KpiCard กลาง */
-const RAW_SIZE_JSX_CAP = 302;
+const RAW_SIZE_JSX_CAP = 300;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)

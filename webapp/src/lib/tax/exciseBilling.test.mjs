@@ -77,10 +77,15 @@ test("ใบแจ้งชำระอ้างอิงโครงการ�
   assert.ok(!ref.includes(" · "));
 });
 
+/* PR5: ทางสร้างของ RA ตรึงยอดจากตัวโหลดกลาง (lib/excise/raFiling.js) — ใบผูก SO ค่าสรรพสามิต = ยอดรวมของใบนั้น (ลูกค้าจ่ายจริง ·
+   รวม VAT แล้ว) · ใบไม่เรียกเก็บ = billedTaxTotals ของรายการ (ภาษี + VAT 7%) · ไม่ใช่ยอดภาษีเปล่าทั้งสองแบบ */
 test("ทางสร้างใบยื่นทั้งสองทางตรึงยอดรวม VAT ลงใบ ไม่ใช่ยอดภาษีเปล่า", () => {
   const fromSo = read("../../app/api/tax/orders/from-sales-order/route.js");
+  const loader = read("../excise/raFiling.js");
   const manual = read("../../app/api/orders/route.js");
-  assert.match(fromSo, /amountToCollect: billedTaxTotals\(resolved\.lines\)\.amountToCollect/);
+  assert.match(fromSo, /amountToCollect: resolved\.amountToCollect/);
+  assert.match(loader, /amountToCollect: billedTaxTotals\(customerResolved\.lines\)\.amountToCollect/, "ใบไม่เรียกเก็บ");
+  assert.match(loader, /amountToCollect: Number\(exciseOrder\.totalAmount\) \|\| 0/, "ใบผูก SO ค่าสรรพสามิต = ยอดที่ลูกค้าจ่าย");
   assert.match(manual, /amountToCollect: billedTaxTotals\(itemRows\)\.amountToCollect/);
 });
 
@@ -190,11 +195,11 @@ test('ทุกทางที่สร้างบรรทัดภาษี�
   assert.match(soFiling, /exciseTaxLine\(\{/);
   assert.match(soFiling, /exciseRatePerUnit: product\.exciseTax/);
 
-  // ทางที่อ้างทะเบียน (สร้างมือ + แก้ใบ + ฟอร์มฝั่งจอ) ต้องผ่านตัวที่เคารพ override
+  // ทางที่อ้างทะเบียน (สร้างมือ + แก้ใบ) ต้องผ่านตัวที่เคารพ override
+  // (ฟอร์มฝั่งจอ OrderFormModal ถอดแล้วใน PR5 — ใบยื่นเป็นของ RA · แก้รายการได้ทางเดียวคือคิดใหม่จาก SO)
   for (const path of [
     '../../app/api/orders/route.js',
     '../../app/api/orders/[id]/route.js',
-    '../../components/excise/OrderFormModal.js',
   ]) {
     const code = codeOnly(read(path));
     assert.match(code, /exciseTaxLineForRegistration\(\{/, `${path} ต้องเรียกตัวคิดกลาง`);

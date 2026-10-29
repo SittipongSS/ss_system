@@ -281,21 +281,28 @@ test('ทะเบียนกลิ่น/สูตร: Rev + จัดระ�
 // เมื่อ POST /api/tax/orders/from-sales-order ซึ่งเป็นทางเดียวที่ปุ่ม "สร้างใบยื่นจาก
 // Sale Order" ใช้ · GET ผ่านเพราะ OPEN_READ_APIS มี `/api/tax` จึงเห็นรายการ SO ครบ
 // แต่กดสร้างแล้วเด้ง — ดูเหมือนระบบพังทั้งที่ handler ถูกทุกบรรทัด
-test('ทางสร้างใบยื่นจาก Sale Order เปิดให้ฝ่ายขาย ไม่ใช่แอดมินคนเดียว', () => {
-  for (const role of ['ae_supervisor', 'senior_ae', 'ac', 'ae']) {
+// ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10): ใบยื่นกรมเป็นงานของฝ่าย RA ทั้งเส้น — ฝ่ายขายไม่เขียน /api/orders อีก
+//    (เก็บค่าภาษีด้วยใบเสนอราคา/SO ค่าสรรพสามิต) · บทเรียนของบั๊กข้างบนยังอยู่: alias ต้องยุบ ไม่งั้น RA โดน 403 เหมือนเดิม
+test('ทางสร้างใบยื่นจาก SO เปิดให้ฝ่าย RA (ผ่าน alias /api/tax) ไม่ใช่ฝ่ายขาย', () => {
+  for (const role of ['ra', 'admin']) {
     assert.equal(
       lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true),
       false,
       `${role} ต้องสร้างใบยื่นจาก SO ได้`,
     );
     assert.equal(apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []), true, role);
+    for (const method of ['PATCH', 'DELETE']) {
+      assert.equal(apiWriteAllowed(method, '/api/orders/TAX-1', role, []), true, `${role} ${method}`);
+    }
   }
-  // role ที่ไม่ได้ทำงานขายยังเขียนไม่ได้ (ด่าน cap ต้องยังทำงาน ไม่ใช่เปิดหมด)
-  for (const role of ['viewer', 'executive', 'marketing', 'secretary', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts']) {
-    const open = !lockedOut({ role, extraCaps: [] }, '/api/tax/orders/from-sales-order', 'POST', true)
-      && apiWriteAllowed('POST', '/api/tax/orders/from-sales-order', role, []);
-    assert.equal(open, false, `${role} ต้องไม่ผ่าน`);
+  for (const role of ['ae_supervisor', 'senior_ae', 'ac', 'ae', 'viewer', 'executive', 'marketing', 'secretary', 'rd', 'pc', 'pd', 'wh', 'qc', 'ts', 'fn']) {
+    for (const [method, path] of [['POST', '/api/tax/orders/from-sales-order'], ['POST', '/api/orders'], ['PATCH', '/api/orders/TAX-1'], ['DELETE', '/api/orders/TAX-1']]) {
+      const open = !lockedOut({ role, extraCaps: [] }, path, method, true) && apiWriteAllowed(method, path, role, []);
+      assert.equal(open, false, `${role} ${method} ${path} ต้องไม่ผ่าน`);
+    }
   }
+  // คิวรอยื่นกรมเป็นการอ่าน — เปิดตาม OPEN_READ_APIS (/api/tax) · ด่านจริง (ra:view) อยู่ใน handler
+  assert.equal(lockedOut({ role: 'ra', extraCaps: [] }, '/api/tax/orders/queue', 'GET', true), false);
 });
 
 // alias /api/tax/{registrations,orders} re-export handler ตัวเดียวกับชื่อเดิม และไฟล์

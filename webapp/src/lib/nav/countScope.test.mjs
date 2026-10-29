@@ -70,8 +70,10 @@ test('ใบสั่งขาย/สัญญา: คนที่รับร�
   assert.equal(countScopeFor('contracts', user({ role: 'ae' })), 'mine');
 });
 
+/* PR5: ใบยื่นเป็นของ RA ทั้งเส้น ⇒ ฝ่ายขายไม่มีป้ายใบยื่น (ไม่มีขั้นให้ทำ) · ทะเบียนยังเป็นสองเลน */
 test('ภาษี: เลนของฝ่าย (SA/RA) ได้ dept · คนนอกสองเลนไม่มีป้าย', () => {
-  assert.equal(countScopeFor('taxFilings', user({ role: 'ae' })), 'dept');
+  assert.equal(countScopeFor('taxFilings', user({ role: 'ra' })), 'dept');
+  assert.equal(countScopeFor('taxRegistrations', user({ role: 'ae' })), 'dept');
   assert.equal(countScopeFor('taxRegistrations', user({ role: 'ra' })), 'dept');
   assert.equal(countScopeFor('taxFilings', user({ role: 'rd' })), null);
 });

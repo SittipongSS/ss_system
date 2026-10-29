@@ -380,16 +380,21 @@ test('ออกใบไม่ได้ = ปุ่มยังโชว์ ก�
   assert.deepEqual(noRight.connect.actions.map((a) => a.disabled), [true, true]);
 });
 
+/* PR5: เส้นของ RA สี่จุด (เตรียมใบยื่น → กำลังยื่น → ชำระแล้ว → ส่งเอกสารแล้ว) · ตีกลับ = ยืนที่ "กำลังยื่น" แบบช้า */
 test('มีใบยื่นแล้ว = รางขั้นของโมดูลภาษี + ลิงก์เปิดใบยื่น', () => {
-  const track = salesOrderWorkTrack({
+  const at = (status) => salesOrderWorkTrack({
     scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
-    excise: excise({ lines: [exciseLine('FG-1', 'approved')], filing: { id: 'ORD-9', status: 'received' } }),
+    excise: excise({ lines: [exciseLine('FG-1', 'approved')], filing: { id: 'ORD-9', status } }),
     approved: true,
-  });
-  const filing = track.segments.at(-1);
+  }).segments.at(-1);
+  const filing = at('filing');
   assert.equal(filing.state, 'live');
   assert.equal(filing.link.href, '/tax/filings/ORD-9');
-  assert.deepEqual(filing.steps.map((s) => s.state), ['done', 'done', 'live', 'todo', 'todo', 'todo']);
+  assert.deepEqual(filing.steps.map((s) => s.state), ['done', 'live', 'todo', 'todo']);
+  const rejected = at('rejected');
+  assert.equal(rejected.state, 'late');
+  assert.equal(rejected.steps[1].state === 'todo', false, 'ตีกลับต้องยืนที่จุดกำลังยื่น ไม่ใช่ถอยไปจุดแรก');
+  assert.equal(at('delivered').state, 'done');
 });
 
 /* 🪤 ระบบยอมให้สร้างใบยื่นทั้งที่ทะเบียนยังไม่อนุมัติ ⇒ ใบที่ยื่นแล้วยังต้องเห็นว่าทะเบียนค้าง */

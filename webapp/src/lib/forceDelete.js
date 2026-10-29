@@ -239,12 +239,24 @@ export async function forceDeleteProjectExcise(supabase, projectId) {
 // เจตนา: **ไม่ลบใบยื่นให้อัตโนมัติ** — ใบยื่นเป็นเอกสารภาษีที่อาจยื่นกรมสรรพสามิตแล้ว
 // การลากลบตามเอกสารต้นทางเป็นผลข้างเคียงที่เงียบเกินไป. เส้นทางเดียวกับด่านอื่นทั้งหมด
 // (ยกเลิก SO / ย้อนการอนุมัติ / ออก Rev. ก็ถูกใบยื่นบล็อกเหมือนกัน) คือให้จัดการใบยื่นก่อน
+/* ใบยื่นผูกได้สองทาง (mig 0417): SO ลูกค้า ("salesOrderId") หรือ SO ค่าสรรพสามิต ("exciseSalesOrderId") — ถามทีละคอลัมน์แล้วรวม
+   คอลัมน์ยังไม่มี (ยังไม่รัน mig 0160 / 0417) = ยังไม่มีใบยื่นผ่านทางนั้น → ไม่บล็อก */
+async function filingsByColumns(supabase, values) {
+  const many = Array.isArray(values);
+  const results = await Promise.all(['salesOrderId', 'exciseSalesOrderId'].map((col) => {
+    const query = supabase.from('orders').select('id, status');
+    return many ? query.in(col, values) : query.eq(col, values);
+  }));
+  const byId = new Map();
+  for (const { data, error } of results) {
+    if (error) continue;
+    for (const row of data || []) byId.set(row.id, row);
+  }
+  return [...byId.values()];
+}
+
 export async function exciseFilingsOfSalesOrder(supabase, salesOrderId) {
-  const { data, error } = await supabase
-    .from('orders').select('id, status').eq('salesOrderId', salesOrderId);
-  // คอลัมน์ยังไม่มี (ยังไม่รัน mig 0160) = ยังไม่มีใบยื่นในระบบ → ไม่บล็อก
-  if (error) return [];
-  return data || [];
+  return filingsByColumns(supabase, salesOrderId);
 }
 
 export async function exciseFilingsOfQuotation(supabase, quotationId) {
@@ -252,10 +264,7 @@ export async function exciseFilingsOfQuotation(supabase, quotationId) {
     .from('sales_orders').select('id').eq('quotationId', quotationId);
   const ids = (orders || []).map((row) => row.id);
   if (!ids.length) return [];
-  const { data, error } = await supabase
-    .from('orders').select('id, status').in('salesOrderId', ids);
-  if (error) return [];
-  return data || [];
+  return filingsByColumns(supabase, ids);
 }
 
 // ── ใบเสนอราคาค่าสรรพสามิตที่อ้าง SO ลูกค้า (mig 0414 · `quotations.sourceSalesOrderId` ON DELETE RESTRICT) ────────

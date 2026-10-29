@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields, isSalesManager } from '@/lib/permissions';
+import { can, canViewRecord, canEditRecord, allowedEditFields } from '@/lib/permissions';
 import { ORDER_SELECT, attachRegistrations, insertOrderItems, stampExemptFlags, updateOrderResilient } from '@/lib/tax/orders';
 import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
@@ -8,10 +8,10 @@ import { purgeAttachments } from '@/lib/master/attachments';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
 import { billedTaxTotals, exciseTaxLineForRegistration, exciseTaxTotals } from '@/lib/tax/exciseBilling';
 import { FILING_EDITABLE_STATUSES, filingTransitionError } from '@/lib/excise/workflow';
-import { filingItemRows, filingTotalsOf, resolveSalesOrderFiling } from '@/lib/excise/soFilingItems';
-import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { filingItemRows, filingTotalsOf } from '@/lib/excise/soFilingItems';
+import { loadFilingSource, loadFilingSummary } from '@/lib/excise/raFiling';
+import { filingRecalcBlock, filingStartGateError } from '@/lib/excise/raFilingRules';
 import { genId } from '@/lib/id';
-import { loadScoped } from '@/lib/scopedRow';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { customerTaxSiblingIds } from '@/lib/master/customerTaxSiblings';
 
@@ -32,6 +32,12 @@ export async function GET(request, { params }) {
     return Response.json({ error: 'ไม่พบใบสั่งซื้อนี้' }, { status: 404 });
   }
   await attachRegistrations(supabase, data);
+  /* แผงสรุป SO + ด่านเริ่มยื่น (PR5) — RA ไม่เข้าหน้าขาย ⇒ สรุปมากับใบยื่น · อ่านพังต้องไม่ทำหน้าใบยื่นพังทั้งหน้า */
+  try {
+    data.source = await loadFilingSummary(supabase, data);
+  } catch (e) {
+    data.source = { error: e?.message || 'อ่านใบสั่งขายต้นทางไม่สำเร็จ' };
+  }
   return Response.json(data);
 }
 
@@ -56,14 +62,14 @@ export async function PATCH(request, { params }) {
 
   const body = await request.json();
 
-  // Sales own the PO header + S&S receipt; RA own the excise/tax fields.
-  // allowedEditFields keeps a sales user out of the excise columns and a
-  // RA user out of the commercial header. Status is handled explicitly
-  // below (per-capability transition gate), not via this generic copy.
+  /* ⭐ แผนรื้อสรรพสามิต PR5: ใบยื่นเป็นงานของ RA ทั้งเส้น — proxy เปิดการเขียน /api/orders ให้ ra:approve เท่านั้น
+     ช่องหัวใบของฝ่ายขายยังอยู่ในลิสต์ (แอดมินถือทั้งสองฝั่ง) แต่ไม่มีปลายทางสถานะไหนเป็นของฝ่ายขายแล้ว
+     Status is handled explicitly below (per-capability transition gate), not via this generic copy. */
   const salesEditable = ['quotationRef', 'poReference', 'deliveryDate', 'remarks', 'assignee', 'receiptNumber'];
   const allowed = allowedEditFields(user, 'orders', salesEditable);
   const isLegal = can(user?.role, 'ra:approve');
   const isSales = can(user?.role, 'sales:act');
+  const now = new Date().toISOString();
 
   const updates = {};
   for (const k of allowed) if (k !== 'status' && body[k] !== undefined) updates[k] = body[k];
@@ -91,21 +97,21 @@ export async function PATCH(request, { params }) {
   if (body.status !== undefined && body.status !== order.status) {
     const target = body.status;
     let exempt = false;
-    if (['received', 'filing', 'complete'].includes(target)) {
+    let items = null;
+    if (['filing', 'complete'].includes(target)) {
       const { data: exemptItems, error: exemptErr } = await fetchAllResult(() => supabase
         .from('order_items').select('id, registrationId, totalTax, quantity').eq('orderId', id)
         .order('id', { ascending: true }));
       if (exemptErr) return Response.json({ error: exemptErr.message }, { status: 500 });
+      items = exemptItems || [];
       try {
-        [{ taxExempt: exempt }] = await stampExemptFlags(supabase, [{ ...order, items: exemptItems || [] }]);
+        [{ taxExempt: exempt }] = await stampExemptFlags(supabase, [{ ...order, items }]);
       } catch (e) {
         return Response.json({ error: `ตรวจทะเบียนของรายการไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
       }
     }
     // ช่องบังคับนับทั้งค่าที่ส่งมากับคำขอนี้ และค่าที่เก็บไว้บนใบแล้ว (ส่งเลขมารอบก่อนก็ผ่าน)
     const fields = {
-      receiptNumber: updates.receiptNumber !== undefined ? updates.receiptNumber : order.receiptNumber,
-      taxInvoiceNumber: updates.taxInvoiceNumber !== undefined ? updates.taxInvoiceNumber : order.taxInvoiceNumber,
       exciseReceiptNumber: updates.exciseReceiptNumber !== undefined ? updates.exciseReceiptNumber : order.exciseReceiptNumber,
       rejectionReason: body.rejectionReason,
     };
@@ -113,36 +119,48 @@ export async function PATCH(request, { params }) {
       from: order.status, to: target, caps: { sales: isSales, ra: isLegal }, exempt, fields,
     });
     if (blocked) return Response.json({ error: blocked.error }, { status: blocked.status });
+    /* ⭐ ด่านเริ่มยื่นอีกสองข้อ (แผน หมวด 3.6 · Q15): บัญชีปิดใบ SO ค่าสรรพสามิตแล้ว · ทะเบียนครบ — ข้ามได้ใส่เหตุผล
+       เหตุผลเก็บลงใบ (ทุกการข้ามมีร่องรอย · ทบทวนรายสัปดาห์) · ผ่านด่านจริง = ล้างเหตุผลเดิมทิ้ง */
+    if (target === 'filing') {
+      let gates;
+      try {
+        ({ gates } = await loadFilingSummary(supabase, { ...order, items }));
+      } catch (e) {
+        return Response.json({ error: `ตรวจใบสั่งขายต้นทางไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+      }
+      const gateError = filingStartGateError(gates, {
+        skipMoneyReason: body.skipMoneyReason, skipRegistrationReason: body.skipRegistrationReason,
+      });
+      if (gateError) return Response.json({ error: gateError }, { status: 400 });
+      updates.filingSkipMoneyReason = gates.money.ok ? null : String(body.skipMoneyReason).trim();
+      updates.filingSkipRegistrationReason = gates.registration.ok ? null : String(body.skipRegistrationReason).trim();
+      updates.filingStartedAt = now;
+      updates.filingStartedById = user?.id ?? null;
+      updates.filingStartedByName = user?.name ?? null;
+      updates.rejectionReason = null;
+    }
     updates.status = target;
     // ตัดช่องว่างหัวท้ายของเลขเอกสารที่ส่งมาในจังหวะเปลี่ยนสถานะ — ค่าที่ผ่านด่านคือค่าที่ลงฐาน
-    for (const key of ['receiptNumber', 'taxInvoiceNumber', 'exciseReceiptNumber']) {
+    for (const key of ['taxInvoiceNumber', 'exciseReceiptNumber']) {
       if (typeof updates[key] === 'string') updates[key] = updates[key].trim();
     }
     if (target === 'complete') {
       // Filing done: stamp who/when + the clearance timestamp.
-      updates.clearedAt = new Date().toISOString();
-      updates.filedAt = new Date().toISOString();
+      updates.clearedAt = now;
+      updates.filedAt = now;
       updates.filedBy = user?.id ?? null;
       updates.filedByName = user?.name ?? null;
     }
-    if (target === 'received' && order.status === 'pending') {
-      updates.collectedConfirmedAt = new Date().toISOString();
-      updates.collectedConfirmedBy = user?.id ?? null;
-    }
     if (target === 'delivered') {
-      updates.docsDeliveredAt = new Date().toISOString();
+      updates.docsDeliveredAt = now;
       updates.docsDeliveredBy = user?.id ?? null;
-    }
-    // Resubmit: Sales fixed a rejected order and sends it back to RA's queue.
-    if (target === 'received' && order.status === 'rejected') {
-      updates.rejectionReason = null;
     }
   }
 
-  // ── Line-item edit (sales-owned) ──
+  // ── Line-item edit (RA-owned ตั้งแต่ PR5) ──
   // Only while the order is still editable (FILING_EDITABLE_STATUSES — ชุดเดียวกับปุ่มบนจอ).
   // Replaces all line items and recomputes the tax rollups.
-  const lineEditable = isSales && FILING_EDITABLE_STATUSES.includes(order.status);
+  const lineEditable = isLegal && FILING_EDITABLE_STATUSES.includes(order.status);
   let newItemRows = null;
 
   /* ⭐ ใบยื่นจากใบสั่งขาย: แก้รายการได้ทางเดียว = **คิดใหม่จาก SO** (ตรวจระบบ 2026-10-26 ข้อ 3)
@@ -156,27 +174,18 @@ export async function PATCH(request, { params }) {
     }, { status: 400 });
   }
   if (body.recalcFromSalesOrder === true) {
-    if (!order.salesOrderId) {
-      return Response.json({ error: 'ใบยื่นนี้ไม่ได้สร้างจากใบสั่งขาย' }, { status: 400 });
-    }
+    /* ใบที่ผูก SO ค่าสรรพสามิต = ยอดที่ลูกค้าจ่ายแล้ว ห้ามคิดทับ · ใบไม่เรียกเก็บคิดใหม่จาก SO ลูกค้าได้ (RA · ก่อนเริ่มยื่น) */
+    const recalcBlock = filingRecalcBlock(order);
+    if (recalcBlock) return Response.json({ error: recalcBlock }, { status: 400 });
     if (!lineEditable) {
-      return Response.json({ error: 'คิดภาษีใหม่ได้เฉพาะใบที่ยังไม่ยืนยันรับเงิน หรือใบที่ถูกตีกลับ (ฝ่ายขาย)' }, { status: 403 });
+      return Response.json({ error: 'คิดภาษีใหม่ได้เฉพาะใบที่ยังไม่เริ่มยื่น หรือใบที่ถูกตีกลับ (ฝ่าย RA)' }, { status: 403 });
     }
-    // ด่านเดียวกับตอนสร้างใบจาก SO (POST from-sales-order: inSalesEditScope ของดีลแม่) — โหลดกับตรวจในจังหวะเดียว
-    const scoped = await loadScoped(supabase, 'sales_orders', order.salesOrderId, user, 'edit');
-    if (scoped.response) return scoped.response;
-    // select('*') ของบรรทัด = มี packQty เสมอ (จำนวนที่ยื่น = แพ็ค × จำนวน · ด่าน linePackReaders)
-    const { data: soLines, error: linesErr } = await fetchAllResult(() => supabase
-      .from('sales_order_lines').select('*').eq('salesOrderId', order.salesOrderId)
-      .order('id', { ascending: true }));
-    if (linesErr) return Response.json({ error: linesErr.message }, { status: 500 });
-    const salesOrder = { ...scoped.row, lines: soLines || [] };
-    if (isHistoricalOrder(salesOrder)) {
-      return Response.json({ error: 'ใบสั่งขายย้อนหลังไม่ใช้คิดภาษีในระบบ' }, { status: 400 });
-    }
+    // ตัวโหลดเดียวกับตอนสร้าง (บัญชีระบบ · RA ไม่มีขอบเขตขาย) — ตรวจสถานะ SO + คำตัดสินไม่เรียกเก็บในจังหวะเดียว
     let resolved;
     try {
-      resolved = await resolveSalesOrderFiling(supabase, salesOrder);
+      const loaded = await loadFilingSource(supabase, { salesOrderId: order.salesOrderId });
+      if (loaded.error) return Response.json({ error: loaded.error.message }, { status: loaded.error.status });
+      resolved = loaded.resolved;
     } catch (e) {
       return Response.json({ error: `คิดภาษีจากใบสั่งขายไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
     }
@@ -274,6 +283,7 @@ export async function PATCH(request, { params }) {
     }
   }
 
+  updates.updatedAt = now;
   const { error: updErr } = await updateOrderResilient(supabase, id, updates);
   if (updErr) return Response.json({ error: updErr.message }, { status: 500 });
 
@@ -305,9 +315,8 @@ export async function PATCH(request, { params }) {
 }
 
 // DELETE /api/orders/[id] — order_items cascade via FK on delete cascade.
-// Scope: supervisor (any team) or senior_ae (own team). Orders already in the
-// tax workflow (filed / has receipt / completed) may be deleted by supervisor
-// only.
+// ⭐ PR5: ใบยื่นเป็นของฝ่าย RA — ลบได้เฉพาะ RA และเฉพาะร่าง (ยังไม่เริ่มยื่น) · แอดมินลบได้ทุกสถานะ (admin-full-rights)
+// ลบร่าง = งานกลับเข้าคิว "รอยื่นกรม" (SO ลูกค้า/SO ค่าสรรพสามิตปลดล็อกตาม FK)
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -321,16 +330,11 @@ export async function DELETE(request, { params }) {
   if (findErr) return Response.json({ error: findErr.message }, { status: 500 });
   if (!order) return Response.json({ error: 'ไม่พบใบสั่งซื้อนี้' }, { status: 404 });
 
-  if (!canDeleteRecord(user, 'orders', order)) {
-    return Response.json({ error: 'forbidden' }, { status: 403 });
+  if (!can(user?.role, 'ra:approve')) {
+    return Response.json({ error: 'ลบใบยื่นได้เฉพาะฝ่าย RA' }, { status: 403 });
   }
-  // Tax-locked orders: admin + ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) — AC Supervisor ไม่ได้ (ผังตำแหน่ง 2026-09-24)
-  const locked = order.receiptNumber || order.clearedAt || ['complete', 'delivered'].includes(order.status);
-  if (locked && !isSalesManager(user?.role)) {
-    return Response.json(
-      { error: 'รายการนี้เข้าสู่ขั้นตอนภาษีแล้ว ต้องเป็นผู้ดูแลระบบจึงจะลบได้' },
-      { status: 403 }
-    );
+  if (order.status !== 'draft' && user?.role !== 'admin') {
+    return Response.json({ error: 'ลบได้เฉพาะใบยื่นที่ยังไม่เริ่มยื่น (ฉบับร่าง)' }, { status: 403 });
   }
 
   const { data, error } = await supabase.from('orders').delete().eq('id', id).select('id');
