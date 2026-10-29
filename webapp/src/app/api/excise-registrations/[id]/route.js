@@ -13,6 +13,11 @@ import { normalizeRejectionReason, rejectionReasonError } from '@/lib/master/app
 import { loadUserDirectory } from '@/lib/usersRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { notifyRegistration } from '@/lib/tax/registrationNotify';
+import {
+  REGISTRATION_LINK_EDITABLE_STATUSES,
+  REGISTRATION_LINK_LOCKED_MESSAGE,
+  registrationTransitionError,
+} from '@/lib/excise/workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,6 +197,27 @@ export async function PATCH(request, { params }) {
   const salesEditable = ['assignee', 'metadata', 'productId', 'customerId'];
   const allowed = allowedEditFields(user, 'registrations', salesEditable);
 
+  // ทางเดินสถานะ (ตรวจระบบ 26/10 ข้อ 5) — ตาราง REGISTRATION_TRANSITIONS ตัดสินก่อนแตะแถว
+  if (body.status !== undefined && body.status !== reg.status) {
+    const blocked = registrationTransitionError({
+      from: reg.status,
+      to: body.status,
+      caps: { sales: can(user?.role, 'products:edit'), ra: allowed.has('status') },
+      fields: {
+        approvalNumber: body.approvalNumber !== undefined ? body.approvalNumber : reg.approvalNumber,
+        rejectionReason: body.rejectionReason,
+      },
+    });
+    if (blocked) return Response.json({ error: blocked.error }, { status: blocked.status });
+  }
+
+  // FG/ลูกค้าแก้ได้เฉพาะก่อนยื่น (ข้อ 6) — ระหว่าง RA ตรวจ เปลี่ยน FG = อนุมัติตัวใหม่ด้วยฉลากของตัวเก่า
+  const linkChange = ['productId', 'customerId']
+    .some((key) => allowed.has(key) && body[key] !== undefined && body[key] !== reg[key]);
+  if (linkChange && !REGISTRATION_LINK_EDITABLE_STATUSES.includes(reg.status)) {
+    return Response.json({ error: REGISTRATION_LINK_LOCKED_MESSAGE }, { status: 409 });
+  }
+
   const updated = { ...reg };
   for (const k of allowed) if (body[k] !== undefined) updated[k] = body[k];
 
@@ -232,18 +258,14 @@ export async function PATCH(request, { params }) {
     updated.customerId = reg.customerId;
   }
 
-  // Approval / rejection audit trail (driven by the status transition).
-  if (allowed.has('status') && body.status !== undefined && body.status !== reg.status) {
-    if (body.status === 'approved') {
-      updated.approvedBy = user?.id ?? null;
-      updated.approvedByName = user?.name ?? null;
-      updated.approvedAt = new Date().toISOString();
-      updated.rejectionReason = null;
-    } else if (body.status === 'rejected') {
-      if (!body.rejectionReason || !String(body.rejectionReason).trim()) {
-        return Response.json({ error: 'กรุณาระบุเหตุผลที่ตีกลับ' }, { status: 400 });
-      }
-    }
+  // Approval audit trail (driven by the status transition) — ช่องบังคับของอนุมัติ/ตีกลับผ่านตารางข้างบนแล้ว
+  // (ใบอนุมัติแล้วออกจาก handler ไปตั้งแต่บล็อกล็อกด้านบน ⇒ ถึงตรงนี้ = เปลี่ยนสถานะจริง)
+  if (allowed.has('status') && body.status === 'approved') {
+    updated.approvalNumber = String(updated.approvalNumber).trim();
+    updated.approvedBy = user?.id ?? null;
+    updated.approvedByName = user?.name ?? null;
+    updated.approvedAt = new Date().toISOString();
+    updated.rejectionReason = null;
   }
 
   // Submit for approval: SA (products:edit, no ra:approve) moves a draft (first
