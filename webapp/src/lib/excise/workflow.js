@@ -5,11 +5,11 @@
 //
 //   Track 1 (การขึ้นทะเบียน) — excise_registrations
 //       pending_legal → approved          (rejected = correction loop)
-//   Track 2 (การยื่นชำระภาษี) — orders · เส้นของฝ่าย RA ทั้งเส้น (แผนรื้อสรรพสามิต PR5)
-//       draft → filing → complete → delivered
-//       (rejected = RA ตีกลับเองระหว่างยื่น แล้วยื่นใหม่)
-//       ⚠️ pending / received (เก็บเงินโดยฝ่ายขายบนใบยื่น) เลิกใช้แล้ว — เงินค่าภาษีเก็บด้วย SO ค่าสรรพสามิต
-//          ป้ายยังอยู่ใน STATUS ให้อ่านของเก่าออก (prod 29/10: ตาราง orders ว่าง)
+//   Track 2 (การยื่นชำระภาษี) — orders · เส้นของฝ่าย RA ทั้งเส้น (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11)
+//       (รอ RA = ยังไม่มีแถว) → filing → complete
+//       แถว orders = **บันทึกการยื่น** ที่ระบบเขียนเองตอน RA กด "กำลังยื่น" (ไม่มีปุ่มสร้าง ไม่มีขั้นร่าง)
+//       ⚠️ draft / rejected / delivered (PR5) และ pending / received (ก่อน PR5) เลิกใช้แล้ว — ป้ายยังอยู่ใน STATUS
+//          ให้อ่านของเก่าออก (prod 02/11: ตาราง orders ว่าง 0 แถว)
 //
 // `tone` maps to the .status-pill CSS modifiers (success / warning / danger /
 // info). `icon` names a lucide-react component resolved by StatusBadge.
@@ -29,8 +29,8 @@ export const STATUS = {
   delivered: { label: "ส่งเอกสารให้ลูกค้าแล้ว", tone: "success", icon: "CheckCircle2", track: "payment" },
   // shared correction loop
   rejected: { label: "ตีกลับให้แก้ไข", tone: "danger", icon: "XCircle", track: null },
-  // แถวคิว "รอยื่นกรม" ของ RA (ยังไม่มีใบยื่น · PR5 + มติ 29/10) — ไม่ใช่สถานะของแถว orders
-  queued: { label: "รอสร้างใบยื่น", tone: "warning", icon: "Clock", track: null },
+  // แถวคิวของ RA ที่ยังไม่มีบันทึกการยื่น (มติ 29/10 + v3 02/11) — ไม่ใช่สถานะของแถว orders
+  queued: { label: "รอ RA", tone: "warning", icon: "Clock", track: null },
   upcoming: { label: "กำลังมา", tone: "neutral", icon: "Clock", track: null },
 };
 
@@ -53,82 +53,62 @@ export const TRACKS = {
       { key: "approved", label: "ขึ้นทะเบียนแล้ว", owner: null, done: true },
     ],
   },
+  /* v3 (มติเจ้าของ 02/11): RA อัปเดตสองขั้น — กำลังยื่น → ชำระแล้ว · ขั้น "รอ RA" ก่อนหน้าไม่มีแถว orders
+     (คำนวณสดจากคิว `loadRaFilingQueue`) จึงไม่อยู่ในรายการขั้นของแถว */
   payment: {
     key: "payment",
     label: "การยื่นชำระภาษี",
     href: "/tax/filings",
     stages: [
-      { key: "draft", label: "เตรียมใบยื่น", owner: "RA" },
-      { key: "rejected", label: "ตีกลับ (ยื่นใหม่)", owner: "RA" },
       { key: "filing", label: "กำลังยื่น", owner: "RA" },
-      { key: "complete", label: "ชำระแล้ว (รอส่งใบเสร็จ)", owner: "RA" },
-      { key: "delivered", label: "ส่งเอกสารแล้ว", owner: null, done: true },
+      { key: "complete", label: "ชำระแล้ว", owner: null, done: true },
     ],
   },
 };
 
-/* สถานะที่ฝ่าย RA ยังแก้หัวใบ/คิดรายการใหม่ได้ — ก่อนเริ่มยื่น + รอบแก้หลังตีกลับ
-   ⚠️ ชุดเดียวของปุ่ม "แก้ไขข้อมูล" บนหน้าใบยื่นและด่านใน PATCH /api/orders/[id] — สองที่ต้องตรงกัน
-   ⚠️ ใบที่ผูก SO ค่าสรรพสามิตคิดรายการใหม่ไม่ได้เลย (ยอดที่ลูกค้าจ่ายแล้ว) — ดู `filingRecalcBlock` (lib/excise/raFiling.js) */
-export const FILING_EDITABLE_STATUSES = ["draft", "rejected"];
-
-/* ── ทางเดินสถานะของใบยื่น: ตารางเดียวของ PATCH /api/orders/[id] และปุ่มบนหน้าใบยื่น ─────────
-   🐞 ตรวจระบบ 2026-10-26 (ข้อ 4): route เดิมเช็กสถานะต้นทางแค่ 3 ปลายทาง ⇒ ฝ่าย RA สั่ง "กำลังยื่น"/"ชำระแล้ว"
-   จากร่างได้ตรง ๆ · ตีกลับใบที่ชำระแล้วได้ · เลขใบเสร็จบังคับแค่ในโมดัล
-   ⇒ ทุกปลายทางประกาศ "มาจากไหน · ใครทำ · ต้องมีอะไร" ที่นี่ที่เดียว
-   ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10): **ใบยื่นเป็นงานของ RA ทั้งเส้น** — RA สร้างจากคิว "รอยื่นกรม" · ไม่มีขั้น
-      "รับเงิน" บนใบยื่นแล้ว (เงินค่าภาษีเก็บด้วย SO ค่าสรรพสามิต · FN ปิดใบ) · ด่านเริ่มยื่นอีกสองข้อ (เงินปิดใบแล้ว ·
-      ทะเบียนครบ — ข้ามได้ใส่เหตุผล) อยู่ที่ `filingStartGateError` (lib/excise/raFiling.js) ไม่ใช่ในตารางนี้
+/* ── ทางเดินสถานะของบันทึกการยื่น: ตารางเดียวของ PATCH /api/orders/[id] และปุ่มบนหน้างาน ─────────
+   🐞 ตรวจระบบ 2026-10-26 (ข้อ 4): route เดิมเช็กสถานะต้นทางแค่ 3 ปลายทาง ⇒ ฝ่าย RA ปิดงาน "ชำระแล้ว"
+   จากร่างได้ตรง ๆ · เลขใบเสร็จบังคับแค่ในโมดัล ⇒ ทุกปลายทางประกาศ "มาจากไหน · ใครทำ · ต้องมีอะไร" ที่นี่ที่เดียว
+   ⭐ v3 (มติเจ้าของ 02/11): RA อัปเดตสองขั้น — **กำลังยื่น** เกิดตอนระบบเขียนบันทึก (POST /api/tax/orders/from-sales-order ·
+      ด่านทะเบียนเด็ดขาด `filingStartGateError`) จึงไม่อยู่ในตารางนี้ · เหลือปลายทางเดียวคือ **ชำระแล้ว**
+      ไม่มีขั้นร่าง/ตีกลับ/ส่งเอกสารแล้ว · ถอยจากกำลังยื่น = ยกเลิกการเริ่มยื่น (DELETE + เหตุผล) ไม่ใช่สถานะ
      by          RA = ฝ่าย RA (ra:approve) · (SA ไม่มีปลายทางไหนเหลือแล้ว)
      from        สถานะต้นทางที่ยอม
-     exemptFrom  ต้นทางเพิ่มเติมเฉพาะใบยกเว้นภาษี (isExemptFiling) — ใบยกเว้นไม่มีขั้น "กำลังยื่น"
-     taxableOnly ใบยกเว้นห้ามเข้า (ไม่มีภาษีให้ยื่น)
-     requires    ช่องที่ต้องมีค่า (จาก body หรือที่เก็บไว้แล้ว) — ใบยกเว้นไม่ต้อง ยกเว้น alwaysRequires */
+     requires    ช่องที่ต้องมีค่า (จาก body หรือที่เก็บไว้แล้ว) — ใบยกเว้นภาษีทั้งใบไม่ต้อง */
 export const FILING_TRANSITIONS = {
-  filing: { by: "RA", from: ["draft", "rejected"], taxableOnly: true },
-  complete: { by: "RA", from: ["filing"], exemptFrom: ["draft"], requires: [["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"]] },
-  delivered: { by: "RA", from: ["complete"] },
-  rejected: { by: "RA", from: ["filing"], alwaysRequires: [["rejectionReason", "เหตุผลที่ตีกลับ"]] },
+  complete: { by: "RA", from: ["filing"], requires: [["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"]] },
 };
 
 const filled = (value) => String(value ?? "").trim() !== "";
 
 /**
- * ตัดสินการเปลี่ยนสถานะใบยื่นหนึ่งครั้ง — คืน `{ status, error }` เมื่อไม่ผ่าน หรือ null เมื่อผ่าน
- * @param from    สถานะปัจจุบันของใบ
+ * ตัดสินการเปลี่ยนสถานะบันทึกการยื่นหนึ่งครั้ง — คืน `{ status, error }` เมื่อไม่ผ่าน หรือ null เมื่อผ่าน
+ * @param from    สถานะปัจจุบันของบันทึก
  * @param to      สถานะปลายทาง
  * @param caps    `{ sales, ra }` — ถือ sales:act / ra:approve ไหม (แอดมินถือทั้งคู่)
- * @param exempt  ใบยกเว้นภาษีไหม (`isExemptFiling` — ไม่ใช่ยอด 0)
- * @param fields  ค่าหลังรวมของที่ส่งมากับที่เก็บไว้ `{ receiptNumber, taxInvoiceNumber, exciseReceiptNumber, rejectionReason }`
+ * @param exempt  ยกเว้นภาษีทั้งใบไหม (`isExemptFiling` — ไม่ใช่ยอด 0) ⇒ ไม่ต้องมีเลขใบเสร็จ
+ * @param fields  ค่าหลังรวมของที่ส่งมากับที่เก็บไว้ `{ exciseReceiptNumber }`
  */
 export function filingTransitionError({ from, to, caps = {}, exempt = false, fields = {} } = {}) {
   const rule = FILING_TRANSITIONS[to];
-  if (!rule) return { status: 400, error: `ไม่รู้จักสถานะ "${to}"` };
+  if (!rule) return { status: 400, error: `เปลี่ยนเป็น "${statusMeta(to).label}" ด้วยทางนี้ไม่ได้` };
   const allowedBy = rule.by === "SA" ? caps.sales : caps.ra;
   if (!allowedBy) return { status: 403, error: "ไม่อนุญาตให้เปลี่ยนสถานะนี้" };
-  const fromOk = rule.from.includes(from) || (exempt && (rule.exemptFrom || []).includes(from));
-  if (!fromOk) {
+  if (!rule.from.includes(from)) {
     const label = (key) => statusMeta(key).label;
     return {
       status: 400,
       error: `เปลี่ยนเป็น "${label(to)}" จาก "${label(from)}" ไม่ได้ — ต้องมาจาก ${rule.from.map((key) => `"${label(key)}"`).join(" หรือ ")}`,
     };
   }
-  if (exempt && rule.taxableOnly) {
-    return { status: 400, error: "ใบนี้ได้รับยกเว้นภาษี ไม่ต้องยื่น — ยืนยันชำระได้เลย" };
-  }
-  const required = [...(rule.alwaysRequires || []), ...(exempt ? [] : rule.requires || [])];
-  const missing = required.filter(([key]) => !filled(fields[key])).map(([, label]) => label);
+  const missing = (exempt ? [] : rule.requires || []).filter(([key]) => !filled(fields[key])).map(([, label]) => label);
   if (missing.length) return { status: 400, error: `กรุณาระบุ${missing.join(" และ ")}` };
   return null;
 }
 
-/** ปลายทางที่ใบในสถานะนี้ไปได้ (ตามตาราง ไม่ดูสิทธิ์/ช่องบังคับ) — ปุ่มบนจออ่านจากตัวนี้ */
-export function canTransitionFiling(from, to, { exempt = false } = {}) {
-  const rule = FILING_TRANSITIONS[to];
-  if (!rule) return false;
-  if (exempt && rule.taxableOnly) return false;
-  return rule.from.includes(from) || (exempt && (rule.exemptFrom || []).includes(from));
+/** ปลายทางที่บันทึกในสถานะนี้ไปได้ (ตามตาราง ไม่ดูสิทธิ์/ช่องบังคับ) — ปุ่มบนจออ่านจากตัวนี้ */
+export function canTransitionFiling(from, to) {
+  return !!FILING_TRANSITIONS[to]?.from.includes(from);
 }
 
 /* ── ทางเดินสถานะของทะเบียน: ตารางเดียวของ PATCH /api/excise-registrations/[id] ─────────
@@ -214,14 +194,15 @@ export const REGISTRATION_FILTERS = [
   { key: "approved", label: "ขึ้นทะเบียนแล้ว" },
   { key: "rejected", label: "ตีกลับ" },
 ];
+/* หน้างานยื่นชำระ (v3): แถวคิวที่ยังไม่มีบันทึก (กำลังมา · รอ RA) + บันทึกการยื่น (กำลังยื่น · ชำระแล้ว) ในรายการเดียว
+   ⚠️ "รอฉันลงมือ" ของ RA = รอ RA + กำลังยื่น (ชุดเดียวกับป้ายเมนู — คิว + `ownedStages('payment', 'RA')`) */
 export const FILING_FILTERS = [
   { key: "all", label: "ทั้งหมด" },
   MINE_FILTER,
-  { key: "draft", label: "เตรียมใบยื่น" },
+  { key: "upcoming", label: "กำลังมา" },
+  { key: "queued", label: "รอ RA" },
   { key: "filing", label: "กำลังยื่น" },
   { key: "complete", label: "ชำระแล้ว" },
-  { key: "delivered", label: "ส่งเอกสารแล้ว" },
-  { key: "rejected", label: "ตีกลับ" },
 ];
 
 /* ── ปิดทางสร้างใบยื่นแบบเลือกทะเบียนเอง (แผนรื้อสรรพสามิต PR3 · ตรวจแผน BLOCKER) ──────────────────────────────
@@ -231,5 +212,5 @@ export const FILING_FILTERS = [
    (POST /api/tax/orders/from-sales-order · PR5) */
 /* สวิตช์ของทางสร้างเดิม — false ตั้งแต่ PR3 · 🔴 ห้ามเปิดกลับ: ทางสร้างของ RA (PR5) เป็นเส้นใหม่ ไม่ใช่สวิตช์นี้ */
 export const SA_FILING_CREATE_OPEN = false;
-export const FILING_CREATE_CLOSED_MESSAGE = 'ใบยื่นชำระภาษีสร้างได้ทางเดียว — ฝ่าย RA สร้างจากคิว “รอยื่นกรม” ที่หน้าการยื่นชำระ '
+export const FILING_CREATE_CLOSED_MESSAGE = 'บันทึกการยื่นชำระเกิดได้ทางเดียว — ฝ่าย RA กด “เริ่มยื่น” จากงานรอ RA ที่หน้าการยื่นชำระ '
   + '(ฝ่ายขายเก็บค่าภาษีด้วย “ใบเสนอราคาค่าสรรพสามิต” จากหน้าใบสั่งขาย)';

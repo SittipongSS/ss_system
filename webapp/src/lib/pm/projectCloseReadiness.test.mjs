@@ -20,10 +20,11 @@ test('SO ที่ตายแล้วไม่ใช่งานค้าง �
   assert.equal(isInFlightSalesOrder(so('1', 'draft', { supersededById: '2' })), false);
 });
 
-test('ใบยื่นภาษีปิดจริงที่ delivered เท่านั้น — ชำระแล้วแต่ยังไม่ส่งเอกสารยังนับว่าค้าง', () => {
-  for (const status of ['draft', 'pending', 'received', 'filing', 'complete', 'rejected']) {
+test('งานยื่นภาษีจบที่ชำระแล้ว (v3 02/11 ตัดขั้นส่งเอกสาร) — ของเก่าที่ส่งเอกสารแล้วก็นับว่าจบ', () => {
+  for (const status of ['draft', 'pending', 'received', 'filing', 'rejected']) {
     assert.equal(isOpenFiling({ id: 'TAX-1', status }), true, status);
   }
+  assert.equal(isOpenFiling({ id: 'TAX-1', status: 'complete' }), false);
   assert.equal(isOpenFiling({ id: 'TAX-1', status: 'delivered' }), false);
 });
 

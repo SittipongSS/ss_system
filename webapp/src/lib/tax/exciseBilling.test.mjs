@@ -195,11 +195,10 @@ test('ทุกทางที่สร้างบรรทัดภาษี�
   assert.match(soFiling, /exciseTaxLine\(\{/);
   assert.match(soFiling, /exciseRatePerUnit: product\.exciseTax/);
 
-  // ทางที่อ้างทะเบียน (สร้างมือ + แก้ใบ) ต้องผ่านตัวที่เคารพ override
-  // (ฟอร์มฝั่งจอ OrderFormModal ถอดแล้วใน PR5 — ใบยื่นเป็นของ RA · แก้รายการได้ทางเดียวคือคิดใหม่จาก SO)
+  // ทางที่อ้างทะเบียน (สร้างมือ) ต้องผ่านตัวที่เคารพ override
+  // (ฟอร์มฝั่งจอ OrderFormModal ถอดแล้วใน PR5 · v3 02/11: PATCH บันทึกการยื่นแก้รายการไม่ได้แล้ว — ตรึงตอนเริ่มยื่น)
   for (const path of [
     '../../app/api/orders/route.js',
-    '../../app/api/orders/[id]/route.js',
   ]) {
     const code = codeOnly(read(path));
     assert.match(code, /exciseTaxLineForRegistration\(\{/, `${path} ต้องเรียกตัวคิดกลาง`);

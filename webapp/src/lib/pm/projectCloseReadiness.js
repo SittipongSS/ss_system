@@ -15,10 +15,9 @@ export function isInFlightSalesOrder(order) {
   return isLiveSalesOrder(order) && SALES_ORDER_IN_FLIGHT_STATUSES.includes(order?.status);
 }
 
-// ใบยื่นชำระภาษีจบที่ 'delivered' (ส่งเอกสารให้ลูกค้าแล้ว — ปลายทางของ TRACKS.payment
-// ใน lib/excise/workflow.js) ก่อนหน้านั้นถือว่ายังค้างทั้งหมด รวม 'complete' ที่ชำระแล้ว
-// แต่ยังไม่ได้ส่งเอกสารคืนลูกค้า
-export const isOpenFiling = (filing) => !!filing && filing.status !== 'delivered';
+// งานยื่นชำระภาษีจบที่ 'complete' (ชำระแล้ว — ปลายทางของ TRACKS.payment ใน lib/excise/workflow.js · v3 02/11
+// ตัดขั้น "ส่งเอกสารให้ลูกค้า" ทิ้ง) · 'delivered' ของเก่าก่อน v3 ก็นับว่าจบ · ก่อนหน้านั้นถือว่ายังค้างทั้งหมด
+export const isOpenFiling = (filing) => !!filing && !['complete', 'delivered'].includes(filing.status);
 
 // รวมยอดงานค้างของโครงการ — ผู้เรียกส่งของที่กรอง scope โครงการมาแล้วทั้งหมด
 //   awaitingSalesOrder / awaitingFiling = ผลจาก loadHandoffQueue (มีตัวกรอง

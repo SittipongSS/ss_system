@@ -668,7 +668,8 @@ const DETAIL_PAGES = [
   { rel: "app/sahamit/material/page.js", blockedGuards: [] },
   // default export เป็นแค่ `<Suspense>` ห่อ — จอจริงคือ ForecastPageInner
   { rel: "app/sahamit/forecast/page.js", blockedGuards: [], component: "ForecastPageInner" },
-  { rel: "app/tax/filings/page.js", blockedGuards: [] },
+  // v3 (02/11): `?start=` อ่านสดด้วย useSearchParams ⇒ default export เป็น `<Suspense>` ห่อ — จอจริงคือ FilingsPageInner
+  { rel: "app/tax/filings/page.js", blockedGuards: [], component: "FilingsPageInner" },
   { rel: "app/tax/registrations/page.js", blockedGuards: [] },
   { rel: "app/tax/registrations/[id]/page.js", blockedGuards: ["pageBlocked"] },
 ];
@@ -719,8 +720,8 @@ test("ใบยื่นชำระ: โหลดใบไม่ขึ้นห
   const rel = "app/tax/filings/[id]/page.js";
   const ast = astReader(rel);
   // 🐞 ทรงเดิม: `/api/orders` ล้ม ⇒ `o` เป็น null ⇒ "ไม่พบรายการ · ใบยื่นนี้อาจถูกลบไปแล้ว"
-  const notFound = guardedBy(rel, { text: "ไม่พบใบยื่นที่ต้องการ" }, "pageBlocked");
-  assert.ok(notFound.hits > 0, "หาบรรทัด 'ไม่พบใบยื่นที่ต้องการ' ไม่เจอ — ตัวตรวจล้าสมัย?");
+  const notFound = guardedBy(rel, { text: "ไม่พบบันทึกการยื่นที่ต้องการ" }, "pageBlocked");
+  assert.ok(notFound.hits > 0, "หาบรรทัด 'ไม่พบบันทึกการยื่นที่ต้องการ' ไม่เจอ — ตัวตรวจล้าสมัย?");
   assert.equal(notFound.unguarded, 0,
     "บรรทัด 'ไม่พบ…' ต้องอยู่หลัง `if (pageBlocked) return …` — โหลดใบไม่ขึ้นแล้วจอโกหกว่าใบถูกลบ");
 
@@ -748,14 +749,14 @@ test("ใบยื่นชำระ: โหลดใบไม่ขึ้นห
   for (const url of ['"/api/excise-registrations"', '"/api/customers"', '"/api/products"']) {
     assert.equal(hook(url), undefined, `${url}: จอนี้ไม่ใช้ลิสต์ทั้งตารางแล้ว — โหลดกลับมา = ของหนักที่ไม่มีใครอ่าน`);
   }
-  assert.ok(ast.readsIn("editAvailable").has("canApprove") && ast.readsIn("editAvailable").has("o"),
-    "editAvailable ต้องมาจากสิทธิ์ (canApprove — RA) + สถานะใบ — เงื่อนไขเดียวกับปุ่มคิดใหม่");
   for (const s of sources) assert.ok(s.blockedNote, `${s.label}: ไม่มี blockedNote`);
   assert.ok(ast.readsIn("pageBlocked").has("blocked"),
     "pageBlocked ต้องมาจาก blocked (error + ไม่มีของในมือ) ไม่ใช่ error เดี่ยว ๆ");
-  // ปุ่มคิดใหม่: โชว์เสมอ (ใบร่างของ RA) แต่ติดด่าน = พักพร้อมเหตุผลจากตัวตัดสินเดียวกับ route (filingRecalcBlock)
-  const recalc = ast.actions("recalc");
-  assert.equal(recalc.length, 1, 'ปุ่ม "recalc" หาไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?');
+  // v3 (02/11): บันทึกตรึงรายการ — ไม่มีปุ่มคิดใหม่ · ปุ่มของ RA = พิมพ์ใบสรุป · แก้ข้อมูลการชำระ · ยกเลิกการเริ่มยื่น
+  assert.equal(ast.actions("recalc").length, 0, 'ปุ่ม "recalc" กลับมา — บันทึกการยื่นคิดใหม่ไม่ได้แล้ว');
+  for (const id of ["print", "edit-paid", "withdraw"]) {
+    assert.equal(ast.actions(id).length, 1, `ปุ่ม "${id}" หาไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?`);
+  }
   // หัวจอ (รหัส AR) ต้องไม่อ่านลิสต์ลูกค้า — ลิสต์ล้มแล้วหัวจอแหว่งโดยไม่มีอะไรบอก
   assert.ok(!ast.readsInAttr("subtitle").has("customers"), "subtitle อ่านจาก `customer` รายตัว ไม่ใช่ find จากลิสต์ `customers`");
 });

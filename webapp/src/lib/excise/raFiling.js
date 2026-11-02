@@ -1,7 +1,7 @@
 // ── ใบยื่นกรมของ RA — ตัวโหลดฝั่ง server (แผนรื้อสรรพสามิต PR5 · mig 0417) ──────────────────────────────
 //
-// ใช้ร่วม: คิว "รอยื่นกรม" (GET /api/tax/orders/queue) · สร้างใบยื่น (POST /api/tax/orders/from-sales-order) ·
-// แผงสรุปบนหน้าใบยื่น (GET /api/orders/[id]) — RA ไม่มีสิทธิ์เปิดหน้าขาย (ไม่มี salesplan:view) ⇒ ทุกอย่างที่ RA
+// ใช้ร่วม: คิวงานของ RA (GET /api/tax/orders/queue) · เริ่มยื่น = เขียนบันทึก (POST /api/tax/orders/from-sales-order) ·
+// แผงสรุปบนหน้างาน (GET /api/orders/[id]) · ใบสรุปรายการยื่น · ป้ายเมนู — RA ไม่มีสิทธิ์เปิดหน้าขาย (ไม่มี salesplan:view) ⇒ ทุกอย่างที่ RA
 // ต้องรู้เรื่อง SO มาทางนี้ อ่านด้วยบัญชีระบบ แล้วส่งเฉพาะช่องที่ใบยื่นต้องใช้
 // กติกาล้วน (รายการ · ด่าน) อยู่ที่ raFilingRules.js
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -9,6 +9,9 @@ import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { ORIGIN_PIPELINE, exciseRowsOnly, isExciseOrder, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { resolveSalesOrderFiling } from '@/lib/excise/soFilingItems';
 import { billedTaxTotals } from '@/lib/tax/exciseBilling';
+import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
+import { statusMeta } from '@/lib/excise/workflow';
+import { productDisplayName } from '@/lib/master/productIdentity';
 import {
   FILING_SOURCE_EXCISE_ORDER, FILING_SOURCE_NOT_BILLED, NOT_BILLED_FILING_KINDS,
   exciseOrderFilingLines, filingSourceOf, filingStartGates, notBilledLabel,
@@ -30,15 +33,16 @@ async function existingFilingLinks(supabase) {
 }
 
 /**
- * คิว "รอยื่นกรม" ของ RA — คำนวณสด ไม่เก็บ (แผน หมวด 2 ขั้น 11)
- *  · SO ค่าสรรพสามิตที่อนุมัติแล้ว ยังไม่มีใบยื่น (และ SO ลูกค้าต้นทางยังไม่มีใบยื่น — unique ฝั่ง SO ลูกค้า)
- *  · SO ลูกค้าที่ตัดสิน "ไม่เรียกเก็บ" แบบเก็บนอกระบบ/รวมในราคา ยังไม่มีใบยื่น
- *  · ⭐ **แถวกำลังมา** (มติเจ้าของ 29/10 · `ready: false`): ใบเสนอราคาค่าสรรพสามิตที่อนุมัติแล้ว แต่ SO ค่าสรรพสามิตยังไม่อนุมัติ —
- *    RA เห็นงานล่วงหน้าพร้อมขั้นที่ถึง (รอ Won · รอออก SO · SO รออนุมัติ) และเตรียมทะเบียนได้ก่อน · สร้างใบยื่นยังไม่ได้
- *    (ใบยื่นผูก SO ค่าสรรพสามิต — 0417)
+ * คิวงานของ RA ที่ยังไม่มีบันทึกการยื่น — คำนวณสด ไม่เก็บ (แผน หมวด 12.2 ขั้น 11)
+ *  · **รอ RA** (`ready: true`): SO ค่าสรรพสามิตที่อนุมัติแล้ว (และ SO ลูกค้าต้นทางยังไม่มีบันทึก — unique ฝั่ง SO ลูกค้า) ·
+ *    SO ลูกค้าที่ตัดสิน "ไม่เรียกเก็บ" แบบเก็บนอกระบบ/รวมในราคา
+ *  · ⭐ **กำลังมา** (มติเจ้าของ 29/10 · `ready: false`): ใบเสนอราคาค่าสรรพสามิตที่อนุมัติแล้ว แต่ SO ค่าสรรพสามิตยังไม่อนุมัติ —
+ *    RA เห็นงานล่วงหน้าพร้อมขั้นที่ถึง (รอ Won · รอออก SO · SO รออนุมัติ) และเตรียมทะเบียนได้ก่อน · เริ่มยื่นยังไม่ได้
+ *    (บันทึกผูก SO ค่าสรรพสามิต — 0417)
+ * @param upcoming  false = ข้ามแถวกำลังมา (ป้ายเมนูนับแค่รอ RA)
  * @returns แถวละหนึ่งงาน `{ key, source, ready, salesOrder, exciseOrder?, exciseQuote?, notBilled?, stage? }` เก่าสุดก่อน
  */
-export async function loadRaFilingQueue(supabase) {
+export async function loadRaFilingQueue(supabase, { upcoming = true } = {}) {
   const [exciseResult, notBilledResult, links] = await Promise.all([
     fetchAllResult(() => exciseRowsOnly(supabase
       .from('sales_orders')
@@ -103,7 +107,7 @@ export async function loadRaFilingQueue(supabase) {
     });
   }
   const readyExciseOrderIds = new Set((exciseResult.data || []).map((row) => row.quotationId));
-  rows.push(...await loadUpcomingRows(supabase, { links, readyQuoteIds: readyExciseOrderIds }));
+  if (upcoming) rows.push(...await loadUpcomingRows(supabase, { links, readyQuoteIds: readyExciseOrderIds }));
   return rows.sort((a, b) => String(a.since || '').localeCompare(String(b.since || '')));
 }
 
@@ -177,7 +181,7 @@ async function loadOrderWithLines(supabase, id) {
 const fail = (status, message) => ({ error: { status, message } });
 
 /**
- * แหล่งของใบยื่นหนึ่งใบ (สร้าง/พรีวิว) — `{ error }` หรือ `{ source, salesOrder, exciseOrder, resolved }`
+ * แหล่งของงานยื่นหนึ่งงาน (เริ่มยื่น/พรีวิว/ใบสรุป) — `{ error }` หรือ `{ source, salesOrder, exciseOrder, resolved }`
  * @param exciseSalesOrderId SO ค่าสรรพสามิต (ใบที่ลูกค้าจ่ายค่าภาษี) · หรือ
  * @param salesOrderId       SO ลูกค้าที่ตัดสินไม่เรียกเก็บ
  */
@@ -188,16 +192,16 @@ export async function loadFilingSource(supabase, { exciseSalesOrderId = '', sale
     exciseOrder = await loadOrderWithLines(supabase, exciseSalesOrderId);
     if (!exciseOrder || !isExciseOrder(exciseOrder)) return fail(404, 'ไม่พบใบสั่งขายค่าสรรพสามิต');
     if (exciseOrder.status !== 'approved' || exciseOrder.supersededById) {
-      return fail(400, `ใบสั่งขายค่าสรรพสามิต ${exciseOrder.orderNumber || exciseOrder.id} ยังไม่ได้อยู่ในสถานะอนุมัติแล้ว — สร้างใบยื่นไม่ได้`);
+      return fail(400, `ใบสั่งขายค่าสรรพสามิต ${exciseOrder.orderNumber || exciseOrder.id} ยังไม่ได้อยู่ในสถานะอนุมัติแล้ว — เริ่มยื่นไม่ได้`);
     }
     customerOrderId = exciseOrder.sourceSalesOrderId;
   }
   if (!customerOrderId) return fail(400, 'กรุณาระบุใบสั่งขาย');
   const salesOrder = await loadOrderWithLines(supabase, customerOrderId);
   if (!salesOrder) return fail(404, 'ไม่พบใบสั่งขายของลูกค้า');
-  if (salesOrder.origin !== ORIGIN_PIPELINE) return fail(400, 'ใบยื่นกรมผูกได้เฉพาะใบสั่งขายจากใบเสนอราคา');
+  if (salesOrder.origin !== ORIGIN_PIPELINE) return fail(400, 'งานยื่นกรมผูกได้เฉพาะใบสั่งขายจากใบเสนอราคา');
   if (salesOrder.status !== 'approved' || salesOrder.supersededById) {
-    return fail(400, `ใบสั่งขาย ${salesOrder.orderNumber || salesOrder.id} ไม่ได้อยู่ในสถานะอนุมัติแล้ว — สร้างใบยื่นไม่ได้`);
+    return fail(400, `ใบสั่งขาย ${salesOrder.orderNumber || salesOrder.id} ไม่ได้อยู่ในสถานะอนุมัติแล้ว — เริ่มยื่นไม่ได้`);
   }
   if (!exciseOrder && !NOT_BILLED_FILING_KINDS.includes(salesOrder.exciseNotBilledKind)) {
     return fail(400, salesOrder.exciseNotBilledKind === 'not_liable'
@@ -240,8 +244,8 @@ export async function findFilingFor(supabase, { salesOrderId, exciseSalesOrderId
 }
 
 /**
- * แผงสรุป SO บนหน้าใบยื่น + ด่านเริ่มยื่น — RA อ่านได้โดยไม่ต้องเข้าหน้าขาย
- * @param order ใบยื่น (ฝัง items แล้ว)
+ * แผงสรุป SO บนหน้างาน (บันทึกการยื่น) + สถานะเงิน/ทะเบียน — RA อ่านได้โดยไม่ต้องเข้าหน้าขาย
+ * @param order บันทึกการยื่น (ฝัง items แล้ว)
  */
 export async function loadFilingSummary(supabase, order) {
   const source = filingSourceOf(order);
@@ -285,4 +289,89 @@ export async function loadFilingSummary(supabase, order) {
     } : null,
     gates: filingStartGates({ order, exciseOrder, notBilledKind: salesOrder?.exciseNotBilledKind || null }),
   };
+}
+
+/* ── ใบสรุปรายการยื่น (v3 · V9) — หนึ่งคีย์งาน → หัวงาน + รายการ (ของบริสุทธิ์ที่จัดเป็นรายงานอยู่ lib/excise/filingSummary.js)
+   order:<id> = บันทึกที่ตรึงไว้ · excise:/not_billed: = ข้อมูลสดจาก SO ตัวโหลดเดียวกับตอนเริ่มยื่น (loadFilingSource) */
+const PENDING_LABEL = 'รอ RA — ยังไม่เริ่มยื่น (ข้อมูลสดจากใบสั่งขาย)';
+
+async function summaryRecordItem(supabase, id) {
+  const { data: order, error } = await supabase.from('orders').select(ORDER_SELECT).eq('id', id).maybeSingle();
+  if (error) throw error;
+  if (!order) return { missing: `ไม่พบบันทึกการยื่น ${id}` };
+  await attachRegistrations(supabase, order);
+  let exciseOrderNumber = null;
+  if (order.exciseSalesOrderId) {
+    const { data: exciseOrder, error: exciseError } = await supabase
+      .from('sales_orders').select('"orderNumber"').eq('id', order.exciseSalesOrderId).maybeSingle();
+    if (exciseError) throw exciseError;
+    exciseOrderNumber = exciseOrder?.orderNumber || null;
+  }
+  return {
+    statusLabel: statusMeta(order.status).label,
+    salesOrderNumber: order.poReference || order.quotationRef || order.id,
+    exciseOrderNumber,
+    customerName: order.customerName,
+    customerTaxId: order.customerTaxId,
+    lines: (order.items || []).map((item) => {
+      const product = item.product || item.registration || {};
+      return {
+        fgCode: product.fgCode || '',
+        description: productDisplayName(product),
+        registrationNumber: item.registration?.approvalNumber || '',
+        quantity: item.quantity,
+        exciseRatePerUnit: item.exciseRatePerUnit,
+        localTaxRatePerUnit: item.localTaxRatePerUnit,
+        totalExciseTax: item.totalExciseTax,
+        totalLocalTax: item.totalLocalTax,
+        totalTax: item.totalTax,
+      };
+    }),
+  };
+}
+
+async function summaryPendingItem(supabase, parsed) {
+  const loaded = await loadFilingSource(supabase, parsed.kind === 'excise'
+    ? { exciseSalesOrderId: parsed.id }
+    : { salesOrderId: parsed.id });
+  if (loaded.error) return { missing: loaded.error.message };
+  const { salesOrder, exciseOrder, resolved } = loaded;
+  const regIds = [...new Set(resolved.lines.map((line) => line.registrationId).filter(Boolean))];
+  const [{ data: regs, error: regError }, { data: customer, error: customerError }] = await Promise.all([
+    regIds.length
+      ? supabase.from('excise_registrations').select('id, "approvalNumber"').in('id', regIds)
+      : Promise.resolve({ data: [], error: null }),
+    salesOrder.customerId
+      ? supabase.from('customers').select('id, "taxId"').eq('id', salesOrder.customerId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (regError) throw regError;
+  if (customerError) throw customerError;
+  const approvalById = new Map((regs || []).map((reg) => [reg.id, reg.approvalNumber]));
+  return {
+    statusLabel: PENDING_LABEL,
+    salesOrderNumber: salesOrder.orderNumber,
+    exciseOrderNumber: exciseOrder?.orderNumber || null,
+    notBilledLabel: exciseOrder ? null : notBilledLabel(salesOrder.exciseNotBilledKind),
+    customerName: salesOrder.customerName,
+    customerTaxId: customer?.taxId || null,
+    lines: resolved.lines.map((line) => ({
+      fgCode: line.fgCode,
+      description: line.description,
+      registrationNumber: line.registrationId ? approvalById.get(line.registrationId) || '' : '',
+      quantity: line.quantity,
+      exciseRatePerUnit: line.exciseRatePerUnit,
+      localTaxRatePerUnit: line.localTaxRatePerUnit,
+      totalExciseTax: line.totalExciseTax,
+      totalLocalTax: line.totalLocalTax,
+      totalTax: line.totalTax,
+    })),
+  };
+}
+
+/** คีย์งานที่แกะแล้ว (`parseFilingSummaryKey`) → หัวงาน + รายการ หรือ `{ missing: ข้อความ }` เมื่อหาไม่เจอ/ไม่ใช่งานยื่น */
+export function loadFilingSummaryItem(supabase, parsedKey) {
+  return parsedKey.kind === 'order'
+    ? summaryRecordItem(supabase, parsedKey.id)
+    : summaryPendingItem(supabase, parsedKey);
 }

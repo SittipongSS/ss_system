@@ -62,7 +62,7 @@ const CAPS = {
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
   personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
   sales_deals: 27,              // 353 · 28 → 27 (2026-09-25: cascade FC% ของ NPD อ่านดีลทั้งโครงการผ่าน fetchAll — lib/sales/dealProbability.js)
-  products: 22,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ · 24 → 22 (ม-150: ด่าน 1 สูตร : 1 FG ถอดแล้ว + attachFormulaUsage ซอยก้อน)
+  products: 21,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ · 24 → 22 (ม-150: ด่าน 1 สูตร : 1 FG ถอดแล้ว + attachFormulaUsage ซอยก้อน) · 22 → 21 (2026-11-02 v3 สรรพสามิต: ถอดทางแก้รายการของ PATCH ใบยื่น)
   quotations: 6,                // 198
   customers: 6,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ · 7 → 6 (2026-09-26 กำหนดวางบิล: ทะเบียนการชำระ FN อ่านลูกค้าแบบแบ่งหน้า)
   projects: 7,                  // 155

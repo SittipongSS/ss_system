@@ -13,7 +13,7 @@ import { dealTypeOf } from "@/lib/salesPlanning";
 import { NA } from "@/lib/format";
 import { exciseHandledOrderIds } from "@/lib/excise/exciseQuotation";
 import { findFilingFor, loadFilingSource } from "@/lib/excise/raFiling";
-import { notBilledLabel } from "@/lib/excise/raFilingRules";
+import { filingStartGateError, filingStartGates, notBilledLabel } from "@/lib/excise/raFilingRules";
 import { isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
 
 // ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
@@ -38,7 +38,8 @@ const soCaretakerTeam = (customer) => {
 async function findExistingFiling(supabase, salesOrderId) {
   const { data, error } = await supabase
     .from("orders")
-    .select("id, status, totalTax, amountToCollect, salesOrderId, createdAt")
+    /* ช่องร่องรอยของ RA (v3) — เส้นเดินงานบน SO บอกฝ่ายขายว่าถึงขั้นไหน (เริ่มยื่นเมื่อ/โดย · เลขใบเสร็จ · วันชำระ) */
+    .select("id, status, totalTax, amountToCollect, salesOrderId, createdAt, filingStartedAt, filingStartedByName, exciseReceiptNumber, taxPaidDate, filedAt")
     .eq("salesOrderId", salesOrderId)
     .maybeSingle();
   if (missingSalesOrderColumn(error)) return { filing: null, schemaReady: false };
@@ -247,13 +248,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   }
 });
 
-/* ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10 · D7 29/10 ยื่นทีละ SO): **ฝ่าย RA สร้างใบยื่นจากคิว "รอยื่นกรม"** ทางเดียว
+/* ⭐ v3 (มติเจ้าของ 02/11 · แผน หมวด 12): **RA กด "เริ่มยื่น" = ระบบเขียนบันทึกการยื่นสถานะ "กำลังยื่น"** ทางเดียว
+   — ไม่มีขั้นสร้างใบยื่น/ร่างแล้ว (SO ค่าสรรพสามิตที่ AE Sup อนุมัติ = งานถึง RA แล้ว) · บันทึกตรึงรายการ ณ ตอนกด
    body = `{ exciseSalesOrderId }` (SO ค่าสรรพสามิตที่อนุมัติแล้ว · รายการ = ยอดที่ลูกค้าจ่ายจริง)
         หรือ `{ salesOrderId }` (SO ลูกค้าที่ตัดสินไม่เรียกเก็บ แบบเก็บนอกระบบ/รวมในราคา · รายการคิดจาก SO ลูกค้า)
-   ใบยื่นผูก SO ลูกค้าเสมอ ("salesOrderId" · unique ⇒ SO ลูกค้าล็อกย้อน/Rev./ยกเลิกตามเดิม) + SO ค่าสรรพสามิต (0417)
+   ด่าน: ทะเบียนทุก FG อนุมัติแล้ว **เด็ดขาด** (V4 · `filingStartGateError` ตัวเดียวกับปุ่มบนจอ) · เงินไม่ใช่ด่าน (V3)
+   บันทึกผูก SO ลูกค้าเสมอ ("salesOrderId" · unique ⇒ SO ลูกค้าล็อกย้อน/Rev./ยกเลิกตามเดิม) + SO ค่าสรรพสามิต (0417)
    ⚠️ ทางสร้างเดิมของฝ่ายขาย (ปุ่มบนเส้นเดินงาน SO · ReceiveDialog) ถอดแล้ว — proxy เปิดการเขียน /api/orders ให้ ra:approve เท่านั้น */
 const LINK_ERRORS = {
-  orders_excise_link_invalid: 'ใบสั่งขายค่าสรรพสามิตไม่ได้ออกจากใบสั่งขายลูกค้าใบนี้ — สร้างใบยื่นไม่ได้',
+  orders_excise_link_invalid: 'ใบสั่งขายค่าสรรพสามิตไม่ได้ออกจากใบสั่งขายลูกค้าใบนี้ — เริ่มยื่นไม่ได้',
 };
 
 export const POST = withUser(async ({ user, supabase, req }) => {
@@ -272,12 +275,18 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const existing = await findFilingFor(supabase, {
       salesOrderId: loaded.salesOrder.id, exciseSalesOrderId: loaded.exciseOrder?.id,
     });
-    if (existing) return conflict(`ใบสั่งขาย ${loaded.salesOrder.orderNumber || loaded.salesOrder.id} มีใบยื่น ${existing.id} แล้ว`);
+    if (existing) return conflict(`ใบสั่งขาย ${loaded.salesOrder.orderNumber || loaded.salesOrder.id} เริ่มยื่นไปแล้ว (บันทึก ${existing.id})`);
     if (!loaded.resolved.lines.length) return badRequest("ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตให้ยื่น");
+    const gateError = filingStartGateError(filingStartGates({
+      order: { salesOrderId: loaded.salesOrder.id, exciseSalesOrderId: loaded.exciseOrder?.id || null, items: loaded.resolved.lines },
+      exciseOrder: loaded.exciseOrder,
+      notBilledKind: loaded.salesOrder.exciseNotBilledKind || null,
+    }));
+    if (gateError) return badRequest(gateError);
     // ข้อมูลที่ตรึงลงหัวใบ (ลูกค้า · ใบเสนอราคาลูกค้า · ดีล/โครงการ) — โหลดชุดเดิมของเส้นนี้
     context = await loadSalesOrderContext(supabase, loaded.salesOrder.id);
   } catch (error) {
-    return fail(`เตรียมข้อมูลการยื่นชำระไม่สำเร็จ: ${error.message}`, 500);
+    return fail(`เตรียมข้อมูลเริ่มยื่นไม่สำเร็จ: ${error.message}`, 500);
   }
   const { exciseOrder, resolved } = loaded;
   const salesOrder = context;
@@ -314,7 +323,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     totalLocalTax: resolved.totalLocalTax,
     totalTax: resolved.totalTax,
     amountToCollect: resolved.amountToCollect,
-    status: "draft",
+    status: "filing",
+    filingStartedAt: now,
+    filingStartedById: user.id || null,
+    filingStartedByName: user.name || null,
     createdAt: now,
     updatedAt: now,
   };
@@ -324,11 +336,11 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { error: orderError } = await insertOrder(supabase, filing);
   if (orderError?.code === "23505") {
     const existing = await findFilingFor(supabase, { salesOrderId: salesOrder.id, exciseSalesOrderId: exciseOrder?.id }).catch(() => null);
-    return conflict(existing ? `ใบสั่งขายนี้มีใบยื่น ${existing.id} แล้ว` : "ใบสั่งขายนี้มีใบยื่นแล้ว");
+    return conflict(existing ? `ใบสั่งขายนี้เริ่มยื่นไปแล้ว (บันทึก ${existing.id})` : "ใบสั่งขายนี้เริ่มยื่นไปแล้ว");
   }
   const linkError = Object.keys(LINK_ERRORS).find((code) => String(orderError?.message || "").includes(code));
   if (linkError) return badRequest(LINK_ERRORS[linkError]);
-  if (orderError) return fail(`สร้างใบยื่นไม่สำเร็จ: ${orderError.message}`, 500);
+  if (orderError) return fail(`บันทึกการเริ่มยื่นไม่สำเร็จ: ${orderError.message}`, 500);
 
   const { error: itemError } = await insertOrderItems(supabase, itemRows);
   if (itemError) {
@@ -343,8 +355,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     entityId: orderId,
     after: filing,
     summary: exciseOrder
-      ? `RA สร้างใบยื่นกรมจาก ${exciseOrder.orderNumber} (SO ลูกค้า ${salesOrder.orderNumber})`
-      : `RA สร้างใบยื่นกรมจาก ${salesOrder.orderNumber} (ไม่เรียกเก็บในระบบ)`,
+      ? `RA เริ่มยื่นกรม ${exciseOrder.orderNumber} (SO ลูกค้า ${salesOrder.orderNumber})`
+      : `RA เริ่มยื่นกรม ${salesOrder.orderNumber} (ไม่เรียกเก็บในระบบ)`,
     request: req,
   });
   return ok({ ...filing, items: itemRows, warnings: resolved.warnings }, 201);

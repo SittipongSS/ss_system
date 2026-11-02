@@ -2418,7 +2418,7 @@ export default function SalesOrderDetailPage() {
     // ⚠️ เปิดโมดัลไหนก็ล้าง error ของรอบก่อน — โมดัลโชว์เหตุที่ API ตีกลับเอง (แถบของหน้าอยู่ใต้โมดัล)
     { id: "withdraw", kind: "withdraw", variant: "outline", visible: canWithdraw, onClick: () => { setError(""); setWorkflowForm({ action: "withdraw", reason: "" }); } },
     // ขั้นที่ 1 — ยอด Actual หลุดที่ปุ่มนี้ จึงต้องกรอกเหตุผล (ใช้ต่อในขั้นออก Rev.)
-    { id: "revoke", kind: "revoke", variant: "outline", visible: canRevoke, disabled: !!filingState.filing, disabledReason: filingState.filing ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน" : undefined, onClick: () => { setError(""); setWorkflowForm({ action: "revoke", reason: "" }); } },
+    { id: "revoke", kind: "revoke", variant: "outline", visible: canRevoke, disabled: !!filingState.filing, disabledReason: filingState.filing ? "ฝ่าย RA เริ่มยื่นสรรพสามิตตามใบนี้แล้ว — ให้ RA ยกเลิกการเริ่มยื่นก่อน" : undefined, onClick: () => { setError(""); setWorkflowForm({ action: "revoke", reason: "" }); } },
     /* ⚠️ ใบย้อนหลังใช้ **โมดัลเดียวกับผู้ตรวจปกติ** (historicalApprovalPrompt + บรรทัด override) —
        โมดัลมือของใบ pipeline ข้างล่างไม่บอกผลลัพธ์และไม่ส่งเวอร์ชันของใบ ⇒ ห้ามใช้กับใบนี้ */
     {
@@ -2518,7 +2518,7 @@ export default function SalesOrderDetailPage() {
       visible: canCancelSalesOrder(order, { reviewer, canEdit, installments }),
       disabled: !!filingState.filing || !!historicalCancelBlocked,
       disabledReason: filingState.filing
-        ? "มีใบยื่นสรรพสามิตแล้ว ต้องจัดการใบยื่นก่อน"
+        ? "ฝ่าย RA เริ่มยื่นสรรพสามิตตามใบนี้แล้ว — ให้ RA ยกเลิกการเริ่มยื่นก่อน"
         : (historicalCancelBlocked || undefined),
       onClick: openCancel,
     },

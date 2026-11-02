@@ -61,6 +61,7 @@ import { deptOf, ownedStages } from '@/lib/excise/workflow';
 import { applyExciseListScope } from '@/lib/excise/listScope';
 import { isSystemAdmin } from '@/lib/issues/access';
 import { attachSourceDeals } from '@/lib/scopedRow';
+import { loadRaFilingQueue } from '@/lib/excise/raFiling';
 import { canEditProduction } from '@/lib/permissions';
 import { ledgerInConfirmQueue } from '@/lib/finance/paymentLedger';
 import {
@@ -671,7 +672,14 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   if (can(user.role, 'history:view')) {
     jobs.push(attempt('taxRegistrations', () => taxCount('excise_registrations', 'registration')));
-    jobs.push(attempt('taxFilings', () => taxCount('orders', 'payment')));
+    /* ⭐ v3 (มติ 02/11): งานของ RA = **รอ RA** (คิวคำนวณสด · ยังไม่มีแถว orders) + **กำลังยื่น** (แถว orders)
+       — ชุดเดียวกับชิป "รอฉันลงมือ" บนหน้าการยื่นชำระ · ฝ่ายขายไม่มีขั้นบนเส้นนี้ (ownedStages ว่าง ⇒ 0) */
+    jobs.push(attempt('taxFilings', async () => {
+      const filing = await taxCount('orders', 'payment');
+      if (taxDept !== 'RA' || !can(user.role, 'ra:approve')) return filing;
+      const waiting = await loadRaFilingQueue(supabase, { upcoming: false });
+      return filing + waiting.length;
+    }));
   }
 
   /* ── เฟส 4: แจ้งปัญหาระบบ + วางแผนผลิต ─────────────────────────────────
