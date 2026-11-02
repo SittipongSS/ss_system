@@ -69,6 +69,22 @@ export function roundRemainingSummary(rows = []) {
 }
 
 /**
+ * ยอดค้าง (หน่วย) ของ SO จากรอบที่ยังมีผล — ยอดสั่งที่ตรึงบนรอบล่าสุด (`metadata.exciseSource.orderedByLine`) − ผลรวมทุกรอบ
+ * ไม่คิดใบยื่นทั้ง SO ใหม่ (คิว SA · ป้ายรอบบนจอ RA) · SO ล็อกระหว่างมีรอบ (Q16) ⇒ ยอดตรึงไม่เปลี่ยนใต้ใบ
+ * @param rounds ใบค่าสรรพสามิตที่ยังมีผลของ SO เดียว (พก `createdAt` · `metadata` · `lines`)
+ * @returns หน่วยที่ยังค้าง · null = ไม่รู้ (ทุกรอบออกก่อนแบ่งรอบ — ไม่มียอดตรึง ⇒ ผู้เรียกถือว่าครบ)
+ */
+export function roundsRemainingUnits(rounds = []) {
+  const latest = [...(rounds || [])].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .find((row) => row?.metadata?.exciseSource?.orderedByLine);
+  if (!latest) return null;
+  const issued = new Map();
+  for (const round of rounds || []) for (const [key, qty] of roundQuantitiesOf(round.lines)) issued.set(key, (issued.get(key) || 0) + qty);
+  return round4(Object.entries(latest.metadata.exciseSource.orderedByLine)
+    .reduce((sum, [key, qty]) => sum + Math.max(0, (Number(qty) || 0) - (issued.get(key) || 0)), 0));
+}
+
+/**
  * คำขอจำนวนจากจอ `{ [sourceSalesOrderLineId]: number }` → `{ value: Map }` · ไม่ส่ง = `{ value: null }` (ใช้ค่าตั้งต้น) · ผิดรูป = `{ error }`
  */
 export function parseRoundQuantities(raw) {

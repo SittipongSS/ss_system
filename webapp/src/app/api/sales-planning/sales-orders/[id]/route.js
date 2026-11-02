@@ -80,7 +80,8 @@ import {
 } from '@/lib/forceDelete';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
-import { exciseSourceLock, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
+import { ExciseQuotationError, exciseSourceLock, loadExciseRoundState, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
+import { exciseRemainderBlocker, exciseRemainderPatch, exciseRemainderReasonInput } from '@/lib/excise/exciseRemainder';
 import { exciseSalesOrderBlock, salesOrderApprovalDeal } from '@/lib/excise/exciseSalesOrder';
 import {
   EXCISE_NOT_BILLED_KINDS, exciseNotBilledBlocker, exciseNotBilledInput, exciseNotBilledPatch,
@@ -1025,6 +1026,46 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       summary: clearing
         ? `ถอนการตัดสินไม่เรียกเก็บค่าสรรพสามิตในระบบ ${before.orderNumber}`
         : `ตัดสินไม่เรียกเก็บค่าสรรพสามิตในระบบ ${before.orderNumber} (${EXCISE_NOT_BILLED_KINDS[input.value.kind].label}): ${input.value.reason}`,
+      request: req,
+    });
+    return ok(updated);
+  }
+
+  /* ⭐ ปิด/เปิดยอดค้างค่าสรรพสามิต (แบ่งรอบ · มติ 02/11 V11 · D17 · mig 0418) — ส่วนที่เหลือจะไม่ส่งแล้ว ⇒ ไม่ออกรอบใหม่
+     ไม่ต้อง Rev. SO ลูกค้า · รอบที่ออกไปแล้วเดินต่อได้ · ตัวตัดสินเดียวกับปุ่มบนจอ (exciseRemainderBlocker) · audit ทุกครั้งพร้อมเหตุผล */
+  if (action === 'close_excise_remainder' || action === 'reopen_excise_remainder') {
+    if (!canEditSalesPlanning(user) || !user.id) return forbidden();
+    const reopening = action === 'reopen_excise_remainder';
+    const input = exciseRemainderReasonInput(body);
+    if (input.error) return badRequest(input.error);
+    let state;
+    try { state = await loadExciseRoundState(supabase, before); }
+    catch (roundError) {
+      if (roundError instanceof ExciseQuotationError) return fail(roundError.message, roundError.status);
+      throw roundError;
+    }
+    const blocker = exciseRemainderBlocker(before, {
+      reopening,
+      rounds: { liveCount: state.rounds.length, hasRemaining: state.summary ? state.summary.hasRemaining : true },
+    });
+    if (blocker) return fail(blocker, 409);
+    const expected = resolveExpectedUpdatedAt(body);
+    if (!expected.ok) return badRequest(expected.error);
+    const now = new Date().toISOString();
+    const { data: updated, error: updateError } = await supabase
+      .from('sales_orders')
+      .update({ ...exciseRemainderPatch(reopening ? null : input.value, { user, at: now }), updatedAt: now })
+      .eq('id', id)
+      .eq('updatedAt', expected.value)
+      .select()
+      .maybeSingle();
+    if (updateError) return fail(updateError.message, 500);
+    if (!updated) return fail('ใบนี้ถูกแก้จากที่อื่นระหว่างนี้ — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409);
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id, before, after: updated,
+      summary: reopening
+        ? `เปิดยอดค้างค่าสรรพสามิต ${before.orderNumber} กลับ: ${input.value}`
+        : `ปิดยอดค้างค่าสรรพสามิต ${before.orderNumber} (ค้าง ${state.summary?.remainingUnits ?? 0} หน่วย): ${input.value}`,
       request: req,
     });
     return ok(updated);

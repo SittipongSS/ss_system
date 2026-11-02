@@ -27,7 +27,7 @@ import { ensureExciseChargeProduct, peekExciseChargeProduct } from '@/lib/excise
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import {
   applyRoundQuantities, exciseRoundRows, parseRoundQuantities, resolveRoundQuantities, roundLinesLinked, roundQuantitiesOf,
-  roundRemainingSummary,
+  roundRemainingSummary, roundsRemainingUnits,
 } from '@/lib/excise/exciseRounds';
 
 export class ExciseQuotationError extends Error {
@@ -43,10 +43,17 @@ export const LIVE_EXCISE_QUOTATION_STATUSES = Object.freeze(['draft', 'sent', 'r
 export const isLiveExciseQuotation = (quote) => isExciseOrder(quote) && LIVE_EXCISE_QUOTATION_STATUSES.includes(quote?.status);
 
 /** คำอ้างอิงบนกระดาษ (ช่อง "เอกสารอ้างอิง" ของ FM-SA-01) — ลูกค้าเห็นว่าค่าภาษีนี้ของใบไหน
- *  มติเจ้าของ 29/10 (กระดาษใบทดลอง): เลข SO / QT ต้นทางเท่านั้น — คำว่า "ค่าภาษีสรรพสามิต" ย้ายไปช่อง "โครงการ" (excisePaperReference) */
-export function exciseQuotationReference(order, sourceQuote) {
-  return [order?.orderNumber, sourceQuote?.quoteNumber].filter(Boolean).join(' / ');
+ *  มติเจ้าของ 29/10 (กระดาษใบทดลอง): เลข SO / QT ต้นทางเท่านั้น — คำว่า "ค่าภาษีสรรพสามิต" ย้ายไปช่อง "โครงการ" (excisePaperReference)
+ *  ⭐ แบ่งรอบ (D16): รอบที่ 2 ขึ้นไปต่อท้าย "· รอบที่ n" — ลูกค้าแยกใบของ SO เดียวกันออก · รอบแรกคงรูปเดิม (ยังไม่รู้ว่าจะมีรอบสอง) */
+export function exciseQuotationReference(order, sourceQuote, roundNo = 1) {
+  const base = [order?.orderNumber, sourceQuote?.quoteNumber].filter(Boolean).join(' / ');
+  return roundNo >= 2 && base ? `${base} · รอบที่ ${roundNo}` : base;
 }
+
+/* รอบที่เท่าไรของใบนี้ — รอบที่ยังมีผลซึ่งออกก่อนใบนี้ + 1 (`others` ไม่รวมใบนี้ · ใบใหม่ = ทุกรอบที่มีอยู่ + 1) */
+const roundNumberOf = (others = [], quote = null) => (quote?.createdAt
+  ? others.filter((row) => String(row.createdAt || '') < String(quote.createdAt)).length
+  : others.length) + 1;
 
 /** คำอ้างอิงนี้ระบบเขียนเอง (ว่าง หรือรูปเดิมก่อน 29/10 "ค่าภาษีสรรพสามิตของ …") — "คิดใหม่จากใบสั่งขาย" เขียนทับได้ · คนพิมพ์เอง = ไม่แตะ */
 export const exciseReferenceIsAuto = (note) => {
@@ -310,7 +317,7 @@ export function exciseQuotationOverrides(body = {}) {
 }
 
 /** แถวหัวใบของใบค่าสรรพสามิต (ไม่รวม id/เลขที่) — ตัวเดียวของพรีวิวและทางบันทึก ⇒ สิ่งที่เห็นบนหน้าออกใบ = สิ่งที่ลงฐาน */
-function exciseQuotationRow({ order, customer, sourceQuote, ownerContact, user, lines, rows = [], overrides = {}, pinnedPresets = null }) {
+function exciseQuotationRow({ order, customer, sourceQuote, ownerContact, user, lines, rows = [], roundNo = 1, overrides = {}, pinnedPresets = null }) {
   const vatRate = 7;
   const totals = quoteTotals(lines, { vatRate });
   const source = sourceQuote || {};
@@ -346,7 +353,7 @@ function exciseQuotationRow({ order, customer, sourceQuote, ownerContact, user, 
     docLanguage: overrides.docLanguage || (source.docLanguage === 'en' ? 'en' : 'th'),
     approvalStatus: 'not_submitted',
     notes: overrides.notes ?? null,
-    referenceNote: overrides.referenceNote !== undefined ? overrides.referenceNote : exciseQuotationReference(order, sourceQuote),
+    referenceNote: overrides.referenceNote !== undefined ? overrides.referenceNote : exciseQuotationReference(order, sourceQuote, roundNo),
     metadata: {
       exciseSource: {
         salesOrderId: order.id,
@@ -387,7 +394,10 @@ export async function previewExciseQuotationDraft({ supabase, user, order, ensur
   const built = await buildExciseLinesFromOrder({ supabase, user, order, ensureProduct });
   assertCanIssue(order, built);
   const ownerContact = await loadDealOwnerContact(supabase, order.deal?.ownerId);
-  const row = exciseQuotationRow({ order, customer: built.customer, sourceQuote: built.sourceQuote, ownerContact, user, lines: built.lines, rows: built.rows });
+  const row = exciseQuotationRow({
+    order, customer: built.customer, sourceQuote: built.sourceQuote, ownerContact, user, lines: built.lines, rows: built.rows,
+    roundNo: roundNumberOf(built.liveRounds),
+  });
   return {
     quote: { ...row, lines: built.lines },
     // ⭐ แบ่งรอบ: จอแก้จำนวนรายบรรทัดแล้วคิดยอดเอง (applyRoundQuantities) จากบรรทัดเต็มจำนวน — บันทึกแล้ว server คิดซ้ำ
@@ -420,7 +430,10 @@ export async function createExciseQuotationDraft({
   const quoteId = genId('QT');
   const { data: quote, error } = await insertQuotationWithNumber(supabase, {
     id: quoteId,
-    ...exciseQuotationRow({ order, customer, sourceQuote, ownerContact, user, lines: builtLines, rows: built.rows, overrides, pinnedPresets }),
+    ...exciseQuotationRow({
+      order, customer, sourceQuote, ownerContact, user, lines: builtLines, rows: built.rows,
+      roundNo: roundNumberOf(built.liveRounds), overrides, pinnedPresets,
+    }),
   });
   if (error) throw new ExciseQuotationError(error.code === '23505' ? `เลขใบเสนอราคาซ้ำ (${quoteId})` : error.message, error.code === '23505' ? 409 : 500);
 
@@ -520,7 +533,7 @@ export async function recalcExciseQuotationLines({
   if (error) throw new ExciseQuotationError(error.message, 500);
   const blocker = exciseQuotationBlocker(order);
   if (blocker) throw new ExciseQuotationError(blocker, 409);
-  const { lines, rows, sourceQuote } = await buildExciseLinesFromOrder({
+  const { lines, rows, sourceQuote, liveRounds } = await buildExciseLinesFromOrder({
     supabase, user, order, request, ensureProduct,
     quantities, fallbackQuantities: exciseQuotationQuantities(quote), exceptQuoteId: quote?.id || null,
   });
@@ -534,7 +547,7 @@ export async function recalcExciseQuotationLines({
   return {
     lines,
     header: {
-      referenceNote: exciseQuotationReference(order, sourceQuote),
+      referenceNote: exciseQuotationReference(order, sourceQuote, roundNumberOf(liveRounds, quote)),
       metadata: {
         salesOwner: deal?.ownerName || null,
         salesOwnerId: ownerContact?.id || null,
@@ -614,7 +627,7 @@ export async function exciseHandledOrderIds(supabase, orders = []) {
   for (const [sourceId, rounds] of bySource) {
     if (rounds.some((row) => row.status === 'accepted' && !ordered.has(row.id))) continue; // รอออก SO ค่าสรรพสามิต
     if (rounds.some((row) => row.status !== 'accepted')) { handled.add(sourceId); continue; } // มีรอบกำลังเดิน
-    if (roundsHaveRemainder(rounds)) remainderCandidates.push(sourceId);
+    if ((roundsRemainingUnits(rounds) || 0) > 0.000001) remainderCandidates.push(sourceId);
     else handled.add(sourceId);
   }
   if (!remainderCandidates.length) return handled;
@@ -628,13 +641,3 @@ export async function exciseHandledOrderIds(supabase, orders = []) {
   return handled;
 }
 
-/* ยอดสั่งที่ตรึงบนรอบล่าสุด − ผลรวมจำนวนทุกรอบ มีบรรทัดไหนยังเหลือไหม (รอบที่ไม่มียอดสั่งตรึง = ก่อนแบ่งรอบ ⇒ ถือว่าครบ) */
-function roundsHaveRemainder(rounds = []) {
-  const latest = [...rounds].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-    .find((row) => row.metadata?.exciseSource?.orderedByLine);
-  if (!latest) return false;
-  const issued = new Map();
-  for (const round of rounds) for (const [key, qty] of roundQuantitiesOf(round.lines)) issued.set(key, (issued.get(key) || 0) + qty);
-  return Object.entries(latest.metadata.exciseSource.orderedByLine)
-    .some(([key, qty]) => (Number(qty) || 0) - (issued.get(key) || 0) > 0.000001);
-}

@@ -9,7 +9,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 import { FILING_SOURCE_EXCISE_ORDER, filingStartGateError } from "@/lib/excise/raFilingRules";
-import { UPCOMING_START_BLOCKER } from "@/lib/excise/raQueueItem";
+import { UPCOMING_START_BLOCKER, raRoundLabel } from "@/lib/excise/raQueueItem";
 import { printFilingSummary } from "@/lib/excise/printFilingSummary";
 import styles from "./SalesOrderFilingModal.module.css";
 
@@ -121,6 +121,8 @@ export default function SalesOrderFilingModal({ open, row, onClose, onStarted })
               <span>ใบเสนอราคาค่าสรรพสามิต <strong>{row.exciseOrder?.quoteNumber || row.exciseQuote?.quoteNumber}</strong></span>
             )}
             {row.notBilled && <span>ไม่เรียกเก็บในระบบ <strong>{naText(row.notBilled.label)}</strong></span>}
+            {/* แบ่งรอบ (D19): ใบนี้รอบไหนของ SO ลูกค้า + ยังมีรอบตามมาไหม */}
+            {raRoundLabel(row) && <span>แบ่งรอบ <strong>{raRoundLabel(row)}</strong></span>}
             <span>อนุมัติ <strong>{fmtDate(sales.approvedAt)}</strong></span>
           </div>
           {upcoming ? (

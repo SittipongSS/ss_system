@@ -168,6 +168,7 @@ import { historicalDuplicateReviewOf, historicalDuplicateReviewView } from "@/li
 import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
 import ExciseNotBilledDialog from "@/components/excise/ExciseNotBilledDialog";
 import ExciseRoundsCard from "@/components/excise/ExciseRoundsCard";
+import ExciseRemainderDialog from "@/components/excise/ExciseRemainderDialog";
 import { EXCISE_NOT_BILLED_KINDS } from "@/lib/excise/exciseNotBilled";
 import {
   EXCISE_ORDER_MODAL_COPY, EXCISE_ORDER_STATUS_DESCRIPTION, excisePreVatAmount, exciseSourceOrderLabel, salesOrderApprovalDeal,
@@ -223,6 +224,8 @@ const ACTION_MESSAGE = {
   remove_confirm_file: "ลบไฟล์ยืนยันคำสั่งซื้อแล้ว",
   set_excise_not_billed: "บันทึกว่าไม่เรียกเก็บค่าสรรพสามิตในระบบแล้ว",
   clear_excise_not_billed: "ถอนการตัดสินไม่เรียกเก็บแล้ว — ออกใบเสนอราคาค่าสรรพสามิตได้",
+  close_excise_remainder: "ปิดยอดค้างค่าสรรพสามิตแล้ว — ไม่ออกรอบใหม่จากใบนี้",
+  reopen_excise_remainder: "เปิดยอดค้างค่าสรรพสามิตกลับแล้ว — ออกใบรอบถัดไปได้",
 };
 
 /* ── นับ Actual ทั้งใบ / รายงวด ตอนอนุมัติ (mig 0412 · มติเจ้าของ 26/10/2026) ───────────────────────────────────────────
@@ -415,6 +418,8 @@ export default function SalesOrderDetailPage() {
   const [exciseQuoteState, setExciseQuoteState] = useState({});
   const [notBilledOpen, setNotBilledOpen] = useState(false);
   const [notBilledError, setNotBilledError] = useState("");
+  const [remainderMode, setRemainderMode] = useState(""); // "" | "close" | "reopen" — ปิด/เปิดยอดค้างค่าสรรพสามิต (V11)
+  const [remainderError, setRemainderError] = useState("");
   const [filingState, setFilingState] = useState({
     loading: true,
     filing: null,
@@ -586,6 +591,15 @@ export default function SalesOrderDetailPage() {
     const ok = await requestAction("set_excise_not_billed", { ...value, expectedUpdatedAt: order?.updatedAt });
     if (ok) setNotBilledOpen(false);
     else setNotBilledError("บันทึกไม่สำเร็จ — ดูข้อความด้านบนของหน้า");
+  }
+
+  /* ⭐ ปิด/เปิดยอดค้างค่าสรรพสามิต (แบ่งรอบ · V11) — route ตัดสินซ้ำด้วย exciseRemainderBlocker ตัวเดียวกับปุ่ม */
+  async function confirmRemainder(reason) {
+    setRemainderError("");
+    const action = remainderMode === "reopen" ? "reopen_excise_remainder" : "close_excise_remainder";
+    const ok = await requestAction(action, { reason, expectedUpdatedAt: order?.updatedAt });
+    if (ok) setRemainderMode("");
+    else setRemainderError("บันทึกไม่สำเร็จ — ดูข้อความด้านบนของหน้า");
   }
 
   function clearNotBilled() {
@@ -1777,6 +1791,8 @@ export default function SalesOrderDetailPage() {
     onCreateQuote: createExciseQuote,
     onNotBilled: () => { setNotBilledError(""); setNotBilledOpen(true); },
     onClearNotBilled: exciseCanEdit ? clearNotBilled : null,
+    onCloseRemainder: () => { setRemainderError(""); setRemainderMode("close"); },
+    onReopenRemainder: () => { setRemainderError(""); setRemainderMode("reopen"); },
     createLabel: "ออกใบเสนอราคาค่าสรรพสามิต",
     actionDisabled: !!busy,
     createDisabledReason: exciseCanEdit ? null : "ต้องมีสิทธิ์แก้ใบสั่งขายนี้จึงออกใบค่าสรรพสามิตได้",
@@ -2631,6 +2647,17 @@ export default function SalesOrderDetailPage() {
           remaining={exciseQuoteState?.remaining || null}
           remainderClosed={exciseQuoteState?.remainderClosed || null}
         />
+        {remainderMode ? (
+          <ExciseRemainderDialog
+            mode={remainderMode}
+            orderNumber={order.orderNumber}
+            remaining={exciseQuoteState?.remaining || null}
+            busy={busy === "close_excise_remainder" || busy === "reopen_excise_remainder"}
+            error={remainderError}
+            onConfirm={confirmRemainder}
+            onClose={() => setRemainderMode("")}
+          />
+        ) : null}
         {notBilledOpen ? (
           <ExciseNotBilledDialog
             open

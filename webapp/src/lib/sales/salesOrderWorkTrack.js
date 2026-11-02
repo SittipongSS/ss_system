@@ -341,11 +341,25 @@ function roundsSegment(excise, { rounds, remaining, notes }) {
         + (closed ? ' · ปิดยอดค้างแล้ว' : remaining?.hasRemaining
           ? ` · ยังค้าง ${fmtNumber(remaining.remainingUnits)} หน่วย (${remaining.remainingLines} รายการ)`
           : ' · ครบทุกรายการแล้ว'),
-      actions: open ? [{
-        label: 'ออกใบรอบถัดไป',
-        onClick: excise.onCreateQuote || null,
-        disabled: !!createBlocked || !!excise.actionDisabled,
-        disabledReason: createBlocked,
+      /* V11: ส่วนที่เหลือจะไม่ส่งแล้ว = ปิดยอดค้าง (ไม่ต้อง Rev. SO) · ปิดแล้วเปิดกลับได้ — ปุ่มคู่แบบ "ออกใบ / ไม่เรียกเก็บ" */
+      actions: open ? [
+        {
+          label: 'ออกใบรอบถัดไป',
+          onClick: excise.onCreateQuote || null,
+          disabled: !!createBlocked || !!excise.actionDisabled,
+          disabledReason: createBlocked,
+        },
+        ...(excise.onCloseRemainder ? [{
+          label: 'ปิดยอดค้าง',
+          onClick: excise.onCloseRemainder,
+          disabled: !!excise.createDisabledReason || !!excise.actionDisabled,
+          disabledReason: excise.createDisabledReason || null,
+        }] : []),
+      ] : closed && excise.onReopenRemainder ? [{
+        label: 'เปิดยอดค้างกลับ',
+        onClick: excise.onReopenRemainder,
+        disabled: !!excise.createDisabledReason || !!excise.actionDisabled,
+        disabledReason: excise.createDisabledReason || null,
       }] : [],
     },
     meta: latest ? `รอบที่ ${latest.round}: ${exciseRoundStage(latest).text}` : null,

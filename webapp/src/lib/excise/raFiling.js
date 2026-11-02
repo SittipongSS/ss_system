@@ -12,6 +12,8 @@ import { billedTaxTotals } from '@/lib/tax/exciseBilling';
 import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
 import { statusMeta } from '@/lib/excise/workflow';
 import { productDisplayName } from '@/lib/master/productIdentity';
+import { LIVE_EXCISE_QUOTATION_STATUSES } from '@/lib/excise/exciseQuotation';
+import { roundsRemainingUnits } from '@/lib/excise/exciseRounds';
 import {
   FILING_SOURCE_EXCISE_ORDER, FILING_SOURCE_NOT_BILLED, NOT_BILLED_FILING_KINDS,
   exciseOrderFilingLines, filingSourceOf, filingStartGates, notBilledLabel,
@@ -109,7 +111,29 @@ export async function loadRaFilingQueue(supabase, { upcoming = true } = {}) {
   }
   const readyExciseOrderIds = new Set((exciseResult.data || []).map((row) => row.quotationId));
   if (upcoming) rows.push(...await loadUpcomingRows(supabase, { links, readyQuoteIds: readyExciseOrderIds }));
+  await attachRounds(supabase, rows);
   return rows.sort((a, b) => String(a.since || '').localeCompare(String(b.since || '')));
+}
+
+/* ⭐ แบ่งรอบ (แผน หมวด 13 · D19): งานรายรอบได้ป้าย "รอบที่ n จาก m" + ยอดค้างของ SO ลูกค้า (ยอดตรึงบนใบ · ไม่คิดใบยื่นใหม่)
+   — RA รู้ว่าใบนี้ยังมีรอบตามมาอีก · เขียนลง `row.round` (null = งานไม่เรียกเก็บ / หารอบไม่เจอ) */
+async function attachRounds(supabase, rows) {
+  const targets = rows.filter((row) => row.salesOrder?.id && (row.exciseOrder?.quotationId || row.exciseQuote?.id));
+  const sourceIds = [...new Set(targets.map((row) => row.salesOrder.id))];
+  if (!sourceIds.length) return;
+  const quotes = await fetchAllInChunks(sourceIds, (chunk) => exciseRowsOnly(supabase
+    .from('quotations').select('id, "sourceSalesOrderId", status, "createdAt", metadata, lines:quotation_lines(qty, "packQty", metadata)'))
+    .in('sourceSalesOrderId', chunk)
+    .in('status', LIVE_EXCISE_QUOTATION_STATUSES)
+    .order('id', { ascending: true }));
+  const bySource = new Map();
+  for (const quote of quotes) bySource.set(quote.sourceSalesOrderId, [...(bySource.get(quote.sourceSalesOrderId) || []), quote]);
+  for (const list of bySource.values()) list.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || String(a.id).localeCompare(String(b.id)));
+  for (const row of targets) {
+    const list = bySource.get(row.salesOrder.id) || [];
+    const index = list.findIndex((quote) => quote.id === (row.exciseOrder?.quotationId || row.exciseQuote?.id));
+    row.round = index < 0 ? null : { no: index + 1, count: list.length, remainingUnits: roundsRemainingUnits(list) };
+  }
 }
 
 /* ขั้นของแถวกำลังมา — ใครถือ · รออะไร (คำบนคิวของ RA) */
