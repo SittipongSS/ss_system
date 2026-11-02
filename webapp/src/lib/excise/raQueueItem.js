@@ -2,16 +2,24 @@
 // แถวรอ RA (`ready`) = กดแล้วเปิดงาน (ข้อมูลจาก SO · พิมพ์ใบสรุป · เริ่มยื่น) · แถวกำลังมา (มติเจ้าของ 29/10) = บอกขั้นที่ถึง
 // เปิดดูได้แต่เริ่มยื่นไม่ได้ (กติกา "ปุ่มกดไม่ได้ = โชว์เสมอ บอกเหตุตอนกด") · v3 02/11: ไม่มีขั้น "สร้างใบยื่น" แล้ว
 // ⚠️ ไฟล์บริสุทธิ์ (หน้า /tax และหน้าการยื่นชำระใช้ตัวเดียวกัน)
-import { naText } from "@/lib/format";
+import { fmtNumber, naText } from "@/lib/format";
 
 export const UPCOMING_START_BLOCKER = "ยังเริ่มยื่นไม่ได้ — งานถึง RA เมื่อใบสั่งขายค่าสรรพสามิตอนุมัติแล้ว";
 
 /** หน้าการยื่นชำระพร้อมเปิดงานนี้ (`?start=<คีย์งาน>`) — ทางเดียวของคิวบนภาพรวมและแถวในรายการ */
 export const raWorkHref = (row) => `/tax/filings?start=${encodeURIComponent(row?.key || "")}`;
 
+/** ป้ายรอบของงาน (แบ่งรอบ · D19) — "รอบที่ 2/3 · SO ลูกค้ายังค้าง x หน่วย" · รอบเดียวที่ไม่ค้าง = ว่าง (ไม่พูดเรื่องรอบเลย) */
+export function raRoundLabel(row) {
+  const round = row?.round;
+  if (!round || (round.count <= 1 && !(round.remainingUnits > 0))) return "";
+  return `รอบที่ ${round.no}/${round.count}${round.remainingUnits > 0 ? ` · SO ลูกค้ายังค้าง ${fmtNumber(round.remainingUnits)} หน่วย` : ""}`;
+}
+
 /** หัวเรื่อง/บรรทัดรองของแถวคิว — ตัวเดียวทั้งสองจอ */
 export function raQueueText(row) {
-  const title = `${row?.salesOrder?.orderNumber || ""} · ${naText(row?.salesOrder?.customerName)}`;
+  const round = raRoundLabel(row) ? ` (รอบที่ ${row.round.no}/${row.round.count})` : "";
+  const title = `${row?.salesOrder?.orderNumber || ""}${round} · ${naText(row?.salesOrder?.customerName)}`;
   if (row?.ready === false) {
     const doc = row.exciseOrder?.orderNumber || row.exciseQuote?.quoteNumber || "";
     return { title, subtitle: `${doc} · ${row.stageLabel || "กำลังมา"}`.replace(/^ · /, "") };

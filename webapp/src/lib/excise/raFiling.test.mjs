@@ -123,9 +123,23 @@ test("คิว RA (แบ่งรอบ 0418): รอบที่สองข�
   const tables = base();
   tables.sales_orders.push({ id: "SX4B", orderNumber: "SO-X4B", status: "approved", origin: "excise", sourceSalesOrderId: "S4", quotationId: "QX4B",
     customerId: "C1", customerName: "ลูกค้า", approvedAt: "2026-10-07", supersededById: null, totalAmount: 20, vatAmount: 1.31, financeStatus: "pending" });
-  tables.quotations.push({ id: "QX4B", quoteNumber: "QT-X4B" });
+  tables.quotations = tables.quotations.map((q) => (q.id === "QX4"
+    ? { ...q, origin: "excise", status: "accepted", sourceSalesOrderId: "S4", createdAt: "2026-10-05T00:00:00Z",
+      metadata: { exciseSource: { orderedByLine: { L4: 10 } } }, lines: [{ qty: 4, metadata: { sourceSalesOrderLineId: "L4" } }] }
+    : q));
+  tables.quotations.push({ id: "QX4B", quoteNumber: "QT-X4B", origin: "excise", status: "accepted", sourceSalesOrderId: "S4", createdAt: "2026-10-06T00:00:00Z",
+    metadata: { exciseSource: { orderedByLine: { L4: 10 } } }, lines: [{ qty: 3, metadata: { sourceSalesOrderLineId: "L4" } }] });
   const rows = await loadRaFilingQueue(fakeDb(tables), { upcoming: false });
   assert.deepEqual(rows.map((r) => r.key), ["not_billed:S2", "excise:SX1", "excise:SX4B"], "SX4 เริ่มยื่นแล้ว (TAX-4) · SX4B ยังรอ RA");
+  // D19: ป้ายรอบ — รอบที่ 2 จาก 2 · SO ลูกค้ายังค้าง 10 − (4 + 3) = 3 หน่วย · งานไม่เรียกเก็บไม่มีรอบ
+  const second = rows.find((r) => r.key === "excise:SX4B");
+  assert.deepEqual(second.round, { no: 2, count: 2, remainingUnits: 3 });
+  assert.equal(rows.find((r) => r.key === "not_billed:S2").round, undefined);
+  const { raRoundLabel, raQueueText } = await import("./raQueueItem.js");
+  assert.equal(raRoundLabel(second), "รอบที่ 2/2 · SO ลูกค้ายังค้าง 3 หน่วย");
+  assert.match(raQueueText(second).title, /^SO-4 \(รอบที่ 2\/2\) · /);
+  assert.equal(raRoundLabel({ round: { no: 1, count: 1, remainingUnits: 0 } }), "", "รอบเดียวครบ = ไม่พูดเรื่องรอบ");
+  assert.equal(raRoundLabel({ round: { no: 1, count: 1, remainingUnits: null } }), "");
 });
 
 test("แผงสรุปบนหน้าใบยื่น: ต้นทาง + บัญชี + ด่านเริ่มยื่น (เงินปิดใบแล้ว · ทะเบียนครบ)", async () => {

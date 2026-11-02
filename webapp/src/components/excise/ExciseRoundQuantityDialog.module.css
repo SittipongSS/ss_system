@@ -1,5 +1,26 @@
 /* แก้จำนวนของรอบนี้ (ExciseRoundQuantityDialog.js) — ระยะ/สีชุดเดียวกับ ExciseNotBilledDialog */
-.body { display: flex; flex-direction: column; gap: var(--space-3-5); }
-.description { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
-.blocker { margin: 0; color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }
-.danger { color: var(--red); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3-5);
+  padding: var(--space-4);
+}
+
+.description {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-8);
+  line-height: var(--lh-relaxed);
+}
+
+.blocker { margin: 0; color: var(--amber); font-size: var(--fs-5); line-height: var(--lh-thai); }
+
+.danger {
+  padding: var(--space-2-5) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--red-soft);
+  color: var(--text-2);
+  font-size: var(--fs-7);
+  line-height: var(--lh-relaxed);
+}
