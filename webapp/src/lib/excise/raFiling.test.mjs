@@ -109,12 +109,23 @@ test("แหล่งใบยื่นถูกปฏิเสธ: SO ค่า
   assert.equal((await loadFilingSource(db, {})).error.status, 400);
 });
 
-test("ใบยื่นที่มีอยู่แล้ว: หาเจอทั้งทาง SO ลูกค้าและทาง SO ค่าสรรพสามิต", async () => {
-  const db = fakeDb(base());
-  assert.equal((await findFilingFor(db, { salesOrderId: "S4" }))?.id, "TAX-4");
-  assert.equal((await findFilingFor(db, { salesOrderId: "S9", exciseSalesOrderId: "SX4" }))?.id, "TAX-4");
+test("ใบยื่นที่มีอยู่แล้ว (แบ่งรอบ 0418): รายรอบดูลิงก์ SO ค่าสรรพสามิตอย่างเดียว · ไม่เรียกเก็บดูใบของ SO ลูกค้าที่ไม่ผูก SO ค่าสรรพสามิต", async () => {
+  const db = fakeDb({ ...base(), orders: [...base().orders, { id: "TAX-2", status: "filing", salesOrderId: "S2", exciseSalesOrderId: null }] });
+  assert.equal((await findFilingFor(db, { salesOrderId: "S4", exciseSalesOrderId: "SX4" }))?.id, "TAX-4");
+  assert.equal(await findFilingFor(db, { salesOrderId: "S4", exciseSalesOrderId: "SX4B" }), null, "รอบที่สองของ S4 ยังไม่มีใบยื่น — ใบของรอบแรกไม่บัง");
+  assert.equal(await findFilingFor(db, { salesOrderId: "S4" }), null, "ใบยื่นรายรอบไม่ใช่ใบแบบไม่เรียกเก็บ");
+  assert.equal((await findFilingFor(db, { salesOrderId: "S2" }))?.id, "TAX-2");
   assert.equal(await findFilingFor(db, { salesOrderId: "S1", exciseSalesOrderId: "SX1" }), null);
   assert.equal(await findFilingFor(db, {}), null);
+});
+
+test("คิว RA (แบ่งรอบ 0418): รอบที่สองของ SO ลูกค้าเดียวกันขึ้นคิว แม้รอบแรกเริ่มยื่นแล้ว", async () => {
+  const tables = base();
+  tables.sales_orders.push({ id: "SX4B", orderNumber: "SO-X4B", status: "approved", origin: "excise", sourceSalesOrderId: "S4", quotationId: "QX4B",
+    customerId: "C1", customerName: "ลูกค้า", approvedAt: "2026-10-07", supersededById: null, totalAmount: 20, vatAmount: 1.31, financeStatus: "pending" });
+  tables.quotations.push({ id: "QX4B", quoteNumber: "QT-X4B" });
+  const rows = await loadRaFilingQueue(fakeDb(tables), { upcoming: false });
+  assert.deepEqual(rows.map((r) => r.key), ["not_billed:S2", "excise:SX1", "excise:SX4B"], "SX4 เริ่มยื่นแล้ว (TAX-4) · SX4B ยังรอ RA");
 });
 
 test("แผงสรุปบนหน้าใบยื่น: ต้นทาง + บัญชี + ด่านเริ่มยื่น (เงินปิดใบแล้ว · ทะเบียนครบ)", async () => {

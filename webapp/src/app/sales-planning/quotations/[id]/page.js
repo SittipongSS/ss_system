@@ -74,6 +74,9 @@ import { billingQuotationError } from "@/lib/requests/billingQuotations";
 import { EXCISE_STATUS_NOTE, isExciseOrder } from "@/lib/sales/historicalOrders";
 import { EXCISE_LIST_LABEL } from "@/lib/excise/exciseListRow";
 import { excisePreVatAmount } from "@/lib/excise/exciseSalesOrder";
+import ExciseRoundQuantities from "@/components/excise/ExciseRoundQuantities";
+import ExciseRoundQuantityDialog from "@/components/excise/ExciseRoundQuantityDialog";
+import { roundQuantitiesOf } from "@/lib/excise/exciseRounds";
 import { quotationBillingRequestHref } from "@/lib/sales/billingRequestHref";
 
 const money = (v) => fmtMoney(v);
@@ -106,6 +109,7 @@ export default function QuotationEditorPage() {
   const [error, setError] = useState("");
   const [errorActionUrl, setErrorActionUrl] = useState("");
   const [confirmState, setConfirmState] = useState(null);
+  const [exciseQtyOpen, setExciseQtyOpen] = useState(false);
   const [confirmBusy, setConfirmBusy] = useState(false);
   const [workflowForm, setWorkflowForm] = useState(null);
   const [rejectForm, setRejectForm] = useState(null);
@@ -547,6 +551,17 @@ export default function QuotationEditorPage() {
       return !!data;
     },
   });
+  /* ⭐ แบ่งรอบ (หมวด 13 · มติ 02/11): แก้จำนวนรอบนี้ — ร่างที่ยังไม่ยื่นเท่านั้น (ด่านเดียวกับคิดใหม่) · server คิดรายการใหม่เอง */
+  const saveExciseQuantities = async (exciseQuantities) => {
+    const data = await act("excise-qty", `/api/sales-planning/quotations/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ exciseQuantities }),
+    });
+    if (!data) return false;
+    setExciseQtyOpen(false);
+    await load();
+    setToast({ kind: "success", msg: "บันทึกจำนวนรอบนี้แล้ว — รายการคิดใหม่จากใบสั่งขาย" });
+    return true;
+  };
   // ย้อนการรับ = เจ้าของดีลปัจจุบัน + ผู้มีอำนาจตัดสิน (มติ 24/09) กรณีรับใบผิดก่อนมี SO — มี SO ที่ยังมีชีวิต
   // (ไม่ยกเลิก · ไม่ถูกแทนด้วย Rev.) ต้องไปทางฝั่ง SO (route/RPC บล็อกซ้ำ · 0380); เหตุผลบังคับ 10–500 ตัวอักษร
   /* ⚠️ คูณ canEditCap — เจ้าของดีล Won ที่ถูกย้ายไปตำแหน่งดูอย่างเดียว (โอนงานไม่ย้ายดีล Won) ยังเป็น ownerId
@@ -837,6 +852,15 @@ export default function QuotationEditorPage() {
       onClick: recalcExcise,
     },
     {
+      // แบ่งรอบ: แก้จำนวนรอบนี้ (ร่างที่ยังไม่ยื่น) — ตารางตัวเดียวกับหน้าออกใบ
+      id: "excise-quantities",
+      kind: "reedit",
+      label: "แก้จำนวนรอบนี้",
+      variant: "outline",
+      visible: excise && canEditDocument && !editMode && quote?.approvalStatus === "not_submitted" && !!quote?.exciseRound?.rows?.length,
+      onClick: () => { setError(""); setExciseQtyOpen(true); },
+    },
+    {
       id: "withdraw",
       kind: "withdraw",
       variant: "outline",
@@ -1071,7 +1095,7 @@ export default function QuotationEditorPage() {
               <Package size={17} aria-hidden="true" />
               <h2>รายการสินค้า/บริการ</h2>
               {excise ? (
-                <span className={styles.exciseNote}>{EXCISE_STATUS_NOTE} · รายการคิดจากใบสั่งขายต้นทาง แก้เองไม่ได้</span>
+                <span className={styles.exciseNote}>{EXCISE_STATUS_NOTE} · รายการคิดจากใบสั่งขายต้นทาง แก้ได้แค่จำนวนของรอบนี้</span>
               ) : null}
               {editable && !excise && (
                 <div className={styles.lineActions}>
@@ -1080,6 +1104,18 @@ export default function QuotationEditorPage() {
                 </div>
               )}
             </div>
+            {/* แบ่งรอบ: สั่ง · ออกรอบอื่น · รอบนี้ · คงเหลือหลังรอบนี้ (อ่านอย่างเดียว — แก้ด้วยปุ่ม "แก้จำนวนรอบนี้") */}
+            {excise && quote?.exciseRound?.rows?.length ? (
+              <div className={styles.exciseRound}>
+                <p className={styles.exciseRoundTitle}>
+                  {quote.exciseRound.round ? `รอบที่ ${quote.exciseRound.round} ของใบสั่งขายต้นทาง` : "จำนวนของใบนี้เทียบใบสั่งขายต้นทาง"}
+                </p>
+                <ExciseRoundQuantities
+                  rows={quote.exciseRound.rows}
+                  values={Object.fromEntries(roundQuantitiesOf(quote.lines))}
+                />
+              </div>
+            ) : null}
             <QuotationLineItems
               lines={lines}
               onChange={updateLines}
@@ -1437,6 +1473,16 @@ export default function QuotationEditorPage() {
         busy={confirmBusy}
         onClose={() => !confirmBusy && setConfirmState(null)}
         onConfirm={runConfirmed}
+      />
+      <ExciseRoundQuantityDialog
+        open={exciseQtyOpen}
+        rows={quote?.exciseRound?.rows || []}
+        lines={quote?.lines || []}
+        round={quote?.exciseRound?.round || null}
+        busy={busy === "excise-qty"}
+        error={exciseQtyOpen ? error : ""}
+        onConfirm={saveExciseQuantities}
+        onClose={() => busy !== "excise-qty" && setExciseQtyOpen(false)}
       />
       <ContractCreateModal
         open={contractOpen}

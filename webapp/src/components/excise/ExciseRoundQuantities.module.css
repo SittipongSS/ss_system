@@ -1,0 +1,14 @@
+/* จำนวนของรอบนี้ — ใบค่าสรรพสามิตแบ่งรอบ (ExciseRoundQuantities.js) */
+.table { width: 100%; }
+
+.code { display: block; color: var(--text); font-family: var(--font-mono); font-size: var(--fs-4); }
+.name { display: block; color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+
+.qtyInput { width: 7.5rem; margin-left: auto; text-align: right; }
+
+/* คงเหลือหลังรอบนี้ — ยังค้าง = สีเตือนอ่อน (ส่วนที่ต้องออกรอบถัดไป) · เกิน = แดง */
+.left { color: var(--amber); }
+.over { color: var(--red); font-weight: var(--fw-bold); }
+.overRow td { background: color-mix(in srgb, var(--red) 6%, transparent); }
+
+.footLabel { color: var(--text-2); font-weight: var(--fw-bold); text-align: right; }

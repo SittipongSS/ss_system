@@ -1,0 +1,5 @@
+/* แก้จำนวนของรอบนี้ (ExciseRoundQuantityDialog.js) — ระยะ/สีชุดเดียวกับ ExciseNotBilledDialog */
+.body { display: flex; flex-direction: column; gap: var(--space-3-5); }
+.description { margin: 0; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.blocker { margin: 0; color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.danger { color: var(--red); font-size: var(--fs-5); line-height: var(--lh-thai); }

@@ -19,7 +19,9 @@ import {
 
 const ORDER_FIELDS = 'id, "orderNumber", status, "customerId", "customerName", "orderDate", "approvedAt", "supersededById"';
 
-/* ใบยื่นที่มีอยู่ทั้งหมด (สองลิงก์) — ตารางเล็ก (1 ใบต่อ SO) แต่ไล่หน้าให้ครบเสมอ */
+/* ใบยื่นที่มีอยู่ทั้งหมด (สองลิงก์) — ตารางเล็กแต่ไล่หน้าให้ครบเสมอ
+   ⭐ แบ่งรอบ (0418): รอบละใบยื่น ⇒ SO ค่าสรรพสามิตตัดสินด้วย `byExciseOrder` อย่างเดียว · `bySalesOrder` = ใบยื่นแบบไม่เรียกเก็บ
+   (ไม่ผูก SO ค่าสรรพสามิต · หนึ่งใบต่อ SO ลูกค้า) — เดิมนับทุกใบ ⇒ รอบที่สองหายจากคิว RA เพราะ SO ลูกค้ามีใบยื่นของรอบแรกแล้ว */
 async function existingFilingLinks(supabase) {
   const { data, error } = await fetchAllResult(() => supabase
     .from('orders').select('id, "salesOrderId", "exciseSalesOrderId"')
@@ -27,14 +29,14 @@ async function existingFilingLinks(supabase) {
     .order('id', { ascending: true }));
   if (error) throw error;
   return {
-    bySalesOrder: new Map((data || []).map((row) => [row.salesOrderId, row.id])),
+    bySalesOrder: new Map((data || []).filter((row) => !row.exciseSalesOrderId).map((row) => [row.salesOrderId, row.id])),
     byExciseOrder: new Map((data || []).filter((row) => row.exciseSalesOrderId).map((row) => [row.exciseSalesOrderId, row.id])),
   };
 }
 
 /**
  * คิวงานของ RA ที่ยังไม่มีบันทึกการยื่น — คำนวณสด ไม่เก็บ (แผน หมวด 12.2 ขั้น 11)
- *  · **รอ RA** (`ready: true`): SO ค่าสรรพสามิตที่อนุมัติแล้ว (และ SO ลูกค้าต้นทางยังไม่มีบันทึก — unique ฝั่ง SO ลูกค้า) ·
+ *  · **รอ RA** (`ready: true`): SO ค่าสรรพสามิตที่อนุมัติแล้วที่ยังไม่มีบันทึก (รายรอบ · 0418) ·
  *    SO ลูกค้าที่ตัดสิน "ไม่เรียกเก็บ" แบบเก็บนอกระบบ/รวมในราคา
  *  · ⭐ **กำลังมา** (มติเจ้าของ 29/10 · `ready: false`): ใบเสนอราคาค่าสรรพสามิตที่อนุมัติแล้ว แต่ SO ค่าสรรพสามิตยังไม่อนุมัติ —
  *    RA เห็นงานล่วงหน้าพร้อมขั้นที่ถึง (รอ Won · รอออก SO · SO รออนุมัติ) และเตรียมทะเบียนได้ก่อน · เริ่มยื่นยังไม่ได้
@@ -64,8 +66,7 @@ export async function loadRaFilingQueue(supabase, { upcoming = true } = {}) {
   if (exciseResult.error) throw exciseResult.error;
   if (notBilledResult.error) throw notBilledResult.error;
 
-  const exciseOrders = (exciseResult.data || []).filter((row) => !links.byExciseOrder.has(row.id)
-    && !links.bySalesOrder.has(row.sourceSalesOrderId));
+  const exciseOrders = (exciseResult.data || []).filter((row) => !links.byExciseOrder.has(row.id));
   const sourceRows = await fetchAllInChunks(
     exciseOrders.map((row) => row.sourceSalesOrderId),
     (chunk) => supabase.from('sales_orders').select(ORDER_FIELDS).in('id', chunk).order('id', { ascending: true }),
@@ -119,7 +120,7 @@ export const UPCOMING_STAGE_TEXT = Object.freeze({
   order_draft: 'ใบสั่งขายค่าสรรพสามิตเป็นร่าง — รอฝ่ายขายยื่นอนุมัติ',
 });
 
-/** แถวกำลังมา: ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว (ส่ง/รับแล้ว) ที่ยังไม่มี SO ค่าสรรพสามิตอนุมัติ และ SO ต้นทางยังไม่มีใบยื่น */
+/** แถวกำลังมา: ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว (ส่ง/รับแล้ว) ที่ยังไม่มี SO ค่าสรรพสามิตอนุมัติ (รายรอบ — รอบก่อนยื่นแล้วไม่ตัดรอบนี้) */
 async function loadUpcomingRows(supabase, { links, readyQuoteIds }) {
   const { data: quotes, error } = await fetchAllResult(() => exciseRowsOnly(supabase
     .from('quotations')
@@ -129,7 +130,7 @@ async function loadUpcomingRows(supabase, { links, readyQuoteIds }) {
     .order('approvedAt', { ascending: true })
     .order('id', { ascending: true }));
   if (error) throw error;
-  const waiting = (quotes || []).filter((quote) => !readyQuoteIds.has(quote.id) && !links.bySalesOrder.has(quote.sourceSalesOrderId));
+  const waiting = (quotes || []).filter((quote) => !readyQuoteIds.has(quote.id));
   if (!waiting.length) return [];
   const [sourceRows, orderResult] = await Promise.all([
     fetchAllInChunks(
@@ -220,10 +221,16 @@ export async function loadFilingSource(supabase, { exciseSalesOrderId = '', sale
   }
   const built = exciseOrderFilingLines({ exciseLines: exciseOrder.lines || [], customerLines: customerResolved.lines });
   if (!built.lines.length) return fail(400, 'ใบสั่งขายค่าสรรพสามิตนี้ไม่มีรายการค่าภาษีให้ยื่น');
+  // เลขใบค่าสรรพสามิตของรอบนี้ — เลขอ้างอิงบนบันทึกการยื่น (รอบละใบ · แบ่งรอบ 0418)
+  const { data: exciseQuote, error: exciseQuoteError } = exciseOrder.quotationId
+    ? await supabase.from('quotations').select('"quoteNumber"').eq('id', exciseOrder.quotationId).maybeSingle()
+    : { data: null, error: null };
+  if (exciseQuoteError) throw exciseQuoteError;
   return {
     source: FILING_SOURCE_EXCISE_ORDER,
     salesOrder,
     exciseOrder,
+    exciseQuoteNumber: exciseQuote?.quoteNumber || null,
     resolved: {
       ...built,
       eligible: true,
@@ -233,12 +240,17 @@ export async function loadFilingSource(supabase, { exciseSalesOrderId = '', sale
   };
 }
 
-/** ใบยื่นที่ผูก SO นี้อยู่แล้ว (ลิงก์ใดลิงก์หนึ่ง) — `{ id }` หรือ null */
+/**
+ * ใบยื่นของงานนี้ที่มีอยู่แล้ว — `{ id, status }` หรือ null
+ * ⭐ แบ่งรอบ (0418): งานรายรอบ = ดูลิงก์ SO ค่าสรรพสามิตอย่างเดียว (SO ลูกค้ามีใบยื่นของรอบอื่นได้) ·
+ *    งานไม่เรียกเก็บ = ใบยื่นของ SO ลูกค้าที่ไม่ผูก SO ค่าสรรพสามิต (ทั้งใบ · V12)
+ */
 export async function findFilingFor(supabase, { salesOrderId, exciseSalesOrderId }) {
-  const ors = [salesOrderId && `salesOrderId.eq.${salesOrderId}`, exciseSalesOrderId && `exciseSalesOrderId.eq.${exciseSalesOrderId}`]
-    .filter(Boolean).join(',');
-  if (!ors) return null;
-  const { data, error } = await supabase.from('orders').select('id, status').or(ors).limit(1);
+  if (!salesOrderId && !exciseSalesOrderId) return null;
+  const query = supabase.from('orders').select('id, status');
+  const { data, error } = await (exciseSalesOrderId
+    ? query.eq('exciseSalesOrderId', exciseSalesOrderId)
+    : query.eq('salesOrderId', salesOrderId).is('exciseSalesOrderId', null)).limit(1);
   if (error) throw error;
   return data?.[0] || null;
 }

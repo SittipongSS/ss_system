@@ -139,7 +139,10 @@ const SCOPED_SAFE = new Map([
   ['app/api/sales-planning/quotations/[id]/route.js', { count: 1, reason: 'quotationId ใบเดียว — ใบย้อนหลังไม่มีใบเสนอราคา' }],
   /* PR4: คิว "รอออกใบค่าสรรพสามิต" (exciseHandledOrderIds) หา SO ค่าสรรพสามิตของใบที่รับแล้วผ่าน exciseRowsOnly + quotationId —
      ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด · count รวมคำสั่งโหลดใบเดียวของ PER_ID_GUARDED ในไฟล์เดียวกัน */
-  ['lib/excise/exciseQuotation.js', { count: 3, reason: 'SO ค่าสรรพสามิตของใบที่รับแล้ว (exciseRowsOnly + quotationId) — ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด' }],
+  /* แบ่งรอบ (หมวด 13 · 0418): +3 คำสั่ง — รอบค่าสรรพสามิตของ SO (loadExciseRoundState: SO ค่าสรรพสามิต exciseRowsOnly + quotationId ·
+     SO ลูกค้าต้นทางพร้อมบรรทัดด้วย id ใบเดียวที่ใบค่าภาษีชี้) · หน้าใบ (loadExciseQuoteRound: SO ต้นทางด้วย id) ·
+     คิว SA (ตัวอ่าน "ปิดยอดค้าง" ด้วย id ของ SO ที่มีใบค่าภาษีแล้ว) — ใบย้อนหลังไม่มีใบค่าภาษี (exciseQuotationBlocker) · ไม่รวมยอด */
+  ['lib/excise/exciseQuotation.js', { count: 6, reason: 'SO ค่าสรรพสามิตของใบที่รับแล้ว (exciseRowsOnly + quotationId) · SO ต้นทางของรอบด้วย id · ตัวอ่านปิดยอดค้าง — ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด' }],
   ['lib/excise/exciseSalesOrder.js', { count: 1, reason: 'quotationId ของใบค่าสรรพสามิตใบเดียว — ได้แต่ SO ค่าสรรพสามิต (ใบย้อนหลังไม่มีใบเสนอราคา) · ไม่รวมยอด' }],
   ['lib/excise/raFiling.js', { count: 5, reason: 'คิวรอยื่นกรมของ RA (PR5): SO ค่าสรรพสามิต (exciseRowsOnly — อนุมัติแล้ว + แถวกำลังมาที่ยังไม่อนุมัติ) · SO ลูกค้าไม่เรียกเก็บ (pipelineRowsOnly) · SO ต้นทางของแถวคิว + แผงสรุปใบยื่น (ตาม id ที่ผูกใบยื่น) — ไม่รวมยอด · ใบย้อนหลังถูกปฏิเสธที่ loadFilingSource (origin ต้องเป็น pipeline)' }],
 ]);

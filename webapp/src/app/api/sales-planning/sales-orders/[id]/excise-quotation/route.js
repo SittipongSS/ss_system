@@ -1,7 +1,8 @@
 // ── ใบเสนอราคาค่าสรรพสามิตของ SO ลูกค้าใบนี้ (แผนรื้อสรรพสามิต PR3 · มติเจ้าของ 28/10/2026) ─────────────────
 //
-// GET  — สถานะของปุ่ม "ออกใบเสนอราคาค่าสรรพสามิต" บนเส้นเดินงานของ SO: ใบที่ยังมีผล (ถ้ามี) + เหตุที่ออกไม่ได้
-//        + SO ค่าสรรพสามิตของใบที่ลูกค้ารับแล้ว (PR4)
+// GET  — สถานะของปุ่ม "ออกใบเสนอราคาค่าสรรพสามิต" บนเส้นเดินงานของ SO: รอบที่ยังมีผล (แบ่งรอบ · หมวด 13) พร้อม
+//        SO ค่าสรรพสามิต + บันทึกการยื่นของ RA รายรอบ + คงเหลือรายบรรทัด + เหตุที่ออกรอบใหม่ไม่ได้
+//        `liveQuote`/`exciseOrder` = รอบล่าสุด (เส้นเดินงานแบบรอบเดียว)
 //        `?preview=1` — พรีวิวใบใหม่สำหรับหน้าออกใบ (มติเจ้าของ 29/10 "แก้ก่อนบันทึก"): บรรทัด/ยอด/หัวใบที่จะได้
 //        ไม่ออกเลข ไม่สร้างสินค้า 04-003 ไม่ลงฐาน · สิทธิ์เท่าการออกใบ (แก้ SO ลูกค้าใบนั้นได้)
 // POST — ออกใบ (ร่าง · ยังไม่ยื่น) จากบรรทัดสินค้าสรรพสามิตของ SO + หัวใบที่แก้บนหน้าออกใบ (exciseQuotationOverrides)
@@ -12,9 +13,8 @@ import { withUser, ok, fail, forbidden, unauthorized } from '@/lib/http';
 import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
 import {
   ExciseQuotationError, createExciseQuotationDraft, exciseQuotationBlocker, exciseQuotationOverrides,
-  loadLiveExciseQuotation, previewExciseQuotationDraft,
+  loadExciseRoundState, previewExciseQuotationDraft,
 } from '@/lib/excise/exciseQuotation';
-import { loadLiveExciseSalesOrder } from '@/lib/excise/exciseSalesOrder';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,19 +35,28 @@ export const GET = withUser(async ({ user, supabase, ctx, req }) => {
   }
   const { row: order, response } = await loadScoped(supabase, 'sales_orders', id, user, 'view');
   if (response) return response;
-  const { data: liveQuote, error } = await loadLiveExciseQuotation(supabase, order.id);
-  if (error) return fail(error.message, 500);
-  // PR4: ใบที่ลูกค้ารับแล้ว → SO ค่าสรรพสามิตที่ยังมีผลของใบนั้น (ช่วงบนเส้นเดินงานตามใบนี้ต่อ)
-  let exciseOrder = null;
-  if (liveQuote?.status === 'accepted') {
-    const { data, error: orderError } = await loadLiveExciseSalesOrder(supabase, liveQuote.id);
-    if (orderError) return fail(orderError.message, 500);
-    exciseOrder = data ? { id: data.id, orderNumber: data.orderNumber, status: data.status } : null;
+  let state;
+  try {
+    state = await loadExciseRoundState(supabase, order);
+  } catch (error) {
+    if (error instanceof ExciseQuotationError) return fail(error.message, error.status);
+    throw error;
   }
+  const latest = state.rounds.at(-1) || null;
   return ok({
-    liveQuote,
-    exciseOrder,
-    blocker: exciseQuotationBlocker(order, { liveQuote }),
+    // PR4: ใบที่ลูกค้ารับแล้ว → SO ค่าสรรพสามิตที่ยังมีผลของใบนั้น (ช่วงบนเส้นเดินงานตามใบนี้ต่อ) — รอบล่าสุด
+    liveQuote: latest?.quote || null,
+    exciseOrder: latest?.exciseOrder || null,
+    rounds: state.rounds,
+    remaining: state.summary ? { rows: state.rows, ...state.summary } : null,
+    blocker: exciseQuotationBlocker(order, {
+      rounds: { liveCount: state.rounds.length, hasRemaining: state.summary ? state.summary.hasRemaining : true },
+    }),
+    remainderClosed: order.exciseRemainderClosedAt ? {
+      at: order.exciseRemainderClosedAt,
+      byName: order.exciseRemainderClosedByName || null,
+      reason: order.exciseRemainderClosedReason || null,
+    } : null,
     notBilled: order.exciseNotBilledKind ? {
       kind: order.exciseNotBilledKind,
       reason: order.exciseNotBilledReason,

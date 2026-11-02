@@ -125,10 +125,12 @@ const REVISION_RESETS = new Set([
      · "sourceSalesOrderId" มีได้เฉพาะใบ origin 'excise' (CHECK `sales_orders_deal_by_origin`) และใบ excise ออก Rev. ไม่ได้
        (`sales_orders_origin_shape` สาย excise บังคับ revisionNo = 0) ⇒ ใบ Rev. ทุกใบเป็น pipeline ที่ไม่มี SO ต้นทาง
      · "ไม่เรียกเก็บค่าสรรพสามิตในระบบ" เป็นการตัดสินของ *ใบรุ่นนั้น* (มติ D9 28/10) — Rev. อาจเปลี่ยนรายการ/จำนวน
-       ⇒ ใบ Rev. เข้าคิวให้ฝ่ายขายตัดสินใหม่ · ก๊อปมา = ภาษีของรุ่นใหม่ไม่ถูกเก็บโดยไม่มีใครตั้งใจ */
+       ⇒ ใบ Rev. เข้าคิวให้ฝ่ายขายตัดสินใหม่ · ก๊อปมา = ภาษีของรุ่นใหม่ไม่ถูกเก็บโดยไม่มีใครตั้งใจ
+     · "ปิดยอดค้าง" (0418 · V11) เหตุผลเดียวกัน — การตัดสินของรุ่นนั้น · Rev. เกิดได้เมื่อไม่มีรอบค่าภาษีที่ยังมีผล (Q16) ⇒ รุ่นใหม่เริ่มยอดค้างเต็ม */
   'sourceSalesOrderId',
   'exciseNotBilledKind', 'exciseNotBilledReason', 'exciseNotBilledRef',
   'exciseNotBilledAt', 'exciseNotBilledById', 'exciseNotBilledByName',
+  'exciseRemainderClosedAt', 'exciseRemainderClosedById', 'exciseRemainderClosedByName', 'exciseRemainderClosedReason',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -231,10 +233,11 @@ const DRAFT_OWNED = new Set([
   'actualMode', 'actualCountedAmount', 'actualSubmittedAmount',
   /* ใบค่าสรรพสามิต (mig 0414) — ใบจากใบเสนอราคาขายเป็นสาย pipeline เสมอ ⇒ ไม่มี SO ต้นทาง (CHECK `sales_orders_deal_by_origin`)
      · ใบค่าสรรพสามิตเกิดจาก RPC แยก (create_excise_sales_order_draft · 0416) ไม่ใช่เส้นนี้
-     · "ไม่เรียกเก็บในระบบ" ตัดสินได้หลังใบอนุมัติแล้วเท่านั้น ⇒ ใบร่างว่างโดยนิยาม */
+     · "ไม่เรียกเก็บในระบบ" / "ปิดยอดค้าง" (0418) ตัดสินได้หลังใบอนุมัติและออกรอบแล้วเท่านั้น ⇒ ใบร่างว่างโดยนิยาม */
   'sourceSalesOrderId',
   'exciseNotBilledKind', 'exciseNotBilledReason', 'exciseNotBilledRef',
   'exciseNotBilledAt', 'exciseNotBilledById', 'exciseNotBilledByName',
+  'exciseRemainderClosedAt', 'exciseRemainderClosedById', 'exciseRemainderClosedByName', 'exciseRemainderClosedReason',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง
