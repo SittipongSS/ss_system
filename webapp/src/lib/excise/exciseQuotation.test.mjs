@@ -24,14 +24,19 @@ const approvedOrder = (over = {}) => ({
 });
 
 // ── 1. ด่านออกใบ ───────────────────────────────────────────────────────────────────────────
-test('exciseQuotationBlocker: ออกได้เฉพาะ SO pipeline ที่อนุมัติอยู่ · ไม่ถูกแทน · ไม่ตัดสินไม่เรียกเก็บ · ยังไม่มีใบที่มีผล', () => {
+test('exciseQuotationBlocker: ออกได้เฉพาะ SO pipeline ที่อนุมัติอยู่ · ไม่ถูกแทน · ไม่ตัดสินไม่เรียกเก็บ · แบ่งรอบ: ยังมียอดค้าง + ไม่ปิดยอดค้าง', () => {
   assert.equal(exciseQuotationBlocker(approvedOrder()), null);
   assert.match(exciseQuotationBlocker(approvedOrder({ origin: 'historical' })), /ย้อนหลัง/);
   assert.match(exciseQuotationBlocker(approvedOrder({ origin: 'excise' })), /ค่าสรรพสามิตอยู่แล้ว/);
   assert.match(exciseQuotationBlocker(approvedOrder({ status: 'pending_approval' })), /อนุมัติแล้ว/);
   assert.match(exciseQuotationBlocker(approvedOrder({ supersededById: 'SO-2' })), /Rev/);
   assert.match(exciseQuotationBlocker(approvedOrder({ exciseNotBilledKind: 'not_liable' })), /ไม่เรียกเก็บ/);
-  assert.match(exciseQuotationBlocker(approvedOrder(), { liveQuote: { quoteNumber: 'QT-9' } }), /QT-9.*1 ใบสั่งขาย = 1 ใบ/);
+  // ⭐ แบ่งรอบ (หมวด 13 · 0418): มีรอบแล้วยังออกรอบใหม่ได้ตราบที่ยังค้าง — เดิม "1 ใบสั่งขาย = 1 ใบ"
+  assert.equal(exciseQuotationBlocker(approvedOrder(), { rounds: { liveCount: 1, hasRemaining: true } }), null);
+  assert.match(exciseQuotationBlocker(approvedOrder(), { rounds: { liveCount: 2, hasRemaining: false } }), /ครบทุกรายการแล้ว/);
+  assert.match(exciseQuotationBlocker(approvedOrder({ exciseRemainderClosedAt: '2026-11-02T00:00:00Z' }), { rounds: { liveCount: 1, hasRemaining: true } }), /ปิดยอดค้าง/);
+  assert.equal(exciseQuotationBlocker(approvedOrder({ exciseRemainderClosedAt: '2026-11-02T00:00:00Z' }), { rounds: { liveCount: 0, hasRemaining: true } }), null,
+    'ปิดยอดค้างมีผลเมื่อออกรอบแล้วเท่านั้น');
   assert.equal(exciseQuotationBlocker(null), 'ไม่พบใบสั่งขาย');
 });
 
@@ -112,9 +117,15 @@ test('createExciseQuotationDraft: ใบ origin excise ไม่มีดีล 
   assert.equal(audits.length, 1);
 });
 
-test('createExciseQuotationDraft: มีใบที่มีผลแล้ว = 409 · ไม่มีราคาขายปลีก = 400 บอก FG · ไม่มีสินค้าสรรพสามิต = 400 — ก่อนเขียนอะไร', async () => {
+/* รอบที่ยังมีผลของ SO เดียวกัน — บรรทัดชี้บรรทัด SO `L-1` (แบ่งรอบ) */
+const liveRound = (qty, over = {}) => ({
+  id: 'QT-L', quoteNumber: 'QT-L', origin: 'excise', status: 'draft',
+  lines: [{ id: 'QL-1', qty, metadata: { sourceSalesOrderLineId: 'L-1' } }], ...over,
+});
+
+test('createExciseQuotationDraft: ออกครบแล้ว = 409 พร้อมรอบล่าสุด · ไม่มีราคาขายปลีก = 400 บอก FG · ไม่มีสินค้าสรรพสามิต = 400 — ก่อนเขียนอะไร', async () => {
   const deps = { user: { id: 'U-SA' }, audit: async () => {}, ensureProduct: async () => ({ product: chargeProduct }) };
-  const live = createDb({ liveQuote: { id: 'QT-L', quoteNumber: 'QT-L', origin: 'excise', status: 'draft' }, lines: [SO_LINE], products: [FG] });
+  const live = createDb({ liveQuote: liveRound(10), lines: [SO_LINE], products: [FG] });
   await assert.rejects(createExciseQuotationDraft({ supabase: live, order: approvedOrder(), ...deps }),
     (e) => e instanceof ExciseQuotationError && e.status === 409 && e.extra.quotationId === 'QT-L');
   const unpriced = createDb({ lines: [SO_LINE], products: [{ ...FG, exciseTax: 0, localTax: 0, retailPriceIncVat: null }] });
@@ -169,8 +180,12 @@ test('previewExciseQuotationDraft: ได้หัวใบ+บรรทัด�
   assert.equal(preview.quote.lines[0].unitPrice, 8.85);
   assert.deepEqual(preview.sourceOrder, { id: 'SO-1', orderNumber: 'SO-26100001-0' });
   assert.deepEqual(preview.sourceDeal, { id: 'D-1', title: 'ดีลต้นทาง', ownerName: 'AE' });
-  // ด่านเดียวกับทางบันทึก — มีใบที่มีผลแล้ว = 409 พร้อมเลขใบให้หน้าเปิด
-  const live = createDb({ liveQuote: { id: 'QT-L', quoteNumber: 'QT-L', origin: 'excise', status: 'draft' }, lines: [SO_LINE], products: [FG] });
+  // แบ่งรอบ: จอได้แถวคงเหลือ + บรรทัดเต็มจำนวนไว้คิดยอดตามจำนวนที่พิมพ์
+  assert.deepEqual(preview.round.rows.map((row) => [row.sourceSalesOrderLineId, row.ordered, row.issued, row.remaining]), [['L-1', 10, 0, 10]]);
+  assert.equal(preview.round.templateLines[0].qty, 10);
+  assert.equal(preview.round.hasRemaining, true);
+  // ด่านเดียวกับทางบันทึก — ออกครบทุกรายการแล้ว = 409 พร้อมเลขรอบล่าสุดให้หน้าเปิด
+  const live = createDb({ liveQuote: liveRound(10), lines: [SO_LINE], products: [FG] });
   await assert.rejects(previewExciseQuotationDraft({ supabase: live, user: {}, order: approvedOrder(), ensureProduct: async () => ({ product: chargeProduct }) }),
     (e) => e instanceof ExciseQuotationError && e.status === 409 && e.extra.quotationId === 'QT-L');
 });
@@ -358,4 +373,79 @@ test('route SO ลูกค้า: ล็อก Q16 ก่อนย้อนอ�
   assert.ok(lock > 0 && lock < so.indexOf("if (action === 'revoke') {") && lock < so.indexOf("if (action === 'cancel') {"));
   assert.match(so, /exciseNotBilledBlocker\(before, \{ liveQuote, clearing, filing \}\)/);
   assert.match(so, /\.eq\('updatedAt', expected\.value\)/);
+});
+
+// ── 7. แบ่งรอบ (แผนรื้อสรรพสามิต หมวด 13 · มติเจ้าของ 02/11 V10–V12 · mig 0418) ─────────────────────────────
+test('แบ่งรอบ: รอบใหม่ตั้งต้น = คงเหลือ · ขอจำนวนเองได้ไม่เกินคงเหลือ · ศูนย์ทุกบรรทัด/เกิน = 400 ก่อนเขียน · ตรึงยอดสั่งรายบรรทัด', async () => {
+  const deps = { user: { id: 'U-SA' }, audit: async () => {}, ensureProduct: async () => ({ product: chargeProduct }) };
+  const firstRound = liveRound(4, { status: 'accepted' });
+
+  const byDefault = createDb({ liveQuote: firstRound, lines: [SO_LINE], products: [FG] });
+  await createExciseQuotationDraft({ supabase: byDefault, order: approvedOrder(), ...deps });
+  const row = byDefault.writes.find((w) => w.rpc === 'create_quotation_with_number').args.p_row;
+  const [line] = byDefault.writes.find((w) => w.table === 'quotation_lines').rows;
+  assert.equal(line.qty, 6, 'สั่ง 10 ออกรอบแรก 4 ⇒ รอบนี้ 6');
+  assert.equal(line.lineTotal, 53.1, '6 × 8.85');
+  assert.equal(row.subtotal, 53.1);
+  assert.deepEqual(row.metadata.exciseSource.orderedByLine, { 'L-1': 10 }, 'ยอดสั่งตรึงบนใบ — คิว SA รู้ว่ายังค้าง');
+
+  const asked = createDb({ liveQuote: firstRound, lines: [SO_LINE], products: [FG] });
+  await createExciseQuotationDraft({ supabase: asked, order: approvedOrder(), ...deps, overrides: { quantities: new Map([['L-1', 3]]) } });
+  assert.equal(asked.writes.find((w) => w.table === 'quotation_lines').rows[0].qty, 3);
+
+  for (const [qty, pattern] of [[7, /เกินยอดคงเหลือ.*FG-0108-01-002-00001 \(เหลือ 6\)/], [0, /อย่างน้อยหนึ่งรายการ/]]) {
+    const db = createDb({ liveQuote: firstRound, lines: [SO_LINE], products: [FG] });
+    await assert.rejects(createExciseQuotationDraft({ supabase: db, order: approvedOrder(), ...deps, overrides: { quantities: new Map([['L-1', qty]]) } }),
+      (e) => e instanceof ExciseQuotationError && e.status === 400 && pattern.test(e.message));
+    assert.equal(db.writes.filter((w) => w.rpc || w.table).length, 0);
+  }
+  const unknown = createDb({ liveQuote: firstRound, lines: [SO_LINE], products: [FG] });
+  await assert.rejects(createExciseQuotationDraft({ supabase: unknown, order: approvedOrder(), ...deps, overrides: { quantities: new Map([['L-X', 1]]) } }),
+    /ไม่ตรงกับใบสั่งขายต้นทาง/);
+  // V11: ปิดยอดค้างแล้ว = ออกรอบใหม่ไม่ได้ (409) แม้ยังเหลือ
+  const closed = createDb({ liveQuote: firstRound, lines: [SO_LINE], products: [FG] });
+  await assert.rejects(createExciseQuotationDraft({ supabase: closed, order: approvedOrder({ exciseRemainderClosedAt: '2026-11-02T00:00:00Z' }), ...deps }),
+    (e) => e instanceof ExciseQuotationError && e.status === 409 && /ปิดยอดค้าง/.test(e.message));
+});
+
+test('แบ่งรอบ: คำขอจำนวนจากจอ (exciseQuantities) ผ่าน exciseQuotationOverrides · ผิดรูป = ข้อความไทย', () => {
+  assert.deepEqual([...exciseQuotationOverrides({ exciseQuantities: { 'L-1': '6', 'L-2': 0 } }).value.quantities], [['L-1', 6], ['L-2', 0]]);
+  assert.equal(exciseQuotationOverrides({}).value.quantities, undefined, 'ไม่ส่ง = คงเหลือทั้งหมด');
+  for (const bad of [{ 'L-1': -1 }, { 'L-1': 'abc' }, { 'L-1': '' }, [1, 2], 'x']) {
+    assert.match(exciseQuotationOverrides({ exciseQuantities: bad }).error, /จำนวนรายบรรทัด/);
+  }
+});
+
+test('exciseHandledOrderIds (แบ่งรอบ): รอบจบหมดแต่ยังค้าง = อยู่ในคิว SA · ปิดยอดค้างแล้ว = จัดการแล้ว · รอบก่อนแบ่งรอบ (ไม่มียอดตรึง) = ครบ', async () => {
+  const done = (id, source, qty, over = {}) => ({
+    id, sourceSalesOrderId: source, status: 'accepted', createdAt: '2026-11-01',
+    metadata: { exciseSource: { orderedByLine: { [`${source}-L`]: 10 } } },
+    lines: [{ qty, metadata: { sourceSalesOrderLineId: `${source}-L` } }], ...over,
+  });
+  const quotes = [
+    done('Q-A', 'SO-A', 4), // ค้าง 6 ⇒ คิว SA
+    done('Q-B1', 'SO-B', 4), done('Q-B2', 'SO-B', 6), // ครบ 10 ⇒ จบ
+    done('Q-C', 'SO-C', 4), // ค้าง แต่ปิดยอดค้างแล้ว (orderRows ข้างล่าง) ⇒ จบ
+    done('Q-D', 'SO-D', 4, { metadata: {} }), // ใบก่อนแบ่งรอบ ⇒ ถือว่าครบ
+    done('Q-E1', 'SO-E', 4), { id: 'Q-E2', sourceSalesOrderId: 'SO-E', status: 'draft', lines: [] }, // มีรอบกำลังเดิน ⇒ จัดการแล้ว
+  ];
+  const orderRows = ['Q-A', 'Q-B1', 'Q-B2', 'Q-C', 'Q-D', 'Q-E1'].map((quotationId) => ({ id: `SOR-${quotationId}`, quotationId }));
+  /* ตัวอ่าน "ปิดยอดค้าง" ไปตาราง sales_orders เหมือนตัวอ่าน SO ค่าสรรพสามิต — ฐานปลอมแยกด้วยคอลัมน์ที่ select */
+  const db = {
+    from: (table) => {
+      let cols = '';
+      const b = {
+        select(c) { cols = c; return b; }, eq() { return b; }, in() { return b; }, order() { return b; }, neq() { return b; }, is() { return b; },
+        not() { return b; },
+        range: async () => ({
+          data: table === 'quotations' ? quotes
+            : /exciseRemainderClosedAt/.test(cols) ? [{ id: 'SO-C', exciseRemainderClosedAt: '2026-11-02' }] : orderRows,
+          error: null,
+        }),
+      };
+      return b;
+    },
+  };
+  const handled = await exciseHandledOrderIds(db, ['SO-A', 'SO-B', 'SO-C', 'SO-D', 'SO-E'].map((id) => ({ id })));
+  assert.deepEqual([...handled].sort(), ['SO-B', 'SO-C', 'SO-D', 'SO-E']);
 });

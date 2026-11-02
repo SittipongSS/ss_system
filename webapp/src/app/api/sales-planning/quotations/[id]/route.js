@@ -25,8 +25,9 @@ import {
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import {
-  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, exciseReferenceIsAuto, recalcExciseQuotationLines,
+  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, exciseReferenceIsAuto, loadExciseQuoteRound, recalcExciseQuotationLines,
 } from '@/lib/excise/exciseQuotation';
+import { parseRoundQuantities } from '@/lib/excise/exciseRounds';
 import {
   customerMismatchMessage, customerMismatchedLines,
   enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines, refreshFgLinesForDisplay,
@@ -174,6 +175,8 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
   const withBillingTerms = new URL(req.url).searchParams.get('include') === 'billingTerms';
   const billingTerms = withBillingTerms ? await loadCreateFormBillingTerms(supabase, filledQuote.customerId, { user }) : undefined;
   const canApprove = canApproveQuotation(user, quotationApprovalDeal(filledQuote));
+  // ⭐ แบ่งรอบ (หมวด 13): ใบค่าสรรพสามิต — คงเหลือรายบรรทัดไม่นับใบนี้ (ช่องจำนวนบนหน้าใบ) · อ่านไม่ขึ้นไม่ทำใบล้ม
+  const exciseRound = await loadExciseQuoteRound(supabase, filledQuote);
   // canApprove: ผู้ใช้ปัจจุบันเป็นเจ้าของดีล/superuser (ผู้อนุมัติ) — UI ใช้แสดงปุ่มอนุมัติ
   return ok({
     ...filledQuote,
@@ -188,6 +191,7 @@ export const GET = withUser(async ({ user, supabase, req, ctx }) => {
       hasSignatureEvidence: Boolean(hasSignatureEvidence),
     }),
     proposerSignature,
+    ...(exciseRound ? { exciseRound } : {}),
     ...(withBillingTerms ? { billingTerms } : {}),
   });
 });
@@ -214,27 +218,40 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const body = await req.json().catch(() => ({}));
   /* ⭐ ใบค่าสรรพสามิต (แผนรื้อสรรพสามิต หมวด 3.4): บรรทัด = ภาษีที่ระบบคิดจาก SO ต้นทาง · VAT 7% ตรึง · ไม่มีส่วนลด ⇒ จอส่งมาเอง = ปฏิเสธ
-     แก้บรรทัดได้ทางเดียวคือ `action: 'recalc_from_sales_order'` — server คิดใหม่แล้วบันทึกผ่านทางเดียวกับการแก้บรรทัดปกติ
-     (ด่านสถานะ/ยังไม่ยื่นข้างล่างใช้ร่วม · enforceMasterPrices ข้ามบรรทัด 04-003 ของใบ excise) */
+     แก้บรรทัดได้สองทาง — server คิดใหม่จาก SO แล้วบันทึกผ่านทางเดียวกับการแก้บรรทัดปกติ
+     (ด่านสถานะ/ยังไม่ยื่นข้างล่างใช้ร่วม · enforceMasterPrices ข้ามบรรทัด 04-003 ของใบ excise):
+       · `action: 'recalc_from_sales_order'` — ราคาขายปลีก/ทะเบียนเปลี่ยน · คงจำนวนเดิมของรอบนี้
+       · ⭐ แบ่งรอบ (หมวด 13): `exciseQuantities` `{ [บรรทัด SO]: จำนวน }` มากับการบันทึกหัวใบ — จำนวนรอบนี้ ไม่เกินคงเหลือ */
   if (isExciseOrder(before)) {
     if (['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
       return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
     }
-    if (body.action === 'recalc_from_sales_order') {
+    const requested = parseRoundQuantities(body.exciseQuantities);
+    if (requested.error) return badRequest(requested.error);
+    delete body.exciseQuantities;
+    if (body.action === 'recalc_from_sales_order' || requested.value) {
       if (before.approvalStatus !== 'not_submitted') {
-        return fail('ใบนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงคิดใหม่จากใบสั่งขายได้', 409);
+        return fail(requested.value
+          ? 'ใบนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงแก้จำนวนได้'
+          : 'ใบนี้ยื่นอนุมัติแล้ว — ดึงกลับก่อนจึงคิดใหม่จากใบสั่งขายได้', 409);
       }
       try {
-        const { lines: recalculated, header } = await recalcExciseQuotationLines({ supabase, user, quote: before, request: req });
+        const { lines: recalculated, header } = await recalcExciseQuotationLines({
+          supabase, user, quote: before, request: req, quantities: requested.value,
+        });
         delete body.action;
         body.lines = recalculated;
-        // หัวใบที่มาจาก SO ต้นทาง (ผู้เสนอราคา · เบอร์ · คำอ้างอิงที่ระบบเขียนเอง) — คำอ้างอิงที่คนพิมพ์เองไม่แตะ
-        if (exciseReferenceIsAuto(before.referenceNote)) body.referenceNote = header.referenceNote;
+        /* หัวใบที่มาจาก SO ต้นทาง (ผู้เสนอราคา · เบอร์ · คำอ้างอิงที่ระบบเขียนเอง) — คำอ้างอิงที่คนพิมพ์เองไม่แตะ
+           ⚠️ แก้จำนวนมากับการบันทึกหัวใบ ⇒ ตัดสิน "ระบบเขียนเอง" จากค่าที่ส่งมาในคำขอนี้ (ไม่ใช่ของเดิม) และคงชุดเงื่อนไขการค้าที่จอเลือก
+              — ไม่งั้นคำอ้างอิง/ชุดเงื่อนไขที่คนเพิ่งแก้ในการบันทึกเดียวกันถูกเขียนทับเงียบ (บทเรียน Rev.2 ใบทดลอง 02/11) */
+        const sentReference = 'referenceNote' in body ? body.referenceNote : before.referenceNote;
+        if (exciseReferenceIsAuto(sentReference)) body.referenceNote = header.referenceNote;
+        const sentMeta = body.metadata && typeof body.metadata === 'object' && !Array.isArray(body.metadata) ? body.metadata : {};
         body.metadata = {
           ...header.metadata,
-          // ส่งชุดเงื่อนไขการค้าเดิมกลับไป — ทางรวม metadata ข้างล่างตรวจ/ตรึงสองคีย์นี้ใหม่ทุกครั้งที่มี metadata มากับคำขอ
-          paymentPresetVersionId: before.metadata?.paymentPresetVersionId || null,
-          remarksPresetVersionId: before.metadata?.remarksPresetVersionId || null,
+          // ส่งชุดเงื่อนไขการค้ากลับไป — ทางรวม metadata ข้างล่างตรวจ/ตรึงสองคีย์นี้ใหม่ทุกครั้งที่มี metadata มากับคำขอ
+          paymentPresetVersionId: 'paymentPresetVersionId' in sentMeta ? sentMeta.paymentPresetVersionId : before.metadata?.paymentPresetVersionId || null,
+          remarksPresetVersionId: 'remarksPresetVersionId' in sentMeta ? sentMeta.remarksPresetVersionId : before.metadata?.remarksPresetVersionId || null,
         };
       } catch (recalcError) {
         if (recalcError instanceof ExciseQuotationError) return fail(recalcError.message, recalcError.status);

@@ -8,6 +8,8 @@
 //    หน้าใบ ([id]) และหน้าสร้างใบปกติ (/new) · ต่างกันแค่โหมดที่มีเหตุผลด้านข้อมูล:
 //    - ที่มา = SO ลูกค้า (ไม่มีดีล · แผนรื้อสรรพสามิต หมวด 3.1) แทนตัวเลือกลูกค้า/ดีล
 //    - รายการอ่านอย่างเดียว (`editable={false}`) — บรรทัดคิดจาก SO ต้นทางเท่านั้น แก้ภายหลังด้วย "คิดใหม่จากใบสั่งขาย"
+//    - ⭐ แบ่งรอบ (หมวด 13 · มติ 02/11): แก้ได้แค่ **จำนวนของรอบนี้** ต่อบรรทัด (ExciseRoundQuantities — ตัวเดียวกับโมดัลแก้จำนวนบนหน้าใบ)
+//      ค่าตั้งต้น = คงเหลือทั้งหมด · รายการ/ยอดบนหน้านี้คิดจากจำนวนที่พิมพ์ด้วยตัวคิดเดียวกับ server (applyRoundQuantities)
 //    - ลูกค้า/ที่อยู่/ผู้ติดต่อ ลอกจากใบเสนอราคาต้นทางของ SO — เปลี่ยนได้ที่หน้าใบหลังบันทึก (ร่าง) เหมือนใบทั่วไป
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -23,6 +25,9 @@ import QuotationInstallments from "@/components/salesPlanning/QuotationInstallme
 import QuotationPaymentTerms from "@/components/salesPlanning/QuotationPaymentTerms";
 import QuotationNotes from "@/components/salesPlanning/QuotationNotes";
 import QuotationLineItems from "@/components/salesPlanning/QuotationLineItems";
+import ExciseRoundQuantities, { roundInputsFrom, roundInputsOver, roundInputsPayload } from "@/components/excise/ExciseRoundQuantities";
+import { applyRoundQuantities, roundQuantitiesFromInputs } from "@/lib/excise/exciseRounds";
+import { quoteTotals } from "@/lib/salesPlanning";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
@@ -69,6 +74,7 @@ function NewExciseQuotationInner() {
   const [payment, setPayment] = useState(() => paymentFormOf(null));
   const [notes, setNotes] = useState("");
   const [notesPresetVersionId, setNotesPresetVersionId] = useState(null);
+  const [qtyInputs, setQtyInputs] = useState({});
 
   useEffect(() => {
     if (!salesOrderId) { setLoading(false); setLoadError({ message: "ไม่ได้ระบุใบสั่งขายต้นทาง — เปิดหน้านี้จากปุ่มบนใบสั่งขาย" }); return undefined; }
@@ -90,6 +96,7 @@ function NewExciseQuotationInner() {
         setReferenceNote(quote.referenceNote || "");
         setPayment(paymentFormOf(quote));
         setNotes(quote.notes || "");
+        setQtyInputs(roundInputsFrom(data?.round?.rows || []));
       } catch (loadFailure) {
         if (alive) setLoadError({ message: loadFailure.message, quotationId: loadFailure.data?.quotationId || null });
       } finally {
@@ -99,8 +106,17 @@ function NewExciseQuotationInner() {
     return () => { alive = false; };
   }, [salesOrderId]);
 
-  const quote = preview?.quote || null;
-  const lines = useMemo(() => quote?.lines || [], [quote]);
+  const previewQuote = preview?.quote || null;
+  const round = preview?.round || null;
+  const roundRows = useMemo(() => round?.rows || [], [round]);
+  /* รายการ/ยอดของรอบนี้ตามจำนวนที่พิมพ์ — ไม่มีข้อมูลแบ่งรอบ (server รุ่นก่อน) = รายการจากพรีวิวตามเดิม */
+  const lines = useMemo(() => (round?.templateLines
+    ? applyRoundQuantities(round.templateLines, roundQuantitiesFromInputs(roundRows, qtyInputs))
+    : previewQuote?.lines || []), [round, roundRows, qtyInputs, previewQuote]);
+  const quote = useMemo(() => (previewQuote
+    ? { ...previewQuote, ...quoteTotals(lines, { vatRate: Number(previewQuote.vatRate || 0) }) }
+    : null), [previewQuote, lines]);
+  const overCodes = roundInputsOver(roundRows, qtyInputs);
 
   const paymentPlan = useMemo(() => (payment.type === "installment"
     ? { type: "installment", paymentMethod: payment.paymentMethod.trim() || null, installments: payment.installments.map((row) => ({ label: row.label, percent: Number(row.percent) || 0, note: row.note })) }
@@ -128,6 +144,8 @@ function NewExciseQuotationInner() {
             paymentPresetVersionId: payment.presetVersionId || null,
             remarksPresetVersionId: notesPresetVersionId || null,
           },
+          // แบ่งรอบ: จำนวนรอบนี้รายบรรทัด SO — server ตรวจกับคงเหลือซ้ำ (ไม่ส่ง = คงเหลือทั้งหมด)
+          ...(round?.rows ? { exciseQuantities: roundInputsPayload(qtyInputs) } : {}),
         },
         fallbackError: "ออกใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ",
       });
@@ -136,7 +154,7 @@ function NewExciseQuotationInner() {
       setError(createError.message || "ออกใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ");
       setCreating(false);
     }
-  }, [quote, paymentPlan, salesOrderId, quoteDate, validUntil, referenceNote, payment, notes, notesPresetVersionId, router]);
+  }, [quote, paymentPlan, salesOrderId, quoteDate, validUntil, referenceNote, payment, notes, notesPresetVersionId, round, qtyInputs, router]);
 
   if (!canEdit) {
     return (
@@ -160,10 +178,13 @@ function NewExciseQuotationInner() {
     {
       id: "lines",
       label: "รายการค่าสรรพสามิต",
-      detail: quote ? `${lines.length} รายการ จาก ${naText(sourceOrder?.orderNumber)}` : "กำลังคิดจากใบสั่งขาย",
-      ready: lines.length > 0,
+      detail: overCodes.length
+        ? `จำนวนเกินคงเหลือ: ${overCodes.join(", ")}`
+        : quote ? `${lines.length} รายการ จาก ${naText(sourceOrder?.orderNumber)}` : "กำลังคิดจากใบสั่งขาย",
+      ready: lines.length > 0 && !overCodes.length,
     },
   ];
+  const liveRounds = round?.liveRounds || [];
 
   const rightRail = (
     <>
@@ -183,7 +204,7 @@ function NewExciseQuotationInner() {
           id: "save",
           kind: "save",
           label: creating ? "กำลังบันทึก…" : "บันทึก",
-          disabled: !quote || !lines.length,
+          disabled: !quote || !lines.length || overCodes.length > 0,
           onClick: create,
         }}
         secondaryActions={[{
@@ -272,8 +293,29 @@ function NewExciseQuotationInner() {
             </label>
           </section>
 
+          {roundRows.length > 0 && (
+            <section className={styles.card}>
+              <div className={styles.sectionHeading}>
+                <Package size={17} />
+                <h2>{liveRounds.length ? `จำนวนรอบที่ ${liveRounds.length + 1}` : "จำนวนของรอบนี้"}</h2>
+                <span>ส่งไม่ครบในรอบเดียว ใส่เฉพาะที่ส่งรอบนี้ — ส่วนที่เหลือค้างไว้ออกรอบถัดไป</span>
+              </div>
+              {liveRounds.length > 0 && (
+                <p className={styles.roundHint}>
+                  ออกไปแล้ว: {liveRounds.map((row) => row.quoteNumber || row.id).join(" · ")}
+                </p>
+              )}
+              <ExciseRoundQuantities
+                rows={roundRows}
+                values={qtyInputs}
+                editable
+                onChange={(key, value) => setQtyInputs((current) => ({ ...current, [key]: value }))}
+              />
+            </section>
+          )}
+
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการค่าสรรพสามิต</h2><span>คิดจากใบสั่งขายต้นทาง — แก้ไม่ได้บนหน้านี้</span></div>
+            <div className={styles.sectionHeading}><Package size={17} /><h2>รายการค่าสรรพสามิต</h2><span>คิดจากใบสั่งขายต้นทางตามจำนวนรอบนี้ — ราคา/ชิ้นแก้ไม่ได้</span></div>
             {warnings.length > 0 && (
               <p className={styles.warnHint}>
                 ยังไม่มีเลขทะเบียนสรรพสามิต: {warnings.map((warning) => warning.fgCode).filter(Boolean).join(" · ") || `${warnings.length} รายการ`} — ออกใบได้ ฝ่าย RA ขึ้นทะเบียนก่อนยื่นกรม

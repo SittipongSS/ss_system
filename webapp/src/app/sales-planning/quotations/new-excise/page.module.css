@@ -27,6 +27,8 @@
 
 /* FG ที่ยังไม่มีเลขทะเบียน — ออกใบได้ แต่ต้องสะดุดตากว่าคำอธิบายทั่วไป */
 .warnHint { margin: 0 0 var(--space-3); color: var(--amber); font-size: var(--fs-4); line-height: var(--lh-thai); }
+/* รอบที่ออกไปแล้วของ SO เดียวกัน (แบ่งรอบ) */
+.roundHint { margin: 0 0 var(--space-3); color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
 
 .documentMeta { display: grid; grid-template-columns: repeat(3, minmax(190px, 280px)); align-items: end; gap: var(--space-4-5); }
 .documentMeta label { display: flex; min-width: 0; flex-direction: column; align-items: stretch; color: var(--text-2); font-size: var(--fs-5); font-weight: var(--fw-bold); }

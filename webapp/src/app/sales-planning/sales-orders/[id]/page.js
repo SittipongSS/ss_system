@@ -167,6 +167,7 @@ import HistoricalDuplicateReviewCard from "@/components/salesPlanning/Historical
 import { historicalDuplicateReviewOf, historicalDuplicateReviewView } from "@/lib/sales/historicalDuplicates";
 import CoverageTimeline from "@/components/salesPlanning/historicalWizard/CoverageTimeline";
 import ExciseNotBilledDialog from "@/components/excise/ExciseNotBilledDialog";
+import ExciseRoundsCard from "@/components/excise/ExciseRoundsCard";
 import { EXCISE_NOT_BILLED_KINDS } from "@/lib/excise/exciseNotBilled";
 import {
   EXCISE_ORDER_MODAL_COPY, EXCISE_ORDER_STATUS_DESCRIPTION, excisePreVatAmount, exciseSourceOrderLabel, salesOrderApprovalDeal,
@@ -2624,6 +2625,12 @@ export default function SalesOrderDetailPage() {
         </ContextGrid>
 
         <SalesOrderWorkTrack track={workTrack} />
+        {/* ⭐ แบ่งรอบ (หมวด 13): รายรอบถึงขั้นไหน + ยอดคงเหลือ — วาดเมื่อมีรอบแล้ว */}
+        <ExciseRoundsCard
+          rounds={exciseQuoteState?.rounds || []}
+          remaining={exciseQuoteState?.remaining || null}
+          remainderClosed={exciseQuoteState?.remainderClosed || null}
+        />
         {notBilledOpen ? (
           <ExciseNotBilledDialog
             open

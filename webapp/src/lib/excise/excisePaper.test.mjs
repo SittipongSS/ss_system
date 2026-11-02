@@ -70,8 +70,9 @@ test('คิดใหม่จากใบสั่งขาย: เขียน
   assert.equal(exciseReferenceIsAuto('อ้างถึง PO-55 ลว. 1 พ.ย.'), false, 'คนพิมพ์เอง');
   const { readFileSync } = await import('node:fs');
   const route = readFileSync(new URL('../../app/api/sales-planning/quotations/[id]/route.js', import.meta.url), 'utf8');
-  assert.match(route, /if \(exciseReferenceIsAuto\(before\.referenceNote\)\) body\.referenceNote = header\.referenceNote;/);
-  assert.match(route, /paymentPresetVersionId: before\.metadata\?\.paymentPresetVersionId \|\| null/);
+  /* แบ่งรอบ: แก้จำนวนมากับการบันทึกหัวใบ ⇒ ตัดสินจากค่าที่ส่งมาในคำขอนี้ · คงชุดเงื่อนไขที่จอเลือก (ไม่ส่ง = ของเดิม) */
+  assert.match(route, /const sentReference = 'referenceNote' in body \? body\.referenceNote : before\.referenceNote;\s*if \(exciseReferenceIsAuto\(sentReference\)\) body\.referenceNote = header\.referenceNote;/);
+  assert.match(route, /paymentPresetVersionId: 'paymentPresetVersionId' in sentMeta \? sentMeta\.paymentPresetVersionId : before\.metadata\?\.paymentPresetVersionId \|\| null/);
   const lib = readFileSync(new URL('./exciseQuotation.js', import.meta.url), 'utf8');
   assert.match(lib, /salesOwner: order\.deal\?\.ownerName \|\| null,/, 'ตอนออกใบตรึงชื่อเจ้าของดีลต้นทาง');
   assert.match(lib, /salesOwner: deal\?\.ownerName \|\| null,/, 'ตอนคิดใหม่เติมชื่อเจ้าของดีลต้นทาง ณ ตอนนี้');

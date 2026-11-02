@@ -129,10 +129,12 @@ test('คำร้องขอเอกสารบัญชีจากใบ�
   assert.match(route, /dealId = qtDealId;/);
 });
 
-test('GET …/excise-quotation ส่ง SO ค่าสรรพสามิตของใบที่ลูกค้ารับแล้ว (ช่วงบนเส้นเดินงานตามต่อ)', () => {
+test('GET …/excise-quotation ส่ง SO ค่าสรรพสามิตของรอบล่าสุด (ช่วงบนเส้นเดินงานตามต่อ) + รายรอบ + คงเหลือ (แบ่งรอบ)', () => {
   const route = code('../../app/api/sales-planning/sales-orders/[id]/excise-quotation/route.js');
-  assert.match(route, /if \(liveQuote\?\.status === 'accepted'\) \{\s*const \{ data, error: orderError \} = await loadLiveExciseSalesOrder\(supabase, liveQuote\.id\);/);
-  assert.match(route, /exciseOrder,/);
+  assert.match(route, /state = await loadExciseRoundState\(supabase, order\);/);
+  assert.match(route, /liveQuote: latest\?\.quote \|\| null,\s*exciseOrder: latest\?\.exciseOrder \|\| null,\s*rounds: state\.rounds,/);
+  const lib = code('./exciseQuotation.js');
+  assert.match(lib, /\.in\('quotationId', acceptedIds\)\s*\.neq\('status', 'cancelled'\)\s*\.is\('supersededById', null\)/, 'SO ค่าสรรพสามิตที่ยังมีผลของรอบที่รับแล้ว');
 });
 
 // ── 4. migration 0416 ──────────────────────────────────────────────────────────────────────────

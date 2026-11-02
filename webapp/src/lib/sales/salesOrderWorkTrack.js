@@ -22,7 +22,7 @@ import { REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { JOB_STATUS_LABELS } from '@/lib/pm/productionPlan';
 import { TRACKS, statusMeta } from '@/lib/excise/workflow';
 import { NOT_BILLED_FILING_KINDS } from '@/lib/excise/raFilingRules';
-import { fmtDate, fmtMoney } from '@/lib/format';
+import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
 
 /* ประเภทดีลที่มีสายผลิตจริง — ของเข้าและผลิตขึ้นเฉพาะสองตัวนี้
    · SCENT     ขายค่าออกแบบกลิ่น จบที่ RD ส่ง direction ไม่มีของเข้าไม่มีคิวผลิต
@@ -299,11 +299,82 @@ function taxBaseNotes(lines) {
   }];
 }
 
+/**
+ * ขั้นของรอบค่าสรรพสามิตหนึ่งรอบ (ใบเสนอราคา → SO ค่าสรรพสามิต → RA) — คำเดียวกับเส้นเดินงาน · การ์ดรอบบนหน้า SO ใช้ตัวนี้
+ * @param round แถวจาก GET …/excise-quotation `rounds[]` (`quote` · `exciseOrder` · `filing`)
+ * @returns `{ text, done }`
+ */
+export function exciseRoundStage(round) {
+  if (round?.filing) {
+    const at = FILING_AT[round.filing.status] || round.filing.status;
+    return { text: SHORT_FILING[at] || at, done: at === FILING_STEPS.at(-1) };
+  }
+  if (round?.exciseOrder) {
+    const order = round.exciseOrder;
+    return {
+      text: `ใบสั่งขายค่าสรรพสามิต${order.orderNumber ? ` ${order.orderNumber}` : ''} ${EXCISE_ORDER_STATUS_TEXT(order)}`
+        + (order.status === 'approved' ? ' · รอ RA ยื่นกรม' : ''),
+      done: false,
+    };
+  }
+  if (round?.quote?.status === 'accepted') return { text: 'Won แล้ว — รอออกใบสั่งขายค่าสรรพสามิต', done: false };
+  return { text: EXCISE_QUOTE_STATUS_TEXT(round?.quote || {}), done: false };
+}
+
+/* ⭐ แบ่งรอบ (แผนรื้อสรรพสามิต หมวด 13 · มติ 02/11 V10–V11): SO ลูกค้าที่มีหลายรอบ หรือรอบเดียวแต่ยังมียอดค้าง — ช่วงนี้สรุป
+   "ออกแล้ว n รอบ · ยังค้าง x" + ปุ่มออกรอบถัดไป + FG ที่ยังค้าง · ขั้นรายรอบอยู่ที่การ์ดรอบบนหน้า SO (ExciseRoundsCard) */
+function roundsSegment(excise, { rounds, remaining, notes }) {
+  const exciseQuote = excise.exciseQuote || {};
+  const closed = !!exciseQuote.remainderClosed;
+  const open = !!remaining?.hasRemaining && !closed;
+  const stages = rounds.map(exciseRoundStage);
+  const done = !open && stages.every((stage) => stage.done);
+  const createBlocked = excise.createDisabledReason || exciseQuote.blocker || null;
+  const openRows = (remaining?.rows || []).filter((row) => row.remaining > 0);
+  const latest = rounds.at(-1);
+  return {
+    key: 'filing',
+    label: 'ค่าสรรพสามิต',
+    state: done ? 'done' : 'live',
+    connect: {
+      message: `ออกใบค่าสรรพสามิตแล้ว ${rounds.length} รอบ`
+        + (closed ? ' · ปิดยอดค้างแล้ว' : remaining?.hasRemaining
+          ? ` · ยังค้าง ${fmtNumber(remaining.remainingUnits)} หน่วย (${remaining.remainingLines} รายการ)`
+          : ' · ครบทุกรายการแล้ว'),
+      actions: open ? [{
+        label: 'ออกใบรอบถัดไป',
+        onClick: excise.onCreateQuote || null,
+        disabled: !!createBlocked || !!excise.actionDisabled,
+        disabledReason: createBlocked,
+      }] : [],
+    },
+    meta: latest ? `รอบที่ ${latest.round}: ${exciseRoundStage(latest).text}` : null,
+    ...((open && openRows.length) || notes.length ? {
+      notes: [
+        ...(open && openRows.length ? [{
+          state: 'excise_remaining',
+          label: 'ยังค้างออกใบ',
+          count: openRows.length,
+          codes: openRows.map((row) => row.fgCode).slice(0, FG_LIST_LIMIT),
+          more: Math.max(0, openRows.length - FG_LIST_LIMIT),
+        }] : []),
+        ...notes,
+      ],
+    } : {}),
+  };
+}
+
 function filingSegment(excise, { approved }) {
   if (!excise || excise.loading || excise.schemaReady === false) return null;
   const lines = excise.lines || [];
   if (!lines.length && !excise.filing) return null;
   const notes = taxBaseNotes(lines);
+
+  const rounds = excise.exciseQuote?.rounds || [];
+  const remaining = excise.exciseQuote?.remaining || null;
+  if (rounds.length > 1 || (rounds.length === 1 && remaining?.hasRemaining)) {
+    return roundsSegment(excise, { rounds, remaining, notes });
+  }
 
   /* ⭐ v3 (มติ 02/11 ข้อ V1/V7): ฝ่ายขายต้องรู้ว่าใบที่ไป RA ถึงขั้นไหน — บนเส้นนี้ ไม่ต้องเข้า /tax (ไม่มีลิงก์ไปบันทึกของ RA) */
   if (excise.filing) {

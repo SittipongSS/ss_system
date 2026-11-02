@@ -35,16 +35,22 @@ const soCaretakerTeam = (customer) => {
   return teams.length === 1 ? teams[0] : null;
 };
 
+/* ⭐ แบ่งรอบ (mig 0418 · แผน หมวด 13): SO ลูกค้าหนึ่งใบมีบันทึกการยื่นได้หลายใบ (รายรอบ · ผูก SO ค่าสรรพสามิตคนละใบ)
+   — เดิม `.maybeSingle()` = พังทั้งเส้นเดินงานเมื่อมีรอบที่สอง · `filing` = ใบเดียวของ SO (ไม่เรียกเก็บ หรือมีรอบเดียว)
+   ส่วนหลายรอบจออ่านรายรอบจาก GET …/excise-quotation (`rounds[].filing`) */
 async function findExistingFiling(supabase, salesOrderId) {
   const { data, error } = await supabase
     .from("orders")
     /* ช่องร่องรอยของ RA (v3) — เส้นเดินงานบน SO บอกฝ่ายขายว่าถึงขั้นไหน (เริ่มยื่นเมื่อ/โดย · เลขใบเสร็จ · วันชำระ) */
-    .select("id, status, totalTax, amountToCollect, salesOrderId, createdAt, filingStartedAt, filingStartedByName, exciseReceiptNumber, taxPaidDate, filedAt")
+    .select("id, status, totalTax, amountToCollect, salesOrderId, exciseSalesOrderId, createdAt, filingStartedAt, filingStartedByName, exciseReceiptNumber, taxPaidDate, filedAt")
     .eq("salesOrderId", salesOrderId)
-    .maybeSingle();
-  if (missingSalesOrderColumn(error)) return { filing: null, schemaReady: false };
+    .order("createdAt", { ascending: true })
+    .order("id", { ascending: true });
+  if (missingSalesOrderColumn(error)) return { filing: null, filings: [], schemaReady: false };
   if (error) throw error;
-  return { filing: data || null, schemaReady: true };
+  const filings = data || [];
+  const notBilled = filings.find((row) => !row.exciseSalesOrderId) || null;
+  return { filing: notBilled || (filings.length === 1 ? filings[0] : null), filings, schemaReady: true };
 }
 
 async function loadSalesOrderContext(supabase, salesOrderId) {
@@ -241,8 +247,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       quotationId: salesOrder.quotationId || null,
       quoteNumber: salesOrder.quotation?.quoteNumber || null,
     };
-    if (existing.filing) return ok({ ...resolved, source, filing: existing.filing, eligible: false, schemaReady: true });
-    return ok({ filing: null, schemaReady: true, source, ...resolved });
+    if (existing.filings.length) {
+      return ok({ ...resolved, source, filing: existing.filing, filings: existing.filings, eligible: false, schemaReady: true });
+    }
+    return ok({ filing: null, filings: [], schemaReady: true, source, ...resolved });
   } catch (error) {
     return fail(`ตรวจการยื่นชำระไม่สำเร็จ: ${error.message}`, 500);
   }
@@ -275,7 +283,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     const existing = await findFilingFor(supabase, {
       salesOrderId: loaded.salesOrder.id, exciseSalesOrderId: loaded.exciseOrder?.id,
     });
-    if (existing) return conflict(`ใบสั่งขาย ${loaded.salesOrder.orderNumber || loaded.salesOrder.id} เริ่มยื่นไปแล้ว (บันทึก ${existing.id})`);
+    if (existing) {
+      const doc = loaded.exciseOrder?.orderNumber || loaded.salesOrder.orderNumber || loaded.salesOrder.id;
+      return conflict(`ใบสั่งขาย ${doc} เริ่มยื่นไปแล้ว (บันทึก ${existing.id})`);
+    }
     if (!loaded.resolved.lines.length) return badRequest("ใบสั่งขายนี้ไม่มีรายการสินค้าสรรพสามิตให้ยื่น");
     const gateError = filingStartGateError(filingStartGates({
       order: { salesOrderId: loaded.salesOrder.id, exciseSalesOrderId: loaded.exciseOrder?.id || null, items: loaded.resolved.lines },
@@ -305,7 +316,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ตรึงข้อมูลลูกค้าลงใบ: snapshot บนใบเสนอราคามาก่อน แล้วจึงตกมาที่ทะเบียนลูกค้าสด (mig 0167)
     customerTaxId: salesOrder.quotation?.customerTaxId || salesOrder.customer?.taxId || null,
     customerAddress: salesOrder.quotation?.billingAddress || salesOrder.customer?.address || null,
-    quotationRef: salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
+    /* ⭐ แบ่งรอบ: รอบละใบยื่น ⇒ เลขอ้างอิงใบเสนอราคา = ใบค่าสรรพสามิตของรอบนั้น (ใบที่ลูกค้าจ่ายภาษี · ไม่ซ้ำข้ามรอบ —
+       ด่าน "เลขที่ใบเสนอราคาห้ามซ้ำ" ของ /api/orders) · ไม่เรียกเก็บ = ใบเสนอราคาลูกค้าตามเดิม */
+    quotationRef: loaded.exciseQuoteNumber || salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
     // ตรึงโครงการลงใบ (mig 0211) — เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-"
     projectCode: refOrNull(salesOrder.project?.code),
