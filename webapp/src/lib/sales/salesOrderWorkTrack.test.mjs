@@ -343,7 +343,8 @@ test('มีใบค่าสรรพสามิตที่ยังมี�
   // PR4: รับแล้วแต่ยังไม่มี SO ค่าสรรพสามิต = งานถัดไปของฝ่ายขาย (ลิงก์ฟอร์มสร้าง SO จากใบนี้)
   assert.equal(accepted.state, 'live');
   assert.match(accepted.connect.href, /^\/sa\/sales-orders\/new\?quotationId=QT-X&returnTo=/);
-  assert.match(accepted.connect.message, /ลูกค้ารับใบเสนอราคาค่าสรรพสามิต QT-26100099-0 แล้ว/);
+  // คำ = Won แบบใบปกติ (มติเจ้าของ 02/11 · เดิม "ลูกค้ารับ")
+  assert.match(accepted.connect.message, /ใบเสนอราคาค่าสรรพสามิต QT-26100099-0 Won แล้ว/);
   const ordered = (status) => salesOrderWorkTrack({ ...base, excise: excise({
     lines: [exciseLine('FG-1', 'approved')], eligible: true,
     exciseQuote: {

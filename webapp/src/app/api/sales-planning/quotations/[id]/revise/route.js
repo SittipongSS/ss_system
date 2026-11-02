@@ -5,7 +5,9 @@ import { canEditSalesPlanning } from '@/lib/salesPlanning';
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
-import { EXCISE_LINES_LOCKED_MESSAGE } from '@/lib/excise/exciseQuotation';
+import {
+  EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, exciseReferenceIsAuto, recalcExciseQuotationLines,
+} from '@/lib/excise/exciseQuotation';
 import { businessDate } from '@/lib/businessDate';
 import { pickDocumentAddresses } from '@/lib/master/addresses';
 import { pickQuotationContact } from '@/lib/sales/quotationContactPick';
@@ -69,16 +71,32 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (closedProject) return badRequest(closedProject);
 
   const body = await req.json().catch(() => ({}));
-  /* ⭐ ใบค่าสรรพสามิต: Rev. สืบบรรทัดเดิมทั้งชุด (ภาษีที่ระบบคิด) — จอส่งบรรทัด/ส่วนลด/VAT มา = ปฏิเสธ · แก้บรรทัดใน Rev. ร่าง
-     ด้วย "คิดใหม่จากใบสั่งขาย" (PATCH) · 1 SO = 1 ใบที่มีผล: ใบเดิมกลายเป็น revised ⇒ ฉบับใหม่เป็นใบที่มีผลใบเดียว */
-  if (isExciseOrder(quote) && ['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
-    return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
+  /* ⭐ ใบค่าสรรพสามิต: จอส่งบรรทัด/ส่วนลด/VAT มา = ปฏิเสธ · 1 SO = 1 ใบที่มีผล: ใบเดิมกลายเป็น revised ⇒ ฉบับใหม่เป็นใบที่มีผลใบเดียว
+     ⭐ Rev. **คิดบรรทัด + หัวใบจาก SO ต้นทางใหม่เสมอ** (ตัวเดียวกับ "คิดใหม่จากใบสั่งขาย") — ไม่สืบบรรทัดของฉบับเดิม
+     🐞 02/11 ใบทดลอง QT-26100568-1: Rev. ลอกบรรทัดรุ่นก่อน #1945 ("ค่าภาษีสรรพสามิต 8.8% —" + แท็บในรหัส FG) แล้วถูกยื่น/อนุมัติ
+       ภายในนาทีเดียวโดยไม่มีใครกดคิดใหม่ ⇒ กระดาษยังเป็นแบบเก่า · บรรทัดของใบนี้มาจาก SO อย่างเดียวอยู่แล้ว การสืบของเก่าจึงไม่มีประโยชน์
+     คำอ้างอิงที่คนพิมพ์เองไม่แตะ (exciseReferenceIsAuto) · SO ต้นทางผิดสภาพ (ด่านเดียวกับตอนออกใบ) = ออก Rev. ไม่ได้ พร้อมเหตุ */
+  let exciseHeader = null;
+  let exciseLines = null;
+  if (isExciseOrder(quote)) {
+    if (['lines', 'discountType', 'discountValue', 'vatRate'].some((key) => key in body)) {
+      return badRequest(EXCISE_LINES_LOCKED_MESSAGE);
+    }
+    try {
+      const recalculated = await recalcExciseQuotationLines({ supabase, user, quote, request: req });
+      exciseLines = recalculated.lines;
+      exciseHeader = recalculated.header;
+    } catch (recalcError) {
+      if (recalcError instanceof ExciseQuotationError) return fail(recalcError.message, recalcError.status);
+      throw recalcError;
+    }
+    if (!('referenceNote' in body) && exciseReferenceIsAuto(quote.referenceNote)) body.referenceNote = exciseHeader.referenceNote;
   }
   /* เลขแพ็ค (mig 0407): ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด (รวมบรรทัดที่สืบทอดจากใบเดิม) = ปฏิเสธพร้อมเลขรายการ
      — ไม่ตัดทิ้งแล้วออก Rev. ต่อ: ฉบับใหม่จะได้ยอดที่หดเงียบ */
   let revLines;
   try {
-    revLines = normalizeManualLines('lines' in body ? body.lines || [] : quote.lines || []);
+    revLines = normalizeManualLines(exciseLines || ('lines' in body ? body.lines || [] : quote.lines || []));
   } catch (e) {
     if (e instanceof LinePackError) return badRequest(e.message);
     throw e;
@@ -236,6 +254,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
         // เจ้าของดีลอาจเปลี่ยนไปตั้งแต่ Rev. ก่อน — อ่านเบอร์ใหม่ทุกครั้ง ไม่สืบทอด
         salesOwnerId: ownerContact?.id || null,
         salesOwnerPhone: ownerContact?.phone || null,
+        // ใบค่าสรรพสามิต: ผู้เสนอราคา (ชื่อ + เบอร์) = เจ้าของดีลของ SO ต้นทาง ณ ตอนออก Rev. (recalcExciseQuotationLines)
+        ...(exciseHeader ? exciseHeader.metadata : {}),
         ...revEditableMeta,
         // ล้างคีย์ผู้รับผิดชอบที่ปลดระวางแล้ว — ฉบับ Rev. สืบทอด metadata ทั้งก้อน
         // ไม่ล้างคือค่าที่เลิกใช้เดินตามไปทุกฉบับไม่จบ

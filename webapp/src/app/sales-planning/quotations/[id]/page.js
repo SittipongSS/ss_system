@@ -511,19 +511,20 @@ export default function QuotationEditorPage() {
 
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบไฟล์ + วันที่เอกสาร — validate ใน dialog/route/RPC)
   const doAccept = () => setWonOpen(true);
-  /* ใบค่าสรรพสามิต: ยืนยันอย่างเดียว (ไม่มีดีลให้ผูกโครงการ/ปิด Won) — ขั้นถัดไปคือออก SO ค่าสรรพสามิต (PR4) */
+  /* ใบค่าสรรพสามิต: ยืนยันอย่างเดียว (ไม่มีดีลให้ผูกโครงการ/แนบหลักฐาน Won ของดีล) — ขั้นถัดไปคือออก SO ค่าสรรพสามิต (PR4)
+     คำบนจอ = "Won" แบบใบปกติ (มติเจ้าของ 02/11 · เดิม "ลูกค้ารับแล้ว") — ความหมายเดิม: RPC 0415 ไม่แตะดีล/FC/Actual */
   const acceptExcise = () => setConfirmState({
-    title: "ลูกค้ารับใบเสนอราคาค่าสรรพสามิต",
-    description: `บันทึกว่าลูกค้ารับ ${quote.quoteNumber} แล้วหรือไม่`,
-    detail: "ไม่แตะดีลของลูกค้า (ไม่ปิด Won · ไม่ขยับ FC / Actual) · ใบนี้จะล็อก ใบสั่งขายต้นทางยังย้อน/ยกเลิกไม่ได้จนกว่าจะยกเลิกใบนี้",
-    confirmLabel: "ลูกค้ารับแล้ว",
+    title: "ปิด Won ใบเสนอราคาค่าสรรพสามิต",
+    description: `ลูกค้าตอบรับ ${quote.quoteNumber} แล้ว — ปิด Won ใบนี้หรือไม่`,
+    detail: "Won ของใบค่าสรรพสามิตไม่แตะดีลของลูกค้า (ไม่ขยับ FC / Actual) · ขั้นถัดไปคือออกใบสั่งขายค่าสรรพสามิต · ใบสั่งขายต้นทางย้อน/ยกเลิกไม่ได้จนกว่าจะยกเลิกใบนี้",
+    confirmLabel: "Won",
     action: async () => {
       const data = await act("accept", `/api/sales-planning/quotations/${id}/accept`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}),
       });
       if (data) {
         await load();
-        setToast({ kind: "success", msg: "บันทึกว่าลูกค้ารับใบค่าสรรพสามิตแล้ว" });
+        setToast({ kind: "success", msg: "ปิด Won ใบค่าสรรพสามิตแล้ว — ออกใบสั่งขายค่าสรรพสามิตต่อได้" });
       }
       return !!data;
     },
@@ -724,7 +725,7 @@ export default function QuotationEditorPage() {
     draft: { label: "ฉบับร่าง", color: "var(--text-3)" },
     // sent = "อนุมัติแล้ว" (มติผู้ใช้ 2026-08-17) — ดูเหตุผลที่ QUOTE_STATUS_LABELS
     sent: { label: "อนุมัติแล้ว", color: "var(--blue)" },
-    accepted: { label: excise ? "ลูกค้ารับแล้ว" : "Won", color: "var(--green)" },
+    accepted: { label: "Won", color: "var(--green)" },
     rejected: { label: "ถูกปฏิเสธ", color: "var(--red)" },
     cancelled: { label: "ยกเลิก", color: "var(--red)" },
     revised: { label: "มีฉบับแก้ไขใหม่", color: "var(--amber)" },
@@ -807,11 +808,11 @@ export default function QuotationEditorPage() {
           ? {
               id: "won",
               kind: "approve",
-              // ใบค่าสรรพสามิตไม่มีดีล — "ลูกค้ารับแล้ว" ไม่ใช่ปิด Won (ไม่แตะดีล/FC · RPC 0415)
-              label: excise ? "ลูกค้ารับแล้ว" : "Won",
+              // ใบค่าสรรพสามิตไม่มีดีล — Won ของใบนี้ไม่แตะดีล/FC (RPC 0415) · คำเดียวกับใบปกติ (มติ 02/11)
+              label: "Won",
               disabled: dirty,
               disabledReason: dirty ? "บันทึกการแก้ไขก่อนปิด Won" : undefined,
-              title: excise ? "บันทึกว่าลูกค้ารับใบเสนอราคาค่าสรรพสามิต" : "ปิด Won ผ่านใบเสนอราคานี้",
+              title: excise ? "ปิด Won ใบค่าสรรพสามิต (ไม่แตะดีลของลูกค้า)" : "ปิด Won ผ่านใบเสนอราคานี้",
               onClick: excise ? acceptExcise : doAccept,
             }
           : null;
@@ -1405,7 +1406,8 @@ export default function QuotationEditorPage() {
         title="ออก Rev. ใบเสนอราคา"
         description={`ระบบจะเก็บ ${naText(quote?.quoteNumber)} เป็นฉบับเดิม และสร้างฉบับร่างใหม่`}
         /* ใบเก่าที่บรรทัดหมวด 02-001 ไม่มีเลขแพ็ค: ออก Rev. แล้วฉบับเดิมเป็น "มีฉบับแก้ไขใหม่" ถาวร และฉบับใหม่ต้องกรอกก่อนยื่น — บอกก่อนกด */
-        detail={["เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง", reviseNeedsPacks ? LINE_PACK_EDIT_TEXT.reviseNote : null].filter(Boolean).join(" · ")}
+        /* ใบค่าสรรพสามิต: ฉบับใหม่คิดรายการจากใบสั่งขายต้นทางเอง (revise/route.js) — บอกก่อนกดว่ายอดอาจไม่เท่าฉบับเดิม */
+        detail={["เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง", excise ? "รายการคิดใหม่จากใบสั่งขายต้นทาง ณ ตอนนี้" : null, reviseNeedsPacks ? LINE_PACK_EDIT_TEXT.reviseNote : null].filter(Boolean).join(" · ")}
         label="เหตุผลที่ออก Rev."
         value={revisionForm?.reason || ""}
         onChange={(reason) => setRevisionForm({ reason })}

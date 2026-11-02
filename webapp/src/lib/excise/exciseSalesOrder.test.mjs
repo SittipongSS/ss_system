@@ -37,7 +37,7 @@ test('exciseSalesOrderBlock: ย้อนอนุมัติ/Rev./ย้อน
 
 test('exciseSalesOrderCreateError: รหัสของ 0416 เป็นไทย · รหัสอื่นปล่อยให้ route จัดตามเดิม', () => {
   assert.match(exciseSalesOrderCreateError({ message: 'excise_source_order_invalid' }), /ใบสั่งขายต้นทางไม่ได้อยู่ในสถานะอนุมัติแล้ว/);
-  assert.match(exciseSalesOrderCreateError({ message: 'quotation_not_won' }), /ลูกค้ารับแล้ว/);
+  assert.match(exciseSalesOrderCreateError({ message: 'quotation_not_won' }), /ที่ Won แล้ว/);
   assert.match(exciseSalesOrderCreateError({ message: 'excise_quotation_origin_invalid' }), /ไม่ใช่ใบค่าสรรพสามิต/);
   assert.equal(exciseSalesOrderCreateError({ message: 'sales_order_confirm_type_invalid' }), null);
   assert.equal(exciseSalesOrderCreateError(null), null);

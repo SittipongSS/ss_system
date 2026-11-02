@@ -433,7 +433,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (sourceError) return fail(sourceError.message, 500);
   }
   if (quote.status !== 'accepted') {
-    return badRequest(excise ? 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ลูกค้ารับแล้ว' : 'สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
+    return badRequest(excise ? 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ Won แล้ว' : 'สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
   }
   if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
   // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้ · ใบค่าสรรพสามิตไม่มีโครงการ
