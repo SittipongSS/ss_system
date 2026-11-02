@@ -4,11 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, RefreshCw, Send, FileCheck, MessagesSquare, ExternalLink } from "lucide-react";
+import { ReceiptText, FileCheck, MessagesSquare, ExternalLink, Printer, PencilLine } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
-import DateInput from "@/components/ui/DateInput";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import {
   DocumentControlCard, DocumentSummaryCard, RelatedDocumentCard,
@@ -20,16 +19,15 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { Field } from "@/components/excise/RecordDrawer";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
-import StartFilingDialog from "@/components/excise/StartFilingDialog";
 import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { isExemptFiling, orderAmountToCollect, untaxedFilingItems } from "@/lib/tax/exciseBilling";
-import { filingRecalcBlock } from "@/lib/excise/raFilingRules";
+import { FILING_REASON_MAX, FILING_REASON_MIN } from "@/lib/excise/raFilingRules";
+import { printFilingSummary } from "@/lib/excise/printFilingSummary";
 import { FINANCE_STATUS_LABELS } from "@/lib/sales/salesOrderFinanceApproval";
 import { productDisplayName } from "@/lib/master/productIdentity";
-import { FILING_EDITABLE_STATUSES, canTransitionFiling, statusMeta } from "@/lib/excise/workflow";
+import { canTransitionFiling, statusMeta } from "@/lib/excise/workflow";
 import { useCustomerRecord } from "@/lib/master/useCustomerRecord";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
@@ -44,20 +42,19 @@ const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : f
 const amountToCollectText = (o) => (isExemptFiling(o)
   ? "ยกเว้นภาษี"
   : fmtMoney(orderAmountToCollect(o)));
-// เส้นของ RA (PR5) — ตีกลับยืนที่จุด "กำลังยื่น" (RA ตีกลับเองระหว่างยื่น แล้วยื่นใหม่)
-const ORDER = ["draft", "filing", "complete", "delivered"];
+/* เส้นของ RA (v3 · มติเจ้าของ 02/11): รอ RA → กำลังยื่น → ชำระแล้ว — บันทึกเกิดตอนเริ่มยื่น ⇒ ขั้นแรกผ่านแล้วเสมอ
+   ของเก่าก่อน v3 (prod 02/11 ไม่มีแล้ว): ร่าง = รอ RA · ตีกลับ = กำลังยื่น · ส่งเอกสารแล้ว = ชำระแล้ว */
+const STEP_OF = { draft: 0, filing: 1, rejected: 1, complete: 2, delivered: 2 };
 
 export default function FilingDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  /* ⭐ แผนรื้อสรรพสามิต PR5: ใบยื่นเป็นงานของฝ่าย RA ทั้งเส้น (เริ่มยื่น · ใบเสร็จ · ส่งใบเสร็จ · ตีกลับ · คิดใหม่ · ลบร่าง)
-     ฝ่ายขายเปิดอ่านได้ (และเปิด SO ต้นทางได้) แต่ไม่มีปุ่มบนใบนี้แล้ว — เงินค่าภาษีเก็บด้วย SO ค่าสรรพสามิต */
+  /* ⭐ v3 (มติเจ้าของ 02/11): บันทึกการยื่นเป็นงานของฝ่าย RA ทั้งเส้น — บันทึกผลชำระ · แก้ข้อมูลการชำระ · ยกเลิกการเริ่มยื่น · พิมพ์ใบสรุป
+     ไม่มีร่าง/คิดใหม่/ตีกลับ/ส่งเอกสาร · ฝ่ายขายเปิดอ่านได้แต่ไม่มีปุ่ม (เห็นขั้นของ RA บนใบสั่งขายของตัวเอง) */
   const canApprove = useCan("ra:approve");
   const canOpenSales = useCan("salesplan:view"); // RA ไม่มี ⇒ แผงสรุป SO ไม่มีลิงก์ไปหน้าขาย
-  const canDelete = canApprove;
 
-  /* ⭐ ลิสต์สินค้า/ลูกค้า/ทะเบียนทั้งตารางเลิกโหลดแล้ว (ตรวจระบบ 26/10 ข้อย่อย) — ของที่กินมันคือฟอร์มแก้ไขแบบเลือกทะเบียน
-     (OrderFormModal) ซึ่งเป็นทางของฝ่ายขาย · ใบยื่นจาก SO แก้รายการได้ทางเดียวคือคิดใหม่จาก SO (ปุ่มบนการ์ดจัดการ) */
+  /* ⭐ ลิสต์สินค้า/ลูกค้า/ทะเบียนทั้งตารางเลิกโหลดแล้ว (ตรวจระบบ 26/10 ข้อย่อย) · บันทึกการยื่นตรึงรายการไว้ตอนเริ่มยื่น (v3) */
   const { data: orders, loading, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload: reloadOrders } = useApiList("/api/orders");
   // แผงสรุป SO + ด่านเริ่มยื่น มากับใบรายตัว (GET /api/orders/[id] · `source`) — RA ไม่มีสิทธิ์อ่านหน้าขาย
   const [source, setSource] = useState(null);
@@ -95,8 +92,6 @@ export default function FilingDetailPage() {
         (เช่นเพิ่งสร้างใบจากคิวแล้วกดเข้ามา) มีใบอื่นเต็มลิสต์แต่ไม่มีใบนี้
      🪤 `empty` ของสายใบยื่น = ไม่มีใบในมือ **และรอบหน้าบ้านล่าสุดล้ม** (`ordersError`) ไม่ใช่ `staleError` — "ไม่พบรายการ"
         ที่ยืนยันแล้วต้องไม่พลิกเป็น "(ไม่ได้แปลว่าใบยื่นนี้ถูกลบไปแล้ว)" เพราะสลับแท็บแล้วเน็ตสะดุด */
-  const editAvailable = canApprove && FILING_EDITABLE_STATUSES.includes(o?.status);
-  const recalcBlock = o ? filingRecalcBlock(o) : null;
   // สายเดียวของจอ (บล็อกทั้งหน้า) — สามสายรอง (ทะเบียน · ลูกค้า · สินค้า) ไปพร้อมฟอร์มแก้ไขของฝ่ายขายแล้ว
   const sources = [
     {
@@ -134,50 +129,34 @@ export default function FilingDetailPage() {
     </StatusNotice>
   ) : null;
 
-  const [recalcOpen, setRecalcOpen] = useState(false);
   const [fileOpen, setFileOpen] = useState(false);
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [startOpen, setStartOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [editPaidOpen, setEditPaidOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
-  const transition = async (status) => {
+  /* D10: ยกเลิกการเริ่มยื่น = ลบบันทึก (เหตุผล 10–500 ตัว · server ตรวจซ้ำ) ⇒ งานกลับไปรอ RA บนหน้ารายการ */
+  const withdraw = async (reason) => {
     const res = await apiFetch(`/api/orders/${o.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถเปลี่ยนสถานะได้");
-    await reload();
-  };
-  const recalc = async () => {
-    const res = await apiFetch(`/api/orders/${o.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recalcFromSalesOrder: true }),
-    });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "คิดภาษีใหม่ไม่สำเร็จ");
-    await reload();
-  };
-  const setDue = async (value) => {
-    await apiFetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ taxDueDate: value }) });
-    await reload();
-  };
-  const reject = async (reason) => {
-    const res = await apiFetch(`/api/orders/${o.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "rejected", rejectionReason: reason }) });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถทำรายการได้");
-    await reload();
-  };
-  const doDelete = async () => {
-    const res = await apiFetch(`/api/orders/${o.id}`, { method: "DELETE" });
-    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ไม่สามารถลบได้");
+    if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ยกเลิกการเริ่มยื่นไม่สำเร็จ");
     router.push("/tax/filings");
   };
+  const print = async () => {
+    setPrinting(true);
+    try {
+      await printFilingSummary([`order:${o.id}`]);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
-  const back = { href: "/tax/filings", label: "กลับไปหน้าการยื่นชำระ" };
+  const back = { href: "/tax/filings", label: "กลับไปหน้างานยื่นชำระ" };
 
   // ⚠️ ต้องอยู่เหนือ "ไม่พบรายการ" — ดูเหตุผลที่ก้อน sources · `loading` ⇒ กดลองใหม่แล้วเนื้อเป็น skeleton ระหว่างรอ
   if (pageBlocked) {
     return (
-      <Workspace icon={<ReceiptText size={22} />} title="ใบยื่นชำระภาษีสรรพสามิต" back={back} loading={loading}>
+      <Workspace icon={<ReceiptText size={22} />} title="งานยื่นชำระภาษีสรรพสามิต" back={back} loading={loading}>
         {notice}
       </Workspace>
     );
@@ -185,8 +164,8 @@ export default function FilingDetailPage() {
   // "ไม่พบ" ได้เฉพาะหลังลิสต์เคยโหลดสำเร็จ — ยังไม่เคยได้คำตอบ = ยังไม่รู้ (ทางนั้นคือ skeleton / ป้ายข้างบน)
   if (!loading && ordersLoaded && !o) {
     return (
-      <Workspace icon={<ReceiptText size={22} />} title="ไม่พบรายการ" subtitle="ใบยื่นนี้อาจถูกลบไปแล้ว" back={back}>
-        <div style={{ color: "var(--text-3)" }}>ไม่พบใบยื่นที่ต้องการ</div>
+      <Workspace icon={<ReceiptText size={22} />} title="ไม่พบรายการ" subtitle="บันทึกการยื่นนี้อาจถูกยกเลิกไปแล้ว — งานจะกลับไปรอ RA ที่หน้ารายการ" back={back}>
+        <div style={{ color: "var(--text-3)" }}>ไม่พบบันทึกการยื่นที่ต้องการ</div>
       </Workspace>
     );
   }
@@ -197,41 +176,28 @@ export default function FilingDetailPage() {
     </div>
   );
   const status = o ? statusMeta(o.status) : statusMeta();
-  const workflowIndex = o?.status === "rejected"
-    ? ORDER.indexOf("filing")
-    : Math.max(ORDER.indexOf(o?.status), 0);
+  const startedText = o?.filingStartedAt
+    ? `${fmtDate(o.filingStartedAt)}${o.filingStartedByName ? ` · ${o.filingStartedByName}` : ""}`
+    : NA;
+  const paidText = o?.status === "complete" || o?.status === "delivered"
+    ? `${o.taxPaidDate ? fmtDate(o.taxPaidDate) : fmtDate(o.filedAt)}${o.filedByName ? ` · บันทึกโดย ${o.filedByName}` : ""}`
+    : NA;
   const workflowSteps = workflowStepsFromIndex([
-    { id: "draft", label: "เตรียมใบยื่น", hint: "ฝ่าย RA ตรวจรายการ ทะเบียน และเงินค่าภาษี" },
-    { id: "filing", label: "กำลังยื่น", hint: o?.status === "rejected" ? "ตีกลับ — แก้แล้วยื่นใหม่" : "ยื่นกรมสรรพสามิต" },
-    { id: "complete", label: "ชำระแล้ว", hint: "บันทึกเลขที่และวันที่ชำระ" },
-    { id: "delivered", label: "ส่งเอกสารแล้ว", hint: "ส่งใบเสร็จกรมให้ลูกค้าแล้ว" },
-  ], workflowIndex);
-  const primaryAction = canApprove && (o?.status === "draft" || o?.status === "rejected")
-    ? (isExempt
-      ? {
-        id: "file-exempt", label: "ยืนยันชำระ (ยกเว้นภาษี)",
-        kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
-      }
-      : {
-        id: "start", label: o?.status === "rejected" ? "ยื่นใหม่" : "เริ่มยื่น",
-        kind: "submit", icon: Send, onClick: () => setStartOpen(true),
-      })
-    : canApprove && o?.status === "filing"
-      ? {
-        id: "file", label: "บันทึกใบเสร็จกรม",
-        kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
-      }
-      : canApprove && o?.status === "complete"
-        ? {
-          id: "deliver", label: "ยืนยันส่งใบเสร็จให้ลูกค้า",
-          kind: "submit", icon: FileCheck, onClick: () => setDeliverOpen(true),
-        }
-        : null;
+    { id: "queued", label: "รอ RA", hint: "งานถึง RA เมื่อใบสั่งขายค่าสรรพสามิตอนุมัติ" },
+    { id: "filing", label: "กำลังยื่น", hint: o?.filingStartedAt ? `เริ่ม ${startedText}` : "ฝ่าย RA ยื่นแบบต่อกรมสรรพสามิต" },
+    { id: "complete", label: "ชำระแล้ว", hint: "บันทึกเลขที่ใบเสร็จและวันที่ชำระ" },
+  ], STEP_OF[o?.status] ?? 1);
+  const primaryAction = canApprove && canTransitionFiling(o?.status, "complete")
+    ? {
+      id: "file", label: isExempt ? "ยืนยันชำระแล้ว (ยกเว้นภาษี)" : "บันทึกผลชำระ",
+      kind: "submit", icon: FileCheck, onClick: () => setFileOpen(true),
+    }
+    : null;
 
   return (
     <Workspace
       icon={<ReceiptText size={22} />}
-      title={o?.taxNoticeNumber || o?.id || "..."}
+      title={o ? `งานยื่น ${o.poReference || o.quotationRef || o.id}` : "..."}
       /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — อ่านจาก `customer` รายตัว (useCustomerRecord:
          GET /api/customers/[id] โดยมีแถวในลิสต์เป็นค่าระหว่างรอ) ไม่ใช่ find จากลิสต์ตรง ๆ ⇒ ลิสต์ลูกค้าล้ม
          หรือกรองทีมจนไม่เห็นลูกค้ารายนี้ หัวจอก็ยังมีรหัส AR */
@@ -243,7 +209,7 @@ export default function FilingDetailPage() {
       {notice}
       {o && (
         <DetailPageLayout
-          asideLabel="สรุปและจัดการใบยื่นชำระสรรพสามิต"
+          asideLabel="สรุปและจัดการงานยื่นชำระสรรพสามิต"
           aside={(
             <>
               <DocumentSummaryCard
@@ -252,9 +218,11 @@ export default function FilingDetailPage() {
                 rows={[
                   { id: "tax-before-vat", label: "ค่าภาษี (ก่อน VAT)", value: taxText(o) },
                   { id: "items", label: "รายการสินค้า", value: `${o.items?.length || 0} รายการ` },
-                  { id: "due", label: "กำหนดยื่น", value: o.taxDueDate ? fmtDate(o.taxDueDate) : NA },
-                  { id: "invoice", label: "ใบกำกับภาษี", value: naText(o.taxInvoiceNumber) },
+                  { id: "started", label: "เริ่มยื่น", value: startedText },
                   { id: "receipt", label: "ใบเสร็จสรรพสามิต", value: naText(o.exciseReceiptNumber) },
+                  { id: "paid", label: "วันที่ชำระ", value: paidText },
+                  // เลข ET = เลขอ้างอิงภายในของบันทึก (trigger 0162) — ไม่ส่งลูกค้า
+                  { id: "ref", label: "เลขอ้างอิงภายใน", value: naText(o.taxNoticeNumber) },
                 ]}
                 status={status.label}
                 statusColor={toneColor(status.tone)}
@@ -262,35 +230,33 @@ export default function FilingDetailPage() {
               <DocumentControlCard
                 status={status.label}
                 statusColor={toneColor(status.tone)}
-                statusDescription="การดำเนินการระดับใบยื่นชำระ"
+                statusDescription="การดำเนินการของฝ่าย RA"
                 workflowSteps={workflowSteps}
                 primaryAction={primaryAction}
                 /* ⚠️ "ออกใบแจ้งชำระค่าภาษี" ถึงลูกค้าถอดแล้ว (PR5 · ขัดมติ Q1 — เอกสารถึงลูกค้าคือใบเสนอราคาค่าสรรพสามิต)
-                   เลข ET บนหัวใบยังเป็นเลขอ้างอิงภายในของใบยื่น */
+                   ใบที่ RA พิมพ์ได้คือใบสรุปรายการยื่น (V9) */
                 secondaryActions={[
                   {
-                    id: "recalc", label: "คิดภาษีใหม่จากใบสั่งขาย", kind: "edit", icon: RefreshCw,
-                    onClick: () => setRecalcOpen(true),
-                    visible: editAvailable && !!o.salesOrderId,
-                    disabled: !!recalcBlock, disabledReason: recalcBlock || undefined,
+                    id: "print", label: printing ? "กำลังเตรียม…" : "พิมพ์ใบสรุปรายการยื่น", kind: "print", icon: Printer,
+                    onClick: print, disabled: printing,
+                  },
+                  {
+                    // D11: แก้เลขที่ใบเสร็จ/วันที่/ยอดหลังชำระแล้ว — ฟอร์มเดียวกับตอนบันทึกผลชำระ (เติมค่าเดิม)
+                    id: "edit-paid", label: "แก้ข้อมูลการชำระ", kind: "edit", icon: PencilLine,
+                    onClick: () => setEditPaidOpen(true),
+                    visible: canApprove && o.status === "complete" && !isExempt,
                   },
                 ]}
                 dangerActions={[
                   {
-                    id: "reject", label: "ตีกลับให้แก้ไข", kind: "reject",
-                    onClick: () => setRejectOpen(true),
-                    // ต้นทางที่ตีกลับได้มาจากตาราง FILING_TRANSITIONS ตัวเดียวกับด่านใน route
-                    visible: canApprove && canTransitionFiling(o.status, "rejected"),
-                  },
-                  {
-                    // ลบได้เฉพาะร่าง (ยังไม่เริ่มยื่น) — งานกลับเข้าคิวรอยื่นกรม · ด่านเดียวกับ DELETE /api/orders/[id]
-                    id: "delete", label: "ลบใบยื่น (กลับเข้าคิว)", kind: "delete",
-                    onClick: () => setDeleteOpen(true),
-                    visible: canDelete && o.status === "draft",
+                    // D10: กดเริ่มยื่นผิดใบ — ยกเลิกการเริ่มยื่นได้จนกว่าจะบันทึกผลชำระ · ด่านเดียวกับ DELETE /api/orders/[id]
+                    id: "withdraw", label: "ยกเลิกการเริ่มยื่น (กลับไปรอ RA)", kind: "delete",
+                    onClick: () => setWithdrawOpen(true),
+                    visible: canApprove && ["filing", "draft"].includes(o.status),
                   },
                 ]}
               />
-              {/* แผงสรุป SO (PR5) — RA ไม่เข้าหน้าขาย ⇒ ต้นทาง · เงินค่าภาษี · ทะเบียน มาจาก `source` ของ GET ใบรายตัว */}
+              {/* แผงสรุป SO (PR5) — RA ไม่เข้าหน้าขาย ⇒ ต้นทาง · เงินค่าภาษี · ทะเบียน มาจาก `source` ของ GET บันทึกรายตัว */}
               <RelatedDocumentCard
                 title={o.salesOrderId ? "ใบสั่งขายต้นทาง" : "เอกสารต้นทาง"}
                 meta={source?.salesOrder?.orderNumber || o.poReference || o.quotationRef || "ข้อมูลลูกค้าและทะเบียนสินค้า"}
@@ -312,7 +278,7 @@ export default function FilingDetailPage() {
                   </Link>
                 ) : null}
               >
-                {!o.salesOrderId && "ใบยื่นเดิมที่สร้างในโมดูลภาษีโดยตรง รายการสินค้าผูกกับข้อมูลลูกค้าและทะเบียนสรรพสามิต"}
+                {!o.salesOrderId && "บันทึกเดิมที่สร้างในโมดูลภาษีโดยตรง รายการสินค้าผูกกับข้อมูลลูกค้าและทะเบียนสรรพสามิต"}
                 {o.salesOrderId && source?.error && <div className={styles.sourceError}>{source.error}</div>}
                 {o.salesOrderId && !source && <div className={styles.sourceMuted}>กำลังอ่านใบสั่งขายต้นทาง…</div>}
                 {o.salesOrderId && source && !source.error && (
@@ -325,7 +291,8 @@ export default function FilingDetailPage() {
                         <dd>{source.exciseOrder.orderNumber} · ลูกค้าจ่าย {fmtMoney(source.exciseOrder.totalAmount)}</dd>
                         <dt>ใบเสนอราคาค่าสรรพสามิต</dt>
                         <dd>{naText(source.exciseOrder.quoteNumber)}</dd>
-                        <dt>บัญชี</dt>
+                        {/* V3: เงินไม่ใช่ด่านของ RA — แสดงให้รู้เท่านั้น */}
+                        <dt>บัญชี (แสดงเท่านั้น)</dt>
                         <dd>{FINANCE_STATUS_LABELS[source.exciseOrder.financeStatus] || "ยังไม่เข้าคิวบัญชี"}</dd>
                       </>
                     ) : source.notBilled ? (
@@ -336,14 +303,13 @@ export default function FilingDetailPage() {
                         <dd>{naText(source.notBilled.reason)}</dd>
                       </>
                     ) : null}
-                    <dt>ด่านเริ่มยื่น</dt>
+                    <dt>ทะเบียน</dt>
                     <dd>
-                      <span className={source.gates?.money?.ok ? styles.gateOk : styles.gateWarn}>{source.gates?.money?.label}</span>
-                      <br />
                       <span className={source.gates?.registration?.ok ? styles.gateOk : styles.gateWarn}>{source.gates?.registration?.label}</span>
                     </dd>
-                    {o.filingSkipMoneyReason && (<><dt>เหตุผลที่ข้ามด่านเงิน</dt><dd>{o.filingSkipMoneyReason}</dd></>)}
-                    {o.filingSkipRegistrationReason && (<><dt>เหตุผลที่ข้ามด่านทะเบียน</dt><dd>{o.filingSkipRegistrationReason}</dd></>)}
+                    {/* เหตุผลข้ามด่านของ PR5 (เลิกใช้ใน v3) — โชว์เฉพาะบันทึกเก่าที่มีค่า */}
+                    {o.filingSkipMoneyReason && (<><dt>เหตุผลที่ข้ามด่านเงิน (เดิม)</dt><dd>{o.filingSkipMoneyReason}</dd></>)}
+                    {o.filingSkipRegistrationReason && (<><dt>เหตุผลที่ข้ามด่านทะเบียน (เดิม)</dt><dd>{o.filingSkipRegistrationReason}</dd></>)}
                   </dl>
                 )}
                 {o.salesOrderId && unregisteredItemCount > 0 && !source && (
@@ -356,31 +322,22 @@ export default function FilingDetailPage() {
           <div className="flex flex-col gap-5">
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="PO Reference">{naText(o.poReference)}</Field>
-              <Field label="วันที่คาดว่าจะส่ง">{o.deliveryDate && o.deliveryDate !== "-" ? o.deliveryDate : NA}</Field>
+              <Field label="ใบสั่งขายลูกค้า">{naText(o.poReference)}</Field>
+              <Field label="เริ่มยื่น">{startedText}</Field>
               <Field label="ยอดภาษีรวม">{taxText(o)}</Field>
-              <Field label="เลขที่ใบกำกับภาษี">{naText(o.taxInvoiceNumber)}</Field>
               <Field label="ใบเสร็จสรรพสามิต">{naText(o.exciseReceiptNumber)}</Field>
               {o.taxPaidDate && <Field label="วันที่ชำระจริง">{fmtDate(o.taxPaidDate)}</Field>}
+              {o.exciseTaxPaidAmount != null && <Field label="ยอดชำระจริง">{fmtMoney(o.exciseTaxPaidAmount)}</Field>}
               {o.taxFormRef && <Field label="แบบ ภส.">{o.taxFormRef}</Field>}
             </div>
-
-            {editAvailable && (
-              <div className="form-group" style={{ margin: "12px 0 0" }}>
-                <label>กำหนดยื่น (Due date)</label>
-                <DateInput style={{ maxWidth: 180 }}
-                  value={o.taxDueDate && /^\d{4}-\d{2}-\d{2}/.test(o.taxDueDate) ? o.taxDueDate.slice(0, 10) : ""}
-                  onChange={setDue} />
-              </div>
-            )}
           </div>
 
           <div className="glass-panel" style={{ padding: 16 }}>
             <div className="drawer-section-title" style={{ marginBottom: 10 }}>รายการสินค้า ({o.items?.length || 0})</div>
             {untaxedIds.size > 0 && (
               <StatusNotice tone="warning">
-                มี {untaxedIds.size} รายการที่ภาษีเป็น ฿0 เพราะตอนสร้างใบ สินค้ายังไม่มีราคาขายปลีก — ยอดในใบนี้ขาดจากที่ต้องยื่นจริง
-                {o.salesOrderId && editAvailable && !recalcBlock && " · เติมราคาขายปลีกแล้วกด \"คิดภาษีใหม่จากใบสั่งขาย\""}
+                มี {untaxedIds.size} รายการที่ภาษีเป็น ฿0 เพราะตอนเริ่มยื่น สินค้ายังไม่มีราคาขายปลีก — ยอดในบันทึกนี้ขาดจากที่ต้องยื่นจริง
+                {canApprove && o.status === "filing" && " · เติมราคาขายปลีกแล้วยกเลิกการเริ่มยื่น จากนั้นกดเริ่มยื่นใหม่"}
               </StatusNotice>
             )}
             <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-7)" }}>
@@ -428,8 +385,7 @@ export default function FilingDetailPage() {
             />
           </div>
 
-          {/* เธรดกลาง (mig 0163) — ใบยื่นเดินข้ามเลน ขาย ↔ RA/บัญชี หลายรอบ
-              และ `rejectionReason` ถูกล้างทุกครั้งที่ยื่นใหม่หลังถูกตีกลับ */}
+          {/* เธรดกลาง (mig 0163) — บันทึกเหตุการณ์ระหว่างยื่น (เช่น ยื่นแบบ ภส. แล้ว รอใบเสร็จ) */}
           <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
             <UpdateThread
               entityType="excise_order"
@@ -444,36 +400,17 @@ export default function FilingDetailPage() {
         </DetailPageLayout>
       )}
 
-      <StartFilingDialog open={startOpen} onClose={() => setStartOpen(false)} onDone={reload} order={o} gates={source?.gates || null} />
       <FileTaxDialog open={fileOpen} onClose={() => setFileOpen(false)} onDone={reload} order={o} />
-      <RejectDialog open={rejectOpen} onClose={() => setRejectOpen(false)} onConfirm={reject} title="ตีกลับใบยื่นชำระ" entityLabel="ใบยื่นนี้" />
-      <ConfirmDialog
-        closeOnSuccess
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        onConfirm={doDelete}
-        title="ลบใบยื่นชำระ"
-        message={`ยืนยันการลบใบยื่น ${o?.quotationRef || "รายการนี้"}? งานจะกลับเข้าคิวรอยื่นกรม · การลบนี้ย้อนกลับไม่ได้`}
-        confirmLabel="ลบรายการ"
-        danger
-      />
-      <ConfirmDialog
-        closeOnSuccess
-        open={recalcOpen}
-        onClose={() => setRecalcOpen(false)}
-        onConfirm={recalc}
-        title="คิดภาษีใหม่จากใบสั่งขาย"
-        message="ระบบจะคิดรายการและยอดภาษีใหม่จากใบสั่งขายลูกค้า ด้วยราคาขายปลีกและทะเบียน ณ ตอนนี้ แทนรายการเดิมทั้งชุด"
-        confirmLabel="คิดภาษีใหม่"
-      />
-      <ConfirmDialog
-        closeOnSuccess
-        open={deliverOpen}
-        onClose={() => setDeliverOpen(false)}
-        onConfirm={() => transition("delivered")}
-        title="ยืนยันส่งใบเสร็จให้ลูกค้า"
-        message={`ยืนยันว่าได้ส่งใบเสร็จกรมสรรพสามิตของ ${o?.quotationRef || "รายการนี้"} ให้ลูกค้าเรียบร้อยแล้ว · ใบยื่นจะปิดงาน`}
-        confirmLabel="ยืนยันส่งเอกสารแล้ว"
+      <FileTaxDialog open={editPaidOpen} onClose={() => setEditPaidOpen(false)} onDone={reload} order={o} mode="edit" />
+      <RejectDialog
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        onConfirm={withdraw}
+        title="ยกเลิกการเริ่มยื่น"
+        reasonLabel={`เหตุผลที่ยกเลิกการเริ่มยื่น (${FILING_REASON_MIN}–${FILING_REASON_MAX} ตัวอักษร)`}
+        placeholder="เช่น กดเริ่มยื่นผิดใบ · ต้องรอเติมราคาขายปลีกก่อน"
+        confirmLabel="ยกเลิกการเริ่มยื่น — กลับไปรอ RA"
+        busyLabel="กำลังถอน…"
       />
     </Workspace>
   );

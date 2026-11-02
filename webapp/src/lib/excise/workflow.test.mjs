@@ -7,9 +7,11 @@ test('⭐ "รอฉันลงมือ" ของภาษี = ขั้น�
   // ขึ้นทะเบียน: SA ถือร่าง+ตีกลับ · RA ถือใบที่รออนุมัติ
   assert.deepEqual(ownedStages('registration', 'SA'), ['draft', 'rejected']);
   assert.deepEqual(ownedStages('registration', 'RA'), ['pending_legal']);
-  // ยื่นชำระ (PR5): เส้นของ RA ทั้งเส้น — เตรียมใบ/ตีกลับ/กำลังยื่น/ชำระแล้ว(รอส่งใบเสร็จ) · ฝ่ายขายไม่มีขั้นบนใบยื่นแล้ว
-  assert.deepEqual(ownedStages('payment', 'RA'), ['draft', 'rejected', 'filing', 'complete']);
+  // ยื่นชำระ (v3 02/11): บันทึกการยื่นมีสองขั้น — RA ถือ "กำลังยื่น" · ชำระแล้ว = จบ · ฝ่ายขายไม่มีขั้นบนเส้นนี้
+  // (งาน "รอ RA" ยังไม่มีแถว orders — ป้ายเมนูนับจากคิวคำนวณสดเพิ่มเอง · api/nav/counts)
+  assert.deepEqual(ownedStages('payment', 'RA'), ['filing']);
   assert.deepEqual(ownedStages('payment', 'SA'), []);
+  assert.equal(ownedStages('payment', 'RA').includes('complete'), false);
 
   // ขั้นจบแล้วไม่นับ — ไม่มีใครต้องทำอะไรต่อ
   assert.equal(ownedStages('registration', 'SA').includes('approved'), false);

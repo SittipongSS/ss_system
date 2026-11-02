@@ -167,7 +167,7 @@ test("ด่านสิทธิ์ไฟล์แนบ: อ่านแถว
    ① update/insert/upsert ที่ทิ้งผล = **ศูนย์** (ยกเว้นโมดูลสหมิตรที่พักรื้อไว้ทั้งเส้น)
    ② ที่เหลือ (ลบย้อนข้อมูลหลังตอบ error ไปแล้ว + สหมิตร) = เพดานสองทาง: เพิ่มไม่ได้ ·
       ลดแล้วต้องลดตัวเลขตาม ไม่งั้นช่องว่างถูกเติมกลับเงียบ ๆ */
-const BARE_WRITE_BUDGET = 48; // 49→48: purgeAttachments อ่าน error ของการลบแถวแล้ว (คืน { count, error })
+const BARE_WRITE_BUDGET = 47; // 49→48: purgeAttachments อ่าน error ของการลบแถวแล้ว (คืน { count, error }) · 48→47: ถอดทางสลับรายการใบยื่น (v3 02/11)
 
 function bareWrites() {
   const found = [];

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useMemo } from "react";
 import {
-  AlarmClock, AlertCircle, BadgeCheck, BarChart3, Calendar, ChevronRight, CircleDollarSign, ClipboardCheck,
+  AlarmClock, AlertCircle, BadgeCheck, BarChart3, Calendar, ChevronRight, ClipboardCheck,
   Clock3, LayoutDashboard, ReceiptText, RotateCcw, Send,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -20,7 +20,7 @@ import { RegsDonutChart, OrdersComposedChart } from "@/components/excise/TaxDash
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { NA, fmtNumber, naText } from "@/lib/format";
 import { isExemptFiling } from "@/lib/tax/exciseBilling";
-import { raQueueItem } from "@/lib/excise/raQueueItem";
+import { raQueueItem, raWorkHref } from "@/lib/excise/raQueueItem";
 import { businessDate } from "@/lib/businessDate";
 import { PERIODS, taxQueueHref, withinPeriod } from "@/lib/tax/period";
 import {
@@ -65,7 +65,7 @@ export default function TaxDashboard() {
   const sources = [
     { label: "การขึ้นทะเบียน", error: regsError || regsStale, empty: !regsLoaded, detail: regsDetail, reload: reloadRegs },
     { label: "การยื่นชำระภาษี", error: ordersError || ordersStale, empty: !ordersLoaded, detail: ordersDetail, reload: reloadOrders },
-    ...(canLG ? [{ label: "คิวรอยื่นกรม", error: raQueueError || raQueueStale, empty: !raQueueLoaded, detail: raQueueDetail, reload: reloadRaQueue }] : []),
+    ...(canLG ? [{ label: "คิวงาน RA", error: raQueueError || raQueueStale, empty: !raQueueLoaded, detail: raQueueDetail, reload: reloadRaQueue }] : []),
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
@@ -131,13 +131,14 @@ export default function TaxDashboard() {
   const lateInPeriod = useMemo(() => lateRegistrations(regs, todayIso), [regs, todayIso]);
   const oldestLate = late[0]?.days ?? null;
 
+  /* v3 (มติ 02/11): บันทึกการยื่นมีสองขั้น — กำลังยื่น · ชำระแล้ว (ของเก่า "ส่งเอกสารแล้ว" นับรวมชำระแล้ว) */
   const o = {
-    draft: orders.filter((x) => x.status === "draft"),
-    rejected: orders.filter((x) => x.status === "rejected"),
     filing: orders.filter((x) => x.status === "filing"),
-    complete: orders.filter((x) => x.status === "complete"),
-    delivered: orders.filter((x) => x.status === "delivered"),
+    complete: orders.filter((x) => x.status === "complete" || x.status === "delivered"),
   };
+  // คิวของ RA (ยังไม่มีบันทึก) — คำนวณสด ไม่ตัดตามช่วงเวลา: งานที่ค้างอยู่ตอนนี้คืองานที่ต้องทำ ไม่ว่าเริ่มเมื่อไร
+  const queueWaiting = raQueue.filter((x) => x.ready !== false);
+  const queueUpcoming = raQueue.filter((x) => x.ready === false);
 
   const getCountAndTax = (list) => ({
     count: list.length,
@@ -182,19 +183,14 @@ export default function TaxDashboard() {
   if (canLG) {
     regs.filter((x) => x.status === "pending_legal").forEach((x) =>
       queue.push({ id: `rl-${x.id}`, status: "pending_legal", title: `${x.fgCode} · ${productDisplayName(x)}`, subtitle: `${naText(x.customerName)} — รอตรวจขึ้นทะเบียน`, cta: "ตรวจอนุมัติ", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goReg("pending_legal") }));
-    /* ⭐ PR5: ใบยื่นเป็นงานของ RA ทั้งเส้น — งานที่ยังไม่มีใบ (คิวรอยื่นกรม) + ใบที่ค้างแต่ละขั้น · ฝ่ายขายไม่มีขั้นบนใบยื่นแล้ว */
+    /* ⭐ v3 (มติ 02/11): ไม่มีขั้นสร้างใบยื่น — งานรอ RA/กำลังมา (คิวคำนวณสด) กดแล้วเปิดงานตรง · บันทึกที่กำลังยื่นรอผลชำระ
+       ฝ่ายขายไม่มีขั้นบนเส้นนี้ */
     raQueue.forEach((x) => {
       const days = registrationAge({ createdAt: x.since }, todayIso);
-      queue.push(raQueueItem(x, { age: ageChip(days), sortDays: days, onCreate: () => router.push(`/tax/filings?create=${encodeURIComponent(x.key)}`) }));
+      queue.push(raQueueItem(x, { age: ageChip(days), sortDays: days, onOpen: () => router.push(raWorkHref(x)) }));
     });
-    orders.filter((x) => x.status === "draft").forEach((x) =>
-      queue.push({ id: `od-${x.id}`, status: "draft", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ตรวจรายการแล้วเริ่มยื่น`, cta: "เริ่มยื่น", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("draft") }));
-    orders.filter((x) => x.status === "rejected").forEach((x) =>
-      queue.push({ id: `ox-${x.id}`, status: "rejected", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — ${x.rejectionReason || "ตีกลับ"}`, cta: "ยื่นใหม่", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("rejected") }));
-    orders.filter((x) => x.status === "filing").forEach((x) =>
-      queue.push({ id: `of-${x.id}`, status: "filing", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — กำลังยื่น`, cta: "บันทึกใบเสร็จ", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("filing") }));
-    orders.filter((x) => x.status === "complete").forEach((x) =>
-      queue.push({ id: `oc-${x.id}`, status: "complete", title: `${x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — รอส่งใบเสร็จ`, cta: "ยืนยันส่งเอกสาร", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => goFil("complete") }));
+    rawOrders.filter((x) => x.status === "filing").forEach((x) =>
+      queue.push({ id: `of-${x.id}`, status: "filing", title: `${x.poReference || x.quotationRef} · ${naText(x.customerName)}`, subtitle: `${itemsLine(x)} — กำลังยื่น รอบันทึกผลชำระ`, cta: "บันทึกผลชำระ", age: ageChip(ageOf(x)), sortDays: ageOf(x), onClick: () => router.push(`/tax/filings/${x.id}`) }));
   }
   // เก่าสุดขึ้นก่อน — คิวที่เรียงตามลำดับที่เผอิญ push เข้ามาไม่ได้ตอบว่า "ทำอันไหนก่อน"
   queue.sort((a, b) => (b.sortDays ?? -1) - (a.sortDays ?? -1));
@@ -202,7 +198,8 @@ export default function TaxDashboard() {
   // สายยื่นชำระยังไม่เคยมีใบเลย ≠ "ทุกช่องเป็น 0" — ต้องบอกว่าใบมาจากไหน
   // 🪤 ต้องตัด `ordersFailed` ออกก่อน ไม่งั้นโหลดพังจะได้ข้อความ "ยังไม่มีใบยื่นในระบบ"
   //    ซึ่งคือหน้าตาที่จอโชว์อยู่ 26 วันตอน API ตอบ 500 — ว่างจริงกับพังต้องคนละข้อความ
-  const noFilingsAtAll = !l2 && !ordersFailed && rawOrders.length === 0;
+  // ⭐ v3: งานในคิว RA (ยังไม่มีบันทึก) ก็คืองาน — "ยังไม่มีอะไรเลย" ต้องว่างทั้งสองแหล่ง
+  const noFilingsAtAll = !l2 && !ordersFailed && rawOrders.length === 0 && (!canLG || (raQueueLoaded && raQueue.length === 0));
 
   return (
     <Workspace
@@ -323,8 +320,8 @@ export default function TaxDashboard() {
             /* 🐞 ของเดิมโชว์ KPI หกใบเป็น 0 ทั้งแถว + กราฟเปล่า ซึ่งอ่านไม่ออกว่า
                "ยังไม่มีใบ" หรือ "ตัวเลขพัง" — ของจริงคือยังไม่เคยมีใบยื่นสักใบ */
             <EmptyState icon={ReceiptText}>
-              ยังไม่มีใบยื่นชำระภาษีในระบบ — ฝ่าย RA สร้างใบยื่นจากคิวรอยื่นกรม
-              (ใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว) โดยกด “สร้างใบยื่น” ที่หน้าการยื่นชำระภาษี
+              ยังไม่มีงานยื่นชำระภาษี — งานเข้ามาเองเมื่อใบเสนอราคาค่าสรรพสามิตอนุมัติ (กำลังมา)
+              และเมื่อใบสั่งขายค่าสรรพสามิตอนุมัติ (รอ RA)
             </EmptyState>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
@@ -333,17 +330,19 @@ export default function TaxDashboard() {
                 <OrdersComposedChart orders={orders} />
               </div>
               <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-                <KpiCard label="เตรียมใบยื่น" value={getCountAndTax(o.draft).count} taxValue={getCountAndTax(o.draft).tax} tone="neutral" icon={ReceiptText} onClick={() => goFil("draft")} />
-                <KpiCard label="ตีกลับ (ยื่นใหม่)" value={getCountAndTax(o.rejected).count} taxValue={getCountAndTax(o.rejected).tax} tone="danger" icon={CircleDollarSign} onClick={() => goFil("rejected")} />
+                {/* คิว RA (กำลังมา · รอ RA) ไม่ตัดตามช่วงเวลา — งานค้างตอนนี้ · บันทึก (กำลังยื่น · ชำระแล้ว) ตัดตามช่วงที่เลือก */}
                 <KpiCard
-                  label="รอยื่นกรม (ยังไม่มีใบ)"
-                  value={canLG && raQueueLoaded ? raQueue.filter((x) => x.ready !== false).length : NA}
-                  hint={canLG && raQueueLoaded && raQueue.some((x) => x.ready === false) ? `กำลังมา ${raQueue.filter((x) => x.ready === false).length} ใบ` : undefined}
-                  tone="warning" icon={Clock3} onClick={canLG ? () => router.push("/tax/filings?create=new") : undefined}
+                  label="กำลังมา" value={canLG && raQueueLoaded ? queueUpcoming.length : NA}
+                  hint="ใบเสนอราคา/ใบสั่งขายค่าสรรพสามิตยังไม่อนุมัติ"
+                  tone="neutral" icon={ReceiptText} onClick={canLG ? () => router.push("/tax/filings?status=upcoming") : undefined}
+                />
+                <KpiCard
+                  label="รอ RA" value={canLG && raQueueLoaded ? queueWaiting.length : NA}
+                  hint="ใบสั่งขายค่าสรรพสามิตอนุมัติแล้ว — รอเริ่มยื่น"
+                  tone="warning" icon={Clock3} onClick={canLG ? () => router.push("/tax/filings?status=queued") : undefined}
                 />
                 <KpiCard label="กำลังยื่น" value={getCountAndTax(o.filing).count} taxValue={getCountAndTax(o.filing).tax} tone="info" icon={Send} onClick={() => goFil("filing")} />
                 <KpiCard label="ชำระแล้ว" value={getCountAndTax(o.complete).count} taxValue={getCountAndTax(o.complete).tax} tone="success" icon={BadgeCheck} onClick={() => goFil("complete")} />
-                <KpiCard label="ส่งเอกสารแล้ว" value={getCountAndTax(o.delivered).count} taxValue={getCountAndTax(o.delivered).tax} tone="success" onClick={() => goFil("delivered")} />
               </div>
             </div>
           )}

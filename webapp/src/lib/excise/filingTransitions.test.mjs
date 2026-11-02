@@ -1,114 +1,92 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { FILING_EDITABLE_STATUSES, FILING_TRANSITIONS, TRACKS, canTransitionFiling, filingTransitionError } from "./workflow.js";
+import { FILING_TRANSITIONS, TRACKS, canTransitionFiling, filingTransitionError } from "./workflow.js";
 import {
-  FILING_SKIP_REASON_MIN, exciseOrderFilingLines, filingRecalcBlock, filingSourceOf, filingStartGateError, filingStartGates,
+  FILING_REASON_MAX, FILING_REASON_MIN, exciseOrderFilingLines, filingSourceOf, filingStartGateError, filingStartGates,
 } from "./raFilingRules.js";
 
 /* 🔴 ตรวจระบบ 2026-10-26 ข้อ 4 — route ใบยื่นเช็กสถานะต้นทางแค่ 3 ปลายทาง ⇒ RA ปิดงาน "ชำระแล้ว" จากร่างได้ ·
-   ตีกลับใบที่ชำระแล้วได้ · เลขใบเสร็จบังคับแค่ในโมดัล ⇒ ตารางเดียว + ด่านที่ server
-   ⭐ แผนรื้อสรรพสามิต PR5 (มติ 28/10): ใบยื่นเป็นของ RA ทั้งเส้น — ร่าง → กำลังยื่น → ชำระแล้ว → ส่งเอกสารแล้ว · ตีกลับ = RA ระหว่างยื่น
-      ขั้น "รับเงิน" ของฝ่ายขายบนใบยื่นหายไป (เงินค่าภาษีเก็บด้วย SO ค่าสรรพสามิต · บัญชีปิดใบ) */
+   เลขใบเสร็จบังคับแค่ในโมดัล ⇒ ตารางเดียว + ด่านที่ server
+   ⭐ v3 (มติเจ้าของ 02/11): ไม่มีขั้นสร้างใบยื่น — RA กด "เริ่มยื่น" = ระบบเขียนบันทึกสถานะกำลังยื่น · อัปเดตสองขั้น
+      กำลังยื่น → ชำระแล้ว · ไม่มีร่าง/ตีกลับ/ส่งเอกสาร · ด่านเริ่มยื่น = ทะเบียนเด็ดขาด · เงินแค่โชว์ */
 const SA = { sales: true, ra: false };
 const RA = { sales: false, ra: true };
 const ADMIN = { sales: true, ra: true };
 const ALL = ["draft", "pending", "received", "filing", "complete", "delivered", "rejected"];
 const ok = (args) => filingTransitionError(args) === null;
 
-test("ทางเดินปกติครบเส้น (ใบเสียภาษี) — RA ทุกขั้น · ใบเสร็จกรมบังคับตอนปิด", () => {
-  assert.ok(ok({ from: "draft", to: "filing", caps: RA }));
+test("v3: บันทึกมีสองขั้น กำลังยื่น → ชำระแล้ว · ปลายทางเดียวในตาราง · ใบเสร็จกรมบังคับตอนปิด", () => {
+  assert.deepEqual(TRACKS.payment.stages.map((s) => s.key), ["filing", "complete"]);
+  assert.equal(TRACKS.payment.stages.find((s) => s.key === "filing").owner, "RA");
+  assert.equal(TRACKS.payment.stages.at(-1).done, true, "ชำระแล้ว = จบ (ไม่มีขั้นส่งเอกสาร)");
+  assert.deepEqual(Object.keys(FILING_TRANSITIONS), ["complete"], "กำลังยื่นเกิดตอนเขียนบันทึก ไม่ใช่ปลายทางของ PATCH");
   assert.ok(ok({ from: "filing", to: "complete", caps: RA, fields: { exciseReceiptNumber: "ER-1" } }));
-  assert.ok(ok({ from: "complete", to: "delivered", caps: RA }));
-  assert.ok(ok({ from: "filing", to: "rejected", caps: RA, fields: { rejectionReason: "ยอดไม่ตรง" } }));
-  assert.ok(ok({ from: "rejected", to: "filing", caps: RA }));
-  assert.deepEqual(TRACKS.payment.stages.map((s) => s.key), ["draft", "rejected", "filing", "complete", "delivered"]);
-  assert.ok(TRACKS.payment.stages.every((s) => s.done || s.owner === "RA"), "ทุกขั้นที่ยังไม่จบเป็นของ RA");
-  assert.deepEqual(FILING_EDITABLE_STATUSES, ["draft", "rejected"]);
 });
 
-test("ข้ามขั้นไม่ได้ — ทุกคู่ที่ไม่อยู่ในตาราง ตอบ 400 แม้เป็นแอดมิน · ขั้นรับเงินของฝ่ายขายหายแล้ว", () => {
-  const allowed = new Set(["draft>filing", "rejected>filing", "filing>complete", "complete>delivered", "filing>rejected"]);
+test("ข้ามขั้นไม่ได้ — ทุกคู่ที่ไม่อยู่ในตาราง ตอบ 400 แม้เป็นแอดมิน · ปลายทางเก่าของ PR5 ปิดหมด", () => {
   const fields = { exciseReceiptNumber: "x", rejectionReason: "x" };
   for (const from of ALL) {
-    for (const to of Object.keys(FILING_TRANSITIONS)) {
-      if (from === to) continue;
-      const result = filingTransitionError({ from, to, caps: ADMIN, fields });
-      if (allowed.has(`${from}>${to}`)) assert.equal(result, null, `${from} → ${to} ต้องผ่าน`);
-      else assert.equal(result?.status, 400, `${from} → ${to} ต้องถูกปฏิเสธ`);
-    }
+    const result = filingTransitionError({ from, to: "complete", caps: ADMIN, fields });
+    if (from === "filing") assert.equal(result, null);
+    else assert.equal(result?.status, 400, `${from} → complete ต้องถูกปฏิเสธ`);
   }
-  for (const gone of ["pending", "received"]) {
-    assert.equal(filingTransitionError({ from: "draft", to: gone, caps: ADMIN, fields }).status, 400, `${gone} ไม่ใช่ปลายทางแล้ว`);
+  for (const gone of ["draft", "filing", "rejected", "delivered", "pending", "received"]) {
+    assert.equal(filingTransitionError({ from: "filing", to: gone, caps: ADMIN, fields }).status, 400, `${gone} ไม่ใช่ปลายทางแล้ว`);
   }
-  // เคสจริงที่เคยหลุด: ปิดงานจากร่าง (ใบเสียภาษี) · ตีกลับใบที่ชำระแล้ว
+  // เคสจริงที่เคยหลุด: ปิดงานจากร่าง
   assert.match(filingTransitionError({ from: "draft", to: "complete", caps: RA, fields }).error, /ต้องมาจาก "กำลังยื่น"/);
-  assert.equal(filingTransitionError({ from: "complete", to: "rejected", caps: RA, fields }).status, 400);
+  assert.equal(canTransitionFiling("filing", "complete"), true);
+  assert.equal(canTransitionFiling("complete", "complete"), false);
+  assert.equal(canTransitionFiling("filing", "delivered"), false);
 });
 
-test("ใครทำ: ฝ่ายขายไม่มีขั้นไหนบนใบยื่นแล้ว (403)", () => {
-  assert.equal(filingTransitionError({ from: "draft", to: "filing", caps: SA }).status, 403);
+test("ใครทำ: ฝ่ายขายไม่มีขั้นไหนบนเส้นนี้ (403)", () => {
   assert.equal(filingTransitionError({ from: "filing", to: "complete", caps: SA, fields: { exciseReceiptNumber: "x" } }).status, 403);
-  assert.equal(filingTransitionError({ from: "complete", to: "delivered", caps: SA }).status, 403);
-  assert.equal(filingTransitionError({ from: "draft", to: "nonsense", caps: ADMIN }).status, 400);
 });
 
-test("เลขเอกสารบังคับที่ server — ว่าง/ช่องว่างล้วนไม่ผ่าน · ใบยกเว้นไม่ต้องมีเลขใบเสร็จ", () => {
+test("เลขใบเสร็จบังคับที่ server — ว่าง/ช่องว่างล้วนไม่ผ่าน · ยกเว้นภาษีทั้งใบไม่ต้องมีเลขใบเสร็จ", () => {
   for (const blank of [undefined, null, "", "   "]) {
     assert.match(filingTransitionError({ from: "filing", to: "complete", caps: RA, fields: { exciseReceiptNumber: blank } }).error, /ใบเสร็จสรรพสามิต/);
-    assert.match(filingTransitionError({ from: "filing", to: "rejected", caps: RA, fields: { rejectionReason: blank } }).error, /เหตุผลที่ตีกลับ/);
   }
-  assert.ok(ok({ from: "draft", to: "complete", caps: RA, exempt: true }));
-  assert.equal(filingTransitionError({ from: "filing", to: "rejected", caps: RA, exempt: true }).status, 400, "ตีกลับต้องมีเหตุผลเสมอ");
+  assert.ok(ok({ from: "filing", to: "complete", caps: RA, exempt: true }));
 });
 
-test("ใบยกเว้น: ร่าง → ชำระแล้วได้ตรง (ไม่มีขั้นยื่น) · ใบเสียภาษีทำแบบนั้นไม่ได้ · ใบยกเว้นเข้า 'กำลังยื่น' ไม่ได้", () => {
-  assert.equal(filingTransitionError({ from: "draft", to: "complete", caps: RA, fields: { exciseReceiptNumber: "x" } }).status, 400);
-  assert.match(filingTransitionError({ from: "draft", to: "filing", caps: RA, exempt: true }).error, /ยกเว้นภาษี/);
-  assert.equal(canTransitionFiling("draft", "complete", { exempt: true }), true);
-  assert.equal(canTransitionFiling("draft", "complete"), false);
-  assert.equal(canTransitionFiling("draft", "filing", { exempt: true }), false);
-});
-
-/* ── ด่านเริ่มยื่น (แผน หมวด 3.6 · Q15): เงินปิดใบแล้ว · ทะเบียนครบ — ข้ามได้ใส่เหตุผล ───────────────────── */
+/* ── ด่านเริ่มยื่น (v3 · V3–V4): ทะเบียนเด็ดขาด ไม่มีทางข้าม · เงินแค่ข้อมูล ───────────────────── */
 const exciseFiling = (items) => ({ salesOrderId: "S1", exciseSalesOrderId: "SX1", items });
-const reason = "ลูกค้าโอนแล้ว บัญชียังไม่ปิดใบ";
 
-test("ด่านเงิน: ใบผูก SO ค่าสรรพสามิต ต้องให้บัญชีปิดใบก่อน (หรือเหตุผล) · ใบไม่เรียกเก็บผ่านเสมอ", () => {
+test("V3: เงินไม่ใช่ด่าน — บัญชียังไม่ปิดใบก็เริ่มยื่นได้ (ป้ายบอกสถานะให้รู้) · ใบไม่เรียกเก็บบอกชนิด", () => {
   const items = [{ registrationId: "R1" }];
   const pending = filingStartGates({ order: exciseFiling(items), exciseOrder: { orderNumber: "SO-X", financeStatus: "pending" } });
   assert.equal(pending.money.ok, false);
   assert.match(pending.money.label, /บัญชียังไม่ปิดใบ.*SO-X.*รอปิดใบ/);
-  assert.match(filingStartGateError(pending, {}), /ระบุเหตุผลที่เริ่มยื่นก่อนบัญชีปิดใบ/);
-  assert.match(filingStartGateError(pending, { skipMoneyReason: "สั้น" }), /ระบุเหตุผล/);
-  assert.equal(filingStartGateError(pending, { skipMoneyReason: reason }), null);
+  assert.equal(filingStartGateError(pending), null, "เงินยังไม่ปิดใบ ≠ เริ่มยื่นไม่ได้");
   const closed = filingStartGates({ order: exciseFiling(items), exciseOrder: { orderNumber: "SO-X", financeStatus: "approved" } });
   assert.equal(closed.money.ok, true);
-  assert.equal(filingStartGateError(closed, {}), null);
   const notBilled = filingStartGates({ order: { salesOrderId: "S1", items }, notBilledKind: "collected_outside" });
-  assert.equal(notBilled.money.ok, true);
   assert.match(notBilled.money.label, /เก็บนอกระบบแล้ว/);
-  assert.ok(reason.length >= FILING_SKIP_REASON_MIN);
 });
 
-test("ด่านทะเบียน: รายการที่ไม่มีทะเบียนอนุมัติต้องมีเหตุผลข้าม · นับจำนวนให้เห็น", () => {
+test("V4: ทะเบียนไม่ครบ = เริ่มยื่นไม่ได้ เด็ดขาด — นับจำนวน + บอก FG · เหตุผลข้ามแบบเดิมไม่มีผล", () => {
   const gates = filingStartGates({
-    order: exciseFiling([{ registrationId: "R1" }, { registrationId: null }, { registrationId: null }]),
+    order: exciseFiling([{ registrationId: "R1", fgCode: "FG-1" }, { registrationId: null, fgCode: "FG-2" }, { registrationId: null, fgCode: "FG-3" }]),
     exciseOrder: { financeStatus: "approved" },
   });
   assert.equal(gates.registration.ok, false);
   assert.equal(gates.registration.missing, 2);
-  assert.match(filingStartGateError(gates, {}), /ยังไม่มีทะเบียนอนุมัติ 2 รายการ/);
-  assert.equal(filingStartGateError(gates, { skipRegistrationReason: "ทะเบียนรอกรมอนุมัติ ยื่นภาษีก่อน" }), null);
+  assert.deepEqual(gates.registration.codes, ["FG-2", "FG-3"]);
+  assert.match(filingStartGateError(gates), /ยังไม่มีทะเบียนอนุมัติ 2 รายการ \(FG-2, FG-3\).*ต้องอนุมัติก่อนเริ่มยื่น/);
+  // ทางข้ามของ PR5 ต้องไม่กลับมา — ส่งเหตุผลมาก็ยังไม่ผ่าน
+  assert.notEqual(filingStartGateError(gates, { skipRegistrationReason: "ทะเบียนรอกรมอนุมัติ ยื่นภาษีก่อน" }), null);
+  const full = filingStartGates({ order: exciseFiling([{ registrationId: "R1" }]), exciseOrder: null });
+  assert.equal(filingStartGateError(full), null);
+  assert.ok(FILING_REASON_MIN === 10 && FILING_REASON_MAX === 500, "เหตุผลยกเลิกการเริ่มยื่น 10–500 ตัว (D10)");
 });
 
-test("แหล่งของใบ + คิดใหม่: ใบผูก SO ค่าสรรพสามิตคิดใหม่ไม่ได้ (ยอดที่ลูกค้าจ่ายแล้ว) · ใบไม่เรียกเก็บได้", () => {
+test("แหล่งของงาน: ผูก SO ค่าสรรพสามิต · ไม่เรียกเก็บ · ใบเก่าสร้างเอง", () => {
   assert.equal(filingSourceOf({ salesOrderId: "S1", exciseSalesOrderId: "SX1" }), "excise_order");
   assert.equal(filingSourceOf({ salesOrderId: "S1" }), "not_billed");
   assert.equal(filingSourceOf({}), null);
-  assert.match(filingRecalcBlock({ salesOrderId: "S1", exciseSalesOrderId: "SX1" }), /ยอดที่ลูกค้าจ่ายแล้ว/);
-  assert.equal(filingRecalcBlock({ salesOrderId: "S1" }), null);
-  assert.match(filingRecalcBlock({}), /ไม่ได้สร้างจากใบสั่งขาย/);
 });
 
 test("รายการจากใบค่าสรรพสามิต: FG ต้นทาง · ลิงก์บรรทัด SO ลูกค้า · ช่อง ภส. ตามใบ · ทะเบียนจากผล resolve ของ SO ลูกค้า", () => {
@@ -119,7 +97,7 @@ test("รายการจากใบค่าสรรพสามิต: FG 
   ];
   const customerLines = [{ salesOrderLineId: "L1", registrationId: "R1", registrationState: "approved", productId: "P1", fgCode: "FG-1", description: "น้ำหอม" }];
   const built = exciseOrderFilingLines({ exciseLines, customerLines });
-  assert.equal(built.lines.length, 2, "บรรทัดที่ไม่ใช่ค่าสรรพสามิตไม่เข้าใบยื่น");
+  assert.equal(built.lines.length, 2, "บรรทัดที่ไม่ใช่ค่าสรรพสามิตไม่เข้างานยื่น");
   const [a, b] = built.lines;
   assert.equal(a.productId, "P1");
   assert.equal(a.salesOrderLineId, "L1");
@@ -137,16 +115,37 @@ test("รายการจากใบค่าสรรพสามิต: FG 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const route = codeOnly(read("../../app/api/orders/[id]/route.js"));
+const startRoute = codeOnly(read("../../app/api/tax/orders/from-sales-order/route.js"));
 const page = codeOnly(read("../../app/tax/filings/[id]/page.js"));
+const modal = codeOnly(read("../../components/excise/SalesOrderFilingModal.js"));
 
-test("route ตัดสินด้วยตารางกลาง + ด่านเริ่มยื่นตัวเดียวกับโมดัล · ยกเว้นตัดสินจากทะเบียน (stampExemptFlags) ไม่ใช่ยอด 0", () => {
+test("route: ตารางกลางตัดสินขั้นชำระแล้ว · ยกเว้นจากทะเบียน (stampExemptFlags) · บันทึกตรึงรายการ ห้ามแก้/คิดใหม่", () => {
   assert.match(route, /filingTransitionError\(\{\s*from: order\.status, to: target, caps: \{ sales: isSales, ra: isLegal \}, exempt, fields,/);
-  assert.match(route, /stampExemptFlags\(supabase, \[\{ \.\.\.order, items \}\]\)/);
-  assert.doesNotMatch(route, /salesTargets|legalTargets/, "รายการปลายทางแยกตามฝ่ายแบบเดิมห้ามกลับมา");
+  assert.match(route, /stampExemptFlags\(supabase, \[\{ \.\.\.order, items: exemptItems \|\| \[\] \}\]\)/);
   assert.match(route, /exciseReceiptNumber: updates\.exciseReceiptNumber !== undefined \? updates\.exciseReceiptNumber : order\.exciseReceiptNumber/);
-  assert.match(route, /const gateError = filingStartGateError\(gates, \{\s*skipMoneyReason: body\.skipMoneyReason, skipRegistrationReason: body\.skipRegistrationReason,/);
-  assert.doesNotMatch(route, /collectedConfirmedAt/, "ขั้นรับเงินของฝ่ายขายหายแล้ว");
-  // ปุ่มตีกลับบนจออ่านตารางเดียวกัน · ไม่มีปุ่มรับเงิน/พิมพ์ใบแจ้งชำระถึงลูกค้า
-  assert.match(page, /visible: canApprove && canTransitionFiling\(o\.status, "rejected"\)/);
-  assert.doesNotMatch(page, /ReceiveDialog|openBillPrintWindow|"sales:act"/);
+  assert.match(route, /if \(Array\.isArray\(body\.items\) \|\| body\.recalcFromSalesOrder === true\)/, "แก้รายการ/คิดใหม่ต้องถูกปฏิเสธ");
+  assert.doesNotMatch(route, /insertOrderItems|filingItemRows|skipMoneyReason/, "ทางสลับรายการ + ด่านข้ามของ PR5 ต้องไม่กลับมา");
+  // D11: แก้เลขใบเสร็จหลังชำระแล้วได้ แต่ห้ามล้างจนว่าง
+  assert.match(route, /order\.status === 'complete' && updates\.exciseReceiptNumber !== undefined && !updates\.exciseReceiptNumber/);
+});
+
+test("D10 ยกเลิกการเริ่มยื่น: เฉพาะ RA · เฉพาะกำลังยื่น (แอดมินทุกสถานะ) · เหตุผล 10–500 ตัว · audit เก็บเหตุผล", () => {
+  const del = route.slice(route.indexOf("export async function DELETE"));
+  assert.match(del, /can\(user\?\.role, 'ra:approve'\)/);
+  assert.match(del, /\['filing', 'draft'\]\.includes\(order\.status\) && user\?\.role !== 'admin'/);
+  assert.match(del, /reason\.length < FILING_REASON_MIN \|\| reason\.length > FILING_REASON_MAX/);
+  assert.match(del, /summary: `RA ยกเลิกการเริ่มยื่น \$\{order\.poReference \|\| id\} — \$\{reason\}`/);
+  assert.match(page, /method: "DELETE", headers: \{ "Content-Type": "application\/json" \}, body: JSON\.stringify\(\{ reason \}\)/);
+});
+
+test("เริ่มยื่น: route เขียนบันทึกสถานะกำลังยื่น + ด่านทะเบียนตัวเดียวกับโมดัล · ปุ่มโชว์เสมอ กดแล้วบอกเหตุ", () => {
+  assert.match(startRoute, /status: "filing",\s*filingStartedAt: now,/);
+  assert.doesNotMatch(startRoute, /status: "draft"/, "ขั้นร่างของ PR5 ห้ามกลับมา");
+  assert.match(startRoute, /const gateError = filingStartGateError\(filingStartGates\(\{/);
+  assert.match(modal, /filingStartGateError\(preview\.gates\)/, "โมดัลอ่านด่านจากตัวตัดสินเดียวกับ route");
+  assert.match(modal, /aria-disabled=\{!!startBlocker\}/, "ติดด่าน = ปุ่มยังอยู่ (aria-disabled) กดแล้วบอกเหตุ");
+  assert.match(modal, /if \(startBlocker\) \{\s*setError\(startBlocker\);/);
+  // หน้าบันทึก: ไม่มีปุ่มรับเงิน/พิมพ์ใบแจ้งชำระถึงลูกค้า/ตีกลับ/คิดใหม่
+  assert.doesNotMatch(page, /ReceiveDialog|openBillPrintWindow|"sales:act"|recalcFromSalesOrder|"rejected"\)/);
+  assert.match(page, /canTransitionFiling\(o\?\.status, "complete"\)/);
 });

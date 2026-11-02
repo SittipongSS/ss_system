@@ -36,7 +36,7 @@ export default function ExciseNotBilledDialog({ open, orderNumber, busy = false,
       <div className={styles.body}>
         <p className={styles.description}>
           {orderNumber ? `${orderNumber} — ` : ""}จะไม่ออกใบเสนอราคาค่าสรรพสามิตของใบนี้ ฝ่าย RA ยังยื่นกรมตามเดิม
-          (ยกเว้น “ไม่ต้องเสียภาษี”) · ถอนการตัดสินได้จนกว่า RA จะสร้างใบยื่น
+          (ยกเว้น “ไม่ต้องเสียภาษี”) · ถอนการตัดสินได้จนกว่า RA จะเริ่มยื่น
         </p>
         <div className="form-group">
           <span>เหตุที่ไม่เรียกเก็บ *</span>

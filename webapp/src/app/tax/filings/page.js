@@ -1,20 +1,23 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
-import { useRouter } from "next/navigation";
-import { ReceiptText, Plus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ReceiptText, Printer } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
+import SkeletonRows from "@/components/ui/Skeleton";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtMoney, naText } from "@/lib/format";
+import { fmtMoney, naText, NA } from "@/lib/format";
 import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
-import { deptOf, isTaxWaitingOnMe, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
+import { deptOf, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
 import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
 import { dayParam, withinDateRange } from "@/lib/tax/period";
+import { raQueueText, raWorkHref } from "@/lib/excise/raQueueItem";
+import { printFilingSummary } from "@/lib/excise/printFilingSummary";
 import ReportExportActions from "@/components/excise/ReportExportActions";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
@@ -24,29 +27,67 @@ import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
 import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
-import WorkQueue from "@/components/excise/WorkQueue";
-import { raQueueItem } from "@/lib/excise/raQueueItem";
 
 // ยอด 0 ≠ ยกเว้น — ใบที่สินค้าไม่มีราคาขายปลีกต้องเห็น ฿0.00 ตามจริง (isExemptFiling · ตรวจระบบ 2026-10-26)
 const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : fmtMoney(o.totalTax || 0));
 
-export default function FilingsPage() {
+/* ── งานหนึ่งแถวของรายการ (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11) ─────────────────────────────────────────
+   รายการเดียวของ RA: แถวคิวที่ยังไม่มีบันทึก (กำลังมา · รอ RA — คำนวณสดจาก /api/tax/orders/queue) + บันทึกการยื่น
+   (กำลังยื่น · ชำระแล้ว — /api/orders) · ไม่มีขั้นสร้างใบยื่น: กดงานรอ RA = เปิดงาน (`?start=`) แล้วกด "เริ่มยื่น"
+   `printKey` = คีย์ของใบสรุปรายการยื่น (lib/excise/filingSummary) · แถวกำลังมายังไม่มี SO ค่าสรรพสามิต ⇒ พิมพ์ไม่ได้ */
+const queueWorkRow = (row) => ({
+  key: row.key,
+  kind: "queue",
+  status: row.ready === false ? "upcoming" : "queued",
+  printKey: row.ready === false ? null : row.key,
+  salesOrderNumber: row.salesOrder?.orderNumber || "",
+  subtitle: raQueueText(row).subtitle,
+  customerId: row.salesOrder?.customerId || null,
+  customerName: row.salesOrder?.customerName || "",
+  createdAt: row.since || null, // วันที่งานถึงขั้นปัจจุบัน — ช่องเดียวกับบันทึก ตัวกรองช่วงวันจะได้ถามคำถามเดียว
+  href: raWorkHref(row),
+  search: [row.salesOrder?.orderNumber, row.exciseOrder?.orderNumber, row.exciseQuote?.quoteNumber, row.salesOrder?.customerName],
+});
+const recordWorkRow = (o) => ({
+  key: `order:${o.id}`,
+  kind: "record",
+  status: o.status,
+  printKey: `order:${o.id}`,
+  salesOrderNumber: o.poReference || o.quotationRef || o.id,
+  subtitle: o.exciseReceiptNumber ? `ใบเสร็จกรม ${o.exciseReceiptNumber}` : o.taxNoticeNumber || "",
+  customerId: o.customerId || null,
+  customerName: o.customerName || "",
+  createdAt: o.createdAt || null, // บันทึกเกิดตอนเริ่มยื่น ⇒ = วันเริ่มยื่น · ตรงกับไฟล์ Excel/พิมพ์ (reports.js ตัดด้วย createdAt)
+  href: `/tax/filings/${o.id}`,
+  order: o,
+  search: [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber, o.taxNoticeNumber],
+});
+
+function FilingsPageInner() {
   const role = useRole();
   const router = useRouter();
-  const canFile = useCan("ra:approve");     // RA: สร้างใบยื่นจากคิวรอยื่นกรม (PR5 — ฝ่ายขายไม่สร้าง/ไม่รับเงินบนใบยื่นแล้ว)
+  const searchParams = useSearchParams();
+  const canFile = useCan("ra:approve");     // RA: งานรอ RA · เริ่มยื่น · บันทึกผลชำระ (ฝ่ายขายไม่มีขั้นบนเส้นนี้)
 
   const { data: orders, loading, error: ordersError, staleError: ordersStale, errorDetail: ordersDetail, loaded: ordersLoaded, reload } = useApiList("/api/orders");
 
-  /* เลนของผู้ใช้ (SA / RA) — ตัวเดียวกับที่ `?status=mine` และป้ายบนเมนูใช้ (ม-117)
-     AD เห็นทั้งสองเลนแต่ไม่เป็นเจ้าของขั้นไหน ⇒ ชิป "รอฉันลงมือ" จะได้ 0 เสมอ จึงซ่อนทิ้ง */
+  /* "รอฉันลงมือ" = รอ RA + กำลังยื่น (ชุดเดียวกับป้ายเมนู) — มีแต่เลน RA · ฝ่ายขาย/แอดมินไม่เป็นเจ้าของขั้นไหน ⇒ ซ่อนชิป */
   const myDept = deptOf(role);
   const filterOptions = useMemo(
-    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
+    () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "RA"),
     [myDept],
   );
   const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "mine" : "all"));
+  const [search, setSearch] = useStickyState("search", "");
+  /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
+     — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
+  const [customerIds, setCustomerIds] = useState([]);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [selected, setSelected] = useState(() => new Set());
+  const [printing, setPrinting] = useState(false);
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = searchParams;
     const s = params.get("status");
     if (s && FILING_FILTERS.some((f) => f.key === s)) setFilter(s);
     /* ⭐ ช่วงวันจากการ์ดบนภาพรวม (`?from=&to=` · ตรวจตัวเลข M7) — ลงช่องจาก–ถึงที่มองเห็นและล้างได้ · ค่าผิดรูปถูกเมิน */
@@ -56,48 +97,36 @@ export default function FilingsPage() {
     if (toParam) setTo(toParam);
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
-    // `?create=<คีย์งาน>` — มาจากคิว "รอยื่นกรม" บนภาพรวม /tax: เปิดโมดัลสร้างพร้อมเลือกงานนั้นไว้
-    const createKey = params.get("create");
-    if (createKey) {
-      setCreateKey(createKey === "new" ? "" : createKey);
-      setFormOpen(true);
-    }
-  }, [router]);
-  const [search, setSearch] = useStickyState("search", "");
-  const [formOpen, setFormOpen] = useState(false);
-  const [createKey, setCreateKey] = useState("");
-  /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
-     — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
-  const [customerIds, setCustomerIds] = useState([]);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [selected, setSelected] = useState(() => new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- อ่านพารามิเตอร์ตั้งต้นครั้งเดียวตอนเปิดหน้า (`?start=` อ่านสดข้างล่าง)
+  }, []);
   // ลิสต์ลูกค้าโหลดตอนกางตัวกรองครั้งแรก ไม่ใช่ตอนเปิดหน้า (508 แถว)
   const [customersReady, setCustomersReady] = useState(false);
   const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList(customersReady ? "/api/customers" : null);
-  /* คิว "รอยื่นกรม" (PR5 + มติเจ้าของ 29/10) — งานที่ยังไม่มีใบยื่น: พร้อมสร้าง + กำลังมา (ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว)
+  /* คิวงานของ RA ที่ยังไม่มีบันทึก (PR5 + มติเจ้าของ 29/10 + v3) — กำลังมา (ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว) + รอ RA
      ⇒ RA เห็นงานบนหน้านี้ตั้งแต่ใบเสนอราคาอนุมัติ ไม่ใช่ตารางว่าง "0 ใบ" · โหลดเฉพาะฝ่าย RA */
   const { data: raQueue, loading: lQueue, error: queueError, staleError: queueStale, errorDetail: queueDetail, loaded: queueLoaded, reload: reloadQueue } = useApiList(canFile ? "/api/tax/orders/queue" : null);
 
-  /* ── โหลดพัง ≠ ไม่มีใบยื่น · และรายชื่อลูกค้าที่ดึงไม่ได้ ≠ "ไม่มีลูกค้าให้เลือก" ─────────────────────
+  /* ── งานที่เปิดอยู่ (`?start=<คีย์งาน>`) — มาจากแถวในรายการ หรือคิวบนภาพรวม /tax · `?create=` คือคีย์เดิมของ PR5 ── */
+  const startKey = searchParams.get("start") || searchParams.get("create") || "";
+  const startRow = useMemo(() => raQueue.find((row) => row.key === startKey) || null, [raQueue, startKey]);
+  const closeWork = () => router.replace("/tax/filings", { scroll: false });
+
+  /* ── โหลดพัง ≠ ไม่มีงาน · และรายชื่อลูกค้าที่ดึงไม่ได้ ≠ "ไม่มีลูกค้าให้เลือก" ─────────────────────
      ป้ายเดียวของจอ (ท่าเดียวกับ /tax · /database) — ทุก useApiList ของหน้านี้อยู่ในก้อน sources ⇒ ได้ประโยคเดียวกัน
      ปุ่มลองใหม่ตัวเดียวกัน และรอบเบื้องหลังที่ล้ม (`staleError`) ถึงป้ายทุกสาย
 
      ⭐ **มติของจอนี้: สายไหนกระทบอะไร**
-        · ใบยื่นชำระ (ลิสต์หลัก · `blocks: "list"`) — ไม่เคยโหลดสำเร็จ = ซ่อนตาราง เหลือป้ายอย่างเดียว · สถานะว่าง "ยังไม่มีใบยื่นชำระ"
-          ใต้ป้ายอ่านได้ว่าระบบว่างจริง ซึ่งคนละเรื่องกับโหลดไม่ได้ · มีแคชอยู่ = ตารางยังอยู่ ป้ายบอกว่าเป็นของรอบก่อน
-        · รายชื่อลูกค้า (picker ของตัวกรอง · `blocks: "filter"` — โหลดตอนกางแผงครั้งแรก) — ของที่กินมันมีแค่ตัวกรองลูกค้า
-          (+ ชื่อลูกค้าบนหัวรายงานที่โหลดออก ซึ่งมาจากลูกค้าที่ติ๊กไว้ในตัวกรองตัวเดียวกัน) ⇒ **ตารางไม่ต้องหลบ**
-          🐞 ทรงเดิม: แผงตัวกรองขึ้น "ไม่มีตัวเลือก" เฉย ๆ = อ่านว่าไม่มีลูกค้าในระบบ ทั้งที่แค่ดึงไม่ขึ้น
-          ⇒ ป้ายเดียวกันนี้ (อยู่ใต้แถบเครื่องมือ = ติดกับปุ่มตัวกรอง) บอกว่าตัวกรองลูกค้ายังใช้ไม่ได้ พร้อมปุ่มลองใหม่
-          และหัวหมวดในแผงตัวกรองบอกสถานะเอง (`customerGroupLabel`) เพราะแผงลอยทับป้ายตอนกางอยู่
+        · บันทึกการยื่น (ลิสต์หลัก · `blocks: "list"`) — ไม่เคยโหลดสำเร็จ = ซ่อนตาราง เหลือป้ายอย่างเดียว
+          มีแคชอยู่ = ตารางยังอยู่ ป้ายบอกว่าเป็นของรอบก่อน
+        · คิวงาน RA (`blocks: "queue"`) — ไม่เคยโหลดสำเร็จ = แถวกำลังมา/รอ RA ขาดไปทั้งกอง ⇒ ป้ายนับจำนวนต้องเป็นขีด
+        · รายชื่อลูกค้า (picker ของตัวกรอง · `blocks: "filter"` — โหลดตอนกางแผงครั้งแรก) ⇒ **ตารางไม่ต้องหลบ**
      ⚠️ ป้ายกับการซ่อนคนละคำถาม: มี `error`/`staleError` = ขึ้นป้ายเสมอ · ซ่อนเฉพาะตอนไม่เคยโหลดสำเร็จ (`loaded`)
-        — ห้ามวัดด้วย `!orders.length`: ลิสต์ที่ตอบ `200 []` คือรู้แล้วว่าไม่มีใบ ต้องยังอ่านว่าว่าง */
+        — ห้ามวัดด้วย `!orders.length`: ลิสต์ที่ตอบ `200 []` คือรู้แล้วว่าไม่มีบันทึก ต้องยังอ่านว่าว่าง */
   const sources = [
     {
-      label: "ใบยื่นชำระ", error: ordersError || ordersStale, empty: !ordersLoaded, detail: ordersDetail, reload, blocks: "list",
-      blockedNote: "รายการใบยื่นยังแสดงไม่ได้ (ไม่ได้แปลว่ายังไม่มีใบยื่นชำระ)",
-      staleNote: "รายการใบยื่นที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
+      label: "บันทึกการยื่น", error: ordersError || ordersStale, empty: !ordersLoaded, detail: ordersDetail, reload, blocks: "list",
+      blockedNote: "รายการงานยื่นชำระยังแสดงไม่ได้ (ไม่ได้แปลว่ายังไม่มีงาน)",
+      staleNote: "รายการที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
     {
       label: "รายชื่อลูกค้า", error: customersError || customersStale, empty: !customersLoaded, detail: customersDetail, reload: reloadCustomers, blocks: "filter",
@@ -105,18 +134,18 @@ export default function FilingsPage() {
       staleNote: "รายชื่อลูกค้าในตัวกรองเป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
     {
-      label: "คิวรอยื่นกรม", error: queueError || queueStale, empty: !queueLoaded, detail: queueDetail, reload: reloadQueue, blocks: "queue",
-      blockedNote: "แผงงานรอยื่นกรมยังแสดงไม่ได้ (ไม่ได้แปลว่าไม่มีงานรอ)",
-      staleNote: "แผงงานรอยื่นกรมเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+      label: "คิวงาน RA", error: queueError || queueStale, empty: !queueLoaded, detail: queueDetail, reload: reloadQueue, blocks: "queue",
+      blockedNote: "งานกำลังมา/รอ RA ยังแสดงไม่ได้ (ไม่ได้แปลว่าไม่มีงานรอ)",
+      staleNote: "งานกำลังมา/รอ RA เป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
   const listBlocked = blocked.some((s) => s.blocks === "list");
   const filterBlocked = blocked.some((s) => s.blocks === "filter");
+  const queueBlocked = blocked.some((s) => s.blocks === "queue");
   // 🪤 พ่วงทุกข้อความ ไม่ใช่ตัวแรก — สองสายล้มพร้อมกันมักคนละเหตุ และตัวที่ถูกทิ้งมักเป็นตัวที่ไขคดีได้
   const causes = [...new Set(failing.map((s) => s.error))].join(" · ");
-  // ประโยคท้ายผูกกับสายที่ล้มทีละสาย — สายที่ไม่มีของในมือพูด blockedNote · สายที่ยังมีแคชพูด staleNote
   const loadError = failing.length
     ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
       ...new Set(failing.map((s) => (s.empty ? s.blockedNote : s.staleNote))),
@@ -124,8 +153,6 @@ export default function FilingsPage() {
     : null;
   // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
   const loadErrorDetail = sourcesFailureDetail(failing);
-  /* ลองสายลูกค้าไม่ได้พาแผงเข้า skeleton (ตารางยังอยู่) ⇒ ปุ่มต้องบอกเองว่ากำลังลองอยู่
-     ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ · ลองสายใบยื่นที่ไม่เคยโหลดสำเร็จ = แผงเป็น skeleton ให้เห็นเอง */
   const retrying = loading || lCustomers || lQueue;
   const notice = loadError ? (
     <StatusNotice
@@ -145,30 +172,38 @@ export default function FilingsPage() {
      ⇒ ป้ายหมวดบอกแทนว่าว่างเพราะอะไร · ป้ายเต็มพร้อมปุ่มลองใหม่อยู่ใต้แถบเครื่องมือ */
   const customerGroupLabel = customersLoaded ? "ลูกค้า" : filterBlocked ? "ลูกค้า (ดึงไม่ได้)" : "ลูกค้า (กำลังโหลด…)";
 
+  const allRows = useMemo(
+    () => [...raQueue.map(queueWorkRow), ...orders.map(recordWorkRow)],
+    [raQueue, orders],
+  );
+  const mineStatuses = useMemo(() => new Set(["queued", ...ownedStages("payment", myDept)]), [myDept]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return orders.filter((o) => {
+    return allRows.filter((r) => {
       if (filter === "mine") {
-        if (!isTaxWaitingOnMe(o, "payment", myDept)) return false;
-      } else if (filter !== "all" && o.status !== filter) return false;
-      if (customerIds.length && !customerIds.includes(o.customerId)) return false;
-      // วันไทยของวันที่สร้าง — ตัวตัดสินเดียวกับการ์ดบนภาพรวมและไฟล์ที่โหลด (ตรวจตัวเลข M7 · ดูหน้าคิวขึ้นทะเบียน)
-      if (!withinDateRange(o.createdAt, from, to)) return false;
+        if (!mineStatuses.has(r.status)) return false;
+      } else if (filter !== "all" && r.status !== filter) return false;
+      if (customerIds.length && !customerIds.includes(r.customerId)) return false;
+      // วันไทยของวันที่งานเริ่ม (คิว = วันที่ถึงขั้นนั้น · บันทึก = วันเริ่มยื่น) — ตัวตัดสินเดียวกับการ์ดบนภาพรวม
+      if (!withinDateRange(r.createdAt, from, to)) return false;
       if (!q) return true;
-      return [o.quotationRef, o.poReference, o.customerName, o.exciseReceiptNumber].some((v) => (v || "").toLowerCase().includes(q));
+      return r.search.some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [orders, filter, search, myDept, customerIds, from, to]);
+  }, [allRows, filter, search, mineStatuses, customerIds, from, to]);
 
-  /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นโหลดแถวที่มองไม่เห็นออกไป */
+  /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นพิมพ์/โหลดแถวที่มองไม่เห็นออกไป */
   useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to]);
 
-  const allIds = useMemo(() => rows.map((o) => o.id), [rows]);
-  const allChecked = allIds.length > 0 && allIds.every((id) => selected.has(id));
-  const toggleOne = (id) => setSelected((prev) => {
+  // ติ๊กได้เฉพาะแถวที่พิมพ์ใบสรุปได้ (ไม่ใช่กำลังมา)
+  const selectableKeys = useMemo(() => rows.filter((r) => r.printKey).map((r) => r.key), [rows]);
+  const allChecked = selectableKeys.length > 0 && selectableKeys.every((key) => selected.has(key));
+  const toggleOne = (key) => setSelected((prev) => {
     const next = new Set(prev);
-    next.has(id) ? next.delete(id) : next.add(id);
+    next.has(key) ? next.delete(key) : next.add(key);
     return next;
   });
+  /* Excel/พิมพ์รายงาน/ZIP (ReportExportActions) อ่านบันทึกการยื่นเท่านั้น — แถวคิวยังไม่มีแถว orders */
+  const recordIdOf = (key) => (key.startsWith("order:") ? key.slice("order:".length) : null);
   const exportParams = useMemo(() => ({
     status: queueStatusParam(filter, ownedStages("payment", myDept)),
     customerId: customerIds,
@@ -176,9 +211,26 @@ export default function FilingsPage() {
     to,
   }), [filter, myDept, customerIds, from, to]);
   const exportIds = useMemo(
-    () => queueExportIds({ selected, visibleIds: allIds, searching: !!search.trim() }),
-    [selected, allIds, search],
+    () => queueExportIds({
+      selected: [...selected].map(recordIdOf).filter(Boolean),
+      visibleIds: rows.filter((r) => r.kind === "record").map((r) => r.order.id),
+      searching: !!search.trim(),
+    }),
+    [selected, rows, search],
   );
+  /* ใบสรุปรายการยื่น (V9): ติ๊กไว้ = เฉพาะที่ติ๊ก · ไม่ติ๊ก = ทุกแถวบนจอที่พิมพ์ได้ */
+  const printKeys = useMemo(() => {
+    const picked = rows.filter((r) => r.printKey && (selected.size ? selected.has(r.key) : true));
+    return picked.map((r) => r.printKey);
+  }, [rows, selected]);
+  const printSummary = async () => {
+    setPrinting(true);
+    try {
+      await printFilingSummary(printKeys);
+    } finally {
+      setPrinting(false);
+    }
+  };
 
   const columns = [
     {
@@ -187,50 +239,50 @@ export default function FilingsPage() {
         <input
           type="checkbox"
           checked={allChecked}
-          onChange={() => setSelected(allChecked ? new Set() : new Set(allIds))}
+          onChange={() => setSelected(allChecked ? new Set() : new Set(selectableKeys))}
           aria-label="เลือกทั้งหมด"
         />
       ),
       sortValue: null,
       align: "center",
       thStyle: { width: 34 },
-      // หยุด event ไม่ให้ไหลไปเปิดหน้ารายละเอียด (ทั้งแถวกดได้)
-      render: (o) => (
+      // หยุด event ไม่ให้ไหลไปเปิดงาน (ทั้งแถวกดได้) · แถวกำลังมาไม่มีช่องติ๊ก (พิมพ์ใบสรุปไม่ได้)
+      render: (r) => (r.printKey ? (
         <span onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={selected.has(o.id)} onChange={() => toggleOne(o.id)} aria-label={`เลือก ${o.quotationRef}`} />
+          <input type="checkbox" checked={selected.has(r.key)} onChange={() => toggleOne(r.key)} aria-label={`เลือก ${r.salesOrderNumber}`} />
         </span>
-      ),
+      ) : null),
     },
     {
       /* `link: true` = เซลล์ทางเข้าของคีย์บอร์ด — DataList ห่อด้วย <Link href เดียวกับ
          แถว> ให้เอง ⇒ บรรทัดแรกต้องเป็น <strong> ที่เป็นลูก **ตรง** ของลิงก์
          ไม่งั้น `.linklike-block` ไม่ขีดเส้นใต้ให้ (ดูหัวไฟล์ components/excise/DataList.js) */
-      key: "quotationRef", label: "เลขที่ใบเสนอราคา", link: true,
-      render: (o) => (
+      key: "salesOrderNumber", label: "ใบสั่งขาย", link: true,
+      render: (r) => (
         <>
-          <strong className="font-semibold">{o.quotationRef}</strong>
-          {o.poReference && <div style={{ fontSize: "var(--fs-3)", color: "var(--text-3)" }} className="font-mono">PO: {o.poReference}</div>}
+          <strong className="font-semibold">{r.salesOrderNumber}</strong>
+          {r.subtitle && <div className={styles.rowSub}>{r.subtitle}</div>}
         </>
       ),
     },
-    { key: "customerName", label: "ลูกค้า", render: (o) => <span style={{ color: "var(--accent)" }}>{naText(o.customerName)}</span> },
-    { key: "itemCount", label: "รายการ", align: "center", sortValue: (o) => o.items?.length || 0, render: (o) => o.items?.length || 0 },
-    { key: "totalTax", label: "ยอดภาษีรวม", align: "right", sortValue: (o) => o.totalTax || 0, render: (o) => <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{taxText(o)}</span> },
-    { key: "status", label: "สถานะ", render: (o) => <StatusBadge status={o.status} /> },
+    { key: "customerName", label: "ลูกค้า", render: (r) => <span className={styles.customer}>{naText(r.customerName)}</span> },
+    { key: "itemCount", label: "รายการ", align: "center", sortValue: (r) => r.order?.items?.length ?? -1, render: (r) => (r.order ? r.order.items?.length || 0 : NA) },
+    { key: "totalTax", label: "ยอดภาษีรวม", align: "right", sortValue: (r) => r.order?.totalTax ?? -1, render: (r) => (r.order ? <span className={styles.tax}>{taxText(r.order)}</span> : NA) },
+    { key: "status", label: "สถานะ", render: (r) => <StatusBadge status={r.status} /> },
   ];
 
-  const card = (o) => (
+  const card = (r) => (
     <div className="flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="font-semibold text-sm">{o.quotationRef}</div>
-          <div style={{ fontSize: "var(--fs-3)", color: "var(--accent)" }} className="truncate">{naText(o.customerName)}</div>
+          <div className="font-semibold text-sm">{r.salesOrderNumber}</div>
+          <div className={`truncate ${styles.cardCustomer}`}>{naText(r.customerName)}</div>
         </div>
-        <StatusBadge status={o.status} />
+        <StatusBadge status={r.status} />
       </div>
-      <div className="flex items-center justify-between" style={{ fontSize: "var(--fs-5)" }}>
-        <span style={{ color: "var(--text-3)" }}>{o.items?.length || 0} รายการ</span>
-        <span className="font-mono font-bold" style={{ color: "var(--red)" }}>{taxText(o)}</span>
+      <div className={styles.cardFoot}>
+        <span className={styles.cardSub}>{r.subtitle || (r.order ? `${r.order.items?.length || 0} รายการ` : "")}</span>
+        {r.order && <span className={styles.tax}>{taxText(r.order)}</span>}
       </div>
     </div>
   );
@@ -239,13 +291,11 @@ export default function FilingsPage() {
     ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
     : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
 
-  /* ⭐ ป้ายจำนวนย้ายจากหัวหน้าเข้าหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9)
-     นับ **ใบที่เหลือหลังกรอง** = ยอดของ Pager · กำลังเลือกแถว = "เลือก x/y ใบ"
-     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด — ไม่ใช่ "0 ใบ" ที่อ่านว่าไม่มีงาน
-     ⚠️ "ยังไม่มีข้อมูล" = ไม่เคยโหลดสำเร็จ (`loaded`) ไม่ใช่ลิสต์ยาวศูนย์ — `200 []` คือรู้แล้วว่า 0 ใบ */
-  const noData = !ordersLoaded;
+  /* ⭐ ป้ายจำนวนอยู่ในหัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9) — นับ **งานที่เหลือหลังกรอง**
+     ยังไม่มีข้อมูล (โหลดครั้งแรก/โหลดพัง) = null ⇒ ขีด · คิวของ RA ไม่เคยโหลดสำเร็จ = กองกำลังมา/รอ RA ขาด ⇒ ขีดด้วย */
+  const noData = !ordersLoaded || (canFile && queueBlocked);
   const count = noData ? null
-    : selected.size ? `เลือก ${selected.size}/${rows.length} ใบ` : `${rows.length} ใบ`;
+    : selected.size ? `เลือก ${selected.size}/${rows.length} งาน` : `${rows.length} งาน`;
 
   const headerRight = (
     <>
@@ -253,13 +303,13 @@ export default function FilingsPage() {
         type="filing"
         params={exportParams}
         ids={exportIds}
-        rowCount={rows.length}
+        rowCount={rows.filter((r) => r.kind === "record").length}
         printMeta={{ from, to, customerName }}
       />
       {canFile && (
-        <button className="btn btn-primary flex items-center gap-1.5" onClick={() => { setCreateKey(""); setFormOpen(true); }}>
-          <Plus size={16} /> สร้างใบยื่น
-        </button>
+        <Button tone="neutral" onClick={printSummary} disabled={printing || !printKeys.length} icon={<Printer size={16} />}>
+          {printing ? "กำลังเตรียม..." : selected.size ? `พิมพ์ใบสรุปรายการยื่น (${printKeys.length})` : "พิมพ์ใบสรุปรายการยื่น"}
+        </Button>
       )}
     </>
   );
@@ -268,24 +318,15 @@ export default function FilingsPage() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title="การยื่นชำระภาษีสรรพสามิต"
-      subtitle="ฝ่าย RA สร้างใบยื่นจากคิวรอยื่นกรม ยื่นชำระภาษีต่อกรมสรรพสามิต และบันทึกใบเสร็จ"
+      subtitle="งานของฝ่าย RA — ข้อมูลจากใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว · เริ่มยื่น · บันทึกผลชำระ · พิมพ์ใบสรุปรายการยื่น"
       headerRight={headerRight}
     >
-      {/* แผงงานรอยื่นกรม — เฉพาะฝ่าย RA · ตัวทำแถวตัวเดียวกับคิวบน /tax (raQueueItem) · ความล้มขึ้นป้ายเดียวของจอ */}
-      {canFile && (
-        <WorkQueue
-          title="งานรอยื่นกรม"
-          subtitle="พร้อมสร้างใบยื่น + กำลังมา (ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว) เรียงจากค้างนานสุด"
-          incomplete={!!(queueError || queueStale) && !queueLoaded}
-          items={raQueue.map((row) => raQueueItem(row, { onCreate: () => { setCreateKey(row.key); setFormOpen(true); } }))}
-        />
-      )}
       {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
           แทนที่เฉพาะเนื้อ ⇒ ช่องค้นหา/ชิปยังอยู่ระหว่างโหลด ไม่หลุดโฟกัส */}
       <ListPanel
         icon={<ReceiptText size={17} aria-hidden="true" />}
-        title="รายการใบยื่นชำระภาษี"
-        subtitle="ค้นหา กรอง และเปิดใบยื่นเพื่อดำเนินการต่อ"
+        title="งานยื่นชำระภาษี"
+        subtitle="กำลังมา · รอ RA · กำลังยื่น · ชำระแล้ว — กดงานเพื่อดูข้อมูลจากใบสั่งขายและดำเนินการต่อ"
         count={count}
         loading={loading && !ordersLoaded}
         toolbar={(
@@ -295,8 +336,8 @@ export default function FilingsPage() {
           onFilter={setFilter}
           search={search}
           onSearch={setSearch}
-          searchPlaceholder="ค้นหา Ref / PO / ลูกค้า / ใบเสร็จ..."
-          searchLabel="ค้นหาใบยื่นชำระภาษี"
+          searchPlaceholder="ค้นหาเลขใบสั่งขาย / ลูกค้า / ใบเสร็จ..."
+          searchLabel="ค้นหางานยื่นชำระภาษี"
         >
           <FilterPopover
             count={customerIds.length}
@@ -325,37 +366,48 @@ export default function FilingsPage() {
         )}
       >
       {notice}
-      {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่าง "ยังไม่มีใบยื่น"
-          ใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง ซึ่งคนละเรื่องกับโหลดไม่ได้
-          ⚠️ ถามสายใบยื่นสายเดียว — รายชื่อลูกค้าล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
+      {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่างใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง
+          ⚠️ ถามสายบันทึกการยื่นสายเดียว — รายชื่อลูกค้าล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
       {!listBlocked && (
       <DataList
         columns={columns}
         rows={rows}
-        rowKey={(o) => o.id}
-        rowHref={(o) => `/tax/filings/${o.id}`}
+        rowKey={(r) => r.key}
+        rowHref={(r) => r.href}
         card={card}
-        initialSort={{ key: "quotationRef", dir: "asc" }}
-        /* 🐞 RA ตกลงมาที่ชิป "รอยื่น" เป็นค่าตั้งต้น ⇒ เห็น "ไม่พบรายการ" เสมอ แม้ทั้ง
-           ระบบยังไม่เคยมีใบยื่นสักใบ ซึ่งอ่านเหมือน "กรองแล้วไม่เจอ" ไม่ใช่ "ยังไม่มี"
-           ⇒ ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง */
-        empty={orders.length === 0
-          ? "ยังไม่มีใบยื่นชำระ — ฝ่าย RA สร้างใบยื่นจากงานรอยื่นกรม (ใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว) โดยกด “สร้างใบยื่น”"
+        initialSort={{ key: "salesOrderNumber", dir: "asc" }}
+        /* ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง — RA ตกลงมาที่ "รอฉันลงมือ" เป็นค่าตั้งต้น */
+        empty={allRows.length === 0
+          ? "ยังไม่มีงานยื่นชำระ — งานเข้ามาเองเมื่อใบเสนอราคาค่าสรรพสามิตอนุมัติ (กำลังมา) และเมื่อใบสั่งขายค่าสรรพสามิตอนุมัติ (รอ RA)"
           : "ไม่พบรายการตามตัวกรองที่เลือก"}
         emptyIcon={ReceiptText}
       />
       )}
       </ListPanel>
 
+      {canFile && startKey && queueLoaded && !startRow && (
+        <StatusNotice tone="warning" className="mt-4" action={<Button size="sm" variant="ghost" onClick={closeWork}>ปิด</Button>}>
+          ไม่พบงานนี้ในคิวรอ RA แล้ว — อาจเริ่มยื่นไปแล้ว หรือใบสั่งขายถูกยกเลิก (ดูในรายการด้านบน)
+        </StatusNotice>
+      )}
       <SalesOrderFilingModal
-        open={formOpen}
-        initialKey={createKey}
-        onClose={() => setFormOpen(false)}
-        onSaved={async (filing) => {
-          await reload();
-          router.push(`/tax/filings/${filing.id}`);
+        open={!!startRow}
+        row={startRow}
+        onClose={closeWork}
+        onStarted={async (record) => {
+          await Promise.all([reload(), reloadQueue()]);
+          router.push(`/tax/filings/${record.id}`);
         }}
       />
     </Workspace>
+  );
+}
+
+/* useSearchParams ต้องอยู่ใต้ Suspense (Next) — `?start=` เปลี่ยนได้ระหว่างอยู่หน้านี้ (กดแถวงานรอ RA) จึงอ่านสด ไม่ใช่ครั้งเดียว */
+export default function FilingsPage() {
+  return (
+    <Suspense fallback={<SkeletonRows rows={7} />}>
+      <FilingsPageInner />
+    </Suspense>
   );
 }

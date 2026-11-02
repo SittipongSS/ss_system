@@ -2,11 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { filingItemRows, filingTotalsOf, resolveSalesOrderFiling } from "./soFilingItems.js";
-import { FILING_EDITABLE_STATUSES } from "./workflow.js";
 
 /* 🔴 ตรวจระบบ 2026-10-26 ข้อ 3 — ใบยื่นจาก SO ที่ถูกตีกลับ แก้ผ่านฟอร์มเลือกทะเบียนแล้ว **บรรทัดที่ยังไม่มีทะเบียนหาย**
    (ยอดหดเงียบ ๆ · ทุกบรรทัดไม่มีทะเบียน = ส่งกลับไม่ได้) · แถวใหม่ทิ้ง salesOrderLineId · ลบก่อนใส่ = ใส่พังแล้วใบว่าง
-   ⇒ ใบจาก SO แก้รายการได้ทางเดียวคือคิดใหม่จาก SO ด้วย resolver ตัวเดียวกับตอนสร้าง */
+   ⇒ ตัวคิดบรรทัดจาก SO ตัวเดียว (resolveSalesOrderFiling + filingItemRows)
+   ⭐ v3 (มติ 02/11): บันทึกการยื่นตรึงรายการตอนเริ่มยื่น — ไม่มีทางคิดใหม่/แก้รายการบนบันทึกแล้ว (ถอนแล้วเริ่มยื่นใหม่แทน) */
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
@@ -65,39 +65,12 @@ const patchCode = codeOnly(patchRoute);
 const fromSoRoute = codeOnly(read("../../app/api/tax/orders/from-sales-order/route.js"));
 const filingPage = codeOnly(read("../../app/tax/filings/[id]/page.js"));
 
-/* PR5: คิดใหม่เป็นงานของ RA (ไม่มีขอบเขตขาย) — ตัวโหลดเดียวกับตอนสร้าง (loadFilingSource: SO อนุมัติแล้ว · origin pipeline ·
-   คำตัดสินไม่เรียกเก็บยังอยู่) · ใบที่ผูก SO ค่าสรรพสามิตคิดใหม่ไม่ได้ (filingRecalcBlock) */
-test("PATCH ใบยื่น: ใบจาก SO ห้ามแก้ด้วย items · คิดใหม่ผ่าน resolver ตัวเดียวกับตอนสร้าง", () => {
-  assert.match(patchCode, /if \(order\.salesOrderId && Array\.isArray\(body\.items\)\) \{\s*return Response\.json\(/);
-  assert.match(patchCode, /body\.recalcFromSalesOrder === true/);
-  assert.match(patchCode, /const recalcBlock = filingRecalcBlock\(order\)/);
-  assert.match(patchCode, /loadFilingSource\(supabase, \{ salesOrderId: order\.salesOrderId \}\)/, "ตัวโหลดเดียวกับตอนสร้าง");
-  assert.match(patchCode, /newItemRows = filingItemRows\(id, resolved\.lines\)/);
-  assert.match(patchCode, /Object\.assign\(updates, filingTotalsOf\(resolved\)\)/);
+/* v3: บันทึกการยื่นตรึงรายการไว้ตอนเริ่มยื่น — PATCH ปฏิเสธทั้งรายการมือและคิดใหม่ · ทางเดียวที่เขียนแถว order_items
+   คือตอนเริ่มยื่น (ตัวแปลงแถวตัวเดียวกับเดิม) */
+test("บันทึกการยื่น: PATCH ห้ามแก้รายการ/คิดใหม่ · แถวรายการเกิดทางเดียวตอนเริ่มยื่นด้วยตัวแปลงกลาง", () => {
+  assert.match(patchCode, /if \(Array\.isArray\(body\.items\) \|\| body\.recalcFromSalesOrder === true\) \{\s*return Response\.json\(/);
+  assert.doesNotMatch(patchCode, /insertOrderItems|filingItemRows|from\('order_items'\)\.delete/, "ทางสลับรายการบน PATCH ต้องไม่กลับมา");
   assert.doesNotMatch(patchCode, /loadScoped\(supabase, 'sales_orders'/, "RA ไม่มีขอบเขตขาย — ห้ามกลับไปใช้ด่านดีลแม่");
-  // ทางสร้างใช้ตัวแปลงแถวตัวเดียวกัน — สองทางต้องได้แถวหน้าตาเดียวกัน
   assert.match(fromSoRoute, /const itemRows = filingItemRows\(orderId, resolved\.lines\)/);
-});
-
-test("PATCH ใบยื่น: สลับรายการแบบใส่ชุดใหม่ก่อน แล้วค่อยลบชุดเดิม และเขียนหัวใบทีหลัง", () => {
-  assert.doesNotMatch(patchCode, /from\('order_items'\)\.delete\(\)\.eq\('orderId', id\)/, "ห้ามลบทั้งใบก่อนใส่ชุดใหม่");
-  const insertAt = patchCode.indexOf("insertOrderItems(supabase, newItemRows)");
-  const deleteOldAt = patchCode.indexOf(".delete().in('id', oldIds)");
-  const headerAt = patchCode.indexOf("updateOrderResilient(supabase, id, updates)");
-  assert.ok(insertAt > 0 && deleteOldAt > insertAt && headerAt > deleteOldAt, "ลำดับต้องเป็น ใส่ → ลบเดิม → หัวใบ");
-  assert.doesNotMatch(patchCode, /`OIT-\$\{id\.slice\(3\)\}/, "id แบบต่อท้ายเลขใบชนชุดเดิมตอนใส่ก่อนลบ");
-  assert.match(patchCode, /updates\.amountToCollect = billedTaxTotals\(newItemRows\)\.amountToCollect/, "แก้รายการมือแล้วยอดเรียกเก็บต้องตาม");
-});
-
-test("สถานะที่แก้ได้: ชุดเดียวของปุ่มบนจอและด่านใน route (RA)", () => {
-  assert.deepEqual(FILING_EDITABLE_STATUSES, ["draft", "rejected"]);
-  assert.match(patchCode, /const lineEditable = isLegal && FILING_EDITABLE_STATUSES\.includes\(order\.status\)/);
-  assert.match(filingPage, /const editAvailable = canApprove && FILING_EDITABLE_STATUSES\.includes\(o\?\.status\)/);
-  assert.match(filingPage, /visible: editAvailable && !!o\.salesOrderId,/);
-});
-
-test("หน้าใบยื่น: ปุ่มคิดใหม่ส่ง recalcFromSalesOrder อย่างเดียว · ติดด่าน = โชว์แล้วบอกเหตุจากตัวตัดสินเดียวกับ route", () => {
-  assert.match(filingPage, /JSON\.stringify\(\{ recalcFromSalesOrder: true \}\)/);
-  assert.match(filingPage, /const recalcBlock = o \? filingRecalcBlock\(o\) : null/);
-  assert.match(filingPage, /disabled: !!recalcBlock, disabledReason: recalcBlock \|\| undefined/);
+  assert.doesNotMatch(filingPage, /recalcFromSalesOrder|filingRecalcBlock|FILING_EDITABLE_STATUSES/, "หน้าบันทึกไม่มีปุ่มคิดใหม่แล้ว");
 });

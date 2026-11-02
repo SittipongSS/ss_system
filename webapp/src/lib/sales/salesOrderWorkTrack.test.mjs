@@ -382,20 +382,27 @@ test('ออกใบไม่ได้ = ปุ่มยังโชว์ ก�
 });
 
 /* PR5: เส้นของ RA สี่จุด (เตรียมใบยื่น → กำลังยื่น → ชำระแล้ว → ส่งเอกสารแล้ว) · ตีกลับ = ยืนที่ "กำลังยื่น" แบบช้า */
-test('มีใบยื่นแล้ว = รางขั้นของโมดูลภาษี + ลิงก์เปิดใบยื่น', () => {
-  const at = (status) => salesOrderWorkTrack({
+/* v3 (มติ 02/11 ข้อ V1/V7): ฝ่ายขายเห็นขั้นของ RA บนเส้นนี้ — รอ RA · RA กำลังยื่น · ชำระกรมแล้ว · ไม่มีลิงก์เข้า /tax */
+test('มีบันทึกการยื่นแล้ว = รางสามจุดของ RA + เริ่มยื่นเมื่อ/โดย · ชำระแล้วบอกเลขใบเสร็จ · ไม่มีลิงก์เข้า /tax', () => {
+  const at = (filing) => salesOrderWorkTrack({
     scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
-    excise: excise({ lines: [exciseLine('FG-1', 'approved')], filing: { id: 'ORD-9', status } }),
+    excise: excise({ lines: [exciseLine('FG-1', 'approved')], filing: { id: 'ORD-9', ...filing } }),
     approved: true,
   }).segments.at(-1);
-  const filing = at('filing');
+  const filing = at({ status: 'filing', filingStartedAt: '2026-11-02T03:00:00Z', filingStartedByName: 'RA One' });
   assert.equal(filing.state, 'live');
-  assert.equal(filing.link.href, '/tax/filings/ORD-9');
-  assert.deepEqual(filing.steps.map((s) => s.state), ['done', 'live', 'todo', 'todo']);
-  const rejected = at('rejected');
-  assert.equal(rejected.state, 'late');
-  assert.equal(rejected.steps[1].state === 'todo', false, 'ตีกลับต้องยืนที่จุดกำลังยื่น ไม่ใช่ถอยไปจุดแรก');
-  assert.equal(at('delivered').state, 'done');
+  assert.equal(filing.link, undefined, 'ฝ่ายขายไม่เข้า /tax — ไม่มีลิงก์ไปบันทึกของ RA');
+  assert.deepEqual(filing.steps.map((s) => s.key), ['queued', 'filing', 'complete']);
+  assert.deepEqual(filing.steps.map((s) => s.state), ['done', 'live', 'todo']);
+  assert.equal(filing.statusLabel, 'RA กำลังยื่น');
+  assert.match(filing.meta, /^เริ่มยื่น .+ · RA One$/);
+  const paid = at({ status: 'complete', exciseReceiptNumber: 'ER-77', taxPaidDate: '2026-11-05' });
+  assert.equal(paid.state, 'done');
+  assert.equal(paid.statusLabel, 'ชำระกรมแล้ว');
+  assert.match(paid.meta, /ใบเสร็จกรม ER-77 · ชำระ /);
+  // ของเก่าก่อน v3 ยืนบนจุดที่ใกล้สุด
+  assert.equal(at({ status: 'delivered' }).state, 'done');
+  assert.equal(at({ status: 'rejected' }).steps[1].state, 'live', 'ตีกลับ (เดิม) ยืนที่จุดกำลังยื่น');
 });
 
 /* 🪤 ระบบยอมให้สร้างใบยื่นทั้งที่ทะเบียนยังไม่อนุมัติ ⇒ ใบที่ยื่นแล้วยังต้องเห็นว่าทะเบียนค้าง */

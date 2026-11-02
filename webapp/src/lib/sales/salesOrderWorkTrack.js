@@ -21,7 +21,8 @@
 import { REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { JOB_STATUS_LABELS } from '@/lib/pm/productionPlan';
 import { TRACKS, statusMeta } from '@/lib/excise/workflow';
-import { fmtMoney } from '@/lib/format';
+import { NOT_BILLED_FILING_KINDS } from '@/lib/excise/raFilingRules';
+import { fmtDate, fmtMoney } from '@/lib/format';
 
 /* ประเภทดีลที่มีสายผลิตจริง — ของเข้าและผลิตขึ้นเฉพาะสองตัวนี้
    · SCENT     ขายค่าออกแบบกลิ่น จบที่ RD ส่ง direction ไม่มีของเข้าไม่มีคิวผลิต
@@ -48,13 +49,14 @@ export const JOB_STEPS = ['draft', 'planned', 'in_progress', 'done'];
    `rejected` ไม่นับเป็นจุด มันคือ *สุขภาพ* ของขั้นที่ยืนอยู่ (กฎเดียวกับ "เลยกำหนด"
    ของช่วงของเข้า) ⇒ ระบายจุดปัจจุบันเป็นแดง ไม่ใช่งอกจุดเพิ่ม */
 export const REGISTRATION_STEPS = TRACKS.registration.stages.filter((s) => s.key !== 'rejected').map((s) => s.key);
-export const FILING_STEPS = TRACKS.payment.stages.filter((s) => s.key !== 'rejected').map((s) => s.key);
+/* v3 (มติ 02/11): ฝ่ายขายเห็นขั้นของ RA สามจุด — รอ RA (ยังไม่มีบันทึก · คำนวณสด) แล้วตามด้วยขั้นของบันทึกใน TRACKS */
+export const FILING_STEPS = ['queued', ...TRACKS.payment.stages.filter((s) => s.key !== 'rejected').map((s) => s.key)];
 
 const SHORT_REGISTRATION = { draft: 'ร่างทะเบียน', pending_legal: 'รอนิติกรรม', approved: 'ขึ้นทะเบียนแล้ว' };
-/* เส้นของ RA ทั้งเส้นตั้งแต่ PR5 (draft → filing → complete → delivered) — pending/received เลิกใช้แล้ว */
-const SHORT_FILING = {
-  draft: 'เตรียมใบยื่น', filing: 'กำลังยื่น', complete: 'ชำระแล้ว', delivered: 'ส่งเอกสารแล้ว',
-};
+/* เส้นของ RA (v3): รอ RA → กำลังยื่น → ชำระแล้ว · ของเก่าก่อน v3 ยืนบนจุดที่ใกล้สุด (ร่าง = รอ RA · ตีกลับ = กำลังยื่น ·
+   ส่งเอกสารแล้ว = ชำระแล้ว) — prod 02/11 ไม่มีบันทึกเก่าแล้ว */
+const SHORT_FILING = { queued: 'รอ RA', filing: 'RA กำลังยื่น', complete: 'ชำระกรมแล้ว' };
+const FILING_AT = { draft: 'queued', rejected: 'filing', delivered: 'complete' };
 
 /** สถานะทะเบียนจาก lib/excise/soFiling.js → จุดที่ยืนอยู่บนราง 3 จุด */
 const REGISTRATION_AT = { none: 0, draft: 0, rejected: 0, pending: 1, approved: 2 };
@@ -303,20 +305,27 @@ function filingSegment(excise, { approved }) {
   if (!lines.length && !excise.filing) return null;
   const notes = taxBaseNotes(lines);
 
+  /* ⭐ v3 (มติ 02/11 ข้อ V1/V7): ฝ่ายขายต้องรู้ว่าใบที่ไป RA ถึงขั้นไหน — บนเส้นนี้ ไม่ต้องเข้า /tax (ไม่มีลิงก์ไปบันทึกของ RA) */
   if (excise.filing) {
-    const rejected = excise.filing.status === 'rejected';
-    // ตีกลับเกิดระหว่างยื่น (RA ตีกลับเองแล้วยื่นใหม่) ⇒ ยืนที่จุด "กำลังยื่น" แบบช้า ไม่ใช่ถอยไปจุดแรก
-    const index = Math.max(0, FILING_STEPS.indexOf(rejected ? 'filing' : excise.filing.status));
-    const done = excise.filing.status === FILING_STEPS.at(-1);
+    const filing = excise.filing;
+    const at = FILING_AT[filing.status] || filing.status;
+    const index = Math.max(0, FILING_STEPS.indexOf(at));
+    const done = at === FILING_STEPS.at(-1);
+    const started = filing.filingStartedAt
+      ? `เริ่มยื่น ${fmtDate(filing.filingStartedAt)}${filing.filingStartedByName ? ` · ${filing.filingStartedByName}` : ''}`
+      : null;
+    const paid = done
+      ? [filing.exciseReceiptNumber && `ใบเสร็จกรม ${filing.exciseReceiptNumber}`, (filing.taxPaidDate || filing.filedAt) && `ชำระ ${fmtDate(filing.taxPaidDate || filing.filedAt)}`]
+        .filter(Boolean).join(' · ')
+      : null;
     return {
       key: 'filing',
-      label: 'ยื่นชำระสรรพสามิต',
-      state: done ? 'done' : rejected ? 'late' : 'live',
-      steps: markSteps(FILING_STEPS, SHORT_FILING, index, { late: rejected }),
-      statusLabel: statusMeta(excise.filing.status).label,
+      label: 'ยื่นชำระสรรพสามิต (ฝ่าย RA)',
+      state: done ? 'done' : 'live',
+      steps: markSteps(FILING_STEPS, SHORT_FILING, index),
+      statusLabel: SHORT_FILING[at] || at,
       // ยอดเรียกเก็บรวม VAT 7% แล้ว — คิดที่ resolveSoFiling ที่เดียว ห้ามคิดซ้ำตรงนี้
-      meta: excise.amountToCollect ? `เรียกเก็บ ${fmtMoney(excise.amountToCollect)}` : null,
-      link: { label: 'เปิดใบยื่น', href: `/tax/filings/${excise.filing.id}` },
+      meta: paid || started || (excise.amountToCollect ? `เรียกเก็บ ${fmtMoney(excise.amountToCollect)}` : null),
     };
   }
 
@@ -325,12 +334,15 @@ function filingSegment(excise, { approved }) {
      ⇒ ช่วงนี้ตอนยังไม่มีใบยื่น = สถานะของใบค่าสรรพสามิต · `excise.exciseQuote` มาจาก GET …/excise-quotation */
   const exciseQuote = excise.exciseQuote || {};
   if (exciseQuote.notBilled) {
+    // V5: เก็บนอกระบบ/รวมในราคา = RA ยื่นกรมจาก SO นี้ (งานถึง RA ตั้งแต่ตัดสิน) · ไม่ต้องเสียภาษี = จบ ไม่มีงาน RA
+    const toRa = NOT_BILLED_FILING_KINDS.includes(exciseQuote.notBilled.kind);
     return {
       key: 'filing',
       label: 'ค่าสรรพสามิต',
       state: 'done',
       connect: {
-        message: `ไม่เรียกเก็บในระบบ — ${exciseQuote.notBilledLabel || exciseQuote.notBilled.kind}`,
+        message: `ไม่เรียกเก็บในระบบ — ${exciseQuote.notBilledLabel || exciseQuote.notBilled.kind}`
+          + (toRa ? ' · ส่งถึง RA แล้ว — รอ RA ยื่นกรม' : ''),
         actions: excise.onClearNotBilled ? [{ label: 'ถอนการตัดสิน', onClick: excise.onClearNotBilled, disabled: !!excise.actionDisabled }] : [],
       },
       meta: `${lines.length} FG`,
@@ -350,7 +362,7 @@ function filingSegment(excise, { approved }) {
           state: order.status === 'approved' ? 'done' : 'live',
           connect: {
             message: `ใบสั่งขายค่าสรรพสามิต ${order.orderNumber || ''} — ${EXCISE_ORDER_STATUS_TEXT(order)}`
-              + (order.status === 'approved' ? ' · รอฝ่าย RA ยื่นกรม' : ''),
+              + (order.status === 'approved' ? ' · ส่งถึง RA แล้ว — รอ RA ยื่นกรม' : ''),
             actionLabel: 'เปิดใบสั่งขายค่าสรรพสามิต',
             href: `/sales-planning/sales-orders/${encodeURIComponent(order.id)}`,
           },

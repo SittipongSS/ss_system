@@ -121,8 +121,9 @@ test("shim ยืนยันของภาษี/สรรพสามิต�
   assert.match(detailPage, /danger=\{confirmState\?\.danger \?\? true\}/,
     "กล่องยืนยันหน้ารายละเอียดโครงการต้อง default danger=true (เดิม shim ตั้งให้)");
 
-  /* ทุกจุดที่เคยได้ closeOnSuccess ฟรีจาก shim ต้องส่งเอง */
-  for (const page of ["../../app/tax/filings/[id]/page.js", "../../app/tax/registrations/[id]/page.js"]) {
+  /* ทุกจุดที่เคยได้ closeOnSuccess ฟรีจาก shim ต้องส่งเอง
+     (หน้าบันทึกการยื่น tax/filings/[id] ไม่มี <ConfirmDialog> แล้วตั้งแต่ v3 02/11 — ยกเลิกการเริ่มยื่นใช้ RejectDialog ที่มีช่องเหตุผล) */
+  for (const page of ["../../app/tax/registrations/[id]/page.js"]) {
     const text = source(page);
     const opens = (text.match(/<ConfirmDialog\b/g) || []).length;
     const closes = (text.match(/closeOnSuccess/g) || []).length;

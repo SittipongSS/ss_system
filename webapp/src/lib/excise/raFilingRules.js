@@ -1,7 +1,9 @@
-// ── ใบยื่นกรมของ RA — กติกาล้วน (แผนรื้อสรรพสามิต PR5 · mig 0417 · มติ D7 29/10: ยื่นทีละ SO) ──────────────
+// ── งานยื่นกรมของ RA — กติกาล้วน (แผนรื้อสรรพสามิต PR5 · mig 0417 · มติ D7 29/10: ยื่นทีละ SO · v3 02/11) ─────
 //
-// ใบยื่นเป็นงานของฝ่าย RA ทั้งเส้น: RA สร้างจากคิว "รอยื่นกรม" → เริ่มยื่น → บันทึกใบเสร็จกรม → ส่งใบเสร็จ
-// แหล่งของใบมีสองแบบ (แผน หมวด 3.6):
+// v3 (มติเจ้าของ 02/11 · แผน หมวด 12): SO ค่าสรรพสามิตที่อนุมัติ = งานถึง RA แล้ว ไม่มีขั้นสร้างใบยื่น
+//   รอ RA (คิวคำนวณสด) → RA กด "เริ่มยื่น" = ระบบเขียนบันทึกการยื่น (แถว orders · กำลังยื่น) → ชำระแล้ว (เลขใบเสร็จกรม)
+//   ด่านเริ่มยื่น: ทะเบียนทุก FG อนุมัติแล้ว **เด็ดขาด** · เงิน (บัญชีปิดใบ) แค่โชว์ ไม่ใช่ด่าน
+// แหล่งของงานมีสองแบบ (แผน หมวด 3.6):
 //   · excise_order — SO ค่าสรรพสามิตที่อนุมัติแล้ว · รายการ = บรรทัดของใบนั้น (ยอดที่ลูกค้าจ่ายจริง · คิดใหม่ไม่ได้)
 //   · not_billed   — SO ลูกค้าที่ฝ่ายขายตัดสิน "ไม่เรียกเก็บในระบบ" แบบเก็บนอกระบบ/รวมในราคา · รายการคิดจาก SO ลูกค้า
 //                    (ชนิด "ไม่ต้องเสียภาษี" ไม่เข้าคิว — ไม่มีอะไรให้ยื่น)
@@ -16,8 +18,9 @@ export const FILING_SOURCE_EXCISE_ORDER = 'excise_order';
 export const FILING_SOURCE_NOT_BILLED = 'not_billed';
 /* ชนิด "ไม่เรียกเก็บ" ที่ RA ยังต้องยื่นกรม — not_liable = ไม่ต้องเสีย ⇒ ไม่มีใบยื่น */
 export const NOT_BILLED_FILING_KINDS = Object.freeze(['collected_outside', 'included_in_price']);
-export const FILING_SKIP_REASON_MIN = 10;
-export const FILING_SKIP_REASON_MAX = 500;
+/* ความยาวเหตุผลที่ RA ต้องพิมพ์ตอนยกเลิกการเริ่มยื่น (D10) */
+export const FILING_REASON_MIN = 10;
+export const FILING_REASON_MAX = 500;
 
 /** แหล่งของใบยื่นหนึ่งใบ — ใบเก่าที่สร้างเอง (ไม่มี SO) = null */
 export function filingSourceOf(order) {
@@ -87,16 +90,18 @@ export function exciseOrderFilingLines({ exciseLines = [], customerLines = [] } 
 }
 
 /**
- * ด่านเริ่มยื่น (แผน หมวด 3.6 · Q15) — สองข้อ ข้ามได้ด้วยเหตุผล
- *  · money        — SO ค่าสรรพสามิตบัญชีปิดใบแล้ว (`financeStatus = approved` = เก็บครบทุกงวด) · ใบไม่เรียกเก็บ = ผ่าน (เงินอยู่นอกระบบตามคำตัดสินของฝ่ายขาย)
- *  · registration — ทุกรายการผูกทะเบียนที่อนุมัติแล้ว
- * @param order        ใบยื่น (ต้องมี items)
+ * ด่านเริ่มยื่น (v3 · มติเจ้าของ 02/11 ข้อ V3–V4)
+ *  · registration — **ด่านเด็ดขาด**: ทุกรายการผูกทะเบียนที่อนุมัติแล้ว · ไม่มีทางข้ามใส่เหตุผล
+ *  · money        — **แค่ข้อมูล ไม่ใช่ด่าน**: SO ค่าสรรพสามิตบัญชีปิดใบแล้วหรือยัง (`financeStatus = approved`)
+ *                   · ใบไม่เรียกเก็บ = เงินอยู่นอกระบบตามคำตัดสินของฝ่ายขาย
+ * @param order        บันทึก/พรีวิวของงาน (ต้องมี items หรือ lines ที่มี registrationId · fgCode)
  * @param exciseOrder  SO ค่าสรรพสามิต (financeStatus) — ใบไม่เรียกเก็บ = null
  * @param notBilledKind ชนิดคำตัดสินบน SO ลูกค้า (ใบไม่เรียกเก็บ)
  */
 export function filingStartGates({ order, exciseOrder = null, notBilledKind = null } = {}) {
   const items = order?.items || [];
-  const missingRegistrations = items.filter((item) => !item?.registrationId).length;
+  const missing = items.filter((item) => !item?.registrationId);
+  const codes = [...new Set(missing.map((item) => item?.fgCode || item?.product?.fgCode).filter(Boolean))];
   const source = filingSourceOf(order);
   let money;
   if (source === FILING_SOURCE_EXCISE_ORDER) {
@@ -115,35 +120,21 @@ export function filingStartGates({ order, exciseOrder = null, notBilledKind = nu
   }
   return {
     money,
-    registration: missingRegistrations
-      ? { ok: false, missing: missingRegistrations, label: `ยังไม่มีทะเบียนอนุมัติ ${missingRegistrations} รายการ` }
-      : { ok: true, missing: 0, label: 'ทะเบียนอนุมัติครบทุกรายการ' },
+    registration: missing.length
+      ? {
+        ok: false,
+        missing: missing.length,
+        codes,
+        label: `ยังไม่มีทะเบียนอนุมัติ ${missing.length} รายการ${codes.length ? ` (${codes.join(', ')})` : ''}`,
+      }
+      : { ok: true, missing: 0, codes: [], label: 'ทะเบียนอนุมัติครบทุกรายการ' },
   };
 }
 
-const reasonOk = (value) => {
-  const text = String(value ?? '').trim();
-  return text.length >= FILING_SKIP_REASON_MIN && text.length <= FILING_SKIP_REASON_MAX;
-};
-
-/** เหตุผลข้ามด่านที่ต้องมี — ข้อความไทย หรือ null เมื่อผ่าน (route + โมดัลเริ่มยื่นใช้ตัวเดียวกัน) */
-export function filingStartGateError(gates, { skipMoneyReason, skipRegistrationReason } = {}) {
-  const range = `${FILING_SKIP_REASON_MIN}–${FILING_SKIP_REASON_MAX} ตัวอักษร`;
-  if (gates?.money && !gates.money.ok && !reasonOk(skipMoneyReason)) {
-    return `${gates.money.label} — ระบุเหตุผลที่เริ่มยื่นก่อนบัญชีปิดใบ (${range})`;
+/** ข้อความไทยเมื่อเริ่มยื่นไม่ได้ · null = เริ่มได้ (route + ปุ่มบนจอใช้ตัวเดียวกัน) — ด่านเงินไม่บล็อก (V3) */
+export function filingStartGateError(gates) {
+  if (gates?.registration && !gates.registration.ok) {
+    return `${gates.registration.label} — ทะเบียนทุก FG ต้องอนุมัติก่อนเริ่มยื่น (อนุมัติที่หน้าการขึ้นทะเบียน)`;
   }
-  if (gates?.registration && !gates.registration.ok && !reasonOk(skipRegistrationReason)) {
-    return `${gates.registration.label} — ระบุเหตุผลที่ยื่นโดยไม่มีทะเบียน (${range})`;
-  }
-  return null;
-}
-
-/** ใบนี้คิดรายการใหม่ได้ไหม — ข้อความไทยเมื่อไม่ได้ · null = ได้ */
-export function filingRecalcBlock(order) {
-  const source = filingSourceOf(order);
-  if (source === FILING_SOURCE_EXCISE_ORDER) {
-    return 'ใบยื่นนี้ผูกใบสั่งขายค่าสรรพสามิต — รายการคือยอดที่ลูกค้าจ่ายแล้ว คิดใหม่ไม่ได้ (แก้ยอด = ยกเลิกใบยื่น แล้วฝ่ายขายยกเลิก/ออกใบค่าสรรพสามิตใหม่)';
-  }
-  if (!source) return 'ใบยื่นนี้ไม่ได้สร้างจากใบสั่งขาย';
   return null;
 }

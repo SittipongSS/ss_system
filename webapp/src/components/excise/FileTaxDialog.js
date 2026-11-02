@@ -18,7 +18,9 @@ import { isExemptFiling, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 // + optional receipt file. Exempt orders complete without a receipt.
 // "ยกเว้น" = ทุกรายการผูกทะเบียนที่ RA ยกเว้นไว้ (isExemptFiling) — ยอด 0 เพราะสินค้าไม่มีราคาขายปลีก
 // ไม่ใช่ยกเว้น ต้องผ่านด่านใบเสร็จเหมือนใบปกติ (ตรวจระบบ 2026-10-26)
-export default function FileTaxDialog({ open, onClose, onDone, order }) {
+// `mode="edit"` (D11 · v3 02/11) = แก้ข้อมูลการชำระของบันทึกที่ชำระแล้ว — ฟอร์มเดียวกัน เติมค่าเดิมให้ · server ห้ามล้างเลขใบเสร็จจนว่าง
+export default function FileTaxDialog({ open, onClose, onDone, order, mode = "file" }) {
+  const editing = mode === "edit";
   const isExempt = isExemptFiling(order);
   const untaxedCount = untaxedFilingItems(order).length;
   const [receiptNumber, setReceiptNumber] = useState("");
@@ -31,14 +33,16 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
 
   useEffect(() => {
     if (open) {
-      setReceiptNumber("");
-      setPaidAmount(order?.totalTax ? String(order.totalTax) : "");
-      setPaidDate(businessDate());
-      setFormRef("");
+      setReceiptNumber(editing ? order?.exciseReceiptNumber || "" : "");
+      const amount = editing && order?.exciseTaxPaidAmount != null ? order.exciseTaxPaidAmount : order?.totalTax;
+      setPaidAmount(amount ? String(amount) : "");
+      setPaidDate(editing && order?.taxPaidDate ? String(order.taxPaidDate).slice(0, 10) : businessDate());
+      setFormRef(editing ? order?.taxFormRef || "" : "");
       setFile(null);
       setError(null);
     }
-  }, [open, order?.id, order?.totalTax]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- เติมค่าตอนเปิดโมดัลเท่านั้น ไม่ทับที่กำลังพิมพ์เมื่อใบโหลดใหม่
+  }, [open, order?.id, order?.totalTax, editing]);
 
   if (!order) return null;
 
@@ -113,7 +117,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
   };
 
   return (
-    <Modal open={open} onClose={() => !busy && onClose()} title={`บันทึกการชำระภาษี — ${order.quotationRef || order.id}`} size="md">
+    <Modal open={open} onClose={() => !busy && onClose()} title={`${editing ? "แก้ข้อมูลการชำระ" : "บันทึกผลชำระภาษี"} — ${order.poReference || order.quotationRef || order.id}`} size="md">
       <form onSubmit={submit}>
         <div className="drawer-section flex flex-col gap-4">
           <div className="flex justify-between items-center" style={{ fontSize: "var(--fs-7)", background: "var(--panel-3)", borderRadius: 8, padding: "10px 12px" }}>
@@ -163,7 +167,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order }) {
         </div>
         <div className="form-action-bar">
           <button type="button" onClick={onClose} className="btn" disabled={busy}>ยกเลิก</button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "กำลังบันทึก..." : isExempt ? "ยืนยันชำระแล้ว" : "บันทึกการชำระภาษี"}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? "กำลังบันทึก..." : editing ? "บันทึกการแก้ไข" : isExempt ? "ยืนยันชำระแล้ว" : "บันทึกผลชำระ"}</button>
         </div>
       </form>
     </Modal>

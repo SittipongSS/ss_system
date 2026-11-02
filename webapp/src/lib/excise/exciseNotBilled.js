@@ -33,7 +33,7 @@ export function exciseNotBilledBlocker(order, { liveQuote = null, clearing = fal
   if (order.origin && order.origin !== 'pipeline') return 'ตัดสินได้เฉพาะใบสั่งขายจากใบเสนอราคา';
   if (clearing) {
     if (!order.exciseNotBilledKind) return 'ใบสั่งขายนี้ยังไม่ได้ตัดสินว่าไม่เรียกเก็บ';
-    if (filing) return `ฝ่าย RA สร้างใบยื่นกรม ${filing.id} บนใบสั่งขายนี้แล้ว — ถอนการตัดสินไม่ได้`;
+    if (filing) return `ฝ่าย RA เริ่มยื่นกรมตามใบสั่งขายนี้แล้ว (บันทึก ${filing.id}) — ถอนการตัดสินไม่ได้`;
     return null;
   }
   if (order.status !== 'approved' || order.supersededById) return 'ตัดสินได้เฉพาะใบสั่งขายที่อนุมัติแล้วและยังไม่ถูกออก Rev. ทับ';

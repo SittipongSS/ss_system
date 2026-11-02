@@ -157,7 +157,7 @@ test("ยกเลิก SO: ด่านใบยื่นดูทั้งส
   assert.doesNotMatch(sql.replace(/--.*$/gm, ""), /pg_get_functiondef|CREATE OR REPLACE FUNCTION public\.(revoke|revise)_/, "ไม่ปะเนื้อ RPC (บทเรียน 0416)");
   const mapped = documentWorkflowError({ message: "sales_order_cancel_excise_filed" }, { context: "test" });
   assert.equal(mapped.status, 409);
-  assert.match(mapped.message, /ฝ่าย RA สร้างใบยื่นกรม/);
+  assert.match(mapped.message, /ฝ่าย RA เริ่มยื่นกรม.*ยกเลิกการเริ่มยื่น/);
 });
 
 /* ── แถวกำลังมา (มติเจ้าของ 29/10): ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว → RA เห็นในคิวพร้อมขั้นที่ถึง · สร้างใบยื่นยังไม่ได้ ── */
@@ -189,20 +189,25 @@ test('คิวรอยื่นกรม: ใบเสนอราคาค่
   assert.ok(!rows.some((r) => r.key === 'upcoming:QX7'), 'ใบที่ยังไม่อนุมัติไม่ขึ้น');
 });
 
-test('แถวคิว → แถวของ WorkQueue: พร้อม = "สร้างใบยื่น" · กำลังมา = ป้ายกำลังมา + กดแล้วบอกเหตุ (ไม่เปิดโมดัล)', async () => {
-  const { raQueueItem, raQueueText, UPCOMING_CREATE_BLOCKER } = await import('./raQueueItem.js');
-  let opened = false;
-  const ready = raQueueItem({ key: 'excise:SX1', ready: true, salesOrder: { orderNumber: 'SO-1', customerName: 'ลูกค้า' }, exciseOrder: { orderNumber: 'SO-X1' } }, { onCreate: () => { opened = true; } });
+test('แถวคิว → แถวของ WorkQueue (v3): รอ RA = "เปิดงาน" · กำลังมา = "ดูงาน" — ทั้งสองเปิดงานที่ ?start= · เริ่มยื่นบอกเหตุในโมดัล', async () => {
+  const { raQueueItem, raQueueText, raWorkHref, UPCOMING_START_BLOCKER } = await import('./raQueueItem.js');
+  let opened = 0;
+  const readyRow = { key: 'excise:SX1', ready: true, salesOrder: { orderNumber: 'SO-1', customerName: 'ลูกค้า' }, exciseOrder: { orderNumber: 'SO-X1' } };
+  const ready = raQueueItem(readyRow, { onOpen: () => { opened += 1; } });
   assert.equal(ready.status, 'queued');
-  assert.equal(ready.cta, 'สร้างใบยื่น');
+  assert.equal(ready.cta, 'เปิดงาน');
+  assert.match(ready.subtitle, /SO-X1 อนุมัติแล้ว — รอ RA ยื่นกรม/);
   ready.onClick();
-  assert.equal(opened, true);
-  const upcoming = raQueueItem({ key: 'upcoming:QX5', ready: false, salesOrder: { orderNumber: 'SO-5', customerName: 'ลูกค้า' }, exciseQuote: { quoteNumber: 'QT-X5' }, stageLabel: 'รอลูกค้ารับใบ' }, { onCreate: () => { throw new Error('ห้ามเปิดโมดัล'); } });
+  const upcomingRow = { key: 'upcoming:QX5', ready: false, salesOrder: { orderNumber: 'SO-5', customerName: 'ลูกค้า' }, exciseQuote: { quoteNumber: 'QT-X5' }, stageLabel: 'รอลูกค้ารับใบ' };
+  const upcoming = raQueueItem(upcomingRow, { onOpen: () => { opened += 1; } });
   assert.equal(upcoming.status, 'upcoming');
-  assert.equal(upcoming.cta, 'ยังสร้างไม่ได้');
-  assert.equal(typeof upcoming.onClick, 'function');
-  assert.match(raQueueText({ ready: false, salesOrder: { orderNumber: 'SO-5' }, exciseQuote: { quoteNumber: 'QT-X5' }, stageLabel: 'รอลูกค้ารับใบ' }).subtitle, /^QT-X5 · รอลูกค้ารับใบ$/);
-  assert.match(UPCOMING_CREATE_BLOCKER, /ใบสั่งขายค่าสรรพสามิต/);
+  assert.equal(upcoming.cta, 'ดูงาน');
+  upcoming.onClick();
+  assert.equal(opened, 2, 'กำลังมาเปิดดูได้ (เริ่มยื่นไม่ได้)');
+  assert.equal(raWorkHref(readyRow), '/tax/filings?start=excise%3ASX1');
+  assert.match(raQueueText(upcomingRow).subtitle, /^QT-X5 · รอลูกค้ารับใบ$/);
+  assert.match(UPCOMING_START_BLOCKER, /ใบสั่งขายค่าสรรพสามิตอนุมัติ/);
   const modal = readFileSync(new URL('../../components/excise/SalesOrderFilingModal.js', import.meta.url), 'utf8');
-  assert.match(modal, /filter\(\(row\) => row\.ready !== false\)/, 'โมดัลสร้างเลือกได้เฉพาะแถวพร้อม');
+  assert.match(modal, /UPCOMING_START_BLOCKER/, 'โมดัลบอกเหตุของแถวกำลังมา');
+  assert.match(modal, /\/api\/tax\/orders\/queue\?\$\{query\}/, 'พรีวิวจากคิวของ RA');
 });
