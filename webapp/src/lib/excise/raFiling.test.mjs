@@ -181,7 +181,7 @@ test('คิวรอยื่นกรม: ใบเสนอราคาค่
   const upcoming = rows.filter((r) => r.ready === false);
   assert.deepEqual(upcoming.map((r) => r.key), ['upcoming:QX5', 'upcoming:QX6']);
   assert.equal(upcoming[0].stage, 'quote_approved');
-  assert.match(upcoming[0].stageLabel, /รอลูกค้ารับใบ/);
+  assert.match(upcoming[0].stageLabel, /รอลูกค้าตอบรับ \(Won\)/);
   assert.equal(upcoming[1].stage, 'order_pending');
   assert.equal(upcoming[1].exciseOrder.orderNumber, 'SO-X6');
   assert.ok(rows.filter((r) => r.ready).every((r) => r.source !== 'upcoming'));

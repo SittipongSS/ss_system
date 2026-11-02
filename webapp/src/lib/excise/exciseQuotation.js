@@ -302,11 +302,11 @@ const ACCEPT_ERRORS = [
   ['excise_quotation_origin_invalid', 'ใบนี้ไม่ใช่ใบเสนอราคาค่าสรรพสามิต', 400],
   ['quotation_not_acceptable', 'ใบนี้รับไม่ได้ในสถานะปัจจุบัน — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409],
   ['quotation_lines_required', 'ใบไม่มีรายการ', 400],
-  ['quotation_approval_required', 'ใบค่าสรรพสามิตต้องอนุมัติก่อนจึงบันทึกว่าลูกค้ารับได้', 400],
+  ['quotation_approval_required', 'ใบค่าสรรพสามิตต้องอนุมัติก่อนจึงปิด Won ได้', 400],
   ['quotation_approval_stale', 'เนื้อหาใบเปลี่ยนหลังอนุมัติ — ต้องยื่นอนุมัติใหม่', 409],
   ['excise_source_order_invalid', 'ใบสั่งขายต้นทางไม่อยู่ในสถานะอนุมัติแล้ว (ยกเลิก/ย้อนอนุมัติ/ออก Rev. ทับ) — รับใบค่าภาษีของใบนั้นไม่ได้', 409],
   ['excise_source_not_billed', 'ใบสั่งขายต้นทางถูกตัดสินว่าไม่เรียกเก็บค่าสรรพสามิตในระบบแล้ว', 409],
-  ['excise_source_already_accepted', 'ใบสั่งขายต้นทางมีใบเสนอราคาค่าสรรพสามิตที่ลูกค้ารับแล้ว (1 ใบสั่งขาย = 1 ใบ)', 409],
+  ['excise_source_already_accepted', 'ใบสั่งขายต้นทางมีใบเสนอราคาค่าสรรพสามิตที่ Won แล้ว (1 ใบสั่งขาย = 1 ใบ)', 409],
 ];
 
 /**
@@ -327,7 +327,7 @@ export async function acceptExciseQuotation({ supabase, user, quote, request = n
   if (!readiness.ok || quote.approvalStatus !== 'approved') {
     return {
       status: 400,
-      error: quote.approvalStatus === 'approved' ? readiness.error : 'ใบค่าสรรพสามิตต้องยื่นและอนุมัติก่อนจึงบันทึกว่าลูกค้ารับได้',
+      error: quote.approvalStatus === 'approved' ? readiness.error : 'ใบค่าสรรพสามิตต้องยื่นและอนุมัติก่อนจึงปิด Won ได้',
     };
   }
   const { data: result, error } = await supabase.rpc('accept_excise_quotation_atomic', {
@@ -346,7 +346,7 @@ export async function acceptExciseQuotation({ supabase, user, quote, request = n
   await appendDocumentEvent(supabase, { docType: 'quotation', doc: quote, action: 'accept', user });
   await audit({
     user, action: 'update', entityType: 'quotation', entityId: quote.id, before: quote, after: accepted,
-    summary: `ลูกค้ารับใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber} (ไม่แตะดีล/FC)`,
+    summary: `ปิด Won ใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber} (ไม่แตะดีล/FC)`,
     request,
   });
   return { data: { quotation: accepted } };

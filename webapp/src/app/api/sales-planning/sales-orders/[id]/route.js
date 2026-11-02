@@ -1256,7 +1256,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (isExciseOrder(before)) {
       // ใบค่าสรรพสามิตไม่มีดีล/โครงการ (CHECK 0414) — อ้างอิงคือใบค่าสรรพสามิตที่รับแล้ว + SO ต้นทาง · ฐานตรวจซ้ำ (0416/E1–E2)
       if (!before.quotation || before.quotation.status !== 'accepted' || !before.sourceSalesOrderId || !before.customerName) {
-        return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมีใบค่าสรรพสามิตที่ลูกค้ารับแล้ว ใบสั่งขายต้นทาง และลูกค้า');
+        return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมีใบค่าสรรพสามิตที่ Won แล้ว ใบสั่งขายต้นทาง และลูกค้า');
       }
     } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');

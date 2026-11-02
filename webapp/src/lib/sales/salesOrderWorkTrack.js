@@ -363,7 +363,7 @@ function filingSegment(excise, { approved }) {
         label: 'ค่าสรรพสามิต',
         state: 'live',
         connect: {
-          message: `ลูกค้ารับใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber || ''} แล้ว — ออกใบสั่งขายค่าสรรพสามิตต่อ`,
+          message: `ใบเสนอราคาค่าสรรพสามิต ${quote.quoteNumber || ''} Won แล้ว — ออกใบสั่งขายค่าสรรพสามิตต่อ`,
           actionLabel: 'ออกใบสั่งขายค่าสรรพสามิต',
           href: `/sa/sales-orders/new?quotationId=${encodeURIComponent(quote.id)}`
             + `&returnTo=${encodeURIComponent(`/sa/quotations/${quote.id}`)}`,
@@ -438,9 +438,9 @@ const EXCISE_ORDER_STATUS_TEXT = (order) => {
 };
 
 const EXCISE_QUOTE_STATUS_TEXT = (quote) => {
-  if (quote.status === 'accepted') return 'ลูกค้ารับแล้ว';
+  if (quote.status === 'accepted') return 'Won';
   if (quote.approvalStatus === 'pending') return 'รออนุมัติ';
-  if (quote.approvalStatus === 'approved') return 'อนุมัติแล้ว รอลูกค้ารับ';
+  if (quote.approvalStatus === 'approved') return 'อนุมัติแล้ว รอ Won';
   if (quote.status === 'rejected') return 'ลูกค้าตีกลับ';
   return 'ร่าง ยังไม่ยื่น';
 };

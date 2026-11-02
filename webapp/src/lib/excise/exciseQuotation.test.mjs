@@ -327,12 +327,20 @@ test('🔴 ปิดทางสร้างใบยื่นของฝ่า
     code('../../app/api/tax/orders/from-sales-order/route.js').search(/export const POST/)), /sales:act/, 'ฝ่ายขายต้องไม่มีทางสร้างกลับมา');
 });
 
-test('route ใบเสนอราคาแตกสาขาใบค่าสรรพสามิต: PATCH ล็อกบรรทัด + คิดใหม่ · Rev. ล็อกบรรทัด · รับใบ → RPC แยก · ย้อนการรับปฏิเสธ', () => {
+test('route ใบเสนอราคาแตกสาขาใบค่าสรรพสามิต: PATCH ล็อกบรรทัด + คิดใหม่ · Rev. ล็อกบรรทัด + คิดใหม่จาก SO · รับใบ → RPC แยก · ย้อนการรับปฏิเสธ', () => {
   const patch = code('../../app/api/sales-planning/quotations/[id]/route.js');
   assert.match(patch, /if \(\['lines', 'discountType', 'discountValue', 'vatRate'\]\.some\(\(key\) => key in body\)\) \{\s*return badRequest\(EXCISE_LINES_LOCKED_MESSAGE\);/);
   assert.match(patch, /body\.action === 'recalc_from_sales_order'/);
   const revise = code('../../app/api/sales-planning/quotations/[id]/revise/route.js');
-  assert.match(revise, /isExciseOrder\(quote\) && \['lines', 'discountType', 'discountValue', 'vatRate'\]\.some/);
+  const exciseBranch = revise.slice(revise.indexOf('if (isExciseOrder(quote)) {'), revise.indexOf('let revLines;'));
+  assert.match(exciseBranch, /\['lines', 'discountType', 'discountValue', 'vatRate'\]\.some\(\(key\) => key in body\)\) \{\s*return badRequest\(EXCISE_LINES_LOCKED_MESSAGE\);/);
+  /* 🐞 02/11 QT-26100568-1: Rev. ลอกบรรทัดรุ่นเก่าแล้วถูกยื่น/อนุมัติทันที ⇒ Rev. ของใบค่าสรรพสามิตคิดจาก SO ต้นทางเสมอ
+     — บรรทัด (exciseLines แทน quote.lines) · คำอ้างอิงอัตโนมัติ · ผู้เสนอราคาจาก SO ต้นทาง · SO ผิดสภาพ = ข้อความไทยพร้อมสถานะ */
+  assert.match(exciseBranch, /recalcExciseQuotationLines\(\{ supabase, user, quote, request: req \}\)/);
+  assert.match(exciseBranch, /if \(recalcError instanceof ExciseQuotationError\) return fail\(recalcError\.message, recalcError\.status\)/);
+  assert.match(exciseBranch, /!\('referenceNote' in body\) && exciseReferenceIsAuto\(quote\.referenceNote\)\) body\.referenceNote = exciseHeader\.referenceNote/);
+  assert.match(revise, /normalizeManualLines\(exciseLines \|\| \('lines' in body \? body\.lines \|\| \[\] : quote\.lines \|\| \[\]\)\)/);
+  assert.match(revise, /salesOwnerPhone: ownerContact\?\.phone \|\| null,\s*\.\.\.\(exciseHeader \? exciseHeader\.metadata : \{\}\),\s*\.\.\.revEditableMeta,/);
   const accept = code('../../app/api/sales-planning/quotations/[id]/accept/route.js');
   assert.ok(accept.indexOf('if (isExciseOrder(quote)) {') < accept.indexOf("from('sales_deals')"), 'สาขา excise มาก่อนอ่านดีล');
   assert.match(accept, /acceptExciseQuotation\(\{ supabase, user, quote, request: req \}\)/);

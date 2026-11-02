@@ -9,7 +9,7 @@ import { isExciseOrder } from '@/lib/sales/historicalOrders';
 /* รหัสจาก create_excise_sales_order_draft (0416) → ข้อความไทย · รหัสร่วมกับใบปกติ (เอกสารยืนยัน · เลขเต็ม) ปล่อยให้ route จัดตามเดิม */
 const CREATE_ERRORS = Object.freeze({
   excise_quotation_origin_invalid: 'ใบเสนอราคานี้ไม่ใช่ใบค่าสรรพสามิต',
-  quotation_not_won: 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ลูกค้ารับแล้ว',
+  quotation_not_won: 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ Won แล้ว',
   quotation_lines_required: 'ใบค่าสรรพสามิตนี้ไม่มีรายการ — กด “คิดใหม่จากใบสั่งขาย” บนใบก่อน',
   excise_source_order_invalid: 'ใบสั่งขายต้นทางไม่ได้อยู่ในสถานะอนุมัติแล้ว (ถูกย้อนอนุมัติ/ยกเลิก/ออก Rev.) — ออกใบสั่งขายค่าสรรพสามิตไม่ได้',
 });
