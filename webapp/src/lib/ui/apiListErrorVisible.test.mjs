@@ -1119,7 +1119,8 @@ test("ขึ้นทะเบียน (รายการ): picker ล้ม�
   const products = sourceForUrl(ast, 'pickerReady ? "/api/products" : null');
   assert.equal(ast.field(products, "blocks"), "form");
   // pickerReady ตัวเดียวกันเปิดตอนกางตัวกรอง ⇒ คนดูอย่างเดียวต้องไม่เจอ "ยังสร้างทะเบียนไม่ได้" ของปุ่มที่ตัวเองไม่มี
-  assert.equal(ast.failureOf(products).gate, "canEdit");
+  // มติ 02/11 V15: RA สร้างทะเบียนเองได้ ⇒ ด่านของป้ายตามสิทธิ์สร้าง (SA หรือ RA) ไม่ใช่สิทธิ์แก้สินค้าอย่างเดียว
+  assert.equal(ast.failureOf(products).gate, "canCreate");
   assert.equal(ast.field(sourceForUrl(ast, 'pickerReady ? "/api/customers" : null'), "blocks"), "filter");
   assertFlag(ast, "listBlocked", "list");
   assertFlag(ast, "filterBlocked", "filter");

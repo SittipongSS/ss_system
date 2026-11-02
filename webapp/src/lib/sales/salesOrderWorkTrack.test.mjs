@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { salesOrderWorkTrack } from './salesOrderWorkTrack.js';
+
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
 const scentWithRequest = (status) => ({
   hasDesignLines: true, count: 2, blocked: null,
@@ -215,14 +218,26 @@ test('ทุก FG ขึ้นทะเบียนแล้ว = ช่วง�
 
 /* 🔴 ไม่บล็อกการสร้างใบยื่น แต่ต้องแดงและ **บอกชื่อ FG** (มติผู้ใช้ 2026-08-17) —
    ตัวนับอย่างเดียวแปลว่าคนอ่านต้องไปไล่หาเองว่าตัวไหนค้าง */
-test('FG ยังไม่ขึ้นทะเบียนเลย = แดง + บอกรหัส FG + ยังชวนไปเปิดทะเบียน', () => {
+test('FG ยังไม่ขึ้นทะเบียนเลย = แดง + บอกรหัส FG + ปุ่มเปิดแผงทะเบียนบนหน้า (ไม่ใช่ลิงก์ /tax · มติ 02/11 V14)', () => {
+  const opened = [];
   const track = salesOrderWorkTrack({
     scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
-    excise: excise({ lines: [exciseLine('FG-1', 'none'), exciseLine('FG-2', 'none')] }), approved: true,
+    excise: excise({ lines: [exciseLine('FG-1', 'none'), exciseLine('FG-2', 'none')], onOpenRegistration: (line) => opened.push(line?.fgCode) }),
+    approved: true,
   });
   const reg = track.segments.find((s) => s.key === 'registration');
   assert.equal(reg.state, 'late');
-  assert.equal(reg.connect.href, '/tax/registrations');
+  assert.equal(reg.connect.href, undefined, 'ฝ่ายขายไม่เข้า /tax แล้ว');
+  assert.equal(reg.connect.actions[0].label, 'ขึ้นทะเบียนสรรพสามิต');
+  reg.connect.actions[0].onClick();
+  assert.deepEqual(opened, ['FG-1']);
+  // หน้าที่ไม่ส่งตัวเปิดแผง = ไม่มีปุ่ม (ไม่ชี้ไปหน้าที่เปิดไม่ได้)
+  const bare = salesOrderWorkTrack({
+    scent: { hasDesignLines: false }, readiness: readinessReady, plan: planRunning, dealType: NPD,
+    excise: excise({ lines: [exciseLine('FG-1', 'none')] }), approved: true,
+  }).segments.find((s) => s.key === 'registration');
+  assert.deepEqual(bare.connect.actions, []);
+  assert.doesNotMatch(read('./salesOrderWorkTrack.js'), /href: '\/tax\/registrations/, 'ไม่มีลิงก์เข้า /tax/registrations บนเส้นเดินงาน');
   assert.deepEqual(reg.notes, [
     { state: 'none', label: 'ยังไม่ขึ้นทะเบียน', count: 2, codes: ['FG-1', 'FG-2'], more: 0 },
   ]);

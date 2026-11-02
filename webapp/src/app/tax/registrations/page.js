@@ -64,6 +64,10 @@ export default function RegistrationsPage() {
   const role = useRole();
   const router = useRouter();
   const canEdit = useCan("products:edit");   // SA: create / edit / resubmit / delete
+  /* ⭐ มติ 02/11 V15: RA สร้างทะเบียนเองได้ (ใบเข้าคิว RA ทันที — ตัดสินที่ route) · ฝ่ายขายสร้างจากแผงทะเบียนบนหน้าสินค้า/SO
+     ⇒ ปุ่มสร้าง + ตัวโหลดของฟอร์มตามสิทธิ์สร้าง ไม่ใช่สิทธิ์แก้สินค้าอย่างเดียว */
+  const canApproveRegistrations = useCan("ra:approve");
+  const canCreate = canEdit || canApproveRegistrations;
 
   const { data: regs, loading, error: regsError, staleError: regsStale, errorDetail: regsDetail, loaded: regsLoaded, reload } = useApiList("/api/excise-registrations?view=queue");
 
@@ -148,7 +152,7 @@ export default function RegistrationsPage() {
       staleNote: "รายการที่เห็นอยู่เป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
     {
-      label: "ทะเบียนสินค้า", error: canEdit ? productsError || productsStale : null, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "form",
+      label: "ทะเบียนสินค้า", error: canCreate ? productsError || productsStale : null, empty: !productsLoaded, detail: productsDetail, reload: reloadProducts, blocks: "form",
       blockedNote: FORM_BLOCKED_NOTE,
       staleNote: "รายการสินค้าเป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
@@ -171,7 +175,7 @@ export default function RegistrationsPage() {
     ? `ดึงข้อมูลไม่ได้: ${failing.map((s) => s.label).join(" · ")} — ${[
       ...new Set([
         ...failing.map((s) => (s.empty ? s.blockedNote : s.staleNote)),
-        canEdit && blocked.length ? FORM_BLOCKED_NOTE : null,
+        canCreate && blocked.length ? FORM_BLOCKED_NOTE : null,
       ].filter(Boolean)),
     ].join(" · ")} · ${causes}`
     : null;
@@ -466,7 +470,7 @@ export default function RegistrationsPage() {
         rowCount={rows.length}
         printMeta={{ from, to, customerName }}
       />
-      {canEdit && (
+      {canCreate && (
         <button className="btn btn-primary flex items-center gap-1.5" onClick={openForm}>
           <Plus size={16} /> สร้างทะเบียน
         </button>
