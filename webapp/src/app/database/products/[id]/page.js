@@ -24,6 +24,7 @@ import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
+import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import ProductSpecCard from "@/components/database/ProductSpecCard";
@@ -653,7 +654,7 @@ export default function ProductDetails() {
                 </div>
               )}
 
-              <SpecGroup label="2. สูตรและบรรจุภัณฑ์" />
+              <SpecGroup label={isFragranceOilCategory(product.categoryCode) ? "2. กลิ่นและบรรจุภัณฑ์" : "2. สูตรและบรรจุภัณฑ์"} />
               {/* ข้อมูลสูตร (0112 → ทะเบียน 0171) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
                   โชว์ — ได้ · ชื่อ/รหัส/วันที่เป็น snapshot จากทะเบียน จึงยังอ่านจาก
                   แถวสินค้าตรง ๆ เหมือนเดิม ต่างแค่มีลิงก์กลับไปตัวสูตรเมื่อผูกแล้ว */}
@@ -685,6 +686,28 @@ export default function ProductDetails() {
                     <span className="font-semibold text-[var(--text)] text-sm">{NA}</span>
                   )}
                 </div>
+              ) : isFragranceOilCategory(product.categoryCode) ? (
+              <>
+              {/* หัวน้ำหอม (02-020 · มติ 2026-11-02) — ผูกกลิ่นแทนสูตร ⇒ ชื่อกลิ่น · รหัสกลิ่น แทนสามช่องของสูตร
+                  (แถวเดียวกับที่ใบสเปค FM-SA-04 พิมพ์ "กลิ่น / รหัสกลิ่น" ให้ FG ที่ไม่มีสูตร) */}
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">กลิ่น (Scent)</span>
+                {product.scentId ? (
+                  <Link
+                    href={`/database/scents?q=${encodeURIComponent(product.scentCode || product.scentName || "")}`}
+                    className="font-semibold text-[var(--accent)] text-sm hover:underline"
+                  >
+                    {product.scentName || product.scentId}
+                  </Link>
+                ) : (
+                  <span className="font-semibold text-[var(--text)] text-sm">{NA}</span>
+                )}
+              </div>
+              <div>
+                <span className="text-[var(--text-3)] block mb-1">รหัสกลิ่น (Scent Code)</span>
+                <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.scentCode)}</span>
+              </div>
+              </>
               ) : (
               <>
               <div>

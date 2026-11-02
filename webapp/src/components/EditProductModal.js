@@ -21,6 +21,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
   const [productTypes, setProductTypes] = useState([]);
   // ทะเบียนสูตร — โหลดเองเหมือน productTypes เพราะโมดัลนี้ถูกเปิดจากหลายหน้า
   const [formulas, setFormulas] = useState([]);
+  // ทะเบียนกลิ่น — ช่องกลิ่นของ FG หัวน้ำหอม 02-020 (มติ 2026-11-02)
+  const [scents, setScents] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
   const [priceEditorOpen, setPriceEditorOpen] = useState(false);
@@ -56,6 +58,12 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           .then(res => (res.ok ? res.json() : []))
           .then(data => setFormulas(Array.isArray(data) ? data : []))
           .catch(err => console.error("Failed to fetch formulas", err));
+      }
+      if (scents.length === 0) {
+        apiFetch("/api/master/scents")
+          .then(res => (res.ok ? res.json() : []))
+          .then(data => setScents(Array.isArray(data) ? data : []))
+          .catch(err => console.error("Failed to fetch scents", err));
       }
     }
   }, [open, product?.id]);
@@ -177,6 +185,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           productTypes={productTypes}
           customers={customers}
           formulas={formulas}
+          scents={scents}
           brandOptions={brandOptionList}
           factoryPrice="readonly"
           currentCostPrice={product.costPrice}
