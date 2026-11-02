@@ -22,9 +22,10 @@ import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
-import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { productFormulaSnapshot, productScentSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { isGiftSetCategory, sameGiftSetFormulas } from '@/lib/master/giftSetFormulas';
+import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
 import { EXCISE_CHARGE_MANUAL_MESSAGE, isExciseChargeProduct } from '@/lib/excise/exciseCharge';
 import {
   loadProductFormulaRows, loadProductFormulas, planGiftSetFormulas, replaceProductFormulas,
@@ -55,12 +56,15 @@ export async function GET(request, { params }) {
   // ชื่อกลิ่นจากทะเบียน (mig 0171) — สินค้าเก็บแค่ scentId ไม่มี snapshot ชื่อ
   // อ่านสดเหมือน customerType · ไม่ทิ้ง error เพราะ "อ่านไม่ได้" กับ "ไม่มีกลิ่น"
   // คนละเรื่อง (ดู [[supabase-masked-query-errors]])
+  // รหัสกลิ่นด้วย — FG หัวน้ำหอม (02-020 · มติ 2026-11-02) ผูกกลิ่นแทนสูตร หน้ารายละเอียดโชว์ชื่อ + รหัสกลิ่นแทนแถวสูตร
   let scentName = null;
+  let scentCode = null;
   if (data.scentId) {
     const { data: scent, error: scentError } = await supabase
-      .from('scents').select('name').eq('id', data.scentId).maybeSingle();
+      .from('scents').select('name, code').eq('id', data.scentId).maybeSingle();
     if (scentError) return Response.json({ error: scentError.message }, { status: 500 });
     scentName = scent?.name ?? null;
+    scentCode = scent?.code ?? null;
   }
   // ชุดของขวัญ (01-037 · mig 0403) — รายการสูตรอ่านสดจากทะเบียน · หมวดอื่นได้อาเรย์ว่าง (รูปเดียวกันทุกสินค้า)
   let formulaComponents = [];
@@ -72,7 +76,7 @@ export async function GET(request, { params }) {
     }
   }
   // Strip the confidential cost breakdown/profit for non-margin roles.
-  return Response.json({ ...redactProductMargin(user, data), customerType, scentName, formulaComponents });
+  return Response.json({ ...redactProductMargin(user, data), customerType, scentName, scentCode, formulaComponents });
 }
 
 // PATCH /api/products/[id]
@@ -345,6 +349,25 @@ export async function PATCH(request, { params }) {
     giftSetRows = [];
   }
   const giftSetChanged = !sameGiftSetFormulas(giftSetBefore, giftSetRows);
+
+  /* ── หัวน้ำหอม (02-020 · มติผู้ใช้ 2026-11-02): ผูกกลิ่นตรง ไม่มีสูตร ───────────────────────
+     ตัดสินจาก updated.categoryCode (หลังหมวดนิ่ง) เหมือนชุดของขวัญ · วางหลังช่องสูตรด้านบนเสมอ — ช่องนั้นล้าง scentId
+     ตอนถอดสูตร (FG เดิมที่ผูกสูตร 02-020) ⇒ ที่นี่เขียนกลิ่นที่ฟอร์มส่งมาทับ
+       · ส่ง `scentId` มา (ฟอร์มส่งทุกครั้ง) ⇒ สูตรว่าง + กลิ่นที่เลือก
+       · ไม่ส่ง (ปุ่มอนุมัติ/พักใช้/ราคาผลิต) ⇒ ไม่แตะ — ⚠️ ห้ามล้างสูตรค้างตรงนี้: changedFields จะเห็น formulaId เปลี่ยน
+         แล้วปุ่มอนุมัติกลายเป็นตัวดึงสินค้ากลับไปรออนุมัติ
+       · ย้ายออกจากหัวน้ำหอมโดยไม่ได้เลือกสูตร ⇒ กลิ่นหลุดตาม — หมวดอื่นกลิ่นต้องมากับสูตร */
+  if (isFragranceOilCategory(updated.categoryCode)) {
+    if (body.scentId !== undefined) {
+      try {
+        Object.assign(updated, await productScentSnapshot(supabase, body.scentId, { currentScentId: product.scentId }));
+      } catch (e) {
+        return Response.json({ error: e.message }, { status: 400 });
+      }
+    }
+  } else if (isFragranceOilCategory(product.categoryCode) && !updated.formulaId) {
+    updated.scentId = null;
+  }
 
   // กลุ่ม 03/04 ไม่มีแบรนด์ (มติ 2026-08-21 · ดู brands.js) — ล้างที่ server เสมอ
   // เคสที่กัดจริงคือ **ย้ายหมวดข้ามกลุ่ม**: สินค้ากลุ่ม 01 ที่ถูกย้ายไป 03 ต้องไม่ลาก

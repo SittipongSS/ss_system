@@ -20,6 +20,7 @@ import { rowPriceSlots } from '@/lib/requests/rowPriceTarget';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { attachShares, sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
 import { countGiftSetsUsingFormula, giftSetsUsingFormulas } from '@/lib/master/giftSetFormulasStore';
+import { fragranceOilScentError } from '@/lib/master/fragranceOilScent';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -517,8 +518,21 @@ export async function productFormulaSnapshot(supabase, formulaId, { forProductId
     formulaName: formula.name || null,
     formulaDate: formula.formulaDate || null,
     // กลิ่นของสินค้า derive จากสูตรเสมอ (FG → สูตร → กลิ่น) — ไม่ให้กรอกเอง
+    // ⚠️ ยกเว้น FG หมวดหัวน้ำหอม (02-020) ที่เลือกกลิ่นตรง ดู `productScentSnapshot`
     scentId: formula.scentId || null,
   };
+}
+
+/* ── FG หมวดหัวน้ำหอม (02-020): ผูกกลิ่นตรง ไม่มีสูตร (มติผู้ใช้ 2026-11-02 · lib/master/fragranceOilScent.js) ──
+   คืนทั้งชุดในรูปเดียวกับ `productFormulaSnapshot` — ช่องสูตรถูกล้างทิ้งเสมอ (หมวดนี้ไม่มีสูตร) · `scentId` ว่าง = ถอดกลิ่น
+   `currentScentId` = กลิ่นที่ FG ถืออยู่ก่อนแก้ — ตัวเดิมผ่านด่านสถานะเสมอ (เปิดแก้ชื่อสินค้าแล้วบันทึกต้องไม่ล้ม) */
+export async function productScentSnapshot(supabase, scentId, { currentScentId = null } = {}) {
+  const snapshot = { formulaId: null, formulaCode: null, formulaName: null, formulaDate: null, scentId: null };
+  if (!scentId) return snapshot;
+  const scent = await findScent(supabase, scentId);
+  const error = fragranceOilScentError(scent, { currentScentId });
+  if (error) throw new Error(error);
+  return { ...snapshot, scentId: scent.id };
 }
 
 /* ── แหล่งของช่องราคา (F → กลิ่น · B/FB → สูตร) — ด่านเดียวของทุกทางใส่ราคา (รีวิว ม-148 รอบสอง) ──────────
