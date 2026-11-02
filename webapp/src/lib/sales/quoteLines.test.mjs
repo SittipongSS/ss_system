@@ -156,6 +156,22 @@ test('refreshFgLinesForDisplay updates editable quotes only, final quotes stay f
   assert.equal(closed.lines[0].description, 'ชื่อเก่า');
 });
 
+test('refreshFgLinesForDisplay: ใบค่าสรรพสามิตไม่ถูกเขียนทับด้วยชื่อสินค้า 04-003 — คำอธิบาย/ชื่อสองภาษาที่คิดจาก SO อยู่ครบ', async () => {
+  // 🐞 02/11 ใบทดลอง QT-26100568-2: ร่างขึ้น "ค่าภาษีสรรพสามิต" ทุกบรรทัดทั้งบนจอและกระดาษตัวอย่าง ทั้งที่ฐานเก็บ "<FG ต้นทาง> <ชื่อ>"
+  const master = [{ id: 'PRD-X', fgCode: 'FG-108-04-003', categoryCode: '04-003', productDescription: 'ค่าภาษีสรรพสามิต', productDescriptionEn: 'Excise tax' }];
+  const line = {
+    productId: 'PRD-X', fgCode: 'FG-108-04-003', description: 'FG-108-01-002-0326 โรเซ่ โรส เออ เดอ เพอร์ฟูม · 50 ml',
+    metadata: { lineKind: 'excise_charge', descriptionTh: 'FG-108-01-002-0326 โรเซ่ โรส เออ เดอ เพอร์ฟูม · 50 ml', descriptionEn: 'FG-108-01-002-0326 Rosé Rose Eau De Parfum' },
+  };
+  const excise = { status: 'draft', origin: 'excise', lines: [structuredClone(line)] };
+  const sale = { status: 'draft', origin: 'pipeline', lines: [structuredClone(line)] };
+  await refreshFgLinesForDisplay(fakeSupabase(master), [excise, sale]);
+  assert.equal(excise.lines[0].description, line.description);
+  assert.equal(excise.lines[0].metadata.descriptionTh, line.metadata.descriptionTh);
+  assert.equal(excise.lines[0].metadata.descriptionEn, line.metadata.descriptionEn);
+  assert.equal(sale.lines[0].description, 'ค่าภาษีสรรพสามิต', 'ใบขายปกติยังเติมสดจากทะเบียนตามเดิม');
+});
+
 test('FG identity separates preferred brand from product name and volume', () => {
   assert.equal(
     fgLineDescription({ brandName: 'แบรนด์เอ', productDescription: 'น้ำหอมส้ม', volume: 50, volumeUnit: 'ml' }),

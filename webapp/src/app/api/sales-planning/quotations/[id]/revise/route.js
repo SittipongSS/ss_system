@@ -90,7 +90,10 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       if (recalcError instanceof ExciseQuotationError) return fail(recalcError.message, recalcError.status);
       throw recalcError;
     }
-    if (!('referenceNote' in body) && exciseReferenceIsAuto(quote.referenceNote)) body.referenceNote = exciseHeader.referenceNote;
+    /* จอส่ง referenceNote ของฉบับเดิมมากับคำขอออก Rev. เสมอ (quotationPayload) ⇒ ตัดสิน "ระบบเขียนเอง" จากค่าที่ส่งมา
+       ไม่ใช่จาก "มีคีย์ไหม" — 🐞 02/11 Rev.2 ของใบทดลองได้คำอ้างอิงรุ่นเก่า "ค่าภาษีสรรพสามิตของ …" ติดมาเพราะเช็กแค่ว่ามีคีย์ */
+    const sentReference = 'referenceNote' in body ? body.referenceNote : quote.referenceNote;
+    if (exciseReferenceIsAuto(sentReference)) body.referenceNote = exciseHeader.referenceNote;
   }
   /* เลขแพ็ค (mig 0407): ค่าที่ใช้ไม่ได้ หรือมีค่าขณะช่องปิด (รวมบรรทัดที่สืบทอดจากใบเดิม) = ปฏิเสธพร้อมเลขรายการ
      — ไม่ตัดทิ้งแล้วออก Rev. ต่อ: ฉบับใหม่จะได้ยอดที่หดเงียบ */

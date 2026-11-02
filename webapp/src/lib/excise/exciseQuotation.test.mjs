@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   EXCISE_LINES_LOCKED_MESSAGE, ExciseQuotationError, LIVE_EXCISE_QUOTATION_STATUSES, acceptExciseQuotation,
-  createExciseQuotationDraft, exciseHandledOrderIds, exciseQuotationBlocker, exciseQuotationOverrides, exciseQuotationReference,
+  createExciseQuotationDraft, exciseHandledOrderIds, exciseReferenceIsAuto, exciseQuotationBlocker, exciseQuotationOverrides, exciseQuotationReference,
   exciseSourceLock, isLiveExciseQuotation, previewExciseQuotationDraft,
 } from './exciseQuotation.js';
 import { EXCISE_CHARGE_PREVIEW_ID } from './exciseChargeProduct.js';
@@ -338,7 +338,10 @@ test('route ใบเสนอราคาแตกสาขาใบค่า�
      — บรรทัด (exciseLines แทน quote.lines) · คำอ้างอิงอัตโนมัติ · ผู้เสนอราคาจาก SO ต้นทาง · SO ผิดสภาพ = ข้อความไทยพร้อมสถานะ */
   assert.match(exciseBranch, /recalcExciseQuotationLines\(\{ supabase, user, quote, request: req \}\)/);
   assert.match(exciseBranch, /if \(recalcError instanceof ExciseQuotationError\) return fail\(recalcError\.message, recalcError\.status\)/);
-  assert.match(exciseBranch, /!\('referenceNote' in body\) && exciseReferenceIsAuto\(quote\.referenceNote\)\) body\.referenceNote = exciseHeader\.referenceNote/);
+  /* 🐞 02/11 Rev.2: จอส่ง referenceNote ของฉบับเดิมมาเสมอ ⇒ ตัดสินจากค่าที่ส่งมา ไม่ใช่ "มีคีย์ไหม" */
+  assert.match(exciseBranch, /const sentReference = 'referenceNote' in body \? body\.referenceNote : quote\.referenceNote;\s*if \(exciseReferenceIsAuto\(sentReference\)\) body\.referenceNote = exciseHeader\.referenceNote;/);
+  assert.equal(exciseReferenceIsAuto('ค่าภาษีสรรพสามิตของ SO-26080010-0 / QT-26080033-1'), true, 'คำรุ่นเก่าที่จอส่งกลับมา = ระบบเขียนเอง');
+  assert.equal(exciseReferenceIsAuto('อ้างถึง PO-77'), false);
   assert.match(revise, /normalizeManualLines\(exciseLines \|\| \('lines' in body \? body\.lines \|\| \[\] : quote\.lines \|\| \[\]\)\)/);
   assert.match(revise, /salesOwnerPhone: ownerContact\?\.phone \|\| null,\s*\.\.\.\(exciseHeader \? exciseHeader\.metadata : \{\}\),\s*\.\.\.revEditableMeta,/);
   const accept = code('../../app/api/sales-planning/quotations/[id]/accept/route.js');
