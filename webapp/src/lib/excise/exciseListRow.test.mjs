@@ -38,3 +38,9 @@ test('จอ: ตาราง QT ใช้ตัวช่วยกลาง (บ
   const so = readFileSync(new URL('../../app/sales-planning/sales-orders/page.js', import.meta.url), 'utf8');
   assert.match(so, /excise \? `ค่าสรรพสามิต · \$\{naText\(row\.sourceDeal\?\.title\)\}`/);
 });
+
+test('หน้าใบเสนอราคา: หัวใบค่าสรรพสามิตพูดคำเดียวกับทะเบียน — "ค่าสรรพสามิต · ดีลต้นทาง …" ไม่ใช่ "โครงการ ไม่ระบุ · ดีล ไม่ระบุ"', () => {
+  const page = readFileSync(new URL('../../app/sales-planning/quotations/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(page, /import \{ EXCISE_LIST_LABEL \} from "@\/lib\/excise\/exciseListRow";/);
+  assert.match(page, /description=\{excise\s*\? `[^`]*\$\{EXCISE_LIST_LABEL\} · ดีลต้นทาง \$\{naText\(quote\.sourceDeal\?\.title\)\}`/);
+});

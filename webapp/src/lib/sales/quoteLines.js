@@ -509,9 +509,13 @@ export async function enforceMasterPrices(supabase, lines = [], previousLines = 
 // ใช้เฉพาะใบสถานะที่ยังแก้ได้ (draft/sent/rejected); ใบ final (accepted/closed/revised/
 // cancelled) คงข้อมูล ณ วันปิดไว้เป็นหลักฐาน. ราคาไม่เติมที่นี่ (ราคาผูกกับยอดรวม —
 // ให้ enforceMasterPrices จัดการตอนบันทึกเท่านั้น ไม่งั้นราคาโชว์ไม่ตรงยอดหัวใบ).
+// ⚠️ ใบค่าสรรพสามิต (origin excise) ไม่เติม — คำอธิบายบรรทัดคือ "<FG ต้นทาง> <ชื่อ>" ที่คิดจาก SO (มติ 29/10)
+//    ส่วนชื่อในทะเบียนของสินค้า 04-003 คือ "ค่าภาษีสรรพสามิต" คำเดียวทุกบรรทัด 🐞 02/11 ใบทดลอง QT-26100568-2:
+//    ฐานถูกแต่จอ + กระดาษตัวอย่างของร่างขึ้น "ค่าภาษีสรรพสามิต" ทุกบรรทัด (ใบอนุมัติแล้วพิมพ์จากฉบับตรึง จึงไม่โดน)
+//    · ทางบันทึกข้ามบรรทัดนี้อยู่แล้ว (enforceMasterPrices) — ที่นี่ต้องข้ามด้วยเหตุเดียวกัน
 export async function refreshFgLinesForDisplay(supabase, quotes = []) {
   const editable = new Set(['draft', 'sent', 'rejected']);
-  const targets = quotes.filter((q) => q && editable.has(q.status) && Array.isArray(q.lines));
+  const targets = quotes.filter((q) => q && editable.has(q.status) && Array.isArray(q.lines) && !isExciseOrder(q));
   const ids = [...new Set(targets.flatMap((q) => q.lines.filter((l) => l?.productId).map((l) => l.productId)))];
   if (ids.length) {
     const { data, error } = await supabase

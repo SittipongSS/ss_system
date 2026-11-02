@@ -72,6 +72,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import QuotationBillingRequests from "@/components/salesPlanning/QuotationBillingRequests";
 import { billingQuotationError } from "@/lib/requests/billingQuotations";
 import { EXCISE_STATUS_NOTE, isExciseOrder } from "@/lib/sales/historicalOrders";
+import { EXCISE_LIST_LABEL } from "@/lib/excise/exciseListRow";
 import { excisePreVatAmount } from "@/lib/excise/exciseSalesOrder";
 import { quotationBillingRequestHref } from "@/lib/sales/billingRequestHref";
 
@@ -983,8 +984,11 @@ export default function QuotationEditorPage() {
             eyebrow="FM-SA-01 · QUOTATION"
             title={quote.quoteNumber}
             /* รหัส AR นำหน้าชื่อลูกค้า (มติผู้ใช้ 2026-08-21) — อ่านสดจากทะเบียนที่หน้านี้
-               โหลดไว้อยู่แล้วสำหรับที่อยู่เอกสาร ไม่ใช่ค่าที่ประทับไว้ในใบ */
-            description={`${customerHeadline(quote.customerName, customer?.arCode) || "ไม่ระบุลูกค้า"} · โครงการ ${quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"} · ดีล ${quote.deal?.title || "ไม่ระบุ"}`}
+               โหลดไว้อยู่แล้วสำหรับที่อยู่เอกสาร ไม่ใช่ค่าที่ประทับไว้ในใบ
+               ใบค่าสรรพสามิต (ไม่มีดีล): "ค่าสรรพสามิต · ดีลต้นทาง …" คำเดียวกับทะเบียน (exciseListRow · มติ 29/10) — เดิมขึ้น "โครงการ ไม่ระบุ · ดีล ไม่ระบุ" */
+            description={excise
+              ? `${customerHeadline(quote.customerName, customer?.arCode) || "ไม่ระบุลูกค้า"} · ${EXCISE_LIST_LABEL} · ดีลต้นทาง ${naText(quote.sourceDeal?.title)}`
+              : `${customerHeadline(quote.customerName, customer?.arCode) || "ไม่ระบุลูกค้า"} · โครงการ ${quote.deal?.project?.name || quote.deal?.project?.code || "ไม่ระบุ"} · ดีล ${quote.deal?.title || "ไม่ระบุ"}`}
             badges={<><SalesStateBadge label={statusMeta.label} color={statusMeta.color} />{quote.revisionNo > 0 ? <span className="ui-badge">Revision {quote.revisionNo}</span> : null}</>}
             facts={[
               { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : NA },
