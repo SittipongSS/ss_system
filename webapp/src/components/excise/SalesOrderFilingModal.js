@@ -53,7 +53,8 @@ export default function SalesOrderFilingModal({ open, onClose, onSaved, initialK
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "โหลดคิวรอยื่นกรมไม่สำเร็จ");
-        if (active) setRows(Array.isArray(data) ? data : []);
+        // แถวกำลังมา (ready: false) ยังไม่มี SO ค่าสรรพสามิตอนุมัติให้ผูก — โชว์ที่คิว ไม่ใช่ตัวเลือกของโมดัลนี้
+        if (active) setRows((Array.isArray(data) ? data : []).filter((row) => row.ready !== false));
       })
       .catch((reason) => { if (active) setError(reason.message || "โหลดคิวรอยื่นกรมไม่สำเร็จ"); })
       .finally(() => { if (active) setLoading(false); });

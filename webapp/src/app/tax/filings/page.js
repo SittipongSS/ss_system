@@ -24,6 +24,8 @@ import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
 import StatusBadge from "@/components/excise/StatusBadge";
 import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
+import WorkQueue from "@/components/excise/WorkQueue";
+import { raQueueItem } from "@/lib/excise/raQueueItem";
 
 // ยอด 0 ≠ ยกเว้น — ใบที่สินค้าไม่มีราคาขายปลีกต้องเห็น ฿0.00 ตามจริง (isExemptFiling · ตรวจระบบ 2026-10-26)
 const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : fmtMoney(o.totalTax || 0));
@@ -73,6 +75,9 @@ export default function FilingsPage() {
   // ลิสต์ลูกค้าโหลดตอนกางตัวกรองครั้งแรก ไม่ใช่ตอนเปิดหน้า (508 แถว)
   const [customersReady, setCustomersReady] = useState(false);
   const { data: customers, loading: lCustomers, error: customersError, staleError: customersStale, errorDetail: customersDetail, loaded: customersLoaded, reload: reloadCustomers } = useApiList(customersReady ? "/api/customers" : null);
+  /* คิว "รอยื่นกรม" (PR5 + มติเจ้าของ 29/10) — งานที่ยังไม่มีใบยื่น: พร้อมสร้าง + กำลังมา (ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว)
+     ⇒ RA เห็นงานบนหน้านี้ตั้งแต่ใบเสนอราคาอนุมัติ ไม่ใช่ตารางว่าง "0 ใบ" · โหลดเฉพาะฝ่าย RA */
+  const { data: raQueue, loading: lQueue, error: queueError, staleError: queueStale, errorDetail: queueDetail, loaded: queueLoaded, reload: reloadQueue } = useApiList(canFile ? "/api/tax/orders/queue" : null);
 
   /* ── โหลดพัง ≠ ไม่มีใบยื่น · และรายชื่อลูกค้าที่ดึงไม่ได้ ≠ "ไม่มีลูกค้าให้เลือก" ─────────────────────
      ป้ายเดียวของจอ (ท่าเดียวกับ /tax · /database) — ทุก useApiList ของหน้านี้อยู่ในก้อน sources ⇒ ได้ประโยคเดียวกัน
@@ -99,6 +104,11 @@ export default function FilingsPage() {
       blockedNote: "ตัวกรองลูกค้ายังใช้ไม่ได้ (ไม่ได้แปลว่าไม่มีลูกค้าให้เลือก)",
       staleNote: "รายชื่อลูกค้าในตัวกรองเป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
+    {
+      label: "คิวรอยื่นกรม", error: queueError || queueStale, empty: !queueLoaded, detail: queueDetail, reload: reloadQueue, blocks: "queue",
+      blockedNote: "แผงงานรอยื่นกรมยังแสดงไม่ได้ (ไม่ได้แปลว่าไม่มีงานรอ)",
+      staleNote: "แผงงานรอยื่นกรมเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
@@ -116,7 +126,7 @@ export default function FilingsPage() {
   const loadErrorDetail = sourcesFailureDetail(failing);
   /* ลองสายลูกค้าไม่ได้พาแผงเข้า skeleton (ตารางยังอยู่) ⇒ ปุ่มต้องบอกเองว่ากำลังลองอยู่
      ไม่งั้นกดแล้วจอนิ่งสนิทและคนกดซ้ำรัว ๆ · ลองสายใบยื่นที่ไม่เคยโหลดสำเร็จ = แผงเป็น skeleton ให้เห็นเอง */
-  const retrying = loading || lCustomers;
+  const retrying = loading || lCustomers || lQueue;
   const notice = loadError ? (
     <StatusNotice
       tone="error"
@@ -261,6 +271,15 @@ export default function FilingsPage() {
       subtitle="ฝ่าย RA สร้างใบยื่นจากคิวรอยื่นกรม ยื่นชำระภาษีต่อกรมสรรพสามิต และบันทึกใบเสร็จ"
       headerRight={headerRight}
     >
+      {/* แผงงานรอยื่นกรม — เฉพาะฝ่าย RA · ตัวทำแถวตัวเดียวกับคิวบน /tax (raQueueItem) · ความล้มขึ้นป้ายเดียวของจอ */}
+      {canFile && (
+        <WorkQueue
+          title="งานรอยื่นกรม"
+          subtitle="พร้อมสร้างใบยื่น + กำลังมา (ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว) เรียงจากค้างนานสุด"
+          incomplete={!!(queueError || queueStale) && !queueLoaded}
+          items={raQueue.map((row) => raQueueItem(row, { onCreate: () => { setCreateKey(row.key); setFormOpen(true); } }))}
+        />
+      )}
       {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
           แทนที่เฉพาะเนื้อ ⇒ ช่องค้นหา/ชิปยังอยู่ระหว่างโหลด ไม่หลุดโฟกัส */}
       <ListPanel
@@ -321,7 +340,7 @@ export default function FilingsPage() {
            ระบบยังไม่เคยมีใบยื่นสักใบ ซึ่งอ่านเหมือน "กรองแล้วไม่เจอ" ไม่ใช่ "ยังไม่มี"
            ⇒ ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง */
         empty={orders.length === 0
-          ? "ยังไม่มีใบยื่นชำระ — ใบยื่นสร้างจากใบสั่งขายที่อนุมัติแล้ว โดยกด “ยื่นชำระ”"
+          ? "ยังไม่มีใบยื่นชำระ — ฝ่าย RA สร้างใบยื่นจากงานรอยื่นกรม (ใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว) โดยกด “สร้างใบยื่น”"
           : "ไม่พบรายการตามตัวกรองที่เลือก"}
         emptyIcon={ReceiptText}
       />
