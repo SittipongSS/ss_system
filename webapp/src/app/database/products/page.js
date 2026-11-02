@@ -47,6 +47,8 @@ const MANAGE_KEY = "/api/master/products?manage=1";
 // ร่างสูตรที่ RD ยังไม่รับก็เลือกได้ (สินค้าเข้าระบบก่อนสูตรถูกรับเป็นเรื่องปกติ)
 // — ตัดเฉพาะที่เก็บเข้ากรุออกที่ฝั่งฟอร์ม
 const FORMULA_KEY = "/api/master/formulas";
+// ทะเบียนกลิ่น — ช่องกลิ่นของ FG หัวน้ำหอม 02-020 (มติ 2026-11-02) · ตัดร่าง/เลิกใช้ที่ฝั่งฟอร์ม
+const SCENT_KEY = "/api/master/scents";
 
 // Master product catalog. Every FG is created here owned by a customer
 // (chosen in the form). Excise approval still happens later in the excise
@@ -82,6 +84,7 @@ export default function ProductRegistry() {
   const [customers, setCustomers] = useState(() => apiCache.get("/api/master/customers") ?? []);
   // ทะเบียนสูตร — ช่อง "สูตร" ในฟอร์มเลือกจากที่นี่ ไม่ให้พิมพ์เอง (mig 0171)
   const [formulas, setFormulas] = useState(() => apiCache.get(FORMULA_KEY) ?? []);
+  const [scents, setScents] = useState(() => apiCache.get(SCENT_KEY) ?? []);
   const [loading, setLoading] = useState(() => !apiCache.has(MANAGE_KEY));
   const [showForm, setShowForm] = useState(false);
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
@@ -167,6 +170,10 @@ export default function ProductRegistry() {
     apiFetch(FORMULA_KEY)
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => { apiCache.set(FORMULA_KEY, d || []); setFormulas(d || []); })
+      .catch(() => {});
+    apiFetch(SCENT_KEY)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => { apiCache.set(SCENT_KEY, d || []); setScents(d || []); })
       .catch(() => {});
   }, []);
 
@@ -739,6 +746,7 @@ export default function ProductRegistry() {
             productTypes={productTypes}
             customers={customerList}
             formulas={formulas}
+            scents={scents}
             brandOptions={brandOptions}
             creatorName={userName}
             onCustomerChange={(v) => setFormData((f) => ({ ...f, customerId: v, brandName: "", brandNameEn: "" }))}
