@@ -285,7 +285,8 @@ export default function ProjectDetailPage() {
         return;
       }
       setToast({ kind: "success", msg: `สร้างทะเบียนภาษี ${payload.fgCode || ""} แล้ว` });
-      router.push(`/tax/registrations/${payload.id}`);
+      // เส้นทางกลางพาไปตามสิทธิ์ (มติ 02/11 V13): ฝ่ายขาย = หน้าสินค้าเปิดแผงทะเบียน · RA/แอดมิน = /tax
+      router.push(`/go/registration/${payload.id}`);
     } finally {
       setCreatingTaxReg(false);
     }

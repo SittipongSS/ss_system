@@ -670,7 +670,8 @@ export const GET = withUser(async ({ user, supabase }) => {
     return count || 0;
   };
 
-  if (can(user.role, 'history:view')) {
+  // ป้ายของเมนู /tax — เฉพาะคนที่เข้าระบบสรรพสามิตได้ (tax:module · มติ 02/11 V13 · ฝ่ายขายไม่เห็นเมนูนี้แล้ว)
+  if (can(user.role, 'tax:module')) {
     jobs.push(attempt('taxRegistrations', () => taxCount('excise_registrations', 'registration')));
     /* ⭐ v3 (มติ 02/11): งานของ RA = **รอ RA** (คิวคำนวณสด · ยังไม่มีแถว orders) + **กำลังยื่น** (แถว orders)
        — ชุดเดียวกับชิป "รอฉันลงมือ" บนหน้าการยื่นชำระ · ฝ่ายขายไม่มีขั้นบนเส้นนี้ (ownedStages ว่าง ⇒ 0) */

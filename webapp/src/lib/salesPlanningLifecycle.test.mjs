@@ -105,11 +105,12 @@ test('สรรพสามิตราย FG: ทะเบียนยังไ
     const r = exciseRoute(lc);
     assert.equal(r.status, 'progress', st);
     assert.ok(!r.actionKind, st); // ไม่มีปุ่มสร้างซ้ำ
-    assert.equal(r.href, '/tax/registrations/R1', st);
+    // ทางกลางพาไปตามสิทธิ์ (มติ 02/11 V13): ฝ่ายขาย = หน้าสินค้าเปิดแผงทะเบียน · RA = /tax
+    assert.equal(r.href, '/go/registration/R1', st);
   }
 });
 
-test('สรรพสามิตราย FG: อนุมัติแล้ว → ไปยื่นชำระ (ไม่สร้างทะเบียนซ้ำ)', () => {
+test('สรรพสามิตราย FG: อนุมัติแล้ว → จบ ไม่มีลิงก์ยื่นชำระ (RA ยื่นจาก SO ค่าสรรพสามิต · v3) · ไม่สร้างทะเบียนซ้ำ', () => {
   const lc = dealLifecycle(
     deal({ stage: 'in_project', projectId: 'P1', metadata: { fgCodes: ['FG-A-01-002-1'] } }),
     related({ exciseRegistrations: [{ id: 'R1', fgCode: 'FG-A-01-002-1', status: 'approved' }] }),
@@ -117,7 +118,7 @@ test('สรรพสามิตราย FG: อนุมัติแล้ว
   const r = exciseRoute(lc);
   assert.equal(r.status, 'done');
   assert.ok(!r.actionKind);
-  assert.equal(r.href, '/tax/filings');
+  assert.equal(r.href, null, 'ฝ่ายขายไม่ยื่นชำระเองและไม่เข้า /tax แล้ว');
 });
 
 test('สรรพสามิตหลาย FG: แยกการ์ดตามสถานะราย FG (จับด้วย productId)', () => {
@@ -134,7 +135,7 @@ test('สรรพสามิตหลาย FG: แยกการ์ดตา
   const rA = lc.routes.find((r) => r.kind === 'excise:FG-A-01-002-1');
   const rB = lc.routes.find((r) => r.kind === 'excise:FG-B-01-002-2');
   assert.equal(rA.status, 'done'); // อนุมัติ → ยื่นชำระ
-  assert.equal(rA.href, '/tax/filings');
+  assert.equal(rA.href, null);
   assert.equal(rB.status, 'available'); // ยังไม่ขึ้น → สร้างทะเบียน
   assert.equal(rB.actionKind, 'create-excise');
   assert.equal(rB.productId, 'PB');

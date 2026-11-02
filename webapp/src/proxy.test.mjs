@@ -427,6 +427,11 @@ test('ทุกระบบใน SYSTEM_CATALOG ต้องเปิดหน�
   const user = { role: 'rd', extraCaps: [] };
 
   for (const system of SYSTEM_CATALOG) {
+    /* ⭐ ภาษีสรรพสามิต (มติ 02/11 V13): หน้าเปิดได้เฉพาะคนที่เห็นการ์ด (tax:module) — ตรวจด้วยคนที่เห็นการ์ดจริง (RA) */
+    if (system.key === 'tax') {
+      assert.equal(lockedOut({ role: 'ra', extraCaps: [] }, system.landing(user), 'GET', false), false, 'tax: RA ต้องเปิด /tax ได้');
+      continue;
+    }
     const landing = system.landing(user);
     assert.ok(landing, `${system.key} ไม่มี landing`);
     assert.equal(

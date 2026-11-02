@@ -899,7 +899,7 @@ export default function CustomerDetails() {
                   {regs.map((r) => (
                     /* การ์ดทั้งใบเป็น <Link> ได้ — `<StatusBadge>` (excise) คืน <span> ล้วน
                        ที่เหลือเป็นข้อความ ⇒ ไม่มี interactive descendant ให้ <a> ผิดสเปก */
-                    <Link key={r.id} prefetch={false} href={`/tax/registrations/${r.id}`} className="glass-panel card-link p-4 flex items-center justify-between gap-3">
+                    <Link key={r.id} prefetch={false} href={`/go/registration/${r.id}`} className="glass-panel card-link p-4 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="font-semibold font-mono text-sm text-[var(--text)]">{r.fgCode}</div>
                         <div className="text-[11px] text-[var(--text-3)] truncate">{productDisplayName(r)} · {brandBoth(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName)}</div>

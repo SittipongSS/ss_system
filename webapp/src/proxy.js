@@ -345,6 +345,11 @@ export function lockedOut(user, path, method, isApi) {
      ⇒ สิทธิ์รายคนเปิดเมนูได้เท่าไร ก็ต้องเปิดหน้าได้เท่านั้น */
   if (startsWithAny(path, ['/settings/cost-templates']) && canUser(user, 'master:manage')) return false;
   if (startsWithAny(path, ['/settings/storage']) && canUser(user, 'users:manage')) return false;
+  /* ⭐ ระบบภาษีสรรพสามิต (/tax) = RA + แอดมิน + ผู้ดู เท่านั้น (มติเจ้าของ 02/11 V13 · cap `tax:module`)
+     — ฝ่ายขายทำงานทะเบียนจากแผงบนหน้าสินค้า/หน้า SO · เดิม /tax อยู่ใน OPEN_PAGES ⇒ ใครพิมพ์ URL ก็เปิดได้ (เมนูซ่อนอย่างเดียว)
+     ⚠️ ต้องมาก่อน OPEN_PAGES (ลิสต์นั้นยังมี /tax ให้คนที่ถือ cap) · API อ่านของ /tax ยังเปิด — หน้าฝ่ายขายใช้
+        (`/api/tax/orders/from-sales-order` บนหน้า SO · `/api/excise-registrations` ของแผงทะเบียน) */
+  if (path === '/tax' || path.startsWith('/tax/')) return !canUser(user, 'tax:module');
   // Pages: the hub + open systems, plus the two admin READ surfaces when granted
   // per-user (audit log / user list). Grants are read-only; the write APIs stay
   // gated on the role caps (users:manage) in apiWriteAllowed.
