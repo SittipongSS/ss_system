@@ -13,8 +13,9 @@ import { clearedBrandFields } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
 import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
-import { productFormulaSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { productFormulaSnapshot, productScentSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
+import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
 import { planGiftSetFormulas, replaceProductFormulas } from '@/lib/master/giftSetFormulasStore';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { branchKeyOf } from '@/lib/master/customerTaxId';
@@ -278,11 +279,14 @@ export async function POST(request) {
   // ⭐ ชุดของขวัญ (01-037 · mig 0403): ไม่มีสูตรหลัก — สูตรเป็นรายการ (หมวด, สูตร) ในตาราง
   // product_formulas ซึ่งเขียนหลัง insert · ตรวจกับทะเบียนสดตรงนี้ก่อน เพื่อให้ขั้นเขียนหลัง
   // insert เหลือแค่เหตุจากระบบ ไม่ใช่ข้อมูลผิด · หมวดอื่นไม่มีรายการ (ล้างทิ้งแบบช่องแบรนด์ 03/04)
+  // ⭐ หัวน้ำหอม (02-020 · มติ 2026-11-02): ผูกกลิ่นตรงจาก `scentId` ไม่มีสูตร — ชุดเดียวกัน (สูตรว่าง + scentId)
   const giftSet = isGiftSetCategory(categoryCode);
   let formulaSnapshot;
   let giftSetRows = [];
   try {
-    formulaSnapshot = await productFormulaSnapshot(supabase, giftSet ? null : body.formulaId);
+    formulaSnapshot = isFragranceOilCategory(categoryCode)
+      ? await productScentSnapshot(supabase, body.scentId)
+      : await productFormulaSnapshot(supabase, giftSet ? null : body.formulaId);
     if (giftSet) {
       const plan = await planGiftSetFormulas(supabase, body.formulaComponents);
       if (plan.error) return Response.json({ error: plan.error }, { status: 400 });

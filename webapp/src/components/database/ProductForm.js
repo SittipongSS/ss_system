@@ -46,6 +46,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { apiFetch } from "@/lib/apiFetch";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
+import { fragranceOilScentChoices, isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import GiftSetFormulaRows from "@/components/database/GiftSetFormulaRows";
 
 export const EMPTY_PRODUCT = {
@@ -59,6 +60,9 @@ export const EMPTY_PRODUCT = {
   // เติมให้จาก formulaId ฟอร์มไม่ต้องส่ง (เก็บไว้ใน state เพื่อโชว์ค่าเดิมของ
   // สินค้าที่ยังไม่ผูกทะเบียนเท่านั้น)
   formulaId: "", formulaName: "", formulaCode: "", formulaDate: "",
+  // กลิ่นจากทะเบียน — ฟอร์มส่งเองเฉพาะหมวดหัวน้ำหอม 02-020 (มติ 2026-11-02 · fragranceOilScent.js)
+  // หมวดอื่น server derive จากสูตร และไม่อ่านค่านี้
+  scentId: "",
   // ชุดของขวัญ (01-037 · mig 0403) — รายการ (หมวด, สูตร) แทนสูตรเดี่ยว · หมวดอื่นไม่ใช้
   formulaComponents: [],
   volume: "", volumeUnit: DEFAULT_VOLUME_UNIT, saleUnit: DEFAULT_SALE_UNIT, piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
@@ -69,7 +73,7 @@ export const EMPTY_PRODUCT = {
 // ช่องที่โมดัลแก้ดึงจากสินค้าเดิม (costPrice ไม่อยู่ในนี้ — อัปเดตผ่าน action แยก)
 export const PRODUCT_EDIT_FIELDS = [
   "customerId", "fgCode", "categoryCode", "productDescription", "productDescriptionEn",
-  "brandName", "brandNameEn", "hasBrand", "formulaId", "formulaName", "formulaCode", "formulaDate",
+  "brandName", "brandNameEn", "hasBrand", "formulaId", "formulaName", "formulaCode", "formulaDate", "scentId",
   "volume", "volumeUnit", "saleUnit", "piecesPerCase", "retailPriceIncVat",
   "docNote", "docNoteEn",
 ];
@@ -145,6 +149,7 @@ export default function ProductForm({
   productTypes = [],
   customers = [],
   formulas = [],             // ทะเบียนสูตร (mig 0171) — ที่มาเดียวของข้อมูลสูตร
+  scents = [],               // ทะเบียนกลิ่น — ช่องกลิ่นของ FG หัวน้ำหอม (02-020)
   brandOptions = [],         // [{th,en}] ของลูกค้าที่เลือก
   onCustomerChange,          // (customerId) => void — caller ล้างแบรนด์/โหลดใหม่
   creatorName = null,        // ป้าย "ผู้สร้าง" (เฉพาะตอนสร้าง)
@@ -228,6 +233,15 @@ export default function ProductForm({
   const pickedFormula = formulas.find((f) => f.id === form.formulaId) || null;
   // อ่านจาก categoryCode ตัวเดียวกับช่องอื่น (โหมดพิมพ์รหัสเองอ่านจากรหัสที่พิมพ์)
   const giftSet = isGiftSetCategory(categoryCode);
+  // ⭐ หัวน้ำหอม (02-020 · มติผู้ใช้ 2026-11-02): ช่องกลิ่นแทนช่องสูตร — สายขอ RD ส่งเป็นหัวน้ำหอม = กลิ่นอย่างเดียว ไม่มีสูตร
+  const fragranceOil = isFragranceOilCategory(categoryCode);
+  const pickedScent = scents.find((s) => s.id === form.scentId) || null;
+  const scentOptions = fragranceOilScentChoices(scents, form.scentId).map((s) => ({
+    value: s.id,
+    label: `${s.code ? `${s.code} · ` : ""}${s.name}`
+      + (s.customerName ? ` · ${s.customerName}` : "")
+      + (s.status === "archived" ? " (เลิกใช้แล้ว)" : ""),
+  }));
   const formulaOptions = formulas
     .filter((f) => f.status !== "archived" || f.id === form.formulaId)
     .map((f) => ({
@@ -457,7 +471,9 @@ export default function ProductForm({
           บรรจุจริง คนละเรื่องกับราคาขายปลีกที่แยกไปข้างล่าง */}
       <div className="mb-[22px]">
         <div className="border-b border-[var(--border)] pb-3 mb-5">
-          <h3 className="font-semibold text-[var(--text)]">2. สูตรและบรรจุภัณฑ์ (Formula &amp; Packaging)</h3>
+          <h3 className="font-semibold text-[var(--text)]">
+            {fragranceOil ? "2. กลิ่นและบรรจุภัณฑ์ (Scent & Packaging)" : "2. สูตรและบรรจุภัณฑ์ (Formula & Packaging)"}
+          </h3>
         </div>
         <div className="form-grid cols-2">
           {/* ⭐ เลือกจากทะเบียนสูตร ไม่ใช่พิมพ์เอง (PR-5) — เดิมเป็นสามช่องข้อความ
@@ -472,6 +488,23 @@ export default function ProductForm({
               formulas={formulas}
               productTypes={productTypes}
             />
+          ) : fragranceOil ? (
+          <div className="form-group col-span-2">
+            <label>กลิ่น</label>
+            <SearchableSelect
+              value={form.scentId ?? ""}
+              onChange={(v) => onForm({ scentId: v })}
+              placeholder="— เลือกกลิ่นจากทะเบียน —"
+              options={scentOptions}
+            />
+            <span className="text-xs text-[var(--text-3)] mt-1">
+              {!scents.length
+                ? "ยังไม่มีกลิ่นในทะเบียน — เพิ่มที่ ฐานข้อมูล → ทะเบียนกลิ่น ก่อน"
+                : pickedScent
+                  ? `วันที่ผลิตกลิ่น ${pickedScent.producedAt ? fmtDate(pickedScent.producedAt) : "— ยังไม่ระบุ —"} · ดึงจากทะเบียนอัตโนมัติ`
+                  : "หมวดหัวน้ำหอมผูกกลิ่นจากทะเบียน ไม่มีสูตร (RD ส่งงานเป็นหัวน้ำหอม = กลิ่นอย่างเดียว)"}
+            </span>
+          </div>
           ) : (
           <div className="form-group col-span-2">
             <label>สูตร</label>
