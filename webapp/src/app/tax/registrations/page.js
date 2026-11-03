@@ -54,11 +54,20 @@ const factoryMain = (f) => [
   f.costPrice != null && `ราคาผลิต ${fmtMoney(f.costPrice)}`,
   f.factoryProfit != null && `กำไร ${fmtMoney(f.factoryProfit)}`,
 ].filter(Boolean).join(" · ");
-const factoryParts = (f) => [
-  f.materialCost != null && `วัตถุดิบ ${fmtMoney(f.materialCost)}`,
-  f.laborCost != null && `ค่าแรง ${fmtMoney(f.laborCost)}`,
-  f.shippingCost != null && `ค่าจัดส่ง ${fmtMoney(f.shippingCost)}`,
-].filter(Boolean).join(" · ");
+/* แจกแจงต้นทุนตัดเป็นบรรทัดละสองรายการ (ผู้ใช้ส่งภาพมา 03/11/2026)
+   🐞 เดิมสามรายการอยู่บรรทัดเดียว ยาว ~235px เกินเพดานช่อง 220px (`--cell-text-max`) ⇒
+      "ค่าจัดส่ง" ถูกตัดกลางคำโดยไม่มี "…" (จุดไข่ปลาไม่ทำงานกับ div ลูกในช่อง) และช่องนี้
+      ดันตารางล้นกรอบด้านขวา · สองบรรทัดเหลือกว้างเท่าบรรทัดหลัก (~150px) */
+const factoryPartLines = (f) => {
+  const parts = [
+    f.materialCost != null && `วัตถุดิบ ${fmtMoney(f.materialCost)}`,
+    f.laborCost != null && `ค่าแรง ${fmtMoney(f.laborCost)}`,
+    f.shippingCost != null && `ค่าจัดส่ง ${fmtMoney(f.shippingCost)}`,
+  ].filter(Boolean);
+  const lines = [];
+  for (let i = 0; i < parts.length; i += 2) lines.push(parts.slice(i, i + 2).join(" · "));
+  return lines;
+};
 
 export default function RegistrationsPage() {
   const role = useRole();
@@ -324,14 +333,18 @@ export default function RegistrationsPage() {
          แถว> ให้เอง ⇒ บรรทัดแรกต้องเป็น <strong> ที่เป็นลูก **ตรง** ของลิงก์
          ไม่งั้น `.linklike-block` ไม่ขีดเส้นใต้ให้ (ดูหัวไฟล์ components/excise/DataList.js) */
       key: "fgCode", label: "รหัสสินค้า (FG)", link: true,
+      /* ขนาดอยู่หน้าชื่อสินค้า ไม่ใช่คอลัมน์ของตัวเอง (03/11/2026) — สิบเอ็ดคอลัมน์ล้นกรอบ
+         ที่จอ 1536px · ⚠️ ต้อง **ก่อน** ชื่อ เหตุผลเดียวกับการ์ด: ชื่อยาวเกินช่องเสมอ
+         อะไรที่ต่อท้ายจะหายไปกับ "…" ทุกแถว */
       render: (r) => (
         <>
           <strong className="font-semibold font-mono">{r.fgCode}</strong>
-          <div className="cell-sub">{registrationProduct(r)} ({naText(registrationBrand(r))})</div>
+          <div className="cell-sub">
+            {sizeText(r) ? `${sizeText(r)} · ` : ""}{registrationProduct(r)} ({naText(registrationBrand(r))})
+          </div>
         </>
       ),
     },
-    { key: "size", label: "ขนาด", sortValue: (r) => r.volume ?? -1, render: (r) => naText(sizeText(r)) },
     {
       key: "customerName", label: "ลูกค้า",
       render: (r) => (
@@ -365,7 +378,9 @@ export default function RegistrationsPage() {
       render: (r) => (r.factory ? (
         <div>
           <div className="font-mono">{naText(factoryMain(r.factory) || null)}</div>
-          <div className="cell-sub font-mono">{naText(factoryParts(r.factory) || null)}</div>
+          {factoryPartLines(r.factory).length
+            ? factoryPartLines(r.factory).map((line) => <div key={line} className="cell-sub font-mono">{line}</div>)
+            : <div className="cell-sub font-mono">{NA}</div>}
         </div>
       ) : <span className="cell-quiet">{NA}</span>),
     }] : []),
@@ -431,7 +446,7 @@ export default function RegistrationsPage() {
             <span className="cell-sub">ราคาผลิต / กำไร</span>
             <span className={styles.cardStack}>
               <span className="font-mono">{naText(factoryMain(r.factory) || null)}</span>
-              {factoryParts(r.factory) && <span className="cell-sub font-mono">{factoryParts(r.factory)}</span>}
+              {factoryPartLines(r.factory).map((line) => <span key={line} className="cell-sub font-mono">{line}</span>)}
             </span>
           </div>
         )}
