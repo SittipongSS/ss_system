@@ -118,7 +118,37 @@ test('จัดกลุ่มตามใบ — ใบที่รอนาน
   assert.equal(groups[0].maxDays, 29);
   assert.equal(groups[1].total, 2);
   const totals = priceBoardTotals(rows, { todayIso: TODAY });
-  assert.deepEqual(totals, { rows: 3, requests: 2, maxDays: 29, usable: 3, blocked: 0 });
+  assert.deepEqual(totals, {
+    rows: 3, awaitingPrice: 3, missingIngredients: 0, requests: 2, maxDays: 29, usable: 3, blocked: 0,
+  });
+});
+
+test('🔴 ม-159 แถวที่ใส่ราคาแล้วแต่รอ Ingredient List อยู่หน้านี้ด้วย — ไม่มีปุ่มราคา · นับแยกสองก้าว · ป้ายเมนูนับรวม', () => {
+  const plan = (current) => ({ required: true, formulaId: 'FML-1', current });
+  const reqs = [request({
+    items: [
+      confirmed({ id: 'P1' }),                                   // รอราคา + สูตรยังไม่มี Ingredient List
+      confirmed({ id: 'P2' }),                                   // รอราคา · สูตรมีแล้ว
+      confirmed({ id: 'I1', answeredRevisionId: 'REV-9' }),      // ใส่ราคาแล้ว รอ Ingredient List
+      confirmed({ id: 'D1', answeredRevisionId: 'REV-8', answerStatus: 'done' }), // จบแล้ว — ไม่ขึ้น
+    ],
+  })];
+  const pairs = awaitingPriceItems(reqs);
+  assert.deepEqual(pairs.map((p) => p.item.id), ['P1', 'P2', 'I1']);
+  assert.equal(awaitingPriceCount(reqs), 3);
+  const rows = priceBoardRows(pairs, [
+    liveCtx({ ingredient: plan(null) }), liveCtx({ ingredient: plan('Aqua') }), liveCtx({ ingredient: plan(null) }),
+  ]);
+  assert.deepEqual(rows.map((r) => [r.itemId, r.stage, r.ingredient.missing]), [
+    ['P1', 'awaiting_price', true], ['P2', 'awaiting_price', false], ['I1', 'awaiting_ingredients', true],
+  ]);
+  // แถวที่ราคาลงแล้ว — ไม่มีปุ่ม "ใช้ราคานี้"/บอกเหตุราคา (เหลือก้าวเดียว)
+  assert.equal(rows[2].useCurrent, null);
+  assert.equal(rows[2].priceBlocker, '');
+  const totals = priceBoardTotals(rows, { todayIso: TODAY });
+  assert.equal(totals.awaitingPrice, 2);
+  assert.equal(totals.missingIngredients, 2);
+  assert.equal(totals.rows, 3);
 });
 
 test('🔴 L15: "ใช้ราคาในทะเบียนได้เลย" = แถวที่ปุ่มกดแล้วผ่าน · ราคาหมดอายุ/วัสดุปิด = blocked · สองตัวรวม = แถวที่เห็นปุ่ม', () => {
@@ -150,7 +180,7 @@ test('🔴 L15 ด่านซอร์ส: การ์ดไม่อ้าง
   assert.match(page, /label="ใช้ราคาในทะเบียนได้เลย" value=\{`\$\{totals\.usable\} รายการ`\}/);
   // หมายเหตุเลือกตามสิทธิ์คนดู — ตัวเดียวกับที่วางปุ่ม (`canPrice ?` ในช่องจัดการ)
   assert.match(page, /note=\{usablePriceNote\(totals, \{ canPrice \}\)\}/);
-  assert.match(page, /\{canPrice \? \(\s*<div className=\{styles\.actions\}>/);
+  assert.match(page, /\) : canPrice \? \(\s*<div className=\{styles\.actions\}>/);
   assert.match(page, /\{row\.useCurrent \? \(\s*<GatedAction\s+blocker=\{row\.useCurrentBlocker\}/);
 });
 
@@ -299,9 +329,11 @@ test('🔴 POST "ใช้ราคานี้": ผ่านด่านเด
   }
   assert.match(route, /currentPriceToUse\(live\?\.current \|\| \[\]\)/);
   assert.match(route, /expected !== entry\.price\.revisionId/);
-  // ทั้งสองทางจบแถวด้วยตัวเดียวกัน (ตราปิดฝั่ง + actorSide) — ไม่มีก้อน update ซ้ำ
+  // ทั้งสองทางจบแถวด้วยตัวเดียวกัน (ตราปิดฝั่ง + actorSide) — ไม่มีก้อน update ในตัว route (ย้ายไป lib/requests/rowSettle.js · ม-159)
   assert.equal((route.match(/await settleRow\(supabase,/g) || []).length, 2);
-  assert.equal((route.match(/from\('dept_request_items'\)\.update/g) || []).length, 1);
+  // ม-159 — สูตรยังขาด Ingredient List: ทั้งสองทางประทับราคาไว้ (แถวไม่จบ) ด้วยตัวเดียวกัน
+  assert.equal((route.match(/if \(waitIngredients\) await recordRowPrice\(supabase,/g) || []).length, 2);
+  assert.equal((route.match(/from\('dept_request_items'\)\.update/g) || []).length, 0);
   // ไม่แตะทะเบียนวัสดุ — rev เป็น immutable
   const useFn = route.slice(route.indexOf('async function linkCurrentPrice'));
   assert.doesNotMatch(useFn, /priceRegistrySlots|appendMaterialRevision|material_prices/);
@@ -310,13 +342,12 @@ test('🔴 POST "ใช้ราคานี้": ผ่านด่านเด
 test('หน้าจอ: ด่านปุ่ม = canAnswerRequest ตัวเดียวกับ API · ส่ง rev ที่เห็นไปกับ "ใช้ราคานี้" · โมดัลกลางตัวเดิม', () => {
   const page = src('../../app/rd/prices/page.js');
   assert.match(page, /canAnswerRequest\(\{ \.\.\.me, department \}, \{ dept: "RD" \}\)/);
-  assert.match(page, /json: \{ useCurrent: \{ revisionId: use\.revisionId \}, \.\.\.extra \}/);
+  assert.match(page, /json: \{ useCurrent: \{ revisionId: use\.revisionId \} \}/);
   assert.match(page, /<RegistryPriceModal/);
   assert.match(page, /confirmAction\(/, 'ปิดงานต้องมีกล่องยืนยันบอกผล');
-  /* ม-158 — แถวที่ต้องมี Ingredient List: "ใช้ราคานี้" เปิดโมดัลที่บอกผลเหมือนกล่องยืนยัน + ช่องกรอกตัวกลาง ·
-     โมดัลใส่ราคาได้แผนจาก server (ตัวคิดเดียวกับ POST) */
-  assert.match(page, /if \(row\.ingredient\?\.required\) \{ setUsing\(row\); return; \}/);
-  assert.match(page, /<IngredientListField/);
-  assert.match(page, /ingredient=\{pricing \? pricing\.ingredient : null\}/);
-  assert.match(page, /linkCurrentPrice\(using, \{ ingredientList \}\)/);
+  /* ม-159 — Ingredient List เป็นก้าวแยก: โมดัลราคาไม่มีช่องนี้ · ปุ่มแยกในคอลัมน์ของมัน → โมดัลกลางตัวเดียวกับหน้าคำร้อง/หน้าสูตร */
+  assert.doesNotMatch(page, /ingredient=\{pricing/);
+  assert.match(page, /<IngredientListModal/);
+  assert.match(page, /\/items\/\$\{ingredientRow\.itemId\}\/ingredients/);
+  assert.match(page, /<IngredientCell row=\{row\} canEdit=\{canPrice\}/);
 });

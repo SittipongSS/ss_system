@@ -1,11 +1,12 @@
 // ม-158 · Ingredient List ของสูตร (มติเจ้าของ 03/11/2026 · mig 0423)
-//   ข้อความยาวช่องเดียวบนทะเบียนสูตร · บังคับตอนใส่ราคาแถวที่ผูกสูตรหมวด 01/02 (ยกเว้น 02-020 หัวน้ำหอม)
+//   ข้อความยาวช่องเดียวบนทะเบียนสูตร · แถวที่ผูกสูตรหมวด 01/02 (ยกเว้น 02-020 หัวน้ำหอม) ต้องมีถึงจบ
+// ม-159 · แยกก้าวจากราคา (มาไม่พร้อมกัน) แต่ต้องครบทั้งสองอย่างถึงจบงาน
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  INGREDIENT_LIST_MAX_LENGTH, INGREDIENT_LIST_REQUIRED_REASON, formulaNeedsIngredientList, ingredientListGate,
-  normalizeIngredientList, rowIngredientPlan,
+  INGREDIENT_LIST_MAX_LENGTH, INGREDIENT_LIST_REQUIRED_REASON, formulaNeedsIngredientList, ingredientListInput,
+  ingredientListMissing, normalizeIngredientList, rowIngredientPlan,
 } from './ingredientList.js';
 
 const src = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
@@ -55,41 +56,46 @@ test('แผนของแถว: ไม่บังคับ = ไม่มี
     { required: true, formulaId: 'F', current: null });
 });
 
-test('🔴 ด่านขั้นราคา: ต้องมีก่อนปิดแถว · ไม่ส่ง + สูตรมีแล้ว = ผ่าน · ส่งค่าใหม่ = เขียน · ส่งค่าเดิม = ไม่เขียนซ้ำ', () => {
-  const none = { required: true, formulaId: 'F', current: null };
-  const has = { required: true, formulaId: 'F', current: 'Aqua, Parfum' };
-  // ไม่บังคับ = ไม่ยุ่งกับสูตรเลย แม้ส่งค่ามา
-  assert.deepEqual(ingredientListGate({ required: false }, { ingredientList: 'x' }), { error: null, write: null });
-  assert.deepEqual(ingredientListGate(null, {}), { error: null, write: null });
-  // สูตรยังไม่มี
-  assert.deepEqual(ingredientListGate(none, {}), { error: INGREDIENT_LIST_REQUIRED_REASON, write: null });
-  assert.deepEqual(ingredientListGate(none, { ingredientList: '  ' }), { error: INGREDIENT_LIST_REQUIRED_REASON, write: null });
-  assert.deepEqual(ingredientListGate(none, { ingredientList: ' Aqua ' }), { error: null, write: 'Aqua' });
-  // สูตรมีแล้ว
-  assert.deepEqual(ingredientListGate(has, {}), { error: null, write: null });
-  assert.deepEqual(ingredientListGate(has, { ingredientList: 'Aqua, Parfum' }), { error: null, write: null });
-  assert.deepEqual(ingredientListGate(has, { ingredientList: 'Aqua, Parfum, Linalool' }), { error: null, write: 'Aqua, Parfum, Linalool' });
-  // ลบทิ้งระหว่างใส่ราคาไม่ได้ — ต้องแก้ที่หน้าสูตร
-  assert.deepEqual(ingredientListGate(has, { ingredientList: '' }), { error: INGREDIENT_LIST_REQUIRED_REASON, write: null });
-  // ยาวเกิน = เหตุเรื่องความยาว ไม่ใช่ "ต้องใส่"
-  assert.match(ingredientListGate(none, { ingredientList: 'a'.repeat(INGREDIENT_LIST_MAX_LENGTH + 1) }).error, /ยาวเกิน/);
+test('ม-159 ตัวตัดสิน: ขาด Ingredient List = ต้องมีแต่สูตรยังไม่มี · ค่าที่ส่งมาว่าง = ตีกลับเมื่อสูตรต้องมี', () => {
+  assert.equal(ingredientListMissing({ required: true, current: null }), true);
+  assert.equal(ingredientListMissing({ required: true, current: 'Aqua' }), false);
+  assert.equal(ingredientListMissing({ required: false, current: null }), false);
+  assert.equal(ingredientListMissing(null), false);
+  assert.deepEqual(ingredientListInput(' Aqua '), { value: 'Aqua', error: null });
+  assert.deepEqual(ingredientListInput('  '), { value: null, error: INGREDIENT_LIST_REQUIRED_REASON });
+  // สูตรที่ไม่ต้องมี (02-020) ลบให้ว่างได้จากหน้าสูตร
+  assert.deepEqual(ingredientListInput('', { required: false }), { value: null, error: null });
+  assert.match(ingredientListInput('a'.repeat(INGREDIENT_LIST_MAX_LENGTH + 1)).error, /ยาวเกิน/);
 });
 
-test('🔴 route ขั้นราคา: ด่าน Ingredient List ก่อนเขียนอะไร · ใช้กับทั้งใส่ราคาใหม่และ "ใช้ราคานี้" · ลงทะเบียนสูตร', () => {
+test('🔴 ม-159 route ขั้นราคา: ไม่รับ Ingredient List แล้ว · สูตรยังขาด = ลงราคาแต่แถวไม่จบ (ทั้งใส่ราคาใหม่และ "ใช้ราคานี้")', () => {
   const route = src('../../app/api/sa/requests/[id]/items/[itemId]/price/route.js');
-  const gate = route.indexOf('ingredientListGate(ingredient, body)');
-  assert.ok(gate > 0, 'ต้องเรียกด่านตัวกลาง');
-  // ด่านอยู่ก่อนแยกทาง useCurrent และก่อนเขียนราคา
-  assert.ok(gate < route.indexOf('if (body?.useCurrent)'));
-  assert.ok(gate < route.indexOf('await priceRegistrySlots('));
-  // ทั้งสองทางเขียน Ingredient List ก่อนปิดแถว
-  assert.equal((route.match(/await saveIngredientList\(supabase,/g) || []).length, 2);
-  const useFn = route.slice(route.indexOf('async function linkCurrentPrice'), route.indexOf('async function saveIngredientList'));
-  assert.ok(useFn.indexOf('saveIngredientList') < useFn.indexOf('settleRow'), '"ใช้ราคานี้" ต้องเขียนสูตรก่อนปิดแถว');
-  // ค่าไปลงทะเบียนสูตร (ตัวเขียนเดียวกับหน้าทะเบียน) + audit ของสูตร
-  const save = route.slice(route.indexOf('async function saveIngredientList'));
-  assert.match(save, /updateFormula\(supabase, write\.formulaId, \{ ingredientList: write\.value \}\)/);
-  assert.match(save, /entityType: 'formula'/);
+  assert.doesNotMatch(route, /body\.ingredientList|saveIngredientList|updateFormula/);
+  assert.match(route, /const waitIngredients = ingredientListMissing\(ingredient\);/);
+  assert.equal((route.match(/if \(waitIngredients\) await recordRowPrice\(supabase,/g) || []).length, 2);
+  assert.equal((route.match(/else await settleRow\(supabase,/g) || []).length, 2);
+});
+
+test('🔴 ม-159 ทางใส่ Ingredient List: ตัวเขียนเดียว (แถวคำร้อง · หน้าสูตร) และปิดแถวที่ใส่ราคาไว้รออยู่', () => {
+  const row = src('../../app/api/sa/requests/[id]/items/[itemId]/ingredients/route.js');
+  // ด่านชุดเดียวกับขั้นราคา + แถวคอนเฟิร์มแล้วยังไม่จบ + สูตรต้องมี
+  for (const gate of ['canReadRequestRow(user, before)', 'canAnswerRequest(user, before)',
+    'REQUEST_OPEN_STATUSES.includes(before.status)', 'isConfirmedOpenRow(row)', 'rowIngredientPlan(formula).required']) {
+    assert.ok(row.includes(gate), gate);
+  }
+  assert.match(row, /saveFormulaIngredientList\(supabase,/);
+  const formula = src('../../app/api/master/formulas/[id]/route.js');
+  const block = formula.slice(formula.indexOf("if (action === 'ingredients')"), formula.indexOf("if (action === 'edit')"));
+  assert.match(block, /isFormulaRegistrar\(user\)/);
+  assert.match(block, /ingredientListInput\(body\.ingredientList, \{ required: formulaNeedsIngredientList\(formula\) \}\)/);
+  assert.match(block, /saveFormulaIngredientList\(supabase,/);
+  // ตัวเขียน: ปิดเฉพาะแถวที่ "รอ Ingredient List" ของสูตรนี้ ในใบที่ยังเปิด ผ่าน settleRow ตัวกลาง
+  const admin = src('./ingredientListAdmin.js');
+  assert.match(admin, /\.eq\('producedFormulaId', formula\.id\)/);
+  assert.match(admin, /REQUEST_OPEN_STATUSES\.includes\(ask\.status\)/);
+  assert.match(admin, /rowStage\(i\) === 'awaiting_ingredients'/);
+  assert.match(admin, /await settleRow\(supabase, \{ id: requestId, itemId: row\.id, revisionId: row\.answeredRevisionId/);
+  assert.match(admin, /kind: 'ingredients'/);
 });
 
 test('🔴 แผนของแถวคิดจากสูตรสดตัวเดียวกับช่องราคา — GET หน้าใบ · หน้า "รอใส่ราคา" · POST เห็นด่านชุดเดียวกัน', () => {
@@ -98,17 +104,15 @@ test('🔴 แผนของแถวคิดจากสูตรสดตั
   assert.match(admin, /return \{ slots, blocker, ingredient \};/);
   const detail = src('../../app/api/sa/requests/[id]/route.js');
   assert.match(detail, /item\.ingredientPlan = plan\.ingredient/);
+  assert.match(detail, /filter\(isConfirmedOpenRow\)/);
   const page = src('../../app/requests/[id]/page.js');
-  assert.match(page, /ingredient=\{pricing\?\.item\.ingredientPlan \|\| null\}/);
+  // ม-159 — โมดัลราคาไม่รับแผนนี้แล้ว · ปุ่ม/โมดัล Ingredient List แยกของมันเอง
+  assert.doesNotMatch(page, /ingredient=\{pricing/);
+  assert.match(page, /onIngredients: \(row\) => setIngredientItem\(row\)/);
+  assert.match(page, /current=\{ingredientItem\?\.ingredientPlan\?\.current \|\| null\}/);
 });
 
-test('API แก้สูตร: action แยก `ingredients` (ไม่อยู่ในฟอร์มแก้) · RD เท่านั้น · สูตรที่ต้องมีลบทิ้งไม่ได้', () => {
-  const route = src('../../app/api/master/formulas/[id]/route.js');
-  const block = route.slice(route.indexOf("if (action === 'ingredients')"), route.indexOf("if (action === 'edit')"));
-  assert.match(block, /isFormulaRegistrar\(user\)/);
-  assert.match(block, /!value && formulaNeedsIngredientList\(formula\)/);
-  assert.match(block, /recordAudit\(/);
-  // ฟอร์มแก้สูตรต้องไม่ส่ง/รับช่องนี้ — ถูกใช้จากหน้าคำร้องด้วย (ค่าว่างทับเงียบ)
+test('API แก้สูตร: Ingredient List ไม่อยู่ในฟอร์มแก้ (ถูกใช้จากหน้าคำร้องด้วย — ค่าว่างทับเงียบ)', () => {
   assert.doesNotMatch(src('./formulas.js'), /ingredientList/);
   assert.doesNotMatch(src('../../components/database/FormulaForm.js'), /ingredientList/);
 });

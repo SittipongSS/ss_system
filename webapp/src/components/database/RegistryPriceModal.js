@@ -21,17 +21,15 @@
 // ⇒ `blocker` จากตัวตัดสินเดียวกับ API (`priceSlotsBlocker` · `formulaPriceSlots`) · `slots=[]` ไม่มีเหตุ = "ยังไม่ผูก"
 // ⚠️ `slots=null` (ไม่ส่ง) ยังเป็นโหมดช่องเดียวของหน้าทะเบียนกลิ่นตามเดิม
 //
-// ⭐ **Ingredient List ในขั้นราคา** (ม-158 · มติเจ้าของ 03/11/2026) — `ingredient = { required, current }` จาก server
-// (ตัวคิดเดียวกับ POST · `rowIngredientPlan`) · required = ช่องบังคับ ปุ่มบันทึกดับจนกว่าจะมีข้อความ · `current` เติมให้ตรวจ
-// · ค่าไปลงทะเบียนสูตร ไม่ใช่แถวคำร้อง · ปุ่มราคาหน้าทะเบียนไม่ส่ง prop นี้ = ไม่มีช่อง (แก้ที่การ์ดของหน้าสูตรแทน)
-import { useEffect, useState } from "react";
+// ⚠️ **ไม่มีช่อง Ingredient List** (ม-159 · มติเจ้าของ 03/11/2026) — ราคากับ Ingredient List มาไม่พร้อมกัน ⇒ เป็นก้าวแยก
+// (`IngredientListModal`) · รุ่น ม-158 เคยบังคับในโมดัลนี้ ถอดออกแล้ว
+import { useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import MoneyInput from "@/components/ui/MoneyInput";
 import DateInput from "@/components/ui/DateInput";
 import StatusNotice from "@/components/ui/StatusNotice";
-import IngredientListField from "@/components/database/IngredientListField";
 import { DEFAULT_PRICE_TTL_DAYS } from "@/lib/materialPrices";
 import { NO_PRICE_SLOTS_REASON } from "@/lib/master/priceSlots";
 import styles from "./registryForm.module.css";
@@ -53,17 +51,8 @@ export default function RegistryPriceModal({
   notice = null,
   // เหตุที่ใส่ราคาไม่ได้ (ไม่มีช่อง) — มาจากตัวตัดสินเดียวกับ API · ไม่ว่าง = โชว์เหตุแทนฟอร์ม
   blocker = "",
-  // Ingredient List ของสูตร (ม-158) — `{ required, current }` · null/ไม่ required = ไม่มีช่อง
-  ingredient = null,
 }) {
   const [price, setPrice] = useState("");
-  const askIngredient = !!ingredient?.required;
-  const ingredientCurrent = ingredient?.current || "";
-  const [ingredientList, setIngredientList] = useState("");
-  // เติมค่าที่สูตรมีอยู่แล้วทุกครั้งที่เปิด — โมดัลค้าง mount ระหว่างปิด/เปิด (เปิดแถวอื่นต้องได้ของสูตรอื่น)
-  useEffect(() => {
-    if (open) setIngredientList(ingredientCurrent);
-  }, [open, ingredientCurrent]);
   const [prices, setPrices] = useState({});
   const multi = Array.isArray(slots) && slots.length > 0;
   const blocked = blocker || (Array.isArray(slots) && slots.length === 0 ? NO_PRICE_SLOTS_REASON : "");
@@ -72,7 +61,7 @@ export default function RegistryPriceModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const reset = () => { setPrice(""); setPrices({}); setValidUntil(""); setNote(""); setIngredientList(""); setError(""); };
+  const reset = () => { setPrice(""); setPrices({}); setValidUntil(""); setNote(""); setError(""); };
 
   const submit = async () => {
     setSaving(true); setError("");
@@ -87,8 +76,6 @@ export default function RegistryPriceModal({
             : { price }),
           validUntil: validUntil || null,
           note: note.trim() || null,
-          // ⚠️ ส่งเฉพาะแถวที่ต้องมี — แถวอื่นไม่ส่งคีย์ (server ไม่แตะสูตร)
-          ...(askIngredient ? { ingredientList } : {}),
         }),
       });
       const data = await res.json().catch(() => null);
@@ -110,7 +97,6 @@ export default function RegistryPriceModal({
   const priceMissing = multi
     ? !slots.some((s) => prices[s.key] !== "" && prices[s.key] != null)
     : price === "" || price == null;
-  const ingredientMissing = askIngredient && !ingredientList.trim();
 
   return (
     <Modal
@@ -122,7 +108,7 @@ export default function RegistryPriceModal({
       ) : (
         <>
           <Button variant="quiet" onClick={close} disabled={saving}>ยกเลิก</Button>
-          <Button tone="primary" onClick={submit} disabled={saving || priceMissing || ingredientMissing}>
+          <Button tone="primary" onClick={submit} disabled={saving || priceMissing}>
             บันทึกราคาใหม่
           </Button>
         </>
@@ -158,16 +144,6 @@ export default function RegistryPriceModal({
               ? "ใส่อย่างน้อยหนึ่งช่อง · เว้นว่าง = ไม่เปลี่ยนราคาช่องนั้น · ราคาเดียวต่อกิโล ไม่มีชั้นจำนวน — บันทึกเป็นรุ่น (rev) ใหม่ รุ่นเก่าคงอยู่เป็นประวัติ"
               : "ราคาเดียวต่อหน่วย ไม่มีชั้นจำนวน — บันทึกเป็นรุ่น (rev) ใหม่ รุ่นเก่าคงอยู่เป็นประวัติ")}
           </small>
-          {/* ของบังคับอยู่ติดช่องราคา — วันยืนราคา/หมายเหตุ (ไม่บังคับ) อยู่ท้าย */}
-          {askIngredient && (
-            <IngredientListField
-              id="registry-price-ingredients" value={ingredientList} onChange={setIngredientList}
-              disabled={saving} required
-              hint={ingredient.current
-                ? "เติมจากทะเบียนสูตรแล้ว — ตรวจให้ตรงกับสูตรที่ลูกค้าคอนเฟิร์ม · แก้ที่นี่ = แก้ที่ทะเบียนสูตร"
-                : "ต้องใส่ก่อนบันทึก — ชื่อสาร INCI เรียงจากมากไปน้อย คั่นด้วยจุลภาค · ลงทะเบียนสูตรของรายการนี้"}
-            />
-          )}
           <div className="form-group">
             <label htmlFor="registry-price-until">ใช้ได้ถึงวันที่</label>
             <DateInput

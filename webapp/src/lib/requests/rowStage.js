@@ -23,6 +23,7 @@ export const ROW_STAGES = [
   'sent',           // ส่งลูกค้าแล้ว รอลูกค้าตอบ
   'revised',        // ลูกค้าขอให้แก้ — แถวนี้จบ งานไปต่อที่แถวใหม่
   'awaiting_price', // ลูกค้าคอนเฟิร์มแล้ว รอใส่ราคา
+  'awaiting_ingredients', // ใส่ราคาแล้ว รอ Ingredient List ของสูตร (ม-159)
   'done',           // จบครบวง
   'declined',       // จบแบบไม่ได้ของ (ลูกค้าไม่เอา / ตอบไม่ได้)
 ];
@@ -46,6 +47,7 @@ export const ROW_STAGE_LABELS = {
   sent: 'ส่งลูกค้าแล้ว',
   revised: 'ลูกค้าขอให้แก้',
   awaiting_price: 'รอใส่ราคา',
+  awaiting_ingredients: 'รอ Ingredient List',
   done: 'เสร็จแล้ว',
   declined: 'ไม่ถูกเลือก',
 };
@@ -59,6 +61,7 @@ export const ROW_STAGE_TONES = {
   sent: 'warning',
   revised: 'neutral',
   awaiting_price: 'warning',
+  awaiting_ingredients: 'warning',
   done: 'success',
   declined: 'danger',
 };
@@ -74,7 +77,11 @@ export function rowStage(row) {
   // สถานะปลายทางชนะเสมอ — ใส่ราคาแล้วคือจบ ไม่ว่าจะเดินมาทางไหน
   if (row.answerStatus === 'done') return 'done';
   if (row.answerStatus === 'declined' || row.outcome === 'rejected') return 'declined';
-  if (row.outcome === 'confirmed') return 'awaiting_price';
+  /* ⭐ **ราคากับ Ingredient List มาไม่พร้อมกัน — แยกก้าว แต่ต้องครบถึงจบ** (ม-159 · มติเจ้าของ 03/11/2026) — ขั้นราคา
+     ประทับ `answeredRevisionId` แล้ว **ไม่ปิดแถว** เมื่อสูตรยังไม่มี Ingredient List ⇒ แถวที่มี rev แต่ยังไม่ done
+     = รอ Ingredient List · ตัวเขียน Ingredient List (`saveFormulaIngredientList`) ปิดแถวพวกนี้ให้เอง
+     ⚠️ ยังอ่านจากแถวล้วน — สูตรมี Ingredient List ก่อนใส่ราคา = ขั้นราคาปิดแถวทันที ไม่ผ่านขั้นนี้ (วัด prod 03/11: แถวรูปนี้ 0 แถว) */
+  if (row.outcome === 'confirmed') return row.answeredRevisionId ? 'awaiting_ingredients' : 'awaiting_price';
   if (row.outcome === 'revise') return 'revised';
   if (row.sentAt) return 'sent';
   if (row.pickedUpAt) return 'picked_up';
@@ -93,6 +100,12 @@ export const isRowSettled = (row) => SETTLED.has(rowStage(row));
 // ตอนนี้ไม่มี endpoint "สร้างคำร้องขอราคา" ให้ยิงตรงอีกแล้ว
 export function canPriceRow(row) {
   return rowStage(row) === 'awaiting_price';
+}
+
+/** แถวที่ลูกค้าคอนเฟิร์มแล้วแต่ยังไม่จบ — รอราคา หรือรอ Ingredient List (ม-159) · ใส่ Ingredient List ได้ทั้งสองขั้น */
+export const CONFIRMED_OPEN_STAGES = Object.freeze(['awaiting_price', 'awaiting_ingredients']);
+export function isConfirmedOpenRow(row) {
+  return CONFIRMED_OPEN_STAGES.includes(rowStage(row));
 }
 
 // ── เวลาที่ใช้รายก้าว ────────────────────────────────────────────────────
@@ -158,6 +171,7 @@ const NEXT_BY_STAGE = {
   // อยู่ในป้ายของขั้นก่อนหน้า ("ส่งลูกค้าแล้ว") อยู่แล้ว
   sent:           { owner: 'requester', label: 'บันทึกคำตอบ' },
   awaiting_price: { owner: 'dept',      label: 'ใส่ราคา' },
+  awaiting_ingredients: { owner: 'dept', label: 'ใส่ Ingredient List' },
   revised:        null,
   done:           null,
   declined:       null,
@@ -181,6 +195,7 @@ const NEXT_BY_STAGE_DOC = {
   picked_up:    { owner: 'requester', label: 'ได้รับแล้ว' },
   sent:         { owner: 'requester', label: 'ได้รับแล้ว' },
   awaiting_price: null,
+  awaiting_ingredients: null,
   revised:      null,
   done:         null,
   declined:     null,
@@ -214,8 +229,11 @@ export function nextStepForRow(row, request, user) {
 //
 // ⚠️ `waitingRequester` คือตัวเลขที่ทำให้ฝ่ายปลายทางเลิกถูกนับงานที่ไม่ใช่ของตัวเอง
 // `awaitingPrice` ⊆ `waitingDept` — แถวที่งานของฝ่ายเหลือแค่ใส่ราคา (คิวเรียก "รอ RD ใส่ราคา" เมื่อเท่ากันทั้งใบ · ม-153)
+// `awaitingIngredients` ⊆ `waitingDept` — ใส่ราคาแล้ว เหลือ Ingredient List (ม-159)
 export function requestRowSummary(items = []) {
-  const out = { total: items.length, waitingDept: 0, waitingRequester: 0, settled: 0, awaitingPrice: 0 };
+  const out = {
+    total: items.length, waitingDept: 0, waitingRequester: 0, settled: 0, awaitingPrice: 0, awaitingIngredients: 0,
+  };
   for (const row of items) {
     const stage = rowStage(row);
     if (SETTLED.has(stage)) { out.settled += 1; continue; }
@@ -223,6 +241,7 @@ export function requestRowSummary(items = []) {
     if (next?.owner === 'dept') {
       out.waitingDept += 1;
       if (stage === 'awaiting_price') out.awaitingPrice += 1;
+      if (stage === 'awaiting_ingredients') out.awaitingIngredients += 1;
     } else if (next?.owner === 'requester') out.waitingRequester += 1;
   }
   return out;

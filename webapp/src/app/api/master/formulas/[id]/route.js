@@ -14,7 +14,8 @@ import {
   countProductsUsingFormula, countRegistryDependents, countRegistryRefs, editFormula, findFormula, findFormulaDetail,
   updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
-import { INGREDIENT_LIST_LABEL, formulaNeedsIngredientList, normalizeIngredientList } from '@/lib/master/ingredientList';
+import { INGREDIENT_LIST_LABEL, formulaNeedsIngredientList, ingredientListInput } from '@/lib/master/ingredientList';
+import { saveFormulaIngredientList } from '@/lib/master/ingredientListAdmin';
 import { canForceDelete, formulaForcePreview, unlinkRegistryRefs, isDryRun, isForceRequest } from '@/lib/forceDelete';
 
 export const dynamic = 'force-dynamic';
@@ -80,22 +81,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
     /* ⭐ Ingredient List (ม-158 · มติเจ้าของ 03/11) — action แยกจาก 'edit' เพราะฟอร์มแก้สูตรถูกใช้จากหน้าคำร้องด้วย
        (payload จากสูตรที่โหลดไม่ครบคอลัมน์ ⇒ ส่งค่าว่างทับเงียบ ๆ) · แก้ได้ = RD + ผู้ดูแล (ข้อมูลของ RD)
-       ⚠️ สูตรที่ต้องมี (หมวด 01/02 ยกเว้น 02-020) ลบทิ้งไม่ได้ — ขั้นราคาของคำร้องที่ใช้สูตรนี้อ่านค่านี้อยู่ */
+       ⚠️ สูตรที่ต้องมี (หมวด 01/02 ยกเว้น 02-020) ลบทิ้งไม่ได้ — แถวคำร้องที่ใช้สูตรนี้ต้องมีครบถึงจบ
+       ⭐ ม-159 — ตัวเขียนเดียวกับปุ่มบนแถวคำร้อง/หน้า "รอใส่ราคา" ⇒ แถวที่ใส่ราคาแล้ว "รอ Ingredient List" จบให้เอง */
     if (action === 'ingredients') {
       if (!isFormulaRegistrar(user)) return forbidden(`เฉพาะ RD เท่านั้นที่แก้ ${INGREDIENT_LIST_LABEL} ได้`);
-      const { value, error } = normalizeIngredientList(body.ingredientList);
+      const { value, error } = ingredientListInput(body.ingredientList, { required: formulaNeedsIngredientList(formula) });
       if (error) return badRequest(error);
-      if (!value && formulaNeedsIngredientList(formula)) {
-        return badRequest(`สูตรหมวดนี้ต้องมี ${INGREDIENT_LIST_LABEL} — ลบทิ้งไม่ได้ (แก้เป็นรายการที่ถูกต้องแทน)`);
-      }
-      if (value === (formula.ingredientList || null)) return ok(formula);
-      const data = await updateFormula(supabase, id, { ingredientList: value });
-      await recordAudit({
-        user, action: 'update', entityType: 'formula', entityId: id, request: req,
-        before: formula, after: data,
-        summary: `${formula.ingredientList ? (value ? 'แก้' : 'ลบ') : 'ใส่'} ${INGREDIENT_LIST_LABEL} สูตร ${data.code || data.name}`,
-      });
-      return ok(data);
+      const { formula: data, settled } = await saveFormulaIngredientList(supabase, { formula, value, user, request: req });
+      return ok({ ...data, settledRows: settled });
     }
 
     if (action === 'edit') {

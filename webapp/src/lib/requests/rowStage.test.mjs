@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ROW_STAGES, ROW_STAGE_LABELS, ROW_STAGE_TONES,
-  canPriceRow, isRowSettled, nextStepForRow, requestRowSummary, rowLeadTimes, rowStage,
+  canPriceRow, isConfirmedOpenRow, isRowSettled, nextStepForRow, requestRowSummary, rowLeadTimes, rowStage,
 } from './rowStage.js';
 
 const REQ = { id: 'DR-1', dept: 'RD', requestedById: 'U-AE' };
@@ -30,7 +30,9 @@ const at = (stage) => {
   if (stage === 'declined') return { ...r, outcome: 'rejected', answerStatus: 'declined' };
   const confirmed = { ...r, outcome: 'confirmed', confirmedQty: 1 };
   if (stage === 'awaiting_price') return confirmed;
-  return { ...confirmed, answerStatus: 'done' };  // done
+  // ม-159 — ใส่ราคาแล้ว (ประทับ rev) แต่สูตรยังขาด Ingredient List ⇒ แถวยังไม่จบ
+  if (stage === 'awaiting_ingredients') return { ...confirmed, answeredRevisionId: 'REV-1' };
+  return { ...confirmed, answeredRevisionId: 'REV-1', answerStatus: 'done' };  // done
 };
 
 test('ทุกขั้นมีป้ายและโทนครบ — ไม่มีขั้นไหนขึ้นจอเป็นค่าว่าง', () => {
@@ -49,9 +51,23 @@ test('ขั้นของแถวอ่านจากช่องที่�
 
 test('ใส่ราคาได้เฉพาะตอนลูกค้าคอนเฟิร์มแล้ว — ด่านชั้นเดียวเพราะราคาอยู่ในใบเดิม', () => {
   assert.equal(canPriceRow(at('awaiting_price')), true);
-  for (const s of ['sent', 'revised', 'declined', 'done', 'developing']) {
+  for (const s of ['sent', 'revised', 'declined', 'done', 'developing', 'awaiting_ingredients']) {
     assert.equal(canPriceRow(at(s)), false, s);
   }
+});
+
+test('🔴 ม-159 ราคากับ Ingredient List แยกก้าว แต่ต้องครบถึงจบ — มี rev แต่ยังไม่ done = รอ Ingredient List (ตาฝ่าย)', () => {
+  const row = at('awaiting_ingredients');
+  assert.equal(rowStage(row), 'awaiting_ingredients');
+  assert.equal(isRowSettled(row), false, 'ยังไม่จบ — ใบยังปิดฝั่งฝ่ายไม่ได้');
+  assert.equal(isConfirmedOpenRow(row), true);
+  assert.equal(isConfirmedOpenRow(at('awaiting_price')), true);
+  for (const s of ['sent', 'done', 'declined', 'revised']) assert.equal(isConfirmedOpenRow(at(s)), false, s);
+  const next = nextStepForRow(row, REQ, RD);
+  assert.deepEqual([next.owner, next.label, next.isMine], ['dept', 'ใส่ Ingredient List', true]);
+  assert.equal(ROW_STAGE_LABELS.awaiting_ingredients, 'รอ Ingredient List');
+  // แถวเอกสารไม่มีขั้นนี้
+  assert.equal(nextStepForRow({ ...row, lineKind: 'document' }, REQ, RD), null);
 });
 
 test('แถวที่จบแล้ว: ลูกค้าขอแก้ก็ถือว่าจบ — งานไปต่อที่แถวใหม่', () => {
@@ -134,9 +150,12 @@ test('สรุปทั้งใบ — แยกงานที่ค้าง
     at('ready'),           // รอผู้ขอ
     at('sent'),            // รอผู้ขอ (รอลูกค้าตอบ แต่คนกดคือผู้ขอ)
     at('awaiting_price'),  // รอฝ่าย
+    at('awaiting_ingredients'), // รอฝ่าย (ม-159)
     at('done'),            // จบ
     at('revised'),         // จบ (ไปต่อที่แถวใหม่)
   ]);
-  // `awaitingPrice` ⊆ `waitingDept` (ม-153) — คิวใช้แยก "รอ RD ใส่ราคา" ออกจาก "รอ RD ทำต่อ"
-  assert.deepEqual(s, { total: 7, waitingDept: 3, waitingRequester: 2, settled: 2, awaitingPrice: 1 });
+  // `awaitingPrice` · `awaitingIngredients` ⊆ `waitingDept` (ม-153 · ม-159) — คิวใช้แยก "รอ RD ใส่ราคา" ออกจาก "รอ RD ทำต่อ"
+  assert.deepEqual(s, {
+    total: 8, waitingDept: 4, waitingRequester: 2, settled: 2, awaitingPrice: 1, awaitingIngredients: 1,
+  });
 });

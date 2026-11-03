@@ -14,7 +14,7 @@
 // ⚠️ จอกับ server ถามตัวเดียวกันทุกข้อ (กติกาเดียวกับ `formulaRework.js`) — ประโยคก่อนกดต้องตรงกับที่เกิดจริง
 import { findFormulaByIdentity } from '@/lib/master/formulas';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { isRowSettled, rowStage } from '@/lib/requests/rowStage';
+import { isConfirmedOpenRow, isRowSettled } from '@/lib/requests/rowStage';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 import { formulaHeldByText, formulaName } from '@/lib/requests/formulaRework';
 
@@ -148,7 +148,8 @@ export function formulaConfirmPlan({ row, items = [], formulas = [], customerId 
     if (!f || f.id === chosen.id || ['archived', 'draft'].includes(f.status) || foreign(f)) continue;
     if (!archive.some((a) => a.id === f.id)) archive.push(f);
   }
-  const close = pair.filter((i) => !isRowSettled(i) && rowStage(i) !== 'awaiting_price');
+  // แถวที่คอนเฟิร์มแล้ว (รอราคา/รอ Ingredient List · ม-159) ไม่ใช่ direction ที่ต้องปิด
+  const close = pair.filter((i) => !isRowSettled(i) && !isConfirmedOpenRow(i));
 
   const parts = [];
   if (activate) parts.push(`สูตร ${formulaName(chosen)} เปลี่ยนเป็น "ใช้งานได้"`);

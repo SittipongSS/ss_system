@@ -5199,7 +5199,7 @@ direction 2 เข้าทะเบียนเป็นกำลังพั�
 
 ## 29. Ingredient List ของสูตร — บังคับในขั้นใส่ราคา (มติเจ้าของ 2026-11-03 · mig 0423)
 
-> สถานะ: **รอตรวจ** — โค้ดเสร็จบนแบรนช์ `claude/formula-ingredient-list` · รอรัน 0423 บน prod ก่อน deploy
+> สถานะ: **เสร็จสมบูรณ์** — ขึ้น prod 03/11 (#1968 `e4e240e7` · 0423 รันแล้ว) · **ข้อ 3 ถูกแทนด้วย ม-159 (หัวข้อ 30)** — ราคากับ Ingredient List แยกก้าว
 
 **ม-158** · เจ้าของ: *"หมวดสินค้า 01 และ 02 หลังจากคอนเฟิร์มสูตรเสร็จแล้ว RD จะใส่ ราคา อยากเพิ่ม การใส่ Ingredient List ด้วยเพราะว่า จำเป็น"*
 
@@ -5233,3 +5233,28 @@ direction 2 เข้าทะเบียนเป็นกำลังพั�
   `IngredientListText` (คัดลอกได้) หน้าสูตร/FG · `IngredientSay` แถวขยายของตาราง BriefBoard/FormulaDevBoard (ค่าสดจาก `refFormula`)
 - Excel: `GET /api/master/formulas/export` + `lib/master/formulaWorkbook.js` · ตัวกรองหน้าทะเบียนยกเป็น `lib/master/formulaFilter.js` (จอกับไฟล์ตัวเดียว)
 - เทสต์: `ingredientList.test.mjs` · `formulaWorkbook.test.mjs` · `priceBoard.test.mjs` (ทางเดินสายหน้า "รอใส่ราคา")
+
+## 30. ราคากับ Ingredient List แยกก้าว — แต่ต้องครบทั้งสองอย่างถึงจบงาน (มติเจ้าของ 2026-11-03 · ไม่มี migration)
+
+> สถานะ: **รอตรวจ** — แบรนช์ `claude/ingredient-list-separate` · ทับ ม-158 ข้อ 3 (บังคับในโมดัลราคา)
+
+**ม-159** · เจ้าของ (หลัง ม-158 ขึ้น prod): *"ingredient list กับ ราคา RD จะได้มาไม่พร้อมกัน ผมว่า แยกส่วนกันดีกว่า แต่ค่อยว่า ต้องใส่ครบถึงจะจบงาน"*
+
+ตอบสองข้อ (ทีละข้อ):
+1. **ใส่ได้สามที่** — หน้า "รอใส่ราคา" (คอลัมน์ + ปุ่มแยก) · ปุ่มบนแถวในหน้าคำร้อง · การ์ดหน้าสูตร — ทุกทางลงสูตรตัวเดียวกัน และใส่ที่ไหนก็ปิดแถวได้
+2. **ป้าย "รอ Ingredient List"** — แถวที่ใส่ราคาแล้วแต่สูตรยังขาด · ยังไม่มีราคา = "รอใส่ราคา" เหมือนเดิม
+
+กลไก (ตัดสินเอง — ไม่ต้อง migration):
+- ขั้นใหม่ของแถว `awaiting_ingredients` อ่านจากแถวล้วน: ลูกค้าคอนเฟิร์ม + มี `answeredRevisionId` + ยังไม่ done (วัด prod 03/11: แถวรูปนี้ 0 แถว ⇒ ของเก่าไม่ขยับ)
+- ขั้นราคา: สูตรยังขาด Ingredient List = ลงราคาตามปกติแต่ **ประทับ rev ไว้ ไม่ปิดแถว** (`recordRowPrice`) · สูตรมีแล้ว/ไม่ต้องมี = ปิดแถวทันทีเหมือนเดิม (`settleRow`)
+- ตัวเขียนเดียว `saveFormulaIngredientList` (`lib/master/ingredientListAdmin.js`) — เขียนสูตร + ปิดแถวที่ "รอ Ingredient List" ของสูตรนั้นในใบที่ยังเปิด
+  (ใบละหนึ่งบรรทัดเธรดชนิด `ingredients` + audit) · ใส่ก่อนราคา = แถวยังรอราคา แล้วขั้นราคาปิดให้เอง
+- `settleRow` ย้ายเป็น `lib/requests/rowSettle.js` (ตราปิดฝั่งฝ่าย + actorSide ตัวเดียวทุกทาง)
+- เส้นใหม่ `POST /api/sa/requests/[id]/items/[itemId]/ingredients` (ด่านชุดเดียวกับขั้นราคา + แถวคอนเฟิร์มแล้วยังไม่จบ + สูตรต้องมี) ·
+  `PATCH formulas/[id]` action `ingredients` ใช้ตัวเขียนเดียวกัน (ตอบ `settledRows` ให้ toast บอกจำนวนที่ครบ)
+- จอ: โมดัลราคาถอดช่อง Ingredient List (กลับเป็นรุ่นก่อน ม-158) · "ใช้ราคานี้" กลับเป็นกล่องยืนยัน (ประโยคบอกผลตามว่ายังรอ Ingredient List ไหม) ·
+  โมดัลกลาง `IngredientListModal` (การ์ดหน้าสูตร · หน้า "รอใส่ราคา" · หน้าคำร้อง) · ปุ่มก้าวรายแถว: ขั้นรอราคา = "ใส่ราคา" + ปุ่มรอง "ใส่ Ingredient List"
+  (เมื่อสูตรยังขาด) · ขั้นรอ Ingredient List = ปุ่มหลัก "ใส่ Ingredient List" · รางของใบ/คิวพูด "รอ Ingredient List" / "รอ RD ใส่ Ingredient List"
+- หน้า "รอใส่ราคา": รวมแถวที่รอ Ingredient List ด้วย (ป้ายเมนูนับรวม) · การ์ด "รอใส่ราคา" / "รอ Ingredient List" แยก · คอลัมน์ Ingredient List
+  (ขีด = ไม่ต้องมี · มีแล้ว · ยังไม่มี + ปุ่ม) · แถวที่ราคาลงแล้วขึ้น "ใส่ราคาแล้ว" แทนปุ่มราคา · ชื่อเมนูคง "รอใส่ราคา"
+- เทสต์: `rowStage.test.mjs` · `priceBoard.test.mjs` · `ingredientList.test.mjs` · `reopenWait.test.mjs` · `labelVocabulary.test.mjs`

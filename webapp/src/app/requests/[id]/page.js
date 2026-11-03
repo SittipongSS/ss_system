@@ -89,6 +89,8 @@ import { deliveryRowLabel, normalizeDeliveryRows, normalizeFormulaDelivery } fro
 import { defaultDeliveredCategory, isDeliveredAsProduct } from "@/lib/requests/deliveredCategory";
 import { rowPriceSlots } from "@/lib/requests/rowPriceTarget";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import IngredientListModal from "@/components/database/IngredientListModal";
+import { rowStage } from "@/lib/requests/rowStage";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { formulaDeliveryPreview } from "@/lib/requests/formulaRework";
 import { addDirectionError, directionRowFrom, formulaConfirmPlan } from "@/lib/requests/formulaDirections";
@@ -309,6 +311,8 @@ export default function RequestDetailPage() {
   const [allScents, setAllScents] = useState([]);
   // ใส่ราคาแถวสายพัฒนา — { item, price, validUntil, note }
   const [pricing, setPricing] = useState(null);
+  // แถวที่กด "ใส่ Ingredient List" (ม-159) — โมดัลตัวเดียวกับหน้า "รอใส่ราคา"/หน้าสูตร
+  const [ingredientItem, setIngredientItem] = useState(null);
   /* ⭐ ทะเบียนที่ **ฟอร์มส่งงาน** ต้องใช้ (มติผู้ใช้ 2026-08-19) — ทั้งสายสูตรและสาย
      กลิ่นใช้ฟอร์มตัวเดียวกับหน้าทะเบียน ⇒ ต้องมีของครบชุดเหมือนกัน
      · สายสูตร: ลูกค้า · กลิ่น · สูตร (สายพันธุ์)   · สายกลิ่น: ลูกค้า (กลิ่นใช้ `allScents`)
@@ -2372,6 +2376,8 @@ export default function RequestDetailPage() {
           busy: saving,
           onHop: (row, hop, outcome) => openHop(row, hop, outcome),
           onPrice: (row) => setPricing({ item: row }),
+          // ม-159 — Ingredient List ของสูตรเป็นก้าวแยกจากราคา (ครบสองอย่างถึงจบแถว)
+          onIngredients: (row) => setIngredientItem(row),
           // ม-157 — ส่ง direction เพิ่มจากแถวพัฒนาสูตรที่ส่งแล้ว (เมนู ⋯ ของแถว · เฉพาะฝ่ายที่ตอบ)
           onAddDirection: canAnswer ? openDirection : null,
         }}
@@ -3249,8 +3255,6 @@ export default function RequestDetailPage() {
         slots={pricing ? (pricing.item.priceSlots || rowPriceSlots(pricing.item)) : null}
         // ไม่มีช่อง = เหตุจากตัวคิดเดียวกัน (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) — โมดัลโชว์แทนฟอร์ม
         blocker={pricing?.item.priceBlocker || ""}
-        // Ingredient List ของสูตร (ม-158) — บังคับเมื่อแถวผูกสูตรหมวด 01/02 (ยกเว้น 02-020) · server คิดให้ (`ingredientPlan`)
-        ingredient={pricing?.item.ingredientPlan || null}
         hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
         /* ⚠️ **โหลดใบใหม่ผ่าน GET เสมอ** — ห้ามตั้ง `req` จาก body ที่ route ราคาตอบ (รีวิว ม-148 รอบสาม): body นั้นเป็น
@@ -3260,6 +3264,28 @@ export default function RequestDetailPage() {
           setPricing(null);
           setToast({ kind: "success", msg });
           // ⚠️ ล็อกปุ่มทั้งหน้าจนใบใหม่มาถึง (เหมือน `call()`) — ไม่งั้นปุ่ม "ใส่ราคา" ของแถวที่เพิ่งใส่ยังกดได้ แล้วได้ 409 งง ๆ
+          setSaving(true);
+          try { await load({ background: true }); } finally { setSaving(false); }
+        }}
+        onError={() => load({ background: true })}
+      />
+
+      {/* ใส่ Ingredient List ของสูตรที่แถวผูก (ม-159) — ก้าวแยกจากราคา ใส่ก่อนหรือหลังก็ได้ ครบทั้งสองถึงจบแถว
+          ⚠️ โหลดใบใหม่ผ่าน GET เสมอ (เหตุผลเดียวกับโมดัลราคาข้างบน) */}
+      <IngredientListModal
+        open={!!ingredientItem}
+        onClose={() => setIngredientItem(null)}
+        subtitle={ingredientItem ? itemText(ingredientItem) : ""}
+        current={ingredientItem?.ingredientPlan?.current || null}
+        endpoint={ingredientItem ? `/api/sa/requests/${id}/items/${ingredientItem.id}/ingredients` : ""}
+        hint={ingredientItem
+          ? (rowStage(ingredientItem) === "awaiting_ingredients"
+            ? "ราคาใส่แล้ว — บันทึกแล้วรายการนี้ครบ (เสร็จแล้ว) · ลงทะเบียนสูตร: FG และคำร้องอื่นที่ใช้สูตรนี้อ่านตัวเดียวกัน"
+            : "ลงทะเบียนสูตร — รายการยังรอราคาอยู่ ครบทั้งสองอย่างแล้วถึงจบ · ชื่อสาร INCI เรียงจากมากไปน้อย คั่นด้วยจุลภาค")
+          : null}
+        onSaved={async (msg) => {
+          setIngredientItem(null);
+          setToast({ kind: "success", msg });
           setSaving(true);
           try { await load({ background: true }); } finally { setSaving(false); }
         }}

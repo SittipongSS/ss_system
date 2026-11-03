@@ -29,6 +29,8 @@ const HOP_AT_STAGE = {
   picked_up: "send",
   sent: "outcome",
   awaiting_price: "price",
+  // ม-159 — ใส่ราคาแล้ว เหลือ Ingredient List ของสูตร (endpoint ของตัวเอง `/items/[itemId]/ingredients` ไม่ใช่ hop)
+  awaiting_ingredients: "ingredients",
 };
 
 // ⭐ สายเอกสารสั้นกว่า (ม-85) — จบที่ผู้ขอกด "ได้รับแล้ว" · ไม่มีส่งลูกค้า/ราคา
@@ -47,7 +49,11 @@ const hopAtStage = (row, stage) => (isDocLineKind(row?.lineKind)
   ? HOP_AT_STAGE_DOC[stage]
   : HOP_AT_STAGE[stage]);
 
-const OWNER_OF = { ...HOP_OWNER, price: "dept" };
+const OWNER_OF = { ...HOP_OWNER, price: "dept", ingredients: "dept" };
+
+/* แถวที่ยังรอราคาแต่สูตรขาด Ingredient List — ใส่ก่อนราคาก็ได้ (ม-159 · มาไม่พร้อมกัน) ⇒ ปุ่มรองข้างปุ่มราคา
+   ⚠️ แผนมาจาก server (`item.ingredientPlan` · ตัวคิดเดียวกับ POST) — ไม่มีแผน = ไม่มีปุ่ม (API ตัดสินจริงอยู่ดี) */
+const needsIngredients = (row) => !!row?.ingredientPlan?.required && !row.ingredientPlan.current;
 
 // คอนเฟิร์มเป็นทางหลัก · อีกสองทางเป็นเส้นขอบ — เห็นครบแต่ไม่แย่งน้ำหนักกัน
 const OUTCOME_BUTTON = {
@@ -91,7 +97,7 @@ export function OwnerTag({ owner = "dept", deptLabel = null, requesterLabel = nu
 }
 
 export function RowStepActions({
-  row, canDept = false, canRequester = false, busy = false, onHop, onPrice,
+  row, canDept = false, canRequester = false, busy = false, onHop, onPrice, onIngredients = null,
   deptLabel = null, requesterLabel = null,
   /* ⭐ **ใบต้องถูกรับเรื่องก่อน** (มติผู้ใช้ 2026-08-20: *"ปุ่มรับเรื่องมันเป็นระดับใบ
      ไม่ใช่ระดับรายการ"*) — ของเดิมทุกแถวมีปุ่ม "รับเรื่อง" ของตัวเอง แล้วแถวแรกที่กด
@@ -160,10 +166,20 @@ export function RowStepActions({
       {tag}
       <Button
         tone="primary" disabled={busy}
-        onClick={() => (hop === "price" ? onPrice?.(row) : onHop?.(row, hop))}
+        onClick={() => {
+          if (hop === "price") onPrice?.(row);
+          else if (hop === "ingredients") onIngredients?.(row);
+          else onHop?.(row, hop);
+        }}
       >
-        {hop === "price" ? "ใส่ราคา" : hopLabelFor(row, hop)}
+        {hop === "price" ? "ใส่ราคา" : hop === "ingredients" ? "ใส่ Ingredient List" : hopLabelFor(row, hop)}
       </Button>
+      {/* ม-159 — รอราคาอยู่แต่ Ingredient List มาก่อนได้ (ปุ่มรอง · ครบทั้งสองถึงจบแถว) */}
+      {hop === "price" && onIngredients && needsIngredients(row) && (
+        <Button variant="outline" disabled={busy} onClick={() => onIngredients(row)}>
+          ใส่ Ingredient List
+        </Button>
+      )}
       {/* สายเอกสารมีทางจบที่สองของฝ่าย: "ปฏิเสธ" + เหตุผลบังคับ (ม-85 · ม-89) */}
       {hop === "ready" && isDocLineKind(row.lineKind) && (
         <Button
@@ -189,7 +205,7 @@ export function RowStepActions({
 
 export default function NextStepBar({
   rows = [], canDept = false, canRequester = false, busy = false,
-  onHop, onPrice,
+  onHop, onPrice, onIngredients = null,
   // ⭐ **ก้าวของ "ใบ" สำหรับหัวข้อที่ไม่มีแถว** (P6 · สอบถามข้อมูล) — หัวข้อพวกนี้
   // ทั้งหน้าคือเธรด · ปุ่มอยู่บนหัวใบอย่างเดียวแปลว่าคนอ่านเธรดจนจบแล้วต้องเงยหน้า
   // กลับขึ้นไปหาปุ่ม ⇒ ขัดกับ ม-49 ที่ให้เธรดเป็นแกน
@@ -219,7 +235,7 @@ export default function NextStepBar({
               ตาตัวเองเห็นป้ายว่ารอใคร ไม่ใช่ปุ่มจาง ๆ (กับดักที่แผนบันทึกไว้) */}
           <RowStepActions
             row={row} canDept={canDept} canRequester={canRequester}
-            busy={busy} onHop={onHop} onPrice={onPrice}
+            busy={busy} onHop={onHop} onPrice={onPrice} onIngredients={onIngredients}
           />
         </div>
       ))}
