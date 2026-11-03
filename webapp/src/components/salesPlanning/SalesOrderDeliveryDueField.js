@@ -5,6 +5,7 @@ import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import { fmtDate } from "@/lib/format";
 import { DELIVERY_DUE_AMEND_TEXT } from "@/lib/sales/salesOrderDeliveryDue";
+import { EXCISE_DELIVERY_DATE_TEXT } from "@/lib/excise/exciseDeliveryDate";
 import styles from "./SalesOrderDeliveryDueField.module.css";
 
 /* ใต้ตัวแก้ของใบที่อนุมัติแล้ว — บอกว่าแก้แล้วอะไรเปลี่ยน อะไรไม่เปลี่ยน ก่อนกดบันทึก */
@@ -39,7 +40,11 @@ export default function SalesOrderDeliveryDueField({
   readonlyClassName,
   onAmend,           // (next: 'YYYY-MM-DD') => Promise<boolean> — โหมดอ่านของใบที่อนุมัติแล้ว
   amendError = "",   // ข้อความ error ล่าสุดของหน้า — ขึ้นใต้ช่องเมื่อการบันทึกรอบนี้ไม่สำเร็จ
+  /* SO ค่าสรรพสามิต (มติ 03/11 V21): ช่องเดียวกันแต่เป็น "วันที่ส่งของ" ที่ต้องมีก่อนยื่น · เว้นว่าง = ใช้กำหนดส่งของใบต้นทาง
+     (คำอยู่ที่ `EXCISE_DELIVERY_DATE_TEXT` · ด่านจริงอยู่ที่ PATCH submit) */
+  excise = false,
 }) {
+  const label = excise ? EXCISE_DELIVERY_DATE_TEXT.label : "กำหนดส่งสินค้า";
   const [amending, setAmending] = useState(false);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -66,12 +71,12 @@ export default function SalesOrderDeliveryDueField({
       const errorText = failed ? (thrown || amendError || "บันทึกกำหนดส่งไม่สำเร็จ") : "";
       return (
         <div className={readonlyClassName}>
-          <span>กำหนดส่งสินค้า</span>
+          <span>{label}</span>
           <div className={styles.editor}>
             <DateInput
               value={draft}
               disabled={busy}
-              ariaLabel="กำหนดส่งสินค้า"
+              ariaLabel={label}
               onChange={(next) => setDraft(next || "")}
             />
             <div className={styles.actions}>
@@ -104,7 +109,7 @@ export default function SalesOrderDeliveryDueField({
     );
     return (
       <div className={readonlyClassName}>
-        <span>กำหนดส่งสินค้า</span>
+        <span>{label}</span>
         {onAmend
           ? (
             <div className={styles.readRow}>
@@ -123,14 +128,16 @@ export default function SalesOrderDeliveryDueField({
   }
   return (
     <label>
-      <span>กำหนดส่งสินค้า</span>
+      <span>{label}</span>
       <DateInput
         value={value || ""}
         disabled={disabled}
-        ariaLabel="กำหนดส่งสินค้า"
+        ariaLabel={label}
         onChange={(next) => onChange(next || "")}
       />
-      <p className="form-note">วันที่ตกลงกับลูกค้าว่าจะส่งของ — ไม่ใช่กำหนดชำระ · ยังไม่ตกลงก็เว้นว่างได้</p>
+      <p className="form-note">{excise
+        ? EXCISE_DELIVERY_DATE_TEXT.note
+        : "วันที่ตกลงกับลูกค้าว่าจะส่งของ — ไม่ใช่กำหนดชำระ · ยังไม่ตกลงก็เว้นว่างได้"}</p>
     </label>
   );
 }

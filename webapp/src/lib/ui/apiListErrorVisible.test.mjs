@@ -1106,7 +1106,10 @@ test("ใบยื่นชำระ (รายการ): picker ลูกค�
   assert.equal(ast.field(sourceForUrl(ast, 'customersReady ? "/api/customers" : null'), "blocks"), "filter");
   assertFlag(ast, "listBlocked", "list");
   assertFlag(ast, "filterBlocked", "filter");
-  assertGates(rel, { tag: "DataList" }, { must: ["listBlocked"], mustNot: ["filterBlocked", "customersLoaded", "customersError", "customersStale"] }, "<DataList>");
+  /* 03/11 (มติ V20): ตารางเป็นแบบตารางเดิม `<FilingLinesTable>` แทน `<DataList>` — ด่านเดิมทุกตัว ·
+     สายรายการสินค้า (`/api/tax/orders/table` · blocks "detail") ล้ม = งานยังอยู่ครบ ⇒ ต้องไม่ซ่อนตารางด้วย */
+  assert.equal(ast.field(sourceForUrl(ast, 'canReadTable ? "/api/tax/orders/table" : null'), "blocks"), "detail");
+  assertGates(rel, { tag: "FilingLinesTable" }, { must: ["listBlocked"], mustNot: ["filterBlocked", "customersLoaded", "customersError", "customersStale", "tableLoaded", "tableError"] }, "<FilingLinesTable>");
   assertCustomerFilter(ast, rel);
   // ป้ายจำนวน: ขีด = ไม่เคยโหลดสำเร็จ · `200 []` = 0 ใบจริง ⇒ ห้ามกลับไปนับความยาวลิสต์
   assert.ok(ast.readsIn("noData").has("ordersLoaded") && !ast.readsIn("noData").has("orders"), "noData ต้องมาจาก loaded ไม่ใช่ orders.length");
