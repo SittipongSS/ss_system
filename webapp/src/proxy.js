@@ -537,7 +537,9 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
     // ไม่ใช่ products:delete ของแคตตาล็อกสินค้า — ด่านจริงราย record อยู่ที่ handler
     if (method === 'DELETE') return canDeleteRegistrationRole(role);
     if (method === 'PATCH') return can(role, 'products:edit') || can(role, 'ra:approve');
-    return can(role, 'products:edit'); // create
+    /* สร้าง: SA (products:edit) จากแผงทะเบียนฝั่งขาย · ⭐ RA สร้างเองใน /tax ได้ (มติ 02/11 V15 — ใบเข้าคิว RA ทันที · ตัดสินที่ route)
+       ⚠️ `from-project` ตรวจ products:edit ซ้ำในตัว route — RA ผ่านด่านนี้แต่ไปไม่ถึงทางนั้น */
+    return can(role, 'products:edit') || can(role, 'ra:approve'); // create
   }
   /* สเปคสินค้า FM-SA-04 (mig 0364 → 0370) — **ข้อมูลของฝ่ายขาย ไม่ใช่การแก้ทะเบียนสินค้า**
      ⇒ ด่านคือ `salesplan:edit` ไม่ใช่ `products:edit` (กฎ module-ownership)

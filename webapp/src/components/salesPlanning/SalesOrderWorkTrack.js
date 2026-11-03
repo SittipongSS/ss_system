@@ -105,7 +105,10 @@ export default function SalesOrderWorkTrack({ track }) {
               </dl>
             ) : null}
 
-            {segment.steps && segment.link ? (
+            {/* ลิงก์ไปหน้าอื่น หรือปุ่มเปิดแผงบนหน้านี้ (ช่วงทะเบียนสรรพสามิต — ฝ่ายขายไม่เข้า /tax · มติ 02/11) */}
+            {segment.steps && segment.link?.onClick ? (
+              <button type="button" className={styles.link} onClick={segment.link.onClick}>{segment.link.label} →</button>
+            ) : segment.steps && segment.link?.href ? (
               <Link href={segment.link.href} className={styles.link}>{segment.link.label} →</Link>
             ) : null}
           </li>
