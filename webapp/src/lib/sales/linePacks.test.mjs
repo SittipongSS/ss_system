@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  LINE_PACK_TEXT, LinePackError, PACK_LINE_CATEGORY, PACK_LINE_UNIT, PACK_QTY_INVALID, PACK_QTY_MAX, PACK_QTY_MIN,
+  LINE_PACK_TEXT, LinePackError, PACK_LINE_CATEGORIES, PACK_LINE_CATEGORY_TEXT, PACK_LINE_UNIT, PACK_QTY_INVALID, PACK_QTY_MAX, PACK_QTY_MIN,
   QUOTE_PACK_INPUT_OPEN, lineCategoryCode, lineMoneyRuleMessage, linePackGateMessage, linePackIssues, linePackMessage,
   lineScreenRows, lineTakesPacks, lineUnitsTotal, packFactorOf, packLineUnit, packQtyValue, withPackColumn,
 } from './linePacks.js';
@@ -19,8 +19,11 @@ const PERFUME = 'FG-336-01-009-1290'; // หมวดอื่น
 /* ── ค่าคงที่ที่ต้องตรงกับที่อื่น (ไฟล์นี้ import ไฟล์เหล่านั้นไม่ได้ — เขียนค่าตรง ๆ แล้วให้เทสต์ยึด) ───────────── */
 
 test('หมวดที่ต้องกรอก = หมวดแพ็คเกจบริการของใบสั่งขาย · ช่วง 1–9999 · หน่วย = หน่วยรอบของใบสั่งขาย และเป็นหน่วยขายที่มีจริง', () => {
-  assert.equal(PACK_LINE_CATEGORY, serviceOrders.SERVICE_ROUND_CATEGORY);
-  assert.equal(PACK_LINE_CATEGORY, '02-001');
+  assert.deepEqual(PACK_LINE_CATEGORIES, serviceOrders.SERVICE_ROUND_CATEGORIES);
+  // ⭐ มติเจ้าของ 03/11: 02-037 (ก้านหอมแบบบริการ) เหมือน 02-001 · 02-011 (ก้านหอมขายเป็นกิโล) ไม่อยู่ในชุด
+  assert.deepEqual(PACK_LINE_CATEGORIES, ['02-001', '02-037']);
+  assert.ok(Object.isFrozen(PACK_LINE_CATEGORIES));
+  assert.equal(PACK_LINE_CATEGORY_TEXT, '02-001 หรือ 02-037');
   assert.deepEqual([PACK_QTY_MIN, PACK_QTY_MAX], [1, 9999]);
   // SERVICE_ROUNDS_UNIT มีตั้งแต่ #1887 — ฐานที่เก่ากว่านั้นยังไม่มี export นี้ จึงถอยไปค่าตรง ๆ ให้ข้อยืนยันยังเป็นของจริง
   assert.equal(PACK_LINE_UNIT, serviceOrders.SERVICE_ROUNDS_UNIT ?? 'เดือน');
@@ -217,8 +220,8 @@ test('linePackMessage: หนึ่งประโยคต่อหนึ่ง
   ]);
   assert.equal(mixed, [
     'รายการ 3: “แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999',
-    'รายการ 5: “แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด 02-001 — ลบตัวเลขในช่องนั้นออกก่อนบันทึก',
-    'รายการ 7, 8: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ',
+    'รายการ 5: “แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด 02-001 หรือ 02-037 — ลบตัวเลขในช่องนั้นออกก่อนบันทึก',
+    'รายการ 7, 8: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ',
   ].join(' · '));
 });
 
@@ -230,8 +233,8 @@ test('LINE_PACK_TEXT: ข้อความทั้งก้อนของก�
   assert.deepEqual(texts, {
     closed: 'ยังไม่เปิดให้กรอก “แพ็ค/เดือน” — ลบตัวเลขในช่องนั้นออกแล้วบันทึกอีกครั้ง',
     invalid: '“แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999',
-    required: 'รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ',
-    notAllowed: '“แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด 02-001 — ลบตัวเลขในช่องนั้นออกก่อนบันทึก',
+    required: 'รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ',
+    notAllowed: '“แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด 02-001 หรือ 02-037 — ลบตัวเลขในช่องนั้นออกก่อนบันทึก',
     moneyRule: 'ยอดของรายการไม่ตรงกับสูตร แพ็ค × จำนวน × ราคา — ยังไม่ได้บันทึก แจ้งผู้ดูแลระบบ',
     beforeSubmit: 'กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ',
     beforeApprove: 'กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน',
@@ -239,7 +242,7 @@ test('LINE_PACK_TEXT: ข้อความทั้งก้อนของก�
     beforeSend: 'ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า',
   });
   assert.equal(LINE_PACK_TEXT.rows([2, 3]), 'รายการ 2, 3');
-  assert.ok(LINE_PACK_TEXT.required.includes(PACK_LINE_CATEGORY) && LINE_PACK_TEXT.notAllowed.includes(PACK_LINE_CATEGORY));
+  assert.ok(LINE_PACK_TEXT.required.includes(PACK_LINE_CATEGORY_TEXT) && LINE_PACK_TEXT.notAllowed.includes(PACK_LINE_CATEGORY_TEXT));
   // ค่าคงที่ระดับบนสุด เขียนเป็นข้อความตรง ๆ ในไฟล์ (กฎโปรเจกต์: ข้อความไทยอยู่ในก้อนข้อความ ไม่ประกอบกลางโค้ด)
   for (const key of ['beforeSubmit', 'beforeApprove', 'beforeApproveOwn', 'beforeSend']) {
     assert.ok(SOURCE.includes(`  ${key}: '${LINE_PACK_TEXT[key]}',`), `${key} ต้องเป็นข้อความตรง ๆ ในก้อน LINE_PACK_TEXT`);
@@ -310,11 +313,11 @@ test('linePackMessage: เลขรายการในหนึ่งประ
 
 test('linePackGateMessage: สี่ action — ข้อความของด่าน + " — " + สิ่งที่คนนั้นต้องกด · ไม่มีปัญหา = ข้อความว่าง · action อื่น = โยน (ไม่มีข้อความเปล่าที่ไม่บอกทางออก)', () => {
   const issues = [{ index: 0, row: 1, code: 'required' }];
-  assert.equal(linePackGateMessage(issues, 'submit'), 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ');
-  assert.equal(linePackGateMessage(issues, 'approve'), 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน');
-  assert.equal(linePackGateMessage(issues, 'approveOwn'), 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ดึงกลับมาแก้ไข” แล้วกรอกให้ครบก่อนยื่นใหม่');
+  assert.equal(linePackGateMessage(issues, 'submit'), 'รายการ 1: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ');
+  assert.equal(linePackGateMessage(issues, 'approve'), 'รายการ 1: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน');
+  assert.equal(linePackGateMessage(issues, 'approveOwn'), 'รายการ 1: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ดึงกลับมาแก้ไข” แล้วกรอกให้ครบก่อนยื่นใหม่');
   assert.equal(linePackGateMessage([{ index: 1, row: 2, code: 'required' }, { index: 2, row: 3, code: 'required' }], 'send'),
-    'รายการ 2, 3: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า');
+    'รายการ 2, 3: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า');
   const ACTIONS = { submit: 'beforeSubmit', approve: 'beforeApprove', approveOwn: 'beforeApproveOwn', send: 'beforeSend' };
   const mixed = [{ index: 4, row: 5, code: 'not_allowed' }, { index: 0, row: 1, code: 'required' }];
   for (const [action, key] of Object.entries(ACTIONS)) {
@@ -435,7 +438,7 @@ test('🔴 กฎหมวดของ 0410 = lineTakesPacks(line, null) ทุ�
   for (const row of GUARD_CASES.cases) {
     assert.equal(lineTakesPacks(row.line, null), row.takesPacks,
       `${row.id} (${row.note}): ฝั่ง JS ตอบไม่ตรงกับ trigger ของ 0410 — แก้ lineCategoryCode / categoryOf แล้วกรณีนี้พลิก = ยามในฐานไม่ตรงกับด่านของเซิร์ฟเวอร์ ⇒ ต้องมี migration ใหม่ของ trigger`);
-    assert.equal(lineCategoryCode(row.line, null) === PACK_LINE_CATEGORY, row.takesPacks);
+    assert.equal(PACK_LINE_CATEGORIES.includes(lineCategoryCode(row.line, null)), row.takesPacks);
   }
   assert.ok(GUARD_CASES.cases.some((c) => c.takesPacks) && GUARD_CASES.cases.some((c) => !c.takesPacks), 'มีทั้งสองคำตอบ');
   /* trigger ไม่อ่านทะเบียนสินค้า — ด่านของเซิร์ฟเวอร์ก็เรียกแบบไม่ส่งสินค้า (product = null) จึงเป็นกฎเดียวกัน */

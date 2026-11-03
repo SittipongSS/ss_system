@@ -366,7 +366,7 @@ test('อ่านตัวเลือก FG พังเมื่อขอ wit
   const fgFail = failWhen((s) => s.table === 'products' && s.inColumn === 'customerId');
   await assert.rejects(
     loadServiceSetupContext(fakeSupabase(world(), { fail: fgFail }).client, baseOrder(), { withFgOptions: true, todayIso: TODAY }),
-    /อ่านแพ็คเกจ \(FG หมวด 02-001\) ของลูกค้าไม่สำเร็จ: connection reset/,
+    /อ่านแพ็คเกจ \(FG หมวดบริการ\) ของลูกค้าไม่สำเร็จ: connection reset/,
   );
   await assert.rejects(loadServiceFgOptions(fakeSupabase(world(), { fail: fgFail }).client, 'C1'), /ไม่สำเร็จ/);
   const ok = await loadServiceSetupContext(fakeSupabase(world(), { fail: fgFail }).client, baseOrder(), { todayIso: TODAY });

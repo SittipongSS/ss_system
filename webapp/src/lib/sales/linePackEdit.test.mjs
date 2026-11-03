@@ -54,9 +54,9 @@ test('ข้อความของช่องกรอก: ทุกคีย
   assert.equal(LINE_PACK_EDIT_TEXT.storedAmount('฿498,800.00'), 'ยอดเดิม ฿498,800.00');
   assert.equal(LINE_PACK_EDIT_TEXT.totalSame('฿533,716.00'), 'ยอดรวมทั้งสิ้นเท่าเดิม ฿533,716.00');
   assert.equal(LINE_PACK_EDIT_TEXT.totalChanged('฿74,472.00', '฿164,352.00'), 'ยอดรวมทั้งสิ้นเปลี่ยนจาก ฿74,472.00 เป็น ฿164,352.00');
-  assert.equal(LINE_PACK_EDIT_TEXT.reviseNote, 'ฉบับใหม่ต้องกรอก “แพ็ค/เดือน” ของรายการหมวด 02-001 ก่อนยื่นอนุมัติ');
+  assert.equal(LINE_PACK_EDIT_TEXT.reviseNote, 'ฉบับใหม่ต้องกรอก “แพ็ค/เดือน” ของรายการหมวด 02-001 หรือ 02-037 ก่อนยื่นอนุมัติ');
   assert.equal(LINE_PACK_EDIT_TEXT.resplitHint,
-    'รายการหมวด 02-001 ของใบนี้บันทึกไว้ก่อนมีช่อง “แพ็ค/เดือน” — แยกจำนวนเดิมเป็น แพ็ค × เดือน ให้ยอดเท่าเดิม (เช่น 24 = 2 แพ็ค × 12 เดือน)');
+    'รายการหมวด 02-001 หรือ 02-037 ของใบนี้บันทึกไว้ก่อนมีช่อง “แพ็ค/เดือน” — แยกจำนวนเดิมเป็น แพ็ค × เดือน ให้ยอดเท่าเดิม (เช่น 24 = 2 แพ็ค × 12 เดือน)');
   assert.equal(PACK_INPUT_TITLE, 'แพ็ค/เดือน — จำนวนเต็ม 1–9,999');
   assert.ok(Object.isFrozen(LINE_PACK_EDIT_TEXT));
   // ช่วงในข้อความ = ช่วงของกฎ (CHECK ของ 0407)
@@ -447,7 +447,7 @@ test('quoteLinesPackView: คอลัมน์ขึ้นเมื่อมี
   assert.equal(fresh.showColumn, true);
   assert.equal(fresh.pending, true);
   assert.deepEqual(fresh.issues, [{ index: 1, row: 2, code: 'required' }]);
-  assert.equal(fresh.message, 'รายการ 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
+  assert.equal(fresh.message, 'รายการ 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
   assert.equal(fresh.resplitHint, null, 'ใบใหม่ไม่มีคำแนะนำของใบเก่า');
   assert.deepEqual(fresh.rows.map((row) => row.input), [false, true]);
   assert.deepEqual(fresh.rows.map((row) => row.note), [null, null], 'ไม่ส่ง errorsShown = ไม่มีข้อความแดง');
@@ -467,7 +467,7 @@ test('quoteLinesPackView: คอลัมน์ขึ้นเมื่อมี
   assert.equal(old.showColumn, true);
   assert.equal(old.pending, false, 'ยอดของใบเก่าที่ยังไม่มีใครแตะยังโชว์');
   assert.equal(old.resplitHint, LINE_PACK_EDIT_TEXT.resplitHint);
-  assert.equal(old.message, 'รายการ 1, 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
+  assert.equal(old.message, 'รายการ 1, 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
   assert.deepEqual(old.rows.map((row) => row.state), ['missing', 'missing', 'none']);
   // แก้จำนวนของบรรทัดแรก: ยอดรวมเป็นขีดจนกว่าจะกรอกเลขแพ็ค · คำแนะนำยังอยู่ (บรรทัดที่สองยังไม่ถูกแตะ)
   const editing = quoteLinesPackView([{ ...oldLines[0], qty: 4 }, oldLines[1], oldLines[2]], PRODUCTS, { storedLines: oldLines });
@@ -564,13 +564,13 @@ test('⭐ §12 C5 แถบแจ้งคิดสดจากบรรทั�
   assert.equal(packGateNotice(view(two), undefined), null);
   assert.equal(packGateNotice(view(two), ''), null);
   // กดบันทึก
-  assert.deepEqual(packGateNotice(view(two), 'save'), { text: 'รายการ 1, 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ', action: 'save' });
+  assert.deepEqual(packGateNotice(view(two), 'save'), { text: 'รายการ 1, 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ', action: 'save' });
   // แก้แถว 1 ⇒ ข้อความชี้แถว 2 เท่านั้น
   const fixedFirst = [{ ...two[0], packQty: '2' }, two[1], two[2]];
-  assert.equal(packGateNotice(view(fixedFirst), 'save').text, 'รายการ 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
+  assert.equal(packGateNotice(view(fixedFirst), 'save').text, 'รายการ 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
   // ลบแถว 1 ⇒ แถวที่เคยเป็น 2 คือแถว 1 แล้ว
   const removedFirst = [two[1], two[2]];
-  assert.equal(packGateNotice(view(removedFirst), 'save').text, 'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
+  assert.equal(packGateNotice(view(removedFirst), 'save').text, 'รายการ 1: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ');
   // แก้ครบ ⇒ ไม่มีแถบ
   assert.equal(packGateNotice(view([{ ...two[0], packQty: '2' }, { ...two[1], packQty: '43' }, two[2]]), 'save'), null);
   // ยื่นอนุมัติ / อนุมัติ: ข้อความของด่านพร้อมปุ่มที่คนนั้นมี — ตัวเดียวกับที่เซิร์ฟเวอร์ตอบ
@@ -579,7 +579,7 @@ test('⭐ §12 C5 แถบแจ้งคิดสดจากบรรทั�
     assert.deepEqual(packGateNotice(view(oldLines), action), { text: linePackGateMessage(view(oldLines).issues, action), action });
   }
   assert.equal(packGateNotice(view(oldLines), 'submit').text,
-    'รายการ 1: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ');
+    'รายการ 1: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ');
   assert.equal(packGateNotice(view(oldLines), 'approve').text.endsWith(LINE_PACK_TEXT.beforeApprove), true);
   assert.equal(packGateNotice(view(oldLines), 'approveOwn').text.endsWith(LINE_PACK_TEXT.beforeApproveOwn), true);
   // ตารางเปิดแก้อยู่: ข้อความแบบบันทึกเสมอ (คนกดยื่นแล้วเข้ามาแก้ — ไม่ชี้ไปที่ปุ่ม "แก้ไขข้อมูล" ที่กดมาแล้ว)

@@ -707,7 +707,7 @@ test('🔴 PATCH ส่งลูกค้า ของใบเก่าหม�
     const old = approved(TODAY_LINES(null), { status: 'draft', approvalStatus });
     const run = await patchQuote({ quote: old, body: { status: 'sent' }, products: null });
     assert.deepEqual([run.status, run.body.error], [400, `รายการ 1, 2: ${LINE_PACK_TEXT.required} — ${LINE_PACK_TEXT.beforeSend}`], approvalStatus);
-    assert.equal(run.body.error, 'รายการ 1, 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า');
+    assert.equal(run.body.error, 'รายการ 1, 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — ออก Rev. แล้วกรอกในฉบับใหม่ก่อนส่งลูกค้า');
     assert.deepEqual(written(run.db), [], 'ไม่เรียก RPC — ใบไม่ถูกส่ง');
     assert.deepEqual(T.audits, []);
   }
@@ -971,7 +971,7 @@ test('สร้างใบ (handler จริง) ที่ไม่มีบ�
 
 test('🔴 ยื่นอนุมัติร่างเก่าหมวด 02-001 ที่ยังไม่ได้แยกแพ็ค = 400 { error } บอกรายการ + "กด แก้ไขข้อมูล" — ไม่ลงนาม ไม่เขียนอะไร · เลขรายการตามที่หน้าใบเรียง', async () => {
   const run = await submitQuote({ quote: quoteOf(TODAY_LINES(null)) });
-  assert.deepEqual([run.status, run.body], [400, { error: 'รายการ 1, 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ' }]);
+  assert.deepEqual([run.status, run.body], [400, { error: 'รายการ 1, 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “แก้ไขข้อมูล” แล้วกรอกให้ครบก่อนยื่นอนุมัติ' }]);
   assert.deepEqual(run.signs, [], 'RPC ลงนามไม่ถูกเรียก');
   assert.deepEqual(run.db.calls.map((c) => [c.table, c.op]), [['quotations', 'select']], 'อ่านใบครั้งเดียว — ไม่อ่านทะเบียนสินค้า ไม่เขียนอะไร');
   assert.deepEqual([T.side, T.audits], [[], []], 'ไม่มีเหตุการณ์ลงเธรด ไม่มี audit');
@@ -1032,11 +1032,11 @@ test('🔴 อนุมัติใบเก่าหมวด 02-001 ที่�
   const lines = TODAY_LINES(null);
   // ผู้อนุมัติ (U-1) ไม่ใช่คนยื่น (U-2)
   const other = await approveQuote({ quote: pending(lines, 'U-2') });
-  assert.deepEqual([other.status, other.body], [400, { error: 'รายการ 1, 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน' }]);
+  assert.deepEqual([other.status, other.body], [400, { error: 'รายการ 1, 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ตีกลับให้แก้ไข” ให้ผู้จัดทำกรอกให้ครบก่อน' }]);
   assert.equal(other.body.error, `รายการ 1, 2: ${LINE_PACK_TEXT.required} — ${LINE_PACK_TEXT.beforeApprove}`);
   // ผู้อนุมัติเป็นคนยื่นเอง (เจ้าของดีลยื่นใบของตัวเอง — ทางปกติ): ไม่มีปุ่มตีกลับ มีแต่ดึงกลับ
   const own = await approveQuote({ quote: pending(lines, 'U-1') });
-  assert.deepEqual([own.status, own.body], [400, { error: 'รายการ 1, 2: รายการหมวด 02-001 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ดึงกลับมาแก้ไข” แล้วกรอกให้ครบก่อนยื่นใหม่' }]);
+  assert.deepEqual([own.status, own.body], [400, { error: 'รายการ 1, 2: รายการหมวด 02-001 หรือ 02-037 ต้องกรอก “แพ็ค/เดือน” ทุกรายการ — กด “ดึงกลับมาแก้ไข” แล้วกรอกให้ครบก่อนยื่นใหม่' }]);
   assert.equal(own.body.error, `รายการ 1, 2: ${LINE_PACK_TEXT.required} — ${LINE_PACK_TEXT.beforeApproveOwn}`);
   for (const run of [other, own]) {
     assert.deepEqual(run.signs, [], 'RPC ลงนามไม่ถูกเรียก');

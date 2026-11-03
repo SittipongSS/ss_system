@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import * as planModule from './historicalOrderPlan.js';
 import {
   CONTRACT_DATE_MESSAGES, HISTORICAL_DISCOUNT_MESSAGES, HISTORICAL_LINE_MESSAGES, HISTORICAL_NO_BILLING_ERROR,
-  HISTORICAL_SERVICE_LIMITS, HISTORICAL_VAT_RATES, SERVICE_PACKAGE_CATEGORY, historicalLinesMoney, historicalServiceFingerprintSource, historicalServiceRpcArgs,
+  HISTORICAL_SERVICE_LIMITS, HISTORICAL_VAT_RATES, SERVICE_PACKAGE_CATEGORIES, historicalLinesMoney, historicalServiceFingerprintSource, historicalServiceRpcArgs,
   isCalendarDate, planHistoricalServiceOrder,
 } from './historicalOrderPlan.js';
 import {
@@ -16,7 +16,7 @@ import {
   emptyHistoricalZone, historicalIssuesWithRowKeys, historicalLineIssues, historicalWizardBody, stepOfField,
   wizardStateFromOrder,
 } from './historicalIntakeForm.js';
-import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUNDS_UNIT, SERVICE_ROUND_CATEGORIES } from './serviceOrders.js';
 import { OPENING_INSTALLMENT_LABEL } from './historicalOrders.js';
 import { QUOTE_VAT_OPTIONS, quoteLineMoney, quoteTotals } from '../salesPlanning.js';
 import { normalizeManualLines } from './quoteLines.js';
@@ -486,7 +486,7 @@ test('v2 โซน: ต้องเป็นโซนของลูกค้า
 });
 
 test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 = error (ไม่ใช่คำเตือน) · จำนวนเต็ม > 0 (ว่าง = ตีกลับ ไม่ใช่ 1) · จำนวนรอบบริการ', () => {
-  v2Has(planV2({ zones: zonesWith(0, { productId: 'P-OIL' }) }), 'zones.0.productId', /ไม่ใช่แพ็คเกจบริการ \(หมวด 02-001\)/);
+  v2Has(planV2({ zones: zonesWith(0, { productId: 'P-OIL' }) }), 'zones.0.productId', /ไม่ใช่แพ็คเกจบริการ \(หมวด 02-001 หรือ 02-037\)/);
   v2Has(planV2({ zones: zonesWith(0, { productId: '' }) }), 'zones.0.productId', /ต้องเลือกแพ็คเกจ/);
   v2Has(planV2({ zones: zonesWith(0, { productId: 'P-NONE' }) }), 'zones.0.productId', /ไม่พบแพ็คเกจ/);
   for (const qty of [0, -1, 1.5, '', null, 'สาม']) {
@@ -499,7 +499,7 @@ test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 =
   v2Has(planV2({ zones: [noQty, ...v2Input().zones.slice(1)] }), 'zones.0.qty', /จำนวนต้องเป็นจำนวนเต็ม/);
   assert.deepEqual(planV2({ zones: zonesWith(0, { qty: '72' }) }).errors, [], 'สตริงตัวเลขจากช่องกรอกรับได้');
   for (const rounds of [0, 2.5, 3e9]) v2Has(planV2({ zones: zonesWith(0, { rounds }) }), 'zones.0.rounds', /จำนวนรอบบริการต้องเป็นจำนวนเต็ม/);
-  assert.equal(SERVICE_PACKAGE_CATEGORY, SERVICE_ROUND_CATEGORY);
+  assert.equal(SERVICE_PACKAGE_CATEGORIES, SERVICE_ROUND_CATEGORIES);
 });
 
 /* ⭐ PR-D (r2 S12 · mig 0394/P4): **รอบบริการบังคับ** — ของเดิม "เว้นว่างได้ · TS ตั้งวันนัดเอง" ถูกถอด

@@ -82,7 +82,7 @@ export function isProductCategorySelectable(row, currentCode = '') {
 //   ⚠️ ทุกโค้ดที่เทียบรหัสตรง ๆ ต้องมาต่อท้ายลิสต์นี้ — ลืมอันไหน = ลบหมวดนั้นได้
 //   ทั้งที่ไม่ควร (โรคเดียวกับ `LEAD_BELL_KINDS` ที่ต้องตรงกับ kind ที่ยิงจริงเสมอ)
 export const PROTECTED_PRODUCT_CATEGORY_CODES = Object.freeze([
-  '02-001', // SERVICE_ROUND_CATEGORY — lib/sales/serviceOrders.js (แพ็คเกจบริการ SDS)
+  '02-001', '02-037', // SERVICE_ROUND_CATEGORIES — lib/sales/serviceOrders.js (แพ็คเกจบริการ SDS · ก้านหอมแบบบริการ มติ 03/11)
   '02-020', // PDR_FRAGRANCE_OIL_CODE — lib/requests/pdrFields.js
   '03-001', '03-002', '03-005', '03-008', '03-009', '03-010', // SCENT_DESIGN_CATEGORIES — lib/requests/scentDesignOrders.js
   '01-001', // pdrProductKinds/categoryCode ตั้งต้น — lib/documents/standardPreview.js

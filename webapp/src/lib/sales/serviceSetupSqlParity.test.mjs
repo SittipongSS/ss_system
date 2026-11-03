@@ -3,7 +3,8 @@
 // ⭐ ตัวตัดสินเดียวกันมีสองบ้าน: ฐาน (RPC/trigger — ด่านสุดท้าย) กับ JS (จอ/route — บอกเหตุเป็นไทยก่อนกด)
 //    ⇒ สองบ้านต้องพูดเรื่องเดียวกัน · ไฟล์นี้เทียบ
 //      1) หมวดของ FG: รูปแบบ regex ของ fg_category_of = categoryOf
-//      2) ชนิดของบรรทัด: ค่า '02-001' ของฐาน = SERVICE_ROUND_CATEGORY · ตารางอินพุต → ผลที่ PGlite ยืนยันแล้ว
+//      2) ชนิดของบรรทัด: ค่า '02-001' ของฐาน (0392/0400) อยู่ใน SERVICE_ROUND_CATEGORIES และ 0422 เปลี่ยนเป็นชุด (serviceCategoryMigration.test.mjs)
+//         · ตารางอินพุต → ผลที่ PGlite ยืนยันแล้ว
 //         (ฮาร์เนสเคส 9a) ต้องได้ผลเดียวกันจาก serviceLineRole
 //      3) รหัสทุกตัวที่ sales_order_service_setup_errors ปล่อย มีข้อความไทยใน SERVICE_SETUP_ISSUE_TEXT
 //         (ตัวของ 0392 + รหัสที่แพตช์ L1 ของ 0400 เติมเข้าไปในตัวที่รันอยู่: line_period_missing)
@@ -19,7 +20,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { categoryOf } from '../master/categoryOf.js';
-import { SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { SERVICE_ROUND_CATEGORIES } from './serviceOrders.js';
 import { WORKFLOW_ERROR_CODES } from './documentWorkflowErrors.js';
 
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
@@ -74,18 +75,18 @@ test('fg_category_of ใช้รูปแบบเดียวกับ categor
   }
 });
 
-test("ชนิดของบรรทัด: หมวดแพ็คเกจในฐาน = SERVICE_ROUND_CATEGORY ('02-001') ทุกจุด", () => {
+test("ชนิดของบรรทัด: หมวดแพ็คเกจในฐานรุ่น 0392/0400 = '02-001' ทุกจุด (อยู่ใน SERVICE_ROUND_CATEGORIES · 0422 ปะเป็นชุดทั้งสามตัว)", () => {
   const role = fnBody('sales_order_line_service_role');
   const literals = [...role.matchAll(/= '(\d{2}-\d{3})'/g)].map((m) => m[1]);
   assert.equal(literals.length, 2, 'FG และ metadata.categoryCode');
-  for (const lit of literals) assert.equal(lit, SERVICE_ROUND_CATEGORY);
+  for (const lit of literals) { assert.equal(lit, '02-001'); assert.ok(SERVICE_ROUND_CATEGORIES.includes(lit)); }
   for (const name of ['sales_order_service_setup_errors', 'save_sales_order_service_setup']) {
-    for (const m of fnBody(name).matchAll(/fg_category_of\([^)]*\) = '([^']+)'/g)) assert.equal(m[1], SERVICE_ROUND_CATEGORY, name);
+    for (const m of fnBody(name).matchAll(/fg_category_of\([^)]*\) = '([^']+)'/g)) assert.equal(m[1], '02-001', name);
   }
   /* ตัวบันทึกที่รันอยู่ = ตัวของ 0400 (เขียนทับทั้งตัว) — หมวดของแพ็คเกจต้องยังเป็นค่าเดียวกัน และต้องยังตรวจอยู่ */
   const saveNow = [...fnBodyIn(PERIOD_CODE, '0400', 'save_sales_order_service_setup').matchAll(/fg_category_of\([^)]*\) = '([^']+)'/g)];
   assert.equal(saveNow.length, 1, '0400: ตัวบันทึกตรวจหมวดของแพ็คเกจที่เลือกหนึ่งจุด (เท่า 0392)');
-  for (const m of saveNow) assert.equal(m[1], SERVICE_ROUND_CATEGORY, '0400 save_sales_order_service_setup');
+  for (const m of saveNow) assert.equal(m[1], '02-001', '0400 save_sales_order_service_setup');
 });
 
 /* ตารางเดียวกับฮาร์เนส PGlite เคส 9a — ผลฝั่งฐานยืนยันบน PGlite แล้ว (null = ยังไม่เลือก ↔ 'unset' ของ JS) */
