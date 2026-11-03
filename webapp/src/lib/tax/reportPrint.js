@@ -51,20 +51,52 @@ const cellHtml = (c, value) => {
 };
 const align = (c) => (c.money || c.num ? "right" : "left");
 
-/* 16 แถว/หน้า — วัดจากรายงานที่เรนเดอร์จริงด้วยเปลือกกลาง (A4 แนวนอน 297×210mm):
-   ตารางเริ่มที่ 57.1mm · หัวตาราง 5.9mm · ท้ายกระดาษเริ่มที่ 199.8mm = เหลือ 136.9mm
-   แถวสูง 7.8mm (คิดจากแถวที่มีคอลัมน์ multiline = 2 บรรทัด ซึ่งเป็นเคสที่รายงานจริงใช้)
-   → 17 แถวพอดี เว้นที่ให้แถวสรุปบนหน้าสุดท้ายอีกแถว = 16
+/* ── แบ่งหน้าตาม **ความสูงของแถว** ไม่ใช่จำนวนแถว (03/11/2026) ──────────────
+   🐞 เดิมตัดหน้าละ 16 แถวตายตัว โดยคิดจากแถวสูงสองบรรทัด (7.8mm) · แต่ผู้ที่เห็นราคาผลิต
+      (RA/แอดมิน) ได้คอลัมน์แจกแจงต้นทุนห้าบรรทัด = แถวสูง 16mm ⇒ ตารางยาว 322mm บนกระดาษ
+      210mm แล้ว `.sheet { overflow: hidden }` ของเปลือก **ตัดทิ้งเงียบ ๆ หน้าละ ~7 แถว**
+      (รายงาน 43 รายการ พิมพ์ออกมาเห็นราว 27) · จำนวนบรรทัดต่อแถวต่างกันตามสิทธิ์และตามรายงาน
+      ⇒ ตัวเลขตายตัวตัวเดียวถูกได้แค่เคสเดียว
+   ค่าวัดจากหน้าที่เรนเดอร์จริง (Chrome · A4 แนวนอน 297×210mm · เปลือกกลาง):
+     ตารางเริ่ม 56.95mm (หัวใบสูงเท่าเดิมไม่ว่าแถวหัวขวาจะมี 1 หรือ 3 แถว — บล็อกบริษัทซ้ายสูงกว่า)
+     หัวตาราง 6.51mm · ท้ายกระดาษเริ่ม 199.28mm ⇒ วางแถวได้ 135.8mm
+     แถวบรรทัดเดียว 5.08mm · ทุกบรรทัดรอง (`.sub`) +2.74mm (สามบรรทัด 10.55–10.68mm) · แถวสรุป 5.99mm
+   ⚠️ ปัดขึ้นทุกค่า และกันไว้อีกหนึ่งบรรทัดรองต่อหน้าเผื่อข้อความที่ตัดบรรทัดเอง — โมเดลนี้นับ
+      แค่ "\n" ในค่า ไม่ได้วัดความยาวข้อความ (ข้อมูลจริง 43 แถว ณ 03/11 ไม่มีเซลล์ไหนตัดบรรทัดเอง) */
+const REPORT_ROW_MM = 5.1;
+const REPORT_SUB_LINE_MM = 2.8;
+const REPORT_SUMMARY_MM = 6;
+const REPORT_BODY_MM = 135.8 - REPORT_SUB_LINE_MM;
 
-   ⚠️ ค่าเดิม 18 ตั้งไว้ตอนเลย์เอาต์เก่าที่แถวเตี้ยกว่า — พอย้ายมาเปลือกกลางแล้ววัดจริง
-   ได้แถว 10.8mm ตารางล้นท้ายกระดาษไป 60mm (ผมเดา 6.4mm ไว้ในรอบแรกแล้วผิด จึงต้อง
-   กระชับสไตล์แถวลงและวัดใหม่) */
-export function paginateReportRows(rows = [], rowsPerPage = 16) {
+/** จำนวนบรรทัดของแถว = เซลล์ multiline ที่ยาวที่สุด (คอลัมน์อื่นบรรทัดเดียวเสมอ) */
+export function reportRowLines(row, columns = []) {
+  return columns
+    .filter((c) => c.multiline)
+    .reduce((max, c) => Math.max(max, String(row?.[c.key] ?? "").split("\n").length), 1);
+}
+
+const reportRowMm = (row, columns) => REPORT_ROW_MM + REPORT_SUB_LINE_MM * (reportRowLines(row, columns) - 1);
+
+// เติมหน้าจากหน้าแรก · หน้าสุดท้ายต้องเหลือที่ให้แถวสรุป ⇒ ถ้าแถวสุดท้ายลงพอดีแต่สรุปไม่ลง
+// แถวท้ายนั้นย้ายไปเปิดหน้าใหม่พร้อมสรุป (สรุปห้ามลอยอยู่หน้าเปล่าคนเดียว)
+export function paginateReportRows(rows = [], columns = []) {
   if (!Array.isArray(rows) || rows.length === 0) return [[]];
   const pages = [];
-  for (let index = 0; index < rows.length; index += rowsPerPage) {
-    pages.push(rows.slice(index, index + rowsPerPage));
-  }
+  let page = [];
+  let used = 0;
+  rows.forEach((row, index) => {
+    const height = reportRowMm(row, columns);
+    const isLast = index === rows.length - 1;
+    const need = height + (isLast ? REPORT_SUMMARY_MM : 0);
+    if (page.length && used + need > REPORT_BODY_MM) {
+      pages.push(page);
+      page = [];
+      used = 0;
+    }
+    page.push(row);
+    used += height;
+  });
+  pages.push(page);
   return pages;
 }
 
@@ -107,7 +139,7 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
       }).join("")}</tr>`
     : "";
 
-  const pages = paginateReportRows(report.rows || []);
+  const pages = paginateReportRows(report.rows || [], cols);
   const printedAt = genAt();
   const header = documentHeader({
     // resolveCompanyBlock คืนคีย์ legalNameTh/legalNameEn ส่วนเปลือกรับ nameTh/nameEn
