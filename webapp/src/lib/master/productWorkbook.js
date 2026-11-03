@@ -12,6 +12,9 @@
 //    · ไม่แตกเป็นหลายแถวต่อ FG — คนรับไฟล์ sum ราคาผลิต/นับจำนวน FG แล้วจะนับชุดซ้ำ
 //    · FG ที่ไม่ผูกสูตร = เซลล์ว่าง (กติกาเดียวกับราคาที่ยังไม่ตั้ง)
 //
+// ⭐ สถานะ BOM + รหัส BOM ใน Express (mig 0419 · มติเจ้าของ 03/11) — ป้ายเต็มชุดเดียวกับตัวกรองบนจอ
+//    · กลุ่ม 03/04 (ไม่มีขั้น BOM) = เซลล์ว่าง ไม่ใช่ "ยังไม่ส่ง RD" — ไม่มีอะไรให้ส่ง จึงไม่ใช่งานค้าง
+//
 // ⚠️ ราคาผลิตเป็นข้อมูลลับ — คนที่ไม่มีสิทธิ์เห็น (`canSeeProductCostUser`) ต้องได้
 //    ไฟล์ที่ **ไม่มีสามคอลัมน์นี้เลย** ไม่ใช่คอลัมน์ว่าง · ตัวตัดสินอยู่ที่ route
 //    ที่ส่ง `includeCost` เข้ามา ไม่ใช่ที่นี่
@@ -19,6 +22,7 @@ import ExcelJS from 'exceljs';
 import { costPriceVat, VAT_RATE_LABEL } from '@/lib/master/costVat';
 import { fmtDate, productNameBoth } from '@/lib/format';
 import { DEFAULT_VOLUME_UNIT } from '@/lib/master/units';
+import { BOM_STATUS_META, bomFilterValueOf } from '@/lib/master/productBom';
 
 const FONT = 'Leelawadee UI';
 const HEADER_FILL = 'FFC17A52';
@@ -43,6 +47,11 @@ const COST_COLUMNS = [
   { key: 'costExVat', header: 'ราคาผลิต (ก่อน VAT)', width: 20 },
   { key: 'costVat', header: `VAT ${VAT_RATE_LABEL}`, width: 14 },
   { key: 'costIncVat', header: 'ราคาผลิต (รวม VAT)', width: 20 },
+];
+// ท้ายสุดเสมอ (หลังราคาผลิตถ้ามี) — คอลัมน์เดิมไม่ขยับตำแหน่ง ไฟล์ที่คนทำสูตร Excel อ้างคอลัมน์ไว้ไม่เพี้ยน
+const BOM_COLUMNS = [
+  { key: 'bomStatus', header: 'สถานะ BOM', width: 20 },
+  { key: 'bomCode', header: 'รหัส BOM (Express)', width: 20 },
 ];
 
 const textOf = (value) => String(value ?? '').trim();
@@ -85,7 +94,7 @@ export async function buildProductExportBuffer(rows = [], { includeCost = false,
   workbook.calcProperties.fullCalcOnLoad = false;
 
   const sheet = workbook.addWorksheet(SHEET, { views: [{ state: 'frozen', ySplit: 1, xSplit: 1 }] });
-  sheet.columns = includeCost ? [...BASE_COLUMNS, ...COST_COLUMNS] : BASE_COLUMNS;
+  sheet.columns = [...BASE_COLUMNS, ...(includeCost ? COST_COLUMNS : []), ...BOM_COLUMNS];
 
   const header = sheet.getRow(1);
   header.height = 26;
@@ -102,6 +111,7 @@ export async function buildProductExportBuffer(rows = [], { includeCost = false,
     const volume = product.volume == null || product.volume === '' ? null : Number(product.volume);
     const lines = productFormulaLines(product);
     const column = (key) => (lines.length ? lines.map((line) => line[key]).join('\n') : null);
+    const bom = bomFilterValueOf(product);
     const row = sheet.addRow({
       fgCode: product.fgCode || '',
       name: productNameBoth(product) || '',
@@ -110,6 +120,8 @@ export async function buildProductExportBuffer(rows = [], { includeCost = false,
       formulaDate: column('date'),
       volume: Number.isFinite(volume) ? volume : null,
       volumeUnit: product.volumeUnit || DEFAULT_VOLUME_UNIT,
+      bomStatus: bom ? BOM_STATUS_META[bom].label : null,
+      bomCode: textOf(product.bomCode) || null,
       ...(includeCost ? {
         costExVat: cost.exVat, costVat: cost.vat, costIncVat: cost.incVat,
       } : {}),

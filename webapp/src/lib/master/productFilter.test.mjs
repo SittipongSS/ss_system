@@ -6,6 +6,7 @@ import {
   productShowsRetailPrice, productStatCounts,
 } from './productFilter.js';
 import { isProductExciseTaxable } from '../tax/taxableProducts.js';
+import { BOM_FILTER_VALUES } from './productBom.js';
 
 const TYPES = [
   { mainCategoryCode: '01', mainCategoryName: 'ODM', typeCode: '002', nameTh: 'น้ำหอมสำหรับผิวกาย', nameEn: 'BODY PERFUME', isExcise: true },
@@ -184,8 +185,8 @@ test('🔴 L16b ด่านซอร์ส: การ์ดกดได้แ�
   assert.match(live, /label: "ต้องเสียสรรพสามิต", value: counts\.taxable, tone: "info",\s*onClick: onTaxableCard, pressed: taxableCardPressed,/);
   assert.doesNotMatch(live, /label: "ต้องเสียภาษี"/, 'ชื่อการ์ดต้องบอกชนิดภาษี');
   // กดการ์ด = ล้างคำค้น/สถานะ/ทะเบียน/เลิกใช้/ขาดราคา แล้วติ๊ก taxable — ตารางจึงได้ชุดเดียวกับเลข
-  assert.match(live, /setSearch\(""\); setStatusFilter\(EMPTY\); setRegFilter\(EMPTY\); setShowInactive\(false\); setMissingPrice\(false\);\s*setTaxableOnly\(true\);/);
-  assert.match(live, /const taxableCardPressed = taxableOnly && !q && !statusFilter\.length && !regFilter\.length && !showInactive && !missingPrice;/);
+  assert.match(live, /setSearch\(""\); setStatusFilter\(EMPTY\); setRegFilter\(EMPTY\); setShowInactive\(false\); setMissingPrice\(false\); setBomFilter\(EMPTY\);\s*setTaxableOnly\(true\);/);
+  assert.match(live, /const taxableCardPressed = taxableOnly && !q && !statusFilter\.length && !regFilter\.length && !showInactive && !missingPrice && !bomFilter\.length;/);
   assert.match(live, /label: `ต้องเสียสรรพสามิต \(\$\{facets\.taxable\}\)`/);
   assert.match(live, /\(taxableOnly \? 1 : 0\)/, 'นับเข้าเลขบนปุ่มตัวกรอง');
   assert.match(live, /setTaxableOnly\(false\); \}\}/, 'ล้างทั้งหมดต้องล้างตัวนี้ด้วย');
@@ -306,4 +307,74 @@ test('🔴 L16c: ฟอร์มแก้สินค้าโผล่ช่อ
   assert.match(form, /const showRetail = inRetailCategory \|\| hasRetailValue \|\| taxable;/);
   const modal = readFileSync(new URL('../../components/EditProductModal.js', import.meta.url), 'utf8');
   assert.match(modal, /taxable=\{product\.isExciseTaxable === true\}/);
+});
+
+/* ── สถานะลง BOM บนทะเบียนสินค้า (mig 0419 · มติเจ้าของ 03/11) — ตัวกรอง · เลขบนตัวเลือก · การ์ดตีกลับ · ค้นรหัส BOM ─── */
+const BOM_ROWS = [
+  P({ fgCode: 'N1', categoryCode: '01-002', approvalStatus: 'approved' }),                              // ยังไม่ส่ง
+  P({ fgCode: 'N2', categoryCode: '02-020', approvalStatus: 'approved', bomStatus: 'weird' }), // ค่าแปลก = ยังไม่ส่ง
+  P({ fgCode: 'Q1', categoryCode: '01-002', approvalStatus: 'approved', bomStatus: 'queued', brandName: 'ร้อน' }),
+  P({ fgCode: 'I1', categoryCode: '02-020', approvalStatus: 'approved', bomStatus: 'in_progress' }),
+  P({ fgCode: 'R1', categoryCode: '01-002', approvalStatus: 'approved', bomStatus: 'returned', brandName: 'ร้อน' }),
+  P({ fgCode: 'R2', categoryCode: '01-002', approvalStatus: 'approved', bomStatus: 'returned', isActive: false }),
+  P({ fgCode: 'D1', categoryCode: '01-002', approvalStatus: 'approved', bomStatus: 'done', bomCode: 'EXP-BOM-0042' }),
+  P({ fgCode: 'FG-0001-01-002-0009', approvalStatus: 'approved', bomStatus: 'done' }),                  // แถวเก่า หมวดถอดจาก fgCode
+  P({ fgCode: 'X1', categoryCode: '03-001', approvalStatus: 'approved' }),                              // ไม่มีขั้น BOM
+  P({ fgCode: 'X2', categoryCode: '04-003', approvalStatus: 'approved' }),
+];
+const codesOf = (rows) => rows.map((r) => r.fgCode);
+
+test('ตัวกรองสถานะ BOM: "ยังไม่ส่ง" ไม่กวาดกลุ่ม 03/04 · เลือกแล้วกลุ่ม 03/04 หาย · ว่าง = ทั้งหมด', () => {
+  const pick = (bomStatuses) => codesOf(filterProducts(BOM_ROWS, { bomStatuses, productTypes: TYPES }));
+  assert.deepEqual(pick(['none']), ['N1', 'N2']);
+  assert.deepEqual(pick(['queued', 'in_progress']), ['Q1', 'I1']);
+  assert.deepEqual(pick(['returned']), ['R1'], 'ใบเลิกใช้ซ่อนตามทะเบียน');
+  assert.deepEqual(pick(['done']), ['D1', 'FG-0001-01-002-0009']);
+  assert.ok(!pick(['none', 'queued', 'in_progress', 'returned', 'done']).some((c) => c.startsWith('X')));
+  assert.equal(pick([]).length, filterProducts(BOM_ROWS, { productTypes: TYPES }).length);
+  // ทุกค่าที่เลือกได้รวมกัน = แถวกลุ่ม 01/02 ทั้งหมดพอดี (ไม่มีแถวตกหล่น/นับซ้ำ)
+  assert.equal(pick([...BOM_FILTER_VALUES]).length, filterProducts(BOM_ROWS, { productTypes: TYPES }).length - 2);
+});
+
+test('🔴 เลขบนตัวเลือก "สถานะ BOM (n)" = แถวหลังเลือกตัวนั้นตัวเดียว ภายใต้คำค้น × สถานะ × ติ๊กค้าง × BOM ที่เลือกอยู่', () => {
+  let checked = 0;
+  for (const search of ['', 'ร้อน', '1', 'ไม่มี']) {
+    for (const statuses of [[], ['approved'], ['pending']]) {
+      for (const showInactive of [false, true]) {
+        for (const bomStatuses of [[], ['returned'], ['none', 'done']]) {
+          const state = { search, statuses, showInactive, bomStatuses, productTypes: TYPES };
+          const facets = productFilterFacets(BOM_ROWS, state);
+          for (const value of BOM_FILTER_VALUES) {
+            assert.equal(facets.bom[value], filterProducts(BOM_ROWS, { ...state, bomStatuses: [value] }).length, JSON.stringify({ state, value }));
+            checked += 1;
+          }
+        }
+      }
+    }
+  }
+  assert.ok(checked > 300);
+});
+
+test('🔴 การ์ด "BOM ตีกลับ ต้องแก้": เลข = แถวหลังกด (ตั้ง BOM = ตีกลับ + ล้างตัวกรองอื่น) · ใบเลิกใช้ไม่นับ', () => {
+  const stats = productStatCounts(BOM_ROWS, TYPES);
+  assert.equal(stats.bomReturned, filterProducts(BOM_ROWS, { bomStatuses: ['returned'], productTypes: TYPES }).length);
+  assert.equal(stats.bomReturned, 1);
+});
+
+test('ค้นด้วยรหัส BOM ใน Express ได้ (เลขอ้างอิงที่คนถือมาถาม)', () => {
+  assert.deepEqual(codesOf(filterProducts(BOM_ROWS, { search: 'exp-bom-0042', productTypes: TYPES })), ['D1']);
+});
+
+test('ด่านซอร์ส: หน้าสินค้า/ไฟล์ส่งออกถามตัวกรอง BOM ชุดเดียวกัน · การ์ดตั้งตัวกรองทั้งชุด · ป้ายบนแถวสองมุมมอง', () => {
+  const page = readFileSync(new URL('../../app/database/products/page.js', import.meta.url), 'utf8');
+  const live = page.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(live, /bomStatuses: bomFilter,/);
+  assert.match(live, /label: `\$\{BOM_STATUS_META\[value\]\.label\} \(\$\{facets\.bom\[value\]\}\)`/);
+  assert.match(live, /\+ bomFilter\.length\}/, 'นับเข้าเลขบนปุ่มตัวกรอง');
+  assert.match(live, /setBomFilter\(\[\]\); setTaxableOnly\(false\); \}\}/, 'ล้างทั้งหมดต้องล้างตัวนี้ด้วย');
+  assert.match(live, /if \(bomFilter\.length\) params\.set\("bom", bomFilter\.join\(","\)\);/);
+  assert.match(live, /label: "BOM ตีกลับ ต้องแก้", value: counts\.bomReturned,/);
+  assert.match(live, /setTaxableOnly\(false\);\s*setBomFilter\(BOM_RETURNED_ONLY\);/);
+  assert.match(live, /&& !q && !statusFilter\.length && !regFilter\.length && !showInactive && !missingPrice && !taxableOnly;/);
+  assert.equal((live.match(/<ProductBomBadge product=\{p\} \/>/g) || []).length, 2, 'ป้ายทั้งมุมมองการ์ดและตาราง');
 });
