@@ -52,7 +52,10 @@ export function attachRegistryLinks(items = [], { scents = [], formulas = [] } =
     if (!item) return item;
     const scent = scentById.get(item.producedScentId) || scentById.get(item.scentId) || null;
     const formula = formulaById.get(item.producedFormulaId) || null;
-    return { ...item, refScent: refOf(scent), refFormula: refOf(formula) };
+    /* ⭐ Ingredient List ของสูตร (ม-158) ติดไปกับลิงก์สูตร — ตารางในใบโชว์ใต้แถว (อ่านสดจากทะเบียน ไม่มีสำเนาบนแถว)
+       ⚠️ ผู้โหลดต้อง select คอลัมน์นี้มาด้วย (`withRegistryLinks`) — ไม่มี = null (ไม่ใช่ "ยังไม่ใส่" ที่ผิด) */
+    const refFormula = formula ? { ...refOf(formula), ingredientList: formula.ingredientList || null } : null;
+    return { ...item, refScent: refOf(scent), refFormula };
   });
 }
 

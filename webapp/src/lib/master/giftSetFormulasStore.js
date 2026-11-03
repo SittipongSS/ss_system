@@ -9,7 +9,8 @@ import { categoryName } from '@/lib/master/productCategoryOptions';
 import { loadProductTypeNames } from '@/lib/master/productCategoryNames';
 import { giftSetFormulasError, normalizeGiftSetFormulas } from '@/lib/master/giftSetFormulas';
 
-const FORMULA_COLUMNS = 'id, code, name, "formulaDate", "categoryCode", "scentId", status';
+// `ingredientList` (ม-158 · mig 0423) — หน้า FG โชว์ Ingredient List รายสูตรในชุด (อ่านสด ไม่มีสำเนาบนสินค้า)
+const FORMULA_COLUMNS = 'id, code, name, "formulaDate", "categoryCode", "scentId", status, "ingredientList"';
 
 const byOrder = (a, b) => (a.sortOrder - b.sortOrder) || String(a.id).localeCompare(String(b.id));
 
@@ -69,6 +70,7 @@ export async function loadProductFormulasMany(supabase, productIds = [], { produ
       formulaStatus: formula?.status || null,
       scentId: formula?.scentId || null,
       scentName: scentById.get(formula?.scentId)?.name || null,
+      ingredientList: formula?.ingredientList || null,
     }]);
   }
   return out;

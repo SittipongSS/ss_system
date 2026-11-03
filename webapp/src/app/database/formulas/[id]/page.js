@@ -10,6 +10,8 @@ import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
 import RegistryDetailShell, { RegistryFactCard } from "@/components/database/RegistryDetailShell";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryShareCard from "@/components/database/RegistryShareCard";
+import IngredientListCard from "@/components/database/IngredientListCard";
+import { formulaNeedsIngredientList } from "@/lib/master/ingredientList";
 import { canManageRegistryShares } from "@/lib/master/registryShares";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import { formulaPriceSlots } from "@/lib/master/priceSlots";
@@ -210,6 +212,13 @@ export default function FormulaDetailPage() {
       />
       {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไปแชร์สูตรให้ลูกค้ารายอื่นได้ (สูตรฐานไม่ต้องแชร์) */}
       <RegistryShareCard kind="formula" entity={formula} canManage={canShare} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
+      {/* ⭐ Ingredient List (ม-158) — สูตรหมวด 01/02 ยกเว้น 02-020 · RD แก้ได้ · สูตรหัวน้ำหอมไม่มีการ์ด (เว้นแต่มีค่าค้าง) */}
+      {(formulaNeedsIngredientList(formula) || formula.ingredientList) && (
+        <IngredientListCard
+          formula={formula} canEdit={isFormulaRegistrar(me)}
+          onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }}
+        />
+      )}
 
       {/* ฟอร์มแก้ — ตัวเดียวกับหน้ารายการ เปิดทับหน้านี้ ไม่พาผู้ใช้ออกไปไหน */}
       <FormulaFormModal

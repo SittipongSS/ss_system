@@ -76,8 +76,22 @@ export async function GET(request, { params }) {
       return Response.json({ error: e.message }, { status: 500 });
     }
   }
+  /* ⭐ Ingredient List ของสูตรที่ FG ผูก (ม-158 · มติเจ้าของ 03/11) — อ่านสดจากทะเบียนสูตร ไม่มีสำเนาบนสินค้า
+     · ชุดของขวัญได้รายสูตรใน `formulaComponents[].ingredientList` แทน · อ่านพลาด = 500 (ไม่ใช่ "ยังไม่มี" ที่ผิด) */
+  let formulaIngredientList = null;
+  let formulaCategoryCode = null;
+  if (data.formulaId && !isGiftSetCategory(data.categoryCode)) {
+    const { data: formula, error: formulaError } = await supabase
+      .from('formulas').select('"ingredientList", "categoryCode"').eq('id', data.formulaId).maybeSingle();
+    if (formulaError) return Response.json({ error: formulaError.message }, { status: 500 });
+    formulaIngredientList = formula?.ingredientList ?? null;
+    formulaCategoryCode = formula?.categoryCode ?? null;
+  }
   // Strip the confidential cost breakdown/profit for non-margin roles.
-  return Response.json({ ...redactProductMargin(user, data), customerType, scentName, scentCode, formulaComponents });
+  return Response.json({
+    ...redactProductMargin(user, data), customerType, scentName, scentCode, formulaComponents,
+    formulaIngredientList, formulaCategoryCode,
+  });
 }
 
 // PATCH /api/products/[id]

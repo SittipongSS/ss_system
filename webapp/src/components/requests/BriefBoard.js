@@ -21,7 +21,7 @@ import { Fragment, useState } from "react";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import {
-  CustomerSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
+  CustomerSay, IngredientSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
 } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
@@ -237,10 +237,11 @@ export default function BriefBoard({
                         {/* ⭐ แถวขยาย — ของยาวของ direction ตัวนี้ (หมายเหตุผลลัพธ์ ·
                             สเปก · ไฟล์แนบ) · **ไม่มีปุ่มกาง ขึ้นเสมอเมื่อมีเนื้อ**
                             เพราะสิ่งที่มติ 2026-08-13 ไม่ยอมคือ *การซ่อน* ไม่ใช่ตาราง */}
-                        {(detail || d.outcomeNote || d.reworkBrief) && (
+                        {(detail || d.outcomeNote || d.reworkBrief || d.ingredientList) && (
                           <tr className={styles.detailRow}>
                             <td colSpan={cols}>
                               <CustomerSay note={d.outcomeNote} brief={d.reworkBrief} />
+                              <IngredientSay text={d.ingredientList} />
                               {detail}
                             </td>
                           </tr>

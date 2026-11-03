@@ -61,6 +61,8 @@ export function formulaDevBoard(items = []) {
         priced: item.pricedResult || null,
         // ⭐ ม-148 — ทุกช่องที่ใส่ (F · B · FB เรียงแล้ว) · ตัวจัดรูปเดียวกับหน้ารายการ (`rowPriceLines`)
         prices: rowPriceLines(item),
+        // ⭐ Ingredient List ของสูตรที่ออกจากแถวนี้ (ม-158) — ค่าสดจากทะเบียน · null = ยังไม่มี/ยังไม่มีสูตร
+        ingredientList: item.refFormula?.ingredientList || null,
         // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
         rework: !!item.derivedFromItemId,
         // ⭐ direction ที่เท่าไรของชุด (ม-157) — null = ชุดนี้มีตัวเดียว (ไม่ต้องมีป้าย)

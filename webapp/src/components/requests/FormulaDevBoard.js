@@ -17,7 +17,7 @@
 import { Fragment } from "react";
 import StatusBadge from "@/components/ui/StatusBadge";
 import {
-  CustomerSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
+  CustomerSay, IngredientSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
 } from "./RowProgressCells";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
@@ -164,11 +164,12 @@ export default function FormulaDevBoard({
                   </tr>
 
                   {/* แถวขยาย — ของยาวของแถวนี้ · ขึ้นเสมอเมื่อมีเนื้อ ไม่มีปุ่มกาง */}
-                  {(detail || spec || r.outcomeNote || r.reworkBrief) && (
+                  {(detail || spec || r.outcomeNote || r.reworkBrief || r.ingredientList) && (
                     <tr className={styles.detailRow}>
                       <td colSpan={cols}>
                         {spec && <ReadableText text={spec} lines={2} className={styles.note} />}
                         <CustomerSay note={r.outcomeNote} brief={r.reworkBrief} />
+                        <IngredientSay text={r.ingredientList} />
                         {detail}
                       </td>
                     </tr>

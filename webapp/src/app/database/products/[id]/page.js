@@ -47,6 +47,8 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { bomSendBlocker, bomStatusOf, hasBomStep } from "@/lib/master/productBom";
 import { useCapUser, useDepartment } from "@/lib/roleContext";
 import { canAccessRd } from "@/lib/permissions";
+import IngredientListText from "@/components/database/IngredientListText";
+import { INGREDIENT_LIST_LABEL, formulaNeedsIngredientList } from "@/lib/master/ingredientList";
 
 // หน้า detail สินค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/FG/แบรนด์/สร้างเมื่อ) + ตัวเลขความสัมพันธ์ (โครงการ/ใบสั่งซื้อ/ภาษี)
@@ -756,6 +758,13 @@ export default function ProductDetails() {
                               {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
                             </span>
                           </span>
+                          {/* Ingredient List ของสูตรตัวนี้ในชุด (ม-158) — อ่านสดจากทะเบียนสูตร */}
+                          {(row.ingredientList || formulaNeedsIngredientList({ id: row.formulaId, categoryCode: row.categoryCode })) && (
+                            <div className="mt-1">
+                              <span className="text-[var(--text-3)] block">{INGREDIENT_LIST_LABEL}</span>
+                              <IngredientListText text={row.ingredientList} lines={2} empty="ยังไม่มี — RD ใส่ที่หน้าสูตร" />
+                            </div>
+                          )}
                         </li>
                       ))}
                     </ol>
@@ -826,6 +835,15 @@ export default function ProductDetails() {
                 <span className="text-[var(--text-3)] block mb-1">วันที่สูตร (Formula Date)</span>
                 <span className="font-semibold font-mono text-[var(--text)] text-sm">{product.formulaDate ? fmtDate(product.formulaDate) : NA}</span>
               </div>
+              {/* ⭐ Ingredient List ของสูตร (ม-158) — อ่านสดจากทะเบียนสูตร · แก้ที่หน้าสูตร (RD) ไม่ใช่ที่นี่
+                  · FG ที่ไม่ผูกสูตรไม่มีแถวนี้ (ไม่มีที่ให้มันมาจาก) · สูตรหัวน้ำหอมที่ไม่มีค่าไม่โชว์ */}
+              {product.formulaId && (product.formulaIngredientList
+                || formulaNeedsIngredientList({ id: product.formulaId, categoryCode: product.formulaCategoryCode })) && (
+                <div className="md:col-span-2">
+                  <span className="text-[var(--text-3)] block mb-1">{INGREDIENT_LIST_LABEL}</span>
+                  <IngredientListText text={product.formulaIngredientList} lines={3} empty="ยังไม่มี — RD ใส่ที่หน้าสูตร" />
+                </div>
+              )}
               </>
               )}
               {/* กลุ่ม 03/04 ไม่มีของให้วัดขนาด — ไม่มีช่องนี้ทั้งในฟอร์มและหน้านี้ (ดู units.js)

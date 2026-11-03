@@ -49,6 +49,8 @@ function directionRow(item, all = []) {
       product: isDeliveredAsProduct(item.categoryCode),
       formula: item.refFormula ? { ...item.refFormula, kind: 'formula' } : null,
     } : null,
+    // ⭐ Ingredient List ของสูตรที่เกิดพร้อมกลิ่น (ม-158 · ส่งเป็นสินค้า) — ค่าสดจากทะเบียน · หัวน้ำหอมไม่มีสูตร = null
+    ingredientList: item.refFormula?.ingredientList || null,
     // ⭐ รอบแก้ต้องอ่านออกจากตารางว่าเป็นรอบแก้ ไม่ต้องเปิดการ์ดดู
     rework: !!item.derivedFromItemId,
     /* ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)

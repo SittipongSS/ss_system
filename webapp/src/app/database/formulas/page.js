@@ -9,6 +9,7 @@
 // ไม่มีที่เก็บกลิ่น — migration ตั้งใจไม่เดาแทน RD จึงยกมาให้ตัดสินทีละแถวที่นี่
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import { useSearchParams } from "next/navigation";
 import {
   Archive, ArchiveRestore, Beaker, Check, Coins, Pencil, Plus, RefreshCw, Search, Trash2, Wand2,
@@ -39,7 +40,8 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { fmtDate, NA } from "@/lib/format";
-import { customerArIndex, customerSearchText, customerWithAr } from "@/lib/master/customerAr";
+import { customerArIndex, customerWithAr } from "@/lib/master/customerAr";
+import { filterFormulas, sortFormulasNewestFirst } from "@/lib/master/formulaFilter";
 import { canQuoteMaterial } from "@/lib/materialPrices";
 import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import Link from "next/link";
@@ -47,7 +49,6 @@ import { apiFetch } from "@/lib/apiFetch";
 import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
   formulaFormPayload, formulaSourceLabel, isFormulaRegistrar, isFormulaUsable,
-  matchesFormulaSource,
 } from "@/lib/master/formulas";
 
 export default function FormulasPage() {
@@ -227,34 +228,15 @@ export default function FormulasPage() {
     );
   };
 
-  const visible = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return formulas.filter((f) => {
-      if (!matchesFormulaSource(f, sourceFilter)) return false;
-      if (statusFilter === "open" && f.status === "archived") return false;
-      if (statusFilter && statusFilter !== "open" && f.status !== statusFilter) return false;
-      // ⚠️ ตัวกรองชนิดต้องอยู่ **ก่อน** ทางลัด `if (!q) return true` — วางหลังเมื่อไร
-      // มันจะทำงานเฉพาะตอนมีคำค้น แล้วผู้ใช้จะเห็นตัวกรองที่กดแล้วไม่มีอะไรเกิดขึ้น
-      if (kindFilter === "customer" && !f.customerId) return false;
-      if (kindFilter === "base" && f.customerId) return false;
-      if (!q) return true;
-      // ค้นด้วยชื่อที่ลูกค้าเรียกและรหัสหมวดได้ด้วย (เหมือนทะเบียนกลิ่น)
-      // ⭐ รหัส AR ค้นได้ด้วย — คนที่ถือรหัสลูกค้าอยากรู้ว่ารายนี้มีสูตรอะไรบ้าง
-      return [
-        f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
-        f.customerTradeName, f.categoryCode,
-        // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150)
-        ...(f.sharedCustomers || []).map((c) => customerSearchText(c.customerId, c.customerName, arIndex)),
-        // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)
-        categoryNameBoth(findCategoryByCode(categories, f.categoryCode)),
-        scentName(f.scentId),
-        // เลขที่คำร้องที่เป็นที่มาของสูตร — ขึ้นในคอลัมน์ "ที่มา" อยู่แล้ว และทะเบียน
-        // กลิ่นค้นเจอตั้งแต่แรก · ขาดที่นี่ = คนถือเลขคำร้องหาสูตรที่มันผลิตไม่เจอ
-        f.sourceRequest?.docNo,
-      ]
-        .filter(Boolean).join(" ").toLowerCase().includes(q);
-    });
-  }, [formulas, categories, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex]);
+  /* ⭐ ตัวกรองอยู่ที่ lib ตัวเดียวกับไฟล์ Excel (`filterFormulas` · ม-158) — ไฟล์ = เท่าที่ตาเห็นบนจอ */
+  const visible = useMemo(
+    () => filterFormulas(
+      formulas,
+      { search, status: statusFilter, kind: kindFilter, source: sourceFilter },
+      { categories, scentNameOf: scentName, arIndex },
+    ),
+    [formulas, categories, statusFilter, kindFilter, sourceFilter, search, scentName, arIndex],
+  );
 
   // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
   const formulaLabelById = useMemo(
@@ -272,10 +254,7 @@ export default function FormulasPage() {
   /* ⭐ **ใหม่สุดขึ้นก่อน** (มติผู้ใช้ 2026-09-02 · เหมือนทะเบียนกลิ่น) — API เรียงตาม
      ชื่อ ก→ฮ เพราะชุดเดียวกันไปเป็นตัวเลือกในดรอปดาวน์เลือกสูตร ⇒ สูตรที่เพิ่งเพิ่ม
      จมอยู่กลางตารางตามตัวอักษร · เรียงที่จอ ไม่แก้ที่ API */
-  const sorted = useMemo(
-    () => [...visible].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
-    [visible],
-  );
+  const sorted = useMemo(() => sortFormulasNewestFirst(visible), [visible]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, { resetKey: `${search}|${statusFilter}|${kindFilter}|${sourceFilter}` });
@@ -519,6 +498,16 @@ export default function FormulasPage() {
           aria-label="กรองที่มาของสูตร"
         />
         <span className="spacer" />
+        {/* ⭐ Excel ทะเบียนสูตร (ม-158 · มติเจ้าของ 03/11) — แถวเท่าที่ตาเห็น (ตัวกรองชุดเดียวกัน · `filterFormulas`)
+            + Ingredient List · ปุ่มกลางตัวเดียวกับรายงานอื่น (พลาดแล้วบอกเป็นภาษาไทย) */}
+        <ExcelDownloadButton
+          href={`/api/master/formulas/export?${new URLSearchParams({
+            q: search.trim(), status: statusFilter, kind: kindFilter, source: sourceFilter,
+          }).toString()}`}
+          fallbackName="formulas.xlsx"
+          title="ดาวน์โหลดสูตรที่ตารางแสดงอยู่ (ตามตัวกรอง) พร้อม Ingredient List"
+          onError={(msg) => { if (msg) setToast({ kind: "error", msg }); }}
+        />
         <Button onClick={reload} disabled={loading} icon={<RefreshCw size={14} aria-hidden="true" />}>
           รีเฟรช
         </Button>

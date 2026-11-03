@@ -234,7 +234,7 @@ async function withRegistryLinks(supabase, items = []) {
       ? supabase.from('scents').select('id, code, name, status').in('id', scentIds)
       : Promise.resolve({ data: [] }),
     formulaIds.length
-      ? supabase.from('formulas').select('id, code, name, status').in('id', formulaIds)
+      ? supabase.from('formulas').select('id, code, name, status, "categoryCode", "ingredientList"').in('id', formulaIds)
       : Promise.resolve({ data: [] }),
   ]);
   return attachRegistryLinks(items, {
@@ -311,7 +311,8 @@ export async function GET(request, { params }) {
     if (REQUEST_OPEN_STATUSES.includes(row.status) && canAnswerRequest(user, row)) {
       await Promise.all((row.items || []).filter(canPriceRow).map(async (item) => {
         const plan = await rowPricePlanLive(getSupabaseAdmin(), item).catch(() => null);
-        if (plan) { item.priceSlots = plan.slots; item.priceBlocker = plan.blocker; }
+        // `ingredientPlan` (ม-158) — Ingredient List ของสูตรที่แถวผูก บังคับในโมดัลเดียวกัน · ตัวคิดเดียวกับ POST
+        if (plan) { item.priceSlots = plan.slots; item.priceBlocker = plan.blocker; item.ingredientPlan = plan.ingredient; }
       }));
     }
     /* ⭐ **งานประเมินบนหน้าคำร้อง** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09) — รูปรายพื้นที่ ·

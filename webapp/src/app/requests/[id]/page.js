@@ -3249,6 +3249,8 @@ export default function RequestDetailPage() {
         slots={pricing ? (pricing.item.priceSlots || rowPriceSlots(pricing.item)) : null}
         // ไม่มีช่อง = เหตุจากตัวคิดเดียวกัน (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) — โมดัลโชว์แทนฟอร์ม
         blocker={pricing?.item.priceBlocker || ""}
+        // Ingredient List ของสูตร (ม-158) — บังคับเมื่อแถวผูกสูตรหมวด 01/02 (ยกเว้น 02-020) · server คิดให้ (`ingredientPlan`)
+        ingredient={pricing?.item.ingredientPlan || null}
         hint={`ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${req.customerName ? ` (ราคาเฉพาะ ${req.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง"}
         /* ⚠️ **โหลดใบใหม่ผ่าน GET เสมอ** — ห้ามตั้ง `req` จาก body ที่ route ราคาตอบ (รีวิว ม-148 รอบสาม): body นั้นเป็น
