@@ -1344,7 +1344,10 @@ export default function SalesOrderPaymentPanel({
            เดิมใช้ "embedded" ซึ่งไม่มีขอบ ⇒ ตารางลอยอยู่ในการ์ดโดยไม่มีกรอบ (ผู้ใช้ขอเพิ่มขอบ)
            ⚠️ ใช้ตัวแปรของ primitive ไม่เขียน border ทับเองในโมดูลนี้ — ไม่งั้นได้ทรงที่สอง */
         /* คอลัมน์วันวางบิล (กำหนดวางบิล) กว้างขึ้น ~170px — วัน + ป้ายสถานะ + ปุ่มขอใบวางบิล ตกบรรทัดในเซลล์เอง
-           `edgeHint` — คอลัมน์ที่จมใต้กลุ่มตรึงขวาต้องมีคำใบ้ว่าเลื่อนได้ (เงาซ้ายของ .statusCell · UAT FN 27/10 ข้อ 6) */
+           `edgeHint` — คอลัมน์ที่จมใต้กลุ่มตรึงขวาต้องมีคำใบ้ว่าเลื่อนได้ (เงาซ้ายของ .statusCell · UAT FN 27/10 ข้อ 6)
+           ⭐ คอลัมน์ ≤ 760px (มือถือ · จอแคบ) แถวกลายเป็นการ์ดรายงวด — `.tableBox` วัดด้วย @container (มติ 02/11 ม็อก split-v6) ·
+             DOM ชุดเดียว ช่องบอกชื่อตัวเองด้วย `data-label` · หัวการ์ด = ชื่องวด (`data-seq`) + ยอด */
+        <div className={styles.tableBox}>
         <TableScroll family="editable" surface="auto" cells="stacked" edgeHint
           minWidth={(showCoverage ? 980 : 840) + (billingColumn ? 170 : 0)}>
           <table className={`${styles.table} ${isPreview ? styles.preview : ""}`.trim()}>
@@ -1585,9 +1588,9 @@ export default function SalesOrderPaymentPanel({
 
                 return (
                   <Fragment key={row.id || `preview-${row.seq}`}>
-                  <tr>
-                    {single ? null : <td className={styles.seqCol}>{row.seq}</td>}
-                    <td>
+                  <tr data-card="row">
+                    {single ? null : <td className={styles.seqCol} data-cell="seq">{row.seq}</td>}
+                    <td data-cell="label" data-seq={single ? undefined : row.seq}>
                       {/* ชื่องวดสั้นห้ามแตกบรรทัด ("งวด / สุดท้าย" ตอนคอลัมน์วันวางบิลกว้าง) — ดู InstallmentLabel */}
                       <InstallmentLabel label={row.label} />
                       {/* งวดยกมา = เงินที่เก็บก่อนเข้าระบบ บัญชีรับรองครั้งเดียว — ป้ายเดียวกับคิวของบัญชี */}
@@ -1664,12 +1667,12 @@ export default function SalesOrderPaymentPanel({
                         ⭐ งานบริการ (mig 0392): id/กรอบแดงของช่องที่ติดหลังกดยื่นอยู่ที่ <td> (ช่องวันก็ได้กรอบ)
                           · เหตุเป็นตัวหนังสือใต้ค่า (`issueNote`) */}
                     {billingColumn ? (
-                      <td {...cellProps(row, "billingDate")}>
+                      <td {...cellProps(row, "billingDate")} data-cell="bill" data-label={billingColumnNote ? `วันวางบิล (${billingColumnNote})` : "วันวางบิล"}>
                         {billingCell(row)}
                         {issueNote(row, "billingDate")}
                       </td>
                     ) : null}
-                    <td {...cellProps(row, "dueDate")}>
+                    <td {...cellProps(row, "dueDate")} data-cell="due" data-label="กำหนดชำระ / จ่ายจริง">
                       {/* ⚠️ ธงแดง "เลยกำหนด" อ่าน dueDate ช่องเดียว (ไม่แตะเพราะกำหนดวางบิล) · วันเขียนแบบมีวันในสัปดาห์
                           ให้ตรงกับคอลัมน์วันวางบิลข้าง ๆ (ป้ายเสาร์-อาทิตย์เตือนอย่างเดียว ไม่เลื่อนวัน) */}
                       {!row.preview && dateMode.canEdit(row) ? (
@@ -1746,7 +1749,7 @@ export default function SalesOrderPaymentPanel({
                           : "");
                       const coverIssue = issueOf(row, "coverage");
                       return (
-                        <td {...cellProps(row, "coverage", edited ? styles.coverEdited : "")}>
+                        <td {...cellProps(row, "coverage", edited ? styles.coverEdited : "")} data-cell="cover" data-label="ครอบคลุมบริการ">
                           {lock ? (
                             /* ⚠️ **ล็อกต้องบอกเหตุตอนกด ไม่ใช่เซลล์ตาย** (กติกาเดียวกับ `GatedAction`) —
                                tooltip อย่างเดียวมือถืออ่านไม่ได้ และเซลล์ที่กดแล้วเงียบอ่านเหมือนระบบพัง
@@ -1794,8 +1797,8 @@ export default function SalesOrderPaymentPanel({
                         </td>
                       );
                     })() : null}
-                    <td className="num">{fmtMoney(row.amount)}</td>
-                    <td>
+                    <td className="num" data-cell="amount">{fmtMoney(row.amount)}</td>
+                    <td data-cell="evidence" data-label="หลักฐาน">
                       {evidence.length ? (
                         <span className={styles.evidence}>
                           {evidence.map((att, i) => (
@@ -1824,7 +1827,7 @@ export default function SalesOrderPaymentPanel({
                         </span>
                       ) : <span className={styles.none}>{NA}</span>}
                     </td>
-                    <td>
+                    <td data-cell="tax" data-label="ใบกำกับภาษี">
                       {row.taxInvoiceNo ? (
                         <>
                           <span className="mono">{row.taxInvoiceNo}</span>
@@ -1855,7 +1858,7 @@ export default function SalesOrderPaymentPanel({
                           : <span className={styles.none}>{NA}</span>
                       )}
                     </td>
-                    <td className={styles.statusCell}>
+                    <td className={styles.statusCell} data-cell="status">
                       {/* ⚠️ อ่านจาก `installmentDisplayStatus` ไม่ใช่ `row.status` ตรง ๆ —
                           งวดร่างที่บันทึกเงินไว้แล้วยังเป็น `pending` ใน DB (CHECK ของ 0259)
                           ป้าย "รอชำระ" บนงวดที่มีสลิปแนบอยู่คือจอที่โกหก */}
@@ -1891,7 +1894,7 @@ export default function SalesOrderPaymentPanel({
                         </small>
                       ) : null}
                     </td>
-                    <td className={styles.actionCell}>
+                    <td className={styles.actionCell} data-cell="action">
                       {primary ? (
                         <Button tone="primary" size="sm" disabled={!!busy} onClick={primary.onClick} title={primary.title}>
                           {primary.label}
@@ -1944,6 +1947,7 @@ export default function SalesOrderPaymentPanel({
             </tbody>
           </table>
         </TableScroll>
+        </div>
       )}
 
       {/* ⭐ แถบบันทึกช่วงครอบที่แก้ค้าง — **ไม่ auto-save** (กฎฟอร์มของ repo)

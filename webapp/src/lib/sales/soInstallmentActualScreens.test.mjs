@@ -859,7 +859,7 @@ test('รอบหก: ตารางงวด — ไม่มีแถวไ�
   assert.doesNotMatch(css, new RegExp(`${NONE} > thead > tr > th\\.actionHead \\{[^}]*position`));
   // ตัดสินจาก DOM: ช่องปุ่มวาดลูกเฉพาะปุ่มหลัก/ปุ่มที่ติดด่าน/เมนู (ไม่มีอะไร = ช่องว่างจริง)
   const panel = code(PANEL);
-  const cell = slice(panel, '<td className={styles.actionCell}>', '</td>');
+  const cell = slice(panel, '<td className={styles.actionCell} data-cell="action">', '</td>');
   assert.match(cell, /\{primary \? \(/);
   assert.match(cell, /\) : actualLock \? \(/);
   assert.match(cell, /\{menu\.length \? \(/);

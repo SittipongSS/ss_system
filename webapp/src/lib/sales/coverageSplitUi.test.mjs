@@ -157,9 +157,9 @@ test('แผง: กรอบแดงเฉพาะช่องใน highligh
   assert.match(panel, /const cellId = \(row, field\) => \(setupShown && row\?\.id && !row\.preview/);
   assert.match(panel, /id && issueOf\(row, field\) \? styles\.cellIssue : ""/, 'แดงเมื่ออยู่ใน highlight เท่านั้น');
   assert.equal((panel.match(/styles\.cellIssue/g) || []).length, 1, 'คลาสแดงมีทางเข้าทางเดียว');
-  assert.match(panel, /<td \{\.\.\.cellProps\(row, "billingDate"\)\}>/);
-  assert.match(panel, /<td \{\.\.\.cellProps\(row, "dueDate"\)\}>/);
-  assert.match(panel, /<td \{\.\.\.cellProps\(row, "coverage", edited \? styles\.coverEdited : ""\)\}>/);
+  assert.match(panel, /<td \{\.\.\.cellProps\(row, "billingDate"\)\}[^>]*>/);
+  assert.match(panel, /<td \{\.\.\.cellProps\(row, "dueDate"\)\}[^>]*>/);
+  assert.match(panel, /<td \{\.\.\.cellProps\(row, "coverage", edited \? styles\.coverEdited : ""\)\}[^>]*>/);
   assert.match(panel, /invalid=\{Boolean\(coverIssue\)\}/);
   // ไม่มีการคิดแดงเองจากข้อมูลงวด — ตัวอ่านเดียวคือ highlight
   assert.match(panel, /return String\(\(highlight instanceof Map \? highlight\.get\(id\) : highlight\[id\]\) \|\| ""\);/);
