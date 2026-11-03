@@ -8,10 +8,13 @@
 // ⭐ มิติของตารางอยู่ที่นี่ (หน้าเรียกตรง ๆ) · **คำค้นเป็นของหน้า** (`ctx.matchesSearch` — ชุดค้นอ่านสิ่งที่ตาเห็นบนแถว
 //   แบบ `dealListFilter`) · การ์ดล้างคำค้นเสมอ ⇒ คำค้นไม่มีผลกับเลขของการ์ด
 import { salesOrderTaxInvoiceNote } from '@/lib/sales/salesOrderPayments';
-import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE, isActualOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE, isActualOrder, isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 /* สถานะการชำระของใบ — คำถามที่ตารางสถานะเอกสารตอบไม่ได้ ("ใบไหนเงินยังไม่ครบ")
    ⚠️ `tracked` เท็จ = ยังไม่เริ่มติดตาม ไม่ใช่ "ยังไม่จ่าย" — คนละเรื่องกัน */
+/** ค่าของแท็บ "สรรพสามิต" บนทะเบียนใบสั่งขาย (ข้าง ทุกสาย · สินค้า · บริการ) — ไม่ใช่สายธุรกิจ (`BUSINESS_LINES`) */
+export const EXCISE_LINE_VIEW = 'EXCISE';
+
 export const PAYMENT_FILTERS = {
   complete: { label: 'เก็บเงินครบแล้ว', match: (row) => row.payment?.complete },
   overdue: { label: 'มีงวดเลยกำหนด', match: (row) => (row.payment?.overdue || 0) > 0 },
@@ -68,7 +71,10 @@ export function salesOrderPassesListFilters(row, filters = EMPTY_SALES_ORDER_FIL
   const f = { ...EMPTY_SALES_ORDER_FILTERS, ...(filters || {}) };
   if (f.waitingOnMe && !row._waitingOnMe) return false;
   if (f.serviceSetupPending && !row._serviceSetupPending) return false;
-  if (f.lineView !== 'all' && row.businessLine !== f.lineView) return false;
+  /* แท็บ "สรรพสามิต" (มติเจ้าของ 03/11) = ใบ SO ค่าสรรพสามิตอย่างเดียว — ใบนั้นไม่มีดีล ⇒ ไม่มีสายธุรกิจ (อยู่ใน "ทุกสาย" เสมอ) */
+  if (f.lineView === EXCISE_LINE_VIEW) {
+    if (!isExciseOrder(row)) return false;
+  } else if (f.lineView !== 'all' && row.businessLine !== f.lineView) return false;
   if (f.status.length && !f.status.includes(row.status)) return false;
   // หลายหมวดการชำระ = "อย่างใดอย่างหนึ่ง" (เลยกำหนด **หรือ** ถูกตีกลับ = ใบที่ต้องตาม)
   if (f.payment.length && !f.payment.some((key) => PAYMENT_FILTERS[key]?.match(row))) return false;

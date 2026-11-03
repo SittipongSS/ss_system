@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   filterProducts, isProductTaxable, productCategoryCode, productCategoryLabel, productExciseBadge, productFilterFacets,
-  productShowsRetailPrice, productStatCounts,
+  productShowsRetailPrice, productStatCounts, productRegistrationValue, REGISTRATION_META,
 } from './productFilter.js';
 import { isProductExciseTaxable } from '../tax/taxableProducts.js';
 import { BOM_FILTER_VALUES } from './productBom.js';
@@ -376,5 +376,43 @@ test('ด่านซอร์ส: หน้าสินค้า/ไฟล์�
   assert.match(live, /label: "BOM ตีกลับ ต้องแก้", value: counts\.bomReturned,/);
   assert.match(live, /setTaxableOnly\(false\);\s*setBomFilter\(BOM_RETURNED_ONLY\);/);
   assert.match(live, /&& !q && !statusFilter\.length && !regFilter\.length && !showInactive && !missingPrice && !taxableOnly;/);
-  assert.equal((live.match(/<ProductBomBadge product=\{p\} \/>/g) || []).length, 2, 'ป้ายทั้งมุมมองการ์ดและตาราง');
+  assert.equal((live.match(/<ProductBomBadge product=\{p\} \/>/g) || []).length, 1, 'มุมมองการ์ด: ป้ายเฉพาะตัวที่ส่งแล้ว');
+  // มติเจ้าของ 03/11 รอบสอง: ตารางมีคอลัมน์ของตัวเอง — BOM ทุกแถว (ยังไม่ส่ง = ตัวจาง · 03/04 = ขีด) · สรรพสามิต · จดแจ้ง อย.
+  assert.match(live, /<td><ProductBomBadge product=\{p\} cell \/><\/td>/);
+  assert.match(live, /<SortTh label="สรรพสามิต" sortKey="tax" sort=\{sort\} \/>\s*<th>จดแจ้ง อย\.<\/th>\s*<SortTh label="BOM" sortKey="bom" sort=\{sort\} \/>\s*<th>สถานะ<\/th>/);
+  assert.match(live, /bom: \(p\) => \{ const v = bomFilterValueOf\(p\); return v \? BOM_FILTER_VALUES\.indexOf\(v\) : null; \},/);
+  const badge = readFileSync(new URL('../../components/database/ProductBomBadge.js', import.meta.url), 'utf8');
+  assert.match(badge, /if \(!value\) return cell \? <span className="text-\[var\(--text-3\)\]">\{NA\}<\/span> : null;/, '03/04 = ขีดในตาราง');
+  assert.match(badge, /return cell \? <span className="text-xs text-\[var\(--text-3\)\]" title=\{meta\.label\}>\{meta\.short\}<\/span> : null;/, 'ยังไม่ส่ง = ตัวจางในตาราง');
+});
+
+/* ── สถานะขึ้นทะเบียนสรรพสามิตในคอลัมน์ "สรรพสามิต" (มติเจ้าของ 03/11) — ตัวเดียวกับตัวกรอง "การขึ้นทะเบียน" ───────── */
+test('productRegistrationValue: ไม่มีสิทธิ์ระบบภาษี/หมวดไม่ใช่สรรพสามิต = null · ว่าง = ยังไม่ขึ้นทะเบียน', () => {
+  assert.equal(productRegistrationValue(P({ categoryCode: '01-002' }), TYPES), null, 'server ไม่แนบ field = ไม่มีมิตินี้');
+  assert.equal(productRegistrationValue(P({ categoryCode: '03-001', registrationStatus: 'none' }), TYPES), null);
+  assert.equal(productRegistrationValue(P({ categoryCode: '01-002', registrationStatus: null }), TYPES), 'none');
+  assert.equal(productRegistrationValue(P({ categoryCode: '01-002', registrationStatus: 'in_progress' }), TYPES), 'in_progress');
+  assert.equal(productRegistrationValue(P({ fgCode: 'FG-108-01-002-2009', registrationStatus: 'approved' }), TYPES), 'approved', 'แถวเก่าถอดหมวดจาก fgCode');
+  assert.deepEqual(Object.keys(REGISTRATION_META), ['none', 'in_progress', 'approved']);
+});
+
+test('🔴 ตาเห็น = ตัวกรองเจอ: แถวที่ติดป้ายทะเบียนค่าไหน ตัวกรองค่านั้นได้แถวนั้น · ไม่มีป้าย = ไม่มีตัวกรองไหนเจอ', () => {
+  for (const p of FACET_ROWS) {
+    const value = productRegistrationValue(p, TYPES);
+    for (const reg of Object.keys(REGISTRATION_META)) {
+      const hit = filterProducts([p], { registrations: [reg], showInactive: true, productTypes: TYPES }).length === 1;
+      assert.equal(hit, value === reg, `${p.fgCode} · ${reg}`);
+    }
+  }
+});
+
+test('ด่านซอร์ส: ป้ายทะเบียนทั้งตาราง/การ์ด · ตัวเลือกตัวกรองมาจาก REGISTRATION_META', () => {
+  const page = readFileSync(new URL('../../app/database/products/page.js', import.meta.url), 'utf8');
+  const live = page.replace(/\{\/\*[\s\S]*?\*\/\}/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.equal((live.match(/<ProductRegistrationBadge product=\{p\} productTypes=\{productTypes\} taxable=\{taxable\} \/>/g) || []).length, 2);
+  assert.match(live, /options: Object\.entries\(REGISTRATION_META\)\.map\(\(\[value, meta\]\) => \(\{ value, label: meta\.label \}\)\),/);
+  // มติเจ้าของ 03/11: คอลัมน์ตาราง ต้องเสีย = ป้ายทะเบียนแทน · ยกเว้น = "ยกเว้น" · "ต้องเสีย" เหลือเฉพาะแถวที่ไม่มีมิติทะเบียน
+  assert.match(live, /\{taxable && productRegistrationValue\(p, productTypes\)\s*\? <ProductRegistrationBadge product=\{p\} productTypes=\{productTypes\} taxable=\{taxable\} \/>\s*: <span className=\{`status-pill text-\[10px\]\$\{taxable \? " warning" : ""\}`\}>\{taxable \? "ต้องเสีย" : "ยกเว้น"\}<\/span>\}/);
+  const badge = readFileSync(new URL('../../components/database/ProductRegistrationBadge.js', import.meta.url), 'utf8');
+  assert.match(badge, /const value = productRegistrationValue\(product, productTypes\);/);
 });

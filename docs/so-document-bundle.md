@@ -9,7 +9,9 @@
 ## มติ (AskUserQuestion ทีละข้อ · เลือกทางที่แนะนำทุกข้อ)
 
 1. **หน่วยของชุด = ใบสั่งขาย · เลือกหลายใบโหลดทีเดียว** — ZIP ไฟล์เดียว โฟลเดอร์ละหนึ่งใบ
-2. **จุดกด = ทะเบียนใบสั่งขาย** (`/sales-planning/sales-orders`) — ช่องติ๊กหน้าแถว + ปุ่ม "โหลดชุดเอกสาร" หัวแผงรายการ
+2. ~~**จุดกด = ทะเบียนใบสั่งขาย** (`/sales-planning/sales-orders`) — ช่องติ๊กหน้าแถว + ปุ่ม "โหลดชุดเอกสาร" หัวแผงรายการ~~
+   · **มติ 03/11: ถอดออกจากทะเบียนใบสั่งขาย — โหลดที่รายงานยอดขายที่เดียว** (เจ้าของ: "เอาการดาวน์โหลดไฟล์ออกจากรายการ SO
+   เอาไปอยู่รายงานยอดขายที่เดียวพอ") · ทะเบียนไม่มีช่องติ๊กแล้ว
    · **เพิ่ม 27/10 รอบสอง** (เจ้าของ: "เอาไป ดาวน์โหลด ที่นี่ด้วยได้มั้ย"): รายงานยอดขาย `/sa/targets/report` แผง
    "ใบสั่งขายที่อนุมัติแล้ว" — ช่องติ๊ก + ปุ่มตัวเดียวกัน · เจาะจากตารางแยกยอด/กรองแล้วติ๊กหัวตาราง = ชุดของยอดนั้นทั้งก้อน
 3. **ไฟล์แยกในโฟลเดอร์** — ไม่รวมเป็น PDF เดียว · สลิปคงไฟล์ต้นฉบับ (รูป/PDF) ไม่แปลง
@@ -61,8 +63,8 @@
 - ตัววางแผน + ห่อ: `lib/sales/salesOrderBundle.js` (`planSalesOrderBundle` · `buildSalesOrderBundle` · ไม่แตะเครือข่ายเอง) + เทสต์
 - รายการไฟล์เงิน: แถวกลุ่ม `payment` ของ `buildSalesOrderDocuments` ได้ `seq` · `kind` · `taxInvoiceNo` เพิ่ม (แท็บเอกสารไม่ได้อ่าน)
 - PDF ใบสั่งขาย: `app/api/sales-planning/sales-orders/[id]/issued/pdf/route.js` · `captureIssuedQuotationPdf` รับ `folder`
-- จอ: `components/salesPlanning/SalesOrderBundleButton.js` · ช่องติ๊กใน `app/sales-planning/sales-orders/page.js` และ
-  `app/sales-planning/targets/report/page.js` (`OrdersPanel`)
+- จอ: `components/salesPlanning/SalesOrderBundleButton.js` · ช่องติ๊กใน `app/sales-planning/targets/report/page.js` (`OrdersPanel`)
+  (ทะเบียนใบสั่งขายถอดออก 03/11)
 - UAT บน localhost 27/10 (admin · devBypass): ติ๊ก/ป้าย `เลือก 1/327 ใบ` · กดโดยไม่ติ๊กขึ้นกล่องบอกเหตุ · ZIP ของใบรออนุมัติ
   (QT PDF + `ไฟล์ที่ขาด.txt` · ชื่อไฟล์ไทยติดธง UTF-8) · ใบอนุมัติแล้ว 2 ใบผ่านสคริปต์: สลิป + ใบกำกับ + QT PDF ครบ ·
   PDF ใบสั่งขายเรนเดอร์จาก HTML ฉบับตรึงด้วย Chrome ในเครื่องได้ (ไม่ได้ยิงเส้นใหม่กับใบอนุมัติแล้ว เพราะครั้งแรกเขียน

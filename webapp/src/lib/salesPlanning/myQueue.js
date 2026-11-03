@@ -14,6 +14,7 @@
 // ⚠️ **ที่นี่ไม่รู้จัก React และไม่ยิง API** — รับก้อนที่ API ส่งมาแล้วแปลงเป็นแถว
 // รูปเดียวกันหมด · เทสต์จึงเรียกได้ตรง ๆ โดยไม่ต้องมีจอ
 import { BACKLOG_READINESS } from '@/lib/excise/exciseBacklog';
+import { TRACKS } from '@/lib/excise/workflow';
 import { fmtDate } from '@/lib/format';
 import { requestKindLabel, requestLineNoun } from '@/lib/master/requestTypes';
 import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
@@ -33,6 +34,9 @@ import { rowIdleStamps } from '@/lib/requests/rowTrack';
 
 // คำสั่งของแถว — ปุ่มบนหน้าใบ "ได้รับแล้ว" เป็นป้ายสถานะเมื่ออยู่ในคอลัมน์ "ต้องทำอะไร"
 const REQUESTER_ROW_STEP = { 'ได้รับแล้ว': 'ยืนยันรับเอกสาร' };
+
+/* ชื่อขั้นของทะเบียน — ตารางเดียวกับ /tax (`TRACKS.registration`) */
+const REGISTRATION_STAGE_LABEL = Object.fromEntries(TRACKS.registration.stages.map((stage) => [stage.key, stage.label]));
 
 const stampDay = (ms) => (Number.isFinite(ms) ? businessDayKey(new Date(ms).toISOString()) : null);
 
@@ -160,7 +164,7 @@ export function myQueueGroupKey(item) {
  * "วันที่เทียม" จากวันที่มันเริ่มค้าง (`bouncedAt` / วันมอบหมาย) ไม่ใช่ถูกดันไปท้าย
  */
 export function buildMyQueue({
-  requests = [], leads = [], tasks = [], awaitingSalesOrder = [], awaitingFiling = [],
+  requests = [], leads = [], tasks = [], awaitingSalesOrder = [], awaitingFiling = [], registrations = [],
   todayIso = null,
 } = {}) {
   const out = [];
@@ -314,6 +318,26 @@ export function buildMyQueue({
       due: order.approvedAt ? String(order.approvedAt).slice(0, 10) : null,
       basis: 'waiting',
       href: `/sa/sales-orders/${order.id}`,
+      todayIso,
+    }));
+  }
+
+  /* ⭐ ทะเบียนสรรพสามิตที่ตา SA (ร่าง · ตีกลับ · มติ 03/11) — เดิมเป็นป้ายบนเมนู /tax ที่ฝ่ายขายไม่เห็นแล้ว (V13)
+     · กดแล้วไปทางกลาง `/go/registration/<id>` = หน้าสินค้า FG + แผงทะเบียน (ที่ทำงานทะเบียนของ SA · V14) */
+  for (const registration of registrations) {
+    out.push(row({
+      kind: 'document', // ชิป "เอกสาร" (MY_QUEUE_KINDS) — งานเอกสารของ SA เหมือนแถวออกใบ · คีย์แถวไม่ชน (id ทะเบียน REG-…)
+      id: registration.id,
+      step: registration.status === 'rejected' ? 'แก้ทะเบียนสรรพสามิต' : 'ส่งทะเบียนสรรพสามิต',
+      title: registration.customerName || 'ลูกค้า',
+      sub: [
+        registration.fgCode,
+        REGISTRATION_STAGE_LABEL[registration.status] || registration.status,
+        registration.status === 'rejected' ? registration.rejectionReason : null,
+      ].filter(Boolean).join(' · '),
+      due: registration.updatedAt ? businessDayKey(registration.updatedAt) : null,
+      basis: 'waiting',
+      href: `/go/registration/${encodeURIComponent(registration.id)}`,
       todayIso,
     }));
   }

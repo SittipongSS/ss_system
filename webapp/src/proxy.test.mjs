@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apiWriteAllowed, bypassesSessionGate, lockedOut } from './proxy.js';
+import { apiWriteAllowed, bypassesSessionGate, lockedOut, lockedOutRedirectPath } from './proxy.js';
 import {
   RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService, canManagePackageSizes, canSendSurveyResult,
   canViewServiceRegistry,
@@ -1046,4 +1046,14 @@ test('GET /api/sa/requests/[id]/confirm-plan ผ่าน proxy เท่าก�
   assert.equal(canViewRequests({ role: 'ae', extraCaps: [] }), true);
   // role ที่ไม่ถือทั้งสองสิทธิ์ ถูกตัดที่ด่านแรกของ handler (`canViewRequests`) เหมือนใบแม่ — ไม่ใช่ที่ proxy
   assert.equal(canViewRequests({ role: 'viewer', extraCaps: [] }), false);
+});
+
+test('หน้าที่โดนกัน: ลิงก์ทะเบียน/ใบยื่นเดิมใน /tax (แจ้งเตือนเก่า) พาไปทางกลาง /go ตามสิทธิ์ · ที่เหลือ /home (มติ 03/11)', () => {
+  assert.equal(lockedOutRedirectPath('/tax/registrations/REG-mryv5sqq8z4'), '/go/registration/REG-mryv5sqq8z4');
+  assert.equal(lockedOutRedirectPath('/tax/filings/ORD-1'), '/go/filing/ORD-1');
+  assert.equal(lockedOutRedirectPath('/tax/registrations'), '/home', 'หน้ารายการไม่มีทางกลาง');
+  assert.equal(lockedOutRedirectPath('/tax'), '/home');
+  assert.equal(lockedOutRedirectPath('/mgmt/reports'), '/home');
+  const proxy = readFileSync(new URL('./proxy.js', import.meta.url), 'utf8');
+  assert.match(proxy, /NextResponse\.redirect\(new URL\(lockedOutRedirectPath\(path\), request\.url\)\)/);
 });
