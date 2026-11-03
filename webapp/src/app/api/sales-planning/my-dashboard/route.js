@@ -2,7 +2,7 @@ import { withUser, ok, fail, unauthorized } from '@/lib/http';
 import { monthKey } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
-import { loadHandoffQueue } from '@/lib/sales/handoffQueueData';
+import { loadHandoffQueue, loadMyExciseRegistrations } from '@/lib/sales/handoffQueueData';
 import { summarizeMyDeals } from '@/lib/sales/myDashboardTotals';
 import { businessDate } from '@/lib/businessDate';
 import { businessDayKey, currentMonth, isYearValue } from '@/lib/datePeriods';
@@ -169,6 +169,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     handoff = await loadHandoffQueue(supabase, { dealIds: myDeals.map((deal) => deal.id) });
   } catch (handoffError) {
     handoff = { awaitingSalesOrder: [], awaitingFiling: [], error: handoffError.message };
+  }
+  /* ⭐ ทะเบียนสรรพสามิตที่ตา SA (ร่าง · ตีกลับ) — เดิมเป็นป้ายบนเมนู /tax ซึ่งฝ่ายขายไม่เห็นแล้ว (มติ 02/11 V13)
+     ⇒ เข้าคิวงานของฉันแทน (มติ 03/11) · ของฉัน = ฉันเป็นเจ้าของทะเบียน หรือเป็นลูกค้าของดีลฉัน · พังก็ไม่ล้มทั้งหน้า */
+  try {
+    handoff = { ...handoff, registrations: await loadMyExciseRegistrations(supabase, { user, customerIds: myDeals.map((deal) => deal.customerId) }) };
+  } catch (registrationError) {
+    handoff = { ...handoff, registrations: [], registrationError: registrationError.message };
   }
 
   /* คำร้องที่เป็น "ของค้างของฉัน" จริง ๆ — ร่างที่ยังไม่เคยส่งไม่นับ (ยังไม่เริ่ม)

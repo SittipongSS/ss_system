@@ -37,6 +37,7 @@ import {
 } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
+import { loadExciseListStages } from '@/lib/excise/exciseListStage';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,6 +101,14 @@ export const GET = withUser(async ({ user, supabase }) => {
   // ⚠️ อ่านด้วย service-role โดยตั้งใจ — ทะเบียนคำร้องมีขอบเขตของตัวเอง (ผู้ขอเห็น
   // เฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ว่าง" ทั้งที่เพื่อนร่วมทีมเปิดไปแล้ว
   // · คืนออกไปแค่ id/docNo/status เท่าที่ลิสต์ต้องใช้
+  /* ⭐ ป้าย "สรรพสามิต · ขั้น" รายแถว (มติเจ้าของ 03/11 — "SO นี้ต้องมีสรรพสามิตไหม ถึงขั้นไหน") · `lib/excise/exciseListStage`
+     · เริ่มตรงนี้ (มีแถว+บรรทัดแล้ว) วิ่งคู่กับคิวรีที่เหลือ ~1.7 วินาที · รอผลก่อนประกอบแถว · อ่านไม่ขึ้น = ไม่มีป้าย (log) ไม่ล้มทั้งทะเบียน */
+  const exciseStagesPending = loadExciseListStages(supabase, orders || [], { linesByOrder })
+    .catch((exciseStageError) => {
+      console.error('[sales-orders] โหลดขั้นสรรพสามิตไม่สำเร็จ', exciseStageError);
+      return new Map();
+    });
+
   const { data: scentRequests, error: scentRequestError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('dept_requests').select('id, docNo, status, "salesOrderId"')
     .in('salesOrderId', chunk).eq('kind', 'scent_dev').neq('status', 'cancelled')
@@ -288,10 +297,13 @@ export const GET = withUser(async ({ user, supabase }) => {
      ⚠️ งวดอ่านไม่ขึ้น (installmentError ข้างบน) = [] ⇒ เลนนี้ไม่นับ (ตรงกับคอลัมน์งวดที่ว่าง) — ป้ายบนเมนูโยน error ของมันเอง */
   const actualInstallmentsOf = (row) => (isInstallmentActualOrder(row) ? (installmentsByOrder.get(row.id) || []) : null);
 
+  const exciseStages = await exciseStagesPending;
+
   const visible = (orders || [])
     .map((row) => ({
       ...row,
       customerArCode: arById.get(row.customerId) ?? null,
+      exciseStage: exciseStages.get(row.id) || null,
       lines: linesByOrder.get(row.id) || [],
       deal: dealById.get(row.dealId) || null,
       ...(row.dealId ? {} : { sourceDeal: dealById.get(sourceDealIdOf(row)) || null }),

@@ -126,7 +126,7 @@ test('ตัวเลือกที่มาของใบใช้ค่า�
   // ⭐ "ใบจากใบเสนอราคา" = isActualOrder (ไม่ใช่ใบย้อนหลัง และไม่ใช่ใบค่าสรรพสามิต · mig 0414) — กองเดียวกับการ์ด Actual
   assert.match(group, /\[ORIGIN_PIPELINE\]: \{ label: 'ใบจากใบเสนอราคา', match: \(row\) => isActualOrder\(row\) \}/);
   assert.match(group, /\[ORIGIN_HISTORICAL\]: \{ label: 'ใบย้อนหลัง', match: \(row\) => isHistoricalOrder\(row\) \}/);
-  assert.match(code(REGISTER), /EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,/);
+  assert.match(code(REGISTER), /EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,/);
   assert.doesNotMatch(code(REGISTER), /const ORIGIN_FILTERS/, 'นิยามเดียวที่ lib');
 });
 

@@ -31,7 +31,8 @@ test("ความพร้อม: ขาดราคาหนักกว่า
 test("คิว SA: ตัวโหลดติดป้าย + เรียงด้วยตัวเดียวกัน · แถวคิวบอกป้ายและความพร้อม", () => {
   const loader = readFileSync(new URL("../sales/handoffQueueData.js", import.meta.url), "utf8");
   assert.match(loader, /beforeLaunch: isBeforeExciseLaunch\(order\),\s*readiness: backlogReadiness\(resolved\.lines\),/);
-  assert.match(loader, /return sortBacklog\(rows\)\.slice\(0, LIST_CAP\);/);
+  assert.match(loader, /return sortBacklog\(rows\)\.slice\(0, limit\);/);
+  assert.match(loader, /export async function loadAwaitingFiling\(supabase, dealIds, \{ limit = LIST_CAP \} = \{\}\)/, 'ค่าตั้งต้นยังตัดที่ LIST_CAP (แดชบอร์ด/หน้าดีล) · ทะเบียน SO ขอทั้งหมด');
   const queue = readFileSync(new URL("../salesPlanning/myQueue.js", import.meta.url), "utf8");
   assert.match(queue, /order\.beforeLaunch \? 'ก่อนเปิดระบบ' : null,/);
   assert.match(queue, /BACKLOG_READINESS\[order\.readiness\]\?\.label/);
