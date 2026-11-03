@@ -1,7 +1,8 @@
 "use client";
 /* ── ตาราง "รายการชำระภาษีสรรพสามิต" ของ RA แบบตารางเดิม (มติเจ้าของ 03/11 V20–V23 · แผนรื้อสรรพสามิต หมวด 12.13) ──
    หัวเดือน (M.10/69 = เดือนที่ยื่นทำจ่าย · ยังไม่ยื่น = เดือนนี้ · V24) → หัวกลุ่ม = งานหนึ่งงาน (SO · ลูกค้า · ขั้น · ด่าน) → แถวละสินค้า
-   คอลัมน์ตามตารางเดิม ยกเว้น "สถานะขึ้นทะเบียน" (ขาดทะเบียน = เริ่มยื่นไม่ได้ ⇒ บอกที่หัวกลุ่ม · V20) + "ภาษี" ที่ระบบคิดให้
+   คอลัมน์ตามตารางเดิม ยกเว้น "สถานะขึ้นทะเบียน" (ขาดทะเบียน = เริ่มยื่นไม่ได้ ⇒ บอกที่หัวกลุ่ม · V20) + ภาษีที่ระบบคิดให้
+   ⭐ รีเช็คภาษี (เจ้าของ 03/11): ราคาขายปลีกรวม VAT · ถอด VAT · ภาษี/หน่วย · ภาษีรวม — ภาษี/หน่วยที่ไม่ตรงสูตร 8.8% ขึ้นเตือนในช่อง
    ⚠️ ข้อมูลรายการมาจาก `/api/tax/orders/table` ติดกับแถวงานด้วยคีย์ — แถวที่ยังไม่มีรายการ (กำลังมา · โหลดไม่ขึ้น) บอกเหตุในกลุ่ม */
 import Link from "next/link";
 import { TableScroll } from "@/components/ui/Table";
@@ -10,7 +11,9 @@ import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { filingDateText, filingMonthLabel } from "@/lib/excise/raFilingMonth";
 import styles from "./FilingLinesTable.module.css";
 
-const COLUMNS = ["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีกก่อน VAT", "ภาษี", "สถานะชำระ"];
+const COLUMNS = ["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม", "สถานะชำระ"];
+const NUMERIC = new Set(["จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม"]);
+const money = (value) => (value == null ? NA : fmtMoney(value));
 
 /** ก้อนรายเดือน (ใหม่สุดก่อน · ยังไม่รู้เดือนไปท้าย) · ในเดือนเรียงตามวันที่ส่งของ (ไม่มีวันไปท้าย) */
 function monthBuckets(rows) {
@@ -31,7 +34,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
   if (!rows.length) return <div className={styles.empty}>{empty}</div>;
   const span = COLUMNS.length + (selectable ? 1 : 0);
   return (
-    <TableScroll surface="embedded" minWidth={980}>
+    <TableScroll surface="embedded" minWidth={1180}>
       <table className={`w-full text-sm ${styles.table}`}>
         <thead>
           <tr>
@@ -40,7 +43,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                 <input type="checkbox" checked={allChecked} onChange={onToggleAll} aria-label="เลือกทุกงานที่พิมพ์ใบสรุปได้" />
               </th>
             ) : null}
-            {COLUMNS.map((label, index) => <th key={label} className={index >= 4 && index <= 6 ? styles.num : undefined}>{label}</th>)}
+            {COLUMNS.map((label) => <th key={label} className={NUMERIC.has(label) ? styles.num : undefined}>{label}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -94,7 +97,14 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                     <td title={line.fgCode || undefined}>{line.description || line.fgCode || NA}</td>
                     <td>{line.volume || NA}</td>
                     <td className={`${styles.num} mono`}>{fmtNumber(line.quantity)}</td>
-                    <td className={`${styles.num} mono`}>{line.retailPriceExVat == null ? NA : fmtMoney(line.retailPriceExVat)}</td>
+                    <td className={`${styles.num} mono`}>{money(line.retailPriceIncVat)}</td>
+                    <td className={`${styles.num} mono`}>{money(line.retailPriceExVat)}</td>
+                    <td className={`${styles.num} mono`}>
+                      {money(line.taxPerUnit)}
+                      {line.taxCheck && !line.taxCheck.ok ? (
+                        <span className={styles.taxMismatch} role="note">ไม่ตรงสูตร · 8.8% = {fmtMoney(line.taxCheck.expected)}</span>
+                      ) : null}
+                    </td>
                     <td className={`${styles.num} mono ${styles.tax}`}>{fmtMoney(line.totalTax)}</td>
                     <td><StatusBadge status={row.status} /></td>
                   </tr>

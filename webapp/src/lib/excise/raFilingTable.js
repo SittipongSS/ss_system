@@ -16,6 +16,7 @@ import { lineUnitsTotal } from '@/lib/sales/linePacks';
 import { productBrandName, productDisplayNameFor } from '@/lib/master/productIdentity';
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { loadFilingSource, loadRaFilingQueue } from '@/lib/excise/raFiling';
+import { productTaxRates } from '@/lib/tax/exciseBilling';
 
 const VAT_RATE = 0.07;
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -38,16 +39,46 @@ export function retailPriceExVat(product, { frozenIncVat = null } = {}) {
   return incVat > 0 ? round2(incVat / (1 + VAT_RATE)) : null;
 }
 
+/** ราคาขายปลีกรวม VAT ต่อหน่วย — ราคาที่ใบตรึงไว้ก่อน · ไม่มี = ของสินค้า · ไม่มีเลย = null */
+function retailPriceIncVat(product, frozenIncVat) {
+  const frozen = Number(frozenIncVat);
+  if (frozen > 0) return round2(frozen);
+  const incVat = Number(product?.retailPriceIncVat);
+  return incVat > 0 ? round2(incVat) : null;
+}
+
+/**
+ * รีเช็คภาษีต่อหน่วยกับสูตร (เจ้าของ 03/11: "แทรกราคาขายปลีกมาด้วย เพื่อรีเช็คว่าค่าภาษีคำนวณถูก")
+ * สูตรเดียวกับทะเบียนสินค้า (`productTaxRates`): ราคาขายปลีกถอด VAT × 8.8% ปัดครั้งเดียว (มติ Q2)
+ * @returns `{ expected, ok }` · ไม่มีราคาขายปลีก/ไม่มีภาษีต่อหน่วย = null (เทียบไม่ได้)
+ */
+export function taxPerUnitCheck(retailIncVat, taxPerUnit) {
+  const unit = Number(taxPerUnit);
+  if (!(Number(retailIncVat) > 0) || !Number.isFinite(unit)) return null;
+  const rates = productTaxRates(retailIncVat);
+  const expected = round2(rates.exciseTax + rates.localTax);
+  return { expected, ok: Math.abs(expected - round2(unit)) < 0.005 };
+}
+
 /** แถวสินค้าหนึ่งแถวของตาราง — แบรนด์/ชื่อ **อังกฤษก่อน** แบบตารางเดิมของ RA (เจ้าของดูจอจริง 03/11: "Scent Studio" ไม่ใช่ "เซนท์ สตูดิโอ")
- *  ไม่มีชื่ออังกฤษ = ชื่อไทย (`productDisplayNameFor` ไม่แปลเอง) */
-export function filingTableLine(product, { quantity = 0, totalTax = 0, fgCode = '', description = '', retailPriceIncVat = null } = {}) {
+ *  ไม่มีชื่ออังกฤษ = ชื่อไทย (`productDisplayNameFor` ไม่แปลเอง)
+ *  `taxPerUnit` = ภาษีรวม/หน่วยที่ใบคิดไว้ (สรรพสามิต + ท้องถิ่น) · ไม่ส่ง = ถอดจากภาษีรวม ÷ จำนวน */
+export function filingTableLine(product, { quantity = 0, totalTax = 0, fgCode = '', description = '', retailPriceIncVat: frozenIncVat = null, taxPerUnit = null } = {}) {
+  const qty = Number(quantity) || 0;
+  const unitTax = Number.isFinite(Number(taxPerUnit)) && taxPerUnit !== null
+    ? round2(taxPerUnit)
+    : (qty > 0 ? round2((Number(totalTax) || 0) / qty) : null);
+  const retailInc = retailPriceIncVat(product, frozenIncVat);
   return {
     fgCode: product?.fgCode || fgCode || '',
     brand: (product && productBrandName(product)) || '',
     description: (product && productDisplayNameFor(product, 'en')) || description || fgCode || '',
     volume: volumeText(product),
-    quantity: Number(quantity) || 0,
-    retailPriceExVat: retailPriceExVat(product, { frozenIncVat: retailPriceIncVat }),
+    quantity: qty,
+    retailPriceIncVat: retailInc,
+    retailPriceExVat: retailPriceExVat(product, { frozenIncVat }),
+    taxPerUnit: unitTax,
+    taxCheck: taxPerUnitCheck(retailInc, unitTax),
     totalTax: round2(totalTax || 0),
   };
 }
@@ -61,6 +92,7 @@ export function quoteLineTableLine(line, product) {
     fgCode: meta.sourceFgCode || '',
     description: meta.descriptionEn || meta.descriptionTh || line?.description || '',
     retailPriceIncVat: meta.retailPriceIncVat ?? null,
+    taxPerUnit: Number(line?.unitPrice) > 0 ? Number(line.unitPrice) : null,
   });
 }
 
@@ -149,7 +181,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   const quoteIds = [...new Set(groups.map((group) => group.quoteId).filter(Boolean))];
   const { data: quoteLines, error: quoteLineError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
     .from('quotation_lines')
-    .select('id, "quotationId", qty, "packQty", "lineTotal", description, metadata, "sortOrder"')
+    .select('id, "quotationId", qty, "packQty", "unitPrice", "lineTotal", description, metadata, "sortOrder"')
     .in('quotationId', chunk)
     .order('quotationId', { ascending: true })
     .order('sortOrder', { ascending: true })
@@ -180,7 +212,13 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
     const exciseOrder = group.exciseOrder || (group.exciseOrderId ? datesById.get(group.exciseOrderId) || null : null);
     const dateInfo = filingDeliveryDate({ exciseOrder, salesOrder });
     let lines;
-    if (group.items) lines = group.items.map((item) => filingTableLine(item.product || null, { quantity: item.quantity, totalTax: item.totalTax }));
+    if (group.items) {
+      lines = group.items.map((item) => filingTableLine(item.product || null, {
+        quantity: item.quantity,
+        totalTax: item.totalTax,
+        taxPerUnit: round2((Number(item.exciseRatePerUnit) || 0) + (Number(item.localTaxRatePerUnit) || 0)) || null,
+      }));
+    }
     else if (group.quoteId) lines = (linesByQuote.get(group.quoteId) || []).map((line) => quoteLineTableLine(line, productById.get(line.metadata?.sourceProductId)));
     else lines = (group.resolvedLines || []).map((line) => filingTableLine(productById.get(line.productId) || null, line));
     return {
