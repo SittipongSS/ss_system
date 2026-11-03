@@ -9,6 +9,9 @@
 //    ตาม `pressed` (การ์ดที่ตั้งตัวกรองของตาราง — ตรวจตัวเลข 26/10 · L16b) · ไม่ส่ง = <div> เดิมทุกตัวอักษร
 //    ⚠️ ผู้เรียกต้องให้ `onClick` ตั้งตัวกรอง **ทั้งชุด** ที่ทำให้ตารางได้แถวเท่าเลขบนการ์ดพอดี (ล้างตัวกรองค้าง)
 //    🪤 เปลือกเดียวสลับแท็ก (ไม่เขียนการ์ดสองชุด) — สไตล์เดิมอยู่ที่เดียว และด่านนับ inline style/ขนาดดิบของ audit:ui ไม่ขยับ
+// ⭐ จอแคบสองคอลัมน์ · ตั้งแต่ sm แถวเดียวตามจำนวนการ์ด (StatCards.module.css — เหตุผลอยู่ที่นั่น)
+import styles from "./StatCards.module.css";
+
 const TONE = {
   warn: { bg: "var(--amber-soft)", fg: "var(--amber)" },
   success: { bg: "var(--green-soft)", fg: "var(--green)" },
@@ -18,7 +21,7 @@ const TONE = {
 
 export default function StatCards({ items }) {
   return (
-    <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+    <div className={styles.grid} style={{ "--stat-count": items.length }}>
       {items.map((it) => {
         const t = TONE[it.tone];
         const clickable = typeof it.onClick === "function";

@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import Button from "@/components/ui/Button";
 import useStickyState from "@/lib/ui/useStickyState";
-import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, CircleDollarSign, FileCheck2, Download, ReceiptText } from "lucide-react";
+import { Package, Plus, Search, LayoutGrid, Table2, ChevronRight, ClipboardCheck, Archive, CircleDollarSign, FileCheck2, Download, ReceiptText, Layers } from "lucide-react";
 import { apiCache } from "@/lib/apiCache";
 import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canApproveMasterData, isSuperuser } from "@/lib/permissions";
@@ -40,6 +40,8 @@ import CostVatLines from "@/components/database/CostVatLines";
 import { apiFetch } from "@/lib/apiFetch";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
 import { giftSetFormError } from "@/lib/master/giftSetFormulas";
+import { BOM_FILTER_VALUES, BOM_STATUS_META, hasBomStep } from "@/lib/master/productBom";
+import ProductBomBadge from "@/components/database/ProductBomBadge";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -58,6 +60,7 @@ const SCENT_KEY = "/api/master/scents";
 const EMPTY = [];
 /* ค่าตั้งต้นของตัวกรองต้องเป็น array ตัวเดิมทุกเรนเดอร์ (เหตุผลเดียวกับ EMPTY) */
 const PENDING_ONLY = ["pending"];
+const BOM_RETURNED_ONLY = ["returned"];
 
 export default function ProductRegistry() {
   const canEdit = useCan("products:edit");
@@ -106,6 +109,9 @@ export default function ProductRegistry() {
   /* ⭐ "ต้องเสียสรรพสามิต" — ตัวกรองคู่ของการ์ดชื่อเดียวกัน (ตรวจตัวเลข 26/10 · L16b) · ตัวตัดสิน `isProductTaxable`
      ตัวเดียวกับเลขบนการ์ด (`productStatCounts`) และป้าย "ภาษีสรรพสามิต" บนแถว */
   const [taxableOnly, setTaxableOnly] = useState(false);
+  /* ⭐ สถานะลง BOM (mig 0419 · มติเจ้าของ 03/11) — ฝ่ายขายดูภาพรวมจากทะเบียนนี้ ไม่มีหน้าแยก (คิวแยกเป็นของ RD ที่ /rd/bom)
+     ค่า = `BOM_FILTER_VALUES` · เลือกแล้วกลุ่ม 03/04 หายทั้งหมด (ไม่มีขั้น BOM) */
+  const [bomFilter, setBomFilter] = useStickyState("bomFilter", EMPTY);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const emptyForm = EMPTY_PRODUCT;
@@ -350,6 +356,7 @@ export default function ProductRegistry() {
   const filterState = {
     search: q, statuses: statusFilter, registrations: regFilter, showInactive, productTypes,
     missingRetailPrice: missingPrice, taxable: taxableOnly,
+    bomStatuses: bomFilter,
   };
   const filteredProducts = filterProducts(products, filterState);
   /* เลขบนตัวเลือก "ขาดราคาขายปลีก (n)" / "รวมสินค้าที่เลิกใช้ (n)" = แถวหลังติ๊ก / แถวที่เพิ่มขึ้นเมื่อติ๊ก
@@ -363,11 +370,23 @@ export default function ProductRegistry() {
   /* การ์ด "ต้องเสียสรรพสามิต" (L16b) — กดแล้วตั้งตัวกรอง **ทั้งชุด**: ติ๊ก taxable + ล้างคำค้น/สถานะ/ทะเบียน/ขาดราคา/เลิกใช้
      ⇒ ตาราง = `filterProducts(products, { taxable: true })` = ชุดเดียวกับเลขบนการ์ด (`productStatCounts`) เสมอ
      · กดอยู่ (ตารางกำลังโชว์ชุดนั้นพอดี) กดซ้ำ = ถอดตัวกรองกลับทะเบียนเปล่า (= การ์ด "ทั้งหมด") */
-  const taxableCardPressed = taxableOnly && !q && !statusFilter.length && !regFilter.length && !showInactive && !missingPrice;
+  const taxableCardPressed = taxableOnly && !q && !statusFilter.length && !regFilter.length && !showInactive && !missingPrice && !bomFilter.length;
   const onTaxableCard = () => {
     if (taxableCardPressed) { setTaxableOnly(false); return; }
-    setSearch(""); setStatusFilter(EMPTY); setRegFilter(EMPTY); setShowInactive(false); setMissingPrice(false);
+    setSearch(""); setStatusFilter(EMPTY); setRegFilter(EMPTY); setShowInactive(false); setMissingPrice(false); setBomFilter(EMPTY);
     setTaxableOnly(true);
+  };
+  // มี FG กลุ่ม 01/02 ในทะเบียนไหม — ไม่มี = ไม่มีอะไรให้ส่ง RD ลง BOM ⇒ ไม่ขึ้นตัวกรองนี้ (เลขบนตัวเลือกมาจาก facets)
+  const bomInRegistry = useMemo(() => products.some(hasBomStep), [products]);
+  /* การ์ด "BOM ตีกลับ ต้องแก้" — งานค้างของฝ่ายขายตัวเดียวในเส้น BOM (ที่เหลือรอ RD) · ทรงเดียวกับการ์ดภาษีข้างบน:
+     กดแล้วตั้งตัวกรองทั้งชุด (ล้างตัวอื่น · BOM = ตีกลับอย่างเดียว) ⇒ ตาราง = `filterProducts(products, { bomStatuses: ['returned'] })`
+     = ชุดเดียวกับเลข `counts.bomReturned` · กดซ้ำ = กลับทะเบียนเปล่า */
+  const bomReturnedCardPressed = bomFilter.length === 1 && bomFilter[0] === "returned"
+    && !q && !statusFilter.length && !regFilter.length && !showInactive && !missingPrice && !taxableOnly;
+  const onBomReturnedCard = () => {
+    if (bomReturnedCardPressed) { setBomFilter(EMPTY); return; }
+    setSearch(""); setStatusFilter(EMPTY); setRegFilter(EMPTY); setShowInactive(false); setMissingPrice(false); setTaxableOnly(false);
+    setBomFilter(BOM_RETURNED_ONLY);
   };
 
   // Pending records this user may approve — surfaced at the top as a queue.
@@ -387,7 +406,7 @@ export default function ProductRegistry() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
-      resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${missingPrice}|${taxableOnly}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${missingPrice}|${taxableOnly}|${bomFilter.join(",")}|${sort.sortKey}|${sort.sortDir}`,
     });
 
   /* ── ปลายทางของระเบียนนี้ยกเป็นตัวเดียว (2026-09-02) ────────────────────────
@@ -412,9 +431,10 @@ export default function ProductRegistry() {
     if (showInactive) params.set("inactive", "1");
     if (missingPrice) params.set("missingPrice", "1");
     if (taxableOnly) params.set("taxable", "1");
+    if (bomFilter.length) params.set("bom", bomFilter.join(","));
     const qs = params.toString();
     return `/api/products/export${qs ? `?${qs}` : ""}`;
-  }, [q, statusFilter, regFilter, showInactive, missingPrice, taxableOnly]);
+  }, [q, statusFilter, regFilter, showInactive, missingPrice, taxableOnly, bomFilter]);
 
   /* ป้ายจำนวนย้ายไปอยู่หัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9) — เลขรวมทั้งทะเบียน
      ยังอยู่ที่ StatCards "ทั้งหมด" ใน rail · ปุ่มส่งออก/เพิ่มเป็นของระดับหน้า อยู่ที่นี่ต่อ */
@@ -444,13 +464,13 @@ export default function ProductRegistry() {
     <>
       <div className="search-glass">
         <Search size={18} color="var(--text-3)" aria-hidden="true" />
-        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์..." aria-label="ค้นหาสินค้า" />
+        <input autoComplete="off" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ค้นหาสินค้า / FG / แบรนด์ / รหัส BOM..." aria-label="ค้นหาสินค้า" />
       </div>
       {/* ปุ่มกรองอยู่ติดช่องค้นหา (ซ้าย) แบบเดียวกับหน้า list ฝั่งขาย — popover เปิด
           ชิดซ้ายของปุ่ม (left:0 กว้าง 420px) ถ้าวางชิดขวาแผงจะล้นขอบจอ */}
       <FilterPopover
-        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0) + (missingPrice ? 1 : 0) + (taxableOnly ? 1 : 0)}
-        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); setMissingPrice(false); setTaxableOnly(false); }}
+        count={statusFilter.length + regFilter.length + (showInactive ? 1 : 0) + (missingPrice ? 1 : 0) + (taxableOnly ? 1 : 0) + bomFilter.length}
+        onClear={() => { setStatusFilter([]); setRegFilter([]); setShowInactive(false); setMissingPrice(false); setBomFilter([]); setTaxableOnly(false); }}
         groups={[
           {
             key: "status", label: "สถานะอนุมัติ", icon: ClipboardCheck,
@@ -488,6 +508,15 @@ export default function ProductRegistry() {
             options: [{ value: "taxable", label: `ต้องเสียสรรพสามิต (${facets.taxable})` }],
             selected: taxableOnly ? ["taxable"] : [],
             onChange: (vals) => setTaxableOnly(vals.includes("taxable")),
+          }] : []),
+          /* ⭐ สถานะลง BOM (mig 0419) — ป้ายเดียวกับหน้า FG/คิว RD · เลขในวงเล็บ = แถวถ้าเลือกตัวนั้นตัวเดียว
+             ภายใต้ตัวกรองอื่นที่ติดอยู่ (`facets.bom`) · เลือกแล้วกลุ่ม 03/04 หาย (ไม่มีขั้น BOM) */
+          ...(bomInRegistry || bomFilter.length ? [{
+            key: "bom", label: "สถานะ BOM", icon: Layers,
+            options: BOM_FILTER_VALUES.map((value) => ({
+              value, label: `${BOM_STATUS_META[value].label} (${facets.bom[value]})`,
+            })),
+            selected: bomFilter, onChange: setBomFilter,
           }] : []),
           ...(inactiveInRegistry || showInactive ? [{
             key: "inactive", label: "ที่เลิกใช้", icon: Archive,
@@ -527,6 +556,12 @@ export default function ProductRegistry() {
                 onClick: onTaxableCard, pressed: taxableCardPressed,
                 title: taxableCardPressed ? "กดอีกครั้งเพื่อกลับไปดูทั้งทะเบียน" : "ดูเฉพาะสินค้าที่ต้องเสียภาษีสรรพสามิต",
               },
+              /* ⭐ ขึ้นเฉพาะตอนมีของค้างจริง (หรือกดค้างอยู่ ให้กดออกได้) — งานของฝ่ายขายในเส้น BOM มีแค่นี้ */
+              ...(counts.bomReturned > 0 || bomReturnedCardPressed ? [{
+                label: "BOM ตีกลับ ต้องแก้", value: counts.bomReturned, tone: counts.bomReturned ? "danger" : undefined,
+                onClick: onBomReturnedCard, pressed: bomReturnedCardPressed,
+                title: bomReturnedCardPressed ? "กดอีกครั้งเพื่อกลับไปดูทั้งทะเบียน" : "ดูเฉพาะ FG ที่ RD ตีกลับ — แก้ตามเหตุผลแล้วส่ง RD อีกครั้ง",
+              }] : []),
             ]}
           />
           <ApprovalQueue
@@ -551,7 +586,7 @@ export default function ProductRegistry() {
       >
       {sort.sorted.length === 0 ? (
         <EmptyState plain icon={Package}>
-          {q || statusFilter.length || regFilter.length || missingPrice || taxableOnly ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
+          {q || statusFilter.length || regFilter.length || missingPrice || taxableOnly || bomFilter.length ? "ไม่พบสินค้าที่ค้นหา" : "ยังไม่มีสินค้าในระบบ"}
         </EmptyState>
       ) : view === "cards" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -584,6 +619,7 @@ export default function ProductRegistry() {
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ApprovalBadge status={status} />
                     {inactive && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                    <ProductBomBadge product={p} />
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
@@ -711,6 +747,7 @@ export default function ProductRegistry() {
                           <ApprovalBadge status={approvalStatusOf(p)} />
                         )}
                         {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
+                        <ProductBomBadge product={p} />
                         {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
                           <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
                         )}
