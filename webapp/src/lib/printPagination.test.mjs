@@ -1,21 +1,61 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBillPrintHTML, paginateBillLines } from './tax/billPrint.js';
-import { buildReportPrintHTML, paginateReportRows } from './tax/reportPrint.js';
+import { buildReportPrintHTML, paginateReportRows, reportRowLines } from './tax/reportPrint.js';
 import { buildGanttPrintHTML, paginateTimelineGroups } from './pm/ganttPrint.js';
 
 test('tax report preview uses explicit landscape pages and keeps summary on the final page', () => {
-  const rows = Array.from({ length: 37 }, (_, index) => ({ name: `row-${index + 1}`, amount: index + 1 }));
-  assert.equal(paginateReportRows(rows).length, 3);
+  const columns = [{ key: 'name', label: 'รายการ', multiline: true }, { key: 'amount', label: 'ยอด', money: true }];
+  const rows = Array.from({ length: 37 }, (_, index) => ({ name: `row-${index + 1}\nsub`, amount: index + 1 }));
+  assert.equal(paginateReportRows(rows, columns).length, 3);
   const html = buildReportPrintHTML({
     title: 'รายงานทดสอบ',
-    columns: [{ key: 'name', label: 'รายการ' }, { key: 'amount', label: 'ยอด', money: true }],
+    columns,
     rows,
     summary: { _label: 'รวม', amount: 703 },
   });
   assert.equal((html.match(/class="sheet explicit-page"/g) || []).length, 3);
   assert.match(html, /หน้า 3 \/ 3/);
   assert.equal((html.match(/class="sum"/g) || []).length, 1);
+});
+
+/* 🐞 03/11/2026 รายงานขึ้นทะเบียนของ RA (เห็นราคาผลิต) — แถวสูงกว่าที่ตัวแบ่งหน้าเดา
+   ⇒ `.sheet { overflow: hidden }` ตัดแถวท้ายหน้าทิ้งเงียบ ๆ หน้าละ ~7 แถว
+   ยามนี้เช็กด้วย **ค่าที่วัดจากหน้าเรนเดอร์จริง** (ไม่ใช่ค่าคงที่ในโค้ด) ว่าทุกหน้าลงกระดาษ */
+const MEASURED = { body: 135.8, row: 5.08, sub: 2.74, summary: 5.99 };
+const measuredPageMm = (page, columns, isLast) =>
+  page.reduce((mm, row) => mm + MEASURED.row + MEASURED.sub * (reportRowLines(row, columns) - 1), 0)
+  + (isLast ? MEASURED.summary : 0);
+
+test('report pages fit the measured sheet whatever the row height — no row clipped by overflow:hidden', () => {
+  const columns = [
+    { key: 'product', label: 'สินค้า', multiline: true },
+    { key: 'factory', label: 'ราคาผลิต / กำไร', multiline: true },
+    { key: 'status', label: 'สถานะ' },
+  ];
+  for (const [lines, count] of [[1, 60], [2, 43], [3, 43], [5, 43], [3, 12], [3, 13]]) {
+    const rows = Array.from({ length: count }, (_, i) => ({
+      product: `FG-${i}\nชื่อสินค้า`,
+      factory: Array.from({ length: lines }, (__, l) => `บรรทัด ${l}`).join('\n'),
+      status: 'ขึ้นทะเบียนแล้ว',
+    }));
+    const pages = paginateReportRows(rows, columns);
+    assert.equal(pages.flat().length, count, `${lines} บรรทัด × ${count}: แถวต้องครบทุกแถว`);
+    pages.forEach((page, i) => {
+      assert.ok(page.length > 0, `${lines} บรรทัด × ${count}: หน้า ${i + 1} ว่าง`);
+      const mm = measuredPageMm(page, columns, i === pages.length - 1);
+      assert.ok(mm <= MEASURED.body, `${lines} บรรทัด × ${count}: หน้า ${i + 1} สูง ${mm.toFixed(1)}mm เกิน ${MEASURED.body}mm`);
+    });
+  }
+});
+
+test('registration report rows are three lines with cost — 12 per page, not the old fixed 16', () => {
+  const columns = [{ key: 'product', label: 'สินค้า', multiline: true }, { key: 'factory', label: 'ต้นทุน', multiline: true }];
+  const rows = Array.from({ length: 43 }, () => ({ product: 'FG\nชื่อ', factory: 'ราคาผลิต · กำไร\nวัตถุดิบ · ค่าแรง\nค่าจัดส่ง' }));
+  assert.deepEqual(paginateReportRows(rows, columns).map((p) => p.length), [12, 12, 12, 7]);
+  // ไม่เห็นราคาผลิต = แถวสองบรรทัด ⇒ ความจุเท่าค่าตายตัวเดิม (16) ไม่ได้ลดลงโดยไม่จำเป็น
+  const twoLine = rows.map((r) => ({ product: r.product }));
+  assert.equal(paginateReportRows(twoLine, columns)[0].length, 16);
 });
 
 test('excise bill preview splits item lines and renders totals once on the final page', () => {
