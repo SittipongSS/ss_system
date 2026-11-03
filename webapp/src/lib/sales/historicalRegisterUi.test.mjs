@@ -917,7 +917,7 @@ test('⭐ R9: โหลดทะเบียนไม่สำเร็จต้
   assert.match(code(STEP_CONTRACT), /emptyText=\{customersError \? REGISTRY_LOAD_FAILED : undefined\}/);
   /* ช่องแพ็คเกจ: ในบรรทัด + ในหน้าต่างเพิ่มหลายโซน (มติ 25/09) — ทะเบียนพัง ≠ ลูกค้าไม่มีแพ็คเกจ · สองช่องพูดคำเดียวกัน
      (ช่องแพ็คเกจรายแถวเคยไม่มี emptyText เลย ⇒ ตกไปที่ "ไม่พบรายการ" ของตัวห่อ) */
-  const EMPTY_PACKAGES = 'ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001) ในทะเบียนสินค้า';
+  const EMPTY_PACKAGES = 'ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001 หรือ 02-037) ในทะเบียนสินค้า';
   const packageEmpty = `emptyText={productsError ? REGISTRY_LOAD_FAILED : "${EMPTY_PACKAGES}"}`;
   const zones = code(STEP_ZONES);
   assert.ok(slice(zones, '<QuoteLineProductPicker', '/>').includes(packageEmpty), 'ช่องแพ็คเกจในบรรทัด');

@@ -175,7 +175,7 @@ test('⭐ §12 C6 คนกรอกเห็นก่อน–หลัง: โ
   assert.match(src, /const reviseNeedsPacks = packGate\.issues\.some\(\(issue\) => issue\.code === "required"\);/);
   assert.match(src, /detail=\{\["เอกสารที่อนุมัติแล้วแก้ไขตรงไม่ได้ Revision ใหม่จะต้องตรวจข้อมูลและยื่นอนุมัติอีกครั้ง", excise \? "รายการคิดใหม่จากใบสั่งขายต้นทาง ณ ตอนนี้" : null, reviseNeedsPacks \? LINE_PACK_EDIT_TEXT\.reviseNote : null\]\.filter\(Boolean\)\.join\(" · "\)\}/);
   assert.match(src, /visible: canReviseDocument && !editMode,/, 'ปุ่มออก Rev. อยู่นอกโหมดแก้เท่านั้น');
-  assert.equal(LINE_PACK_EDIT_TEXT.reviseNote, 'ฉบับใหม่ต้องกรอก “แพ็ค/เดือน” ของรายการหมวด 02-001 ก่อนยื่นอนุมัติ');
+  assert.equal(LINE_PACK_EDIT_TEXT.reviseNote, 'ฉบับใหม่ต้องกรอก “แพ็ค/เดือน” ของรายการหมวด 02-001 หรือ 02-037 ก่อนยื่นอนุมัติ');
 });
 
 test('⭐ hook ของด่านฝั่งจอ: ข้อความคิดสด · โหมดแดงดับเองเมื่อไม่เหลือข้อ · โฟกัส/เลื่อนหลังวาด · ไม่แตะเลขแพ็ค ไม่เรียก API', () => {

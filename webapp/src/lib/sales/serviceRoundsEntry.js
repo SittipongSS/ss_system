@@ -117,7 +117,7 @@ export function validateServiceRoundsPatch(patch, lines = [], order = null) {
     const line = byId.get(lineId);
     if (!line) return { value: null, error: 'มีรายการที่ไม่ได้อยู่ในใบนี้ — รีเฟรชแล้วลองใหม่' };
     if (!lineTakesServiceRounds(line, order)) {
-      return { value: null, error: 'กรอกจำนวนรอบได้เฉพาะรายการแพ็คเกจบริการ (หมวด 02-001)' };
+      return { value: null, error: 'กรอกจำนวนรอบได้เฉพาะรายการแพ็คเกจบริการ (หมวด 02-001 หรือ 02-037)' };
     }
     const rounds = normalizeServiceRounds(raw);
     /* ⭐ ใบที่ประทับแล้ว (mig 0392): รอบขายของโซนเกิดแล้ว — ล้างเป็น "ยังไม่ระบุ" ไม่ได้ (trigger ตอบ rounds_required) */

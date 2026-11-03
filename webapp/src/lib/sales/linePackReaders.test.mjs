@@ -20,7 +20,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { PACK_LINE_CATEGORY, QUOTE_PACK_INPUT_OPEN, linePackIssues } from './linePacks.js';
+import { PACK_LINE_CATEGORIES, QUOTE_PACK_INPUT_OPEN, linePackIssues } from './linePacks.js';
 import { SCENT_DESIGN_CATEGORIES } from '../requests/scentDesignOrders.js';
 
 const SRC = new URL('../../', import.meta.url); // webapp/src/
@@ -753,9 +753,9 @@ test('GA รายชื่อคอลัมน์ของบรรทัด�
   assert.ok(seen >= EMBEDDED_READ_FLOOR, `เจอรายชื่อฝัง ${seen} จุด (เคยเจอ ${EMBEDDED_READ_FLOOR})`);
 });
 
-test('GA เหตุของการยกเว้นยังจริง: เลขแพ็คมีได้เฉพาะหมวด 02-001 · ตัวนับกลิ่นอ่านเฉพาะบรรทัดออกแบบกลิ่น · ตัวที่ "โหลดมาเฉย ๆ" ไม่มีใครอ่าน', () => {
-  assert.equal(PACK_LINE_CATEGORY, '02-001');
-  assert.equal(SCENT_DESIGN_CATEGORIES.includes(PACK_LINE_CATEGORY), false, 'หมวดออกแบบกลิ่นต้องไม่มีหมวดที่มีเลขแพ็ค');
+test('GA เหตุของการยกเว้นยังจริง: เลขแพ็คมีได้เฉพาะหมวด 02-001 / 02-037 · ตัวนับกลิ่นอ่านเฉพาะบรรทัดออกแบบกลิ่น · ตัวที่ "โหลดมาเฉย ๆ" ไม่มีใครอ่าน', () => {
+  assert.deepEqual(PACK_LINE_CATEGORIES, ['02-001', '02-037']);
+  for (const code of PACK_LINE_CATEGORIES) assert.equal(SCENT_DESIGN_CATEGORIES.includes(code), false, 'หมวดออกแบบกลิ่นต้องไม่มีหมวดที่มีเลขแพ็ค');
   assert.ok(SCENT_DESIGN_CATEGORIES.length > 0 && SCENT_DESIGN_CATEGORIES.every((codeOf) => /^03-\d{3}$/.test(codeOf)));
   /* เซิร์ฟเวอร์ปฏิเสธเลขแพ็คบนบรรทัดหมวดอื่นเสมอ (ช่องเปิดแล้วก็ตาม) ⇒ บรรทัดออกแบบกลิ่นไม่มีวันมีเลขแพ็ค */
   for (const category of SCENT_DESIGN_CATEGORIES) {

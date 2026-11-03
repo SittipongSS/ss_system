@@ -21,7 +21,7 @@
 import { fmtMoney, fmtNumber } from '@/lib/format';
 import { quoteLineNet, toMoney } from '@/lib/salesPlanning';
 import {
-  PACK_LINE_CATEGORY, PACK_QTY_INVALID, linePackGateMessage, linePackIssues, linePackMessage, lineTakesPacks, lineUnitsTotal,
+  PACK_LINE_CATEGORY_TEXT, PACK_QTY_INVALID, linePackGateMessage, linePackIssues, linePackMessage, lineTakesPacks, lineUnitsTotal,
   packQtyValue,
 } from '@/lib/sales/linePacks';
 import { PACK_COLUMN_LABEL, linePackFormulaText } from '@/lib/sales/linePackView';
@@ -36,8 +36,8 @@ export const LINE_PACK_EDIT_TEXT = Object.freeze({
   storedAmount: (amount) => `ยอดเดิม ${amount}`,
   totalSame: (amount) => `ยอดรวมทั้งสิ้นเท่าเดิม ${amount}`,
   totalChanged: (before, after) => `ยอดรวมทั้งสิ้นเปลี่ยนจาก ${before} เป็น ${after}`,
-  reviseNote: `ฉบับใหม่ต้องกรอก “${PACK_COLUMN_LABEL}” ของรายการหมวด ${PACK_LINE_CATEGORY} ก่อนยื่นอนุมัติ`,
-  resplitHint: `รายการหมวด ${PACK_LINE_CATEGORY} ของใบนี้บันทึกไว้ก่อนมีช่อง “${PACK_COLUMN_LABEL}” — แยกจำนวนเดิมเป็น แพ็ค × เดือน ให้ยอดเท่าเดิม (เช่น 24 = 2 แพ็ค × 12 เดือน)`,
+  reviseNote: `ฉบับใหม่ต้องกรอก “${PACK_COLUMN_LABEL}” ของรายการหมวด ${PACK_LINE_CATEGORY_TEXT} ก่อนยื่นอนุมัติ`,
+  resplitHint: `รายการหมวด ${PACK_LINE_CATEGORY_TEXT} ของใบนี้บันทึกไว้ก่อนมีช่อง “${PACK_COLUMN_LABEL}” — แยกจำนวนเดิมเป็น แพ็ค × เดือน ให้ยอดเท่าเดิม (เช่น 24 = 2 แพ็ค × 12 เดือน)`,
 });
 
 /** คำบอกใบ้ของช่อง (title): "แพ็ค/เดือน — จำนวนเต็ม 1–9,999" */

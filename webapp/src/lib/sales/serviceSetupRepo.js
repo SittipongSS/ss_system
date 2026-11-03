@@ -24,8 +24,8 @@ import { serviceSetupSqlMessage } from '@/lib/sales/serviceSetup';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
 
-/* หมวดของแพ็คเกจบริการรายรอบ — ตัวเดียวกับ SERVICE_ROUND_CATEGORY (serviceOrders.js) และ `fg_category_of` ของฐาน */
-const PACKAGE_CATEGORY = '02-001';
+/* หมวดของแพ็คเกจบริการรายรอบ — ชุดเดียวกับ SERVICE_ROUND_CATEGORIES (serviceOrders.js) และ `service_package_category` ของฐาน (0422) */
+const PACKAGE_CATEGORIES = Object.freeze(['02-001', '02-037']);
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
 const list = (value) => (Array.isArray(value) ? value : []);
@@ -111,7 +111,7 @@ const productShape = (row) => ({
   name: productDisplayName(row) || row.fgCode || null,
 });
 
-/* แพ็คเกจที่บรรทัดเลือกไว้ — อ่านทุกสถานะ (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่ 02-001 = ข้อ fg_invalid ต้องตัดสินได้) */
+/* แพ็คเกจที่บรรทัดเลือกไว้ — อ่านทุกสถานะ (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่หมวดแพ็คเกจ = ข้อ fg_invalid ต้องตัดสินได้) */
 async function loadProducts(supabase, productIds) {
   const rows = await orThrow('อ่านแพ็คเกจที่เลือกไว้', () => fetchAllInChunks(productIds, (chunk) => supabase
     .from('products')
@@ -199,14 +199,14 @@ async function taxSiblingsOf(supabase, customerId) {
   return orThrow('อ่านลูกค้านิติบุคคลเดียวกัน', () => customerTaxSiblings(supabase, customerId));
 }
 
-/* แพ็คเกจที่เลือกได้ = FG หมวด 02-001 ที่อนุมัติแล้ว (null = ของยุคก่อนมีด่าน) และยังใช้งาน ของลูกค้า + นิติบุคคลเดียวกัน
-   ⭐ กติกาเดียวกับ `GET /api/products?taxSiblings=1` + ด่านสินค้าของ RPC บันทึก (อนุมัติ · ใช้งาน · หมวด 02-001)
+/* แพ็คเกจที่เลือกได้ = FG หมวด 02-001 / 02-037 ที่อนุมัติแล้ว (null = ของยุคก่อนมีด่าน) และยังใช้งาน ของลูกค้า + นิติบุคคลเดียวกัน
+   ⭐ กติกาเดียวกับ `GET /api/products?taxSiblings=1` + ด่านสินค้าของ RPC บันทึก (อนุมัติ · ใช้งาน · หมวด 02-001 / 02-037)
    ⭐ ของใบลูกค้าที่ถามขึ้นก่อน แล้วเรียงรหัส FG · ของพี่น้องติดป้าย `ownerArCode` ("ของ AR-xxxx") */
 async function fgOptionsOf(supabase, customerId, siblings) {
   if (!customerId) return [];
   const owners = siblings.length ? siblings : [{ id: customerId }];
   const arCodeOf = new Map(owners.map((row) => [row.id, text(row.arCode) || null]));
-  const rows = await orThrow('อ่านแพ็คเกจ (FG หมวด 02-001) ของลูกค้า', () => fetchAllInChunks(owners.map((row) => row.id), (chunk) => supabase
+  const rows = await orThrow('อ่านแพ็คเกจ (FG หมวดบริการ) ของลูกค้า', () => fetchAllInChunks(owners.map((row) => row.id), (chunk) => supabase
     .from('products')
     .select('id, "fgCode", "productDescription", "productDescriptionEn", "customerId", "isActive", "approvalStatus"')
     .in('customerId', chunk)
@@ -214,7 +214,7 @@ async function fgOptionsOf(supabase, customerId, siblings) {
     .order('fgCode', { ascending: true })
     .order('id', { ascending: true })));
   return rows
-    .filter((row) => row.isActive !== false && categoryOf(row.fgCode) === PACKAGE_CATEGORY)
+    .filter((row) => row.isActive !== false && PACKAGE_CATEGORIES.includes(categoryOf(row.fgCode)))
     .sort((a, b) => Number(a.customerId !== customerId) - Number(b.customerId !== customerId)
       || byColumns('fgCode', 'id')(a, b))
     .map((row) => ({

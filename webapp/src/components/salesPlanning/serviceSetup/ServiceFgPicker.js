@@ -59,7 +59,7 @@ export default function ServiceFgPicker({ lineId, lineNo, value = null, fgCode =
       ) : null}
       {!list.length ? (
         <p className={styles.hint}>
-          ลูกค้ารายนี้ยังไม่มีแพ็คเกจหมวด 02-001 ในฐานข้อมูลสินค้า — สร้าง FG แล้วให้ผู้จัดการฝ่ายขายอนุมัติก่อน ·{" "}
+          ลูกค้ารายนี้ยังไม่มีแพ็คเกจหมวด 02-001 หรือ 02-037 ในฐานข้อมูลสินค้า — สร้าง FG แล้วให้ผู้จัดการฝ่ายขายอนุมัติก่อน ·{" "}
           <Link href="/database/products">เปิดฐานข้อมูลสินค้า</Link>
         </p>
       ) : null}

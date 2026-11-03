@@ -3,7 +3,7 @@
 // ⭐ **มติผู้ใช้ 2026-08-30** (docs/service-contract-phase-plan.md §0 ข้อ 7):
 //   *"ดีล สายบริการ + มี 02-001 ใบไหนมีอย่างน้อย 1 รายการ ทั้งใบคือมีรอบบริการ"*
 //
-//      สายของใบ === 'SERVICE'  และ  มีบรรทัดหมวด 02-001 อย่างน้อยหนึ่งบรรทัด
+//      สายของใบ === 'SERVICE'  และ  มีบรรทัดหมวดแพ็คเกจบริการ (02-001 · 02-037 ตั้งแต่ 03/11) อย่างน้อยหนึ่งบรรทัด
 //
 // ⚠️ **ตัดสินระดับใบ ไม่ใช่รายบรรทัด** — ใบเดียวกันมีค่าติดตั้ง ค่าขนส่ง หรือขายน้ำหอม
 //   เป็นขวดปนอยู่ได้ ทั้งใบยังนับเป็นใบมีรอบบริการเหมือนกัน (บรรทัดอื่นจัดสรรลงโซนได้ตามเดิม)
@@ -22,9 +22,16 @@ import { categoryOf } from '@/lib/master/categoryOf';
 import { orderBusinessLine } from '@/lib/service/intake';
 import { fmtNumber } from '@/lib/format';
 
-/* หมวดสินค้าที่ทำให้ใบเข้าเส้นบริการ — ค่าเดียว ประกาศที่นี่ที่เดียว
-   (02 = ธุรกิจบริการ · 001 = ระบบกระจายกลิ่น SDS — ทะเบียน product_types mig 0007) */
-export const SERVICE_ROUND_CATEGORY = '02-001';
+/* หมวดสินค้าที่ทำให้ใบเข้าเส้นบริการ — ชุดเดียว ประกาศที่นี่ที่เดียว
+   (02 = ธุรกิจบริการ · 001 = ระบบกระจายกลิ่น SDS — ทะเบียน product_types mig 0007)
+   ⭐ มติเจ้าของ 03/11: 037 = ก้านหอมแบบบริการ ทำงานเหมือน 001 ทุกจุด (แพ็ค/เดือน · ตั้งงานบริการ · ด่านเงิน)
+     · 02-011 (ก้านหอมที่ขายน้ำหอมเติมเป็นกิโล) ไม่อยู่ในชุด — สินค้าแบบบริการย้ายไปเปิดในหมวด 037
+   ⚠️ ชุดนี้มีสำเนาในฐาน (`public.service_package_category` · mig 0422) — แก้ที่นี่ต้องแก้ฐานด้วย (serviceSetupSqlParity ยึด) */
+export const SERVICE_ROUND_CATEGORIES = Object.freeze(['02-001', '02-037']);
+/** รหัสหมวดในข้อความ ("02-001 หรือ 02-037") */
+export const SERVICE_ROUND_CATEGORY_TEXT = SERVICE_ROUND_CATEGORIES.join(' หรือ ');
+/** หมวดนี้เป็นแพ็คเกจบริการรายรอบไหม — รับรหัสหมวด (ผลของ categoryOf) */
+export const isServiceRoundCategory = (code) => SERVICE_ROUND_CATEGORIES.includes(code);
 
 /* ⭐ **คำเรียกจำนวนรอบที่ขายไว้ของบรรทัดแพ็คเกจบริการ** — มติเจ้าของ 29/09: *"ไปกี่รอบ เปลี่ยน เป็น คำว่า จำนวนรอบบริการ"*
    ที่เดียวของคำนี้: ช่องกรอกของบรรทัด (ขั้น ② ใบย้อนหลัง) · ป้ายฝั่งอ่าน (ขั้น ④ · หน้าใบสั่งขาย) · หัวคอลัมน์การ์ดโซน ·
@@ -98,7 +105,7 @@ export function effectiveServiceFgCode(line, order = null) {
    ⚠️ มีอาร์กิวเมนต์ที่สอง (`order`) แล้ว — ห้ามส่งแบบ point-free ที่ใบจริงผ่าน (`.filter(lineIsServicePackage)`
      ส่ง index มาเป็น order) · ใช้ลูกศร `(l) => lineIsServicePackage(l, order)` เสมอ */
 export const lineIsServicePackage = (line, order = null) =>
-  categoryOf(effectiveServiceFgCode(line, order)) === SERVICE_ROUND_CATEGORY;
+  isServiceRoundCategory(categoryOf(effectiveServiceFgCode(line, order)));
 
 export const hasServicePackageLine = (lines = [], order = null) =>
   (Array.isArray(lines) ? lines : []).some((l) => lineIsServicePackage(l, order));

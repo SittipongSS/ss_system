@@ -1,4 +1,4 @@
-// ── เลขแพ็คของบรรทัดใบเสนอราคา ("แพ็ค/เดือน" · หมวด 02-001 · mig 0407) ──────────────────────────────────
+// ── เลขแพ็คของบรรทัดใบเสนอราคา ("แพ็ค/เดือน" · หมวด 02-001 และ 02-037 · mig 0407 · 0422) ─────────────────────
 //
 // ⭐ มติเจ้าของ 08/10: จำนวนเงินของรายการ = แพ็ค × จำนวน × ราคา แล้วหักส่วนลดรายการตามเดิม
 //   (2 แพ็ค × 12 เดือน × 3,500 = 84,000) · เก็บที่ quotation_lines."packQty" / sales_order_lines."packQty"
@@ -13,8 +13,14 @@
 //   เขียนเป็นค่าตรง ๆ แล้วให้เทสต์ยึด (linePacks.test.mjs)
 import { categoryOf } from '@/lib/master/categoryOf';
 
-/** หมวดที่บรรทัดต้องมีเลขแพ็ค — ค่าเดียวกับ SERVICE_ROUND_CATEGORY (serviceOrders.js · เทสต์ยึด) */
-export const PACK_LINE_CATEGORY = '02-001';
+/** หมวดที่บรรทัดต้องมีเลขแพ็ค — ชุดเดียวกับ SERVICE_ROUND_CATEGORIES (serviceOrders.js · เทสต์ยึด)
+    ⭐ มติเจ้าของ 03/11: 02-037 (ก้านหอมแบบบริการ) ทำงานเหมือน 02-001 ทุกจุด · 02-011 (ก้านหอมขายเป็นกิโล) ไม่อยู่ในชุด
+    ⚠️ เพิ่มหมวดที่นี่ = ต้องแก้ยามในฐานด้วย (0410 → 0422 `quotation_line_pack_keep`) ไม่งั้นเลขแพ็คของหมวดใหม่หายเงียบได้ */
+export const PACK_LINE_CATEGORIES = Object.freeze(['02-001', '02-037']);
+/** รหัสหมวดในข้อความ ("02-001 หรือ 02-037") */
+export const PACK_LINE_CATEGORY_TEXT = PACK_LINE_CATEGORIES.join(' หรือ ');
+/** หมวดนี้ต้องมีเลขแพ็คไหม */
+export const isPackLineCategory = (code) => PACK_LINE_CATEGORIES.includes(code);
 /** ช่วงของเลขแพ็ค — เท่ากับ CHECK *_pack_qty_range ของ 0407 และ sales_order_line_zones."packsPerRound" (0392) */
 export const PACK_QTY_MIN = 1;
 export const PACK_QTY_MAX = 9999;
@@ -39,8 +45,8 @@ export const PACK_QTY_INVALID = Symbol.for('ss.packQty.invalid');
 export const LINE_PACK_TEXT = Object.freeze({
   closed: 'ยังไม่เปิดให้กรอก “แพ็ค/เดือน” — ลบตัวเลขในช่องนั้นออกแล้วบันทึกอีกครั้ง',
   invalid: '“แพ็ค/เดือน” ต้องเป็นจำนวนเต็ม 1–9,999',
-  required: `รายการหมวด ${PACK_LINE_CATEGORY} ต้องกรอก “แพ็ค/เดือน” ทุกรายการ`,
-  notAllowed: `“แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด ${PACK_LINE_CATEGORY} — ลบตัวเลขในช่องนั้นออกก่อนบันทึก`,
+  required: `รายการหมวด ${PACK_LINE_CATEGORY_TEXT} ต้องกรอก “แพ็ค/เดือน” ทุกรายการ`,
+  notAllowed: `“แพ็ค/เดือน” ใช้ได้เฉพาะรายการหมวด ${PACK_LINE_CATEGORY_TEXT} — ลบตัวเลขในช่องนั้นออกก่อนบันทึก`,
   moneyRule: 'ยอดของรายการไม่ตรงกับสูตร แพ็ค × จำนวน × ราคา — ยังไม่ได้บันทึก แจ้งผู้ดูแลระบบ',
   /* ท้ายข้อความของด่านที่ไม่ได้อยู่บนฟอร์มแก้ไข (linePackGateMessage) — บอก **ปุ่มที่คนนั้นมีอยู่จริง** บนหน้าใบ
      · ชื่อปุ่มในเครื่องหมายคำพูดและคำว่า "ออก Rev." ตรงกับป้ายของปุ่มจริงทุกตัวอักษร (เทสต์ยึด — เปลี่ยนชื่อปุ่ม = เทสต์แดง ไม่ใช่ข้อความชี้ปุ่มที่ไม่มี)
@@ -96,7 +102,7 @@ export function lineCategoryCode(line, product = null) {
 
 /** บรรทัดนี้ต้องมีเลขแพ็คไหม — มติ A3: ดู **หมวดอย่างเดียว** ไม่ดูหน่วยขาย (กิโลกรัม/ชิ้นของหมวดนี้ก็ต้องกรอก) */
 export function lineTakesPacks(line, product = null) {
-  return lineCategoryCode(line, product) === PACK_LINE_CATEGORY;
+  return isPackLineCategory(lineCategoryCode(line, product));
 }
 
 /** หน่วยที่เก็บ/โชว์ข้างช่องจำนวน: บรรทัดที่มีเลขแพ็คที่ใช้ได้ = "เดือน" · นอกนั้นคืนหน่วยของทะเบียนตามเดิม */
@@ -130,8 +136,8 @@ export function lineScreenRows(lines, numbering = null) {
 
 /**
  * กฎของเซิร์ฟเวอร์ — อ่าน `line.packQty` (และหมวดเมื่อช่องเปิด) · คืน `[]` เมื่อบันทึกได้ทั้งหมด
- * - ช่องเปิด (ค่าตั้งต้น — สวิตช์จริง): ค่าใช้ไม่ได้ = `invalid` · บรรทัดที่ไม่ใช่หมวด 02-001 แต่มีตัวเลข = `not_allowed` ·
- *   บรรทัดหมวด 02-001 ที่ช่องว่าง = `required` เว้นแต่ `requireOnCategory: false`
+ * - ช่องเปิด (ค่าตั้งต้น — สวิตช์จริง): ค่าใช้ไม่ได้ = `invalid` · บรรทัดที่ไม่ใช่หมวดแพ็ค (PACK_LINE_CATEGORIES) แต่มีตัวเลข = `not_allowed` ·
+ *   บรรทัดหมวดแพ็คที่ช่องว่าง = `required` เว้นแต่ `requireOnCategory: false`
  *   (ตอนออก Rev. และบรรทัดที่เซิร์ฟเวอร์สร้างเอง — ด่านทักตอนบันทึก/ยื่นครั้งถัดไป · มติ 08/10 ข้อ 3)
  * - ช่องปิด (`open: false` — **คำตอบของรุ่น PR-1 / PR-2 ซึ่งเป็นรุ่นที่ถอยกลับไปได้** · โค้ดของแอปไม่มีจุดไหนส่งค่านี้):
  *   ทุกบรรทัดที่ช่องไม่ว่าง ได้ `closed` — ค่าที่ถูกต้องด้วย · `null` / `undefined` / `''` / ไม่มีคีย์ ไม่ใช่เลขแพ็ค จึงไม่ถูกทักเลย

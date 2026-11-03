@@ -118,7 +118,7 @@ export default function HistoricalBulkZonesModal({
                 ariaLabel="แพ็คเกจของทุกบรรทัดที่จะเพิ่ม"
                 placeholder="เลือก FG / สินค้า..."
                 searchPlaceholder="ค้นหารหัส FG หรือชื่อแพ็คเกจ"
-                emptyText={productsError ? REGISTRY_LOAD_FAILED : "ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001) ในทะเบียนสินค้า"}
+                emptyText={productsError ? REGISTRY_LOAD_FAILED : "ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001 หรือ 02-037) ในทะเบียนสินค้า"}
               />
               {pressed && !productId ? <small data-bad="yes">{T.noPackage}</small> : null}
             </div>

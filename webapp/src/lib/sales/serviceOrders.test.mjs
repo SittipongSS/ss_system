@@ -6,7 +6,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SERVICE_ROUND_CATEGORY,
+  SERVICE_ROUND_CATEGORIES,
+  isServiceRoundCategory,
   hasServicePackageLine,
   lineIsServicePackage,
   orderBusinessLineOf,
@@ -18,8 +19,16 @@ const otherLine = (over = {}) => ({ id: 'L9', fgCode: 'FG-0233-01-002-10001', qt
 const serviceDeal = { id: 'DL1', line: 'SERVICE' };
 const productDeal = { id: 'DL2', line: 'PRODUCT' };
 
-test('หมวดที่ทำให้ใบเข้าเส้นบริการคือ 02-001 ค่าเดียว', () => {
-  assert.equal(SERVICE_ROUND_CATEGORY, '02-001');
+test('หมวดที่ทำให้ใบเข้าเส้นบริการคือ 02-001 และ 02-037 (มติเจ้าของ 03/11) · 02-011 ไม่ใช่', () => {
+  assert.deepEqual(SERVICE_ROUND_CATEGORIES, ['02-001', '02-037']);
+  assert.ok(Object.isFrozen(SERVICE_ROUND_CATEGORIES));
+  assert.equal(isServiceRoundCategory('02-037'), true);
+  assert.equal(isServiceRoundCategory('02-011'), false);
+  assert.equal(isServiceRoundCategory(null), false);
+  assert.equal(lineIsServicePackage({ fgCode: 'FG-0533-02-037-10301' }), true);
+  assert.equal(lineIsServicePackage({ fgCode: 'FG-260-02-011-0921' }), false);
+  assert.equal(orderHasServiceRounds({ dealId: 'DL1', deal: serviceDeal }, [{ fgCode: 'FG-0533-02-037-10301' }]), true);
+  assert.equal(orderHasServiceRounds({ dealId: 'DL1', deal: serviceDeal }, [{ fgCode: 'FG-260-02-011-0921' }]), false);
 });
 
 test('อ่านหมวดจาก fgCode ได้ทั้งรหัสออโต้และรหัสกรอกมือ', () => {
