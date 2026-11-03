@@ -891,10 +891,12 @@ export function can(role, cap) {
    เปลี่ยนฝ่าย · รีเซ็ตรหัส · แก้ extraCaps ยังทำไม่ได้** (ยังเป็น users:manage เท่านั้น)
    ⚠️ ตัวจำกัดขอบเขตอยู่ที่ `canManageTeams(user, department)` ไม่ได้อยู่ที่ cap —
    ถือ cap แล้วยังจัดได้เฉพาะฝ่ายตัวเอง */
-export const GRANTABLE_CAPS = ['ra:view', 'ra:approve', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view', 'team:manage'];
+/* ⛔ `ra:approve` ไม่แจกรายคนแล้ว (แผนรื้อสรรพสามิต PR6c · มติ Q22 · ถอดจาก 4 บัญชีแล้ว 03/11 พร้อม audit) — งานอนุมัติทะเบียน/ยื่นกรม
+   เป็นของตำแหน่ง `ra` กับแอดมินเท่านั้น · สิทธิ์รายคนตัวนี้เปิดแค่ปุ่มบนจอ (proxy ตรวจ role อย่างเดียว) ⇒ ปุ่มกดแล้วโดนปฏิเสธ
+   · ค่าเก่าที่ค้างใน app_metadata ถูก `sanitizeExtraCaps` ทิ้งเอง */
+export const GRANTABLE_CAPS = ['ra:view', 'products:margin', 'mgmt:view', 'mgmt:edit', 'audit:view', 'users:view', 'team:manage'];
 export const GRANTABLE_CAP_LABELS = {
   'ra:view': 'ดูสถานะภาษีทุกทีม (RA)',
-  'ra:approve': 'อนุมัติ/ยื่นภาษี แทนฝ่าย RA',
   'products:margin': 'เห็นต้นทุน/กำไรโรงงาน (ทำรายงานผู้บริหาร)',
   'mgmt:view': 'เข้าดูระบบงานบริหาร (mgmt)',
   'mgmt:edit': 'เพิ่ม/แก้ไขข้อมูลในระบบงานบริหาร (mgmt)',

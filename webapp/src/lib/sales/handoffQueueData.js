@@ -12,6 +12,7 @@ import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales/handoffQueue';
 import { nonExciseRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { exciseHandledOrderIds } from '@/lib/excise/exciseQuotation';
+import { backlogReadiness, isBeforeExciseLaunch, sortBacklog } from '@/lib/excise/exciseBacklog';
 
 const LIST_CAP = 100;
 
@@ -119,7 +120,7 @@ async function loadAwaitingFiling(supabase, dealIds) {
     candidates.map((order) => order.customerId),
   );
 
-  return candidates
+  const rows = candidates
     .map((order) => {
       const resolved = resolveSoFiling({
         salesOrder: order,
@@ -129,11 +130,15 @@ async function loadAwaitingFiling(supabase, dealIds) {
         registrations: registrationResult.data || [],
         ownerCustomerIds: ownerIdsByCustomer.get(order.customerId) || null,
       });
-      return { ...order, filingItemCount: resolved.lines.length, filingTotalTax: resolved.totalTax, eligible: resolved.eligible };
+      return {
+        ...order, filingItemCount: resolved.lines.length, filingTotalTax: resolved.totalTax, eligible: resolved.eligible,
+        // ⭐ PR6c (มติ D6): ป้าย "ก่อนเปิดระบบ" + ความพร้อม (ครบ → ขาดทะเบียน → ขาดราคา) — ลำดับของคิวตามนี้
+        beforeLaunch: isBeforeExciseLaunch(order),
+        readiness: backlogReadiness(resolved.lines),
+      };
     })
-    .filter((order) => order.eligible)
-    .sort((a, b) => String(a.approvedAt || '').localeCompare(String(b.approvedAt || '')))
-    .slice(0, LIST_CAP);
+    .filter((order) => order.eligible);
+  return sortBacklog(rows).slice(0, LIST_CAP);
 }
 
 export async function loadHandoffQueue(supabase, { dealIds = null } = {}) {
