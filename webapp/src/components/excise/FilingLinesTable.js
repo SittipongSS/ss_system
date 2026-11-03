@@ -1,6 +1,6 @@
 "use client";
 /* ── ตาราง "รายการชำระภาษีสรรพสามิต" ของ RA แบบตารางเดิม (มติเจ้าของ 03/11 V20–V23 · แผนรื้อสรรพสามิต หมวด 12.13) ──
-   หัวเดือน (M.10/69) → หัวกลุ่ม = งานหนึ่งงาน (SO · ลูกค้า · ขั้น · ด่าน) → แถวละสินค้า
+   หัวเดือน (M.10/69 = เดือนที่ยื่นทำจ่าย · ยังไม่ยื่น = เดือนนี้ · V24) → หัวกลุ่ม = งานหนึ่งงาน (SO · ลูกค้า · ขั้น · ด่าน) → แถวละสินค้า
    คอลัมน์ตามตารางเดิม ยกเว้น "สถานะขึ้นทะเบียน" (ขาดทะเบียน = เริ่มยื่นไม่ได้ ⇒ บอกที่หัวกลุ่ม · V20) + "ภาษี" ที่ระบบคิดให้
    ⚠️ ข้อมูลรายการมาจาก `/api/tax/orders/table` ติดกับแถวงานด้วยคีย์ — แถวที่ยังไม่มีรายการ (กำลังมา · โหลดไม่ขึ้น) บอกเหตุในกลุ่ม */
 import Link from "next/link";
@@ -12,9 +12,10 @@ import styles from "./FilingLinesTable.module.css";
 
 const COLUMNS = ["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีกก่อน VAT", "ภาษี", "สถานะชำระ"];
 
-/** แถวงานเรียงตามวันที่ส่งของ (ไม่มีวันไปท้าย) แล้วแบ่งเป็นก้อนรายเดือน */
+/** ก้อนรายเดือน (ใหม่สุดก่อน · ยังไม่รู้เดือนไปท้าย) · ในเดือนเรียงตามวันที่ส่งของ (ไม่มีวันไปท้าย) */
 function monthBuckets(rows) {
-  const sorted = [...rows].sort((a, b) => String(a.detail?.deliveryDate || "9999").localeCompare(String(b.detail?.deliveryDate || "9999"))
+  const sorted = [...rows].sort((a, b) => String(b.detail?.month || "").localeCompare(String(a.detail?.month || ""))
+    || String(a.detail?.deliveryDate || "9999").localeCompare(String(b.detail?.deliveryDate || "9999"))
     || String(a.salesOrderNumber || "").localeCompare(String(b.salesOrderNumber || "")));
   const buckets = [];
   for (const row of sorted) {
@@ -80,7 +81,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                     <tr key={`none:${row.key}`} className={styles.noLines}>
                       {selectable ? <td /> : null}
                       <td colSpan={COLUMNS.length}>
-                        {row.detail ? "ยังไม่มีรายการสินค้า — รอใบสั่งขายค่าสรรพสามิต" : detailLoading ? "กำลังโหลดรายการสินค้า…" : "ยังโหลดรายการสินค้าไม่ได้"}
+                        {row.detail ? "ใบนี้ไม่มีรายการค่าสรรพสามิต" : detailLoading ? "กำลังโหลดรายการสินค้า…" : "ยังโหลดรายการสินค้าไม่ได้"}
                       </td>
                     </tr>
                   )];
