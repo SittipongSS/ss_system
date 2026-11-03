@@ -24,7 +24,8 @@ import {
 import { NA, fmtDate, fmtDateTime, fmtNumber } from '@/lib/format';
 import { linePackQty } from '@/lib/sales/linePackView';
 
-const PACKAGE_CATEGORY = '02-001';
+/* หมวดของแพ็คเกจบริการรายรอบ — ชุดเดียวกับ SERVICE_ROUND_CATEGORIES (serviceOrders.js · เทสต์ยึด) */
+const PACKAGE_CATEGORIES = Object.freeze(['02-001', '02-037']);
 export const EMPTY_DRAFT = Object.freeze({ lines: Object.freeze({}) });
 
 const text = (value) => (value === null || value === undefined ? '' : String(value)).trim();
@@ -52,10 +53,10 @@ export const isManualViewLine = (line) => !line?.fgCode && !line?.productId;
 /** ชนิดที่ตัดสินได้เองจากบรรทัด (ไม่ดูค่าที่เก็บ) — FG ตามหมวดของรหัส · พิมพ์เองตามหมวดที่คนออกใบเลือก · ไม่รู้ = null
  *  ⚠️ ตัวเดียวกับ `derivedLineRole` ของ serviceSetup.js (อ่านจากก้อน GET ที่ `categoryCode` ถูกคิดมาแล้ว) */
 export function derivedRoleOf(line) {
-  if (!isManualViewLine(line)) return categoryOf(line?.fgCode) === PACKAGE_CATEGORY ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
+  if (!isManualViewLine(line)) return PACKAGE_CATEGORIES.includes(categoryOf(line?.fgCode)) ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
   const code = text(line?.categoryCode);
   if (!code) return null;
-  return code === PACKAGE_CATEGORY ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
+  return PACKAGE_CATEGORIES.includes(code) ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
 }
 
 /* ══ ฐาน (ก้อน GET) ════════════════════════════════════════════════════════════════════════════════ */

@@ -1,7 +1,7 @@
 // ── งานบริการรายบรรทัดของใบสั่งขาย: ตัวตัดสินล้วน (mig 0392 · PR-A · มติเจ้าของ 26–28/09) ─────────────
 //
 // ⭐ **ฝ่ายขายตั้งงานบริการที่ใบสั่งขายเอง** — ทุกบรรทัดของใบสาย SERVICE ต้องตอบว่า "เป็นแพ็คเกจบริการรายรอบไหม"
-//   แพ็คเกจต้องมี FG หมวด 02-001 · จำนวนรอบบริการ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "รอบละกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
+//   แพ็คเกจต้องมี FG หมวด 02-001 หรือ 02-037 · จำนวนรอบบริการ · โซน (หลายโซนได้ แต่ละโซนบอกว่า "รอบละกี่แพ็ค") · และใบมีช่วงบริการหนึ่งช่วง
 //   ⭐ มติเจ้าของ 29/09: ทุกผิวพูดเรื่องรอบ/แพ็คเป็นประโยคชุดเดียวกัน — คำอยู่ที่ `SERVICE_SETUP_LINE_TEXT`
 //     (ลำดับ "จำนวนรอบบริการก่อน" ของ 29/09 ถูกมติ 08/10 กลับ — ประโยคสรุปตัวเลขเรียงตามคอลัมน์ ③ → ④ → ⑤ → ⑥ แล้ว · ดู `columnOrderParts`)
 //   ⭐ มติเจ้าของ 30/09: การ์ด "งานบริการ" เป็นตาราง ①→⑥ (`SERVICE_SETUP_GRID_TEXT`) · คำ "แต่ละครั้งกี่แพ็ค" ของ 29/09
@@ -74,9 +74,11 @@ export const SERVICE_ROLE_UNSET = 'unset';
 export const SERVICE_PERIOD_MODE_WHOLE = 'whole';
 export const SERVICE_PERIOD_MODE_LINE = 'line';
 
-/* หมวดของแพ็คเกจบริการรายรอบ — ⚠️ ต้องเท่ากับ SERVICE_ROUND_CATEGORY ของ serviceOrders.js (เทสต์ยึดไว้)
-   เขียน literal ซ้ำโดยตั้งใจ: ค่าคงที่ระดับบนสุดห้ามอ่านชื่อที่ import มา (กฎ 16) */
-const PACKAGE_CATEGORY = '02-001';
+/* หมวดของแพ็คเกจบริการรายรอบ — ⚠️ ต้องเท่ากับ SERVICE_ROUND_CATEGORIES ของ serviceOrders.js (เทสต์ยึดไว้)
+   เขียน literal ซ้ำโดยตั้งใจ: ค่าคงที่ระดับบนสุดห้ามอ่านชื่อที่ import มา (กฎ 16) · 02-037 = มติเจ้าของ 03/11 */
+const PACKAGE_CATEGORIES = Object.freeze(['02-001', '02-037']);
+const PACKAGE_CATEGORY_TEXT = '02-001 หรือ 02-037';
+const isPackageCategory = (code) => PACKAGE_CATEGORIES.includes(code);
 
 /* คำเรียกจำนวนครั้งที่ไปของบรรทัดแพ็คเกจ (`serviceRounds`) — มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ"
    ที่เดียวของคำนี้ · แคตตาล็อกทุกตัวข้างล่าง (ข้อความ SQL · ข้อที่ยังขาด · คำเตือนรอบน้อย · ป้ายช่อง · ประโยครอบ) อ่านจากตัวนี้
@@ -98,7 +100,7 @@ const PACKS_TERM = 'รอบละกี่แพ็ค';
 /* คำตอบข้อ ① "งานบริการ?" ของบรรทัดพิมพ์เอง (ปุ่มสองทาง · ไม่มีค่าตั้งต้น) — มติเจ้าของ 30/09
    "มันต้องเลือกว่า รายการ เป็นงานบริการมั้ย" ⇒ คำถามเป็น ใช่/ไม่ใช่ · คำอธิบายขึ้นเป็น title ของปุ่ม */
 export const SERVICE_KIND_OPTIONS = Object.freeze([
-  { value: 'package', label: 'ใช่', description: `แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 → ไซต์ · โซน → ${PACKS_TERM} → ${ROUNDS_TERM}` },
+  { value: 'package', label: 'ใช่', description: `แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด ${PACKAGE_CATEGORY_TEXT} → ไซต์ · โซน → ${PACKS_TERM} → ${ROUNDS_TERM}` },
   { value: 'not_service', label: 'ไม่ใช่', description: 'ค่าขนส่ง ค่าออกแบบ สินค้าส่งครั้งเดียว รายได้อื่นๆ — ไม่ส่งให้ TS' },
 ]);
 
@@ -129,7 +131,7 @@ export const SERVICE_SETUP_SQL_MESSAGES = Object.freeze({
   service_setup_kind_on_fg_line: { message: 'รายการที่มีรหัส FG ตอบ ‘งานบริการ?’ เองไม่ได้ — ระบบตัดสินจากหมวดของ FG', status: 400 },
   service_setup_kind_invalid: { message: 'คำตอบ ‘งานบริการ?’ ไม่ถูกต้อง', status: 400 },
   service_setup_not_package: { message: 'รายการนี้ยังไม่ได้ตอบว่าเป็นงานบริการ — ตอบ ‘ใช่’ ก่อน แล้วจึงเลือก FG/โซน/รอบ', status: 400 },
-  service_setup_product_invalid: { message: 'แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด 02-001 ที่อนุมัติแล้วและยังใช้งาน', status: 400 },
+  service_setup_product_invalid: { message: `แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด ${PACKAGE_CATEGORY_TEXT} ที่อนุมัติแล้วและยังใช้งาน`, status: 400 },
   service_setup_rounds_invalid: { message: `${ROUNDS_TERM} ต้องเป็นจำนวนเต็ม 1–999`, status: 400 },
   service_setup_zones_too_many: { message: 'เกิน 500 โซนต่อรายการ — แยกรายการที่ใบเสนอราคา', status: 400 },
   service_setup_zone_duplicate: { message: 'เลือกโซนเดียวกันซ้ำในรายการเดียว', status: 400 },
@@ -180,8 +182,8 @@ const ROUNDS_LOW_TAIL = Object.freeze({
 });
 export const SERVICE_SETUP_ISSUE_TEXT = Object.freeze({
   kind_missing: ({ n, label } = {}) => `รายการ ${n} · ${label}: ยังไม่ตอบว่าเป็นงานบริการไหม (ใช่ / ไม่ใช่)`,
-  fg_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่เลือกแพ็คเกจ (FG หมวด 02-001)`,
-  fg_invalid: ({ n, fg } = {}) => `รายการ ${n}: แพ็คเกจ ${fg || '—'} ใช้ไม่ได้แล้ว (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่หมวด 02-001) — เลือกใหม่`,
+  fg_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่เลือกแพ็คเกจ (FG หมวด ${PACKAGE_CATEGORY_TEXT})`,
+  fg_invalid: ({ n, fg } = {}) => `รายการ ${n}: แพ็คเกจ ${fg || '—'} ใช้ไม่ได้แล้ว (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่หมวด ${PACKAGE_CATEGORY_TEXT}) — เลือกใหม่`,
   fg_foreign: ({ n, fg } = {}) => `รายการ ${n}: แพ็คเกจ ${fg || '—'} เป็นของนิติบุคคลอื่น — เลือก FG ของลูกค้าในใบ`,
   zones_missing: ({ n } = {}) => `รายการ ${n}: ยังไม่เลือกไซต์ · โซน`,
   packs_missing: ({ n, zone } = {}) => `รายการ ${n} · ${zone || '—'}: ยังไม่ใส่${PACKS_TERM}`,
@@ -296,7 +298,7 @@ export const SERVICE_SETUP_GRID_TEXT = Object.freeze({
   steps: Object.freeze([
     /* mig 0400 (มติเจ้าของ 01/10): ช่วงบริการของรายการอยู่ใต้คำตอบในคอลัมน์ ① — หัวคอลัมน์บอกทั้งสองเรื่อง (ม็อก PeriodSwitch รอบสอง) */
     Object.freeze({ key: 'kind', label: 'งานบริการ? · ช่วงบริการ', hint: 'ใช่ = ส่ง TS + ใส่ช่วง', required: true }),
-    Object.freeze({ key: 'fg', label: 'แพ็คเกจ FG', hint: 'หมวด 02-001 ของลูกค้า', required: true }),
+    Object.freeze({ key: 'fg', label: 'แพ็คเกจ FG', hint: `หมวด ${PACKAGE_CATEGORY_TEXT} ของลูกค้า`, required: true }),
     Object.freeze({ key: 'zones', label: 'ไซต์ · โซน', hint: 'รายการเดียวเลือกได้หลายโซน', required: true }),
     Object.freeze({ key: 'packs', label: PACKS_TERM, hint: 'ต่อโซน', required: true }),
     Object.freeze({ key: 'rounds', label: ROUNDS_TERM, hint: 'ตลอดช่วงบริการ', required: true }),
@@ -609,9 +611,9 @@ export function lineCategoryCode(line) {
 
 /* ชนิดที่ตัดสินได้เองจากบรรทัด (ไม่ดูค่าที่เก็บ) — `null` = ตัดสินเองไม่ได้ ต้องให้คนเลือก */
 function derivedLineRole(line) {
-  if (!isManualSalesLine(line)) return categoryOf(line?.fgCode) === PACKAGE_CATEGORY ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
+  if (!isManualSalesLine(line)) return isPackageCategory(categoryOf(line?.fgCode)) ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
   const code = manualCategoryRaw(line);
-  if (code !== null) return categoryOf(code) === PACKAGE_CATEGORY ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
+  if (code !== null) return isPackageCategory(categoryOf(code)) ? SERVICE_KIND_PACKAGE : SERVICE_KIND_NOT_SERVICE;
   return null;
 }
 
@@ -621,8 +623,8 @@ const storedKindOf = (line) => (line?.serviceKind === SERVICE_KIND_PACKAGE || li
 /**
  * ⭐ ชนิดของบรรทัด (D2) — 'package' | 'not_service' | 'unset'
  *   1. ชนิดที่เก็บไว้ (`serviceKind` — มีได้เฉพาะบรรทัดพิมพ์เอง · CHECK ของ 0392)
- *   2. บรรทัด FG (`fgCode` หรือ `productId`): หมวด 02-001 = แพ็คเกจ · อื่น = ไม่ใช่งานบริการ
- *   3. บรรทัดพิมพ์เองที่มีหมวด (`metadata.categoryCode` · #1844): 02-001 = แพ็คเกจ · อื่น = ไม่ใช่งานบริการ
+ *   2. บรรทัด FG (`fgCode` หรือ `productId`): หมวด 02-001 / 02-037 = แพ็คเกจ · อื่น = ไม่ใช่งานบริการ
+ *   3. บรรทัดพิมพ์เองที่มีหมวด (`metadata.categoryCode` · #1844): 02-001 / 02-037 = แพ็คเกจ · อื่น = ไม่ใช่งานบริการ
  *   4. ที่เหลือ = ยังไม่รู้ ต้องให้ฝ่ายขายเลือก
  * ⚠️ ฐานมีตัวคู่ `sales_order_line_service_role` — แก้ที่นี่ต้องแก้ที่ฐานด้วย (serviceSetupSqlParity.test.mjs)
  */
@@ -1236,7 +1238,7 @@ const zoneNameOf = (ctx, zoneId) => {
 const productUsable = (product) => !!product
   && product.isActive !== false
   && (product.approvalStatus === null || product.approvalStatus === undefined || product.approvalStatus === 'approved')
-  && categoryOf(product.fgCode) === PACKAGE_CATEGORY;
+  && isPackageCategory(categoryOf(product.fgCode));
 
 /* ข้อที่ยังขาดของบรรทัดเดียว — ลำดับเดียวกับ `sales_order_service_setup_errors` ของฐาน */
 function lineIssues(line, lineNo, allocs, ctx) {
@@ -1552,8 +1554,8 @@ const intIn = (value, lo, hi) => {
   return Number.isInteger(n) && n >= lo && n <= hi ? { ok: true, value: n } : { ok: false, value: null };
 };
 
-/** ข้อความของแพ็คเกจที่ไม่อยู่ในตัวเลือก (ไม่ใช่ FG 02-001 ที่ใช้ได้ของลูกค้าในใบ/นิติบุคคลเดียวกัน) */
-export const SERVICE_SETUP_FG_NOT_OFFERED = 'แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด 02-001 ของลูกค้าในใบ (หรือนิติบุคคลเดียวกัน) ที่อนุมัติแล้วและยังใช้งาน';
+/** ข้อความของแพ็คเกจที่ไม่อยู่ในตัวเลือก (ไม่ใช่ FG หมวดแพ็คเกจที่ใช้ได้ของลูกค้าในใบ/นิติบุคคลเดียวกัน) */
+export const SERVICE_SETUP_FG_NOT_OFFERED = `แพ็คเกจที่เลือกใช้ไม่ได้ — ต้องเป็น FG หมวด ${PACKAGE_CATEGORY_TEXT} ของลูกค้าในใบ (หรือนิติบุคคลเดียวกัน) ที่อนุมัติแล้วและยังใช้งาน`;
 
 /* ช่วงที่ส่งมาบันทึก (ของใบ · ของรายการ) → `{ from, to }` หรือ null เมื่อไม่ถูกรูป — กติกาเดียวกับฐาน:
    ครบสองวัน เป็นวันจริง เริ่มไม่หลังจบ ในปี ค.ศ. 2000–2100 */

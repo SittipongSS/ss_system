@@ -408,7 +408,7 @@ export default function WizardZonesStep({
                     options={packageOptions}
                     disabled={busy}
                     /* 🐞 รีวิว R9: ทะเบียนโหลดไม่ขึ้นต้องพูดว่า "โหลดไม่ขึ้น" ไม่ใช่ "ไม่พบรายการ" (อ่านเป็นคำตอบ) */
-                    emptyText={productsError ? REGISTRY_LOAD_FAILED : "ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001) ในทะเบียนสินค้า"}
+                    emptyText={productsError ? REGISTRY_LOAD_FAILED : "ลูกค้ารายนี้ยังไม่มีแพ็คเกจบริการ (หมวด 02-001 หรือ 02-037) ในทะเบียนสินค้า"}
                   />
                   {bad.productId ? <span className={styles.cellBad}>{bad.productId}</span> : null}
                   {row.productId || row.fgCode ? <QuoteLineFgInfo line={row} product={product} /> : null}

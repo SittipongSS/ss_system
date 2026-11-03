@@ -23,7 +23,7 @@ import { LINE_PACK_TEXT, PACK_QTY_INVALID, packLineUnit, packQtyValue } from '@/
 import { PACK_COLUMN_LABEL } from '@/lib/sales/linePackView';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { EXTERNAL_DOC_KINDS } from '@/lib/sales/contracts';
-import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORY, lineIsServicePackage } from '@/lib/sales/serviceOrders';
+import { SERVICE_PACKS_LABEL, SERVICE_ROUNDS_LABEL, SERVICE_ROUND_CATEGORIES, SERVICE_ROUND_CATEGORY_TEXT, lineIsServicePackage } from '@/lib/sales/serviceOrders';
 import { bindTargetError } from '@/lib/service/intake';
 import { termIsActive } from '@/lib/service/terms';
 import { coverageContinuityErrors } from '@/lib/sales/paymentCoverage';
@@ -38,9 +38,9 @@ import {
   charLength,
 } from '@/lib/sales/historicalOrders';
 
-/* หมวดแพ็คเกจบริการ = SERVICE_ROUND_CATEGORY ของ lib/sales/serviceOrders.js (ส่งต่อ ไม่ประกาศซ้ำ)
+/* หมวดแพ็คเกจบริการ = SERVICE_ROUND_CATEGORIES ของ lib/sales/serviceOrders.js (ส่งต่อ ไม่ประกาศซ้ำ · 02-001 และ 02-037)
    ⚠️ ไฟล์นั้นลาก lib/service/intake มาด้วย — รุ่น v2 ต้องใช้ bindTargetError ของ intake อยู่แล้ว จึงไม่มีเหตุให้แยก */
-export const SERVICE_PACKAGE_CATEGORY = SERVICE_ROUND_CATEGORY;
+export const SERVICE_PACKAGE_CATEGORIES = SERVICE_ROUND_CATEGORIES;
 /* ⭐ มติเจ้าของ 23/09: VAT ของใบย้อนหลัง = ตัวเลือกของใบเสนอราคาเป๊ะ ("รวม VAT แล้ว" 0 · "+ VAT 7% ท้ายใบ" 7)
    โหมด "ราคารวม VAT แล้ว — ถอด VAT 7%" ของรุ่น 0374 ถูกถอด: มันหารทุกบรรทัดด้วย 1.07 ⇒ ยอดบรรทัด ≠ จำนวน × ราคา
    ซึ่งใบเสนอราคาไม่มีวันเป็น · อ่านอัตราจากชุดตัวเลือกกลางตัวเดียว (ไม่สะกดเลขซ้ำ) */
@@ -484,7 +484,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
     if (!productId) push('ต้องเลือกแพ็คเกจบริการ', 'productId');
     else if (!product) push('ไม่พบแพ็คเกจที่เลือกในทะเบียนสินค้า', 'productId');
     else if (!lineIsServicePackage(product)) {
-      push(`${product.fgCode || 'สินค้านี้'} ไม่ใช่แพ็คเกจบริการ (หมวด ${SERVICE_ROUND_CATEGORY}) — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ`, 'productId');
+      push(`${product.fgCode || 'สินค้านี้'} ไม่ใช่แพ็คเกจบริการ (หมวด ${SERVICE_ROUND_CATEGORY_TEXT}) — ใบย้อนหลังคีย์ได้เฉพาะแพ็คเกจบริการ`, 'productId');
     }
 
     /* ── บรรทัดแบบใบเสนอราคา: เลขแพ็ค × จำนวน × ราคา/หน่วย (ทะเบียน) − ส่วนลดรายการ (มติเจ้าของ 23/09 · สูตรตามมติ 08/10 ข้อ A1) ──
@@ -497,7 +497,7 @@ export function planHistoricalServiceOrder(input = {}, ctx = {}) {
        และห้ามใช้ `toMoney` (0 กับ 1.5 กลายเป็นตัวคูณ)
        🪤 ไม่มีคีย์ = แท็บที่เปิดค้างจากก่อน deploy (จอของเขาไม่มีช่องนี้) ⇒ บอกให้โหลดหน้าใหม่ ไม่ใช่ "ยังไม่ใส่" ที่ส่งเขาไปหาช่องที่ไม่มี
           · แถวรุ่น 0374 (`staleForm` ข้างบน) ได้ข้อความเดียวของมันพอ
-       ⚠️ R1 (แผน PR-5 §1.3): ช่องว่างรายงานเฉพาะแถวที่สินค้าเป็นแพ็คเกจหมวด 02-001 — ขั้น ② วาดช่องนี้เฉพาะแถวแบบนั้น และกฎเหล็กของฟอร์มคือ
+       ⚠️ R1 (แผน PR-5 §1.3): ช่องว่างรายงานเฉพาะแถวที่สินค้าเป็นแพ็คเกจ (หมวด 02-001 / 02-037) — ขั้น ② วาดช่องนี้เฉพาะแถวแบบนั้น และกฎเหล็กของฟอร์มคือ
           ห้ามถามข้อที่ไม่มีช่องให้ตอบบนจอ (แถวที่ยังไม่เลือก/เลือกผิดหมวดติดข้อ `productId` อยู่แล้ว) · ค่าที่พิมพ์มาแต่ใช้ไม่ได้รายงานเสมอ
        🔴 เลขแพ็คที่ยังไม่ใช่จำนวนเต็มที่ใช้ได้ = **ยังคิดเงินไม่ได้ทุกกรณี** (`linesMoneyOk` เท็จ) — ไม่มีวันถอยไปคิดแบบคูณ 1 เงียบ ๆ
           (ยอดศูนย์ทั้งก้อน ⇒ พรีวิวไม่ส่งยอด · จอขึ้นขีดพร้อมเหตุ)

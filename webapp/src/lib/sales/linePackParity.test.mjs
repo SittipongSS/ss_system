@@ -888,7 +888,7 @@ test('🔴 สคริปต์ทั้งตัว + --pack-launch: ยอด
   assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`);
   assert.match(ok.stdout, /✓ ⑥ ฉบับ Rev\. พกเลขแพ็คครบ/);
   assert.match(ok.stdout, /✓ ⑦ ใบที่ยื่น\/อนุมัติตั้งแต่วันเปิดช่อง \(2026-10-12T03:00:00\.000Z\)/);
-  assert.match(ok.stdout, /✓ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย: ต่าง 0 จาก 1/);
+  assert.match(ok.stdout, /✓ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวดแพ็คหาย: ต่าง 0 จาก 1/);
   assert.match(ok.stdout, /--pack-launch=2026-10-12T03:00:00\.000Z --audit-since=\d{4}-\d{2}-\d{2}T/);
   assert.ok(ok.requests.some((r) => r.table === 'audit_logs'));
   assert.ok(ok.requests.every((r) => r.method === 'GET'), 'มีแต่คำขอ GET');
@@ -913,7 +913,7 @@ test('🔴 สคริปต์ทั้งตัว + --pack-launch: ยอด
   assert.equal(blind.status, 0, `ไม่มี --pack-launch: จำนวน 3 ≥ 2 ทุกหัวข้อเดิมผ่าน — ${blind.stdout}${blind.stderr}`);
   const seen = await runParityScript(hit, [LAUNCH, '--expect-min-packed=2,0']);
   assert.equal(seen.status, 1, `${seen.stdout}${seen.stderr}`);
-  assert.match(seen.stdout, /✗ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย: ต่าง 1 จาก 1/);
+  assert.match(seen.stdout, /✗ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวดแพ็คหาย: ต่าง 1 จาก 1/);
   assert.match(seen.stdout, /"auditId":77.*"number":"QT-26100001-0".*"rows":\[\{"row":1,"packQty":2,"lineTotal":84000,"now":42000\},\{"row":2,"packQty":1,"lineTotal":42000,"now":42000\}\]/);
   assert.match(seen.stderr, /rows\[\]\.packQty และ rows\[\]\.lineTotal คือค่าเดิมที่ต้องกู้คืน/);
   assert.match(seen.stderr, /dev server ของ worktree เก่า/);
@@ -952,7 +952,7 @@ test('🔴 สคริปต์ทั้งตัว + ⑨: ลบรายก�
   const db = { ...packedDatabase(), audit_logs: twoSaves() };
   const run = await runParityScript(db, [LAUNCH, '--expect-min-packed=3,1']);
   assert.equal(run.status, 1, `${run.stdout}${run.stderr}`);
-  assert.match(run.stdout, /✓ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย: ต่าง 0 จาก 2/);
+  assert.match(run.stdout, /✓ ⑧ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z ไม่ทำเลขแพ็คของบรรทัดหมวดแพ็คหาย: ต่าง 0 จาก 2/);
   assert.match(run.stdout, /✗ ⑨ การบันทึกใบเสนอราคาตั้งแต่ 2026-10-12T03:00:00\.000Z .*เลขแพ็คหายข้ามสองการบันทึก\): ต่าง 1 จาก 2/);
   assert.match(run.stdout, /"number":"QT-26100001-0","product":\{"productId":"P-SDS","fgCode":"FG-278-02-001-0757","description":"SDS"\},"removed":\{"auditId":11,.*"readded":\{"auditId":12,.*"rows":\[\{"row":2,"wasRow":1,"packQty":2,"lineTotal":84000,"qty":12,"unitPrice":3500,"discountAmount":0,"now":\{"qty":12,"unitPrice":3500,"discountAmount":0,"lineTotal":42000\}\}\]/);
   /* คำอธิบายค่าที่ต้องกู้ (รีวิว 19/10): เลขแพ็คเดิม · ยอดเดิมใช้ตรง ๆ ได้เฉพาะเมื่อจำนวน/ราคา/ส่วนลดไม่เปลี่ยน · now = หลังการบันทึกที่สอง ไม่ใช่วันนี้ · null = ไม่มีค่าเดิม */

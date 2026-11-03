@@ -149,18 +149,18 @@ console.log(`    ใบเสนอราคา ${quotations.length} ใบ ม�
    การบันทึกแรกของคู่ ⑨ (เอาบรรทัดที่มีเลขแพ็คออก) อยู่ก่อนตัวชี้ได้ · ⑧ นับตั้งแต่ --audit-since · การบันทึกที่สองของ ⑨ นับตั้งแต่ --pairs-since (ไม่ใส่ = วันเปิดช่อง) */
 const lossSample = (list) => JSON.stringify(list.slice(0, 5));
 const revLoss = revisionPackLoss(quotations);
-section('⑥ ฉบับ Rev. พกเลขแพ็คครบ (ต้นทางมีเลขแพ็ค ⇒ ไม่มีบรรทัดหมวด 02-001 ที่ขาด)', revLoss.diffs.length, revLoss.checked, revLoss.diffs);
+section('⑥ ฉบับ Rev. พกเลขแพ็คครบ (ต้นทางมีเลขแพ็ค ⇒ ไม่มีบรรทัดหมวดแพ็คที่ขาด)', revLoss.diffs.length, revLoss.checked, revLoss.diffs);
 /* ตัวจับไหนเจอเลขแพ็คที่หาย — ใช้ตัดสินข้อความของจำนวนบรรทัดที่มีเลขแพ็คที่ลดลง (ข้างล่าง) */
 const lossFound = { '⑥': revLoss.diffs.length, '⑦': 0, '⑧': 0, '⑨': 0 };
 let auditRemoved = [];
 if (packLaunch) {
   const unsent = sentWithoutPack(quotations, packLaunch);
-  section(`⑦ ใบที่ยื่น/อนุมัติตั้งแต่วันเปิดช่อง (${packLaunch}) ไม่มีบรรทัดหมวด 02-001 ที่ขาดเลขแพ็ค`, unsent.diffs.length, unsent.checked, unsent.diffs);
+  section(`⑦ ใบที่ยื่น/อนุมัติตั้งแต่วันเปิดช่อง (${packLaunch}) ไม่มีบรรทัดหมวดแพ็คที่ขาดเลขแพ็ค`, unsent.diffs.length, unsent.checked, unsent.diffs);
   lossFound['⑦'] = unsent.diffs.length;
   const scanFrom = auditSince || packLaunch;
   const auditRows = await read('บันทึกการแก้ไขใบเสนอราคา (audit_logs)', loadQuotationAuditSince(supabase, packLaunch));
   const loss = packLossInAudit(auditRows, { since: scanFrom });
-  section(`⑧ การบันทึกใบเสนอราคาตั้งแต่ ${scanFrom} ไม่ทำเลขแพ็คของบรรทัดหมวด 02-001 หาย`, loss.stripped.length, loss.compared, loss.stripped, { all: true });
+  section(`⑧ การบันทึกใบเสนอราคาตั้งแต่ ${scanFrom} ไม่ทำเลขแพ็คของบรรทัดหมวดแพ็คหาย`, loss.stripped.length, loss.compared, loss.stripped, { all: true });
   lossFound['⑧'] = loss.stripped.length;
   if (loss.stripped.length) {
     console.error('    🔴 แต่ละรายการ = ใบที่ถูกบันทึกทับโดยรุ่นที่ไม่รู้จักเลขแพ็ค (รุ่นก่อนงวด PR-1 — dev server ของ worktree เก่า · preview ของแบรนช์เก่า · production ที่ถูกถอย)');
@@ -223,7 +223,7 @@ for (const gap of packedGaps) {
   if (packedDropBlocks) console.error(`✗ ต้องดู · ${line}`);
   else if (lossMarks.includes('⑨')) console.error(`✗ ต้องดู · ${line} — หัวข้อ ⑨ พบเลขแพ็คหายข้ามสองการบันทึก ⇒ ดูหัวข้อ ⑨ ก่อน: บรรทัดที่ ⑧ พิมพ์ว่าถูกลบ/ย้ายหมวดอาจเป็นครึ่งแรกของคู่นั้น`);
   else if (lossMarks.length) console.error(`✗ ต้องดู · ${line} — หัวข้อ ${lossMarks.join(' ')} พบเลขแพ็คที่หาย ⇒ ดูหัวข้อนั้นก่อน (จำนวนที่ลดอาจมาจากตรงนั้น)`);
-  else console.log(`ℹ️ ${line} — หัวข้อ ⑥–⑨ ไม่พบเลขแพ็คที่หายจากบรรทัดหมวด 02-001 ⇒ ลดลงเพราะลบใบ/ลบบรรทัด/ย้ายหมวดตามปกติ`);
+  else console.log(`ℹ️ ${line} — หัวข้อ ⑥–⑨ ไม่พบเลขแพ็คที่หายจากบรรทัดหมวดแพ็ค ⇒ ลดลงเพราะลบใบ/ลบบรรทัด/ย้ายหมวดตามปกติ`);
 }
 
 if (differences) {

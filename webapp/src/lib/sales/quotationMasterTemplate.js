@@ -41,7 +41,7 @@ export const QUOTATION_PREVIEW_SCENARIOS = Object.freeze([
   { id: 'long-content', label: 'ข้อความยาว', description: 'ชื่อลูกค้า ที่อยู่ เงื่อนไข และหมายเหตุยาว' },
   { id: 'installments', label: '4 งวด', description: 'ทดสอบ trigger, due rule และยอดรวมทุกงวด' },
   // ตัวอย่างของใบที่มีเลขแพ็ค (docs/qt-pack-column.md) — ทรงที่แคบที่สุด: คอลัมน์แพ็ค + คอลัมน์ส่วนลดรายบรรทัด
-  { id: 'packs', label: 'แพ็ค/เดือน', description: 'หมวด 02-001 · คอลัมน์ “แพ็ค/เดือน” · มีส่วนลดรายบรรทัด' },
+  { id: 'packs', label: 'แพ็ค/เดือน', description: 'หมวด 02-001 / 02-037 · คอลัมน์ “แพ็ค/เดือน” · มีส่วนลดรายบรรทัด' },
 ]);
 
 export const QUOTATION_PREVIEW_STATES = Object.freeze([

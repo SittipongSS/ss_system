@@ -91,7 +91,7 @@ test('ไม่มีแถว = ปฏิเสธก่อนดูเงื�
 
 test('รหัสที่โค้ดอ้างครบตามที่ประกาศไว้ — ห้ามลดจำนวนโดยไม่แก้ไฟล์ที่อ้างจริง', () => {
   for (const code of [
-    '02-001', // SERVICE_ROUND_CATEGORY
+    '02-001', '02-037', // SERVICE_ROUND_CATEGORIES
     '02-020', // PDR_FRAGRANCE_OIL_CODE
     '03-001', '03-002', '03-005', '03-008', '03-009', '03-010', // SCENT_DESIGN_CATEGORIES
     '01-001', '02-010', // standardPreview.js
@@ -100,5 +100,5 @@ test('รหัสที่โค้ดอ้างครบตามที่�
   ]) {
     assert.ok(PROTECTED_PRODUCT_CATEGORY_CODES.includes(code), `${code} หายจากลิสต์กันลบ`);
   }
-  assert.equal(PROTECTED_PRODUCT_CATEGORY_CODES.length, 12);
+  assert.equal(PROTECTED_PRODUCT_CATEGORY_CODES.length, 13);
 });

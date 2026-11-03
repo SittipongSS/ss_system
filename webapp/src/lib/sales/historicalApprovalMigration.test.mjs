@@ -20,7 +20,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import * as historicalOrders from './historicalOrders.js';
-import { SERVICE_ROUND_CATEGORY } from './serviceOrders.js';
+import { SERVICE_ROUND_CATEGORIES } from './serviceOrders.js';
 import { isSalesOrderReviewer } from './salesOrderWorkflow.js';
 
 const MIGRATIONS = new URL('../../../supabase/migrations/', import.meta.url);
@@ -347,10 +347,10 @@ test('role ผู้อนุมัติใน RPC อนุมัติ = isSa
   assert.ok(body.indexOf(m[0]) < body.indexOf('FOR UPDATE'), 'ตรวจ role ก่อนล็อกใบ');
 });
 
-test("หมวดแพ็คเกจใน check_lines = SERVICE_ROUND_CATEGORY ('02-001') · อ่านแบบ categoryOf (คู่ตัวเลข NN-NNN แรก)", () => {
+test("หมวดแพ็คเกจใน check_lines รุ่น 0374 = '02-001' (อยู่ใน SERVICE_ROUND_CATEGORIES · 0422 ปะนิยามที่รันอยู่เป็นชุด) · อ่านแบบ categoryOf (คู่ตัวเลข NN-NNN แรก)", () => {
   const body = fn('historical_so_check_lines');
-  assert.equal(SERVICE_ROUND_CATEGORY, '02-001');
-  assert.ok(body.includes(`substring(p."fgCode" from '(\\d{2}-\\d{3})') = '${SERVICE_ROUND_CATEGORY}'`));
+  assert.ok(SERVICE_ROUND_CATEGORIES.includes('02-001'));
+  assert.ok(body.includes(`substring(p."fgCode" from '(\\d{2}-\\d{3})') = '02-001'`));
   assert.match(body, /RAISE EXCEPTION 'historical_so_line_not_package'/);
 });
 
