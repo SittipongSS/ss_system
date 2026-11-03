@@ -54,6 +54,7 @@ const ROUTES_WITHOUT_OWN_GUARD = {
   'master/products/[id]/relations/route.js': 'ส่ง user เข้า productRelations ด้วยเหตุผลเดียวกับฝั่งลูกค้า',
   'master/formulas/[id]/price/route.js': 'ด่านอยู่ใน makeRegistryPriceHandler (401 ถ้าไม่ล็อกอิน · canQuoteMaterial)',
   'master/scents/[id]/price/route.js': 'ด่านอยู่ใน makeRegistryPriceHandler ตัวเดียวกับฝั่งสูตร',
+  'products/[id]/bom/route.js': 'ด่านอยู่ใน makeProductBomHandler (401 ถ้าไม่ล็อกอิน · ฝั่งขาย canEditRecord ทีมที่ดูแล · ฝั่ง RD canAccessRd)',
   'version/route.js': 'คืนเลขคอมมิตของรีโปสาธารณะให้ deploy workflow ตรวจว่าของขึ้นจริง — ไม่แตะฐานข้อมูล ไม่มีพารามิเตอร์',
 };
 

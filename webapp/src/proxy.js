@@ -553,6 +553,11 @@ export function apiWriteAllowed(method, path, role, extraCaps) {
      (0370: สเปคไม่มีด่านอนุมัติแล้ว — ใครแก้ได้ตัดสินที่ `canEditProductSpec` ใน handler ·
       ด่านอนุมัติย้ายไปอยู่ที่เอกสาร `/api/sales-planning/spec-documents/<id>`) */
   if (/^\/api\/products\/[^/]+\/spec(\/|$)/.test(path)) return can(role, 'salesplan:edit');
+  /* ขั้นลง BOM ของ FG (mig 0419 · มติเจ้าของ 03/11/2026) — **สองฝ่ายใช้เส้นเดียวกันคนละปุ่ม**: ฝั่งขายส่ง/ดึงกลับ
+     (products:edit) · RD รับเรื่อง/ตีกลับ/ลงเสร็จ (ไม่มี products:edit แต่ต้องผ่าน — กับดักเดียวกับทะเบียนกลิ่น/สูตรข้างบน)
+     ⚠️ **ต้องมาก่อนกฎ `/api/products` ตัวรวม** — กฎนั้นเป็น POST = create ⇒ RD โดน 403 ที่นี่ทุกปุ่ม
+     · ด่านรายปุ่ม (ทีมที่ดูแลลูกค้า · คนของโมดูล RD) อยู่ใน handler (`lib/master/productBomRoute.js`) */
+  if (/^\/api\/products\/[^/]+\/bom(\/|$)/.test(path)) return can(role, 'products:edit') || isRdRole(role);
   if (path.startsWith('/api/products')) {
     if (method === 'DELETE') return can(role, 'products:delete');
     // PATCH covers both edit (sa) and approve (RA)

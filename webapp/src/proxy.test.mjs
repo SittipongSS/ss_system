@@ -461,7 +461,25 @@ test('เส้น API ของโมดูล R&D ต้องอ่านไ�
     assert.equal(lockedOut(user, '/api/rd/sales-orders', 'GET', true), false, `${role} GET /api/rd/sales-orders`);
     assert.equal(lockedOut(user, '/api/rd/perfumer-board', 'GET', true), false, `${role} GET /api/rd/perfumer-board`);
     assert.equal(lockedOut(user, '/api/rd/price-board', 'GET', true), false, `${role} GET /api/rd/price-board`);
+    assert.equal(lockedOut(user, '/api/rd/bom-board', 'GET', true), false, `${role} GET /api/rd/bom-board`);
   }
+});
+
+/* ⭐ ขั้นลง BOM ของ FG (mig 0419) — **สองด่านคู่กัน** ด้วย role จริง (กับดัก proxy-two-gates):
+   RD ไม่มี `products:edit` และกฎ `/api/products` ตัวรวมถือ POST = สร้างสินค้า ⇒ ถ้ากฎเฉพาะของ `/bom`
+   หลุดลำดับไปอยู่หลังตัวรวม RD จะโดน 403 ทุกปุ่มบนคิว /rd/bom (แอดมินไม่มีวันเห็น)
+   · ฝ่ายขายส่ง/ดึงกลับผ่านเส้นเดียวกัน · คนที่ไม่ใช่ทั้งสองฝ่ายต้องไม่ผ่าน (ด่านรายปุ่มอยู่ใน handler อีกชั้น) */
+test('POST /api/products/<id>/bom ผ่านทั้งสองด่านสำหรับ RD ทุกตำแหน่งและฝ่ายขาย', () => {
+  for (const role of [...RD_ROLES, 'ae', 'senior_ae', 'ac']) {
+    const user = { role, extraCaps: [] };
+    assert.equal(lockedOut(user, '/api/products/P-1/bom', 'POST', true), false, `${role} lockedOut`);
+    assert.equal(apiWriteAllowed('POST', '/api/products/P-1/bom', role, []), true, `${role} apiWriteAllowed`);
+    assert.equal(apiWriteAllowed('POST', '/api/master/products/P-1/bom', role, []), true, `${role} ผ่านชื่อ /api/master ด้วย`);
+  }
+  // RD ผ่านเส้น /bom ไม่ได้แปลว่าสร้าง/แก้สินค้าได้
+  assert.equal(apiWriteAllowed('POST', '/api/products', 'rd', []), false, 'RD สร้างสินค้าไม่ได้');
+  assert.equal(apiWriteAllowed('PATCH', '/api/products/P-1', 'rd', []), false, 'RD แก้สินค้าไม่ได้');
+  assert.equal(apiWriteAllowed('POST', '/api/products/P-1/bom', 'viewer', []), false, 'viewer ไม่ผ่าน');
 });
 
 /* ⚠️ เปิดเฉพาะ **ทางอ่าน** — ทุก route ใต้ `/api/rd` มีแต่ GET โดยตั้งใจ (ของฝ่าย
