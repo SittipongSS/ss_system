@@ -19,6 +19,7 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
 import GatedAction from "@/components/ui/GatedAction";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
@@ -34,7 +35,11 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { priceBoardGroups, priceBoardTotals, usablePriceNote, waitingDays } from "@/lib/rd/priceBoard";
 import styles from "./page.module.css";
 
-const COLS = 6;
+// ⭐ จัดตารางใหม่ (ผู้ใช้ 03/11/2026: "ปรับ layout สี ตำแหน่ง ป้ายต่างๆ ของตารางหน่อย มันดูยาก") — สี่คอลัมน์:
+//   รายการ (รหัสบน·ชื่อล่าง) · ลูกค้าคอนเฟิร์ม (+ รอกี่วัน) · ราคา · Ingredient List
+//   สองคอลัมน์ท้าย = **สองก้าวที่ต้องครบ** (ม-159) ทรงเดียวกัน: ป้ายสถานะสีบนสุด → รายละเอียด → ปุ่ม
+//   ⇒ กวาดตาแนวนอนเห็นทันทีว่ารายการไหนเหลืออะไร (เดิมหกคอลัมน์ ปุ่มลอยห่างจากราคาที่มันใช้ และ "—" ไม่บอกว่าแปลว่าอะไร)
+const COLS = 4;
 const PRICE_DIGITS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
 export default function RdPricesPage() {
@@ -164,16 +169,14 @@ export default function RdPricesPage() {
           {!groups.length ? (
             loadError ? null : <EmptyState plain icon={Coins}>ไม่มีรายการรอใส่ราคาตอนนี้</EmptyState>
           ) : (
-            <TableScroll>
+            <TableScroll cells="stacked">
               <table className="w-full">
                 <thead>
                   <tr>
-                    <th>รายการ</th>
-                    <th>ลูกค้าคอนเฟิร์ม</th>
-                    <th className="num">รอมาแล้ว</th>
-                    <th>ราคาในทะเบียน</th>
-                    <th>ใส่ราคา</th>
-                    <th>Ingredient List</th>
+                    <th className={styles.colItem}>รายการ</th>
+                    <th className={styles.colConfirm}>ลูกค้าคอนเฟิร์ม</th>
+                    <th className={styles.colStep}>ราคา (บาท/กก.)</th>
+                    <th className={styles.colStep}>Ingredient List</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -262,54 +265,21 @@ function RowGroup({ group, today, canPrice, linking, collapsed, onToggle, onPric
       />
       {collapsed ? null : group.rows.map((row) => (
         <tr key={row.itemId}>
+          <td><ItemCell row={row} /></td>
           <td>
-            <div>{naText(row.name)}</div>
+            <div>{row.confirmedAt ? fmtDate(row.confirmedAt) : NA}</div>
             <div className={styles.sub}>
-              {row.registry?.kind === "formula" ? `สูตร${row.registry.categoryCode ? ` ${row.registry.categoryCode}` : ""}` : "กลิ่น"}
-              {row.label && row.label !== row.name ? ` · ขอ: ${row.label}` : ""}
+              {[
+                row.confirmedQty != null ? `${fmtNumber(row.confirmedQty)}${row.unit ? ` ${row.unit}` : ""}` : null,
+                (() => { const d = waitingDays(row, today); return d == null ? null : `รอมา ${d} วัน`; })(),
+              ].filter(Boolean).join(" · ") || NA}
             </div>
           </td>
           <td>
-            {row.confirmedAt ? fmtDate(row.confirmedAt) : NA}
-            {row.confirmedQty != null ? (
-              <div className={styles.sub}>{fmtNumber(row.confirmedQty)}{row.unit ? ` ${row.unit}` : ""}</div>
-            ) : null}
-          </td>
-          <td className="num">
-            {(() => {
-              const d = waitingDays(row, today);
-              return d == null ? NA : `${d} วัน`;
-            })()}
-          </td>
-          <td><CurrentPrices row={row} /></td>
-          <td>
-            {row.stage === "awaiting_ingredients" ? (
-              // ม-159 — ราคาลงแล้ว รอแค่ Ingredient List (คอลัมน์ถัดไป)
-              <span className={styles.done}>ใส่ราคาแล้ว</span>
-            ) : canPrice ? (
-              <div className={styles.actions}>
-                {/* ⚠️ ไม่มีราคาในทะเบียนสักช่อง = ไม่มีอะไรให้ใช้ ⇒ ไม่โชว์ปุ่ม (ไม่ใช่ด่าน) · มีแต่หมดอายุ = โชว์แล้วบอกเหตุ */}
-                {row.useCurrent ? (
-                  <GatedAction
-                    blocker={row.useCurrentBlocker}
-                    size="sm" tone="primary" icon={<Check size={14} />}
-                    disabled={linking === row.itemId}
-                    onClick={() => onUseCurrent(row)}
-                  >
-                    ใช้ราคา {row.useCurrent.short} นี้
-                  </GatedAction>
-                ) : null}
-                <GatedAction
-                  blocker={row.priceBlocker}
-                  size="sm" tone={row.useCurrent ? undefined : "primary"} variant={row.useCurrent ? "quiet" : "filled"}
-                  icon={<Coins size={14} />}
-                  disabled={linking === row.itemId}
-                  onClick={() => onPrice(row)}
-                >
-                  {row.useCurrent ? "ใส่ราคาใหม่" : "ใส่ราคา"}
-                </GatedAction>
-              </div>
-            ) : <span className={styles.dim}>{NA}</span>}
+            <PriceCell
+              row={row} canPrice={canPrice} busy={linking === row.itemId}
+              onPrice={onPrice} onUseCurrent={onUseCurrent}
+            />
           </td>
           <td><IngredientCell row={row} canEdit={canPrice} busy={linking === row.itemId} onOpen={onIngredients} /></td>
         </tr>
@@ -318,24 +288,84 @@ function RowGroup({ group, today, canPrice, linking, collapsed, onToggle, onPric
   );
 }
 
-/* ── Ingredient List ของสูตรที่แถวผูก (ม-159) — ก้าวแยกจากราคา ──────────────────────────────────────────
-   ไม่ต้องมี (กลิ่นล้วน · 02-020) = ขีด · มีแล้ว = "มีแล้ว" · ยังไม่มี = ป้ายเตือน + ปุ่ม (เฉพาะคนที่ตอบฝ่ายนี้ได้ — ด่านเดียวกับ API) */
+/* รายการ — รหัสบน·ชื่อล่าง (กติกาแสดง entity ของตาราง) · บรรทัดรองบอกชนิดของในทะเบียน และของที่ขอมาถ้าชื่อไม่ตรงกัน */
+function ItemCell({ row }) {
+  const reg = row.registry;
+  const kind = reg?.kind === "formula"
+    ? `สูตร${reg.categoryCode ? ` ${reg.categoryCode}` : ""}`
+    : reg?.kind === "scent" ? "กลิ่น (หัวน้ำหอม)" : "ยังไม่ผูกทะเบียน";
+  const name = reg?.name || row.label || null;
+  return (
+    <>
+      {reg?.code ? <div className={styles.code}>{reg.code}</div> : null}
+      <div className={styles.name}>{naText(name)}</div>
+      <div className={styles.sub}>
+        {kind}
+        {row.label && row.label !== name ? ` · ขอ: ${row.label}` : ""}
+      </div>
+    </>
+  );
+}
+
+/* ── ก้าวราคา (F · B · FB) — ป้ายสถานะ → ราคาที่มีในทะเบียน → ปุ่ม ─────────────────────────────────────────
+   ⚠️ ปุ่มวางตาม `canPrice` (ด่านเดียวกับ API) · ไม่มีราคาในทะเบียนสักช่อง = ไม่มีปุ่ม "ใช้ราคานี้" · หมดอายุ = มีปุ่มแล้วบอกเหตุ */
+function PriceCell({ row, canPrice, busy, onPrice, onUseCurrent }) {
+  const priced = row.stage === "awaiting_ingredients";
+  return (
+    <div className={styles.step}>
+      <StatusBadge size="sm" tone={priced ? "success" : "warning"} label={priced ? "ใส่ราคาแล้ว" : "รอใส่ราคา"} />
+      <CurrentPrices row={row} />
+      {!priced && canPrice ? (
+        <div className={styles.actions}>
+          {row.useCurrent ? (
+            <GatedAction
+              blocker={row.useCurrentBlocker}
+              size="sm" tone="primary" icon={<Check size={14} />}
+              disabled={busy}
+              onClick={() => onUseCurrent(row)}
+            >
+              ใช้ราคา {row.useCurrent.short} นี้
+            </GatedAction>
+          ) : null}
+          <GatedAction
+            blocker={row.priceBlocker}
+            size="sm" tone={row.useCurrent ? undefined : "primary"} variant={row.useCurrent ? "quiet" : "filled"}
+            icon={<Coins size={14} />}
+            disabled={busy}
+            onClick={() => onPrice(row)}
+          >
+            {row.useCurrent ? "ใส่ราคาใหม่" : "ใส่ราคา"}
+          </GatedAction>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── ก้าว Ingredient List ของสูตรที่แถวผูก (ม-159) — ทรงเดียวกับก้าวราคา ──────────────────────────────────
+   ไม่ต้องมี (กลิ่นล้วน · 02-020) = บอกเป็นคำ ไม่ใช่ขีดลอย ๆ · มีแล้ว = ป้ายเขียว · ยังไม่มี = ป้ายส้ม + ปุ่ม
+   ⭐ **ปุ่มหลักทุกแถว** (ผู้ใช้ 03/11/2026 "ปุ่ม ใส่ ingredient ให้เด่นกว่านี้") — เดิมเป็นปุ่มจางตอนยังรอราคา จนอ่านเหมือนลิงก์
+   ทั้งที่เป็นก้าวบังคับเท่ากับราคา (ครบสองอย่างถึงจบ) ⇒ น้ำหนักเท่าปุ่ม "ใส่ราคา" · ปุ่มเฉพาะคนที่ตอบฝ่ายนี้ได้ (ด่านเดียวกับ API) */
 function IngredientCell({ row, canEdit, busy, onOpen }) {
   const plan = row.ingredient || {};
-  if (!plan.required) return <span className={styles.dim} title="ไม่ผูกสูตร หรือเป็นสูตรหัวน้ำหอม 02-020">{NA}</span>;
-  if (!plan.missing) return <span className={styles.done}>มีแล้ว</span>;
+  if (!plan.required) {
+    return (
+      <span className={styles.dim} title="ไม่ผูกสูตร หรือเป็นสูตรหัวน้ำหอม 02-020">ไม่ต้องใส่</span>
+    );
+  }
+  if (!plan.missing) return <StatusBadge size="sm" tone="success" label="มีแล้ว" />;
   return (
-    <div className={styles.actions}>
-      <span className={styles.missing}>ยังไม่มี</span>
+    <div className={styles.step}>
+      <StatusBadge size="sm" tone="warning" label="ยังไม่มี" />
       {canEdit ? (
-        <Button
-          size="sm" icon={<ListChecks size={14} aria-hidden="true" />}
-          tone={row.stage === "awaiting_ingredients" ? "primary" : undefined}
-          variant={row.stage === "awaiting_ingredients" ? "filled" : "quiet"}
-          disabled={busy} onClick={() => onOpen(row)}
-        >
-          ใส่ Ingredient List
-        </Button>
+        <div className={styles.actions}>
+          <Button
+            size="sm" tone="primary" icon={<ListChecks size={14} aria-hidden="true" />}
+            disabled={busy} onClick={() => onOpen(row)}
+          >
+            ใส่ Ingredient List
+          </Button>
+        </div>
       ) : null}
     </div>
   );

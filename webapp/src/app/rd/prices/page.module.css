@@ -17,6 +17,15 @@
 /* ปุ่มสองตัวในเซลล์เดียว — ตัดบรรทัดได้บนจอแคบ */
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
-/* ม-159 — สถานะของสองก้าวในเซลล์ (ราคาใส่แล้ว · Ingredient List มีแล้ว/ยังไม่มี) */
-.done { color: var(--green); font-size: var(--fs-4); }
-.missing { color: var(--amber); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
+/* ── จัดตารางใหม่ (ผู้ใช้ 03/11/2026 "ดูยาก") — สี่คอลัมน์ กำหนดสัดส่วนเอง ไม่ปล่อยตามเนื้อ
+   (เดิมหกคอลัมน์ไหลตามเนื้อ ⇒ ปุ่มลอยห่างจากราคาที่มันใช้ครึ่งจอ) */
+.colItem { width: 34%; }
+.colConfirm { width: 16%; }
+.colStep { width: 25%; }
+
+/* รหัสบน·ชื่อล่าง — รหัส mono ให้กวาดตาเป็นคอลัมน์ได้ (กติกาแสดง entity ของตาราง) */
+.code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-2); font-size: var(--fs-4); }
+.name { font-weight: var(--fw-semibold); }
+
+/* หนึ่งก้าว = ป้ายสถานะ → รายละเอียด → ปุ่ม เรียงลงล่าง ชิดซ้าย (ม-159 · สองก้าวทรงเดียวกัน) */
+.step { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }

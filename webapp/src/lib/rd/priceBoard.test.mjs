@@ -180,7 +180,7 @@ test('🔴 L15 ด่านซอร์ส: การ์ดไม่อ้าง
   assert.match(page, /label="ใช้ราคาในทะเบียนได้เลย" value=\{`\$\{totals\.usable\} รายการ`\}/);
   // หมายเหตุเลือกตามสิทธิ์คนดู — ตัวเดียวกับที่วางปุ่ม (`canPrice ?` ในช่องจัดการ)
   assert.match(page, /note=\{usablePriceNote\(totals, \{ canPrice \}\)\}/);
-  assert.match(page, /\) : canPrice \? \(\s*<div className=\{styles\.actions\}>/);
+  assert.match(page, /\{!priced && canPrice \? \(\s*<div className=\{styles\.actions\}>/);
   assert.match(page, /\{row\.useCurrent \? \(\s*<GatedAction\s+blocker=\{row\.useCurrentBlocker\}/);
 });
 
