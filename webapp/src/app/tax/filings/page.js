@@ -107,7 +107,7 @@ function FilingsPageInner() {
   const canReadTable = useCan("ra:view") || canFile;
   const { data: tableRows, loading: lTable, error: tableError, staleError: tableStale, errorDetail: tableDetail, loaded: tableLoaded, reload: reloadTable } = useApiList(canReadTable ? "/api/tax/orders/table" : null);
   const detailByKey = useMemo(() => new Map((tableRows || []).map((row) => [row.key, row])), [tableRows]);
-  /* เดือนของวันที่ส่งของ (หัวตารางเดิม "M.10/69") — "all" = ทุกเดือน · ตัวเลือกมาจากงานที่มีจริง */
+  /* เดือนที่ยื่นทำจ่าย (หัวตารางเดิม "M.10/69" · มติ 03/11 V24: ยื่นแล้ว = เดือนที่เริ่มยื่น · ยังไม่ยื่น = เดือนนี้) — "all" = ทุกเดือน */
   const [month, setMonth] = useState("all");
 
   /* ── งานที่เปิดอยู่ (`?start=<คีย์งาน>`) — มาจากแถวในรายการ หรือคิวบนภาพรวม /tax · `?create=` คือคีย์เดิมของ PR5 ── */
@@ -200,7 +200,7 @@ function FilingsPageInner() {
       if (customerIds.length && !customerIds.includes(r.customerId)) return false;
       // วันไทยของวันที่งานเริ่ม (คิว = วันที่ถึงขั้นนั้น · บันทึก = วันเริ่มยื่น) — ตัวตัดสินเดียวกับการ์ดบนภาพรวม
       if (!withinDateRange(r.createdAt, from, to)) return false;
-      // เดือนของวันที่ส่งของ (V21) — งานที่ยังไม่รู้รายการ/วันที่ไม่อยู่ในเดือนไหน
+      // เดือนที่ยื่นทำจ่าย (V24) — งานที่ยังโหลดรายการไม่ขึ้นไม่อยู่ในเดือนไหน
       if (month !== "all" && r.detail?.month !== month) return false;
       if (!q) return true;
       return r.search.some((v) => (v || "").toLowerCase().includes(q));
@@ -313,10 +313,10 @@ function FilingsPageInner() {
               onChange: setCustomerIds,
             }]}
           />
-          {/* เดือนของวันที่ส่งของ (หัวตารางเดิม "M.10/69" · มติ 03/11 V21) */}
+          {/* เดือนที่ยื่นทำจ่าย (หัวตารางเดิม "M.10/69" · มติ 03/11 V24) */}
           <label className={styles.rangeLabel}>
-            เดือนที่ส่งของ
-            <Select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="เดือนที่ส่งของ">
+            เดือนที่ยื่น
+            <Select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="เดือนที่ยื่น">
               <option value="all">ทุกเดือน</option>
               {monthOptions.map((key) => {
                 const label = filingMonthLabel(key);
