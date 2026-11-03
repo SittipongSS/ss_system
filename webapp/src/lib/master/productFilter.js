@@ -65,6 +65,24 @@ export function productCategoryLabel(product, productTypes = []) {
   return { main: info.mainCategoryName, sub: categoryNameBoth(info) || code };
 }
 
+/* สถานะขึ้นทะเบียนสรรพสามิต (`registrationStatusOf`: none · in_progress · approved)
+   `label` = ตัวเลือกของตัวกรอง "การขึ้นทะเบียน" · `cell` = ป้ายในคอลัมน์ "สรรพสามิต" ของตาราง (ไม่มีหัวกลุ่มบอก จึงพูดเต็ม) */
+export const REGISTRATION_META = Object.freeze({
+  none: { label: 'ยังไม่ขึ้นทะเบียน', cell: 'ยังไม่ขึ้นทะเบียน' },
+  in_progress: { label: 'มีทะเบียน (รอ/ร่าง)', cell: 'ทะเบียนรอ/ร่าง', tone: 'info' },
+  approved: { label: 'อนุมัติแล้ว', cell: 'ขึ้นทะเบียนแล้ว', tone: 'success' },
+});
+
+/**
+ * สถานะขึ้นทะเบียนของแถว — **ตัวเดียวของตัวกรอง "การขึ้นทะเบียน" และป้ายในคอลัมน์สรรพสามิต** (ตาเห็น = ตัวกรองเจอ)
+ * `null` = ไม่มีมิตินี้: ผู้ดูไม่ได้ถือ history:view (server ไม่แนบ `registrationStatus` มาเลย) หรือหมวดไม่ใช่สรรพสามิต
+ */
+export function productRegistrationValue(product, productTypes = []) {
+  if (product?.registrationStatus === undefined) return null;
+  if (!categoryFlags(productCategoryCode(product), productTypes).isExcise) return null;
+  return product.registrationStatus || 'none';
+}
+
 /** ช่องที่คำค้นวิ่งไล่ — รหัส ชื่อสองภาษา แบรนด์สองภาษา หมวด (รหัส+ชื่อ) และรหัส BOM ใน Express
  *  ⭐ รหัส BOM ไม่ได้โชว์บนแถว แต่เป็นเลขอ้างอิงที่คนถือมาถาม "BOM นี้ของ FG ไหน" (ข้อยกเว้นของกฎ "ตาเห็น = ค้นเจอ") */
 function searchHaystack(product, productTypes) {
@@ -112,10 +130,7 @@ export function filterProducts(products = [], {
       return false;
     }
     if (taxable && !isProductTaxable(p, productTypes)) return false;
-    if (registrations.length) {
-      const excise = categoryFlags(productCategoryCode(p), productTypes).isExcise;
-      if (!excise || !registrations.includes(p.registrationStatus || 'none')) return false;
-    }
+    if (registrations.length && !registrations.includes(productRegistrationValue(p, productTypes))) return false;
     if (bomStatuses.length && !bomStatuses.includes(bomFilterValueOf(p))) return false;
     if (!q) return true;
     return searchHaystack(p, productTypes).some((v) => (v || '').toLowerCase().includes(q));
