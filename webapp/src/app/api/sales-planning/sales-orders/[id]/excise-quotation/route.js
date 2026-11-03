@@ -15,6 +15,7 @@ import {
   ExciseQuotationError, createExciseQuotationDraft, exciseQuotationBlocker, exciseQuotationOverrides,
   loadExciseRoundState, previewExciseQuotationDraft,
 } from '@/lib/excise/exciseQuotation';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,4 +84,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     if (error instanceof ExciseQuotationError) return Response.json({ error: error.message, ...error.extra }, { status: error.status });
     throw error;
   }
-});
+}, EXCISE_TASK_SYNC.salesOrder);

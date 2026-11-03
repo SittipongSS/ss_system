@@ -120,6 +120,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (body.status === 'Completed') updates.actualFinishDate = todayStr();
       else if (task.status === 'Completed') updates.actualFinishDate = null;
     }
+    // คนเปลี่ยนสถานะเอง = งานกลับเป็นของคน — ตัวซิงก์ระบบ (Q21 · mig 0421) จะไม่ย้อนงานนี้อีก (`exciseBillingTask.js`)
+    if (task.systemCompletedBy) {
+      updates.systemCompletedAt = null;
+      updates.systemCompletedBy = null;
+    }
   }
 
   // ── origin tracking (migration 0022): mark "แก้ไขโดยผู้ใช้" เมื่อแก้ field สำคัญของแผน

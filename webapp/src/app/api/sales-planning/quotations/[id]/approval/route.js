@@ -15,6 +15,7 @@ import { captureIssuedQuotationSnapshot } from '@/lib/sales/issuedQuotationSnaps
 import { captureIssuedQuotationPdfLater } from '@/lib/sales/issuedQuotationPdf';
 import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 // PDF สร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium เท่าเส้นดาวน์โหลด
@@ -150,4 +151,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // แจ้งทีมขาย: ใบผ่านแล้ว = ถือว่าส่งลูกค้าแล้ว (mig 0165) → ขั้นถัดไปคือปิด Won
   // เดิมเงียบทั้งขา ผู้จัดทำที่ไม่ใช่เจ้าของดีลจึงไม่รู้ว่าใบตัวเองผ่านหรือยัง
   return ok({ ...data, forecast });
-});
+}, EXCISE_TASK_SYNC.quotation);

@@ -12,6 +12,7 @@ import { linkDealToProject } from '@/lib/sales/dealProjectLink';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { acceptExciseQuotation } from '@/lib/excise/exciseQuotation';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,4 +181,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // insertWinSideEffects เลยไม่มีการ์ด). ส่งหลังเขียน DB สำเร็จ, fire-and-forget
 
   return ok({ quotation: accepted, deal: updatedDeal });
-});
+}, EXCISE_TASK_SYNC.quotation);

@@ -11,6 +11,7 @@ import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { applyForecastSource } from '@/lib/sales/forecastSourceRepo';
 import { isDryRun } from '@/lib/forceDelete';
 import { settleProbabilityAfterUnaccept } from '@/lib/sales/dealProbability';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,4 +184,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      (การอ่านแถวเองบนตารางที่มีทะเบียนขอบเขตถูกด่าน systemRules กฎ 6 รูดเพดานอยู่) */
   // `reopened` = ใบพี่น้องที่เปิดคืนจริง (จอเอาไปขึ้น toast) · `forecast` คงไว้ท้ายสุดตามยาม dealValueFromDocuments.test
   return ok({ quotation: after || result?.quotation || null, reopened, deal: result?.deal || null, forecast });
-});
+}, EXCISE_TASK_SYNC.quotation);

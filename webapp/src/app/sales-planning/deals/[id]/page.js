@@ -43,6 +43,7 @@ import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { tasksQueueHref } from "@/lib/pm/dealTaskLink";
+import { exciseBillingStepBadge } from "@/lib/pm/exciseBillingTask";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
@@ -431,6 +432,14 @@ export default function DealOverviewPage() {
     () => new Set(data?.awaitingFilingIds || []),
     [data?.awaitingFilingIds],
   );
+  // Q21 (มติ 03/11): ป้ายบนงาน "วางบิล + ค่าสรรพสามิต" ของไทม์ไลน์ดีล — SO ของดีลนี้ที่อยู่ในคิวรอออกใบ
+  // (ชุดเดียวกับคอลัมน์ยื่นภาษีของตาราง SO ด้านล่าง) · ป้ายพาไปหน้า SO ที่ต้องออกใบ
+  const exciseStepBadgeFor = useMemo(() => {
+    const awaiting = (data?.salesOrders || [])
+      .filter((order) => awaitingFilingIds.has(order.id))
+      .map((order) => ({ id: order.id, orderNumber: order.orderNumber, dealId: order.dealId }));
+    return (task) => exciseBillingStepBadge(task, awaiting);
+  }, [data?.salesOrders, awaitingFilingIds]);
   const filingOf = (salesOrderId) => {
     const filing = filingBySalesOrder.get(salesOrderId);
     if (filing) {
@@ -1445,6 +1454,7 @@ export default function DealOverviewPage() {
                 <TimelineWorkspace
                   tasks={data.projectTasks}
                   requests={data.inquiries || []}
+                  stepBadgeFor={exciseStepBadgeFor}
                   canEdit={canEdit}
                   dealId={deal.id}
                   projectId={data.project?.id || null}
@@ -1473,6 +1483,7 @@ export default function DealOverviewPage() {
                   ผูกโครงการเมื่อไหร่ ชุดนี้ถูก "รับเลี้ยง" เข้าโครงการทั้งชุด ไม่ gen ใหม่ */}
               <TimelineWorkspace
                 tasks={data.projectTasks}
+                stepBadgeFor={exciseStepBadgeFor}
                 canEdit={canEdit}
                 dealId={deal.id}
                 projectId={data.project?.id || null}

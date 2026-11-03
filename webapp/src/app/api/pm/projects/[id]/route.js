@@ -21,6 +21,8 @@ import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/
 import { loadDeliveries, loadProjectSalesOrders } from '@/lib/pm/deliveriesRepo';
 import { canEditDeliveries } from '@/lib/pm/deliveries';
 import { canViewUpdates } from '@/lib/master/updateAccess';
+import { isExciseBillingTask } from '@/lib/pm/exciseBillingTask';
+import { loadAwaitingFiling } from '@/lib/sales/handoffQueueData';
 
 export const dynamic = 'force-dynamic';
 
@@ -247,7 +249,20 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     if (revError) return fail(revError.message, 500);
     revisedAt = rev?.createdAt ?? null;
   }
-  return ok({ ...project, tasks: tasks || [], projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canDelete, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealFeedIds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
+  /* Q21 (มติ 03/11): ป้ายบนงาน "วางบิล + ค่าสรรพสามิต" อ่านคิวรอออกใบของ SA (นิยามเดียวกับตัวซิงก์ `exciseBillingTaskSync`)
+     · โหลดเฉพาะเมื่อโครงการมีงานนี้ · อ่านไม่ขึ้น = ไม่มีป้าย (null) ไม่ล้มทั้งหน้า */
+  const exciseDealIds = [...new Set((tasks || []).filter(isExciseBillingTask).map((task) => task.dealId).filter(Boolean))];
+  let exciseAwaiting = [];
+  if (exciseDealIds.length) {
+    try {
+      exciseAwaiting = (await loadAwaitingFiling(supabase, exciseDealIds))
+        .map(({ id, orderNumber, dealId }) => ({ id, orderNumber, dealId }));
+    } catch (error) {
+      console.error('[project] โหลดคิวรอออกใบค่าสรรพสามิตไม่สำเร็จ', error);
+      exciseAwaiting = null;
+    }
+  }
+  return ok({ ...project, tasks: tasks || [], exciseAwaiting, projectProducts, personalTasks: personalTasks || [], inquiries, deliveries, deliverySalesOrders, canEdit, canDelete, canEditDeliveries: canEditDeliveryRows, canApproveClose: canApproveProjectClose(user), me, revisedAt, maxRev, deals, dealsRollup, quotations, salesOrders, dealActivities, dealStageHistory, hiddenDealFeeds, dealFeedIds, dealId: foundingDeal?.id ?? null, dealStage: foundingDeal?.stage ?? null });
 });
 
 // PATCH /api/pm/projects/[id]

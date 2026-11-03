@@ -105,12 +105,14 @@ function StepPin({ pin }) {
 // stepKey เพราะโครงการหนึ่งมีดีลได้หลายรอบ (RE-ORDER) และ task ติดป้าย `dealId` อยู่แล้ว
 // → ป้ายต้องตอบว่า "รอบนี้" คืบไปแค่ไหน ไม่ใช่รวมทุกรอบของโครงการ
 // generic โดยตั้งใจ: ไทม์ไลน์ไม่ต้องรู้จัก "ของเข้า" หรืออะไรก็ตามที่จะมาทีหลัง
+// `href` (ไม่บังคับ) = ป้ายพาไปหน้าที่ทำงานนั้นต่อ (เช่นงานวางบิลค่าสรรพสามิต → หน้า SO · Q21)
 function StepBadge({ badge }) {
   if (!badge) return null;
-  return (
-    <span className="timeline-step-pin" title={badge.title || undefined}>
-      <StatusBadge size="sm" tone={badge.tone || "neutral"} label={badge.label} />
-    </span>
+  const pill = <StatusBadge size="sm" tone={badge.tone || "neutral"} label={badge.href ? `${badge.label} →` : badge.label} />;
+  return badge.href ? (
+    <Link href={badge.href} className="timeline-step-pin" title={badge.title || undefined}>{pill}</Link>
+  ) : (
+    <span className="timeline-step-pin" title={badge.title || undefined}>{pill}</span>
   );
 }
 

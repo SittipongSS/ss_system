@@ -11,6 +11,7 @@ import {
   submitQuotationWithSignatureEvidence,
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -95,4 +96,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ต่างจาก SO ที่แจ้ง space approvals ตั้งแต่ตอนยื่น. ระบุชื่อเจ้าของดีลไว้ในการ์ดเพราะ
   // ผู้อนุมัติของ QT คือ "เจ้าของดีลรายนั้น" ไม่ใช่หัวหน้าคนเดียวทั้ง space
   return ok(data);
-});
+}, EXCISE_TASK_SYNC.quotation);
