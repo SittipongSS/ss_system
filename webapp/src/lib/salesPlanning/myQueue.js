@@ -13,6 +13,7 @@
 //
 // ⚠️ **ที่นี่ไม่รู้จัก React และไม่ยิง API** — รับก้อนที่ API ส่งมาแล้วแปลงเป็นแถว
 // รูปเดียวกันหมด · เทสต์จึงเรียกได้ตรง ๆ โดยไม่ต้องมีจอ
+import { BACKLOG_READINESS } from '@/lib/excise/exciseBacklog';
 import { fmtDate } from '@/lib/format';
 import { requestKindLabel, requestLineNoun } from '@/lib/master/requestTypes';
 import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
@@ -304,7 +305,12 @@ export function buildMyQueue({
       // แผนรื้อสรรพสามิต PR3: ขาฝ่ายขาย = ออกใบเสนอราคาค่าสรรพสามิต (ใบยื่นกรมเป็นงานของ RA)
       step: 'ออกใบค่าสรรพสามิต',
       title: order.customerName || 'ลูกค้า',
-      sub: [order.orderNumber, 'อนุมัติแล้ว รอออกใบค่าสรรพสามิต'].filter(Boolean).join(' · '),
+      /* PR6c (มติ D6): ใบค้างก่อนเปิดระบบติดป้าย + บอกความพร้อม (คิวเรียงพร้อมก่อน — handoffQueueData) */
+      sub: [
+        order.orderNumber,
+        order.beforeLaunch ? 'ก่อนเปิดระบบ' : null,
+        BACKLOG_READINESS[order.readiness]?.label || 'อนุมัติแล้ว รอออกใบค่าสรรพสามิต',
+      ].filter(Boolean).join(' · '),
       due: order.approvedAt ? String(order.approvedAt).slice(0, 10) : null,
       basis: 'waiting',
       href: `/sa/sales-orders/${order.id}`,
