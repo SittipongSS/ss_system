@@ -492,3 +492,32 @@ test('⭐ รุ่นสี่ (แบบ A · มติ 29/09): แผงง�
   assert.match(cell, /const setDue = \(iso\) => mode\.setValue\(row, \{ \.\.\.v, dueDate: iso \|\| "", billingEvent: iso \? "" : v\.billingEvent \}\);/);
   assert.match(panel, /billingSkipReady && \(ex\.skip \|\| ex\.unskip\) && \{/);
 });
+
+test('⭐ มติ 02/11 (ม็อก split-v6): ตารางงวดเป็นการ์ดรายงวดเมื่อคอลัมน์ ≤ 760px — DOM ชุดเดียว · ช่องบอกชื่อตัวเอง · จอกว้างยังเป็นตาราง', () => {
+  const panel = code(PANEL);
+  const css = readFileSync(join(SRC, 'components/salesPlanning/SalesOrderPaymentPanel.module.css'), 'utf8');
+  // กล่องวัดความกว้าง (container) ห่อตาราง · แถวหลักติดธงการ์ด · ทุกช่องบอกชนิด/ชื่อ (::before ในการ์ด)
+  assert.match(panel, /<div className=\{styles\.tableBox\}>\s*<TableScroll family="editable"/);
+  assert.match(panel, /<tr data-card="row">/);
+  assert.match(panel, /<td data-cell="label" data-seq=\{single \? undefined : row\.seq\}>/);
+  for (const [cell, label] of [['due', 'กำหนดชำระ / จ่ายจริง'], ['cover', 'ครอบคลุมบริการ'], ['evidence', 'หลักฐาน'], ['tax', 'ใบกำกับภาษี']]) {
+    assert.match(panel, new RegExp(`data-cell="${cell}" data-label="${label.replace('/', '\\/')}"`), cell);
+  }
+  assert.match(panel, /data-cell="bill" data-label=\{billingColumnNote \? `วันวางบิล \(\$\{billingColumnNote\}\)` : "วันวางบิล"\}/);
+  for (const cell of ['seq', 'amount', 'status', 'action']) assert.match(panel, new RegExp(`data-cell="${cell}"`), cell);
+  // container query (ไม่ใช่ @media — ไม่นับเพดานจุดตัดจอ) · ค่าเดียวกับตารางงวดของหน้าสร้าง SO
+  assert.match(css, /\.tableBox \{ container-type: inline-size; \}/);
+  const cards = css.slice(css.indexOf('@container (max-width: 760px) {'));
+  assert.ok(cards.length > 30, 'มีบล็อกการ์ด');
+  assert.match(cards, /--table-min-width: 0;/, 'เลิกกว้างขั้นต่ำของ TableScroll');
+  assert.match(cards, /> thead \{ display: none; \}/);
+  // ช่องวันสามช่องเต็มกว้าง ระบุชื่อทีละช่อง (ห้าม :not — ความจำเพาะสูงกว่ากฎคู่ แล้วคู่หลุดคนละแถว)
+  assert.match(cards, /td\[data-cell="bill"\],\s*\.tableBox \.table\.table > tbody > tr > td\[data-cell="due"\],\s*\.tableBox \.table\.table > tbody > tr > td\[data-cell="cover"\] \{ grid-column: 1 \/ -1; \}/);
+  assert.doesNotMatch(cards, /:not\(\[data-cell/);
+  // ช่องปุ่มต้องชนะกฎ :has()/ตรึงขวา (0,3,6) — ไม่งั้นกว้าง 1% ในการ์ด · ช่องปุ่มว่าง = ไม่จองที่
+  assert.match(cards, /\.tableBox \.table\.table > tbody > tr > td\[data-cell\],/);
+  assert.match(cards, /td\[data-cell="action"\]:empty \{ display: none; \}/);
+  // ช่องวันเต็มกว้างการ์ด (กติกาของตัวช่องอยู่ InstallmentDates.module.css ค่าเดียวกัน)
+  const dates = readFileSync(join(SRC, 'components/salesPlanning/installmentDates/InstallmentDates.module.css'), 'utf8');
+  assert.match(dates, /@container \(max-width: 760px\) \{\s*\.field :global\(\.date-input-wrap\) \{ max-width: none; \}/);
+});
