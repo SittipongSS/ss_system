@@ -435,7 +435,7 @@ export default function DealOverviewPage() {
     const filing = filingBySalesOrder.get(salesOrderId);
     if (filing) {
       return (
-        <Link prefetch={false} href={`/tax/filings/${filing.id}`} className="linklike" title="เปิดใบยื่นชำระภาษี">
+        <Link prefetch={false} href={`/go/filing/${filing.id}`} className="linklike" title="เปิดใบยื่นชำระภาษี">
           <ExciseStatusBadge status={filing.status} />
         </Link>
       );
@@ -843,7 +843,8 @@ export default function DealOverviewPage() {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");
-      if (payload.id) router.push(`/tax/registrations/${payload.id}`);
+      // เส้นทางกลางพาไปตามสิทธิ์ (มติ 02/11 V13): ฝ่ายขาย = หน้าสินค้าเปิดแผงทะเบียน · RA/แอดมิน = /tax
+      if (payload.id) router.push(`/go/registration/${payload.id}`);
       else await load();
     } catch (e) {
       setError(e.message || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");

@@ -126,7 +126,8 @@ export const SYSTEM_CATALOG = [
     label: 'ภาษีสรรพสามิต',
     description: 'ดูภาพรวมทะเบียน การยื่นชำระภาษี และรายงานที่เกี่ยวข้อง',
     icon: Scale,
-    isVisible: (user) => canUser(user, 'history:view'),
+    /* มติ 02/11 V13: RA + แอดมิน + ผู้ดู — ฝ่ายขายทำงานทะเบียน/ดูสถานะจากหน้าสินค้า/หน้า SO (tax:module · permissions.js) */
+    isVisible: (user) => canUser(user, 'tax:module'),
     landing: () => '/tax',
   },
   {

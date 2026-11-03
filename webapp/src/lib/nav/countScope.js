@@ -94,7 +94,7 @@ const SCOPE_RULES = {
 };
 
 function taxScope(user, trackKey) {
-  if (!can(user?.role, 'history:view')) return null;
+  if (!can(user?.role, 'tax:module')) return null;
   return ownedStages(trackKey, deptOf(user?.role)).length ? 'dept' : null;
 }
 

@@ -137,9 +137,10 @@ function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProjec
       return { kind, label, status: 'available', hint: `${e.fgCode} ยังไม่ขึ้นทะเบียน`, actionKind: 'create-excise', actionLabel: 'สร้างทะเบียน', productId: e.productId, href: null };
     }
     if (reg.status === 'approved') {
-      return { kind, label, status: 'done', hint: `${e.fgCode} ขึ้นทะเบียนแล้ว → ไปยื่นชำระ`, actionKind: null, href: '/tax/filings', linkLabel: 'ไปยื่นชำระ' };
+      /* v3 (มติ 02/11): ฝ่ายขายไม่ยื่นชำระเอง (RA ยื่นจาก SO ค่าสรรพสามิต) และไม่เข้า /tax ⇒ ไม่มีลิงก์ "ไปยื่นชำระ" แล้ว */
+      return { kind, label, status: 'done', hint: `${e.fgCode} ขึ้นทะเบียนแล้ว`, actionKind: null, href: null };
     }
-    return { kind, label, status: 'progress', hint: `${e.fgCode}: ${REG_STATUS_HINT[reg.status] || 'อยู่ระหว่างขึ้นทะเบียน'}`, actionKind: null, href: `/tax/registrations/${reg.id}`, linkLabel: 'เปิดทะเบียน' };
+    return { kind, label, status: 'progress', hint: `${e.fgCode}: ${REG_STATUS_HINT[reg.status] || 'อยู่ระหว่างขึ้นทะเบียน'}`, actionKind: null, href: `/go/registration/${reg.id}`, linkLabel: 'เปิดทะเบียน' };
   });
 }
 

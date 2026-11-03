@@ -146,5 +146,6 @@ test('หน้าดีลแยก "รอออกใบยื่น" ออ�
   );
   assert.match(page, /awaitingFilingIds\.has\(salesOrderId\)/, 'ค้างจริงต้องมาจากคิวกลาง');
   assert.match(page, /filingBySalesOrder\.get\(salesOrderId\)/, 'มีใบยื่นแล้วต้องโชว์สถานะจริง');
-  assert.match(page, /\/tax\/filings\/\$\{filing\.id\}/, 'ต้องลิงก์ไปใบยื่นใบนั้น');
+  // ทางกลางพาไปตามสิทธิ์ (มติ 02/11 V13): RA/แอดมิน = /tax/filings/<id> · ฝ่ายขาย = SO ลูกค้าของบันทึก
+  assert.match(page, /\/go\/filing\/\$\{filing\.id\}/, 'ต้องลิงก์ไปใบยื่นใบนั้น');
 });
