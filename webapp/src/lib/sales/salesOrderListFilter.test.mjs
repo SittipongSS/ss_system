@@ -169,7 +169,7 @@ test('🔴 L11c: หัวกลุ่ม — ใบย้อนหลังท�
 
 test('ด่านซอร์ส L11: หน้ากรองด้วยตัวตัดสินกลาง · การ์ดสี่ใบเป็นปุ่มที่ตั้ง state ทุกตัวของตารางจาก pick', () => {
   const page = read('../../app/sales-planning/sales-orders/page.js');
-  assert.match(page, /import \{\s*EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,\s*historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,\s*\} from "@\/lib\/sales\/salesOrderListFilter";/);
+  assert.match(page, /import \{\s*EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,\s*historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,\s*\} from "@\/lib\/sales\/salesOrderListFilter";/);
   const memo = slice(page, 'const filtered = useMemo(', '\n\n');
   assert.match(memo, /return rows\.filter\(\(row\) => salesOrderPassesListFilters\(row, filters, \{ matchesSearch \}\)\);/);
   assert.doesNotMatch(memo, /Filter\.length && !|lineView !== "all"|_waitingOnMe|_serviceSetupPending/, 'ห้ามเขียนเงื่อนไขของมิติซ้ำในหน้า');

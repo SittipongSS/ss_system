@@ -21,7 +21,7 @@ import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
 import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import {
-  EMPTY_SALES_ORDER_FILTERS, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
+  EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
   historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,
 } from "@/lib/sales/salesOrderListFilter";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
@@ -243,6 +243,8 @@ const LINE_VIEWS = [
   { value: "all", label: "ทุกสาย" },
   { value: "PRODUCT", label: BUSINESS_LINE_LABELS.PRODUCT },
   { value: "SERVICE", label: BUSINESS_LINE_LABELS.SERVICE },
+  /* มติเจ้าของ 03/11: แท็บใบ SO ค่าสรรพสามิต (ใบไม่มีดีล = ไม่มีสายธุรกิจ) · ขั้นของ SO ลูกค้าอยู่ที่ป้าย "สรรพสามิต" บนแถวทุกแท็บ */
+  { value: EXCISE_LINE_VIEW, label: "สรรพสามิต" },
 ];
 
 const GROUP_OPTIONS = [
@@ -421,6 +423,8 @@ export default function SalesOrdersPage() {
         .concat(row.serviceAging?.label, row.serviceAging ? SERVICE_BACKFILL_AGING_TEXT.rowLabel[row.serviceAging.waitingOn] : null)
         // บรรทัด "Actual รายงวด · นับแล้ว …" ใต้ยอด (review 26/10) — ตาเห็นบนแถว = ต้องค้นเจอ
         .concat(installmentActualSubLine(row))
+        // บรรทัด "สรรพสามิต · ขั้น" ใต้รางเอกสาร (มติ 03/11) — ตาเห็นบนแถว = ต้องค้นเจอ
+        .concat(row.exciseStage ? `สรรพสามิต ${row.exciseStage.text}` : null)
         .some((value) => String(value || "").toLowerCase().includes(q));
     };
     return rows.filter((row) => salesOrderPassesListFilters(row, filters, { matchesSearch }));
@@ -616,6 +620,14 @@ export default function SalesOrdersPage() {
                       <span className="cell-sub mt-1.5">
                         <ServiceAgingChip aging={row.serviceAging} />{" "}
                         <span>{SERVICE_BACKFILL_AGING_TEXT.rowLabel[row.serviceAging.waitingOn]}</span>
+                      </span>
+                    ) : null}
+                    {/* ⭐ "สรรพสามิต · ขั้น" (มติเจ้าของ 03/11 — "SO นี้ต้องมีสรรพสามิตไหม ถึงขั้นไหน") — ขั้นคิดที่ server
+                        (`row.exciseStage` · lib/excise/exciseListStage — "รอออกใบ" = คิว SA ตัวเดียวกับแดชบอร์ด) · ไม่มีเรื่องสรรพสามิต = ไม่มีบรรทัด */}
+                    {row.exciseStage ? (
+                      <span className="cell-sub mt-1.5">
+                        <StatusBadge tone={row.exciseStage.tone} size="sm" label="สรรพสามิต" />{" "}
+                        <span>{row.exciseStage.text}</span>
                       </span>
                     ) : null}
                   </td>

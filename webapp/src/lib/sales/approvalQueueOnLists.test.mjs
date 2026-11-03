@@ -305,7 +305,7 @@ test('ตามงานค้าง: แถวตารางมีบรรท
   /* คำค้น: ป้าย + คำข้างป้าย ต่อท้ายชุดเดิม (ชุดเดิมไม่ถูกแทรก — ยามของเลขเอกสารเดิมยังยึดรูปเดิมอยู่) */
   const memo = slice(page, 'const filtered = useMemo(', '\n\n');
   /* + บรรทัดรอง "Actual รายงวด · นับแล้ว …" ใต้ยอด (review 26/10) ต่อท้ายอีกก้อน — ชุดเดิมยังไม่ถูกแทรก */
-  assert.match(memo, /\.\.\.historicalRefsOf\(row\)\]\s*\.concat\(row\.serviceAging\?\.label, row\.serviceAging \? SERVICE_BACKFILL_AGING_TEXT\.rowLabel\[row\.serviceAging\.waitingOn\] : null\)\s*(?:\/\/[^\n]*\s*)?\.concat\(installmentActualSubLine\(row\)\)\s*\.some\(/);
+  assert.match(memo, /\.\.\.historicalRefsOf\(row\)\]\s*\.concat\(row\.serviceAging\?\.label, row\.serviceAging \? SERVICE_BACKFILL_AGING_TEXT\.rowLabel\[row\.serviceAging\.waitingOn\] : null\)\s*(?:\/\/[^\n]*\s*)?\.concat\(installmentActualSubLine\(row\)\)\s*(?:(?:\/\/[^\n]*\s*)?\.concat\([^\n]*\)\s*)*\.some\(/);
   assert.match(page, /placeholder="ค้นหาเลข SO \/ QT \/ ลูกค้า \/ AR \/ ดีล \/ เอกสารอ้างอิง \/ เลขเดิม"/, 'คำใบ้ของช่องค้นหาไม่เปลี่ยน');
 
   /* จอไม่พิมพ์คำของเรื่องนี้เอง (คอมเมนต์ไม่นับ) และไม่อ่านนาฬิกา */
