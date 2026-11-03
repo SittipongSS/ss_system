@@ -106,13 +106,14 @@ export async function registrationReport(filter = {}) {
     };
     if (margin) {
       // Factory cost broken down into its components + profit (cost = วัตถุดิบ +
-      // ค่าแรง + ค่าจัดส่ง). Rendered as a main line (ราคาผลิต) + sub lines.
+      // ค่าแรง + ค่าจัดส่ง). Three lines, the same grouping as the queue on
+      // /tax/registrations: ราคาผลิต · กำไร on the main line, two parts per sub line.
+      // ⚠️ Was five lines (one per value) ⇒ a printed row stood 16mm tall, twice what
+      // the page budget assumed, and the sheet clipped ~7 rows per page (03/11/2026).
       row.factory = [
-        `ราคาผลิต ${money(p.costPrice)}`,
-        `· วัตถุดิบ ${money(p.materialCost)}`,
-        `· ค่าแรง ${money(p.laborCost)}`,
-        `· ค่าจัดส่ง ${money(p.shippingCost)}`,
-        `กำไร ${money(p.factoryProfit)}`,
+        `ราคาผลิต ${money(p.costPrice)} · กำไร ${money(p.factoryProfit)}`,
+        `วัตถุดิบ ${money(p.materialCost)} · ค่าแรง ${money(p.laborCost)}`,
+        `ค่าจัดส่ง ${money(p.shippingCost)}`,
       ].join('\n');
     }
     return row;
@@ -122,7 +123,7 @@ export async function registrationReport(filter = {}) {
     { key: 'product', label: 'รหัสสินค้า / สินค้า / แบรนด์', multiline: true },
     { key: 'size', label: 'ขนาด' },
     { key: 'customer', label: 'ลูกค้า / เลขผู้เสียภาษี', multiline: true },
-    ...(margin ? [{ key: 'factory', label: 'ราคาผลิต (แจกแจง) / กำไร', multiline: true }] : []),
+    ...(margin ? [{ key: 'factory', label: 'ราคาผลิต / กำไร (แจกแจงต้นทุน)', multiline: true }] : []),
     { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
     { key: 'owner', label: 'ผู้รับผิดชอบ / ทีม', multiline: true },
     { key: 'status', label: 'สถานะ' },
