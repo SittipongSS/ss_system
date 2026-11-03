@@ -26,6 +26,7 @@ import { RETIRED_PEOPLE_CLEARED, stripRetiredPeople } from '@/lib/sales/quotatio
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -345,4 +346,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
 
   return ok(revised, 201);
-});
+}, EXCISE_TASK_SYNC.quotation);

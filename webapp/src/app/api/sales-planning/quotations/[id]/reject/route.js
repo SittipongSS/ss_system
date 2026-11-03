@@ -6,6 +6,7 @@ import { canApproveQuotation, canViewSalesPlanning, dealAuditLabel } from '@/lib
 import { canRejectQuotationSubmission, quotationApprovalDeal } from '@/lib/sales/quotationWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,4 +63,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
   // แจ้งทีมขายเหมือนฝั่งใบสั่งขาย — ผู้จัดทำต้องรู้ว่าต้องกลับมาแก้ ไม่ใช่รอเงียบ ๆ
   return ok(data);
-});
+}, EXCISE_TASK_SYNC.quotation);

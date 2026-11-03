@@ -24,10 +24,14 @@ export const serverError = (msg = 'server error') => fail(msg, 500);
 // handler รับ object เดียว: { user, supabase, req, ctx }
 //   - ctx = arg ที่ 2 ของ route (มี ctx.params เป็น Promise สำหรับ dynamic route)
 // ไม่บังคับ auth ที่นี่ — แต่ละ handler ตัดสินใจเอง (บาง route เปิด public / เช็ค cap เอง)
-export function withUser(handler) {
+// `after` (ไม่บังคับ) = งานต่อท้ายหลัง handler ตอบแล้ว รับ `{ user, supabase, req, ctx, res }` · คืนคำตอบเดิมเสมอ
+//   — ตัว after ต้องกลืน error เอง (เช่น `EXCISE_TASK_SYNC` ของ lib/pm/exciseBillingTaskSync.js)
+export function withUser(handler, { after = null } = {}) {
   return async (req, ctx) => {
     const user = await getCurrentUser();
     const supabase = getSupabaseAdmin();
-    return handler({ user, supabase, req, ctx });
+    const res = await handler({ user, supabase, req, ctx });
+    if (after) await after({ user, supabase, req, ctx, res });
+    return res;
   };
 }

@@ -36,6 +36,7 @@ import {
   serviceSetupDeferred, serviceSetupReopened, serviceSetupTotals,
 } from '@/lib/sales/serviceSetup';
 import { paidThrough } from '@/lib/sales/paymentCoverage';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -571,7 +572,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   }
 
   return ok(installmentWarning ? { ...order, warning: installmentWarning } : order, 201);
-});
+}, EXCISE_TASK_SYNC.createdSalesOrder);
 
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
    `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว)

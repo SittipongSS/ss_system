@@ -44,6 +44,7 @@ import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import Button from "@/components/ui/Button";
 import DeliveriesPanel from "@/components/pm/DeliveriesPanel";
 import { DELIVERY_STEP_KEYS, deliveriesForDeal, deliveryStepBadge } from "@/lib/pm/deliveries";
+import { exciseBillingStepBadge } from "@/lib/pm/exciseBillingTask";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
@@ -439,16 +440,21 @@ export default function ProjectDetailPage() {
   // ของรอบเก่าจะลากให้รอบใหม่ดูเหมือนยังไม่ครบตลอดไป (task มี dealId อยู่แล้ว)
   // · ขั้นที่ไม่มี dealId (ข้อมูลเก่า 18 แถวบน prod) ตกไปใช้ยอดรวมทั้งโครงการ
   //   เพราะไม่มีทางรู้ว่าเป็นของรอบไหน — ดีกว่าไม่โชว์อะไรเลย
+  // + งาน "วางบิล + ค่าสรรพสามิต" (Q21): ป้ายรอออกใบ n ใบ → หน้า SO · ระบบติ๊กครบแล้ว (`exciseBillingStepBadge`)
   const deliveryStepBadgeFor = useMemo(() => {
     const rows = data?.deliveries || [];
-    if (!rows.length) return null;
+    const exciseAwaiting = data?.exciseAwaiting;
+    if (!rows.length && !exciseAwaiting) return null;
     const today = businessDate();
     return (task) => {
-      if (!DELIVERY_STEP_KEYS.includes(task?.workflowTemplateStepKey)) return null;
+      if (!DELIVERY_STEP_KEYS.includes(task?.workflowTemplateStepKey)) {
+        return exciseAwaiting ? exciseBillingStepBadge(task, exciseAwaiting) : null;
+      }
+      if (!rows.length) return null;
       const scoped = task.dealId ? deliveriesForDeal(rows, task.dealId) : rows;
       return deliveryStepBadge(scoped, today, { scope: task.dealId ? 'deal' : 'project' });
     };
-  }, [data?.deliveries]);
+  }, [data?.deliveries, data?.exciseAwaiting]);
   const processedTasks = useMemo(() => {
     let currentPhase = null;
     let phaseNum = 0;
