@@ -260,6 +260,24 @@ export async function PATCH(request, { params }) {
 
   // Approval audit trail (driven by the status transition) — ช่องบังคับของอนุมัติ/ตีกลับผ่านตารางข้างบนแล้ว
   // (ใบอนุมัติแล้วออกจาก handler ไปตั้งแต่บล็อกล็อกด้านบน ⇒ ถึงตรงนี้ = เปลี่ยนสถานะจริง)
+  /* ⭐ มติ 02/11 V15: ใบที่ RA สร้างเองข้ามขั้น SA ยื่น ⇒ ด่านเอกสารครบ (ตัวเดียวกับด่านยื่น) ตรวจตอนอนุมัติแทน
+     — ใบที่มาทางฝ่ายขายผ่านด่านนี้ไปแล้วตอนยื่น ไม่ตรวจซ้ำ (เอกสารลูกค้าอาจถูกแก้ภายหลังโดยไม่เกี่ยวกับใบนี้) */
+  if (allowed.has('status') && body.status === 'approved' && reg.metadata?.source === 'ra') {
+    let requirements;
+    try {
+      requirements = await registrationRequirements(supabase, id);
+    } catch (e) {
+      console.error('[excise-registrations PATCH approve-gate]', id, e);
+      return Response.json({ error: `ตรวจเอกสารบังคับไม่สำเร็จ ยังอนุมัติไม่ได้ — ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+    }
+    if (requirements.notFound) return Response.json({ error: 'ไม่พบทะเบียนนี้' }, { status: 404 });
+    if (!requirements.ready) {
+      return Response.json(
+        { error: `ทะเบียนที่ RA สร้างเองต้องมีเอกสารครบก่อนอนุมัติ: ${requirements.missing.map((m) => m.label).join(', ')}` },
+        { status: 400 },
+      );
+    }
+  }
   if (allowed.has('status') && body.status === 'approved') {
     updated.approvalNumber = String(updated.approvalNumber).trim();
     updated.approvedBy = user?.id ?? null;

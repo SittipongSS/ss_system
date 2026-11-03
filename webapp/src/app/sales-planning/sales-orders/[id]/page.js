@@ -169,6 +169,8 @@ import CoverageTimeline from "@/components/salesPlanning/historicalWizard/Covera
 import ExciseNotBilledDialog from "@/components/excise/ExciseNotBilledDialog";
 import ExciseRoundsCard from "@/components/excise/ExciseRoundsCard";
 import ExciseRemainderDialog from "@/components/excise/ExciseRemainderDialog";
+import RegistrationWorkModal from "@/components/excise/RegistrationWorkModal";
+import { statusMeta } from "@/lib/excise/workflow";
 import { EXCISE_NOT_BILLED_KINDS } from "@/lib/excise/exciseNotBilled";
 import {
   EXCISE_ORDER_MODAL_COPY, EXCISE_ORDER_STATUS_DESCRIPTION, excisePreVatAmount, exciseSourceOrderLabel, salesOrderApprovalDeal,
@@ -420,6 +422,9 @@ export default function SalesOrderDetailPage() {
   const [notBilledError, setNotBilledError] = useState("");
   const [remainderMode, setRemainderMode] = useState(""); // "" | "close" | "reopen" — ปิด/เปิดยอดค้างค่าสรรพสามิต (V11)
   const [remainderError, setRemainderError] = useState("");
+  /* แผงทะเบียนสรรพสามิตฝั่งขาย (มติ 02/11 V7 · V14) — `{ key }` ของ FG ที่เปิด · null = ปิด */
+  const [regPanel, setRegPanel] = useState(null);
+  const canEditRegistrations = useCan("products:edit");
   const [filingState, setFilingState] = useState({
     loading: true,
     filing: null,
@@ -1782,6 +1787,23 @@ export default function SalesOrderDetailPage() {
   /* ⭐ แผนรื้อสรรพสามิต PR3: ช่วงค่าสรรพสามิต = ออกใบเสนอราคาค่าสรรพสามิต / ไม่เรียกเก็บในระบบ — ใบยื่นกรมเป็นงานของ RA
      (ทางสร้างใบยื่นของฝ่ายขายปิดแล้ว) · สิทธิ์ = สิทธิ์แก้ใบนี้ (`order.canEdit` ของ server) */
   const exciseCanEdit = !!order?.canEdit;
+  /* รายการของแผงทะเบียน = FG สรรพสามิตของใบ (หนึ่งรายการต่อสินค้า) — สถานะจาก resolveSoFiling (GET …/from-sales-order)
+     คำขอใหม่ใช้ลูกค้าของใบ (server ผูกลูกค้าเจ้าของ FG ให้เองเมื่อ FG มีเจ้าของ) */
+  const regItems = useMemo(() => {
+    const seen = new Set();
+    const stateStatus = { draft: "draft", pending: "pending_legal", rejected: "rejected", approved: "approved" };
+    return (filingState?.lines || []).filter((line) => line.productId && !seen.has(line.productId) && seen.add(line.productId)).map((line) => ({
+      key: line.productId,
+      productId: line.productId,
+      customerId: order?.customerId || null,
+      customerName: order?.customerName || null,
+      fgCode: line.fgCode,
+      label: line.description,
+      registrationId: line.registrationLinkId || null,
+      stateLabel: stateStatus[line.registrationState] ? statusMeta(stateStatus[line.registrationState]).label : "ยังไม่มีทะเบียน",
+    }));
+  }, [filingState, order?.customerId, order?.customerName]);
+
   const exciseTrack = useMemo(() => ({
     ...filingState,
     exciseQuote: {
@@ -1792,6 +1814,7 @@ export default function SalesOrderDetailPage() {
     onNotBilled: () => { setNotBilledError(""); setNotBilledOpen(true); },
     onClearNotBilled: exciseCanEdit ? clearNotBilled : null,
     onCloseRemainder: () => { setRemainderError(""); setRemainderMode("close"); },
+    onOpenRegistration: (line) => setRegPanel({ key: line?.productId || line?.fgCode || null }),
     onReopenRemainder: () => { setRemainderError(""); setRemainderMode("reopen"); },
     createLabel: "ออกใบเสนอราคาค่าสรรพสามิต",
     actionDisabled: !!busy,
@@ -2646,6 +2669,14 @@ export default function SalesOrderDetailPage() {
           rounds={exciseQuoteState?.rounds || []}
           remaining={exciseQuoteState?.remaining || null}
           remainderClosed={exciseQuoteState?.remainderClosed || null}
+        />
+        <RegistrationWorkModal
+          open={!!regPanel}
+          items={regItems}
+          initialKey={regPanel?.key}
+          canEdit={canEditRegistrations}
+          onChanged={() => load()}
+          onClose={() => setRegPanel(null)}
         />
         {remainderMode ? (
           <ExciseRemainderDialog

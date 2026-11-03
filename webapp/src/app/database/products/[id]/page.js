@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Package, Archive, ArchiveRestore, ShoppingCart, FolderKanban, AlertTriangle, Clock, MessagesSquare, Send } from "lucide-react";
@@ -12,6 +12,7 @@ import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/maste
 import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
+import RegistrationWorkModal from "@/components/excise/RegistrationWorkModal";
 import CostVatLines from "@/components/database/CostVatLines";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -110,7 +111,8 @@ export default function ProductDetails() {
   const [customers, setCustomers] = useState([]);
   const [toast, setToast] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null); // { title, message, confirmLabel, danger, onConfirm }
-  const [sendingExcise, setSendingExcise] = useState(false);
+  /* แผงทะเบียนสรรพสามิตฝั่งขาย (มติ 02/11 V14) — `{ key }` ของรายการที่เปิด · null = ปิด */
+  const [regPanel, setRegPanel] = useState(null);
 
   const fetchProduct = async () => {
     try {
@@ -131,13 +133,14 @@ export default function ProductDetails() {
   // Cross-module relations (360-view): registrations + orders + projects from one
   // scoped endpoint. Returns [] for relations the user may not see (tax →
   // history:view, projects → pm:view), so no extra client-side gate is needed.
-  useEffect(() => {
+  const loadRelations = useCallback(() => {
     if (!id) { setRegs([]); setOrders([]); setProjects([]); return; }
     apiFetch(`/api/master/products/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setProjects(d.projects || []); } })
       .catch(() => {});
   }, [id]);
+  useEffect(() => { loadRelations(); }, [loadRelations]);
 
   useEffect(() => {
     if (id) fetchProduct();
@@ -199,26 +202,21 @@ export default function ProductDetails() {
     }
   };
 
-  // ส่ง FG นี้เข้าระบบภาษีเป็นทะเบียนร่าง แล้วพาไปหน้าทะเบียนให้แนบเอกสารต่อ —
-  // ลูกค้าเจ้าของถูก derive ฝั่ง server จาก products.customerId จึงส่งแค่ productId
-  // (409 = มีทะเบียนอยู่แล้ว เช่น ทะเบียนข้ามทีมที่ผู้ใช้มองไม่เห็น — โชว์ข้อความ server ตรง ๆ)
-  const sendToExcise = async () => {
-    setSendingExcise(true);
-    try {
-      const res = await apiFetch("/api/excise-registrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: id }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "ส่งขึ้นทะเบียนไม่สำเร็จ");
-      router.push(`/tax/registrations/${payload.id}`);
-      return; // นำทางออกจากหน้า — คงสถานะ busy ไว้กันกดซ้ำระหว่างเปลี่ยนหน้า
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message || "ส่งขึ้นทะเบียนไม่สำเร็จ" });
-      setSendingExcise(false);
+  /* ⭐ งานทะเบียนสรรพสามิตของ SA อยู่ที่หน้านี้ (มติ 02/11 V7 · V14) — เดิมส่งเป็นร่างแล้วพาไป /tax/registrations
+     ซึ่งฝ่ายขายเข้าไม่ได้แล้ว ⇒ เปิดแผงทะเบียนบนหน้า (สร้างคำขอ · แนบเอกสาร · ยื่นให้ RA · ยื่นใหม่) ตัวเดียวกับหน้า SO
+     รายการ = ทะเบียนของ FG นี้ที่มองเห็น + คำขอใหม่ของลูกค้าเจ้าของ FG (ถ้ายังไม่มี) */
+  const regItems = useMemo(() => {
+    if (!product) return [];
+    const base = { productId: product.id, fgCode: product.fgCode, label: product.productDescription || product.name || product.fgCode };
+    const items = regs.map((r) => ({
+      ...base, key: r.id, customerId: r.customerId, customerName: r.customerName, registrationId: r.id,
+      stateLabel: statusMeta(r.status).label,
+    }));
+    if (product.customerId && !regs.some((r) => r.customerId === product.customerId)) {
+      items.push({ ...base, key: "new", customerId: product.customerId, customerName: product.customerName || null, registrationId: null });
     }
-  };
+    return items;
+  }, [product, regs]);
 
   // ดูเหตุผลที่ต้องบอกชะตากรรมของเลขตั้งแต่ตอนยืนยัน ที่หน้ารายละเอียดลูกค้า (mig 0248)
   const handleDelete = () => setConfirmBox({
@@ -370,18 +368,17 @@ export default function ProductDetails() {
         disabled: isUpdating,
       },
       canDecide && editAction,
-      canEditProducts && exciseRec?.kind === "unregistered" && {
+      canEditProducts && exciseRec?.kind === "unregistered" && regItems.some((item) => item.key === "new") && {
         id: "excise",
         kind: "submit",
-        label: sendingExcise ? "กำลังส่ง..." : "ส่งขึ้นทะเบียนสรรพสามิต",
-        onClick: sendToExcise,
-        disabled: sendingExcise,
+        label: "ขึ้นทะเบียนสรรพสามิต",
+        onClick: () => setRegPanel({ key: "new" }),
       },
-      exciseRec?.reg?.id && {
+      regs.length > 0 && canViewTax && {
         id: "excise-open",
         kind: "goto",
-        label: "ดูทะเบียนสรรพสามิตของสินค้านี้",
-        href: `/tax/registrations/${exciseRec.reg.id}`,
+        label: "ทะเบียนสรรพสามิตของสินค้านี้",
+        onClick: () => setRegPanel({ key: exciseRec?.reg?.id || regs[0].id }),
       },
       canToggleActive && (product.isActive === false
         ? { id: "resume", kind: "resume", icon: ArchiveRestore, label: "เปิดใช้อีกครั้ง", onClick: handleToggleActive, disabled: isUpdating }
@@ -484,8 +481,8 @@ export default function ProductDetails() {
                  Panel ที่เดียว (ม-49/ม-57) · ตรงนี้เหลือข้อความบอกสถานะอย่างเดียว */
               <p className="text-xs text-[var(--text-3)] italic">
                 {canEditProducts && exciseRec?.kind === "unregistered"
-                  ? "ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — กด “ส่งขึ้นทะเบียนสรรพสามิต” ที่การ์ดจัดการสินค้าด้านบน"
-                  : "ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — ยื่นได้ที่เมนู “ยื่นขึ้นทะเบียนสินค้า”"}
+                  ? "ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด — กด “ขึ้นทะเบียนสรรพสามิต” ที่การ์ดจัดการสินค้าด้านบน"
+                  : "ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด"}
               </p>
             ) : (
               <div className="space-y-2">
@@ -497,18 +494,19 @@ export default function ProductDetails() {
                      ที่เหลือเป็น span ข้อความ · `clickable-row`/`cursor-pointer` ถอดได้ทั้งคู่
                      (คลาสแรกให้แค่ cursor + กฎ `:hover td` ที่ไม่มีวันยิงบนแถวที่ไม่ใช่ตาราง
                      ส่วน cursor เป็นของแถมของลิงก์อยู่แล้ว) · วงโฟกัสมาจาก `.card-link` */
-                  <Link
+                  /* แบ่งงาน 02/11 (V14): แถวเปิดแผงทะเบียนบนหน้านี้แทนการพาไป /tax — <button> (คีย์บอร์ดเข้าถึงได้ · ไม่มี interactive ซ้อนข้างใน) */
+                  <button
+                    type="button"
                     key={r.id}
-                    prefetch={false}
-                    href={`/tax/registrations?open=${r.id}`}
-                    className="card-link flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
+                    onClick={() => setRegPanel({ key: r.id })}
+                    className="card-link w-full text-left flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
                   >
                     <span className="font-medium text-[var(--text-2)]">{naText(r.customerName)}</span>
                     <div className="flex items-center gap-3">
                       {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
                       <ProductStatusPill status={r.status} />
                     </div>
-                  </Link>
+                  </button>
                 ))}
               </div>
             )}
@@ -603,13 +601,13 @@ export default function ProductDetails() {
             <div className="text-xs text-[var(--text-2)] mt-0.5">{exciseBanner.detail}</div>
           </div>
           {/* ⚠️ **ไม่มีปุ่ม "ส่งขึ้นทะเบียน" ที่แบนเนอร์แล้ว** — ปุ่มระดับสินค้าอยู่ที่
-              Control Panel ที่เดียว (ม-49/ม-57) · ที่เหลือตรงนี้คือลิงก์ไปดูทะเบียนที่
-              มีอยู่แล้ว ซึ่งเป็นการเดินทาง ไม่ใช่การลงมือกับตัวสินค้า */}
-          {exciseRec.kind !== "unregistered" && (
+              Control Panel ที่เดียว (ม-49/ม-57) · ที่เหลือตรงนี้คือเปิดแผงทะเบียนที่มีอยู่แล้ว
+              (02/11 V14: แผงบนหน้านี้แทนลิงก์ไป /tax ซึ่งฝ่ายขายเข้าไม่ได้แล้ว) */}
+          {exciseRec.kind !== "unregistered" && exciseRec.reg?.id && (
             <div className="ml-auto shrink-0">
-              <Link href={`/tax/registrations/${exciseRec.reg?.id}`} className="btn flex items-center gap-1.5">
+              <button type="button" onClick={() => setRegPanel({ key: exciseRec.reg.id })} className="btn flex items-center gap-1.5">
                 {exciseBanner.linkLabel}
-              </Link>
+              </button>
             </div>
           )}
         </div>
@@ -972,6 +970,14 @@ export default function ProductDetails() {
 
       {overrideDialog}
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
+      <RegistrationWorkModal
+        open={!!regPanel}
+        items={regItems}
+        initialKey={regPanel?.key}
+        canEdit={canEditProducts}
+        onChanged={loadRelations}
+        onClose={() => setRegPanel(null)}
+      />
       <ConfirmDialog
         open={!!confirmBox}
         onClose={() => setConfirmBox(null)}

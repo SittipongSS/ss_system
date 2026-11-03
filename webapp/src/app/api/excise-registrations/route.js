@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { getCurrentUser } from '@/lib/authUser';
-import { attributionTeam, canDeleteRecord, redactProductMargin } from '@/lib/permissions';
+import { attributionTeam, can, canDeleteRecord, redactProductMargin } from '@/lib/permissions';
 import { applyExciseListScope } from '@/lib/excise/listScope';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
@@ -114,6 +114,9 @@ export async function POST(request) {
   // products.exciseTax/localTax (มติผู้ใช้ 2026-07-29 · คอลัมน์สำเนาปลดระวางที่ mig 0180)
   const isExciseTaxable = product.isExciseTaxable !== false;
 
+  /* ⭐ มติ 02/11 V15: RA สร้างเองใน /tax = เข้าคิว RA ทันที (ข้ามขั้น SA ยื่น) · ด่านเอกสารครบย้ายไปตอนอนุมัติของใบนี้
+     (PATCH approve ดู `metadata.source === 'ra'`) · แอดมินถือทั้งสองสิทธิ์ = ทางฝ่ายขาย (ร่าง) ตามเดิม */
+  const raCreated = can(user?.role, 'ra:approve') && !can(user?.role, 'products:edit');
   const newReg = {
     // id กันชนกัน (มาตรฐานเดียวกับ from-project) — เดิม 'REG-'+ms 6 หลักท้าย วนซ้ำได้
     id: genId('REG'),
@@ -130,7 +133,7 @@ export async function POST(request) {
     taxableOverride: null,
     // Created as a draft — SA attaches the required documents, then submits
     // (draft → pending_legal) which is gated on those documents being present.
-    status: 'draft',
+    status: raCreated ? 'pending_legal' : 'draft',
     // คนอยู่หลายทีมเลือกได้ว่าทะเบียนใบนี้เข้าคิวทีมไหน (ค่าที่ไม่ใช่ทีมตัวเอง = ทีมหลัก)
     team: attributionTeam(user, body.team),
     ownerId: user?.id ?? null,
@@ -142,6 +145,7 @@ export async function POST(request) {
       brandNameTh: product.brandName || null,
       brandNameEn: product.brandNameEn || null,
       ...(body.projectCode ? { projectCode: body.projectCode } : {}),
+      ...(raCreated ? { source: 'ra' } : {}),
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

@@ -223,10 +223,13 @@ const REGISTRATION_SHORT_GAP = {
   pending: 'รอนิติกรรมตรวจ',
 };
 
+/* ⭐ v3 (มติ 02/11 V7 · V14): ฝ่ายขายไม่เข้า /tax แล้ว — งานทะเบียนเปิด **แผงทะเบียนบนหน้า SO** (`excise.onOpenRegistration`)
+   แทนลิงก์ไป /tax/registrations · หน้าที่ไม่ส่งตัวเปิดแผงมา = ไม่มีปุ่ม (ไม่ชี้ไปหน้าที่เปิดไม่ได้) */
 function registrationSegment(excise) {
   if (!excise || excise.loading || excise.schemaReady === false) return null;
   const lines = excise.lines || [];
   if (!lines.length) return null;
+  const openPanel = excise.onOpenRegistration || null;
 
   const open = lines.filter((line) => line.registrationState !== 'approved');
   if (!open.length) {
@@ -237,7 +240,7 @@ function registrationSegment(excise) {
       steps: markSteps(REGISTRATION_STEPS, SHORT_REGISTRATION, REGISTRATION_STEPS.length - 1),
       statusLabel: statusMeta('approved').label,
       meta: `${lines.length} FG ครบ`,
-      link: { label: 'ดูทะเบียน', href: '/tax/registrations' },
+      ...(openPanel ? { link: { label: 'ดูทะเบียน', onClick: () => openPanel(null) } } : {}),
     };
   }
 
@@ -257,8 +260,7 @@ function registrationSegment(excise) {
       state: 'late',
       connect: {
         message: 'ยังไม่ได้เปิดทะเบียนสรรพสามิตให้ FG ของใบนี้',
-        actionLabel: 'เปิดทะเบียนสรรพสามิต',
-        href: '/tax/registrations',
+        actions: openPanel ? [{ label: 'ขึ้นทะเบียนสรรพสามิต', onClick: () => openPanel(open[0]) }] : [],
       },
       // รายการรหัสอยู่ในรูปเดียวกับกรณีมีราง — ไม่ยัดเข้าไปในประโยคชวนกด
       notes: registrationNotes(open),
@@ -274,12 +276,7 @@ function registrationSegment(excise) {
     statusLabel: gap,
     meta: `ค้าง ${open.length}/${lines.length} FG`,
     notes: registrationNotes(open),
-    link: {
-      label: 'ดูทะเบียน',
-      href: open.length === 1 && open[0].registrationLinkId
-        ? `/tax/registrations/${open[0].registrationLinkId}`
-        : '/tax/registrations',
-    },
+    ...(openPanel ? { link: { label: 'จัดการทะเบียน', onClick: () => openPanel(worst) } } : {}),
   };
 }
 
