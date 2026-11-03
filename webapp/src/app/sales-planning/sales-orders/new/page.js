@@ -580,6 +580,7 @@ function NewSalesOrderInner() {
                 value={deliveryDueDate}
                 onChange={setDeliveryDueDate}
                 disabled={creating}
+                excise={excise}
               />
               <label>
                 <span>หมายเหตุบนเอกสาร</span>

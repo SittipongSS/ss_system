@@ -79,6 +79,7 @@ import {
   isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
+import { exciseDeliveryDateBlocker, syncSourceDeliveryDate } from '@/lib/excise/exciseDeliveryDate';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { ExciseQuotationError, exciseSourceLock, loadExciseRoundState, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
@@ -1301,6 +1302,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (!before.quotation || before.quotation.status !== 'accepted' || !before.sourceSalesOrderId || !before.customerName) {
         return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมีใบค่าสรรพสามิตที่ Won แล้ว ใบสั่งขายต้นทาง และลูกค้า');
       }
+      /* ⭐ วันที่ส่งของ (มติเจ้าของ 03/11 V21): SA ใส่ก่อนยื่น — RA แบ่งรายการยื่นรายเดือนด้วยวันนี้ · ยื่นสำเร็จเขียนกลับ SO ต้นทาง (ท้าย action) */
+      const deliveryGate = exciseDeliveryDateBlocker(before);
+      if (deliveryGate) return badRequest(deliveryGate);
     } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
     }
@@ -1399,6 +1403,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     const data = submitResult.document;
     await logThread('submit');
+    /* V21–V22: วันที่ส่งของของ SO ค่าสรรพสามิต → กำหนดส่งของ SO ต้นทาง (หลายรอบ = รอบล่าสุดเขียนทับ · audit) · พลาดไม่ล้มการยื่น */
+    if (isExciseOrder(before)) {
+      const synced = await syncSourceDeliveryDate(supabase, before, { user, request: req });
+      if (synced.error) console.error('[sales-orders] เขียนวันที่ส่งของกลับ SO ต้นทางไม่สำเร็จ', synced.error);
+    }
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `submit ${before.orderNumber} for approval (ลงนามผู้จัดทำ)`, request: req });
     // แจ้ง space ผู้อนุมัติ: มี SO รออนุมัติ (จุด clear ยอด Actual — เดิมเงียบ)
     return ok(data);
