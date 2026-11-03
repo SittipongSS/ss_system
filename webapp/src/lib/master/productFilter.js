@@ -10,6 +10,7 @@ import { categoryOf, categoryFlags, showsRetailPrice } from '@/lib/master/catego
 import { categoryNameBoth } from '@/lib/master/productCategoryOptions';
 import { approvalStatCounts, passesApprovalFilters } from '@/lib/master/pendingApprovalLinks';
 import { isMissingRetailPrice, isProductExciseTaxable } from '@/lib/tax/taxableProducts';
+import { BOM_FILTER_VALUES, bomFilterValueOf } from '@/lib/master/productBom';
 
 /** รหัสหมวดของสินค้า — ใช้ค่าที่บันทึกไว้ก่อน ถอยไปถอดจาก fgCode ให้แถวเก่า */
 export function productCategoryCode(product) {
@@ -64,13 +65,15 @@ export function productCategoryLabel(product, productTypes = []) {
   return { main: info.mainCategoryName, sub: categoryNameBoth(info) || code };
 }
 
-/** ช่องที่คำค้นวิ่งไล่ — รหัส ชื่อสองภาษา แบรนด์สองภาษา และหมวด (รหัส+ชื่อ) */
+/** ช่องที่คำค้นวิ่งไล่ — รหัส ชื่อสองภาษา แบรนด์สองภาษา หมวด (รหัส+ชื่อ) และรหัส BOM ใน Express
+ *  ⭐ รหัส BOM ไม่ได้โชว์บนแถว แต่เป็นเลขอ้างอิงที่คนถือมาถาม "BOM นี้ของ FG ไหน" (ข้อยกเว้นของกฎ "ตาเห็น = ค้นเจอ") */
 function searchHaystack(product, productTypes) {
   const cat = productCategoryLabel(product, productTypes);
   return [
     product.fgCode, product.productDescription, product.productDescriptionEn,
     product.brandName, product.brandNameEn,
     product.categoryCode, cat?.main, cat?.sub,
+    product.bomCode,
   ];
 }
 
@@ -93,12 +96,14 @@ function searchHaystack(product, productTypes) {
  * @param showInactive true = รวมสินค้าที่เลิกใช้
  *   ⚠️ ใบที่รออนุมัติไม่ถูกซ่อนเพราะเลิกใช้ ขณะกรองสถานะ "รออนุมัติ" (มติเจ้าของ 19/10 · H3) —
  *   ตาราง `?count=products` ต้องได้ครบทุกใบที่ป้ายเมนู/การ์ดภาพรวมนับ (`passesApprovalFilters`)
+ * @param bomStatuses สถานะลง BOM ที่เลือก (`BOM_FILTER_VALUES` · mig 0419) — ว่าง = ทั้งหมด
+ *   ⚠️ แบบเดียวกับมิติขึ้นทะเบียน: เลือกแล้ว **กลุ่ม 03/04 ถูกตัดออกทั้งหมด** (ไม่มีขั้น BOM · `bomFilterValueOf`)
  * @param productTypes ทะเบียนหมวด — ต้องส่งมาด้วย ไม่งั้นค้นชื่อหมวดไม่เจอ
  *   และตัวกรองขึ้นทะเบียนจะตัดทุกแถวทิ้ง (categoryFlags หาไม่เจอ = ไม่ใช่สรรพสามิต)
  */
 export function filterProducts(products = [], {
   search = '', statuses = [], registrations = [], showInactive = false, productTypes = [],
-  missingRetailPrice = false, taxable = false,
+  missingRetailPrice = false, taxable = false, bomStatuses = [],
 } = {}) {
   const q = String(search || '').trim().toLowerCase();
   return products.filter((p) => {
@@ -111,6 +116,7 @@ export function filterProducts(products = [], {
       const excise = categoryFlags(productCategoryCode(p), productTypes).isExcise;
       if (!excise || !registrations.includes(p.registrationStatus || 'none')) return false;
     }
+    if (bomStatuses.length && !bomStatuses.includes(bomFilterValueOf(p))) return false;
     if (!q) return true;
     return searchHaystack(p, productTypes).some((v) => (v || '').toLowerCase().includes(q));
   });
@@ -127,7 +133,8 @@ export function filterProducts(products = [], {
  * - `inactive`     = แถวที่ **เพิ่มขึ้น** เมื่อติ๊ก "รวม…ที่เลิกใช้" (ตัวเลือกแบบ "รวม" ไม่ใช่ "เฉพาะ")
  *   ⚠️ ขณะกรอง "รออนุมัติ" ใบเลิกใช้ที่รออนุมัติขึ้นอยู่แล้ว (H3) ⇒ ไม่นับซ้ำ — ติ๊กแล้วไม่เพิ่มแถว
  * - `taxable`      = แถวที่ตารางโชว์หลังติ๊ก "ต้องเสียสรรพสามิต" (L16b)
- * @param state ชุดเดียวกับ `filterProducts` (search · statuses · registrations · showInactive · missingRetailPrice · taxable · productTypes)
+ * - `bom[value]`   = แถวที่ตารางโชว์ถ้าเลือก **สถานะ BOM ตัวนั้นตัวเดียว** (ตัวกรองอื่นคงไว้)
+ * @param state ชุดเดียวกับ `filterProducts` (search · statuses · registrations · showInactive · missingRetailPrice · taxable · bomStatuses · productTypes)
  */
 export function productFilterFacets(products = [], state = {}) {
   const rows = (extra) => filterProducts(products, { ...state, ...extra }).length;
@@ -135,6 +142,7 @@ export function productFilterFacets(products = [], state = {}) {
     missingPrice: rows({ missingRetailPrice: true }),
     inactive: rows({ showInactive: true }) - rows({ showInactive: false }),
     taxable: rows({ taxable: true }),
+    bom: Object.fromEntries(BOM_FILTER_VALUES.map((value) => [value, rows({ bomStatuses: [value] })])),
   };
 }
 
@@ -145,6 +153,8 @@ export function productFilterFacets(products = [], state = {}) {
  *   🐞 เดิม `isExciseTaxable !== false` นับสินค้าในหมวดที่ไม่เสียภาษีเข้ามาด้วย (taxableProducts.js หัวไฟล์) และรวมใบเลิกใช้
  *   ⭐ การ์ดกดได้แล้ว (L16b · 26/10) — ตั้งตัวกรอง `taxable` **และล้างตัวกรองอื่น/คำค้นทั้งหมด** ⇒ ตารางได้
  *      `filterProducts(products, { taxable: true, productTypes })` = ชุดเดียวกับเลขนี้ (ฐานเดียวกับ "ทั้งหมด" + ตัวตัดสินเดียวกับตัวกรอง)
+ * `bomReturned` = FG ที่ RD ตีกลับ รอ SA แก้แล้วส่งใหม่ — การ์ดกดได้ ตั้งตัวกรอง `bomStatuses: ['returned']` ทั้งชุด
+ *   ⇒ นับด้วย `filterProducts` ตัวเดียวกับตาราง (ใบเลิกใช้ไม่นับ เท่าที่ตารางซ่อน)
  */
 export function productStatCounts(products = [], productTypes = []) {
   const list = products || [];
@@ -154,5 +164,6 @@ export function productStatCounts(products = [], productTypes = []) {
       .filter((p) => passesApprovalFilters(p))
       .filter((p) => isProductTaxable(p, productTypes))
       .length,
+    bomReturned: filterProducts(list, { bomStatuses: ['returned'], productTypes }).length,
   };
 }

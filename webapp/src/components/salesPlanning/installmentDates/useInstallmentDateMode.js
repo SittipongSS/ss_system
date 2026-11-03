@@ -7,8 +7,10 @@
 // ⭐ แก้ช่อง = **ร่าง** (ไม่ลงฐาน) · แถบบันทึกขึ้นเมื่อมีร่าง · บันทึกครั้งเดียว (`schedule-many`) · ตัวเติมหลายงวดเขียนร่างอย่างเดียว
 // ⭐ ใครแก้ได้ = ด่าน `schedule` ตัวเดียวกับ route (ผู้เรียกส่ง `lockOf` ที่ถาม installmentActionError มาแล้ว) —
 //   ไม่มีสิทธิ์ = ไม่มีช่องให้แก้ (`available` เป็นเท็จ) · งวดที่ล็อกอ่านอย่างเดียวพร้อมเหตุ (`canEdit(row)`)
-// ⭐ ร่างวันงวดกับร่างช่วงครอบบริการ (coverDrafts) ไม่ค้างพร้อมกัน — ผู้เรียกส่ง `blocker` (ร่างช่วงครอบค้าง) มา ⇒ ช่องวันอ่านอย่างเดียว
-//   ระหว่างนั้น · ฝั่งช่วงครอบล็อกเมื่อมีร่างวันงวด (`dirty`) — สองฝั่งยิงคนละคำขอที่ล็อกด้วย updatedAt ของงวดเดียวกัน
+// ⭐ ร่างช่วงครอบบริการอยู่ที่นี่ด้วย (ม็อก split-v6 ข้อ 6 · 03/11) — ร่างชุดเดียวกับวันงวด แถบบันทึกเดียว คำขอเดียว
+//   (`schedule-many` พาช่วงครอบไปกับแถวของงวด) ⇒ เลิกล็อกกันเอง (เดิมสองฝั่งยิงคนละคำขอที่ล็อก updatedAt ของงวดเดียวกัน)
+//   · ใครแก้ช่วงครอบได้/ค่าผ่านไหม = ด่าน `coverage` ของผู้เรียก (`coverGate`) — ไม่ผูกกับ `available` ของวันงวด
+//     (บัญชีแก้ช่วงครอบของงวดที่รับรองแล้วได้ ทั้งที่วันงวดทุกงวดล็อก)
 // ⭐ รุ่นสี่ (มติเจ้าของ 29/09 แบบ A): ช่องของแต่ละงวดอ่านชนิดจาก `rowMode(row)` (dateModeOf ของ billingRule.js) —
 //   ข้อยกเว้นรายงวดสองทางเป็นร่างของที่นี่: "งวดนี้ต้องวางบิล…" (`requireBilling` · ธง `exceptionIds` ส่งเป็น
 //   `billingException` กับวันวางบิลใหม่) · "งวดนี้ไม่ต้องวางบิล" (`toggleSkip` · ร่าง `billingSkip` · เฉพาะเมื่อฐานรัน 0393 แล้ว)
@@ -20,8 +22,8 @@ import { SCHEDULE_MANY_MAX } from "@/lib/sales/installmentScheduleMany";
 import { needExceptionActions, ruleOf } from "@/lib/sales/billingRule";
 import useHolidayMap from "@/lib/useHolidayMap";
 import {
-  applyFillPlan, creditDaysOf, currentDates, dateModeKind, dateRuleShape, dateWarnings, datesEmpty, draftChanges, fillKindOf,
-  replacesSavedDue, rowDateMode, scheduleManyRows, withDraft,
+  applyFillPlan, coverChanges, creditDaysOf, currentCovers, currentDates, dateModeKind, dateRuleShape, dateWarnings, datesEmpty,
+  draftChanges, fillKindOf, replacesSavedDue, rowDateMode, scheduleManyRows, withCoverDraft, withDraft,
 } from "@/lib/sales/installmentDateDrafts";
 
 const bySeq = (a, b) => Number(a.seq) - Number(b.seq);
@@ -36,7 +38,9 @@ const DUE_ONLY_OFF = Object.freeze({
  * @param ruleValue   รอบวางบิลของลูกค้า (ดิบจากฐานได้ — อ่านผ่าน effectiveBillingRule: ไม่มีเครดิต = ทุกวัน + ชำระวันวางบิล ·
  *                    null = ยังไม่ตั้ง → กรอกได้ทั้งสองช่อง ไม่มีอะไรคิดให้)
  * @param available   ผู้ใช้มีสิทธิ์ตั้งวันและใบยังเดินอยู่ — เท็จ = ไม่มีช่องให้แก้เลย
- * @param blocker     เหตุที่ยังแก้ไม่ได้ (ร่างช่วงครอบค้าง · ล็อกทั้งใบ) — ช่องอ่านอย่างเดียว · ปุ่มเติม/เมนูแถวกดแล้วบอกเหตุ
+ * @param blocker     เหตุที่ยังแก้วันงวดไม่ได้ (ล็อกทั้งใบ) — ช่องอ่านอย่างเดียว · ปุ่มเติม/เมนูแถวกดแล้วบอกเหตุ
+ * @param coverGate   (row, { coversFrom, coversTo }) => ข้อความ | null — ด่าน `coverage` ของผู้เรียกด้วยค่าที่จะส่งจริง
+ *                    (ร่างที่ไม่ผ่าน = บันทึกไม่ได้ · เหตุอยู่ใต้เซลล์และบนแถบ)
  * @param lockOf      (row) => { reason, hint } | null — installmentDateLock ที่ผู้เรียกประกอบด่าน schedule ให้แล้ว
  * @param onSave      async (rows) => boolean — ยิง schedule-many ผ่าน onAction ของหน้า (409 = หน้าโหลดใบสดทั้งใบ
  *                    รวมคำร้องขอเอกสาร ⇒ งวดที่ล็อกระหว่างร่างล็อกบนจอด้วย ร่างของมันถูกทิ้งพร้อมเหตุ)
@@ -52,6 +56,7 @@ const DUE_ONLY_OFF = Object.freeze({
 export default function useInstallmentDateMode({
   rows = [], ruleValue: rawRule = null, todayIso = "", available = false, blocker = "", lockOf = () => null, onSave,
   busy = false, onDirtyChange, onClearError, skipReady = false, onAskRequireBilling = null, create = false, billingOff = false,
+  coverGate = () => null,
 }) {
   /* ⭐ ผลการอ่านรุ่นสี่ตัวเดียว (`ruleOf`) — ตัวแก้/แผงเติม/ป้ายที่มาเดินตัวคิดเดียวกับที่ `dateModeOf` ตัดสินชนิด
      (รุ่นสองที่มีรอบจ่ายได้ชิปรอบของรุ่นสี่ · รูปเดิม { credit:false } = ผลการอ่าน legacyNoCredit — ห้ามส่งกลับไปบันทึก) */
@@ -59,6 +64,7 @@ export default function useInstallmentDateMode({
   /* วันหยุดในระบบ — ชิปรอบ/แผงเติม/แถบนโยบายเห็นชุดเดียวกับการ์ดลูกค้า · กระดิ่ง · ทะเบียน FN (โหลดพลาด = Map ว่าง เสาร์/อาทิตย์ยังถูก) */
   const holidays = useHolidayMap();
   const [drafts, setDrafts] = useState({});
+  const [coverDrafts, setCoverDrafts] = useState({});
   const [fill, setFill] = useState(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   /* งวดที่ยืนยัน "งวดนี้ต้องวางบิล…" แล้ว (ลูกค้าไม่ต้องวางบิล) — ยังไม่มีคอลัมน์ (วันวางบิลที่ยืนยันคือตัวยกเว้น · §2.3)
@@ -87,15 +93,34 @@ export default function useInstallmentDateMode({
   const warnings = dateWarnings(sorted, current, { todayIso, changedIds, isLocked });
   const replaced = changes.filter(replacesSavedDue).length;
   const emptyCount = editable.filter((row) => datesEmpty(current(row))).length;
-  const dirty = changes.length > 0;
+  /* ช่วงครอบที่แก้ — ถามด่าน coverage ด้วยค่าที่จะส่งจริง (`|| null` เหมือนตัวส่ง) ที่นี่ที่เดียว ไม่ใช่ตอนวาดเซลล์
+     (ถามตอนวาด = พิมพ์ผิดกลางคันแล้วช่องหายทั้งเซลล์ คนแก้ค่าผิดของตัวเองไม่ได้) */
+  const { changes: covers, dropped: coversDropped } = coverChanges(sorted, coverDrafts);
+  const coverErrors = {};
+  for (const { row, to } of covers) {
+    const why = coverGate(row, { coversFrom: to.coversFrom || null, coversTo: to.coversTo || null });
+    if (why) coverErrors[row.id] = why;
+  }
+  const coverEdited = (row) => Boolean(row?.id && coverDrafts[row.id]);
+  /* งวดที่เปลี่ยน (วันงวด และ/หรือ ช่วงครอบ) รวมเป็นรายการเดียว — แถบนับ/สรุป/เตือน "ถูกแก้จากอีกหน้าต่าง" จากชุดนี้ */
+  const edits = (() => {
+    const byId = new Map();
+    for (const change of changes) byId.set(change.row.id, { row: change.row, dates: change, cover: null, stale: change.stale });
+    for (const change of covers) {
+      const edit = byId.get(change.row.id) || { row: change.row, dates: null, cover: null, stale: false };
+      byId.set(change.row.id, { ...edit, cover: change, stale: edit.stale || change.stale });
+    }
+    return [...byId.values()].sort((a, b) => bySeq(a.row, b.row));
+  })();
+  const dirty = edits.length > 0;
   /* แถบบันทึก/คำบนการ์ดขึ้นเมื่อมีร่าง หรือแผงเติมเปิด (ไม่มีโหมดให้เข้าแล้ว — รุ่นสองช่องแยก) · หน้าสร้างเปิดตลอด */
   const active = create || dirty || Boolean(fill);
   /* ช่องของงวดนี้แก้ได้ไหม — ไม่มีสิทธิ์ / ร่างช่วงครอบค้าง (`blocker`) / งวดล็อก = ตัวหนังสือเดิม */
   const canEdit = useCallback((row) => Boolean(row) && available && !blocker && !isLocked(row), [available, blocker, isLocked]);
   /* route รับครั้งละไม่เกิน SCHEDULE_MANY_MAX งวด (400) — บอกก่อนกด ไม่ปล่อยให้ตีกลับแล้วไม่มีทางแบ่ง
      (เติมแบบ "จัดใหม่งวดที่มีวันแล้วด้วย" บนสัญญาเกิน 60 งวด) */
-  const saveBlocker = changes.length > SCHEDULE_MANY_MAX
-    ? `บันทึกได้ครั้งละไม่เกิน ${SCHEDULE_MANY_MAX} งวด (ตอนนี้ ${changes.length} งวด) — คืนค่าบางงวดแล้วบันทึกเป็นสองรอบ`
+  const saveBlocker = edits.length > SCHEDULE_MANY_MAX
+    ? `บันทึกได้ครั้งละไม่เกิน ${SCHEDULE_MANY_MAX} งวด (ตอนนี้ ${edits.length} งวด) — คืนค่าบางงวดแล้วบันทึกเป็นสองรอบ`
     : "";
 
   /* ── กติกาของลูกค้าเปลี่ยนระหว่างอยู่ในโหมด — รีเซ็ต **สถานะการมอง** เท่านั้น ร่างอยู่ครบ ──
@@ -140,6 +165,7 @@ export default function useInstallmentDateMode({
 
   const reset = () => {
     setDrafts({});
+    setCoverDrafts({});
     setFill(null);
     setSummaryOpen(false);
     setExceptionIds(new Set());
@@ -151,15 +177,18 @@ export default function useInstallmentDateMode({
   const cancel = () => {
     if (busy) return;
     const kept = drafts;
+    const keptCovers = coverDrafts;
     const keptExceptions = exceptionIds;
-    const count = changes.length;
+    const count = edits.length;
     reset();
     if (!count) return;
-    notifyToast.info(`ทิ้งวันที่แก้ ${count} งวด`, {
+    notifyToast.info(`ทิ้งที่แก้ ${count} งวด`, {
       action: {
         label: "เอาคืน",
         onClick: () => {
           const gate = gateRef.current;
+          /* ช่วงครอบคืนได้เสมอ (ด่านของมันตัดสินตอนบันทึก) · วันงวดคืนเมื่อยังแก้ได้ */
+          setCoverDrafts(keptCovers);
           if (!gate.available) return;
           if (gate.blocker) { notifyToast.error(gate.blocker); return; }
           setDrafts(kept);
@@ -171,12 +200,14 @@ export default function useInstallmentDateMode({
 
   const save = async () => {
     if (busy) return;
-    if (!changes.length) {
-      notifyToast.info("ยังไม่ได้แก้วันงวดไหน");
+    if (!edits.length) {
+      notifyToast.info("ยังไม่ได้แก้งวดไหน");
       return;
     }
     if (saveBlocker) { notifyToast.error(saveBlocker); return; }
-    const ok = await onSave?.(scheduleManyRows(changes, { exceptionIds, rule: ruleValue }));
+    const coverError = Object.values(coverErrors)[0];
+    if (coverError) { notifyToast.error(coverError); return; }
+    const ok = await onSave?.(scheduleManyRows(changes, { exceptionIds, rule: ruleValue, covers }));
     if (ok) reset();
   };
 
@@ -185,7 +216,7 @@ export default function useInstallmentDateMode({
   const setValue = (row, value) => {
     if (busy || !row) return;
     if (blocker) { notifyToast.error(blocker); return; }
-    if (!changes.length && !fill) clearErrorRef.current?.();
+    if (!edits.length && !fill) clearErrorRef.current?.();
     setDrafts((d) => withDraft(d, row, value));
     setFill((f) => (f ? { ...f, base: withDraft(f.base, row, value), excluded: [...new Set([...(f.excluded || []), row.id])] } : f));
   };
@@ -201,6 +232,14 @@ export default function useInstallmentDateMode({
     setDrafts(without);
     setFill((f) => (f ? { ...f, base: without(f.base), excluded: [...new Set([...(f.excluded || []), row.id])] } : f));
   };
+
+  /* แก้ช่วงครอบของงวด (ร่าง) — `patch` = { coversFrom } หรือ { coversTo } · ด่านอยู่ที่ `coverGate` (บอกใต้เซลล์ · กันตอนบันทึก) */
+  const setCover = (row, patch) => {
+    if (busy || !row) return;
+    if (!edits.length && !fill) clearErrorRef.current?.();
+    setCoverDrafts((d) => withCoverDraft(d, row, patch));
+  };
+  const cover = useCallback((row) => currentCovers(row, coverDrafts), [coverDrafts]);
 
   /* ── ข้อยกเว้นรายงวด (รอบกรรมการ 29/09 · §2.3) — ด่านเขียนจริงคือ validateInstallmentDates ของ route ──────────────────
      "งวดนี้ต้องวางบิล…" ยืนยันในโมดัลขอบเขตของผู้เรียกแล้ว: `scope` 'one' = งวดนี้ · 'so' = ทุกงวดที่ยังเปิดของใบ
@@ -255,8 +294,9 @@ export default function useInstallmentDateMode({
 
   return {
     available, active, blocker, kind, fillKind, ruleValue, creditDays, todayIso, holidays, busy, create,
-    rows: sorted, editable, drafts, current, lock, isLocked, canEdit, changes, dropped, changedIds, warnings, replaced, saveBlocker,
-    emptyCount, dirty,
+    rows: sorted, editable, drafts, current, lock, isLocked, canEdit, changes, dropped: [...dropped, ...coversDropped], changedIds,
+    warnings, replaced, saveBlocker, emptyCount, dirty, edits,
+    cover, setCover, coverEdited, covers, coverErrors,
     cancel, save, setValue, revert, rowMode, focusField,
     skipReady: skipReady && !billingOff, exceptionIds, requireBilling, toggleSkip, billingOff,
     askRequireBilling: typeof onAskRequireBilling === "function" && !create ? onAskRequireBilling : null,

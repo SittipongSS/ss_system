@@ -207,16 +207,6 @@
 /* แถวที่แก้ค้างยังไม่บันทึก — บอกด้วยพื้น ไม่ใช่ขอบ (ขอบชนกับเส้นตารางของ primitive) */
 .coverEdited { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }
 
-.coverBar {
-  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
-  margin-top: var(--space-3); padding: var(--space-2-5) var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  font-size: var(--fs-6); line-height: var(--lh-thai);
-}
-.coverBar > span { flex: 1; min-width: 0; color: var(--text-2); }
-
 /* ── โมดัลยกเงินจากใบที่ยกเลิก (PR3 · mig 0378) — ตารางแผนก่อน/หลัง ──────────────────────────────────
    แถวที่ยกมา = พื้นอ่อนของ accent (เงินที่เข้ามาใหม่ในใบนี้) · งวดที่ถูกหักจนหมด = จาง + ขีดฆ่ายอด (ถูกลบ) */
 .carriedRow > td { background: color-mix(in srgb, var(--accent-soft) 55%, transparent); }

@@ -26,13 +26,15 @@ const NONE = { v: 4, need: 'none' };
 const SETTLE = () => {};
 
 /* รันสคริปต์ทีละก้าว — ก้าวละหนึ่ง render · คืนสิ่งที่ก้าวต่าง ๆ จดไว้ */
-function run(steps, { rule = null, skipReady = false, onSave = async () => true, create = false, blocker = '' } = {}) {
+function run(steps, {
+  rule = null, skipReady = false, onSave = async () => true, create = false, blocker = '', available = true, coverGate,
+} = {}) {
   const seen = {};
   function Harness() {
     const [step, setStep] = useState(0);
     const [ruleValue, setRule] = useState(rule);
     const mode = useInstallmentDateMode({
-      rows: ROWS, ruleValue, todayIso: '2026-09-28', available: true, lockOf: () => null, onSave, skipReady, create, blocker,
+      rows: ROWS, ruleValue, todayIso: '2026-09-28', available, lockOf: () => null, onSave, skipReady, create, blocker, coverGate,
     });
     if (step < steps.length) {
       steps[step]({ mode, setRule, seen });
@@ -129,12 +131,55 @@ test('⭐ มติ 02/11: ไม่มีโหมด — ยังไม่แ
   assert.deepEqual(seen.back, { active: false, dirty: false });
 });
 
-test('ร่างช่วงครอบค้าง (`blocker`) = ช่องวันแก้ไม่ได้ · setValue ไม่ลงร่าง', () => {
+test('ล็อกทั้งใบ (`blocker`) = ช่องวันแก้ไม่ได้ · setValue ไม่ลงร่าง', () => {
   const seen = run([
     ({ mode, seen: s }) => { s.canEdit = mode.canEdit(R1); mode.setValue(R1, { billingDate: '2026-10-05', billingEvent: '', dueDate: '' }); },
     ({ mode, seen: s }) => { s.dirty = mode.dirty; },
-  ], { blocker: 'แก้ช่วงครอบบริการค้างไว้ 1 งวด' });
+  ], { blocker: 'ใบยกเลิกแล้ว' });
   assert.deepEqual(seen, { canEdit: false, dirty: false });
+});
+
+test('⭐ ม็อก split-v6 ข้อ 6: ร่างช่วงครอบอยู่ชุดเดียวกับวันงวด — แถบเดียว นับรวมรายงวด · บันทึกครั้งเดียวพาทั้งสองอย่าง · ยกเลิกทิ้งทั้งคู่', () => {
+  const sent = [];
+  const seen = run([
+    ({ mode }) => {
+      mode.setValue(R1, { billingDate: '', billingEvent: '', dueDate: '2026-11-05' });
+      mode.setCover(R1, { coversFrom: '2026-11-01' });
+    },
+    ({ mode }) => { mode.setCover(R1, { coversTo: '2026-11-30' }); mode.setCover(R2, { coversFrom: '2026-12-01' }); },
+    ({ mode, seen: s }) => {
+      s.bar = { dirty: mode.dirty, active: mode.active, edits: mode.edits.map((e) => [e.row.id, Boolean(e.dates), Boolean(e.cover)]) };
+      s.cover = mode.cover(R1);
+      mode.save();
+    },
+  ], { onSave: async (rows) => { sent.push(...rows); return true; } });
+  assert.deepEqual(seen.bar, { dirty: true, active: true, edits: [['i1', true, true], ['i2', false, true]] });
+  assert.deepEqual(seen.cover, { coversFrom: '2026-11-01', coversTo: '2026-11-30' });
+  assert.deepEqual(sent, [
+    { id: 'i1', billingDate: null, billingEvent: null, dueDate: '2026-11-05', updatedAt: 'u1', coversFrom: '2026-11-01', coversTo: '2026-11-30' },
+    { id: 'i2', coversFrom: '2026-12-01', coversTo: null, updatedAt: 'u2' },
+  ]);
+
+  const cancelled = run([
+    ({ mode }) => { mode.setValue(R1, { billingDate: '', billingEvent: '', dueDate: '2026-11-05' }); mode.setCover(R2, { coversTo: '2026-12-31' }); },
+    ({ mode }) => mode.cancel(),
+    ({ mode, seen: s }) => { s.after = { dirty: mode.dirty, edits: mode.edits.length }; },
+  ]);
+  assert.deepEqual(cancelled.after, { dirty: false, edits: 0 });
+});
+
+test('⭐ ร่างช่วงครอบไม่ผูกกับสิทธิ์ตั้งวันงวด (บัญชีบนงวดที่รับรองแล้วทุกงวด) · ด่าน coverage ตีกลับ = บันทึกไม่ได้ พร้อมเหตุรายงวด', () => {
+  const sent = [];
+  const seen = run([
+    ({ mode }) => mode.setCover(R1, { coversFrom: '2026-12-31', coversTo: '2026-12-01' }),
+    ({ mode, seen: s }) => { s.state = { dirty: mode.dirty, errors: mode.coverErrors }; mode.save(); },
+  ], {
+    available: false,
+    coverGate: (row, covers) => (covers.coversFrom > covers.coversTo ? 'วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด' : null),
+    onSave: async (rows) => { sent.push(...rows); return true; },
+  });
+  assert.deepEqual(seen.state, { dirty: true, errors: { i1: 'วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด' } });
+  assert.deepEqual(sent, [], 'ร่างที่ด่านตีกลับไม่ถูกส่ง');
 });
 
 test('⭐ รุ่นสี่: "งวดนี้ต้องวางบิล…" (ลูกค้าไม่ต้องวางบิล) — ช่องวันวางบิลของงวดโผล่ (exception) · บันทึกส่ง billingException · ขอบเขต "ทั้งใบ"', () => {

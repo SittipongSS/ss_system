@@ -5,7 +5,8 @@
 // ⭐ แถบขึ้นเมื่อมีร่าง (หรือแผงเติมเปิด) เท่านั้น — รุ่นสองช่องแยก (มติ 02/11) ไม่มีโหมดให้เข้า ช่องวันในตารางแก้ได้เลย
 // ⭐ แถบบอกผลก่อนกด (กติกา #1223): เปลี่ยนกี่งวด · ดูเดิม → ใหม่ · แทนกำหนดชำระเดิมกี่งวด (ป้ายแดง/ด่านนัดช่างนับจากวันใหม่) ·
 //   งวดที่ถูกแก้จากอีกหน้าต่างระหว่างร่าง (หลัง 409) · ร่างที่ถูกทิ้งเพราะงวดล็อกแล้ว
-// ⚠️ แถบนี้อยู่ชั้นเดียวกับแถบบันทึกช่วงครอบ (coverBar) — สองชุดร่างไม่ค้างพร้อมกัน (ผู้เรียกกันไว้ทั้งสองทาง)
+// ⭐ ช่วงครอบบริการที่แก้ไปกับแถบนี้ด้วย (ม็อก split-v6 ข้อ 6 · 03/11) — นับ/สรุปรายงวดจาก `mode.edits` (วันงวด และ/หรือ ช่วงครอบ) ·
+//   ร่างช่วงครอบที่ด่าน coverage ตีกลับ = `blocker` จากผู้เรียก (ปุ่มบันทึกดับ พร้อมเหตุบนแถบ)
 import { CalendarRange, ChevronDown, ChevronUp, History, Info, Lock, TriangleAlert } from "lucide-react";
 import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
@@ -29,6 +30,9 @@ export function InstallmentDateFillButton({ mode, disabled = false }) {
 /* ค่าของงวดหนึ่งช่องในรายการ เดิม → ใหม่ */
 const billText = (v) => (v.billingDate ? formatBillingDate(v.billingDate) : v.billingEvent ? `รอ “${v.billingEvent}”` : "ยังไม่มีวัน");
 const dueText = (v) => (v.dueDate ? formatBillingDate(v.dueDate) : "ยังไม่มีวัน");
+const coverText = (v) => (v.coversFrom || v.coversTo
+  ? `${v.coversFrom ? formatBillingDate(v.coversFrom) : "…"} – ${v.coversTo ? formatBillingDate(v.coversTo) : "…"}`
+  : "ยังไม่ระบุ");
 
 function ChangePair({ label, from, to }) {
   if (from === to) return null;
@@ -40,22 +44,22 @@ function ChangePair({ label, from, to }) {
 }
 
 /* แถบบันทึก (ติดขอบล่างของจอ) — ขึ้นเมื่อมีร่าง หรือแผงเติมเปิดอยู่ · หน้าสร้าง SO ไม่มีแถบนี้ (ร่างไปกับใบ) */
-export function InstallmentDateBar({ mode, error = "", savingLabel = "กำลังบันทึก…" }) {
+export function InstallmentDateBar({ mode, error = "", blocker = "", savingLabel = "กำลังบันทึก…" }) {
   if (mode.create || !(mode.dirty || mode.fill)) return null;
-  const { changes, dropped, replaced } = mode;
-  const n = changes.length;
-  const stale = changes.filter((change) => change.stale);
+  const { changes, dropped, replaced, edits } = mode;
+  const n = edits.length;
+  const stale = edits.filter((edit) => edit.stale);
   const warnCount = changes.reduce((sum, change) => sum
     + (mode.warnings[change.row.id] || []).filter((w) => w.tone === "warn").length, 0);
   const seqs = (list) => list.map((item) => item.row?.seq).filter((seq) => seq != null).join(", ");
   return (
     /* `data-toast-top` = toast ขึ้นบนจอระหว่างที่แถบอยู่ (toast ที่ขอบล่างทับปุ่มบันทึก 3.6 วินาที — กติกาของ Toast.module.css) */
-    <div className={styles.bar} role="region" aria-label="บันทึกวันงวด" data-toast-top="">
+    <div className={styles.bar} role="region" aria-label="บันทึกงวดที่แก้" data-toast-top="">
       {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
       <div className={styles.barRow}>
         <div className={styles.barInfo}>
           <p className={styles.barCount} aria-live="polite">
-            {n ? <>เปลี่ยน <span className={styles.n}>{n}</span> งวด</> : "ยังไม่ได้แก้ — เลือกตัวเลือกในแผงเติม หรือแก้ช่องวันในตาราง"}
+            {n ? <>เปลี่ยน <span className={styles.n}>{n}</span> งวด</> : "ยังไม่ได้แก้ — เลือกตัวเลือกในแผงเติม หรือแก้ช่องในตาราง"}
             {n ? (
               <Button size="sm" variant="quiet" aria-expanded={mode.summaryOpen}
                 icon={mode.summaryOpen ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
@@ -73,7 +77,13 @@ export function InstallmentDateBar({ mode, error = "", savingLabel = "กำล�
           {stale.length ? (
             <p className={styles.barNote} data-tone="warn">
               <History size={13} aria-hidden="true" />
-              งวดที่ {seqs(stale)} ถูกแก้จากอีกหน้าต่างระหว่างที่ร่างอยู่ — ตรวจวันในตารางแล้วกดบันทึกอีกครั้ง
+              งวดที่ {seqs(stale)} ถูกแก้จากอีกหน้าต่างระหว่างที่ร่างอยู่ — ตรวจค่าในตารางแล้วกดบันทึกอีกครั้ง
+            </p>
+          ) : null}
+          {blocker ? (
+            <p className={styles.barNote} data-tone="warn" role="alert">
+              <TriangleAlert size={13} aria-hidden="true" />
+              {blocker}
             </p>
           ) : null}
           {mode.saveBlocker ? (
@@ -98,28 +108,32 @@ export function InstallmentDateBar({ mode, error = "", savingLabel = "กำล�
           )}
         </div>
         <div className={styles.barActions}>
-          <Button size="sm" tone="neutral" variant="outline" icon={<CalendarRange size={13} aria-hidden="true" />}
-            aria-expanded={Boolean(mode.fill)} disabled={mode.busy}
-            onClick={() => (mode.fill ? mode.closeFill() : mode.openFill())}>
-            เติมวันงวดที่ว่าง…
-          </Button>
+          {/* ไม่มีสิทธิ์ตั้งวันงวด (แก้แค่ช่วงครอบ เช่น บัญชีบนงวดที่รับรองแล้วทุกงวด) = ไม่มีปุ่มเติม */}
+          {mode.available ? (
+            <Button size="sm" tone="neutral" variant="outline" icon={<CalendarRange size={13} aria-hidden="true" />}
+              aria-expanded={Boolean(mode.fill)} disabled={mode.busy}
+              onClick={() => (mode.fill ? mode.closeFill() : mode.openFill())}>
+              เติมวันงวดที่ว่าง…
+            </Button>
+          ) : null}
           <Button variant="ghost" disabled={mode.busy} onClick={mode.cancel}>ยกเลิก</Button>
-          <Button tone="primary" disabled={mode.busy || Boolean(mode.saveBlocker)} onClick={mode.save}>
+          <Button tone="primary" disabled={mode.busy || Boolean(mode.saveBlocker) || Boolean(blocker)} onClick={mode.save}>
             {mode.busy ? savingLabel : n ? `บันทึก ${n} งวด` : "บันทึก"}
           </Button>
         </div>
       </div>
       {n && mode.summaryOpen ? (
-        <ul className={styles.summary} aria-label="วันงวด เดิม → ใหม่">
-          {changes.map(({ row, from, to, stale: moved }) => (
+        <ul className={styles.summary} aria-label="งวดที่แก้ เดิม → ใหม่">
+          {edits.map(({ row, dates, cover, stale: moved }) => (
             <li key={row.id}>
               <b>งวด {row.seq}</b>
-              <ChangePair label="วันวางบิล" from={billText(from)} to={billText(to)} />
-              <ChangePair label="กำหนดชำระ" from={dueText(from)} to={dueText(to)} />
+              {dates ? <ChangePair label="วันวางบิล" from={billText(dates.from)} to={billText(dates.to)} /> : null}
+              {dates ? <ChangePair label="กำหนดชำระ" from={dueText(dates.from)} to={dueText(dates.to)} /> : null}
               {/* ติ๊ก "งวดนี้ไม่ต้องวางบิล" (mig 0393) — ข้อยกเว้นรายงวด ลงประวัติของใบ */}
-              {Boolean(from.billingSkip) !== Boolean(to.billingSkip) ? (
-                <span className={styles.pair}>{to.billingSkip ? `ติ๊ก “${SKIP_TEXT}”` : `เอาติ๊ก “${SKIP_TEXT}” ออก`}</span>
+              {dates && Boolean(dates.from.billingSkip) !== Boolean(dates.to.billingSkip) ? (
+                <span className={styles.pair}>{dates.to.billingSkip ? `ติ๊ก “${SKIP_TEXT}”` : `เอาติ๊ก “${SKIP_TEXT}” ออก`}</span>
               ) : null}
+              {cover ? <ChangePair label="ครอบคลุมบริการ" from={coverText(cover.from)} to={coverText(cover.to)} /> : null}
               {moved ? <span className={styles.stale}>ถูกแก้จากอีกหน้าต่าง</span> : null}
             </li>
           ))}

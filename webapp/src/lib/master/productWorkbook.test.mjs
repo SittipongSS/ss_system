@@ -21,7 +21,7 @@ test('มีสิทธิ์เห็นต้นทุน → ได้คอ
   const sheet = await sheetOf(await buildProductExportBuffer(ROWS, { includeCost: true, now: NOW }));
   assert.deepEqual(headers(sheet), [
     'FG Code', 'ชื่อสินค้า', 'รหัสสูตร', 'ชื่อสูตร', 'วันที่สูตร', 'ปริมาตร', 'หน่วย',
-    'ราคาผลิต (ก่อน VAT)', 'VAT 7%', 'ราคาผลิต (รวม VAT)',
+    'ราคาผลิต (ก่อน VAT)', 'VAT 7%', 'ราคาผลิต (รวม VAT)', 'สถานะ BOM', 'รหัส BOM (Express)',
   ]);
   const row = sheet.getRow(2);
   assert.equal(row.getCell(1).value, 'FG-001');
@@ -34,8 +34,10 @@ test('มีสิทธิ์เห็นต้นทุน → ได้คอ
 
 test('ไม่มีสิทธิ์ → ไฟล์ต้องไม่มีคอลัมน์ราคาผลิตเลย (ไม่ใช่คอลัมน์ว่าง)', async () => {
   const sheet = await sheetOf(await buildProductExportBuffer(ROWS, { includeCost: false, now: NOW }));
-  assert.deepEqual(headers(sheet), ['FG Code', 'ชื่อสินค้า', 'รหัสสูตร', 'ชื่อสูตร', 'วันที่สูตร', 'ปริมาตร', 'หน่วย']);
-  assert.equal(sheet.getRow(1).cellCount, 7);
+  assert.deepEqual(headers(sheet), [
+    'FG Code', 'ชื่อสินค้า', 'รหัสสูตร', 'ชื่อสูตร', 'วันที่สูตร', 'ปริมาตร', 'หน่วย', 'สถานะ BOM', 'รหัส BOM (Express)',
+  ]);
+  assert.equal(sheet.getRow(1).cellCount, 9);
 });
 
 // 0 บาท = "ตั้งราคาไว้ที่ศูนย์" · ยังไม่ตั้งราคา = เซลล์ว่าง — คนละคำตอบกัน
@@ -115,4 +117,22 @@ test('route export อ่านสูตรสดจากทะเบียน 
   assert.match(route, /buildProductExportBuffer\(await withFormulas\(supabase, rows\)/);
   assert.match(route, /loadProductFormulasMany\(/);
   assert.match(route, /\.from\('formulas'\)/);
+});
+
+test('สถานะ BOM + รหัส BOM ท้ายไฟล์ — ป้ายเต็มชุดเดียวกับตัวกรอง · กลุ่ม 03/04 เซลล์ว่าง · ราคาผลิตไม่ขยับตำแหน่ง', async () => {
+  const rows = [
+    { fgCode: 'FG-0001-01-002-0001', categoryCode: '01-002', bomStatus: 'done', bomCode: ' BOM-77 ', costPrice: 100 },
+    { fgCode: 'FG-0001-02-020-0002', categoryCode: '02-020' },
+    { fgCode: 'FG-0001-01-002-0003', categoryCode: '01-002', bomStatus: 'returned' },
+    { fgCode: 'FG-0001-03-001-0004', categoryCode: '03-001' },
+  ];
+  const sheet = await sheetOf(await buildProductExportBuffer(rows, { includeCost: true, now: NOW }));
+  assert.equal(sheet.getRow(2).getCell(8).value, 100, 'ราคาผลิตยังอยู่คอลัมน์ 8');
+  const bomOf = (n) => [11, 12].map((c) => sheet.getRow(n).getCell(c).value);
+  assert.deepEqual(bomOf(2), ['ลง BOM แล้ว', 'BOM-77']);
+  assert.deepEqual(bomOf(3), ['ยังไม่ส่ง RD', null]);
+  assert.deepEqual(bomOf(4), ['RD ตีกลับ ต้องแก้', null]);
+  assert.deepEqual(bomOf(5), [null, null], 'ไม่มีขั้น BOM ≠ ยังไม่ส่ง');
+  const route = readFileSync(new URL('../../app/api/products/export/route.js', import.meta.url), 'utf8');
+  assert.match(route, /bomStatuses: csv\(url\.searchParams\.get\('bom'\)\),/, 'ตัวกรองบนจอต้องถึงไฟล์');
 });

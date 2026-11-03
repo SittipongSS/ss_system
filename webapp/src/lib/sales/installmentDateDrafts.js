@@ -145,8 +145,8 @@ export const replacesSavedDue = (change) => Boolean(change?.from?.dueDate) && ch
  *       🐞 review 29/09: เดิมส่งเฉพาะ `exceptionIds` ของรอบนี้ ⇒ เลื่อนวันของงวดยกเว้นเดิม = 400 ทุกครั้ง แล้วข้อความชี้ไปเมนู
  *          "งวดนี้ต้องวางบิล…" ที่งวดนั้นไม่มี (มีวันวางบิลแล้ว) — ปุ่มกับ API ตอบคนละอย่าง
  */
-export function scheduleManyRows(changes = [], { exceptionIds = new Set(), rule } = {}) {
-  return changes.map(({ row, from, to }) => {
+export function scheduleManyRows(changes = [], { exceptionIds = new Set(), rule, covers = [] } = {}) {
+  const sent = changes.map(({ row, from, to }) => {
     const before = from || datesOf(row);
     const skipChanged = Boolean(to.billingSkip) !== Boolean(before.billingSkip);
     const confirmed = exceptionIds.has(row.id) || (rule !== undefined && needOverrideOf(row, rule) === 'billing');
@@ -161,6 +161,63 @@ export function scheduleManyRows(changes = [], { exceptionIds = new Set(), rule 
       updatedAt: row.updatedAt || null,
     };
   });
+  /* ⭐ ช่วงครอบที่แก้ (`coverChanges`) ไปกับแถวเดียวกัน — งวดที่แก้แค่ช่วงครอบส่ง **ไม่มีคีย์วันงวด** (API ไม่ถามด่านวันงวดของมัน) */
+  const byId = new Map(sent.map((item) => [item.id, item]));
+  const seqOf = new Map(changes.map(({ row }) => [row.id, Number(row.seq ?? 0)]));
+  for (const { row, to } of covers) {
+    const cover = { coversFrom: to.coversFrom || null, coversTo: to.coversTo || null };
+    const item = byId.get(row.id);
+    if (item) Object.assign(item, cover);
+    else {
+      const added = { id: row.id, ...cover, updatedAt: row.updatedAt || null };
+      byId.set(row.id, added);
+      seqOf.set(row.id, Number(row.seq ?? 0));
+      sent.push(added);
+    }
+  }
+  return sent.sort((a, b) => seqOf.get(a.id) - seqOf.get(b.id));
+}
+
+/* ── ร่างช่วงครอบบริการ (ม็อก split-v6 ข้อ 6 · 03/11) — ร่างชุดเดียวกับวันงวด บันทึกครั้งเดียว ─────────────────────────────
+   `coverDrafts` = `{ [rowId]: { coversFrom, coversTo, baseUpdatedAt } }` เฉพาะงวดที่ต่างจากฐาน (ท่าเดียวกับ `drafts` ของวันงวด)
+   ⚠️ ใครแก้ได้/ค่าผ่านไหม = ด่าน `coverage` ของผู้เรียก (`gate(row,'coverage')`) — ที่นี่ไม่มีล็อกของตัวเอง */
+const coverText = (value) => String(value ?? '').trim();
+export const coversOf = (row) => ({ coversFrom: coverText(row?.coversFrom), coversTo: coverText(row?.coversTo) });
+export function currentCovers(row, coverDrafts) {
+  const draft = row?.id ? coverDrafts?.[row.id] : null;
+  return draft ? coversOf(draft) : coversOf(row);
+}
+const sameCovers = (a, b) => {
+  const x = coversOf(a);
+  const y = coversOf(b);
+  return x.coversFrom === y.coversFrom && x.coversTo === y.coversTo;
+};
+export function withCoverDraft(coverDrafts, row, patch) {
+  const next = { ...(coverDrafts || {}) };
+  if (!row?.id) return next;
+  const value = coversOf({ ...currentCovers(row, coverDrafts), ...patch });
+  if (sameCovers(value, row)) {
+    delete next[row.id];
+    return next;
+  }
+  next[row.id] = { ...value, baseUpdatedAt: coverDrafts?.[row.id]?.baseUpdatedAt ?? (row.updatedAt || '') };
+  return next;
+}
+/* งวดที่ช่วงครอบเปลี่ยนจริง — รูปเดียวกับ `draftChanges` (`stale` = แถวเปลี่ยนหลังเริ่มร่าง · งวดที่หายจากใบ = `dropped`) */
+export function coverChanges(rows = [], coverDrafts = {}) {
+  const byId = new Map((rows || []).map((row) => [row.id, row]));
+  const changes = [];
+  const dropped = [];
+  for (const [id, draft] of Object.entries(coverDrafts || {})) {
+    const row = byId.get(id);
+    if (!row) { dropped.push({ row: null, id, reason: 'งวดนี้ไม่อยู่ในใบแล้ว' }); continue; }
+    if (sameCovers(draft, row)) continue;
+    const base = String(draft.baseUpdatedAt || '');
+    const stale = Boolean(base && row.updatedAt && base !== String(row.updatedAt));
+    changes.push({ row, from: coversOf(row), to: coversOf(draft), stale });
+  }
+  const bySeq = (a, b) => Number(a.row?.seq ?? 0) - Number(b.row?.seq ?? 0);
+  return { changes: changes.sort(bySeq), dropped };
 }
 
 /* ── กติกาของลูกค้า → ตัวแก้แบบไหน (`dateModeOf` ของ billingRule.js ตัวเดียว · มติเจ้าของ 29/09 แบบ A) ─────────────
