@@ -131,7 +131,7 @@ const PANEL = 'components/salesPlanning/SalesOrderPaymentPanel.js';
 const SO_PAGE = 'app/sales-planning/sales-orders/[id]/page.js';
 const SO_LIST = 'app/sales-planning/sales-orders/page.js';
 const FILL = 'components/salesPlanning/installmentDates/InstallmentDateFill.js';
-const EDITOR = 'components/salesPlanning/installmentDates/InstallmentDateEditor.js';
+const CELL = 'components/salesPlanning/installmentDates/InstallmentDateCell.js';
 const CHROME = 'components/salesPlanning/installmentDates/InstallmentDateChrome.js';
 const DRAFTS = 'lib/sales/installmentDateDrafts.js';
 
@@ -156,7 +156,7 @@ test('route งวด: redate-billing ถอดแล้ว (410) · ตัว�
   assert.match(loader, /return billingRequestedIds\(rows, new Map\(/);
 });
 
-test('แผงงวด: จัดวันใหม่ย้ายเข้าแผงเติมของโหมดตั้งวัน (สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย") · คำร้องชุดเดียวกับป้าย · ทับกำหนดชำระต้องบอก · แก้รายงวดยังอยู่', () => {
+test('แผงงวด: จัดวันใหม่ย้ายเข้าแผงเติม (สวิตช์ "จัดใหม่งวดที่มีวันแล้วด้วย") · คำร้องชุดเดียวกับป้าย · ทับกำหนดชำระต้องบอก · แก้รายงวดยังอยู่', () => {
   const panel = code(PANEL);
   const fill = code(FILL);
   const drafts = code(DRAFTS);
@@ -172,16 +172,16 @@ test('แผงงวด: จัดวันใหม่ย้ายเข้า
   assert.match(fill, /role="switch" aria-checked=\{includeDated\}/);
   assert.match(fill, /จัดใหม่งวดที่มีวันแล้วด้วย \(\{dated\} งวด\)/);
   assert.match(fill, /mode\.applyFill\(\{ includeDated: !includeDated, choice: null \}, null\)/, 'สลับสวิตช์ = ย้อนร่างกลับฐาน ไม่ซ้อนผลเก่า');
-  // กำหนดชำระใหม่แทนวันเดิม — ป้ายแดง/ด่านนัดช่างอ่านช่องนี้ ⇒ บอกทั้งในตัวแก้ (ทันทีใต้ช่อง) และบนแถบบันทึก (นับงวด)
-  assert.match(code(EDITOR), /ทับกำหนดชำระเดิม \$\{formatBillingDate\(saved\.dueDate\)\} — ป้ายเลยกำหนดและด่านนัดช่างนับจากวันใหม่ทันที/);
+  // กำหนดชำระใหม่แทนวันเดิม — ป้ายแดง/ด่านนัดช่างอ่านช่องนี้ ⇒ บอกทั้งใต้ช่อง (ทันที) และบนแถบบันทึก (นับงวด)
+  assert.match(code(CELL), /"ป้ายเลยกำหนด\/ด่านนัดช่างนับจากวันใหม่"/);
   assert.match(code(CHROME), /แทนกำหนดชำระเดิม \{replaced\} งวด — ป้ายเลยกำหนดและด่านนัดช่างนับจากวันใหม่ทันทีที่บันทึก/);
   assert.match(code(CHROME), /<Button tone="primary" disabled=\{mode\.busy \|\| Boolean\(mode\.saveBlocker\)\} onClick=\{mode\.save\}>/,
     'ปุ่มยืนยันเดียว (navy) · ดับเมื่อเกินเพดานงวดต่อครั้งของ route พร้อมเหตุ');
-  // มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ — ตัวแก้มี "วันอื่น" + ช่องกำหนดชำระที่แก้ได้เสมอ · เมนูแถวพาเข้าโหมด
-  assert.match(panel, /id: "dates", icon: CalendarClock, label: "ตั้งวันงวด",/);
-  assert.match(code(DRAFTS), /round: 'ตามรอบ', other: 'วันอื่น', follow: 'ต่อจากงวดก่อน'/);
-  assert.match(code(EDITOR), /label: VIEW_LABELS\[value\],/);
-  assert.match(code(EDITOR), /<DateInput weekday value=\{v\.dueDate\}/);
+  // มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ — มติ 02/11: ทั้งสองช่องเป็นช่องวันธรรมดา (DateInput) ทุกงวดที่แก้ได้ ·
+  // ระบบแนะนำเป็นชิปในปฏิทินที่คนแตะเอง · ไม่มีเมนู "ตั้งวันงวด"/โหมด/ตัวแก้รายงวดอีก
+  assert.match(code(CELL), /<DateInput compact weekday value=\{v\.billingDate\}/);
+  assert.match(code(CELL), /<DateInput compact weekday value=\{v\.dueDate\}/);
+  assert.doesNotMatch(panel, /label: "ตั้งวันงวด"|dateMode\.enter\(/);
   // ชื่องวดสั้นไม่แตกบรรทัด
   assert.match(panel, /<InstallmentLabel label=\{row\.label\} \/>/);
   assert.match(panel, /text\.length <= LABEL_NOWRAP_MAX\s*\? <strong className=\{styles\.nowrap\}>/);

@@ -43,8 +43,17 @@ function formatTypedDate(value) {
    โฟกัสแล้วเป็นตัวเลขให้พิมพ์ต่อ · ข้อความทุกจังหวะมาจาก `dateFieldText` ตัวเดียว (lib/format.js)
    ⚠️ ไม่ส่ง = ตัวเลขเหมือนเดิมทุกหน้า
    `invalid` — ขอบแดงที่ **ช่องกรอกจริง** (`is-invalid` ของ premium-input) · `className` ตกที่กล่องห่อ ไม่ใช่ช่อง
-   ⇒ ส่ง is-invalid ผ่าน className ไม่ได้ผล · ไม่ส่ง = เหมือนเดิมทุกหน้า */
-export default function DateInput({ value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false, era = "CE", weekday = false, invalid = false }) {
+   ⇒ ส่ง is-invalid ผ่าน className ไม่ได้ผล · ไม่ส่ง = เหมือนเดิมทุกหน้า
+   ⭐ ตัวช่วยในปฏิทิน (opt-in · วันวางบิล/กำหนดชำระของงวด — มติเจ้าของ 02/11 "กดแยกส่วน แบบวันอื่นๆ"):
+   ช่องยังเป็นช่องวันตัวเดียวกับทั้งระบบ (พิมพ์ได้ · ไอคอนเปิดปฏิทิน · เลือกแล้วปิด) แค่ปฏิทินบอกมากขึ้น
+   · `calendarMonth` 'YYYY-MM' — เดือนที่ปฏิทินเปิดเมื่อช่องยังว่าง (เช่น เดือนในชื่องวด) · มีค่าแล้วเปิดที่เดือนของค่าเสมอ
+   · `dayInfo(iso)` → `{ mark, badge, title }` | null — จุดใต้เลขวัน (วันรอบของลูกค้า) · ป้ายเล็กมุมช่อง (เลขงวดอื่น) · คำ title
+   · `calendarLead` — คำสั้นเหนือหัวเดือน · `calendarExtra({ pick, close })` — ทางลัดใต้ตาราง (ชิป) แตะแล้วเลือกเหมือนแตะวัน
+   ⚠️ ไม่ส่ง = ปฏิทินหน้าตาเดิมทุกหน้า */
+export default function DateInput({
+  value = "", onChange, className = "", style, min, max, disabled, required, name, id, ariaLabel, title, compact = false, era = "CE",
+  weekday = false, invalid = false, calendarMonth = "", dayInfo = null, calendarLead = null, calendarExtra = null,
+}) {
   const yearLabel = (ceYear) => (era === "BE" ? ceYear + BUDDHIST_YEAR_OFFSET : ceYear);
   const placeholder = era === "BE" ? "DD/MM/พ.ศ." : "DD/MM/YYYY";
   const shown = (iso, typing = false) => dateFieldText(iso, { era, weekday, typing });
@@ -61,6 +70,9 @@ export default function DateInput({ value = "", onChange, className = "", style,
   const calendarRef = useRef(null);
   const [calendarStyle, setCalendarStyle] = useState(null);
   const todayIso = isoFromParts(today.getFullYear(), today.getMonth(), today.getDate());
+  /* ⚠️ effect ผูกกับ "มีหรือไม่มี" เท่านั้น — `calendarExtra` เป็นฟังก์ชันใหม่ทุกครั้งที่วาด ผูกตัวมันตรง ๆ = วัดตำแหน่ง → setState → วาด วนไม่จบ */
+  const hasLead = Boolean(calendarLead);
+  const hasExtra = Boolean(calendarExtra);
 
   useEffect(() => {
     if (!focused) setText(dateFieldText(value, { era, weekday }));
@@ -92,7 +104,8 @@ export default function DateInput({ value = "", onChange, className = "", style,
         return;
       }
       const width = 292;
-      const estimatedHeight = 356;
+      /* ตัวช่วย (คำนำ/ชิป) ทำปฏิทินสูงขึ้น — เผื่อที่ตอนเลือกว่าจะเปิดขึ้นหรือลง */
+      const estimatedHeight = 356 + (hasLead ? 40 : 0) + (hasExtra ? 96 : 0);
       const gap = 6;
       const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8));
       const opensUp = rect.bottom + gap + estimatedHeight > viewportHeight && rect.top > estimatedHeight + gap;
@@ -106,7 +119,7 @@ export default function DateInput({ value = "", onChange, className = "", style,
       window.removeEventListener("resize", position);
       window.removeEventListener("scroll", position, true);
     };
-  }, [open]);
+  }, [open, hasLead, hasExtra]);
 
   const moveMonth = (delta) => setView((current) => {
     const date = new Date(Date.UTC(current.year, current.monthIndex + delta, 1));
@@ -115,7 +128,9 @@ export default function DateInput({ value = "", onChange, className = "", style,
 
   const openCalendar = () => {
     const selected = String(value || "").match(/^(\d{4})-(\d{2})-/);
-    if (selected) setView({ year: Number(selected[1]), monthIndex: Number(selected[2]) - 1 });
+    const fallback = String(calendarMonth || "").match(/^(\d{4})-(\d{2})/);
+    const target = selected || fallback;
+    if (target) setView({ year: Number(target[1]), monthIndex: Number(target[2]) - 1 });
     setCalendarStyle(null);
     setOpen((current) => !current);
   };
@@ -130,6 +145,7 @@ export default function DateInput({ value = "", onChange, className = "", style,
   const cells = calendarCells(view.year, view.monthIndex);
   const calendar = open && calendarStyle ? (
     <span ref={calendarRef} className="date-calendar" role="dialog" aria-label="เลือกวันที่ วัน เดือน ปี" style={calendarStyle}>
+      {calendarLead ? <span className="date-calendar-lead">{calendarLead}</span> : null}
       <span className="date-calendar-header">
         <button type="button" onClick={() => moveMonth(-1)} aria-label="เดือนก่อน"><ChevronLeft size={18} /></button>
         <strong>{MONTHS_TH[view.monthIndex]} {yearLabel(view.year)}</strong>
@@ -140,20 +156,27 @@ export default function DateInput({ value = "", onChange, className = "", style,
         {cells.map((cell) => {
           const outside = cell.monthIndex !== view.monthIndex;
           const unavailable = (min && cell.iso < min) || (max && cell.iso > max);
-          const classes = [outside && "outside", cell.iso === todayIso && "today", cell.iso === value && "selected"].filter(Boolean).join(" ");
+          const info = dayInfo ? dayInfo(cell.iso) : null;
+          const classes = [outside && "outside", cell.iso === todayIso && "today", cell.iso === value && "selected", info && "has-info"].filter(Boolean).join(" ");
           return (
             <button
               type="button"
               key={cell.iso}
               className={classes}
               disabled={unavailable}
+              title={info?.title || undefined}
               onClick={() => choose(cell.iso)}
               aria-current={cell.iso === todayIso ? "date" : undefined}
-              aria-label={`${String(cell.day).padStart(2, "0")}/${String(cell.monthIndex + 1).padStart(2, "0")}/${yearLabel(cell.year)}${cell.iso === todayIso ? " วันนี้" : ""}`}
-            >{cell.day}</button>
+              aria-label={`${String(cell.day).padStart(2, "0")}/${String(cell.monthIndex + 1).padStart(2, "0")}/${yearLabel(cell.year)}${cell.iso === todayIso ? " วันนี้" : ""}${info?.title ? ` · ${info.title}` : ""}`}
+            >
+              {cell.day}
+              {info?.mark ? <span className="dayrange-dot" aria-hidden="true" /> : null}
+              {info?.badge ? <span className="date-calendar-badge" aria-hidden="true">{info.badge}</span> : null}
+            </button>
           );
         })}
       </span>
+      {calendarExtra ? <span className="date-calendar-extra">{calendarExtra({ pick: choose, close: () => setOpen(false) })}</span> : null}
       <span className="date-calendar-footer">
         <span>รูปแบบ {placeholder}</span>
         <button

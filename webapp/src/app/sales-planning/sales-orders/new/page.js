@@ -12,7 +12,7 @@
  * ⚠️ ปุ่มระดับใบอยู่ใน **การ์ดจัดการเอกสาร** บนรางขวา เหมือนทุกเอกสารในระบบ
  * ไม่ใช่แถบปุ่มท้ายฟอร์ม (ผู้ใช้ 2026-08-24: "เป็นภาษาเดียวกันทั้งระบบ")
  */
-import { Fragment, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Building2, ClipboardList, FileCheck2, FileText, FolderKanban, Handshake, MapPin, Package, Wallet,
@@ -25,8 +25,6 @@ import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderC
 import SalesOrderDeliveryDueField from "@/components/salesPlanning/SalesOrderDeliveryDueField";
 import useInstallmentDateMode from "@/components/salesPlanning/installmentDates/useInstallmentDateMode";
 import InstallmentDateCell from "@/components/salesPlanning/installmentDates/InstallmentDateCell";
-import { InstallmentDateExpandRow } from "@/components/salesPlanning/installmentDates/InstallmentDateFrame";
-import { InstallmentDateSheet } from "@/components/salesPlanning/installmentDates/InstallmentDateChrome";
 import BillingPolicyStrip from "@/components/salesPlanning/installmentDates/BillingPolicyStrip";
 import AlertBanner from "@/components/ui/AlertBanner";
 import Button from "@/components/ui/Button";
@@ -202,9 +200,9 @@ function NewSalesOrderInner() {
     () => previewInstallments(quote?.paymentPlan, totals.totalAmount),
     [quote?.paymentPlan, totals.totalAmount],
   );
-  /* ⭐ ตัวแก้วันงวดตัวเดียวกับใบ SO (ถอด BillingRoundPicker · AGENTS.md สร้าง/แก้ใช้ตัวเดียว) — งวดตามแผนของ QT เป็นแถวของโหมด
-     (id ชั่วคราวตามลำดับงวด · ยังไม่มีแถวในฐาน) · โหมดเปิดตลอด ไม่มีบันทึก (`create`) — ร่างไปกับคำขอสร้างใบ
-     ⚠️ ไม่มีค่าตั้งต้น — ทุกงวดเริ่มที่ยังไม่ตั้ง (มติ 26/09: ไม่บังคับ) · ไม่มีสถานะ "เลือกครึ่งทาง" (ตัวแก้ลงร่างเฉพาะค่าที่ครบ) */
+  /* ⭐ ช่องวันงวดตัวเดียวกับใบ SO (สองช่องแยก · มติ 02/11 · AGENTS.md สร้าง/แก้ใช้ตัวเดียว) — งวดตามแผนของ QT เป็นแถวของร่าง
+     (id ชั่วคราวตามลำดับงวด · ยังไม่มีแถวในฐาน) · ไม่มีบันทึกแยก (`create`) — ร่างไปกับคำขอสร้างใบ
+     ⚠️ ไม่มีค่าตั้งต้น — ทุกงวดเริ่มที่ยังไม่ตั้ง (มติ 26/09: ไม่บังคับ) · DateInput ลงร่างเฉพาะวันที่ครบ */
   const plannedRows = useMemo(
     () => plannedInstallments.map((row) => ({ ...row, id: `plan-${row.seq}`, preview: false })),
     [plannedInstallments],
@@ -602,8 +600,7 @@ function NewSalesOrderInner() {
           {plannedInstallments.length ? (
             <>
               {termsNotice}
-              {/* ⭐ ตารางงวดของหน้าสร้าง — ช่องวันเป็นเซลล์ของโหมดตั้งวัน (`InstallmentDateCell` ตัวเดียวกับแผงงวดของใบ) · แตะแล้วตัวแก้
-                  กางใต้แถว (`InstallmentDateEditor variant="inline"` ผ่าน InstallmentDateExpandRow · มือถือเป็นแผ่นล่าง) — ถอด BillingRoundPicker
+              {/* ⭐ ตารางงวดของหน้าสร้าง — ช่องวันสองช่องแยก (`InstallmentDateCell` ตัวเดียวกับแผงงวดของใบ · มติ 02/11)
                   ⚠️ เรียง **วันวางบิล → กำหนดชำระ** เสมอ (เจ้าของ 28/09) · ไม่รู้กติกา = คอลัมน์กำหนดชำระอย่างเดียวแบบเดิม
                   ⭐ ที่แคบกว่าพื้นตาราง (คอลัมน์เอกสาร ≤ 760px) แถวกลายเป็นการ์ดต่องวด (ม็อก billing-cycle จอ B §จอแคบ · review S4 26/09)
                      DOM ชุดเดียว วัดด้วย @container · ป้าย "งวด" / "% ของยอดรวม" / หัวช่องในการ์ด (`cardOnly` · `cardLabel`) โผล่เฉพาะตอนเป็นการ์ด */}
@@ -622,8 +619,7 @@ function NewSalesOrderInner() {
                     </thead>
                     <tbody>
                       {plannedRows.map((row) => (
-                        <Fragment key={row.id}>
-                          <tr>
+                          <tr key={row.id}>
                             <td className={styles.cellSeq}><span className={styles.cardOnly}>งวด </span>{row.seq}</td>
                             <td className={styles.cellLabel}>{row.label}</td>
                             {/* หัวคอลัมน์เป็น "%" อยู่แล้ว ⇒ เซลล์เป็นตัวเลขเปล่า 2 ตำแหน่ง ·
@@ -642,11 +638,9 @@ function NewSalesOrderInner() {
                             ) : null}
                             <td className={styles.cellPick}>
                               <span className={styles.cardLabel} aria-hidden="true">กำหนดชำระ</span>
-                              <InstallmentDateCell mode={dateMode} row={row} field="due" billColumn={billingOn} />
+                              <InstallmentDateCell mode={dateMode} row={row} field="due" />
                             </td>
                           </tr>
-                          <InstallmentDateExpandRow mode={dateMode} row={row} colSpan={billingOn ? 6 : 5} className={styles.expandPlan} />
-                        </Fragment>
                       ))}
                     </tbody>
                   </table>
@@ -654,7 +648,6 @@ function NewSalesOrderInner() {
               </div>
               {/* ด่านเขียนรุ่นสี่/วันที่ผิด — บอกใต้ตาราง (ปุ่มสร้างดับพร้อมเหตุเดียวกัน) */}
               {dateCheck.error ? <StatusNotice tone="warning" role="alert">{dateCheck.error}</StatusNotice> : null}
-              <InstallmentDateSheet mode={dateMode} subtitle={naText(quote.quoteNumber)} />
               {/* บรรทัดอธิบายตามคำตอบของลูกค้า — ตัวเดียวทุกแบบ (`createFormPlanNote` · ชำระวันวางบิลไม่ใช่ "+0 วัน")
                   โหลดไม่ขึ้น = ไม่มีบรรทัดนี้ (แถบเหนือตารางบอกเหตุแล้ว) · ไม่รู้กติกา = ห้ามพูด "ลูกค้ายังไม่ระบุ…" (`termsKind`) */}
               {planNote ? <p className={`form-note ${styles.planNote}`}>{planNote}</p> : null}

@@ -1910,7 +1910,7 @@ export default function SalesOrderDetailPage() {
     /* ร่างวันงวดค้างในแท็บการชำระ — สลับแท็บ = แผงถูกถอด ร่างหาย ⇒ ถามก่อน (กล่องเดียวกับการออกจากหน้า) */
     if (activeTab === "payment" && next !== "payment" && datesDirty && !(await confirmAction({
       title: "ทิ้งวันงวดที่ยังไม่บันทึก?",
-      description: "มีวันงวดที่แก้ค้างไว้ในโหมดตั้งวัน — สลับแท็บแล้วที่แก้ไว้จะหาย",
+      description: "มีวันงวดที่แก้ค้างไว้ (ยังไม่บันทึก) — สลับแท็บแล้วที่แก้ไว้จะหาย",
       confirmLabel: "ทิ้งแล้วสลับแท็บ",
       cancelLabel: "กลับไปบันทึก",
       danger: true,

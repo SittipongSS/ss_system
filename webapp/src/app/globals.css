@@ -1064,6 +1064,13 @@ button, select, input, textarea {
 /* จุดบอกวันที่มีข้อมูล — ใช้โทเคนความจาง ไม่ใช่เลขดิบ (audit:ui คุมไว้) */
 .dayrange-dot { width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--accent); opacity: var(--op-muted); }
 .date-calendar-grid button.selected .dayrange-dot { background: var(--accent-fg); opacity: var(--op-muted); }
+/* ตัวช่วยของ DateInput (opt-in · วันวางบิล/กำหนดชำระของงวด) — จุดใต้เลขวัน (วันรอบ) ใช้ .dayrange-dot ตัวเดียวกับช่วงวัน ·
+   ป้ายมุมช่อง = เลขงวดอื่นที่อยู่วันนั้น · คำนำเหนือหัวเดือน · แถวชิปทางลัดก่อนท้ายปฏิทิน */
+.date-calendar-grid button.has-info { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-0-5); }
+.date-calendar-badge { position: absolute; top: var(--space-0-5); right: var(--space-1); color: var(--text-3); font-size: var(--fs-1); font-weight: var(--fw-bold); line-height: var(--lh-flat); }
+.date-calendar-grid button.selected .date-calendar-badge { color: var(--accent-fg); }
+.date-calendar-lead { display: grid; gap: var(--space-1); margin-bottom: var(--space-2); color: var(--text-2); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.date-calendar-extra { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
 @media (max-width: 640px) {
   .dayrange-panel { width: auto; }
   .dayrange-months { grid-template-columns: 1fr; }
