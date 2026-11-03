@@ -2282,4 +2282,4 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
   return ok({ deleted: true, forced: force, ...(warning ? { warning } : {}) });
-});
+}, EXCISE_TASK_SYNC.deletedSalesOrder);

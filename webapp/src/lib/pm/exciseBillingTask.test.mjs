@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import {
   EXCISE_BILLING_TASK_SOURCE, exciseBillingStepBadge, exciseBillingTaskUpdates, isExciseBillingTask,
 } from './exciseBillingTask.js';
-import { exciseBillingDealIdsFor, exciseBillingTaskAfter, syncExciseBillingTasks } from './exciseBillingTaskSync.js';
+import { exciseBillingDealIdsFor, exciseBillingTaskAfter, exciseBillingTaskAround, syncExciseBillingTasks } from './exciseBillingTaskSync.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 
@@ -195,8 +195,9 @@ test('งานต่อท้าย route: ซิงก์เฉพาะคำ
 
 test('withUser รับงานต่อท้าย (`after`) แล้วคืนคำตอบเดิม · ทุก route ที่เปลี่ยนสถานะค่าสรรพสามิตผูกตัวซิงก์', () => {
   const http = read('../http.js');
-  assert.match(http, /export function withUser\(handler, \{ after = null \} = \{\}\)/);
-  assert.match(http, /if \(after\) await after\(\{ user, supabase, req, ctx, res \}\);\s*return res;/);
+  assert.match(http, /export function withUser\(handler, \{ before = null, after = null \} = \{\}\)/);
+  assert.match(http, /const prepared = before \? await before\(\{ user, supabase, req, ctx \}\) : undefined;/);
+  assert.match(http, /if \(after\) await after\(\{ user, supabase, req, ctx, res, prepared \}\);\s*return res;/);
   const api = '../../app/api/sales-planning/';
   const wired = [
     ['quotations/[id]/route.js', 'PATCH', 'quotation'],
@@ -205,6 +206,9 @@ test('withUser รับงานต่อท้าย (`after`) แล้วค
     ['sales-orders/[id]/route.js', 'PATCH', 'salesOrder'],
     ['sales-orders/[id]/excise-quotation/route.js', 'POST', 'salesOrder'],
     ['sales-orders/route.js', 'POST', 'createdSalesOrder'],
+    // ลบใบ: หาดีลก่อนลบ (ใบหายแล้วหาไม่ได้) — ช่องที่เคยรู้ของ 12.11
+    ['quotations/[id]/route.js', 'DELETE', 'deletedQuotation'],
+    ['sales-orders/[id]/route.js', 'DELETE', 'deletedSalesOrder'],
   ];
   for (const [path, method, preset] of wired) {
     const source = read(`${api}${path}`);
@@ -223,4 +227,23 @@ test('คนเปลี่ยนสถานะเองล้างป้า�
   assert.match(sql, /ADD COLUMN IF NOT EXISTS "systemCompletedAt" timestamptz/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS "systemCompletedBy" text/);
   assert.ok(EXCISE_BILLING_TASK_SOURCE.length <= 40, 'CHECK ของ 0421 รับไม่เกิน 40 ตัวอักษร');
+});
+
+test('ลบใบ: หาดีลไว้ก่อนลบ แล้วซิงก์ดีลชุดนั้นหลังลบสำเร็จ · ลบไม่สำเร็จ/หาดีลพลาด = ไม่ซิงก์ ไม่ throw', async () => {
+  const synced = [];
+  const logs = [];
+  const around = exciseBillingTaskAround(async ({ ctx }) => ({ quotationId: (await ctx.params).id }), {
+    resolveDeals: async (_supabase, key) => (key.quotationId === 'QT-BAD' ? Promise.reject(new Error('boom')) : ['DL-1']),
+    sync: async (_supabase, dealIds) => synced.push(dealIds),
+    log: (...args) => logs.push(args),
+  });
+  const ctx = (id) => ({ params: Promise.resolve({ id }) });
+  const prepared = await around.before({ supabase: {}, ctx: ctx('QT-E') });
+  assert.deepEqual(prepared, ['DL-1'], 'อ่านก่อน handler ลบ');
+  await around.after({ supabase: {}, res: new Response('{}', { status: 409 }), prepared });
+  assert.deepEqual(synced, [], 'ลบไม่สำเร็จ = ไม่ซิงก์');
+  await around.after({ supabase: {}, res: new Response('{}', { status: 200 }), prepared });
+  assert.deepEqual(synced, [['DL-1']]);
+  assert.deepEqual(await around.before({ supabase: {}, ctx: ctx('QT-BAD') }), []);
+  assert.equal(logs.length, 1);
 });
