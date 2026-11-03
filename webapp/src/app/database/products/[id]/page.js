@@ -133,6 +133,12 @@ export default function ProductDetails() {
   // Cross-module relations (360-view): registrations + orders + projects from one
   // scoped endpoint. Returns [] for relations the user may not see (tax →
   // history:view, projects → pm:view), so no extra client-side gate is needed.
+  /* ลิงก์ทะเบียนจากหน้าอื่น/แจ้งเตือน (`/go/registration/<id>` → `?registration=<id>`) เปิดแผงทะเบียนให้เลย
+     อ่านจาก location ครั้งเดียวตอนเปิดหน้า — ไม่ใช้ useSearchParams (หน้านี้ไม่มี Suspense ครอบ) */
+  useEffect(() => {
+    const wanted = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("registration") : null;
+    if (wanted) setRegPanel({ key: wanted });
+  }, []);
   const loadRelations = useCallback(() => {
     if (!id) { setRegs([]); setOrders([]); setProjects([]); return; }
     apiFetch(`/api/master/products/${id}/relations`)
@@ -877,7 +883,7 @@ export default function ProductDetails() {
                   <Link
                     key={o.id}
                     prefetch={false}
-                    href={`/tax/filings/${o.id}`}
+                    href={`/go/filing/${o.id}`}
                     className="card-link flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
                   >
                     <div className="min-w-0">

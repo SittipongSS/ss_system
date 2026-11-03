@@ -67,6 +67,9 @@
 //      products:cost (FN — มติผู้ใช้ 2026-08-28: บัญชีต้องเห็นราคาผลิต แต่ไม่เห็น
 //      โครงสร้างต้นทุน/กำไรโรงงาน).)
 //   ra:view     | ra:approve
+//   tax:module     (เข้าระบบภาษีสรรพสามิต /tax — การ์ดระบบ · เมนู · ป้ายตัวเลข · หน้า · มติเจ้าของ 02/11 V13:
+//     RA + แอดมิน + ผู้ดู (viewer/executive) เท่านั้น · ฝ่ายขายทุกตำแหน่งไม่เข้า /tax แล้ว — ทำงานทะเบียนจากแผงบน
+//     หน้าสินค้า/หน้า SO · ⚠️ แยกจาก history:view ซึ่งยังเปิด "ข้อมูลภาษี" บนหน้าสินค้า/ลูกค้าของฝ่ายขายตามเดิม)
 //   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
 //   history:view   | audit:view
 //   master:manage  (edit shared master taxonomy, e.g. product_types categories)
@@ -595,7 +598,7 @@ const SUPERUSER_CAPS = [
   // ลบกลิ่น/สูตรในทะเบียนได้ทุกสถานะ (ยังต้องไม่มีใครอ้าง) — ดู ROLE_CAPS.rd_coordinator
   'registry:delete',
   'sales:view', 'sales:act', 'sales:delete',
-  'ra:view', 'ra:approve',
+  'ra:view', 'ra:approve', 'tax:module',
   'history:view', 'audit:view',
   'users:manage', 'users:view',
   // ⭐ ตอบคำร้องของฝ่าย — admin ถือไว้ด้วยเพราะ **"admin ทำได้ทุกอย่าง"** (มติผู้ใช้
@@ -644,6 +647,9 @@ const SALES_HEAD_EXCLUDED = [
   'users:view', 'requests:answer',
   // ลบกลิ่น/สูตรทุกสถานะเป็นของ RD Project Coordinator (มติผู้ใช้ 2026-09-22) — หัวหน้าฝ่ายขายไม่ได้ตาม admin
   'registry:delete',
+  /* เข้าระบบภาษีสรรพสามิต (/tax) = RA + แอดมิน + ผู้ดู (มติเจ้าของ 02/11 V13) — ฝ่ายขายทุกตำแหน่งรวม AE Sup / CM / CD ไม่เข้า
+     ⚠️ ไม่กันตรงนี้ = หัวหน้าฝ่ายขายได้ cap ใหม่จาก SUPERUSER_CAPS ไปเงียบ ๆ (บทเรียนเดียวกับ users:view ข้างบน) */
+  'tax:module',
 ];
 
 // Sales head (ae_supervisor): every remaining sales/RA-view/PM capability
@@ -655,7 +661,7 @@ const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includ
 // this set PLUS its costing authority (see ROLE_CAPS.executive).
 const OBSERVER_CAPS = [
   'customers:view', 'products:view',
-  'sales:view', 'ra:view', 'history:view',
+  'sales:view', 'ra:view', 'history:view', 'tax:module',
   'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
   'production:view', 'service:view',
 ];
@@ -698,7 +704,7 @@ const ROLE_CAPS = {
   marketing: ['salesplan:lead', 'products:view'],
   // RA views registries + does tax approval; no edit/delete of sales data.
   // RA is the cost-margin authority (sees the factory cost breakdown + profit).
-  ra: ['customers:view', 'products:view', 'products:margin', 'ra:view', 'ra:approve', 'history:view'],
+  ra: ['customers:view', 'products:view', 'products:margin', 'ra:view', 'ra:approve', 'history:view', 'tax:module'],
   // viewer: read-only observer of the WHOLE system — holds every :view capability
   // across all modules (database / tax / sales / PM / sahamit / mgmt) at 'all'-team
   // scope, but NO edit/act/delete/approve/manage. add/edit/delete is impossible

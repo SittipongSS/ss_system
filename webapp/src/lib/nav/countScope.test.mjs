@@ -71,9 +71,9 @@ test('ใบสั่งขาย/สัญญา: คนที่รับร�
 });
 
 /* PR5: ใบยื่นเป็นของ RA ทั้งเส้น ⇒ ฝ่ายขายไม่มีป้ายใบยื่น (ไม่มีขั้นให้ทำ) · ทะเบียนยังเป็นสองเลน */
-test('ภาษี: เลนของฝ่าย (SA/RA) ได้ dept · คนนอกสองเลนไม่มีป้าย', () => {
+test('ภาษี: เลนของ RA ได้ dept · ฝ่ายขายไม่มีป้ายเมนู /tax แล้ว (มติ 02/11 V13) · คนนอกสองเลนไม่มีป้าย', () => {
   assert.equal(countScopeFor('taxFilings', user({ role: 'ra' })), 'dept');
-  assert.equal(countScopeFor('taxRegistrations', user({ role: 'ae' })), 'dept');
+  assert.equal(countScopeFor('taxRegistrations', user({ role: 'ae' })), null, 'ฝ่ายขายไม่เห็นเมนู /tax');
   assert.equal(countScopeFor('taxRegistrations', user({ role: 'ra' })), 'dept');
   assert.equal(countScopeFor('taxFilings', user({ role: 'rd' })), null);
 });

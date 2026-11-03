@@ -22,8 +22,10 @@ test('system catalog keeps the agreed global order and role visibility', () => {
      — ของที่เขายังต้องใช้คือเลือก/สร้างสถานที่จาก *ในใบคำร้อง* ซึ่งไม่ผ่านการ์ดนี้ */
   /* 🔴 ฝ่ายขายไม่เห็นการ์ด "วางแผนผลิต" แล้ว (มติผู้ใช้ 2026-09-16: เปิดให้เฉพาะ PD กับ admin)
      — cap `production:view` ยังอยู่ใน SALES_OPS ตัวกั้นคือด่านฝ่ายใน `canViewProduction` */
-  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'tax', 'master', 'support']);
-  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'tax', 'sahamit', 'master', 'support']);
+  /* 🔴 ฝ่ายขายไม่เห็นการ์ด "ภาษีสรรพสามิต" แล้ว (มติเจ้าของ 02/11 V13: RA + แอดมิน + ผู้ดู · cap `tax:module`)
+     — งานทะเบียนอยู่ที่แผงบนหน้าสินค้า/หน้า SO · `history:view` ยังอยู่ (ข้อมูลภาษีบนหน้าสินค้า/ลูกค้า) */
+  assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'master', 'support']);
+  assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'sahamit', 'master', 'support']);
   // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
   assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt', 'support']);
   assert.deepEqual(keysFor({ role: 'ra', team: null, extraCaps: [] }), ['tax', 'master', 'support']);
@@ -33,7 +35,7 @@ test('system visibility covers every supported role and sales team', () => {
   const cases = [
     ['admin', null, SYSTEM_ORDER],
     ['secretary', null, ['master', 'mgmt', 'support']],
-    ['ae_supervisor', null, ['salesplan', 'tax', 'sahamit', 'master', 'support']],
+    ['ae_supervisor', null, ['salesplan', 'sahamit', 'master', 'support']],
     ['marketing', null, ['salesplan', 'master', 'support']],
     ['ra', null, ['tax', 'master', 'support']],
     // ⭐ ฝ่าย R&D ได้บ้านของตัวเองแล้ว (ม-29) — การ์ดขึ้นจาก **ฝ่าย** ไม่ใช่ role
@@ -70,15 +72,15 @@ test('system visibility covers every supported role and sales team', () => {
     // ไม่มี 'salesplan' — เอกสารของ FN ย้ายเข้าโมดูลตัวเองแล้ว (มติ 2026-08-22)
     ['finance', null, ['finance', 'master', 'support']],
     /* 🔴 ทีมขายทุกทีม รวมทีม SV ไม่เห็นการ์ดธุรกิจบริการแล้ว (มติ 2026-08-30) */
-    ['senior_ae', 'ODM', ['salesplan', 'tax', 'master', 'support']],
-    ['senior_ae', 'KA', ['salesplan', 'tax', 'sahamit', 'master', 'support']],
-    ['senior_ae', 'SV', ['salesplan', 'tax', 'master', 'support']],
-    ['ac', 'ODM', ['salesplan', 'tax', 'master', 'support']],
-    ['ac', 'KA', ['salesplan', 'tax', 'sahamit', 'master', 'support']],
-    ['ac', 'SV', ['salesplan', 'tax', 'master', 'support']],
-    ['ae', 'ODM', ['salesplan', 'tax', 'master', 'support']],
-    ['ae', 'KA', ['salesplan', 'tax', 'sahamit', 'master', 'support']],
-    ['ae', 'SV', ['salesplan', 'tax', 'master', 'support']],
+    ['senior_ae', 'ODM', ['salesplan', 'master', 'support']],
+    ['senior_ae', 'KA', ['salesplan', 'sahamit', 'master', 'support']],
+    ['senior_ae', 'SV', ['salesplan', 'master', 'support']],
+    ['ac', 'ODM', ['salesplan', 'master', 'support']],
+    ['ac', 'KA', ['salesplan', 'sahamit', 'master', 'support']],
+    ['ac', 'SV', ['salesplan', 'master', 'support']],
+    ['ae', 'ODM', ['salesplan', 'master', 'support']],
+    ['ae', 'KA', ['salesplan', 'sahamit', 'master', 'support']],
+    ['ae', 'SV', ['salesplan', 'master', 'support']],
   ];
 
   for (const [role, team, expected] of cases) {

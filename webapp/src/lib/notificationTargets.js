@@ -18,8 +18,10 @@ const HREF = {
   costing_request: (id) => `/sa/costing/${id}`,
   customer: (id) => `/database/customers/${id}`,
   product: (id) => `/database/products/${id}`,
-  excise_registration: (id) => `/tax/registrations/${id}`,
-  excise_order: (id) => `/tax/filings/${id}`,
+  /* ทะเบียน/บันทึกการยื่นสรรพสามิต → เส้นทางกลางที่พาไปตามสิทธิ์ของคนกด (มติ 02/11 V13): RA/แอดมิน/ผู้ดู = หน้า /tax ·
+     ฝ่ายขาย = หน้าสินค้า (เปิดแผงทะเบียน) / SO ลูกค้า — ผู้รับแจ้งเตือนทะเบียนมีทั้ง RA (ยื่นแล้ว) และเจ้าของใบฝ่ายขาย (ผลตรวจ) */
+  excise_registration: (id) => `/go/registration/${id}`,
+  excise_order: (id) => `/go/filing/${id}`,
   sahamit_po: (id) => `/sahamit/po/${id}`,
   /* นัดเข้าบริการ → **ใบส่งงานของนัดนั้น** (/service/visits/[id])
      ⭐ ผู้รับหลักคือเจ้าหน้าที่เจ้าของนัด (`recipients` = assigneeId ใน updateAccess) ซึ่งเป็น
