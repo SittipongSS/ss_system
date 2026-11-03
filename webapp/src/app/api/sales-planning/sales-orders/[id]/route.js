@@ -1007,7 +1007,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       supabase.from('orders').select('id, status').eq('salesOrderId', id).limit(1).maybeSingle(),
     ]);
     if (liveError || filingError) return fail((liveError || filingError).message, 500);
-    // kind: "จ่ายกรมไปแล้วก่อนเปิดระบบ" เฉพาะใบที่อนุมัติก่อนวันเปิดระบบ (มติ 03/11 V18 · CHECK ของ 0419 กันซ้ำ)
+    // kind: "จ่ายกรมไปแล้วก่อนเปิดระบบ" เฉพาะใบที่อนุมัติก่อนวันเปิดระบบ (มติ 03/11 V18 · CHECK ของ 0420 กันซ้ำ)
     const blocker = exciseNotBilledBlocker(before, { liveQuote, clearing, filing, kind: input.value?.kind || null });
     if (blocker) return fail(blocker, 409);
     const expected = resolveExpectedUpdatedAt(body);
