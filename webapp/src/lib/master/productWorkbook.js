@@ -22,7 +22,7 @@ import ExcelJS from 'exceljs';
 import { costPriceVat, VAT_RATE_LABEL } from '@/lib/master/costVat';
 import { fmtDate, productNameBoth } from '@/lib/format';
 import { DEFAULT_VOLUME_UNIT } from '@/lib/master/units';
-import { BOM_STATUS_META, bomFilterValueOf } from '@/lib/master/productBom';
+import { BOM_STATUS_META, bomFilterValueOf, bomSendBlockerShort } from '@/lib/master/productBom';
 
 const FONT = 'Leelawadee UI';
 const HEADER_FILL = 'FFC17A52';
@@ -50,7 +50,7 @@ const COST_COLUMNS = [
 ];
 // ท้ายสุดเสมอ (หลังราคาผลิตถ้ามี) — คอลัมน์เดิมไม่ขยับตำแหน่ง ไฟล์ที่คนทำสูตร Excel อ้างคอลัมน์ไว้ไม่เพี้ยน
 const BOM_COLUMNS = [
-  { key: 'bomStatus', header: 'สถานะ BOM', width: 20 },
+  { key: 'bomStatus', header: 'สถานะ BOM', width: 36 },
   { key: 'bomCode', header: 'รหัส BOM (Express)', width: 20 },
 ];
 
@@ -120,7 +120,8 @@ export async function buildProductExportBuffer(rows = [], { includeCost = false,
       formulaDate: column('date'),
       volume: Number.isFinite(volume) ? volume : null,
       volumeUnit: product.volumeUnit || DEFAULT_VOLUME_UNIT,
-      bomStatus: bom ? BOM_STATUS_META[bom].label : null,
+      // ข้อมูลยังไม่ครบ พ่วงเหตุสั้น (ตัวเดียวกับคอลัมน์ BOM บนจอ) — คนรับไฟล์ไล่แก้ได้โดยไม่ต้องเปิดทีละ FG
+      bomStatus: bom === 'blocked' ? `${BOM_STATUS_META[bom].label} (${bomSendBlockerShort(product)})` : bom ? BOM_STATUS_META[bom].label : null,
       bomCode: textOf(product.bomCode) || null,
       ...(includeCost ? {
         costExVat: cost.exVat, costVat: cost.vat, costIncVat: cost.incVat,

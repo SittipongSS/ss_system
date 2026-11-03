@@ -52,9 +52,13 @@ export const BOM_STATUS_META = Object.freeze({
   in_progress: { label: 'RD กำลังลง BOM', short: 'กำลังลง', color: 'var(--blue)', tone: 'info' },
   returned: { label: 'RD ตีกลับ ต้องแก้', short: 'ตีกลับ ต้องแก้', color: 'var(--red)', tone: 'danger' },
   done: { label: 'ลง BOM แล้ว', short: 'ลงแล้ว', color: 'var(--green)', tone: 'success' },
+  /* ⭐ สองค่าย่อยของ "ยังไม่ส่ง" — มีเฉพาะบนทะเบียนสินค้า (`bomFilterValueOf`) ไม่เคยเป็นค่าใน `bomStatus`
+     (มติเจ้าของ 03/11: FG 01/02 ส่วนใหญ่ยังไม่ผูกสูตร ⇒ SA ต้องเห็นว่าตัวไหนส่งได้เลย ตัวไหนต้องแก้ก่อน) */
+  blocked: { label: 'ยังไม่ส่ง · ข้อมูลยังไม่ครบ', short: 'ข้อมูลยังไม่ครบ', color: 'var(--text-3)', tone: 'neutral' },
+  ready: { label: 'ยังไม่ส่ง · พร้อมส่ง RD', short: 'พร้อมส่ง', color: 'var(--text-2)', tone: 'neutral' },
 });
-/* ลำดับตัวเลือกของตัวกรอง "สถานะ BOM" บนทะเบียนสินค้า — ตามทางเดินของงาน */
-export const BOM_FILTER_VALUES = Object.freeze(['none', 'queued', 'in_progress', 'returned', 'done']);
+/* ลำดับตัวเลือกของตัวกรอง "สถานะ BOM" บนทะเบียนสินค้า — ตามทางเดินของงาน · "ยังไม่ส่ง" แตกเป็นข้อมูลไม่ครบ/พร้อมส่ง */
+export const BOM_FILTER_VALUES = Object.freeze(['blocked', 'ready', 'queued', 'in_progress', 'returned', 'done']);
 
 /* ทางเดินสถานะ — `from: null` = ยังไม่ส่ง · แถวที่ไม่อยู่ใน `from` = ปฏิเสธ (ส่งซ้ำ · รับซ้ำ · กดค้างจากแท็บเก่า)
    ⭐ `done` จาก `queued` ได้ตรง ๆ — FG ที่ Express มี BOM อยู่แล้ว (FG เก่า · มติข้อ 8) RD ไม่ต้องกดสองจังหวะ
@@ -90,12 +94,25 @@ export function bomStatusMeta(product) {
 }
 
 /**
- * ค่าของแถวสำหรับตัวกรอง/ป้าย/Excel ของทะเบียนสินค้า — `null` = ไม่มีขั้น BOM (กลุ่ม 03/04) · `'none'` = ยังไม่ส่ง
- * ⚠️ แยกสองค่านี้ให้ขาด: "ยังไม่ส่ง" ต้องไม่กวาดสินค้า 03/04 มารวม (ไม่มีอะไรให้ส่ง ⇒ ไม่ใช่งานค้างของ SA)
+ * สูตรในชุดของขวัญของแถวในรายการ — ด่านส่ง (`bomFormulaBound`) ต้องรู้ว่าชุดของขวัญผูกสูตรแล้วกี่แถว
+ * · หน้า FG/route ส่ง `formulaComponents` เต็ม (product_formulas) · ไฟล์ส่งออกเติมให้ใน `withFormulas`
+ * · ทะเบียนสินค้า (`/api/products?manage=1`) แนบแค่ `giftSetFormulaIds` (เบากว่า — ตารางไม่ต้องการชื่อสูตร)
+ */
+export function bomListFormulaComponents(product) {
+  if (Array.isArray(product?.formulaComponents)) return product.formulaComponents;
+  return (product?.giftSetFormulaIds || []).map((formulaId) => ({ formulaId }));
+}
+
+/**
+ * ค่าของแถวสำหรับตัวกรอง/ป้าย/Excel ของทะเบียนสินค้า — `null` = ไม่มีขั้น BOM (กลุ่ม 03/04) ·
+ * ยังไม่ส่งแตกเป็น `'ready'` (ด่านส่งผ่าน) / `'blocked'` (ด่านส่งไม่ผ่าน — ตัวเดียวกับปุ่ม "ส่ง RD ลง BOM" บนหน้า FG)
+ * ⚠️ ไม่มีขั้น ≠ ยังไม่ส่ง: "ยังไม่ส่ง" ต้องไม่กวาดสินค้า 03/04 มารวม (ไม่มีอะไรให้ส่ง ⇒ ไม่ใช่งานค้างของ SA)
  */
 export function bomFilterValueOf(product) {
   if (!hasBomStep(product)) return null;
-  return bomStatusOf(product) || 'none';
+  const status = bomStatusOf(product);
+  if (status) return status;
+  return sendBlock(product, { formulaComponents: bomListFormulaComponents(product) }) ? 'blocked' : 'ready';
 }
 
 /** ช่องที่ล็อกอยู่ไหม — ตั้งแต่ส่ง จนกว่าจะดึงกลับ/ถูกตีกลับ (มติข้อ 6) */
@@ -112,11 +129,38 @@ export function bomFormulaBound(product, { formulaComponents = [] } = {}) {
   return !!product?.formulaId;
 }
 
+/* ข้อที่ขาด: `message` = ข้อความเต็มบนหน้า FG · `short` = เหตุสั้นในคอลัมน์ BOM ของทะเบียนสินค้า */
 function formulaGap(product) {
   const code = categoryCodeOf(product);
-  if (isGiftSetCategory(code)) return 'ผูกสูตรในชุดอย่างน้อย 1 แถว';
-  if (isFragranceOilCategory(code)) return 'ผูกกลิ่นจากทะเบียน';
-  return 'ผูกสูตรจากทะเบียน';
+  if (isGiftSetCategory(code)) return { message: 'ผูกสูตรในชุดอย่างน้อย 1 แถว', short: 'ยังไม่ผูกสูตรในชุด' };
+  if (isFragranceOilCategory(code)) return { message: 'ผูกกลิ่นจากทะเบียน', short: 'ยังไม่ผูกกลิ่น' };
+  return { message: 'ผูกสูตรจากทะเบียน', short: 'ยังไม่ผูกสูตร' };
+}
+
+/* ด่านส่งตัวเดียว — คืน `{ message, short }` หรือ `null` เมื่อส่งได้ · `bomSendBlocker` (หน้า FG · route) กับ
+   `bomSendBlockerShort` / `bomFilterValueOf` (ทะเบียนสินค้า) อ่านผลจากที่นี่ ⇒ ตารางบอก "พร้อมส่ง" ตรงกับปุ่มเสมอ */
+function sendBlock(product, { formulaComponents = [] } = {}) {
+  if (!product) return { message: 'ไม่พบสินค้า', short: 'ไม่พบสินค้า' };
+  if (!hasBomStep(product)) return { message: 'สินค้ากลุ่มนี้ไม่มีขั้นลง BOM', short: 'ไม่มีขั้น BOM' };
+  const status = bomStatusOf(product);
+  if (!BOM_TRANSITIONS.send.from.includes(status)) {
+    const label = BOM_STATUS_META[status].label;
+    return { message: `ส่งไปแล้ว — สถานะตอนนี้: ${label}`, short: label };
+  }
+  if (product.isActive === false) return { message: 'สินค้านี้พักใช้งานอยู่ — เปิดใช้ก่อนจึงส่ง RD ได้', short: 'พักใช้งาน' };
+  const approval = approvalStatusOf(product);
+  if (approval === 'rejected') return { message: 'สินค้าถูกตีกลับ — แก้ตามเหตุผลแล้วให้หัวหน้าอนุมัติก่อนส่ง RD', short: 'สินค้าไม่อนุมัติ' };
+  if (approval !== 'approved') return { message: 'สินค้ายังรออนุมัติ — หัวหน้าอนุมัติก่อนจึงส่ง RD ได้', short: 'รออนุมัติสินค้า' };
+  const gaps = [];
+  if (!bomFormulaBound(product, { formulaComponents })) gaps.push(formulaGap(product));
+  if (!(Number(product.volume) > 0) || !product.volumeUnit) gaps.push({ message: 'กรอกปริมาตร/น้ำหนักบรรจุ', short: 'ไม่มีปริมาตร' });
+  if (gaps.length) {
+    return {
+      message: `ข้อมูลยังไม่ครบ — ${gaps.map((g) => g.message).join(' · ')} ก่อนส่ง RD`,
+      short: gaps.map((g) => g.short).join(' · '),
+    };
+  }
+  return null;
 }
 
 /**
@@ -124,21 +168,12 @@ function formulaGap(product) {
  * ⚠️ ด่าน **เงื่อนไขของสินค้า** ⇒ ปุ่มยังโชว์ กดแล้วบอกเหตุ (กฎ UI) · สิทธิ์ตัดสินที่ผู้เรียก
  */
 export function bomSendBlocker(product, { formulaComponents = [] } = {}) {
-  if (!product) return 'ไม่พบสินค้า';
-  if (!hasBomStep(product)) return 'สินค้ากลุ่มนี้ไม่มีขั้นลง BOM';
-  const status = bomStatusOf(product);
-  if (!BOM_TRANSITIONS.send.from.includes(status)) {
-    return `ส่งไปแล้ว — สถานะตอนนี้: ${BOM_STATUS_META[status].label}`;
-  }
-  if (product.isActive === false) return 'สินค้านี้พักใช้งานอยู่ — เปิดใช้ก่อนจึงส่ง RD ได้';
-  const approval = approvalStatusOf(product);
-  if (approval === 'rejected') return 'สินค้าถูกตีกลับ — แก้ตามเหตุผลแล้วให้หัวหน้าอนุมัติก่อนส่ง RD';
-  if (approval !== 'approved') return 'สินค้ายังรออนุมัติ — หัวหน้าอนุมัติก่อนจึงส่ง RD ได้';
-  const gaps = [];
-  if (!bomFormulaBound(product, { formulaComponents })) gaps.push(formulaGap(product));
-  if (!(Number(product.volume) > 0) || !product.volumeUnit) gaps.push('กรอกปริมาตร/น้ำหนักบรรจุ');
-  if (gaps.length) return `ข้อมูลยังไม่ครบ — ${gaps.join(' · ')} ก่อนส่ง RD`;
-  return '';
+  return sendBlock(product, { formulaComponents })?.message || '';
+}
+
+/** เหตุสั้นของด่านส่ง สำหรับคอลัมน์ BOM ของทะเบียนสินค้า — `''` เมื่อส่งได้ (สูตรในชุดอ่านจากแถวรายการ) */
+export function bomSendBlockerShort(product) {
+  return sendBlock(product, { formulaComponents: bomListFormulaComponents(product) })?.short || '';
 }
 
 /** ทางเดินสถานะผ่านไหม — คืนข้อความเหตุหรือ `''` */

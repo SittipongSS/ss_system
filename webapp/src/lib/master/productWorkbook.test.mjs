@@ -130,9 +130,23 @@ test('สถานะ BOM + รหัส BOM ท้ายไฟล์ — ป้
   assert.equal(sheet.getRow(2).getCell(8).value, 100, 'ราคาผลิตยังอยู่คอลัมน์ 8');
   const bomOf = (n) => [11, 12].map((c) => sheet.getRow(n).getCell(c).value);
   assert.deepEqual(bomOf(2), ['ลง BOM แล้ว', 'BOM-77']);
-  assert.deepEqual(bomOf(3), ['ยังไม่ส่ง RD', null]);
+  // ยังไม่ส่งแตกด้วยด่านส่ง · ข้อมูลไม่ครบพ่วงเหตุสั้น (ตัวเดียวกับคอลัมน์ BOM บนจอ)
+  assert.deepEqual(bomOf(3), ['ยังไม่ส่ง · ข้อมูลยังไม่ครบ (ยังไม่ผูกกลิ่น · ไม่มีปริมาตร)', null]);
   assert.deepEqual(bomOf(4), ['RD ตีกลับ ต้องแก้', null]);
   assert.deepEqual(bomOf(5), [null, null], 'ไม่มีขั้น BOM ≠ ยังไม่ส่ง');
   const route = readFileSync(new URL('../../app/api/products/export/route.js', import.meta.url), 'utf8');
   assert.match(route, /bomStatuses: csv\(url\.searchParams\.get\('bom'\)\),/, 'ตัวกรองบนจอต้องถึงไฟล์');
+});
+
+test('สถานะ BOM ในไฟล์: พร้อมส่ง = ด่านส่งผ่าน · ชุดของขวัญอ่านสูตรในชุดที่ route เติม (formulaComponents)', async () => {
+  const rows = [
+    { fgCode: 'FG-0001-01-002-0010', categoryCode: '01-002', formulaId: 'F1', volume: 30, volumeUnit: 'ml' },
+    { fgCode: 'FG-0001-01-037-0011', categoryCode: '01-037', volume: 1, volumeUnit: 'set', formulaComponents: [{ formulaId: 'F2', formulaCode: 'PF1' }] },
+    { fgCode: 'FG-0001-01-037-0012', categoryCode: '01-037', volume: 1, volumeUnit: 'set' },
+  ];
+  const sheet = await sheetOf(await buildProductExportBuffer(rows, { includeCost: false, now: NOW }));
+  const status = (n) => sheet.getRow(n).getCell(8).value;
+  assert.equal(status(2), 'ยังไม่ส่ง · พร้อมส่ง RD');
+  assert.equal(status(3), 'ยังไม่ส่ง · พร้อมส่ง RD');
+  assert.equal(status(4), 'ยังไม่ส่ง · ข้อมูลยังไม่ครบ (ยังไม่ผูกสูตรในชุด)');
 });
