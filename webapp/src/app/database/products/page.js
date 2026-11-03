@@ -28,7 +28,7 @@ import { ApprovalBadge, ApprovalActions, approvalStatusOf } from "@/components/A
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { categoryOf, categoryFlags, categoryInfoOf } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
-import { filterProducts, isProductTaxable, productCategoryCode, productCategoryLabel, productFilterFacets, productStatCounts } from "@/lib/master/productFilter";
+import { REGISTRATION_META, filterProducts, isProductTaxable, productCategoryCode, productCategoryLabel, productFilterFacets, productRegistrationValue, productStatCounts } from "@/lib/master/productFilter";
 import { isPendingApproval } from "@/lib/master/pendingApprovalLinks";
 import { missingRetailPriceProducts } from "@/lib/tax/taxableProducts";
 import {
@@ -40,8 +40,9 @@ import CostVatLines from "@/components/database/CostVatLines";
 import { apiFetch } from "@/lib/apiFetch";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
 import { giftSetFormError } from "@/lib/master/giftSetFormulas";
-import { BOM_FILTER_VALUES, BOM_STATUS_META, hasBomStep } from "@/lib/master/productBom";
+import { BOM_FILTER_VALUES, BOM_STATUS_META, bomFilterValueOf, hasBomStep } from "@/lib/master/productBom";
 import ProductBomBadge from "@/components/database/ProductBomBadge";
+import ProductRegistrationBadge from "@/components/database/ProductRegistrationBadge";
 
 // Management view sees every status; the default GET (used by registration / PM
 // pickers) returns only approved products.
@@ -402,6 +403,8 @@ export default function ProductRegistry() {
     cost: (p) => p.costPrice ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
     tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
+    // ตามทางเดินของงาน (ยังไม่ส่ง → รอรับ → กำลังลง → ตีกลับ → ลงแล้ว) · กลุ่ม 03/04 ไม่มีค่า = ท้ายตาราง
+    bom: (p) => { const v = bomFilterValueOf(p); return v ? BOM_FILTER_VALUES.indexOf(v) : null; },
   }, { key: "product", dir: "asc" });
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
@@ -485,11 +488,7 @@ export default function ProductRegistry() {
           // มิติกรองเฉพาะหมวดสรรพสามิต: เลือกแล้วหมวดอื่นไม่แสดง
           ...(hasRegData ? [{
             key: "registration", label: "การขึ้นทะเบียน", icon: FileCheck2,
-            options: [
-              { value: "none", label: "ยังไม่ขึ้นทะเบียน" },
-              { value: "in_progress", label: "มีทะเบียน (รอ/ร่าง)" },
-              { value: "approved", label: "อนุมัติแล้ว" },
-            ],
+            options: Object.entries(REGISTRATION_META).map(([value, meta]) => ({ value, label: meta.label })),
             selected: regFilter, onChange: setRegFilter,
           }] : []),
           /* ⚠️ ขึ้นเฉพาะตอนทะเบียนมีของค้างจริง (หรือติ๊กค้างอยู่ ให้เอาออกได้) — ตัวกรองที่กดแล้วได้ 0 เสมอคือขยะบนแถบ
@@ -642,10 +641,11 @@ export default function ProductRegistry() {
                     <div className="font-mono text-[var(--text-2)]">{fmtMoneyOrDash(p.retailPriceIncVat)}</div>
                     {/* ป้ายเฉพาะสินค้าที่ต้องเสียสรรพสามิต (กฎเดียวของระบบ) / หมวดที่ติ๊กจดแจ้ง อย. — รายละเอียดการยกเว้นดูที่การ์ดภาษีในหน้ารายละเอียด */}
                     {(taxable || exempt || flags.requiresFdaNotice) && (
-                      <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                      <div className="mt-0.5 flex flex-wrap items-center justify-end gap-1.5">
                         {taxable && taxPerUnit(p) > 0 && <span className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
                         {/* ป้ายเดียวสองความหมาย (ไม่เขียนสองป้าย = ขนาดดิบไม่เพิ่มในด่าน audit:ui) */}
                         {(taxable || exempt) && <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>}
+                        {(taxable || exempt) && <ProductRegistrationBadge product={p} productTypes={productTypes} taxable={taxable} />}
                         {flags.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
                       </div>
                     )}
@@ -677,6 +677,11 @@ export default function ProductRegistry() {
                 {/* หัวบอกว่าเลขหลัก (ตัวที่เรียง) คือราคาก่อน VAT — อีกสองบรรทัดอยู่ในช่อง */}
                 {canSeeCost && <SortTh label="ราคาผลิต (ก่อน VAT)" sortKey="cost" sort={sort} className="num" />}
                 <SortTh label="ราคาขายปลีก" sortKey="retail" sort={sort} className="num" />
+                {/* ⭐ มติเจ้าของ 03/11: สรรพสามิต · จดแจ้ง อย. · BOM แยกเป็นคอลัมน์ของตัวเอง (เดิมสองอันแรกเป็นป้ายใต้ราคาขายปลีก
+                    · BOM เป็นป้ายในช่องสถานะเฉพาะตัวที่ส่งแล้ว) ⇒ ไล่ตาลงคอลัมน์เดียวเห็นทุกแถว · มุมมองการ์ดยังเป็นป้ายเหมือนเดิม */}
+                <SortTh label="สรรพสามิต" sortKey="tax" sort={sort} />
+                <th>จดแจ้ง อย.</th>
+                <SortTh label="BOM" sortKey="bom" sort={sort} />
                 <th>สถานะ</th>
               </tr>
             </thead>
@@ -727,16 +732,25 @@ export default function ProductRegistry() {
                         <CostVatLines costPrice={p.costPrice} />
                       </td>
                     )}
-                    <td className="num mono text-[var(--text-2)]">
-                      {fmtMoneyOrDash(p.retailPriceIncVat)}
-                      {(taxable || exempt || flags.requiresFdaNotice) && (
-                        <div className="mt-0.5 flex items-center justify-end gap-1.5">
+                    <td className="num mono text-[var(--text-2)]">{fmtMoneyOrDash(p.retailPriceIncVat)}</td>
+                    {/* สรรพสามิต — ป้ายถามตัวตัดสินเดียวกับการ์ด/ตัวกรอง (L16b) · หัวคอลัมน์บอกชนิดภาษีแล้ว ป้ายจึงสั้น */}
+                    <td>
+                      {/* มติเจ้าของ 03/11: ต้องเสีย = โชว์สถานะขึ้นทะเบียนแทน (ยังไม่ขึ้นทะเบียน ก็แปลว่าต้องเสียอยู่แล้ว) · ยกเว้น = "ยกเว้น"
+                          · ป้าย "ต้องเสีย" เหลือเฉพาะแถวที่ไม่มีมิติทะเบียน (ผู้ดูไม่ถือ history:view · RA บังคับในหมวดที่ไม่ใช่สรรพสามิต) */}
+                      {taxable || exempt ? (
+                        <div className="flex flex-col items-start gap-0.5">
+                          {taxable && productRegistrationValue(p, productTypes)
+                            ? <ProductRegistrationBadge product={p} productTypes={productTypes} taxable={taxable} />
+                            : <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ต้องเสีย" : "ยกเว้น"}</span>}
                           {taxable && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
-                          {(taxable || exempt) && <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>}
-                          {flags.requiresFdaNotice && <span className="status-pill info text-[10px]">จดแจ้ง อย.</span>}
                         </div>
-                      )}
+                      ) : <span className="text-[var(--text-3)]">{NA}</span>}
                     </td>
+                    {/* จดแจ้ง อย. — ธงของหมวด (`requiresFdaNotice`) */}
+                    <td>
+                      {flags.requiresFdaNotice ? <span className="status-pill info text-[10px]">ต้องจดแจ้ง</span> : <span className="text-[var(--text-3)]">{NA}</span>}
+                    </td>
+                    <td><ProductBomBadge product={p} cell /></td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {/* ป้าย "เลิกใช้" อยู่นอกทางแยก ปุ่มอนุมัติ/ป้ายสถานะ — ใบเลิกใช้ที่ยังรออนุมัติขึ้นในตัวกรอง "รออนุมัติ" (H3)
                           ⇒ ปุ่มอนุมัติต้องไม่กลบป้ายเลิกใช้ · แถวที่มีปุ่มชิดขวาตามแถบปุ่ม (`.action-bar` ชิดขวา) */}
@@ -747,7 +761,6 @@ export default function ProductRegistry() {
                           <ApprovalBadge status={approvalStatusOf(p)} />
                         )}
                         {p.isActive === false && <span className="status-pill" style={{ background: "var(--panel-2)", color: "var(--text-3)" }}>เลิกใช้</span>}
-                        <ProductBomBadge product={p} />
                         {approvalStatusOf(p) === "rejected" && p.rejectionReason && (
                           <div className="text-[11px] text-[var(--text-3)] mt-1 max-w-[200px] whitespace-normal">เหตุผล: {p.rejectionReason}</div>
                         )}
