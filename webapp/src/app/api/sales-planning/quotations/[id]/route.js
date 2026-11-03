@@ -789,4 +789,4 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   return ok({
     ok: true, forced: force, dealReverted: Boolean(forceResult?.dealReverted), forecast,
   });
-});
+}, EXCISE_TASK_SYNC.deletedQuotation);

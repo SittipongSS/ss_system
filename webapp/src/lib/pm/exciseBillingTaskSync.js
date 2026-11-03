@@ -149,9 +149,39 @@ export function exciseBillingTaskAfter(target, {
   };
 }
 
+/** สำหรับ route ที่ลบใบ: ใบหายแล้วหาดีลต้นทางไม่ได้ ⇒ หาดีลไว้ก่อน (`before`) แล้วซิงก์ดีลชุดนั้นหลังลบสำเร็จ (`after`)
+ *  · ช่องที่เคยรู้ (12.11): ลบใบค่าสรรพสามิตร่างที่ระบบติ๊กงานไปแล้ว = งานค้าง Completed */
+export function exciseBillingTaskAround(target, {
+  resolveDeals = exciseBillingDealIdsFor,
+  sync = syncExciseBillingTasks,
+  log = (...args) => console.error(...args),
+} = {}) {
+  return {
+    before: async ({ supabase, ctx, req }) => {
+      try {
+        const key = await target({ req, ctx });
+        return key ? await resolveDeals(supabase, key) : [];
+      } catch (error) {
+        log('[excise-billing-task-sync] หาดีลก่อนลบไม่สำเร็จ', error);
+        return [];
+      }
+    },
+    after: async ({ supabase, res, prepared }) => {
+      if (!res || res.status < 200 || res.status >= 300 || !prepared?.length) return;
+      try {
+        await sync(supabase, prepared);
+      } catch (error) {
+        log('[excise-billing-task-sync] ซิงก์งานวางบิลค่าสรรพสามิตไม่สำเร็จ', error);
+      }
+    },
+  };
+}
+
 /** ชุดที่ route ใช้: `export const PATCH = withUser(async (...) => { ... }, EXCISE_TASK_SYNC.salesOrder);` */
 export const EXCISE_TASK_SYNC = Object.freeze({
   salesOrder: Object.freeze({ after: exciseBillingTaskAfter(paramTarget('salesOrderId')) }),
   quotation: Object.freeze({ after: exciseBillingTaskAfter(paramTarget('quotationId')) }),
   createdSalesOrder: Object.freeze({ after: exciseBillingTaskAfter(responseTarget('salesOrderId')) }),
+  deletedSalesOrder: Object.freeze(exciseBillingTaskAround(paramTarget('salesOrderId'))),
+  deletedQuotation: Object.freeze(exciseBillingTaskAround(paramTarget('quotationId'))),
 });
