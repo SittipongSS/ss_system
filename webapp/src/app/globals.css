@@ -7555,12 +7555,20 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   z-index: 6;
 }
 
+/* ช่องค้นหาที่หดได้ในแถบเครื่องมือ (ทะเบียนใบสั่งขาย · มติ 03/11 แท็บที่สี่ "สรรพสามิต (Excise)") — แถบตัดบรรทัดตาม
+   flex-basis ไม่ใช่ความกว้างที่หดแล้ว ⇒ ช่องกว้างตายตัว 300px ดันปุ่มเรียงตกบรรทัดที่จอ 1440px · basis 200px แล้วโตถึง
+   300px (โฟกัส 340px) เมื่อมีที่ = ความกว้างเดิมทุกจอที่เคยพอ */
+.toolbar .search-glass.search-glass-fluid { flex: 1 1 200px; width: auto; max-width: 300px; }
+.toolbar .search-glass.search-glass-fluid:focus-within { width: auto; max-width: 340px; }
+
 @media (max-width: 680px) {
   .premium-header { padding: var(--space-4-5) var(--space-5); }
   .premium-header h1 { font-size: var(--fs-12); }
   .premium-header p { margin-left: 0; }
   .search-glass,
   .search-glass:focus-within { width: 100%; }
+  .toolbar .search-glass.search-glass-fluid,
+  .toolbar .search-glass.search-glass-fluid:focus-within { flex-basis: 100%; max-width: none; }
 }
 
 /* ชื่อคนที่ถูก @ ในข้อความเธรด — ใช้ <mark> เพราะความหมายคือ "ส่วนที่เกี่ยวข้องกับ

@@ -65,7 +65,8 @@ test('แท็บ "สรรพสามิต" = ใบ SO ค่าสรร�
   assert.equal(salesOrderPassesListFilters({ origin: 'pipeline', businessLine: 'PRODUCT' }, tab), false);
   assert.equal(salesOrderPassesListFilters({ origin: 'excise', businessLine: null }, { ...EMPTY_SALES_ORDER_FILTERS, lineView: 'PRODUCT' }), false);
   const page = read('../../app/sales-planning/sales-orders/page.js');
-  assert.match(page, /\{ value: EXCISE_LINE_VIEW, label: "สรรพสามิต" \}/);
+  assert.match(page, /\{ value: EXCISE_LINE_VIEW, label: "สรรพสามิต \(Excise\)" \}/, 'ป้ายไทย + อังกฤษแบบแท็บสายธุรกิจ');
+  assert.doesNotMatch(page, /SalesOrderBundleButton|type="checkbox"/, 'ชุดเอกสารโหลดที่รายงานยอดขายที่เดียว (มติ 03/11)');
   assert.match(page, /\.concat\(row\.exciseStage \? `สรรพสามิต \$\{row\.exciseStage\.text\}` : null\)/, 'ตาเห็นบนแถว = ต้องค้นเจอ');
   const route = read('../../app/api/sales-planning/sales-orders/route.js');
   assert.match(route, /exciseStage: exciseStages\.get\(row\.id\) \|\| null,/);
