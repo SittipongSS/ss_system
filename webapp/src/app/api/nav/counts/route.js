@@ -1,5 +1,5 @@
 // ── API ตัวเลขบนเมนูหลัก ─────────────────────────────────────────────────
-// GET /api/nav/counts → { requests?, tasks?, rdRequests?, rdPricing?, financeRequests?,
+// GET /api/nav/counts → { requests?, tasks?, rdRequests?, rdPricing?, rdBom?, financeRequests?,
 //                         serviceRequests?, leads?, quotations?, salesOrders?,
 //                         contracts?, projectCloses?, scents?, formulas?, customers?,
 //                         products?, visits?, serviceIntake?, mgmtTasks?,
@@ -30,6 +30,7 @@ import {
 import { canViewLeads, applyLeadScope } from '@/lib/sales/leads';
 import { loadRequests } from '@/lib/materialPricesAdmin';
 import { awaitingPriceCount } from '@/lib/rd/priceBoard';
+import { BOM_TODO_STATUSES } from '@/lib/rd/bomBoard';
 import { loadVisibleRequests, answerableDepts } from '@/lib/requests/visibleRows';
 import { deptHasOwnModule, deptsInSharedQueue } from '@/lib/requests/modules';
 import {
@@ -157,6 +158,16 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* รอใส่ราคา — ด่านเดียวกับคิวของ RD (เมนูทั้งสองกั้น `requests:answer` + `canAccessRd`) · ตัวนับเดียวกับหน้า
        (`awaitingPriceCount` กรองใบเปิด + `canPriceRow` เอง) ⇒ โหลด lean ไม่กรองสถานะใช้ร่วมได้ */
     if (dept === 'RD') jobs.push(attempt('rdPricing', async () => awaitingPriceCount(await loadDept(dept))));
+    /* รอลง BOM (mig 0419) — นับหัวอย่างเดียวบนดัชนีบางส่วน `products_bom_status_idx` (เส้นนี้ยิงทุก 2 นาทีทุกคน) ·
+       ชุดสถานะ = `BOM_TODO_STATUSES` ตัวเดียวกับยอดบนหน้า /rd/bom */
+    if (dept === 'RD') {
+      jobs.push(attempt('rdBom', async () => {
+        const { count, error: bomError } = await supabase.from('products')
+          .select('id', { count: 'exact', head: true }).in('bomStatus', BOM_TODO_STATUSES);
+        if (bomError) throw bomError;
+        return count || 0;
+      }));
+    }
   }
 
   if (canViewLeads(user)) {

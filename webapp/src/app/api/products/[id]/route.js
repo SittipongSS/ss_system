@@ -27,6 +27,7 @@ import { customerSnapshotName } from '@/lib/master/customerName';
 import { isGiftSetCategory, sameGiftSetFormulas } from '@/lib/master/giftSetFormulas';
 import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
 import { EXCISE_CHARGE_MANUAL_MESSAGE, isExciseChargeProduct } from '@/lib/excise/exciseCharge';
+import { BOM_COLUMNS, bomLockMessage, bomLockedFieldChanges } from '@/lib/master/productBom';
 import {
   loadProductFormulaRows, loadProductFormulas, planGiftSetFormulas, replaceProductFormulas,
 } from '@/lib/master/giftSetFormulasStore';
@@ -415,10 +416,21 @@ export async function PATCH(request, { params }) {
   });
   // รายการสูตรของชุดอยู่นอกแถวสินค้า — changedFieldsAgainst มองไม่เห็น ต้องนับเอง (แก้สูตร = อนุมัติใหม่ เหมือนแก้ formulaId)
   if (giftSetChanged) changedFields.push('formulaComponents');
+  /* ── ล็อกขั้นลง BOM (mig 0419 · มติเจ้าของ 03/11/2026 ข้อ 5–6) ─────────────────────────────
+     ส่ง RD แล้ว สูตร/กลิ่น (รวมสูตรในชุด) + ปริมาตร/หน่วยบรรจุ แก้ไม่ได้จนกว่าจะดึงกลับ/ถูกตีกลับ — BOM ใน Express
+     ลงตามค่าที่ RD เห็นตอนรับเรื่อง · ชื่อสินค้า/ลูกค้ายังแก้ได้ · ⭐ แอดมินผ่านได้ (ทางออกของ FG ที่ลง BOM แล้วต้องแก้จริง)
+     ⚠️ วางหลัง changedFields — ฟอร์มส่งทุกช่องทุกครั้ง ต้องดูเฉพาะช่องที่ค่าเปลี่ยนจริง */
+  const bomTouched = bomLockedFieldChanges(product, changedFields, { updated });
+  if (bomTouched.length && user?.role !== 'admin') {
+    return Response.json({ error: bomLockMessage(product, bomTouched), code: 'bom-locked', fields: bomTouched }, { status: 409 });
+  }
   const reapproval = isLifecycleToggleOnly
     ? null
     : resetApprovalOnEdit(product, user, { changedFields, exemptFields: PRODUCT_DOC_NOTE_FIELDS });
   if (reapproval) Object.assign(updated, reapproval);
+  /* ⚠️ แถว `updated` คือแถวที่อ่านมาทั้งแถว — ห้ามเขียนช่อง BOM กลับ: RD กดรับเรื่องระหว่างที่ SA กำลังบันทึก
+     = สถานะถูกทับด้วยค่าเก่าเงียบ ๆ · ช่องพวกนี้เขียนที่ `/api/products/[id]/bom` ที่เดียว */
+  for (const key of BOM_COLUMNS) delete updated[key];
 
   const { data, error } = await supabase
     .from('products')

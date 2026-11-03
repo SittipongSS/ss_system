@@ -10,7 +10,7 @@
 // ⚠️ **หนึ่งเมนูหนึ่งบรรทัด** และคงการย่อหน้าเดิมไว้ — เทสต์หลายตัวอ่านไฟล์นี้ด้วย
 // regex รายบรรทัด (navMenuNames · navCounts · systems · entityIcon · fieldWorkAccess ·
 // issueRouting) จัดรูปใหม่เมื่อไร ด่านพวกนั้นกลายเป็นชุดว่างแล้วผ่านทุกอย่างเงียบ ๆ
-import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
+import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, Layers, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
 import {
   canAccessFinance, canAccessRd, canAnswerServiceRequests, canDoFieldWork, canEditProduction,
   canEditService, canManagePackageSizes, canManageProductCategories, canManageTeams, canUser, canViewCosting,
@@ -223,6 +223,11 @@ export const MENU_GROUPS = [
            ⚠️ ด่านชุดเดียวกับเมนูอื่นของโมดูล · ป้ายตัวเลขนับเป็น **รายการ** (`rdPricing`)
            ⚠️ `Coins` = ไอคอนของการกระทำ "ใส่ราคา" บนทะเบียนกลิ่น/สูตรอยู่แล้ว (ราคาไม่ใช่ entity ในตารางไอคอน) */
         { href: '/rd/prices', name: 'รอใส่ราคา', icon: Coins, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/prices') },
+        /* ⭐ **รอลง BOM** (mig 0419 · มติเจ้าของ 03/11/2026) — ฝ่ายขายส่ง FG ที่อนุมัติ+ผูกสูตรแล้วมาให้ลง BOM ใน Express ·
+           สถานะอยู่บน **แถวสินค้า** (ไม่ใช่ใบคำร้อง) ⇒ คิวคำร้องมองไม่เห็น · ป้ายนับ = รอรับเรื่อง + กำลังลง (`rdBom`)
+           ⚠️ ด่านชุดเดียวกับเมนูอื่นของโมดูล · `Layers` = ไอคอนของ "ขั้นลง BOM" (ไม่ใช่ entity ในตารางไอคอน · ClipboardCheck มีเจ้าของหลายหน้าแล้ว)
+           ⚠️ `shortName` — ช่องแถบล่างของมือถือแคบลงอีกเมื่อโมดูลมี 6 เมนู */
+        { href: '/rd/bom', name: 'รอลง BOM', shortName: 'ลง BOM', icon: Layers, caps: ['requests:answer'], visible: canAccessRd, match: (p) => p.startsWith('/rd/bom') },
         /* ⭐ **ใบสั่งขายที่เกี่ยวข้อง** (มติผู้ใช้ 2026-08-29) — บรีฟกลิ่นเกิดจากใบสั่งขาย
            ฝ่ายจึงต้องเห็นว่าออร์เดอร์นั้นสั่ง FG อะไร · มาคู่กับการปิดเมนู "บริหารงานขาย"
            ของฝ่ายนี้ (แพตเทิร์นเดียวกับที่ฝ่าย FN ได้เอกสารของตัวเองไปไว้ในโมดูลตัวเอง)

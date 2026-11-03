@@ -1,0 +1,20 @@
+/* ── รอลง BOM (mig 0419) ─────────────────────────────────────────────────────
+   ⚠️ สไตล์ของหน้านี้อยู่ที่นี่ ไม่ยืมชีตของโฟลเดอร์อื่น (ข้อห้ามของ `audit:ui`) · ค่าทุกตัวมาจาก token */
+
+/* บรรทัดรองในเซลล์ — ค่าเดียวกับ `.sub` ของหน้ารอใส่ราคา (ตารางของโมดูลเดียวกันอ่านเป็นระบบเดียว) */
+.sub { font-size: var(--fs-3); color: var(--text-3); }
+
+/* ค่าว่าง (ขีด) / ข้อความรอฝ่ายอื่น */
+.dim { color: var(--text-3); }
+
+/* รหัส (FG · AR · สูตร · BOM) — ตัวเลขกว้างเท่ากัน กวาดตาไล่แถวได้ */
+.code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* สูตรในชุดของขวัญมีหลายแถว — หนึ่งบรรทัดต่อสูตร */
+.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+
+/* ปุ่มหลายตัวในเซลล์เดียว — ตัดบรรทัดได้บนจอแคบ */
+.actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+/* คำอธิบายในโมดัล */
+.hint { margin: 0 0 var(--space-3); color: var(--text-2); line-height: var(--lh-thai); }
