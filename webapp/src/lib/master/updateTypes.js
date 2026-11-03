@@ -314,6 +314,17 @@ export const UPDATE_KINDS = {
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
     reset: { label: 'กลับไปรออนุมัติ', color: 'var(--amber)' },
     override: { label: 'ยกเว้นเอกสาร', color: 'var(--red)', quiet: true },
+    /* ⭐ ขั้นลง BOM (mig 0419 · มติเจ้าของ 03/11/2026) — เขียนจาก `POST /api/products/[id]/bom` ที่เดียว
+       (`BOM_UPDATE_KIND` ใน lib/master/productBom.js) · เธรดของสินค้า = ประวัติทุกรอบ (คอลัมน์เก็บแค่รอบล่าสุด)
+       ⚠️ **quiet ทุกตัว** ตามกติกาของ `isQuietUpdateKind`: มันมาคู่กับกระดิ่งที่ route ยิงตรงถึงคนที่ต้องลงมือ
+         (ส่ง = RD ทุกคน · ตีกลับ/เสร็จ = คนที่กดส่ง) — fan-out ให้ผู้ติดตามเธรดอีกรอบ = แจ้งซ้ำ/แจ้งคนที่ไม่เกี่ยว
+       ⚠️ ไม่อยู่ในชุดของลูกค้า — ชุดที่ต้องเหมือนกันสองฝั่งคือ "ด่านอนุมัติ" (approve/reject/reset/override) เท่านั้น */
+    bom_send: { label: 'ส่ง RD ลง BOM', color: 'var(--blue)', quiet: true },
+    bom_pullback: { label: 'ดึงเรื่อง BOM กลับ', color: 'var(--text-3)', quiet: true },
+    bom_accept: { label: 'RD รับเรื่อง BOM', color: 'var(--blue)', quiet: true },
+    bom_return: { label: 'RD ตีกลับเรื่อง BOM', color: 'var(--red)', quiet: true },
+    bom_done: { label: 'ลง BOM แล้ว', color: 'var(--green)', quiet: true },
+    bom_reopen: { label: 'ย้อนสถานะ BOM', color: 'var(--amber)', quiet: true },
   },
   // ── สายภาษีสรรพสามิต ────────────────────────────────────────────────
   excise_registration: {

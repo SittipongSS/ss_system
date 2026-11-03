@@ -358,3 +358,96 @@
 
 /* ปุ่ม "แนบเพิ่ม" ใต้ไฟล์หลักฐานของงวด (evidence-add · มติ 29/10) — ชิดซ้ายตามแนวลิงก์ไฟล์ ไม่ยืดเต็มคอลัมน์ */
 .addEvidence { align-self: flex-start; }
+
+/* ── การ์ดรายงวดบนคอลัมน์แคบ (≤ 760px · มติเจ้าของ 02/11 · ม็อก mockups/billing-cycle/split-v6) ─────────────────────────
+   ⭐ วัดด้วย @container ที่ `.tableBox` ไม่ใช่ @media — เกณฑ์คือ "คอลัมน์ของแผงกว้างพอไหม" (ค่าเดียวกับตารางงวดของหน้าสร้าง SO ·
+     แพตเทิร์น QuotationLineItems) · DOM ชุดเดียว: แถวเป็น grid · หัวการ์ด = "งวด N" (`data-seq`) + ชื่องวด | ยอด ·
+     ช่องที่เหลือกินเต็มกว้างพร้อมชื่อของตัวเอง (`data-label` → ::before) — ช่องวันวางบิล/กำหนดชำระเรียงลงตามลำดับ วางบิล → ชำระ
+   ⚠️ ความจำเพาะ: `[data-cell]` + `.table.table` (0,4,3) ต้องชนะกฎตรึงขวา/`:has()` ของช่องปุ่ม (0,3,6) — ไม่งั้นช่องปุ่มกว้าง 1% ในการ์ด ·
+     กฎ hover ของช่องตรึงน้ำหนักเท่ากัน (0,4,3) ⇒ บล็อกนี้ต้องอยู่ท้ายไฟล์ · padding/border ของ primitive (stacked) ต้อง !important
+   ⚠️ ตารางเลิกกว้างขั้นต่ำด้วยตัวแปร `--table-min-width` ของ TableScroll (ค่าที่ชนะจริงมาจาก `.scroll table { min-width: var(…) }`) */
+.tableBox { container-type: inline-size; }
+@container (max-width: 760px) {
+  .tableBox .table.table {
+    --table-min-width: 0;
+    display: block;
+  }
+  .tableBox .table.table > thead { display: none; }
+  .tableBox .table.table > tbody { display: block; }
+  .tableBox .table.table > tbody > tr[data-card="row"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-2-5) var(--space-3);
+    padding: var(--space-3) var(--space-3-5);
+    border-bottom: 1px solid var(--border);
+  }
+  .tableBox .table.table > tbody > tr[data-card="row"]:last-child { border-bottom: 0; }
+  /* เหตุผลตีกลับ/คำของงวด (แถว colSpan) ต่อใต้การ์ดของงวดเดียวกัน — เส้นคั่นย้ายไปท้ายแถวนั้น */
+  .tableBox .table.table > tbody > tr[data-card="row"]:has(+ tr.detailRow) { padding-bottom: var(--space-1); border-bottom: 0; }
+  .tableBox .table.table > tbody > tr.detailRow { display: block; }
+  .tableBox .table.table > tbody > tr > td[data-cell],
+  .tableBox .table.table > tbody > tr.detailRow > td {
+    display: block;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    height: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+    position: static;
+    box-shadow: none;
+    background: transparent;
+  }
+  .tableBox .table.table > tbody > tr.detailRow > td {
+    padding: 0 var(--space-3-5) var(--space-3) !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+  .tableBox .table.table > tbody > tr > td[data-cell="seq"] { display: none; }
+  .tableBox .table.table > tbody > tr > td[data-cell="label"] { grid-column: 1; grid-row: 1; }
+  .tableBox .table.table > tbody > tr > td[data-cell="label"][data-seq]::before {
+    content: "งวด " attr(data-seq);
+    display: block;
+    color: var(--text-3);
+    font-size: var(--fs-3);
+    font-weight: var(--fw-bold);
+    line-height: var(--lh-thai);
+  }
+  .tableBox .table.table > tbody > tr > td[data-cell="amount"] {
+    grid-column: 2;
+    grid-row: 1;
+    font-weight: var(--fw-bold);
+    text-align: right;
+  }
+  /* ช่องวันสามช่องกินเต็มกว้าง · ⚠️ ระบุชื่อทีละช่อง ห้ามใช้ `:not(…)` (ความจำเพาะของ :not สูงกว่ากฎคู่ข้างล่าง แล้วคู่หลุดลงคนละแถว) */
+  .tableBox .table.table > tbody > tr > td[data-cell="bill"],
+  .tableBox .table.table > tbody > tr > td[data-cell="due"],
+  .tableBox .table.table > tbody > tr > td[data-cell="cover"] { grid-column: 1 / -1; }
+  /* คู่ที่วางข้างกัน (ประหยัดความสูง — ส่วนมากเป็นขีด/ป้ายสั้น): หลักฐาน | ใบกำกับภาษี · สถานะ | ปุ่มก้าวถัดไป + ⋯ */
+  .tableBox .table.table > tbody > tr > td[data-cell="evidence"],
+  .tableBox .table.table > tbody > tr > td[data-cell="status"] { grid-column: 1; }
+  .tableBox .table.table > tbody > tr > td[data-cell="tax"] { grid-column: 2; text-align: right; }
+  /* ช่องวันวางบิลอยู่ในกล่องคอลัมน์ของเซลล์ (`.billCell` ชิดซ้าย) — ในการ์ดยืดเต็มกว้างเท่าช่องกำหนดชำระ (ป้าย/ปุ่มขอใบคงขนาดเดิม) */
+  .tableBox .table.table > tbody > tr > td[data-cell="bill"] .billCell > [data-date-field] { align-self: stretch; }
+  .tableBox .table.table > tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: var(--space-1);
+    color: var(--text-3);
+    font-size: var(--fs-3);
+    font-weight: var(--fw-bold);
+    line-height: var(--lh-thai);
+  }
+  /* ปุ่มก้าวถัดไป + เมนู ⋯ — ตัดบรรทัดได้ในการ์ด (ในตารางเป็นแถวเดียว nowrap) */
+  .tableBox .table.table > tbody > tr > td[data-cell="action"] {
+    display: flex;
+    grid-column: 2;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-1-5);
+    white-space: normal;
+  }
+  .tableBox .table.table > tbody > tr > td[data-cell="action"]:empty { display: none; }
+  .tableBox .table.table > tbody > tr > td[data-cell="action"] > * + * { margin-left: 0; }
+}

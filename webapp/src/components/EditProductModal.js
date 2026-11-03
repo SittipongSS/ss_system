@@ -10,6 +10,8 @@ import { brandTh, brandEn, hasBrandField, normalizeBrands } from "@/lib/master/b
 import { isAutoFgCode } from "@/lib/master/masterCodes";
 import { fmtMoney } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import { useRole } from "@/lib/roleContext";
+import { bomLockMessage, bomLocked } from "@/lib/master/productBom";
 
 // Edit a master product's catalog/spec fields, including its owning customer.
 // (Excise APPROVAL still lives on the registration.) Layout/styling mirrors the
@@ -17,6 +19,9 @@ import { apiFetch } from "@/lib/apiFetch";
 // (ช่องที่ดึงจากสินค้าเดิม = PRODUCT_EDIT_FIELDS ใน ProductForm — ที่เดียว)
 
 export default function EditProductModal({ open, onClose, onSaved, product, brandOptions = [], customers = [] }) {
+  /* ส่ง RD ลง BOM แล้ว (mig 0419) ⇒ ช่องสูตร/ปริมาตรล็อก · แอดมินผ่านได้ (ด่านเดียวกับ PATCH) */
+  const role = useRole();
+  const bomLock = product && role !== "admin" && bomLocked(product) ? bomLockMessage(product) : "";
   const [form, setForm] = useState({});
   const [productTypes, setProductTypes] = useState([]);
   // ทะเบียนสูตร — โหลดเองเหมือน productTypes เพราะโมดัลนี้ถูกเปิดจากหลายหน้า
@@ -194,6 +199,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           onCustomerChange={handleCustomerChange}
           fgLocked={isAutoFgCode(product.fgCode)}
           selfId={product.id}
+          bomLock={bomLock}
         />
 
         {/* แผงอัปเดตราคาผลิต — action แยกจากการบันทึกสเปค (กระทบประวัติราคา/ต้นทุน) */}
