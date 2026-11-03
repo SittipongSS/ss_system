@@ -135,18 +135,19 @@ test('แผงงวด: ใบย้อนหลังไม่มี preview/
 test('เซลล์ช่วงครอบ: ถามด่านแบบไม่ส่งค่า · ตรวจร่างด้วยด่านตัวเดียวกัน · ล็อกบอกเหตุตอนกด · วันเริ่มของงวดยกมาไม่ใช่ช่องกรอก', () => {
   const panel = code(PANEL);
   // 1. ถามสิทธิ์แบบไม่ส่งค่า — ห้ามมี argument ที่สามใน probe ของเซลล์
-  /* `coverModeLock` = มีร่างวันงวดค้าง (ร่างสองชุดไม่ค้างพร้อมกัน · มติ 02/11 สองช่องแยก) — เหตุคงที่ ไม่ขึ้นกับค่าในเซลล์ */
-  assert.match(panel, /const lock = row\.preview \? "[^"]*" : coverModeLock \|\| gate\(row, "coverage"\);/,
+  assert.match(panel, /const lock = row\.preview \? "[^"]*" : gate\(row, "coverage"\);/,
     'probe ของเซลล์ต้องไม่ส่ง coversFrom/coversTo — ส่งเมื่อไรเซลล์ยุบเป็นข้อความตามค่าที่ไม่ผ่าน');
-  assert.match(panel, /const coverModeLock = dateMode\.dirty \? "[^"]+" : "";/, 'ล็อกเพราะร่างวันงวดค้างต้องเป็นเหตุคงที่ (ไม่อ่านค่าร่าง)');
-  // 2. ร่างถูกตรวจด้วยด่านตัวเดียวกัน ด้วยค่าที่จะส่งจริง (`|| null` เหมือน saveCoverDrafts)
-  const draftCheck = slice(panel, 'const coverDraftErrors =', 'const coverInvalid');
-  assert.match(draftCheck, /gate\(row, "coverage", \{/);
-  assert.match(draftCheck, /coversFrom: draft\.coversFrom \|\| null, coversTo: draft\.coversTo \|\| null,/);
-  assert.equal((panel.match(/gate\(row, "coverage", \{\s*\n?\s*coversFrom: draft/g) || []).length, 1,
+  /* ม็อก split-v6 ข้อ 6 (03/11): ร่างช่วงครอบกับร่างวันงวดเป็นชุดเดียว บันทึกครั้งเดียว — ไม่มีล็อก "ร่างวันงวดค้าง" อีก */
+  assert.doesNotMatch(panel, /coverModeLock|saveCoverDrafts|setCoverDrafts/);
+  // 2. ร่างถูกตรวจด้วยด่านตัวเดียวกัน ด้วยค่าที่จะส่งจริง (`|| null` เหมือนตัวส่ง scheduleManyRows) — ที่ฮุกที่เดียว
+  const hook = code(`${DATE_MODE_DIR}/useInstallmentDateMode.js`);
+  const draftCheck = slice(hook, 'const coverErrors = {};', 'const coverEdited');
+  assert.match(draftCheck, /const why = coverGate\(row, \{ coversFrom: to\.coversFrom \|\| null, coversTo: to\.coversTo \|\| null \}\);/);
+  assert.match(panel, /coverGate: \(row, covers\) => gate\(row, "coverage", covers\),/, 'ด่าน coverage ตัวเดียวกับ API');
+  assert.equal((`${panel}\n${hook}`.match(/coverGate\(row,/g) || []).length, 1,
     'ร่างถูกถามด่านที่เดียว — ถามซ้ำตอนวาดเซลล์เมื่อไร ช่องกรอกหายทั้งเซลล์ตอนพิมพ์ผิดกลางคัน');
-  assert.match(panel, /const coverInvalid = Boolean\(coverDraftError\);/);
-  assert.match(panel, /\{coverDraftError \? ` — \$\{coverDraftError\}` : ""\}/, 'แถบบันทึกต้องบอกเหตุจากด่าน');
+  assert.match(panel, /const coverDraftErrors = dateMode\.coverErrors;/);
+  assert.match(panel, /<InstallmentDateBar mode=\{dateMode\} error=\{error\} blocker=\{coverDraftError\} \/>/, 'แถบบันทึกต้องบอกเหตุจากด่าน');
   // 3 + 4. ล็อกเป็นปุ่มที่บอกเหตุตอนกด (กติกา GatedAction) ทั้งทั้งเซลล์และช่อง "ตั้งแต่" ของงวดยกมา
   const cell = slice(panel, '{showCoverage ? (() => {', '<td className="num">');
   assert.equal((cell.match(/onClick=\{\(\) => notifyToast\.info\(/g) || []).length, 2,

@@ -312,10 +312,11 @@ test('แผงงวด: วันงวดสองช่องแยก (ม�
   assert.match(lock, /requestUnknown: billingUnknown\(row\),/, 'อ่านคำร้องไม่ขึ้น ≠ ยังไม่ขอ');
   assert.match(lock, /gateError: gate\(row, "schedule"\) \|\| "",/, 'ด่านสิทธิ์ตัวเดียวกับ route');
   // ไม่มีสิทธิ์ = ไม่มีช่อง (ตารางอ่านอย่างเดียว) · ใบล็อกทั้งใบ = ปุ่มเติมยังอยู่ กดแล้วบอกเหตุ (ติดด่าน = โชว์แล้วบอกเหตุ) ·
-  // ร่างช่วงครอบค้าง = ช่องวันอ่านอย่างเดียว · ร่างวันงวดค้าง = ช่วงครอบล็อก
+  // ⭐ ม็อก split-v6 ข้อ 6 (03/11): ร่างช่วงครอบอยู่ในฮุกเดียวกัน บันทึกครั้งเดียว — สองฝั่งไม่ล็อกกันอีก
   assert.match(panel, /const dateModeOpen = !isPreview && billingOn && installmentScheduleAllowed\(user\)\s*&& \(Boolean\(scheduleOrderLock\) \|\| saved\.some\(\(row\) => !dateLockOf\(row\)\)\);/);
   assert.match(panel, /const scheduleOrderLock = orderLock \|\| pipelineInstallmentLock\(order, "schedule"\);/);
-  assert.match(panel, /blocker: scheduleOrderLock \|\| \(coverDraftCount\s*\?/, 'ล็อกทั้งใบเป็นเหตุของปุ่ม — ไม่ใช่ปุ่มหาย');
+  assert.match(panel, /blocker: scheduleOrderLock,/, 'ล็อกทั้งใบเป็นเหตุของปุ่ม — ไม่ใช่ปุ่มหาย');
+  assert.doesNotMatch(panel, /coverDraftCount|coverModeLock/, 'ร่างช่วงครอบไม่ล็อกช่องวัน · ร่างวันงวดไม่ล็อกช่องช่วงครอบ');
   // ร่างแรก/เปิดแผงเติม ล้าง error เก่าของหน้า — ไม่ขึ้นค้างในแถบบันทึกใหม่
   assert.match(panel, /onDirtyChange: onDatesDirty,\s*onClearError,/);
   /* ⭐ รุ่นสี่: ติ๊ก "งวดนี้ไม่ต้องวางบิล" เฉพาะฐานที่รัน 0393 · "งวดนี้ต้องวางบิล…" เปิดโมดัลขอบเขตของแผง */
@@ -324,16 +325,17 @@ test('แผงงวด: วันงวดสองช่องแยก (ม�
   assert.match(panel, /onAskRequireBilling: \(row\) => \{ onClearError\?\.\(\); setNeedFor\(row\); \},/);
   const hook = code(MODE_HOOK);
   assert.match(slice(hook, 'const setValue = (row, value) => {', '\n  };'),
-    /if \(blocker\) \{ notifyToast\.error\(blocker\); return; \}\s*if \(!changes\.length && !fill\) clearErrorRef\.current\?\.\(\);/);
+    /if \(blocker\) \{ notifyToast\.error\(blocker\); return; \}\s*if \(!edits\.length && !fill\) clearErrorRef\.current\?\.\(\);/);
   assert.match(hook, /const canEdit = useCallback\(\(row\) => Boolean\(row\) && available && !blocker && !isLocked\(row\), \[available, blocker, isLocked\]\);/);
   assert.doesNotMatch(hook, /const (enter|open|close|tap|choose) = /, 'ไม่มีโหมด/ตัวแก้รายงวด/ไปงวดถัดไปเอง (มติ 02/11)');
   assert.match(slice(hook, 'const openFill = ({ includeDated = false } = {}) => {', '\n  };'), /clearErrorRef\.current\?\.\(\);/);
-  // "เอาคืน" ถามด่านล่าสุด (ร่างช่วงครอบที่เริ่มระหว่าง toast ค้าง) — สองชุดร่างเปิดพร้อมกันไม่ได้
-  assert.match(slice(hook, 'const cancel = () => {', '\n  };'), /const gate = gateRef\.current;\s*if \(!gate\.available\) return;\s*if \(gate\.blocker\) \{ notifyToast\.error\(gate\.blocker\); return; \}/);
+  // "เอาคืน" ถามด่านล่าสุดของวันงวด (ใบอาจล็อกระหว่าง toast ค้าง) · ช่วงครอบคืนได้เสมอ (ด่านของมันตัดสินตอนบันทึก)
+  assert.match(slice(hook, 'const cancel = () => {', '\n  };'),
+    /const gate = gateRef\.current;\s*setCoverDrafts\(keptCovers\);\s*if \(!gate\.available\) return;\s*if \(gate\.blocker\) \{ notifyToast\.error\(gate\.blocker\); return; \}/);
   // ระหว่างบันทึกแก้ร่างไม่ได้ (บันทึกสำเร็จแล้ว reset = ของที่แก้ตอนนั้นหายเงียบ) · เกินเพดานของ route = ดับปุ่มพร้อมเหตุ
   assert.match(slice(hook, 'const setValue = (row, value) => {', '\n  };'), /if \(busy \|\| !row\) return;/);
-  assert.match(hook, /const saveBlocker = changes\.length > SCHEDULE_MANY_MAX/);
-  assert.match(code(CHROME), /disabled=\{mode\.busy \|\| Boolean\(mode\.saveBlocker\)\} onClick=\{mode\.save\}/);
+  assert.match(hook, /const saveBlocker = edits\.length > SCHEDULE_MANY_MAX/, 'นับงวดที่แก้วันงวดและ/หรือช่วงครอบ = แถวของคำขอ');
+  assert.match(code(CHROME), /disabled=\{mode\.busy \|\| Boolean\(mode\.saveBlocker\) \|\| Boolean\(blocker\)\} onClick=\{mode\.save\}/);
   // คืนค่าระหว่างแผงเติมเปิด = ฐานของแผงทิ้งร่างงวดนั้นด้วย (ไม่งั้นเลือกตัวเลือกอื่นแล้วร่างเดิมกลับมา)
   assert.match(slice(hook, 'const revert = (row) => {', '\n  };'), /base: without\(f\.base\)/);
   // ⭐ มติ 02/11: ช่องวันตัวเดียว (InstallmentDateCell) ทั้งแผงงวดของใบและหน้าสร้าง SO — ไม่มีตัวแก้รายงวด/ป๊อปโอเวอร์/แผ่นล่าง
@@ -349,7 +351,7 @@ test('แผงงวด: วันงวดสองช่องแยก (ม�
   // ช่องพิมพ์ชื่อเหตุการณ์ถือข้อความของมันเอง · กด "ใช้" ส่งที่ตัดช่องว่างแล้ว
   assert.match(cell, /value=\{own\}/);
   assert.match(cell, /onClick=\{\(\) => \{ waitFor\(own\.trim\(\)\); setOwn\(""\); setEventOpen\(false\); close\(\); \}\}/);
-  assert.match(panel, /const lock = row\.preview \? "ยังไม่เริ่มติดตามการชำระ" : coverModeLock \|\| gate\(row, "coverage"\);/);
+  assert.match(panel, /const lock = row\.preview \? "ยังไม่เริ่มติดตามการชำระ" : gate\(row, "coverage"\);/);
   // เมนูแถวไม่มี "ตั้งวันงวด" แล้ว (ช่องในตารางแก้ได้เลย) · ข้อยกเว้นรายงวดอยู่เมนูนี้ (มติ 02/11 ข้อ 2)
   assert.doesNotMatch(panel, /label: "ตั้งวันงวด"/);
   assert.match(panel, /id: "require-billing", icon: Receipt, label: "งวดนี้ต้องวางบิล…",/);

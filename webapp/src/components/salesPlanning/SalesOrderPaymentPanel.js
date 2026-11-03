@@ -173,11 +173,6 @@ export default function SalesOrderPaymentPanel({
   const [invoiceFor, setInvoiceFor] = useState(null);
   /* โมดัลขอบเขต "งวดนี้ต้องวางบิล…" (รุ่นสี่ · ลูกค้าไม่ต้องวางบิลแต่ขอใบงวดเดียว) — งวดที่เปิดเมนู */
   const [needFor, setNeedFor] = useState(null);
-  /* ⭐ ร่างช่วงครอบที่ยังไม่บันทึก (มติผู้ใช้ 2026-08-30 รอบสอง — แก้ในตารางแทนโมดัล)
-     ⚠️ **ไม่ auto-save** ตามกฎฟอร์มของ repo — พิมพ์ลงร่างก่อน แล้วกดปุ่มบันทึกรวมทีเดียว
-     ท่าเดียวกับตารางไทม์ไลน์ของดีล (`DealTimelineTable`: drafts → saveDrafts) */
-  const [coverDrafts, setCoverDrafts] = useState({});
-  const [savingCover, setSavingCover] = useState(false);
   /* ⭐ ตัวปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377) — `base` = งวดที่ตาเห็นตอนเปิด (ตัวล็อกข้อมูลเก่า = expected ของ RPC)
      · `draft` = แถวเปิดในตัวแก้ · `unit` = บาท/% · `confirming` = โมดัลยืนยันเปิดอยู่ (กัน Escape ปิดสองชั้น) */
   const [replan, setReplan] = useState(null);
@@ -410,8 +405,8 @@ export default function SalesOrderPaymentPanel({
      ⭐ ใครแก้ได้ = ด่าน `schedule` ตัวเดียวกับ route (ฝ่ายขายที่แก้ใบได้ + FN) · ไม่มีสิทธิ์ = ตารางอ่านอย่างเดียวเหมือนเดิม ·
        งวดที่ล็อกอ่านอย่างเดียว — ประโยคเดียวกับที่ route ตีกลับ (`dateLockView`)
      ⭐ ล็อกทั้งใบ (`scheduleOrderLock`) + มีสิทธิ์ = ปุ่ม "เติมวันงวดที่ว่าง…" ยังอยู่ กดแล้วบอกเหตุ (กติกา "ติดด่าน = โชว์แล้วบอกเหตุ")
-     ⚠️ ร่างวันงวดกับร่างช่วงครอบ (coverDrafts) **ไม่ค้างพร้อมกัน** — สองฝั่งยิงคนละคำขอที่ล็อกด้วย updatedAt ของงวดเดียวกัน
-       (บันทึกฝั่งหนึ่งแล้วอีกฝั่ง 409) ⇒ ร่างช่วงครอบค้าง = ช่องวันอ่านอย่างเดียว · ร่างวันงวดค้าง = ช่องช่วงครอบล็อกพร้อมเหตุ
+     ⭐ ร่างช่วงครอบบริการอยู่ในฮุกเดียวกัน (ม็อก split-v6 ข้อ 6 · 03/11) — แถบบันทึกเดียว คำขอเดียว (`schedule-many` พาช่วงครอบไปกับ
+       แถวของงวด) ⇒ เลิกล็อกกันเอง · ใครแก้ช่วงครอบได้/ค่าผ่านไหม = `gate(row,"coverage")` ด้วยค่าที่จะส่งจริง (`coverGate`)
      ⚠️ ฐานยังไม่รัน 0389 (`billingOn` เท็จ) = ไม่มีช่อง — คำขอ schedule-many พาวันวางบิลไปด้วยเสมอ */
   const requestedIds = billingRequestedIds(saved, requestById);
   const scheduleOrderLock = orderLock || pipelineInstallmentLock(order, "schedule");
@@ -424,16 +419,15 @@ export default function SalesOrderPaymentPanel({
   });
   const dateModeOpen = !isPreview && billingOn && installmentScheduleAllowed(user)
     && (Boolean(scheduleOrderLock) || saved.some((row) => !dateLockOf(row)));
-  const coverDraftCount = Object.keys(coverDrafts).length;
   const saveDates = useCallback((rows) => onAction(null, "schedule-many", { rows }), [onAction]);
   const dateMode = useInstallmentDateMode({
     rows: isPreview ? [] : saved,
     ruleValue: billingRule,
     todayIso,
     available: dateModeOpen,
-    blocker: scheduleOrderLock || (coverDraftCount
-      ? `แก้ช่วงครอบบริการค้างไว้ ${coverDraftCount} งวด — บันทึกหรือยกเลิกช่วงครอบก่อนแก้วันงวด`
-      : ""),
+    blocker: scheduleOrderLock,
+    /* ด่านเดียวกับคำสั่ง coverage ของ API (ค่าชุดที่จะส่งจริง) ⇒ เหตุใต้เซลล์/บนแถบกับเหตุของ API เป็นประโยคเดียวกัน */
+    coverGate: (row, covers) => gate(row, "coverage", covers),
     lockOf: dateLockOf,
     onSave: saveDates,
     busy: busy === "installment-schedule-many",
@@ -444,8 +438,6 @@ export default function SalesOrderPaymentPanel({
     skipReady: billingSkipReady,
     onAskRequireBilling: (row) => { onClearError?.(); setNeedFor(row); },
   });
-  /* มีร่างวันงวดค้าง = ช่องช่วงครอบล็อก (ร่างสองชุดไม่ค้างพร้อมกัน) — เหตุขึ้นตอนแตะ เหมือนเซลล์ล็อกอื่นของตาราง */
-  const coverModeLock = dateMode.dirty ? "แก้วันงวดค้างไว้ — บันทึกหรือยกเลิกวันงวดก่อนแก้ช่วงครอบบริการ" : "";
   /* ── "ไปแก้" ของแผงแดง (งานบริการ · PR-A) ที่ข้อวันงวดรวมหลายงวด → โหมดตั้งวันงวด + แผง "เติมวันงวดที่ว่าง…" ─────────────
      ⭐ ทางเข้าตัวเดียว `openFill` (เปิดแผงเติม · ติดด่าน = toast บอกเหตุเอง · ไม่มีสิทธิ์ = ไม่ทำอะไร)
        ไม่ตั้ง state ของโหมดเองที่นี่ · แผงเติมเปิดอยู่แล้ว = ไม่เปิดซ้ำ (เปิดใหม่ = ตัวเลือกที่กำลังเลือกถูกตั้งต้นทิ้ง)
@@ -926,36 +918,12 @@ export default function SalesOrderPaymentPanel({
   })();
 
   /* ── ช่องแก้ช่วงครอบในตาราง ────────────────────────────────────────────
-     ค่าที่โชว์ = ร่าง (ถ้ามี) ไม่งั้นค่าจากฐาน · ร่างที่เท่าของเดิมถูกถอดออกเอง
-     เพื่อให้ "มีของค้าง" นับจากความต่างจริง ไม่ใช่จากการที่เคยแตะช่อง */
-  const coverOf = (row) => coverDrafts[row.id]
-    || { coversFrom: row.coversFrom || "", coversTo: row.coversTo || "" };
-  const setCover = (row, patch) => setCoverDrafts((current) => {
-    const next = { ...coverOf(row), ...patch };
-    const same = next.coversFrom === (row.coversFrom || "") && next.coversTo === (row.coversTo || "");
-    const out = { ...current };
-    if (same) delete out[row.id]; else out[row.id] = next;
-    return out;
-  });
-  const coverDirty = Object.keys(coverDrafts).length;
-  /* ร่างที่ API จะตีกลับ ห้ามส่งขึ้นไป — ด่านตีกลับอยู่แล้ว แต่บอกตั้งแต่บนจอเร็วกว่า
-     ⭐ **ถามด่านตัวเดียวกับที่จะยิงจริง ด้วยค่าที่จะส่งจริง** (`|| null` เหมือน `saveCoverDrafts`)
-       ⇒ เหตุผลบนแถบกับเหตุผลของ API เป็นประโยคเดียวกันเสมอ · เดิมเขียนเงื่อนไข "ช่วงกลับหัว" ซ้ำเอง
-       ที่นี่ ซึ่งครอบไม่ถึงข้ออื่นของงวดยกมา (ล้างวันสิ้นสุด · เลยอายุสัญญา) = ปุ่มเปิดให้กดแล้ว API ตีกลับ
-     ⚠️ ตรวจ "ค่าที่ร่างไว้" ที่นี่ที่เดียว — **ห้ามย้ายไปถามตอนวาดเซลล์** ไม่งั้นพิมพ์ผิดกลางคันแล้ว
-       ช่องกรอกหายไปทั้งเซลล์ คนแก้ค่าผิดของตัวเองไม่ได้ (เหลือแต่ปุ่ม "ยกเลิกที่แก้")
-     ⭐ **เก็บเป็นรายงวด ไม่ใช่ข้อแรกข้อเดียว** — เซลล์ต้องบอกเหตุ *ตรงที่คนกำลังพิมพ์* ได้
-       (เดิมเซลล์กันด้วย `min`/`max` ของ `DateInput` ซึ่งกลืนค่าที่พิมพ์เงียบ ๆ — ดูคอมเมนต์ที่เซลล์)
-       แถบบันทึกยังพูดข้อเดียวเหมือนเดิม เพราะมันเป็นสรุปของทั้งตาราง ไม่ใช่ที่อ่านรายช่อง */
-  const coverDraftErrors = Object.entries(coverDrafts).reduce((map, [rowId, draft]) => {
-    const row = saved.find((r) => r.id === rowId);
-    if (!row) return map;
-    const why = gate(row, "coverage", {
-      coversFrom: draft.coversFrom || null, coversTo: draft.coversTo || null,
-    });
-    if (why) map[rowId] = why;
-    return map;
-  }, {});
+     ⭐ ร่างอยู่ในฮุกวันงวด (`dateMode.cover` / `setCover` · ม็อก split-v6 ข้อ 6) — แถบบันทึกเดียว คำขอเดียวกับวันงวด
+     ค่าที่โชว์ = ร่าง (ถ้ามี) ไม่งั้นค่าจากฐาน · ร่างที่เท่าของเดิมถูกถอดออกเอง ⇒ "มีของค้าง" นับจากความต่างจริง
+     ⭐ ร่างที่ API จะตีกลับ = `dateMode.coverErrors` (ด่าน coverage ตัวเดียวกับที่ยิงจริง ด้วยค่าที่จะส่งจริง) — **รายงวด**
+       ให้เซลล์บอกเหตุตรงที่คนกำลังพิมพ์ได้ · แถบบันทึกพูดข้อเดียว (สรุปของทั้งตาราง) และดับปุ่มบันทึก
+     ⚠️ ห้ามย้ายการตรวจค่าที่ร่างไปถามตอนวาดเซลล์ — พิมพ์ผิดกลางคันแล้วช่องหายทั้งเซลล์ คนแก้ค่าผิดของตัวเองไม่ได้ */
+  const coverDraftErrors = dateMode.coverErrors;
   const coverDraftError = (() => {
     const [rowId] = Object.keys(coverDraftErrors);
     if (!rowId) return "";
@@ -963,26 +931,6 @@ export default function SalesOrderPaymentPanel({
     const row = saved.find((r) => r.id === rowId);
     return single ? why : `งวดที่ ${row?.seq}: ${why}`;
   })();
-  const coverInvalid = Boolean(coverDraftError);
-
-  const saveCoverDrafts = async () => {
-    const entries = Object.entries(coverDrafts);
-    if (!entries.length || coverInvalid) return;
-    setSavingCover(true);
-    const failed = {};
-    for (const [rowId, draft] of entries) {
-      const row = saved.find((r) => r.id === rowId);
-      if (!row) continue;
-      /* ทีละงวดตามลำดับโดยตั้งใจ — ด่านของ API อ่านงวดพี่น้องสดทุกครั้ง ยิงพร้อมกันแล้วผลไม่นิ่ง */
-      const done = await onAction(row, "coverage", {
-        coversFrom: draft.coversFrom || null,
-        coversTo: draft.coversTo || null,
-      });
-      if (!done) failed[rowId] = draft;
-    }
-    setCoverDrafts(failed);
-    setSavingCover(false);
-  };
 
   /* ── งานบริการรายบรรทัด: ช่วงบริการ + แบ่งช่วงครอบ (mig 0392 · แผน §2.8 · r2 S7) ─────────────────────────────
      ⭐ ขึ้นเฉพาะใบที่ต้องตั้งงานบริการ (`setupFlow` ≠ 'none' — ใบ pipeline สาย SERVICE) ที่มีช่วงบริการแล้ว หรือยังมีบรรทัดที่
@@ -1004,13 +952,14 @@ export default function SalesOrderPaymentPanel({
   /* ใบยอด 0 ที่ไม่มีงวด = ไม่มีอะไรให้แบ่งตลอดไป (ไม่ใช่เงื่อนไขที่รอแก้) ⇒ ไม่มีปุ่ม — ต่างจาก "ยังไม่มีงวด" ของใบที่มียอด */
   const zeroWithoutRows = paymentNotRequired(order?.totalAmount) && !saved.length;
   const coverageSplitVisible = periodLineShown && !zeroWithoutRows && Boolean(canEditSetup) && Boolean(onFillCoverage);
-  /* ⚠️ อยู่ในโหมดตั้งวันงวด (#1846) = ช่องช่วงครอบทุกงวดล็อกพร้อมเหตุ (`coverModeLock` — ร่างสองชุดไม่ซ้อนกัน) ⇒ ปุ่มแบ่ง
-       ช่วงครอบทั้งใบก็ดับด้วยเหตุเดียวกัน (ปุ่มยังอยู่ · เหตุเป็นตัวหนังสือ) — ท้ายสุด: เหตุของใบ/ช่วงบริการสำคัญกว่าโหมดชั่วคราว */
+  /* ⚠️ มีงวดที่แก้ค้างอยู่ (วันงวด/ช่วงครอบ) = ปุ่มแบ่งช่วงครอบทั้งใบดับพร้อมเหตุ — การแบ่งเป็นอีกคำขอ (`fill-coverage`) ที่ล็อก
+       updatedAt ของงวดชุดเดียวกัน (แบ่งก่อน = ร่างที่ค้างบันทึกไม่ได้ · และพรีวิวไม่เห็นร่าง) · ปุ่มยังอยู่ · เหตุเป็นตัวหนังสือ —
+       ท้ายสุด: เหตุของใบ/ช่วงบริการสำคัญกว่าร่างชั่วคราว */
   const coverageSplitBlocker = !coverageSplitVisible ? ""
     : serviceSetupEditError(order, { canEdit: true })
       || (!periodReady ? COVERAGE_SPLIT_ERRORS.noPeriod : "")
       || (splitCoverageByPeriod(period, saved, "monthly").error === COVERAGE_SPLIT_ERRORS.noRows ? COVERAGE_SPLIT_ERRORS.noRows : "")
-      || coverModeLock;
+      || (dateMode.dirty ? "มีงวดที่แก้ค้างไว้ — บันทึกหรือยกเลิกก่อนแบ่งช่วงครอบ" : "");
   const openCoverageSplit = () => {
     if (coverageSplitBlocker || !onFillCoverage) return;
     onClearError?.();
@@ -1724,10 +1673,9 @@ export default function SalesOrderPaymentPanel({
                            (อาการเดียวกับที่เพิ่งถอดออกจากฟอร์มคีย์ใบย้อนหลังทั้งห้าช่อง)
                            ⇒ **กฎอยู่ใต้เซลล์ ไม่ใช่ที่ขอบของช่อง** · ค่าที่พิมพ์เข้าร่างได้เสมอ แล้วด่านตัวเดียวกับ
                              API เป็นคนบอกเหตุ (`coverDraftErrors[row.id]`) ทั้งใต้เซลล์และบนแถบบันทึก */
-                      /* อยู่ในโหมดตั้งวันงวด = ล็อกพร้อมเหตุ (ร่างสองชุดไม่ซ้อนกัน · มติ 28/09) */
-                      const lock = row.preview ? "ยังไม่เริ่มติดตามการชำระ" : coverModeLock || gate(row, "coverage");
-                      const draft = row.preview ? { coversFrom: "", coversTo: "" } : coverOf(row);
-                      const edited = !row.preview && !!coverDrafts[row.id];
+                      const lock = row.preview ? "ยังไม่เริ่มติดตามการชำระ" : gate(row, "coverage");
+                      const draft = row.preview ? { coversFrom: "", coversTo: "" } : dateMode.cover(row);
+                      const edited = !row.preview && dateMode.coverEdited(row);
                       /* งวดยกมา: วันเริ่มล็อกที่วันเริ่มสัญญาจริง ๆ ⇒ วาดเป็นช่องกรอกไม่ได้ ไม่งั้นบัญชี
                          พิมพ์วันใหม่ได้แล้วไปเด้งตอนกดบันทึก (ทางตันเดิมย้ายไปอยู่หลังปุ่มแทน)
                          ⭐ **เหตุผลมาจากด่านเอง** — ถามด้วยค่าหลอกว่า "ถ้าขยับวันเริ่มจะเกิดอะไร"
@@ -1775,13 +1723,13 @@ export default function SalesOrderPaymentPanel({
                               ) : (
                                 <DateInput compact value={draft.coversFrom} className={styles.coverDate}
                                   ariaLabel={`ครอบบริการตั้งแต่ · งวดที่ ${row.seq}`}
-                                  disabled={!!busy || savingCover} invalid={Boolean(coverIssue)}
-                                  onChange={(iso) => setCover(row, { coversFrom: iso })} />
+                                  disabled={!!busy} invalid={Boolean(coverIssue)}
+                                  onChange={(iso) => dateMode.setCover(row, { coversFrom: iso })} />
                               )}
                               <DateInput compact value={draft.coversTo} className={styles.coverDate}
                                 ariaLabel={`ครอบบริการถึง · งวดที่ ${row.seq}`}
-                                disabled={!!busy || savingCover} invalid={Boolean(coverIssue)}
-                                onChange={(iso) => setCover(row, { coversTo: iso })} />
+                                disabled={!!busy} invalid={Boolean(coverIssue)}
+                                onChange={(iso) => dateMode.setCover(row, { coversTo: iso })} />
                               {/* กฎ/เหตุของเซลล์ — กินทั้งบรรทัดใต้สองช่อง (`.coverNote` ใน module css)
                                   ⚠️ `role="alert"` เฉพาะตอนเป็นเหตุจริง ไม่ใช่ตอนเป็นกฎที่ขึ้นค้างอยู่แล้ว */}
                               {coverNote ? (
@@ -1949,25 +1897,6 @@ export default function SalesOrderPaymentPanel({
         </TableScroll>
         </div>
       )}
-
-      {/* ⭐ แถบบันทึกช่วงครอบที่แก้ค้าง — **ไม่ auto-save** (กฎฟอร์มของ repo)
-          ขึ้นเฉพาะตอนมีของค้างจริง ⇒ ตารางที่ไม่ได้แตะจะไม่มีแถบนี้มากินที่
-          ⚠️ บันทึกทีละงวดตามลำดับ เพราะด่านของ API อ่านงวดพี่น้องสดทุกครั้ง
-          ⚠️ งวดที่บันทึกไม่ผ่านจะ **ค้างไว้ในร่างต่อ** ไม่ถูกล้างทิ้งพร้อมของที่สำเร็จ */}
-      {coverDirty ? (
-        <div className={styles.coverBar}>
-          <span>
-            แก้ช่วงครอบบริการค้างไว้ {coverDirty} งวด
-            {coverDraftError ? ` — ${coverDraftError}` : ""}
-          </span>
-          <Button variant="ghost" size="sm" disabled={savingCover || !!busy}
-            onClick={() => setCoverDrafts({})}>ยกเลิกที่แก้</Button>
-          <Button tone="primary" size="sm" disabled={savingCover || !!busy || coverInvalid}
-            onClick={saveCoverDrafts}>
-            {savingCover ? "กำลังบันทึก…" : "บันทึกช่วงครอบ"}
-          </Button>
-        </div>
-      ) : null}
 
       {/* ⭐ ช่วงครอบของงวดเทียบช่วงบริการ (mig 0392 · r2 S7) — ใต้ตาราง · เฉพาะใบงานบริการที่มีช่วงบริการและมีงวดแล้ว
           ⚠️ ท่อนว่างบนแถบ = ช่วงที่ยังไม่มีงวดครอบ แต่ไม่ขึ้นแดง (แดงหลังกดยื่นเท่านั้น — ผ่านแผงแดง + กรอบเซลล์) */}
@@ -2499,7 +2428,7 @@ export default function SalesOrderPaymentPanel({
         · อยู่ **นอกการ์ด** โดยตั้งใจ: `.card` ของ DetailCard เป็น overflow:hidden (= scroll container) ⇒ sticky ข้างในยึดกับการ์ด
           ที่ไม่เคยเลื่อน แถบไม่ติดขอบจอ (บทเรียน stickyScrollport.test) · คอลัมน์ `.main` ของหน้าไม่ตัดขอบ ⇒ ติดขอบล่างของจอได้จริง
         · error ของ API ขึ้นในแถบ (แถบ error ของหน้าอยู่บนสุด มองไม่เห็นตอนกดจากท้ายตาราง) · มือถือ: แผ่นเต็มจอมีปุ่มเดียวกันท้ายแผ่น */}
-    <InstallmentDateBar mode={dateMode} error={error} />
+    <InstallmentDateBar mode={dateMode} error={error} blocker={coverDraftError} />
     </>
   );
 }

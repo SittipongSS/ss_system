@@ -175,8 +175,8 @@ test('แผงงวด: จัดวันใหม่ย้ายเข้า
   // กำหนดชำระใหม่แทนวันเดิม — ป้ายแดง/ด่านนัดช่างอ่านช่องนี้ ⇒ บอกทั้งใต้ช่อง (ทันที) และบนแถบบันทึก (นับงวด)
   assert.match(code(CELL), /"ป้ายเลยกำหนด\/ด่านนัดช่างนับจากวันใหม่"/);
   assert.match(code(CHROME), /แทนกำหนดชำระเดิม \{replaced\} งวด — ป้ายเลยกำหนดและด่านนัดช่างนับจากวันใหม่ทันทีที่บันทึก/);
-  assert.match(code(CHROME), /<Button tone="primary" disabled=\{mode\.busy \|\| Boolean\(mode\.saveBlocker\)\} onClick=\{mode\.save\}>/,
-    'ปุ่มยืนยันเดียว (navy) · ดับเมื่อเกินเพดานงวดต่อครั้งของ route พร้อมเหตุ');
+  assert.match(code(CHROME), /<Button tone="primary" disabled=\{mode\.busy \|\| Boolean\(mode\.saveBlocker\) \|\| Boolean\(blocker\)\} onClick=\{mode\.save\}>/,
+    'ปุ่มยืนยันเดียว (navy) · ดับเมื่อเกินเพดานงวดต่อครั้งของ route หรือร่างช่วงครอบไม่ผ่านด่าน พร้อมเหตุ');
   // มติ 26/09: วันที่ระบบแนะนำต้องแก้เองได้เสมอ — มติ 02/11: ทั้งสองช่องเป็นช่องวันธรรมดา (DateInput) ทุกงวดที่แก้ได้ ·
   // ระบบแนะนำเป็นชิปในปฏิทินที่คนแตะเอง · ไม่มีเมนู "ตั้งวันงวด"/โหมด/ตัวแก้รายงวดอีก
   assert.match(code(CELL), /<DateInput compact weekday value=\{v\.billingDate\}/);

@@ -261,7 +261,8 @@ const RETIRED_BILLING_MESSAGE = 'คำสั่งนี้เลิกใช�
 
 /* ── ตั้งวันงวดทีละหลายงวด (แผงงวดแบบ C "โหมดตั้งวัน" · มติเจ้าของ 28/09) ─────────────────────────────────────
    คนร่างวันในตาราง (แตะเซลล์วันวางบิล/กำหนดชำระ · "เติมวันงวดที่ว่าง…") แล้วกด "บันทึก N งวด" ครั้งเดียว — คำขอเดียวพาทุกงวดที่เปลี่ยน
-   ⭐ body `{ action:'schedule-many', rows:[{ id, billingDate, billingEvent, dueDate, updatedAt }] }` (≤ SCHEDULE_MANY_MAX)
+   ⭐ body `{ action:'schedule-many', rows:[{ id, billingDate, billingEvent, dueDate, coversFrom, coversTo, updatedAt }] }` (≤ SCHEDULE_MANY_MAX)
+     · ช่วงครอบบริการไปกับคำขอเดียวกัน (ม็อก split-v6 ข้อ 6 · 03/11) — ไม่ส่งคีย์ = ไม่แตะ · ด่าน `coverage` ตัวเดียวกับคำสั่งงวดเดียว
      = สภาพที่คนเห็นในตารางตอนกด · `null` = ล้างตั้งใจ ("ล้างวัน") · วันวางบิล/รอเหตุการณ์เป็นคู่ (ส่งตัวหนึ่ง = อีกตัวว่าง ·
      กติกาเดียวกับ `schedule`) · ไม่ส่ง dueDate = คงเดิม · งวดที่ค่าตรงฐานแล้วถูกข้ามก่อนทุกด่าน (ส่งทั้งตารางได้ · ไม่ 409 เพราะงวดที่ไม่ได้แก้)
    ⭐ server **ไม่คิดวันเอง** (วันมาจากคนเลือก · เก็บกำหนดชำระตามที่ส่ง) ⇒ ด่านคือ "งวดที่คนเห็นยังเป็นรุ่นเดิมไหม"
@@ -305,8 +306,11 @@ async function scheduleManyDates({ user, supabase, req, id, body }) {
       contractEnd: openingCoverageEnd(order, live),
       orderCancelled: order.status === 'cancelled' && !isHistoricalOrder(order),
     };
+    /* ⭐ ช่วงครอบที่ไปกับคำขอนี้ (ม็อก split-v6 ข้อ 6) ถามด่าน `coverage` ตัวเดียวกับคำสั่งงวดเดียวด้วยค่าที่จะลงจริง ·
+       ล็อกทั้งใบของ `coverage` = ของ `schedule` (สองคำสั่งไม่อยู่ใน allowlist ของใบยกเลิก/QT ตาย) ⇒ ใช้ `gateOptions` ชุดเดียว */
     const built = scheduleManyCheck(live, body.rows, {
       order, requestedIds, gate: (row) => installmentActionError(row, 'schedule', user, gateOptions),
+      coverGate: (row, covers) => installmentActionError(row, 'coverage', user, { ...gateOptions, ...covers }),
       rule: billingRule.rule, ruleUnavailable: billingRule.ruleUnavailable, skipReady,
     });
     if (built.status === 409) {
