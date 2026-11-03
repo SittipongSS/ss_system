@@ -72,6 +72,8 @@ export async function GET(request) {
     missingRetailPrice: url.searchParams.get('missingPrice') === '1',
     // ⭐ "ต้องเสียสรรพสามิต" (การ์ด/ตัวกรองคู่กัน · ตรวจตัวเลข 26/10 L16b) — เหตุผลเดียวกับบรรทัดบน
     taxable: url.searchParams.get('taxable') === '1',
+    // ⭐ "สถานะ BOM" (mig 0419) — ตัวกรองบนจอส่งมาเป็น ?bom=queued,returned
+    bomStatuses: csv(url.searchParams.get('bom')),
     productTypes: productTypes || [],
   }).sort((a, b) => String(a.fgCode || '').localeCompare(String(b.fgCode || ''), 'th'));
 

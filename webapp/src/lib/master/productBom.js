@@ -44,14 +44,17 @@ export const BOM_COLUMNS = Object.freeze([
 export const BOM_CODE_MAX = 60;
 export const BOM_NOTE_MAX = 500;
 
-/* ป้ายสถานะ — `none` = ยังไม่ส่ง (คอลัมน์เป็น NULL) */
+/* ป้ายสถานะ — `none` = ยังไม่ส่ง (คอลัมน์เป็น NULL)
+   `short` = ป้ายบนแถวของทะเบียนสินค้า ต่อท้ายคำว่า "BOM" (`ProductBomBadge`) — `label` เต็มใช้ที่ตัวกรอง/คิว RD/Excel */
 export const BOM_STATUS_META = Object.freeze({
-  none: { label: 'ยังไม่ส่ง RD', color: 'var(--text-3)', tone: 'neutral' },
-  queued: { label: 'รอ RD รับเรื่อง', color: 'var(--amber)', tone: 'warning' },
-  in_progress: { label: 'RD กำลังลง BOM', color: 'var(--blue)', tone: 'info' },
-  returned: { label: 'RD ตีกลับ ต้องแก้', color: 'var(--red)', tone: 'danger' },
-  done: { label: 'ลง BOM แล้ว', color: 'var(--green)', tone: 'success' },
+  none: { label: 'ยังไม่ส่ง RD', short: 'ยังไม่ส่ง', color: 'var(--text-3)', tone: 'neutral' },
+  queued: { label: 'รอ RD รับเรื่อง', short: 'รอ RD รับ', color: 'var(--amber)', tone: 'warning' },
+  in_progress: { label: 'RD กำลังลง BOM', short: 'กำลังลง', color: 'var(--blue)', tone: 'info' },
+  returned: { label: 'RD ตีกลับ ต้องแก้', short: 'ตีกลับ ต้องแก้', color: 'var(--red)', tone: 'danger' },
+  done: { label: 'ลง BOM แล้ว', short: 'ลงแล้ว', color: 'var(--green)', tone: 'success' },
 });
+/* ลำดับตัวเลือกของตัวกรอง "สถานะ BOM" บนทะเบียนสินค้า — ตามทางเดินของงาน */
+export const BOM_FILTER_VALUES = Object.freeze(['none', 'queued', 'in_progress', 'returned', 'done']);
 
 /* ทางเดินสถานะ — `from: null` = ยังไม่ส่ง · แถวที่ไม่อยู่ใน `from` = ปฏิเสธ (ส่งซ้ำ · รับซ้ำ · กดค้างจากแท็บเก่า)
    ⭐ `done` จาก `queued` ได้ตรง ๆ — FG ที่ Express มี BOM อยู่แล้ว (FG เก่า · มติข้อ 8) RD ไม่ต้องกดสองจังหวะ
@@ -84,6 +87,15 @@ export function bomStatusOf(product) {
 
 export function bomStatusMeta(product) {
   return BOM_STATUS_META[bomStatusOf(product) || 'none'];
+}
+
+/**
+ * ค่าของแถวสำหรับตัวกรอง/ป้าย/Excel ของทะเบียนสินค้า — `null` = ไม่มีขั้น BOM (กลุ่ม 03/04) · `'none'` = ยังไม่ส่ง
+ * ⚠️ แยกสองค่านี้ให้ขาด: "ยังไม่ส่ง" ต้องไม่กวาดสินค้า 03/04 มารวม (ไม่มีอะไรให้ส่ง ⇒ ไม่ใช่งานค้างของ SA)
+ */
+export function bomFilterValueOf(product) {
+  if (!hasBomStep(product)) return null;
+  return bomStatusOf(product) || 'none';
 }
 
 /** ช่องที่ล็อกอยู่ไหม — ตั้งแต่ส่ง จนกว่าจะดึงกลับ/ถูกตีกลับ (มติข้อ 6) */
