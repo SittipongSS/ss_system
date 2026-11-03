@@ -29,7 +29,7 @@ test("หลายงานรวมใบเดียว: หัวงานพ
       lines: [line(), line({ fgCode: "FG-2", registrationNumber: "", quantity: 10, totalExciseTax: 85.6, totalLocalTax: 8.6, totalTax: 94.2 })],
     },
     {
-      statusLabel: "รอ RA — ยังไม่เริ่มยื่น (ข้อมูลสดจากใบสั่งขาย)", salesOrderNumber: "SO-2", notBilledLabel: "เก็บนอกระบบแล้ว",
+      statusLabel: "รอ RA — ยังไม่เริ่มยื่น (ข้อมูลสดจากใบสั่งขาย)", salesOrderNumber: "SO-2", notBilledLabel: "เก็บเงินลูกค้านอกระบบแล้ว",
       customerName: "ลูกค้า B", customerTaxId: null, lines: [line({ quantity: 1, totalExciseTax: 8.56, totalLocalTax: 0.86, totalTax: 9.42 })],
     },
   ]);
@@ -39,7 +39,7 @@ test("หลายงานรวมใบเดียว: หัวงานพ
   assert.equal(report.rows[0].customer, "เซนท์ สตูดิโอ\nเลขผู้เสียภาษี 0105555000000");
   assert.equal(report.rows[1].doc, "", "แถวที่สองของงานเดียวกันไม่พิมพ์หัวงานซ้ำ");
   assert.equal(report.rows[1].registration, "ยังไม่มีทะเบียนอนุมัติ");
-  assert.match(report.rows[2].doc, /ไม่เรียกเก็บในระบบ — เก็บนอกระบบแล้ว\nรอ RA — ยังไม่เริ่มยื่น/);
+  assert.match(report.rows[2].doc, /ไม่เรียกเก็บในระบบ — เก็บเงินลูกค้านอกระบบแล้ว\nรอ RA — ยังไม่เริ่มยื่น/);
   assert.equal(report.rows[2].customer, "ลูกค้า B");
   assert.equal(report.summary._label, "รวม 2 งาน · 3 รายการ");
   assert.equal(report.summary.quantity, 111);

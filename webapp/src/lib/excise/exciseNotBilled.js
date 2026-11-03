@@ -4,12 +4,42 @@
 // ขั้นของฝ่ายบนเอกสารเดิมเป็นคอลัมน์ ไม่ใช่เอกสารใหม่) · RA ยังยื่นกรมตามเดิม (PR5) ยกเว้นชนิด not_liable
 // ⚠️ ค่าทั้งชุดตรงกับ CHECK `sales_orders_excise_not_billed_shape` (mig 0414) — ตรวจที่นี่ก่อนให้ได้ข้อความไทย ไม่ใช่ชื่อ constraint
 // ⚠️ ไฟล์บริสุทธิ์ — จอ import ได้
+import { EXCISE_SYSTEM_LAUNCH_DATE, isBeforeExciseLaunch } from '@/lib/excise/exciseBacklog';
 
 export const EXCISE_NOT_BILLED_KINDS = Object.freeze({
-  collected_outside: { label: 'เก็บนอกระบบแล้ว', hint: 'เก็บค่าภาษีจากลูกค้าไปแล้วนอกระบบ (เช่น ออกบิลใน Express) — ใส่เลขอ้างอิงถ้ามี' },
-  included_in_price: { label: 'รวมในราคาสินค้าแล้ว', hint: 'ใบเสนอราคาของลูกค้ารวมค่าภาษีไว้ในราคาสินค้า — ใส่เลข QT ที่รวมไว้' },
-  not_liable: { label: 'ไม่ต้องเสียภาษี', hint: 'สินค้าในใบนี้ไม่ต้องเสียภาษีสรรพสามิต — RA ไม่ต้องยื่นกรม' },
+  /* ⭐ มติเจ้าของ 03/11: ชื่อเหตุบอกว่าเงินขาไหนจบแล้ว (เก็บเงินลูกค้า ≠ จ่ายกรม) · `ra` = ผลต่อคิว RA — ไทล์ในโมดัล/หน้า SO โชว์คู่กันเสมอ */
+  collected_outside: {
+    label: 'เก็บเงินลูกค้านอกระบบแล้ว',
+    hint: 'เก็บค่าภาษีจากลูกค้าไปแล้วนอกระบบ (เช่น ออกบิลใน Express) — ใส่เลขอ้างอิงถ้ามี',
+    ra: 'RA ยังต้องยื่นกรม',
+  },
+  included_in_price: {
+    label: 'รวมในราคาสินค้าแล้ว',
+    hint: 'ใบเสนอราคาของลูกค้ารวมค่าภาษีไว้ในราคาสินค้า — ใส่เลข QT ที่รวมไว้',
+    ra: 'RA ยังต้องยื่นกรม',
+  },
+  not_liable: { label: 'ไม่ต้องเสียภาษี', hint: 'สินค้าในใบนี้ไม่ต้องเสียภาษีสรรพสามิต', ra: 'RA ไม่ต้องยื่น' },
+  /* ⭐ มติเจ้าของ 03/11 (V16–V18 · mig 0420): RA ยื่น/ชำระกรมของใบนี้ไปแล้วก่อนระบบเปิด — ไม่ออกใบค่าสรรพสามิต · ไม่เข้าคิว RA ·
+     เฉพาะ SO ที่อนุมัติก่อนวันเปิดระบบ (`beforeLaunchOnly` · CHECK ของ 0420 กันซ้ำ) · เหตุผลอย่างเดียว เลขอ้างอิงไม่บังคับ */
+  paid_before_launch: {
+    label: 'จ่ายกรมไปแล้วก่อนเปิดระบบ',
+    hint: 'ฝ่าย RA ยื่นและชำระภาษีของใบนี้กับกรมไปแล้วก่อนระบบเปิด — ไม่ต้องออกใบค่าสรรพสามิต',
+    ra: 'RA ไม่ต้องยื่น',
+    beforeLaunchOnly: true,
+  },
 });
+
+/** ชื่อเหตุคู่ผลต่อคิว RA — "เก็บเงินลูกค้านอกระบบแล้ว — RA ยังต้องยื่นกรม" (ไทล์ในโมดัล + แถบงานหน้า SO) */
+export const exciseNotBilledTitle = (kind) => {
+  const meta = EXCISE_NOT_BILLED_KINDS[kind];
+  return meta ? `${meta.label} — ${meta.ra}` : kind || '';
+};
+
+/** เหตุที่เลือกได้สำหรับ SO ใบนี้ — "จ่ายกรมไปแล้วก่อนเปิดระบบ" เฉพาะใบที่อนุมัติก่อนวันเปิดระบบ (V18) */
+export function exciseNotBilledKindsFor(order) {
+  const beforeLaunch = isBeforeExciseLaunch(order);
+  return Object.fromEntries(Object.entries(EXCISE_NOT_BILLED_KINDS).filter(([, meta]) => !meta.beforeLaunchOnly || beforeLaunch));
+}
 export const EXCISE_NOT_BILLED_REASON_MIN = 10;
 export const EXCISE_NOT_BILLED_REASON_MAX = 500;
 export const EXCISE_NOT_BILLED_REF_MAX = 100;
@@ -28,7 +58,7 @@ export function exciseNotBilledInput(body = {}) {
 }
 
 /** ตัดสิน "ไม่เรียกเก็บ" บน SO นี้ได้ไหม — null = ได้ · `filing` = ใบยื่นกรมที่ผูก SO นี้ (ถ้ามี) */
-export function exciseNotBilledBlocker(order, { liveQuote = null, clearing = false, filing = null } = {}) {
+export function exciseNotBilledBlocker(order, { liveQuote = null, clearing = false, filing = null, kind = null } = {}) {
   if (!order) return 'ไม่พบใบสั่งขาย';
   if (order.origin && order.origin !== 'pipeline') return 'ตัดสินได้เฉพาะใบสั่งขายจากใบเสนอราคา';
   if (clearing) {
@@ -39,6 +69,9 @@ export function exciseNotBilledBlocker(order, { liveQuote = null, clearing = fal
   if (order.status !== 'approved' || order.supersededById) return 'ตัดสินได้เฉพาะใบสั่งขายที่อนุมัติแล้วและยังไม่ถูกออก Rev. ทับ';
   if (order.exciseNotBilledKind) return 'ใบสั่งขายนี้ตัดสินว่าไม่เรียกเก็บไปแล้ว — ถอนก่อนถ้าจะเปลี่ยนเหตุ';
   if (liveQuote) return `มีใบเสนอราคาค่าสรรพสามิต ${liveQuote.quoteNumber || liveQuote.id} ที่ยังมีผลอยู่ — ยกเลิกใบนั้นก่อนจึงตัดสินว่าไม่เรียกเก็บได้`;
+  if (kind && EXCISE_NOT_BILLED_KINDS[kind]?.beforeLaunchOnly && !isBeforeExciseLaunch(order)) {
+    return `"${EXCISE_NOT_BILLED_KINDS[kind].label}" ใช้ได้เฉพาะใบสั่งขายที่อนุมัติก่อนเปิดระบบ (${EXCISE_SYSTEM_LAUNCH_DATE})`;
+  }
   return null;
 }
 

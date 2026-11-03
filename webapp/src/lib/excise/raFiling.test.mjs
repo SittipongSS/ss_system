@@ -82,7 +82,7 @@ test("คิวรอยื่นกรม: SO ค่าสรรพสามิ
   assert.equal(excise.salesOrder.id, "S1");
   assert.equal(excise.exciseOrder.quoteNumber, "QT-X1");
   const notBilled = rows.find((r) => r.source === "not_billed");
-  assert.equal(notBilled.notBilled.label, "เก็บนอกระบบแล้ว");
+  assert.equal(notBilled.notBilled.label, "เก็บเงินลูกค้านอกระบบแล้ว");
   assert.equal(notBilled.notBilled.ref, "EX-1");
 });
 
@@ -152,7 +152,7 @@ test("แผงสรุปบนหน้าใบยื่น: ต้นทา
   assert.equal(summary.gates.money.ok, true);
   assert.equal(summary.gates.registration.ok, true);
   const notBilled = await loadFilingSummary(db, { salesOrderId: "S2", items: [{ registrationId: null }] });
-  assert.equal(notBilled.notBilled.label, "เก็บนอกระบบแล้ว");
+  assert.equal(notBilled.notBilled.label, "เก็บเงินลูกค้านอกระบบแล้ว");
   assert.equal(notBilled.gates.money.ok, true);
   assert.equal(notBilled.gates.registration.ok, false);
 });
