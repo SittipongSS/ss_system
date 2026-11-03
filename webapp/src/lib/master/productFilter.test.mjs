@@ -6,7 +6,7 @@ import {
   productShowsRetailPrice, productStatCounts, productRegistrationValue, REGISTRATION_META,
 } from './productFilter.js';
 import { isProductExciseTaxable } from '../tax/taxableProducts.js';
-import { BOM_FILTER_VALUES } from './productBom.js';
+import { BOM_FILTER_VALUES, bomFilterValueOf, bomSendBlocker, bomSendBlockerShort } from './productBom.js';
 
 const TYPES = [
   { mainCategoryCode: '01', mainCategoryName: 'ODM', typeCode: '002', nameTh: 'น้ำหอมสำหรับผิวกาย', nameEn: 'BODY PERFUME', isExcise: true },
@@ -311,8 +311,14 @@ test('🔴 L16c: ฟอร์มแก้สินค้าโผล่ช่อ
 
 /* ── สถานะลง BOM บนทะเบียนสินค้า (mig 0419 · มติเจ้าของ 03/11) — ตัวกรอง · เลขบนตัวเลือก · การ์ดตีกลับ · ค้นรหัส BOM ─── */
 const BOM_ROWS = [
-  P({ fgCode: 'N1', categoryCode: '01-002', approvalStatus: 'approved' }),                              // ยังไม่ส่ง
-  P({ fgCode: 'N2', categoryCode: '02-020', approvalStatus: 'approved', bomStatus: 'weird' }), // ค่าแปลก = ยังไม่ส่ง
+  P({ fgCode: 'N1', categoryCode: '01-002', approvalStatus: 'approved' }),                              // ยังไม่ส่ง · ไม่มีสูตร/ปริมาตร
+  P({ fgCode: 'N2', categoryCode: '02-020', approvalStatus: 'approved', bomStatus: 'weird' }), // ค่าแปลก = ยังไม่ส่ง · ไม่มีกลิ่น
+  P({ fgCode: 'N3', categoryCode: '01-002', approvalStatus: 'pending', formulaId: 'F1', volume: 30, volumeUnit: 'ml' }), // รออนุมัติ
+  P({ fgCode: 'N4', categoryCode: '01-037', approvalStatus: 'approved', volume: 1, volumeUnit: 'set', giftSetFormulaIds: [] }), // ชุดไม่มีสูตร
+  P({ fgCode: 'G1', categoryCode: '01-002', approvalStatus: 'approved', formulaId: 'F1', volume: 30, volumeUnit: 'ml' }),     // พร้อมส่ง
+  P({ fgCode: 'G2', categoryCode: '02-020', approvalStatus: 'approved', scentId: 'S1', volume: 1, volumeUnit: 'kg' }),        // หัวน้ำหอม = กลิ่น
+  P({ fgCode: 'G3', categoryCode: '01-037', approvalStatus: 'approved', volume: 1, volumeUnit: 'set', giftSetFormulaIds: ['F2'] }),
+  P({ fgCode: 'G4', categoryCode: '02-024', approvalStatus: 'approved', volume: 1, volumeUnit: 'pcs' }),                       // ตัวเครื่องไม่ต้องมีสูตร
   P({ fgCode: 'Q1', categoryCode: '01-002', approvalStatus: 'approved', bomStatus: 'queued', brandName: 'ร้อน' }),
   P({ fgCode: 'I1', categoryCode: '02-020', approvalStatus: 'approved', bomStatus: 'in_progress' }),
   P({ fgCode: 'R1', categoryCode: '01-002', approvalStatus: 'approved', bomStatus: 'returned', brandName: 'ร้อน' }),
@@ -324,16 +330,28 @@ const BOM_ROWS = [
 ];
 const codesOf = (rows) => rows.map((r) => r.fgCode);
 
-test('ตัวกรองสถานะ BOM: "ยังไม่ส่ง" ไม่กวาดกลุ่ม 03/04 · เลือกแล้วกลุ่ม 03/04 หาย · ว่าง = ทั้งหมด', () => {
+test('ตัวกรองสถานะ BOM: ยังไม่ส่งแตกเป็น ข้อมูลยังไม่ครบ/พร้อมส่ง ด้วยด่านเดียวกับปุ่มส่ง · ไม่กวาดกลุ่ม 03/04', () => {
   const pick = (bomStatuses) => codesOf(filterProducts(BOM_ROWS, { bomStatuses, productTypes: TYPES }));
-  assert.deepEqual(pick(['none']), ['N1', 'N2']);
+  assert.deepEqual(pick(['blocked']), ['N1', 'N2', 'N3', 'N4']);
+  assert.deepEqual(pick(['ready']), ['G1', 'G2', 'G3', 'G4']);
   assert.deepEqual(pick(['queued', 'in_progress']), ['Q1', 'I1']);
   assert.deepEqual(pick(['returned']), ['R1'], 'ใบเลิกใช้ซ่อนตามทะเบียน');
   assert.deepEqual(pick(['done']), ['D1', 'FG-0001-01-002-0009']);
-  assert.ok(!pick(['none', 'queued', 'in_progress', 'returned', 'done']).some((c) => c.startsWith('X')));
+  assert.ok(!pick([...BOM_FILTER_VALUES]).some((c) => c.startsWith('X')));
   assert.equal(pick([]).length, filterProducts(BOM_ROWS, { productTypes: TYPES }).length);
   // ทุกค่าที่เลือกได้รวมกัน = แถวกลุ่ม 01/02 ทั้งหมดพอดี (ไม่มีแถวตกหล่น/นับซ้ำ)
   assert.equal(pick([...BOM_FILTER_VALUES]).length, filterProducts(BOM_ROWS, { productTypes: TYPES }).length - 2);
+  // 🔴 "พร้อมส่ง" บนตาราง = ปุ่มส่งบนหน้า FG กดผ่าน (ด่านตัวเดียวกัน · ชุดของขวัญนับจาก giftSetFormulaIds)
+  for (const p of BOM_ROWS.filter((r) => bomFilterValueOf(r) === 'ready' || bomFilterValueOf(r) === 'blocked')) {
+    const blocker = bomSendBlocker(p, { formulaComponents: (p.giftSetFormulaIds || []).map((formulaId) => ({ formulaId })) });
+    assert.equal(bomFilterValueOf(p) === 'ready', blocker === '', p.fgCode);
+    assert.equal(bomSendBlockerShort(p) === '', blocker === '', p.fgCode);
+  }
+  assert.deepEqual(['N1', 'N2', 'N3', 'N4'].map((code) => bomSendBlockerShort(BOM_ROWS.find((r) => r.fgCode === code))), [
+    'ยังไม่ผูกสูตร · ไม่มีปริมาตร', 'ยังไม่ผูกกลิ่น · ไม่มีปริมาตร', 'รออนุมัติสินค้า', 'ยังไม่ผูกสูตรในชุด',
+  ]);
+  // หน้า FG ส่ง formulaComponents เต็ม — ชนะ giftSetFormulaIds
+  assert.equal(bomFilterValueOf({ ...BOM_ROWS[3], formulaComponents: [{ formulaId: 'F9' }] }), 'ready');
 });
 
 test('🔴 เลขบนตัวเลือก "สถานะ BOM (n)" = แถวหลังเลือกตัวนั้นตัวเดียว ภายใต้คำค้น × สถานะ × ติ๊กค้าง × BOM ที่เลือกอยู่', () => {
@@ -341,7 +359,7 @@ test('🔴 เลขบนตัวเลือก "สถานะ BOM (n)" = �
   for (const search of ['', 'ร้อน', '1', 'ไม่มี']) {
     for (const statuses of [[], ['approved'], ['pending']]) {
       for (const showInactive of [false, true]) {
-        for (const bomStatuses of [[], ['returned'], ['none', 'done']]) {
+        for (const bomStatuses of [[], ['returned'], ['blocked', 'done'], ['ready']]) {
           const state = { search, statuses, showInactive, bomStatuses, productTypes: TYPES };
           const facets = productFilterFacets(BOM_ROWS, state);
           for (const value of BOM_FILTER_VALUES) {
@@ -383,7 +401,7 @@ test('ด่านซอร์ส: หน้าสินค้า/ไฟล์�
   assert.match(live, /bom: \(p\) => \{ const v = bomFilterValueOf\(p\); return v \? BOM_FILTER_VALUES\.indexOf\(v\) : null; \},/);
   const badge = readFileSync(new URL('../../components/database/ProductBomBadge.js', import.meta.url), 'utf8');
   assert.match(badge, /if \(!value\) return cell \? <span className="text-\[var\(--text-3\)\]">\{NA\}<\/span> : null;/, '03/04 = ขีดในตาราง');
-  assert.match(badge, /return cell \? <span className="text-xs text-\[var\(--text-3\)\]" title=\{meta\.label\}>\{meta\.short\}<\/span> : null;/, 'ยังไม่ส่ง = ตัวจางในตาราง');
+  assert.match(badge, /if \(value === "blocked"\) \{\s*return cell\s*\? <span className="text-xs text-\[var\(--text-3\)\]"[^>]*>\{bomSendBlockerShort\(product\)\}<\/span>\s*: null;/, 'ข้อมูลยังไม่ครบ = เหตุสั้นตัวจางในตาราง');
 });
 
 /* ── สถานะขึ้นทะเบียนสรรพสามิตในคอลัมน์ "สรรพสามิต" (มติเจ้าของ 03/11) — ตัวเดียวกับตัวกรอง "การขึ้นทะเบียน" ───────── */
@@ -415,4 +433,12 @@ test('ด่านซอร์ส: ป้ายทะเบียนทั้ง
   assert.match(live, /\{taxable && productRegistrationValue\(p, productTypes\)\s*\? <ProductRegistrationBadge product=\{p\} productTypes=\{productTypes\} taxable=\{taxable\} \/>\s*: <span className=\{`status-pill text-\[10px\]\$\{taxable \? " warning" : ""\}`\}>\{taxable \? "ต้องเสีย" : "ยกเว้น"\}<\/span>\}/);
   const badge = readFileSync(new URL('../../components/database/ProductRegistrationBadge.js', import.meta.url), 'utf8');
   assert.match(badge, /const value = productRegistrationValue\(product, productTypes\);/);
+});
+
+test('ด่านซอร์ส: ทะเบียนสินค้า (manage) แนบสูตรในชุดของขวัญเป็น id — ไม่งั้นชุดของขวัญทุกตัวขึ้น "ยังไม่ผูกสูตรในชุด" ผิด ๆ', () => {
+  const route = readFileSync(new URL('../../app/api/products/route.js', import.meta.url), 'utf8');
+  assert.match(route, /const giftSetIds = manage \? rows\.filter\(isGiftSetRow\)\.map\(\(p\) => p\.id\) : \[\];/);
+  assert.match(route, /supabase\.from\('product_formulas'\)\.select\('"productId", "formulaId"'\)\.in\('productId', chunk\)/);
+  assert.match(route, /if \(setError\) return Response\.json\(\{ error: setError\.message \}, \{ status: 500 \}\);/, 'query พัง = ดัง ไม่ใช่ป้ายผิดเงียบ');
+  assert.match(route, /p\.giftSetFormulaIds = idsByProduct\.get\(p\.id\) \|\| \[\];/);
 });

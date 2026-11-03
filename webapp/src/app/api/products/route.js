@@ -167,6 +167,24 @@ export async function GET(request) {
     }
     for (const p of rows) p.registrationStatus = registrationStatusOf(byProduct.get(p.id));
   }
+  /* ⭐ ทะเบียนสินค้า (manage) — สูตรในชุดของขวัญ 01-037 ของแต่ละ FG เป็น id ล้วน ⇒ ตารางบอก "พร้อมส่ง RD / ข้อมูลยังไม่ครบ"
+     ด้วยด่านตัวเดียวกับปุ่มส่งบนหน้า FG (`bomFilterValueOf` · มติเจ้าของ 03/11) · ไม่แนบ = ชุดของขวัญทุกตัวขึ้น "ยังไม่ผูกสูตรในชุด" ผิด ๆ
+     ⚠️ query พัง = 500 เหมือนทะเบียนสรรพสามิตข้างบน (ป้ายผิดเงียบ ๆ แย่กว่าหน้าที่บอกว่าโหลดไม่ได้) · ยิงทีละก้อน (16 KB) */
+  const isGiftSetRow = (p) => isGiftSetCategory(p.categoryCode || categoryOf(p.fgCode));
+  const giftSetIds = manage ? rows.filter(isGiftSetRow).map((p) => p.id) : [];
+  if (giftSetIds.length) {
+    const { data: setRows, error: setError } = await fetchInChunks(
+      giftSetIds,
+      (chunk) => supabase.from('product_formulas').select('"productId", "formulaId"').in('productId', chunk),
+    );
+    if (setError) return Response.json({ error: setError.message }, { status: 500 });
+    const idsByProduct = new Map();
+    for (const r of setRows || []) {
+      if (!r.formulaId) continue;
+      idsByProduct.set(r.productId, [...(idsByProduct.get(r.productId) || []), r.formulaId]);
+    }
+    for (const p of rows) if (isGiftSetRow(p)) p.giftSetFormulaIds = idsByProduct.get(p.id) || [];
+  }
   /* ชื่อหมวดสินค้า (`categoryName` ไทยก่อน · `categoryNameEn`) — ดรอปดาวน์เลือก FG ของ
      ใบเสนอราคาโชว์ และติดลงบรรทัดตอนเลือก (มติผู้ใช้ 2026-09-22) · แนบทีหลังแบบเดียวกับ
      `ownerArCode` จึงไม่ต้องแตะ PRODUCT_PICKER_COLUMNS · ทะเบียนหมวดอ่านไม่ได้ = ลิสต์
