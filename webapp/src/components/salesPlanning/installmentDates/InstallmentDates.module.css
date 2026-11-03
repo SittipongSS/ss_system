@@ -235,3 +235,8 @@
 .fieldLink:hover { color: var(--text); }
 .eventBox { display: grid; gap: var(--space-1-5); padding-top: var(--space-2); border-top: 1px dashed var(--border); }
 .eventOwn { display: flex; gap: var(--space-1-5); }
+/* การ์ดรายงวด (คอลัมน์ ≤ 760px — `.tableBox` ของแผงงวด · `.planContainer` ของหน้าสร้าง SO) = ช่องวันเต็มกว้างการ์ด · คำใต้ช่องไม่ต้องบีบ */
+@container (max-width: 760px) {
+  .field :global(.date-input-wrap) { max-width: none; }
+  .fieldNotes { max-width: none; }
+}

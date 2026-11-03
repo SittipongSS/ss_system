@@ -3,7 +3,7 @@
 > สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-29 · รอบแรก–ห้าขึ้น prod แล้ว (#1840 รุ่นสอง + mig 0390 · #1846 แบบ C + มติ 17) ·
 > **รอบหก = รุ่นสี่ "ต้องวางบิลไหม"** (มติ 18) ขึ้น prod แล้ว (#1851 `1caf19e3`) · **mig 0393 รันแล้ว** (เจ้าของรัน 29/09) · **backfill ยังไม่รัน** (ต้องได้คำยินยอมของเจ้าของ) ·
 > **รอบเจ็ด = รุ่นห้า "ปฏิทินรายปีของลูกค้า"** (มติ 19 · 29/09) เขียนครบในแบรนช์ `claude/billing-calendar-v5` ยังไม่ commit/merge · **ไม่มี migration** (0393 ตรวจรูปปฏิทินอยู่แล้ว · 0394 = ใบย้อนหลัง PR-D) ·
-> **รอบแปด = สองช่องวันแยก** (มติเจ้าของ 02/11 · แทนตัวแก้รายงวดของแบบ C) — `กำลังดำเนินการ` แบรนช์ `claude/billing-split-dates` · ไม่มี migration · ดูหัวข้อ "รอบแปด" ·
+> **รอบแปด = สองช่องวันแยก** (มติเจ้าของ 02/11 · แทนตัวแก้รายงวดของแบบ C) — ขึ้น prod แล้ว (#1957 `8798300b` · 03/11) · การ์ดรายงวดบนมือถือ (แบรนช์ `claude/billing-mobile-cards`) · ไม่มี migration · ดูหัวข้อ "รอบแปด" ·
 > **ใบย้อนหลังเก็บวันวางบิลรายงวด** (PR-D · mig 0394/P7) — `กำลังดำเนินการ` แบรนช์ `claude/so-service-historical` · รายละเอียด [historical-sales-orders.md](historical-sales-orders.md) §8E
 
 ม็อกที่เจ้าของดูผ่าน: `~/ss-team/mockups/billing-cycle/` (5 จอ · brief.md มีมติ + ข้อมูลตัวอย่าง)
@@ -181,7 +181,10 @@
 - **ถอดแล้ว**: `InstallmentDateEditor` · `InstallmentDateFrame`/`InstallmentDateExpandRow` · `InstallmentDateSheet` · `InstallmentCalendar` ·
   `InstallmentDateEntry` · `InstallmentDateButton`/`InstallmentDateHint` · ใน `installmentDateDrafts.js`: `pickBillingDate` · `nextEmptyRow` ·
   `openViewOf` · `dateViewOf` · `dateCellTapCloses` · `splitsFields` · `VIEW_LABELS` · `keepDueChoiceFor` (→ `billingForDueChoice`) · `sundayFirstCells`
-- ยังไม่ทำ: ตารางงวดบนมือถือยังเป็นตารางเลื่อนแนวนอน (ม็อกเป็นการ์ดรายงวด) · บันทึกร่างวันงวดกับร่างช่วงครอบในคำขอเดียว
+- **การ์ดรายงวด** (คอลัมน์ ≤ 760px — มือถือ/จอแคบ · `.tableBox` วัดด้วย @container ค่าเดียวกับหน้าสร้าง SO): DOM ชุดเดียวกับตาราง ·
+  หัวการ์ด "งวด N · ชื่องวด | ยอด" · วันวางบิล → กำหนดชำระ → ครอบคลุมบริการ เต็มกว้างพร้อมชื่อช่อง (`data-label`) · หลักฐาน | ใบกำกับภาษี ·
+  สถานะ | ปุ่มก้าวถัดไป + ⋯ · จอกว้างเป็นตารางเหมือนเดิม
+- ยังไม่ทำ: บันทึกร่างวันงวดกับร่างช่วงครอบในคำขอเดียว
 
 ## รอบหก — รุ่นสี่ "ต้องวางบิลไหม" (มติ 18 · 29/09 · system-design §8 ช่วง 1 · 2a · 3 · 4a + สคริปต์ช่วง 5)
 
