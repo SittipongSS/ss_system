@@ -92,6 +92,9 @@ export const UPDATE_KINDS = {
     registry: { label: 'แก้ทะเบียนกลิ่น/สูตร', color: 'var(--text-3)' },
     pdr: { label: 'แก้แบบฟอร์ม PDR', color: 'var(--text-3)' },
     quoted: { label: 'ตอบราคา', color: 'var(--green)', narrative: true },
+    /* ⭐ Ingredient List ของสูตรที่แถวผูก (ม-159) — ก้าวแยกจากราคา (มาไม่พร้อมกัน) · ครบสองอย่างถึงจบแถว
+       ⚠️ เขียนจาก `saveFormulaIngredientList` ทางเดียว (หน้า "รอใส่ราคา" · หน้าคำร้อง · หน้าสูตร) */
+    ingredients: { label: 'ใส่ Ingredient List', color: 'var(--green)', narrative: true },
     no_quote: { label: 'ตอบไม่ได้', color: 'var(--amber)', narrative: true },
     // ── ก้าวของแถว (mig 0202) ──────────────────────────────────────────
     // ⚠️ ต้องลงทะเบียนที่นี่ ไม่งั้น `updateKindMeta` ถอยไปใช้ meta ของชนิดอื่น

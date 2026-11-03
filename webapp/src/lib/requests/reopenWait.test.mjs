@@ -112,7 +112,8 @@ test('ทุกทางที่คนขยับใบ ต้องบอก�
   for (const path of [
     '../../app/api/sa/requests/[id]/items/route.js',
     '../../app/api/sa/requests/[id]/items/[itemId]/route.js',
-    '../../app/api/sa/requests/[id]/items/[itemId]/price/route.js',
+    // ขั้นราคา/Ingredient List จบแถวผ่านตัวกลาง `settleRow` (ม-159) — ตัวนั้นต้องบอกฝั่งแทน route
+    '../../lib/requests/rowSettle.js',
   ]) {
     const code = src(path);
     const calls = code.match(/requestRowsClosurePatch\([^)]*\)[^;]*/g) || [];

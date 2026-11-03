@@ -75,7 +75,7 @@ import { isScentRegistrar } from '@/lib/master/scents';
 import { createScent, findScentShared, rowPricePlanLive } from '@/lib/master/scentFormulaAdmin';
 import { attachShares } from '@/lib/master/registrySharesAdmin';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
-import { canPriceRow } from '@/lib/requests/rowStage';
+import { isConfirmedOpenRow } from '@/lib/requests/rowStage';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
@@ -309,7 +309,8 @@ export async function GET(request, { params }) {
        ⚠️ ด่านชุดเดียวกับ POST (รีวิวรอบสี่): หลังด่านอ่าน · ใบเปิดอยู่ · คนดูตอบราคาได้ — คนอื่นไม่มีวันเปิดโมดัล
        ⚠️ ยิงขนานกัน ไม่ใช่ทีละแถว · อ่านพัง = ไม่ติด (โมดัลถอยไปคิดจากแถว · API ตัดสินจริงอยู่ดี) */
     if (REQUEST_OPEN_STATUSES.includes(row.status) && canAnswerRequest(user, row)) {
-      await Promise.all((row.items || []).filter(canPriceRow).map(async (item) => {
+      // ม-159 — แถวที่รอ Ingredient List (ใส่ราคาแล้ว) ต้องได้แผนด้วย ⇒ ปุ่ม "ใส่ Ingredient List" รู้ว่าสูตรมีค่าอะไรอยู่
+      await Promise.all((row.items || []).filter(isConfirmedOpenRow).map(async (item) => {
         const plan = await rowPricePlanLive(getSupabaseAdmin(), item).catch(() => null);
         // `ingredientPlan` (ม-158) — Ingredient List ของสูตรที่แถวผูก บังคับในโมดัลเดียวกัน · ตัวคิดเดียวกับ POST
         if (plan) { item.priceSlots = plan.slots; item.priceBlocker = plan.blocker; item.ingredientPlan = plan.ingredient; }

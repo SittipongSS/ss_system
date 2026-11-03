@@ -2,11 +2,11 @@
 //
 // POST { prices: { F?, B?, FB? }, validUntil?, note? }   (ทางเข้าเก่า `{ price }` = ช่องหลัก)
 // POST { useCurrent: { revisionId } }   ใช้ราคาที่มีอยู่แล้วในทะเบียน ไม่ออก rev ใหม่ (ม-153 · ดู `linkCurrentPrice` ท้ายไฟล์)
-//   ทั้งสองแบบส่ง `ingredientList` มาด้วยได้ — Ingredient List ของสูตร (ม-158 · ดูหัวข้อถัดไป)
 //
-// ⭐ **Ingredient List บังคับในขั้นนี้** (ม-158 · มติเจ้าของ 03/11/2026) — แถวที่ผูกสูตรหมวด 01/02 (ยกเว้น 02-020 หัวน้ำหอม)
-// ปิดแถวไม่ได้ถ้าสูตรยังไม่มี Ingredient List · ค่าไปลง **ทะเบียนสูตร** (`formulas.ingredientList`) ไม่ใช่แถวคำร้อง
-// · ไม่ส่งมา + สูตรมีอยู่แล้ว = ผ่าน (โมดัลเติมให้ RD แค่ตรวจ) · ตัวตัดสินเดียวกับจอ (`ingredientListGate`)
+// ⭐ **Ingredient List เป็นก้าวแยก แต่ต้องครบถึงจบแถว** (ม-159 · มติเจ้าของ 03/11/2026 · ทับ ม-158 ข้อ 3) —
+// แถวที่ผูกสูตรหมวด 01/02 (ยกเว้น 02-020) และสูตรยังไม่มี Ingredient List: ราคาลงทะเบียนตามปกติ แต่แถว **ไม่จบ**
+// (`recordRowPrice` → "รอ Ingredient List") · ตัวเขียน Ingredient List (`saveFormulaIngredientList`) ปิดให้ทีหลัง
+// · สูตรมีอยู่แล้ว / ไม่ต้องมี = จบแถวทันทีเหมือนเดิม (`settleRow`) · route นี้ไม่รับ Ingredient List แล้ว
 //
 // ⭐ **สูตรใส่ได้สามช่อง F · B · FB · กลิ่นใส่ได้ F ช่องเดียว** (ม-148 · มติผู้ใช้ 2026-09-22) —
 // ช่องที่เปิดมาจาก `rowPriceSlots` ตัวเดียวกับโมดัลบนจอ · ใส่อย่างน้อยหนึ่งช่อง
@@ -26,16 +26,15 @@ import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
-import { requestRowsClosurePatch } from '@/lib/requests/stages';
-import { requestActorSide } from '@/lib/requests/replyTurn';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { currentPriceToUse, mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
 import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
-import { loadPriceSlotSource, rowPricePlanLive, rowsSlotPricesLive, updateFormula } from '@/lib/master/scentFormulaAdmin';
+import { loadPriceSlotSource, rowPricePlanLive, rowsSlotPricesLive } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { fmtNumber } from '@/lib/format';
-import { INGREDIENT_LIST_LABEL, ingredientListGate } from '@/lib/master/ingredientList';
+import { INGREDIENT_LIST_LABEL, ingredientListMissing } from '@/lib/master/ingredientList';
+import { recordRowPrice, settleRow } from '@/lib/requests/rowSettle';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,17 +107,13 @@ export async function POST(request, { params }) {
     return Response.json({ error: `อ่านทะเบียนกลิ่น/สูตรไม่สำเร็จ: ${e.message}` }, { status: 500 });
   }
   const body = await request.json().catch(() => ({}));
-  // ⭐ ด่าน Ingredient List (ม-158) — ตรวจก่อนเขียนอะไรทั้งนั้น · ใช้กับทั้งสองทาง (ใส่ราคาใหม่ · ใช้ราคานี้)
-  const ingredientCheck = ingredientListGate(ingredient, body);
-  if (ingredientCheck.error) return Response.json({ error: ingredientCheck.error }, { status: 400 });
-  const ingredientWrite = ingredientCheck.write
-    ? { formulaId: ingredient.formulaId, value: ingredientCheck.write }
-    : null;
+  // ⭐ ม-159 — สูตรยังขาด Ingredient List = ลงราคาแล้วรอ (แถวไม่จบ) · ทั้งสองทาง (ใส่ราคาใหม่ · ใช้ราคานี้) ถามตัวเดียวกัน
+  const waitIngredients = ingredientListMissing(ingredient);
   /* ⭐ **"ใช้ราคานี้" — ผูกราคาที่มีอยู่แล้วในทะเบียน ไม่ออก rev ใหม่** (ม-153 · มติผู้ใช้ 2026-10-01) — RD ใส่ราคาที่หน้า
      สูตร/กลิ่นไปก่อนลูกค้าคอนเฟิร์มเป็นเรื่องปกติ (วัด prod 01/10: 5 จาก 7 แถวที่รอราคา) · เดิมต้องพิมพ์เลขเดิมซ้ำ
      ได้ rev ซ้ำในประวัติราคา · ผ่านด่านชุดเดียวกับทางใส่ราคาทั้งหมดข้างบนก่อนถึงตรงนี้ */
   if (body?.useCurrent) {
-    return linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body, ingredientWrite });
+    return linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body, waitIngredients });
   }
   // ⚠️ F/B/FB **ไม่มีชั้นจำนวน** (มติผู้ใช้ 2026-08-03) — ราคาต่อกิโลเดียวต่อช่อง ไม่ลดตามจำนวน
   const { entries, error: priceError } = normalizeSlotPrices(slots, body, { blocker });
@@ -127,8 +122,6 @@ export async function POST(request, { params }) {
   const nowIso = new Date().toISOString();
   let written;
   try {
-    // Ingredient List ลงสูตรก่อนราคา — ผ่านด่านแล้ว · ราคาพังทีหลัง = ข้อมูลสูตรยังถูกต้อง กดใหม่ไม่ซ้ำอะไร (rev ราคาซ้ำได้ ตัวนี้ไม่)
-    await saveIngredientList(supabase, { write: ingredientWrite, user, request, docNo: before.docNo || id });
     // ตัวตนวัสดุ + ประทับ pointer + ต่อ rev — ก้อนเดียวกับปุ่มใส่ราคาบนหน้าทะเบียน
     // (`priceRegistryEntry` ผ่าน `priceRegistrySlots`) ห้ามเขียนซ้ำที่นี่ ไม่งั้นสองทางเข้าเพี้ยนหากัน
     // ⚠️ ทะเบียนต้นทาง **คนละตาราง** (F = กลิ่น · B/FB = สูตร) แต่หน้าตาที่ต้องใช้เหมือนกัน (ชื่อ + ลูกค้า)
@@ -150,7 +143,8 @@ export async function POST(request, { params }) {
     const main = mainPriceEntry(written);
     const revision = main.revision;
 
-    await settleRow(supabase, { id, itemId, revisionId: revision.id, user, nowIso });
+    if (waitIngredients) await recordRowPrice(supabase, { itemId, revisionId: revision.id, nowIso });
+    else await settleRow(supabase, { id, itemId, revisionId: revision.id, user, nowIso });
 
     // หนึ่งเหตุการณ์ต่อการใส่ราคาหนึ่งครั้ง — ทุกช่องในบรรทัดเดียว (ช่องไหนลงทะเบียนตัวไหนบอกด้วยรหัส)
     const lines = written.map((w) => `${w.slot.short} ${fmtNumber(w.price)}`
@@ -160,14 +154,15 @@ export async function POST(request, { params }) {
       entityType: 'dept_request',
       entityId: id,
       kind: 'quoted',
-      body: `ใส่ราคา ${target} — ${lines.join(' · ')} ฿/กก.${ingredientWrite ? ` · บันทึก ${INGREDIENT_LIST_LABEL}` : ''}`,
+      body: `ใส่ราคา ${target} — ${lines.join(' · ')} ฿/กก.${waitIngredients ? ` · รอ ${INGREDIENT_LIST_LABEL}` : ''}`,
       user,
     }).catch(() => {});
 
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
-      before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: revision.id },
-      summary: `ใส่ราคา ${written.map((w) => w.slot.short).join('/')} ${target} (${before.docNo || id})`,
+      before: row, after: { ...row, answerStatus: waitIngredients ? row.answerStatus : 'done', answeredRevisionId: revision.id },
+      summary: `ใส่ราคา ${written.map((w) => w.slot.short).join('/')} ${target} (${before.docNo || id})`
+        + (waitIngredients ? ` · รอ ${INGREDIENT_LIST_LABEL}` : ''),
       request,
     });
 
@@ -177,37 +172,14 @@ export async function POST(request, { params }) {
   }
 }
 
-/* ── ปิดแถวด้วย rev ราคา + ตราปิดฝั่งฝ่ายของใบ — ทางใส่ราคาใหม่กับทาง "ใช้ราคานี้" ต้องจบแถวแบบเดียวกันทุกช่อง ── */
-async function settleRow(supabase, { id, itemId, revisionId, user, nowIso }) {
-  const { error } = await supabase.from('dept_request_items').update({
-    answerStatus: 'done',
-    answeredRevisionId: revisionId,
-    declineReason: null,
-    answeredById: user?.id ?? null,
-    answeredByName: user?.name ?? null,
-    answeredAt: nowIso,
-    updatedAt: nowIso,
-  }).eq('id', itemId);
-  if (error) throw error;
-
-  // ตอบครบทุกแถว → ใบได้ตราปิดฝั่งฝ่าย (`answeredAt`) เอง — ดู `closure.js`
-  const after = await findRequest(supabase, id);
-  const closurePatch = requestRowsClosurePatch(after, after.items || [], nowIso, {
-    actorSide: requestActorSide(user, after),
-  });
-  if (Object.keys(closurePatch).length) {
-    const { error: headError } = await supabase.from('dept_requests')
-      .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
-    if (headError) throw headError;
-  }
-}
+/* ── ปิดแถว / ประทับราคาไว้รอ Ingredient List — `lib/requests/rowSettle.js` (ตัวเดียวกับตัวเขียน Ingredient List · ม-159) ── */
 
 /* ── "ใช้ราคานี้" (ม-153) — body `{ useCurrent: { revisionId } }` ─────────────────────────────────────────────
    ⭐ server คิดเองว่าราคาไหนคือ "ราคานี้" (`currentPriceToUse` ตัวเดียวกับหน้า "รอใส่ราคา") แล้วเทียบกับ rev ที่จอเห็น
    ⇒ มีคนออกราคาใหม่ระหว่างที่จอเปิดค้าง = 409 ให้โหลดใหม่ ไม่ใช่ผูกเลขที่ RD ไม่เคยเห็น
    ⚠️ **ไม่แตะทะเบียนวัสดุเลย** — rev เป็น immutable · แถวชี้ rev เดิมผ่าน `answeredRevisionId` เท่านั้น (ราคาบนใบอ่าน
    ตาม pointer นี้อยู่แล้ว — `attachRowPrice`) · ช่องอื่นของแถวไม่ถูกผูก (อยู่ในทะเบียนตามเดิม) */
-async function linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body, ingredientWrite = null }) {
+async function linkCurrentPrice({ supabase, request, user, id, itemId, before, row, body, waitIngredients = false }) {
   let live;
   try {
     [live] = await rowsSlotPricesLive(supabase, [row]);
@@ -229,8 +201,8 @@ async function linkCurrentPrice({ supabase, request, user, id, itemId, before, r
 
   const nowIso = new Date().toISOString();
   try {
-    await saveIngredientList(supabase, { write: ingredientWrite, user, request, docNo: before.docNo || id });
-    await settleRow(supabase, { id, itemId, revisionId: entry.price.revisionId, user, nowIso });
+    if (waitIngredients) await recordRowPrice(supabase, { itemId, revisionId: entry.price.revisionId, nowIso });
+    else await settleRow(supabase, { id, itemId, revisionId: entry.price.revisionId, user, nowIso });
 
     const target = entry.source?.code || entry.source?.name || 'ทะเบียน';
     const rev = entry.price.revisionNo != null ? ` (rev ${entry.price.revisionNo})` : '';
@@ -239,13 +211,13 @@ async function linkCurrentPrice({ supabase, request, user, id, itemId, before, r
       entityId: id,
       kind: 'quoted',
       body: `ใช้ราคาในทะเบียน ${target} — ${entry.short} ${fmtNumber(entry.price.unitPrice)} ฿/กก.${rev}`
-        + (ingredientWrite ? ` · บันทึก ${INGREDIENT_LIST_LABEL}` : ''),
+        + (waitIngredients ? ` · รอ ${INGREDIENT_LIST_LABEL}` : ''),
       user,
     }).catch(() => {});
 
     await recordAudit({
       user, action: 'update', entityType: 'dept_request', entityId: id,
-      before: row, after: { ...row, answerStatus: 'done', answeredRevisionId: entry.price.revisionId },
+      before: row, after: { ...row, answerStatus: waitIngredients ? row.answerStatus : 'done', answeredRevisionId: entry.price.revisionId },
       summary: `ใช้ราคา ${entry.short} ในทะเบียน ${target} (${before.docNo || id})`,
       request,
     });
@@ -254,20 +226,4 @@ async function linkCurrentPrice({ supabase, request, user, id, itemId, before, r
   } catch (e) {
     return Response.json({ error: e.message }, { status: 400 });
   }
-}
-
-/* ── Ingredient List ลงทะเบียนสูตร (ม-158) — `write` จาก `ingredientListGate` · null = ไม่มีอะไรต้องเขียน ──
-   ⚠️ เขียนผ่าน `updateFormula` ตัวเดียวกับหน้าทะเบียน (ประทับ updatedAt) · audit เป็นของ **สูตร** — ประวัติสูตรต้องบอกได้ว่า
-   Ingredient List มาจากขั้นราคาของคำร้องใบไหน */
-async function saveIngredientList(supabase, { write, user, request, docNo }) {
-  if (!write) return;
-  const { data: beforeFormula, error } = await supabase.from('formulas').select('*').eq('id', write.formulaId).maybeSingle();
-  if (error) throw error;
-  const after = await updateFormula(supabase, write.formulaId, { ingredientList: write.value });
-  await recordAudit({
-    user, action: 'update', entityType: 'formula', entityId: write.formulaId,
-    before: beforeFormula, after,
-    summary: `${beforeFormula?.ingredientList ? 'แก้' : 'ใส่'} ${INGREDIENT_LIST_LABEL} สูตร ${after?.code || after?.name || write.formulaId} จากขั้นราคา ${docNo}`,
-    request,
-  });
 }

@@ -31,7 +31,7 @@ const DOC_TRACK = [
 ];
 
 // ขั้นปลายทางที่ "จบแล้ว" — รางเต็มทุกจุด ไม่ว่าเดินมาทางไหน
-const TERMINAL = { done: 'done', awaiting_price: 'done', revised: 'done', declined: 'bad' };
+const TERMINAL = { done: 'done', awaiting_price: 'done', awaiting_ingredients: 'done', revised: 'done', declined: 'bad' };
 
 /**
  * ราง `<StepTrack compact>` ของหนึ่งแถว

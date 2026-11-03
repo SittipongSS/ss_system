@@ -114,7 +114,9 @@ function baseNextStep(request) {
      เหมือนใบที่ยังพัฒนาอยู่ ⇒ RD มองไม่ออกว่าใบไหนเหลือแค่ราคา · ปนแถวที่ยังทำอยู่ = ยังเป็น "ทำต่อ" (งานหลักมาก่อน)
      ⚠️ ไม่ทับ "รอกำหนดส่ง" ของ `requestNextStep` — ใบที่ยังไม่แจ้งวันยังต้องเห็นคำนั้นก่อน (ฝั่งเดียวกัน คำเดิม) */
   if (summary.waitingDept > 0) {
-    const verb = summary.awaitingPrice === summary.waitingDept ? 'ใส่ราคา' : 'ทำต่อ';
+    /* ม-159 — งานที่เหลือเป็นขั้นท้ายล้วน (ราคา · Ingredient List) = บอกก้าวนั้น · มีแถวรอราคาสักแถว = "ใส่ราคา" (ก้าวแรกของสองก้าว) */
+    const tail = summary.awaitingPrice + summary.awaitingIngredients === summary.waitingDept;
+    const verb = !tail ? 'ทำต่อ' : summary.awaitingPrice ? 'ใส่ราคา' : 'ใส่ Ingredient List';
     return { owner: 'dept', label: requestWaitLabel(request, 'dept', verb) };
   }
   /* ⭐ NPD: สินค้าในแบบฟอร์ม PDR ที่ยังไม่มีแถวงาน (งอกไม่สำเร็จ) = งานของฝ่าย (บันทึกแบบฟอร์มซ้ำ) · ไม่เช็ค

@@ -69,6 +69,7 @@ function middleStep(request) {
   const items = request.items || [];
   const summary = requestRowSummary(items);
   const awaitingPrice = items.filter((i) => rowStage(i) === 'awaiting_price').length;
+  const awaitingIngredients = items.filter((i) => rowStage(i) === 'awaiting_ingredients').length;
 
   if (!summary.total) {
     // ⭐ ไม่มีแถวแปลว่าอะไร ขึ้นกับหัวข้อ (มติผู้ใช้ 2026-08-09): หัวข้อที่ฝ่ายสร้าง
@@ -96,6 +97,10 @@ function middleStep(request) {
   // ถาวรถ้าไม่มีใครเห็น (กับดักข้อ 11 ของแผน)
   if (awaitingPrice) {
     return { label: 'รอใส่ราคา', hint: `${awaitingPrice} รายการที่คอนเฟิร์มแล้ว` };
+  }
+  // ม-159 — ใส่ราคาแล้ว เหลือ Ingredient List ของสูตร (ใบยังไม่จบ — ต้องเห็นเป็นพิเศษเหตุผลเดียวกับ "รอใส่ราคา")
+  if (awaitingIngredients) {
+    return { label: 'รอ Ingredient List', hint: `${awaitingIngredients} รายการที่ใส่ราคาแล้ว` };
   }
   if (summary.waitingDept) {
     return {

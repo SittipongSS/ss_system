@@ -8,20 +8,25 @@
 // `canPriceRow` · ถ้าหน้านี้กว้างกว่าด่าน = แถวที่กดแล้ว 409 (ของจริง: ใบที่ยกเลิกไปแล้วยังมีแถวคอนเฟิร์มค้าง)
 // ⚠️ **ป้ายตัวเลขบนเมนูนับด้วยตัวเดียวกัน** (`awaitingPriceCount`) — นับคนละตัวเมื่อไร ป้ายกับหน้าพูดไม่ตรงกัน
 // ⚠️ ไฟล์นี้ไม่แตะ DB และไม่รู้ว่า "วันนี้" คือวันไหน — ผู้เรียกส่งวันไทยมา (กติกาเดียวกับ perfumerBoard)
-import { canPriceRow } from '@/lib/requests/rowStage';
+import { canPriceRow, isConfirmedOpenRow, rowStage } from '@/lib/requests/rowStage';
+import { ingredientListMissing } from '@/lib/master/ingredientList';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 import { NO_PRICE_SLOTS_REASON, currentPriceToUse } from '@/lib/master/priceSlots';
 
 const DEPT = 'RD';
 
-/** ใบ × แถวที่รอ RD ใส่ราคาอยู่จริง — ด่านเดียวกับ POST `/api/sa/requests/[id]/items/[itemId]/price` */
+/**
+ * ใบ × แถวที่ RD ยังต้องทำขั้นท้าย — ด่านเดียวกับ POST `…/price` (รอใส่ราคา) และ POST `…/ingredients` (ม-159)
+ * ⭐ **แถวที่ใส่ราคาแล้วแต่รอ Ingredient List อยู่หน้านี้ด้วย** (มติเจ้าของ 03/11/2026 · ใส่ได้สามที่) — แถวยังไม่จบ
+ *   ถ้าหายจากหน้านี้ไปจะไม่มีจอไหนรวมให้ RD เห็น · แถวรอราคาที่สูตรขาด Ingredient List ก็ขึ้นว่าขาดในคอลัมน์ของมัน
+ */
 export function awaitingPriceItems(requests = []) {
   const out = [];
   for (const request of requests || []) {
     if (request?.dept !== DEPT || !REQUEST_OPEN_STATUSES.includes(request.status)) continue;
     for (const item of request.items || []) {
-      if (canPriceRow(item)) out.push({ request, item });
+      if (isConfirmedOpenRow(item)) out.push({ request, item });
     }
   }
   return out;
@@ -51,7 +56,10 @@ export function priceBoardRows(pairs = [], live = []) {
     } else if (scentSource?.name || scentSource?.code) {
       registry = { kind: 'scent', id: scentSource.id, code: scentSource.code, name: scentSource.name, categoryCode: null };
     }
-    const { entry, blocker } = currentPriceToUse(current);
+    // ม-159 — ราคาลงแล้ว (รอ Ingredient List) = ไม่มีปุ่มราคา · เหลือก้าวเดียว
+    const pricing = canPriceRow(item);
+    const { entry, blocker } = pricing ? currentPriceToUse(current) : { entry: null, blocker: '' };
+    const ingredient = ctx?.ingredient || { required: false, formulaId: null, current: null };
     return {
       itemId: item.id,
       requestId: request.id,
@@ -65,6 +73,8 @@ export function priceBoardRows(pairs = [], live = []) {
       name: [registry?.code, registry?.name].filter(Boolean).join(' ') || requestedText(item),
       lineKind: item.lineKind || null,
       sortOrder: item.sortOrder ?? 0,
+      // ขั้นของแถว — `awaiting_price` (ปุ่มราคา) · `awaiting_ingredients` (ราคาลงแล้ว เหลือ Ingredient List)
+      stage: rowStage(item),
       // วันที่ลูกค้าตอบ — คนกรอกเอง ย้อนหลังได้ (ไม่ใช่วันที่ RD รู้เรื่อง) ⇒ ป้ายบนจอเขียนว่า "ลูกค้าคอนเฟิร์ม"
       confirmedAt: item.outcomeAt || null,
       confirmedQty: item.confirmedQty ?? null,
@@ -84,11 +94,11 @@ export function priceBoardRows(pairs = [], live = []) {
         source: entry.source || null,
       } : null,
       useCurrentBlocker: blocker,
-      /* ⭐ Ingredient List ของสูตร (ม-158) — บังคับทั้ง "ใส่ราคา" และ "ใช้ราคานี้" · `current` = ค่าที่สูตรมีอยู่แล้ว (เติมให้ตรวจ)
-         ⚠️ ไม่มี `live` = ไม่รู้ ⇒ ถือว่าไม่บังคับบนจอ (POST ตัดสินจริงอยู่ดี — ตีกลับพร้อมเหตุ) */
-      ingredient: ctx?.ingredient || { required: false, formulaId: null, current: null },
+      /* ⭐ Ingredient List ของสูตร (ม-159) — ก้าวแยกจากราคา · `missing` = ปุ่ม "ใส่ Ingredient List" · `current` เติมให้ตอนแก้
+         ⚠️ ไม่มี `live` = ไม่รู้ ⇒ ไม่มีปุ่ม (POST ตัดสินจริงอยู่ดี) */
+      ingredient: { ...ingredient, missing: ingredientListMissing(ingredient) },
       // ไม่มีช่องให้ใส่ — เหตุจากตัวคิดช่องสด (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) ไม่งั้น "ยังไม่ผูก" · ข้อความเดียวกับที่ POST ตีกลับ
-      priceBlocker: slots.length ? '' : (ctx?.blocker || NO_PRICE_SLOTS_REASON),
+      priceBlocker: !pricing || slots.length ? '' : (ctx?.blocker || NO_PRICE_SLOTS_REASON),
     };
   });
 }
@@ -162,6 +172,9 @@ export function priceBoardTotals(rows = [], { todayIso = null } = {}) {
   const days = rows.map((r) => waitingDays(r, todayIso)).filter((d) => d != null);
   return {
     rows: rows.length,
+    // ม-159 — แยกสองก้าว: รอราคา · สูตรยังขาด Ingredient List (แถวเดียวอาจขาดทั้งสองอย่าง)
+    awaitingPrice: rows.filter((r) => r.stage === 'awaiting_price').length,
+    missingIngredients: rows.filter((r) => r.ingredient?.missing).length,
     requests: new Set(rows.map((r) => r.requestId)).size,
     maxDays: days.length ? Math.max(...days) : null,
     usable: rows.filter((r) => r.useCurrent && !r.useCurrentBlocker).length,

@@ -12,7 +12,7 @@
 // ⚠️ ด่านปุ่ม = `canAnswerRequest` ตัวเดียวกับที่ API ใช้ปฏิเสธ (ไม่มีสิทธิ์ = ไม่เห็นปุ่ม · กฎ UI ของระบบ)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Coins } from "lucide-react";
+import { Check, Coins, ListChecks } from "lucide-react";
 import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
@@ -22,8 +22,7 @@ import GatedAction from "@/components/ui/GatedAction";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
-import IngredientListField from "@/components/database/IngredientListField";
-import Modal from "@/components/Modal";
+import IngredientListModal from "@/components/database/IngredientListModal";
 import { apiJson } from "@/lib/apiFetch";
 import { businessDate } from "@/lib/businessDate";
 import { NA, fmtDate, fmtNumber, naText } from "@/lib/format";
@@ -35,17 +34,8 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { priceBoardGroups, priceBoardTotals, usablePriceNote, waitingDays } from "@/lib/rd/priceBoard";
 import styles from "./page.module.css";
 
-const COLS = 5;
+const COLS = 6;
 const PRICE_DIGITS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-
-// ข้อความยืนยันของ "ใช้ราคานี้" — กล่องยืนยันกับโมดัล Ingredient List พูดประโยคเดียวกัน
-const currentPriceText = (row) => {
-  const use = row.useCurrent;
-  return `ผูก${use.text} ${fmtNumber(use.unitPrice, PRICE_DIGITS)} ฿/กก.`
-    + `${use.revisionNo != null ? ` (rev ${use.revisionNo})` : ""} เข้ารายการ "${row.name}" ของ ${naText(row.docNo)}`;
-};
-const CURRENT_PRICE_DETAIL = "ไม่ออกราคารุ่นใหม่ — ทะเบียนวัสดุไม่เปลี่ยน · รายการนี้ถือว่าใส่ราคาแล้วและหายจากหน้านี้"
-  + " · ใบที่ใส่ราคาครบทุกรายการจะขึ้นว่า RD ตอบแล้ว";
 
 export default function RdPricesPage() {
   const me = useCapUser();
@@ -55,8 +45,8 @@ export default function RdPricesPage() {
   const [loadError, setLoadError] = useState("");
   const [pricing, setPricing] = useState(null);
   const [linking, setLinking] = useState(null);
-  // แถวที่กด "ใช้ราคานี้" แล้วต้องกรอก Ingredient List (ม-158) — เปิด `UseCurrentPriceModal`
-  const [using, setUsing] = useState(null);
+  // แถวที่กด "ใส่ Ingredient List" (ม-159) — เปิด `IngredientListModal` ตัวเดียวกับหน้าคำร้อง/หน้าสูตร
+  const [ingredientRow, setIngredientRow] = useState(null);
   const [collapsed, setCollapsed] = useState({});
   const startRun = useLatestRun();
 
@@ -92,35 +82,30 @@ export default function RdPricesPage() {
 
   /* ใช้ราคาในทะเบียน — กล่องยืนยันบอกผลก่อนกด (กติกาของระบบ: ทุกก้าวที่ปิดงานต้องบอกว่าจะเกิดอะไร)
      ⚠️ ส่ง rev ที่จอเห็นไปด้วย — มีคนออกราคาใหม่ระหว่างที่หน้าเปิดค้าง server ตีกลับ 409 แทนการผูกเลขที่ไม่เคยเห็น */
-  /* ⭐ แถวที่ต้องมี Ingredient List (ม-158 · สูตรหมวด 01/02 ยกเว้น 02-020) — กล่องยืนยันธรรมดาไม่มีช่องกรอก ⇒ เปิดโมดัล
-     ที่บอกผลแบบเดียวกัน + ช่อง Ingredient List (เติมของเดิมในสูตรให้ตรวจ) · แถวอื่นใช้กล่องยืนยันตามเดิม */
+  /* ⭐ ม-159 — ผลของการกดต่างกันตามว่าสูตรมี Ingredient List แล้วหรือยัง (ครบสองอย่างถึงจบ) ⇒ ประโยคบอกผลตามแถว */
   const applyCurrentPrice = async (row) => {
-    if (row.ingredient?.required) { setUsing(row); return; }
+    const use = row.useCurrent;
     const ok = await confirmAction({
       title: "ใช้ราคาในทะเบียน",
-      description: currentPriceText(row),
-      detail: CURRENT_PRICE_DETAIL,
+      description: `ผูก${use.text} ${fmtNumber(use.unitPrice, PRICE_DIGITS)} ฿/กก.`
+        + `${use.revisionNo != null ? ` (rev ${use.revisionNo})` : ""} เข้ารายการ "${row.name}" ของ ${naText(row.docNo)}`,
+      detail: "ไม่ออกราคารุ่นใหม่ — ทะเบียนวัสดุไม่เปลี่ยน · "
+        + (row.ingredient?.missing
+          ? "รายการนี้ยังรอ Ingredient List ของสูตร — ใส่ครบแล้วถึงหายจากหน้านี้"
+          : "รายการนี้ถือว่าใส่ราคาแล้วและหายจากหน้านี้ · ใบที่ครบทุกรายการจะขึ้นว่า RD ตอบแล้ว"),
       confirmLabel: "ใช้ราคานี้",
     });
     if (!ok) return;
-    try {
-      await linkCurrentPrice(row);
-    } catch (e) {
-      notifyToast.error(e.message || "ใช้ราคาในทะเบียนไม่สำเร็จ");
-    }
-  };
-
-  // ยิง "ใช้ราคานี้" — โยน error ให้ผู้เรียกเลือกที่โชว์ (toast · ในโมดัล) · รีโหลดตารางทุกทาง
-  const linkCurrentPrice = async (row, extra = {}) => {
-    const use = row.useCurrent;
     setLinking(row.itemId);
     try {
       await apiJson(`/api/sa/requests/${row.requestId}/items/${row.itemId}/price`, {
         method: "POST",
-        json: { useCurrent: { revisionId: use.revisionId }, ...extra },
+        json: { useCurrent: { revisionId: use.revisionId } },
         fallbackError: "ใช้ราคาในทะเบียนไม่สำเร็จ",
       });
       notifyToast(`ใช้ราคา ${use.short} แล้ว`);
+    } catch (e) {
+      notifyToast.error(e.message || "ใช้ราคาในทะเบียนไม่สำเร็จ");
     } finally {
       // ตีกลับ 4xx = จอไม่ตรงกับของจริง ⇒ ดึงใหม่ทั้งสองทาง (เบื้องหลัง — ตารางไม่หายทั้งก้อน)
       // ⚠️ ล็อกปุ่มของแถวจนตารางใหม่มาถึง — ปลดก่อน = แถวที่เพิ่งปิดยังกดซ้ำได้แล้วได้ 409 งง ๆ (กับดักเดียวกับหน้าใบ)
@@ -132,15 +117,21 @@ export default function RdPricesPage() {
     <Workspace
       icon={<Coins size={22} />}
       title="รอใส่ราคา"
-      subtitle="รายการที่ลูกค้าคอนเฟิร์มแล้ว รอ RD ใส่ราคา F · B · FB — ใส่เสร็จแล้วรายการหายจากหน้านี้เอง"
+      subtitle="รายการที่ลูกค้าคอนเฟิร์มแล้ว รอ RD ใส่ราคา F · B · FB และ Ingredient List ของสูตร — ครบแล้วรายการหายจากหน้านี้เอง"
     >
       <div className="flex flex-col gap-4">
         {/* ⚠️ 0 ก็เป็นข้อมูล — "รอใส่ราคา 0" คือคำตอบที่ RD เปิดหน้ามาเพื่อจะรู้ · ซ่อนตอนว่างแยกไม่ออกจาก "ยังโหลดไม่เสร็จ" */}
         {!loading && !loadError ? (
           <MetricStrip aria-label="ยอดรอใส่ราคาของฝ่าย">
+            {/* ม-159 — สองก้าวแยกกัน (มาไม่พร้อมกัน) แต่รายการจบเมื่อครบ ⇒ นับแยก · แถวเดียวอาจอยู่ทั้งสองการ์ด */}
             <Metric
-              label="รอใส่ราคา" value={`${totals.rows} รายการ`}
-              tone={totals.rows > 0 ? "warning" : undefined}
+              label="รอใส่ราคา" value={`${totals.awaitingPrice} รายการ`}
+              tone={totals.awaitingPrice > 0 ? "warning" : undefined}
+            />
+            <Metric
+              label="รอ Ingredient List" value={`${totals.missingIngredients} รายการ`}
+              tone={totals.missingIngredients > 0 ? "warning" : undefined}
+              note="สูตรหมวด 01/02 (ยกเว้น 02-020)"
             />
             <Metric label="ใบคำร้อง" value={`${totals.requests} ใบ`} note="ใส่ครบใบ = RD ตอบใบนั้นแล้ว" />
             <Metric
@@ -161,7 +152,7 @@ export default function RdPricesPage() {
         <ListPanel
           icon={<Coins size={17} aria-hidden="true" />}
           title="รายการรอราคา"
-          subtitle="จัดกลุ่มตามใบคำร้อง — ใบที่รอนานสุดอยู่บนสุด · ราคาลงทะเบียนวัสดุของกลิ่น/สูตรตามปกติ"
+          subtitle="จัดกลุ่มตามใบคำร้อง — ใบที่รอนานสุดอยู่บนสุด · ราคาลงทะเบียนวัสดุ · Ingredient List ลงทะเบียนสูตร"
           count={loading || loadError ? null : `${totals.rows} รายการ`}
           loading={loading}
         >
@@ -182,6 +173,7 @@ export default function RdPricesPage() {
                     <th className="num">รอมาแล้ว</th>
                     <th>ราคาในทะเบียน</th>
                     <th>ใส่ราคา</th>
+                    <th>Ingredient List</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -196,6 +188,7 @@ export default function RdPricesPage() {
                       onToggle={() => setCollapsed((c) => ({ ...c, [group.key]: !c[group.key] }))}
                       onPrice={setPricing}
                       onUseCurrent={applyCurrentPrice}
+                      onIngredients={setIngredientRow}
                     />
                   ))}
                 </tbody>
@@ -213,8 +206,6 @@ export default function RdPricesPage() {
         endpoint={pricing ? `/api/sa/requests/${pricing.requestId}/items/${pricing.itemId}/price` : ""}
         slots={pricing ? pricing.slots : null}
         blocker={pricing ? pricing.priceBlocker : ""}
-        // Ingredient List ของสูตร (ม-158) — ตัวคิดเดียวกับ POST
-        ingredient={pricing ? pricing.ingredient : null}
         hint={pricing ? `ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${pricing.customerName ? ` (ราคาเฉพาะ ${pricing.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง" : null}
         onSaved={async (msg) => {
@@ -228,70 +219,33 @@ export default function RdPricesPage() {
         onError={() => load({ background: true })}
       />
 
-      <UseCurrentPriceModal
-        row={using}
-        onClose={() => setUsing(null)}
-        onConfirm={async (ingredientList) => {
-          await linkCurrentPrice(using, { ingredientList });
-          setUsing(null);
+      {/* ม-159 — ก้าวแยกจากราคา · โมดัลตัวเดียวกับหน้าคำร้อง/หน้าสูตร · บันทึกแล้วแถวที่ใส่ราคาไว้จบเอง */}
+      <IngredientListModal
+        open={!!ingredientRow}
+        onClose={() => setIngredientRow(null)}
+        subtitle={ingredientRow ? `${ingredientRow.name} · ${naText(ingredientRow.docNo)}` : ""}
+        current={ingredientRow?.ingredient?.current || null}
+        endpoint={ingredientRow ? `/api/sa/requests/${ingredientRow.requestId}/items/${ingredientRow.itemId}/ingredients` : ""}
+        hint={ingredientRow
+          ? (ingredientRow.stage === "awaiting_ingredients"
+            ? "ราคาใส่แล้ว — บันทึกแล้วรายการนี้ครบและหายจากหน้านี้ · ลงทะเบียนสูตร (FG และคำร้องอื่นที่ใช้สูตรนี้อ่านตัวเดียวกัน)"
+            : "ลงทะเบียนสูตร — รายการยังรอราคาอยู่ ครบทั้งสองอย่างแล้วถึงจบ · ชื่อสาร INCI เรียงจากมากไปน้อย คั่นด้วยจุลภาค")
+          : null}
+        onSaved={async (msg) => {
+          const itemId = ingredientRow?.itemId || null;
+          setIngredientRow(null);
+          notifyToast(msg);
+          setLinking(itemId);
+          try { await load({ background: true }); } finally { setLinking(null); }
         }}
+        onError={() => load({ background: true })}
       />
     </Workspace>
   );
 }
 
-/* ── "ใช้ราคานี้" ของแถวที่ต้องมี Ingredient List (ม-158) ──────────────────────────────────────────────
-   ⭐ บอกผลแบบเดียวกับกล่องยืนยัน (กติกา #1223 ทุกก้าวที่ปิดงานต้องบอกว่าจะเกิดอะไร) + ช่องกรอกตัวเดียวกับโมดัลใส่ราคา
-   ⚠️ ตีกลับ = โชว์ในโมดัล ไม่ปิด (ของที่พิมพ์ไม่หาย) */
-function UseCurrentPriceModal({ row, onClose, onConfirm }) {
-  const [text, setText] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (row) { setText(row.ingredient?.current || ""); setError(""); }
-  }, [row]);
-  const close = () => { if (!saving) onClose(); };
-  const confirm = async () => {
-    setSaving(true); setError("");
-    try {
-      await onConfirm(text);
-    } catch (e) {
-      setError(e.message || "ใช้ราคาในทะเบียนไม่สำเร็จ");
-    } finally {
-      setSaving(false);
-    }
-  };
-  return (
-    <Modal
-      open={!!row} onClose={close} size="sm" dismissible={!saving} title="ใช้ราคาในทะเบียน"
-      footer={(
-        <>
-          <Button variant="quiet" onClick={close} disabled={saving}>ยกเลิก</Button>
-          <Button tone="primary" icon={<Check size={14} />} onClick={confirm} disabled={saving || !text.trim()}>
-            ใช้ราคานี้
-          </Button>
-        </>
-      )}
-    >
-      {row ? (
-        <>
-          <p className={styles.useLead}>{currentPriceText(row)}</p>
-          <p className={`${styles.sub} ${styles.useDetail}`}>{CURRENT_PRICE_DETAIL}</p>
-          <IngredientListField
-            id="use-current-ingredients" value={text} onChange={setText} disabled={saving} required
-            hint={row.ingredient?.current
-              ? "เติมจากทะเบียนสูตรแล้ว — ตรวจให้ตรงกับสูตรที่ลูกค้าคอนเฟิร์ม · แก้ที่นี่ = แก้ที่ทะเบียนสูตร"
-              : "สูตรนี้ยังไม่มี — ต้องใส่ก่อนปิดรายการ · ชื่อสาร INCI เรียงจากมากไปน้อย คั่นด้วยจุลภาค"}
-          />
-          {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-        </>
-      ) : null}
-    </Modal>
-  );
-}
-
 /* หนึ่งกอง = หนึ่งใบคำร้อง — หัวกองพับได้ · ยอดบนหัวกองเป็นยอดทั้งกอง · ลิงก์ไปใบอยู่ท้ายหัวกอง (ไม่ใช่ทั้งแถวคลิกได้) */
-function RowGroup({ group, today, canPrice, linking, collapsed, onToggle, onPrice, onUseCurrent }) {
+function RowGroup({ group, today, canPrice, linking, collapsed, onToggle, onPrice, onUseCurrent, onIngredients }) {
   const label = [group.docNo || "คำร้อง", group.customerName].filter(Boolean).join(" · ");
   return (
     <>
@@ -329,7 +283,10 @@ function RowGroup({ group, today, canPrice, linking, collapsed, onToggle, onPric
           </td>
           <td><CurrentPrices row={row} /></td>
           <td>
-            {canPrice ? (
+            {row.stage === "awaiting_ingredients" ? (
+              // ม-159 — ราคาลงแล้ว รอแค่ Ingredient List (คอลัมน์ถัดไป)
+              <span className={styles.done}>ใส่ราคาแล้ว</span>
+            ) : canPrice ? (
               <div className={styles.actions}>
                 {/* ⚠️ ไม่มีราคาในทะเบียนสักช่อง = ไม่มีอะไรให้ใช้ ⇒ ไม่โชว์ปุ่ม (ไม่ใช่ด่าน) · มีแต่หมดอายุ = โชว์แล้วบอกเหตุ */}
                 {row.useCurrent ? (
@@ -354,9 +311,33 @@ function RowGroup({ group, today, canPrice, linking, collapsed, onToggle, onPric
               </div>
             ) : <span className={styles.dim}>{NA}</span>}
           </td>
+          <td><IngredientCell row={row} canEdit={canPrice} busy={linking === row.itemId} onOpen={onIngredients} /></td>
         </tr>
       ))}
     </>
+  );
+}
+
+/* ── Ingredient List ของสูตรที่แถวผูก (ม-159) — ก้าวแยกจากราคา ──────────────────────────────────────────
+   ไม่ต้องมี (กลิ่นล้วน · 02-020) = ขีด · มีแล้ว = "มีแล้ว" · ยังไม่มี = ป้ายเตือน + ปุ่ม (เฉพาะคนที่ตอบฝ่ายนี้ได้ — ด่านเดียวกับ API) */
+function IngredientCell({ row, canEdit, busy, onOpen }) {
+  const plan = row.ingredient || {};
+  if (!plan.required) return <span className={styles.dim} title="ไม่ผูกสูตร หรือเป็นสูตรหัวน้ำหอม 02-020">{NA}</span>;
+  if (!plan.missing) return <span className={styles.done}>มีแล้ว</span>;
+  return (
+    <div className={styles.actions}>
+      <span className={styles.missing}>ยังไม่มี</span>
+      {canEdit ? (
+        <Button
+          size="sm" icon={<ListChecks size={14} aria-hidden="true" />}
+          tone={row.stage === "awaiting_ingredients" ? "primary" : undefined}
+          variant={row.stage === "awaiting_ingredients" ? "filled" : "quiet"}
+          disabled={busy} onClick={() => onOpen(row)}
+        >
+          ใส่ Ingredient List
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
