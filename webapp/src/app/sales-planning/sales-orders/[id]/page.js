@@ -171,7 +171,7 @@ import ExciseRoundsCard from "@/components/excise/ExciseRoundsCard";
 import ExciseRemainderDialog from "@/components/excise/ExciseRemainderDialog";
 import RegistrationWorkModal from "@/components/excise/RegistrationWorkModal";
 import { statusMeta } from "@/lib/excise/workflow";
-import { EXCISE_NOT_BILLED_KINDS } from "@/lib/excise/exciseNotBilled";
+import { exciseNotBilledTitle } from "@/lib/excise/exciseNotBilled";
 import {
   EXCISE_ORDER_MODAL_COPY, EXCISE_ORDER_STATUS_DESCRIPTION, excisePreVatAmount, exciseSourceOrderLabel, salesOrderApprovalDeal,
 } from "@/lib/excise/exciseSalesOrder";
@@ -1808,7 +1808,7 @@ export default function SalesOrderDetailPage() {
     ...filingState,
     exciseQuote: {
       ...exciseQuoteState,
-      notBilledLabel: exciseQuoteState?.notBilled ? EXCISE_NOT_BILLED_KINDS[exciseQuoteState.notBilled.kind]?.label : null,
+      notBilledLabel: exciseQuoteState?.notBilled ? exciseNotBilledTitle(exciseQuoteState.notBilled.kind) : null,
     },
     onCreateQuote: createExciseQuote,
     onNotBilled: () => { setNotBilledError(""); setNotBilledOpen(true); },

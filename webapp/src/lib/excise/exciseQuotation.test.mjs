@@ -472,3 +472,15 @@ test('จ่ายกรมไปแล้วก่อนเปิดระบ�
   const route = read('../../app/api/sales-planning/sales-orders/[id]/route.js');
   assert.match(route, /exciseNotBilledBlocker\(before, \{ liveQuote, clearing, filing, kind: input\.value\?\.kind \|\| null \}\)/);
 });
+
+test('ชื่อเหตุบอกขาเงิน + ผลต่อคิว RA ทุกเหตุ — ป้าย RA ตรงกับ NOT_BILLED_FILING_KINDS (มติเจ้าของ 03/11)', async () => {
+  const { EXCISE_NOT_BILLED_KINDS, exciseNotBilledTitle } = await import('./exciseNotBilled.js');
+  const { NOT_BILLED_FILING_KINDS } = await import('./raFilingRules.js');
+  for (const [kind, meta] of Object.entries(EXCISE_NOT_BILLED_KINDS)) {
+    const filed = NOT_BILLED_FILING_KINDS.includes(kind);
+    assert.equal(meta.ra, filed ? 'RA ยังต้องยื่นกรม' : 'RA ไม่ต้องยื่น', `${kind}: ป้าย RA ต้องตรงกับคิวจริง`);
+    assert.equal(exciseNotBilledTitle(kind), `${meta.label} — ${meta.ra}`);
+  }
+  assert.equal(EXCISE_NOT_BILLED_KINDS.collected_outside.label, 'เก็บเงินลูกค้านอกระบบแล้ว', 'ขาลูกค้า→เรา ไม่ปนกับขาเรา→กรม');
+  assert.equal(exciseNotBilledTitle('paid_before_launch'), 'จ่ายกรมไปแล้วก่อนเปิดระบบ — RA ไม่ต้องยื่น');
+});

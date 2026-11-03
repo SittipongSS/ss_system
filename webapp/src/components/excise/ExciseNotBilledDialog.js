@@ -16,7 +16,12 @@ import styles from "./ExciseNotBilledDialog.module.css";
 
 /* เหตุที่เลือกได้ตาม SO ใบนี้ — "จ่ายกรมไปแล้วก่อนเปิดระบบ" ขึ้นเฉพาะใบที่อนุมัติก่อนวันเปิดระบบ (มติ 03/11 V18 · route ตรวจซ้ำ) */
 const kindOptions = (order) => Object.entries(exciseNotBilledKindsFor(order))
-  .map(([value, meta]) => ({ value, label: meta.label, description: meta.hint }));
+  .map(([value, meta]) => ({
+    value,
+    /* ชื่อเหตุ + ผลต่อคิว RA (ชุดเดียวกับ `exciseNotBilledTitle`) · ป้าย RA ไม่ตัดกลางคำ */
+    label: <>{meta.label} <span className={styles.raTag}>— {meta.ra}</span></>,
+    description: meta.hint,
+  }));
 
 export default function ExciseNotBilledDialog({ open, orderNumber, order = null, busy = false, error = "", onConfirm, onClose }) {
   const options = kindOptions(order);
@@ -37,8 +42,8 @@ export default function ExciseNotBilledDialog({ open, orderNumber, order = null,
     <Modal open={open} onClose={onClose} title="ไม่เรียกเก็บค่าสรรพสามิตในระบบ" size="sm" dismissible={!busy}>
       <div className={styles.body}>
         <p className={styles.description}>
-          {orderNumber ? `${orderNumber} — ` : ""}จะไม่ออกใบเสนอราคาค่าสรรพสามิตของใบนี้ ฝ่าย RA ยังยื่นกรมตามเดิม
-          (ยกเว้น “ไม่ต้องเสียภาษี” และ “จ่ายกรมไปแล้วก่อนเปิดระบบ”) · ถอนการตัดสินได้จนกว่า RA จะเริ่มยื่น
+          {orderNumber ? `${orderNumber} — ` : ""}จะไม่ออกใบเสนอราคาค่าสรรพสามิตของใบนี้ · แต่ละเหตุบอกไว้ว่า RA ยังต้องยื่นกรมไหม
+          · ถอนการตัดสินได้จนกว่า RA จะเริ่มยื่น
         </p>
         <div className="form-group">
           <span>เหตุที่ไม่เรียกเก็บ *</span>
