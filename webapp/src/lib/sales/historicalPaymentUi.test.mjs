@@ -135,10 +135,10 @@ test('แผงงวด: ใบย้อนหลังไม่มี preview/
 test('เซลล์ช่วงครอบ: ถามด่านแบบไม่ส่งค่า · ตรวจร่างด้วยด่านตัวเดียวกัน · ล็อกบอกเหตุตอนกด · วันเริ่มของงวดยกมาไม่ใช่ช่องกรอก', () => {
   const panel = code(PANEL);
   // 1. ถามสิทธิ์แบบไม่ส่งค่า — ห้ามมี argument ที่สามใน probe ของเซลล์
-  /* `coverModeLock` = อยู่ในโหมดตั้งวันงวด (ร่างสองชุดไม่ซ้อนกัน · มติ 28/09) — เหตุคงที่ ไม่ขึ้นกับค่าในเซลล์ */
+  /* `coverModeLock` = มีร่างวันงวดค้าง (ร่างสองชุดไม่ค้างพร้อมกัน · มติ 02/11 สองช่องแยก) — เหตุคงที่ ไม่ขึ้นกับค่าในเซลล์ */
   assert.match(panel, /const lock = row\.preview \? "[^"]*" : coverModeLock \|\| gate\(row, "coverage"\);/,
     'probe ของเซลล์ต้องไม่ส่ง coversFrom/coversTo — ส่งเมื่อไรเซลล์ยุบเป็นข้อความตามค่าที่ไม่ผ่าน');
-  assert.match(panel, /const coverModeLock = dateMode\.active \? "[^"]+" : "";/, 'ล็อกของโหมดตั้งวันต้องเป็นเหตุคงที่ (ไม่อ่านค่าร่าง)');
+  assert.match(panel, /const coverModeLock = dateMode\.dirty \? "[^"]+" : "";/, 'ล็อกเพราะร่างวันงวดค้างต้องเป็นเหตุคงที่ (ไม่อ่านค่าร่าง)');
   // 2. ร่างถูกตรวจด้วยด่านตัวเดียวกัน ด้วยค่าที่จะส่งจริง (`|| null` เหมือน saveCoverDrafts)
   const draftCheck = slice(panel, 'const coverDraftErrors =', 'const coverInvalid');
   assert.match(draftCheck, /gate\(row, "coverage", \{/);

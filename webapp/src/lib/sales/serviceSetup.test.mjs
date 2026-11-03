@@ -305,7 +305,7 @@ test('งวดผูกเหตุการณ์ (ไม่มีกำหน
   const issues = serviceSetupIssues(completeCtx({ installments: rows }));
   assert.deepEqual(keys(issues), ['due_missing']);
   assert.deepEqual([issues[0].installmentId, issues[0].seq, issues[0].field], ['I4', 4, 'dueDate']);
-  assert.equal(issues[0].message, 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือเลือก ‘รอเหตุการณ์’');
+  assert.equal(issues[0].message, 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ');
 });
 
 test('ลูกค้ามีรอบวางบิลรายเดือน: ต้องมีวันวางบิลหรือเหตุการณ์ · ลูกค้าไม่มีเครดิตไม่ต้อง', () => {
@@ -1274,7 +1274,7 @@ test('F10: ลูกค้าวางบิลได้ทุกวัน (ไ�
   const anyday = { billing: { mode: 'anyday' }, payment: { mode: 'credit', days: 30 } };
   const issues = serviceSetupIssues(completeCtx({ customerBillingRule: anyday }));
   assert.equal(issues.filter((i) => i.key === 'billing_missing').length, 12);
-  assert.equal(issues[0].message, 'งวด 1: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’');
+  assert.equal(issues[0].message, 'งวด 1: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ');
   assert.equal(issues[0].billingMode, 'anyday');
   const monthly = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };
   const m = serviceSetupIssues(completeCtx({ customerBillingRule: monthly }));
