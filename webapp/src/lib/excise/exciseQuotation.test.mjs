@@ -295,8 +295,11 @@ test('exciseHandledOrderIds (PR4): ลูกค้ารับใบแล้ว
 });
 
 // ── 4. ไม่เรียกเก็บในระบบ ─────────────────────────────────────────────────────────────────
-test('exciseNotBilledInput / Blocker / Patch — ตรงกับ CHECK ของ 0414 ทุกข้อ', () => {
-  assert.equal(Object.keys(EXCISE_NOT_BILLED_KINDS).join(), 'collected_outside,included_in_price,not_liable');
+test('exciseNotBilledInput / Blocker / Patch — ตรงกับ CHECK ของ 0414 + 0419 ทุกข้อ', () => {
+  assert.equal(Object.keys(EXCISE_NOT_BILLED_KINDS).join(), 'collected_outside,included_in_price,not_liable,paid_before_launch');
+  // ชุดชนิดในแอป = ชุดใน CHECK ล่าสุด (0419) ตัวต่อตัว
+  const check = read('../../../supabase/migrations/0419_excise_paid_before_launch.sql').match(/"exciseNotBilledKind" IN \(([^)]+)\)/)[1];
+  assert.deepEqual(check.split(',').map((k) => k.trim().replace(/'/g, '')), Object.keys(EXCISE_NOT_BILLED_KINDS));
   assert.match(exciseNotBilledInput({ kind: 'x', reason: 'เหตุผลยาวพอสมควร' }).error, /เลือกเหตุ/);
   assert.match(exciseNotBilledInput({ kind: 'not_liable', reason: 'สั้น' }).error, /10–500/);
   assert.match(exciseNotBilledInput({ kind: 'not_liable', reason: 'เหตุผลยาวพอสมควร', ref: 'x'.repeat(101) }).error, /100/);
@@ -371,7 +374,7 @@ test('route SO ลูกค้า: ล็อก Q16 ก่อนย้อนอ�
   const so = code('../../app/api/sales-planning/sales-orders/[id]/route.js');
   const lock = so.indexOf("const lock = await exciseSourceLock(supabase, before, action);");
   assert.ok(lock > 0 && lock < so.indexOf("if (action === 'revoke') {") && lock < so.indexOf("if (action === 'cancel') {"));
-  assert.match(so, /exciseNotBilledBlocker\(before, \{ liveQuote, clearing, filing \}\)/);
+  assert.match(so, /exciseNotBilledBlocker\(before, \{ liveQuote, clearing, filing, kind: input\.value\?\.kind \|\| null \}\)/);
   assert.match(so, /\.eq\('updatedAt', expected\.value\)/);
 });
 
@@ -448,4 +451,24 @@ test('exciseHandledOrderIds (แบ่งรอบ): รอบจบหมดแ
   };
   const handled = await exciseHandledOrderIds(db, ['SO-A', 'SO-B', 'SO-C', 'SO-D', 'SO-E'].map((id) => ({ id })));
   assert.deepEqual([...handled].sort(), ['SO-B', 'SO-C', 'SO-D', 'SO-E']);
+});
+
+// ── 8. จ่ายกรมไปแล้วก่อนเปิดระบบ (มติเจ้าของ 03/11 V16–V18 · mig 0419) ──────────────────────────────────
+test('จ่ายกรมไปแล้วก่อนเปิดระบบ: SA เลือกได้เฉพาะ SO ที่อนุมัติก่อน 03/11 (วันไทย) · ไม่เข้าคิว RA · เหตุผลอย่างเดียว', async () => {
+  const { exciseNotBilledKindsFor } = await import('./exciseNotBilled.js');
+  const { NOT_BILLED_FILING_KINDS } = await import('./raFilingRules.js');
+  const old = approvedOrder({ approvedAt: '2026-10-01T03:00:00Z' });
+  const fresh = approvedOrder({ approvedAt: '2026-11-03T02:00:00Z' });
+  assert.ok('paid_before_launch' in exciseNotBilledKindsFor(old));
+  assert.equal('paid_before_launch' in exciseNotBilledKindsFor(fresh), false, 'ใบหลังเปิดระบบไม่มีตัวเลือกนี้');
+  assert.equal(exciseNotBilledBlocker(old, { kind: 'paid_before_launch' }), null);
+  assert.match(exciseNotBilledBlocker(fresh, { kind: 'paid_before_launch' }), /ก่อนเปิดระบบ \(2026-11-03\)/);
+  assert.equal(exciseNotBilledBlocker(fresh, { kind: 'collected_outside' }), null, 'เหตุอื่นใช้ได้ทุกใบตามเดิม');
+  assert.equal(NOT_BILLED_FILING_KINDS.includes('paid_before_launch'), false, 'ไม่เข้าคิวยื่นของ RA');
+  assert.deepEqual(exciseNotBilledInput({ kind: 'paid_before_launch', reason: 'RA ชำระกรมแล้วเดือน ก.ย.' }).value,
+    { kind: 'paid_before_launch', reason: 'RA ชำระกรมแล้วเดือน ก.ย.', ref: null }, 'เลขอ้างอิงไม่บังคับ');
+  const sql = read('../../../supabase/migrations/0419_excise_paid_before_launch.sql');
+  assert.match(sql, /"exciseNotBilledKind" <> 'paid_before_launch'\s+OR \("approvedAt" IS NOT NULL AND "approvedAt" < '2026-11-03 00:00:00\+07'\)/, 'ฐานกันซ้ำ');
+  const route = read('../../app/api/sales-planning/sales-orders/[id]/route.js');
+  assert.match(route, /exciseNotBilledBlocker\(before, \{ liveQuote, clearing, filing, kind: input\.value\?\.kind \|\| null \}\)/);
 });

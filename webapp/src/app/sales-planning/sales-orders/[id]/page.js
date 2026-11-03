@@ -2693,6 +2693,7 @@ export default function SalesOrderDetailPage() {
           <ExciseNotBilledDialog
             open
             orderNumber={order.orderNumber}
+            order={order}
             busy={busy === "set_excise_not_billed"}
             error={notBilledError}
             onConfirm={confirmNotBilled}
