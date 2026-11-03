@@ -52,6 +52,10 @@ const SCOPE_RULES = {
   rdPricing: (user) => (canUser(user, 'requests:answer')
     && answerableDepts(user).filter(deptHasOwnModule).includes('RD') ? 'dept' : null),
 
+  /* รอลง BOM (mig 0419) — งานของทั้งฝ่าย RD (ใครในฝ่ายก็รับได้ · มติข้อ 9) · ด่านเดียวกับเมนู (`requests:answer` + บ้าน RD) */
+  rdBom: (user) => (canUser(user, 'requests:answer')
+    && answerableDepts(user).filter(deptHasOwnModule).includes('RD') ? 'dept' : null),
+
   leads: (user) => {
     if (!canViewLeads(user)) return null;
     const role = user?.role;

@@ -41,7 +41,12 @@ import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
 import { exciseRecommendationState } from "@/lib/excise/recommendation";
 import { statusMeta } from "@/lib/excise/workflow";
 import { apiCache } from "@/lib/apiCache";
-import { apiFetch } from "@/lib/apiFetch";
+import { apiFetch, apiJson } from "@/lib/apiFetch";
+import ProductBomStatus from "@/components/database/ProductBomStatus";
+import { confirmAction } from "@/components/ui/ConfirmDialog";
+import { bomSendBlocker, bomStatusOf, hasBomStep } from "@/lib/master/productBom";
+import { useCapUser, useDepartment } from "@/lib/roleContext";
+import { canAccessRd } from "@/lib/permissions";
 
 // หน้า detail สินค้า (รื้อจัดหน้า — มติผู้ใช้ 2026-07-19): "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
 //   - แถบหัว = ตัวตน (ชื่อ/FG/แบรนด์/สร้างเมื่อ) + ตัวเลขความสัมพันธ์ (โครงการ/ใบสั่งซื้อ/ภาษี)
@@ -96,6 +101,10 @@ export default function ProductDetails() {
      เอกสารแนบ) อยู่บนหน้านี้หน้าเดียว
      ⚠️ ตรรกะ/โมดัลอยู่ในฮุคชุดเดียวกับหน้าทะเบียน ห้ามเขียนซ้ำ */
   const myTeams = useTeams();
+  /* คนของโมดูล RD เห็นทางไปคิวลง BOM (ปุ่มของ RD อยู่ที่คิว ไม่ใช่ที่นี่) — ด่านเดียวกับเมนู/API ของคิว */
+  const capUser = useCapUser();
+  const department = useDepartment();
+  const rdViewer = canAccessRd({ ...capUser, department });
 
   const [product, setProduct] = useState(null);
   // แถวหมวดสินค้า — ใช้ตัดสินธงสรรพสามิต/จดแจ้ง อย. ของหมวด (mig 0131)
@@ -327,6 +336,23 @@ export default function ProductDetails() {
     },
   }[exciseRec.kind];
 
+  /* ── ขั้นลง BOM (mig 0419 · มติเจ้าของ 03/11/2026) ────────────────────────────────
+     ⚠️ ด่าน "ส่ง" = `bomSendBlocker` ตัวเดียวกับที่ API ปฏิเสธ — เงื่อนไขของสินค้าไม่ผ่าน = ปุ่มยังโชว์ บอกเหตุ (กฎ UI)
+     ⚠️ ทุกปุ่มมีกล่องยืนยันบอกผลก่อนกด (สูตร/ปริมาตรจะล็อก · RD ได้กระดิ่ง) */
+  const runBom = async (action, { title, description, detail, confirmLabel, done }) => {
+    const yes = await confirmAction({ title, description, detail, confirmLabel });
+    if (!yes) return;
+    setIsUpdating(true);
+    try {
+      await apiJson(`/api/products/${id}/bom`, { method: "POST", json: { action }, fallbackError: "บันทึกสถานะ BOM ไม่สำเร็จ" });
+      setToast({ kind: "success", msg: done });
+    } catch (e) {
+      setToast({ kind: "error", msg: e.message || "บันทึกสถานะ BOM ไม่สำเร็จ" });
+    }
+    // ตีกลับ 409 = จอไม่ตรงกับของจริง (RD รับเรื่องไปก่อน) ⇒ ดึงใหม่ทั้งสองทาง · ปุ่มล็อกจนแถวใหม่มาถึง
+    try { await fetchProduct(); } finally { setThreadToken((n) => n + 1); setIsUpdating(false); }
+  };
+
   /* ── Control Panel ของสินค้า ───────────────────────────────────────────────
      สถานะสองแกนของสินค้าหนึ่งตัว ต้องไม่ยัดเป็นป้ายเดียวกัน:
        · ด่านอนุมัติ (approvalStatus) — คุมว่าสินค้าโผล่ใน picker ของระบบอื่นไหม
@@ -352,10 +378,30 @@ export default function ProductDetails() {
     onClick: () => setShowEdit(true),
     disabled: isUpdating,
   };
+  const bomStep = hasBomStep(product);
+  const bomStatus = bomStatusOf(product);
+  const bomBlocker = bomStep ? bomSendBlocker(product, { formulaComponents: product.formulaComponents }) : "";
+  const bomSendAction = bomStep && canEditProducts && (bomStatus == null || bomStatus === "returned") && {
+    id: "bom-send",
+    kind: "submit",
+    label: bomStatus === "returned" ? "ส่ง RD ลง BOM อีกครั้ง" : "ส่ง RD ลง BOM",
+    disabled: isUpdating || !!bomBlocker,
+    disabledReason: bomBlocker || undefined,
+    onClick: () => runBom("send", {
+      title: "ส่ง RD ลง BOM",
+      description: `ส่ง ${decideSubject} ให้ RD ลง BOM ใน Express`,
+      detail: "RD ทุกคนได้กระดิ่ง · สูตร/กลิ่น และปริมาตรบรรจุจะล็อกตั้งแต่ตอนนี้ — ดึงกลับได้จนกว่า RD จะรับเรื่อง",
+      confirmLabel: "ส่ง RD",
+      done: "ส่ง RD ลง BOM แล้ว",
+    }),
+  };
+  /* ⭐ ส่ง RD เป็นปุ่มหลักเมื่อพร้อมส่งจริงเท่านั้น — FG เก่าที่ยังไม่ผูกสูตร (ส่วนใหญ่ของทะเบียน) ปุ่มหลักยังเป็น "แก้ไข"
+     เพราะก้าวถัดไปของมันคือไปผูกสูตรก่อน */
+  const bomPrimary = !canDecide && bomSendAction && !bomBlocker;
   const productActions = {
     /* ปุ่มหลัก = ก้าวถัดไปของระเบียน — ใบที่รออนุมัติและคนดูอนุมัติได้ ก้าวถัดไปคือ
        "อนุมัติ" ไม่ใช่ "แก้ไข" (ผังเดียวกับการ์ด control ของหน้าเอกสาร) */
-    primaryAction: canDecide
+    primaryAction: bomPrimary ? bomSendAction : canDecide
       ? {
         id: "approve",
         kind: "approve",
@@ -374,6 +420,27 @@ export default function ProductDetails() {
         disabled: isUpdating,
       },
       canDecide && editAction,
+      bomPrimary && editAction && { ...editAction, variant: "outline" },
+      !bomPrimary && bomSendAction,
+      bomStep && canEditProducts && bomStatus === "queued" && {
+        id: "bom-pullback",
+        kind: "withdraw",
+        label: "ดึงกลับจาก RD",
+        disabled: isUpdating,
+        onClick: () => runBom("pullback", {
+          title: "ดึงเรื่องลง BOM กลับ",
+          description: `ดึง ${decideSubject} ออกจากคิว RD`,
+          detail: "RD ยังไม่รับเรื่อง — แถวหายจากคิว RD และสูตร/ปริมาตรกลับมาแก้ได้ · แก้เสร็จแล้วกดส่งใหม่",
+          confirmLabel: "ดึงกลับ",
+          done: "ดึงเรื่องกลับแล้ว — แก้สูตร/ปริมาตรได้",
+        }),
+      },
+      bomStep && rdViewer && bomStatus && bomStatus !== "returned" && {
+        id: "bom-queue",
+        kind: "goto",
+        label: "เปิดคิวลง BOM",
+        href: "/rd/bom",
+      },
       canEditProducts && exciseRec?.kind === "unregistered" && regItems.some((item) => item.key === "new") && {
         id: "excise",
         kind: "submit",
@@ -437,9 +504,15 @@ export default function ProductDetails() {
         dangerActions={productActions.dangerActions}
         busy={isUpdating}
         /* เหตุผลที่ถูกตีกลับต้องอยู่ตรงที่คนกำลังจะกดแก้ ไม่ใช่ให้ไปหาในเธรด */
-        notices={approvalView.rejected && product.rejectionReason
-          ? <span className="ui-badge">เหตุผลที่ตีกลับ: {product.rejectionReason}</span>
-          : null}
+        notices={(approvalView.rejected && product.rejectionReason) || bomStep ? (
+          <>
+            {approvalView.rejected && product.rejectionReason
+              ? <span className="ui-badge">เหตุผลที่ตีกลับ: {product.rejectionReason}</span>
+              : null}
+            {/* สถานะ BOM — แกนที่สาม (คนละเรื่องกับอนุมัติ/ใช้งาน) · ปุ่มของมันอยู่ในช่องปุ่มของการ์ดนี้ */}
+            {bomStep ? <ProductBomStatus product={product} /> : null}
+          </>
+        ) : null}
         footer={approvalView.status === "approved" && canEditProducts
           ? <span>แก้ข้อมูลสินค้าที่อนุมัติแล้ว = กลับไปรออนุมัติใหม่ และสินค้าจะหลุดจากรายการเลือกของทุกระบบจนกว่าจะอนุมัติอีกครั้ง (ยกเว้นหมายเหตุบนเอกสารขาย)</span>
           : null}

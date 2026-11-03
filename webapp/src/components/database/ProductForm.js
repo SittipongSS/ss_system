@@ -20,6 +20,7 @@ import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import StatusNotice from "@/components/ui/StatusNotice";
 import {
   RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
 } from "@/lib/master/categoryOf";
@@ -165,6 +166,8 @@ export default function ProductForm({
   nextFgRunNo = null,        // เลขรันถัดไปสำหรับแถบรหัส (พรีวิว ไม่ใช่เลขที่จองแล้ว)
   fgLocked = false,          // รหัสที่ระบบออกให้ = ล็อกตอนแก้ (API บังคับซ้ำอยู่แล้ว)
   selfId = null,             // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
+  // โหมดแก้: ส่ง RD ลง BOM แล้ว (mig 0419) ⇒ สูตร/กลิ่น + ปริมาตร/หน่วยบรรจุล็อก · ค่า = ข้อความบอกทางออก (PATCH ตีกลับ 409 ซ้ำอยู่แล้ว)
+  bomLock = "",
 }) {
   const set = (k) => (e) => onForm({ [k]: e?.target ? e.target.value : e });
   const money = (v) => (v == null || v === "" || Number.isNaN(Number(v)) ? "-" : fmtMoney(v));
@@ -476,24 +479,34 @@ export default function ProductForm({
           </h3>
         </div>
         <div className="form-grid cols-2">
+          {/* ส่ง RD ลง BOM แล้ว (mig 0419) — บอกตรงหัวบล็อกว่าทำไมช่องสูตร/ปริมาตรกดไม่ได้ และต้องทำอะไรก่อน */}
+          {bomLock ? (
+            <div className="col-span-2">
+              <StatusNotice tone="info">{bomLock}</StatusNotice>
+            </div>
+          ) : null}
           {/* ⭐ เลือกจากทะเบียนสูตร ไม่ใช่พิมพ์เอง (PR-5) — เดิมเป็นสามช่องข้อความ
               (ชื่อ/รหัส/วันที่) ซึ่งเป็นสาเหตุที่บน prod มี **สินค้า 10 แถวที่เอา
               ชื่อกลิ่นไปกรอกช่องชื่อสูตร** เพราะตอนนั้นระบบยังไม่มีที่เก็บกลิ่น
               · ชื่อ/รหัส/วันที่ตอนนี้ derive จากทะเบียน server เติมให้เอง */}
           {/* ชุดของขวัญ (01-037 · มติ 2026-10-05 · mig 0403) ผูกได้หลายสูตร แถวละ หมวด → สูตร แทนช่องสูตรเดี่ยว */}
           {giftSet ? (
-            <GiftSetFormulaRows
-              rows={Array.isArray(form.formulaComponents) ? form.formulaComponents : []}
-              onRows={(formulaComponents) => onForm({ formulaComponents })}
-              formulas={formulas}
-              productTypes={productTypes}
-            />
+            /* fieldset ปิดปุ่มเพิ่ม/ลบแถวและตัวเลือกทั้งชุดทีเดียวตอนล็อก BOM · `contents` = ไม่เพิ่มกล่องในกริด */
+            <fieldset disabled={!!bomLock} className="contents">
+              <GiftSetFormulaRows
+                rows={Array.isArray(form.formulaComponents) ? form.formulaComponents : []}
+                onRows={(formulaComponents) => onForm({ formulaComponents })}
+                formulas={formulas}
+                productTypes={productTypes}
+              />
+            </fieldset>
           ) : fragranceOil ? (
           <div className="form-group col-span-2">
             <label>กลิ่น</label>
             <SearchableSelect
               value={form.scentId ?? ""}
               onChange={(v) => onForm({ scentId: v })}
+              disabled={!!bomLock}
               placeholder="— เลือกกลิ่นจากทะเบียน —"
               options={scentOptions}
             />
@@ -511,6 +524,7 @@ export default function ProductForm({
             <SearchableSelect
               value={form.formulaId ?? ""}
               onChange={(v) => onForm({ formulaId: v })}
+              disabled={!!bomLock}
               placeholder="— เลือกสูตรจากทะเบียน —"
               options={formulaOptions}
             />
@@ -547,7 +561,7 @@ export default function ProductForm({
           {showPackaging && (
           <div className="form-group">
             <label>ปริมาตร/น้ำหนักบรรจุ <span className="text-[var(--red)]">*</span></label>
-            <input type="number" name="volume" value={form.volume} onChange={set("volume")} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
+            <input type="number" name="volume" value={form.volume} onChange={set("volume")} disabled={!!bomLock} required min="0.01" step="0.01" className="premium-input w-full font-mono" />
             {/* ⚠️ ทั้งสองช่องเป็น **ดรอปดาวน์** ตามกติกาคอนโทรล v2 (docs/form-design-rules.md):
                 ChoiceChips ใช้กับชุด ≤6 เท่านั้น · รอบเพิ่มหน่วย 2026-08-20 รอบสอง ทำให้
                 หน่วยบรรจุเป็น 8 ตัว และหน่วยขายเป็น 7 ตัว = เกินเกณฑ์ทั้งคู่
@@ -557,6 +571,7 @@ export default function ProductForm({
                 name="volumeUnit"
                 value={form.volumeUnit || DEFAULT_VOLUME_UNIT}
                 onChange={set("volumeUnit")}
+                disabled={!!bomLock}
                 aria-label="หน่วยปริมาตร/น้ำหนักบรรจุ"
                 fullWidth
               >
