@@ -8,8 +8,6 @@ import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtMoney, naText, NA } from "@/lib/format";
-import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
@@ -23,13 +21,12 @@ import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
 import styles from "./page.module.css";
-import DataList from "@/components/excise/DataList";
+import FilingLinesTable from "@/components/excise/FilingLinesTable";
+import Select from "@/components/ui/Select";
+import { filingMonthLabel } from "@/lib/excise/raFilingMonth";
 import FilterBar from "@/components/excise/FilterBar";
-import StatusBadge from "@/components/excise/StatusBadge";
 import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 
-// ยอด 0 ≠ ยกเว้น — ใบที่สินค้าไม่มีราคาขายปลีกต้องเห็น ฿0.00 ตามจริง (isExemptFiling · ตรวจระบบ 2026-10-26)
-const taxText = (o) => (isExemptFiling(o) ? "ยกเว้นภาษี" : fmtMoney(o.totalTax || 0));
 
 /* ── งานหนึ่งแถวของรายการ (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11) ─────────────────────────────────────────
    รายการเดียวของ RA: แถวคิวที่ยังไม่มีบันทึก (กำลังมา · รอ RA — คำนวณสดจาก /api/tax/orders/queue) + บันทึกการยื่น
@@ -105,6 +102,13 @@ function FilingsPageInner() {
   /* คิวงานของ RA ที่ยังไม่มีบันทึก (PR5 + มติเจ้าของ 29/10 + v3) — กำลังมา (ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว) + รอ RA
      ⇒ RA เห็นงานบนหน้านี้ตั้งแต่ใบเสนอราคาอนุมัติ ไม่ใช่ตารางว่าง "0 ใบ" · โหลดเฉพาะฝ่าย RA */
   const { data: raQueue, loading: lQueue, error: queueError, staleError: queueStale, errorDetail: queueDetail, loaded: queueLoaded, reload: reloadQueue } = useApiList(canFile ? "/api/tax/orders/queue" : null);
+  /* ⭐ ตารางแบบตารางเดิมของ RA (มติเจ้าของ 03/11 V20–V23): รายการสินค้า + วันที่ส่งของของทุกงาน ติดกับแถวงานด้วยคีย์
+     (`lib/excise/raFilingTable`) · สิทธิ์เดียวกับใบสรุปรายการยื่น */
+  const canReadTable = useCan("ra:view") || canFile;
+  const { data: tableRows, loading: lTable, error: tableError, staleError: tableStale, errorDetail: tableDetail, loaded: tableLoaded, reload: reloadTable } = useApiList(canReadTable ? "/api/tax/orders/table" : null);
+  const detailByKey = useMemo(() => new Map((tableRows || []).map((row) => [row.key, row])), [tableRows]);
+  /* เดือนของวันที่ส่งของ (หัวตารางเดิม "M.10/69") — "all" = ทุกเดือน · ตัวเลือกมาจากงานที่มีจริง */
+  const [month, setMonth] = useState("all");
 
   /* ── งานที่เปิดอยู่ (`?start=<คีย์งาน>`) — มาจากแถวในรายการ หรือคิวบนภาพรวม /tax · `?create=` คือคีย์เดิมของ PR5 ── */
   const startKey = searchParams.get("start") || searchParams.get("create") || "";
@@ -138,6 +142,11 @@ function FilingsPageInner() {
       blockedNote: "งานกำลังมา/รอ RA ยังแสดงไม่ได้ (ไม่ได้แปลว่าไม่มีงานรอ)",
       staleNote: "งานกำลังมา/รอ RA เป็นของรอบก่อน ไม่ใช่ล่าสุด",
     },
+    {
+      label: "รายการสินค้าของงาน", error: tableError || tableStale, empty: !tableLoaded, detail: tableDetail, reload: reloadTable, blocks: "detail",
+      blockedNote: "รายการสินค้าและวันที่ส่งของยังแสดงไม่ได้ (งานยังอยู่ครบ)",
+      staleNote: "รายการสินค้าเป็นของรอบก่อน ไม่ใช่ล่าสุด",
+    },
   ];
   const failing = sources.filter((s) => s.error);
   const blocked = failing.filter((s) => s.empty);
@@ -153,7 +162,7 @@ function FilingsPageInner() {
     : null;
   // ⭐ สตริงดิบของทุกสายที่ล้ม — บรรทัดรองของกล่อง (มติ 23/09 "ไทยนำ + ดิบเป็นบรรทัดเล็ก")
   const loadErrorDetail = sourcesFailureDetail(failing);
-  const retrying = loading || lCustomers || lQueue;
+  const retrying = loading || lCustomers || lQueue || lTable;
   const notice = loadError ? (
     <StatusNotice
       tone="error"
@@ -173,8 +182,13 @@ function FilingsPageInner() {
   const customerGroupLabel = customersLoaded ? "ลูกค้า" : filterBlocked ? "ลูกค้า (ดึงไม่ได้)" : "ลูกค้า (กำลังโหลด…)";
 
   const allRows = useMemo(
-    () => [...raQueue.map(queueWorkRow), ...orders.map(recordWorkRow)],
-    [raQueue, orders],
+    () => [...raQueue.map(queueWorkRow), ...orders.map(recordWorkRow)]
+      .map((row) => ({ ...row, detail: detailByKey.get(row.key) || null })),
+    [raQueue, orders, detailByKey],
+  );
+  const monthOptions = useMemo(
+    () => [...new Set(allRows.map((row) => row.detail?.month).filter(Boolean))].sort().reverse(),
+    [allRows],
   );
   const mineStatuses = useMemo(() => new Set(["queued", ...ownedStages("payment", myDept)]), [myDept]);
   const rows = useMemo(() => {
@@ -186,13 +200,15 @@ function FilingsPageInner() {
       if (customerIds.length && !customerIds.includes(r.customerId)) return false;
       // วันไทยของวันที่งานเริ่ม (คิว = วันที่ถึงขั้นนั้น · บันทึก = วันเริ่มยื่น) — ตัวตัดสินเดียวกับการ์ดบนภาพรวม
       if (!withinDateRange(r.createdAt, from, to)) return false;
+      // เดือนของวันที่ส่งของ (V21) — งานที่ยังไม่รู้รายการ/วันที่ไม่อยู่ในเดือนไหน
+      if (month !== "all" && r.detail?.month !== month) return false;
       if (!q) return true;
       return r.search.some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [allRows, filter, search, mineStatuses, customerIds, from, to]);
+  }, [allRows, filter, search, mineStatuses, customerIds, from, to, month]);
 
   /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นพิมพ์/โหลดแถวที่มองไม่เห็นออกไป */
-  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to]);
+  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, month]);
 
   // ติ๊กได้เฉพาะแถวที่พิมพ์ใบสรุปได้ (ไม่ใช่กำลังมา)
   const selectableKeys = useMemo(() => rows.filter((r) => r.printKey).map((r) => r.key), [rows]);
@@ -231,61 +247,6 @@ function FilingsPageInner() {
       setPrinting(false);
     }
   };
-
-  const columns = [
-    {
-      key: "_sel",
-      label: (
-        <input
-          type="checkbox"
-          checked={allChecked}
-          onChange={() => setSelected(allChecked ? new Set() : new Set(selectableKeys))}
-          aria-label="เลือกทั้งหมด"
-        />
-      ),
-      sortValue: null,
-      align: "center",
-      thStyle: { width: 34 },
-      // หยุด event ไม่ให้ไหลไปเปิดงาน (ทั้งแถวกดได้) · แถวกำลังมาไม่มีช่องติ๊ก (พิมพ์ใบสรุปไม่ได้)
-      render: (r) => (r.printKey ? (
-        <span onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={selected.has(r.key)} onChange={() => toggleOne(r.key)} aria-label={`เลือก ${r.salesOrderNumber}`} />
-        </span>
-      ) : null),
-    },
-    {
-      /* `link: true` = เซลล์ทางเข้าของคีย์บอร์ด — DataList ห่อด้วย <Link href เดียวกับ
-         แถว> ให้เอง ⇒ บรรทัดแรกต้องเป็น <strong> ที่เป็นลูก **ตรง** ของลิงก์
-         ไม่งั้น `.linklike-block` ไม่ขีดเส้นใต้ให้ (ดูหัวไฟล์ components/excise/DataList.js) */
-      key: "salesOrderNumber", label: "ใบสั่งขาย", link: true,
-      render: (r) => (
-        <>
-          <strong className="font-semibold">{r.salesOrderNumber}</strong>
-          {r.subtitle && <div className={styles.rowSub}>{r.subtitle}</div>}
-        </>
-      ),
-    },
-    { key: "customerName", label: "ลูกค้า", render: (r) => <span className={styles.customer}>{naText(r.customerName)}</span> },
-    { key: "itemCount", label: "รายการ", align: "center", sortValue: (r) => r.order?.items?.length ?? -1, render: (r) => (r.order ? r.order.items?.length || 0 : NA) },
-    { key: "totalTax", label: "ยอดภาษีรวม", align: "right", sortValue: (r) => r.order?.totalTax ?? -1, render: (r) => (r.order ? <span className={styles.tax}>{taxText(r.order)}</span> : NA) },
-    { key: "status", label: "สถานะ", render: (r) => <StatusBadge status={r.status} /> },
-  ];
-
-  const card = (r) => (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-semibold text-sm">{r.salesOrderNumber}</div>
-          <div className={`truncate ${styles.cardCustomer}`}>{naText(r.customerName)}</div>
-        </div>
-        <StatusBadge status={r.status} />
-      </div>
-      <div className={styles.cardFoot}>
-        <span className={styles.cardSub}>{r.subtitle || (r.order ? `${r.order.items?.length || 0} รายการ` : "")}</span>
-        {r.order && <span className={styles.tax}>{taxText(r.order)}</span>}
-      </div>
-    </div>
-  );
 
   const customerName = customerIds.length === 1
     ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
@@ -352,6 +313,17 @@ function FilingsPageInner() {
               onChange: setCustomerIds,
             }]}
           />
+          {/* เดือนของวันที่ส่งของ (หัวตารางเดิม "M.10/69" · มติ 03/11 V21) */}
+          <label className={styles.rangeLabel}>
+            เดือนที่ส่งของ
+            <Select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="เดือนที่ส่งของ">
+              <option value="all">ทุกเดือน</option>
+              {monthOptions.map((key) => {
+                const label = filingMonthLabel(key);
+                return <option key={key} value={key}>{label.short} · {label.long}</option>;
+              })}
+            </Select>
+          </label>
           {/* จาก–ถึง เป็นก้อนเดียว — แถบเครื่องมือในแผงแคบกว่าเดิม ถ้าตัดบรรทัดต้องลงไปทั้งคู่
               ไม่ใช่ "จาก" ค้างแถวบนแล้ว "ถึง" ห้อยแถวล่าง */}
           <span className={styles.rangeGroup}>
@@ -369,18 +341,18 @@ function FilingsPageInner() {
       {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่างใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง
           ⚠️ ถามสายบันทึกการยื่นสายเดียว — รายชื่อลูกค้าล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
       {!listBlocked && (
-      <DataList
-        columns={columns}
+      <FilingLinesTable
         rows={rows}
-        rowKey={(r) => r.key}
-        rowHref={(r) => r.href}
-        card={card}
-        initialSort={{ key: "salesOrderNumber", dir: "asc" }}
+        selected={selected}
+        onToggle={toggleOne}
+        allChecked={allChecked}
+        onToggleAll={() => setSelected(allChecked ? new Set() : new Set(selectableKeys))}
+        selectable={canFile}
+        detailLoading={lTable && !tableLoaded}
         /* ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง — RA ตกลงมาที่ "รอฉันลงมือ" เป็นค่าตั้งต้น */
         empty={allRows.length === 0
           ? "ยังไม่มีงานยื่นชำระ — งานเข้ามาเองเมื่อใบเสนอราคาค่าสรรพสามิตอนุมัติ (กำลังมา) และเมื่อใบสั่งขายค่าสรรพสามิตอนุมัติ (รอ RA)"
           : "ไม่พบรายการตามตัวกรองที่เลือก"}
-        emptyIcon={ReceiptText}
       />
       )}
       </ListPanel>
@@ -395,7 +367,7 @@ function FilingsPageInner() {
         row={startRow}
         onClose={closeWork}
         onStarted={async (record) => {
-          await Promise.all([reload(), reloadQueue()]);
+          await Promise.all([reload(), reloadQueue(), reloadTable()]);
           router.push(`/tax/filings/${record.id}`);
         }}
       />

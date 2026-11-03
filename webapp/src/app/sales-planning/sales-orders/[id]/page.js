@@ -2983,6 +2983,7 @@ export default function SalesOrderDetailPage() {
                   onAmend={canAmendDeliveryDue ? amendDeliveryDue : undefined}
                   amendError={error}
                   readonlyClassName={styles.readonlyFormField}
+                  excise={isExciseOrder(order)}
                 />
                 {/* ⭐ เอกสารอ้างอิงฝั่งลูกค้า (IS-26080017 · mig 0235) — PO/สัญญา/เลขในระบบ
                     จัดซื้อของเขา · **ไม่ใช่หมายเหตุ**: ช่องนี้ค้นได้และขึ้นเป็นคอลัมน์ในตาราง

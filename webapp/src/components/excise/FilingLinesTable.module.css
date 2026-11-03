@@ -1,0 +1,61 @@
+/* ตาราง "รายการชำระภาษีสรรพสามิต" แบบตารางเดิมของ RA (มติ 03/11 V20) — หัวเดือน · หัวกลุ่มงาน · แถวละสินค้า */
+.table td,
+.table th { vertical-align: middle; }
+
+.check {
+  width: 36px;
+  text-align: center;
+}
+
+.num { text-align: right; white-space: nowrap; }
+
+.date { white-space: nowrap; }
+
+.tax {
+  color: var(--red);
+  font-weight: var(--fw-bold);
+}
+
+.monthRow td {
+  background: var(--panel-2);
+  border-top: 1px solid var(--border);
+  padding-block: var(--space-2-5);
+}
+.monthRow strong { margin-right: var(--space-2-5); }
+.monthRow span { color: var(--text-3); font-size: var(--fs-6); }
+
+.groupRow td {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+
+.groupHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-3);
+}
+
+.customer { color: var(--accent); }
+
+.sub {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+.blocker {
+  color: var(--amber);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+}
+
+.noLines td {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+.empty {
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-3);
+  text-align: center;
+}

@@ -16,37 +16,3 @@
   gap: var(--space-2);
   min-width: 0;
 }
-
-/* ── แถวงาน (v3 · แถวคิว + บันทึกการยื่นในรายการเดียว) — ย้ายจาก style ดิบของรายการใบยื่นเดิม ── */
-.rowSub {
-  color: var(--text-3);
-  font-size: var(--fs-3);
-}
-
-.customer {
-  color: var(--accent);
-}
-
-.tax {
-  color: var(--red);
-  font-family: var(--font-mono);
-  font-weight: var(--fw-bold);
-}
-
-.cardCustomer {
-  color: var(--accent);
-  font-size: var(--fs-3);
-}
-
-.cardFoot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--fs-5);
-}
-
-.cardSub {
-  min-width: 0;
-  color: var(--text-3);
-}

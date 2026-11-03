@@ -38,6 +38,7 @@ import {
 import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 import { loadExciseListStages } from '@/lib/excise/exciseListStage';
+import { sourceDeliveryDueDate } from '@/lib/excise/exciseDeliveryDate';
 
 export const dynamic = 'force-dynamic';
 
@@ -477,6 +478,12 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   // กำหนดส่งสินค้า (0363) — ไม่บังคับ · ว่าง = ยังไม่ตกลงวันส่ง
   const deliveryDue = parseDeliveryDueDate(body.deliveryDueDate);
   if (!deliveryDue.ok) return badRequest(deliveryDue.error);
+  /* ⭐ SO ค่าสรรพสามิต: เว้นวันที่ส่งของว่าง = ใช้กำหนดส่งของ SO ต้นทาง (มติ 03/11 V21 · ยื่นอนุมัติต้องมีวัน) */
+  let deliveryDueValue = deliveryDue.value;
+  if (excise && !deliveryDueValue && quote.sourceSalesOrderId) {
+    try { deliveryDueValue = await sourceDeliveryDueDate(supabase, quote.sourceSalesOrderId); }
+    catch (sourceDueError) { return fail(sourceDueError.message, 500); }
+  }
 
   // เงินงวดแรกที่ลูกค้าจ่ายมาแล้ว (ไม่บังคับ) — ลงเป็น "งวดร่างที่บันทึกเงินไว้"
   // สถานะยังเป็น pending ตาม CHECK ของ 0259 แล้วขึ้นเป็นคำแจ้งตอนใบอนุมัติ
@@ -532,7 +539,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     p_overrides: {
       referenceDoc: String(body.referenceDoc || '').trim() || null,
       notes: typeof body.notes === 'string' ? body.notes : null,
-      deliveryDueDate: deliveryDue.value,
+      deliveryDueDate: deliveryDueValue,
       confirmDocType: confirmation?.docType || null,
       confirmDocNo: confirmation?.docNo || null,
       confirmDocDate: confirmation?.docDate || null,
