@@ -310,7 +310,13 @@ test('🔴 POST "ใช้ราคานี้": ผ่านด่านเด
 test('หน้าจอ: ด่านปุ่ม = canAnswerRequest ตัวเดียวกับ API · ส่ง rev ที่เห็นไปกับ "ใช้ราคานี้" · โมดัลกลางตัวเดิม', () => {
   const page = src('../../app/rd/prices/page.js');
   assert.match(page, /canAnswerRequest\(\{ \.\.\.me, department \}, \{ dept: "RD" \}\)/);
-  assert.match(page, /json: \{ useCurrent: \{ revisionId: use\.revisionId \} \}/);
+  assert.match(page, /json: \{ useCurrent: \{ revisionId: use\.revisionId \}, \.\.\.extra \}/);
   assert.match(page, /<RegistryPriceModal/);
   assert.match(page, /confirmAction\(/, 'ปิดงานต้องมีกล่องยืนยันบอกผล');
+  /* ม-158 — แถวที่ต้องมี Ingredient List: "ใช้ราคานี้" เปิดโมดัลที่บอกผลเหมือนกล่องยืนยัน + ช่องกรอกตัวกลาง ·
+     โมดัลใส่ราคาได้แผนจาก server (ตัวคิดเดียวกับ POST) */
+  assert.match(page, /if \(row\.ingredient\?\.required\) \{ setUsing\(row\); return; \}/);
+  assert.match(page, /<IngredientListField/);
+  assert.match(page, /ingredient=\{pricing \? pricing\.ingredient : null\}/);
+  assert.match(page, /linkCurrentPrice\(using, \{ ingredientList \}\)/);
 });

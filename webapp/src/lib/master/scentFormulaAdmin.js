@@ -21,6 +21,7 @@ import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { attachShares, sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
 import { countGiftSetsUsingFormula, giftSetsUsingFormulas } from '@/lib/master/giftSetFormulasStore';
 import { fragranceOilScentError } from '@/lib/master/fragranceOilScent';
+import { rowIngredientPlan } from '@/lib/master/ingredientList';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -563,21 +564,25 @@ export async function loadPriceSlotSource(supabase, slot) {
    · แถวกลิ่นอย่างเดียว / สูตรหาไม่เจอ: ถอยไปตัวคิดจากแถว (`rowPriceSlots`)
    คืน `{ slots, blocker }` — `blocker` ไม่ว่าง = ไม่มีช่องให้ใส่ (จอโชว์เหตุในโมดัล · POST ตีกลับด้วยข้อความเดียวกัน) */
 export async function rowPricePlanLive(supabase, row) {
-  const { slots, blocker } = await rowPriceSourceLive(supabase, row);
-  return { slots, blocker };
+  const { slots, blocker, ingredient } = await rowPriceSourceLive(supabase, row);
+  return { slots, blocker, ingredient };
 }
 
 /* ตัวคิดเดียวของ `rowPricePlanLive` — คืนสูตร/กลิ่นสดที่ใช้คิดด้วย (`formula` · `scent`) ให้ผู้ที่ต้องโชว์ชื่อ/ราคา
    ของทะเบียน (หน้า "รอใส่ราคา" ม-153) ไม่ต้องอ่านซ้ำ · ⚠️ ห้ามแยกตัวคิดช่องออกไปอีกที่ — จอกับ POST ต้องเปิดช่องชุดเดียวกัน */
+/* ⭐ `ingredient` (ม-158 · มติเจ้าของ 03/11) — Ingredient List ของสูตรที่แถวผูก บังคับในขั้นราคาเดียวกัน ·
+   คิดจากสูตรสดตัวเดียวกับช่องราคา ⇒ โมดัล · หน้า "รอใส่ราคา" · POST เห็นด่านชุดเดียวกัน (`rowIngredientPlan`) */
 async function rowPriceSourceLive(supabase, row) {
   const formula = row?.producedFormulaId ? await findFormula(supabase, row.producedFormulaId) : null;
   if (!formula) {
     const slots = rowPriceSlots(row);
-    return { slots, blocker: slots.length ? '' : NO_PRICE_SLOTS_REASON, formula: null, scent: null };
+    return {
+      slots, blocker: slots.length ? '' : NO_PRICE_SLOTS_REASON, formula: null, scent: null, ingredient: rowIngredientPlan(null),
+    };
   }
   const scent = formula.scentId ? await findScent(supabase, formula.scentId) : null;
   // หมวดของ **สูตร** อย่างเดียว — ตัวประกอบเดียวกับปุ่มราคาหน้าทะเบียนสูตรและ withFragranceOilPrice (รีวิวรอบสี่)
-  return { ...formulaPriceSlots(formula, scent), formula, scent };
+  return { ...formulaPriceSlots(formula, scent), formula, scent, ingredient: rowIngredientPlan(formula) };
 }
 
 /* ── ราคาที่มีอยู่แล้วในทะเบียน ของทุกช่องของแถวคำร้อง (ม-153 · มติผู้ใช้ 2026-10-01) ────────────────────────

@@ -22,6 +22,8 @@ import GatedAction from "@/components/ui/GatedAction";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
+import IngredientListField from "@/components/database/IngredientListField";
+import Modal from "@/components/Modal";
 import { apiJson } from "@/lib/apiFetch";
 import { businessDate } from "@/lib/businessDate";
 import { NA, fmtDate, fmtNumber, naText } from "@/lib/format";
@@ -36,6 +38,15 @@ import styles from "./page.module.css";
 const COLS = 5;
 const PRICE_DIGITS = { minimumFractionDigits: 2, maximumFractionDigits: 2 };
 
+// ข้อความยืนยันของ "ใช้ราคานี้" — กล่องยืนยันกับโมดัล Ingredient List พูดประโยคเดียวกัน
+const currentPriceText = (row) => {
+  const use = row.useCurrent;
+  return `ผูก${use.text} ${fmtNumber(use.unitPrice, PRICE_DIGITS)} ฿/กก.`
+    + `${use.revisionNo != null ? ` (rev ${use.revisionNo})` : ""} เข้ารายการ "${row.name}" ของ ${naText(row.docNo)}`;
+};
+const CURRENT_PRICE_DETAIL = "ไม่ออกราคารุ่นใหม่ — ทะเบียนวัสดุไม่เปลี่ยน · รายการนี้ถือว่าใส่ราคาแล้วและหายจากหน้านี้"
+  + " · ใบที่ใส่ราคาครบทุกรายการจะขึ้นว่า RD ตอบแล้ว";
+
 export default function RdPricesPage() {
   const me = useCapUser();
   const department = useDepartment();
@@ -44,6 +55,8 @@ export default function RdPricesPage() {
   const [loadError, setLoadError] = useState("");
   const [pricing, setPricing] = useState(null);
   const [linking, setLinking] = useState(null);
+  // แถวที่กด "ใช้ราคานี้" แล้วต้องกรอก Ingredient List (ม-158) — เปิด `UseCurrentPriceModal`
+  const [using, setUsing] = useState(null);
   const [collapsed, setCollapsed] = useState({});
   const startRun = useLatestRun();
 
@@ -79,27 +92,35 @@ export default function RdPricesPage() {
 
   /* ใช้ราคาในทะเบียน — กล่องยืนยันบอกผลก่อนกด (กติกาของระบบ: ทุกก้าวที่ปิดงานต้องบอกว่าจะเกิดอะไร)
      ⚠️ ส่ง rev ที่จอเห็นไปด้วย — มีคนออกราคาใหม่ระหว่างที่หน้าเปิดค้าง server ตีกลับ 409 แทนการผูกเลขที่ไม่เคยเห็น */
+  /* ⭐ แถวที่ต้องมี Ingredient List (ม-158 · สูตรหมวด 01/02 ยกเว้น 02-020) — กล่องยืนยันธรรมดาไม่มีช่องกรอก ⇒ เปิดโมดัล
+     ที่บอกผลแบบเดียวกัน + ช่อง Ingredient List (เติมของเดิมในสูตรให้ตรวจ) · แถวอื่นใช้กล่องยืนยันตามเดิม */
   const applyCurrentPrice = async (row) => {
-    const use = row.useCurrent;
+    if (row.ingredient?.required) { setUsing(row); return; }
     const ok = await confirmAction({
       title: "ใช้ราคาในทะเบียน",
-      description: `ผูก${use.text} ${fmtNumber(use.unitPrice, PRICE_DIGITS)} ฿/กก.`
-        + `${use.revisionNo != null ? ` (rev ${use.revisionNo})` : ""} เข้ารายการ "${row.name}" ของ ${naText(row.docNo)}`,
-      detail: "ไม่ออกราคารุ่นใหม่ — ทะเบียนวัสดุไม่เปลี่ยน · รายการนี้ถือว่าใส่ราคาแล้วและหายจากหน้านี้"
-        + " · ใบที่ใส่ราคาครบทุกรายการจะขึ้นว่า RD ตอบแล้ว",
+      description: currentPriceText(row),
+      detail: CURRENT_PRICE_DETAIL,
       confirmLabel: "ใช้ราคานี้",
     });
     if (!ok) return;
+    try {
+      await linkCurrentPrice(row);
+    } catch (e) {
+      notifyToast.error(e.message || "ใช้ราคาในทะเบียนไม่สำเร็จ");
+    }
+  };
+
+  // ยิง "ใช้ราคานี้" — โยน error ให้ผู้เรียกเลือกที่โชว์ (toast · ในโมดัล) · รีโหลดตารางทุกทาง
+  const linkCurrentPrice = async (row, extra = {}) => {
+    const use = row.useCurrent;
     setLinking(row.itemId);
     try {
       await apiJson(`/api/sa/requests/${row.requestId}/items/${row.itemId}/price`, {
         method: "POST",
-        json: { useCurrent: { revisionId: use.revisionId } },
+        json: { useCurrent: { revisionId: use.revisionId }, ...extra },
         fallbackError: "ใช้ราคาในทะเบียนไม่สำเร็จ",
       });
       notifyToast(`ใช้ราคา ${use.short} แล้ว`);
-    } catch (e) {
-      notifyToast.error(e.message || "ใช้ราคาในทะเบียนไม่สำเร็จ");
     } finally {
       // ตีกลับ 4xx = จอไม่ตรงกับของจริง ⇒ ดึงใหม่ทั้งสองทาง (เบื้องหลัง — ตารางไม่หายทั้งก้อน)
       // ⚠️ ล็อกปุ่มของแถวจนตารางใหม่มาถึง — ปลดก่อน = แถวที่เพิ่งปิดยังกดซ้ำได้แล้วได้ 409 งง ๆ (กับดักเดียวกับหน้าใบ)
@@ -192,6 +213,8 @@ export default function RdPricesPage() {
         endpoint={pricing ? `/api/sa/requests/${pricing.requestId}/items/${pricing.itemId}/price` : ""}
         slots={pricing ? pricing.slots : null}
         blocker={pricing ? pricing.priceBlocker : ""}
+        // Ingredient List ของสูตร (ม-158) — ตัวคิดเดียวกับ POST
+        ingredient={pricing ? pricing.ingredient : null}
         hint={pricing ? `ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ของกลิ่น/สูตรของรายการนี้${pricing.customerName ? ` (ราคาเฉพาะ ${pricing.customerName})` : ""}`
           + " — อ่านได้จากใบขอราคาผลิตและหน้าทะเบียนตามปกติ · ใส่อย่างน้อยหนึ่งช่อง" : null}
         onSaved={async (msg) => {
@@ -204,7 +227,66 @@ export default function RdPricesPage() {
         }}
         onError={() => load({ background: true })}
       />
+
+      <UseCurrentPriceModal
+        row={using}
+        onClose={() => setUsing(null)}
+        onConfirm={async (ingredientList) => {
+          await linkCurrentPrice(using, { ingredientList });
+          setUsing(null);
+        }}
+      />
     </Workspace>
+  );
+}
+
+/* ── "ใช้ราคานี้" ของแถวที่ต้องมี Ingredient List (ม-158) ──────────────────────────────────────────────
+   ⭐ บอกผลแบบเดียวกับกล่องยืนยัน (กติกา #1223 ทุกก้าวที่ปิดงานต้องบอกว่าจะเกิดอะไร) + ช่องกรอกตัวเดียวกับโมดัลใส่ราคา
+   ⚠️ ตีกลับ = โชว์ในโมดัล ไม่ปิด (ของที่พิมพ์ไม่หาย) */
+function UseCurrentPriceModal({ row, onClose, onConfirm }) {
+  const [text, setText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (row) { setText(row.ingredient?.current || ""); setError(""); }
+  }, [row]);
+  const close = () => { if (!saving) onClose(); };
+  const confirm = async () => {
+    setSaving(true); setError("");
+    try {
+      await onConfirm(text);
+    } catch (e) {
+      setError(e.message || "ใช้ราคาในทะเบียนไม่สำเร็จ");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal
+      open={!!row} onClose={close} size="sm" dismissible={!saving} title="ใช้ราคาในทะเบียน"
+      footer={(
+        <>
+          <Button variant="quiet" onClick={close} disabled={saving}>ยกเลิก</Button>
+          <Button tone="primary" icon={<Check size={14} />} onClick={confirm} disabled={saving || !text.trim()}>
+            ใช้ราคานี้
+          </Button>
+        </>
+      )}
+    >
+      {row ? (
+        <>
+          <p className={styles.useLead}>{currentPriceText(row)}</p>
+          <p className={`${styles.sub} ${styles.useDetail}`}>{CURRENT_PRICE_DETAIL}</p>
+          <IngredientListField
+            id="use-current-ingredients" value={text} onChange={setText} disabled={saving} required
+            hint={row.ingredient?.current
+              ? "เติมจากทะเบียนสูตรแล้ว — ตรวจให้ตรงกับสูตรที่ลูกค้าคอนเฟิร์ม · แก้ที่นี่ = แก้ที่ทะเบียนสูตร"
+              : "สูตรนี้ยังไม่มี — ต้องใส่ก่อนปิดรายการ · ชื่อสาร INCI เรียงจากมากไปน้อย คั่นด้วยจุลภาค"}
+          />
+          {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
+        </>
+      ) : null}
+    </Modal>
   );
 }
 

@@ -12,6 +12,7 @@ import StepTrack from "@/components/ui/StepTrack";
 import ReadableText from "@/components/ui/ReadableText";
 import { idleFromStamps, idleLabel } from "@/lib/requests/rowTrack";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
+import { INGREDIENT_LIST_LABEL } from "@/lib/master/ingredientList";
 import styles from "./briefBoard.module.css";
 
 /* ⚠️ `compact` เสมอ — รางพร้อมป้ายคำกิน 320px ซึ่งกว้างกว่าคอลัมน์เนื้อทุกตัวของ
@@ -127,5 +128,18 @@ export function CustomerSay({ note = null, brief = null }) {
         </div>
       )}
     </>
+  );
+}
+
+/* ── Ingredient List ของสูตรที่แถวนี้ผูก (ม-158 · มติเจ้าของ 03/11/2026) ──────────────────────────────
+   ⭐ ก้อนเดียวกับ `CustomerSay` (แถวขยาย · เส้นนำหน้า) — ของยาวที่ฝ่ายขายต้องอ่าน/คัดลอกไปใช้ต่อ
+   ⚠️ ค่าสดจากทะเบียนสูตร (`refFormula.ingredientList`) — แก้ที่หน้าสูตร ไม่ใช่ที่คำร้อง · ว่าง = ไม่วาด */
+export function IngredientSay({ text = null }) {
+  if (!text) return null;
+  return (
+    <div className={`${styles.say} ${styles.ingredients}`}>
+      <span className={styles.sayLabel}>{INGREDIENT_LIST_LABEL}</span>
+      <ReadableText text={text} lines={3} />
+    </div>
   );
 }

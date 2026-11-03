@@ -83,3 +83,8 @@
   min-width: 0;
 }
 .shareActions { margin-top: var(--space-2); }
+
+/* ── Ingredient List ของสูตร (ม-158 · IngredientListText / IngredientListCard) ── */
+.ingredientBlock { display: flex; flex-direction: column; gap: var(--space-2); }
+.ingredientText { color: var(--text); overflow-wrap: anywhere; }
+.ingredientActions { display: flex; gap: var(--space-2); margin-top: var(--space-3); }

@@ -84,6 +84,9 @@ export function priceBoardRows(pairs = [], live = []) {
         source: entry.source || null,
       } : null,
       useCurrentBlocker: blocker,
+      /* ⭐ Ingredient List ของสูตร (ม-158) — บังคับทั้ง "ใส่ราคา" และ "ใช้ราคานี้" · `current` = ค่าที่สูตรมีอยู่แล้ว (เติมให้ตรวจ)
+         ⚠️ ไม่มี `live` = ไม่รู้ ⇒ ถือว่าไม่บังคับบนจอ (POST ตัดสินจริงอยู่ดี — ตีกลับพร้อมเหตุ) */
+      ingredient: ctx?.ingredient || { required: false, formulaId: null, current: null },
       // ไม่มีช่องให้ใส่ — เหตุจากตัวคิดช่องสด (หัวน้ำหอมที่กลิ่นใช้ไม่ได้) ไม่งั้น "ยังไม่ผูก" · ข้อความเดียวกับที่ POST ตีกลับ
       priceBlocker: slots.length ? '' : (ctx?.blocker || NO_PRICE_SLOTS_REASON),
     };

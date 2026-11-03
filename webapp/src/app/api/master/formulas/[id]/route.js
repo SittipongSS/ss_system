@@ -14,6 +14,7 @@ import {
   countProductsUsingFormula, countRegistryDependents, countRegistryRefs, editFormula, findFormula, findFormulaDetail,
   updateFormula,
 } from '@/lib/master/scentFormulaAdmin';
+import { INGREDIENT_LIST_LABEL, formulaNeedsIngredientList, normalizeIngredientList } from '@/lib/master/ingredientList';
 import { canForceDelete, formulaForcePreview, unlinkRegistryRefs, isDryRun, isForceRequest } from '@/lib/forceDelete';
 
 export const dynamic = 'force-dynamic';
@@ -34,7 +35,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
 });
 
-// PATCH  { action: 'edit' | 'accept' | 'status' | 'shares' (ม-150 · แชร์ให้ลูกค้ารายอื่น — RD + Sup ขึ้นไป มติ 05/10) }
+// PATCH  { action: 'edit' | 'accept' | 'status' | 'shares' (ม-150 · แชร์ให้ลูกค้ารายอื่น — RD + Sup ขึ้นไป มติ 05/10)
+//          | 'ingredients' (ม-158 · `{ ingredientList }` — RD + ผู้ดูแล) }
 //   'edit' ส่ง `sharedCustomerIds` มาด้วยได้ = ช่อง "ลูกค้าอื่นที่ใช้ได้" ในฟอร์มแก้ (ผลเดียวกับ 'shares')
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
@@ -74,6 +76,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       } catch (e) {
         return fail(e.message, e.status || 500);
       }
+    }
+
+    /* ⭐ Ingredient List (ม-158 · มติเจ้าของ 03/11) — action แยกจาก 'edit' เพราะฟอร์มแก้สูตรถูกใช้จากหน้าคำร้องด้วย
+       (payload จากสูตรที่โหลดไม่ครบคอลัมน์ ⇒ ส่งค่าว่างทับเงียบ ๆ) · แก้ได้ = RD + ผู้ดูแล (ข้อมูลของ RD)
+       ⚠️ สูตรที่ต้องมี (หมวด 01/02 ยกเว้น 02-020) ลบทิ้งไม่ได้ — ขั้นราคาของคำร้องที่ใช้สูตรนี้อ่านค่านี้อยู่ */
+    if (action === 'ingredients') {
+      if (!isFormulaRegistrar(user)) return forbidden(`เฉพาะ RD เท่านั้นที่แก้ ${INGREDIENT_LIST_LABEL} ได้`);
+      const { value, error } = normalizeIngredientList(body.ingredientList);
+      if (error) return badRequest(error);
+      if (!value && formulaNeedsIngredientList(formula)) {
+        return badRequest(`สูตรหมวดนี้ต้องมี ${INGREDIENT_LIST_LABEL} — ลบทิ้งไม่ได้ (แก้เป็นรายการที่ถูกต้องแทน)`);
+      }
+      if (value === (formula.ingredientList || null)) return ok(formula);
+      const data = await updateFormula(supabase, id, { ingredientList: value });
+      await recordAudit({
+        user, action: 'update', entityType: 'formula', entityId: id, request: req,
+        before: formula, after: data,
+        summary: `${formula.ingredientList ? (value ? 'แก้' : 'ลบ') : 'ใส่'} ${INGREDIENT_LIST_LABEL} สูตร ${data.code || data.name}`,
+      });
+      return ok(data);
     }
 
     if (action === 'edit') {
