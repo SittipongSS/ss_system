@@ -9,15 +9,22 @@ import Input from "@/components/ui/Input";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Textarea from "@/components/ui/Textarea";
 import {
-  EXCISE_NOT_BILLED_KINDS, EXCISE_NOT_BILLED_REASON_MAX, EXCISE_NOT_BILLED_REASON_MIN, EXCISE_NOT_BILLED_REF_MAX,
-  exciseNotBilledInput,
+  EXCISE_NOT_BILLED_REASON_MAX, EXCISE_NOT_BILLED_REASON_MIN, EXCISE_NOT_BILLED_REF_MAX,
+  exciseNotBilledInput, exciseNotBilledKindsFor,
 } from "@/lib/excise/exciseNotBilled";
 import styles from "./ExciseNotBilledDialog.module.css";
 
-const KIND_OPTIONS = Object.entries(EXCISE_NOT_BILLED_KINDS)
-  .map(([value, meta]) => ({ value, label: meta.label, description: meta.hint }));
+/* เหตุที่เลือกได้ตาม SO ใบนี้ — "จ่ายกรมไปแล้วก่อนเปิดระบบ" ขึ้นเฉพาะใบที่อนุมัติก่อนวันเปิดระบบ (มติ 03/11 V18 · route ตรวจซ้ำ) */
+const kindOptions = (order) => Object.entries(exciseNotBilledKindsFor(order))
+  .map(([value, meta]) => ({
+    value,
+    /* ชื่อเหตุ + ผลต่อคิว RA (ชุดเดียวกับ `exciseNotBilledTitle`) · ป้าย RA ไม่ตัดกลางคำ */
+    label: <>{meta.label} <span className={styles.raTag}>— {meta.ra}</span></>,
+    description: meta.hint,
+  }));
 
-export default function ExciseNotBilledDialog({ open, orderNumber, busy = false, error = "", onConfirm, onClose }) {
+export default function ExciseNotBilledDialog({ open, orderNumber, order = null, busy = false, error = "", onConfirm, onClose }) {
+  const options = kindOptions(order);
   const [kind, setKind] = useState("");
   const [reason, setReason] = useState("");
   const [ref, setRef] = useState("");
@@ -35,15 +42,15 @@ export default function ExciseNotBilledDialog({ open, orderNumber, busy = false,
     <Modal open={open} onClose={onClose} title="ไม่เรียกเก็บค่าสรรพสามิตในระบบ" size="sm" dismissible={!busy}>
       <div className={styles.body}>
         <p className={styles.description}>
-          {orderNumber ? `${orderNumber} — ` : ""}จะไม่ออกใบเสนอราคาค่าสรรพสามิตของใบนี้ ฝ่าย RA ยังยื่นกรมตามเดิม
-          (ยกเว้น “ไม่ต้องเสียภาษี”) · ถอนการตัดสินได้จนกว่า RA จะเริ่มยื่น
+          {orderNumber ? `${orderNumber} — ` : ""}จะไม่ออกใบเสนอราคาค่าสรรพสามิตของใบนี้ · แต่ละเหตุบอกไว้ว่า RA ยังต้องยื่นกรมไหม
+          · ถอนการตัดสินได้จนกว่า RA จะเริ่มยื่น
         </p>
         <div className="form-group">
           <span>เหตุที่ไม่เรียกเก็บ *</span>
           <OptionTiles
             value={kind}
             onChange={setKind}
-            options={KIND_OPTIONS}
+            options={options}
             ariaLabel="เหตุที่ไม่เรียกเก็บในระบบ"
             invalid={touched && !kind}
             disabled={busy}

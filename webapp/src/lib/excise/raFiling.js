@@ -231,6 +231,8 @@ export async function loadFilingSource(supabase, { exciseSalesOrderId = '', sale
   if (!exciseOrder && !NOT_BILLED_FILING_KINDS.includes(salesOrder.exciseNotBilledKind)) {
     return fail(400, salesOrder.exciseNotBilledKind === 'not_liable'
       ? 'ใบสั่งขายนี้ฝ่ายขายตัดสินว่าไม่ต้องเสียภาษี — ไม่ต้องยื่นกรม'
+      : salesOrder.exciseNotBilledKind === 'paid_before_launch'
+        ? 'ใบสั่งขายนี้จ่ายกรมไปแล้วก่อนเปิดระบบ (ฝ่ายขายบันทึกไว้) — ไม่ต้องยื่นซ้ำ'
       : 'ใบสั่งขายนี้ยังไม่มีใบสั่งขายค่าสรรพสามิตที่อนุมัติ และไม่ได้ตัดสินว่าไม่เรียกเก็บ — ยังไม่ใช่งานยื่นกรม');
   }
 

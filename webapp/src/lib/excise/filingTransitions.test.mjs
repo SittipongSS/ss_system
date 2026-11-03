@@ -64,7 +64,7 @@ test("V3: เงินไม่ใช่ด่าน — บัญชียั�
   const closed = filingStartGates({ order: exciseFiling(items), exciseOrder: { orderNumber: "SO-X", financeStatus: "approved" } });
   assert.equal(closed.money.ok, true);
   const notBilled = filingStartGates({ order: { salesOrderId: "S1", items }, notBilledKind: "collected_outside" });
-  assert.match(notBilled.money.label, /เก็บนอกระบบแล้ว/);
+  assert.match(notBilled.money.label, /เก็บเงินลูกค้านอกระบบแล้ว/);
 });
 
 test("V4: ทะเบียนไม่ครบ = เริ่มยื่นไม่ได้ เด็ดขาด — นับจำนวน + บอก FG · เหตุผลข้ามแบบเดิมไม่มีผล", () => {
