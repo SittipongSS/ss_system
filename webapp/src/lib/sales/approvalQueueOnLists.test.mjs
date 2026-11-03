@@ -251,7 +251,7 @@ test('⭐ ชิป "ยังไม่ตั้งงานบริการ n
   const toolbar = slice(page, 'toolbar={(', '<FilterPopover');
   const segment = toolbar.indexOf('onChange={setLineView}');
   const chip = toolbar.indexOf('aria-pressed={serviceSetupPendingOnly}');
-  const search = toolbar.indexOf('className="search-glass"');
+  const search = toolbar.indexOf('className="search-glass search-glass-fluid"');
   assert.ok(segment > 0 && chip > segment && chip < search, 'ชิปต้องอยู่ระหว่าง Segmented กับช่องค้นหา');
 
   // ขึ้นเมื่อมีของ หรือกำลังเปิดอยู่ (ปิดไม่ได้ถ้าซ่อนตอนเปิด)
