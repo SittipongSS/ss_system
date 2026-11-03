@@ -16,6 +16,7 @@ import {
   dueSourceOf, fillInputRows, rowDateMode,
   dateLockView, fillKindOf, fillStartMonths, fillTargetsOf, planDateFill,
   quickDueChoices, replacesSavedDue, roundChoicesFor, sameDates, scheduleManyRows, shiftMonth, withDraft,
+  coverChanges, currentCovers, withCoverDraft,
   billingCutoffNote, calendarGapHead, calendarPolicyOf, isCalendarRule, roundTileNote, rowCalendarGap, seqRangeText, skipNotesOf,
 } from './installmentDateDrafts.js';
 import { installmentDateLock } from './installmentScheduleMany.js';
@@ -712,4 +713,36 @@ test('⭐ รอบห้า · ชิปเครดิต N เห็นวั
   assert.match(src('InstallmentDateFill.js'), /planDateFill\([^;]*\{ holidays: mode\.holidays \}\)/);
   assert.match(src('BillingPolicyStrip.js'), /holidays: mode\.holidays/);
   assert.match(src('InstallmentDateCell.js'), /holidays: mode\.holidays/);
+});
+
+// ── ร่างช่วงครอบบริการ (ม็อก split-v6 ข้อ 6 · 03/11) — ร่างชุดเดียวกับวันงวด คำขอเดียว ─────────────────────────────────
+test('⭐ ร่างช่วงครอบ: ร่างเฉพาะงวดที่ต่างจากฐาน · กลับเท่าเดิม = ถอดร่าง · จำรุ่นตอนเริ่มร่าง (ถูกแก้จากอีกหน้าต่าง = stale)', () => {
+  const row = { id: 'i1', seq: 1, coversFrom: '2026-11-01', coversTo: null, updatedAt: 'v1' };
+  const drafted = withCoverDraft({}, row, { coversTo: '2026-11-30' });
+  assert.deepEqual(drafted, { i1: { coversFrom: '2026-11-01', coversTo: '2026-11-30', baseUpdatedAt: 'v1' } });
+  assert.deepEqual(currentCovers(row, drafted), { coversFrom: '2026-11-01', coversTo: '2026-11-30' });
+  assert.deepEqual(currentCovers(row, {}), { coversFrom: '2026-11-01', coversTo: '' });
+  assert.deepEqual(withCoverDraft(drafted, row, { coversTo: '' }), {}, 'แก้กลับเท่าฐาน = ไม่มีของค้าง');
+  const moved = { ...row, updatedAt: 'v2' };
+  assert.deepEqual(coverChanges([moved], withCoverDraft(drafted, moved, { coversFrom: '2026-10-15' })).changes.map((c) => [c.row.id, c.to, c.stale]),
+    [['i1', { coversFrom: '2026-10-15', coversTo: '2026-11-30' }, true]], 'รุ่นตอนเริ่มร่างไม่ขยับตามแถวใหม่');
+  assert.deepEqual(coverChanges([], drafted).dropped, [{ row: null, id: 'i1', reason: 'งวดนี้ไม่อยู่ในใบแล้ว' }]);
+});
+
+test('⭐ scheduleManyRows + ช่วงครอบ: งวดเดียวกันรวมเป็นแถวเดียว · งวดที่แก้แค่ช่วงครอบไม่มีคีย์วันงวด · เรียงตามเลขงวด · ว่าง = null', () => {
+  const rows = [
+    { id: 'i1', seq: 1, billingDate: null, billingEvent: null, dueDate: null, coversFrom: null, coversTo: null, updatedAt: 'v1' },
+    { id: 'i2', seq: 2, billingDate: null, billingEvent: null, dueDate: null, coversFrom: '2026-12-01', coversTo: '2026-12-31', updatedAt: 'v1' },
+    { id: 'i3', seq: 3, billingDate: null, billingEvent: null, dueDate: null, coversFrom: null, coversTo: null, updatedAt: 'v1' },
+  ];
+  const dates = draftChanges(rows, withDraft(withDraft({}, rows[2], { dueDate: '2027-01-05' }), rows[0], { dueDate: '2026-11-05' })).changes;
+  let covers = withCoverDraft({}, rows[0], { coversFrom: '2026-11-01' });
+  covers = withCoverDraft(covers, rows[0], { coversTo: '2026-11-30' });
+  covers = withCoverDraft(covers, rows[1], { coversFrom: '', coversTo: '' });
+  assert.deepEqual(scheduleManyRows(dates, { covers: coverChanges(rows, covers).changes }), [
+    { id: 'i1', billingDate: null, billingEvent: null, dueDate: '2026-11-05', updatedAt: 'v1', coversFrom: '2026-11-01', coversTo: '2026-11-30' },
+    { id: 'i2', coversFrom: null, coversTo: null, updatedAt: 'v1' },
+    { id: 'i3', billingDate: null, billingEvent: null, dueDate: '2027-01-05', updatedAt: 'v1' },
+  ]);
+  assert.deepEqual(scheduleManyRows(dates), scheduleManyRows(dates, { covers: [] }), 'ไม่มีร่างช่วงครอบ = แถวเดิมทุกตัว');
 });

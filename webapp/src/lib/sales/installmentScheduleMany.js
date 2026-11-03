@@ -1,7 +1,7 @@
 // ── ตั้งวันงวดทีละหลายงวด (action `schedule-many` · แผงงวดแบบ C "โหมดตั้งวัน" · มติเจ้าของ 28/09) ──────────
 //
 // คนร่างวันในตารางงวด (แตะเซลล์วันวางบิล/กำหนดชำระ · "เติมวันงวดที่ว่าง…") แล้วกด "บันทึก N งวด" ครั้งเดียว
-// ⇒ คำขอเดียวพาทุกงวดที่เปลี่ยน: `{ action: 'schedule-many', rows: [{ id, billingDate, billingEvent, dueDate, updatedAt }] }`
+// ⇒ คำขอเดียวพาทุกงวดที่เปลี่ยน: `{ action: 'schedule-many', rows: [{ id, billingDate, billingEvent, dueDate, coversFrom, coversTo, updatedAt }] }`
 //
 // ⭐ ต่างจาก `fill-billing` / `redate-billing`: server **ไม่คิดวันเอง** — วันมาจากคนเลือกทีละงวด (หรือตัวช่วยเติมบนจอ
 //   ที่คนเห็นผลในตารางก่อนกดบันทึก) ⇒ ด่านคือ "งวดที่คนเห็นยังเป็นรุ่นเดิมไหม" (`updatedAt` ทีละงวด)
@@ -25,6 +25,15 @@
 //   ⇒ ก่อนรัน 0393 (ไม่มีคอลัมน์) คำขอที่ไม่แตะติ๊กไม่เอ่ยชื่อคอลัมน์เลย · คำขอที่แตะ = 503 "รอรัน migration 0393"
 // ⭐ `billingException` เป็นของชั่วคราว — ไม่เก็บลงฐาน · ลงประวัติ (audit) ผ่าน `scheduleExceptionsOf`
 // ⚠️ server **ยังเก็บกำหนดชำระตามที่ส่ง** — ไม่คิดใหม่จากกติกาลูกค้า (มติ 28/09 ข้อ 17 · ด่านไม่ตรวจกำหนดชำระกับกติกา)
+//
+// ── ช่วงครอบบริการไปกับคำขอเดียวกัน (ม็อก split-v6 ข้อ 6 · 03/11) ───────────────────────────────────────────────
+// ⭐ แถวรับ `coversFrom` / `coversTo` เพิ่ม — ร่างช่วงครอบกับร่างวันงวดเป็นชุดเดียวบนจอ บันทึกครั้งเดียว ⇒ เลิกล็อกกันเอง
+//   (เดิมสองฝั่งยิงคนละคำขอที่ล็อก updatedAt ของงวดเดียวกัน — บันทึกฝั่งหนึ่งแล้วอีกฝั่ง 409)
+// ⭐ สองกลุ่มช่องตัดสินแยกกัน — **ไม่ส่งคีย์ = ไม่แตะ** และไม่ถูกตรวจ:
+//   · วันงวด (วันวางบิล · รอเหตุการณ์ · กำหนดชำระ · ติ๊ก) → ล็อกโหมดตั้งวัน + ด่าน `schedule` + ด่านรุ่นสี่ (ตามเดิม)
+//   · ช่วงครอบ → ด่าน `coverage` ตัวเดียวกับคำสั่งงวดเดียว (`coverGate` ของผู้เรียก) — ไม่ถามล็อกโหมดตั้งวัน:
+//     งวดที่บัญชีรับรองแล้วยังแก้ช่วงครอบได้โดยฝ่ายบัญชี และงวดยกมาขยับปลายช่วงได้ (กติกาของด่าน coverage)
+//   ⇒ งวดที่แก้แค่ช่วงครอบไม่ตกเพราะวันงวดเดิมของมันผิดกติกาใหม่ · รุ่น (`updatedAt`) ถามทุกงวดที่จะเปลี่ยนเสมอ
 import { installmentRefunded, installmentStale, installmentVoid, installmentVoidNote } from '@/lib/sales/salesOrderPayments';
 import { OPENING_INSTALLMENT_LABEL, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 import {
@@ -35,9 +44,13 @@ import { BILLING_V4_SCHEMA_MISSING } from '@/lib/sales/billingPolicySchema';
 /* งวดต่อคำขอ — ใบจริงมีไม่เกินสิบกว่างวด · เพดานกันคำขอผิดรูปที่ลากเขียนทีละแถวเป็นร้อยครั้ง (ไม่มี RPC ⇒ ไม่มีทรานแซกชัน) */
 export const SCHEDULE_MANY_MAX = 60;
 
-/* ช่องที่คำสั่งนี้เขียนได้ — ไม่มีอย่างอื่น (สถานะ/ยอด/ช่วงครอบ มีทางของมันเอง) · `billingSkip` = ติ๊ก "งวดนี้ไม่ต้องวางบิล" (0393) */
+/* ช่องที่คำสั่งนี้เขียนได้ — ไม่มีอย่างอื่น (สถานะ/ยอด มีทางของมันเอง) · `billingSkip` = ติ๊ก "งวดนี้ไม่ต้องวางบิล" (0393) ·
+   ช่วงครอบบริการ (mig 0320) เป็นกลุ่มของมันเอง — ด่านคนละตัวกับวันงวด (หัวไฟล์) */
 const DATE_FIELDS = Object.freeze(['billingDate', 'billingEvent', 'dueDate']);
-const WRITE_FIELDS = Object.freeze([...DATE_FIELDS, 'billingSkip']);
+const SCHEDULE_FIELDS = Object.freeze([...DATE_FIELDS, 'billingSkip']);
+const COVER_FIELDS = Object.freeze(['coversFrom', 'coversTo']);
+const WRITE_FIELDS = Object.freeze([...SCHEDULE_FIELDS, ...COVER_FIELDS]);
+const touches = (patch, fields) => fields.some((field) => Object.hasOwn(patch, field));
 
 /* ค่าที่ลงฐานของติ๊ก — `true` หรือ `null` (ตามลูกค้า) · ไม่มีวันเก็บ false */
 const skipValue = (on) => (on ? true : null);
@@ -105,7 +118,7 @@ export function scheduleManyShapeError(sent) {
     if (seen.has(id)) return 'งวดเดียวกันถูกส่งมาซ้ำ — โหลดหน้าใหม่แล้วลองอีกครั้ง';
     seen.add(id);
     if (typeof item.updatedAt !== 'string' || !item.updatedAt.trim()) return INSTALLMENT_VERSION_MISSING;
-    for (const field of DATE_FIELDS) {
+    for (const field of [...DATE_FIELDS, ...COVER_FIELDS]) {
       const value = item[field];
       if (value !== undefined && value !== null && typeof value !== 'string') return 'รูปแบบวันงวดที่ส่งมาไม่ถูกต้อง';
     }
@@ -182,13 +195,32 @@ function nextDates(row, item) {
    วันวางบิล/รอเหตุการณ์ผ่าน `normalizeInstallmentBilling` ตัวเดียวกับ `schedule` (อย่างใดอย่างหนึ่ง · ปี 2000–2100 · ชื่อ ≤120)
    กำหนดชำระเป็นวันที่มีจริง ปี 2000–2100 · ติ๊กเป็น true/null */
 function wantedDates(row, item) {
+  /* ⭐ ไม่ส่งช่องวันงวดเลย (แก้แค่ช่วงครอบ) = ค่าเดิมทั้งชุด ไม่ตรวจซ้ำ — แถวเก่าที่ค่าวันผิดรูปใหม่ไม่ทำให้ช่วงครอบบันทึกไม่ได้ */
+  if (!touches(item, SCHEDULE_FIELDS)) {
+    const covers = wantedCovers(row, item);
+    return covers.error ? covers : { value: { ...savedDates(row), ...covers.value } };
+  }
   const next = nextDates(row, item);
   const billing = normalizeInstallmentBilling({ billingDate: next.billingDate, billingEvent: next.billingEvent });
   if (billing.error) return { error: billing.error };
   const due = text(next.dueDate) || null;
   if (due && !realDay(due)) return { error: 'กำหนดชำระไม่ถูกต้อง' };
   if (due && (due < '2000-01-01' || due > '2100-12-31')) return { error: 'ปีของกำหนดชำระผิด' };
-  return { value: { ...billing.value, dueDate: due, billingSkip: skipValue(next.billingSkip) } };
+  const covers = wantedCovers(row, item);
+  if (covers.error) return covers;
+  return { value: { ...billing.value, dueDate: due, billingSkip: skipValue(next.billingSkip), ...covers.value } };
+}
+
+/* ช่วงครอบที่จะลงฐาน — คีย์ละคีย์ (ไม่ส่ง = คงเดิม · `null`/ว่าง = ล้าง) · ที่นี่ตรวจแค่ "เป็นวันที่มีจริง" (2026-02-31 = 22008 ดิบ)
+   ⭐ กลับหัว / ปี 2000–2100 / ใครแก้ได้ / งวดยกมา = ด่าน `coverage` ของผู้เรียก (`coverGate`) — ประโยคเดียวกับคำสั่งงวดเดียว */
+function wantedCovers(row, item) {
+  const value = {};
+  for (const field of COVER_FIELDS) {
+    const day = Object.hasOwn(item, field) ? text(item[field]) || null : text(row[field]) || null;
+    if (day && !realDay(day)) return { error: field === 'coversFrom' ? 'วันเริ่มช่วงครอบไม่ถูกต้อง' : 'วันสิ้นสุดช่วงครอบไม่ถูกต้อง' };
+    value[field] = day;
+  }
+  return { value };
 }
 
 /* ช่องที่ค่าใหม่ต่างจากฐาน — `{}` = ตรงแล้วทุกช่อง */
@@ -205,6 +237,8 @@ const savedDates = (row) => ({
   billingEvent: text(row.billingEvent) || null,
   dueDate: text(row.dueDate) || null,
   billingSkip: skipValue(rowSkipped(row)),
+  coversFrom: text(row.coversFrom) || null,
+  coversTo: text(row.coversTo) || null,
 });
 
 /**
@@ -268,8 +302,9 @@ export function coveragePlanStale(live = [], plan = []) {
  *  3. **ของเปลี่ยนใต้มือ** (เฉพาะงวดที่จะเปลี่ยน) → 409 พร้อม `conflicts` ทุกงวด: ไม่อยู่ในใบนี้แล้ว (ถูกปรับแผน/ย้ายไปใบ Rev.) ·
  *     `updatedAt` ไม่ตรงแถวสด · ล็อกในโหมดตั้งวัน (แจ้งชำระ/ขอใบวางบิล ระหว่างที่ร่างค้างอยู่ — จอเห็นเป็นงวดเปิดตอนร่าง)
  *  4. ด่าน `schedule` ทีละงวด (`gate` — ผู้เรียกส่ง installmentActionError ชุดเดียวกับแผง) → 400 บอกเลขงวด
- *  5. ค่าวัน (`wantedDates`) → 400 บอกเลขงวด
+ *  5. ค่าวัน (`wantedDates`) → 400 บอกเลขงวด · ช่วงครอบที่เปลี่ยน → ด่าน `coverage` (`coverGate(row, { coversFrom, coversTo })`) → 400
  *  6. ด่านรุ่นสี่ (`scheduleValueError` = validateInstallmentDates กับกติกาลูกค้าที่ server อ่านเอง) → 400 บอกเลขงวด
+ *  ⭐ ข้อ 3 (ล็อกโหมดตั้งวัน) · 4 · 6 ถามเฉพาะงวดที่วันงวดเปลี่ยน — งวดที่แก้แค่ช่วงครอบผ่านรุ่น + ข้อ 5 เท่านั้น
  *  7. ติ๊กเปลี่ยนแต่ฐานยังไม่มีคอลัมน์ (`skipReady` false · ก่อนรัน 0393) → 503 "รอรัน migration 0393"
  * ⚠️ ลำดับวันระหว่างงวด / วันวางบิลหลังกำหนดชำระ **ไม่บล็อก** (มติ 28/09 "เตือน ไม่บล็อก" — จอเตือนก่อนกด)
  * @param live   งวดสดทั้งใบ (loadInstallments — อ่านแบบโยน error)
@@ -282,7 +317,8 @@ export function coveragePlanStale(live = [], plan = []) {
  *   exceptions = ข้อยกเว้นรายงวดสำหรับประวัติ) หรือ `{ error, status, conflicts? }` — `conflicts` = `[{ id, seq, reason }]` เฉพาะ 409
  */
 export function scheduleManyCheck(live = [], sent = [], {
-  requestedIds = new Set(), order = null, gate = () => null, rule = null, ruleUnavailable = false, skipReady = false,
+  requestedIds = new Set(), order = null, gate = () => null, coverGate = () => null, rule = null, ruleUnavailable = false,
+  skipReady = false,
 } = {}) {
   const shape = scheduleManyShapeError(sent);
   if (shape) return { error: shape, status: 400 };
@@ -298,15 +334,18 @@ export function scheduleManyCheck(live = [], sent = [], {
     .filter(({ patch }) => !patch || Object.keys(patch).length > 0);
 
   const conflicts = [];
-  for (const { item, row } of items) {
+  for (const { item, row, patch } of items) {
     if (!row) {
       conflicts.push({ id: item.id.trim(), seq: null, reason: 'มีงวดที่ไม่อยู่ในใบนี้แล้ว (อาจถูกปรับแผนงวด)' });
       continue;
     }
     /* ล็อกก่อนรุ่นเก่า — งวดที่ถูกแจ้งชำระระหว่างร่างก็ `updatedAt` เปลี่ยนด้วย · บอกเหตุจริง ("แจ้งชำระแล้ว") ดีกว่า "เพิ่งถูกแก้"
        ⚠️ งวดยกมาก็ตกที่นี่ (409) ทั้งที่ไม่ได้ "เปลี่ยนใต้มือ" — ตั้งใจ: จอไม่ให้ร่างงวดยกมาอยู่แล้ว ร่างแบบนี้มาได้แค่จากแท็บเพี้ยน
-       และ 409 พาจอไปโหลดงวดสดแล้วตรวจร่างใหม่ (ร่างบนงวดล็อกถูกทิ้ง) · 400 จะค้างร่างที่คนลบเองไม่ได้เพราะแถวล็อก */
-    const lock = installmentDateLock(row, { order, requested: requestedIds.has(row.id) });
+       และ 409 พาจอไปโหลดงวดสดแล้วตรวจร่างใหม่ (ร่างบนงวดล็อกถูกทิ้ง) · 400 จะค้างร่างที่คนลบเองไม่ได้เพราะแถวล็อก
+       ⭐ ล็อกนี้เป็นของวันงวด — งวดที่แก้แค่ช่วงครอบไม่ถาม (ด่าน `coverage` ตัดสินเอง · หัวไฟล์) · `patch` null = ค่าผิดรูป (ถามไว้ก่อน) */
+    const lock = !patch || touches(patch, SCHEDULE_FIELDS)
+      ? installmentDateLock(row, { order, requested: requestedIds.has(row.id) })
+      : null;
     if (lock) conflicts.push({ id: row.id, seq: row.seq, reason: lock });
     else if (installmentStale(row, item.updatedAt)) conflicts.push({ id: row.id, seq: row.seq, reason: SCHEDULE_MANY_ROW_CHANGED });
   }
@@ -318,15 +357,24 @@ export function scheduleManyCheck(live = [], sent = [], {
 
   const rows = [];
   for (const { item, row, wanted, patch } of [...items].sort((a, b) => Number(a.row.seq) - Number(b.row.seq))) {
-    const blocked = gate(row);
+    /* ค่าผิดรูปไม่รู้ว่าแตะกลุ่มไหน — ถามด่านวันงวดตามเดิม (ช่องที่ผิดส่วนมากคือวัน) แล้วบอกเหตุของค่า */
+    const scheduled = !patch || touches(patch, SCHEDULE_FIELDS);
+    const blocked = scheduled ? gate(row) : null;
     if (blocked) return { error: `งวดที่ ${row.seq}: ${blocked}`, status: 400 };
     if (wanted.error) return { error: `งวดที่ ${row.seq}: ${wanted.error}`, status: 400 };
+    /* ⭐ ด่าน `coverage` ถามด้วยค่าที่จะลงจริง (ตัวเดียวกับคำสั่งงวดเดียว — ใครแก้ได้ · กลับหัว · ปี · งวดยกมา) */
+    const coverBlocked = touches(patch, COVER_FIELDS)
+      ? coverGate(row, { coversFrom: wanted.value.coversFrom, coversTo: wanted.value.coversTo })
+      : null;
+    if (coverBlocked) return { error: `งวดที่ ${row.seq}: ${coverBlocked}`, status: 400 };
     const billingException = item.billingException === true;
-    const v4 = scheduleValueError(row, wanted.value, { billingException, rule, ruleUnavailable });
-    if (v4) return { error: `งวดที่ ${row.seq}: ${v4}`, status: 400 };
+    if (scheduled) {
+      const v4 = scheduleValueError(row, wanted.value, { billingException, rule, ruleUnavailable });
+      if (v4) return { error: `งวดที่ ${row.seq}: ${v4}`, status: 400 };
+    }
     /* ติ๊กเปลี่ยนก่อนรัน 0393 — บอกให้รันมิก ไม่ใช่ PGRST204 ดิบตอนเขียน (งวดอื่นในคำขอยังไม่ถูกเขียน) */
     if (Object.hasOwn(patch, 'billingSkip') && !skipReady) return { error: BILLING_V4_SCHEMA_MISSING, status: 503 };
-    const exceptions = scheduleExceptionsOf(row, { ...wanted.value, billingException }, rule);
+    const exceptions = scheduled ? scheduleExceptionsOf(row, { ...wanted.value, billingException }, rule) : [];
     rows.push({ id: row.id, seq: row.seq, patch, before: row, exceptions });
   }
   return { rows };

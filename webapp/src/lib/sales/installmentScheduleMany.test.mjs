@@ -671,3 +671,87 @@ test('⭐ route: ฐานยังไม่รัน 0393 (แถวไม่�
   assert.equal(due.status, 200, JSON.stringify(due.body));
   assert.equal('billingSkip' in writes[0].patch, false);
 });
+
+// ── 8. ช่วงครอบบริการไปกับคำขอเดียวกัน (ม็อก split-v6 ข้อ 6 · 03/11) ─────────────────────────────────────────────
+const coverGateFor = (user, live) => (row, covers) => installmentActionError(row, 'coverage', user, { rows: live, ...covers });
+const SA = { id: 'sa', role: 'ae' };
+const FN = { id: 'fn', role: 'finance', department: 'FN' };
+
+test('⭐ schedule-many + ช่วงครอบ: คีย์ละคีย์ (ไม่ส่ง = คงเดิม · null/ว่าง = ล้าง) · วันงวดกับช่วงครอบลง patch เดียวกันของงวด', () => {
+  const live = rows().map((row) => (row.id === 'I1' ? { ...row, coversFrom: '2026-10-01', coversTo: '2026-10-31' } : row));
+  const gate = (row) => installmentActionError(row, 'schedule', SA, { rows: live });
+  const coverGate = coverGateFor(SA, live);
+  const both = scheduleManyCheck(live, [
+    sent('I2', { billingDate: '2026-11-05', dueDate: '2026-12-05', coversFrom: '2026-11-01', coversTo: '2026-11-30' }),
+  ], { gate, coverGate });
+  assert.deepEqual(both.rows[0].patch, { billingDate: '2026-11-05', dueDate: '2026-12-05', coversFrom: '2026-11-01', coversTo: '2026-11-30' });
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { coversTo: '2026-11-15' })], { gate, coverGate }).rows[0].patch,
+    { coversTo: '2026-11-15' }, 'ส่งแค่ปลายช่วง = วันเริ่มคงเดิม (ไม่ล้างคีย์ที่ไม่ได้ส่ง)');
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { coversFrom: null, coversTo: '' })], { gate, coverGate }).rows[0].patch,
+    { coversFrom: null, coversTo: null }, 'ล้างช่วงครอบได้ (ใบที่ไม่ใช่สายบริการ — กติกาเดียวกับคำสั่ง coverage)');
+  assert.deepEqual(scheduleManyCheck(live, [sent('I1', { coversFrom: '2026-10-01', coversTo: '2026-10-31' })], { gate, coverGate }),
+    { rows: [] }, 'ค่าตรงฐาน = ข้าม');
+  assert.equal(scheduleManyShapeError([sent('I1', { coversFrom: 20261001 })]), 'รูปแบบวันงวดที่ส่งมาไม่ถูกต้อง');
+  assert.deepEqual(scheduleManyCheck(live, [sent('I2', { coversFrom: '2026-02-31' })], { gate, coverGate }),
+    { error: 'งวดที่ 2: วันเริ่มช่วงครอบไม่ถูกต้อง', status: 400 }, 'วันที่ไม่มีจริงตกก่อนถึงฐาน (22008 ดิบ)');
+});
+
+test('⭐ schedule-many + ช่วงครอบ: ด่าน coverage ตัวเดียวกับคำสั่งงวดเดียว — กลับหัว/ปีผิด/งวดที่รับรองแล้ว (เฉพาะบัญชี) = 400 บอกเลขงวด', () => {
+  const live = rows().map((row) => (row.id === 'I4' ? { ...row, status: 'confirmed' } : row));
+  const run = (user, body) => scheduleManyCheck(live, body, {
+    gate: (row) => installmentActionError(row, 'schedule', user, { rows: live }), coverGate: coverGateFor(user, live),
+  });
+  assert.deepEqual(run(SA, [sent('I2', { coversFrom: '2026-12-01', coversTo: '2026-11-01' })]),
+    { error: 'งวดที่ 2: วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด', status: 400 });
+  assert.deepEqual(run(SA, [sent('I2', { coversTo: '2202-08-06' })]),
+    { error: 'งวดที่ 2: ปีของช่วงครอบบริการไม่ถูกต้อง (รับปี ค.ศ. 2000–2100)', status: 400 });
+  assert.deepEqual(run(SA, [sent('I4', { coversFrom: '2026-12-01', coversTo: '2026-12-31' })]),
+    { error: 'งวดที่ 4: งวดนี้บัญชีรับรองแล้ว — ช่วงครอบบริการแก้ได้เฉพาะฝ่ายบัญชี', status: 400 });
+  /* งวดที่รับรองแล้ว = วันงวดล็อก (installmentDateLock) แต่ช่วงครอบยังแก้ได้โดยบัญชี — ล็อกของโหมดตั้งวันไม่ถามงวดที่แก้แค่ช่วงครอบ */
+  assert.deepEqual(run(FN, [sent('I4', { coversFrom: '2026-12-01', coversTo: '2026-12-31' })]).rows[0].patch,
+    { coversFrom: '2026-12-01', coversTo: '2026-12-31' });
+  assert.equal(run(FN, [sent('I4', { dueDate: '2027-01-10', coversTo: '2026-12-31' })]).status, 409,
+    'แตะวันงวดของงวดที่รับรองแล้วด้วย = ล็อกโหมดตั้งวันตามเดิม');
+});
+
+test('⭐ schedule-many + ช่วงครอบ: งวดที่แก้แค่ช่วงครอบไม่ถามด่านวันงวด (schedule · รุ่นสี่ · ล็อก) — แต่ถามรุ่น (updatedAt) เสมอ', () => {
+  const live = rows();
+  let asked = 0;
+  const gate = () => { asked += 1; return 'ด่านวันงวดไม่ควรถูกถาม'; };
+  /* I3 รอเหตุการณ์ + ส่งกำหนดชำระไม่ได้ (รุ่นสี่) — ค่าวันเดิมผิดกติกาใหม่ ไม่ทำให้ช่วงครอบบันทึกไม่ได้ · I4 แจ้งชำระแล้ว (วันล็อก) */
+  const built = scheduleManyCheck(live, [
+    sent('I3', { coversFrom: '2026-12-01', coversTo: '2026-12-31' }),
+    sent('I4', { coversFrom: '2027-01-01', coversTo: '2027-01-31' }),
+  ], { gate, coverGate: coverGateFor(SA, live), rule: { need: 'none' } });
+  assert.equal(built.error, undefined, JSON.stringify(built));
+  assert.deepEqual(built.rows.map((r) => [r.id, r.patch, r.exceptions]), [
+    ['I3', { coversFrom: '2026-12-01', coversTo: '2026-12-31' }, []],
+    ['I4', { coversFrom: '2027-01-01', coversTo: '2027-01-31' }, []],
+  ]);
+  assert.equal(asked, 0);
+  const stale = scheduleManyCheck(live, [{ ...sent('I3', { coversTo: '2026-12-31' }), updatedAt: 'old' }], { coverGate: coverGateFor(SA, live) });
+  assert.deepEqual([stale.status, stale.conflicts.map((c) => c.id)], [409, ['I3']]);
+});
+
+test('⭐ route: schedule-many พาช่วงครอบลงงวดเดียวกันในคำขอเดียว · ช่วงกลับหัว = 400 ไม่มีอะไรถูกเขียน', async (t) => {
+  const { call, writes } = await installmentsRoute(t, {
+    customers: () => new Response(JSON.stringify([{ id: 'CUS-1', billingRule: null }]), { status: 200, headers: { 'content-type': 'application/json' } }),
+    installments: [liveRow('I1', 1, { coversFrom: null, coversTo: null }), liveRow('I2', 2, { coversFrom: null, coversTo: null })],
+  });
+  const bad = await call({ action: 'schedule-many', rows: [
+    { id: 'I1', updatedAt: T1, dueDate: '2026-11-05' },
+    { id: 'I2', updatedAt: T1, coversFrom: '2026-12-31', coversTo: '2026-12-01' },
+  ] });
+  assert.deepEqual([bad.status, bad.body.error], [400, 'งวดที่ 2: วันเริ่มช่วงครอบต้องไม่เกินวันสิ้นสุด']);
+  assert.equal(writes.length, 0, 'ตรวจครบทุกงวดก่อนเขียนงวดแรก — งวด 1 ไม่ลงทั้งที่ผ่าน');
+  const ok = await call({ action: 'schedule-many', rows: [
+    { id: 'I1', updatedAt: T1, dueDate: '2026-11-05', coversFrom: '2026-11-01', coversTo: '2026-11-30' },
+    { id: 'I2', updatedAt: T1, coversFrom: '2026-12-01', coversTo: '2026-12-31' },
+  ] });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.saved, 2);
+  assert.deepEqual(writes.map((w) => [w.id, w.patch.dueDate, w.patch.coversFrom, w.patch.coversTo, 'billingDate' in w.patch]), [
+    ['I1', '2026-11-05', '2026-11-01', '2026-11-30', false],
+    ['I2', undefined, '2026-12-01', '2026-12-31', false],
+  ]);
+});
