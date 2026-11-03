@@ -94,6 +94,8 @@ const isById = (body) => /\.eq\(\s*['"]id['"]/.test(body);
 const MUST_FILTER = new Map([
   ['lib/sales/salesReportData.js', { count: 2, reason: 'รายงานยอดขาย (จอ + Excel): ใบอนุมัติในงวด + ใบรออนุมัติ' }],
   ['lib/pm/productionJobsRepo.js', { count: 1, reason: 'ร่างงานผลิตอัตโนมัติจากใบอนุมัติทั้งทะเบียน' }],
+  /* Q21 (มติ 03/11): งานไทม์ไลน์ "วางบิล + ค่าสรรพสามิต" ปิดเองเมื่อดีลมี SO อนุมัติและไม่มีใบในคิวรอออก — ใบย้อนหลังไม่มีงานนี้ให้ซิงก์ */
+  ['lib/pm/exciseBillingTaskSync.js', { count: 1, reason: 'นับ SO อนุมัติของดีลที่มีงานวางบิลค่าสรรพสามิต (ปิดงานอัตโนมัติ)' }],
   ['lib/sales/handoffQueueData.js', { count: 1, reason: 'คิวรอยื่นภาษี (แดชบอร์ดของฉัน · ภาพรวมดีล · ปิดโครงการ)' }],
   ['app/api/tax/orders/from-sales-order/route.js', { count: 1, reason: 'ตัวเลือกใบสั่งขายที่รอยื่นภาษี' }],
   /* 0374: ใบย้อนหลังมีร่าง/ตีกลับได้แล้ว แต่ส่งอนุมัติโดยไม่เก็บลายเซ็น (CHECK บังคับว่าง) — นับเข้า "ต้องยื่น" = ชี้ผู้คีย์

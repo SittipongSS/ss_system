@@ -13,6 +13,7 @@ import {
   loadQuotationCancelContext,
   previewQuotationCancel,
 } from '@/lib/sales/quotationCancelRepo';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,4 +89,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   });
   if (result.error) return fail(result.error, result.status || 500);
   return ok(result.data);
-});
+}, EXCISE_TASK_SYNC.quotation);

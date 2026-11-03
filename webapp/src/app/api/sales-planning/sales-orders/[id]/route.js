@@ -78,6 +78,7 @@ import {
   exciseFilingBlockMessage, exciseFilingsOfSalesOrder, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
   isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { ExciseQuotationError, exciseSourceLock, loadExciseRoundState, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
@@ -2104,7 +2105,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   return badRequest('คำสั่งไม่ถูกต้อง');
-});
+}, EXCISE_TASK_SYNC.salesOrder);
 
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();

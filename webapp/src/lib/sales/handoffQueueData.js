@@ -54,7 +54,8 @@ async function loadAwaitingSalesOrder(supabase, dealIds) {
 
 // Sale Order ที่อนุมัติแล้วและยังไม่มีใบยื่นชำระภาษี — เฉพาะใบที่ "มีสินค้าสรรพสามิต
 // ให้ยื่นจริง" (resolveSoFiling().eligible) ไม่งั้น SO ที่ขายของนอกพิกัดจะค้างคิวถาวร
-async function loadAwaitingFiling(supabase, dealIds) {
+// (export ให้ตัวซิงก์งานไทม์ไลน์ "วางบิล + ค่าสรรพสามิต" ใช้นิยามเดียวกับคิว — `lib/pm/exciseBillingTaskSync.js` · Q21)
+export async function loadAwaitingFiling(supabase, dealIds) {
   // ⚠️ เหตุผลเดียวกับก้อนบน — `dealIds = null` = อ่าน SO ที่อนุมัติแล้วทั้งทะเบียน
   const { data: approved, error } = await fetchAllResult(() => {
     let query = supabase

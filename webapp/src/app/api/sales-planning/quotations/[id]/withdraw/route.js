@@ -6,6 +6,7 @@ import { canWithdrawQuotationSubmission, quotationApprovalDeal } from '@/lib/sal
 import { appendDocumentEvent } from '@/lib/sales/documentThread';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 import { resolveExpectedUpdatedAt } from '@/lib/sales/documentConcurrency';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,4 +62,4 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
   return ok(data);
-});
+}, EXCISE_TASK_SYNC.quotation);

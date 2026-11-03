@@ -52,6 +52,7 @@ import { getPublishedCompanyProfile } from '@/lib/admin/organizationSettings';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { purgeSalesOrderFiles } from '@/lib/sales/salesOrderAttachmentAccess';
 import { loadCreateFormBillingTerms } from '@/lib/sales/salesOrderCreateInstallments';
+import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
 // PDF ของฉบับเปลี่ยนภาษาสร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium
@@ -545,7 +546,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   await recordAudit({ user, action: 'update', entityType: 'quotation', entityId: id, before, after, summary: `แก้ไขใบเสนอราคา ${before.quoteNumber}`, request: req });
   return ok(after);
-});
+}, EXCISE_TASK_SYNC.quotation);
 
 /* id ของใบสั่งขายลูกของใบเสนอราคา — ใบเดียวมี SO ไม่กี่ใบ แต่ยังต้องผ่าน fetchAllResult ตามด่าน check:rowcap
    (จุดอ่านที่ไม่มีเพดานห้ามเพิ่มใหม่ ไม่ว่าจะมั่นใจแค่ไหนว่าแถวน้อย)
