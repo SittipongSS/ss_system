@@ -13,7 +13,7 @@ const code = readFileSync(new URL('./DateInput.js', import.meta.url), 'utf8')
   .replace(/^\s*\/\/.*$/gm, '');
 
 test('weekday เป็น opt-in (ค่าตั้งต้น false) — ทุกหน้าเดิมยังเห็นตัวเลข', () => {
-  assert.match(code, /era = "CE", weekday = false, invalid = false \}\)/);
+  assert.match(code, /era = "CE",\s*weekday = false, invalid = false,/);
   /* `invalid` (ฟอร์มคีย์ใบย้อนหลัง 25/09) ก็ opt-in — ขอบแดงตกที่ช่องกรอกจริง ไม่ใช่กล่องห่อ */
   assert.match(code, /className=\{`premium-input date-input-text\$\{invalid \? " is-invalid" : ""\}`\}/);
   assert.match(code, /import \{ BUDDHIST_YEAR_OFFSET, dateFieldText, displayDateToIso \} from "@\/lib\/format";/);
@@ -31,4 +31,15 @@ test('ทุกจังหวะที่ตั้งข้อความใ�
   assert.match(code, /setText\(iso \? shown\(iso\) : shown\(value\)\);/);
   // เลือกจากปฏิทิน (ปุ่มเปิดปฏิทินทำให้ช่องหลุดโฟกัสแล้ว) ⇒ วันไทย
   assert.match(code, /setText\(shown\(iso\)\);\s*setOpen\(false\);/);
+});
+
+test('ตัวช่วยในปฏิทิน (มติ 02/11 · วันวางบิล/กำหนดชำระของงวด) เป็น opt-in — ไม่ส่ง = ปฏิทินหน้าตาเดิม', () => {
+  assert.match(code, /calendarMonth = "", dayInfo = null, calendarLead = null, calendarExtra = null,\s*\}\) \{/);
+  // เดือนที่เปิด: ค่าในช่องชนะเสมอ · ว่าง = calendarMonth
+  assert.match(code, /const target = selected \|\| fallback;/);
+  // ชิปเลือกผ่าน `choose` ตัวเดียวกับแตะวัน (ปฏิทินปิด · ข้อความในช่องเป็นวันไทย)
+  assert.match(code, /calendarExtra\(\{ pick: choose, close: \(\) => setOpen\(false\) \}\)/);
+  // effect วัดตำแหน่งผูกกับ "มีหรือไม่มี" — ผูกฟังก์ชันตรง ๆ = วาดวนไม่จบ
+  assert.match(code, /\}, \[open, hasLead, hasExtra\]\);/);
+  assert.doesNotMatch(code, /\[open, calendarLead, calendarExtra\]/);
 });

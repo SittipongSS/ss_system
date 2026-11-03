@@ -1,43 +1,28 @@
 "use client";
-// ── ชิ้นรอบตารางของโหมดตั้งวัน: ปุ่มเข้าโหมดบนการ์ด · บรรทัดบอกโหมด · แถบบันทึกตรึงล่าง · แผ่นเต็มจอบนมือถือ ──
+// ── ชิ้นรอบตารางของวันงวด: ปุ่ม "เติมวันงวดที่ว่าง…" บนการ์ด · แถบบันทึกตรึงล่าง ──
 //
-// ⭐ บันทึกมีที่เดียว = ปุ่ม navy "บันทึก N งวด" (แถบล่าง · หรือท้ายแผ่นบนมือถือ) — คำขอเดียว `schedule-many`
-//   ไม่มี "เสร็จ" แล้วต้องบันทึกอีกชั้น (ข้อ 2 ของกรรมการ) · ยกเลิก = ทิ้งร่างทั้งหมด + toast "เอาคืน"
+// ⭐ บันทึกมีที่เดียว = ปุ่ม navy "บันทึก N งวด" บนแถบล่าง — คำขอเดียว `schedule-many` · ยกเลิก = ทิ้งร่างทั้งหมด + toast "เอาคืน"
+// ⭐ แถบขึ้นเมื่อมีร่าง (หรือแผงเติมเปิด) เท่านั้น — รุ่นสองช่องแยก (มติ 02/11) ไม่มีโหมดให้เข้า ช่องวันในตารางแก้ได้เลย
 // ⭐ แถบบอกผลก่อนกด (กติกา #1223): เปลี่ยนกี่งวด · ดูเดิม → ใหม่ · แทนกำหนดชำระเดิมกี่งวด (ป้ายแดง/ด่านนัดช่างนับจากวันใหม่) ·
 //   งวดที่ถูกแก้จากอีกหน้าต่างระหว่างร่าง (หลัง 409) · ร่างที่ถูกทิ้งเพราะงวดล็อกแล้ว
-// ⚠️ แถบนี้อยู่ชั้นเดียวกับแถบบันทึกช่วงครอบ (coverBar) — สองชุดร่างเปิดพร้อมกันไม่ได้ (ผู้เรียกกันไว้ทั้งสองทาง)
-import { CalendarClock, CalendarRange, ChevronDown, ChevronUp, History, Info, Lock, PencilLine, TriangleAlert } from "lucide-react";
+// ⚠️ แถบนี้อยู่ชั้นเดียวกับแถบบันทึกช่วงครอบ (coverBar) — สองชุดร่างไม่ค้างพร้อมกัน (ผู้เรียกกันไว้ทั้งสองทาง)
+import { CalendarRange, ChevronDown, ChevronUp, History, Info, Lock, TriangleAlert } from "lucide-react";
 import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import StatusNotice from "@/components/ui/StatusNotice";
-import Modal from "@/components/Modal";
 import { SKIP_TEXT, formatBillingDate } from "@/lib/sales/billingRule";
-import InstallmentDateEditor from "./InstallmentDateEditor";
 import styles from "./InstallmentDates.module.css";
 
-/* ปุ่ม "ตั้งวันงวด" บนหัวการ์ด — ไม่มีสิทธิ์/ไม่มีงวดที่แก้ได้ = ไม่วาด · ร่างช่วงครอบค้าง = วาดแล้วบอกเหตุตอนกด */
-export function InstallmentDateButton({ mode, disabled = false }) {
-  if (!mode.available || mode.active) return null;
+/* ปุ่ม "เติมวันงวดที่ว่าง…" บนหัวการ์ด — ไม่มีสิทธิ์/แผงเปิดอยู่แล้ว = ไม่วาด · ร่างช่วงครอบค้าง/ล็อกทั้งใบ = วาดแล้วบอกเหตุตอนกด
+   (ช่องวันในตารางแก้ทีละงวดได้เลย — ปุ่มนี้สำหรับเติมหลายงวดตามรอบ/ตามเดือน) */
+export function InstallmentDateFillButton({ mode, disabled = false }) {
+  if (!mode.available || mode.fill) return null;
   return (
-    <GatedAction size="sm" variant="ghost" icon={<CalendarClock size={13} aria-hidden="true" />}
-      blocker={mode.blocker} disabled={disabled} onClick={() => mode.enter()}>
-      ตั้งวันงวด
+    <GatedAction size="sm" variant="ghost" icon={<CalendarRange size={13} aria-hidden="true" />}
+      blocker={mode.blocker} disabled={disabled} onClick={() => mode.openFill()}>
+      เติมวันงวดที่ว่าง…
       {mode.emptyCount ? <span className={styles.entryCount}> · ว่าง {mode.emptyCount}</span> : null}
     </GatedAction>
-  );
-}
-
-/* บรรทัดใต้หัวการ์ดตอนอยู่ในโหมด — บอกวิธีใช้ครั้งเดียว (คำอธิบายยาวไม่ซ้ำในตัวแก้ · บรีฟ "คำน้อยกว่าเดิม") */
-export function InstallmentDateHint({ mode }) {
-  if (!mode.active) return null;
-  return (
-    <p className={styles.modeHint}>
-      <PencilLine size={15} aria-hidden="true" />
-      <span>
-        <b>โหมดตั้งวันงวด</b> — แตะช่องวันของงวดไหนก็ได้
-        {mode.rows.length > 1 ? " · เลือกแล้วไปงวดถัดไปที่ว่างเอง" : ""} · บันทึกครั้งเดียวที่แถบล่าง
-      </span>
-    </p>
   );
 }
 
@@ -54,9 +39,9 @@ function ChangePair({ label, from, to }) {
   );
 }
 
-/* แถบบันทึก (ติดขอบล่างของจอ) — ขึ้นตลอดที่อยู่ในโหมด · ยังไม่ได้แก้ = บอกวิธีเริ่ม */
+/* แถบบันทึก (ติดขอบล่างของจอ) — ขึ้นเมื่อมีร่าง หรือแผงเติมเปิดอยู่ · หน้าสร้าง SO ไม่มีแถบนี้ (ร่างไปกับใบ) */
 export function InstallmentDateBar({ mode, error = "", savingLabel = "กำลังบันทึก…" }) {
-  if (!mode.active) return null;
+  if (mode.create || !(mode.dirty || mode.fill)) return null;
   const { changes, dropped, replaced } = mode;
   const n = changes.length;
   const stale = changes.filter((change) => change.stale);
@@ -70,7 +55,7 @@ export function InstallmentDateBar({ mode, error = "", savingLabel = "กำล�
       <div className={styles.barRow}>
         <div className={styles.barInfo}>
           <p className={styles.barCount} aria-live="polite">
-            {n ? <>เปลี่ยน <span className={styles.n}>{n}</span> งวด</> : "ยังไม่ได้แก้ — แตะช่องวันเพื่อเริ่ม"}
+            {n ? <>เปลี่ยน <span className={styles.n}>{n}</span> งวด</> : "ยังไม่ได้แก้ — เลือกตัวเลือกในแผงเติม หรือแก้ช่องวันในตาราง"}
             {n ? (
               <Button size="sm" variant="quiet" aria-expanded={mode.summaryOpen}
                 icon={mode.summaryOpen ? <ChevronUp size={13} aria-hidden="true" /> : <ChevronDown size={13} aria-hidden="true" />}
@@ -141,45 +126,5 @@ export function InstallmentDateBar({ mode, error = "", savingLabel = "กำล�
         </ul>
       ) : null}
     </div>
-  );
-}
-
-/* มือถือ (≤640px): ตัวแก้เป็นแผ่นล่าง ท้ายตรึงมีปุ่ม navy ปุ่มเดียว "บันทึก N งวด" (ข้อ 2 ของกรรมการ)
-   · ปิดแผ่น (X) = กลับตาราง ร่างยังอยู่ (แถบล่างยังพาบันทึก) · error ของ API ขึ้นในแผ่น (แถบของหน้าอยู่ใต้แผ่น)
-   · หน้าสร้าง SO (`mode.create`) ไม่มีอะไรให้บันทึกที่นี่ (วันไปกับคำขอสร้างใบ) ⇒ ปุ่ม navy ปุ่มเดียวคือ "เสร็จ" (ปิดแผ่น) */
-export function InstallmentDateSheet({ mode, error = "", subtitle = "", savingLabel = "กำลังบันทึก…" }) {
-  const row = mode.active && mode.placement === "sheet" ? mode.openRow : null;
-  if (!row) return null;
-  const n = mode.changes.length;
-  const footer = mode.create ? (
-    <div className={styles.sheetFoot}>
-      <p className={styles.barNote}>
-        <Info size={13} aria-hidden="true" />
-        ไม่เลือก = ไม่ส่ง · วันงวดส่งพร้อมคำขอสร้างใบ
-      </p>
-      <Button tone="primary" className={styles.sheetSave} onClick={mode.close}>เสร็จ</Button>
-    </div>
-  ) : (
-    <div className={styles.sheetFoot}>
-      <p className={styles.barNote} data-tone={mode.replaced || mode.saveBlocker ? "warn" : undefined}>
-        {mode.replaced || mode.saveBlocker ? <TriangleAlert size={13} aria-hidden="true" /> : <Info size={13} aria-hidden="true" />}
-        {mode.saveBlocker || (n
-          ? `เปลี่ยน ${n} งวด${mode.replaced ? ` · แทนกำหนดชำระเดิม ${mode.replaced} งวด` : ""}`
-          : "ยังไม่ได้แก้ — เลือกวันของงวดนี้")}
-      </p>
-      <Button tone="primary" className={styles.sheetSave} disabled={mode.busy || Boolean(mode.saveBlocker)} onClick={mode.save}>
-        {mode.busy ? savingLabel : n ? `บันทึก ${n} งวด` : "บันทึก"}
-      </Button>
-    </div>
-  );
-  return (
-    <Modal open onClose={mode.close} sheetOnPhone size="md" dismissible={!mode.busy} title="ตั้งวันงวด" subtitle={subtitle}
-      footer={footer}>
-      <div className={styles.sheetBody}>
-        {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-        {/* key = งวด + ชนิดของกติกา (ตัวเดียวกับป๊อปโอเวอร์ · review 28/09) */}
-        <InstallmentDateEditor key={`${row.id}:${mode.kind}`} mode={mode} row={row} variant="sheet" />
-      </div>
-    </Modal>
   );
 }

@@ -3,6 +3,7 @@
 > สถานะ: **รอตรวจ** · ตรวจกับโค้ดเมื่อ 2026-09-29 · รอบแรก–ห้าขึ้น prod แล้ว (#1840 รุ่นสอง + mig 0390 · #1846 แบบ C + มติ 17) ·
 > **รอบหก = รุ่นสี่ "ต้องวางบิลไหม"** (มติ 18) ขึ้น prod แล้ว (#1851 `1caf19e3`) · **mig 0393 รันแล้ว** (เจ้าของรัน 29/09) · **backfill ยังไม่รัน** (ต้องได้คำยินยอมของเจ้าของ) ·
 > **รอบเจ็ด = รุ่นห้า "ปฏิทินรายปีของลูกค้า"** (มติ 19 · 29/09) เขียนครบในแบรนช์ `claude/billing-calendar-v5` ยังไม่ commit/merge · **ไม่มี migration** (0393 ตรวจรูปปฏิทินอยู่แล้ว · 0394 = ใบย้อนหลัง PR-D) ·
+> **รอบแปด = สองช่องวันแยก** (มติเจ้าของ 02/11 · แทนตัวแก้รายงวดของแบบ C) — `กำลังดำเนินการ` แบรนช์ `claude/billing-split-dates` · ไม่มี migration · ดูหัวข้อ "รอบแปด" ·
 > **ใบย้อนหลังเก็บวันวางบิลรายงวด** (PR-D · mig 0394/P7) — `กำลังดำเนินการ` แบรนช์ `claude/so-service-historical` · รายละเอียด [historical-sales-orders.md](historical-sales-orders.md) §8E
 
 ม็อกที่เจ้าของดูผ่าน: `~/ss-team/mockups/billing-cycle/` (5 จอ · brief.md มีมติ + ข้อมูลตัวอย่าง)
@@ -128,6 +129,9 @@
 
 ## รอบสี่ — แบบ C: โหมดตั้งวันในตาราง (มติเจ้าของ 28/09 · ม็อก `mockups/billing-cycle/installment-v2/c.html`)
 
+> ⚠️ **ตัวแก้รายงวด/ทางเข้าโหมด/ที่วางสามแบบของหัวข้อนี้ถูกแทนแล้วโดยรอบแปด (สองช่องวันแยก · มติ 02/11)** — ที่ยังใช้อยู่: ร่าง + บันทึกครั้งเดียว
+> (`schedule-many`) · ล็อกรายงวด · แผง "เติมวันงวดที่ว่าง…" · กติกาเปลี่ยนแล้วแผงเติมตั้งต้นใหม่ · ร่างสองชุดไม่ค้างพร้อมกัน
+
 - **ทางเข้าเดียว**: ปุ่ม "ตั้งวันงวด" บนการ์ดการชำระ · แตะเซลล์วันวางบิล/กำหนดชำระในตาราง · เมนูแถว "ตั้งวันงวด" — ทั้งสามเข้าโหมดเดียวกัน
   (เปิดตัวแก้ของงวดนั้นไว้) · ใครเข้าได้ = ด่าน `schedule` ตัวเดียวกับ route (`installmentActionError` · ฝ่ายขายที่แก้ใบได้ + FN) ·
   ไม่มีสิทธิ์ = ตารางอ่านอย่างเดียว ไม่มีปุ่ม/เซลล์ให้แตะ · ล็อกทั้งใบ + มีสิทธิ์ = ปุ่มอยู่ กดแล้วบอกเหตุ
@@ -153,6 +157,31 @@
 - **ถอดแล้ว**: โมดัลรายงวดทั้งสองแบบ ("กำหนดวันงวด" / "ตั้ง-แก้กำหนดชำระ") · เมนูแถวสามรายการเดิม (เหลือ "ตั้งวันงวด") · ลิงก์ "เลือกรอบ" ในเซลล์ ·
   ปุ่ม+โมดัล "เติมตามรอบ เดือนละงวด…" และ "จัดวันใหม่ตามรอบปัจจุบัน…" บนการ์ด · action `fill-billing`/`redate-billing` ของ API
   ตอบ **410** ตั้งแต่รุ่นสี่ · `BillingRoundPicker` **ถอดแล้ว** (หน้าสร้าง SO ใช้ตัวแก้ตัวเดียวกับแผงงวด — รอบหก)
+
+## รอบแปด — สองช่องวันแยก "แบบวันอื่นๆ" (มติเจ้าของ 02/11/2026 · ม็อก `mockups/billing-cycle/split-v6/`)
+
+เจ้าของ: "ปรับการใส่วันวางบิลกับกำหนดชำระใหม่ทั้งระบบ — กดแยกส่วน แบบวันอื่นๆ มันดูเข้าใจง่ายกว่า" ·
+"กดวางบิลแล้วมันเด้งไปกำหนดชำระ กดกำหนดชำระแล้วมันไปงวดถัดไป มันไม่เรียง วางบิล > ชำระ" (ต้นเหตุ: `choose()` → `nextEmptyRow`
+และงวดถัดไปเปิดที่ `start: 'due'` ของลูกค้ายังไม่ระบุ/ไม่ต้องวางบิล ⇒ วันวางบิลถูกข้าม · เลือกวันวางบิลจากปฏิทินไม่เด้ง แต่ไทล์/ชิปเด้ง)
+
+- **ทุกงวดที่แก้ได้มีช่องวันสองช่องในตารางตลอด** (`InstallmentDateCell` = `DateInput` ตัวเดียวกับทั้งระบบ · พิมพ์ได้ · ไอคอนเปิดปฏิทิน ·
+  ท่าเดียวกับช่องช่วงครอบบริการ) — ไม่มีโหมด ไม่มีปุ่ม/เมนู "ตั้งวันงวด" ไม่มีป๊อปโอเวอร์ตัวแก้รายงวด ไม่มี "ไปงวดถัดไปเอง" ·
+  เลือกแล้วปฏิทินปิด · Tab ไล่ตามตาราง วันวางบิล → (ปุ่มปฏิทิน) → กำหนดชำระ → งวดถัดไป
+- **มติข้อ 4 (แบบ ข): เลือกวันวางบิลไม่แตะกำหนดชำระเลย** (ไม่เติม ไม่ทับ) · กติกาคิดได้ = ใต้ช่องกำหนดชำระขึ้น "ตามรอบ: [ใช้ dd mmm]"
+  ให้กดเอง · **มติข้อ 3**: ขึ้นเฉพาะงวดที่เพิ่งแก้วันวางบิลในร่างนี้ หรือกำหนดชำระยังว่าง — ข้อมูลเดิมที่ไม่ตรงรอบอยู่เงียบ
+- ระบบช่วยเป็นของในปฏิทิน (prop opt-in ของ `DateInput`: `calendarMonth` · `dayInfo` · `calendarLead` · `calendarExtra` — ไม่ส่ง = ปฏิทินเดิมทุกหน้า):
+  จุดใต้วันรอบ/วันตัดรอบของลูกค้า · เลขงวดอื่นที่มุมช่อง · ชิปรอบถัดไป 3 รอบ (`roundChoicesFor` + วันหยุด) · "ต่อจากงวด N" (`continueChoiceFor`) ·
+  "ทันกำหนดชำระ dd" (`billingForDueChoice` — งวดที่มีกำหนดชำระแต่ยังไม่มีวันวางบิล · ตั้งวันวางบิลอย่างเดียว) · ปฏิทินเปิดเดือนที่ชื่องวดบอก ·
+  ฝั่งกำหนดชำระ: ชิป "ตามรอบ/ตามเครดิต N วัน/ชำระวันวางบิล/ตามปฏิทินลูกค้า" + "วันเดียวกับวางบิล" (ยังไม่ระบุ) + ทางลัด `quickDueChoices`
+- **มติข้อ 1**: "รอเหตุการณ์" = ลิงก์ "ยังไม่รู้วัน…" ท้ายปฏิทินกำหนดชำระ (ชิปสำเร็จรูป + พิมพ์เอง) · เลือกแล้วไม่มีวันทั้งสองช่อง ·
+  **มติข้อ 2**: "งวดนี้ไม่ต้องวางบิล" / "งวดนี้ต้องวางบิล…" อยู่เมนู ⋯ ของแถวที่เดียว (ยืนยันแล้วช่องวันวางบิลโผล่ + โฟกัสให้)
+- แถบบันทึกขึ้นเมื่อมีร่าง (หรือแผงเติมเปิด) · ร่างวันงวดค้าง = ช่องช่วงครอบล็อกพร้อมเหตุ · ร่างช่วงครอบค้าง = ช่องวันอ่านอย่างเดียว
+  (สองฝั่งยิงคนละคำขอที่ล็อกด้วย updatedAt ของงวดเดียวกัน) · ปุ่มการ์ด "เติมวันงวดที่ว่าง…" แทน "ตั้งวันงวด"
+- หน้าสร้าง SO ใช้ช่องตัวเดียวกัน (`create`) · คำใต้ตาราง `createFormPlanNote` ไม่พูด "ระบบคิดกำหนดชำระให้" แล้ว
+- **ถอดแล้ว**: `InstallmentDateEditor` · `InstallmentDateFrame`/`InstallmentDateExpandRow` · `InstallmentDateSheet` · `InstallmentCalendar` ·
+  `InstallmentDateEntry` · `InstallmentDateButton`/`InstallmentDateHint` · ใน `installmentDateDrafts.js`: `pickBillingDate` · `nextEmptyRow` ·
+  `openViewOf` · `dateViewOf` · `dateCellTapCloses` · `splitsFields` · `VIEW_LABELS` · `keepDueChoiceFor` (→ `billingForDueChoice`) · `sundayFirstCells`
+- ยังไม่ทำ: ตารางงวดบนมือถือยังเป็นตารางเลื่อนแนวนอน (ม็อกเป็นการ์ดรายงวด) · บันทึกร่างวันงวดกับร่างช่วงครอบในคำขอเดียว
 
 ## รอบหก — รุ่นสี่ "ต้องวางบิลไหม" (มติ 18 · 29/09 · system-design §8 ช่วง 1 · 2a · 3 · 4a + สคริปต์ช่วง 5)
 
@@ -245,7 +274,7 @@
 | ปฏิทินรายปี (รุ่นห้า) | สถานะตัวแก้ `lib/sales/billingCalendarEdit.js` · จอ `components/database/billingCalendar/` (`CalendarEditor` · `CalendarPicture` · `CutoffTimeField`) · วันหยุด `lib/useHolidayMap.js` (การ์ด/โมดัล/ตัวแก้วันงวด SO) · รูปแนบ docType `billing_calendar` `lib/master/attachmentTypes.js` + `canAttachBillingCalendar` `lib/master/attachmentAccess.js` · `uploadAttachment` คืน `attachment` |
 | ทะเบียนลูกค้า | การ์ด `CustomerBillingRuleCard` · โมดัล `CustomerBillingRuleModal` (+ `CustomerBillingRuleState` · `CustomerBillingRuleRounds`) · จอ "งวดที่วันจะเปลี่ยน" `CustomerBillingRuleRedate` · `api/customers/[id]/billing-rule` (+ `/redate` · alias ใต้ `api/master`) · ตัวคิดของ route `lib/sales/customerRuleChange.js` + ตัวโหลด `lib/sales/installmentScheduleServer.js` · แถวเธรด `lib/master/customerBillingRuleUpdate.js` · proxy เปิดสองเส้นนี้ให้ FN |
 | แผงงวด SO | `components/salesPlanning/SalesOrderPaymentPanel.js` · แถบนโยบาย `installmentDates/BillingPolicyStrip.js` · โมดัล "งวดนี้ต้องวางบิล…" `installmentDates/RequireBillingModal.js` · `BillingStateBadge` · ลิงก์ขอใบวางบิล `lib/sales/billingRequestHref.js` |
-| โหมดตั้งวัน | `components/salesPlanning/installmentDates/**` (`useInstallmentDateMode` · `InstallmentDateEditor` · `InstallmentDateFill` · `InstallmentDateCell` · `InstallmentDateChrome` · `InstallmentDateFrame` · `InstallmentCalendar` อา–ส) · ร่าง/คำเตือน/ล็อก `lib/sales/installmentDateDrafts.js` · `schedule`/`schedule-many` `lib/sales/installmentScheduleMany.js` ใน `api/sales-planning/sales-orders/[id]/installments` (`fill-billing`/`redate-billing` = 410) · carry `lib/sales/installmentCarry.js` + `salesOrderInstallmentsStore.js` |
+| ช่องวันงวด (รอบแปด) | `components/salesPlanning/installmentDates/**` (`useInstallmentDateMode` ร่าง/บันทึก · `InstallmentDateCell` สองช่อง · `InstallmentDateFill` · `InstallmentDateChrome` ปุ่มเติม+แถบบันทึก) · ตัวช่วยปฏิทิน opt-in ของ `components/ui/DateInput.js` · ร่าง/คำเตือน/ล็อก `lib/sales/installmentDateDrafts.js` · `schedule`/`schedule-many` `lib/sales/installmentScheduleMany.js` ใน `api/sales-planning/sales-orders/[id]/installments` (`fill-billing`/`redate-billing` = 410) · carry `lib/sales/installmentCarry.js` + `salesOrderInstallmentsStore.js` |
 | หน้าสร้าง SO | `app/sales-planning/sales-orders/new/page.js` (ตัวแก้ตัวเดียวกับแผงงวด `variant="inline"` · แผ่นล่างบนมือถือ · แถบนโยบาย) · `lib/sales/salesOrderCreateInstallments.js` (`loadCreateFormBillingTerms` · `createFormDateCheck` · `parseCreateFormInstallments`) · POST `api/sales-planning/sales-orders` · GET `api/sales-planning/quotations/[id]?include=billingTerms` |
 | ทะเบียนการชำระ | `lib/finance/paymentLedger.js` (`ledgerFlags` · `nagsMissingBilling` · รุ่นห้า `ledgerCutoffOn`/`ledgerCutoffText`) · `api/finance/payments` · `app/finance/payments` (ตัวกรอง `?billing=soon|7d|month|late|missing|cutoff&on=` · `?due=soon` · คอลัมน์คำขอใบวางบิล · Excel) |
 | กระดิ่ง | `lib/sales/billingDueNotify.js` (`bellsFor` · kind `sales_order_billing_due`(`_fn`) + **`sales_order_due_soon`(`_fn`)** + รุ่นห้า **`sales_order_billing_cutoff`(`_fn`)** · **`customer_billing_calendar_missing`**) ใน `api/cron/daily-digest` (`notifyBillingCutoff` · `notifyCalendarMissing`) · ปุ่ม "ขอใบวางบิลงวดนี้" `attachNotificationActions` ใน `lib/notifications.js` (อ่านงวด/ใบ/QT/กติกาลูกค้าสด · แถววันตัดรอบด้วย) |
@@ -264,5 +293,5 @@
   ทะเบียนการชำระนับข้อยกเว้นต่อลูกค้า (§9 ข้อ 11) ยังไม่มี
 - **รุ่นห้าที่ยังไม่ทำ**: ยังไม่ได้เปิดจอจริงบน dev server (ตรวจแค่ render แบบ static — การ์ด/โมดัลตารางปฏิทิน/แผ่นเต็มจอมือถือต้องเปิดดูก่อน merge) ·
   ลบรูปปฏิทินที่กติกายังชี้อยู่ = ลิงก์รูปบนการ์ดเปิดไม่ขึ้น (ไม่มีด่านกันลบ) · Excel ของทะเบียนไม่มีคอลัมน์ตัดรอบ ·
-  ตาราง SO แบบอ่านอย่างเดียว (นอกโหมดตั้งวัน) งวดที่ยังไม่มีวันเลยไม่บอกเหตุ "ยังไม่มีปฏิทิน" (โหมดตั้งวัน/แถบ/แผงเติมบอกแล้ว) ·
+  ตาราง SO แบบอ่านอย่างเดียว (ผู้ไม่มีสิทธิ์แก้) งวดที่ยังไม่มีวันเลยไม่บอกเหตุ "ยังไม่มีปฏิทิน" (ช่องวัน/แถบ/แผงเติมบอกแล้ว) ·
   คำบนหน้าสร้าง `createFormPlanNote` ไม่มีคำเฉพาะปฏิทิน (แถบนโยบายบอกแล้ว)

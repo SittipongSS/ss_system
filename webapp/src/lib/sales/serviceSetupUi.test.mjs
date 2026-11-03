@@ -478,21 +478,21 @@ test('F10: แผงแดงรวมข้อซ้ำรายงวด (12×
     message: `งวด ${seq}: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล)`,
   });
   const issues = [1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 12].map((seq) => billing(seq));
-  issues.push({ key: 'due_missing', tab: 'payment', installmentId: 'I4', seq: 4, field: 'dueDate', message: 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือเลือก ‘รอเหตุการณ์’' });
+  issues.push({ key: 'due_missing', tab: 'payment', installmentId: 'I4', seq: 4, field: 'dueDate', message: 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ' });
   const [payment] = submitGateGroups(issues, []);
   assert.equal(payment.count, 12, 'หัวกลุ่ม/ป้ายแท็บยังนับทุกข้อ');
   assert.equal(payment.items.length, 2);
   const merged = payment.items[0];
   assert.equal(merged.entry.message,
-    'งวด 1–3, 5–12: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล) · 11 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
+    'งวด 1–3, 5–12: ยังไม่เลือกรอบวางบิล (ลูกค้ามีรอบวางบิล) · 11 งวด — เติมทีเดียวได้ด้วย ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
   assert.equal(merged.entry.installmentId, 'I1', '"ไปแก้" พาไปงวดแรก');
   assert.equal(merged.entries.length, 11);
   assert.equal(issueHeadTail(merged.entry.message).head, 'งวด 1–3, 5–12', 'หัวตัวหนาครอบช่วงงวด');
-  assert.equal(payment.items[1].entry.message, 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือเลือก ‘รอเหตุการณ์’', 'ข้อเดี่ยวไม่เปลี่ยน');
+  assert.equal(payment.items[1].entry.message, 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ', 'ข้อเดี่ยวไม่เปลี่ยน');
   /* ลูกค้าวางบิลได้ทุกวัน — แผง "เติมวันงวดที่ว่าง…" ของ #1846 เติมได้ทุกชนิดของรอบ (ปุ่มเติมตามรอบเดิมมีแค่รายเดือน) ⇒ บอกทางเดียวกัน */
-  const anyday = [1, 2].map((seq) => ({ ...billing(seq, 'anyday'), message: `งวด ${seq}: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’` }));
+  const anyday = [1, 2].map((seq) => ({ ...billing(seq, 'anyday'), message: `งวด ${seq}: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ` }));
   assert.equal(submitGateGroups(anyday, [])[0].items[0].entry.message,
-    'งวด 1–2: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือเลือก ‘รอเหตุการณ์’ · 2 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
+    'งวด 1–2: ยังไม่ใส่วันวางบิล (ลูกค้าวางบิลได้ทุกวัน) — ใส่วันที่คอลัมน์วันวางบิล หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ · 2 งวด — เติมทีเดียวได้ด้วย ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
 });
 
 test('#1846: ข้อวันงวดที่รวมหลายงวด (วันวางบิล · กำหนดชำระ) "ไปแก้" = เปิดแผงเติมของโหมดตั้งวันงวด · ช่วงครอบ/ข้อเดี่ยว = ไปที่ช่อง', () => {
@@ -516,7 +516,7 @@ test('#1846: ข้อวันงวดที่รวมหลายงวด 
   // ลูกค้าที่ไม่ต้องมีวันวางบิล (ไม่มีเครดิต/ยังไม่ตั้ง) — กลุ่มกำหนดชำระได้ทางลัดเอง
   const dueOnly = submitGateGroups([1, 2].map((seq) => issue('due_missing', seq, 'dueDate')), [])[0].items;
   assert.equal(dueOnly[0].entry.dateFill, 'empty');
-  assert.equal(dueOnly[0].entry.message, 'งวด 1–2: due_missing · 2 งวด — เติมทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
+  assert.equal(dueOnly[0].entry.message, 'งวด 1–2: due_missing · 2 งวด — เติมทีเดียวได้ด้วย ‘เติมวันงวดที่ว่าง…’ ที่แท็บการชำระ');
   // งวดที่แผงเติมไม่แตะทั้งสองทาง (`dateFill: null` จากด่าน — เช่น แจ้งชำระแล้ว) = ไม่มีธง · ไม่มีทางลัด · ไปที่ช่องงวดแรก
   const locked = [1, 2, 3].map((seq) => issue('billing_missing', seq, 'billingDate', { billingMode: 'anyday', dateFill: null }));
   const [lockedItem] = submitGateGroups(locked, [])[0].items;
@@ -546,7 +546,7 @@ test('backfill ลูกค้าเครดิต (SO-26090206-0 · AR-015): �
   assert.equal(datedItem.entry.dateFill, 'dated');
   assert.equal(datedItem.entry.message, `งวด 1–12: billing_missing · 12 งวด${SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint}`);
   assert.equal(SERVICE_SETUP_PANEL_TEXT.dateFillRedateHint,
-    ' — จัดวันใหม่ทีเดียวได้ด้วย ‘ตั้งวันงวด’ → ‘เติมวันงวดที่ว่าง…’ → ‘จัดใหม่งวดที่มีวันแล้วด้วย’ ที่แท็บการชำระ'
+    ' — จัดวันใหม่ทีเดียวได้ด้วย ‘เติมวันงวดที่ว่าง…’ → ‘จัดใหม่งวดที่มีวันแล้วด้วย’ ที่แท็บการชำระ'
     + ' (วันเดิมถูกแทนด้วยวันที่คิดตามรอบวางบิลของลูกค้า · ตรวจในตารางก่อนบันทึก)');
   assert.equal(serviceSetupFieldId(datedItem.entry), 'inst-I1-billingDate', 'เปิดแผงไม่ได้ = ถอยไปช่องของงวดแรกเหมือนเดิม');
   // กลุ่มปน ว่าง + มีวันแล้ว = ยังเปิดแผงได้ทั้งกลุ่ม (จัดใหม่ครอบงวดที่ว่างด้วย) ⇒ 'dated'

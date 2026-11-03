@@ -95,7 +95,7 @@ export const INSTALLMENT_VERSION_MISSING = 'ไม่ได้ส่งรุ่
  *   (สตริงไม่ว่างเป็น truthy ⇒ ถ้าปล่อยผ่าน ติ๊กจะถูกตีความตามใจตัวแปลง)
  */
 export function scheduleManyShapeError(sent) {
-  if (!Array.isArray(sent) || !sent.length) return 'ไม่ได้ส่งงวดที่จะบันทึกมา — ตั้งวันงวดใหม่แล้วลองอีกครั้ง';
+  if (!Array.isArray(sent) || !sent.length) return 'ไม่ได้ส่งงวดที่จะบันทึกมา — แก้วันงวดใหม่แล้วลองอีกครั้ง';
   if (sent.length > SCHEDULE_MANY_MAX) return `บันทึกได้ครั้งละไม่เกิน ${SCHEDULE_MANY_MAX} งวด`;
   const seen = new Set();
   for (const item of sent) {
