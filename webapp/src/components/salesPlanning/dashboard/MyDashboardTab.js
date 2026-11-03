@@ -86,8 +86,9 @@ export default function MyDashboardTab({ month, allMonths = false }) {
     tasks: data?.openTasks || [],
     awaitingSalesOrder: handoff.awaitingSalesOrder || [],
     awaitingFiling: handoff.awaitingFiling || [],
+    registrations: handoff.registrations || [],
     todayIso: today,
-  }), [data, handoff.awaitingSalesOrder, handoff.awaitingFiling, today]);
+  }), [data, handoff.awaitingSalesOrder, handoff.awaitingFiling, handoff.registrations, today]);
 
   const counts = myQueueCounts(queue);
   const shown = kind ? queue.filter((item) => item.kind === kind) : queue;

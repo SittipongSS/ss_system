@@ -13,6 +13,7 @@ import { quotesAwaitingSalesOrder, salesOrdersAwaitingFiling } from '@/lib/sales
 import { nonExciseRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { exciseHandledOrderIds } from '@/lib/excise/exciseQuotation';
 import { backlogReadiness, isBeforeExciseLaunch, sortBacklog } from '@/lib/excise/exciseBacklog';
+import { ownedStages } from '@/lib/excise/workflow';
 
 const LIST_CAP = 100;
 
@@ -55,7 +56,7 @@ async function loadAwaitingSalesOrder(supabase, dealIds) {
 // Sale Order ที่อนุมัติแล้วและยังไม่มีใบยื่นชำระภาษี — เฉพาะใบที่ "มีสินค้าสรรพสามิต
 // ให้ยื่นจริง" (resolveSoFiling().eligible) ไม่งั้น SO ที่ขายของนอกพิกัดจะค้างคิวถาวร
 // (export ให้ตัวซิงก์งานไทม์ไลน์ "วางบิล + ค่าสรรพสามิต" ใช้นิยามเดียวกับคิว — `lib/pm/exciseBillingTaskSync.js` · Q21)
-export async function loadAwaitingFiling(supabase, dealIds) {
+export async function loadAwaitingFiling(supabase, dealIds, { limit = LIST_CAP } = {}) {
   // ⚠️ เหตุผลเดียวกับก้อนบน — `dealIds = null` = อ่าน SO ที่อนุมัติแล้วทั้งทะเบียน
   const { data: approved, error } = await fetchAllResult(() => {
     let query = supabase
@@ -139,7 +140,31 @@ export async function loadAwaitingFiling(supabase, dealIds) {
       };
     })
     .filter((order) => order.eligible);
-  return sortBacklog(rows).slice(0, LIST_CAP);
+  return sortBacklog(rows).slice(0, limit);
+}
+
+/**
+ * ทะเบียนสรรพสามิตที่ตา SA (ขั้นของ SA บนเส้นทะเบียน: ร่าง · ตีกลับ) ของฉัน — คิวงานของฉันบนแดชบอร์ด (มติ 03/11)
+ * ของฉัน = `ownerId` เป็นฉัน หรือลูกค้าของดีลที่ฉันเป็นเจ้าของ · อ่านพลาด = throw
+ */
+export async function loadMyExciseRegistrations(supabase, { user, customerIds = [] } = {}) {
+  const stages = ownedStages('registration', 'SA');
+  if (!user?.id || !stages.length) return [];
+  const ids = [...new Set((customerIds || []).filter(Boolean))];
+  const [owned, byCustomer] = await Promise.all([
+    fetchAllResult(() => supabase.from('excise_registrations')
+      .select('id, status, "fgCode", "productName", "customerName", "customerId", "ownerId", "rejectionReason", "isExciseTaxable", "updatedAt"')
+      .eq('ownerId', user.id).in('status', stages).order('id', { ascending: true })),
+    ids.length
+      ? fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase.from('excise_registrations')
+        .select('id, status, "fgCode", "productName", "customerName", "customerId", "ownerId", "rejectionReason", "isExciseTaxable", "updatedAt"')
+        .in('customerId', chunk).in('status', stages).order('id', { ascending: true })))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  raise('โหลดทะเบียนสรรพสามิตของฉันไม่สำเร็จ', owned.error);
+  raise('โหลดทะเบียนสรรพสามิตของลูกค้าฉันไม่สำเร็จ', byCustomer.error);
+  const byId = new Map([...(owned.data || []), ...(byCustomer.data || [])].map((row) => [row.id, row]));
+  return [...byId.values()].sort((a, b) => String(a.updatedAt || '').localeCompare(String(b.updatedAt || '')));
 }
 
 export async function loadHandoffQueue(supabase, { dealIds = null } = {}) {

@@ -143,7 +143,7 @@ export async function proxy(request) {
   // per-role capability gate (apiWriteAllowed) + row-level scope still apply.
   if (user && !isLogin && lockedOut({ role: user.app_metadata?.role, extraCaps: user.app_metadata?.extraCaps }, path, request.method, isApi)) {
     if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'forbidden' }, { status: 403 }));
-    return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
+    return withRefreshedCookies(NextResponse.redirect(new URL(lockedOutRedirectPath(path), request.url)));
   }
 
   // Role-based write protection for API routes (defense-in-depth; the UI also
@@ -291,6 +291,15 @@ const TEAM_MANAGE_APIS = /^\/api\/(teams(\/|$)|users\/[^/]+\/team$)/;
 // During the phased lockdown, admins (users:manage) get everything; normal
 // roles get the hub + PM system (+ read-only master data it depends on).
 // `/` (login) is handled by the caller and never reaches here.
+/* ⭐ หน้าที่โดนกัน → ไปไหน (มติ 03/11): ลิงก์เดิมของทะเบียน/ใบยื่น (`/tax/registrations/<id>` · `/tax/filings/<id>`) ค้างอยู่ใน
+   แจ้งเตือนเก่า 106 แถว (ยังไม่อ่าน 69 · 03/11) ตั้งแต่ก่อนปิด /tax จากฝ่ายขาย (V13) — ฝ่ายขายกดแล้วเคยเด้ง /home เงียบ ๆ
+   ⇒ พาไปทางกลาง `/go/...` ซึ่งเลือกหน้าตามสิทธิ์ (ฝ่ายขาย = หน้าสินค้า FG + แผงทะเบียน) · หน้าอื่นที่โดนกัน = /home เหมือนเดิม */
+export function lockedOutRedirectPath(path) {
+  const match = String(path || '').match(/^\/tax\/(registrations|filings)\/([^/?#]+)\/?$/);
+  if (!match) return '/home';
+  return `/go/${match[1] === 'registrations' ? 'registration' : 'filing'}/${match[2]}`;
+}
+
 export function lockedOut(user, path, method, isApi) {
   if (!ADMIN_LOCKDOWN) return false;
   const role = user?.role;
