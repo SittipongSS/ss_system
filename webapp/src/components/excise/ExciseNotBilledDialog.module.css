@@ -13,6 +13,10 @@
   line-height: var(--lh-relaxed);
 }
 
+.raTag {
+  white-space: nowrap;
+}
+
 .danger {
   padding: var(--space-2-5) var(--space-3);
   border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
