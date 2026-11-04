@@ -47,6 +47,17 @@ test("หลายงานรวมใบเดียว: หัวงานพ
   assert.equal(report.summary.totalExciseTax, 950.16);
 });
 
+test("แบ่งรอบ (D19): หัวงานบอกรอบ + ยอดค้างของ SO ลูกค้า · ข้อความเดียวกับคิว RA · รอบเดียวที่ไม่ค้าง = ไม่พูดเรื่องรอบ", () => {
+  const report = filingSummaryReport([
+    { statusLabel: "กำลังยื่น", salesOrderNumber: "SO-4", exciseOrderNumber: "SO-X4B", round: { no: 2, count: 3, remainingUnits: 1500 },
+      customerName: "C", lines: [line()] },
+    { statusLabel: "กำลังยื่น", salesOrderNumber: "SO-5", exciseOrderNumber: "SO-X5", round: { no: 1, count: 1, remainingUnits: 0 },
+      customerName: "C", lines: [line()] },
+  ]);
+  assert.equal(report.rows[0].doc, "SO-4\nค่าสรรพสามิต SO-X4B\nรอบที่ 2/3 · SO ลูกค้ายังค้าง 1,500 หน่วย\nกำลังยื่น");
+  assert.equal(report.rows[1].doc, "SO-5\nค่าสรรพสามิต SO-X5\nกำลังยื่น");
+});
+
 test("งานที่ไม่มีบรรทัดยังขึ้นหัวงาน (ไม่หายเงียบจากใบสรุป) · ไม่นับเข้ายอด", () => {
   const report = filingSummaryReport([{ statusLabel: "กำลังยื่น", salesOrderNumber: "SO-9", customerName: "C", lines: [] }]);
   assert.equal(report.rows.length, 1);

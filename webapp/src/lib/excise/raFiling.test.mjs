@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { findFilingFor, loadFilingSource, loadFilingSummary, loadRaFilingQueue } from "./raFiling.js";
+import { findFilingFor, loadFilingSource, loadFilingSummary, loadFilingSummaryItem, loadRaFilingQueue } from "./raFiling.js";
 import { documentWorkflowError } from "../sales/documentWorkflowErrors.js";
 
 /* ── ใบยื่นกรมของ RA (แผนรื้อสรรพสามิต PR5 · mig 0417) — ตัวโหลดฝั่ง server กับฐานจำลองในหน่วยความจำ ─────────────
@@ -119,7 +119,8 @@ test("ใบยื่นที่มีอยู่แล้ว (แบ่งร
   assert.equal(await findFilingFor(db, {}), null);
 });
 
-test("คิว RA (แบ่งรอบ 0418): รอบที่สองของ SO ลูกค้าเดียวกันขึ้นคิว แม้รอบแรกเริ่มยื่นแล้ว", async () => {
+/* S4 แบ่งสองรอบ: QX4 (4 หน่วย · SX4 · เริ่มยื่นแล้ว TAX-4) + QX4B (3 หน่วย · SX4B · รอ RA) จากบรรทัด L4 ที่สั่ง 10 */
+function roundTables() {
   const tables = base();
   tables.sales_orders.push({ id: "SX4B", orderNumber: "SO-X4B", status: "approved", origin: "excise", sourceSalesOrderId: "S4", quotationId: "QX4B",
     customerId: "C1", customerName: "ลูกค้า", approvedAt: "2026-10-07", supersededById: null, totalAmount: 20, vatAmount: 1.31, financeStatus: "pending" });
@@ -129,7 +130,15 @@ test("คิว RA (แบ่งรอบ 0418): รอบที่สองข�
     : q));
   tables.quotations.push({ id: "QX4B", quoteNumber: "QT-X4B", origin: "excise", status: "accepted", sourceSalesOrderId: "S4", createdAt: "2026-10-06T00:00:00Z",
     metadata: { exciseSource: { orderedByLine: { L4: 10 } } }, lines: [{ qty: 3, metadata: { sourceSalesOrderLineId: "L4" } }] });
-  const rows = await loadRaFilingQueue(fakeDb(tables), { upcoming: false });
+  tables.sales_order_lines.push(
+    { id: "L4", salesOrderId: "S4", productId: "P1", fgCode: "FG-1", qty: 10, packQty: null, description: "น้ำหอม" },
+    exciseLine("XL4B", "SX4B", "L4", "P1", "FG-1", 3, 10, 9.09, 0.91),
+  );
+  return tables;
+}
+
+test("คิว RA (แบ่งรอบ 0418): รอบที่สองของ SO ลูกค้าเดียวกันขึ้นคิว แม้รอบแรกเริ่มยื่นแล้ว", async () => {
+  const rows = await loadRaFilingQueue(fakeDb(roundTables()), { upcoming: false });
   assert.deepEqual(rows.map((r) => r.key), ["not_billed:S2", "excise:SX1", "excise:SX4B"], "SX4 เริ่มยื่นแล้ว (TAX-4) · SX4B ยังรอ RA");
   // D19: ป้ายรอบ — รอบที่ 2 จาก 2 · SO ลูกค้ายังค้าง 10 − (4 + 3) = 3 หน่วย · งานไม่เรียกเก็บไม่มีรอบ
   const second = rows.find((r) => r.key === "excise:SX4B");
@@ -140,6 +149,21 @@ test("คิว RA (แบ่งรอบ 0418): รอบที่สองข�
   assert.match(raQueueText(second).title, /^SO-4 \(รอบที่ 2\/2\) · /);
   assert.equal(raRoundLabel({ round: { no: 1, count: 1, remainingUnits: 0 } }), "", "รอบเดียวครบ = ไม่พูดเรื่องรอบ");
   assert.equal(raRoundLabel({ round: { no: 1, count: 1, remainingUnits: null } }), "");
+});
+
+test("ใบสรุปรายการยื่น (แบ่งรอบ · D19): งานรอ RA และบันทึกที่เริ่มยื่นแล้วได้รอบเดียวกับคิว · ใบรอบเดียว/ไม่เรียกเก็บไม่มีรอบ", async () => {
+  const db = fakeDb(roundTables());
+  const pending = await loadFilingSummaryItem(db, { kind: "excise", id: "SX4B" });
+  assert.equal(pending.missing, undefined);
+  assert.deepEqual(pending.round, { no: 2, count: 2, remainingUnits: 3 });
+  assert.equal(pending.lines.length, 1);
+  const filed = await loadFilingSummaryItem(db, { kind: "order", id: "TAX-4" });
+  assert.equal(filed.exciseOrderNumber, "SO-X4");
+  assert.deepEqual(filed.round, { no: 1, count: 2, remainingUnits: 3 });
+  const single = await loadFilingSummaryItem(fakeDb(base()), { kind: "excise", id: "SX1" });
+  assert.equal(single.round, null, "QX1 ไม่ใช่ใบค่าสรรพสามิตที่ยังมีผลในฐานจำลอง — หารอบไม่เจอ = ไม่พูดเรื่องรอบ");
+  const notBilled = await loadFilingSummaryItem(fakeDb(base()), { kind: "not_billed", id: "S2" });
+  assert.equal(notBilled.round, null);
 });
 
 test("แผงสรุปบนหน้าใบยื่น: ต้นทาง + บัญชี + ด่านเริ่มยื่น (เงินปิดใบแล้ว · ทะเบียนครบ)", async () => {

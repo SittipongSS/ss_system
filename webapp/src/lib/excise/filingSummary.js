@@ -4,7 +4,9 @@
 // `buildReportPrintHTML` ของ lib/tax/reportPrint ตัวเดียวกับรายงาน Excel/พิมพ์ของ /tax)
 //   · งานที่เริ่มยื่นแล้ว = รายการจากบันทึกที่ตรึงไว้ตอนกดเริ่มยื่น · งานที่ยังรอ RA = ข้อมูลสดจาก SO (หัวงานบอก "ยังไม่เริ่มยื่น")
 // ⚠️ ไฟล์บริสุทธิ์ — ตัวโหลดฝั่ง server อยู่ที่ api/tax/orders/summary
+//   · แบ่งรอบ (หมวด 13 · D19): หัวงานบอก "รอบที่ n/m · SO ลูกค้ายังค้าง x หน่วย" — ข้อความเดียวกับคิว RA (`raRoundLabel`)
 import { round2 } from '@/lib/tax/exciseBilling';
+import { raRoundLabel } from '@/lib/excise/raQueueItem';
 
 export const FILING_SUMMARY_TITLE = 'ใบสรุปรายการยื่นชำระภาษีสรรพสามิต';
 /* เพดานงานต่อใบ — คีย์ไปทาง query string (`?keys=`) · ใบสรุปที่ยาวกว่านี้อ่านไม่ไหวอยู่แล้ว */
@@ -39,7 +41,8 @@ const lines = (...parts) => parts.filter((part) => String(part ?? '').trim()).jo
 
 /**
  * งานหลายงาน → รายงานรูปกลาง `{ title, columns, rows, summary }` ที่ `buildReportPrintHTML` วาดได้
- * @param items `[{ statusLabel, salesOrderNumber, exciseOrderNumber?, notBilledLabel?, customerName, customerTaxId,
+ * @param items `[{ statusLabel, salesOrderNumber, exciseOrderNumber?, notBilledLabel?, round?: { no, count, remainingUnits },
+ *               customerName, customerTaxId,
  *               lines: [{ fgCode, description, registrationNumber, quantity, exciseRatePerUnit, localTaxRatePerUnit,
  *                         totalExciseTax, totalLocalTax, totalTax }] }]`
  */
@@ -56,6 +59,7 @@ export function filingSummaryReport(items = []) {
         doc: first ? lines(
           item.salesOrderNumber,
           item.exciseOrderNumber ? `ค่าสรรพสามิต ${item.exciseOrderNumber}` : item.notBilledLabel ? `ไม่เรียกเก็บในระบบ — ${item.notBilledLabel}` : '',
+          raRoundLabel(item),
           item.statusLabel,
         ) : '',
         customer: first ? lines(item.customerName, item.customerTaxId ? `เลขผู้เสียภาษี ${item.customerTaxId}` : '') : '',
