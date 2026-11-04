@@ -136,6 +136,14 @@ async function attachRounds(supabase, rows) {
   }
 }
 
+/** รอบของใบค่าสรรพสามิตใบเดียว (ใบสรุปรายการยื่น) — ตัวนับเดียวกับป้ายบนคิว RA (`attachRounds`) · หาไม่เจอ = null */
+async function exciseRoundOf(supabase, salesOrderId, quotationId) {
+  if (!salesOrderId || !quotationId) return null;
+  const row = { salesOrder: { id: salesOrderId }, exciseOrder: { quotationId } };
+  await attachRounds(supabase, [row]);
+  return row.round || null;
+}
+
 /* ขั้นของแถวกำลังมา — ใครถือ · รออะไร (คำบนคิวของ RA) */
 export const UPCOMING_STAGE_TEXT = Object.freeze({
   quote_approved: 'ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว — รอลูกค้าตอบรับ (Won)',
@@ -339,16 +347,19 @@ async function summaryRecordItem(supabase, id) {
   if (!order) return { missing: `ไม่พบบันทึกการยื่น ${id}` };
   await attachRegistrations(supabase, order);
   let exciseOrderNumber = null;
+  let round = null;
   if (order.exciseSalesOrderId) {
     const { data: exciseOrder, error: exciseError } = await supabase
-      .from('sales_orders').select('"orderNumber"').eq('id', order.exciseSalesOrderId).maybeSingle();
+      .from('sales_orders').select('"orderNumber", "quotationId", "sourceSalesOrderId"').eq('id', order.exciseSalesOrderId).maybeSingle();
     if (exciseError) throw exciseError;
     exciseOrderNumber = exciseOrder?.orderNumber || null;
+    round = await exciseRoundOf(supabase, order.salesOrderId || exciseOrder?.sourceSalesOrderId, exciseOrder?.quotationId);
   }
   return {
     statusLabel: statusMeta(order.status).label,
     salesOrderNumber: order.poReference || order.quotationRef || order.id,
     exciseOrderNumber,
+    round,
     customerName: order.customerName,
     customerTaxId: order.customerTaxId,
     lines: (order.items || []).map((item) => {
@@ -386,10 +397,12 @@ async function summaryPendingItem(supabase, parsed) {
   if (regError) throw regError;
   if (customerError) throw customerError;
   const approvalById = new Map((regs || []).map((reg) => [reg.id, reg.approvalNumber]));
+  const round = exciseOrder ? await exciseRoundOf(supabase, salesOrder.id, exciseOrder.quotationId) : null;
   return {
     statusLabel: PENDING_LABEL,
     salesOrderNumber: salesOrder.orderNumber,
     exciseOrderNumber: exciseOrder?.orderNumber || null,
+    round,
     notBilledLabel: exciseOrder ? null : notBilledLabel(salesOrder.exciseNotBilledKind),
     customerName: salesOrder.customerName,
     customerTaxId: customer?.taxId || null,
