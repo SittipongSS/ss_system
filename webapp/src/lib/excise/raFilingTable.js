@@ -2,8 +2,8 @@
 //
 // เจ้าของส่งตารางที่ RA ใช้อยู่ (Google Sheet "รายการชำระภาษีสรรพสามิต M.10/69") ⇒ หน้า /tax/filings วาดแบบเดียวกัน:
 //   V20 แถวละสินค้า จัดกลุ่มตาม SO (RA ยังยื่นทีละ SO) · ไม่มีคอลัมน์สถานะทะเบียน (ขาดทะเบียน = ยื่นไม่ได้ ⇒ บอกที่หัวกลุ่ม)
-//   V21 วันที่ส่งของ = `deliveryDueDate` ของ SO ค่าสรรพสามิต (SA ใส่ตอนยื่น · `exciseDeliveryDate.js`) → ของ SO ต้นทาง →
-//       ไม่มีทั้งคู่ = "PO มาวันที่" (วันที่ของ SO ต้นทาง) แบบตารางเดิม · เป็นคอลัมน์บอกข้อมูล (เดือนดู V24 ข้างล่าง)
+//   V21 วันที่ส่งของ = `deliveryDueDate` ของ SO ค่าสรรพสามิต (SA ใส่ตอนยื่น · `exciseDeliveryDate.js`) · ยังไม่มี = "—"
+//       (เจ้าของ 04/11: เลิกโชว์ "PO มาวันที่" แบบตารางเดิม) · เป็นคอลัมน์บอกข้อมูล (เดือนดู V24 ข้างล่าง)
 //   V23 มีเฉพาะงานที่ถึง RA แล้ว (คิว RA + บันทึกการยื่น) — SO ที่ SA ยังไม่ออกใบไม่อยู่ในตารางนี้
 //   ⭐ แก้ 03/11 รอบสอง (เจ้าของดูจอจริง): **เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย** (V24) — บันทึก = เดือนที่เริ่มยื่น ·
 //      ยังไม่ยื่น (กำลังมา · รอ RA) = เดือนปัจจุบัน · วันที่ส่งของเป็นคอลัมน์บอกข้อมูล ไม่ใช่ตัวแบ่งเดือน
@@ -104,14 +104,15 @@ export function filingWorkMonth({ record = null, thisMonth = currentMonth() } = 
 }
 
 /**
- * วันที่ส่งของของกลุ่ม — `{ date, kind }` · kind 'delivery' = วันที่ส่งของจริง/ที่ตกลง · 'po' = ยังไม่มี ใช้วันที่ของ SO ต้นทาง
- * (ตารางเดิมเขียน "PO มาวันที่ …") · ไม่มีอะไรเลย = `{ date: null, kind: null }`
+ * วันที่ส่งของของกลุ่ม — 'YYYY-MM-DD' หรือ null (จอโชว์ "—")
+ * เจ้าของ 04/11: "ใส่แค่วันที่ส่งของ ถ้ายังไม่ส่งก็ต้อง - ไว้" ⇒ เลิกถอยไปวันที่ PO ("PO มาวันที่ …" ของตารางเดิม)
+ * · งานที่มีใบค่าสรรพสามิต (`viaExcise` — กำลังมา · รอ RA · บันทึกรายรอบ) = วันของ SO ค่าสรรพสามิตเท่านั้น (SA ใส่ตอนยื่น · V21)
+ *   ⚠️ ไม่ถอยไปกำหนดส่งของ SO ต้นทาง: แบ่งรอบแล้ว SO ต้นทางถือวันของรอบล่าสุด (V22) ⇒ รอบที่ยังไม่ส่งจะได้วันของรอบอื่น
+ * · งานไม่เรียกเก็บ / บันทึกเก่าที่ไม่ผูก SO ค่าสรรพสามิต = กำหนดส่งของ SO ลูกค้า
  */
-export function filingDeliveryDate({ exciseOrder = null, salesOrder = null } = {}) {
-  const delivery = exciseOrder?.deliveryDueDate || salesOrder?.deliveryDueDate || null;
-  if (delivery) return { date: delivery, kind: 'delivery' };
-  if (salesOrder?.orderDate) return { date: String(salesOrder.orderDate).slice(0, 10), kind: 'po' };
-  return { date: null, kind: null };
+export function filingDeliveryDate({ exciseOrder = null, salesOrder = null, viaExcise = Boolean(exciseOrder) } = {}) {
+  if (viaExcise) return exciseOrder?.deliveryDueDate || null;
+  return salesOrder?.deliveryDueDate || null;
 }
 
 /** ด่านที่หัวกลุ่มบอก (แทนคอลัมน์สถานะทะเบียน · V20) — จากบรรทัดของ resolveSoFiling */
@@ -129,7 +130,7 @@ const raise = (label, error) => {
 };
 
 /**
- * รายการของทุกงาน RA — `[{ key, deliveryDate, deliveryKind, month, lines, blockers }]` (คีย์เดียวกับแถวงานของหน้า)
+ * รายการของทุกงาน RA — `[{ key, deliveryDate, month, lines, blockers }]` (คีย์เดียวกับแถวงานของหน้า)
  * · คิวที่พร้อม (SO ค่าสรรพสามิต / ไม่เรียกเก็บ) = ข้อมูลสดจาก SO ตัวโหลดเดียวกับตอนเริ่มยื่น (`loadFilingSource`)
  * · กำลังมา = ยังไม่มี SO ค่าสรรพสามิต ⇒ ไม่มีรายการ (หัวกลุ่มบอกขั้น) · บันทึก = รายการที่ตรึงในบันทึก
  * อ่านพลาด = throw · งานที่โหลดรายการไม่ได้ (เช่น SO ถูกย้อนอนุมัติระหว่างทาง) = กลุ่มพร้อมข้อความ ไม่ล้มทั้งตาราง
@@ -146,14 +147,14 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   const productIds = new Set();
   for (const row of queue || []) {
     if (!row.ready) {
-      groups.push({ key: row.key, salesOrderId: row.salesOrder?.id || null, quoteId: row.exciseQuote?.id || null, blockers: [] });
+      groups.push({ key: row.key, salesOrderId: row.salesOrder?.id || null, quoteId: row.exciseQuote?.id || null, viaExcise: true, blockers: [] });
       continue;
     }
     const loaded = await loadSource(supabase, row.exciseOrder?.id
       ? { exciseSalesOrderId: row.exciseOrder.id }
       : { salesOrderId: row.salesOrder?.id });
     if (loaded.error) {
-      groups.push({ key: row.key, salesOrderId: row.salesOrder?.id || null, exciseOrder: null, lines: [], blockers: [loaded.error.message] });
+      groups.push({ key: row.key, salesOrderId: row.salesOrder?.id || null, exciseOrder: null, viaExcise: Boolean(row.exciseOrder?.id), lines: [], blockers: [loaded.error.message] });
       continue;
     }
     const resolvedLines = loaded.resolved?.lines || [];
@@ -162,6 +163,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
       key: row.key,
       salesOrder: loaded.salesOrder,
       exciseOrder: loaded.exciseOrder || null,
+      viaExcise: Boolean(row.exciseOrder?.id),
       resolvedLines,
       blockers: filingTableBlockers(resolvedLines),
     });
@@ -172,6 +174,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
       record: order,
       salesOrderId: order.salesOrderId || null,
       exciseOrderId: order.exciseSalesOrderId || null,
+      viaExcise: Boolean(order.exciseSalesOrderId),
       items: order.items || [],
       blockers: [],
     });
@@ -198,7 +201,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   const orderIds = [...new Set(groups.flatMap((group) => [group.salesOrderId, group.exciseOrderId]).filter(Boolean))];
   const [dateResult, productResult] = await Promise.all([
     fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
-      .select('id, "deliveryDueDate", "orderDate"').in('id', chunk).order('id', { ascending: true }))),
+      .select('id, "deliveryDueDate"').in('id', chunk).order('id', { ascending: true }))),
     fetchInChunks([...productIds], (chunk) => fetchAllResult(() => supabase.from('products')
       .select('*').in('id', chunk).order('id', { ascending: true }))),
   ]);
@@ -210,7 +213,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   return groups.map((group) => {
     const salesOrder = group.salesOrder || datesById.get(group.salesOrderId) || null;
     const exciseOrder = group.exciseOrder || (group.exciseOrderId ? datesById.get(group.exciseOrderId) || null : null);
-    const dateInfo = filingDeliveryDate({ exciseOrder, salesOrder });
+    const deliveryDate = filingDeliveryDate({ exciseOrder, salesOrder, viaExcise: group.viaExcise });
     let lines;
     if (group.items) {
       lines = group.items.map((item) => filingTableLine(item.product || null, {
@@ -223,8 +226,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
     else lines = (group.resolvedLines || []).map((line) => filingTableLine(productById.get(line.productId) || null, line));
     return {
       key: group.key,
-      deliveryDate: dateInfo.date,
-      deliveryKind: dateInfo.kind,
+      deliveryDate,
       month: filingWorkMonth({ record: group.record || null, thisMonth }),
       lines,
       blockers: group.blockers,

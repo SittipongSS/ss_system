@@ -47,19 +47,22 @@ test('V25: งานกำลังมาดึงรายการจากใ
   assert.equal(quoteLineTableLine(line, null).description, 'FG-108-01-002-0326 โรเซ่ โรส · 50 ml', 'ไม่มีสินค้า = คำของบรรทัด');
 });
 
-test('วันที่ส่งของ: SO ค่าสรรพสามิต → SO ต้นทาง → ไม่มี = "PO มาวันที่" (วันที่ของ SO ต้นทาง) — เป็นคอลัมน์ ไม่ใช่ตัวแบ่งเดือน', () => {
-  assert.deepEqual(filingDeliveryDate({ exciseOrder: { deliveryDueDate: '2026-10-15' }, salesOrder: { deliveryDueDate: '2026-10-20', orderDate: '2026-10-01' } }),
-    { date: '2026-10-15', kind: 'delivery' });
-  assert.deepEqual(filingDeliveryDate({ exciseOrder: { deliveryDueDate: null }, salesOrder: { deliveryDueDate: '2026-10-20' } }), { date: '2026-10-20', kind: 'delivery' });
-  assert.deepEqual(filingDeliveryDate({ salesOrder: { orderDate: '2026-10-22T03:00:00Z' } }), { date: '2026-10-22', kind: 'po' });
-  assert.deepEqual(filingDeliveryDate({}), { date: null, kind: null });
+test('วันที่ส่งของ (เจ้าของ 04/11): วันของ SO ค่าสรรพสามิตเท่านั้น · ยังไม่ส่ง = ว่าง ("—") · ไม่มี "PO มาวันที่" แล้ว — เป็นคอลัมน์ ไม่ใช่ตัวแบ่งเดือน', () => {
+  assert.equal(filingDeliveryDate({ exciseOrder: { deliveryDueDate: '2026-10-15' }, salesOrder: { deliveryDueDate: '2026-10-20', orderDate: '2026-10-01' } }), '2026-10-15');
+  assert.equal(filingDeliveryDate({ exciseOrder: { deliveryDueDate: null }, salesOrder: { deliveryDueDate: '2026-10-20' } }), null,
+    'งานค่าสรรพสามิตไม่ถอยไปวันของ SO ต้นทาง — แบ่งรอบแล้ว SO ต้นทางถือวันของรอบล่าสุด (V22)');
+  assert.equal(filingDeliveryDate({ viaExcise: true, salesOrder: { deliveryDueDate: '2026-10-20', orderDate: '2026-10-01' } }), null, 'กำลังมา (ยังไม่มี SO ค่าสรรพสามิต) = ยังไม่ส่ง');
+  assert.equal(filingDeliveryDate({ salesOrder: { deliveryDueDate: '2026-10-20' } }), '2026-10-20', 'งานไม่เรียกเก็บ = กำหนดส่งของ SO ลูกค้า');
+  assert.equal(filingDeliveryDate({ salesOrder: { orderDate: '2026-10-22T03:00:00Z' } }), null, 'วันที่ PO ไม่ใช่วันที่ส่งของ');
+  assert.equal(filingDeliveryDate({}), null);
   // V24: เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย — บันทึก = เดือนที่เริ่มยื่น (วันไทย) · ยังไม่ยื่น = เดือนนี้
   assert.equal(filingWorkMonth({ record: null, thisMonth: '2026-11' }), '2026-11');
   assert.equal(filingWorkMonth({ record: { filingStartedAt: '2026-10-31T18:30:00Z', createdAt: '2026-10-31T18:30:00Z' }, thisMonth: '2026-11' }), '2026-11', '01:30 น. ไทย 1 พ.ย.');
   assert.equal(filingWorkMonth({ record: { createdAt: '2026-10-20T03:00:00Z' }, thisMonth: '2026-11' }), '2026-10');
   assert.deepEqual(filingMonthLabel('2026-10'), { short: 'M.10/69', long: 'ต.ค. 2569' });
-  assert.match(filingDateText({ deliveryDate: '2026-10-22', deliveryKind: 'po' }), /^PO มาวันที่ /);
-  assert.doesNotMatch(filingDateText({ deliveryDate: '2026-10-22', deliveryKind: 'delivery' }), /PO/);
+  assert.doesNotMatch(filingDateText({ deliveryDate: '2026-10-22' }), /PO/);
+  assert.equal(filingDateText({ deliveryDate: null }), '', 'ยังไม่ส่ง = ว่าง · จอโชว์ "—"');
+  assert.doesNotMatch(read('./raFilingMonth.js'), /PO มาวันที่ \$/, 'ไม่มีทางกลับไปเขียน "PO มาวันที่"');
 });
 
 test('ไม่มีคอลัมน์สถานะทะเบียน (V20) — ขาดทะเบียน/ราคาบอกที่หัวกลุ่ม', () => {
@@ -118,11 +121,11 @@ test('ตัวโหลด: คิวที่พร้อม = รายกา
   });
   const byKey = new Map(table.map((row) => [row.key, row]));
   assert.deepEqual(byKey.get('excise:SO-E').lines.map((line) => [line.brand, line.volume, line.quantity]), [['COZE', '30 ML', 5040]]);
-  assert.equal(byKey.get('excise:SO-E').deliveryDate, '2026-10-28', 'SO ค่าสรรพสามิตยังไม่มีวัน = วันของ SO ต้นทาง');
+  assert.equal(byKey.get('excise:SO-E').deliveryDate, null, 'SO ค่าสรรพสามิตยังไม่มีวัน = ยังไม่ส่ง (ไม่ถอยไปวันของ SO ต้นทาง)');
   assert.deepEqual(byKey.get('excise:SO-E').blockers, ['ยังไม่มีทะเบียน 1 รายการ — เริ่มยื่นไม่ได้']);
   const upcoming = byKey.get('upcoming:QT-9');
   assert.equal(upcoming.month, '2026-11', 'ยังไม่ยื่น = เดือนนี้ (V24)');
-  assert.equal(upcoming.deliveryKind, 'po');
+  assert.equal(upcoming.deliveryDate, null, 'กำลังมา = ยังไม่ส่ง (ไม่ใช่วันที่ PO)');
   assert.deepEqual(upcoming.lines.map((line) => [line.brand, line.quantity, line.totalTax]), [['COZE', 5040, 9286.07]], 'รายการจากใบเสนอราคา (V25) · ตัดบรรทัดที่ไม่ใช่ค่าภาษี');
   assert.equal(byKey.get('excise:SO-E').month, '2026-11');
   const record = byKey.get('order:ORD-1');
@@ -194,4 +197,18 @@ test('รีเช็คภาษี (เจ้าของ 03/11): ราคา
   const table = read('../../components/excise/FilingLinesTable.js');
   assert.match(table, /"ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", "ภาษี\/หน่วย \(8\.8%\)", "ภาษีรวม"/);
   assert.match(table, /line\.taxCheck && !line\.taxCheck\.ok/);
+});
+
+test('ย่อ/ขยาย (เจ้าของ 04/11): หัวเดือนย่อทั้งเดือน + ย่อ/ขยายทุกงาน · หัวงานย่อรายการ · งานที่ย่อบอกจำนวนรายการกับภาษีรวม', () => {
+  const table = read('../../components/excise/FilingLinesTable.js');
+  assert.match(table, /aria-expanded=\{monthOpen\} onClick=\{\(\) => toggle\(monthKey\)\}/);
+  assert.match(table, /if \(!monthOpen\) return \[monthHeader\];/, 'เดือนที่ย่อเหลือหัวเดือนแถวเดียว');
+  assert.match(table, /setMany\(groupKeys, !allGroupsClosed\)/);
+  assert.match(table, /aria-expanded=\{open\}/);
+  assert.match(table, /if \(!open\) return \[header\];/, 'งานที่ย่อเหลือหัวงาน (ลิงก์ · สถานะ · ด่าน · ช่องติ๊กพิมพ์)');
+  assert.match(table, /\{!open && lines\.length \? \(/, 'สรุปโชว์เฉพาะตอนย่อ');
+  assert.match(table, /รายการ · ภาษีรวม \{fmtMoney\(linesTaxTotal\(lines\)\)\}/);
+  const head = table.match(/<div className=\{styles\.groupHead\}>[\s\S]*?<\/div>/)[0];
+  assert.ok(head.indexOf('className={styles.toggle}') < head.indexOf('<Link'), 'ปุ่มลูกศรอยู่หน้าลิงก์ ไม่ซ้อนกัน');
+  assert.doesNotMatch(head.slice(head.indexOf('className={styles.toggle}'), head.indexOf('</button>')), /<Link/, 'ลิงก์ไม่อยู่ในปุ่ม');
 });

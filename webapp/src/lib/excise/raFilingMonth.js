@@ -11,9 +11,7 @@ export function filingMonthLabel(month) {
   return { short: `M.${Number(match[2])}/${String(year).slice(-2)}`, long: `${MONTH_LABELS[index]} ${year}` };
 }
 
-/** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = "PO มาวันที่ …" (วันที่ของใบสั่งขายต้นทาง) แบบตารางเดิม */
+/** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = '' (จอโชว์ "—" · เจ้าของ 04/11 เลิกโชว์ "PO มาวันที่ …" แบบตารางเดิม) */
 export function filingDateText(detail) {
-  if (!detail?.deliveryDate) return '';
-  const date = fmtDate(detail.deliveryDate);
-  return detail.deliveryKind === 'po' ? `PO มาวันที่ ${date}` : date;
+  return detail?.deliveryDate ? fmtDate(detail.deliveryDate) : '';
 }
