@@ -5,7 +5,7 @@
    ⭐ ข้อมูล/ด่านเป็นชุดเดียวกับหน้า /tax/registrations/[id] ของ RA: GET `?full=1` · GET `/requirements` (ตัวตรวจตัวเดียวกับด่าน
       ยื่นของ server) · PATCH `{ status: 'pending_legal' }` · AttachmentsPanel ของทะเบียน + ของลูกค้า (เอกสารลูกค้าเก็บที่ลูกค้าที่เดียว)
    ⚠️ ปุ่มยื่นติดด่าน = ปุ่มยังอยู่ กดไม่ได้พร้อมเหตุ (กติกา "ติดด่าน = โชว์แล้วบอกเหตุ") · server ตรวจซ้ำทุกครั้ง */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
@@ -13,10 +13,25 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { apiJson } from "@/lib/apiFetch";
-import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { ATTACHMENT_TYPES, customerDocTypes } from "@/lib/master/attachmentTypes";
 import { customerNameIn } from "@/lib/master/customerName";
 import { fmtDate, naText } from "@/lib/format";
+import { REUSE_TARGET_DOC_TYPE, reusableProductArtwork, reuseProductArtwork } from "@/lib/excise/registrationArtworkReuse";
 import styles from "./RegistrationWorkModal.module.css";
+
+/* ── การ์ดเอกสารในแผงนี้ = ตามด่านยื่นจริง (`lib/tax/requirements.js`) ไม่ใช่ตามทะเบียนลูกค้า (มติเจ้าของ 04/11/2026) ──
+   🐞 เดิมแผงเอกสารลูกค้าขึ้น "ยังขาด" ตามเอกสารบังคับของทะเบียนลูกค้า (หนังสือรับรอง · ภ.พ.20) ขณะที่เช็กลิสต์ด้านบนบอกว่า
+      ขาดแค่ Artwork ⇒ สองที่บอกคนละเรื่อง · ด่านยื่นทะเบียนใช้เอกสารลูกค้าแค่ "แผนที่ที่อยู่" ใบเดียว
+   ⚠️ ไม่ได้ลดเอกสารบังคับของลูกค้าเอง — หน้าลูกค้ายังบอก "ยังขาด" ตามเดิม · ที่นี่แค่พูดเรื่องของทะเบียน */
+const REGISTRATION_CUSTOMER_DOC = "address_map";
+const registrationCustomerDocTypes = (customerType) => customerDocTypes(customerType)
+  .map((type) => ({ ...type, required: type.key === REGISTRATION_CUSTOMER_DOC }));
+/* "ใบอนุมัติขึ้นทะเบียน" เป็นของที่ RA แนบตอน/หลังอนุมัติ — ฝ่ายขายไม่ต้องเห็นการ์ดนี้ตอนเตรียมยื่น
+   ⚠️ ถอดการ์ดเฉพาะตอนที่ยังไม่มีไฟล์ชนิดนี้ — มีไฟล์แล้ว (ทะเบียนที่ถูกปลดอนุมัติกลับมาแก้) ต้องเห็นในการ์ดของมัน
+      ไม่งั้นแผงจัดไฟล์นั้นไปกอง "เอกสารอื่นๆ" (`panelItemsByType`) */
+const APPROVAL_LETTER_DOC = "approval_letter";
+const registrationDocTypes = (status, hasApprovalLetter) => ATTACHMENT_TYPES.registration.filter((type) => type.key !== APPROVAL_LETTER_DOC
+  || status === "approved" || hasApprovalLetter);
 
 /* ของที่ขาดแต่ละชนิดแก้ที่ไหน — เอกสาร/ข้อมูลลูกค้าเก็บที่ลูกค้า · ราคาขายปลีกเก็บที่สินค้า · ไฟล์ของทะเบียนแนบในแผงนี้ */
 const fixHint = (item, reg) => {
@@ -93,6 +108,11 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   const [reqError, setReqError] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  /* ไฟล์ของทะเบียน (จากแผงไฟล์แนบ) + Artwork ของสินค้า — ใช้หาไฟล์ที่ "ใช้ไฟล์นี้ยื่น" ได้ · `regFilesKey` = บังคับแผงโหลดใหม่หลังคัดลอก */
+  const [regFiles, setRegFiles] = useState([]);
+  const [productFiles, setProductFiles] = useState([]);
+  const [regFilesKey, setRegFilesKey] = useState(0);
+  const [reuseNote, setReuseNote] = useState("");
 
   const load = useCallback(async () => {
     if (!registrationId) return;
@@ -118,6 +138,58 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   }, [registrationId]);
 
   useEffect(() => { load(); checkRequirements(); }, [load, checkRequirements]);
+
+  /* 🐞 **ตัวรับรายการไฟล์ต้องคงตัว (useCallback)** — `AttachmentsPanel` เรียก `onItemsChange` ใน effect ที่มีตัวมันเองเป็น dep
+     ⇒ เดิมส่ง arrow ใหม่ทุก render: effect ยิง → ตรวจเอกสารใหม่ → `setReq` → render → arrow ใหม่ → effect ยิงอีก ฯลฯ
+     แผงที่เปิดค้างไว้ยิง `/requirements` (4 query ต่อครั้ง) วนไม่หยุด ~1–2 ครั้งต่อวินาที (วัด 04/11/2026) จนกว่าจะปิดแผง
+     ⇒ ตัวรับคงตัว = effect ยิงเฉพาะตอนรายการไฟล์เปลี่ยนจริง */
+  const onRegistrationFiles = useCallback((items, meta) => {
+    if (!meta?.loaded) return;
+    setRegFiles(Array.isArray(items) ? items : []);
+    checkRequirements();
+  }, [checkRequirements]);
+  const onCustomerFiles = useCallback((_, meta) => {
+    if (meta?.loaded) checkRequirements();
+  }, [checkRequirements]);
+  /* ชุดการ์ดของสองแผง — คงตัวด้วย useMemo (แผงผูก callback บางตัวกับ `types` · ชุดใหม่ทุก render = สร้าง handler ใหม่ทุกรอบ) */
+  const regStatus = reg?.status || null;
+  const hasApprovalLetter = regFiles.some((file) => file.docType === APPROVAL_LETTER_DOC);
+  const regDocTypes = useMemo(() => registrationDocTypes(regStatus, hasApprovalLetter), [regStatus, hasApprovalLetter]);
+  const customerType = reg?.customer?.customerType;
+  const custDocTypes = useMemo(() => registrationCustomerDocTypes(customerType), [customerType]);
+
+  /* Artwork ของสินค้า — อ่านอย่างเดียว ไม่มีผลกับด่าน · อ่านไม่ได้ = ไม่มีปุ่มให้กด (ยังแนบเองได้ตามเดิม) */
+  const productId = reg?.productId || item.productId || null;
+  useEffect(() => {
+    if (!productId || !canEdit) return undefined;
+    let alive = true;
+    apiJson(`/api/attachments?entityType=product&entityId=${encodeURIComponent(productId)}`, { fallbackError: "โหลด Artwork ของสินค้าไม่สำเร็จ" })
+      .then((rows) => { if (alive) setProductFiles(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (alive) setProductFiles([]); });
+    return () => { alive = false; };
+  }, [productId, canEdit]);
+
+  /* ⭐ "ใช้ไฟล์นี้ยื่น" (มติเจ้าของ 04/11/2026) — คัดลอก Artwork ของสินค้าเป็น "ฉลาก / Artwork ที่ยื่น" ของทะเบียนทีละไฟล์
+     (server คัดลอกไบต์ + ออกใบรับ แล้วแนบผ่านเส้นไฟล์แนบเส้นเดียว — ดู `lib/excise/registrationArtworkReuse.js`)
+     ⚠️ ไม่ลองซ้ำเอง — ไฟล์ที่ไม่ผ่านบอกเหตุ ไฟล์ที่ผ่านแล้วถูกนับว่าใช้แล้ว (server กันสำเนาที่สองด้วย `sourceAttachmentId`) */
+  const reuseArtwork = async (files) => {
+    setBusy("reuse");
+    setError("");
+    setReuseNote("");
+    let copied = 0;
+    const failures = [];
+    for (const file of files) {
+      // ทีละไฟล์โดยตั้งใจ — ข้อความบอกผลรายไฟล์ และไม่ยิงคัดลอกพร้อมกันหลายใบใส่ Drive
+      const result = await reuseProductArtwork({ registrationId: reg.id, attachmentId: file.id });
+      if (result.ok) copied += 1;
+      else failures.push(`${file.fileName || "ไฟล์"}: ${result.error}`);
+    }
+    if (copied) setReuseNote(`ใช้ Artwork ของสินค้ายื่นแล้ว ${copied} ไฟล์`);
+    if (failures.length) setError(failures.join(" · "));
+    setRegFilesKey((n) => n + 1);
+    await checkRequirements();
+    setBusy("");
+  };
 
   /* สร้างคำขอ = POST ทางเดิม (ร่าง) — ลูกค้า/FG มาจากหน้าที่เปิด ไม่มีช่องให้เลือก · ไม่ลองซ้ำ (POST ซ้ำ = 409 ใบซ้ำ) */
   const create = async () => {
@@ -179,6 +251,8 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   const editableDocs = canEdit && status !== "approved";
   const submittable = status === "draft" || status === "rejected";
   const missing = req?.missing || [];
+  /* Artwork ของสินค้าที่ยังไม่ได้ใช้กับทะเบียนนี้ — ปุ่มโผล่ที่แถว "ขาด ฉลาก / Artwork ที่ยื่น" เท่านั้น */
+  const reusable = canEdit && submittable ? reusableProductArtwork(productFiles, regFiles) : [];
   const submitBlocker = !canEdit ? "ต้องมีสิทธิ์แก้ข้อมูลสินค้าจึงยื่นได้"
     : reqError ? "ยังตรวจเอกสารบังคับไม่ได้ — กดตรวจใหม่"
       : !req ? "กำลังตรวจเอกสารบังคับ…"
@@ -213,10 +287,23 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
                   <ul className={styles.missing}>
                     {missing.map((m) => {
                       const hint = fixHint(m, reg);
+                      const reuseHere = m.entity === "registration" && m.docType === REUSE_TARGET_DOC_TYPE && reusable.length > 0;
                       return (
                         <li key={`${m.entity}:${m.docType}`}>
                           {m.label}
-                          {hint ? <> · <Link href={hint.href} className="linklike">{hint.label}</Link></> : <span className={styles.muted}> · แนบด้านล่าง</span>}
+                          {hint ? <> · <Link href={hint.href} className="linklike">{hint.label}</Link></>
+                            : <span className={styles.muted}>{reuseHere ? " · ใช้ไฟล์ของสินค้า หรือแนบด้านล่าง" : " · แนบด้านล่าง"}</span>}
+                          {reuseHere ? (
+                            /* ⭐ ไฟล์ที่ฝ่ายขายแนบไว้ที่ "เอกสารของสินค้า" แล้ว — ไม่ต้องดาวน์โหลดมาแนบซ้ำ (มติเจ้าของ 04/11/2026) */
+                            <div className={styles.reuse}>
+                              <span className={styles.reuseText}>
+                                สินค้านี้มี Artwork {reusable.length} ไฟล์: {reusable.map((file) => file.fileName || "ไม่มีชื่อไฟล์").join(", ")}
+                              </span>
+                              <Button size="sm" variant="outline" onClick={() => reuseArtwork(reusable)} disabled={!!busy}>
+                                {busy === "reuse" ? "กำลังคัดลอก…" : reusable.length > 1 ? `ใช้ทั้ง ${reusable.length} ไฟล์ยื่น` : "ใช้ไฟล์นี้ยื่น"}
+                              </Button>
+                            </div>
+                          ) : null}
                         </li>
                       );
                     })}
@@ -225,6 +312,7 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
         </div>
       )}
 
+      {reuseNote ? <StatusNotice tone="success">{reuseNote}</StatusNotice> : null}
       {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
       {submittable && (
         <div className={styles.actions}>
@@ -236,11 +324,13 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
       )}
 
       <AttachmentsPanel
+        key={`reg-files:${regFilesKey}`}
         entityType="registration"
         entityId={reg.id}
         canEdit={editableDocs}
+        docTypes={regDocTypes}
         title="เอกสารการขึ้นทะเบียน (เช่น artwork ฉลาก)"
-        onItemsChange={(_, meta) => { if (meta?.loaded) checkRequirements(); }}
+        onItemsChange={onRegistrationFiles}
         cardColumns={1}
       />
       {reg.customerId ? (
@@ -248,9 +338,10 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
           entityType="customer"
           entityId={reg.customerId}
           canEdit={canEdit}
-          docTypes={customerDocTypes(reg.customer?.customerType)}
+          docTypes={custDocTypes}
+          note="ด่านยื่นทะเบียนใช้แผนที่ที่อยู่ใบเดียว · เอกสารอื่นของลูกค้าเก็บที่หน้าลูกค้า"
           title={`เอกสารลูกค้า${customerNameIn(reg.customer) ? ` — ${customerNameIn(reg.customer)}` : ""} (ชุดเดียวกับหน้าลูกค้า)`}
-          onItemsChange={(_, meta) => { if (meta?.loaded) checkRequirements(); }}
+          onItemsChange={onCustomerFiles}
           cardColumns={1}
         />
       ) : null}
