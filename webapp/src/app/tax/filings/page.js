@@ -18,6 +18,7 @@ import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import { downloadReportXlsx, reportXlsxFileName } from "@/lib/tax/reportXlsxDownload";
 import { raFilingExcelReport, raFilingExportRows, raFilingPrintReport } from "@/lib/excise/raFilingExport";
 import { notifyToast } from "@/lib/feedback";
+import { fmtDate } from "@/lib/format";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
@@ -78,8 +79,14 @@ function FilingsPageInner() {
   /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
      — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
   const [customerIds, setCustomerIds] = useState([]);
+  /* ⭐ จาก–ถึง = **วันที่ส่งของ** (เจ้าของ 04/11 · V31 — คอลัมน์แรกของตาราง) · งานที่ยังไม่ส่ง ("—") ผ่านเสมอ (กติกาเดียวกับ withinDateRange)
+     🐞 เดิมกรองด้วยวันที่งานถึงขั้นปัจจุบัน (ใบค่าสรรพสามิตอนุมัติ) ซึ่งไม่มีบนจอ ⇒ งานหายโดยไม่มีอะไรบอกเหตุ */
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  /* ช่วงวันเริ่มยื่นจากการ์ด "กำลังยื่น/ชำระแล้ว" บนภาพรวม (`?filedFrom=&filedTo=` · ตัวนับเดียวกับการ์ด · ตรวจตัวเลข M7)
+     — ป้ายบอกพร้อมปุ่มล้างเหนือตาราง ไม่ใช่ตัวกรองที่มองไม่เห็น */
+  const [filedFrom, setFiledFrom] = useState("");
+  const [filedTo, setFiledTo] = useState("");
   const [selected, setSelected] = useState(() => new Set());
   const [exporting, setExporting] = useState(""); // "" · "print" · "xlsx"
   useEffect(() => {
@@ -91,6 +98,10 @@ function FilingsPageInner() {
     const toParam = dayParam(params.get("to"));
     if (fromParam) setFrom(fromParam);
     if (toParam) setTo(toParam);
+    const filedFromParam = dayParam(params.get("filedFrom"));
+    const filedToParam = dayParam(params.get("filedTo"));
+    if (filedFromParam) setFiledFrom(filedFromParam);
+    if (filedToParam) setFiledTo(filedToParam);
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- อ่านพารามิเตอร์ตั้งต้นครั้งเดียวตอนเปิดหน้า (`?start=` อ่านสดข้างล่าง)
@@ -203,17 +214,22 @@ function FilingsPageInner() {
         if (!mineStatuses.has(r.status)) return false;
       } else if (filter !== "all" && r.status !== filter) return false;
       if (customerIds.length && !customerIds.includes(r.customerId)) return false;
-      // วันไทยของวันที่งานเริ่ม (คิว = วันที่ถึงขั้นนั้น · บันทึก = วันเริ่มยื่น) — ตัวตัดสินเดียวกับการ์ดบนภาพรวม
-      if (!withinDateRange(r.createdAt, from, to)) return false;
+      // วันที่ส่งของ (V31) — วันไทย · ยังไม่ส่ง/ยังโหลดรายการไม่ได้ = ผ่าน (ตาเห็น "—" บนแถว)
+      if (!withinDateRange(r.detail?.deliveryDate, from, to)) return false;
+      // ช่วงวันเริ่มยื่นจากการ์ดภาพรวม — เฉพาะบันทึกการยื่น (งานที่ยังไม่เริ่มยื่นไม่อยู่ในช่วงไหน) · ตัวตัดสินเดียวกับการ์ด
+      if (filedFrom || filedTo) {
+        if (r.kind !== "record") return false;
+        if (!withinDateRange(r.createdAt, filedFrom, filedTo)) return false;
+      }
       // เดือนที่ยื่นทำจ่าย (V24) — งานที่ยังโหลดรายการไม่ขึ้นไม่อยู่ในเดือนไหน
       if (month !== "all" && r.detail?.month !== month) return false;
       if (!q) return true;
       return r.search.some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [allRows, filter, search, mineStatuses, customerIds, from, to, month]);
+  }, [allRows, filter, search, mineStatuses, customerIds, from, to, filedFrom, filedTo, month]);
 
   /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นพิมพ์/โหลดแถวที่มองไม่เห็นออกไป */
-  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, month]);
+  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, filedFrom, filedTo, month]);
 
   // ทุกแถวบนจอติ๊กได้ (รวมงานกำลังมา) — ที่ติ๊ก = แถวที่พิมพ์/Excel จะได้
   const selectableKeys = useMemo(() => rows.map((r) => r.key), [rows]);
@@ -229,11 +245,12 @@ function FilingsPageInner() {
         (ส่งรหัสบันทึกไป แต่ server เทียบกับรหัสรายการสินค้า) · คอลัมน์เป็นของรุ่นก่อนตารางแบบเดิม (V20) */
   const exportRows = useMemo(() => raFilingExportRows(rows, selected), [rows, selected]);
   const filterLabel = filterOptions.find((f) => f.key === filter)?.label || "";
+  const rangeText = (a, b) => `${a ? fmtDate(a) : "..."} – ${b ? fmtDate(b) : "..."}`;
   const exportMeta = () => ({
-    from,
-    to,
     customerName,
     extraRows: [
+      from || to ? { label: "วันที่ส่งของ", value: rangeText(from, to) } : null,
+      filedFrom || filedTo ? { label: "เริ่มยื่น", value: rangeText(filedFrom, filedTo) } : null,
       { label: "เดือนที่ยื่น", value: month === "all" ? "ทุกเดือน" : `${filingMonthLabel(month).short} · ${filingMonthLabel(month).long}` },
       { label: "สถานะ", value: filterLabel },
       search.trim() ? { label: "ค้นหา", value: search.trim() } : null,
@@ -333,7 +350,7 @@ function FilingsPageInner() {
               ไม่ใช่ "จาก" ค้างแถวบนแล้ว "ถึง" ห้อยแถวล่าง */}
           <span className={styles.rangeGroup}>
             <label className={styles.rangeLabel}>
-              จาก <DateInput value={from} onChange={setFrom} />
+              วันที่ส่งของ จาก <DateInput value={from} onChange={setFrom} />
             </label>
             <label className={styles.rangeLabel}>
               ถึง <DateInput value={to} onChange={setTo} />
@@ -343,6 +360,15 @@ function FilingsPageInner() {
         )}
       >
       {notice}
+      {filedFrom || filedTo ? (
+        <StatusNotice
+          tone="info"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => { setFiledFrom(""); setFiledTo(""); }}>ล้าง</Button>}
+        >
+          กรองจากการ์ดภาพรวม: บันทึกการยื่นที่เริ่มยื่น {rangeText(filedFrom, filedTo)}
+        </StatusNotice>
+      ) : null}
       {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่างใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง
           ⚠️ ถามสายบันทึกการยื่นสายเดียว — รายชื่อลูกค้าล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
       {!listBlocked && (

@@ -118,6 +118,13 @@ test("taxQueueHref: ทั้งหมด = ?status= อย่างเดีย
     taxQueueHref("/tax/filings", "pending", "quarter", "2026-08-28"),
     "/tax/filings?status=pending&from=2026-07-01&to=2026-09-30",
   );
+  // V31 (04/11): หน้ายื่นชำระ from/to = วันที่ส่งของ ⇒ การ์ดส่งช่วงวันเริ่มยื่นในชื่อของมันเอง
+  assert.equal(
+    taxQueueHref("/tax/filings", "filing", "month", "2026-11-04", { fromKey: "filedFrom", toKey: "filedTo" }),
+    "/tax/filings?status=filing&filedFrom=2026-11-01&filedTo=2026-11-30",
+  );
+  const overview = readFileSync(new URL("../../app/tax/page.js", import.meta.url), "utf8");
+  assert.match(overview, /taxQueueHref\("\/tax\/filings", status, timeRange, todayIso, \{ fromKey: "filedFrom", toKey: "filedTo" \}\)/);
 });
 
 test("dayParam: รับเฉพาะ YYYY-MM-DD — ลิงก์พิมพ์ผิดต้องไม่กลายเป็นตัวกรองที่ทำให้คิวว่าง", () => {
@@ -158,9 +165,16 @@ test("ยาม: คิวสองหน้าอ่าน from/to จาก UR
     const src = read(rel);
     assert.match(src, /dayParam\(params\.get\("from"\)\)/, rel);
     assert.match(src, /dayParam\(params\.get\("to"\)\)/, rel);
-    assert.match(src, /if \(!withinDateRange\(\w\.createdAt, from, to\)\) return false;/, rel);
     assert.doesNotMatch(src, /createdAt \|\| ""\)\.slice\(0, 10\)/, `${rel} ยังตัดวันตาม UTC`);
   }
+  assert.match(read("../../app/tax/registrations/page.js"), /if \(!withinDateRange\(r\.createdAt, from, to\)\) return false;/);
+  /* V31 (04/11): หน้ายื่นชำระ จาก–ถึง = วันที่ส่งของ (คอลัมน์แรกของตาราง) · ช่วงวันเริ่มยื่นของการ์ด = filedFrom/filedTo (บันทึกเท่านั้น) */
+  const filings = read("../../app/tax/filings/page.js");
+  assert.match(filings, /if \(!withinDateRange\(r\.detail\?\.deliveryDate, from, to\)\) return false;/);
+  assert.match(filings, /dayParam\(params\.get\("filedFrom"\)\)/);
+  assert.match(filings, /if \(r\.kind !== "record"\) return false;\s*if \(!withinDateRange\(r\.createdAt, filedFrom, filedTo\)\) return false;/);
+  assert.match(filings, /กรองจากการ์ดภาพรวม: บันทึกการยื่นที่เริ่มยื่น/, "ช่วงจากการ์ดต้องมองเห็นและล้างได้");
+  assert.match(filings, /วันที่ส่งของ จาก <DateInput/);
 });
 
 test("ยาม: ไฟล์ Excel/พิมพ์ (reports.js) ตัดช่วงด้วย withinDateRange — จอกับไฟล์ชุดเดียวกัน · ไฟล์ยื่นชำระประกอบบนจอจากแถวที่ผ่านตัวกรองแล้ว", () => {
@@ -172,7 +186,7 @@ test("ยาม: ไฟล์ Excel/พิมพ์ (reports.js) ตัดช่
   // 04/11: รายงานการยื่นภาษีฝั่ง server ถอดแล้ว — หน้า /tax/filings ส่ง `rows` ที่กรองด้วย withinDateRange ชุดเดียวกับตารางเข้าไฟล์
   assert.doesNotMatch(src, /filing: filingReport/);
   const page = read("../../app/tax/filings/page.js");
-  assert.match(page, /if \(!withinDateRange\(r\.createdAt, from, to\)\) return false;/);
+  assert.match(page, /if \(!withinDateRange\(r\.detail\?\.deliveryDate, from, to\)\) return false;/);
   assert.match(page, /raFilingExportRows\(rows, selected\)/);
 });
 
@@ -186,6 +200,7 @@ test("ยาม: ZIP ไฟล์แนบทะเบียน (registrationFil
 test("ยาม: การ์ด KPI บนภาพรวมพาช่วงเวลาไป · แถบค้างนานยังไม่พา (มติ 19/10)", () => {
   const src = read("../../app/tax/page.js");
   assert.match(src, /const goReg = \(status\) => router\.push\(taxQueueHref\("\/tax\/registrations", status, timeRange, todayIso\)\);/);
-  assert.match(src, /const goFil = \(status\) => router\.push\(taxQueueHref\("\/tax\/filings", status, timeRange, todayIso\)\);/);
+  // V31: หน้ายื่นชำระ from/to = วันที่ส่งของ ⇒ การ์ดส่งช่วงวันเริ่มยื่นเป็น filedFrom/filedTo
+  assert.match(src, /const goFil = \(status\) => router\.push\(taxQueueHref\("\/tax\/filings", status, timeRange, todayIso, \{ fromKey: "filedFrom", toKey: "filedTo" \}\)\);/);
   assert.match(src, /router\.push\(LATE_REGISTRATIONS_HREF\)/);
 });

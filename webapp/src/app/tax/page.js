@@ -159,7 +159,8 @@ export default function TaxDashboard() {
      ⚠️ คิวตัดสินช่วงด้วย `withinDateRange` (วันไทย) ตัวเดียวกับ `withinPeriod` ข้างบน ⇒ เลขบนการ์ด = แถวที่เปิดได้
      ⚠️ แถบ "ค้างเกินเกณฑ์" ไม่ใช้ตัวนี้ — มติ 19/10 นับทั้งกองไม่สนช่วง (`LATE_REGISTRATIONS_HREF`) */
   const goReg = (status) => router.push(taxQueueHref("/tax/registrations", status, timeRange, todayIso));
-  const goFil = (status) => router.push(taxQueueHref("/tax/filings", status, timeRange, todayIso));
+  /* หน้ายื่นชำระ: "จาก–ถึง" เป็นวันที่ส่งของ (V31) ⇒ การ์ดส่งช่วงวันเริ่มยื่นเป็น `filedFrom/filedTo` (ป้ายที่ล้างได้บนหน้านั้น) */
+  const goFil = (status) => router.push(taxQueueHref("/tax/filings", status, timeRange, todayIso, { fromKey: "filedFrom", toKey: "filedTo" }));
 
   // อายุของแถวในคิวงาน — ทะเบียนคิดจากจุดที่สถานะปัจจุบันเริ่ม · **ใบยื่น (`orders`)
   // มีแต่ `createdAt`** เพราะตารางนั้นไม่มีคอลัมน์ `updatedAt` เลย (ดูหัว
