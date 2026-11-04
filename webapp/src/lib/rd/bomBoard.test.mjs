@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BOM_BOARD_TABS, BOM_TODO_STATUSES, bomBoardRows, bomBoardTotals, bomFormulaView, bomTabRows, bomWaitingDays } from './bomBoard.js';
+import { BOM_BOARD_PRODUCT_COLUMNS, BOM_BOARD_TABS, BOM_TODO_STATUSES, bomBoardRows, bomBoardTotals, bomFormulaView, bomTabRows, bomWaitingDays } from './bomBoard.js';
 
 const p = (id, over = {}) => ({
   id, fgCode: `FG-${id}`, productDescription: `ชื่อ ${id}`, customerId: 'C-1', customerName: 'ชื่อที่ประทับ',
@@ -26,7 +26,7 @@ test('แถวของคิว: AR + ชื่อไทย/อังกฤษ
 });
 
 test('สูตร/กลิ่นตามหมวด — หัวน้ำหอมโชว์กลิ่น · ชุดของขวัญโชว์ทุกแถวสูตร · ไม่มีสูตร = none', () => {
-  assert.deepEqual(bomFormulaView({ categoryCode: '02-020', scentId: 'SCT-2' }, { scentsById }), { kind: 'scent', items: [{ code: 'SC-02', name: 'กลิ่นส้ม' }] });
+  assert.deepEqual(bomFormulaView({ categoryCode: '02-020', scentId: 'SCT-2' }, { scentsById }), { kind: 'scent', items: [{ code: 'SC-02', name: 'กลิ่นส้ม', tradeName: null }] });
   const set = bomFormulaView({ categoryCode: '01-037' }, { giftSetRows: [{ formulaCode: 'F1', formulaName: 'หนึ่ง', categoryName: 'น้ำหอม' }, { formulaCode: 'F2', formulaName: 'สอง', categoryName: 'ก้านหอม' }] });
   assert.equal(set.kind, 'set');
   assert.equal(set.items.length, 2);
@@ -66,4 +66,47 @@ test('ป้ายเมนูนับด้วยชุดสถานะเ�
   const board = readFileSync(new URL('./bomBoard.js', import.meta.url), 'utf8');
   const cols = board.slice(board.indexOf('BOM_BOARD_PRODUCT_COLUMNS'), board.indexOf("].join(', ')"));
   assert.doesNotMatch(cols, /costPrice|factoryProfit|materialCost/);
+});
+
+/* ── มติเจ้าของ 03/11: ช่องลูกค้าเพิ่มเลขผู้เสียภาษี/สาขา + แบรนด์ · สูตร/กลิ่นเพิ่มชื่อที่ลูกค้าเรียก (อ่านสดจากทะเบียน) ── */
+test('ช่องลูกค้า: เลขผู้เสียภาษี + สาขาจากทะเบียนลูกค้า · แบรนด์จาก FG', () => {
+  const customers = new Map([['C-1', { id: 'C-1', arCode: 'AR-903', name: 'บริษัท อาเตโพเล่ จำกัด', taxId: '0105559000000', branchCode: '00000' }]]);
+  const [row] = bomBoardRows([p('A', { brandName: 'อาเต้', brandNameEn: 'ARTE' })], { customersById: customers });
+  assert.equal(row.customerTaxId, '0105559000000');
+  assert.equal(row.customerBranchCode, '00000');
+  assert.deepEqual([row.brandName, row.brandNameEn], ['อาเต้', 'ARTE']);
+  const [orphan] = bomBoardRows([p('B', { customerId: 'C-X' })], { customersById: customers });
+  assert.deepEqual([orphan.customerTaxId, orphan.brandName], [null, null]);
+  assert.match(BOM_BOARD_PRODUCT_COLUMNS, /"brandName", "brandNameEn"/);
+});
+
+test('สูตร/กลิ่น: รหัส/ชื่อสูตรอ่านสดจากทะเบียน (สำเนาบน FG เป็นสำรอง) · ชื่อที่ลูกค้าเรียกของสูตร/กลิ่น/สูตรในชุด', () => {
+  const formulasById = new Map([['FML-1', { id: 'FML-1', code: 'PF-NEW', name: 'ชื่อใหม่ในทะเบียน', customerTradeName: 'Tea Valley' }]]);
+  const scents = new Map([['SCT-1', { id: 'SCT-1', code: 'SC-01', name: 'กลิ่นมะลิ', customerTradeName: 'Jasmine Night' }]]);
+  const live = bomFormulaView(p('A'), { formulasById, scentsById: scents });
+  assert.deepEqual(live.items[0], { code: 'PF-NEW', name: 'ชื่อใหม่ในทะเบียน', tradeName: 'Tea Valley', note: 'กลิ่น กลิ่นมะลิ (ลูกค้าเรียก “Jasmine Night”)' });
+  // ชื่อที่ลูกค้าเรียกกลิ่นซ้ำกับของสูตร = ไม่พ่วงซ้ำ
+  const same = bomFormulaView(p('A'), { formulasById: new Map([['FML-1', { code: 'PF-NEW', name: 'x', customerTradeName: 'Jasmine Night' }]]), scentsById: scents });
+  assert.equal(same.items[0].note, 'กลิ่น กลิ่นมะลิ');
+  // ไม่เจอในทะเบียน = ใช้สำเนาบน FG · ไม่มีชื่อที่ลูกค้าเรียก
+  const copy = bomFormulaView(p('A'), { scentsById });
+  assert.deepEqual([copy.items[0].code, copy.items[0].name, copy.items[0].tradeName], ['F-001', 'สูตรหนึ่ง', null]);
+  // หัวน้ำหอม = ชื่อที่ลูกค้าเรียกกลิ่น · ชุดของขวัญ = ของแต่ละสูตรในชุด
+  assert.equal(bomFormulaView({ categoryCode: '02-020', scentId: 'SCT-1' }, { scentsById: scents }).items[0].tradeName, 'Jasmine Night');
+  const set = bomFormulaView({ categoryCode: '01-037' }, { giftSetRows: [{ formulaCode: 'F1', formulaName: 'หนึ่ง', customerTradeName: 'Gift One' }, { formulaCode: 'F2', formulaName: 'สอง' }] });
+  assert.deepEqual(set.items.map((i) => i.tradeName), ['Gift One', null]);
+});
+
+test('ด่านซอร์ส: route อ่านเลขผู้เสียภาษี/สาขา · สูตรสด + ชื่อที่ลูกค้าเรียก · หน้าโชว์ครบ', () => {
+  const route = readFileSync(new URL('../../app/api/rd/bom-board/route.js', import.meta.url), 'utf8');
+  assert.match(route, /\.from\('customers'\)\.select\('id, "arCode", name, "nameEn", "taxId", "branchCode"'\)/);
+  assert.match(route, /\.from\('scents'\)\.select\('id, code, name, "customerTradeName"'\)/);
+  assert.match(route, /\.from\('formulas'\)\.select\('id, code, name, "customerTradeName"'\)/);
+  assert.match(route, /formulasById: new Map\(formulas\.map\(\(f\) => \[f\.id, f\]\)\),/);
+  const page = readFileSync(new URL('../../app/rd/bom/page.js', import.meta.url), 'utf8');
+  assert.match(page, /Tax ID \{row\.customerTaxId \? fmtNationalId\(row\.customerTaxId\) : NA\} · สาขา \{branchValue\(row\.customerBranchCode\)\}/);
+  assert.match(page, /แบรนด์ \{brandBoth\(row\.brandName, row\.brandNameEn\)\}/);
+  assert.match(page, /ลูกค้าเรียก “\{item\.tradeName\}”/);
+  const store = readFileSync(new URL('../master/giftSetFormulasStore.js', import.meta.url), 'utf8');
+  assert.match(store, /customerTradeName: formula\?\.customerTradeName \|\| null,/);
 });

@@ -22,7 +22,9 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { apiJson } from "@/lib/apiFetch";
 import { businessDate } from "@/lib/businessDate";
-import { NA, fmtDate, fmtNumber, naText } from "@/lib/format";
+import { NA, fmtDate, fmtNationalId, fmtNumber, naText } from "@/lib/format";
+import { brandBoth } from "@/lib/master/brands";
+import { branchValue } from "@/lib/master/thaiAddress";
 import { notifyToast } from "@/lib/feedback";
 import { useCapUser, useDepartment, useRole } from "@/lib/roleContext";
 import { canAccessRd } from "@/lib/permissions";
@@ -211,10 +213,13 @@ function BomRow({ row, today, busy, onAccept, onDone, onReturn, onReopen }) {
         {row.nameEn ? <div className={styles.sub}>{row.nameEn}</div> : null}
         {row.round > 1 ? <div className={styles.sub}>ส่งรอบที่ {row.round}</div> : null}
       </td>
+      {/* ลูกค้า — AR · ชื่อไทย/อังกฤษ · เลขผู้เสียภาษี + สาขา (รูปเดียวกับทะเบียนลูกค้า) · แบรนด์ของ FG (มติเจ้าของ 03/11) */}
       <td>
         <div className={styles.code}>{row.customerArCode || NA}</div>
         <div>{naText(row.customerNameTh)}</div>
         {row.customerNameEn ? <div className={styles.sub}>{row.customerNameEn}</div> : null}
+        <div className={styles.sub}>Tax ID {row.customerTaxId ? fmtNationalId(row.customerTaxId) : NA} · สาขา {branchValue(row.customerBranchCode)}</div>
+        {brandBoth(row.brandName, row.brandNameEn) ? <div className={styles.sub}>แบรนด์ {brandBoth(row.brandName, row.brandNameEn)}</div> : null}
       </td>
       <td>
         {row.formula.items.length ? (
@@ -223,6 +228,8 @@ function BomRow({ row, today, busy, onAccept, onDone, onReturn, onReopen }) {
               <li key={`${item.code || ""}-${i}`}>
                 {/* สูตรที่ RD ยังไม่ใส่รหัส — โชว์ชื่ออย่างเดียว (ขีดนำหน้าชื่ออ่านเหมือนรายการย่อย) */}
                 {item.code ? <><span className={styles.code}>{item.code}</span>{" "}</> : null}{naText(item.name)}
+                {/* ชื่อที่ลูกค้าเรียก (ถ้ามี) — รูปเดียวกับทะเบียนสูตร/กลิ่น */}
+                {item.tradeName ? <div className={styles.sub}>ลูกค้าเรียก “{item.tradeName}”</div> : null}
                 {item.note ? <div className={styles.sub}>{item.note}</div> : null}
               </li>
             ))}

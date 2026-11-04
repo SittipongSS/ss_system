@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 //
 // ⚠️ **อ่านอย่างเดียว** — ปุ่มรับเรื่อง/ตีกลับ/ลงเสร็จเขียนผ่าน `POST /api/products/[id]/bom` ซึ่งมีด่านของตัวเอง ·
 //    `proxy.js` เปิด `/api/rd` ไว้เฉพาะ GET โดยตั้งใจ
-// ⚠️ ไม่เลือกราคาผลิต — RD ไม่มีสิทธิ์เห็น (redactProductMargin) · ลูกค้า AR/ชื่อไทย-อังกฤษอ่านสดจากทะเบียน
+// ⚠️ ไม่เลือกราคาผลิต — RD ไม่มีสิทธิ์เห็น (redactProductMargin) · ลูกค้า AR/ชื่อไทย-อังกฤษ/เลขผู้เสียภาษีอ่านสดจากทะเบียน
 export const GET = withUser(async ({ user, supabase }) => {
   if (!user) return unauthorized();
   // ด่านเดียวกับเมนู + เส้นเขียนฝั่ง RD — แยกสองที่เมื่อไรก็ได้เมนูที่กดแล้ว 403
@@ -29,16 +29,20 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (!products.length) return ok([]);
 
   try {
-    const [customers, scents, giftSetsByProduct] = await Promise.all([
+    // ⭐ มติเจ้าของ 03/11: ลูกค้า + เลขผู้เสียภาษี/สาขา · สูตร/กลิ่นอ่านสดจากทะเบียนพร้อม "ชื่อที่ลูกค้าเรียก" (customerTradeName)
+    const [customers, scents, formulas, giftSetsByProduct] = await Promise.all([
       fetchAllInChunks(products.map((p) => p.customerId), (chunk) => supabase
-        .from('customers').select('id, "arCode", name, "nameEn"').in('id', chunk).order('id')),
+        .from('customers').select('id, "arCode", name, "nameEn", "taxId", "branchCode"').in('id', chunk).order('id')),
       fetchAllInChunks(products.map((p) => p.scentId), (chunk) => supabase
-        .from('scents').select('id, code, name').in('id', chunk).order('id')),
+        .from('scents').select('id, code, name, "customerTradeName"').in('id', chunk).order('id')),
+      fetchAllInChunks(products.map((p) => p.formulaId), (chunk) => supabase
+        .from('formulas').select('id, code, name, "customerTradeName"').in('id', chunk).order('id')),
       loadProductFormulasMany(supabase, products.filter((p) => isGiftSetCategory(p.categoryCode)).map((p) => p.id)),
     ]);
     return ok(bomBoardRows(products, {
       customersById: new Map(customers.map((c) => [c.id, c])),
       scentsById: new Map(scents.map((s) => [s.id, s])),
+      formulasById: new Map(formulas.map((f) => [f.id, f])),
       giftSetsByProduct,
     }));
   } catch (e) {

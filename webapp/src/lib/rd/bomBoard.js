@@ -20,7 +20,7 @@ export const BOM_BOARD_TABS = Object.freeze([
 
 /* คอลัมน์ที่ route อ่านจาก `products` — ไม่เอาราคาผลิต (RD ไม่มีสิทธิ์เห็น · redactProductMargin) */
 export const BOM_BOARD_PRODUCT_COLUMNS = [
-  'id', '"fgCode"', '"productDescription"', '"productDescriptionEn"', '"customerId"', '"customerName"',
+  'id', '"fgCode"', '"productDescription"', '"productDescriptionEn"', '"customerId"', '"customerName"', '"brandName"', '"brandNameEn"',
   '"categoryCode"', '"formulaId"', '"formulaCode"', '"formulaName"', '"scentId"',
   'volume', '"volumeUnit"', '"saleUnit"', '"approvalStatus"', '"isActive"',
   '"bomStatus"', '"bomRound"', '"bomSentAt"', '"bomSentByName"', '"bomAcceptedAt"', '"bomAcceptedByName"',
@@ -40,25 +40,41 @@ export function bomWaitingDays(row, todayIso) {
 
 /**
  * สูตร/กลิ่นที่ RD ต้องเห็นตอนลง BOM — ตามหมวด (ตัวเดียวกับที่ด่านส่งใช้นับ)
- * @returns {{ kind: 'formula'|'scent'|'set'|'none', items: Array<{ code: string|null, name: string|null, note?: string|null }> }}
+ * ⭐ รหัส/ชื่อสูตรอ่าน **สดจากทะเบียนสูตร** (`formulasById`) — `products.formulaCode/Name` เป็นสำเนาตอนบันทึก FG
+ *    RD แก้ชื่อ/ออกรหัสทีหลังแล้วสำเนาไม่ตาม (กติกาเดียวกับใบสเปค FM-SA-04 · ไฟล์ส่งออกทะเบียนสินค้า) · หาไม่เจอ = ใช้สำเนา
+ * ⭐ `tradeName` = ชื่อที่ลูกค้าเรียก (`customerTradeName` ของสูตร/กลิ่นตัวนั้น · ไม่บังคับ — มติเจ้าของ 03/11)
+ * @returns {{ kind: 'formula'|'scent'|'set'|'none', items: Array<{ code: string|null, name: string|null, tradeName?: string|null, note?: string|null }> }}
  */
-export function bomFormulaView(product, { scentsById = new Map(), giftSetRows = [] } = {}) {
+export function bomFormulaView(product, { scentsById = new Map(), formulasById = new Map(), giftSetRows = [] } = {}) {
   const code = String(product?.categoryCode || '');
   if (isGiftSetCategory(code)) {
     return {
       kind: 'set',
-      items: (giftSetRows || []).map((row) => ({ code: row.formulaCode || null, name: row.formulaName || null, note: row.categoryName || null })),
+      items: (giftSetRows || []).map((row) => ({
+        code: row.formulaCode || null, name: row.formulaName || null, tradeName: row.customerTradeName || null, note: row.categoryName || null,
+      })),
     };
   }
   if (isFragranceOilCategory(code)) {
     const scent = product?.scentId ? scentsById.get(product.scentId) : null;
-    return scent ? { kind: 'scent', items: [{ code: scent.code || null, name: scent.name || null }] } : { kind: 'none', items: [] };
+    return scent
+      ? { kind: 'scent', items: [{ code: scent.code || null, name: scent.name || null, tradeName: scent.customerTradeName || null }] }
+      : { kind: 'none', items: [] };
   }
   if (product?.formulaId) {
+    const live = formulasById.get(product.formulaId) || null;
     const scent = product.scentId ? scentsById.get(product.scentId) : null;
+    // กลิ่นของสูตรพ่วงชื่อที่ลูกค้าเรียกกลิ่นด้วย เมื่อไม่ซ้ำกับชื่อที่ลูกค้าเรียกสูตร
+    const formulaTrade = live?.customerTradeName || null;
+    const scentTrade = scent?.customerTradeName && scent.customerTradeName !== formulaTrade ? scent.customerTradeName : null;
     return {
       kind: 'formula',
-      items: [{ code: product.formulaCode || null, name: product.formulaName || null, note: scent?.name ? `กลิ่น ${scent.name}` : null }],
+      items: [{
+        code: (live ? live.code : product.formulaCode) || null,
+        name: (live ? live.name : product.formulaName) || null,
+        tradeName: formulaTrade,
+        note: scent?.name ? `กลิ่น ${scent.name}${scentTrade ? ` (ลูกค้าเรียก “${scentTrade}”)` : ''}` : null,
+      }],
     };
   }
   return { kind: 'none', items: [] };
@@ -69,7 +85,7 @@ export function bomFormulaView(product, { scentsById = new Map(), giftSetRows = 
  * @param products แถวสินค้าที่ `bomStatus` ไม่ว่าง
  * @param customersById Map(id → { arCode, name, nameEn })
  */
-export function bomBoardRows(products = [], { customersById = new Map(), scentsById = new Map(), giftSetsByProduct = new Map() } = {}) {
+export function bomBoardRows(products = [], { customersById = new Map(), scentsById = new Map(), formulasById = new Map(), giftSetsByProduct = new Map() } = {}) {
   return (products || [])
     .filter((p) => bomStatusOf(p))
     .map((p) => {
@@ -85,7 +101,12 @@ export function bomBoardRows(products = [], { customersById = new Map(), scentsB
         // ชื่อไทยจากทะเบียนก่อน (ชื่อที่ประทับบนสินค้าเป็นสำรอง — ลูกค้าเปลี่ยนชื่อได้)
         customerNameTh: customer?.name || p.customerName || null,
         customerNameEn: customer?.nameEn || null,
-        formula: bomFormulaView(p, { scentsById, giftSetRows: giftSetsByProduct.get(p.id) || [] }),
+        // เลขผู้เสียภาษี + สาขา (นิติบุคคลเดียวกันมีหลาย AR ได้ — แยกด้วยเลขนี้) · แบรนด์ของ FG (มติเจ้าของ 03/11)
+        customerTaxId: customer?.taxId || null,
+        customerBranchCode: customer?.branchCode || null,
+        brandName: p.brandName || null,
+        brandNameEn: p.brandNameEn || null,
+        formula: bomFormulaView(p, { scentsById, formulasById, giftSetRows: giftSetsByProduct.get(p.id) || [] }),
         volume: p.volume ?? null,
         volumeUnit: p.volumeUnit || null,
         saleUnit: p.saleUnit || null,
