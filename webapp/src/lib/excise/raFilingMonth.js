@@ -11,9 +11,27 @@ export function filingMonthLabel(month) {
   return { short: `M.${Number(match[2])}/${String(year).slice(-2)}`, long: `${MONTH_LABELS[index]} ${year}` };
 }
 
-/** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = "PO มาวันที่ …" (วันที่ของใบสั่งขายต้นทาง) แบบตารางเดิม */
+const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
+/** ภาษีรวมของรายการชุดหนึ่ง (หัวงาน) — ปัดสองตำแหน่งครั้งเดียวตอนจบ */
+export const filingLinesTaxTotal = (lines = []) => round2((lines || []).reduce((sum, line) => sum + (Number(line?.totalTax) || 0), 0));
+
+/**
+ * ยอดรวมของหัวเดือน (เจ้าของ 04/11: "ควรมียอดรวมด้วย") — ยอดที่ RA ยื่นชำระในเดือนนั้น ตามแถวที่ผ่านตัวกรองบนจอ
+ * `{ jobs, lines, totalTax, missing }` · `missing` = งานที่ยังไม่มีรายการ (กำลังโหลด · โหลดไม่ขึ้น) — ไม่อยู่ในยอด ⇒ จอต้องบอก
+ */
+export function filingMonthTotals(rows = []) {
+  const withDetail = (rows || []).filter((row) => row?.detail);
+  const lines = withDetail.flatMap((row) => row.detail.lines || []);
+  return {
+    jobs: (rows || []).length,
+    lines: lines.length,
+    totalTax: filingLinesTaxTotal(lines),
+    missing: (rows || []).length - withDetail.length,
+  };
+}
+
+/** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = '' (จอโชว์ "—" · เจ้าของ 04/11 เลิกโชว์ "PO มาวันที่ …" แบบตารางเดิม) */
 export function filingDateText(detail) {
-  if (!detail?.deliveryDate) return '';
-  const date = fmtDate(detail.deliveryDate);
-  return detail.deliveryKind === 'po' ? `PO มาวันที่ ${date}` : date;
+  return detail?.deliveryDate ? fmtDate(detail.deliveryDate) : '';
 }

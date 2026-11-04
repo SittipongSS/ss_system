@@ -30,8 +30,54 @@
   border-top: 1px solid var(--border);
   padding-block: var(--space-2-5);
 }
-.monthRow strong { margin-right: var(--space-2-5); }
-.monthRow span { color: var(--text-3); font-size: var(--fs-6); }
+.monthHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1-5) var(--space-2-5);
+}
+.monthMeta { color: var(--text-3); font-size: var(--fs-6); }
+/* ยอดรวมของเดือน/งาน (เจ้าของ 04/11) — สีเดียวกับช่องภาษีรวมของแถว */
+.monthTotal { color: var(--red); }
+.groupTotal {
+  color: var(--red);
+  font-size: var(--fs-6);
+  white-space: nowrap;
+}
+
+/* ปุ่มย่อ/ขยาย (เจ้าของ 04/11) — ลูกศรขวา = ย่ออยู่ · หมุนลง = กาง (กติกาเดียวกับ CollapsibleCard) */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.toggle:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
+
+.chev {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--motion-medium) var(--ease-standard);
+}
+.chev[data-open] { transform: rotate(90deg); }
+
+.bulk {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-6);
+  cursor: pointer;
+}
+.bulk:hover { text-decoration: underline; }
+.bulk:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: var(--radius); }
 
 .groupRow td {
   border-top: 1px solid var(--border);
