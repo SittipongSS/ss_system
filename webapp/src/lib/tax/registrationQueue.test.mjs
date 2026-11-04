@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageAnchor, ageInDays, ageLabel, ageTone, hasFactoryFacts,
-  isLateRegistration, lateRegistrations, registrationAge, registrationProductFacts, wantsLateOnly,
+  isLateRegistration, lateRegistrations, registrationAge, registrationPendingAge, registrationProductFacts, wantsLateOnly,
 } from "./registrationQueue.js";
 import { EXCISE_VAT_RATE } from "./exciseBilling.js";
 import { PERIODS, withinPeriod } from "./period.js";
@@ -56,6 +56,32 @@ test("อายุนับจากจุดที่สถานะปัจ�
   // อนุมัติแล้วมีจุดเวลาของตัวเอง
   const done = { status: "approved", approvedAt: "2026-08-20", updatedAt: "2026-08-27" };
   assert.equal(ageAnchor(done), "2026-08-20");
+});
+
+/* 🐞 03/11/2026 คิวขึ้นทะเบียนโชว์ "ค้างมา 67 วัน" สีแดงบนใบที่ขึ้นทะเบียนแล้ว และเรียงให้ใบที่จบไปนาน
+   ขึ้นหัวคิว — ใบอนุมัติแล้วไม่มีอะไรค้าง ⇒ ไม่มีอายุ "ค้าง" (สถานะอื่นเท่าเดิม) */
+test("ใบที่ขึ้นทะเบียนแล้วไม่มีอายุค้าง — สถานะอื่นนับเท่า registrationAge", () => {
+  const today = "2026-11-03";
+  const done = { status: "approved", approvedAt: "2026-08-28", updatedAt: "2026-08-28" };
+  assert.equal(registrationAge(done, today), 67); // "อยู่สถานะนี้มา" บนหน้ารายละเอียดยังนับได้
+  assert.equal(registrationPendingAge(done, today), null);
+  assert.equal(ageTone(registrationPendingAge(done, today)), "neutral");
+  for (const status of ["draft", "pending_legal", "rejected"]) {
+    const row = { status, createdAt: "2026-08-28", updatedAt: "2026-08-28" };
+    assert.equal(registrationPendingAge(row, today), registrationAge(row, today), status);
+    assert.equal(ageTone(registrationPendingAge(row, today)), "danger", status);
+  }
+  // เรียง "ค้างนานสุด" แบบเดียวกับคิว (`?? -1`): ใบที่รอตรวจ 5 วันต้องมาก่อนใบที่อนุมัติไป 67 วัน
+  const rows = [done, { status: "pending_legal", updatedAt: "2026-10-29" }];
+  const sorted = rows.slice().sort((a, b) => (registrationPendingAge(b, today) ?? -1) - (registrationPendingAge(a, today) ?? -1));
+  assert.equal(sorted[0].status, "pending_legal");
+});
+
+test("คิวขึ้นทะเบียนและหน้ารายละเอียดใช้อายุค้าง ไม่ใช่อายุสถานะ สำหรับป้าย/สี/ลำดับ", () => {
+  const queue = readFileSync(new URL("../../app/tax/registrations/page.js", import.meta.url), "utf8");
+  assert.match(queue, /const ageOf = \(r\) => registrationPendingAge\(r, todayIso\)/);
+  const detail = readFileSync(new URL("../../app/tax/registrations/[id]/page.js", import.meta.url), "utf8");
+  assert.match(detail, /registrationPendingAge\(s, todayIso\)/);
 });
 
 test("ค้างนาน = เฉพาะใบที่รอฝ่าย RA และเรียงเก่าสุดขึ้นก่อน", () => {
