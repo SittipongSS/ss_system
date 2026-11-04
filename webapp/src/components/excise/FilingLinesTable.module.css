@@ -16,6 +16,15 @@
   font-weight: var(--fw-bold);
 }
 
+/* ภาษี/หน่วยที่ไม่ตรงสูตร 8.8% (รีเช็คภาษี · มติ 03/11) — บรรทัดรองในช่องเดียวกัน */
+.taxMismatch {
+  display: block;
+  color: var(--amber);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  white-space: nowrap;
+}
+
 .monthRow td {
   background: var(--panel-2);
   border-top: 1px solid var(--border);

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  filingDeliveryDate, filingMonthKey, filingTableBlockers, filingTableLine, loadRaFilingTable, retailPriceExVat, volumeText,
+  filingDeliveryDate, filingTableBlockers, filingTableLine, filingWorkMonth, loadRaFilingTable, quoteLineTableLine, retailPriceExVat, taxPerUnitCheck, volumeText,
 } from './raFilingTable.js';
 import { filingDateText, filingMonthLabel } from './raFilingMonth.js';
 import { EXCISE_DELIVERY_DATE_TEXT, exciseDeliveryDateBlocker, syncSourceDeliveryDate } from './exciseDeliveryDate.js';
@@ -17,22 +17,46 @@ test('แถวสินค้า: แบรนด์ · ชื่อ · ปร�
   assert.equal(retailPriceExVat({ retailPriceExVat: 1112.15 }), 1112.15);
   assert.equal(retailPriceExVat({ retailPriceExVat: 0, retailPriceIncVat: 107 }), 100);
   assert.equal(retailPriceExVat({}), null);
+  const bilingual = filingTableLine({ brandName: 'เซนท์ สตูดิโอ', brandNameEn: 'Scent Studio', productNameTh: 'โรเซ่ โรส', productNameEn: 'Rosé Rose Eau De Parfum' });
+  assert.equal(bilingual.brand, 'Scent Studio', 'อังกฤษก่อนแบบตารางเดิม');
+  assert.equal(bilingual.description, 'Rosé Rose Eau De Parfum');
+  assert.equal(filingTableLine({ brandName: 'แบรนด์ไทย', productNameTh: 'ชื่อไทยล้วน' }).description, 'ชื่อไทยล้วน', 'ไม่มีอังกฤษ = ไทย');
   const line = filingTableLine({ fgCode: 'FG-1-01-002-1', brandName: '', brandNameEn: 'COZE', productName: 'GOLDEN HOUR EDP', volume: 30, volumeUnit: 'ml', retailPriceExVat: 167.29 },
     { quantity: 5040, totalTax: 1234.567 });
   assert.deepEqual(line, {
-    fgCode: 'FG-1-01-002-1', brand: 'COZE', description: line.description, volume: '30 ML', quantity: 5040, retailPriceExVat: 167.29, totalTax: 1234.57,
-  });
+    fgCode: 'FG-1-01-002-1', brand: 'COZE', description: line.description, volume: '30 ML', quantity: 5040,
+    retailPriceIncVat: null, retailPriceExVat: 167.29, taxPerUnit: 0.24, taxCheck: null, totalTax: 1234.57,
+  }, 'ไม่ส่งภาษี/หน่วย = ถอดจากภาษีรวม ÷ จำนวน · ไม่มีราคารวม VAT = รีเช็คไม่ได้');
   assert.ok(line.description, 'ชื่อสินค้าจาก productDisplayName');
   assert.equal(filingTableLine(null, { fgCode: 'FG-X', description: 'ของพิมพ์เอง', quantity: 2 }).description, 'ของพิมพ์เอง');
 });
 
-test('วันที่ส่งของ: SO ค่าสรรพสามิต → SO ต้นทาง → ไม่มี = "PO มาวันที่" (วันที่ของ SO ต้นทาง) · เดือนตามวันนั้น', () => {
+test('V25: งานกำลังมาดึงรายการจากใบเสนอราคาค่าสรรพสามิต — สินค้าต้นทาง · จำนวนหน่วยจริง · ภาษีก่อน VAT · ราคาที่ใบตรึง (ถอด 7%)', () => {
+  const line = {
+    qty: 600, packQty: null, lineTotal: 58722, description: 'FG-108-01-002-0326 โรเซ่ โรส · 50 ml',
+    metadata: { lineKind: 'excise_charge', sourceFgCode: 'FG-108-01-002-0326', sourceProductId: 'P-1', retailPriceIncVat: 1190 },
+  };
+  const product = { fgCode: 'FG-108-01-002-0326', productName: 'Scent Studio Rosé Rose Eau De Parfum', brandName: 'Scent Studio', volume: 50, volumeUnit: 'ml', retailPriceExVat: 999 };
+  const row = quoteLineTableLine(line, product);
+  assert.equal(row.brand, 'Scent Studio');
+  assert.equal(row.volume, '50 ML');
+  assert.equal(row.quantity, 600);
+  assert.equal(row.retailPriceExVat, 1112.15, 'ราคาที่ใบตรึงไว้ชนะราคาปัจจุบันของสินค้า (ตรงตารางเดิม 1,112.15)');
+  assert.equal(row.totalTax, 58722);
+  assert.equal(quoteLineTableLine({ ...line, qty: 2, packQty: 3 }, product).quantity, 6, 'แพ็ค × จำนวน');
+  assert.equal(quoteLineTableLine(line, null).description, 'FG-108-01-002-0326 โรเซ่ โรส · 50 ml', 'ไม่มีสินค้า = คำของบรรทัด');
+});
+
+test('วันที่ส่งของ: SO ค่าสรรพสามิต → SO ต้นทาง → ไม่มี = "PO มาวันที่" (วันที่ของ SO ต้นทาง) — เป็นคอลัมน์ ไม่ใช่ตัวแบ่งเดือน', () => {
   assert.deepEqual(filingDeliveryDate({ exciseOrder: { deliveryDueDate: '2026-10-15' }, salesOrder: { deliveryDueDate: '2026-10-20', orderDate: '2026-10-01' } }),
     { date: '2026-10-15', kind: 'delivery' });
   assert.deepEqual(filingDeliveryDate({ exciseOrder: { deliveryDueDate: null }, salesOrder: { deliveryDueDate: '2026-10-20' } }), { date: '2026-10-20', kind: 'delivery' });
   assert.deepEqual(filingDeliveryDate({ salesOrder: { orderDate: '2026-10-22T03:00:00Z' } }), { date: '2026-10-22', kind: 'po' });
   assert.deepEqual(filingDeliveryDate({}), { date: null, kind: null });
-  assert.equal(filingMonthKey({ date: '2026-10-22' }), '2026-10');
+  // V24: เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย — บันทึก = เดือนที่เริ่มยื่น (วันไทย) · ยังไม่ยื่น = เดือนนี้
+  assert.equal(filingWorkMonth({ record: null, thisMonth: '2026-11' }), '2026-11');
+  assert.equal(filingWorkMonth({ record: { filingStartedAt: '2026-10-31T18:30:00Z', createdAt: '2026-10-31T18:30:00Z' }, thisMonth: '2026-11' }), '2026-11', '01:30 น. ไทย 1 พ.ย.');
+  assert.equal(filingWorkMonth({ record: { createdAt: '2026-10-20T03:00:00Z' }, thisMonth: '2026-11' }), '2026-10');
   assert.deepEqual(filingMonthLabel('2026-10'), { short: 'M.10/69', long: 'ต.ค. 2569' });
   assert.match(filingDateText({ deliveryDate: '2026-10-22', deliveryKind: 'po' }), /^PO มาวันที่ /);
   assert.doesNotMatch(filingDateText({ deliveryDate: '2026-10-22', deliveryKind: 'delivery' }), /PO/);
@@ -43,7 +67,7 @@ test('ไม่มีคอลัมน์สถานะทะเบียน (
     'ยังไม่มีทะเบียน 2 รายการ — เริ่มยื่นไม่ได้', 'ไม่มีราคาขายปลีก 1 รายการ (ภาษี ฿0)',
   ]);
   const table = read('../../components/excise/FilingLinesTable.js');
-  assert.match(table, /const COLUMNS = \["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีกก่อน VAT", "ภาษี", "สถานะชำระ"\];/);
+  assert.match(table, /const COLUMNS = \["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", "ภาษี\/หน่วย \(8\.8%\)", "ภาษีรวม", "สถานะชำระ"\];/);
   assert.doesNotMatch(table.match(/const COLUMNS = \[[^\]]*\]/)[0], /ทะเบียน/, 'ไม่มีคอลัมน์ทะเบียน');
 });
 
@@ -65,18 +89,23 @@ function fakeDb(tables) {
 
 test('ตัวโหลด: คิวที่พร้อม = รายการสดจาก SO · กำลังมา = ไม่มีรายการ · บันทึก = รายการที่ตรึง · คีย์ตรงกับแถวงานของหน้า', async () => {
   const db = fakeDb({
-    orders: [{ id: 'ORD-1', salesOrderId: 'SO-B', exciseSalesOrderId: 'SO-EB', items: [{ quantity: 600, totalTax: 50, product: { fgCode: 'FG-2', productName: 'Rosé', brandName: 'Scent Studio', volume: 50, volumeUnit: 'ml', retailPriceExVat: 1112.15 } }] }],
+    orders: [{ id: 'ORD-1', salesOrderId: 'SO-B', exciseSalesOrderId: 'SO-EB', filingStartedAt: '2026-10-20T03:00:00Z', items: [{ quantity: 600, totalTax: 50, product: { fgCode: 'FG-2', productName: 'Rosé', brandName: 'Scent Studio', volume: 50, volumeUnit: 'ml', retailPriceExVat: 1112.15 } }] }],
     sales_orders: [
       { id: 'SO-B', deliveryDueDate: null, orderDate: '2026-10-01' },
       { id: 'SO-EB', deliveryDueDate: '2026-10-15', orderDate: '2026-10-10' },
       { id: 'SO-U', deliveryDueDate: null, orderDate: '2026-10-22' },
     ],
     products: [{ id: 'P-1', fgCode: 'FG-1', productName: 'GOLDEN HOUR', brandNameEn: 'COZE', volume: 30, volumeUnit: 'ml', retailPriceExVat: 167.29 }],
+    quotation_lines: [
+      { id: 'L-1', quotationId: 'QT-9', qty: 5040, packQty: null, lineTotal: 9286.07, metadata: { lineKind: 'excise_charge', sourceProductId: 'P-1', retailPriceIncVat: 179 } },
+      { id: 'L-2', quotationId: 'QT-9', qty: 1, packQty: null, lineTotal: 0, metadata: { lineKind: 'note' } },
+    ],
   });
   const table = await loadRaFilingTable(db, {
+    thisMonth: '2026-11',
     loadQueue: async () => [
       { key: 'excise:SO-E', ready: true, salesOrder: { id: 'SO-A' }, exciseOrder: { id: 'SO-E' } },
-      { key: 'upcoming:QT-9', ready: false, salesOrder: { id: 'SO-U' } },
+      { key: 'upcoming:QT-9', ready: false, salesOrder: { id: 'SO-U' }, exciseQuote: { id: 'QT-9' } },
     ],
     loadSource: async (_supabase, { exciseSalesOrderId }) => {
       assert.equal(exciseSalesOrderId, 'SO-E');
@@ -91,9 +120,14 @@ test('ตัวโหลด: คิวที่พร้อม = รายกา
   assert.deepEqual(byKey.get('excise:SO-E').lines.map((line) => [line.brand, line.volume, line.quantity]), [['COZE', '30 ML', 5040]]);
   assert.equal(byKey.get('excise:SO-E').deliveryDate, '2026-10-28', 'SO ค่าสรรพสามิตยังไม่มีวัน = วันของ SO ต้นทาง');
   assert.deepEqual(byKey.get('excise:SO-E').blockers, ['ยังไม่มีทะเบียน 1 รายการ — เริ่มยื่นไม่ได้']);
-  assert.deepEqual(byKey.get('upcoming:QT-9'), { key: 'upcoming:QT-9', deliveryDate: '2026-10-22', deliveryKind: 'po', month: '2026-10', lines: [], blockers: [] });
+  const upcoming = byKey.get('upcoming:QT-9');
+  assert.equal(upcoming.month, '2026-11', 'ยังไม่ยื่น = เดือนนี้ (V24)');
+  assert.equal(upcoming.deliveryKind, 'po');
+  assert.deepEqual(upcoming.lines.map((line) => [line.brand, line.quantity, line.totalTax]), [['COZE', 5040, 9286.07]], 'รายการจากใบเสนอราคา (V25) · ตัดบรรทัดที่ไม่ใช่ค่าภาษี');
+  assert.equal(byKey.get('excise:SO-E').month, '2026-11');
   const record = byKey.get('order:ORD-1');
   assert.equal(record.deliveryDate, '2026-10-15', 'บันทึก: วันของ SO ค่าสรรพสามิตของรอบนั้น');
+  assert.equal(record.month, '2026-10', 'บันทึก: เดือนที่เริ่มยื่น');
   assert.deepEqual(record.lines.map((line) => [line.brand, line.quantity, line.retailPriceExVat]), [['Scent Studio', 600, 1112.15]]);
   const page = read('../../app/tax/filings/page.js');
   assert.match(page, /useApiList\(canReadTable \? "\/api\/tax\/orders\/table" : null\)/);
@@ -142,4 +176,22 @@ test('วันที่ส่งของของ SO ค่าสรรพส�
   for (const page of ['../../app/sales-planning/sales-orders/new/page.js', '../../app/sales-planning/sales-orders/[id]/page.js']) {
     assert.match(read(page), /excise=\{(excise|isExciseOrder\(order\))\}/, `${page}: ช่องเป็น "วันที่ส่งของ" บนใบค่าสรรพสามิต`);
   }
+});
+
+test('รีเช็คภาษี (เจ้าของ 03/11): ราคาขายปลีกรวม VAT + ภาษี/หน่วย · ระบบคิดสูตร 8.8% ซ้ำแล้วเตือนแถวที่ไม่ตรง', () => {
+  // ตัวอย่างจริงของ QT-26100568-2: Rosé Rose 50 ML ราคา 1,190 รวม VAT → ถอด VAT 1,112.15 × 8.8% = 97.87
+  assert.deepEqual(taxPerUnitCheck(1190, 97.87), { expected: 97.87, ok: true });
+  assert.deepEqual(taxPerUnitCheck(110, 9.05), { expected: 9.05, ok: true });
+  assert.equal(taxPerUnitCheck(1190, 95).ok, false, 'ภาษี/หน่วยไม่ตรงสูตร');
+  assert.equal(taxPerUnitCheck(null, 97.87), null, 'ไม่มีราคาขายปลีก = เทียบไม่ได้');
+  const row = quoteLineTableLine({ qty: 600, packQty: null, unitPrice: 97.87, lineTotal: 58722, metadata: { lineKind: 'excise_charge', retailPriceIncVat: 1190 } }, null);
+  assert.equal(row.retailPriceIncVat, 1190);
+  assert.equal(row.retailPriceExVat, 1112.15);
+  assert.equal(row.taxPerUnit, 97.87, 'ภาษี/หน่วย = ราคาต่อหน่วยของบรรทัดค่าสรรพสามิต');
+  assert.equal(row.taxCheck.ok, true);
+  const record = filingTableLine({ retailPriceIncVat: 1190 }, { quantity: 10, totalTax: 978.7, taxPerUnit: 88.97 + 8.9 });
+  assert.equal(record.taxPerUnit, 97.87, 'บันทึก: สรรพสามิต/หน่วย + ท้องถิ่น/หน่วย');
+  const table = read('../../components/excise/FilingLinesTable.js');
+  assert.match(table, /"ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", "ภาษี\/หน่วย \(8\.8%\)", "ภาษีรวม"/);
+  assert.match(table, /line\.taxCheck && !line\.taxCheck\.ok/);
 });

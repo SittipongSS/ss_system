@@ -3,14 +3,20 @@
 // เจ้าของส่งตารางที่ RA ใช้อยู่ (Google Sheet "รายการชำระภาษีสรรพสามิต M.10/69") ⇒ หน้า /tax/filings วาดแบบเดียวกัน:
 //   V20 แถวละสินค้า จัดกลุ่มตาม SO (RA ยังยื่นทีละ SO) · ไม่มีคอลัมน์สถานะทะเบียน (ขาดทะเบียน = ยื่นไม่ได้ ⇒ บอกที่หัวกลุ่ม)
 //   V21 วันที่ส่งของ = `deliveryDueDate` ของ SO ค่าสรรพสามิต (SA ใส่ตอนยื่น · `exciseDeliveryDate.js`) → ของ SO ต้นทาง →
-//       ไม่มีทั้งคู่ = "PO มาวันที่" (วันที่ของ SO ต้นทาง) แบบตารางเดิม · เดือนของตาราง = เดือนของวันนี้
+//       ไม่มีทั้งคู่ = "PO มาวันที่" (วันที่ของ SO ต้นทาง) แบบตารางเดิม · เป็นคอลัมน์บอกข้อมูล (เดือนดู V24 ข้างล่าง)
 //   V23 มีเฉพาะงานที่ถึง RA แล้ว (คิว RA + บันทึกการยื่น) — SO ที่ SA ยังไม่ออกใบไม่อยู่ในตารางนี้
+//   ⭐ แก้ 03/11 รอบสอง (เจ้าของดูจอจริง): **เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย** (V24) — บันทึก = เดือนที่เริ่มยื่น ·
+//      ยังไม่ยื่น (กำลังมา · รอ RA) = เดือนปัจจุบัน · วันที่ส่งของเป็นคอลัมน์บอกข้อมูล ไม่ใช่ตัวแบ่งเดือน
+//      **งานกำลังมาดึงรายการจากใบเสนอราคาค่าสรรพสามิตที่อนุมัติแล้ว** (V25 — ใบมีรายการ ปริมาตร ราคา จำนวนอยู่แล้ว)
 // ⭐ กลุ่ม = แถวงานเดิมของหน้า (คีย์เดียวกับ `queueWorkRow` / `recordWorkRow`) ⇒ หน้าเติมรายการลงแถวด้วยคีย์ ไม่มีตัวนับสองชุด
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { productDisplayName } from '@/lib/master/productIdentity';
+import { businessDayKey, currentMonth } from '@/lib/datePeriods';
+import { lineUnitsTotal } from '@/lib/sales/linePacks';
+import { productBrandName, productDisplayNameFor } from '@/lib/master/productIdentity';
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { loadFilingSource, loadRaFilingQueue } from '@/lib/excise/raFiling';
+import { productTaxRates } from '@/lib/tax/exciseBilling';
 
 const VAT_RATE = 0.07;
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -22,25 +28,79 @@ export function volumeText(product) {
   return `${volume} ${String(product?.volumeUnit || 'ml').toUpperCase()}`;
 }
 
-/** ราคาขายปลีกก่อน VAT ต่อหน่วย — ช่องก่อน VAT ก่อน · มีแต่ราคารวม VAT = ถอด 7% · ไม่มี = null */
-export function retailPriceExVat(product) {
+/** ราคาขายปลีกก่อน VAT ต่อหน่วย — ช่องก่อน VAT ก่อน · มีแต่ราคารวม VAT = ถอด 7% · ไม่มี = null
+ *  `frozenIncVat` = ราคารวม VAT ที่ใบเสนอราคาค่าสรรพสามิตตรึงไว้ตอนคิดภาษี (ชนะราคาปัจจุบันของสินค้า — ตรงกับภาษีบนใบ) */
+export function retailPriceExVat(product, { frozenIncVat = null } = {}) {
+  const frozen = Number(frozenIncVat);
+  if (frozen > 0) return round2(frozen / (1 + VAT_RATE));
   const exVat = Number(product?.retailPriceExVat);
   if (exVat > 0) return round2(exVat);
   const incVat = Number(product?.retailPriceIncVat);
   return incVat > 0 ? round2(incVat / (1 + VAT_RATE)) : null;
 }
 
-/** แถวสินค้าหนึ่งแถวของตาราง */
-export function filingTableLine(product, { quantity = 0, totalTax = 0, fgCode = '', description = '' } = {}) {
+/** ราคาขายปลีกรวม VAT ต่อหน่วย — ราคาที่ใบตรึงไว้ก่อน · ไม่มี = ของสินค้า · ไม่มีเลย = null */
+function retailPriceIncVat(product, frozenIncVat) {
+  const frozen = Number(frozenIncVat);
+  if (frozen > 0) return round2(frozen);
+  const incVat = Number(product?.retailPriceIncVat);
+  return incVat > 0 ? round2(incVat) : null;
+}
+
+/**
+ * รีเช็คภาษีต่อหน่วยกับสูตร (เจ้าของ 03/11: "แทรกราคาขายปลีกมาด้วย เพื่อรีเช็คว่าค่าภาษีคำนวณถูก")
+ * สูตรเดียวกับทะเบียนสินค้า (`productTaxRates`): ราคาขายปลีกถอด VAT × 8.8% ปัดครั้งเดียว (มติ Q2)
+ * @returns `{ expected, ok }` · ไม่มีราคาขายปลีก/ไม่มีภาษีต่อหน่วย = null (เทียบไม่ได้)
+ */
+export function taxPerUnitCheck(retailIncVat, taxPerUnit) {
+  const unit = Number(taxPerUnit);
+  if (!(Number(retailIncVat) > 0) || !Number.isFinite(unit)) return null;
+  const rates = productTaxRates(retailIncVat);
+  const expected = round2(rates.exciseTax + rates.localTax);
+  return { expected, ok: Math.abs(expected - round2(unit)) < 0.005 };
+}
+
+/** แถวสินค้าหนึ่งแถวของตาราง — แบรนด์/ชื่อ **อังกฤษก่อน** แบบตารางเดิมของ RA (เจ้าของดูจอจริง 03/11: "Scent Studio" ไม่ใช่ "เซนท์ สตูดิโอ")
+ *  ไม่มีชื่ออังกฤษ = ชื่อไทย (`productDisplayNameFor` ไม่แปลเอง)
+ *  `taxPerUnit` = ภาษีรวม/หน่วยที่ใบคิดไว้ (สรรพสามิต + ท้องถิ่น) · ไม่ส่ง = ถอดจากภาษีรวม ÷ จำนวน */
+export function filingTableLine(product, { quantity = 0, totalTax = 0, fgCode = '', description = '', retailPriceIncVat: frozenIncVat = null, taxPerUnit = null } = {}) {
+  const qty = Number(quantity) || 0;
+  const unitTax = Number.isFinite(Number(taxPerUnit)) && taxPerUnit !== null
+    ? round2(taxPerUnit)
+    : (qty > 0 ? round2((Number(totalTax) || 0) / qty) : null);
+  const retailInc = retailPriceIncVat(product, frozenIncVat);
   return {
     fgCode: product?.fgCode || fgCode || '',
-    brand: product?.brandName || product?.brandNameEn || '',
-    description: (product && productDisplayName(product)) || description || fgCode || '',
+    brand: (product && productBrandName(product)) || '',
+    description: (product && productDisplayNameFor(product, 'en')) || description || fgCode || '',
     volume: volumeText(product),
-    quantity: Number(quantity) || 0,
-    retailPriceExVat: retailPriceExVat(product),
+    quantity: qty,
+    retailPriceIncVat: retailInc,
+    retailPriceExVat: retailPriceExVat(product, { frozenIncVat }),
+    taxPerUnit: unitTax,
+    taxCheck: taxPerUnitCheck(retailInc, unitTax),
     totalTax: round2(totalTax || 0),
   };
+}
+
+/** แถวสินค้าจากบรรทัดใบเสนอราคาค่าสรรพสามิต (V25) — สินค้าต้นทาง + จำนวน (หน่วยจริง) + ภาษีก่อน VAT + ราคาที่ใบตรึงไว้ */
+export function quoteLineTableLine(line, product) {
+  const meta = line?.metadata || {};
+  return filingTableLine(product || null, {
+    quantity: lineUnitsTotal(line),
+    totalTax: Number(line?.lineTotal) || 0,
+    fgCode: meta.sourceFgCode || '',
+    description: meta.descriptionEn || meta.descriptionTh || line?.description || '',
+    retailPriceIncVat: meta.retailPriceIncVat ?? null,
+    taxPerUnit: Number(line?.unitPrice) > 0 ? Number(line.unitPrice) : null,
+  });
+}
+
+/** เดือนของงาน (V24) — บันทึก = เดือนที่เริ่มยื่น (วันไทย) · ยังไม่ยื่น = เดือนปัจจุบัน */
+export function filingWorkMonth({ record = null, thisMonth = currentMonth() } = {}) {
+  if (!record) return thisMonth;
+  const day = businessDayKey(record.filingStartedAt || record.createdAt);
+  return day ? day.slice(0, 7) : thisMonth;
 }
 
 /**
@@ -53,9 +113,6 @@ export function filingDeliveryDate({ exciseOrder = null, salesOrder = null } = {
   if (salesOrder?.orderDate) return { date: String(salesOrder.orderDate).slice(0, 10), kind: 'po' };
   return { date: null, kind: null };
 }
-
-/** คีย์เดือน 'YYYY-MM' ของกลุ่ม (null = ไม่มีวัน) — ตัวกรองเดือนบนหน้าใช้ตัวนี้ */
-export const filingMonthKey = (dateInfo) => (dateInfo?.date ? String(dateInfo.date).slice(0, 7) : null);
 
 /** ด่านที่หัวกลุ่มบอก (แทนคอลัมน์สถานะทะเบียน · V20) — จากบรรทัดของ resolveSoFiling */
 export function filingTableBlockers(resolvedLines = []) {
@@ -77,7 +134,7 @@ const raise = (label, error) => {
  * · กำลังมา = ยังไม่มี SO ค่าสรรพสามิต ⇒ ไม่มีรายการ (หัวกลุ่มบอกขั้น) · บันทึก = รายการที่ตรึงในบันทึก
  * อ่านพลาด = throw · งานที่โหลดรายการไม่ได้ (เช่น SO ถูกย้อนอนุมัติระหว่างทาง) = กลุ่มพร้อมข้อความ ไม่ล้มทั้งตาราง
  */
-export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueue, loadSource = loadFilingSource } = {}) {
+export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueue, loadSource = loadFilingSource, thisMonth = currentMonth() } = {}) {
   const [queue, recordResult] = await Promise.all([
     loadQueue(supabase, { upcoming: true }),
     fetchAllResult(() => supabase.from('orders').select(ORDER_SELECT).order('id', { ascending: true })),
@@ -89,7 +146,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   const productIds = new Set();
   for (const row of queue || []) {
     if (!row.ready) {
-      groups.push({ key: row.key, salesOrderId: row.salesOrder?.id || null, exciseOrder: null, lines: [], blockers: [] });
+      groups.push({ key: row.key, salesOrderId: row.salesOrder?.id || null, quoteId: row.exciseQuote?.id || null, blockers: [] });
       continue;
     }
     const loaded = await loadSource(supabase, row.exciseOrder?.id
@@ -112,11 +169,29 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   for (const order of records) {
     groups.push({
       key: `order:${order.id}`,
+      record: order,
       salesOrderId: order.salesOrderId || null,
       exciseOrderId: order.exciseSalesOrderId || null,
       items: order.items || [],
       blockers: [],
     });
+  }
+
+  /* V25: งานกำลังมา = บรรทัดของใบเสนอราคาค่าสรรพสามิต (ใบอนุมัติแล้ว · ยังไม่มี SO ค่าสรรพสามิต) */
+  const quoteIds = [...new Set(groups.map((group) => group.quoteId).filter(Boolean))];
+  const { data: quoteLines, error: quoteLineError } = await fetchInChunks(quoteIds, (chunk) => fetchAllResult(() => supabase
+    .from('quotation_lines')
+    .select('id, "quotationId", qty, "packQty", "unitPrice", "lineTotal", description, metadata, "sortOrder"')
+    .in('quotationId', chunk)
+    .order('quotationId', { ascending: true })
+    .order('sortOrder', { ascending: true })
+    .order('id', { ascending: true })));
+  raise('โหลดรายการใบเสนอราคาค่าสรรพสามิตไม่สำเร็จ', quoteLineError);
+  const linesByQuote = new Map();
+  for (const line of quoteLines || []) {
+    if (line.metadata?.lineKind && line.metadata.lineKind !== 'excise_charge') continue;
+    linesByQuote.set(line.quotationId, [...(linesByQuote.get(line.quotationId) || []), line]);
+    if (line.metadata?.sourceProductId) productIds.add(line.metadata.sourceProductId);
   }
 
   /* วันของ SO ที่กลุ่มยังไม่มีแถวเต็ม (กำลังมา · บันทึก) — ชุดเดียวทีละก้อน */
@@ -136,14 +211,21 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
     const salesOrder = group.salesOrder || datesById.get(group.salesOrderId) || null;
     const exciseOrder = group.exciseOrder || (group.exciseOrderId ? datesById.get(group.exciseOrderId) || null : null);
     const dateInfo = filingDeliveryDate({ exciseOrder, salesOrder });
-    const lines = group.items
-      ? group.items.map((item) => filingTableLine(item.product || null, { quantity: item.quantity, totalTax: item.totalTax }))
-      : (group.resolvedLines || []).map((line) => filingTableLine(productById.get(line.productId) || null, line));
+    let lines;
+    if (group.items) {
+      lines = group.items.map((item) => filingTableLine(item.product || null, {
+        quantity: item.quantity,
+        totalTax: item.totalTax,
+        taxPerUnit: round2((Number(item.exciseRatePerUnit) || 0) + (Number(item.localTaxRatePerUnit) || 0)) || null,
+      }));
+    }
+    else if (group.quoteId) lines = (linesByQuote.get(group.quoteId) || []).map((line) => quoteLineTableLine(line, productById.get(line.metadata?.sourceProductId)));
+    else lines = (group.resolvedLines || []).map((line) => filingTableLine(productById.get(line.productId) || null, line));
     return {
       key: group.key,
       deliveryDate: dateInfo.date,
       deliveryKind: dateInfo.kind,
-      month: filingMonthKey(dateInfo),
+      month: filingWorkMonth({ record: group.record || null, thisMonth }),
       lines,
       blockers: group.blockers,
     };
