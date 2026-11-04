@@ -202,7 +202,6 @@ export default function FormulaDetailPage() {
         rows={[
           { label: "รหัสสูตร", value: formula.code },
           { label: "ชื่อสูตร", value: formula.name },
-          { label: "ชื่อที่ลูกค้าเรียก", value: formula.customerTradeName },
           { label: "กลิ่นที่ใช้", value: scentName || formula.scentId },
           { label: "หมวดสินค้า", value: formula.categoryCode },
           { label: "แก้มาจากสูตร", value: formula.derivedFromFormulaId },

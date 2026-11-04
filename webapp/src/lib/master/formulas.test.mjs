@@ -255,3 +255,16 @@ test('payload ของฟอร์มสูตร: ส่งรหัสเฉ�
   // คนที่ไม่มีสิทธิ์ไม่ส่งช่องรหัสเลย จะได้ไม่โดนตีกลับทั้งฟอร์มเพราะช่องที่แก้ไม่ได้อยู่แล้ว
   assert.equal('code' in formulaFormPayload(value, { canSetCode: false }), false);
 });
+
+/* ── ชื่อที่ลูกค้าเรียกอยู่ที่กลิ่นที่เดียว (มติเจ้าของ 04/11 · ย้อนไป ม-12) ─────────────────────────────────────────────
+   ข้อมูลจริง 04/11: 9 สูตรที่เคยกรอก = ชื่อกลิ่นซ้ำ/พิมพ์ต่าง/ใส่ผิดที่ทั้งหมด · ลูกค้าตั้งชื่อระดับสินค้า = ชื่อ FG
+   ⇒ ฟอร์ม/ส่งงาน/บันทึกสูตรไม่รับช่องนี้ · ไม่อยู่ใน value ⇒ PATCH ไม่ล้างค่าเก่าในคอลัมน์ */
+test('สูตรไม่รับชื่อที่ลูกค้าเรียก: normalize/payload ไม่มีคีย์นี้ · ฟอร์มไม่มีช่อง', async () => {
+  const { value, error } = normalizeFormulaInput({ name: 'Well sleep #2', code: 'PF-1', customerTradeName: 'Sleepy' });
+  assert.equal(error, null);
+  assert.equal('customerTradeName' in value, false);
+  assert.equal('customerTradeName' in formulaFormPayload({ name: 'A', customerTradeName: 'x' }), false);
+  const { readFileSync } = await import('node:fs');
+  const form = readFileSync(new URL('../../components/database/FormulaForm.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(form, /formula-trade-name|set\(\{ customerTradeName/);
+});

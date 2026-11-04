@@ -550,11 +550,7 @@ export default function FormulasPage() {
                         <span className="mono block text-[12px] text-[var(--accent)]">{f.code || "ไม่มีรหัส"}</span>
                         <span className="block">{f.name}</span>
                       </Link>
-                      {/* ⚠️ ชื่อของลูกค้าอยู่ใต้ชื่อของเราและมีคำนำหน้ากำกับเสมอ
-                          ไม่ใช่แทนที่กัน (กฎเดียวกับทะเบียนกลิ่น) */}
-                      {f.customerTradeName && (
-                        <div className={styles.sub}>ลูกค้าเรียก “{f.customerTradeName}”</div>
-                      )}
+                      {/* ชื่อที่ลูกค้าเรียกไม่อยู่ที่สูตร — อยู่ที่กลิ่นที่เดียว (มติเจ้าของ 04/11 · ม-12) */}
                       {f.derivedFromFormulaId && (
                         <div className={styles.sub}>
                           └─ แก้จาก {formulaLabelById.get(f.derivedFromFormulaId) || "สูตรที่ถูกลบไปแล้ว"}

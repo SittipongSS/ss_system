@@ -29,14 +29,15 @@ export const GET = withUser(async ({ user, supabase }) => {
   if (!products.length) return ok([]);
 
   try {
-    // ⭐ มติเจ้าของ 03/11: ลูกค้า + เลขผู้เสียภาษี/สาขา · สูตร/กลิ่นอ่านสดจากทะเบียนพร้อม "ชื่อที่ลูกค้าเรียก" (customerTradeName)
+    // ⭐ มติเจ้าของ 03/11: ลูกค้า + เลขผู้เสียภาษี/สาขา · สูตร/กลิ่นอ่านสดจากทะเบียน
+    //    ชื่อที่ลูกค้าเรียก (`customerTradeName`) อ่านจาก **กลิ่นที่เดียว** (มติเจ้าของ 04/11)
     const [customers, scents, formulas, giftSetsByProduct] = await Promise.all([
       fetchAllInChunks(products.map((p) => p.customerId), (chunk) => supabase
         .from('customers').select('id, "arCode", name, "nameEn", "taxId", "branchCode"').in('id', chunk).order('id')),
       fetchAllInChunks(products.map((p) => p.scentId), (chunk) => supabase
         .from('scents').select('id, code, name, "customerTradeName"').in('id', chunk).order('id')),
       fetchAllInChunks(products.map((p) => p.formulaId), (chunk) => supabase
-        .from('formulas').select('id, code, name, "customerTradeName"').in('id', chunk).order('id')),
+        .from('formulas').select('id, code, name').in('id', chunk).order('id')),
       loadProductFormulasMany(supabase, products.filter((p) => isGiftSetCategory(p.categoryCode)).map((p) => p.id)),
     ]);
     return ok(bomBoardRows(products, {

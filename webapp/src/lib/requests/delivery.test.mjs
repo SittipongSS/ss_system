@@ -115,7 +115,7 @@ test('ส่งสูตร: ชื่อกับรหัสบังคับ
 /* ⭐ **ฟอร์มเดียวกับทะเบียน** (มติผู้ใช้ 2026-08-19) — ช่องเสริมของทะเบียนต้องกรอก
    ได้ตั้งแต่ตอนส่งงาน ไม่ใช่ต้องไปเปิดทะเบียนแก้ทีหลัง (ซึ่งคือจังหวะที่ข้อมูลสองที่
    เริ่มต่างกัน) */
-test('ส่งสูตร: รับช่องเสริมของฟอร์มทะเบียนด้วย (ชื่อที่ลูกค้าเรียก · สายพันธุ์ · หมายเหตุ)', () => {
+test('ส่งสูตร: รับช่องเสริมของฟอร์มทะเบียนด้วย (สายพันธุ์ · หมายเหตุ) · ไม่รับชื่อที่ลูกค้าเรียก (อยู่ที่กลิ่น · มติ 04/11)', () => {
   const { value, error } = normalizeFormulaDelivery({
     formula: {
       name: 'Well sleep #2',
@@ -126,7 +126,7 @@ test('ส่งสูตร: รับช่องเสริมของฟอ
     },
   });
   assert.equal(error, null);
-  assert.equal(value.customerTradeName, 'Sleepy Night', 'ช่องว่างซ้อนถูกยุบเหมือนทะเบียน');
+  assert.equal('customerTradeName' in value, false, 'ชื่อที่ลูกค้าเรียกอยู่ที่กลิ่นที่เดียว — สูตรไม่รับ');
   assert.equal(value.derivedFromFormulaId, 'FML-1');
   assert.equal(value.note, 'แก้กลิ่นหัวให้เบาลง');
   assert.equal(normalizeFormulaDelivery({ formula: { name: 'A', code: 'PF-1' } }).value.note, null);

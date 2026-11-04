@@ -23,7 +23,6 @@ export const FORMULA_EXPORT_COLUMNS = Object.freeze([
   { key: 'scent', header: 'กลิ่นที่ใช้', width: 30 },
   { key: 'customerArCode', header: 'รหัสลูกค้า (AR)', width: 14 },
   { key: 'customerName', header: 'ชื่อลูกค้า', width: 36 },
-  { key: 'customerTradeName', header: 'ชื่อที่ลูกค้าเรียก', width: 28 },
   { key: 'formulaDate', header: 'วันที่สูตร', width: 14 },
   { key: 'status', header: 'สถานะ', width: 14 },
   { key: 'ingredientList', header: INGREDIENT_LIST_LABEL, width: 70 },
@@ -46,7 +45,6 @@ export function formulaExportRow(formula, ctx = {}) {
     customerArCode: formula?.customerId ? (arCodeOf(formula.customerId) || null) : null,
     // สูตรฐาน (ไม่ผูกลูกค้า) บอกตรง ๆ — เซลล์ว่างอ่านเป็น "ไม่รู้ลูกค้า" ซึ่งผิด
     customerName: formula?.customerId || formula?.customerName ? (textOf(formula.customerName) || null) : 'สูตรฐาน',
-    customerTradeName: textOf(formula?.customerTradeName) || null,
     formulaDate: formula?.formulaDate ? fmtDate(formula.formulaDate) : null,
     status: FORMULA_STATUS_LABELS[formula?.status] || formula?.status || null,
     ingredientList: textOf(formula?.ingredientList) || null,

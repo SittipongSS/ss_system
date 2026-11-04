@@ -42,8 +42,9 @@ export function bomWaitingDays(row, todayIso) {
  * สูตร/กลิ่นที่ RD ต้องเห็นตอนลง BOM — ตามหมวด (ตัวเดียวกับที่ด่านส่งใช้นับ)
  * ⭐ รหัส/ชื่อสูตรอ่าน **สดจากทะเบียนสูตร** (`formulasById`) — `products.formulaCode/Name` เป็นสำเนาตอนบันทึก FG
  *    RD แก้ชื่อ/ออกรหัสทีหลังแล้วสำเนาไม่ตาม (กติกาเดียวกับใบสเปค FM-SA-04 · ไฟล์ส่งออกทะเบียนสินค้า) · หาไม่เจอ = ใช้สำเนา
- * ⭐ `tradeName` = ชื่อที่ลูกค้าเรียก (`customerTradeName` ของสูตร/กลิ่นตัวนั้น · ไม่บังคับ — มติเจ้าของ 03/11)
- * @returns {{ kind: 'formula'|'scent'|'set'|'none', items: Array<{ code: string|null, name: string|null, tradeName?: string|null, note?: string|null }> }}
+ * ⭐ `tradeName` = ชื่อที่ลูกค้าเรียก **ของกลิ่นเท่านั้น** (มติเจ้าของ 04/11 · ย้อนไป ม-12 "ลูกค้าตั้งชื่อกลิ่นเอง") —
+ *    ชื่อที่ลูกค้าเรียกระดับสูตรคือ **ชื่อสินค้า** ของ FG (ช่องสินค้าโชว์อยู่แล้ว) ไม่ใช่ช่องของทะเบียนสูตร
+ * @returns {{ kind: 'formula'|'scent'|'set'|'none', items: Array<{ code: string|null, name: string|null, note?: string|null, tradeName?: string|null }> }}
  */
 export function bomFormulaView(product, { scentsById = new Map(), formulasById = new Map(), giftSetRows = [] } = {}) {
   const code = String(product?.categoryCode || '');
@@ -51,7 +52,7 @@ export function bomFormulaView(product, { scentsById = new Map(), formulasById =
     return {
       kind: 'set',
       items: (giftSetRows || []).map((row) => ({
-        code: row.formulaCode || null, name: row.formulaName || null, tradeName: row.customerTradeName || null, note: row.categoryName || null,
+        code: row.formulaCode || null, name: row.formulaName || null, note: row.categoryName || null, tradeName: row.scentTradeName || null,
       })),
     };
   }
@@ -64,16 +65,13 @@ export function bomFormulaView(product, { scentsById = new Map(), formulasById =
   if (product?.formulaId) {
     const live = formulasById.get(product.formulaId) || null;
     const scent = product.scentId ? scentsById.get(product.scentId) : null;
-    // กลิ่นของสูตรพ่วงชื่อที่ลูกค้าเรียกกลิ่นด้วย เมื่อไม่ซ้ำกับชื่อที่ลูกค้าเรียกสูตร
-    const formulaTrade = live?.customerTradeName || null;
-    const scentTrade = scent?.customerTradeName && scent.customerTradeName !== formulaTrade ? scent.customerTradeName : null;
     return {
       kind: 'formula',
       items: [{
         code: (live ? live.code : product.formulaCode) || null,
         name: (live ? live.name : product.formulaName) || null,
-        tradeName: formulaTrade,
-        note: scent?.name ? `กลิ่น ${scent.name}${scentTrade ? ` (ลูกค้าเรียก “${scentTrade}”)` : ''}` : null,
+        note: scent?.name ? `กลิ่น ${scent.name}` : null,
+        tradeName: scent?.customerTradeName || null,
       }],
     };
   }

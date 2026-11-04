@@ -42,8 +42,10 @@ test('หัวคอลัมน์ · Ingredient List ท้ายสุด ·
   assert.equal(row.getCell(3).value, '01-002 EDP · น้ำหอม');
   assert.equal(row.getCell(4).value, 'SC-1 · Rose');
   assert.equal(row.getCell(5).value, 'AR-306');
-  assert.equal(row.getCell(10).value, 'Alcohol Denat.,\nParfum, Aqua');
-  assert.equal(row.getCell(10).alignment?.wrapText, true);
+  assert.equal(row.getCell(9).value, 'Alcohol Denat.,\nParfum, Aqua');
+  assert.equal(row.getCell(9).alignment?.wrapText, true);
+  // ชื่อที่ลูกค้าเรียกไม่อยู่ที่สูตรแล้ว — อยู่ที่กลิ่นที่เดียว (มติเจ้าของ 04/11 · ม-12)
+  assert.ok(!FORMULA_EXPORT_COLUMNS.some((c) => c.key === 'customerTradeName'));
 });
 
 test('ค่าว่าง = เซลล์ว่าง (กรองได้ใน Excel) · สูตรฐานบอกว่า "สูตรฐาน" ไม่ใช่ช่องว่าง', () => {
