@@ -101,8 +101,9 @@ test('สูตร/กลิ่น: รหัส/ชื่อสูตรอ่�
   assert.deepEqual(set.items.map((i) => i.tradeName), ['Gift One', null]);
 });
 
-test('ด่านซอร์ส: route อ่านเลขผู้เสียภาษี/สาขา · สูตรสด + ชื่อที่ลูกค้าเรียก · หน้าโชว์ครบ', () => {
-  const route = readFileSync(new URL('../../app/api/rd/bom-board/route.js', import.meta.url), 'utf8');
+test('ด่านซอร์ส: ตัวอ่านของคิวอ่านเลขผู้เสียภาษี/สาขา · สูตรสด + ชื่อที่ลูกค้าเรียก · หน้าโชว์ครบ', () => {
+  // ตัวอ่านย้ายไป `bomBoardStore.js` (04/11) — ตารางกับไฟล์ Excel เรียกตัวเดียวกัน
+  const route = readFileSync(new URL('./bomBoardStore.js', import.meta.url), 'utf8');
   assert.match(route, /\.from\('customers'\)\.select\('id, "arCode", name, "nameEn", "taxId", "branchCode"'\)/);
   assert.match(route, /\.from\('scents'\)\.select\('id, code, name, "customerTradeName"'\)/);
   assert.match(route, /\.from\('formulas'\)\.select\('id, code, name'\)/, 'ไม่อ่านชื่อที่ลูกค้าเรียกของสูตร (อยู่ที่กลิ่น)');

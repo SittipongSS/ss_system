@@ -7,10 +7,13 @@
 // ⚠️ ด่านจอ = `canAccessRd` ตัวเดียวกับเมนู + API อ่าน + ฝั่ง RD ของ API เขียน
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Layers, Inbox, Undo2 } from "lucide-react";
+import { Check, Layers, Inbox, Printer, Search, Undo2 } from "lucide-react";
 import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
-import { TableScroll } from "@/components/ui/Table";
+import { TableGroupRow, TableScroll } from "@/components/ui/Table";
+import FilterPopover from "@/components/ui/FilterPopover";
+import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import Button from "@/components/ui/Button";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Segmented from "@/components/ui/Segmented";
@@ -31,12 +34,20 @@ import { canAccessRd } from "@/lib/permissions";
 import { accessState } from "@/lib/accessGate";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import useStickyState from "@/lib/ui/useStickyState";
+import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
+import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { BOM_CODE_MAX, BOM_NOTE_MAX } from "@/lib/master/productBom";
 import { REJECTION_REASON_MAX } from "@/lib/master/approval";
-import { BOM_BOARD_TABS, bomBoardTotals, bomTabRows, bomWaitingDays } from "@/lib/rd/bomBoard";
+import { BOM_BOARD_TABS, BOM_FORMULA_KIND_LABEL, bomBoardTotals, bomWaitingDays } from "@/lib/rd/bomBoard";
+import {
+  BOM_FILTER_DIMENSIONS, BOM_GROUP_OPTIONS, BOM_SORT_DEFAULT, BOM_SORT_DIR, BOM_SORT_OPTIONS, EMPTY_BOM_FILTERS,
+  bomExportUrl, bomFilterCount, bomFilterOptions, bomOutputRows, bomViewOf,
+} from "@/lib/rd/bomBoardView";
+import { bomBoardPrintReport, bomTabLabel } from "@/lib/rd/bomBoardPrint";
+import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import styles from "./page.module.css";
 
-const FORMULA_KIND_LABEL = { formula: "สูตร", scent: "กลิ่น", set: "สูตรในชุด" };
 
 export default function RdBomPage() {
   const me = useCapUser();
@@ -49,6 +60,15 @@ export default function RdBomPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState("queued");
+  /* มุมมองของตาราง (มติเจ้าของ 04/11: กรอง · จัดกลุ่ม · เรียง · เลือก แล้วพิมพ์/ดาวน์โหลดตามนั้น)
+     ค้นหา/ตัวกรอง/กลุ่ม/เรียง จำไว้ตอนกดย้อนกลับมา (useStickyState) · ที่ติ๊กไม่จำ (งานของรอบนี้) */
+  const [q, setQ] = useStickyState("q", "");
+  const [filters, setFilters] = useStickyState("filters", EMPTY_BOM_FILTERS);
+  const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
+  const [sortKey, setSortKey] = useStickyState("sortKey", BOM_SORT_DEFAULT);
+  const [sortDir, setSortDir] = useStickyState("sortDir", BOM_SORT_DIR[BOM_SORT_DEFAULT]);
+  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [selected, setSelected] = useState(() => new Set());
   const [busyId, setBusyId] = useState(null);
   const [dialog, setDialog] = useState(null); // { mode: 'done' | 'return', row }
   const startRun = useLatestRun();
@@ -73,7 +93,34 @@ export default function RdBomPage() {
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า "รอมาแล้ว" จะนับผิดไปหนึ่งวัน
   const today = businessDate();
   const totals = useMemo(() => bomBoardTotals(rows, { todayIso: today }), [rows, today]);
-  const shown = useMemo(() => bomTabRows(rows, tab), [rows, tab]);
+  /* ⭐ ตัวเดียวกับเอกสารพิมพ์และ route ไฟล์ Excel (`bomViewOf`) — แถวที่ตาเห็น = แถวที่ออก ลำดับเดียวกัน */
+  const viewState = useMemo(() => ({ tab, q, filters, sortKey, sortDir, groupBy }), [tab, q, filters, sortKey, sortDir, groupBy]);
+  const { rows: shown, groups } = useMemo(() => bomViewOf(rows, viewState), [rows, viewState]);
+  const filterOptions = useMemo(() => bomFilterOptions(rows), [rows]);
+  const filterCount = bomFilterCount(filters);
+  const narrowed = Boolean(q.trim()) || filterCount > 0;
+  const visibleIds = useMemo(() => shown.map((row) => row.id), [shown]);
+
+  /* ที่ติ๊กไว้ — ตัดเฉพาะแถวที่หลุดจากจอ (สลับแท็บ/กรอง/รับเรื่องย้ายแท็บ) ไม่ล้างทั้งชุด · ไม่โหลดแถวที่มองไม่เห็น */
+  useEffect(() => { setSelected((prev) => keepVisibleSelection(prev, visibleIds)); }, [visibleIds]);
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.has(id));
+  const someSelected = selected.size > 0 && !allSelected;
+  const toggleRow = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  /* แถวที่พิมพ์/ส่งออก: ที่ติ๊กชนะ · ไม่ติ๊ก = ทุกแถวที่แสดงอยู่ (แท็บ + ค้นหา + ตัวกรอง) */
+  const outputRows = useMemo(() => bomOutputRows(shown, selected), [shown, selected]);
+  const exportLink = useMemo(
+    () => bomExportUrl(viewState, { selectedIds: selected, visibleCount: shown.length }),
+    [viewState, selected, shown.length],
+  );
+  const outputScope = selected.size
+    ? `เฉพาะที่เลือก ${selected.size} รายการ`
+    : `ทุกแถวที่แสดงอยู่ ${shown.length} รายการ (แท็บ "${bomTabLabel(tab)}"${narrowed ? " ตามคำค้น/ตัวกรอง" : ""})`;
+  const setFilter = (key, values) => setFilters((prev) => ({ ...EMPTY_BOM_FILTERS, ...prev, [key]: values }));
 
   /* ยิงปุ่มหนึ่งครั้ง — ตีกลับ 409 (มีคนกดก่อน) = ดึงใหม่ · ⚠️ ล็อกปุ่มของแถวจนตารางใหม่มาถึง (กับดักเดียวกับหน้ารอใส่ราคา) */
   const post = async (row, json, okText) => {
@@ -119,6 +166,44 @@ export default function RdBomPage() {
       icon={<Layers size={22} />}
       title="รอลง BOM"
       subtitle="FG ที่ฝ่ายขายส่งมาให้ลง BOM ใน Express — รับเรื่อง ลงเสร็จแล้วกดลงเสร็จ ฝ่ายขายเห็นสถานะที่หน้าสินค้า"
+      /* ⭐ พิมพ์ + Excel อยู่หัวหน้า (มติเจ้าของ 04/11 — ที่เดียวกับปุ่มดาวน์โหลดของหน้ารายงาน)
+         ⭐ ออก = ที่ติ๊กไว้ (ชนะทุกอย่าง) · ไม่ติ๊ก = ทุกแถวที่แสดงอยู่ · ลำดับ = ลำดับบนจอ (เรียง + จัดกลุ่ม)
+         · ปุ่มบอกจำนวนเมื่อติ๊ก · ปิดตอนโหลด/โหลดพัง: ยังไม่รู้ว่าตารางมีอะไร เอกสารจะบอกว่า "ไม่มีรายการ" ทั้งที่อ่านไม่สำเร็จ */
+      headerRight={(
+        <>
+          {/* เปลือกรายงานกลาง (A4 แนวนอน · หัวบริษัท · บันทึก PDF ได้) ตัวเดียวกับรายงาน /tax — ประกอบจากแถวบนจอ */}
+          <Button
+            variant="quiet"
+            icon={<Printer size={15} aria-hidden="true" />}
+            disabled={loading || !!loadError}
+            title={`พิมพ์${outputScope} เป็นเอกสาร (บันทึกเป็น PDF ได้)`}
+            onClick={() => openReportPrintWindow(bomBoardPrintReport(outputRows, { tab, todayIso: today }))}
+          >
+            {selected.size ? `พิมพ์ / PDF (${selected.size})` : "พิมพ์ / PDF"}
+          </Button>
+          {/* Excel: route กรอง/เรียง/จัดกลุ่มด้วย `bomViewOf` ตัวเดียวกับจอ + ส่ง id ที่ติ๊กไป · ปุ่มกลางตัวเดียวกับทะเบียนสูตร
+              🪤 ลิงก์เป็น GET (proxy เปิด /api/rd แค่ทางอ่าน) ⇒ ติ๊กเยอะจนลิงก์ยาวเกิน = บอกทางออก ไม่ตัดแถวทิ้งเงียบ ๆ */}
+          {exportLink.tooLong ? (
+            <Button
+              variant="quiet"
+              disabled={loading || !!loadError}
+              title="รายการที่เลือกยาวเกินไปสำหรับลิงก์ดาวน์โหลด"
+              onClick={() => notifyToast.error(`เลือกไว้ ${selected.size} รายการ — ยาวเกินกว่าจะดาวน์โหลดทีเดียว · ล้างที่เลือกแล้วใช้ตัวกรอง/คำค้นแทน (ไม่เลือก = ได้ทุกแถวที่แสดงอยู่)`)}
+            >
+              {`ดาวน์โหลด Excel (${selected.size})`}
+            </Button>
+          ) : (
+            <ExcelDownloadButton
+              href={exportLink.url}
+              fallbackName={`bom_${tab}.xlsx`}
+              label={selected.size ? `ดาวน์โหลด Excel (${selected.size})` : undefined}
+              disabled={loading || !!loadError}
+              title={`ดาวน์โหลด${outputScope} เป็นไฟล์ Excel`}
+              onError={(msg) => { if (msg) notifyToast.error(msg); }}
+            />
+          )}
+        </>
+      )}
     >
       <div className="flex flex-col gap-4">
         {/* ⚠️ 0 ก็เป็นข้อมูล — ซ่อนตอนว่างแยกไม่ออกจาก "ยังโหลดไม่เสร็จ" */}
@@ -134,17 +219,67 @@ export default function RdBomPage() {
         <ListPanel
           icon={<Layers size={17} aria-hidden="true" />}
           title="รายการลง BOM"
-          subtitle={tab === "queued" || tab === "in_progress" ? "ส่งก่อนอยู่บนสุด" : "ขยับล่าสุดอยู่บนสุด"}
-          count={loading || loadError ? null : `${shown.length} รายการ`}
+          subtitle={sortKey !== BOM_SORT_DEFAULT
+            ? `เรียงตาม${BOM_SORT_OPTIONS.find((o) => o.value === sortKey)?.label || ""} · ติ๊กเลือกแถวเพื่อพิมพ์/ดาวน์โหลดเฉพาะที่เลือก`
+            : `${tab === "queued" || tab === "in_progress" ? "ส่งก่อนอยู่บนสุด" : "ขยับล่าสุดอยู่บนสุด"} · ติ๊กเลือกแถวเพื่อพิมพ์/ดาวน์โหลดเฉพาะที่เลือก`}
+          /* กติกากลาง: กำลังเลือก = "เลือก x/y" · ไม่เลือก = จำนวนแถวที่เห็นหลังค้นหา/กรอง */
+          count={loading || loadError ? null : selected.size ? `เลือก ${selected.size}/${shown.length} รายการ` : `${shown.length} รายการ`}
           loading={loading}
           toolbar={(
-            <Segmented
-              ariaLabel="สถานะลง BOM"
-              value={tab}
-              onChange={setTab}
-              /* โหลดพัง = ไม่รู้ยอด ⇒ ไม่มีป้าย (เลข 0 จะอ่านว่า "ไม่มีงาน" ทั้งที่อ่านไม่สำเร็จ) */
-              options={BOM_BOARD_TABS.map((t) => ({ value: t.key, label: t.label, count: loading || loadError ? null : totals[t.key] }))}
-            />
+            /* แท็บสถานะก่อน แล้วตามลำดับกลางของ ViewMenus: ค้นหา · ตัวกรอง · จัดกลุ่ม · spacer · เรียง */
+            <>
+              <Segmented
+                ariaLabel="สถานะลง BOM"
+                value={tab}
+                onChange={setTab}
+                /* โหลดพัง = ไม่รู้ยอด ⇒ ไม่มีป้าย (เลข 0 จะอ่านว่า "ไม่มีงาน" ทั้งที่อ่านไม่สำเร็จ) */
+                options={BOM_BOARD_TABS.map((t) => ({ value: t.key, label: t.label, count: loading || loadError ? null : totals[t.key] }))}
+              />
+              <div className="search-glass">
+                <Search size={16} color="var(--text-3)" aria-hidden="true" />
+                <input
+                  autoComplete="off"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="FG / ลูกค้า / Tax ID / สูตร / กลิ่น / รหัส BOM"
+                  aria-label="ค้นหารายการลง BOM"
+                />
+              </div>
+              <FilterPopover
+                count={filterCount}
+                onClear={() => setFilters(EMPTY_BOM_FILTERS)}
+                groups={BOM_FILTER_DIMENSIONS.map((dim) => ({
+                  key: dim.key,
+                  label: dim.label,
+                  searchable: dim.searchable,
+                  options: filterOptions[dim.key] || [],
+                  selected: filters?.[dim.key] || [],
+                  onChange: (values) => setFilter(dim.key, values),
+                }))}
+              />
+              <GroupMenu
+                title="จัดกลุ่มรายการ"
+                value={groupBy}
+                onChange={(value) => { setGroupBy(value); setCollapsed(new Set()); }}
+                options={BOM_GROUP_OPTIONS}
+              />
+              {groups && groups.length > 0 ? (
+                <CollapseAllButton
+                  collapsed={allBucketsCollapsed(groups, collapsed)}
+                  onToggle={() => setCollapsed(allBucketsCollapsed(groups, collapsed) ? new Set() : new Set(groups.map((g) => g.key)))}
+                />
+              ) : null}
+              <span className="spacer" />
+              {/* เปลี่ยนแบบเรียง = ตั้งทิศตั้งต้นของแบบนั้นให้ด้วย (กติกาเดียวกับรายงานยอดขาย) */}
+              <SortMenu
+                title="เรียงลำดับรายการ"
+                value={sortKey}
+                defaultValue={BOM_SORT_DEFAULT}
+                onChange={(value) => { setSortKey(value); setSortDir(BOM_SORT_DIR[value] || "asc"); }}
+                options={BOM_SORT_OPTIONS}
+              />
+              <SortDirButton dir={sortDir} onToggle={() => setSortDir(sortDir === "asc" ? "desc" : "asc")} />
+            </>
           )}
         >
           {loadError ? (
@@ -153,12 +288,25 @@ export default function RdBomPage() {
             </StatusNotice>
           ) : null}
           {!shown.length ? (
-            loadError ? null : <EmptyState plain icon={Inbox}>ไม่มีรายการในแท็บนี้</EmptyState>
+            loadError ? null : (
+              <EmptyState plain icon={Inbox}>
+                {narrowed ? "ไม่มีรายการที่ตรงกับคำค้น/ตัวกรองในแท็บนี้" : "ไม่มีรายการในแท็บนี้"}
+              </EmptyState>
+            )
           ) : (
             <TableScroll>
               <table className="w-full">
                 <thead>
                   <tr>
+                    <th className="w-9 text-center">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => { if (el) el.indeterminate = someSelected; }}
+                        onChange={() => setSelected(allSelected ? new Set() : new Set(visibleIds))}
+                        aria-label="เลือกทุกแถวที่แสดงอยู่"
+                      />
+                    </th>
                     <th>สินค้า</th>
                     <th>ลูกค้า</th>
                     <th>สูตร / กลิ่น</th>
@@ -167,20 +315,38 @@ export default function RdBomPage() {
                     <th>จัดการ</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {shown.map((row) => (
-                    <BomRow
-                      key={row.id}
-                      row={row}
-                      today={today}
-                      busy={busyId === row.id}
-                      onAccept={() => accept(row)}
-                      onDone={() => setDialog({ mode: "done", row })}
-                      onReturn={() => setDialog({ mode: "return", row })}
-                      onReopen={() => reopen(row)}
-                    />
-                  ))}
-                </tbody>
+                {/* ไม่จัดกลุ่ม = ถังเดียวไม่มีหัว · จัดกลุ่ม = หนึ่ง <tbody> ต่อถัง หัวถังเป็น TableGroupRow (markup กลาง) */}
+                {(groups || [{ key: "__all", label: null, items: shown }]).map((group) => {
+                  const isCollapsed = Boolean(group.label) && collapsed.has(group.key);
+                  return (
+                    <tbody key={group.key}>
+                      {group.label ? (
+                        <TableGroupRow
+                          colSpan={7}
+                          label={group.label}
+                          sub={group.sub}
+                          badge={`${group.count} รายการ`}
+                          collapsed={isCollapsed}
+                          onToggle={() => setCollapsed((prev) => toggleBucketKey(prev, group.key))}
+                        />
+                      ) : null}
+                      {!isCollapsed && group.items.map((row) => (
+                        <BomRow
+                          key={row.id}
+                          row={row}
+                          today={today}
+                          busy={busyId === row.id}
+                          selected={selected.has(row.id)}
+                          onToggle={() => toggleRow(row.id)}
+                          onAccept={() => accept(row)}
+                          onDone={() => setDialog({ mode: "done", row })}
+                          onReturn={() => setDialog({ mode: "return", row })}
+                          onReopen={() => reopen(row)}
+                        />
+                      ))}
+                    </tbody>
+                  );
+                })}
               </table>
             </TableScroll>
           )}
@@ -203,10 +369,13 @@ export default function RdBomPage() {
 }
 
 /* หนึ่งแถว = FG หนึ่งตัว — รหัสบน·ชื่อล่าง (กติกาแสดง entity ของตาราง) · ลิงก์ไปหน้าสินค้าที่รหัส */
-function BomRow({ row, today, busy, onAccept, onDone, onReturn, onReopen }) {
+function BomRow({ row, today, busy, selected, onToggle, onAccept, onDone, onReturn, onReopen }) {
   const waited = bomWaitingDays(row, today);
   return (
     <tr>
+      <td className="w-9 text-center">
+        <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`เลือก ${row.fgCode || naText(row.nameTh || row.nameEn)}`} />
+      </td>
       <td>
         <Link className="linklike" href={`/database/products/${row.id}`}>{row.fgCode || NA}</Link>
         <div>{naText(row.nameTh)}</div>
@@ -224,7 +393,7 @@ function BomRow({ row, today, busy, onAccept, onDone, onReturn, onReopen }) {
       <td>
         {/* ป้ายชนิดอยู่บนสุด — บอกก่อนว่าบรรทัดข้างล่างเป็นสูตร/กลิ่น/สูตรในชุด (เดิมอยู่ล่างสุด อ่านเหมือนเป็นของบรรทัดกลิ่น) */}
         {row.formula.items.length ? (
-          <div className={styles.sub}>{FORMULA_KIND_LABEL[row.formula.kind]}{row.formula.kind === "set" ? ` (${row.formula.items.length})` : ""}</div>
+          <div className={styles.sub}>{BOM_FORMULA_KIND_LABEL[row.formula.kind]}{row.formula.kind === "set" ? ` (${row.formula.items.length})` : ""}</div>
         ) : null}
         {row.formula.items.length ? (
           <ul className={styles.items}>
