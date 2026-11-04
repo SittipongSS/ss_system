@@ -37,6 +37,13 @@
   gap: var(--space-1-5) var(--space-2-5);
 }
 .monthMeta { color: var(--text-3); font-size: var(--fs-6); }
+/* ยอดรวมของเดือน/งาน (เจ้าของ 04/11) — สีเดียวกับช่องภาษีรวมของแถว */
+.monthTotal { color: var(--red); }
+.groupTotal {
+  color: var(--red);
+  font-size: var(--fs-6);
+  white-space: nowrap;
+}
 
 /* ปุ่มย่อ/ขยาย (เจ้าของ 04/11) — ลูกศรขวา = ย่ออยู่ · หมุนลง = กาง (กติกาเดียวกับ CollapsibleCard) */
 .toggle {

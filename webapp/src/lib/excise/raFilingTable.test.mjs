@@ -199,16 +199,35 @@ test('รีเช็คภาษี (เจ้าของ 03/11): ราคา
   assert.match(table, /line\.taxCheck && !line\.taxCheck\.ok/);
 });
 
-test('ย่อ/ขยาย (เจ้าของ 04/11): หัวเดือนย่อทั้งเดือน + ย่อ/ขยายทุกงาน · หัวงานย่อรายการ · งานที่ย่อบอกจำนวนรายการกับภาษีรวม', () => {
+test('ย่อ/ขยาย (เจ้าของ 04/11): หัวเดือนย่อทั้งเดือน + ย่อ/ขยายทุกงาน · หัวงานย่อรายการ · หัวงานบอกจำนวนรายการกับภาษีรวมตลอด', () => {
   const table = read('../../components/excise/FilingLinesTable.js');
   assert.match(table, /aria-expanded=\{monthOpen\} onClick=\{\(\) => toggle\(monthKey\)\}/);
   assert.match(table, /if \(!monthOpen\) return \[monthHeader\];/, 'เดือนที่ย่อเหลือหัวเดือนแถวเดียว');
   assert.match(table, /setMany\(groupKeys, !allGroupsClosed\)/);
   assert.match(table, /aria-expanded=\{open\}/);
   assert.match(table, /if \(!open\) return \[header\];/, 'งานที่ย่อเหลือหัวงาน (ลิงก์ · สถานะ · ด่าน · ช่องติ๊กพิมพ์)');
-  assert.match(table, /\{!open && lines\.length \? \(/, 'สรุปโชว์เฉพาะตอนย่อ');
-  assert.match(table, /รายการ · ภาษีรวม \{fmtMoney\(linesTaxTotal\(lines\)\)\}/);
+  assert.match(table, /\{lines\.length \? \(\s*<span className=\{styles\.groupTotal\}>/, 'ยอดของงานโชว์ทั้งตอนกางและตอนย่อ');
+  assert.match(table, /รายการ · ภาษีรวม \{fmtMoney\(filingLinesTaxTotal\(lines\)\)\}/);
   const head = table.match(/<div className=\{styles\.groupHead\}>[\s\S]*?<\/div>/)[0];
   assert.ok(head.indexOf('className={styles.toggle}') < head.indexOf('<Link'), 'ปุ่มลูกศรอยู่หน้าลิงก์ ไม่ซ้อนกัน');
   assert.doesNotMatch(head.slice(head.indexOf('className={styles.toggle}'), head.indexOf('</button>')), /<Link/, 'ลิงก์ไม่อยู่ในปุ่ม');
+});
+
+test('ยอดรวม (เจ้าของ 04/11): หัวเดือน = งาน · รายการ · ภาษีรวมของแถวที่ผ่านตัวกรอง · งานที่ยังไม่มีรายการไม่อยู่ในยอดและจอต้องบอก', async () => {
+  const { filingMonthTotals, filingLinesTaxTotal } = await import('./raFilingMonth.js');
+  // ตัวเลขจริง 04/11 (หัวงานสามงานของ M.11/69): 350,175 + 196,006.50 + 160,370
+  const rows = [
+    { key: 'a', detail: { lines: [{ totalTax: 293610 }, { totalTax: 40725 }, { totalTax: 15840 }] } },
+    { key: 'b', detail: { lines: [{ totalTax: 58722 }, { totalTax: 24887.5 }, { totalTax: 9680 }, { totalTax: 58722 }, { totalTax: 31675 }, { totalTax: 12320 }] } },
+    { key: 'c', detail: { lines: [{ totalTax: 80185 }, { totalTax: 80185 }] } },
+  ];
+  assert.equal(filingLinesTaxTotal(rows[1].detail.lines), 196006.5);
+  assert.deepEqual(filingMonthTotals(rows), { jobs: 3, lines: 11, totalTax: 706551.5, missing: 0 });
+  assert.equal(filingLinesTaxTotal([{ totalTax: 0.1 }, { totalTax: 0.2 }]), 0.3, 'ปัดสองตำแหน่ง ไม่มีเศษทศนิยมลอย');
+  assert.deepEqual(filingMonthTotals([...rows, { key: 'd', detail: null }]), { jobs: 4, lines: 11, totalTax: 706551.5, missing: 1 });
+  assert.deepEqual(filingMonthTotals([{ key: 'e', detail: { lines: [] } }]), { jobs: 1, lines: 0, totalTax: 0, missing: 0 });
+  const table = read('../../components/excise/FilingLinesTable.js');
+  assert.match(table, /const totals = filingMonthTotals\(bucket\.rows\);/, 'ยอดหัวเดือนคิดจากแถวที่จอวาด (ผ่านตัวกรองแล้ว)');
+  assert.match(table, /<strong className=\{styles\.monthTotal\}>ภาษีรวม \{fmtMoney\(totals\.totalTax\)\}<\/strong>/);
+  assert.match(table, /ไม่รวม \{fmtNumber\(totals\.missing\)\} งานที่ยังไม่มีรายการ/);
 });
