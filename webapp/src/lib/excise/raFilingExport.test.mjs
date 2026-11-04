@@ -92,9 +92,9 @@ test("พิมพ์ตามจอ: หัวเดือน (ยอดเด�
   ]);
   const sections = report.rows.filter((r) => r._kind === "section");
   assert.deepEqual(sections.map((r) => r._level), [1, 2, 2, 1, 2, 1, 2]);
-  assert.equal(sections[0]._label, "รายการชำระภาษีสรรพสามิต M.11/69 · พ.ย. 2569 · 2 งาน · 3 รายการ · ภาษีรวม ฿140,609.50", "ยอดเดือนอยู่บรรทัดหลัก");
-  assert.equal(sections[1]._label, "SO-26080009-0 · เซนท์ สตูดิโอ · รอ RA · 1 รายการ · ภาษีรวม ฿57,000.00\nใบสั่งขายค่าสรรพสามิต SO-X1 อนุมัติแล้ว · ยังไม่มีทะเบียน 1 รายการ — เริ่มยื่นไม่ได้");
-  assert.match(sections[5]._label, /^รายการชำระภาษีสรรพสามิต \(ยังไม่รู้เดือน\) · ยังโหลดรายการสินค้าไม่ได้ · 1 งาน · 0 รายการ · ภาษีรวม ฿0\.00 \(ไม่รวม 1 งานที่ยังไม่มีรายการ\)$/);
+  assert.equal(sections[0]._label, "รายการชำระภาษีสรรพสามิต M.11/69 · พ.ย. 2569 · 2 งาน · 3 รายการ · ภาษีรวม 140,609.50", "ยอดเดือนอยู่บรรทัดหลัก · ไม่มี ฿ (ทั้งใบเขียนเงินแบบเดียวกับตาราง)");
+  assert.equal(sections[1]._label, "SO-26080009-0 · เซนท์ สตูดิโอ · รอ RA · 1 รายการ · ภาษีรวม 57,000.00\nใบสั่งขายค่าสรรพสามิต SO-X1 อนุมัติแล้ว · ยังไม่มีทะเบียน 1 รายการ — เริ่มยื่นไม่ได้");
+  assert.match(sections[5]._label, /^รายการชำระภาษีสรรพสามิต \(ยังไม่รู้เดือน\) · ยังโหลดรายการสินค้าไม่ได้ · 1 งาน · 0 รายการ · ภาษีรวม 0\.00 \(ไม่รวม 1 งานที่ยังไม่มีรายการ\)$/);
   const lines = report.rows.filter((r) => !r._kind);
   assert.equal(lines[0].date, "10/11/2026");
   assert.equal(lines[0].taxPerUnit, "95.00\nไม่ตรงสูตร · 8.8% = 97.87", "คำเตือนเดียวกับจอ (บรรทัดรองในช่อง)");
@@ -147,4 +147,14 @@ test("หน้า /tax/filings: ปุ่มพิมพ์/Excel ประก�
   const reports = read("../tax/reports.js");
   assert.doesNotMatch(reports, /filing: filingReport/, "?type=filing ถอดแล้ว");
   assert.doesNotMatch(read("../tax/reportXlsxDownload.js"), /^import .*exceljs/m, "exceljs โหลดตอนกด ไม่ลากเข้า bundle หน้า");
+});
+
+test("พิมพ์: เงินทั้งใบเขียนแบบเดียว (เจ้าของ 04/11) — หัวเดือน/หัวงานไม่มี ฿ เหมือนตารางกับแถวรวม", () => {
+  const report = raFilingPrintReport(rows);
+  for (const row of report.rows) {
+    for (const value of Object.values(row)) assert.doesNotMatch(String(value ?? ""), /฿/, JSON.stringify(row).slice(0, 80));
+  }
+  const html = buildReportPrintHTML(report, {}, {}, { toolbar: false });
+  const table = html.slice(html.indexOf('<table class="reportTable"'));
+  assert.doesNotMatch(table, /฿/, "ตารางทั้งตาราง (หัวกลุ่ม · แถว · แถวรวม) ไม่มี ฿");
 });
