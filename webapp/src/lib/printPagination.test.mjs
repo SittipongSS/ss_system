@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildBillPrintHTML, paginateBillLines } from './tax/billPrint.js';
-import { buildReportPrintHTML, paginateReportRows, reportRowLines } from './tax/reportPrint.js';
+import { buildReportPrintHTML, paginateReportRows, reportRowLines, REPORT_REFLOW_SCRIPT } from './tax/reportPrint.js';
+import { reportToXlsxBuffer } from './tax/exportExcel.js';
 import { buildGanttPrintHTML, paginateTimelineGroups } from './pm/ganttPrint.js';
 
 test('tax report preview uses explicit landscape pages and keeps summary on the final page', () => {
@@ -165,4 +166,55 @@ test('Project Timeline preview has explicit work pages and a final approval page
   assert.match(html, /ผู้ดูแล \(AE\).*ผู้ดูแลทดสอบ/s);
   assert.match(html, /ผู้ประสานงาน \(AC\).*ผู้จัดทำทดสอบ/s);
   assert.match(html, /ผู้ตรวจสอบ.*ผู้ตรวจสอบทดสอบ/s);
+});
+
+/* 03/11/2026 รายงานขึ้นทะเบียนได้ ภาษี/ชิ้น + เลขทะเบียน — Excel แยกคอลัมน์ · กระดาษรวมสถานะกับเลขไว้ช่องเดียว
+   (เลข 28 ตัวอักษรไม่มีช่องว่าง เป็นคอลัมน์ของตัวเองบนกระดาษแล้วบีบคอลัมน์อื่นจนแถวตัดบรรทัดและหน้าล้น) */
+const SPLIT_REPORT = {
+  title: 'รายงานทดสอบ',
+  columns: [
+    { key: 'name', label: 'รายการ' },
+    { key: 'tax', label: 'ภาษี/ชิ้น', money: true },
+    { key: 'status', label: 'สถานะ', only: 'excel' },
+    { key: 'approvalNumber', label: 'เลขทะเบียน', only: 'excel' },
+    { key: 'statusNumber', label: 'สถานะ / เลขทะเบียน', multiline: true, only: 'print' },
+  ],
+  rows: [
+    { name: 'ก', tax: 97.87, status: 'ขึ้นทะเบียนแล้ว', approvalNumber: 'NO-1', statusNumber: 'ขึ้นทะเบียนแล้ว\nNO-1' },
+    { name: 'ข', tax: 'ยกเว้น', status: 'รออนุมัติ', approvalNumber: '-', statusNumber: 'รออนุมัติ' },
+  ],
+};
+
+test('print skips excel-only columns and prints a worded money cell as the word, not 0.00', () => {
+  const html = buildReportPrintHTML(SPLIT_REPORT, {}, undefined, { toolbar: false });
+  const head = html.match(/<thead><tr>(.*?)<\/tr><\/thead>/s)[1];
+  assert.match(head, /สถานะ \/ เลขทะเบียน/);
+  assert.doesNotMatch(head, />สถานะ</);
+  assert.doesNotMatch(head, />เลขทะเบียน</);
+  assert.match(html, /<div class="sub">NO-1<\/div>/);
+  assert.match(html, />ยกเว้น</);
+  assert.match(html, />97\.87</);
+});
+
+test('excel skips print-only columns — status and registration number stay separate, tax stays a number', async () => {
+  const ExcelJS = (await import('exceljs')).default;
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(await reportToXlsxBuffer(SPLIT_REPORT));
+  const ws = wb.worksheets[0];
+  assert.deepEqual(ws.getRow(3).values.slice(1), ['รายการ', 'ภาษี/ชิ้น', 'สถานะ', 'เลขทะเบียน']);
+  assert.equal(ws.getRow(4).getCell(2).value, 97.87);
+  assert.equal(ws.getRow(4).getCell(4).value, 'NO-1');
+  assert.equal(ws.getRow(5).getCell(2).value, 'ยกเว้น');
+});
+
+/* ตาข่ายตัดหน้าซ้ำเป็นสตริงที่กลายเป็น <script> ของหน้าต่างพิมพ์ — ไม่มี module scope
+   ⇒ ต้องอยู่ใน HTML จริง · คอมไพล์ผ่าน · และไม่อ้างชื่อที่ import ไว้ในไฟล์ต้นทาง (AGENTS.md: บั๊ก langSwitchScript) */
+test('report print carries the reflow safety net as a self-contained script', () => {
+  const html = buildReportPrintHTML(SPLIT_REPORT, {}, undefined, { toolbar: false });
+  assert.ok(html.includes(REPORT_REFLOW_SCRIPT.trim().slice(0, 40)), 'สคริปต์ต้องอยู่ในเอกสาร');
+  assert.doesNotThrow(() => new Function(REPORT_REFLOW_SCRIPT));
+  for (const name of ['apiFetch', 'notifyToast', 'esc(', 'money(', 'fmtNumber', 'documentFooter']) {
+    assert.ok(!REPORT_REFLOW_SCRIPT.includes(name), `สคริปต์อ้าง ${name} ซึ่งไม่มีในหน้าต่างพิมพ์`);
+  }
+  assert.match(REPORT_REFLOW_SCRIPT, /document\.fonts\.ready/);
 });
