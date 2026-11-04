@@ -20,7 +20,7 @@ import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
 import {
-  AGE_LATE_DAYS, ageLabel, ageTone, isLateRegistration, registrationAge, wantsLateOnly,
+  AGE_LATE_DAYS, ageLabel, ageTone, isLateRegistration, registrationPendingAge, wantsLateOnly,
 } from "@/lib/tax/registrationQueue";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
@@ -244,12 +244,15 @@ export default function RegistrationsPage() {
     if (created && saved?.id) router.push(`/tax/registrations/${saved.id}`);
   };
 
-  const ageOf = (r) => registrationAge(r, todayIso);
+  /* อายุ "ค้าง" — ใบที่ขึ้นทะเบียนแล้วไม่มี (null) ⇒ คอลัมน์เป็นขีด · การ์ดไม่มีป้าย · เรียงท้ายคิว (`?? -1`)
+     🐞 03/11/2026 เคยนับจากวันอนุมัติ: "ค้างมา 67 วัน" สีแดงบนใบที่จบแล้ว และขึ้นหัวคิวทับใบที่รอตรวจจริง */
+  const ageOf = (r) => registrationPendingAge(r, todayIso);
 
   /* ── ป้ายอายุงาน ────────────────────────────────────────────────────────
      🐞 คิวเดิมไม่มีวันที่เลย ⇒ ใบที่ค้าง 34 วันหน้าตาเหมือนใบที่เพิ่งยื่นเมื่อวาน
      (ตรวจระบบ 2026-08-28: 9 ใบค้าง 28–34 วันโดยไม่มีอะไรฟ้อง) */
   const AgeCell = ({ row }) => {
+    if (row.status === "approved") return <span className="cell-quiet">{NA}</span>;
     const days = ageOf(row);
     const tone = ageTone(days);
     return (
@@ -454,10 +457,12 @@ export default function RegistrationsPage() {
           <span className="truncate">{naText(r.assignee)}</span>
           <span className="flex items-center gap-2">
             <DocsCell row={r} />
-            {/* โทนมาจากข้อมูล (จำนวนวัน) */}
-            <span style={ageTone(days) === "neutral" ? undefined : { color: toneColor(ageTone(days)) }}>
-              ค้างมา {naText(ageLabel(days))}
-            </span>
+            {/* โทนมาจากข้อมูล (จำนวนวัน) · ใบที่ขึ้นทะเบียนแล้วไม่มีอะไรค้าง = ไม่มีป้าย */}
+            {r.status !== "approved" && (
+              <span style={ageTone(days) === "neutral" ? undefined : { color: toneColor(ageTone(days)) }}>
+                ค้างมา {naText(ageLabel(days))}
+              </span>
+            )}
           </span>
         </div>
       </div>
