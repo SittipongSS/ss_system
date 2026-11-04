@@ -12,7 +12,7 @@ const normalizedKey = (value) => String(value || "").trim().toLowerCase();
    คนละงานคนละคนทำ เส้นเดินงานของ SO ต้องบอกให้ตรงว่าติดอยู่ที่ใคร
    คำเดียวกับ lib/excise/recommendation.js ตั้งใจให้ตรงกัน */
 /* ข้อความต่อท้ายรหัส FG ใน warning — บอก **ติดที่ใคร** ไม่ใช่แค่ว่ายังไม่ครบ */
-const REGISTRATION_GAP_TEXT = {
+export const REGISTRATION_GAP_TEXT = {
   none: "ยังไม่ได้ขึ้นทะเบียนสรรพสามิต",
   draft: "มีร่างทะเบียนค้างอยู่ ยังไม่ได้ยื่นให้นิติกรรม",
   pending: "ยื่นขึ้นทะเบียนแล้ว รอนิติกรรมตรวจ",

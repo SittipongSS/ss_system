@@ -146,6 +146,7 @@ const SCOPED_SAFE = new Map([
      คิว SA (ตัวอ่าน "ปิดยอดค้าง" ด้วย id ของ SO ที่มีใบค่าภาษีแล้ว) — ใบย้อนหลังไม่มีใบค่าภาษี (exciseQuotationBlocker) · ไม่รวมยอด */
   ['lib/excise/exciseQuotation.js', { count: 6, reason: 'SO ค่าสรรพสามิตของใบที่รับแล้ว (exciseRowsOnly + quotationId) · SO ต้นทางของรอบด้วย id · ตัวอ่านปิดยอดค้าง — ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด' }],
   ['lib/excise/exciseSalesOrder.js', { count: 1, reason: 'quotationId ของใบค่าสรรพสามิตใบเดียว — ได้แต่ SO ค่าสรรพสามิต (ใบย้อนหลังไม่มีใบเสนอราคา) · ไม่รวมยอด' }],
+  ['lib/excise/exciseRegistrationGate.js', { count: 1, reason: 'SO ต้นทางของใบค่าสรรพสามิตตาม id (ด่านทะเบียน V32 · 04/11) — อ่านบรรทัดไปเทียบทะเบียนที่อนุมัติ · ไม่รวมยอด · ใบย้อนหลังไม่มีใบค่าสรรพสามิต' }],
   /* ตารางยื่นชำระแบบตารางเดิม (มติ 03/11 V20): วันที่ส่งของของ SO ตาม id ที่งาน RA ชี้ (คิว RA · บันทึกการยื่น) — ไม่รวมยอด · ใบย้อนหลังไม่มีงาน RA */
   ['lib/excise/raFilingTable.js', { count: 1, reason: 'วันที่ส่งของของ SO ตาม id ของงาน RA — ไม่รวมยอด' }],
   ['lib/excise/raFiling.js', { count: 5, reason: 'คิวรอยื่นกรมของ RA (PR5): SO ค่าสรรพสามิต (exciseRowsOnly — อนุมัติแล้ว + แถวกำลังมาที่ยังไม่อนุมัติ) · SO ลูกค้าไม่เรียกเก็บ (pipelineRowsOnly) · SO ต้นทางของแถวคิว + แผงสรุปใบยื่น (ตาม id ที่ผูกใบยื่น) — ไม่รวมยอด · ใบย้อนหลังถูกปฏิเสธที่ loadFilingSource (origin ต้องเป็น pipeline)' }],
