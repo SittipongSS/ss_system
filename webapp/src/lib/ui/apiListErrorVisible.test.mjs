@@ -752,9 +752,11 @@ test("ใบยื่นชำระ: โหลดใบไม่ขึ้นห
   for (const s of sources) assert.ok(s.blockedNote, `${s.label}: ไม่มี blockedNote`);
   assert.ok(ast.readsIn("pageBlocked").has("blocked"),
     "pageBlocked ต้องมาจาก blocked (error + ไม่มีของในมือ) ไม่ใช่ error เดี่ยว ๆ");
-  // v3 (02/11): บันทึกตรึงรายการ — ไม่มีปุ่มคิดใหม่ · ปุ่มของ RA = พิมพ์ใบสรุป · แก้ข้อมูลการชำระ · ยกเลิกการเริ่มยื่น
+  // v3 (02/11): บันทึกตรึงรายการ — ไม่มีปุ่มคิดใหม่ · ปุ่มของ RA = แก้ข้อมูลการชำระ · ยกเลิกการเริ่มยื่น
+  // 04/11: ปุ่ม "พิมพ์ใบสรุปรายการยื่น" ถอดแล้ว (เจ้าของ: ยื่นกรมผ่านระบบของกรม — พิมพ์/Excel อยู่ที่หน้ารายการ)
   assert.equal(ast.actions("recalc").length, 0, 'ปุ่ม "recalc" กลับมา — บันทึกการยื่นคิดใหม่ไม่ได้แล้ว');
-  for (const id of ["print", "edit-paid", "withdraw"]) {
+  assert.equal(ast.actions("print").length, 0, 'ปุ่ม "print" (ใบสรุปรายการยื่น) กลับมา — ถอดแล้ว 04/11');
+  for (const id of ["edit-paid", "withdraw"]) {
     assert.equal(ast.actions(id).length, 1, `ปุ่ม "${id}" หาไม่เจอ/เจอซ้ำ — ตัวตรวจล้าสมัย?`);
   }
   // หัวจอ (รหัส AR) ต้องไม่อ่านลิสต์ลูกค้า — ลิสต์ล้มแล้วหัวจอแหว่งโดยไม่มีอะไรบอก

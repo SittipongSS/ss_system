@@ -266,3 +266,23 @@ test("คอลัมน์ต้นทุนหายทั้งคอลั�
   // FN เห็นราคาผลิตอย่างเดียว (ไม่เห็นแจกแจง) ⇒ คอลัมน์ยังต้องขึ้น
   assert.equal(hasFactoryFacts({ costPrice: 120 }), true);
 });
+
+test("ลำดับตั้งต้นของคิว = ไฟล์ Excel/พิมพ์ (04/11): ค้างนานสุดก่อน · อนุมัติแล้วไปท้าย · อายุเท่ากันคงลำดับเดิม", async () => {
+  const { sortRegistrationsLikeQueue, registrationQueueSortValue } = await import("./registrationQueue.js");
+  const today = "2026-11-04";
+  const rows = [
+    { id: "A", status: "approved", createdAt: "2026-11-03T03:00:00Z" },
+    { id: "B", status: "pending_legal", createdAt: "2026-11-02T03:00:00Z", submittedAt: "2026-11-02T03:00:00Z" },
+    { id: "C", status: "draft", createdAt: "2026-10-20T03:00:00Z" },
+    { id: "D", status: "approved", createdAt: "2026-10-01T03:00:00Z" },
+  ];
+  const sorted = sortRegistrationsLikeQueue(rows, today).map((r) => r.id);
+  assert.deepEqual(sorted.slice(-2), ["A", "D"], "อนุมัติแล้วไปท้าย ลำดับเดิม");
+  assert.ok(registrationQueueSortValue(rows[2], today) >= registrationQueueSortValue(rows[1], today));
+  assert.equal(sorted[0], "C");
+  const reports = readFileSync(new URL("./reports.js", import.meta.url), "utf8");
+  assert.match(reports, /const regs = sortRegistrationsLikeQueue\(/, "ไฟล์เรียงด้วยตัวเดียวกับจอ");
+  const page = readFileSync(new URL("../../app/tax/registrations/page.js", import.meta.url), "utf8");
+  assert.match(page, /sortValue: \(r\) => registrationQueueSortValue\(r, todayIso\)/);
+  assert.match(page, /initialSort=\{\{ key: "age", dir: "desc" \}\}/);
+});

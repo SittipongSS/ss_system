@@ -1,22 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileCheck2, Printer, Send } from "lucide-react";
+import { FileCheck2, Send } from "lucide-react";
 import Modal from "@/components/Modal";
-import Button from "@/components/ui/Button";
 import { TableScroll } from "@/components/ui/Table";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtDate, fmtMoney, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 import { FILING_SOURCE_EXCISE_ORDER, filingStartGateError } from "@/lib/excise/raFilingRules";
 import { UPCOMING_START_BLOCKER, raRoundLabel } from "@/lib/excise/raQueueItem";
-import { printFilingSummary } from "@/lib/excise/printFilingSummary";
 import styles from "./SalesOrderFilingModal.module.css";
 
 /* ── งานรอ RA หนึ่งงาน (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11) ─────────────────────────────────────────────
    SO ค่าสรรพสามิตที่ AE Sup อนุมัติ = งานถึง RA แล้ว ⇒ ไม่มีขั้น "สร้างใบยื่น" · โมดัลนี้คือที่ RA เอาข้อมูลจาก SO ไปทำงาน
      · รายการ + ช่อง ภส. + ทะเบียนรายบรรทัด (พรีวิวจาก GET /api/tax/orders/queue?… ตัวโหลดเดียวกับตอนเริ่มยื่น)
-     · พิมพ์ใบสรุปรายการยื่น · กด "เริ่มยื่น" = ระบบเขียนบันทึกการยื่นสถานะกำลังยื่น (POST …/from-sales-order)
+     · กด "เริ่มยื่น" = ระบบเขียนบันทึกการยื่นสถานะกำลังยื่น (POST …/from-sales-order)
+     · ⚠️ ปุ่ม "พิมพ์ใบสรุป" ถอดแล้ว (เจ้าของ 04/11: "ยื่นกรมยื่นให้ระบบกรมอยู่แล้ว") — พิมพ์/Excel อยู่ที่หน้ารายการ (ติ๊กงานนี้)
    ด่าน: ทะเบียนทุก FG อนุมัติแล้ว **เด็ดขาด** (V4 · ตัวตัดสินเดียวกับ route) · บัญชีปิดใบแค่โชว์ (V3)
    แถวกำลังมา (`ready: false`) เปิดดูขั้นที่ถึงได้ แต่ปุ่มเริ่มยื่นบอกเหตุ (ยังไม่มี SO ค่าสรรพสามิตอนุมัติให้ผูก) */
 const EMPTY_PREVIEW = { loading: false, lines: [], warnings: [], totalTax: 0, amountToCollect: 0, gates: null, existing: null, error: "" };
@@ -35,7 +34,6 @@ const rowParam = (row) => (row?.source === FILING_SOURCE_EXCISE_ORDER
 
 export default function SalesOrderFilingModal({ open, row, onClose, onStarted }) {
   const [busy, setBusy] = useState(false);
-  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(EMPTY_PREVIEW);
   const upcoming = row?.ready === false;
@@ -89,15 +87,6 @@ export default function SalesOrderFilingModal({ open, row, onClose, onStarted })
       return;
     }
     onStarted?.(data);
-  };
-
-  const print = async () => {
-    setPrinting(true);
-    try {
-      await printFilingSummary([row.key]);
-    } finally {
-      setPrinting(false);
-    }
   };
 
   if (!row) return null;
@@ -208,12 +197,6 @@ export default function SalesOrderFilingModal({ open, row, onClose, onStarted })
 
       <div className="form-action-bar">
         <button type="button" className="btn" onClick={onClose} disabled={busy}>ปิด</button>
-        {!upcoming && (
-          /* ⚠️ Button primitive ไม่ใช่คลาส `btn` ดิบ — งบ rawButtonClass ของโมดูลนี้เต็มเพดาน */
-          <Button tone="neutral" onClick={print} disabled={busy || printing} icon={<Printer size={16} />}>
-            {printing ? "กำลังเตรียม…" : "พิมพ์ใบสรุป"}
-          </Button>
-        )}
         <button type="button" className="btn btn-primary" onClick={start} disabled={busy} aria-disabled={!!startBlocker}>
           <Send size={16} />
           {busy ? "กำลังบันทึก…" : "เริ่มยื่น"}

@@ -20,7 +20,7 @@ import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
 import {
-  AGE_LATE_DAYS, ageLabel, ageTone, isLateRegistration, registrationPendingAge, wantsLateOnly,
+  AGE_LATE_DAYS, ageLabel, ageTone, isLateRegistration, registrationPendingAge, registrationQueueSortValue, wantsLateOnly,
 } from "@/lib/tax/registrationQueue";
 import DataList from "@/components/excise/DataList";
 import FilterBar from "@/components/excise/FilterBar";
@@ -397,7 +397,7 @@ export default function RegistrationsPage() {
         </div>
       ),
     },
-    { key: "age", label: "ค้างมา", sortValue: (r) => ageOf(r) ?? -1, render: (r) => <AgeCell row={r} /> },
+    { key: "age", label: "ค้างมา", sortValue: (r) => registrationQueueSortValue(r, todayIso), render: (r) => <AgeCell row={r} /> },
     {
       key: "status", label: "สถานะ",
       render: (r) => (

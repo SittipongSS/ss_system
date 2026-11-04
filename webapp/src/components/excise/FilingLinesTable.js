@@ -51,7 +51,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
           <tr>
             {selectable ? (
               <th className={styles.check}>
-                <input type="checkbox" checked={allChecked} onChange={onToggleAll} aria-label="เลือกทุกงานที่พิมพ์ใบสรุปได้" />
+                <input type="checkbox" checked={allChecked} onChange={onToggleAll} aria-label="เลือกทุกงานบนจอ (พิมพ์ / Excel)" />
               </th>
             ) : null}
             {COLUMNS.map((label) => <th key={label} className={NUMERIC.has(label) ? styles.num : undefined}>{label}</th>)}
@@ -103,9 +103,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                   <tr key={`group:${row.key}`} className={styles.groupRow}>
                     {selectable ? (
                       <td className={styles.check}>
-                        {row.printKey ? (
-                          <input type="checkbox" checked={selected.has(row.key)} onChange={() => onToggle(row.key)} aria-label={`เลือก ${row.salesOrderNumber}`} />
-                        ) : null}
+                        <input type="checkbox" checked={selected.has(row.key)} onChange={() => onToggle(row.key)} aria-label={`เลือก ${row.salesOrderNumber}`} />
                       </td>
                     ) : null}
                     <td colSpan={COLUMNS.length}>

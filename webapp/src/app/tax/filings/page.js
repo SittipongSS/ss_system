@@ -14,7 +14,6 @@ import { deptOf, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
 import { dayParam, withinDateRange } from "@/lib/tax/period";
 import { raQueueText, raWorkHref } from "@/lib/excise/raQueueItem";
-import { printFilingSummary } from "@/lib/excise/printFilingSummary";
 import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import { downloadReportXlsx, reportXlsxFileName } from "@/lib/tax/reportXlsxDownload";
 import { raFilingExcelReport, raFilingExportRows, raFilingPrintReport } from "@/lib/excise/raFilingExport";
@@ -33,12 +32,11 @@ import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 /* ── งานหนึ่งแถวของรายการ (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11) ─────────────────────────────────────────
    รายการเดียวของ RA: แถวคิวที่ยังไม่มีบันทึก (กำลังมา · รอ RA — คำนวณสดจาก /api/tax/orders/queue) + บันทึกการยื่น
    (กำลังยื่น · ชำระแล้ว — /api/orders) · ไม่มีขั้นสร้างใบยื่น: กดงานรอ RA = เปิดงาน (`?start=`) แล้วกด "เริ่มยื่น"
-   `printKey` = คีย์ของใบสรุปรายการยื่น (lib/excise/filingSummary) · แถวกำลังมายังไม่มี SO ค่าสรรพสามิต ⇒ พิมพ์ไม่ได้ */
+   ⚠️ ใบสรุปรายการยื่น (V9 · `printKey`) ถอดแล้ว 04/11 (เจ้าของ: "ยื่นกรมยื่นให้ระบบกรมอยู่แล้ว") — ทุกแถวติ๊กได้ ใช้กับพิมพ์/Excel */
 const queueWorkRow = (row) => ({
   key: row.key,
   kind: "queue",
   status: row.ready === false ? "upcoming" : "queued",
-  printKey: row.ready === false ? null : row.key,
   salesOrderNumber: row.salesOrder?.orderNumber || "",
   subtitle: raQueueText(row).subtitle,
   customerId: row.salesOrder?.customerId || null,
@@ -51,7 +49,6 @@ const recordWorkRow = (o) => ({
   key: `order:${o.id}`,
   kind: "record",
   status: o.status,
-  printKey: `order:${o.id}`,
   salesOrderNumber: o.poReference || o.quotationRef || o.id,
   subtitle: o.exciseReceiptNumber ? `ใบเสร็จกรม ${o.exciseReceiptNumber}` : o.taxNoticeNumber || "",
   customerId: o.customerId || null,
@@ -84,7 +81,6 @@ function FilingsPageInner() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [selected, setSelected] = useState(() => new Set());
-  const [printing, setPrinting] = useState(false);
   const [exporting, setExporting] = useState(""); // "" · "print" · "xlsx"
   useEffect(() => {
     const params = searchParams;
@@ -184,9 +180,15 @@ function FilingsPageInner() {
      ⇒ ป้ายหมวดบอกแทนว่าว่างเพราะอะไร · ป้ายเต็มพร้อมปุ่มลองใหม่อยู่ใต้แถบเครื่องมือ */
   const customerGroupLabel = customersLoaded ? "ลูกค้า" : filterBlocked ? "ลูกค้า (ดึงไม่ได้)" : "ลูกค้า (กำลังโหลด…)";
 
+  /* ⭐ คำค้นครอบทุกอย่างที่ตาเห็นบนแถว (กติกา "ตาเห็น = ค้นเจอ") — เลข SO/ใบค่าสรรพสามิต/ลูกค้า + บรรทัดรองของหัวงาน
+     + รายการสินค้าในงาน (รหัส FG · แบรนด์ · ชื่อสินค้า) · 🐞 04/11 พิมพ์ "Matcha" ได้ 0 งานทั้งที่ตารางโชว์ชื่อนี้ */
   const allRows = useMemo(
     () => [...raQueue.map(queueWorkRow), ...orders.map(recordWorkRow)]
-      .map((row) => ({ ...row, detail: detailByKey.get(row.key) || null })),
+      .map((row) => {
+        const detail = detailByKey.get(row.key) || null;
+        const lineText = (detail?.lines || []).flatMap((line) => [line.fgCode, line.brand, line.description]);
+        return { ...row, detail, search: [...row.search, row.subtitle, ...lineText] };
+      }),
     [raQueue, orders, detailByKey],
   );
   const monthOptions = useMemo(
@@ -213,8 +215,8 @@ function FilingsPageInner() {
   /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นพิมพ์/โหลดแถวที่มองไม่เห็นออกไป */
   useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, month]);
 
-  // ติ๊กได้เฉพาะแถวที่พิมพ์ใบสรุปได้ (ไม่ใช่กำลังมา)
-  const selectableKeys = useMemo(() => rows.filter((r) => r.printKey).map((r) => r.key), [rows]);
+  // ทุกแถวบนจอติ๊กได้ (รวมงานกำลังมา) — ที่ติ๊ก = แถวที่พิมพ์/Excel จะได้
+  const selectableKeys = useMemo(() => rows.map((r) => r.key), [rows]);
   const allChecked = selectableKeys.length > 0 && selectableKeys.every((key) => selected.has(key));
   const toggleOne = (key) => setSelected((prev) => {
     const next = new Set(prev);
@@ -257,20 +259,6 @@ function FilingsPageInner() {
       setExporting("");
     }
   };
-  /* ใบสรุปรายการยื่น (V9): ติ๊กไว้ = เฉพาะที่ติ๊ก · ไม่ติ๊ก = ทุกแถวบนจอที่พิมพ์ได้ */
-  const printKeys = useMemo(() => {
-    const picked = rows.filter((r) => r.printKey && (selected.size ? selected.has(r.key) : true));
-    return picked.map((r) => r.printKey);
-  }, [rows, selected]);
-  const printSummary = async () => {
-    setPrinting(true);
-    try {
-      await printFilingSummary(printKeys);
-    } finally {
-      setPrinting(false);
-    }
-  };
-
   const customerName = customerIds.length === 1
     ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
     : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
@@ -289,11 +277,6 @@ function FilingsPageInner() {
       <Button tone="primary" onClick={() => runExport("xlsx")} disabled={!exportRows.length || !!exporting} icon={<FileSpreadsheet size={16} />}>
         {exporting === "xlsx" ? "กำลังสร้างไฟล์..." : "ดาวน์โหลด Excel"}
       </Button>
-      {canFile && (
-        <Button tone="neutral" onClick={printSummary} disabled={printing || !printKeys.length} icon={<Printer size={16} />}>
-          {printing ? "กำลังเตรียม..." : selected.size ? `พิมพ์ใบสรุปรายการยื่น (${printKeys.length})` : "พิมพ์ใบสรุปรายการยื่น"}
-        </Button>
-      )}
     </>
   );
 
@@ -301,7 +284,7 @@ function FilingsPageInner() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title="การยื่นชำระภาษีสรรพสามิต"
-      subtitle="งานของฝ่าย RA — ข้อมูลจากใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว · เริ่มยื่น · บันทึกผลชำระ · พิมพ์ใบสรุปรายการยื่น"
+      subtitle="งานของฝ่าย RA — ข้อมูลจากใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว · เริ่มยื่น · บันทึกผลชำระ · พิมพ์ / Excel ตามที่เห็นบนจอ"
       headerRight={headerRight}
     >
       {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
@@ -369,7 +352,8 @@ function FilingsPageInner() {
         onToggle={toggleOne}
         allChecked={allChecked}
         onToggleAll={() => setSelected(allChecked ? new Set() : new Set(selectableKeys))}
-        selectable={canFile}
+        /* ติ๊กได้ทุกคนที่เห็นตาราง — ที่ติ๊กใช้กับพิมพ์/Excel เท่านั้น (ใบสรุปรายการยื่นของ RA ถอดแล้ว 04/11) */
+        selectable
         detailLoading={lTable && !tableLoaded}
         /* ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง — RA ตกลงมาที่ "รอฉันลงมือ" เป็นค่าตั้งต้น */
         empty={allRows.length === 0

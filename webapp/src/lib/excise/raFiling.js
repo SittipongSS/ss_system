@@ -1,7 +1,7 @@
 // ── ใบยื่นกรมของ RA — ตัวโหลดฝั่ง server (แผนรื้อสรรพสามิต PR5 · mig 0417) ──────────────────────────────
 //
 // ใช้ร่วม: คิวงานของ RA (GET /api/tax/orders/queue) · เริ่มยื่น = เขียนบันทึก (POST /api/tax/orders/from-sales-order) ·
-// แผงสรุปบนหน้างาน (GET /api/orders/[id]) · ใบสรุปรายการยื่น · ป้ายเมนู — RA ไม่มีสิทธิ์เปิดหน้าขาย (ไม่มี salesplan:view) ⇒ ทุกอย่างที่ RA
+// แผงสรุปบนหน้างาน (GET /api/orders/[id]) · ป้ายเมนู — RA ไม่มีสิทธิ์เปิดหน้าขาย (ไม่มี salesplan:view) ⇒ ทุกอย่างที่ RA
 // ต้องรู้เรื่อง SO มาทางนี้ อ่านด้วยบัญชีระบบ แล้วส่งเฉพาะช่องที่ใบยื่นต้องใช้
 // กติกาล้วน (รายการ · ด่าน) อยู่ที่ raFilingRules.js
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -9,9 +9,6 @@ import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { ORIGIN_PIPELINE, exciseRowsOnly, isExciseOrder, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { resolveSalesOrderFiling } from '@/lib/excise/soFilingItems';
 import { billedTaxTotals } from '@/lib/tax/exciseBilling';
-import { ORDER_SELECT, attachRegistrations } from '@/lib/tax/orders';
-import { statusMeta } from '@/lib/excise/workflow';
-import { productDisplayName } from '@/lib/master/productIdentity';
 import { LIVE_EXCISE_QUOTATION_STATUSES } from '@/lib/excise/exciseQuotation';
 import { roundsRemainingUnits } from '@/lib/excise/exciseRounds';
 import {
@@ -136,14 +133,6 @@ async function attachRounds(supabase, rows) {
   }
 }
 
-/** รอบของใบค่าสรรพสามิตใบเดียว (ใบสรุปรายการยื่น) — ตัวนับเดียวกับป้ายบนคิว RA (`attachRounds`) · หาไม่เจอ = null */
-async function exciseRoundOf(supabase, salesOrderId, quotationId) {
-  if (!salesOrderId || !quotationId) return null;
-  const row = { salesOrder: { id: salesOrderId }, exciseOrder: { quotationId } };
-  await attachRounds(supabase, [row]);
-  return row.round || null;
-}
-
 /* ขั้นของแถวกำลังมา — ใครถือ · รออะไร (คำบนคิวของ RA) */
 export const UPCOMING_STAGE_TEXT = Object.freeze({
   quote_approved: 'ใบเสนอราคาค่าสรรพสามิตอนุมัติแล้ว — รอลูกค้าตอบรับ (Won)',
@@ -214,7 +203,7 @@ async function loadOrderWithLines(supabase, id) {
 const fail = (status, message) => ({ error: { status, message } });
 
 /**
- * แหล่งของงานยื่นหนึ่งงาน (เริ่มยื่น/พรีวิว/ใบสรุป) — `{ error }` หรือ `{ source, salesOrder, exciseOrder, resolved }`
+ * แหล่งของงานยื่นหนึ่งงาน (เริ่มยื่น/พรีวิว/ตารางของ RA) — `{ error }` หรือ `{ source, salesOrder, exciseOrder, resolved }`
  * @param exciseSalesOrderId SO ค่าสรรพสามิต (ใบที่ลูกค้าจ่ายค่าภาษี) · หรือ
  * @param salesOrderId       SO ลูกค้าที่ตัดสินไม่เรียกเก็บ
  */
@@ -335,94 +324,4 @@ export async function loadFilingSummary(supabase, order) {
     } : null,
     gates: filingStartGates({ order, exciseOrder, notBilledKind: salesOrder?.exciseNotBilledKind || null }),
   };
-}
-
-/* ── ใบสรุปรายการยื่น (v3 · V9) — หนึ่งคีย์งาน → หัวงาน + รายการ (ของบริสุทธิ์ที่จัดเป็นรายงานอยู่ lib/excise/filingSummary.js)
-   order:<id> = บันทึกที่ตรึงไว้ · excise:/not_billed: = ข้อมูลสดจาก SO ตัวโหลดเดียวกับตอนเริ่มยื่น (loadFilingSource) */
-const PENDING_LABEL = 'รอ RA — ยังไม่เริ่มยื่น (ข้อมูลสดจากใบสั่งขาย)';
-
-async function summaryRecordItem(supabase, id) {
-  const { data: order, error } = await supabase.from('orders').select(ORDER_SELECT).eq('id', id).maybeSingle();
-  if (error) throw error;
-  if (!order) return { missing: `ไม่พบบันทึกการยื่น ${id}` };
-  await attachRegistrations(supabase, order);
-  let exciseOrderNumber = null;
-  let round = null;
-  if (order.exciseSalesOrderId) {
-    const { data: exciseOrder, error: exciseError } = await supabase
-      .from('sales_orders').select('"orderNumber", "quotationId", "sourceSalesOrderId"').eq('id', order.exciseSalesOrderId).maybeSingle();
-    if (exciseError) throw exciseError;
-    exciseOrderNumber = exciseOrder?.orderNumber || null;
-    round = await exciseRoundOf(supabase, order.salesOrderId || exciseOrder?.sourceSalesOrderId, exciseOrder?.quotationId);
-  }
-  return {
-    statusLabel: statusMeta(order.status).label,
-    salesOrderNumber: order.poReference || order.quotationRef || order.id,
-    exciseOrderNumber,
-    round,
-    customerName: order.customerName,
-    customerTaxId: order.customerTaxId,
-    lines: (order.items || []).map((item) => {
-      const product = item.product || item.registration || {};
-      return {
-        fgCode: product.fgCode || '',
-        description: productDisplayName(product),
-        registrationNumber: item.registration?.approvalNumber || '',
-        quantity: item.quantity,
-        exciseRatePerUnit: item.exciseRatePerUnit,
-        localTaxRatePerUnit: item.localTaxRatePerUnit,
-        totalExciseTax: item.totalExciseTax,
-        totalLocalTax: item.totalLocalTax,
-        totalTax: item.totalTax,
-      };
-    }),
-  };
-}
-
-async function summaryPendingItem(supabase, parsed) {
-  const loaded = await loadFilingSource(supabase, parsed.kind === 'excise'
-    ? { exciseSalesOrderId: parsed.id }
-    : { salesOrderId: parsed.id });
-  if (loaded.error) return { missing: loaded.error.message };
-  const { salesOrder, exciseOrder, resolved } = loaded;
-  const regIds = [...new Set(resolved.lines.map((line) => line.registrationId).filter(Boolean))];
-  const [{ data: regs, error: regError }, { data: customer, error: customerError }] = await Promise.all([
-    regIds.length
-      ? supabase.from('excise_registrations').select('id, "approvalNumber"').in('id', regIds)
-      : Promise.resolve({ data: [], error: null }),
-    salesOrder.customerId
-      ? supabase.from('customers').select('id, "taxId"').eq('id', salesOrder.customerId).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-  ]);
-  if (regError) throw regError;
-  if (customerError) throw customerError;
-  const approvalById = new Map((regs || []).map((reg) => [reg.id, reg.approvalNumber]));
-  const round = exciseOrder ? await exciseRoundOf(supabase, salesOrder.id, exciseOrder.quotationId) : null;
-  return {
-    statusLabel: PENDING_LABEL,
-    salesOrderNumber: salesOrder.orderNumber,
-    exciseOrderNumber: exciseOrder?.orderNumber || null,
-    round,
-    notBilledLabel: exciseOrder ? null : notBilledLabel(salesOrder.exciseNotBilledKind),
-    customerName: salesOrder.customerName,
-    customerTaxId: customer?.taxId || null,
-    lines: resolved.lines.map((line) => ({
-      fgCode: line.fgCode,
-      description: line.description,
-      registrationNumber: line.registrationId ? approvalById.get(line.registrationId) || '' : '',
-      quantity: line.quantity,
-      exciseRatePerUnit: line.exciseRatePerUnit,
-      localTaxRatePerUnit: line.localTaxRatePerUnit,
-      totalExciseTax: line.totalExciseTax,
-      totalLocalTax: line.totalLocalTax,
-      totalTax: line.totalTax,
-    })),
-  };
-}
-
-/** คีย์งานที่แกะแล้ว (`parseFilingSummaryKey`) → หัวงาน + รายการ หรือ `{ missing: ข้อความ }` เมื่อหาไม่เจอ/ไม่ใช่งานยื่น */
-export function loadFilingSummaryItem(supabase, parsedKey) {
-  return parsedKey.kind === 'order'
-    ? summaryRecordItem(supabase, parsedKey.id)
-    : summaryPendingItem(supabase, parsedKey);
 }

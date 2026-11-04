@@ -24,6 +24,8 @@ import { fmtNumber } from '@/lib/format';
 import { exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
 import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
 import { withinDateRange } from '@/lib/tax/period';
+import { sortRegistrationsLikeQueue } from '@/lib/tax/registrationQueue';
+import { businessDate } from '@/lib/businessDate';
 
 /* ⭐ ช่วงวันของรายงาน = ตัวตัดสินเดียวกับตารางคิว (`withinDateRange` · วันไทยของ createdAt) — ตรวจตัวเลข M7 20/10/2026
    🐞 เดิมแปลง from เป็น Date ตรง ๆ = เที่ยงคืน **UTC** (เครื่อง Vercel) ⇒ ใบที่สร้างตี 1–7 โมงเช้าวันแรกของช่วงหลุดจากไฟล์
@@ -42,7 +44,9 @@ async function fetchRegistrations(filter = {}) {
   let q = applyTeamScope(supabase.from('excise_registrations').select('*'), filter);
   const customerIds = asList(filter.customerId);
   if (customerIds.length) q = q.in('customerId', customerIds);
-  const { data, error } = await q;
+  /* ลำดับเดียวกับคิวบนจอ (`/api/excise-registrations` · สร้างล่าสุดก่อน) — 🐞 04/11 ไฟล์เรียงตามลำดับในฐาน ไม่ตรงกับจอ
+     (ติ๊กสองแถวบนจอแล้วพิมพ์ ได้สองแถวสลับกัน) */
+  const { data, error } = await q.order('createdAt', { ascending: false }).order('id', { ascending: true });
   if (error) throw error;
   return data || [];
 }
@@ -72,11 +76,11 @@ export async function registrationReport(filter = {}) {
   const { from, to, margin, status, ids } = filter;
   const idSet = ids && ids.length ? new Set(ids) : null;
   const statuses = asList(status);
-  const regs = (await fetchRegistrations(filter)).filter(
+  const regs = sortRegistrationsLikeQueue((await fetchRegistrations(filter)).filter(
     (r) => inRange(r.createdAt, from, to)
       && (!statuses.length || statuses.includes(r.status))
       && (!idSet || idSet.has(r.id)),
-  );
+  ), businessDate());
   const products = await fetchProductMap();
   const teamName = teamLabelOf(filter.teamNames);
 

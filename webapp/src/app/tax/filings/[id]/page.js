@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, FileCheck, MessagesSquare, ExternalLink, Printer, PencilLine } from "lucide-react";
+import { ReceiptText, FileCheck, MessagesSquare, ExternalLink, PencilLine } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -24,7 +24,6 @@ import FileTaxDialog from "@/components/excise/FileTaxDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { isExemptFiling, orderAmountToCollect, untaxedFilingItems } from "@/lib/tax/exciseBilling";
 import { FILING_REASON_MAX, FILING_REASON_MIN } from "@/lib/excise/raFilingRules";
-import { printFilingSummary } from "@/lib/excise/printFilingSummary";
 import { FINANCE_STATUS_LABELS } from "@/lib/sales/salesOrderFinanceApproval";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { canTransitionFiling, statusMeta } from "@/lib/excise/workflow";
@@ -49,7 +48,8 @@ const STEP_OF = { draft: 0, filing: 1, rejected: 1, complete: 2, delivered: 2 };
 export default function FilingDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  /* ⭐ v3 (มติเจ้าของ 02/11): บันทึกการยื่นเป็นงานของฝ่าย RA ทั้งเส้น — บันทึกผลชำระ · แก้ข้อมูลการชำระ · ยกเลิกการเริ่มยื่น · พิมพ์ใบสรุป
+  /* ⭐ v3 (มติเจ้าของ 02/11): บันทึกการยื่นเป็นงานของฝ่าย RA ทั้งเส้น — บันทึกผลชำระ · แก้ข้อมูลการชำระ · ยกเลิกการเริ่มยื่น
+     (ใบสรุปรายการยื่นถอดแล้ว 04/11 — ยื่นกรมผ่านระบบของกรม · พิมพ์/Excel อยู่ที่หน้ารายการ)
      ไม่มีร่าง/คิดใหม่/ตีกลับ/ส่งเอกสาร · ฝ่ายขายเปิดอ่านได้แต่ไม่มีปุ่ม (เห็นขั้นของ RA บนใบสั่งขายของตัวเอง) */
   const canApprove = useCan("ra:approve");
   const canOpenSales = useCan("salesplan:view"); // RA ไม่มี ⇒ แผงสรุป SO ไม่มีลิงก์ไปหน้าขาย
@@ -132,7 +132,6 @@ export default function FilingDetailPage() {
   const [fileOpen, setFileOpen] = useState(false);
   const [editPaidOpen, setEditPaidOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
-  const [printing, setPrinting] = useState(false);
 
   /* D10: ยกเลิกการเริ่มยื่น = ลบบันทึก (เหตุผล 10–500 ตัว · server ตรวจซ้ำ) ⇒ งานกลับไปรอ RA บนหน้ารายการ */
   const withdraw = async (reason) => {
@@ -141,14 +140,6 @@ export default function FilingDetailPage() {
     });
     if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "ยกเลิกการเริ่มยื่นไม่สำเร็จ");
     router.push("/tax/filings");
-  };
-  const print = async () => {
-    setPrinting(true);
-    try {
-      await printFilingSummary([`order:${o.id}`]);
-    } finally {
-      setPrinting(false);
-    }
   };
 
   const back = { href: "/tax/filings", label: "กลับไปหน้างานยื่นชำระ" };
@@ -234,12 +225,8 @@ export default function FilingDetailPage() {
                 workflowSteps={workflowSteps}
                 primaryAction={primaryAction}
                 /* ⚠️ "ออกใบแจ้งชำระค่าภาษี" ถึงลูกค้าถอดแล้ว (PR5 · ขัดมติ Q1 — เอกสารถึงลูกค้าคือใบเสนอราคาค่าสรรพสามิต)
-                   ใบที่ RA พิมพ์ได้คือใบสรุปรายการยื่น (V9) */
+                   ใบสรุปรายการยื่น (V9) ถอดแล้ว 04/11 (เจ้าของ: ยื่นกรมผ่านระบบของกรม) — พิมพ์/Excel อยู่ที่หน้ารายการ */
                 secondaryActions={[
-                  {
-                    id: "print", label: printing ? "กำลังเตรียม…" : "พิมพ์ใบสรุปรายการยื่น", kind: "print", icon: Printer,
-                    onClick: print, disabled: printing,
-                  },
                   {
                     // D11: แก้เลขที่ใบเสร็จ/วันที่/ยอดหลังชำระแล้ว — ฟอร์มเดียวกับตอนบันทึกผลชำระ (เติมค่าเดิม)
                     id: "edit-paid", label: "แก้ข้อมูลการชำระ", kind: "edit", icon: PencilLine,
