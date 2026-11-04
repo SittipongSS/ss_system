@@ -236,9 +236,28 @@ test('🔴 ผู้ออกใบรับการอัปเป็นลิ
   assert.deepEqual(issuers, [
     'app/api/upload/commit/route.js',
     'app/api/upload/route.js',
+    'lib/excise/registrationArtworkCopy.js', // คัดลอก Artwork ของสินค้าเป็นไฟล์ของทะเบียน (มติ 04/11/2026) — id ของไฟล์ใหม่จาก uploadForEntity
     'lib/service/surveyPlanCopy.js', // คัดลอกไฟล์ของฝ่ายขายเป็นภาพแบบ — id ของไฟล์ใหม่จาก uploadForEntity
     'lib/upload/receipts.js',
   ]);
+
+  const ART = strip(read('../excise/registrationArtworkCopy.js'));
+  // ออกใบรับจุดเดียว ด้วย id ของผลจาก Drive (`copy.id`) และผู้ใช้จาก session
+  assert.equal((ART.match(/recordUploadReceipt\)\(supabase, \{/g) || []).length, 1);
+  assert.match(ART, /copy = await drive\.uploadForEntity\(\{/);
+  assert.match(ART, /driveFileId: copy\.id, userId: user\.id, entityType: REG_ENTITY, entityId: registration\.id,/);
+  // ลำดับ: ด่านสิทธิ์ → สถานะทะเบียน → แถวต้นทาง → ใช้ไปแล้ว → ถาม Drive → คัดลอก → ออกใบรับ → (ล้ม) ลบไฟล์ใหม่
+  order(ART.slice(ART.indexOf('export async function copyProductArtworkToRegistration(')), [
+    'if (canAttach !== true) return answer(403, ERR.forbidden);',
+    'if (!REGISTRATION_LINK_EDITABLE_STATUSES.includes(registration.status)) return answer(409, ERR.status);',
+    'if (canRead !== true) return missing;',
+    'if ((used || []).length) return answer(409, ERR.used);',
+    'meta = await drive.getFileMeta(row.driveFileId, DRIVE_META_FIELDS);',
+    'copy = await drive.uploadForEntity({',
+    'driveFileId: copy.id, userId: user.id,',
+    'await drive.deleteFile(copy.id);',
+    'return answer(503, ERR.copy);',
+  ], 'artwork copy');
 
   const COPY = strip(read('../service/surveyPlanCopy.js'));
   // ออกใบรับจุดเดียว ด้วย id ของผลจาก Drive (`copy.id`) และผู้ใช้จาก session

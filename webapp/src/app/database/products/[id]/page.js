@@ -9,10 +9,10 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isSalesManager } from "@/lib/permissions";
 import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/master/units";
-import ProductStatusPill from "@/components/ProductStatusPill";
 import OrderStatusPill from "@/components/OrderStatusPill";
 import EditProductModal from "@/components/EditProductModal";
 import RegistrationWorkModal from "@/components/excise/RegistrationWorkModal";
+import ExciseStatusBadge from "@/components/excise/StatusBadge";
 import CostVatLines from "@/components/database/CostVatLines";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import SkeletonRows from "@/components/ui/Skeleton";
@@ -571,7 +571,7 @@ export default function ProductDetails() {
                   /* ── แถวทั้งแถวเป็น <Link> ไม่ใช่ `<div onClick>` (2026-09-02) ──────────
                      เดิมแขวน `router.push(X)` ไว้บน <div> ⇒ เมาส์กดได้ แต่คีย์บอร์ดเข้าไม่ถึง
                      (WCAG 2.1.1) และไม่ได้คลิกกลาง/เปิดแท็บใหม่/เมนูคลิกขวา
-                     ห่อทั้งแถวได้เพราะข้างในไม่มี interactive: `<ProductStatusPill>` คืน <span>
+                     ห่อทั้งแถวได้เพราะข้างในไม่มี interactive: ป้ายสถานะ (`ExciseStatusBadge`) คืน <span>
                      ที่เหลือเป็น span ข้อความ · `clickable-row`/`cursor-pointer` ถอดได้ทั้งคู่
                      (คลาสแรกให้แค่ cursor + กฎ `:hover td` ที่ไม่มีวันยิงบนแถวที่ไม่ใช่ตาราง
                      ส่วน cursor เป็นของแถมของลิงก์อยู่แล้ว) · วงโฟกัสมาจาก `.card-link` */
@@ -585,7 +585,10 @@ export default function ProductDetails() {
                     <span className="font-medium text-[var(--text-2)]">{naText(r.customerName)}</span>
                     <div className="flex items-center gap-3">
                       {r.approvalNumber && <span className="font-mono text-[var(--text-3)]">{r.approvalNumber}</span>}
-                      <ProductStatusPill status={r.status} />
+                      {/* 🐞 สถานะของ **ทะเบียน** ต้องใช้ป้ายของสายสรรพสามิต (`statusMeta`) — เดิมใช้ `ProductStatusPill` ซึ่งรู้จักแค่
+                          อนุมัติ/ตีกลับ ที่เหลือขึ้น "รออนุมัติ" หมด ⇒ ทะเบียนฉบับร่างที่ยังไม่ได้ยื่นดูเหมือนยื่นไปแล้ว (พบ 04/11/2026
+                          REG-mw1vefs7918b) · แผงทะเบียนใช้ป้ายตัวนี้อยู่แล้ว สองที่จึงพูดคำเดียวกัน */}
+                      <ExciseStatusBadge status={r.status} />
                     </div>
                   </button>
                 ))}
@@ -1036,7 +1039,7 @@ export default function ProductDetails() {
             canEdit={canEditProducts}
             docTypes={productDocTypes(product)}
             title="เอกสารของสินค้า"
-            note="Artwork สินค้า (ใช้ต่อเรื่องขึ้นทะเบียนสรรพสามิต) และเอกสารอื่นๆ — สัญญาจ้างผลิตย้ายไปผูกกับลูกค้าแล้ว"
+            note="Artwork สินค้า — ใช้ยื่นทะเบียนสรรพสามิตได้ด้วยปุ่ม “ใช้ไฟล์นี้ยื่น” ในแผงทะเบียน (ระบบคัดลอกไฟล์ให้) · สัญญาจ้างผลิตย้ายไปผูกกับลูกค้าแล้ว"
           />
 
           {/* เอกสารลูกค้าเจ้าของ (อ่านอย่างเดียว) — เชื่อมโยงผ่าน product.customerId */}
