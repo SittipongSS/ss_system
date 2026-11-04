@@ -40,7 +40,7 @@ import {
   EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, EXCISE_TOTAL_RATE, EXCISE_VAT_RATE,
   exciseTaxLineForRegistration, productTaxRates,
 } from "@/lib/tax/exciseBilling";
-import { ageLabel, ageTone, registrationAge } from "@/lib/tax/registrationQueue";
+import { ageLabel, ageTone, registrationAge, registrationPendingAge } from "@/lib/tax/registrationQueue";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
@@ -122,6 +122,8 @@ export default function RegistrationDetailPage() {
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกาไทย — ห้ามอ่านนาฬิกาตอนเรนเดอร์ */
   const todayIso = useMemo(() => businessDate(), []);
   const ageDays = s ? registrationAge(s, todayIso) : null;
+  // สีของ "อยู่สถานะนี้มา" พูดว่า "ค้าง" — ใบที่ขึ้นทะเบียนแล้วไม่ค้าง ⇒ สีปกติ (ตัวเลขยังโชว์ตามจริง)
+  const ageToneNow = ageTone(s ? registrationPendingAge(s, todayIso) : null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
@@ -523,7 +525,7 @@ export default function RegistrationDetailPage() {
               <Field label="ผู้อนุมัติ">{s.approvedByName}</Field>
               <Field label="อยู่สถานะนี้มา">
                 {/* โทนมาจากข้อมูล (จำนวนวัน) จึงเป็น inline style โดยเจตนา */}
-                <span style={ageTone(ageDays) === "neutral" ? undefined : { color: toneColor(ageTone(ageDays)) }}>
+                <span style={ageToneNow === "neutral" ? undefined : { color: toneColor(ageToneNow) }}>
                   {naText(ageLabel(ageDays))}
                 </span>
               </Field>
