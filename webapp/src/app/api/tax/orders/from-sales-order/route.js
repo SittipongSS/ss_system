@@ -4,7 +4,8 @@ import { fetchAllResult } from "@/lib/supabaseFetchAll";
 import { recordAudit } from "@/lib/audit";
 import { withUser, badRequest, conflict, fail, forbidden, notFound, ok, unauthorized } from "@/lib/http";
 import { can, caretakerTeamsOf } from "@/lib/permissions";
-import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from "@/lib/salesPlanning";
+import { canViewSalesPlanning, inSalesEditScope } from "@/lib/salesPlanning";
+import { attachSourceDeals, inSalesDocScope } from "@/lib/scopedRow";
 import { insertOrder, insertOrderItems } from "@/lib/tax/orders";
 import { resolveSoFiling } from "@/lib/excise/soFiling";
 import { customerTaxSiblingIdMap } from "@/lib/master/customerTaxSiblings";
@@ -14,7 +15,7 @@ import { NA } from "@/lib/format";
 import { exciseHandledOrderIds } from "@/lib/excise/exciseQuotation";
 import { findFilingFor, loadFilingSource } from "@/lib/excise/raFiling";
 import { filingStartGateError, filingStartGates, notBilledLabel } from "@/lib/excise/raFilingRules";
-import { isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
+import { isExciseOrder, isHistoricalOrder, pipelineRowsOnly } from "@/lib/sales/historicalOrders";
 
 // ค่าที่ลงคอลัมน์ต้องเป็น null เมื่อไม่มีข้อมูล — ขีดกับสตริงว่างเป็นเรื่องของการแสดงผล
 // (dealTypeOf คืน "-" เมื่อดีลไม่มีประเภท)
@@ -221,7 +222,18 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   try {
     salesOrder = await loadSalesOrderContext(supabase, salesOrderId);
     if (!salesOrder) return notFound("ไม่พบ ใบสั่งขาย");
-    if (!salesOrder.deal || !inSalesViewScope(user, salesOrder.deal)) return forbidden();
+    /* 🐞 04/11 SO-26110395-0 (SO ค่าสรรพสามิตใบแรกบน prod): เดิมเช็ค `inSalesViewScope(user, salesOrder.deal)` ตรง ๆ
+       — SO ค่าสรรพสามิตไม่มีดีล (mig 0414) ⇒ ตอบ 403 `forbidden` ให้ทุกคน รวมเจ้าของดีลต้นทาง · หน้า SO โหลดเส้นนี้ทุกครั้ง
+       ⇒ แถบแดง "forbidden" ค้างบนทุก SO ค่าสรรพสามิต · ถอยไปดีลของ SO ต้นทางด้วยตัวกลางตัวเดียวกับ route ของใบสั่งขาย */
+    const { error: sourceError } = await attachSourceDeals(supabase, [salesOrder]);
+    if (sourceError) throw sourceError;
+    if (!inSalesDocScope(user, salesOrder, "view")) return forbidden();
+    /* SO ค่าสรรพสามิตคือตัวเงินค่าภาษี ไม่ใช่สินค้าที่ต้องยื่น — ไม่มีอะไรให้ตรวจที่นี่ (การยื่นผูกกับ SO ลูกค้าต้นทาง ·
+       ช่วงยื่นของ RA อ่านจาก GET …/excise-quotation ของ SO ต้นทาง) · `filing: null` = เส้นเดินงานไม่วาดช่วงสรรพสามิต
+       ⚠️ ด่านยกเลิกใบตอนมีบันทึกการยื่นอยู่ที่ PATCH ของใบ (อ่านทั้ง `salesOrderId` และ `exciseSalesOrderId`) ไม่ได้พึ่งค่านี้ */
+    if (isExciseOrder(salesOrder)) {
+      return ok({ filing: null, filings: [], schemaReady: true, eligible: false, excise: true, lines: [], warnings: [] });
+    }
     /* ⛔ ใบสั่งขายย้อนหลัง (mig 0360) ไม่มีงานยื่นภาษีในระบบ — ตอบ "ไม่เข้าเกณฑ์" ก่อนคำนวณสินค้า
        ไม่งั้นเส้นเดินงานของใบชวนกด "สร้างใบยื่น" ให้งานที่ออกบิลนอกระบบไปแล้ว */
     if (isHistoricalOrder(salesOrder)) {
