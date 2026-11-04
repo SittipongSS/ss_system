@@ -53,3 +53,6 @@
   color: var(--text);
 }
 .reuseText { min-width: 0; flex: 1 1 16rem; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); overflow-wrap: anywhere; }
+
+/* แผงแบบฝังในหน้า (`RegistrationWorkPanel` — หน้าสินค้า แท็บสรรพสามิต) — ระยะเดียวกับในโมดัล แต่ไม่มีขอบของโมดัล */
+.inline { display: flex; flex-direction: column; gap: var(--space-3-5); }

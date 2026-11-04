@@ -40,9 +40,13 @@ test("V15: ใบที่ RA สร้างเองตรวจเอกส�
 test("V14: หน้าสินค้า + หน้า SO เปิดแผงทะเบียนตัวเดียวกัน · ไม่มีลิงก์ทะเบียนเข้า /tax จากสองหน้านี้", () => {
   const product = code("../../app/database/products/[id]/page.js");
   const salesOrder = code("../../app/sales-planning/sales-orders/[id]/page.js");
+  /* หน้า SO เปิดเป็นโมดัล · หน้าสินค้าฝังแผงตัวเดียวกันในแท็บ "สรรพสามิต" (มติเจ้าของ 04/11/2026 "แท็บตามม็อก")
+     — ทั้งสองมาจากไฟล์เดียว (`RegistrationWorkModal.js`) ห้ามเขียนแผงชุดที่สอง */
+  assert.match(salesOrder, /import RegistrationWorkModal from "@\/components\/excise\/RegistrationWorkModal";/);
+  assert.match(salesOrder, /<RegistrationWorkModal\s/);
+  assert.match(product, /import \{ RegistrationWorkPanel \} from "@\/components\/excise\/RegistrationWorkModal";/);
+  assert.match(product, /<RegistrationWorkPanel\s/);
   for (const [name, src] of [["หน้าสินค้า", product], ["หน้า SO", salesOrder]]) {
-    assert.match(src, /import RegistrationWorkModal from "@\/components\/excise\/RegistrationWorkModal";/, name);
-    assert.match(src, /<RegistrationWorkModal\s/, name);
     assert.doesNotMatch(src, /\/tax\/registrations/, `${name} ต้องไม่ลิงก์เข้า /tax/registrations แล้ว`);
   }
   assert.doesNotMatch(product, /router\.push\(`\/tax\//, "สร้างคำขอแล้วไม่พาออกไป /tax");

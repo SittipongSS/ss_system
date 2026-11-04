@@ -18,8 +18,8 @@
     "database": {
       "legacyTable": 7,
       "legacySurface": 19,
-      "inlineStyle": 46,
-      "rawButtonClass": 38,
+      "inlineStyle": 43,
+      "rawButtonClass": 37,
       "rawInputClass": 22
     },
     "tax": {
