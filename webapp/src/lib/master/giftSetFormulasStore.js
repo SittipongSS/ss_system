@@ -10,8 +10,7 @@ import { loadProductTypeNames } from '@/lib/master/productCategoryNames';
 import { giftSetFormulasError, normalizeGiftSetFormulas } from '@/lib/master/giftSetFormulas';
 
 // `ingredientList` (ม-158 · mig 0423) — หน้า FG โชว์ Ingredient List รายสูตรในชุด (อ่านสด ไม่มีสำเนาบนสินค้า)
-// `customerTradeName` — ชื่อที่ลูกค้าเรียกสูตร · คิวลง BOM ของ RD โชว์ใต้ชื่อสูตร (มติเจ้าของ 03/11)
-const FORMULA_COLUMNS = 'id, code, name, "formulaDate", "categoryCode", "scentId", status, "ingredientList", "customerTradeName"';
+const FORMULA_COLUMNS = 'id, code, name, "formulaDate", "categoryCode", "scentId", status, "ingredientList"';
 
 const byOrder = (a, b) => (a.sortOrder - b.sortOrder) || String(a.id).localeCompare(String(b.id));
 
@@ -52,7 +51,7 @@ export async function loadProductFormulasMany(supabase, productIds = [], { produ
     .from('formulas').select(FORMULA_COLUMNS).in('id', chunk).order('id'));
   const formulaById = new Map(formulas.map((f) => [f.id, f]));
   const scents = await fetchAllInChunks(formulas.map((f) => f.scentId).filter(Boolean), (chunk) => supabase
-    .from('scents').select('id, name').in('id', chunk).order('id'));
+    .from('scents').select('id, name, "customerTradeName"').in('id', chunk).order('id'));
   const scentById = new Map(scents.map((s) => [s.id, s]));
   const types = productTypes || await loadProductTypeNames(supabase);
   for (const row of [...rows].sort(byOrder)) {
@@ -72,7 +71,8 @@ export async function loadProductFormulasMany(supabase, productIds = [], { produ
       scentId: formula?.scentId || null,
       scentName: scentById.get(formula?.scentId)?.name || null,
       ingredientList: formula?.ingredientList || null,
-      customerTradeName: formula?.customerTradeName || null,
+      // ชื่อที่ลูกค้าเรียก **อยู่ที่กลิ่นที่เดียว** (มติเจ้าของ 04/11 · ม-12) — คิวลง BOM ของ RD โชว์ใต้บรรทัดกลิ่น
+      scentTradeName: scentById.get(formula?.scentId)?.customerTradeName || null,
     }]);
   }
   return out;

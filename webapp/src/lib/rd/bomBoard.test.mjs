@@ -80,20 +80,24 @@ test('ช่องลูกค้า: เลขผู้เสียภาษี
   assert.match(BOM_BOARD_PRODUCT_COLUMNS, /"brandName", "brandNameEn"/);
 });
 
-test('สูตร/กลิ่น: รหัส/ชื่อสูตรอ่านสดจากทะเบียน (สำเนาบน FG เป็นสำรอง) · ชื่อที่ลูกค้าเรียกของสูตร/กลิ่น/สูตรในชุด', () => {
-  const formulasById = new Map([['FML-1', { id: 'FML-1', code: 'PF-NEW', name: 'ชื่อใหม่ในทะเบียน', customerTradeName: 'Tea Valley' }]]);
+test('สูตร/กลิ่น: รหัส/ชื่อสูตรอ่านสดจากทะเบียน (สำเนาบน FG เป็นสำรอง) · ชื่อที่ลูกค้าเรียกมาจากกลิ่นที่เดียว (มติ 04/11)', () => {
+  // ทะเบียนสูตรมีค่าเก่าค้างในคอลัมน์ — ต้องไม่ถูกใช้
+  const formulasById = new Map([['FML-1', { id: 'FML-1', code: 'PF-NEW', name: 'ชื่อใหม่ในทะเบียน', customerTradeName: 'ค่าเก่าของสูตร' }]]);
   const scents = new Map([['SCT-1', { id: 'SCT-1', code: 'SC-01', name: 'กลิ่นมะลิ', customerTradeName: 'Jasmine Night' }]]);
   const live = bomFormulaView(p('A'), { formulasById, scentsById: scents });
-  assert.deepEqual(live.items[0], { code: 'PF-NEW', name: 'ชื่อใหม่ในทะเบียน', tradeName: 'Tea Valley', note: 'กลิ่น กลิ่นมะลิ (ลูกค้าเรียก “Jasmine Night”)' });
-  // ชื่อที่ลูกค้าเรียกกลิ่นซ้ำกับของสูตร = ไม่พ่วงซ้ำ
-  const same = bomFormulaView(p('A'), { formulasById: new Map([['FML-1', { code: 'PF-NEW', name: 'x', customerTradeName: 'Jasmine Night' }]]), scentsById: scents });
-  assert.equal(same.items[0].note, 'กลิ่น กลิ่นมะลิ');
-  // ไม่เจอในทะเบียน = ใช้สำเนาบน FG · ไม่มีชื่อที่ลูกค้าเรียก
+  assert.deepEqual(live.items[0], { code: 'PF-NEW', name: 'ชื่อใหม่ในทะเบียน', note: 'กลิ่น กลิ่นมะลิ', tradeName: 'Jasmine Night' });
+  // กลิ่นไม่มีชื่อที่ลูกค้าเรียก = ไม่มีบรรทัดนี้ (ไม่ถอยไปใช้ของสูตร)
+  const noTrade = bomFormulaView(p('A'), { formulasById, scentsById });
+  assert.equal(noTrade.items[0].tradeName, null);
+  // ไม่เจอในทะเบียน = ใช้สำเนาบน FG
   const copy = bomFormulaView(p('A'), { scentsById });
-  assert.deepEqual([copy.items[0].code, copy.items[0].name, copy.items[0].tradeName], ['F-001', 'สูตรหนึ่ง', null]);
-  // หัวน้ำหอม = ชื่อที่ลูกค้าเรียกกลิ่น · ชุดของขวัญ = ของแต่ละสูตรในชุด
+  assert.deepEqual([copy.items[0].code, copy.items[0].name], ['F-001', 'สูตรหนึ่ง']);
+  // หัวน้ำหอม = ของกลิ่น · ชุดของขวัญ = ของกลิ่นของแต่ละสูตรในชุด (loader แนบ scentTradeName)
   assert.equal(bomFormulaView({ categoryCode: '02-020', scentId: 'SCT-1' }, { scentsById: scents }).items[0].tradeName, 'Jasmine Night');
-  const set = bomFormulaView({ categoryCode: '01-037' }, { giftSetRows: [{ formulaCode: 'F1', formulaName: 'หนึ่ง', customerTradeName: 'Gift One' }, { formulaCode: 'F2', formulaName: 'สอง' }] });
+  const set = bomFormulaView({ categoryCode: '01-037' }, { giftSetRows: [
+    { formulaCode: 'F1', formulaName: 'หนึ่ง', customerTradeName: 'ค่าเก่าของสูตร', scentTradeName: 'Gift One' },
+    { formulaCode: 'F2', formulaName: 'สอง' },
+  ] });
   assert.deepEqual(set.items.map((i) => i.tradeName), ['Gift One', null]);
 });
 
@@ -101,12 +105,16 @@ test('ด่านซอร์ส: route อ่านเลขผู้เสี
   const route = readFileSync(new URL('../../app/api/rd/bom-board/route.js', import.meta.url), 'utf8');
   assert.match(route, /\.from\('customers'\)\.select\('id, "arCode", name, "nameEn", "taxId", "branchCode"'\)/);
   assert.match(route, /\.from\('scents'\)\.select\('id, code, name, "customerTradeName"'\)/);
-  assert.match(route, /\.from\('formulas'\)\.select\('id, code, name, "customerTradeName"'\)/);
+  assert.match(route, /\.from\('formulas'\)\.select\('id, code, name'\)/, 'ไม่อ่านชื่อที่ลูกค้าเรียกของสูตร (อยู่ที่กลิ่น)');
   assert.match(route, /formulasById: new Map\(formulas\.map\(\(f\) => \[f\.id, f\]\)\),/);
   const page = readFileSync(new URL('../../app/rd/bom/page.js', import.meta.url), 'utf8');
   assert.match(page, /Tax ID \{row\.customerTaxId \? fmtNationalId\(row\.customerTaxId\) : NA\} · สาขา \{branchValue\(row\.customerBranchCode\)\}/);
   assert.match(page, /แบรนด์ \{brandBoth\(row\.brandName, row\.brandNameEn\)\}/);
   assert.match(page, /ลูกค้าเรียก “\{item\.tradeName\}”/);
   const store = readFileSync(new URL('../master/giftSetFormulasStore.js', import.meta.url), 'utf8');
-  assert.match(store, /customerTradeName: formula\?\.customerTradeName \|\| null,/);
+  assert.match(store, /scentTradeName: scentById\.get\(formula\?\.scentId\)\?\.customerTradeName \|\| null,/);
+  assert.match(store, /\.from\('scents'\)\.select\('id, name, "customerTradeName"'\)/);
+  // ป้ายชนิดอยู่บนสุดของช่อง · ชื่อที่ลูกค้าเรียกต่อจากบรรทัดกลิ่น
+  assert.ok(page.indexOf('FORMULA_KIND_LABEL[row.formula.kind]') < page.indexOf('<ul className={styles.items}>'));
+  assert.ok(page.indexOf('{item.note ?') < page.indexOf('{item.tradeName ?'));
 });

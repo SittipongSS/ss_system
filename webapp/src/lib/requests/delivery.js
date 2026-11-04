@@ -276,11 +276,7 @@ export function normalizeFormulaDelivery(input = {}) {
   const dateError = formulaDateError(formulaDate);
   if (dateError) return { value: null, error: dateError };
 
-  const customerTradeName = String(src.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
-  if (customerTradeName.length > 200) {
-    return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
-  }
-
+  // ⚠️ ไม่รับชื่อที่ลูกค้าเรียกของสูตรแล้ว — ชื่อที่ลูกค้าเรียกอยู่ที่ **กลิ่นที่เดียว** (มติเจ้าของ 04/11 · ย้อนไป ม-12) — ระดับสูตรคือชื่อสินค้าของ FG
   const note = String(src.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
 
@@ -289,7 +285,6 @@ export function normalizeFormulaDelivery(input = {}) {
       name,
       code,
       formulaDate,
-      customerTradeName: customerTradeName || null,
       // สายพันธุ์สูตร — ด่านข้ามลูกค้าอยู่ฝั่ง server (assertDerivedFromFormula)
       // เพราะต้องอ่านแถวต้นทางมาเทียบ
       derivedFromFormulaId: String(src.derivedFromFormulaId ?? '').trim() || null,

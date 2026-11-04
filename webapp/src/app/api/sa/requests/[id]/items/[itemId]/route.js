@@ -246,7 +246,6 @@ export async function PATCH(request, { params }) {
           name: formulaDelivery.name,
           code: formulaDelivery.code,
           formulaDate: formulaDelivery.formulaDate,
-          customerTradeName: formulaDelivery.customerTradeName,
           derivedFromFormulaId: plan.derivedFromFormulaId,
           note: formulaDelivery.note,
           categoryCode: row.categoryCode,

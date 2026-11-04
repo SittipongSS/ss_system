@@ -29,7 +29,6 @@ export const emptyFormulaForm = () => ({
   formulaDate: "",
   categoryCode: "",
   scentId: "",
-  customerTradeName: "",
   derivedFromFormulaId: "",
   note: "",
   // ลูกค้าอื่นที่ใช้ได้ (ม-150 · มติ 05/10) — `[{ customerId, customerName }]`
@@ -44,7 +43,6 @@ export function formulaToForm(formula) {
     formulaDate: formula.formulaDate || "",
     categoryCode: formula.categoryCode || "",
     scentId: formula.scentId || "",
-    customerTradeName: formula.customerTradeName || "",
     derivedFromFormulaId: formula.derivedFromFormulaId || "",
     note: formula.note || "",
     sharedCustomers: sharesToField(formula),
@@ -94,7 +92,7 @@ export default function FormulaForm({
     .map((f) => ({
       value: f.id,
       label: `${f.code ? `${f.code} · ` : ""}${f.name}`,
-      search: [f.code, f.name, f.customerTradeName].filter(Boolean).join(" "),
+      search: [f.code, f.name].filter(Boolean).join(" "),
     }));
 
   // กลิ่นที่เลือกได้ = ที่รับเข้าทะเบียนแล้ว + กลิ่นที่ผูกอยู่เดิม (ไม่งั้นแก้สูตรเก่า
@@ -223,18 +221,8 @@ export default function FormulaForm({
       {/* ── โซน 2: ข้อมูลเสริม ─────────────────────────────────────────────── */}
       <FormZone title="ข้อมูลเสริม" className="col-span-2" />
 
-      <div className="form-group">
-        <label htmlFor="formula-trade-name">
-          ชื่อที่ลูกค้าเรียก <span className={styles.hint}>(ไม่บังคับ)</span>
-        </label>
-        <Input
-          id="formula-trade-name" value={value.customerTradeName} disabled={disabled}
-          placeholder="ชื่อทางการค้าที่ลูกค้าตั้งเอง"
-          onChange={(e) => set({ customerTradeName: e.target.value })}
-        />
-        <small className={styles.hint}>แสดงคู่กับรหัส/ชื่อของเราเสมอ — ไม่ได้ใช้แทนกัน</small>
-      </div>
-
+      {/* ⚠️ ไม่มีช่อง "ชื่อที่ลูกค้าเรียก" ที่สูตร — อยู่ที่กลิ่นที่เดียว (มติเจ้าของ 04/11 · ม-12) ·
+          ลูกค้าตั้งชื่อระดับสินค้า = ชื่อสินค้าของ FG */}
       <div className="form-group">
         <label htmlFor="formula-derived-from">
           แก้มาจากสูตร <span className={styles.hint}>(ไม่บังคับ)</span>

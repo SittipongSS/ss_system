@@ -24,11 +24,11 @@ export function filterFormulas(formulas = [], { search = '', status = '', kind =
     if (kind === 'customer' && !f.customerId) return false;
     if (kind === 'base' && f.customerId) return false;
     if (!q) return true;
-    // ค้นด้วยชื่อที่ลูกค้าเรียกและรหัสหมวดได้ด้วย (เหมือนทะเบียนกลิ่น)
+    // ค้นด้วยรหัสหมวดได้ด้วย · ชื่อที่ลูกค้าเรียกไม่อยู่ที่สูตรแล้ว (อยู่ที่กลิ่น · มติเจ้าของ 04/11)
     // ⭐ รหัส AR ค้นได้ด้วย — คนที่ถือรหัสลูกค้าอยากรู้ว่ารายนี้มีสูตรอะไรบ้าง
     return [
       f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
-      f.customerTradeName, f.categoryCode,
+      f.categoryCode,
       // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150)
       ...(f.sharedCustomers || []).map((c) => customerSearchText(c.customerId, c.customerName, arIndex)),
       // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)

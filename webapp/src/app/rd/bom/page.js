@@ -222,20 +222,23 @@ function BomRow({ row, today, busy, onAccept, onDone, onReturn, onReopen }) {
         {brandBoth(row.brandName, row.brandNameEn) ? <div className={styles.sub}>แบรนด์ {brandBoth(row.brandName, row.brandNameEn)}</div> : null}
       </td>
       <td>
+        {/* ป้ายชนิดอยู่บนสุด — บอกก่อนว่าบรรทัดข้างล่างเป็นสูตร/กลิ่น/สูตรในชุด (เดิมอยู่ล่างสุด อ่านเหมือนเป็นของบรรทัดกลิ่น) */}
+        {row.formula.items.length ? (
+          <div className={styles.sub}>{FORMULA_KIND_LABEL[row.formula.kind]}{row.formula.kind === "set" ? ` (${row.formula.items.length})` : ""}</div>
+        ) : null}
         {row.formula.items.length ? (
           <ul className={styles.items}>
             {row.formula.items.map((item, i) => (
               <li key={`${item.code || ""}-${i}`}>
                 {/* สูตรที่ RD ยังไม่ใส่รหัส — โชว์ชื่ออย่างเดียว (ขีดนำหน้าชื่ออ่านเหมือนรายการย่อย) */}
                 {item.code ? <><span className={styles.code}>{item.code}</span>{" "}</> : null}{naText(item.name)}
-                {/* ชื่อที่ลูกค้าเรียก (ถ้ามี) — รูปเดียวกับทะเบียนสูตร/กลิ่น */}
-                {item.tradeName ? <div className={styles.sub}>ลูกค้าเรียก “{item.tradeName}”</div> : null}
                 {item.note ? <div className={styles.sub}>{item.note}</div> : null}
+                {/* ชื่อที่ลูกค้าเรียก **ของกลิ่น** (ถ้ามี · มติเจ้าของ 04/11) — ต่อจากบรรทัดกลิ่น รูปเดียวกับทะเบียนกลิ่น */}
+                {item.tradeName ? <div className={styles.sub}>ลูกค้าเรียก “{item.tradeName}”</div> : null}
               </li>
             ))}
           </ul>
         ) : <span className={styles.dim}>ไม่มีสูตร</span>}
-        {row.formula.items.length ? <div className={styles.sub}>{FORMULA_KIND_LABEL[row.formula.kind]}</div> : null}
       </td>
       <td className="num">
         {row.volume != null ? `${fmtNumber(row.volume)}${row.volumeUnit ? ` ${row.volumeUnit}` : ""}` : NA}

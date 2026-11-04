@@ -204,11 +204,8 @@ export function normalizeFormulaInput(body = {}) {
     return { value: null, error: 'รหัสหมวดสินค้าไม่ถูกต้อง' };
   }
 
-  const customerTradeName = String(body.customerTradeName ?? '').trim().replace(/\s+/g, ' ');
-  if (customerTradeName.length > 200) {
-    return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
-  }
-
+  /* ⚠️ ไม่รับ/ไม่เขียน `customerTradeName` แล้ว — ชื่อที่ลูกค้าเรียกอยู่ที่ **กลิ่นที่เดียว** (มติเจ้าของ 04/11 · ย้อนไป ม-12) — ระดับสูตรคือชื่อสินค้าของ FG
+     คอลัมน์ในฐานยังอยู่ (ค่าเก่า 9 สูตร) แต่ไม่มีจอไหนโชว์ · ไม่อยู่ใน value ⇒ PATCH ไม่แตะค่าเดิม */
   return {
     value: {
       name,
@@ -216,7 +213,6 @@ export function normalizeFormulaInput(body = {}) {
       formulaDate,
       categoryCode: categoryCode || null,
       scentId: String(body.scentId ?? '').trim() || null,
-      customerTradeName: customerTradeName || null,
       derivedFromFormulaId: String(body.derivedFromFormulaId ?? '').trim() || null,
       dealId: String(body.dealId ?? '').trim() || null,
       /* ⭐ **ลูกค้ากลับมาเป็นช่องกรอก** (มติผู้ใช้ 2026-08-10: "สูตรผูกลูกค้าก่อน
@@ -360,7 +356,6 @@ export function formulaFormPayload(value = {}, { canSetCode = false, canShare = 
     // ⚠️ ส่ง `customerId` ได้ (มติผู้ใช้ 2026-08-10 กลับทิศจาก 0207)
     customerId: value.customerId || null,
     scentId: value.scentId || null,
-    customerTradeName: value.customerTradeName,
     derivedFromFormulaId: value.derivedFromFormulaId || null,
     note: value.note,
   };
