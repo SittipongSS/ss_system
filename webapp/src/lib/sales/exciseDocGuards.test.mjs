@@ -180,10 +180,14 @@ function jsFiles(dir) {
   }
   return out;
 }
-/* ไฟล์ที่ตัดสินสิทธิ์ใบเสนอราคา/ใบสั่งขายรายแถว — route ของสองตาราง + ตัวช่วยที่ทะเบียน/งวดเรียก */
+/* ไฟล์ที่ตัดสินสิทธิ์ใบเสนอราคา/ใบสั่งขายรายแถว — route ของสองตาราง + ตัวช่วยที่ทะเบียน/งวดเรียก
+   + route ภาษีที่อ่านใบสั่งขายรายใบ (🐞 04/11: `/api/tax/orders/from-sales-order` อยู่นอกรายชื่อนี้ ⇒ ตอบ 403 ให้ทุก SO ค่าสรรพสามิต
+     · หน้า SO โหลดเส้นนี้ทุกครั้ง = แถบแดง "forbidden" บนใบแรกของจริง SO-26110395-0) */
 const DOC_SCOPE_FILES = [
   ...jsFiles(join(SRC, 'app/api/sales-planning/quotations')),
   ...jsFiles(join(SRC, 'app/api/sales-planning/sales-orders')),
+  ...jsFiles(join(SRC, 'app/api/tax')),
+  ...jsFiles(join(SRC, 'app/api/orders')),
   'lib/sales/installmentScheduleServer.js',
 ];
 
@@ -212,6 +216,7 @@ test('ตัวโหลดหลักของสองตารางเต�
     'lib/upload/privateEvidence.js': /loadSourceDeals\(supabase, \[row\.sourceSalesOrderId\]\)/,
     'lib/sales/installmentScheduleServer.js': /loadSourceDeals\(/,
     'app/api/finance/payments/route.js': /sourceDealBySource\.get\(order\.sourceSalesOrderId\)/,
+    'app/api/tax/orders/from-sales-order/route.js': /attachSourceDeals\(supabase, \[salesOrder\]\)/,
   };
   for (const [rel, re] of Object.entries(must)) {
     assert.match(stripComments(readFileSync(join(SRC, rel), 'utf8')), re, rel);
