@@ -187,7 +187,8 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
   const bodyForRows = (rows) => rows.length
     ? rows.map((row) =>
       `<tr>${cols.map((c) => `<td style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`).join("")
-    : `<tr><td class="empty" colspan="${cols.length}">ไม่มีข้อมูลในช่วงที่เลือก</td></tr>`;
+    // ผู้เรียกที่ไม่ได้กรองด้วยช่วงวันที่ (เช่นคิวลง BOM ที่ตัดตามแท็บ) ส่งคำของตัวเองมา
+    : `<tr><td class="empty" colspan="${cols.length}">${esc(report.emptyText || "ไม่มีข้อมูลในช่วงที่เลือก")}</td></tr>`;
 
   const s = report.summary;
   const summaryRow = s
