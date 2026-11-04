@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ReceiptText, Printer } from "lucide-react";
+import { FileSpreadsheet, ReceiptText, Printer } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -12,11 +12,13 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
-import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
 import { dayParam, withinDateRange } from "@/lib/tax/period";
 import { raQueueText, raWorkHref } from "@/lib/excise/raQueueItem";
-import { printFilingSummary } from "@/lib/excise/printFilingSummary";
-import ReportExportActions from "@/components/excise/ReportExportActions";
+import { openReportPrintWindow } from "@/lib/tax/reportPrint";
+import { downloadReportXlsx, reportXlsxFileName } from "@/lib/tax/reportXlsxDownload";
+import { raFilingExcelReport, raFilingExportRows, raFilingPrintReport } from "@/lib/excise/raFilingExport";
+import { notifyToast } from "@/lib/feedback";
+import { fmtDate } from "@/lib/format";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
@@ -31,12 +33,11 @@ import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 /* ── งานหนึ่งแถวของรายการ (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11) ─────────────────────────────────────────
    รายการเดียวของ RA: แถวคิวที่ยังไม่มีบันทึก (กำลังมา · รอ RA — คำนวณสดจาก /api/tax/orders/queue) + บันทึกการยื่น
    (กำลังยื่น · ชำระแล้ว — /api/orders) · ไม่มีขั้นสร้างใบยื่น: กดงานรอ RA = เปิดงาน (`?start=`) แล้วกด "เริ่มยื่น"
-   `printKey` = คีย์ของใบสรุปรายการยื่น (lib/excise/filingSummary) · แถวกำลังมายังไม่มี SO ค่าสรรพสามิต ⇒ พิมพ์ไม่ได้ */
+   ⚠️ ใบสรุปรายการยื่น (V9 · `printKey`) ถอดแล้ว 04/11 (เจ้าของ: "ยื่นกรมยื่นให้ระบบกรมอยู่แล้ว") — ทุกแถวติ๊กได้ ใช้กับพิมพ์/Excel */
 const queueWorkRow = (row) => ({
   key: row.key,
   kind: "queue",
   status: row.ready === false ? "upcoming" : "queued",
-  printKey: row.ready === false ? null : row.key,
   salesOrderNumber: row.salesOrder?.orderNumber || "",
   subtitle: raQueueText(row).subtitle,
   customerId: row.salesOrder?.customerId || null,
@@ -49,7 +50,6 @@ const recordWorkRow = (o) => ({
   key: `order:${o.id}`,
   kind: "record",
   status: o.status,
-  printKey: `order:${o.id}`,
   salesOrderNumber: o.poReference || o.quotationRef || o.id,
   subtitle: o.exciseReceiptNumber ? `ใบเสร็จกรม ${o.exciseReceiptNumber}` : o.taxNoticeNumber || "",
   customerId: o.customerId || null,
@@ -79,10 +79,16 @@ function FilingsPageInner() {
   /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
      — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
   const [customerIds, setCustomerIds] = useState([]);
+  /* ⭐ จาก–ถึง = **วันที่ส่งของ** (เจ้าของ 04/11 · V31 — คอลัมน์แรกของตาราง) · งานที่ยังไม่ส่ง ("—") ผ่านเสมอ (กติกาเดียวกับ withinDateRange)
+     🐞 เดิมกรองด้วยวันที่งานถึงขั้นปัจจุบัน (ใบค่าสรรพสามิตอนุมัติ) ซึ่งไม่มีบนจอ ⇒ งานหายโดยไม่มีอะไรบอกเหตุ */
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  /* ช่วงวันเริ่มยื่นจากการ์ด "กำลังยื่น/ชำระแล้ว" บนภาพรวม (`?filedFrom=&filedTo=` · ตัวนับเดียวกับการ์ด · ตรวจตัวเลข M7)
+     — ป้ายบอกพร้อมปุ่มล้างเหนือตาราง ไม่ใช่ตัวกรองที่มองไม่เห็น */
+  const [filedFrom, setFiledFrom] = useState("");
+  const [filedTo, setFiledTo] = useState("");
   const [selected, setSelected] = useState(() => new Set());
-  const [printing, setPrinting] = useState(false);
+  const [exporting, setExporting] = useState(""); // "" · "print" · "xlsx"
   useEffect(() => {
     const params = searchParams;
     const s = params.get("status");
@@ -92,6 +98,10 @@ function FilingsPageInner() {
     const toParam = dayParam(params.get("to"));
     if (fromParam) setFrom(fromParam);
     if (toParam) setTo(toParam);
+    const filedFromParam = dayParam(params.get("filedFrom"));
+    const filedToParam = dayParam(params.get("filedTo"));
+    if (filedFromParam) setFiledFrom(filedFromParam);
+    if (filedToParam) setFiledTo(filedToParam);
     const openId = params.get("open");
     if (openId) router.replace(`/tax/filings/${openId}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- อ่านพารามิเตอร์ตั้งต้นครั้งเดียวตอนเปิดหน้า (`?start=` อ่านสดข้างล่าง)
@@ -181,9 +191,15 @@ function FilingsPageInner() {
      ⇒ ป้ายหมวดบอกแทนว่าว่างเพราะอะไร · ป้ายเต็มพร้อมปุ่มลองใหม่อยู่ใต้แถบเครื่องมือ */
   const customerGroupLabel = customersLoaded ? "ลูกค้า" : filterBlocked ? "ลูกค้า (ดึงไม่ได้)" : "ลูกค้า (กำลังโหลด…)";
 
+  /* ⭐ คำค้นครอบทุกอย่างที่ตาเห็นบนแถว (กติกา "ตาเห็น = ค้นเจอ") — เลข SO/ใบค่าสรรพสามิต/ลูกค้า + บรรทัดรองของหัวงาน
+     + รายการสินค้าในงาน (รหัส FG · แบรนด์ · ชื่อสินค้า) · 🐞 04/11 พิมพ์ "Matcha" ได้ 0 งานทั้งที่ตารางโชว์ชื่อนี้ */
   const allRows = useMemo(
     () => [...raQueue.map(queueWorkRow), ...orders.map(recordWorkRow)]
-      .map((row) => ({ ...row, detail: detailByKey.get(row.key) || null })),
+      .map((row) => {
+        const detail = detailByKey.get(row.key) || null;
+        const lineText = (detail?.lines || []).flatMap((line) => [line.fgCode, line.brand, line.description]);
+        return { ...row, detail, search: [...row.search, row.subtitle, ...lineText] };
+      }),
     [raQueue, orders, detailByKey],
   );
   const monthOptions = useMemo(
@@ -198,56 +214,68 @@ function FilingsPageInner() {
         if (!mineStatuses.has(r.status)) return false;
       } else if (filter !== "all" && r.status !== filter) return false;
       if (customerIds.length && !customerIds.includes(r.customerId)) return false;
-      // วันไทยของวันที่งานเริ่ม (คิว = วันที่ถึงขั้นนั้น · บันทึก = วันเริ่มยื่น) — ตัวตัดสินเดียวกับการ์ดบนภาพรวม
-      if (!withinDateRange(r.createdAt, from, to)) return false;
+      // วันที่ส่งของ (V31) — วันไทย · ยังไม่ส่ง/ยังโหลดรายการไม่ได้ = ผ่าน (ตาเห็น "—" บนแถว)
+      if (!withinDateRange(r.detail?.deliveryDate, from, to)) return false;
+      // ช่วงวันเริ่มยื่นจากการ์ดภาพรวม — เฉพาะบันทึกการยื่น (งานที่ยังไม่เริ่มยื่นไม่อยู่ในช่วงไหน) · ตัวตัดสินเดียวกับการ์ด
+      if (filedFrom || filedTo) {
+        if (r.kind !== "record") return false;
+        if (!withinDateRange(r.createdAt, filedFrom, filedTo)) return false;
+      }
       // เดือนที่ยื่นทำจ่าย (V24) — งานที่ยังโหลดรายการไม่ขึ้นไม่อยู่ในเดือนไหน
       if (month !== "all" && r.detail?.month !== month) return false;
       if (!q) return true;
       return r.search.some((v) => (v || "").toLowerCase().includes(q));
     });
-  }, [allRows, filter, search, mineStatuses, customerIds, from, to, month]);
+  }, [allRows, filter, search, mineStatuses, customerIds, from, to, filedFrom, filedTo, month]);
 
   /* ตัวกรองขยับ → ที่เลือกอาจไม่อยู่บนจอแล้ว ⇒ ล้างทิ้ง ไม่งั้นพิมพ์/โหลดแถวที่มองไม่เห็นออกไป */
-  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, month]);
+  useEffect(() => { setSelected(new Set()); }, [filter, search, customerIds, from, to, filedFrom, filedTo, month]);
 
-  // ติ๊กได้เฉพาะแถวที่พิมพ์ใบสรุปได้ (ไม่ใช่กำลังมา)
-  const selectableKeys = useMemo(() => rows.filter((r) => r.printKey).map((r) => r.key), [rows]);
+  // ทุกแถวบนจอติ๊กได้ (รวมงานกำลังมา) — ที่ติ๊ก = แถวที่พิมพ์/Excel จะได้
+  const selectableKeys = useMemo(() => rows.map((r) => r.key), [rows]);
   const allChecked = selectableKeys.length > 0 && selectableKeys.every((key) => selected.has(key));
   const toggleOne = (key) => setSelected((prev) => {
     const next = new Set(prev);
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
   });
-  /* Excel/พิมพ์รายงาน/ZIP (ReportExportActions) อ่านบันทึกการยื่นเท่านั้น — แถวคิวยังไม่มีแถว orders */
-  const recordIdOf = (key) => (key.startsWith("order:") ? key.slice("order:".length) : null);
-  const exportParams = useMemo(() => ({
-    status: queueStatusParam(filter, ownedStages("payment", myDept)),
-    customerId: customerIds,
-    from,
-    to,
-  }), [filter, myDept, customerIds, from, to]);
-  const exportIds = useMemo(
-    () => queueExportIds({
-      selected: [...selected].map(recordIdOf).filter(Boolean),
-      visibleIds: rows.filter((r) => r.kind === "record").map((r) => r.order.id),
-      searching: !!search.trim(),
-    }),
-    [selected, rows, search],
-  );
-  /* ใบสรุปรายการยื่น (V9): ติ๊กไว้ = เฉพาะที่ติ๊ก · ไม่ติ๊ก = ทุกแถวบนจอที่พิมพ์ได้ */
-  const printKeys = useMemo(() => {
-    const picked = rows.filter((r) => r.printKey && (selected.size ? selected.has(r.key) : true));
-    return picked.map((r) => r.printKey);
-  }, [rows, selected]);
-  const printSummary = async () => {
-    setPrinting(true);
+  /* ⭐ Excel / พิมพ์ (มติเจ้าของ 04/11 "Excel แบน · พิมพ์ตามจอ") — ประกอบจาก **แถวที่จอวาดอยู่** (`lib/excise/raFilingExport`)
+     ติ๊กไว้ = เฉพาะที่ติ๊ก · ไม่ติ๊ก = ทุกแถวบนจอ (รวมงานกำลังมา/รอ RA) — ไม่มีตัวกรองชุดที่สองฝั่ง server
+     🐞 เดิม (ReportExportActions type="filing") อ่านเฉพาะบันทึกการยื่น ⇒ ปุ่มดับทั้งที่ตารางมีงาน · ติ๊ก/ค้นหาแล้วไฟล์ว่าง
+        (ส่งรหัสบันทึกไป แต่ server เทียบกับรหัสรายการสินค้า) · คอลัมน์เป็นของรุ่นก่อนตารางแบบเดิม (V20) */
+  const exportRows = useMemo(() => raFilingExportRows(rows, selected), [rows, selected]);
+  const filterLabel = filterOptions.find((f) => f.key === filter)?.label || "";
+  const rangeText = (a, b) => `${a ? fmtDate(a) : "..."} – ${b ? fmtDate(b) : "..."}`;
+  const exportMeta = () => ({
+    customerName,
+    extraRows: [
+      from || to ? { label: "วันที่ส่งของ", value: rangeText(from, to) } : null,
+      filedFrom || filedTo ? { label: "เริ่มยื่น", value: rangeText(filedFrom, filedTo) } : null,
+      { label: "เดือนที่ยื่น", value: month === "all" ? "ทุกเดือน" : `${filingMonthLabel(month).short} · ${filingMonthLabel(month).long}` },
+      { label: "สถานะ", value: filterLabel },
+      search.trim() ? { label: "ค้นหา", value: search.trim() } : null,
+      selected.size ? { label: "เลือก", value: `${exportRows.length} งาน` } : null,
+    ].filter(Boolean),
+  });
+  /* กดได้เสมอเมื่อมีงานบนจอ — รายการสินค้ายังโหลดไม่ขึ้น = บอกเหตุตอนกด (ไฟล์ที่ไม่มีรายการ = ไฟล์ที่ผิด) */
+  const exportBlocker = !tableLoaded
+    ? (lTable ? "รายการสินค้ายังโหลดไม่เสร็จ — รอสักครู่แล้วกดใหม่" : "รายการสินค้าของงานยังโหลดไม่ได้ — กด “ลองใหม่” ที่ป้ายด้านบนก่อน")
+    : null;
+  const runExport = async (kind) => {
+    if (exportBlocker) {
+      notifyToast.error(exportBlocker);
+      return;
+    }
+    setExporting(kind);
     try {
-      await printFilingSummary(printKeys);
+      if (kind === "print") await openReportPrintWindow(raFilingPrintReport(exportRows), exportMeta());
+      else await downloadReportXlsx(raFilingExcelReport(exportRows), reportXlsxFileName("filing"));
+    } catch (error) {
+      notifyToast.error(error?.message || (kind === "print" ? "พิมพ์ไม่สำเร็จ" : "สร้างไฟล์ Excel ไม่สำเร็จ"));
     } finally {
-      setPrinting(false);
+      setExporting("");
     }
   };
-
   const customerName = customerIds.length === 1
     ? customerNameIn(customers.find((c) => c.id === customerIds[0]))
     : (customerIds.length > 1 ? `ลูกค้า ${customerIds.length} ราย` : undefined);
@@ -260,18 +288,12 @@ function FilingsPageInner() {
 
   const headerRight = (
     <>
-      <ReportExportActions
-        type="filing"
-        params={exportParams}
-        ids={exportIds}
-        rowCount={rows.filter((r) => r.kind === "record").length}
-        printMeta={{ from, to, customerName }}
-      />
-      {canFile && (
-        <Button tone="neutral" onClick={printSummary} disabled={printing || !printKeys.length} icon={<Printer size={16} />}>
-          {printing ? "กำลังเตรียม..." : selected.size ? `พิมพ์ใบสรุปรายการยื่น (${printKeys.length})` : "พิมพ์ใบสรุปรายการยื่น"}
-        </Button>
-      )}
+      <Button tone="neutral" onClick={() => runExport("print")} disabled={!exportRows.length || !!exporting} icon={<Printer size={16} />}>
+        {exporting === "print" ? "กำลังเตรียม..." : "พิมพ์ / PDF"}
+      </Button>
+      <Button tone="primary" onClick={() => runExport("xlsx")} disabled={!exportRows.length || !!exporting} icon={<FileSpreadsheet size={16} />}>
+        {exporting === "xlsx" ? "กำลังสร้างไฟล์..." : "ดาวน์โหลด Excel"}
+      </Button>
     </>
   );
 
@@ -279,7 +301,7 @@ function FilingsPageInner() {
     <Workspace
       icon={<ReceiptText size={22} />}
       title="การยื่นชำระภาษีสรรพสามิต"
-      subtitle="งานของฝ่าย RA — ข้อมูลจากใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว · เริ่มยื่น · บันทึกผลชำระ · พิมพ์ใบสรุปรายการยื่น"
+      subtitle="งานของฝ่าย RA — ข้อมูลจากใบสั่งขายค่าสรรพสามิตที่อนุมัติแล้ว · เริ่มยื่น · บันทึกผลชำระ · พิมพ์ / Excel ตามที่เห็นบนจอ"
       headerRight={headerRight}
     >
       {/* แผงรายการ (มติผู้ใช้ 2026-09-15) — `FilterBar` คืน fragment เข้า `toolbar` · `loading`
@@ -328,7 +350,7 @@ function FilingsPageInner() {
               ไม่ใช่ "จาก" ค้างแถวบนแล้ว "ถึง" ห้อยแถวล่าง */}
           <span className={styles.rangeGroup}>
             <label className={styles.rangeLabel}>
-              จาก <DateInput value={from} onChange={setFrom} />
+              วันที่ส่งของ จาก <DateInput value={from} onChange={setFrom} />
             </label>
             <label className={styles.rangeLabel}>
               ถึง <DateInput value={to} onChange={setTo} />
@@ -338,6 +360,15 @@ function FilingsPageInner() {
         )}
       >
       {notice}
+      {filedFrom || filedTo ? (
+        <StatusNotice
+          tone="info"
+          className="mb-4"
+          action={<Button size="sm" variant="ghost" onClick={() => { setFiledFrom(""); setFiledTo(""); }}>ล้าง</Button>}
+        >
+          กรองจากการ์ดภาพรวม: บันทึกการยื่นที่เริ่มยื่น {rangeText(filedFrom, filedTo)}
+        </StatusNotice>
+      ) : null}
       {/* โหลดพังและยังไม่มีข้อมูลเลย = โชว์แค่ข้อความผิดพลาด — สถานะว่างใต้ข้อความนั้นอ่านได้ว่าระบบว่างจริง
           ⚠️ ถามสายบันทึกการยื่นสายเดียว — รายชื่อลูกค้าล้มไม่ได้ทำให้ตารางผิด (ดูมติที่ก้อน sources) */}
       {!listBlocked && (
@@ -347,7 +378,8 @@ function FilingsPageInner() {
         onToggle={toggleOne}
         allChecked={allChecked}
         onToggleAll={() => setSelected(allChecked ? new Set() : new Set(selectableKeys))}
-        selectable={canFile}
+        /* ติ๊กได้ทุกคนที่เห็นตาราง — ที่ติ๊กใช้กับพิมพ์/Excel เท่านั้น (ใบสรุปรายการยื่นของ RA ถอดแล้ว 04/11) */
+        selectable
         detailLoading={lTable && !tableLoaded}
         /* ตัดสินจาก **ลิสต์ทั้งก้อน** ก่อน แล้วค่อยว่าด้วยตัวกรอง — RA ตกลงมาที่ "รอฉันลงมือ" เป็นค่าตั้งต้น */
         empty={allRows.length === 0

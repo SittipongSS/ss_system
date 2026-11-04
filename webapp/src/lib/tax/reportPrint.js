@@ -45,7 +45,8 @@ const cellText = (c, value) => {
   return esc(value ?? "-");
 };
 const cellHtml = (c, value) => {
-  if (c.multiline) {
+  // คอลัมน์ multiline ที่ค่าเป็นตัวเลข (เงินที่บางแถวมีบรรทัดเตือนต่อท้าย) = จัดรูปเงิน/ตัวเลขตามปกติ
+  if (c.multiline && typeof value !== "number") {
     const [main, ...rest] = String(value ?? "-").split("\n");
     return `${esc(main)}${rest.map((l) => `<div class="sub">${esc(l)}</div>`).join("")}`;
   }
@@ -70,8 +71,14 @@ const REPORT_SUB_LINE_MM = 2.8;
 const REPORT_SUMMARY_MM = 6;
 const REPORT_BODY_MM = 135.8 - REPORT_SUB_LINE_MM;
 
-/** จำนวนบรรทัดของแถว = เซลล์ multiline ที่ยาวที่สุด (คอลัมน์อื่นบรรทัดเดียวเสมอ) */
+/* ⭐ แถวหัวกลุ่ม (`row._kind === 'section'`) — แถวเต็มความกว้างของตาราง ข้อความ `row._label` (บรรทัดรองคั่น "\n")
+   `row._level` 1 = หัวใหญ่ (เดือน) · 2 = หัวรอง (งาน) · รายงานที่ไม่มีแถวแบบนี้หน้าตาเท่าเดิม
+   (ตารางยื่นชำระของ RA "พิมพ์ตามจอ" · มติเจ้าของ 04/11) */
+const isSection = (row) => row?._kind === 'section';
+
+/** จำนวนบรรทัดของแถว = เซลล์ multiline ที่ยาวที่สุด (คอลัมน์อื่นบรรทัดเดียวเสมอ) · หัวกลุ่ม = บรรทัดของ `_label` */
 export function reportRowLines(row, columns = []) {
+  if (isSection(row)) return String(row._label ?? '').split('\n').length;
   return columns
     .filter((c) => c.multiline)
     .reduce((max, c) => Math.max(max, String(row?.[c.key] ?? "").split("\n").length), 1);
@@ -81,6 +88,7 @@ const reportRowMm = (row, columns) => REPORT_ROW_MM + REPORT_SUB_LINE_MM * (repo
 
 // เติมหน้าจากหน้าแรก · หน้าสุดท้ายต้องเหลือที่ให้แถวสรุป ⇒ ถ้าแถวสุดท้ายลงพอดีแต่สรุปไม่ลง
 // แถวท้ายนั้นย้ายไปเปิดหน้าใหม่พร้อมสรุป (สรุปห้ามลอยอยู่หน้าเปล่าคนเดียว)
+// หัวกลุ่มต้องลงหน้าเดียวกับแถวถัดไปของมัน (หัวห้อยท้ายหน้าโดยไม่มีรายการ = อ่านไม่ออกว่าเป็นของหน้าไหน)
 export function paginateReportRows(rows = [], columns = []) {
   if (!Array.isArray(rows) || rows.length === 0) return [[]];
   const pages = [];
@@ -89,7 +97,8 @@ export function paginateReportRows(rows = [], columns = []) {
   rows.forEach((row, index) => {
     const height = reportRowMm(row, columns);
     const isLast = index === rows.length - 1;
-    const need = height + (isLast ? REPORT_SUMMARY_MM : 0);
+    const next = rows[index + 1];
+    const need = height + (isLast ? REPORT_SUMMARY_MM : 0) + (isSection(row) && next ? reportRowMm(next, columns) : 0);
     if (page.length && used + need > REPORT_BODY_MM) {
       pages.push(page);
       page = [];
@@ -174,6 +183,10 @@ const REPORT_CSS = `
   .reportTable tbody tr:nth-child(even) td { background: var(--doc-neutral-subtle); }
   .reportTable td .sub { color: var(--doc-muted); font-size: 6.2pt; line-height: 1.25; }
   .reportTable .empty { padding: 8mm 1.5mm; color: var(--doc-muted); text-align: center; }
+  /* หัวกลุ่ม (section) — เต็มแถว · 1 = เดือน (เส้นกรมท่าบน) · 2 = งาน */
+  .reportTable tbody tr.sec td { color: var(--doc-navy); background: var(--doc-paper); font-weight: 700; }
+  .reportTable tbody tr.sec1 td { border-top: 1.4px solid var(--doc-navy); font-size: 8.4pt; }
+  .reportTable tbody tr.sec2 td { border-top: 1px solid var(--doc-line); }
   /* แถวสรุปใช้โทนเดียวกับ .grandTotal ของใบเสนอราคา */
   .reportTable tr.sum td { color: var(--doc-navy); background: var(--doc-paper);
     border-top: 1.8px solid var(--doc-navy); border-bottom: 1px solid var(--doc-navy);
@@ -185,8 +198,9 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
   const cols = (report.columns || []).filter((c) => c.only !== "excel");
   const head = cols.map((c) => `<th style="text-align:${align(c)}">${esc(c.label)}</th>`).join("");
   const bodyForRows = (rows) => rows.length
-    ? rows.map((row) =>
-      `<tr>${cols.map((c) => `<td style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`).join("")
+    ? rows.map((row) => (isSection(row)
+      ? `<tr class="sec sec${row._level === 1 ? 1 : 2}"><td colspan="${cols.length}">${cellHtml({ multiline: true }, row._label)}</td></tr>`
+      : `<tr>${cols.map((c) => `<td style="text-align:${align(c)}">${cellHtml(c, row[c.key])}</td>`).join("")}</tr>`)).join("")
     // ผู้เรียกที่ไม่ได้กรองด้วยช่วงวันที่ (เช่นคิวลง BOM ที่ตัดตามแท็บ) ส่งคำของตัวเองมา
     : `<tr><td class="empty" colspan="${cols.length}">${esc(report.emptyText || "ไม่มีข้อมูลในช่วงที่เลือก")}</td></tr>`;
 
@@ -221,6 +235,8 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
       meta.from || meta.to ? { label: 'ช่วงวันที่', value: `${meta.from || '...'} – ${meta.to || '...'}` } : null,
       // ชื่อลูกค้ายาวได้เกินคอลัมน์ ⇒ แถวเดียวของหัวใบที่ยอมให้ตัดบรรทัด (ไม่ใช่เลขที่)
       meta.customerName ? { label: 'ลูกค้า', value: meta.customerName, wrap: true } : null,
+      // ตัวกรองอื่นที่ผู้เรียกบอกเอง (ตารางยื่นชำระ: เดือนที่ยื่น · สถานะ) — `[{ label, value }]`
+      ...(meta.extraRows || []).filter((row) => row?.value),
       { label: 'พิมพ์เมื่อ', value: printedAt },
     ],
   });

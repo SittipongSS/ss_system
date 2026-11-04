@@ -5,7 +5,8 @@ import { fmtDate } from '@/lib/format';
 /** หัวเดือนแบบตารางเดิม — 'YYYY-MM' → `{ short: 'M.10/69', long: 'ต.ค. 2569' }` · ไม่มีเดือน = ยังไม่มีวันที่ */
 export function filingMonthLabel(month) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(month || ''));
-  if (!match) return { short: 'ไม่มีวันที่', long: 'ยังไม่มีวันที่ส่งของ' };
+  /* ไม่มีเดือน = งานที่ยังโหลดรายการไม่ได้ (เดือน = เดือนที่ยื่น · V24 — ไม่เกี่ยวกับวันที่ส่งของแล้ว) */
+  if (!match) return { short: '(ยังไม่รู้เดือน)', long: 'ยังโหลดรายการสินค้าไม่ได้' };
   const year = Number(match[1]) + 543;
   const index = Number(match[2]) - 1;
   return { short: `M.${Number(match[2])}/${String(year).slice(-2)}`, long: `${MONTH_LABELS[index]} ${year}` };

@@ -69,6 +69,18 @@ export function registrationPendingAge(registration, todayIso) {
   return registrationAge(registration, todayIso);
 }
 
+/** ค่าเรียงของคอลัมน์ "ค้างมา" (ลำดับตั้งต้นของคิว = มากไปน้อย · อนุมัติแล้ว/ไม่รู้อายุ = -1 ไปท้าย) */
+export const registrationQueueSortValue = (registration, todayIso) => registrationPendingAge(registration, todayIso) ?? -1;
+
+/**
+ * ลำดับตั้งต้นของคิวขึ้นทะเบียน ("เรียงจากค้างนานสุด") — ตัวเดียวกับไฟล์ Excel/พิมพ์ (`lib/tax/reports.js`)
+ * 🐞 04/11: ไฟล์เรียงตามลำดับในฐาน ⇒ ติ๊กสองแถวบนจอแล้วพิมพ์ได้สลับกัน · ⚠️ เรียงตามหัวคอลัมน์ที่ผู้ใช้กดเองบนจอไม่ตามไปไฟล์
+ * อายุเท่ากัน = คงลำดับเดิม (สร้างล่าสุดก่อน — ลำดับของ API ทั้งสองทาง)
+ */
+export function sortRegistrationsLikeQueue(rows = [], todayIso) {
+  return [...(rows || [])].sort((a, b) => registrationQueueSortValue(b, todayIso) - registrationQueueSortValue(a, todayIso));
+}
+
 /**
  * ใบนี้ "ค้างนาน" ในคิวของฝ่าย RA ไหม — **ตัวตัดสินเดียว** ของแถบบนหน้าภาพรวม (`lateRegistrations`)
  * และตัวกรอง `?late=1` ของคิวขึ้นทะเบียน (ตรวจตัวเลข H2 · 2026-10-19)

@@ -15,26 +15,15 @@ import { TableScroll } from "@/components/ui/Table";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { filingDateText, filingLinesTaxTotal, filingMonthLabel, filingMonthTotals } from "@/lib/excise/raFilingMonth";
+import { raFilingMonthBuckets } from "@/lib/excise/raFilingExport";
 import styles from "./FilingLinesTable.module.css";
 
 const COLUMNS = ["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม", "สถานะชำระ"];
 const NUMERIC = new Set(["จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม"]);
 const money = (value) => (value == null ? NA : fmtMoney(value));
 
-/** ก้อนรายเดือน (ใหม่สุดก่อน · ยังไม่รู้เดือนไปท้าย) · ในเดือนเรียงตามวันที่ส่งของ (ไม่มีวันไปท้าย) */
-function monthBuckets(rows) {
-  const sorted = [...rows].sort((a, b) => String(b.detail?.month || "").localeCompare(String(a.detail?.month || ""))
-    || String(a.detail?.deliveryDate || "9999").localeCompare(String(b.detail?.deliveryDate || "9999"))
-    || String(a.salesOrderNumber || "").localeCompare(String(b.salesOrderNumber || "")));
-  const buckets = [];
-  for (const row of sorted) {
-    const month = row.detail?.month || null;
-    const last = buckets.at(-1);
-    if (last && last.month === month) last.rows.push(row);
-    else buckets.push({ month, rows: [row] });
-  }
-  return buckets;
-}
+/* ก้อนรายเดือน + ลำดับในเดือน = ตัวเดียวกับไฟล์ Excel/พิมพ์ (`raFilingMonthBuckets`) — จอกับไฟล์เรียงเหมือนกันเสมอ */
+const monthBuckets = raFilingMonthBuckets;
 
 export default function FilingLinesTable({ rows = [], selected, onToggle, allChecked, onToggleAll, selectable = true, detailLoading = false, empty }) {
   /* คีย์ที่ย่อไว้ — `month:<YYYY-MM>` (ทั้งเดือน) · คีย์งาน (รายการของงานนั้น) */
@@ -62,7 +51,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
           <tr>
             {selectable ? (
               <th className={styles.check}>
-                <input type="checkbox" checked={allChecked} onChange={onToggleAll} aria-label="เลือกทุกงานที่พิมพ์ใบสรุปได้" />
+                <input type="checkbox" checked={allChecked} onChange={onToggleAll} aria-label="เลือกทุกงานบนจอ (พิมพ์ / Excel)" />
               </th>
             ) : null}
             {COLUMNS.map((label) => <th key={label} className={NUMERIC.has(label) ? styles.num : undefined}>{label}</th>)}
@@ -114,9 +103,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                   <tr key={`group:${row.key}`} className={styles.groupRow}>
                     {selectable ? (
                       <td className={styles.check}>
-                        {row.printKey ? (
-                          <input type="checkbox" checked={selected.has(row.key)} onChange={() => onToggle(row.key)} aria-label={`เลือก ${row.salesOrderNumber}`} />
-                        ) : null}
+                        <input type="checkbox" checked={selected.has(row.key)} onChange={() => onToggle(row.key)} aria-label={`เลือก ${row.salesOrderNumber}`} />
                       </td>
                     ) : null}
                     <td colSpan={COLUMNS.length}>

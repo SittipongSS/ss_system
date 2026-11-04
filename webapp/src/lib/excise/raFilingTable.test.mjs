@@ -134,7 +134,7 @@ test('ตัวโหลด: คิวที่พร้อม = รายกา
   assert.deepEqual(record.lines.map((line) => [line.brand, line.quantity, line.retailPriceExVat]), [['Scent Studio', 600, 1112.15]]);
   const page = read('../../app/tax/filings/page.js');
   assert.match(page, /useApiList\(canReadTable \? "\/api\/tax\/orders\/table" : null\)/);
-  assert.match(page, /\.map\(\(row\) => \(\{ \.\.\.row, detail: detailByKey\.get\(row\.key\) \|\| null \}\)\)/, 'ติดรายการกับแถวงานด้วยคีย์');
+  assert.match(page, /const detail = detailByKey\.get\(row\.key\) \|\| null;[\s\S]*?return \{ \.\.\.row, detail, search:/, 'ติดรายการกับแถวงานด้วยคีย์');
   assert.match(page, /if \(month !== "all" && r\.detail\?\.month !== month\) return false;/);
 });
 

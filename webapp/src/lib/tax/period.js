@@ -107,14 +107,16 @@ export function withinDateRange(value, from, to) {
 /**
  * ลิงก์ของการ์ด KPI บนภาพรวม → คิว พร้อมช่วงวันของตัวเลือกช่วงเวลา
  * ⚠️ ทั้งหมด (`all`) = ไม่ส่ง from/to · แถบ "ค้างเกินเกณฑ์" **ไม่ใช้ตัวนี้** (มติ 19/10 ไม่ขึ้นกับช่วงเวลา)
+ * `keys` = ชื่อพารามิเตอร์ของช่วง — หน้ายื่นชำระใช้ `filedFrom/filedTo` (วันเริ่มยื่น = ตัวนับของการ์ด) เพราะ `from/to`
+ *   ของหน้านั้นเป็นวันที่ส่งของแล้ว (เจ้าของ 04/11 · V31) — ไม่งั้นเลขบนการ์ดกับแถวที่เปิดได้เป็นคนละชุด
  */
-export function taxQueueHref(path, status, range, todayIso) {
+export function taxQueueHref(path, status, range, todayIso, { fromKey = 'from', toKey = 'to' } = {}) {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   const span = periodRange(range, todayIso);
   if (span) {
-    params.set('from', span.from);
-    params.set('to', span.to);
+    params.set(fromKey, span.from);
+    params.set(toKey, span.to);
   }
   const query = params.toString();
   return query ? `${path}?${query}` : path;
