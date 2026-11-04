@@ -80,6 +80,7 @@ import {
 } from '@/lib/forceDelete';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 import { exciseDeliveryDateBlocker, syncSourceDeliveryDate } from '@/lib/excise/exciseDeliveryDate';
+import { loadExciseRegistrationBlocker } from '@/lib/excise/exciseRegistrationGate';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { ExciseQuotationError, exciseSourceLock, loadExciseRoundState, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
@@ -1305,6 +1306,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       /* ⭐ วันที่ส่งของ (มติเจ้าของ 03/11 V21): SA ใส่ก่อนยื่น — RA แบ่งรายการยื่นรายเดือนด้วยวันนี้ · ยื่นสำเร็จเขียนกลับ SO ต้นทาง (ท้าย action) */
       const deliveryGate = exciseDeliveryDateBlocker(before);
       if (deliveryGate) return badRequest(deliveryGate);
+      /* ⭐ ทะเบียน (มติเจ้าของ 04/11 V32): ทุก FG ต้องมีทะเบียนที่ RA อนุมัติแล้วก่อนยื่น — งานถึง RA เฉพาะงานที่ยื่นกรมได้จริง
+         ตัวตัดสินเดียวกับด่านเริ่มยื่นของ RA (V4) · อ่านไม่ขึ้น = 500 ไม่ใช่ "ผ่าน" */
+      let registrationGate;
+      try { registrationGate = await loadExciseRegistrationBlocker(supabase, before); }
+      catch (gateError) { return fail(`ตรวจทะเบียนสรรพสามิตไม่สำเร็จ: ${gateError.message}`, 500); }
+      if (registrationGate) return Response.json({ error: registrationGate, code: 'excise_registration_missing' }, { status: 400 });
     } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
       return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
     }
@@ -1425,6 +1432,13 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
     if (!reviewer) return forbidden('เฉพาะ AE Supervisor ที่อนุมัติใบสั่งขายได้');
     if (before.status !== 'pending_approval') return badRequest('SO ใบนี้ไม่ได้รออนุมัติ');
+    /* V32: ตรวจทะเบียนซ้ำตอนอนุมัติ — ใบที่ยื่นก่อนมติข้อนี้ หรือทะเบียนถูกถอนระหว่างรออนุมัติ ไม่ไหลไปถึง RA */
+    if (isExciseOrder(before)) {
+      let registrationGate;
+      try { registrationGate = await loadExciseRegistrationBlocker(supabase, before); }
+      catch (gateError) { return fail(`ตรวจทะเบียนสรรพสามิตไม่สำเร็จ: ${gateError.message}`, 500); }
+      if (registrationGate) return Response.json({ error: registrationGate, code: 'excise_registration_missing' }, { status: 409 });
+    }
     // แบ่งแยกหน้าที่ยังคงเป็นค่าเริ่มต้น; Admin ใช้ break-glass ได้เมื่อยังไม่มี
     // ผู้ตรวจสอบคนที่สอง โดยต้องระบุเหตุผลซึ่งถูกเก็บกับหลักฐานแบบ immutable.
     const selfApproval = isSalesOrderSelfApproval(before, user.id);
