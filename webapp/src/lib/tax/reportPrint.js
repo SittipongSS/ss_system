@@ -37,6 +37,8 @@ const genAt = () => {
   return `${date}/${month}/${year} ${time}`;
 };
 const cellText = (c, value) => {
+  // คอลัมน์เงินที่ค่าเป็นคำ (ภาษี/ชิ้นของทะเบียนที่ยกเว้น = "ยกเว้น") พิมพ์คำนั้นตรง ๆ ไม่ใช่ 0.00
+  if (c.money && typeof value === "string") return esc(value);
   if (c.money) return money(value);
   if (c.date) return value ? fmtDate(value) : '-';
   if (c.num) return fmtNumber(value);
@@ -100,6 +102,63 @@ export function paginateReportRows(rows = [], columns = []) {
   return pages;
 }
 
+/* ── ตาข่ายกันแถวหาย: ตัดหน้าซ้ำหลังเรนเดอร์จริง (03/11/2026) ─────────────────
+   ตัวแบ่งหน้าข้างบนนับแค่ "\n" ในค่า — ข้อความที่ตัดบรรทัดเอง (ชื่อสินค้า/ลูกค้ายาว คอลัมน์ถูกบีบ)
+   ทำให้แถวสูงกว่าที่คิด แล้ว `.sheet { overflow: hidden }` ตัดแถวท้ายหน้าทิ้งเงียบ ๆ
+   (เจอจริงตอนเพิ่มคอลัมน์เลขทะเบียน: ทุกหน้าล้น 26mm ทั้งที่ตัวแบ่งหน้าคิดว่าพอดี)
+   ⇒ หลังฟอนต์โหลด วัดทุกหน้า: ตารางเลยเส้นท้ายกระดาษ = ย้ายแถวข้อมูลแถวท้ายไปต้นหน้าถัดไป
+      (ไม่มีหน้าถัดไป = โคลนหน้านี้เป็นหน้าเปล่า · แถวสรุปตามไปอยู่ท้ายหน้าสุดท้ายเสมอ) แล้วเขียนเลขหน้าใหม่
+   ปกติไม่มีอะไรให้ย้าย — ตัวนี้มีไว้ให้ "แถวหาย" เป็นไปไม่ได้ ไม่ใช่ตัวแบ่งหน้าหลัก
+   ⚠️ ต้องรอฟอนต์ก่อนวัด (เหตุผลเดียวกับ contractDocument.js) · สคริปต์นี้เป็นสตริงที่กลายเป็น <script>
+      ของหน้าต่างพิมพ์ — ห้ามอ้างชื่อที่ import ไว้ในไฟล์นี้ (ดู AGENTS.md ข้อยกเว้นที่สามของ apiFetch) */
+export const REPORT_REFLOW_SCRIPT = `
+(function () {
+  function overflows(sheet) {
+    var table = sheet.querySelector('table.reportTable');
+    var footer = sheet.querySelector('.footer');
+    return !!(table && footer) && table.getBoundingClientRect().bottom > footer.getBoundingClientRect().top - 1;
+  }
+  function blankAfter(sheet) {
+    var copy = sheet.cloneNode(true);
+    var body = copy.querySelector('tbody');
+    while (body.firstChild) body.removeChild(body.firstChild);
+    sheet.parentNode.insertBefore(copy, sheet.nextSibling);
+    return copy;
+  }
+  function nextSheet(sheet) {
+    var next = sheet.nextElementSibling;
+    return next && next.matches('article.sheet') ? next : blankAfter(sheet);
+  }
+  function reflow() {
+    for (var i = 0; i < document.querySelectorAll('article.sheet').length; i += 1) {
+      var sheet = document.querySelectorAll('article.sheet')[i];
+      for (var guard = 0; guard < 500 && overflows(sheet); guard += 1) {
+        var body = sheet.querySelector('tbody');
+        var data = body.querySelectorAll('tr:not(.sum)');
+        if (data.length <= 1) break;
+        var nextBody = nextSheet(sheet).querySelector('tbody');
+        var sum = body.querySelector('tr.sum');
+        if (sum) nextBody.appendChild(sum);
+        nextBody.insertBefore(data[data.length - 1], nextBody.firstChild);
+      }
+    }
+    var all = document.querySelectorAll('article.sheet');
+    for (var p = 0; p < all.length; p += 1) {
+      var cells = all[p].querySelectorAll('.footer span');
+      if (cells[2]) cells[2].textContent = 'หน้า ' + (p + 1) + ' / ' + all.length;
+      var label = all[p].getAttribute('aria-label') || '';
+      all[p].setAttribute('aria-label', label.replace(/หน้า [0-9]+$/, 'หน้า ' + (p + 1)));
+    }
+  }
+  function run() {
+    try { reflow(); } catch (error) { /* ตัดหน้าซ้ำไม่สำเร็จ = คงหน้าตามตัวแบ่งหน้าเดิม */ }
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(run);
+  else if (document.readyState === 'complete') run();
+  else window.addEventListener('load', run);
+})();
+`;
+
 // ตารางรายงานรับคอลัมน์อะไรก็ได้จากผู้เรียก จึงกำหนดความกว้างตายตัวแบบ .itemTable
 // ของใบเสนอราคาไม่ได้ — เอาเฉพาะ "หน้าตา" มา (หัวสีกรมท่า แถวสลับสี เส้นคั่นบาง)
 const REPORT_CSS = `
@@ -122,7 +181,8 @@ const REPORT_CSS = `
 
 export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
   const co = resolveCompanyBlock(company);
-  const cols = report.columns || [];
+  // `only: 'excel'` = คอลัมน์ที่กระดาษรวมไว้ในคอลัมน์อื่นแล้ว (ดูคอลัมน์ของ registrationReport)
+  const cols = (report.columns || []).filter((c) => c.only !== "excel");
   const head = cols.map((c) => `<th style="text-align:${align(c)}">${esc(c.label)}</th>`).join("");
   const bodyForRows = (rows) => rows.length
     ? rows.map((row) =>
@@ -188,6 +248,7 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
     orientation: 'landscape',
     variantClass: 'report',
     extraCss: REPORT_CSS,
+    script: REPORT_REFLOW_SCRIPT,
     toolbar: options.toolbar === false ? null : { label: report.title, button: '🖨 สั่งพิมพ์ / บันทึก PDF' },
     pages: documentPages,
   });

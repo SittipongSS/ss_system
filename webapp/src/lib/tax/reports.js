@@ -3,11 +3,13 @@
 // Uniform shape so the UI table, the Excel exporter and the PDF printer render
 // any report generically:
 //
-//   { type, title, columns: [{ key, label, money?, date?, num?, multiline? }],
+//   { type, title, columns: [{ key, label, money?, date?, num?, multiline?, only? }],
 //     rows: [...], summary: { <colKey>: value, _label } }
 //
 // `multiline` columns carry a 2-line string ("main\nsub") that every renderer
 // splits into a main line + a small secondary line.
+// `only: 'excel' | 'print'` keeps a column to one renderer — for values that read
+// best split into columns in Excel but must share one cell to fit the A4 width.
 //
 // Server-only: uses the service-role admin client. The API route decides team
 // scope (บังคับตาม role → `scopeTeam`) แยกจากตัวกรองทีมที่ผู้ใช้เลือก (`team`) — ดู
@@ -20,7 +22,7 @@ import { teamNameOf } from '@/lib/master/teams';
 import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { fmtNumber } from '@/lib/format';
-import { EXCISE_VAT_RATE, round2 } from '@/lib/tax/exciseBilling';
+import { EXCISE_VAT_RATE, exciseTaxLineForRegistration, round2 } from '@/lib/tax/exciseBilling';
 import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
 import { withinDateRange } from '@/lib/tax/period';
 
@@ -61,7 +63,7 @@ async function fetchProductMap() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('products')
-    .select('id, volume, volumeUnit, costPrice, materialCost, laborCost, shippingCost, factoryProfit, retailPriceIncVat, retailPriceExVat');
+    .select('id, volume, volumeUnit, costPrice, materialCost, laborCost, shippingCost, factoryProfit, retailPriceIncVat, retailPriceExVat, exciseTax, localTax');
   if (error) throw error;
   const m = new Map();
   for (const p of data || []) m.set(p.id, p);
@@ -101,8 +103,17 @@ export async function registrationReport(filter = {}) {
       size: p.volume != null ? `${p.volume} ${p.volumeUnit || 'ml'}` : '-',
       customer: two(r.customerName || '-', r.taxId || '-'),
       retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
+      /* ภาษี/ชิ้น + เลขทะเบียน — สองค่าที่คิวบนจอมีแต่รายงานไม่มี (มติผู้ใช้ 03/11/2026)
+         ⚠️ ภาษีคิดด้วยตัวเดียวกับคิว (`/api/excise-registrations`) และใบยื่นจริง: อัตราจากสินค้า
+            ทะเบียนที่ติ๊กยกเว้น = "ยกเว้น" ไม่ใช่ 0 (ตัดสินจากธง ไม่ใช่จากยอด — #1923) */
+      tax: r.isExciseTaxable === false
+        ? 'ยกเว้น'
+        : exciseTaxLineForRegistration({ registration: r, product: p, quantity: 1 }).totalTax,
+      approvalNumber: r.approvalNumber || '-',
       owner: two(r.assignee || '-', teamName(r.team)),
       status: statusLabel(r.status),
+      // กระดาษ: เลขทะเบียนเป็นบรรทัดรองใต้สถานะ (ทรงเดียวกับคิวบนจอ) — ดูเหตุผลที่คอลัมน์ข้างล่าง
+      statusNumber: r.approvalNumber ? two(statusLabel(r.status), r.approvalNumber) : statusLabel(r.status),
     };
     if (margin) {
       // Factory cost broken down into its components + profit (cost = วัตถุดิบ +
@@ -124,9 +135,17 @@ export async function registrationReport(filter = {}) {
     { key: 'size', label: 'ขนาด' },
     { key: 'customer', label: 'ลูกค้า / เลขผู้เสียภาษี', multiline: true },
     ...(margin ? [{ key: 'factory', label: 'ราคาผลิต / กำไร (แจกแจงต้นทุน)', multiline: true }] : []),
-    { key: 'retail', label: 'ราคาขายปลีก (รวม/ถอด VAT)', multiline: true },
+    // หัวสั้น — "(รวม VAT)" / "(ถอด VAT)" อยู่ในค่าทุกบรรทัดแล้ว · หัวยาวเคยเป็นตัวกำหนดความกว้างคอลัมน์ (~35mm บนกระดาษ)
+    { key: 'retail', label: 'ราคาขายปลีก', multiline: true },
+    { key: 'tax', label: 'ภาษี/ชิ้น', money: true },
     { key: 'owner', label: 'ผู้รับผิดชอบ / ทีม', multiline: true },
-    { key: 'status', label: 'สถานะ' },
+    /* Excel ได้สถานะกับเลขทะเบียนแยกคอลัมน์ (กรอง/เรียงได้) · กระดาษรวมเป็นคอลัมน์เดียว
+       🐞 03/11/2026 เลขทะเบียน 28 ตัวอักษรไม่มีช่องว่าง = ตัดบรรทัดไม่ได้ ⇒ เป็นคอลัมน์ของตัวเอง
+          กว้าง 45mm บีบคอลัมน์อื่นจนตัดบรรทัดเกือบทุกแถว และหน้าล้นทั้งที่ตัวแบ่งหน้าคิดว่าพอดี
+          ⇒ บนกระดาษเป็นบรรทัดรอง (ตัวเล็ก) ใต้สถานะ — คอลัมน์เดียวราว 37mm */
+    { key: 'status', label: 'สถานะ', only: 'excel' },
+    { key: 'approvalNumber', label: 'เลขทะเบียน', only: 'excel' },
+    { key: 'statusNumber', label: 'สถานะ / เลขทะเบียน', multiline: true, only: 'print' },
   ];
 
   return {
