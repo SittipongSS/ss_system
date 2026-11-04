@@ -451,7 +451,6 @@ const QTY_READERS = Object.freeze({
   'lib/service/surveyReportDocument.js': 'other:service_survey_zones',
   'lib/service/surveyReportTestKit.mjs': 'other:service_survey_zones',
   'lib/tax/billPrint.js': 'other:orders.items (ใบยื่นสรรพสามิต)',
-  'lib/tax/reports.js': 'other:orders.items (ใบยื่นสรรพสามิต)',
 });
 const DISPLAY_HELPERS = /(?<![\w$])(?:linePackQtyText|linePackFormulaText|linePackQty|hasPackColumn)\(/;
 const UNITS_HELPER = /(?<![\w$])lineUnitsTotal\(/;

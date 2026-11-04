@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ReceiptText, Printer } from "lucide-react";
+import { FileSpreadsheet, ReceiptText, Printer } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -12,11 +12,13 @@ import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
 import { deptOf, ownedStages, FILING_FILTERS } from "@/lib/excise/workflow";
 import { customerNameIn } from "@/lib/master/customerName";
-import { queueExportIds, queueStatusParam } from "@/lib/tax/exportUrl";
 import { dayParam, withinDateRange } from "@/lib/tax/period";
 import { raQueueText, raWorkHref } from "@/lib/excise/raQueueItem";
 import { printFilingSummary } from "@/lib/excise/printFilingSummary";
-import ReportExportActions from "@/components/excise/ReportExportActions";
+import { openReportPrintWindow } from "@/lib/tax/reportPrint";
+import { downloadReportXlsx, reportXlsxFileName } from "@/lib/tax/reportXlsxDownload";
+import { raFilingExcelReport, raFilingExportRows, raFilingPrintReport } from "@/lib/excise/raFilingExport";
+import { notifyToast } from "@/lib/feedback";
 import DateInput from "@/components/ui/DateInput";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { Building2 } from "lucide-react";
@@ -83,6 +85,7 @@ function FilingsPageInner() {
   const [to, setTo] = useState("");
   const [selected, setSelected] = useState(() => new Set());
   const [printing, setPrinting] = useState(false);
+  const [exporting, setExporting] = useState(""); // "" · "print" · "xlsx"
   useEffect(() => {
     const params = searchParams;
     const s = params.get("status");
@@ -218,22 +221,42 @@ function FilingsPageInner() {
     next.has(key) ? next.delete(key) : next.add(key);
     return next;
   });
-  /* Excel/พิมพ์รายงาน/ZIP (ReportExportActions) อ่านบันทึกการยื่นเท่านั้น — แถวคิวยังไม่มีแถว orders */
-  const recordIdOf = (key) => (key.startsWith("order:") ? key.slice("order:".length) : null);
-  const exportParams = useMemo(() => ({
-    status: queueStatusParam(filter, ownedStages("payment", myDept)),
-    customerId: customerIds,
+  /* ⭐ Excel / พิมพ์ (มติเจ้าของ 04/11 "Excel แบน · พิมพ์ตามจอ") — ประกอบจาก **แถวที่จอวาดอยู่** (`lib/excise/raFilingExport`)
+     ติ๊กไว้ = เฉพาะที่ติ๊ก · ไม่ติ๊ก = ทุกแถวบนจอ (รวมงานกำลังมา/รอ RA) — ไม่มีตัวกรองชุดที่สองฝั่ง server
+     🐞 เดิม (ReportExportActions type="filing") อ่านเฉพาะบันทึกการยื่น ⇒ ปุ่มดับทั้งที่ตารางมีงาน · ติ๊ก/ค้นหาแล้วไฟล์ว่าง
+        (ส่งรหัสบันทึกไป แต่ server เทียบกับรหัสรายการสินค้า) · คอลัมน์เป็นของรุ่นก่อนตารางแบบเดิม (V20) */
+  const exportRows = useMemo(() => raFilingExportRows(rows, selected), [rows, selected]);
+  const filterLabel = filterOptions.find((f) => f.key === filter)?.label || "";
+  const exportMeta = () => ({
     from,
     to,
-  }), [filter, myDept, customerIds, from, to]);
-  const exportIds = useMemo(
-    () => queueExportIds({
-      selected: [...selected].map(recordIdOf).filter(Boolean),
-      visibleIds: rows.filter((r) => r.kind === "record").map((r) => r.order.id),
-      searching: !!search.trim(),
-    }),
-    [selected, rows, search],
-  );
+    customerName,
+    extraRows: [
+      { label: "เดือนที่ยื่น", value: month === "all" ? "ทุกเดือน" : `${filingMonthLabel(month).short} · ${filingMonthLabel(month).long}` },
+      { label: "สถานะ", value: filterLabel },
+      search.trim() ? { label: "ค้นหา", value: search.trim() } : null,
+      selected.size ? { label: "เลือก", value: `${exportRows.length} งาน` } : null,
+    ].filter(Boolean),
+  });
+  /* กดได้เสมอเมื่อมีงานบนจอ — รายการสินค้ายังโหลดไม่ขึ้น = บอกเหตุตอนกด (ไฟล์ที่ไม่มีรายการ = ไฟล์ที่ผิด) */
+  const exportBlocker = !tableLoaded
+    ? (lTable ? "รายการสินค้ายังโหลดไม่เสร็จ — รอสักครู่แล้วกดใหม่" : "รายการสินค้าของงานยังโหลดไม่ได้ — กด “ลองใหม่” ที่ป้ายด้านบนก่อน")
+    : null;
+  const runExport = async (kind) => {
+    if (exportBlocker) {
+      notifyToast.error(exportBlocker);
+      return;
+    }
+    setExporting(kind);
+    try {
+      if (kind === "print") await openReportPrintWindow(raFilingPrintReport(exportRows), exportMeta());
+      else await downloadReportXlsx(raFilingExcelReport(exportRows), reportXlsxFileName("filing"));
+    } catch (error) {
+      notifyToast.error(error?.message || (kind === "print" ? "พิมพ์ไม่สำเร็จ" : "สร้างไฟล์ Excel ไม่สำเร็จ"));
+    } finally {
+      setExporting("");
+    }
+  };
   /* ใบสรุปรายการยื่น (V9): ติ๊กไว้ = เฉพาะที่ติ๊ก · ไม่ติ๊ก = ทุกแถวบนจอที่พิมพ์ได้ */
   const printKeys = useMemo(() => {
     const picked = rows.filter((r) => r.printKey && (selected.size ? selected.has(r.key) : true));
@@ -260,13 +283,12 @@ function FilingsPageInner() {
 
   const headerRight = (
     <>
-      <ReportExportActions
-        type="filing"
-        params={exportParams}
-        ids={exportIds}
-        rowCount={rows.filter((r) => r.kind === "record").length}
-        printMeta={{ from, to, customerName }}
-      />
+      <Button tone="neutral" onClick={() => runExport("print")} disabled={!exportRows.length || !!exporting} icon={<Printer size={16} />}>
+        {exporting === "print" ? "กำลังเตรียม..." : "พิมพ์ / PDF"}
+      </Button>
+      <Button tone="primary" onClick={() => runExport("xlsx")} disabled={!exportRows.length || !!exporting} icon={<FileSpreadsheet size={16} />}>
+        {exporting === "xlsx" ? "กำลังสร้างไฟล์..." : "ดาวน์โหลด Excel"}
+      </Button>
       {canFile && (
         <Button tone="neutral" onClick={printSummary} disabled={printing || !printKeys.length} icon={<Printer size={16} />}>
           {printing ? "กำลังเตรียม..." : selected.size ? `พิมพ์ใบสรุปรายการยื่น (${printKeys.length})` : "พิมพ์ใบสรุปรายการยื่น"}

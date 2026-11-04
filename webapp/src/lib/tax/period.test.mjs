@@ -163,13 +163,17 @@ test("ยาม: คิวสองหน้าอ่าน from/to จาก UR
   }
 });
 
-test("ยาม: ไฟล์ Excel/พิมพ์ (reports.js) ตัดช่วงด้วย withinDateRange ทั้งสองรายงาน — จอกับไฟล์ชุดเดียวกัน", () => {
+test("ยาม: ไฟล์ Excel/พิมพ์ (reports.js) ตัดช่วงด้วย withinDateRange — จอกับไฟล์ชุดเดียวกัน · ไฟล์ยื่นชำระประกอบบนจอจากแถวที่ผ่านตัวกรองแล้ว", () => {
   const src = read("./reports.js");
   assert.match(src, /import \{ withinDateRange \} from '@\/lib\/tax\/period';/);
   assert.match(src, /const inRange = \(value, from, to\) => withinDateRange\(value, from, to\);/);
   assert.match(src, /\(r\) => inRange\(r\.createdAt, from, to\)/);
-  assert.match(src, /\(o\) => inRange\(o\.createdAt, from, to\)/);
   assert.doesNotMatch(src, /new Date\(from\)/, "เที่ยงคืน UTC ≠ เที่ยงคืนไทย");
+  // 04/11: รายงานการยื่นภาษีฝั่ง server ถอดแล้ว — หน้า /tax/filings ส่ง `rows` ที่กรองด้วย withinDateRange ชุดเดียวกับตารางเข้าไฟล์
+  assert.doesNotMatch(src, /filing: filingReport/);
+  const page = read("../../app/tax/filings/page.js");
+  assert.match(page, /if \(!withinDateRange\(r\.createdAt, from, to\)\) return false;/);
+  assert.match(page, /raFilingExportRows\(rows, selected\)/);
 });
 
 test("ยาม: ZIP ไฟล์แนบทะเบียน (registrationFiles.js) ตัดช่วงด้วย withinDateRange — ชุดเดียวกับตาราง/Excel", () => {
