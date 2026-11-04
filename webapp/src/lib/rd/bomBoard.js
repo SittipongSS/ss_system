@@ -18,6 +18,9 @@ export const BOM_BOARD_TABS = Object.freeze([
   { key: 'done', label: 'ลงเสร็จแล้ว' },
 ]);
 
+/* ป้ายชนิดของช่องสูตร/กลิ่น — ตารางกับไฟล์ Excel ใช้ตัวเดียวกัน (`none` = หมวดที่ไม่มีสูตร/ยังไม่ผูก) */
+export const BOM_FORMULA_KIND_LABEL = Object.freeze({ formula: 'สูตร', scent: 'กลิ่น', set: 'สูตรในชุด', none: 'ไม่มีสูตร' });
+
 /* คอลัมน์ที่ route อ่านจาก `products` — ไม่เอาราคาผลิต (RD ไม่มีสิทธิ์เห็น · redactProductMargin) */
 export const BOM_BOARD_PRODUCT_COLUMNS = [
   'id', '"fgCode"', '"productDescription"', '"productDescriptionEn"', '"customerId"', '"customerName"', '"brandName"', '"brandNameEn"',
