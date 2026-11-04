@@ -7,7 +7,7 @@
 //   · พิมพ์ = ทรงเดียวกับจอ: หัวเดือน (ยอดรวมเดือน) → หัวงาน (ยอดรวมงาน) → แถวละสินค้า (แถวหัวกลุ่มของ lib/tax/reportPrint)
 //   · ไม่รวมจำนวนชิ้น (หลายขนาดปนกัน · V28) · งานที่ยังไม่มีรายการยังขึ้นในไฟล์ (ไม่หายเงียบ) แต่ไม่อยู่ในยอด
 // ⚠️ ไฟล์บริสุทธิ์ (ไม่พก lib ฝั่ง server) — จอเรียกตรง
-import { fmtMoney, fmtNumber, naText } from '@/lib/format';
+import { fmtNumber, naText } from '@/lib/format';
 import { statusMeta } from '@/lib/excise/workflow';
 import { filingDateText, filingLinesTaxTotal, filingMonthLabel, filingMonthTotals } from '@/lib/excise/raFilingMonth';
 
@@ -37,7 +37,8 @@ export function raFilingMonthBuckets(rows = []) {
 }
 
 const statusText = (row) => statusMeta(row?.status).label;
-/* เงินบนกระดาษ = ทรงของเปลือกเอกสาร ("1,190.00" ไม่มี ฿ · `documentShell.money`) — ใช้กับข้อความที่ประกอบเอง */
+/* เงินบนกระดาษ = ทรงของเปลือกเอกสาร ("1,190.00" ไม่มี ฿ · `documentShell.money`) — ใช้กับข้อความที่ประกอบเอง
+   ⭐ หัวเดือน/หัวงานก็ใช้ตัวนี้ (เจ้าของ 04/11: ทั้งใบเขียนเงินแบบเดียว — เดิมหัวมี ฿ แต่ตาราง/แถวรวมไม่มี) */
 const paperMoney = (value) => fmtNumber(Number(value) || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const taxCheckText = (line) => {
   if (!line?.taxCheck) return '';
@@ -120,7 +121,7 @@ export function raFilingPrintReport(rows = []) {
       _level: 1,
       // บรรทัดเดียว — ยอดของเดือนคือยอดที่ RA ยื่นชำระ ต้องอยู่บนบรรทัดหลัก ไม่ใช่บรรทัดรองตัวเล็ก (เห็นจากใบพิมพ์จริง 04/11)
       _label: `${RA_FILING_EXPORT_TITLE} ${label.short} · ${label.long} · ${fmtNumber(totals.jobs)} งาน · ${fmtNumber(totals.lines)} รายการ`
-        + ` · ภาษีรวม ${fmtMoney(totals.totalTax)}`
+        + ` · ภาษีรวม ${paperMoney(totals.totalTax)}`
         + (totals.missing ? ` (ไม่รวม ${fmtNumber(totals.missing)} งานที่ยังไม่มีรายการ)` : ''),
     });
     for (const row of bucket.rows) {
@@ -130,7 +131,7 @@ export function raFilingPrintReport(rows = []) {
         _level: 2,
         _label: [
           [row.salesOrderNumber, naText(row.customerName), statusText(row),
-            lines.length ? `${fmtNumber(lines.length)} รายการ · ภาษีรวม ${fmtMoney(filingLinesTaxTotal(lines))}` : null,
+            lines.length ? `${fmtNumber(lines.length)} รายการ · ภาษีรวม ${paperMoney(filingLinesTaxTotal(lines))}` : null,
           ].filter(Boolean).join(' · '),
           [row.subtitle, ...(row.detail?.blockers || [])].filter(Boolean).join(' · '),
         ].filter(Boolean).join('\n'),
