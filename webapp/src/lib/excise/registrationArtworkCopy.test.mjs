@@ -299,8 +299,11 @@ test('ยามซอร์ส: route ส่งต่อตัวกลาง ·
   assert.match(MODAL, /const onRegistrationFiles = useCallback\(/);
   assert.match(MODAL, /const onCustomerFiles = useCallback\(/);
 
-  /* 🐞 04/11/2026: ทะเบียนฉบับร่างขึ้น "รออนุมัติ" บนหน้าสินค้า (ProductStatusPill รู้จักแค่อนุมัติ/ตีกลับ) */
+  /* 🐞 04/11/2026: ทะเบียนฉบับร่างขึ้น "รออนุมัติ" บนหน้าสินค้า (ProductStatusPill รู้จักแค่อนุมัติ/ตีกลับ)
+     ⇒ สถานะทะเบียนบนหน้าสินค้ามาจากแผงทะเบียนตัวเดียว (ป้าย `StatusBadge` ของสายสรรพสามิต · แท็บสรรพสามิต) */
   const PAGE = read('../../app/database/products/[id]/page.js');
   assert.doesNotMatch(PAGE, /<ProductStatusPill/);
-  assert.match(PAGE, /<ExciseStatusBadge status=\{r\.status\} \/>/);
+  assert.match(PAGE, /<RegistrationWorkPanel\s/);
+  assert.match(PAGE, /label: statusMeta\(ownerReg\.status\)\.label/);
+  assert.match(MODAL, /\{reg \? <StatusBadge status=\{reg\.status\} \/>/);
 });

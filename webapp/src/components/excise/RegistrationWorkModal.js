@@ -53,50 +53,69 @@ const fixHint = (item, reg) => {
  */
 export default function RegistrationWorkModal({ open, items = [], initialKey = null, canEdit = false, onChanged, onClose }) {
   if (!open || !items.length) return null;
-  return <RegistrationWork items={items} initialKey={initialKey} canEdit={canEdit} onChanged={onChanged} onClose={onClose} />;
-}
-
-function RegistrationWork({ items, initialKey, canEdit, onChanged, onClose }) {
-  const [activeKey, setActiveKey] = useState(initialKey && items.some((item) => item.key === initialKey) ? initialKey : items[0].key);
-  // ทะเบียนที่เพิ่งสร้างในแผงนี้ (รายการจากหน้าที่เปิดยังไม่รู้ id จนกว่าจะโหลดใหม่)
-  const [createdIds, setCreatedIds] = useState({});
-  const active = items.find((item) => item.key === activeKey) || items[0];
-  const registrationId = active.registrationId || createdIds[active.key] || null;
-
   return (
     <Modal open onClose={onClose} title="ทะเบียนสรรพสามิต" size="lg">
       <div className={styles.body}>
-        {items.length > 1 && (
-          /* FG ไม่กี่ตัว = ชิปเลือกตรง ๆ ไม่ใช่ดรอปดาวน์ (กติกา direct controls) */
-          <div className={styles.chips} role="tablist" aria-label="เลือกสินค้า">
-            {items.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                role="tab"
-                aria-selected={item.key === active.key}
-                className={`${styles.chip} ${item.key === active.key ? styles.chipActive : ""}`}
-                onClick={() => setActiveKey(item.key)}
-              >
-                <span className={styles.chipCode}>{item.fgCode}</span>
-                <span className={styles.chipState}>{item.stateLabel || (item.registrationId || createdIds[item.key] ? "มีทะเบียน" : "ยังไม่มีทะเบียน")}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <RegistrationWorkItem
-          key={`${active.key}:${registrationId || "new"}`}
-          item={active}
-          registrationId={registrationId}
-          canEdit={canEdit}
-          onCreated={(id) => { setCreatedIds((current) => ({ ...current, [active.key]: id })); onChanged?.(); }}
-          onChanged={onChanged}
-        />
+        <RegistrationWork items={items} initialKey={initialKey} canEdit={canEdit} onChanged={onChanged} />
         <div className="action-bar">
           <Button variant="quiet" onClick={onClose}>ปิด</Button>
         </div>
       </div>
     </Modal>
+  );
+}
+
+/* ⭐ ตัวแผงแบบฝังในหน้า (หน้าสินค้า แท็บ "สรรพสามิต" · มติเจ้าของ 04/11/2026 "แท็บตามม็อก") — **เนื้อชุดเดียวกับโมดัล**
+   (หน้า SO ยังเปิดเป็นโมดัล) · ต่างแค่ไม่มีกรอบโมดัลกับปุ่มปิด · ห้ามก๊อปเนื้อแผงไปเขียนอีกชุด (V8 ฟอร์มเดียว) */
+export function RegistrationWorkPanel({ items = [], initialKey = null, canEdit = false, onChanged }) {
+  if (!items.length) return null;
+  return (
+    <div className={styles.inline}>
+      <RegistrationWork items={items} initialKey={initialKey} canEdit={canEdit} onChanged={onChanged} />
+    </div>
+  );
+}
+
+function RegistrationWork({ items, initialKey, canEdit, onChanged }) {
+  const [activeKey, setActiveKey] = useState(initialKey && items.some((item) => item.key === initialKey) ? initialKey : items[0].key);
+  // ทะเบียนที่เพิ่งสร้างในแผงนี้ (รายการจากหน้าที่เปิดยังไม่รู้ id จนกว่าจะโหลดใหม่)
+  const [createdIds, setCreatedIds] = useState({});
+  /* 🐞 สร้างคำขอแล้วหน้าที่เปิดโหลดรายการใหม่ ⇒ รายการ "new" กลายเป็นแถวที่มี id ของตัวเอง (คีย์เปลี่ยน)
+     เดิมตกไปรายการแรกเสมอ = อาจเป็นทะเบียนของลูกค้าอีกราย · ตามไปที่แถวของทะเบียนที่เพิ่งสร้างแทน */
+  const active = items.find((item) => item.key === activeKey)
+    || items.find((item) => item.registrationId && item.registrationId === createdIds[activeKey])
+    || items[0];
+  const registrationId = active.registrationId || createdIds[active.key] || null;
+
+  return (
+    <>
+      {items.length > 1 && (
+        /* FG ไม่กี่ตัว = ชิปเลือกตรง ๆ ไม่ใช่ดรอปดาวน์ (กติกา direct controls) */
+        <div className={styles.chips} role="tablist" aria-label="เลือกสินค้า">
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={item.key === active.key}
+              className={`${styles.chip} ${item.key === active.key ? styles.chipActive : ""}`}
+              onClick={() => setActiveKey(item.key)}
+            >
+              <span className={styles.chipCode}>{item.fgCode}</span>
+              <span className={styles.chipState}>{item.stateLabel || (item.registrationId || createdIds[item.key] ? "มีทะเบียน" : "ยังไม่มีทะเบียน")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <RegistrationWorkItem
+        key={`${active.key}:${registrationId || "new"}`}
+        item={active}
+        registrationId={registrationId}
+        canEdit={canEdit}
+        onCreated={(id) => { setCreatedIds((current) => ({ ...current, [active.key]: id })); onChanged?.(); }}
+        onChanged={onChanged}
+      />
+    </>
   );
 }
 

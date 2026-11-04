@@ -1,0 +1,63 @@
+/* หน้ารายละเอียดสินค้า — ผังแท็บ (มติเจ้าของ 04/11/2026 "แท็บตามม็อก")
+   แถวบน: หัวสินค้า + การ์ดจัดการ (DetailPageLayout) · ล่าง: แถบแท็บ + เนื้อของแท็บเต็มกว้าง
+   ⚠️ ไม่มี media query ของตัวเอง — กริดยุบด้วย auto-fit · จุดตัดจอของแถวบนเป็นของ DetailPageLayout (1050px) ที่เดียว */
+
+/* ── แถบสถานะรายเรื่องใต้หัว (ช่องละเรื่อง: ข้อมูลสินค้า · BOM · สรรพสามิต) ── */
+.lanes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+  gap: var(--space-2);
+}
+.laneItem { display: flex; min-width: 0; }
+.lane {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+}
+button.lane { cursor: pointer; }
+button.lane:hover { border-color: var(--accent); }
+button.lane:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.laneLabel { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.laneValue {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  overflow-wrap: anywhere;
+}
+.laneDot {
+  flex: none;
+  width: var(--space-2);
+  height: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--lane-color, var(--text-3));
+}
+
+/* ── โซนแท็บ — เต็มกว้างใต้แถวบน ── */
+.tabsZone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-4-5);
+}
+.pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.stack { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+/* สองคอลัมน์บนจอกว้าง ยุบเหลือคอลัมน์เดียวเองเมื่อแคบกว่าสองเท่าของ 22rem */
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  align-items: start;
+  gap: var(--space-4);
+}
