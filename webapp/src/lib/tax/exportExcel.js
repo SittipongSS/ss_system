@@ -24,7 +24,9 @@ export async function reportToXlsxBuffer(reportData) {
     const ws = wb.addWorksheet(report.title?.slice(0, 31) || 'Report');
 
     // Title row
-    const cols = report.columns || [];
+    // `only: 'print'` = a column laid out for paper (e.g. status + registration number in
+    // one cell) — Excel gets the separate columns instead, so it can filter/sort them
+    const cols = (report.columns || []).filter((c) => c.only !== 'print');
     ws.mergeCells(1, 1, 1, Math.max(cols.length, 1));
     const titleCell = ws.getCell(1, 1);
     titleCell.value = report.title || 'รายงาน';
