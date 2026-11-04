@@ -28,6 +28,7 @@ import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
+import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
 import ClickableCard from "@/components/ui/ClickableCard";
@@ -271,11 +272,34 @@ export default function CustomerDirectory() {
 
   /* ป้ายจำนวนย้ายไปอยู่หัวแผงรายการ (มติผู้ใช้ 2026-09-15 · ด่าน LP9) — เลขรวมทั้งทะเบียน
      ยังอยู่ที่ StatCards "ทั้งหมด" ใน rail */
-  const headerRight = canEdit ? (
-    <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
-      <Plus size={16} /> เพิ่มลูกค้า
-    </button>
-  ) : null;
+  /* ⭐ Excel ทะเบียนลูกค้า (04/11) — แถวเท่าที่ตาเห็น: ส่งตัวกรองชุดเดียวกับจอทาง query แล้ว server กรองซ้ำด้วย
+     `filterCustomers` ตัวเดียวกัน · ปุ่มกลางตัวเดียวกับรายงานอื่น (โหลดผ่าน apiFetch · พลาดแล้วบอกเป็นภาษาไทย)
+     ⚠️ ทุกคนที่เข้าหน้านี้ได้ (`customers:view`) โหลดได้ — ไม่ผูกกับ `canEdit` */
+  const exportHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (statusFilter.length) params.set("status", statusFilter.join(","));
+    if (teamFilter.length) params.set("team", teamFilter.join(","));
+    if (showInactive) params.set("inactive", "1");
+    const qs = params.toString();
+    return `/api/customers/export${qs ? `?${qs}` : ""}`;
+  }, [q, statusFilter, teamFilter, showInactive]);
+
+  const headerRight = (
+    <>
+      <ExcelDownloadButton
+        href={exportHref}
+        fallbackName="customers.xlsx"
+        title={`ดาวน์โหลดลูกค้า ${filteredCustomers.length} รายการที่กรองอยู่เป็นไฟล์ Excel`}
+        onError={(msg) => { if (msg) notifyToast.error(msg); }}
+      />
+      {canEdit && (
+        <button onClick={openForm} className="btn btn-accent flex items-center gap-1.5">
+          <Plus size={16} /> เพิ่มลูกค้า
+        </button>
+      )}
+    </>
+  );
 
   /* เครื่องมือของรายการส่งเป็น fragment เข้า `ListPanel toolbar` — แผงห่อ `.toolbar` ให้เอง */
   const toolbar = (

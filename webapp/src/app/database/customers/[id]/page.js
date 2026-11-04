@@ -15,7 +15,7 @@ import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
 import CustomerBillingRuleCard from "@/components/database/CustomerBillingRuleCard";
-import { describeBillingRule } from "@/lib/sales/billingRule";
+import { customerCreditSummary } from "@/lib/master/customerCredit";
 import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode, reclaimableArNumber } from "@/lib/master/masterCodes";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
@@ -71,17 +71,6 @@ import { apiFetch, apiJson } from "@/lib/apiFetch";
 // แถวความสัมพันธ์ในแท็บ 360-view: ชื่อ + บรรทัดรอง + ของฝั่งขวา · ทุกแท็บทรงเดียวกัน
 // เดิมก๊อปมาร์กอัปชุดนี้ซ้ำทีละแท็บ ซึ่งเป็นวิธีที่แท็บพวกนี้เพี้ยนหากันทีละนิด
 // (กฎเดียวกับ "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" ใน AGENTS.md)
-/* แถว "วางบิลและกำหนดชำระ" ของการ์ดสรุป (มติเจ้าของ 26/09 · mig 0390 · ป้ายเดิม "เงื่อนไขเครดิต") — ค่าในระบบก่อนข้อความเดิมเสมอ
-   · ตั้งแล้ว = ประโยคของรอบ (รูปย่อชุดเดียวกับทะเบียนการชำระ) / "ไม่มีเครดิต"
-   · ยังไม่ระบุ = ข้อความ "เงื่อนไขเครดิต" ที่พิมพ์ไว้สมัยก่อน **บอกว่าเป็นของเดิม** (ระบบไม่ได้ใช้คิดวัน)
-   · ไม่มีทั้งคู่ = '' → การ์ดขึ้นขีด */
-function creditSummaryOf(customer) {
-  const rule = describeBillingRule(customer?.billingRule, { short: true });
-  if (rule) return rule;
-  const legacy = String(customer?.creditTerms ?? "").trim();
-  return legacy ? `${legacy} (ข้อความเดิม)` : "";
-}
-
 /* หัวข้อย่อยในการ์ดข้อมูลลูกค้า — กินเต็มแถวของกริดสามคอลัมน์ ไม่งั้นหัวข้อไปนั่ง
    หนึ่งในสามของแถว แล้วช่องข้อมูลช่องแรกขึ้นมาอยู่ข้าง ๆ หัวข้อของตัวเอง
    (ตัวเดียวกับ SpecGroup ของหน้าสินค้า ต่างแค่จำนวนคอลัมน์ที่ต้อง span) */
@@ -542,8 +531,9 @@ export default function CustomerDetails() {
           { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtNationalId(customer.taxId) : "" },
           /* วางบิลและกำหนดชำระ (mig 0390 → รุ่นสี่ 0393) — ประโยคนโยบาย (รูปย่อชุดเดียวกับทะเบียนการชำระ · "ไม่ต้องวางบิล" …)
              ยังไม่ระบุ = ข้อความเดิมที่พิมพ์ไว้ (บอกว่าเป็นของเดิม) · ไม่มีทั้งคู่ = ขีด
-             ⭐ ป้ายชื่อเดียวกับหัวการ์ดข้างล่าง (review 29/09 — ค่าเป็นคำตอบรุ่นสี่แล้ว "เงื่อนไขเครดิต: ไม่ต้องวางบิล" อ่านไม่รู้เรื่อง) */
-          { id: "credit", label: "วางบิลและกำหนดชำระ", value: creditSummaryOf(customer) },
+             ⭐ ป้ายชื่อเดียวกับหัวการ์ดข้างล่าง (review 29/09 — ค่าเป็นคำตอบรุ่นสี่แล้ว "เงื่อนไขเครดิต: ไม่ต้องวางบิล" อ่านไม่รู้เรื่อง)
+             ⭐ ประโยคอยู่ที่ `lib/master/customerCredit` ตัวเดียว — คอลัมน์เดียวกันในไฟล์ Excel ทะเบียนลูกค้าเรียกตัวนี้ */
+          { id: "credit", label: "วางบิลและกำหนดชำระ", value: customerCreditSummary(customer) },
           { id: "addresses", label: "ที่อยู่", value: `${addresses.length} รายการ` },
           { id: "contacts", label: "ผู้ติดต่อ", value: `${(customer.contacts || []).length} คน` },
         ]}
