@@ -174,9 +174,11 @@ export function RowStepActions({
       >
         {hop === "price" ? "ใส่ราคา" : hop === "ingredients" ? "ใส่ Ingredient List" : hopLabelFor(row, hop)}
       </Button>
-      {/* ม-159 — รอราคาอยู่แต่ Ingredient List มาก่อนได้ (ปุ่มรอง · ครบทั้งสองถึงจบแถว) */}
+      {/* ม-159 — รอราคาอยู่แต่ Ingredient List มาก่อนได้ (ครบทั้งสองถึงจบแถว)
+          ⭐ **ปุ่มหลักเท่าปุ่ม "ใส่ราคา"** (ผู้ใช้ 04/11/2026 — ทรงเดียวกับหน้า "รอใส่ราคา" #1977) — เดิมเป็นปุ่มขอบ อ่านเหมือนทางเลือก
+             ทั้งที่เป็นก้าวบังคับเท่ากัน */}
       {hop === "price" && onIngredients && needsIngredients(row) && (
-        <Button variant="outline" disabled={busy} onClick={() => onIngredients(row)}>
+        <Button tone="primary" disabled={busy} onClick={() => onIngredients(row)}>
           ใส่ Ingredient List
         </Button>
       )}
