@@ -7,7 +7,10 @@
    ⭐ ย่อ/ขยาย (เจ้าของ 04/11): หัวเดือน = ย่อทั้งเดือน + ปุ่ม "ย่อทุกงาน/ขยายทุกงาน" ของเดือนนั้น · หัวงาน = ย่อรายการของงานนั้น
       — ปุ่มลูกศรแยกจากลิงก์เลข SO (ปุ่มซ้อนลิงก์ไม่ได้) · ป้ายสถานะ/ด่านอยู่บนหัวเสมอ · จำในจอเท่านั้น (เปิดหน้าใหม่ = กางหมด)
    ⭐ ยอดรวม (เจ้าของ 04/11): หัวเดือน = "n งาน · n รายการ · ภาษีรวม ฿…" ของแถวที่ผ่านตัวกรอง (ยอดที่ RA ยื่นชำระเดือนนั้น) ·
-      หัวงาน = "n รายการ · ภาษีรวม ฿…" โชว์ตลอด (ไม่ใช่เฉพาะตอนย่อ) · ไม่รวมจำนวนชิ้น (หลายขนาดปนกัน รวมแล้วไม่มีความหมาย) */
+      หัวงาน = "n รายการ · ภาษีรวม ฿…" โชว์ตลอด (ไม่ใช่เฉพาะตอนย่อ) · ไม่รวมจำนวนชิ้น (หลายขนาดปนกัน รวมแล้วไม่มีความหมาย)
+   ⭐ จัดแนว (เจ้าของ 05/11 "align ข้อมูล จะได้ตรวจง่าย"): หัวเดือน/หัวงานลงคอลัมน์เดียวกับแถวสินค้า — จำนวนรายการใต้ "ภาษี/หน่วย" ·
+      ยอดรวมใต้ "ภาษีรวม" (ชิดขวา ทรงเดียวกับยอดของแถว) · ป้ายสถานะใต้ "สถานะชำระ" · ฝั่งซ้ายของหัวงานเป็นกริดคอลัมน์ตายตัว
+      (ลูกศร · เลข SO · ลูกค้า · ขั้น/ด่าน) ⇒ เลข SO/ลูกค้า/ขั้นของทุกงานตั้งตรงกันลงมา ไม่ไหลต่อกันเป็นประโยค */
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
@@ -19,6 +22,8 @@ import { raFilingMonthBuckets } from "@/lib/excise/raFilingExport";
 import styles from "./FilingLinesTable.module.css";
 
 const COLUMNS = ["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม", "สถานะชำระ"];
+/* หัวงาน/หัวเดือน: ข้อความกินคอลัมน์ก่อน "ภาษี/หน่วย" · สามคอลัมน์ท้ายเป็นช่องของตัวเอง (จำนวนรายการ · ยอดรวม · สถานะ/ปุ่ม) */
+const LEAD_SPAN = COLUMNS.indexOf("ภาษี/หน่วย (8.8%)");
 const NUMERIC = new Set(["จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม"]);
 const money = (value) => (value == null ? NA : fmtMoney(value));
 
@@ -29,7 +34,6 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
   /* คีย์ที่ย่อไว้ — `month:<YYYY-MM>` (ทั้งเดือน) · คีย์งาน (รายการของงานนั้น) */
   const [collapsed, setCollapsed] = useState(() => new Set());
   if (!rows.length) return <div className={styles.empty}>{empty}</div>;
-  const span = COLUMNS.length + (selectable ? 1 : 0);
   const toggle = (key) => setCollapsed((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key);
@@ -65,9 +69,10 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
             const groupKeys = bucket.rows.map((row) => row.key);
             const allGroupsClosed = groupKeys.every((key) => collapsed.has(key));
             const totals = filingMonthTotals(bucket.rows);
+            const hasTotals = totals.jobs > totals.missing;
             const monthHeader = (
               <tr key={monthKey} className={styles.monthRow}>
-                <td colSpan={span}>
+                <td colSpan={LEAD_SPAN + (selectable ? 1 : 0)}>
                   <div className={styles.monthHead}>
                     <button type="button" className={styles.toggle} aria-expanded={monthOpen} onClick={() => toggle(monthKey)}>
                       <ChevronRight className={styles.chev} data-open={monthOpen || undefined} size={16} aria-hidden="true" />
@@ -75,20 +80,20 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                     </button>
                     <span className={styles.monthMeta}>
                       {label.long} · {fmtNumber(totals.jobs)} งาน
-                      {totals.jobs > totals.missing ? <> · {fmtNumber(totals.lines)} รายการ</> : null}
+                      {totals.missing && hasTotals ? <> (ไม่รวม {fmtNumber(totals.missing)} งานที่ยังไม่มีรายการ)</> : null}
                     </span>
-                    {totals.jobs > totals.missing ? (
-                      <strong className={styles.monthTotal}>ภาษีรวม {fmtMoney(totals.totalTax)}</strong>
-                    ) : null}
-                    {totals.missing && totals.jobs > totals.missing ? (
-                      <span className={styles.monthMeta}>(ไม่รวม {fmtNumber(totals.missing)} งานที่ยังไม่มีรายการ)</span>
-                    ) : null}
-                    {monthOpen ? (
-                      <button type="button" className={styles.bulk} onClick={() => setMany(groupKeys, !allGroupsClosed)}>
-                        {allGroupsClosed ? "ขยายทุกงาน" : "ย่อทุกงาน"}
-                      </button>
-                    ) : null}
                   </div>
+                </td>
+                <td className={`${styles.num} ${styles.monthMeta}`}>{hasTotals ? `${fmtNumber(totals.lines)} รายการ` : null}</td>
+                <td className={`${styles.num} mono`}>
+                  {hasTotals ? <strong className={styles.monthTotal}>{fmtMoney(totals.totalTax)}</strong> : null}
+                </td>
+                <td>
+                  {monthOpen ? (
+                    <button type="button" className={styles.bulk} onClick={() => setMany(groupKeys, !allGroupsClosed)}>
+                      {allGroupsClosed ? "ขยายทุกงาน" : "ย่อทุกงาน"}
+                    </button>
+                  ) : null}
                 </td>
               </tr>
             );
@@ -106,7 +111,7 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                         <input type="checkbox" checked={selected.has(row.key)} onChange={() => onToggle(row.key)} aria-label={`เลือก ${row.salesOrderNumber}`} />
                       </td>
                     ) : null}
-                    <td colSpan={COLUMNS.length}>
+                    <td colSpan={LEAD_SPAN}>
                       <div className={styles.groupHead}>
                         <button
                           type="button"
@@ -118,15 +123,16 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                           <ChevronRight className={styles.chev} data-open={open || undefined} size={16} aria-hidden="true" />
                         </button>
                         <Link href={row.href} className="linklike"><strong className="mono">{row.salesOrderNumber}</strong></Link>
-                        <span className={styles.customer}>{naText(row.customerName)}</span>
-                        {row.subtitle ? <span className={styles.sub}>{row.subtitle}</span> : null}
-                        <StatusBadge status={row.status} />
-                        {blockers.map((text) => <span key={text} className={styles.blocker}>{text}</span>)}
-                        {lines.length ? (
-                          <span className={styles.groupTotal}>{fmtNumber(lines.length)} รายการ · ภาษีรวม {fmtMoney(filingLinesTaxTotal(lines))}</span>
-                        ) : null}
+                        <span className={styles.customer} title={row.customerName || undefined}>{naText(row.customerName)}</span>
+                        <span className={styles.stage}>
+                          {row.subtitle ? <span className={styles.sub}>{row.subtitle}</span> : null}
+                          {blockers.map((text) => <span key={text} className={styles.blocker}>{text}</span>)}
+                        </span>
                       </div>
                     </td>
+                    <td className={`${styles.num} ${styles.sub}`}>{lines.length ? `${fmtNumber(lines.length)} รายการ` : null}</td>
+                    <td className={`${styles.num} mono ${styles.tax}`}>{lines.length ? fmtMoney(filingLinesTaxTotal(lines)) : null}</td>
+                    <td><StatusBadge status={row.status} /></td>
                   </tr>
                 );
                 if (!open) return [header];
