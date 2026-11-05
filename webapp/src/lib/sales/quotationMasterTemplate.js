@@ -439,9 +439,10 @@ function estimatedTextLines(value, charsPerLine) {
 /* บรรทัดเล็กเหนือชื่อสินค้าบนเอกสาร: รหัส FG · แบรนด์ · หมวดสินค้า (หมวดเพิ่มตามมติผู้ใช้
    2026-09-22) — ที่เดียวที่กำหนดว่าบรรทัดนี้มีอะไร ใช้ทั้งตอนวาด (quotationMasterDocument)
    และตอนประเมินความสูงแถวด้านล่าง ⚠️ ถ้าสองฝั่งนับคนละชุด ตัวแบ่งหน้าจะประเมินแถวเตี้ย
-   กว่าจริง แล้วตารางล้นขอบล่างของแผ่นเงียบ ๆ (`.sheet` เป็น overflow:hidden) */
+   กว่าจริง แล้วตารางล้นขอบล่างของแผ่นเงียบ ๆ (`.sheet` เป็น overflow:hidden)
+   เลขหมวด (`categoryCode`) มีเฉพาะบรรทัดเพิ่มเอง — บรรทัด FG มีหมวดอยู่ในรหัส FG แล้ว (มติผู้ใช้ 2026-11-05) */
 export function lineIdentityParts(line) {
-  return [line?.fgCode, line?.brand, line?.category].filter(Boolean);
+  return [line?.fgCode, line?.categoryCode, line?.brand, line?.category].filter(Boolean);
 }
 
 /* ── จำนวนตัวอักษรต่อบรรทัดของช่องรายละเอียด (บรรทัดรหัส · ชื่อสินค้า · หมายเหตุ) ที่ใช้ประเมินความสูงแถว ──
@@ -1324,6 +1325,10 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     .map((line) => ({
       id: line.id,
       fgCode: line.fgCode || '',
+      /* เลขหมวดของบรรทัดเพิ่มเอง (มติผู้ใช้ 2026-11-05) — พิมพ์หน้าชื่อหมวด เช่น `04-002 · ค่าจดแจ้งเลขเครื่องสำอาง`
+         บรรทัด FG ไม่พิมพ์ซ้ำ เพราะรหัส FG มีหมวดอยู่ในตัว (`FG-002-04-002`)
+         คีย์มีเฉพาะบรรทัดที่มีเลขหมวด — บรรทัดอื่นคงคีย์ชุดเดิม (ยาม MODEL_LINE_KEYS ในเทสต์) */
+      ...(!line.fgCode && line.metadata?.categoryCode ? { categoryCode: line.metadata.categoryCode } : {}),
       brand: line.metadata?.productBrand || line.brand || '',
       /* ชื่อหมวดสินค้าตามภาษาของใบ (มติผู้ใช้ 2026-09-22) — ถอยไปอีกภาษาเหมือนชื่อสินค้า
          บรรทัดพิมพ์เอง/ใบเก่าที่ไม่มีชื่อหมวด = ไม่พิมพ์ (ไม่ใช่ขีด) */
