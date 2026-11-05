@@ -62,7 +62,8 @@ export default function RecordActionMenu({
 
   const openTransition = (entry) => {
     if (onSelect?.(entry.transition) === true) return;
-    setPending({ transition: entry.transition, values: {} });
+    /* ค่าตั้งต้นของกล่อง (เช่น เติมนัดที่ MKT จองไว้ลงกล่องนัดประชุม · mig 0424) — ฟังก์ชันของ record */
+    setPending({ transition: entry.transition, values: entry.transition.initialValues?.(record) || {} });
   };
 
   /* ทุกอย่างที่ไม่ใช่ก้าวถัดไป ลงเมนูหมด — เรียงตามน้ำหนัก: เดินหน้ารอง → แก้ไข → อันตราย

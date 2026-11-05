@@ -27,6 +27,7 @@ import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { defaultScope, leadScopes } from "@/lib/permissions";
 import { LEAD_STATUS_LABELS, MEETING_MODE_LABELS } from "@/lib/sales/leads";
 import { isInLocalMonth } from "@/lib/sales/leadCalendar";
+import { APPOINTMENT_ENDED_LABELS, APPOINTMENT_MODE_LABELS, STUDIO_ROOM_LABELS } from "@/lib/sales/leadAppointments";
 import { SCOPE_LABELS } from "@/components/salesPlanning/ui";
 import { cachedFetchJson } from "@/lib/apiCache";
 import MonthGrid from "@/components/ui/MonthGrid";
@@ -161,11 +162,20 @@ export default function SalesCalendarPage() {
   const todayKey = localDayKey(now);
   const nowMs = now.getTime();
   const openLead = (leadId) => router.push(`/sa/leads/${leadId}`);
+  /* ห้อง/เวลาจบ/สถานะนัด มาจาก lead_appointments (mig 0424) — นัดเก่าก่อนมีตารางนั้นไม่มีค่า ขึ้นแบบเดิม */
+  const timeOf = (entry) => (entry.endAt ? `${hhmm(entry.at)}–${hhmm(entry.endAt)}` : hhmm(entry.at));
+  const placeOf = (entry) => STUDIO_ROOM_LABELS[entry.room]
+    || (entry.kind === "booking" ? APPOINTMENT_MODE_LABELS[entry.meetingMode] : MEETING_MODE_LABELS[entry.meetingMode])
+    || null;
+  const stateOf = (entry) => (entry.kind === "booking"
+    ? `จองโดย ${entry.bookedByName || "MKT"} · รอ AE ยืนยัน`
+    : APPOINTMENT_ENDED_LABELS[entry.endedReason] || null);
   const describe = (entry) => [
-    hhmm(entry.at),
+    timeOf(entry),
     entry.contactName,
     entry.company,
-    MEETING_MODE_LABELS[entry.meetingMode] || null,
+    placeOf(entry),
+    stateOf(entry),
     entry.assigneeName,
     entry.team ? teamLabelNow(entry.team) : entry.team,
     LEAD_STATUS_LABELS[entry.status] || entry.status,
@@ -177,7 +187,7 @@ export default function SalesCalendarPage() {
     <Workspace
       icon={<CalendarDays size={22} />}
       title="ปฏิทินนัด"
-      subtitle="นัดประชุมทั้งหมดที่บันทึกจากคิวลีด พร้อมวันหยุด — ขอบเขตเท่ากับที่เห็นในคิวลีด"
+      subtitle="นัดประชุมทั้งหมดที่บันทึกจากคิวลีด + นัดที่ MKT จองไว้ (กรอบประ) พร้อมห้อง Studio และวันหยุด — ขอบเขตเท่ากับที่เห็นในคิวลีด"
     >
       {/* ⭐ ปฏิทินทั้งก้อนคือแผงรายการเดียว (มติผู้ใช้ 2026-09-15) — เลื่อนเดือน · ขอบเขต · มุมมอง
           ขยับเฉพาะนัดในแผงนี้ ⇒ อยู่ใน toolbar ของแผง · ป้าย "N นัด" ย้ายจากแถบมาเป็น count
@@ -250,6 +260,8 @@ export default function SalesCalendarPage() {
                       key={entry.id}
                       type="button"
                       className={`${styles.event} ${new Date(entry.at).getTime() < nowMs ? styles.eventPast : ""}`.trim()}
+                      data-kind={entry.kind}
+                      data-ended={entry.endedReason ? "1" : undefined}
                       title={describe(entry)}
                       onClick={() => openLead(entry.leadId)}
                     >
@@ -284,13 +296,16 @@ export default function SalesCalendarPage() {
                         key={entry.id}
                         type="button"
                         className={`${styles.card} ${new Date(entry.at).getTime() < nowMs ? styles.cardPast : ""}`.trim()}
+                        data-kind={entry.kind}
+                        data-ended={entry.endedReason ? "1" : undefined}
                         onClick={() => openLead(entry.leadId)}
                       >
                         <span className={styles.cardTop}>
-                          <span className={styles.cardTime}>{hhmm(entry.at)}</span>
+                          <span className={styles.cardTime}>{timeOf(entry)}</span>
                           <span className="ui-badge">
-                            {MODE_ICON[entry.meetingMode] || ""} {MEETING_MODE_LABELS[entry.meetingMode] || "ไม่ระบุรูปแบบ"}
+                            {MODE_ICON[entry.meetingMode] || ""} {placeOf(entry) || "ไม่ระบุรูปแบบ"}
                           </span>
+                          {stateOf(entry) && <span className={styles.cardState}>{stateOf(entry)}</span>}
                         </span>
                         <span className={styles.cardName}>
                           {entry.contactName}{entry.company ? ` · ${entry.company}` : ""}

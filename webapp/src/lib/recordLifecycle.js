@@ -255,7 +255,10 @@ function normalizeTransition(transition, entity) {
 /* `tiles` = ตัวเลือกตายตัวที่ **กางให้เห็นทั้งหมด** (OptionTiles) ต่างจาก `select`
    ที่ซ่อนไว้จนกว่าจะกด · กติกาโปรเจกต์: ตัวเลือกตายตัวไม่โต ให้กางให้เห็น
    ดรอปดาวน์ไว้ให้ลิสต์ยาว/ค้นหาได้ (form-design-rules "เลือกคอนโทรลอะไร") */
-const FIELD_TYPES = ["text", "select", "tiles", "person", "person-load", "date", "datetime", "money"];
+/* `custom` = ช่องประกอบที่ primitive ตัวเดียวไม่พอ (เช่น นัดหมาย: วัน + เวลาเริ่ม–จบ + ห้องว่าง ·
+   mig 0424) — field ต้องส่ง `Component` ({ value, onChange, record, disabled, field }) มาเอง
+   และ `validate(value, record, values)` ถ้ามีด่าน (ช่องประกอบ "ว่าง" ตรวจด้วย trim ไม่ได้) */
+const FIELD_TYPES = ["text", "select", "tiles", "person", "person-load", "date", "datetime", "money", "custom"];
 
 function normalizeField(field, entity, transitionId) {
   if (!field?.name) throw new Error(`defineLifecycle(${entity}): ${transitionId} — field ต้องมี name`);
@@ -344,9 +347,16 @@ export function validateTransitionValues(transition, values = {}, record = null)
     // ⚠️ ช่องที่ซ่อนอยู่ต้องไม่บังคับกรอก — ไม่งั้นปุ่มยืนยันกดไม่ได้โดยไม่มีช่องให้กรอก
     if (!fieldVisible(field, record, values)) continue;
     const value = values[field.name];
+    if (field.type === "custom") continue; // ช่องประกอบตรวจด้วย validate ของตัวเองข้างล่าง
     if (value === undefined || value === null || String(value).trim() === "") {
       return `กรุณากรอก${field.label || field.name}`;
     }
+  }
+  /* ด่านเฉพาะช่อง — ช่องที่ซ่อนอยู่ไม่ตรวจ (กติกาเดียวกับ required ข้างบน) */
+  for (const field of fields) {
+    if (typeof field.validate !== "function" || !fieldVisible(field, record, values)) continue;
+    const error = field.validate(values[field.name], record, values);
+    if (error) return error;
   }
   return null;
 }

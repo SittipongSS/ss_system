@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { buildLeadTransitionPayload, createLeadLifecycle, leadDealAction, LEAD_DEAL_STATUSES, LEAD_REASON_REQUIRED, LEAD_TRANSITION_ACTIONS } from "./leadLifecycle.js";
 import { fieldOptions, fieldUsers, fieldVisible, validateTransitionValues, visibleFieldValues } from "../recordLifecycle.js";
-import { LEAD_TRANSITIONS, MEETING_MODES, TRANSITION_TO_STATUS } from "./leads.js";
+import { LEAD_TRANSITIONS, TRANSITION_TO_STATUS } from "./leads.js";
 import { TEAMS } from "../permissions.js";
 
 /* เทสต์นี้กันสิ่งที่พังเงียบที่สุดของงานนี้: **ฝั่ง UI กับด่านจริงที่ API หลุดจากกัน**
@@ -310,8 +310,12 @@ test("บันทึกการติดต่อ: ช่องเปลี่
   const shown = (values) => gate.fields.filter((f) => fieldVisible(f, contacted, values)).map((f) => f.name);
 
   assert.ok(shown({ nextStep: "followup" }).includes("followUpAt"));
-  assert.ok(!shown({ nextStep: "followup" }).includes("meetingMode"));
-  assert.ok(shown({ nextStep: "meeting" }).includes("meetingMode"));
+  assert.ok(!shown({ nextStep: "followup" }).includes("appointment"));
+  /* นัดประชุม = ช่องนัด (วัน · เวลาเริ่ม–จบ · รูปแบบ · ห้อง — mig 0424) แทนรูปแบบนัดเดี่ยว ๆ
+     และ "เวลาที่ติดต่อ" ถูกซ่อน: เวลาที่ API เก็บคือเวลาเริ่มนัด ไม่ใช่เวลาที่โทร */
+  assert.ok(shown({ nextStep: "meeting" }).includes("appointment"));
+  assert.ok(!shown({ nextStep: "meeting" }).includes("eventAt"));
+  assert.ok(shown({ nextStep: "followup" }).includes("eventAt"));
   assert.ok(!shown({ nextStep: "meeting" }).includes("followUpAt"));
   assert.ok(shown({ nextStep: "disqualify" }).includes("disqualifiedCode"));
 
@@ -320,9 +324,12 @@ test("บันทึกการติดต่อ: ช่องเปลี่
   assert.ok(shown({ nextStep: "disqualify", disqualifiedCode: "timing" }).includes("revisitAt"));
 
   // เลือกนัดประชุมแล้ว วันติดตามที่ค้างอยู่ต้องไม่ติดไปกับ payload
-  const kept = visibleFieldValues(gate, contacted, { nextStep: "meeting", meetingMode: "onsite", followUpAt: "2026-09-08" });
+  const appointment = { mode: "online", date: "2026-09-08", start: "10:00", end: "11:00", room: "" };
+  const kept = visibleFieldValues(gate, contacted, { nextStep: "meeting", appointment, followUpAt: "2026-09-08" });
   assert.equal(kept.followUpAt, undefined);
-  assert.equal(kept.meetingMode, "onsite");
+  assert.deepEqual(kept.appointment, appointment);
+  // กลับใจไปเลือก "ติดตามต่อ" — นัดที่เติมไว้ต้องไม่ติดไปกับ payload
+  assert.equal(visibleFieldValues(gate, contacted, { nextStep: "followup", appointment }).appointment, undefined);
 });
 
 /* ปุ่มเปิดดีลต้องผ่านด่านทีมเดียวกับ transition อื่น — ไม่ใช่ใครก็กดได้ */
@@ -472,12 +479,21 @@ test("ยังไม่กรอกเหตุผล = validateTransitionValue
     }),
     null,
   );
-  /* โทรครั้งแรกแล้วได้คิวเลย — ไม่ต้องกรอกวันติดตาม แต่ต้องเลือกรูปแบบนัด */
+  /* โทรครั้งแรกแล้วได้คิวเลย — ไม่ต้องกรอกวันติดตาม แต่ต้องกรอกนัดครบ (mig 0424) */
+  const meetingValues = (appointment) => ({ reason: "โทรแล้ว ได้นัดเข้าไปคุยที่ออฟฟิศ", nextStep: "meeting", appointment });
+  assert.equal(validateTransitionValues(contact.transition, meetingValues(undefined)), "กรุณาเลือกรูปแบบนัด");
   assert.equal(
-    validateTransitionValues(contact.transition, {
-      reason: "โทรแล้ว ได้นัดเข้าไปคุยที่ออฟฟิศ", nextStep: "meeting", meetingMode: MEETING_MODES[0],
-    }),
+    validateTransitionValues(contact.transition, meetingValues({ mode: "onsite_at_office", date: "2026-09-08", start: "13:30", end: "15:00", room: "" })),
+    "นัดที่ Studio ต้องเลือกห้อง",
+  );
+  assert.equal(
+    validateTransitionValues(contact.transition, meetingValues({ mode: "onsite_at_office", date: "2026-09-08", start: "13:30", end: "15:00", room: "studio_02" })),
     null,
+  );
+  /* "โทร" เป็นรูปแบบนัดของ MKT เท่านั้น — นัดประชุมของ AE ไม่รับ */
+  assert.equal(
+    validateTransitionValues(contact.transition, meetingValues({ mode: "phone", date: "2026-09-08", start: "13:30", end: "15:00" })),
+    "รูปแบบนัดไม่ถูกต้อง",
   );
 });
 
@@ -513,11 +529,32 @@ test("buildLeadTransitionPayload: ค่าว่างหายไปจาก 
     "ค่าว่างต้องหลุดจาก JSON ไม่ใช่ไปเป็น null ที่ handler");
 });
 
-test("buildLeadTransitionPayload: meetingMode ติดไปเฉพาะ action meeting", () => {
-  const values = { meetingMode: "onsite" };
-  assert.equal(buildLeadTransitionPayload({ action: "meeting", values }).meetingMode, "onsite");
-  assert.equal(buildLeadTransitionPayload({ action: "contact", values }).meetingMode, undefined,
-    "contact ไม่มีรูปแบบนัด — ส่งไปด้วยคือขยะที่ handler ไม่ได้ขอ");
+test("buildLeadTransitionPayload: นัด (appointment) ติดไปเฉพาะ action meeting", () => {
+  const appointment = { mode: "online", date: "2026-09-08", start: "10:00", end: "11:00", room: "" };
+  const values = { appointment };
+  assert.deepEqual(buildLeadTransitionPayload({ action: "meeting", values }).appointment, appointment);
+  assert.equal(buildLeadTransitionPayload({ action: "contact", values }).appointment, undefined,
+    "contact ไม่มีนัด — ส่งไปด้วยคือขยะที่ handler ไม่ได้ขอ");
+  assert.equal(buildLeadTransitionPayload({ action: "meeting", values }).meetingMode, undefined,
+    "รูปแบบนัดอยู่ใน appointment แล้ว — ไม่ส่งซ้ำสองที่");
+});
+
+test("กล่องนัดประชุม: เติมจากนัดที่ MKT จองไว้ (มติเจ้าของ 05/11 ข้อ 5)", () => {
+  const booked = {
+    mode: "onsite_at_office", room: "studio_02",
+    startAt: "2026-11-11T06:30:00.000Z", endAt: "2026-11-11T08:00:00.000Z",
+  };
+  const row = lead({ status: "assigned", team: "A", assigneeId: "u-ae", appointment: booked });
+  for (const id of ["meeting", "contact"]) {
+    const t = lifecycle.available(row, AE_A).find((entry) => entry.id === id).transition;
+    assert.deepEqual(t.initialValues(row).appointment,
+      { mode: "onsite_at_office", date: "2026-11-11", start: "13:30", end: "15:00", room: "studio_02" },
+      `${id}: วัน/เวลาไทย + ห้องเดิม`);
+  }
+  // นัดแบบ "โทร" ไม่ใช่รูปแบบนัดประชุม — เติมแค่วัน/เวลา ให้ AE เลือกรูปแบบเอง
+  const phone = lead({ status: "assigned", team: "A", assigneeId: "u-ae", appointment: { ...booked, mode: "phone", room: null } });
+  const meeting = lifecycle.available(phone, AE_A).find((entry) => entry.id === "meeting").transition;
+  assert.deepEqual(meeting.initialValues(phone).appointment, { mode: "", date: "2026-11-11", start: "13:30", end: "15:00", room: "" });
 });
 
 test("buildLeadTransitionPayload: eventAt แปลงเป็น ISO · ค่าเสียกลายเป็น undefined ไม่ใช่ Invalid Date", () => {

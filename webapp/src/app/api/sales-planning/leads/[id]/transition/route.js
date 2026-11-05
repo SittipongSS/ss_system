@@ -1,6 +1,6 @@
 import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { can, hasTeam, hasTeamScope, isSuperuser } from '@/lib/permissions';
 import {
   LEAD_TRANSITIONS, TRANSITION_TO_STATUS, MEETING_MODES, canWorkLead,
@@ -12,6 +12,8 @@ import { validateLeadAssignee } from '@/lib/sales/leadAssignee';
 import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
 import { loadUserDirectory } from '@/lib/usersRepo';
+import { MEETING_APPOINTMENT_MODES, appointmentInputError, normalizeAppointmentInput } from '@/lib/sales/leadAppointments';
+import { bookLeadAppointment, releaseLeadAppointments } from '@/lib/sales/leadAppointmentsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +37,8 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 
 // POST /api/sales-planning/leads/[id]/transition
 // { action: screen|assign|reassign|contact|followup|meeting|disqualify|bounce|reopen,
-//   team?, assigneeId?, assigneeName?, reason?, meetingMode?, eventAt?, followUpAt? }
+//   team?, assigneeId?, assigneeName?, reason?, eventAt?, followUpAt?,
+//   appointment?: { mode, date, start, end, room } (เฉพาะ meeting · mig 0424) }
 //
 // กติกา role ต่อ action (เฟส C — ตามเส้นชีวิตในแผน):
 //   screen     = supervisor/admin (คัดกรอง เลือกทีม — SLA 1 วันทำการ)
@@ -49,7 +52,8 @@ async function nextMeetingAt(supabase, leadId, addedAt, now) {
 //     มติผู้ใช้ 2026-08-25: ของเดิมบันทึกการติดต่อซ้ำไม่ได้เลย — `contacted` ไม่มี
 //     `contact` ในลิสต์ ⇒ AE ที่โทรตามรอบสองต้องไปเขียนในเธรดกลาง ซึ่งไม่มีวันที่
 //     ให้ระบบทวงต่อ · ทั้ง contact และ followup **บังคับ followUpAt** (mig 0289)
-//   meeting    = เดียวกับ contact (+ บันทึกรูปแบบนัด onsite/online — วัด KPI)
+//   meeting    = เดียวกับ contact (+ นัด: วัน เวลาเริ่ม–จบ รูปแบบ และห้อง Studio เมื่อลูกค้าเข้ามา —
+//     จองห้องลง lead_appointments ก่อนขยับลีด · ห้องชน = 409 · mig 0424)
 //     ล้าง followUpAt เพราะวันประชุมแทนที่คำสัญญา "จะโทรกลับ" ไปแล้ว
 //   qualify    = เดียวกับ contact — ต้องระบุ customerId (เปิดลูกค้าในฐานข้อมูลก่อน)
 //   disqualify = ขั้นกำกับดูแล: ทีมเจ้าของงาน + supervisor/admin
@@ -88,6 +92,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const patch = { updatedAt: now };
   // ปลายทางของ `reopen` ขึ้นกับใบ (TRANSITION_TO_STATUS.reopen เป็น null) — สาขาอื่นไม่แตะ
   let reopenedTo = null;
+  // นัดของ action `meeting` (mig 0424) — จองห้องก่อนขยับลีด ดูหลังจบ if-chain
+  let meetingAppointment = null;
   const event = {
     id: genId('LEV'),
     leadId: lead.id,
@@ -194,9 +200,17 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
     event.reason = body.reason.trim();
   } else if (action === 'meeting') {
     if (!workScope) return forbidden('บันทึกนัดประชุมได้เฉพาะทีมเจ้าของงาน (AE ผู้รับมอบ / Senior ทีม)');
-    if (body.meetingMode && !MEETING_MODES.includes(body.meetingMode)) return badRequest('รูปแบบนัดไม่ถูกต้อง');
-    const meetingAt = body.eventAt || now;
-    event.meetingMode = body.meetingMode || null;
+    /* ⭐ นัดประชุมมีวัน เวลาเริ่ม–จบ และห้อง Studio เมื่อลูกค้าเข้ามา (mig 0424 · มติเจ้าของ 05/11)
+       ด่านเดียวกับกล่องนัด (appointmentInputError) · เวลานัด/รูปแบบนัดของเหตุการณ์มาจากนัดนี้
+       ⚠️ ไม่รับ meetingMode/eventAt เดี่ยว ๆ แบบเดิมแล้ว — แท็บที่เปิดค้างจากรุ่นก่อนจะได้ข้อความให้รีเฟรช
+       แทนการบันทึกนัด "ลูกค้าเข้ามา" ที่ไม่มีห้อง (= ห้องชนโดยไม่มีใครเห็น) */
+    if (!body.appointment) return badRequest('หน้าจอนี้เป็นรุ่นเก่า — กดรีเฟรช (F5) แล้วบันทึกนัดใหม่ (ต้องระบุเวลาจบและห้อง)');
+    const appointmentError = appointmentInputError(body.appointment, { modes: MEETING_APPOINTMENT_MODES, required: true });
+    if (appointmentError) return badRequest(appointmentError);
+    meetingAppointment = normalizeAppointmentInput(body.appointment, { modes: MEETING_APPOINTMENT_MODES });
+    if (!MEETING_MODES.includes(meetingAppointment.mode)) return badRequest('รูปแบบนัดไม่ถูกต้อง');
+    const meetingAt = meetingAppointment.startAt;
+    event.meetingMode = meetingAppointment.mode;
     event.eventAt = meetingAt;
     /* ⚠️ นัดได้ = ติดต่อไปแล้วจริง — ต้องเขียน `firstContactAt` ที่นี่ด้วย ตั้งแต่เปิดให้
        `meeting` ทำได้ตรงจาก `assigned` (ดู LEAD_TRANSITIONS) ไม่งั้นใบที่ข้ามมาทางนี้
@@ -288,8 +302,38 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   patch.status = reopenedTo || (TRANSITION_TO_STATUS[action] ?? lead.status);
 
+  /* ⭐ จองห้อง **ก่อน** ขยับลีด (mig 0424) — ห้องชน = 409 โดยสถานะ/เวลานัด/ประวัติไม่ขยับเลย
+     กล่องนัดค้างพร้อมค่าที่กรอก (RecordActionMenu คืน false) ให้เปลี่ยนห้อง/เวลาแล้วกดใหม่
+     ⭐ นัดที่ MKT จองไว้ของลีดใบนี้ (ห้องเดิม เวลาเดิม) ไม่ชนตัวเอง — แถวใหม่แทนที่นัดเดิม (replaced)
+     `leadEventId` ชี้แถว lead_events ที่กำลังจะเขียน (id ออกไว้แล้ว) ⇒ ไทม์ไลน์/ปฏิทินอ่านห้องของนัดนี้ได้ */
+  let bookedAppointment = null;
+  if (meetingAppointment) {
+    const booked = await bookLeadAppointment(supabase, {
+      leadId: lead.id, appointment: meetingAppointment, source: 'meeting', leadEventId: event.id, user, nowIso: now,
+    });
+    if (booked.conflict) return conflict(booked.conflict);
+    if (booked.error) return fail(booked.error, 500);
+    bookedAppointment = booked.data;
+  }
+
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
-  if (error) return fail(error.message, 500);
+  if (error) {
+    /* ลีดไม่ขยับ = นัดนี้ไม่มีอยู่จริง — คืนห้องทันที ไม่งั้นแถวกำพร้ากันห้องค้างโดยไม่มีใครเห็น
+       (นัดเดิมที่ถูกแทนที่ไปแล้วไม่ฟื้น — กดบันทึกใหม่จะได้นัดที่ถูกต้องกลับมา) */
+    if (bookedAppointment) {
+      const { error: undoError } = await supabase.from('lead_appointments')
+        .update({ endedAt: now, endedReason: 'cancelled', endedBy: user.id || null, endedByName: user.name || null, updatedAt: now })
+        .eq('id', bookedAppointment.id);
+      if (undoError) console.error('[lead transition] คืนห้องหลังบันทึกลีดล้มไม่สำเร็จ — นัดกำพร้ากันห้องอยู่:', bookedAppointment.id, undoError.message);
+    }
+    return fail(error.message, 500);
+  }
+  /* ปิดลีด "ไม่ไปต่อ" = คืนห้องของนัดที่ยังไม่ถึงเวลา (มติเจ้าของ 05/11 ข้อ 6)
+     ⚠️ ล้มได้โดยไม่ล้มทั้งรายการ — ลีดปิดไปแล้วจริง · ห้องค้าง = ยกเลิกนัดเองที่หน้าลีดได้ (log ไว้ให้แอดมิน) */
+  if (action === 'disqualify') {
+    const { error: releaseError } = await releaseLeadAppointments(supabase, { leadId: lead.id, reason: 'lead_closed', user, nowIso: now });
+    if (releaseError) console.error('[lead transition] ปิดลีดแล้วคืนห้องไม่สำเร็จ:', id, releaseError.message);
+  }
   /* 🐞 เดิม insert นี้ไม่รับ error — ล้มเมื่อไร (เช่น kind ที่ CHECK ยังไม่รับ แบบที่ create_deal
      เคยล้มเงียบ · ดู leadEventKinds.test) ลีดขยับไปแล้วแต่ประวัติไม่มีบรรทัดนั้นโดยไม่มีใครรู้
      และประวัตินี้ **ไม่ใช่แค่ไทม์ไลน์**: นัดหาย ⇒ ปฏิทิน/กำหนดการของฉันไม่เห็นนัด + KPI นับ
@@ -304,7 +348,8 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   await recordAudit({
-    user, action: 'update', entityType: 'sales_lead', entityId: id, before: lead, after: data,
+    user, action: 'update', entityType: 'sales_lead', entityId: id, before: lead,
+    after: bookedAppointment ? { ...data, appointment: bookedAppointment } : data,
     summary: `ลีด ${lead.contactName}: ${lead.status} → ${data.status} (${action}${event.reason ? ` — ${event.reason}` : ''})`,
     request: req,
   });

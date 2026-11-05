@@ -1,6 +1,7 @@
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { applyLeadScope, canViewLeads } from '@/lib/sales/leads';
-import { calendarRange, toCalendarEntries } from '@/lib/sales/leadCalendar';
+import { calendarRange, toCalendarEntries, toIntakeCalendarEntries } from '@/lib/sales/leadCalendar';
+import { APPOINTMENT_COLUMNS } from '@/lib/sales/leadAppointmentsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,9 +37,22 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     .order('eventAt', { ascending: true })
     .limit(MAX_EVENTS);
   if (eventsError) return fail(eventsError.message, 500);
-  if (!events?.length) return ok([]);
 
-  const leadIds = [...new Set(events.map((event) => event.leadId).filter(Boolean))];
+  /* ⭐ นัดหมาย + ห้อง (mig 0424) — สองหน้าที่: แปะห้อง/เวลาจบให้นัดประชุม (ผ่าน leadEventId)
+     และนัดที่ MKT จองไว้ซึ่งยังไม่ใช่นัดประชุม · อ่านไม่ได้ (รวมก่อนรัน 0424) = ปฏิทินเดิมไม่มีห้อง ไม่ล้ม */
+  const { data: appointments, error: appointmentsError } = await supabase
+    .from('lead_appointments')
+    .select(APPOINTMENT_COLUMNS)
+    .gte('startAt', range.fromIso)
+    .lt('startAt', range.untilIso)
+    .order('startAt', { ascending: true })
+    .limit(MAX_EVENTS);
+  if (appointmentsError) console.error('[calendar] อ่านนัดหมายไม่สำเร็จ — ปฏิทินไม่มีห้อง:', appointmentsError.message);
+  const appointmentRows = appointmentsError ? [] : (appointments || []);
+
+  if (!events?.length && !appointmentRows.length) return ok([]);
+
+  const leadIds = [...new Set([...(events || []), ...appointmentRows].map((row) => row.leadId).filter(Boolean))];
   let query = supabase
     .from('sales_leads')
     .select('id, contactName, company, team, assigneeId, assigneeName, status')
@@ -48,5 +62,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   if (leadsError) return fail(leadsError.message, 500);
 
   const leadsById = new Map((leads || []).map((lead) => [lead.id, lead]));
-  return ok(toCalendarEntries(events, leadsById));
+  const appointmentsByEvent = new Map(appointmentRows.filter((row) => row.leadEventId).map((row) => [row.leadEventId, row]));
+  const entries = [
+    ...toCalendarEntries(events || [], leadsById, appointmentsByEvent),
+    ...toIntakeCalendarEntries(appointmentRows, leadsById),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return ok(entries);
 });

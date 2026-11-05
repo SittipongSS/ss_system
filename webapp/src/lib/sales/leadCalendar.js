@@ -66,15 +66,21 @@ export function isInLocalMonth(iso, year, month) {
  * ไม่ใช่คืนกลับไปแบบไม่มีชื่อ — จำนวนนัดต่อวันของทีมอื่นก็เป็นข้อมูลของทีมอื่น
  * (ปฏิทินที่หลวมกว่าคิวลีดคือช่องอ่านความเคลื่อนไหวข้ามทีมโดยไม่ตั้งใจ)
  */
-export function toCalendarEntries(events = [], leadsById = new Map()) {
+export function toCalendarEntries(events = [], leadsById = new Map(), appointmentsByEvent = new Map()) {
   const out = [];
   for (const event of events) {
     const lead = leadsById.get(event?.leadId);
     if (!lead || !event?.eventAt) continue;
+    /* ห้อง/เวลาจบ/นัดถูกเลื่อนหรือยกเลิก มาจาก lead_appointments (mig 0424) — นัดก่อนวันรันไม่มีแถว ⇒ ค่าว่าง */
+    const appointment = appointmentsByEvent.get(event.id) || null;
     out.push({
       id: event.id,
+      kind: 'meeting',
       leadId: event.leadId,
       at: event.eventAt,
+      endAt: appointment?.endAt || null,
+      room: appointment?.room || null,
+      endedReason: appointment?.endedReason || null,
       meetingMode: event.meetingMode || null,
       contactName: lead.contactName || '',
       company: lead.company || null,
@@ -83,6 +89,40 @@ export function toCalendarEntries(events = [], leadsById = new Map()) {
       assigneeName: lead.assigneeName || null,
       status: lead.status || null,
       bookedByName: event.createdByName || null,
+    });
+  }
+  return out;
+}
+
+/**
+ * นัดที่ MKT จองไว้ตอนรับลีด (lead_appointments source='intake' · mig 0424) → รายการปฏิทิน
+ * ⭐ มติเจ้าของ 05/11 ข้อ 1: ทุกนัดที่ใช้ Studio ขึ้นปฏิทินที่เดียวกัน — นัดที่ MKT จองยังไม่ใช่นัดประชุม
+ *    (ยังไม่มีแถว lead_events) จึงต้องเข้ามาทางนี้ ไม่งั้นปฏิทินไม่เห็นห้องที่ถูกจองไปแล้ว
+ * ⚠️ เฉพาะนัดที่ยังไม่ปิด — นัดที่ AE ยืนยันแล้วถูกแทนที่ (replaced) และโผล่ทาง toCalendarEntries แทน
+ * ⚠️ ลีดนอกขอบเขตคนดูหายทั้งแถว (กติกาเดียวกับ toCalendarEntries)
+ */
+export function toIntakeCalendarEntries(appointments = [], leadsById = new Map()) {
+  const out = [];
+  for (const row of appointments) {
+    if (row?.source !== 'intake' || row?.endedAt) continue;
+    const lead = leadsById.get(row.leadId);
+    if (!lead || !row.startAt) continue;
+    out.push({
+      id: row.id,
+      kind: 'booking',
+      leadId: row.leadId,
+      at: row.startAt,
+      endAt: row.endAt || null,
+      room: row.room || null,
+      endedReason: null,
+      meetingMode: row.mode || null,
+      contactName: lead.contactName || '',
+      company: lead.company || null,
+      team: lead.team || null,
+      assigneeId: lead.assigneeId || null,
+      assigneeName: lead.assigneeName || null,
+      status: lead.status || null,
+      bookedByName: row.createdByName || null,
     });
   }
   return out;

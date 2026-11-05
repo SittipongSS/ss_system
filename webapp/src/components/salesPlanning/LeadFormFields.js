@@ -18,12 +18,14 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import Textarea from "@/components/ui/Textarea";
 import OptionTiles from "@/components/ui/OptionTiles";
 import ChoiceChips from "@/components/ui/ChoiceChips";
+import LeadAppointmentFields from "@/components/salesPlanning/LeadAppointmentFields";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { NA } from "@/lib/format";
 import {
   CHANNEL_GROUP_LABELS, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf,
   SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, SERVICE_DETAIL_REQUIRED, leadBudgetError,
 } from "@/lib/sales/leads";
+import { INTAKE_APPOINTMENT_MODES, appointmentInputError } from "@/lib/sales/leadAppointments";
 
 /** ช่องที่ต้องกรอกก่อนบันทึกได้ — ตัวเดียวกันทั้งสองที่เรียกใช้ (ห้ามเขียนกฎซ้ำ) */
 export function leadFormBlocker(form = {}) {
@@ -33,7 +35,10 @@ export function leadFormBlocker(form = {}) {
     return `เลือก "${SERVICE_INTEREST_LABELS[form.serviceInterest]}" แล้วต้องระบุรายละเอียดบริการ`;
   }
   // ด่านเดียวกับที่ API ใช้ — ห้ามเขียนเงื่อนไขงบซ้ำที่นี่ (form-design-rules §2)
-  return leadBudgetError(form);
+  const budgetError = leadBudgetError(form);
+  if (budgetError) return budgetError;
+  // นัดที่ลูกค้าจองไว้ (mig 0424) — ด่านเดียวกับ POST/PATCH ลีด · ห้องชนเช็คที่ API (ข้อมูลของคนอื่น)
+  return appointmentInputError(form.appointment, { modes: INTAKE_APPOINTMENT_MODES });
 }
 
 export default function LeadFormFields({
@@ -42,6 +47,10 @@ export default function LeadFormFields({
   disabled = false,
   // การ์ดบนหน้ารายละเอียดมีที่น้อยกว่าโมดัล — ย่อชิปช่องทางเป็นกลุ่มเดียวเรียงยาว
   compact = false,
+  /* โหมดแก้: ลีดของฟอร์มนี้ (นัดของตัวเองไม่นับว่าชน) + นัดที่ล็อก (AE ยืนยันเป็นนัดประชุมแล้ว —
+     แก้ที่ฟอร์มนี้ไม่ได้ ต้องเลื่อนผ่านกล่องนัดประชุม · API ตอบ 409 ถ้าส่งค่าต่างมา) */
+  leadId = null,
+  appointmentLock = null,
 }) {
   // เตือนตรงช่องที่ผิด ไม่ใช่รอไปโผล่ที่ท้ายฟอร์มตอนกดบันทึก
   const budgetError = leadBudgetError(form);
@@ -141,6 +150,22 @@ export default function LeadFormFields({
             onChange={(value) => set("budgetMax")(value ?? "")} />
         </div>
         {budgetError && <small className="lead-budget-error">{budgetError}</small>}
+      </div>
+
+      {/* ⭐ นัดที่ลูกค้าจองมาแล้ว (mig 0424 · มติเจ้าของ 05/11) — เดิม MKT แปะข้อความ "📅 จองแล้ว …" ลงรายละเอียด
+          ซึ่งเช็คห้องไม่ได้และไม่ขึ้นปฏิทิน · ไม่บังคับ (ลีดส่วนใหญ่ยังไม่มีนัด) · Studio ต้องเลือกห้องที่ว่าง
+          ⚠️ ยังไม่นับเป็นนัดประชุม (มติข้อ 5) — AE กด "นัดประชุม" แล้วช่องเติมจากนัดนี้ให้ */}
+      <div className="form-field span-2">
+        <span className="form-field-label">นัดหมายที่ลูกค้าจองไว้ <span className="soft">(ไม่บังคับ · Studio เช็คห้องว่างให้)</span></span>
+        <LeadAppointmentFields
+          value={form.appointment}
+          onChange={set("appointment")}
+          modes={INTAKE_APPOINTMENT_MODES}
+          allowNone
+          leadId={leadId}
+          disabled={disabled}
+          locked={appointmentLock}
+        />
       </div>
 
       <label className="form-field span-2">

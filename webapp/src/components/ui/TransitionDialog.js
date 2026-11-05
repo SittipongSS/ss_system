@@ -225,7 +225,22 @@ export default function TransitionDialog({
             ))}
           </dl>
         )}
-        {fields.filter((field) => fieldVisible(field, record, values)).map((field) => (
+        {fields.filter((field) => fieldVisible(field, record, values)).map((field) => (field.type === "custom" ? (
+          /* ช่องประกอบหลายช่อง — ห่อด้วย <div> ไม่ใช่ <label> (label คลิกตรงไหนก็ยิงไปช่องแรกในกล่อง) */
+          <div className="form-group" key={field.name}>
+            <span>{field.label || field.name}{field.required ? " *" : ""}</span>
+            {field.Component ? (
+              <field.Component
+                value={values[field.name]}
+                onChange={(next) => setValue(field.name, next)}
+                record={record}
+                disabled={busy}
+                field={field}
+              />
+            ) : null}
+            {field.hint ? <small className={styles.help}>{field.hint}</small> : null}
+          </div>
+        ) : (
           <label className="form-group" key={field.name}>
             <span>{field.label || field.name}{field.required ? " *" : ""}</span>
             <TransitionField
@@ -237,7 +252,7 @@ export default function TransitionDialog({
             />
             {field.hint ? <small className={styles.help}>{field.hint}</small> : null}
           </label>
-        ))}
+        )))}
         {reason !== "none" ? (
           <label className="form-group">
             <span>{reasonPolicy.label}{reasonRequired ? " *" : ""}</span>

@@ -1,0 +1,48 @@
+/* ธงนัดหมายของลีด — ป้ายเล็กใต้ชื่อลูกค้าในคิวลีด และบนการ์ดนัดของหน้ารายละเอียด */
+
+.flag {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  max-width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-0-5) var(--space-1-5);
+  border: 1px solid var(--teal);
+  border-radius: var(--radius-md); /* ไม่ใช่ทรงแคปซูล — ห่อสองบรรทัดแล้วมุมโค้งเต็มดูเป็นก้อนบวม */
+  background: var(--teal-soft);
+  color: var(--teal);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  font-variant-numeric: tabular-nums;
+}
+
+/* MKT จองไว้ · AE ยังไม่ยืนยันเป็นนัดประชุม */
+.flag[data-pending] {
+  border-style: dashed;
+}
+
+/* นัดวันนี้ — ต้องเตรียมห้อง/คนวันนี้ */
+.flag[data-today] {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+/* ห่อทีละท่อน (วัน · เวลา · ห้อง) — ไม่ตัดด้วย … เพราะท่อนท้ายคือห้อง */
+.text {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-1);
+  min-width: 0;
+}
+
+.part {
+  white-space: nowrap;
+}
+
+/* ไอคอนธงอยู่ระดับบรรทัดแรกเมื่อข้อความห่อสองบรรทัด */
+.flag > svg {
+  flex: none;
+  margin-block-start: var(--space-0-5);
+}

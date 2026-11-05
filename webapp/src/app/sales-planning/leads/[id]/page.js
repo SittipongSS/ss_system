@@ -29,10 +29,16 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadActiveFollowUpAt, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadActiveFollowUpAt, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS, canCancelLeadAppointment } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
+import { MeetingAppointmentField } from "@/components/salesPlanning/LeadAppointmentFields";
+import LeadAppointmentFlag from "@/components/salesPlanning/LeadAppointmentFlag";
+import {
+  APPOINTMENT_ENDED_LABELS, APPOINTMENT_MODE_LABELS, appointmentPlace, appointmentTimeRange, emptyAppointment,
+  intakeAppointmentState, sameAppointment,
+} from "@/lib/sales/leadAppointments";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
@@ -58,11 +64,19 @@ const EVENT_LABELS = { create: "รับลีดเข้าระบบ", scr
 
    ⚠️ `eventAt` = เวลาที่เกิดเหตุการณ์จริง (เวลานัด / เวลาที่โทร) · `createdAt` = เวลาที่กด
    บันทึก — ต่างกันได้เป็นวัน ไทม์ไลน์ **เรียง** ด้วย createdAt แต่ต้อง **เล่าเรื่อง** ด้วย eventAt */
-function eventDetail(event) {
+function eventDetail(event, appointment = null) {
   const parts = [];
   if (event.kind === "meeting") {
-    if (event.eventAt) parts.push(`นัด ${fmtDateTime(event.eventAt)}`);
-    if (event.meetingMode) parts.push(MEETING_MODE_LABELS[event.meetingMode] || event.meetingMode);
+    /* ⭐ นัดที่มีแถวใน lead_appointments (mig 0424) เล่าได้ครบ: วัน เวลาเริ่ม–จบ ห้อง/รูปแบบ
+       และถ้าถูกเลื่อน/ยกเลิกไปแล้วต้องบอก ไม่งั้นไทม์ไลน์อ่านเหมือนนัดนั้นยังรออยู่ */
+    if (appointment) {
+      parts.push(`นัด ${fmtDate(appointment.startAt)} ${appointmentTimeRange(appointment)}`);
+      parts.push(appointmentPlace(appointment));
+      if (appointment.endedReason) parts.push(APPOINTMENT_ENDED_LABELS[appointment.endedReason] || appointment.endedReason);
+    } else {
+      if (event.eventAt) parts.push(`นัด ${fmtDateTime(event.eventAt)}`);
+      if (event.meetingMode) parts.push(MEETING_MODE_LABELS[event.meetingMode] || event.meetingMode);
+    }
   }
   if (event.reason) parts.push(event.reason);
   if (event.kind === "contact" && event.eventAt) parts.push(`ติดต่อเมื่อ ${fmtDateTime(event.eventAt)}`);
@@ -71,7 +85,13 @@ function eventDetail(event) {
   if (event.assigneeName) parts.push(event.assigneeName);
   return parts.join(" · ");
 }
-const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", budgetMax: "", details: "" };
+const blank = { contactName: "", company: "", phone: "", email: "", contactChannel: "", channel: "website", serviceInterest: "other", serviceDetail: "", budget: "", budgetMax: "", details: "", appointment: emptyAppointment() };
+
+/* ฟอร์มแก้ลีดจากแถวที่โหลดมา — ช่องนัดมาจากนัดที่รออยู่ (mig 0424) · เรียกทั้งตอนโหลดและตอนกดยกเลิกแก้ */
+const formFromLead = (lead) => ({
+  ...blank, ...lead, budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "",
+  appointment: intakeAppointmentState(lead).value,
+});
 
 export default function LeadDetailPage() {
   const { id } = useParams();
@@ -126,7 +146,7 @@ export default function LeadDetailPage() {
      ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
   const dealOwners = useDealOwners(meId);
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload }),
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload, appointmentField: MeetingAppointmentField }),
     [users, canCreateDeals, team, workload],
   );
 
@@ -144,7 +164,7 @@ export default function LeadDetailPage() {
         bounce: leadBounceHistory(body?.events || []),
         handoff: leadHandoffContext(body?.events || []),
       });
-      setForm({ ...blank, ...body, budget: body.budget ?? "", budgetMax: body.budgetMax ?? "" });
+      setForm(formFromLead(body));
     } catch (e) { setError(e.message); } finally { setLoading(false); }
   }, [id]);
 
@@ -154,14 +174,36 @@ export default function LeadDetailPage() {
   // เหตุการณ์ระบบของลีด → รายการอ่านอย่างเดียวในเธรดกลาง ("เก็บแยก โชว์รวม")
   // ท่าเดียวกับประวัติสถานะบนหน้าดีล · `reason`/`assigneeName` เป็นเนื้อของเหตุการณ์
   // ส่วนคนทำไปอยู่ช่อง `by` ของเธรด ไม่ใช่ยัดรวมเป็นข้อความเดียวเหมือนของเดิม
-  const leadEventItems = useMemo(() => (lead?.events || []).map((event) => ({
-    id: `ev-${event.id}`,
-    at: event.createdAt,
-    label: EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด",
-    color: "var(--text-3)",
-    by: event.createdByName || null,
-    body: eventDetail(event),
-  })), [lead?.events]);
+  const leadEventItems = useMemo(() => {
+    const appointments = lead?.appointments || [];
+    const byEvent = new Map(appointments.filter((row) => row.leadEventId).map((row) => [row.leadEventId, row]));
+    const events = (lead?.events || []).map((event) => ({
+      id: `ev-${event.id}`,
+      at: event.createdAt,
+      label: EVENT_LABELS[event.kind] || event.kind || "อัปเดตลีด",
+      color: "var(--text-3)",
+      by: event.createdByName || null,
+      body: eventDetail(event, byEvent.get(event.id) || null),
+    }));
+    /* นัดที่ MKT จองไว้ (ไม่มีแถว lead_events — ยังไม่ใช่นัดประชุม · มติข้อ 5) ต้องโผล่บนไทม์ไลน์ด้วย
+       ไม่งั้นนัดที่ถูกเลื่อน/ยกเลิกหายไปจากประวัติเงียบ ๆ */
+    const intake = appointments.filter((row) => row.source === "intake").map((row) => ({
+      id: `apt-${row.id}`,
+      at: row.createdAt,
+      label: "บันทึกนัดที่ลูกค้าจองไว้",
+      color: "var(--text-3)",
+      by: row.createdByName || null,
+      body: [
+        `นัด ${fmtDate(row.startAt)} ${appointmentTimeRange(row)}`,
+        appointmentPlace(row),
+        /* AE ยืนยันนัดเดิม (ห้อง/เวลาเดียวกัน) ก็ "แทนที่" ในฐาน — แต่บนไทม์ไลน์ต้องอ่านว่ายืนยัน ไม่ใช่เลื่อน */
+        row.endedReason === "replaced" && appointments.some((other) => other.source === "meeting" && sameAppointment(other, row))
+          ? `AE ยืนยันเป็นนัดประชุม${row.endedByName ? ` โดย ${row.endedByName}` : ""}`
+          : row.endedReason ? `${APPOINTMENT_ENDED_LABELS[row.endedReason] || row.endedReason}${row.endedByName ? ` โดย ${row.endedByName}` : ""}` : "",
+      ].filter(Boolean).join(" · "),
+    }));
+    return [...events, ...intake];
+  }, [lead?.events, lead?.appointments]);
 
   async function save() {
     const blocked = leadFormBlocker(form);
@@ -201,6 +243,28 @@ export default function LeadDetailPage() {
     } finally { setBusy(false); }
   }
 
+  /* ยกเลิกนัดที่รออยู่ = คืนห้อง Studio (มติเจ้าของ 05/11 ข้อ 6) — ไม่ใช่การย้ายสถานะ จึงไม่อยู่ใน lifecycle
+     ⚠️ บอกผลก่อนกด (approval-confirm-modals): ห้องกลับเป็นว่าง · สถานะลีดไม่ขยับ */
+  async function cancelAppointment() {
+    const current = lead?.appointment;
+    if (!current) return;
+    const ok = await confirmAction({
+      title: "ยกเลิกนัด",
+      message: `ยกเลิกนัด ${fmtDate(current.startAt)} ${appointmentTimeRange(current)} · ${appointmentPlace(current)}?`
+        + `${current.room ? " ห้องจะกลับเป็นว่างให้คนอื่นจองได้" : ""} · สถานะลีดไม่เปลี่ยน`
+        + " (ลูกค้าได้วันใหม่แล้ว ให้กด \"นัดเพิ่ม / เลื่อนนัด\" แทน — นัดเดิมจะถูกแทนที่เอง)",
+      confirmLabel: "ยกเลิกนัด",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true); setError("");
+    try {
+      // PATCH ที่มีแค่ `appointment: null` = ยกเลิกนัด (ด่าน canCancelLeadAppointment — ดู PATCH /leads/[id])
+      await apiJson(`/api/sales-planning/leads/${id}`, { method: "PATCH", json: { appointment: null }, fallbackError: "ยกเลิกนัดไม่สำเร็จ" });
+      await load();
+    } catch (e) { setError(e.message); } finally { setBusy(false); }
+  }
+
   /* ลบ = ไม่ใช่การย้ายสถานะ จึงไม่อยู่ใน lifecycle — แต่ยังต้องอยู่บนการ์ดเดียวกัน
      เพราะจุดจัดการต้องมีที่เดียว (นโยบายจริงอยู่ที่ canDeleteLead ฝั่ง API) */
   async function removeLead() {
@@ -230,7 +294,7 @@ export default function LeadDetailPage() {
      · ขอราคาผลิต · PO · ใบยื่นภาษี) — มีแต่หน้าทะเบียนภาษีที่ยังใช้ไอคอนหัวหน้า */
   const backActions = editing ? (
     <>
-      <Button icon={<X size={14} aria-hidden="true" />} onClick={() => { setEditing(false); setForm({ ...blank, ...lead, budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "" }); }} disabled={busy}>ยกเลิก</Button>
+      <Button icon={<X size={14} aria-hidden="true" />} onClick={() => { setEditing(false); setForm(formFromLead(lead)); }} disabled={busy}>ยกเลิก</Button>
       <Button tone="primary" icon={<Save size={14} aria-hidden="true" />} onClick={save} disabled={busy}>{busy ? "กำลังบันทึก..." : "บันทึก"}</Button>
     </>
   ) : null;
@@ -375,6 +439,12 @@ export default function LeadDetailPage() {
             extraActions={recordActions}
             busy={busy}
           />
+          <LeadAppointmentCard
+            appointment={lead.appointment}
+            canCancel={canCancelLeadAppointment(viewer, lead)}
+            busy={busy}
+            onCancel={cancelAppointment}
+          />
           <LeadSummary lead={lead} />
           <LeadFollowUpCard lead={lead} holidays={holidays} />
         </>}>
@@ -386,7 +456,14 @@ export default function LeadDetailPage() {
               (แก้จากที่นี่แล้วปล่อยรายละเอียดบริการว่างได้) · **PhoneInput หาย**
               (เบอร์ไม่ถูกจัดรูป) — โรคเดียวกับที่ AGENTS.md ยกตัวอย่างไว้ */}
           {editing ? <div className="form-grid cols-2">
-            <LeadFormFields form={form} onPatch={(patch) => setForm((v) => ({ ...v, ...patch }))} disabled={busy} compact />
+            <LeadFormFields
+              form={form}
+              onPatch={(patch) => setForm((v) => ({ ...v, ...patch }))}
+              disabled={busy}
+              compact
+              leadId={lead.id}
+              appointmentLock={intakeAppointmentState(lead).lock}
+            />
           </div> : <div className={styles.grid}>
             {info("ชื่อผู้ติดต่อ", <><Contact size={14} /> {lead.contactName}</>)}
             {info("บริษัท", <><Building2 size={14} /> {naText(lead.company)}</>)}
@@ -550,6 +627,31 @@ export default function LeadDetailPage() {
 
    ⚠️ ตัวเลขนับถอยหลังมาจาก `autoBounceCountdown` ซึ่งกลับสมการของ `planAutoBounce`
    ตัวเดียวกับที่ cron ใช้ — คำนวณเองที่นี่เมื่อไร จอกับระบบจะนับคนละวัน */
+/* การ์ดนัดหมาย (mig 0424) — นัดที่รออยู่: วัน เวลา ห้อง/รูปแบบ · ใครจอง · ยืนยันแล้วหรือยัง + ปุ่มยกเลิกนัด
+   ไม่มีนัดรออยู่ = ไม่มีการ์ด (การ์ดว่างอ่านได้ว่า "ระบบพัง" มากกว่า "ไม่มีนัด") */
+function LeadAppointmentCard({ appointment, canCancel, busy, onCancel }) {
+  if (!appointment) return null;
+  const confirmed = appointment.source === "meeting";
+  return <DetailCard
+    icon={CalendarClock}
+    eyebrow="Appointment"
+    title="นัดหมาย"
+    actions={canCancel ? (
+      <Button size="sm" variant="quiet" icon={<X size={14} aria-hidden="true" />} onClick={onCancel} disabled={busy}>ยกเลิกนัด</Button>
+    ) : null}
+  >
+    <LeadAppointmentFlag appointment={appointment} />
+    <div className={styles.summaryRow}><span>วันนัด</span><strong>{fmtDate(appointment.startAt)}</strong></div>
+    <div className={styles.summaryRow}><span>เวลา</span><strong>{appointmentTimeRange(appointment)}</strong></div>
+    <div className={styles.summaryRow}><span>{appointment.room ? "ห้อง" : "รูปแบบ"}</span><strong>{appointment.room ? appointmentPlace(appointment) : APPOINTMENT_MODE_LABELS[appointment.mode] || appointment.mode}</strong></div>
+    <div className={styles.summaryRow}><span>{confirmed ? "บันทึกโดย" : "จองโดย"}</span><strong>{naText(appointment.createdByName)}</strong></div>
+    <div className={styles.summaryRow}>
+      <span>สถานะ</span>
+      <strong>{confirmed ? "AE ยืนยันเป็นนัดประชุมแล้ว" : "รอ AE ยืนยันเป็นนัดประชุม"}</strong>
+    </div>
+  </DetailCard>;
+}
+
 function LeadFollowUpCard({ lead, holidays }) {
   // นาฬิกาเดินเฉพาะขั้น "ติดต่อแล้ว" — ขั้นอื่นมี SLA ของตัวเองอยู่บนแถบคิวแล้ว
   if (lead.status !== "contacted") return null;
