@@ -15,10 +15,7 @@
 // ⇒ งานกับคำร้องอยู่แถว "ทั้งวัน" เท่านั้น ห้ามเดาเวลาให้มัน (กติกาอยู่ที่ lib/salesPlanning/mySchedule)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  Building2, CalendarCheck, CalendarClock, CalendarDays,
-  ChevronLeft, ChevronRight, Clock, ListTodo, MessageCircleQuestion, Monitor, Car, TriangleAlert,
-} from "lucide-react";
+import { Building2, CalendarCheck, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock, ListTodo, MessageCircleQuestion, Monitor, Car, TriangleAlert, Phone } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
 import MonthGrid from "@/components/ui/MonthGrid";
@@ -28,11 +25,10 @@ import { WorkspaceSection } from "@/components/ui/Workspace";
 import { businessDate } from "@/lib/businessDate";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { NA, fmtDate, fmtDayMonth } from "@/lib/format";
-import { MEETING_MODE_LABELS } from "@/lib/sales/leads";
 import {
   DAY_SLOT_COUNT, DAY_START_HOUR, DEFAULT_SCHEDULE_VIEW, SCHEDULE_VIEWS,
   SCHEDULE_VIEW_STORAGE_KEY, buildScheduleDueItems, clampSelected, clusterDayMeetings,
-  daysBetween, localDayKey, localHhmm, normalizeScheduleView, scheduleByDay,
+  daysBetween, localDayKey, localHhmm, meetingPlaceLabel, meetingTimeLabel, normalizeScheduleView, scheduleByDay,
   scheduleRange, scheduleTotals, shiftAnchor, weekIndex,
 } from "@/lib/salesPlanning/mySchedule";
 import styles from "./ScheduleSection.module.css";
@@ -44,7 +40,7 @@ const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "ม�
 
 /* ไอคอนรูปแบบนัด — lucide เท่านั้น (ระบบไม่มีอิโมจิบนหน้าจอ) · คำเต็มยังอยู่ข้าง ๆ เสมอ
    เพราะไอคอนสามตัวนี้แยกกันด้วยสายตาอย่างเดียวไม่ได้ */
-const MODE_ICON = { onsite_customer_visit: Car, onsite_at_office: Building2, online: Monitor };
+const MODE_ICON = { onsite_customer_visit: Car, onsite_at_office: Building2, online: Monitor, phone: Phone };
 /* จำนวนชิปสูงสุดต่อกองในช่องวันของมุมมองสัปดาห์ — เกินกว่านี้ยุบเป็น "+N รายการ"
    (ช่องกว้าง ~180px · เกินสี่ชิปแล้วแถวสูงจนตารางเสียรูป) */
 const WEEK_CELL_LIMIT = 2;
@@ -275,7 +271,7 @@ function MeetingCard({ iso, today, loading, meetings, clashes, nextMeeting }) {
           const Icon = MODE_ICON[meeting.meetingMode];
           return (
             <Link key={meeting.id} className={styles.row} href={`/sales-planning/leads/${meeting.leadId}`}>
-              <span className={styles.rowTime}>{localHhmm(meeting.at)}</span>
+              <span className={styles.rowTime}>{meetingTimeLabel(meeting)}</span>
               <span className={styles.rowBody}>
                 <span className={styles.rowTitle}>
                   <span className={`${styles.dot} ${styles.dotMeeting}`} aria-hidden="true" />
@@ -283,8 +279,11 @@ function MeetingCard({ iso, today, loading, meetings, clashes, nextMeeting }) {
                 </span>
                 <span className={styles.rowMeta}>
                   {Icon && <Icon size={12} aria-hidden="true" />}
-                  {MEETING_MODE_LABELS[meeting.meetingMode] || "นัดลูกค้า"}
-                  {meeting.bookedByName ? ` · บันทึกโดย ${meeting.bookedByName}` : ""}
+                  {meetingPlaceLabel(meeting) || "นัดลูกค้า"}
+                  {/* นัดที่ MKT จองไว้ยังไม่ใช่นัดประชุม (mig 0424 · มติข้อ 5) — บอกว่าต้องกดยืนยันที่หน้าลีด */}
+                  {meeting.kind === "booking"
+                    ? ` · จองโดย ${meeting.bookedByName || "MKT"} · รอยืนยันเป็นนัดประชุม`
+                    : meeting.bookedByName ? ` · บันทึกโดย ${meeting.bookedByName}` : ""}
                 </span>
               </span>
             </Link>
@@ -418,7 +417,7 @@ function DayRail({ day, iso, today }) {
               {cluster.items.map((meeting) => (
                 <Link key={meeting.id} className={styles.blockItem} href={`/sales-planning/leads/${meeting.leadId}`}>
                   <b>{[meeting.company, meeting.contactName].filter(Boolean).join(" — ") || "ลีด"}</b>
-                  <em>{[localHhmm(meeting.at), MEETING_MODE_LABELS[meeting.meetingMode]].filter(Boolean).join(" · ")}</em>
+                  <em>{[meetingTimeLabel(meeting), meetingPlaceLabel(meeting), meeting.kind === "booking" ? "รอยืนยัน" : ""].filter(Boolean).join(" · ")}</em>
                 </Link>
               ))}
             </span>

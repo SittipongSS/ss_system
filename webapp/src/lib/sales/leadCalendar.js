@@ -127,3 +127,17 @@ export function toIntakeCalendarEntries(appointments = [], leadsById = new Map()
   }
   return out;
 }
+
+/**
+ * นัดของ "กำหนดการของฉัน" — นัดประชุม (ได้ห้อง/เวลาจบผ่าน leadEventId) + นัดที่ MKT จองไว้ เรียงตามเวลา
+ * ⚠️ ต่างจากปฏิทินนัดโดยเจตนา: นัดประชุมที่ถูกเลื่อน/ยกเลิก/ปิดลีดแล้ว **ตัดทิ้ง** — กำหนดการตอบว่า
+ *    "ต้องไปไหนบ้าง" ส่วนปฏิทินเก็บไว้เป็นประวัติแบบขีดฆ่า · นัดเก่าก่อน mig 0424 ไม่มีแถวนัดหมาย = อยู่ครบเหมือนเดิม
+ * @param leadsById ลีดที่คนดูถือ (ผู้เรียกกรองแล้ว) — นัดของลีดอื่นหายทั้งแถว
+ */
+export function scheduleMeetingEntries(events = [], appointments = [], leadsById = new Map()) {
+  const byEvent = new Map(appointments.filter((row) => row?.leadEventId).map((row) => [row.leadEventId, row]));
+  return [
+    ...toCalendarEntries(events, leadsById, byEvent).filter((entry) => !entry.endedReason),
+    ...toIntakeCalendarEntries(appointments, leadsById),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}

@@ -1,6 +1,7 @@
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { canUser, taskCreditId } from '@/lib/permissions';
-import { calendarRange, toCalendarEntries } from '@/lib/sales/leadCalendar';
+import { calendarRange, scheduleMeetingEntries } from '@/lib/sales/leadCalendar';
+import { APPOINTMENT_COLUMNS } from '@/lib/sales/leadAppointmentsRepo';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { fetchAll, fetchAllResult } from '@/lib/supabaseFetchAll';
 import { businessDate } from '@/lib/businessDate';
@@ -13,8 +14,13 @@ export const dynamic = 'force-dynamic';
 // GET /api/sales-planning/my-schedule?from=YYYY-MM-DD&to=YYYY-MM-DD
 //
 // วัตถุดิบของส่วน "กำหนดการของฉัน" บนแดชบอร์ดของฉัน — สามแหล่งในคำขอเดียว:
-//   นัดลูกค้า (`lead_events` kind='meeting') · งานของฉัน (`personal_tasks`)
+//   นัดลูกค้า (`lead_events` kind='meeting' + `lead_appointments` · mig 0424) · งานของฉัน (`personal_tasks`)
 //   · คำร้องที่ฉันเปิด (`dept_requests`)
+//
+// ⭐ นัดหมาย (มติเจ้าของ 05/11/2026 · docs/lead-appointments.md) — สองอย่างจาก `lead_appointments`:
+//   · นัดประชุมได้ห้อง/เวลาจบ (ผ่าน leadEventId) · นัดที่ถูกเลื่อน/ยกเลิก/ปิดลีดแล้ว **ไม่อยู่ในกำหนดการ**
+//     (คนละเรื่องกับปฏิทินนัดที่เก็บไว้เป็นประวัติแบบขีดฆ่า — ที่นี่ตอบว่า "ต้องไปไหนบ้าง")
+//   · นัดที่ MKT จองไว้ของลีดที่ฉันถือ แต่ฉันยังไม่กดยืนยันเป็นนัดประชุม (`kind: 'booking'`)
 //
 // ⚠️ **ขอบเขตคือ "ของฉัน" เท่านั้น ไม่ใช่ของทีม** — ทุกตัวเลขในแท็บนี้เป็นของเจ้าของ
 // งานคนเดียว (กติกาเดียวกับ my-dashboard) · ปฏิทินที่หลวมกว่าคิวลีดคือช่องอ่านนัด
@@ -51,7 +57,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const today = businessDate();
 
-  const [eventsResult, tasksResult, requestsResult] = await Promise.all([
+  const [eventsResult, tasksResult, requestsResult, appointmentsResult] = await Promise.all([
     supabase
       .from('lead_events')
       .select('id, leadId, eventAt, meetingMode, createdByName')
@@ -71,6 +77,14 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       .in('status', REQUEST_OPEN_STATUSES)
       .order('committedDueDate', { ascending: true })
       .order('id', { ascending: true })),
+    /* นัดหมายที่เริ่มในช่วง (ทุกสถานะ — ต้องรู้ว่านัดประชุมใบไหนถูกเลื่อนไปแล้ว) · ช่วงจำกัดที่ ~3 เดือนอยู่แล้ว */
+    supabase
+      .from('lead_appointments')
+      .select(APPOINTMENT_COLUMNS)
+      .gte('startAt', range.fromIso)
+      .lt('startAt', range.untilIso)
+      .order('startAt', { ascending: true })
+      .limit(1000),
   ]);
 
   if (eventsResult.error) return fail(eventsResult.error.message, 500);
@@ -81,18 +95,22 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ไม่โหลดแถวมา จอนี้จะขึ้นวันนั้นเป็นเดดไลน์ต่อไปทั้งที่รางในใบบอกว่ารอ RD แจ้งวันใหม่ */
   requestsResult.data = await attachReworkRows(supabase, requestsResult.data || []);
 
-  // ── นัดลูกค้า: เหตุการณ์ในช่วง → ลีดที่ **ฉัน** ดูแล ──
+  /* นัดหมายอ่านไม่ได้ (ก่อนรัน 0424 / ฐานสะดุด) = กำหนดการแบบเดิม ไม่มีห้อง ไม่ล้มทั้งแท็บ */
+  if (appointmentsResult.error) console.error('[my-schedule] อ่านนัดหมายไม่สำเร็จ — ไม่มีห้อง/นัดที่ MKT จอง:', appointmentsResult.error.message);
+  const appointments = appointmentsResult.error ? [] : (appointmentsResult.data || []);
+
+  // ── นัดลูกค้า: เหตุการณ์ในช่วง + นัดที่ MKT จอง → ลีดที่ **ฉัน** ดูแล ──
   const events = eventsResult.data || [];
   let meetings = [];
-  if (events.length) {
-    const leadIds = [...new Set(events.map((event) => event.leadId).filter(Boolean))];
+  if (events.length || appointments.length) {
+    const leadIds = [...new Set([...events, ...appointments].map((row) => row.leadId).filter(Boolean))];
     const { data: leads, error: leadsError } = await supabase
       .from('sales_leads')
       .select('id, contactName, company, team, assigneeId, assigneeName, status')
       .eq('assigneeId', user.id)
       .in('id', leadIds);
     if (leadsError) return fail(leadsError.message, 500);
-    meetings = toCalendarEntries(events, new Map((leads || []).map((lead) => [lead.id, lead])));
+    meetings = scheduleMeetingEntries(events, appointments, new Map((leads || []).map((lead) => [lead.id, lead])));
   }
 
   // ── งาน: ของฉันจริง (เครดิตงานเป็นของคนเดียว) และยังไม่เสร็จ ──

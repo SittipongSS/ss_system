@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
-import { CALENDAR_MAX_DAYS, calendarRange, isInLocalMonth, toCalendarEntries } from './leadCalendar.js';
+import { CALENDAR_MAX_DAYS, calendarRange, isInLocalMonth, scheduleMeetingEntries, toCalendarEntries, toIntakeCalendarEntries } from './leadCalendar.js';
 
 test('calendarRange: ถ่างขอบด้านละ 1 วัน — นัดตีหนึ่งต้องไม่หายไปจากเดือนที่กำลังดู', () => {
   const range = calendarRange('2026-08-01', '2026-08-31');
@@ -85,4 +85,45 @@ test('isInLocalMonth: ตัดวันที่ถ่างเผื่อข�
 test('หน้าปฏิทินต้องกรองด้วย isInLocalMonth ก่อนนับ — ไม่งั้นป้ายจำนวนกับตารางไม่ตรงกัน', () => {
   const pageSource = readFileSync(new URL('../../app/sa/calendar/page.js', import.meta.url), 'utf8');
   assert.match(pageSource, /isInLocalMonth\(entry\.at, cursor\.y, cursor\.m\)/);
+});
+
+/* ── นัดหมาย + ห้อง (lead_appointments · mig 0424) ── */
+const MINE = new Map([['L1', { id: 'L1', contactName: 'คุณเอ', team: 'KA', assigneeId: 'u1', status: 'meeting' }]]);
+const appt = (over = {}) => ({
+  id: 'APT-1', leadId: 'L1', source: 'meeting', mode: 'onsite_at_office', room: 'studio_02',
+  startAt: '2026-11-20T06:30:00+00:00', endAt: '2026-11-20T08:00:00+00:00', leadEventId: 'LEV-1', endedAt: null, endedReason: null,
+  createdByName: 'MKT', ...over,
+});
+
+test('ปฏิทิน: นัดประชุมได้ห้อง/เวลาจบผ่าน leadEventId · นัดที่ถูกเลื่อนยังอยู่ (ขีดฆ่า) พร้อมเหตุ', () => {
+  const events = [{ id: 'LEV-1', leadId: 'L1', eventAt: '2026-11-20T06:30:00+00:00', meetingMode: 'onsite_at_office' }];
+  const [entry] = toCalendarEntries(events, MINE, new Map([['LEV-1', appt({ endedAt: 'x', endedReason: 'replaced' })]]));
+  assert.equal(entry.room, 'studio_02');
+  assert.equal(entry.endAt, '2026-11-20T08:00:00+00:00');
+  assert.equal(entry.endedReason, 'replaced');
+  assert.equal(toCalendarEntries(events, MINE)[0].room, null, 'นัดเก่าไม่มีแถวนัดหมาย = ไม่มีห้อง');
+});
+
+test('ปฏิทิน: นัดที่ MKT จองไว้ขึ้นเฉพาะที่ยังไม่ปิด · ลีดนอกขอบเขตหาย', () => {
+  const intake = appt({ id: 'APT-2', source: 'intake', leadEventId: null });
+  assert.deepEqual(toIntakeCalendarEntries([intake], MINE).map((e) => [e.kind, e.room, e.bookedByName]), [['booking', 'studio_02', 'MKT']]);
+  assert.equal(toIntakeCalendarEntries([{ ...intake, endedAt: 'x', endedReason: 'replaced' }], MINE).length, 0);
+  assert.equal(toIntakeCalendarEntries([{ ...intake, leadId: 'L-other' }], MINE).length, 0);
+  assert.equal(toIntakeCalendarEntries([appt()], MINE).length, 0, 'นัดประชุมไม่ซ้ำเป็นนัดจอง');
+});
+
+test('กำหนดการของฉัน: นัดที่ถูกเลื่อน/ยกเลิกไม่อยู่ · นัดที่ MKT จองอยู่ · เรียงตามเวลา', () => {
+  const events = [
+    { id: 'LEV-1', leadId: 'L1', eventAt: '2026-11-20T06:30:00+00:00', meetingMode: 'onsite_at_office' },
+    { id: 'LEV-OLD', leadId: 'L1', eventAt: '2026-11-19T03:00:00+00:00', meetingMode: 'online' },
+    { id: 'LEV-LEGACY', leadId: 'L1', eventAt: '2026-11-18T03:00:00+00:00', meetingMode: 'online' },
+  ];
+  const appointments = [
+    appt(),
+    appt({ id: 'APT-OLD', leadEventId: 'LEV-OLD', room: null, mode: 'online', startAt: '2026-11-19T03:00:00+00:00', endAt: '2026-11-19T04:00:00+00:00', endedAt: 'x', endedReason: 'replaced' }),
+    appt({ id: 'APT-BOOK', source: 'intake', leadEventId: null, room: 'studio_01', startAt: '2026-11-21T02:00:00+00:00', endAt: '2026-11-21T03:30:00+00:00' }),
+  ];
+  const out = scheduleMeetingEntries(events, appointments, MINE);
+  assert.deepEqual(out.map((e) => e.id), ['LEV-LEGACY', 'LEV-1', 'APT-BOOK']);
+  assert.deepEqual(out.map((e) => e.kind), ['meeting', 'meeting', 'booking']);
 });
