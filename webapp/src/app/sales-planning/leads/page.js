@@ -27,6 +27,9 @@ import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 
 import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
+import { MeetingAppointmentField } from "@/components/salesPlanning/LeadAppointmentFields";
+import LeadAppointmentFlag from "@/components/salesPlanning/LeadAppointmentFlag";
+import { appointmentPlace, emptyAppointment, intakeAppointmentState } from "@/lib/sales/leadAppointments";
 import PendingFiles from "@/components/ui/PendingFiles";
 import { postUpdateWithFiles } from "@/lib/master/updatePost";
 import LeadQueueSummary from "@/components/salesPlanning/LeadQueueSummary";
@@ -72,6 +75,8 @@ const initialForm = {
   id: null, channel: "chatcone_line", contactName: "", company: "", email: "",
   contactChannel: "", phone: "", serviceInterest: "diffuser", serviceDetail: "",
   budget: "", budgetMax: "", details: "",
+  // นัดที่ลูกค้าจองไว้ (mig 0424) — ค่าตั้งต้น "ยังไม่มีนัด"
+  appointment: emptyAppointment(),
 };
 
 /* ป้ายสถานะ/ช่องทาง — ความกว้างและสีอยู่ใน page.module.css ทั้งหมด
@@ -225,6 +230,8 @@ export default function LeadsPage() {
   // modals
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(initialForm);
+  // นัดที่ล็อกของใบที่กำลังแก้ (AE ยืนยันเป็นนัดประชุมแล้ว) — อยู่นอก `form` เพราะ form ทั้งก้อนถูกส่งไป API
+  const [appointmentLock, setAppointmentLock] = useState(null);
   // ไฟล์อ้างอิงที่แนบไว้ตอนกรอกลีดใหม่ — ยังไม่มี id ให้อัป จึงถือไว้จนลีดเกิด
   const [pendingFiles, setPendingFiles] = useState([]);
 
@@ -339,7 +346,8 @@ export default function LeadsPage() {
     if (!q) return scopedLeads;
     // ค้นด้วยชื่อ *ปัจจุบัน* — ไม่งั้นพิมพ์ชื่อใหม่ของ AE แล้วหาลีดของเขาไม่เจอ
     // เหตุผลไม่ไปต่อโชว์บนแถวแล้ว ⇒ ต้องค้นเจอ (กฎ: ตาเห็นบนแถว = ค้นเจอ)
-    return scopedLeads.filter((l) => [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l), l.status === "disqualified" ? leadLostText(l, "") : ""].some((v) => (v || "").toLowerCase().includes(q)));
+    // ธงนัด (mig 0424) โชว์บนแถวแล้ว ⇒ พิมพ์ "Studio 02" หรือ "Online" ต้องเจอใบที่นัดห้อง/แบบนั้น
+    return scopedLeads.filter((l) => [l.contactName, l.company, l.phone, l.email, l.details, assigneeNameOf(l), l.status === "disqualified" ? leadLostText(l, "") : "", appointmentPlace(l.appointment)].some((v) => (v || "").toLowerCase().includes(q)));
   }, [scopedLeads, query, assigneeNameOf]);
 
   // วันไทยของวันนี้ — นิยามเดียวกับที่การ์ดค้างคิวใช้แบ่ง "เลยวันติดตาม / ถึงกำหนดวันนี้"
@@ -490,7 +498,7 @@ export default function LeadsPage() {
      rowActions() ของตัวเองที่คิดซ้ำจาก LEAD_TRANSITIONS + เช็ค role เอง แล้วเพี้ยนจาก
      หน้ารายละเอียดได้เงียบ ๆ (เจอจริง: contact บังคับเหตุผลที่นี่ แต่หน้าโน้นไม่บังคับ) */
   const lifecycle = useMemo(
-    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload }),
+    () => createLeadLifecycle({ users, canCreateDeals, viewerTeam: team, workload, appointmentField: MeetingAppointmentField }),
     [users, canCreateDeals, team, workload],
   );
   /* "เปิดดีล" ไม่ใช่ขั้นในเส้นทาง (ดู leadDealAction) — ในแถวจึงมี **ช่องของตัวเอง**
@@ -557,7 +565,7 @@ export default function LeadsPage() {
             />
           )}
           {canCreate && (
-            <button type="button" className="btn btn-accent" onClick={() => { setForm(initialForm); setPendingFiles([]); setFormOpen(true); }}>
+            <button type="button" className="btn btn-accent" onClick={() => { setForm({ ...initialForm, appointment: emptyAppointment() }); setAppointmentLock(null); setPendingFiles([]); setFormOpen(true); }}>
               <Plus size={15} aria-hidden="true" /> รับลีดใหม่
             </button>
           )}
@@ -749,6 +757,9 @@ export default function LeadsPage() {
                           {naText([lead.company, lead.phone, lead.email || lead.contactChannel].filter(Boolean).join(" · "))}
                         </span>
                       </Link>
+                      {/* ⭐ ธงนัดหมาย (มติเจ้าของ 05/11) — ใบที่มีนัดรออยู่: วัน · เวลา · ห้อง
+                          อยู่นอกลิงก์ชื่อ — ข้อความในลิงก์ถูกอ่านเป็นชื่อลิงก์ทั้งก้อน */}
+                      <LeadAppointmentFlag appointment={lead.appointment} nowIso={pageNow.toISOString()} />
                     </td>
                     <td>{channelBadge(lead.channel)}</td>
                     <td>
@@ -812,7 +823,13 @@ export default function LeadsPage() {
                         onTransition={(actionId, values) => runTransition(lead, actionId, values)}
                         canEdit={canEditRow(lead)}
                         canDelete={canDeleteRow(lead)}
-                        onEdit={() => { setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "", details: lead.details || "" }); setPendingFiles([]); setFormOpen(true); }}
+                        onEdit={() => {
+                          const appointment = intakeAppointmentState(lead);
+                          setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "", details: lead.details || "", appointment: appointment.value });
+                          setAppointmentLock(appointment.lock);
+                          setPendingFiles([]);
+                          setFormOpen(true);
+                        }}
                         onDelete={() => deleteLead(lead)}
                       />
                     </td>
@@ -855,7 +872,13 @@ export default function LeadsPage() {
         )}
       >
         <form onSubmit={saveLead} className="form-grid cols-2" aria-busy={busy === "save"}>
-          <LeadFormFields form={form} onPatch={(patch) => setForm((f) => ({ ...f, ...patch }))} disabled={busy === "save"} />
+          <LeadFormFields
+            form={form}
+            onPatch={(patch) => setForm((f) => ({ ...f, ...patch }))}
+            disabled={busy === "save"}
+            leadId={form.id || null}
+            appointmentLock={appointmentLock}
+          />
           {/* ⭐ แนบไฟล์ได้ตั้งแต่ตอนรับลีด (IS-26080014) — โหมดสร้างเท่านั้น
               แพตเทิร์นเดียวกับโมดัลงาน: สร้าง = ถือไฟล์ไว้อัปหลังบันทึก ·
               แก้ = ไปแนบที่เธรดบนหน้ารายละเอียด ซึ่งลบ/ตอบกลับ/เห็นว่าใครแนบได้ */}

@@ -57,7 +57,8 @@ export default function RecordControlCard({
     // extraActions มี onClick ของตัวเอง · transition เปิดกล่องให้กรอกก่อน (เว้นแต่ onSelect ดักไว้)
     onClick: entry.onClick || (() => {
       if (onSelect?.(entry.transition) === true) return;
-      setPending({ transition: entry.transition, values: {} });
+      /* ค่าตั้งต้นของกล่อง (เช่น เติมนัดที่ MKT จองไว้ลงกล่องนัดประชุม · mig 0424) — ฟังก์ชันของ record */
+      setPending({ transition: entry.transition, values: entry.transition.initialValues?.(record) || {} });
     }),
   });
 

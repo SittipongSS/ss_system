@@ -42,6 +42,11 @@
 .eventPast { background: var(--panel-3); color: var(--text-3); }
 .eventPast:hover { background: var(--panel-2); }
 .eventTime { font-variant-numeric: tabular-nums; font-weight: var(--fw-semibold); }
+/* นัดที่ MKT จองไว้ (ยังไม่ใช่นัดประชุม · mig 0424) = กรอบประ · นัดที่ถูกเลื่อน/ยกเลิก = ขีดฆ่า (ยังเป็นประวัติ) */
+.event[data-kind="booking"],
+.card[data-kind="booking"] { outline: 1px dashed var(--teal); outline-offset: -1px; }
+.event[data-ended],
+.card[data-ended] .cardName { text-decoration: line-through; color: var(--text-3); }
 .more { font-size: var(--fs-1); color: var(--text-3); padding-inline-start: var(--space-1); }
 
 /* ── มุมมองรายการ (ค่าตั้งต้นบนมือถือ) ────────────────────────────────── */
@@ -81,6 +86,7 @@
   margin-block-end: var(--space-0-5);
 }
 .cardTime { font-size: var(--fs-5); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.cardState { font-size: var(--fs-3); color: var(--text-3); }
 .cardName { display: block; font-size: var(--fs-6); font-weight: var(--fw-semibold); line-height: var(--lh-thai); }
 .cardMeta {
   display: flex;

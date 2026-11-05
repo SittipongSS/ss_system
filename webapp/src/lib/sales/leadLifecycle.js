@@ -23,8 +23,6 @@ import { fmtDate, fmtName } from "@/lib/format";
 import {
   LEAD_STATUS_LABELS,
   LEAD_TRANSITIONS,
-  MEETING_MODES,
-  MEETING_MODE_LABELS,
   LEAD_FOLLOW_UP_ACTIONS,
   LEAD_LOST_PICKABLE,
   LEAD_LOST_REVISIT_CODES,
@@ -38,6 +36,7 @@ import {
 import { LEAD_ASSIGNEE_ROLES } from "@/lib/sales/leadAssignee";
 import { AUTO_BOUNCE_MAX_ROUNDS } from "@/lib/sales/leadAutoBounce";
 import { withWorkload } from "@/lib/sales/leadWorkload";
+import { meetingAppointmentDefaults, meetingAppointmentError } from "@/lib/sales/leadAppointments";
 
 /* action ที่ handler ตอบ badRequest ถ้าไม่มี `body.reason?.trim()`
    — ไม่ใช่ความชอบของฝั่งหน้าจอ แต่เป็นข้อบังคับของ API
@@ -160,8 +159,27 @@ const currentHolderNote = (lead, user) => {
    ⭐ ค่าไทล์ "ติดตามต่อ" **เปลี่ยนตามสถานะ**: ที่ `assigned` คือ `contact` (ครั้งแรก
    ขยับสถานะ) ที่ `contacted`/`meeting` คือ `followup` (ไม่ขยับ) — ค่าของไทล์คือ
    action จริงเสมอ `actionFrom` จึงอ่านค่าตรง ๆ ได้โดยไม่ต้องรู้จักสถานะ */
-const NEXT_STEP_FIELDS = [
-  { name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime" },
+/* ⭐ ช่องนัดหมาย (mig 0424 · มติเจ้าของ 05/11) — วัน · เวลาเริ่ม–จบ · รูปแบบ · ห้อง Studio พร้อมห้องว่าง
+   เป็นคอมโพเนนต์ของจอ (LeadAppointmentFields) ที่หน้าส่งเข้ามาทาง createLeadLifecycle({ appointmentField })
+   — lib ไม่ import คอมโพเนนต์ (เทสต์ node โหลดไฟล์นี้ตรง ๆ) · ไม่ส่งมา = ช่องว่างเปล่า แต่ด่านยังทำงาน */
+const appointmentFieldDef = (Component, extra = {}) => ({
+  name: "appointment",
+  label: "นัดหมาย",
+  type: "custom",
+  required: true,
+  Component: Component || null,
+  /* นัดของลีดใบนี้เองไม่นับว่าชน — AE ยืนยันนัดที่ MKT จองไว้ (ห้องเดิม เวลาเดิม) ต้องกดผ่าน */
+  validate: (value) => meetingAppointmentError(value),
+  ...extra,
+});
+
+const nextStepFields = (appointmentField) => [
+  /* ⚠️ ซ่อนเมื่อเลือก "นัดประชุม" — ปลายทางนั้นเก็บเวลานัด (eventAt = เวลาเริ่มนัด) ไม่ใช่เวลาที่โทร
+     🐞 เดิมช่องนี้ค้างอยู่แล้ว API ใช้เป็น "เวลานัด" ⇒ นัดจากกล่องนี้ลงปฏิทินเป็นเวลาที่กดบันทึก */
+  {
+    name: "eventAt", label: "เวลาที่ติดต่อ", type: "datetime",
+    visible: (lead, user, values) => values?.nextStep !== "meeting",
+  },
   {
     name: "nextStep",
     label: "ก้าวถัดไป",
@@ -188,14 +206,9 @@ const NEXT_STEP_FIELDS = [
     visible: (lead, user, values) => LEAD_FOLLOW_UP_ACTIONS.includes(values?.nextStep),
     hint: "วันที่รับปากลูกค้าไว้ว่าจะกลับไปหา — วันนี้จะไปโผล่ในคิวของฉัน",
   },
-  {
-    name: "meetingMode",
-    label: "รูปแบบนัด",
-    type: "tiles",
-    required: true,
+  appointmentFieldDef(appointmentField, {
     visible: (lead, user, values) => values?.nextStep === "meeting",
-    options: MEETING_MODES.map((mode) => ({ value: mode, label: MEETING_MODE_LABELS[mode] || mode })),
-  },
+  }),
   {
     name: "disqualifiedCode",
     label: "เหตุผลที่ไม่ไปต่อ",
@@ -227,7 +240,7 @@ const nextStepConfirm = (fallbackLabel) => (values) => (
       : { label: fallbackLabel, tone: "primary" }
 );
 
-export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null, workload = null } = {}) {
+export function createLeadLifecycle({ users = [], canCreateDeals = false, viewerTeam = null, workload = null, appointmentField = null } = {}) {
   return defineLifecycle({
     entity: "lead",
     noun: "ลีด",
@@ -405,7 +418,8 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร ได้ข้อมูลอะไร นัดอะไรต่อ",
         },
-        fields: NEXT_STEP_FIELDS,
+        fields: nextStepFields(appointmentField),
+        initialValues: (lead) => ({ appointment: meetingAppointmentDefaults(lead) }),
       },
       {
         /* ⭐ ติดตามครั้งที่ 2 ขึ้นไป — **ไม่ขยับสถานะ** (มติผู้ใช้ 2026-08-25)
@@ -440,7 +454,8 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
           label: "หมายเหตุการติดต่อ",
           placeholder: "คุยกับใคร คืบหน้าแค่ไหน ตกลงอะไรกันไว้",
         },
-        fields: NEXT_STEP_FIELDS,
+        fields: nextStepFields(appointmentField),
+        initialValues: (lead) => ({ appointment: meetingAppointmentDefaults(lead) }),
       },
       {
         id: "meeting",
@@ -458,15 +473,14 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         from: allowedFrom("meeting"),
         to: "meeting",
         visible: (lead, user) => canWorkLead(user, lead),
+        dialogSize: "md", // วัน + เวลาเริ่ม–จบ + แผ่นห้องสามห้อง ไม่ลงในกล่อง 480px
+        /* ⭐ เติมจากนัดที่ MKT จองไว้ (มติเจ้าของ 05/11 ข้อ 5) — AE กดยืนยันทีเดียว ไม่ต้องพิมพ์ซ้ำ
+           ลีดที่มีนัดรออยู่แล้วกดนัดใหม่ = นัดเดิมถูกแทนที่และคืนห้อง (ข้อ 6 · บอกไว้ใน hint) */
+        initialValues: (lead) => ({ appointment: meetingAppointmentDefaults(lead) }),
         fields: [
-          {
-            name: "meetingMode",
-            label: "รูปแบบนัด",
-            type: "select",
-            required: true,
-            options: MEETING_MODES.map((mode) => ({ value: mode, label: MEETING_MODE_LABELS[mode] || mode })),
-          },
-          { name: "eventAt", label: "เวลานัด", type: "datetime" },
+          /* นัดเดิมที่จะถูกแทนที่บอกในตัวช่อง (MeetingAppointmentField) เฉพาะลีดที่มีนัดรออยู่ —
+             hint ตายตัวโผล่ทุกใบ อ่านเหมือนใบที่ไม่มีนัดก็มีนัด */
+          appointmentFieldDef(appointmentField),
         ],
       },
       {
@@ -647,7 +661,10 @@ export function buildLeadTransitionPayload({ action, values = {}, users = [] } =
     disqualifiedCode: action === "disqualify" ? values.disqualifiedCode || undefined : undefined,
     // ⚠️ ช่องนี้โผล่เฉพาะเหตุผลที่ "ไม่ใช่แพ้ถาวร" — dialog ตัดค่าที่ค้างให้แล้วตอนซ่อน
     revisitAt: action === "disqualify" ? values.revisitAt || undefined : undefined,
-    meetingMode: action === "meeting" ? values.meetingMode || undefined : undefined,
+    /* นัด (mig 0424) — วัน/เวลาไทย + รูปแบบ + ห้อง · API แปลงเป็นจุดเวลาเอง (normalizeAppointmentInput)
+       ⚠️ เฉพาะ meeting — กล่องติดต่อที่เลือก "ติดตามต่อ" มีค่านัดที่เติมไว้ค้าง (ซ่อนอยู่ · dialog ตัดทิ้งแล้ว)
+       แต่กันอีกชั้นไม่ให้ payload ของ action อื่นพกนัดไปด้วย */
+    appointment: action === "meeting" ? values.appointment || undefined : undefined,
     eventAt: eventAt && !Number.isNaN(eventAt.getTime()) ? eventAt.toISOString() : undefined,
     /* ⚠️ ส่งเฉพาะ action ที่ API รับ (LEAD_FOLLOW_UP_ACTIONS + reopen) — ส่งไปกับ action อื่น
        ไม่พังวันนี้เพราะ handler ไม่อ่าน แต่เป็นทางที่ payload จะเริ่มโกหกว่า

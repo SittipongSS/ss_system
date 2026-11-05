@@ -1,0 +1,92 @@
+/* ช่องนัดหมายของลีด — ใช้ทั้งในฟอร์มรับลีด (form-grid) และกล่องนัดประชุม (TransitionDialog)
+   ⇒ กินเต็มแถวเสมอ · ไม่มีกรอบของตัวเอง (กรอบเป็นของผู้เรียก) */
+
+.wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.when {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-6);
+  color: var(--text-2);
+}
+
+.hint,
+.error {
+  margin: 0;
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  color: var(--text-3);
+}
+
+.error {
+  color: var(--red);
+}
+
+.summary {
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+}
+
+/* ตารางนัดของวันนั้น — สามคอลัมน์ ห้อง · เวลา · ของใคร */
+.day {
+  margin: 0;
+  padding: var(--space-2);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+}
+
+.day li {
+  display: grid;
+  grid-template-columns: 72px 88px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--fs-6);
+  line-height: var(--lh-thai);
+  color: var(--text-2);
+}
+
+.day li[data-own] {
+  color: var(--text-3);
+}
+
+.dayTime {
+  font-variant-numeric: tabular-nums;
+}
+
+.dayWho {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .when {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .when > :first-child {
+    grid-column: 1 / -1;
+  }
+}

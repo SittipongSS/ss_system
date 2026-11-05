@@ -1,7 +1,7 @@
 import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { recordAudit } from '@/lib/audit';
-import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
+import { withUser, ok, fail, badRequest, conflict, forbidden, unauthorized } from '@/lib/http';
 import {
   LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, leadBudgetError,
   applyLeadScope, canViewLeads, canCreateLead,
@@ -11,6 +11,11 @@ import { toMoney } from '@/lib/salesPlanning';
 import { leadLinkError } from '@/lib/sales/dealLeadLink';
 import { notifyLeadHandoff } from '@/lib/sales/leadNotify';
 import { loadUserDirectory } from '@/lib/usersRepo';
+import {
+  INTAKE_APPOINTMENT_MODES, appointmentConflictMessage, appointmentInputError, hasAppointmentInput,
+  normalizeAppointmentInput,
+} from '@/lib/sales/leadAppointments';
+import { attachUpcomingAppointments, bookLeadAppointment, findRoomConflicts, withVisibleLeadNames } from '@/lib/sales/leadAppointmentsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +58,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
      ⚠️ อ่านไม่สำเร็จ = **ไม่ใส่บริบท** แต่ยังคืนลีดตามปกติ — คิวลีดเป็นหน้าทำงานหลัก
      ล้มทั้งหน้าเพราะป้ายเสริมอ่านไม่ได้คือแลกผิดฝั่ง */
   await attachBounceContext(supabase, leads);
+  /* ⭐ ธงนัดหมาย (mig 0424 · มติเจ้าของ 05/11) — `lead.appointment` = นัดที่รออยู่ของใบนั้น
+     ไม่มีนัด = ไม่มีคีย์ · อ่านไม่ได้ = ไม่มีธงแต่คิวยังเปิดได้ (ดู attachUpcomingAppointments) */
+  await attachUpcomingAppointments(supabase, leads, new Date().toISOString());
   return ok(leads);
 });
 
@@ -115,6 +123,20 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const budgetError = leadBudgetError(body);
   if (budgetError) return badRequest(budgetError);
 
+  /* ⭐ นัดที่ลูกค้าจองมาแล้ว (mig 0424 · มติเจ้าของ 05/11) — ด่านเดียวกับฟอร์ม (appointmentInputError)
+     ⚠️ เช็คห้อง **ก่อน** สร้างลีด — ห้องชนต้องตอบ 409 โดยไม่มีลีดเกิดขึ้น ไม่งั้น MKT กดใหม่แล้วได้ลีดซ้ำ
+     (ยังมีช่องสองคนกดพร้อมกัน — ฐานปัดคนที่สองตอนจองจริงข้างล่าง แล้วเราลบลีดที่เพิ่งเกิดทิ้ง) */
+  const appointmentError = appointmentInputError(body.appointment, { modes: INTAKE_APPOINTMENT_MODES });
+  if (appointmentError) return badRequest(appointmentError);
+  const appointment = hasAppointmentInput(body.appointment)
+    ? normalizeAppointmentInput(body.appointment, { modes: INTAKE_APPOINTMENT_MODES })
+    : null;
+  if (appointment?.room) {
+    const { data: clash, error: clashError } = await findRoomConflicts(supabase, appointment);
+    if (clashError) return fail(`เช็คห้องว่างไม่สำเร็จ: ${clashError.message}`, 500);
+    if (clash?.length) return conflict(appointmentConflictMessage(await withVisibleLeadNames(supabase, user, clash)));
+  }
+
   const row = {
     id: genId('LEAD'),
     channel: body.channel,
@@ -138,6 +160,25 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const { data, error } = await supabase.from('sales_leads').insert(row).select().single();
   if (error) return fail(error.message, 500);
 
+  let booked = null;
+  if (appointment) {
+    const nowIso = new Date().toISOString();
+    const result = await bookLeadAppointment(supabase, {
+      leadId: data.id, appointment, source: 'intake', user, nowIso,
+    });
+    if (result.conflict || result.error) {
+      /* ลีดเพิ่งเกิดและยังไม่มีใครเห็น (ยังไม่มีประวัติ/audit/แจ้งเตือน) — ถอยทั้งใบ ให้ MKT แก้นัดแล้วกดใหม่
+         ⚠️ ลบไม่สำเร็จ = มีลีดค้างโดยไม่มีนัด → บอกตรง ๆ ไม่ให้กดซ้ำจนลีดซ้ำ */
+      const { error: rollbackError } = await supabase.from('sales_leads').delete().eq('id', data.id);
+      if (rollbackError) {
+        console.error('[leads] ถอยลีดหลังจองห้องไม่สำเร็จ', data.id, rollbackError.message);
+        return fail(`${result.conflict || result.error} — แต่ลีด ${data.contactName} ถูกบันทึกไปแล้วโดยไม่มีนัด กรุณาเปิดใบนั้นแก้นัดแทนการกรอกใหม่`, 409);
+      }
+      return result.conflict ? conflict(result.conflict) : fail(result.error, 500);
+    }
+    booked = result.data;
+  }
+
   const { error: eventError } = await supabase.from('lead_events').insert({
     id: genId('LEV'),
     leadId: data.id,
@@ -151,7 +192,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (eventError) console.error('[leads] บันทึกประวัติรับลีดไม่สำเร็จ', data.id, eventError.message);
 
   await recordAudit({
-    user, action: 'create', entityType: 'sales_lead', entityId: data.id, after: data,
+    user, action: 'create', entityType: 'sales_lead', entityId: data.id, after: booked ? { ...data, appointment: booked } : data,
     summary: `รับลีด ${data.contactName}${data.company ? ` (${data.company})` : ''} · ${data.channel}`,
     request: req,
   });
@@ -168,5 +209,5 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // จุดส่งมอบ 1/3: ลีดใหม่เข้าคิว → แจ้งผู้คัดกรอง (Supervisor) ให้เริ่มนับ SLA 1 วันทำการ.
 
-  return ok(data, 201);
+  return ok(booked ? { ...data, appointment: booked } : data, 201);
 });

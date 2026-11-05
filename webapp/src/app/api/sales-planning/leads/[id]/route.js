@@ -3,12 +3,19 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { can } from '@/lib/permissions';
 import {
-  LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead,
+  LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead, canCancelLeadAppointment,
   canDeleteLead, LEAD_DELETE_LOCKED_STATUSES, LEAD_EDIT_LOCKED_STATUSES, canViewLeads, inLeadScope,
   leadBudgetError,
 } from '@/lib/sales/leads';
 import { toMoney } from '@/lib/salesPlanning';
 import { purgeUpdates } from '@/lib/master/updates';
+import {
+  INTAKE_APPOINTMENT_MODES, appointmentInputError, hasAppointmentInput, normalizeAppointmentInput,
+  pickUpcomingAppointment, sameAppointment,
+} from '@/lib/sales/leadAppointments';
+import {
+  bookLeadAppointment, loadLeadAppointments, loadUpcomingAppointment, releaseLeadAppointments,
+} from '@/lib/sales/leadAppointmentsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,10 +61,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const [
     { data: events, error: eventsError },
     { data: relatedDeals, error: relatedDealsError },
+    { data: appointments, error: appointmentsError },
   ] = await Promise.all([
     supabase.from('lead_events').select('*').eq('leadId', id).order('createdAt', { ascending: false }),
     supabase.from('sales_deals').select('id, code, title, customerName, stage, dealType, projectValue, wonValue, probability, forecastMonth, projectId, metadata').eq('leadId', id).order('createdAt', { ascending: false }),
+    loadLeadAppointments(supabase, id),
   ]);
+  /* นัดหมาย (mig 0424) อ่านไม่ขึ้น = ไม่มีการ์ดนัด แต่ลีดยังเปิดได้ — ป้ายเสริม ไม่ใช่ตัวใบ
+     (ต่างจากประวัติ/ดีลข้างล่างที่ตอบ error เพราะคำตอบว่าง "ไม่มี" ทำให้ปุ่มลบ/ไทม์ไลน์โกหก) */
+  if (appointmentsError) console.error('[lead] อ่านนัดหมายไม่สำเร็จ:', id, appointmentsError.message);
   /* supabase ไม่ throw — อ่านไม่ขึ้นแล้วตกเป็น [] หน้าตาเหมือนคำตอบว่า "ไม่มี" ทุกประการ
      · ดีลที่ผูก: การ์ดขึ้น "ยังไม่มีดีล" และ canDelete ข้างล่างเปิดปุ่มลบให้ (DELETE ยังกันซ้ำ
        แต่ผู้ใช้กดแล้วเจอ 409 ที่เดาไม่ได้) · ประวัติ: บริบทตีกลับ/ส่งต่อบนจอหายเงียบ
@@ -71,6 +83,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     events: events || [],
     relatedDeals: (relatedDeals || []).map((deal) => ({ ...deal, metadata: dealCardMetadata(deal.metadata) })),
     canEdit: canEditLead(user, lead),
+    /* `appointment` = นัดที่รออยู่ (ธง/การ์ด/เติมกล่องนัดประชุม) · `appointments` = ทุกแถวรวมที่ปิดแล้ว
+       (ไทม์ไลน์อ่านห้องของนัดประชุมแต่ละครั้งผ่าน leadEventId) */
+    appointment: pickUpcomingAppointment(appointments || []),
+    appointments: appointments || [],
     // ⚠️ ต้องรวมด่าน "มีดีลผูกอยู่" ที่ DELETE บังคับด้วย ไม่งั้นปุ่มลบโผล่แล้วกดได้
     // 409 เสมอ = error ที่ผู้ใช้เดาไม่ได้ (บทเรียนเดียวกับปุ่มลบดีลที่มีใบ accepted)
     // ดีลที่ผูกอยู่โหลดมาแล้วข้างบน — ไม่ต้องยิงถามเพิ่ม
@@ -92,7 +108,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      ปิดที่นี่แทนการรื้อ canEditLead เพราะขอบเขตแถวของนโยบายไม่ได้ผิด — ที่ขาดคือ
      ด่านมองเห็น ซึ่งเป็นคนละคำถามและมีคำตอบอยู่แล้วที่ `inLeadScope` */
   if (!inLeadScope(user, before)) return forbidden();
-  if (!canEditLead(user, before)) {
+
+  const body = await req.json();
+  /* ⭐ "ยกเลิกนัด" (มติเจ้าของ 05/11 ข้อ 6 · mig 0424) = PATCH ที่มีแค่ `{ appointment: null }`
+     ด่านกว้างกว่าแก้ลีด: คนที่ทำงานลีดใบนี้ (AE/ทีม — รวม AC ที่แก้ลีดไม่ได้) คืนห้องได้ด้วย
+     เพราะคนที่รู้ว่าลูกค้ายกเลิกคือคนที่คุยกับลูกค้าอยู่ (canCancelLeadAppointment)
+     ⚠️ ส่งช่องอื่นมาด้วยเมื่อไร = แก้ลีด ⇒ ด่าน canEditLead ตามเดิม (ไม่เปิดทางแก้ลีดให้ AC) */
+  const cancelOnly = Object.keys(body || {}).length === 1 && 'appointment' in body && !hasAppointmentInput(body.appointment);
+  if (cancelOnly) {
+    if (!canCancelLeadAppointment(user, before)) return forbidden('ยกเลิกนัดได้เฉพาะผู้กรอกลีด ทีมเจ้าของงาน หรือหัวหน้า');
+  } else if (!canEditLead(user, before)) {
     /* แยก "ล็อกเพราะสถานะ" ออกจาก "ไม่มีสิทธิ์ในใบนี้" — ผู้ใช้ต้องรู้ว่าติดอะไร
        เช็คด้วยการรันนโยบายตัวเดิมซ้ำบนสถานะที่ยังไม่ล็อก แทนที่จะสะกดเงื่อนไข
        ความเป็นเจ้าของซ้ำที่นี่ (ซึ่งจะดริฟต์ออกจาก canEditLead ทันทีที่กติกาขยับ)
@@ -105,7 +130,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden();
   }
 
-  const body = await req.json();
   const patch = { updatedAt: new Date().toISOString() };
   if ('contactName' in body) {
     if (!body.contactName?.trim()) return badRequest('ต้องระบุชื่อลูกค้า/ผู้ติดต่อ');
@@ -141,9 +165,46 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.serviceDetail = sd || null;
   }
 
+  /* ⭐ นัดที่ลูกค้าจองไว้ (mig 0424) — `appointment` ไม่อยู่ใน body = ไม่แตะ · ว่าง/"ไม่มีนัด" = ยกเลิกนัดที่รออยู่
+     ⚠️ ทำ **ก่อน** เขียนลีด — ห้องชนต้องตอบ 409 โดยที่ช่องอื่นในฟอร์มเดียวกันยังไม่ถูกบันทึก
+     (ไม่งั้นกดบันทึกครั้งเดียวได้ครึ่งเดียว แล้วผู้ใช้ไม่รู้ว่าอะไรเข้าไปแล้วบ้าง) */
+  let appointmentAudit = null;
+  if ('appointment' in body) {
+    const nowIso = new Date().toISOString();
+    const { data: current, error: currentError } = await loadUpcomingAppointment(supabase, id, nowIso);
+    if (currentError) return fail(`อ่านนัดเดิมไม่สำเร็จ: ${currentError.message}`, 500);
+    const wanted = hasAppointmentInput(body.appointment);
+    const appointmentError = wanted ? appointmentInputError(body.appointment, { modes: INTAKE_APPOINTMENT_MODES }) : null;
+    // นัดที่ AE ยืนยันแล้วเป็นนัดประชุม (มีแถว lead_events) — ฟอร์มแก้ลีดล็อกไว้ ส่งค่าเดิมกลับมาเท่านั้น
+    const next = wanted && !appointmentError ? normalizeAppointmentInput(body.appointment, { modes: INTAKE_APPOINTMENT_MODES }) : null;
+    const unchanged = current ? sameAppointment(current, next) : !wanted;
+    if (!unchanged) {
+      // ปุ่มยกเลิกนัดบนหน้าลีดยกเลิกนัดที่ AE ยืนยันแล้วได้ — ที่ล็อกคือ "แก้เวลา/ห้อง" จากฟอร์มแก้ลีด
+      if (current?.source === 'meeting' && !cancelOnly) {
+        return conflict('นัดนี้ AE ยืนยันเป็นนัดประชุมแล้ว — เลื่อนนัดที่ปุ่ม "นัดเพิ่ม / เลื่อนนัด" หรือกด "ยกเลิกนัด" บนหน้าลีด');
+      }
+      if (appointmentError) return badRequest(appointmentError);
+      if (next) {
+        const result = await bookLeadAppointment(supabase, { leadId: id, appointment: next, source: 'intake', user, nowIso });
+        if (result.conflict) return conflict(result.conflict);
+        if (result.error) return fail(result.error, 500);
+        appointmentAudit = { before: current || null, after: result.data };
+      } else if (current) {
+        const { error: releaseError } = await releaseLeadAppointments(supabase, { leadId: id, reason: 'cancelled', user, nowIso });
+        if (releaseError) return fail(`ยกเลิกนัดไม่สำเร็จ: ${releaseError.message}`, 500);
+        appointmentAudit = { before: current, after: null };
+      }
+    }
+  }
+
   const { data, error } = await supabase.from('sales_leads').update(patch).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
-  await recordAudit({ user, action: 'update', entityType: 'sales_lead', entityId: id, before, after: data, request: req });
+  await recordAudit({
+    user, action: 'update', entityType: 'sales_lead', entityId: id,
+    before: appointmentAudit ? { ...before, appointment: appointmentAudit.before } : before,
+    after: appointmentAudit ? { ...data, appointment: appointmentAudit.after } : data,
+    request: req,
+  });
   return ok(data);
 });
 
