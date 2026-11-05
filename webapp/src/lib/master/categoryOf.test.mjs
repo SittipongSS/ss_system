@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  categoryOf, categoryFlags, isExciseCategory, categoryInfo, mainCategoryOf, showsRetailPrice,
+  categoryOf, categoryFlags, isExciseCategory, categoryInfo, mainCategoryOf, showsRetailPrice, fdaNoticeState,
 } from './categoryOf';
 
 const TYPES = [
@@ -25,6 +25,16 @@ test('categoryFlags อ่านธงจากแถวหมวด — หม�
   assert.deepEqual(categoryFlags('09-999', TYPES), { isExcise: false, requiresFdaNotice: false });
   // จงใจไม่มี fallback รหัสตายตัว — ไม่ส่งรายการหมวด = ไม่รู้จัก = false
   assert.deepEqual(categoryFlags('01-002'), { isExcise: false, requiresFdaNotice: false });
+});
+
+test('fdaNoticeState บอกต้องจด/ไม่ต้องจดตามธงหมวด — ไม่รู้หมวด = null ไม่ใช่ "ไม่ต้องจดแจ้ง"', () => {
+  assert.deepEqual(fdaNoticeState('02-001', TYPES), { required: true, label: 'ต้องจดแจ้ง', categoryLabel: '02-001 ครีมบำรุง' });
+  assert.deepEqual(fdaNoticeState('01-002', TYPES), { required: false, label: 'ไม่ต้องจดแจ้ง', categoryLabel: '01-002 น้ำหอมฉีดผิวกาย' });
+  // รายการหมวดยังไม่มา / รหัสไม่อยู่ในทะเบียน / ไม่มีรหัส — ห้ามเดาว่าไม่ต้องจด
+  assert.equal(fdaNoticeState('01-002', []), null);
+  assert.equal(fdaNoticeState('01-002'), null);
+  assert.equal(fdaNoticeState('09-999', TYPES), null);
+  assert.equal(fdaNoticeState(null, TYPES), null);
 });
 
 test('isExciseCategory ตามธง isExcise — รหัส 01-002 ไม่ใช่ค่าพิเศษอีกต่อไป', () => {

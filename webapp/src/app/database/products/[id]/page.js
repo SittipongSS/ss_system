@@ -34,7 +34,7 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { useTeams } from "@/lib/roleContext";
-import { categoryOf, categoryFlags } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags, fdaNoticeState } from "@/lib/master/categoryOf";
 import { isMissingRetailPrice } from "@/lib/tax/taxableProducts";
 import { isProductTaxable, productExciseBadge, productShowsRetailPrice } from "@/lib/master/productFilter";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
@@ -504,10 +504,17 @@ export default function ProductDetails() {
       : ownerReg ? { label: statusMeta(ownerReg.status).label, tone: statusMeta(ownerReg.status).tone }
         : { label: "ยังไม่ขึ้นทะเบียน", tone: isExciseCat ? "warning" : "neutral" };
   const bomMeta = BOM_STATUS_META[bomStatus || "none"];
+  /* จดแจ้ง อย. = ธงของหมวดล้วน (มติเจ้าของ 05/11/2026 "แสดงตามหมวดพอ") — บอกทั้ง "ต้องจด" และ "ไม่ต้องจด" ·
+     รายการหมวดยังไม่มา/หมวดไม่อยู่ในทะเบียน = ไม่โชว์ช่อง (ไม่เดาว่าไม่ต้องจด) · ไม่มีแท็บของตัวเอง (เก็บเลขที่/ไฟล์ = พักไว้) */
+  const fdaNotice = fdaNoticeState(product.categoryCode || categoryOf(product.fgCode), productTypes);
   const lanes = [
     { key: "approval", label: "ข้อมูลสินค้า", value: approvalView.label, color: approvalView.color, tab: "spec" },
     bomStep && { key: "bom", label: "BOM", value: bomMeta.label, color: bomMeta.color, tab: "spec" },
     exciseLane && { key: "excise", label: "สรรพสามิต", value: exciseLane.label, color: LANE_TONE_COLOR[exciseLane.tone] || LANE_TONE_COLOR.neutral, tab: "excise" },
+    fdaNotice && {
+      key: "fda", label: "จดแจ้ง อย.", value: fdaNotice.label, hint: `ตามหมวด ${fdaNotice.categoryLabel}`,
+      color: fdaNotice.required ? LANE_TONE_COLOR.info : LANE_TONE_COLOR.neutral,
+    },
   ].filter(Boolean);
 
   /* `narrow: "hide"` = หลบบนจอโทรศัพท์ (≤480px) ให้การ์ดจัดการขึ้นมาในจอแรก — ราคา/ภาษีมีบ้านของตัวเองในแท็บราคาและแท็บสรรพสามิต
@@ -583,8 +590,7 @@ export default function ProductDetails() {
                 color={exciseBadge === "taxable" ? "var(--amber)" : "var(--text-3)"}
               />
             )}
-            {/* เฟสแรกของ "ต้องจดแจ้ง อย." (มติ 2026-07-20): ป้าย + เตือนตอนสร้าง เท่านั้น */}
-            {catFlags.requiresFdaNotice && <SalesStateBadge label="ต้องจดแจ้ง อย." color="var(--blue)" />}
+            {/* ⚠️ ป้าย "ต้องจดแจ้ง อย." ย้ายไปเป็นช่อง "จดแจ้ง อย." ในแถบสถานะใต้หัว (05/11/2026) — ช่องนั้นบอกทั้งต้อง/ไม่ต้องจด · ห้ามวางป้ายซ้ำที่นี่ */}
           </>}
         >
           <div className={styles.lanes} role="list" aria-label="สถานะรายเรื่องของสินค้า">
@@ -599,7 +605,7 @@ export default function ProductDetails() {
                 <div key={lane.key} role="listitem" className={styles.laneItem}>
                   {lane.tab
                     ? <button type="button" className={styles.lane} onClick={() => goTab(lane.tab)} aria-label={`${lane.label}: ${lane.value} — เปิดแท็บ`}>{body}</button>
-                    : <div className={styles.lane}>{body}</div>}
+                    : <div className={styles.lane} title={lane.hint}>{body}</div>}
                 </div>
               );
             })}

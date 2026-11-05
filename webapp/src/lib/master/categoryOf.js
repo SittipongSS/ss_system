@@ -65,6 +65,25 @@ export function categoryRow(categoryCode, productTypes = []) {
   ) || null;
 }
 
+/**
+ * จดแจ้ง อย. ของสินค้า "ตามหมวด" — มติเจ้าของ 05/11/2026: ตอนนี้บอกแค่ว่าหมวดนี้ต้องจด/ไม่ต้องจด
+ * (เก็บเลขที่/วันหมดอายุ/ไฟล์ใบรับจดแจ้งในระบบ = พักไว้ วางแผนทีหลัง)
+ *
+ * คืน `null` เมื่อยังไม่รู้หมวด (รายการหมวดยังโหลดไม่เสร็จ · รหัสไม่อยู่ในทะเบียน) — ⚠️ ห้ามตีเป็น "ไม่ต้องจดแจ้ง"
+ * เพราะ `categoryFlags` คืน false ให้หมวดที่ไม่รู้จัก ⇒ จอจะบอกว่าไม่ต้องจดทั้งที่แค่ยังไม่รู้
+ * @returns {{ required: boolean, label: string, categoryLabel: string } | null}
+ */
+export function fdaNoticeState(categoryCode, productTypes = []) {
+  const row = categoryRow(categoryCode, productTypes);
+  if (!row) return null;
+  const required = !!row.requiresFdaNotice;
+  return {
+    required,
+    label: required ? 'ต้องจดแจ้ง' : 'ไม่ต้องจดแจ้ง',
+    categoryLabel: [categoryCode, row.nameTh || row.nameEn].filter(Boolean).join(' '),
+  };
+}
+
 /** ป้ายอ่านออกของหมวด — "รหัส ชื่อ" · ไม่พบในทะเบียนคืนรหัสดิบ (ห้ามคืนค่าว่าง) */
 export function categoryLabel(categoryCode, productTypes = []) {
   const row = categoryRow(categoryCode, productTypes);
