@@ -15,6 +15,8 @@
 
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
+import { MEETING_MODE_LABELS } from '@/lib/sales/leads';
+import { APPOINTMENT_MODE_LABELS, STUDIO_ROOM_LABELS } from '@/lib/sales/leadAppointments';
 
 /** มุมมองปฏิทิน — คีย์ตรงกับค่าที่จำไว้ใน localStorage */
 export const SCHEDULE_VIEWS = [
@@ -43,10 +45,34 @@ export const DAY_END_HOUR = 18;
 export const SLOT_MINUTES = 30;
 export const DAY_SLOT_COUNT = ((DAY_END_HOUR - DAY_START_HOUR) * 60) / SLOT_MINUTES;
 
-/* ⚠️ **`lead_events` ไม่มีความยาวนัด** (เก็บแต่เวลาเริ่ม) — บล็อกในรางจึงยาว 1 ชั่วโมง
-   ตามข้อสมมติ ไม่ใช่ข้อมูลจริง · "เวลาชนกัน" ทั้งหมดในไฟล์นี้อยู่ใต้ข้อสมมตินี้
-   ถ้าวันหนึ่งอยากได้ของจริง ต้องเพิ่มคอลัมน์ `durationMin` + ช่องในฟอร์มนัดของคิวลีด */
+/* ⚠️ **`lead_events` ไม่มีความยาวนัด** (เก็บแต่เวลาเริ่ม) — ตั้งแต่ mig 0424 (05/11/2026) นัดที่บันทึกพร้อม
+   เวลาจบมี `endAt` มาจาก `lead_appointments` แล้ว (นัดประชุมของ AE + นัดที่ MKT จองไว้) ⇒ บล็อกในรางยาวตามจริง
+   · ข้อสมมติ 1 ชั่วโมงเหลือไว้ให้ **นัดเก่าก่อน 0424** ที่ไม่มีเวลาจบเท่านั้น (ดู `meetingEndMinutes`) */
 export const ASSUMED_MEETING_MINUTES = 60;
+
+/** นาทีที่นัดจบ (เวลาท้องถิ่น) — มีเวลาจบจริงใช้ของจริง · ไม่มี/เพี้ยน (จบก่อนเริ่ม ข้ามเที่ยงคืน) ใช้ข้อสมมติ */
+export function meetingEndMinutes(meeting) {
+  const start = localMinutes(meeting?.at);
+  if (start == null) return null;
+  const end = meeting?.endAt ? localMinutes(meeting.endAt) : null;
+  return end != null && end > start ? end : start + ASSUMED_MEETING_MINUTES;
+}
+
+/** สถานที่/รูปแบบของนัดบนจอกำหนดการ — ห้อง Studio ถ้ามี (mig 0424) ไม่งั้นรูปแบบนัด
+ *  นัดที่ MKT จองไว้ (`kind: 'booking'`) ใช้ป้ายชุดของนัดหมาย (มี "โทร") · นัดประชุมใช้ป้ายเดิมของคิวลีด */
+export function meetingPlaceLabel(meeting) {
+  if (!meeting) return '';
+  if (STUDIO_ROOM_LABELS[meeting.room]) return STUDIO_ROOM_LABELS[meeting.room];
+  const labels = meeting.kind === 'booking' ? APPOINTMENT_MODE_LABELS : MEETING_MODE_LABELS;
+  return labels[meeting.meetingMode] || '';
+}
+
+/** "13:30–15:00" ถ้ามีเวลาจบจริง · ไม่มี = เวลาเริ่มอย่างเดียว (ไม่แต่งเวลาจบจากข้อสมมติ) */
+export function meetingTimeLabel(meeting) {
+  const start = localHhmm(meeting?.at);
+  const end = meeting?.endAt ? localHhmm(meeting.endAt) : '';
+  return start && end && localMinutes(meeting.endAt) > localMinutes(meeting.at) ? `${start}–${end}` : start;
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86400000;
@@ -217,19 +243,25 @@ export function clusterDayMeetings(meetings = []) {
   for (const meeting of inWindow) {
     const last = clusters[clusters.length - 1];
     const minutes = localMinutes(meeting.at);
-    if (last && minutes - last.minutes < ASSUMED_MEETING_MINUTES) {
+    const end = meetingEndMinutes(meeting);
+    /* คาบกัน = เริ่มก่อนนัดในก้อนจบ (ช่วงครึ่งเปิด — จบ 15:00 กับเริ่ม 15:00 ไม่ชน · กติกาเดียวกับห้อง Studio) */
+    if (last && minutes < last.end) {
       last.items.push(meeting);
+      last.end = Math.max(last.end, end);
       continue;
     }
-    clusters.push({ slot: meeting.slot, minutes, items: [meeting] });
+    clusters.push({ slot: meeting.slot, minutes, end, items: [meeting] });
   }
   return {
     outside,
     clusters: clusters.map((cluster) => ({
       key: `slot-${cluster.slot}-${cluster.items[0].id}`,
       slot: cluster.slot,
-      // ก้อนยาวเท่านัดหนึ่งใบเสมอ (ข้อสมมติ 1 ชม.) — ไม่ยืดตามจำนวนใบในก้อน
-      span: ASSUMED_MEETING_MINUTES / SLOT_MINUTES,
+      /* ก้อนยาวจากนัดแรกถึงนัดที่จบช้าสุดในก้อน · ตัดที่ขอบราง 18:00 (CSS รองรับ data-span 1–18) */
+      span: Math.max(1, Math.min(
+        Math.ceil((cluster.end - cluster.minutes) / SLOT_MINUTES),
+        DAY_SLOT_COUNT - cluster.slot,
+      )),
       clash: cluster.items.length > 1,
       items: cluster.items,
     })),

@@ -492,6 +492,21 @@
 .railColumn > [data-span="2"] { grid-row-end: span 2; }
 .railColumn > [data-span="3"] { grid-row-end: span 3; }
 .railColumn > [data-span="4"] { grid-row-end: span 4; }
+/* 5–18 = นัดที่มีเวลาจบจริง (mig 0424) ยาวได้ถึงทั้งราง 09:00–18:00 · ตัวคิดตัดที่ขอบรางให้แล้ว (clusterDayMeetings) */
+.railColumn > [data-span="5"] { grid-row-end: span 5; }
+.railColumn > [data-span="6"] { grid-row-end: span 6; }
+.railColumn > [data-span="7"] { grid-row-end: span 7; }
+.railColumn > [data-span="8"] { grid-row-end: span 8; }
+.railColumn > [data-span="9"] { grid-row-end: span 9; }
+.railColumn > [data-span="10"] { grid-row-end: span 10; }
+.railColumn > [data-span="11"] { grid-row-end: span 11; }
+.railColumn > [data-span="12"] { grid-row-end: span 12; }
+.railColumn > [data-span="13"] { grid-row-end: span 13; }
+.railColumn > [data-span="14"] { grid-row-end: span 14; }
+.railColumn > [data-span="15"] { grid-row-end: span 15; }
+.railColumn > [data-span="16"] { grid-row-end: span 16; }
+.railColumn > [data-span="17"] { grid-row-end: span 17; }
+.railColumn > [data-span="18"] { grid-row-end: span 18; }
 
 /* ── มุมมองเดือน: เนื้อในช่องของ MonthGrid กลาง ─────────────────────────── */
 .month { border: 0; }

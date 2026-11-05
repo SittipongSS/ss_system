@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import {
-  ASSUMED_MEETING_MINUTES, DEFAULT_SCHEDULE_VIEW,
+  ASSUMED_MEETING_MINUTES, DEFAULT_SCHEDULE_VIEW, meetingEndMinutes, meetingPlaceLabel, meetingTimeLabel,
   buildScheduleDueItems, clampSelected, clashCount, clusterDayMeetings, daysBetween,
   meetingSlot, normalizeScheduleView, scheduleByDay, scheduleRange, scheduleTotals,
   shiftAnchor, startOfWeek, weekIndex,
@@ -163,4 +165,51 @@ test('ค่ามุมมองที่อ่านจาก storage ต้�
   assert.equal(normalizeScheduleView('day'), 'day');
   assert.equal(normalizeScheduleView('agenda'), DEFAULT_SCHEDULE_VIEW);
   assert.equal(normalizeScheduleView(null), DEFAULT_SCHEDULE_VIEW);
+});
+
+/* ── นัดที่มีเวลาจบจริง (lead_appointments · mig 0424 · มติเจ้าของ 05/11/2026) ── */
+
+test('มีเวลาจบจริง = บล็อกยาวตามจริง · ไม่มี/จบก่อนเริ่ม = ข้อสมมติ 1 ชม.', () => {
+  const real = { id: 'a', at: at('2026-11-20', '13:30'), endAt: at('2026-11-20', '15:00') };
+  assert.equal(meetingEndMinutes(real), 15 * 60);
+  assert.equal(meetingEndMinutes({ id: 'b', at: at('2026-11-20', '13:30') }), 14 * 60 + 30);
+  assert.equal(meetingEndMinutes({ id: 'c', at: at('2026-11-20', '13:30'), endAt: at('2026-11-20', '13:00') }), 14 * 60 + 30);
+  const { clusters } = clusterDayMeetings([real]);
+  assert.equal(clusters[0].span, 3, '13:30–15:00 = สามช่อง 30 นาที');
+});
+
+test('ชนกันวัดจากเวลาจบจริง — นัด 1.5 ชม. ชนกับนัดที่เริ่มหลังหนึ่งชั่วโมง · จบชนเริ่มพอดีไม่ชน', () => {
+  const clash = clusterDayMeetings([
+    { id: 'a', at: at('2026-11-20', '13:30'), endAt: at('2026-11-20', '15:00') },
+    { id: 'b', at: at('2026-11-20', '14:30'), endAt: at('2026-11-20', '15:30') },
+  ]);
+  assert.equal(clash.clusters.length, 1);
+  assert.equal(clash.clusters[0].clash, true);
+  assert.equal(clash.clusters[0].span, 4, 'ก้อนยาวถึงนัดที่จบช้าสุด 15:30');
+
+  const touching = clusterDayMeetings([
+    { id: 'a', at: at('2026-11-20', '13:30'), endAt: at('2026-11-20', '15:00') },
+    { id: 'b', at: at('2026-11-20', '15:00'), endAt: at('2026-11-20', '16:30') },
+  ]);
+  assert.equal(touching.clusters.length, 2);
+  assert.equal(touching.clusters.every((cluster) => !cluster.clash), true);
+});
+
+test('บล็อกยาวเกินราง 18:00 ถูกตัดที่ขอบราง — CSS มี data-span ถึง 18 เท่านั้น', () => {
+  const { clusters } = clusterDayMeetings([{ id: 'a', at: at('2026-11-20', '16:30'), endAt: at('2026-11-20', '20:00') }]);
+  assert.equal(clusters[0].slot, 15);
+  assert.equal(clusters[0].span, 3);
+  const css = readFileSync(path.resolve(process.cwd(), 'src/components/salesPlanning/dashboard/ScheduleSection.module.css'), 'utf8');
+  for (let n = 1; n <= 18; n += 1) assert.match(css, new RegExp(`\\[data-span="${n}"\\]`), `data-span ${n}`);
+});
+
+test('ป้ายเวลา/สถานที่: ห้อง Studio ก่อน · นัดที่ MKT จองใช้ป้ายนัดหมาย (มี "โทร") · ไม่มีเวลาจบไม่แต่งให้', () => {
+  const start = at('2026-11-20', '13:30');
+  const end = at('2026-11-20', '15:00');
+  assert.equal(meetingTimeLabel({ at: start, endAt: end }), '13:30–15:00');
+  assert.equal(meetingTimeLabel({ at: start }), '13:30');
+  assert.equal(meetingPlaceLabel({ meetingMode: 'onsite_at_office', room: 'studio_02' }), 'Studio 02');
+  assert.equal(meetingPlaceLabel({ meetingMode: 'onsite_at_office' }), 'ลูกค้าเข้ามา');
+  assert.equal(meetingPlaceLabel({ kind: 'booking', meetingMode: 'phone' }), 'โทร');
+  assert.equal(meetingPlaceLabel({ kind: 'booking', meetingMode: 'online' }), 'Online');
 });
