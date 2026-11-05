@@ -37,13 +37,8 @@
   gap: var(--space-1-5) var(--space-2-5);
 }
 .monthMeta { color: var(--text-3); font-size: var(--fs-6); }
-/* ยอดรวมของเดือน/งาน (เจ้าของ 04/11) — สีเดียวกับช่องภาษีรวมของแถว */
+/* ยอดรวมของเดือน (เจ้าของ 04/11) — สีเดียวกับช่องภาษีรวมของแถว · ยืนในคอลัมน์ "ภาษีรวม" (จัดแนว 05/11) */
 .monthTotal { color: var(--red); }
-.groupTotal {
-  color: var(--red);
-  font-size: var(--fs-6);
-  white-space: nowrap;
-}
 
 /* ปุ่มย่อ/ขยาย (เจ้าของ 04/11) — ลูกศรขวา = ย่ออยู่ · หมุนลง = กาง (กติกาเดียวกับ CollapsibleCard) */
 .toggle {
@@ -84,14 +79,28 @@
   padding-top: var(--space-3);
 }
 
+/* หัวงาน (จัดแนว · เจ้าของ 05/11): กริดคอลัมน์ตายตัว ⇒ เลข SO · ลูกค้า · ขั้น ของทุกงานตั้งตรงกันลงมา
+   ลูกค้ายาวตัดท้าย (ชื่อเต็มอยู่ที่ title) · ขั้น/ด่านตัดบรรทัดในช่องของตัวเอง */
 .groupHead {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: auto 8.5rem minmax(0, 16rem) minmax(0, 1fr);
   align-items: center;
   gap: var(--space-1-5) var(--space-3);
 }
 
-.customer { color: var(--accent); }
+.customer {
+  overflow: hidden;
+  color: var(--accent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
 
 .sub {
   color: var(--text-3);

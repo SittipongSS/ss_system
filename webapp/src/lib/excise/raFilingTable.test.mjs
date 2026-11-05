@@ -206,8 +206,9 @@ test('ย่อ/ขยาย (เจ้าของ 04/11): หัวเดื�
   assert.match(table, /setMany\(groupKeys, !allGroupsClosed\)/);
   assert.match(table, /aria-expanded=\{open\}/);
   assert.match(table, /if \(!open\) return \[header\];/, 'งานที่ย่อเหลือหัวงาน (ลิงก์ · สถานะ · ด่าน · ช่องติ๊กพิมพ์)');
-  assert.match(table, /\{lines\.length \? \(\s*<span className=\{styles\.groupTotal\}>/, 'ยอดของงานโชว์ทั้งตอนกางและตอนย่อ');
-  assert.match(table, /รายการ · ภาษีรวม \{fmtMoney\(filingLinesTaxTotal\(lines\)\)\}/);
+  // จัดแนว (05/11): จำนวนรายการ/ยอดรวมของงานอยู่ในคอลัมน์ "ภาษี/หน่วย"/"ภาษีรวม" ของหัวงาน — โชว์ทั้งตอนกางและตอนย่อ
+  assert.match(table, /\{lines\.length \? `\$\{fmtNumber\(lines\.length\)\} รายการ` : null\}/, 'ยอดของงานโชว์ทั้งตอนกางและตอนย่อ');
+  assert.match(table, /<td className=\{`\$\{styles\.num\} mono \$\{styles\.tax\}`\}>\{lines\.length \? fmtMoney\(filingLinesTaxTotal\(lines\)\) : null\}<\/td>/);
   const head = table.match(/<div className=\{styles\.groupHead\}>[\s\S]*?<\/div>/)[0];
   assert.ok(head.indexOf('className={styles.toggle}') < head.indexOf('<Link'), 'ปุ่มลูกศรอยู่หน้าลิงก์ ไม่ซ้อนกัน');
   assert.doesNotMatch(head.slice(head.indexOf('className={styles.toggle}'), head.indexOf('</button>')), /<Link/, 'ลิงก์ไม่อยู่ในปุ่ม');
@@ -228,6 +229,19 @@ test('ยอดรวม (เจ้าของ 04/11): หัวเดือน
   assert.deepEqual(filingMonthTotals([{ key: 'e', detail: { lines: [] } }]), { jobs: 1, lines: 0, totalTax: 0, missing: 0 });
   const table = read('../../components/excise/FilingLinesTable.js');
   assert.match(table, /const totals = filingMonthTotals\(bucket\.rows\);/, 'ยอดหัวเดือนคิดจากแถวที่จอวาด (ผ่านตัวกรองแล้ว)');
-  assert.match(table, /<strong className=\{styles\.monthTotal\}>ภาษีรวม \{fmtMoney\(totals\.totalTax\)\}<\/strong>/);
+  assert.match(table, /<strong className=\{styles\.monthTotal\}>\{fmtMoney\(totals\.totalTax\)\}<\/strong>/, 'ยอดเดือนอยู่ในคอลัมน์ "ภาษีรวม"');
   assert.match(table, /ไม่รวม \{fmtNumber\(totals\.missing\)\} งานที่ยังไม่มีรายการ/);
+});
+
+test('จัดแนว (เจ้าของ 05/11 "align ข้อมูล จะได้ตรวจง่าย"): หัวเดือน/หัวงานลงคอลัมน์เดียวกับแถวสินค้า', () => {
+  const table = read('../../components/excise/FilingLinesTable.js');
+  assert.match(table, /const LEAD_SPAN = COLUMNS\.indexOf\("ภาษี\/หน่วย \(8\.8%\)"\);/, 'ข้อความของหัวกินคอลัมน์ก่อน "ภาษี/หน่วย"');
+  // หัวงาน: ข้อความ (LEAD_SPAN) + จำนวนรายการ + ยอดรวม + สถานะ = ครบทุกคอลัมน์ ⇒ ยอด/สถานะตั้งตรงกับแถวสินค้า
+  const group = table.slice(table.indexOf('<td colSpan={LEAD_SPAN}>'), table.indexOf('if (!open) return [header];'));
+  assert.equal((group.match(/<td\b/g) || []).length, 4, 'หัวงาน = 1 ช่องข้อความ + 3 ช่องท้าย');
+  assert.match(group, /<td><StatusBadge status=\{row\.status\} \/><\/td>/, 'สถานะอยู่ใต้ "สถานะชำระ"');
+  const month = table.slice(table.indexOf('<td colSpan={LEAD_SPAN + (selectable ? 1 : 0)}>'), table.indexOf('if (!monthOpen) return [monthHeader];'));
+  assert.equal((month.match(/<td\b/g) || []).length, 4, 'หัวเดือน = 1 ช่องข้อความ + 3 ช่องท้าย');
+  const css = read('../../components/excise/FilingLinesTable.module.css');
+  assert.match(css, /\.groupHead \{\s*display: grid;\s*grid-template-columns: auto 8\.5rem minmax\(0, 16rem\) minmax\(0, 1fr\);/, 'เลข SO · ลูกค้า · ขั้น ตั้งตรงกันทุกงาน');
 });
