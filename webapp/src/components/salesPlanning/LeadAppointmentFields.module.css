@@ -1,30 +1,35 @@
-/* ช่องนัดหมายของลีด — ใช้ทั้งในฟอร์มรับลีด (form-grid) และกล่องนัดประชุม (TransitionDialog)
-   ⇒ กินเต็มแถวเสมอ · ไม่มีกรอบของตัวเอง (กรอบเป็นของผู้เรียก) */
+/* ช่องนัดหมายของลีด — แถบวัน 2 สัปดาห์ · ตารางห้อง Studio ทั้งวัน · แถวสรุปนัด (แบบ ก · มติเจ้าของ 06/11/2026)
+   ใช้ทั้งในฟอร์มรับลีด (form-grid) และกล่องนัดประชุม (TransitionDialog) ⇒ กินเต็มแถวเสมอ · กรอบเป็นของผู้เรียก */
 
 .wrap {
   grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-width: 0;
-}
-
-.when {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--space-2);
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-1-5);
   min-width: 0;
 }
 
 .label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1-5);
   font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
   color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+.soft {
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
 }
 
 .hint,
@@ -39,54 +44,495 @@
   color: var(--red);
 }
 
-.summary {
+.summaryText {
   font-size: var(--fs-7);
   font-weight: var(--fw-semibold);
   color: var(--text-1);
 }
 
-/* ตารางนัดของวันนั้น — สามคอลัมน์ ห้อง · เวลา · ของใคร */
-.day {
-  margin: 0;
-  padding: var(--space-2);
-  list-style: none;
+/* ── แถบวัน ─────────────────────────────────────────────────────────────── */
+.strip {
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.days {
+  display: flex;
+  gap: var(--space-1-5);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scrollbar-width: thin;
+}
+
+.day {
+  flex: 0 0 auto;
+  width: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  padding: var(--space-1-5) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text-1);
+  font: inherit;
+  text-align: start;
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.day:hover:not(:disabled) {
+  background: var(--panel-2);
+  border-color: var(--border-strong);
+}
+
+.day:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.day[aria-pressed="true"] {
+  border-color: var(--navy);
+  box-shadow: inset 0 0 0 1px var(--navy);
+  background: var(--panel-2);
+}
+
+.day[data-off] {
+  background: var(--panel-3);
+  color: var(--text-3);
+}
+
+.dayWeek {
+  font-size: var(--fs-3);
+  color: var(--text-3);
+}
+
+.day[data-today] .dayWeek {
+  color: var(--accent-ink);
+  font-weight: var(--fw-semibold);
+}
+
+.dayDate {
+  font-size: var(--fs-8);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+}
+
+.dayFree {
+  font-size: var(--fs-2);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.dayBars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+}
+
+.dayBars i {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--panel-3);
+  overflow: hidden;
+}
+
+.day[data-off] .dayBars i {
+  background: var(--panel-2);
+}
+
+.dayBars i::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--text-3);
+}
+
+.dayBars i[data-fill="1"]::after { width: 10%; }
+.dayBars i[data-fill="2"]::after { width: 20%; }
+.dayBars i[data-fill="3"]::after { width: 30%; }
+.dayBars i[data-fill="4"]::after { width: 40%; }
+.dayBars i[data-fill="5"]::after { width: 50%; }
+.dayBars i[data-fill="6"]::after { width: 60%; }
+.dayBars i[data-fill="7"]::after { width: 70%; }
+.dayBars i[data-fill="8"]::after { width: 80%; }
+.dayBars i[data-fill="9"]::after { width: 90%; }
+.dayBars i[data-fill="10"]::after { width: 100%; background: var(--red); }
+
+.dayMore {
+  justify-content: center;
+  align-items: center;
+  color: var(--navy-ink);
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+}
+
+.otherDay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 340px;
+}
+
+/* ── ตารางห้อง ─────────────────────────────────────────────────────────── */
+.timelineWrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1-5);
+  min-width: 0;
+}
+
+.timelineScroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-solid);
+}
+
+.timeline {
+  display: grid;
+  grid-template-columns: 84px repeat(18, minmax(28px, 1fr));
+  grid-template-rows: 26px repeat(3, 52px);
+  min-width: 620px;
+  user-select: none;
+  touch-action: pan-x;
+}
+
+.tlCorner {
+  grid-row: 1;
+  grid-column: 1;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--panel-solid);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+}
+
+.tlHead {
+  grid-row: 1;
+  padding: var(--space-0-5) 0 0 var(--space-1);
+  font-size: var(--fs-2);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+  border-bottom: 1px solid var(--border);
+}
+
+.tlRoom {
+  grid-column: 1;
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 var(--space-2);
+  background: var(--panel-solid);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-thai);
+}
+
+.tlRoom small {
+  font-size: var(--fs-2);
+  font-weight: var(--fw-normal);
+  color: var(--text-3);
+}
+
+.tlCell {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px dashed var(--border);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tlCell[data-hour] {
+  border-left-style: solid;
+}
+
+.tlCell:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.tlCell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tlCell[data-past] {
+  background: repeating-linear-gradient(135deg, var(--panel-2) 0 6px, transparent 6px 12px);
+}
+
+.tlBlock {
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  margin: var(--space-1) var(--space-0-5);
+  padding: var(--space-0-5) var(--space-1-5);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+  color: var(--text-1);
+  font-size: var(--fs-3);
+  line-height: var(--lh-thai);
+  overflow: hidden;
+  cursor: default;
+}
+
+.tlBlock b,
+.tlBlock span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tlBlock span {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* MKT จองไว้ · AE ยังไม่ยืนยัน = กรอบประ */
+.tlBlock[data-pending] {
+  border-style: dashed;
+  border-color: var(--text-3);
+  background: var(--panel-2);
+}
+
+/* นัดของลีดใบนี้เอง — ไม่นับว่าชน (AE ยืนยันนัดเดิม) */
+.tlBlock[data-own] {
+  border-color: var(--teal);
+  background: var(--teal-soft);
+  color: var(--teal);
+  pointer-events: none;
+}
+
+.tlSelection {
+  z-index: 2;
+  display: flex;
+  align-items: center;
   gap: var(--space-1);
+  min-width: 0;
+  margin: var(--space-1) 0;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: var(--fs-4);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-thai);
+  box-shadow: 0 0 0 2px var(--panel-solid), var(--shadow-md);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.tlSelection span {
+  white-space: nowrap;
+}
+
+/* ตำแหน่งในตาราง — ค่าจากข้อมูล (ช่องละ 30 นาทีนับจาก 09:00 · คอลัมน์ 1 = ชื่อห้อง) */
+.timeline > [data-row="0"] { grid-row: 2; }
+.timeline > [data-row="1"] { grid-row: 3; }
+.timeline > [data-row="2"] { grid-row: 4; }
+.timeline > [data-col="0"] { grid-column-start: 2; }
+.timeline > [data-col="1"] { grid-column-start: 3; }
+.timeline > [data-col="2"] { grid-column-start: 4; }
+.timeline > [data-col="3"] { grid-column-start: 5; }
+.timeline > [data-col="4"] { grid-column-start: 6; }
+.timeline > [data-col="5"] { grid-column-start: 7; }
+.timeline > [data-col="6"] { grid-column-start: 8; }
+.timeline > [data-col="7"] { grid-column-start: 9; }
+.timeline > [data-col="8"] { grid-column-start: 10; }
+.timeline > [data-col="9"] { grid-column-start: 11; }
+.timeline > [data-col="10"] { grid-column-start: 12; }
+.timeline > [data-col="11"] { grid-column-start: 13; }
+.timeline > [data-col="12"] { grid-column-start: 14; }
+.timeline > [data-col="13"] { grid-column-start: 15; }
+.timeline > [data-col="14"] { grid-column-start: 16; }
+.timeline > [data-col="15"] { grid-column-start: 17; }
+.timeline > [data-col="16"] { grid-column-start: 18; }
+.timeline > [data-col="17"] { grid-column-start: 19; }
+.timeline > [data-span="1"] { grid-column-end: span 1; }
+.timeline > [data-span="2"] { grid-column-end: span 2; }
+.timeline > [data-span="3"] { grid-column-end: span 3; }
+.timeline > [data-span="4"] { grid-column-end: span 4; }
+.timeline > [data-span="5"] { grid-column-end: span 5; }
+.timeline > [data-span="6"] { grid-column-end: span 6; }
+.timeline > [data-span="7"] { grid-column-end: span 7; }
+.timeline > [data-span="8"] { grid-column-end: span 8; }
+.timeline > [data-span="9"] { grid-column-end: span 9; }
+.timeline > [data-span="10"] { grid-column-end: span 10; }
+.timeline > [data-span="11"] { grid-column-end: span 11; }
+.timeline > [data-span="12"] { grid-column-end: span 12; }
+.timeline > [data-span="13"] { grid-column-end: span 13; }
+.timeline > [data-span="14"] { grid-column-end: span 14; }
+.timeline > [data-span="15"] { grid-column-end: span 15; }
+.timeline > [data-span="16"] { grid-column-end: span 16; }
+.timeline > [data-span="17"] { grid-column-end: span 17; }
+.timeline > [data-span="18"] { grid-column-end: span 18; }
+
+.tlHint,
+.tlOutside {
+  font-size: var(--fs-5);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+
+.tlHint[data-bad] {
+  color: var(--red);
+}
+
+.tlLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-3);
+  color: var(--text-2);
+  line-height: var(--lh-thai);
+}
+
+.tlLegend i {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  margin-inline-end: var(--space-1);
+  border-radius: var(--radius);
+  vertical-align: middle;
+}
+
+.tlLegend i[data-kind="free"] { border: 1px dashed var(--border-strong); }
+.tlLegend i[data-kind="busy"] { background: var(--panel-3); border: 1px solid var(--border-strong); }
+.tlLegend i[data-kind="pending"] { border: 1px dashed var(--text-3); }
+.tlLegend i[data-kind="sel"] { background: var(--accent); }
+.tlLegend i[data-kind="past"] { border: 1px solid var(--border); background: repeating-linear-gradient(135deg, var(--panel-3) 0 3px, transparent 3px 6px); }
+
+/* ── แถวสรุปนัด ────────────────────────────────────────────────────────── */
+/* ข้อความสรุปกับช่องปรับเวลา "ห่อ" ลงบรรทัดใหม่เมื่อแคบ (กล่องนัดประชุมของ AE · มือถือ) — กริดสองคอลัมน์
+   บีบคอลัมน์ข้อความจนไทยขาดทีละตัว (เจอบนจอจริง 06/11) */
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2-5) var(--space-3-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel-2);
 }
 
-.day li {
-  display: grid;
-  grid-template-columns: 72px 88px minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: baseline;
-  font-size: var(--fs-6);
+.summary[data-bad] {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
+.summary > .hint {
+  flex-basis: 100%;
+}
+
+.summaryWhat {
+  display: flex;
+  flex: 1 1 240px;
+  flex-direction: column;
+  min-width: 0;
   line-height: var(--lh-thai);
-  color: var(--text-2);
 }
 
-.day li[data-own] {
-  color: var(--text-3);
-}
-
-.dayTime {
+.summaryWhat b {
+  font-size: var(--fs-9);
   font-variant-numeric: tabular-nums;
 }
 
-.dayWho {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.summary[data-empty] .summaryWhat b {
+  color: var(--text-3);
 }
 
-@media (max-width: 640px) {
-  .when {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .when > :first-child {
-    grid-column: 1 / -1;
-  }
+.summaryWhat small {
+  font-size: var(--fs-5);
+  color: var(--text-2);
 }
+
+.summary[data-bad] .summaryWhat small {
+  color: var(--red);
+}
+
+.fine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fineField {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+}
+
+.fineField > :last-child {
+  width: 96px;
+}
+
+.durations {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.duration {
+  padding: var(--space-0-5) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--panel);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-6);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  cursor: pointer;
+}
+
+.duration[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.duration:disabled {
+  opacity: var(--op-disabled);
+  cursor: not-allowed;
+}
+
+.duration:focus-visible,
+.clear:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.clear {
+  padding: var(--space-0-5) var(--space-1-5);
+  border: 0;
+  background: transparent;
+  color: var(--navy-ink);
+  font: inherit;
+  font-size: var(--fs-5);
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+

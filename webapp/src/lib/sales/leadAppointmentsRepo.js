@@ -24,7 +24,7 @@ export async function loadActiveAppointmentsInRange(supabase, { fromIso, untilIs
     .lt('startAt', untilIso)
     .gt('endAt', fromIso)
     .order('startAt', { ascending: true })
-    .limit(500); // วันเดียว/สามเดือนของสามห้อง — เพดานนี้คือตาข่าย ไม่ใช่ขนาดงานจริง
+    .limit(1000); // ช่วงยาวสุด 45 วันของสามห้อง (หลักสิบนัดต่อสัปดาห์) — เพดานนี้คือตาข่าย ไม่ใช่ขนาดงานจริง
 }
 
 /** แปะชื่อลูกค้าให้แถวที่คนดูมองเห็นลีดต้นทางได้ — นอกขอบเขต = ไม่มีชื่อ (ไม่ใช่ตัดแถวทิ้ง:

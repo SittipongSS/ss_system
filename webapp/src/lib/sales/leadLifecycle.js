@@ -473,7 +473,7 @@ export function createLeadLifecycle({ users = [], canCreateDeals = false, viewer
         from: allowedFrom("meeting"),
         to: "meeting",
         visible: (lead, user) => canWorkLead(user, lead),
-        dialogSize: "md", // วัน + เวลาเริ่ม–จบ + แผ่นห้องสามห้อง ไม่ลงในกล่อง 480px
+        dialogSize: "lg", // แถบวัน + ตารางห้อง 3 ห้อง × 09:00–18:00 (แบบ ก · 06/11) — กล่อง 600px ต้องเลื่อนตารางซ้ายขวา
         /* ⭐ เติมจากนัดที่ MKT จองไว้ (มติเจ้าของ 05/11 ข้อ 5) — AE กดยืนยันทีเดียว ไม่ต้องพิมพ์ซ้ำ
            ลีดที่มีนัดรออยู่แล้วกดนัดใหม่ = นัดเดิมถูกแทนที่และคืนห้อง (ข้อ 6 · บอกไว้ใน hint) */
         initialValues: (lead) => ({ appointment: meetingAppointmentDefaults(lead) }),

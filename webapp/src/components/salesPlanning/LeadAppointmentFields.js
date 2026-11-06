@@ -12,41 +12,65 @@
 
 import { useEffect, useMemo, useState } from "react";
 import OptionTiles from "@/components/ui/OptionTiles";
-import DateInput from "@/components/ui/DateInput";
 import TimeInput from "@/components/ui/TimeInput";
+import AppointmentDayStrip from "@/components/salesPlanning/AppointmentDayStrip";
+import RoomTimeline from "@/components/salesPlanning/RoomTimeline";
 import { apiJson } from "@/lib/apiFetch";
+import { cachedFetchJson } from "@/lib/apiCache";
+import { businessDate } from "@/lib/businessDate";
 import { fmtDate } from "@/lib/format";
 import {
   APPOINTMENT_MODE_HINTS, APPOINTMENT_MODE_LABELS, INTAKE_APPOINTMENT_MODES, MEETING_APPOINTMENT_MODES, NO_APPOINTMENT,
-  STUDIO_MODE, STUDIO_ROOMS, STUDIO_ROOM_LABELS,
-  appointmentConflicts, appointmentPlace, appointmentTimeRange, emptyAppointment, hasAppointmentInput,
-  thaiDateTimeToIso,
+  STUDIO_MODE, STUDIO_ROOM_LABELS,
+  appointmentPlace, appointmentTimeRange, emptyAppointment, hasAppointmentInput,
 } from "@/lib/sales/leadAppointments";
+import {
+  GRID_CLOSE, GRID_STEP, STRIP_DAYS, addDays, clashIn, hhmm, minutesOf, stripDays, thaiMinutes,
+} from "@/lib/sales/appointmentGrid";
 import styles from "./LeadAppointmentFields.module.css";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DURATIONS = [60, 90, 120];
+const durationLabel = (minutes) => (minutes < 60 ? `${minutes} นาที` : `${minutes / 60} ชม.`);
+const WEEKDAYS_FULL = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 
-/** นัดของวันนั้นจาก API — โหลดเฉพาะตอนเลือก Studio (ห้องเป็นเรื่องเดียวที่ต้องรู้ว่าคนอื่นจองอะไร) */
-function useDayAppointments(date, enabled) {
-  const [state, setState] = useState({ date: "", rows: [], error: "" });
-  const wanted = enabled && DATE_RE.test(String(date || "")) ? date : "";
+/** นัดที่ยังไม่ปิดในช่วงวัน [from, to] — แถบวันทั้งแถบในคำขอเดียว · ปิด = ไม่ยิง */
+function useAppointmentsRange(from, to, enabled) {
+  const key = enabled && DATE_RE.test(String(from || "")) && DATE_RE.test(String(to || "")) ? `${from}|${to}` : "";
+  const [state, setState] = useState({ key: "", rows: [], error: "" });
   useEffect(() => {
-    if (!wanted) return undefined;
+    if (!key) return undefined;
     let alive = true;
-    apiJson(`/api/sales-planning/leads/appointments?date=${wanted}`, { fallbackError: "เช็คห้องว่างไม่สำเร็จ" })
-      .then((rows) => { if (alive) setState({ date: wanted, rows: Array.isArray(rows) ? rows : [], error: "" }); })
-      .catch((err) => { if (alive) setState({ date: wanted, rows: [], error: err.message || "เช็คห้องว่างไม่สำเร็จ" }); });
+    const [f, t] = key.split("|");
+    const url = f === t ? `/api/sales-planning/leads/appointments?date=${f}` : `/api/sales-planning/leads/appointments?from=${f}&to=${t}`;
+    apiJson(url, { fallbackError: "เช็คห้องว่างไม่สำเร็จ" })
+      .then((rows) => { if (alive) setState({ key, rows: Array.isArray(rows) ? rows : [], error: "" }); })
+      .catch((err) => { if (alive) setState({ key, rows: [], error: err.message || "เช็คห้องว่างไม่สำเร็จ" }); });
     return () => { alive = false; };
-  }, [wanted]);
-  const ready = !!wanted && state.date === wanted;
-  return { rows: ready ? state.rows : [], loading: !!wanted && !ready, error: ready ? state.error : "" };
+  }, [key]);
+  const ready = !!key && state.key === key;
+  return { rows: ready ? state.rows : [], loading: !!key && !ready, error: ready ? state.error : "" };
+}
+
+/** วันหยุดบริษัท (ทะเบียนกลาง) — ป้ายบนแถบวัน · โหลดไม่ได้ = ไม่มีป้าย ไม่ล้มฟอร์ม */
+function useHolidays(enabled) {
+  const [map, setMap] = useState(() => new Map());
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    cachedFetchJson("/api/holidays")
+      .then((rows) => { if (alive) setMap(new Map((Array.isArray(rows) ? rows : []).map((row) => [row.date, row.name || "วันหยุด"]))); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [enabled]);
+  return map;
 }
 
 /** แถวสรุปนัดอ่านอย่างเดียว — ฟอร์มแก้ลีดเมื่อ AE ยืนยันนัดนี้เป็นนัดประชุมแล้ว */
 export function AppointmentSummary({ appointment }) {
   if (!appointment) return null;
   return (
-    <span className={styles.summary}>
+    <span className={styles.summaryText}>
       {fmtDate(appointment.startAt)} · {appointmentTimeRange(appointment)} · {appointmentPlace(appointment)}
     </span>
   );
@@ -64,19 +88,22 @@ export default function LeadAppointmentFields({
   locked = null,
 }) {
   const current = value || emptyAppointment();
-  const active = hasAppointmentInput(current);
+  const active = hasAppointmentInput(current) && !locked;
   const studio = current.mode === STUDIO_MODE;
   const patch = (next) => onChange?.({ ...current, ...next });
-  const day = useDayAppointments(current.date, active && studio && !locked);
 
-  const range = useMemo(() => {
-    const startAt = thaiDateTimeToIso(current.date, current.start);
-    const endAt = thaiDateTimeToIso(current.date, current.end);
-    return startAt && endAt && Date.parse(endAt) > Date.parse(startAt) ? { startAt, endAt } : null;
-  }, [current.date, current.start, current.end]);
-
-  const studioRows = useMemo(() => day.rows.filter((row) => row.room), [day.rows]);
-  const clashesOf = (room) => (range ? appointmentConflicts({ room, ...range }, studioRows, { leadId }) : []);
+  /* "วันนี้" ตามนาฬิกาไทย (memory thai-time-display) · ตรึงตอน mount — ฟอร์มที่เปิดข้ามเที่ยงคืนยังใช้แถบเดิมได้ */
+  const [today] = useState(() => businessDate());
+  const [nowMinutes] = useState(() => thaiMinutes(new Date().toISOString()));
+  const holidays = useHolidays(active);
+  const days = useMemo(() => stripDays(today, { holidayOf: (date) => holidays.get(date) || null }), [today, holidays]);
+  const stripEnd = addDays(today, STRIP_DAYS - 1);
+  const strip = useAppointmentsRange(today, stripEnd, active && studio);
+  const outsideStrip = DATE_RE.test(String(current.date || "")) && (current.date < today || current.date > stripEnd);
+  const single = useAppointmentsRange(current.date, current.date, active && studio && outsideStrip);
+  const rows = useMemo(() => [...strip.rows, ...single.rows], [strip.rows, single.rows]);
+  const dayLoading = outsideStrip ? single.loading : strip.loading;
+  const dayError = outsideStrip ? single.error : strip.error;
 
   if (locked) {
     return (
@@ -92,81 +119,134 @@ export default function LeadAppointmentFields({
     ...modes.map((mode) => ({ value: mode, label: APPOINTMENT_MODE_LABELS[mode] || mode, description: APPOINTMENT_MODE_HINTS[mode] })),
   ];
 
-  const roomOptions = STUDIO_ROOMS.map((room) => {
-    const label = STUDIO_ROOM_LABELS[room];
-    if (!DATE_RE.test(String(current.date || ""))) return { value: room, label, description: "เลือกวันก่อน" };
-    if (day.loading) return { value: room, label, description: "กำลังเช็ค…" };
-    if (day.error) return { value: room, label, description: "เช็คห้องไม่ได้" };
-    const ofRoom = studioRows.filter((row) => row.room === room && (!leadId || row.leadId !== leadId));
-    if (!range) return { value: room, label, description: ofRoom.length ? `วันนั้นมี ${ofRoom.length} นัด` : "ว่างทั้งวัน" };
-    const clashes = clashesOf(room);
-    return clashes.length
-      ? { value: room, label, description: `ไม่ว่าง ${appointmentTimeRange(clashes[0])}`, disabled: true }
-      : { value: room, label, description: "ว่าง", tone: "teal" };
-  });
+  const start = minutesOf(current.start);
+  const end = minutesOf(current.end);
+  const hasRange = start != null && end != null && end > start;
+  const selection = studio && current.room && hasRange && DATE_RE.test(String(current.date || ""))
+    ? { room: current.room, start, end } : null;
+  const clash = selection ? clashIn(rows, current.date, selection.room, selection.start, selection.end, { leadId }) : null;
+  const pickRange = ({ room, start: s, end: e }) => patch({ room, start: hhmm(s), end: hhmm(e) });
+  const setDuration = (minutes) => { if (start != null) patch({ end: hhmm(start + minutes) }); };
+  const durationFits = (minutes) => {
+    if (start == null || start + minutes > 24 * 60) return false;
+    if (!studio || !current.room || !DATE_RE.test(String(current.date || ""))) return true;
+    return !clashIn(rows, current.date, current.room, start, start + minutes, { leadId });
+  };
 
-  const pickedClash = studio && current.room ? clashesOf(current.room) : [];
-  const timeError = current.start && current.end && !range ? "เวลาจบต้องหลังเวลาเริ่ม" : "";
+  const dateLabel = DATE_RE.test(String(current.date || ""))
+    ? `${WEEKDAYS_FULL[new Date(`${current.date}T00:00:00Z`).getUTCDay()]} ${fmtDate(current.date)}` : "";
+  const problem = start != null && end != null && end <= start ? "เวลาจบต้องหลังเวลาเริ่ม"
+    : clash ? `${STUDIO_ROOM_LABELS[clash.room]} ไม่ว่าง ${hhmm(clash.start)}–${hhmm(clash.end)}${clash.contactName ? ` — นัดของ ${clash.contactName}` : ""} · เลือกช่องอื่นในตาราง`
+      : "";
+  const missing = !current.date ? "เลือกวันจากแถบด้านบน"
+    : studio && !current.room ? "กดช่องว่างในตารางเพื่อเลือกห้องและเวลา"
+      : start == null || end == null ? "ระบุเวลาเริ่มและเวลาจบ" : "";
 
   return (
     <div className={styles.wrap}>
       <OptionTiles
-        value={active ? current.mode : (allowNone ? NO_APPOINTMENT : "")}
-        onChange={(mode) => (mode === NO_APPOINTMENT ? onChange?.(emptyAppointment()) : patch({ mode }))}
+        value={hasAppointmentInput(current) ? current.mode : (allowNone ? NO_APPOINTMENT : "")}
+        onChange={(mode) => (mode === NO_APPOINTMENT ? onChange?.(emptyAppointment())
+          : patch({ mode, room: mode === STUDIO_MODE ? current.room : "" }))}
         options={modeOptions}
         disabled={disabled}
         ariaLabel="รูปแบบนัด"
       />
 
       {active && (
-        <div className={styles.when}>
-          <label className={styles.field}>
-            <span className={styles.label}>วันนัด <span className="required-mark">*</span></span>
-            <DateInput value={current.date || ""} onChange={(date) => patch({ date })} disabled={disabled} ariaLabel="วันนัด" weekday />
-          </label>
-          <label className={styles.field}>
-            <span className={styles.label}>เริ่ม <span className="required-mark">*</span></span>
-            <TimeInput value={current.start || ""} onChange={(start) => patch({ start })} disabled={disabled} ariaLabel="เวลาเริ่มนัด" minuteStep={15} />
-          </label>
-          <label className={styles.field}>
-            <span className={styles.label}>ถึง <span className="required-mark">*</span></span>
-            <TimeInput value={current.end || ""} onChange={(end) => patch({ end })} disabled={disabled} ariaLabel="เวลาจบนัด" minuteStep={15} />
-          </label>
+        <div className={styles.field}>
+          <span className={styles.label}>
+            วันนัด <span className="required-mark">*</span>
+            {studio && <span className={styles.soft}>เส้นเล็ก 3 เส้นใต้วันที่ = Studio 01 · 02 · 03 ถูกจองไปแค่ไหน</span>}
+          </span>
+          <AppointmentDayStrip
+            days={days}
+            value={current.date || ""}
+            onChange={(date) => patch({ date })}
+            rows={strip.rows}
+            showRooms={studio}
+            leadId={leadId}
+            loading={strip.loading}
+            disabled={disabled}
+          />
         </div>
       )}
-      {timeError && <small className={styles.error}>{timeError}</small>}
 
-      {active && studio && (
+      {active && studio && DATE_RE.test(String(current.date || "")) && (
         <div className={styles.field}>
-          <span className={styles.label}>ห้อง <span className="required-mark">*</span></span>
-          <OptionTiles
-            value={current.room || ""}
-            onChange={(room) => patch({ room })}
-            options={roomOptions}
-            disabled={disabled}
-            ariaLabel="ห้อง Studio"
-          />
-          {pickedClash.length > 0 && (
-            <small className={styles.error}>
-              {STUDIO_ROOM_LABELS[current.room]} ไม่ว่าง {appointmentTimeRange(pickedClash[0])}
-              {pickedClash[0].contactName ? ` — นัดของ ${pickedClash[0].contactName}` : ""} · เลือกห้องอื่นหรือเปลี่ยนเวลา
-            </small>
+          <span className={styles.label}>ห้องและเวลา <span className="required-mark">*</span></span>
+          {dayError ? (
+            <small className={styles.error}>{dayError} — ยังเลือกเวลาเองได้ที่แถวสรุปข้างล่าง ระบบเช็คห้องอีกครั้งตอนกดบันทึก</small>
+          ) : dayLoading ? (
+            <small className={styles.hint}>กำลังโหลดนัดของวันนั้น…</small>
+          ) : (
+            <RoomTimeline
+              rows={rows}
+              date={current.date}
+              leadId={leadId}
+              selection={selection}
+              onSelect={pickRange}
+              pastBefore={current.date === today ? nowMinutes : null}
+              disabled={disabled}
+            />
           )}
-          {day.error && <small className={styles.error}>{day.error} — ระบบยังเช็คห้องอีกครั้งตอนกดบันทึก</small>}
-          {/* ตารางของวันนั้นทั้งสามห้อง — เลือกเวลาใหม่ได้โดยไม่ต้องเดาทีละช่วง */}
-          {studioRows.length > 0 && (
-            <ul className={styles.day} aria-label="นัดที่ใช้ Studio วันนั้น">
-              {studioRows.map((row) => (
-                <li key={row.id} data-own={leadId && row.leadId === leadId ? "1" : undefined}>
-                  <strong>{STUDIO_ROOM_LABELS[row.room]}</strong>
-                  <span className={styles.dayTime}>{appointmentTimeRange(row)}</span>
-                  <span className={styles.dayWho}>
-                    {leadId && row.leadId === leadId ? "นัดของลีดนี้" : row.contactName || "นัดของลีดทีมอื่น"}
-                    {row.createdByName ? ` · จองโดย ${row.createdByName}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
+        </div>
+      )}
+
+      {active && (
+        <div className={styles.summary} data-empty={missing ? "1" : undefined} data-bad={problem ? "1" : undefined}>
+          <div className={styles.summaryWhat}>
+            {missing && !problem ? (
+              <>
+                <b>{dateLabel || "ยังไม่ได้เลือกวัน"}</b>
+                <small>{missing}</small>
+              </>
+            ) : (
+              <>
+                <b>
+                  {dateLabel} · {current.start}–{current.end}
+                  {studio && current.room ? ` · ${STUDIO_ROOM_LABELS[current.room]}` : ` · ${APPOINTMENT_MODE_LABELS[current.mode]}`}
+                </b>
+                <small>{problem || `${hasRange ? durationLabel(end - start) : ""}${studio ? " · ห้องว่าง จองได้" : ""}`}</small>
+              </>
+            )}
+          </div>
+          <div className={styles.fine}>
+            <label className={styles.fineField}>
+              <span>เริ่ม</span>
+              <TimeInput value={current.start || ""} onChange={(v) => patch({ start: v })} disabled={disabled} ariaLabel="เวลาเริ่มนัด" minuteStep={15} />
+            </label>
+            <label className={styles.fineField}>
+              <span>ถึง</span>
+              <TimeInput value={current.end || ""} onChange={(v) => patch({ end: v })} disabled={disabled} ariaLabel="เวลาจบนัด" minuteStep={15} />
+            </label>
+            <div className={styles.durations} role="group" aria-label="ความยาวนัด">
+              {DURATIONS.map((minutes) => {
+                const fits = durationFits(minutes);
+                return (
+                  <button
+                    key={minutes}
+                    type="button"
+                    className={styles.duration}
+                    aria-pressed={hasRange && end - start === minutes}
+                    disabled={disabled || !fits}
+                    title={start == null ? "เลือกเวลาเริ่มก่อน" : fits ? `จบ ${hhmm(start + minutes)}` : "ยาวเท่านี้ไม่ได้ — ชนนัดถัดไปในห้องนี้"}
+                    onClick={() => setDuration(minutes)}
+                  >
+                    {durationLabel(minutes)}
+                  </button>
+                );
+              })}
+            </div>
+            {(current.start || current.end || current.room) && (
+              <button type="button" className={styles.clear} disabled={disabled}
+                onClick={() => patch({ start: "", end: "", room: studio ? "" : current.room })}>
+                ล้างเวลา
+              </button>
+            )}
+          </div>
+          {studio && start != null && start + GRID_STEP > GRID_CLOSE && (
+            <small className={styles.hint}>เวลานี้อยู่นอกตาราง 09:00–18:00 — ระบบยังเช็คห้องชนให้ตอนกดบันทึก</small>
           )}
         </div>
       )}
