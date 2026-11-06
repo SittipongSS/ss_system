@@ -20,6 +20,8 @@ import {
 } from './quotationMasterTemplate.js';
 import { SALE_UNIT_EN, saleUnitLabel } from '../master/units.js';
 import { PACK_LINE_UNIT } from './linePacks.js';
+import { buildQuotationMasterHTML } from './quotationMasterDocument.js';
+import { buildSalesOrderPrintHTML } from './salesOrderPrint.js';
 
 test('controlled form line preserves the exact ISO punctuation and spacing', () => {
   assert.equal(controlledFormLine(), 'FM-SA-01: Rev. No.00. 08/05/2568');
@@ -733,11 +735,35 @@ test('model ของใบ: หมวดตามภาษาของใบ �
   assert.equal(buildQuotationMasterModelFromQuote(quote('th', {})).lines[0].category, '');
 });
 
-test('บรรทัดเพิ่มเอง (ไม่มีรหัส FG) พิมพ์หมวดที่เลือกไว้บนบรรทัดเล็กเหนือรายละเอียด (มติ 2026-09-27)', () => {
+test('บรรทัดเพิ่มเอง (ไม่มีรหัส FG) พิมพ์เลขหมวด · ชื่อหมวดที่เลือกไว้บนบรรทัดเล็กเหนือรายละเอียด (มติ 2026-09-27 · เลขหมวด 2026-11-05)', () => {
   const quote = { docLanguage: 'en', lines: [{ id: 'L1', fgCode: null, description: 'ค่าติดตั้ง', metadata: { categoryCode: '02-001', categoryName: 'บริการ', categoryNameEn: 'Service' } }] };
   const [line] = buildQuotationMasterModelFromQuote(quote).lines;
   assert.equal(line.category, 'Service');
-  assert.deepEqual(lineIdentityParts(line), ['Service']);
+  assert.equal(line.categoryCode, '02-001');
+  assert.deepEqual(lineIdentityParts(line), ['02-001', 'Service']);
+});
+
+test('เลขหมวดพิมพ์เฉพาะบรรทัดเพิ่มเอง — บรรทัด FG มีหมวดในรหัสแล้ว · บรรทัดเพิ่มเองที่ไม่ได้เลือกหมวดไม่มีบรรทัดเล็ก', () => {
+  const quote = {
+    docLanguage: 'th',
+    lines: [
+      { id: 'L1', sortOrder: 0, fgCode: 'FG-002-04-002', description: 'ต่ออายุจดแจ้งเครื่องสำอาง', metadata: { categoryCode: '04-002', categoryName: 'ค่าจดแจ้งเลขเครื่องสำอาง' } },
+      { id: 'L2', sortOrder: 1, fgCode: null, description: 'ต่ออายุจดแจ้งเครื่องสำอาง', metadata: { categoryCode: '04-002', categoryName: 'ค่าจดแจ้งเลขเครื่องสำอาง' } },
+      { id: 'L3', sortOrder: 2, fgCode: null, description: 'ค่าขนส่ง', metadata: {} },
+    ],
+  };
+  const [fg, manual, plain] = buildQuotationMasterModelFromQuote(quote).lines;
+  assert.deepEqual(lineIdentityParts(fg), ['FG-002-04-002', 'ค่าจดแจ้งเลขเครื่องสำอาง']);
+  assert.deepEqual(lineIdentityParts(manual), ['04-002', 'ค่าจดแจ้งเลขเครื่องสำอาง']);
+  assert.deepEqual(lineIdentityParts(plain), []);
+});
+
+test('เอกสารพิมพ์: บรรทัดเพิ่มเองขึ้น "เลขหมวด · ชื่อหมวด" ทั้งใบเสนอราคาและใบสั่งขาย', () => {
+  const lines = [{ id: 'L1', fgCode: null, description: 'ต่ออายุจดแจ้งเครื่องสำอาง', qty: 1, unit: 'ชิ้น', unitPrice: 2000, lineTotal: 2000, metadata: { categoryCode: '04-002', categoryName: 'ค่าจดแจ้งเลขเครื่องสำอาง' } }];
+  const quoteHtml = buildQuotationMasterHTML({ quoteNumber: 'QT-26110001-0', lines, subtotal: 2000, vatRate: 7, vatAmount: 140, totalAmount: 2140, paymentPlan: { type: 'full' } });
+  assert.match(quoteHtml, /<span class="itemIdentity">04-002 · ค่าจดแจ้งเลขเครื่องสำอาง<\/span>/);
+  const orderHtml = buildSalesOrderPrintHTML({ orderNumber: 'SO-26110001-0', lines, subtotal: 2000, vatAmount: 140, totalAmount: 2140, quotation: { vatRate: 7 } });
+  assert.match(orderHtml, /<span class="itemIdentity">04-002 · ค่าจดแจ้งเลขเครื่องสำอาง<\/span>/);
 });
 
 /* ⭐ ใบที่ถูกยกเลิก (ปุ่มยกเลิกใบของผู้อนุมัติ มติ 24/09 · หรือ SO ย้อน Won ตาม 0116) พิมพ์ซ้ำได้
