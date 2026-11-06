@@ -244,3 +244,24 @@ export function intakeAppointmentState(lead) {
     lock: current.source === "meeting" ? { appointment: current, note: MEETING_LOCK_NOTE } : null,
   };
 }
+
+/** ช่วงยาวสุดที่ขอนัดได้ในคำขอเดียว — แถบวัน 14 วัน + เผื่อวันที่เลือกจากปฏิทินนอกแถบ */
+export const APPOINTMENT_RANGE_MAX_DAYS = 45;
+
+/**
+ * ช่วงเวลาที่ API นัดหมายต้องอ่าน — `date` วันเดียว หรือ `from`–`to` หลายวัน (วันไทย · ครึ่งเปิด)
+ * @returns {{ error: string } | { error: null, fromIso: string, untilIso: string }}
+ */
+export function appointmentRangeOf({ date = null, from = null, to = null } = {}) {
+  if (date) {
+    const day = thaiDayRange(date);
+    return day ? { error: null, ...day } : { error: "ต้องระบุวันที่ (date) รูปแบบ YYYY-MM-DD" };
+  }
+  const start = thaiDayRange(from);
+  const end = thaiDayRange(to);
+  if (!start || !end) return { error: "ต้องระบุวันที่ (date) หรือช่วง (from/to) รูปแบบ YYYY-MM-DD" };
+  const days = Math.round((Date.parse(end.fromIso) - Date.parse(start.fromIso)) / 86400000) + 1;
+  if (days < 1) return { error: "วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่ม" };
+  if (days > APPOINTMENT_RANGE_MAX_DAYS) return { error: `ขอนัดได้ครั้งละไม่เกิน ${APPOINTMENT_RANGE_MAX_DAYS} วัน (ขอมา ${days} วัน)` };
+  return { error: null, fromIso: start.fromIso, untilIso: end.untilIso };
+}
