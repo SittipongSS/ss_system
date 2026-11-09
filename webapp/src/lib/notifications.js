@@ -142,6 +142,8 @@ export const SERVICE_BELL_KINDS = Object.freeze([
   /* ⭐ ฝ่ายขายคอนเฟิร์มนัดติดตั้งกับลูกค้าแล้ว → หัวหน้า TS + Planner + หัวหน้างานของนัด (PR-4) · ยิงจาก `installNotify.js`
      (`INSTALL_CUSTOMER_CONFIRMED_KIND`) · entityType 'service_visit' · href หน้าจัดคิว */
   'install_customer_confirmed',
+  /* ⭐ ช่างส่งงานติดตั้งแล้ว → ฝ่ายขายที่ขอคิว (PR-5a) · ยิงจาก `installNotify.js` (`INSTALL_DONE_KIND`) · entityType 'sales_order' */
+  'install_done',
   /* ⭐ หัวหน้าสลับวิธีประเมิน (งวด S2a · แผน survey-desk-assessment §3.5) → ช่างบนนัดของใบนั้น:
      นัดถูกยกเลิกเพราะใบเป็นประเมินจากแบบ หรือพื้นที่ที่ไม่ต้องวัดแล้ว — ก่อนมีตัวนี้งานหายจากรายการของช่างเฉย ๆ
      ⚠️ ยิงจาก `lib/service/surveyMethodNotify.js` (`SURVEY_METHOD_CREW_KIND`) · href ไปจอของฝ่ายบริการ
