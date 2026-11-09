@@ -43,9 +43,13 @@ export function documentBoard(items = []) {
            🐞 **ต้องถามทะเบียนของรูปร่างนั้น** — เดิมใช้ `docTypeLabel` ซึ่งรู้จักเฉพาะ
            ชุดของ RD ⇒ บรรทัดของบัญชีขึ้นเป็นค่าดิบ `billing_note` บนตารางสรุป
            ทั้งที่การ์ดรายแถวข้างล่างแสดง "ใบวางบิล" ถูกต้อง (เจอตอน UAT ของ B-5) */
-        name: item.docType
-          ? (lineShapeVocab(item.lineKind)?.label(item.docType) ?? docTypeLabel(item.docType))
-          : (item.label || '—'),
+        /* ⭐ บรรทัดที่ผูก FG (mig 0428 · P2b) — ป้ายที่ประทับไว้คือ "ชนิด · รหัส FG" (`resolveLineLabels`) ⇒ ใช้ตัวนั้น
+           ไม่งั้นใบที่ขอ MSDS ของสอง FG ขึ้น "MSDS / SDS" สองแถวแยกไม่ออก */
+        name: item.productId && item.label
+          ? item.label
+          : item.docType
+            ? (lineShapeVocab(item.lineKind)?.label(item.docType) ?? docTypeLabel(item.docType))
+            : (item.label || '—'),
         spec: item.spec || null,
         stage,
         stageLabel: DOC_STAGE_LABELS[stage] || ROW_STAGE_LABELS[stage] || stage,

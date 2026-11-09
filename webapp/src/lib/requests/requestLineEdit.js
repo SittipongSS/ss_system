@@ -26,7 +26,8 @@ import { rowStage } from '@/lib/requests/rowStage';
    ⚠️ `label` อยู่ในลิสต์เพราะมันเป็น **snapshot ที่ derive มาแล้ว** (ชื่อชนิดเอกสาร /
    ชื่อหมวด · ชื่อกลิ่น) ไม่ใช่ค่าที่ client พิมพ์เอง — ดู `lineLabels.js` */
 const WRITABLE_BY_SHAPE = Object.freeze({
-  document: Object.freeze(['docType', 'label', 'spec']),
+  /* + `productId` (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — FG ที่บรรทัด MSDS / Spec Sheet ขอ · ผู้ขอเป็นเจ้าของ (ตรวจที่ resolveLineLabels) */
+  document: Object.freeze(['docType', 'productId', 'label', 'spec']),
   billing_doc: Object.freeze(['docType', 'label', 'spec']),
   product_dev: Object.freeze(['categoryCode', 'scentId', 'label', 'spec', 'qty', 'unit']),
 });
@@ -175,6 +176,8 @@ export function lineFormRows(items = [], lineShape = null) {
   return items.map((it) => ({
     id: it.id,
     docType: it.docType || '',
+    // FG ของบรรทัด MSDS / Spec Sheet (mig 0428) — สตริงเสมอด้วยเหตุผลเดียวกับช่องอื่น (controlled component)
+    productId: it.productId || '',
     spec: it.spec || '',
   }));
 }

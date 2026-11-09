@@ -124,7 +124,8 @@ test('บรรทัดพัฒนาสูตร — จำนวนที่
 
 test('lineFormRows — ทุกช่องเป็นสตริง และพา id ไปด้วยเสมอ', () => {
   const [doc] = lineFormRows([{ id: 'DRI-1', docType: 'coa', spec: null }], 'document');
-  assert.deepEqual(doc, { id: 'DRI-1', docType: 'coa', spec: '' });
+  // + productId (mig 0428 · P2b) — สตริงว่างเมื่อบรรทัดไม่ผูก FG
+  assert.deepEqual(doc, { id: 'DRI-1', docType: 'coa', productId: '', spec: '' });
 
   const [dev] = lineFormRows(
     [{ id: 'DRI-2', categoryCode: '01-001', scentId: 'SC-1', qty: 12, unit: null, spec: null }],
