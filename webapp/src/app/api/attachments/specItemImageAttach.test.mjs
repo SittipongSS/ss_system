@@ -79,7 +79,7 @@ test('POST: ช่องแคบเป็นประโยคแยกต่�
   /* ⭐ 09/11/2026 (ศูนย์กลางเอกสารของสินค้า P2): เอกสารที่ RD ออก (MSDS · Spec Sheet) ใช้ช่องของ RD **แทน** ประโยคนี้
      ⇒ ประโยคเดิม (ด่านเดิม || ช่องแคบของรูปแถว) เป็นกิ่ง "ไม่ใช่เอกสาร RD" ของตัวเลือก · ด่าน 403 ยังอ่านผลรวมตัวเดียว
      (รายละเอียดของช่อง RD: lib/master/rdProductDocs.test.mjs) */
-  assert.match(post, /const allowedWrite = isRdProductDoc\(entityType, safeDocType\)\s*\?\s*canAttachRdProductDoc\(entityType, safeDocType, user\)\s*:\s*allowedEdit \|\| canAttachSpecItemImage\(entityType, safeDocType, user\);\s*if \(!allowedWrite\) \{\s*return Response\.json\(\{ error: 'forbidden' \}, \{ status: 403 \}\);/);
+  assert.match(post, /const allowedWrite = isIssuedProductDoc\(entityType, safeDocType\)\s*\?\s*canAttachIssuedProductDoc\(entityType, safeDocType, user\)\s*:\s*allowedEdit \|\| canAttachSpecItemImage\(entityType, safeDocType, user\);\s*if \(!allowedWrite\) \{\s*return Response\.json\(\{ error: 'forbidden' \}, \{ status: 403 \}\);/);
   assert.doesNotMatch(post, /if \(!allowedEdit\)/, 'ด่าน 403 ต้องอ่านผลรวม ไม่ใช่ด่านเดิมอย่างเดียว');
   // 🔴 `safeDocType` ต้องคัดเสร็จก่อนถึงช่องแคบ — ถามด้วยค่าดิบ = ส่ง docType นี้กับ entity ที่ไม่มีในทะเบียนแล้วได้สิทธิ์
   const safeAt = post.indexOf('const safeDocType = allowed.includes(docType) ? docType : \'other\';');

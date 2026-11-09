@@ -33,6 +33,29 @@ export const PRODUCT_SPEC_SHEET_DOC_TYPE = 'spec_sheet';
 export const RD_PRODUCT_DOC_TYPES = Object.freeze([PRODUCT_MSDS_DOC_TYPE, PRODUCT_SPEC_SHEET_DOC_TYPE]);
 export const isRdProductDoc = (entityType, docType) => entityType === 'product' && RD_PRODUCT_DOC_TYPES.includes(docType);
 
+/* ⭐ COA = ระดับ **FG × ล็อตการผลิต** · **QC ออก** · เก็บที่สินค้า · QC **พิมพ์เลขล็อตเองตอนแนบ (บังคับ)** · ยังไม่ผูกงานผลิต
+   (ศูนย์กลางเอกสารของสินค้า P4 · มติเจ้าของ 09/11/2026) — เลขล็อตอยู่ใน `metadata.lotNo` (ช่องรายละเอียดของไฟล์ · `COA_META_FIELDS`)
+   ⚠️ กติกาเดียวกับเอกสาร RD: ช่องของผู้ออก (QC) **แทน** ด่านแก้สินค้า · ซ่อนจากแผงของฝ่ายขาย · ไม่บังคับ */
+export const PRODUCT_COA_DOC_TYPE = 'coa';
+export const QC_PRODUCT_DOC_TYPES = Object.freeze([PRODUCT_COA_DOC_TYPE]);
+export const COA_LOT_FIELD = 'lotNo';
+export const COA_LOT_MAX_LENGTH = 60;
+/* ช่องรายละเอียดของไฟล์ COA — ส่งเป็น `metaFields` ของแผง (โหมดฟอร์มรายละเอียด) · ⚠️ ค่าคงที่ (แผงผูก state ตั้งต้นกับชุดนี้) */
+export const COA_META_FIELDS = Object.freeze([
+  Object.freeze({ key: COA_LOT_FIELD, label: 'เลขล็อตการผลิต (Lot No.)', type: 'text', required: true }),
+]);
+/** เอกสารของสินค้าที่ "ผู้ออก" เป็นฝ่ายเฉพาะ (RD: MSDS · Spec Sheet · QC: COA) — ด่านแนบใช้ช่องของผู้ออกแทนด่านแก้สินค้า */
+export const ISSUED_PRODUCT_DOC_TYPES = Object.freeze([...RD_PRODUCT_DOC_TYPES, ...QC_PRODUCT_DOC_TYPES]);
+export const isIssuedProductDoc = (entityType, docType) => entityType === 'product' && ISSUED_PRODUCT_DOC_TYPES.includes(docType);
+
+/** เลขล็อตของ COA ใช้ได้ไหม — `null` = ใช้ได้ · ข้อความ = เหตุผล (server ตรวจเสมอ · จอเตือนก่อนส่ง) */
+export function coaLotError(metadata) {
+  const lot = String(metadata?.[COA_LOT_FIELD] ?? '').trim();
+  if (!lot) return 'ต้องกรอกเลขล็อตการผลิตของ COA';
+  if (lot.length > COA_LOT_MAX_LENGTH) return `เลขล็อตยาวเกิน ${COA_LOT_MAX_LENGTH} ตัวอักษร`;
+  return null;
+}
+
 /* เพดานขนาดของรูปรายแถว — จอสเปคโหลดรูปต้นฉบับแถวละรูป (ไม่มีตัวย่อรูป) ⇒ 25 MB × 37 แถวคือหน้าที่เปิดไม่ขึ้น */
 export const SPEC_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -49,7 +72,7 @@ export const SPEC_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 export const PANEL_HIDDEN_DOC_TYPES = Object.freeze({
   /* + เอกสารที่ RD ออก (P2 · 09/11/2026) — แผงทั่วไปของสินค้าเป็นของฝ่ายขาย (แนบ/ลบด้วยสิทธิ์แก้สินค้า) ⇒ ไฟล์ของ RD ห้ามตก
      กอง "เอกสารอื่นๆ" พร้อมปุ่มลบของแผงนั้น · การ์ด "เอกสารจาก RD" ขอสองคีย์นี้มาเอง */
-  product: Object.freeze([SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, ...RD_PRODUCT_DOC_TYPES]),
+  product: Object.freeze([SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, ...RD_PRODUCT_DOC_TYPES, ...QC_PRODUCT_DOC_TYPES]),
 });
 export const isPanelHiddenDocType = (entityType, docType) => (
   (PANEL_HIDDEN_DOC_TYPES[entityType] || []).includes(docType)
@@ -238,7 +261,7 @@ export function productDocTypes(record) {
      สองที่และด่าน "ยังขาดเอกสาร" จะนับรูปประกอบเป็นเอกสารที่ขาด */
   /* รูปของแถว checklist (mig 0405) ก็เช่นกัน — เป็นของจอสเปค ไม่ใช่เอกสารของทะเบียน */
   /* เอกสารของ RD (P2) ก็เช่นกัน — การ์ดของมันอยู่ที่ "เอกสารจาก RD" และไม่บังคับ (ไม่เข้าด่านอนุมัติสินค้า) */
-  const hidden = [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, ...RD_PRODUCT_DOC_TYPES];
+  const hidden = [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, ...RD_PRODUCT_DOC_TYPES, ...QC_PRODUCT_DOC_TYPES];
   const list = ATTACHMENT_TYPES.product.filter((t) => !hidden.includes(t.key));
   if (!mainCode || ARTWORK_MAIN_CATEGORIES.includes(mainCode)) return list;
   return list.map((t) => (t.required ? { ...t, required: false } : t));
@@ -358,6 +381,8 @@ export const ATTACHMENT_TYPES = {
     /* เอกสารที่ RD ออก (P2 · 09/11/2026) — ดูหัว `RD_PRODUCT_DOC_TYPES` · ไม่บังคับ · แนบได้เฉพาะ RD */
     { key: PRODUCT_MSDS_DOC_TYPE, label: "MSDS / SDS (RD)", required: false },
     { key: PRODUCT_SPEC_SHEET_DOC_TYPE, label: "Specification Sheet (RD)", required: false },
+    /* COA ของล็อตการผลิต (P4 · 09/11/2026) — QC ออก · เลขล็อตบังคับใน metadata.lotNo · ดูหัว `QC_PRODUCT_DOC_TYPES` */
+    { key: PRODUCT_COA_DOC_TYPE, label: "COA ประจำล็อต (QC)", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   // เฟส B — เอกสารการชำระ ผูกกับออเดอร์ (รายรอบการชำระ) มาคนละสเตป/คนละฝ่าย:

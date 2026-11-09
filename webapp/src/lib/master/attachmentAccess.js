@@ -11,9 +11,11 @@
 // และความเพี้ยนของด่านสิทธิ์ = คนเห็นของที่ไม่ควรเห็น ซึ่งไม่มีใครสังเกตจนสาย
 import {
   canUser, canEditCustomerBillingRule, canEditRecord, canViewRecord, caretakerTeamsOf, hasTeam, isRdRole, isSuperuser,
+  normalizeRole,
 } from '@/lib/permissions';
 import {
-  BILLING_CALENDAR_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isPersonalDoc, isRdProductDoc,
+  BILLING_CALENDAR_DOC_TYPE, QC_PRODUCT_DOC_TYPES, RD_PRODUCT_DOC_TYPES, SPEC_ITEM_IMAGE_DOC_TYPE,
+  isIssuedProductDoc, isPersonalDoc, isRdProductDoc,
 } from '@/lib/master/attachmentTypes';
 import { canAttachToCosting, canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
@@ -128,7 +130,19 @@ export function canAttachSpecItemImage(entityType, docType, user) {
  * ⚠️ ไม่รับแถวแม่ — ไม่ขึ้นกับทีมของสินค้า (RD ทำงานให้ทุกทีม) · ผู้เรียกยังต้องเช็กว่าสินค้ามีจริงเอง
  */
 export function canAttachRdProductDoc(entityType, docType, user) {
-  if (!isRdProductDoc(entityType, docType)) return false;
-  /* ⚠️ แอดมินเท่านั้น ไม่ใช่ `isSuperuser` — ตัวนั้นรวมหัวหน้าฝ่ายขาย (AE/AC Sup) ซึ่งไม่ใช่คนออกเอกสาร RD */
-  return isRdRole(user?.role) || user?.role === 'admin';
+  // ตัวตัดสินจริงคือ `canAttachIssuedProductDoc` (ผู้ออกรายชนิด · P4) — ตัวนี้คงไว้ถามเฉพาะเอกสารของ RD
+  return isRdProductDoc(entityType, docType) && canAttachIssuedProductDoc(entityType, docType, user);
+}
+
+/**
+ * ⭐ ช่องของเอกสารที่ "ฝ่ายผู้ออก" เป็นเจ้าของบนตัวสินค้า — RD: MSDS · Spec Sheet (P2a) · QC: COA ประจำล็อต (P4 · 09/11/2026)
+ * แนบ/ลบ/แก้ได้เฉพาะฝ่ายผู้ออกของชนิดนั้น + role `admin` · **แทน** ด่านแก้สินค้า (ผู้เรียกถามตัวนี้ตัวเดียวเมื่อ `isIssuedProductDoc`)
+ * ⚠️ QC = role `qc` (ฝ่ายควบคุมคุณภาพ) · ไม่ใช้ `isSuperuser` (รวมหัวหน้าฝ่ายขาย ซึ่งไม่ใช่ผู้ออกเอกสารพวกนี้)
+ */
+export function canAttachIssuedProductDoc(entityType, docType, user) {
+  if (!isIssuedProductDoc(entityType, docType)) return false;
+  if (user?.role === 'admin') return true;
+  if (RD_PRODUCT_DOC_TYPES.includes(docType)) return isRdRole(user?.role);
+  if (QC_PRODUCT_DOC_TYPES.includes(docType)) return normalizeRole(user?.role) === 'qc';
+  return false;
 }

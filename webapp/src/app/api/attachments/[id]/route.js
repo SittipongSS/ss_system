@@ -6,7 +6,8 @@ import { isSuperuser } from '@/lib/permissions';
 import { getAttachment, releaseAttachmentFile } from '@/lib/master/attachments';
 import { driveFileHeld } from '@/lib/master/attachments';
 import {
-  ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isRdProductDoc, isRetiredAttachment,
+  ISSUED_DATE_FIELD, PRODUCT_COA_DOC_TYPE, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE,
+  coaLotError, isIssuedProductDoc, isRetiredAttachment,
 } from '@/lib/master/attachmentTypes';
 import { isIllustrationReferenced, isSpecItemImageReferenced } from '@/lib/sales/productSpecStore';
 import { ARTWORK_RETIRED_MESSAGE, PRODUCT_ARTWORK_DOC_TYPE, isArtworkReferenced } from '@/lib/excise/registrationArtwork';
@@ -14,7 +15,7 @@ import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachBillingCalendar } from '@/lib/master/attachmentAccess';
 import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
-import { canAttachRdProductDoc } from '@/lib/master/attachmentAccess';
+import { canAttachIssuedProductDoc } from '@/lib/master/attachmentAccess';
 import { SCENT_ATTACHMENT_TABLE, canAttachToScent, isScentAttachment } from '@/lib/master/scentAttachmentAccess';
 import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
@@ -157,9 +158,10 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
     /* ⭐ เอกสารที่ RD ออก (MSDS · Spec Sheet ของสินค้า · P2 09/11/2026) — ช่องของ RD **แทน** ด่านแก้สินค้า ตัวเดียวกับตอนแนบ
        (อ่าน docType ของแถว) · วางหลังตัวตัดสินเดิม (`canEditParent`) ให้ด่านแถวแม่หายมาก่อนเสมอ · ฝ่ายขายลบ/แก้ไฟล์ของ RD ไม่ได้แม้แก้สินค้าได้ · จบที่นี่ (ด่านที่เหลือข้างล่างเป็นของทะเบียนสรรพสามิต
        ไม่เกี่ยวกับสินค้า) · แถวแม่ถูกลบแล้ว = ทางเก็บกวาดของคนแนบ/แอดมินผ่านมาแล้วข้างบน */
-    if (isRdProductDoc(att.entityType, att.docType)) {
-      if (parent && !canAttachRdProductDoc(att.entityType, att.docType, user)) {
-        return Response.json({ error: `${actionLabel}ได้เฉพาะฝ่าย RD — เอกสารนี้ RD เป็นผู้ออก` }, { status: 403 });
+    if (isIssuedProductDoc(att.entityType, att.docType)) {
+      if (parent && !canAttachIssuedProductDoc(att.entityType, att.docType, user)) {
+        const issuer = att.docType === PRODUCT_COA_DOC_TYPE ? 'QC' : 'RD';
+        return Response.json({ error: `${actionLabel}ได้เฉพาะฝ่าย ${issuer} — เอกสารนี้ ${issuer} เป็นผู้ออก` }, { status: 403 });
       }
       return null;
     }
@@ -431,6 +433,11 @@ export async function PATCH(request, { params }) {
   const requested = stripDriveMetadata(metadata);
   for (const key of RETIRED_METADATA_KEYS) delete requested[key];
   const merged = { ...(att.metadata || {}), ...requested };
+  /* COA ต้องคงเลขล็อตไว้เสมอ (P4) — แก้รายละเอียดจนเลขล็อตว่าง = ไฟล์ COA ที่ไม่รู้ว่าเป็นของล็อตไหน */
+  if (att.entityType === 'product' && att.docType === PRODUCT_COA_DOC_TYPE) {
+    const lotError = coaLotError(merged);
+    if (lotError) return Response.json({ error: lotError }, { status: 400 });
+  }
   const { data, error } = await supabase
     .from('attachments').update({ metadata: merged }).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });

@@ -541,7 +541,9 @@ test('fileGate · แผง: ป้ายแผ่นสุดท้ายแล
   assert.match(source, /const hideDropHint = fileGate\?\.hideDropHint === true;/);
   // คำใบ้สองบรรทัดของโหมด inline และแผงเต็ม ซ่อนตามธงเดียวกัน — ไม่มีธง = เงื่อนไขเดิม
   assert.match(source, /\{canEdit && fileUploads && !hideDropHint && \(\s*<p className=\{`mr-auto/);
-  assert.match(source, /\{canEdit && !loading && !hideDropHint && \(\s*<p className="mt-3/);
+  // + `!intakeOff` (P4 09/11/2026): แผงที่มีช่องรายละเอียดบังคับ (COA = เลขล็อต) ปิดทางลากวาง จึงไม่บอกว่าลากวางได้
+  assert.match(source, /\{canEdit && !loading && !hideDropHint && !intakeOff && \(\s*<p className="mt-3/);
+  assert.match(source, /disabled: !canEdit \|\| intakeOff,/);
   /* 🐞 review S2b — แผงที่เมานต์ตอนเลขไม่ใช่ศูนย์ (ผู้เรียกนับต่อทั้งหน้า แผงเมานต์ใหม่ทุกพื้นที่) ต้องไม่ยิงซ้ำกับรอบเมานต์:
      โหลดใหม่เฉพาะตอนเลข **เปลี่ยนจากที่เห็นล่าสุด** */
   assert.match(source, /const seenReloadKey = useRef\(reloadKey\);\s*useEffect\(\(\) => \{\s*if \(reloadKey === seenReloadKey\.current\) return;\s*seenReloadKey\.current = reloadKey;\s*fetchItems\(\);\s*\}, \[reloadKey, fetchItems\]\);/);
