@@ -25,6 +25,17 @@ export const LEGACY_LABEL_DOC_TYPE = 'label_artwork';
 export const ARTWORK_MISSING_LABEL = 'Artwork สินค้า (ฉลากที่ใช้ยื่น)';
 export const ARTWORK_RETIRED_MESSAGE = 'ไฟล์นี้อยู่ในทะเบียนสรรพสามิตที่ยื่นแล้ว จึงเก็บไว้ให้ทะเบียนเปิดได้ และเอาออกจาก Artwork ปัจจุบันของสินค้า';
 
+/* ผู้ปลดระวางของไฟล์ที่ mig 0427 ย้ายมาแล้วพบว่า **ซ้ำ** กับ Artwork ที่สินค้ามีอยู่แล้ว (สำเนาจากปุ่มเดิม / ชื่อ+ขนาดตรงกัน)
+   — ไฟล์พวกนี้ไม่ได้ถูกแทนด้วยไฟล์ใหม่ มันคือสำเนาของ Artwork ปัจจุบัน ⇒ ป้ายต้องพูดคนละอย่างกับ "สินค้าเปลี่ยน Artwork แล้ว" */
+export const MIGRATION_DUPLICATE_RETIRED_BY = 'migration-0427';
+
+/** ป้ายข้างชื่อไฟล์ที่ทะเบียนยื่น เมื่อไฟล์นั้นไม่ใช่ Artwork ปัจจุบันของสินค้าแล้ว (ปลดระวาง) — `null` = ยังเป็นของปัจจุบัน */
+export function retiredArtworkNote(file) {
+  if (!isRetiredAttachment(file)) return null;
+  if (file?.metadata?.retiredBy === MIGRATION_DUPLICATE_RETIRED_BY) return 'สำเนาที่ทะเบียนถือไว้ (เนื้อเดียวกับ Artwork ของสินค้า)';
+  return 'สินค้าเปลี่ยน Artwork แล้ว (ไฟล์นี้คือชุดที่ยื่น)';
+}
+
 /** ทะเบียนสถานะนี้ใช้ Artwork ปัจจุบันของสินค้าสด ๆ (ยังไม่ได้ยื่น หรือถูกตีกลับมาแก้) */
 export const usesLiveArtwork = (status) => REGISTRATION_LINK_EDITABLE_STATUSES.includes(status);
 
