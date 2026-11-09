@@ -8,6 +8,7 @@ import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { businessDayKey } from '@/lib/datePeriods';
 import { can, hasTeam, hasTeamScope, isDealHolder, isReadOnlyObserver, isSuperuser, isTeamLead } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
+import { toMoney } from '@/lib/salesPlanning';
 // ⚠️ ทางเดียว: leadAutoBounce.js / leadAutoLost.js ไม่ import ไฟล์นี้กลับ (ไม่มี cycle)
 import { AUTO_BOUNCE_MAX_ROUNDS } from '@/lib/sales/leadAutoBounce';
 import { AUTO_LOST_AFTER_BUSINESS_DAYS, AUTO_LOST_CODE_BY_EFFORT, AUTO_LOST_FULL_EFFORT } from '@/lib/sales/leadAutoLost';
@@ -108,6 +109,73 @@ export function leadBudgetError(form = {}) {
   if (!Number.isFinite(min) || min < 0) return 'งบประมาณต่ำสุดต้องเป็นตัวเลขไม่ติดลบ';
   if (max < min) return 'งบประมาณสูงสุดต้องไม่น้อยกว่าต่ำสุด';
   return '';
+}
+
+/* ── ฟอร์มแก้ลีด ↔ PATCH /leads/[id] ─────────────────────────────────────────
+   🐞 09/11/2026 แก้ลีดจากหน้ารายละเอียดแล้วจอขึ้น "Unexpected end of JSON input" (ลีด Rarin · มีมาตั้งแต่ ก.ค.)
+   ช่องที่ไม่เคยกรอกเป็น null ในฐาน (serviceDetail ว่าง 79/413 ใบ) — หน้ารายละเอียดกางแถวลงฟอร์มตรง ๆ
+   ⇒ ส่ง `serviceDetail: null` ⇒ API เรียก `null.trim()` ⇒ handler throw ⇒ 500 ตัวเปล่า ⇒ จอ parse ไม่ได้
+   หน้ารายการไม่โดนเพราะแปลง null → "" เองทีละช่อง (สองจอ สองชุดกติกา = โรคเดียวกับฟอร์มสร้าง/แก้)
+   ⇒ สองจอเรียก `leadEditFormValues` ตัวเดียว · API อ่านข้อความผ่าน `leadText` ที่ไม่ล้มกับ null */
+
+/** ข้อความจากฟอร์ม/ฐาน → สตริงตัดช่องว่าง · null/undefined = "" (ไม่ throw) */
+export const leadText = (value) => (value == null ? '' : String(value)).trim();
+
+/** ค่าตั้งต้นของฟอร์มแก้ลีด — **ตัวเดียว** ที่หน้ารายการและหน้ารายละเอียดใช้ (ช่องนัดหมายผู้เรียกเติมเอง) */
+export function leadEditFormValues(lead = {}) {
+  return {
+    contactName: lead.contactName || '',
+    company: lead.company || '',
+    email: lead.email || '',
+    contactChannel: lead.contactChannel || '',
+    phone: lead.phone || '',
+    channel: lead.channel || '',
+    serviceInterest: lead.serviceInterest || 'other',
+    serviceDetail: lead.serviceDetail || '',
+    budget: lead.budget ?? '',
+    budgetMax: lead.budgetMax ?? '',
+    details: lead.details || '',
+  };
+}
+
+/** ช่องข้อมูลลีดที่ PATCH จะเขียน — `{ patch }` หรือ `{ error }` (ข้อความไทย ตอบ 400)
+ *  ช่องที่ไม่อยู่ใน body = ไม่แตะ · ไม่รวมนัดหมายกับ updatedAt (route ทำเอง) */
+export function leadPatchFromBody(body = {}, before = {}) {
+  const patch = {};
+  if ('contactName' in body) {
+    const name = leadText(body.contactName);
+    if (!name) return { error: 'ต้องระบุชื่อลูกค้า/ผู้ติดต่อ' };
+    patch.contactName = name;
+  }
+  if ('channel' in body) {
+    if (!LEAD_CHANNELS.includes(body.channel)) return { error: 'ช่องทางไม่ถูกต้อง' };
+    patch.channel = body.channel;
+    patch.channelGroup = channelGroupOf(body.channel);
+  }
+  for (const key of ['company', 'email', 'contactChannel', 'phone', 'details']) {
+    if (key in body) patch[key] = leadText(body[key]) || null;
+  }
+  if ('budget' in body || 'budgetMax' in body) {
+    // ⚠️ ตรวจกับค่าที่จะเป็นจริงหลังแก้ ไม่ใช่เฉพาะช่องที่ส่งมา — ส่ง budgetMax มาช่องเดียวโดยที่แถวเดิม
+    // ไม่มี budget ต้องตกด่านตั้งแต่ที่นี่ (ด่านเดียวกับ CHECK ของ mig 0233 · ตกที่ DB ได้ error อังกฤษ)
+    const next = {
+      budget: 'budget' in body ? body.budget : before.budget,
+      budgetMax: 'budgetMax' in body ? body.budgetMax : before.budgetMax,
+    };
+    const budgetError = leadBudgetError(next);
+    if (budgetError) return { error: budgetError };
+    if ('budget' in body) patch.budget = toMoney(body.budget, null);
+    if ('budgetMax' in body) patch.budgetMax = toMoney(body.budgetMax, null);
+  }
+  if ('serviceInterest' in body || 'serviceDetail' in body) {
+    const wanted = body.serviceInterest ?? before.serviceInterest;
+    const serviceInterest = SERVICE_INTERESTS.includes(wanted) ? wanted : 'other';
+    const serviceDetail = leadText('serviceDetail' in body ? body.serviceDetail : before.serviceDetail);
+    if (SERVICE_DETAIL_REQUIRED.has(serviceInterest) && !serviceDetail) return { error: 'บริการที่สนใจประเภทนี้ต้องระบุรายละเอียด' };
+    patch.serviceInterest = serviceInterest;
+    patch.serviceDetail = serviceDetail || null;
+  }
+  return { patch };
 }
 
 /* ⭐ **คำเดียวที่ใช้แสดงงบของลีดทั้งระบบ** — ตาราง · หน้ารายละเอียด · ที่อื่นในอนาคต

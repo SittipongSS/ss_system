@@ -716,3 +716,55 @@ test('canReopenLead: เจ้าของลีด + ผู้มีอำน�
   assert.equal(leadReopenBlockedReason({ disqualifiedCode: 'no_response' }), '');
   assert.match(leadReopenBlockedReason({ disqualifiedCode: 'duplicate' }), /ลีดซ้ำ/);
 });
+
+/* 🐞 09/11/2026 แก้ลีด Rarin จากหน้ารายละเอียด ⇒ "Unexpected end of JSON input"
+   serviceDetail เป็น null ในฐาน ⇒ ฟอร์มส่ง null ⇒ API `null.trim()` ⇒ 500 ตัวเปล่า */
+test('leadEditFormValues: ช่องที่เป็น null ในฐานกลายเป็น "" — ฟอร์มไม่ส่ง null กลับไป', async () => {
+  const { leadEditFormValues } = await import('./leads.js');
+  const row = {
+    contactName: 'Rarin', company: 'Rara spa', phone: '0812345678', email: 'a@b.co', contactChannel: null,
+    channel: 'chatcone_meta', serviceInterest: 'diffuser', serviceDetail: null, budget: 50000, budgetMax: 100000, details: null,
+  };
+  const form = leadEditFormValues(row);
+  for (const [key, value] of Object.entries(form)) assert.notStrictEqual(value, null, `${key} ต้องไม่เป็น null`);
+  assert.strictEqual(form.serviceDetail, '');
+  assert.strictEqual(form.contactChannel, '');
+  assert.strictEqual(form.budget, 50000);
+  assert.strictEqual(leadEditFormValues({ budget: 0 }).budget, 0, 'งบ 0 ไม่ใช่ "ไม่ระบุ"');
+  assert.strictEqual(leadEditFormValues({}).serviceInterest, 'other');
+});
+
+test('leadPatchFromBody: ข้อความ null ไม่ทำให้ล้ม (เคส Rarin) · ช่องไม่ส่ง = ไม่แตะ', async () => {
+  const { leadPatchFromBody } = await import('./leads.js');
+  const before = { serviceInterest: 'diffuser', serviceDetail: null, budget: 50000, budgetMax: 100000 };
+  const body = {
+    contactName: '  Rarin  ', company: null, phone: undefined, email: '', contactChannel: null, channel: 'chatcone_meta',
+    serviceInterest: 'diffuser', serviceDetail: null, budget: 50000, budgetMax: 100000, details: null,
+  };
+  const { patch, error } = leadPatchFromBody(body, before);
+  assert.strictEqual(error, undefined);
+  assert.strictEqual(patch.contactName, 'Rarin');
+  assert.strictEqual(patch.serviceDetail, null);
+  assert.strictEqual(patch.company, null);
+  assert.strictEqual(patch.channelGroup, 'online');
+  assert.deepStrictEqual(leadPatchFromBody({ details: 'x' }, before).patch, { details: 'x' });
+});
+
+test('leadPatchFromBody: ด่านเดิมยังอยู่ — ชื่อว่าง · ช่องทางผิด · บริการที่ต้องมีรายละเอียด · งบ', async () => {
+  const { leadPatchFromBody } = await import('./leads.js');
+  assert.match(leadPatchFromBody({ contactName: null }).error, /ต้องระบุชื่อ/);
+  assert.match(leadPatchFromBody({ channel: 'fax' }).error, /ช่องทางไม่ถูกต้อง/);
+  assert.match(leadPatchFromBody({ serviceInterest: 'product', serviceDetail: null }).error, /ต้องระบุรายละเอียด/);
+  assert.match(leadPatchFromBody({ serviceDetail: '   ' }, { serviceInterest: 'other' }).error, /ต้องระบุรายละเอียด/);
+  assert.match(leadPatchFromBody({ budgetMax: 10 }, { budget: null }).error, /ต้องกรอกต่ำสุด/);
+  assert.deepStrictEqual(leadPatchFromBody({ serviceInterest: 'weird' }, { serviceDetail: 'x' }).patch, { serviceInterest: 'other', serviceDetail: 'x' });
+});
+
+test('หน้ารายการและหน้ารายละเอียดลีดตั้งฟอร์มแก้จาก leadEditFormValues ตัวเดียว', () => {
+  const list = readFileSync(new URL('../../app/sales-planning/leads/page.js', import.meta.url), 'utf8');
+  const detail = readFileSync(new URL('../../app/sales-planning/leads/[id]/page.js', import.meta.url), 'utf8');
+  assert.match(list, /\.\.\.leadEditFormValues\(lead\)/);
+  assert.match(detail, /\.\.\.leadEditFormValues\(lead\)/);
+  // หน้ารายละเอียดบันทึกผ่าน apiJson — 500 ตัวเปล่าได้ข้อความไทย ไม่ใช่ SyntaxError ของ res.json()
+  assert.match(detail, /apiJson\(`\/api\/sales-planning\/leads\/\$\{id\}`, \{ method: "PATCH", json: payload/);
+});
