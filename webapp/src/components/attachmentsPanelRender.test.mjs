@@ -365,7 +365,10 @@ test('แผงที่ขอชนิดนั้นมาเองยัง�
   const items = [att('A1', SPEC_ITEM_IMAGE_DOC_TYPE), att('A2', 'other')];
   const asked = [{ key: SPEC_ITEM_IMAGE_DOC_TYPE, label: 'รูปของแถว' }];
   const visible = panelVisibleItems(items, 'product', asked);
-  assert.deepEqual(visible.map((it) => it.id), ['A1', 'A2']);
+  // ⭐ 09/11/2026: แผงที่ไม่มีการ์ด "อื่นๆ" เห็น/นับเฉพาะชนิดที่ขอ (A2 ไม่มีการ์ดให้วางในแผงนี้อยู่แล้ว — เดิมแค่ถูกนับที่หัวแผง)
+  assert.deepEqual(visible.map((it) => it.id), ['A1']);
+  // แผงที่มีการ์ด "อื่นๆ" ยังได้ชนิดที่ไม่มีการ์ดลงกองนั้นเหมือนเดิม
+  assert.deepEqual(panelVisibleItems(items, 'product', [...asked, { key: 'other', label: 'อื่นๆ' }]).map((it) => it.id), ['A1', 'A2']);
   assert.deepEqual(panelItemsByType(visible, asked)[SPEC_ITEM_IMAGE_DOC_TYPE].map((it) => it.id), ['A1']);
   // ชนิดเดียวกันบน entity อื่น (ไม่ได้ประกาศซ่อน) = แถวธรรมดา
   assert.deepEqual(panelVisibleItems(items, 'customer', undefined).map((it) => it.id), ['A1', 'A2']);

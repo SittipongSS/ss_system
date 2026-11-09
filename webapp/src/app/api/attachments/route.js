@@ -6,6 +6,8 @@ import {
   canAttachBillingCalendar, canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow,
 } from '@/lib/master/attachmentAccess';
 import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
+import { canAttachRdProductDoc } from '@/lib/master/attachmentAccess';
+import { isRdProductDoc } from '@/lib/master/attachmentTypes';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { driveFileHeld } from '@/lib/master/attachments';
@@ -192,7 +194,11 @@ export async function POST(request) {
   /* ⭐ รูปประจำแถว checklist ใบสเปค (mig 0405) — ช่องแคบของคนที่แก้สเปคสินค้าได้ (ฝ่ายขายทุกตำแหน่ง) · ด่านรวมผูกกับทีมที่ดูแล
      ลูกค้าเจ้าของสินค้า ⇒ คนแก้สเปคนอกทีมตอบ false · ⚠️ ประโยคแยก ไม่ต่อท้ายบรรทัดบน (บรรทัดบนถูกเทสต์ตรึงไว้ทั้งประโยค)
      ⚠️ ถามด้วย `safeDocType` (ค่าที่จะเก็บ) — ค่าที่ไม่รู้จักตกเป็น 'other' = ไม่ได้ช่องนี้ */
-  const allowedWrite = allowedEdit || canAttachSpecItemImage(entityType, safeDocType, user);
+  /* ⭐ เอกสารที่ RD ออก (MSDS · Spec Sheet ของสินค้า · P2 09/11/2026) — ช่องของ RD **แทน** ด่านแก้สินค้า (ไม่ใช่ "หรือ"):
+     ฝ่ายขายแนบชนิดนี้ไม่ได้แม้แก้สินค้าได้ · RD แนบได้แม้แก้สินค้าไม่ได้ (ดู canAttachRdProductDoc) */
+  const allowedWrite = isRdProductDoc(entityType, safeDocType)
+    ? canAttachRdProductDoc(entityType, safeDocType, user)
+    : allowedEdit || canAttachSpecItemImage(entityType, safeDocType, user);
   if (!allowedWrite) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
   }
