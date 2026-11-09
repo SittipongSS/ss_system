@@ -1,7 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewRecord, canEditRecord, canDeleteRecord, allowedEditFields } from '@/lib/permissions';
-import { purgeAttachments } from '@/lib/master/attachments';
+import { listAttachments, purgeAttachments } from '@/lib/master/attachments';
+import { artworkSnapshotIds, loadRegistrationArtwork, usesLiveArtwork } from '@/lib/excise/registrationArtwork';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { registrationRevokeUpdate, registrationStatusUpdate } from '@/lib/master/recordUpdates';
 import { registrationDeleteBlock } from '@/lib/deletion';
@@ -63,7 +64,7 @@ export async function GET(request, { params }) {
 /* ของประกอบที่หน้ารายละเอียดต้องเห็น — อ่านทีเดียวจบ ไม่ให้จอไปไล่ยิงเอง
    ⚠️ ทุก query กรองด้วย id ของใบเดียว ⇒ ไม่แตะเพดาน 1,000 แถว */
 async function withRegistrationContext(supabase, reg) {
-  const [product, customer, project, lines] = await Promise.all([
+  const [product, customer, project, lines, artwork] = await Promise.all([
     reg.productId
       ? supabase.from('products')
         .select('id, "fgCode", "retailPriceIncVat", "exciseTax", "localTax", "isExciseTaxable", "isActive"')
@@ -82,6 +83,10 @@ async function withRegistrationContext(supabase, reg) {
     fetchAllResult(() => supabase.from('order_items')
       .select('id, "orderId", quantity, "totalTax"')
       .eq('registrationId', reg.id).order('id', { ascending: true })),
+    /* ⭐ ฉลากที่ทะเบียนใช้ (P1 · 09/11/2026) — ตัดสินที่ server ตัวเดียวกับด่านยื่น: ร่าง/ตีกลับ = Artwork ปัจจุบันของสินค้า ·
+       ยื่นแล้ว = ชุดที่ตรึงไว้ (รวมไฟล์ที่ปลดระวางไปแล้ว) · แผงทะเบียนของ SA และหน้า RA วาดจากรายการนี้ ไม่เดาเอง
+       ⚠️ อ่านพัง = throw (ทั้งก้อนตอบ 500) — เงียบแล้ว RA เห็น "ไม่มีฉลาก" ทั้งที่ยื่นมาครบ */
+    loadRegistrationArtwork(reg, listAttachments),
   ]);
   for (const res of [product, customer, project, lines]) {
     if (res?.error) throw res.error;
@@ -111,6 +116,7 @@ async function withRegistrationContext(supabase, reg) {
     product: product.data || null,
     customer: customer.data || null,
     project: project.data || null,
+    labelArtwork: artwork.files,
     filings: orders
       .map((o) => ({ ...o, ...(linesByOrder.get(o.id) || { quantity: 0, totalTax: 0 }) }))
       .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || ''))),
@@ -288,9 +294,9 @@ export async function PATCH(request, { params }) {
 
   // Submit for approval: SA (products:edit, no ra:approve) moves a draft (first
   // submit) or a rejected (resubmit) registration into the RA queue. Hard-blocked
-  // until the required docs are present: ฉลาก/Artwork on the registration, AND the
-  // company map (address_map) on the CUSTOMER record (shared master data — the map
-  // is attached once to the customer, never duplicated per registration).
+  // until the required docs are present: ฉลาก/Artwork = the PRODUCT's Artwork
+  // (P1 · 09/11/2026 — pinned below), AND the company map (address_map) on the
+  // CUSTOMER record (shared master data — attached once, never per registration).
   if (body.status === 'pending_legal' && (reg.status === 'draft' || reg.status === 'rejected') && can(user?.role, 'products:edit')) {
     /* ด่านจริงของการยื่น — query พังต้องไม่หลุดเป็น 500 เปล่า (ผู้ใช้เห็นแค่ "ยื่นไม่สำเร็จ") และทะเบียนที่หายไประหว่างทาง
        ต้องไม่กลายเป็น "กรุณาแนบเอกสารให้ครบก่อนยื่น: " ที่ไม่มีชื่อเอกสารตามหลัง · ยังปฏิเสธการยื่นเหมือนเดิมทั้งสองกรณี */
@@ -334,11 +340,49 @@ export async function PATCH(request, { params }) {
     updated.isExciseTaxable = typeof ovr === 'boolean' ? ovr : autoTaxable;
   }
 
+  /* ⭐ ตรึงฉลากที่ยื่น (ศูนย์กลางเอกสารของสินค้า P1 · มติเจ้าของ 09/11/2026 · mig 0426) — ทะเบียนออกจากร่าง/ตีกลับ
+     (ยื่นให้ RA · หรือ RA อนุมัติใบที่สร้างเอง) = จำ id ของ Artwork ปัจจุบันของสินค้าทั้งชุด ⇒ RA ตรวจ/อนุมัติไฟล์ชุดไหน
+     ทะเบียนก็ชี้ชุดนั้นตลอด แม้สินค้าเปลี่ยน Artwork ทีหลัง · ไฟล์ที่ถูกชี้ลบไม่ได้ (DELETE ไฟล์แนบปลดระวางแทน)
+     ⚠️ ตีกลับ / ปลดอนุมัติ ไม่ล้างตัวชี้ — ไฟล์ที่เคยยื่นยังต้องเปิดได้ · ยื่นรอบใหม่เขียนทับด้วยชุดปัจจุบัน
+     ⚠️ `labelArtworkIds` ไม่อยู่ในช่องที่ client ส่งได้ (LEGAL_REGISTRATION_FIELDS / salesEditable) — server เขียนคนเดียว */
+  const pinsArtwork = usesLiveArtwork(reg.status) && !usesLiveArtwork(updated.status);
+  if (pinsArtwork) {
+    try {
+      updated.labelArtworkIds = artworkSnapshotIds(updated.productId ? await listAttachments('product', updated.productId) : []);
+    } catch (e) {
+      console.error('[excise-registrations PATCH pin-artwork]', id, e);
+      return Response.json({ error: `อ่าน Artwork ของสินค้าไม่สำเร็จ ยังยื่นไม่ได้ — ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+    }
+  }
+
   updated.updatedAt = new Date().toISOString();
 
   const { data, error } = await supabase
     .from('excise_registrations').update(updated).eq('id', id).select().single();
   if (error) return Response.json({ error: error.message }, { status: 500 });
+
+  /* 🔴 ตรวจซ้ำหลังเขียน — ลบ Artwork ที่วิ่งแทรกระหว่าง "อ่านชุดปัจจุบัน" กับ "เขียนตัวชี้" (ฝั่งลบตรวจการอ้างอิงก่อนเราเขียน
+     แล้วลบแถวไปแล้ว) = ทะเบียนชี้ไฟล์ที่ไม่มีอยู่ ⇒ ถอยการเปลี่ยนสถานะทั้งก้อน แล้วให้กดใหม่ · สองฝั่งถอยให้กันเสมอ
+     (ฝั่งลบประทับปลดระวางก่อนแล้วตรวจซ้ำ — แบบเดียวกับภาพประกอบ FM-SA-04)
+     ⚠️ ตรวจไม่ได้ = ถอยด้วย (ยื่นโดยไม่รู้ว่าไฟล์อยู่ครบไหม ไม่ได้) */
+  if (pinsArtwork) {
+    let broken = null;
+    try {
+      const { files, productRows } = await loadRegistrationArtwork(data, listAttachments);
+      const present = new Set(productRows.map((row) => String(row.id)));
+      const lost = (data.labelArtworkIds || []).filter((pinned) => !present.has(String(pinned)));
+      if (lost.length) broken = 'Artwork บางไฟล์ถูกลบระหว่างที่กำลังยื่น';
+      else if (!files.length) broken = 'ไม่มี Artwork ของสินค้าให้ยื่นแล้ว';
+    } catch (e) {
+      broken = `ตรวจ Artwork ที่ยื่นไม่สำเร็จ (${e?.message || 'ระบบขัดข้อง'})`;
+    }
+    if (broken) {
+      const { error: revertError } = await supabase.from('excise_registrations').update(reg).eq('id', id);
+      if (revertError) console.error('[excise-registrations PATCH pin-artwork revert]', id, revertError);
+      return Response.json({ error: `${broken} — ระบบยังไม่ยื่นทะเบียนนี้ กรุณาตรวจ Artwork แล้วกดอีกครั้ง` }, { status: 409 });
+    }
+  }
+
   const summary = data.status !== reg.status
     ? `เปลี่ยนสถานะทะเบียน ${reg.fgCode || id}: ${reg.status} → ${data.status}` : null;
   // เหตุการณ์ลงเธรด — ไม่เช็ค error โดยเจตนา

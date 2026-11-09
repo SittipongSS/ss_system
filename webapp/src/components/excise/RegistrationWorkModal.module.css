@@ -40,19 +40,8 @@
 .reason { color: var(--text-3); font-size: var(--fs-5); line-height: var(--lh-thai); }
 .muted { margin: 0; color: var(--text-3); font-size: var(--fs-5); line-height: var(--lh-thai); }
 
-/* "ใช้ไฟล์นี้ยื่น" — Artwork ของสินค้าที่ใช้แทนการแนบซ้ำได้ (มติเจ้าของ 04/11/2026) · อยู่ในแถวที่ขาดของเช็กลิสต์ */
-.reuse {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-3);
-  margin-top: var(--space-1-5);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  color: var(--text);
-}
-.reuseText { min-width: 0; flex: 1 1 16rem; color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); overflow-wrap: anywhere; }
+/* ฉลากที่ยื่นแล้ว (อ่านอย่างเดียว) — รายชื่อไฟล์ที่ทะเบียนตรึงไว้ตอนยื่น (ศูนย์กลางเอกสารของสินค้า P1 · 09/11/2026) */
+.files { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding-left: var(--space-4); color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); overflow-wrap: anywhere; }
 
 /* แผงแบบฝังในหน้า (`RegistrationWorkPanel` — หน้าสินค้า แท็บสรรพสามิต) — ระยะเดียวกับในโมดัล แต่ไม่มีขอบของโมดัล */
 .inline { display: flex; flex-direction: column; gap: var(--space-3-5); }

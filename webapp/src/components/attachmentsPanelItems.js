@@ -7,15 +7,20 @@
 // ⭐ ชนิดที่ทะเบียนกลางประกาศว่า "ไม่ขึ้นแผง" (`PANEL_HIDDEN_DOC_TYPES`) ถูกตัดออกก่อนจัดกอง/นับ/วาด
 //    **ยกเว้นแผงที่ผู้เรียกขอชนิดนั้นมาเอง** ผ่าน `docTypes` (จอเจ้าของเรื่อง)
 // ⚠️ `onItemsChange` ของแผงยังได้รายการดิบครบทุกใบ — ผู้เรียกบางตัวคัดตาม docType เอง
-import { isPanelHiddenDocType } from "@/lib/master/attachmentTypes";
+import { isPanelHiddenDocType, isRetiredAttachment } from "@/lib/master/attachmentTypes";
 
 /**
+ * ⭐ ไฟล์ที่ **ปลดระวางแล้ว** (`metadata.retiredAt`) ไม่ขึ้นแผงเลย ไม่ว่าแผงไหน (ศูนย์กลางเอกสารของสินค้า P1 · 09/11/2026)
+ *    — ปลดระวาง = "ไม่ใช่ของปัจจุบันแล้ว แต่เอกสารที่ยื่นไปแล้วยังชี้อยู่" (Artwork ที่ทะเบียนสรรพสามิตตรึงไว้ · ภาพประกอบที่
+ *    FM-SA-04 ตรึงไว้) ⇒ แผงของ entity โชว์เฉพาะของปัจจุบัน · ของที่ปลดระวางเปิดได้จากเอกสารที่ชี้มัน
+ *    (แผงทะเบียนสรรพสามิต · การ์ด "ภาพที่ซ่อนไว้" ของภาพประกอบ ซึ่งอ่านจาก `onItemsChange` ที่ยังได้รายการดิบครบ)
  * @param items     แถว attachments ทั้งหมดของ entity
  * @param docTypes  การ์ดที่ผู้เรียกประกาศเอง (prop `docTypes` ของแผง) — ไม่ส่ง = ใช้ทะเบียนของ entity
  */
 export function panelVisibleItems(items, entityType, docTypes) {
   const asked = new Set((Array.isArray(docTypes) ? docTypes : []).map((t) => t?.key).filter(Boolean));
-  return (items || []).filter((it) => asked.has(it?.docType) || !isPanelHiddenDocType(entityType, it?.docType));
+  return (items || []).filter((it) => !isRetiredAttachment(it)
+    && (asked.has(it?.docType) || !isPanelHiddenDocType(entityType, it?.docType)));
 }
 
 /** จัดกองตามการ์ด — docType ที่ไม่มีการ์ด → 'other' (ของเดิม) */

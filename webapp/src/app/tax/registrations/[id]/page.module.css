@@ -2,6 +2,8 @@
    ⚠️ ข้อความหรี่/โมโนสเปซใช้คลาสร่วมของทั้งเว็บ (globals.css) */
 
 .panel { padding: var(--space-4); }
+/* ฉลากที่ยื่น (Artwork ของสินค้า) วางเหนือเอกสารของทะเบียนในแผงเดียว — P1 09/11/2026 */
+.panelStack { display: flex; flex-direction: column; gap: var(--space-3); }
 .fieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 
 /* ยอดภาษีต่อชิ้น — ตัวเลขสรุปของการ์ดฐานภาษี */
