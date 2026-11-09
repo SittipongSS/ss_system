@@ -1,4 +1,6 @@
 import { genId } from '@/lib/id';
+// สวิตช์ขั้นเข้าติดตั้ง (mig 0425) — ตัวอ่านเดียว · ฝั่ง server เท่านั้น
+import { installStepEnabled } from '@/lib/service/installStepFlag';
 import { recordAudit } from '@/lib/audit';
 import { purgeUpdates } from '@/lib/master/updates';
 import {
@@ -684,6 +686,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     /* สิทธิ์ตั้งรอบวางบิลของลูกค้าของใบ (mig 0389 · มติข้อ 4: ฝ่ายขายทีมที่ดูแล + FN) — ตัวตัดสินตัวเดียวกับ
        `/api/customers/[id]/billing-rule` ⇒ แผงไม่ชวน "ตั้งรอบวางบิล" คนที่ไปถึงทะเบียนแล้วกดแก้ไม่ได้ (ไม่มีสิทธิ์ = ไม่วาด) */
     canEditBillingRule: canEditCustomerBillingRule(user, order.customer),
+    /* ⭐ สวิตช์ขั้นเข้าติดตั้ง (mig 0425) — จออ่านจากที่นี่ที่เดียว (ตัวอ่านสวิตช์ import ได้เฉพาะใต้ api/) */
+    installStepEnabled: installStepEnabled(),
     approverSignature,
     proposerSignature,
     deliveries,

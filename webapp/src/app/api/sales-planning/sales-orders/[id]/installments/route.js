@@ -1,4 +1,6 @@
 import { recordAudit } from '@/lib/audit';
+// สวิตช์ขั้นเข้าติดตั้ง (mig 0425) — ตัวอ่านเดียว · ฝั่ง server เท่านั้น
+import { installStepEnabled } from '@/lib/service/installStepFlag';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { EVIDENCE_REFS_DROPPED_TEXT, evidenceRefsDropped, sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
@@ -740,6 +742,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       order, dealOwnerId: order.deal?.ownerId ?? null,
       /* แนบหลักฐานเพิ่ม (มติ 29/10) — ด่านนับว่าชุดใหม่ล้นเพดานของงวดไหม */
       evidenceCount: Array.isArray(body.evidence) ? body.evidence.length : 0,
+      /* ธง "ก่อนติดตั้ง" (mig 0425) — สวิตช์อ่านที่ server เท่านั้น · จอได้ค่าเดียวกันจาก GET ใบสั่งขาย */
+      installStepEnabled: installStepEnabled(),
     });
     if (gate) return badRequest(gate);
 
@@ -1043,6 +1047,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         refundedAt: now, refundedOn, refundedById: user.id, refundedByName: actorName,
         refundReason: reason, refundCreditNoteNo: creditNoteNo || null,
       };
+    } else if (action === 'before-install') {
+      /* ธง "ก่อนติดตั้ง" (mig 0425 · ขั้นเข้าติดตั้ง) — ฝ่ายขายเปิด/ปิดรายงวด · ด่านอยู่ที่ installmentActionError
+         ⚠️ ต้องส่งค่าเป้าหมายเป็น boolean ชัด ๆ (ไม่ใช่สลับ) — สองหน้าต่างกดพร้อมกันต้องไม่สลับกลับไปกลับมา */
+      if (typeof body.beforeInstall !== 'boolean') return badRequest('ไม่ได้ระบุว่าจะเปิดหรือปิดธงก่อนติดตั้ง');
+      if (body.beforeInstall === (row.beforeInstall === true)) {
+        return badRequest(body.beforeInstall ? 'งวดนี้เป็นงวดก่อนติดตั้งอยู่แล้ว' : 'งวดนี้ไม่ได้เป็นงวดก่อนติดตั้ง');
+      }
+      patch = { beforeInstall: body.beforeInstall };
     } else if (action === 'refund-clear') {
       /* ถอนการบันทึกคืนเงิน (บันทึกผิดงวด/ผิดยอด) — ล้างครบทุกช่อง (CHECK ห้ามเหลือเศษ) · ร่องรอยอยู่ที่ audit */
       patch = {
