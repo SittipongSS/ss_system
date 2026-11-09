@@ -6,7 +6,7 @@ import { isSuperuser } from '@/lib/permissions';
 import { getAttachment, releaseAttachmentFile } from '@/lib/master/attachments';
 import { driveFileHeld } from '@/lib/master/attachments';
 import {
-  ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isRetiredAttachment,
+  ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isRdProductDoc, isRetiredAttachment,
 } from '@/lib/master/attachmentTypes';
 import { isIllustrationReferenced, isSpecItemImageReferenced } from '@/lib/sales/productSpecStore';
 import { ARTWORK_RETIRED_MESSAGE, PRODUCT_ARTWORK_DOC_TYPE, isArtworkReferenced } from '@/lib/excise/registrationArtwork';
@@ -14,6 +14,7 @@ import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachBillingCalendar } from '@/lib/master/attachmentAccess';
 import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
+import { canAttachRdProductDoc } from '@/lib/master/attachmentAccess';
 import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
@@ -139,6 +140,15 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
           parent,
           att.entityType === 'product' ? await productCaretakerTeams(parent, supabase) : undefined,
         ) || canAttachBillingCalendar(att.entityType, att.docType, parent, user);
+    /* ⭐ เอกสารที่ RD ออก (MSDS · Spec Sheet ของสินค้า · P2 09/11/2026) — ช่องของ RD **แทน** ด่านแก้สินค้า ตัวเดียวกับตอนแนบ
+       (อ่าน docType ของแถว) · วางหลังตัวตัดสินเดิม (`canEditParent`) ให้ด่านแถวแม่หายมาก่อนเสมอ · ฝ่ายขายลบ/แก้ไฟล์ของ RD ไม่ได้แม้แก้สินค้าได้ · จบที่นี่ (ด่านที่เหลือข้างล่างเป็นของทะเบียนสรรพสามิต
+       ไม่เกี่ยวกับสินค้า) · แถวแม่ถูกลบแล้ว = ทางเก็บกวาดของคนแนบ/แอดมินผ่านมาแล้วข้างบน */
+    if (isRdProductDoc(att.entityType, att.docType)) {
+      if (parent && !canAttachRdProductDoc(att.entityType, att.docType, user)) {
+        return Response.json({ error: `${actionLabel}ได้เฉพาะฝ่าย RD — เอกสารนี้ RD เป็นผู้ออก` }, { status: 403 });
+      }
+      return null;
+    }
     /* ⭐ รูปประจำแถว checklist ใบสเปค (mig 0405) — ลบ/แก้ได้ด้วยช่องแคบเดียวกับตอนแนบ (`canAttachSpecItemImage` · คนที่แก้สเปคได้)
        ⚠️ อ่าน docType **ของแถว** เช่นกัน · ประโยคแยก ไม่ต่อท้ายประโยคบน (ประโยคบนถูกเทสต์ตรึงไว้) */
     const canEditSpecImage = canAttachSpecItemImage(att.entityType, att.docType, user);

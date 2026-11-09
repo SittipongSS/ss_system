@@ -325,7 +325,8 @@ test('รูปของแถว checklist: อยู่ในทะเบี�
 
   // 🔴 แผงเอกสารของสินค้าจัดคีย์ที่ไม่รู้จักลงการ์ด "เอกสารอื่นๆ" พร้อมปุ่มลบ — ลบจากที่นั่นได้ = แถวเสียรูปเงียบ ๆ (FK SET NULL)
   // ⭐ ภาพประกอบใบสเปคเข้าชุดเดียวกัน (มติเจ้าของ 08/10/2569) — เดิมตกกอง "อื่นๆ" ของหน้าสินค้าพร้อมปุ่มลบ ทั้งที่บ้านของมันคือหน้าสเปค
-  assert.deepEqual(PANEL_HIDDEN_DOC_TYPES.product, [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE]);
+  // ⭐ + เอกสารที่ RD ออก (MSDS · Spec Sheet · ศูนย์กลางเอกสารของสินค้า P2 09/11/2026) — บ้านของมันคือแผง "เอกสารจาก RD" (rdProductDocs.test.mjs)
+  assert.deepEqual(PANEL_HIDDEN_DOC_TYPES.product, [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, 'msds', 'spec_sheet']);
   assert.ok(Object.isFrozen(PANEL_HIDDEN_DOC_TYPES) && Object.isFrozen(PANEL_HIDDEN_DOC_TYPES.product));
   assert.equal(isPanelHiddenDocType('product', SPEC_ITEM_IMAGE_DOC_TYPE), true);
   assert.equal(isPanelHiddenDocType('product', SPEC_ILLUSTRATION_DOC_TYPE), true);

@@ -19,8 +19,14 @@ import { isPanelHiddenDocType, isRetiredAttachment } from "@/lib/master/attachme
  */
 export function panelVisibleItems(items, entityType, docTypes) {
   const asked = new Set((Array.isArray(docTypes) ? docTypes : []).map((t) => t?.key).filter(Boolean));
+  /* ⭐ แผงที่ประกาศการ์ดเองแต่ **ไม่มีการ์ด "อื่นๆ"** = แผงเฉพาะเรื่อง (เช่น "เอกสารจาก RD" · "Artwork ที่ใช้ยื่น" ของทะเบียน) —
+     ไฟล์ชนิดอื่นของ entity ไม่มีที่ให้วางในแผงนั้นอยู่แล้ว (ตกกอง "other" ที่ไม่มีการ์ด) แต่เดิมยังถูกนับที่หัวแผง
+     🐞 09/11/2026: หัวแผง "เอกสารจาก RD" ขึ้น (1) ทั้งที่ยังไม่มีไฟล์ของ RD — นับ Artwork ของสินค้า ⇒ แผงแบบนี้เห็น/นับเฉพาะชนิดที่ขอ */
+  const scopedToAsked = asked.size > 0 && !asked.has('other');
   return (items || []).filter((it) => !isRetiredAttachment(it)
-    && (asked.has(it?.docType) || !isPanelHiddenDocType(entityType, it?.docType)));
+    && (scopedToAsked
+      ? asked.has(it?.docType)
+      : (asked.has(it?.docType) || !isPanelHiddenDocType(entityType, it?.docType))));
 }
 
 /** จัดกองตามการ์ด — docType ที่ไม่มีการ์ด → 'other' (ของเดิม) */
