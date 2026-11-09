@@ -20,7 +20,9 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import ReadableText from "@/components/ui/ReadableText";
 import Toast from "@/components/ui/Toast";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { ATTACHMENT_TYPES, RD_PRODUCT_DOC_TYPES, customerDocTypes, productDocTypes } from "@/lib/master/attachmentTypes";
+import {
+  ATTACHMENT_TYPES, COA_META_FIELDS, QC_PRODUCT_DOC_TYPES, RD_PRODUCT_DOC_TYPES, customerDocTypes, productDocTypes,
+} from "@/lib/master/attachmentTypes";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
@@ -56,6 +58,8 @@ import styles from "./page.module.css";
 const TABS_ID = "product-tabs";
 /* การ์ดของแผง "เอกสารจาก RD" — ชุดคงตัว (แผงผูก handler กับ `types`) · ป้ายมาจากทะเบียนกลาง */
 const RD_DOC_TYPES = ATTACHMENT_TYPES.product.filter((type) => RD_PRODUCT_DOC_TYPES.includes(type.key));
+/* การ์ดของแผง "COA ประจำล็อต" (P4) — ชุดคงตัวเหมือนข้างบน */
+const QC_DOC_TYPES = ATTACHMENT_TYPES.product.filter((type) => QC_PRODUCT_DOC_TYPES.includes(type.key));
 /* โทนสถานะของสายสรรพสามิต (`statusMeta().tone`) → สีจุดบนแถบสถานะ */
 const LANE_TONE_COLOR = {
   success: "var(--green)", warning: "var(--amber)", danger: "var(--red)", info: "var(--blue)", neutral: "var(--text-3)",
@@ -96,8 +100,10 @@ export default function ProductDetails() {
   // พักใช้/เปิดใช้อีกครั้งสงวนสิทธิ์ให้ admin + ผู้มีอำนาจตัดสิน (CD · CM · AE Sup) เท่านั้น — SA
   // (senior_ae/ac/ae) แก้สเปค/ราคาได้ปกติแต่ห้ามพักใช้สินค้าเอง (บังคับที่ server ด้วย).
   const role = useRole();
-  /* ⭐ เอกสารที่ RD ออก (MSDS · Spec Sheet · P2 09/11/2026) — แนบได้เฉพาะ RD + แอดมิน (ด่านเดียวกับ server: canAttachRdProductDoc) */
+  /* ⭐ เอกสารที่ RD ออก (MSDS · Spec Sheet · P2 09/11/2026) — แนบได้เฉพาะ RD + แอดมิน (ด่านเดียวกับ server: canAttachIssuedProductDoc) */
   const canEditRdDocs = isRdRole(role) || role === "admin";
+  /* ⭐ COA ประจำล็อต (P4 · 09/11/2026) — แนบได้เฉพาะ QC + แอดมิน (ด่านเดียวกับ server: canAttachIssuedProductDoc) */
+  const canEditQcDocs = role === "qc" || role === "admin";
   const canToggleActive = isSalesManager(role);
   // Factory cost data is confidential to the tax system. Two tiers (mirrors the
   // server-side redaction): costPrice is visible to SA + RA + admin + FN; the cost
@@ -1048,7 +1054,7 @@ export default function ProductDetails() {
             />
 
             {/* ⭐ เอกสารจาก RD (ศูนย์กลางเอกสารของสินค้า P2 · มติเจ้าของ 09/11/2026: MSDS และ Specification Sheet "ระดับ FG · RD ออก")
-                — เก็บที่ตัวสินค้า ฝ่ายขายเปิดส่งลูกค้าได้จากที่นี่ · แนบ/ลบได้เฉพาะ RD + แอดมิน (server ตรวจซ้ำ: canAttachRdProductDoc)
+                — เก็บที่ตัวสินค้า ฝ่ายขายเปิดส่งลูกค้าได้จากที่นี่ · แนบ/ลบได้เฉพาะ RD + แอดมิน (server ตรวจซ้ำ: canAttachIssuedProductDoc)
                 ⚠️ แผงแยกจาก "เอกสารของสินค้า" เพราะคนแนบคนละฝ่าย — แผงนั้น canEdit ตามสิทธิ์แก้สินค้า (ฝ่ายขาย) ·
                 สองคีย์นี้ถูกซ่อนจากแผงนั้น (PANEL_HIDDEN_DOC_TYPES) ไม่ตกกอง "อื่นๆ" ที่มีปุ่มลบของฝ่ายขาย */}
             <AttachmentsPanel
@@ -1059,6 +1065,19 @@ export default function ProductDetails() {
               title="เอกสารจาก RD"
               note="MSDS และ Specification Sheet ของ FG นี้ — RD เป็นผู้ออกและแนบ · Specification Sheet ของ RD คนละใบกับใบสเปคสินค้า (FM-SA-04) ในแท็บสเปค"
               cardColumns={1}
+            />
+
+            {/* ⭐ COA ประจำล็อต (ศูนย์กลางเอกสารของสินค้า P4 · มติเจ้าของ 09/11/2026: "COA เป็น by FG by lot การผลิต (QC ออก)" ·
+                "พิมพ์เลขล็อตเอง") — เก็บที่สินค้า · แนบด้วยฟอร์มรายละเอียดที่บังคับเลขล็อต (server ตรวจซ้ำ: coaLotError) · ยังไม่ผูกงานผลิต
+                · ทุกคนที่เปิดสินค้าได้เห็น (ฝ่ายขายส่งลูกค้า) · แนบ/ลบได้เฉพาะ QC + แอดมิน */}
+            <AttachmentsPanel
+              entityType="product"
+              entityId={id}
+              canEdit={canEditQcDocs}
+              docTypes={QC_DOC_TYPES}
+              metaFields={COA_META_FIELDS}
+              title="COA ประจำล็อต (QC)"
+              note="ผลวิเคราะห์ของแต่ละล็อตการผลิต — QC แนบพร้อมเลขล็อต · หาล็อตที่ต้องการจากเลขล็อตใต้ชื่อไฟล์"
             />
 
             {/* ⭐ IFRA ของกลิ่นใน FG นี้ (ศูนย์กลางเอกสารของสินค้า P3 · มติเจ้าของ 09/11/2026: "IFRA เก็บ by กลิ่น") — ไฟล์อยู่ที่ **กลิ่น**

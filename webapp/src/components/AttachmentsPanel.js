@@ -192,6 +192,11 @@ export default function AttachmentsPanel({
   /* ตัวเลขที่ผู้เรียกขยับเมื่อรายการไฟล์เปลี่ยนจากนอกแผง (ปุ่ม "ใช้รูปนี้เป็นภาพแบบ…" แนบไฟล์ผ่านเส้นคัดลอก) — เปลี่ยน = โหลดรายการใหม่
      ⚠️ 0 (ค่าตั้งต้น) ไม่โหลดซ้ำ — รอบแรกเป็นของ effect เดิม */
   reloadKey = 0,
+  /* ⭐ ช่องรายละเอียดของไฟล์ **เฉพาะแผงนี้** (โหมดฟอร์มรายละเอียด) — ไม่ส่ง = ตามทะเบียนของ entity (`ATTACHMENT_META_FIELDS`)
+     ผู้ใช้รายแรก: เลขล็อตของ COA บนสินค้า (ศูนย์กลางเอกสารของสินค้า P4 · 09/11/2026) ซึ่งเป็นของชนิดเดียว ไม่ใช่ของทุกไฟล์ของสินค้า
+     · ช่อง `required: true` = ปุ่มบันทึกเตือนก่อนส่ง (server ตรวจซ้ำเสมอ)
+     ⚠️ ต้องเป็นค่าคงที่ (ประกาศนอก component) — state ตั้งต้นของฟอร์มผูกกับชุดนี้ */
+  metaFields: metaFieldsProp = null,
   /* โหมด inline: **ป้ายชนิดเอกสาร** ใต้รูปของตะแกรงและบนแถวไฟล์ (layout-nits D4) — ผู้เรียกเปิดเอง · ตอนนี้มีที่เดียว:
      การ์ด "ไฟล์แนบของคำร้อง" (ทะเบียนมีสามชนิด: รูปอ้างอิง · สเปก/แบบงาน/บรีฟ · อื่น ๆ)
      ⚠️ **ไม่ใช่ค่าตั้งต้นโดยเจตนา** — โหมด inline ไม่มีที่ให้เลือกชนิด ทุกไฟล์ที่แนบผ่านแผงลง `types[0]` (`inlineType`)
@@ -204,8 +209,11 @@ export default function AttachmentsPanel({
   // แถวที่ปิดเนื้อหาไว้ลบไม่ได้ด้วย — คนที่เปิดดูไม่ได้ ไม่ควรทำลายหลักฐานได้
   const mayDelete = (it) => canEdit && !it.restricted
     && (typeof canDeleteItem === "function" ? canDeleteItem(it) : true);
-  const metaFields = ATTACHMENT_META_FIELDS[entityType] || [];
+  const metaFields = metaFieldsProp || ATTACHMENT_META_FIELDS[entityType] || [];
   const detailed = metaFields.length > 0; // order = ฟอร์มรายละเอียด; อื่นๆ = การ์ด
+  /* ⭐ แผงที่มีช่องรายละเอียด **บังคับ** (COA = เลขล็อต · P4) ปิดทางลากวาง/Ctrl+V — ทางนั้นอัปโดยไม่ผ่านฟอร์ม ⇒ ไม่มีช่องบังคับ
+     ⇒ server ตีกลับทุกไฟล์ · เหลือทางเดียวคือปุ่ม "เพิ่มเอกสาร" ที่ถามช่องครบ (และไม่บอกคนดูว่าลากวางได้) */
+  const intakeOff = metaFields.some((f) => f.required);
   // แผ่นรูปมีความหมายเฉพาะกล่องรูปของโหมด inline — ส่งมากับโหมดอื่น = ไม่มีผล (หน้าตาเดิม)
   const tilesMode = photoTiles && inlineUpload && photoCapture;
   // แผงที่ประกาศหัวข้อเดียวของตัวเอง — โหมด inline โชว์เฉพาะไฟล์ของหัวข้อนั้น (เหตุผลอยู่ที่ `shown` ข้างล่าง)
@@ -447,7 +455,7 @@ export default function AttachmentsPanel({
      · แผงเต็ม (ที่อยู่บนหน้ารายละเอียดทุกหน้า) ไม่มีทั้งลากและวาง
      ⇒ 2026-08-12 ย้ายมาใช้ทางเข้าไฟล์กลาง แล้วผูก **ทั้งสองโหมด** (IS-26080013) */
   const intake = useFileIntake({
-    disabled: !canEdit,
+    disabled: !canEdit || intakeOff,
     onFiles: acceptFiles,
     onOversize: (message) => notifyToast.error(message),
     weight: intakeWeight,
@@ -457,6 +465,11 @@ export default function AttachmentsPanel({
   const handleDetailedSave = async () => {
     if (!file) {
       notifyToast.error("กรุณาเลือกไฟล์");
+      return;
+    }
+    const missingField = metaFields.find((f) => f.required && !String(meta[f.key] ?? "").trim());
+    if (missingField) {
+      notifyToast.error(`กรุณากรอก${missingField.label}`);
       return;
     }
     setSaving(true);
@@ -1268,7 +1281,7 @@ export default function AttachmentsPanel({
                 </div>
                 {metaFields.map((f) => (
                   <div key={f.key} className="form-group">
-                    <label className="text-[11px]">{f.label}</label>
+                    <label className="text-[11px]">{f.label}{f.required ? <span className="text-[var(--red)]"> *</span> : null}</label>
                     {/* ช่องวันที่ใช้ตัวเลือกวันของระบบ (อา.–ส. · มติเจ้าของ 26/09 สัปดาห์เริ่มวันอาทิตย์) — `<input type="date">` ดิบ
                         วาดปฏิทินตาม locale ของเครื่อง (en-GB เริ่มวันจันทร์) · ค่ายังเป็น ISO เหมือนเดิม */}
                     {f.type === "date" ? (
@@ -1470,7 +1483,7 @@ export default function AttachmentsPanel({
       )}
       {/* คำเดียวกับโหมด inline — ผู้ใช้ต้องรู้ว่าทำได้ ไม่งั้นความสามารถนี้ก็เท่ากับไม่มี
           (คนที่แจ้ง IS-26080013 คือคนที่ไม่รู้ว่ามีอยู่ในบางจอมาตลอด) */}
-      {canEdit && !loading && !hideDropHint && (
+      {canEdit && !loading && !hideDropHint && !intakeOff && (
         <p className="mt-3 text-[10px] text-[var(--text-3)]">
           ลากไฟล์มาวาง หรือวางรูปจากคลิปบอร์ด (Ctrl+V) ได้
         </p>
