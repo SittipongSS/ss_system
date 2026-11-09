@@ -26,14 +26,15 @@ const IDLE = Object.freeze({ status: "idle", visits: [], workload: {}, closedSin
  * @param dateIso  วันที่ที่ตัวเลือกกำลังถาม · ว่าง = null (ตัวเลือกบอกให้เลือกวันก่อนเอง)
  * @returns `{ state: 'ok'|'unknown', people }` รูปเดียวกับ `staffLoadFor` ของหน้าจัดคิว
  */
-export function crewLoadFromQueue(data, dateIso, { technicians = [] } = {}) {
+export function crewLoadFromQueue(data, dateIso, { technicians = [], excludeVisitId = "" } = {}) {
   if (!dateIso) return null;
   const d = data || IDLE;
   if (d.status !== "ok" || (d.closedSince && dateIso < d.closedSince)) return { state: "unknown", people: [] };
   return {
     state: "ok",
     people: crewLoadPeople({
-      visits: d.visits,
+      /* ⭐ นัดที่กำลังแก้ไม่นับเป็นภาระของตัวเอง (PR-4b: TS ยืนยันวันใหม่บนร่างเดิม — ร่างนั้น "จองไว้" อยู่แล้ว) */
+      visits: excludeVisitId ? (d.visits || []).filter((v) => v?.id !== excludeVisitId) : d.visits,
       dateIso,
       workload: d.workload,
       technicians,
@@ -46,9 +47,10 @@ export function crewLoadFromQueue(data, dateIso, { technicians = [] } = {}) {
 /**
  * @param enabled     ยิงเมื่อ true เท่านั้น (โมดัลเปิด + โหมดลงคิวเข้าพื้นที่ + ผู้เรียกไม่ได้ส่งภาระมาเอง)
  * @param technicians รายชื่อที่ตัวเลือกจะโชว์ [{ id, name }]
+ * @param excludeVisitId นัดที่กำลังแก้ (ไม่นับเป็นภาระของตัวเอง) — ว่าง = นับทุกนัด
  * @returns `staffLoadFor(dateIso)` — เรียกแบบ synchronous ได้ทุกเรนเดอร์
  */
-export default function useCrewLoad({ enabled = false, technicians = [] } = {}) {
+export default function useCrewLoad({ enabled = false, technicians = [], excludeVisitId = "" } = {}) {
   const [data, setData] = useState(IDLE);
 
   useEffect(() => {
@@ -85,5 +87,8 @@ export default function useCrewLoad({ enabled = false, technicians = [] } = {}) 
   }, [enabled]);
 
   const list = useMemo(() => technicians || [], [technicians]);
-  return useCallback((dateIso) => crewLoadFromQueue(data, dateIso, { technicians: list }), [data, list]);
+  return useCallback(
+    (dateIso) => crewLoadFromQueue(data, dateIso, { technicians: list, excludeVisitId }),
+    [data, list, excludeVisitId],
+  );
 }

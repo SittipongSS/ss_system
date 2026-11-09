@@ -12,7 +12,7 @@
 import { ALL_TEAMS, NO_TEAM } from './crewTeams';
 import { overdueDays } from './myVisits';
 import { gateNeedsOthers, gatePassed } from './visitGate';
-import { isClosedVisit, isDraftVisit, isLiveVisit, isOpenVisit } from './visitStatus';
+import { isClosedVisit, isDraftVisit, isLiveVisit, isOpenVisit, isReservedDraft } from './visitStatus';
 import { minutesOf, toHHMM } from './sites';
 import { QUEUE_RANGE_TODAY, isVisitToday } from './scheduleQueueLink';
 
@@ -209,11 +209,11 @@ export function teamViewVisit(visit, team, crewByUser) {
 /* นัดที่ "กินเวลาของคน" ในวันนั้น — ร่าง/ยกเลิก/เลื่อนไม่นับ (`isLiveVisit`)
    ⚠️ นัดซ้ำ id เดียวกันนับครั้งเดียว — ผู้เรียกที่เผลอต่อรายการสองแหล่ง (สัปดาห์ + รายการงาน)
       ต้องไม่ทำให้ภาระเบิ้ล แล้วป้าย "เกินเพดาน" ขึ้นทั้งที่คนนั้นยังรับงานได้ */
-function liveVisitsOn(visits, date) {
+function liveVisitsOn(visits, date, keep = isLiveVisit) {
   const seen = new Set();
   const out = [];
   for (const visit of visits || []) {
-    if (!isLiveVisit(visit) || dateOf(visit) !== date) continue;
+    if (!keep(visit) || dateOf(visit) !== date) continue;
     if (visit.id != null) {
       if (seen.has(visit.id)) continue;
       seen.add(visit.id);
@@ -222,6 +222,9 @@ function liveVisitsOn(visits, date) {
   }
   return out;
 }
+
+/* ร่างนัดติดตั้งที่จองคิวไว้ในวันนั้น (PR-4b · `isReservedDraft`) — ชุดแยกจากนัดบนตาราง กติกาซ้ำ id เดียวกัน */
+const reservedVisitsOn = (visits, date) => liveVisitsOn(visits, date, isReservedDraft);
 
 const assistantsOf = (visit) => {
   const ids = new Set((Array.isArray(visit?.assistantIds) ? visit.assistantIds : []).filter(Boolean));
@@ -235,23 +238,29 @@ const count = (value) => {
   return Number.isFinite(n) && n > 0 ? n : 0;
 };
 
-/** ภาระรายคนของวันหนึ่ง — Map<personId, { visits, assets, packs, assisting }>
+/** ภาระรายคนของวันหนึ่ง — Map<personId, { visits, assets, packs, assisting, reserved }>
  *  · ผู้รับผิดชอบหลัก: visits +1 และ จุด/แพ็คของไซต์จาก `workload[siteId]` ({ assets, packs })
  *  · ผู้ช่วยแต่ละคน: assisting +1 (ไม่บวกจุด/แพ็ค — ภาระของไซต์เป็นของคนรับผิดชอบหลัก
  *    กติกาเดียวกับ `dayWorkload` ของกริด ไม่งั้นตัวเลขของรายการงานกับของกริดพูดคนละเลข)
  *  ⚠️ นับเฉพาะ `isLiveVisit` — ร่างไม่นับภาระ (มติ 2026-08-28) · งานที่ปิดแล้ววันนั้นยังนับ
  *     (เวลาของวันนั้นใช้ไปแล้วจริง — นิยามเดียวกับ isLiveVisit)
- *  ⚠️ นัดที่ยังไม่มอบหมายไม่อยู่ใน Map (ไม่มีเจ้าของภาระ) */
+ *  ⚠️ นัดที่ยังไม่มอบหมายไม่อยู่ใน Map (ไม่มีเจ้าของภาระ)
+ *  ⭐ `reserved` (PR-4b) = ร่างนัดติดตั้งที่ TS ยืนยันแล้ว รอฝ่ายขายคอนเฟิร์ม (`isReservedDraft`) — นับแยก ไม่ปนกับนัด/จุด/แพ็ค
+ *     บนตาราง (ยังไม่แน่ว่าจะไปวันนั้น) แต่คนนั้น **ไม่ว่าง** แล้ว (`isFreeRow`) · หัวหน้างานและผู้ช่วยนับเท่ากัน */
 export function staffLoadOn(visits, date, workload = {}) {
   const map = new Map();
   const rowOf = (id) => {
     let row = map.get(id);
     if (!row) {
-      row = { visits: 0, assets: 0, packs: 0, assisting: 0 };
+      row = { visits: 0, assets: 0, packs: 0, assisting: 0, reserved: 0 };
       map.set(id, row);
     }
     return row;
   };
+  for (const visit of reservedVisitsOn(visits, date)) {
+    if (visit.assigneeId) rowOf(visit.assigneeId).reserved += 1;
+    for (const id of assistantsOf(visit)) rowOf(id).reserved += 1;
+  }
   for (const visit of liveVisitsOn(visits, date)) {
     if (visit.assigneeId) {
       const row = rowOf(visit.assigneeId);
@@ -271,7 +280,12 @@ export function staffLoadOn(visits, date, workload = {}) {
    ⚠️ ชุดนัดเดียวกับ `staffLoadOn` (`liveVisitsOn` · ซ้ำ id นับครั้งเดียว · ร่างไม่นับ) */
 function dayVisitsByAssignee(visits, date) {
   const map = new Map();
-  for (const visit of liveVisitsOn(visits, date)) {
+  /* ⭐ ร่างที่จองไว้ (PR-4b) เข้าชุดด้วย พร้อมธง `reserved` — "เวลาทับ SV-… (จองไว้)" เตือนเหมือนนัดบนตาราง */
+  const rows = [
+    ...liveVisitsOn(visits, date).map((visit) => [visit, false]),
+    ...reservedVisitsOn(visits, date).map((visit) => [visit, true]),
+  ];
+  for (const [visit, reserved] of rows) {
     if (!visit.assigneeId) continue;
     if (!map.has(visit.assigneeId)) map.set(visit.assigneeId, []);
     map.get(visit.assigneeId).push({
@@ -279,6 +293,7 @@ function dayVisitsByAssignee(visits, date) {
       code: visit.code || visit.id || '',
       startTime: toHHMM(visit.startTime) || null,
       endTime: toHHMM(visit.endTime) || null,
+      ...(reserved ? { reserved: true } : {}),
     });
   }
   const at = (v) => minutesOf(v.startTime) ?? Number.MAX_SAFE_INTEGER;
@@ -304,7 +319,7 @@ export function crewLoadPeople({
   const load = staffLoadOn(visits, dateIso, workload);
   const dayVisits = dayVisitsByAssignee(visits, dateIso);
   return (technicians || []).map((tech) => {
-    const row = load.get(tech.id) || { visits: 0, assets: 0, packs: 0, assisting: 0 };
+    const row = load.get(tech.id) || { visits: 0, assets: 0, packs: 0, assisting: 0, reserved: 0 };
     const teamCode = pick(crewByUser, tech.id);
     return {
       id: tech.id,
@@ -314,6 +329,7 @@ export function crewLoadPeople({
       assets: row.assets,
       packs: row.packs,
       assisting: row.assisting,
+      reserved: row.reserved,
       dayVisits: dayVisits.get(tech.id) || [],
     };
   });
@@ -322,7 +338,7 @@ export function crewLoadPeople({
 /** แถวภาระนี้ "ว่างทั้งวัน" ไหม — ไม่มีนัดของตัวเอง **และ** ไม่ได้ไปช่วยใคร
  *  ⚠️ นิยามเดียวกับ `freeCrewOn` (ไปช่วยก็คือไม่ว่าง) — ตัวเลือกเจ้าหน้าที่แยกกลุ่ม "ว่างทั้งวัน"
  *     ด้วยตัวนี้ ⇒ ตัวเลข "วันนั้นว่าง n จาก m คน" บนการ์ดกับกลุ่มในโมดัลต้องเป็นคนชุดเดียวกัน */
-export const isFreeRow = (row) => !Number(row?.visits) && !Number(row?.assisting);
+export const isFreeRow = (row) => !Number(row?.visits) && !Number(row?.assisting) && !Number(row?.reserved);
 
 /** ใครว่างในวันนั้น — "วันนั้นว่าง 7 จาก 8 คน" บนแถวร่างที่ยังไม่มีเจ้าหน้าที่
  *  @param people รายชื่อที่อยู่ในมุมมองตอนนี้ [{ id, name }] (กรองทีมมาแล้ว)
@@ -330,7 +346,8 @@ export const isFreeRow = (row) => !Number(row?.visits) && !Number(row?.assisting
  *  คืน { free: คนที่ว่าง (ลำดับเดิม), total: จำนวนคนในรายชื่อ } · รายชื่อซ้ำ id นับครั้งเดียว */
 export function freeCrewOn(visits, date, people) {
   const busy = new Set();
-  for (const visit of liveVisitsOn(visits, date)) {
+  /* จองไว้ก็คือไม่ว่าง (PR-4b) — นิยามเดียวกับ `isFreeRow` */
+  for (const visit of [...liveVisitsOn(visits, date), ...reservedVisitsOn(visits, date)]) {
     if (visit.assigneeId) busy.add(visit.assigneeId);
     for (const id of assistantsOf(visit)) busy.add(id);
   }

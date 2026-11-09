@@ -33,7 +33,7 @@ test('⭐ ตัวเลขเท่าสูตรของหน้าจั�
     crewByUser: new Map([['U1', 'TS-A']]), teamNames: new Map([['TS-A', 'ทีมเหนือ']]),
   }));
   assert.deepEqual(answer.people[0], {
-    id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 1, assets: 6, packs: 2, assisting: 0,
+    id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 1, assets: 6, packs: 2, assisting: 0, reserved: 0,
     dayVisits: [{ id: 'a', code: 'a', startTime: null, endTime: null }],
   });
   assert.equal(answer.people[1].assisting, 1, 'ไปช่วยนับ · ร่างที่ตั้งชื่อไว้ไม่นับ');

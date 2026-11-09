@@ -272,20 +272,20 @@ test('⭐ ภาระรายวันนับเฉพาะนัดที�
     { id: 'g', status: 'in_progress', scheduledDate: TODAY, siteId: 'S9', assigneeId: null, assistantIds: ['U4'] },
   ];
   const load = staffLoadOn(visits, TODAY, workload);
-  assert.deepEqual(load.get('U1'), { visits: 2, assets: 10, packs: 3, assisting: 0 });
-  assert.deepEqual(load.get('U2'), { visits: 0, assets: 0, packs: 0, assisting: 1 });
+  assert.deepEqual(load.get('U1'), { visits: 2, assets: 10, packs: 3, assisting: 0, reserved: 0 });
+  assert.deepEqual(load.get('U2'), { visits: 0, assets: 0, packs: 0, assisting: 1, reserved: 0 });
   assert.equal(load.has('U3'), false, 'ร่างไม่นับภาระ');
-  assert.deepEqual(load.get('U4'), { visits: 0, assets: 0, packs: 0, assisting: 1 }, 'ไปช่วยนัดที่ยังไม่มีเจ้าของก็นับ');
+  assert.deepEqual(load.get('U4'), { visits: 0, assets: 0, packs: 0, assisting: 1, reserved: 0 }, 'ไปช่วยนัดที่ยังไม่มีเจ้าของก็นับ');
   assert.equal([...load.keys()].length, 3, 'นัดที่ไม่มีเจ้าของหลักไม่มีแถวของตัวเอง');
 });
 
 test('ภาระไม่นับซ้ำ — นัด id เดียวกันสองครั้ง · เจ้าของที่ถูกใส่ในผู้ช่วยด้วย · ไซต์ไม่มีข้อมูล = 0', () => {
   const a = { id: 'a', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1', assistantIds: ['U1', 'U2', 'U2'] };
   const load = staffLoadOn([a, { ...a }], TODAY, workload);
-  assert.deepEqual(load.get('U1'), { visits: 1, assets: 6, packs: 2, assisting: 0 });
-  assert.deepEqual(load.get('U2'), { visits: 0, assets: 0, packs: 0, assisting: 1 });
+  assert.deepEqual(load.get('U1'), { visits: 1, assets: 6, packs: 2, assisting: 0, reserved: 0 });
+  assert.deepEqual(load.get('U2'), { visits: 0, assets: 0, packs: 0, assisting: 1, reserved: 0 });
   const unknownSite = staffLoadOn([{ id: 'x', status: 'scheduled', scheduledDate: TODAY, siteId: 'S404', assigneeId: 'U5' }], TODAY);
-  assert.deepEqual(unknownSite.get('U5'), { visits: 1, assets: 0, packs: 0, assisting: 0 });
+  assert.deepEqual(unknownSite.get('U5'), { visits: 1, assets: 0, packs: 0, assisting: 0, reserved: 0 });
   // workload เป็น Map ก็ได้
   const viaMap = staffLoadOn([a], TODAY, new Map(Object.entries(workload)));
   assert.equal(viaMap.get('U1').assets, 6);
@@ -296,7 +296,7 @@ test('สองใบที่ไซต์เดียวกันวันเ�
     { id: 'so1', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1' },
     { id: 'so2', status: 'scheduled', scheduledDate: TODAY, siteId: 'S1', assigneeId: 'U1' },
   ];
-  assert.deepEqual(staffLoadOn(visits, TODAY, workload).get('U1'), { visits: 2, assets: 12, packs: 4, assisting: 0 });
+  assert.deepEqual(staffLoadOn(visits, TODAY, workload).get('U1'), { visits: 2, assets: 12, packs: 4, assisting: 0, reserved: 0 });
   assert.equal(visits.filter((v) => queueBucketOf(v, win) === 'scheduled').length, 2);
 });
 
@@ -319,16 +319,16 @@ test('⭐ crewLoadPeople — ภาระรายคน + ทีม ตาม�
     teamNames: new Map([['TS-A', 'ทีมเหนือ'], ['TS-B', 'ทีมใต้']]),
   });
   assert.deepEqual(people, [
-    { id: 'U3', name: 'อนุชา', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, dayVisits: [] },
+    { id: 'U3', name: 'อนุชา', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, reserved: 0, dayVisits: [] },
     {
-      id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 2, assets: 46, packs: 11, assisting: 0,
+      id: 'U1', name: 'สมชาย', team: 'ทีมเหนือ', visits: 2, assets: 46, packs: 11, assisting: 0, reserved: 0,
       dayVisits: [
         { id: 'a', code: 'a', startTime: null, endTime: null },
         { id: 'b', code: 'b', startTime: null, endTime: null },
       ],
     },
-    { id: 'U2', name: 'วิชัย', team: 'ทีมใต้', visits: 0, assets: 0, packs: 0, assisting: 1, dayVisits: [] },
-    { id: 'U9', name: 'ไร้ทีม', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, dayVisits: [] },
+    { id: 'U2', name: 'วิชัย', team: 'ทีมใต้', visits: 0, assets: 0, packs: 0, assisting: 1, reserved: 0, dayVisits: [] },
+    { id: 'U9', name: 'ไร้ทีม', team: '', visits: 0, assets: 0, packs: 0, assisting: 0, reserved: 0, dayVisits: [] },
   ]);
   // object แทน Map ก็ได้ · ไม่มีรายชื่อ = []
   const viaObject = crewLoadPeople({ visits, dateIso: TODAY, workload, technicians: [{ id: 'U1', name: 'สมชาย' }], crewByUser: { U1: 'TS-A' }, teamNames: { 'TS-A': 'ทีมเหนือ' } });

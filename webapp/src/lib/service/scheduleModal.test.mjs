@@ -284,7 +284,7 @@ test('⭐ BRIEF C1: ว่างเป็นแผ่น 6 คน · ไม่�
     timeWindow: { startTime: '10:30', endTime: '12:00' },
   });
   assert.equal(view.state, 'ok');
-  assert.deepEqual(view.head, { text: 'ภาระวันที่ พฤ. 1 ต.ค. — ไม่นับร่าง', aside: 'วันนั้นว่าง 6 จาก 8 คน', asideTone: 'ok' });
+  assert.deepEqual(view.head, { text: 'ภาระวันที่ พฤ. 1 ต.ค. — ไม่นับร่าง (ยกเว้นติดตั้งที่จองไว้)', aside: 'วันนั้นว่าง 6 จาก 8 คน', asideTone: 'ok' });
   assert.equal(view.notice, '');
   assert.equal(view.free.label, 'ว่างทั้งวัน · 6 คน');
   assert.equal(view.free.projection, 'ถ้าเลือก 1 นัด · 3/12 จุด');
