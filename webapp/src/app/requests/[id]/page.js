@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
+import { productDocLineTarget } from "@/lib/requests/productDocLines";
 /* ช่องไฟล์บังคับของรูปแบบคำร้อง (ประเมินจากแบบ = แบบ / ผังพื้นที่) — บล็อกเดียวกับในฟอร์ม โหมดใบที่บันทึกแล้ว (S4 C-2) */
 import RequiredFilesBlock from "@/components/requests/RequiredFilesBlock";
 import {
@@ -2966,19 +2967,39 @@ export default function RequestDetailPage() {
                 ("flow การส่งเอกสาร ต้องเป็นแบบเดียว") ⇒ การ์ดแถวเหลือดูอย่างเดียว
                 (DocumentDetail) · ด่านฝั่ง server (ไฟล์ ≥ 1) ยังเป็น backstop */}
             {hopDraft.hop === "ready" && isDocLineKind(hopDraft.item.lineKind) && (
-              <div className="form-group">
-                <label>ไฟล์เอกสารที่จะส่ง (แนบได้หลายไฟล์)</label>
-                <AttachmentsPanel
-                  entityType="dept_request_item"
-                  entityId={hopDraft.item.id}
-                  canEdit={!saving}
-                  inlineUpload
-                />
-                <p className={styles.fieldHint}>
-                  ต้องมีอย่างน้อย 1 ไฟล์ก่อนกดบันทึก — หลังส่ง ไฟล์โผล่ที่การ์ดรายการ
-                  และแท็บเอกสารของดีล/โครงการ
-                </p>
-              </div>
+              productDocLineTarget(hopDraft.item) ? (
+                /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026) — ไฟล์ลงที่
+                   **สินค้า** (แผง "เอกสารจาก RD" ของ FG นั้น) ไม่ใช่ที่บรรทัด · สินค้ามีไฟล์ล่าสุดอยู่แล้ว = กดบันทึกได้เลย
+                   ⚠️ ยังเป็นที่แนบที่เดียวของสายนี้ (ม-90) — แค่ที่เก็บเปลี่ยนจากบรรทัดเป็น FG · ด่าน server นับไฟล์ของสินค้า */
+                <div className="form-group">
+                  <label>ไฟล์{productDocLineTarget(hopDraft.item).label} ของ FG (เก็บที่สินค้า)</label>
+                  <AttachmentsPanel
+                    entityType="product"
+                    entityId={productDocLineTarget(hopDraft.item).productId}
+                    canEdit={!saving}
+                    docTypes={[{ key: productDocLineTarget(hopDraft.item).docType, label: productDocLineTarget(hopDraft.item).label }]}
+                    inlineUpload
+                  />
+                  <p className={styles.fieldHint}>
+                    ต้องมีไฟล์อย่างน้อย 1 ไฟล์ — ไฟล์นี้เก็บที่สินค้า ขึ้นที่แท็บเอกสารของสินค้าและของดีล/โครงการ ·
+                    ถ้าสินค้ามีไฟล์ฉบับล่าสุดอยู่แล้ว กดบันทึกได้เลยไม่ต้องแนบซ้ำ
+                  </p>
+                </div>
+              ) : (
+                <div className="form-group">
+                  <label>ไฟล์เอกสารที่จะส่ง (แนบได้หลายไฟล์)</label>
+                  <AttachmentsPanel
+                    entityType="dept_request_item"
+                    entityId={hopDraft.item.id}
+                    canEdit={!saving}
+                    inlineUpload
+                  />
+                  <p className={styles.fieldHint}>
+                    ต้องมีอย่างน้อย 1 ไฟล์ก่อนกดบันทึก — หลังส่ง ไฟล์โผล่ที่การ์ดรายการ
+                    และแท็บเอกสารของดีล/โครงการ
+                  </p>
+                </div>
+              )
             )}
 
             {/* ⭐ ผลลัพธ์ของบรรทัดเอกสารการเงิน (B-3 · R-6) — บัญชีออกเอกสารจาก

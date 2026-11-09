@@ -709,6 +709,8 @@ export async function POST(request) {
         label: item.label,
         spec: item.spec,
         docType: item.docType,
+        // FG ของบรรทัด MSDS / Spec Sheet (mig 0428 · P2b) — ตรวจแล้วที่ resolveLineLabels · ชนิดอื่น/ใบวางบิล = null
+        productId: item.productId ?? null,
       }));
       const { error: itemError } = await supabase.from('dept_request_items').insert(itemRows);
       if (itemError) {

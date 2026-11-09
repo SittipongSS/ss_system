@@ -26,6 +26,7 @@ import {
   hopValuesError,
 } from '@/lib/requests/hops';
 import { isDocLineKind } from '@/lib/requests/docTypes';
+import { productDocLineTarget } from '@/lib/requests/productDocLines';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
@@ -148,7 +149,21 @@ export async function PATCH(request, { params }) {
   // ของสายเอกสารที่ไม่มีไฟล์คือการบอกว่า "ส่งแล้ว" ทั้งที่ไม่มีอะไรให้รับ ⇒ SA กด
   // "ได้รับแล้ว" ไม่ได้จริง และแท็บเอกสารของดีลจะขึ้นแถวที่เปิดแล้วว่างเปล่า
   // · หลายไฟล์ได้อยู่แล้ว (AttachmentsPanel ไม่จำกัดจำนวน) — ด่านนี้ขอแค่ ≥ 1
-  if (hop === 'ready' && isDocLineKind(row.lineKind)) {
+  /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026) — ไฟล์อยู่ที่ **สินค้า**
+     ⇒ นับไฟล์ปัจจุบัน (ไม่ปลดระวาง) ของสินค้าชนิดนั้นแทนไฟล์บนแถว · สินค้ามีไฟล์ล่าสุดอยู่แล้ว = ส่งได้โดยไม่ต้องแนบซ้ำ */
+  const productTarget = productDocLineTarget(row);
+  if (hop === 'ready' && productTarget) {
+    const { data: productFiles, error: fileError } = await supabase
+      .from('attachments').select('id, metadata')
+      .eq('entityType', 'product').eq('entityId', productTarget.productId).eq('docType', productTarget.docType)
+      .limit(200);
+    if (fileError) return Response.json({ error: fileError.message }, { status: 500 });
+    if (!(productFiles || []).some((file) => !file.metadata?.retiredAt)) {
+      return Response.json({
+        error: `ต้องมีไฟล์${productTarget.label}ของ FG นี้ก่อนกดส่ง — แนบในหน้าต่างส่งงาน (ไฟล์เก็บที่สินค้า)`,
+      }, { status: 400 });
+    }
+  } else if (hop === 'ready' && isDocLineKind(row.lineKind)) {
     const { count, error: fileError } = await supabase
       .from('attachments').select('id', { count: 'exact', head: true })
       .eq('entityType', 'dept_request_item').eq('entityId', row.id);

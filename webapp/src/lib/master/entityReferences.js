@@ -72,6 +72,10 @@ export const REFERENCE_REGISTRY = {
       { table: 'quotation_lines', label: 'บรรทัดใบเสนอราคา', sample: null },
       { table: 'sales_order_lines', label: 'บรรทัดใบสั่งขาย', sample: null },
       { table: 'dept_requests', label: 'คำร้อง', sample: 'docNo' },
+      /* ⭐ บรรทัดคำร้องขอเอกสารที่ผูก FG (MSDS / Spec Sheet · mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b 09/11/2026) —
+         **บล็อกการลบ** เหมือนหัวคำร้อง: FK เป็น ON DELETE SET NULL ⇒ ไม่มีบรรทัดนี้ ลบสินค้าแล้วบรรทัดเสีย FG เงียบ ๆ
+         และไฟล์ที่ RD ส่ง (เก็บที่สินค้า) หายไปกับสินค้า ทั้งที่คำร้องยังบอกว่า "ส่งงานแล้ว" */
+      { table: 'dept_request_items', label: 'บรรทัดคำร้องขอเอกสาร', sample: null },
       { table: 'costing_request_items', label: 'รายการในใบขอราคาผลิต', sample: null },
       { table: 'production_jobs', label: 'คิวงานผลิต', sample: 'code' },
       { table: 'service_assets', label: 'อุปกรณ์ที่ไซต์บริการ', sample: null },

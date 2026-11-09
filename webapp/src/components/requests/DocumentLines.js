@@ -23,12 +23,13 @@ import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import OptionTiles from "@/components/ui/OptionTiles";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import SectionRail from "@/components/ui/SectionRail";
 import Textarea from "@/components/ui/Textarea";
 import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
 import styles from "./scentDelivery.module.css";
 
-export const emptyDocumentRow = () => ({ docType: "", spec: "" });
+export const emptyDocumentRow = () => ({ docType: "", productId: "", spec: "" });
 
 /* ชื่อของแถวบนราง — ชนิดที่เลือกแล้วคือคำตอบที่ดีที่สุด · ยังไม่เลือก = บอกเลขที่
    ⚠️ ชื่อสั้น (`short`) ไม่ใช่ชื่อเต็ม — ราง 13rem ใส่ "COA — Certificate of Analysis"
@@ -46,6 +47,9 @@ export default function DocumentLines({
   /* เนื้อเพิ่มของหัวข้อที่ครอบอยู่ — วางระหว่าง "ชนิดเอกสาร" กับ "รายละเอียด"
      ⚠️ ตารางนี้ไม่รู้ว่ามันคืออะไร (ดูเหตุผลที่ `RequestLineFields`) */
   detailExtra = null,
+  /* ⭐ บรรทัดชนิดที่เก็บที่ FG (MSDS · Spec Sheet — ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026 "บังคับเลือก")
+     เลือก FG ได้จากทะเบียนสินค้าของลูกค้าของใบ (`customerId` · ยังไม่รู้ลูกค้า = ทั้งทะเบียน — server ตรวจซ้ำเสมอ) */
+  products = [], customerId = null,
 }) {
   // ⚠️ จำเป็น **ตำแหน่ง** ไม่ใช่ id — บรรทัดยังไม่มี id จนกว่าจะบันทึก · ลบแถวแล้ว
   // ต้องเลื่อนตัวที่เลือกอยู่ให้ไม่ชี้ช่องว่าง (กันด้วย `Math.min` ตอนเรนเดอร์)
@@ -53,6 +57,16 @@ export default function DocumentLines({
   const at = Math.min(active, Math.max(rows.length - 1, 0));
   const row = rows[at] || emptyDocumentRow();
   const needsDetail = vocabulary.needsDetail(row.docType);
+  const wantsProduct = Boolean(vocabulary.productTarget?.(row.docType));
+  /* ⚠️ บังคับเฉพาะบรรทัดใหม่ (ยังไม่มี id) — ตัวตรวจของ server (`normalizeDocLines`) กติกาเดียวกัน · บรรทัดเก่าใส่เพิ่มได้ ไม่บังคับ */
+  const productMissing = (r) => Boolean(vocabulary.productTarget?.(r.docType)) && !r.productId && !r.id;
+  const productOptions = products
+    .filter((fg) => !customerId || !fg.customerId || fg.customerId === customerId || fg.id === row.productId)
+    .map((fg) => ({
+      value: fg.id,
+      label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
+      search: `${fg.fgCode || ""} ${fg.productDescription || ""}`,
+    }));
 
   const patch = (next) => onChange(rows.map((r, j) => (at === j ? { ...r, ...next } : r)));
   const addRow = () => {
@@ -67,7 +81,7 @@ export default function DocumentLines({
     setActive((cur) => (index < cur ? cur - 1 : Math.min(cur, rows.length - 2)));
   };
 
-  const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim());
+  const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim()) && !productMissing(r);
 
   return (
     <div className={styles.wrap}>
@@ -125,7 +139,7 @@ export default function DocumentLines({
                   ใต้ชื่อทำให้เลือกถูกตั้งแต่ครั้งแรก แทนที่จะเปิดดรอปดาวน์อ่านทีละอัน */}
               <OptionTiles
                 value={row.docType}
-                onChange={(v) => patch({ docType: v })}
+                onChange={(v) => patch(vocabulary.productTarget?.(v) ? { docType: v } : { docType: v, productId: "" })}
                 disabled={disabled}
                 ariaLabel={`ชนิดเอกสารของ${rowTitle(row, at, vocabulary)}`}
                 options={vocabulary.types.map((t) => ({
@@ -135,6 +149,25 @@ export default function DocumentLines({
                 }))}
               />
             </div>
+
+            {wantsProduct && (
+              <div className="form-group col-span-2">
+                <span className="form-field-label">
+                  สินค้า (FG) ที่ขอ{row.id ? <span className={styles.hint}> (บรรทัดเดิม · ไม่บังคับ)</span> : null}
+                </span>
+                {/* ⭐ RD ส่งงานแล้วไฟล์ลงที่ FG นี้ (แท็บเอกสารของสินค้า · แผง "เอกสารจาก RD") — ฝ่ายขายเปิดส่งลูกค้าได้จากหน้าสินค้าครั้งหน้า */}
+                <SearchableSelect
+                  value={row.productId || ""}
+                  disabled={disabled}
+                  onChange={(v) => patch({ productId: v || "" })}
+                  options={productOptions}
+                  placeholder="— เลือกสินค้า —"
+                  emptyText={customerId ? "ลูกค้ารายนี้ยังไม่มีสินค้าในทะเบียน" : "ยังไม่มีสินค้าในทะเบียน"}
+                />
+                <p className={styles.hint}>ไฟล์ที่ RD ส่งจะเก็บที่สินค้านี้ — ขึ้นที่แท็บเอกสารของสินค้าด้วย</p>
+                {productMissing(row) && <p className={styles.error}>เลือก FG ที่ขอ {vocabulary.label(row.docType)}</p>}
+              </div>
+            )}
 
             {detailExtra}
 
