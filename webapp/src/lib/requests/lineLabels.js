@@ -21,7 +21,12 @@ import { scentUsableByCustomer } from '@/lib/master/registryShares';
  * @param {{lineShape: string, customerId?: string|null}} ctx
  */
 export async function resolveLineLabels(supabase, items = [], { lineShape, customerId = null } = {}) {
-  // บรรทัดเอกสาร/ใบวางบิลได้ป้ายครบตั้งแต่ normalize (ชื่อชนิดมาจาก vocab)
+  /* ⭐ บรรทัดเอกสารที่ผูก FG (MSDS · Spec Sheet — mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026):
+     FG ต้องมีจริง และเป็นของลูกค้าของใบ (ใบผูกดีลของลูกค้ารายเดียว — ขอ MSDS ของ FG ลูกค้าอื่นไม่ได้ · กติกาเดียวกับกลิ่นข้างล่าง)
+     · ป้ายของแถว = ชื่อชนิด · รหัส FG (อ่านออกในเธรด/ประวัติโดยไม่ต้องเปิดแถว)
+     ⚠️ อ่านพัง = error (ห้ามปล่อยผ่าน — ผ่านแล้วบรรทัดชี้ FG ที่ไม่มีจริง ไฟล์ของ RD ไม่มีที่ลง) */
+  if (lineShape === 'document') return resolveDocumentProducts(supabase, items, { customerId });
+  // บรรทัดใบวางบิลได้ป้ายครบตั้งแต่ normalize (ชื่อชนิดมาจาก vocab)
   if (lineShape !== 'product_dev') return { items, error: null };
   if (!items.length) return { items, error: null };
 
@@ -61,6 +66,26 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
       ...item,
       label: `${typeName} · ${scent.code ? `${scent.code} ` : ''}${scent.name}`,
     });
+  }
+  return { items: out, error: null };
+}
+
+async function resolveDocumentProducts(supabase, items, { customerId }) {
+  const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
+  if (!productIds.length) return { items, error: null };
+  const { data, error } = await supabase.from('products')
+    .select('id, "fgCode", "customerId"').in('id', productIds).limit(productIds.length);
+  if (error) return { items: [], error: error.message };
+  const byId = new Map((data || []).map((p) => [p.id, p]));
+  const out = [];
+  for (const item of items) {
+    if (!item.productId) { out.push(item); continue; }
+    const product = byId.get(item.productId);
+    if (!product) return { items: [], error: `ไม่พบสินค้า (FG) ที่เลือกในรายการที่ ${item.sortOrder}` };
+    if (customerId && product.customerId && product.customerId !== customerId) {
+      return { items: [], error: `รายการที่ ${item.sortOrder}: FG นี้เป็นของลูกค้าคนละรายกับใบ` };
+    }
+    out.push({ ...item, label: product.fgCode ? `${item.label} · ${product.fgCode}` : item.label });
   }
   return { items: out, error: null };
 }

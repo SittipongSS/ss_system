@@ -37,6 +37,7 @@ import { TableScroll } from "@/components/ui/Table";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
 import { ROUNDS_SOLD_LABEL, VISIT_KIND_LABELS } from "@/lib/service/rounds";
+import InstallQueuePanel from "@/components/service/install/InstallQueuePanel";
 import { INTAKE_TABS, INTAKE_TAB_HINTS, INTAKE_TAB_LABELS, planRoundsSoldText } from "@/lib/service/intake";
 import { holidayGapText } from "@/lib/service/cadence";
 import {
@@ -233,6 +234,41 @@ export default function ServiceIntakePage() {
       });
   }, []);
   const closePlan = useCallback(() => setPlanRow(null), []);
+
+  /* ── แท็บ "รอติดตั้ง" (ขั้นเข้าติดตั้ง PR-3b · mig 0425) ─────────────────────────────────────────
+     ⭐ ขึ้นเฉพาะสวิตช์ SERVICE_INSTALL_STEP เปิด (ค่าจาก GET ของคิวเอง — สวิตช์ปิดไม่อ่านฐาน)
+     ⭐ เปิดตรงจากกระดิ่ง `?tab=install` · รายชื่อช่างโหลดตอนเข้าแท็บ (ท่าเดียวกับโมดัลตั้งรอบ) */
+  const [install, setInstall] = useState(null);
+  const [installLoading, setInstallLoading] = useState(true);
+  const [installError, setInstallError] = useState("");
+  const loadInstall = useCallback(async () => {
+    try {
+      setInstallLoading(true);
+      setInstall(await apiJson("/api/service/install-queue", { fallbackError: "โหลดคิวรอติดตั้งไม่สำเร็จ" }));
+      setInstallError("");
+    } catch (e) {
+      setInstallError(e?.message || "โหลดคิวรอติดตั้งไม่สำเร็จ");
+    } finally {
+      setInstallLoading(false);
+    }
+  }, []);
+  useEffect(() => { loadInstall(); }, [loadInstall]);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (new URLSearchParams(window.location.search).get("tab") === "install") setTab("install");
+  }, []);
+  const installOn = install?.enabled === true;
+  const installCount = installOn ? (install.rows || []).length : 0;
+  useEffect(() => {
+    if (tab !== "install" || techniciansAsked.current) return;
+    techniciansAsked.current = true;
+    apiJson("/api/pm/assignable-users", { fallbackError: "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ" })
+      .then((rows) => setTechnicians((Array.isArray(rows) ? rows : []).filter(canBeServiceAssignee)))
+      .catch((e) => {
+        techniciansAsked.current = false;
+        notifyToast.error(e.message || "โหลดรายชื่อเจ้าหน้าที่บริการไม่สำเร็จ");
+      });
+  }, [tab]);
   /* บันทึก = สร้างรอบ + สร้างนัดทันที (route gen ให้เอง) แล้วโหลดคิวใหม่ ⇒ แถวหลุดจากคิว (มีรอบของใบนี้แล้ว)
      ⚠️ พังแล้วโยนต่อ — โมดัลโชว์ข้อความผิดพลาดในตัวเองและไม่ปิด (ServicePlanModal.submit) */
   const savePlan = useCallback(async (form) => {
@@ -355,12 +391,15 @@ export default function ServiceIntakePage() {
           value={tab}
           onChange={pickTab}
           ariaLabel="คิวงานเข้าใหม่"
-          tabs={INTAKE_TABS.map((key) => ({
+          tabs={[
+            ...(installOn ? [{ key: "install", label: installLoading ? "รอติดตั้ง" : `รอติดตั้ง ${installCount}` }] : []),
+            ...INTAKE_TABS.map((key) => ({
             key,
             /* 🐞 ยังโหลดไม่เสร็จ/โหลดพัง เคยขึ้น "0 · 0 · 0" = อ่านเป็นคิวว่าง
                ⇒ ไม่มีข้อมูล = ไม่มีตัวเลข */
             label: showCounts ? `${INTAKE_TAB_LABELS[key]} ${counts[key] ?? 0}` : INTAKE_TAB_LABELS[key],
-          }))}
+          })),
+          ]}
         />
       </div>
 
@@ -425,6 +464,9 @@ export default function ServiceIntakePage() {
         </StatusNotice>
       )}
 
+      {tab === "install" ? (
+        <InstallQueuePanel data={install} loading={installLoading} error={installError} onReload={loadInstall} technicians={technicians} />
+      ) : (
       <ListPanel
         icon={tab === "bind"
           ? <ClipboardList size={17} aria-hidden="true" />
@@ -878,6 +920,7 @@ export default function ServiceIntakePage() {
           </>
         )}
       </ListPanel>
+      )}
 
       {/* ⭐ **โมดัลตัวเดียวกับหน้าไซต์/แท็บงานบริการของใบ** — ห้ามก๊อปฟอร์มที่สอง (AGENTS.md)
           · ใบของรอบตรึงจากแถว: `salesOrderId` ของแถว + `salesOrders={null}` (ไม่มีช่องเลือกใบ ⇒ TS เผลอเลือก

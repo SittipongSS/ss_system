@@ -14,6 +14,8 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/
 import { buildEntityDocuments, entityDocumentProgress } from '@/lib/sales/entityDocuments';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { workspaceEmail } from '@/lib/master/googleDocs';
+import { productDocLineTarget } from '@/lib/requests/productDocLines';
+import { REQUEST_PRODUCT_DOC_TYPES } from '@/lib/requests/docTypes';
 
 export const dynamic = 'force-dynamic';
 // ให้สิทธิ์เอกสารร่วมบน Drive ต้องโหลด googleapis — ต้อง Node runtime
@@ -129,7 +131,7 @@ async function collectDealDocuments(supabase, dealId) {
     if (openRequestIds.length) {
       const { data: items, error: itemError } = await supabase
         .from('dept_request_items')
-        .select('id, requestId, docType, spec, answerStatus, readyAt, createdAt')
+        .select('id, requestId, lineKind, docType, productId, spec, answerStatus, readyAt, createdAt')
         .in('requestId', openRequestIds).eq('lineKind', 'document');
       raise('อ่านบรรทัดขอเอกสารไม่สำเร็จ', itemError);
       // ⭐ เกณฑ์เดียวกับแถบตัวเลขในใบคำร้อง (ม-85): "ยังไม่มา" = แถวยังเดินอยู่
@@ -145,15 +147,19 @@ async function collectDealDocuments(supabase, dealId) {
       // เอกสารไปสู่แท็บเอกสารในโครงการ/ดีลนั้นด้วย" · เอาเฉพาะแถวที่ **ส่งแล้ว**
       // (readyAt) — ไฟล์บนแถวที่ยังทำอยู่เป็นของระหว่างทาง ยังไม่ใช่เอกสารที่ได้
       const sentItems = (items || []).filter((i) => i.readyAt);
-      if (sentItems.length) {
-        const requestById = new Map((requests || []).map((r) => [r.id, r]));
+      /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — ไฟล์อยู่ที่ **สินค้า** ไม่ใช่ที่บรรทัด
+         ⇒ เอาไฟล์ปัจจุบันของสินค้าชนิดนั้นมาแทน (ตัวตัดสินเดียวกับด่านส่งงาน: `productDocLineTarget`) · บรรทัดเดิมเดินแบบเดิม */
+      const productLines = sentItems.map((i) => ({ item: i, target: productDocLineTarget(i) })).filter((x) => x.target);
+      const rowLines = sentItems.filter((i) => !productDocLineTarget(i));
+      const requestById = new Map((requests || []).map((r) => [r.id, r]));
+      if (rowLines.length) {
         const { data: files, error: fileError } = await supabase
           .from('attachments')
           .select('id, "entityId", "fileName", "createdAt"')
           .eq('entityType', 'dept_request_item')
-          .in('entityId', sentItems.map((i) => i.id));
+          .in('entityId', rowLines.map((i) => i.id));
         raise('อ่านไฟล์ของแถวคำร้องไม่สำเร็จ', fileError);
-        const itemById = new Map(sentItems.map((i) => [i.id, i]));
+        const itemById = new Map(rowLines.map((i) => [i.id, i]));
         requestItemFiles = (files || []).map((f) => {
           const item = itemById.get(f.entityId);
           return {
@@ -164,6 +170,30 @@ async function collectDealDocuments(supabase, dealId) {
             createdAt: f.createdAt || null,
           };
         });
+      }
+      if (productLines.length) {
+        const productIds = [...new Set(productLines.map((x) => x.target.productId))];
+        const { data: files, error: fileError } = await supabase
+          .from('attachments')
+          .select('id, "entityId", "docType", "fileName", "createdAt", metadata')
+          .eq('entityType', 'product').in('entityId', productIds).in('docType', REQUEST_PRODUCT_DOC_TYPES)
+          .order('id', { ascending: true }).limit(500);
+        raise('อ่านไฟล์เอกสารของสินค้าไม่สำเร็จ', fileError);
+        const seen = new Set();
+        for (const { item, target } of productLines) {
+          for (const f of files || []) {
+            if (f.entityId !== target.productId || f.docType !== target.docType || f.metadata?.retiredAt) continue;
+            if (seen.has(f.id)) continue;   // FG เดียวกันถูกขอสองใบ — ไฟล์เดียวกันขึ้นครั้งเดียว
+            seen.add(f.id);
+            requestItemFiles.push({
+              id: f.id,
+              fileName: f.fileName || null,
+              docType: item.docType || null,
+              requestDocNo: requestById.get(item.requestId)?.docNo || null,
+              createdAt: f.createdAt || null,
+            });
+          }
+        }
       }
     }
 

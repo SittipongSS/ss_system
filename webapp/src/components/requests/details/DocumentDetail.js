@@ -12,8 +12,11 @@
 // ต้องเป็นแบบเดียว กันการสับสน") — การ์ดรายแถวที่นี่จึงเป็นที่ *ดู/โหลด* ไฟล์
 // อย่างเดียว ต่างจากสายพัฒนาที่ผู้ขอแนบรูปอ้างอิงบนการ์ดได้ เพราะไฟล์ของสายนี้
 // คือ *ของที่ฝ่ายส่ง* ไม่ใช่ *ของประกอบที่ผู้ขอแปะ*
+import Link from "next/link";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import DocumentBoard from "@/components/requests/DocumentBoard";
 import { RowStepActions } from "@/components/requests/NextStepBar";
+import { productDocLineTarget } from "@/lib/requests/productDocLines";
 import RequestRows from "./RequestRows";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ — เหตุผลเดียวกับ FormulaDevDetail
@@ -52,6 +55,27 @@ export default function DocumentDetail({
         renderStep={renderStep}
         renderDetail={(boardRow) => {
           const item = itemsById.get(boardRow.id);
+          /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — ไฟล์อยู่ที่ **สินค้า**
+             ⇒ โชว์ไฟล์ปัจจุบันของ FG ชนิดนั้น (อ่านอย่างเดียว เหมือนการ์ดเดิม) + ทางไปหน้าสินค้า */
+          const target = item ? productDocLineTarget(item) : null;
+          if (target) {
+            return (
+              <div>
+                <AttachmentsPanel
+                  entityType="product"
+                  entityId={target.productId}
+                  canEdit={false}
+                  docTypes={[{ key: target.docType, label: target.label }]}
+                  title={`${target.label} ของ FG (เก็บที่สินค้า)`}
+                  note={'RD แนบไฟล์ตอนกด "ส่งงาน" — ไฟล์อยู่ที่แท็บเอกสารของสินค้า (ฉบับล่าสุดของ FG)'}
+                  cardColumns={1}
+                />
+                <Link href={`/database/products/${encodeURIComponent(target.productId)}`} className="linklike">
+                  เปิดหน้าสินค้า
+                </Link>
+              </div>
+            );
+          }
           return item ? (
             <RequestRows
               bare
