@@ -1,4 +1,4 @@
-// ── หน้า "รอใส่ราคา" ของ RD — หนึ่งแถวคือหนึ่งรายการที่ลูกค้าคอนเฟิร์มแล้ว (ม-153 · มติผู้ใช้ 2026-10-01) ──
+// ── แท็บ "งานค้างในคำร้อง" ของหน้า "ราคา + Ingredient List" (เดิมหน้า "รอใส่ราคา") — หนึ่งแถวคือหนึ่งรายการที่ลูกค้าคอนเฟิร์มแล้ว (ม-153 · มติผู้ใช้ 2026-10-01) ──
 //
 // ⭐ **ทำไมต้องมีหน้านี้** (ผู้ใช้: *"ขั้นแจ้งราคา F/FB อยากให้รวมตาราง … ให้ RD ได้เห็นว่าต้องไปใส่ราคาต่อ"*) —
 // ขั้นราคาอยู่ที่ **แถว** ไม่ใช่ใบ (`rowStage` → `awaiting_price`) ⇒ RD ต้องเปิดใบทีละใบถึงจะเจอ · คิวคำร้อง
@@ -112,51 +112,14 @@ export function waitingDays(row, todayIso) {
   return Math.max(0, Math.round((b - a) / 86400000));
 }
 
-/* เรียงในใบ — คอนเฟิร์มก่อนขึ้นก่อน · ไม่มีวันไปท้าย · ปิดท้ายลำดับแถวในใบ + id ให้นิ่งทุกครั้งที่โหลด */
+/* ลำดับคิวของแท็บงานค้างในคำร้อง — คอนเฟิร์มก่อนขึ้นก่อน · ไม่มีวันไปท้าย · ปิดท้ายลำดับแถวในใบ + id ให้นิ่งทุกครั้งที่โหลด
+   ⭐ จัดกลุ่มตามใบอยู่ที่ `priceViewOf` (lib/rd/priceBoardView.js · มติเจ้าของ 09/11) — ถังเรียงตามแถวแรกที่โผล่ = ใบที่รอนานสุดขึ้นก่อน */
 export function compareBoardRows(a, b) {
   const ad = a.confirmedAt || '', bd = b.confirmedAt || '';
   if (!ad !== !bd) return ad ? -1 : 1;
   if (ad !== bd) return ad < bd ? -1 : 1;
   if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
   return String(a.itemId).localeCompare(String(b.itemId));
-}
-
-/**
- * จัดกลุ่มตามใบคำร้อง — ใบที่รอนานสุดขึ้นก่อน (มติผู้ใช้: "กลุ่มตามใบคำร้อง")
- * · ใบหนึ่งใส่ครบทุกแถว = ฝั่ง RD ปิดใบเอง ⇒ ต้องเห็นว่าเหลือกี่รายการในใบเดียวกัน
- */
-export function priceBoardGroups(rows = [], { todayIso = null } = {}) {
-  const map = new Map();
-  for (const row of rows) {
-    const group = map.get(row.requestId) || {
-      key: row.requestId,
-      requestId: row.requestId,
-      docNo: row.docNo,
-      title: row.title,
-      customerName: row.customerName,
-      customerArCode: row.customerArCode,
-      rows: [],
-    };
-    group.rows.push(row);
-    map.set(row.requestId, group);
-  }
-  const groups = [...map.values()].map((g) => {
-    const sorted = [...g.rows].sort(compareBoardRows);
-    const days = sorted.map((r) => waitingDays(r, todayIso)).filter((d) => d != null);
-    return {
-      ...g,
-      rows: sorted,
-      total: sorted.length,
-      oldestAt: sorted[0]?.confirmedAt || null,
-      maxDays: days.length ? Math.max(...days) : null,
-    };
-  });
-  return groups.sort((a, b) => {
-    const ad = a.oldestAt || '', bd = b.oldestAt || '';
-    if (!ad !== !bd) return ad ? -1 : 1;
-    if (ad !== bd) return ad < bd ? -1 : 1;
-    return String(a.docNo || a.requestId).localeCompare(String(b.docNo || b.requestId));
-  });
 }
 
 /**
