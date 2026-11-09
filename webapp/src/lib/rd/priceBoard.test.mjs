@@ -4,9 +4,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  awaitingPriceCount, awaitingPriceItems, compareBoardRows, priceBoardGroups, priceBoardRows, priceBoardTotals,
+  awaitingPriceCount, awaitingPriceItems, compareBoardRows, priceBoardRows, priceBoardTotals,
   usablePriceNote, waitingDays,
 } from './priceBoard.js';
+import { defaultPriceView, priceViewOf } from './priceBoardView.js';
 import { rowsSlotPricesLive } from '../master/scentFormulaAdmin.js';
 
 const TODAY = '2026-10-01';
@@ -112,11 +113,12 @@ test('จัดกลุ่มตามใบ — ใบที่รอนาน
   ];
   const pairs = awaitingPriceItems(reqs);
   const rows = priceBoardRows(pairs, pairs.map(() => liveCtx()));
-  const groups = priceBoardGroups(rows, { todayIso: TODAY });
-  assert.deepEqual(groups.map((g) => g.docNo), ['RQ-FD-A', 'RQ-FD-B']);
-  assert.deepEqual(groups[1].rows.map((r) => r.itemId), ['B1', 'B2']);
-  assert.equal(groups[0].maxDays, 29);
-  assert.equal(groups[1].total, 2);
+  // ⭐ มุมมองตั้งต้นของแท็บงานค้างในคำร้อง = จัดกลุ่มตามใบ เรียงรอนานสุดก่อน (ตัวเดียวกับจอ · มติเจ้าของ 09/11 ยกเป็น priceViewOf)
+  const { groups } = priceViewOf('requests', rows, defaultPriceView('requests'));
+  assert.deepEqual(groups.map((g) => g.label), ['RQ-FD-A · บริษัท ก', 'RQ-FD-B · บริษัท ก']);
+  assert.deepEqual(groups[1].items.map((r) => r.itemId), ['B1', 'B2']);
+  assert.equal(Math.max(...groups[0].items.map((r) => waitingDays(r, TODAY))), 29);
+  assert.equal(groups[1].count, 2);
   const totals = priceBoardTotals(rows, { todayIso: TODAY });
   assert.deepEqual(totals, {
     rows: 3, awaitingPrice: 3, missingIngredients: 0, requests: 2, maxDays: 29, usable: 3, blocked: 0,
