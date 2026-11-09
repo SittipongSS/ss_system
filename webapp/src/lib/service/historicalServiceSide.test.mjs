@@ -85,9 +85,10 @@ test('🔴 บริบทด่านเข้าไซต์: เลือก 
   // บริบทถูกส่งถึงจอฝ่ายบริการทั้งก้อน ⇒ เหลือแค่คำตอบของด่าน (0 = ใบยอด 0 · null = ไม่รู้/มียอด)
   assert.match(src, /ordersById\[o\.id\] = \{ \.\.\.o, totalAmount: paymentNotRequired\(o\.totalAmount\) \? 0 : null \};/);
   const loads = src.match(/const \{[^}]*\} = await fetchInChunks\(/g) || [];
-  assert.equal(loads.length, 3, 'ใบ · งวด · สัญญา');
+  // ใบ · งวด · สัญญา + ขั้นเข้าติดตั้ง (mig 0425): คำขอของไซต์ · นัดติดตั้ง · โซนของนัด — ทุกก้อนรับ error และโยน
+  assert.equal(loads.length, 6, 'ใบ · งวด · สัญญา · คำขอติดตั้ง · นัดติดตั้ง · โซนของนัด');
   for (const load of loads) assert.match(load, /error:/, `ต้องรับ error: ${load}`);
-  for (const name of ['orderError', 'installmentError', 'contractError']) {
+  for (const name of ['orderError', 'installmentError', 'contractError', 'requestError', 'visitError', 'zoneError']) {
     assert.match(src, new RegExp(`if \\(${name}\\) throw ${name};`), name);
   }
 });

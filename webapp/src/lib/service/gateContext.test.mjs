@@ -8,7 +8,11 @@ import { gateContextForSite, loadVisitGateContext, mergeGateContext } from './ga
 import { evaluateVisitGate, gatePassed } from './visitGate.js';
 
 /* ⭐ ก้อนที่หก `setupOrdersByZone` (PR-C · C9 · D15) — ชิปใบสั่งขายของโซนที่ไม่มีรอบขายที่มีผล · ว่างเสมอเมื่อไม่ขอ */
-const EMPTY = { zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {} };
+const EMPTY = {
+  zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {},
+  // ขั้นเข้าติดตั้ง (mig 0425) — คำขอติดตั้ง + โซนของนัดติดตั้ง
+  installRequestsById: {}, visitZonesByVisitId: {},
+};
 
 const weekCtx = {
   zonesBySite: { S1: [{ id: 'Z1', siteId: 'S1', name: 'โซน A' }] },
