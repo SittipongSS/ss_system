@@ -761,6 +761,24 @@ export function installmentActionError(row, action, user, options = {}) {
        (ไม่ใช่ role ล้วน — กติกา 🔴 ของ permissions.js ห้ามเอา superuser มาเป็นด่านเงิน)
      ⚠️ แผงงวดต้องส่ง `department` มากับ user (หน้าใบส่ง `meDepartment`) — ไม่ส่ง = บัญชีที่ role
        ไม่ได้ชี้ฝ่าย FN มองไม่เห็นเมนูทั้งที่ API ให้ผ่าน (ปุ่มกับ API ต้องตอบคำเดียวกัน) */
+  /* ── ธง "ก่อนติดตั้ง" (mig 0425 · ขั้นเข้าติดตั้ง · มติเจ้าของ 02/11 + 09/11/2026) ─────────────────────
+     ⭐ งวดที่ติดธงต้องบัญชีรับรองครบก่อน TS ยืนยันวันติดตั้งได้ (ด่านเดียวก่อนติดตั้ง — `installDepositGate`)
+     ⭐ **ฝ่ายขายเป็นเจ้าของธง** (SA → FN) · แก้ได้จนบัญชีรับรอง (ฐานกันอีกชั้น: trigger so_installment_before_install_guard)
+     ⚠️ เฉพาะใบ pipeline สายบริการที่อนุมัติแล้ว — ใบร่างยังถูกคัดงวดจากใบเสนอราคาทับได้ (ธงหาย) ·
+        ใบย้อนหลังติดตั้งไปแล้วก่อนเข้าระบบ · ใบยอด 0 ไม่มีเงินให้เก็บ
+     ⚠️ ผู้เรียกส่ง `installStepEnabled` (route อ่านสวิตช์ · จออ่านจาก payload) — ไม่ส่ง = ปิด */
+  if (action === 'before-install') {
+    if (!options.installStepEnabled) return 'ยังไม่เปิดใช้ขั้นเข้าติดตั้ง';
+    if (options.historical) return 'ใบสั่งขายย้อนหลังไม่มีขั้นเข้าติดตั้ง';
+    if (!options.serviceRounds) return 'งวดก่อนติดตั้งใช้กับใบสั่งขายสายบริการเท่านั้น';
+    if (options.order && options.order.status !== 'approved') return 'ตั้งงวดก่อนติดตั้งได้หลังใบสั่งขายอนุมัติ';
+    if (orderTotal !== undefined && paymentNotRequired(orderTotal)) return 'ใบนี้ยอดรวม 0 บาท — ไม่มีงวดก่อนติดตั้ง';
+    if (!canUser(user, 'salesplan:edit')) return 'ไม่มีสิทธิ์ตั้งงวดก่อนติดตั้ง';
+    if (isOpeningInstallment(row)) return `${OPENING_INSTALLMENT_LABEL}ไม่มีธงก่อนติดตั้ง`;
+    if (status === 'confirmed') return 'งวดนี้บัญชีรับรองแล้ว — เปลี่ยนธง "ก่อนติดตั้ง" ไม่ได้ (ให้บัญชีถอนคำรับรองก่อน)';
+    return null;
+  }
+
   if (action === 'schedule') {
     if (!installmentScheduleAllowed(user)) return 'ไม่มีสิทธิ์แก้กำหนดชำระ';
     if (status === 'confirmed') return 'งวดนี้บัญชีคอนเฟิร์มแล้ว แก้กำหนดชำระไม่ได้';

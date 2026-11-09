@@ -1191,6 +1191,10 @@ export default function SalesOrderDetailPage() {
           actual_withdraw: "ดึงคำขอนับงวดกลับแล้ว",
           actual_approve: "อนุมัติงวดแล้ว — ยอดเข้า Actual ของเดือนนี้",
           actual_reject: "ตีกลับงวดแล้ว — ฝ่ายขายยื่นใหม่ได้",
+          // ธงก่อนติดตั้ง (mig 0425) — บอกผลที่ตามมา ไม่ใช่แค่ "อัปเดตแล้ว"
+          "before-install": options.beforeInstall === true
+            ? "ตั้งเป็นงวดก่อนติดตั้งแล้ว — TS ยืนยันวันติดตั้งได้เมื่อบัญชีรับรองงวดนี้"
+            : "เอาออกจากงวดก่อนติดตั้งแล้ว",
         }[action] || "อัปเดตเรียบร้อยแล้ว",
       });
       /* ⭐ นับ Actual รายงวด (mig 0412): cache ยอดของใบ (`actualCountedAmount` · `actualSubmittedAmount`) ขยับตามงวด

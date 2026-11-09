@@ -3,7 +3,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRightLeft, ArrowUpRight, BadgeCheck, CalendarDays, CalendarRange, CheckCheck, Columns3, FileText, HandCoins, Link2,
-  Paperclip, Plus, Receipt, TriangleAlert, Undo2, Unlink, Wallet, XCircle,
+  Paperclip, Plus, Receipt, TriangleAlert, Undo2, Unlink, Wallet, Wrench, XCircle,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
@@ -305,6 +305,8 @@ export default function SalesOrderPaymentPanel({
     /* นับ Actual รายงวด (mig 0412): ด่านยื่น/ดึงกลับ/อนุมัติ/ตีกลับงวด + ด่านเงิน (รับรอง/แจ้งต้องรองานอนุมัติ) ถามแบบการนับของใบ
        และเจ้าของดีลปัจจุบัน — ค่าเดียวกับที่ route PATCH ส่ง · ไม่ส่ง = ด่านพวกนี้ไม่ทำงาน (ฐานเป็นยามชั้นสุดท้ายอย่างเดียว) */
     order, dealOwnerId: order?.deal?.ownerId,
+    /* ธง "ก่อนติดตั้ง" (mig 0425) — สวิตช์มาจาก GET ใบสั่งขาย (ค่าเดียวกับที่ route PATCH อ่าน) */
+    installStepEnabled: order?.installStepEnabled === true,
   });
 
   /* ── กำหนดวางบิล (mig 0389 · มติเจ้าของ 25–26/09 · ม็อก mockups/billing-cycle จอ C) ─────────────────────────────
@@ -1506,6 +1508,12 @@ export default function SalesOrderPaymentPanel({
                       label: requestsOfRow(row).length > 1 ? `ถอด ${linked.docNo || "คำร้อง"} ออกจากงวด` : "ถอดคำร้องออกจากงวด",
                       onClick: () => onAction(row, "unlink", { billingRequestId: linked.id }),
                     }),
+                  /* ── ธง "ก่อนติดตั้ง" (mig 0425 · ขั้นเข้าติดตั้ง) — ฝ่ายขายเปิด/ปิดรายงวด · ด่านเดียวกับ route ─── */
+                  !gate(row, "before-install") && {
+                    id: "before-install", icon: Wrench, tone: row.beforeInstall === true ? "warning" : undefined,
+                    label: row.beforeInstall === true ? "เอาออกจากงวดก่อนติดตั้ง" : "ตั้งเป็นงวดก่อนติดตั้ง",
+                    onClick: () => { onClearError?.(); onAction(live(row), "before-install", { beforeInstall: row.beforeInstall !== true }); },
+                  },
                   /* ── ใบกำกับภาษีของงวด (mig 0348 · มติผู้ใช้ 2026-09-07) ────────
                      ⭐ **ของฝ่ายบัญชี** — ด่านคือ `canConfirmPayment` ⇒ ฝ่ายขายเห็นข้อมูล
                      บนคอลัมน์และเปิดไฟล์ได้ แต่ไม่มีรายการนี้ในเมนู
@@ -1543,6 +1551,10 @@ export default function SalesOrderPaymentPanel({
                       {/* ชื่องวดสั้นห้ามแตกบรรทัด ("งวด / สุดท้าย" ตอนคอลัมน์วันวางบิลกว้าง) — ดู InstallmentLabel */}
                       <InstallmentLabel label={row.label} />
                       {/* งวดยกมา = เงินที่เก็บก่อนเข้าระบบ บัญชีรับรองครั้งเดียว — ป้ายเดียวกับคิวของบัญชี */}
+                      {/* งวดก่อนติดตั้ง (mig 0425) — ด่านเดียวก่อน TS ยืนยันวันติดตั้ง · ป้ายขึ้นแม้สวิตช์ปิด (ธงที่ตั้งแล้วยังมีผล) */}
+                      {row.beforeInstall === true ? (
+                        <StatusBadge size="sm" tone="warning" label="ก่อนติดตั้ง" title="งวดนี้ต้องบัญชีรับรองก่อน TS ยืนยันวันติดตั้ง" />
+                      ) : null}
                       {isOpeningInstallment(row) ? (
                         <StatusBadge size="sm" tone="info" label="ยกมา" title="เงินที่เก็บก่อนเข้าระบบ — บัญชีรับรองครั้งเดียว" />
                       ) : null}
