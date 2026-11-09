@@ -14,6 +14,7 @@ import { fmtDate } from '@/lib/format';
 export const INSTALL_REQUESTED_KIND = 'install_requested';
 export const INSTALL_DATE_CONFIRMED_KIND = 'install_date_confirmed';
 export const INSTALL_CUSTOMER_CONFIRMED_KIND = 'install_customer_confirmed';
+export const INSTALL_DONE_KIND = 'install_done';
 export const INSTALL_QUEUE_HREF = '/service/intake?tab=install';
 export const INSTALL_REQUEST_RECIPIENT_ROLES = Object.freeze([...SERVICE_HEAD_ROLES, 'ts_planner']);
 
@@ -160,6 +161,47 @@ export function notifyInstallCustomerConfirmed(supabase, args = {}) {
     await notifyUsers(supabase, { ...notice, actorName: args.actor?.name || null });
   };
   const safe = () => deliver().catch((e) => console.error('[install-customer-confirmed] แจ้ง TS ไม่สำเร็จ:', e?.message));
+  try {
+    after(safe);
+  } catch {
+    safe();
+  }
+}
+
+/* ── กระดิ่ง "ช่างส่งงานติดตั้งแล้ว" ถึงฝ่ายขาย (PR-5a · แผน: SA ได้เมื่อ TS ยืนยันวัน และเมื่อติดตั้งเสร็จ) ──────────────
+   ⭐ ผู้รับ = คนขอคิว + คนเลือก "ติดตั้ง" ของไซต์นั้น · ไม่เด้งใส่คนกดเอง
+   ⭐ บอกผล: ติดตั้งแล้ว n/N จุด · ติดไม่ได้ · ไปทำต่อ — โซนที่ไม่ได้ติด กลับไปรอ TS ลงคิวใหม่ (ขั้นคำนวณสด)
+   ⚠️ href ไปการ์ดติดตั้งบนใบสั่งขาย (ความคืบหน้ารายไซต์ + สัญญาทำเมื่อครบทุกไซต์) */
+export function installDoneNotice({ visit, request, site = null, installed = 0, total = 0, later = 0, unable = 0, note = null, actor = null } = {}) {
+  if (!visit?.id || !request?.id || !request?.salesOrderId) return null;
+  const actorId = actor?.id ? String(actor.id) : null;
+  const userIds = [...new Set([request.requestedById, request.decidedById].filter(Boolean).map(String))]
+    .filter((id) => id !== actorId);
+  if (!userIds.length) return null;
+  const where = [site?.code, site?.name].filter(Boolean).join(' ') || 'ไซต์';
+  const tail = [unable ? `ติดไม่ได้ ${unable} จุด` : null, later ? `ไปทำต่อ ${later} โซน` : null].filter(Boolean).join(' · ');
+  return {
+    userIds,
+    entityType: 'sales_order',
+    entityId: request.salesOrderId,
+    kind: INSTALL_DONE_KIND,
+    title: `ส่งงานติดตั้ง · ${visit.code || visit.id}`,
+    body: `${where} · ติดตั้งแล้ว ${installed}/${total} จุด${tail ? ` · ${tail}` : ''}`
+      + (note ? ` — ${String(note).slice(0, 160)}` : '')
+      + (installed < total ? ' · ส่วนที่เหลือกลับไปรอ TS ลงคิวใหม่' : ''),
+    dedupeKey: `install-done:${visit.id}:${String(visit.actualEndTime || visit.updatedAt || '').slice(0, 19)}`,
+    href: `/sales-planning/sales-orders/${request.salesOrderId}#install`,
+  };
+}
+
+/** ยิงจริง — fire-and-forget หลังปิดงานสำเร็จ · กระดิ่งพลาดต้องไม่ทำให้การส่งงานตอบ error */
+export function notifyInstallDone(supabase, args = {}) {
+  const deliver = async () => {
+    const notice = installDoneNotice(args);
+    if (!notice) return;
+    await notifyUsers(supabase, { ...notice, actorName: args.actor?.name || null });
+  };
+  const safe = () => deliver().catch((e) => console.error('[install-done] แจ้งฝ่ายขายไม่สำเร็จ:', e?.message));
   try {
     after(safe);
   } catch {

@@ -206,6 +206,11 @@ export function assetMovePatch(asset, kind, input = {}) {
     patch.installedAt = input.movedAt;
     patch.removedAt = null;          // กลับมาใช้งานแล้ว วันถอดเดิมไม่จริงอีกต่อไป
   }
+  /* ⭐ จุดที่ติดจริง (ขั้นเข้าติดตั้ง PR-5a · ช่างกรอกหน้างาน) — ส่งมาเฉพาะคำสั่งติดตั้งจากหน้างาน
+     ไม่ส่ง = ไม่แตะคอลัมน์ (คำสั่งติดตั้งจากทะเบียนเครื่องเดิมไม่เปลี่ยนพฤติกรรม) */
+  if (kind === 'install' && input.spot !== undefined) {
+    patch.spot = String(input.spot ?? '').trim().slice(0, 150) || null;
+  }
   if (kind === 'return' || kind === 'retire') {
     patch.removedAt = input.movedAt;
   }
