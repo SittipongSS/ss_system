@@ -15,12 +15,12 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { apiJson } from "@/lib/apiFetch";
-import { ATTACHMENT_TYPES, customerDocTypes, isRetiredAttachment } from "@/lib/master/attachmentTypes";
+import { ATTACHMENT_TYPES, customerDocTypes } from "@/lib/master/attachmentTypes";
 import { attachmentHref } from "@/lib/master/attachmentStorage";
 import { customerNameIn } from "@/lib/master/customerName";
 import { fmtDate, naText } from "@/lib/format";
 import {
-  ARTWORK_MISSING_LABEL, LEGACY_LABEL_DOC_TYPE, PRODUCT_ARTWORK_DOC_TYPE, usesLiveArtwork,
+  ARTWORK_MISSING_LABEL, LEGACY_LABEL_DOC_TYPE, PRODUCT_ARTWORK_DOC_TYPE, retiredArtworkNote, usesLiveArtwork,
 } from "@/lib/excise/registrationArtwork";
 import styles from "./RegistrationWorkModal.module.css";
 
@@ -369,11 +369,12 @@ export function SubmittedArtwork({ files, live }) {
           {list.map((file) => {
             const href = attachmentHref(file);
             const name = file.fileName || "ไม่มีชื่อไฟล์";
+            const retiredNote = retiredArtworkNote(file);
             return (
               <li key={file.id}>
                 {href ? <a href={href} target="_blank" rel="noreferrer" className="linklike">{name}</a> : name}
                 {file.docType === LEGACY_LABEL_DOC_TYPE ? <span className={styles.muted}> · แนบที่ทะเบียน (แบบเดิม)</span> : null}
-                {isRetiredAttachment(file) ? <span className={styles.muted}> · สินค้าเปลี่ยน Artwork แล้ว (ไฟล์นี้คือชุดที่ยื่น)</span> : null}
+                {retiredNote ? <span className={styles.muted}> · {retiredNote}</span> : null}
               </li>
             );
           })}

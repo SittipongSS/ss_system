@@ -7,8 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   ARTWORK_MISSING_LABEL, LEGACY_LABEL_DOC_TYPE, PRODUCT_ARTWORK_DOC_TYPE,
-  artworkSnapshotIds, currentProductArtwork, isArtworkReferenced, loadRegistrationArtwork,
-  registrationArtworkFiles, registrationHasArtwork, usesLiveArtwork,
+  MIGRATION_DUPLICATE_RETIRED_BY, artworkSnapshotIds, currentProductArtwork, isArtworkReferenced, loadRegistrationArtwork,
+  registrationArtworkFiles, registrationHasArtwork, retiredArtworkNote, usesLiveArtwork,
 } from './registrationArtwork.js';
 import { registrationMissing } from '../tax/requirements.js';
 import { ATTACHMENT_TYPES, requiredDocKeys, unsatisfiedRequiredDocs } from '../master/attachmentTypes.js';
@@ -175,4 +175,15 @@ test('แผงทะเบียนของฝ่ายขาย: ร่าง
   assert.doesNotMatch(panel, /registrationArtworkReuse|reuseProductArtwork|artwork-from-product/);
   const ra = code('../../app/tax/registrations/[id]/page.js');
   assert.match(ra, /<SubmittedArtwork files=\{s\.labelArtwork\}/);
+});
+
+test('ป้ายไฟล์ที่ทะเบียนยื่นแต่ไม่ใช่ของปัจจุบัน: สำเนาซ้ำที่ mig 0427 ซ่อน ≠ สินค้าเปลี่ยน Artwork (เจอบนจอหลังย้าย 09/11)', () => {
+  assert.equal(retiredArtworkNote(art('A', '1')), null, 'ของปัจจุบันไม่มีป้าย');
+  assert.match(retiredArtworkNote(retired(art('B', '1'))), /สินค้าเปลี่ยน Artwork แล้ว/);
+  const dup = { ...art('C', '1'), metadata: { retiredAt: '2026-11-09', retiredBy: MIGRATION_DUPLICATE_RETIRED_BY } };
+  assert.match(retiredArtworkNote(dup), /สำเนาที่ทะเบียนถือไว้/);
+  // ค่าคงที่ต้องตรงกับที่ 0427 ประทับจริง
+  const sql = read('../../../supabase/migrations/0427_move_registration_artwork_to_product.sql');
+  assert.match(sql, new RegExp(`'retiredBy', '${MIGRATION_DUPLICATE_RETIRED_BY}'`));
+  assert.match(code('../../components/excise/RegistrationWorkModal.js'), /retiredArtworkNote\(file\)/);
 });
