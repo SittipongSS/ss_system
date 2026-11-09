@@ -3,27 +3,42 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { exciseRegistrationBlocker, loadExciseRegistrationBlocker } from "./exciseRegistrationGate.js";
 
-/* ด่านทะเบียนของ SO ค่าสรรพสามิต (มติเจ้าของ 04/11 · V32) — ยื่นอนุมัติ/อนุมัติได้เมื่อทุก FG มีทะเบียนที่ RA อนุมัติแล้ว */
+/* ด่านทะเบียนของ SO ค่าสรรพสามิต (มติเจ้าของ 04/11 · V32 → ผ่อน 09/11 · V34)
+   ยื่นอนุมัติ/อนุมัติได้เมื่อทุก FG มีทะเบียนที่ RA อนุมัติแล้ว **หรือยื่นถึง RA แล้วรอตรวจ** */
 
 const chargeLine = (id, sourceLineId, fg, qty = 10) => ({
   id, qty, unitPrice: 97.87, description: `ค่าภาษี ${fg}`,
   metadata: { lineKind: "excise_charge", sourceSalesOrderLineId: sourceLineId, sourceFgCode: fg, excisePerUnit: 88.97, localPerUnit: 8.9 },
 });
 
-test("ครบทุก FG = ผ่าน · ขาด = บอกจำนวน + FG + ติดที่ใคร (ยังไม่มี · ร่าง · รอ RA · ตีกลับ)", () => {
-  assert.equal(exciseRegistrationBlocker([{ fgCode: "FG-1", needsRegistration: false }]), null);
+test("V34: อนุมัติแล้ว / ยื่นแล้วรอ RA ตรวจ = ผ่าน · ยังไม่มี · ร่าง · ตีกลับ = กัน พร้อมบอก FG + ติดที่ใคร", () => {
+  assert.equal(exciseRegistrationBlocker([{ fgCode: "FG-1", needsRegistration: false, registrationState: "approved" }]), null);
   assert.equal(exciseRegistrationBlocker([]), null);
+  assert.equal(
+    exciseRegistrationBlocker([{ fgCode: "FG-3", needsRegistration: true, registrationState: "pending" }]),
+    null,
+    "ยื่นขึ้นทะเบียนไป RA แล้ว (pending_legal) = ยื่นอนุมัติ SO ได้",
+  );
   const text = exciseRegistrationBlocker([
-    { fgCode: "FG-1", needsRegistration: false },
+    { fgCode: "FG-1", needsRegistration: false, registrationState: "approved" },
     { fgCode: "FG-2", needsRegistration: true, registrationState: "none" },
     { fgCode: "FG-3", needsRegistration: true, registrationState: "pending" },
     { fgCode: "FG-4", needsRegistration: true, registrationState: "draft" },
+    { fgCode: "FG-5", needsRegistration: true, registrationState: "rejected" },
+    { fgCode: "FG-6", needsRegistration: true },
   ]);
-  assert.match(text, /^ทะเบียนสรรพสามิตยังไม่อนุมัติ 3 รายการ — ใบค่าสรรพสามิตยื่นอนุมัติได้เมื่อทุก FG มีทะเบียนที่ฝ่าย RA อนุมัติแล้ว/);
+  assert.match(text, /^ทะเบียนสรรพสามิตยังไม่ได้ยื่นฝ่าย RA 4 รายการ — ใบค่าสรรพสามิตยื่นอนุมัติได้เมื่อทุก FG ยื่นขึ้นทะเบียนไปฝ่าย RA แล้ว \(รอ RA ตรวจก็ยื่นได้\)/);
   assert.match(text, /FG-2 \(ยังไม่ได้ขึ้นทะเบียนสรรพสามิต\)/);
-  assert.match(text, /FG-3 \(ยื่นขึ้นทะเบียนแล้ว รอนิติกรรมตรวจ\)/);
   assert.match(text, /FG-4 \(มีร่างทะเบียนค้างอยู่/);
-  assert.doesNotMatch(text, /FG-1/);
+  assert.match(text, /FG-5 \(ทะเบียนถูกตีกลับ ต้องแก้ก่อน\)/);
+  assert.match(text, /FG-6 \(ยังไม่ได้ขึ้นทะเบียนสรรพสามิต\)/, "ไม่รู้สถานะ = ถือว่ายังไม่มี (ไม่เดาว่าผ่าน)");
+  assert.doesNotMatch(text, /FG-1|FG-3/);
+});
+
+test("V34 ผ่อนเฉพาะด่าน SO — ด่านเริ่มยื่นของ RA (V4) ยังนับเฉพาะทะเบียนที่อนุมัติ", () => {
+  const rules = readFileSync(new URL("./raFilingRules.js", import.meta.url), "utf8");
+  assert.match(rules, /needsRegistration: !source\?\.registrationId/, "V4 ยังตัดสินจาก registrationId ของทะเบียนที่อนุมัติ");
+  assert.doesNotMatch(rules, /exciseRegistrationBlocker|SO_GATE_REGISTRATION_STATES/, "ด่าน RA ห้ามหยิบตัวผ่อนของ SO ไปใช้");
 });
 
 function fakeDb(order) {
@@ -47,9 +62,15 @@ test("ตัวโหลด: บรรทัดค่าสรรพสามิ
     ] };
   };
   const text = await loadExciseRegistrationBlocker(fakeDb(source), exciseOrder, { resolve });
-  assert.match(text, /ยังไม่อนุมัติ 1 รายการ/);
-  assert.match(text, /FG-2 \(ยื่นขึ้นทะเบียนแล้ว รอนิติกรรมตรวจ\)/);
-  const ok = await loadExciseRegistrationBlocker(fakeDb(source), { ...exciseOrder, lines: [exciseOrder.lines[0]] }, { resolve });
+  assert.equal(text, null, "FG-2 ยื่นถึง RA แล้วรอตรวจ = ผ่าน (V34)");
+  const draftResolve = async (db, order) => {
+    const out = await resolve(db, order);
+    return { lines: out.lines.map((l) => (l.fgCode === "FG-2" ? { ...l, registrationState: "draft" } : l)) };
+  };
+  const blocked = await loadExciseRegistrationBlocker(fakeDb(source), exciseOrder, { resolve: draftResolve });
+  assert.match(blocked, /ยังไม่ได้ยื่นฝ่าย RA 1 รายการ/);
+  assert.match(blocked, /FG-2 \(มีร่างทะเบียนค้างอยู่/);
+  const ok = await loadExciseRegistrationBlocker(fakeDb(source), { ...exciseOrder, lines: [exciseOrder.lines[0]] }, { resolve: draftResolve });
   assert.equal(ok, null, "รอบนี้มีแต่ FG ที่มีทะเบียน = ผ่าน (แบ่งรอบ: ตรวจเฉพาะบรรทัดของใบนี้)");
   await assert.rejects(() => loadExciseRegistrationBlocker(fakeDb(null), exciseOrder, { resolve }), /ไม่พบใบสั่งขายต้นทาง/, "หาไม่เจอ = throw ไม่ใช่ผ่าน");
   await assert.rejects(() => loadExciseRegistrationBlocker(fakeDb(source), { lines: [] }, { resolve }), /ไม่มีใบสั่งขายต้นทาง/);
