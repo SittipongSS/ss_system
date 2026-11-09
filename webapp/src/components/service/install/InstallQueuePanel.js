@@ -215,10 +215,10 @@ function InstallQueueRow({ row, canConfirm, onConfirm }) {
       </td>
       <td className={styles.act}>
         {row.stage === "awaiting_ts" && canConfirm ? reasked.map((v) => (
-          <Button key={v.id} size="sm" variant="primary" onClick={() => onConfirm(v)}>ยืนยันวันใหม่{reasked.length > 1 && v.code ? ` ${v.code}` : ""}</Button>
+          <Button key={v.id} size="sm" tone="primary" onClick={() => onConfirm(v)}>ยืนยันวันใหม่{reasked.length > 1 && v.code ? ` ${v.code}` : ""}</Button>
         )) : null}
         {row.stage === "awaiting_ts" && canConfirm && openZones.length ? (
-          <Button size="sm" variant={reasked.length ? "ghost" : "primary"} onClick={() => onConfirm(null)}>ยืนยันวัน</Button>
+          <Button size="sm" tone={reasked.length ? undefined : "primary"} onClick={() => onConfirm(null)}>ยืนยันวัน</Button>
         ) : null}
         {stuck.length ? <span className="cell-sub">คอนเฟิร์มลูกค้าแล้ว แต่ติดด่าน — ปล่อยขึ้นตารางที่หน้าจัดคิว</span> : null}
         {row.stage === "awaiting_deposit" ? <span className="cell-sub">รอมัดจำ · ยังยืนยันวันไม่ได้</span> : null}

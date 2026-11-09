@@ -127,7 +127,7 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
         <div className={styles.footer}>
           {check.error ? <span className={styles.why} role="status">{check.error}</span> : <span />}
           <Button variant="ghost" onClick={onClose} disabled={saving}>ยกเลิก</Button>
-          <Button variant="primary" onClick={submit} disabled={saving || Boolean(check.error)}>
+          <Button tone="primary" onClick={submit} disabled={saving || Boolean(check.error)}>
             {saving ? "กำลังส่ง…" : reconfirm ? "ยืนยันวันใหม่ · ส่งให้ฝ่ายขาย" : "ยืนยันวัน · ส่งให้ฝ่ายขาย"}
           </Button>
         </div>

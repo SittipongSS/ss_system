@@ -12,7 +12,7 @@ test('🔴 งานวันนี้: นัดประเมินต้อ�
   const page = code(read('../../app/service/today/page.js'));
   // ปุ่ม "ปิดงาน/แก้ผลการเข้า" บนการ์ดขึ้นเฉพาะนัดที่ไม่ใช่นัดประเมิน
   // (28/09 Q3: "แก้ผลการเข้า" ไม่ขึ้นให้ช่างด้วย — ยามของเงื่อนไขนั้นอยู่ที่ fieldWorkAccess.test.mjs)
-  assert.match(page, /canEdit && !surveyLink && \(running \|\| \(done && !crewShell\)\)/);
+  assert.match(page, /canEdit && !surveyLink && !installLink && \(running \|\| \(done && !crewShell\)\)/);
   // ปุ่มส่งงานของนัดประเมินพาไปโมดัลบนจอประเมิน
   assert.match(page, /\/service\/surveys\/\$\{visit\.requestId\}\?submit=1/);
 });

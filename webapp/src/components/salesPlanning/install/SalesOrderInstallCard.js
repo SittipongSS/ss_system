@@ -169,7 +169,7 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
                 {canAsk ? (
                   <Button
                     size="sm"
-                    variant={asked ? "ghost" : "primary"}
+                    tone={asked ? undefined : "primary"}
                     disabled={tsConfirmed}
                     title={tsConfirmed ? "TS ยืนยันวันแล้ว — เปลี่ยนวันผ่านขั้นคอนเฟิร์มลูกค้า" : undefined}
                     onClick={() => { setError(""); setAskFor(site); }}
@@ -178,7 +178,7 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
                   </Button>
                 ) : null}
                 {writable ? (site.visits || []).filter((v) => v.awaitingCustomer).map((v) => (
-                  <Button key={v.id} size="sm" variant="primary" onClick={() => { setError(""); setCustomerFor({ site, visit: v }); }}>
+                  <Button key={v.id} size="sm" tone="primary" onClick={() => { setError(""); setCustomerFor({ site, visit: v }); }}>
                     คอนเฟิร์มลูกค้า{(site.visits || []).filter((x) => x.awaitingCustomer).length > 1 && v.code ? ` ${v.code}` : ""}
                   </Button>
                 )) : null}

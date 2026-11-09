@@ -67,7 +67,7 @@ export default function InstallRequestModal({ orderId, site, deposit, todayIso, 
         <div className={styles.footer}>
           {check.error ? <span className={styles.why} role="status">{check.error}</span> : <span />}
           <Button variant="ghost" onClick={onClose} disabled={saving}>ยกเลิก</Button>
-          <Button variant="primary" onClick={submit} disabled={saving || Boolean(check.error)}>
+          <Button tone="primary" onClick={submit} disabled={saving || Boolean(check.error)}>
             {saving ? "กำลังส่ง…" : before ? "บันทึกคำขอ" : "ขอคิวติดตั้ง"}
           </Button>
         </div>
