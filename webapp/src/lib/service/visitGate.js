@@ -26,6 +26,8 @@ import { fmtDate } from '@/lib/format';
 import { paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 // ใบย้อนหลังแก้ด้วย Rev. ไม่ได้ — เหตุของโซนที่ไม่อยู่ในใบย้อนหลังต้องชี้ทางแก้ของมันเอง (ไฟล์ logic ล้วน)
 import { HISTORICAL_CORRECTION_PATH, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+// ด่านมัดจำก่อนติดตั้ง (mig 0425) — ตัวเดียวกับคิวติดตั้ง (installQueue) · ไฟล์ logic ล้วน
+import { INSTALL_DEPOSIT_TEXT, installDepositGate } from './installDeposit';
 
 /* สถานะของแต่ละข้อ
    · ok      — ผ่าน
@@ -102,10 +104,18 @@ export function evaluateVisitGate(visit, {
   installmentsByOrderId = {},
   contractsById = {},
   setupOrdersByZone = {},
+  installRequestsById = {},
+  visitZonesByVisitId = {},
   todayIso = null,
 } = {}) {
   const items = [];
   const pick = (map, key) => (map instanceof Map ? map.get(key) : map?.[key]) || null;
+  /* ⭐ นัดติดตั้งที่มีคำขอคิว (mig 0425) เดินกติกาของตัวเอง — ดู `evaluateInstallVisitGate` */
+  if (isInstallStepVisit(visit)) {
+    return evaluateInstallVisitGate(visit, {
+      site, zones, ordersById, installmentsByOrderId, installRequestsById, visitZonesByVisitId, pick,
+    });
+  }
   const visitDate = visit?.scheduledDate || todayIso || null;
   const exempt = visitSkipsContractGates(visit);
 
@@ -294,24 +304,116 @@ export function evaluateVisitGate(visit, {
   // ผลรายโซนติดไปกับด่านเสมอ — ใบส่งงาน/ปิดงานอ่านจากตรงนี้ ไม่คิดเงื่อนไขเอง
   items.zoneGates = zoneGates;
 
-  // ── 3. มีเจ้าหน้าที่ผู้รับผิดชอบ ───────────────────────────────────────────
+  // ── 3. มีเจ้าหน้าที่ผู้รับผิดชอบ · 4. วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า ──────────────────
+  items.push(assigneeItem(visit), accessItem(site, visit));
+
+  return items;
+}
+
+/* ข้อ ③④ — ของ TS · ใช้ร่วมระหว่างด่านนัดตามรอบกับด่านนัดติดตั้ง (ข้อเดียวกันทุกไบต์ ห้ามเขียนสองที่) */
+function assigneeItem(visit) {
   const hasAssignee = !!String(visit?.assigneeId ?? '').trim();
-  items.push({
+  return {
     key: 'assignee', state: hasAssignee ? 'ok' : 'blocked', owner: GATE_OWNERS.TS,
     label: 'มีเจ้าหน้าที่ผู้รับผิดชอบ',
     detail: hasAssignee ? (visit.assigneeName || null) : 'ยังไม่มอบหมาย — เลือกเจ้าหน้าที่บริการก่อนปล่อยขึ้นตาราง',
     fix: hasAssignee ? null : 'assignee',
-  });
+  };
+}
 
-  // ── 4. วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า ────────────────────────────
+function accessItem(site, visit) {
   const conflict = site ? accessConflict(site, {
     date: visit?.scheduledDate, startTime: visit?.startTime, endTime: visit?.endTime,
   }) : null;
-  items.push({
+  return {
     key: 'access', state: conflict ? 'blocked' : 'ok', owner: GATE_OWNERS.TS,
     label: 'วันนัดอยู่ในช่วงที่ไซต์ยอมให้เข้า',
     detail: conflict ? conflict.message : null,
     fix: conflict ? 'schedule' : null,
+  };
+}
+
+/* ── ด่านนัดติดตั้งที่เกิดจากคำขอคิว (mig 0425 · มติ 02/11 + 09/11/2026) ──────────────────────────────
+   ⭐ เลือกกติกาชุดนี้เฉพาะนัด `install` ที่มี `installRequestId` — นัด install เดิม (ก่อน 0425 · ไม่มีต้นเรื่อง)
+      เดินด่านเดิมทุกข้อ ไม่ขยับ (ร่างเก่าต้องไม่ติดข้อใหม่จนขึ้นตารางไม่ได้)
+   ⭐ ต่างจากนัดตามรอบสามข้อ:
+      ① สัญญา **ไม่ตรวจ** — สัญญาทำหลังทุกไซต์ติดตั้งเสร็จ (สัญญาระบุจำนวนเครื่อง + จุดที่ติด) · ข้อนี้ขึ้นเหตุ ไม่ผ่านเงียบ
+      ② เงิน = งวด "ก่อนติดตั้ง" รับรองครบ (`installDepositGate`) ไม่ใช่ paidThrough — ติดตั้งอาจเกิดก่อนช่วงบริการเริ่ม
+      ⑤ นัดยืนยันกับลูกค้าแล้ว — ฝ่ายขายคอนเฟิร์ม **ทุกครั้ง** (มติ 09/11 N4) · ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยัน = กลับไปรอ TS
+   ⭐ โซนของนัดอ่านจาก `service_visit_zones` (TS แยกโซนเป็นหลายนัดได้) — ไม่อ่านรอบขายของโซน
+      (ติดตั้งก่อนวันเริ่มช่วงบริการได้ · รอบขายที่ "ไม่มีผล ณ วันนัด" ต้องไม่ทำให้นัดติดตั้งติด) */
+export const isInstallStepVisit = (visit) =>
+  visit?.kind === 'install' && !!String(visit?.installRequestId ?? '').trim();
+
+export const INSTALL_GATE_TEXT = Object.freeze({
+  contractDetail: 'งานติดตั้งไม่ต้องมีสัญญาก่อน — สัญญาทำหลังทุกไซต์ติดตั้งเสร็จ (มติ 09/11/2026)',
+  noRequest: 'ไม่พบคำขอคิวติดตั้งของนัดนี้ — เปิดใบสั่งขายตรวจคำขอก่อน',
+  zonesLabel: 'นัดติดตั้งมีโซน',
+  noZones: 'นัดติดตั้งนี้ยังไม่มีโซน — TS เลือกโซนตอนยืนยันวัน',
+  appointmentLabel: 'นัดยืนยันกับลูกค้าแล้ว',
+  reasked: 'ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยัน — TS ยืนยันวันใหม่',
+  waitCustomer: 'รอฝ่ายขายโทรคอนเฟิร์มนัดกับลูกค้า',
+});
+
+/* ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยันแล้วไหม — ฝ่ายขายขอคิวใหม่ (`requestedAt` เดิน) หลังเวลาที่ TS ยืนยันนัดนี้
+   ⚠️ เทียบเวลาเป็นตัวเลข ไม่เทียบสตริง (ISO คนละ timezone เรียงผิด) · ไม่มีเวลาฝั่งไหน = ไม่ถือว่าขอใหม่ */
+export function installReaskedAfterConfirm(request, visit) {
+  const asked = Date.parse(request?.requestedAt || '');
+  const confirmed = Date.parse(visit?.tsConfirmedAt || '');
+  return Number.isFinite(asked) && Number.isFinite(confirmed) && asked > confirmed;
+}
+
+function evaluateInstallVisitGate(visit, {
+  site, zones, ordersById, installmentsByOrderId, installRequestsById, visitZonesByVisitId, pick,
+}) {
+  const items = [];
+  const request = pick(installRequestsById, visit.installRequestId);
+  const order = request ? pick(ordersById, request.salesOrderId) : null;
+  const rows = request ? (pick(installmentsByOrderId, request.salesOrderId) || []) : [];
+
+  items.push({
+    key: 'contract', state: 'ok', owner: GATE_OWNERS.SA,
+    label: 'ไซต์ผูกสัญญาที่ยังมีผล ณ วันนัด',
+    detail: INSTALL_GATE_TEXT.contractDetail,
+  });
+
+  const deposit = request
+    ? installDepositGate(order, rows)
+    : { state: 'blocked', reason: INSTALL_GATE_TEXT.noRequest, detail: null };
+  items.push({
+    key: 'payment', state: deposit.state, owner: GATE_OWNERS.FN,
+    label: INSTALL_DEPOSIT_TEXT.label,
+    detail: deposit.state === 'blocked' ? deposit.reason : deposit.detail,
+  });
+
+  /* ผลรายโซน — ใบส่งงาน/ปิดงานอ่านจากตรงนี้เหมือนนัดตามรอบ · ด่านมัดจำเป็นระดับใบ ⇒ ทุกโซนผลเดียวกัน */
+  const zoneIds = new Set((pick(visitZonesByVisitId, visit.id) || []).map(String));
+  const visitZones = (zones || []).filter((z) => z && zoneIds.has(String(z.id)));
+  const zoneGates = visitZones.map((zone) => (deposit.state === 'blocked'
+    ? { zoneId: zone.id, zoneName: zone.name || null, state: 'blocked', gate: 'payment', owner: GATE_OWNERS.FN, reason: deposit.reason }
+    : { zoneId: zone.id, zoneName: zone.name || null, state: 'ok', owner: null, reason: null }));
+  items.zoneGates = zoneGates;
+
+  // 🔴 นัดที่ไม่มีโซน = ติด ไม่ใช่ผ่าน (กติกาเดียวกับไซต์ที่ไม่มีโซนของนัดตามรอบ) — ไม่มีอะไรให้ติดตั้ง
+  if (!visitZones.length) {
+    items.push({
+      key: 'zones', state: 'blocked', owner: GATE_OWNERS.TS,
+      label: INSTALL_GATE_TEXT.zonesLabel, detail: INSTALL_GATE_TEXT.noZones,
+    });
+  }
+
+  items.push(assigneeItem(visit), accessItem(site, visit));
+
+  const reasked = installReaskedAfterConfirm(request, visit);
+  const customerOk = !!visit.customerConfirmedAt && !reasked;
+  items.push({
+    key: 'appointment',
+    state: customerOk ? 'ok' : 'blocked',
+    owner: reasked ? GATE_OWNERS.TS : GATE_OWNERS.SA,
+    label: INSTALL_GATE_TEXT.appointmentLabel,
+    detail: customerOk
+      ? [visit.customerConfirmedByName, visit.customerConfirmedAt ? fmtDate(visit.customerConfirmedAt) : null].filter(Boolean).join(' · ') || null
+      : (reasked ? INSTALL_GATE_TEXT.reasked : INSTALL_GATE_TEXT.waitCustomer),
   });
 
   return items;

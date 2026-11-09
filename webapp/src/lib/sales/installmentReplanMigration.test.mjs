@@ -185,6 +185,8 @@ test('สิทธิ์: REVOKE จาก PUBLIC/anon/authenticated · GRANT EX
      · ทำไมไม่อยู่ใน RPC: ตัวปรับแผน (replan RPC) อยู่ในลายนิ้วมือที่ห้ามแตะ · แกนเขียนแผนถูกเรียกกลางทางของตัวยกเงิน (ก่อน C2b — ส่วนแบ่ง
        ของงวดที่ C2a ถอดชั่วคราวจะถูกแจกซ้ำ) ⇒ ต้องรอให้ RPC จบทั้งก้อนก่อน (ฮาร์เนส PGlite: ตัวเดียวกันแบบ NOT DEFERRABLE ทำให้ยกเงินล้มด้วย
        installment_actual_counted_row_delete) · ยามรูปทรงอยู่ที่ soInstallmentActualMigration.test.mjs
+   · `so_installment_before_install_guard` (0425 · ขั้นเข้าติดตั้ง) — BEFORE UPDATE OF "beforeInstall" · ด่านปฏิเสธล้วน (ไม่เขียนแถว):
+       ห้ามแก้ธง "ก่อนติดตั้ง" ของงวดที่บัญชีรับรองแล้ว · คำสั่งที่ไม่เอ่ยคอลัมน์ธง (ปรับแผน · ย้ายใบ · รับรอง) ไม่ปลุก
      ⇒ trigger อื่นที่เขียนทับแถวงวดยังห้ามทั้งหมด */
 const INSTALLMENT_TRIGGER_EXCEPTIONS = Object.freeze({
   '0387_historical_so_cancel_settles_opening.sql': ['sales_order_installments_historical_cancelled_guard'],
@@ -192,8 +194,9 @@ const INSTALLMENT_TRIGGER_EXCEPTIONS = Object.freeze({
     'sales_order_installments_actual_guard', 'sales_order_installments_actual_sync', 'sales_order_installments_actual_delete_guard',
     'sales_order_installments_actual_autocount',
   ],
+  '0425_service_install_step.sql': ['so_installment_before_install_guard'],
 });
-test('ทุก migration: ไม่มี CREATE TRIGGER บน sales_order_installments (ยกเว้นด่านปฏิเสธของ 0387 และสี่ตัว Actual รายงวดของ 0412)', () => {
+test('ทุก migration: ไม่มี CREATE TRIGGER บน sales_order_installments (ยกเว้นด่านปฏิเสธของ 0387 · สี่ตัว Actual รายงวดของ 0412 · ยามธงก่อนติดตั้งของ 0425)', () => {
   const found = {};
   for (const n of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
     const names = [...stripComments(mig(n))
