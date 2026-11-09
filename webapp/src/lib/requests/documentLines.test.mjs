@@ -23,8 +23,9 @@ test('⭐ "อื่น ๆ" ต้องมีรายละเอียด �
 
 test('ชนิดเดียวกันซ้ำได้ถ้ารายละเอียดต่าง — ขอ Spec Sheet สองสินค้าคือคนละใบ', () => {
   const rows = [
-    { docType: 'spec_sheet', spec: 'สินค้า A' },
-    { docType: 'spec_sheet', spec: 'สินค้า B' },
+    // ⭐ 09/11/2026 (P2b): Spec Sheet ต้องเลือก FG — ฟิกซ์เจอร์ส่ง FG เดียวกันเพื่อทดสอบกติกา "รายละเอียดต่าง" ตามเดิม
+    { docType: 'spec_sheet', productId: 'PRD-1', spec: 'สินค้า A' },
+    { docType: 'spec_sheet', productId: 'PRD-1', spec: 'สินค้า B' },
   ];
   assert.equal(normalizeDocumentItems(rows).error, null);
   // ซ้ำทั้งคู่ = ของชิ้นเดียวกัน
@@ -32,7 +33,7 @@ test('ชนิดเดียวกันซ้ำได้ถ้าราย�
 });
 
 test('label เป็นชื่อชนิด — คอลัมน์เป็น NOT NULL และต้องอ่านออกโดยไม่ต้องแปลรหัส', () => {
-  const { items } = normalizeDocumentItems([{ docType: 'msds' }]);
+  const { items } = normalizeDocumentItems([{ docType: 'msds', productId: 'PRD-1' }]);
   assert.equal(items[0].label, docTypeLabel('msds'));
   assert.equal(items[0].lineKind, 'document');
   assert.equal(items[0].docType, 'msds');
@@ -51,7 +52,7 @@ test('ทะเบียนชนิดต้องมีทางออก "อ
 });
 
 test('⭐ ม-156 Specification Sheet แทน COA — ใบใหม่เลือก COA ไม่ได้ แต่ใบเก่ายังอ่านชื่อออก', () => {
-  assert.equal(normalizeDocumentItems([{ docType: 'spec_sheet' }]).error, null);
+  assert.equal(normalizeDocumentItems([{ docType: 'spec_sheet', productId: 'PRD-1' }]).error, null);
   assert.equal(docTypeLabel('spec_sheet'), 'Specification Sheet');
 
   // แผ่นเลือก + ตัวตรวจ ไม่มี COA แล้ว

@@ -122,11 +122,15 @@ const DEAL = { id: 'D-1', projectId: null, customerId: 'C-1', customerName: 'บ
 const SITE = { id: 'SITE-1', code: 'SS-0001', name: 'โรงแรมทดสอบ', customerId: 'C-1' };
 const QUOTATION = { id: 'QT-1', dealId: 'D-1', status: 'approved', approvalStatus: 'approved', totalAmount: 10700, subtotal: 10000 };
 
+// FG ของลูกค้ารายเดียวกับดีล — บรรทัด MSDS ของคำร้องขอเอกสารต้องผูก FG ที่มีจริง (mig 0428 · P2b)
+const PRODUCT = { id: 'PRD-1', fgCode: 'FG-0001-01-002-10001', customerId: 'C-1' };
+
 const world = ({ hook = null } = {}) => fakeDb({
   sales_deals: [DEAL],
   service_sites: [SITE],
   service_zones: [],
   quotations: [QUOTATION],
+  products: [PRODUCT],
 }, { hook });
 
 const RESULT = '2026-10-25';
@@ -363,7 +367,7 @@ const OTHER_KINDS = {
   info: () => ({ kind: 'info', dept: 'RD', title: 'สอบถามสเปก', dealId: 'D-1', requestedDueDate: '2026-10-20' }),
   document: () => ({
     kind: 'document', title: 'ขอเอกสาร MSDS', dealId: 'D-1', requestedDueDate: '2026-10-20',
-    items: [{ docType: 'msds', spec: 'MSDS ภาษาไทย' }],
+    items: [{ docType: 'msds', productId: 'PRD-1', spec: 'MSDS ภาษาไทย' }],   // P2b: MSDS ต้องเลือก FG
   }),
   billing_doc: () => ({
     kind: 'billing_doc', title: 'ขอใบวางบิล', quotationId: 'QT-1', billAmount: 5350, requestedDueDate: '2026-10-20',

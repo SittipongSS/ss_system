@@ -1436,6 +1436,7 @@ export default function RequestForm({
         onChange={(rows) => set({ items: rows })}
         categories={productTypes}
         scents={scents}
+        products={products}
         customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
         disabled={disabled}
         linesDisabled={linesDisabled}

@@ -49,8 +49,9 @@ export function docTypeNeedsDetail(value) {
 //
 // ⚠️ เอาสองชุดมารวมลิสต์เดียวไม่ได้ — คำร้องขอเอกสารของ RD จะมีตัวเลือก
 // "ใบกำกับภาษี" โผล่ขึ้นมา ซึ่งไม่ใช่ของที่ RD ออกให้ได้
-export function docVocabulary({ lineKind, types, detailValue = 'other' }) {
+export function docVocabulary({ lineKind, types, detailValue = 'other', productDocTypes = [] }) {
   const byValue = new Map(types.map((t) => [t.value, t]));
+  const productTargets = new Set(productDocTypes);
   // ชื่ออ่านได้ทุกชนิด · เลือก/ส่งได้เฉพาะชนิดที่ยังไม่เลิก (`retired`)
   const offered = types.filter((t) => !t.retired);
   return {
@@ -60,11 +61,18 @@ export function docVocabulary({ lineKind, types, detailValue = 'other' }) {
     // ⚠️ ชนิดที่ไม่รู้จักคืนค่าดิบ ไม่ใช่ค่าว่าง — ของเก่าที่บันทึกด้วยชุดอื่นต้องยังอ่านออก
     label: (value) => byValue.get(value)?.label || String(value ?? '') || '—',
     needsDetail: (value) => value === detailValue,
+    /* ⭐ ชนิดที่ **เก็บที่ FG** (ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026) — บรรทัดชนิดนี้ต้องเลือก FG และ RD ส่งงาน
+       แล้วไฟล์ลงที่สินค้า (docType ของสินค้าคีย์เดียวกัน) · ชุดคำศัพท์อื่น (บัญชี) ไม่มี = ไม่มีบรรทัดไหนต้องเลือก FG */
+    productTarget: (value) => productTargets.has(value),
   };
 }
 
+/* ⭐ MSDS กับ Specification Sheet = ระดับ FG · RD ออก · เก็บที่สินค้า (มติเจ้าของ 09/11/2026) — คีย์ของคำร้องตรงกับ docType ของสินค้า
+   (`RD_PRODUCT_DOC_TYPES` ใน lib/master/attachmentTypes.js · เทสต์ยึดให้ตรงกัน) · IFRA เป็นของกลิ่น (งวด P3) ยังไม่อยู่ในชุดนี้ */
+export const REQUEST_PRODUCT_DOC_TYPES = Object.freeze(['msds', 'spec_sheet']);
+
 export const REQUEST_DOC_VOCABULARY = docVocabulary({
-  lineKind: 'document', types: REQUEST_DOC_TYPES,
+  lineKind: 'document', types: REQUEST_DOC_TYPES, productDocTypes: REQUEST_PRODUCT_DOC_TYPES,
 });
 
 // ── รูปร่างบรรทัดที่เป็น "เอกสาร" — ที่เดียวของระบบ ──────────────────────

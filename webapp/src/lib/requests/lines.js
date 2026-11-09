@@ -127,16 +127,29 @@ export function normalizeDocLines(input, vocab) {
       return { items: [], error: `${at}: เลือก "อื่น ๆ" ต้องระบุว่าขอเอกสารอะไร` };
     }
 
+    /* ⭐ ชนิดที่เก็บที่ FG (MSDS · Spec Sheet — ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026) **บังคับเลือก FG**
+       ⚠️ บังคับเฉพาะบรรทัดใหม่ (ไม่มี `id`) — บรรทัดเดิมก่อนมติไม่ถูกบังคับย้อนหลัง (แก้ใบเก่าต้องผ่านได้) แต่ใส่ FG เพิ่มได้
+       ⚠️ ชนิดอื่นทิ้งค่า FG เสมอ — FG ที่ค้างจากตอนเลือกชนิดเดิมต้องไม่ติดไปกับบรรทัด IFRA/อื่น ๆ
+       ⚠️ ที่นี่ตรวจแค่ "เลือกแล้วไหม" · "FG มีจริงและเป็นของลูกค้าของใบไหม" ต้องอ่านฐาน ⇒ อยู่ที่ `resolveLineLabels` */
+    const rowId = String(raw.id ?? '').trim() || null;
+    const productTarget = Boolean(vocab.productTarget?.(docType));
+    const productId = productTarget ? (String(raw.productId ?? '').trim() || null) : null;
+    if (productTarget && !productId && !rowId) {
+      return { items: [], error: `${at}: เลือก FG ที่ขอ ${vocab.label(docType)}` };
+    }
+
     // ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน (ขอ COA ของสองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน
-    const key = `${docType}::${spec.toLowerCase()}`;
+    // ⭐ + FG: ขอ MSDS ของสอง FG ในใบเดียวได้ (คนละของกัน)
+    const key = `${docType}::${productId || ''}::${spec.toLowerCase()}`;
     if (seen.has(key)) return { items: [], error: `${at}: ซ้ำกับรายการก่อนหน้า` };
     seen.add(key);
 
     items.push({
       // id ของแถวเดิม — เหตุผลเดียวกับบรรทัดพัฒนาสูตรข้างบน
-      id: String(raw.id ?? '').trim() || null,
+      id: rowId,
       lineKind: vocab.lineKind,
       docType,
+      productId,
       // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร
       label: vocab.label(docType),
       spec: spec || null,
