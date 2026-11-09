@@ -4,6 +4,8 @@
    ยื่นให้ RA · ดูเหตุที่ตีกลับ · แก้แล้วยื่นใหม่ — **ตัวเดียว** ของหน้าสินค้า FG และหน้า SO ลูกค้า (V8 ฟอร์มเดียว)
    ⭐ ข้อมูล/ด่านเป็นชุดเดียวกับหน้า /tax/registrations/[id] ของ RA: GET `?full=1` · GET `/requirements` (ตัวตรวจตัวเดียวกับด่าน
       ยื่นของ server) · PATCH `{ status: 'pending_legal' }` · AttachmentsPanel ของทะเบียน + ของลูกค้า (เอกสารลูกค้าเก็บที่ลูกค้าที่เดียว)
+   ⭐ ฉลาก/Artwork ที่ยื่น = **Artwork ของสินค้า** (ศูนย์กลางเอกสารของสินค้า P1 · มติเจ้าของ 09/11/2026) — แนบที่แผงนี้ = แนบที่สินค้า
+      (ไฟล์ชุดเดียวกับแท็บเอกสารของสินค้า) · ทะเบียนที่ยื่นแล้วโชว์ชุดที่ตรึงไว้ตอนยื่น (`reg.labelArtwork` จาก GET ?full=1)
    ⚠️ ปุ่มยื่นติดด่าน = ปุ่มยังอยู่ กดไม่ได้พร้อมเหตุ (กติกา "ติดด่าน = โชว์แล้วบอกเหตุ") · server ตรวจซ้ำทุกครั้ง */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -13,10 +15,13 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import StatusBadge from "@/components/excise/StatusBadge";
 import { apiJson } from "@/lib/apiFetch";
-import { ATTACHMENT_TYPES, customerDocTypes } from "@/lib/master/attachmentTypes";
+import { ATTACHMENT_TYPES, customerDocTypes, isRetiredAttachment } from "@/lib/master/attachmentTypes";
+import { attachmentHref } from "@/lib/master/attachmentStorage";
 import { customerNameIn } from "@/lib/master/customerName";
 import { fmtDate, naText } from "@/lib/format";
-import { REUSE_TARGET_DOC_TYPE, reusableProductArtwork, reuseProductArtwork } from "@/lib/excise/registrationArtworkReuse";
+import {
+  ARTWORK_MISSING_LABEL, LEGACY_LABEL_DOC_TYPE, PRODUCT_ARTWORK_DOC_TYPE, usesLiveArtwork,
+} from "@/lib/excise/registrationArtwork";
 import styles from "./RegistrationWorkModal.module.css";
 
 /* ── การ์ดเอกสารในแผงนี้ = ตามด่านยื่นจริง (`lib/tax/requirements.js`) ไม่ใช่ตามทะเบียนลูกค้า (มติเจ้าของ 04/11/2026) ──
@@ -30,8 +35,14 @@ const registrationCustomerDocTypes = (customerType) => customerDocTypes(customer
    ⚠️ ถอดการ์ดเฉพาะตอนที่ยังไม่มีไฟล์ชนิดนี้ — มีไฟล์แล้ว (ทะเบียนที่ถูกปลดอนุมัติกลับมาแก้) ต้องเห็นในการ์ดของมัน
       ไม่งั้นแผงจัดไฟล์นั้นไปกอง "เอกสารอื่นๆ" (`panelItemsByType`) */
 const APPROVAL_LETTER_DOC = "approval_letter";
-const registrationDocTypes = (status, hasApprovalLetter) => ATTACHMENT_TYPES.registration.filter((type) => type.key !== APPROVAL_LETTER_DOC
-  || status === "approved" || hasApprovalLetter);
+/* ⚠️ การ์ดฉลากแบบเดิม (`label_artwork`) โผล่เฉพาะทะเบียนที่ยังมีไฟล์ชนิดนั้นค้าง (ก่อนรัน mig 0427) — ฉลากใหม่แนบที่สินค้าเสมอ */
+const registrationDocTypes = (status, hasApprovalLetter, hasLegacyLabel) => ATTACHMENT_TYPES.registration.filter((type) => {
+  if (type.key === APPROVAL_LETTER_DOC) return status === "approved" || hasApprovalLetter;
+  if (type.key === LEGACY_LABEL_DOC_TYPE) return hasLegacyLabel;
+  return true;
+});
+/* การ์ดเดียวของแผง Artwork — ชนิดเดียวกับการ์ด "Artwork สินค้า" ของแท็บเอกสาร (ไฟล์ชุดเดียวกัน) แต่ป้ายบอกว่าใช้ยื่น */
+const ARTWORK_CARD = [{ key: PRODUCT_ARTWORK_DOC_TYPE, label: ARTWORK_MISSING_LABEL, required: true }];
 
 /* ของที่ขาดแต่ละชนิดแก้ที่ไหน — เอกสาร/ข้อมูลลูกค้าเก็บที่ลูกค้า · ราคาขายปลีกเก็บที่สินค้า · ไฟล์ของทะเบียนแนบในแผงนี้ */
 const fixHint = (item, reg) => {
@@ -127,11 +138,8 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   const [reqError, setReqError] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  /* ไฟล์ของทะเบียน (จากแผงไฟล์แนบ) + Artwork ของสินค้า — ใช้หาไฟล์ที่ "ใช้ไฟล์นี้ยื่น" ได้ · `regFilesKey` = บังคับแผงโหลดใหม่หลังคัดลอก */
+  /* ไฟล์ของทะเบียนเอง (ใบอนุมัติ · อื่น ๆ · ฉลากแบบเดิมที่ยังไม่ย้าย) — ใช้ตัดสินว่าการ์ดไหนต้องโผล่ */
   const [regFiles, setRegFiles] = useState([]);
-  const [productFiles, setProductFiles] = useState([]);
-  const [regFilesKey, setRegFilesKey] = useState(0);
-  const [reuseNote, setReuseNote] = useState("");
 
   const load = useCallback(async () => {
     if (!registrationId) return;
@@ -170,45 +178,20 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   const onCustomerFiles = useCallback((_, meta) => {
     if (meta?.loaded) checkRequirements();
   }, [checkRequirements]);
+  /* Artwork ของสินค้าเปลี่ยน (แนบ/ลบในแผงนี้) = ด่านยื่นเปลี่ยน — ตัวรับคงตัวด้วยเหตุผลเดียวกับข้างบน */
+  const onArtworkFiles = useCallback((_, meta) => {
+    if (meta?.loaded) checkRequirements();
+  }, [checkRequirements]);
   /* ชุดการ์ดของสองแผง — คงตัวด้วย useMemo (แผงผูก callback บางตัวกับ `types` · ชุดใหม่ทุก render = สร้าง handler ใหม่ทุกรอบ) */
   const regStatus = reg?.status || null;
   const hasApprovalLetter = regFiles.some((file) => file.docType === APPROVAL_LETTER_DOC);
-  const regDocTypes = useMemo(() => registrationDocTypes(regStatus, hasApprovalLetter), [regStatus, hasApprovalLetter]);
+  const hasLegacyLabel = regFiles.some((file) => file.docType === LEGACY_LABEL_DOC_TYPE);
+  const regDocTypes = useMemo(() => registrationDocTypes(regStatus, hasApprovalLetter, hasLegacyLabel),
+    [regStatus, hasApprovalLetter, hasLegacyLabel]);
   const customerType = reg?.customer?.customerType;
   const custDocTypes = useMemo(() => registrationCustomerDocTypes(customerType), [customerType]);
 
-  /* Artwork ของสินค้า — อ่านอย่างเดียว ไม่มีผลกับด่าน · อ่านไม่ได้ = ไม่มีปุ่มให้กด (ยังแนบเองได้ตามเดิม) */
   const productId = reg?.productId || item.productId || null;
-  useEffect(() => {
-    if (!productId || !canEdit) return undefined;
-    let alive = true;
-    apiJson(`/api/attachments?entityType=product&entityId=${encodeURIComponent(productId)}`, { fallbackError: "โหลด Artwork ของสินค้าไม่สำเร็จ" })
-      .then((rows) => { if (alive) setProductFiles(Array.isArray(rows) ? rows : []); })
-      .catch(() => { if (alive) setProductFiles([]); });
-    return () => { alive = false; };
-  }, [productId, canEdit]);
-
-  /* ⭐ "ใช้ไฟล์นี้ยื่น" (มติเจ้าของ 04/11/2026) — คัดลอก Artwork ของสินค้าเป็น "ฉลาก / Artwork ที่ยื่น" ของทะเบียนทีละไฟล์
-     (server คัดลอกไบต์ + ออกใบรับ แล้วแนบผ่านเส้นไฟล์แนบเส้นเดียว — ดู `lib/excise/registrationArtworkReuse.js`)
-     ⚠️ ไม่ลองซ้ำเอง — ไฟล์ที่ไม่ผ่านบอกเหตุ ไฟล์ที่ผ่านแล้วถูกนับว่าใช้แล้ว (server กันสำเนาที่สองด้วย `sourceAttachmentId`) */
-  const reuseArtwork = async (files) => {
-    setBusy("reuse");
-    setError("");
-    setReuseNote("");
-    let copied = 0;
-    const failures = [];
-    for (const file of files) {
-      // ทีละไฟล์โดยตั้งใจ — ข้อความบอกผลรายไฟล์ และไม่ยิงคัดลอกพร้อมกันหลายใบใส่ Drive
-      const result = await reuseProductArtwork({ registrationId: reg.id, attachmentId: file.id });
-      if (result.ok) copied += 1;
-      else failures.push(`${file.fileName || "ไฟล์"}: ${result.error}`);
-    }
-    if (copied) setReuseNote(`ใช้ Artwork ของสินค้ายื่นแล้ว ${copied} ไฟล์`);
-    if (failures.length) setError(failures.join(" · "));
-    setRegFilesKey((n) => n + 1);
-    await checkRequirements();
-    setBusy("");
-  };
 
   /* สร้างคำขอ = POST ทางเดิม (ร่าง) — ลูกค้า/FG มาจากหน้าที่เปิด ไม่มีช่องให้เลือก · ไม่ลองซ้ำ (POST ซ้ำ = 409 ใบซ้ำ) */
   const create = async () => {
@@ -270,8 +253,8 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   const editableDocs = canEdit && status !== "approved";
   const submittable = status === "draft" || status === "rejected";
   const missing = req?.missing || [];
-  /* Artwork ของสินค้าที่ยังไม่ได้ใช้กับทะเบียนนี้ — ปุ่มโผล่ที่แถว "ขาด ฉลาก / Artwork ที่ยื่น" เท่านั้น */
-  const reusable = canEdit && submittable ? reusableProductArtwork(productFiles, regFiles) : [];
+  /* แนบ Artwork ได้ตรงนี้เมื่อทะเบียนยังใช้ชุดปัจจุบัน (ร่าง/ตีกลับ) — ยื่นแล้ว = โชว์ชุดที่ตรึงไว้แบบอ่านอย่างเดียว */
+  const artworkEditable = canEdit && usesLiveArtwork(status) && !!productId;
   const submitBlocker = !canEdit ? "ต้องมีสิทธิ์แก้ข้อมูลสินค้าจึงยื่นได้"
     : reqError ? "ยังตรวจเอกสารบังคับไม่ได้ — กดตรวจใหม่"
       : !req ? "กำลังตรวจเอกสารบังคับ…"
@@ -306,23 +289,11 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
                   <ul className={styles.missing}>
                     {missing.map((m) => {
                       const hint = fixHint(m, reg);
-                      const reuseHere = m.entity === "registration" && m.docType === REUSE_TARGET_DOC_TYPE && reusable.length > 0;
                       return (
                         <li key={`${m.entity}:${m.docType}`}>
                           {m.label}
                           {hint ? <> · <Link href={hint.href} className="linklike">{hint.label}</Link></>
-                            : <span className={styles.muted}>{reuseHere ? " · ใช้ไฟล์ของสินค้า หรือแนบด้านล่าง" : " · แนบด้านล่าง"}</span>}
-                          {reuseHere ? (
-                            /* ⭐ ไฟล์ที่ฝ่ายขายแนบไว้ที่ "เอกสารของสินค้า" แล้ว — ไม่ต้องดาวน์โหลดมาแนบซ้ำ (มติเจ้าของ 04/11/2026) */
-                            <div className={styles.reuse}>
-                              <span className={styles.reuseText}>
-                                สินค้านี้มี Artwork {reusable.length} ไฟล์: {reusable.map((file) => file.fileName || "ไม่มีชื่อไฟล์").join(", ")}
-                              </span>
-                              <Button size="sm" variant="outline" onClick={() => reuseArtwork(reusable)} disabled={!!busy}>
-                                {busy === "reuse" ? "กำลังคัดลอก…" : reusable.length > 1 ? `ใช้ทั้ง ${reusable.length} ไฟล์ยื่น` : "ใช้ไฟล์นี้ยื่น"}
-                              </Button>
-                            </div>
-                          ) : null}
+                            : <span className={styles.muted}> · แนบด้านล่าง</span>}
                         </li>
                       );
                     })}
@@ -331,7 +302,6 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
         </div>
       )}
 
-      {reuseNote ? <StatusNotice tone="success">{reuseNote}</StatusNotice> : null}
       {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
       {submittable && (
         <div className={styles.actions}>
@@ -342,13 +312,28 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
         </div>
       )}
 
+      {/* ⭐ Artwork ที่ใช้ยื่น = Artwork ของสินค้า (P1) — แนบที่นี่ = ไฟล์ขึ้นที่แท็บเอกสารของสินค้าด้วย (ชุดเดียวกัน)
+          ร่าง/ตีกลับ = แผงไฟล์ของสินค้าตัวจริง · ยื่นแล้ว = ชุดที่ตรึงไว้ตอนยื่น (อ่านอย่างเดียว · RA ตรวจชุดนี้) */}
+      {artworkEditable ? (
+        <AttachmentsPanel
+          entityType="product"
+          entityId={productId}
+          canEdit
+          docTypes={ARTWORK_CARD}
+          title="Artwork ที่ใช้ยื่น (เก็บที่สินค้า)"
+          note="ไฟล์ชุดเดียวกับการ์ด Artwork ในแท็บเอกสารของสินค้า — ยื่นทุกไฟล์ที่อยู่ในการ์ดนี้ · ตอนยื่นระบบจำชุดนี้ไว้ให้ RA ตรวจ"
+          onItemsChange={onArtworkFiles}
+          cardColumns={1}
+        />
+      ) : (
+        <SubmittedArtwork files={reg.labelArtwork} live={usesLiveArtwork(status)} />
+      )}
       <AttachmentsPanel
-        key={`reg-files:${regFilesKey}`}
         entityType="registration"
         entityId={reg.id}
         canEdit={editableDocs}
         docTypes={regDocTypes}
-        title="เอกสารการขึ้นทะเบียน (เช่น artwork ฉลาก)"
+        title="เอกสารของทะเบียน (ใบอนุมัติ · อื่น ๆ)"
         onItemsChange={onRegistrationFiles}
         cardColumns={1}
       />
@@ -365,6 +350,36 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
         />
       ) : null}
     </section>
+  );
+}
+
+/* ฉลากที่ทะเบียนใช้ แบบอ่านอย่างเดียว — ชุดที่ตรึงตอนยื่น (หรือชุดปัจจุบันเมื่อคนดูแนบไม่ได้) · มาจาก server (`reg.labelArtwork`)
+   ⭐ ตัวเดียวกับหน้าทะเบียนของ RA (/tax/registrations/[id]) — export ให้หน้านั้นวาดชุดเดียวกัน ไม่เขียนรายการไฟล์อีกชุด
+   ⚠️ ไฟล์ที่สินค้าถอดออกไปแล้ว (ปลดระวาง) ยังเปิดได้ที่นี่ — มันคือไฟล์ที่ยื่นจริง จึงบอกไว้ข้างชื่อ ไม่ซ่อน */
+export function SubmittedArtwork({ files, live }) {
+  const list = Array.isArray(files) ? files : [];
+  return (
+    <div className={styles.checklist}>
+      <div className={styles.checklistHead}>
+        <strong>{live ? "Artwork ที่จะใช้ยื่น (จากสินค้า)" : "Artwork ที่ยื่นแล้ว"}</strong>
+        <span className={styles.muted}>{list.length} ไฟล์</span>
+      </div>
+      {list.length ? (
+        <ul className={styles.files}>
+          {list.map((file) => {
+            const href = attachmentHref(file);
+            const name = file.fileName || "ไม่มีชื่อไฟล์";
+            return (
+              <li key={file.id}>
+                {href ? <a href={href} target="_blank" rel="noreferrer" className="linklike">{name}</a> : name}
+                {file.docType === LEGACY_LABEL_DOC_TYPE ? <span className={styles.muted}> · แนบที่ทะเบียน (แบบเดิม)</span> : null}
+                {isRetiredAttachment(file) ? <span className={styles.muted}> · สินค้าเปลี่ยน Artwork แล้ว (ไฟล์นี้คือชุดที่ยื่น)</span> : null}
+              </li>
+            );
+          })}
+        </ul>
+      ) : <p className={styles.muted}>{live ? "สินค้านี้ยังไม่มี Artwork — แนบที่แท็บเอกสารของสินค้า" : "ไม่พบไฟล์ที่ยื่น"}</p>}
+    </div>
   );
 }
 

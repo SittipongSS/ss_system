@@ -4,7 +4,9 @@
 // GET /api/.../requirements เพื่อให้ checklist ที่ผู้ใช้เห็น == กฎที่ server บังคับ.
 //
 // กฎ (ยกมาจาก inline เดิมใน excise-registrations/[id]/route.js):
-//   • เอกสาร required ของทะเบียน (ฉลาก/Artwork) ต้องแนบที่ "ทะเบียน"
+//   • ฉลาก/Artwork = **Artwork ของสินค้า** (ศูนย์กลางเอกสารของสินค้า P1 · มติเจ้าของ 09/11/2026) — ร่าง/ตีกลับใช้ชุด
+//     ปัจจุบันของสินค้า · ยื่นแล้วใช้ชุดที่ตรึงไว้ (`labelArtworkIds`) · กติกาเต็มอยู่ที่ lib/excise/registrationArtwork.js
+//     (เดิมต้องแนบที่ "ทะเบียน" — ฉลากแบบเดิมที่ยังค้างที่ทะเบียนยังนับ)
 //   • แผนที่บริษัท (address_map) ต้องมีที่ "ลูกค้า" เจ้าของ — เป็น master data
 //     แนบครั้งเดียวที่ลูกค้า ไม่ทำซ้ำต่อทะเบียน
 //
@@ -15,6 +17,9 @@
 import { listAttachments } from '@/lib/master/attachments';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTypes';
+import {
+  ARTWORK_MISSING_LABEL, PRODUCT_ARTWORK_DOC_TYPE, registrationHasArtwork,
+} from '@/lib/excise/registrationArtwork';
 
 /**
  * ทะเบียนใบนี้ขาดราคาขายปลีกหรือไม่ — คืนรายการที่ขาด หรือ null เมื่อครบ
@@ -37,12 +42,13 @@ export function missingRetailPriceEntry(registration, product) {
    ตัวโหลดข้อมูลมีสองแบบ (รายใบ / เป็นชุด) แต่ **กฎต้องมีชุดเดียว** ไม่งั้นหน้าคิว
    กับด่านตอนกดยื่นจะตอบคนละอย่าง แล้วผู้ใช้เห็น "ครบ" บนคิวแต่กดยื่นไม่ผ่าน
 
-   @param registrationDocTypes  Set ของ docType ที่แนบไว้ที่ **ทะเบียน**
+   @param registrationDocTypes  Set ของ docType ที่แนบไว้ที่ **ทะเบียน** (เอกสารบังคับอื่นของทะเบียน ถ้ามีวันหน้า)
+   @param hasArtwork            ทะเบียนมีฉลากให้ยื่นไหม (`registrationHasArtwork` — Artwork ของสินค้า + ฉลากแบบเดิม)
    @param customerDocTypes      Set ของ docType ที่แนบไว้ที่ **ลูกค้า**
    @param customer              แถวลูกค้า (email, phone, contactPhone, taxId, branchCode)
                                 · null = โหลดไม่เจอ ⇒ ข้ามด่าน identity (พฤติกรรมเดิม) */
 export function registrationMissing({
-  registration, product, registrationDocTypes, customerDocTypes, customer,
+  registration, product, registrationDocTypes, hasArtwork, customerDocTypes, customer,
 } = {}) {
   const reg = registration || {};
   const missing = [];
@@ -53,6 +59,11 @@ export function registrationMissing({
     if (entry) missing.push(entry);
   }
 
+  /* ⭐ ฉลากอยู่ที่สินค้า (P1) — ของที่ขาดชี้ไปที่ Artwork ของสินค้า ไม่ใช่ไฟล์ของทะเบียน
+     ⚠️ ทะเบียนไม่มีสินค้า = ไม่มีที่ให้ฉลากอยู่ ⇒ ขาดเสมอ (ปกติไม่เกิด — ทะเบียนสร้างจาก FG) */
+  if (!hasArtwork) {
+    missing.push({ entity: 'product', docType: PRODUCT_ARTWORK_DOC_TYPE, label: ARTWORK_MISSING_LABEL });
+  }
   const regPresent = registrationDocTypes || new Set();
   for (const k of requiredDocKeys('registration')) {
     if (!regPresent.has(k)) {
@@ -97,7 +108,7 @@ export async function registrationRequirements(supabase, regId) {
   // แล้วผู้ใช้จะไล่หาว่าทะเบียนหายไปไหน ทั้งที่ปัญหาอยู่ที่ DB/schema
   const { data: reg, error: regError } = await supabase
     .from('excise_registrations')
-    .select('id, customerId, productId, "isExciseTaxable"')
+    .select('id, customerId, productId, "isExciseTaxable", status, "labelArtworkIds"')
     .eq('id', regId).maybeSingle();
   if (regError) throw regError;
   if (!reg) return { ready: false, missing: [], warnings: [], notFound: true };
@@ -125,9 +136,14 @@ export async function registrationRequirements(supabase, regId) {
     product = data;
   }
 
-  const registrationDocTypes = new Set((await listAttachments('registration', regId)).map((a) => a.docType));
+  const [legacyRows, productRows] = await Promise.all([
+    listAttachments('registration', regId),
+    reg.productId ? listAttachments('product', reg.productId) : [],
+  ]);
+  const registrationDocTypes = new Set(legacyRows.map((a) => a.docType));
+  const hasArtwork = registrationHasArtwork({ registration: reg, productRows, legacyRows });
   if (!reg.customerId) {
-    return registrationMissing({ registration: reg, product, registrationDocTypes });
+    return registrationMissing({ registration: reg, product, registrationDocTypes, hasArtwork });
   }
 
   const customerDocTypes = new Set((await listAttachments('customer', reg.customerId)).map((a) => a.docType));
@@ -138,7 +154,7 @@ export async function registrationRequirements(supabase, regId) {
   if (custError) throw custError;
 
   return registrationMissing({
-    registration: reg, product, registrationDocTypes, customerDocTypes, customer: cust,
+    registration: reg, product, registrationDocTypes, hasArtwork, customerDocTypes, customer: cust,
   });
 }
 
@@ -170,7 +186,7 @@ export async function registrationRequirementsBatch(supabase, registrations = []
      `fetchAllResult` ไม่ใช่เดาเพดานเอง (เดาแล้วขาด = ด่านเอกสารบอกว่า "ขาด" ทั้งที่
      แนบครบ ซึ่งไปบล็อกการยื่นจริง) */
   const regIds = regs.map((r) => r.id);
-  const [products, customers, regDocs, custDocs] = await Promise.all([
+  const [products, customers, regDocs, custDocs, productArtwork] = await Promise.all([
     productIds.length
       ? supabase.from('products').select('id, "fgCode", "retailPriceIncVat"')
         .in('id', productIds).limit(productIds.length)
@@ -179,15 +195,21 @@ export async function registrationRequirementsBatch(supabase, registrations = []
       ? supabase.from('customers').select('id, email, phone, "contactPhone", "taxId", "branchCode"')
         .in('id', customerIds).limit(customerIds.length)
       : { data: [] },
-    fetchAllResult(() => supabase.from('attachments').select('"entityId", "docType"')
+    fetchAllResult(() => supabase.from('attachments').select('id, "entityId", "docType", "createdAt"')
       .eq('entityType', 'registration').in('entityId', regIds).order('id', { ascending: true })),
     customerIds.length
       ? fetchAllResult(() => supabase.from('attachments').select('"entityId", "docType"')
         .eq('entityType', 'customer').in('entityId', customerIds).order('id', { ascending: true }))
       : { data: [] },
+    /* Artwork ของสินค้า (P1) — ต้องมี `metadata` เพราะตัวตัดสินข้าม Artwork ที่ปลดระวางแล้ว */
+    productIds.length
+      ? fetchAllResult(() => supabase.from('attachments').select('id, "entityId", "docType", metadata, "createdAt"')
+        .eq('entityType', 'product').eq('docType', PRODUCT_ARTWORK_DOC_TYPE).in('entityId', productIds)
+        .order('id', { ascending: true }))
+      : { data: [] },
   ]);
   // query พังต้องดัง — เหตุผลเดียวกับตัวรายใบ: เงียบแล้วด่านหายไปทั้งข้อ
-  for (const res of [products, customers, regDocs, custDocs]) {
+  for (const res of [products, customers, regDocs, custDocs, productArtwork]) {
     if (res?.error) throw res.error;
   }
 
@@ -203,12 +225,27 @@ export async function registrationRequirementsBatch(supabase, registrations = []
   };
   const regDocsOf = docsBy(regDocs.data);
   const custDocsOf = docsBy(custDocs.data);
+  const rowsBy = (rows) => {
+    const map = new Map();
+    for (const row of rows || []) {
+      if (!map.has(row.entityId)) map.set(row.entityId, []);
+      map.get(row.entityId).push(row);
+    }
+    return map;
+  };
+  const legacyRowsOf = rowsBy(regDocs.data);
+  const artworkRowsOf = rowsBy(productArtwork.data);
 
   for (const reg of regs) {
     out.set(reg.id, registrationMissing({
       registration: reg,
       product: productOf.get(reg.productId) || null,
       registrationDocTypes: regDocsOf.get(reg.id) || new Set(),
+      hasArtwork: registrationHasArtwork({
+        registration: reg,
+        productRows: artworkRowsOf.get(reg.productId) || [],
+        legacyRows: legacyRowsOf.get(reg.id) || [],
+      }),
       customerDocTypes: custDocsOf.get(reg.customerId) || new Set(),
       customer: customerOf.get(reg.customerId) || null,
     }));
