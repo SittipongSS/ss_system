@@ -343,13 +343,14 @@ export const ATTACHMENT_TYPES = {
     { key: "tax_form", label: "แบบ ภส. / เอกสารยื่น" },
     { key: "other", label: "เอกสารอื่นๆ" },
   ],
-  // เอกสารการขึ้นทะเบียนสรรพสามิต ผูกกับ excise_registration. การ์ด required
-  // (ฉลาก/Artwork) ต้องแนบครบก่อน SA ถึงจะ "ยื่นขึ้นทะเบียน" (draft →
-  // pending_legal) ได้ — ตรวจทั้งฝั่ง UI และ API. ใบอนุมัติได้มาหลังอนุมัติ
-  // (ฝั่ง RA แนบ) จึงไม่ required. แผนที่บริษัท (address_map) เป็นเอกสารระดับ
-  // ลูกค้า แนบตอนเพิ่มลูกค้าแล้ว — โชว์อ่านอย่างเดียวในหน้าทะเบียน ไม่แนบซ้ำ.
+  // เอกสารการขึ้นทะเบียนสรรพสามิต ผูกกับ excise_registration — **เหลือแต่เอกสารของกระบวนการ**
+  // (ใบอนุมัติที่ RA แนบ · อื่น ๆ) · แผนที่บริษัท (address_map) เป็นเอกสารระดับลูกค้า โชว์อ่านอย่างเดียว ไม่แนบซ้ำ.
+  // ⭐ ฉลาก/Artwork ย้ายไปอยู่ที่ **สินค้า** (ศูนย์กลางเอกสารของสินค้า P1 · มติเจ้าของ 09/11/2026 · mig 0426/0427) —
+  //    ด่านยื่นถาม `lib/excise/registrationArtwork.js` ไม่ได้ถามการ์ดนี้แล้ว
+  // ⚠️ `label_artwork` คงไว้ **ไม่บังคับ** ให้แถวเก่าที่ยังไม่ย้ายมีป้ายชื่อ (ไม่ตกกอง "อื่นๆ") — ไม่มีจอไหนเสนอการ์ดนี้ให้แนบ
+  //    เปลี่ยนกลับเป็น required เมื่อไร ทะเบียนทุกใบจะยื่นไม่ได้ (ไม่มีใครแนบชนิดนี้อีกแล้ว)
   registration: [
-    { key: "label_artwork", label: "ฉลาก / Artwork ที่ยื่น", required: true },
+    { key: "label_artwork", label: "ฉลาก / Artwork ที่ยื่น (แบบเดิม)", required: false },
     { key: "approval_letter", label: "ใบอนุมัติขึ้นทะเบียน", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
@@ -683,7 +684,9 @@ export function unsatisfiedRequiredDocs(entityType, docTypes, attachments, today
   const out = [];
   for (const key of required) {
     const label = list.find((t) => t.key === key)?.label || key;
-    const files = (attachments || []).filter((a) => a.docType === key);
+    /* ไฟล์ที่ปลดระวางแล้วไม่นับ — ไม่ใช่ของปัจจุบัน (เช่น Artwork ที่ถูกแทนแล้วแต่ทะเบียนสรรพสามิตยังชี้อยู่ · P1 09/11/2026)
+       ⚠️ ตรงกับแผงไฟล์แนบที่ไม่โชว์ไฟล์ปลดระวาง (`panelVisibleItems`) — จอกับด่านต้องนับชุดเดียวกัน */
+    const files = (attachments || []).filter((a) => a.docType === key && !isRetiredAttachment(a));
     if (!files.length) { out.push({ key, label, reason: 'absent' }); continue; }
     const validities = files.map((f) => documentValidity(entityType, f, today));
     if (validities.some((v) => !v || v.unknown || !v.expired)) continue;

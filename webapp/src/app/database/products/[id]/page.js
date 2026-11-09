@@ -15,6 +15,7 @@ import { RegistrationWorkPanel } from "@/components/excise/RegistrationWorkModal
 import Tabs from "@/components/ui/Tabs";
 import CostVatLines from "@/components/database/CostVatLines";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import ProductRegistrationDocs from "@/components/database/ProductRegistrationDocs";
 import SkeletonRows from "@/components/ui/Skeleton";
 import ReadableText from "@/components/ui/ReadableText";
 import Toast from "@/components/ui/Toast";
@@ -1039,8 +1040,21 @@ export default function ProductDetails() {
               canEdit={canEditProducts}
               docTypes={productDocTypes(product)}
               title="เอกสารของสินค้า"
-              note="Artwork สินค้า — ใช้ยื่นทะเบียนสรรพสามิตได้ด้วยปุ่ม “ใช้ไฟล์นี้ยื่น” ในแผงทะเบียน (ระบบคัดลอกไฟล์ให้) · สัญญาจ้างผลิตย้ายไปผูกกับลูกค้าแล้ว"
+              note="Artwork สินค้า = ฉลากที่ใช้ยื่นทะเบียนสรรพสามิต (ไฟล์ชุดเดียวกับแท็บสรรพสามิต — แนบที่ไหนก็ขึ้นทั้งสองที่) · ไฟล์ที่ทะเบียนยื่นไปแล้ว ลบแล้วระบบเก็บไว้ให้ทะเบียน · สัญญาจ้างผลิตย้ายไปผูกกับลูกค้าแล้ว"
             />
+
+            {/* ⭐ เอกสารสรรพสามิตของสินค้านี้ (ศูนย์กลางเอกสารของสินค้า P1 · มติเจ้าของ 09/11/2026 — "ฐานข้อมูลเก็บข้อมูลของระบบอื่น
+                ที่เกี่ยวกับสินค้ากลับเข้ามา") · ฉลากที่แต่ละทะเบียนยื่น + ใบอนุมัติ อ่านอย่างเดียว · ลงมือที่แท็บสรรพสามิต
+                ⚠️ ข้อมูลภาษีเป็นของคนที่เห็นภาษีเท่านั้น (ด่านเดียวกับแท็บสรรพสามิต) */}
+            {canViewTax && regs.length > 0 && (
+              <DetailCard icon={Package} eyebrow="EXCISE" title="เอกสารสรรพสามิตของสินค้านี้"
+                meta="ฉลากที่ยื่นมาจาก Artwork ของสินค้าด้านบน · ใบอนุมัติขึ้นทะเบียนแนบโดยฝ่าย RA">
+                <ProductRegistrationDocs
+                  registrations={regs}
+                  onOpen={showExciseTab ? (registrationId) => { setRegKey(registrationId); goTab("excise"); } : undefined}
+                />
+              </DetailCard>
+            )}
 
             {/* เอกสารลูกค้าเจ้าของ (อ่านอย่างเดียว) — เชื่อมโยงผ่าน product.customerId */}
             {product.customerId && (

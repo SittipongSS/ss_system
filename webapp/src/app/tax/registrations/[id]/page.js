@@ -31,7 +31,9 @@ import RegistrationFormModal from "@/components/excise/RegistrationFormModal";
 import ApproveDialog from "@/components/excise/ApproveDialog";
 import RejectDialog from "@/components/excise/RejectDialog";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import { customerDocTypes } from "@/lib/master/attachmentTypes";
+import { SubmittedArtwork } from "@/components/excise/RegistrationWorkModal";
+import { ATTACHMENT_TYPES, customerDocTypes } from "@/lib/master/attachmentTypes";
+import { LEGACY_LABEL_DOC_TYPE, usesLiveArtwork } from "@/lib/excise/registrationArtwork";
 import { brandLabel } from "@/lib/master/brands";
 import { customerNameIn } from "@/lib/master/customerName";
 import { productDisplayName } from "@/lib/master/productIdentity";
@@ -284,6 +286,13 @@ export default function RegistrationDetailPage() {
   useEffect(() => { setReq(null); setReqFault(null); }, [regId]);
   useEffect(() => { checkRequirements(); }, [checkRequirements, attachItems, custItems]);
   const missingDocs = (req?.missing || []).map((m) => m.label);
+  /* ⭐ ฉลากอยู่ที่ Artwork ของสินค้า (ศูนย์กลางเอกสารของสินค้า P1 · 09/11/2026) — การ์ดฉลากแบบเดิมของทะเบียนโผล่เฉพาะใบที่ยังมีไฟล์ค้าง
+     (ก่อนรัน mig 0427) · ใบอื่นเหลือการ์ดเอกสารของกระบวนการ (ใบอนุมัติ · อื่น ๆ) — กันการแนบฉลากผิดที่ */
+  const hasLegacyLabel = attachItems.some((it) => it.docType === LEGACY_LABEL_DOC_TYPE);
+  const regPanelTypes = useMemo(
+    () => ATTACHMENT_TYPES.registration.filter((t) => t.key !== LEGACY_LABEL_DOC_TYPE || hasLegacyLabel),
+    [hasLegacyLabel],
+  );
   const reqStale = !!req && !!reqFault;
   /* ผลที่วาดเป็นรายการได้ — ผลของรอบที่ล้มไปแล้วไม่วาดเป็น checklist (ป้ายผลตรวจบอกแทน) ·
      ระหว่างตรวจรอบใหม่ยังวาดผลเดิมไว้ ไม่ให้รายการกระพริบหายทุกครั้งที่แนบไฟล์ (ปุ่มยื่นพักรอผลใหม่อยู่แล้ว)
@@ -587,12 +596,16 @@ export default function RegistrationDetailPage() {
             </div>
           )}
 
-          <div className={`glass-panel ${styles.panel}`}>
+          {/* ฉลากที่ทะเบียนใช้ = Artwork ของสินค้า (P1) — ยื่นแล้ว = ชุดที่ตรึงไว้ตอนยื่น · ร่าง/ตีกลับ = ชุดปัจจุบันของสินค้า
+              (แนบ/ลบที่หน้าสินค้า หรือแผงทะเบียนของฝ่ายขาย) · ตัวเดียวกับแผงทะเบียนของฝ่ายขาย */}
+          <div className={`glass-panel ${styles.panel} ${styles.panelStack}`}>
+            <SubmittedArtwork files={s.labelArtwork} live={usesLiveArtwork(s.status)} />
             <AttachmentsPanel
               entityType="registration"
               entityId={s.id}
               canEdit={(canEdit && s.status !== "approved") || canApprove}
-              title="เอกสารการขึ้นทะเบียน"
+              docTypes={regPanelTypes}
+              title="เอกสารของทะเบียน (ใบอนุมัติ · อื่น ๆ)"
               onItemsChange={setAttachItems}
               cardColumns={1}
             />

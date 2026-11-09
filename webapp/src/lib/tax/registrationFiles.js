@@ -3,8 +3,12 @@
 // folder per registration (รายการสินค้า) named by FG · product · customer.
 // Includes the registration's own docs + the owner customer's company map
 // (address_map, shared master data). Server-only (Node runtime — JSZip + fetch).
+// ⭐ ฉลากที่ยื่นอยู่ที่ **Artwork ของสินค้า** แล้ว (ศูนย์กลางเอกสารของสินค้า P1 · 09/11/2026) — ZIP ถามตัวตัดสินตัวเดียวกับด่านยื่น
+//    (`registrationArtworkFiles`: ร่าง/ตีกลับ = ชุดปัจจุบัน · ยื่นแล้ว = ชุดที่ตรึงไว้) แล้วนับเป็นชนิด `label_artwork`
+//    ของตัวกรอง — ตัวเลือก "ฉลาก/Artwork" ในหน้าส่งออกเดิมจึงยังได้ไฟล์ชุดเดียวกับที่ RA ตรวจ
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { listAttachments } from '@/lib/master/attachments';
+import { LEGACY_LABEL_DOC_TYPE, loadRegistrationArtwork } from '@/lib/excise/registrationArtwork';
 import { applyTeamScope } from '@/lib/tax/reportFilters';
 import { withinDateRange } from '@/lib/tax/period';
 import JSZip from 'jszip';
@@ -45,7 +49,12 @@ export async function buildRegistrationFilesZip(filter = {}) {
   let fileCount = 0;
   for (const r of regs) {
     const folder = zip.folder(sanitize(`${r.fgCode || '-'} ${r.productName || ''} - ${r.customerName || ''}`));
-    let regDocs = await listAttachments('registration', r.id);
+    const { files: labelFiles, legacyRows } = await loadRegistrationArtwork(r, listAttachments);
+    // ฉลาก (ของสินค้า + แบบเดิม) ตามด้วยเอกสารอื่นของทะเบียน — ฉลากแบบเดิมอยู่ใน labelFiles แล้ว ไม่นับซ้ำ
+    let regDocs = [
+      ...labelFiles.map((a) => ({ ...a, docType: LEGACY_LABEL_DOC_TYPE })),
+      ...legacyRows.filter((a) => a.docType !== LEGACY_LABEL_DOC_TYPE),
+    ];
     if (typeSet) regDocs = regDocs.filter((a) => typeSet.has(a.docType));
     let mapDocs = r.customerId
       ? (await listAttachments('customer', r.customerId)).filter((a) => a.docType === 'address_map')
