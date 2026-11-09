@@ -40,7 +40,7 @@ import {
   LEAD_CHANNELS, LEAD_CHANNEL_LABELS, channelGroupOf, LEAD_STATUSES, LEAD_STATUS_LABELS, LEAD_LOST_LABELS, leadLostText,
   LEAD_SLA_STAGES, leadSlaNote, leadBudgetText, SERVICE_INTEREST_LABELS,
   canEditLead, canDeleteLead, canCreateLead, canCreateDealFromLead, slaPendingTone, leadFollowUpState,
-  leadActiveFollowUpAt, LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads,
+  leadActiveFollowUpAt, LEAD_SORT_DEFAULT, leadSortDefaultDir, sortLeads, leadEditFormValues,
 } from "@/lib/sales/leads";
 import { canExportLeadReport } from "@/lib/sales/leadReport";
 import {
@@ -825,7 +825,7 @@ export default function LeadsPage() {
                         canDelete={canDeleteRow(lead)}
                         onEdit={() => {
                           const appointment = intakeAppointmentState(lead);
-                          setForm({ id: lead.id, channel: lead.channel, contactName: lead.contactName || "", company: lead.company || "", email: lead.email || "", contactChannel: lead.contactChannel || "", phone: lead.phone || "", serviceInterest: lead.serviceInterest || "other", serviceDetail: lead.serviceDetail || "", budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "", details: lead.details || "", appointment: appointment.value });
+                          setForm({ id: lead.id, ...leadEditFormValues(lead), appointment: appointment.value });
                           setAppointmentLock(appointment.lock);
                           setPendingFiles([]);
                           setFormOpen(true);
