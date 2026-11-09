@@ -1,0 +1,26 @@
+/* ── ตารางแท็บกลิ่น/สูตรของหน้า "ราคา + Ingredient List" ─────────────────────────────────────────
+   ⚠️ สไตล์ของตารางนี้อยู่ที่นี่ ไม่ยืมชีตของหน้า (`audit:ui` ห้าม import `*.module.css` ข้ามไดเรกทอรี) ·
+   ค่าทุกตัวมาจาก token — ชุดเดียวกับ `app/rd/prices/page.module.css` ให้สองแท็บอ่านเป็นตารางเดียวกัน */
+
+.sub { font-size: var(--fs-3); color: var(--text-3); }
+.dim { color: var(--text-3); }
+
+/* รหัสบน·ชื่อล่าง — รหัส mono ให้กวาดตาเป็นคอลัมน์ได้ */
+.code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-2); font-size: var(--fs-4); }
+.name { font-weight: var(--fw-semibold); }
+.entityLink { display: flex; flex-direction: column; color: inherit; text-decoration: none; }
+.entityLink:hover .name { text-decoration: underline; }
+
+.prices,
+.sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+.slot { font-weight: var(--fw-semibold); }
+
+/* หนึ่งก้าว = ป้ายสถานะ → รายละเอียด → ปุ่ม เรียงลงล่าง ชิดซ้าย (ทรงเดียวกับแท็บงานค้างในคำร้อง) */
+.step { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+
+/* สัดส่วนคอลัมน์ — กำหนดเอง ไม่ปล่อยตามเนื้อ (บทเรียนของหน้าเดิม: ปุ่มลอยห่างจากราคาที่มันใช้) */
+.colItem { width: 30%; }
+.colItemFormula { width: 26%; }
+.colCustomer { width: 18%; }
+.colSource { width: 16%; }
+.colStep { width: 20%; }
