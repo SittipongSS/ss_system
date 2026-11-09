@@ -27,7 +27,8 @@ import { rowStage } from '@/lib/requests/rowStage';
    ชื่อหมวด · ชื่อกลิ่น) ไม่ใช่ค่าที่ client พิมพ์เอง — ดู `lineLabels.js` */
 const WRITABLE_BY_SHAPE = Object.freeze({
   /* + `productId` (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — FG ที่บรรทัด MSDS / Spec Sheet ขอ · ผู้ขอเป็นเจ้าของ (ตรวจที่ resolveLineLabels) */
-  document: Object.freeze(['docType', 'productId', 'label', 'spec']),
+  /* + `scentId` (P3) — กลิ่นที่บรรทัด IFRA ขอ (คอลัมน์เดิมของบรรทัด · ไม่ต้องมี migration) */
+  document: Object.freeze(['docType', 'productId', 'scentId', 'label', 'spec']),
   billing_doc: Object.freeze(['docType', 'label', 'spec']),
   product_dev: Object.freeze(['categoryCode', 'scentId', 'label', 'spec', 'qty', 'unit']),
 });
@@ -178,6 +179,7 @@ export function lineFormRows(items = [], lineShape = null) {
     docType: it.docType || '',
     // FG ของบรรทัด MSDS / Spec Sheet (mig 0428) — สตริงเสมอด้วยเหตุผลเดียวกับช่องอื่น (controlled component)
     productId: it.productId || '',
+    scentId: it.scentId || '',
     spec: it.spec || '',
   }));
 }

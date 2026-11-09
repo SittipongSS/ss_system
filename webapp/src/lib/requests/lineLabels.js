@@ -72,20 +72,52 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
 
 async function resolveDocumentProducts(supabase, items, { customerId }) {
   const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
-  if (!productIds.length) return { items, error: null };
-  const { data, error } = await supabase.from('products')
-    .select('id, "fgCode", "customerId"').in('id', productIds).limit(productIds.length);
-  if (error) return { items: [], error: error.message };
-  const byId = new Map((data || []).map((p) => [p.id, p]));
+  const scentIds = [...new Set(items.map((i) => i.scentId).filter(Boolean))];
+  if (!productIds.length && !scentIds.length) return { items, error: null };
+
+  let productById = new Map();
+  if (productIds.length) {
+    const { data, error } = await supabase.from('products')
+      .select('id, "fgCode", "customerId"').in('id', productIds).limit(productIds.length);
+    if (error) return { items: [], error: error.message };
+    productById = new Map((data || []).map((p) => [p.id, p]));
+  }
+  /* ⭐ กลิ่นของบรรทัด IFRA (P3 · 09/11/2026) — ต้องมีจริง และใช้กับลูกค้าของใบได้ (เจ้าของหรือได้รับแชร์ · ม-150)
+     กติกาเดียวกับกลิ่นของบรรทัดพัฒนาสูตรข้างล่าง */
+  let scentById = new Map();
+  if (scentIds.length) {
+    const { data, error } = await supabase.from('scents')
+      .select('id, code, name, customerId').in('id', scentIds).limit(scentIds.length);
+    if (error) return { items: [], error: error.message };
+    let shared;
+    try {
+      shared = await attachShares(supabase, data || [], 'scent');
+    } catch (e) {
+      return { items: [], error: e.message };
+    }
+    scentById = new Map(shared.map((r) => [r.id, r]));
+  }
+
   const out = [];
   for (const item of items) {
-    if (!item.productId) { out.push(item); continue; }
-    const product = byId.get(item.productId);
-    if (!product) return { items: [], error: `ไม่พบสินค้า (FG) ที่เลือกในรายการที่ ${item.sortOrder}` };
-    if (customerId && product.customerId && product.customerId !== customerId) {
-      return { items: [], error: `รายการที่ ${item.sortOrder}: FG นี้เป็นของลูกค้าคนละรายกับใบ` };
+    let label = item.label;
+    if (item.productId) {
+      const product = productById.get(item.productId);
+      if (!product) return { items: [], error: `ไม่พบสินค้า (FG) ที่เลือกในรายการที่ ${item.sortOrder}` };
+      if (customerId && product.customerId && product.customerId !== customerId) {
+        return { items: [], error: `รายการที่ ${item.sortOrder}: FG นี้เป็นของลูกค้าคนละรายกับใบ` };
+      }
+      if (product.fgCode) label = `${label} · ${product.fgCode}`;
     }
-    out.push({ ...item, label: product.fgCode ? `${item.label} · ${product.fgCode}` : item.label });
+    if (item.scentId) {
+      const scent = scentById.get(item.scentId);
+      if (!scent) return { items: [], error: `ไม่พบกลิ่นที่เลือกในรายการที่ ${item.sortOrder}` };
+      if (customerId && !scentUsableByCustomer(scent, customerId)) {
+        return { items: [], error: `รายการที่ ${item.sortOrder}: กลิ่นนี้เป็นของลูกค้าคนละราย` };
+      }
+      label = `${label} · ${scent.code || scent.name}`;
+    }
+    out.push(label === item.label ? item : { ...item, label });
   }
   return { items: out, error: null };
 }

@@ -267,7 +267,15 @@ export const SIGNED_CONTRACT_DOC_TYPE = 'signed_contract';
 export const SIGNED_ADDENDUM_DOC_TYPE = 'signed_addendum';
 
 
+/* ⭐ IFRA = ระดับ **กลิ่น** · RD ออก · เก็บที่กลิ่น (ศูนย์กลางเอกสารของสินค้า P3 · มติเจ้าของ 09/11/2026) — คีย์เดียวกับชนิดที่คำร้อง DC ขอ
+   (`REQUEST_DOC_TYPES` 'ifra') · แนบ/ลบได้เฉพาะ RD + admin (`canAttachToScent` · lib/master/scentAttachmentAccess.js) */
+export const SCENT_IFRA_DOC_TYPE = 'ifra';
+
 export const ATTACHMENT_TYPES = {
+  /* ไฟล์แนบของกลิ่น (P3) — ชนิดเดียว: IFRA Certificate · ไม่บังคับ (กลิ่นจำนวนมากยังไม่เคยมีใครขอ IFRA) */
+  scent: [
+    { key: SCENT_IFRA_DOC_TYPE, label: "IFRA Certificate (RD)", required: false },
+  ],
   // ⭐ เอกสารของดีล (P5c) — PO · หลักฐานมัดจำ · บรีฟลูกค้า · อื่น ๆ
   // ชุดนี้ตรงกับ `sales_deal_documents.kind` ที่ 0069 ใช้อยู่แล้ว ⇒ รายการ checklist
   // กับไฟล์ที่แนบเข้ามาพูดภาษาเดียวกัน ไม่ใช่สองชุดที่ต้องแมปกันเอง

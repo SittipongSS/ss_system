@@ -27,6 +27,8 @@ export const FOLDER = {
   customers: 'ลูกค้า',
   customerDocs: 'เอกสารบริษัท',
   customerProducts: 'สินค้า',
+  // กลิ่นของลูกค้า (IFRA · ศูนย์กลางเอกสารของสินค้า P3 09/11/2026) — ลูกค้า / <ลูกค้า> / กลิ่น / <ชื่อกลิ่น (รหัส)>
+  customerScents: 'กลิ่น',
   customerOrders: 'ออเดอร์',
   pricing: 'ขอราคา',
   pricingProduction: 'ผลิต',
@@ -394,6 +396,22 @@ export async function folderPathForEntity(entityType, entityId) {
     ];
   }
 
+  /* กลิ่น (IFRA · P3) → ใต้ลูกค้าเจ้าของกลิ่น (กลิ่นมี customerId NOT NULL เสมอ — มติ 9) · ไม่มีช่องแคชโฟลเดอร์บนตารางกลิ่น
+     (ค้นตามชื่อทุกครั้ง — ไฟล์ IFRA มีไม่กี่ใบต่อกลิ่น ไม่คุ้มเพิ่มคอลัมน์) */
+  if (type === 'scent') {
+    const { data: scent, error: scentError } = await supabase
+      .from('scents').select('id, code, name, customerId').eq('id', entityId).maybeSingle();
+    if (scentError) throw scentError;
+    if (!scent) throw new Error('ไม่พบกลิ่น');
+    const customer = await loadCustomer(supabase, scent.customerId);
+    if (!customer) throw new Error('กลิ่นนี้ยังไม่มีลูกค้าเจ้าของ');
+    return [
+      ...(await customerSegments(customer)),
+      { name: FOLDER.customerScents },
+      { name: `${safeName(scent.name, scent.id)} (${scent.code || scent.id})` },
+    ];
+  }
+
   // นัดเข้าบริการ (S-3) → โฟลเดอร์ "ธุรกิจบริการ" ใต้ลูกค้าเจ้าของไซต์
   // รูปหน้างาน/ลายเซ็นของไซต์เดียวกันจึงกองอยู่ที่เดียวกับเอกสารอื่นของลูกค้ารายนั้น
   if (type === 'service_visit') {
@@ -617,6 +635,12 @@ async function clearFolderCache(entityType, entityId) {
         ? entityId
         : (await supabase.from('orders').select('customerId').eq('id', entityId).maybeSingle()).data?.customerId;
       if (customerId) await clearCache('customers', customerId);
+      return;
+    }
+    if (type === 'scent') {
+      // กลิ่นไม่มีแคชของตัวเอง — ล้างแคชของลูกค้าเจ้าของ (ชั้นที่ถูกแคชไว้)
+      const { data: scent } = await supabase.from('scents').select('customerId').eq('id', entityId).maybeSingle();
+      if (scent?.customerId) await clearCache('customers', scent.customerId);
       return;
     }
     if (type === 'product' || type === 'registration') {

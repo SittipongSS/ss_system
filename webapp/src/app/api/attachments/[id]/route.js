@@ -15,6 +15,7 @@ import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachBillingCalendar } from '@/lib/master/attachmentAccess';
 import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
 import { canAttachRdProductDoc } from '@/lib/master/attachmentAccess';
+import { SCENT_ATTACHMENT_TABLE, canAttachToScent, isScentAttachment } from '@/lib/master/scentAttachmentAccess';
 import {
   COSTING_ATTACHMENT_TABLE, canAttachToCosting, isCostingAttachment,
 } from '@/lib/master/costingAttachmentAccess';
@@ -64,6 +65,19 @@ async function guardAttachmentWrite(supabase, att, user, actionLabel) {
   // mgmt: gate ด้วย cap ของโมดูล (ไม่ผ่าน parent customer/product).
   if (isMgmt(att.entityType) && !canUser(user, 'mgmt:edit')) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+
+  /* ⭐ กลิ่น (IFRA · ศูนย์กลางเอกสารของสินค้า P3 09/11/2026) — จุดที่ 3 ของเช็กลิสต์ entity แนบไฟล์ใหม่ (scentAttachmentAccess.js)
+     ⚠️ ไม่ดักตรงนี้ = บล็อก `if (table)` ข้างล่างไม่รู้จักกลิ่น ⇒ **ใครก็ลบไฟล์ IFRA ได้**
+     ลบ/แก้ = RD + admin (ตัวเดียวกับตอนแนบ) · กลิ่นถูกลบแล้ว = ด่านเก็บกวาด (คนแนบ/ผู้ดูแล) */
+  if (isScentAttachment(att.entityType)) {
+    const { data: scentRow, error: scentError } = await supabase
+      .from(SCENT_ATTACHMENT_TABLE[att.entityType]).select('id').eq('id', att.entityId).maybeSingle();
+    if (scentError) return Response.json({ error: scentError.message }, { status: 500 });
+    if (!scentRow && !canSweepOrphan) return orphanDenied();
+    if (scentRow && !canAttachToScent(user)) {
+      return Response.json({ error: `${actionLabel}ได้เฉพาะฝ่าย RD — IFRA ของกลิ่น RD เป็นผู้ออก` }, { status: 403 });
+    }
   }
 
   // ระบบขอราคา: สิทธิ์ลบ = สิทธิ์แนบของ entity นั้น (cap ระบบขอราคา + ฝ่าย/ผู้เปิดเคส)

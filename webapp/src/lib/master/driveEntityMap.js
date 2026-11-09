@@ -19,6 +19,8 @@ export const FOLDER_ENTITY_TYPES = [
   'order',
   'product',
   'registration',
+  // กลิ่น (IFRA · ศูนย์กลางเอกสารของสินค้า P3) — ลูกค้า / <ลูกค้า> / กลิ่น / <ชื่อกลิ่น (รหัส)>
+  'scent',
   'costing_item',
   'dept_request_item',
   'costing_request',

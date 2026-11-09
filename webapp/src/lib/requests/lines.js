@@ -137,10 +137,17 @@ export function normalizeDocLines(input, vocab) {
     if (productTarget && !productId && !rowId) {
       return { items: [], error: `${at}: เลือก FG ที่ขอ ${vocab.label(docType)}` };
     }
+    /* ⭐ ชนิดที่เก็บที่กลิ่น (IFRA · P3 · มติเจ้าของ 09/11/2026 "บังคับเลือก") — กติกาเดียวกับ FG ข้างบน: บังคับเฉพาะบรรทัดใหม่ ·
+       ชนิดอื่นทิ้งกลิ่นเสมอ · "กลิ่นมีจริง + ใช้กับลูกค้าของใบได้" ตรวจที่ `resolveLineLabels` */
+    const scentTarget = Boolean(vocab.scentTarget?.(docType));
+    const scentId = scentTarget ? (String(raw.scentId ?? '').trim() || null) : null;
+    if (scentTarget && !scentId && !rowId) {
+      return { items: [], error: `${at}: เลือกกลิ่นที่ขอ ${vocab.label(docType)}` };
+    }
 
     // ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน (ขอ COA ของสองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน
-    // ⭐ + FG: ขอ MSDS ของสอง FG ในใบเดียวได้ (คนละของกัน)
-    const key = `${docType}::${productId || ''}::${spec.toLowerCase()}`;
+    // ⭐ + FG / กลิ่น: ขอ MSDS ของสอง FG (หรือ IFRA ของสองกลิ่น) ในใบเดียวได้ (คนละของกัน)
+    const key = `${docType}::${productId || ''}::${scentId || ''}::${spec.toLowerCase()}`;
     if (seen.has(key)) return { items: [], error: `${at}: ซ้ำกับรายการก่อนหน้า` };
     seen.add(key);
 
@@ -150,6 +157,7 @@ export function normalizeDocLines(input, vocab) {
       lineKind: vocab.lineKind,
       docType,
       productId,
+      scentId,
       // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร
       label: vocab.label(docType),
       spec: spec || null,

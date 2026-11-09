@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
-import { productDocLineTarget } from "@/lib/requests/productDocLines";
+import { docLineFileTarget } from "@/lib/requests/productDocLines";
 /* ช่องไฟล์บังคับของรูปแบบคำร้อง (ประเมินจากแบบ = แบบ / ผังพื้นที่) — บล็อกเดียวกับในฟอร์ม โหมดใบที่บันทึกแล้ว (S4 C-2) */
 import RequiredFilesBlock from "@/components/requests/RequiredFilesBlock";
 import {
@@ -325,7 +325,8 @@ export default function RequestDetailPage() {
   /* ⭐ ใบที่เลือกกลิ่นจากทะเบียนรายแถวสินค้า (พัฒนาสูตร NPD · ข้อ 2.1) — โหมดแก้ต้องมี
      ทะเบียนกลิ่นให้เลือก · ไม่โหลด = ช่องกลิ่นว่างทุกแถวทั้งที่ใบเลือกไว้แล้ว */
   const pdrPicksScent = req ? requestPdrRowsPickScent(req) : false;
-  const needsScents = hasFormulaRows || pdrPicksScent;
+  /* + ใบขอเอกสาร (P3 · 09/11/2026) — บรรทัด IFRA เลือกกลิ่นในฟอร์มแก้ (ฟอร์มเดียวกับตอนเปิดใบ) ⇒ ต้องมีทะเบียนกลิ่น */
+  const needsScents = hasFormulaRows || pdrPicksScent || req?.kind === "document";
   const needsCustomers = needsScents || req?.kind === "scent_dev";
   /* ⭐ ม-148 — พัฒนากลิ่นที่ส่งเป็นสินค้าสร้างสูตรด้วย ⇒ ฟอร์มส่งงานต้องมีทะเบียนสูตร (ตัวเลือก "แก้มาจากสูตร"
      + ด่านรหัสสูตรซ้ำก่อนกดส่ง) เหมือนใบพัฒนาสูตร */
@@ -2967,22 +2968,24 @@ export default function RequestDetailPage() {
                 ("flow การส่งเอกสาร ต้องเป็นแบบเดียว") ⇒ การ์ดแถวเหลือดูอย่างเดียว
                 (DocumentDetail) · ด่านฝั่ง server (ไฟล์ ≥ 1) ยังเป็น backstop */}
             {hopDraft.hop === "ready" && isDocLineKind(hopDraft.item.lineKind) && (
-              productDocLineTarget(hopDraft.item) ? (
-                /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026) — ไฟล์ลงที่
-                   **สินค้า** (แผง "เอกสารจาก RD" ของ FG นั้น) ไม่ใช่ที่บรรทัด · สินค้ามีไฟล์ล่าสุดอยู่แล้ว = กดบันทึกได้เลย
-                   ⚠️ ยังเป็นที่แนบที่เดียวของสายนี้ (ม-90) — แค่ที่เก็บเปลี่ยนจากบรรทัดเป็น FG · ด่าน server นับไฟล์ของสินค้า */
+              docLineFileTarget(hopDraft.item) ? (
+                /* ⭐ บรรทัดที่ไฟล์อยู่ที่ FG (MSDS / Spec Sheet · P2b) หรือกลิ่น (IFRA · P3) — ศูนย์กลางเอกสารของสินค้า · มติเจ้าของ 09/11/2026
+                   ไฟล์ลงที่ **สินค้า/กลิ่น** ไม่ใช่ที่บรรทัด · มีไฟล์ฉบับล่าสุดอยู่แล้ว = กดบันทึกได้เลย
+                   ⚠️ ยังเป็นที่แนบที่เดียวของสายนี้ (ม-90) — แค่ที่เก็บเปลี่ยน · ด่าน server นับไฟล์ของ entity นั้น */
                 <div className="form-group">
-                  <label>ไฟล์{productDocLineTarget(hopDraft.item).label} ของ FG (เก็บที่สินค้า)</label>
+                  <label>
+                    ไฟล์{docLineFileTarget(hopDraft.item).label} ของ{docLineFileTarget(hopDraft.item).entityType === "scent" ? "กลิ่น (เก็บที่กลิ่น)" : " FG (เก็บที่สินค้า)"}
+                  </label>
                   <AttachmentsPanel
-                    entityType="product"
-                    entityId={productDocLineTarget(hopDraft.item).productId}
+                    entityType={docLineFileTarget(hopDraft.item).entityType}
+                    entityId={docLineFileTarget(hopDraft.item).entityId}
                     canEdit={!saving}
-                    docTypes={[{ key: productDocLineTarget(hopDraft.item).docType, label: productDocLineTarget(hopDraft.item).label }]}
+                    docTypes={[{ key: docLineFileTarget(hopDraft.item).docType, label: docLineFileTarget(hopDraft.item).label }]}
                     inlineUpload
                   />
                   <p className={styles.fieldHint}>
-                    ต้องมีไฟล์อย่างน้อย 1 ไฟล์ — ไฟล์นี้เก็บที่สินค้า ขึ้นที่แท็บเอกสารของสินค้าและของดีล/โครงการ ·
-                    ถ้าสินค้ามีไฟล์ฉบับล่าสุดอยู่แล้ว กดบันทึกได้เลยไม่ต้องแนบซ้ำ
+                    ต้องมีไฟล์อย่างน้อย 1 ไฟล์ — ไฟล์นี้เก็บที่{docLineFileTarget(hopDraft.item).entityType === "scent" ? "กลิ่น ขึ้นที่หน้ากลิ่นและแท็บเอกสารของ FG ที่ใช้กลิ่นนี้" : "สินค้า ขึ้นที่แท็บเอกสารของสินค้า"}และของดีล/โครงการ ·
+                    ถ้ามีไฟล์ฉบับล่าสุดอยู่แล้ว กดบันทึกได้เลยไม่ต้องแนบซ้ำ
                   </p>
                 </div>
               ) : (

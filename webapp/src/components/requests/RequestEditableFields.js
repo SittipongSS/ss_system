@@ -261,6 +261,7 @@ export function RequestLineFields({
           disabled={lock}
           detailExtra={detailExtra}
           products={products}
+          scents={scents}
           customerId={customerId}
         />
       )}

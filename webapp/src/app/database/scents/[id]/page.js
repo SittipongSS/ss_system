@@ -18,6 +18,9 @@ import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
 import ScentFormModal from "@/components/database/ScentFormModal";
 import { scentToForm } from "@/components/database/ScentForm";
 import Toast from "@/components/ui/Toast";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
+import { ATTACHMENT_TYPES } from "@/lib/master/attachmentTypes";
+import { isRdRole } from "@/lib/permissions";
 import { fmtDate, naText } from "@/lib/format";
 import { useDepartment, useRole } from "@/lib/roleContext";
 import { canQuoteMaterial } from "@/lib/materialPrices";
@@ -231,6 +234,18 @@ export default function ScentDetailPage() {
           { label: "หมายเหตุ", value: scent.note, wide: true },
         ]}
       />
+      {/* ⭐ IFRA ของกลิ่น (ศูนย์กลางเอกสารของสินค้า P3 · มติเจ้าของ 09/11/2026: "IFRA เก็บ by กลิ่น (RD ออก)") —
+          ไฟล์ชุดเดียวที่หน้า FG ทุกตัวที่ใช้กลิ่นนี้ดึงไปแสดง · แนบ/ลบได้เฉพาะ RD + admin (server ตรวจซ้ำ: canAttachToScent) */}
+      <AttachmentsPanel
+        entityType="scent"
+        entityId={scent.id}
+        canEdit={isRdRole(role) || role === "admin"}
+        docTypes={ATTACHMENT_TYPES.scent}
+        title="เอกสารของกลิ่น (IFRA)"
+        note="IFRA Certificate ของกลิ่นนี้ — RD เป็นผู้ออกและแนบ · ขึ้นที่แท็บเอกสารของ FG ทุกตัวที่ใช้กลิ่นนี้"
+        cardColumns={1}
+      />
+
       {/* ⭐ ลูกค้าที่ใช้ร่วม (ม-150) — RD + หัวหน้าฝ่ายขาย Sup ขึ้นไปแชร์กลิ่นให้ลูกค้ารายอื่นได้ · บันทึกแล้วโหลดใบใหม่ (ตัวเลือกทุกจออ่านจาก GET) */}
       <RegistryShareCard kind="scent" entity={scent} canManage={canShare} onSaved={(_, msg) => { setToast({ kind: "success", msg }); load(); }} />
 

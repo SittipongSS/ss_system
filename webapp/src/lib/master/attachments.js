@@ -70,6 +70,9 @@ export const PARENT_TABLE = {
   /* ใบสั่งขาย (แท็บ "เอกสาร" · มติ 25/09) — ⚠️ บรรทัดนี้คือจุดที่ทำให้ "แนบได้แต่เปิดดูไม่ได้สักไฟล์"
      ถ้าลืม · สิทธิ์ไหลตาม **ดีลของใบ** ไม่ใช่แถวใบ (ดู lib/sales/salesOrderAttachmentAccess.js) */
   sales_order: 'sales_orders',
+  /* กลิ่น (IFRA · ศูนย์กลางเอกสารของสินค้า P3 09/11/2026) — สิทธิ์ไหลตามทะเบียนกลิ่น (lib/master/scentAttachmentAccess.js)
+     ⚠️ ขาดบรรทัดนี้ = แนบได้แต่ proxy /file ตอบ 403 ทุกไฟล์ */
+  scent: 'scents',
 };
 export const ATTACHMENT_RESOURCE = { customer: 'customers', product: 'products', order: 'orders', registration: 'registrations' };
 
