@@ -1,0 +1,36 @@
+/* การ์ด "ติดตั้ง · เข้าบริการ" (ขั้นเข้าติดตั้ง PR-2b) — ไซต์ละแถว: ไซต์ · โหมด · ขั้น · ปุ่ม */
+.lead { margin: 0 0 var(--space-3); color: var(--text-2); font-size: var(--fs-5); line-height: var(--lh-thai); }
+.notice { margin-bottom: var(--space-3); }
+
+.deposit {
+  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2);
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel-2);
+}
+.deposit[data-state="blocked"] { border-color: color-mix(in srgb, var(--amber) 40%, var(--border)); }
+.depositLabel { font-size: var(--fs-4); font-weight: var(--fw-bold); color: var(--text-3); }
+.depositText { flex: 1 1 16rem; min-width: 0; font-size: var(--fs-5); color: var(--text); }
+
+.sites { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border: 1px solid var(--border); border-radius: var(--radius-md); }
+.site {
+  display: grid; grid-template-columns: minmax(0, 1.3fr) auto minmax(0, 1.6fr) auto;
+  gap: var(--space-3); align-items: start; padding: var(--space-3);
+}
+.site + .site { border-top: 1px solid var(--border); }
+.siteName { display: flex; flex-direction: column; min-width: 0; line-height: var(--lh-thai); }
+.siteName b { font-size: var(--fs-6); }
+.siteName small, .siteState small { color: var(--text-3); font-size: var(--fs-4); }
+.code { color: var(--text-3); font-size: var(--fs-4); font-variant-numeric: tabular-nums; }
+.siteMode { display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; }
+.pending { color: var(--amber); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
+.siteState { display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; min-width: 0; line-height: var(--lh-thai); }
+.visit { display: inline-flex; align-items: center; gap: var(--space-1); }
+.siteAct { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
+.why { color: var(--text-3); font-size: var(--fs-4); }
+.readiness { margin: var(--space-3) 0 0; color: var(--text-2); font-size: var(--fs-5); }
+
+@media (max-width: 900px) {
+  .site { grid-template-columns: minmax(0, 1fr) auto; }
+  .siteState { grid-column: 1 / -1; }
+  .siteAct { grid-column: 1 / -1; align-items: flex-start; }
+}

@@ -133,6 +133,9 @@ export const SERVICE_BELL_KINDS = Object.freeze([
   /* ⭐ ช่างแจ้งว่าแก้ตามที่หัวหน้าส่งกลับแล้ว → หัวหน้า TS (มติ 2026-09-22) — ปิดวงของ
      `survey_send_back` · ยิงจาก `lib/service/surveyFieldDoneNotify.js` (`SURVEY_SEND_BACK_DONE_KIND`) */
   'survey_send_back_done',
+  /* ⭐ ฝ่ายขายขอคิว/แก้คำขอคิวติดตั้ง → หัวหน้า TS + Planner (ขั้นเข้าติดตั้ง · mig 0425)
+     ⚠️ ยิงจาก `lib/service/installNotify.js` (`INSTALL_REQUESTED_KIND`) · entityType 'sales_order' */
+  'install_requested',
   /* ⭐ หัวหน้าสลับวิธีประเมิน (งวด S2a · แผน survey-desk-assessment §3.5) → ช่างบนนัดของใบนั้น:
      นัดถูกยกเลิกเพราะใบเป็นประเมินจากแบบ หรือพื้นที่ที่ไม่ต้องวัดแล้ว — ก่อนมีตัวนี้งานหายจากรายการของช่างเฉย ๆ
      ⚠️ ยิงจาก `lib/service/surveyMethodNotify.js` (`SURVEY_METHOD_CREW_KIND`) · href ไปจอของฝ่ายบริการ

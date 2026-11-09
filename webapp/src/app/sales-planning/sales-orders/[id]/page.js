@@ -99,6 +99,7 @@ import { businessDate } from "@/lib/businessDate";
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
+import SalesOrderInstallCard from "@/components/salesPlanning/install/SalesOrderInstallCard";
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
 import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import Tabs from "@/components/ui/Tabs";
@@ -2898,6 +2899,13 @@ export default function SalesOrderDetailPage() {
             />
           </DetailCard>
           )}
+
+          {/* ⭐ ขั้นเข้าติดตั้ง (mig 0425 · PR-2b · ม็อก A1) — ไซต์ละหนึ่งคำตอบ ติดตั้ง/Service + ขอคิวติดตั้ง
+              · ขึ้นเฉพาะใบ pipeline สายบริการที่อนุมัติแล้ว และสวิตช์ SERVICE_INSTALL_STEP เปิด (ค่าจาก GET ใบ)
+              · การ์ดโหลดก้อนของตัวเอง (`/install`) — ขั้นคำนวณที่ server ไม่คิดซ้ำที่จอ */}
+          {order.installStepEnabled && onServiceLine && !historical && order.status === "approved" ? (
+            <SalesOrderInstallCard orderId={id} onChanged={refreshOrder} />
+          ) : null}
 
           {/* ⭐ โซนที่ใบนี้ขาย (mig 0374) — ใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ตารางรายการข้างบน
               ไม่มีคอลัมน์ไซต์/โซนให้ดูเลย · การ์ดนี้บอกด้วยว่าฝ่าย TS ตั้งรอบไปถึงไหนแล้ว */}

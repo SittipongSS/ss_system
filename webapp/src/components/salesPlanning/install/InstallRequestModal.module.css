@@ -1,0 +1,15 @@
+/* โมดัล "ขอคิวติดตั้ง" (ขั้นเข้าติดตั้ง PR-2b) */
+.notice { margin-bottom: var(--space-3); }
+.block { margin: 0 0 var(--space-3); padding: 0; border: 0; min-width: 0; }
+.zoneHead { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin: var(--space-1) 0 var(--space-2); }
+.zoneHead small { color: var(--text-3); font-size: var(--fs-4); }
+.hint { margin: calc(var(--space-2) * -1) 0 var(--space-3); color: var(--text-3); font-size: var(--fs-4); }
+.gate {
+  display: flex; flex-direction: column; gap: var(--space-0-5); padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius-md); background: var(--panel-2); font-size: var(--fs-5);
+}
+.gate[data-state="blocked"] { background: color-mix(in srgb, var(--amber) 9%, var(--panel-2)); }
+.gate small { color: var(--text-3); font-size: var(--fs-4); }
+.footer { display: flex; align-items: center; gap: var(--space-2); width: 100%; }
+.footer > :first-child { flex: 1 1 auto; }
+.why { color: var(--text-3); font-size: var(--fs-4); }
