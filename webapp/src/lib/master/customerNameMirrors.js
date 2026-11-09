@@ -47,6 +47,58 @@ export const CUSTOMER_NAME_MIRRORS = Object.freeze([
   // ดีล: API รายการ join ทะเบียนสดอยู่แล้ว แต่คอลัมน์นี้ยังถูกอ่านตอนจัดกลุ่ม/ค้นหา
   // ⇒ ต้อง cascade ด้วย ไม่งั้นชื่อบนแถวกับชื่อที่ใช้จัดกลุ่มเป็นคนละตัว
   { table: 'sales_deals', mode: 'live', fields: { customerName: 'displayName' } },
+
+  /* ── ข้อมูลหลักฝั่งสินค้า (เพิ่ม 2026-11-09) ─────────────────────────────
+     🐞 เจ้าของแจ้ง: แก้ชื่อลูกค้า AR-1056 แล้ว FG-1056-03-002 ยังโชว์ชื่อเก่า
+     ("บริษัท กอ ขอ 168 จำกัด") — `products` ถือสำเนา `customerName` มาตั้งแต่ก่อนมี
+     ทะเบียนนี้ แต่ไม่เคยถูกประกาศ ⇒ ไม่มี cascade · วัดบน prod วันพบ: FG 53 แถว
+     (ลูกค้า 22 ราย) · กลิ่น 13 · สูตร 5 · ไซต์บริการ 2 · ราคาวัตถุดิบเฉพาะลูกค้า 5
+     ทั้งหมดเป็น **ทะเบียน** ไม่ใช่เอกสาร (ม. ฐานข้อมูล = ศูนย์กลาง 09/11) ⇒ live */
+  // สินค้า FG: หน้าสินค้า "ลูกค้าเจ้าของ" · BOM board · สเปค · ป้ายเจ้าของบนบรรทัด QT อ่านช่องนี้
+  { table: 'products', mode: 'live', fields: { customerName: 'displayName' } },
+  // ทะเบียนกลิ่น/สูตรของ RD: ชื่อลูกค้าเจ้าของกลิ่น (ใบ PDR ที่ออกแล้วตรึงอยู่ในเอกสารของมันเอง)
+  { table: 'scents', mode: 'live', fields: { customerName: 'displayName' } },
+  { table: 'formulas', mode: 'live', fields: { customerName: 'displayName' } },
+  // แชร์กลิ่น/สูตรให้ลูกค้าอื่น (ม-150): คอลัมน์ "snapshot ตอนแชร์" ใช้วาดรายชื่อผู้ได้รับแชร์
+  { table: 'scent_customer_shares', mode: 'live', fields: { customerName: 'displayName' } },
+  { table: 'formula_customer_shares', mode: 'live', fields: { customerName: 'displayName' } },
+  // ทะเบียนไซต์บริการ: ไซต์มีชื่อของตัวเอง (`name`) ช่องนี้คือชื่อลูกค้าเจ้าของไซต์
+  // (เอกสารประเมินพื้นที่ที่ออกแล้วตรึง HTML ไว้ ไม่อ่านช่องนี้ย้อนหลัง)
+  { table: 'service_sites', mode: 'live', fields: { customerName: 'displayName' } },
+  // คลังราคาวัตถุดิบ: ราคาเฉพาะลูกค้า — ตัวตนของแถวผูก `customerId` ไม่ใช่ชื่อ (mig 0181)
+  { table: 'material_prices', mode: 'live', fields: { customerName: 'displayName' } },
+  /* คำร้อง RQ ทุกฝ่าย (เดิม material_price_asks · rename ที่ 0173) — มติเจ้าของ 09/11
+     "เปลี่ยนตาม" รวมใบที่ปิดแล้ว: เป็นงานภายใน ไม่ใช่เอกสารส่งลูกค้า และใบ PDR อ่าน
+     ที่อยู่/ไทย-ต่างชาติสดจากทะเบียนอยู่แล้ว ชื่อจึงต้องเดินชุดเดียวกัน
+     (prod วันตัดสิน: ค้างชื่อเก่า 35 ใบจาก 15 ลูกค้า) · ยาม guard_dept_request (0173)
+     กันแค่ docNo/ใบยกเลิก ไม่กันการเขียนชื่อ */
+  { table: 'dept_requests', mode: 'live', fields: { customerName: 'displayName' } },
+
+  /* ── เอกสาร: ตรึงชื่อ ณ วันออกใบ ───────────────────────────────────────── */
+  {
+    table: 'costing_requests',
+    mode: 'frozen',
+    reason: 'ใบขอราคาผลิตเป็นเอกสารที่ส่งต่อฝ่ายต้นทุน — mig 0141 ประกาศไว้ตั้งแต่เกิดว่า '
+      + 'snapshot เพื่อ "ลูกค้าเปลี่ยนชื่อแล้วใบเก่าไม่เพี้ยน" · ฉบับใหม่ออกผ่าน revise',
+  },
+  {
+    table: 'sales_contracts',
+    mode: 'frozen',
+    reason: 'สัญญาเป็นเอกสารที่ลงนามกับลูกค้า — ชื่อคู่สัญญาคือชื่อ ณ วันทำสัญญา '
+      + 'อยากได้ชื่อใหม่ต้องออก Rev. (กติกาเดียวกับใบเสนอราคา)',
+  },
+  {
+    table: 'shipment_prep',
+    mode: 'frozen',
+    reason: 'ใบเตรียมส่งของมีเลขที่และสถานะพิมพ์แล้ว (printed) — เป็นเอกสารที่ออกไปกับของ '
+      + 'ชื่อบนใบต้องตรงกับที่พิมพ์ออกไป',
+  },
+  {
+    table: 'orders',
+    mode: 'frozen',
+    reason: 'ตารางใบสั่งรุ่นแรก (mig 0004) ประกาศคอลัมน์นี้ว่า "snapshot at time of order" — '
+      + 'เลิกใช้แล้ว (ว่างบน prod) ประกาศไว้ให้ยามครบเท่านั้น',
+  },
   {
     table: 'sales_orders',
     mode: 'frozen',

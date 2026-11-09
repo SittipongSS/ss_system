@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 import {
   CUSTOMER_NAME_MIRRORS, cascadeCustomerName, liveCustomerNameMirrors,
@@ -47,6 +47,90 @@ test('เอกสารการค้าต้องเป็น frozen เส
   assert.equal(modeOf('projects'), 'live');
   assert.equal(modeOf('sales_deals'), 'live');
   assert.equal(modeOf('excise_registrations'), 'live');
+});
+
+/* ── ยาม "ตารางที่ถือสำเนาต้องอยู่ในทะเบียน" ────────────────────────────
+   🐞 2026-11-09: `products` ถือ `customerName` แต่ไม่เคยถูกประกาศ ⇒ แก้ชื่อลูกค้าแล้ว
+   FG ทุกตัวค้างชื่อเก่าถาวร (FG-1056-03-002 · วัดได้ 53 แถว) · เทสต์เดิมนับแค่ "≥ 5 ตาราง"
+   จึงไม่มีอะไรแดง ⇒ อ่าน migration จริงแล้วบังคับว่าทุกตารางที่มีคอลัมน์นี้ต้องประกาศโหมด
+   ตามลำดับเหตุการณ์ในไฟล์: CREATE TABLE (เนื้อมี "customerName") · ALTER … ADD COLUMN ·
+   RENAME TO (material_price_asks → dept_requests ที่ 0173) · DROP TABLE · ตัดคอมเมนต์ทิ้งก่อน
+   (0364 มี `-- DROP TABLE …` เป็นสูตรถอย ไม่ใช่การลบจริง) */
+const MIGRATIONS_DIR = new URL('../../../supabase/migrations/', import.meta.url);
+const IDENT = String.raw`(?:public\.)?"?(\w+)"?`;
+
+function tablesHoldingCustomerName() {
+  const holders = new Set();
+  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith('.sql')).sort();
+  for (const file of files) {
+    const sql = readFileSync(new URL(file, MIGRATIONS_DIR), 'utf8').replace(/--[^\n]*/g, '');
+    const events = [];
+    for (const m of sql.matchAll(new RegExp(String.raw`create\s+table\s+(?:if\s+not\s+exists\s+)?${IDENT}\s*\(`, 'gi'))) {
+      let depth = 1;
+      let i = m.index + m[0].length;
+      for (; i < sql.length && depth; i += 1) {
+        if (sql[i] === '(') depth += 1;
+        else if (sql[i] === ')') depth -= 1;
+      }
+      if (/"customerName"/.test(sql.slice(m.index, i))) events.push({ at: m.index, add: m[1] });
+    }
+    for (const m of sql.matchAll(new RegExp(String.raw`alter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?${IDENT}([^;]*);`, 'gi'))) {
+      if (/add\s+column\s+(?:if\s+not\s+exists\s+)?"customerName"/i.test(m[2])) events.push({ at: m.index, add: m[1] });
+      const renamed = m[2].match(/^\s*rename\s+to\s+"?(\w+)"?/i);
+      if (renamed) events.push({ at: m.index, from: m[1], to: renamed[1] });
+    }
+    for (const m of sql.matchAll(new RegExp(String.raw`drop\s+table\s+(?:if\s+exists\s+)?${IDENT}`, 'gi'))) {
+      events.push({ at: m.index, drop: m[1] });
+    }
+    for (const e of events.sort((a, b) => a.at - b.at)) {
+      if (e.add) holders.add(e.add);
+      else if (e.drop) holders.delete(e.drop);
+      else if (holders.delete(e.from)) holders.add(e.to);
+    }
+  }
+  return holders;
+}
+
+/* ตารางที่ถือสำเนาแต่ **ยังไม่มีมติ** ว่าเดินตามหรือตรึง — แยกไว้ตรงนี้แทนการแปะ
+   'frozen' ปลอม ๆ ให้ผ่านยาม (frozen = ตัดสินแล้วว่าเป็นเอกสาร) · พฤติกรรมเท่ากับ
+   frozen คือไม่ cascade · ตัดสินแล้วย้ายเข้าทะเบียนจริงพร้อมลบออกจากที่นี่ */
+const UNDECIDED_CUSTOMER_NAME_COPIES = Object.freeze({
+  // ว่างอยู่ — dept_requests ตัดสินแล้ว 09/11 (live) · ตารางใหม่ที่ยังไม่มีมติมาไว้ที่นี่พร้อมเหตุผล
+});
+
+test('ทุกตารางที่ migration ให้คอลัมน์ customerName ต้องประกาศในทะเบียน (live/frozen)', () => {
+  const declared = new Set(CUSTOMER_NAME_MIRRORS.map((m) => m.table));
+  const holders = tablesHoldingCustomerName();
+  // ตัวยามต้องเห็นของจริง ไม่ใช่ regex พังแล้วคืนชุดว่างให้ผ่านเงียบ ๆ
+  for (const known of ['projects', 'sales_deals', 'quotations', 'scents', 'service_sites', 'dept_requests']) {
+    assert.ok(holders.has(known), `ยามต้องเจอ ${known} จาก migration`);
+  }
+  // ตารางที่ถูกลบ/เปลี่ยนชื่อไปแล้วต้องไม่ถูกเรียกร้อง
+  for (const gone of ['material_price_requests', 'material_price_asks', 'product_spec_issues']) {
+    assert.equal(holders.has(gone), false, `${gone} ไม่มีแล้ว ยามต้องไม่นับ`);
+  }
+  const missing = [...holders].filter((t) => !declared.has(t) && !(t in UNDECIDED_CUSTOMER_NAME_COPIES));
+  assert.deepEqual(missing, [], `ตารางถือสำเนาชื่อลูกค้าแต่ไม่ได้ประกาศโหมดใน customerNameMirrors.js: ${missing.join(', ')}`);
+  for (const t of Object.keys(UNDECIDED_CUSTOMER_NAME_COPIES)) {
+    assert.equal(declared.has(t), false, `${t} มีมติแล้ว — ลบออกจากลิสต์ยังไม่ตัดสิน`);
+  }
+});
+
+test('ข้อมูลหลักต้อง live — สินค้า/กลิ่น/สูตร/ไซต์ เดินตามทะเบียนลูกค้าเสมอ', () => {
+  const modeOf = (table) => CUSTOMER_NAME_MIRRORS.find((m) => m.table === table)?.mode;
+  // `products.customerName` มาจาก schema ตั้งต้น (ก่อน migration 0001) ยามข้างบนจึงมองไม่เห็น
+  // ⇒ ล็อกตรงนี้แทน — นี่คือบั๊ก FG-1056-03-002 (09/11)
+  for (const table of ['products', 'scents', 'formulas', 'service_sites', 'material_prices',
+    'scent_customer_shares', 'formula_customer_shares',
+    // คำร้อง RQ: มติเจ้าของ 09/11 "เปลี่ยนตาม" (รวมใบที่ปิดแล้ว)
+    'dept_requests']) {
+    assert.equal(modeOf(table), 'live', `${table} เป็นทะเบียน ต้องเดินตามลูกค้า`);
+    assert.equal(
+      CUSTOMER_NAME_MIRRORS.find((m) => m.table === table).fields.customerName,
+      'displayName',
+      `${table} ต้องประทับผ่าน customerSnapshotName (ลูกค้าชื่ออังกฤษล้วนห้ามได้ null)`,
+    );
+  }
 });
 
 test('cascade เขียนเฉพาะตาราง live และแมปฟิลด์ตามที่ประกาศ', async () => {

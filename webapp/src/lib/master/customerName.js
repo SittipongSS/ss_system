@@ -138,3 +138,39 @@ export function customerNamePatch(body = {}) {
   const namePerson = text(body.namePerson) || null;
   return { nameTitle, namePerson, name: composeCustomerName({ nameTitle, namePerson, name: body.name }) || null };
 }
+
+/* ── ล้างรูปตัวอักษร/เว้นวรรคของชื่อลูกค้า ─────────────────────────────────
+   ย้ายมาจาก scripts/fix-customer-name-text.mjs (รอบล้างทะเบียน 27/08 · มติผู้ใช้วันนั้น
+   "แก้เฉพาะรูปตัวอักษร ไม่แตะคำ") ให้ **ตอนบันทึก** ใช้ตัวเดียวกับสคริปต์
+   🐞 2026-11-09: AR-1056 ถูกแก้ชื่อเป็น "บริษัท␣␣กข168 จำกัด␣" — POST/PATCH ลูกค้า
+   ไม่เคยล้างอะไรเลย ⇒ ทะเบียนมี 16 รายที่ช่องว่างซ้ำ/หัวท้าย/แท็บ ค้นด้วยเว้นวรรค
+   เดียวไม่เจอ และสำเนาใน FG/กลิ่น/คำร้องได้รูปเพี้ยนตามไปด้วย
+   สิ่งที่ทำ (ไม่ตัด/ไม่เติมคำ — "(สำนักงานใหญ่)" ที่คนพิมพ์ไว้ยังอยู่):
+     1. `ํา` (นิคหิต + สระอา) → `ำ` · 🪤 NFC ไม่ประกอบให้ และ NFKC แตก ำ เพิ่มอีก
+     2. `เเ` (สระเอสองตัว) → `แ`
+     3. NBSP → ช่องว่าง · ZWSP/ZWNJ/ZWJ/BOM ทิ้ง · ช่องว่าง/แท็บซ้ำ → ช่องเดียว · ตัดหัวท้าย
+     4. ระยะรอบวงเล็บ: "( x )" → "(x)" · "จำกัด(มหาชน)" → "จำกัด (มหาชน)"
+   ⚠️ ค่าว่างคืนค่าว่าง ไม่แปลงเป็น null — ผู้เรียกจัดการ null เองตามเดิม ไม่งั้นแถวที่
+      เก็บ '' อยู่จะนับเป็น "เปลี่ยน" แล้ว resetApprovalOnEdit ดีดลูกค้ากลับไปรออนุมัติ */
+export function tidyCustomerNameText(value) {
+  let s = String(value ?? '').normalize('NFC');
+  s = s.replace(/ํา/g, 'ำ').replace(/เเ/g, 'แ');
+  s = s.replace(/ /g, ' ').replace(/[​‌‍﻿]/g, '');
+  s = s.replace(/\s+/g, ' ').trim();
+  s = s.replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');
+  s = s.replace(/(\S)\(/g, '$1 (');
+  return s;
+}
+
+/** ช่องชื่อของแถวลูกค้าที่ต้องผ่าน tidyCustomerNameText ก่อนบันทึก */
+export const CUSTOMER_NAME_TEXT_FIELDS = Object.freeze(['name', 'nameEn', 'nameTitle', 'namePerson']);
+
+/* patch ชื่อที่ล้างแล้ว — แตะเฉพาะช่องที่เป็นสตริงอยู่ใน row (undefined/null ปล่อยผ่าน)
+   ⇒ PATCH ที่ไม่ได้ส่งชื่อมาไม่ได้คีย์ชื่อเพิ่ม · POST/PATCH ลูกค้าเรียกก่อนด่านชื่อ */
+export function tidyCustomerNameFields(row = {}) {
+  const patch = {};
+  for (const key of CUSTOMER_NAME_TEXT_FIELDS) {
+    if (typeof row[key] === 'string') patch[key] = tidyCustomerNameText(row[key]);
+  }
+  return patch;
+}

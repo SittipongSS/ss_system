@@ -6,7 +6,7 @@ import {
   rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
-import { customerNameError, customerNamePatch } from '@/lib/master/customerName';
+import { customerNameError, customerNamePatch, tidyCustomerNameFields } from '@/lib/master/customerName';
 import { cascadeCustomerName } from '@/lib/master/customerNameMirrors';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
@@ -358,6 +358,10 @@ export async function PATCH(request, { params }) {
       name: updates.name ?? customer.name,
     }));
   }
+  /* ล้างช่องว่างซ้ำ/หัวท้าย/อักขระซ่อนของชื่อ (มติเจ้าของ 09/11 · AR-1056) — หลังประกอบ
+     ชื่อบุคคลเสร็จ และก่อนด่านชื่อ/ตัวเทียบ changedFields ข้างล่าง ⇒ บันทึกชื่อเดิมที่
+     สะอาดอยู่แล้วไม่นับเป็นการแก้ (ไม่ดีดกลับไปรออนุมัติ) */
+  Object.assign(updates, tidyCustomerNameFields(updates));
   // ⭐ ชื่ออย่างน้อยหนึ่งภาษา (มติ 2026-08-22 · mig 0283) — เทียบกับ **ค่าหลังแก้**
   // ไม่ใช่ค่าที่ส่งมาอย่างเดียว: ฟอร์มส่งทั้งก้อนก็จริง แต่สายอื่นยิงคีย์เดียวได้
   // (ลบชื่อไทยทิ้งโดยยังมีชื่ออังกฤษ = ผ่าน · ลบทิ้งทั้งคู่ = ตีกลับ)

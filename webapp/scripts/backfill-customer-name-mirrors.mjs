@@ -41,7 +41,19 @@ const short = (v) => String(v ?? '(ว่าง)').replace(/\s+/g, ' ').slice(0,
       ไม่ก๊อปตรรกะมาไว้ที่นี่ ไม่งั้นสองฝั่งเพี้ยนหากันตอนทะเบียนเพิ่ม source ใหม่
    ⚠️ select ต้องหยิบทุกคอลัมน์ที่ resolver ต้องใช้ (`"nameEn"` สำหรับ displayName)
       ไม่งั้น fallback ไม่มีข้อมูลให้ตก แล้วสคริปต์เขียน null ทับของจริง */
-const { data: customers, error: custError } = await supabase.from('customers').select('id, name, "nameEn", taxId');
+/* อ่านครบทุกแถวเป็นหน้า ๆ — PostgREST ตัดที่ 1,000 แถวเงียบ ๆ (ลูกค้า 598 · FG 771
+   ณ 09/11 ใกล้เพดานแล้ว) เกินเมื่อไรแถวท้ายตารางจะไม่ถูกตรวจเลยโดยไม่มีใครรู้ */
+async function selectAll(table, columns) {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase.from(table).select(columns).range(from, from + 999);
+    if (error) return { error };
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) return { data: rows };
+  }
+}
+
+const { data: customers, error: custError } = await selectAll('customers', 'id, "arCode", name, "nameEn", "taxId"');
 if (custError) { console.error('✗ load customers:', custError.message); process.exit(1); }
 const byId = new Map((customers || []).map((c) => [c.id, c]));
 console.log(`ลูกค้าในทะเบียน ${byId.size} ราย`);
@@ -54,33 +66,41 @@ for (const m of CUSTOMER_NAME_MIRRORS.filter((x) => x.mode === 'frozen')) {
 let total = 0;
 let written = 0;
 for (const mirror of liveCustomerNameMirrors()) {
-  const columns = ['id', 'customerId', ...Object.keys(mirror.fields)].join(', ');
-  const { data: rows, error } = await supabase.from(mirror.table).select(columns);
+  /* ไม่หยิบ `id` — ตารางแชร์ (scent_/formula_customer_shares) ไม่มีคอลัมน์ id
+     (คีย์เป็นคู่ scentId/formulaId + customerId) · ค่าที่ต้องเขียนมาจากลูกค้าล้วน ๆ
+     จึงเขียนทีละ "ลูกค้า" ด้วย `.eq('customerId', …)` รูปเดียวกับ cascade ตอนแก้ลูกค้า */
+  const columns = ['"customerId"', ...Object.keys(mirror.fields).map((c) => `"${c}"`)].join(', ');
+  const { data: rows, error } = await selectAll(mirror.table, columns);
   if (error) { console.error(`✗ ${mirror.table}: ${error.message}`); continue; }
 
-  const stale = [];
+  const staleByCustomer = new Map();
   for (const row of rows || []) {
     const customer = row.customerId ? byId.get(row.customerId) : null;
     if (!customer) continue; // ไม่ผูกลูกค้า / ลูกค้าถูกลบ — ไม่ใช่หน้าที่สคริปต์นี้
     const patch = {};
+    let differs = false;
     for (const [column, source] of Object.entries(mirror.fields)) {
       const want = customerMirrorValue(customer, source);
-      const have = row[column] ?? null;
-      if (String(want ?? '').trim() !== String(have ?? '').trim()) patch[column] = want;
+      patch[column] = want;
+      if (String(want ?? '').trim() !== String(row[column] ?? '').trim()) differs = true;
     }
-    if (Object.keys(patch).length) stale.push({ row, patch, customer });
+    if (!differs) continue;
+    const entry = staleByCustomer.get(customer.id) || { customer, patch, rows: [] };
+    entry.rows.push(row);
+    staleByCustomer.set(customer.id, entry);
   }
 
-  console.log(`\n── ${mirror.table}: ${rows?.length ?? 0} แถว · ต้องแก้ ${stale.length}`);
-  total += stale.length;
-  for (const { row, patch, customer } of stale) {
-    const cols = Object.keys(patch).map((c) => `${c}: ${short(row[c])} → ${short(patch[c])}`).join(' · ');
-    console.log(`  · ${row.id}  ${cols}`);
-    void customer;
+  const staleRows = [...staleByCustomer.values()].reduce((n, e) => n + e.rows.length, 0);
+  console.log(`\n── ${mirror.table}: ${rows?.length ?? 0} แถว · ต้องแก้ ${staleRows} (ลูกค้า ${staleByCustomer.size} ราย)`);
+  total += staleRows;
+  for (const { customer, patch, rows: stale } of staleByCustomer.values()) {
+    const olds = [...new Set(stale.map((r) => short(r.customerName)))].join(' / ');
+    console.log(`  · ${customer.arCode || customer.id} ×${stale.length}  ${olds} → ${short(patch.customerName)}`);
     if (!commit) continue;
-    const { error: updateError } = await supabase.from(mirror.table).update(patch).eq('id', row.id);
+    // เขียนทั้งกอง patch ของลูกค้ารายนี้ (รวมช่องที่ตรงอยู่แล้ว ค่าเดียวกัน = ไม่เปลี่ยน)
+    const { error: updateError } = await supabase.from(mirror.table).update(patch).eq('customerId', customer.id);
     if (updateError) console.error(`    ✗ ${updateError.message}`);
-    else written += 1;
+    else written += stale.length;
   }
 }
 

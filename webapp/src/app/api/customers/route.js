@@ -4,7 +4,7 @@ import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, caretakerTeamsOf, hasTeam, primaryTeam, userTeams, viewScopeUser, isSuperuser } from '@/lib/permissions';
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
-import { customerNameError, customerNamePatch } from '@/lib/master/customerName';
+import { customerNameError, customerNamePatch, tidyCustomerNameFields } from '@/lib/master/customerName';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
   CODE_MODE_AUTO, arCodeError, codeModeOf, insertCustomerWithCode,
@@ -266,6 +266,8 @@ export async function POST(request) {
        `name` ที่พิมพ์ตรง ๆ เหมือนเดิม ⇒ ต้องอยู่ **ท้ายสุด** ของอ็อบเจกต์ */
     ...customerNamePatch(body),
   };
+  // ล้างช่องว่างซ้ำ/หัวท้าย/อักขระซ่อนของชื่อ (มติเจ้าของ 09/11) — ตัวเดียวกับ PATCH
+  Object.assign(newCustomer, tidyCustomerNameFields(newCustomer));
 
   // ── ออกรหัส + insert ──────────────────────────────────────────────────────
   // โหมด auto ผ่านฟังก์ชัน SQL (mig 0237): บวกเลขเคาน์เตอร์กับ insert อยู่ในคำสั่งเดียว
