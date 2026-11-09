@@ -21,6 +21,18 @@ export const SPEC_ILLUSTRATION_DOC_TYPE = 'spec_illustration';
    ⚠️ แนบ/เปลี่ยน/เอาออกได้ทุกคนที่แก้สเปคได้ — ช่องแคบ `canAttachSpecItemImage` (lib/master/attachmentAccess.js) ·
       ด่านแก้ทะเบียนสินค้าเดิมผูกกับทีมที่ดูแลลูกค้า ⇒ คนแก้สเปคนอกทีมจะกดแนบแล้วได้ 403 */
 export const SPEC_ITEM_IMAGE_DOC_TYPE = 'spec_item_image';
+/* ⭐ เอกสารที่ **RD ออก** ระดับ FG (ศูนย์กลางเอกสารของสินค้า P2 · มติเจ้าของ 09/11/2026 · docs/product-doc-hub.md):
+   MSDS กับ Specification Sheet เก็บที่ **ตัวสินค้า** — ฝ่ายขายเปิดส่งลูกค้าได้จากหน้าสินค้า ไม่ต้องไล่หาในคำร้องเก่า
+   ⚠️ **แนบ/ลบ/แก้ได้เฉพาะ RD (+ แอดมิน)** — ช่องแคบ `canAttachRdProductDoc` (lib/master/attachmentAccess.js) **แทน** ด่านแก้สินค้า
+      (ฝ่ายขายทีมที่ดูแลสินค้าแก้ไฟล์ชนิดนี้ไม่ได้ ทั้งที่แก้ไฟล์อื่นของสินค้าได้) — "RD ออก" ต้องแปลว่าไฟล์นี้มาจาก RD จริง
+   ⚠️ **อยู่ใน union ของสินค้า แต่ไม่ขึ้นแผงเอกสารทั่วไปของสินค้า** (`PANEL_HIDDEN_DOC_TYPES` + `productDocTypes()` กรองออก) —
+      บ้านของมันคือการ์ด "เอกสารจาก RD" ของแท็บเอกสาร ซึ่งขอสองคีย์นี้มาเองผ่าน `docTypes`
+   ⚠️ "Specification Sheet" ของ RD **คนละใบ** กับใบสเปคสินค้า FM-SA-04 ที่ฝ่ายขายออกจากระบบ — ป้ายต้องบอกว่าเป็นของ RD เสมอ */
+export const PRODUCT_MSDS_DOC_TYPE = 'msds';
+export const PRODUCT_SPEC_SHEET_DOC_TYPE = 'spec_sheet';
+export const RD_PRODUCT_DOC_TYPES = Object.freeze([PRODUCT_MSDS_DOC_TYPE, PRODUCT_SPEC_SHEET_DOC_TYPE]);
+export const isRdProductDoc = (entityType, docType) => entityType === 'product' && RD_PRODUCT_DOC_TYPES.includes(docType);
+
 /* เพดานขนาดของรูปรายแถว — จอสเปคโหลดรูปต้นฉบับแถวละรูป (ไม่มีตัวย่อรูป) ⇒ 25 MB × 37 แถวคือหน้าที่เปิดไม่ขึ้น */
 export const SPEC_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -35,7 +47,9 @@ export const SPEC_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
       ภาพแบบนั้นได้ (เช่น เอกสารที่อ้างถูกดึงกลับเป็นร่าง ⇒ ไม่มีใครอ้างแล้วแต่ยังติดปลดระวาง) ⇒ การ์ดภาพประกอบมีรายการ
       "ภาพที่ซ่อนไว้" พร้อมปุ่มลบไฟล์ของตัวเองแทน (ProductSpecIllustrations) — เส้น DELETE ตัดสินเองว่ายังมีเอกสารใช้อยู่ไหม */
 export const PANEL_HIDDEN_DOC_TYPES = Object.freeze({
-  product: Object.freeze([SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE]),
+  /* + เอกสารที่ RD ออก (P2 · 09/11/2026) — แผงทั่วไปของสินค้าเป็นของฝ่ายขาย (แนบ/ลบด้วยสิทธิ์แก้สินค้า) ⇒ ไฟล์ของ RD ห้ามตก
+     กอง "เอกสารอื่นๆ" พร้อมปุ่มลบของแผงนั้น · การ์ด "เอกสารจาก RD" ขอสองคีย์นี้มาเอง */
+  product: Object.freeze([SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, ...RD_PRODUCT_DOC_TYPES]),
 });
 export const isPanelHiddenDocType = (entityType, docType) => (
   (PANEL_HIDDEN_DOC_TYPES[entityType] || []).includes(docType)
@@ -223,7 +237,8 @@ export function productDocTypes(record) {
      FM-SA-04 ไม่ใช่เอกสารที่ทะเบียนสินค้าต้องมี · ปล่อยติดมาเมื่อไรจะได้การ์ดซ้ำ
      สองที่และด่าน "ยังขาดเอกสาร" จะนับรูปประกอบเป็นเอกสารที่ขาด */
   /* รูปของแถว checklist (mig 0405) ก็เช่นกัน — เป็นของจอสเปค ไม่ใช่เอกสารของทะเบียน */
-  const hidden = [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE];
+  /* เอกสารของ RD (P2) ก็เช่นกัน — การ์ดของมันอยู่ที่ "เอกสารจาก RD" และไม่บังคับ (ไม่เข้าด่านอนุมัติสินค้า) */
+  const hidden = [SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, ...RD_PRODUCT_DOC_TYPES];
   const list = ATTACHMENT_TYPES.product.filter((t) => !hidden.includes(t.key));
   if (!mainCode || ARTWORK_MAIN_CATEGORIES.includes(mainCode)) return list;
   return list.map((t) => (t.required ? { ...t, required: false } : t));
@@ -332,6 +347,9 @@ export const ATTACHMENT_TYPES = {
     { key: "spec_illustration", label: "ภาพประกอบใบสเปคสินค้า", required: false },
     /* รูปของแถว checklist วัตถุดิบ/บรรจุภัณฑ์ — ดูหัว `SPEC_ITEM_IMAGE_DOC_TYPE` (ในระบบเท่านั้น ไม่ลงกระดาษ) */
     { key: SPEC_ITEM_IMAGE_DOC_TYPE, label: "รูปของแถว checklist ใบสเปค", required: false },
+    /* เอกสารที่ RD ออก (P2 · 09/11/2026) — ดูหัว `RD_PRODUCT_DOC_TYPES` · ไม่บังคับ · แนบได้เฉพาะ RD */
+    { key: PRODUCT_MSDS_DOC_TYPE, label: "MSDS / SDS (RD)", required: false },
+    { key: PRODUCT_SPEC_SHEET_DOC_TYPE, label: "Specification Sheet (RD)", required: false },
     { key: "other", label: "เอกสารอื่นๆ", required: false },
   ],
   // เฟส B — เอกสารการชำระ ผูกกับออเดอร์ (รายรอบการชำระ) มาคนละสเตป/คนละฝ่าย:

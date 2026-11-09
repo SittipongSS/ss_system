@@ -10,9 +10,11 @@
 // ตามกฎของโปรเจกต์ · สองชุดที่ต้องแก้พร้อมกันด้วยมือคือของที่เพี้ยนหากันแน่นอน
 // และความเพี้ยนของด่านสิทธิ์ = คนเห็นของที่ไม่ควรเห็น ซึ่งไม่มีใครสังเกตจนสาย
 import {
-  canUser, canEditCustomerBillingRule, canEditRecord, canViewRecord, caretakerTeamsOf, hasTeam, isSuperuser,
+  canUser, canEditCustomerBillingRule, canEditRecord, canViewRecord, caretakerTeamsOf, hasTeam, isRdRole, isSuperuser,
 } from '@/lib/permissions';
-import { BILLING_CALENDAR_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isPersonalDoc } from '@/lib/master/attachmentTypes';
+import {
+  BILLING_CALENDAR_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isPersonalDoc, isRdProductDoc,
+} from '@/lib/master/attachmentTypes';
 import { canAttachToCosting, canViewCostingAttachment, isCostingAttachment } from '@/lib/master/costingAttachmentAccess';
 import { canAttachToPersonalTask, canViewPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachToSalesEntity, canViewSalesAttachment, isSalesAttachment } from '@/lib/sales/salesAttachmentAccess';
@@ -110,4 +112,18 @@ export function canAttachBillingCalendar(entityType, docType, parent, user) {
  */
 export function canAttachSpecItemImage(entityType, docType, user) {
   return entityType === 'product' && docType === SPEC_ITEM_IMAGE_DOC_TYPE && canEditProductSpec(user?.role);
+}
+
+/**
+ * ⭐ ช่องของเอกสารที่ **RD ออก** บนตัวสินค้า (MSDS · Specification Sheet — ศูนย์กลางเอกสารของสินค้า P2 · มติเจ้าของ 09/11/2026)
+ * แนบ/ลบ/แก้รายละเอียดได้เฉพาะคนฝ่าย RD (ทุกตำแหน่ง · `isRdRole`) + แอดมิน (role `admin` เท่านั้น)
+ * ⚠️ **แทน** ด่านแก้สินค้า ไม่ใช่ "หรือ" — ผู้เรียกต้องถามตัวนี้ **ตัวเดียว** เมื่อ `isRdProductDoc` เป็นจริง
+ *    (ฝ่ายขายทีมที่ดูแลสินค้าแก้ไฟล์อื่นของสินค้าได้ แต่ไฟล์ชนิดนี้ไม่ได้ — "RD ออก" ต้องแปลว่าไฟล์นี้มาจาก RD จริง)
+ * ⚠️ ผู้เรียกส่ง docType **ที่จะเก็บจริง** (POST: ค่าที่ผ่านทะเบียนแล้ว · ลบ/แก้: `docType` ของแถว) — ไม่ใช่ค่าดิบจากคำขอ
+ * ⚠️ ไม่รับแถวแม่ — ไม่ขึ้นกับทีมของสินค้า (RD ทำงานให้ทุกทีม) · ผู้เรียกยังต้องเช็กว่าสินค้ามีจริงเอง
+ */
+export function canAttachRdProductDoc(entityType, docType, user) {
+  if (!isRdProductDoc(entityType, docType)) return false;
+  /* ⚠️ แอดมินเท่านั้น ไม่ใช่ `isSuperuser` — ตัวนั้นรวมหัวหน้าฝ่ายขาย (AE/AC Sup) ซึ่งไม่ใช่คนออกเอกสาร RD */
+  return isRdRole(user?.role) || user?.role === 'admin';
 }
