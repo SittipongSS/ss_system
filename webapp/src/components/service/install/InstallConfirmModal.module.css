@@ -12,3 +12,9 @@
 .footer { display: flex; align-items: center; gap: var(--space-2); width: 100%; }
 .footer > :first-child { flex: 1 1 auto; }
 .why { color: var(--text-3); font-size: var(--fs-4); }
+/* จอโทรศัพท์: เหตุที่ปุ่มกดไม่ได้ขึ้นแถวของตัวเอง — ไม่บีบปุ่มจนป้ายตัดบรรทัด */
+@media (max-width: 560px) {
+  .footer { flex-wrap: wrap; }
+  .footer > :first-child { flex-basis: 100%; }
+  .footer > :nth-child(2) { margin-left: auto; }
+}

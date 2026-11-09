@@ -142,7 +142,7 @@ export default function InstallQueuePanel({ data, loading, error, onReload, tech
                       />
                     ) : null}
                     {!isCollapsed && group.items.map((row) => (
-                      <InstallQueueRow key={row.key} row={row} canConfirm={Boolean(data?.canConfirm)} onConfirm={() => setConfirmFor(row)} />
+                      <InstallQueueRow key={row.key} row={row} canConfirm={Boolean(data?.canConfirm)} onConfirm={(visit = null) => setConfirmFor({ row, visit })} />
                     ))}
                   </tbody>
                 );
@@ -154,7 +154,9 @@ export default function InstallQueuePanel({ data, loading, error, onReload, tech
 
       {confirmFor ? (
         <InstallConfirmModal
-          row={confirmFor}
+          key={`${confirmFor.row.key}|${confirmFor.visit?.id || "new"}`}
+          row={confirmFor.row}
+          visit={confirmFor.visit}
           technicians={technicians}
           todayIso={todayIso}
           onClose={() => setConfirmFor(null)}
@@ -168,6 +170,10 @@ export default function InstallQueuePanel({ data, loading, error, onReload, tech
 function InstallQueueRow({ row, canConfirm, onConfirm }) {
   const timeText = row.requestedStartTime && row.requestedEndTime ? `${row.requestedStartTime}–${row.requestedEndTime}` : "ทั้งวัน";
   const blocked = row.deposit?.state === "blocked";
+  /* ⭐ PR-4: ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยัน = ยืนยันวันใหม่บนนัดเดิม · โซนที่ยังไม่มีนัด = ยืนยันวัน (นัดใหม่) */
+  const reasked = row.visits.filter((v) => v.reasked);
+  const stuck = row.visits.filter((v) => v.stuck);
+  const openZones = row.zones.filter((z) => z.stage === "awaiting_ts" && !z.visitId);
   return (
     <tr>
       <td><span className={styles.main}>{naText(row.siteCode)}</span><span className="cell-sub">{row.siteName || ""}</span></td>
@@ -192,8 +198,11 @@ function InstallQueueRow({ row, canConfirm, onConfirm }) {
           </>
         ) : <span className="cell-sub">{row.stage === "undecided" ? "ยังไม่ขอคิว" : NA}</span>}
         {row.visits.filter((v) => v.tsConfirmedAt).map((v) => (
-          <span key={v.id} className="cell-sub">TS ยืนยัน {fmtDate(v.scheduledDate)}{v.startTime && v.endTime ? ` ${String(v.startTime).slice(0, 5)}–${String(v.endTime).slice(0, 5)}` : ""}</span>
+          <span key={v.id} className="cell-sub">
+            {v.reasked ? "เดิม " : ""}TS ยืนยัน {fmtDate(v.scheduledDate)}{v.startTime && v.endTime ? ` ${String(v.startTime).slice(0, 5)}–${String(v.endTime).slice(0, 5)}` : ""}
+          </span>
         ))}
+        {reasked.length && row.changeReason ? <span className={`cell-sub ${styles.blocked}`}>ลูกค้าขอเปลี่ยนวัน: {row.changeReason}</span> : null}
       </td>
       <td>
         <span className={styles.main}>{naText(row.contactName)}</span>
@@ -205,7 +214,13 @@ function InstallQueueRow({ row, canConfirm, onConfirm }) {
         <span className={`cell-sub ${blocked ? styles.blocked : ""}`}>{row.deposit?.text || "มัดจำก่อนติดตั้งผ่านแล้ว"}</span>
       </td>
       <td className={styles.act}>
-        {row.stage === "awaiting_ts" && canConfirm ? <Button size="sm" variant="primary" onClick={onConfirm}>ยืนยันวัน</Button> : null}
+        {row.stage === "awaiting_ts" && canConfirm ? reasked.map((v) => (
+          <Button key={v.id} size="sm" variant="primary" onClick={() => onConfirm(v)}>ยืนยันวันใหม่{reasked.length > 1 && v.code ? ` ${v.code}` : ""}</Button>
+        )) : null}
+        {row.stage === "awaiting_ts" && canConfirm && openZones.length ? (
+          <Button size="sm" variant={reasked.length ? "ghost" : "primary"} onClick={() => onConfirm(null)}>ยืนยันวัน</Button>
+        ) : null}
+        {stuck.length ? <span className="cell-sub">คอนเฟิร์มลูกค้าแล้ว แต่ติดด่าน — ปล่อยขึ้นตารางที่หน้าจัดคิว</span> : null}
         {row.stage === "awaiting_deposit" ? <span className="cell-sub">รอมัดจำ · ยังยืนยันวันไม่ได้</span> : null}
         {["awaiting_customer", "not_requested", "undecided"].includes(row.stage) ? <span className="cell-sub">อ่านอย่างเดียว</span> : null}
       </td>

@@ -47,7 +47,7 @@ export async function loadInstallQueue(supabase, { todayIso = businessDate() } =
     fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase.from('service_install_request_zones')
       .select('"requestId", "zoneId"').in('requestId', chunk).order('requestId', { ascending: true }).order('zoneId', { ascending: true }))),
     fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase.from('service_visits')
-      .select('id, code, status, "installRequestId", "scheduledDate", "startTime", "endTime", "assigneeName", "tsConfirmedAt", "customerConfirmedAt"')
+      .select('id, code, status, "installRequestId", "scheduledDate", "startTime", "endTime", "assigneeId", "assigneeName", "tsConfirmedAt", "customerConfirmedAt"')
       .in('installRequestId', chunk).order('id', { ascending: true }))),
   ]);
   const allocations = must('อ่านโซนของใบ', allocRes);

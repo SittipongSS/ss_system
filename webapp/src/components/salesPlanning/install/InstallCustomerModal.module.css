@@ -1,0 +1,24 @@
+/* โมดัล "คอนเฟิร์มนัดติดตั้งกับลูกค้า" (ขั้นเข้าติดตั้ง PR-4 · ม็อก A5) */
+.block { margin: 0 0 var(--space-3); padding: 0; border: 0; min-width: 0; }
+.facts {
+  display: grid; gap: var(--space-1-5); margin: 0 0 var(--space-3); padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius-md); background: var(--panel-2); font-size: var(--fs-5);
+}
+.facts > div { display: grid; grid-template-columns: 7.5rem 1fr; gap: var(--space-2); }
+.facts dt { color: var(--text-3); }
+.facts dd { margin: 0; min-width: 0; }
+.moved dd { color: color-mix(in srgb, var(--amber) 70%, var(--text)); }
+.hint { margin: calc(var(--space-2) * -1) 0 var(--space-3); color: var(--text-3); font-size: var(--fs-4); }
+.result { margin: 0; color: var(--text-3); font-size: var(--fs-4); }
+.footer { display: flex; align-items: center; gap: var(--space-2); width: 100%; }
+.footer > :first-child { flex: 1 1 auto; }
+.why { color: var(--text-3); font-size: var(--fs-4); }
+@media (max-width: 560px) {
+  .facts > div { grid-template-columns: 1fr; gap: 0; }
+}
+/* จอโทรศัพท์: เหตุที่ปุ่มกดไม่ได้ขึ้นแถวของตัวเอง — ไม่บีบปุ่มจนป้ายตัดบรรทัด */
+@media (max-width: 560px) {
+  .footer { flex-wrap: wrap; }
+  .footer > :first-child { flex-basis: 100%; }
+  .footer > :nth-child(2) { margin-left: auto; }
+}

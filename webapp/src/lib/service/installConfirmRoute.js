@@ -10,13 +10,15 @@
 // ⚠️ เขียนสามตาราง (นัด → โซน → เครื่อง) — PostgREST ไม่มีทรานแซกชันคร่อม ⇒ ขั้นหลังพัง = ลบนัดที่เพิ่งสร้างทิ้ง
 //    (นัดที่ไม่มีโซนติดด่านอยู่แล้ว แต่ไม่ควรค้างเป็นขยะในคิว)
 import { recordAudit } from '@/lib/audit';
+import { appendUpdate } from '@/lib/master/updates';
+import { fmtDate } from '@/lib/format';
 import { businessDate } from '@/lib/businessDate';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { genId } from '@/lib/id';
 import { canEditService } from '@/lib/permissions';
 import { installDepositGate } from './installDeposit';
-import { INSTALL_CONFIRM_TEXT, installBusyZoneIds, installConfirmInput } from './installConfirm';
+import { INSTALL_CONFIRM_TEXT, installBusyZoneIds, installConfirmInput, installReconfirmInput } from './installConfirm';
 import { notifyInstallDateConfirmed } from './installNotify';
 import { isDraftVisit, isOpenVisit } from './visitStatus';
 // ใบย้อนหลัง — ตัวตัดสินเดียว (ยาม historicalMoneyGuards: โหลดใบเดียวต้องตัดสินใบย้อนหลัง)
@@ -26,7 +28,7 @@ const reply = (status, body) => ({ status, body });
 const failWith = (status, error, extra = {}) => reply(status, { error, ...extra });
 const CONFLICT_ERRORS = new Set([
   INSTALL_CONFIRM_TEXT.zoneBusy, INSTALL_CONFIRM_TEXT.assetNotInStock, INSTALL_CONFIRM_TEXT.assetPlannedElsewhere,
-  INSTALL_CONFIRM_TEXT.notRequested,
+  INSTALL_CONFIRM_TEXT.notRequested, INSTALL_CONFIRM_TEXT.notReasked,
 ]);
 
 const orThrow = (label, res) => {
@@ -44,7 +46,8 @@ export async function loadConfirmState(supabase, requestId, assetIds = []) {
       .eq('id', request.salesOrderId).maybeSingle(),
     supabase.from('sales_order_installments').select('id, seq, label, status, "beforeInstall"').eq('salesOrderId', request.salesOrderId),
     supabase.from('service_install_request_zones').select('"zoneId"').eq('requestId', request.id),
-    fetchAllResult(() => supabase.from('service_visits').select('id, status, "installRequestId"')
+    fetchAllResult(() => supabase.from('service_visits')
+      .select('id, code, status, "installRequestId", "scheduledDate", "startTime", "endTime", "assigneeId", "assigneeName", "tsConfirmedAt", "customerConfirmedAt", "dateChangeReason"')
       .eq('installRequestId', request.id).order('id', { ascending: true })),
     supabase.from('service_sites').select('id, code, name').eq('id', request.siteId).maybeSingle(),
   ]);
@@ -94,7 +97,7 @@ export async function loadConfirmState(supabase, requestId, assetIds = []) {
 }
 
 export async function installConfirmPost({
-  supabase, user, requestId, body, request = null, audit = recordAudit, notify = notifyInstallDateConfirmed,
+  supabase, user, requestId, body, request = null, audit = recordAudit, notify = notifyInstallDateConfirmed, thread = appendUpdate,
   now = () => new Date().toISOString(), todayIso = businessDate(), load = loadConfirmState,
   insertVisit = (client, row) => insertRowWithEntityCode(client, 'SV', row),
 }) {
@@ -113,6 +116,11 @@ export async function installConfirmPost({
   if (isHistoricalOrder(state.order)) return failWith(409, 'ใบสั่งขายย้อนหลังไม่มีขั้นเข้าติดตั้ง');
 
   const deposit = installDepositGate(state.order, state.installments);
+  /* ⭐ ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยัน (PR-4) — ยืนยันวันใหม่บนนัดร่างเดิม (`visitId`) แทนการสร้างนัดใหม่ */
+  const reconfirmId = String(body?.visitId ?? '').trim();
+  if (reconfirmId) {
+    return reconfirmVisit({ supabase, user, state, deposit, visitId: reconfirmId, body, request, audit, notify, thread, now, todayIso });
+  }
   const busyZoneIds = installBusyZoneIds({ requestId: state.request.id, ...state });
   const { value, error } = installConfirmInput(body || {}, {
     request: state.request, requestZoneIds: state.requestZoneIds, busyZoneIds, deposit, todayIso,
@@ -174,4 +182,58 @@ export async function installConfirmPost({
     zoneCount: value.zoneIds.length, actor: { id: user.id ?? null, name: actorName },
   });
   return reply(201, { visit: { ...visit, zoneIds: value.zoneIds, plannedAssets: value.plannedAssets } });
+}
+
+/* ── ยืนยันวันใหม่บนนัดร่างเดิม (ลูกค้าขอเปลี่ยนวัน · PR-4) ──────────────────────────────────────────────────
+   ⭐ เขียนนัดเดียว: วัน · เวลา · หัวหน้างาน · เหตุ · ร่องรอย TS ใหม่ · **ล้างคอนเฟิร์มลูกค้า** (ฝ่ายขายคอนเฟิร์มอีกรอบ · N4)
+   ⭐ โซน/เครื่องที่วางคงเดิม · CAS ด้วยสถานะร่าง + `tsConfirmedAt` เดิม (TS สองคนกดพร้อมกัน = 409) */
+async function reconfirmVisit({ supabase, user, state, deposit, visitId, body, request, audit, notify, thread, now, todayIso }) {
+  const visit = (state.visits || []).find((v) => v.id === visitId) || null;
+  const { value, error } = installReconfirmInput(body || {}, { request: state.request, visit, deposit, todayIso });
+  if (error) {
+    const conflict = CONFLICT_ERRORS.has(error) || error.startsWith(INSTALL_CONFIRM_TEXT.depositBlocked);
+    return failWith(conflict ? 409 : 400, error);
+  }
+  const stamp = now();
+  const actorName = user.name || user.email || null;
+  const patch = {
+    scheduledDate: value.scheduledDate,
+    startTime: value.startTime,
+    endTime: value.endTime,
+    assigneeId: value.assigneeId,
+    assigneeName: value.assigneeName,
+    assistantIds: value.assistantIds,
+    dateChangeReason: value.dateChangeReason,
+    tsConfirmedAt: stamp,
+    tsConfirmedById: user.id ? String(user.id) : null,
+    tsConfirmedByName: actorName,
+    customerConfirmedAt: null,
+    customerConfirmedById: null,
+    customerConfirmedByName: null,
+    updatedAt: stamp,
+  };
+  const { data: saved, error: writeError } = await supabase.from('service_visits').update(patch)
+    .eq('id', visit.id).eq('status', 'draft').eq('tsConfirmedAt', visit.tsConfirmedAt).select('*').maybeSingle();
+  if (writeError) return failWith(500, `ยืนยันวันใหม่ไม่สำเร็จ: ${writeError.message}`);
+  if (!saved) return failWith(409, 'นัดนี้เพิ่งถูกแก้จากอีกหน้าต่าง — โหลดใหม่');
+
+  const zoneCount = (state.visitZonesByVisitId?.[saved.id] || []).length;
+  /* เลื่อนนัดต้องมีเหตุในเธรด (S-5) — เหตุของลูกค้าอยู่บนคำขอ · เหตุของ TS (ถ้าปรับจากวันที่ลูกค้าขอ) ต่อท้าย */
+  await thread(supabase, {
+    entityType: 'service_visit', entityId: saved.id, kind: 'reschedule', user,
+    body: `TS ยืนยันวันใหม่ ${fmtDate(visit.scheduledDate)} → ${fmtDate(value.scheduledDate)} · ลูกค้าขอเปลี่ยนเพราะ ${state.request.changeReason || 'ไม่ระบุ'}`
+      + `${value.dateChangeReason ? ` · TS ปรับจากวันที่ลูกค้าขอเพราะ ${value.dateChangeReason}` : ''} — รอฝ่ายขายคอนเฟิร์มลูกค้าอีกครั้ง`,
+  });
+  await audit({
+    user, action: 'update', entityType: 'service_visit', entityId: saved.id, before: visit, after: saved,
+    summary: `TS ยืนยันวันใหม่ ${saved.code || saved.id} · ${visit.scheduledDate} → ${value.scheduledDate}`
+      + ` (ลูกค้าขอ ${state.request.requestedDate}${value.dateChangeReason ? ` · ปรับเพราะ ${value.dateChangeReason}` : ''})`
+      + ` · ${state.order.orderNumber || state.order.id}`,
+    request,
+  });
+  notify(supabase, {
+    request: state.request, order: state.order, visit: saved, site: state.site || null,
+    zoneCount, actor: { id: user.id ?? null, name: actorName },
+  });
+  return reply(200, { visit: saved });
 }
