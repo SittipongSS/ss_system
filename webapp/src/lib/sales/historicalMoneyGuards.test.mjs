@@ -106,6 +106,7 @@ const MUST_FILTER = new Map([
 ]);
 /* โหลดใบเดียวด้วย id — ไฟล์ต้องตัดสินใบย้อนหลังเองด้วย isHistoricalOrder( */
 const PER_ID_GUARDED = new Map([
+  ['lib/service/installConfirmRoute.js', 'ใบของคำขอติดตั้งใบเดียว (ขั้นเข้าติดตั้ง · mig 0425) — ใบย้อนหลังถูกปฏิเสธ 409 ก่อนสร้างนัด · ยอดใช้แค่ด่านมัดจำ (ยอด 0 ผ่าน)'],
   ['app/api/tax/orders/from-sales-order/route.js', 'GET ตอบ "ไม่เข้าเกณฑ์" · POST ปฏิเสธ'],
   ['app/api/sales-planning/sales-orders/[id]/route.js',
     'loadOrder — ส่งอนุมัติ/อนุมัติใบย้อนหลังแยกกิ่ง (historicalOrderWorkflow · ไม่นับ Actual) · แก้ใบ/ย้อนอนุมัติ/ออก Rev./คืนร่าง/ย้อน Won/ลบ ตัดสินจาก before · งวดไม่ทับยอดตามแผน'],

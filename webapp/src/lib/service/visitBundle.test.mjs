@@ -193,7 +193,8 @@ test('⭐ รูปผลลัพธ์ = รูปที่ตารางส�
   // ภาระ = จุดที่อยู่หน้างาน (qty) + แพ็คของรอบที่ยังมีผลเท่านั้น
   assert.deepEqual(got.workload, { S1: { assets: 3, packs: 2 }, S2: { assets: 0, packs: 0 } });
   assert.deepEqual(Object.keys(got.gateContext).sort(),
-    ['contractsById', 'installmentsByOrderId', 'ordersById', 'setupOrdersByZone', 'termsBySite', 'zonesBySite']);
+    ['contractsById', 'installRequestsById', 'installmentsByOrderId', 'ordersById', 'setupOrdersByZone', 'termsBySite',
+      'visitZonesByVisitId', 'zonesBySite']);
   // ไม่ส่ง gateSiteIds = ทุกไซต์ของชุด (พฤติกรรมเดิมของตารางสัปดาห์)
   assert.deepEqual(gateZoneSiteIds(db).sort(), ['S1', 'S2']);
   assert.deepEqual(Object.keys(got.gateContext.zonesBySite).sort(), ['S1', 'S2']);
@@ -232,6 +233,8 @@ test('ไม่มีร่างเลย (gateSiteIds ว่าง) = ไม�
   assert.deepEqual(gateZoneSiteIds(db), []);
   assert.deepEqual(got.gateContext, {
     zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {},
+    // ขั้นเข้าติดตั้ง (mig 0425)
+    installRequestsById: {}, visitZonesByVisitId: {},
   });
   assert.equal(db.log.some((q) => q.table === 'sales_order_line_zones'), false);
 });
