@@ -11,7 +11,8 @@
 // Usage (รันจากโฟลเดอร์ webapp — loader map '@/' ไปที่ <cwd>/src):
 //   node --import ./scripts/test-loader.mjs scripts/backfill-customer-name-mirrors.mjs
 //   node --import ./scripts/test-loader.mjs scripts/backfill-customer-name-mirrors.mjs --commit
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { createClient } from '@supabase/supabase-js';
 import { CUSTOMER_NAME_MIRRORS, customerMirrorValue, liveCustomerNameMirrors } from '../src/lib/master/customerNameMirrors.js';
 
@@ -65,6 +66,7 @@ for (const m of CUSTOMER_NAME_MIRRORS.filter((x) => x.mode === 'frozen')) {
 
 let total = 0;
 let written = 0;
+const backup = [];
 for (const mirror of liveCustomerNameMirrors()) {
   /* ไม่หยิบ `id` — ตารางแชร์ (scent_/formula_customer_shares) ไม่มีคอลัมน์ id
      (คีย์เป็นคู่ scentId/formulaId + customerId) · ค่าที่ต้องเขียนมาจากลูกค้าล้วน ๆ
@@ -97,6 +99,10 @@ for (const mirror of liveCustomerNameMirrors()) {
     const olds = [...new Set(stale.map((r) => short(r.customerName)))].join(' / ');
     console.log(`  · ${customer.arCode || customer.id} ×${stale.length}  ${olds} → ${short(patch.customerName)}`);
     if (!commit) continue;
+    // สำรองแถวเต็มของลูกค้ารายนี้ก่อนเขียน (ไม่มีถังขยะ — กู้ได้จากไฟล์นี้เท่านั้น)
+    const { data: before, error: backupError } = await supabase.from(mirror.table).select('*').eq('customerId', customer.id);
+    if (backupError) { console.error(`    ✗ สำรองไม่ได้ ข้ามลูกค้ารายนี้: ${backupError.message}`); continue; }
+    backup.push({ table: mirror.table, customerId: customer.id, patch, rows: before });
     // เขียนทั้งกอง patch ของลูกค้ารายนี้ (รวมช่องที่ตรงอยู่แล้ว ค่าเดียวกัน = ไม่เปลี่ยน)
     const { error: updateError } = await supabase.from(mirror.table).update(patch).eq('customerId', customer.id);
     if (updateError) console.error(`    ✗ ${updateError.message}`);
@@ -104,6 +110,12 @@ for (const mirror of liveCustomerNameMirrors()) {
   }
 }
 
+if (commit && backup.length) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13);
+  const file = `${homedir()}/ss-team/archive/customer-name-mirrors-backup-${stamp}.json`;
+  writeFileSync(file, JSON.stringify(backup, null, 1));
+  console.log(`\nสำรองแถวก่อนเขียน ${backup.length} ชุด → ${file}`);
+}
 console.log(`\n${commit ? '✓ เขียนจริงแล้ว' : '• ทดลอง (dry-run) — ยังไม่เขียนอะไรลงฐานข้อมูล'}`);
 console.log(`  แถวที่ชื่อไม่ตรงทะเบียน: ${total}${commit ? ` · บันทึกสำเร็จ ${written}` : ''}`);
 if (!commit) console.log('\nรันจริงด้วย: node --import ./scripts/test-loader.mjs scripts/backfill-customer-name-mirrors.mjs --commit');
