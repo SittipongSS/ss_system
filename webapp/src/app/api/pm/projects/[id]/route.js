@@ -17,6 +17,7 @@ import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { canApproveProjectClose, projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { activeProductTypeError, categoryFlagsOf } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
+import { customerSnapshotName } from '@/lib/master/customerName';
 import { loadWorkflowTemplateForDeal, WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { loadDeliveries, loadProjectSalesOrders } from '@/lib/pm/deliveriesRepo';
 import { canEditDeliveries } from '@/lib/pm/deliveries';
@@ -288,6 +289,23 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const line = normalizeBusinessLine(updates.line);
     if (line === undefined) return badRequest('สายธุรกิจต้องเป็น PRODUCT หรือ SERVICE');
     updates.line = line;
+  }
+  /* ชื่อลูกค้า = สำเนาของทะเบียน (customerNameMirrors: projects เป็น live) — ไม่รับจาก client
+     ส่ง customerId มา ⇒ server ประทับชื่อจากใบลูกค้าเอง · ส่งชื่อมาอย่างเดียว ⇒ ทิ้ง
+     (ไม่งั้นชื่อบนโครงการกับใบลูกค้าที่ id ชี้เป็นคนละคน แล้ว cascade ทับกลับทีหลังอยู่ดี)
+     🐞 2026-11-09: ฟอร์มส่ง `customers.name` ดิบ ⇒ ลูกค้าชื่ออังกฤษล้วนได้ null */
+  delete updates.customerName;
+  if (updates.customerId !== undefined) {
+    if (updates.customerId) {
+      const { data: cust, error: custError } = await supabase
+        .from('customers').select('id, name, "nameEn"').eq('id', updates.customerId).maybeSingle();
+      if (custError) return fail(custError.message, 500);
+      if (!cust) return badRequest('ไม่พบลูกค้าที่เลือก');
+      updates.customerName = customerSnapshotName(cust);
+    } else {
+      updates.customerId = null;
+      updates.customerName = null;
+    }
   }
   // metadata: merge ทับของเดิมเสมอ — ห้าม replace ทั้งก้อน (กติกาเดียวกับ PATCH ดีล)
   // 🐞 เดิมเขียนทับทั้งก้อนจากสิ่งที่ client ส่งมา ทำให้กุญแจที่ route อื่นเขียนไว้หลุดหาย

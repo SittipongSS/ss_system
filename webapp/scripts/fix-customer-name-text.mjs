@@ -42,41 +42,37 @@ if (!url || !key) { console.error('Missing SUPABASE_URL / SUPABASE_SERVICE_ROLE_
 const commit = process.argv.includes('--commit');
 const supabase = createClient(url, key, { auth: { persistSession: false } });
 
-// ── ตัวล้างข้อความ ───────────────────────────────────────────────────────
-const SARA_AM_SPLIT = /ํา/g;   // ํ + า  → ำ
-const SARA_E_DOUBLE = /เเ/g;   // เ + เ  → แ
-export function tidyName(value) {
-  let s = String(value ?? '').normalize('NFC');
-  s = s.replace(SARA_AM_SPLIT, 'ำ').replace(SARA_E_DOUBLE, 'แ');
-  s = s.replace(/ /g, ' ').replace(/[​‌‍﻿]/g, '');
-  s = s.replace(/\s+/g, ' ').trim();
-  s = s.replace(/\(\s+/g, '(').replace(/\s+\)/g, ')');  // ( x ) → (x)
-  s = s.replace(/(\S)\(/g, '$1 (');                     // จำกัด(มหาชน) → จำกัด (มหาชน)
-  return s;
+// ── ตัวล้างข้อความ: ย้ายไปอยู่ lib แล้ว (09/11) ให้ตอนบันทึกลูกค้าใช้ตัวเดียวกัน ──
+// ⚠️ ห้ามก๊อปกลับมาเขียนในสคริปต์อีก — สองฝั่งเพี้ยนกันเมื่อไร ลูกค้าที่สคริปต์ล้างแล้ว
+// จะถูก PATCH ตีความว่า "ชื่อเปลี่ยน" แล้วดีดกลับไปรออนุมัติตอนบันทึกครั้งถัดไป
+//
+// 09/11/2026 (AR-1056 "บริษัท␣␣กข168 จำกัด␣"): รอบสอง — ถอดชุด BILINGUAL ของรอบ 27/08
+// ออกแล้ว (ใส่ไปครบตั้งแต่วันนั้น ถ้าคงไว้ สคริปต์จะเขียนทับชื่อที่คนแก้หลังจากนั้น) ·
+// ล้างครบสี่ช่อง name/nameEn/nameTitle/namePerson · อ่านเป็นหน้า · --commit เก็บสำรอง
+// ค่าเดิมลง ~/ss-team/archive ก่อนเขียน (ไม่มีถังขยะ กู้ได้จากไฟล์นี้กับ audit เท่านั้น)
+import { writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { CUSTOMER_NAME_TEXT_FIELDS, tidyCustomerNameText } from '@/lib/master/customerName';
+
+const rows = [];
+for (let from = 0; ; from += 1000) {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, "arCode", name, "nameEn", "nameTitle", "namePerson", "taxId"')
+    .order('id')
+    .range(from, from + 999);
+  if (error) { console.error(error.message); process.exit(1); }
+  rows.push(...(data || []));
+  if (!data || data.length < 1000) break;
 }
-
-// ── ชื่อสองภาษา: ทะเบียนเก็บไทยที่ `name` อังกฤษที่ `nameEn` (mig 0283) ──
-// สามรายนี้ทะเบียนกับชีทเป็นคนละภาษาของบริษัทเดียวกัน ⇒ เก็บทั้งคู่ ไม่ต้องเลือก
-// (มติผู้ใช้ 2026-08-27) · ชื่อไทยที่ยังไม่มีในทะเบียนหยิบมาจากชีท
-const BILINGUAL = {
-  'AR-306': { name: 'บริษัท เคพี อาร์ท เซ็นเตอร์ (ประเทศไทย) จำกัด (สำนักงานใหญ่)', nameEn: 'KP ART CENTER (THAILAND) COMPANY LIMITED' },
-  'AR-316': { name: 'บริษัท ไอ คอนโด ภูเก็ต จำกัด', nameEn: 'iCondo Phuket Co.,Ltd' },
-  'AR-609': { name: 'บริษัท เอนคอมพาส จำกัด', nameEn: 'Encompass Co., Ltd.' },
-};
-
-const { data: rows, error } = await supabase
-  .from('customers').select('id,arCode,name,nameEn,taxId').limit(2000);
-if (error) { console.error(error.message); process.exit(1); }
 
 const changes = [];
 for (const row of rows) {
   const patch = {};
-  const forced = BILINGUAL[row.arCode];
-  const nextName = tidyName(forced?.name ?? row.name);
-  if (nextName !== (row.name ?? '')) patch.name = nextName;
-  if (forced?.nameEn) {
-    const nextEn = tidyName(forced.nameEn);
-    if (nextEn !== (row.nameEn ?? '')) patch.nameEn = nextEn;
+  for (const key of CUSTOMER_NAME_TEXT_FIELDS) {
+    if (typeof row[key] !== 'string') continue;
+    const next = tidyCustomerNameText(row[key]);
+    if (next !== row[key]) patch[key] = next;
   }
   if (Object.keys(patch).length) changes.push({ row, patch });
 }
@@ -84,18 +80,26 @@ for (const row of rows) {
 console.log(`ทะเบียน ${rows.length} ราย · ต้องแก้ ${changes.length} ราย\n`);
 for (const { row, patch } of changes) {
   console.log(`  ${row.arCode}`);
-  if (patch.name) console.log(`     ชื่อ  : ${JSON.stringify(row.name)}\n          -> ${JSON.stringify(patch.name)}`);
-  if (patch.nameEn) console.log(`     อังกฤษ: ${JSON.stringify(row.nameEn)} -> ${JSON.stringify(patch.nameEn)}`);
+  for (const [key, next] of Object.entries(patch)) {
+    console.log(`     ${key.padEnd(10)}: ${JSON.stringify(row[key])}\n                 -> ${JSON.stringify(next)}`);
+  }
 }
 
 if (!commit) { console.log('\n[dry-run] ยังไม่เขียนอะไร — ใส่ --commit เพื่อเขียนจริง'); process.exit(0); }
 
+const stamp = new Date().toISOString().replace(/[-:]/g, '').slice(0, 13);
+const backup = `${homedir()}/ss-team/archive/customer-name-tidy-backup-${stamp}.json`;
+writeFileSync(backup, JSON.stringify(changes.map(({ row, patch }) => ({ id: row.id, arCode: row.arCode, before: row, patch })), null, 1));
+console.log(`\nสำรองค่าเดิม ${changes.length} ราย → ${backup}`);
+
 let ok = 0;
 const failed = [];
 for (const { row, patch } of changes) {
+  // อัปเดตตรงที่ฐาน ไม่ผ่าน PATCH — แก้รูปตัวอักษรไม่ใช่การแก้ข้อมูล ไม่ควรดีดไปรออนุมัติ
   const { error: upErr } = await supabase.from('customers').update(patch).eq('id', row.id);
   if (upErr) { failed.push(`${row.arCode}: ${upErr.message}`); continue; }
-  // สำเนาชื่อในตารางโหมด live ต้องเดินตามทันที (ดูเหตุผลที่หัว customerNameMirrors)
+  // สำเนาชื่อในตารางโหมด live ต้องเดินตามทันที · 🪤 payload ต้องมี taxId ครบ
+  // (excise_registrations เขียน taxId จากก้อนนี้ — ขาดไป = ล้างเลขภาษีทิ้ง)
   const bad = await cascadeCustomerName(supabase, row.id, { ...row, ...patch });
   if (bad.length) failed.push(`${row.arCode}: cascade ไม่ผ่านที่ ${bad.join(', ')}`);
   ok += 1;

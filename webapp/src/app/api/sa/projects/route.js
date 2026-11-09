@@ -9,6 +9,7 @@ import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor } from '@/lib/pm/projectOwner';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
+import { customerSnapshotName } from '@/lib/master/customerName';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,9 +62,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   let customerEmail = body.customerEmail || '';
   const custId = body.customerId || null;
-  if (!customerEmail && custId) {
-    const { data: cust } = await supabase.from('customers').select('email').eq('id', custId).maybeSingle();
-    customerEmail = cust?.email || '';
+  /* ชื่อลูกค้าบนโครงการประทับจากทะเบียนฝั่ง server — ไม่เชื่อ `body.customerName`
+     🐞 2026-11-09: ฟอร์มส่ง `customers.name` ดิบมา ⇒ ลูกค้าที่มีแต่ชื่ออังกฤษได้โครงการ
+     ชื่อลูกค้า null (prod: PJ-261000329 · PJ-26070029 · PJ-261000319) · ใช้
+     customerSnapshotName ตัวเดียวกับ cascade (ไทยก่อน ไม่มีค่อยตกอังกฤษ) */
+  let customerName = body.customerName || null;
+  if (custId) {
+    const { data: cust } = await supabase
+      .from('customers').select('email, name, "nameEn"').eq('id', custId).maybeSingle();
+    if (!customerEmail) customerEmail = cust?.email || '';
+    if (cust) customerName = customerSnapshotName(cust) || customerName;
   }
   
   // รหัสโครงการอัตโนมัติออกพร้อม insert ในทรานแซกชันเดียว (mig 0240) — ห้ามจองไว้ก่อน
@@ -74,7 +82,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const baseRow = {
     name: body.name,
     customerId: body.customerId || null,
-    customerName: body.customerName || null,
+    customerName,
     // normalizeProjectType = ชุดเดียวกับประเภทดีล (1:1) — ตกค่านอกลิสต์เป็น NPD ให้เอง
     type: normalizeProjectType(body.type || 'NPD'),
     // สายธุรกิจ (mig 0191) — มาจากฟอร์มเท่านั้น **ไม่มี fallback โดยเจตนา**
