@@ -29,7 +29,7 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { livePersonName } from "@/lib/ui/personName";
 import { fmtDate, fmtDateTime, fmtMoney, naText, NA } from "@/lib/format";
 
-import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadActiveFollowUpAt, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS, canCancelLeadAppointment } from "@/lib/sales/leads";
+import { CHANNEL_GROUP_COLORS, leadBudgetText, LEAD_CHANNELS, LEAD_CHANNEL_LABELS, LEAD_STATUS_COLORS, LEAD_STATUS_LABELS, MEETING_MODE_LABELS, SERVICE_INTERESTS, SERVICE_INTEREST_LABELS, canCreateDealFromLead, channelGroupOf, leadLostText, leadFollowUpState, leadActiveFollowUpAt, leadBounceHistory, leadHandoffContext, LEAD_FOLLOW_UP_ACTIONS, canCancelLeadAppointment, leadEditFormValues } from "@/lib/sales/leads";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
 import LeadFormFields, { leadFormBlocker } from "@/components/salesPlanning/LeadFormFields";
@@ -89,7 +89,9 @@ const blank = { contactName: "", company: "", phone: "", email: "", contactChann
 
 /* ฟอร์มแก้ลีดจากแถวที่โหลดมา — ช่องนัดมาจากนัดที่รออยู่ (mig 0424) · เรียกทั้งตอนโหลดและตอนกดยกเลิกแก้ */
 const formFromLead = (lead) => ({
-  ...blank, ...lead, budget: lead.budget ?? "", budgetMax: lead.budgetMax ?? "",
+  /* ช่องข้อมูลมาจาก leadEditFormValues ตัวเดียวกับหน้ารายการ — ห้ามกางแถวลงฟอร์มตรง ๆ:
+     ช่องที่ไม่เคยกรอกเป็น null ในฐาน แล้ว PATCH ล้ม (🐞 09/11 "Unexpected end of JSON input") */
+  ...blank, ...lead, ...leadEditFormValues(lead),
   appointment: intakeAppointmentState(lead).value,
 });
 
@@ -154,8 +156,8 @@ export default function LeadDetailPage() {
     setLoading(true); setError("");
     try {
       const res = await apiFetch(`/api/sales-planning/leads/${id}`, { cache: "no-store" });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || "ไม่สามารถโหลดข้อมูลลีดได้");
+      const body = await res.json().catch(() => null); // 500 ตัวเปล่า ⇒ ข้อความไทย ไม่ใช่ SyntaxError
+      if (!res.ok || !body) throw new Error(body?.error || "ไม่สามารถโหลดข้อมูลลีดได้");
       /* บริบทการตีกลับ — หน้ารายการได้มาจาก API (แนบให้ทีละหลายใบ) แต่หน้านี้มี
          ประวัติทั้งก้อนอยู่แล้ว จึงคิดเองตรงนี้ ไม่ต้องให้ API ทำงานซ้ำ
          กติกาเดียวกันเป๊ะเพราะเรียก `leadBounceHistory` ตัวเดียวกัน */
@@ -211,9 +213,8 @@ export default function LeadDetailPage() {
     setBusy(true); setError("");
     try {
       const payload = Object.fromEntries(Object.keys(blank).map((key) => [key, form[key]]));
-      const res = await apiFetch(`/api/sales-planning/leads/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || "บันทึกไม่สำเร็จ");
+      // apiJson: เซิร์ฟเวอร์ตอบตัวเปล่า (500) ต้องได้ข้อความไทย ไม่ใช่ SyntaxError ของ res.json()
+      await apiJson(`/api/sales-planning/leads/${id}`, { method: "PATCH", json: payload, fallbackError: "บันทึกลีดไม่สำเร็จ กรุณาลองใหม่" });
       setEditing(false); await load();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }

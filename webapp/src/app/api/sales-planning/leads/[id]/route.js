@@ -3,11 +3,9 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canForceDelete, isForceRequest } from '@/lib/forceDelete';
 import { can } from '@/lib/permissions';
 import {
-  LEAD_CHANNELS, SERVICE_INTERESTS, SERVICE_DETAIL_REQUIRED, channelGroupOf, canEditLead, canCancelLeadAppointment,
-  canDeleteLead, LEAD_DELETE_LOCKED_STATUSES, LEAD_EDIT_LOCKED_STATUSES, canViewLeads, inLeadScope,
-  leadBudgetError,
+  canEditLead, canCancelLeadAppointment, canDeleteLead, LEAD_DELETE_LOCKED_STATUSES, LEAD_EDIT_LOCKED_STATUSES,
+  canViewLeads, inLeadScope, leadPatchFromBody,
 } from '@/lib/sales/leads';
-import { toMoney } from '@/lib/salesPlanning';
 import { purgeUpdates } from '@/lib/master/updates';
 import {
   INTAKE_APPOINTMENT_MODES, appointmentInputError, hasAppointmentInput, normalizeAppointmentInput,
@@ -130,40 +128,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     return forbidden();
   }
 
-  const patch = { updatedAt: new Date().toISOString() };
-  if ('contactName' in body) {
-    if (!body.contactName?.trim()) return badRequest('ต้องระบุชื่อลูกค้า/ผู้ติดต่อ');
-    patch.contactName = body.contactName.trim();
-  }
-  if ('channel' in body) {
-    if (!LEAD_CHANNELS.includes(body.channel)) return badRequest('ช่องทางไม่ถูกต้อง');
-    patch.channel = body.channel;
-    patch.channelGroup = channelGroupOf(body.channel);
-  }
-  for (const key of ['company', 'email', 'contactChannel', 'phone', 'details']) {
-    if (key in body) patch[key] = (body[key] || '').trim() || null;
-  }
-  if ('budget' in body || 'budgetMax' in body) {
-    // ⚠️ ตรวจกับค่าที่จะเป็นจริงหลังแก้ ไม่ใช่เฉพาะช่องที่ส่งมา — ส่ง budgetMax
-    // มาช่องเดียวโดยที่แถวเดิมไม่มี budget ต้องตกด่านตั้งแต่ที่นี่ (ด่านเดียวกับ
-    // CHECK ของ mig 0233 · ตกที่ DB จะได้ error ภาษาอังกฤษที่คนกรอกอ่านไม่ออก)
-    const next = {
-      budget: 'budget' in body ? body.budget : before.budget,
-      budgetMax: 'budgetMax' in body ? body.budgetMax : before.budgetMax,
-    };
-    const budgetError = leadBudgetError(next);
-    if (budgetError) return badRequest(budgetError);
-    if ('budget' in body) patch.budget = toMoney(body.budget, null);
-    if ('budgetMax' in body) patch.budgetMax = toMoney(body.budgetMax, null);
-  }
-  if ('serviceInterest' in body || 'serviceDetail' in body) {
-    const si = SERVICE_INTERESTS.includes(body.serviceInterest ?? before.serviceInterest)
-      ? (body.serviceInterest ?? before.serviceInterest) : 'other';
-    const sd = ('serviceDetail' in body ? body.serviceDetail : before.serviceDetail || '').trim();
-    if (SERVICE_DETAIL_REQUIRED.has(si) && !sd) return badRequest('บริการที่สนใจประเภทนี้ต้องระบุรายละเอียด');
-    patch.serviceInterest = si;
-    patch.serviceDetail = sd || null;
-  }
+  /* ช่องข้อมูลลีด — กติกาอยู่ที่ leadPatchFromBody (lib/sales/leads.js) · ข้อความ null ไม่ทำให้ล้ม
+     (🐞 09/11 `null.trim()` ⇒ 500 ตัวเปล่า ⇒ จอขึ้น "Unexpected end of JSON input") */
+  const { patch: fields, error: fieldError } = leadPatchFromBody(body || {}, before);
+  if (fieldError) return badRequest(fieldError);
+  const patch = { updatedAt: new Date().toISOString(), ...fields };
 
   /* ⭐ นัดที่ลูกค้าจองไว้ (mig 0424) — `appointment` ไม่อยู่ใน body = ไม่แตะ · ว่าง/"ไม่มีนัด" = ยกเลิกนัดที่รออยู่
      ⚠️ ทำ **ก่อน** เขียนลีด — ห้องชนต้องตอบ 409 โดยที่ช่องอื่นในฟอร์มเดียวกันยังไม่ถูกบันทึก
