@@ -17,7 +17,10 @@ import { genId } from '@/lib/id';
 import { canEditService } from '@/lib/permissions';
 import { installDepositGate } from './installDeposit';
 import { INSTALL_CONFIRM_TEXT, installBusyZoneIds, installConfirmInput } from './installConfirm';
+import { notifyInstallDateConfirmed } from './installNotify';
 import { isDraftVisit, isOpenVisit } from './visitStatus';
+// ใบย้อนหลัง — ตัวตัดสินเดียว (ยาม historicalMoneyGuards: โหลดใบเดียวต้องตัดสินใบย้อนหลัง)
+import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
 
 const reply = (status, body) => ({ status, body });
 const failWith = (status, error, extra = {}) => reply(status, { error, ...extra });
@@ -31,18 +34,19 @@ const orThrow = (label, res) => {
   return res.data || [];
 };
 
-/* ⭐ จุดโหลดเดียวของการยืนยัน — คำขอ · ใบ · งวด · โซนที่ขอ · นัดของคำขอ (+ โซน/เครื่อง/ผล) · เครื่องที่จะวาง */
+/* ⭐ จุดโหลดเดียวของการยืนยัน — คำขอ · ใบ · ไซต์ (ชื่อบนกระดิ่ง) · งวด · โซนที่ขอ · นัดของคำขอ (+ โซน/เครื่อง/ผล) · เครื่องที่จะวาง */
 export async function loadConfirmState(supabase, requestId, assetIds = []) {
   const { data: request, error } = await supabase.from('service_install_requests').select('*').eq('id', requestId).maybeSingle();
   if (error) throw new Error(`อ่านคำขอติดตั้งไม่สำเร็จ: ${error.message}`);
   if (!request) return { request: null };
-  const [orderRes, installmentRes, zonesRes, visitsRes] = await Promise.all([
-    supabase.from('sales_orders').select('id, "orderNumber", "customerName", status, "totalAmount", "dealId", "supersededById"')
+  const [orderRes, installmentRes, zonesRes, visitsRes, siteRes] = await Promise.all([
+    supabase.from('sales_orders').select('id, "orderNumber", "customerName", status, origin, "totalAmount", "dealId", "supersededById"')
       .eq('id', request.salesOrderId).maybeSingle(),
     supabase.from('sales_order_installments').select('id, seq, label, status, "beforeInstall"').eq('salesOrderId', request.salesOrderId),
     supabase.from('service_install_request_zones').select('"zoneId"').eq('requestId', request.id),
     fetchAllResult(() => supabase.from('service_visits').select('id, status, "installRequestId"')
       .eq('installRequestId', request.id).order('id', { ascending: true })),
+    supabase.from('service_sites').select('id, code, name').eq('id', request.siteId).maybeSingle(),
   ]);
   if (orderRes.error) throw new Error(`อ่านใบสั่งขายไม่สำเร็จ: ${orderRes.error.message}`);
   const installments = orThrow('อ่านงวดชำระ', installmentRes);
@@ -84,13 +88,13 @@ export async function loadConfirmState(supabase, requestId, assetIds = []) {
     }
   }
   return {
-    request, order: orderRes.data || null, installments, requestZoneIds, visits,
+    request, order: orderRes.data || null, site: siteRes.error ? null : (siteRes.data || null), installments, requestZoneIds, visits,
     visitZonesByVisitId, doneZonesByVisitId, assetsById, plannedElsewhere,
   };
 }
 
 export async function installConfirmPost({
-  supabase, user, requestId, body, request = null, audit = recordAudit, notify = () => {},
+  supabase, user, requestId, body, request = null, audit = recordAudit, notify = notifyInstallDateConfirmed,
   now = () => new Date().toISOString(), todayIso = businessDate(), load = loadConfirmState,
   insertVisit = (client, row) => insertRowWithEntityCode(client, 'SV', row),
 }) {
@@ -105,6 +109,8 @@ export async function installConfirmPost({
   if (!state.order || state.order.status !== 'approved' || state.order.supersededById) {
     return failWith(409, 'ใบสั่งขายของคำขอนี้ไม่ได้อยู่ในสถานะอนุมัติแล้ว — ให้ฝ่ายขายตรวจใบก่อน');
   }
+  /* ใบย้อนหลังไม่มีขั้นเข้าติดตั้ง (ติดตั้งไปแล้วก่อนเข้าระบบ) — ด่านเดียวกับฝั่งฝ่ายขาย (installOrderError) */
+  if (isHistoricalOrder(state.order)) return failWith(409, 'ใบสั่งขายย้อนหลังไม่มีขั้นเข้าติดตั้ง');
 
   const deposit = installDepositGate(state.order, state.installments);
   const busyZoneIds = installBusyZoneIds({ requestId: state.request.id, ...state });
@@ -144,8 +150,9 @@ export async function installConfirmPost({
   if (insertError || !visit) return failWith(500, `สร้างนัดติดตั้งไม่สำเร็จ: ${insertError?.message || 'ไม่ทราบสาเหตุ'}`);
 
   const rollback = async (message) => {
-    await supabase.from('service_visits').delete().eq('id', visit.id);
-    return failWith(500, message);
+    const { error: cleanupError } = await supabase.from('service_visits').delete().eq('id', visit.id);
+    /* ลบนัดที่เพิ่งสร้างไม่สำเร็จ = นัดร่างไม่มีโซนค้าง (ด่านกันขึ้นตารางอยู่แล้ว) — บอกในข้อความให้ตามลบ */
+    return failWith(500, cleanupError ? `${message} · นัด ${visit.code || visit.id} ค้างเป็นร่าง ให้ TS ลบทิ้ง` : message);
   };
   const { error: zoneError } = await supabase.from('service_visit_zones')
     .insert(value.zoneIds.map((zoneId) => ({ visitId: visit.id, zoneId })));
@@ -162,6 +169,9 @@ export async function installConfirmPost({
       + ` · ${value.zoneIds.length} โซน ${value.plannedAssets.length} เครื่อง · ${state.order.orderNumber || state.order.id}`,
     request,
   });
-  notify(supabase, { request: state.request, order: state.order, visit, zoneCount: value.zoneIds.length, actor: { id: user.id ?? null, name: actorName } });
+  notify(supabase, {
+    request: state.request, order: state.order, visit, site: state.site || null,
+    zoneCount: value.zoneIds.length, actor: { id: user.id ?? null, name: actorName },
+  });
   return reply(201, { visit: { ...visit, zoneIds: value.zoneIds, plannedAssets: value.plannedAssets } });
 }

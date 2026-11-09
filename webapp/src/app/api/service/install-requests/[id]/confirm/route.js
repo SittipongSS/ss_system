@@ -1,5 +1,6 @@
 import { withUser, fail, unauthorized } from '@/lib/http';
 import { installConfirmPost } from '@/lib/service/installConfirmRoute';
+import { requireService } from '@/lib/service/sitesRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +13,9 @@ const UNEXPECTED = 'ยืนยันวันติดตั้งไม่ส
 
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
+  // ด่านสิทธิ์ชั้นแรก (กฎระบบข้อ 1) — ตัวจัดการถาม `canEditService` ซ้ำอีกชั้น
+  const access = requireService({ user, edit: true });
+  if (access.response) return access.response;
   const { id } = await ctx.params;
   const body = await req.json().catch(() => null);
   try {

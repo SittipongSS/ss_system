@@ -194,3 +194,22 @@ test('บริบทด่าน: โหลดคำขอของไซต์
   assert.deepEqual(items.filter((i) => i.state === 'blocked').map((i) => i.key), ['appointment']);
   assert.equal(gatePassed(evaluateVisitGate({ ...visit, customerConfirmedAt: '2027-01-03T03:20:00Z' }, gateContextForSite(gateCtx, 'S1', { site: { id: 'S1' } }))), true);
 });
+
+// ── กระดิ่งถึงฝ่ายขาย ──────────────────────────────────────────────────────────────────────
+import { INSTALL_DATE_CONFIRMED_KIND, installDateConfirmedNotice } from './installNotify.js';
+import { NOTIFICATION_BOXES, SERVICE_BELL_KINDS } from '../notifications.js';
+
+test('กระดิ่ง SA: คนขอคิว + คนเลือกติดตั้ง · บอกวันและเหตุที่ปรับ · ไม่เด้งใส่คนกด · ลงกล่องกระดิ่ง', () => {
+  const notice = installDateConfirmedNotice({
+    request: { ...REQUEST, requestedById: 'U-SA', decidedById: 'U-SA2' },
+    order: { id: 'SO1', orderNumber: 'SO-26110012-0' },
+    visit: { id: 'V1', scheduledDate: '2027-01-05', startTime: '09:00', endTime: '12:00', dateChangeReason: 'ช่างทีมนทีเต็มวันที่ 06/01', tsConfirmedAt: '2027-01-02T03:00:00Z' },
+    site: { code: 'ST-0412-01', name: 'สาขา FASHION' }, zoneCount: 2, actor: { id: 'U-SA2' },
+  });
+  assert.deepEqual(notice.userIds, ['U-SA']);
+  assert.equal(notice.kind, INSTALL_DATE_CONFIRMED_KIND);
+  assert.match(notice.body, /05\/01\/2027 09:00–12:00 · 2 โซน \(ปรับจาก 06\/01\/2027 เพราะ ช่างทีมนทีเต็มวันที่ 06\/01\)/);
+  assert.equal(notice.href, '/sales-planning/sales-orders/SO1#install');
+  assert.ok(SERVICE_BELL_KINDS.includes(INSTALL_DATE_CONFIRMED_KIND));
+  assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(INSTALL_DATE_CONFIRMED_KIND));
+});

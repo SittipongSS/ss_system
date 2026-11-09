@@ -122,11 +122,11 @@ export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOr
 async function loadInstallGateRows(supabase, siteIds) {
   const installRequestsById = {};
   const visitZonesByVisitId = {};
-  const { data: requests, error } = await fetchInChunks(siteIds, (chunk) => fetchAllResult(() => supabase
+  const { data: requests, error: requestError } = await fetchInChunks(siteIds, (chunk) => fetchAllResult(() => supabase
     .from('service_install_requests')
     .select('id, "salesOrderId", "siteId", mode, "requestedAt", "requestedDate"')
     .in('siteId', chunk).order('id', { ascending: true })));
-  if (error) throw error;
+  if (requestError) throw requestError;
   for (const r of requests || []) installRequestsById[r.id] = r;
   const requestIds = Object.keys(installRequestsById);
   if (!requestIds.length) return { installRequestsById, visitZonesByVisitId };

@@ -12,6 +12,7 @@ import { loadUserDirectory } from '@/lib/usersRepo';
 import { fmtDate } from '@/lib/format';
 
 export const INSTALL_REQUESTED_KIND = 'install_requested';
+export const INSTALL_DATE_CONFIRMED_KIND = 'install_date_confirmed';
 export const INSTALL_QUEUE_HREF = '/service/intake?tab=install';
 export const INSTALL_REQUEST_RECIPIENT_ROLES = Object.freeze([...SERVICE_HEAD_ROLES, 'ts_planner']);
 
@@ -58,6 +59,50 @@ export function notifyInstallRequested(supabase, args = {}) {
     await notifyUsers(supabase, { ...notice, actorName: args.actor?.name || null });
   };
   const safe = () => deliver().catch((e) => console.error('[install-requested] แจ้ง TS ไม่สำเร็จ:', e?.message));
+  try {
+    after(safe);
+  } catch {
+    safe();
+  }
+}
+
+/* ── กระดิ่ง "TS ยืนยันวันติดตั้งแล้ว" ถึงฝ่ายขาย (PR-3a · มติ 09/11 N3/N4) ─────────────────────────────────
+   ⭐ ผู้รับ = คนขอคิว + คนเลือก "ติดตั้ง" ของไซต์นั้น (ฝ่ายขายที่ถือเรื่อง) · ไม่เด้งใส่คนกดเอง
+   ⭐ บอกวันที่ TS ยืนยัน และ **เหตุที่ปรับวัน** เมื่อไม่ตรงกับที่ขอ — SA ต้องโทรคอนเฟิร์มลูกค้า **ทุกครั้ง** (N4)
+   ⚠️ href ไปการ์ดติดตั้งบนใบสั่งขาย (ที่เดียวที่คอนเฟิร์มลูกค้าได้ · งวด PR-4) */
+export function installDateConfirmedNotice({ request, order, visit, site = null, zoneCount = 0, actor = null } = {}) {
+  if (!request?.id || !order?.id || !visit?.id) return null;
+  const actorId = actor?.id ? String(actor.id) : null;
+  const userIds = [...new Set([request.requestedById, request.decidedById].filter(Boolean).map(String))]
+    .filter((id) => id !== actorId);
+  if (!userIds.length) return null;
+  const where = [site?.code, site?.name].filter(Boolean).join(' ') || 'ไซต์';
+  const time = visit.startTime && visit.endTime
+    ? ` ${String(visit.startTime).slice(0, 5)}–${String(visit.endTime).slice(0, 5)}`
+    : '';
+  const moved = visit.dateChangeReason && request.requestedDate && request.requestedDate !== visit.scheduledDate
+    ? ` (ปรับจาก ${fmtDate(request.requestedDate)} เพราะ ${String(visit.dateChangeReason).slice(0, 120)})`
+    : '';
+  return {
+    userIds,
+    entityType: 'sales_order',
+    entityId: order.id,
+    kind: INSTALL_DATE_CONFIRMED_KIND,
+    title: `TS ยืนยันวันติดตั้ง · ${order.orderNumber || order.id}`,
+    body: `${where} · ${fmtDate(visit.scheduledDate)}${time} · ${zoneCount} โซน${moved} — โทรคอนเฟิร์มลูกค้าแล้วกดยืนยันที่ใบสั่งขาย`,
+    dedupeKey: `install-date-confirmed:${visit.id}:${String(visit.tsConfirmedAt || '').slice(0, 19)}`,
+    href: `/sales-planning/sales-orders/${order.id}#install`,
+  };
+}
+
+/** ยิงจริง — fire-and-forget หลังสร้างนัดสำเร็จ · กระดิ่งพลาดต้องไม่ทำให้การยืนยันวันตอบ error */
+export function notifyInstallDateConfirmed(supabase, args = {}) {
+  const deliver = async () => {
+    const notice = installDateConfirmedNotice(args);
+    if (!notice) return;
+    await notifyUsers(supabase, { ...notice, actorName: args.actor?.name || null });
+  };
+  const safe = () => deliver().catch((e) => console.error('[install-date-confirmed] แจ้งฝ่ายขายไม่สำเร็จ:', e?.message));
   try {
     after(safe);
   } catch {
