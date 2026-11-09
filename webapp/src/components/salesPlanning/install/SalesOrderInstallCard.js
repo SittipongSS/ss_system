@@ -19,6 +19,7 @@ import { notifyToast } from "@/lib/feedback";
 import { fmtDate } from "@/lib/format";
 import { INSTALL_MODE_LABELS, INSTALL_MODES, installModeError } from "@/lib/service/installRequest";
 import { INSTALL_DEPOSIT_TEXT } from "@/lib/service/installDeposit";
+import InstallCustomerModal from "./InstallCustomerModal";
 import InstallRequestModal from "./InstallRequestModal";
 import styles from "./SalesOrderInstallCard.module.css";
 
@@ -47,6 +48,7 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
   const [busySite, setBusySite] = useState("");
   const [error, setError] = useState("");
   const [askFor, setAskFor] = useState(null);
+  const [customerFor, setCustomerFor] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -151,11 +153,15 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
                   site.stage === "installed" ? `ติดตั้งแล้ว ${site.installed}/${site.total} โซน` : site.stageLabel
                 } />
                 <small>{siteSubline(site)}</small>
-                {site.zones.filter((z) => z.visit?.tsConfirmedAt).slice(0, 2).map((z) => (
-                  <small key={z.zoneId} className={styles.visit}>
+                {(site.visits || []).filter((v) => v.tsConfirmedAt).map((v) => (
+                  <small key={v.id} className={styles.visit}>
                     <CalendarClock size={13} aria-hidden="true" />
-                    {z.name}: TS ยืนยัน {fmtDate(z.visit.scheduledDate)} {timeText(z.visit.startTime, z.visit.endTime)}
-                    {z.visit.dateChangeReason ? ` · ปรับวันเพราะ ${z.visit.dateChangeReason}` : ""}
+                    {v.zoneNames.join(" + ") || "นัด"}: TS ยืนยัน {fmtDate(v.scheduledDate)} {timeText(v.startTime, v.endTime)}
+                    {v.code ? ` (${v.code})` : ""}
+                    {v.reasked ? " · ลูกค้าขอเปลี่ยนวันแล้ว — รอ TS ยืนยันวันใหม่"
+                      : v.status !== "draft" ? " · นัดยืนยันแล้ว ขึ้นงานช่าง"
+                        : v.stuck ? " · คอนเฟิร์มลูกค้าแล้ว — รอ TS ปล่อยขึ้นตาราง"
+                          : v.dateChangeReason ? ` · ปรับวันเพราะ ${v.dateChangeReason}` : ""}
                   </small>
                 ))}
               </div>
@@ -171,6 +177,11 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
                     {asked ? "แก้คำขอ" : "ขอคิวติดตั้ง"}
                   </Button>
                 ) : null}
+                {writable ? (site.visits || []).filter((v) => v.awaitingCustomer).map((v) => (
+                  <Button key={v.id} size="sm" variant="primary" onClick={() => { setError(""); setCustomerFor({ site, visit: v }); }}>
+                    คอนเฟิร์มลูกค้า{(site.visits || []).filter((x) => x.awaitingCustomer).length > 1 && v.code ? ` ${v.code}` : ""}
+                  </Button>
+                )) : null}
                 {tsConfirmed ? <small className={styles.why}>TS ยืนยันวันแล้ว</small> : null}
               </div>
             </li>
@@ -185,6 +196,17 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
             ? "ติดตั้งครบทุกไซต์แล้ว — ออกสัญญาที่แท็บสัญญา"
             : `ทำเมื่อติดตั้งครบทุกไซต์ · ครบ ${data.readiness.done}/${data.readiness.total}${data.readiness.undecided ? ` · ยังไม่ตอบ ${data.readiness.undecided} ไซต์` : ""}`}
         </p>
+      ) : null}
+
+      {customerFor ? (
+        <InstallCustomerModal
+          orderId={orderId}
+          site={customerFor.site}
+          visit={customerFor.visit}
+          todayIso={data.todayIso}
+          onClose={() => setCustomerFor(null)}
+          onSaved={async () => { setCustomerFor(null); await load(); onChanged?.(); }}
+        />
       ) : null}
 
       {askFor ? (

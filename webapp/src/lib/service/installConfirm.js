@@ -6,6 +6,7 @@
 //    · TS วางเครื่องจากคลังรายโซน (`service_visit_planned_assets`) — หนึ่งเครื่อง = หนึ่งจุดบนจอช่าง
 // ⭐ ผลของการยืนยัน = นัดติดตั้ง **ร่าง** (ด่านข้อ "นัดยืนยันกับลูกค้าแล้ว" ยังติด) — ช่างยังไม่เห็นจนกว่า SA คอนเฟิร์ม
 // ⚠️ ตัวเดียวที่โมดัลของ TS และ API ถาม — ปุ่มกับ API ตอบคำเดียวกัน
+import { installReaskedAfterConfirm } from './visitGate';
 import { isClosedVisit, isDraftVisit, isOpenVisit } from './visitStatus';
 
 export const INSTALL_CONFIRM_TEXT = Object.freeze({
@@ -28,6 +29,8 @@ export const INSTALL_CONFIRM_TEXT = Object.freeze({
   assetDuplicate: 'เครื่องเดียวกันถูกวางซ้ำ',
   assetNotInStock: 'มีเครื่องที่ไม่อยู่ในคลังแล้ว — โหลดใหม่แล้วเลือกเครื่องอื่น',
   assetPlannedElsewhere: 'มีเครื่องที่ถูกวางไว้ให้นัดติดตั้งอื่นแล้ว',
+  notReasked: 'นัดนี้ไม่ได้รอยืนยันวันใหม่ — โหลดใหม่',
+  reasonRequiredReask: 'วันไม่ตรงกับวันใหม่ที่ลูกค้าขอ — ใส่เหตุที่ปรับวันอย่างน้อย 5 ตัวอักษร (ฝ่ายขายเห็นตอนคอนเฟิร์มลูกค้า)',
 });
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -68,26 +71,9 @@ export function installConfirmInput(body = {}, {
   if (zoneIds.some((id) => !allowed.has(id))) return { error: INSTALL_CONFIRM_TEXT.zoneNotRequested };
   if (zoneIds.some((id) => busyZoneIds.has(id))) return { error: INSTALL_CONFIRM_TEXT.zoneBusy };
 
-  const scheduledDate = text(body.scheduledDate);
-  if (!scheduledDate) return { error: INSTALL_CONFIRM_TEXT.dateRequired };
-  if (!DATE_RE.test(scheduledDate) || Number.isNaN(Date.parse(`${scheduledDate}T00:00:00Z`))) return { error: INSTALL_CONFIRM_TEXT.dateInvalid };
-  if (todayIso && scheduledDate < todayIso) return { error: INSTALL_CONFIRM_TEXT.datePast };
-
-  const startTime = text(body.startTime).slice(0, 5);
-  const endTime = text(body.endTime).slice(0, 5);
-  if ((startTime && !TIME_RE.test(startTime)) || (endTime && !TIME_RE.test(endTime))) return { error: INSTALL_CONFIRM_TEXT.timeInvalid };
-  if (Boolean(startTime) !== Boolean(endTime)) return { error: INSTALL_CONFIRM_TEXT.timePair };
-  if (startTime && endTime && startTime >= endTime) return { error: INSTALL_CONFIRM_TEXT.timeOrder };
-
-  const assigneeId = text(body.assigneeId);
-  if (!assigneeId) return { error: INSTALL_CONFIRM_TEXT.assigneeRequired };
-  const assistantIds = [...new Set((Array.isArray(body.assistantIds) ? body.assistantIds : []).map(text).filter(Boolean))]
-    .filter((id) => id !== assigneeId);
-
-  /* เหตุที่ปรับวัน — บังคับเมื่อวันไม่ตรงกับที่ฝ่ายขายขอ (มติ N3) · วันตรงแล้วใส่มาก็เก็บ */
-  const dateChangeReason = text(body.dateChangeReason);
-  if (scheduledDate !== text(request.requestedDate) && charCount(dateChangeReason) < 5) return { error: INSTALL_CONFIRM_TEXT.reasonRequired };
-  if (charCount(dateChangeReason) > 500) return { error: INSTALL_CONFIRM_TEXT.reasonLong };
+  const slot = slotFields(body, { request, todayIso });
+  if (slot.error) return slot;
+  const { scheduledDate, startTime, endTime, assigneeId, assistantIds, dateChangeReason } = slot.value;
 
   const plannedAssets = [];
   const seen = new Set();
@@ -109,13 +95,60 @@ export function installConfirmInput(body = {}, {
     value: {
       zoneIds,
       scheduledDate,
-      startTime: startTime || null,
-      endTime: endTime || null,
+      startTime,
+      endTime,
       assigneeId,
       assigneeName: text(body.assigneeName) || null,
       assistantIds,
       plannedAssets,
+      dateChangeReason,
+    },
+  };
+}
+
+/* วัน · เวลา · หัวหน้างาน · เหตุที่ปรับวัน — ชุดเดียวกันทั้งยืนยันครั้งแรกและยืนยันวันใหม่ (ลูกค้าขอเปลี่ยนวัน) */
+function slotFields(body, { request, todayIso, reasonText = INSTALL_CONFIRM_TEXT.reasonRequired }) {
+  const scheduledDate = text(body.scheduledDate);
+  if (!scheduledDate) return { error: INSTALL_CONFIRM_TEXT.dateRequired };
+  if (!DATE_RE.test(scheduledDate) || Number.isNaN(Date.parse(`${scheduledDate}T00:00:00Z`))) return { error: INSTALL_CONFIRM_TEXT.dateInvalid };
+  if (todayIso && scheduledDate < todayIso) return { error: INSTALL_CONFIRM_TEXT.datePast };
+
+  const startTime = text(body.startTime).slice(0, 5);
+  const endTime = text(body.endTime).slice(0, 5);
+  if ((startTime && !TIME_RE.test(startTime)) || (endTime && !TIME_RE.test(endTime))) return { error: INSTALL_CONFIRM_TEXT.timeInvalid };
+  if (Boolean(startTime) !== Boolean(endTime)) return { error: INSTALL_CONFIRM_TEXT.timePair };
+  if (startTime && endTime && startTime >= endTime) return { error: INSTALL_CONFIRM_TEXT.timeOrder };
+
+  const assigneeId = text(body.assigneeId);
+  if (!assigneeId) return { error: INSTALL_CONFIRM_TEXT.assigneeRequired };
+  const assistantIds = [...new Set((Array.isArray(body.assistantIds) ? body.assistantIds : []).map(text).filter(Boolean))]
+    .filter((id) => id !== assigneeId);
+
+  /* เหตุที่ปรับวัน — บังคับเมื่อวันไม่ตรงกับที่ฝ่ายขายขอ (มติ N3) · วันตรงแล้วใส่มาก็เก็บ */
+  const dateChangeReason = text(body.dateChangeReason);
+  if (scheduledDate !== text(request.requestedDate) && charCount(dateChangeReason) < 5) return { error: reasonText };
+  if (charCount(dateChangeReason) > 500) return { error: INSTALL_CONFIRM_TEXT.reasonLong };
+  return {
+    value: {
+      scheduledDate, startTime: startTime || null, endTime: endTime || null, assigneeId, assistantIds,
       dateChangeReason: dateChangeReason || null,
     },
   };
+}
+
+/**
+ * TS ยืนยันวันใหม่บน **นัดร่างเดิม** หลังลูกค้าขอเปลี่ยนวัน (PR-4) → `{ value, error }`
+ * ⭐ โซนกับเครื่องที่วางไว้คงเดิม (ถามแค่ วัน · เวลา · หัวหน้างาน · เหตุ) — ลูกค้าเปลี่ยนวัน ไม่ได้เปลี่ยนของที่จะติด
+ * ⚠️ เหตุที่ปรับวันเทียบกับ **วันใหม่ที่ลูกค้าขอ** (`request.requestedDate` หลังขอเปลี่ยน) ไม่ใช่วันเดิมของนัด
+ * @param ctx `{ request, visit, deposit, todayIso }`
+ */
+export function installReconfirmInput(body = {}, { request = null, visit = null, deposit = null, todayIso = null } = {}) {
+  if (!request || request.mode !== 'install' || !request.requestedAt) return { error: INSTALL_CONFIRM_TEXT.notRequested };
+  if (!visit || visit.installRequestId !== request.id || !isDraftVisit(visit) || !installReaskedAfterConfirm(request, visit)) {
+    return { error: INSTALL_CONFIRM_TEXT.notReasked };
+  }
+  if (!deposit || deposit.state !== 'ok') return { error: deposit?.reason ? `${INSTALL_CONFIRM_TEXT.depositBlocked} (${deposit.reason})` : INSTALL_CONFIRM_TEXT.depositBlocked };
+  const slot = slotFields(body, { request, todayIso, reasonText: INSTALL_CONFIRM_TEXT.reasonRequiredReask });
+  if (slot.error) return slot;
+  return { value: { ...slot.value, assigneeName: text(body.assigneeName) || null } };
 }

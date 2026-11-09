@@ -11,6 +11,7 @@ import { installDepositGate } from './installDeposit';
 import {
   INSTALL_STAGE_LABELS, INSTALL_STAGE_OWNERS, installSiteSummary, installZoneStage,
 } from './installQueue';
+import { installReaskedAfterConfirm } from './visitGate';
 import { isDraftVisit, isOpenVisit } from './visitStatus';
 
 export const INSTALL_UNDECIDED_WINDOW_DAYS = 60;
@@ -71,7 +72,7 @@ export function installQueueRows({
     const summary = r.requestedAt ? installSiteSummary(zoneRows.map((z) => z.stage)) : { stage: 'not_requested', installed: 0, total: zoneRows.length };
     if (!INSTALL_QUEUE_STAGES.includes(summary.stage)) continue;
     const pendingVisits = (visits || []).filter((v) => v.installRequestId === r.id && (isDraftVisit(v) || isOpenVisit(v)));
-    rows.push(rowOf({ request: r, order, site: pick(sites, r.siteId), zones: zoneRows, stage: summary.stage, deposit, visits: pendingVisits }));
+    rows.push(rowOf({ request: r, order, site: pick(sites, r.siteId), zones: zoneRows, stage: summary.stage, deposit, visits: pendingVisits, visitZonesByVisitId }));
   }
 
   /* ไซต์ของใบที่เปิดรอบขายแล้วแต่ยังไม่มีคำตอบ (ตัวโหลดตัดหน้าต่างวันมาแล้ว) */
@@ -97,7 +98,7 @@ export function installQueueRows({
     || String(a.siteCode || '').localeCompare(String(b.siteCode || '')));
 }
 
-function rowOf({ request, order, site, zones, stage, deposit, visits }) {
+function rowOf({ request, order, site, zones, stage, deposit, visits, visitZonesByVisitId = {} }) {
   return {
     key: request?.id || `${order.id}|${site?.id}`,
     requestId: request?.id || null,
@@ -121,9 +122,20 @@ function rowOf({ request, order, site, zones, stage, deposit, visits }) {
     note: request?.note || null,
     changeReason: request?.changeReason || null,
     deposit: { state: deposit.state, text: deposit.state === 'blocked' ? deposit.reason : deposit.detail },
-    visits: visits.map((v) => ({
-      id: v.id, code: v.code || null, scheduledDate: v.scheduledDate || null, startTime: v.startTime || null, endTime: v.endTime || null,
-      assigneeName: v.assigneeName || null, tsConfirmedAt: v.tsConfirmedAt || null, customerConfirmedAt: v.customerConfirmedAt || null,
-    })),
+    visits: visits.map((v) => {
+      const draft = isDraftVisit(v);
+      /* ⭐ ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยัน (PR-4) — TS ยืนยันวันใหม่บนนัดนี้ (ปุ่ม "ยืนยันวันใหม่")
+         · คอนเฟิร์มลูกค้าแล้วแต่ยังเป็นร่าง = ติดด่านข้ออื่นตอนเลื่อนขึ้นตาราง (ปล่อยที่หน้าจัดคิว) */
+      const reasked = draft && Boolean(request) && installReaskedAfterConfirm(request, v);
+      return {
+        id: v.id, code: v.code || null, status: v.status || null,
+        scheduledDate: v.scheduledDate || null, startTime: v.startTime || null, endTime: v.endTime || null,
+        assigneeId: v.assigneeId || null, assigneeName: v.assigneeName || null,
+        tsConfirmedAt: v.tsConfirmedAt || null, customerConfirmedAt: v.customerConfirmedAt || null,
+        zoneIds: (pick(visitZonesByVisitId, v.id) || []).map(String),
+        reasked,
+        stuck: draft && !reasked && Boolean(v.customerConfirmedAt),
+      };
+    }),
   };
 }

@@ -13,6 +13,8 @@ import {
   INSTALL_STAGE_LABELS, INSTALL_STAGE_OWNERS, INSTALL_STAGE_SERVICE,
   installContractReadiness, installSiteSummary, installZoneStage,
 } from './installQueue';
+import { installCustomerVisitError } from './installCustomer';
+import { installReaskedAfterConfirm } from './visitGate';
 import { isClosedVisit, isDraftVisit, isOpenVisit } from './visitStatus';
 
 export const INSTALL_MODES = Object.freeze(['install', 'none']);
@@ -197,6 +199,7 @@ export function installSitesView(ctx, {
       installed: summary.installed,
       total: summary.total,
       hasPendingVisit: request ? pendingVisits(visits, request.id).length > 0 : false,
+      visits: request ? siteVisits(request, visits, visitZonesByVisitId, zoneMap) : [],
     };
   }).sort((a, b) => String(a.siteCode || a.siteId).localeCompare(String(b.siteCode || b.siteId)));
 
@@ -215,4 +218,30 @@ function zoneVisit(request, zoneId, visits, visitZonesByVisitId) {
     startTime: pick.startTime || null, endTime: pick.endTime || null, tsConfirmedAt: pick.tsConfirmedAt || null,
     customerConfirmedAt: pick.customerConfirmedAt || null, dateChangeReason: pick.dateChangeReason || null,
   };
+}
+
+/* นัดติดตั้งที่ยังมีชีวิตของไซต์ — แถวคำตอบของลูกค้าบนการ์ด (PR-4 · ม็อก A5)
+   `awaitingCustomer` = ปุ่ม "คอนเฟิร์มลูกค้า" ขึ้น (ตัวตัดสินเดียวกับ API: `installCustomerVisitError`)
+   `reasked` = ขอเปลี่ยนวันแล้ว รอ TS · `stuck` = คอนเฟิร์มแล้วแต่ยังเป็นร่าง (ด่านข้ออื่นติด · TS ปล่อยที่หน้าจัดคิว) */
+function siteVisits(request, visits, visitZonesByVisitId, zoneMap) {
+  return pendingVisits(visits, request.id)
+    .sort((a, b) => String(a.scheduledDate || '').localeCompare(String(b.scheduledDate || '')) || String(a.id).localeCompare(String(b.id)))
+    .map((v) => {
+      const zoneIds = at(visitZonesByVisitId, v.id).map(String);
+      const draft = isDraftVisit(v);
+      const reasked = draft && installReaskedAfterConfirm(request, v);
+      return {
+        id: v.id, code: v.code || null, status: v.status,
+        scheduledDate: v.scheduledDate || null, startTime: v.startTime || null, endTime: v.endTime || null,
+        assigneeName: v.assigneeName || null,
+        tsConfirmedAt: v.tsConfirmedAt || null, tsConfirmedByName: v.tsConfirmedByName || null,
+        customerConfirmedAt: v.customerConfirmedAt || null, customerConfirmedByName: v.customerConfirmedByName || null,
+        dateChangeReason: v.dateChangeReason || null,
+        zoneIds,
+        zoneNames: zoneIds.map((id) => zoneMap.get(id)?.name || zoneMap.get(id)?.code).filter(Boolean),
+        reasked,
+        stuck: draft && !reasked && Boolean(v.customerConfirmedAt),
+        awaitingCustomer: installCustomerVisitError(v, request, 'confirm') === null,
+      };
+    });
 }

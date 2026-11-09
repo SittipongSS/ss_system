@@ -24,8 +24,8 @@ const reply = (status, body) => ({ status, body });
 const failWith = (status, error, extra = {}) => reply(status, { error, ...extra });
 const text = (value) => String(value ?? '').trim();
 
-const VISIT_COLUMNS = 'id, code, status, kind, "installRequestId", "scheduledDate", "startTime", "endTime", '
-  + '"tsConfirmedAt", "customerConfirmedAt", "dateChangeReason"';
+const VISIT_COLUMNS = 'id, code, status, kind, "siteId", "installRequestId", "scheduledDate", "startTime", "endTime", '
+  + '"assigneeId", "assigneeName", "tsConfirmedAt", "tsConfirmedByName", "customerConfirmedAt", "customerConfirmedByName", "dateChangeReason"';
 
 async function scopedOrder(supabase, user, id) {
   const { row, response } = await loadScoped(supabase, 'sales_orders', id, user, 'view');
@@ -86,7 +86,7 @@ const siteZoneIdsOf = (view, siteId) => (view.sites.find((s) => s.siteId === sit
 
 /* ── GET ── */
 /* ⭐ ตัวโหลดส่งเข้ามาได้ (เทสต์ใส่โลกย่อส่วนแทนการไล่ตาราง 10 ตัวของบริบทงานบริการ) */
-const DEFAULT_DEPS = Object.freeze({ scope: scopedOrder, load: loadInstallState });
+export const DEFAULT_DEPS = Object.freeze({ scope: scopedOrder, load: loadInstallState });
 
 export async function installGet({ supabase, user, id, enabled = false, deps = DEFAULT_DEPS }) {
   if (!user) return failWith(401, 'unauthorized');
@@ -109,8 +109,8 @@ export async function installGet({ supabase, user, id, enabled = false, deps = D
   }
 }
 
-/* ด่านร่วมของ PUT/POST — ใบ · สิทธิ์ · สวิตช์ · ไซต์อยู่ในใบ */
-async function prepareWrite({ supabase, user, id, enabled, siteId, deps = DEFAULT_DEPS }) {
+/* ด่านร่วมของ PUT/POST (และคำตอบของลูกค้า PR-4) — ใบ · สิทธิ์ · สวิตช์ · ไซต์อยู่ในใบ */
+export async function prepareWrite({ supabase, user, id, enabled, siteId, deps = DEFAULT_DEPS }) {
   if (!user) return { failure: failWith(401, 'unauthorized') };
   if (!canViewSalesPlanning(user)) return { failure: failWith(403, 'forbidden') };
   const { order, failure } = await deps.scope(supabase, user, id);
