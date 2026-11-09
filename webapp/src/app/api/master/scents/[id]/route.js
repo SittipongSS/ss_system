@@ -16,6 +16,7 @@ import {
 } from '@/lib/master/scentFormulaAdmin';
 import { canForceDelete, unlinkRegistryRefs, isDryRun, isForceRequest, scentForcePreview } from '@/lib/forceDelete';
 import { purgeUpdates } from '@/lib/master/updates';
+import { purgeAttachments } from '@/lib/master/attachments';
 // ⭐ ชื่อ/รหัสเปลี่ยน = คำร้องทุกใบที่อ้างถึงต้องมีบรรทัดในประวัติ (มติผู้ใช้ 2026-08-18)
 import { logRegistryChangeToRequests } from '@/lib/requests/registryNotify';
 
@@ -259,6 +260,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     const { error: delError } = await supabase.from('scents').delete().eq('id', id);
     if (delError) return fail(delError.message, 500);
     await purgeUpdates(supabase, 'scent', id);
+    // ไฟล์แนบของกลิ่น (IFRA · P3) — polymorphic ไม่มี FK เหมือนเธรด ⇒ กวาดเอง (ไม่กวาด = ไฟล์กำพร้าบน Drive)
+    await purgeAttachments('scent', id).catch((e) => console.error('[scents DELETE] กวาดไฟล์แนบไม่สำเร็จ', id, e?.message));
     await recordAudit({
       user, action: 'delete', entityType: 'scent', entityId: id, before: scent, request: req,
       summary: `[admin force] ลบกลิ่น ${scent.code || scent.name} (สถานะ ${scent.status})`,
@@ -283,6 +286,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   const { error: delError } = await supabase.from('scents').delete().eq('id', id);
   if (delError) return fail(delError.message, 500);
   await purgeUpdates(supabase, 'scent', id);
+  // ไฟล์แนบของกลิ่น (IFRA · P3) — กวาดเหมือนทางลบแบบ force ข้างบน
+  await purgeAttachments('scent', id).catch((e) => console.error('[scents DELETE] กวาดไฟล์แนบไม่สำเร็จ', id, e?.message));
   await recordAudit({
     user, action: 'delete', entityType: 'scent', entityId: id, before: scent, request: req,
     summary: `ลบกลิ่น ${scent.code || scent.name} (สถานะ ${scent.status})`,

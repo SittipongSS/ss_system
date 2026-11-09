@@ -22,6 +22,7 @@ import {
   canAttachToSalesOrder, canViewSalesOrderAttachment, isSalesOrderAttachment,
 } from '@/lib/sales/salesOrderAttachmentAccess';
 import { productCaretakerTeams } from '@/lib/master/productScope';
+import { canAttachToScent, canViewScentAttachment, isScentAttachment } from '@/lib/master/scentAttachmentAccess';
 import { canEditProductSpec } from '@/lib/sales/productSpecWorkflow';
 
 // resource key ที่ส่งให้ helper สิทธิ์กลาง (ตรงกับ lib/permissions)
@@ -40,6 +41,8 @@ export async function canViewAttachmentParent(supabase, entityType, parent, user
   if (isSalesAttachment(entityType)) return canViewSalesAttachment(parent, user);
   // ใบสั่งขายไม่มี `team` ของตัวเอง ⇒ ตัดสินด้วยขอบเขตของ **ดีลของใบ** (ต้องอ่านดีลเพิ่มหนึ่งครั้ง)
   if (isSalesOrderAttachment(entityType)) return canViewSalesOrderAttachment(supabase, parent, user);
+  // กลิ่น (IFRA · P3) — เห็นทะเบียนกลิ่น = เห็นไฟล์ · ไม่มี resource ของ canViewRecord (ตกไปที่นั่น = ปฏิเสธทุกคน)
+  if (isScentAttachment(entityType)) return canViewScentAttachment(user);
   return canViewRecord(user, RESOURCE[entityType], parent);
 }
 
@@ -76,6 +79,8 @@ export async function canEditAttachmentParent(supabase, entityType, parent, user
   if (isCostingAttachment(entityType)) return canAttachToCosting(supabase, entityType, parent, user);
   if (isSalesAttachment(entityType)) return canAttachToSalesEntity(parent, user);
   if (isSalesOrderAttachment(entityType)) return canAttachToSalesOrder(supabase, parent, user);
+  // กลิ่น (IFRA · P3) — RD + admin เท่านั้น ("RD ออก") ไม่ขึ้นกับทีม
+  if (isScentAttachment(entityType)) return canAttachToScent(user);
   // product: ขอบเขตแก้ตามทีมผู้ดูแลของ **ลูกค้าเจ้าของสินค้า** (มติ 2026-07-20/21)
   // — resolve ให้ตรงกับหน้ารายละเอียดสินค้า
   return canEditRecord(

@@ -45,7 +45,7 @@ export function documentBoard(items = []) {
            ทั้งที่การ์ดรายแถวข้างล่างแสดง "ใบวางบิล" ถูกต้อง (เจอตอน UAT ของ B-5) */
         /* ⭐ บรรทัดที่ผูก FG (mig 0428 · P2b) — ป้ายที่ประทับไว้คือ "ชนิด · รหัส FG" (`resolveLineLabels`) ⇒ ใช้ตัวนั้น
            ไม่งั้นใบที่ขอ MSDS ของสอง FG ขึ้น "MSDS / SDS" สองแถวแยกไม่ออก */
-        name: item.productId && item.label
+        name: (item.productId || (item.scentId && item.lineKind === 'document')) && item.label
           ? item.label
           : item.docType
             ? (lineShapeVocab(item.lineKind)?.label(item.docType) ?? docTypeLabel(item.docType))

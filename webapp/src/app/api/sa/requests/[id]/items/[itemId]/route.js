@@ -26,7 +26,7 @@ import {
   hopValuesError,
 } from '@/lib/requests/hops';
 import { isDocLineKind } from '@/lib/requests/docTypes';
-import { productDocLineTarget } from '@/lib/requests/productDocLines';
+import { docLineFileTarget } from '@/lib/requests/productDocLines';
 import { findRequest } from '@/lib/materialPricesAdmin';
 import { businessDate } from '@/lib/businessDate';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
@@ -151,16 +151,19 @@ export async function PATCH(request, { params }) {
   // · หลายไฟล์ได้อยู่แล้ว (AttachmentsPanel ไม่จำกัดจำนวน) — ด่านนี้ขอแค่ ≥ 1
   /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026) — ไฟล์อยู่ที่ **สินค้า**
      ⇒ นับไฟล์ปัจจุบัน (ไม่ปลดระวาง) ของสินค้าชนิดนั้นแทนไฟล์บนแถว · สินค้ามีไฟล์ล่าสุดอยู่แล้ว = ส่งได้โดยไม่ต้องแนบซ้ำ */
-  const productTarget = productDocLineTarget(row);
-  if (hop === 'ready' && productTarget) {
-    const { data: productFiles, error: fileError } = await supabase
+  /* ⭐ P3: บรรทัด IFRA ที่ผูกกลิ่น = ไฟล์อยู่ที่ **กลิ่น** — ตัวตัดสินเดียวกัน (`docLineFileTarget` คืนชนิด entity มาด้วย) */
+  const fileTarget = docLineFileTarget(row);
+  if (hop === 'ready' && fileTarget) {
+    const { data: targetFiles, error: fileError } = await supabase
       .from('attachments').select('id, metadata')
-      .eq('entityType', 'product').eq('entityId', productTarget.productId).eq('docType', productTarget.docType)
+      .eq('entityType', fileTarget.entityType).eq('entityId', fileTarget.entityId).eq('docType', fileTarget.docType)
       .limit(200);
     if (fileError) return Response.json({ error: fileError.message }, { status: 500 });
-    if (!(productFiles || []).some((file) => !file.metadata?.retiredAt)) {
+    if (!(targetFiles || []).some((file) => !file.metadata?.retiredAt)) {
+      const where = fileTarget.entityType === 'scent' ? 'กลิ่นนี้' : 'FG นี้';
+      const home = fileTarget.entityType === 'scent' ? 'กลิ่น' : 'สินค้า';
       return Response.json({
-        error: `ต้องมีไฟล์${productTarget.label}ของ FG นี้ก่อนกดส่ง — แนบในหน้าต่างส่งงาน (ไฟล์เก็บที่สินค้า)`,
+        error: `ต้องมีไฟล์${fileTarget.label}ของ${where}ก่อนกดส่ง — แนบในหน้าต่างส่งงาน (ไฟล์เก็บที่${home})`,
       }, { status: 400 });
     }
   } else if (hop === 'ready' && isDocLineKind(row.lineKind)) {

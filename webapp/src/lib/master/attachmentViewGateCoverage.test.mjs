@@ -17,6 +17,7 @@ import { ATTACHMENT_ENTITY_TYPES } from './attachmentTypes.js';
 import { COSTING_ATTACHMENT_TABLE } from './costingAttachmentAccess.js';
 import { SALES_ATTACHMENT_TABLE } from '../sales/salesAttachmentAccess.js';
 import { SALES_ORDER_ATTACHMENT_TABLE } from '../sales/salesOrderAttachmentAccess.js';
+import { SCENT_ATTACHMENT_TABLE } from '@/lib/master/scentAttachmentAccess';
 
 const accessSource = readFileSync(
   fileURLToPath(new URL('./attachmentAccess.js', import.meta.url)),
@@ -44,6 +45,8 @@ test('⭐ ทุก entityType มีสาขาในด่านอ่าน 
     // ใบสั่งขาย: สาขาของตัวเอง (ตัดสินผ่านดีลของใบ · salesOrderAttachmentAccess.js) — ต้องเรียกจริงในไฟล์ด้วย (เทสต์ถัดไป)
     ...Object.keys(SALES_ORDER_ATTACHMENT_TABLE),
     'personal_task', // มีสาขาของตัวเอง (canViewPersonalTask)
+    // กลิ่น (IFRA · P3) — สาขาของตัวเอง (canViewScentAttachment = เห็นทะเบียนกลิ่น)
+    ...Object.keys(SCENT_ATTACHMENT_TABLE),
   ]);
   const uncovered = ATTACHMENT_ENTITY_TYPES.filter((type) => !covered.has(type));
   assert.deepEqual(
@@ -57,7 +60,7 @@ test('⭐ ทุก entityType มีสาขาในด่านอ่าน 
 test('ด่านอ่านกับด่านเขียนต้องรู้จัก entity ชุดเดียวกัน', () => {
   /* ทั้งสองด่านอยู่ในไฟล์เดียวกันและใช้ตัวช่วยชุดเดียวกัน — ล็อกไว้ว่าใครแก้ข้างหนึ่ง
      แล้วลืมอีกข้างจะเห็นทันที (เช่นเพิ่มสาขาให้ canEdit แต่ไม่เพิ่มให้ canView) */
-  for (const helper of ['isMgmtAttachment', 'isPersonalTaskAttachment', 'isCostingAttachment', 'isSalesAttachment', 'isSalesOrderAttachment']) {
+  for (const helper of ['isMgmtAttachment', 'isPersonalTaskAttachment', 'isCostingAttachment', 'isSalesAttachment', 'isSalesOrderAttachment', 'isScentAttachment']) {
     const uses = accessSource.split(helper).length - 1;
     assert.ok(
       uses >= 2,

@@ -17,6 +17,7 @@ import { ATTACHMENT_ENTITY_TYPES } from '@/lib/master/attachmentTypes';
 import { COSTING_ATTACHMENT_TABLE } from '@/lib/master/costingAttachmentAccess';
 import { SALES_ATTACHMENT_TABLE } from '@/lib/sales/salesAttachmentAccess';
 import { SALES_ORDER_ATTACHMENT_TABLE } from '@/lib/sales/salesOrderAttachmentAccess';
+import { SCENT_ATTACHMENT_TABLE } from '@/lib/master/scentAttachmentAccess';
 
 const routeSource = readFileSync(
   fileURLToPath(new URL('./[id]/route.js', import.meta.url)),
@@ -44,6 +45,8 @@ test('⭐ ทุก entityType มีสาขาดักตอนลบ/แก
     ...Object.keys(SALES_ATTACHMENT_TABLE),
     // ใบสั่งขาย: สาขาของตัวเองก่อนบล็อก `if (table)` — ตำแหน่งตรวจใน salesOrderAttachmentAccess.test.mjs
     ...Object.keys(SALES_ORDER_ATTACHMENT_TABLE),
+    // กลิ่น (IFRA · ศูนย์กลางเอกสารของสินค้า P3) — สาขาของตัวเองก่อนบล็อก `if (table)` (RD + admin)
+    ...Object.keys(SCENT_ATTACHMENT_TABLE),
     ...mgmtKeys(),
   ]);
   const uncovered = ATTACHMENT_ENTITY_TYPES.filter((type) => !covered.has(type));
@@ -121,6 +124,7 @@ test('⭐ ทุกสาขาที่แถวแม่หาย: ผ่า�
     ['ดีล/โครงการ/สัญญา', 'deal', 'dealError', 'const allowed = deal ?'],
     ['PARENT_TABLE', 'parent', 'parentError', 'const canEditParent ='],
     ['ใบสั่งขาย', 'order', 'orderError', 'const allowed = order ?'],
+    ['กลิ่น', 'scentRow', 'scentError', 'if (scentRow && !canAttachToScent(user))'],
   ];
   for (const [label, row, err, decider] of branches) {
     const check = new RegExp(
@@ -141,9 +145,9 @@ test('⭐ ทุกสาขาที่แถวแม่หาย: ผ่า�
     /const allowed = order \? await canAttachToSalesOrder\(supabase, order, user\) : canViewSalesPlanning\(user\);/,
   );
 
-  /* นับการอ่านแถวแม่: 4 ทาง = 4 สาขาในตาราง · เพิ่มทางที่ 5 โดยไม่เพิ่มด่าน = เทสต์นี้ตก */
+  /* นับการอ่านแถวแม่: 5 ทาง = 5 สาขาในตาราง (+ กลิ่น · IFRA P3 09/11/2026) · เพิ่มทางที่ 6 โดยไม่เพิ่มด่าน = เทสต์นี้ตก */
   const reads = guard.match(/\.eq\('id', att\.entityId\)\.maybeSingle\(\)/g) || [];
-  assert.equal(reads.length, 4, 'จำนวนทางที่อ่านแถวแม่เปลี่ยน — ทางใหม่ต้องมีด่านแม่หายของตัวเอง แล้วแก้เลขนี้');
+  assert.equal(reads.length, 5, 'จำนวนทางที่อ่านแถวแม่เปลี่ยน — ทางใหม่ต้องมีด่านแม่หายของตัวเอง แล้วแก้เลขนี้');
   assert.equal((guard.match(/return orphanDenied\(\);/g) || []).length, branches.length);
   // ไม่มีสาขาไหนเขียนด่านแม่หายแบบกว้างกว่า (เช่น ถามแค่ role) มาแทน
   assert.doesNotMatch(guard, /if \(!(?:parentRow|deal|parent)\) return null/);

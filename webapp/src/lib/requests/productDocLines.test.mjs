@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { normalizeDocumentItems, normalizeDocLines } from './lines.js';
 import { BILLING_DOC_VOCABULARY } from './kinds/fn/billingDocTypes.js';
 import { REQUEST_DOC_VOCABULARY, REQUEST_PRODUCT_DOC_TYPES } from './docTypes.js';
-import { productDocLineTarget } from './productDocLines.js';
+import { docLineFileTarget, productDocLineTarget } from './productDocLines.js';
 import { requestLineDiff, lineFormRows } from './requestLineEdit.js';
 import { resolveLineLabels } from './lineLabels.js';
 import { documentBoard } from './documentBoard.js';
@@ -35,8 +35,10 @@ test('บรรทัดใหม่ MSDS / Spec Sheet ต้องเลือ�
 });
 
 test('ชนิดอื่นทิ้ง FG เสมอ · ขอชนิดเดียวกันของสอง FG ในใบเดียวได้ · FG เดียวกันซ้ำ = ซ้ำ', () => {
-  const ifra = normalizeDocumentItems([{ docType: 'ifra', productId: 'PRD-1', spec: '' }]);
+  const ifra = normalizeDocumentItems([{ docType: 'ifra', productId: 'PRD-1', scentId: 'SC-1', spec: '' }]);
   assert.equal(ifra.items[0].productId, null, 'FG ที่ค้างจากชนิดเดิมต้องไม่ติดไปกับบรรทัด IFRA');
+  assert.equal(normalizeDocumentItems([{ docType: 'msds', productId: 'PRD-1', scentId: 'SC-1', spec: '' }]).items[0].scentId, null,
+    'กลิ่นที่ค้างต้องไม่ติดไปกับบรรทัด MSDS');
   assert.equal(normalizeDocumentItems([
     { docType: 'msds', productId: 'PRD-1', spec: '' }, { docType: 'msds', productId: 'PRD-2', spec: '' },
   ]).error, null);
@@ -89,20 +91,21 @@ test('ตารางสรุปเอกสารของใบ: บรรท
 
 test('🔴 ด่านส่งงาน: บรรทัดที่ผูก FG นับไฟล์ปัจจุบันของสินค้า (ไม่ใช่ของบรรทัด) · บรรทัดเดิมยังนับไฟล์ของบรรทัด', () => {
   const route = code('../../app/api/sa/requests/[id]/items/[itemId]/route.js');
-  const target = route.indexOf('const productTarget = productDocLineTarget(row);');
+  // ⭐ P3: ตัวตัดสินทั่วไป (FG หรือกลิ่น) — ชนิด entity มาจาก `docLineFileTarget`
+  const target = route.indexOf('const fileTarget = docLineFileTarget(row);');
   assert.ok(target > 0);
-  const gate = route.slice(target, target + 1400);
-  assert.match(gate, /\.eq\('entityType', 'product'\)\.eq\('entityId', productTarget\.productId\)\.eq\('docType', productTarget\.docType\)/);
+  const gate = route.slice(target, target + 1600);
+  assert.match(gate, /\.eq\('entityType', fileTarget\.entityType\)\.eq\('entityId', fileTarget\.entityId\)\.eq\('docType', fileTarget\.docType\)/);
   assert.match(gate, /!file\.metadata\?\.retiredAt/);
   assert.match(gate, /\} else if \(hop === 'ready' && isDocLineKind\(row\.lineKind\)\) \{/);
 });
 
 test('แท็บเอกสารของดีล · หน้าต่างส่งงาน · การ์ดบรรทัด ถามตัวตัดสินเดียวกัน', () => {
-  assert.match(code('../../app/api/sales-planning/documents/all/route.js'), /productDocLineTarget\(i\)/);
+  assert.match(code('../../app/api/sales-planning/documents/all/route.js'), /docLineFileTarget\(i\)/);
   const page = code('../../app/requests/[id]/page.js');
-  assert.match(page, /productDocLineTarget\(hopDraft\.item\) \? \(/);
-  assert.match(page, /entityType="product"\s+entityId=\{productDocLineTarget\(hopDraft\.item\)\.productId\}/);
-  assert.match(code('../../components/requests/details/DocumentDetail.js'), /const target = item \? productDocLineTarget\(item\) : null;/);
+  assert.match(page, /docLineFileTarget\(hopDraft\.item\) \? \(/);
+  assert.match(page, /entityType=\{docLineFileTarget\(hopDraft\.item\)\.entityType\}\s+entityId=\{docLineFileTarget\(hopDraft\.item\)\.entityId\}/);
+  assert.match(code('../../components/requests/details/DocumentDetail.js'), /const target = item \? docLineFileTarget\(item\) : null;/);
   // ฟอร์ม: ช่องเลือก FG ของบรรทัด + ทะเบียน FG ส่งจากฟอร์มลงมาถึงตาราง
   assert.match(code('../../components/requests/RequestForm.js'), /products=\{products\}\s+customerId=\{selectedDeal/);
   assert.match(code('../../components/requests/DocumentLines.js'), /const wantsProduct = Boolean\(vocabulary\.productTarget\?\.\(row\.docType\)\);/);

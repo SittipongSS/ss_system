@@ -711,6 +711,8 @@ export async function POST(request) {
         docType: item.docType,
         // FG ของบรรทัด MSDS / Spec Sheet (mig 0428 · P2b) — ตรวจแล้วที่ resolveLineLabels · ชนิดอื่น/ใบวางบิล = null
         productId: item.productId ?? null,
+        // กลิ่นของบรรทัด IFRA (P3 · คอลัมน์เดิมของบรรทัด) — ตรวจแล้วที่ resolveLineLabels · ชนิดอื่น = null
+        scentId: item.scentId ?? null,
       }));
       const { error: itemError } = await supabase.from('dept_request_items').insert(itemRows);
       if (itemError) {

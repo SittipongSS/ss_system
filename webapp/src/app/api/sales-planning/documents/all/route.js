@@ -14,8 +14,7 @@ import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/
 import { buildEntityDocuments, entityDocumentProgress } from '@/lib/sales/entityDocuments';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { workspaceEmail } from '@/lib/master/googleDocs';
-import { productDocLineTarget } from '@/lib/requests/productDocLines';
-import { REQUEST_PRODUCT_DOC_TYPES } from '@/lib/requests/docTypes';
+import { docLineFileTarget } from '@/lib/requests/productDocLines';
 
 export const dynamic = 'force-dynamic';
 // ให้สิทธิ์เอกสารร่วมบน Drive ต้องโหลด googleapis — ต้อง Node runtime
@@ -131,7 +130,7 @@ async function collectDealDocuments(supabase, dealId) {
     if (openRequestIds.length) {
       const { data: items, error: itemError } = await supabase
         .from('dept_request_items')
-        .select('id, requestId, lineKind, docType, productId, spec, answerStatus, readyAt, createdAt')
+        .select('id, requestId, lineKind, docType, productId, "scentId", spec, answerStatus, readyAt, createdAt')
         .in('requestId', openRequestIds).eq('lineKind', 'document');
       raise('อ่านบรรทัดขอเอกสารไม่สำเร็จ', itemError);
       // ⭐ เกณฑ์เดียวกับแถบตัวเลขในใบคำร้อง (ม-85): "ยังไม่มา" = แถวยังเดินอยู่
@@ -147,10 +146,10 @@ async function collectDealDocuments(supabase, dealId) {
       // เอกสารไปสู่แท็บเอกสารในโครงการ/ดีลนั้นด้วย" · เอาเฉพาะแถวที่ **ส่งแล้ว**
       // (readyAt) — ไฟล์บนแถวที่ยังทำอยู่เป็นของระหว่างทาง ยังไม่ใช่เอกสารที่ได้
       const sentItems = (items || []).filter((i) => i.readyAt);
-      /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — ไฟล์อยู่ที่ **สินค้า** ไม่ใช่ที่บรรทัด
-         ⇒ เอาไฟล์ปัจจุบันของสินค้าชนิดนั้นมาแทน (ตัวตัดสินเดียวกับด่านส่งงาน: `productDocLineTarget`) · บรรทัดเดิมเดินแบบเดิม */
-      const productLines = sentItems.map((i) => ({ item: i, target: productDocLineTarget(i) })).filter((x) => x.target);
-      const rowLines = sentItems.filter((i) => !productDocLineTarget(i));
+      /* ⭐ บรรทัดที่ไฟล์อยู่ที่ FG (MSDS / Spec Sheet · P2b) หรือกลิ่น (IFRA · P3) — เอาไฟล์ปัจจุบันของ entity นั้นมาแทนไฟล์บนบรรทัด
+         (ตัวตัดสินเดียวกับด่านส่งงาน: `docLineFileTarget`) · บรรทัดเดิมเดินแบบเดิม */
+      const targetLines = sentItems.map((i) => ({ item: i, target: docLineFileTarget(i) })).filter((x) => x.target);
+      const rowLines = sentItems.filter((i) => !docLineFileTarget(i));
       const requestById = new Map((requests || []).map((r) => [r.id, r]));
       if (rowLines.length) {
         const { data: files, error: fileError } = await supabase
@@ -171,19 +170,22 @@ async function collectDealDocuments(supabase, dealId) {
           };
         });
       }
-      if (productLines.length) {
-        const productIds = [...new Set(productLines.map((x) => x.target.productId))];
+      for (const entityType of ['product', 'scent']) {
+        const lines = targetLines.filter((x) => x.target.entityType === entityType);
+        if (!lines.length) continue;
+        const entityIds = [...new Set(lines.map((x) => x.target.entityId))];
+        const docTypes = [...new Set(lines.map((x) => x.target.docType))];
         const { data: files, error: fileError } = await supabase
           .from('attachments')
           .select('id, "entityId", "docType", "fileName", "createdAt", metadata')
-          .eq('entityType', 'product').in('entityId', productIds).in('docType', REQUEST_PRODUCT_DOC_TYPES)
+          .eq('entityType', entityType).in('entityId', entityIds).in('docType', docTypes)
           .order('id', { ascending: true }).limit(500);
-        raise('อ่านไฟล์เอกสารของสินค้าไม่สำเร็จ', fileError);
+        raise(entityType === 'scent' ? 'อ่านไฟล์เอกสารของกลิ่นไม่สำเร็จ' : 'อ่านไฟล์เอกสารของสินค้าไม่สำเร็จ', fileError);
         const seen = new Set();
-        for (const { item, target } of productLines) {
+        for (const { item, target } of lines) {
           for (const f of files || []) {
-            if (f.entityId !== target.productId || f.docType !== target.docType || f.metadata?.retiredAt) continue;
-            if (seen.has(f.id)) continue;   // FG เดียวกันถูกขอสองใบ — ไฟล์เดียวกันขึ้นครั้งเดียว
+            if (f.entityId !== target.entityId || f.docType !== target.docType || f.metadata?.retiredAt) continue;
+            if (seen.has(f.id)) continue;   // FG/กลิ่นเดียวกันถูกขอสองใบ — ไฟล์เดียวกันขึ้นครั้งเดียว
             seen.add(f.id);
             requestItemFiles.push({
               id: f.id,
