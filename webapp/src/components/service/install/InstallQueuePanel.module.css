@@ -1,0 +1,8 @@
+/* แท็บ "รอติดตั้ง" (ขั้นเข้าติดตั้ง PR-3b) */
+.scope { margin: 0 0 var(--space-3); color: var(--text-3); font-size: var(--fs-4); }
+.zones { display: flex; flex-direction: column; gap: var(--space-0-5); margin: 0; padding: 0; list-style: none; }
+.zones li { display: flex; gap: var(--space-1-5); align-items: baseline; font-size: var(--fs-5); }
+.zones li span { color: var(--text-3); font-size: var(--fs-4); }
+.blocked { color: var(--amber); }
+.act { text-align: right; white-space: nowrap; }
+.main { display: block; font-weight: var(--fw-semibold); color: var(--text); }
