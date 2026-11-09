@@ -16,7 +16,7 @@ import { requireService } from '@/lib/service/sitesRepo';
 import { loadQueueVisits } from '@/lib/service/visitsRepo';
 import { visitBundle } from '@/lib/service/visitBundle';
 import { loadSurveyQueueRequests } from '@/lib/service/surveyQueueRepo';
-import { isDraftVisit } from '@/lib/service/visitStatus';
+import { isDraftVisit, isReservedDraft } from '@/lib/service/visitStatus';
 import { QUEUE_CLOSED_DAYS, addDaysIso, queueRouteMode } from '@/lib/service/scheduleQueue';
 
 export const dynamic = 'force-dynamic';
@@ -33,8 +33,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     const url = new URL(req.url);
     const mode = queueRouteMode(url.searchParams, { canAnswer: canAnswerServiceRequests(user) });
     const loaded = await loadQueueVisits(supabase, { closedSince });
-    /* โหมดภาระไม่ส่งร่าง — ร่างไม่นับภาระ (`staffLoadOn`) และเป็นก้อนใหญ่สุดของรายการงาน (รอบบริการ ~90 วัน) */
-    const visits = mode.drafts ? loaded : loaded.filter((visit) => !isDraftVisit(visit));
+    /* โหมดภาระไม่ส่งร่าง — ร่างไม่นับภาระ (`staffLoadOn`) และเป็นก้อนใหญ่สุดของรายการงาน (รอบบริการ ~90 วัน)
+       ⭐ ยกเว้นร่างนัดติดตั้งที่จองคิวไว้ (PR-4b · `isReservedDraft`) — นับเป็น "จองไว้" ในตัวเลือกช่าง */
+    const visits = mode.drafts ? loaded : loaded.filter((visit) => !isDraftVisit(visit) || isReservedDraft(visit));
 
     /* ⭐ คำร้องรอลงคิว (มติเจ้าของ 23/09) — เฉพาะคนที่ **ตอบคำร้องของ TS ได้** (รับเรื่อง/ลงคิว)
        · UI visibility rule: ไม่มีสิทธิ์ = ไม่ส่ง (null) ไม่ใช่ส่งการ์ดที่กดแล้วโดน 403

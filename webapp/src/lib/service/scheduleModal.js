@@ -340,6 +340,10 @@ export const UNASSIGNED_SUB = 'ทุกทีมหยิบได้ แต่
  * ⚠️ **เตือน ไม่ห้าม** — เกินภาระ/เวลาทับเลือกได้เสมอ (มีแต่ด่าน ①–④ ที่บล็อก)
  * ⚠️ "ว่าง" = `isFreeRow` ตัวเดียวกับ `freeCrewOn` ของการ์ด ⇒ "วันนั้นว่าง n จาก m คน" เท่ากันสองจอ
  */
+/* ป้าย "จองไว้" (PR-4b) — ร่างนัดติดตั้งที่ TS ยืนยันแล้ว รอฝ่ายขายคอนเฟิร์มลูกค้า (`isReservedDraft`) */
+export const CREW_RESERVED_TAG = 'จองไว้';
+export const CREW_RESERVED_HEAD = '(ยกเว้นติดตั้งที่จองไว้)';
+
 export function crewPickerView({
   technicians = [], load = null, dateIso = '', value = '', currentName = '',
   allowUnassigned = true, siteLoad = null, timeWindow = null, rosterState = 'ready',
@@ -364,6 +368,7 @@ export function crewPickerView({
       assets: Number(person.assets) || 0,
       packs: Number(person.packs) || 0,
       assisting: Number(person.assisting) || 0,
+      reserved: Number(person.reserved) || 0,
       dayVisits: Array.isArray(person.dayVisits) ? person.dayVisits : [],
       selected: tech.id === value,
     };
@@ -377,7 +382,7 @@ export function crewPickerView({
   const plainOf = (row) => ({ id: row.id, name: row.name, team: row.team, selected: row.selected });
   const freeRows = known ? rows.filter(isFreeRow) : [];
   const head = {
-    text: dated ? `ภาระวันที่ ${dayText(dateIso)} — ไม่นับร่าง` : CREW_NODATE_TEXT,
+    text: dated ? `ภาระวันที่ ${dayText(dateIso)} — ไม่นับร่าง ${CREW_RESERVED_HEAD}` : CREW_NODATE_TEXT,
     aside: !dated ? '' : known ? `วันนั้นว่าง ${freeRows.length} จาก ${rows.length} คน` : `วันนั้นว่าง ${NA} จาก ${rows.length} คน`,
     asideTone: known ? (freeRows.length ? 'ok' : 'warn') : '',
   };
@@ -395,10 +400,16 @@ export function crewPickerView({
       const tags = [];
       if (overloaded(row)) tags.push({ key: 'over', text: `เกินภาระ ${MAX_ASSETS_PER_DAY} จุด`, tone: 'warning' });
       if (row.assisting > 0) tags.push({ key: 'assist', text: `ไปช่วย ${row.assisting} นัด`, tone: 'neutral' });
+      /* ⭐ PR-4b: ร่างนัดติดตั้งที่ TS ยืนยันแล้ว รอฝ่ายขายคอนเฟิร์มลูกค้า — ยังไม่บนตาราง แต่คนนี้ถูกจองไว้แล้ว */
+      if (row.reserved > 0) tags.push({ key: 'reserved', text: `${CREW_RESERVED_TAG} ${row.reserved} นัด`, tone: 'info' });
       const overlaps = timeWindow
         ? row.dayVisits
           .filter((visit) => windowsOverlap(timeWindow, visit))
-          .map((visit) => ({ key: visit.id || visit.code, text: `เวลาทับ ${visit.code} ${visitTimeText(visit)}`, tone: 'warning' }))
+          .map((visit) => ({
+            key: visit.id || visit.code,
+            text: `เวลาทับ ${visit.code} ${visitTimeText(visit)}${visit.reserved ? ` (${CREW_RESERVED_TAG})` : ''}`,
+            tone: 'warning',
+          }))
         : [];
       return {
         ...plainOf(row),

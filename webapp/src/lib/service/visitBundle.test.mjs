@@ -397,7 +397,8 @@ test('🐞 ?view=load = ภาระอย่างเดียว — ไม่
   assert.deepEqual(queueRouteMode(null, {}), { load: false, requests: false, gate: true, drafts: true });
 
   const route = code(QUEUE_ROUTE);
-  assert.match(route, /const visits = mode\.drafts \? loaded : loaded\.filter\(\(visit\) => !isDraftVisit\(visit\)\);/);
+  /* ร่างไม่ส่ง — ยกเว้นร่างนัดติดตั้งที่จองคิวไว้ (PR-4b · นับเป็น "จองไว้" ในตัวเลือกช่าง) */
+  assert.match(route, /const visits = mode\.drafts \? loaded : loaded\.filter\(\(visit\) => !isDraftVisit\(visit\) \|\| isReservedDraft\(visit\)\);/);
   // ฮุกของหน้าใบขอโหมดภาระ ไม่ใช่ทั้งก้อน
   const hook = readFileSync(new URL('./useCrewLoad.js', import.meta.url), 'utf8');
   assert.match(hook, /apiFetch\("\/api\/service\/visits\/queue\?view=load"\)/);

@@ -47,7 +47,7 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
   const [error, setError] = useState("");
   const set = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
   /* ⭐ ภาระรายคนของวันที่เลือก — สูตรเดียวกับหน้าจัดคิว (`crewLoadPeople`) · ไม่รู้ = บอกว่าไม่รู้ ไม่ใช่ 0 */
-  const loadFor = useCrewLoad({ enabled: true, technicians });
+  const loadFor = useCrewLoad({ enabled: true, technicians, excludeVisitId: reconfirm ? visit.id : "" });
 
   useEffect(() => {
     /* ยืนยันวันใหม่ = เครื่องคงเดิม ⇒ ไม่ต้องโหลดคลัง */

@@ -178,7 +178,7 @@ test('CrewLoadPicker: radio จริงชื่อกลุ่มเดีย�
 
 test('CrewLoadPicker: ไม่นับร่าง · โหลดไม่ได้ = ไม่มีตัวเลข (ขีด ไม่ใช่ 0) · ยังไม่มีวัน = บอกให้เลือกวันก่อน', () => {
   const lib = code(pickerLib);
-  assert.match(lib, /`ภาระวันที่ \$\{dayText\(dateIso\)\} — ไม่นับร่าง`/);
+  assert.match(lib, /`ภาระวันที่ \$\{dayText\(dateIso\)\} — ไม่นับร่าง \$\{CREW_RESERVED_HEAD\}`/);
   assert.match(lib, /ยังโหลดภาระไม่ได้ — ตัวเลขว่างไม่ได้แปลว่าว่าง/);
   assert.match(lib, /const dated = !!dateIso;/);
   assert.match(lib, /const known = dated && load\?\.state === 'ok';/);
