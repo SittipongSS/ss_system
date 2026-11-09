@@ -23,7 +23,12 @@ import { loadTerms, loadZonesForSites } from './termsRepo';
  *    ⚠️ อ่านไม่ขึ้น = **โยน** (ตัวโหลดของ C2) ไม่ใช่ `{}` — ชิปที่หายเพราะ query พังหน้าตาเหมือน "ไม่มีใบ" */
 export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOrders = false } = {}) {
   const ids = [...new Set((siteIds || []).filter(Boolean))];
-  if (!ids.length) return { zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {} };
+  if (!ids.length) {
+    return {
+      zonesBySite: {}, termsBySite: {}, ordersById: {}, installmentsByOrderId: {}, contractsById: {}, setupOrdersByZone: {},
+      installRequestsById: {}, visitZonesByVisitId: {},
+    };
+  }
 
   const zones = await loadZonesForSites(supabase, ids);
   const zoneIds = zones.map((z) => z.id);
@@ -47,7 +52,14 @@ export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOr
     if (siteId) (termsBySite[siteId] ||= []).push(t);
   }
 
-  const orderIds = [...new Set(terms.map((t) => t.salesOrderId).filter(Boolean))];
+  /* ⭐ ขั้นเข้าติดตั้ง (mig 0425) — นัดติดตั้งที่มีคำขอเดินด่านของตัวเอง (`evaluateInstallVisitGate`) ซึ่งต้องรู้
+     คำขอ (→ ใบสั่งขาย → งวดก่อนติดตั้ง) กับโซนของนัด · ไม่ส่ง = ด่านติดแบบปิดไว้ก่อน (fail-closed) ทุกใบ
+     ⚠️ ใบของคำขอเข้าชุด orderIds ด้วย — ใบที่เพิ่งอนุมัติอาจยังไม่มีรอบขายบนโซนของไซต์นี้ */
+  const { installRequestsById, visitZonesByVisitId } = await loadInstallGateRows(supabase, ids);
+  const orderIds = [...new Set([
+    ...terms.map((t) => t.salesOrderId),
+    ...Object.values(installRequestsById).map((r) => r.salesOrderId),
+  ].filter(Boolean))];
   const ordersById = {};
   const installmentsByOrderId = {};
   const contractsById = {};
@@ -80,7 +92,8 @@ export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOr
     }
 
     const { data: rows, error: installmentError } = await fetchInChunks(inList, (chunk) => fetchAllResult(() => supabase.from('sales_order_installments')
-      .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo"')
+      /* `seq` · `label` · `beforeInstall` = ด่านมัดจำก่อนติดตั้ง (mig 0425) · 🔒 ไม่ดึงยอดงวด (ฝ่ายบริการไม่เห็นเงิน) */
+      .select('"salesOrderId", status, "dueDate", "coversFrom", "coversTo", seq, label, "beforeInstall"')
       .in('salesOrderId', chunk)
       .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
     if (installmentError) throw installmentError;
@@ -98,12 +111,46 @@ export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOr
     }
   }
 
-  return { zonesBySite, termsBySite, ordersById, installmentsByOrderId, contractsById, setupOrdersByZone };
+  return {
+    zonesBySite, termsBySite, ordersById, installmentsByOrderId, contractsById, setupOrdersByZone,
+    installRequestsById, visitZonesByVisitId,
+  };
+}
+
+/* คำขอติดตั้งของไซต์ + โซนของนัดติดตั้งที่เกิดจากคำขอเหล่านั้น (mig 0425)
+   🔴 ห้ามกลืน error — อ่านไม่ขึ้น = โยน (กติกาเดียวกับก้อนอื่นของไฟล์นี้) */
+async function loadInstallGateRows(supabase, siteIds) {
+  const installRequestsById = {};
+  const visitZonesByVisitId = {};
+  const { data: requests, error } = await fetchInChunks(siteIds, (chunk) => fetchAllResult(() => supabase
+    .from('service_install_requests')
+    .select('id, "salesOrderId", "siteId", mode, "requestedAt", "requestedDate"')
+    .in('siteId', chunk).order('id', { ascending: true })));
+  if (error) throw error;
+  for (const r of requests || []) installRequestsById[r.id] = r;
+  const requestIds = Object.keys(installRequestsById);
+  if (!requestIds.length) return { installRequestsById, visitZonesByVisitId };
+  const { data: visits, error: visitError } = await fetchInChunks(requestIds, (chunk) => fetchAllResult(() => supabase
+    .from('service_visits').select('id')
+    .in('installRequestId', chunk).order('id', { ascending: true })));
+  if (visitError) throw visitError;
+  const visitIds = (visits || []).map((v) => v.id);
+  if (!visitIds.length) return { installRequestsById, visitZonesByVisitId };
+  const { data: zones, error: zoneError } = await fetchInChunks(visitIds, (chunk) => fetchAllResult(() => supabase
+    .from('service_visit_zones').select('"visitId", "zoneId"')
+    .in('visitId', chunk).order('visitId', { ascending: true }).order('zoneId', { ascending: true })));
+  if (zoneError) throw zoneError;
+  for (const z of zones || []) (visitZonesByVisitId[z.visitId] ||= []).push(z.zoneId);
+  return { installRequestsById, visitZonesByVisitId };
 }
 
 /* หกก้อนของบริบทด่าน — ลำดับเดียวกับที่ `loadVisitGateContext` คืน
    ⭐ `setupOrdersByZone` (D15) รวมรายโซนเหมือนก้อนอื่น — ก้อนสัปดาห์กับก้อนรายการงานต่างก็มีชิปของโซนที่ตัวเองโหลด */
-const GATE_CONTEXT_MAPS = ['zonesBySite', 'termsBySite', 'ordersById', 'installmentsByOrderId', 'contractsById', 'setupOrdersByZone'];
+const GATE_CONTEXT_MAPS = [
+  'zonesBySite', 'termsBySite', 'ordersById', 'installmentsByOrderId', 'contractsById', 'setupOrdersByZone',
+  // ขั้นเข้าติดตั้ง (mig 0425) — ด่านของนัดติดตั้งที่มีคำขอ
+  'installRequestsById', 'visitZonesByVisitId',
+];
 
 /** รวมบริบทด่านหลายก้อนเป็นก้อนเดียว — **ตัวหลังชนะรายคีย์** · ก้อนที่เป็น null ข้ามไป
  *
@@ -137,6 +184,8 @@ export function gateContextForSite(ctx, siteId, extra = {}) {
     contractsById: ctx?.contractsById || {},
     /* D15 — ชิปใบสั่งขายรายโซน (คีย์ = zoneId ⇒ ส่งทั้งก้อน · ด่านหยิบเฉพาะโซนของไซต์นี้เอง) */
     setupOrdersByZone: ctx?.setupOrdersByZone || {},
+    installRequestsById: ctx?.installRequestsById || {},
+    visitZonesByVisitId: ctx?.visitZonesByVisitId || {},
     ...extra,
   };
 }
