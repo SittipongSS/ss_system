@@ -9,6 +9,7 @@ import {
   ISSUED_DATE_FIELD, RETIRED_METADATA_KEYS, SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE, isRetiredAttachment,
 } from '@/lib/master/attachmentTypes';
 import { isIllustrationReferenced, isSpecItemImageReferenced } from '@/lib/sales/productSpecStore';
+import { ARTWORK_RETIRED_MESSAGE, PRODUCT_ARTWORK_DOC_TYPE, isArtworkReferenced } from '@/lib/excise/registrationArtwork';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { canAttachToPersonalTask } from '@/lib/pm/personalTaskAccess';
 import { canAttachBillingCalendar } from '@/lib/master/attachmentAccess';
@@ -225,8 +226,52 @@ async function retireBeforeDelete(supabase, att, user) {
   return null;
 }
 
+// ── Artwork ของสินค้าที่ทะเบียนสรรพสามิตยื่นไปแล้ว: ปลดระวางแทนการลบ ─────────────────────
+// (ศูนย์กลางเอกสารของสินค้า P1 · มติเจ้าของ 09/11/2026 · mig 0426) — ทะเบียนที่ออกจากร่างแล้วตรึง id ของ Artwork
+// ที่ยื่นไว้ใน `excise_registrations."labelArtworkIds"` ⇒ ลบแถว + ปล่อยไฟล์ = RA เปิดฉลากของทะเบียนที่ตรวจ/อนุมัติแล้วไม่ขึ้น
+// ⇒ เก็บแถวและไฟล์ไว้ ประทับ `metadata.retiredAt` = ไม่ใช่ Artwork ปัจจุบันของสินค้าแล้ว (ไม่นับด่าน · ไม่ขึ้นแผง · ไม่ถูกตรึงรอบหน้า)
+// ⚠️ คู่ขนานกับสองฟังก์ชันของภาพประกอบข้างบนโดยตั้งใจ (ตัวตรวจการอ้างอิง + ข้อความต่างกัน) — ลำดับ/กติกาต้องเหมือนกันทุกข้อ:
+//    ตรวจไม่สำเร็จ = 500 ห้ามลบ · ประทับก่อนแล้วตรวจซ้ำ · ฝั่งยื่นทะเบียนตรวจไฟล์ซ้ำหลังเขียนตัวชี้ (ถอยการยื่นถ้าไฟล์หาย)
+async function retireReferencedArtwork(supabase, att, user) {
+  const ref = await isArtworkReferenced(supabase, att.id);
+  if (ref.error) {
+    return Response.json({
+      error: `ตรวจไม่ได้ว่า Artwork นี้อยู่ในทะเบียนสรรพสามิตใบไหนหรือไม่ จึงยังไม่ลบ — ${ref.error}`,
+    }, { status: 500 });
+  }
+  if (!ref.referenced) return null;
+  if (!isRetiredAttachment(att)) {
+    const metadata = retiredMetadataOf(att, user);
+    const { data: retired, error: retireError } = await supabase
+      .from('attachments').update({ metadata }).eq('id', att.id).select('id').maybeSingle();
+    if (retireError) return Response.json({ error: retireError.message }, { status: 500 });
+    if (!retired) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+  }
+  return Response.json({ success: true, retired: true, message: ARTWORK_RETIRED_MESSAGE });
+}
+
+async function retireArtworkBeforeDelete(supabase, att, user) {
+  if (!isRetiredAttachment(att)) {
+    const { data: retired, error: retireError } = await supabase
+      .from('attachments').update({ metadata: retiredMetadataOf(att, user) }).eq('id', att.id).select('id').maybeSingle();
+    if (retireError) return Response.json({ error: retireError.message }, { status: 500 });
+    if (!retired) return Response.json({ error: 'ไม่พบเอกสารแนบ' }, { status: 404 });
+  }
+  const again = await isArtworkReferenced(supabase, att.id);
+  if (again.error) {
+    return Response.json({
+      error: `เอา Artwork ออกจากชุดปัจจุบันแล้ว แต่ตรวจซ้ำไม่ได้ว่ามีทะเบียนเพิ่งยื่นพร้อมไฟล์นี้หรือไม่ จึงยังเก็บไฟล์ไว้ — ${again.error}`,
+    }, { status: 500 });
+  }
+  if (again.referenced) {
+    return Response.json({ success: true, retired: true, message: ARTWORK_RETIRED_MESSAGE });
+  }
+  return null;
+}
+
 // DELETE /api/attachments/[id] — ลบ row + best-effort ลบไฟล์ใน storage.
 // ยกเว้นภาพประกอบใบสเปคที่เอกสาร FM-SA-04 อ้างอยู่ = ปลดระวาง (ดู retireReferencedIllustration)
+// และ Artwork ของสินค้าที่ทะเบียนสรรพสามิตยื่นไปแล้ว = ปลดระวาง (ดู retireReferencedArtwork)
 export async function DELETE(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();
@@ -244,6 +289,12 @@ export async function DELETE(request, { params }) {
     if (handled) return handled;
     const raced = await retireBeforeDelete(supabase, att, user);
     if (raced) return raced;
+  }
+  if (att.entityType === 'product' && att.docType === PRODUCT_ARTWORK_DOC_TYPE) {
+    const handledArtwork = await retireReferencedArtwork(supabase, att, user);
+    if (handledArtwork) return handledArtwork;
+    const racedArtwork = await retireArtworkBeforeDelete(supabase, att, user);
+    if (racedArtwork) return racedArtwork;
   }
 
   /* 🔴 รูปประจำแถว checklist (mig 0405) ที่ยังมีแถวชี้อยู่ ลบตรง ๆ ไม่ได้ — FK เป็น ON DELETE SET NULL ⇒ ลบแล้วแถวเสียรูป
