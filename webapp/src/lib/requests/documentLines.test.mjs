@@ -10,7 +10,8 @@ test('ชนิดเอกสารบังคับ และต้องอ�
   assert.match(normalizeDocumentItems([]).error, /อย่างน้อย 1 รายการ/);
   assert.match(normalizeDocumentItems([{}]).error, /ชนิดเอกสาร/);
   assert.match(normalizeDocumentItems([{ docType: 'ใบอะไรก็ไม่รู้' }]).error, /ไม่ถูกต้อง/);
-  assert.equal(normalizeDocumentItems([{ docType: 'ifra' }]).error, null);
+  // ⭐ P3 (09/11/2026): IFRA ต้องเลือกกลิ่น (บรรทัดใหม่)
+  assert.equal(normalizeDocumentItems([{ docType: 'ifra', scentId: 'SC-1' }]).error, null);
 });
 
 test('⭐ "อื่น ๆ" ต้องมีรายละเอียด — ไม่งั้นแถวนั้นไม่ได้บอกอะไรเลยว่าขออะไร', () => {

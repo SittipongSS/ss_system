@@ -27,9 +27,11 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import SectionRail from "@/components/ui/SectionRail";
 import Textarea from "@/components/ui/Textarea";
 import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
+import { isScentUsable } from "@/lib/master/scents";
+import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import styles from "./scentDelivery.module.css";
 
-export const emptyDocumentRow = () => ({ docType: "", productId: "", spec: "" });
+export const emptyDocumentRow = () => ({ docType: "", productId: "", scentId: "", spec: "" });
 
 /* ชื่อของแถวบนราง — ชนิดที่เลือกแล้วคือคำตอบที่ดีที่สุด · ยังไม่เลือก = บอกเลขที่
    ⚠️ ชื่อสั้น (`short`) ไม่ใช่ชื่อเต็ม — ราง 13rem ใส่ "COA — Certificate of Analysis"
@@ -50,6 +52,9 @@ export default function DocumentLines({
   /* ⭐ บรรทัดชนิดที่เก็บที่ FG (MSDS · Spec Sheet — ศูนย์กลางเอกสารของสินค้า P2b · มติเจ้าของ 09/11/2026 "บังคับเลือก")
      เลือก FG ได้จากทะเบียนสินค้าของลูกค้าของใบ (`customerId` · ยังไม่รู้ลูกค้า = ทั้งทะเบียน — server ตรวจซ้ำเสมอ) */
   products = [], customerId = null,
+  /* ⭐ บรรทัดชนิดที่เก็บที่กลิ่น (IFRA · P3 · มติเจ้าของ 09/11/2026) — เลือกกลิ่นของลูกค้าของใบ (เจ้าของหรือได้รับแชร์ · ม-150)
+     ตัวกรองเดียวกับบรรทัดพัฒนาสูตร (`ProductDevLines`) · server ตรวจซ้ำที่ resolveLineLabels */
+  scents = [],
 }) {
   // ⚠️ จำเป็น **ตำแหน่ง** ไม่ใช่ id — บรรทัดยังไม่มี id จนกว่าจะบันทึก · ลบแถวแล้ว
   // ต้องเลื่อนตัวที่เลือกอยู่ให้ไม่ชี้ช่องว่าง (กันด้วย `Math.min` ตอนเรนเดอร์)
@@ -60,6 +65,15 @@ export default function DocumentLines({
   const wantsProduct = Boolean(vocabulary.productTarget?.(row.docType));
   /* ⚠️ บังคับเฉพาะบรรทัดใหม่ (ยังไม่มี id) — ตัวตรวจของ server (`normalizeDocLines`) กติกาเดียวกัน · บรรทัดเก่าใส่เพิ่มได้ ไม่บังคับ */
   const productMissing = (r) => Boolean(vocabulary.productTarget?.(r.docType)) && !r.productId && !r.id;
+  const wantsScent = Boolean(vocabulary.scentTarget?.(row.docType));
+  const scentMissing = (r) => Boolean(vocabulary.scentTarget?.(r.docType)) && !r.scentId && !r.id;
+  const scentOptions = scents
+    .filter((s) => s.id === row.scentId || (isScentUsable(s) && (!customerId || scentUsableByCustomer(s, customerId))))
+    .map((s) => ({
+      value: s.id,
+      label: `${s.code ? `${s.code} · ` : ""}${s.name}`,
+      search: [s.code, s.name, s.customerTradeName].filter(Boolean).join(" "),
+    }));
   const productOptions = products
     .filter((fg) => !customerId || !fg.customerId || fg.customerId === customerId || fg.id === row.productId)
     .map((fg) => ({
@@ -81,7 +95,8 @@ export default function DocumentLines({
     setActive((cur) => (index < cur ? cur - 1 : Math.min(cur, rows.length - 2)));
   };
 
-  const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim()) && !productMissing(r);
+  const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim())
+    && !productMissing(r) && !scentMissing(r);
 
   return (
     <div className={styles.wrap}>
@@ -139,7 +154,12 @@ export default function DocumentLines({
                   ใต้ชื่อทำให้เลือกถูกตั้งแต่ครั้งแรก แทนที่จะเปิดดรอปดาวน์อ่านทีละอัน */}
               <OptionTiles
                 value={row.docType}
-                onChange={(v) => patch(vocabulary.productTarget?.(v) ? { docType: v } : { docType: v, productId: "" })}
+                onChange={(v) => patch({
+                  docType: v,
+                  /* เปลี่ยนชนิดแล้วล้างเป้าที่ไม่ใช่ของชนิดใหม่ — FG ค้างไปกับ IFRA หรือกลิ่นค้างไปกับ MSDS ไม่ได้ */
+                  ...(vocabulary.productTarget?.(v) ? {} : { productId: "" }),
+                  ...(vocabulary.scentTarget?.(v) ? {} : { scentId: "" }),
+                })}
                 disabled={disabled}
                 ariaLabel={`ชนิดเอกสารของ${rowTitle(row, at, vocabulary)}`}
                 options={vocabulary.types.map((t) => ({
@@ -166,6 +186,25 @@ export default function DocumentLines({
                 />
                 <p className={styles.hint}>ไฟล์ที่ RD ส่งจะเก็บที่สินค้านี้ — ขึ้นที่แท็บเอกสารของสินค้าด้วย</p>
                 {productMissing(row) && <p className={styles.error}>เลือก FG ที่ขอ {vocabulary.label(row.docType)}</p>}
+              </div>
+            )}
+
+            {wantsScent && (
+              <div className="form-group col-span-2">
+                <span className="form-field-label">
+                  กลิ่นที่ขอ{row.id ? <span className={styles.hint}> (บรรทัดเดิม · ไม่บังคับ)</span> : null}
+                </span>
+                {/* ⭐ IFRA เก็บที่กลิ่น — RD ส่งงานแล้วไฟล์ลงที่กลิ่นนี้ ขึ้นที่หน้ากลิ่นและแท็บเอกสารของ FG ทุกตัวที่ใช้กลิ่นนี้ */}
+                <SearchableSelect
+                  value={row.scentId || ""}
+                  disabled={disabled}
+                  onChange={(v) => patch({ scentId: v || "" })}
+                  options={scentOptions}
+                  placeholder="— เลือกกลิ่น —"
+                  emptyText={customerId ? "ลูกค้ารายนี้ยังไม่มีกลิ่นในทะเบียน" : "ยังไม่มีกลิ่นในทะเบียน"}
+                />
+                <p className={styles.hint}>ไฟล์ที่ RD ส่งจะเก็บที่กลิ่นนี้ — ขึ้นที่หน้ากลิ่นและแท็บเอกสารของ FG ที่ใช้กลิ่นนี้</p>
+                {scentMissing(row) && <p className={styles.error}>เลือกกลิ่นที่ขอ {vocabulary.label(row.docType)}</p>}
               </div>
             )}
 

@@ -80,17 +80,33 @@ export async function GET(request, { params }) {
      · ชุดของขวัญได้รายสูตรใน `formulaComponents[].ingredientList` แทน · อ่านพลาด = 500 (ไม่ใช่ "ยังไม่มี" ที่ผิด) */
   let formulaIngredientList = null;
   let formulaCategoryCode = null;
+  let formulaScentId = null;
   if (data.formulaId && !isGiftSetCategory(data.categoryCode)) {
     const { data: formula, error: formulaError } = await supabase
-      .from('formulas').select('"ingredientList", "categoryCode"').eq('id', data.formulaId).maybeSingle();
+      .from('formulas').select('"ingredientList", "categoryCode", "scentId"').eq('id', data.formulaId).maybeSingle();
     if (formulaError) return Response.json({ error: formulaError.message }, { status: 500 });
     formulaIngredientList = formula?.ingredientList ?? null;
     formulaCategoryCode = formula?.categoryCode ?? null;
+    formulaScentId = formula?.scentId ?? null;
+  }
+  /* ⭐ กลิ่นทุกตัวของ FG นี้ (ศูนย์กลางเอกสารของสินค้า P3 · มติเจ้าของ 09/11/2026: "IFRA เก็บที่กลิ่น · หน้า FG แสดงผ่านกลิ่นของมัน")
+     = กลิ่นที่ผูกตรง + กลิ่นของสูตรที่ผูก + กลิ่นของทุกสูตรในชุดของขวัญ (ไม่ซ้ำ · ลำดับตามที่เจอ) — แท็บเอกสารดึง IFRA ของแต่ละกลิ่น
+     ⚠️ อ่านชื่อ/รหัสสดจากทะเบียน · อ่านพัง = 500 (ไม่ใช่ "ไม่มีกลิ่น" ที่ผิด) */
+  const fgScentIds = [...new Set([
+    data.scentId, formulaScentId, ...formulaComponents.map((row) => row.scentId),
+  ].filter(Boolean))];
+  let fgScents = [];
+  if (fgScentIds.length) {
+    const { data: scentRows, error: fgScentError } = await supabase
+      .from('scents').select('id, code, name').in('id', fgScentIds).limit(fgScentIds.length);
+    if (fgScentError) return Response.json({ error: fgScentError.message }, { status: 500 });
+    const byId = new Map((scentRows || []).map((row) => [row.id, row]));
+    fgScents = fgScentIds.map((sid) => byId.get(sid)).filter(Boolean);
   }
   // Strip the confidential cost breakdown/profit for non-margin roles.
   return Response.json({
     ...redactProductMargin(user, data), customerType, scentName, scentCode, formulaComponents,
-    formulaIngredientList, formulaCategoryCode,
+    formulaIngredientList, formulaCategoryCode, fgScents,
   });
 }
 

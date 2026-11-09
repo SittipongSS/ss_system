@@ -7,6 +7,7 @@ import {
 } from '@/lib/master/attachmentAccess';
 import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
 import { canAttachRdProductDoc } from '@/lib/master/attachmentAccess';
+import { SCENT_ATTACHMENT_TABLE } from '@/lib/master/scentAttachmentAccess';
 import { isRdProductDoc } from '@/lib/master/attachmentTypes';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
@@ -55,7 +56,9 @@ async function loadParent(supabase, entityType, entityId) {
     || MGMT_TABLE[entityType]
     || COSTING_ATTACHMENT_TABLE[entityType]
     || SALES_ATTACHMENT_TABLE[entityType]
-    || SALES_ORDER_ATTACHMENT_TABLE[entityType];
+    || SALES_ORDER_ATTACHMENT_TABLE[entityType]
+    // กลิ่น (IFRA · P3) — จุดที่ 1/2 ของเช็กลิสต์ entity แนบไฟล์ใหม่ (scentAttachmentAccess.js)
+    || SCENT_ATTACHMENT_TABLE[entityType];
   if (!table) return null;
   const { data, error } = await supabase.from(table).select('*').eq('id', entityId).maybeSingle();
   /* ⚠️ อ่านพังต้องโยน ไม่ใช่คืน null — null แปลว่า "ไม่มีระเบียนนี้" ⇒ GET ตอบ [] แล้ว

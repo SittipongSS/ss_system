@@ -16,7 +16,7 @@ import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import DocumentBoard from "@/components/requests/DocumentBoard";
 import { RowStepActions } from "@/components/requests/NextStepBar";
-import { productDocLineTarget } from "@/lib/requests/productDocLines";
+import { docLineFileTarget } from "@/lib/requests/productDocLines";
 import RequestRows from "./RequestRows";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ — เหตุผลเดียวกับ FormulaDevDetail
@@ -57,21 +57,28 @@ export default function DocumentDetail({
           const item = itemsById.get(boardRow.id);
           /* ⭐ บรรทัด MSDS / Spec Sheet ที่ผูก FG (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — ไฟล์อยู่ที่ **สินค้า**
              ⇒ โชว์ไฟล์ปัจจุบันของ FG ชนิดนั้น (อ่านอย่างเดียว เหมือนการ์ดเดิม) + ทางไปหน้าสินค้า */
-          const target = item ? productDocLineTarget(item) : null;
+          /* + P3: บรรทัด IFRA ที่ผูกกลิ่น = ไฟล์ของกลิ่น (ตัวตัดสินเดียวกัน `docLineFileTarget`) */
+          const target = item ? docLineFileTarget(item) : null;
           if (target) {
+            const isScent = target.entityType === "scent";
             return (
               <div>
                 <AttachmentsPanel
-                  entityType="product"
-                  entityId={target.productId}
+                  entityType={target.entityType}
+                  entityId={target.entityId}
                   canEdit={false}
                   docTypes={[{ key: target.docType, label: target.label }]}
-                  title={`${target.label} ของ FG (เก็บที่สินค้า)`}
-                  note={'RD แนบไฟล์ตอนกด "ส่งงาน" — ไฟล์อยู่ที่แท็บเอกสารของสินค้า (ฉบับล่าสุดของ FG)'}
+                  title={`${target.label} ของ${isScent ? "กลิ่น (เก็บที่กลิ่น)" : " FG (เก็บที่สินค้า)"}`}
+                  note={isScent
+                    ? 'RD แนบไฟล์ตอนกด "ส่งงาน" — ไฟล์อยู่ที่หน้ากลิ่น (ฉบับล่าสุดของกลิ่น)'
+                    : 'RD แนบไฟล์ตอนกด "ส่งงาน" — ไฟล์อยู่ที่แท็บเอกสารของสินค้า (ฉบับล่าสุดของ FG)'}
                   cardColumns={1}
                 />
-                <Link href={`/database/products/${encodeURIComponent(target.productId)}`} className="linklike">
-                  เปิดหน้าสินค้า
+                <Link
+                  href={isScent ? `/database/scents/${encodeURIComponent(target.entityId)}` : `/database/products/${encodeURIComponent(target.entityId)}`}
+                  className="linklike"
+                >
+                  {isScent ? "เปิดหน้ากลิ่น" : "เปิดหน้าสินค้า"}
                 </Link>
               </div>
             );

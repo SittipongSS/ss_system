@@ -6,6 +6,8 @@
 //    · การ์ดบรรทัด + แท็บเอกสารของดีลโชว์ไฟล์ของสินค้า (ชุดปัจจุบัน — ออกฉบับใหม่ที่สินค้าแล้วทุกที่เห็นฉบับใหม่)
 // ⚠️ ตัดสินที่นี่ที่เดียว — จอ (โมดัลส่งงาน · การ์ดบรรทัด) กับ server (ด่านส่งงาน · แท็บเอกสารของดีล) ถามตัวเดียวกัน
 // ⚠️ บรรทัดเดิมที่ไม่มี FG (ก่อนมติ) เดินแบบเดิมทุกอย่าง — ไฟล์อยู่ที่บรรทัด
+// ⭐ P3 (09/11/2026): IFRA = ระดับกลิ่น ⇒ บรรทัด IFRA ที่ผูกกลิ่น เก็บไฟล์ที่ **กลิ่น** กติกาเดียวกันทุกข้อ — ผู้เรียกทุกจุดถาม
+//    `docLineFileTarget` (คืนทั้งชนิด entity และ id) ไม่ใช่ถามทีละแบบ
 import { REQUEST_DOC_VOCABULARY } from '@/lib/requests/docTypes';
 
 /**
@@ -18,4 +20,18 @@ export function productDocLineTarget(row) {
   const productId = String(row.productId || '').trim();
   if (!productId || !REQUEST_DOC_VOCABULARY.productTarget(docType)) return null;
   return { productId, docType, label: REQUEST_DOC_VOCABULARY.label(docType) };
+}
+
+/**
+ * บรรทัดนี้เก็บไฟล์ที่ไหน — `{ entityType: 'product' | 'scent', entityId, docType, label }` หรือ `null` (= ไฟล์อยู่ที่บรรทัดตามเดิม)
+ * ⭐ ตัวเดียวที่หน้าต่างส่งงาน · ด่านส่งงาน · การ์ดบรรทัด · แท็บเอกสารของดีล ถาม
+ */
+export function docLineFileTarget(row) {
+  const product = productDocLineTarget(row);
+  if (product) return { entityType: 'product', entityId: product.productId, docType: product.docType, label: product.label };
+  if (!row || row.lineKind !== REQUEST_DOC_VOCABULARY.lineKind) return null;
+  const docType = String(row.docType || '');
+  const scentId = String(row.scentId || '').trim();
+  if (!scentId || !REQUEST_DOC_VOCABULARY.scentTarget(docType)) return null;
+  return { entityType: 'scent', entityId: scentId, docType, label: REQUEST_DOC_VOCABULARY.label(docType) };
 }
