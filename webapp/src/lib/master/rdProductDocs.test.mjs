@@ -53,15 +53,16 @@ test('สิทธิ์: RD ทุกตำแหน่ง + แอดมิน
 
 test('🔴 POST: ชนิดของ RD ใช้ช่อง RD "แทน" ด่านแก้สินค้า (ฝ่ายขายแก้สินค้าได้ก็แนบไม่ได้)', () => {
   const post = code('../../app/api/attachments/route.js');
-  assert.match(post, /const allowedWrite = isRdProductDoc\(entityType, safeDocType\)\s*\?\s*canAttachRdProductDoc\(entityType, safeDocType, user\)\s*:\s*allowedEdit \|\| canAttachSpecItemImage\(entityType, safeDocType, user\);/);
+  // ⭐ P4: ช่องของผู้ออกรายชนิด (RD · QC) — ตัวเดียวทั้ง POST และ DELETE/PATCH
+  assert.match(post, /const allowedWrite = isIssuedProductDoc\(entityType, safeDocType\)\s*\?\s*canAttachIssuedProductDoc\(entityType, safeDocType, user\)\s*:\s*allowedEdit \|\| canAttachSpecItemImage\(entityType, safeDocType, user\);/);
 });
 
 test('🔴 DELETE/PATCH: อ่าน docType ของแถว · ชนิดของ RD ตัดสินด้วยช่อง RD อย่างเดียว', () => {
   const guard = code('../../app/api/attachments/[id]/route.js');
   const fn = guard.slice(guard.indexOf('async function guardAttachmentWrite'), guard.indexOf('const SPEC_ILLUSTRATION_RETIRED_MESSAGE'));
-  const branch = fn.indexOf('if (isRdProductDoc(att.entityType, att.docType)) {');
+  const branch = fn.indexOf('if (isIssuedProductDoc(att.entityType, att.docType)) {');
   assert.ok(branch > 0, 'ต้องแยกกิ่งของเอกสาร RD');
-  assert.match(fn.slice(branch, branch + 400), /canAttachRdProductDoc\(att\.entityType, att\.docType, user\)[\s\S]*?return null;/);
+  assert.match(fn.slice(branch, branch + 500), /canAttachIssuedProductDoc\(att\.entityType, att\.docType, user\)[\s\S]*?return null;/);
   // กิ่งของ RD ต้องมาหลังด่านแถวแม่ถูกลบ (orphan) + ตัวตัดสินเดิม และก่อนด่าน 403 ของการแก้สินค้า — ไม่งั้นด่านนั้นตัด RD ทิ้งก่อน
   assert.ok(fn.indexOf('const canEditParent =') < branch);
   assert.ok(branch < fn.indexOf('if (parent && !(canEditParent || canEditSpecImage))'));

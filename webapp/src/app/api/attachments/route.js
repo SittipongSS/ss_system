@@ -6,9 +6,9 @@ import {
   canAttachBillingCalendar, canEditAttachmentParent, canViewAttachmentParent, canViewAttachmentRow,
 } from '@/lib/master/attachmentAccess';
 import { canAttachSpecItemImage } from '@/lib/master/attachmentAccess';
-import { canAttachRdProductDoc } from '@/lib/master/attachmentAccess';
+import { canAttachIssuedProductDoc } from '@/lib/master/attachmentAccess';
 import { SCENT_ATTACHMENT_TABLE } from '@/lib/master/scentAttachmentAccess';
-import { isRdProductDoc } from '@/lib/master/attachmentTypes';
+import { PRODUCT_COA_DOC_TYPE, coaLotError, isIssuedProductDoc } from '@/lib/master/attachmentTypes';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { listAttachments } from '@/lib/master/attachments';
 import { driveFileHeld } from '@/lib/master/attachments';
@@ -197,13 +197,18 @@ export async function POST(request) {
   /* ⭐ รูปประจำแถว checklist ใบสเปค (mig 0405) — ช่องแคบของคนที่แก้สเปคสินค้าได้ (ฝ่ายขายทุกตำแหน่ง) · ด่านรวมผูกกับทีมที่ดูแล
      ลูกค้าเจ้าของสินค้า ⇒ คนแก้สเปคนอกทีมตอบ false · ⚠️ ประโยคแยก ไม่ต่อท้ายบรรทัดบน (บรรทัดบนถูกเทสต์ตรึงไว้ทั้งประโยค)
      ⚠️ ถามด้วย `safeDocType` (ค่าที่จะเก็บ) — ค่าที่ไม่รู้จักตกเป็น 'other' = ไม่ได้ช่องนี้ */
-  /* ⭐ เอกสารที่ RD ออก (MSDS · Spec Sheet ของสินค้า · P2 09/11/2026) — ช่องของ RD **แทน** ด่านแก้สินค้า (ไม่ใช่ "หรือ"):
-     ฝ่ายขายแนบชนิดนี้ไม่ได้แม้แก้สินค้าได้ · RD แนบได้แม้แก้สินค้าไม่ได้ (ดู canAttachRdProductDoc) */
-  const allowedWrite = isRdProductDoc(entityType, safeDocType)
-    ? canAttachRdProductDoc(entityType, safeDocType, user)
+  /* ⭐ เอกสารที่ฝ่ายผู้ออกเป็นเจ้าของ (RD: MSDS · Spec Sheet · P2a — QC: COA · P4 · 09/11/2026) — ช่องของผู้ออก **แทน** ด่านแก้สินค้า
+     (ไม่ใช่ "หรือ"): ฝ่ายขายแนบชนิดนี้ไม่ได้แม้แก้สินค้าได้ · ผู้ออกแนบได้แม้แก้สินค้าไม่ได้ (ดู canAttachIssuedProductDoc) */
+  const allowedWrite = isIssuedProductDoc(entityType, safeDocType)
+    ? canAttachIssuedProductDoc(entityType, safeDocType, user)
     : allowedEdit || canAttachSpecItemImage(entityType, safeDocType, user);
   if (!allowedWrite) {
     return Response.json({ error: 'forbidden' }, { status: 403 });
+  }
+  /* ⭐ COA ต้องมีเลขล็อต (P4 · มติเจ้าของ 09/11/2026 "พิมพ์เลขล็อตเอง") — ตรวจก่อนคุยกับ Drive และก่อนเขียนแถว */
+  if (entityType === 'product' && safeDocType === PRODUCT_COA_DOC_TYPE) {
+    const lotError = coaLotError(metadata);
+    if (lotError) return Response.json({ error: lotError }, { status: 400 });
   }
 
   // Registration lock (ทุกระบบ, stricter): an APPROVED registration is locked —
