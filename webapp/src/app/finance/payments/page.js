@@ -4,9 +4,10 @@
 // > *"เอาตารางการชำระของทุก SO ออกมารวมอยู่ในที่เดียว ซึ่งราคาต้องมีการอ้างอิง
 // >  QT SO และสามารถดาวน์โหลด"* (มติผู้ใช้ 2026-08-13)
 //
-// ⭐ **สองส่วน: คิวงานอยู่บน · ทะเบียนอยู่ล่าง** (มติผู้ใช้ 2026-08-13)
-// หน้านี้ถูกใช้เป็น "คิว" มาตลอดทั้งที่ชื่อ "ทะเบียน" ⇒ แยกของที่ **ต้องทำวันนี้**
-// ออกมาไว้บนสุดและกดรับรองได้จากตรงนั้น ส่วนทะเบียนเต็มไว้ค้นและดาวน์โหลด
+// ⭐ **หน้างานบัญชี: ตารางเดียว + แท็บงาน** (รื้อรายการ SO + บัญชี PR-4a · มติเจ้าของ 09/11/2026 — แทนมติ 2026-08-13 "คิวงานอยู่บน ·
+// ทะเบียนอยู่ล่าง") — แผงคิวสามก้อน (รอคุณรับรอง · ยังไม่ออกใบกำกับ · เงินค้างจากใบที่ยกเลิก) กลายเป็นแท็บงานบนตารางเดียว
+// (`lib/finance/ledgerWork` · แท็บ = ชุดค่าตัวกรองเดิมใน URL) + ปุ่ม "งานถัดไป" ท้ายแถว + ปุ่มรายงวดในลิ้นชัก · เงินค้างเป็นแถบที่โผล่เมื่อมี
+// · แผง "ใบที่รอบัญชีปิด" ของหน้าภาพรวมมาเป็นแท็บ "รอปิดใบ" พร้อมปุ่มปิดใบ (โมดัลชุดเดียวกับหน้าใบ · `financeClosePrompt`)
 //
 // ⚠️ **เดิมหน้านี้อ่านอย่างเดียว** โดยตั้งใจ (กฎสามชั้น: ทางลงมืออยู่บนเอกสารต้นทาง)
 // ผู้ใช้ตัดสินให้เปิดทางกดที่นี่ด้วย · ความเสี่ยงสองข้อที่ยกไว้ตอนนั้นถูกปิดแล้ว:
@@ -28,7 +29,10 @@ import {
   AlarmClock, CalendarClock, CircleDollarSign, ExternalLink, FileSpreadsheet, FileText, Flag, HandCoins, Hourglass, Receipt,
   Search, Wallet, Wrench,
 } from "lucide-react";
-import Workspace, { ListPanel, Metric, MetricStrip, WorkspaceSection } from "@/components/ui/Workspace";
+import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Workspace";
+import Segmented from "@/components/ui/Segmented";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { notifyToast } from "@/components/ui/Toast";
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
@@ -44,9 +48,13 @@ import {
   LEDGER_BILLING_WINDOW_DAYS, LEDGER_DUE_FILTERS, ledgerBillingFilterOptions, ledgerCutoffOn,
   LEDGER_CANCELLED_TAG, LEDGER_GROUP_OPTIONS, LEDGER_HISTORICAL_TAG, LEDGER_ORDER_STATES, LEDGER_SORT_DEFAULT, LEDGER_SORT_OPTIONS,
   LEDGER_HELD, LEDGER_STATUS, LEDGER_STATUS_KEYS, LEDGER_STRANDED_TITLE, groupAsOrder, groupInstallmentNote, groupLedgerBuckets,
-  groupLedgerByOrder, groupNote, ledgerBillingFilter, ledgerBillingWhen, ledgerDueFilter, ledgerRowLock, ledgerSortDir, ledgerStatusKey,
-  pendingConfirmations, pendingStranded, pendingTaxInvoices, sortLedgerGroups,
+  groupLedgerByOrder, groupNote, ledgerBillingFilter, ledgerBillingWhen, ledgerDueFilter, ledgerSortDir,
+  sortLedgerGroups,
 } from "@/lib/finance/paymentLedger";
+import {
+  LEDGER_WORK_TABS, ledgerNextAction, ledgerWorkCount, ledgerWorkParams, ledgerWorkTab,
+} from "@/lib/finance/ledgerWork";
+import { financeClosePrompt } from "@/lib/sales/salesOrderFinanceApproval";
 import { DUE_REMIND_DAYS, NO_BILLING_TEXT, billingStateTone, formatBillingDate, weekendNote } from "@/lib/sales/billingRule";
 import { canConfirmPayment } from "@/lib/permissions";
 import { useCan, useCapUser, useDepartment } from "@/lib/roleContext";
@@ -57,8 +65,6 @@ import InstallmentConfirmDialog from "@/components/salesPlanning/InstallmentConf
 import TaxInvoiceDialog from "@/components/salesPlanning/TaxInvoiceDialog";
 import InstallmentRefundDialog from "@/components/salesPlanning/InstallmentRefundDialog";
 import { CARRY_BUTTON } from "@/lib/sales/installmentCarry";
-/* นับ Actual รายงวด (mig 0412) — ข้อความด่านเงินของใบรายงวด (ประโยคเดียวกับ trigger ของ 0412 · installment_actual_not_approved) */
-import { installmentActualLockReason } from "@/lib/sales/salesOrderActualMode";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import { MIN_REJECT_REASON, installmentUnconfirmOutcome } from "@/lib/sales/salesOrderPayments";
 import { ledgerDrawerActions } from "@/lib/finance/ledgerDrawerActions";
@@ -80,13 +86,14 @@ import { apiFetch } from "@/lib/apiFetch";
    literal `filters` ของ route · clause ใน filterLedger) — ยาม paymentLedgerFilterWiring.test.mjs ไล่ตรวจทุกคีย์ในชุดนี้ */
 /* ⭐ `on` (v5) = วันของตัวกรอง `billing=cutoff` (ลิงก์ของกระดิ่งวันตัดรอบ) — ส่งขึ้น API/ล้างพร้อมตัวกรองอื่น แต่ **นับบนปุ่มรวมกับ billing**
    (สองพารามิเตอร์ของตัวกรองเดียว) · ค่าที่ใช้ได้เฉพาะตอน billing = cutoff (`ledgerBillingFilter` ตัดสิน) */
-const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue", "taxInvoice", "billing", "due", "on"];
+const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue", "taxInvoice", "billing", "due", "on", "close", "stranded"];
 /* ⭐ คีย์ที่ "ล้างทั้งหมด (n)" ในปุ่มตัวกรองล้าง = ชุดในปุ่มเท่านั้น (ตรวจตัวเลข L19 · 26/10/2026)
    🐞 เดิมปุ่มในป๊อปโอเวอร์เรียก `clearFilters` (ทุกคีย์) ⇒ ตัวเลข (n) นับแค่หมวดในปุ่ม แต่กดแล้วคำค้นกับช่วงวันหายด้วย
    = เลขบอกน้อยกว่าของที่ล้าง · คำค้น/ช่วงวันอยู่นอกปุ่ม (ไม่นับบนปุ่ม) ⇒ ไม่ล้างจากในปุ่ม — กติกาเดียวกับป๊อปโอเวอร์ทุกหน้า
    ⚠️ แกะจาก FILTER_KEYS ไม่ใช่เขียนลิสต์ใหม่ — ตัวกรองใหม่ที่เพิ่มเข้าชุดถูกล้างจากในปุ่มเองอัตโนมัติ
    · `on` อยู่ในชุดนี้ (สองพารามิเตอร์ของตัวกรองรอบวางบิล นับที่ billing แล้ว) */
-const OUTSIDE_POPOVER_KEYS = ["q", "from", "to"];
+/* ⭐ `close` / `stranded` (แท็บรอปิดใบ · แถบเงินค้าง · รื้อ PR-4a) ไม่อยู่ในปุ่มตัวกรอง — ถอดที่แท็บ/แถบเอง หรือ "ล้างตัวกรอง ×" */
+const OUTSIDE_POPOVER_KEYS = ["q", "from", "to", "close", "stranded"];
 const POPOVER_FILTER_KEYS = FILTER_KEYS.filter((key) => !OUTSIDE_POPOVER_KEYS.includes(key));
 
 /* ⭐ การ์ดที่กดค้างอยู่ต้องบอกด้วยตาเห็น (ม-81 ข้อ 3 · ตรวจตัวเลข L18b · 26/10/2026) — พื้นของ `.is-active` เท่ากับตอนชี้เมาส์
@@ -195,8 +202,10 @@ export default function FinancePaymentsPage() {
        เห็นปุ่มที่กดไปแล้วทำต่อไม่ได้ (review S5) · ทางของ customers:edit ต้องรู้ทีมของลูกค้า ซึ่งแถวนี้ไม่มี — ไม่เดา */
   const capUser = useCapUser();
   const department = useDepartment();
-  const canSetBillingRule = useCan("customers:view") && canConfirmPayment({ ...capUser, department });
-  const [data, setData] = useState({ rows: [], orderMoney: {}, summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null, facetTally: null });
+  /* ปุ่ม "ปิดใบ" (แท็บรอปิดใบ · ลิ้นชัก) — ด่านเดียวกับปุ่มบนหน้าใบ (`financeStepOwnerError` → canConfirmPayment) · ไม่มีสิทธิ์ = ไม่โชว์ */
+  const canClose = canConfirmPayment({ ...capUser, department });
+  const canSetBillingRule = useCan("customers:view") && canClose;
+  const [data, setData] = useState({ rows: [], orderMoney: {}, summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null, facetTally: null, workTally: null, closeOrderIds: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -230,6 +239,9 @@ export default function FinancePaymentsPage() {
   /* ครบกำหนดชำระ (รุ่นสี่ · §6) — soon · กระดิ่ง "ครบกำหนดชำระ" ฝั่ง FN เปิดหน้านี้ด้วย `?due=soon` (= ชุดที่หัวข้อกระดิ่งนับ ·
      ตัวคัดของกระดิ่งตัดสินที่ API) · ค่าที่ไม่รู้จัก = '' (ตัวตัดสินชุดเดียวกับ filterLedger) */
   const due = ledgerDueFilter(params.get("due") || "");
+  /* แท็บงาน (รื้อ PR-4a) — `close=1` = ใบรอปิด · `stranded=1` = แถบเงินค้างจากใบที่ยกเลิก · แท็บอื่นเป็นชุดค่าของตัวกรองเดิม (ledgerWork) */
+  const close = params.get("close") === "1";
+  const stranded = params.get("stranded") === "1";
   const groupBy = params.get("group") || "none";
   const sortKey = params.get("sort") || LEDGER_SORT_DEFAULT;
   const sortDir = params.get("dir") || ledgerSortDir(sortKey);
@@ -254,8 +266,10 @@ export default function FinancePaymentsPage() {
     if (billing) sp.set("billing", billing);
     if (due) sp.set("due", due);
     if (on) sp.set("on", on);
+    if (close) sp.set("close", "1");
+    if (stranded) sp.set("stranded", "1");
     return sp;
-  }, [status, orderState, line, from, to, q, overdue, taxInvoice, billing, due, on]);
+  }, [status, orderState, line, from, to, q, overdue, taxInvoice, billing, due, on, close, stranded]);
 
   /* เขียนกลับจาก **params ทั้งชุด** ไม่ใช่จาก `query` — เขียนจาก query เมื่อไร
      การกดตัวกรองหนึ่งครั้งจะลบ group/sort/dir ทิ้งเงียบ ๆ */
@@ -272,7 +286,7 @@ export default function FinancePaymentsPage() {
 
   /* ⚠️ อ่านค่าที่ผ่านตัวตัดสินแล้ว ไม่ใช่พารามิเตอร์ดิบ — `?billing=bogus` ไม่ได้กรองอะไร (API เมิน) ⇒ ต้องไม่ขึ้น "จาก N"
      หรือปุ่ม "ล้างตัวกรอง" ทั้งที่ไม่มีอะไรให้ล้าง · ทุกคีย์ใน FILTER_KEYS ต้องมีค่าในก้อนนี้ (ยามต่อสายตรวจ) */
-  const filterValues = { status, orderState, line, from, to, q, overdue, taxInvoice, billing, due, on };
+  const filterValues = { status, orderState, line, from, to, q, overdue, taxInvoice, billing, due, on, close, stranded };
   const activeFilterKeys = FILTER_KEYS.filter((key) => Boolean(filterValues[key]));
   const filtering = activeFilterKeys.length > 0;
   /* ⚠️ ผลบวกเขียนมือ — `FILTER_KEYS` ให้ฟรีแค่ `filtering` กับ `clearFilters` ตัวนับบนปุ่มต้องบวกเอง
@@ -341,6 +355,9 @@ export default function FinancePaymentsPage() {
         dueTally: body.dueTally || null,
         // ตัวเลขของการ์ดที่กดแล้วแทนค่าตัวกรองของตัวเอง (คิดที่ API จากชุดที่ถอดตัวกรองของการ์ดออก — ตรวจตัวเลข M10b)
         facetTally: body.facetTally || null,
+        // เลขบนแท็บงาน + แถบเงินค้าง (ถอดคีย์ของแท็บออกก่อนนับ) · ใบที่ปุ่มปิดใบขึ้นได้ — คิดที่ API (รื้อ PR-4a)
+        workTally: body.workTally || null,
+        closeOrderIds: Array.isArray(body.closeOrderIds) ? body.closeOrderIds : [],
         /* ⚠️ "วันนี้" มาจาก server (นาฬิกาไทย) ไม่ใช่จากเครื่องผู้ใช้ — คอลัมน์ "จ่ายถึง"
            เทียบกับค่านี้ ถ้าอ่านนาฬิกาเบราว์เซอร์ คนที่ตั้งโซนเวลาอื่นจะเห็นสีคนละแบบ */
         todayIso: body.todayIso || null,
@@ -430,12 +447,21 @@ export default function FinancePaymentsPage() {
     setDownloading(false);
   };
 
-  /* ── คิวงานของบัญชี ────────────────────────────────────────────────────
-     ⚠️ นับจาก **แถวที่กรองแล้ว** — ตัวกรองบนหน้าคุมทั้งคิวและทะเบียน ไม่งั้นกรองดู
-     ลูกค้ารายเดียวแล้วคิวยังโชว์ของคนอื่น = สองส่วนบนหน้าเดียวพูดคนละเรื่อง */
-  const queue = useMemo(() => pendingConfirmations(rows), [rows]);
-  /* ⭐ งวดที่แจ้งชำระแล้วแต่ติดด่าน "นับ Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — ไม่อยู่ในคิวรับรอง (รับรองไม่ได้จนกว่า
-     งวดนับ Actual · `actualAwaitingApproval` ของแถวทะเบียน) แต่บัญชีต้องเห็นว่าเงินที่แจ้งมาแล้วรออะไร ไม่ใช่หายเงียบ
+  /* ── แท็บงาน (รื้อ PR-4a · มติเจ้าของ 09/11) ─────────────────────────────────────────────────────────────
+     ⭐ แท็บ = ชุดค่าตัวกรองเดิมใน URL (`ledgerWorkTab` ตัดสิน) — ป้ายบนเมนู `?status=reported` / การ์ดบนหัว / ลิงก์ในแจ้งเตือนเก่าลงแท็บที่ถูกเอง
+     · ตัวกรองผสมกันเอง (การ์ดเลยกำหนดซ้อนแท็บรอตรวจ) = ไม่มีแท็บไหนติด · กดแท็บ = ล้างคีย์ของแท็บทุกตัวแล้วตั้งชุดของแท็บนั้น (replace เดียว)
+     ⚠️ เลขบนแท็บคิดที่ API (`workTally` — ถอดคีย์ของแท็บออกก่อนนับ) = แถวที่เห็นหลังกด */
+  const workTab = ledgerWorkTab({ status: statusFilter, taxInvoice, overdue, close, stranded });
+  const workTally = data.workTally;
+  const setWork = useCallback((key) => {
+    const sp = ledgerWorkParams(params, key);
+    router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
+  }, [params, router]);
+  const workBlurb = LEDGER_WORK_TABS.find((t) => t.key === workTab)?.blurb;
+  /* ใบที่ปุ่ม "ปิดใบ" ขึ้นได้ — ชุดของ API (ตัวตัดสินเดียวกับป้ายบนเมนู) · ด่านจริงอยู่ที่ finance_approve ซึ่งอ่านงวดสด */
+  const closeIds = useMemo(() => new Set(data.closeOrderIds || []), [data.closeOrderIds]);
+  /* ⭐ งวดที่แจ้งชำระแล้วแต่ติดด่าน "นับ Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — รับรองไม่ได้จนกว่า
+     งวดนับ Actual (`actualAwaitingApproval` ของแถวทะเบียน) แต่บัญชีต้องเห็นว่าเงินที่แจ้งมาแล้วรออะไร ไม่ใช่หายเงียบ
      🐞 UAT FN 27/10 ข้อ 1 + 5: แถบเดิมนับจากแถวที่กรองแล้วและบอกแต่ยอดรวม — ทางเข้าจากป้ายบนเมนู (`?status=reported`) ไม่เห็นงวดพวกนี้เลย
        (สถานะ 'held' ของตัวกรอง) · ไม่บอกว่าใบไหน · วงเล็บ "ยื่นได้หลังบัญชีรับรองงวดก่อนหน้า" เท็จกับงวดแรก/แถวที่ยกมา
      ⇒ API สรุปรายใบ + เหตุรายงวด (`facetTally.held` · ledgerHeldSummary — ถอดตัวกรองสถานะออกก่อนนับ ตัวกรองอื่นคงไว้) ·
@@ -443,24 +469,20 @@ export default function FinancePaymentsPage() {
   const held = facetTally?.held || { count: 0, amount: 0, kinds: {}, orders: [] };
   const heldOn = statusFilter.length === 1 && statusFilter[0] === LEDGER_HELD;
   const [heldOpen, setHeldOpen] = useState(false);
-  /* ⭐ **คิวที่สอง: เงินเข้าแล้วแต่ยังไม่ออกใบกำกับ** (มติผู้ใช้ 2026-09-07)
-     บริษัทเก็บ VAT ⇒ ทุกงวดที่ลูกค้าจ่ายต้องมีใบกำกับ ⇒ ของค้างชุดนี้เคลียร์ได้จริง
-     ⚠️ **แยกจากคิวแรก** — ป้ายตัวเลขบนเมนูนับ `reported` อยู่ · เอามารวมกันเมื่อไร
-     เลขบนเมนูจะไม่ตรงกับของที่เห็นตอนกดเข้ามา */
-  const invoiceQueue = useMemo(() => pendingTaxInvoices(rows), [rows]);
-  /* ⭐ **คิวที่สาม: เงินค้างจากใบที่ยกเลิก** (PR3 · mig 0378 · มติเจ้าของ 23/09 D4) — ใบยกเลิกแล้วแต่มีเงินรับแล้ว/รอตรวจ
-     ทางออก: ยกเข้าใบใหม่ของดีลเดียวกัน (ที่ใบใหม่) หรือบันทึกคืนเงินลูกค้า (ที่นี่/ที่ใบเดิม) · นับจากแถวที่กรองแล้ว (กติกาเดียวกับคิวอื่น)
-     ⚠️ งวด reported ของใบยกเลิกอยู่ทั้งคิวรับรองและคิวนี้ — รับรอง/ตีกลับก่อนแล้วจึงตัดสินเรื่องคืน/ยก */
-  const strandedQueue = useMemo(() => pendingStranded(rows), [rows]);
-  const [strandedOpen, setStrandedOpen] = useState(false);
+  /* ⭐ เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4 → รื้อ PR-4a "แถบโผล่เมื่อมี") — เดิมเป็นคิวที่สามบนหน้านี้ ·
+     ทางออก: ยกเข้าใบใหม่ของดีลเดียวกัน (ที่ใบใหม่) · ถอนคำรับรอง (สลิปซ้ำกับใบใหม่) · บันทึกคืนเงิน — ปุ่มอยู่ในลิ้นชัก
+     ⚠️ เลขของแถบคิดแบบเดียวกับแท็บ (ถอดคีย์ของแท็บออก) — โผล่ได้แม้อยู่แท็บอื่น */
+  const strandedTally = workTally?.stranded || { count: 0, orders: 0, amount: 0 };
   const [refundFor, setRefundFor] = useState(null);
-  const [queueOpen, setQueueOpen] = useState(false);   // "ดูอีก n งวด"
-  const [invoiceQueueOpen, setInvoiceQueueOpen] = useState(false);
   const [confirmFor, setConfirmFor] = useState(null);
   const [invoiceFor, setInvoiceFor] = useState(null);
   const [rejectFor, setRejectFor] = useState(null);
   const [acting, setActing] = useState(false);
   const [actionError, setActionError] = useState("");
+  /* ปิดใบ (แท็บรอปิดใบ · ลิ้นชัก) — `closeFor` = ก้อนใบ · โมดัลชุดเดียวกับหน้าใบ (financeClosePrompt) */
+  const [closeFor, setCloseFor] = useState(null);
+  const [closeBusy, setCloseBusy] = useState(false);
+  const [closeError, setCloseError] = useState("");
 
   /* ⭐ เรียก **API ตัวเดิมของใบ** — ด่านจริงคือ `installmentActionError` ใน route นั้น
      ไม่สร้างเส้นเขียนที่สองให้ทะเบียน (ดูหัวไฟล์)
@@ -501,13 +523,7 @@ export default function FinancePaymentsPage() {
   const refundRow = liveRow(refundFor);
 
   const QUEUE_PREVIEW = 3;
-  const queueShown = queueOpen ? queue : queue.slice(0, QUEUE_PREVIEW);
-  const queueTotal = queue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
-  const invoiceShown = invoiceQueueOpen ? invoiceQueue : invoiceQueue.slice(0, QUEUE_PREVIEW);
-  const invoiceTotal = invoiceQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
-  const strandedShown = strandedOpen ? strandedQueue : strandedQueue.slice(0, QUEUE_PREVIEW);
   const heldShown = heldOpen ? held.orders : held.orders.slice(0, QUEUE_PREVIEW);
-  const strandedTotal = strandedQueue.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
   /* ── แถวของ "ใบ" หนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────────
      ⚠️ ยกออกมาเป็นฟังก์ชันตัวเดียว ไม่ใช่เขียนซ้ำในสองสาขาของ tbody
@@ -521,7 +537,7 @@ export default function FinancePaymentsPage() {
     totalAmount: group.orderTotal, vatAmount: group.orderTotal !== null && group.orderNet !== null ? group.orderTotal - group.orderNet : 0,
     money,
   });
-  /* ลิ้นชักรายงวด (รื้อ PR-3a/3b) — ปุ่มของบัญชีรายงวดอยู่ในลิ้นชัก (PR-3b) · คิวรับรอง/ใบกำกับ/เงินค้างข้างบนยังอยู่จนรวมเป็นแท็บ (PR-4) */
+  /* ลิ้นชักรายงวด (รื้อ PR-3a/3b/4a) — ปุ่มของบัญชีรายงวดอยู่ในลิ้นชัก (PR-3b) · แผงคิวบนหน้ากลายเป็นแท็บงาน + ปุ่ม "งานถัดไป" (PR-4a) */
   const [drawer, setDrawer] = useState(null);
   /* แถวทะเบียนทั้งใบของใบที่เปิดลิ้นชัก — ตัวกรองของหน้าอาจตัดงวดอื่นของใบออก (`rows` = ชุดที่กรองแล้ว) แต่ปุ่มต้องกดได้ทุกงวด
      ⇒ อ่านสดด้วยคำค้นเลขที่ใบ (GET อ่านอย่างเดียว · route เดียวกัน) แล้วคัดเฉพาะใบนี้ · อ่านใหม่ทุกครั้งที่ทะเบียนโหลดใหม่ (หลังกดปุ่ม) */
@@ -548,13 +564,40 @@ export default function FinancePaymentsPage() {
     else if (action === "refund") setRefundFor(row);
     else if (action === "unconfirm") setUnconfirmFor({ row, reason: "" });
   };
+  /* รายละเอียดรายงวดที่เดิมอยู่บนแถวคิว (ย้ายมาลิ้นชักตอนถอดแผงคิว · รื้อ PR-4a) — ผู้แจ้ง · หลักฐาน · ช่วงครอบ · ป้ายใบ
+     (วันจ่ายจริงอยู่บนการ์ดงวดของลิ้นชักแล้ว — ไม่พูดซ้ำ)
+     ⭐ ช่วงครอบ = สิ่งที่คำรับรองนี้ปลดให้ TS ("จ่ายถึง") ⇒ ต้องเห็นก่อนกดรับรอง ไม่ใช่เฉพาะในโมดัล
+     ⭐ งวดยกมา = เงินที่เก็บก่อนเข้าระบบ รับรองครั้งเดียว (mock FnConfirm) — แยกจากงวดปกติด้วยตา
+     ⚠️ ใบที่ยกเลิก (review UI-1) — รับรองแล้วเงินเป็น "เงินค้างจากใบที่ยกเลิก" ไม่ใช่เงินของใบที่เดินอยู่ */
+  const drawerDetail = (row) => {
+    const parts = [
+      isHistoricalOrder({ origin: row.origin }) ? LEDGER_HISTORICAL_TAG : "",
+      row.orderStatus === "cancelled" ? LEDGER_CANCELLED_TAG : "",
+      row.coversFrom && row.coversTo ? `ครอบ ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}` : "",
+      row.reportedByName ? `แจ้งโดย ${row.reportedByName}` : "",
+      ["reported", "confirmed"].includes(row.status) ? `หลักฐาน ${row.evidenceCount} ไฟล์` : "",
+    ].filter(Boolean);
+    if (!parts.length && !isOpeningInstallment(row)) return null;
+    return (
+      <span className="cell-sub">
+        {isOpeningInstallment(row) ? (
+          <StatusBadge size="sm" tone="info" label="ยกมา" className={styles.qbadge}
+            title="เงินที่เก็บก่อนเข้าระบบ — บัญชีรับรองครั้งเดียว" />
+        ) : null}
+        {parts.join(" · ")}
+      </span>
+    );
+  };
   const drawerActions = (inst) => {
     const row = drawerRows.find((r) => r.id === inst.id);
     if (!row) return drawerLoading ? <span className="cell-sub">กำลังโหลดปุ่ม…</span> : null;
     const actions = ledgerDrawerActions(row);
-    if (!actions.length) return null;
+    const detail = drawerDetail(row);
+    if (!actions.length) return detail;
     const locks = [...new Set(actions.map((a) => a.lock).filter(Boolean))];
     return (
+      <>
+      {detail}
       <div className={styles.drawerActions}>
         <div className={styles.drawerButtons}>
           {actions.map((a) => (
@@ -567,18 +610,51 @@ export default function FinancePaymentsPage() {
             </Button>
           ))}
         </div>
-        {/* ปุ่มกดไม่ได้ = โชว์พร้อมเหตุ (ไม่ซ่อน) — เหตุชุดเดียวกับคิวข้างบน */}
+        {/* ปุ่มกดไม่ได้ = โชว์พร้อมเหตุ (ไม่ซ่อน) — เหตุจาก ledgerRowLock ตัวเดียวกับด่านของ PATCH งวด */}
         {locks.map((text) => <span key={text} className="cell-sub">{text}</span>)}
       </div>
+      </>
     );
   };
-  const dialogOpen = !!(confirmFor || rejectFor || invoiceFor || refundFor || unconfirmFor);
+  /* ── ปิดใบ (รื้อ PR-4a · แท็บรอปิดใบ — ย้ายมาจากแผง "ใบที่รอบัญชีปิด" ของหน้าภาพรวม /finance) ─────────────────────
+     ⭐ API ตัวเดิมของหน้าใบ (`PATCH …/sales-orders/[id] {finance_approve}`) — ด่าน `financeActionError` อ่านงวดสดทุกครั้ง + RPC ลงลายเซ็นฝ่ายบัญชี
+       ในทรานแซกชันเดียว (mig 0251) ⇒ ไม่มีเส้นเขียนที่สอง · ไม่ผ่าน (ยังไม่มีลายเซ็น · มีคนกดไปก่อน · งวดถูกถอนคำรับรอง) = เหตุขึ้นในโมดัล
+     ⚠️ ปิดสำเร็จ = ใบออกจากแท็บรอปิด ⇒ ดึงทะเบียนใหม่ · ทักสำเร็จพร้อมเลขที่ใบ (แถวหายจากตาราง ต้องบอกว่าไปไหน) */
+  const openClose = (group) => { setCloseError(""); setCloseFor(group); };
+  const runClose = async () => {
+    if (!closeFor) return;
+    setCloseBusy(true); setCloseError("");
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${closeFor.orderId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "finance_approve" }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCloseError(body.error || "ปิดใบสั่งขายไม่สำเร็จ");
+        load({ background: true });
+        return;
+      }
+      notifyToast.success(`ปิดใบ ${closeFor.orderNumber} แล้ว — ลงลายเซ็นฝ่ายบัญชีบนเอกสารแล้ว`);
+      if (drawer?.group?.orderId === closeFor.orderId) setDrawer(null);
+      setCloseFor(null);
+      await load();
+    } catch (closeFailure) {
+      setCloseError(closeFailure.message);
+    } finally {
+      setCloseBusy(false);
+    }
+  };
+  const dialogOpen = !!(confirmFor || rejectFor || invoiceFor || refundFor || unconfirmFor || closeFor);
   const orderRow = (group) => {
     const note = groupNote(group);
     const money = data.orderMoney?.[group.orderId] || null;
     const rowLike = rowLikeOf(group, money);
     const shaped = groupAsOrder(group);
     const track = shaped ? salesOrderListTrack(shaped) : null;
+    /* ⭐ งานถัดไปของใบ (รื้อ PR-4a · ม็อก "ปุ่มลงมือท้ายแถว") — แทนปุ่มบนแผงคิวเดิม · อยู่แท็บไหน งานของแท็บนั้นขึ้นก่อน */
+    const next = ledgerNextAction(group, { tab: workTab, closing: closeIds.has(group.orderId), canClose });
     return (
       <DetailRow key={group.key} href={orderHref(group)} className="premium-row">
         <td>
@@ -720,6 +796,18 @@ export default function FinancePaymentsPage() {
           {group.openingCount
             ? <span className="cell-sub">ยกมา: {openingInvoiceNote}{group.historicalInvoiceRef ? ` · ${group.historicalInvoiceRef}` : ""}</span>
             : null}
+        </td>
+        {/* งานถัดไป — ปุ่มรายงวดเปิดลิ้นชักที่งวดนั้น (ปุ่มรับรอง/ตีกลับ/ใบกำกับ/คืนเงินพร้อมเหตุของปุ่มที่กดไม่ได้อยู่ในลิ้นชัก) ·
+            "ปิดใบ" เปิดโมดัลปิดใบ · DetailRow ไม่พาไปหน้าใบเมื่อกดปุ่มในแถว (isInteractiveTarget) */}
+        <td className={styles.nextCell}>
+          {next ? (
+            <Button size="sm"
+              tone={next.kind === "review" || next.kind === "close" ? "primary" : undefined}
+              variant={next.kind === "overdue" || next.kind === "rejected" ? "quiet" : undefined}
+              onClick={() => (next.kind === "close" ? openClose(group) : setDrawer({ group, seq: next.seq }))}>
+              {next.label}
+            </Button>
+          ) : <span className="cell-quiet">{NA}</span>}
         </td>
       </DetailRow>
     );
@@ -877,201 +965,49 @@ export default function FinancePaymentsPage() {
             ) : null}
           </StatusNotice>
         )}
-        {queue.length > 0 && (
-          <WorkspaceSection
-            icon={<Wallet size={17} />}
-            title={`รอคุณรับรอง ${queue.length} งวด · ${fmtMoney(queueTotal)}`}
-            subtitle="ฝ่ายขายแจ้งว่าเงินเข้าแล้ว รอบัญชียืนยัน — กดดูหลักฐานก่อนรับรองได้"
-          >
-            {actionError ? <StatusNotice tone="error" role="alert">{actionError}</StatusNotice> : null}
-            <div className={styles.queue}>
-              {queueShown.map((row) => {
-                const confirmLock = ledgerRowLock(row, "confirm");
-                /* ⭐ ใบ "นับ Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026): งวดที่ AE Sup ยังไม่อนุมัตินับ Actual รับรองไม่ได้
-                   (trigger ของ 0412) — ธง `actualAwaitingApproval` ของแถวทะเบียน (ledgerRow · installmentActualPaymentGated ตัวเดียวกับ
-                   ด่านของ PATCH งวด) · คิวนี้ตัดแถวแบบนั้นออกอยู่แล้ว (`pendingConfirmations`) ⇒ ที่นี่คือกันอีกชั้น: ถ้าหลุดมา
-                   = เหตุเป็นตัวหนังสือในแถว + โมดัลรับรองดับปุ่มยืนยัน (`InstallmentConfirmDialog` · ไม่ใช่ปุ่มที่กดแล้วไปตายที่ฐาน) */
-                /* เหตุบอกคนที่ต้องทำต่อตามสถานะการนับของงวด (ยื่นแล้ว = รอ AE Sup · ยังไม่ยื่น/ตีกลับ = รอฝ่ายขายยื่น · review 26/10) */
-                /* แถวทะเบียนพก `actualPreviousOpen`/`actualCountRestDone` (ประทับก่อนกรอง) — ตัวเดียวกับ ledgerRowLock (UAT FN 27/10 ข้อ 3) */
-                const actualLock = row.actualAwaitingApproval ? installmentActualLockReason(row, { status: row.orderStatus }) : null;
-                const actualLockId = actualLock ? `actual-lock-${row.id}` : undefined;
-                return (
-                <div key={row.id} className={`${styles.qrow} ${row.overdue ? styles.qrowLate : ""}`.trim()}>
-                  <div className={styles.qmain}>
-                    <div>
-                      <Link
-                        prefetch={false}
-                        href={`/sa/sales-orders/${row.orderId}#payment`}
-                        target="_blank" rel="noreferrer"
-                        className={`linklike mono ${styles.openLink}`}
-                        title="เปิดใบในแท็บใหม่"
-                      >
-                        <strong>{row.orderNumber}</strong>
-                        <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
-                      </Link>
-                      <span className={styles.qsep}>·</span>
-                      <span>{row.label || `งวดที่ ${row.seq}`}</span>
-                      {/* ⭐ งวดยกมา = เงินที่เก็บก่อนเข้าระบบ รับรองครั้งเดียว (mock FnConfirm) — ต้องแยกจากงวดปกติด้วยตา */}
-                      {isOpeningInstallment(row) ? (
-                        <StatusBadge size="sm" tone="info" label="ยกมา" className={styles.qbadge}
-                          title="เงินที่เก็บก่อนเข้าระบบ — บัญชีรับรองครั้งเดียว" />
-                      ) : null}
-                      {row.overdue ? <span className={styles.qlate}>เลยกำหนด</span> : null}
-                    </div>
-                    {/* ช่วงครอบ = สิ่งที่คำรับรองนี้ปลดให้ TS ("จ่ายถึง") ⇒ ต้องเห็นตั้งแต่ในคิว ไม่ใช่เฉพาะในโมดัล */}
-                    <span className="cell-sub">
-                      {row.customerName}
-                      {isHistoricalOrder({ origin: row.origin }) ? ` · ${LEDGER_HISTORICAL_TAG}` : ""}
-                      {/* ใบที่ยกเลิก (review UI-1) — รับรองแล้วเงินเป็น "เงินค้างจากใบที่ยกเลิก" ไม่ใช่เงินของใบที่เดินอยู่ */}
-                      {row.orderStatus === "cancelled" ? ` · ${LEDGER_CANCELLED_TAG}` : ""}
-                      {row.coversFrom && row.coversTo ? ` · ครอบ ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}` : ""}
-                      {row.reportedByName ? ` · แจ้งโดย ${row.reportedByName}` : ""}
-                      {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
-                      {` · หลักฐาน ${row.evidenceCount} ไฟล์`}
-                    </span>
-                    {actualLock ? <span id={actualLockId} className={styles.qlock}>{actualLock}</span> : null}
-                  </div>
-                  <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  {/* ใบรายงวดที่ยังไม่อนุมัติงวด: เหตุอยู่บรรทัดที่สามของแถว (aria-describedby) · โมดัลรับรองดับปุ่มยืนยันของงวดแบบนั้นอีกชั้น */}
-                  <Button size="sm" tone="primary" aria-describedby={actualLockId} disabled={acting || !!confirmLock} title={confirmLock || undefined} onClick={() => setConfirmFor(row)}>
-                    ยืนยันว่าเงินเข้า
-                  </Button>
-                  {/* ตีกลับเป็นการถอย ไม่ใช่ก้าวถัดไป ⇒ ปุ่มรอง ไม่ใช่ปุ่มเด่น */}
-                  <Button size="sm" variant="quiet" disabled={acting} onClick={() => setRejectFor({ row, reason: "" })}>
-                    ตีกลับ
-                  </Button>
-                </div>
-                );
-              })}
-              {queue.length > QUEUE_PREVIEW && (
-                <div className={styles.qmore}>
-                  <Button size="sm" variant="quiet" onClick={() => setQueueOpen((v) => !v)}>
-                    {queueOpen ? "ย่อคิว" : `ดูอีก ${queue.length - QUEUE_PREVIEW} งวด`}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </WorkspaceSection>
-        )}
-
-        {/* ── คิวที่สอง: เอกสารที่ยังค้าง (มติผู้ใช้ 2026-09-07) ──────────────────
-            ⚠️ อยู่ **ใต้** คิวรับรอง เพราะเงินมาก่อนเอกสารเสมอ — งวดที่ยังไม่รับรอง
-            จะโผล่ที่คิวบนอยู่แล้ว และจะไหลลงมาคิวนี้เองหลังกดรับรอง
-            ⚠️ ขึ้นเฉพาะตอนมีของค้าง — คิวว่างที่โชว์ตลอดคือเสียงรบกวน */}
-        {invoiceQueue.length > 0 && (
-          <WorkspaceSection
-            icon={<FileText size={17} />}
-            title={`ยังไม่ออกใบกำกับ ${invoiceQueue.length} งวด · ${fmtMoney(invoiceTotal)}`}
-            subtitle="เงินเข้าแล้วแต่ยังไม่ได้บันทึกใบกำกับภาษี — บันทึกเลขที่ วันที่ และแนบไฟล์ได้จากที่นี่"
-          >
-            <div className={styles.queue}>
-              {invoiceShown.map((row) => {
-                const invoiceLock = ledgerRowLock(row, "tax-invoice");
-                return (
-                <div key={row.id} className={styles.qrow}>
-                  <div className={styles.qmain}>
-                    <div>
-                      <Link
-                        prefetch={false}
-                        href={`/sa/sales-orders/${row.orderId}#payment`}
-                        target="_blank" rel="noreferrer"
-                        className={`linklike mono ${styles.openLink}`}
-                        title="เปิดใบในแท็บใหม่"
-                      >
-                        <strong>{row.orderNumber}</strong>
-                        <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
-                      </Link>
-                      <span className={styles.qsep}>·</span>
-                      <span>{row.label || `งวดที่ ${row.seq}`}</span>
-                    </div>
-                    <span className="cell-sub">
-                      {row.customerName}
-                      {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
-                      {/* สถานะในมุมตัวกรอง — งวดที่ติดด่านนับ Actual = "รอนับ Actual" (คำเดียวกับตัวกรอง/ไฟล์ · ledgerStatusKey) */}
-                      {` · ${LEDGER_STATUS[ledgerStatusKey(row)]?.label || row.status}`}
-                    </span>
-                  </div>
-                  <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  <Button size="sm" tone="primary" disabled={acting || !!invoiceLock} title={invoiceLock || undefined} onClick={() => setInvoiceFor(row)}>
-                    บันทึกใบกำกับ
-                  </Button>
-                </div>
-                );
-              })}
-              {invoiceQueue.length > QUEUE_PREVIEW && (
-                <div className={styles.qmore}>
-                  <Button size="sm" variant="quiet" onClick={() => setInvoiceQueueOpen((v) => !v)}>
-                    {invoiceQueueOpen ? "ย่อคิว" : `ดูอีก ${invoiceQueue.length - QUEUE_PREVIEW} งวด`}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </WorkspaceSection>
-        )}
-
-        {/* ── คิวที่สาม: เงินค้างจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) ──────────────────────────────
-            ⚠️ ขึ้นเฉพาะตอนมีของค้าง — คิวว่างที่โชว์ตลอดคือเสียงรบกวน · อยู่ใต้คิวเอกสาร (เคสไม่บ่อย) */}
-        {strandedQueue.length > 0 && (
-          <WorkspaceSection
-            icon={<HandCoins size={17} />}
-            title={`${LEDGER_STRANDED_TITLE} ${strandedQueue.length} งวด · ${fmtMoney(strandedTotal)}`}
-            subtitle={`ใบยกเลิกแล้วแต่มีเงินรับแล้ว — ยกเข้าใบใหม่ของดีลเดียวกันได้ที่ใบใหม่ (ปุ่ม “${CARRY_BUTTON}”) หรือบันทึกคืนเงินลูกค้าจากที่นี่`}
-          >
-            <div className={styles.queue}>
-              {strandedShown.map((row) => (
-                <div key={row.id} className={styles.qrow}>
-                  <div className={styles.qmain}>
-                    <div>
-                      <Link
-                        prefetch={false}
-                        href={`/sa/sales-orders/${row.orderId}#payment`}
-                        target="_blank" rel="noreferrer"
-                        className={`linklike mono ${styles.openLink}`}
-                        title="เปิดใบในแท็บใหม่"
-                      >
-                        <strong>{row.orderNumber}</strong>
-                        <ExternalLink size={12} aria-hidden="true" className={styles.openIcon} />
-                      </Link>
-                      <span className={styles.qsep}>·</span>
-                      <span>{row.label || `งวดที่ ${row.seq}`}</span>
-                    </div>
-                    <span className="cell-sub">
-                      {row.customerName}
-                      {` · ${row.statusLabel}`}
-                      {row.paidOn ? ` · จ่ายจริง ${fmtDate(row.paidOn)}` : ""}
-                      {row.taxInvoiceNo ? ` · ใบกำกับ ${row.taxInvoiceNo}` : ""}
-                    </span>
-                  </div>
-                  <span className={styles.qamt}>{fmtMoney(row.amount)}</span>
-                  {/* คืนเงินได้เฉพาะงวดที่รับรองแล้ว — งวดรอตรวจอยู่ในคิวรับรองข้างบน (รับรอง/ตีกลับก่อน) */}
-                  {row.status === "confirmed" ? (
-                    <Button size="sm" tone="danger" variant="ghost" disabled={acting}
-                      onClick={() => { setActionError(""); setRefundFor(row); }}>
-                      บันทึกคืนเงิน
-                    </Button>
-                  ) : <span className="cell-sub">รับรอง/ตีกลับที่คิวข้างบนก่อน</span>}
-                </div>
-              ))}
-              {strandedQueue.length > QUEUE_PREVIEW && (
-                <div className={styles.qmore}>
-                  <Button size="sm" variant="quiet" onClick={() => setStrandedOpen((v) => !v)}>
-                    {strandedOpen ? "ย่อคิว" : `ดูอีก ${strandedQueue.length - QUEUE_PREVIEW} งวด`}
-                  </Button>
-                </div>
-              )}
-            </div>
-          </WorkspaceSection>
+        {/* ── เงินค้างจากใบที่ยกเลิก (รื้อ PR-4a · มติเจ้าของ 09/11 "แถบโผล่เมื่อมี") ─────────────────────────────────────
+            ⭐ แทนคิวที่สามเดิม — ด่านตอนยกเลิกใบ (`salesOrderCancelNeedsReviewer`) คุมแค่ใครยกเลิกได้ ไม่บังคับจัดการเงิน และบัญชียังรับรองงวด
+              หลังใบยกเลิกได้ ⇒ ต้องมีที่ให้เห็น · กดแล้วกรองตารางเหลือใบเหล่านั้น (`stranded=1`) · ยก/ถอน/คืนทำในลิ้นชัก
+            ⚠️ ไม่ใช่แท็บถาวร — โผล่เฉพาะตอนมี (ตามมติ) · เลขคิดแบบเดียวกับแท็บ (ถอดคีย์ของแท็บออก) ⇒ โผล่ได้แม้อยู่แท็บอื่น */}
+        {strandedTally.count > 0 && (
+          <StatusNotice tone="warning" icon={HandCoins}
+            title={stranded
+              ? `กำลังดู${LEDGER_STRANDED_TITLE} ${strandedTally.orders} ใบ · ${fmtMoney(strandedTally.amount)}`
+              : `${LEDGER_STRANDED_TITLE} ${strandedTally.orders} ใบ · ${strandedTally.count} งวด · ${fmtMoney(strandedTally.amount)}`}
+            action={stranded
+              ? <Button size="sm" variant="ghost" onClick={() => setWork("all")}>กลับไปทั้งหมด</Button>
+              : <Button size="sm" variant="ghost" onClick={() => setWork("stranded")}>ดูรายการ</Button>}>
+            {`ใบถูกยกเลิกทั้งที่มีเงินรับแล้ว — กด “จัดการเงินค้าง” ท้ายแถวเพื่อเปิดลิ้นชัก: ถอนคำรับรอง (สลิปเดียวกับใบใหม่) · บันทึกคืนเงิน · หรือยกเข้าใบใหม่ของดีลเดียวกันที่ใบใหม่ (ปุ่ม “${CARRY_BUTTON}”)`}
+          </StatusNotice>
         )}
 
         {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวนข้อความเดิมทุกตัวอักษร
             (ใบ · งวด · "จาก N" ตอนกรอง) · คิวสองก้อนข้างบนยังเป็น WorkspaceSection เพราะเป็นงานให้ทำ ไม่ใช่ทะเบียน */}
         <ListPanel
           icon={<Wallet size={17} aria-hidden="true" />}
-          title="งวดชำระทั้งหมด"
-          subtitle="หนึ่งใบหนึ่งแถว รวมทุกงวดของใบนั้นไว้ด้วยกัน — ตั้งต้นเรียงใบที่ต้องตามก่อน · รายงวดดูที่ใบหรือในไฟล์ Excel"
+          title="งานบัญชีตามใบสั่งขาย"
+          /* คำอธิบายเดินตามแท็บที่เลือก (ม็อก) · ตัวกรองผสมเอง = คำกลาง */
+          subtitle={workBlurb || "หนึ่งใบหนึ่งแถว รวมทุกงวดของใบนั้นไว้ด้วยกัน — กดชิปงวดหรือปุ่มงานถัดไปเพื่อลงมือ · รายงวดอยู่ในไฟล์ Excel"}
           count={`${groups.length} ใบ · ${rows.length} งวด${filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}`}
           toolbar={(
           <>
+            {/* ⭐ แท็บงาน (รื้อ PR-4a) — แถวของตัวเองเหนือช่องค้นหา (ม็อก) · เลข = งวดของงาน (รอตรวจ · ใบกำกับ · เลยกำหนด · ตีกลับ — เลขเดียวกับ
+                ป้ายบนเมนูและการ์ด) / ใบ (ทั้งหมด · รอปิดใบ) · ป้ายอ่านออกเสียงบอกหน่วย · ยังไม่โหลด = ไม่มีเลข (Segmented) */}
+            {/* Segmented เป็นลูกตรงของแถบเครื่องมือ — กติกามือถือกลาง (`.ui-list-panel-toolbar > .segmented`) ให้แถวแท็บเลื่อนแนวนอน ป้ายไม่ตัดกลางคำ ·
+                ตัวคั่น `workBreak` (สูง 0 · กว้างเต็มแถว) ดันช่องค้นหาลงแถวใหม่ */}
+            <Segmented
+              ariaLabel="แท็บงานบัญชี"
+              value={workTab}
+              onChange={setWork}
+              options={LEDGER_WORK_TABS.map((tab) => {
+                const n = ledgerWorkCount(workTally, tab.key);
+                return {
+                  value: tab.key, label: tab.label, count: n,
+                  ariaLabel: n === null ? tab.label : `${tab.label} ${n} ${tab.unit}`,
+                };
+              })}
+            />
+            <span className={styles.workBreak} aria-hidden="true" />
           {/* ── แถบควบคุม: ค้นหา · ตัวกรอง · ช่วงวัน · จัดกลุ่ม | เรียง ────────────
               ⭐ ทรงเดียวกับตารางไปป์ไลน์ดีล (มติผู้ใช้ 2026-08-08) — ปุ่มตัวกรองยุบ
               ทุกหมวดไว้ในปุ่มเดียว · จัดกลุ่ม/เรียงเป็นปุ่มทรงเดียวกัน ชื่ออยู่ในปุ่ม
@@ -1220,6 +1156,7 @@ export default function FinancePaymentsPage() {
                     <th>งวด</th>
                     <th className="num">เก็บแล้ว</th>
                     <th className="num">ใบกำกับ</th>
+                    <th className={styles.nextHead}>งานถัดไป</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1233,7 +1170,7 @@ export default function FinancePaymentsPage() {
                         {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
                             ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
                         <TableGroupRow
-                          colSpan={7}
+                          colSpan={8}
                           label={bucket.label}
                           sub={bucket.sub}
                           badge={`${bucket.count} ใบ`}
@@ -1248,7 +1185,7 @@ export default function FinancePaymentsPage() {
                   }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
-                      colSpan={7}
+                      colSpan={8}
                       /* ตัวกรองรอบวางบิลบอกนิยามของตัวเองตอนว่าง — "ว่าง" ของ "เลยรอบ" ต้องอ่านออกว่านับอะไร (ม็อก D) */
                       title={onlyOption ? onlyOption.empty : filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
                       description={onlyOption
@@ -1313,6 +1250,17 @@ export default function FinancePaymentsPage() {
           onClear={async () => {
             if (await runAction(invoiceRow, "tax-invoice-clear")) setInvoiceFor(null);
           }}
+        />
+
+        {/* ⭐ ปิดใบ (รื้อ PR-4a) — โมดัลบอกผลลัพธ์ชุดเดียวกับปุ่ม "ปิดใบสั่งขาย" บนหน้าใบ (`financeClosePrompt` · กฎ #1223)
+            ⚠️ เหตุที่ API ปฏิเสธต้องอ่านได้ในโมดัล — ด่านอ่านงวดสด (ถอนคำรับรองไปแล้ว · มีคนปิดไปก่อน · ยังไม่มีลายเซ็น) */}
+        <ConfirmDialog
+          open={!!closeFor}
+          {...(closeFor ? financeClosePrompt(closeFor) : {})}
+          busy={closeBusy}
+          error={closeError || undefined}
+          onConfirm={runClose}
+          onClose={() => { if (!closeBusy) { setCloseFor(null); setCloseError(""); } }}
         />
 
         {/* ⭐ บันทึกคืนเงิน (PR3 · mig 0378) — โมดัลตัวเดียวกับเมนูงวดบนใบที่ยกเลิก · สิทธิ์ตัดสินที่ API (ฝ่ายบัญชี) */}
@@ -1395,6 +1343,15 @@ export default function FinancePaymentsPage() {
           showActual={false}
           detailHref={orderHref(drawer.group)}
           renderActions={drawerActions}
+          /* ใบเก็บครบแล้วรอปิด — ปุ่มปิดใบอยู่ท้ายลิ้นชักด้วย (ม็อก) · ไม่มีสิทธิ์ = ไม่โชว์ */
+          notice={closeIds.has(drawer.group.orderId) ? (
+            <StatusNotice tone="success" title="เก็บครบทุกงวดแล้ว — รอบัญชีปิดใบ">
+              ตรวจข้อมูลลูกค้า เงื่อนไขชำระ ยอดและ VAT ครั้งสุดท้ายแล้วปิดใบ · ยอด Actual ไม่เปลี่ยนจากขั้นนี้
+            </StatusNotice>
+          ) : null}
+          footerActions={closeIds.has(drawer.group.orderId) && canClose ? (
+            <Button size="sm" tone="primary" onClick={() => openClose(drawer.group)}>ปิดใบ</Button>
+          ) : null}
           onClose={() => setDrawer(null)}
         />
       ) : null}

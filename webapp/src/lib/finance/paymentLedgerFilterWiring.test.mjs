@@ -31,7 +31,8 @@ const LIB = code('lib/finance/paymentLedger.js');
 const FILTER_KEYS = JSON.parse(/const FILTER_KEYS = (\[[^\]]*\]);/.exec(PAGE)?.[1] || 'null');
 /* ช่วงวัน/คำค้นไม่อยู่ในตัวนับบนปุ่มโดยตั้งใจ — อยู่นอกปุ่มตัวกรอง (ช่อง DateInput · ช่องค้นหา)
    · `on` (v5) = วันของตัวกรอง billing=cutoff — สองพารามิเตอร์ของตัวกรองเดียว นับครั้งเดียวที่ `billing` (ตรวจแยกข้างล่าง) */
-const NOT_COUNTED = new Set(['from', 'to', 'q', 'on']);
+/* ⭐ `close` / `stranded` (รื้อ PR-4a) = คีย์ของแท็บรอปิดใบ / แถบเงินค้าง — ไม่อยู่ในปุ่มตัวกรอง (ถอดที่แท็บ/แถบเอง) ⇒ ไม่นับบนปุ่ม */
+const NOT_COUNTED = new Set(['from', 'to', 'q', 'on', 'close', 'stranded']);
 
 test('FILTER_KEYS อ่านได้ และมีตัวกรองรอบวางบิล (mig 0389)', () => {
   assert.ok(Array.isArray(FILTER_KEYS) && FILTER_KEYS.length > 0, 'แกะ FILTER_KEYS ไม่ออก — ยามนี้ต้องแก้ตามรูปใหม่');

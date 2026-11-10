@@ -135,7 +135,8 @@ test('กฎ 4: จอที่มีปุ่มอนุมัติต้อ�
   const missing = screens.filter((rel) => {
     const text = stripComments(read(rel));
     if (!APPROVE_ACTION.test(text)) return false;
-    if (/approvalPrompt|ApprovalEffects|ApprovalPrompt|useApprovalDecision/.test(text)) return false;
+    /* `financeClosePrompt` = ตัวช่วยของ approvalPrompt (lib/sales/salesOrderFinanceApproval · ปิดใบ — หน้าใบ + หน้างานบัญชี) */
+    if (/approvalPrompt|financeClosePrompt|ApprovalEffects|ApprovalPrompt|useApprovalDecision/.test(text)) return false;
     return !APPROVAL_SCREENS_WITHOUT_PROMPT[rel];
   });
   assert.deepEqual(missing, [],

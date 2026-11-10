@@ -113,7 +113,13 @@ test('หน้าใบ: โมดัลย้อน · ออก Rev. · อ�
 });
 
 test('มติ D2: โมดัลปิดใบไม่สัญญาว่า "ไม่มีการตีกลับหลังจากนี้" — บอกว่าใบ Rev. จะกลับเข้าคิว', () => {
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4a): ข้อความโมดัลปิดใบอยู่ที่ `financeClosePrompt` (lib) ชุดเดียวของหน้าใบและแท็บรอปิดใบของหน้างานบัญชี */
   const page = read(SO_PAGE);
+  const lib = read('lib/sales/salesOrderFinanceApproval.js');
   assert.doesNotMatch(page, /ไม่มีการตีกลับหลังจากนี้/);
-  assert.match(page, /"\*\*ปิดใบสั่งขายใบนี้\*\* — เป็นขั้นสุดท้ายของใบ · ถ้า AE Sup ย้อนการอนุมัติภายหลัง ใบ Rev\. จะกลับเข้าคิวให้บัญชีปิดใหม่",/);
+  assert.doesNotMatch(lib, /ไม่มีการตีกลับหลังจากนี้/);
+  assert.match(lib, /'ปิดใบสั่งขายใบนี้ — เป็นขั้นสุดท้ายของใบ · ถ้า AE Sup ย้อนการอนุมัติภายหลัง ใบ Rev\. จะกลับเข้าคิวให้บัญชีปิดใหม่',/);
+  assert.match(page, /\.\.\.financeClosePrompt\(order\),/);
+  assert.doesNotMatch(lib, /\*\*ปิดใบ/, 'ConfirmDialog ไม่แปล markdown — ดอกจันขึ้นบนจอ');
+  assert.match(read('app/finance/payments/page.js'), /\{\.\.\.\(closeFor \? financeClosePrompt\(closeFor\) : \{\}\)\}/);
 });

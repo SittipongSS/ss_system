@@ -22,7 +22,7 @@ const KIND_TONE = {
 };
 
 export default function InstallmentDrawer({
-  row, focusSeq = null, onClose, showActual = true, detailHref = null, renderActions = null,
+  row, focusSeq = null, onClose, showActual = true, detailHref = null, renderActions = null, footerActions = null, notice = null,
   hint = "แจ้งชำระ แนบสลิป และตั้งวันกำหนดชำระ ทำที่แท็บการชำระของหน้าใบ",
 }) {
   const money = row?.money;
@@ -37,8 +37,12 @@ export default function InstallmentDrawer({
       onClose={onClose}
       title={row.orderNumber}
       subtitle={`${row.quotation?.quoteNumber ? `จาก ${row.quotation.quoteNumber} · ` : ""}${naText(row.customerName)}`}
+      /* `footerActions` = ปุ่มระดับใบของผู้เรียก (หน้างานบัญชี: "ปิดใบ" ของใบที่เก็บครบแล้ว · รื้อ PR-4a) — ลิ้นชักไม่รู้จักสิทธิ์เอง */
       footer={(
-        <Button as={Link} href={href} tone="primary" size="sm">เปิดหน้าใบ (การชำระ)</Button>
+        <>
+          {footerActions}
+          <Button as={Link} href={href} tone={footerActions ? undefined : "primary"} size="sm">เปิดหน้าใบ (การชำระ)</Button>
+        </>
       )}
     >
       <div className={styles.body}>
@@ -70,6 +74,9 @@ export default function InstallmentDrawer({
             เงินยังไม่ถูกใช้ ให้ยกไปใบใหม่ของดีลเดียวกันที่หน้าใบใหม่ · ลูกค้าไม่ซื้อแล้ว ให้บัญชีบันทึกคืนเงิน
           </StatusNotice>
         ) : null}
+
+        {/* `notice` = ข้อความระดับใบของผู้เรียก (หน้างานบัญชี: ใบเก็บครบแล้วรอปิด) */}
+        {notice}
 
         <InstallmentChips installments={list} ariaLabel={`สถานะรายงวดของ ${row.orderNumber}`} />
 

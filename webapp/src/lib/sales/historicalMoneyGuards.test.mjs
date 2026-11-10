@@ -120,6 +120,7 @@ const PER_ID_GUARDED = new Map([
    🐞 ของเดิมยกเว้นทั้งไฟล์ ⇒ เพิ่มยอด "ใบอนุมัติทั้งทะเบียน" ใหม่ในทะเบียนการชำระ/ทะเบียน SO แล้วเขียวต่อ
    (ใบย้อนหลัง approvedAt = เวลาคีย์ ⇒ ~220 ใบโผล่เป็นยอดเดือนนี้) · เลขตรึงไว้ ⇒ คำสั่งใหม่ต้องจัดชั้นใหม่เสมอ */
 const SEES_HISTORICAL = new Map([
+  ['lib/finance/financeCloseQueue.js', { count: 1, reason: 'แท็บรอปิดใบของหน้างานบัญชี (รื้อ PR-4a) — เลนเดียวกับเลนบัญชีของป้ายบนเมนู: financeStatus pending (ใบย้อนหลัง NULL ⇒ เข้าไม่ได้) · ตัดสินด้วย awaitsFinanceReview · นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/nav/counts/route.js', { count: 8, reason: 'เลนอนุมัติ = รออนุมัติ/ตีกลับ รวมใบย้อนหลังโดยตั้งใจ (AE Sup อนุมัติ · ตีกลับให้ผู้คีย์ · 0374) — นับจำนวนใบ ไม่รวมยอด · เลนร่างของใบย้อนหลัง (ผู้คีย์บันทึกค้าง · historicalRowsOnly) · เลนย้อนการอนุมัติรอเจ้าของดีลออก Rev. (มติ 24/09 · pipelineRowsOnly — ใบย้อนหลังย้อนอนุมัติไม่ได้) นับจำนวนใบ ไม่รวมยอด · เลนบัญชีต้อง financeStatus pending (ใบย้อนหลัง NULL) · ป้ายงานเข้าใหม่ของ TS นับถังตั้งรอบ (ใบย้อนหลังผูกโซนตอน AE Sup อนุมัติ ⇒ มาเข้าถังตั้งรอบตรง ๆ · มติ 22/09 · ถังผูกโซนถอดแล้วใน 0392) — นับแถว ไม่รวมยอด · เลนตั้งงานบริการย้อนหลัง (เจ้าของดีล · ผู้จัดการตรวจ) ผ่าน pipelineRowsOnly — นับจำนวนใบ ไม่รวมยอด · เลนนับ Actual รายงวด (mig 0412 · ใบ approved + actualMode installment ของเลนผู้อนุมัติ/เจ้าของดีล) ผ่าน pipelineRowsOnly — ใบย้อนหลังเป็นรายงวดไม่ได้ (CHECK ของ 0412) · นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/service/intake/route.js', { count: 1, reason: 'คิวงานเข้าใหม่ของ TS — ใบย้อนหลังที่อนุมัติแล้วมาพร้อมโซนที่ผูกตอนอนุมัติ (ถังตั้งรอบ · มติ 22/09) · ยอดใช้ตัดสินใบ ฿0 เท่านั้น (paymentNotRequired) ไม่ออกไปกับ response' }],
   ['lib/service/gateContext.js', { count: 1, reason: 'บริบทด่านเข้าไซต์ — ใบของรอบขาย (ใบย้อนหลังที่อนุมัติแล้วด้วยโดยตั้งใจ) · ยอดใช้ตัดสินใบ ฿0 ของข้อ② เท่านั้น (paymentNotRequired) ส่งออกเป็น 0/null ไม่รวมยอด (มติ 22/09)' }],
@@ -365,6 +366,7 @@ test('🪤 literal "historical" · origin "excise" และตัวกรอ�
    ⭐ ทุกคำสั่งผู้ต้องสงสัย (ชุดเดียวกับยามข้อ 1) ที่ไม่ห่อ pipelineRowsOnly/historicalRowsOnly ต้อง select origin (หรือ `*`)
       หรืออยู่ในรายการข้างล่างพร้อมเหตุผลว่าทำไมใบค่าภาษีเข้ามาไม่ได้/ไม่เป็นไร · count ตรึงไว้เหมือนยามข้อ 1 */
 const EXCISE_NO_ORIGIN = new Map([
+  ['lib/finance/financeCloseQueue.js', { count: 1, reason: 'แท็บรอปิดใบ (รื้อ PR-4a) — เลนบัญชีชุดเดียวกับป้ายบนเมนู: ใบค่าภาษีไปบัญชีเหมือนใบปกติ (มติ 28/10) · นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/nav/counts/route.js', { count: 2, reason: 'เลนบัญชี (financeStatus pending — ใบค่าภาษีไปบัญชีเหมือนใบปกติ · มติ 28/10 · นับจำนวนใบ) · ป้ายงานเข้าใหม่ของ TS (planQueue ตัดสินจากบรรทัด/โซน — ใบค่าภาษีไม่มีบรรทัดบริการ · นับแถว ไม่รวมยอด)' }],
   ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ใบของดีลในโครงการ (`dealId`) — ใบค่าภาษีไม่มีดีล (CHECK sales_orders_deal_by_origin)' }],
   ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'ใบของโครงการ/ดีลในโครงการ — ใบค่าภาษีไม่มีทั้งโครงการและดีล (CHECK sales_orders_origin_shape)' }],
