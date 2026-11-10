@@ -1,0 +1,24 @@
+/* กลุ่ม "ขอคิวติดตั้ง · รอ TS ยืนยันวัน" ในแท็บรอจัด (ขั้นเข้าติดตั้ง PR-3c · ม็อก B1') — หน้าตาเดียวกับกลุ่มในรายการงาน */
+.group { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-3); }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); font-size: var(--fs-6); }
+.total {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; padding: 0 var(--space-1-5);
+  border-radius: var(--radius-full); background: var(--panel-2); color: var(--text-2); font-size: var(--fs-4); font-variant-numeric: tabular-nums;
+}
+.sub { color: var(--text-3); font-size: var(--fs-4); }
+.more { margin-left: auto; font-size: var(--fs-4); }
+.cards { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.card {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: var(--space-3); align-items: start; padding: var(--space-2-5) var(--space-3);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-md); background: var(--panel);
+}
+.main, .when, .zones, .gate, .act { display: flex; flex-direction: column; gap: var(--space-0-5); min-width: 0; font-size: var(--fs-5); line-height: var(--lh-thai); }
+.card small { color: var(--text-3); font-size: var(--fs-4); }
+.kind { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--accent); font-size: var(--fs-4); font-weight: var(--fw-semibold); }
+.warn { color: var(--amber) !important; }
+.act { align-items: flex-end; }
+@media (max-width: 900px) {
+  .card { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .act { grid-column: 1 / -1; align-items: flex-start; flex-direction: row !important; flex-wrap: wrap; }
+}

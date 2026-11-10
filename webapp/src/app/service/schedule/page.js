@@ -89,6 +89,8 @@ import { businessDate } from "@/lib/businessDate";
 import { addDays, weekStartOf } from "@/lib/datePeriods";
 import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
+// ขั้นเข้าติดตั้ง PR-3c — กลุ่มคำขอติดตั้งรอ TS ยืนยันวัน (ม็อก B1') · โมดัลตัวเดียวกับแท็บรอติดตั้ง
+import InstallScheduleGroup from "@/components/service/install/InstallScheduleGroup";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const UNASSIGNED = "__unassigned__";
@@ -1216,6 +1218,12 @@ export default function ServiceSchedulePage() {
                 action={<Button size="sm" variant="ghost" onClick={() => loadQueue()}>ลองใหม่</Button>}>
                 {queue.surveyRequestsError} — การ์ดคำร้องยังไม่ขึ้น ไม่ได้แปลว่าไม่มีใบรอลงคิว · นัดในรายการยังเป็นของจริง
               </StatusNotice>
+            )}
+
+            {/* ⭐ ขั้นเข้าติดตั้ง (PR-3c · ม็อก B1'): คำขอติดตั้งที่มัดจำผ่านแล้ว รอ TS ยืนยันวัน — บนสุดของแท็บรอจัด
+                · ข้อมูลจากเส้นเดียวกับแท็บรอติดตั้ง · สวิตช์ปิด/ไม่มีงานรอ = ไม่มีกลุ่ม · ไม่มีสิทธิ์แก้ = ไม่โชว์ */}
+            {bucket === "waiting" && canEdit && (
+              <InstallScheduleGroup technicians={technicians} canConfirm={canEdit} onChanged={() => loadQueue()} />
             )}
 
             {!queueError && flatRows.length === 0 && (
