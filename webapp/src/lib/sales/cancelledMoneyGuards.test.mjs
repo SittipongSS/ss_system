@@ -234,9 +234,16 @@ test('หน้าใบ: ยกเงินผ่าน PATCH action carry (api
 
 // ── 9. บัญชี: คิวเงินค้าง + ตัวนับบนภาพรวม ─────────────────────────────────────────────────────────────
 test('บัญชี: คิว "เงินค้างจากใบที่ยกเลิก" บนทะเบียนการชำระ (คืนเงินได้จากคิว) · ตัวนับบนหน้า /finance', () => {
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4a · มติ "แถบโผล่เมื่อมี"): คิวที่สามกลายเป็นแถบที่โผล่เมื่อมีเงินค้าง — เลขจาก `workTally.stranded` (route ·
+     ตัวตัดสิน `r.stranded` ตัวเดียวกับ pendingStranded) · กดแล้วกรอง `stranded=1` · บันทึกคืนเงินจากลิ้นชัก (ledgerDrawerActions 'refund') */
   const fn = code(FN_PAGE);
-  assert.match(fn, /const strandedQueue = useMemo\(\(\) => pendingStranded\(rows\), \[rows\]\);/);
-  assert.match(fn, /title=\{`\$\{LEDGER_STRANDED_TITLE\} \$\{strandedQueue\.length\} งวด · \$\{fmtMoney\(strandedTotal\)\}`\}/);
+  assert.match(fn, /const strandedTally = workTally\?\.stranded \|\| \{ count: 0, orders: 0, amount: 0 \};/);
+  assert.match(fn, /\{strandedTally\.count > 0 && \(/);
+  assert.match(fn, /`\$\{LEDGER_STRANDED_TITLE\} \$\{strandedTally\.orders\} ใบ · \$\{strandedTally\.count\} งวด · \$\{fmtMoney\(strandedTally\.amount\)\}`/);
+  assert.match(fn, /onClick=\{\(\) => setWork\("stranded"\)\}>ดูรายการ<\/Button>/);
+  assert.match(code('lib/finance/ledgerWork.js'), /stranded: tallyOf\(base\.filter\(\(r\) => r\.stranded\)\),/);
+  assert.match(code('lib/finance/paymentLedger.js'), /if \(stranded && !r\.stranded\) return false;/);
+  assert.match(code('lib/finance/ledgerDrawerActions.js'), /if \(row\.stranded\) out\.push\(make\('refund', 'danger'\)\);/);
   assert.match(fn, /runAction\(refundRow, "refund", values\)/);
   const home = code(FN_HOME);
   assert.match(home, /label=\{LEDGER_STRANDED_TITLE\} value=\{`\$\{summary\?\.strandedCount \?\? 0\} งวด`\}/);
@@ -304,7 +311,9 @@ test('🔴 โมดัลรับรอง/บันทึกการรั�
   assert.match(code(PANEL), /row, multi: rows\.length > 1, historical, outlook: installmentConfirmOutlook\(row, saved\), orderStatus: order\?\.status,/);
   const fn = code(FN_PAGE);
   assert.match(fn, /approvedAt: confirmFor\.orderApprovedAt, historicalInvoiceRef: confirmFor\.historicalInvoiceRef,\s*status: confirmFor\.orderStatus,/);
-  assert.match(fn, /\{row\.orderStatus === "cancelled" \? ` · \$\{LEDGER_CANCELLED_TAG\}` : ""\}/);
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4a): แผงคิวรับรองถูกถอด — ป้าย "ใบยกเลิกแล้ว" ของงวดอยู่ที่บรรทัดรายละเอียดของงวดในลิ้นชัก (ก่อนปุ่มรับรอง) */
+  assert.match(slice(fn, 'const drawerDetail = (row) => {', 'const drawerActions = (inst) => {'),
+    /row\.orderStatus === "cancelled" \? LEDGER_CANCELLED_TAG : "",/);
 });
 
 // ── carry-modal-stale-source-409-loop: โมดัลยกเงินรู้ว่าแถวของใบที่ยกเลิกเปลี่ยนแล้ว (ไม่ใช่ 409 วนไม่รู้จบ) ─────────────────

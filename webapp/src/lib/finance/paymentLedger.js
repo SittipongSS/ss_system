@@ -66,7 +66,7 @@ export const LEDGER_CANCELLED_TAG = 'ใบยกเลิกแล้ว';
 export const LEDGER_STRANDED_TITLE = 'เงินค้างจากใบที่ยกเลิก';
 const collectedRow = (r) => r.status === 'confirmed' && !r.refunded;
 /* ใบกำกับค้าง — งวดที่คืนเงินแล้วไม่ใช่ของค้างเอกสาร (เลขใบลดหนี้คู่ใบกำกับอยู่ที่แถวแล้ว) */
-const ledgerInvoicePending = (r) => !r.refunded && taxInvoicePending(r);
+export const ledgerInvoicePending = (r) => !r.refunded && taxInvoicePending(r);
 
 /* ── ใบที่ตายแล้ว (PR0 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09) ────────────────────────────
    ยกเลิก = ไม่มีงานให้เก็บเงินต่อ · ถูกออก Rev. ทับ = งวดเป็นของใบ Rev. แล้ว
@@ -824,6 +824,7 @@ export function orderStateIndex(rows = []) {
 export function filterLedger(rows = [], {
   status = [], from = null, to = null, q = '', overdueOnly = false,
   orderState = [], orderStates = null, line = [], taxInvoice = '', billing = '', due = '', on = '',
+  close = false, closeOrderIds = null, stranded = false,
 } = {}) {
   const wanted = Array.isArray(status) ? status.filter(Boolean) : [];
   /* ครบกำหนดชำระ (รุ่นสี่ · §6) — soon · ค่าที่ไม่รู้จัก = ไม่กรอง (ลิงก์พิมพ์ผิดต้องไม่ทำให้ทะเบียนว่าง) */
@@ -848,6 +849,11 @@ export function filterLedger(rows = [], {
        เหมือนยังเก็บไม่ครบทันที ทั้งที่บางใบเก็บครบไปแล้ว */
     if (wantedOrders.length && !wantedOrders.includes(orderStates?.get(r.orderId) || ORDER_STATE_OPEN)) return false;
     if (overdueOnly && !r.overdue) return false;
+    /* แท็บงาน "รอปิดใบ" (รื้อ PR-4a) — ใบที่เก็บครบแล้วรอบัญชีปิด · ชุดใบคิดที่ route จากใบ + งวดทุกงวด (`awaitsFinanceReview` ตัวเดียวกับ
+       ป้ายบนเมนูและธง `_awaitingFinanceReview`) ไม่ใช่จากแถวทะเบียน (แถวทะเบียนมีแต่งวดที่ตรึงแล้ว) · ไม่ส่งชุด = ไม่มีใบไหนผ่าน */
+    if (close && !closeOrderIds?.has?.(r.orderId)) return false;
+    /* แถบ "เงินค้างจากใบที่ยกเลิก" (รื้อ PR-4a · มติ "แถบโผล่เมื่อมี") — กดแล้วกรองตารางเหลือใบยกเลิกที่ยังมีเงิน (ธง `stranded` ของแถว) */
+    if (stranded && !r.stranded) return false;
     /* ใบกำกับภาษี: 'missing' = เงินเข้า/แจ้งแล้วแต่ยังไม่มีเลข · 'issued' = มีแล้ว
        ⚠️ ว่าง = ไม่กรอง (ค่าที่ไม่รู้จักก็ไม่กรอง — ตัวกรองที่พิมพ์ผิดใน URL ต้องไม่
        ทำให้ทะเบียนว่างเปล่าโดยไม่มีคำอธิบาย) */

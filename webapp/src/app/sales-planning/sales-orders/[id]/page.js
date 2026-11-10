@@ -148,8 +148,8 @@ import { newExciseQuotationHref } from "@/lib/excise/exciseQuotationLinks";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
 import {
-  FINANCE_REVIEW_POINTS, FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
-  financeActionError, financeStatusOf, financeStepOwnerError, financeWorkflowStep,
+  FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES,
+  financeActionError, financeClosePrompt, financeStatusOf, financeStepOwnerError, financeWorkflowStep,
   salesOrderWorkflowIndex,
 } from "@/lib/sales/salesOrderFinanceApproval";
 import {
@@ -2507,18 +2507,8 @@ export default function SalesOrderDetailPage() {
         // เปิดโมดัลที่โชว์ error ของหน้า ⇒ ล้างของรอบก่อนทิ้ง
         setError("");
         setConfirmState({
-          ...approvalPrompt({
-            title: "ปิดใบสั่งขาย",
-            subject: `ใบสั่งขาย ${order.orderNumber}`,
-            irreversible: true,
-            checklist: FINANCE_REVIEW_POINTS,
-            effects: [
-              "ลงลายเซ็นของคุณในช่อง “ฝ่ายบัญชี” บนเอกสาร แล้วออกเอกสารฉบับใหม่ทับ",
-              "**ปิดใบสั่งขายใบนี้** — เป็นขั้นสุดท้ายของใบ · ถ้า AE Sup ย้อนการอนุมัติภายหลัง ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่",
-              "ยอด Actual ไม่เปลี่ยนจากการกดนี้ (ยอดเข้าตั้งแต่ AE Supervisor อนุมัติ)",
-            ],
-            confirmLabel: "ยืนยันปิดใบ",
-          }),
+          /* ข้อความโมดัลชุดเดียวกับแท็บรอปิดใบของหน้างานบัญชี (`financeClosePrompt` · รื้อ PR-4a) */
+          ...financeClosePrompt(order),
           /* 🐞 เหตุที่ขั้นบัญชีตีกลับต้องอ่านได้ในโมดัล — ด่าน `finance_approve` อ่านงวดสดทุกครั้ง
              (ยังเก็บไม่ครบทุกงวด · AE Sup ยังไม่อนุมัติ · บัญชีปิดไปแล้ว) และปุ่มนี้ **โชว์เสมอกับ
              เจ้าของขั้น** ⇒ เหตุคือสิ่งเดียวที่บอกว่าต้องรออะไร · แถบของหน้าอยู่ใต้โมดัล */

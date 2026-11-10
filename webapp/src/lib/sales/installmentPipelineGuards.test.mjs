@@ -183,11 +183,13 @@ test('กู้คืนใบที่ยกเลิก: route ตรวจ QT
 test('ทะเบียนบัญชี: route โหลดสถานะ QT · ปุ่มรับรอง/บันทึกใบกำกับถาม ledgerRowLock แล้วปิดพร้อมเหตุ (review G1)', () => {
   const ledger = code(LEDGER_ROUTE);
   assert.match(slice(ledger, ".from('quotations')", '.in('), /\.select\('[^']*\bstatus\b[^']*'\)/);
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4a): แผงคิวถูกถอด — ปุ่มรับรอง/บันทึกใบกำกับอยู่ในลิ้นชักรายงวดเท่านั้น · ตัวตัดสิน `ledgerDrawerActions` ถาม
+     ledgerRowLock ทุกปุ่ม แล้วหน้าดับปุ่ม + title + ตัวหนังสือเหตุ (ไม่ซ่อน) */
   const page = code(FN_PAGE);
-  assert.match(page, /const confirmLock = ledgerRowLock\(row, "confirm"\);/);
-  assert.match(page, /disabled=\{acting \|\| !!confirmLock\} title=\{confirmLock \|\| undefined\} onClick=\{\(\) => setConfirmFor\(row\)\}/);
-  assert.match(page, /const invoiceLock = ledgerRowLock\(row, "tax-invoice"\);/);
-  assert.match(page, /disabled=\{acting \|\| !!invoiceLock\} title=\{invoiceLock \|\| undefined\} onClick=\{\(\) => setInvoiceFor\(row\)\}/);
+  assert.match(code('lib/finance/ledgerDrawerActions.js'), /lock: ledgerRowLock\(row, action\) \|\| null/);
+  assert.match(page, /disabled=\{acting \|\| !!a\.lock\} title=\{a\.lock \|\| undefined\}/);
+  assert.match(page, /if \(action === "confirm"\) setConfirmFor\(row\);/);
+  assert.match(page, /else if \(action === "tax-invoice"\) setInvoiceFor\(row\);/);
 });
 
 test('loadOrder ไม่กลืน error ของการอ่าน QT — อ่านไม่ขึ้น ≠ "ไม่พบใบเสนอราคา" (review R1 · ด่านกู้คืน/ยื่นพึ่งสถานะ QT)', () => {

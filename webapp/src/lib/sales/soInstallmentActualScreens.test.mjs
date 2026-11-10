@@ -380,8 +380,10 @@ test('โมดัลรับรอง + ทะเบียนบัญชี: 
 
   const fn = code(FN_PAGE);
   assert.match(fn, /actualMode: confirmFor\.actualMode,/);
-  assert.match(fn, /const actualLock = row\.actualAwaitingApproval \? installmentActualLockReason\(row, \{ status: row\.orderStatus \}\) : null;/);
-  assert.match(fn, /\{actualLock \? <span id=\{actualLockId\} className=\{styles\.qlock\}>\{actualLock\}<\/span> : null\}/);
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4a): แผงคิวรับรองถูกถอด — เหตุของงวดที่ยังไม่อนุมัตินับอยู่ใต้ปุ่มรับรองในลิ้นชัก (ledgerDrawerActions → ledgerRowLock
+     → installmentActualLockReason · คำเดียวกับคิวเดิม · paymentLedgerInstallmentActual.test คุมคำของใบที่ย้อนอนุมัติ) · ปุ่มดับ + ตัวหนังสือเหตุ */
+  assert.match(code('lib/finance/paymentLedger.js'), /if \(\['confirm', 'report'\]\.includes\(action\) && row\.actualAwaitingApproval\) \{\s*return installmentActualLockReason\(row\);/);
+  assert.match(fn, /\{locks\.map\(\(text\) => <span key=\{text\} className="cell-sub">\{text\}<\/span>\)\}/);
   /* สลิปที่แจ้งแล้วแต่ติดด่าน — บอกบัญชีว่ารออะไร ไม่หายเงียบ: API สรุปรายใบ (ledgerHeldSummary · ถอดตัวกรองสถานะ) — UAT FN 27/10 ข้อ 1 */
   assert.match(fn, /\{held\.count > 0 && \(/, 'สลิปที่แจ้งแล้วแต่ติดด่าน — บอกบัญชีว่ารออะไร ไม่หายเงียบ');
   assert.match(code('lib/finance/paymentLedger.js'), /held: ledgerHeldSummary\(anyStatus\.filter\(ledgerHeld\)\),/);
