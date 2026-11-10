@@ -108,6 +108,11 @@ function rowOf({ request, order, site, zones, stage, deposit, visits, visitZones
     siteId: site?.id || request?.siteId || null,
     siteCode: site?.code || null,
     siteName: site?.name || null,
+    /* ช่วงที่ไซต์ให้เข้า — ตัวเลือกวัน+ช่าง (CrewSlotPicker) เตือน/เลื่อนเวลาให้ตามนี้
+       · ไซต์ไม่กำหนดเวลา = ค่าว่างทั้งคู่ (รู้ว่าไม่จำกัด) · ไม่รู้จักไซต์ = null (ไม่รู้ ⇒ ไม่เตือน) */
+    siteAccess: site?.code
+      ? { accessFrom: site.accessFrom || null, accessTo: site.accessTo || null, accessDays: Array.isArray(site.accessDays) ? site.accessDays : [] }
+      : null,
     stage,
     stageLabel: stage === 'not_requested' ? INSTALL_QUEUE_GROUP_LABELS.not_requested : (INSTALL_STAGE_LABELS[stage] || null),
     owner: INSTALL_STAGE_OWNERS[stage] ?? null,

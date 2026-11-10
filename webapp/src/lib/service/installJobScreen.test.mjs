@@ -66,9 +66,12 @@ test('งานของฉัน: นัดติดตั้งพาเข้
 
 test('หน้าจัดคิว (PR-3c): กลุ่มคำขอติดตั้งอยู่แท็บรอจัด เฉพาะคนแก้งานบริการได้ · หยิบเฉพาะขั้นรอ TS · โมดัลตัวเดียวกับแท็บรอติดตั้ง', () => {
   const page = readFileSync(new URL('../../app/service/schedule/page.js', import.meta.url), 'utf8');
-  assert.match(page, /\{bucket === "waiting" && canEdit && \(\s*<InstallScheduleGroup technicians=\{technicians\} canConfirm=\{canEdit\} onChanged=\{\(\) => loadQueue\(\)\} \/>/);
+  assert.match(page, /\{bucket === "waiting" && canEdit && \(\s*<InstallScheduleGroup\s+technicians=\{technicians\}\s+rosterState=\{rosterState\}\s+canConfirm=\{canEdit\}\s+onPicking=\{setInstallPicking\}\s+onChanged=\{\(\) => loadQueue\(\)\}\s*\/>/);
+  /* 🐞 11/11: โมดัลเปิด = บอกหน้าแม่ให้โหลดรายชื่อช่าง (หน้าจัดคิวโหลดเฉพาะตอนมีคนต้องเลือกคน) */
   const group = readFileSync(new URL('../../components/service/install/InstallScheduleGroup.js', import.meta.url), 'utf8');
   assert.match(group, /filter\(\(r\) => r\.stage === "awaiting_ts"\)/);
   assert.match(group, /import InstallConfirmModal from "\.\/InstallConfirmModal";/);
+  assert.match(group, /useEffect\(\(\) => \{ onPicking\?\.\(picking\); \}, \[picking, onPicking\]\);/);
+  assert.match(group, /rosterState=\{rosterState\}/);
   assert.match(group, /apiJson\("\/api\/service\/install-queue"/);
 });

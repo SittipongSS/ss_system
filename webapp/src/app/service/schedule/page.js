@@ -290,7 +290,10 @@ export default function ServiceSchedulePage() {
   /* รายชื่อเจ้าหน้าที่บริการโหลดเมื่อจะ "เลือก" เท่านั้น — โมดัลนัด **หรือโมดัลลงคิวคำร้อง**
      (มติเจ้าของ 23/09: ลงคิวจากการ์ดคำร้องเลือกคนด้วยตัวเลือกเดียวกับโมดัลนัด)
      ⚠️ `techStatus` แยก "กำลังโหลด" / "โหลดพัง" ออกจาก "ไม่มีใครเลย" — โมดัลบอกคนละข้อความ */
-  const pickingPeople = formVisit !== undefined || !!dueRow;
+  /* 🐞 11/11 (P2 ตัวเลือกตาราง): กลุ่ม "ขอคิวติดตั้ง · รอ TS ยืนยันวัน" (PR-3c) เปิดโมดัลยืนยันวันเอง — เดิมไม่อยู่ในเงื่อนไขนี้
+     รายชื่อช่างจึงไม่ถูกโหลด แล้วโมดัลขึ้น "ยังไม่มีบัญชีที่รับงานเข้าไซต์ได้" ทั้งที่มีช่าง (ยืนยันวันไม่ได้เลย) */
+  const [installPicking, setInstallPicking] = useState(false);
+  const pickingPeople = formVisit !== undefined || !!dueRow || installPicking;
   const [techStatus, setTechStatus] = useState("idle");   // idle · loading · ok · error
   useEffect(() => {
     if (!pickingPeople || technicians.length) return;
@@ -1223,7 +1226,13 @@ export default function ServiceSchedulePage() {
             {/* ⭐ ขั้นเข้าติดตั้ง (PR-3c · ม็อก B1'): คำขอติดตั้งที่มัดจำผ่านแล้ว รอ TS ยืนยันวัน — บนสุดของแท็บรอจัด
                 · ข้อมูลจากเส้นเดียวกับแท็บรอติดตั้ง · สวิตช์ปิด/ไม่มีงานรอ = ไม่มีกลุ่ม · ไม่มีสิทธิ์แก้ = ไม่โชว์ */}
             {bucket === "waiting" && canEdit && (
-              <InstallScheduleGroup technicians={technicians} canConfirm={canEdit} onChanged={() => loadQueue()} />
+              <InstallScheduleGroup
+                technicians={technicians}
+                rosterState={rosterState}
+                canConfirm={canEdit}
+                onPicking={setInstallPicking}
+                onChanged={() => loadQueue()}
+              />
             )}
 
             {!queueError && flatRows.length === 0 && (
