@@ -54,8 +54,11 @@ test('ข้อความเวลา: ความยาว · 23:59 ที�
   assert.equal(lengthText(45), '45 นาที');
   assert.equal(rangeText(1260, DAY_MINUTES), '21:00–24:00');
   assert.deepEqual(valueSlot({ startTime: '21:00', endTime: '23:59' }), { start: 1260, end: DAY_MINUTES });
-  assert.equal(valueSlot({ startTime: '10:00', endTime: '' }), null);
-  assert.equal(valueSlot({ startTime: '13:00', endTime: '10:00' }), null);
+  // 🐞 11/11: มีแค่เวลาเริ่ม = รู้เวลาเริ่ม (วาด 1 ชม. · ธง open) ไม่ใช่ "นัดทั้งวัน"
+  assert.deepEqual(valueSlot({ startTime: '10:00', endTime: '' }), { start: 600, end: 660, open: true });
+  assert.deepEqual(valueSlot({ startTime: '13:00', endTime: '10:00' }), { start: 780, end: 840, open: true });
+  assert.deepEqual(valueSlot({ startTime: '10:00', endTime: '12:00' }, { startOnly: true }), { start: 600, end: 660, open: true });
+  assert.equal(valueSlot({ startTime: '', endTime: '12:00' }), null);
 });
 
 test('แถบวัน: 14 วันจากวันนี้ · ★ วันที่ขอ · อาทิตย์นอกเวลาทำการ · วันไกลกว่าแถบขึ้นท้าย', () => {
@@ -148,7 +151,7 @@ test('แทร็กหัวตาราง: เวลาทำการ · �
   const sunday = view({ date: '2026-11-22' });
   assert.equal(sunday.tracks.work, null, 'อาทิตย์ทั้งวันนอกเวลาทำการ');
   assert.equal(sunday.tracks.asked, null);
-  assert.equal(sunday.tracks.askedElsewhere, 'ฝ่ายขายขอ พ. 18 พ.ย.');
+  assert.equal(sunday.tracks.askedElsewhere, 'ขอ พ. 18 พ.ย.');
 });
 
 test('ไม่รู้ภาระ = ไม่มีตัวเลข ไม่มีก้อน ไม่มีป้ายว่าง + คำเตือน · ไม่มีวัน = บอกให้เลือกวัน', () => {
@@ -196,4 +199,17 @@ test('ไฟล์ตัวคำนวณไม่มี React และคอ�
   const ui = readFileSync(new URL('../../components/service/CrewSlotPicker.js', import.meta.url), 'utf8');
   assert.doesNotMatch(ui, /style=\{\{/);
   assert.match(ui, /crewSlotView\(/, 'จอวาดตามตัวคำนวณ ไม่คิดเอง');
+});
+
+test('รู้แค่เวลาเริ่ม: บรรทัดเลือกแล้ว "เริ่ม … (ไม่ระบุเวลาจบ)" · ช่วงไซต์ตัดสินจากเวลาเริ่ม · ปุ่มมือถือเติมแค่เวลาเริ่ม', () => {
+  const v = view({ startTime: '14:00', endTime: '' });
+  assert.equal(v.summary.text, 'Nattawut · พ. 18 พ.ย. · เริ่ม 14:00 (ไม่ระบุเวลาจบ)');
+  assert.equal(v.selection.text, 'เริ่ม 14:00');
+  assert.ok(rowOf(v, 'U-NATE').tags.some((t) => t.text.startsWith('เวลาทับ SV-18')), 'วาด 1 ชม. ⇒ ทับ 13:30–15:00');
+  const late = view({ startTime: '19:30', endTime: '' });
+  assert.ok(!late.summary.warnings.some((w) => w.key === 'access'), '19:30 ยังอยู่ในช่วงไซต์ (ไม่เดาเวลาจบ)');
+  const survey = crewSlotView({ technicians, load, value: { date: DAY, startTime: '09:00', assigneeId: 'U-NATE' }, site, startOnly: true });
+  assert.ok(survey.summary.warnings.some((w) => w.key === 'access'), 'เริ่มก่อนไซต์เปิด');
+  assert.match(survey.hint, /นัดนี้เก็บแค่เวลาเริ่ม/);
+  assert.deepEqual(slotPresets({ startOnly: true, asked }).map((p) => p.label), ['เริ่ม 09:00 ที่ขอ', 'เช้า เริ่ม 08:30', 'บ่าย เริ่ม 13:00']);
 });

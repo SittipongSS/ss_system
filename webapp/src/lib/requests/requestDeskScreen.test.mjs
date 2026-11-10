@@ -154,7 +154,7 @@ test('D-1 รับปากวันส่งผล: หัว · เส้น�
   assert.doesNotMatch(wish, /#[0-9a-fA-F]{3,8}\b|rgba?\(|line-height: [\d.]/, 'โทเคนล้วน');
   // งานโต๊ะ = คอลัมน์เดียว วันอย่างเดียว (ไม่ใช่ 'site' ⇒ ไม่มีแผงงาน ชิปวันนัด ตัวเลือกช่าง ด่านเข้าไซต์)
   assert.match(DIALOG, /layout=\{siteMode \? "split" : "single"\}/);
-  assert.match(DIALOG, /withTime=\{siteMode\}/);
+  assert.match(DIALOG, /withTime=\{false\}/);
   // ป้ายหมายเหตุ: คำของ lib + ท้ายเดิม
   assert.match(DIALOG, /label: `\$\{labels\.noteLabel \|\| "หมายเหตุ"\} \(ไม่บังคับ\)`/);
   // ด่านของปุ่ม + ก้อนที่ส่ง + บรรทัดผลลัพธ์ (ชื่อคนกด — ไม่ส่งชื่อมา = "คุณ")

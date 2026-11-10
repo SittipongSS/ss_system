@@ -9,6 +9,8 @@
 //   หัว    — ชื่องาน · ชิปชนิดงาน · ชิปสถานะ (ร่าง = เส้นประ) · ที่มา / บรรทัดไซต์ "รหัส · ชื่อ · ลูกค้า"
 //   เนื้อ   — ซ้าย (`aside` "งานนี้" + ด่าน · `tail` หมายเหตุ + ประวัติ) · ขวา (`main` วัน เวลา คน)
 //            `layout="single"` = คอลัมน์เดียว (แจ้งกำหนดส่งของหัวข้ออื่น) · มือถือ = คอลัมน์เดียวเสมอ
+//            `band` = แถบเต็มกว้างเหนือสองคอลัมน์ — ตัวเลือกวัน + เวลา + คน แบบตาราง (`CrewSlotPicker` · มติเจ้าของ 11/11/2026:
+//            คอลัมน์ขวาแคบเกินตาราง 24 ชม.) · ≤900px แถบลงไปต่อจาก "งานนี้" (ลำดับอ่านเดิม: งาน › วัน/คน › ที่เหลือ)
 //   ท้าย   — ปุ่มรองชิดซ้าย · **ปุ่มหลักปุ่มเดียว** ชิดขวา · บรรทัดผลลัพธ์ใต้ปุ่ม ("จะขึ้นช่อง …" / เหตุที่ติด)
 //
 // ⚠️ **`tone="primary"` มีที่นี่ที่เดียว** — ผู้เรียกส่งแค่ป้าย/เหตุ/ตัวกด (pain 6: ร่างเคยมีปุ่มสีหลักสองปุ่ม)
@@ -34,6 +36,7 @@ const OUTCOME_ICONS = { ok: Check, warn: AlertTriangle, info: Info, error: XCirc
  * @param origin     ที่มา ("จากรอบบริการ" · "RQ-… · ผู้ขอ …")
  * @param context    `{ code, name, customer }` บรรทัดไซต์ใต้ชื่อ · null = ไม่มี
  * @param aside/main/tail  ของในช่อง — ซ้ายบน / ขวา / ซ้ายล่าง
+ * @param band       แถบเต็มกว้างเหนือสองคอลัมน์ (ตัวเลือกวัน + ช่างแบบตาราง) · null = ไม่มี
  * @param secondary  `[{ key, label, onClick, blocker?, tone?, variant?, icon? }]` ปุ่มรองชิดซ้าย (ตามลำดับ)
  * @param primary    `{ label, busyLabel, onClick, blocker?, disabled?, icon? }` ปุ่มหลักปุ่มเดียว
  * @param outcome    `{ tone: 'ok'|'warn'|'info'|'error', text }` บรรทัดใต้ปุ่มหลัก — กดแล้วจะเกิดอะไร
@@ -51,6 +54,7 @@ export default function ScheduleModalShell({
   origin = "",
   context = null,
   aside = null,
+  band = null,
   main = null,
   tail = null,
   secondary = [],
@@ -157,7 +161,8 @@ export default function ScheduleModalShell({
       initialFocusRef={initialFocusRef}
     >
       {/* ⭐ fieldset ที่ disabled ล็อกทุกช่องข้างในพร้อมกันระหว่างส่ง — ไม่ต้องไล่ส่ง disabled ทีละช่องแล้วลืมสักช่อง */}
-      <fieldset ref={bodyRef} className={styles.body} data-layout={split ? "split" : "single"} disabled={busy}>
+      <fieldset ref={bodyRef} className={styles.body} data-layout={split ? "split" : "single"} data-band={band ? "1" : undefined} disabled={busy}>
+        {band ? <div className={styles.band}>{band}</div> : null}
         {aside ? <div className={styles.aside}>{aside}</div> : null}
         <div className={styles.main}>{main}</div>
         {tail ? <div className={styles.tail}>{tail}</div> : null}
