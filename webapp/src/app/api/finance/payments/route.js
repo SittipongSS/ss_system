@@ -91,7 +91,7 @@ async function loadLedger(supabase, todayIso) {
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode", "sourceSalesOrderId"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode", "sourceSalesOrderId", "vatAmount"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;

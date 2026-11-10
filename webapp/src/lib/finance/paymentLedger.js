@@ -293,6 +293,11 @@ export function ledgerRow({
        "ยอดที่เก็บแล้ว X จาก <ยอดใบ>" · "อนุมัติใบ: <AE Sup> · <วัน> · ไม่นับ Actual" · เลขใบกำกับเดิม (Express)
        ⚠️ ยอดใบ **ไม่รู้ = null** ไม่ใช่ 0 (ตัวตัดสินใบ ฿0 แยกสองกรณีนี้ — paymentNotRequired) */
     orderTotal: order.totalAmount === null || order.totalAmount === undefined ? null : Number(order.totalAmount),
+    /* ยอดจ่ายก่อน VAT ของใบ (รื้อรายการ SO + บัญชี PR-1 · มติ 09/11 "ยอดจ่ายสนใจทั้งก่อนและหลัง VAT") = `totalAmount − vatAmount`
+       คิดเป็นสตางค์ · ยอดใบไม่รู้ = null เหมือน orderTotal · ไม่มี vatAmount (ผู้เรียกไม่ได้เลือกมา) = null ไม่ใช่ยอดรวม VAT */
+    orderNet: order.totalAmount === null || order.totalAmount === undefined || order.vatAmount === null || order.vatAmount === undefined
+      ? null
+      : (Math.round(Number(order.totalAmount) * 100) - Math.round(Number(order.vatAmount) * 100)) / 100,
     orderApprovedByName: order.approvedByName || '',
     orderApprovedAt: order.approvedAt || null,
     historicalInvoiceRef: order.historicalInvoiceRef || '',
@@ -1169,6 +1174,10 @@ export function groupLedgerByOrder(rows = []) {
         customerCalendarRequest: row.customerCalendarRequest || '',
         orderStatus: row.orderStatus,
         financeStatus: row.financeStatus,
+        /* ยอดจ่ายของใบ รวม VAT / ก่อน VAT (รื้อรายการ SO + บัญชี PR-1 · 09/11) — ค่าระดับใบ ทุกงวดพกค่าเดียวกันมา (`ledgerRow`)
+           ⚠️ ห่อไว้ใน literal นี้ ไม่งั้นค่าใหม่ตายที่หัวก้อน (กับดักเดียวกับข้อ 1 ของ paymentLedgerBilling.test) */
+        orderTotal: row.orderTotal ?? null,
+        orderNet: row.orderNet ?? null,
         // ผู้ดูแลมาจากดีลของใบ (ดู `ledgerRow`) — ใช้จัดกลุ่ม "ผู้ดูแล (AE)"
         ownerId: row.ownerId || null,
         ownerName: row.ownerName || '',

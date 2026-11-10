@@ -17,6 +17,7 @@ import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
 import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
+import { salesOrderMoneyCell } from '@/lib/sales/salesOrderMoney';
 import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import {
   validateOrderConfirmation, sanitizeEvidenceAttachments, evidenceRefsDropped,
@@ -321,6 +322,14 @@ export const GET = withUser(async ({ user, supabase }) => {
         // ใบ revised (mig 0376: งวดย้ายไปใบ Rev. ทั้งแถว) = ไม่มีคอลัมน์งวด — ไม่ใช่ "ยังไม่เริ่มติดตาม" จากแผน QT
         row.status,
       ),
+      /* ก้อนเงินของแถว (รื้อรายการ SO + บัญชี PR-1 · มติเจ้าของ 09/11) — ยอดจ่ายรวม/ก่อน VAT · เก็บแล้ว (บัญชีรับรอง) · รอตรวจ ·
+         เงินค้างบนใบยกเลิก · ชิปรายงวด · งวดถัดไป — กติกาตัดงวดโมฆะ/คืนเงินชุดเดียวกับ `payment` ข้างบน
+         ⭐ งวดชุดเดียวกับ `payment` (loadListInstallments) — ไม่อ่านเพิ่ม */
+      money: salesOrderMoneyCell(
+        installmentsByOrder.get(row.id) || [],
+        row,
+        { plan: quoteById.get(row.quotationId)?.paymentPlan, todayIso },
+      ),
       /* ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
          ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
 
@@ -594,6 +603,10 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 }, EXCISE_TASK_SYNC.createdSalesOrder);
 
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·
+   ⭐ `amount` `"paidOn"` `"frozenAt"` `"updatedAt"` (รื้อรายการ SO + บัญชี PR-1 · 09/11) = ก้อนเงินรายใบ `money` (salesOrderMoneyCell):
+     ยอดเก็บแล้ว/รอตรวจ/เงินค้าง + ชิปรายงวด · ขาด `amount` = ยอดเป็น 0 เงียบ ๆ · ขาด `"frozenAt"` = งวดของใบที่อนุมัติแล้วกลายเป็น "ตามแผน" ·
+     ต่อท้ายชุดแรกเท่านั้น — สองชุดถอย (ก่อน 0378/0412) ไม่ถูกรันบน production แล้ว (มิกทั้งสองรันครบ) ⇒ ถ้าถอยจริง ก้อนเงินได้ยอด 0 และชิป
+     "ตามแผน" ทั้งใบ (คอลัมน์งวด x/y เดิมยังถูก) — ยอมรับได้ ดีกว่าแตะสตริงถอยที่เทสต์ของ 0378 ตรึงไว้ ·
    `refundedAt` = งวดที่คืนเงินแล้ว (0378) · ⚠️ ก่อนรัน 0378 = 42703 ⇒ อ่านชุดเดิม (ไม่มีงวดคืนเงินในฐานอยู่แล้ว)
    ⭐ `id, seq, "actualStatus", "actualSubmittedById"` (mig 0412) = สองเลนของ Actual รายงวด (`_waitingOnMe` · `_awaitingMyApproval`) +
      จำนวนงวดที่ยื่นรอ (`actualSubmittedCount`) — ชุดเดียวกับที่ป้ายบนเมนูอ่าน · `"actualApprovedVia"` = สัญญาณ "กดนับที่เหลือทั้งหมดแล้ว"
@@ -603,7 +616,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 async function loadListInstallments(supabase, orderIds) {
   const withActual = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments')
-    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt"')
+    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt"')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));

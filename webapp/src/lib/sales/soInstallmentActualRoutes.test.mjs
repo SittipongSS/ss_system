@@ -608,7 +608,8 @@ test('/installments (ยามต้นทาง): คำสั่ง actual_* �
 test('ทะเบียนใบสั่งขาย: งวดของรายการพกช่องของเลน (ถอยเป็นชุด 0378 ก่อนรัน 0412) · จำนวนงวดที่ยื่นรอ', () => {
   const list = code(LIST_ROUTE);
   const loader = slice(list, 'async function loadListInstallments(', '\n}\n');
-  const first = loader.indexOf('.select(\'id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt"\')');
+  // ช่องเงิน (amount · paidOn · updatedAt) ต่อท้ายชุดแรก — ก้อน `money` ของรื้อรายการ SO + บัญชี PR-1 (salesOrderMoney.test.mjs ตรึงเอง)
+  const first = loader.indexOf('.select(\'id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt"\')');
   const fallback = loader.indexOf('.select(\'salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt"\')');
   assert.ok(first > 0 && fallback > first, 'ชุดของ 0412 ก่อน · ถอยเป็นชุดของ 0378');
   assert.match(loader, /if \(withActual\.error\?\.code !== '42703'\) return withActual;/);
