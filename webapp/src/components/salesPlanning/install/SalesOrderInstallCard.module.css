@@ -28,6 +28,10 @@
 .siteAct { display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-1); }
 .why { color: var(--text-3); font-size: var(--fs-4); }
 .readiness { margin: var(--space-3) 0 0; color: var(--text-2); font-size: var(--fs-5); }
+/* รายโซนของไซต์ (ม็อก A3) — ติดตั้งแล้วเมื่อไร · นัดไหน · กี่เครื่อง / ขั้นของโซนที่ยังไม่ติด */
+.zoneList { display: flex; flex-direction: column; gap: var(--space-1); margin: var(--space-1) 0 0; padding: 0; list-style: none; width: 100%; }
+.zoneList li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1-5); font-size: var(--fs-5); }
+.zoneList small { color: var(--text-3); font-size: var(--fs-4); }
 
 @media (max-width: 900px) {
   .site { grid-template-columns: minmax(0, 1fr) auto; }

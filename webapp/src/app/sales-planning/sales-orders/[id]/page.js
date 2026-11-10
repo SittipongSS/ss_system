@@ -100,6 +100,7 @@ import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
 import SalesOrderInstallCard from "@/components/salesPlanning/install/SalesOrderInstallCard";
+import InstallContractCard from "@/components/salesPlanning/install/InstallContractCard";
 import ServiceContractCard from "@/components/salesPlanning/ServiceContractCard";
 import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import Tabs from "@/components/ui/Tabs";
@@ -400,6 +401,10 @@ export default function SalesOrderDetailPage() {
   const [errorActionUrl, setErrorActionUrl] = useState("");
   const [toast, setToast] = useState(null);
   const [busy, setBusy] = useState("");
+  /* ⭐ ขั้นเข้าติดตั้ง PR-5c: ติดตั้งครบทุกไซต์หรือยัง (ป้ายแท็บสัญญา "พร้อมทำ") — การ์ดติดตั้ง/ผลติดตั้งรายงานขึ้นมาเมื่อโหลดเสร็จ
+     ⚠️ useCallback ว่าง — การ์ดผูกตัวนี้เข้า deps ของตัวโหลด เปลี่ยนตัวทุก render = โหลดวนไม่จบ */
+  const [installReadiness, setInstallReadiness] = useState(null);
+  const onInstallLoaded = useCallback((data) => setInstallReadiness(data?.enabled ? (data.readiness || null) : null), []);
   const [dirty, setDirty] = useState(false);
   /* ร่างวันงวดที่ยังไม่บันทึก (โหมดตั้งวันในแท็บการชำระ · มติ 28/09) — แผงบอกผ่าน `onDatesDirty` ⇒ ออกจากหน้า/สลับแท็บต้องถามก่อน
      (แผงถูกถอดทั้งก้อนตอนสลับแท็บ = ร่างหายเงียบ) */
@@ -2846,7 +2851,10 @@ export default function SalesOrderDetailPage() {
                   ? <>ภาพรวม <span className={styles.tabProgress} aria-label={`งานบริการครบ ${setupTabProgress} รายการ`}>{setupTabProgress}</span></>
                   : "ภาพรวม")
                 : key === "documents" ? (salesOrderDocs.data?.total ? `เอกสาร ${salesOrderDocs.data.total}` : "เอกสาร")
-                : key === "contract" ? (onServiceLine && !order.serviceContract ? "สัญญา · ยังไม่ผูก" : "สัญญา")
+                : key === "contract" ? (onServiceLine && !order.serviceContract
+                  /* ขั้นเข้าติดตั้ง (ม็อก A6): สัญญาทำหลังติดตั้งครบ — ป้ายบอกว่าพร้อมทำหรือยัง (ชี้ ไม่ล็อก) */
+                  ? (installReadiness ? (installReadiness.ready ? "สัญญา · พร้อมทำ" : "สัญญา · หลังติดตั้ง") : "สัญญา · ยังไม่ผูก")
+                  : "สัญญา")
                   : key === "payment" ? (tabIssueCounts?.payment
                     ? <>{paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ"} <CountBadge count={tabIssueCounts.payment} tone="danger" label="ข้อที่ยังขาดในแท็บการชำระ" /></>
                     : (paymentSummary.count ? `การชำระ ${paymentSummary.confirmedCount}/${paymentSummary.count}` : "การชำระ"))
@@ -2904,7 +2912,7 @@ export default function SalesOrderDetailPage() {
               · ขึ้นเฉพาะใบ pipeline สายบริการที่อนุมัติแล้ว และสวิตช์ SERVICE_INSTALL_STEP เปิด (ค่าจาก GET ใบ)
               · การ์ดโหลดก้อนของตัวเอง (`/install`) — ขั้นคำนวณที่ server ไม่คิดซ้ำที่จอ */}
           {order.installStepEnabled && onServiceLine && !historical && order.status === "approved" ? (
-            <SalesOrderInstallCard orderId={id} onChanged={refreshOrder} />
+            <SalesOrderInstallCard orderId={id} onChanged={refreshOrder} onLoaded={onInstallLoaded} />
           ) : null}
 
           {/* ⭐ โซนที่ใบนี้ขาย (mig 0374) — ใบย้อนหลังผูกโซนตั้งแต่ตอนคีย์ ⇒ ตารางรายการข้างบน
@@ -3095,6 +3103,11 @@ export default function SalesOrderDetailPage() {
 
           {activeTab === "contract" && (
             <>
+              {/* ⭐ ผลติดตั้งสำหรับทำสัญญา (ขั้นเข้าติดตั้ง PR-5c · ม็อก A6) — อ่านอย่างเดียว วางเหนือการ์ดสัญญาเดิม (ไม่แก้สองการ์ดนั้น)
+                  · เงื่อนไขเดียวกับการ์ดติดตั้งบนแท็บภาพรวม */}
+              {order.installStepEnabled && onServiceLine && !historical && order.status === "approved" ? (
+                <InstallContractCard orderId={id} onLoaded={onInstallLoaded} />
+              ) : null}
               {/* การ์ดผูกสัญญาบริการ — เฉพาะใบบนเส้นบริการ (ด่านแรกของงานบริการทั้งเส้น) */}
               {onServiceLine ? (
                 <ServiceContractCard
