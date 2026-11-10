@@ -182,7 +182,8 @@ test('คิวงาน: จอกับ API ใช้ defaultScope ตัว�
 test('คิวฝ่าย: ทั้งสามหน้าส่ง ?dept= ให้ API กรอง ไม่ใช่ดึงมาทั้งระบบแล้วซ่อน', () => {
   for (const page of [
     'src/app/rd/requests/page.js',
-    'src/app/finance/requests/page.js',
+    // คิวของ FN เป็นแท็บของหน้างานบัญชีแล้ว (รื้อ PR-4b) — ตัวคิวยกมาทั้งก้อน
+    'src/components/finance/FinanceRequestsQueue.js',
     'src/app/service/requests/page.js',
   ]) {
     const src = readFileSync(join(ROOT, page), 'utf8');

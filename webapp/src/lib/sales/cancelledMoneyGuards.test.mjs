@@ -9,7 +9,7 @@
 // ⚠️ ยามอ่าน source เป็นสตริง (ตัดคอมเมนต์ก่อน) ⇒ พิสูจน์แค่ "โค้ดนี้ยังอยู่ตรงนี้"
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -245,9 +245,8 @@ test('บัญชี: คิว "เงินค้างจากใบที�
   assert.match(code('lib/finance/paymentLedger.js'), /if \(stranded && !r\.stranded\) return false;/);
   assert.match(code('lib/finance/ledgerDrawerActions.js'), /if \(row\.stranded\) out\.push\(make\('refund', 'danger'\)\);/);
   assert.match(fn, /runAction\(refundRow, "refund", values\)/);
-  const home = code(FN_HOME);
-  assert.match(home, /label=\{LEDGER_STRANDED_TITLE\} value=\{`\$\{summary\?\.strandedCount \?\? 0\} งวด`\}/);
-  assert.match(home, /note=\{fmtMoney\(summary\?\.strandedAmount \?\? 0\)\}/);
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4b): การ์ดเงินค้างของหน้าภาพรวม /finance ถูกถอดพร้อมหน้า — แถบบนหน้างานบัญชี (ข้างบน) คือที่เดียว */
+  assert.equal(existsSync(join(SRC, FN_HOME)), false, 'หน้าภาพรวมถูกถอดแล้ว (/finance เด้งมาหน้างานบัญชี)');
 });
 
 /* ══ review รอบ PR0–PR3 — ยามต่อสาย (ตรรกะจริงมีเทสต์ตรงอยู่ที่ lib แล้ว) ═══════════════════════════════════════════ */

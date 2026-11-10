@@ -55,9 +55,9 @@ const LIST_PANEL_ADOPTERS = Object.freeze([
   ["src/app/database/products/page.js", 1],
   ["src/app/database/scents/page.js", 1],
   ["src/app/database/sites/page.js", 1],
-  ["src/app/finance/page.js", 1],
+  /* รื้อ SO + บัญชี PR-4b (11/11): ลบหน้า /finance (ภาพรวม) และ /finance/requests — คิวคำร้องของ FN ย้ายเป็นแท็บของหน้างานบัญชี
+     (ตัวคิวยกมาทั้งก้อนที่ components/finance/FinanceRequestsQueue.js · วาด RequestQueuePanel ตัวเดิม) */
   ["src/app/finance/payments/page.js", 1],
-  ["src/app/finance/requests/page.js", 0],
   ["src/app/mgmt/meetings/page.js", 1],
   ["src/app/mgmt/tasks/page.js", 1],
   ["src/app/mgmt/trash/page.js", 1],
