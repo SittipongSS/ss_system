@@ -51,7 +51,7 @@ import { gateBlocker } from "@/lib/service/visitGate";
 /* ⭐ ลบนัดนอกรอบ (มติเจ้าของ 24/09) — ด่าน + กล่องยืนยันตัวเดียวกับที่ API ใช้ตีกลับ */
 import { visitDeleteBlocker, visitDeletePrompt } from "@/lib/service/visitDelete";
 import { mergeGateContext, gateContextForSite } from "@/lib/service/gateContext";
-import { isDraftVisit, isLiveVisit, isOpenVisit } from "@/lib/service/visitStatus";
+import { isDraftVisit, isLiveVisit, isOpenVisit, isReservedDraft } from "@/lib/service/visitStatus";
 import { releaseSlotText, releasedToastText } from "@/lib/service/scheduleModal";
 import {
   ALL_TEAMS,
@@ -582,6 +582,22 @@ export default function ServiceSchedulePage() {
     });
     return { state: "ok", people };
   }, [queueError, queueLoadedOnce, range7.from, range7.to, todayIso, formVisit, liveForLoad, workloadAll, technicians, crewByUser, teamNames]);
+
+  /* ⭐ ก้อนภาระดิบของตารางช่าง × เวลา (`CrewSlotPicker` · P3) — รูปเดียวกับ `useCrewLoadData` (`?view=load`)
+     ⇒ โมดัลนัด/ลงคิวบนหน้านี้กับโมดัลลงคิวบนหน้าใบวาดนัดชุดเดียวกัน ด้วยสูตรเดียวกัน (`crewLoadPeople`)
+     · นัดเปิด + ร่างติดตั้งที่ TS ยืนยันแล้ว ("จองไว้" · PR-4b) จากรายการงานและสัปดาห์ที่เปิด รวมด้วย id
+     · ยังไม่เคยโหลดสำเร็จ / โหลดพัง = ไม่รู้ (ตารางไม่โชว์ศูนย์ปลอม) */
+  const slotLoad = useMemo(() => {
+    const onBoard = (v) => isLiveVisit(v) || isReservedDraft(v);
+    return {
+      status: queueError ? "error" : queueLoadedOnce ? "ok" : "idle",
+      visits: mergeById(queue.visits.filter(onBoard), boardVisits.filter(onBoard)),
+      workload: workloadAll,
+      closedSince: queueWindow(todayIso).closedSince,
+      teams: crew.teams,
+      members: crew.members,
+    };
+  }, [queueError, queueLoadedOnce, queue.visits, boardVisits, workloadAll, todayIso, crew.teams, crew.members]);
 
   /* รายชื่อในตัวเลือกเจ้าหน้าที่ — คนของทีมที่กรองอยู่ขึ้นก่อน แล้วเรียงตามชื่อ
      (ตัวเลือกเรียงตามลำดับที่ส่งให้ ไม่เรียงเอง) */
@@ -1642,6 +1658,7 @@ export default function ServiceSchedulePage() {
         /* ⚠️ ส่งภาระเมื่อรายชื่อเจ้าหน้าที่โหลดแล้วเท่านั้น — ก่อนนั้นตัวเลือกจะเข้าใจว่าคนที่ตั้งไว้
            "ไม่อยู่ในรายชื่อแล้ว" และโชว์ศูนย์เหมือนว่างจริง (ยังเป็นดรอปดาวน์เดิมจนกว่าจะโหลดเสร็จ) */
         staffLoadFor={technicians.length ? staffLoadFor : null}
+        crewLoad={technicians.length ? slotLoad : null}
         /* รายชื่อกำลังโหลด / โหลดพัง ≠ "ไม่มีใครเลย" — ตัวเลือกคนบอกคนละข้อความ */
         rosterState={rosterState}
         /* ภาระของไซต์ชุดเดียวกับตาราง — "งาน · 3 จุด · 2 แพ็ค" และ "ถ้าเลือก … x/12 จุด" */
@@ -1704,6 +1721,7 @@ export default function ServiceSchedulePage() {
         techniciansLoading={!technicians.length && (techStatus === "idle" || techStatus === "loading")}
         techniciansError={!technicians.length && techStatus === "error"}
         staffLoadFor={staffLoadFor}
+        crewLoad={slotLoad}
         today={todayIso}
         busy={dueBusy}
         onClose={() => { if (!dueBusy) setDueRow(null); }}

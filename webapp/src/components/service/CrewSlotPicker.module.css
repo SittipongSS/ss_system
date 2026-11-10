@@ -407,7 +407,7 @@
 }
 .preset {
   flex: none;
-  min-height: 40px;
+  min-height: var(--ctl-h-touch);
   padding: 0 var(--space-3-5);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);

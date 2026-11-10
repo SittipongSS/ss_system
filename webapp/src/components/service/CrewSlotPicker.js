@@ -20,7 +20,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import { useMediaQuery } from "@/lib/ui/useMediaQuery";
 import { NA, fmtDayMonth, naText } from "@/lib/format";
 import {
-  DAY_MINUTES, clickSlot, dayStripCounts, dragToSlot, slotScrollStart, slotTimes,
+  DAY_MINUTES, clickSlot, dayStripCounts, dragToSlot, slotScrollStart, slotTimes, snapDown,
 } from "@/lib/service/crewSlotGrid";
 import {
   crewSlotView, minuteAt, offscreenText, placeOf, slotPresets, slotStripDays, valueSlot,
@@ -54,12 +54,19 @@ export default function CrewSlotPicker({
   disabled = false,
   /* ข้อความที่ผู้เรียกเลื่อนเวลาให้เอง (เช่น เลื่อนตามไซต์) — บอกตรง ๆ ว่าไม่ใช่เวลาที่ขอ */
   note = "",
+  /* นัดที่เก็บได้แค่เวลาเริ่ม (ลงคิวประเมิน · `committedDueTime`) — คลิก/ลาก = เวลาเริ่ม · ไม่มีช่องเวลาจบ */
+  startOnly = false,
+  /* ป้ายของแถว "ที่ขอ" บนหัวตาราง — ใบติดตั้ง = ฝ่ายขายขอ · ใบประเมิน = ผู้ขอต้องการ · ไม่มีที่ขอ = ไม่มีแถว */
+  askedLabel = "ฝ่ายขายขอ",
+  /* ที่ยึดของตัวพาโฟกัส (`focusFieldBox`) — กลุ่มปุ่มวัน / กลุ่มแถวช่าง (ลิงก์แก้บนแผงด่าน ③ ④) */
+  dayRef = null,
+  crewRef = null,
 }) {
   const phone = useMediaQuery(PHONE_QUERY);
   const group = useId();
   const view = useMemo(() => crewSlotView({
-    technicians, load, value, asked, site, siteLoad, excludeVisitId, allowUnassigned, currentName, rosterState, currentLength,
-  }), [technicians, load, value, asked, site, siteLoad, excludeVisitId, allowUnassigned, currentName, rosterState, currentLength]);
+    technicians, load, value, asked, site, siteLoad, excludeVisitId, allowUnassigned, currentName, rosterState, currentLength, startOnly,
+  }), [technicians, load, value, asked, site, siteLoad, excludeVisitId, allowUnassigned, currentName, rosterState, currentLength, startOnly]);
   const strip = useMemo(
     () => slotStripDays(todayIso, { askedDate: asked?.date || null, value: value?.date || null }),
     [todayIso, asked, value?.date],
@@ -71,7 +78,10 @@ export default function CrewSlotPicker({
   }, [load, technicians, strip, excludeVisitId]);
 
   const emit = (patch) => onChange?.({ ...value, ...patch });
-  const pick = (assigneeId, slot) => emit({ ...(assigneeId != null ? { assigneeId } : {}), ...slotTimes(slot) });
+  const pick = (assigneeId, slot) => emit({
+    ...(assigneeId != null ? { assigneeId } : {}),
+    ...(startOnly ? { startTime: slotTimes(slot).startTime, endTime: "" } : slotTimes(slot)),
+  });
 
   if (view.roster.state !== "ready") {
     return <p className={styles.roster} role={view.roster.state === "error" ? "alert" : undefined}>{view.roster.text}</p>;
@@ -84,27 +94,27 @@ export default function CrewSlotPicker({
         {view.head.aside ? <span className={styles.aside} data-tone={view.head.asideTone || undefined}>{view.head.aside}</span> : null}
       </div>
 
-      <DayStrip days={strip.days} value={value?.date || ""} counts={counts} disabled={disabled} todayIso={todayIso} onPick={(date) => emit({ date })} />
+      <DayStrip days={strip.days} value={value?.date || ""} counts={counts} disabled={disabled} todayIso={todayIso} dayRef={dayRef} onPick={(date) => emit({ date })} />
 
       {view.notice ? <p className={styles.notice}>{view.notice}</p> : null}
 
       {phone ? (
-        <PhoneList view={view} value={value} asked={asked} site={site} currentLength={currentLength} group={group} labelledBy={labelledBy} disabled={disabled} emit={emit} pick={pick} />
+        <PhoneList view={view} value={value} asked={asked} site={site} currentLength={currentLength} startOnly={startOnly} group={group} labelledBy={labelledBy} disabled={disabled} emit={emit} pick={pick} crewRef={crewRef} />
       ) : (
-        <Board view={view} value={value} asked={asked} currentLength={currentLength} group={group} labelledBy={labelledBy} disabled={disabled} emit={emit} pick={pick} />
+        <Board view={view} value={value} asked={asked} askedLabel={askedLabel} currentLength={currentLength} startOnly={startOnly} group={group} labelledBy={labelledBy} disabled={disabled} emit={emit} pick={pick} crewRef={crewRef} />
       )}
 
-      <Summary view={view} value={value} disabled={disabled} emit={emit} note={note} />
+      <Summary view={view} value={value} startOnly={startOnly} disabled={disabled} emit={emit} note={note} />
     </div>
   );
 }
 
 /* ── แถบวัน ───────────────────────────────────────────────────────────────────────────── */
-function DayStrip({ days, value, counts, disabled, todayIso, onPick }) {
+function DayStrip({ days, value, counts, disabled, todayIso, dayRef, onPick }) {
   const [picking, setPicking] = useState(false);
   return (
     <div className={styles.strip}>
-      <div className={styles.days} role="group" aria-label="วันนัด">
+      <div className={styles.days} role="group" aria-label="วันนัด" ref={dayRef}>
         {days.map((day) => {
           const c = counts?.get(day.date) || null;
           const label = [
@@ -158,7 +168,7 @@ function DayStrip({ days, value, counts, disabled, todayIso, onPick }) {
 }
 
 /* ── จอกว้าง: ตาราง 24 ชม. ────────────────────────────────────────────────────────────── */
-function Board({ view, value, asked, currentLength, group, labelledBy, disabled, emit, pick }) {
+function Board({ view, value, asked, askedLabel, currentLength, startOnly, group, labelledBy, disabled, emit, pick, crewRef }) {
   const scrollRef = useRef(null);
   const cornerRef = useRef(null);
   const dragRef = useRef(null);
@@ -221,7 +231,8 @@ function Board({ view, value, asked, currentLength, group, labelledBy, disabled,
     dragRef.current = null;
     if (!drag) return;
     if (drag.touch && Math.abs(event.clientX - drag.x) >= DRAG_SLOP) return;
-    if (!drag.moved) pick(drag.rowId, clickSlot(drag.anchor, clickOpts));
+    /* รู้แค่เวลาเริ่ม = คลิกตรงไหนเริ่มตรงนั้น (ไม่มีความยาวที่ขอให้ยึด) */
+    if (!drag.moved) pick(drag.rowId, startOnly ? { start: snapDown(drag.anchor), end: snapDown(drag.anchor) + 30 } : clickSlot(drag.anchor, clickOpts));
   };
   const cancel = () => { dragRef.current = null; };
 
@@ -281,7 +292,7 @@ function Board({ view, value, asked, currentLength, group, labelledBy, disabled,
       </div>
 
       <div className={styles.board} ref={scrollRef} onScroll={readWindow}>
-        <div className={styles.sheet} role="radiogroup" aria-labelledby={labelledBy} aria-required={view.unassigned ? undefined : "true"} aria-invalid={view.invalid ? "true" : undefined}>
+        <div className={styles.sheet} ref={crewRef} role="radiogroup" aria-labelledby={labelledBy} aria-required={view.unassigned ? undefined : "true"} aria-invalid={view.invalid ? "true" : undefined}>
           <div className={styles.line} data-kind="head">
             <div className={styles.label} ref={cornerRef}>ช่าง · ภาระวันนั้น (เพดาน 12 จุด)</div>
             <div className={`${styles.hours} ${styles.g}`} aria-hidden="true">
@@ -296,13 +307,15 @@ function Board({ view, value, asked, currentLength, group, labelledBy, disabled,
               {view.tracks.access ? <span className={styles.trackAccess} data-col={view.tracks.access.col} data-span={view.tracks.access.span} title={view.tracks.access.text} /> : null}
             </div>
           </div>
-          <div className={styles.line} data-kind="track">
-            <div className={styles.label}>ฝ่ายขายขอ</div>
-            <div className={`${styles.track} ${styles.g}`}>
-              {view.tracks.asked ? <span className={styles.trackAsked} data-col={view.tracks.asked.col} data-span={view.tracks.asked.span}>{view.tracks.asked.text}</span> : null}
-              {!view.tracks.asked && view.tracks.askedElsewhere ? <span className={styles.trackNote} data-col={0} data-span={96}>{view.tracks.askedElsewhere}</span> : null}
+          {asked ? (
+            <div className={styles.line} data-kind="track">
+              <div className={styles.label}>{askedLabel}</div>
+              <div className={`${styles.track} ${styles.g}`}>
+                {view.tracks.asked ? <span className={styles.trackAsked} data-col={view.tracks.asked.col} data-span={view.tracks.asked.span}>{view.tracks.asked.text}</span> : null}
+                {!view.tracks.asked && view.tracks.askedElsewhere ? <span className={styles.trackNote} data-col={0} data-span={96}>{view.tracks.askedElsewhere}</span> : null}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           {view.groups.map((g) => (
             <Fragment key={g.key || "none"}>
@@ -362,11 +375,11 @@ function LoadBar({ bar }) {
 }
 
 /* ── จอมือถือ: รายชื่อ ว่างช่วงนี้ก่อน ───────────────────────────────────────────────── */
-function PhoneList({ view, value, asked, site, currentLength, group, labelledBy, disabled, emit, pick }) {
+function PhoneList({ view, value, asked, site, currentLength, startOnly, group, labelledBy, disabled, emit, pick, crewRef }) {
   /* ⭐ ปุ่มช่วงเวลา = ทางลัดของจอที่ลากไม่ได้ · "กำหนดเอง" คือช่องพิมพ์เวลาในบรรทัดเลือกแล้ว (ไม่ใช่ปุ่มแยก) */
-  const presets = slotPresets({ asked, site, currentLength });
-  const slot = valueSlot(value || {});
-  const active = presets.find((p) => slot && p.start === slot.start && p.end === slot.end)?.key || (slot ? "custom" : "");
+  const presets = slotPresets({ asked, site, currentLength, startOnly });
+  const slot = valueSlot(value || {}, { startOnly });
+  const active = presets.find((p) => slot && p.start === slot.start && (startOnly || p.end === slot.end))?.key || (slot ? "custom" : "");
   const work = view.tracks.work;
   return (
     <div className={styles.phone}>
@@ -379,7 +392,7 @@ function PhoneList({ view, value, asked, site, currentLength, group, labelledBy,
       </div>
       {active === "custom" ? <small className={styles.note}>เวลาที่พิมพ์เอง — แก้ได้ที่ช่องเริ่ม/ถึงด้านล่าง</small> : null}
 
-      <div className={styles.cards} role="radiogroup" aria-labelledby={labelledBy} aria-required={view.unassigned ? undefined : "true"} aria-invalid={view.invalid ? "true" : undefined}>
+      <div className={styles.cards} ref={crewRef} role="radiogroup" aria-labelledby={labelledBy} aria-required={view.unassigned ? undefined : "true"} aria-invalid={view.invalid ? "true" : undefined}>
         {view.phoneRows.map((row) => (
           <label key={row.id} className={styles.card} data-on={row.selected ? "1" : undefined}>
             <span className={styles.cardHead}>
@@ -424,8 +437,8 @@ function PhoneList({ view, value, asked, site, currentLength, group, labelledBy,
 }
 
 /* ── บรรทัด "เลือกแล้ว" + พิมพ์เวลาเอง + เตือน ───────────────────────────────────────── */
-function Summary({ view, value, disabled, emit, note }) {
-  const timed = Boolean(valueSlot(value || {}));
+function Summary({ view, value, startOnly, disabled, emit, note }) {
+  const timed = Boolean(valueSlot(value || {}, { startOnly }));
   return (
     <div className={styles.summaryWrap}>
       <div className={styles.summary} data-warn={view.summary.warnings.length ? "1" : undefined}>
@@ -440,10 +453,12 @@ function Summary({ view, value, disabled, emit, note }) {
             <span>เริ่ม</span>
             <TimeInput value={value?.startTime || ""} onChange={(t) => emit({ startTime: t || "" })} ariaLabel="เวลาเริ่ม" disabled={disabled} />
           </label>
-          <label>
-            <span>ถึง</span>
-            <TimeInput value={value?.endTime || ""} onChange={(t) => emit({ endTime: t || "" })} ariaLabel="เวลาจบ" disabled={disabled} />
-          </label>
+          {startOnly ? null : (
+            <label>
+              <span>ถึง</span>
+              <TimeInput value={value?.endTime || ""} onChange={(t) => emit({ endTime: t || "" })} ariaLabel="เวลาจบ" disabled={disabled} />
+            </label>
+          )}
           {timed ? (
             <button type="button" className={styles.clear} disabled={disabled} onClick={() => emit({ startTime: "", endTime: "" })}>ไม่ระบุเวลา</button>
           ) : null}
