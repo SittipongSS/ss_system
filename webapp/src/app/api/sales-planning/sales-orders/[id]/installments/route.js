@@ -1,6 +1,8 @@
 import { recordAudit } from '@/lib/audit';
 // สวิตช์ขั้นเข้าติดตั้ง (mig 0425) — ตัวอ่านเดียว · ฝั่ง server เท่านั้น
 import { installStepEnabled } from '@/lib/service/installStepFlag';
+import { moneyInLocks } from '@/lib/sales/installmentMoneyIn';
+import { businessDate } from '@/lib/businessDate';
 import { withUser, ok, fail, badRequest, forbidden, notFound, unauthorized } from '@/lib/http';
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
 import { EVIDENCE_REFS_DROPPED_TEXT, evidenceRefsDropped, sanitizeEvidenceAttachments } from '@/lib/sales/orderConfirmationDocs';
@@ -187,7 +189,14 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     if (error) return error;
     /* ยอดของงวดร่างมาจากแผนของ QT สด ๆ (B-4) — ที่เก็บไว้เป็นค่าตอนกด "เริ่มติดตาม"
        ซึ่งอาจไม่ตรงกับแผนวันนี้ · ทับตอนอ่าน ไม่ใช่เขียนทับใน DB (write-on-read) · ใบย้อนหลังไม่ทับ */
-    return ok({ installments: installmentsForScreen(order, await loadInstallments(supabase, order.id)) });
+    const installments = installmentsForScreen(order, await loadInstallments(supabase, order.id));
+    /* ⭐ ด่านของ "ชุดเงินเข้า" (แจ้งชำระ · แนบสลิปเพิ่ม · ดึงกลับ) ต่องวด สำหรับคนดูคนนี้ (รื้อ PR-5) — ตัวเลือกชุดเดียวกับ PATCH ข้างล่าง
+       (`moneyInGateOptions`) ⇒ ลิ้นชักรายงวดของหน้ารายการไม่ต้องมีใบเต็มเพื่อคิดเอง · อ่านอย่างเดียว ไม่เขียนอะไร */
+    const moneyIn = moneyInLocks(order, installments, user, {
+      todayIso: businessDate(), installStepEnabled: installStepEnabled(),
+      serviceRounds: orderHasServiceRounds(order, order.lines),
+    });
+    return ok({ installments, moneyIn });
   } catch (loadError) {
     return fail(loadError.message, 500);
   }

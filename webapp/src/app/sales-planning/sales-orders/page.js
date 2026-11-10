@@ -46,7 +46,7 @@ import {
   CollectedCell, InstallmentsCell, PayableCell, SO_MONEY_CARD_QUERY, SalesOrderMoneyCard, SalesOrderMoneyCardList,
 } from "@/components/salesPlanning/SalesOrderMoneyCells";
 import { useMediaQuery } from "@/lib/ui/useMediaQuery";
-import InstallmentDrawer from "@/components/salesPlanning/InstallmentDrawer";
+import SalesMoneyInDrawer from "@/components/salesPlanning/SalesMoneyInDrawer";
 
 /* ป้ายแถวคิวของใบ Actual รายงวดที่มีงวดยื่นขอนับ (mig 0412) — ชี้ไปปุ่ม "อนุมัติงวด" ของแถวงวดที่หน้าใบ (โมดัลของมัน = "อนุมัติงวดและนับ Actual") */
 const INSTALLMENT_REVIEW_LABEL = "งวดรออนุมัติ";
@@ -1062,9 +1062,11 @@ export default function SalesOrdersPage() {
         </ListPanel>
       </div>
     </SaWorkspace>
-    {/* ลิ้นชักรายงวด (PR-2) — ฝ่ายขายดูอย่างเดียว (มติข้อ 3) · เปลือกบัญชีไม่เห็น Actual */}
+    {/* ลิ้นชักรายงวด (PR-2 · PR-5) — เปลือกงานขายได้ "ชุดเงินเข้า" สามปุ่ม (แจ้งชำระ + สลิป · แนบสลิปเพิ่ม · ดึงกลับ · มติข้อ 3 รอบสอง) ·
+        เปลือกบัญชีดูอย่างเดียว (งานของบัญชีอยู่หน้างานบัญชี) และไม่เห็น Actual · ทำแล้วรายการโหลดใหม่ (ชิป/เก็บแล้วขยับตาม) */}
     {drawerRow ? (
-      <InstallmentDrawer row={drawerRow} focusSeq={drawer.seq} showActual={showActual} onClose={() => setDrawer(null)} />
+      <SalesMoneyInDrawer row={drawerRow} focusSeq={drawer.seq} showActual={showActual} moneyIn={!financeShell}
+        onClose={() => setDrawer(null)} onChanged={load} />
     ) : null}
     </>
   );

@@ -1,5 +1,6 @@
 "use client";
 
+import { uploadPaymentEvidenceOnce } from "@/lib/sales/paymentEvidenceUpload";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -1106,24 +1107,11 @@ export default function SalesOrderDetailPage() {
      เพราะเป็นเรื่องเดียวกัน: ตกลงซื้อด้วยเอกสารอะไร แล้วจ่ายมากี่งวดแล้ว
      ⚠️ ยังเป็นการ **ยืมมาโชว์ ไม่ย้ายข้อมูล** — `wonAttachments` เป็น audit trail
      ของการกด Won ซึ่งเป็นของ QT (mig 0138 เก็บไว้แม้ถูก unaccept) */
+  /* ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ (signed URL จาก /api/upload/session)
+     ⭐ อัปครั้งเดียวต่อไฟล์ (รื้อ PR-5 · กติกา "กดส่งซ้ำต้องไม่อัปไฟล์ซ้ำ") — โมดัลเก็บไฟล์ไว้เมื่อส่งไม่สำเร็จ · กดใหม่ใช้ ref เดิม
+       (ตัวเดียวกับลิ้นชักรายงวดของหน้ารายการใบสั่งขาย) */
   async function uploadPaymentEvidence(file) {
-    // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ (signed URL จาก /api/upload/session)
-    let ref;
-    try {
-      ref = await uploadFileBytes({
-        file, entityType: "sales_order_payment_evidence", entityId: id,
-      });
-    } catch (err) {
-      throw new Error(err?.message || `อัปโหลด ${file.name} ไม่สำเร็จ`);
-    }
-    return {
-      fileUrl: ref.url || null,
-      storageBucket: ref.storageBucket || null,
-      storagePath: ref.storagePath || null,
-      fileName: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
-    };
+    return uploadPaymentEvidenceOnce(file, { orderId: id, upload: uploadFileBytes });
   }
 
   async function startPaymentTracking() {
