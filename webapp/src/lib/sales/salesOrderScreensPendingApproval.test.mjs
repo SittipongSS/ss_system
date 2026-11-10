@@ -191,7 +191,9 @@ test('ทะเบียน SO: หัวกลุ่มแยกสองกอ
   assert.match(page, /<span className="cell-sub">ยังไม่นับเป็น Actual<\/span>/, 'ใบนิ่งคงบรรทัดเดิม');
 
   // คอลัมน์โชว์ยอดทุกสถานะ ⇒ หัวคอลัมน์และป้ายเรียงต้องไม่เรียกว่า Actual
-  assert.match(page, /<th className="num">ยอดก่อน VAT<\/th>/);
+  /* รื้อรายการ SO PR-2 (มติเจ้าของ 09/11/2026): ต่อท้าย "· เป้า" ให้แยกจากคอลัมน์ "ยอดจ่าย … ก่อน VAT" · ยังไม่เรียกว่า Actual ·
+     เปลือกบัญชีไม่มีคอลัมน์นี้ (`showActual`) */
+  assert.match(page, /\{showActual && <th className="num">ยอดก่อน VAT · เป้า<\/th>\}/);
   assert.doesNotMatch(page, /<th className="num">Actual ก่อน VAT<\/th>/);
   assert.match(page, /\{ value: "actual", label: "ยอดก่อน VAT", dir: "desc" \}/, 'value คงเดิม (ค่าที่จำไว้ของผู้ใช้)');
 });

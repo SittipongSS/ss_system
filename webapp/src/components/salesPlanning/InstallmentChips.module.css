@@ -1,0 +1,86 @@
+/* ชิปรายงวด — สีจากโทเคนความหมายกลาง (เขียว = ชำระแล้ว · ฟ้า = รอบัญชีตรวจ · แดง = เลยกำหนด/ตีกลับ · เส้นประ = ตามแผน)
+   ⚠️ ตัวอักษรบนพื้นทึบใช้ --panel-solid (สีพื้นของธีมนั้น) ไม่ใช่ขาวดิบ — ธีมมืดพื้นเขียว/แดงสว่างขึ้น ตัวขาวจะจม */
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  max-width: 190px;
+}
+.compact {
+  gap: var(--space-0-5);
+  max-width: 140px;
+}
+.item {
+  display: inline-flex;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-0-5);
+  min-width: 30px;
+  height: 22px;
+  padding: 0 var(--space-1-5);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-flat);
+  cursor: default;
+}
+button.chip {
+  cursor: pointer;
+}
+button.chip:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 2px;
+}
+.compact .chip {
+  min-width: 0;
+  width: 20px;
+  padding: 0;
+  font-size: var(--fs-2);
+}
+.seq {
+  line-height: var(--lh-flat);
+}
+.confirmed {
+  background: var(--green);
+  color: var(--panel-solid);
+}
+.reported,
+.prepaid {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.pending {
+  background: var(--panel-solid);
+  border-color: var(--border-strong);
+  color: var(--text-2);
+}
+.overdue {
+  background: var(--red-soft);
+  border-color: var(--red);
+  color: var(--red);
+}
+.rejected {
+  background: var(--red);
+  color: var(--panel-solid);
+}
+.plan {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  color: var(--text-3);
+}
+.refunded {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.lit {
+  box-shadow: 0 0 0 2px var(--panel-solid), 0 0 0 4px var(--accent-ink);
+}

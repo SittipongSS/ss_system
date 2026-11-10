@@ -197,6 +197,10 @@ test('🔴 หัวใบ + รายการ SO: กำหนดชำระ�
   const list = code(SO_LIST);
   assert.match(list, /const aDue = a\.payment\?\.nextDue \|\| null;/);
   assert.match(list, /const bDue = b\.payment\?\.nextDue \|\| null;/);
-  assert.match(list, /กำหนด \{row\.payment\?\.nextDue \? fmtDate\(row\.payment\.nextDue\) : NA\}/);
+  /* รื้อรายการ SO PR-2 (09/11): บรรทัดวันกำหนดย้ายไปเซลล์งวดชุดกลาง (`installmentStatusLine` ใน lib/sales/salesOrderMoneyText) — ยังอ่าน `payment.nextDue` ตัวเดียวกับการเรียง */
+  const cells = code('lib/sales/salesOrderMoneyText.js');
+  assert.match(list, /<InstallmentsCell row=\{row\}/);
+  assert.match(cells, /const due = payment\?\.nextDue \? ` · กำหนด \$\{fmtDate\(payment\.nextDue\)\}` : "";/);
   assert.doesNotMatch(list, /paymentDueDate/);
+  assert.doesNotMatch(cells, /paymentDueDate/);
 });
