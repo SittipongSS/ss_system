@@ -81,7 +81,10 @@ function isFullQueue(call) {
   return tools === undefined || tools === "full" || tools === true;
 }
 
-const calls = pageFiles(APP)
+/* คิวของ FN ย้ายจาก app/finance/requests/page.js เป็นแท็บของหน้างานบัญชี (รื้อ PR-4b) — ตัวคิวยังเป็นคิวเต็มหน้า แต่อยู่ในไฟล์ component */
+const EMBEDDED_QUEUE_PAGES = [path.join(WEBAPP, "src", "components", "finance", "FinanceRequestsQueue.js")];
+
+const calls = [...pageFiles(APP), ...EMBEDDED_QUEUE_PAGES]
   .map((file) => ({ file, source: fs.readFileSync(file, "utf8") }))
   .filter((page) => page.source.includes("<RequestQueuePanel"))
   .flatMap((page) => {

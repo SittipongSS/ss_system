@@ -286,8 +286,14 @@ test('ยาม: พาเนลกรองตารางและนับต
 });
 
 test('ยาม: คิวรายฝ่ายสามหน้านับแถบ/แท็บด้วยตัวตัดสินของพาเนล · สลับแท็บล้างตัวกรองตัวเลข · เมนูซ้ำเริ่มคิวใหม่', () => {
+  /* ⚠️ คิวของ FN เป็นแท็บของหน้างานบัญชีแล้ว (รื้อ PR-4b) — ตัวคิวอยู่ที่ components/finance/FinanceRequestsQueue.js ·
+     "URL เปล่า" ของแท็บนี้ = `view=requests` (ทางเด้งของเมนู `/finance/requests`) แล้วเขียน `&tab=todo` ทับ */
+  const finance = live('../../components/finance/FinanceRequestsQueue.js');
+  assert.match(finance, /const bareUrl = searchParams\.toString\(\) === "view=requests";/);
+  assert.match(finance, /if \(!bareUrl\) return;\s*setSearch\(""\); clearFilters\(\); setCountFilter\(null\);\s*router\.replace\(`\$\{FINANCE_REQUESTS_HREF\}&tab=todo`, \{ scroll: false \}\);/);
+  assert.match(finance, /export const FINANCE_REQUESTS_HREF = "\/finance\/payments\?view=requests";/);
   for (const page of ['rd', 'finance', 'service']) {
-    const src = live(`../../app/${page}/requests/page.js`);
+    const src = page === 'finance' ? finance : live(`../../app/${page}/requests/page.js`);
     assert.match(src, /countFilter: board\.countFilter, search: board\.search, filters: board\.filters, todayIso: businessDate\(\)/, page);
     assert.match(src, /const counts = queueStripCounts\(rows, queueState\);/, page);
     assert.match(src, /filterQueueRows\(deptQueueRows\(requests, \{ dept: DEPT, tab: key \}\), queueState, \{ except: "count" \}\)\.length/, page);
@@ -295,6 +301,7 @@ test('ยาม: คิวรายฝ่ายสามหน้านับแ
     assert.match(src, /labelRows=\{requests\}/, page);
     assert.doesNotMatch(src, /queueCounts\(/, page);
     // URL เปล่า (เมนู) = ล้างทุกชั้นแล้วเขียน ?tab=todo ทับ
+    if (page === 'finance') continue;
     assert.match(src, /const bareUrl = searchParams\.toString\(\) === "";/, page);
     assert.match(src, /if \(!bareUrl\) return;\s*setSearch\(""\); clearFilters\(\); setCountFilter\(null\);\s*router\.replace\(`?"?\/\w+\/requests\?tab=todo"?`?, \{ scroll: false \}\);/, page);
   }
