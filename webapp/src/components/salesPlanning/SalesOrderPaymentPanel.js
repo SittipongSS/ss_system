@@ -12,12 +12,12 @@ import GatedAction from "@/components/ui/GatedAction";
 import Textarea from "@/components/ui/Textarea";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import SearchableSelect from "@/components/ui/SearchableSelect";
-import PendingFiles from "@/components/ui/PendingFiles";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import ReadableText from "@/components/ui/ReadableText";
 import ReasonDialog from "@/components/ui/ReasonDialog";
 import Modal from "@/components/Modal";
+import { InstallmentEvidenceAddDialog, InstallmentReportDialog } from "@/components/salesPlanning/InstallmentMoneyInDialogs";
 import { TableScroll } from "@/components/ui/Table";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { DetailCard } from "@/components/ui/DetailPage";
@@ -1947,95 +1947,43 @@ export default function SalesOrderPaymentPanel({
         </>
       ) : null}
 
+      {/* ⭐ โมดัลแจ้งชำระ/แนบเพิ่ม = ชุดเดียวกับลิ้นชักรายงวดของหน้ารายการใบสั่งขาย (`InstallmentMoneyInDialogs` · รื้อ PR-5) —
+          แถวล่าสุดของตาราง (`live`) ทั้งคำบนโมดัลและตัวล็อกที่ส่งขึ้น API · ผลลัพธ์/คำมาจากตัวตัดสินของแผง (prepayMode · reportPrompt) */}
       {reportFor ? (() => {
-        /* แถวล่าสุดของตาราง (`live`) — ทั้งคำบนโมดัลและตัวล็อกที่ส่งขึ้น API มาจากแถวเดียวกัน */
         const reportRow = live(reportFor.row);
-        const prompt = reportPrompt(reportRow);
         return (
-        <Modal open onClose={() => setReportFor(null)}
-          title={prepayMode(reportRow)
-            ? (single ? "บันทึกว่าลูกค้าจ่ายแล้ว" : `บันทึกการจ่าย งวดที่ ${reportRow.seq}`)
-            : prompt
-              ? (single ? "บันทึกการรับชำระ" : `บันทึกการรับชำระ งวดที่ ${reportRow.seq}`)
-              : (single ? "แจ้งลูกค้าจ่ายแล้ว" : `แจ้งชำระ งวดที่ ${reportRow.seq}`)}
-          size="sm" dismissible={!busy}>
-          <div className={styles.dialog}>
-            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-            {/* ⭐ งวดร่างต้องบอกให้ครบว่า "เก็บไว้แล้วเกิดอะไรต่อ" — ไม่งั้นคนกดจะรอคิว
-                บัญชีที่ยังไม่มี แล้วโทรตามว่าทำไมบัญชีไม่ตรวจสักที (มติผู้ใช้ 2026-08-19)
-                ⭐ บัญชีบันทึกเอง = จบที่ "ชำระแล้ว" ทันที ไม่มีคิวตรวจ — บอกตรง ๆ แล้วตามด้วยผลลัพธ์ชุดเดียวกับโมดัลรับรอง */}
-            <p className="form-note">
-              {prepayMode(reportRow)
-                ? `ยอด ${fmtMoney(reportRow.amount)} (ยังไม่ยืนยันจนกว่าใบจะอนุมัติ) — เก็บวันจ่ายกับหลักฐานไว้ก่อน ระบบจะส่งให้บัญชีตรวจเองตอนใบสั่งขายอนุมัติ`
-                : prompt
-                  ? `ยอด ${fmtMoney(reportRow.amount)} — คุณรับรองการชำระได้เอง บันทึกแล้วงวดนี้ขึ้น “ชำระแล้ว” ทันที ไม่ผ่านคิวตรวจของบัญชี`
-                  : `ยอด ${fmtMoney(reportRow.amount)} — บัญชีจะตรวจหลักฐานก่อนรับรอง`}
-            </p>
-            {prompt ? <p className="form-note pre-line">{prompt.detail}</p> : null}
-            {/* บัญชีบันทึก = รับรองในก้าวเดียว ⇒ รายการผลลัพธ์ข้างบนขาดบรรทัดด่านเงินของนัดเมื่ออ่านรอบขายไม่ขึ้น — บอกตรงนี้ (review 29/09) */}
-            {prompt && order?.serviceTermZonesError ? <StatusNotice tone="warning">{FN_SERVICE_GATE_UNREAD_MODAL}</StatusNotice> : null}
-            <label className={styles.field}>
-              <span>วันที่ลูกค้าชำระ *</span>
-              <DateInput value={reportFor.paidOn} ariaLabel="วันที่ลูกค้าชำระ"
-                onChange={(iso) => setReportFor((f) => ({ ...f, paidOn: iso }))} />
-            </label>
-            <div className={styles.field}>
-              <span>หลักฐานการชำระ * (สลิป/ใบนำฝาก)</span>
-              <PendingFiles files={reportFor.files} disabled={!!busy} max={8}
-                onChange={(files) => setReportFor((f) => ({ ...f, files }))} />
-            </div>
-            <div className="action-bar">
-              <Button variant="ghost" onClick={() => setReportFor(null)} disabled={!!busy}>ยกเลิก</Button>
-              <Button tone="primary" disabled={!!busy || !reportFor.paidOn || !reportFor.files.length}
-                onClick={async () => {
-                  const done = await onAction(live(reportFor.row), "report", { paidOn: reportFor.paidOn, files: reportFor.files });
-                  if (done) setReportFor(null);
-                }}>
-                {busy ? "กำลังบันทึก…" : (prepayMode(reportRow) ? "บันทึกไว้" : prompt ? prompt.confirmLabel : "ส่งให้บัญชีตรวจ")}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          <InstallmentReportDialog
+            row={reportRow} single={single} prepay={prepayMode(reportRow)} prompt={reportPrompt(reportRow)}
+            gateUnreadNotice={order?.serviceTermZonesError ? FN_SERVICE_GATE_UNREAD_MODAL : null}
+            paidOn={reportFor.paidOn} files={reportFor.files}
+            onChange={(next) => setReportFor((f) => ({ ...f, ...next }))}
+            error={error} busy={!!busy}
+            onClose={() => setReportFor(null)}
+            onSubmit={async () => {
+              const done = await onAction(live(reportFor.row), "report", { paidOn: reportFor.paidOn, files: reportFor.files });
+              if (done) setReportFor(null);
+            }}
+          />
         );
       })() : null}
 
       {addEvidenceFor ? (() => {
         /* แถวล่าสุดของตาราง (`live`) — จำนวนที่แนบได้อีกกับตัวล็อกที่ส่งขึ้น API มาจากแถวเดียวกัน */
         const addRow = live(addEvidenceFor.row);
-        const have = Array.isArray(addRow.evidence) ? addRow.evidence.length : 0;
-        const room = Math.min(8, installmentEvidenceRoom(addRow));
         return (
-        <Modal open onClose={() => setAddEvidenceFor(null)}
-          title={single ? "แนบหลักฐานการชำระเพิ่ม" : `แนบหลักฐานเพิ่ม งวดที่ ${addRow.seq}`}
-          size="sm" dismissible={!busy}>
-          <div className={styles.dialog}>
-            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
-            {/* บอกตรง ๆ ว่าอะไรไม่เปลี่ยน — คนแนบสลิปรอบสองต้องไม่เข้าใจว่าเป็นการแจ้งใหม่/ส่งเข้าคิวบัญชีอีกรอบ */}
-            <p className="form-note">
-              {`ยอด ${fmtMoney(addRow.amount)} · มีหลักฐานแล้ว ${have} ไฟล์ — ไฟล์ใหม่ต่อท้ายชุดเดิม`
-                + (addRow.status === "confirmed"
-                  ? " งวดยังเป็น “ชำระแล้ว” ตามเดิม"
-                  : addRow.status === "reported"
-                    ? " งวดยังรอบัญชีตรวจตามเดิม บัญชีเห็นไฟล์ใหม่ในการตรวจรอบเดียวกัน"
-                    : " วันที่จ่ายกับสถานะงวดไม่เปลี่ยน")}
-            </p>
-            <div className={styles.field}>
-              <span>{`หลักฐานเพิ่ม * (แนบได้อีก ${room} ไฟล์)`}</span>
-              <PendingFiles files={addEvidenceFor.files} disabled={!!busy} max={room}
-                onChange={(files) => setAddEvidenceFor((f) => ({ ...f, files }))} />
-            </div>
-            <div className="action-bar">
-              <Button variant="ghost" onClick={() => setAddEvidenceFor(null)} disabled={!!busy}>ยกเลิก</Button>
-              <Button tone="primary" disabled={!!busy || !addEvidenceFor.files.length}
-                onClick={async () => {
-                  const done = await onAction(live(addEvidenceFor.row), "evidence-add", { files: addEvidenceFor.files });
-                  if (done) setAddEvidenceFor(null);
-                }}>
-                {busy ? "กำลังบันทึก…" : "แนบเพิ่ม"}
-              </Button>
-            </div>
-          </div>
-        </Modal>
+          <InstallmentEvidenceAddDialog
+            row={addRow} single={single}
+            have={Array.isArray(addRow.evidence) ? addRow.evidence.length : 0}
+            room={Math.min(8, installmentEvidenceRoom(addRow))}
+            files={addEvidenceFor.files}
+            onChange={(files) => setAddEvidenceFor((f) => ({ ...f, files }))}
+            error={error} busy={!!busy}
+            onClose={() => setAddEvidenceFor(null)}
+            onSubmit={async () => {
+              const done = await onAction(live(addEvidenceFor.row), "evidence-add", { files: addEvidenceFor.files });
+              if (done) setAddEvidenceFor(null);
+            }}
+          />
         );
       })() : null}
 

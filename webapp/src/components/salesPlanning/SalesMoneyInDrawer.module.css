@@ -1,0 +1,13 @@
+/* ปุ่มชุดเงินเข้าใต้การ์ดงวดในลิ้นชักฝ่ายขาย (รื้อ PR-5) — ชิดขวา · เหตุของปุ่มที่ดับอยู่บรรทัดล่าง · ทรงเดียวกับปุ่มของบัญชี (PR-3b) */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
+}
