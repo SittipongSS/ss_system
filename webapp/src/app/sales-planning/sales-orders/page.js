@@ -19,7 +19,7 @@ import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrou
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
-import { salesOrderPaymentNote, salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
+import { salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import {
   EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
   historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,
@@ -34,13 +34,19 @@ import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
 import {
-  EXCISE_STATUS_NOTE, HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isExciseOrder, isHistoricalOrder,
+  EXCISE_STATUS_NOTE, HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isActualOrder, isExciseOrder, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
 import StatusBadge from "@/components/ui/StatusBadge";
+import EmptyState from "@/components/ui/EmptyState";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
 import { isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
 import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
+import {
+  CollectedCell, InstallmentsCell, PayableCell, SO_MONEY_CARD_QUERY, SalesOrderMoneyCard, SalesOrderMoneyCardList,
+} from "@/components/salesPlanning/SalesOrderMoneyCells";
+import { useMediaQuery } from "@/lib/ui/useMediaQuery";
+import InstallmentDrawer from "@/components/salesPlanning/InstallmentDrawer";
 
 /* ป้ายแถวคิวของใบ Actual รายงวดที่มีงวดยื่นขอนับ (mig 0412) — ชี้ไปปุ่ม "อนุมัติงวด" ของแถวงวดที่หน้าใบ (โมดัลของมัน = "อนุมัติงวดและนับ Actual") */
 const INSTALLMENT_REVIEW_LABEL = "งวดรออนุมัติ";
@@ -78,34 +84,9 @@ function statusBadge(status, className = "") {
   return <span className={["ui-badge", className].filter(Boolean).join(" ")} style={{ color }}>{STATUS[status] || status}</span>;
 }
 
-/* เซลล์ "งวดชำระ" ของตารางรายการ — เก็บแล้ว/ทั้งหมด
-   สีบอกเรื่องเดียว: เขียว = ครบ · แดง = เลยกำหนดหรือถูกตีกลับ · จาง = ยังไม่เริ่มติดตาม
-   ⚠️ ไม่ใช้ป้าย (badge) เพราะเป็น **ตัวเลขที่คนกวาดตาเทียบข้ามแถว** ⇒ ต้องชิดขวา
-   และเป็น tabular (กฎ 3 · UI_DESIGN_SYSTEM §ป้ายในตาราง) */
-function paymentCell(payment) {
-  if (!payment) return <span className="cell-num-idle">{NA}</span>;
-  const { tracked, paid, count, complete, overdue, rejected } = payment;
-  const tone = !tracked ? "cell-num-idle"
-    : complete ? "cell-num-ok"
-      : (overdue || rejected) ? "cell-num-bad"
-        : undefined;
-  const why = !tracked ? "ยังไม่เริ่มติดตาม — จำนวนงวดมาจากแผนในใบเสนอราคา"
-    : complete ? "เก็บเงินครบทุกงวดแล้ว"
-      : overdue ? `เลยกำหนดแล้ว ${overdue} งวด`
-        : rejected ? `บัญชีตีกลับ ${rejected} งวด`
-          : "นับเฉพาะงวดที่บัญชีคอนเฟิร์มแล้ว";
-  /* ⭐ **บรรทัดสถานะใต้ตัวเลข** (มติผู้ใช้ 2026-08-13) — `0/2` เหมือนกันเป๊ะอาจเป็นได้
-     ทั้ง "ลูกค้ายังไม่จ่าย" และ "จ่ายแล้วรอบัญชีรับรอง" ซึ่งเป็นงานคนละฝ่าย
-     ⚠️ ตัวเลขยังเป็นพระเอกของช่อง (ชิดขวา tabular กวาดตาเทียบข้ามแถวได้) บรรทัดสถานะ
-     จึงเล็กและจางกว่า ไม่ใช่ป้ายเต็มตัว — ไม่งั้นคอลัมน์นี้จะแย่งสายตาจากคอลัมน์สถานะเอกสาร */
-  const note = salesOrderPaymentNote(payment);
-  return (
-    <>
-      <span className={tone} title={why}>{paid}/{count}</span>
-      {note ? <span className={`cell-sub ${NOTE_TONE[note.tone] || ""}`.trim()}>{note.label}</span> : null}
-    </>
-  );
-}
+/* เซลล์ "งวดชำระ" เดิม (`paymentCell` · เก็บแล้ว/ทั้งหมด + บรรทัดสถานะ) ถูกแทนด้วยเซลล์เงินชุดกลาง
+   `components/salesPlanning/SalesOrderMoneyCells` (รื้อรายการ SO + บัญชี PR-2 · มติเจ้าของ 09/11/2026) —
+   บรรทัดสถานะยังมาจาก `salesOrderPaymentNote` ตัวเดิม (installmentStatusLine) · ตัวนับ x/y ยังเป็น `payment` ตัวเดิม */
 
 /* ── ใบกำกับภาษีของใบ (mig 0348 · มติผู้ใช้ 2026-09-07 รอบสอง) ────────────
    ⭐ **คอลัมน์ของตัวเอง ไม่ใช่บรรทัดใต้ตัวเลขงวด** — เงินกับเอกสารเป็นคนละแกนและ
@@ -181,8 +162,6 @@ function roundsCell(service) {
   );
 }
 
-// โทนของบรรทัดสถานะการชำระ — ใช้คลาสกลางชุดเดียวกับตัวเลขในตาราง
-const NOTE_TONE = { danger: "cell-num-bad", success: "cell-num-ok", warning: "", idle: "" };
 
 /* ── แถวคิว "งานบริการ (ใบเดิม)" (mig 0392 · PR-A · D26) ─────────────────────────────
    ใบที่อนุมัติไปก่อนมีการตั้งงานบริการรายบรรทัด ⇒ ฝ่ายขายตั้งย้อนหลังแล้วยื่นให้ผู้จัดการฝ่ายขายตรวจ
@@ -470,7 +449,6 @@ export default function SalesOrdersPage() {
   /* ⚠️ colSpan ต้องเดินตามจำนวนคอลัมน์จริง ไม่ใช่เลข 4 ที่พิมพ์ค้างไว้ — หัวกลุ่ม/แถวว่าง
      ที่ colSpan สั้นกว่าตารางจะเปิดช่องว่างท้ายแถวให้เห็นเลย */
   const serviceView = lineView === "SERVICE";
-  const columnCount = serviceView ? 8 : 5;
 
   /* ชุดเอกสาร QT · SO · การชำระ (ZIP) โหลดที่รายงานยอดขายที่เดียว (มติเจ้าของ 03/11 — เดิมมีช่องติ๊ก + ปุ่มที่นี่ด้วย · 27/10)
      ⇒ ทะเบียนนี้ไม่มีช่องติ๊กแล้ว (ช่องติ๊กมีไว้เลือกใบให้ปุ่มนั้นอย่างเดียว) */
@@ -495,6 +473,17 @@ export default function SalesOrdersPage() {
      ⚠️ ปุ่มยังเป็น "เปิดใบ" ทั้งสองโหมด — ด่านตรวจ/อนุมัติอยู่ที่หน้าเอกสารที่เดียว
      (กฎความเป็นเจ้าของโมดูล ข้อ 3: "ด่านเดียว ไม่ใช่จอเดียว") */
   const financeShell = useShellSystem(usePathname()) === "finance";
+  /* ⭐ คอลัมน์ (รื้อรายการ SO + บัญชี PR-2 · มติเจ้าของ 09/11): เอกสาร · ลูกค้า · [Actual] · ยอดจ่าย · เก็บแล้ว · งวด · ใบกำกับ
+       + มุมมองบริการ: สัญญา · จ่ายถึง (ช่องเดียว) · รอบที่เดิน
+     · **Actual ขึ้นเฉพาะเปลือกงานขาย** — มติ "บัญชีไม่สนใจ Actual · สนใจยอดจ่าย" ⇒ เปลือกบัญชีไม่มีคอลัมน์นี้
+     ⚠️ colSpan ของหัวกลุ่ม/แถวว่างเดินตามตัวนี้ */
+  const showActual = !financeShell;
+  const columnCount = 6 + (showActual ? 1 : 0) + (serviceView ? 2 : 0);
+  /* ลิ้นชักรายงวด — เปิดจากชิปงวดบนแถว (มติข้อ 3: ฝ่ายขายดูอย่างเดียว) · จำแถวด้วย id แล้วหาแถวสดจาก `rows` ทุกเรนเดอร์ */
+  const [drawer, setDrawer] = useState(null);
+  /* จอแคบ = การ์ดรายใบ (PR-2) — ตารางเดิมเลื่อนข้างจนช่องเงินอยู่นอกจอบนมือถือ · เส้นเดียวกับ CSS (680px) */
+  const narrow = useMediaQuery(SO_MONEY_CARD_QUERY);
+  const drawerRow = drawer ? rows.find((row) => row.id === drawer.id) || null : null;
   /* ⭐ เปลือกงานขายรวมแถว "งานบริการ (ใบเดิม)" ที่รอฉันตรวจ (mig 0392 · D26) — ธงจาก server ผ่านตัวตัดสินตัวเดียว
      (`serviceBackfillAwaitingReview`: ค่า 'submitted' ค้างบนใบที่ย้อนอนุมัติ/ออก Rev./ยกเลิกแล้วไม่ขึ้น) และตัดคนยื่นเอง
      ยกเว้น admin · ⚠️ ไม่ชนกับ `_awaitingMyApproval` บนแถวเดียวกัน (อันนั้น pending_approval · อันนี้ approved) */
@@ -552,6 +541,9 @@ export default function SalesOrdersPage() {
      แท็บเล็ต เลื่อนแนวนอนไม่ติด ดีกว่าข้อมูลหาย") แล้วลดคอลัมน์แทน:
      "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (วันครบกำหนดเป็นคุณสมบัติของงวด ไม่ใช่แกนแยก)
      ⚠️ ตารางคิวคำร้องถอดกฎเดียวกันไปพร้อมกัน — สองตารางต้องอ่านเหมือนกัน */
+  /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติ โหมดจัดกลุ่ม และการ์ดจอแคบ (`narrow` · รื้อ PR-2) ────────────
+     ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนา (AGENTS.md) — แถวตารางกับการ์ดใช้ชิ้นเดียวกัน (docRest · customer · actual + เซลล์เงินกลาง)
+     ⚠️ ลิงก์เลขที่ใบ `queueHref(row)` ตัวเดียวกับ href ของ DetailRow (ด่าน ROW_MIRROR) · การ์ดไม่ใช่ตัวกด ทางเข้าคือลิงก์ตัวเดียวกันบนหัวการ์ด */
   const orderRow = (row) => {
     const track = salesOrderListTrack(row);
     const amountKind = salesOrderAmountKind(row);
@@ -562,10 +554,9 @@ export default function SalesOrdersPage() {
     const oldRefs = historical ? historicalRefsOf(row).join(" · ") : "";
     /* ใบค่าสรรพสามิต (mig 0414) — ไม่มีดีล ⇒ บรรทัดรองของลูกค้าเป็นชื่อดีลของ SO ต้นทาง (`sourceDeal` จาก API) */
     const excise = isExciseOrder(row);
-    return (
-                <DetailRow key={row.id} href={queueHref(row)} className="premium-row">
-                  <td>
-                    <Link prefetch={false} href={queueHref(row)} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
+    const docRest = (
+                  <>
+                  <>
                     {/* อ้างอิง QT อยู่บรรทัดรอง — เป็น "ที่มาของใบ" ไม่ใช่ตัวใบเอง
                         เอกสารฝั่งลูกค้า (PO/สัญญา) ต่อท้ายเมื่อมี · ยาวได้ 200 ตัวอักษร
                         จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
@@ -606,8 +597,12 @@ export default function SalesOrdersPage() {
                         <span>{row.exciseStage.text}</span>
                       </span>
                     ) : null}
-                  </td>
-                  <td>
+                  </>
+                  </>
+    );
+    const customer = (
+                  <>
+                  <>
                     {/* AR บน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทรงเดียวกับตาราง QT) */}
                     {row.customerArCode ? <span className="ar-code ar-code-block">{row.customerArCode}</span> : null}
                     {naText(row.customerName)}
@@ -617,7 +612,56 @@ export default function SalesOrdersPage() {
                     <span className="cell-sub">
                       {historical ? `AE ${naText(row.deal?.ownerName)}` : excise ? `ค่าสรรพสามิต · ${naText(row.sourceDeal?.title)}` : naText(row.deal?.title)}
                     </span>
+                  </>
+                  </>
+    );
+    const actual = (
+                  <>
+                  <>
+                    {/* ⭐ ใบที่ไม่นับ Actual โดยชนิด (ใบย้อนหลัง · ใบค่าสรรพสามิต — `isActualOrder`) = ขีด + เหตุ (มติเจ้าของ 09/11
+                        "Actual มีทั้งมียอดและไม่มียอด") · ร่าง/ตีกลับ/ยกเลิกยังโชว์ยอดหรี่แบบเดิม */}
+                    {isActualOrder(row) ? fmtMoney(row.actualAmount) : NA}
+                    {!isActualOrder(row) ? (
+                      <span className="cell-sub">{historical ? "ใบย้อนหลัง" : "ใบค่าสรรพสามิต"} · ไม่นับ Actual</span>
+                    ) : (
+                      <>{amountKind === "actual"
+                        ? <InstallmentActualSubLine order={row} />
+                        : amountKind === "pending_approval"
+                          ? (
+                            <span className="cell-sub">
+                              <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span> · ยังไม่นับ Actual
+                            </span>
+                          )
+                          : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}</>
+                    )}
+                  </>
+                  </>
+    );
+    if (narrow) {
+      return (
+        <SalesOrderMoneyCard
+          key={row.id}
+          row={row}
+          head={(
+            <>
+              <Link prefetch={false} href={queueHref(row)} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
+              {docRest}
+            </>
+          )}
+          customer={customer}
+          actual={showActual ? <span className={amountKind === "excluded" ? "cell-num-idle" : undefined}>{actual}</span> : null}
+          onOpen={(seq) => setDrawer({ id: row.id, seq })}
+          invoice={taxInvoiceCell(row.payment)}
+        />
+      );
+    }
+    return (
+                <DetailRow key={row.id} href={queueHref(row)} className="premium-row">
+                  <td>
+                    <Link prefetch={false} href={queueHref(row)} className="linklike mono"><strong>{row.orderNumber}</strong></Link>
+                    {docRest}
                   </td>
+                  <td>{customer}</td>
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
                       ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง
                       ⭐ **สามทาง** (มติผู้ใช้ 2026-09-11 · mig 0353) ผ่าน `salesOrderAmountKind`:
@@ -625,46 +669,32 @@ export default function SalesOrdersPage() {
                         รออนุมัติ   = ยอดปกติ + บรรทัดรอง "รออนุมัติ · ยังไม่นับ Actual" (คำเป็น amber)
                                       — ยื่นแล้ว เป็นยอดที่กำลังจะเข้า ไม่ใช่ใบนิ่ง ⇒ ไม่หรี่
                         ที่เหลือ    = หรี่ + "ยังไม่นับเป็น Actual" เหมือนเดิม */}
-                  <td className={`num mono ${amountKind === "excluded" ? "cell-num-idle" : ""}`.trim()}>
-                    {fmtMoney(row.actualAmount)}
-                    {amountKind === "actual"
-                      ? <InstallmentActualSubLine order={row} />
-                      : amountKind === "pending_approval"
-                        ? (
-                          <span className="cell-sub">
-                            <span className="so-pending-approval-tag">{PENDING_APPROVAL_LABEL}</span> · ยังไม่นับ Actual
-                          </span>
-                        )
-                        : <span className="cell-sub">ยังไม่นับเป็น Actual</span>}
-                  </td>
-                  {/* ⭐ งวดชำระ — นับเฉพาะงวดที่ **บัญชีคอนเฟิร์ม** (กฎเดียวกับทั้งระบบ)
-                      บรรทัดรองบอกเรื่องที่ด่วนที่สุดเรื่องเดียว (ดู salesOrderPaymentNote) */}
-                  {/* ⚠️ `paymentCell` วาดบรรทัดสถานะให้ในตัวแล้ว — เติมซ้ำที่นี่จะได้
-                      คำเดียวกันสองบรรทัด (เจอตอนกดดูรอบแรก) */}
-                  <td className="num mono">
-                    {paymentCell(row.payment)}
-                    {/* วันครบกำหนดเป็นบรรทัดรองของงวด — แดงเมื่อเลยกำหนด (โทนเดิม)
-                        ⭐ กำหนดชำระถัดไปจากงวด (`payment.nextDue`) ไม่ใช่ `paymentDueDate` ค่าตายของใบ (กำหนดวางบิลรอบสอง 26/09)
-                        · ไม่มีงวดค้างที่มีวัน / ยังไม่เริ่มติดตาม = ขีด */}
-                    <span className={`cell-sub ${row.payment?.overdue ? "cell-num-bad" : ""}`.trim()}>
-                      กำหนด {row.payment?.nextDue ? fmtDate(row.payment.nextDue) : NA}
-                    </span>
-                  </td>
+                  {showActual && (
+                  <td className={`num mono ${amountKind === "excluded" ? "cell-num-idle" : ""}`.trim()}>{actual}</td>
+                  )}
+                  {/* ⭐ การเก็บเงินสามช่อง (มติเจ้าของ 09/11) — ตัวเลขจากก้อน `money` ของ server (salesOrderMoneyCell) · จอไม่บวกเงินเอง
+                      ยอดจ่าย = รวม VAT บน · ก่อน VAT ล่าง (ช่องเดียว · มติ "กว้างจนต้องเลื่อน รวมเป็นคอลัมน์เดียว")
+                      เก็บแล้ว = บัญชีรับรองเท่านั้น (มติข้อ 1) · รอบัญชีตรวจแยกบรรทัดฟ้า · ใบยกเลิกที่ยังมีเงิน = เงินค้าง
+                      งวด = จ่ายแล้ว x/y (ตัวนับเดิม `payment`) + ชิปรายงวด (กด = ลิ้นชัก) + งวดถัดไป/เลยกำหนด n วัน */}
+                  <td className="num mono"><PayableCell row={row} /></td>
+                  <td className="num mono"><CollectedCell row={row} /></td>
+                  <td><InstallmentsCell row={row} onOpen={(seq) => setDrawer({ id: row.id, seq })} /></td>
                   <td className="num mono">{taxInvoiceCell(row.payment)}</td>
                   {/* ⭐ สามคอลัมน์ท้ายขึ้นเฉพาะมุมมองสายบริการ — คำถามที่คอลัมน์ชุดเดิม
                       ตอบไม่ได้: สัญญาผูกหรือยัง · เงินครอบบริการถึงเมื่อไร · เดินไปกี่รอบ */}
-                  {serviceView && <td>{serviceContractCell(row.service)}</td>}
+                  {/* สัญญา + จ่ายถึง ช่องเดียว (PR-2) — มุมมองบริการต้องไม่ดันตารางให้เลื่อนข้าง */}
                   {serviceView && (
-                    <td className="num mono">
-                      {row.service?.paidThrough
-                        ? fmtDate(row.service.paidThrough)
-                        : <span className="cell-num-idle">{NA}</span>}
+                    <td>
+                      {serviceContractCell(row.service)}
+                      <span className="cell-sub">จ่ายถึง {row.service?.paidThrough ? fmtDate(row.service.paidThrough) : NA}</span>
                     </td>
                   )}
                   {serviceView && <td className="num mono">{roundsCell(row.service)}</td>}
                 </DetailRow>
     );
   };
+  /* การ์ดจอแคบ = `orderRow` ตัวเดิม (สลับรูปตาม `narrow`) — ชื่อแยกไว้ให้ที่เรียกในกล่องการ์ดอ่านออก */
+  const orderCard = orderRow;
 
   if (!canView) return <SaWorkspace icon={<ClipboardList size={22} />} title="ใบสั่งขาย"><div className="glass-panel" style={{ padding: 16 }}>ไม่มีสิทธิ์เข้าถึงหน้านี้</div></SaWorkspace>;
 
@@ -908,93 +938,116 @@ export default function SalesOrdersPage() {
                 · "สถานะ" ป้ายเดียวบอกได้แค่จุดปัจจุบัน ⇒ แทนด้วย **รางสามขั้น**
               ⚠️ รางไม่ใช่การตกแต่ง — สามขั้นคือสามแกนคนละคอลัมน์ใน DB ที่เดินไม่พร้อมกัน
               (`status` · `financeStatus` · งวดชำระ) ตรรกะอยู่ใน `salesOrderListTrack` พร้อมเทสต์ */}
-          <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1220 : 980} aria-busy={loading}>
-            <table className="w-full text-sm">
-              {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
-                  ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
-                  ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
-              <thead><tr>
-                <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
-                {/* ⭐ "ยอดก่อน VAT" ไม่ใช่ "Actual ก่อน VAT" (มติผู้ใช้ 2026-09-11) — คอลัมน์นี้
-                    โชว์ยอดของใบทุกสถานะ (รออนุมัติ/ร่าง/ตีกลับ) · แถวไหนเป็น Actual หรือไม่
-                    บอกด้วยบรรทัดรองในเซลล์ ส่วน Actual รวมอยู่ที่การ์ดบนหัวหน้า */}
-                <th className="num">ยอดก่อน VAT</th><th className="num">งวดชำระ · กำหนด</th>
-                {/* ใบกำกับภาษี (mig 0348) — คนละแกนกับเงิน ⇒ คอลัมน์ของตัวเอง
-                    ⭐ **หัวคอลัมน์บอกตัวส่วน** (มติผู้ใช้ 2026-09-08) — ตัวเลขในช่องนี้กับ
-                    ช่อง "งวดชำระ" ข้าง ๆ เป็นเศษส่วนคนละฐาน (`1/2` กับ `0/1` บนแถวเดียวกัน
-                    อ่านแล้วสะดุดทุกครั้ง) · ที่นี่นับจาก **งวดที่ลูกค้าจ่ายแล้ว** ไม่ใช่
-                    งวดทั้งใบ เพราะงวดที่ยังไม่จ่ายยังไม่ถึงคิวออกใบ
-                    ⚠️ เขียนเป็น `ใบกำกับ / งวดที่จ่าย` ให้ขีดทับตรงกับรูปของค่าในช่อง
-                    (ตัวเศษ/ตัวส่วน) ไม่ใช้ `·` แบบคอลัมน์ข้าง ๆ ซึ่งแปลว่า "สองเรื่องในช่องเดียว" */}
-                <th className="num">ใบกำกับ / งวดที่จ่าย</th>
-                {serviceView && <th>สัญญา</th>}
-                {serviceView && <th className="num">จ่ายถึง</th>}
-                {serviceView && <th className="num">รอบที่เดิน</th>}
-              </tr></thead>
-              <tbody>
-                {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวใบข้างในเป็น `orderRow` ตัวเดียว
-                    กับโหมดปกติ — ห้ามก๊อปสองสำเนา (AGENTS.md) */}
-                {buckets ? buckets.map((bucket) => {
-                  const bucketCollapsed = collapsed.has(bucket.key);
-                  /* ⭐ ยอดหัวกลุ่มสองกอง (มติผู้ใช้ 2026-09-11 · mig 0353) — Actual = `bucket.total`
-                     (weight ข้างบน) · รออนุมัติคิดจาก `bucket.items` ชุดเดียวกับแถวที่เห็น
-                     ⇒ ถัง "รออนุมัติ" ของโหมดจัดตามสถานะไม่ขึ้น ฿0.00 เฉย ๆ อีก
-                     ไม่มีใบรออนุมัติ = หน้าตาเดิมทุก px · มีแต่ใบรออนุมัติ = ไม่พิมพ์ "Actual ฿0.00" นำ */
-                  /* ⚠️ "· n ใบ" ของกองรออนุมัติ = ใบ pending_approval ล้วน (L11c) · งวดที่ยื่นของใบรายงวดที่อนุมัติแล้วบอกแยกเป็น "งวด"
-                     (review รอบสาม 26/10 — เคยบวกงวดเข้า "ใบ" ของถัง "อนุมัติแล้ว") */
-                  const pendingOfBucket = splitSalesOrderAmounts(bucket.items);
-                  const bucketInstNote = pendingOfBucket.instPendingCount
-                    ? ` · ${instPendingNote(pendingOfBucket.instPendingCount, pendingOfBucket.instPendingAmount)}` : "";
-                  /* ⭐ ใบย้อนหลังที่รออนุมัติในกลุ่ม (ตรวจตัวเลข L11c) — ป้าย "n ใบ" นับรวม แต่ยอดรออนุมัติไม่นับ ⇒ บอกแยก
-                     "(ไม่นับยอด)" · มีใบย้อนหลังด้วย = บอก "· 1 ใบ" ของกองรออนุมัติแม้มีใบเดียว (ชิ้นกลางโชว์เลขใบเมื่อเกิน 1) */
-                  const historicalPending = historicalPendingCount(bucket.items);
-                  const bucketTotal = pendingOfBucket.pendingOrderCount
-                    ? (
-                      <>
-                        {bucket.total > 0 ? `Actual ${fmtMoney(bucket.total)}` : null}
-                        <PendingApprovalAmount
-                          inline
-                          amount={pendingOfBucket.pendingOrderAmount}
-                          count={pendingOfBucket.pendingOrderCount}
-                          prefix={bucket.total > 0 ? " · " : ""}
+          {narrow ? (
+            <SalesOrderMoneyCardList busy={loading}>
+              {/* โหมดจัดกลุ่มบนจอแคบ: หัวกลุ่มเป็นแถบเดียวกับตาราง (TableGroupRow ใช้ใน <table> เท่านั้น) — ป้าย/ยอดชุดเดียวกับหัวกลุ่มของตาราง */}
+              {buckets ? buckets.map((bucket) => (
+                <Fragment key={bucket.key}>
+                  <div className="ui-group-line">
+                    <button type="button" className="ui-group-toggle" onClick={() => toggleBucket(bucket.key)} aria-expanded={!collapsed.has(bucket.key)}>
+                      <strong>{bucket.label}</strong> <span className="cell-num-idle">{bucket.count} ใบ</span>
+                    </button>
+                  </div>
+                  {!collapsed.has(bucket.key) && bucket.items.map(orderCard)}
+                </Fragment>
+              )) : pageRows.map(orderCard)}
+              {!filtered.length && !loading && (
+                <EmptyState plain>{serviceView ? "ยังไม่มีใบสั่งขายสายบริการ" : "ยังไม่มีใบสั่งขาย"}</EmptyState>
+              )}
+            </SalesOrderMoneyCardList>
+          ) : (
+            <TableScroll surface="embedded" cells="stacked" minWidth={serviceView ? 1100 : 900} aria-busy={loading}>
+              <table className="w-full text-sm">
+                {/* ⚠️ **4 คอลัมน์** — "กำหนดชำระ" ยุบเข้าเซลล์ "งวดชำระ" (มติผู้ใช้ 2026-08-18)
+                    ทั้งคู่เป็นเรื่องการชำระของใบเดียวกัน และวันครบกำหนดคือคุณสมบัติของงวด
+                    ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
+                <thead><tr>
+                  <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
+                  {/* ⭐ "ยอดก่อน VAT" ไม่ใช่ "Actual ก่อน VAT" (มติผู้ใช้ 2026-09-11) — คอลัมน์นี้
+                      โชว์ยอดของใบทุกสถานะ (รออนุมัติ/ร่าง/ตีกลับ) · แถวไหนเป็น Actual หรือไม่
+                      บอกด้วยบรรทัดรองในเซลล์ ส่วน Actual รวมอยู่ที่การ์ดบนหัวหน้า */}
+                  {/* ⭐ "ยอดก่อน VAT · เป้า" (รื้อ PR-2 · มติเจ้าของ 09/11/2026: Actual ใช้คิดเป้า/วางแผน · ยอดจ่าย = เงินที่ต้องตามเก็บ)
+                      · ยังไม่เรียกหัวว่า Actual ตามมติ 2026-09-11 — คอลัมน์โชว์ยอดทุกสถานะ แถวที่ไม่นับบอกเองในบรรทัดรอง
+                      · คำ "เป้า" แยกคอลัมน์นี้ออกจาก "ยอดจ่าย … ก่อน VAT" ข้าง ๆ (ใบทั่วไปเลขเท่ากัน แต่คนละเรื่อง)
+                      · เปลือกบัญชีไม่มีคอลัมน์นี้ (`showActual` · มติ "บัญชีไม่สนใจ Actual") */}
+                  {showActual && <th className="num">ยอดก่อน VAT · เป้า</th>}
+                  <th className="num">ยอดจ่าย รวม · ก่อน VAT</th><th className="num">เก็บแล้ว</th><th>งวด</th>
+                  {/* ใบกำกับภาษี (mig 0348) — คนละแกนกับเงิน ⇒ คอลัมน์ของตัวเอง
+                      ⭐ **หัวคอลัมน์บอกตัวส่วน** (มติผู้ใช้ 2026-09-08) — ตัวเลขในช่องนี้กับ
+                      ช่อง "งวดชำระ" ข้าง ๆ เป็นเศษส่วนคนละฐาน (`1/2` กับ `0/1` บนแถวเดียวกัน
+                      อ่านแล้วสะดุดทุกครั้ง) · ที่นี่นับจาก **งวดที่ลูกค้าจ่ายแล้ว** ไม่ใช่
+                      งวดทั้งใบ เพราะงวดที่ยังไม่จ่ายยังไม่ถึงคิวออกใบ
+                      ⚠️ เขียนเป็น `ใบกำกับ / งวดที่จ่าย` ให้ขีดทับตรงกับรูปของค่าในช่อง
+                      (ตัวเศษ/ตัวส่วน) ไม่ใช้ `·` แบบคอลัมน์ข้าง ๆ ซึ่งแปลว่า "สองเรื่องในช่องเดียว" */}
+                  <th className="num">ใบกำกับ / งวดที่จ่าย</th>
+                  {serviceView && <th>สัญญา · จ่ายถึง</th>}
+                  {serviceView && <th className="num">รอบที่เดิน</th>}
+                </tr></thead>
+                <tbody>
+                  {/* โหมดจัดกลุ่ม: หัวกลุ่มเต็มแถว แถวใบข้างในเป็น `orderRow` ตัวเดียว
+                      กับโหมดปกติ — ห้ามก๊อปสองสำเนา (AGENTS.md) */}
+                  {buckets ? buckets.map((bucket) => {
+                    const bucketCollapsed = collapsed.has(bucket.key);
+                    /* ⭐ ยอดหัวกลุ่มสองกอง (มติผู้ใช้ 2026-09-11 · mig 0353) — Actual = `bucket.total`
+                       (weight ข้างบน) · รออนุมัติคิดจาก `bucket.items` ชุดเดียวกับแถวที่เห็น
+                       ⇒ ถัง "รออนุมัติ" ของโหมดจัดตามสถานะไม่ขึ้น ฿0.00 เฉย ๆ อีก
+                       ไม่มีใบรออนุมัติ = หน้าตาเดิมทุก px · มีแต่ใบรออนุมัติ = ไม่พิมพ์ "Actual ฿0.00" นำ */
+                    /* ⚠️ "· n ใบ" ของกองรออนุมัติ = ใบ pending_approval ล้วน (L11c) · งวดที่ยื่นของใบรายงวดที่อนุมัติแล้วบอกแยกเป็น "งวด"
+                       (review รอบสาม 26/10 — เคยบวกงวดเข้า "ใบ" ของถัง "อนุมัติแล้ว") */
+                    const pendingOfBucket = splitSalesOrderAmounts(bucket.items);
+                    const bucketInstNote = pendingOfBucket.instPendingCount
+                      ? ` · ${instPendingNote(pendingOfBucket.instPendingCount, pendingOfBucket.instPendingAmount)}` : "";
+                    /* ⭐ ใบย้อนหลังที่รออนุมัติในกลุ่ม (ตรวจตัวเลข L11c) — ป้าย "n ใบ" นับรวม แต่ยอดรออนุมัติไม่นับ ⇒ บอกแยก
+                       "(ไม่นับยอด)" · มีใบย้อนหลังด้วย = บอก "· 1 ใบ" ของกองรออนุมัติแม้มีใบเดียว (ชิ้นกลางโชว์เลขใบเมื่อเกิน 1) */
+                    const historicalPending = historicalPendingCount(bucket.items);
+                    const bucketTotal = pendingOfBucket.pendingOrderCount
+                      ? (
+                        <>
+                          {bucket.total > 0 ? `Actual ${fmtMoney(bucket.total)}` : null}
+                          <PendingApprovalAmount
+                            inline
+                            amount={pendingOfBucket.pendingOrderAmount}
+                            count={pendingOfBucket.pendingOrderCount}
+                            prefix={bucket.total > 0 ? " · " : ""}
+                          />
+                          {/* คลาสเดียวกับ "· n ใบ" ของชิ้นกลาง (fs-5 · text-3) — ใบเดียวต้องหน้าตาเดียวกับหลายใบ (รีวิว L11c) */}
+                          {historicalPending && pendingOfBucket.pendingOrderCount === 1
+                            ? <span className="so-pending-approval"><span className="so-pending-approval-count"> · 1 ใบ</span></span>
+                            : null}
+                          {bucketInstNote || null}
+                          {historicalPendingNote(historicalPending) || null}
+                        </>
+                      )
+                      : `${fmtMoney(bucket.total)}${bucketInstNote}${historicalPendingNote(historicalPending)}`;
+                    return (
+                      <Fragment key={bucket.key}>
+                        <TableGroupRow
+                          colSpan={columnCount}
+                          label={bucket.label}
+                          sub={bucket.sub}
+                          badge={`${bucket.count} ใบ`}
+                          total={bucketTotal}
+                          totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual · ใบย้อนหลังไม่นับยอด"
+                          collapsed={bucketCollapsed}
+                          onToggle={() => toggleBucket(bucket.key)}
                         />
-                        {/* คลาสเดียวกับ "· n ใบ" ของชิ้นกลาง (fs-5 · text-3) — ใบเดียวต้องหน้าตาเดียวกับหลายใบ (รีวิว L11c) */}
-                        {historicalPending && pendingOfBucket.pendingOrderCount === 1
-                          ? <span className="so-pending-approval"><span className="so-pending-approval-count"> · 1 ใบ</span></span>
-                          : null}
-                        {bucketInstNote || null}
-                        {historicalPendingNote(historicalPending) || null}
-                      </>
-                    )
-                    : `${fmtMoney(bucket.total)}${bucketInstNote}${historicalPendingNote(historicalPending)}`;
-                  return (
-                    <Fragment key={bucket.key}>
-                      <TableGroupRow
-                        colSpan={columnCount}
-                        label={bucket.label}
-                        sub={bucket.sub}
-                        badge={`${bucket.count} ใบ`}
-                        total={bucketTotal}
-                        totalTitle="Actual รวมของกลุ่ม (นับเฉพาะใบที่อนุมัติแล้ว) · ยอดรออนุมัติแยกไว้ ไม่นับเป็น Actual · ใบย้อนหลังไม่นับยอด"
-                        collapsed={bucketCollapsed}
-                        onToggle={() => toggleBucket(bucket.key)}
-                      />
-                      {!bucketCollapsed && bucket.items.map(orderRow)}
-                    </Fragment>
-                  );
-                }) : pageRows.map(orderRow)}
-                {!filtered.length && !loading && (
-                  <TableEmpty
-                    colSpan={columnCount}
-                    title={serviceView ? "ยังไม่มีใบสั่งขายสายบริการ" : "ยังไม่มีใบสั่งขาย"}
-                    description={serviceView
-                      ? "ใบจะขึ้นที่นี่เมื่อดีล/โครงการต้นทางเป็นสายบริการ"
-                      : "เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ"}
-                  />
-                )}
-              </tbody>
-            </table>
-          </TableScroll>
+                        {!bucketCollapsed && bucket.items.map(orderRow)}
+                      </Fragment>
+                    );
+                  }) : pageRows.map(orderRow)}
+                  {!filtered.length && !loading && (
+                    <TableEmpty
+                      colSpan={columnCount}
+                      title={serviceView ? "ยังไม่มีใบสั่งขายสายบริการ" : "ยังไม่มีใบสั่งขาย"}
+                      description={serviceView
+                        ? "ใบจะขึ้นที่นี่เมื่อดีล/โครงการต้นทางเป็นสายบริการ"
+                        : "เปิด QT ที่ Won แล้วกดสร้าง SO เพื่อตรวจสอบและยื่นอนุมัติ"}
+                    />
+                  )}
+                </tbody>
+              </table>
+            </TableScroll>
+          )}
           {/* โหมดจัดกลุ่มไม่แบ่งหน้า — แบ่งหน้าจะหั่นกลุ่มคาหน้าแล้วยอดหัวกลุ่มไม่ตรงกับแถวที่เห็น */}
           {filtered.length > 0 && !buckets && (
             <Pager
@@ -1009,6 +1062,10 @@ export default function SalesOrdersPage() {
         </ListPanel>
       </div>
     </SaWorkspace>
+    {/* ลิ้นชักรายงวด (PR-2) — ฝ่ายขายดูอย่างเดียว (มติข้อ 3) · เปลือกบัญชีไม่เห็น Actual */}
+    {drawerRow ? (
+      <InstallmentDrawer row={drawerRow} focusSeq={drawer.seq} showActual={showActual} onClose={() => setDrawer(null)} />
+    ) : null}
     </>
   );
 }

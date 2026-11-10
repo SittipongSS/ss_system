@@ -108,27 +108,7 @@
   }
 }
 
-/* แถบสัดส่วนเก็บเงิน — อ่าน "ไปถึงไหนแล้ว" ด้วยตาเดียวโดยไม่ต้องเทียบเลขสองตัว
-   ⚠️ ประดับล้วน (aria-hidden) ตัวเลขจริงอยู่บรรทัดบนแล้ว */
-.mbar {
-  appearance: none;
-  display: block;
-  /* กว้างเท่ากันทุกแถวและชิดขวาตามเซลล์ตัวเลข ⇒ ไล่สายตาลงมาเทียบความคืบหน้าได้
-     ถ้าปล่อยเต็มเซลล์ แถบจะยาวไม่เท่ากันตามความกว้างคอลัมน์แล้วเทียบกันไม่ได้ */
-  width: 8rem;
-  margin-inline-start: auto;
-  height: 3px;
-  margin-top: var(--space-1);
-  border: 0;
-  border-radius: var(--radius-full);
-  background: var(--border);
-  overflow: hidden;
-}
-
-/* <progress> ต้องย้อมผ่าน pseudo-element ของแต่ละเอนจิน — ไม่มีทางกลาง */
-.mbar::-webkit-progress-bar { background: var(--border); }
-.mbar::-webkit-progress-value { background: var(--green); }
-.mbar::-moz-progress-bar { background: var(--green); }
+/* แถบสัดส่วนเก็บเงิน (.mbar) ย้ายไปเซลล์เงินกลาง `SalesOrderMoneyCells` (รื้อ PR-3a) — แถวทะเบียนวาดแถบชุดเดียวกับหน้ารายการ SO */
 
 /* ── รอบวางบิล (mig 0389 · ม็อก D) ─────────────────────────────────────────────
    ⚠️ **ไม่มีแดงที่นี่** — เลยรอบ/ใกล้ถึงรอบวางบิล = amber (โทนเตือน) · แดงสงวนให้ "เลยกำหนด" ที่อ่านกำหนดชำระ */
@@ -186,4 +166,18 @@
 .heldYours {
   margin-top: var(--space-1);
   font-weight: var(--fw-semibold);
+}
+
+/* ปุ่มของบัญชีในลิ้นชักรายงวด (รื้อ PR-3b) — ชิดขวาใต้การ์ดงวด · เหตุของปุ่มที่กดไม่ได้อยู่บรรทัดล่าง */
+.drawerActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+.drawerButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1-5);
 }

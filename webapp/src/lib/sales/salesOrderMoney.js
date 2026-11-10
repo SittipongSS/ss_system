@@ -138,3 +138,37 @@ export function salesOrderMoneyCell(rows = [], order = {}, { plan = null, todayI
     installments,
   };
 }
+
+/**
+ * ก้อนเงินรายใบจากแถวทะเบียนบัญชี (`ledgerRow` ของ /api/finance/payments · รื้อ PR-3a)
+ * ⭐ ต้องส่ง **ชุดก่อนกรอง** (`all` ของ route) — ชิปพูดทั้งใบ ไม่ใช่เฉพาะงวดที่ผ่านตัวกรอง (กรอง "รอบัญชีตรวจ" แล้วใบ 12 งวดเหลือชิปเดียวไม่ได้)
+ * ⭐ แถวทะเบียนมาจากงวดที่ตรึงแล้วเท่านั้น (query `frozenAt` ไม่ว่าง) และตัดงวดโมฆะแล้ว (`ledgerIncludes`) ⇒ ตั้ง `frozenAt` ให้
+ * ⭐ ยอดใบ: `orderTotal` (รวม VAT) · VAT = `orderTotal − orderNet` (ledgerRow คิดจากคอลัมน์ของใบ) — ไม่รู้ยอดใบ = ไม่มีก้อน
+ * @param ledgerRows แถวทะเบียนทั้งหมดก่อนกรอง
+ * @param opts `todayIso` · `orderIds` (เอาเฉพาะใบเหล่านี้ — ใบในแถวที่ตอบกลับ)
+ * @returns { [orderId]: salesOrderMoneyCell(...) }
+ */
+export function ledgerOrderMoney(ledgerRows = [], { todayIso = null, orderIds = null } = {}) {
+  const want = orderIds ? new Set(orderIds) : null;
+  const byOrder = new Map();
+  for (const r of Array.isArray(ledgerRows) ? ledgerRows : []) {
+    if (!r?.orderId || (want && !want.has(r.orderId))) continue;
+    const list = byOrder.get(r.orderId) || [];
+    list.push(r);
+    byOrder.set(r.orderId, list);
+  }
+  const out = {};
+  for (const [orderId, list] of byOrder) {
+    const head = list[0];
+    if (head.orderTotal === null || head.orderTotal === undefined) continue;
+    const net = head.orderNet === null || head.orderNet === undefined ? head.orderTotal : head.orderNet;
+    const order = { status: head.orderStatus, totalAmount: head.orderTotal, vatAmount: baht(cents(head.orderTotal) - cents(net)) };
+    const rows = list.map((r) => ({
+      id: r.id, seq: r.seq, status: r.status, kind: r.kind, amount: r.amount, dueDate: r.dueDate, paidOn: r.paidOn,
+      taxInvoiceNo: r.taxInvoiceNo, refundedAt: r.refundedAt, updatedAt: r.updatedAt, frozenAt: true,
+    }));
+    const money = salesOrderMoneyCell(rows, order, { todayIso });
+    if (money) out[orderId] = money;
+  }
+  return out;
+}
