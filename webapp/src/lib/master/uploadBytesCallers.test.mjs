@@ -44,6 +44,9 @@ const ALLOWED_CALLERS = {
     + 'ใช้ `uploadAttachment` ตามปกติ',
   'components/issues/ReportIssueModal.js':
     'ไฟล์แนบเรื่องแจ้งปัญหา — ลงเธรด /api/updates ตั้งใจไม่ผ่านตาราง attachments',
+  'components/service/crew/install/InstallZonePage.js':
+    'รูปของจุดติดตั้ง — ref ลงรูปหน้างานของนัด (`visits/[id]/photos` → `service_visits.attachments`) '
+    + 'แล้วลงแถวเครื่องที่วาง (`service_visit_planned_assets.photoUrl` · mig 0429) ผ่าน PUT ของหน้างานติดตั้ง',
 };
 
 /* ⚠️ จับ **การ import** ไม่ใช่การเอ่ยชื่อ — ไฟล์ที่เขียนคอมเมนต์เตือนว่า "อย่าเรียก

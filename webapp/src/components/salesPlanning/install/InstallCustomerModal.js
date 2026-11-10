@@ -78,7 +78,7 @@ export default function InstallCustomerModal({ orderId, site, visit, todayIso, o
         <div className={styles.footer}>
           {check.error ? <span className={styles.why} role="status">{check.error}</span> : <span />}
           <Button variant="ghost" onClick={onClose} disabled={saving}>ยกเลิก</Button>
-          <Button variant="primary" onClick={submit} disabled={saving || Boolean(check.error)}>
+          <Button tone="primary" onClick={submit} disabled={saving || Boolean(check.error)}>
             {saving ? "กำลังบันทึก…" : form.action === "reschedule" ? "ส่งวันใหม่ให้ TS" : "ลูกค้ายืนยันแล้ว"}
           </Button>
         </div>

@@ -32,6 +32,8 @@ import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtDate, fmtDayMonth, naText } from "@/lib/format";
 import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
+// นัดติดตั้งจากคำขอคิว (ขั้นเข้าติดตั้ง PR-5b) — ทำงานที่หน้างาน `/service/today/[visitId]` ไม่ใช่แผ่นปิดงาน
+import { isInstallStepVisit } from "@/lib/service/visitGate";
 import { apiFetch } from "@/lib/apiFetch";
 
 const SECTIONS = [
@@ -193,6 +195,11 @@ export default function TodayPage() {
         router.push(`/service/surveys/${visit.requestId}`);
         return;
       }
+      /* ⭐ นัดติดตั้ง: เริ่มงานแล้วพาเข้าหน้างานติดตั้งทันที (กติกาเดียวกับนัดประเมิน) */
+      if (isInstallStepVisit(visit) && !viewingOther) {
+        router.push(`/service/today/${visit.id}`);
+        return;
+      }
       setToast({ kind: "success", msg: `เริ่มงานแล้ว · ${data?.visit?.actualStartTime || ""} น.` });
       await load();
     } catch (e) {
@@ -290,6 +297,7 @@ export default function TodayPage() {
           {runningVisits.map((visit) => {
             const site = sitesById.get(visit.siteId);
             const survey = visit.kind === SURVEY_VISIT_KIND && visit.requestId;
+            const install = isInstallStepVisit(visit);
             return (
               <div key={visit.id} className={styles.liveRow}>
                 <span className={styles.pulse} aria-hidden="true" />
@@ -300,6 +308,11 @@ export default function TodayPage() {
                 {survey ? (
                   <Button as="a" href={`/service/surveys/${visit.requestId}`} tone="primary" size="sm"
                     icon={<Ruler size={14} aria-hidden="true" />}>
+                    ไปต่อ
+                  </Button>
+                ) : install ? (
+                  <Button as="a" href={`/service/today/${visit.id}`} tone="primary" size="sm"
+                    icon={<Wrench size={14} aria-hidden="true" />}>
                     ไปต่อ
                   </Button>
                 ) : canEdit ? (
@@ -342,6 +355,7 @@ export default function TodayPage() {
                 const access = accessWindowText(site);
                 const where = [site?.routeZone, site?.customerName].filter(Boolean);
                 const surveyLink = visit.kind === SURVEY_VISIT_KIND && visit.requestId;
+                const installLink = isInstallStepVisit(visit);
                 return (
                   <article key={visit.id} className={`${styles.card} ${done ? styles.cardDone : ""} ${running ? styles.cardLive : ""} ${late && !done && !running ? styles.cardLate : ""}`}>
                     <div className={styles.cardHead}>
@@ -417,7 +431,15 @@ export default function TodayPage() {
                           ส่งงาน
                         </Button>
                       )}
-                      {canEdit && !surveyLink && (running || (done && !crewShell)) && (
+                      {/* ⭐ นัดติดตั้ง: ทุกจังหวะทำที่หน้างานติดตั้ง (ดูโซน/จุดก่อนเริ่มได้ · ส่งงานที่นั่น) */}
+                      {installLink && (
+                        <Button as="a" href={`/service/today/${visit.id}`}
+                          tone={running ? "primary" : "neutral"} variant={done ? "quiet" : undefined} size="sm"
+                          icon={<Wrench size={14} aria-hidden="true" />}>
+                          {running ? "ทำงานต่อ" : done ? "เปิดงานติดตั้ง" : "ดูโซนและจุด"}
+                        </Button>
+                      )}
+                      {canEdit && !surveyLink && !installLink && (running || (done && !crewShell)) && (
                         <Button tone={done ? "neutral" : "primary"} variant={done ? "quiet" : undefined} size="sm"
                           onClick={() => setClosing(visit)}>
                           {done ? "แก้ผลการเข้า" : "ปิดงาน"}

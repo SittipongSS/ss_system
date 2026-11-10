@@ -218,7 +218,7 @@ test('🔴 หน้า "งานวันนี้" (รายการเด�
   const src = readFileSync(new URL('../../app/service/today/page.js', import.meta.url), 'utf8');
   assert.match(src, /usesCrewShell\(\{ role, team, teams, department \}\)/);
   // "ปิดงาน" ของใบที่กำลังทำยังอยู่ · "แก้ผลการเข้า" ของใบที่ปิดแล้วเฉพาะคนที่ไม่ใช่เปลือกของช่าง
-  assert.match(src, /\{canEdit && !surveyLink && \(running \|\| \(done && !crewShell\)\) && \(/);
+  assert.match(src, /\{canEdit && !surveyLink && !installLink && \(running \|\| \(done && !crewShell\)\) && \(/);
   assert.match(src, /\{done \? "แก้ผลการเข้า" : "ปิดงาน"\}/);
 });
 
