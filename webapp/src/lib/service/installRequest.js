@@ -143,6 +143,7 @@ export function installRequestInput(input = {}, { siteZoneIds = [], todayIso = n
  */
 export function installSitesView(ctx, {
   requests = [], requestZones = [], visits = [], visitZonesByVisitId = {}, doneZonesByVisitId = {},
+  installedAssets = [], siteAssets = [],
 } = {}) {
   const deposit = installDepositGate(ctx?.order || null, ctx?.installments || []);
   const zonesById = ctx?.zonesById instanceof Map ? ctx.zonesById : new Map();
@@ -180,7 +181,9 @@ export function installSitesView(ctx, {
               ? installZoneStage({ request, zoneId: zone.zoneId, visits, visitZonesByVisitId, doneZonesByVisitId, deposit })
               : null;
       const visit = inRequest ? zoneVisit(request, zone.zoneId, visits, visitZonesByVisitId) : null;
-      return { ...zone, requested: inRequest, stage, visit };
+      /* ⭐ PR-5c (A3/A6): ติดตั้งแล้ว = นัดที่ปิดแล้วของโซนนี้ + เครื่องผล done (รหัส · รุ่น · สี · จุด) */
+      const installed = stage === 'installed' ? zoneInstalled(zone.zoneId, request, visits, installedAssets) : null;
+      return { ...zone, requested: inRequest, stage, visit, installed };
     });
     const stages = request?.mode === 'install' && request.requestedAt
       ? zones.filter((z) => z.requested).map((z) => z.stage)
@@ -200,6 +203,9 @@ export function installSitesView(ctx, {
       total: summary.total,
       hasPendingVisit: request ? pendingVisits(visits, request.id).length > 0 : false,
       visits: request ? siteVisits(request, visits, visitZonesByVisitId, zoneMap) : [],
+      /* ไซต์ Service — เครื่องที่อยู่แล้ว (ทะเบียนเครื่อง · ใช้งานอยู่) สำหรับการ์ดผลติดตั้งในแท็บสัญญา */
+      serviceAssets: request?.mode === 'none'
+        ? (siteAssets || []).filter((a) => a.siteId === siteId).map(assetLine) : [],
     };
   }).sort((a, b) => String(a.siteCode || a.siteId).localeCompare(String(b.siteCode || b.siteId)));
 
@@ -244,4 +250,87 @@ function siteVisits(request, visits, visitZonesByVisitId, zoneMap) {
         awaitingCustomer: installCustomerVisitError(v, request, 'confirm') === null,
       };
     });
+}
+
+const assetLine = (a) => ({
+  assetId: a.assetId || a.id, code: a.code || null, label: a.label || null, model: a.model || null,
+  colour: a.colour || null, spot: a.spot || null, zoneId: a.zoneId || null,
+});
+
+/* ผลติดตั้งของโซน — นัดปิดล่าสุดที่มีเครื่องผล done ในโซนนี้ (โซนที่ติดข้ามหลายนัด = รวมเครื่องทุกนัด · วันที่ของนัดล่าสุด) */
+function zoneInstalled(zoneId, request, visits, installedAssets) {
+  const mine = (installedAssets || []).filter((a) => String(a.zoneId) === String(zoneId)
+    && (visits || []).some((v) => v.id === a.visitId && v.installRequestId === request?.id && isClosedVisit(v)));
+  if (!mine.length) return null;
+  const byId = new Map((visits || []).map((v) => [v.id, v]));
+  const last = [...new Set(mine.map((a) => a.visitId))].map((id) => byId.get(id)).filter(Boolean)
+    .sort((a, b) => String(b.actualDate || b.scheduledDate || '').localeCompare(String(a.actualDate || a.scheduledDate || '')))[0] || null;
+  return {
+    visitId: last?.id || null,
+    visitCode: last?.code || null,
+    date: last?.actualDate || last?.scheduledDate || null,
+    assets: mine.map(assetLine),
+  };
+}
+
+/* กลุ่มเครื่องตามรุ่น + สี — "OV-10 ขาว ×2" */
+export function machineGroupsText(assets = []) {
+  const counts = new Map();
+  for (const a of assets || []) {
+    const key = [a.label || a.model || a.code, a.colour].filter(Boolean).join(' ') || 'เครื่อง';
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return [...counts.entries()].map(([name, n]) => `${name} ×${n}`).join(' · ');
+}
+
+/**
+ * การ์ด "ผลติดตั้งสำหรับทำสัญญา" ในแท็บสัญญา (PR-5c · ม็อก A6) — อ่านอย่างเดียว
+ * ⭐ จำนวนเครื่องและจุดที่ติดจริง รวมทุกไซต์ของใบ (สัญญาเป็นราย SO) · ไซต์ Service ใช้เครื่องที่อยู่แล้วจากทะเบียนเครื่อง
+ * ⚠️ ระบบ **ชี้ ไม่เติม** — ยังไม่เติมค่าลงสัญญาให้เอง (มติ 09/11)
+ * @param view ผลของ `installSitesView`
+ * @returns `{ readiness, sites: [{ siteId, siteCode, siteName, mode, rows: [{ zoneId, code, name, machines, codes, date, visitCode, pending }] }], totals }`
+ */
+export function installContractView(view) {
+  const sites = (view?.sites || []).filter((s) => s.mode).map((site) => {
+    if (site.mode === 'none') {
+      const byZone = new Map();
+      for (const a of site.serviceAssets || []) {
+        if (!byZone.has(a.zoneId)) byZone.set(a.zoneId, []);
+        byZone.get(a.zoneId).push(a);
+      }
+      const rows = [...byZone.entries()].map(([zoneId, assets]) => {
+        const zone = site.zones.find((z) => String(z.zoneId) === String(zoneId)) || {};
+        return {
+          zoneId, code: zone.code || null, name: zone.name || null, machines: machineGroupsText(assets),
+          codes: assets.map((a) => a.code).filter(Boolean), count: assets.length, date: null, visitCode: null, pending: false,
+        };
+      });
+      return { siteId: site.siteId, siteCode: site.siteCode, siteName: site.siteName, mode: 'none', rows };
+    }
+    const rows = site.zones.filter((z) => z.requested).map((z) => (z.installed ? {
+      zoneId: z.zoneId, code: z.code, name: z.name, machines: machineGroupsText(z.installed.assets),
+      codes: z.installed.assets.map((a) => a.code).filter(Boolean), count: z.installed.assets.length,
+      date: z.installed.date, visitCode: z.installed.visitCode, pending: false,
+    } : {
+      zoneId: z.zoneId, code: z.code, name: z.name, machines: null, codes: [], count: 0, date: null, visitCode: null,
+      pending: true, stageLabel: INSTALL_STAGE_LABELS[z.stage] || null,
+    }));
+    return { siteId: site.siteId, siteCode: site.siteCode, siteName: site.siteName, mode: 'install', stage: site.stage, rows };
+  });
+  const installSites = sites.filter((s) => s.mode === 'install');
+  const serviceSites = sites.filter((s) => s.mode === 'none');
+  const installedAssets = installSites.flatMap((s) => s.rows.filter((r) => !r.pending));
+  const allInstalled = (view?.sites || []).flatMap((s) => s.zones.filter((z) => z.installed).flatMap((z) => z.installed.assets));
+  const allService = serviceSites.flatMap((s) => (view.sites.find((x) => x.siteId === s.siteId)?.serviceAssets || []));
+  return {
+    readiness: view?.readiness || null,
+    sites,
+    totals: {
+      sites: sites.length,
+      zones: installedAssets.length + serviceSites.reduce((n, s) => n + s.rows.length, 0),
+      machines: allInstalled.length + allService.length,
+      install: { sites: installSites.length, zones: installedAssets.length, machines: allInstalled.length, groups: machineGroupsText(allInstalled) },
+      service: { sites: serviceSites.length, machines: allService.length },
+    },
+  };
 }

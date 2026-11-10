@@ -19,6 +19,7 @@ import { notifyToast } from "@/lib/feedback";
 import { fmtDate } from "@/lib/format";
 import { INSTALL_MODE_LABELS, INSTALL_MODES, installModeError } from "@/lib/service/installRequest";
 import { INSTALL_DEPOSIT_TEXT } from "@/lib/service/installDeposit";
+import { INSTALL_STAGE_LABELS } from "@/lib/service/installQueue";
 import InstallCustomerModal from "./InstallCustomerModal";
 import InstallRequestModal from "./InstallRequestModal";
 import styles from "./SalesOrderInstallCard.module.css";
@@ -42,22 +43,26 @@ function siteSubline(site) {
   return [asked, `${zones} โซน`, contact || null].filter(Boolean).join(" · ");
 }
 
-export default function SalesOrderInstallCard({ orderId, onChanged }) {
+export default function SalesOrderInstallCard({ orderId, onChanged, onLoaded }) {
   const [data, setData] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [busySite, setBusySite] = useState("");
   const [error, setError] = useState("");
   const [askFor, setAskFor] = useState(null);
   const [customerFor, setCustomerFor] = useState(null);
+  /* ไซต์ที่กางรายโซนอยู่ (ม็อก A3 "ซ่อนรายโซน") — ปิดไว้ก่อน การ์ดสั้นเมื่อมีหลายไซต์ */
+  const [openSites, setOpenSites] = useState(() => new Set());
 
   const load = useCallback(async () => {
     try {
       setLoadError("");
-      setData(await apiJson(`/api/sales-planning/sales-orders/${orderId}/install`, { fallbackError: "โหลดงานติดตั้งไม่สำเร็จ" }));
+      const next = await apiJson(`/api/sales-planning/sales-orders/${orderId}/install`, { fallbackError: "โหลดงานติดตั้งไม่สำเร็จ" });
+      setData(next);
+      onLoaded?.(next);
     } catch (e) {
       setLoadError(e?.message || "โหลดงานติดตั้งไม่สำเร็จ");
     }
-  }, [orderId]);
+  }, [orderId, onLoaded]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -150,7 +155,8 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
               </div>
               <div className={styles.siteState}>
                 <StatusBadge size="sm" dot tone={STAGE_TONE[site.stage] || "neutral"} label={
-                  site.stage === "installed" ? `ติดตั้งแล้ว ${site.installed}/${site.total} โซน` : site.stageLabel
+                  site.stage === "installed" ? `ติดตั้งแล้ว ${site.installed}/${site.total} โซน`
+                    : site.installed ? `ติดตั้งแล้วบางโซน · ${site.installed}/${site.total}` : site.stageLabel
                 } />
                 <small>{siteSubline(site)}</small>
                 {(site.visits || []).filter((v) => v.tsConfirmedAt).map((v) => (
@@ -164,6 +170,28 @@ export default function SalesOrderInstallCard({ orderId, onChanged }) {
                           : v.dateChangeReason ? ` · ปรับวันเพราะ ${v.dateChangeReason}` : ""}
                   </small>
                 ))}
+                {site.mode === "install" && site.request?.requestedAt ? (
+                  <button type="button" className="linklike" aria-expanded={openSites.has(site.siteId)}
+                    onClick={() => setOpenSites((prev) => { const n = new Set(prev); if (n.has(site.siteId)) n.delete(site.siteId); else n.add(site.siteId); return n; })}>
+                    {openSites.has(site.siteId) ? "ซ่อนรายโซน" : "ดูรายโซน"}
+                  </button>
+                ) : null}
+                {openSites.has(site.siteId) ? (
+                  <ul className={styles.zoneList}>
+                    {site.zones.filter((z) => z.requested).map((z) => (
+                      <li key={z.zoneId}>
+                        <span className={styles.code}>{z.code || ""}</span> <b>{z.name || z.code}</b>
+                        <small>
+                          {z.installed
+                            ? `ติดตั้งแล้ว ${fmtDate(z.installed.date)}${z.installed.visitCode ? ` · ${z.installed.visitCode}` : ""} · ${z.installed.assets.length} เครื่อง`
+                            : (z.visit?.tsConfirmedAt && z.visit?.status === "draft" && !z.visit?.customerConfirmedAt
+                              ? `TS ยืนยันวัน ${fmtDate(z.visit.scheduledDate)} · รอคุณคอนเฟิร์มลูกค้า`
+                              : INSTALL_STAGE_LABELS[z.stage] || "")}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
               <div className={styles.siteAct}>
                 {canAsk ? (

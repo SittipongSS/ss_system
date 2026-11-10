@@ -17,7 +17,7 @@ import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { loadServiceSetupContext } from '@/lib/sales/serviceSetupRepo';
 import { notifyInstallRequested } from './installNotify';
 import {
-  INSTALL_REQUEST_TEXT, installModeError, installOrderError, installRequestInput, installSitesView,
+  INSTALL_REQUEST_TEXT, installContractView, installModeError, installOrderError, installRequestInput, installSitesView,
 } from './installRequest';
 
 const reply = (status, body) => ({ status, body });
@@ -25,7 +25,9 @@ const failWith = (status, error, extra = {}) => reply(status, { error, ...extra 
 const text = (value) => String(value ?? '').trim();
 
 const VISIT_COLUMNS = 'id, code, status, kind, "siteId", "installRequestId", "scheduledDate", "startTime", "endTime", '
-  + '"assigneeId", "assigneeName", "tsConfirmedAt", "tsConfirmedByName", "customerConfirmedAt", "customerConfirmedByName", "dateChangeReason"';
+  + '"assigneeId", "assigneeName", "tsConfirmedAt", "tsConfirmedByName", "customerConfirmedAt", "customerConfirmedByName", "dateChangeReason", '
+  + '"actualDate", "actualEndTime"';
+const ASSET_COLUMNS = 'id, code, label, model, colour, status, "siteId", "zoneId", spot';
 
 async function scopedOrder(supabase, user, id) {
   const { row, response } = await loadScoped(supabase, 'sales_orders', id, user, 'view');
@@ -49,6 +51,7 @@ export async function loadInstallState(supabase, order) {
   let visits = [];
   const visitZonesByVisitId = {};
   const doneZonesByVisitId = {};
+  const installedAssets = [];
   if (requestIds.length) {
     const [zonesRes, visitsRes] = await Promise.all([
       supabase.from('service_install_request_zones').select('"requestId", "zoneId"').in('requestId', requestIds),
@@ -75,11 +78,35 @@ export async function loadInstallState(supabase, order) {
       for (const row of outcomeRes.data || []) {
         if (row.outcome !== 'done') continue;
         const zoneId = zoneOfPlanned.get(`${row.visitId}|${row.assetId}`);
-        if (zoneId) (doneZonesByVisitId[row.visitId] ||= []).push(zoneId);
+        if (zoneId) {
+          (doneZonesByVisitId[row.visitId] ||= []).push(zoneId);
+          installedAssets.push({ visitId: row.visitId, zoneId, assetId: row.assetId });
+        }
       }
     }
   }
-  return { ctx, requests: requests || [], requestZones, visits, visitZonesByVisitId, doneZonesByVisitId };
+
+  /* ⭐ PR-5c (ม็อก A3/A6): เครื่องที่ติดตั้งแล้ว (รหัส · รุ่น · สี) + เครื่องที่อยู่แล้วของไซต์ Service (จากทะเบียนเครื่อง)
+     — การ์ดผลติดตั้งในแท็บสัญญาใช้ประกอบการออกสัญญา (สัญญาเป็นราย SO ⇒ ครอบไซต์ Service ด้วย) */
+  const serviceSiteIds = (requests || []).filter((r) => r.mode === 'none').map((r) => r.siteId);
+  const assetIds = [...new Set(installedAssets.map((a) => a.assetId))];
+  const [assetRes, siteAssetRes] = await Promise.all([
+    assetIds.length
+      ? fetchAllResult(() => supabase.from('service_assets').select(ASSET_COLUMNS).in('id', assetIds).order('id', { ascending: true }))
+      : { data: [], error: null },
+    serviceSiteIds.length
+      ? fetchAllResult(() => supabase.from('service_assets').select(ASSET_COLUMNS).in('siteId', serviceSiteIds)
+        .eq('status', 'active').order('id', { ascending: true }))
+      : { data: [], error: null },
+  ]);
+  if (assetRes.error) throw new Error(`อ่านทะเบียนเครื่องที่ติดตั้งไม่สำเร็จ: ${assetRes.error.message}`);
+  if (siteAssetRes.error) throw new Error(`อ่านเครื่องของไซต์ Service ไม่สำเร็จ: ${siteAssetRes.error.message}`);
+  const assetsById = new Map((assetRes.data || []).map((a) => [a.id, a]));
+  return {
+    ctx, requests: requests || [], requestZones, visits, visitZonesByVisitId, doneZonesByVisitId,
+    installedAssets: installedAssets.map((a) => ({ ...a, ...(assetsById.get(a.assetId) || {}), assetId: a.assetId })),
+    siteAssets: siteAssetRes.data || [],
+  };
 }
 
 const siteZoneIdsOf = (view, siteId) => (view.sites.find((s) => s.siteId === siteId)?.zones || []).map((z) => z.zoneId);
@@ -103,6 +130,8 @@ export async function installGet({ supabase, user, id, enabled = false, deps = D
       blocker: installOrderError(state.ctx.order, { canEdit, enabled }),
       todayIso: businessDate(),
       ...view,
+      /* การ์ดผลติดตั้งในแท็บสัญญา (PR-5c · A6) — ก้อนเดียวกัน ไม่ยิงเส้นที่สอง */
+      contract: installContractView(view),
     });
   } catch (error) {
     return failWith(500, `โหลดงานติดตั้งไม่สำเร็จ: ${error?.message || error}`);
