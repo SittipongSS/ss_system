@@ -23,6 +23,7 @@ const KIND_TONE = {
 
 export default function InstallmentDrawer({
   row, focusSeq = null, onClose, showActual = true, detailHref = null, renderActions = null,
+  hint = "แจ้งชำระ แนบสลิป และตั้งวันกำหนดชำระ ทำที่แท็บการชำระของหน้าใบ",
 }) {
   const money = row?.money;
   if (!row || !money) return null;
@@ -97,9 +98,7 @@ export default function InstallmentDrawer({
             </li>
           ))}
         </ol>
-        {!renderActions ? (
-          <p className={styles.hint}>แจ้งชำระ แนบสลิป และตั้งวันกำหนดชำระ ทำที่แท็บการชำระของหน้าใบ</p>
-        ) : null}
+        {!renderActions && hint ? <p className={styles.hint}>{hint}</p> : null}
       </div>
     </RecordDrawer>
   );

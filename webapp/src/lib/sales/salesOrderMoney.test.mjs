@@ -141,3 +141,29 @@ test('route รายการ SO: ส่งก้อน money ทุกแถ�
     assert.ok(selects[0].includes(col), `select งวดชุดแรกขาด ${col}: ${selects[0]}`);
   }
 });
+
+test('ก้อนเงินจากแถวทะเบียนบัญชี: คิดจากชุดก่อนกรองทั้งใบ · VAT = orderTotal − orderNet · เอาเฉพาะใบที่ขอ', async () => {
+  const { ledgerOrderMoney } = await import('./salesOrderMoney.js');
+  const base = { orderStatus: 'approved', orderTotal: 256800, orderNet: 240000 };
+  const all = [
+    { ...base, id: 'I1', orderId: 'A', seq: 1, status: 'confirmed', amount: 128400, dueDate: '2026-10-20', taxInvoiceNo: 'IV1' },
+    { ...base, id: 'I2', orderId: 'A', seq: 2, status: 'reported', amount: 128400, dueDate: '2026-11-30' },
+    { ...base, id: 'I3', orderId: 'B', seq: 1, status: 'pending', amount: 10, dueDate: '2026-11-01', orderTotal: 10, orderNet: 10 },
+  ];
+  const money = ledgerOrderMoney(all, { todayIso: TODAY, orderIds: ['A'] });
+  assert.deepEqual(Object.keys(money), ['A']);
+  assert.equal(money.A.payableNet, 240000);
+  assert.equal(money.A.collected, 128400);
+  assert.equal(money.A.reviewing, 128400);
+  assert.deepEqual(money.A.installments.map((i) => i.kind), ['confirmed', 'reported'], 'แถวทะเบียนตรึงแล้วทุกแถว — ไม่ใช่ "ตามแผน"');
+  const everything = ledgerOrderMoney(all, { todayIso: TODAY });
+  assert.equal(everything.B.installments[0].kind, 'overdue');
+  assert.deepEqual(ledgerOrderMoney([{ ...all[0], orderTotal: null }], { todayIso: TODAY }), {}, 'ยอดใบไม่รู้ = ไม่มีก้อน');
+});
+
+test('route ทะเบียนบัญชีส่ง orderMoney จากชุดก่อนกรอง (all) ไม่ใช่ชุดที่กรองแล้ว', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../app/api/finance/payments/route.js', import.meta.url), 'utf8');
+  assert.match(src, /const orderMoney = ledgerOrderMoney\(all, \{ todayIso, orderIds: \[\.\.\.new Set\(filtered\.map\(\(r\) => r\.orderId\)\)\] \}\);/);
+  assert.match(src, /rows: filtered,\s*orderMoney,/);
+});
