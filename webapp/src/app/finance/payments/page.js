@@ -8,6 +8,8 @@
 // ทะเบียนอยู่ล่าง") — แผงคิวสามก้อน (รอคุณรับรอง · ยังไม่ออกใบกำกับ · เงินค้างจากใบที่ยกเลิก) กลายเป็นแท็บงานบนตารางเดียว
 // (`lib/finance/ledgerWork` · แท็บ = ชุดค่าตัวกรองเดิมใน URL) + ปุ่ม "งานถัดไป" ท้ายแถว + ปุ่มรายงวดในลิ้นชัก · เงินค้างเป็นแถบที่โผล่เมื่อมี
 // · แผง "ใบที่รอบัญชีปิด" ของหน้าภาพรวมมาเป็นแท็บ "รอปิดใบ" พร้อมปุ่มปิดใบ (โมดัลชุดเดียวกับหน้าใบ · `financeClosePrompt`)
+// ⭐ PR-4b: หน้าภาพรวม `/finance` กับคิวคำร้อง `/finance/requests` ถูกรวมเข้ามา (มติข้อ 2 + 4) — สองเส้นทางเดิมเด้งมาที่นี่ (next.config.mjs) ·
+//   คิวคำร้องเป็นแท็บ "คิวคำร้อง" (`?view=requests` · FinanceRequestsQueue) · ชื่อหน้า "งานบัญชี" (ม็อก)
 //
 // ⚠️ **เดิมหน้านี้อ่านอย่างเดียว** โดยตั้งใจ (กฎสามชั้น: ทางลงมืออยู่บนเอกสารต้นทาง)
 // ผู้ใช้ตัดสินให้เปิดทางกดที่นี่ด้วย · ความเสี่ยงสองข้อที่ยกไว้ตอนนั้นถูกปิดแล้ว:
@@ -33,6 +35,8 @@ import Workspace, { ListPanel, Metric, MetricStrip } from "@/components/ui/Works
 import Segmented from "@/components/ui/Segmented";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
+import FinanceRequestsQueue, { FINANCE_REQUESTS_HREF } from "@/components/finance/FinanceRequestsQueue";
+import { useNavCountsState } from "@/lib/nav/useNavCounts";
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
@@ -94,6 +98,8 @@ const FILTER_KEYS = ["status", "orderState", "line", "from", "to", "q", "overdue
    · `on` อยู่ในชุดนี้ (สองพารามิเตอร์ของตัวกรองรอบวางบิล นับที่ billing แล้ว) */
 /* ⭐ `close` / `stranded` (แท็บรอปิดใบ · แถบเงินค้าง · รื้อ PR-4a) ไม่อยู่ในปุ่มตัวกรอง — ถอดที่แท็บ/แถบเอง หรือ "ล้างตัวกรอง ×" */
 const OUTSIDE_POPOVER_KEYS = ["q", "from", "to", "close", "stranded"];
+/* คีย์ของแท็บคิวคำร้อง (รื้อ PR-4b) — กดตัวกรอง/แท็บงานของทะเบียน = ออกจากคิวคำร้อง ⇒ ลบชุดนี้ทิ้ง */
+const REQUEST_VIEW_KEYS = ["view", "tab", "owner", "count"];
 const POPOVER_FILTER_KEYS = FILTER_KEYS.filter((key) => !OUTSIDE_POPOVER_KEYS.includes(key));
 
 /* ⭐ การ์ดที่กดค้างอยู่ต้องบอกด้วยตาเห็น (ม-81 ข้อ 3 · ตรวจตัวเลข L18b · 26/10/2026) — พื้นของ `.is-active` เท่ากับตอนชี้เมาส์
@@ -242,6 +248,8 @@ export default function FinancePaymentsPage() {
   /* แท็บงาน (รื้อ PR-4a) — `close=1` = ใบรอปิด · `stranded=1` = แถบเงินค้างจากใบที่ยกเลิก · แท็บอื่นเป็นชุดค่าของตัวกรองเดิม (ledgerWork) */
   const close = params.get("close") === "1";
   const stranded = params.get("stranded") === "1";
+  /* แท็บคิวคำร้อง (รื้อ PR-4b) — `view=requests` สลับแผงล่างเป็นคิวคำร้องของฝ่าย · คีย์ของคิว (`tab` `owner` `count`) ไม่ชนคีย์ของทะเบียน */
+  const view = params.get("view") === "requests" ? "requests" : "ledger";
   const groupBy = params.get("group") || "none";
   const sortKey = params.get("sort") || LEDGER_SORT_DEFAULT;
   const sortDir = params.get("dir") || ledgerSortDir(sortKey);
@@ -276,6 +284,8 @@ export default function FinancePaymentsPage() {
   const setParam = useCallback((key, value) => {
     const sp = new URLSearchParams(params.toString());
     if (value) sp.set(key, value); else sp.delete(key);
+    /* ตัวกรอง/มุมมองของทะเบียน = กลับแผงทะเบียนเสมอ (การ์ดบนหัวกดได้จากแท็บคิวคำร้องด้วย) — ลบคีย์ของคิวคำร้องใน replace เดียวกัน */
+    REQUEST_VIEW_KEYS.forEach((k) => sp.delete(k));
     /* เปลี่ยน/ถอดตัวกรองรอบวางบิล = วันของตัวกรองวันตัดรอบหมดความหมาย — ลบใน replace เดียวกัน (สอง setFilter ติดกันทับกันเอง) */
     if (key === "billing" && value !== LEDGER_BILLING_CUTOFF) sp.delete("on");
     router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
@@ -454,9 +464,18 @@ export default function FinancePaymentsPage() {
   const workTab = ledgerWorkTab({ status: statusFilter, taxInvoice, overdue, close, stranded });
   const workTally = data.workTally;
   const setWork = useCallback((key) => {
+    /* แท็บคิวคำร้อง (รื้อ PR-4b) — ไปหน้าเดิมของคิว (แท็บย่อย "รอ FN ตอบ") · ตัวกรองของทะเบียนคงไว้ใน URL ไม่ได้ (ทางเดียวกับเมนู) */
+    if (key === "requests") {
+      router.replace(`${FINANCE_REQUESTS_HREF}&tab=todo`, { scroll: false });
+      return;
+    }
     const sp = ledgerWorkParams(params, key);
+    REQUEST_VIEW_KEYS.forEach((k) => sp.delete(k));
     router.replace(`/finance/payments${sp.size ? `?${sp}` : ""}`, { scroll: false });
   }, [params, router]);
+  /* เลขบนแท็บคิวคำร้อง = เลขบนเมนู "คิวคำร้อง" (`financeRequests` — แท็บ "รอ FN ตอบ" ทั้งแท็บ) · ตัวเลขชุดเดียวของหน้าจากเปลือก (ไม่ยิงรอบที่สอง) */
+  const navState = useNavCountsState();
+  const requestsCount = navState.status === "ready" || navState.stale ? Number(navState.counts?.financeRequests) || 0 : null;
   const workBlurb = LEDGER_WORK_TABS.find((t) => t.key === workTab)?.blurb;
   /* ใบที่ปุ่ม "ปิดใบ" ขึ้นได้ — ชุดของ API (ตัวตัดสินเดียวกับป้ายบนเมนู) · ด่านจริงอยู่ที่ finance_approve ซึ่งอ่านงวดสด */
   const closeIds = useMemo(() => new Set(data.closeOrderIds || []), [data.closeOrderIds]);
@@ -816,13 +835,14 @@ export default function FinancePaymentsPage() {
   return (
     <Workspace
       icon={<Wallet size={22} />}
-      title="ทะเบียนการชำระ"
-      subtitle="งวดชำระของทุกใบสั่งขายในที่เดียว — อ้างอิงเลขที่ SO และ QT ทุกยอด"
-      headerRight={(
+      /* ชื่อหน้า "งานบัญชี" (ม็อก · รื้อ PR-4b) — หน้าเดียวของฝ่ายบัญชี: ทะเบียนเก็บเงิน + แท็บงาน + คิวคำร้อง (ภาพรวมเดิมรวมเข้ามาแล้ว) */
+      title="งานบัญชี"
+      subtitle="ยอดจ่ายที่ต้องตามเก็บของทุกใบสั่งขาย — เลือกแท็บตามงาน กดปุ่มงานถัดไปหรือชิปงวดเพื่อลงมือ · อ้างอิงเลขที่ SO และ QT ทุกยอด"
+      headerRight={view === "ledger" ? (
         <Button onClick={download} disabled={downloading || !rows.length}>
           <FileSpreadsheet size={16} /> {downloading ? "กำลังเตรียมไฟล์…" : "ดาวน์โหลด Excel"}
         </Button>
-      )}
+      ) : null}
     >
       <div className="flex flex-col gap-4">
         {error && <StatusNotice tone="error" role="alert" action={<Button size="sm" onClick={load}>ลองใหม่</Button>}>{error}</StatusNotice>}
@@ -981,6 +1001,34 @@ export default function FinancePaymentsPage() {
           </StatusNotice>
         )}
 
+        {/* ⭐ แท็บงาน (รื้อ PR-4a/4b) — แถวของตัวเองเหนือแผงล่าง ใช้ร่วมสองมุม (ทะเบียน · คิวคำร้อง) ⇒ ตำแหน่งไม่กระโดดตอนสลับ
+            · เลข = งวดของงาน (รอตรวจ · ใบกำกับ · เลยกำหนด · ตีกลับ — เลขเดียวกับป้ายบนเมนูและการ์ด) / ใบ (ทั้งหมด · รอปิดใบ) / เรื่อง (คิวคำร้อง ·
+              เลขเดียวกับเมนู) · ป้ายอ่านออกเสียงบอกหน่วย · ยังไม่โหลด = ไม่มีเลข (Segmented)
+            · ตัวกรองผสมกันเอง = ไม่มีแท็บไหนติด · จอแคบ: แถวแท็บเลื่อนแนวนอน ป้ายไม่ตัดกลางคำ (`.workTabs`) */}
+        <div className="scope-row">
+          <Segmented
+            ariaLabel="แท็บงานบัญชี"
+            className={styles.workTabs}
+            value={view === "requests" ? "requests" : workTab}
+            onChange={setWork}
+            options={[
+              ...LEDGER_WORK_TABS.map((tab) => {
+                const n = ledgerWorkCount(workTally, tab.key);
+                return {
+                  value: tab.key, label: tab.label, count: n,
+                  ariaLabel: n === null ? tab.label : `${tab.label} ${n} ${tab.unit}`,
+                };
+              }),
+              {
+                value: "requests", label: "คิวคำร้อง", count: requestsCount,
+                ariaLabel: requestsCount === null ? "คิวคำร้อง" : `คิวคำร้อง ${requestsCount} เรื่องรอ FN ตอบ`,
+              },
+            ]}
+          />
+        </div>
+
+        {view === "requests" ? <FinanceRequestsQueue /> : (
+        <>
         {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวนข้อความเดิมทุกตัวอักษร
             (ใบ · งวด · "จาก N" ตอนกรอง) · คิวสองก้อนข้างบนยังเป็น WorkspaceSection เพราะเป็นงานให้ทำ ไม่ใช่ทะเบียน */}
         <ListPanel
@@ -991,23 +1039,6 @@ export default function FinancePaymentsPage() {
           count={`${groups.length} ใบ · ${rows.length} งวด${filtering && data.totalRows ? ` จาก ${data.totalRows}` : ""}`}
           toolbar={(
           <>
-            {/* ⭐ แท็บงาน (รื้อ PR-4a) — แถวของตัวเองเหนือช่องค้นหา (ม็อก) · เลข = งวดของงาน (รอตรวจ · ใบกำกับ · เลยกำหนด · ตีกลับ — เลขเดียวกับ
-                ป้ายบนเมนูและการ์ด) / ใบ (ทั้งหมด · รอปิดใบ) · ป้ายอ่านออกเสียงบอกหน่วย · ยังไม่โหลด = ไม่มีเลข (Segmented) */}
-            {/* Segmented เป็นลูกตรงของแถบเครื่องมือ — กติกามือถือกลาง (`.ui-list-panel-toolbar > .segmented`) ให้แถวแท็บเลื่อนแนวนอน ป้ายไม่ตัดกลางคำ ·
-                ตัวคั่น `workBreak` (สูง 0 · กว้างเต็มแถว) ดันช่องค้นหาลงแถวใหม่ */}
-            <Segmented
-              ariaLabel="แท็บงานบัญชี"
-              value={workTab}
-              onChange={setWork}
-              options={LEDGER_WORK_TABS.map((tab) => {
-                const n = ledgerWorkCount(workTally, tab.key);
-                return {
-                  value: tab.key, label: tab.label, count: n,
-                  ariaLabel: n === null ? tab.label : `${tab.label} ${n} ${tab.unit}`,
-                };
-              })}
-            />
-            <span className={styles.workBreak} aria-hidden="true" />
           {/* ── แถบควบคุม: ค้นหา · ตัวกรอง · ช่วงวัน · จัดกลุ่ม | เรียง ────────────
               ⭐ ทรงเดียวกับตารางไปป์ไลน์ดีล (มติผู้ใช้ 2026-08-08) — ปุ่มตัวกรองยุบ
               ทุกหมวดไว้ในปุ่มเดียว · จัดกลุ่ม/เรียงเป็นปุ่มทรงเดียวกัน ชื่ออยู่ในปุ่ม
@@ -1332,6 +1363,8 @@ export default function FinancePaymentsPage() {
           ไฟล์ Excel ที่ดาวน์โหลดคือ<strong>รายการที่กรองไว้ตอนนี้</strong> ({rows.length} งวด)
           — ไฟล์เป็นรายงวด มีวันวางบิลและกำหนดชำระของทุกงวด
         </p>
+        </>
+        )}
       </div>
       {/* ลิ้นชักรายงวด (รื้อ PR-3a · โหมดดู · ไม่มี Actual) — เปิดจากชิปบนแถว · ปุ่มท้ายพาไปแท็บการชำระของใบ */}
       {/* ⚠️ ซ่อนลิ้นชักขณะโมดัลของปุ่มเปิดอยู่ — ลิ้นชักมีกับดักโฟกัส (Tab) + Esc ของตัวเอง ซ้อนกับโมดัลแล้วโฟกัสหลุด/ปิดสองชั้น ·

@@ -249,8 +249,9 @@ test('ประวัติเรียง "ปิดล่าสุดก่อ
 });
 
 test('ทุกหน้าที่มีแท็บประวัติ: เรียงวันที่ปิด · ไม่มีแถบตัวเลข · คอลัมน์ชุด history', () => {
-  for (const page of ['requests', 'rd/requests', 'finance/requests', 'service/requests']) {
-    const src = readFileSync(new URL(`../../app/${page}/page.js`, import.meta.url), 'utf8');
+  /* ⚠️ คิวของ FN ย้ายเป็นแท็บของหน้างานบัญชี (รื้อ PR-4b) — ตัวคิวอยู่ที่ components/finance/FinanceRequestsQueue.js (ยกมาทั้งก้อน) */
+  for (const page of ['app/requests/page.js', 'app/rd/requests/page.js', 'components/finance/FinanceRequestsQueue.js', 'app/service/requests/page.js']) {
+    const src = readFileSync(new URL(`../../${page}`, import.meta.url), 'utf8');
     assert.match(src, /setSort\(inHistory \? "closed" : "(urgency|created)"\)/, page);
     assert.match(src, /tab !== "history" && \(\s*<QueueCountStrip/, page);
     assert.match(src, /columns=\{tab === "history" \? "history" : "queue"\}/, page);

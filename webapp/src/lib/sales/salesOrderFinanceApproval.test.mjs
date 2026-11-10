@@ -184,11 +184,15 @@ test('ต้นทางไม่ประทับ pending ให้ใบย�
 /* ⭐ ตั้งแต่มติ 2026-08-30 คิวบัญชีขึ้นกับ **งวดชำระ** ซึ่งจอไม่ได้โหลดมาด้วย
    ⇒ ธงย้ายไปคิดที่ server (`_awaitingFinanceReview`) แล้วจอแค่กรองตามธง
    ⚠️ ห้ามจอกลับไปคิดเองด้วย `awaitsFinanceReview(o)` มือเปล่า — จะได้ false ทุกใบ */
-test('หน้าภาพรวมบัญชีกรองตามธงจาก server ไม่คิดเงื่อนไขเอง', () => {
-  const page = readFileSync(new URL('../../app/finance/page.js', import.meta.url), 'utf8');
-  assert.match(page, /_awaitingFinanceReview/);
+/* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4b): หน้าภาพรวม /finance ถูกถอด — ใบรอปิดเป็นแท็บ "รอปิดใบ" ของหน้างานบัญชี ซึ่งอ่านชุดใบจาก API
+   (`closeOrderIds` ← loadFinanceCloseIds ซึ่งโหลดงวดทุกงวดแล้วถาม awaitsFinanceReview) · กติกาเดิม: จอไม่คิดเงื่อนไขเอง */
+test('แท็บรอปิดใบอ่านชุดใบจาก server ไม่คิดเงื่อนไขเอง', () => {
+  const page = readFileSync(new URL('../../app/finance/payments/page.js', import.meta.url), 'utf8');
+  assert.match(page, /closeOrderIds: Array\.isArray\(body\.closeOrderIds\) \? body\.closeOrderIds : \[\],/);
   assert.doesNotMatch(page, /awaitsFinanceReview\(/, 'จอไม่มีงวดในมือ คิดเองได้ false เสมอ');
   assert.doesNotMatch(page, /financeStatus === "pending"/, 'ห้ามมีนิยามที่สอง');
+  const loader = readFileSync(new URL('../finance/financeCloseQueue.js', import.meta.url), 'utf8');
+  assert.match(loader, /awaitsFinanceReview\(o, byOrder\.get\(o\.id\) \|\| \[\]\)/);
 });
 
 /* ต้นทางของธง: ทะเบียน SO ต้องโหลดงวดมาป้อนด่านเดียวกัน ไม่ใช่เดา */

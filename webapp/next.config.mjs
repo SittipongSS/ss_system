@@ -120,6 +120,10 @@ const nextConfig = {
       // F-1 2026-08-27: "นัดของฉัน" เปลี่ยนชื่อ+เส้นทางเป็น "งานวันนี้" — ลิงก์เก่า
       // ใน toast/แจ้งเตือน/bookmark ของช่างต้องไม่ตายกลางอากาศ
       { source: '/service/my-visits', destination: '/service/today', permanent: false },
+      /* รื้อ SO + บัญชี PR-4b (มติเจ้าของ 09/11 ข้อ 2 + 4): ภาพรวมบัญชีกับคิวคำร้องรวมเข้าหน้างานบัญชีแล้ว — ลิงก์เก่า (เมนู · ปุ่มย้อนกลับบนใบคำร้อง
+         `DEPT_MODULE_QUEUE` · `inquiryQueueHref` · bookmark) ต้องไม่ตาย · Next คง query ของต้นทางให้ (`?tab=` `?owner=` `?count=`) */
+      { source: '/finance', destination: '/finance/payments', permanent: false },
+      { source: '/finance/requests', destination: '/finance/payments?view=requests', permanent: false },
       /* เฟส B 2026-09-02: หน้าอุปกรณ์ย้ายออกจากใต้ไซต์มาเป็นทะเบียนเครื่องรวม
          — เครื่องในคลังไม่มีไซต์ลูกค้าให้ซ่อนอยู่ใต้ · bookmark เดิมของช่างต้องไม่ตาย */
       { source: '/service/sites/:siteId/assets/:assetId', destination: '/service/assets/:assetId', permanent: false },

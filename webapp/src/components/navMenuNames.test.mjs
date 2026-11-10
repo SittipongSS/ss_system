@@ -193,7 +193,9 @@ test('⭐ ทุกเมนูต้องมี cap กำกับ — ไม
 });
 
 test('เมนูโมดูลบัญชีครอบทั้ง role finance คนฝ่าย FN ที่ยังเป็น staff และ admin', () => {
-  for (const href of ['/finance', '/finance/payments']) {
+  /* หน้าภาพรวม `/finance` ถูกถอด (รื้อ PR-4b · มติข้อ 4) — เมนูเหลือหน้างานบัญชี · `/finance` เด้งมาที่นั่น */
+  assert.ok(!SOURCE.includes("href: '/finance',"), 'เมนูภาพรวมบัญชีถูกถอดแล้ว');
+  for (const href of ['/finance/payments']) {
     const line = SOURCE.split(/\r?\n/).find((row) => row.includes(`href: '${href}'`));
     assert.ok(line, `ไม่พบเมนู ${href}`);
     // payments:confirm = finance + FN staff · users:manage = admin (ซึ่งไม่ถือตัวแรก)
