@@ -60,7 +60,8 @@ import { CARRY_BUTTON } from "@/lib/sales/installmentCarry";
 /* นับ Actual รายงวด (mig 0412) — ข้อความด่านเงินของใบรายงวด (ประโยคเดียวกับ trigger ของ 0412 · installment_actual_not_approved) */
 import { installmentActualLockReason } from "@/lib/sales/salesOrderActualMode";
 import ReasonDialog from "@/components/ui/ReasonDialog";
-import { MIN_REJECT_REASON } from "@/lib/sales/salesOrderPayments";
+import { MIN_REJECT_REASON, installmentUnconfirmOutcome } from "@/lib/sales/salesOrderPayments";
+import { ledgerDrawerActions } from "@/lib/finance/ledgerDrawerActions";
 import { REPLANNED_BADGE, REPLANNED_BADGE_TITLE } from "@/lib/sales/installmentReplan";
 /* ใบสั่งขายย้อนหลัง (มติ 22/09 · mig 0374) — ตัดสินด้วยตัวกลางเท่านั้น (literal ของ origin มีบ้านเดียว) */
 import { isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalOrders";
@@ -520,8 +521,58 @@ export default function FinancePaymentsPage() {
     totalAmount: group.orderTotal, vatAmount: group.orderTotal !== null && group.orderNet !== null ? group.orderTotal - group.orderNet : 0,
     money,
   });
-  /* ลิ้นชักรายงวด (รื้อ PR-3a · โหมดดู) — ปุ่มลงมือของบัญชีเข้ามาใน PR-3b · ตอนนี้คิวรับรอง/ใบกำกับ/เงินค้างข้างบนยังเป็นทางลงมือ */
+  /* ลิ้นชักรายงวด (รื้อ PR-3a/3b) — ปุ่มของบัญชีรายงวดอยู่ในลิ้นชัก (PR-3b) · คิวรับรอง/ใบกำกับ/เงินค้างข้างบนยังอยู่จนรวมเป็นแท็บ (PR-4) */
   const [drawer, setDrawer] = useState(null);
+  /* แถวทะเบียนทั้งใบของใบที่เปิดลิ้นชัก — ตัวกรองของหน้าอาจตัดงวดอื่นของใบออก (`rows` = ชุดที่กรองแล้ว) แต่ปุ่มต้องกดได้ทุกงวด
+     ⇒ อ่านสดด้วยคำค้นเลขที่ใบ (GET อ่านอย่างเดียว · route เดียวกัน) แล้วคัดเฉพาะใบนี้ · อ่านใหม่ทุกครั้งที่ทะเบียนโหลดใหม่ (หลังกดปุ่ม) */
+  const [drawerRows, setDrawerRows] = useState([]);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [unconfirmFor, setUnconfirmFor] = useState(null);
+  useEffect(() => {
+    if (!drawer) { setDrawerRows([]); return undefined; }
+    let alive = true;
+    setDrawerLoading(true);
+    apiFetch(`/api/finance/payments?q=${encodeURIComponent(drawer.group.orderNumber || "")}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body) => { if (alive) setDrawerRows((body?.rows || []).filter((r) => r.orderId === drawer.group.orderId)); })
+      .catch(() => { if (alive) setDrawerRows([]); })
+      .finally(() => { if (alive) setDrawerLoading(false); });
+    return () => { alive = false; };
+  }, [drawer, data.rows]);
+  /* ปุ่มของงวดหนึ่งงวดในลิ้นชัก — ตัวตัดสิน `ledgerDrawerActions` (เงื่อนไขชุดเดียวกับคิว + เหตุจาก ledgerRowLock) · เปิดโมดัลตัวเดิมของหน้า */
+  const openDrawerAction = (row, action) => {
+    setActionError("");
+    if (action === "confirm") setConfirmFor(row);
+    else if (action === "reject") setRejectFor({ row, reason: "" });
+    else if (action === "tax-invoice") setInvoiceFor(row);
+    else if (action === "refund") setRefundFor(row);
+    else if (action === "unconfirm") setUnconfirmFor({ row, reason: "" });
+  };
+  const drawerActions = (inst) => {
+    const row = drawerRows.find((r) => r.id === inst.id);
+    if (!row) return drawerLoading ? <span className="cell-sub">กำลังโหลดปุ่ม…</span> : null;
+    const actions = ledgerDrawerActions(row);
+    if (!actions.length) return null;
+    const locks = [...new Set(actions.map((a) => a.lock).filter(Boolean))];
+    return (
+      <div className={styles.drawerActions}>
+        <div className={styles.drawerButtons}>
+          {actions.map((a) => (
+            <Button key={a.action} size="sm"
+              tone={a.tone === "primary" ? "primary" : a.tone === "danger" ? "danger" : undefined}
+              variant={a.tone === "quiet" ? "quiet" : a.tone === "danger" ? "ghost" : undefined}
+              disabled={acting || !!a.lock} title={a.lock || undefined}
+              onClick={() => openDrawerAction(row, a.action)}>
+              {a.label}
+            </Button>
+          ))}
+        </div>
+        {/* ปุ่มกดไม่ได้ = โชว์พร้อมเหตุ (ไม่ซ่อน) — เหตุชุดเดียวกับคิวข้างบน */}
+        {locks.map((text) => <span key={text} className="cell-sub">{text}</span>)}
+      </div>
+    );
+  };
+  const dialogOpen = !!(confirmFor || rejectFor || invoiceFor || refundFor || unconfirmFor);
   const orderRow = (group) => {
     const note = groupNote(group);
     const money = data.orderMoney?.[group.orderId] || null;
@@ -1302,6 +1353,31 @@ export default function FinancePaymentsPage() {
           error={actionError}
         />
 
+        {/* ถอนคำรับรอง (รื้อ PR-3b) — เดิมมีแค่บนแผงงวดของหน้าใบ · คำผลลัพธ์ตัวเดียวกับแผง (`installmentUnconfirmOutcome` · กฎโมดัลบอกผลลัพธ์)
+            · ไม่ใช่คืนเงิน: เงินไม่ได้ออกจากบริษัท แค่ถอยคำรับรองของบัญชี (เช่นสลิปเดียวกับใบใหม่ · กรณี 09/11) */}
+        <ReasonDialog
+          open={!!unconfirmFor}
+          title="ถอนคำรับรองการชำระ"
+          description={unconfirmFor ? installmentUnconfirmOutcome(liveRow(unconfirmFor.row), drawerRows, {
+            serviceRounds: !!unconfirmFor.row.serviceRounds,
+            order: { actualMode: unconfirmFor.row.actualMode, status: unconfirmFor.row.orderStatus },
+          }) : ""}
+          label="เหตุผลที่ถอนคำรับรอง"
+          value={unconfirmFor?.reason || ""}
+          onChange={(reason) => setUnconfirmFor((f) => ({ ...f, reason }))}
+          submitError={actionError}
+          onClose={() => { setUnconfirmFor(null); setActionError(""); }}
+          onConfirm={async () => {
+            if (await runAction(liveRow(unconfirmFor.row), "unconfirm", { reason: unconfirmFor.reason })) setUnconfirmFor(null);
+          }}
+          confirmLabel="ยืนยันถอนคำรับรอง"
+          placeholder={`ระบุเหตุผลอย่างน้อย ${MIN_REJECT_REASON} ตัวอักษร`}
+          minLength={MIN_REJECT_REASON}
+          maxLength={500}
+          tone="danger"
+          busy={acting}
+        />
+
         {/* ⚠️ บอกตรง ๆ ว่าไฟล์ที่ได้คือของที่กรองไว้ — คนกดปุ่มขณะกรองอยู่แล้วได้ทั้ง
             ทะเบียนมาคือไฟล์ที่เอาไปกระทบยอดผิด และไม่มีอะไรบนจอบอกว่าต่างกัน */}
         <p className="form-note">
@@ -1310,13 +1386,15 @@ export default function FinancePaymentsPage() {
         </p>
       </div>
       {/* ลิ้นชักรายงวด (รื้อ PR-3a · โหมดดู · ไม่มี Actual) — เปิดจากชิปบนแถว · ปุ่มท้ายพาไปแท็บการชำระของใบ */}
-      {drawer && data.orderMoney?.[drawer.group.orderId] ? (
+      {/* ⚠️ ซ่อนลิ้นชักขณะโมดัลของปุ่มเปิดอยู่ — ลิ้นชักมีกับดักโฟกัส (Tab) + Esc ของตัวเอง ซ้อนกับโมดัลแล้วโฟกัสหลุด/ปิดสองชั้น ·
+          state ของลิ้นชักคงไว้ ปิดโมดัลแล้วลิ้นชักกลับมาที่งวดเดิม */}
+      {drawer && !dialogOpen && data.orderMoney?.[drawer.group.orderId] ? (
         <InstallmentDrawer
           row={rowLikeOf(drawer.group, data.orderMoney[drawer.group.orderId])}
           focusSeq={drawer.seq}
           showActual={false}
           detailHref={orderHref(drawer.group)}
-          hint="รับรอง ตีกลับ และบันทึกใบกำกับ ทำที่คิวด้านบนของหน้านี้ หรือแท็บการชำระของหน้าใบ"
+          renderActions={drawerActions}
           onClose={() => setDrawer(null)}
         />
       ) : null}
