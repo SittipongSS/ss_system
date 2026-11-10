@@ -89,12 +89,15 @@ test('โมดัลตีกลับงวดยกมาบอกทาง�
 });
 
 // ── 4. คิวบนทะเบียน: ป้าย "ยกมา" · ใบย้อนหลัง · ช่วงครอบ ────────────────────────────────────────
-test('แถวคิวรับรองโชว์ป้าย "ยกมา" + ป้ายใบย้อนหลัง + ช่วงครอบ · คอลัมน์ใบกำกับไม่นับงวดยกมา', () => {
+/* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-4a): แผงคิวรับรองถูกถอด — ป้าย "ยกมา" · ป้ายใบย้อนหลัง · ช่วงครอบ ย้ายไปบรรทัดรายละเอียดของงวดในลิ้นชัก
+   (อยู่เหนือปุ่มรับรองของงวดนั้น) · กติกาเดิมทุกข้อ: ต้องเห็นก่อนกดรับรอง */
+test('รายละเอียดงวดในลิ้นชัก (เดิมแถวคิวรับรอง) โชว์ป้าย "ยกมา" + ป้ายใบย้อนหลัง + ช่วงครอบ · คอลัมน์ใบกำกับไม่นับงวดยกมา', () => {
   const page = code(PAGE);
-  const queue = slice(page, '{queueShown.map((row) => {', '{queue.length > QUEUE_PREVIEW');
+  const queue = slice(page, 'const drawerDetail = (row) => {', 'const drawerActions = (inst) => {');
   assert.match(queue, /\{isOpeningInstallment\(row\) \? \(\s*<StatusBadge size="sm" tone="info" label="ยกมา"/);
-  assert.match(queue, /isHistoricalOrder\(\{ origin: row\.origin \}\) \? ` · \$\{LEDGER_HISTORICAL_TAG\}`/);
-  assert.match(queue, /` · ครอบ \$\{fmtDate\(row\.coversFrom\)\}–\$\{fmtDate\(row\.coversTo\)\}`/);
+  assert.match(queue, /isHistoricalOrder\(\{ origin: row\.origin \}\) \? LEDGER_HISTORICAL_TAG : "",/);
+  assert.match(queue, /row\.coversFrom && row\.coversTo \? `ครอบ \$\{fmtDate\(row\.coversFrom\)\}–\$\{fmtDate\(row\.coversTo\)\}` : "",/);
+  assert.match(slice(page, 'const drawerActions = (inst) => {', 'const openClose'), /const detail = drawerDetail\(row\);/);
   assert.match(page, /\{group\.invoiced\}\/\{group\.count - group\.openingCount\}/);
   assert.match(page, /ยกมา: \{openingInvoiceNote\}/);
 });
