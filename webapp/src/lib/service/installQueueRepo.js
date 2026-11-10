@@ -60,7 +60,7 @@ export async function loadInstallQueue(supabase, { todayIso = businessDate() } =
     .select('id, code, name, "siteId"').in('id', chunk).order('id', { ascending: true }))));
   const siteIds = uniq([...zoneList.map((z) => z.siteId), ...requests.map((r) => r.siteId)]);
   const siteList = must('อ่านไซต์', await fetchInChunks(siteIds, (chunk) => fetchAllResult(() => supabase.from('service_sites')
-    .select('id, code, name').in('id', chunk).order('id', { ascending: true }))));
+    .select('id, code, name, "accessFrom", "accessTo", "accessDays"').in('id', chunk).order('id', { ascending: true }))));
 
   const visitIds = visits.map((v) => v.id);
   const visitZonesByVisitId = {};

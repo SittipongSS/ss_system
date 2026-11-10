@@ -18,10 +18,13 @@ import styles from "./InstallScheduleGroup.module.css";
 
 const slot = (row) => (row.requestedStartTime && row.requestedEndTime ? `${row.requestedStartTime}–${row.requestedEndTime}` : "ทั้งวัน");
 
-export default function InstallScheduleGroup({ technicians = [], canConfirm = false, onChanged }) {
+export default function InstallScheduleGroup({ technicians = [], rosterState = "ready", canConfirm = false, onPicking, onChanged }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [confirmFor, setConfirmFor] = useState(null);
+  /* โมดัลเปิด = บอกหน้าแม่ให้โหลดรายชื่อช่าง (หน้าจัดคิวโหลดตอนมีคนต้องเลือกคนเท่านั้น) */
+  const picking = Boolean(confirmFor);
+  useEffect(() => { onPicking?.(picking); }, [picking, onPicking]);
 
   const load = useCallback(async () => {
     try {
@@ -100,6 +103,7 @@ export default function InstallScheduleGroup({ technicians = [], canConfirm = fa
           row={confirmFor.row}
           visit={confirmFor.visit}
           technicians={technicians}
+          rosterState={rosterState}
           todayIso={data.todayIso}
           onClose={() => setConfirmFor(null)}
           onSaved={async () => { setConfirmFor(null); await load(); onChanged?.(); }}

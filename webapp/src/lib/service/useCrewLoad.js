@@ -45,12 +45,11 @@ export function crewLoadFromQueue(data, dateIso, { technicians = [], excludeVisi
 }
 
 /**
- * @param enabled     ยิงเมื่อ true เท่านั้น (โมดัลเปิด + โหมดลงคิวเข้าพื้นที่ + ผู้เรียกไม่ได้ส่งภาระมาเอง)
- * @param technicians รายชื่อที่ตัวเลือกจะโชว์ [{ id, name }]
- * @param excludeVisitId นัดที่กำลังแก้ (ไม่นับเป็นภาระของตัวเอง) — ว่าง = นับทุกนัด
- * @returns `staffLoadFor(dateIso)` — เรียกแบบ synchronous ได้ทุกเรนเดอร์
+ * ก้อนภาระดิบ `{ status, visits, workload, closedSince, teams, members }` — ตัวเลือกแบบตาราง (`CrewSlotPicker`)
+ * ต้องการนัดรายใบ (วาดก้อนตามเวลา) ไม่ใช่แค่ตัวเลขรายคน ⇒ แยกตัวโหลดออกมาให้สองทางใช้เส้นเดียวกัน
+ * @param enabled ยิงเมื่อ true เท่านั้น
  */
-export default function useCrewLoad({ enabled = false, technicians = [], excludeVisitId = "" } = {}) {
+export function useCrewLoadData({ enabled = false } = {}) {
   const [data, setData] = useState(IDLE);
 
   useEffect(() => {
@@ -85,7 +84,17 @@ export default function useCrewLoad({ enabled = false, technicians = [], exclude
     })();
     return () => { alive = false; };
   }, [enabled]);
+  return data;
+}
 
+/**
+ * @param enabled     ยิงเมื่อ true เท่านั้น (โมดัลเปิด + โหมดลงคิวเข้าพื้นที่ + ผู้เรียกไม่ได้ส่งภาระมาเอง)
+ * @param technicians รายชื่อที่ตัวเลือกจะโชว์ [{ id, name }]
+ * @param excludeVisitId นัดที่กำลังแก้ (ไม่นับเป็นภาระของตัวเอง) — ว่าง = นับทุกนัด
+ * @returns `staffLoadFor(dateIso)` — เรียกแบบ synchronous ได้ทุกเรนเดอร์
+ */
+export default function useCrewLoad({ enabled = false, technicians = [], excludeVisitId = "" } = {}) {
+  const data = useCrewLoadData({ enabled });
   const list = useMemo(() => technicians || [], [technicians]);
   return useCallback(
     (dateIso) => crewLoadFromQueue(data, dateIso, { technicians: list, excludeVisitId }),

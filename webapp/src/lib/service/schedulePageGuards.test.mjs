@@ -110,7 +110,8 @@ test('⭐ ลงคิวจากการ์ด: โมดัลกลาง �
 });
 
 test('⭐ รายชื่อเจ้าหน้าที่โหลดทั้งตอนเปิดโมดัลนัดและตอนเปิดโมดัลลงคิว', () => {
-  assert.match(page, /const pickingPeople = formVisit !== undefined \|\| !!dueRow;/);
+  /* 🐞 11/11: โมดัลยืนยันวันของกลุ่มคำขอติดตั้ง (PR-3c) ก็ต้องโหลดรายชื่อ — เดิมขึ้น "ยังไม่มีบัญชี…" ทั้งที่มีช่าง */
+  assert.match(page, /const pickingPeople = formVisit !== undefined \|\| !!dueRow \|\| installPicking;/);
   assert.match(page, /if \(!pickingPeople \|\| technicians\.length\) return;/);
   assert.match(page, /\}, \[pickingPeople, technicians\.length\]\);/);
 });

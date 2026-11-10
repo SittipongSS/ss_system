@@ -7,24 +7,27 @@
 // ⚠️ ด่านค่าถาม `installConfirmInput` ตัวเดียวกับ API — ปุ่มบอกเหตุ · โซนที่มีนัดแล้วไม่โชว์ให้เลือก
 // ⭐ โหมด "ยืนยันวันใหม่" (`visit` · PR-4) — ลูกค้าขอเปลี่ยนวันหลัง TS ยืนยัน: ถามแค่ วัน · เวลา · หัวหน้างาน · เหตุ
 //    บนนัดร่างเดิม (โซน/เครื่องที่วางไว้คงเดิม) · ด่านถาม `installReconfirmInput` ตัวเดียวกับ API
+// ⭐ วัน · เวลา · หัวหน้างาน = ตัวเลือกตาราง ช่าง × เวลา ตัวเดียว (`CrewSlotPicker` · P2 · มติเจ้าของ 10/11/2026)
+//    แทน DateInput + TimeInput คู่ + CrewLoadPicker เดิม · ม็อกฉบับสุดท้าย Final.dc.html
 import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
-import DateInput from "@/components/ui/DateInput";
-import TimeInput from "@/components/ui/TimeInput";
 import Select from "@/components/ui/Select";
 import Textarea from "@/components/ui/Textarea";
 import StatusNotice from "@/components/ui/StatusNotice";
-import CrewLoadPicker from "@/components/service/CrewLoadPicker";
+import CrewSlotPicker from "@/components/service/CrewSlotPicker";
 import { apiJson } from "@/lib/apiFetch";
-import useCrewLoad from "@/lib/service/useCrewLoad";
+import { useCrewLoadData } from "@/lib/service/useCrewLoad";
+import { askedSlot, slotTimes } from "@/lib/service/crewSlotGrid";
+import { fitToAccess, rangeText } from "@/lib/service/crewSlotView";
+import { minutesOf, toHHMM } from "@/lib/service/sites";
 import { notifyToast } from "@/lib/feedback";
 import { fmtDate } from "@/lib/format";
 import { installConfirmInput, installReconfirmInput } from "@/lib/service/installConfirm";
 import styles from "./InstallConfirmModal.module.css";
 
-export default function InstallConfirmModal({ row, visit = null, technicians = [], todayIso, onClose, onSaved }) {
+export default function InstallConfirmModal({ row, visit = null, technicians = [], rosterState = "ready", todayIso, onClose, onSaved }) {
   const reconfirm = Boolean(visit);
   const openZones = useMemo(
     () => (reconfirm
@@ -32,11 +35,25 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
       : row.zones.filter((z) => z.stage === "awaiting_ts" && !z.visitId)),
     [row, visit, reconfirm],
   );
+  const asked = useMemo(() => askedSlot({
+    requestedDate: row.requestedDate, requestedStartTime: row.requestedStartTime, requestedEndTime: row.requestedEndTime,
+  }), [row]);
+  const site = row.siteAccess || null;
+  /* ⭐ ม็อกฉบับสุดท้าย: ขอ 09:00–12:00 แต่ไซต์เปิด 10:00 ⇒ ตั้งต้นที่ 10:00–13:00 (ยาวเท่าที่ขอ) และบอกตรง ๆ ว่าเลื่อนให้
+     · ยืนยันวันใหม่ไม่เลื่อนให้ — ลูกค้าเป็นคนขอเวลานั้นเอง */
+  const [fitted] = useState(() => {
+    const slot = !reconfirm && asked && !asked.allDay ? fitToAccess(site, asked) : null;
+    if (!slot) return null;
+    return {
+      ...slotTimes(slot),
+      note: `ฝ่ายขายขอ ${rangeText(asked.start, asked.end)} แต่ไซต์ให้เข้า ${toHHMM(site.accessFrom) || "00:00"}–${toHHMM(site.accessTo) || "24:00"} — ตั้งต้นที่ ${rangeText(slot.start, slot.end)} ให้แล้ว (ยาวเท่าที่ขอ)`,
+    };
+  });
   const [form, setForm] = useState(() => ({
     zoneIds: openZones.map((z) => z.zoneId),
     scheduledDate: row.requestedDate || "",
-    startTime: row.requestedStartTime || "",
-    endTime: row.requestedEndTime || "",
+    startTime: fitted?.startTime || row.requestedStartTime || "",
+    endTime: fitted?.endTime || row.requestedEndTime || "",
     dateChangeReason: "",
     assigneeId: reconfirm ? String(visit.assigneeId || "") : "",
     plannedAssets: [],
@@ -46,8 +63,9 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const set = (key) => (value) => setForm((f) => ({ ...f, [key]: value }));
-  /* ⭐ ภาระรายคนของวันที่เลือก — สูตรเดียวกับหน้าจัดคิว (`crewLoadPeople`) · ไม่รู้ = บอกว่าไม่รู้ ไม่ใช่ 0 */
-  const loadFor = useCrewLoad({ enabled: true, technicians, excludeVisitId: reconfirm ? visit.id : "" });
+  /* ⭐ ภาระของทุกคน — สูตรเดียวกับหน้าจัดคิว (`crewLoadPeople`) · ไม่รู้ = บอกว่าไม่รู้ ไม่ใช่ 0
+     · ตารางต้องการนัดรายใบ (วาดก้อนตามเวลา) ⇒ ก้อนดิบ ไม่ใช่ตัวเลขรายคน */
+  const load = useCrewLoadData({ enabled: true });
 
   useEffect(() => {
     /* ยืนยันวันใหม่ = เครื่องคงเดิม ⇒ ไม่ต้องโหลดคลัง */
@@ -80,6 +98,27 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
     });
   }, [form, technician, row, visit, reconfirm, todayIso, assetsById]);
   const dateMoved = Boolean(form.scheduledDate) && form.scheduledDate !== row.requestedDate;
+  const slotValue = useMemo(() => ({
+    date: form.scheduledDate, startTime: form.startTime, endTime: form.endTime, assigneeId: form.assigneeId,
+  }), [form.scheduledDate, form.startTime, form.endTime, form.assigneeId]);
+  const onSlot = (next) => setForm((f) => ({
+    ...f,
+    scheduledDate: next.date || "",
+    startTime: next.startTime || "",
+    endTime: next.endTime || "",
+    assigneeId: String(next.assigneeId || ""),
+  }));
+  /* "ถ้าเลือก → x/12 จุด" — จุดของงานนี้ = เครื่องที่วางไว้ (ยังไม่วาง/ยืนยันวันใหม่ = ไม่รู้ ⇒ พูดแค่จำนวนนัด ไม่เดาจุด) */
+  const siteLoad = useMemo(
+    () => (!reconfirm && form.plannedAssets.length ? { assets: form.plannedAssets.length } : null),
+    [reconfirm, form.plannedAssets.length],
+  );
+  const currentLength = useMemo(() => {
+    if (!reconfirm) return null;
+    const start = minutesOf(visit.startTime);
+    const end = minutesOf(visit.endTime);
+    return start !== null && end !== null && end > start ? end - start : null;
+  }, [reconfirm, visit]);
   const pickedIds = new Set(form.plannedAssets.map((p) => p.assetId));
 
   const addAsset = (zoneId, assetId) => {
@@ -118,7 +157,7 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
   return (
     <Modal
       open
-      size="lg"
+      size="xl"
       sheetOnPhone
       onClose={saving ? undefined : onClose}
       title={reconfirm ? "ยืนยันวันใหม่ · ลูกค้าขอเปลี่ยนวัน" : "ยืนยันวันติดตั้ง"}
@@ -182,19 +221,26 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
       </fieldset>
       )}
 
-      <div className={`form-grid cols-3 ${styles.block}`}>
-        <label className="form-field">
-          <span className="form-field-label">วันติดตั้ง <span className="req">*</span></span>
-          <DateInput value={form.scheduledDate} onChange={set("scheduledDate")} min={todayIso || undefined} weekday ariaLabel="วันติดตั้ง" />
-        </label>
-        <label className="form-field">
-          <span className="form-field-label">เริ่ม</span>
-          <TimeInput value={form.startTime} onChange={set("startTime")} ariaLabel="เวลาเริ่ม" />
-        </label>
-        <label className="form-field">
-          <span className="form-field-label">ถึง</span>
-          <TimeInput value={form.endTime} onChange={set("endTime")} ariaLabel="เวลาจบ" />
-        </label>
+      <div className={styles.block}>
+        <span className="form-field-label" id="install-slot">วันติดตั้ง · เวลา · หัวหน้างาน <span className="req">*</span></span>
+        <CrewSlotPicker
+          technicians={technicians}
+          load={load}
+          value={slotValue}
+          onChange={onSlot}
+          asked={asked}
+          site={site}
+          siteLoad={siteLoad}
+          excludeVisitId={reconfirm ? visit.id : null}
+          allowUnassigned={false}
+          currentName={reconfirm ? visit.assigneeName || "" : ""}
+          currentLength={currentLength}
+          todayIso={todayIso}
+          rosterState={rosterState}
+          labelledBy="install-slot"
+          disabled={saving}
+          note={fitted && form.startTime === fitted.startTime && form.endTime === fitted.endTime ? fitted.note : ""}
+        />
       </div>
       {dateMoved ? (
         <label className={`form-field ${styles.block}`}>
@@ -202,20 +248,6 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
           <Textarea variant="form" value={form.dateChangeReason} onChange={(e) => set("dateChangeReason")(e.target.value)} maxLength={500} placeholder="เช่น ช่างทีมเต็มวันที่ขอ" />
         </label>
       ) : null}
-
-      <div className={styles.block}>
-        <span className="form-field-label" id="install-assignee">หัวหน้างาน <span className="req">*</span></span>
-        <CrewLoadPicker
-          value={form.assigneeId}
-          onChange={set("assigneeId")}
-          technicians={technicians}
-          load={loadFor(form.scheduledDate)}
-          dateIso={form.scheduledDate}
-          labelledBy="install-assignee"
-          allowUnassigned={false}
-          timeWindow={{ startTime: form.startTime, endTime: form.endTime }}
-        />
-      </div>
 
       {reconfirm ? null : (
       <fieldset className={styles.block}>
