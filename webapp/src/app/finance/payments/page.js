@@ -67,6 +67,9 @@ import { isHistoricalOrder, isOpeningInstallment } from "@/lib/sales/historicalO
 import { historicalOpeningRejectNote } from "@/lib/sales/historicalOrderCopy";
 import { openingInvoiceNote } from "@/lib/sales/taxInvoice";
 import thaiText, { keepPhrases } from "@/components/ThaiText";
+import { CollectedCell, PayableCell } from "@/components/salesPlanning/SalesOrderMoneyCells";
+import InstallmentChips from "@/components/salesPlanning/InstallmentChips";
+import InstallmentDrawer from "@/components/salesPlanning/InstallmentDrawer";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -192,7 +195,7 @@ export default function FinancePaymentsPage() {
   const capUser = useCapUser();
   const department = useDepartment();
   const canSetBillingRule = useCan("customers:view") && canConfirmPayment({ ...capUser, department });
-  const [data, setData] = useState({ rows: [], summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null, facetTally: null });
+  const [data, setData] = useState({ rows: [], orderMoney: {}, summary: null, totalRows: 0, undatedHidden: null, billingTally: null, dueTally: null, facetTally: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
@@ -328,6 +331,8 @@ export default function FinancePaymentsPage() {
       if (!res.ok) throw new Error(body?.error || "โหลดทะเบียนการชำระไม่สำเร็จ");
       setData({
         rows: body.rows || [], summary: body.summary, totalRows: body.totalRows || 0,
+        /* ก้อนเงินรายใบ (รื้อ PR-3a) — ยอดจ่าย/เก็บแล้ว/ชิปรายงวดชุดเดียวกับหน้ารายการ SO · คิดจากชุดก่อนกรองที่ server */
+        orderMoney: body.orderMoney || {},
         undatedHidden: body.undatedHidden || null,
         // ตัวนับของกลุ่มตัวกรองรอบวางบิล + งวดไม่มีวันวางบิลที่ตัวกรองนั้นซ่อน (คิดที่ API จากชุดที่ถอดตัวกรองนี้ออก)
         billingTally: body.billingTally || null,
@@ -508,8 +513,19 @@ export default function FinancePaymentsPage() {
      (AGENTS.md: สองสำเนาของสิ่งเดียวกันจะเพี้ยนหากันเสมอ) */
   /* `#payment` พาไปยืนที่การ์ดการชำระพอดี · ⚠️ แถวกับลิงก์ในเซลล์ต้องได้ href ตัวเดียวกันเป๊ะ (ROW_MIRROR) */
   const orderHref = (group) => `/sa/sales-orders/${group.orderId}#payment`;
+  /* แถวทะเบียนในรูปที่เซลล์เงินกลาง/ลิ้นชักอ่าน (`row.money` · `status` · ยอดใบ) — ค่าระดับใบทุกตัวมากับก้อนของ server */
+  const rowLikeOf = (group, money) => ({
+    id: group.orderId, orderNumber: group.orderNumber, status: group.orderStatus, customerName: group.customerName,
+    quotation: group.quoteNumber ? { quoteNumber: group.quoteNumber } : null,
+    totalAmount: group.orderTotal, vatAmount: group.orderTotal !== null && group.orderNet !== null ? group.orderTotal - group.orderNet : 0,
+    money,
+  });
+  /* ลิ้นชักรายงวด (รื้อ PR-3a · โหมดดู) — ปุ่มลงมือของบัญชีเข้ามาใน PR-3b · ตอนนี้คิวรับรอง/ใบกำกับ/เงินค้างข้างบนยังเป็นทางลงมือ */
+  const [drawer, setDrawer] = useState(null);
   const orderRow = (group) => {
     const note = groupNote(group);
+    const money = data.orderMoney?.[group.orderId] || null;
+    const rowLike = rowLikeOf(group, money);
     const shaped = groupAsOrder(group);
     const track = shaped ? salesOrderListTrack(shaped) : null;
     return (
@@ -591,69 +607,56 @@ export default function FinancePaymentsPage() {
             </span>
           ) : null}
         </td>
-        {/* เก็บแล้ว x/y — นับเฉพาะงวดที่บัญชีคอนเฟิร์ม (กติกา mig 0245) */}
-        <td className="num mono">
-          {group.paidCount}/{group.count}
-          {/* ⚠️ ตัวเลขบน (x/y) นับงวดที่ตาเห็น · คำรองบอกทั้งใบ — กรองอยู่แล้วเห็นไม่ครบ = "แสดง n จาก m งวด" (ม็อก D)
-              ไม่งั้นทางเข้าจากกระดิ่ง (`?billing=soon`) ทำใบ 12 งวดขึ้น "ชำระครั้งเดียว" (review S5) */}
+        {/* ⭐ ทรงเดียวกับแถวรายการ SO ของฝ่ายขาย (รื้อ PR-3a · มติเจ้าของ 09/11 "แถวเดียวกันสองฝ่าย") — ไม่มี Actual (บัญชีสนใจยอดจ่าย)
+            ยอดจ่าย = รวม VAT บน · ก่อน VAT ล่าง · เก็บแล้ว = งวดที่บัญชีรับรอง (มติข้อ 1) + แถบ + ค้าง · รอบัญชีตรวจแยก
+            ⚠️ ตัวเลขทั้งสองช่องมาจากก้อน `orderMoney` ของ server (ชุดก่อนกรอง = ทั้งใบ) — ไม่ใช่ `group.summary` ซึ่งนับแค่งวดที่ผ่านตัวกรอง */}
+        <td className="num mono"><PayableCell row={rowLike} /></td>
+        {/* ⭐ วางบิล (mig 0389 · รุ่นสี่ §6) — วางบิลถัดไป + คำขอใบวางบิล ช่องเดียว (รื้อ PR-3a: ตารางต้องไม่เลื่อนข้าง)
+            ลำดับตามงานจริง: วางบิลก่อน เงินเข้าทีหลัง */}
+        <td>
+          <NextBillingCell group={group} />
+          <span className="cell-sub"><BillingRequestCell group={group} /></span>
+        </td>
+        {/* งวด: เก็บแล้ว x/y (งวดที่ตาเห็น · คำรองบอกทั้งใบ) + ชิปรายงวดของทั้งใบ (กด = ลิ้นชัก) + วันกำหนดถัดไป/งานที่รอ + จ่ายถึง (ใบบริการ)
+            ⚠️ x/y นับงวดที่ตาเห็น · คำรองบอกทั้งใบ — กรองอยู่แล้วเห็นไม่ครบ = "แสดง n จาก m งวด" (ม็อก D)
+               ไม่งั้นทางเข้าจากกระดิ่ง (`?billing=soon`) ทำใบ 12 งวดขึ้น "ชำระครั้งเดียว" (review S5) */}
+        <td>
+          <span className="mono">{group.paidCount}/{group.count}</span>
           <span className="cell-sub">{groupInstallmentNote(group, { filtering })}</span>
           {/* ⭐ งวดจริงต่างจากแผนของ QT (ปรับแผนหลังอนุมัติ · 0377 · มติ D5) — ฉบับพิมพ์ SO ที่ลูกค้าถือยังแสดงแผน QT
               ⇒ บัญชีต้องรู้ก่อนโทรตามเงินว่ายอดต่องวดบนกระดาษไม่ใช่ยอดในทะเบียน · ค่าระดับใบประทับจากชุดก่อนกรอง */}
           {group.replanned ? <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} /> : null}
-        </td>
-        {/* ใบหนึ่งมีหลายงวดจึงมีหลายวัน — สิ่งที่ตอบ "ต้องตามใบนี้เมื่อไร"
-            คือวันของงวดที่ **ยังเก็บไม่ได้** ที่ใกล้ที่สุด (`nextDue`) */}
-        {/* ⭐ "จ่ายถึง" — เงินที่รับรองแล้วครอบบริการถึงวันไหน (mig 0320 · มติ 2026-08-30)
-            บัญชีกดรับรองงวดแล้ววันนี้ขยับ = คิวช่างของ TS ปลดตาม ⇒ ต้องเห็นบนทะเบียนนี้
-            ⚠️ โชว์ทุกแถวเพื่อให้ตารางมีทรงเดียว — ใบที่ไม่มีรอบบริการขึ้นขีดตามปกติ
-            ⚠️ ขาดแล้ว (จ่ายถึง < วันนี้) = แดง เพราะแปลว่าบริการหยุดอยู่ ณ ตอนนี้ */}
-        <td className={`num ${group.serviceRounds && group.paidThrough && String(group.paidThrough) < String(todayIso) ? "cell-num-bad" : ""}`.trim()}>
-          {group.serviceRounds
-            ? (group.paidThrough
-              ? fmtDate(group.paidThrough)
-              : <span className="cell-quiet">ยังไม่ครอบ</span>)
-            : <span className="cell-quiet">{NA}</span>}
-        </td>
-        {/* ⭐ วางบิลถัดไป (mig 0389) — วางก่อน "กำหนดถัดไป" ตามลำดับจริงของงาน: วางบิลก่อน เงินเข้าทีหลัง */}
-        <td className="num">
-          <NextBillingCell group={group} />
-        </td>
-        {/* กำหนดถัดไป — แดง "เลยกำหนด" อ่านกำหนดชำระช่องเดียว (ไม่เคยแดงจากวันวางบิล)
-            ⭐ รุ่นสี่: ลูกค้าไม่ต้องวางบิลที่รอเหตุการณ์ พูดเหตุการณ์ที่ช่องนี้ (ช่องนำของเขา · `dueCellText`) ·
-              "ครบกำหนดใน 3 วัน" = งวดในชุดของกระดิ่งครบกำหนด (ตัวกรอง `?due=soon`) */}
-        <td className={`num ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
-          {group.nextDue
-            ? fmtDate(group.nextDue)
-            : <span className="cell-quiet">{group.dueWaiting ? LEDGER_BILLING_WAITING_TAG : NA}</span>}
+          {money?.installments?.length ? (
+            <span className="cell-sub">
+              <InstallmentChips installments={money.installments} onOpen={(seq) => setDrawer({ group, seq })}
+                ariaLabel={`สถานะรายงวดของ ${group.orderNumber || "ใบนี้"}`} />
+            </span>
+          ) : null}
+          {/* กำหนดถัดไป — แดง "เลยกำหนด" อ่านกำหนดชำระช่องเดียว (ไม่เคยแดงจากวันวางบิล)
+              ⭐ รุ่นสี่: ลูกค้าไม่ต้องวางบิลที่รอเหตุการณ์ พูดเหตุการณ์ที่ช่องนี้ (ช่องนำของเขา · `dueCellText`) ·
+                "ครบกำหนดใน 3 วัน" = งวดในชุดของกระดิ่งครบกำหนด (ตัวกรอง `?due=soon`) */}
+          <span className={`cell-sub ${group.overdue ? "cell-num-bad" : ""}`.trim()}>
+            {group.nextDue
+              ? `กำหนดถัดไป ${fmtDate(group.nextDue)}`
+              : (group.dueWaiting ? LEDGER_BILLING_WAITING_TAG : `กำหนดถัดไป ${NA}`)}
+          </span>
           {!group.nextDue && group.dueWaiting
             ? <span className="cell-sub">งวด {group.dueWaiting.seq} · {group.dueWaiting.event}</span>
             : null}
           {group.dueSoon ? <span className="cell-sub">ครบกำหนดใน {DUE_REMIND_DAYS} วัน · {group.dueSoon} งวด</span> : null}
           {/* งวดที่ติดด่านนับ Actual: ป้าย "รอนับ Actual n งวด" + title = เหตุรายงวด (คนที่ต้องทำต่อ · UAT FN 27/10 ข้อ 1) */}
           {note ? <span className="cell-sub" title={note.title}>{note.label}</span> : null}
-        </td>
-        {/* ⭐ คำขอใบวางบิล (รุ่นสี่ · §6) — ลำดับคอลัมน์ตามงานจริง: วันวางบิล → กำหนดชำระ → คำขอใบวางบิล → ยอด */}
-        <td>
-          <BillingRequestCell group={group} />
-        </td>
-        {/* ⭐ **ยอดค้างรับเป็นตัวเด่น** — เลขที่บัญชีตามจริง ของเดิมมีแต่
-            ยอดรวมกับเก็บแล้ว ต้องลบเอาเอง · แถบสัดส่วนอ่านความคืบหน้าด้วยตาเดียว */}
-        <td className="num mono">
-          {group.complete
-            ? <span className="cell-num-ok">เก็บครบ</span>
-            : <strong>{fmtMoney(group.summary.outstandingAmount)}</strong>}
-          <span className="cell-sub">
-            {fmtMoney(group.summary.collectedAmount)} / {fmtMoney(group.summary.totalAmount)}
-          </span>
-          {/* ⚠️ ใช้ <progress> ไม่ใช่ div+`style={{width}}` แบบที่อื่นในระบบ —
-              สัดส่วนมาทาง attribute ⇒ ไม่เพิ่มชั้น inlineStyle ที่ audit:ui
-              ล็อกเพดานไว้ (ratchet ขึ้นไม่ได้) และ semantic ตรงกว่า
-              ⚠️ ใบยอด 0 ไม่มีแถบ — รางเปล่าที่เติมไม่ได้อ่านเหมือนระบบค้าง */}
-          {group.summary.totalAmount > 0 ? (
-            <progress className={styles.mbar} aria-hidden="true"
-              value={group.summary.collectedAmount} max={group.summary.totalAmount} />
+          {/* ⭐ "จ่ายถึง" — เงินที่รับรองแล้วครอบบริการถึงวันไหน (mig 0320 · มติ 2026-08-30) · เฉพาะใบที่มีรอบบริการ
+              บัญชีกดรับรองงวดแล้ววันนี้ขยับ = คิวช่างของ TS ปลดตาม ⇒ ต้องเห็นบนทะเบียนนี้
+              ⚠️ ขาดแล้ว (จ่ายถึง < วันนี้) = แดง เพราะแปลว่าบริการหยุดอยู่ ณ ตอนนี้ */}
+          {group.serviceRounds ? (
+            <span className={`cell-sub ${group.paidThrough && String(group.paidThrough) < String(todayIso) ? "cell-num-bad" : ""}`.trim()}>
+              จ่ายถึง {group.paidThrough ? fmtDate(group.paidThrough) : "ยังไม่ครอบ"}
+            </span>
           ) : null}
         </td>
+        {/* เก็บแล้ว (ค้างรับ) ท้ายสุดของลำดับงาน — วางบิล → กำหนดชำระ → เงินเข้า (รุ่นสี่ §6) */}
+        <td className="num mono"><CollectedCell row={rowLike} /></td>
         {/* ออกใบกำกับไปกี่งวดแล้ว — ค้างเมื่อไรเป็นตัวเลขเตือน เพราะทุกงวดที่จ่ายแล้ว
             ต้องมีใบ (บริษัทเก็บ VAT · มติผู้ใช้ 2026-09-07)
             ⭐ งวดยกมาของใบย้อนหลังไม่อยู่ในตัวนับ (ใบกำกับออกในระบบเดิมแล้ว · มติ 22/09) — บอกแยกเป็นบรรทัดรอง
@@ -1147,7 +1150,7 @@ export default function FinancePaymentsPage() {
           </>
           )}
         >
-          <TableScroll surface="embedded" cells="stacked" minWidth={1580} aria-busy={loading}>
+          <TableScroll surface="embedded" cells="stacked" minWidth={920} aria-busy={loading}>
               <table className="w-full text-sm">
                 <thead>
                   {/* ⭐ 9 → 6 คอลัมน์ (มติผู้ใช้ 2026-08-13 · แบบ ก)
@@ -1159,16 +1162,12 @@ export default function FinancePaymentsPage() {
                   <tr>
                     <th>เอกสาร / ความคืบหน้า</th>
                     <th>ลูกค้า</th>
-                    <th className="num">งวด</th>
-                    <th className="num">จ่ายถึง</th>
-                    {/* วันวางบิล (mig 0389) — ค่าระดับใบ = งวดถัดไปที่ต้องไปวางบิล · รายงวดครบอยู่ในไฟล์ Excel
-                        ⭐ รุ่นสี่ (§6): วันวางบิล → กำหนดชำระ → คำขอใบวางบิล → ยอด (ค้างรับ) · ลำดับเดียวกับม็อก recommended */}
-                    <th className="num">วางบิลถัดไป</th>
-                    <th className="num">กำหนดถัดไป</th>
-                    <th>คำขอใบวางบิล</th>
-                    <th className="num">ค้างรับ</th>
-                    {/* ใบกำกับภาษี (mig 0348) — ตารางเป็น **หนึ่งใบหนึ่งแถว** ⇒ ใส่ได้แค่
-                        ตัวนับ ไม่ใช่เลขใบ · เลขรายงวดอยู่ในไฟล์ Excel และบนใบ SO */}
+                    {/* รื้อ PR-3a: 9 → 7 คอลัมน์ ไม่เลื่อนข้าง · ลำดับงานจริงคงเดิม (รุ่นสี่ §6): วางบิล (วางบิลถัดไป + คำขอใบวางบิล)
+                        → งวด (ชิป + กำหนดถัดไป + จ่ายถึง) → เก็บแล้ว (ค้างรับ) · ยอดจ่ายนำหน้าเป็นหลักของแถวเหมือนหน้ารายการ SO */}
+                    <th className="num">ยอดจ่าย รวม · ก่อน VAT</th>
+                    <th>วางบิล</th>
+                    <th>งวด</th>
+                    <th className="num">เก็บแล้ว</th>
                     <th className="num">ใบกำกับ</th>
                   </tr>
                 </thead>
@@ -1183,7 +1182,7 @@ export default function FinancePaymentsPage() {
                         {/* ยอดของกลุ่ม = **ค้างรับ** ไม่ใช่ยอดรวม — เลขเดียวกับที่เป็น
                             ตัวเด่นในแถวใบ ⇒ หัวกลุ่มกับแถวข้างในพูดเรื่องเดียวกัน */}
                         <TableGroupRow
-                          colSpan={9}
+                          colSpan={7}
                           label={bucket.label}
                           sub={bucket.sub}
                           badge={`${bucket.count} ใบ`}
@@ -1198,7 +1197,7 @@ export default function FinancePaymentsPage() {
                   }) : pageRows.map(orderRow)}
                   {!rows.length && !loading && (
                     <TableEmpty
-                      colSpan={9}
+                      colSpan={7}
                       /* ตัวกรองรอบวางบิลบอกนิยามของตัวเองตอนว่าง — "ว่าง" ของ "เลยรอบ" ต้องอ่านออกว่านับอะไร (ม็อก D) */
                       title={onlyOption ? onlyOption.empty : filtering ? "ไม่มีงวดที่ตรงกับตัวกรอง" : "ยังไม่มีงวดชำระในระบบ"}
                       description={onlyOption
@@ -1310,6 +1309,17 @@ export default function FinancePaymentsPage() {
           — ไฟล์เป็นรายงวด มีวันวางบิลและกำหนดชำระของทุกงวด
         </p>
       </div>
+      {/* ลิ้นชักรายงวด (รื้อ PR-3a · โหมดดู · ไม่มี Actual) — เปิดจากชิปบนแถว · ปุ่มท้ายพาไปแท็บการชำระของใบ */}
+      {drawer && data.orderMoney?.[drawer.group.orderId] ? (
+        <InstallmentDrawer
+          row={rowLikeOf(drawer.group, data.orderMoney[drawer.group.orderId])}
+          focusSeq={drawer.seq}
+          showActual={false}
+          detailHref={orderHref(drawer.group)}
+          hint="รับรอง ตีกลับ และบันทึกใบกำกับ ทำที่คิวด้านบนของหน้านี้ หรือแท็บการชำระของหน้าใบ"
+          onClose={() => setDrawer(null)}
+        />
+      ) : null}
     </Workspace>
   );
 }

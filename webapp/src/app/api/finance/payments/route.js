@@ -17,6 +17,7 @@ import {
   ledgerSummary, orderStateIndex, sortLedger, stampActualHold, stampConfirmOutlook, stampOrderInstallmentCount, stampOrderPaidThrough,
   stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
+import { ledgerOrderMoney } from '@/lib/sales/salesOrderMoney';
 import { holidaySet } from '@/lib/master/holidays';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
@@ -356,8 +357,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       });
     }
 
+    /* ก้อนเงินรายใบ (รื้อรายการ SO + บัญชี PR-3a) — แถวราย SO ของหน้างานบัญชีวาดยอดจ่าย/เก็บแล้ว/ชิปรายงวดชุดเดียวกับหน้ารายการ SO
+       ⭐ คิดจาก `all` (ก่อนกรอง) — ชิปพูดทั้งใบ · ส่งเฉพาะใบที่มีแถวในคำตอบ · ไฟล์ Excel ไม่ใช้ก้อนนี้ */
+    const orderMoney = ledgerOrderMoney(all, { todayIso, orderIds: [...new Set(filtered.map((r) => r.orderId))] });
+
     return ok({
       rows: filtered,
+      orderMoney,
       summary: ledgerSummary(filtered),
       // สรุปของ **ทั้งทะเบียน** ไว้ให้หน้าภาพรวมบอกได้ว่ากรองอยู่เห็นไม่ครบ
       totalRows: all.length,

@@ -254,16 +254,20 @@ test('route: ธง `dueSoon` มาจากตัวคัดของกร�
   assert.match(page, /key: "due", label: "ครบกำหนดชำระ"/);
 });
 
-test('หน้า: คอลัมน์ วางบิลถัดไป → กำหนดถัดไป → คำขอใบวางบิล → ค้างรับ · colSpan ตรงจำนวนคอลัมน์', () => {
+test('หน้า: ลำดับงานจริง วางบิล (วางบิลถัดไป + คำขอใบวางบิล) → งวด (กำหนดถัดไป) → เก็บแล้ว (ค้างรับ) · colSpan ตรงจำนวนคอลัมน์', () => {
+  /* รื้อรายการ SO + บัญชี PR-3a (มติเจ้าของ 09/11 "แถวเดียวกันสองฝ่าย" + "กว้างจนต้องเลื่อน"): 9 → 7 คอลัมน์
+     · วางบิลถัดไปกับคำขอใบวางบิลอยู่ช่องเดียว (คำขอใบวางบิลเป็นเอกสารของการวางบิล) · กำหนดถัดไปอยู่ในช่องงวด · ค้างรับอยู่ในช่องเก็บแล้ว
+     ⭐ ลำดับซ้ายไปขวายังเป็นงานจริง (รุ่นสี่ §6): วางบิล → กำหนดชำระ → เงินเข้า */
   const page = read('../../app/finance/payments/page.js');
   const head = page.slice(page.indexOf('<thead>'), page.indexOf('</thead>'));
   const labels = [...head.matchAll(/<th[^>]*>([^<]+)<\/th>/g)].map((m) => m[1].trim());
   const at = (label) => labels.indexOf(label);
-  assert.ok(at('วางบิลถัดไป') >= 0 && at('วางบิลถัดไป') < at('กำหนดถัดไป'));
-  assert.equal(at('คำขอใบวางบิล'), at('กำหนดถัดไป') + 1);
-  assert.equal(at('ค้างรับ'), at('คำขอใบวางบิล') + 1);
+  assert.ok(at('วางบิล') >= 0 && at('วางบิล') < at('งวด'));
+  assert.ok(at('งวด') < at('เก็บแล้ว'));
   for (const [, n] of page.matchAll(/colSpan=\{(\d+)\}/g)) assert.equal(Number(n), labels.length, 'colSpan ต้องเท่าจำนวนคอลัมน์');
-  // แถวเรียงเซลล์ตามหัวเดียวกัน: เซลล์คำขออยู่ระหว่างกำหนดถัดไปกับค้างรับ
+  // แถวเรียงเซลล์ตามหัวเดียวกัน: วางบิลถัดไป + คำขอ → กำหนดถัดไป → เก็บแล้ว
   const row = page.slice(page.indexOf('const orderRow = (group) =>'), page.indexOf('return (\n    <Workspace'));
-  assert.ok(row.indexOf('group.nextDue') < row.indexOf('<BillingRequestCell') && row.indexOf('<BillingRequestCell') < row.indexOf('group.summary.outstandingAmount'));
+  assert.ok(row.indexOf('<NextBillingCell') < row.indexOf('<BillingRequestCell'));
+  assert.ok(row.indexOf('<BillingRequestCell') < row.indexOf('group.nextDue'));
+  assert.ok(row.indexOf('group.nextDue') < row.indexOf('<CollectedCell'));
 });
