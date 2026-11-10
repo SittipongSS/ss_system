@@ -1,0 +1,78 @@
+/* เซลล์เงินของแถวใบสั่งขาย — ตัวเลขใช้คลาสกลางของตาราง (cell-sub · cell-num-*) · ที่นี่มีแค่แถบเก็บเงินกับการจัดชั้นของเซลล์งวด */
+.amount {
+  font-weight: var(--fw-semibold);
+}
+.bar {
+  display: block;
+  width: 96px;
+  height: 6px;
+  margin-top: var(--space-1);
+  margin-left: auto;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--panel-2);
+}
+.barOk {
+  fill: var(--green);
+}
+.barWait {
+  fill: var(--blue);
+  opacity: var(--op-muted);
+}
+.wait {
+  color: var(--blue);
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.count {
+  font-variant-numeric: tabular-nums;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.cardHead,
+.cardCustomer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+.cardNums {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-2);
+}
+.cardNum {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+.cardNum .bar {
+  margin-left: 0;
+  width: 100%;
+}
+.cardLabel {
+  font-size: var(--fs-4);
+  color: var(--text-3);
+  line-height: var(--lh-thai);
+}
+.cardFoot {
+  font-size: var(--fs-6);
+}
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
