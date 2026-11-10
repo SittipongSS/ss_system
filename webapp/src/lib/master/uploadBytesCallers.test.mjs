@@ -36,6 +36,8 @@ const ALLOWED_CALLERS = {
     'ใบเสร็จยื่นภาษี — ref ลงคอลัมน์ `receiptUrl` ของใบยื่น',
   'components/service/CloseVisitSheet.js':
     'รูปหน้างาน/ลายเซ็นผู้รับงาน — ref ลงคอลัมน์ของ `service_visits`',
+  'components/salesPlanning/SalesMoneyInDrawer.js':
+    'สลิปของงวดจากลิ้นชักรายงวดของหน้ารายการใบสั่งขาย (รื้อ PR-5) — ref ลง `sales_order_installments.evidence[]` ผ่าน PATCH report/evidence-add · อัปครั้งเดียวต่อไฟล์ (uploadPaymentEvidenceOnce)',
   'components/salesPlanning/TaxInvoiceDialog.js':
     'ไฟล์ใบกำกับภาษีของงวด — ref ลงคอลัมน์ `sales_order_installments.taxInvoiceFile` (mig 0348)',
   'lib/sales/historicalWizardUploads.js':

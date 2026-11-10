@@ -218,7 +218,9 @@ test('จอ evidence-add: ปุ่มถามด่านเดียวก�
   const panel = code(PANEL);
   assert.ok(panel.includes('!gate(row, "evidence-add")'), 'ปุ่มแนบเพิ่มต้องวาดตามด่านเดียวกับ API');
   assert.ok(panel.includes('onAction(live(addEvidenceFor.row), "evidence-add"'), 'ยิงด้วยแถวสด (updatedAt ล่าสุด)');
-  assert.ok(panel.includes('max={room}'), 'ช่องเลือกไฟล์ต้องไม่ให้เลือกเกินที่ด่านรับ');
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-5): โมดัลแนบเพิ่มเป็นตัวกลาง `InstallmentMoneyInDialogs` — แผงส่งเพดานจากด่านเดียวกัน · ตัวโมดัลตั้ง max ของช่องเลือกไฟล์ */
+  assert.ok(panel.includes('room={Math.min(8, installmentEvidenceRoom(addRow))}'), 'ช่องเลือกไฟล์ต้องไม่ให้เลือกเกินที่ด่านรับ');
+  assert.ok(code('components/salesPlanning/InstallmentMoneyInDialogs.js').includes('max={room}'), 'ช่องเลือกไฟล์ต้องไม่ให้เลือกเกินที่ด่านรับ');
   const page = code(SO_PAGE);
   assert.ok(page.includes('if (action === "report" || action === "evidence-add") {'),
     'ไม่อัปไฟล์ก่อน = ส่ง evidence ว่าง ⇒ 400 ทุกครั้ง');

@@ -177,8 +177,13 @@ test('🔴 อ่านรอบขายไม่ขึ้น: แผงงว�
   const panel = code(PANEL);
   assert.match(panel, /\{order\?\.serviceTermZonesError \? <StatusNotice tone="warning">\{order\.serviceTermZonesError\} — \{FN_SERVICE_GATE_UNREAD_PANEL\}<\/StatusNotice> : null\}/);
   assert.ok(panel.indexOf('order?.serviceTermZonesError ? <StatusNotice') > panel.indexOf('order?.moneyLinksError ?'), 'อยู่ข้างแถบ moneyLinksError');
-  const report = slice(panel, 'const prompt = reportPrompt(reportRow);', '</Modal>');
-  assert.match(report, /\{prompt && order\?\.serviceTermZonesError \? <StatusNotice tone="warning">\{FN_SERVICE_GATE_UNREAD_MODAL\}<\/StatusNotice> : null\}/);
+  /* ⚠️ ย้ายโดยตั้งใจ (รื้อ PR-5): โมดัลบันทึกการรับชำระย้ายเป็นตัวกลาง `InstallmentMoneyInDialogs` (แผงงวด + ลิ้นชักฝ่ายขายใช้ตัวเดียว) —
+     แผงส่งคำเตือนเข้าไป · ตัวโมดัลวาดเฉพาะตอนมีผลลัพธ์ของการรับรอง (prompt) — กติกาเดิมทุกข้อ */
+  const report = slice(panel, '<InstallmentReportDialog', '/>');
+  assert.match(report, /gateUnreadNotice=\{order\?\.serviceTermZonesError \? FN_SERVICE_GATE_UNREAD_MODAL : null\}/);
+  assert.match(report, /prompt=\{reportPrompt\(reportRow\)\}/);
+  const shared = code('components/salesPlanning/InstallmentMoneyInDialogs.js');
+  assert.match(shared, /\{prompt && gateUnreadNotice \? <StatusNotice tone="warning">\{gateUnreadNotice\}<\/StatusNotice> : null\}/);
   const dialog = code(DIALOG);
   assert.match(dialog, /import StatusNotice from "@\/components\/ui\/StatusNotice";/);
   const body = slice(dialog, '<p className={styles.lead}>{prompt.description}</p>', '<dl className={styles.facts}>');
