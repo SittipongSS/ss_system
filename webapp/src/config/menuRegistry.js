@@ -261,22 +261,22 @@ export const MENU_GROUPS = [
       // `visible: canAccessFinance` ซึ่งเป็น **ด่านเดียวกับที่การ์ดระบบใช้**
       system: 'finance',
       items: [
-        /* ⚠️ `disabled: true` = **จางและกดไม่ได้ ไม่ใช่ถอดออก** (แพตเทิร์นเดียวกับ
-           "ทะเบียนวัสดุ" และ "ขอราคาผลิต") — มติผู้ใช้ 2026-08-13:
-           *"หน้าภาพรวมเทาไว้ก่อนก็ได้ เดี๋ยวรอโมดูลเสร็จค่อยทำ เพราะมันคือภาพรวมของทั้งหมด"*
-           ⇒ ตอนนี้โมดูลมีของจริงอยู่หน้าเดียว ภาพรวมจึงเป็นภาพรวมของตัวเอง ซึ่งไม่มีค่า
-           ⚠️ ซ่อนทิ้งไม่ได้ — คนที่เคยเห็นจะนึกว่าสิทธิ์ตัวเองหาย (เหตุผลเดียวกับการ์ดระบบ) */
-        { href: '/finance', name: 'ภาพรวม', icon: LayoutDashboard, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, disabled: true, match: (p) => p === '/finance' },
+        /* ⭐ หน้าภาพรวม `/finance` ถูกถอด (รื้อ SO + บัญชี PR-4b · มติเจ้าของ 09/11 ข้อ 4 "ถอดออก เข้างานบัญชีเลย") — เดิมเป็นเมนูจาง
+           "ภาพรวม" (มติ 2026-08-13) · การ์ดยอดอยู่บนหัวหน้างานบัญชี · ใบรอปิดเป็นแท็บ · `/finance` เด้งมาหน้างานบัญชี (next.config.mjs) */
+        /* ชื่อ "งานบัญชี" (ม็อก · PR-4b) — เดิม "ทะเบียนการชำระ" · เหตุผลเดิมยังจริง: ห้ามชนกับการ์ด "การชำระ" ของใบ SO */
         // ชื่อ "ทะเบียนการชำระ" ไม่ใช่ "การชำระ" — ฝั่ง SO มีการ์ด "การชำระ" ของใบ
         // อยู่แล้ว · ชื่อซ้ำกันคนละที่คือสิ่งที่ทำให้คนเปิดผิดหน้าประจำ (กฎเดียวกับ
         // "คำร้อง" ของฝ่ายขาย vs "คิวคำร้อง" ของ RD)
-        { href: '/finance/payments', name: 'ทะเบียนการชำระ', countHref: '/finance/payments?status=reported', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
+        { href: '/finance/payments', name: 'งานบัญชี', countHref: '/finance/payments?status=reported', icon: Wallet, caps: ['payments:confirm', 'users:manage'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/payments') },
         /* คิวคำร้องที่ส่งถึงฝ่ายบัญชี (B-1 · ม-ก) — ชื่อ "คิวคำร้อง" ตรงกับของ RD
            โดยตั้งใจ: เป็นของอย่างเดียวกันคนละฝ่าย · ต้องไม่ชนกับ "คำร้อง" ของฝ่ายขาย
            ซึ่งเป็นคนละมุมของตารางเดียวกัน (ที่นั่นเปิดใบ ที่นี่ตอบใบ)
            ⚠️ ไอคอนตัวเดียวกับ `/requests` และ `/rd/requests` — หนึ่ง entity หนึ่งไอคอน */
         /* `match` กินใบคำร้องด้วย และ **ไม่มีเมนู "คำร้อง" (คิวรวม)** — เหตุผลเดียว
            กับของ RD ข้างบน (มติผู้ใช้ 2026-08-22: บัญชีไม่เปิดคำร้องเอง) */
+        /* ⭐ PR-4b: คิวคำร้องเป็นแท็บ "คิวคำร้อง" ของหน้างานบัญชีแล้ว (มติข้อ 2) — เมนูยังอยู่เพื่อป้ายตัวเลข `financeRequests` + ทางลัด ·
+           `/finance/requests` เด้งไป `/finance/payments?view=requests` (next.config.mjs) · คง href เดิมเพราะ DEPT_MODULE_QUEUE / ป้าย /
+           เทสต์คู่คีย์ของฝ่ายผูกกับ href นี้ */
         { href: '/finance/requests', name: 'คิวคำร้อง', icon: MessageCircleQuestion, caps: ['requests:answer'], visible: canAccessFinance, match: (p) => p.startsWith('/finance/requests') || p.startsWith('/requests') },
         /* ⭐ เอกสารขายที่ฝ่ายบัญชีทำงานด้วยจริง — **ย้ายมาจากกลุ่ม "บริหารงานขาย"**
            (มติผู้ใช้ 2026-08-22) · กฎข้อ 7 (2026-08-13) ตัดสินไปแล้วว่าเมนูของ FN

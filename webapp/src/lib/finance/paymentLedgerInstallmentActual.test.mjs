@@ -96,8 +96,12 @@ test('ledgerRowLock: รับรอง/บันทึกรับชำระ�
     assert.doesNotMatch(ledgerRowLock(revoked, action), /รอ AE Sup อนุมัติ/);
   }
   assert.equal(installmentActualLockReason(revoked, { status: revoked.orderStatus }), INSTALLMENT_ACTUAL_REVOKED_LOCK, 'คิวของหน้าทะเบียนใช้คำเดียวกัน');
+  /* ⚠️ แก้โดยตั้งใจ (รื้อ PR-4a): แผงคิวรับรองถูกถอด — เหตุของปุ่มรับรองอยู่ในลิ้นชักรายงวด ผ่าน `ledgerDrawerActions` (lock = ledgerRowLock
+     ตัวเดียวกับข้างบน · คำเดียวกับ installmentActualLockReason ที่คิวเดิมเรียก) · หน้าวาดเหตุของปุ่มที่ดับเป็นตัวหนังสือเสมอ */
   const page = code('app/finance/payments/page.js');
-  assert.match(page, /installmentActualLockReason\(row, \{ status: row\.orderStatus \}\)/);
+  assert.match(code('lib/finance/ledgerDrawerActions.js'), /lock: ledgerRowLock\(row, action\) \|\| null/);
+  assert.match(page, /const locks = \[\.\.\.new Set\(actions\.map\(\(a\) => a\.lock\)\.filter\(Boolean\)\)\];/);
+  assert.match(page, /\{locks\.map\(\(text\) => <span key=\{text\} className="cell-sub">\{text\}<\/span>\)\}/);
   // ใบที่ย้อนอนุมัติในแถบรายใบ = เหตุของตัวเอง (installmentActualHold 'revoked') ไม่ใช่ตัวนับแยกบนหน้า
   assert.equal(ledgerHeldSummary([revoked]).orders[0].rows[0].kind, 'revoked');
   assert.equal(ledgerHeldSummary([revoked]).orders[0].rows[0].short, 'รอเจ้าของดีลออก Rev.');

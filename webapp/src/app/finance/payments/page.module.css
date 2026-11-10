@@ -24,88 +24,34 @@
   color: var(--text-3);
 }
 
-/* ── คิวงานด้านบน (มติผู้ใช้ 2026-08-13) ────────────────────────────────
-   ไม่ใช่ตาราง — เป็น **รายการงาน** ทีละใบ ⇒ เป็นบล็อกที่ปุ่มอยู่ในสายตา
-   ไม่ต้องเลื่อนแนวนอนหา ต่างจากทะเบียนข้างล่างที่เป็นของไว้ค้น */
-.queue {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.qrow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
-}
-
-/* เลยกำหนด = ขีดแดงหัวแถว ไม่ใช่พื้นแดงทั้งแถว — พื้นแดงอ่านเหมือน "ข้อมูลผิด"
-   ทั้งที่ข้อมูลถูก แค่ช้า (กติกาเดียวกับตารางข้างล่างที่ย้อมเฉพาะช่องวันที่) */
-.qrowLate {
-  border-inline-start: 3px solid var(--red);
-}
-
-.qmain {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.qsep {
-  margin-inline: var(--space-2);
-  color: var(--text-3);
-}
-
-/* ป้าย "ยกมา" ของงวดยกมา (ใบสั่งขายย้อนหลัง · มติ 22/09) — ระยะเดียวกับป้ายเลยกำหนดที่อยู่ถัดไป */
+/* ป้าย "ยกมา" ของงวดยกมา (ใบสั่งขายย้อนหลัง · มติ 22/09) — บรรทัดรายละเอียดของงวดในลิ้นชัก (เดิมอยู่บนแถวคิวที่ถอดใน PR-4a) */
 .qbadge {
-  margin-inline-start: var(--space-2);
+  margin-inline-end: var(--space-2);
   vertical-align: middle;
 }
 
-.qlate {
-  margin-inline-start: var(--space-2);
-  font-size: var(--fs-6);
-  color: var(--red);
-}
+/* แผงคิวสามก้อน (.queue .qrow …) ถูกถอดใน PR-4a — งานอยู่ในแท็บงาน + ปุ่ม "งานถัดไป" + ลิ้นชัก */
 
-/* ยอดเงินชิดขวาและกว้างเท่ากันทุกแถว ⇒ ไล่สายตาลงมาเทียบตัวเลขได้ */
-.qamt {
+/* ── แท็บงาน (รื้อ PR-4a/4b · ม็อก) — แถวของตัวเองเหนือแผงล่าง (ทะเบียน/คิวคำร้อง) ────────────────────────────────
+   🐞 จอ 390: แถบ 7 ปุ่มถูกบีบจนป้ายแตกพยางค์ละบรรทัด ("รอ/ตรวจ/งวด") ⇒ แถวเลื่อนแนวนอนในตัวเอง ปุ่มไม่หด ป้ายไม่ตัดบรรทัด
+   (ท่าเดียวกับ `.ui-list-panel-toolbar > .segmented` กลาง) · padding 3px ของ .segmented พอดีวงโฟกัส ไม่โดนตัด */
+.workTabs {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.workTabs > button {
   flex: none;
-  min-width: 7.5rem;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-weight: var(--fw-semibold);
+  white-space: nowrap;
 }
 
-.qmore {
-  display: flex;
-  justify-content: center;
+/* ── คอลัมน์ "งานถัดไป" ท้ายแถว — ปุ่มไม่ตัดกลางคำ · หัวคอลัมน์ชิดตามปุ่ม ── */
+.nextHead {
+  white-space: nowrap;
 }
-
-/* 🐞 จอแคบ: ยอด+ปุ่มสองตัวหวงความกว้างไว้ (flex: none) เนื้อความเลยถูกบีบจนแตก
-   เหลือบรรทัดละ 1-2 พยางค์ — "ชำระ / เต็ม / จำนวน" คนละบรรทัด (เห็นตอนตรวจที่ 375px)
-   ⇒ ต่ำกว่า 640px ให้เนื้อความกินเต็มบรรทัด แล้วยอด+ปุ่มลงไปอยู่บรรทัดที่สอง */
-@media (max-width: 640px) {
-  .qrow {
-    flex-wrap: wrap;
-  }
-
-  .qmain {
-    flex-basis: 100%;
-  }
-
-  /* บรรทัดล่าง: ยอดชิดซ้าย ปุ่มไหลไปชิดขวา — ยอดกับปุ่มยังอยู่บรรทัดเดียวกัน
-     เพราะ "รับรองยอดเท่าไร" ต้องอ่านคู่กับปุ่มที่กำลังจะกดเสมอ */
-  .qamt {
-    min-width: 0;
-    margin-inline-end: auto;
-  }
+.nextCell {
+  white-space: nowrap;
+  text-align: end;
 }
 
 /* แถบสัดส่วนเก็บเงิน (.mbar) ย้ายไปเซลล์เงินกลาง `SalesOrderMoneyCells` (รื้อ PR-3a) — แถวทะเบียนวาดแถบชุดเดียวกับหน้ารายการ SO */
@@ -133,14 +79,6 @@
   margin-inline-end: var(--space-1);
   vertical-align: -2px;
   color: var(--text-3);
-}
-
-/* ── ใบ "นับ Actual รายงวด" (mig 0412) — เหตุที่ปุ่ม "ยืนยันว่าเงินเข้า" ดับ (งวดยังไม่อนุมัตินับ Actual) ────────────────
-   บรรทัดที่สามของแถวคิว · โทนเตือน (ไม่แดง: ไม่ใช่ข้อมูลผิด แค่รอคนอื่น) · โทเคนเท่านั้น */
-.qlock {
-  color: var(--amber);
-  font-size: var(--fs-5);
-  line-height: var(--lh-thai);
 }
 
 /* ── แถบ "แจ้งชำระแล้ว…ยังรับรองไม่ได้" ของใบนับ Actual รายงวด (UAT FN 27/10 ข้อ 1 + 5) ──────────────────────────

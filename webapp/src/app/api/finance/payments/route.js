@@ -18,6 +18,8 @@ import {
   stampOrderReplanned, undatedHiddenBy,
 } from '@/lib/finance/paymentLedger';
 import { ledgerOrderMoney } from '@/lib/sales/salesOrderMoney';
+import { ledgerWorkTally } from '@/lib/finance/ledgerWork';
+import { loadFinanceCloseIds } from '@/lib/finance/financeCloseQueue';
 import { holidaySet } from '@/lib/master/holidays';
 import { reportToXlsxBuffer } from '@/lib/tax/exportExcel';
 import { businessDate } from '@/lib/businessDate';
@@ -305,6 +307,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     /* ด่านนับ Actual รายงวด: งวดก่อนหน้าที่ยังไม่รับรอง + ใบกดนับที่เหลือทั้งหมดแล้ว (ค่าระดับใบ) — เหตุ "ใครต้องทำต่อ" ของงวดที่ติดด่าน
        ต้องคิดก่อนกรอง (กรอง `?status=held` แล้วงวดก่อนหน้าหลุด = เหตุชี้ผิดคน · UAT FN 27/10 ข้อ 3) */
     stampActualHold(all);
+    /* ใบที่เก็บครบแล้วรอบัญชีปิด (แท็บ "รอปิดใบ" · รื้อ PR-4a) — ตัวตัดสินเดียวกับป้ายบนเมนู (ใบ + งวดทุกงวด) · อ่านพัง = โยน */
+    const closeOrderIds = await loadFinanceCloseIds(supabase);
     const filters = {
       status: listParam(url.searchParams.get('status')),
       from: url.searchParams.get('from') || null,
@@ -327,6 +331,11 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       /* YYYY-MM-DD — เส้นตายของตัวกรอง `billing=cutoff` (v5 · ลิงก์ของกระดิ่งวันตัดรอบ) · ไม่มี/ผิดรูป = `cutoff` ไม่กรอง
          ⚠️ เหตุผลเดียวกับ taxInvoice/billing/due: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
       on: url.searchParams.get('on') || '',
+      /* แท็บงาน (รื้อ PR-4a) — `close=1` = ใบรอปิด · `stranded=1` = แถบเงินค้างจากใบที่ยกเลิก
+         ⚠️ เหตุผลเดียวกับ taxInvoice/billing/due: ไม่อยู่ใน literal นี้ = API เมินเงียบทั้งจอและไฟล์ */
+      close: url.searchParams.get('close') === '1',
+      stranded: url.searchParams.get('stranded') === '1',
+      closeOrderIds,
       orderStates,
     };
     const filtered = sortLedger(filterLedger(all, filters));
@@ -341,6 +350,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     /* ตัวเลขของการ์ดที่กดแล้วแทนค่าตัวกรองของตัวเอง ("รอบัญชีรับรอง" · "ยังไม่ออกใบกำกับ") — ถอดตัวกรองของการ์ดออกก่อนนับ
        (กติกาเดียวกับ billingTally · ตรวจตัวเลข M10b) ⇒ เลขบนการ์ด = แถวที่เห็นหลังกด แม้ตัวกรองนั้นตั้งค่าอื่นค้างอยู่ */
     const facetTally = ledgerFacetTally(all, filters);
+    /* เลขบนแท็บงาน + แถบเงินค้าง — ถอดคีย์ของแท็บออกก่อนนับ (เลขบนแท็บ = แถวที่เห็นหลังกด) */
+    const workTally = ledgerWorkTally(all, filters);
 
     if (url.searchParams.get('format') === 'xlsx') {
       /* ⚠️ ไฟล์ที่ดาวน์โหลด = **สิ่งที่กรองไว้บนจอ** ไม่ใช่ทั้งทะเบียนเสมอ —
@@ -371,6 +382,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       billingTally,
       dueTally,
       facetTally,
+      workTally,
+      /* ใบที่ปุ่ม "ปิดใบ" ขึ้นได้ (แท็บรอปิดใบ · ลิ้นชัก) — เฉพาะใบที่มีแถวในคำตอบ · ด่านจริงอยู่ที่ finance_approve (อ่านงวดสด) */
+      closeOrderIds: [...new Set(filtered.map((r) => r.orderId))].filter((id) => closeOrderIds.has(id)),
       todayIso,
     });
   } catch (loadError) {

@@ -1,0 +1,4 @@
+/* โมดัลเงินเข้าของงวด (รื้อ PR-5) — ระยะเดียวกับโมดัลของแผงงวดเดิม (ยกมาพร้อมตัวโมดัล) · โทเคนเท่านั้น */
+.dialog { display: grid; gap: var(--space-3); padding: var(--space-4); }
+.field { display: grid; gap: var(--space-1); }
+.field > span { color: var(--text-3); font-size: var(--fs-label); font-weight: var(--fw-bold); }
