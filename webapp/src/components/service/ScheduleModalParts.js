@@ -27,7 +27,9 @@ export const FIELD_FOCUSABLE = 'input:not([disabled]), button:not([disabled]), [
  * @returns true เมื่อโฟกัสได้ · false = ช่องยังไม่ขึ้นจอ (ผู้เรียกคงคำขอไว้ลองใหม่)
  */
 export function focusFieldBox(box) {
-  const target = box?.querySelector('input[type="radio"]:checked') || box?.querySelector(FIELD_FOCUSABLE);
+  /* ⭐ ปุ่มที่กดค้างอยู่ (แถบวันของ `CrewSlotPicker`) ก่อนปุ่มแรก — "แก้วัน" ต้องพาไปวันที่เลือกไว้ ไม่ใช่วันนี้ */
+  const target = box?.querySelector('input[type="radio"]:checked') || box?.querySelector('[aria-pressed="true"]')
+    || box?.querySelector(FIELD_FOCUSABLE);
   if (!target) return false;
   box.scrollIntoView({ block: "nearest" });
   target.focus({ preventScroll: true });

@@ -8,7 +8,9 @@ import { readFileSync } from 'node:fs';
    ช่องที่หลุดไปหนึ่งช่อง = ค่านั้นถูกล้างเงียบ ๆ ตอนปล่อย จึงต้องเทสต์ด้วยค่า ไม่ใช่ด้วยตา */
 const read = (url) => readFileSync(new URL(url, import.meta.url), 'utf8');
 const modal = read('./ServiceVisitModal.js');
-const picker = read('./CrewLoadPicker.js');
+/* ⭐ P3 (มติเจ้าของ 10–11/11/2026): วัน · เวลา · คน = ตารางช่าง × เวลาตัวเดียว (`CrewSlotPicker`) — CrewLoadPicker ถอดแล้ว */
+const slotPicker = read('./CrewSlotPicker.js');
+const slotLib = read('../../lib/service/crewSlotView.js');
 const route = read('../../app/api/service/visits/[id]/route.js');
 
 /* ตัดคอมเมนต์ทิ้ง — คอมเมนต์ที่เล่าประวัติยังใช้คำเก่า ("เข้าคิว") ได้ตามมติ */
@@ -118,17 +120,18 @@ test('🔒 ทุกปุ่มที่ visitModalView ประกาศม�
 
 test('focusField พาโฟกัสไปช่องที่ขอ — ผ่าน ref ของกล่อง ไม่ใช่ตัวฟังทั้งหน้า', () => {
   const live = code(modal);
-  // ช่องวันอยู่ใน TimeWindowField (ref ของกล่องวัน) · ช่องคนเหลือทรงเดียว (CrewLoadPicker ในกล่องของ ModalField)
-  assert.match(live, /<TimeWindowField[\s\S]*?dateRef=\{dateRef\}[\s\S]*?\/>/);
-  assert.match(read('./TimeWindowField.js'), /<div className=\{styles\.date\} ref=\{dateRef\}>/);
-  assert.equal((live.match(/fieldRef=\{assigneeRef\}/g) || []).length, 1);
-  assert.match(read('./ScheduleModalParts.js'), /<div className=\{styles\.field\} ref=\{fieldRef\}>/);
+  // วัน · คน อยู่ในตารางตัวเดียว (แถบเต็มกว้าง) — ref ของกลุ่มปุ่มวัน / กลุ่มแถวช่าง ส่งเข้าไปในตัวเลือก
+  const tag = live.match(/<CrewSlotPicker[\s\S]*?\/>/)[0];
+  assert.match(tag, /dayRef=\{dateRef\}/);
+  assert.match(tag, /crewRef=\{assigneeRef\}/);
+  assert.match(slotPicker, /role="group" aria-label="วันนัด" ref=\{dayRef\}/);
+  assert.equal((slotPicker.match(/ref=\{crewRef\} role="radiogroup"/g) || []).length, 2, 'ตารางจอกว้าง + รายชื่อมือถือ');
   assert.match(modal, /focusPending === "assignee" \? assigneeRef\.current/);
   assert.match(modal, /focusPending === "scheduledDate" \? dateRef\.current/);
-  // ตัวพาโฟกัสตัวเดียวของสองโมดัล (รีวิว UAT 24/09 — เดิมก๊อปอยู่สองไฟล์คำต่อคำ)
+  // ตัวพาโฟกัสตัวเดียวของสองโมดัล (รีวิว UAT 24/09 — เดิมก๊อปอยู่สองไฟล์คำต่อคำ) · แถบวัน = ปุ่มที่กดค้างก่อนปุ่มแรก
   assert.match(modal, /if \(focusFieldBox\(box\)\) setFocusPending\(null\);/);
   const parts = read('./ScheduleModalParts.js');
-  assert.match(parts, /box\?\.querySelector\('input\[type="radio"\]:checked'\) \|\| box\?\.querySelector\(FIELD_FOCUSABLE\)/);
+  assert.match(parts, /box\?\.querySelector\('input\[type="radio"\]:checked'\) \|\| box\?\.querySelector\('\[aria-pressed="true"\]'\)\s*\|\| box\?\.querySelector\(FIELD_FOCUSABLE\)/);
   assert.match(parts, /target\.focus\(/);
   assert.match(parts, /scrollIntoView\(/);
   assert.doesNotMatch(live, /(?:document|window)\.addEventListener/);
@@ -138,71 +141,55 @@ test('focusField พาโฟกัสไปช่องที่ขอ — ผ�
   assert.match(live, /<GatePanel view=\{gateView\} onFix=\{setFocusPending\}>/);
 });
 
-test('ตัวเลือกคนมีทรงเดียว — ไม่มีดรอปดาวน์สำรองแล้ว · ภาระ/รายชื่อที่ยังไม่พร้อมบอกในตัวเลือกเอง', () => {
+test('ตัวเลือกคนมีทรงเดียว — ตารางช่าง × เวลา · ภาระจากก้อนเดียวกับตาราง · ไม่มีดรอปดาวน์สำรอง', () => {
   const live = code(modal);
-  assert.match(live, /staffLoadFor && form\.scheduledDate \? staffLoadFor\(form\.scheduledDate\) : null/);
-  assert.equal((live.match(/<CrewLoadPicker\b/g) || []).length, 1);
-  assert.match(live, /<CrewLoadPicker[\s\S]*?load=\{dayLoad\}[\s\S]*?siteLoad=\{siteLoad\}[\s\S]*?timeWindow=\{\{ startTime: form\.startTime, endTime: form\.endTime \}\}[\s\S]*?rosterState=\{rosterState\}[\s\S]*?\/>/);
+  /* ⭐ บรรทัดผลลัพธ์ (เกินภาระ) กับตารางอ่านก้อนเดียวกัน · นัดที่กำลังแก้ไม่นับเป็นภาระของตัวเอง */
+  assert.match(live, /if \(crewLoad\) return crewLoadFromQueue\(crewLoad, form\.scheduledDate, \{ technicians, excludeVisitId: visit\?\.id \|\| "" \}\);/);
+  assert.match(live, /return staffLoadFor \? staffLoadFor\(form\.scheduledDate\) : null;/);
+  assert.equal((live.match(/<CrewSlotPicker\b/g) || []).length, 1);
+  assert.doesNotMatch(live, /<CrewLoadPicker\b|<TimeWindowField\b/);
+  assert.match(live, /<CrewSlotPicker[\s\S]*?load=\{crewLoad\}[\s\S]*?siteLoad=\{siteLoad\}[\s\S]*?excludeVisitId=\{visit\?\.id \|\| null\}[\s\S]*?rosterState=\{rosterState\}[\s\S]*?\/>/);
+  assert.match(live, /band=\{band\}/, 'ตารางอยู่แถบเต็มกว้างของเปลือก (มติ 11/11)');
   // 🐞 ดรอปดาวน์เดิมไม่เห็นภาระ และสลับทรงกลางคัน (โฟกัสหลุด) — ต้องไม่กลับมา
   assert.doesNotMatch(live, /placeholder="ยังไม่มอบหมาย"/);
   assert.doesNotMatch(live, /ariaLabel="เจ้าหน้าที่ผู้รับผิดชอบ"/);
-  // ภาระไม่มา (ยังโหลดไม่ได้) = ขีด ไม่ใช่ศูนย์ · ยังไม่มีวัน = บอกให้เลือกวันก่อน (ตัดสินใน crewPickerView)
-  assert.match(code(pickerLib), /const state = !dated \? 'nodate' : known \? 'ok' : 'unknown';/);
+  // ภาระไม่มา (ยังโหลดไม่ได้) = ขีด ไม่ใช่ศูนย์ · ยังไม่มีวัน = บอกให้เลือกวันก่อน (ตัดสินใน crewSlotView)
+  assert.match(code(slotLib), /const state = !dateIso \? 'nodate' : known \? 'ok' : 'unknown';/);
   // เจ้าของงานบอกข้างป้าย (ไม่ใช่คำใบ้ใต้รายชื่อที่ยาว)
   assert.match(live, /aside="เจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้"/);
+  // หน้าจัดคิวส่งก้อนดิบเมื่อรายชื่อโหลดแล้วเท่านั้น (ก่อนนั้นคนที่ตั้งไว้จะอ่านว่า "ไม่อยู่ในรายชื่อแล้ว")
+  assert.match(code(read('../../app/service/schedule/page.js')), /crewLoad=\{technicians\.length \? slotLoad : null\}/);
 });
 
-/* ⭐ แบบ A (มติเจ้าของ 24/09) — ตัวเลือกวาดอย่างเดียว · กติกา (ว่าง/ไม่ว่าง · ถ้าเลือก · เวลาทับ · ขีดแทนศูนย์)
-   อยู่ที่ `crewPickerView` และเทสต์ด้วยค่าจริงที่ `lib/service/scheduleModal.test.mjs` */
-const pickerLib = read('../../lib/service/scheduleModal.js');
-const pickerCss = read('./CrewLoadPicker.module.css');
-
-test('CrewLoadPicker: radio จริงชื่อกลุ่มเดียว · วาดจาก crewPickerView · ไม่คิดกติกาเอง', () => {
-  const src = code(picker);
-  assert.match(src, /const view = crewPickerView\(\{\s*technicians, load, dateIso, value, currentName, allowUnassigned, siteLoad, timeWindow, rosterState,\s*\}\);/);
-  // ลูกศรเดินผ่านแผ่นและแถวตามลำดับบนจอ = radio ของเบราว์เซอร์ชื่อกลุ่มเดียว · โมดัลหา input:checked ได้
-  assert.match(src, /type="radio" name=\{group\} value=\{id\}/);
-  assert.match(src, /checked=\{checked\} onChange=\{\(\) => onChange\?\.\(id\)\}/);
-  assert.equal((src.match(/type="radio"/g) || []).length, 1, 'radio ตัวเดียวที่ทุกตัวเลือกใช้ร่วม');
+/* ⭐ ตัวเลือกวาดอย่างเดียว · กติกา (ว่าง/ทับ · ถ้าเลือก · เกินภาระ · ขีดแทนศูนย์) อยู่ที่ `crewSlotView`
+   และเทสต์ด้วยค่าจริงที่ `lib/service/crewSlotView.test.mjs` */
+test('CrewSlotPicker: radio จริงชื่อกลุ่มเดียว · วาดจาก crewSlotView · ไม่คิดกติกาเอง · ไม่มี inline style', () => {
+  const src = code(slotPicker);
+  assert.match(src, /const view = useMemo\(\(\) => crewSlotView\(\{/);
+  assert.match(src, /type="radio" name=\{group\} value=\{row\.id\} checked=\{row\.selected\}/);
   assert.match(src, /role="radiogroup"/);
-  assert.match(src, /\{view\.head\.text\}/);
   assert.match(src, /\{view\.notice \? <p className=\{styles\.notice\}>\{view\.notice\}<\/p> : null\}/);
-  // ไม่มีตัวเลข/สูตรในตัวคอมโพเนนต์ — ห้ามกลับไปนับเองหรือคิด "ว่าง" เอง
-  assert.doesNotMatch(src, /MAX_ASSETS_PER_DAY|\.assets|\.visits|isFreeRow|windowsOverlap/);
+  assert.doesNotMatch(src, /MAX_ASSETS_PER_DAY|isFreeRow|windowsOverlap|crewLoadPeople/);
   assert.doesNotMatch(src, /style=\{\{/);
-  // ⚠️ ห้ามแตะตัวกลางของกล่องลีด
   assert.doesNotMatch(src, /PersonLoadSelect/);
-  // ไม่มี scroll ซ้อนใน scroll ของโมดัล (pain 3)
-  assert.doesNotMatch(code(pickerCss), /max-height|overflow-y/);
+  // ไม่มี scroll แนวตั้งซ้อนใน scroll ของโมดัล (pain 3) — เลื่อนแค่แนวนอนของตาราง 24 ชม.
+  assert.doesNotMatch(code(read('./CrewSlotPicker.module.css')), /max-height|overflow-y: auto/);
 });
 
-test('CrewLoadPicker: ไม่นับร่าง · โหลดไม่ได้ = ไม่มีตัวเลข (ขีด ไม่ใช่ 0) · ยังไม่มีวัน = บอกให้เลือกวันก่อน', () => {
-  const lib = code(pickerLib);
-  assert.match(lib, /`ภาระวันที่ \$\{dayText\(dateIso\)\} — ไม่นับร่าง \$\{CREW_RESERVED_HEAD\}`/);
-  assert.match(lib, /ยังโหลดภาระไม่ได้ — ตัวเลขว่างไม่ได้แปลว่าว่าง/);
-  assert.match(lib, /const dated = !!dateIso;/);
-  assert.match(lib, /const known = dated && load\?\.state === 'ok';/);
-  assert.match(lib, /เลือกวันก่อนจึงจะเห็นตัวเลข/);
-  assert.match(lib, /`วันนั้นว่าง \$\{NA\} จาก \$\{rows\.length\} คน`/);
-  assert.match(lib, /plain: known \? \[\] : rows\.map\(plainOf\)/);
+/* ⭐ มติเจ้าของ 23/09 — โมดัลลงคิวคำร้อง **บังคับ** เจ้าหน้าที่ · โมดัลนัดเลือก "ยังไม่มอบหมาย" ได้ (นัดไม่มีคน = ร่าง) */
+test('CrewSlotPicker: allowUnassigned — ค่าตั้งต้น false · โมดัลนัดเปิดแถว "ยังไม่มอบหมาย" · aria-required', () => {
+  const src = code(slotPicker);
+  assert.match(src, /allowUnassigned = false,/);
+  assert.match(src, /\{view\.unassigned \? \(/);
+  assert.match(src, /aria-required=\{view\.unassigned \? undefined : "true"\}/);
+  assert.match(code(slotLib), /unassigned: allowUnassigned \? \{ label: UNASSIGNED_LABEL, sub: UNASSIGNED_SUB, selected: !assigneeId \} : null/);
+  assert.match(code(modal).match(/<CrewSlotPicker[\s\S]*?\/>/)[0], /\n\s*allowUnassigned\n/);
 });
 
-/* ⭐ มติเจ้าของ 23/09 — ตัวเลือกเดียวกันถูกใช้ในโมดัลลงคิวคำร้อง ซึ่ง **บังคับ** เจ้าหน้าที่
-   ⇒ แถว "ยังไม่มอบหมาย" ปิดได้ผ่าน prop · ค่าตั้งต้นต้องเป็นของเดิม (โมดัลนัดไม่ขยับ) */
-test('CrewLoadPicker: allowUnassigned — ค่าตั้งต้น true · false = ไม่มีแถว "ยังไม่มอบหมาย" + aria-required', () => {
-  const src = code(picker);
-  assert.match(src, /allowUnassigned = true,/);
-  assert.match(src, /\{view\.unassigned \? \(\s*<label className=\{styles\.none\} data-on=\{view\.unassigned\.selected \? "1" : undefined\}>/);
-  assert.match(src, /\{radio\("", view\.unassigned\.selected\)\}/);
-  assert.match(src, /aria-required=\{allowUnassigned \? undefined : "true"\}/);
-  assert.match(code(pickerLib), /unassigned: allowUnassigned \? \{ label: UNASSIGNED_LABEL, sub: UNASSIGNED_SUB, selected: !value \} : null/);
-  // โมดัลนัดไม่ส่ง prop นี้ ⇒ ยังเลือก "ยังไม่มอบหมาย" ได้เหมือนเดิม
-  assert.doesNotMatch(code(modal), /allowUnassigned/);
-});
-
-test('CrewLoadPicker: ผู้รับผิดชอบเดิมที่หลุดรายชื่อยังเป็นแถวที่ถูกเลือก · รายชื่อยังไม่พร้อม = สามข้อความ', () => {
-  const src = code(picker);
-  assert.match(src, /\{view\.pinned \? \(\s*<label className=\{styles\.row\} data-on="1">\s*\{radio\(view\.pinned\.id, true\)\}/);
+test('CrewSlotPicker: ผู้รับผิดชอบเดิมที่หลุดรายชื่อยังเป็นแถวที่ถูกเลือก · รายชื่อยังไม่พร้อม = สามข้อความ', () => {
+  const src = code(slotPicker);
+  assert.match(src, /\{view\.pinned \? \(/);
+  assert.match(src, /value=\{view\.pinned\.id\} checked readOnly/);
   assert.match(src, /\{view\.pinned\.note\}/);
   assert.match(src, /if \(view\.roster\.state !== "ready"\) \{/);
   assert.match(src, /role=\{view\.roster\.state === "error" \? "alert" : undefined\}/);
@@ -210,9 +197,10 @@ test('CrewLoadPicker: ผู้รับผิดชอบเดิมที่�
 
 test('คำบนจอ: ปล่อย "ขึ้นตาราง" ไม่ใช่ "เข้าคิว" (มติ 2026-09-22 ข้อ 3)', () => {
   const live = code(modal);
-  const lib = code(pickerLib);
+  /* คำของปุ่ม/แผง/ผลลัพธ์ของโมดัลนัด (`visitModalView` · `gatePanelView`) + คำของตารางช่าง × เวลา */
+  const lib = code(read('../../lib/service/scheduleModal.js'));
   const shellLive = code(read('./ScheduleModalShell.js'));
-  for (const src of [live, lib, shellLive]) assert.doesNotMatch(src, /เข้าคิว/);
+  for (const src of [live, lib, shellLive, code(slotLib), code(slotPicker)]) assert.doesNotMatch(src, /เข้าคิว/);
   // คำของปุ่ม/แผง/ผลลัพธ์อยู่ใน lib ที่เดียว (`visitModalView` · `gatePanelView`)
   for (const text of ['ปล่อยขึ้นตาราง', 'ยังขึ้นตารางไม่ได้', 'ข้ามด่านและขึ้นตาราง', 'ข้ามด่าน (แอดมิน)']) {
     assert.ok(lib.includes(text), `ขาด "${text}"`);

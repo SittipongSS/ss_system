@@ -178,8 +178,10 @@ export function slotRows({
 /**
  * เตือนของช่วงที่เลือกบนแถวหนึ่ง — `[{ key, text, tone }]` (ไม่มีข้อไหน = ว่าง/ผ่าน) · **เตือนเท่านั้น ไม่ห้าม**
  * · ทับนัดของคนนั้น (บนตาราง / จองไว้ / ไปช่วย) · เกินภาระ 12 จุด · นอกช่วงที่ไซต์ให้เข้า · นอกเวลาทำการ
+ * @param openEnd รู้แค่เวลาเริ่ม (นัดประเมินเก็บได้แค่ `committedDueTime`) — `end` เป็นแค่ความยาวที่วาด ⇒ ช่วงไซต์/เวลาทำการ
+ *                ตัดสินจากเวลาเริ่มอย่างเดียว (ไม่เตือน "ออกหลังเวลา" จากเวลาจบที่เดาเอง)
  */
-export function slotWarnings({ row = null, start, end, site = null, dateIso = null } = {}) {
+export function slotWarnings({ row = null, start, end, site = null, dateIso = null, openEnd = false } = {}) {
   const out = [];
   if (row) {
     for (const b of row.blocks || []) {
@@ -191,11 +193,12 @@ export function slotWarnings({ row = null, start, end, site = null, dateIso = nu
     }
     if (row.over) out.push({ key: 'over', text: `${SLOT_TEXT.overCap} (ถ้าเลือก ${row.projected}/${MAX_ASSETS_PER_DAY})`, tone: 'danger' });
   }
-  const conflict = site ? accessConflict(site, { date: dateIso, startTime: hhmm(start), endTime: end >= DAY_MINUTES ? '23:59' : hhmm(end) }) : null;
+  const endTime = openEnd ? null : (end >= DAY_MINUTES ? '23:59' : hhmm(end));
+  const conflict = site ? accessConflict(site, { date: dateIso, startTime: hhmm(start), endTime }) : null;
   if (conflict) out.push({ key: 'access', text: conflict.message, tone: 'warning' });
   const work = workingWindow(dateIso);
   if (!work) out.push({ key: 'offday', text: SLOT_TEXT.offDay, tone: 'info' });
-  else if (start < work.start || end > work.end) out.push({ key: 'offhours', text: SLOT_TEXT.offHours, tone: 'info' });
+  else if (start < work.start || (openEnd ? start >= work.end : end > work.end)) out.push({ key: 'offhours', text: SLOT_TEXT.offHours, tone: 'info' });
   return out;
 }
 

@@ -33,6 +33,7 @@ const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 export const SLOT_VIEW_TEXT = Object.freeze({
   hint: 'ลากบนแถวของช่าง = เลือกคน + ช่วงเวลา (ปัดทีละ 30 นาที) · คลิกช่องเดียว = ยาวเท่าที่ฝ่ายขายขอ',
   hintNoAsk: 'ลากบนแถวของช่าง = เลือกคน + ช่วงเวลา (ปัดทีละ 30 นาที) · คลิกช่องเดียว = ',
+  hintStartOnly: 'คลิกบนแถวของช่าง = เลือกคน + เวลาเริ่ม (ปัดทีละ 30 นาที) · นัดนี้เก็บแค่เวลาเริ่ม',
   noTime: 'ยังไม่ระบุเวลา — นัดทั้งวัน',
   noPerson: 'ยังไม่เลือกหัวหน้างาน',
   clean: 'ไม่ทับนัดอื่น · อยู่ในเวลาทำการ',
@@ -68,12 +69,23 @@ function minutesOfForm(time) {
   return m === DAY_MINUTES - 1 ? DAY_MINUTES : m;
 }
 
-/** ช่วงที่ฟอร์มถืออยู่ → `{ start, end }` นาที · ไม่ครบคู่ / กลับหัว = null (นัดทั้งวัน) */
-export function valueSlot({ startTime = '', endTime = '' } = {}) {
+/**
+ * ช่วงที่ฟอร์มถืออยู่ → `{ start, end }` นาที · ไม่มีเวลาเริ่ม = null (นัดทั้งวัน)
+ * · มีแค่เวลาเริ่ม (นัดที่ไม่รู้เวลาจบ · หรือ `startOnly`) ⇒ วาดยาว `DEFAULT_LENGTH` และติดธง `open` (ทรงเดียวกับก้อนที่ไม่รู้เวลาจบ)
+ *   🐞 11/11: เดิมนัดที่มีแค่ 14:00 อ่านว่า "ยังไม่ระบุเวลา — นัดทั้งวัน" ทั้งที่ช่องเริ่มมีค่า
+ * · เวลาจบไม่หลังเวลาเริ่ม = ยังพิมพ์ไม่เสร็จ ⇒ อ่านเหมือนไม่รู้เวลาจบ (ตัวตรวจของฟอร์มบอกผิดเอง ไม่ใช่หายจากตาราง)
+ * @param startOnly รู้แค่เวลาเริ่มเสมอ (นัดประเมิน · `committedDueTime`) — ไม่อ่านเวลาจบเลย
+ */
+export function valueSlot({ startTime = '', endTime = '' } = {}, { startOnly = false } = {}) {
   const start = minutesOf(startTime);
-  const end = minutesOfForm(endTime);
-  return start !== null && end !== null && end > start ? { start, end } : null;
+  if (start === null) return null;
+  const end = startOnly ? null : minutesOfForm(endTime);
+  if (end !== null && end > start) return { start, end };
+  return { start, end: Math.min(DAY_MINUTES, start + DEFAULT_LENGTH), open: true };
 }
+
+/** ข้อความของช่วงที่เลือก — รู้แค่เวลาเริ่ม = "เริ่ม 10:00" */
+const slotText = (slot) => (slot.open ? `เริ่ม ${hhmm(slot.start)}` : rangeText(slot.start, slot.end));
 
 /**
  * วันบนแถบ — 14 วันจากวันนี้ · ★ = วันที่ฝ่ายขายขอ · วันอาทิตย์ = นอกเวลาทำการ (ยังกดได้ — ทางตันถ้าบล็อก)
@@ -120,8 +132,16 @@ export function fitToAccess(site, slot) {
  * · เลื่อนตามไซต์ (ถ้าที่ขอชนช่วงไซต์) · ที่ขอ · เช้า · บ่าย (ยาวเท่าที่ขอ) · ทั้งวัน = เวลาทำการ 08:30–17:30
  * ⚠️ "กำหนดเอง" ไม่อยู่ในลิสต์ — เป็นการเปิดช่องพิมพ์เวลา ไม่ใช่ช่วงเวลา
  */
-export function slotPresets({ asked = null, site = null, currentLength = null } = {}) {
+export function slotPresets({ asked = null, site = null, currentLength = null, startOnly = false } = {}) {
   const timed = asked && !asked.allDay;
+  /* รู้แค่เวลาเริ่ม — ปุ่มเติมเวลาเริ่มอย่างเดียว (ทรงเดียวกับ เช้า/บ่าย ของโมดัลลงคิวเดิม) · ไม่มี "ทั้งวัน" (ไม่มีเวลาจบให้เก็บ) */
+  if (startOnly) {
+    const one = (key, start, label) => ({ key, start, end: Math.min(DAY_MINUTES, start + DEFAULT_LENGTH), label });
+    const list = [];
+    if (timed) list.push(one('asked', asked.start, `เริ่ม ${hhmm(asked.start)} ที่ขอ`));
+    list.push(one('morning', WORK_START, `เช้า เริ่ม ${hhmm(WORK_START)}`), one('afternoon', 13 * 60, 'บ่าย เริ่ม 13:00'));
+    return list.filter((p, i) => list.findIndex((q) => q.start === p.start) === i);
+  }
   const length = timed ? asked.length : (Number(currentLength) > 0 ? Number(currentLength) : DEFAULT_LENGTH);
   const cap = (start, len) => ({ start, end: Math.min(DAY_MINUTES, start + len) });
   const out = [];
@@ -189,13 +209,14 @@ function chipView(c) {
 export function crewSlotView({
   technicians = [], load = null, value = {}, asked = null, site = null, siteLoad = null,
   excludeVisitId = null, allowUnassigned = false, currentName = '', rosterState = 'ready', currentLength = null,
+  startOnly = false,
 } = {}) {
   const list = Array.isArray(technicians) ? technicians : [];
   const roster = rosterState === 'loading' || rosterState === 'error' ? rosterState : (list.length ? 'ready' : 'empty');
   const dateIso = DATE_RE.test(String(value?.date || '')) ? value.date : '';
   const known = Boolean(dateIso) && load?.status === 'ok' && !(load.closedSince && dateIso < load.closedSince);
   const state = !dateIso ? 'nodate' : known ? 'ok' : 'unknown';
-  const slot = valueSlot(value || {});
+  const slot = valueSlot(value || {}, { startOnly });
   const assigneeId = String(value?.assigneeId || '');
 
   const base = known
@@ -211,7 +232,7 @@ export function crewSlotView({
     const overlapping = slot ? blocks.filter((b) => slot.start < b.end && b.start < slot.end) : [];
     const free = known && isFreeRow(row);
     const projection = known ? projectionOf(row, siteLoad) : null;
-    const warnings = known && slot ? slotWarnings({ row, start: slot.start, end: slot.end, site, dateIso }) : [];
+    const warnings = known && slot ? slotWarnings({ row, start: slot.start, end: slot.end, site, dateIso, openEnd: Boolean(slot.open) }) : [];
     const tags = [];
     if (known) {
       if (slot && !overlapping.length) tags.push({ key: 'free-slot', text: free ? SLOT_VIEW_TEXT.freeDay : SLOT_VIEW_TEXT.freeSlot, tone: 'success' });
@@ -256,8 +277,11 @@ export function crewSlotView({
   const tracks = {
     work: work ? placeOf(work.start, work.end) : null,
     access: hasAccess ? { ...placeOf(accessFrom ?? 0, accessTo ?? DAY_MINUTES), text: `ไซต์ให้เข้า ${toHHMM(site.accessFrom) || '00:00'}–${toHHMM(site.accessTo) || '24:00'}` } : null,
-    asked: askedHere ? { ...placeOf(askedHere.start, askedHere.end), text: askedHere.allDay ? 'ทั้งวัน' : rangeText(askedHere.start, askedHere.end) } : null,
-    askedElsewhere: asked && !askedHere ? `ฝ่ายขายขอ ${dayText(asked.date)}` : '',
+    asked: askedHere ? {
+      ...placeOf(askedHere.start, askedHere.end),
+      text: askedHere.allDay ? 'ทั้งวัน' : startOnly ? `เริ่ม ${hhmm(askedHere.start)}` : rangeText(askedHere.start, askedHere.end),
+    } : null,
+    askedElsewhere: asked && !askedHere ? `ขอ ${dayText(asked.date)}` : '',
     accessLabel: hasAccess ? 'ไซต์ให้เข้า' : site ? 'ไซต์ไม่กำหนดเวลา' : 'ไม่รู้ช่วงไซต์',
   };
 
@@ -265,17 +289,17 @@ export function crewSlotView({
   const pinned = assigneeId && !list.some((t) => String(t.id) === assigneeId)
     ? { id: assigneeId, name: currentName || '', note: CREW_GONE_NOTE }
     : null;
-  const selection = slot ? { ...slot, ...placeOf(slot.start, slot.end), text: rangeText(slot.start, slot.end) } : null;
+  const selection = slot ? { ...slot, ...placeOf(slot.start, slot.end), text: slotText(slot) } : null;
 
   /* บรรทัด "เลือกแล้ว" — ใคร · วัน · เวลา (ยาวเท่าไร · ตรงที่ขอไหม) + ผลต่อภาระ + เตือน */
   const who = selected?.name || pinned?.name || '';
-  const sameAsAsk = askedHere && slot && slot.end - slot.start === askedHere.length;
-  const when = slot
-    ? `${rangeText(slot.start, slot.end)} (${lengthText(slot.end - slot.start)}${sameAsAsk ? ' เท่าที่ขอ' : ''})`
-    : SLOT_VIEW_TEXT.noTime;
+  const sameAsAsk = askedHere && slot && !slot.open && slot.end - slot.start === askedHere.length;
+  const when = !slot ? SLOT_VIEW_TEXT.noTime
+    : slot.open ? `${slotText(slot)} (ไม่ระบุเวลาจบ)`
+      : `${rangeText(slot.start, slot.end)} (${lengthText(slot.end - slot.start)}${sameAsAsk ? ' เท่าที่ขอ' : ''})`;
   /* ⭐ ไม่มีคนที่เลือก ก็ยังต้องเตือนเวลา (นอกเวลาทำการ / นอกช่วงไซต์) — ไม่ผูกกับแถว */
   const warnings = slot
-    ? (selected && known ? selected.warnings : slotWarnings({ row: null, start: slot.start, end: slot.end, site, dateIso }))
+    ? (selected && known ? selected.warnings : slotWarnings({ row: null, start: slot.start, end: slot.end, site, dateIso, openEnd: Boolean(slot.open) }))
     : [];
   const dayConflict = !slot && site && dateIso ? accessConflict(site, { date: dateIso }) : null;
   const allWarnings = dayConflict ? [...warnings, { key: 'access-day', text: dayConflict.message, tone: 'warning' }] : warnings;
@@ -304,7 +328,8 @@ export function crewSlotView({
       aside: known ? `วันนั้นว่าง ${freeCount} จาก ${rows.length} คน` : '',
       asideTone: known ? (freeCount ? 'ok' : 'warn') : '',
     },
-    hint: asked ? SLOT_VIEW_TEXT.hint : `${SLOT_VIEW_TEXT.hintNoAsk}${lengthText(Number(currentLength) > 0 ? currentLength : DEFAULT_LENGTH)}`,
+    hint: startOnly ? SLOT_VIEW_TEXT.hintStartOnly
+      : asked ? SLOT_VIEW_TEXT.hint : `${SLOT_VIEW_TEXT.hintNoAsk}${lengthText(Number(currentLength) > 0 ? currentLength : DEFAULT_LENGTH)}`,
     groups,
     rows,
     /* จอมือถือ: ว่างช่วงนี้ก่อน (ลำดับเดิมในกลุ่ม) */

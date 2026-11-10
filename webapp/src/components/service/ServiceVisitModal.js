@@ -11,8 +11,9 @@
 //    (`GatePanel`) ตัวเลือกคนเดียวกัน (`CrewLoadPicker`):
 //    · ซ้าย — "งานนี้" (ชนิด · โซน · ที่ไหน · ที่มา + แก้ไซต์/ชนิดงาน) · ด่านสี่ข้อ (เห็นก่อนเลือกคน · pain 5)
 //             · สถานะนัด · ผลการเข้าจริง (เฉพาะเมื่อถึงเวลา · pain 7) · หมายเหตุ · ความเคลื่อนไหว (พับ)
-//    · ขวา  — วันที่ · แผ่นเวลาที่เห็นว่าเลือกอันไหน · ช่วงเข้าไซต์ใต้เวลา · คน (ว่าง = แผ่น · ไม่ว่าง = แถบภาระ)
-//             · ผู้ไปด้วย (ชิป ไม่ใช่รายชื่อชุดที่สอง · pain 4)
+//    · แถบเต็มกว้าง — วัน · เวลา · คน ในตัวเลือกตารางช่าง × เวลาตัวเดียว (`CrewSlotPicker` · P3 · มติเจ้าของ 10–11/11/2026)
+//             แทน TimeWindowField + CrewLoadPicker เดิม · ตัวเดียวกับโมดัลยืนยันวันติดตั้งและโมดัลลงคิว
+//    · ขวา  — เหตุผลที่เลื่อน (เฉพาะเลื่อนวัน) · ผู้ไปด้วย (ชิป ไม่ใช่รายชื่อชุดที่สอง · pain 4)
 //    · ท้าย — ปุ่มรองซ้าย · **ปุ่มหลักปุ่มเดียว** (ร่าง = ปล่อยขึ้นตาราง · pain 6) · บรรทัดผลลัพธ์ใต้ปุ่ม
 // ⚠️ **ขอบเขต "UI อย่างเดียว"** — ก้อนที่ส่ง (`submit` → `onSave`) · ด่าน · สิทธิ์ · ชุดช่องและปุ่ม เท่าเดิมทุกตัว
 //    ส่วนไหนโผล่/ปุ่มไหนอยู่ท้าย/บรรทัดผลลัพธ์ ตัดสินที่ `visitModalView` (lib/service/scheduleModal.js) ที่เดียว
@@ -35,16 +36,17 @@ import {
   normalizeVisitInput,
 } from "@/lib/service/rounds";
 import {
-  accessLine, gatePanelView, threadDigest, visitEndDateNote, visitFormCheckInput, visitHeaderView, visitJobRows,
+  gatePanelView, threadDigest, visitEndDateNote, visitFormCheckInput, visitHeaderView, visitJobRows,
   visitModalView,
 } from "@/lib/service/scheduleModal";
 import UpdateThread from "@/components/updates/UpdateThread";
-import CrewLoadPicker from "./CrewLoadPicker";
+import { crewLoadFromQueue } from "@/lib/service/useCrewLoad";
+import { minutesOf } from "@/lib/service/sites";
+import CrewSlotPicker from "./CrewSlotPicker";
 import GatePanel from "./GatePanel";
 import HelperChips from "./HelperChips";
 import ScheduleModalShell from "./ScheduleModalShell";
 import { Disclosure, JobFacts, ModalField, focusFieldBox } from "./ScheduleModalParts";
-import TimeWindowField from "./TimeWindowField";
 import styles from "./ServiceVisitModal.module.css";
 
 const EMPTY = {
@@ -89,6 +91,9 @@ export default function ServiceVisitModal({
   /* (dateIso) → { state: 'ok'|'unknown', people: [...] } | null — ภาระรายคนของวันนั้น (ไม่นับร่าง)
      ไม่ส่ง/คืน null ⇒ ตัวเลือกคนบอกว่า "ยังโหลดภาระไม่ได้" (ไม่มีศูนย์ปลอม) */
   staffLoadFor = null,
+  /* ก้อนภาระดิบ `{ status, visits, workload, closedSince, teams, members }` ของจอแม่ — ตารางช่าง × เวลาวาดนัดรายใบ
+     และบรรทัดผลลัพธ์ (เกินภาระ) อ่านก้อนเดียวกัน ⇒ ตัวเลขสองที่ตรงกัน · ไม่ส่ง = ตารางบอกว่ายังโหลดภาระไม่ได้ */
+  crewLoad = null,
   /* (visit) → Promise — ลบนัดนี้ (จอแม่ถามยืนยัน ยิง API บอกผล และปิดโมดัลเมื่อสำเร็จ)
      ⚠️ จอแม่ส่งมาเฉพาะคนที่แก้งานบริการได้ (`canEditService`) — ไม่ส่ง = ไม่มีปุ่ม */
   onDelete = null,
@@ -155,11 +160,22 @@ export default function ServiceVisitModal({
     setThreadItems(null);
   }, [open, visit?.id]);
 
-  /* ภาระของวันที่กำลังกรอก — เปลี่ยนวันในฟอร์ม ตัวเลขเปลี่ยนตาม (ไม่ใช่วันเดิมของใบ) */
-  const dayLoad = useMemo(
-    () => (staffLoadFor && form.scheduledDate ? staffLoadFor(form.scheduledDate) : null),
-    [staffLoadFor, form.scheduledDate],
-  );
+  /* ภาระของวันที่กำลังกรอก — เปลี่ยนวันในฟอร์ม ตัวเลขเปลี่ยนตาม (ไม่ใช่วันเดิมของใบ)
+     ⭐ มีก้อนดิบ = คิดจากก้อนเดียวกับตาราง (`crewLoadFromQueue` · นัดที่กำลังแก้ไม่นับเป็นภาระของตัวเอง) */
+  const dayLoad = useMemo(() => {
+    if (!form.scheduledDate) return null;
+    if (crewLoad) return crewLoadFromQueue(crewLoad, form.scheduledDate, { technicians, excludeVisitId: visit?.id || "" });
+    return staffLoadFor ? staffLoadFor(form.scheduledDate) : null;
+  }, [crewLoad, staffLoadFor, form.scheduledDate, technicians, visit?.id]);
+  const slotValue = useMemo(() => ({
+    date: form.scheduledDate, startTime: form.startTime, endTime: form.endTime, assigneeId: form.assigneeId,
+  }), [form.scheduledDate, form.startTime, form.endTime, form.assigneeId]);
+  /* ความยาวเดิมของนัด — คลิกช่องเดียวบนตาราง = ยาวเท่าเดิม (ไม่มีที่ฝ่ายขายขอ · มติ 10/11) */
+  const currentLength = useMemo(() => {
+    const start = minutesOf(visit?.startTime);
+    const end = minutesOf(visit?.endTime);
+    return start !== null && end !== null && end > start ? end - start : null;
+  }, [visit?.startTime, visit?.endTime]);
 
   /* ⭐ พาโฟกัสไปช่องที่ถูกขอ — ตั้ง "ค้างไว้" ในรอบเดียวกับที่เติมฟอร์ม (สอง setState รวมเป็น
      เรนเดอร์เดียว) แล้วค่อยโฟกัสในเอฟเฟกต์ถัดไป ซึ่งเห็น DOM ของฟอร์มที่เติมแล้ว
@@ -211,11 +227,6 @@ export default function ServiceVisitModal({
   /* ข้ามด่านเป็นสิทธิ์ของแอดมิน (`canOverrideServiceGate`) ไม่ใช่ของทุกคนที่แก้งานบริการได้ — ด่านฝั่ง server
      ปฏิเสธอยู่แล้ว (route PATCH) ที่นี่แค่ไม่โชว์ปุ่มที่กดยังไงก็ไม่ผ่าน (D9: ป้ายเดิม "หัวหน้า" ผิด) */
   const canOverride = canOverrideServiceGate({ role });
-
-  const pickTechnician = (id) => {
-    const tech = technicians.find((t) => t.id === id);
-    setForm((prev) => ({ ...prev, assigneeId: id, assigneeName: tech?.name || "" }));
-  };
 
   /* ⭐ ปุ่ม "ลบนัด" (มติเจ้าของ 24/09) — เฉพาะงานนอกรอบที่ยังไม่ปิด · เหตุที่ลบไม่ได้บอกตอนกด
      ⚠️ ถามด่านจาก **ใบที่บันทึกไว้** (`visit`) ไม่ใช่ค่าที่กำลังกรอก — ลบคือลบของที่อยู่ในฐาน และ API ก็ตัดสินจากแถวในฐาน */
@@ -276,7 +287,6 @@ export default function ServiceVisitModal({
   const gateView = sections.gates
     ? gatePanelView(gate, { visit: { ...form, id: visit?.id }, accessKnown: true, site, mode: sections.gateMode })
     : null;
-  const access = accessLine(site, { date: form.scheduledDate, startTime: form.startTime, endTime: form.endTime });
   const digest = threadDigest(threadItems);
   const showWhat = whatOpen || sections.siteEditOpen;
 
@@ -471,43 +481,50 @@ export default function ServiceVisitModal({
     </ModalField>
   ) : null;
 
+  /* ⭐ วัน · เวลา · คน = ตัวเลือกตารางช่าง × เวลาตัวเดียว (แถบเต็มกว้างของเปลือก · มติเจ้าของ 11/11/2026)
+     · คลิกช่องเดียว = ยาวเท่าเดิมของนัด (ไม่มี = 1 ชม.) · ลาก = ปัดทีละ 30 นาที · พิมพ์เวลาเองได้ทุกนาที
+     · ทับ / เกินภาระ / นอกช่วงไซต์ = เตือน ไม่ห้าม · "ยังไม่มอบหมาย" เลือกได้ (นัดไม่มีคนได้ = ร่าง) */
+  const onSlot = (next) => setForm((prev) => {
+    const id = String(next.assigneeId || "");
+    const tech = technicians.find((t) => t.id === id);
+    return {
+      ...prev,
+      scheduledDate: next.date || "",
+      startTime: next.startTime || "",
+      endTime: next.endTime || "",
+      assigneeId: id,
+      assigneeName: id === prev.assigneeId ? prev.assigneeName : (tech?.name || ""),
+    };
+  });
+  const band = (
+    <ModalField
+      label="วันที่นัด · เวลา · เจ้าหน้าที่ผู้รับผิดชอบ"
+      labelId={assigneeLabelId}
+      aside="เจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้"
+    >
+      <CrewSlotPicker
+        technicians={technicians}
+        load={crewLoad}
+        value={slotValue}
+        onChange={onSlot}
+        site={site}
+        siteLoad={siteLoad}
+        excludeVisitId={visit?.id || null}
+        allowUnassigned
+        currentName={form.assigneeName}
+        rosterState={rosterState}
+        currentLength={currentLength}
+        todayIso={todayIso}
+        labelledBy={assigneeLabelId}
+        dayRef={dateRef}
+        crewRef={assigneeRef}
+      />
+    </ModalField>
+  );
+
   const main = (
     <>
-      {/* ⭐ เช้า/บ่าย/เต็มวัน เป็น **ปุ่มลัดที่เติมเวลาให้** ไม่ใช่ค่าที่เก็บใน DB — แผ่นที่เลือกอยู่อ่านจากเวลา */}
-      <TimeWindowField
-        date={form.scheduledDate}
-        onDate={(iso) => setForm((prev) => ({ ...prev, scheduledDate: iso }))}
-        startTime={form.startTime}
-        endTime={form.endTime}
-        onTime={({ startTime, endTime }) => setForm((prev) => ({ ...prev, startTime, endTime }))}
-        dateLabel="วันที่นัด"
-        todayIso={todayIso}
-        access={access}
-        dateRef={dateRef}
-        dateSlot={rescheduleField}
-      />
-
-      {/* ⭐ คนที่ว่างทั้งวันเป็นแผ่นเล็ก · คนที่มีงานแล้วเป็นแถวพร้อมแถบภาระและ "ถ้าเลือก" (เตือน ไม่ห้าม)
-          ⚠️ กล่องเป็น div ไม่ใช่ label — radio แต่ละตัวเป็น label ของตัวเองอยู่แล้ว */}
-      <ModalField
-        label="เจ้าหน้าที่ผู้รับผิดชอบ"
-        labelId={assigneeLabelId}
-        aside="เจ้าของงาน — ใบส่งงานและรอบถัดไปนับจากคนนี้"
-        fieldRef={assigneeRef}
-      >
-        <CrewLoadPicker
-          value={form.assigneeId}
-          onChange={pickTechnician}
-          technicians={technicians}
-          load={dayLoad}
-          dateIso={form.scheduledDate}
-          labelledBy={assigneeLabelId}
-          currentName={form.assigneeName}
-          siteLoad={siteLoad}
-          timeWindow={{ startTime: form.startTime, endTime: form.endTime }}
-          rosterState={rosterState}
-        />
-      </ModalField>
+      {rescheduleField}
 
       {/* ⭐ เจ้าหน้าที่ที่ไปด้วย (F-6) — ไม่ใช่ "เจ้าของงานคนที่สอง": ใบส่งงานและรอบถัดไปยังนับจากคนแรกคนเดียว
           สิ่งที่เปลี่ยนคือคนที่ไปด้วย **เห็นงานนี้ในงานวันนี้ของตัวเอง** · ชิป + ปุ่มเพิ่ม (pain 4) */}
@@ -614,6 +631,7 @@ export default function ServiceVisitModal({
       origin={header.origin}
       context={header.context}
       aside={aside}
+      band={band}
       main={main}
       tail={tail}
       secondary={secondary}

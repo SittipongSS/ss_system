@@ -60,7 +60,10 @@ test('⭐ "ลงคิวใหม่" ถามตัวตัดสินเ�
 /* ⭐ แบบ A "สองคอลัมน์" (มติเจ้าของ 24/09) — ทุกคำ/การตัดสินมาจาก lib ตัวเดียว · โมดัลวาดอย่างเดียว */
 test('⭐ โมดัล: ตัวเลือกคนเห็นภาระ · ไม่มี "ยังไม่มอบหมาย" · ก้อนที่ส่ง ด่าน หัว และผลลัพธ์มาจาก lib ตัวเดียว', () => {
   const live = code(dialog);
-  assert.match(live, /<CrewLoadPicker\s+allowUnassigned=\{false\}/);
+  /* ⭐ P3 (มติเจ้าของ 10–11/11/2026): วัน · เวลาเริ่ม · คน = ตารางช่าง × เวลา (`CrewSlotPicker`) โหมดเวลาเริ่มอย่างเดียว */
+  const picker = live.match(/<CrewSlotPicker[\s\S]*?\/>/)[0];
+  assert.match(picker, /startOnly/);
+  assert.match(picker, /allowUnassigned=\{false\}/);
   assert.match(live, /onSubmit\?\.\(commitDuePayload\(request, form, \{ technicians \}\)\)/);
   assert.match(live, /const gaps = commitDueGaps\(request, form\);/);
   assert.match(live, /blocker: gaps\.join\(" · "\),/);
@@ -73,8 +76,8 @@ test('⭐ โมดัล: ตัวเลือกคนเห็นภาร�
   // บรรทัดผลลัพธ์: บริบทชุดเดิม + ชื่อผู้รับผิดชอบของงานโต๊ะ (โหมดอื่น lib ไม่อ่านคีย์นี้) · ทรงเลื่อนวันที่ยังติดด่านพูดด่านชุดเดียวกับปุ่ม
   assert.match(live, /const promise = commitDueOutcome\(request, form, \{ site, accessKnown, technicians, load, siteLoad, viewerName: ownerName \}\);/);
   assert.match(live, /const outcome = reschedule\?\.gaps\.length \? \{ tone: "warn", lands: null, text: reschedule\.gaps\.join\(" · "\) \} : promise;/);
-  assert.match(live, /const load = form\.date \? loadFor\(form\.date\) : null;/);
-  assert.match(live, /load=\{load\}/, 'ตัวเลือกคนกับบรรทัดผลลัพธ์อ่านภาระชุดเดียวกัน');
+  assert.match(live, /: rawLoad \? crewLoadFromQueue\(rawLoad, form\.date, \{ technicians, excludeVisitId: ownVisitId \}\)/);
+  assert.match(picker, /load=\{rawLoad\}/, 'ตารางกับบรรทัดผลลัพธ์อ่านภาระก้อนเดียวกัน');
   // 🐞 คำใบ้ที่สัญญาว่า "ขึ้นตารางเสมอ" ผิดทุกครั้งที่ด่าน ④ ไม่ผ่าน — ผลของการเลือกอยู่ที่บรรทัดผลลัพธ์เท่านั้น
   assert.doesNotMatch(live, /นัดจะขึ้นตารางและงานวันนี้ของคนนี้|นัดจะขึ้นตารางของคนนี้ทันที/);
   // โหมด/ลงคิวใหม่ ตัดสินในโมดัลเอง — ผู้เรียกส่งผิดไม่ได้
@@ -98,24 +101,26 @@ test('🔒 ก้อน PATCH: ส่งทางเดียวผ่าน com
   // ชิป "ใช้ตามผู้ขอ" เติมค่าผ่านฟอร์มเดิม (patch ของ lib = date/time/resultDate) — ไม่ใช่ส่งตรง
   assert.match(live, /const apply = \(patch\) => setForm\(\(prev\) => \(\{ \.\.\.prev, \.\.\.patch \}\)\);/);
   assert.equal((live.match(/<WishChip wish=\{wishes\.(visit|result)\} onApply=\{apply\}/g) || []).length, 2);
-  // เวลาเก็บได้แค่เวลาเริ่ม (committedDueTime · D1) — ช่องเวลาไม่มีเวลาจบ
-  assert.match(live, /onTime=\{\(\{ startTime \}\) => set\("time"\)\(startTime\)\}/);
+  // เวลาเก็บได้แค่เวลาเริ่ม (committedDueTime · D1) — ตารางโหมดเวลาเริ่ม · ช่องวันของหัวข้ออื่นไม่มีเวลา
+  assert.match(live, /const onSlot = \(next\) => apply\(\{ date: next\.date \|\| "", time: next\.startTime \|\| "", assigneeId: String\(next\.assigneeId \|\| ""\) \}\);/);
+  assert.doesNotMatch(live, /endTime: next\.endTime/, 'ไม่มีช่องเวลาจบให้เก็บ');
   assert.match(live, /withEnd=\{false\}/);
-  // ฟอร์มมีห้าช่องเท่าเดิม (date · time · resultDate · assigneeId · reason) — ไม่มี set ของช่องอื่น
+  // ฟอร์มมีห้าช่องเท่าเดิม (date · time · resultDate · assigneeId · reason) — ตารางเขียน date/time/assigneeId ผ่าน apply · ที่เหลือผ่าน set
   const keys = [...live.matchAll(/set\("(\w+)"\)/g)].map((m) => m[1]);
-  assert.deepEqual([...new Set(keys)].sort(), ['assigneeId', 'date', 'reason', 'resultDate', 'time']);
+  assert.deepEqual([...new Set(keys)].sort(), ['date', 'reason', 'resultDate']);
 });
 
 test('⭐ ภาระ: ผู้เรียกส่งมา = ใช้ของผู้เรียก (หน้าจัดคิว) · ไม่ส่ง = โมดัลโหลดเอง (หน้าใบ)', () => {
   const live = code(dialog);
-  assert.match(live, /useCrewLoad\(\{ enabled: siteMode && !staffLoadFor, technicians \}\)/);
-  assert.match(live, /const loadFor = staffLoadFor \|\| ownLoadFor;/);
+  assert.match(live, /useCrewLoadData\(\{ enabled: siteMode && !crewLoad && !staffLoadFor \}\)/);
+  assert.match(live, /const rawLoad = crewLoad \|\| \(staffLoadFor \? null : ownLoad\);/);
   // ⚠️ ฮุกอยู่ในตัวฟอร์มที่เมานต์เฉพาะตอนเปิด (ไม่ใช่ตัวนอกที่ early-return)
   assert.match(live, /if \(!open \|\| !request\) return null;\s*return <CommitDueForm key=\{request\.id\}/);
   const scheduleTag = code(schedulePage).match(/<CommitDueDialog[\s\S]*?\/>/)[0];
   const requestTag = code(requestPage).match(/<CommitDueDialog[\s\S]*?\/>/)[0];
   assert.match(scheduleTag, /staffLoadFor=\{staffLoadFor\}/);
-  assert.doesNotMatch(requestTag, /staffLoadFor=/, 'หน้าใบไม่มีรายการงานในมือ — ส่ง null ไปจะได้ "ไม่รู้" ตลอด');
+  assert.match(scheduleTag, /crewLoad=\{slotLoad\}/, 'ก้อนดิบชุดเดียวกับตารางข้าง ๆ');
+  assert.doesNotMatch(requestTag, /staffLoadFor=|crewLoad=/, 'หน้าใบไม่มีรายการงานในมือ — ส่ง null ไปจะได้ "ไม่รู้" ตลอด');
   /* ⭐ หน้าจัดคิวมีไซต์เต็มแถว (ช่วงเวลาที่ให้เข้า) ⇒ เตือนข้อ ④ ก่อนกด
      ⭐ **หน้าใบเห็นเท่าหน้าจัดคิวแล้ว** (หน้าคำร้องแบบไทม์ไลน์ · มติเจ้าของ 25/09 ปิดข้อจำกัดจากรีวิว UAT 24/09) —
         `surveySite` select ช่วงเวลาเข้าไซต์มาด้วย และ GET ติด `surveySiteLoad` จาก `visitBundle` สูตรเดียวกับหน้าจัดคิว */
@@ -130,10 +135,13 @@ test('⭐ ภาระ: ผู้เรียกส่งมา = ใช้ข�
   for (const tag of [scheduleTag, requestTag]) assert.doesNotMatch(tag, /subtitle=/);
 });
 
-test('ลำดับช่อง: ซ้าย งานนี้ → ด่าน · ขวา วัน/เวลา → วันส่งผล → เจ้าหน้าที่ · หมายเหตุท้ายซ้าย (ความรับผิดชอบอยู่ท้าย)', () => {
+/* ⭐ มติเจ้าของ 11/11/2026: วัน · เวลา · คน เป็นแถบเต็มกว้างเหนือสองคอลัมน์ (คอลัมน์ขวาแคบเกินตาราง 24 ชม.)
+   — แทนลำดับเดิม "ขวา วัน/เวลา → วันส่งผล → เจ้าหน้าที่" */
+test('ลำดับช่อง: แถบเต็มกว้าง วัน/เวลา/คน · ซ้าย งานนี้ → ด่าน · ขวา ชิปผู้ขอ → วันส่งผล · หมายเหตุท้ายซ้าย', () => {
   const live = code(dialog);
-  const aside = live.slice(live.indexOf('const aside = siteMode'), live.indexOf('const main = ('));
-  const main = live.slice(live.indexOf('const main = ('), live.indexOf('const tail = ('));
+  const aside = live.slice(live.indexOf('const aside = siteMode'), live.indexOf('const heldDate'));
+  const band = live.slice(live.indexOf('const band = siteMode'), live.indexOf('const siteFields'));
+  const main = live.slice(live.indexOf('const siteFields'), live.indexOf('const tail = ('));
   const tail = live.slice(live.indexOf('const tail = ('), live.indexOf('return (\n    <ScheduleModalShell'));
   assert.ok(aside.indexOf('<JobFacts') >= 0 && aside.indexOf('<JobFacts') < aside.indexOf('<GatePanel'));
   const at = (needle) => {
@@ -141,7 +149,10 @@ test('ลำดับช่อง: ซ้าย งานนี้ → ด่า
     assert.ok(i >= 0, `หา ${needle} ไม่เจอ`);
     return i;
   };
-  const order = [at('<TimeWindowField'), at('label={labels.resultLabel}'), at('<CrewLoadPicker')];
+  assert.match(band, /<CrewSlotPicker/);
+  assert.match(band, /dayRef=\{dateRef\}/);
+  assert.match(band, /crewRef=\{assigneeRef\}/, 'ลิงก์แก้บนแผงด่านพาโฟกัสเข้าตาราง');
+  const order = [at('<WishChip wish={wishes.visit}'), at('label={labels.resultLabel}'), at('<TimeWindowField')];
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   /* ช่องข้อความท้ายฟอร์ม — ป้ายของทรงเดิมยังเป็น "หมายเหตุ (ไม่บังคับ)" (งานโต๊ะ: `labels.noteLabel` + ท้ายเดิม) ·
      ตัวอย่างในช่องยังมาจาก lib · ทรงเลื่อนวันใช้ช่องเดียวกันเป็น "เหตุผล" (บังคับ) */
@@ -149,10 +160,10 @@ test('ลำดับช่อง: ซ้าย งานนี้ → ด่า
   assert.match(note, /label: `\$\{labels\.noteLabel \|\| "หมายเหตุ"\} \(ไม่บังคับ\)`, required: false, placeholder: labels\.notePlaceholder \}/);
   assert.match(tail, /<ModalField label=\{note\.label\} required=\{note\.required\} htmlFor=\{reasonId\}>/);
   assert.match(tail, /placeholder=\{note\.placeholder\}/);
-  assert.match(live, /aside=\{aside\}\s+main=\{main\}\s+tail=\{tail\}/);
+  assert.match(live, /aside=\{aside\}\s+band=\{band\}\s+main=\{main\}\s+tail=\{tail\}/);
   // แจ้งกำหนดส่ง (หัวข้ออื่น) = คอลัมน์เดียว วันอย่างเดียว
   assert.match(live, /layout=\{siteMode \? "split" : "single"\}/);
-  assert.match(live, /withTime=\{siteMode\}/);
+  assert.match(live, /withTime=\{false\}/);
   // รายชื่อกำลังโหลด / โหลดพัง / ไม่มีใครเลย — สามข้อความของตัวเลือก (ไม่ใช่ข้อความเดียว)
   assert.match(live, /const rosterState = techniciansLoading \? "loading" : techniciansError \? "error" : "ready";/);
   assert.match(live, /rosterState=\{rosterState\}/);

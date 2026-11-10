@@ -22,8 +22,9 @@ const time = code(read('./TimeWindowField.js'));
 const timeCss = code(read('./TimeWindowField.module.css'));
 const helpers = code(read('./HelperChips.js'));
 const helpersCss = code(read('./HelperChips.module.css'));
-const picker = code(read('./CrewLoadPicker.js'));
-const pickerCss = code(read('./CrewLoadPicker.module.css'));
+/* ⭐ P3 (มติเจ้าของ 10–11/11/2026): ตัวเลือกคน = ตารางช่าง × เวลา (`CrewSlotPicker`) — CrewLoadPicker ถอดแล้ว */
+const picker = code(read('./CrewSlotPicker.js'));
+const pickerCss = code(read('./CrewSlotPicker.module.css'));
 
 test('⭐ เปลือก: ปุ่มหลักปุ่มเดียว เป็น GatedAction ที่ชี้บรรทัดผลลัพธ์ (aria-describedby)', () => {
   assert.equal((shell.match(/tone="primary"/g) || []).length, 1, 'tone="primary" มีที่เปลือกที่เดียว');
@@ -41,7 +42,10 @@ test('⭐ เปลือก: ทุกปุ่มท้ายดับตอ�
   const buttons = shell.match(/<GatedAction[\s\S]*?>/g) || [];
   assert.equal(buttons.length, 2, 'ปุ่มรอง (map) + ปุ่มหลัก');
   for (const button of buttons) assert.match(button, /disabled=\{busy \|\| /, button);
-  assert.match(shell, /<fieldset ref=\{bodyRef\} className=\{styles\.body\} data-layout=\{split \? "split" : "single"\} disabled=\{busy\}>/);
+  assert.match(shell, /<fieldset ref=\{bodyRef\} className=\{styles\.body\} data-layout=\{split \? "split" : "single"\} data-band=\{band \? "1" : undefined\} disabled=\{busy\}>/);
+  // แถบเต็มกว้าง (ตารางช่าง × เวลา · มติ 11/11) อยู่ใน fieldset เดียวกัน ⇒ ล็อกพร้อมทุกช่องตอนส่ง
+  assert.match(shell, /disabled=\{busy\}>\s*\{band \? <div className=\{styles\.band\}>\{band\}<\/div> : null\}/);
+  assert.match(shellCss, /\.body\[data-layout="split"\]\[data-band\] \{[^}]*grid-template-areas: "band band" "aside main" "tail main";/);
   assert.match(shell, /dismissible=\{!busy\}/);
 });
 
@@ -112,9 +116,10 @@ test('ชิปผู้ไปด้วย: ปุ่มนำออกมีช
   assert.match(helpersCss, /\.add \{[^}]*min-height: var\(--ctl-h-touch\);/);
 });
 
-test('ตัวเลือกเจ้าหน้าที่: แผ่นและแถวสูงเท่าเป้านิ้ว · มือถือแผ่นว่างคอลัมน์เดียว แถบภาระลงแถวสอง', () => {
-  assert.match(pickerCss, /\.tile,\s*\.row,\s*\.none \{[^}]*min-height: var\(--ctl-h-touch\);/);
-  assert.match(pickerCss, /@media \(max-width: 640px\) \{[\s\S]*?\.grid \{\s*grid-template-columns: minmax\(0, 1fr\);[\s\S]*?\.load \{ grid-column: 2; \}/);
+test('ตัวเลือกเจ้าหน้าที่: ปุ่มช่วงเวลาบนมือถือสูงเท่าเป้านิ้ว · การ์ดรายคนทั้งใบเป็นที่แตะ · แถบภาระไม่มี style width', () => {
+  assert.match(pickerCss, /\.preset \{[^}]*min-height: var\(--ctl-h-touch\);/);
+  assert.match(picker, /<label key=\{row\.id\} className=\{styles\.card\}/, 'การ์ดทั้งใบเป็น label ของ radio');
+  assert.match(pickerCss, /\.line\[data-kind="person"\] \{ min-height: 56px; \}/);
   assert.match(picker, /data-cap=\{cell\.cap \? "1" : undefined\}/, 'เส้นเพดานบนแถบ (ขีดละหนึ่งจุด ไม่มี style width)');
 });
 
@@ -143,17 +148,23 @@ test('⭐ B2: สองโมดัลวาดเปลือกเดียว
   }
 });
 
-test('⭐ B2: ช่องหลักเป็นชิ้นเดียวกัน — ตัวเลือกคน · ช่องวัน/เวลา · แผงด่าน อย่างละหนึ่งในแต่ละโมดัล', () => {
+/* ⭐ P3 (มติเจ้าของ 10–11/11/2026): วัน · เวลา · คน = ตารางช่าง × เวลาตัวเดียว (`CrewSlotPicker`) ในแถบเต็มกว้าง
+   — แทน TimeWindowField + CrewLoadPicker · โมดัลลงคิวยังมีช่องวันเดิมสำหรับงานโต๊ะ/แจ้งกำหนดส่ง (วันอย่างเดียว) */
+test('⭐ B2: ช่องหลักเป็นชิ้นเดียวกัน — ตารางช่าง × เวลา · แผงด่าน อย่างละหนึ่งในแต่ละโมดัล', () => {
   for (const [name, src] of MODALS) {
-    for (const tag of ['<CrewLoadPicker', '<TimeWindowField', '<GatePanel', '<JobFacts']) {
+    for (const tag of ['<CrewSlotPicker', '<GatePanel', '<JobFacts']) {
       assert.equal((src.match(new RegExp(`${tag}\\b`, 'g')) || []).length, 1, `${name}: ${tag}`);
     }
+    assert.doesNotMatch(src, /<CrewLoadPicker\b/, `${name}: ตัวเลือกคนเดิมถอดแล้ว`);
+    assert.match(src, /band=\{band\}/, `${name}: ตารางอยู่แถบเต็มกว้าง`);
     // ไม่มีกติกาด่านในโมดัล — ด่านมาจาก lib (visitGate ผ่าน gatePanelView / commitDueGateView)
     assert.doesNotMatch(src, /state === "blocked"|gateSummary\(|gatePassed\(/, name);
   }
-  // ช่องวันของสองโมดัล: นัด = เวลาเริ่ม–จบ · ลงคิว = เวลาเริ่มอย่างเดียว (D1) · แจ้งกำหนดส่ง = วันอย่างเดียว
-  assert.doesNotMatch(visitModal.match(/<TimeWindowField[\s\S]*?\/>/)[0], /withEnd=/);
-  assert.match(dueDialog.match(/<TimeWindowField[\s\S]*?\/>/)[0], /withEnd=\{false\}/);
+  // เวลาของสองโมดัล: นัด = เวลาเริ่ม–จบ · ลงคิว = เวลาเริ่มอย่างเดียว (D1 · `startOnly`) · แจ้งกำหนดส่ง = วันอย่างเดียว
+  assert.doesNotMatch(visitModal.match(/<CrewSlotPicker[\s\S]*?\/>/)[0], /startOnly/);
+  assert.match(dueDialog.match(/<CrewSlotPicker[\s\S]*?\/>/)[0], /startOnly/);
+  assert.doesNotMatch(visitModal, /<TimeWindowField\b/);
+  assert.match(dueDialog.match(/<TimeWindowField[\s\S]*?\/>/)[0], /withTime=\{false\}/);
 });
 
 test('⭐ B2: เปลือกได้ busy ของงานนั้น (โมดัลนัด = บันทึก หรือ ลบ) — ปุ่มท้ายทุกตัวดับพร้อมกัน', () => {
@@ -270,7 +281,7 @@ test('🐞 ลงคิว: แผ่นเวลา เช้า/บ่าย �
 test('🐞 ตัวเลือกคนที่บังคับแต่ยังว่าง (ลงคิว) ขอบสีเตือน + aria-invalid — ไม่ใช่บอกแค่ท้ายโมดัล', () => {
   assert.match(picker, /data-invalid=\{view\.invalid \? "1" : undefined\}/);
   assert.match(picker, /aria-invalid=\{view\.invalid \? "true" : undefined\}/);
-  assert.match(pickerCss, /\.picker\[data-invalid\] \{[^}]*border-color: var\(--red\);/, 'สีเดียวกับช่องกรอกผิดของระบบ');
+  assert.match(pickerCss, /\.picker\[data-invalid\] \.board,\s*\.picker\[data-invalid\] \.cards \{[^}]*border-color: var\(--red\);/, 'สีเดียวกับช่องกรอกผิดของระบบ');
 });
 
 test('🐞 เปลือกทึบ (ไม่เห็นตารางทะลุ) · เนื้อยังมีต่อข้างล่าง = เงาที่ขอบบนของแถบท้าย', () => {

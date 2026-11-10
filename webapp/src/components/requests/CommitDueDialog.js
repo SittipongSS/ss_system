@@ -17,9 +17,11 @@
 //    · ท้าย — ยกเลิก · ปุ่มหลัก "ลงคิว" · บรรทัดผลลัพธ์ ("จะขึ้นตารางของ …" + คำเตือนที่ไม่บล็อก / เหตุที่ติด)
 //      🐞 รีวิว UAT 24/09 (high): เคยทาย "จะจอดเป็นร่าง…" เมื่อนอกช่วงเข้าไซต์ — server ลงตารางเสมอ (ดู `commitDueOutcome`)
 //    · แจ้งกำหนดส่ง (หัวข้ออื่น) = คอลัมน์เดียว: วัน + หมายเหตุ (ไม่มีนัด ไม่มีด่าน ไม่มีคน)
-// ⭐ ตัวเลือกเจ้าหน้าที่ = `CrewLoadPicker` ตัวเดียวกับโมดัลนัด (เห็นภาระของวันที่เลือก ไม่นับร่าง)
-//    · หน้าจัดคิวส่ง `staffLoadFor` ของตัวเองมา (ตัวเลขชุดเดียวกับตารางที่อยู่ข้าง ๆ)
-//    · ไม่ส่งมา (หน้าใบ) ⇒ โมดัลโหลดเองผ่าน `useCrewLoad` — **สูตรเดียวกัน** (`crewLoadPeople`)
+// ⭐ ลงคิวเข้าพื้นที่: วันนัด · เวลาเริ่ม · เจ้าหน้าที่ = ตัวเลือกตารางช่าง × เวลาตัวเดียว (`CrewSlotPicker` · P3 · มติเจ้าของ
+//    10–11/11/2026) เป็นแถบเต็มกว้างของเปลือก — แทน TimeWindowField + CrewLoadPicker เดิม (งานโต๊ะ/แจ้งกำหนดส่งยังเป็นช่องวันเดิม)
+//    · นัดประเมินเก็บได้แค่เวลาเริ่ม (`committedDueTime`) ⇒ ตัวเลือกโหมด `startOnly` (คลิก = เวลาเริ่ม · ไม่มีช่องเวลาจบ)
+//    · หน้าจัดคิวส่ง `crewLoad` (ก้อนภาระดิบชุดเดียวกับตารางข้าง ๆ) · ไม่ส่งมา (หน้าใบ) ⇒ โมดัลโหลดเองผ่าน `useCrewLoadData`
+//      — **สูตรเดียวกัน** (`crewLoadPeople`) · บรรทัดผลลัพธ์ (เกินภาระ) อ่านก้อนเดียวกับตาราง
 //      ⚠️ ฮุกอยู่ในตัวฟอร์มที่เมานต์เฉพาะตอนเปิด ⇒ ไม่ต้องไปวางฮุกหลัง early-return ของหน้าใบ
 // ⚠️ โหมดมาจากทะเบียนหัวข้อ (`commitDueMode` → `requestNeedsRef(kind,'site')`) และ "ลงคิวใหม่"
 //    มาจาก `surveyQueueStep` ตัวเดียวกับการ์ดบนหน้าจัดคิว — **ผู้เรียกส่งโหมดเองไม่ได้** ⇒ ส่งผิดไม่ได้
@@ -37,14 +39,16 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CalendarPlus } from "lucide-react";
 import DateInput from "@/components/ui/DateInput";
 import Textarea from "@/components/ui/Textarea";
-import CrewLoadPicker from "@/components/service/CrewLoadPicker";
+import CrewSlotPicker from "@/components/service/CrewSlotPicker";
 import GatePanel from "@/components/service/GatePanel";
 import ScheduleModalShell from "@/components/service/ScheduleModalShell";
 import { JobFacts, KeepTogether, ModalField, WishChip, focusFieldBox } from "@/components/service/ScheduleModalParts";
 import TimeWindowField from "@/components/service/TimeWindowField";
-import useCrewLoad from "@/lib/service/useCrewLoad";
+import { crewLoadFromQueue, useCrewLoadData } from "@/lib/service/useCrewLoad";
 import { surveyQueueStep } from "@/lib/service/surveyQueue";
-import { accessLine, commitDueGateView } from "@/lib/service/scheduleModal";
+import { commitDueGateView } from "@/lib/service/scheduleModal";
+import { askedSlot, hhmm } from "@/lib/service/crewSlotGrid";
+import { minutesOf } from "@/lib/service/sites";
 import { dayText } from "@/lib/service/queueWords";
 import { naText } from "@/lib/format";
 import {
@@ -68,7 +72,8 @@ const RESCHEDULE_HELD_LEAD = "เดิมรับปากไว้";
  * @param technicians เจ้าหน้าที่ที่มอบหมายได้ [{ id, name }] — ลำดับที่ส่งมาคือลำดับบนจอ
  * @param techniciansLoading รายชื่อยังโหลดไม่เสร็จ (ต่างจาก "ไม่มีใครเลย")
  * @param techniciansError   โหลดรายชื่อไม่สำเร็จ (ต่างจาก "ไม่มีใครเลย" เหมือนกัน)
- * @param staffLoadFor ภาระรายคนของวันหนึ่ง (หน้าจัดคิว) — ไม่ส่ง = โมดัลโหลดเอง
+ * @param staffLoadFor ภาระรายคนของวันหนึ่ง (หน้าจัดคิว) — ใช้เมื่อไม่มี `crewLoad` เท่านั้น
+ * @param crewLoad    ก้อนภาระดิบ `{ status, visits, workload, closedSince, teams, members }` (หน้าจัดคิว) — ไม่ส่ง = โมดัลโหลดเอง
  * @param site        ไซต์ของใบ — บรรทัดไซต์ในหัว · "ที่ไหน" · ด่าน ④ (หน้าจัดคิว: แถวไซต์เต็ม · หน้าใบ: `req.surveySite`)
  * @param accessKnown ไซต์ที่ส่งมามีช่วงเวลาที่ให้เข้าครบไหม — ทั้งหน้าจัดคิวและหน้าใบ = true
  *                    (หน้าใบ: `surveySite` select ช่วงเวลามาด้วยแล้ว · มติเจ้าของ 25/09 ปิดข้อจำกัดจากรีวิว UAT 24/09)
@@ -94,6 +99,7 @@ function CommitDueForm({
   techniciansLoading = false,
   techniciansError = false,
   staffLoadFor = null,
+  crewLoad = null,
   site = null,
   accessKnown = false,
   siteLoad = null,
@@ -109,12 +115,16 @@ function CommitDueForm({
   const set = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
   const apply = (patch) => setForm((prev) => ({ ...prev, ...patch }));
 
-  /* ภาระ: ของผู้เรียกก่อน · ไม่มีค่อยโหลดเอง (ฮุกไม่ยิงอะไรเลยเมื่อผู้เรียกส่งมา) */
-  const ownLoadFor = useCrewLoad({ enabled: siteMode && !staffLoadFor, technicians });
-  const loadFor = staffLoadFor || ownLoadFor;
+  /* ภาระ: ก้อนดิบของผู้เรียกก่อน · ไม่มีค่อยโหลดเอง (ฮุกไม่ยิงอะไรเลยเมื่อผู้เรียกส่งมา) */
+  const ownLoad = useCrewLoadData({ enabled: siteMode && !crewLoad && !staffLoadFor });
+  const rawLoad = crewLoad || (staffLoadFor ? null : ownLoad);
+  /* ลงคิวใหม่ = ย้ายนัดเดิม ⇒ นัดเดิมไม่นับเป็นภาระ/ก้อนของตัวเอง */
+  const ownVisitId = requeue ? request.surveyVisit?.id || "" : "";
 
-  /* ภาระของวันที่กรอก — ตัวเลือกคนกับบรรทัดผลลัพธ์ (เตือนเกินภาระ) อ่านชุดเดียวกัน */
-  const load = form.date ? loadFor(form.date) : null;
+  /* ภาระของวันที่กรอก — ตารางกับบรรทัดผลลัพธ์ (เตือนเกินภาระ) อ่านก้อนเดียวกัน */
+  const load = !form.date ? null
+    : rawLoad ? crewLoadFromQueue(rawLoad, form.date, { technicians, excludeVisitId: ownVisitId })
+      : staffLoadFor ? staffLoadFor(form.date) : null;
 
   const gaps = commitDueGaps(request, form);
   /* ⭐ ทรงเลื่อนวันส่งผล — มีเฉพาะงานโต๊ะ · `null` = ทรงรับปาก/ลงคิว/แจ้งกำหนดส่งตามเดิมทุกบรรทัด
@@ -132,9 +142,6 @@ function CommitDueForm({
   /* ทรงเลื่อนวันมีด่านมากกว่าทรงรับปาก (วันเดิม · เหตุผลบังคับ) ⇒ ยังติดด่าน = บรรทัดใต้ปุ่มพูดด่านชุดเดียวกับปุ่ม
      (ทรงเดียวกับที่ lib เขียนให้งานโต๊ะตอนรับปาก) · ผ่านครบ = ประโยคผลลัพธ์ของงานโต๊ะ */
   const outcome = reschedule?.gaps.length ? { tone: "warn", lands: null, text: reschedule.gaps.join(" · ") } : promise;
-  const access = siteMode
-    ? accessLine(site, { date: form.date, startTime: form.time }, { known: accessKnown && !!site })
-    : null;
   const rosterState = techniciansLoading ? "loading" : techniciansError ? "error" : "ready";
 
   const resultId = useId();
@@ -171,69 +178,91 @@ function CommitDueForm({
   const heldDate = reschedule ? dayText(request.committedResultDate || request.committedDueDate) : "";
   const dateHint = reschedule ? `${RESCHEDULE_HELD_LEAD} ${naText(heldDate)}` : labels.dateHint;
 
+  /* ⭐ ที่ผู้ขอต้องการเข้า = ★ บนแถบวัน + กรอบเส้นประบนตาราง (เวลาเริ่มอย่างเดียว · วาดยาว 1 ชม.) */
+  const asked = (() => {
+    const patch = wishes.visit?.patch;
+    if (!patch?.date) return null;
+    const start = minutesOf(patch.time);
+    return askedSlot({
+      requestedDate: patch.date,
+      requestedStartTime: start === null ? null : hhmm(start),
+      requestedEndTime: start === null ? null : hhmm(Math.min(start + 60, 24 * 60 - 1)),
+    });
+  })();
+  const slotValue = { date: form.date || "", startTime: form.time || "", endTime: "", assigneeId: form.assigneeId || "" };
+  const onSlot = (next) => apply({ date: next.date || "", time: next.startTime || "", assigneeId: String(next.assigneeId || "") });
+  /* ⭐ ความรับผิดชอบรวมอยู่ในแถบเดียวกับวัน/เวลา (ตัวเลือกต้องรู้วันก่อนถึงบอกภาระได้ · ช่องบังคับ ว่างอยู่ = กรอบสีเตือน)
+     · รายชื่อกำลังโหลด / โหลดพัง / ไม่มีใครเลย = สามข้อความของตัวเลือก (`rosterState`)
+     · ผลของการเลือก (ขึ้นตาราง + คำเตือนเกินภาระ/นอกช่วงเข้าไซต์) อยู่ที่บรรทัดผลลัพธ์ใต้ปุ่ม (`commitDueOutcome`) */
+  const band = siteMode ? (
+    <ModalField label={`${labels.dateLabel} · เวลาเริ่ม · เจ้าหน้าที่ผู้รับผิดชอบ`} required labelId={assigneeLabelId}>
+      <CrewSlotPicker
+        startOnly
+        technicians={technicians}
+        load={rawLoad}
+        value={slotValue}
+        onChange={onSlot}
+        asked={asked}
+        askedLabel="ผู้ขอต้องการ"
+        site={accessKnown ? site : null}
+        siteLoad={siteLoad}
+        excludeVisitId={ownVisitId || null}
+        allowUnassigned={false}
+        currentName={request.assigneeName || ""}
+        rosterState={rosterState}
+        todayIso={today}
+        labelledBy={assigneeLabelId}
+        dayRef={dateRef}
+        crewRef={assigneeRef}
+      />
+    </ModalField>
+  ) : null;
+
+  /* ลงคิวเข้าพื้นที่: ชิป "ผู้ขอต้องการ" ของวันนัด (เติมวัน + เวลาเริ่มในตารางให้) · คำใบ้ของวันนัด · วันส่งผล */
+  const siteFields = siteMode ? (
+    <>
+      <WishChip wish={wishes.visit} onApply={apply} sameText={WISH_SAME_TEXT} applyText={WISH_APPLY_TEXT} />
+      {dateHint ? <p className={styles.hint}>{dateHint}</p> : null}
+
+      {/* ⭐ วันส่งผล — คนละวันกับวันนัด (mig 0368) · บังคับ (ฝ่ายขายถามคำถามเดียว "ได้ตัวเลขวันไหน") */}
+      <div className={styles.resultRow}>
+        <ModalField label={labels.resultLabel} required htmlFor={resultId}>
+          <DateInput id={resultId} value={form.resultDate || ""} onChange={set("resultDate")} required weekday />
+        </ModalField>
+        <div className={styles.resultSide}>
+          <WishChip wish={wishes.result} onApply={apply} sameText={WISH_SAME_TEXT} applyText={WISH_APPLY_TEXT} />
+          <p className={styles.hint}>{labels.resultHint}</p>
+        </div>
+      </div>
+    </>
+  ) : null;
+
   const main = (
     <>
       {/* ⭐ งานโต๊ะ: วันที่ผู้ขอต้องการผล เป็นเส้นประเหนือช่องวัน (ใบนี้มีวันเดียว จึงไม่มีชิป "ใช้ตามผู้ขอ" —
           ค่าตั้งต้นของช่องคือวันนั้นอยู่แล้ว) · ผู้ขอไม่ระบุ / โหมดอื่น = `labels.wish` ว่าง ⇒ ไม่วาด */}
       {labels.wish ? <p className={styles.wishLine}><KeepTogether text={labels.wish} /></p> : null}
 
-      {/* ⭐ วัน (+ เวลาเริ่ม) — ช่องตัวเดียวกับโมดัลนัด · วันที่ผู้ขอต้องการเป็นชิป ไม่ใช่คำใบ้ที่ซ้ำค่าในช่อง
-          ⚠️ ลงคิวเข้าพื้นที่เก็บได้แค่เวลาเริ่ม (`committedDueTime`) ⇒ เวลาจบเป็นช่องจาง "ไม่ระบุ" · เช้า/บ่ายเติมแค่เวลาเริ่ม
-          ⚠️ แจ้งกำหนดส่ง (หัวข้ออื่น) = วันอย่างเดียว (`withTime={false}`) */}
+      {/* ⭐ งานโต๊ะ / แจ้งกำหนดส่ง (หัวข้ออื่น) = วันอย่างเดียว — ช่องวันตัวเดียวกับโมดัลนัดเดิม
+          ลงคิวเข้าพื้นที่ใช้ตารางในแถบเต็มกว้างแทน (`band` ข้างบน) */}
       {/* ที่ห่อไร้กล่อง (`display: contents` — การจัดวางเท่าเดิมทุกทรง) · งานโต๊ะติด `data-desk` ให้กฎเป้านิ้วของช่องวันเกาะ */}
-      <div className={styles.deskDate} data-desk={deskMode ? "" : undefined}>
-        <TimeWindowField
-          date={form.date || ""}
-          onDate={set("date")}
-          startTime={form.time || ""}
-          endTime=""
-          onTime={({ startTime }) => set("time")(startTime)}
-          withEnd={false}
-          withTime={siteMode}
-          dateLabel={reschedule ? reschedule.dateLabel : labels.dateLabel}
-          timeLabel="เวลานัด (ไม่บังคับ)"
-          todayIso={today}
-          access={access}
-          dateRef={dateRef}
-          dateSlot={dateHint ? <p className={styles.hint}>{dateHint}</p> : null}
-          accessSlot={siteMode ? (
-            <WishChip wish={wishes.visit} onApply={apply} sameText={WISH_SAME_TEXT} applyText={WISH_APPLY_TEXT} />
-          ) : null}
-        />
-      </div>
-
-      {siteMode && (
-        <>
-          {/* ⭐ วันส่งผล — คนละวันกับวันนัด (mig 0368) · บังคับ (ฝ่ายขายถามคำถามเดียว "ได้ตัวเลขวันไหน") */}
-          <div className={styles.resultRow}>
-            <ModalField label={labels.resultLabel} required htmlFor={resultId}>
-              <DateInput id={resultId} value={form.resultDate || ""} onChange={set("resultDate")} required weekday />
-            </ModalField>
-            <div className={styles.resultSide}>
-              <WishChip wish={wishes.result} onApply={apply} sameText={WISH_SAME_TEXT} applyText={WISH_APPLY_TEXT} />
-              <p className={styles.hint}>{labels.resultHint}</p>
-            </div>
-          </div>
-
-          {/* ⭐ ความรับผิดชอบอยู่ท้าย (กฎฟอร์ม §1.4) และตัวเลือกต้องรู้วันก่อนถึงบอกภาระได้
-              · รายชื่อกำลังโหลด / โหลดพัง / ไม่มีใครเลย = สามข้อความของตัวเลือก (`rosterState`)
-              · ผลของการเลือก (ขึ้นตาราง + คำเตือนเกินภาระ/นอกช่วงเข้าไซต์) อยู่ที่บรรทัดผลลัพธ์ใต้ปุ่ม (`commitDueOutcome`) */}
-          <ModalField label="เจ้าหน้าที่ผู้รับผิดชอบ" required labelId={assigneeLabelId} fieldRef={assigneeRef}>
-            <CrewLoadPicker
-              allowUnassigned={false}
-              value={form.assigneeId || ""}
-              onChange={set("assigneeId")}
-              technicians={technicians}
-              load={load}
-              dateIso={form.date || ""}
-              labelledBy={assigneeLabelId}
-              currentName={request.assigneeName || ""}
-              siteLoad={siteLoad}
-              timeWindow={{ startTime: form.time || "", endTime: "" }}
-              rosterState={rosterState}
-            />
-          </ModalField>
-        </>
+      {siteMode ? siteFields : (
+        <div className={styles.deskDate} data-desk={deskMode ? "" : undefined}>
+          <TimeWindowField
+            date={form.date || ""}
+            onDate={set("date")}
+            startTime=""
+            endTime=""
+            onTime={() => {}}
+            withEnd={false}
+            withTime={false}
+            dateLabel={reschedule ? reschedule.dateLabel : labels.dateLabel}
+            todayIso={today}
+            access={null}
+            dateRef={dateRef}
+            dateSlot={dateHint ? <p className={styles.hint}>{dateHint}</p> : null}
+          />
+        </div>
       )}
     </>
   );
@@ -291,6 +320,7 @@ function CommitDueForm({
       origin={header.origin}
       context={header.context}
       aside={aside}
+      band={band}
       main={main}
       tail={tail}
       secondary={[{ key: "cancel", label: "ยกเลิก", variant: "quiet", onClick: close }]}
