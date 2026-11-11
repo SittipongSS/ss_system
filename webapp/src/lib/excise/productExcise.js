@@ -40,6 +40,12 @@ export async function productExciseFields(
     autoTaxable = (await flagsOf(categoryCode)).isExcise;
   }
   const isExciseTaxable = resolveProductTaxable({ taxableOverride, autoTaxable });
+  /* 🐞 RA ยกเว้นรายตัว (override false) บนชุดที่มีน้ำหอม = ไม่เสียภาษี ⇒ ไม่มีเรื่องวิธีแจ้งราคา — เดิม (#2035) ยังเก็บ 'unchosen'
+     แล้ว route ตีกลับ "เลือกวิธีแจ้งราคาก่อน" ทั้งที่สินค้าได้รับยกเว้น (เจอตอนทำหัวข้อ ④ ของฟอร์ม · 11/11) */
+  if (!isExciseTaxable) {
+    exciseTaxBase = null;
+    exciseBasePriceIncVat = null;
+  }
   const own = productTaxRates(retailPriceIncVat, { taxable: isExciseTaxable });
   // รวมชุด/สินค้าทั่วไป = ราคาขายปลีกของสินค้า · รายชิ้น = ฐานที่รวมจากแถว · ยังไม่เลือก = ไม่มีฐาน (ภาษี 0)
   const taxed = exciseTaxBase === EXCISE_TAX_BASE.pieces || exciseTaxBase === EXCISE_TAX_BASE.unchosen

@@ -312,6 +312,7 @@ const MULTIPLY_ALLOWED = Object.freeze({
   'lib/sales/quotationMasterTemplate.js': 'ตัวสร้างบรรทัดตัวอย่างของหน้าตั้งค่ามาตรฐานเอกสาร (lineAt · คูณ packFactorOf แล้ว)',
   // เจอเมื่อยามเริ่มตามชื่อแฝง (const q = Number(qty) … q * p) — มูลค่าคาดการณ์ของดีลรายหมวด คงสูตร จำนวน × ราคา ตามมติ D7 ของงานออกแบบ
   'lib/sales/dealValueItems.js': 'มูลค่าคาดการณ์ของดีลรายหมวด (sales_deal_value_items) — ไม่ใช่บรรทัดใบเสนอราคา ไม่มีเลขแพ็ค (มติ D7)',
+  'components/database/ProductRetailExcise.js': 'ตารางราคารายชิ้นของชุดของขวัญ (หัวข้อ ④ ของฟอร์มสินค้า) = ราคาต่อชิ้น × จำนวนชิ้นของแถวสูตรในชุด — ไม่ใช่บรรทัดใบเสนอราคา/ใบสั่งขาย ไม่มีเลขแพ็ค',
   'lib/excise/giftSetExcise.js': 'ฐานภาษีของชุดของขวัญคละ = ราคาต่อชิ้น × จำนวนชิ้นของแถวสูตรในชุด (product_formulas · mig 0430) — ไม่ใช่บรรทัดใบเสนอราคา/ใบสั่งขาย ไม่มีเลขแพ็ค',
   'app/api/sahamit/forecast/rounds/[id]/create-sales-deal/route.js': 'สหมิตร: FC ของสหมิตร (sahamit_forecast_lines) ไม่ใช่บรรทัดใบเสนอราคา',
   'app/api/sahamit/forecast/rounds/[id]/sync-sales-planning/route.js': 'สหมิตร: FC ของสหมิตร',

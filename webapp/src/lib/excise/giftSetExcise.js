@@ -29,7 +29,7 @@ export const EXCISE_TAX_BASE_PIECES = EXCISE_TAX_BASE.pieces;
 
 /** ตัวเลือกบนฟอร์ม — ลำดับ/คำเดียวกันทุกจอ */
 export const GIFT_SET_PRICE_MODE_OPTIONS = Object.freeze([
-  { value: EXCISE_TAX_BASE.set, label: 'รวมชุด', description: 'ภาษีคิดจากราคาขายปลีกทั้งชุด (กรอกที่หัวข้อราคาขายปลีก)' },
+  { value: EXCISE_TAX_BASE.set, label: 'รวมชุด', description: 'ภาษีคิดจากราคาขายปลีกทั้งชุด' },
   { value: EXCISE_TAX_BASE.pieces, label: 'รายชิ้น', description: 'ภาษีคิดจากราคาขายปลีกต่อชิ้น × จำนวนชิ้น ของแถวน้ำหอมในชุด' },
 ]);
 
@@ -95,8 +95,10 @@ export function giftSetExciseFields(rows = [], productTypes = [], mode = null) {
 /** ข้อความตีกลับเมื่อชุดมีน้ำหอมแต่ยังไม่เลือกวิธีแจ้งราคา — ฟอร์มกับ API (POST/PATCH /api/products) ใช้คำเดียวกัน */
 export const GIFT_SET_PRICE_MODE_REQUIRED = 'ชุดนี้มีสูตรที่เสียสรรพสามิต — เลือกวิธีแจ้งราคาขายปลีกก่อน (รวมชุด หรือ รายชิ้น)';
 
-/** ด่านฝั่งฟอร์ม: ชุดมีของเสียภาษีแต่ยังไม่เลือกวิธีแจ้งราคา = ข้อความ · ผ่าน = '' */
-export function giftSetPriceModeError(rows = [], productTypes = [], mode = null) {
+/** ด่านฝั่งฟอร์ม: ชุดมีของเสียภาษีแต่ยังไม่เลือกวิธีแจ้งราคา = ข้อความ · ผ่าน = ''
+ *  `taxableOverride === false` (RA ยกเว้นรายตัว) = ไม่ต้องเลือก — ตรงกับฝั่งบันทึก (productExciseFields) */
+export function giftSetPriceModeError(rows = [], productTypes = [], mode = null, { taxableOverride = null } = {}) {
+  if (taxableOverride === false) return '';
   const profile = giftSetExcise(rows, productTypes, { mode });
   return !profile.taxable || profile.mode ? '' : GIFT_SET_PRICE_MODE_REQUIRED;
 }

@@ -112,7 +112,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     if (giftSetError) { setError(giftSetError); return; }
     // ชุดที่มีน้ำหอมต้องเลือกวิธีแจ้งราคาขายปลีก (G5 · ไม่มีค่าตั้งต้น) — ข้อความเดียวกับ API
     const priceModeError = isGiftSetCategory(form.categoryCode || categoryOf(form.fgCode))
-      ? giftSetPriceModeError(form.formulaComponents, productTypes, form.exciseTaxBase) : "";
+      ? giftSetPriceModeError(form.formulaComponents, productTypes, form.exciseTaxBase, { taxableOverride: product.taxableOverride ?? null }) : "";
     if (priceModeError) { setError(priceModeError); return; }
     setSubmitting(true);
     setError(null);
@@ -201,6 +201,8 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           currentCostPrice={product.costPrice}
           /* ธงภาษีที่บันทึกไว้ — ตัวเดียวกับคำเตือนขาดราคาบนหน้ารายละเอียด (isMissingRetailPrice) ⇒ ของที่ RA บังคับในหมวดอื่นมีช่องราคาให้เติม (L16c) */
           taxable={product.isExciseTaxable === true}
+          /* ธงรายตัวของ RA — หัวข้อ ④ บอกว่า "RA ตั้ง/ยกเว้นรายตัว" (ไม่ได้แก้ที่ฟอร์ม · แก้ที่ทะเบียนสรรพสามิต) */
+          taxableOverride={typeof product.taxableOverride === "boolean" ? product.taxableOverride : null}
           onCustomerChange={handleCustomerChange}
           fgLocked={isAutoFgCode(product.fgCode)}
           selfId={product.id}
