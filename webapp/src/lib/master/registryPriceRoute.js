@@ -15,6 +15,7 @@ import { recordAudit } from '@/lib/audit';
 import { canQuoteMaterial } from '@/lib/materialPrices';
 import { priceRegistrySlots } from '@/lib/materialPricesAdmin';
 import { PRICE_SLOTS, mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
+import { linkRegistryPriceToWaitingRows } from '@/lib/requests/registryPriceLink';
 
 // ⚠️ ไม่ import '@/lib/http' — helpers ที่นั่นลาก authUser → next/headers ซึ่ง
 // ตายใต้ node --test · ไฟล์นี้ต้อง unit test ได้ จึงสร้าง Response ตรง ๆ
@@ -37,6 +38,9 @@ export function makeRegistryPriceHandler({
   // ตัวเขียน audit — ของจริงต่อ Supabase ด้วย service key · เทสต์ **ต้อง** ส่งตัวจำลองมาแทน
   // (🐞 2026-10-09: เทสต์ของไฟล์นี้เขียน audit ปลอมลง production 1,523 แถวผ่าน CI)
   audit = recordAudit,
+  /* ⭐ ราคาที่เพิ่งใส่ผูกเข้าแถวคำร้องที่รอราคาของตัวนี้ (มติเจ้าของ 11/11/2026) — เทสต์ส่งตัวจำลองมาแทน
+     (ตัวจริงอ่าน/เขียนแถวคำร้อง + audit ผ่าน supabase ที่ส่งมา) */
+  linkRows = linkRegistryPriceToWaitingRows,
 }) {
   const selfSlot = Object.values(PRICE_SLOTS).find((s) => s.kind === kind) || null;
   const slotsFor = slotsOf || ((row) => (selfSlot ? [{ ...selfSlot, stampColumn, id: row.id }] : []));
@@ -104,11 +108,24 @@ export function makeRegistryPriceHandler({
         request: req,
       });
 
+      /* ⭐ ใส่ราคาใหม่ที่ทะเบียน = RD ยืนยันราคาแล้วในตัว ⇒ แถวคำร้องที่รอราคาของตัวนี้ไม่ต้องกด "ใช้ราคานี้" ซ้ำ
+         (มติเจ้าของ 11/11/2026 · `lib/requests/registryPriceLink.js`) · ราคาเขียนสำเร็จไปแล้ว ⇒ ขั้นผูกพัง ≠ บันทึกราคาไม่สำเร็จ:
+         ตอบ 200 พร้อม `linkError` (แถวยังกด "ใช้ราคานี้" ได้ตามเดิม) แทนการบอกผู้ใช้ว่าราคาไม่เข้า */
+      let linkedRows = [];
+      let linkError = '';
+      try {
+        linkedRows = await linkRows(supabase, { written, user, request: req, audit });
+      } catch (e) {
+        linkError = `ผูกราคาเข้ารายการในคำร้องที่รอราคาไม่สำเร็จ (${e?.message || 'ไม่ทราบสาเหตุ'}) — กด "ใช้ราคานี้" ที่หน้าราคา + Ingredient List แทน`;
+      }
+
       return Response.json({
         ok: true,
         revisionId: revision.id,
         revisionNo: revision.revisionNo,
         revisions: written.map((w) => ({ key: w.slot.key, revisionId: w.revision.id, revisionNo: w.revision.revisionNo })),
+        linkedRows,
+        linkError,
       });
     } catch (e) {
       return fail(e.message, e.status || 400);

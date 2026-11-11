@@ -85,7 +85,15 @@ export default function RegistryPriceModal({
       const revs = Array.isArray(data?.revisions) && data.revisions.length > 1
         ? data.revisions.map((r) => `${r.key} rev ${r.revisionNo}`).join(" · ")
         : data?.revisionNo != null ? `rev ${data.revisionNo}` : "";
-      onSaved?.(revs ? `บันทึกราคาแล้ว (${revs})` : "บันทึกราคาแล้ว", data);
+      /* ⭐ ทะเบียนผูกราคาที่เพิ่งใส่เข้าแถวคำร้องที่รอราคาให้เอง (มติเจ้าของ 11/11/2026) — บอกผลในข้อความเดียวกัน
+         · ขั้นผูกพังแต่ราคาเข้าแล้ว = บอกเหตุ + ทางออก (ราคาไม่ได้หาย) */
+      const linked = Array.isArray(data?.linkedRows) ? data.linkedRows : [];
+      const waitCount = linked.filter((r) => r.waitIngredients).length;
+      const linkedText = linked.length
+        ? ` · ผูกเข้า ${linked.length} รายการในคำร้องที่รอราคา${waitCount ? ` (${waitCount} รายการรอ Ingredient List ต่อ)` : ""}`
+        : "";
+      const base = revs ? `บันทึกราคาแล้ว (${revs})` : "บันทึกราคาแล้ว";
+      onSaved?.(`${base}${linkedText}${data?.linkError ? ` — ${data.linkError}` : ""}`, data);
     } catch (e) {
       setError(e.message);
       onError?.(e);
