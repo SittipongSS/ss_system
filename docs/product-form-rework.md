@@ -1,6 +1,6 @@
 # ฟอร์มเพิ่ม/แก้สินค้า (FG) จัดลำดับใหม่ — ราคาขายปลีกกับสรรพสามิตอยู่ที่เดียว
 
-> สถานะ: **รอตรวจ** · รอบแรก F1–F5 ขึ้น prod 11/11 (#2037 `d19a3bd3` · ไม่มี migration) · รอบสอง R1–R4 โค้ดเสร็จ 11/11 (mig 0433 · ยังไม่ขึ้น prod)
+> สถานะ: **รอตรวจ** · รอบแรก F1–F5 ขึ้น prod 11/11 (#2037 `d19a3bd3` · ไม่มี migration) · รอบสอง R1–R4 โค้ดเสร็จ 11/11 (mig 0433 รันบนฐานจริงแล้ว 11/11 · PR #2039 ยังไม่ขึ้น prod)
 > ม็อกรอบแรก `~/ss-team/mockups/product-form-rework/index.html` (artifact https://claude.ai/artifact/LLKgdxUaLpvXJ8Zx9hSiuD)
 > ม็อกรอบสอง `~/ss-team/mockups/product-form-rework/retail-price.html` (artifact https://claude.ai/artifact/5Q2HoPTjWZ5sMzCKzWhFM7)
 
