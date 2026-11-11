@@ -5,7 +5,7 @@ import {
   PRODUCT_DOC_NOTE_FIELDS,
   changedFieldsAgainst, normalizeRejectionReason, rejectionReasonError, resetApprovalOnEdit,
 } from '@/lib/master/approval';
-import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
+import { categoryOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode, isReusableCode } from '@/lib/master/masterCodes';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
@@ -17,7 +17,7 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
-import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
+import { productExciseFields } from '@/lib/excise/productExcise';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
@@ -410,13 +410,18 @@ export async function PATCH(request, { params }) {
   // fgCode ซ้ำ ไม่มีรหัสหมวดตายตัว) แต่ **การยกเว้นรายตัวของฝ่าย RA ที่ตรึงไว้บน
   // สินค้า (taxableOverride) ต้องอยู่รอดการแก้สเปค** — กติกาเดียวกับตอนสร้าง
   // (resolveProductTaxable) · เขียนค่า override ใหม่ทำที่ทะเบียนสรรพสามิต ไม่ใช่ที่นี่
-  const isExciseTaxable = resolveProductTaxable({
-    taxableOverride: updated.taxableOverride,
-    autoTaxable: (await categoryFlagsOf(updated.categoryCode)).isExcise,
-  });
-  updated.isExciseTaxable = isExciseTaxable;
-  // อัตราภาษีคิดที่เดียว (lib/tax/exciseBilling) — ต้องเป็นสูตรเดียวกับตอนสร้าง
-  Object.assign(updated, productTaxRates(updated.retailPriceIncVat, { taxable: isExciseTaxable }));
+  // ⭐ ชุดของขวัญตั้งต้นจากสูตรในชุด + ชุดคละคิดจากราคารายชิ้น (มติ 11/11 · mig 0430) — `giftSetRows` คือรายการหลังแก้
+  //    (ไม่ส่ง formulaComponents มา = รายการเดิมจากฐาน) · ตัวคิดตัวเดียวกับตอนสร้าง (productExciseFields)
+  try {
+    Object.assign(updated, await productExciseFields({
+      categoryCode: updated.categoryCode,
+      retailPriceIncVat: updated.retailPriceIncVat,
+      taxableOverride: updated.taxableOverride,
+      giftSetRows,
+    }));
+  } catch (e) {
+    return Response.json({ error: `อ่านหมวดสินค้าไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+  }
 
   const factoryPrice = updated.costPrice;
   updated.laborCost = updated.volume >= 30 ? 5 : 2;
@@ -500,8 +505,9 @@ export async function PATCH(request, { params }) {
   const withGiftSet = (row, rows) => (giftSet || giftSetBefore.length ? { ...row, formulaComponents: rows } : row);
   await recordAudit({
     user, action: 'update', entityType: 'product', entityId: id,
-    before: withGiftSet(product, giftSetBefore.map(({ formulaId, categoryCode }) => ({ formulaId, categoryCode }))),
-    after: withGiftSet(data, giftSetRows.map(({ formulaId, categoryCode }) => ({ formulaId, categoryCode }))),
+    // ราคา/จำนวนชิ้นของแถวน้ำหอมในชุดคละ (mig 0430) อยู่ในร่องรอยด้วย — ตัวที่เปลี่ยนฐานภาษี
+    before: withGiftSet(product, giftSetBefore.map(({ formulaId, categoryCode, retailPriceIncVat, pieceQty }) => ({ formulaId, categoryCode, retailPriceIncVat, pieceQty }))),
+    after: withGiftSet(data, giftSetRows.map(({ formulaId, categoryCode, retailPriceIncVat, pieceQty }) => ({ formulaId, categoryCode, retailPriceIncVat, pieceQty }))),
     request,
   });
   // ตกกลับรออนุมัติ = สินค้าหลุดจากลิสต์เลือกทุกหน้า — ต้องไม่เงียบ · เธรดคือช่องทางเดียว

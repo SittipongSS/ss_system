@@ -93,6 +93,8 @@ export function giftSetFormSeed(product) {
   return {
     formulaComponents: product.formulaComponents.map((row) => ({
       id: row.id, categoryCode: row.categoryCode || "", formulaId: row.formulaId || "",
+      // ราคาต่อชิ้น + จำนวนชิ้นของแถวน้ำหอมในชุดคละ (mig 0430) — ไม่พกมา = บันทึกครั้งถัดไปล้างราคาทิ้งเงียบ ๆ
+      retailPriceIncVat: row.retailPriceIncVat ?? "", pieceQty: row.pieceQty ?? "",
     })),
   };
 }

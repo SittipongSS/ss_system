@@ -45,7 +45,10 @@ const FORM_BLOCKED_NOTE = "ยังสร้างทะเบียนให�
    อีกหน้าเพื่อดู ขนาด · เลขผู้เสียภาษี · ราคาถอด VAT · ต้นทุน/กำไร ทั้งที่กำลังตัดสินใจ
    อยู่บนคิว · ตัวเลขทุกตัวคิดที่ server (`registrationProductFacts`) จอแค่วาด */
 const sizeText = (r) => (r.volume != null ? `${fmtNumber(r.volume)} ${r.volumeUnit || "ml"}` : null);
-const retailText = (r) => (r.retailPriceIncVat ? fmtMoney(r.retailPriceIncVat) : null);
+// ชุดของขวัญคละ (mig 0430): ราคาที่ server ส่งมาคือฐานภาษี = ราคาน้ำหอมในชุด ⇒ บอกให้รู้ว่าไม่ใช่ราคาทั้งชุด
+const retailText = (r) => (r.retailPriceIncVat
+  ? `${fmtMoney(r.retailPriceIncVat)}${r.taxBasis === "pieces" ? " (น้ำหอมในชุด)" : ""}`
+  : null);
 const retailExText = (r) => (r.retailPriceExVat ? `ถอด VAT ${fmtMoney(r.retailPriceExVat)}` : null);
 /* ราคาผลิต/กำไร: บรรทัดหลักคือสองตัวที่คนดูคิว ๆ ต้องเทียบ · แจกแจงอยู่บรรทัดรอง
    ⚠️ ค่าที่ไม่มีสิทธิ์ถูกตัดตั้งแต่ server (`redactProductMargin`) ⇒ ที่นี่ทดสอบ

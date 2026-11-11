@@ -12,24 +12,31 @@ import { giftSetFormulasError, normalizeGiftSetFormulas } from '@/lib/master/gif
 // `ingredientList` (ม-158 · mig 0423) — หน้า FG โชว์ Ingredient List รายสูตรในชุด (อ่านสด ไม่มีสำเนาบนสินค้า)
 const FORMULA_COLUMNS = 'id, code, name, "formulaDate", "categoryCode", "scentId", status, "ingredientList"';
 
+/* PostgREST ส่ง numeric เป็นตัวเลขอยู่แล้ว แต่ยึดรูปเดียวกับที่ฟอร์มส่ง (`sameGiftSetFormulas` เทียบค่าตรง ๆ) */
+const numericPieceFields = (row) => ({
+  ...row,
+  retailPriceIncVat: row.retailPriceIncVat == null ? null : Number(row.retailPriceIncVat),
+  pieceQty: row.pieceQty == null ? 1 : Number(row.pieceQty),
+});
+
 const byOrder = (a, b) => (a.sortOrder - b.sortOrder) || String(a.id).localeCompare(String(b.id));
 
-/** แถวดิบของสินค้า `[{ id, formulaId, categoryCode, sortOrder }]` เรียงตามลำดับในชุด */
+/** แถวดิบของสินค้า `[{ id, formulaId, categoryCode, sortOrder, retailPriceIncVat, pieceQty }]` เรียงตามลำดับในชุด */
 export async function loadProductFormulaRows(supabase, productId) {
   const { data, error } = await supabase
     .from('product_formulas')
-    .select('id, "formulaId", "categoryCode", "sortOrder"')
+    .select('id, "formulaId", "categoryCode", "sortOrder", "retailPriceIncVat", "pieceQty"')
     .eq('productId', productId)
     .order('sortOrder')
     .order('id');
   if (error) throw error;
-  return (data || []).sort(byOrder);
+  return (data || []).map(numericPieceFields).sort(byOrder);
 }
 
 /**
  * รายการสูตรของชุดพร้อมของที่จอ/กระดาษต้องโชว์ — อ่านทะเบียนสดทุกครั้ง (ไม่มี snapshot บนแถว
  * เหมือน `products.formulaName`) จึงตาม RD ที่แก้ชื่อ/รหัส/วันที่ของสูตรได้เอง
- * @returns `[{ id, formulaId, categoryCode, categoryName, categoryNameEn, formulaCode, formulaName,
+ * @returns `[{ id, formulaId, categoryCode, retailPriceIncVat, pieceQty, categoryName, categoryNameEn, formulaCode, formulaName,
  *   formulaDate, formulaStatus, scentId, scentName }]`
  */
 export async function loadProductFormulas(supabase, productId, { productTypes = null } = {}) {
@@ -43,7 +50,7 @@ export async function loadProductFormulas(supabase, productId, { productTypes = 
  */
 export async function loadProductFormulasMany(supabase, productIds = [], { productTypes = null } = {}) {
   const rows = await fetchAllInChunks(productIds, (chunk) => supabase
-    .from('product_formulas').select('id, "productId", "formulaId", "categoryCode", "sortOrder"')
+    .from('product_formulas').select('id, "productId", "formulaId", "categoryCode", "sortOrder", "retailPriceIncVat", "pieceQty"')
     .in('productId', chunk).order('id'));
   const out = new Map();
   if (!rows.length) return out;
@@ -54,7 +61,7 @@ export async function loadProductFormulasMany(supabase, productIds = [], { produ
     .from('scents').select('id, name, "customerTradeName"').in('id', chunk).order('id'));
   const scentById = new Map(scents.map((s) => [s.id, s]));
   const types = productTypes || await loadProductTypeNames(supabase);
-  for (const row of [...rows].sort(byOrder)) {
+  for (const row of rows.map(numericPieceFields).sort(byOrder)) {
     const formula = formulaById.get(row.formulaId) || null;
     const type = categoryRow(row.categoryCode, types);
     const nameEn = String(type?.nameEn ?? '').trim();
@@ -62,6 +69,8 @@ export async function loadProductFormulasMany(supabase, productIds = [], { produ
       id: row.id,
       formulaId: row.formulaId,
       categoryCode: row.categoryCode,
+      retailPriceIncVat: row.retailPriceIncVat,
+      pieceQty: row.pieceQty,
       categoryName: categoryName(type) || null,
       categoryNameEn: nameEn || categoryName(type) || null,
       formulaCode: formula?.code || null,
@@ -99,13 +108,16 @@ export async function planGiftSetFormulas(supabase, raw) {
   return { rows, error };
 }
 
-/** ทับรายการทั้งชุดในทรานแซกชันเดียว (RPC `replace_product_formulas` · mig 0403) */
+/** ทับรายการทั้งชุดในทรานแซกชันเดียว (RPC `replace_product_formulas` · mig 0403 · ราคา/จำนวนชิ้น 0430) */
 export async function replaceProductFormulas(supabase, productId, rows) {
   const payload = rows.map((row, index) => ({
     id: `PFM-${randomUUID()}`,
     formulaId: row.formulaId,
     categoryCode: row.categoryCode,
     sortOrder: index,
+    // mig 0430 — คีย์สองตัวนี้ต้องตรงกับ jsonb_to_recordset ของ RPC (คีย์ที่ไม่ได้ประกาศถูกทิ้งเงียบ)
+    retailPriceIncVat: row.retailPriceIncVat ?? null,
+    pieceQty: row.pieceQty ?? 1,
   }));
   const { error } = await supabase.rpc('replace_product_formulas', { p_product_id: productId, p_rows: payload });
   if (error) throw error;

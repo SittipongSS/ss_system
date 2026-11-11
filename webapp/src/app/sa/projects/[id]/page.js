@@ -516,7 +516,9 @@ export default function ProjectDetailPage() {
   // ถือว่าผ่าน) และ (2) มี FG หมวดสรรพสามิต (ติ๊ก isExcise) อย่างน้อยหนึ่งตัว —
   // ไม่งั้นไม่ต้องมีทะเบียนภาษี.
   const dealWon = !p.dealId || isWonStage(p.dealStage);
-  const hasExciseFg = (p.projectProducts || []).some((x) => isExciseCategory(x.product?.categoryCode || "", categories));
+  // ⭐ ธง "เสียภาษี" ที่บันทึกบนสินค้านับด้วย — ชุดของขวัญที่มีน้ำหอม (มติ 11/11 · mig 0430) อยู่หมวดที่ไม่ติ๊ก isExcise
+  const hasExciseFg = (p.projectProducts || []).some((x) => x.product?.isExciseTaxable === true
+    || isExciseCategory(x.product?.categoryCode || "", categories));
   const recommendTaxReg = dealWon && hasExciseFg;
 
   const total = processedTasks.length;

@@ -3,7 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canApproveMasterData, canUser, redactProductMargin } from '@/lib/permissions';
 import { registrationStatusOf } from '@/lib/excise/recommendation';
-import { categoryOf, categoryFlagsOf, activeProductTypeError } from '@/lib/master/productTypes';
+import { categoryOf, activeProductTypeError } from '@/lib/master/productTypes';
 import {
   CODE_MODE_AUTO, codeModeOf, composeFgCode, customerCodeSegment, fgCodeError, fgCodeHasRunNo,
   fgCodePrefix, insertProductWithCode,
@@ -11,7 +11,7 @@ import {
 import { clearedPackagingFields, hasPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
-import { resolveProductTaxable, productTaxRates } from '@/lib/tax/exciseBilling';
+import { productExciseFields } from '@/lib/excise/productExcise';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot, productScentSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
@@ -58,6 +58,8 @@ const PRODUCT_PICKER_COLUMNS = [
   // หมายเหตุประจำสินค้า (mig 0317) — ฟอร์มใบเสนอราคาอ่านจากลิสต์นี้ตอนเลือกสินค้า
   'docNote', 'docNoteEn',
   'price', 'costPrice', 'retailPriceIncVat', 'exciseTax', 'localTax',
+  // ฐานภาษีของชุดของขวัญคละ (mig 0430) — ตัวกรอง/คำเตือน "ขาดราคาขายปลีก" อ่านผ่าน exciseBasePriceIncVat(product)
+  'exciseTaxBase', 'exciseBasePriceIncVat',
   'scentId', 'formulaCode', 'metadata',
   'status', 'isActive', 'approvalStatus', 'approvalNumber', 'rejectionReason',
   'isExciseTaxable', 'assignee', 'team', 'ownerId', 'approvedByName',
@@ -316,16 +318,21 @@ export async function POST(request) {
 
   // Taxability is auto-derived from the category's isExcise flag (mig 0131 —
   // not re-parsed from fgCode, and no hardcoded category code), but RA may
-  // override it.
-  const autoTaxable = (await categoryFlagsOf(categoryCode)).isExcise;
+  // override it. ชุดของขวัญตั้งต้นจากสูตรในชุด (มติ 11/11 · mig 0430) — ตัวคิดเดียวกับ PATCH (productExciseFields)
   const taxableOverride =
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
-  const isExciseTaxable = resolveProductTaxable({ taxableOverride, autoTaxable });
-
-  // อัตราภาษีคิดที่เดียว (lib/tax/exciseBilling) — เคยเป็นเลขดิบซ้ำ 4 จุด
-  const { retailPriceExVat, exciseTax, localTax } = productTaxRates(
-    retailPriceIncVatNum, { taxable: isExciseTaxable },
-  );
+  let exciseFields;
+  try {
+    exciseFields = await productExciseFields({
+      categoryCode,
+      retailPriceIncVat: retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
+      taxableOverride,
+      giftSetRows,
+    });
+  } catch (e) {
+    return Response.json({ error: `อ่านหมวดสินค้าไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+  }
+  const { isExciseTaxable, retailPriceExVat, exciseTax, localTax, exciseTaxBase, exciseBasePriceIncVat } = exciseFields;
 
   const factoryPrice = costPriceNum;
   // ⚠️ ค่าแรงคิดจากปริมาตร — กลุ่มที่ไม่มีช่องปริมาตร (03/04) จะได้ volume = null
@@ -388,6 +395,8 @@ export async function POST(request) {
     retailPriceExVat,
     exciseTax,
     localTax,
+    exciseTaxBase,
+    exciseBasePriceIncVat,
     laborCost,
     shippingCost,
     materialCost,

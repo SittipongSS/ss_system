@@ -51,8 +51,8 @@ test('normalize: แถวว่างทั้งสองช่องทิ้
     { key: 'draft-2', categoryCode: '', formulaId: '' },
     { id: 'PFM-x', categoryCode: '01-006', formulaId: 'FML-2', categoryName: 'ก้านหอม' },
   ]), [
-    { formulaId: 'FML-1', categoryCode: '01-002' },
-    { formulaId: 'FML-2', categoryCode: '01-006' },
+    { formulaId: 'FML-1', categoryCode: '01-002', retailPriceIncVat: null, pieceQty: 1 },
+    { formulaId: 'FML-2', categoryCode: '01-006', retailPriceIncVat: null, pieceQty: 1 },
   ]);
   for (const raw of [undefined, null, '', {}, 'FML-1']) assert.deepEqual(normalizeGiftSetFormulas(raw), [], String(raw));
 });
@@ -136,4 +136,21 @@ test('route สินค้า: ตรวจรายการก่อนเข
   assert.ok(patch.indexOf(".from('products')\n    .update(updated)") < patch.indexOf('replaceProductFormulas(supabase, id'),
     'PATCH เขียนรายการหลังแถวสินค้า (แถวตกกลับรออนุมัติก่อน)');
   assert.match(patch, /formulaComponents = await loadProductFormulas\(supabase, id\)/, 'GET แนบรายการให้หน้าสินค้า/โมดัลแก้');
+});
+
+test('ราคาต่อชิ้น + จำนวนชิ้น (mig 0430): ว่าง = null / 1 · พิมพ์ผิดตีกลับ ไม่แปลงเป็น 0 · เปลี่ยนราคา = รายการเปลี่ยน (อนุมัติใหม่)', () => {
+  const [row] = normalizeGiftSetFormulas([{ categoryCode: '01-002', formulaId: 'FML-1', retailPriceIncVat: '590', pieceQty: '2' }]);
+  assert.deepEqual(row, { formulaId: 'FML-1', categoryCode: '01-002', retailPriceIncVat: 590, pieceQty: 2 });
+  const bad = (patch) => giftSetFormulasError(normalizeGiftSetFormulas([{ categoryCode: '01-002', formulaId: 'FML-1', ...patch }]));
+  assert.equal(bad({ retailPriceIncVat: '', pieceQty: '' }), '');
+  assert.match(bad({ retailPriceIncVat: 'abc' }), /ราคาขายปลีกต่อชิ้นต้องเป็นตัวเลข/);
+  assert.match(bad({ retailPriceIncVat: -1 }), /ราคาขายปลีกต่อชิ้นต้องเป็นตัวเลข/);
+  assert.match(bad({ pieceQty: 0 }), /จำนวนชิ้นต้องเป็นจำนวนเต็ม/);
+  assert.match(bad({ pieceQty: '1.5' }), /จำนวนชิ้นต้องเป็นจำนวนเต็ม/);
+  const base = [{ formulaId: 'FML-1', categoryCode: '01-002', retailPriceIncVat: 590, pieceQty: 1 }];
+  assert.equal(sameGiftSetFormulas(base, [{ ...base[0] }]), true);
+  assert.equal(sameGiftSetFormulas(base, [{ ...base[0], retailPriceIncVat: 600 }]), false);
+  assert.equal(sameGiftSetFormulas(base, [{ ...base[0], pieceQty: 2 }]), false);
+  assert.equal(sameGiftSetFormulas([{ formulaId: 'F', categoryCode: '01-006' }], [{ formulaId: 'F', categoryCode: '01-006', retailPriceIncVat: null, pieceQty: 1 }]), true,
+    'แถวเก่าที่ไม่มีสองคีย์ = ค่าตั้งต้น (ไม่นับว่าเปลี่ยน)');
 });

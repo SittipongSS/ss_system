@@ -8,20 +8,31 @@
 //   · ลำดับแถว = ลำดับที่ใบสเปค FM-SA-04 พิมพ์ ("สูตร 1 · …", "สูตร 2 · …")
 // ⚠️ แถวที่สร้างบนจอมี `key` ของตัวเอง (แถวจากฐานใช้ `id`) — ใช้ index เป็น key แล้วลบแถวกลาง
 //    ตัวเลือกของแถวล่างจะค้างค่าของแถวที่ถูกลบ
+// ⭐ สรรพสามิต (มติเจ้าของ 11/11 · mig 0430): ชุดเสียภาษีไหม = ดูจากหมวดของแถวสูตร (`giftSetExcise` ตัวเดียวกับ API)
+//    · ชุดคละ (มีทั้งน้ำหอมและของไม่เสียภาษี) — แถวหมวดเสียภาษีมีช่อง "ราคาขายปลีก/ชิ้น (รวม VAT)" + "จำนวนชิ้น" = ฐานภาษี
+//    · ชุดน้ำหอมล้วนไม่มีช่องเพิ่ม (คิดจากราคาขายปลีกทั้งชุดในหัวข้อราคา) · บอกแบบของชุดใต้รายการเสมอ
 import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import Input from "@/components/ui/Input";
+import MoneyInput from "@/components/ui/MoneyInput";
+import StatusNotice from "@/components/ui/StatusNotice";
 import { giftSetComponentCategories, giftSetFormulaChoices } from "@/lib/master/giftSetFormulas";
+import { GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary } from "@/lib/excise/giftSetExcise";
+import { isExciseCategory } from "@/lib/master/categoryOf";
 import { fmtDate } from "@/lib/format";
 
 let draftSeq = 0;
-const newRow = () => ({ key: `draft-${Date.now()}-${(draftSeq += 1)}`, categoryCode: "", formulaId: "" });
+const newRow = () => ({ key: `draft-${Date.now()}-${(draftSeq += 1)}`, categoryCode: "", formulaId: "", retailPriceIncVat: "", pieceQty: "" });
 const rowKey = (row, index) => row.key || row.id || `row-${index}`;
 
 export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], productTypes = [] }) {
   const categories = giftSetComponentCategories(productTypes);
   const formulaById = new Map(formulas.map((f) => [f.id, f]));
+  const excise = giftSetExcise(rows, productTypes);
+  const mixed = excise.kind === GIFT_SET_EXCISE_KIND.mixed;
+  const summaryTone = excise.kind === GIFT_SET_EXCISE_KIND.none ? "neutral" : excise.missingPriceRows.length ? "warning" : "info";
 
   const setRow = (index, patch) => onRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const removeRow = (index) => onRows(rows.filter((_, i) => i !== index));
@@ -30,7 +41,8 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
   const changeCategory = (index, code) => {
     const picked = formulaById.get(rows[index]?.formulaId);
     const own = String(picked?.categoryCode || "");
-    setRow(index, { categoryCode: code || "", ...(own && own !== code ? { formulaId: "" } : {}) });
+    // ราคา/จำนวนชิ้นเป็นของ "น้ำหอมในชุด" — เปลี่ยนหมวดแล้วล้าง ไม่งั้นค่าที่ซ่อนอยู่ติดไปกับแถวก้านหอม
+    setRow(index, { categoryCode: code || "", retailPriceIncVat: "", pieceQty: "", ...(own && own !== code ? { formulaId: "" } : {}) });
   };
 
   return (
@@ -90,6 +102,32 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                     icon={<Trash2 size={14} />}
                   />
                 </div>
+                {mixed && isExciseCategory(row.categoryCode, productTypes) && (
+                  <div className="md:col-span-2 grid grid-cols-2 gap-2">
+                    <div className="form-group">
+                      <label>ราคาขายปลีก/ชิ้น (รวม VAT)</label>
+                      <MoneyInput
+                        aria-label={`ราคาขายปลีกต่อชิ้นของสูตรแถวที่ ${index + 1}`}
+                        value={row.retailPriceIncVat ?? ""}
+                        onChange={(v) => setRow(index, { retailPriceIncVat: v ?? "" })}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>จำนวนชิ้นในชุด</label>
+                      <Input
+                        type="number"
+                        mono
+                        aria-label={`จำนวนชิ้นของสูตรแถวที่ ${index + 1}`}
+                        value={row.pieceQty ?? ""}
+                        onChange={(e) => setRow(index, { pieceQty: e.target.value })}
+                        min="1"
+                        step="1"
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -100,6 +138,11 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
           เพิ่มสูตร
         </Button>
       </div>
+      {rows.length > 0 && productTypes.length > 0 && (
+        <div className="mt-2">
+          <StatusNotice tone={summaryTone}>{giftSetExciseSummary(excise)}</StatusNotice>
+        </div>
+      )}
     </div>
   );
 }

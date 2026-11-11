@@ -67,7 +67,7 @@ async function withRegistrationContext(supabase, reg) {
   const [product, customer, project, lines, artwork] = await Promise.all([
     reg.productId
       ? supabase.from('products')
-        .select('id, "fgCode", "retailPriceIncVat", "exciseTax", "localTax", "isExciseTaxable", "isActive"')
+        .select('id, "fgCode", "retailPriceIncVat", "exciseTaxBase", "exciseBasePriceIncVat", "exciseTax", "localTax", "isExciseTaxable", "isActive"')
         .eq('id', reg.productId).maybeSingle()
       : { data: null },
     reg.customerId

@@ -17,6 +17,7 @@ import { productBrandName, productDisplayNameFor } from '@/lib/master/productIde
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { loadFilingSource, loadRaFilingQueue } from '@/lib/excise/raFiling';
 import { productTaxRates } from '@/lib/tax/exciseBilling';
+import { exciseBasePriceIncVat, usesPieceTaxBase } from '@/lib/excise/giftSetExcise';
 
 const VAT_RATE = 0.07;
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -33,18 +34,22 @@ export function volumeText(product) {
 export function retailPriceExVat(product, { frozenIncVat = null } = {}) {
   const frozen = Number(frozenIncVat);
   if (frozen > 0) return round2(frozen / (1 + VAT_RATE));
-  const exVat = Number(product?.retailPriceExVat);
-  if (exVat > 0) return round2(exVat);
-  const incVat = Number(product?.retailPriceIncVat);
-  return incVat > 0 ? round2(incVat / (1 + VAT_RATE)) : null;
+  /* ชุดของขวัญคละ (mig 0430): ช่องก่อน VAT ของสินค้าเป็นราคาทั้งชุด ไม่ใช่ฐานภาษี ⇒ ถอดจากฐานภาษีแทน */
+  if (!usesPieceTaxBase(product)) {
+    const exVat = Number(product?.retailPriceExVat);
+    if (exVat > 0) return round2(exVat);
+  }
+  const incVat = exciseBasePriceIncVat(product);
+  return incVat ? round2(incVat / (1 + VAT_RATE)) : null;
 }
 
-/** ราคาขายปลีกรวม VAT ต่อหน่วย — ราคาที่ใบตรึงไว้ก่อน · ไม่มี = ของสินค้า · ไม่มีเลย = null */
+/** ราคาขายปลีกรวม VAT ต่อหน่วย — ราคาที่ใบตรึงไว้ก่อน · ไม่มี = ฐานภาษีของสินค้า · ไม่มีเลย = null */
 function retailPriceIncVat(product, frozenIncVat) {
   const frozen = Number(frozenIncVat);
   if (frozen > 0) return round2(frozen);
-  const incVat = Number(product?.retailPriceIncVat);
-  return incVat > 0 ? round2(incVat) : null;
+  // ฐานภาษีของสินค้า — ชุดของขวัญคละ = ราคาน้ำหอมในชุด (ภาษี/หน่วยบนแถวคิดจากตัวนี้ ⇒ รีเช็คตรงกัน)
+  const incVat = exciseBasePriceIncVat(product);
+  return incVat ? round2(incVat) : null;
 }
 
 /**

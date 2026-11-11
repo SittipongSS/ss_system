@@ -18,7 +18,8 @@ import DetailRow from "@/components/ui/DetailRow";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyOrDash, fmtNumber, naText } from "@/lib/format";
+import { exciseBaseLabel, exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
 import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -396,7 +397,9 @@ export default function RegistrationDetailPage() {
   // **หน้าจอไม่แสดงเลย** ทั้งที่คนที่ต้องยื่นใหม่คือคนที่ต้องอ่านมันที่สุด
   const revoke = s?.metadata?.revokeApproval || null;
   const exempt = s?.isExciseTaxable === false;
-  const rates = productTaxRates(taxProduct?.retailPriceIncVat, { taxable: !exempt });
+  // ฐานภาษี — ชุดของขวัญคละ = ราคาน้ำหอมในชุด ไม่ใช่ราคาทั้งชุด (มติ 11/11 · mig 0430) · ตัวเดียวกับด่านยื่นทะเบียน
+  const taxBase = exciseBasePriceIncVat(taxProduct);
+  const rates = productTaxRates(taxBase, { taxable: !exempt });
   const perUnit = s ? taxPerUnit(s, taxProduct) : 0;
 
   return (
@@ -552,18 +555,23 @@ export default function RegistrationDetailPage() {
               <div className={styles.exemptNote}>
                 ฝ่าย RA กำหนดให้ทะเบียนนี้ <b className={styles.exemptWord}>ยกเว้นภาษี</b> — ภาษีต่อชิ้นเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด
               </div>
-            ) : !taxProduct?.retailPriceIncVat ? (
+            ) : !taxBase ? (
               <StatusNotice
                 tone="warning"
                 action={s.productId
                   ? <Button as={Link} href={`/database/products/${s.productId}`} size="sm">เติมราคา</Button>
                   : null}
               >
-                สินค้ายังไม่มีราคาขายปลีก — ภาษีจะคิดออกมาเป็น 0 ทั้งที่ต้องเสียภาษี
+                {usesPieceTaxBase(taxProduct)
+                  ? "ชุดของขวัญคละยังกรอกราคาขายปลีกต่อชิ้นของน้ำหอมในชุดไม่ครบ — ภาษีจะคิดออกมาเป็น 0 ทั้งที่ต้องเสียภาษี"
+                  : "สินค้ายังไม่มีราคาขายปลีก — ภาษีจะคิดออกมาเป็น 0 ทั้งที่ต้องเสียภาษี"}
               </StatusNotice>
             ) : (
               <div className={styles.fieldGrid}>
-                <Field label="ราคาขายปลีก (รวม VAT)">{fmtMoney(taxProduct.retailPriceIncVat)}</Field>
+                {usesPieceTaxBase(taxProduct) && (
+                  <Field label="ราคาขายปลีกทั้งชุด (รวม VAT)">{fmtMoneyOrDash(taxProduct.retailPriceIncVat)}</Field>
+                )}
+                <Field label={exciseBaseLabel(taxProduct)}>{fmtMoney(taxBase)}</Field>
                 <Field label={`ถอด VAT ${pct(EXCISE_VAT_RATE)}`}>{fmtMoney(rates.retailPriceExVat)}</Field>
                 <Field label={`ภาษีสรรพสามิต ${pct(EXCISE_RATE)}`}>{fmtMoney(rates.exciseTax)}</Field>
                 <Field label={`ภาษีท้องถิ่น ${pct(LOCAL_TAX_RATE_OF_EXCISE)} ของสรรพสามิต`}>{fmtMoney(rates.localTax)}</Field>

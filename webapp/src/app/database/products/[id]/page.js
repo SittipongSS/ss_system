@@ -28,6 +28,7 @@ import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
+import { GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary } from "@/lib/excise/giftSetExcise";
 import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -37,7 +38,7 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { useTeams } from "@/lib/roleContext";
-import { categoryOf, categoryFlags, fdaNoticeState } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags, fdaNoticeState, isExciseCategory } from "@/lib/master/categoryOf";
 import { isMissingRetailPrice } from "@/lib/tax/taxableProducts";
 import { isProductTaxable, productExciseBadge, productShowsRetailPrice } from "@/lib/master/productFilter";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
@@ -312,7 +313,12 @@ export default function ProductDetails() {
   const showPackaging = hasPackagingFields(product);
   // กลุ่ม 03/04 ไม่มีแบรนด์ — ซ่อนทั้งบรรทัดหัวและช่องในการ์ด (ดู brands.js)
   const showBrand = hasBrandField(product);
-  const isExciseCat = catFlags.isExcise;
+  /* "เข้าข่ายสรรพสามิต" ของหน้านี้ = หมวดติ๊ก isExcise **หรือ** สินค้าถูกตั้งให้เสียภาษี (ชุดของขวัญที่มีน้ำหอม — มติ 11/11 ·
+     mig 0430 · ของที่ RA บังคับรายตัว) · ของที่ RA ยกเว้นยังเข้าข่าย (โชว์ "ยกเว้น") เหมือนเดิม */
+  const isExciseCat = catFlags.isExcise || product.isExciseTaxable === true;
+  // ชุดของขวัญ: แบบของชุด (ไม่มีของเสียภาษี / น้ำหอมล้วน / คละ) จากสูตรในชุด — ตัวเดียวกับฟอร์มและ API (mig 0430)
+  const giftSetTax = isGiftSetCategory(product.categoryCode) && productTypes.length
+    ? giftSetExcise(product.formulaComponents || [], productTypes) : null;
   // หน่วยขายจริงของสินค้าตัวนี้ — หน้านี้เคยพูดว่า "ชิ้น" ตายตัวทุกที่ ทั้งที่หน่วยขาย
   // เป็นขวด/หลอด/Kg ได้ (ฟอร์มแก้ไปแล้ว หน้ารายละเอียดเพิ่งตามมา)
   const unit = product.saleUnit || DEFAULT_SALE_UNIT;
@@ -732,6 +738,12 @@ export default function ProductDetails() {
                                 {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
                               </span>
                             </span>
+                            {/* ราคาน้ำหอมในชุดคละ (มติ 11/11 · mig 0430) — ฐานภาษี = ราคา/ชิ้น × จำนวนชิ้นของแถวหมวดเสียภาษี */}
+                            {giftSetTax?.kind === GIFT_SET_EXCISE_KIND.mixed && isExciseCategory(row.categoryCode, productTypes) && (
+                              <span className="block text-[var(--text-2)]">
+                                {`ราคาขายปลีก/ชิ้น ${fmtMoneyOrDash(row.retailPriceIncVat)} (รวม VAT) × ${fmtNumber(row.pieceQty || 1)} ชิ้น`}
+                              </span>
+                            )}
                             {/* Ingredient List ของสูตรตัวนี้ในชุด (ม-158) — อ่านสดจากทะเบียนสูตร */}
                             {(row.ingredientList || formulaNeedsIngredientList({ id: row.formulaId, categoryCode: row.categoryCode })) && (
                               <div className="mt-1">
@@ -744,6 +756,13 @@ export default function ProductDetails() {
                       </ol>
                     ) : (
                       <span className="font-semibold text-[var(--text)] text-sm">{NA}</span>
+                    )}
+                    {giftSetTax && (product.formulaComponents || []).length > 0 && (
+                      <div className="mt-2">
+                        <StatusNotice tone={giftSetTax.kind === GIFT_SET_EXCISE_KIND.none ? "neutral" : giftSetTax.missingPriceRows.length ? "warning" : "info"}>
+                          {giftSetExciseSummary(giftSetTax)}
+                        </StatusNotice>
+                      </div>
                     )}
                   </div>
                 ) : isFragranceOilCategory(product.categoryCode) ? (

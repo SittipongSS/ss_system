@@ -9,11 +9,18 @@ const NON_EXCISE = { isExcise: false, requiresFdaNotice: false };
 const FG = { id: 'PRD-1', isActive: true, isExciseTaxable: true };
 
 test('ไม่เข้าข่าย → null: หมวดอื่น / พักใช้ / ยกเว้นรายตัว', () => {
-  assert.equal(exciseRecommendationState(FG, NON_EXCISE, []), null);
-  assert.equal(exciseRecommendationState(FG, undefined, []), null);
+  // สินค้าหมวดอื่นที่ไม่ได้ถูกตั้งให้เสียภาษี — ธงที่บันทึกไว้เป็น false (resolveProductTaxable ตอนบันทึก)
+  assert.equal(exciseRecommendationState({ ...FG, isExciseTaxable: false }, NON_EXCISE, []), null);
+  assert.equal(exciseRecommendationState({ ...FG, isExciseTaxable: false }, undefined, []), null);
+  assert.equal(exciseRecommendationState({ ...FG, isExciseTaxable: null }, NON_EXCISE, []), null);
   assert.equal(exciseRecommendationState({ ...FG, isActive: false }, EXCISE, []), null);
   assert.equal(exciseRecommendationState({ ...FG, isExciseTaxable: false }, EXCISE, []), null);
   assert.equal(exciseRecommendationState(null, EXCISE, []), null);
+});
+
+test('หมวดไม่ติ๊ก isExcise แต่สินค้าถูกตั้งให้เสียภาษี (ชุดของขวัญที่มีน้ำหอม · RA บังคับ) → ชวนขึ้นทะเบียน (มติ 11/11)', () => {
+  assert.deepEqual(exciseRecommendationState(FG, NON_EXCISE, []), { kind: 'unregistered' });
+  assert.deepEqual(exciseRecommendationState(FG, undefined, [{ id: 'REG-1', status: 'pending_legal' }]).kind, 'pending');
 });
 
 test('ยังไม่มีทะเบียน → unregistered (ชวนส่งขึ้นทะเบียน)', () => {

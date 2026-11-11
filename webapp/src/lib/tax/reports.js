@@ -171,7 +171,7 @@ export async function missingRetailPriceReport(filter = {}) {
   const supabase = getSupabaseAdmin();
   const [{ data: products, error }, types] = await Promise.all([
     supabase.from('products')
-      .select('id, "fgCode", "productDescription", "productDescriptionEn", "brandName", "brandNameEn", "categoryCode", "retailPriceIncVat", "isExciseTaxable", "isActive", "approvalStatus", "customerName", assignee, team'),
+      .select('id, "fgCode", "productDescription", "productDescriptionEn", "brandName", "brandNameEn", "categoryCode", "retailPriceIncVat", "exciseTaxBase", "exciseBasePriceIncVat", "isExciseTaxable", "isActive", "approvalStatus", "customerName", assignee, team'),
     fetchProductTypes(),
   ]);
   if (error) throw error;

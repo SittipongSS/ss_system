@@ -2,6 +2,7 @@ import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
 import { billedTaxTotals, exciseTaxLine, resolveProductTaxable, round2 } from "@/lib/tax/exciseBilling";
 import { lineUnitsTotal } from "@/lib/sales/linePacks";
 import { isExciseChargeProduct } from "@/lib/excise/exciseCharge";
+import { exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
 
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
 
@@ -127,7 +128,8 @@ export function resolveSoFiling({
        ไม่ช่วย เพราะใบยื่นจาก SO ไม่บังคับทะเบียน ⇒ เตือนรายบรรทัดที่นี่ ไม่บล็อก (บล็อกต้องได้มติก่อน)
        ⚠️ ตัดสินจาก **อัตราที่ปัดแล้ว** (ตัวที่จะลงใบจริง) ไม่ใช่ราคาดิบ — ราคามีแต่อัตราค้าง 0 ก็ยื่นขาดเท่ากัน */
     const taxBaseMissing = taxLine.taxPerUnit === 0;
-    const retailMissing = !(Number(product.retailPriceIncVat) > 0);
+    // ฐานภาษี (ชุดของขวัญคละ = ราคาน้ำหอมในชุด · มติ 11/11 · mig 0430) — ไม่ใช่ราคาขายปลีกทั้งชุด
+    const retailMissing = exciseBasePriceIncVat(product) == null;
     const registration = approvedRegistration;
     const needsRegistration = !registration;
     const productRegistrations = registrationsByProduct.get(product.id) || [];
@@ -154,7 +156,9 @@ export function resolveSoFiling({
         productId: product.id,
         fgCode,
         message: retailMissing
-          ? `${fgCode || line.description} ยังไม่มีราคาขายปลีก (ฐานภาษี) — ภาษีคิดออกมา ฿0`
+          ? (usesPieceTaxBase(product)
+            ? `${fgCode || line.description} ชุดของขวัญคละยังกรอกราคาขายปลีกต่อชิ้นของน้ำหอมในชุดไม่ครบ (ฐานภาษี) — ภาษีคิดออกมา ฿0`
+            : `${fgCode || line.description} ยังไม่มีราคาขายปลีก (ฐานภาษี) — ภาษีคิดออกมา ฿0`)
           : `${fgCode || line.description} อัตราภาษีบนสินค้าเป็น 0 ทั้งที่มีราคาขายปลีก — ตรวจทะเบียนสินค้าก่อนยื่น`,
       });
     }

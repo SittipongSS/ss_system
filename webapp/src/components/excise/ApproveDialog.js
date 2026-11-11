@@ -32,7 +32,12 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
   }, [open]);
 
   if (!registration) return null;
-  const autoTaxable = isExciseCategory(categoryOf(registration.fgCode), productTypes);
+  /* "ตามพิกัดอัตโนมัติ" = ค่าที่ server ใช้เมื่อ RA ไม่ตั้งเอง (excise-registrations PATCH: ธงที่บันทึกบนสินค้า) —
+     ชุดของขวัญที่มีน้ำหอม (มติ 11/11 · mig 0430) อยู่หมวดที่ไม่ติ๊ก isExcise แต่สินค้าถูกตั้งให้เสียภาษีจากสูตรในชุด
+     ไม่มีแถวสินค้าในมือ = ถอยไปดูหมวดแบบเดิม */
+  const autoTaxable = product
+    ? product.isExciseTaxable !== false
+    : isExciseCategory(categoryOf(registration.fgCode), productTypes);
   // ภาษี/ชิ้น มาจากทะเบียนสินค้า (อัตราคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้) — จอที่
   // ฝ่าย RA ใช้ตัดสินใจอนุมัติต้องเห็นเลขเดียวกับที่ใบยื่นจะคิดจริง ไม่ใช่สำเนาเก่า
   const taxPerUnit = exciseTaxLineForRegistration({

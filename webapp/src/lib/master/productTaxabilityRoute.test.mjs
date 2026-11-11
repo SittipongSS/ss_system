@@ -21,10 +21,17 @@ const patchRoute = read('../../app/api/products/[id]/route.js');
 const createRoute = read('../../app/api/products/route.js');
 const soFiling = read('../excise/soFiling.js');
 
+const productExcise = read('../excise/productExcise.js');
+
 test('ทั้งตอนสร้างและตอนแก้ ตัดสินธงเสียภาษีด้วยกติกาตัวเดียวกัน', () => {
+  /* 11/11 (ชุดของขวัญ · mig 0430): สอง route เรียกตัวคิดกลางตัวเดียว `productExciseFields` ซึ่งใช้ resolveProductTaxable ข้างใน
+     — ไม่ใช่ต่างคนต่างเขียนสูตร (เดิม "ต้องเป็นสูตรเดียวกับตอนสร้าง" ลอกกันสองที่) */
   for (const [label, src] of [['PATCH', patchRoute], ['POST', createRoute]]) {
-    assert.match(src, /resolveProductTaxable\(/, `${label} ต้องใช้กติกากลาง`);
+    assert.match(codeOnly(src), /await productExciseFields\(\{/, `${label} ต้องใช้ตัวคิดกลาง`);
+    assert.doesNotMatch(codeOnly(src), /productTaxRates\(|resolveProductTaxable\(/, `${label} ห้ามคิดธง/อัตราเองข้างตัวคิดกลาง`);
   }
+  assert.match(codeOnly(productExcise), /resolveProductTaxable\(\{ taxableOverride, autoTaxable \}\)/, 'ตัวคิดกลางใช้กติกากลาง (override ของ RA ชนะ)');
+  assert.match(codeOnly(patchRoute), /taxableOverride: updated\.taxableOverride/, 'PATCH ส่ง override ที่ตรึงบนสินค้าเข้าไปเสมอ');
 });
 
 test('PATCH ห้ามคิดธงเสียภาษีใหม่จากหมวดล้วน — override ของฝ่าย RA จะหาย', () => {
