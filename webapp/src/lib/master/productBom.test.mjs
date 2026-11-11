@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   BOM_COLUMNS, BOM_LOCKED_FIELDS, BOM_TRANSITIONS,
-  bomActionPatch, bomFormulaBound, bomLockMessage, bomLocked, bomLockedFieldChanges,
+  bomActionPatch, bomFilterValueOf, bomFormulaBound, bomLockMessage, bomLocked, bomLockedFieldChanges,
   bomSendBlocker, bomStatusOf, bomThreadEvent, bomTransitionError, hasBomStep,
 } from './productBom.js';
 import { UPDATE_KINDS, isQuietUpdateKind } from './updateTypes.js';
@@ -41,6 +41,12 @@ test('ผูกสูตร/กลิ่นตามหมวด (มติข�
   assert.equal(bomFormulaBound(ready({ categoryCode: '02-020', formulaId: null, scentId: null })), false);
   assert.equal(bomFormulaBound(ready({ categoryCode: '01-037', formulaId: null }), { formulaComponents: [] }), false);
   assert.equal(bomFormulaBound(ready({ categoryCode: '01-037', formulaId: null }), { formulaComponents: [{ formulaId: 'F1' }] }), true);
+  // R2 (มติเจ้าของ 11/11 · mig 0433): ฟอร์มบันทึกแถวที่ยังไม่เลือกสูตรได้ ⇒ ด่านส่งลง BOM ต้องเห็นว่าขาดแม้แถวเดียว
+  const gift = ready({ categoryCode: '01-037', formulaId: null });
+  assert.equal(bomFormulaBound(gift, { formulaComponents: [{ formulaId: 'F1' }, { formulaId: null }] }), false);
+  assert.equal(bomFormulaBound(gift, { formulaComponents: [{ formulaId: 'F1' }, { formulaId: 'F2' }] }), true);
+  assert.match(bomSendBlocker(gift, { formulaComponents: [{ formulaId: 'F1' }, { formulaId: '' }] }), /เลือกสูตรให้ครบทุกแถวในชุด/);
+  assert.equal(bomFilterValueOf({ ...gift, giftSetFormulaIds: ['F1', null] }), 'blocked', 'ทะเบียนสินค้า: แถวที่ขาดสูตรมาเป็น null');
   assert.equal(bomFormulaBound(ready({ categoryCode: '02-024', formulaId: null })), true);
   assert.equal(bomFormulaBound(ready({ categoryCode: '02-035', formulaId: null })), true);
 });

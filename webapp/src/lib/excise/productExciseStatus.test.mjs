@@ -1,9 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { exciseTaxPreview, productExciseStatus } from "./productExciseStatus.js";
+import { exciseFilingChecklist, exciseTaxPreview, formTaxBase, productExciseStatus } from "./productExciseStatus.js";
 import { productExciseFields } from "./productExcise.js";
-import { giftSetPriceModeError } from "./giftSetExcise.js";
 
 /* ฟอร์มสินค้าหัวข้อ ④ "ราคาขายปลีกและสรรพสามิต" (มติเจ้าของ 11/11/2026 F1–F5 · docs/product-form-rework.md) */
 
@@ -48,8 +47,8 @@ test("🐞 RA ยกเว้นรายตัวบนชุดที่มี
   const deps = { flagsOf: async () => ({ isExcise: false }), loadTypes: async () => TYPES };
   const saved = await productExciseFields({ categoryCode: "01-037", retailPriceIncVat: 990, taxableOverride: false, giftSetRows: [perfume] }, deps);
   assert.deepEqual([saved.isExciseTaxable, saved.exciseTaxBase, saved.exciseBasePriceIncVat, saved.exciseTax], [false, null, null, 0]);
-  assert.equal(giftSetPriceModeError([perfume], TYPES, "", { taxableOverride: false }), "");
-  assert.notEqual(giftSetPriceModeError([perfume], TYPES, ""), "", "ไม่มี override = ยังต้องเลือก");
+  const exempt = productExciseStatus({ categoryCode: "01-037", productTypes: TYPES, giftSetRows: [perfume], taxableOverride: false });
+  assert.deepEqual(exciseFilingChecklist({ status: exempt, giftSet: true, giftSetRows: [perfume] }), [], "ไม่เสียภาษี = ไม่มีของต้องมีก่อนยื่น");
 });
 
 test("F1–F5 รูปฟอร์ม: 4 หัวข้อตามลำดับ · หัวข้อ ④ ทุกสินค้า · ปุ่มรวมชุด/รายชิ้นอยู่ ④ ไม่อยู่แถวสูตร · ราคาผลิตอยู่ ③", () => {
@@ -62,10 +61,56 @@ test("F1–F5 รูปฟอร์ม: 4 หัวข้อตามลำด�
   assert.doesNotMatch(form.slice(heads[3]), /\{showRetail && \(/, "F5 หัวข้อ ④ ไม่หายทั้งก้อน");
   const rows = readFileSync(new URL("../../components/database/GiftSetFormulaRows.js", import.meta.url), "utf8");
   assert.doesNotMatch(rows, /OptionTiles|MoneyInput|priceMode/, "แถวสูตรไม่พูดเรื่องราคาแล้ว");
-  assert.match(rows, /aria-label=\{`จำนวนชิ้นของสูตรแถวที่ \$\{index \+ 1\}`\}/, "F3 จำนวนชิ้นทุกแถว");
+  assert.match(rows, /aria-label=\{`จำนวนชิ้นของแถวที่ \$\{index \+ 1\}`\}/, "F3 จำนวนชิ้นทุกแถว");
   const section4 = readFileSync(new URL("../../components/database/ProductRetailExcise.js", import.meta.url), "utf8");
   assert.match(section4, /<OptionTiles[\s\S]{0,200}options=\{GIFT_SET_PRICE_MODE_OPTIONS\}/);
   assert.match(section4, /productExciseStatus\(\{/);
   const modal = readFileSync(new URL("../../components/EditProductModal.js", import.meta.url), "utf8");
   assert.match(modal, /taxableOverride=\{typeof product\.taxableOverride === "boolean" \? product\.taxableOverride : null\}/);
+});
+
+test("R1: กล่องต้องมีก่อนยื่นขึ้นทะเบียน — กติกาเดียวกับด่านยื่น อ่านค่าบนฟอร์ม · ทุกสินค้าไม่บังคับตอนบันทึก", () => {
+  const status = (input) => productExciseStatus({ productTypes: TYPES, ...input });
+  const fg = status({ categoryCode: "01-002" });
+  assert.deepEqual(exciseFilingChecklist({ status: fg, retailPriceIncVat: "" }), [{ key: "price", text: "ราคาขายปลีก (รวม VAT)", ok: false }]);
+  assert.equal(exciseFilingChecklist({ status: fg, retailPriceIncVat: "890" })[0].ok, true);
+  assert.equal(formTaxBase({ status: fg, retailPriceIncVat: "890" }), 890);
+  assert.deepEqual(exciseFilingChecklist({ status: status({ categoryCode: "01-006" }), retailPriceIncVat: "" }), [], "ไม่เสียภาษี = ไม่มีกล่อง");
+
+  const rows = [{ ...perfume, retailPriceIncVat: "" }, { ...candle, retailPriceIncVat: 390 }];
+  const none = exciseFilingChecklist({ status: status({ categoryCode: "01-037", giftSetRows: rows }), giftSet: true, giftSetRows: rows });
+  assert.deepEqual(none.map((i) => [i.key, i.ok]), [["mode", false], ["price", false]], "ยังไม่เลือกโหมด = ขาดสองอย่าง");
+  const piecesStatus = status({ categoryCode: "01-037", giftSetRows: rows, priceMode: "pieces" });
+  const pieces = exciseFilingChecklist({ status: piecesStatus, giftSet: true, giftSetRows: rows, priceMode: "pieces" });
+  assert.deepEqual(pieces.map((i) => [i.key, i.ok]), [["mode", true], ["pieces", false]]);
+  assert.match(pieces[1].text, /แถวที่เสียภาษี \(1 แถว\)/, "นับแค่แถวหมวดเสียภาษี — ราคาเทียนไม่เกี่ยว");
+  const filled = [{ ...perfume, retailPriceIncVat: 890 }, { ...candle, retailPriceIncVat: "" }];
+  const filledStatus = status({ categoryCode: "01-037", giftSetRows: filled, priceMode: "pieces" });
+  assert.equal(exciseFilingChecklist({ status: filledStatus, giftSet: true, giftSetRows: filled, priceMode: "pieces" })[1].ok, true,
+    "ยื่นได้เมื่อแถวที่เสียภาษีครบ แม้ของชิ้นอื่นยังไม่มีราคา");
+  assert.equal(formTaxBase({ status: filledStatus, giftSet: true, giftSetRows: filled, priceMode: "pieces" }), 890);
+  const setStatus = status({ categoryCode: "01-037", giftSetRows: rows, priceMode: "set" });
+  assert.deepEqual(exciseFilingChecklist({ status: setStatus, giftSet: true, giftSetRows: rows, priceMode: "set", retailPriceIncVat: 1490 })
+    .map((i) => i.ok), [true, true]);
+  assert.equal(formTaxBase({ status: setStatus, giftSet: true, priceMode: "set", retailPriceIncVat: 1490 }), 1490);
+
+  // RA ตั้งเสียรายตัวบนชุดที่ไม่มีของเสียภาษี — ฐาน = ราคาทั้งชุด (รายชิ้น = ผลรวมทุกชิ้น) ไม่ต้องเลือกโหมด
+  const forced = status({ categoryCode: "01-037", giftSetRows: [{ ...candle, retailPriceIncVat: 390 }], taxableOverride: true, priceMode: "pieces" });
+  assert.deepEqual(exciseFilingChecklist({ status: forced, giftSet: true, giftSetRows: [{ ...candle, retailPriceIncVat: 390 }], priceMode: "pieces" })
+    .map((i) => [i.key, i.ok]), [["price", true]]);
+});
+
+test("R1/R3 รูปฟอร์ม: ไม่มีดอกจัน/กรอบแดงเรื่องราคา · ป้ายไม่บังคับตอนบันทึก · ปุ่มรวมชุด/รายชิ้นทุกชุด · ตารางรายชิ้นทุกแถว · สูตรในชุดไม่บังคับ", () => {
+  const section4 = readFileSync(new URL("../../components/database/ProductRetailExcise.js", import.meta.url), "utf8");
+  assert.doesNotMatch(section4, /text-\[var\(--red\)\]|invalid=\{/, "ไม่บังคับตอนบันทึก = ไม่มีดอกจัน/กรอบแดง");
+  assert.match(section4, /label="ไม่บังคับตอนบันทึก"/);
+  assert.match(section4, /<FilingChecklist items=\{checklist\} \/>/);
+  assert.match(section4, /if \(giftSet\) \{/, "ชุดของขวัญทุกชุดเข้ากิ่งรวมชุด/รายชิ้น (ไม่ใช่เฉพาะชุดที่มีน้ำหอม)");
+  assert.match(section4, /onChange=\{\(next\) => onForm\(\{ giftSetPriceMode: next \}\)\}/);
+  assert.match(section4, /\{rows\.map\(\(row, index\) => \{/, "ตารางรายชิ้นมีทุกแถว");
+  const modal = readFileSync(new URL("../../components/EditProductModal.js", import.meta.url), "utf8");
+  const page = readFileSync(new URL("../../app/database/products/page.js", import.meta.url), "utf8");
+  for (const src of [modal, page]) assert.doesNotMatch(src, /giftSetPriceModeError/, "R1: ฟอร์มไม่ตีกลับเรื่องโหมด");
+  const rowsSrc = readFileSync(new URL("../../components/database/GiftSetFormulaRows.js", import.meta.url), "utf8");
+  assert.match(rowsSrc, /const NO_FORMULA = "— ยังไม่เลือกสูตร \(เลือกก่อนส่งลง BOM\) —";/);
 });

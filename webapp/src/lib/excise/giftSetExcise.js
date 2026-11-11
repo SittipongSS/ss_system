@@ -7,8 +7,14 @@
 //        ชุดที่มีน้ำหอม **ฝ่ายขายเลือกเอง** ว่าแจ้งราคาขายปลีกแบบไหน — **ไม่มีค่าตั้งต้น** ทั้งชุดล้วนและชุดคละ:
 //          · รวมชุด  = ฐานภาษีคือราคาขายปลีกทั้งชุด (ช่องเดิมของสินค้า เหมือน FG ทั่วไป)
 //          · รายชิ้น = ฐานภาษีคือ Σ ราคาขายปลีกต่อชิ้น (รวม VAT) × จำนวนชิ้น ของแถวสูตรหมวดเสียภาษี (G3)
-//        ยังไม่เลือก = ไม่มีฐานภาษี (ภาษี 0 · ยื่นทะเบียนไม่ได้) และฟอร์มบันทึกไม่ได้จนกว่าจะเลือก
+//        ยังไม่เลือก = ไม่มีฐานภาษี (ภาษี 0 · ยื่นทะเบียนไม่ได้) · ~~ฟอร์มบันทึกไม่ได้จนกว่าจะเลือก~~ ถอดแล้ว (R1)
 //   G3 · รายชิ้น: แถวไหนยังไม่มีราคา = ฐานว่าง (ไม่ใช่ "รวมเท่าที่มี" — ยื่นขาดเงียบ ๆ แบบที่ด่านราคาขายปลีกเดิมกันไว้)
+// ⭐ มติเจ้าของ 11/11/2026 รอบสอง (docs/product-form-rework.md R1–R4 · mig 0433)
+//   R1 · การเลือก "รวมชุด / รายชิ้น" **ไม่บังคับตอนบันทึก** — ไปบังคับตอนยื่นขึ้นทะเบียน (ยังไม่เลือก = ไม่มีฐานภาษี ⇒ ด่านยื่นตีกลับ)
+//        เหมือนราคาขายปลีกของสินค้าทุกตัว ("บังคับใส่ตอนจะยื่น") · ยังไม่มีค่าเลือกไว้ก่อนเหมือนเดิม
+//   R3 · **ชุดของขวัญทุกชุด** เลือกได้ (มีน้ำหอมหรือไม่ก็ตาม) — โหมดเก็บที่ `products.giftSetPriceMode` ทุกชุด
+//        · รายชิ้น = กรอกราคาต่อชิ้นทุกแถว ราคาทั้งชุด = ผลรวมทุกชิ้น (`giftSetRetailFields`) · ฐานภาษีนับเฉพาะแถวหมวดเสียภาษี
+//        · `exciseTaxBase` ยังเป็นค่าฝั่งภาษีที่ระบบคิดให้ (เสียภาษี = โหมด หรือ 'unchosen' · ไม่เสีย = ว่าง)
 // ⚠️ ไฟล์บริสุทธิ์ ไม่แตะฐาน — ฟอร์มสินค้า (ฝั่ง client) กับ POST/PATCH /api/products ใช้ตัวเดียวกัน
 // ⚠️ ธงรายตัวของฝ่าย RA (`taxableOverride`) ยังชนะเสมอ — ไฟล์นี้ให้แค่ "ค่าตั้งต้นจากสูตร" (`resolveProductTaxable` ตัดสินต่อ)
 import { isExciseCategory } from '@/lib/master/categoryOf';
@@ -29,8 +35,8 @@ export const EXCISE_TAX_BASE_PIECES = EXCISE_TAX_BASE.pieces;
 
 /** ตัวเลือกบนฟอร์ม — ลำดับ/คำเดียวกันทุกจอ */
 export const GIFT_SET_PRICE_MODE_OPTIONS = Object.freeze([
-  { value: EXCISE_TAX_BASE.set, label: 'รวมชุด', description: 'ภาษีคิดจากราคาขายปลีกทั้งชุด' },
-  { value: EXCISE_TAX_BASE.pieces, label: 'รายชิ้น', description: 'ภาษีคิดจากราคาขายปลีกต่อชิ้น × จำนวนชิ้น ของแถวน้ำหอมในชุด' },
+  { value: EXCISE_TAX_BASE.set, label: 'รวมชุด', description: 'กรอกราคาเดียวของทั้งชุด' },
+  { value: EXCISE_TAX_BASE.pieces, label: 'รายชิ้น', description: 'กรอกราคาต่อชิ้นทุกแถว ราคาทั้งชุด = ผลรวม' },
 ]);
 
 /** โหมดที่ฝ่ายขายเลือก → 'set' | 'pieces' · อย่างอื่น (ว่าง/unchosen/พิมพ์มั่ว) = null (ยังไม่เลือก) */
@@ -92,15 +98,36 @@ export function giftSetExciseFields(rows = [], productTypes = [], mode = null) {
   };
 }
 
-/** ข้อความตีกลับเมื่อชุดมีน้ำหอมแต่ยังไม่เลือกวิธีแจ้งราคา — ฟอร์มกับ API (POST/PATCH /api/products) ใช้คำเดียวกัน */
-export const GIFT_SET_PRICE_MODE_REQUIRED = 'ชุดนี้มีสูตรที่เสียสรรพสามิต — เลือกวิธีแจ้งราคาขายปลีกก่อน (รวมชุด หรือ รายชิ้น)';
+/**
+ * ราคาทั้งชุดเมื่อแจ้งรายชิ้น (R3) = Σ ราคา/ชิ้น × จำนวนชิ้น ของ **ทุกแถว** · ไม่มีแถว / แถวไหนยังไม่มีราคา = null (ยังไม่ครบ)
+ * ⚠️ ไม่ใช่ "รวมเท่าที่มี" — ราคาทั้งชุดที่ขาดชิ้นจะโชว์ในทะเบียนเหมือนราคาจริง
+ */
+export function giftSetPiecesTotal(rows = []) {
+  const list = (rows || []).filter((row) => String(row?.categoryCode || '').trim());
+  if (!list.length || list.some((row) => giftSetPiecePrice(row.retailPriceIncVat) == null)) return null;
+  return round2(list.reduce((sum, row) => sum + giftSetPiecePrice(row.retailPriceIncVat) * giftSetPieceQty(row.pieceQty), 0));
+}
 
-/** ด่านฝั่งฟอร์ม: ชุดมีของเสียภาษีแต่ยังไม่เลือกวิธีแจ้งราคา = ข้อความ · ผ่าน = ''
- *  `taxableOverride === false` (RA ยกเว้นรายตัว) = ไม่ต้องเลือก — ตรงกับฝั่งบันทึก (productExciseFields) */
-export function giftSetPriceModeError(rows = [], productTypes = [], mode = null, { taxableOverride = null } = {}) {
-  if (taxableOverride === false) return '';
-  const profile = giftSetExcise(rows, productTypes, { mode });
-  return !profile.taxable || profile.mode ? '' : GIFT_SET_PRICE_MODE_REQUIRED;
+/**
+ * ค่าฝั่งราคาของชุดที่บันทึก (R3 · ทุกชุด ไม่ขึ้นกับสรรพสามิต) — `{ giftSetPriceMode, retailPriceIncVat, rows }`
+ *   · รายชิ้น = ราคาทั้งชุดคิดจากแถว (`giftSetPiecesTotal`) — ไม่เชื่อค่าที่จอส่ง
+ *   · รวมชุด / ยังไม่เลือก = ราคาทั้งชุดตามที่กรอก · ราคาต่อชิ้นของแถว **ล้างทิ้ง** (ไม่ได้ใช้ — ค่าที่ซ่อนอยู่ห้ามค้างในฐาน)
+ */
+export function giftSetRetailFields(rows = [], mode = null, retailPriceIncVat = null) {
+  const picked = giftSetPriceMode(mode);
+  if (picked === EXCISE_TAX_BASE.pieces) {
+    return { giftSetPriceMode: picked, retailPriceIncVat: giftSetPiecesTotal(rows), rows: rows || [] };
+  }
+  return {
+    giftSetPriceMode: picked,
+    retailPriceIncVat,
+    rows: (rows || []).map((row) => ({ ...row, retailPriceIncVat: null })),
+  };
+}
+
+/** โหมดที่ฝ่ายขายเลือกไว้บนสินค้า — `giftSetPriceMode` (mig 0433) · แถวก่อน 0433 ถอยไปอ่าน `exciseTaxBase` */
+export function giftSetPriceModeOf(product) {
+  return giftSetPriceMode(product?.giftSetPriceMode) || giftSetPriceMode(product?.exciseTaxBase);
 }
 
 /** สินค้าคิดภาษีจากราคารายชิ้นของชุดไหม */
@@ -151,7 +178,7 @@ export function giftSetExciseSummary(profile) {
     return 'ไม่มีสูตรหมวดที่เสียสรรพสามิตในชุด — ชุดนี้ไม่เข้าระบบสรรพสามิต';
   }
   const head = `${KIND_TEXT[profile.kind]} — เสียสรรพสามิต`;
-  if (!profile.mode) return `${head} · ยังไม่ได้เลือกวิธีแจ้งราคาขายปลีก (รวมชุด / รายชิ้น) — ภาษีคิดออกมา 0 จนกว่าจะเลือก`;
+  if (!profile.mode) return `${head} · ยังไม่ได้เลือกวิธีแจ้งราคาขายปลีก (รวมชุด / รายชิ้น) — ภาษีคิดออกมา 0 และยื่นขึ้นทะเบียนไม่ได้จนกว่าจะเลือก`;
   if (profile.mode === EXCISE_TAX_BASE.set) return `${head} · แจ้งราคารวมชุด — คิดจากราคาขายปลีกทั้งชุด`;
   if (profile.missingPriceRows.length) {
     return `${head} · แจ้งราคารายชิ้น — ยังไม่ได้กรอกราคาต่อชิ้น ${profile.missingPriceRows.length} แถว (ภาษีคิดออกมา 0 จนกว่าจะกรอกครบ)`;

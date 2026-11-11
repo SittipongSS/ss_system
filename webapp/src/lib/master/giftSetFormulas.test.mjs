@@ -57,11 +57,15 @@ test('normalize: แถวว่างทั้งสองช่องทิ้
   for (const raw of [undefined, null, '', {}, 'FML-1']) assert.deepEqual(normalizeGiftSetFormulas(raw), [], String(raw));
 });
 
-test('ตรวจรายการ: ทุกแถวมีหมวด (กลุ่ม 01) + สูตร · สูตรไม่ซ้ำ · บอกแถวที่ผิด', () => {
+test('ตรวจรายการ: ทุกแถวมีหมวด (กลุ่ม 01) · สูตรไม่บังคับ (R2 · บังคับตอนส่งลง BOM) แต่ห้ามซ้ำ · บอกแถวที่ผิด', () => {
   assert.equal(giftSetFormulasError([]), '', 'ชุดที่ยังไม่ผูกสูตร = บันทึกได้ (สูตรไม่บังคับ เหมือน FG สูตรเดี่ยว)');
   assert.equal(giftSetFormulasError([{ formulaId: 'FML-1', categoryCode: '01-002' }, { formulaId: 'FML-2', categoryCode: '01-006' }]), '');
   assert.match(giftSetFormulasError([{ formulaId: 'FML-1', categoryCode: '' }]), /แถวที่ 1.*เลือกหมวด/);
-  assert.match(giftSetFormulasError([{ formulaId: 'FML-1', categoryCode: '01-002' }, { formulaId: '', categoryCode: '01-006' }]), /แถวที่ 2.*ยังไม่ได้เลือกสูตร/);
+  assert.equal(giftSetFormulasError([{ formulaId: 'FML-1', categoryCode: '01-002' }, { formulaId: '', categoryCode: '01-006' }]), '',
+    'R2 มติ 11/11: แถวที่ยังไม่เลือกสูตรบันทึกได้');
+  assert.equal(giftSetFormulasError([{ formulaId: '', categoryCode: '01-002' }, { formulaId: '', categoryCode: '01-002' }]), '',
+    'แถวไม่มีสูตรหลายแถวหมวดเดียวกันไม่นับว่าซ้ำ (สองขวดคนละกลิ่นที่ยังไม่รู้สูตร)');
+  assert.equal(giftSetFormulasError([{ formulaId: '', categoryCode: '01-002' }], { formulasById: byId }), '', 'ไม่มีสูตร = ไม่ไปหาในทะเบียน');
   assert.match(giftSetFormulasError([{ formulaId: 'FML-1', categoryCode: '01-037' }]), /ใช้ในชุดของขวัญไม่ได้/);
   assert.match(giftSetFormulasError([{ formulaId: 'FML-1', categoryCode: '02-020' }]), /กลุ่ม 01/);
   assert.match(giftSetFormulasError([
@@ -84,7 +88,8 @@ test('ตรวจกับทะเบียน: สูตรต้องมี
 test('ด่านฝั่งจอ: หมวดอื่นผ่านเสมอ (API ล้างรายการเอง) · ชุดของขวัญใช้ตัวตรวจเดียวกับ API', () => {
   const broken = [{ key: 'a', categoryCode: '01-002', formulaId: '' }];
   assert.equal(giftSetFormError('01-002', broken, FORMULAS), '');
-  assert.match(giftSetFormError('01-037', broken, FORMULAS), /ยังไม่ได้เลือกสูตร/);
+  assert.equal(giftSetFormError('01-037', broken, FORMULAS), '', 'R2: ยังไม่เลือกสูตร = บันทึกได้');
+  assert.match(giftSetFormError('01-037', [{ categoryCode: '', formulaId: '' }, { categoryCode: '', formulaId: 'FML-1' }], FORMULAS), /เลือกหมวด/);
   assert.match(giftSetFormError('01-037', [{ categoryCode: '01-006', formulaId: 'FML-1' }], FORMULAS), /PF001/);
   // ทะเบียนยังโหลดไม่เสร็จ (ลิสต์ว่าง) = ตรวจเฉพาะรูปของรายการ ไม่ฟ้องว่า "ไม่พบสูตร" ทุกแถว
   assert.equal(giftSetFormError('01-037', [{ categoryCode: '01-006', formulaId: 'FML-1' }], []), '');
@@ -153,4 +158,14 @@ test('ราคาต่อชิ้น + จำนวนชิ้น (mig 0430)
   assert.equal(sameGiftSetFormulas(base, [{ ...base[0], pieceQty: 2 }]), false);
   assert.equal(sameGiftSetFormulas([{ formulaId: 'F', categoryCode: '01-006' }], [{ formulaId: 'F', categoryCode: '01-006', retailPriceIncVat: null, pieceQty: 1 }]), true,
     'แถวเก่าที่ไม่มีสองคีย์ = ค่าตั้งต้น (ไม่นับว่าเปลี่ยน)');
+});
+
+test('R2 (mig 0433): แถวไม่มีสูตร — ฐานรับ null · store ส่ง null ไม่ใช่สตริงว่าง · ไม่ยิง id ว่างเข้า .in() · ทะเบียนสินค้านับแถวที่ขาดสูตร', () => {
+  const mig = readFileSync(new URL('../../../supabase/migrations/0433_gift_set_rows_optional_formula.sql', import.meta.url), 'utf8');
+  assert.match(mig, /ALTER TABLE public\.product_formulas ALTER COLUMN "formulaId" DROP NOT NULL;/);
+  const store = readFileSync(new URL('./giftSetFormulasStore.js', import.meta.url), 'utf8');
+  assert.match(store, /formulaId: row\.formulaId \|\| null,/);
+  assert.match(store, /rows\.map\(\(r\) => r\.formulaId\)\.filter\(Boolean\)/);
+  const route = readFileSync(new URL('../../app/api/products/route.js', import.meta.url), 'utf8');
+  assert.match(route, /r\.formulaId \|\| null\]\);/, 'giftSetFormulaIds มีช่องว่างของแถวที่ขาดสูตร — ด่าน BOM ในตารางเห็น');
 });

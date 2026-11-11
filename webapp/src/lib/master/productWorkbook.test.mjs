@@ -148,5 +148,5 @@ test('สถานะ BOM ในไฟล์: พร้อมส่ง = ด่�
   const status = (n) => sheet.getRow(n).getCell(8).value;
   assert.equal(status(2), 'ยังไม่ส่ง · พร้อมส่ง RD');
   assert.equal(status(3), 'ยังไม่ส่ง · พร้อมส่ง RD');
-  assert.equal(status(4), 'ยังไม่ส่ง · ข้อมูลยังไม่ครบ (ยังไม่ผูกสูตรในชุด)');
+  assert.equal(status(4), 'ยังไม่ส่ง · ข้อมูลยังไม่ครบ (ยังไม่ผูกสูตรครบทุกแถว)');
 });

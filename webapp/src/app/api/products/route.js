@@ -11,8 +11,8 @@ import {
 import { clearedPackagingFields, hasPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
-import { GIFT_SET_PRICE_MODE_REQUIRED, productExciseFields } from '@/lib/excise/productExcise';
-import { EXCISE_TAX_BASE } from '@/lib/excise/giftSetExcise';
+import { productExciseFields } from '@/lib/excise/productExcise';
+import { giftSetRetailFields } from '@/lib/excise/giftSetExcise';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot, productScentSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
@@ -61,6 +61,8 @@ const PRODUCT_PICKER_COLUMNS = [
   'price', 'costPrice', 'retailPriceIncVat', 'exciseTax', 'localTax',
   // ฐานภาษีของชุดของขวัญคละ (mig 0430) — ตัวกรอง/คำเตือน "ขาดราคาขายปลีก" อ่านผ่าน exciseBasePriceIncVat(product)
   'exciseTaxBase', 'exciseBasePriceIncVat',
+  // วิธีแจ้งราคาของชุดของขวัญ (mig 0433 · ทุกชุด)
+  'giftSetPriceMode',
   'scentId', 'formulaCode', 'metadata',
   'status', 'isActive', 'approvalStatus', 'approvalNumber', 'rejectionReason',
   'isExciseTaxable', 'assignee', 'team', 'ownerId', 'approvedByName',
@@ -182,9 +184,9 @@ export async function GET(request) {
     );
     if (setError) return Response.json({ error: setError.message }, { status: 500 });
     const idsByProduct = new Map();
+    // ⭐ R2 (mig 0433): แถวที่ยังไม่เลือกสูตรนับด้วย (เป็น null) — ด่านส่งลง BOM ต้องเห็นว่าชุดมีแถวที่ขาดสูตร
     for (const r of setRows || []) {
-      if (!r.formulaId) continue;
-      idsByProduct.set(r.productId, [...(idsByProduct.get(r.productId) || []), r.formulaId]);
+      idsByProduct.set(r.productId, [...(idsByProduct.get(r.productId) || []), r.formulaId || null]);
     }
     for (const p of rows) if (isGiftSetRow(p)) p.giftSetFormulaIds = idsByProduct.get(p.id) || [];
   }
@@ -322,24 +324,34 @@ export async function POST(request) {
   // override it. ชุดของขวัญตั้งต้นจากสูตรในชุด (มติ 11/11 · mig 0430) — ตัวคิดเดียวกับ PATCH (productExciseFields)
   const taxableOverride =
     typeof body.taxableOverride === 'boolean' ? body.taxableOverride : null;
+  /* ราคาของชุด (R3 · มติเจ้าของ 11/11 · mig 0433): ชุดของขวัญทุกชุดเลือก "รวมชุด / รายชิ้น" ได้ — ตัวคิดเดียวกับ PATCH
+     รายชิ้น = ราคาทั้งชุดคิดจากแถว (ไม่เชื่อค่าที่จอส่ง) · รวมชุด/ยังไม่เลือก = ล้างราคาต่อชิ้นของแถว */
+  let retailPriceValue = retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum;
+  let giftSetPriceMode = null;
+  if (giftSet) {
+    const pricing = giftSetRetailFields(
+      giftSetRows,
+      body.giftSetPriceMode !== undefined ? body.giftSetPriceMode : body.exciseTaxBase,
+      retailPriceValue,
+    );
+    giftSetRows = pricing.rows;
+    retailPriceValue = pricing.retailPriceIncVat;
+    giftSetPriceMode = pricing.giftSetPriceMode;
+  }
   let exciseFields;
   try {
     exciseFields = await productExciseFields({
       categoryCode,
-      retailPriceIncVat: retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
+      retailPriceIncVat: retailPriceValue,
       taxableOverride,
       giftSetRows,
-      priceMode: body.exciseTaxBase,
+      priceMode: giftSetPriceMode,
     });
   } catch (e) {
     return Response.json({ error: `อ่านหมวดสินค้าไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
   }
   const { isExciseTaxable, retailPriceExVat, exciseTax, localTax, exciseTaxBase, exciseBasePriceIncVat } = exciseFields;
-  /* G5 (มติ 11/11 "ต้องถามก่อนเสมอ"): ชุดของขวัญที่มีน้ำหอมต้องเลือกวิธีแจ้งราคาขายปลีกก่อนบันทึก — ไม่มีค่าตั้งต้น
-     (ข้อความเดียวกับฟอร์ม `giftSetPriceModeError`) */
-  if (exciseTaxBase === EXCISE_TAX_BASE.unchosen) {
-    return Response.json({ error: GIFT_SET_PRICE_MODE_REQUIRED }, { status: 400 });
-  }
+  /* R1 (มติเจ้าของ 11/11 รอบสอง): ยังไม่เลือกวิธีแจ้งราคา = บันทึกได้ ('unchosen' · ภาษี 0) — ไปติดที่ด่านยื่นขึ้นทะเบียน */
 
   const factoryPrice = costPriceNum;
   // ⚠️ ค่าแรงคิดจากปริมาตร — กลุ่มที่ไม่มีช่องปริมาตร (03/04) จะได้ volume = null
@@ -395,8 +407,8 @@ export async function POST(request) {
     // ด้วยเหตุผลเดียวกัน (mig 0325) — ต้องส่ง hasBrand ไปด้วย ไม่ใช่แค่รหัสหมวด
     ...clearedBrandFields({ categoryCode, hasBrand: body.hasBrand }),
     costPrice: costPrice == null || costPrice === '' ? null : costPriceNum,
-    retailPriceIncVat:
-      retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
+    retailPriceIncVat: retailPriceValue,
+    giftSetPriceMode,
     taxableOverride,
     isExciseTaxable,
     retailPriceExVat,

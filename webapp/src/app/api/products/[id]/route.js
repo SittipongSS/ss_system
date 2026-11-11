@@ -17,8 +17,8 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
-import { GIFT_SET_PRICE_MODE_REQUIRED, productExciseFields } from '@/lib/excise/productExcise';
-import { EXCISE_TAX_BASE } from '@/lib/excise/giftSetExcise';
+import { productExciseFields } from '@/lib/excise/productExcise';
+import { giftSetPriceModeOf, giftSetRetailFields } from '@/lib/excise/giftSetExcise';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
@@ -380,6 +380,23 @@ export async function PATCH(request, { params }) {
   } else {
     giftSetRows = [];
   }
+  /* ── ราคาของชุด (R3 · มติเจ้าของ 11/11 · mig 0433): ชุดของขวัญทุกชุดเลือก "รวมชุด / รายชิ้น" ได้ ──────────────
+     รายชิ้น = ราคาทั้งชุดคิดจากแถว (ไม่เชื่อค่าที่จอส่ง) · รวมชุด/ยังไม่เลือก = ล้างราคาต่อชิ้นของแถว
+     ฟอร์มส่งโหมดมากับรายการสูตรเสมอ · ปุ่มอื่น (อนุมัติ/พักใช้/ราคาผลิต) ไม่ส่ง = ใช้ค่าที่เก็บไว้
+     ⚠️ คิดก่อน giftSetChanged — รายการที่ถูกล้างราคาต้องนับเป็น "เปลี่ยน" และถูกเขียนลงฐาน */
+  if (giftSet) {
+    const sentMode = body.giftSetPriceMode !== undefined ? body.giftSetPriceMode : body.exciseTaxBase;
+    const pricing = giftSetRetailFields(
+      giftSetRows,
+      body.formulaComponents !== undefined ? sentMode : giftSetPriceModeOf(product),
+      updated.retailPriceIncVat,
+    );
+    giftSetRows = pricing.rows;
+    updated.retailPriceIncVat = pricing.retailPriceIncVat;
+    updated.giftSetPriceMode = pricing.giftSetPriceMode;
+  } else {
+    updated.giftSetPriceMode = null;
+  }
   const giftSetChanged = !sameGiftSetFormulas(giftSetBefore, giftSetRows);
 
   /* ── หัวน้ำหอม (02-020 · มติผู้ใช้ 2026-11-02): ผูกกลิ่นตรง ไม่มีสูตร ───────────────────────
@@ -419,17 +436,13 @@ export async function PATCH(request, { params }) {
       retailPriceIncVat: updated.retailPriceIncVat,
       taxableOverride: updated.taxableOverride,
       giftSetRows,
-      /* G5: ฟอร์มส่งวิธีแจ้งราคามากับรายการสูตรเสมอ · ปุ่มอื่น (อนุมัติ/พักใช้/ราคาผลิต) ไม่ส่ง = ใช้ค่าที่เก็บไว้ */
-      priceMode: body.formulaComponents !== undefined ? body.exciseTaxBase : product.exciseTaxBase,
+      priceMode: updated.giftSetPriceMode,
     }));
   } catch (e) {
     return Response.json({ error: `อ่านหมวดสินค้าไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
   }
-  /* G5 (มติ 11/11 "ต้องถามก่อนเสมอ"): บันทึกจากฟอร์มต้องเลือกวิธีแจ้งราคาเมื่อชุดมีน้ำหอม · ปุ่มอื่นไม่ถูกกัน
-     (ชุดที่ยังไม่เลือกคงเป็น 'unchosen' = ภาษี 0 · ด่านยื่นทะเบียนบอกเหตุ) */
-  if (body.formulaComponents !== undefined && updated.exciseTaxBase === EXCISE_TAX_BASE.unchosen) {
-    return Response.json({ error: GIFT_SET_PRICE_MODE_REQUIRED }, { status: 400 });
-  }
+  /* R1 (มติเจ้าของ 11/11 รอบสอง): ชุดที่มีน้ำหอมแต่ยังไม่เลือกวิธีแจ้งราคา **บันทึกได้** — เก็บเป็น 'unchosen' (ภาษี 0)
+     แล้วไปติดที่ด่านยื่นขึ้นทะเบียน (requirements.js · ฐานภาษีว่าง) เหมือนราคาขายปลีกของสินค้าทุกตัว · เดิม (G5) ตีกลับ 400 ตรงนี้ */
 
   const factoryPrice = updated.costPrice;
   updated.laborCost = updated.volume >= 30 ? 5 : 2;

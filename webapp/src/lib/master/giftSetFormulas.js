@@ -6,6 +6,9 @@
 //   · ทุกแถวต้องบอกหมวดว่าสูตรนั้นเป็นอะไร · **เลือกหมวดก่อน แล้วลิสต์สูตรกรองตามหมวด**
 //   · หมวดที่เลือกได้ = กลุ่ม 01 ทั้งกลุ่ม ยกเว้น 01-037 เอง (ชุดซ้อนชุดไม่มีความหมาย)
 //   · ใบสเปค FM-SA-04 พิมพ์ทุกสูตร แถวละสูตร บอกหมวด (productSpecFormulaRow.js)
+// ⭐ มติเจ้าของ 11/11/2026 (R2 · mig 0433): "สูตรเกี่ยวข้องกับแค่การลง BOM" ⇒ แถวในชุด **บังคับแค่หมวด** (+ จำนวนชิ้น)
+//   สูตรไม่บังคับตอนบันทึก — ไปบังคับที่ด่านส่งลง BOM (`bomFormulaBound` · ทุกแถวต้องมีสูตร) · สรรพสามิตดูจากหมวดของแถว (G1)
+//   ⇒ แถวที่ยังไม่เลือกสูตรมี `formulaId` ว่าง (null ในฐาน) — ผู้อ่านทุกตัวต้องรับมือ
 //
 // ⚠️ FG หมวดอื่นยังใช้ `products.formulaId` ตัวเดียวเหมือนเดิม — ชุดของขวัญไม่มี "สูตรหลัก"
 //    (formulaId = null เสมอ) รายการอยู่ที่ตาราง `product_formulas` ทั้งหมด
@@ -91,14 +94,15 @@ export function giftSetFormulasError(rows = [], { formulasById = null, categoryN
     if (!isGiftSetComponentCategory(row.categoryCode)) {
       return `${at}: หมวด ${row.categoryCode} ใช้ในชุดของขวัญไม่ได้ — เลือกได้เฉพาะหมวดในกลุ่ม 01 (ยกเว้น ${GIFT_SET_CATEGORY_CODE} ชุดของขวัญ)`;
     }
-    if (!row.formulaId) return `${at}: ยังไม่ได้เลือกสูตร`;
-    if (seen.has(row.formulaId)) return `${at}: สูตรนี้อยู่ในชุดแล้ว — สูตรเดียวกันใส่ซ้ำในชุดเดียวไม่ได้ (ใส่จำนวนชิ้นแทน)`;
+    // R2: ไม่มีสูตรได้ — ตรวจซ้ำ/ตรวจกับทะเบียนเฉพาะแถวที่เลือกสูตรแล้ว
+    if (row.formulaId && seen.has(row.formulaId)) return `${at}: สูตรนี้อยู่ในชุดแล้ว — สูตรเดียวกันใส่ซ้ำในชุดเดียวไม่ได้ (ใส่จำนวนชิ้นแทน)`;
     if (row.retailPriceIncVat != null && !(Number.isFinite(row.retailPriceIncVat) && row.retailPriceIncVat >= 0)) {
       return `${at}: ราคาขายปลีกต่อชิ้นต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป`;
     }
     if (row.pieceQty !== undefined && !(Number.isInteger(row.pieceQty) && row.pieceQty >= 1)) {
       return `${at}: จำนวนชิ้นต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`;
     }
+    if (!row.formulaId) continue;
     seen.add(row.formulaId);
     if (formulasById) {
       const formula = formulasById.get(row.formulaId);

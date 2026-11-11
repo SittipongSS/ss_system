@@ -9,6 +9,9 @@
 // ⭐ มติเจ้าของ 11/11/2026 (docs/product-form-rework.md F3): **จำนวนชิ้นกรอกทุกแถว** (ว่าง = 1 · mig 0430 `pieceQty`)
 //    — ตารางราคารายชิ้นในหัวข้อ ④ อ่านจำนวนจากตรงนี้ · แถวหมวดที่เสียสรรพสามิตมีป้ายบอกใต้ช่องหมวด
 //    · ปุ่ม "รวมชุด / รายชิ้น" + ช่องราคาต่อชิ้น **ย้ายไปหัวข้อ ④** (ProductRetailExcise) — ที่นี่ไม่พูดเรื่องราคาแล้ว
+// ⭐ มติเจ้าของ 11/11/2026 รอบสอง (R2 · mig 0433): "สูตรเกี่ยวข้องกับแค่การลง BOM" ⇒ แถวบังคับแค่ **หมวด** (+ จำนวนชิ้น)
+//    สูตรไม่บังคับตอนบันทึก — เลือกทีหลังได้ แต่ต้องครบทุกแถวก่อนส่งลง BOM (`bomFormulaBound`) · ตัวเลือกแรกของลิสต์สูตร
+//    = "ยังไม่เลือก" ให้ถอยกลับได้ · สรรพสามิตดูจากหมวดของแถว (ไม่ต้องรอสูตร)
 // ⚠️ แถวที่สร้างบนจอมี `key` ของตัวเอง (แถวจากฐานใช้ `id`) — ใช้ index เป็น key แล้วลบแถวกลาง
 //    ตัวเลือกของแถวล่างจะค้างค่าของแถวที่ถูกลบ
 import { Plus, Trash2 } from "lucide-react";
@@ -20,6 +23,7 @@ import { giftSetComponentCategories, giftSetFormulaChoices } from "@/lib/master/
 import { isExciseCategory } from "@/lib/master/categoryOf";
 import { fmtDate } from "@/lib/format";
 
+const NO_FORMULA = "— ยังไม่เลือกสูตร (เลือกก่อนส่งลง BOM) —";
 let draftSeq = 0;
 const newRow = () => ({ key: `draft-${Date.now()}-${(draftSeq += 1)}`, categoryCode: "", formulaId: "", retailPriceIncVat: "", pieceQty: "" });
 const rowKey = (row, index) => row.key || row.id || `row-${index}`;
@@ -32,7 +36,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
   const removeRow = (index) => onRows(rows.filter((_, i) => i !== index));
 
   // เปลี่ยนหมวดของแถว — สูตรที่เลือกไว้เป็นของหมวดอื่น (ตามทะเบียน) ต้องหลุด ไม่งั้นได้ "น้ำหอม" ที่ชี้สูตรก้านหอม
-  // ราคาต่อชิ้นเป็นของ "น้ำหอมในชุด" (กรอกที่หัวข้อ ④) — เปลี่ยนหมวดแล้วล้าง ไม่งั้นค่าที่ซ่อนอยู่ติดไปกับแถวก้านหอม · จำนวนชิ้นคงไว้
+  // ราคาต่อชิ้น (กรอกที่หัวข้อ ④) เป็นราคาของสินค้าหมวดเดิม — เปลี่ยนหมวดแล้วล้าง · จำนวนชิ้นคงไว้
   const changeCategory = (index, code) => {
     const picked = formulaById.get(rows[index]?.formulaId);
     const own = String(picked?.categoryCode || "");
@@ -41,21 +45,23 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
 
   return (
     <div className="form-group col-span-2">
-      <label>สูตรในชุด</label>
+      <label>ของในชุด</label>
       <span className="text-xs text-[var(--text-3)] mb-2">
-        ชุดของขวัญผูกได้หลายสูตร — แต่ละแถวเลือกหมวดก่อนว่าเป็นสินค้าอะไร แล้วเลือกสูตรของหมวดนั้น และบอกจำนวนชิ้นในชุด (ว่าง = 1)
+        แต่ละแถวเลือกหมวดว่าเป็นสินค้าอะไร และบอกจำนวนชิ้นในชุด (ว่าง = 1) · สูตรไม่บังคับตอนบันทึก ต้องเลือกครบทุกแถวก่อนส่งลง BOM
       </span>
       {rows.length > 0 && (
         <div className="flex flex-col gap-3">
           {rows.map((row, index) => {
             const picked = formulaById.get(row.formulaId) || null;
             const excise = isExciseCategory(String(row.categoryCode || "").trim(), productTypes);
-            const options = giftSetFormulaChoices(formulas, row.categoryCode, row.formulaId).map((f) => ({
+            const choices = giftSetFormulaChoices(formulas, row.categoryCode, row.formulaId).map((f) => ({
               value: f.id,
               label: `${f.code ? `${f.code} · ` : ""}${f.name}`
                 + (f.customerName ? ` · ${f.customerName}` : "")
                 + (f.status === "archived" ? " (เก็บเข้ากรุแล้ว)" : ""),
             }));
+            // R2: ถอยกลับเป็น "ยังไม่เลือก" ได้ — มีให้เฉพาะตอนเลือกสูตรไว้แล้ว (ว่างอยู่ = placeholder บอกเอง)
+            const options = row.formulaId && choices.length ? [{ value: "", label: NO_FORMULA }, ...choices] : choices;
             return (
               <div key={rowKey(row, index)} className="grid grid-cols-1 md:grid-cols-2 gap-2 items-start">
                 {/* ⚠️ ห่อ div — `.ui-product-category-select` ตั้ง `grid-column: 1 / -1` ไว้ (globals.css) วางตรง ๆ ในกริดแถว
@@ -63,7 +69,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                 <div className="min-w-0">
                   <ProductCategorySelect
                     label={null}
-                    ariaLabel={`หมวดของสูตรแถวที่ ${index + 1}`}
+                    ariaLabel={`หมวดของแถวที่ ${index + 1}`}
                     categories={categories}
                     value={row.categoryCode || ""}
                     onChange={(code) => changeCategory(index, code)}
@@ -80,7 +86,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                       value={row.formulaId || ""}
                       onChange={(v) => setRow(index, { formulaId: v })}
                       disabled={!row.categoryCode}
-                      placeholder={row.categoryCode ? "— เลือกสูตรจากทะเบียน —" : "เลือกหมวดก่อน"}
+                      placeholder={row.categoryCode ? NO_FORMULA : "เลือกหมวดก่อน"}
                       emptyText="ยังไม่มีสูตรของหมวดนี้ในทะเบียน"
                       options={options}
                     />
@@ -94,7 +100,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                     <Input
                       type="number"
                       mono
-                      aria-label={`จำนวนชิ้นของสูตรแถวที่ ${index + 1}`}
+                      aria-label={`จำนวนชิ้นของแถวที่ ${index + 1}`}
                       title="จำนวนชิ้นในชุด"
                       value={row.pieceQty ?? ""}
                       onChange={(e) => setRow(index, { pieceQty: e.target.value })}
@@ -108,7 +114,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                     tone="danger"
                     variant="ghost"
                     size="sm"
-                    aria-label={`ลบสูตรแถวที่ ${index + 1}`}
+                    aria-label={`ลบแถวที่ ${index + 1}`}
                     onClick={() => removeRow(index)}
                     icon={<Trash2 size={14} />}
                   />
@@ -120,7 +126,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
       )}
       <div className="mt-2">
         <Button size="sm" variant="ghost" onClick={() => onRows([...rows, newRow()])} icon={<Plus size={13} />}>
-          เพิ่มสูตร
+          เพิ่มของในชุด
         </Button>
       </div>
     </div>

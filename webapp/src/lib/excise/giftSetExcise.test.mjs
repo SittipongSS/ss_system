@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  EXCISE_TAX_BASE_PIECES, GIFT_SET_EXCISE_KIND, GIFT_SET_PRICE_MODE_REQUIRED, exciseBaseLabel, exciseBaseMissingText,
-  exciseBasePriceIncVat, giftSetExcise, giftSetExciseFields, giftSetExciseSummary, giftSetPriceMode, giftSetPriceModeError,
-  hasOwnTaxBase, usesPieceTaxBase,
+  EXCISE_TAX_BASE_PIECES, GIFT_SET_EXCISE_KIND, exciseBaseLabel, exciseBaseMissingText,
+  exciseBasePriceIncVat, giftSetExcise, giftSetExciseFields, giftSetExciseSummary, giftSetPiecesTotal, giftSetPriceMode,
+  giftSetPriceModeOf, giftSetRetailFields, hasOwnTaxBase, usesPieceTaxBase,
 } from "./giftSetExcise.js";
 import { productExciseFields } from "./productExcise.js";
 import { orderHasExciseLines } from "./exciseListStage.js";
@@ -38,20 +38,40 @@ test("G1: ไม่มีแถวหมวดเสียภาษี / ไม�
     "ชุดไม่มีน้ำหอม = ไม่เก็บโหมด แม้ฟอร์มส่งมา");
 });
 
-test("G5: ไม่มีค่าตั้งต้น — ทั้งชุดล้วนและชุดคละ ยังไม่เลือก = unchosen (ไม่มีฐาน) · ฟอร์ม/API ตีกลับด้วยข้อความเดียวกัน", () => {
+test("G5/R1: ไม่มีค่าตั้งต้น — ทั้งชุดล้วนและชุดคละ ยังไม่เลือก = unchosen (ไม่มีฐาน) · R1 บันทึกได้ ไปติดตอนยื่นทะเบียน", () => {
   for (const rows of [[perfume(null, 1), mist(null, 2)], [perfume(590, 1), candle]]) {
     const profile = giftSetExcise(rows, TYPES);
     assert.equal(profile.taxable, true);
     assert.equal(profile.mode, null);
     assert.deepEqual(giftSetExciseFields(rows, TYPES, ""), { autoTaxable: true, exciseTaxBase: "unchosen", exciseBasePriceIncVat: null });
-    assert.equal(giftSetPriceModeError(rows, TYPES, ""), GIFT_SET_PRICE_MODE_REQUIRED);
-    assert.equal(giftSetPriceModeError(rows, TYPES, "unchosen"), GIFT_SET_PRICE_MODE_REQUIRED, "ค่าที่เก็บว่ายังไม่เลือก ไม่นับเป็นการเลือก");
-    assert.equal(giftSetPriceModeError(rows, TYPES, "set"), "");
   }
-  assert.equal(giftSetPriceModeError([candle], TYPES, ""), "", "ชุดไม่มีน้ำหอม ไม่ต้องเลือก");
+  const unchosen = { fgCode: "FG-1-01-037-1", retailPriceIncVat: 990, exciseTaxBase: "unchosen", isExciseTaxable: true };
+  assert.match(missingRetailPriceEntry({ productId: "P1" }, unchosen).label, /รวมชุด \/ รายชิ้น/, "ด่านยื่นทะเบียนตีกลับแทนฟอร์ม");
   assert.equal(giftSetPriceMode("pieces"), "pieces");
   assert.equal(giftSetPriceMode("unchosen"), null);
   assert.equal(giftSetPriceMode("PIECES"), null);
+});
+
+test("R3: ชุดทุกชุดเลือกรวมชุด/รายชิ้นได้ — รายชิ้น = ราคาทั้งชุดคือผลรวมทุกแถว (ไม่เชื่อจอ) · รวมชุด/ไม่เลือก = ล้างราคาต่อชิ้น", () => {
+  const rows = [perfume(890, 1), candle, { categoryCode: "01-006", formulaId: "", retailPriceIncVat: 120, pieceQty: 2 }];
+  assert.equal(giftSetPiecesTotal(rows), null, "แถวเทียนยังไม่มีราคา = ยังไม่ครบ ไม่ใช่รวมเท่าที่มี");
+  const priced = rows.map((row) => (row === candle ? { ...candle, retailPriceIncVat: 390 } : row));
+  assert.equal(giftSetPiecesTotal(priced), 1520);
+  assert.equal(giftSetPiecesTotal([{ categoryCode: "01-003", retailPriceIncVat: 0, pieceQty: 1 }]), 0, "ของแถมราคา 0 นับว่ากรอกแล้ว");
+  assert.equal(giftSetPiecesTotal([]), null);
+  const pieces = giftSetRetailFields(priced, "pieces", 9999);
+  assert.deepEqual([pieces.giftSetPriceMode, pieces.retailPriceIncVat], ["pieces", 1520]);
+  assert.equal(pieces.rows[0].retailPriceIncVat, 890, "รายชิ้นเก็บราคาต่อชิ้นทุกแถว");
+  for (const mode of ["set", "", null, "unchosen"]) {
+    const other = giftSetRetailFields(priced, mode, 1490);
+    assert.equal(other.retailPriceIncVat, 1490, `${mode}: ราคาทั้งชุดตามที่กรอก`);
+    assert.ok(other.rows.every((row) => row.retailPriceIncVat === null), `${mode}: ราคาต่อชิ้นที่ซ่อนอยู่ไม่ค้างในฐาน`);
+  }
+  assert.equal(giftSetRetailFields(priced, "set", 1490).giftSetPriceMode, "set");
+  assert.equal(giftSetRetailFields(priced, "unchosen", 1490).giftSetPriceMode, null);
+  assert.equal(giftSetPriceModeOf({ giftSetPriceMode: "pieces", exciseTaxBase: "set" }), "pieces");
+  assert.equal(giftSetPriceModeOf({ giftSetPriceMode: null, exciseTaxBase: "set" }), "set", "แถวก่อน 0433 ถอยไปอ่าน exciseTaxBase");
+  assert.equal(giftSetPriceModeOf({ exciseTaxBase: "unchosen" }), null);
 });
 
 test("G5: เลือกรวมชุด = คิดจากราคาทั้งชุด ทั้งชุดล้วนและชุดคละ (ไม่ต้องกรอกราคาต่อชิ้น)", () => {
@@ -125,13 +145,19 @@ test("บันทึกสินค้า: ชุดตั้งต้นจา
   assert.equal(loaded, false, "หมวดอื่นไม่อ่านทะเบียนหมวดทั้งชุด");
 });
 
-test("route: ฟอร์มที่ไม่เลือกโหมดถูกตีกลับ 400 · PATCH ปุ่มอื่นใช้ค่าที่เก็บไว้ ไม่ถูกกัน", () => {
+test("route: R1 ไม่ตีกลับเรื่องโหมดแล้ว · R3 ราคาของชุดคิดที่ server ก่อนคิดภาษี · PATCH ปุ่มอื่นใช้โหมดที่เก็บไว้", () => {
   const post = readFileSync(new URL("../../app/api/products/route.js", import.meta.url), "utf8");
   const patch = readFileSync(new URL("../../app/api/products/[id]/route.js", import.meta.url), "utf8");
-  assert.match(post, /priceMode: body\.exciseTaxBase,/);
-  assert.match(post, /if \(exciseTaxBase === EXCISE_TAX_BASE\.unchosen\) \{\n\s+return Response\.json\(\{ error: GIFT_SET_PRICE_MODE_REQUIRED \}, \{ status: 400 \}\);/);
-  assert.match(patch, /priceMode: body\.formulaComponents !== undefined \? body\.exciseTaxBase : product\.exciseTaxBase,/);
-  assert.match(patch, /if \(body\.formulaComponents !== undefined && updated\.exciseTaxBase === EXCISE_TAX_BASE\.unchosen\)/);
+  for (const src of [post, patch]) {
+    assert.doesNotMatch(src, /GIFT_SET_PRICE_MODE_REQUIRED|EXCISE_TAX_BASE\.unchosen/, "ไม่มีด่าน 400 เรื่องโหมดตอนบันทึก");
+    assert.match(src, /giftSetRetailFields\(/);
+    assert.ok(src.indexOf("giftSetRetailFields(") < src.indexOf("productExciseFields({"), "ราคาทั้งชุด (รายชิ้น = ผลรวม) ต้องนิ่งก่อนคิดภาษี");
+  }
+  assert.match(post, /priceMode: giftSetPriceMode,/);
+  assert.match(post, /retailPriceIncVat: retailPriceValue,\n\s+giftSetPriceMode,/);
+  assert.match(patch, /body\.formulaComponents !== undefined \? sentMode : giftSetPriceModeOf\(product\)/);
+  assert.match(patch, /priceMode: updated\.giftSetPriceMode,/);
+  assert.ok(patch.indexOf("giftSetRetailFields(") < patch.indexOf("const giftSetChanged ="), "ล้างราคาต่อชิ้นแล้วต้องนับเป็นรายการเปลี่ยน (เขียนลงฐาน)");
 });
 
 test("ปลายทางที่ใช้ราคาขายปลีกเป็นฐานภาษี อ่านฐานของชุดคละ", () => {
@@ -173,4 +199,11 @@ test("mig 0430: RPC รับคีย์ราคา/จำนวนชิ้�
   for (const route of ["../../app/api/products/route.js", "../../app/api/products/[id]/route.js"]) {
     assert.match(readFileSync(new URL(route, import.meta.url), "utf8"), /giftSetRows,\n\s+(\/\*[\s\S]*?\*\/\n\s+)?priceMode: /, `${route} ส่งแถวสูตรของชุดเข้าตัวคิดกลาง`);
   }
+});
+
+test("mig 0433: โหมดเก็บทุกชุด (CHECK set/pieces) · backfill ชุดที่มีราคาทั้งชุดแต่ไม่มีโหมด = รวมชุด (กันภาษีกลายเป็น 0 ตอนบันทึกครั้งหน้า)", () => {
+  const sql = readFileSync(new URL("../../../supabase/migrations/0433_gift_set_rows_optional_formula.sql", import.meta.url), "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "giftSetPriceMode" text/);
+  assert.match(sql, /CHECK \("giftSetPriceMode" IS NULL OR "giftSetPriceMode" IN \('set', 'pieces'\)\)/);
+  assert.match(sql, /SET "giftSetPriceMode" = 'set',[\s\S]*WHERE "categoryCode" = '01-037' AND "giftSetPriceMode" IS NULL AND "retailPriceIncVat" IS NOT NULL;/);
 });
