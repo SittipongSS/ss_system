@@ -22,7 +22,7 @@ import Textarea from "@/components/ui/Textarea";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import StatusNotice from "@/components/ui/StatusNotice";
 import {
-  RETAIL_PRICE_MAIN_CATEGORY, categoryInfoOf, categoryOf, showsRetailPriceForCategory,
+  categoryInfoOf, categoryOf, showsRetailPriceForCategory,
 } from "@/lib/master/categoryOf";
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
@@ -50,6 +50,7 @@ import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
 import { giftSetPriceMode } from "@/lib/excise/giftSetExcise";
 import { fragranceOilScentChoices, isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import GiftSetFormulaRows from "@/components/database/GiftSetFormulaRows";
+import ProductRetailExcise from "@/components/database/ProductRetailExcise";
 
 export const EMPTY_PRODUCT = {
   customerId: "", fgCode: "", productDescription: "", productDescriptionEn: "",
@@ -140,9 +141,11 @@ function CategoryBox({ categoryCode, fgCode, productTypes }) {
         <span className="font-semibold">{categoryNameBoth(cat.typeInfo) || cat.code}</span>
       </div>
       <div className="text-[11px] opacity-80 pl-1">กลุ่มหลัก: {cat.typeInfo.mainCategoryName}</div>
-      {/* เตือนเฉพาะหมวดที่ติ๊กธง (ส่วนน้อย) — หมวดอื่นไม่ต้องพูดถึงภาษี/อย. เลย */}
+      {/* เตือนเฉพาะหมวดที่ติ๊กธง (ส่วนน้อย) — หมวดอื่นไม่ต้องพูดถึงภาษี/อย. เลย
+          ⭐ 11/11 (F1): สถานะสรรพสามิตของ "สินค้าตัวนี้" พูดที่หัวข้อ ④ ที่เดียว — กล่องนี้บอกแค่ธงของ **หมวด**
+          (ชุดของขวัญอยู่หมวดที่ไม่ติ๊ก แต่เสียภาษีได้จากสูตรในชุด ⇒ ถ้าพูดว่า "สินค้านี้ต้อง…" ที่นี่ จะขัดกับหัวข้อ ④) */}
       {isExcise && (
-        <div className="mt-1 pl-1 font-semibold">⚠️ สินค้านี้ต้องขึ้นทะเบียนและชำระภาษีสรรพสามิต (ระบบจะคิดภาษีอัตโนมัติ)</div>
+        <div className="mt-1 pl-1 font-semibold">หมวดนี้เสียภาษีสรรพสามิต — สถานะและราคาขายปลีกอยู่หัวข้อ 4</div>
       )}
       {requiresFda && (
         <div className={`mt-1 pl-1 font-semibold ${isExcise ? "" : "text-[var(--blue)]"}`}>📋 หมวดนี้ต้องจดแจ้ง อย. — โปรดตรวจว่าสินค้าได้จดแจ้งก่อนวางจำหน่าย</div>
@@ -166,6 +169,8 @@ export default function ProductForm({
   // ⭐ สินค้าตัวนี้ต้องเสียภาษีสรรพสามิตตามธงที่บันทึกไว้ (`isExciseTaxable === true` — RA บังคับรายตัวในหมวดอื่นได้)
   //    ⇒ ช่องราคาขายปลีกต้องโผล่แม้หมวดไม่ใช้ราคา: หน้ารายละเอียดเตือน "ต้องเติมราคาก่อน" ใบนี้อยู่ (ตรวจตัวเลข 26/10 · L16c)
   taxable = false,
+  // ธงรายตัวของ RA บนสินค้า (โมดัลแก้ส่ง `product.taxableOverride` · สร้าง = null) — หัวข้อ ④ ใช้บอกสถานะ ไม่ได้แก้ที่นี่
+  taxableOverride = null,
   // ── โหมดรหัสสินค้า (มติผู้ใช้ 2026-08-12 "แบบ A") ────────────────────────
   // onCodeMode = null (ค่าตั้งต้น) แปลว่าไม่มีสวิตช์ = โหมดแก้
   codeMode = CODE_MODE_MANUAL,
@@ -266,7 +271,7 @@ export default function ProductForm({
       {/* ── รหัสสินค้า + สวิตช์โหมด — อยู่เหนือทุก section (มติผู้ใช้ 2026-08-12 แบบ A)
           โหมดระบบใหม่: รหัสไม่ใช่ช่องกรอก แต่เป็น **ผลของสามคำตอบด้านล่าง** จึงโชว์
           เป็นแถบที่โตขึ้นทีละท่อนตามที่ตอบ — ท่อนไหนยังว่างคือยังไม่ได้ตอบข้อนั้น ── */}
-      <div className="mb-[22px]">
+      <div className="mb-6">
         <div className="form-group">
           <label className="flex items-center gap-2 flex-wrap">
             <span>รหัสสินค้า (FG Code) <span className="text-[var(--red)]">*</span></span>
@@ -337,9 +342,9 @@ export default function ProductForm({
       </div>
 
       {/* Section 1: product */}
-      <div className="mb-[22px]">
+      <div className="mb-6">
         <div className="flex justify-between items-center border-b border-[var(--border)] pb-3 mb-5">
-          <h3 className="font-semibold text-[var(--text)]">1. ข้อมูลหลักสินค้า (Product Details)</h3>
+          <h3 className="font-semibold text-[var(--text)]">1. สินค้าคืออะไร (Product)</h3>
           {creatorName && (
             <span className="text-xs font-semibold text-[var(--accent)] bg-[var(--accent-soft)] px-3 py-1 rounded-full">
               ผู้สร้าง: {creatorName}
@@ -476,13 +481,14 @@ export default function ProductForm({
         </div>
       </div>
 
-      {/* Section 2: สูตร + บรรจุภัณฑ์ + ราคาผลิต (มติผู้ใช้ 2026-08-05 — เดิมสูตรเป็น
-          section ของตัวเองที่มีช่องเดียว) · ราคาผลิตอยู่ที่นี่เพราะเป็นต้นทุนของสิ่งที่
-          บรรจุจริง คนละเรื่องกับราคาขายปลีกที่แยกไปข้างล่าง */}
-      <div className="mb-[22px]">
+      {/* ── 4 หัวข้อตามลำดับที่คนคิด (มติเจ้าของ 11/11/2026 F1 · docs/product-form-rework.md):
+          ① สินค้าคืออะไร → ② ข้างในมีอะไร → ③ บรรจุและหน่วยขาย → ④ ราคาขายปลีกและสรรพสามิต
+          เดิม 3 หัวข้อ (สูตรกับบรรจุภัณฑ์อยู่ด้วยกัน · ราคาขายปลีกแยกท้ายสุดโดยไม่มีเรื่องสรรพสามิต) ── */}
+      {/* Section 2: ข้างในมีอะไร — สูตร / กลิ่น (หัวน้ำหอม) / รายการสูตรในชุด */}
+      <div className="mb-6">
         <div className="border-b border-[var(--border)] pb-3 mb-5">
           <h3 className="font-semibold text-[var(--text)]">
-            {fragranceOil ? "2. กลิ่นและบรรจุภัณฑ์ (Scent & Packaging)" : "2. สูตรและบรรจุภัณฑ์ (Formula & Packaging)"}
+            {fragranceOil ? "2. ข้างในมีอะไร (Scent)" : "2. ข้างในมีอะไร (Formula)"}
           </h3>
         </div>
         <div className="form-grid cols-2">
@@ -503,8 +509,6 @@ export default function ProductForm({
               <GiftSetFormulaRows
                 rows={Array.isArray(form.formulaComponents) ? form.formulaComponents : []}
                 onRows={(formulaComponents) => onForm({ formulaComponents })}
-                priceMode={form.exciseTaxBase || ""}
-                onPriceMode={(exciseTaxBase) => onForm({ exciseTaxBase })}
                 formulas={formulas}
                 productTypes={productTypes}
               />
@@ -561,6 +565,16 @@ export default function ProductForm({
               </span>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Section 3: บรรจุและหน่วยขาย — ราคาผลิตคงอยู่ที่นี่ (มติ 2026-08-05 · ยืนยันซ้ำ 11/11 F2): เป็นต้นทุนของสิ่งที่บรรจุจริง
+          คนละเรื่องกับราคาขายปลีก (ราคาฝั่งลูกค้า) ในหัวข้อ ④ */}
+      <div className="mb-6">
+        <div className="border-b border-[var(--border)] pb-3 mb-5">
+          <h3 className="font-semibold text-[var(--text)]">3. บรรจุและหน่วยขาย (Packaging)</h3>
+        </div>
+        <div className="form-grid cols-2">
           {/* ⚠️ "หน่วยขาย" กับ "หน่วยปริมาตร" สลับกันได้ง่ายเพราะชื่อคล้ายกัน — ตัวแรกคือ
               หน่วยที่นับขายบนเอกสาร (ไปเป็น quotation_lines.unit) ตัวหลังคือขนาดของหนึ่ง
               หน่วยขาย · ลำดับช่องในบล็อกนี้ผู้ใช้เป็นคนกำหนด (มติ 2026-08-05):
@@ -646,30 +660,26 @@ export default function ProductForm({
         </div>
       </div>
 
-      {/* Section 3: ราคาขายปลีก — เฉพาะกลุ่มหลัก 01 (มติผู้ใช้ 2026-08-05)
-          แยกจากราคาผลิตเพราะเป็นราคาคนละฝั่ง: ผลิต = ต้นทุนเรา · ขายปลีก = ราคาหน้าร้าน
-          ของลูกค้า ซึ่งเป็นฐานคิดภาษีสรรพสามิต */}
-      {showRetail && (
-        <div className="mb-[22px]">
-          <div className="border-b border-[var(--border)] pb-3 mb-5">
-            <h3 className="font-semibold text-[var(--text)]">3. ราคาขายปลีก (Retail Price)</h3>
-            {!inRetailCategory && (
-              <span className="text-[11px] text-[var(--amber)]">
-                {taxable
-                  ? "สินค้าตัวนี้ถูกตั้งให้เสียภาษีสรรพสามิตรายตัว (ฝ่าย RA) — ราคาขายปลีกคือฐานคิดภาษี ไม่มีราคา = ภาษีคิดออกมา 0 และยื่นขึ้นทะเบียนไม่ได้"
-                  : <>หมวดนี้ไม่ได้ใช้ราคาขายปลีก (ไม่ใช่กลุ่ม {RETAIL_PRICE_MAIN_CATEGORY} และไม่ได้ติ๊กสรรพสามิต) แต่สินค้าตัวนี้มีราคาค้างอยู่ — โชว์ไว้ให้เห็นและลบได้ ไม่ใช่ซ่อนทั้งที่ยังมีค่า</>}
-              </span>
-            )}
-          </div>
-          <div className="form-grid cols-2">
-            <div className="form-group">
-              <label>ราคาขายปลีก <span className="text-[10px] font-normal text-[var(--text-3)] bg-[var(--panel-2)] px-1.5 py-0.5 rounded ml-1">รวม VAT</span></label>
-              <MoneyInput name="retailPriceIncVat" value={form.retailPriceIncVat ?? ""} onChange={(v) => onForm({ retailPriceIncVat: v ?? "" })} className="w-full" />
-              <span className="text-xs text-[var(--text-3)] mt-1">ราคาที่ลูกค้าตั้งขายหน้าร้าน — ระบบใช้เป็นฐานคิดภาษีสรรพสามิต</span>
-            </div>
-          </div>
+      {/* Section 4: ราคาขายปลีกและสรรพสามิต (มติเจ้าของ 11/11/2026 F1/F4/F5) — ที่เดียวของฟอร์มที่พูดเรื่องสรรพสามิต
+          · ชุดของขวัญ: ปุ่มรวมชุด/รายชิ้น + ช่องราคาอยู่ใต้ปุ่ม · ภาษีต่อหน่วยคิดให้ทันที · ไม่ใช้ราคาขายปลีก = บรรทัดเดียว (หัวข้อไม่หาย)
+          · ช่องราคาขายปลีกยังโผล่ตามกติกาเดิม `showRetail` (กลุ่ม 01 / หมวดสรรพสามิต / มีค่าค้าง / ธงเสียภาษี — L16c) */}
+      <div className="mb-6">
+        <div className="border-b border-[var(--border)] pb-3 mb-5">
+          <h3 className="font-semibold text-[var(--text)]">4. ราคาขายปลีกและสรรพสามิต (Retail & Excise)</h3>
         </div>
-      )}
+        <ProductRetailExcise
+          form={form}
+          onForm={onForm}
+          productTypes={productTypes}
+          formulas={formulas}
+          categoryCode={categoryCode}
+          giftSet={giftSet}
+          taxableOverride={taxableOverride}
+          showRetail={showRetail}
+          inRetailCategory={inRetailCategory}
+          saleUnitLabel={saleUnitLabel}
+        />
+      </div>
     </>
   );
 }
