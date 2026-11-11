@@ -51,14 +51,24 @@ export function giftSetFormulaChoices(formulas = [], categoryCode = '', currentF
   });
 }
 
+/* ราคาขายปลีกต่อชิ้น + จำนวนชิ้น (มติเจ้าของ 11/11 G3 · mig 0430) — ใช้คิดฐานภาษีของชุดคละ (lib/excise/giftSetExcise.js)
+   ว่าง = null / 1 · ค่าที่พิมพ์ผิด (ไม่ใช่ตัวเลข) คงเป็น NaN ไว้ให้ตัวตรวจข้างล่างตีกลับ — ห้ามแปลงเงียบเป็น 0 */
+const cleanPiecePrice = (value) => (value === '' || value == null ? null : Number(value));
+const cleanPieceQty = (value) => (value === '' || value == null ? 1 : Number(value));
+
 /**
- * รายการสูตรที่ฟอร์มส่งมา → แถวสะอาด `[{ formulaId, categoryCode }]` ตามลำดับที่เรียง
+ * รายการสูตรที่ฟอร์มส่งมา → แถวสะอาด `[{ formulaId, categoryCode, retailPriceIncVat, pieceQty }]` ตามลำดับที่เรียง
  * · แถวว่างทั้งสองช่อง (กด "เพิ่มสูตร" แล้วไม่ได้เลือก) ทิ้งไป · ไม่ใช่อาเรย์ = ไม่มีรายการ
  */
 export function normalizeGiftSetFormulas(raw) {
   if (!Array.isArray(raw)) return [];
   return raw
-    .map((row) => ({ formulaId: clean(row?.formulaId), categoryCode: clean(row?.categoryCode) }))
+    .map((row) => ({
+      formulaId: clean(row?.formulaId),
+      categoryCode: clean(row?.categoryCode),
+      retailPriceIncVat: cleanPiecePrice(row?.retailPriceIncVat),
+      pieceQty: cleanPieceQty(row?.pieceQty),
+    }))
     .filter((row) => row.formulaId || row.categoryCode);
 }
 
@@ -82,7 +92,13 @@ export function giftSetFormulasError(rows = [], { formulasById = null, categoryN
       return `${at}: หมวด ${row.categoryCode} ใช้ในชุดของขวัญไม่ได้ — เลือกได้เฉพาะหมวดในกลุ่ม 01 (ยกเว้น ${GIFT_SET_CATEGORY_CODE} ชุดของขวัญ)`;
     }
     if (!row.formulaId) return `${at}: ยังไม่ได้เลือกสูตร`;
-    if (seen.has(row.formulaId)) return `${at}: สูตรนี้อยู่ในชุดแล้ว — สูตรเดียวกันใส่ซ้ำในชุดเดียวไม่ได้`;
+    if (seen.has(row.formulaId)) return `${at}: สูตรนี้อยู่ในชุดแล้ว — สูตรเดียวกันใส่ซ้ำในชุดเดียวไม่ได้ (ใส่จำนวนชิ้นแทน)`;
+    if (row.retailPriceIncVat != null && !(Number.isFinite(row.retailPriceIncVat) && row.retailPriceIncVat >= 0)) {
+      return `${at}: ราคาขายปลีกต่อชิ้นต้องเป็นตัวเลขตั้งแต่ 0 ขึ้นไป`;
+    }
+    if (row.pieceQty !== undefined && !(Number.isInteger(row.pieceQty) && row.pieceQty >= 1)) {
+      return `${at}: จำนวนชิ้นต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`;
+    }
     seen.add(row.formulaId);
     if (formulasById) {
       const formula = formulasById.get(row.formulaId);
@@ -96,10 +112,13 @@ export function giftSetFormulasError(rows = [], { formulasById = null, categoryN
   return '';
 }
 
-/** สองรายการเหมือนกันไหม (ลำดับนับด้วย — ลำดับคือลำดับที่พิมพ์บนใบสเปค) */
+/** สองรายการเหมือนกันไหม (ลำดับนับด้วย — ลำดับคือลำดับที่พิมพ์บนใบสเปค · ราคา/จำนวนชิ้นนับด้วย = แก้ราคาแล้วต้องอนุมัติใหม่) */
 export function sameGiftSetFormulas(a = [], b = []) {
   if (a.length !== b.length) return false;
-  return a.every((row, i) => row.formulaId === b[i].formulaId && row.categoryCode === b[i].categoryCode);
+  const price = (row) => (row.retailPriceIncVat == null || row.retailPriceIncVat === '' ? null : Number(row.retailPriceIncVat));
+  const qty = (row) => (row.pieceQty == null || row.pieceQty === '' ? 1 : Number(row.pieceQty));
+  return a.every((row, i) => row.formulaId === b[i].formulaId && row.categoryCode === b[i].categoryCode
+    && price(row) === price(b[i]) && qty(row) === qty(b[i]));
 }
 
 /**

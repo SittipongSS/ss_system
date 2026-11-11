@@ -15,6 +15,7 @@
 //   warnings = คุณภาพข้อมูลเชิงแนะนำ (ไม่บล็อก) — { field, message }
 //   ready    = missing.length === 0
 import { listAttachments } from '@/lib/master/attachments';
+import { exciseBaseLabel, exciseBasePriceIncVat } from '@/lib/excise/giftSetExcise';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { requiredDocKeys, attachmentTypeLabel } from '@/lib/master/attachmentTypes';
 import {
@@ -29,12 +30,13 @@ export function missingRetailPriceEntry(registration, product) {
   if (!registration?.productId) return null;
   // ทะเบียนที่ฝ่าย RA ยกเว้นภาษีไว้ไม่ต้องมีราคา — ภาษี 0 เพราะได้รับยกเว้นจริง
   if (registration.isExciseTaxable === false) return null;
-  const retail = Number(product?.retailPriceIncVat);
-  if (Number.isFinite(retail) && retail > 0) return null;
+  /* ⭐ ฐานภาษี ไม่ใช่ราคาขายปลีกตรง ๆ (มติ 11/11 · mig 0430): ชุดของขวัญคละ = ราคาน้ำหอมในชุดรวม (ราคาต่อชิ้นของแถวสูตร)
+     ชุดคละที่มีราคาทั้งชุดแต่ยังไม่กรอกราคาต่อชิ้น = ยังไม่มีฐาน ⇒ ยื่นไม่ได้ (ไม่ถอยไปใช้ราคาทั้งชุด — ภาษีจะเกินจริง) */
+  if (exciseBasePriceIncVat(product) != null) return null;
   return {
     entity: 'product',
     docType: 'retailPriceIncVat',
-    label: `ราคาขายปลีก (รวม VAT) ของสินค้า${product?.fgCode ? ` ${product.fgCode}` : ''} — ฐานคิดภาษีสรรพสามิต`,
+    label: `${exciseBaseLabel(product)} ของสินค้า${product?.fgCode ? ` ${product.fgCode}` : ''} — ฐานคิดภาษีสรรพสามิต`,
   };
 }
 
@@ -130,7 +132,7 @@ export async function registrationRequirements(supabase, regId) {
   let product = null;
   if (reg.productId && reg.isExciseTaxable !== false) {
     const { data, error: productError } = await supabase
-      .from('products').select('"fgCode", "retailPriceIncVat"').eq('id', reg.productId).maybeSingle();
+      .from('products').select('"fgCode", "retailPriceIncVat", "exciseTaxBase", "exciseBasePriceIncVat"').eq('id', reg.productId).maybeSingle();
     // query พังต้องดัง — เงียบแล้วด่านนี้หายไปทั้งข้อ (เหตุผลเดียวกับ identity gate)
     if (productError) throw productError;
     product = data;
@@ -188,7 +190,7 @@ export async function registrationRequirementsBatch(supabase, registrations = []
   const regIds = regs.map((r) => r.id);
   const [products, customers, regDocs, custDocs, productArtwork] = await Promise.all([
     productIds.length
-      ? supabase.from('products').select('id, "fgCode", "retailPriceIncVat"')
+      ? supabase.from('products').select('id, "fgCode", "retailPriceIncVat", "exciseTaxBase", "exciseBasePriceIncVat"')
         .in('id', productIds).limit(productIds.length)
       : { data: [] },
     customerIds.length

@@ -6,6 +6,7 @@
 //
 // ⚠️ ไฟล์บริสุทธิ์ — ไม่ยิง query (ตัวสร้างสินค้าฝั่ง server อยู่ที่ exciseChargeProduct.js) · จอ import ได้
 import { categoryOf } from '@/lib/master/categoryOf';
+import { exciseBasePriceIncVat } from '@/lib/excise/giftSetExcise';
 import { composeFgCode, customerCodeSegment } from '@/lib/master/masterCodes';
 import { quoteLineMoney } from '@/lib/salesPlanning';
 
@@ -107,7 +108,8 @@ export function buildExciseQuotationLines({ filing, chargeProduct, sourceLines =
         sourceSalesOrderLineId: line.salesOrderLineId || null,
         sourceProductId: line.productId || null,
         sourceFgCode: String(line.fgCode || '').trim() || null,
-        retailPriceIncVat: Number(product.retailPriceIncVat) > 0 ? Number(product.retailPriceIncVat) : null,
+        // ราคาที่ภาษีบรรทัดนี้คิดจาก (ตาราง RA รีเช็คกับตัวนี้) — ชุดของขวัญคละ = ราคาน้ำหอมในชุด ไม่ใช่ราคาทั้งชุด (mig 0430)
+        retailPriceIncVat: exciseBasePriceIncVat(product),
         excisePerUnit: line.exciseRatePerUnit,
         localPerUnit: line.localTaxRatePerUnit,
         registrationState: line.registrationState || 'none',

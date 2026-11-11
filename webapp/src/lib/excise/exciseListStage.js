@@ -19,12 +19,33 @@ const DONE = 'success';
 const SA_TURN = 'warning';
 const WAITING = 'info';
 
-/** SO ลูกค้ามีสินค้าหมวดสรรพสามิตไหม — หมวดจากรหัส FG (หรือหมวดของบรรทัดพิมพ์เอง) × ธง isExcise ของหมวด */
-export function orderHasExciseLines(lines = [], productTypes = []) {
+const lineCategory = (line) => categoryOf(String(line?.fgCode || '').trim()) || line?.categoryCode || null;
+
+/** SO ลูกค้ามีสินค้าเสียสรรพสามิตไหม — หมวดจากรหัส FG (หรือหมวดของบรรทัดพิมพ์เอง) × ธง isExcise ของหมวด
+ *  **หรือ** สินค้าของบรรทัดถูกตั้งให้เสียภาษี (`taxableProductIds` — ชุดของขวัญที่มีน้ำหอม มติ 11/11 · mig 0430 ·
+ *  ของที่ RA บังคับรายตัว) — ตรงกับคิว SA (`resolveSoFiling` อ่านธงบนสินค้า) */
+export function orderHasExciseLines(lines = [], productTypes = [], taxableProductIds = new Set()) {
   return (lines || []).some((line) => {
-    const category = categoryOf(String(line?.fgCode || '').trim()) || line?.categoryCode || null;
-    return !!category && isExciseCategory(category, productTypes);
+    const category = lineCategory(line);
+    if (category && isExciseCategory(category, productTypes)) return true;
+    return !!line?.productId && taxableProductIds.has(line.productId);
   });
+}
+
+/** สินค้าของบรรทัดที่หมวดไม่ติ๊ก isExcise แต่สินค้าถูกตั้งให้เสียภาษี — Set ของ id · อ่านพลาด = throw */
+async function loadTaxableProductIds(supabase, linesByOrder, productTypes) {
+  const ids = new Set();
+  for (const lines of linesByOrder.values()) {
+    for (const line of lines || []) {
+      const category = lineCategory(line);
+      if (line?.productId && !(category && isExciseCategory(category, productTypes))) ids.add(line.productId);
+    }
+  }
+  if (!ids.size) return new Set();
+  const { data, error } = await fetchInChunks([...ids], (chunk) => fetchAllResult(() => supabase.from('products')
+    .select('id').in('id', chunk).eq('isExciseTaxable', true).order('id', { ascending: true })));
+  raise('โหลดธงภาษีของสินค้าไม่สำเร็จ', error);
+  return new Set((data || []).map((row) => row.id));
 }
 
 const filingText = (filing) => exciseRoundStage({ filing }).text;
@@ -109,9 +130,10 @@ export async function loadExciseListStages(supabase, orders = [], { linesByOrder
   raise('โหลดหมวดสินค้าไม่สำเร็จ', typeError);
 
   const byId = new Map((orders || []).map((order) => [order.id, order]));
+  const taxableProductIds = await loadTaxableProductIds(supabase, linesByOrder, productTypes || []);
   const customerIds = (orders || [])
     .filter((order) => order.origin === 'pipeline' && !isExciseOrder(order)
-      && orderHasExciseLines(linesByOrder.get(order.id) || [], productTypes || []))
+      && orderHasExciseLines(linesByOrder.get(order.id) || [], productTypes || [], taxableProductIds))
     .map((order) => order.id);
   const needs = new Set(customerIds);
   const exciseOrders = (orders || []).filter((order) => isExciseOrder(order));

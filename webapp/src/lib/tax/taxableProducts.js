@@ -11,6 +11,7 @@
 // ⚠️ ฟังก์ชันบริสุทธิ์ ไม่แตะ DB — รับ `productTypes` ที่โหลดมาแล้ว จึงเรียกได้ทั้ง
 // ฝั่ง server (รายงาน) และฝั่งจอ (หน้าสินค้า)
 import { isExciseCategory } from '@/lib/master/categoryOf';
+import { exciseBasePriceIncVat } from '@/lib/excise/giftSetExcise';
 
 /**
  * ต้องเสียภาษีสรรพสามิตไหม
@@ -39,8 +40,8 @@ export function isProductExciseTaxable(product, productTypes = []) {
  */
 export function isMissingRetailPrice(product, productTypes = []) {
   if (!isProductExciseTaxable(product, productTypes)) return false;
-  const retail = Number(product?.retailPriceIncVat);
-  return !Number.isFinite(retail) || retail <= 0;
+  // ฐานภาษี (ชุดของขวัญคละ = ราคาน้ำหอมในชุด · มติ 11/11 · mig 0430) — ตัวเดียวกับด่านยื่นขึ้นทะเบียน
+  return exciseBasePriceIncVat(product) == null;
 }
 
 /** สินค้าที่ขาดราคาขายปลีกทั้งหมดในลิสต์ที่ให้มา */

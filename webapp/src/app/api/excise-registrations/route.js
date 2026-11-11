@@ -182,7 +182,7 @@ async function withQueueFacts(supabase, rows, user) {
        ที่ ~330 ใบ · `.limit()` ต้องเป็น `chunk.length` ไม่ใช่ทั้งลิสต์ ไม่งั้นเพดาน
        แถวหลวมกว่าที่ check:rowcap ตั้งใจ */
     fetchInChunks(productIds, (chunk) => supabase.from('products')
-      .select('id, volume, "volumeUnit", "retailPriceIncVat", "retailPriceExVat", "costPrice",'
+      .select('id, volume, "volumeUnit", "retailPriceIncVat", "retailPriceExVat", "exciseTaxBase", "exciseBasePriceIncVat", "costPrice",'
         + ' "materialCost", "laborCost", "shippingCost", "factoryProfit",'
         + ' "exciseTax", "localTax", "isExciseTaxable"')
       .in('id', chunk).limit(chunk.length)),
@@ -205,6 +205,7 @@ async function withQueueFacts(supabase, rows, user) {
       taxPerUnit: exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax,
       retailPriceIncVat: facts.retailPriceIncVat,
       retailPriceExVat: facts.retailPriceExVat,
+      taxBasis: facts.taxBasis,
       volume: facts.volume,
       volumeUnit: facts.volumeUnit,
       factory: hasFactoryFacts(factory) ? factory : null,

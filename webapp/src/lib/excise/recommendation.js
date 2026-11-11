@@ -13,7 +13,9 @@
 //   { kind: 'pending', reg }      รอนิติกรรมตรวจ (pending_legal) → ดูสถานะ
 // การเช็คสิทธิ์ (history:view / products:edit) เป็นเรื่องของผู้เรียก ไม่อยู่ในนี้.
 export function exciseRecommendationState(product, flags, regs) {
-  if (!flags?.isExcise) return null;
+  /* ธงที่บันทึกบนสินค้าชนะหมวด (กฎเดียวกับ isProductExciseTaxable): ชุดของขวัญที่มีน้ำหอม (มติ 11/11 · mig 0430)
+     และของที่ RA บังคับเสียรายตัว อยู่ในหมวดที่ไม่ติ๊ก isExcise แต่ต้องขึ้นทะเบียน — เดิมถูกตัดตั้งแต่บรรทัดนี้ */
+  if (!flags?.isExcise && product?.isExciseTaxable !== true) return null;
   if (!product || product.isActive === false) return null;
   if (product.isExciseTaxable === false) return null;
 

@@ -34,7 +34,16 @@ export function dealFgCodes(deal, projectProducts = []) {
 // ดีลนี้มี FG ที่เข้าข่ายสรรพสามิตไหม — "เข้าข่าย" ตัดสินจากช่องติ๊ก isExcise ของ
 // หมวดสินค้า (product_types, mig 0131) จึงต้องส่งรายการหมวด (productTypes) เข้ามาด้วย
 export function dealHasExciseFg(deal, projectProducts = [], productTypes = []) {
+  if ((projectProducts || []).some((row) => projectProductIsExcise(row, productTypes))) return true;
   return dealFgCodes(deal, projectProducts).some((fg) => isExciseCategory(categoryOf(fg), productTypes));
+}
+
+/* FG ของโครงการเข้าข่ายสรรพสามิตไหม — หมวดติ๊ก isExcise **หรือ** สินค้าถูกตั้งให้เสียภาษี (ชุดของขวัญที่มีน้ำหอม มติ 11/11 ·
+   mig 0430 · ของที่ RA บังคับรายตัว ซึ่งอยู่หมวดที่ไม่ติ๊ก) · ของที่ RA ยกเว้นในหมวดสรรพสามิตยังเข้าข่ายเหมือนเดิม (มีทะเบียนยกเว้น) */
+function projectProductIsExcise(row, productTypes) {
+  const fg = row?.product?.fgCode || row?.fgCode;
+  if (row?.product?.isExciseTaxable === true) return true;
+  return !!fg && isExciseCategory(row?.product?.categoryCode || categoryOf(fg), productTypes);
 }
 
 // nextAction ต่อ stage — label + hint (kind ใช้เลือกปุ่มหลักฝั่ง UI)
@@ -96,7 +105,7 @@ function collectExciseFgEntries(deal, projectProducts, productTypes) {
   const seen = new Set();
   for (const row of projectProducts || []) {
     const fg = row?.product?.fgCode || row?.fgCode;
-    if (!fg || !isExciseCategory(categoryOf(fg), productTypes)) continue;
+    if (!fg || !projectProductIsExcise(row, productTypes)) continue;
     const key = String(row.productId || fg);
     if (seen.has(key)) continue;
     seen.add(key);
