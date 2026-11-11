@@ -11,6 +11,8 @@
 //
 // ⭐ **"ใช้ราคานี้"** — แถวที่สูตร/กลิ่นมีราคาในทะเบียนอยู่แล้ว (RD ใส่ที่หน้าทะเบียนก่อนลูกค้าคอนเฟิร์ม) ผูกราคาเดิม
 // เข้าแถวได้ทันที ไม่ต้องพิมพ์เลขเดิมซ้ำ (ซึ่งได้ rev ซ้ำในประวัติราคา) · ราคาหมดอายุ = โชว์ปุ่มแล้วบอกเหตุตอนกด
+// ⭐ ปุ่มนี้มีไว้ยืนยัน **ราคาเก่าที่ค้างอยู่** เท่านั้น (เจ้าของ 11/11/2026) — ราคาที่เพิ่งใส่จากแท็บกลิ่น/สูตรหรือหน้าทะเบียน
+//   ผูกเข้าแถวที่รอราคาให้เองที่ตัวเขียนราคาทะเบียน (`lib/requests/registryPriceLink.js`) ไม่ต้องกดซ้ำ
 //
 // ⚠️ **ไม่เขียนกลไกราคาใหม่** — "ใส่ราคา" เปิด `RegistryPriceModal` ตัวเดียวกับหน้าใบ/หน้าทะเบียน ยิง endpoint เดิม ·
 // ช่องราคาและราคาปัจจุบันมาจาก server (ตัวคิดเดียวกับ POST) ⇒ จอเปิดช่องที่ API ตีกลับไม่ได้
@@ -140,7 +142,7 @@ export default function RdPricesPage() {
     if (isLatest()) setRegistryLoading(false);
   }, [startRegistryRun]);
 
-  /* ใส่ที่แท็บไหนก็กระทบอีกแท็บ (Ingredient List ของสูตรปิดแถวคำร้องที่รออยู่ · ราคาทะเบียนเปิดปุ่ม "ใช้ราคานี้")
+  /* ใส่ที่แท็บไหนก็กระทบอีกแท็บ (Ingredient List ของสูตรปิดแถวคำร้องที่รออยู่ · ราคาทะเบียนที่เพิ่งใส่ผูกเข้าแถวที่รอราคาเอง — 11/11)
      ⇒ หลังบันทึก/กลับมามองหน้า โหลดทั้งสองก้อน */
   const loadAll = useCallback((opts) => Promise.all([load(opts), loadRegistry(opts)]), [load, loadRegistry]);
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -471,7 +473,7 @@ export default function RdPricesPage() {
           ? `/api/master/${entityPricing.kind === "formula" ? "formulas" : "scents"}/${entityPricing.id}/price` : ""}
         slots={entityPricing?.kind === "formula" ? entityPricing.slots : null}
         blocker={entityPricing ? entityPricing.priceBlocker : ""}
-        hint={entityPricing ? "ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ — ตัวเดียวกับปุ่มราคาหน้าทะเบียน · รายการในคำร้องที่ยังรอราคาจะเห็นปุ่ม \"ใช้ราคานี้\"" : null}
+        hint={entityPricing ? "ราคาเข้าทะเบียนวัสดุเป็นรุ่นใหม่ — ตัวเดียวกับปุ่มราคาหน้าทะเบียน · รายการในคำร้องที่รอราคาของตัวนี้จะผูกราคานี้ให้เอง ไม่ต้องกดยืนยันซ้ำ" : null}
         onSaved={async (msg) => {
           const key = entityPricing?.key || null;
           setEntityPricing(null);
