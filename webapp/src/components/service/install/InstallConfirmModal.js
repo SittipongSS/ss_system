@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ChoiceChips from "@/components/ui/ChoiceChips";
-import Select from "@/components/ui/Select";
+import SearchableSelect from "@/components/ui/SearchableSelect";
 import Textarea from "@/components/ui/Textarea";
 import StatusNotice from "@/components/ui/StatusNotice";
 import CrewSlotPicker from "@/components/service/CrewSlotPicker";
@@ -270,13 +270,15 @@ export default function InstallConfirmModal({ row, visit = null, technicians = [
                   );
                 })}
               </ul>
-              <Select
+              {/* 🐞 UAT 11/11 (F4): คลังมีหลายร้อยเครื่อง (395 ตัว ณ วันทดสอบ) — ดรอปดาวน์ธรรมดาต้องไล่ทั้งลิสต์
+                  ⇒ ช่องค้นได้ตัวเดียวกับ "ผู้ไปด้วย" · พิมพ์รหัสหรือรุ่นแล้วเลือก · เลือกแล้วช่องว่างรอเครื่องถัดไป */}
+              <SearchableSelect
                 value=""
-                onChange={(e) => addAsset(zone.zoneId, e.target.value)}
-                options={[
-                  { value: "", label: stock.length ? "+ เพิ่มเครื่องจากคลัง" : "ไม่มีเครื่องในคลัง" },
-                  ...stock.filter((a) => !pickedIds.has(a.id)).map((a) => ({ value: a.id, label: [a.code, a.label].filter(Boolean).join(" · ") })),
-                ]}
+                onChange={(id) => addAsset(zone.zoneId, id)}
+                placeholder={stock.length ? "+ ค้นรหัส/รุ่นเครื่องในคลัง" : "ไม่มีเครื่องในคลัง"}
+                ariaLabel={`เพิ่มเครื่องจากคลังให้ ${zone.name || zone.code || "โซนนี้"}`}
+                disabled={!stock.length}
+                options={stock.filter((a) => !pickedIds.has(a.id)).map((a) => ({ value: a.id, label: [a.code, a.label].filter(Boolean).join(" · ") }))}
               />
             </div>
           );

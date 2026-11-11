@@ -45,7 +45,10 @@ export default function InstallRequestModal({ orderId, site, deposit, todayIso, 
       await apiJson(`/api/sales-planning/sales-orders/${orderId}/install`, {
         method: "POST", json: { siteId: site.siteId, ...form }, fallbackError: "ขอคิวติดตั้งไม่สำเร็จ",
       });
-      notifyToast.success(before ? "แก้คำขอคิวติดตั้งแล้ว — แจ้ง TS แล้ว" : "ขอคิวติดตั้งแล้ว — แจ้ง TS แล้ว · TS ยืนยันวันได้เมื่อมัดจำผ่าน");
+      /* 🐞 UAT 11/11 (F3): เดิมบอก "TS ยืนยันวันได้เมื่อมัดจำผ่าน" ทุกใบ — ใบที่ไม่มีงวดก่อนติดตั้ง/มัดจำผ่านแล้วอ่านผิดว่ายังติดอยู่
+         ⇒ พูดตามด่านมัดจำของใบนี้ (`deposit.state` ตัวเดียวกับแถบ "ก่อนติดตั้ง" ในโมดัล) */
+      const next = deposit?.state === "blocked" ? "TS ยืนยันวันได้เมื่อมัดจำผ่าน" : "TS ยืนยันวันได้เลย";
+      notifyToast.success(before ? "แก้คำขอคิวติดตั้งแล้ว — แจ้ง TS แล้ว" : `ขอคิวติดตั้งแล้ว — แจ้ง TS แล้ว · ${next}`);
       await onSaved?.();
     } catch (e) {
       setError(e?.message || "ขอคิวติดตั้งไม่สำเร็จ");

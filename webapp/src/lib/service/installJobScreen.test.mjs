@@ -75,3 +75,13 @@ test('หน้าจัดคิว (PR-3c): กลุ่มคำขอติ�
   assert.match(group, /rosterState=\{rosterState\}/);
   assert.match(group, /apiJson\("\/api\/service\/install-queue"/);
 });
+
+/* 🐞 UAT บน production 11/11/2026 (ผัดไทยทิพย์สมัย · ย้อนข้อมูลแล้ว) — สองข้อที่เจอจริง */
+test('UAT 11/11: ข้อความหลังขอคิวพูดตามด่านมัดจำ (F3) · เครื่องจากคลังเลือกด้วยช่องค้นหา (F4)', () => {
+  const req = readFileSync(new URL('../../components/salesPlanning/install/InstallRequestModal.js', import.meta.url), 'utf8');
+  assert.match(req, /deposit\?\.state === "blocked" \? "TS ยืนยันวันได้เมื่อมัดจำผ่าน" : "TS ยืนยันวันได้เลย"/);
+  assert.doesNotMatch(req, /"ขอคิวติดตั้งแล้ว — แจ้ง TS แล้ว · TS ยืนยันวันได้เมื่อมัดจำผ่าน"/, 'ใบที่ไม่มีมัดจำต้องไม่ได้ยินว่ายังติด');
+  const modal = readFileSync(new URL('../../components/service/install/InstallConfirmModal.js', import.meta.url), 'utf8');
+  assert.match(modal, /<SearchableSelect[\s\S]*?onChange=\{\(id\) => addAsset\(zone\.zoneId, id\)\}[\s\S]*?\/>/);
+  assert.doesNotMatch(modal, /from "@\/components\/ui\/Select"/, 'ดรอปดาวน์ธรรมดา 395 ตัวไล่ไม่ไหว');
+});
