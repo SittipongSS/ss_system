@@ -4,13 +4,14 @@
 // ของแผนรื้อสรรพสามิต · mig 0430) เพิ่มกิ่งที่สาม ⇒ ยกมาไว้ที่เดียวก่อนสองฝั่งเพี้ยนหากัน
 //
 //   หมวดทั่วไป   — "เสียภาษีไหม" ตั้งต้นจากธง isExcise ของหมวด (mig 0131) · ฐานภาษี = ราคาขายปลีกของสินค้า
-//   ชุดของขวัญ   — ตั้งต้นจาก **สูตรที่ผูกกับชุด** (giftSetExcise.js) · ชุดคละ = ฐานภาษีจากราคารายชิ้นของแถวน้ำหอม
+//   ชุดของขวัญ   — ตั้งต้นจาก **สูตรที่ผูกกับชุด** (giftSetExcise.js) · ฐานภาษีตามที่ฝ่ายขายเลือก (G5): รวมชุด = ราคาขายปลีก ·
+//                  รายชิ้น = ราคาต่อชิ้นของแถวน้ำหอม · ยังไม่เลือก = ไม่มีฐาน (ภาษี 0)
 //   ทั้งสองแบบ   — ธงรายตัวของฝ่าย RA (`taxableOverride`) ชนะเสมอ (resolveProductTaxable)
 //
-// ⚠️ `retailPriceExVat` ยังเป็นราคาขายปลีกของตัวสินค้า (ชุดคละ = ราคาทั้งชุด) — แค่ exciseTax/localTax ที่คิดจากฐานภาษี
+// ⚠️ `retailPriceExVat` ยังเป็นราคาขายปลีกของตัวสินค้า (ชุด = ราคาทั้งชุด) — แค่ exciseTax/localTax ที่คิดจากฐานภาษี
 import { categoryFlagsOf, listProductTypes } from '@/lib/master/productTypes';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
-import { giftSetExciseFields } from '@/lib/excise/giftSetExcise';
+import { EXCISE_TAX_BASE, giftSetExciseFields } from '@/lib/excise/giftSetExcise';
 import { productTaxRates, resolveProductTaxable } from '@/lib/tax/exciseBilling';
 
 /**
@@ -18,11 +19,12 @@ import { productTaxRates, resolveProductTaxable } from '@/lib/tax/exciseBilling'
  * @param input.retailPriceIncVat  ราคาขายปลีกของสินค้า (ชุดของขวัญ = ราคาทั้งชุด) · ว่างได้
  * @param input.taxableOverride    คำตัดสินรายตัวของ RA (true/false) · null = ตามค่าตั้งต้น
  * @param input.giftSetRows        แถวสูตรของชุด (ชุดของขวัญเท่านั้น · `{ categoryCode, retailPriceIncVat, pieceQty }`)
+ * @param input.priceMode          วิธีแจ้งราคาที่ฝ่ายขายเลือก ('set' | 'pieces') · อื่น ๆ = ยังไม่เลือก
  * @param deps                     ตัวอ่านหมวด (ส่งตัวจำลองในเทสต์)
  * @returns `{ isExciseTaxable, retailPriceExVat, exciseTax, localTax, exciseTaxBase, exciseBasePriceIncVat }` — เขียนลง products ทั้งก้อน
  */
 export async function productExciseFields(
-  { categoryCode, retailPriceIncVat = null, taxableOverride = null, giftSetRows = [] } = {},
+  { categoryCode, retailPriceIncVat = null, taxableOverride = null, giftSetRows = [], priceMode = null } = {},
   { flagsOf = categoryFlagsOf, loadTypes = listProductTypes } = {},
 ) {
   let autoTaxable;
@@ -30,7 +32,7 @@ export async function productExciseFields(
   let exciseBasePriceIncVat = null;
   if (isGiftSetCategory(categoryCode)) {
     const rows = giftSetRows || [];
-    const fields = giftSetExciseFields(rows, rows.length ? await loadTypes() : []);
+    const fields = giftSetExciseFields(rows, rows.length ? await loadTypes() : [], priceMode);
     autoTaxable = fields.autoTaxable;
     exciseTaxBase = fields.exciseTaxBase;
     exciseBasePriceIncVat = fields.exciseBasePriceIncVat;
@@ -39,7 +41,10 @@ export async function productExciseFields(
   }
   const isExciseTaxable = resolveProductTaxable({ taxableOverride, autoTaxable });
   const own = productTaxRates(retailPriceIncVat, { taxable: isExciseTaxable });
-  const taxed = exciseTaxBase ? productTaxRates(exciseBasePriceIncVat, { taxable: isExciseTaxable }) : own;
+  // รวมชุด/สินค้าทั่วไป = ราคาขายปลีกของสินค้า · รายชิ้น = ฐานที่รวมจากแถว · ยังไม่เลือก = ไม่มีฐาน (ภาษี 0)
+  const taxed = exciseTaxBase === EXCISE_TAX_BASE.pieces || exciseTaxBase === EXCISE_TAX_BASE.unchosen
+    ? productTaxRates(exciseBasePriceIncVat, { taxable: isExciseTaxable })
+    : own;
   return {
     isExciseTaxable,
     retailPriceExVat: own.retailPriceExVat,
@@ -49,3 +54,6 @@ export async function productExciseFields(
     exciseBasePriceIncVat,
   };
 }
+
+/** ข้อความตีกลับของ API — ตัวเดียวกับฟอร์ม (ประกาศที่ giftSetExcise.js) */
+export { GIFT_SET_PRICE_MODE_REQUIRED } from '@/lib/excise/giftSetExcise';

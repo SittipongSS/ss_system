@@ -7,7 +7,7 @@
 // ⚠️ "วันนี้" ต้องส่งเข้ามาเสมอ (`businessDate()` จากนาฬิกาไทย) — ห้ามอ่านนาฬิกา
 // ในนี้ ไม่งั้นค่าจะเปลี่ยนระหว่างเรนเดอร์และเทสต์จะผูกกับวันที่รันเทสต์
 
-import { exciseBasePriceIncVat, usesPieceTaxBase } from '@/lib/excise/giftSetExcise';
+import { exciseBasePriceIncVat, hasOwnTaxBase, usesPieceTaxBase } from '@/lib/excise/giftSetExcise';
 
 /** จำนวนวันเต็มจาก `fromIso` ถึง `todayIso` (ทั้งคู่เป็นวันไทย YYYY-MM-DD หรือ timestamp) */
 export function ageInDays(from, todayIso) {
@@ -135,9 +135,9 @@ export function wantsLateOnly(searchParams) {
  */
 export function registrationProductFacts(product, { vatRate }) {
   const p = product || {};
-  /* ชุดของขวัญคละ (มติ 11/11 · mig 0430): ราคาที่คิวโชว์คือ **ฐานภาษี** = ราคาน้ำหอมในชุด ไม่ใช่ราคาทั้งชุด
-     (ช่องก่อน VAT ที่เก็บบนสินค้าเป็นของราคาทั้งชุด ⇒ ถอดจากฐานแทน) · ยังไม่ครบ = ว่าง */
-  const pieces = usesPieceTaxBase(p);
+  /* ชุดของขวัญแจ้งรายชิ้น (มติ 11/11 · mig 0430): ราคาที่คิวโชว์คือ **ฐานภาษี** = ราคาน้ำหอมในชุด ไม่ใช่ราคาทั้งชุด
+     (ช่องก่อน VAT ที่เก็บบนสินค้าเป็นของราคาทั้งชุด ⇒ ถอดจากฐานแทน) · ยังไม่ครบ / ยังไม่เลือกวิธีแจ้งราคา (0431) = ว่าง */
+  const pieces = hasOwnTaxBase(p);
   const base = exciseBasePriceIncVat(p);
   const incVat = pieces ? base : Number(p.retailPriceIncVat);
   const hasIncVat = Number.isFinite(incVat) && incVat > 0;
@@ -149,7 +149,7 @@ export function registrationProductFacts(product, { vatRate }) {
     volumeUnit: p.volumeUnit ?? null,
     retailPriceIncVat: hasIncVat ? incVat : (pieces ? null : (p.retailPriceIncVat ?? null)),
     retailPriceExVat: Number.isFinite(exVat) ? exVat : null,
-    taxBasis: pieces ? 'pieces' : null,
+    taxBasis: usesPieceTaxBase(p) ? 'pieces' : null,
     factory: {
       costPrice: p.costPrice ?? null,
       materialCost: p.materialCost ?? null,
