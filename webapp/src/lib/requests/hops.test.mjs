@@ -388,3 +388,26 @@ test('รอบแก้ยกป้ายที่ตัดหาง "→ ร�
   const scent = followUpRowFrom({ id: 'D', lineKind: 'scent_dev', label: 'Rose → Oud Accord' }, 2);
   assert.equal(scent.label, 'Rose → Oud Accord');
 });
+
+// 🐞 11/11/2026 — ลูกค้า "ไม่เอา" พร้อมข้อความยาวเกิน 500 ตัว ⇒ error ดิบ
+//    `material_price_ask_items_noQuoteReason_check` (ด่าน ≤ 500 ของ 0158 ติดมากับคอลัมน์ที่ 0204
+//    เปลี่ยนชื่อเป็น declineReason) · 0432 ตั้งด่านใหม่ — ยามข้อนี้: ข้อความที่ด่านของก้าวยอม
+//    ต้องลงคอลัมน์ได้เสมอ ยาวเกินฐานเมื่อไรต้องโดนด่านไทยตีกลับก่อนถึงฐาน
+test('declineReason: ข้อความที่ด่านของก้าวยอม ต้องไม่ยาวเกินด่านในฐาน (mig 0432)', () => {
+  const sql = readFileSync('supabase/migrations/0432_decline_reason_length.sql', 'utf8');
+  const m = sql.match(/ADD CONSTRAINT dept_request_items_decline_reason_length_check\s+CHECK \("declineReason" IS NULL OR length\("declineReason"\) <= (\d+)\)/);
+  assert.ok(m, 'หาด่านความยาว declineReason ใน 0432 ไม่เจอ');
+  const dbMax = Number(m[1]);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS "material_price_ask_items_noQuoteReason_check"/);
+
+  const over = 'ก'.repeat(dbMax + 1);
+  assert.ok(hopValuesError('outcome', { outcome: 'rejected', at: '2026-11-11', note: over }),
+    'ไม่เอา: ข้อความยาวเกินฐานต้องโดนด่านไทยตีกลับ');
+  assert.ok(hopValuesError('refuse', { note: over }), 'ปฏิเสธ: เหตุผลยาวเกินฐานต้องโดนด่านไทยตีกลับ');
+
+  // 🐞 ตัวที่พังจริง: 501–4000 ตัว เคยผ่านด่านของก้าวแต่ฐานปฏิเสธ
+  const long = 'ก'.repeat(501);
+  assert.equal(hopValuesError('outcome', { outcome: 'rejected', at: '2026-11-11', note: long }), null);
+  const patch = hopPatch('outcome', { outcome: 'rejected', at: '2026-11-11', note: long }, { id: 'U1', name: 'ขาย' });
+  assert.ok(patch.declineReason.length <= dbMax);
+});
