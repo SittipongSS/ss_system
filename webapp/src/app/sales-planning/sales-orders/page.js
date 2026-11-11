@@ -562,7 +562,9 @@ export default function SalesOrdersPage() {
                         จึงตัดด้วย ellipsis และเก็บเต็มไว้ใน title (บทเรียนจาก IS-26080004) */}
                     <span className="cell-sub" title={(historical ? oldRefs : row.referenceDoc) || undefined}>
                       {historical ? <StatusBadge tone="info" size="sm" label="ย้อนหลัง" /> : null}
-                      {excise ? <StatusBadge tone="info" size="sm" label="ค่าสรรพสามิต" /> : null}
+                      {/* ใบค่าสรรพสามิต: ป้ายเดียวของแถว (เจ้าของทัก 11/11 "ป้ายสรรพสามิตซ้ำซ้อน") — โทนตามขั้นของใบ (`exciseStage.tone` · รอ/เสร็จ)
+                          บรรทัดขั้นข้างล่างจึงไม่มีป้ายซ้ำ เหลือแต่ "ของ SO … · ขั้น" */}
+                      {excise ? <StatusBadge tone={row.exciseStage?.tone || "info"} size="sm" label="ค่าสรรพสามิต" /> : null}
                       <span className="cell-ellipsis">
                         {historical ? (oldRefs || NA) : naText(row.quotation?.quoteNumber)}
                         {!historical && row.referenceDoc ? ` · ${row.referenceDoc}` : ""}
@@ -591,9 +593,10 @@ export default function SalesOrdersPage() {
                     ) : null}
                     {/* ⭐ "สรรพสามิต · ขั้น" (มติเจ้าของ 03/11 — "SO นี้ต้องมีสรรพสามิตไหม ถึงขั้นไหน") — ขั้นคิดที่ server
                         (`row.exciseStage` · lib/excise/exciseListStage — "รอออกใบ" = คิว SA ตัวเดียวกับแดชบอร์ด) · ไม่มีเรื่องสรรพสามิต = ไม่มีบรรทัด */}
+                    {/* ใบค่าสรรพสามิตเองไม่มีป้าย "สรรพสามิต" ซ้ำ — ป้าย "ค่าสรรพสามิต" บนบรรทัด QT บอกชนิดและโทนขั้นแล้ว (11/11) */}
                     {row.exciseStage ? (
                       <span className="cell-sub mt-1.5">
-                        <StatusBadge tone={row.exciseStage.tone} size="sm" label="สรรพสามิต" />{" "}
+                        {excise ? null : <><StatusBadge tone={row.exciseStage.tone} size="sm" label="สรรพสามิต" />{" "}</>}
                         <span>{row.exciseStage.text}</span>
                       </span>
                     ) : null}
