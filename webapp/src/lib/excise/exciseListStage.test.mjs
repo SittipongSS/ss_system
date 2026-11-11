@@ -68,6 +68,9 @@ test('แท็บ "สรรพสามิต" = ใบ SO ค่าสรร�
   assert.match(page, /\{ value: EXCISE_LINE_VIEW, label: "สรรพสามิต \(Excise\)" \}/, 'ป้ายไทย + อังกฤษแบบแท็บสายธุรกิจ');
   assert.doesNotMatch(page, /SalesOrderBundleButton|type="checkbox"/, 'ชุดเอกสารโหลดที่รายงานยอดขายที่เดียว (มติ 03/11)');
   assert.match(page, /\.concat\(row\.exciseStage \? `สรรพสามิต \$\{row\.exciseStage\.text\}` : null\)/, 'ตาเห็นบนแถว = ต้องค้นเจอ');
+  /* เจ้าของทัก 11/11 "ป้ายสรรพสามิตซ้ำซ้อน" — แถวใบค่าสรรพสามิตมีป้ายเดียว ("ค่าสรรพสามิต" · โทนตามขั้น) · บรรทัดขั้นไม่มีป้ายซ้ำ */
+  assert.match(page, /\{excise \? <StatusBadge tone=\{row\.exciseStage\?\.tone \|\| "info"\} size="sm" label="ค่าสรรพสามิต" \/> : null\}/);
+  assert.match(page, /\{excise \? null : <><StatusBadge tone=\{row\.exciseStage\.tone\} size="sm" label="สรรพสามิต" \/>\{" "\}<\/>\}/);
   const route = read('../../app/api/sales-planning/sales-orders/route.js');
   assert.match(route, /exciseStage: exciseStages\.get\(row\.id\) \|\| null,/);
 });
