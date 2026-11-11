@@ -8,9 +8,10 @@
 //   · ลำดับแถว = ลำดับที่ใบสเปค FM-SA-04 พิมพ์ ("สูตร 1 · …", "สูตร 2 · …")
 // ⚠️ แถวที่สร้างบนจอมี `key` ของตัวเอง (แถวจากฐานใช้ `id`) — ใช้ index เป็น key แล้วลบแถวกลาง
 //    ตัวเลือกของแถวล่างจะค้างค่าของแถวที่ถูกลบ
-// ⭐ สรรพสามิต (มติเจ้าของ 11/11 · mig 0430): ชุดเสียภาษีไหม = ดูจากหมวดของแถวสูตร (`giftSetExcise` ตัวเดียวกับ API)
-//    · ชุดคละ (มีทั้งน้ำหอมและของไม่เสียภาษี) — แถวหมวดเสียภาษีมีช่อง "ราคาขายปลีก/ชิ้น (รวม VAT)" + "จำนวนชิ้น" = ฐานภาษี
-//    · ชุดน้ำหอมล้วนไม่มีช่องเพิ่ม (คิดจากราคาขายปลีกทั้งชุดในหัวข้อราคา) · บอกแบบของชุดใต้รายการเสมอ
+// ⭐ สรรพสามิต (มติเจ้าของ 11/11 · mig 0430/0431): ชุดเสียภาษีไหม = ดูจากหมวดของแถวสูตร (`giftSetExcise` ตัวเดียวกับ API)
+//    · ชุดที่มีน้ำหอม — ตัวเลือก "แจ้งราคาขายปลีก: รวมชุด | รายชิ้น" **ไม่มีค่าตั้งต้น** (G5: "ต้องถามก่อนเสมอ") · ยังไม่เลือก = บันทึกไม่ได้
+//    · รายชิ้น — แถวหมวดเสียภาษีมีช่อง "ราคาขายปลีก/ชิ้น (รวม VAT)" + "จำนวนชิ้น" = ฐานภาษี · รวมชุด = ใช้ราคาขายปลีกในหัวข้อราคา
+//    · บอกแบบของชุดใต้รายการเสมอ
 import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
@@ -18,8 +19,11 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Input from "@/components/ui/Input";
 import MoneyInput from "@/components/ui/MoneyInput";
 import StatusNotice from "@/components/ui/StatusNotice";
+import OptionTiles from "@/components/ui/OptionTiles";
 import { giftSetComponentCategories, giftSetFormulaChoices } from "@/lib/master/giftSetFormulas";
-import { GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary } from "@/lib/excise/giftSetExcise";
+import {
+  EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, GIFT_SET_PRICE_MODE_OPTIONS, giftSetExcise, giftSetExciseSummary,
+} from "@/lib/excise/giftSetExcise";
 import { isExciseCategory } from "@/lib/master/categoryOf";
 import { fmtDate } from "@/lib/format";
 
@@ -27,12 +31,13 @@ let draftSeq = 0;
 const newRow = () => ({ key: `draft-${Date.now()}-${(draftSeq += 1)}`, categoryCode: "", formulaId: "", retailPriceIncVat: "", pieceQty: "" });
 const rowKey = (row, index) => row.key || row.id || `row-${index}`;
 
-export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], productTypes = [] }) {
+export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], productTypes = [], priceMode = "", onPriceMode }) {
   const categories = giftSetComponentCategories(productTypes);
   const formulaById = new Map(formulas.map((f) => [f.id, f]));
-  const excise = giftSetExcise(rows, productTypes);
-  const mixed = excise.kind === GIFT_SET_EXCISE_KIND.mixed;
-  const summaryTone = excise.kind === GIFT_SET_EXCISE_KIND.none ? "neutral" : excise.missingPriceRows.length ? "warning" : "info";
+  const excise = giftSetExcise(rows, productTypes, { mode: priceMode });
+  const pieces = excise.mode === EXCISE_TAX_BASE.pieces;
+  const summaryTone = excise.kind === GIFT_SET_EXCISE_KIND.none ? "neutral"
+    : !excise.mode || excise.missingPriceRows.length ? "warning" : "info";
 
   const setRow = (index, patch) => onRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const removeRow = (index) => onRows(rows.filter((_, i) => i !== index));
@@ -102,7 +107,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                     icon={<Trash2 size={14} />}
                   />
                 </div>
-                {mixed && isExciseCategory(row.categoryCode, productTypes) && (
+                {pieces && isExciseCategory(row.categoryCode, productTypes) && (
                   <div className="md:col-span-2 grid grid-cols-2 gap-2">
                     <div className="form-group">
                       <label>ราคาขายปลีก/ชิ้น (รวม VAT)</label>
@@ -138,6 +143,18 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
           เพิ่มสูตร
         </Button>
       </div>
+      {excise.taxable && (
+        <div className="form-group mt-3">
+          <label>แจ้งราคาขายปลีกเพื่อคิดสรรพสามิต <span className="text-[var(--red)]">*</span></label>
+          <OptionTiles
+            ariaLabel="วิธีแจ้งราคาขายปลีกของชุดของขวัญ"
+            value={excise.mode || ""}
+            onChange={(mode) => onPriceMode?.(mode)}
+            options={GIFT_SET_PRICE_MODE_OPTIONS}
+            invalid={!excise.mode}
+          />
+        </div>
+      )}
       {rows.length > 0 && productTypes.length > 0 && (
         <div className="mt-2">
           <StatusNotice tone={summaryTone}>{giftSetExciseSummary(excise)}</StatusNotice>

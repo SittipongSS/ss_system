@@ -19,7 +19,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyOrDash, fmtNumber, naText } from "@/lib/format";
-import { exciseBaseLabel, exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
+import { exciseBaseLabel, exciseBaseMissingText, exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
 import { businessDate } from "@/lib/businessDate";
 import { useApiList } from "@/lib/excise/useApiList";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -562,9 +562,7 @@ export default function RegistrationDetailPage() {
                   ? <Button as={Link} href={`/database/products/${s.productId}`} size="sm">เติมราคา</Button>
                   : null}
               >
-                {usesPieceTaxBase(taxProduct)
-                  ? "ชุดของขวัญคละยังกรอกราคาขายปลีกต่อชิ้นของน้ำหอมในชุดไม่ครบ — ภาษีจะคิดออกมาเป็น 0 ทั้งที่ต้องเสียภาษี"
-                  : "สินค้ายังไม่มีราคาขายปลีก — ภาษีจะคิดออกมาเป็น 0 ทั้งที่ต้องเสียภาษี"}
+                {`${exciseBaseMissingText(taxProduct)} — ภาษีจะคิดออกมาเป็น 0 ทั้งที่ต้องเสียภาษี`}
               </StatusNotice>
             ) : (
               <div className={styles.fieldGrid}>

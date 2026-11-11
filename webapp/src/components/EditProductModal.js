@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Factory } from "lucide-react";
 import Modal from "@/components/Modal";
 import ProductForm, { PRODUCT_EDIT_FIELDS, giftSetFormSeed } from "@/components/database/ProductForm";
-import { giftSetFormError } from "@/lib/master/giftSetFormulas";
+import { giftSetFormError, isGiftSetCategory } from "@/lib/master/giftSetFormulas";
+import { giftSetPriceModeError } from "@/lib/excise/giftSetExcise";
 import { categoryOf } from "@/lib/master/categoryOf";
 import { brandTh, brandEn, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { isAutoFgCode } from "@/lib/master/masterCodes";
@@ -109,6 +110,10 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
     // ชุดของขวัญ (01-037): ทุกแถวต้องมีหมวด + สูตร · สูตรไม่ซ้ำ · หมวดตรงกับสูตร — ตัวตรวจเดียวกับ API
     const giftSetError = giftSetFormError(form.categoryCode || categoryOf(form.fgCode), form.formulaComponents, formulas);
     if (giftSetError) { setError(giftSetError); return; }
+    // ชุดที่มีน้ำหอมต้องเลือกวิธีแจ้งราคาขายปลีก (G5 · ไม่มีค่าตั้งต้น) — ข้อความเดียวกับ API
+    const priceModeError = isGiftSetCategory(form.categoryCode || categoryOf(form.fgCode))
+      ? giftSetPriceModeError(form.formulaComponents, productTypes, form.exciseTaxBase) : "";
+    if (priceModeError) { setError(priceModeError); return; }
     setSubmitting(true);
     setError(null);
     const body = {

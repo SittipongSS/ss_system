@@ -17,7 +17,8 @@ import { masterApprovalUpdate, masterReapprovalUpdate } from '@/lib/master/recor
 import { recordAudit } from '@/lib/audit';
 import { missingRequiredDocs } from '@/lib/master/attachmentRequirements';
 import { missingDocsMessage, overrideReasonError } from '@/lib/master/attachmentTypes';
-import { productExciseFields } from '@/lib/excise/productExcise';
+import { GIFT_SET_PRICE_MODE_REQUIRED, productExciseFields } from '@/lib/excise/productExcise';
+import { EXCISE_TAX_BASE } from '@/lib/excise/giftSetExcise';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
@@ -418,9 +419,16 @@ export async function PATCH(request, { params }) {
       retailPriceIncVat: updated.retailPriceIncVat,
       taxableOverride: updated.taxableOverride,
       giftSetRows,
+      /* G5: ฟอร์มส่งวิธีแจ้งราคามากับรายการสูตรเสมอ · ปุ่มอื่น (อนุมัติ/พักใช้/ราคาผลิต) ไม่ส่ง = ใช้ค่าที่เก็บไว้ */
+      priceMode: body.formulaComponents !== undefined ? body.exciseTaxBase : product.exciseTaxBase,
     }));
   } catch (e) {
     return Response.json({ error: `อ่านหมวดสินค้าไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
+  }
+  /* G5 (มติ 11/11 "ต้องถามก่อนเสมอ"): บันทึกจากฟอร์มต้องเลือกวิธีแจ้งราคาเมื่อชุดมีน้ำหอม · ปุ่มอื่นไม่ถูกกัน
+     (ชุดที่ยังไม่เลือกคงเป็น 'unchosen' = ภาษี 0 · ด่านยื่นทะเบียนบอกเหตุ) */
+  if (body.formulaComponents !== undefined && updated.exciseTaxBase === EXCISE_TAX_BASE.unchosen) {
+    return Response.json({ error: GIFT_SET_PRICE_MODE_REQUIRED }, { status: 400 });
   }
 
   const factoryPrice = updated.costPrice;

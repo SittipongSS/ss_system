@@ -11,7 +11,8 @@ import {
 import { clearedPackagingFields, hasPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
 import { recordAudit } from '@/lib/audit';
-import { productExciseFields } from '@/lib/excise/productExcise';
+import { GIFT_SET_PRICE_MODE_REQUIRED, productExciseFields } from '@/lib/excise/productExcise';
+import { EXCISE_TAX_BASE } from '@/lib/excise/giftSetExcise';
 import { recordProductPriceHistory } from '@/lib/master/priceHistory';
 import { productFormulaSnapshot, productScentSnapshot } from '@/lib/master/scentFormulaAdmin';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
@@ -328,11 +329,17 @@ export async function POST(request) {
       retailPriceIncVat: retailPriceIncVat == null || retailPriceIncVat === '' ? null : retailPriceIncVatNum,
       taxableOverride,
       giftSetRows,
+      priceMode: body.exciseTaxBase,
     });
   } catch (e) {
     return Response.json({ error: `อ่านหมวดสินค้าไม่สำเร็จ: ${e?.message || 'ระบบขัดข้อง'}` }, { status: 500 });
   }
   const { isExciseTaxable, retailPriceExVat, exciseTax, localTax, exciseTaxBase, exciseBasePriceIncVat } = exciseFields;
+  /* G5 (มติ 11/11 "ต้องถามก่อนเสมอ"): ชุดของขวัญที่มีน้ำหอมต้องเลือกวิธีแจ้งราคาขายปลีกก่อนบันทึก — ไม่มีค่าตั้งต้น
+     (ข้อความเดียวกับฟอร์ม `giftSetPriceModeError`) */
+  if (exciseTaxBase === EXCISE_TAX_BASE.unchosen) {
+    return Response.json({ error: GIFT_SET_PRICE_MODE_REQUIRED }, { status: 400 });
+  }
 
   const factoryPrice = costPriceNum;
   // ⚠️ ค่าแรงคิดจากปริมาตร — กลุ่มที่ไม่มีช่องปริมาตร (03/04) จะได้ volume = null

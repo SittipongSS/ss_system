@@ -28,7 +28,7 @@ import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
-import { GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary } from "@/lib/excise/giftSetExcise";
+import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary } from "@/lib/excise/giftSetExcise";
 import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -316,9 +316,9 @@ export default function ProductDetails() {
   /* "เข้าข่ายสรรพสามิต" ของหน้านี้ = หมวดติ๊ก isExcise **หรือ** สินค้าถูกตั้งให้เสียภาษี (ชุดของขวัญที่มีน้ำหอม — มติ 11/11 ·
      mig 0430 · ของที่ RA บังคับรายตัว) · ของที่ RA ยกเว้นยังเข้าข่าย (โชว์ "ยกเว้น") เหมือนเดิม */
   const isExciseCat = catFlags.isExcise || product.isExciseTaxable === true;
-  // ชุดของขวัญ: แบบของชุด (ไม่มีของเสียภาษี / น้ำหอมล้วน / คละ) จากสูตรในชุด — ตัวเดียวกับฟอร์มและ API (mig 0430)
+  // ชุดของขวัญ: แบบของชุด + วิธีแจ้งราคาที่เลือก (รวมชุด / รายชิ้น · G5) — ตัวเดียวกับฟอร์มและ API (mig 0430/0431)
   const giftSetTax = isGiftSetCategory(product.categoryCode) && productTypes.length
-    ? giftSetExcise(product.formulaComponents || [], productTypes) : null;
+    ? giftSetExcise(product.formulaComponents || [], productTypes, { mode: product.exciseTaxBase }) : null;
   // หน่วยขายจริงของสินค้าตัวนี้ — หน้านี้เคยพูดว่า "ชิ้น" ตายตัวทุกที่ ทั้งที่หน่วยขาย
   // เป็นขวด/หลอด/Kg ได้ (ฟอร์มแก้ไปแล้ว หน้ารายละเอียดเพิ่งตามมา)
   const unit = product.saleUnit || DEFAULT_SALE_UNIT;
@@ -738,8 +738,8 @@ export default function ProductDetails() {
                                 {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
                               </span>
                             </span>
-                            {/* ราคาน้ำหอมในชุดคละ (มติ 11/11 · mig 0430) — ฐานภาษี = ราคา/ชิ้น × จำนวนชิ้นของแถวหมวดเสียภาษี */}
-                            {giftSetTax?.kind === GIFT_SET_EXCISE_KIND.mixed && isExciseCategory(row.categoryCode, productTypes) && (
+                            {/* แจ้งราคารายชิ้น (G5 · mig 0430) — ฐานภาษี = ราคา/ชิ้น × จำนวนชิ้นของแถวหมวดเสียภาษี */}
+                            {giftSetTax?.mode === EXCISE_TAX_BASE.pieces && isExciseCategory(row.categoryCode, productTypes) && (
                               <span className="block text-[var(--text-2)]">
                                 {`ราคาขายปลีก/ชิ้น ${fmtMoneyOrDash(row.retailPriceIncVat)} (รวม VAT) × ${fmtNumber(row.pieceQty || 1)} ชิ้น`}
                               </span>
@@ -759,7 +759,7 @@ export default function ProductDetails() {
                     )}
                     {giftSetTax && (product.formulaComponents || []).length > 0 && (
                       <div className="mt-2">
-                        <StatusNotice tone={giftSetTax.kind === GIFT_SET_EXCISE_KIND.none ? "neutral" : giftSetTax.missingPriceRows.length ? "warning" : "info"}>
+                        <StatusNotice tone={giftSetTax.kind === GIFT_SET_EXCISE_KIND.none ? "neutral" : !giftSetTax.mode || giftSetTax.missingPriceRows.length ? "warning" : "info"}>
                           {giftSetExciseSummary(giftSetTax)}
                         </StatusNotice>
                       </div>

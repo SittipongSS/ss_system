@@ -2,7 +2,7 @@ import { categoryFlags, categoryOf } from "@/lib/master/categoryOf";
 import { billedTaxTotals, exciseTaxLine, resolveProductTaxable, round2 } from "@/lib/tax/exciseBilling";
 import { lineUnitsTotal } from "@/lib/sales/linePacks";
 import { isExciseChargeProduct } from "@/lib/excise/exciseCharge";
-import { exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
+import { exciseBaseMissingText, exciseBasePriceIncVat } from "@/lib/excise/giftSetExcise";
 
 const normalizedKey = (value) => String(value || "").trim().toLowerCase();
 
@@ -156,9 +156,7 @@ export function resolveSoFiling({
         productId: product.id,
         fgCode,
         message: retailMissing
-          ? (usesPieceTaxBase(product)
-            ? `${fgCode || line.description} ชุดของขวัญคละยังกรอกราคาขายปลีกต่อชิ้นของน้ำหอมในชุดไม่ครบ (ฐานภาษี) — ภาษีคิดออกมา ฿0`
-            : `${fgCode || line.description} ยังไม่มีราคาขายปลีก (ฐานภาษี) — ภาษีคิดออกมา ฿0`)
+          ? `${fgCode || line.description} ${exciseBaseMissingText(product)} (ฐานภาษี) — ภาษีคิดออกมา ฿0`
           : `${fgCode || line.description} อัตราภาษีบนสินค้าเป็น 0 ทั้งที่มีราคาขายปลีก — ตรวจทะเบียนสินค้าก่อนยื่น`,
       });
     }
