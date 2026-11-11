@@ -8,7 +8,7 @@
 import { categoryFlags, categoryRow } from '@/lib/master/categoryOf';
 import { categoryName } from '@/lib/master/productCategoryOptions';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
-import { GIFT_SET_EXCISE_KIND, giftSetExcise } from '@/lib/excise/giftSetExcise';
+import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetPiecesTotal, giftSetPriceMode } from '@/lib/excise/giftSetExcise';
 import { exciseTaxLine, productTaxRates } from '@/lib/tax/exciseBilling';
 
 const KIND_TEXT = { [GIFT_SET_EXCISE_KIND.pure]: 'ชุดน้ำหอมล้วน', [GIFT_SET_EXCISE_KIND.mixed]: 'ชุดคละประเภท' };
@@ -67,4 +67,57 @@ export function exciseTaxPreview(basePriceIncVat) {
   const rates = productTaxRates(base, { taxable: true });
   const line = exciseTaxLine({ exciseRatePerUnit: rates.exciseTax, localTaxRatePerUnit: rates.localTax, quantity: 1 });
   return { taxPerUnit: line.taxPerUnit, retailPriceExVat: rates.retailPriceExVat };
+}
+
+const hasPrice = (value) => value !== '' && value != null && Number(value) > 0;
+
+/**
+ * ฐานภาษีจากค่าบนฟอร์ม (ก่อนบันทึก) — ตัวเดียวกับที่ฝั่งบันทึกจะคิด (productExciseFields + giftSetRetailFields)
+ *   ชุดที่มีของเสียภาษี: รวมชุด = ราคาทั้งชุด · รายชิ้น = Σ แถวที่เสียภาษี · ยังไม่เลือก = null
+ *   ชุดที่ RA ตั้งเสียรายตัว (ไม่มีของเสียภาษีในชุด) / สินค้าทั่วไป = ราคาขายปลีกของสินค้า (ชุดรายชิ้น = ผลรวมทุกชิ้น)
+ * @returns ตัวเลข > 0 หรือ null · ไม่เสียภาษี = null
+ */
+export function formTaxBase({ status, giftSet = false, retailPriceIncVat = null, giftSetRows = [], priceMode = null } = {}) {
+  if (!status?.taxable) return null;
+  const mode = giftSetPriceMode(priceMode);
+  let base = retailPriceIncVat;
+  if (giftSet && status.gift?.taxable) {
+    base = mode === EXCISE_TAX_BASE.pieces ? status.gift.basePriceIncVat : mode === EXCISE_TAX_BASE.set ? retailPriceIncVat : null;
+  } else if (giftSet && mode === EXCISE_TAX_BASE.pieces) {
+    base = giftSetPiecesTotal(giftSetRows);
+  }
+  return hasPrice(base) ? Number(base) : null;
+}
+
+/**
+ * รายการที่ต้องมีก่อนยื่นขึ้นทะเบียน RA (R1 · มติเจ้าของ 11/11 รอบสอง: "บังคับใส่ตอนจะยื่น") — ฟอร์มติ๊กให้เห็นว่ายังขาดอะไร
+ * ⚠️ กติกาเดียวกับด่านยื่น (`missingRetailPriceEntry` → `exciseBasePriceIncVat`) แต่อ่านค่าบนฟอร์ม ไม่ใช่ค่าที่บันทึกแล้ว
+ * @returns `[{ key, text, ok }]` · ไม่เสียภาษี = []
+ */
+export function exciseFilingChecklist({ status, giftSet = false, retailPriceIncVat = null, giftSetRows = [], priceMode = null } = {}) {
+  if (!status?.taxable) return [];
+  const mode = giftSetPriceMode(priceMode);
+  if (giftSet && status.gift?.taxable) {
+    const items = [{ key: 'mode', text: 'เลือกวิธีแจ้งราคา (รวมชุด / รายชิ้น)', ok: !!mode }];
+    if (mode === EXCISE_TAX_BASE.pieces) {
+      items.push({
+        key: 'pieces',
+        text: `ราคาต่อชิ้นของแถวที่เสียภาษี (${status.gift.taxableRows.length} แถว)`,
+        ok: hasPrice(status.gift.basePriceIncVat),
+      });
+    } else if (mode === EXCISE_TAX_BASE.set) {
+      items.push({ key: 'price', text: 'ราคาขายปลีกทั้งชุด (รวม VAT)', ok: hasPrice(retailPriceIncVat) });
+    } else {
+      items.push({ key: 'price', text: 'ราคาตามวิธีที่เลือก', ok: false });
+    }
+    return items;
+  }
+  if (giftSet) {
+    return [{
+      key: 'price',
+      text: mode === EXCISE_TAX_BASE.pieces ? 'ราคาต่อชิ้นครบทุกแถว (ราคาทั้งชุด)' : 'ราคาขายปลีกทั้งชุด (รวม VAT)',
+      ok: formTaxBase({ status, giftSet, retailPriceIncVat, giftSetRows, priceMode }) != null,
+    }];
+  }
+  return [{ key: 'price', text: 'ราคาขายปลีก (รวม VAT)', ok: hasPrice(retailPriceIncVat) }];
 }

@@ -54,7 +54,8 @@ export async function loadProductFormulasMany(supabase, productIds = [], { produ
     .in('productId', chunk).order('id'));
   const out = new Map();
   if (!rows.length) return out;
-  const formulas = await fetchAllInChunks(rows.map((r) => r.formulaId), (chunk) => supabase
+  // R2 (mig 0433): แถวที่ยังไม่เลือกสูตรมี formulaId ว่าง — ไม่ส่ง null เข้า .in()
+  const formulas = await fetchAllInChunks([...new Set(rows.map((r) => r.formulaId).filter(Boolean))], (chunk) => supabase
     .from('formulas').select(FORMULA_COLUMNS).in('id', chunk).order('id'));
   const formulaById = new Map(formulas.map((f) => [f.id, f]));
   const scents = await fetchAllInChunks(formulas.map((f) => f.scentId).filter(Boolean), (chunk) => supabase
@@ -112,7 +113,8 @@ export async function planGiftSetFormulas(supabase, raw) {
 export async function replaceProductFormulas(supabase, productId, rows) {
   const payload = rows.map((row, index) => ({
     id: `PFM-${randomUUID()}`,
-    formulaId: row.formulaId,
+    // R2 (mig 0433): ยังไม่เลือกสูตร = null (สตริงว่างชน FK → formulas)
+    formulaId: row.formulaId || null,
     categoryCode: row.categoryCode,
     sortOrder: index,
     // mig 0430 — คีย์สองตัวนี้ต้องตรงกับ jsonb_to_recordset ของ RPC (คีย์ที่ไม่ได้ประกาศถูกทิ้งเงียบ)

@@ -28,7 +28,7 @@ import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
-import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary } from "@/lib/excise/giftSetExcise";
+import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary, giftSetPriceModeOf } from "@/lib/excise/giftSetExcise";
 import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -38,7 +38,7 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { useTeams } from "@/lib/roleContext";
-import { categoryOf, categoryFlags, fdaNoticeState, isExciseCategory } from "@/lib/master/categoryOf";
+import { categoryOf, categoryFlags, fdaNoticeState } from "@/lib/master/categoryOf";
 import { isMissingRetailPrice } from "@/lib/tax/taxableProducts";
 import { isProductTaxable, productExciseBadge, productShowsRetailPrice } from "@/lib/master/productFilter";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
@@ -318,7 +318,9 @@ export default function ProductDetails() {
   const isExciseCat = catFlags.isExcise || product.isExciseTaxable === true;
   // ชุดของขวัญ: แบบของชุด + วิธีแจ้งราคาที่เลือก (รวมชุด / รายชิ้น · G5) — ตัวเดียวกับฟอร์มและ API (mig 0430/0431)
   const giftSetTax = isGiftSetCategory(product.categoryCode) && productTypes.length
-    ? giftSetExcise(product.formulaComponents || [], productTypes, { mode: product.exciseTaxBase }) : null;
+    ? giftSetExcise(product.formulaComponents || [], productTypes, { mode: giftSetPriceModeOf(product) }) : null;
+  // วิธีแจ้งราคาของชุด (R3 · mig 0433 · ทุกชุด) — รายชิ้น = โชว์ราคา/ชิ้นใต้ทุกแถว
+  const giftSetPieces = isGiftSetCategory(product.categoryCode) && giftSetPriceModeOf(product) === EXCISE_TAX_BASE.pieces;
   // หน่วยขายจริงของสินค้าตัวนี้ — หน้านี้เคยพูดว่า "ชิ้น" ตายตัวทุกที่ ทั้งที่หน่วยขาย
   // เป็นขวด/หลอด/Kg ได้ (ฟอร์มแก้ไปแล้ว หน้ารายละเอียดเพิ่งตามมา)
   const unit = product.saleUnit || DEFAULT_SALE_UNIT;
@@ -727,19 +729,24 @@ export default function ProductDetails() {
                         {product.formulaComponents.map((row, index) => (
                           <li key={row.id || index} className="text-sm">
                             <span className="text-[var(--text-3)]">{`สูตร ${index + 1} · ${row.categoryName || row.categoryCode}`}</span>
-                            <span className="block">
-                              <Link
-                                href={`/database/formulas?q=${encodeURIComponent(row.formulaCode || row.formulaName || "")}`}
-                                className="font-semibold text-[var(--accent)] hover:underline"
-                              >
-                                {row.formulaName || row.formulaCode || row.formulaId}
-                              </Link>
-                              <span className="font-mono text-[var(--text-2)]">
-                                {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
+                            {/* R2 (mig 0433): แถวที่ยังไม่เลือกสูตร — สูตรต้องครบก่อนส่งลง BOM */}
+                            {row.formulaId ? (
+                              <span className="block">
+                                <Link
+                                  href={`/database/formulas?q=${encodeURIComponent(row.formulaCode || row.formulaName || "")}`}
+                                  className="font-semibold text-[var(--accent)] hover:underline"
+                                >
+                                  {row.formulaName || row.formulaCode || row.formulaId}
+                                </Link>
+                                <span className="font-mono text-[var(--text-2)]">
+                                  {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
+                                </span>
                               </span>
-                            </span>
-                            {/* แจ้งราคารายชิ้น (G5 · mig 0430) — ฐานภาษี = ราคา/ชิ้น × จำนวนชิ้นของแถวหมวดเสียภาษี */}
-                            {giftSetTax?.mode === EXCISE_TAX_BASE.pieces && isExciseCategory(row.categoryCode, productTypes) && (
+                            ) : (
+                              <span className="block text-[var(--text-2)]">ยังไม่เลือกสูตร — ต้องเลือกก่อนส่งลง BOM</span>
+                            )}
+                            {/* แจ้งราคารายชิ้น (R3 · mig 0433) — ทุกแถวมีราคา/ชิ้น · ฐานภาษีนับเฉพาะแถวหมวดเสียภาษี */}
+                            {giftSetPieces && (
                               <span className="block text-[var(--text-2)]">
                                 {`ราคาขายปลีก/ชิ้น ${fmtMoneyOrDash(row.retailPriceIncVat)} (รวม VAT) × ${fmtNumber(row.pieceQty || 1)} ชิ้น`}
                               </span>

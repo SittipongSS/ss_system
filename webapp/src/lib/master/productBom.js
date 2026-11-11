@@ -120,11 +120,19 @@ export function bomLocked(product) {
   return ['queued', 'in_progress', 'done'].includes(bomStatusOf(product));
 }
 
-/** ผูกสูตร/กลิ่นครบตามหมวดไหม (มติข้อ 3) — ชุดของขวัญนับจากแถวใน `product_formulas` ที่ผู้เรียกส่งมา */
+/**
+ * ผูกสูตร/กลิ่นครบตามหมวดไหม (มติข้อ 3) — ชุดของขวัญนับจากแถวใน `product_formulas` ที่ผู้เรียกส่งมา
+ * ⭐ R2 (มติเจ้าของ 11/11 · mig 0433): "สูตรเกี่ยวข้องกับแค่การลง BOM" ⇒ ฟอร์มบันทึกแถวที่ยังไม่เลือกสูตรได้
+ *    ด่านนี้จึงเป็นที่เดียวที่บังคับ — ชุดต้องมีอย่างน้อย 1 แถว และ **ทุกแถว** มีสูตร (เดิมแค่ "อย่างน้อย 1 แถว"
+ *    ซึ่งพอเพราะฟอร์มบังคับสูตรทุกแถวอยู่แล้ว)
+ */
 export function bomFormulaBound(product, { formulaComponents = [] } = {}) {
   const code = categoryCodeOf(product);
   if (BOM_NO_FORMULA_CATEGORIES.includes(code)) return true;
-  if (isGiftSetCategory(code)) return (formulaComponents || []).some((row) => row?.formulaId);
+  if (isGiftSetCategory(code)) {
+    const rows = formulaComponents || [];
+    return rows.length > 0 && rows.every((row) => row?.formulaId);
+  }
   if (isFragranceOilCategory(code)) return !!product?.scentId;
   return !!product?.formulaId;
 }
@@ -132,7 +140,7 @@ export function bomFormulaBound(product, { formulaComponents = [] } = {}) {
 /* ข้อที่ขาด: `message` = ข้อความเต็มบนหน้า FG · `short` = เหตุสั้นในคอลัมน์ BOM ของทะเบียนสินค้า */
 function formulaGap(product) {
   const code = categoryCodeOf(product);
-  if (isGiftSetCategory(code)) return { message: 'ผูกสูตรในชุดอย่างน้อย 1 แถว', short: 'ยังไม่ผูกสูตรในชุด' };
+  if (isGiftSetCategory(code)) return { message: 'เลือกสูตรให้ครบทุกแถวในชุด', short: 'ยังไม่ผูกสูตรครบทุกแถว' };
   if (isFragranceOilCategory(code)) return { message: 'ผูกกลิ่นจากทะเบียน', short: 'ยังไม่ผูกกลิ่น' };
   return { message: 'ผูกสูตรจากทะเบียน', short: 'ยังไม่ผูกสูตร' };
 }

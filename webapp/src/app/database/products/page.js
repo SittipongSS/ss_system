@@ -39,8 +39,7 @@ import { productNameBoth, fmtMoney, fmtMoneyOrDash, naText, NA } from "@/lib/for
 import CostVatLines from "@/components/database/CostVatLines";
 import { apiFetch } from "@/lib/apiFetch";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
-import { giftSetFormError, isGiftSetCategory } from "@/lib/master/giftSetFormulas";
-import { giftSetPriceModeError } from "@/lib/excise/giftSetExcise";
+import { giftSetFormError } from "@/lib/master/giftSetFormulas";
 import { BOM_FILTER_VALUES, BOM_STATUS_META, bomFilterValueOf, hasBomStep } from "@/lib/master/productBom";
 import ProductBomBadge from "@/components/database/ProductBomBadge";
 import ProductRegistrationBadge from "@/components/database/ProductRegistrationBadge";
@@ -269,14 +268,11 @@ export default function ProductRegistry() {
       const codeError = fgCodeError(formData.fgCode, { mode: codeMode, categoryCode: formData.categoryCode });
       if (codeError) { notifyToast.error(codeError); return; }
     }
-    // ชุดของขวัญ (01-037 · mig 0403): ทุกแถวต้องมีหมวด + สูตร — ตัวตรวจเดียวกับ API
+    // ชุดของขวัญ (01-037 · mig 0403): ทุกแถวต้องมีหมวด (สูตรไม่บังคับ · R2) — ตัวตรวจเดียวกับ API
     // (ก่อนป๊อปอัปเตือนภาษี/อย. — กดยืนยันแล้วค่อยโดนตีกลับเรื่องสูตร = ต้องยืนยันซ้ำ)
     const giftSetError = giftSetFormError(brandCategory, formData.formulaComponents, formulas);
     if (giftSetError) { notifyToast.error(giftSetError); return; }
-    // ชุดที่มีน้ำหอมต้องเลือกวิธีแจ้งราคาขายปลีก (G5 · ไม่มีค่าตั้งต้น) — ข้อความเดียวกับ API
-    const priceModeError = isGiftSetCategory(brandCategory)
-      ? giftSetPriceModeError(formData.formulaComponents, productTypes, formData.exciseTaxBase) : "";
-    if (priceModeError) { notifyToast.error(priceModeError); return; }
+    /* R1 (มติเจ้าของ 11/11 รอบสอง): ไม่บังคับเลือก "รวมชุด / รายชิ้น" ตอนบันทึก — ไปบังคับตอนยื่นขึ้นทะเบียน (เดิม G5 ตีกลับตรงนี้) */
     // เตือนกลับด้านกับของเดิม: popup เฉพาะหมวดที่ติ๊กธงบน product_types (mig 0131 —
     // ส่วนน้อยที่มีภาระตามมา) — หมวดอื่นบันทึกเงียบ ๆ
     const catInfo = categoryInfoOf(formData.categoryCode || categoryOf(formData.fgCode), productTypes);

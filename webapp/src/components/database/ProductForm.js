@@ -47,7 +47,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { apiFetch } from "@/lib/apiFetch";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
-import { giftSetPriceMode } from "@/lib/excise/giftSetExcise";
+import { giftSetPriceModeOf } from "@/lib/excise/giftSetExcise";
 import { fragranceOilScentChoices, isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import GiftSetFormulaRows from "@/components/database/GiftSetFormulaRows";
 import ProductRetailExcise from "@/components/database/ProductRetailExcise";
@@ -68,8 +68,9 @@ export const EMPTY_PRODUCT = {
   scentId: "",
   // ชุดของขวัญ (01-037 · mig 0403) — รายการ (หมวด, สูตร) แทนสูตรเดี่ยว · หมวดอื่นไม่ใช้
   formulaComponents: [],
-  // วิธีแจ้งราคาขายปลีกของชุดที่มีน้ำหอม ('set' | 'pieces' · mig 0431) — ว่าง = ยังไม่เลือก (ไม่มีค่าตั้งต้น · G5)
-  exciseTaxBase: "",
+  // วิธีแจ้งราคาขายปลีกของชุดของขวัญ ('set' | 'pieces' · mig 0433 · **ทุกชุด** R3) — ว่าง = ยังไม่เลือก
+  // (ไม่มีค่าตั้งต้น · ไม่บังคับตอนบันทึก R1 — ชุดที่เสียภาษีไปติดที่ด่านยื่นขึ้นทะเบียน)
+  giftSetPriceMode: "",
   volume: "", volumeUnit: DEFAULT_VOLUME_UNIT, saleUnit: DEFAULT_SALE_UNIT, piecesPerCase: "", costPrice: "", retailPriceIncVat: "",
   // หมายเหตุประจำสินค้า (mig 0317) — ติดไปกับรายการบนใบเสนอราคา/ใบสั่งขาย
   docNote: "", docNoteEn: "",
@@ -97,11 +98,11 @@ export function giftSetFormSeed(product) {
   return {
     formulaComponents: product.formulaComponents.map((row) => ({
       id: row.id, categoryCode: row.categoryCode || "", formulaId: row.formulaId || "",
-      // ราคาต่อชิ้น + จำนวนชิ้นของแถวน้ำหอม (mig 0430) — ไม่พกมา = บันทึกครั้งถัดไปล้างราคาทิ้งเงียบ ๆ
+      // ราคาต่อชิ้น + จำนวนชิ้นของแถว (mig 0430 · ทุกแถวเมื่อแจ้งรายชิ้น R3) — ไม่พกมา = บันทึกครั้งถัดไปล้างราคาทิ้งเงียบ ๆ
       retailPriceIncVat: row.retailPriceIncVat ?? "", pieceQty: row.pieceQty ?? "",
     })),
-    // วิธีแจ้งราคาที่เคยเลือก (G5 · mig 0431) — 'unchosen'/ว่าง = ยังไม่เลือก ⇒ ฟอร์มถามใหม่ (ไม่มีค่าตั้งต้น)
-    exciseTaxBase: giftSetPriceMode(product.exciseTaxBase) || "",
+    // วิธีแจ้งราคาที่เคยเลือก (mig 0433 · ถอยไปอ่าน exciseTaxBase ของแถวก่อน 0433) — ว่าง = ยังไม่เลือก (ไม่มีค่าตั้งต้น)
+    giftSetPriceMode: giftSetPriceModeOf(product) || "",
   };
 }
 

@@ -348,7 +348,7 @@ test('ตัวกรองสถานะ BOM: ยังไม่ส่งแ�
     assert.equal(bomSendBlockerShort(p) === '', blocker === '', p.fgCode);
   }
   assert.deepEqual(['N1', 'N2', 'N3', 'N4'].map((code) => bomSendBlockerShort(BOM_ROWS.find((r) => r.fgCode === code))), [
-    'ยังไม่ผูกสูตร · ไม่มีปริมาตร', 'ยังไม่ผูกกลิ่น · ไม่มีปริมาตร', 'รออนุมัติสินค้า', 'ยังไม่ผูกสูตรในชุด',
+    'ยังไม่ผูกสูตร · ไม่มีปริมาตร', 'ยังไม่ผูกกลิ่น · ไม่มีปริมาตร', 'รออนุมัติสินค้า', 'ยังไม่ผูกสูตรครบทุกแถว',
   ]);
   // หน้า FG ส่ง formulaComponents เต็ม — ชนะ giftSetFormulaIds
   assert.equal(bomFilterValueOf({ ...BOM_ROWS[3], formulaComponents: [{ formulaId: 'F9' }] }), 'ready');

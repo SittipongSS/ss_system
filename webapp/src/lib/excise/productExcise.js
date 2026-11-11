@@ -61,5 +61,3 @@ export async function productExciseFields(
   };
 }
 
-/** ข้อความตีกลับของ API — ตัวเดียวกับฟอร์ม (ประกาศที่ giftSetExcise.js) */
-export { GIFT_SET_PRICE_MODE_REQUIRED } from '@/lib/excise/giftSetExcise';
