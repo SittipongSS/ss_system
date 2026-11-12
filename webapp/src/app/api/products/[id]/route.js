@@ -7,6 +7,7 @@ import {
 } from '@/lib/master/approval';
 import { categoryOf, activeProductTypeError } from '@/lib/master/productTypes';
 import { CODE_MODE_MANUAL, fgCodeError, isAutoFgCode, isReusableCode } from '@/lib/master/masterCodes';
+import { fgMoveBlockedMessage, loadFgRecodePlan } from '@/lib/master/fgCustomerCode';
 import { productCaretakerTeams } from '@/lib/master/productScope';
 import { referencedBlock } from '@/lib/deletion';
 import { purgeAttachments } from '@/lib/master/attachments';
@@ -308,14 +309,27 @@ export async function PATCH(request, { params }) {
   Object.assign(updated, clearedPackagingFields(updated));
 
   // Re-point the FG owner (customerId) from master. Keep the denormalized
-  // customerName snapshot in sync and reject an unknown customer. NOTE: existing
-  // excise registrations carry their own point-in-time customer snapshot and are
-  // not retro-updated here.
+  // customerName snapshot in sync and reject an unknown customer. A system-coded
+  // FG that already sits on any document (incl. excise registrations) can no
+  // longer move — see the block below.
   if (body.customerId !== undefined && body.customerId !== product.customerId) {
     const { data: cust, error: custError } = await supabase
       .from('customers').select('*').eq('id', body.customerId).maybeSingle();
     if (custError) return Response.json({ error: custError.message }, { status: 500 });
     if (!cust) return Response.json({ error: 'ไม่พบลูกค้าที่เลือก' }, { status: 404 });
+    /* ⭐ ท่อนลูกค้าในรหัส FG ต้องเดินตามเจ้าของ (มติเจ้าของ 12/11/2026 · lib/master/fgCustomerCode.js)
+       🐞 ย้าย FG 5 ตัวจาก AR-000 ไป AR-1044 แล้วรหัสค้าง `FG-0000-…` เพราะรหัสที่ระบบออกถูกล็อก
+       · ยังไม่ขึ้นเอกสาร = เปลี่ยนท่อนลูกค้าให้ (หมวด + เลขรันเดิม)
+       · ขึ้นเอกสารแล้ว = บล็อก — ใบของลูกค้าเดิมจะชี้ FG ของลูกค้าอีกราย ⇒ สร้าง FG ใหม่แทน
+       รหัสกรอกมือไม่ผ่านด่านนี้ (พฤติกรรมเดิม — แก้รหัสเองได้ที่ฟอร์ม) */
+    if (isAutoFgCode(product.fgCode)) {
+      const { plan, error: planError } = await loadFgRecodePlan(supabase, { products: [product], arCode: cust.arCode });
+      if (planError) return Response.json({ error: planError.message }, { status: 500 });
+      if (plan.kept.length) {
+        return Response.json({ error: fgMoveBlockedMessage(plan.kept[0]), code: 'fg-move-blocked' }, { status: 409 });
+      }
+      if (plan.changes.length) updated.fgCode = plan.changes[0].next;
+    }
     updated.customerId = cust.id;
     // ย้ายเจ้าของไปลูกค้าที่มีแต่ชื่ออังกฤษ ต้องไม่ประทับ null ทับชื่อเดิม
     updated.customerName = customerSnapshotName(cust);

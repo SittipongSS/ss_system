@@ -27,7 +27,7 @@ import {
 import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 import {
   CODE_MODE_AUTO, CODE_MODE_MANUAL, FG_MANUAL_HINT, codeModeOf, customerCodeSegment,
-  fgCodeHasRunNo, fgCodeParts,
+  fgCodeForCustomer, fgCodeHasRunNo, fgCodeParts,
 } from "@/lib/master/masterCodes";
 import {
   productDuplicateWarning, productOtherSizeHint, splitProductMatches,
@@ -179,6 +179,7 @@ export default function ProductForm({
   nextFgRunNo = null,        // เลขรันถัดไปสำหรับแถบรหัส (พรีวิว ไม่ใช่เลขที่จองแล้ว)
   fgLocked = false,          // รหัสที่ระบบออกให้ = ล็อกตอนแก้ (API บังคับซ้ำอยู่แล้ว)
   selfId = null,             // โหมดแก้: id ของใบนี้เอง — กันรายงานว่า "ซ้ำกับตัวเอง"
+  savedCustomerId = null,    // โหมดแก้: เจ้าของที่บันทึกไว้ — คำใบ้ "รหัสจะเปลี่ยน" ขึ้นเฉพาะตอนเปลี่ยนเจ้าของจริง
   // โหมดแก้: ส่ง RD ลง BOM แล้ว (mig 0419) ⇒ สูตร/กลิ่น + ปริมาตร/หน่วยบรรจุล็อก · ค่า = ข้อความบอกทางออก (PATCH ตีกลับ 409 ซ้ำอยู่แล้ว)
   bomLock = "",
 }) {
@@ -395,6 +396,18 @@ export default function ProductForm({
                   : "FG ทุกตัวต้องผูกกับลูกค้า — หมวดนี้เป็นค่าบริการ จึงไม่มีแบรนด์")
                 : "เปลี่ยนเจ้าของแล้ว สินค้าจะกลับเป็น “รออนุมัติ” ให้ตรวจซ้ำ"}
             </span>
+            {/* รหัสที่ระบบออกให้เดินตามเจ้าของ (มติเจ้าของ 12/11/2026 · lib/master/fgCustomerCode.js)
+                — บอกก่อนกดบันทึกว่ารหัสจะเป็นอะไร · FG ที่ขึ้นเอกสารแล้ว PATCH ตีกลับ 409 พร้อมเหตุ */}
+            {/* ⚠️ ขึ้นเฉพาะตอนเลือกเจ้าของคนใหม่ — PATCH เขียนรหัสใหม่เฉพาะตอน customerId เปลี่ยน
+                FG ที่ค้างรหัสเก่าอยู่แล้ว (เช่นแก้ AR ไปก่อนมีกติกานี้) เปิดฟอร์มเฉย ๆ ต้องไม่ถูกบอกว่าจะเปลี่ยน */}
+            {!creatorName && fgLocked && form.customerId !== savedCustomerId && (() => {
+              const next = fgCodeForCustomer(form.fgCode, selectedCustomer?.arCode);
+              return next && next !== String(form.fgCode || "").trim() ? (
+                <span className="text-xs text-[var(--amber)] mt-1">
+                  รหัสจะเปลี่ยนเป็น <span className="font-mono">{next}</span> (หมวดและเลขรันเดิม) · ถ้า FG นี้ขึ้นเอกสารของลูกค้าเดิมแล้ว ระบบจะไม่ให้ย้าย
+                </span>
+              ) : null;
+            })()}
           </div>
           {/* แบรนด์: กลุ่ม 03 ค่าออกแบบ / 04 รายได้อื่นๆ ไม่มีช่องนี้ (มติ 2026-08-21 ·
               ดู brands.js) — ช่องหายพร้อมกับค่าที่ server ล้างให้ ไม่ใช่ซ่อนทับค่าเดิม

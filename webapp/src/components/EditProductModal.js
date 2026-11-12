@@ -201,6 +201,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
           taxableOverride={typeof product.taxableOverride === "boolean" ? product.taxableOverride : null}
           onCustomerChange={handleCustomerChange}
           fgLocked={isAutoFgCode(product.fgCode)}
+          savedCustomerId={product.customerId}
           selfId={product.id}
           bomLock={bomLock}
         />

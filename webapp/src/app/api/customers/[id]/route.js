@@ -8,6 +8,8 @@ import {
 import { addressesFromLegacy, legacyAddressMirror, normalizeAddresses } from '@/lib/master/addresses';
 import { customerNameError, customerNamePatch, tidyCustomerNameFields } from '@/lib/master/customerName';
 import { cascadeCustomerName } from '@/lib/master/customerNameMirrors';
+import { applyFgRecode, loadFgRecodePlan } from '@/lib/master/fgCustomerCode';
+import { fetchAll } from '@/lib/supabaseFetchAll';
 import { normalizeBrands } from '@/lib/master/brands';
 import {
   AR_SCOPE, CODE_MODE_MANUAL, RECLAIMED_TABLE, arCodeError, isAutoArCode, isReusableCode,
@@ -286,8 +288,8 @@ export async function PATCH(request, { params }) {
     //
     // ⚠️ **สิ่งที่การแก้รหัสนี้ไม่ได้ทำให้** (ผู้เรียกต้องรู้ก่อนกด — โมดัลยืนยันหน้าลูกค้า
     // เขียนไว้ครบแล้ว): เลขเดิม **ไม่กลับเข้ากองเลขคืน** (`entity_number_reclaimed`) เพราะ
-    // กองนั้นรับเฉพาะเลขของแถวที่ถูกลบและไม่เคยอนุมัติ · รหัสสินค้า `FG-AAAA-…` ของลูกค้า
-    // รายนี้ **ยังฝังเลขเดิมไว้** (รหัสคือสตริงที่ออกครั้งเดียว ไม่ใช่ค่าที่คำนวณสด) ·
+    // กองนั้นรับเฉพาะเลขของแถวที่ถูกลบและไม่เคยอนุมัติ · รหัสสินค้า `FG-AAAA-…` ที่ **ขึ้นเอกสาร
+    // แล้ว** ยังฝังเลขเดิมไว้ (ตัวที่ยังไม่ขึ้นเอกสารเปลี่ยนตามให้ — ดูหลัง update ข้างล่าง) ·
     // เอกสารที่พิมพ์รหัสเดิมไปแล้วก็ไม่ตามมาแก้ให้
     const mayEditIssued = canEditIssuedMasterCode(user?.role);
     if (isAutoArCode(customer.arCode) && !mayEditIssued) {
@@ -488,6 +490,29 @@ export async function PATCH(request, { params }) {
           { onConflict: 'scope,no', ignoreDuplicates: true },
         );
       if (reclaimError) console.error('คืนเลข AR ไม่สำเร็จ:', reclaimError.message);
+    }
+    /* ⭐ รหัส FG ของลูกค้ารายนี้เดินตามรหัส AR ใหม่ (มติเจ้าของ 12/11/2026 · lib/master/fgCustomerCode.js)
+       🐞 แก้ AR-1001 → AR-867 (25/08) แล้ว FG ทั้งชุดค้าง `FG-1001-…`
+       · ตัวที่ยังไม่ขึ้นเอกสาร = เปลี่ยนท่อนลูกค้าให้ (หมวด + เลขรันเดิม) · ทีละแถวแบบ CAS + audit รายตัว
+       · ตัวที่ขึ้นเอกสารแล้ว = คงรหัสเดิม — โมดัลยืนยันหน้าลูกค้าโชว์รายชื่อจาก
+         `GET /api/customers/[id]/fg-recode` (แผนตัวเดียวกันนี้) ให้เห็นก่อนกด
+       ⚠️ ล้มตรงนี้ต้องไม่ทำให้คำขอล้ม — รหัส AR เปลี่ยนสำเร็จไปแล้วจริง (กติกาเดียวกับ cascade ชื่อ) */
+    try {
+      const owned = await fetchAll(() => supabase.from('products').select('*').eq('customerId', id).order('id'));
+      const { plan, error: planError } = await loadFgRecodePlan(supabase, { products: owned, arCode: updated.arCode });
+      if (planError) throw planError;
+      const before = new Map(owned.map((p) => [p.id, p]));
+      const { failed } = await applyFgRecode(supabase, plan.changes, {
+        audit: ({ change, after }) => recordAudit({
+          user, action: 'update', entityType: 'product', entityId: change.id,
+          before: before.get(change.id), after,
+          summary: `เปลี่ยนรหัส ${change.fgCode} → ${change.next} ตามรหัสลูกค้า ${customer.arCode} → ${updated.arCode}`,
+          request,
+        }),
+      });
+      for (const f of failed) console.error(`[customer] เปลี่ยนรหัส ${f.fgCode} → ${f.next} ไม่สำเร็จ:`, f.message);
+    } catch (e) {
+      console.error('[customer] เปลี่ยนรหัส FG ตามรหัส AR ใหม่ไม่สำเร็จ:', e?.message || e);
     }
   }
 
