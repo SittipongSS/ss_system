@@ -167,6 +167,57 @@ export async function findEntityReferences(supabase, entity, id) {
   return { refs, error: null };
 }
 
+const IDS_PER_REQUEST = 100; // id ยาว ~40 ตัว ⇒ ~4.5 KB ต่อคำขอ ไกลจากเพดาน URL 16 KB
+const ROWS_PER_PAGE = 1000; // เพดานแถวต่อคำขอของ PostgREST — ต้องไล่หน้า ไม่งั้นแถวหายเงียบ
+
+/**
+ * แบบหลายระเบียนพร้อมกัน — ระเบียนไหน **มี** ที่อื่นอ้างอยู่บ้าง
+ *
+ * ใช้ตอนต้องตัดสินทีละหลายตัว (แก้รหัส AR ของลูกค้า ⇒ FG ทุกตัวของรายนั้น) ซึ่งถ้ายิง
+ * `findEntityReferences` ทีละใบจะเป็น ตาราง × จำนวนระเบียน คำขอ
+ *
+ * `skip` = ตารางที่ผู้เรียกตัดสินแล้วว่าไม่นับ — ต้องเป็นตารางที่อยู่ในทะเบียนจริง
+ * (พิมพ์ชื่อผิดแล้วเงียบ = ข้ามไม่จริง แต่คนอ่านโค้ดเชื่อว่าข้าม)
+ *
+ * @returns {Promise<{byId: Map<string, string[]>, error: Error|null}>} — คีย์เฉพาะตัวที่ถูกอ้าง
+ *          ค่า = ป้ายของตารางที่อ้าง · error ≠ null ⇒ ยังไม่รู้ ผู้เรียกห้ามเดินต่อ
+ */
+export async function findReferencedIds(supabase, entity, ids, { skip = [] } = {}) {
+  const spec = REFERENCE_REGISTRY[entity];
+  if (!spec) throw new Error(`findReferencedIds: ไม่รู้จัก entity "${entity}"`);
+  for (const table of skip) {
+    if (!spec.tables.some((t) => t.table === table)) {
+      throw new Error(`findReferencedIds: ${table} ไม่อยู่ในทะเบียนของ ${entity} — ข้ามไม่ได้`);
+    }
+  }
+  const byId = new Map();
+  const unique = [...new Set((ids || []).filter(Boolean))];
+  if (!unique.length) return { byId, error: null };
+  // ทะเบียนมีบางตารางประกาศซ้ำ (คนละ sample) — ยิงตารางละครั้งพอ
+  const tables = [...new Map(spec.tables.filter((t) => !skip.includes(t.table)).map((t) => [t.table, t])).values()];
+  try {
+    await Promise.all(tables.map(async (entry) => {
+      for (let from = 0; from < unique.length; from += IDS_PER_REQUEST) {
+        const chunk = unique.slice(from, from + IDS_PER_REQUEST);
+        for (let page = 0; ; page += ROWS_PER_PAGE) {
+          const { data, error } = await supabase.from(entry.table).select(spec.column)
+            .in(spec.column, chunk).order(spec.column).order('id').range(page, page + ROWS_PER_PAGE - 1);
+          if (error) throw new Error(`ตรวจรายการที่อ้างถึงไม่สำเร็จ (${entry.table}): ${error.message}`);
+          for (const row of data || []) {
+            const labels = byId.get(row[spec.column]) || [];
+            if (!labels.includes(entry.label)) labels.push(entry.label);
+            byId.set(row[spec.column], labels);
+          }
+          if ((data || []).length < ROWS_PER_PAGE) break;
+        }
+      }
+    }));
+  } catch (error) {
+    return { byId: new Map(), error };
+  }
+  return { byId, error: null };
+}
+
 // ── ชื่อเดิม (คงไว้ให้ผู้เรียกเก่า) ────────────────────────────────────────
 export const CUSTOMER_REFERENCE_TABLES = REFERENCE_REGISTRY.customer.tables;
 export const CUSTOMER_REFERENCE_TABLE_NAMES = referenceTableNames('customer');

@@ -84,7 +84,10 @@ for (const mirror of liveCustomerNameMirrors()) {
     for (const [column, source] of Object.entries(mirror.fields)) {
       const want = customerMirrorValue(customer, source);
       patch[column] = want;
-      if (String(want ?? '').trim() !== String(row[column] ?? '').trim()) differs = true;
+      /* เทียบตรงตัว ไม่ trim — ตัวเดิม trim ทั้งสองข้าง ⇒ สำเนาที่ต่างแค่ช่องว่างหัว/ท้าย
+         (FG 11 ตัว · ตรวจ 12/11/2026) ถูกนับว่า "ตรงแล้ว" ค้างถาวรทั้งที่จอ/ค้นหาเห็นเป็นคนละค่า
+         ค่าที่ทะเบียนเขียน (customerMirrorValue) ผ่าน tidy มาแล้วทุกตัว จึงไม่มีเหตุให้ trim ที่นี่ */
+      if (String(want ?? '') !== String(row[column] ?? '')) differs = true;
     }
     if (!differs) continue;
     const entry = staleByCustomer.get(customer.id) || { customer, patch, rows: [] };

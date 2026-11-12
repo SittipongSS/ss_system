@@ -154,6 +154,22 @@ export function customerCodeSegment(arCode) {
   return m[1].padStart(4, '0');
 }
 
+/* รหัส FG ที่ระบบออกให้ เมื่อเจ้าของเปลี่ยนเป็นลูกค้า `arCode` — เขียนใหม่เฉพาะท่อน AAAA
+   หมวด (BB-CCC) และเลขรัน (DDDDD) คงเดิมทุกตัว ⇒ ไม่แตะเคาน์เตอร์ และกองเลขคืน (mig 0248)
+   ที่อ่านท่อนที่ 5 ยังเห็นเลขเดิม
+   🐞 ที่มา (12/11/2026): ย้าย FG 5 ตัวจาก AR-000 ไป AR-1044 แล้วรหัสค้าง `FG-0000-…`
+   เพราะรหัสที่ระบบออกให้ถูกล็อกไว้ ไม่มีใครเขียนท่อนลูกค้าใหม่ · และแอดมินแก้ AR-1001 →
+   AR-867 (25/08) แล้ว FG ทั้งหมดของรายนั้นค้าง `FG-1001-…`
+   คืน null เมื่อรหัสเดิมไม่ใช่รหัสที่ระบบออกให้ (รหัสกรอกมือท่อนลูกค้า 3 หลักแปลงเป็น
+   รูป 4 หลักไม่ได้ — ท่อนเลขรันของมันกว้าง 4 ไม่ใช่ 5) หรือ `arCode` ใช้ออกรหัสไม่ได้ */
+export function fgCodeForCustomer(fgCode, arCode) {
+  const code = digitsOf(fgCode);
+  if (!isAutoFgCode(code)) return null;
+  const segment = customerCodeSegment(arCode);
+  if (!segment) return null;
+  return `FG-${segment}-${code.slice('FG-0000-'.length)}`;
+}
+
 // ท่อนหน้าเลขรันของรหัส FG (`FG-AAAA-BB-CCC-`) — คืน null ถ้ายังตอบไม่ครบ
 // ตัวออกรหัสฝั่ง SQL รับค่านี้ไปเติมเลขท้าย จึงต้องเป็นตัวเดียวกับที่ composeFgCode ใช้
 export function fgCodePrefix({ arCode, categoryCode } = {}) {
