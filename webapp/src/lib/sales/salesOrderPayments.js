@@ -27,7 +27,7 @@
 //   ⇒ `paymentRollup` ยังไม่มีคีย์ actual/won (เทสต์ล็อกเดิมยังอยู่) และไฟล์นี้ยังไม่ export ชื่อ `actual*`
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { canConfirmPayment, canUser } from '@/lib/permissions';
-import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
+import { paymentScheduleRows, planInstallmentAmounts } from '@/lib/sales/paymentPlan';
 import { isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 // งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
@@ -87,11 +87,13 @@ const validIsoDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && v >= '2000-01-01' &&
  *
  * ⚠️ `type: 'full'` = **หนึ่งงวด 100%** ไม่ใช่ศูนย์งวด — ใบที่จ่ายครั้งเดียวก็ต้องมี
  * อะไรให้ติดตามว่าเก็บเงินได้หรือยัง (`paymentScheduleRows` คืนแถวเต็มจำนวนให้อยู่แล้ว)
- * ⚠️ ยอดคำนวณด้วย `computeInstallments` ตัวเดิม **ห้ามคำนวณเอง** — ตัวนั้นโยนเศษปัด
- * ไปงวดสุดท้ายให้ยอดรวมเท่ากับใบพอดี
+ * ⚠️ ยอดมาจาก `planInstallmentAmounts` **ห้ามคำนวณเอง** — ยอดที่ QT เก็บไว้ (= ยอดที่พิมพ์ให้ลูกค้า) เมื่อรวมได้เท่าใบ
+ * ไม่งั้นคิดด้วย `computeInstallments` (เศษปัดไปงวดสุดท้ายให้ยอดรวมเท่ากับใบพอดี)
+ * 🪤 เดิมคิดจาก % ทุกครั้ง — กติกาคิดเงินของ QT เปลี่ยน (เกลี่ยเท่ากัน 12/11/2026) แล้วงวดของใบเดิมจะไม่ตรงแผน
+ *   ⇒ ป้าย "ปรับแผนหลังอนุมัติ" (installmentsReplanned) ขึ้นผิด และงวดร่างขยับหนีใบเสนอราคาที่ลูกค้าถืออยู่
  */
 export function installmentsFromPaymentPlan(plan, total) {
-  const rows = computeInstallments(total, paymentScheduleRows(plan));
+  const rows = planInstallmentAmounts(plan, total);
   return rows.map((row, index) => ({
     seq: index + 1,
     label: String(row.label || '').trim() || `งวดที่ ${index + 1}`,
