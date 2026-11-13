@@ -4,10 +4,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildDealRows, currentOrder, currentQuote, followUps, hubFacts, installmentState, matchesQuery, monthlyActual,
-  productOrderStats, recentEvents, dealRowText,
+  buildDealRows, currentOrder, currentQuote, financeOrderRows, financeOrderText, followUps, hubFacts, installmentState,
+  matchesQuery, monthlyActual, productOrderStats, recentEvents, dealRowText, requestDueCell, requestDueSortKey,
 } from './customerHub.js';
-import { customerHubRelations } from './customerHubData.js';
+import { customerHubRelations, HUB_INSTALLMENT_COLS, slimInstallment } from './customerHubData.js';
 
 const TODAY = '2026-11-13';
 
@@ -273,3 +273,91 @@ test('ล่าสุด: เรียงใหม่ไปเก่า · ต�
   assert.deepEqual(ev.map((e) => e.key), ['rc:R1', 'i:I1', 'o:S1', 'q:Q1']);
 });
 
+
+/* ── งวด H4 · มติ 8: กำหนดส่งของฝ่าย ────────────────────────────────────────────────────────── */
+test('มติ 8: กำหนดส่ง = วันที่ฝ่ายแจ้งเท่านั้น · ยังไม่แจ้ง = รอฝ่ายแจ้ง + วันที่ขอไว้ · ไม่ถอยไปวันที่ผู้ขอเงียบ ๆ', () => {
+  const committed = requestDueCell({ status: 'acknowledged', committedDueDate: '2026-11-20', requestedDueDate: '2026-11-15' });
+  assert.deepEqual(committed, { date: '2026-11-20', waiting: false, requested: '2026-11-15' });
+  const waiting = requestDueCell({ status: 'pending', committedDueDate: null, requestedDueDate: '2026-11-15' });
+  assert.deepEqual(waiting, { date: null, waiting: true, requested: '2026-11-15' }, 'วันที่ผู้ขอเป็นแค่บรรทัดรอง ไม่ใช่กำหนดส่ง');
+});
+
+test('มติ 8: วันของรอบเก่าที่ถูกตีกลับไม่นับ (liveDueDate) · ใบที่มีฝั่งปิดแล้ว/จบ/ร่าง ไม่ขึ้น "รอฝ่ายแจ้ง"', () => {
+  const stale = requestDueCell({
+    status: 'acknowledged', committedDueDate: '2026-10-01', dueCommittedAt: '2026-09-25T00:00:00Z',
+    items: [{ id: 'I2', derivedFromItemId: 'I1', createdAt: '2026-10-05T00:00:00Z' }],
+  });
+  assert.equal(stale.date, null, 'แถวรอบแก้เกิดหลังแจ้งวัน = วันเดิมเป็นของรอบก่อน');
+  assert.equal(stale.waiting, true);
+  assert.equal(requestDueCell({ status: 'acknowledged', answeredAt: '2026-11-01' }).waiting, false, 'ฝ่ายปิดฝั่งตัวเองแล้ว (ม-145)');
+  assert.equal(requestDueCell({ status: 'closed' }).waiting, false);
+  assert.equal(requestDueCell({ status: 'draft' }).waiting, false);
+  const keys = [
+    { status: 'closed' },
+    { status: 'pending' },
+    { status: 'acknowledged', committedDueDate: '2026-12-01' },
+    { status: 'acknowledged', committedDueDate: '2026-11-20' },
+  ].map(requestDueSortKey).sort();
+  assert.deepEqual(keys, ['2026-11-20', '2026-12-01', '9999-01-01', '9999-12-31'], 'มีวันก่อน · รอฝ่ายแจ้ง · ไม่มีวัน');
+});
+
+/* ── งวด H4 · มติ 9: การเงินแถวละ SO ─────────────────────────────────────────────────────────── */
+test('มติ 9: รวมงวดเป็นแถวละใบ — รับแล้ว · ค้างรับ · งวด x/y · งวดถัดไป · สถานะเกินกำหนด', () => {
+  const rows = financeOrderRows({
+    orders: [
+      { id: 'SO1', orderNumber: 'SO-1', dealId: 'D1', status: 'approved', totalAmount: 120000, orderDate: '2026-10-01' },
+      { id: 'SO2', orderNumber: 'SO-2', dealId: 'D1', status: 'approved', totalAmount: 54000, orderDate: '2026-11-01' },
+    ],
+    installments: [
+      { id: 'I1', salesOrderId: 'SO1', seq: 1, amount: 40000, status: 'confirmed', dueDate: '2026-10-01' },
+      { id: 'I2', salesOrderId: 'SO1', seq: 2, amount: 40000, status: 'reported', dueDate: '2026-11-01' },
+      { id: 'I3', salesOrderId: 'SO1', seq: 3, amount: 40000, status: 'pending', dueDate: '2026-11-10', label: 'งวดสุดท้าย' },
+      { id: 'I4', salesOrderId: 'SO2', seq: 1, amount: 54000, status: 'confirmed', dueDate: '2026-11-05' },
+    ],
+    deals: [{ id: 'D1', code: 'DL-1', title: 'ดีลหนึ่ง' }],
+  }, TODAY);
+  assert.deepEqual(rows.map((r) => r.id), ['SO2', 'SO1'], 'ใบใหม่ก่อน');
+  const so1 = rows.find((r) => r.id === 'SO1');
+  assert.equal(so1.total, 120000);
+  assert.equal(so1.received, 80000, 'ยืนยันรับ + แจ้งชำระ นับรับแล้ว (ตัวตัดสินเดียวกับ installmentState)');
+  assert.equal(so1.outstanding, 40000);
+  assert.deepEqual([so1.receivedCount, so1.count], [2, 3]);
+  assert.deepEqual(so1.next, { seq: 3, label: 'งวดสุดท้าย', dueDate: '2026-11-10', amount: 40000, overdue: true });
+  assert.equal(so1.state, 'overdue');
+  assert.equal(so1.deal.title, 'ดีลหนึ่ง');
+  const so2 = rows.find((r) => r.id === 'SO2');
+  assert.deepEqual([so2.state, so2.outstanding, so2.next], ['complete', 0, null]);
+  assert.ok(matchesQuery(financeOrderText(so1), 'งวดสุดท้าย'), 'ค้นชื่องวดเจอแถวใบ');
+  assert.ok(matchesQuery(financeOrderText(so1), 'dl-1'), 'ค้นรหัสดีลเจอ');
+});
+
+test('มติ 9: ใบยกเลิกไม่มีค้าง · งวดถัดไปเรียงตามกำหนด (ไม่มีวันท้ายสุด) · คืนเงินไม่นับรับแล้ว', () => {
+  const rows = financeOrderRows({
+    orders: [
+      { id: 'X', orderNumber: 'SO-X', status: 'cancelled', totalAmount: 1000 },
+      { id: 'Y', orderNumber: 'SO-Y', status: 'approved', totalAmount: 3000 },
+    ],
+    installments: [
+      { id: 'x1', salesOrderId: 'X', seq: 1, amount: 1000, status: 'pending', dueDate: '2026-01-01' },
+      { id: 'y1', salesOrderId: 'Y', seq: 1, amount: 1000, status: 'pending', dueDate: null },
+      { id: 'y2', salesOrderId: 'Y', seq: 2, amount: 1000, status: 'pending', dueDate: '2026-12-01' },
+      { id: 'y3', salesOrderId: 'Y', seq: 3, amount: 1000, status: 'confirmed', refundedAt: '2026-11-01', dueDate: '2026-10-01' },
+    ],
+  }, TODAY);
+  const x = rows.find((r) => r.id === 'X');
+  assert.deepEqual([x.state, x.outstanding, x.overdue], ['void', 0, false]);
+  const y = rows.find((r) => r.id === 'Y');
+  assert.equal(y.next.seq, 2, 'งวดที่มีกำหนดมาก่อนงวดที่ไม่มีวัน');
+  assert.equal(y.received, 0, 'งวดที่คืนเงินแล้วไม่ใช่เงินรับ');
+  assert.equal(y.state, 'open');
+});
+
+test('H4 แก้บั๊ก H1: งวดรับล่วงหน้านับรับแล้ว (ตัวโหลดดึงช่องตัดสินมา) · หลักฐานส่งให้จอแค่จำนวน', () => {
+  for (const col of ['evidence', 'refundedAt', 'frozenAt']) assert.match(HUB_INSTALLMENT_COLS, new RegExp(`\\b${col}\\b`), col);
+  const raw = { id: 'P1', salesOrderId: 'SO', seq: 1, amount: 5000, status: 'pending', paidOn: '2026-11-01', evidence: [{ name: 'slip.jpg', path: 'x/slip.jpg' }] };
+  const slim = slimInstallment(raw);
+  assert.deepEqual(slim.evidence, [{}], 'ชื่อ/ที่อยู่ไฟล์สลิปไม่ไปถึงจอ');
+  assert.equal(installmentState(slim, { status: 'approved' }, TODAY).outstanding, false, 'รับล่วงหน้า = ไม่ค้าง');
+  const [row] = financeOrderRows({ orders: [{ id: 'SO', status: 'approved', totalAmount: 5000 }], installments: [slim] }, TODAY);
+  assert.deepEqual([row.received, row.outstanding, row.state], [5000, 0, 'complete']);
+});
