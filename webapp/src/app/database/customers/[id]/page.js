@@ -67,6 +67,9 @@ function ProfileGroup({ label, hint = null }) {
   );
 }
 
+/* ส่วนในแท็บที่มีลิงก์ชี้เข้ามา — ประกาศนอกคอมโพเนนต์ให้อ้างอิงคงที่ (CustomerHub ผูก listener กับค่านี้) */
+const BILLING_RULE_HASH_TABS = Object.freeze({ "billing-rule": "profile" });
+
 export default function CustomerDetails() {
   const params = useParams();
   const router = useRouter();
@@ -552,139 +555,11 @@ export default function CustomerDetails() {
           ⚠️ ไม่เปิด `controlFirst` — คนเปิดหน้าลูกค้ามาอ่านข้อมูลลูกค้าก่อน ไม่ได้มา
           เพื่อกดก้าวถัดไปเหมือนหน้าเอกสาร (เหตุผลเต็มอยู่ที่ DetailPageLayout) */}
       <DetailPageLayout asideLabel="สรุปลูกค้าและการดำเนินการ" aside={customerAside}>
-          {/* ⭐ การ์ดนี้เรียงตาม **ลำดับเดียวกับฟอร์มลูกค้า** (CustomerForm section 1-3)
-              — คนกรอกกับคนอ่านเดินสายตาชุดเดียวกัน · แบรนด์กับผู้ติดต่อเคยอยู่ในราง
-              ขวา ทั้งที่เป็นช่องในฟอร์มนี้ ไม่ใช่สถานะหรือปุ่ม */}
-          <DetailCard icon={Building2} eyebrow="Customer profile" title="ข้อมูลลูกค้า บริษัท/บุคคล">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
-              <ProfileGroup label="1. ข้อมูลหลัก" />
-              {/* ชื่ออังกฤษ (mig 0283) — ช่องของเอกสาร IFRA/MSDS · ว่าง = ขีดตามกติกา
-                  ค่าว่างของทั้งระบบ (ต่างจากบรรทัดอังกฤษใต้ที่อยู่ ซึ่งเป็นบรรทัดเสริม
-                  ไม่ใช่ช่อง จึงตัดทิ้งเมื่อว่าง) */}
-              <Field label="ชื่อภาษาอังกฤษ" value={customer.nameEn} />
-              <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
-              <Field label="ทีมดูแล" value={teamsLabel} />
-              <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
-              <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
-              <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
-              {/* เงื่อนไขเครดิตย้ายไปการ์ด "เครดิตและรอบวางบิล" ข้างล่าง (มติ 26/09) — ฟอร์มลูกค้าไม่มีช่องนี้แล้ว
-                  การ์ดนี้เรียงตามฟอร์ม จึงไม่มีช่องนี้เหมือนกัน */}
-              {/* แบรนด์เป็นของลูกค้า (customers.brands[]) — สินค้าหยิบไปเป็นตัวเลือก
-                  ตอนตั้งแบรนด์ของ FG · เคยอยู่ในรางขวา ซึ่งทำให้คนหาไม่เจอตอนกรอกฟอร์ม */}
-              <div className="md:col-span-3">
-                <span className="text-[var(--text-3)] block mb-2 text-[11px]">แบรนด์สินค้าที่ดูแล ({(customer.brands || []).length})</span>
-                {customer.brands && customer.brands.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {customer.brands.map((b, i) => (
-                      <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
-                        {brandBothOf(b)}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-[var(--text-3)] text-sm italic">ยังไม่มีแบรนด์</span>
-                )}
-              </div>
-
-              <ProfileGroup label="2. ที่อยู่" hint="ป้าย “หลัก” คือที่อยู่ที่เอกสารใหม่จะตั้งต้นให้" />
-              {/* ที่อยู่หลายรายการ (0202) — ป้าย "หลัก" คือตัวที่เอกสารใหม่จะตั้งต้นให้ */}
-              <div className="md:col-span-3">
-                <span className="text-[var(--text-3)] block mb-2 text-[11px]">ที่อยู่ ({addresses.length})</span>
-                {addresses.length === 0 ? (
-                  <p className="text-[var(--text-3)] italic text-sm">ยังไม่มีที่อยู่</p>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {addresses.map((a, i) => (
-                      <div key={a.id} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          <span className="text-[11px] font-semibold text-[var(--text-2)]">{addressLabel(a)}</span>
-                          <span className="text-[10px] text-[var(--text-3)]">{ADDRESS_USE_LABELS[a.useFor]}</span>
-                          {i === primaryBillingIndex && <span className="status-pill">บิลหลัก</span>}
-                          {i === primaryShippingIndex && <span className="status-pill">จัดส่งหลัก</span>}
-                          {/* สาขาโชว์เฉพาะที่อยู่ที่ใช้ออกเอกสาร — เลขนี้คือเลขที่จะไปอยู่
-                              บนใบกำกับภาษีของใบที่เลือกที่อยู่นี้ (มติ 2026-08-06) */}
-                          {isBillingAddress(a) && (
-                            <span className="text-[10px] text-[var(--text-3)] font-mono">{branchLabel(a.branchCode)}</span>
-                          )}
-                          {a.mapUrl && (
-                            <a
-                              href={a.mapUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] inline-flex items-center gap-1 text-[var(--accent)]"
-                            >
-                              <MapPin size={11} /> แผนที่
-                            </a>
-                          )}
-                        </div>
-                        {/* ภาษาหลักของหน้าจอคือไทย — ที่อยู่ที่มีแต่ภาษาอังกฤษให้ขึ้น
-                            อังกฤษเป็นบรรทัดหลักไปเลย ดีกว่าบรรทัดว่าง (มติ 2026-08-22) */}
-                        <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{addressTextIn(a, "th")}</p>
-                        {/* บรรทัดอังกฤษ = ของที่ RD ก๊อปไปวางในเทมเพลต IFRA/MSDS
-                            ⚠️ ไม่มี = ไม่มีบรรทัด ไม่ใช่ขีด (แพตเทิร์นเดียวกับลิงก์แผนที่) */}
-                        {!!a.addressEn && a.addressEn !== addressTextIn(a, "th") && (
-                          <p className="text-[12px] text-[var(--text-2)] leading-relaxed mt-0.5 break-words">{a.addressEn}</p>
-                        )}
-                        {(a.contactName || a.contactPhone) && (
-                          <p className="text-[11px] text-[var(--text-3)] mt-1">
-                            ผู้รับของ: {naText(a.contactName)}
-                            {a.contactPhone ? ` · ${fmtPhone(a.contactPhone)}` : ""}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* ⚠️ ผู้ติดต่อคนแรก = ค่า mirror ของ contactPerson/contactPhone/email
-                  (mig 0033) ที่เอกสารหยิบไปใช้ตั้งต้น ⇒ ป้าย "(หลัก)" ไม่ใช่แค่ลำดับ */}
-              <ProfileGroup label="3. ผู้ติดต่อ" hint="คนแรกคือผู้ติดต่อหลัก — เอกสารใหม่ตั้งต้นให้จากคนนี้" />
-              <div className="md:col-span-3">
-                <span className="text-[var(--text-3)] block mb-2 text-[11px]">ผู้ติดต่อ ({(customer.contacts || []).length})</span>
-                {(customer.contacts || []).length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {customer.contacts.map((c, i) => (
-                      <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          {c.role && <span className="ui-badge">{c.role}</span>}
-                          <span className="font-medium text-[var(--text)] text-sm">{naText(c.name)}</span>
-                          {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(หลัก)</span>}
-                        </div>
-                        {(c.phone || c.email) && (
-                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[var(--text-2)] text-[12px]">
-                            {c.phone && <span className="font-mono">{fmtPhone(c.phone)}</span>}
-                            {c.email && <span className="break-all">{c.email}</span>}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-[var(--text-3)] text-sm italic">ยังไม่มีผู้ติดต่อ — เพิ่มได้ที่ “แก้ไขข้อมูลลูกค้า”</span>
-                )}
-              </div>
-            </div>
-          </DetailCard>
-
-          {/* วางบิลและกำหนดชำระ (รุ่นสี่ · mig 0393 · แบบ A "ประโยคนโยบาย") — ใต้การ์ดข้อมูลลูกค้า · ที่เดียวที่ตั้งกติกาได้
-              ⚠️ บันทึกแล้วเติมเฉพาะช่องกติกาลงแถวที่มีอยู่ ไม่โหลดทั้งหน้าใหม่ (ฟอร์มแก้ลูกค้า
-              ที่อาจค้างอยู่ไม่ถูกเขียนทับ · ด่านอนุมัติไม่ขยับ จึงไม่มีอะไรอื่นบนหน้าเปลี่ยน)
-              · การ์ดเปิดจอ "งวดที่วันจะเปลี่ยน" เองหลังบันทึก · 409 ในโมดัลก็เรียก onSaved (ค่าล่าสุดของคนอื่น · unchanged:false = โหลดเธรดใหม่) */}
-          <CustomerBillingRuleCard
-            customer={customer}
-            canEdit={canEditBillingRule}
-            onSaved={(fields) => {
-              const { unchanged, ...saved } = fields || {};
-              setCustomer((prev) => (prev ? { ...prev, ...saved } : prev));
-              /* แถว "รอบวางบิล" เพิ่งลงเธรดความเคลื่อนไหว — โหลดเธรดใหม่ทันที ไม่รอรอบ poll (ช้าได้ถึงหลายนาที) */
-              if (!unchanged) setThreadToken((n) => n + 1);
-            }}
-          />
-
-          {/* ⭐ หน้าลูกค้าศูนย์รวม งวด H1 (มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md) — แท็บการขาย (ตามดีล) ·
-              สินค้า · คำร้อง · การเงิน · สรรพสามิต · บริการ · คำค้นช่องเดียวกรองทุกแท็บ · แท็บที่ผู้ดูไม่มีสิทธิ์ไม่โผล่
-              ⚠️ แท็บ "การยื่นชำระภาษี" (ตาราง orders 0 แถว) และ "โครงการ" (ถอดโครงการทาง ก.) ถอดแล้ว */}
+          {/* ⭐ หน้าลูกค้าศูนย์รวม (มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md) — ทั้งหน้าเป็นแท็บชุดเดียว
+              ภาพรวม (เปิดมาที่นี่ · มติ 2 · H2) · ข้อมูลลูกค้า · การขาย (ตามดีล) · สินค้า · คำร้อง · การเงิน · สรรพสามิต ·
+              บริการ · เอกสาร · ความเคลื่อนไหว · คำค้นช่องเดียวกรองทุกแท็บรายการ · แท็บที่ผู้ดูไม่มีสิทธิ์ไม่โผล่
+              ⚠️ แท็บ "การยื่นชำระภาษี" (ตาราง orders 0 แถว) และ "โครงการ" (ถอดโครงการทาง ก.) ถอดแล้ว (H1)
+              ⚠️ การ์ดข้อมูลลูกค้า · วางบิล · ไฟล์แนบ · เธรด ยังเป็นของหน้านี้ (ฟอร์ม/ด่าน/เธรดผูกกับ state ที่นี่) — ส่งเข้าแท็บเป็น render function */}
           <CustomerHub
             hub={hub}
             products={products}
@@ -703,33 +578,174 @@ export default function CustomerDetails() {
                 />
               ),
             } : null}
-          />
+            /* แท็บเริ่มต้น = ภาพรวม (มติ 2) · ลิงก์ `#billing-rule` (หน้าสร้าง SO · แผงงวด · ทะเบียน FN) เปิดแท็บข้อมูลลูกค้า */
+            hashTabs={BILLING_RULE_HASH_TABS}
+            profile={() => (
+              <>
+                {/* ⭐ การ์ดนี้เรียงตาม **ลำดับเดียวกับฟอร์มลูกค้า** (CustomerForm section 1-3)
+                    — คนกรอกกับคนอ่านเดินสายตาชุดเดียวกัน · แบรนด์กับผู้ติดต่อเคยอยู่ในราง
+                    ขวา ทั้งที่เป็นช่องในฟอร์มนี้ ไม่ใช่สถานะหรือปุ่ม */}
+                <DetailCard icon={Building2} eyebrow="Customer profile" title="ข้อมูลลูกค้า บริษัท/บุคคล">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-6 text-xs">
+                    <ProfileGroup label="1. ข้อมูลหลัก" />
+                    {/* ชื่ออังกฤษ (mig 0283) — ช่องของเอกสาร IFRA/MSDS · ว่าง = ขีดตามกติกา
+                        ค่าว่างของทั้งระบบ (ต่างจากบรรทัดอังกฤษใต้ที่อยู่ ซึ่งเป็นบรรทัดเสริม
+                        ไม่ใช่ช่อง จึงตัดทิ้งเมื่อว่าง) */}
+                    <Field label="ชื่อภาษาอังกฤษ" value={customer.nameEn} />
+                    <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
+                    <Field label="ทีมดูแล" value={teamsLabel} />
+                    <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
+                    <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
+                    <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
+                    {/* เงื่อนไขเครดิตย้ายไปการ์ด "เครดิตและรอบวางบิล" ข้างล่าง (มติ 26/09) — ฟอร์มลูกค้าไม่มีช่องนี้แล้ว
+                        การ์ดนี้เรียงตามฟอร์ม จึงไม่มีช่องนี้เหมือนกัน */}
+                    {/* แบรนด์เป็นของลูกค้า (customers.brands[]) — สินค้าหยิบไปเป็นตัวเลือก
+                        ตอนตั้งแบรนด์ของ FG · เคยอยู่ในรางขวา ซึ่งทำให้คนหาไม่เจอตอนกรอกฟอร์ม */}
+                    <div className="md:col-span-3">
+                      <span className="text-[var(--text-3)] block mb-2 text-[11px]">แบรนด์สินค้าที่ดูแล ({(customer.brands || []).length})</span>
+                      {customer.brands && customer.brands.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {customer.brands.map((b, i) => (
+                            <span key={i} className="bg-[var(--panel-2)] px-2.5 py-0.5 rounded-full text-[11px] text-[var(--text-2)] font-semibold">
+                              {brandBothOf(b)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[var(--text-3)] text-sm italic">ยังไม่มีแบรนด์</span>
+                      )}
+                    </div>
 
-          {/* เอกสารแนบของลูกค้า — แผนที่/สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ */}
-          <AttachmentsPanel
-            entityType="customer"
-            entityId={id}
-            canEdit={canEdit}
-            docTypes={customerDocTypes(customer.customerType)}
-            title="เอกสารของลูกค้า"
-            note={customer.customerType === "individual"
-              ? "เอกสารบุคคลธรรมดา: สำเนาบัตรประชาชน, แผนที่ที่อยู่, ทะเบียนบ้าน, เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)"
-              : "เอกสารนิติบุคคล: หนังสือรับรองบริษัท, ภ.พ.20, บัตร/ทะเบียนบ้านกรรมการ, หนังสือมอบอำนาจ, แผนที่ที่อยู่"}
-          />
+                    <ProfileGroup label="2. ที่อยู่" hint="ป้าย “หลัก” คือที่อยู่ที่เอกสารใหม่จะตั้งต้นให้" />
+                    {/* ที่อยู่หลายรายการ (0202) — ป้าย "หลัก" คือตัวที่เอกสารใหม่จะตั้งต้นให้ */}
+                    <div className="md:col-span-3">
+                      <span className="text-[var(--text-3)] block mb-2 text-[11px]">ที่อยู่ ({addresses.length})</span>
+                      {addresses.length === 0 ? (
+                        <p className="text-[var(--text-3)] italic text-sm">ยังไม่มีที่อยู่</p>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {addresses.map((a, i) => (
+                            <div key={a.id} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
+                              <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                                <span className="text-[11px] font-semibold text-[var(--text-2)]">{addressLabel(a)}</span>
+                                <span className="text-[10px] text-[var(--text-3)]">{ADDRESS_USE_LABELS[a.useFor]}</span>
+                                {i === primaryBillingIndex && <span className="status-pill">บิลหลัก</span>}
+                                {i === primaryShippingIndex && <span className="status-pill">จัดส่งหลัก</span>}
+                                {/* สาขาโชว์เฉพาะที่อยู่ที่ใช้ออกเอกสาร — เลขนี้คือเลขที่จะไปอยู่
+                                    บนใบกำกับภาษีของใบที่เลือกที่อยู่นี้ (มติ 2026-08-06) */}
+                                {isBillingAddress(a) && (
+                                  <span className="text-[10px] text-[var(--text-3)] font-mono">{branchLabel(a.branchCode)}</span>
+                                )}
+                                {a.mapUrl && (
+                                  <a
+                                    href={a.mapUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[10px] inline-flex items-center gap-1 text-[var(--accent)]"
+                                  >
+                                    <MapPin size={11} /> แผนที่
+                                  </a>
+                                )}
+                              </div>
+                              {/* ภาษาหลักของหน้าจอคือไทย — ที่อยู่ที่มีแต่ภาษาอังกฤษให้ขึ้น
+                                  อังกฤษเป็นบรรทัดหลักไปเลย ดีกว่าบรรทัดว่าง (มติ 2026-08-22) */}
+                              <p className="font-medium text-[var(--text)] leading-relaxed text-sm">{addressTextIn(a, "th")}</p>
+                              {/* บรรทัดอังกฤษ = ของที่ RD ก๊อปไปวางในเทมเพลต IFRA/MSDS
+                                  ⚠️ ไม่มี = ไม่มีบรรทัด ไม่ใช่ขีด (แพตเทิร์นเดียวกับลิงก์แผนที่) */}
+                              {!!a.addressEn && a.addressEn !== addressTextIn(a, "th") && (
+                                <p className="text-[12px] text-[var(--text-2)] leading-relaxed mt-0.5 break-words">{a.addressEn}</p>
+                              )}
+                              {(a.contactName || a.contactPhone) && (
+                                <p className="text-[11px] text-[var(--text-3)] mt-1">
+                                  ผู้รับของ: {naText(a.contactName)}
+                                  {a.contactPhone ? ` · ${fmtPhone(a.contactPhone)}` : ""}
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-          {/* เธรดกลาง (mig 0163) — ด่านอนุมัติ master data บังคับกรอกเหตุผลที่ตีกลับ
-              แต่ `rejectionReason` ถูกล้างทั้งตอนอนุมัติและตอนแก้ (resetApprovalOnEdit)
-              → ตีกลับรอบสองลบเหตุผลรอบแรกทิ้ง · เธรดเก็บครบทุกรอบไว้กับตัวลูกค้า */}
-          <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
-            <UpdateThread
-              entityType="customer"
-              entityId={id}
-              reloadToken={threadToken}
-              order="desc"
-              placeholder="พิมพ์ข้อความ เช่น ลูกค้าแจ้งเปลี่ยนที่อยู่ออกใบกำกับ..."
-              emptyText="ยังไม่มีความเคลื่อนไหว"
-            />
-          </DetailCard>
+                    {/* ⚠️ ผู้ติดต่อคนแรก = ค่า mirror ของ contactPerson/contactPhone/email
+                        (mig 0033) ที่เอกสารหยิบไปใช้ตั้งต้น ⇒ ป้าย "(หลัก)" ไม่ใช่แค่ลำดับ */}
+                    <ProfileGroup label="3. ผู้ติดต่อ" hint="คนแรกคือผู้ติดต่อหลัก — เอกสารใหม่ตั้งต้นให้จากคนนี้" />
+                    <div className="md:col-span-3">
+                      <span className="text-[var(--text-3)] block mb-2 text-[11px]">ผู้ติดต่อ ({(customer.contacts || []).length})</span>
+                      {(customer.contacts || []).length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {customer.contacts.map((c, i) => (
+                            <div key={i} className="rounded-lg border border-[var(--border)] bg-[var(--panel-2)] px-3 py-2">
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                {c.role && <span className="ui-badge">{c.role}</span>}
+                                <span className="font-medium text-[var(--text)] text-sm">{naText(c.name)}</span>
+                                {i === 0 && <span className="text-[10px] text-[var(--text-3)]">(หลัก)</span>}
+                              </div>
+                              {(c.phone || c.email) && (
+                                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-[var(--text-2)] text-[12px]">
+                                  {c.phone && <span className="font-mono">{fmtPhone(c.phone)}</span>}
+                                  {c.email && <span className="break-all">{c.email}</span>}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[var(--text-3)] text-sm italic">ยังไม่มีผู้ติดต่อ — เพิ่มได้ที่ “แก้ไขข้อมูลลูกค้า”</span>
+                      )}
+                    </div>
+                  </div>
+                </DetailCard>
+
+                {/* วางบิลและกำหนดชำระ (รุ่นสี่ · mig 0393 · แบบ A "ประโยคนโยบาย") — ใต้การ์ดข้อมูลลูกค้า · ที่เดียวที่ตั้งกติกาได้
+                    ⚠️ บันทึกแล้วเติมเฉพาะช่องกติกาลงแถวที่มีอยู่ ไม่โหลดทั้งหน้าใหม่ (ฟอร์มแก้ลูกค้า
+                    ที่อาจค้างอยู่ไม่ถูกเขียนทับ · ด่านอนุมัติไม่ขยับ จึงไม่มีอะไรอื่นบนหน้าเปลี่ยน)
+                    · การ์ดเปิดจอ "งวดที่วันจะเปลี่ยน" เองหลังบันทึก · 409 ในโมดัลก็เรียก onSaved (ค่าล่าสุดของคนอื่น · unchanged:false = โหลดเธรดใหม่) */}
+                <CustomerBillingRuleCard
+                  customer={customer}
+                  canEdit={canEditBillingRule}
+                  onSaved={(fields) => {
+                    const { unchanged, ...saved } = fields || {};
+                    setCustomer((prev) => (prev ? { ...prev, ...saved } : prev));
+                    /* แถว "รอบวางบิล" เพิ่งลงเธรดความเคลื่อนไหว — โหลดเธรดใหม่ทันที ไม่รอรอบ poll (ช้าได้ถึงหลายนาที) */
+                    if (!unchanged) setThreadToken((n) => n + 1);
+                  }}
+                />
+              </>
+            )}
+            docs={() => (
+              <>
+                {/* เอกสารแนบของลูกค้า — แผนที่/สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ */}
+                <AttachmentsPanel
+                  entityType="customer"
+                  entityId={id}
+                  canEdit={canEdit}
+                  docTypes={customerDocTypes(customer.customerType)}
+                  title="เอกสารของลูกค้า"
+                  note={customer.customerType === "individual"
+                    ? "เอกสารบุคคลธรรมดา: สำเนาบัตรประชาชน, แผนที่ที่อยู่, ทะเบียนบ้าน, เอกสารเปลี่ยนชื่อ-นามสกุล (ถ้ามี)"
+                    : "เอกสารนิติบุคคล: หนังสือรับรองบริษัท, ภ.พ.20, บัตร/ทะเบียนบ้านกรรมการ, หนังสือมอบอำนาจ, แผนที่ที่อยู่"}
+                />
+              </>
+            )}
+            activity={() => (
+              <>
+                {/* เธรดกลาง (mig 0163) — ด่านอนุมัติ master data บังคับกรอกเหตุผลที่ตีกลับ
+                    แต่ `rejectionReason` ถูกล้างทั้งตอนอนุมัติและตอนแก้ (resetApprovalOnEdit)
+                    → ตีกลับรอบสองลบเหตุผลรอบแรกทิ้ง · เธรดเก็บครบทุกรอบไว้กับตัวลูกค้า */}
+                <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+                  <UpdateThread
+                    entityType="customer"
+                    entityId={id}
+                    reloadToken={threadToken}
+                    order="desc"
+                    placeholder="พิมพ์ข้อความ เช่น ลูกค้าแจ้งเปลี่ยนที่อยู่ออกใบกำกับ..."
+                    emptyText="ยังไม่มีความเคลื่อนไหว"
+                  />
+                </DetailCard>
+              </>
+            )}
+          />
       </DetailPageLayout>
 
       {overrideDialog}

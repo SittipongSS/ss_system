@@ -1,0 +1,111 @@
+/* ── แท็บภาพรวมของหน้าลูกค้า (หน้าลูกค้าศูนย์รวม H2) ─────────────────────────────────
+   กริดสองคอลัมน์บนจอกว้าง (ต้องตามต่อ | กราฟ Actual) · "ล่าสุด" กินเต็มแถว · จอแคบเรียงลงเป็นคอลัมน์เดียว */
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+  margin-top: var(--space-4);
+}
+
+@media (min-width: 1200px) {
+  .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wide { grid-column: 1 / -1; }
+}
+
+.followList,
+.feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+
+.followItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px dashed var(--border);
+}
+
+.followItem:last-child { border-bottom: 0; }
+
+.followIcon {
+  margin-top: var(--space-0-5);
+  color: var(--text-3);
+}
+
+.followBody {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.followHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.followTitle {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.followMeta,
+.followMore {
+  font-size: var(--fs-4);
+  color: var(--text-3);
+}
+
+.followMore { margin: var(--space-2) 0 0; }
+
+.feedItem {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px dashed var(--border);
+}
+
+.feedItem:last-child { border-bottom: 0; }
+
+@media (max-width: 640px) {
+  .feedItem { grid-template-columns: minmax(0, 1fr); gap: var(--space-0-5); }
+}
+
+.feedWhen {
+  font-size: var(--fs-4);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.feedWhat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.feedActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-3);
+}
+
+/* ── เนื้อแท็บที่หน้าลูกค้าเป็นเจ้าของ (ข้อมูลลูกค้า · เอกสาร · ความเคลื่อนไหว) — การ์ดเรียงลงพร้อมระยะเดียวกับแผงรายการ */
+.tabBody {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  min-width: 0;
+}
+
+.loading {
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-5);
+  color: var(--text-3);
+}

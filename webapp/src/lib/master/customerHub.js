@@ -7,7 +7,9 @@ import { isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { salesOrderActual, splitSalesOrderAmounts } from '@/lib/sales/salesOrderWorkflow';
 import { installmentDisplayStatus } from '@/lib/sales/salesOrderPayments';
-import { businessDayKey } from '@/lib/datePeriods';
+import { addMonths, businessDayKey, currentMonth } from '@/lib/datePeriods';
+import { reportActualRows, reportOrderMonth } from '@/lib/sales/reportRows';
+import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
 
 const num = (v) => Number(v) || 0;
 const time = (v) => { const ms = Date.parse(v || ''); return Number.isFinite(ms) ? ms : 0; };
@@ -179,3 +181,102 @@ export const contractText = (c, dealCode) => hubText(c.contractNo, c.externalRef
 export const requestText = (r, dealCode) => hubText(r.docNo, r.pdrRefNo, r.title, r.requestedByName, dealCode);
 export const installmentText = (i, orderNumber) => hubText(orderNumber, i.label, i.taxInvoiceNo);
 export const registrationText = (r) => hubText(r.fgCode, r.productName, r.brandName, r.approvalNumber);
+
+/* ── แท็บภาพรวม (งวด H2 · มติ 2: เปิดหน้ามาที่ภาพรวม) ─────────────────────────────────────────────── */
+
+/** Actual รายเดือนของลูกค้า — **ตัวคิดเดียวกับรายงานยอดขาย** (reportActualRows + reportOrderMonth)
+ *  ใบทั้งใบ = เดือนที่อนุมัติใบ (เวลาไทย) · ใบรายงวด = เดือนที่นับงวด (mig 0412) · ใบย้อนหลัง/ค่าสรรพสามิตไม่นับ
+ *  คืน `months` เดือนล่าสุดจนถึงเดือนนี้ (เดือนที่ไม่มียอด = 0 · ให้กราฟไม่ขาดช่วง) + ยอดรวมของช่วง */
+export function monthlyActual(orders = [], installments = [], { months = 12, now = new Date() } = {}) {
+  const counted = orders.filter((o) => o.status === 'approved' && !isHistoricalOrder(o) && !isExciseOrder(o));
+  const instByOrder = groupBy(installments, (i) => i.salesOrderId);
+  const rows = reportActualRows(counted, { installmentsOf: (o) => instByOrder.get(o.id) || [] });
+  const byMonth = new Map();
+  for (const row of rows) {
+    const month = reportOrderMonth(row);
+    if (!month) continue;
+    const amount = isInstallmentActualOrder(row) ? num(row.actualAmount) : salesOrderActual(row);
+    byMonth.set(month, (byMonth.get(month) || 0) + amount);
+  }
+  const last = currentMonth(now);
+  const out = [];
+  for (let i = months - 1; i >= 0; i -= 1) {
+    const month = addMonths(last, -i);
+    out.push({ month, amount: Math.round((byMonth.get(month) || 0) * 100) / 100 });
+  }
+  return { months: out, total: Math.round(out.reduce((s, m) => s + m.amount, 0) * 100) / 100 };
+}
+
+const ORDER_NEEDS_ACTION = new Set(['draft', 'pending_approval', 'rejected', 'approval_revoked']);
+
+/** "ต้องตามต่อ" — ของที่ยังค้างของลูกค้ารายนี้ เรียงจากเร่งไปเบา (เกินกำหนด → คำร้องค้าง → ใบสั่งขายค้าง → ดีลเปิด)
+ *  แต่ละรายการ: { key, kind, tone, code, title, href, at } + ช่องตามชนิด (dueDate/amount · dept/status · status · stage/amount)
+ *  `href` = หน้าของใบนั้น (ลิงก์ตรง ไม่ต้องไปหาในแท็บ) · ป้ายภาษาไทยของสถานะเป็นหน้าที่ของจอ */
+export function followUps(hub, today = todayKey()) {
+  const sales = hub?.sales || {};
+  const out = [];
+  if (hub?.finance?.visible) {
+    const orderById = new Map((sales.orders || []).map((o) => [o.id, o]));
+    for (const inst of hub.finance.installments || []) {
+      const order = orderById.get(inst.salesOrderId);
+      if (!order) continue;
+      const st = installmentState(inst, order, today);
+      if (!st.outstanding || !st.overdue) continue;
+      out.push({
+        key: `inst:${inst.id}`, kind: 'overdue', tone: 'danger', code: order.orderNumber,
+        title: `งวด ${inst.seq ?? ''} เกินกำหนดชำระ`.trim(), dueDate: inst.dueDate, amount: num(inst.amount),
+        href: `/sa/sales-orders/${order.id}`, at: inst.dueDate,
+      });
+    }
+  }
+  if (hub?.requests?.visible) {
+    for (const r of (hub.requests.rows || []).filter(isOpenRequest)) {
+      out.push({
+        key: `req:${r.id}`, kind: 'request', tone: 'warning', code: r.docNo || 'ร่าง',
+        title: r.title || 'คำร้อง', dept: r.dept || null, status: r.status, href: `/requests/${r.id}`, at: r.submittedAt || r.createdAt,
+      });
+    }
+  }
+  if (sales.visible) {
+    for (const o of (sales.orders || []).filter((x) => ORDER_NEEDS_ACTION.has(x.status) && !x.supersededById)) {
+      out.push({
+        key: `so:${o.id}`, kind: 'order', tone: 'info', code: o.orderNumber,
+        title: 'ใบสั่งขายยังไม่อนุมัติ', status: o.status, href: `/sa/sales-orders/${o.id}`, at: o.createdAt,
+      });
+    }
+    for (const d of (sales.deals || []).filter(isOpenDeal).sort(newestFirst)) {
+      out.push({
+        key: `deal:${d.id}`, kind: 'deal', tone: 'neutral', code: d.code,
+        title: d.title || 'ดีล', stage: d.stage, amount: num(d.projectValue), href: `/sa/deals/${d.id}`, at: d.createdAt,
+      });
+    }
+  }
+  return out;
+}
+
+/** "ล่าสุด" — เหตุการณ์จากวันที่บนใบ (เปิดดีล · ลูกค้ารับใบเสนอราคา · อนุมัติใบสั่งขาย · รับรองการชำระ · ยื่น/ปิดคำร้อง)
+ *  ⚠️ ยังไม่ใช่ความเคลื่อนไหวรวมจาก entity_updates (นั่นคืองวด H3) — ที่นี่เล่าจากช่องเวลาบนแถวที่โหลดมาแล้วเท่านั้น */
+export function recentEvents(hub, { limit = 6 } = {}) {
+  const sales = hub?.sales || {};
+  const dealCode = new Map((sales.deals || []).map((d) => [d.id, d.code]));
+  const orderById = new Map((sales.orders || []).map((o) => [o.id, o]));
+  const ev = [];
+  const push = (at, e) => { if (at) ev.push({ ...e, at }); };
+  for (const d of sales.deals || []) push(d.createdAt, { key: `d:${d.id}`, kind: 'deal', code: d.code, text: `เปิดดีล ${d.title || ''}`.trim(), href: `/sa/deals/${d.id}` });
+  for (const q of sales.quotations || []) {
+    if (q.status === 'accepted') push(q.acceptedAt, { key: `q:${q.id}`, kind: 'quote', code: q.quoteNumber, text: `ลูกค้ารับใบเสนอราคา · ดีล ${dealCode.get(q.dealId) || '—'}`, href: `/sa/quotations/${q.id}` });
+  }
+  for (const o of sales.orders || []) {
+    if (o.approvedAt) push(o.approvedAt, { key: `o:${o.id}`, kind: 'order', code: o.orderNumber, text: 'อนุมัติใบสั่งขาย', href: `/sa/sales-orders/${o.id}` });
+  }
+  for (const i of hub?.finance?.installments || []) {
+    const o = orderById.get(i.salesOrderId);
+    if (i.status === 'confirmed' && o) push(i.confirmedAt, { key: `i:${i.id}`, kind: 'payment', code: o.orderNumber, text: `รับรองการชำระงวด ${i.seq ?? ''}`.trim(), href: `/sa/sales-orders/${o.id}` });
+  }
+  for (const r of hub?.requests?.rows || []) {
+    push(r.submittedAt, { key: `rs:${r.id}`, kind: 'request', code: r.docNo, text: `ยื่นคำร้อง ${r.title || ''}`.trim(), href: `/requests/${r.id}` });
+    if (r.status === 'closed') push(r.closedAt, { key: `rc:${r.id}`, kind: 'request', code: r.docNo, text: 'ปิดคำร้อง', href: `/requests/${r.id}` });
+  }
+  return ev.sort((a, b) => time(b.at) - time(a.at)).slice(0, limit);
+}
+
