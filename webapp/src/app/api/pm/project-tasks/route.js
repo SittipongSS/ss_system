@@ -9,6 +9,7 @@ import { withUser, ok, fail, forbidden, notFound, badRequest, conflict, unauthor
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { businessDate } from '@/lib/businessDate';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { DEAL_SCOPE_COLUMNS, dealScopeRow } from '@/lib/pm/dealTimelineScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,33 +75,35 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json();
   if (!body.projectId && !body.dealId) return badRequest('ต้องระบุ projectId หรือ dealId');
 
-  // Row-level scope: a task may only be added to a project the user may edit
-  // (own team / own record). Mirrors the checks on the other PM write routes.
+  // Row-level scope (งวด P2b · ดีล = หน่วยเดียว):
+  //   • ส่ง dealId มา = ขั้นตอนของดีล → ขอบเขตของดีลตัดสิน · ดีลที่อยู่ในโครงการ ประทับ projectId ของดีลให้เอง
+  //     (เดิมตอบ 400 "ผูกโครงการแล้ว — เพิ่มด้วย projectId" ⇒ หน้าดีลเพิ่มขั้นให้ดีลในโครงการไม่ได้)
+  //   • ส่งแค่ projectId = ขั้นตอนกลางของโครงการ (หน้าโครงการ) → ขอบเขตโครงการเหมือนเดิม
   let project = null;
-  if (body.projectId) {
-    ({ data: project } = await supabase.from('projects').select('*').eq('id', body.projectId).maybeSingle());
+  let projectId = body.projectId || null;
+  if (body.dealId) {
+    const { data: deal, error: dealError } = await supabase.from('sales_deals')
+      .select(DEAL_SCOPE_COLUMNS).eq('id', body.dealId).maybeSingle();
+    if (dealError) return fail(dealError.message, 500);
+    if (!deal) return notFound('ไม่พบดีล');
+    if (projectId && deal.projectId !== projectId) return badRequest('ดีลนี้ไม่ได้อยู่ในโครงการที่ระบุ');
+    if (!inScope(pmEditScope(user?.role), user, dealScopeRow(deal))) return forbidden();
+    projectId = deal.projectId || null;
+  }
+  if (projectId) {
+    const { data: projectRow, error: projectError } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
+    if (projectError) return fail(projectError.message, 500);
+    project = projectRow;
     if (!project) return notFound('ไม่พบโครงการ');
-    if (!inScope(pmEditScope(user?.role), user, project)) {
-      return forbidden();
-    }
+    if (!body.dealId && !inScope(pmEditScope(user?.role), user, project)) return forbidden();
     // ด่านหลังปิด (เฟส F): โครงการ closed เพิ่มขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
     const closedErr = projectWriteBlockedError(project);
     if (closedErr) return conflict(closedErr);
-  } else {
-    // ไทม์ไลน์ลอยของดีล — scope จากทีม/AE ของดีล (pseudo-project เหมือน PATCH task ลอย)
-    const { data: deal, error: dealError } = await supabase.from('sales_deals')
-      .select('id, team, ownerName, projectId').eq('id', body.dealId).maybeSingle();
-    if (dealError) return fail(dealError.message, 500);
-    if (!deal) return notFound('ไม่พบดีล');
-    if (deal.projectId) return badRequest('ดีลนี้ผูกโครงการแล้ว — เพิ่มขั้นตอนด้วย projectId');
-    if (!inScope(pmEditScope(user?.role), user, { team: deal.team, aeOwner: deal.ownerName })) {
-      return forbidden();
-    }
   }
 
   let taskQuery = supabase.from('project_tasks').select('*');
-  taskQuery = body.projectId
-    ? taskQuery.eq('projectId', body.projectId)
+  taskQuery = projectId
+    ? taskQuery.eq('projectId', projectId)
     : taskQuery.is('projectId', null).eq('dealId', body.dealId);
   const { data: allTasks } = await taskQuery.order('stepOrder', { ascending: true });
 
@@ -133,7 +136,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const row = {
     id: genId('PT'),
-    projectId: body.projectId || null,
+    projectId,
     dealId: body.dealId || null,
     stepOrder,
     name: body.name || '',
@@ -175,7 +178,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   // ขั้นใหม่อาจทำให้กราฟเปลี่ยน (เช่นแทรกขั้นที่ไม่มี predecessor = พร้อมทำทันที,
   // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโครงการใหม่. client เรียก load() ต่อ.
-  await propagateAndPersist(supabase, body.projectId || null, { dealId: body.dealId || null });
+  await propagateAndPersist(supabase, projectId, { dealId: body.dealId || null });
 
   return ok(data, 201);
 });
