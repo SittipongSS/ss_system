@@ -194,10 +194,11 @@ test('buildReplanRows: โหมด % — ยอดคิดจากสัด�
   const order = { ...ORDER, totalAmount: 100000.01 };
   const rows = [row({ id: 'A', seq: 1, percent: 100, amount: 100000.01 })];
   const out = buildReplanRows(order, rows, [
-    { id: 'A', label: 'งวดที่ 1', percent: 33.33 }, { id: null, percent: 33.33 }, { id: null, percent: 33.34 },
+    { id: 'A', label: 'งวดที่ 1', percent: 33.34 }, { id: null, percent: 33.33 }, { id: null, percent: 33.33 },
   ], { unit: 'percent' });
   assert.equal(out.error, null);
-  assert.deepEqual(out.rows.map((r) => r.amount), [33330, 33330, 33340.01]);
+  // % ที่พิมพ์เอง (ไม่ใช่ชุดเกลี่ยเท่ากัน) — คิดตามสัดส่วน 10,000,001 สตางค์ × 33.34% = 3,334,000.33 → 33,340.00 · งวดท้ายรับเศษ
+  assert.deepEqual(out.rows.map((r) => r.amount), [33340, 33330, 33330.01]);
   assert.equal(out.rows.reduce((s, r) => s + cents(r.amount), 0), cents(100000.01));
   assert.match(buildReplanRows(order, rows, [{ id: 'A', percent: 50 }, { id: null, percent: 40 }], { unit: 'percent' }).error,
     /สัดส่วนรวมต้องเท่ากับ 100% \(ตอนนี้ 90\.00%\)/);
@@ -389,11 +390,11 @@ test('installmentsReplanned: ตรงแผน QT = ไม่ขึ้นป้
 // ── 6. ทางเดินของคำขอ: จอ → API → RPC ────────────────────────────────────────────────────────────
 test('replanRequestRows: จอส่งแถวเปิดเป็นบาท — route สร้างชุดเดียวกันซ้ำได้ (ทั้งโหมดบาทและ %)', () => {
   const pct = buildReplanRows({ ...ORDER, totalAmount: 100000.01 }, [row({ id: 'A', seq: 1, percent: 100, amount: 100000.01 })], [
-    { id: 'A', label: 'งวดที่ 1', percent: 33.33 }, { id: null, percent: 33.33 }, { id: null, label: 'ปิดงาน', percent: 33.34, dueDate: '2026-12-31' },
+    { id: 'A', label: 'งวดที่ 1', percent: 33.34 }, { id: null, percent: 33.33 }, { id: null, label: 'ปิดงาน', percent: 33.33, dueDate: '2026-12-31' },
   ], { unit: 'percent' });
   const body = replanRequestRows(pct);
   assert.deepEqual(body.map((r) => Object.keys(r)), body.map(() => ['id', 'label', 'amount', 'dueDate', 'coversFrom', 'coversTo', 'note']));
-  assert.deepEqual(body.map((r) => r.amount), [33330, 33330, 33340.01]);
+  assert.deepEqual(body.map((r) => r.amount), [33340, 33330, 33330.01]);
   const again = buildReplanRows({ ...ORDER, totalAmount: 100000.01 }, [row({ id: 'A', seq: 1, percent: 100, amount: 100000.01 })], body, { unit: 'amount' });
   assert.equal(again.error, null);
   assert.deepEqual(again.rows, pct.rows, 'ชุดที่ route สร้างซ้ำต้องตรงกับที่จอพรีวิว');
@@ -515,4 +516,23 @@ test('🔴 installmentsReplanned: แผนเกลี่ยเท่ากั�
   // แผนใหม่ (บันทึกหลังกติกาใหม่) เก็บ 3,745 เท่ากัน — งวดเดิมยอด 3,743.50 = ต่างแผน
   const fresh = { type: 'installment', installments: plan.installments.map((r) => ({ ...r, amount: 3745 })) };
   assert.equal(installmentsReplanned(rows, fresh, 44940), true);
+});
+
+/* 🐞 13/11/2026 — ปุ่ม "เกลี่ยยอดที่เหลือเท่ากัน" ในโหมด % ได้ % หน่วย 0.01% แล้วยอดคิดจาก % ที่ปัด ⇒ งวดไม่เท่ากัน (บั๊กเดียวกับ QT #2041)
+   ⇒ % ของแถวเปิดตรงชุด replanEvenPercents(100 − % ที่ล็อก, n) ทุกแถว = แบ่งยอดที่เหลือเท่ากัน (replanEvenAmounts) */
+test('🔴 buildReplanRows: โหมด % + ชุดเกลี่ยเท่ากัน = ยอดเท่ากันจริง ไม่ใช่ยอดจาก 8.33%', () => {
+  const order = { ...ORDER, totalAmount: 44940 };
+  const rows = [row({ id: 'A', seq: 1, percent: 100, amount: 44940 })];
+  const draft = replanEvenPercents(100, 12).map((percent, i) => ({ id: i === 0 ? 'A' : null, percent }));
+  const out = buildReplanRows(order, rows, draft, { unit: 'percent' });
+  assert.equal(out.error, null);
+  assert.deepEqual(out.rows.map((r) => r.amount), Array(12).fill(3745));
+  // หารไม่ลงตัว: ปัดลงรายสตางค์ งวดท้ายรับเศษ · Σ = ยอดใบพอดี
+  const odd = buildReplanRows({ ...ORDER, totalAmount: 100000.01 }, [row({ id: 'A', seq: 1, percent: 100, amount: 100000.01 })],
+    replanEvenPercents(100, 3).map((percent, i) => ({ id: i === 0 ? 'A' : null, percent })), { unit: 'percent' });
+  assert.deepEqual(odd.rows.map((r) => r.amount), [33333.33, 33333.33, 33333.35]);
+  // มีแถวล็อก 30%: เกลี่ย 70% ที่เหลือ = แบ่งยอดที่เหลือ (163,800) เท่ากัน
+  const withLock = buildReplanRows(ORDER, ROWS, [{ id: 'SOI-2', percent: 23.33 }, { id: 'SOI-3', percent: 23.33 }, { id: null, percent: 23.34 }], { unit: 'percent' });
+  assert.equal(withLock.error, null);
+  assert.deepEqual(withLock.rows.map((r) => r.amount), [70200, 54600, 54600, 54600]);
 });
