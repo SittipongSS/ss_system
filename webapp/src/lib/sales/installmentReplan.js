@@ -365,6 +365,14 @@ export function buildReplanRows(order, rows = [], draft = [], { unit = 'amount',
     pcts.forEach((p, i) => { if (!Number.isFinite(p)) errors.push(`ยังไม่ได้ใส่สัดส่วนงวดที่ ${seqs[i]}`); });
     const pctSum = round2(lockedPct + pcts.reduce((sum, p) => sum + (Number.isFinite(p) ? p : 0), 0));
     amountsC = pcts.map((p) => (Number.isFinite(p) ? Math.round((totalC * p) / 100) : NaN));
+    /* 🐞 13/11/2026 ปุ่ม "เกลี่ยยอดที่เหลือเท่ากัน" ในโหมด % ได้สัดส่วนหน่วย 0.01% (replanEvenPercents) แล้วยอดคิดจาก % ที่ปัดแล้ว
+       ⇒ 12 งวดของ ฿44,940 ได้ ฿3,743.50 × 11 + ฿3,761.50 — บั๊กเดียวกับใบเสนอราคา (paymentPlan.evenSplitCount · PR #2041)
+       ⇒ สัดส่วนของแถวเปิดตรงชุดเกลี่ยเท่ากันทุกแถว = แบ่ง **ยอดที่เหลือ** เท่ากันแทน (replanEvenAmounts — ตัวเดียวกับปุ่มในโหมดบาท)
+       ⚠️ ต้องตรงทุกแถว — % ที่คนพิมพ์เองคิดตามสัดส่วนเหมือนเดิม (ไม่เดาเจตนา) */
+    const evenPct = replanEvenPercents(100 - lockedPct, entries.length);
+    if (entries.length >= 2 && pcts.every((p, i) => Number.isFinite(p) && Math.round(p * 100) === Math.round(evenPct[i] * 100))) {
+      amountsC = replanEvenAmounts((totalC - lockedC) / 100, entries.length).map((baht) => Math.round(baht * 100));
+    }
     if (Math.abs(pctSum - 100) > 0.01 + 1e-9) {
       percentBroken = true;
       errors.push(`สัดส่วนรวมต้องเท่ากับ 100% (ตอนนี้ ${fmtPercent(pctSum)})`);
