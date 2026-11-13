@@ -83,7 +83,7 @@ import { requestActorSide, requestSideLabel, requestSideText } from "@/lib/reque
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
 import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
-import { scentDesignLines } from "@/lib/requests/scentDesignOrders";
+import { scentSlotLinesOf, scentSlotNote } from "@/lib/requests/scentOrderLinks";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { deliveryRowLabel, normalizeDeliveryRows, normalizeFormulaDelivery } from "@/lib/requests/delivery";
@@ -958,7 +958,10 @@ export default function RequestDetailPage() {
   // ว่าครบแล้วตอนที่ยังไม่มีใครคอนเฟิร์มอะไร
   /* ⚠️ ตัวเลขชุดเดียวกับด่านปิด (`closeRequestError` · ม-146) — นับเฉพาะบรรทัดออกแบบกลิ่นของ SO
      ไม่งั้นการ์ดบอก "3 จาก 13" ขณะที่ด่านตัดสินจาก 3 จาก 3 (หรือกลับกัน) */
-  const reconcile = soReconcile({ lines: scentDesignLines(req.salesOrderLines || []), items: req.items });
+  /* ⭐ ม-163 — ตัวหารรวม SO ที่แนบ (`scentSlotLinesOf` ตัวเดียวกับด่านปิด) · มี SO แนบ = ต่อท้ายว่าแตกมาจากไหน
+     และรอบแก้ที่ซื้อ/ใช้ · ไม่มี SO แนบ (ทุกใบวันนี้) = ข้อความเดิมเป๊ะ */
+  const reconcile = soReconcile({ lines: scentSlotLinesOf(req), items: req.items });
+  const slotNote = scentSlotNote(req.scentSlots);
   // ⭐ **ก้อนเดียว กระจายสองที่** — เนื้อกลางหน้า (`KindDetail`) กับการ์ดขวา
   // (`KindPanel`) ต้องได้ชุดเดียวกัน
   // 🐞 เดิมประกอบสามบรรทัดนี้ไว้ที่ `KindDetail` ที่เดียว แล้ว `KindPanel` ไม่ได้รับเลย
@@ -967,7 +970,7 @@ export default function RequestDetailPage() {
   const reconcileProps = {
     reconcile,
     reconcileTone: reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined,
-    reconcileText: reconcile ? soReconcileText(reconcile) : null,
+    reconcileText: reconcile ? [soReconcileText(reconcile), slotNote].filter(Boolean).join(" · ") : null,
   };
 
   // ⭐ บอกปลายทางตอนกำลังจะพิมพ์ — "ใครกำลังถือขั้นนี้อยู่" เปลี่ยนว่าคนจะพิมพ์อะไร

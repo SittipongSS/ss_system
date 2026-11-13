@@ -21,6 +21,8 @@ import { normalizePdr } from '@/lib/requests/pdr';
 import { normalizePdrTargets } from '@/lib/requests/pdrTargets';
 import { pdrTargetScentCheck } from '@/lib/requests/pdrTargetScents';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
+import { loadScentOrderOwners } from '@/lib/requests/scentOrderLinksAdmin';
+import { scentOrderTakenText } from '@/lib/requests/scentOrderLinks';
 import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import { normalizeSurveyRequest, surveyZoneNameClash } from '@/lib/service/surveyRequest';
@@ -313,7 +315,8 @@ export async function POST(request) {
 
   if (requestNeedsRef(kind, 'salesOrder')) {
     const { data: soRow, error: soError } = await supabase
-      .from('sales_orders').select('id, dealId, status').eq('id', body.salesOrderId).maybeSingle();
+      // `revisedFromId` — เจ้าของเดินตามสาย Rev. (ม-163): ใบ Rev. ของ SO ที่มีคำร้องแล้วเปิดซ้ำไม่ได้
+      .from('sales_orders').select('id, dealId, status, "orderNumber", "revisedFromId"').eq('id', body.salesOrderId).maybeSingle();
     if (soError) return Response.json({ error: soError.message }, { status: 500 });
     if (!soRow) return Response.json({ error: 'ไม่พบใบสั่งขายที่เลือก' }, { status: 400 });
     // ⭐ **ต้องอนุมัติแล้วเท่านั้น** (มติผู้ใช้) — ใบที่ยังรออนุมัติแปลว่าค่าบริการ
@@ -335,13 +338,21 @@ export async function POST(request) {
     // หัวข้ออื่นอ้าง SO ได้ไม่จำกัด (ขอเอกสาร/ขอใบวางบิล · optionalRefs ม-88) · เดิมไม่กรอง
     // ⇒ SO ที่เคยขอเอกสาร FN ไว้เปิด PDR ไม่ได้ ("เปิดคำร้องไปแล้ว (เลขใบขอเอกสาร)")
     // ทั้งที่หน้า SO (กรอง kind แล้ว) บอกว่าเปิดได้ · อ้างสองใบขึ้นไป `maybeSingle` ยัง 500 อีกชั้น
-    const { data: taken, error: takenError } = await supabase
-      .from('dept_requests').select('docNo, id')
-      .eq('salesOrderId', soRow.id).eq('kind', 'scent_dev').neq('status', 'cancelled').maybeSingle();
-    if (takenError) return Response.json({ error: takenError.message }, { status: 500 });
+    /* ⭐ ม-163 — เจ้าของมีสามทาง: SO หลัก (ดัชนี 0219) · SO ที่แนบอยู่กับคำร้องอื่น (mig 0436) · เป็น Rev. ของใบที่มีเจ้าของ
+       ⇒ ถามตัวโหลดเดียวกับหน้า SO (`loadScentOrderOwners`) · trigger ของ 0436 เป็นด่านสุดท้ายที่ DB */
+    let taken = null;
+    let takenText = null;
+    try {
+      const { ownerById, ordersById } = await loadScentOrderOwners(supabase, [soRow]);
+      taken = ownerById.get(soRow.id) || null;
+      takenText = scentOrderTakenText(taken, { orderNumberOf: (soId) => ordersById.get(soId)?.orderNumber || null });
+    } catch (takenError) {
+      return Response.json({ error: takenError?.message || 'ตรวจคำร้องเดิมของใบสั่งขายไม่สำเร็จ' }, { status: 500 });
+    }
 
     const gate = scentDesignOrderError({ ...soRow }, soLines || [], {
-      usedByRequestNo: taken ? (taken.docNo || taken.id) : null,
+      usedByRequestNo: taken ? (taken.docNo || taken.requestId) : null,
+      usedByText: takenText,
     });
     if (gate) return Response.json({ error: gate }, { status: 400 });
 

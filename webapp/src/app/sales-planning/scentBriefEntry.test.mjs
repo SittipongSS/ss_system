@@ -18,6 +18,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const read = (rel) => readFileSync(join(HERE, rel), 'utf8');
 
 const ORDER_ROUTE = read('../api/sales-planning/sales-orders/[id]/route.js');
+const ORDER_LIST_ROUTE = read('../api/sales-planning/sales-orders/route.js');
+const OWNERS_LOADER = read('../../lib/requests/scentOrderLinksAdmin.js');
 const ORDER_PAGE = read('./sales-orders/[id]/page.js');
 /* ทางเข้าย้ายจากการ์ด "บรีฟกลิ่น" มาอยู่ในช่วงแรกของ **เส้นเดินงาน** (2026-08-13)
    หน้ายังตัดสินด้วย `scentDesignOrderError` เหมือนเดิม แต่ลิงก์ถูกประกอบในลิบนี้ */
@@ -32,21 +34,28 @@ test('⭐ route ของ SO ถามหาคำร้องด้วยเง
 
   // หลวมกว่านี้ = ปุ่มหายทั้งที่ใบเก่าถูกยกเลิกไปแล้วและเปิดใหม่ได้
   // แคบกว่านี้ = กดแล้วชน unique violation ที่ DB หลังกรอก PDR จนจบ
-  assert.match(ORDER_ROUTE, /from\('dept_requests'\)/);
-  assert.match(ORDER_ROUTE, /\.eq\('kind', 'scent_dev'\)/);
-  assert.match(ORDER_ROUTE, /\.neq\('status', 'cancelled'\)/);
+  /* ⭐ ม-163 — คำถาม "ใบนี้มีคำร้องแล้วไหม" ย้ายไปตัวโหลดกลาง `loadScentOrderOwners` (SO หลัก + SO แนบ + สาย Rev.)
+     ⇒ เงื่อนไขของ SO หลักต้องอยู่ที่ตัวโหลด และ route ทั้งสามต้องเรียกตัวโหลดนั้น ไม่ถามเอง */
+  const mainQuery = OWNERS_LOADER.match(/from\('dept_requests'\)\.select\('id, "docNo", status, "salesOrderId"'\)[\s\S]*?\.order\(/);
+  assert.ok(mainQuery, 'หาคำสั่งอ่าน SO หลักในตัวโหลดไม่เจอ');
+  assert.match(mainQuery[0], /\.eq\('kind', 'scent_dev'\)/);
+  assert.match(mainQuery[0], /\.neq\('status', 'cancelled'\)/);
+  assert.match(ORDER_ROUTE, /loadScentOrderOwners\(supabase, \[order\]\)/);
   assert.match(ORDER_ROUTE, /scentRequest/);
+  assert.match(ORDER_LIST_ROUTE, /loadScentOrderOwners\(supabase, orders/);
 });
 
 /* 🐞 ด่านตอนกดส่ง (POST /api/sa/requests) เคยนับคำร้อง **ทุกหัวข้อ** ที่อ้าง SO —
    SO ที่มีใบขอเอกสาร FN อยู่แล้วเปิด PDR ไม่ได้ ทั้งที่ index 0219 กับหน้า SO นับแค่ scent_dev */
 test('🐞 ด่าน 1 SO : 1 PDR ตอนกดส่งนับเฉพาะ scent_dev — ใบหัวข้ออื่นที่อ้าง SO ไม่ล็อก', () => {
   const CREATE_ROUTE = read('../api/sa/requests/route.js');
-  const taken = CREATE_ROUTE.match(/const \{ data: taken[\s\S]*?\.maybeSingle\(\)/);
-  assert.ok(taken, 'หา query ของด่าน 1 SO : 1 PDR ไม่เจอ');
-  assert.match(taken[0], /\.eq\('salesOrderId', soRow\.id\)/);
-  assert.match(taken[0], /\.eq\('kind', 'scent_dev'\)/);
-  assert.match(taken[0], /\.neq\('status', 'cancelled'\)/);
+  // ม-163 — ด่านถามตัวโหลดกลางตัวเดียวกับหน้า SO (เงื่อนไข kind/status ล็อกไว้ที่ตัวโหลดในเทสต์ข้างบน)
+  assert.match(CREATE_ROUTE, /loadScentOrderOwners\(supabase, \[soRow\]\)/);
+  assert.match(CREATE_ROUTE, /usedByText: takenText/);
+  // `revisedFromId` ต้องมากับแถว SO — ไม่งั้นใบ Rev. ของ SO ที่มีคำร้องแล้วเปิดซ้ำได้
+  assert.match(CREATE_ROUTE, /select\('id, dealId, status, "orderNumber", "revisedFromId"'\)/);
+  // SO แนบของหัวข้ออื่นไม่มีทาง — ตัวโหลดอ่านลิงก์จากตาราง SO แนบของพัฒนากลิ่นเท่านั้น
+  assert.match(OWNERS_LOADER, /SCENT_ORDER_LINKS_TABLE = 'dept_request_sales_orders'/);
 });
 
 test('⭐ หน้า SO ตัดสินด้วย scentDesignOrderError ตัวเดียวกับ server — ปุ่มกับ API ขัดกันไม่ได้', () => {

@@ -12,7 +12,7 @@ import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
-import { scentDesignLines } from '@/lib/requests/scentDesignOrders';
+import { scentSlotLinesOf } from '@/lib/requests/scentOrderLinks';
 import { closureStatus, reopenWaitClearPatch } from '@/lib/requests/closure';
 import { requestSideText } from '@/lib/requests/replyTurn';
 
@@ -355,7 +355,9 @@ export function closeRequestError(request, items = []) {
     /* ⚠️ นับเฉพาะบรรทัดออกแบบกลิ่น (ตัวหารเดียวกับ PDR 1.12 · `scentCountForOrder`) — SO ใบหนึ่ง
        ขายของอื่นปนได้ (ด่านหน้าประตูบังคับแค่ "มีบรรทัดออกแบบกลิ่นอย่างน้อยหนึ่ง") ⇒ รวมทุกบรรทัด
        = ใบที่ลูกค้าคอนเฟิร์มครบทุกกลิ่นขึ้น "3 จาก 13" แล้วปิดไม่ได้ตลอดกาล (รีวิว ม-146) */
-    const reconcile = soReconcile({ lines: scentDesignLines(request.salesOrderLines || []), items: rows });
+    /* ⭐ ม-163 — ตัวหารรวม SO ที่ลูกค้าซื้อเพิ่มแล้วแนบ (ยกเว้น 03-010 ของ SO แนบ = รอบแก้ ไม่ใช่กลิ่น)
+       · ตัวโหลดไม่ได้เติมมา = บรรทัดออกแบบกลิ่นของ SO หลักแบบเดิม (`scentSlotLinesOf`) */
+    const reconcile = soReconcile({ lines: scentSlotLinesOf(request), items: rows });
     if (reconcile && (reconcile.state === 'pending' || reconcile.state === 'short')) {
       return `ลูกค้าคอนเฟิร์ม ${reconcile.confirmed} จาก ${reconcile.ordered} ในใบสั่งขาย`
         + ' — ส่งให้ครบก่อน หรือยกเลิกใบถ้าลูกค้าไม่เอาแล้ว';

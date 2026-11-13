@@ -485,3 +485,14 @@ test('ไม่มีบรรทัดขาดราคา = ไม่มี�
   });
   assert.equal(track.segments.at(-1).notes, undefined);
 });
+
+/* ม-163 — SO ที่แนบเข้าคำร้องเดิม (ลูกค้าซื้อเพิ่ม) / เป็น Rev. ของใบที่มีคำร้อง ต้องบอกว่ามาทางไหน
+   ไม่งั้นป้ายอ่านเหมือนใบนี้เป็นคนเปิดคำร้องนั้นเอง */
+test('ป้ายลิงก์คำร้อง: SO หลัก · SO แนบ · Rev. ของใบที่มีคำร้อง', () => {
+  const linkOf = (existing) => salesOrderWorkTrack({
+    scent: { hasDesignLines: true, count: 1, blocked: null, existing }, approved: true,
+  }).segments[0].link.label;
+  assert.equal(linkOf({ id: 'R1', docNo: 'RQ-1', status: 'acknowledged', role: 'main' }), 'RQ-1');
+  assert.equal(linkOf({ id: 'R1', docNo: 'RQ-1', status: 'acknowledged', role: 'attached' }), 'RQ-1 (แนบ)');
+  assert.equal(linkOf({ id: 'R1', docNo: 'RQ-1', status: 'acknowledged', role: 'main', viaRevision: true }), 'RQ-1 (ใบก่อน Rev.)');
+});

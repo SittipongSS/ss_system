@@ -81,7 +81,7 @@ const usedBy = (order) => order?.scentRequest?.docNo || order?.scentRequest?.id 
  *
  * ⚠️ **ข้อความบอกทางออกเสมอ** — "เลือกใบอื่น" ไม่ช่วยคนที่มีใบเดียวในมือ
  */
-export function scentDesignOrderError(order, lines = [], { usedByRequestNo = null } = {}) {
+export function scentDesignOrderError(order, lines = [], { usedByRequestNo = null, usedByText = null } = {}) {
   if (!order) return 'ต้องเลือกใบสั่งขาย';
   // มติผู้ใช้: ต้องอนุมัติแล้ว ไม่ใช่แค่มีอยู่ — ออกแบบกลิ่นมีค่าบริการ
   if (order.status !== 'approved') {
@@ -91,6 +91,9 @@ export function scentDesignOrderError(order, lines = [], { usedByRequestNo = nul
     return 'ใบสั่งขายนี้ไม่มีบรรทัดงานออกแบบกลิ่น — ต้องเป็นใบที่ขายบริการออกแบบกลิ่น';
   }
   // ⭐ 1 SO : 1 PDR ตายตัว (มติผู้ใช้) — อยากได้เพิ่มต้องออกใบสั่งขายใหม่
+  /* ⭐ ม-163 — SO มีเจ้าของได้สามทาง (SO หลัก · SO แนบ · เป็น Rev. ของใบที่มีเจ้าของ) ⇒ ข้อความมาจาก
+     `scentOrderTakenText` ของผู้เรียก (`usedByText`) · ไม่ส่งมา = ข้อความเดิมของ SO หลัก */
+  if (usedByText) return usedByText;
   if (usedByRequestNo) {
     return `ใบสั่งขายนี้เปิดคำร้องไปแล้ว (${usedByRequestNo}) — ขอเพิ่มต้องออกใบสั่งขายใหม่`;
   }
