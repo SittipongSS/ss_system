@@ -536,17 +536,16 @@ test('route ย้อนรับใบ: คิด FC% ใหม่หลัง 
   assert.doesNotMatch(src, /for \(const row of probability\.touched\)/, 'ห้ามลง audit ซ้ำจาก touched');
 });
 
-/* ── ข้อ 2: ด่านที่ตัดสินได้จากแถวที่โหลดแล้ว ต้องมาก่อนการผูกโครงการ ───────────── */
-test('route รับใบ: ตรวจความพร้อมของใบก่อนผูกโครงการ — ล้มแล้วต้องไม่เหลือโครงการที่ผูกค้าง', () => {
+/* ── ข้อ 2: ด่านที่ตัดสินได้จากแถวที่โหลดแล้ว ต้องมาก่อน RPC ─────────────────────────────
+   เดิม (25/09) ล็อกว่า "ตรวจความพร้อมก่อนผูกโครงการ" · ตั้งแต่ 0434 (มติเจ้าของ 13/11/2026)
+   route ไม่ผูกโครงการแล้ว ⇒ เหลือแค่ลำดับ "ด่านใบ/ดีล → RPC" และห้ามการผูกไหลกลับมา */
+test('route รับใบ: ตรวจความพร้อมของใบก่อนเรียก RPC · ไม่ผูกโครงการ', () => {
   const src = read('src/app/api/sales-planning/quotations/[id]/accept/route.js');
   const readiness = src.indexOf('validateDocumentReadiness({');
-  const link = src.indexOf('await linkDealToProject(');
   const rpc = src.indexOf("rpc('accept_quotation_atomic'");
-  assert.ok(readiness > 0 && link > 0 && rpc > 0);
-  assert.ok(readiness < link, 'ใบยังไม่อนุมัติ/เนื้อหาเปลี่ยนหลังอนุมัติ ต้องตีกลับก่อนแตะโครงการ');
-  assert.ok(src.indexOf('if (!readiness.ok)') < link);
-  assert.ok(link < rpc, 'RPC ต้องเห็น projectId แล้ว (deal_project_required)');
-  // ด่านสถานะดีล/ใบ ก็ต้องอยู่ก่อนการผูกเหมือนเดิม
-  assert.ok(src.indexOf("quote.status === 'closed'") < link);
-  assert.ok(src.indexOf('isWonStage(dealRow.stage)') < link);
+  assert.ok(readiness > 0 && rpc > 0);
+  assert.ok(readiness < rpc, 'ใบยังไม่อนุมัติ/เนื้อหาเปลี่ยนหลังอนุมัติ ต้องตีกลับก่อนแตะฐาน');
+  assert.ok(src.indexOf("quote.status === 'closed'") < rpc);
+  assert.ok(src.indexOf('isWonStage(dealRow.stage)') < rpc);
+  assert.equal(src.indexOf('linkDealToProject('), -1, 'ปิด Won ต้องไม่ผูกโครงการ (0434)');
 });

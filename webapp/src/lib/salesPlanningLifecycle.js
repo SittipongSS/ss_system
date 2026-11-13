@@ -135,7 +135,9 @@ function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProjec
   const entries = collectExciseFgEntries(deal, projectProducts, productTypes);
   if (!entries.length) return []; // ไม่มี FG หมวดสรรพสามิต → ไม่โชว์การ์ดสรรพสามิต
   if (!hasProject) {
-    return [{ kind: 'excise', label: 'ทะเบียนสรรพสามิต', status: 'locked', hint: 'สร้างโครงการ PM ก่อน', actionKind: null, href: null }];
+    /* ⚠️ ไม่บอกให้ "สร้างโครงการ PM ก่อน" แล้ว (mig 0434 · ปิด Won ได้โดยไม่มีโครงการ) — ปุ่มสร้างทะเบียนบนการ์ดนี้
+       ใช้เส้น from-project ซึ่งต้องมีโครงการ ⇒ ดีลไม่มีโครงการชี้ไปขึ้นทะเบียนที่หน้าสินค้า FG แทน (เส้นทางกลางของฝ่ายขาย · มติ 02/11 V13) */
+    return [{ kind: 'excise', label: 'ทะเบียนสรรพสามิต', status: 'locked', hint: 'ขึ้นทะเบียนที่หน้าสินค้า FG', actionKind: null, href: null }];
   }
   const multi = entries.length > 1;
   return entries.map((e) => {

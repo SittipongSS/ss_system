@@ -62,18 +62,6 @@
   color: var(--navy-ink);
 }
 
-/* เหตุผลที่ยังกดยืนยันไม่ได้ — เหลืองอำพัน = "ยังไม่พร้อม" ไม่ใช่ "ผิดพลาด" */
-.blocked {
-  margin: 0;
-  padding: var(--space-2) var(--space-2-5);
-  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--amber) 10%, transparent);
-  color: var(--text-2);
-  font-size: var(--fs-5);
-  line-height: var(--lh-thai);
-}
-
 .footer {
   display: flex;
   justify-content: flex-end;
