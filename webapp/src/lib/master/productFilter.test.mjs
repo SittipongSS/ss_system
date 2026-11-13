@@ -216,7 +216,9 @@ test('🔴 L16c ด่านซอร์ส: จอใต้ app/database ไม
   for (const rel of pages) {
     assert.doesNotMatch(code(String(rel).replace(/\\/g, '/')), /isExciseTaxable\s*!==\s*false/, `${rel}: ใช้ isProductExciseTaxable / isMissingRetailPrice`);
   }
-  assert.match(code('customers/[id]/page.js'), /hasTaxObligation = totalTaxAccrued > 0 \|\| products\.some\(\(p\) => isProductTaxable\(p, productTypes\)\);/);
+  /* หน้าลูกค้าศูนย์รวม H1 (มติเจ้าของ 13/11/2026 ข้อ 6): การ์ด "ภาระภาษีสรรพสามิต" อ่านตาราง orders ที่ว่าง 0 แถว ⇒ ถอดแล้ว
+     ข้อมูลภาษีของลูกค้าอยู่แท็บ "สรรพสามิต" (ทะเบียน + SO ค่าสรรพสามิต) · ห้ามการ์ดที่คิดจากตารางเก่ากลับมา */
+  assert.doesNotMatch(code('customers/[id]/page.js'), /hasTaxObligation|totalTaxAccrued/);
   assert.match(code('products/[id]/page.js'), /const needsRetailPrice = isMissingRetailPrice\(/);
 });
 
@@ -291,10 +293,14 @@ test('🔴 L16b/L16c ด่านซอร์ส: ป้าย "ภาษีส�
     assert.doesNotMatch(code(rel), />ภาษีสรรพสามิต</, `${rel}: ป้ายตายตัวไม่มีทาง "ยกเว้น" — ใช้ productExciseBadge / isProductTaxable`);
     assert.doesNotMatch(code(rel), /label="ภาษีสรรพสามิต"/, `${rel}: ป้ายตายตัว`);
   }
+  /* หน้าลูกค้า (H1 · 13/11/2026): แท็บสินค้าย้ายไป CustomerHub และไม่มีป้ายภาษีรายสินค้าแล้ว (ดูที่หน้าสินค้า/แท็บสรรพสามิต)
+     ⇒ ทั้งหน้าและแท็บต้องไม่มีป้ายตายตัว และไม่ตัดสินภาษีจากหมวดล้วน */
   const customer = code('customers/[id]/page.js');
-  assert.equal((customer.match(/const exciseBadge = productExciseBadge\(p, productTypes\);/g) || []).length, 2, 'การ์ด + ตาราง');
-  assert.equal((customer.match(/exciseBadge === "taxable" \? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"/g) || []).length, 2);
-  assert.doesNotMatch(customer, /isExciseCategory\(/, 'หน้าลูกค้าไม่ตัดสินภาษีจากหมวดล้วนอีก');
+  const hub = strip(readFileSync(new URL('../../components/database/customerHub/CustomerHub.js', import.meta.url), 'utf8'));
+  for (const text of [customer, hub]) {
+    assert.doesNotMatch(text, />ภาษีสรรพสามิต<|label="ภาษีสรรพสามิต"/);
+    assert.doesNotMatch(text, /isExciseCategory\(|isExciseTaxable\s*!==\s*false/, 'หน้าลูกค้าไม่ตัดสินภาษีจากหมวดล้วน');
+  }
   const product = code('products/[id]/page.js');
   assert.match(product, /const showRetailPrice = productShowsRetailPrice\(product, productTypes\);/);
   assert.match(product, /const exciseBadge = productExciseBadge\(product, productTypes\);/);
