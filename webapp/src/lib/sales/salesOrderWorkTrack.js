@@ -112,8 +112,17 @@ function scentSegment(scent, orderId) {
     steps: markSteps(SCENT_STEPS, SHORT_SCENT, done ? SCENT_STEPS.length - 1 : index),
     statusLabel: REQUEST_STATUS_LABELS[request.status] || request.status,
     meta: scent.count != null ? `${scent.count} กลิ่น` : null,
-    link: { label: request.docNo || 'เปิดคำร้อง', href: `/requests/${request.id}` },
+    /* ม-163 — ใบนี้เป็น SO ที่แนบเข้าคำร้องเดิม (ลูกค้าซื้อเพิ่ม) หรือเป็น Rev. ของใบที่มีคำร้อง ⇒ ป้ายบอกว่ามาทางไหน
+       ไม่งั้นอ่านเหมือนใบนี้เป็นคนเปิดคำร้องนั้นเอง */
+    link: { label: scentLinkLabel(request), href: `/requests/${request.id}` },
   };
+}
+
+function scentLinkLabel(request) {
+  const no = request.docNo || 'เปิดคำร้อง';
+  if (request.role === 'attached') return `${no} (แนบ)`;
+  if (request.viaRevision) return `${no} (ใบก่อน Rev.)`;
+  return no;
 }
 
 function deliverySegment(readiness, projectId, hasSupplyChain) {

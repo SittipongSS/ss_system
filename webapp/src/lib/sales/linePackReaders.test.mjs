@@ -293,6 +293,8 @@ function wordContexts(source, word) {
 const SELECT_WAIVERS = Object.freeze({
   'app/api/sa/requests/route.js': 'นับจำนวนกลิ่นของบรรทัดออกแบบกลิ่น (หมวด 03-xxx) — เลขแพ็คมีได้เฉพาะหมวด 02-001',
   'lib/materialPricesAdmin.js': 'บริบท PDR: นับจำนวนกลิ่นของบรรทัดออกแบบกลิ่น (หมวด 03-xxx) เท่านั้น',
+  /* ม-163 — ตัวโหลด SO หลัก/SO แนบของคำร้องพัฒนากลิ่น · บรรทัดไปตัวนับกลิ่น (`scentSlotLines` กรองด้วย scentDesignLines) เท่านั้น */
+  'lib/requests/scentOrderLinksAdmin.js': 'ตัวโหลด SO ของคำร้องพัฒนากลิ่น: qty ป้อนตัวนับกลิ่นของบรรทัดออกแบบกลิ่น (หมวด 03-xxx) เท่านั้น',
   'app/api/sales-planning/sales-orders/route.js': 'ทะเบียนใบสั่งขาย: qty ป้อนตัวนับกลิ่นของบรรทัดออกแบบกลิ่นที่เดียว (ตัวตัดสินงานบริการไม่อ่าน qty)',
   'lib/sales/contractQuotationSource.js': 'สัญญาบริการพิมพ์คำบรรยายของบรรทัดกับ subtotal ของใบ — ไม่มีใครอ่าน qty',
   'app/api/service/intake/route.js': 'คิว TS: โหลด qty มาแต่ไม่มีตัวอ่าน (fgSummary ไม่ถูกเรียกจากเส้นนี้แล้ว · mig 0392)',
@@ -768,12 +770,20 @@ test('GA เหตุของการยกเว้นยังจริง: 
   assert.match(count, /const design = scentDesignLines\(lines\);/);
   assert.match(count, /for \(const line of design\) \{\s*const qty = Number\(line\.qty\);/);
   assert.equal((scent.match(/\.qty\b/g) || []).length, 1, 'scentDesignOrders.js อ่าน qty ที่เดียว (ตัวนับกลิ่น)');
-  /* soReconcile ถูกเรียกด้วย scentDesignLines(…) เท่านั้น — สองจุด */
+  /* soReconcile ถูกเรียกด้วยบรรทัดออกแบบกลิ่นเท่านั้น — สองจุด · ม-163: ผ่าน `scentSlotLinesOf` (SO หลัก + SO แนบ)
+     ซึ่งกรองด้วย scentDesignLines ทุกทาง (ยามข้างล่างล็อกตัวกรองไว้) */
   const callers = APP_FILES.filter((file) => file !== 'lib/requests/soReconcile.js' && callArguments(code(file), 'soReconcile').length);
   assert.deepEqual(callers, ['app/requests/[id]/page.js', 'lib/requests/stages.js']);
   for (const file of callers) {
-    for (const args of callArguments(code(file), 'soReconcile')) assert.match(args, /^\{ lines: scentDesignLines\(/, `${file}: soReconcile(${args.slice(0, 50)})`);
+    for (const args of callArguments(code(file), 'soReconcile')) assert.match(args, /^\{ lines: (scentDesignLines|scentSlotLinesOf)\(/, `${file}: soReconcile(${args.slice(0, 50)})`);
   }
+  const slots = code('lib/requests/scentOrderLinks.js');
+  const slotLines = slots.slice(slots.indexOf('export function scentSlotLines'), slots.indexOf('export function paidRevisionLines'));
+  assert.match(slotLines, /\.\.\.scentDesignLines\(mainLines \|\| \[\]\)/);
+  assert.match(slotLines, /scentDesignLines\(a\?\.lines \|\| \[\]\)/);
+  const slotLinesOf = slots.slice(slots.indexOf('export function scentSlotLinesOf'), slots.indexOf('export function scentSlotNote'));
+  assert.match(slotLinesOf, /return scentDesignLines\(request\?\.salesOrderLines \|\| \[\]\)/);
+  assert.match(code('lib/materialPricesAdmin.js'), /scentSlotLines: scentOrders\.scentSlotLines/);
   /* โหลด qty มาแต่ไม่มีใครอ่าน: ไฟล์และตัวอ่านปลายทางที่ระบุต้องไม่อ่าน .qty — เริ่มอ่านเมื่อไรต้องเลือก packQty และถอดออกจากยกเว้น */
   for (const [waived, readers] of Object.entries(SELECT_WAIVER_UNREAD)) {
     assert.ok(waived in SELECT_WAIVERS, waived);

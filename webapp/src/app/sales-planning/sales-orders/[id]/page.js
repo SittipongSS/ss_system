@@ -1762,6 +1762,8 @@ export default function SalesOrderDetailPage() {
     const lines = order.lines || [];
     const blocked = scentDesignOrderError(order, lines, {
       usedByRequestNo: order.scentRequest?.docNo || (order.scentRequest ? order.scentRequest.id : null),
+      // ม-163 — ใบที่แนบอยู่กับคำร้องอื่น/เป็น Rev. ของใบที่มีคำร้อง ได้ข้อความตามบทบาทจาก server
+      usedByText: order.scentRequest?.takenText || null,
     });
     return {
       blocked,

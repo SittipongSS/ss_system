@@ -40,6 +40,8 @@ import { paidThrough } from '@/lib/sales/paymentCoverage';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 import { loadExciseListStages } from '@/lib/excise/exciseListStage';
 import { sourceDeliveryDueDate } from '@/lib/excise/exciseDeliveryDate';
+import { loadScentOrderOwners } from '@/lib/requests/scentOrderLinksAdmin';
+import { scentRequestRef } from '@/lib/requests/scentOrderLinks';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,14 +113,16 @@ export const GET = withUser(async ({ user, supabase }) => {
       return new Map();
     });
 
-  const { data: scentRequests, error: scentRequestError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
-    .from('dept_requests').select('id, docNo, status, "salesOrderId"')
-    .in('salesOrderId', chunk).eq('kind', 'scent_dev').neq('status', 'cancelled')
-    .order('id', { ascending: true })));
-  if (scentRequestError) return fail(scentRequestError.message, 500);
-  const scentRequestByOrder = new Map(
-    (scentRequests || []).map((row) => [row.salesOrderId, row]),
-  );
+  /* ⭐ ม-163 — เจ้าของมีสามทาง (SO หลัก · SO แนบ · Rev. ของใบที่มีเจ้าของ) ⇒ ตัวโหลดเดียวกับหน้า SO และด่านเปิดคำร้อง
+     · ก้อนที่คืนคงสามคีย์เดิม (`id` · `docNo` · `status`) ที่ฟอร์มเปิดคำร้องใช้กรอง + บทบาท + ข้อความด่าน */
+  let scentRequestByOrder = new Map();
+  try {
+    const { ownerById, ordersById } = await loadScentOrderOwners(supabase, orders || []);
+    const orderNumberOf = (soId) => ordersById.get(soId)?.orderNumber || null;
+    scentRequestByOrder = new Map([...ownerById].map(([soId, owner]) => [soId, scentRequestRef(owner, { orderNumberOf })]));
+  } catch (scentRequestError) {
+    return fail(scentRequestError?.message || 'อ่านคำร้องพัฒนากลิ่นของใบสั่งขายไม่สำเร็จ', 500);
+  }
 
   // รหัส AR โชว์เหนือชื่อลูกค้าในตาราง (มติผู้ใช้ 2026-08-12) — พ่วงจากทะเบียน
   // แพตเทิร์นเดียวกับ QT route · ids ว่างไม่ยิง query

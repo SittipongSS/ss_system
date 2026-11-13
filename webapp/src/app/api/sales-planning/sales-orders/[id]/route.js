@@ -110,6 +110,8 @@ import {
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { billingInstallmentSchemaError } from '@/lib/sales/installmentRequests';
 import { loadInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
+import { loadScentOrderOwners } from '@/lib/requests/scentOrderLinksAdmin';
+import { scentRequestRef } from '@/lib/requests/scentOrderLinks';
 import { serviceTermZoneCount, termOrderActive } from '@/lib/service/terms';
 import {
   activeDocumentsForOrder, moveDocumentsToRevisedOrder, voidDocumentsByIds, voidDocumentsForOrder,
@@ -311,9 +313,17 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     // ⚠️ อ่านด้วย service-role โดยตั้งใจ — ทะเบียนคำร้องมีขอบเขตของตัวเอง (ผู้ขอเห็น
     // เฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ไม่มีใบ" ทั้งที่เพื่อนร่วมทีมเปิดไปแล้ว
     // แล้วปุ่มจะโชว์ให้กดจนไปตายที่ DB · ที่คืนออกไปมีแค่ เลขที่/สถานะ/id
-    supabase.from('dept_requests').select('id, docNo, status')
-      .eq('salesOrderId', id).eq('kind', 'scent_dev').neq('status', 'cancelled')
-      .maybeSingle(),
+    /* ⭐ ม-163 — เจ้าของมีสามทาง: SO หลัก · SO แนบ (mig 0436) · เป็น Rev. ของใบที่มีเจ้าของ ⇒ ตัวโหลดเดียวกับด่านเปิดคำร้อง
+       (`loadScentOrderOwners` · เงื่อนไข SO หลักยังตรงกับดัชนี 0219) · ก้อนที่คืนคงสามคีย์เดิม + บทบาท + ข้อความด่าน
+       ⚠️ อ่านพลาด = ไม่มีก้อน (log) เหมือนของเดิมที่ไม่เคยอ่าน error ของคำสั่งนี้ — ด่านจริงอยู่ที่ POST เปิดคำร้อง */
+    loadScentOrderOwners(supabase, [order])
+      .then(({ ownerById, ordersById }) => ({
+        data: scentRequestRef(ownerById.get(order.id), { orderNumberOf: (soId) => ordersById.get(soId)?.orderNumber || null }),
+      }))
+      .catch((ownerError) => {
+        console.error('[sales-orders] อ่านคำร้องพัฒนากลิ่นของใบไม่สำเร็จ', ownerError);
+        return { data: null };
+      }),
     /* รหัส AR ของลูกค้า — หัวหน้ารายละเอียดต้องขึ้น `AR-306 · ชื่อ` (มติผู้ใช้ 2026-08-21)
        ⚠️ อ่านสดจากทะเบียน ไม่ใช่ประทับลงใบ: ชื่อบนใบเป็นหลักฐาน ณ วันออก ส่วนรหัส
        เป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบันเสมอ (กติกาเดียวกับ lib/master/customerAr.js)

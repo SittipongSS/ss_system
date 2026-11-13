@@ -1,6 +1,8 @@
 // ── ทะเบียนวัสดุ (mig 0143 + 0157) — ชั้นเข้าถึงข้อมูล (server only) ────
 import { pdrContext } from '@/lib/requests/pdrFields';
-import { requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
+import { requestCloseNeedsSoConfirm, requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
+import { loadRequestScentOrders } from '@/lib/requests/scentOrderLinksAdmin';
+import { scentSlotSummary } from '@/lib/requests/scentOrderLinks';
 import { requestRowSummary } from '@/lib/requests/rowStage';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { byColumns, fetchAllInChunks } from '@/lib/supabaseInChunks';
@@ -564,7 +566,15 @@ export async function findRequest(supabase, id) {
   // บรรทัดไม่ได้ผูก `productId` ซึ่งมีจริงบน prod · ดึงมาแค่ `id, qty` แล้วทุกใบจะนับ
   // ได้ 0 เงียบ ๆ แล้วช่อง 1.12 ขึ้น N/A ทั้งที่ใบนั้นขายกลิ่นอยู่
   let salesOrderLines = [];
-  if (withBriefs.salesOrderId) {
+  /* ⭐ **พัฒนากลิ่นอ่านผ่านตัวโหลด SO ของคำร้อง** (ม-163 · mig 0436) — SO หลัก + SO ที่ลูกค้าซื้อเพิ่มแล้วแนบ
+     และนับจาก **ใบ Rev. ล่าสุดที่อนุมัติ** (SO ไม่พาคำร้องตามไปใบ Rev. ใหม่ — เดิมอ่านบรรทัดจากใบที่ถูกแทนไปแล้ว)
+     ⚠️ `salesOrderLines` ยังเป็นของ SO หลักอย่างเดียว — PDR 1.12 คือบรีฟตั้งต้น ไม่บวก SO แนบ (แผน §8)
+        ตัวหารของด่านปิด/การ์ดกระทบยอดคือ `scentSlotLines` (SO หลัก + แนบที่ไม่ใช่ 03-010) */
+  let scentOrders = null;
+  if (withBriefs.salesOrderId && requestCloseNeedsSoConfirm(withBriefs.kind)) {
+    scentOrders = await loadRequestScentOrders(supabase, withBriefs);
+    salesOrderLines = scentOrders.salesOrderLines;
+  } else if (withBriefs.salesOrderId) {
     const { data: lines, error } = await supabase
       .from('sales_order_lines').select('id, qty, "fgCode", description')
       .eq('salesOrderId', withBriefs.salesOrderId);
@@ -640,6 +650,14 @@ export async function findRequest(supabase, id) {
   // (จอทำลิงก์เอง — id อย่างเดียวกดไปได้แต่บอกไม่ได้ว่าคือใบไหน)
   return {
     ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder, linkedInstallment,
+    // ⭐ SO แนบ + ตัวหารของด่านปิดใบ (ม-163) — เฉพาะพัฒนากลิ่น · หัวข้ออื่นไม่มีคีย์เหล่านี้ (ผู้อ่านถอยไปทางเดิม)
+    ...(scentOrders ? {
+      attachedOrders: scentOrders.attachedOrders,
+      scentSlotLines: scentOrders.scentSlotLines,
+      scentSlots: scentSlotSummary({ mainLines: salesOrderLines, attached: scentOrders.attachedOrders, items }),
+      // SO หลักออก Rev. แล้ว = ใบที่ใช้นับจริง (จอบอกว่านับจากใบไหน) · null = ใบเดิม
+      countedSalesOrder: scentOrders.mainOrder,
+    } : {}),
     refProject: project ? { id: project.id, code: project.code, name: project.name } : null,
     refDeal: deal,
     // ⚠️ เลือกฟิลด์ทีละตัว ไม่ส่ง `customer` ทั้งแถว — ทะเบียนลูกค้ามีที่อยู่ เครดิต
