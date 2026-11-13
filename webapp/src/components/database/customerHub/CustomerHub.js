@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Beaker, CalendarDays, ClipboardCheck, ClipboardList, FileSignature, FileText, Flag, FlaskConical, Handshake,
@@ -11,6 +11,8 @@ import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import HubListPanel from "./HubListPanel";
+import OverviewTab from "./OverviewTab";
+import styles from "./customerHub.module.css";
 import { QUOTE_STATUS_LABELS } from "@/components/salesPlanning/ui";
 import { DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { SALES_ORDER_STATUS_LABELS } from "@/lib/sales/salesOrderWorkflow";
@@ -553,7 +555,15 @@ function ExciseTab({ registrations, hub, query, onQuery }) {
 }
 
 /* ── ตัวแท็บ ───────────────────────────────────────────────────────────────────────────── */
-export default function CustomerHub({ hub, products = [], scents = [], formulas = [], registrations = [], service = null }) {
+/* ── ตัวแท็บของทั้งหน้า (งวด H2) ───────────────────────────────────────────────────────────
+ * ลำดับ: ภาพรวม · ข้อมูลลูกค้า · การขาย · สินค้า · คำร้อง · การเงิน · สรรพสามิต · บริการ · เอกสาร · ความเคลื่อนไหว
+ * ⭐ มติ 2: เปิดหน้ามาที่ "ภาพรวม" · ข้อมูลลูกค้า (การ์ดโปรไฟล์ + วางบิล) เป็นแท็บที่สอง
+ * `profile` · `docs` · `activity` = เนื้อหาที่หน้าลูกค้าเป็นเจ้าของ (ฟอร์ม/เธรด/ไฟล์แนบ) ส่งมาเป็น render function
+ * `hashTabs` — ลิงก์ที่ชี้ส่วนในแท็บ (เช่น `#billing-rule` ของการ์ดวางบิล) ต้องเปิดแท็บนั้นก่อน ไม่งั้นเลื่อนหาไม่เจอ */
+export default function CustomerHub({
+  hub, products = [], scents = [], formulas = [], registrations = [], service = null,
+  profile = null, docs = null, activity = null, hashTabs = {},
+}) {
   const [query, setQuery] = useState("");
   const today = useMemo(() => todayKey(), []);
   const ready = Boolean(hub);
@@ -574,21 +584,50 @@ export default function CustomerHub({ hub, products = [], scents = [], formulas 
   const productCount = products.filter((p) => matchesQuery(hubText(p.fgCode, productNameBoth(p), p.brandName, p.brandNameEn), query)).length;
   const label = (text, n) => <>{text}{n !== undefined && <>{" "}<span className="tab-count">{n}</span></>}</>;
   const tabs = [
+    { key: "overview", label: "ภาพรวม" },
+    profile && { key: "profile", label: "ข้อมูลลูกค้า" },
     ready && hub.sales.visible && { key: "sales", label: label("การขาย", counts.sales) },
     { key: "products", label: label("สินค้า", productCount) },
     ready && hub.requests.visible && { key: "requests", label: label("คำร้อง", counts.requests) },
     ready && hub.finance.visible && { key: "finance", label: label("การเงิน", counts.finance) },
     ready && (registrations.length > 0 || hub.excise.orders.length > 0) && { key: "excise", label: label("สรรพสามิต", counts.excise) },
     service && { key: "service", label: service.label },
+    docs && { key: "docs", label: "เอกสาร" },
+    activity && { key: "activity", label: "ความเคลื่อนไหว" },
   ].filter(Boolean);
-  const [active, setActive] = useState(null);
+  /* ลิงก์ที่ชี้ส่วนในแท็บ (`hashTabs` = { idของส่วน: แท็บ } เช่น #billing-rule → ข้อมูลลูกค้า) ต้องเปิดแท็บนั้นก่อน
+     ทั้งตอนเข้าหน้าพร้อม hash (อ่านตอนเริ่ม — แท็บวาดฝั่ง client หลังโหลดลูกค้าเสร็จเสมอ) และตอน hash เปลี่ยนบนหน้าเดิม
+     (ลิงก์ในหน้าเดียวกัน = ไม่ mount ใหม่) · เลื่อนไปหาส่วนนั้นหลังแท็บวาดแล้ว */
+  const hashTab = () => (typeof window === "undefined" ? null : hashTabs[window.location.hash.slice(1)] || null);
+  const [active, setActive] = useState(() => hashTab() || "overview");
+  const [scrollTo, setScrollTo] = useState(null);
+  useEffect(() => {
+    const onHash = () => {
+      const target = window.location.hash.slice(1);
+      if (!hashTabs[target]) return;
+      setActive(hashTabs[target]);
+      setScrollTo(target);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, [hashTabs]);
+  useEffect(() => {
+    if (!scrollTo) return;
+    window.requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView({ block: "start" }));
+    setScrollTo(null);
+  }, [scrollTo, active]);
   const current = tabs.some((t) => t.key === active) ? active : tabs[0]?.key;
+  const needsHub = ["overview", "sales", "requests", "finance", "excise"].includes(current);
 
   return (
     <div>
-      <Tabs ariaLabel="ข้อมูลที่เกี่ยวข้องกับลูกค้า" value={current} onChange={setActive} tabs={tabs} />
-      {!ready && current !== "products" && current !== "service" ? null : (
+      <Tabs ariaLabel="ข้อมูลของลูกค้ารายนี้" value={current} onChange={setActive} tabs={tabs} />
+      {needsHub && !ready ? (
+        <p className={styles.loading}>กำลังโหลดข้อมูลของลูกค้ารายนี้…</p>
+      ) : (
         <>
+          {current === "overview" && <OverviewTab hub={hub} today={today} onGo={setActive} />}
+          {current === "profile" && <div className={styles.tabBody}>{profile()}</div>}
           {current === "sales" && <SalesTab hub={hub} query={query} onQuery={setQuery} today={today} />}
           {current === "products" && (
             <ProductsTab
@@ -604,6 +643,8 @@ export default function CustomerHub({ hub, products = [], scents = [], formulas 
           {current === "finance" && <FinanceTab hub={hub} query={query} onQuery={setQuery} today={today} />}
           {current === "excise" && <ExciseTab registrations={registrations} hub={hub} query={query} onQuery={setQuery} />}
           {current === "service" && service.render()}
+          {current === "docs" && <div className={styles.tabBody}>{docs()}</div>}
+          {current === "activity" && <div className={styles.tabBody}>{activity()}</div>}
         </>
       )}
     </div>

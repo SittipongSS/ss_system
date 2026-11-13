@@ -25,9 +25,10 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 
 export const HUB_DEAL_COLS = 'id, code, title, stage, dealType, categoryCode, projectValue, wonValue, ownerId, ownerName, team, line, leadId, createdAt, customerId';
-export const HUB_QUOTATION_COLS = 'id, quoteNumber, dealId, status, approvalStatus, totalAmount, quoteDate, createdAt, revisedFromId, baseNumber, revisionNo, origin, sourceSalesOrderId, referenceNote, customerId';
+export const HUB_QUOTATION_COLS = 'id, quoteNumber, dealId, status, approvalStatus, totalAmount, quoteDate, createdAt, acceptedAt, revisedFromId, baseNumber, revisionNo, origin, sourceSalesOrderId, referenceNote, customerId';
 export const HUB_ORDER_COLS = 'id, orderNumber, dealId, quotationId, status, financeStatus, origin, totalAmount, actualAmount, actualMode, actualCountedAmount, actualSubmittedAmount, orderDate, approvedAt, referenceDoc, sourceSalesOrderId, supersededById, revisionNo, customerId, createdAt';
-export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate';
+// actualStatus/actualAmount/actualApprovedAt = Actual รายงวด (mig 0412) — แท็บภาพรวมคิด Actual รายเดือนด้วยตัวเดียวกับรายงานยอดขาย (reportActualRows)
+export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, actualStatus, actualAmount, actualApprovedAt';
 export const HUB_REQUEST_COLS = 'id, docNo, dept, kind, status, title, dealId, salesOrderId, customerId, requestedById, requestedByName, team, submittedAt, createdAt, committedDueDate, requestedDueDate, closedAt, urgent, pdrRefNo, acknowledgedAt';
 export const HUB_CONTRACT_COLS = 'id, contractNo, kind, status, dealId, quotationId, customerId, contractDate, signedDate, effectiveDate, expiryDate, baseNumber, revisionNo, revisedFromId, createdAt, externalRef, source, team, ownerId';
 export const HUB_LEAD_COLS = 'id, company, contactName, channel, status, assigneeName, createdAt';

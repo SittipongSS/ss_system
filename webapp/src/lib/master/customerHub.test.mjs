@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  buildDealRows, currentOrder, currentQuote, hubFacts, installmentState, matchesQuery, productOrderStats, dealRowText,
+  buildDealRows, currentOrder, currentQuote, followUps, hubFacts, installmentState, matchesQuery, monthlyActual,
+  productOrderStats, recentEvents, dealRowText,
 } from './customerHub.js';
 import { customerHubRelations } from './customerHubData.js';
 
@@ -210,3 +211,65 @@ test('ตัวโหลด: query พัง = throw ไม่ใช่ลิส
   const broken = { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ order: () => ({ range: () => Promise.resolve({ data: null, error: new Error('boom') }) }) }) }) }) }) };
   await assert.rejects(() => customerHubRelations(broken, 'C1', { id: 'a', role: 'admin' }), /boom/);
 });
+
+/* ── แท็บภาพรวม (H2) ───────────────────────────────────────────────────────────────────── */
+test('Actual รายเดือน: เดือนอนุมัติตามเวลาไทย · ใบรายงวดนับตามงวดที่อนุมัติ · ไม่นับใบย้อนหลัง/ค่าสรรพสามิต/ยังไม่อนุมัติ', () => {
+  const now = new Date('2026-11-13T05:00:00Z');
+  const orders = [
+    // อนุมัติ 31 ต.ค. 20:00 UTC = 1 พ.ย. ตี 3 เวลาไทย ⇒ เดือน พ.ย.
+    { id: 'S1', status: 'approved', origin: 'pipeline', actualMode: 'order', actualAmount: 1000, approvedAt: '2026-10-31T20:00:00Z' },
+    { id: 'S2', status: 'approved', origin: 'pipeline', actualMode: 'order', actualAmount: 500, approvedAt: '2026-08-10T03:00:00Z' },
+    { id: 'S3', status: 'approved', origin: 'pipeline', actualMode: 'installment', actualAmount: 900, approvedAt: '2026-09-01T03:00:00Z' },
+    { id: 'H1', status: 'approved', origin: 'historical', actualAmount: 7777, approvedAt: '2026-10-01T03:00:00Z' },
+    { id: 'E1', status: 'approved', origin: 'excise', actualAmount: 0, approvedAt: '2026-10-01T03:00:00Z' },
+    { id: 'P1', status: 'pending_approval', origin: 'pipeline', actualAmount: 4444 },
+  ];
+  const installments = [
+    { id: 'I1', salesOrderId: 'S3', seq: 1, actualStatus: 'approved', actualAmount: 300, actualApprovedAt: '2026-09-15T03:00:00Z' },
+    { id: 'I2', salesOrderId: 'S3', seq: 2, actualStatus: 'approved', actualAmount: 600, actualApprovedAt: '2026-10-05T03:00:00Z' },
+  ];
+  const { months, total } = monthlyActual(orders, installments, { months: 4, now });
+  assert.deepEqual(months.map((m) => m.month), ['2026-08', '2026-09', '2026-10', '2026-11']);
+  assert.deepEqual(months.map((m) => m.amount), [500, 300, 600, 1000]);
+  assert.equal(total, 2400);
+});
+
+test('ต้องตามต่อ: เกินกำหนดก่อน → คำร้องค้าง → SO ยังไม่อนุมัติ → ดีลเปิด · ลิงก์ตรงไปที่ใบ', () => {
+  const items = followUps({
+    sales: {
+      visible: true,
+      deals: [{ id: 'D1', code: 'DL-1', stage: 'quotation', projectValue: 90000, createdAt: '2026-10-01' }, { id: 'D2', stage: 'won' }],
+      orders: [
+        { id: 'S1', orderNumber: 'SO-1', status: 'approved' },
+        { id: 'S2', orderNumber: 'SO-2', status: 'pending_approval', createdAt: '2026-11-01' },
+        { id: 'S3', orderNumber: 'SO-3', status: 'draft', supersededById: 'S9' },
+      ],
+    },
+    finance: { visible: true, installments: [{ id: 'I1', salesOrderId: 'S1', seq: 2, status: 'pending', amount: 700, dueDate: '2026-11-01' }] },
+    requests: { visible: true, rows: [{ id: 'R1', docNo: 'RQ-1', status: 'acknowledged', dept: 'RD' }, { id: 'R2', status: 'closed' }] },
+  }, '2026-11-13');
+  assert.deepEqual(items.map((i) => i.kind), ['overdue', 'request', 'order', 'deal']);
+  assert.deepEqual(items.map((i) => i.href), ['/sa/sales-orders/S1', '/requests/R1', '/sa/sales-orders/S2', '/sa/deals/D1']);
+  assert.equal(items[0].amount, 700);
+});
+
+test('ต้องตามต่อ: กลุ่มที่ไม่มีสิทธิ์ไม่มีรายการ (มติ 4)', () => {
+  assert.deepEqual(followUps({ sales: { visible: false }, finance: { visible: false }, requests: { visible: false } }), []);
+});
+
+test('ล่าสุด: เรียงใหม่ไปเก่า · ตัดตาม limit · ใบที่ยังไม่รับ/งวดที่ยังไม่รับรองไม่ขึ้น', () => {
+  const ev = recentEvents({
+    sales: {
+      deals: [{ id: 'D1', code: 'DL-1', title: 'A', createdAt: '2026-10-01T00:00:00Z' }],
+      quotations: [
+        { id: 'Q1', quoteNumber: 'QT-1', dealId: 'D1', status: 'accepted', acceptedAt: '2026-10-05T00:00:00Z' },
+        { id: 'Q2', quoteNumber: 'QT-2', dealId: 'D1', status: 'sent', acceptedAt: null },
+      ],
+      orders: [{ id: 'S1', orderNumber: 'SO-1', approvedAt: '2026-10-10T00:00:00Z' }],
+    },
+    finance: { installments: [{ id: 'I1', salesOrderId: 'S1', seq: 1, status: 'confirmed', confirmedAt: '2026-10-12T00:00:00Z' }, { id: 'I2', salesOrderId: 'S1', status: 'pending' }] },
+    requests: { rows: [{ id: 'R1', docNo: 'RQ-1', title: 'x', status: 'closed', submittedAt: '2026-10-02T00:00:00Z', closedAt: '2026-10-20T00:00:00Z' }] },
+  }, { limit: 4 });
+  assert.deepEqual(ev.map((e) => e.key), ['rc:R1', 'i:I1', 'o:S1', 'q:Q1']);
+});
+
