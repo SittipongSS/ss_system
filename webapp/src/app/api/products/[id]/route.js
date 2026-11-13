@@ -60,14 +60,17 @@ export async function GET(request, { params }) {
   // อ่านสดเหมือน customerType · ไม่ทิ้ง error เพราะ "อ่านไม่ได้" กับ "ไม่มีกลิ่น"
   // คนละเรื่อง (ดู [[supabase-masked-query-errors]])
   // รหัสกลิ่นด้วย — FG หัวน้ำหอม (02-020 · มติ 2026-11-02) ผูกกลิ่นแทนสูตร หน้ารายละเอียดโชว์ชื่อ + รหัสกลิ่นแทนแถวสูตร
+  // + วันที่ผลิต — ป้ายกลิ่น "PF · ชื่อ · วันที่" ทุกจอ (มติเจ้าของ 13/11/2026 · lib/master/registryLabel)
   let scentName = null;
   let scentCode = null;
+  let scentProducedAt = null;
   if (data.scentId) {
     const { data: scent, error: scentError } = await supabase
-      .from('scents').select('name, code').eq('id', data.scentId).maybeSingle();
+      .from('scents').select('name, code, "producedAt"').eq('id', data.scentId).maybeSingle();
     if (scentError) return Response.json({ error: scentError.message }, { status: 500 });
     scentName = scent?.name ?? null;
     scentCode = scent?.code ?? null;
+    scentProducedAt = scent?.producedAt ?? null;
   }
   // ชุดของขวัญ (01-037 · mig 0403) — รายการสูตรอ่านสดจากทะเบียน · หมวดอื่นได้อาเรย์ว่าง (รูปเดียวกันทุกสินค้า)
   let formulaComponents = [];
@@ -100,14 +103,14 @@ export async function GET(request, { params }) {
   let fgScents = [];
   if (fgScentIds.length) {
     const { data: scentRows, error: fgScentError } = await supabase
-      .from('scents').select('id, code, name').in('id', fgScentIds).limit(fgScentIds.length);
+      .from('scents').select('id, code, name, "producedAt"').in('id', fgScentIds).limit(fgScentIds.length);
     if (fgScentError) return Response.json({ error: fgScentError.message }, { status: 500 });
     const byId = new Map((scentRows || []).map((row) => [row.id, row]));
     fgScents = fgScentIds.map((sid) => byId.get(sid)).filter(Boolean);
   }
   // Strip the confidential cost breakdown/profit for non-margin roles.
   return Response.json({
-    ...redactProductMargin(user, data), customerType, scentName, scentCode, formulaComponents,
+    ...redactProductMargin(user, data), customerType, scentName, scentCode, scentProducedAt, formulaComponents,
     formulaIngredientList, formulaCategoryCode, fgScents,
   });
 }

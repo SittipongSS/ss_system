@@ -6,6 +6,7 @@
 import { BOM_STATUS_META, bomStatusOf } from '@/lib/master/productBom';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
 import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
+import { scentLabel, scentLabelDate } from '@/lib/master/registryLabel';
 
 /* งานที่ RD ยังต้องลงมือ = รอรับเรื่อง + กำลังลง — ตีกลับรอฝ่ายขาย · เสร็จแล้วเป็นประวัติ */
 export const BOM_TODO_STATUSES = Object.freeze(['queued', 'in_progress']);
@@ -47,7 +48,8 @@ export function bomWaitingDays(row, todayIso) {
  *    RD แก้ชื่อ/ออกรหัสทีหลังแล้วสำเนาไม่ตาม (กติกาเดียวกับใบสเปค FM-SA-04 · ไฟล์ส่งออกทะเบียนสินค้า) · หาไม่เจอ = ใช้สำเนา
  * ⭐ `tradeName` = ชื่อที่ลูกค้าเรียก **ของกลิ่นเท่านั้น** (มติเจ้าของ 04/11 · ย้อนไป ม-12 "ลูกค้าตั้งชื่อกลิ่นเอง") —
  *    ชื่อที่ลูกค้าเรียกระดับสูตรคือ **ชื่อสินค้า** ของ FG (ช่องสินค้าโชว์อยู่แล้ว) ไม่ใช่ช่องของทะเบียนสูตร
- * @returns {{ kind: 'formula'|'scent'|'set'|'none', items: Array<{ code: string|null, name: string|null, note?: string|null, tradeName?: string|null }> }}
+ * ⭐ `date` = วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — สูตร = วันที่สูตร · กลิ่น = วันผลิต
+ * @returns {{ kind: 'formula'|'scent'|'set'|'none', items: Array<{ code: string|null, name: string|null, date: string|null, note?: string|null, tradeName?: string|null }> }}
  */
 export function bomFormulaView(product, { scentsById = new Map(), formulasById = new Map(), giftSetRows = [] } = {}) {
   const code = String(product?.categoryCode || '');
@@ -55,14 +57,15 @@ export function bomFormulaView(product, { scentsById = new Map(), formulasById =
     return {
       kind: 'set',
       items: (giftSetRows || []).map((row) => ({
-        code: row.formulaCode || null, name: row.formulaName || null, note: row.categoryName || null, tradeName: row.scentTradeName || null,
+        code: row.formulaCode || null, name: row.formulaName || null, date: row.formulaDate || null,
+        note: row.categoryName || null, tradeName: row.scentTradeName || null,
       })),
     };
   }
   if (isFragranceOilCategory(code)) {
     const scent = product?.scentId ? scentsById.get(product.scentId) : null;
     return scent
-      ? { kind: 'scent', items: [{ code: scent.code || null, name: scent.name || null, tradeName: scent.customerTradeName || null }] }
+      ? { kind: 'scent', items: [{ code: scent.code || null, name: scent.name || null, date: scentLabelDate(scent), tradeName: scent.customerTradeName || null }] }
       : { kind: 'none', items: [] };
   }
   if (product?.formulaId) {
@@ -73,7 +76,8 @@ export function bomFormulaView(product, { scentsById = new Map(), formulasById =
       items: [{
         code: (live ? live.code : product.formulaCode) || null,
         name: (live ? live.name : product.formulaName) || null,
-        note: scent?.name ? `กลิ่น ${scent.name}` : null,
+        date: (live ? live.formulaDate : product.formulaDate) || null,
+        note: scent?.name ? `กลิ่น ${scentLabel(scent)}` : null,
         tradeName: scent?.customerTradeName || null,
       }],
     };

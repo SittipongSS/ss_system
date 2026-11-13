@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { productDevRowText } from './productDevLabel.js';
+import { fmtDate, NA } from '../format.js';
 
 const registry = {
   // ⚠️ รหัสที่ระบบเก็บคือ `mainCategoryCode-typeCode` ไม่ใช่ typeCode เดี่ยว ๆ
@@ -11,19 +12,19 @@ const registry = {
     { id: 8, mainCategoryCode: '01', typeCode: '002', nameEn: 'Room Spray' },
   ],
   scents: [
-    { id: 'SC-1', code: 'PF1093001', name: 'ARMANI POWER OF YOU', createdAt: '2026-08-04T11:57:21+00:00' },
+    { id: 'SC-1', code: 'PF1093001', name: 'ARMANI POWER OF YOU', producedAt: '2026-08-04', createdAt: '2026-08-04T11:57:21+00:00' },
     { id: 'SC-2', code: 'PF1093002', name: 'ไร้วันที่' },
   ],
 };
 
-test('ครบทั้งหมวดและกลิ่น — รหัส+ชื่อ ทั้งสองฝั่ง คั่นด้วย ×', () => {
+test('ครบทั้งหมวดและกลิ่น — หมวด × PF · ชื่อ · วันที่ผลิต (มติ 13/11)', () => {
   const { main } = productDevRowText({ categoryCode: '01-001', scentId: 'SC-1' }, 0, registry);
-  assert.equal(main, '01-001 ครีมบำรุงผิว × PF1093001 ARMANI POWER OF YOU');
+  assert.equal(main, `01-001 ครีมบำรุงผิว × PF1093001 · ARMANI POWER OF YOU · ${fmtDate('2026-08-04')}`);
 });
 
-test('คำขยาย = วันที่ของกลิ่น · จำนวน+หน่วย (มติ 2026-08-09)', () => {
+test('คำขยาย = จำนวน+หน่วย — วันที่ย้ายเข้าป้ายกลิ่นแล้ว (มติ 13/11)', () => {
   const full = productDevRowText({ categoryCode: '01-001', scentId: 'SC-1', qty: '3', unit: 'ขวด' }, 0, registry);
-  assert.match(full.sub, / · 3 ขวด$/);
+  assert.equal(full.sub, '3 ขวด');
   // จำนวนไม่มีหน่วยก็ยังต้องโชว์ — คนกรอกเลขไว้ก่อนเป็นเรื่องปกติ
   assert.match(productDevRowText({ scentId: 'SC-2', qty: '5' }, 0, registry).sub, /^5$/);
   // หน่วยลอย ๆ ที่ไม่มีจำนวนไม่ใช่ข้อมูล — ไม่ต้องโชว์
@@ -36,7 +37,7 @@ test('หมวดที่มีแต่ชื่ออังกฤษก็�
 });
 
 test('เลือกยังไม่ครบ = บอกเท่าที่มี · ยังไม่เลือกอะไรเลยจึงถอยไปใช้เลขลำดับ', () => {
-  assert.equal(productDevRowText({ scentId: 'SC-2' }, 0, registry).main, 'PF1093002 ไร้วันที่');
+  assert.equal(productDevRowText({ scentId: 'SC-2' }, 0, registry).main, `PF1093002 · ไร้วันที่ · ${NA}`);
   assert.equal(productDevRowText({}, 2, registry).main, 'รายการที่ 3');
 });
 

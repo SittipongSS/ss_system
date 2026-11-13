@@ -14,6 +14,7 @@ import IngredientListModal from "@/components/database/IngredientListModal";
 import IngredientListText from "@/components/database/IngredientListText";
 import { INGREDIENT_LIST_LABEL, formulaNeedsIngredientList } from "@/lib/master/ingredientList";
 import styles from "./registryForm.module.css";
+import { formulaLabel } from "@/lib/master/registryLabel";
 
 export default function IngredientListCard({ formula, canEdit = false, onSaved }) {
   const required = formulaNeedsIngredientList(formula);
@@ -38,7 +39,7 @@ export default function IngredientListCard({ formula, canEdit = false, onSaved }
       <IngredientListModal
         open={open}
         onClose={() => setOpen(false)}
-        subtitle={`${formula?.code ? `${formula.code} · ` : ""}${formula?.name || ""}`}
+        subtitle={formulaLabel(formula)}
         current={current || null}
         required={required}
         endpoint={`/api/master/formulas/${formula?.id}`}

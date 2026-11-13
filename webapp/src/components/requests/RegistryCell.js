@@ -5,6 +5,7 @@
 // สำเนาที่เขียนได้ชุดเดียว ไม่ใช่สองชุดคอยไล่ซิงก์ (ดู `lib/requests/registryLinks.js`)
 //
 // ⭐ ทรง "รหัสบน · ชื่อล่าง" = กติกาของทั้งเว็บสำหรับ entity ในตาราง
+//    บรรทัดล่าง = "ชื่อ · วันที่" (มติเจ้าของ 13/11/2026 · lib/master/registryLabel)
 //
 // ⭐ **ทั้งก้อนเป็นทางเข้าหน้ารายละเอียด** (มติผู้ใช้ 2026-08-18) — เดิมมีแต่รหัสที่กดได้
 // ส่วนชื่อเป็นข้อความเฉย ๆ ⇒ คนกดที่ชื่อแล้วไม่มีอะไรเกิดขึ้น · ทะเบียนกลิ่น/สูตรกดที่
@@ -14,6 +15,7 @@
 // ⚠️ **ไม่มีลิงก์ทะเบียน = ไม่ใช่ข้อมูลหาย** — แถวที่เกิดก่อนมีลิงก์ยังมีป้ายสแนปช็อต
 // ของตัวเอง · บอกตรง ๆ ว่ายังไม่ผูก ดีกว่าโชว์ขีดแล้วให้เดาว่าข้อมูลหาย
 import Link from "next/link";
+import { formulaLabelParts, scentLabelParts } from "@/lib/master/registryLabel";
 import styles from "./briefBoard.module.css";
 
 const HREF = { formula: "/database/formulas", scent: "/database/scents" };
@@ -32,12 +34,14 @@ export default function RegistryCell({ registry = null, fallback = "—", extra 
       </div>
     );
   }
+  const parts = registry.kind === "formula" ? formulaLabelParts(registry) : scentLabelParts(registry);
   return (
     <>
       {/* ลิงก์เดียวคร่อมทั้งรหัสและชื่อ — กดตรงไหนของก้อนก็เข้าหน้ารายละเอียดตัวนั้น */}
       <Link className={styles.registryLink} href={registryHref(registry)} title={title}>
-        <strong>{registry.code || registry.name || fallback}</strong>
-        {registry.code && registry.name ? <span>{registry.name}</span> : null}
+        {/* PF บน · ชื่อ · วันที่ล่าง (มติเจ้าของ 13/11) — ไม่มีรหัสก็ขึ้น "ไม่มี PF" ให้เห็นว่าขาด */}
+        <strong>{parts.code}</strong>
+        <span>{`${registry.name || fallback} · ${parts.date}`}</span>
       </Link>
       {extra}
     </>

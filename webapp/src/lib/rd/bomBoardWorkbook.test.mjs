@@ -19,8 +19,8 @@ const product = (id, over = {}) => ({
 });
 const ctx = {
   customersById: new Map([['C-1', { id: 'C-1', arCode: 'AR-1', name: 'บริษัท ไทย', nameEn: 'Thai Co.', taxId: '0105565000001', branchCode: null }]]),
-  scentsById: new Map([['SCT-1', { id: 'SCT-1', code: 'SC-01', name: 'มะลิ', customerTradeName: 'Jasmine Night' }]]),
-  formulasById: new Map([['FML-1', { id: 'FML-1', code: 'PF-001', name: 'สูตรสด' }]]),
+  scentsById: new Map([['SCT-1', { id: 'SCT-1', code: 'SC-01', name: 'มะลิ', producedAt: '2026-09-15', customerTradeName: 'Jasmine Night' }]]),
+  formulasById: new Map([['FML-1', { id: 'FML-1', code: 'PF-001', name: 'สูตรสด', formulaDate: '2026-10-01' }]]),
 };
 
 async function sheetOf(buffer, name) {
@@ -43,7 +43,9 @@ test('แถว = ของบนจอ: สินค้า · ลูกค้�
   assert.equal(out.formulaKind, 'สูตร');
   assert.equal(out.formulaCode, 'PF-001', 'รหัสสูตรอ่านสดจากทะเบียน ไม่ใช่สำเนาบน FG');
   assert.equal(out.formulaName, 'สูตรสด');
-  assert.equal(out.formulaNote, 'กลิ่น มะลิ');
+  // วันที่ของป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — คอลัมน์ของตัวเอง · กลิ่นในหมายเหตุครบสามท่อน
+  assert.equal(out.formulaDate, '01/10/2026');
+  assert.equal(out.formulaNote, 'กลิ่น SC-01 · มะลิ · 15/09/2026');
   assert.equal(out.tradeName, 'Jasmine Night');
   assert.equal(out.volume, 50);
   assert.equal(out.saleUnit, 'ชิ้น');
@@ -75,8 +77,8 @@ test('ชุดของขวัญ: หนึ่งบรรทัดต่อ
     formula: {
       kind: 'set',
       items: [
-        { code: 'F1', name: 'หนึ่ง', note: 'น้ำหอม', tradeName: null },
-        { code: null, name: 'สอง', note: 'ก้านหอม', tradeName: 'Gift Two' },
+        { code: 'F1', name: 'หนึ่ง', date: null, note: 'น้ำหอม', tradeName: null },
+        { code: null, name: 'สอง', date: '2026-09-01', note: 'ก้านหอม', tradeName: 'Gift Two' },
       ],
     },
   };
@@ -84,6 +86,7 @@ test('ชุดของขวัญ: หนึ่งบรรทัดต่อ
   assert.equal(out.formulaKind, 'สูตรในชุด');
   assert.equal(out.formulaCode, 'F1\n');
   assert.equal(out.formulaName, 'หนึ่ง\nสอง');
+  assert.equal(out.formulaDate, '\n01/09/2026', 'บรรทัดยังตรงสูตร');
   assert.equal(out.formulaNote, 'น้ำหอม\nก้านหอม');
   assert.equal(out.tradeName, '\nGift Two');
 });

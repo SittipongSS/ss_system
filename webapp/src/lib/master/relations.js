@@ -30,7 +30,8 @@ const PROJECT_COLS = 'id, code, name, status, customerId, team, ownerId';
 // ทะเบียนกลิ่น/สูตร (mig 0171) — สรุปพอโชว์ในแท็บ ไม่ดึงโน้ตมาทั้งก้อน
 // `sentAt` = วันที่ส่งกลิ่นให้ลูกค้า อยู่บนตัวกลิ่นเองแล้ว (0205) — กลิ่นตัวหนึ่งถูกส่ง
 // ครั้งเดียวตลอดชีวิต จึงไม่มี "Rev ล่าสุด" ให้แสดงอีก
-const SCENT_COLS = 'id, code, name, status, sentAt, customerId, customerName, createdAt';
+// + producedAt — ป้ายกลิ่น "PF · ชื่อ · วันที่ผลิต" (มติเจ้าของ 13/11/2026 · lib/master/registryLabel)
+const SCENT_COLS = 'id, code, name, status, producedAt, sentAt, customerId, customerName, createdAt';
 const FORMULA_COLS = 'id, code, name, status, formulaDate, scentId, customerId, customerName';
 
 // กลิ่น + สูตรของลูกค้า 1 ราย.

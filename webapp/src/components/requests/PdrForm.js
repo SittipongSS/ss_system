@@ -45,6 +45,7 @@ import {
   PDR_REQUEST_TYPES, PDR_SECTIONS, pdrFieldVisible, pdrFormProgress,
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
+import { scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 
 
 // ⭐ **ป้ายชื่อและหัวข้อมาจากทะเบียนกลาง** (`lib/requests/pdrFields.js`) — ฟอร์มยัง
@@ -246,8 +247,9 @@ function PdrTargetList({
      พัฒนาสูตร standard (`ProductDevLines`) และ server (`pdrTargetScentError` ข้ามข้อลูกค้าเมื่อใบไม่มีลูกค้า) */
   const toOption = (x, note = "") => ({
     value: x.id,
-    label: `${x.code ? `${x.code} · ` : ""}${x.name}${note}`,
-    search: [x.code, x.name, x.customerTradeName].filter(Boolean).join(" "),
+    // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11)
+    label: `${scentLabel(x)}${note}`,
+    search: scentSearchText(x, x.customerTradeName),
   });
   const scentOptions = pickScent && dealChosen ? scents
     // ⭐ + กลิ่นที่แชร์ให้ลูกค้ารายนี้ (ม-150)
@@ -264,7 +266,7 @@ function PdrTargetList({
   const scentText = (id) => {
     if (!id) return "";
     const x = scents.find((sc) => sc.id === id);
-    return x ? [x.code, x.name].filter(Boolean).join(" ") : "";
+    return x ? scentLabel(x) : "";
   };
   const size = PDR_TARGET_SPEC.find((f) => f.key === "size");
   const qty = PDR_TARGET_SPEC.find((f) => f.key === "qty");

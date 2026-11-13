@@ -628,7 +628,10 @@ export async function rowsSlotPricesLive(supabase, rows = [], { today = business
         short: slot.short,
         text: slot.text,
         kind: slot.kind,
-        source: source ? { id: source.id, code: source.code || null, name: source.name || null } : { id: slot.id, code: null, name: null },
+        // + วันที่ของป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — กลิ่น = วันผลิต · สูตร = วันที่สูตร
+        source: source
+          ? { id: source.id, code: source.code || null, name: source.name || null, producedAt: source.producedAt || null, formulaDate: source.formulaDate || null }
+          : { id: slot.id, code: null, name: null },
         price: prices.get(`${slot.kind}:${slot.id}`) || null,
       };
     }),

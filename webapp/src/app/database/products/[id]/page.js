@@ -27,6 +27,7 @@ import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { brandThList, brandBoth, hasBrandField } from "@/lib/master/brands";
 import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, NA } from "@/lib/format";
 import { productDisplayName } from "@/lib/master/productIdentity";
+import { registryLabel, scentLabel } from "@/lib/master/registryLabel";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
 import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary, giftSetPriceModeOf } from "@/lib/excise/giftSetExcise";
 import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
@@ -732,15 +733,13 @@ export default function ProductDetails() {
                             {/* R2 (mig 0433): แถวที่ยังไม่เลือกสูตร — สูตรต้องครบก่อนส่งลง BOM */}
                             {row.formulaId ? (
                               <span className="block">
+                                {/* PF · ชื่อ · วันที่ (มติเจ้าของ 13/11) */}
                                 <Link
                                   href={`/database/formulas?q=${encodeURIComponent(row.formulaCode || row.formulaName || "")}`}
                                   className="font-semibold text-[var(--accent)] hover:underline"
                                 >
-                                  {row.formulaName || row.formulaCode || row.formulaId}
+                                  {registryLabel({ code: row.formulaCode, name: row.formulaName, date: row.formulaDate })}
                                 </Link>
-                                <span className="font-mono text-[var(--text-2)]">
-                                  {` · ${naText(row.formulaCode)} · ${row.formulaDate ? fmtDate(row.formulaDate) : NA}`}
-                                </span>
                               </span>
                             ) : (
                               <span className="block text-[var(--text-2)]">ยังไม่เลือกสูตร — ต้องเลือกก่อนส่งลง BOM</span>
@@ -783,7 +782,7 @@ export default function ProductDetails() {
                       href={`/database/scents?q=${encodeURIComponent(product.scentCode || product.scentName || "")}`}
                       className="font-semibold text-[var(--accent)] text-sm hover:underline"
                     >
-                      {product.scentName || product.scentId}
+                      {registryLabel({ code: product.scentCode, name: product.scentName, date: product.scentProducedAt })}
                     </Link>
                   ) : (
                     <span className="font-semibold text-[var(--text)] text-sm">{NA}</span>
@@ -803,7 +802,7 @@ export default function ProductDetails() {
                       href={`/database/formulas?q=${encodeURIComponent(product.formulaCode || product.formulaName || "")}`}
                       className="font-semibold text-[var(--accent)] text-sm hover:underline"
                     >
-                      {product.formulaName || product.formulaCode}
+                      {registryLabel({ code: product.formulaCode, name: product.formulaName, date: product.formulaDate })}
                     </Link>
                   ) : (
                     <span className="font-semibold text-[var(--text)] text-sm">
@@ -820,10 +819,10 @@ export default function ProductDetails() {
                   <div>
                     <span className="text-[var(--text-3)] block mb-1">กลิ่น (Scent)</span>
                     <Link
-                      href={`/database/scents?q=${encodeURIComponent(product.scentName || "")}`}
+                      href={`/database/scents?q=${encodeURIComponent(product.scentCode || product.scentName || "")}`}
                       className="font-semibold text-[var(--accent)] text-sm hover:underline"
                     >
-                      {product.scentName || product.scentId}
+                      {registryLabel({ code: product.scentCode, name: product.scentName, date: product.scentProducedAt })}
                     </Link>
                   </div>
                 )}
@@ -1116,7 +1115,7 @@ export default function ProductDetails() {
                 entityId={scent.id}
                 canEdit={canEditRdDocs}
                 docTypes={ATTACHMENT_TYPES.scent}
-                title={`IFRA ของกลิ่น ${[scent.code, scent.name].filter(Boolean).join(" · ")}`}
+                title={`IFRA ของกลิ่น ${scentLabel(scent)}`}
                 note="IFRA เก็บที่กลิ่น — FG ทุกตัวที่ใช้กลิ่นนี้เห็นไฟล์ชุดเดียวกัน"
                 cardColumns={1}
               />

@@ -30,6 +30,7 @@ import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { apiFetch } from "@/lib/apiFetch";
 import { responseWarningText } from "@/lib/apiWarnings";
+import { formulaLabel } from "@/lib/master/registryLabel";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
@@ -137,9 +138,9 @@ export default function FormulaDevDetail({
       <ConfirmDialog
         open={!!deleteRow}
         tone="danger"
-        title={`ลบ ${deleteRow?.registry?.code || deleteRow?.name || "รายการนี้"}`}
+        title={`ลบ ${deleteRow?.registry ? formulaLabel(deleteRow.registry) : deleteRow?.name || "รายการนี้"}`}
         description={`${deleteRow?.registry
-          ? `ลบออกจากคำร้อง และลบ ${deleteRow.registry.code || deleteRow.registry.name} ออกจากทะเบียนด้วย`
+          ? `ลบออกจากคำร้อง และลบ ${formulaLabel(deleteRow.registry)} ออกจากทะเบียนด้วย`
           : "ลบรายการนี้ออกจากคำร้อง"} · ย้อนกลับไม่ได้`}
         detail="ถ้าของในทะเบียนถูกอ้างที่อื่นแล้ว ระบบจะลบเฉพาะรายการในคำร้อง แล้วบอกไว้ในประวัติ"
         confirmLabel="ลบ"

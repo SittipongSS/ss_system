@@ -23,7 +23,8 @@ test('แถวได้ค่าสดจากทะเบียน · แถ�
     ],
     { scents: [{ id: 'SC-1', code: 'PF-9', name: 'VANILLA MK2', status: 'active' }] },
   );
-  assert.deepEqual(rows[0].refScent, { id: 'SC-1', code: 'PF-9', name: 'VANILLA MK2', status: 'active' });
+  // + วันที่ของป้าย "PF · ชื่อ · วันที่" (มติ 13/11) — ไม่ได้ select มา = null
+  assert.deepEqual(rows[0].refScent, { id: 'SC-1', code: 'PF-9', name: 'VANILLA MK2', status: 'active', producedAt: null, formulaDate: null });
   assert.equal(rows[0].label, 'ชื่อตอนส่ง', 'label เดิมต้องอยู่ครบ — เป็นหลักฐานว่าตอนนั้นส่งอะไร');
   assert.equal(rows[1].refScent, null);
   assert.equal(rows[1].refFormula, null);

@@ -40,6 +40,7 @@ import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { BOM_CODE_MAX, BOM_NOTE_MAX } from "@/lib/master/productBom";
 import { REJECTION_REASON_MAX } from "@/lib/master/approval";
 import { BOM_BOARD_TABS, BOM_FORMULA_KIND_LABEL, bomBoardTotals, bomWaitingDays } from "@/lib/rd/bomBoard";
+import { registryLabelParts, registryLabelSub } from "@/lib/master/registryLabel";
 import {
   BOM_FILTER_DIMENSIONS, BOM_GROUP_OPTIONS, BOM_SORT_DEFAULT, BOM_SORT_DIR, BOM_SORT_OPTIONS, EMPTY_BOM_FILTERS,
   bomExportUrl, bomFilterCount, bomFilterOptions, bomOutputRows, bomViewOf,
@@ -399,8 +400,8 @@ function BomRow({ row, today, busy, selected, onToggle, onAccept, onDone, onRetu
           <ul className={styles.items}>
             {row.formula.items.map((item, i) => (
               <li key={`${item.code || ""}-${i}`}>
-                {/* สูตรที่ RD ยังไม่ใส่รหัส — โชว์ชื่ออย่างเดียว (ขีดนำหน้าชื่ออ่านเหมือนรายการย่อย) */}
-                {item.code ? <><span className={styles.code}>{item.code}</span>{" "}</> : null}{naText(item.name)}
+                {/* PF · ชื่อ · วันที่ (มติเจ้าของ 13/11) — ไม่มีรหัสขึ้น "ไม่มี PF" ให้เห็นว่าขาด */}
+                <span className={styles.code}>{registryLabelParts(item).code}</span>{` · ${registryLabelSub(item)}`}
                 {item.note ? <div className={styles.sub}>{item.note}</div> : null}
                 {/* ชื่อที่ลูกค้าเรียก **ของกลิ่น** (ถ้ามี · มติเจ้าของ 04/11) — ต่อจากบรรทัดกลิ่น รูปเดียวกับทะเบียนกลิ่น */}
                 {item.tradeName ? <div className={styles.sub}>ลูกค้าเรียก “{item.tradeName}”</div> : null}

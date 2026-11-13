@@ -12,6 +12,7 @@ import { buildFormulaExportBuffer, formulaExportFilename } from '@/lib/master/fo
 import { customerArIndex } from '@/lib/master/customerAr';
 import { categoryNameBoth, findCategoryByCode } from '@/lib/master/productCategoryOptions';
 import { fetchAll } from '@/lib/supabaseFetchAll';
+import { scentLabel } from '@/lib/master/registryLabel';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       // แถวชุดเดียวกับ GET ของรายการ (แชร์ · ที่มา) — ตัวกรองค้นด้วยของพวกนี้
       loadFormulas(supabase),
       // ต้องการแค่ชื่อ/รหัสกลิ่น — ไม่ใช้ `loadScents` (ติดที่มา/ราคา ซึ่งไฟล์นี้ไม่ใช้)
-      fetchAll(() => supabase.from('scents').select('id, code, name').order('id')),
+      fetchAll(() => supabase.from('scents').select('id, code, name, "producedAt"').order('id')),
       // ลูกค้าโตตามธุรกิจ (ตารางใน check:rowcap) — ไล่หน้าทะลุเพดาน 1,000 แถว · ต้องการแค่รหัส AR
       fetchAll(() => supabase.from('customers').select('id, "arCode"').order('id')),
       supabase.from('product_types')
@@ -61,7 +62,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       },
       scentLabel: (id) => {
         const scent = scentById.get(id);
-        return scent ? [scent.code, scent.name].filter(Boolean).join(' · ') : null;
+        // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11) — ป้ายเดียวกับจอ
+        return scent ? scentLabel(scent) : null;
       },
       arCodeOf: (id) => arIndex.get(id) || null,
     }, { now });

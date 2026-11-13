@@ -50,11 +50,12 @@ export function priceBoardRows(pairs = [], live = []) {
     const current = ctx?.current || [];
     // ของในทะเบียนที่แถวนี้ผูก — สูตร (ถ้ามี) ไม่งั้นกลิ่นของช่อง F (แถวกลิ่นล้วน)
     const scentSource = current.find((c) => c.key === 'F')?.source || null;
+    // `date` = วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — สูตร = วันที่สูตร · กลิ่น = วันผลิต
     let registry = null;
     if (ctx?.formula) {
-      registry = { kind: 'formula', id: ctx.formula.id, code: ctx.formula.code || null, name: ctx.formula.name || null, categoryCode: ctx.formula.categoryCode || null };
+      registry = { kind: 'formula', id: ctx.formula.id, code: ctx.formula.code || null, name: ctx.formula.name || null, date: ctx.formula.formulaDate || null, categoryCode: ctx.formula.categoryCode || null };
     } else if (scentSource?.name || scentSource?.code) {
-      registry = { kind: 'scent', id: scentSource.id, code: scentSource.code, name: scentSource.name, categoryCode: null };
+      registry = { kind: 'scent', id: scentSource.id, code: scentSource.code, name: scentSource.name, date: scentSource.producedAt || null, categoryCode: null };
     }
     // ม-159 — ราคาลงแล้ว (รอ Ingredient List) = ไม่มีปุ่มราคา · เหลือก้าวเดียว
     const pricing = canPriceRow(item);

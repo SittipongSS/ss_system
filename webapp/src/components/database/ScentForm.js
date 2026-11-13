@@ -30,6 +30,7 @@ import DateInput from "@/components/ui/DateInput";
 import FormZone from "@/components/ui/FormZone";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { SCENT_STATUS_LABELS } from "@/lib/master/scents";
+import { scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import RegistryShareField, { sharesToField } from "@/components/database/RegistryShareField";
 import styles from "./registryForm.module.css";
@@ -107,9 +108,9 @@ export default function ScentForm({
     .filter((s) => scentUsableByCustomer(s, value.customerId) && s.id !== editingId)
     .map((s) => ({
       value: s.id,
-      // รหัสมาก่อนชื่อ — คนหาด้วยรหัสเป็นหลัก · ร่างที่ยังไม่มีรหัสต้องไม่ขึ้นบรรทัดว่าง
-      label: `${s.code ? `${s.code} · ` : ""}${s.name}`,
-      search: [s.code, s.name, s.customerTradeName].filter(Boolean).join(" "),
+      // PF · ชื่อ · วันที่ผลิต (มติ 13/11) — ร่างที่ยังไม่มีรหัสขึ้น "ไม่มี PF" ไม่ใช่ช่องว่าง
+      label: scentLabel(s),
+      search: scentSearchText(s, s.customerTradeName),
     }));
 
   return (

@@ -231,10 +231,10 @@ async function withRegistryLinks(supabase, items = []) {
   if (!scentIds.length && !formulaIds.length) return items;
   const [scentRes, formulaRes] = await Promise.all([
     scentIds.length
-      ? supabase.from('scents').select('id, code, name, status').in('id', scentIds)
+      ? supabase.from('scents').select('id, code, name, status, "producedAt"').in('id', scentIds)
       : Promise.resolve({ data: [] }),
     formulaIds.length
-      ? supabase.from('formulas').select('id, code, name, status, "categoryCode", "ingredientList"').in('id', formulaIds)
+      ? supabase.from('formulas').select('id, code, name, status, "formulaDate", "categoryCode", "ingredientList"').in('id', formulaIds)
       : Promise.resolve({ data: [] }),
   ]);
   return attachRegistryLinks(items, {
@@ -296,6 +296,13 @@ export async function GET(request, { params }) {
     // ⚠️ เติม **เฉพาะหน้ารายละเอียด** ไม่ใช่ใน `findRequest` — คิวโหลดทีละหลายสิบใบ
     // การเพิ่ม query ให้ทุกใบเพื่อค่าที่คิวไม่ได้โชว์คือจ่ายฟรี
     row.items = await withRegistryLinks(getSupabaseAdmin(), row.items);
+    /* ⭐ สูตรระดับใบ (ใบขอราคาสูตร) — หัวใบโชว์ "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11/2026) ⇒ อ่านสดจากทะเบียน
+       ใบเก็บแค่รหัส/ชื่อตอนเปิด ไม่มีวันที่ · อ่านพัง/ไม่เจอ = null (หัวใบถอยไปใช้รหัส/ชื่อบนใบ ขีดแทนวันที่) */
+    if (row.formulaId) {
+      const { data: formula } = await getSupabaseAdmin()
+        .from('formulas').select('id, code, name, "formulaDate"').eq('id', row.formulaId).maybeSingle();
+      row.refRequestFormula = formula || null;
+    }
     // ด่านรายแถว — ให้ตรงกับที่ GET /api/sa/requests กรองไว้อยู่แล้ว ไม่งั้นรายการ
     // ซ่อนใบของคนอื่น แต่เปิดตรงด้วย id อ่านได้หมด (id หลุดทางลิงก์แจ้งเตือน/ /go/)
     if (!canReadRequestRow(user, row)) {

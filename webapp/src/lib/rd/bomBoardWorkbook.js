@@ -33,6 +33,8 @@ const BASE_COLUMNS = Object.freeze([
   { key: 'formulaKind', header: 'ชนิด', width: 12 },
   { key: 'formulaCode', header: 'รหัสสูตร / กลิ่น', width: 22 },
   { key: 'formulaName', header: 'ชื่อสูตร / กลิ่น', width: 40 },
+  // วันที่ของป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — สูตร = วันที่สูตร · กลิ่น = วันผลิต
+  { key: 'formulaDate', header: 'วันที่สูตร / กลิ่น', width: 14 },
   { key: 'formulaNote', header: 'กลิ่นของสูตร / หมวดในชุด', width: 30 },
   { key: 'tradeName', header: 'ชื่อที่ลูกค้าเรียก', width: 24 },
   { key: 'volume', header: 'ปริมาตร', width: 10 },
@@ -106,6 +108,7 @@ export function bomExportRow(row, { todayIso = null } = {}) {
     formulaKind: BOM_FORMULA_KIND_LABEL[row?.formula?.kind || 'none'] || null,
     formulaCode: linesOf(items, (item) => item.code),
     formulaName: linesOf(items, (item) => item.name),
+    formulaDate: linesOf(items, (item) => dateOf(item.date)),
     formulaNote: linesOf(items, (item) => item.note),
     tradeName: linesOf(items, (item) => item.tradeName),
     volume: row?.volume != null && Number.isFinite(Number(row.volume)) ? Number(row.volume) : null,

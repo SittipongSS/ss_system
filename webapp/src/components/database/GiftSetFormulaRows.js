@@ -16,6 +16,7 @@
 //    ตัวเลือกของแถวล่างจะค้างค่าของแถวที่ถูกลบ
 import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
+import { formulaLabel } from "@/lib/master/registryLabel";
 import Input from "@/components/ui/Input";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -56,7 +57,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
             const excise = isExciseCategory(String(row.categoryCode || "").trim(), productTypes);
             const choices = giftSetFormulaChoices(formulas, row.categoryCode, row.formulaId).map((f) => ({
               value: f.id,
-              label: `${f.code ? `${f.code} · ` : ""}${f.name}`
+              label: formulaLabel(f)
                 + (f.customerName ? ` · ${f.customerName}` : "")
                 + (f.status === "archived" ? " (เก็บเข้ากรุแล้ว)" : ""),
             }));

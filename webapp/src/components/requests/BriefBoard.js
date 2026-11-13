@@ -31,6 +31,7 @@ import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Trash2 } from "lucide-react";
 import styles from "./briefBoard.module.css";
 import { dueCellTracker } from "@/lib/requests/dueCell";
+import { formulaLabel } from "@/lib/master/registryLabel";
 
 /**
  * ⚠️ รับ `groups` ที่ประกอบมาแล้ว **ไม่ประกอบเอง** — แถบตัวเลขบนหน้ารายละเอียดอ่าน
@@ -179,7 +180,7 @@ export default function BriefBoard({
                                             <>
                                               {" · สูตร "}
                                               <Link href={registryHref(d.delivered.formula)}>
-                                                {d.delivered.formula.code || d.delivered.formula.name}
+                                                {formulaLabel(d.delivered.formula)}
                                               </Link>
                                             </>
                                           )}

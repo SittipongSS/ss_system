@@ -75,6 +75,7 @@ import {
 } from "@/lib/service/surveyConfirmLink";
 import { isScentUsable } from "@/lib/master/scents";
 import { isFormulaUsable } from "@/lib/master/formulas";
+import { formulaLabel, formulaSearchText, scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
 import styles from "./requestForm.module.css";
 
@@ -1361,8 +1362,8 @@ export default function RequestForm({
             onChange={(v) => set({ scentId: v })}
             options={scents.filter(isScentUsable).map((s) => ({
               value: s.id,
-              label: s.code ? `${s.name} · ${s.code}` : s.name,
-              search: `${s.name} ${s.code || ""} ${s.customerName || ""}`,
+              label: scentLabel(s),
+              search: scentSearchText(s, s.customerName),
             }))}
             placeholder="เลือกกลิ่นจากทะเบียน"
             emptyText="ยังไม่มีกลิ่นที่รับเข้าทะเบียน"
@@ -1415,8 +1416,8 @@ export default function RequestForm({
             }}
             options={formulas.filter(isFormulaUsable).map((f) => ({
               value: f.id,
-              label: f.code ? `${f.name} · ${f.code}` : f.name,
-              search: `${f.name} ${f.code || ""} ${f.customerName || ""}`,
+              label: formulaLabel(f),
+              search: formulaSearchText(f, f.customerName),
             }))}
             placeholder="เลือกสูตรจากทะเบียน"
             emptyText="ยังไม่มีสูตรที่รับเข้าทะเบียน"

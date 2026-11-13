@@ -54,6 +54,7 @@ import {
   SCENT_SOURCES, SCENT_STATUS_LABELS, SCENT_STATUS_TONES, canProposeScent,
   isScentRegistrar, isScentUsable, matchesScentSource, scentFormPayload, scentSourceLabel,
 } from "@/lib/master/scents";
+import { scentLabel, scentLabelParts, scentLabelSub } from "@/lib/master/registryLabel";
 
 const todayIso = () => businessDate();
 
@@ -195,6 +196,8 @@ export default function ScentsPage() {
       return [
         s.name, s.code, customerSearchText(s.customerId, s.customerName, arIndex),
         s.customerTradeName, s.note, s.sourceRequest?.docNo,
+        // วันผลิตบนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — ตาเห็น = ค้นเจอ
+        s.producedAt ? fmtDate(s.producedAt) : null,
         // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150) — ค้นชื่อลูกค้า B แล้วต้องเจอกลิ่นที่แชร์ให้ B ด้วย
         ...(s.sharedCustomers || []).map((c) => customerSearchText(c.customerId, c.customerName, arIndex)),
       ].filter(Boolean).join(" ").toLowerCase().includes(q);
@@ -213,7 +216,8 @@ export default function ScentsPage() {
 
   // สายพันธุ์: id → ป้ายอ่านออก · แผนที่เดียวใช้ทั้งตาราง (กัน O(n²) ตอนเรนเดอร์)
   const scentLabelById = useMemo(
-    () => new Map(scents.map((s) => [s.id, s.code || s.name])),
+    // PF · ชื่อ · วันที่ (มติ 13/11) — ป้ายกลางตัวเดียวกับช่องเลือก
+    () => new Map(scents.map((s) => [s.id, scentLabel(s)])),
     [scents],
   );
 
@@ -536,9 +540,9 @@ export default function ScentsPage() {
                       <RowActionMenu label={`การจัดการของ ${s.code || s.name}`} items={rowMenu(s)} />
                     </div>
                     <div className={styles.name}>
-                      {s.code ? <span className="mono">{s.code}</span> : null}
-                      {s.code ? " · " : null}
-                      {s.name}
+                      <span className="mono">{scentLabelParts(s).code}</span>
+                      {" · "}
+                      {scentLabelSub(s)}
                     </div>
                     <div className={styles.sub}>
                       {[
@@ -626,8 +630,9 @@ export default function ScentsPage() {
                             ส่วนสายพันธุ์/ที่มา/ราคาเต็มอยู่ที่หน้านั้น */}
                         {/* รหัสบน · ชื่อล่าง (มติผู้ใช้ 2026-08-12 — ทุกตารางทรงเดียว) */}
                         <Link href={`/database/scents/${s.id}`} className={styles.name}>
-                          <span className="mono block text-[12px] text-[var(--accent)]">{s.code || "ไม่มี PF"}</span>
-                          <span className="block">{s.name}</span>
+                          <span className="mono block text-[12px] text-[var(--accent)]">{scentLabelParts(s).code}</span>
+                          {/* ชื่อ · วันที่ผลิต (มติ 13/11) — คอลัมน์วันที่ยังอยู่เพราะบอกวันส่งด้วย */}
+                          <span className="block">{scentLabelSub(s)}</span>
                         </Link>
                         {(s.customerTradeName || s.derivedFromScentId || s.perfumerName) && (
                           <div className={styles.sub}>

@@ -13,6 +13,7 @@ import { REQUEST_SCENT_DOC_TYPES } from '../requests/docTypes.js';
 import { normalizeDocumentItems } from '../requests/lines.js';
 import { docLineFileTarget } from '../requests/productDocLines.js';
 import { resolveLineLabels } from '../requests/lineLabels.js';
+import { fmtDate } from '../format.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const code = (path) => read(path).replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
@@ -82,12 +83,13 @@ function fakeDb(tables) {
   };
 }
 
-test('resolveLineLabels: กลิ่นต้องมีจริง · ใช้กับลูกค้าของใบได้ (เจ้าของหรือได้รับแชร์) · ป้าย = ชนิด · รหัสกลิ่น', async () => {
+test('resolveLineLabels: กลิ่นต้องมีจริง · ใช้กับลูกค้าของใบได้ (เจ้าของหรือได้รับแชร์) · ป้าย = ชนิด · PF · ชื่อ · วันที่ผลิต', async () => {
   const items = [{ docType: 'ifra', scentId: 'SC-1', label: 'IFRA Certificate', sortOrder: 1 }];
-  const own = fakeDb({ scents: [{ id: 'SC-1', code: 'S-0001', name: 'กลิ่นทดสอบ', customerId: 'C1' }] });
+  const own = fakeDb({ scents: [{ id: 'SC-1', code: 'S-0001', name: 'กลิ่นทดสอบ', producedAt: '2026-10-12', customerId: 'C1' }] });
   const ok = await resolveLineLabels(own, items, { lineShape: 'document', customerId: 'C1' });
   assert.equal(ok.error, null);
-  assert.equal(ok.items[0].label, 'IFRA Certificate · S-0001');
+  // มติเจ้าของ 13/11 — ป้ายกลิ่นครบสามท่อนเสมอ
+  assert.equal(ok.items[0].label, `IFRA Certificate · S-0001 · กลิ่นทดสอบ · ${fmtDate('2026-10-12')}`);
   assert.match((await resolveLineLabels(fakeDb({ scents: [] }), items, { lineShape: 'document', customerId: 'C1' })).error, /ไม่พบกลิ่น/);
   const other = fakeDb({ scents: [{ id: 'SC-1', code: 'S-0001', name: 'x', customerId: 'C2' }] });
   assert.match((await resolveLineLabels(other, items, { lineShape: 'document', customerId: 'C1' })).error, /ลูกค้าคนละราย/);

@@ -7,6 +7,8 @@
 // ⇒ ป้ายคือ "สิ่งที่ขอ" เท่านั้น · สูตรที่ได้อ่านจากทะเบียนสด (`RegistryCell`) · ตัดหางลูกศรตอนอ่านป้ายเก่าที่ค้างในฐาน
 //    (ไม่แก้ข้อมูลย้อนหลัง — ป้ายเดิมยังเป็นหลักฐานในฐานว่าตอนนั้นส่งอะไร)
 
+import { scentLabel } from '@/lib/master/registryLabel';
+
 const ARROW = ' → ';
 
 /** ป้ายสิ่งที่ขอ — ตัดตั้งแต่ลูกศรตัวแรกทิ้ง */
@@ -25,7 +27,8 @@ export function productDevLabel(label, scent = null) {
   if (!scent?.name) return base || '—';
   const sep = base.indexOf(' · ');
   const typeName = sep === -1 ? '' : base.slice(0, sep).trim();
+  // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11) — รหัสขีดของข้อมูลเก่านับเป็น "ไม่มีรหัส"
   const code = String(scent.code ?? '').trim();
-  const scentText = `${code && code !== '-' ? `${code} ` : ''}${scent.name}`;
+  const scentText = scentLabel({ ...scent, code: code === '-' ? '' : code });
   return typeName ? `${typeName} · ${scentText}` : (base || scentText);
 }

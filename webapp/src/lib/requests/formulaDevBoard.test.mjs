@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { formulaDevBoard, formulaDevTotals } from './formulaDevBoard.js';
+import { fmtDate } from '../format.js';
 
 const row = (over = {}) => ({ id: 'DRI-1', lineKind: 'product_dev', label: 'เทียนหอม · SC-2611', ...over });
 
@@ -69,20 +70,21 @@ test('แถวที่ผ่านขั้นราคา — ราคาโ
 
 test('⭐ ตารางอ่านง่าย (2026-09-15): ป้ายสิ่งที่ขอจากกลิ่นสด · รอบแก้บอกว่าแก้จากสูตรไหน · คอมเมนต์ขอให้แก้ไม่พิมพ์ซ้ำ', () => {
   const stale = 'ครีมทามือ · - CHAO PHRAYA THAI CONTEMPORARY 01 REV 3 → 6731108202601';
-  const scent = { id: 'SCT-1', code: 'PF319010103', name: 'CHAO PHRAYA THAI CONTEMPORARY 01 REV 3' };
+  const scent = { id: 'SCT-1', code: 'PF319010103', name: 'CHAO PHRAYA THAI CONTEMPORARY 01 REV 3', producedAt: '2026-09-01' };
   const note = 'ลูกค้า Feedback อยากให้กลิ่นฟุ้งกว่านี้';
   const [parent, rework] = formulaDevBoard([
     row({
       id: 'P', label: stale, refScent: scent, producedFormulaId: 'FML-1', ackAt: 'x', readyAt: 'x', pickedUpAt: 'x', sentAt: 'x',
-      outcome: 'revise', outcomeNote: note, refFormula: { id: 'FML-1', code: 'PF319010103-P3', name: 'HAND CREAM' },
+      outcome: 'revise', outcomeNote: note, refFormula: { id: 'FML-1', code: 'PF319010103-P3', name: 'HAND CREAM', formulaDate: '2026-09-10' },
     }),
     row({ id: 'K', label: stale, refScent: scent, derivedFromItemId: 'P', ackAt: 'x' }),
   ]);
   // ไม่มีรหัสเก่า/ลูกศรในป้าย
-  assert.equal(parent.name, 'ครีมทามือ · PF319010103 CHAO PHRAYA THAI CONTEMPORARY 01 REV 3');
+  // กลิ่น = PF · ชื่อ · วันที่ผลิต (มติ 13/11)
+  assert.equal(parent.name, `ครีมทามือ · PF319010103 · CHAO PHRAYA THAI CONTEMPORARY 01 REV 3 · ${fmtDate('2026-09-01')}`);
   assert.equal(rework.name, parent.name);
   // รอบแก้รู้ว่าแก้จากสูตรไหน (ค่าสด)
-  assert.equal(rework.reworkOf, 'PF319010103-P3');
+  assert.equal(rework.reworkOf, `PF319010103-P3 · HAND CREAM · ${fmtDate('2026-09-10')}`);
   assert.equal(parent.reworkOf, null);
   // คอมเมนต์โชว์ที่รอบแก้ (โจทย์) ที่เดียว
   assert.equal(parent.outcomeNote, null);

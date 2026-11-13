@@ -27,6 +27,7 @@ import {
   FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, formulaFormPayload, formulaSourceLabel,
   isFormulaRegistrar, isFormulaUsable,
 } from "@/lib/master/formulas";
+import { formulaLabel, scentLabel } from "@/lib/master/registryLabel";
 
 const TONE_COLOR = {
   success: "var(--green)", danger: "var(--red)", warn: "var(--amber)", neutral: "var(--text-3)",
@@ -117,7 +118,7 @@ export default function FormulaDetailPage() {
       if (data?.scentId) {
         const sRes = await apiFetch(`/api/master/scents/${data.scentId}`, { cache: "no-store" });
         const sData = await sRes.json().catch(() => null);
-        if (sRes.ok && sData) setScentName(sData.code ? `${sData.code} · ${sData.name}` : sData.name);
+        if (sRes.ok && sData) setScentName(scentLabel(sData));
       } else setScentName("");
     } catch (e) { setError(e.message); }
     setLoading(false);
@@ -151,7 +152,7 @@ export default function FormulaDetailPage() {
     <RegistryDetailShell
       back={back}
       eyebrow={`ทะเบียนสูตร${srcLabel ? ` · ${srcLabel}` : ""}`}
-      title={formula.code ? `${formula.code} · ${formula.name}` : formula.name}
+      title={formulaLabel(formula)}
       description={formula.customerName || "สูตรฐาน — ใช้ได้ทุกลูกค้า"}
       statusLabel={FORMULA_STATUS_LABELS[formula.status] || formula.status}
       statusTone={TONE_COLOR[FORMULA_STATUS_TONES[formula.status]] || "var(--blue)"}
