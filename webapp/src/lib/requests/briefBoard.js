@@ -67,7 +67,6 @@ function directionRow(item, all = []) {
        (2026-09-15 · ผู้ใช้: ตารางดูยาก · ทรงเดียวกับพัฒนาสูตร) · แถวที่ยังไม่มีรอบแก้ยังโชว์ที่ตัวเอง */
     outcomeNote: item.outcome === 'revise' && (all || []).some((i) => i?.derivedFromItemId === item.id)
       ? null : item.outcomeNote || null,
-    confirmedQty: item.confirmedQty ?? null,
     stage,
     // ⚠️ ตารางใช้ตัดสินว่าจะโชว์กำหนดส่งไหม — แถวที่จบแล้วไม่ผูกกับกำหนดนี้อีก
     settled: isRowSettled(item),

@@ -190,7 +190,7 @@ export default function RequestDetailPage() {
   const [req, setReq] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  // ก้าวของแถว — { item, hop, outcome, at, dueAt, confirmedQty, note }
+  // ก้าวของแถว — { item, hop, outcome, at, dueAt, note }
   const [hopDraft, setHopDraft] = useState(null);
   /* ทะเบียนที่ **ฟอร์มแก้** ต้องใช้ — ช่อง "อ้างอิงเพิ่ม" (QT/SO/FG) ของหัวข้อที่มี
      ⚠️ **โหลดตอนกดแก้เท่านั้น** — ใบส่วนใหญ่ถูกเปิดอ่านอย่างเดียว การลากทะเบียน
@@ -801,7 +801,6 @@ export default function RequestDetailPage() {
     // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน
     at: businessDate(),
     dueAt: "",
-    confirmedQty: "",
     note: "",
     // ผลลัพธ์ของบรรทัดเอกสารการเงิน (B-3) — เติมค่าเดิมกลับมาเมื่อส่งซ้ำหลังแก้
     docNumber: item.docNumber || "",
@@ -817,7 +816,7 @@ export default function RequestDetailPage() {
     setHopDraft({
       item, hop: "direction", outcome: null, formula: null,
       extra: [formulaDraftFor(directionShapeOf(item))], tab: 0, directionBase: base,
-      at: businessDate(), dueAt: "", confirmedQty: "", note: "", docNumber: "", docDueDate: "",
+      at: businessDate(), dueAt: "", note: "", docNumber: "", docDueDate: "",
     });
   };
   const postDirections = (item, extra, okMsg) => call("/items", {
@@ -852,7 +851,6 @@ export default function RequestDetailPage() {
         // 🐞 ปฏิเสธต้องส่งเหตุผล — เดิมลืมสาขานี้ โมดัลกดบันทึกแล้วโดน 400
         // "ต้องบอกเหตุผลที่ปฏิเสธ" ทั้งที่กรอกแล้ว (เจอตอนกดจริงจากตาราง ม-94)
         ...(["refuse", "unready"].includes(hop) ? { note: hopDraft.note } : {}),
-        ...(outcome === "confirmed" ? { confirmedQty: hopDraft.confirmedQty } : {}),
       }),
     }, withExtra ? null : outcome === "revise"
       // บอกผลข้างเคียงที่มองไม่เห็นตอนกด — แถวใหม่ถูกสร้างให้เอง
@@ -3124,19 +3122,8 @@ export default function RequestDetailPage() {
               </div>
             )}
 
-            {hopDraft.outcome === "confirmed" && (
-              <div className="form-group">
-                <label htmlFor="hop-qty">จำนวนที่ลูกค้าคอนเฟิร์ม</label>
-                <Input
-                  id="hop-qty" type="number" min="0" step="any"
-                  value={hopDraft.confirmedQty} disabled={saving}
-                  onChange={(e) => setHopDraft({ ...hopDraft, confirmedQty: e.target.value })}
-                />
-                <p className={styles.fieldHint}>
-                  ใช้กระทบยอดกับใบสั่งขาย — ไม่มีจำนวนก็เทียบไม่ได้ว่าส่งครบหรือยัง
-                </p>
-              </div>
-            )}
+            {/* ⚠️ ไม่มีช่อง "จำนวนที่ลูกค้าคอนเฟิร์ม" (ผู้ใช้ทัก 13/11/2026) — หนึ่งแถว = หนึ่งกลิ่น/สูตร
+                ด่านปิดใบนับแถวที่คอนเฟิร์มเอง (`soReconcile`) · server เขียน 1 ให้ตาม CHECK ของ 0204 */}
 
             {/* ⭐ คอนเฟิร์มแถวพัฒนาสูตร = ทะเบียนเปลี่ยน + ปิดแถวอื่นของกลิ่นนี้ (ม-157) — บอกครบก่อนกด (กติกาโมดัลยืนยัน #1223) */}
             {confirmPreview?.kind === "apply" && confirmPreview.note && (

@@ -77,8 +77,6 @@ export function priceBoardRows(pairs = [], live = []) {
       stage: rowStage(item),
       // วันที่ลูกค้าตอบ — คนกรอกเอง ย้อนหลังได้ (ไม่ใช่วันที่ RD รู้เรื่อง) ⇒ ป้ายบนจอเขียนว่า "ลูกค้าคอนเฟิร์ม"
       confirmedAt: item.outcomeAt || null,
-      confirmedQty: item.confirmedQty ?? null,
-      unit: item.unit || null,
       registry,
       slots,
       current,

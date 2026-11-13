@@ -366,13 +366,13 @@ test('⭐ ปิดใบไม่ได้จนลูกค้าคอนเ�
   // ครบตามจำนวน ⇒ ปิดได้
   assert.equal(
     closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }),
-      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 3 }]),
+      Array.from({ length: 3 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }))),
     null,
   );
   // ส่งเกิน (แถมให้ลูกค้าเลือก) ไม่ใช่เหตุให้ปิดไม่ได้ — มติเดิม "เกินได้จริง"
   assert.equal(
     closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }),
-      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 4 }]),
+      Array.from({ length: 4 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }))),
     null,
   );
   // ⚠️ ลูกค้าไม่เอาสักตัว = ปิดไม่ได้โดยตั้งใจ ทางออกคือยกเลิก
@@ -516,11 +516,11 @@ test('ด่านพัฒนากลิ่นนับเฉพาะบร�
       { qty: 10, fgCode: 'FG-1-01-001-0001' },    // สินค้า ×10 — ไม่ใช่งานของ RD ในใบนี้
     ],
   };
-  const allConfirmed = [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 3 }];
+  const allConfirmed = Array.from({ length: 3 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }));
   assert.equal(closeRequestError(req({ kind: 'scent_dev', status: 'answered', ...mixed }), allConfirmed), null);
   assert.match(
     closeRequestError(req({ kind: 'scent_dev', status: 'answered', ...mixed }),
-      [{ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 2 }]),
+      Array.from({ length: 2 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }))),
     /คอนเฟิร์ม 2 จาก 3/,
   );
 });

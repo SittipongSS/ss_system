@@ -97,15 +97,8 @@ test('ส่งเอกสารการเงินเขียนเลข�
 test('บันทึกคำตอบลูกค้า — ด่านตรงกับ constraint ของ 0202 ทุกข้อ', () => {
   assert.match(hopValuesError('outcome', { at: '2026-08-18' }), /ลูกค้าตอบว่าอย่างไร/);
   assert.match(hopValuesError('outcome', { outcome: 'confirmed' }), /วันที่ลูกค้าตอบ/);
-  // คอนเฟิร์มต้องมีจำนวน — ตัวเลขนี้ใช้กระทบยอดกับใบสั่งขาย
-  assert.match(
-    hopValuesError('outcome', { outcome: 'confirmed', at: '2026-08-18' }),
-    /จำนวนที่ลูกค้าคอนเฟิร์ม/,
-  );
-  assert.equal(
-    hopValuesError('outcome', { outcome: 'confirmed', at: '2026-08-18', confirmedQty: 1 }),
-    null,
-  );
+  // ⭐ คอนเฟิร์มไม่ถามจำนวน (ผู้ใช้ทัก 13/11/2026) — หนึ่งแถว = หนึ่งกลิ่น/สูตร
+  assert.equal(hopValuesError('outcome', { outcome: 'confirmed', at: '2026-08-18' }), null);
   // ไม่เอา = ปิดแถวถาวร ต้องบอกเหตุผล (constraint answer_evidence บังคับ declineReason)
   assert.match(
     hopValuesError('outcome', { outcome: 'rejected', at: '2026-08-18' }),
@@ -152,8 +145,10 @@ test('"ไม่เอา" ปิดแถวทันที · "ขอแก้
   assert.equal('answerStatus' in revise, false, 'ขอแก้ต้องไม่ปิด answerStatus');
   assert.equal(rowStage({ ...at('sent'), ...revise }), 'revised');
 
-  const confirmed = hopPatch('outcome', { outcome: 'confirmed', at: '2026-08-18', confirmedQty: 5 }, u);
-  assert.equal(confirmed.confirmedQty, 5);
+  // ⚠️ จำนวนเป็น 1 ตายตัวตาม CHECK ของ 0204 — เลขที่ client แอบส่งมาถูกทิ้ง
+  assert.equal(hopPatch('outcome', { outcome: 'confirmed', at: '2026-08-18' }, u).confirmedQty, 1);
+  const confirmed = hopPatch('outcome', { outcome: 'confirmed', at: '2026-08-18', confirmedQty: 1000 }, u);
+  assert.equal(confirmed.confirmedQty, 1);
   assert.equal(rowStage({ ...at('sent'), ...confirmed }), 'awaiting_price');
 });
 

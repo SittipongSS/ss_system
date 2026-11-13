@@ -77,7 +77,6 @@ export function formulaDevBoard(items = []) {
         /* ⚠️ **คอมเมนต์ "ขอให้แก้" โชว์ที่แถวรอบแก้ที่เดียว** (เป็น "โจทย์รอบนี้") — เดิมพิมพ์ข้อความเดียวกันสองก้อนติดกัน
            (ใต้แถวต้นทาง + ใต้แถวรอบแก้) · แถวต้นทางยังมีชิป "ลูกค้าขอให้แก้" · แถวที่ยังไม่มีรอบแก้ (ข้อมูลเก่า) ยังโชว์ที่ตัวเอง */
         outcomeNote: item.outcome === 'revise' && hasRework ? null : item.outcomeNote || null,
-        confirmedQty: item.confirmedQty ?? null,
         stage,
         track: rowTrackSteps(item),
         // ⚠️ ตราเวลาดิบ ไม่ใช่จำนวนวัน — ตัวสร้างแถวไม่มีสิทธิ์รู้ว่า "วันนี้" คือวันไหน

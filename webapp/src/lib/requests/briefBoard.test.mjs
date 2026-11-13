@@ -48,7 +48,8 @@ test('ผลลัพธ์และสถานะแปลเป็นป้�
   const d = g.directions[0];
   assert.equal(d.outcomeLabel, 'ลูกค้าคอนเฟิร์ม');
   assert.equal(d.outcomeTone, 'success');
-  assert.equal(d.confirmedQty, 25);
+  // ⚠️ ตารางไม่โชว์จำนวนคอนเฟิร์มแล้ว (13/11/2026) — คอลัมน์เป็น 1 ตายตัว ไม่ใช่ข้อมูล
+  assert.equal('confirmedQty' in d, false);
   assert.equal(d.stage, 'awaiting_price');
   assert.equal(d.stageLabel, 'รอใส่ราคา');
 

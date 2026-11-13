@@ -30,10 +30,7 @@ import RegistryCell, { registryHref } from "./RegistryCell";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Trash2 } from "lucide-react";
 import styles from "./briefBoard.module.css";
-import { fmtNumber } from "@/lib/format";
 import { dueCellTracker } from "@/lib/requests/dueCell";
-
-const qty = (n) => fmtNumber(n);
 
 /**
  * ⚠️ รับ `groups` ที่ประกอบมาแล้ว **ไม่ประกอบเอง** — แถบตัวเลขบนหน้ารายละเอียดอ่าน
@@ -197,9 +194,6 @@ export default function BriefBoard({
                                       ซึ่งอ่านถูกอยู่แล้วเพราะรางบอกว่าอยู่ขั้นไหน */}
                                   {d.outcomeLabel && (
                                     <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
-                                  )}
-                                  {d.confirmedQty != null && (
-                                    <div className={styles.note}>คอนเฟิร์ม {qty(d.confirmedQty)}</div>
                                   )}
                                 </>
                               )}
