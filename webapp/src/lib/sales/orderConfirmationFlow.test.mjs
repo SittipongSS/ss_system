@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { quotationWonEffects, selectableProjectsForWon } from './quotationWonPrompt.js';
+import { quotationWonEffects } from './quotationWonPrompt.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -27,48 +27,21 @@ test('ผลลัพธ์ของการปิด Won บอกครบท
   assert.doesNotMatch(text, /มูลค่าปิด/);
 });
 
-test('ดีลลอย: ผลลัพธ์บอกด้วยว่าไทม์ไลน์ลอยถูกรับเข้าโครงการ ไม่ใช่สร้างใหม่ทับ', () => {
-  const effects = quotationWonEffects({
-    quote, deal: { title: 'ดีลลอย' }, project: { code: 'PRJ-1', name: 'โครงการเดิม' }, linkingProject: true,
-  });
-  assert.equal(effects[0].id, 'link');
-  assert.match(effects[0].text, /PRJ-1 · โครงการเดิม/);
-  assert.match(effects[0].text, /ไม่สร้างทับ/);
-});
-
 test('ใบยอด 0 ต้องทวนว่ามูลค่าปิดของดีลจะเป็น 0', () => {
   const effects = quotationWonEffects({ quote: { totalAmount: 0, vatAmount: 0 }, deal: { title: 'ดีล' } });
   assert.ok(effects.some((e) => e.id === 'zero' && /ยอดเป็น 0 บาท/.test(e.text)));
 });
 
-/* ── ลิสต์โครงการในโมดัล = กติกาเดียวกับ linkDealToProject ─────────────────── */
-test('เลือกได้เฉพาะโครงการของลูกค้าเดียวกัน ยังไม่ปิด และสายธุรกิจตรงกัน', () => {
-  const projects = [
-    { id: 'P1', customerId: 'C1', line: 'product' },
-    { id: 'P2', customerId: 'C2', line: 'product' },              // คนละลูกค้า
-    { id: 'P3', customerId: 'C1', line: 'service' },              // คนละสาย
-    { id: 'P4', customerId: 'C1', line: 'product', closeStatus: 'closed' }, // ปิดแล้ว
-    { id: 'P5', customerId: null, line: 'product' },              // ไม่รู้ลูกค้า = ไม่เดา
-    { id: 'P6', customerId: 'C1', line: null },                   // โครงการเก่ายังไม่ระบุสาย
-  ];
-  const usable = selectableProjectsForWon(projects, { customerId: 'C1', line: 'product' });
-  assert.deepEqual(usable.map((p) => p.id), ['P1', 'P6']);
-});
-
-test('ดีลที่ยังไม่ระบุสาย ไม่กรองสายทิ้ง (ไปตรวจซ้ำที่ server)', () => {
-  const usable = selectableProjectsForWon(
-    [{ id: 'P1', customerId: 'C1', line: 'service' }],
-    { customerId: 'C1', line: null },
-  );
-  assert.deepEqual(usable.map((p) => p.id), ['P1']);
-});
-
 /* ── ratchet: ด่านและเส้นทางที่ย้ายแล้ว ต้องไม่ถูกย้ายกลับเงียบ ๆ ───────────── */
-test('ปิด Won ไม่ตรวจหลักฐานอีกแล้ว และผูกโครงการในคำขอเดียวกัน', () => {
+test('ปิด Won ไม่ตรวจหลักฐาน และไม่ผูก/ไม่บังคับโครงการแล้ว (0434)', () => {
   const accept = read('app/api/sales-planning/quotations/[id]/accept/route.js');
   assert.doesNotMatch(accept, /validateWonEvidence|validateOrderConfirmation/, 'ปิด Won ต้องไม่ตรวจเอกสารยืนยัน');
   assert.match(accept, /p_evidence: \{\}/, 'ส่งหลักฐานว่างเสมอ — คอลัมน์ won\\* เหลือไว้ให้ใบเก่า');
-  assert.match(accept, /linkDealToProject/, 'ผูกโครงการอยู่ในคำขอเดียวกับการปิด Won');
+  /* มติเจ้าของ 13/11/2026 (ถอดโครงการทาง ก. · P1) — ห้ามด่าน/การผูกโครงการไหลกลับมาที่การปิด Won */
+  assert.doesNotMatch(accept, /linkDealToProject/, 'ปิด Won ต้องไม่ผูกโครงการ');
+  assert.doesNotMatch(accept, /if \(!deal\.projectId\)|body\.projectId\)/, 'ปิด Won ต้องไม่บังคับ/ไม่อ่านโครงการจาก body');
+  const dialog = read('components/salesPlanning/QuotationWonDialog.js');
+  assert.doesNotMatch(dialog, /projectId|SearchableSelect/, 'โมดัลปิด Won ต้องไม่ถามโครงการ');
 });
 
 test('เอกสารยืนยันเป็นด่านของการยื่นอนุมัติ ไม่ใช่ของการสร้างใบ', () => {

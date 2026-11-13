@@ -54,9 +54,10 @@ const STAGE_DESCRIPTION = {
    (`in_project` ถูกยุบเข้า won ตั้งแต่ mig 0082 แต่ข้อมูลเก่ายังมี จึงนับเป็นขั้นเดียวกัน) */
 const STEPS = [
   { id: "open", label: "เปิดดีล", hint: "คัดกรองและตั้งต้น", statuses: ["lead", "qualified"] },
-  // ⚠️ คำใบ้เคยเป็น "ต้องมีก่อนออกใบเสนอราคา" — ไม่จริงแล้ว (2026-08-24) ออกใบได้ตั้งแต่
-  // ดีลยังลอย · โครงการเริ่มจำเป็นตอนรับใบปิด Won (quotations/[id]/accept)
-  { id: "project", label: "ผูกโครงการ", hint: "ต้องมีก่อนปิด Won", statuses: ["timeline_proposed"] },
+  // ⚠️ คำใบ้เคยเป็น "ต้องมีก่อนออกใบเสนอราคา" (ถึง 2026-08-24) แล้ว "ต้องมีก่อนปิด Won" (ถึง 13/11/2026)
+  // · ตั้งแต่ mig 0434 ปิด Won ได้โดยไม่มีโครงการ · ขั้นนี้ยังอยู่เพราะสถานะ timeline_proposed ยังใช้ —
+  //   ถอดขั้น/ปุ่มผูกโครงการเป็นงานรอบ P2 (docs/customer-hub-plan.md)
+  { id: "project", label: "ผูกโครงการ", hint: "ไม่บังคับ", statuses: ["timeline_proposed"] },
   { id: "quote", label: "เสนอราคา", hint: "รอลูกค้าตอบ", statuses: ["quotation", "awaiting_confirm", "deposit_pending"] },
   /* ต้องกาง WON_STAGES ห้ามพิมพ์รายชื่อสถานะ Won เองซ้ำ — มีเทสต์ git grep ทั้ง repo
      ห้ามไว้ (นิยามอยู่ที่ salesPlanning.js ที่เดียว) · คอมเมนต์เองก็ห้ามพิมพ์ ตัวสแกน

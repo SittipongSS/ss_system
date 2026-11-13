@@ -1351,7 +1351,6 @@ export default function QuotationEditorPage() {
         onClose={() => setWonOpen(false)}
         quote={quote}
         deal={quote?.deal}
-        customerId={quote?.customerId || quote?.deal?.customerId}
         customerName={quote?.customerName || quote?.deal?.customerName}
         onDone={async () => { setWonOpen(false); await load(); }}
       />

@@ -1316,8 +1316,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       try { registrationGate = await loadExciseRegistrationBlocker(supabase, before); }
       catch (gateError) { return fail(`ตรวจทะเบียนสรรพสามิตไม่สำเร็จ: ${gateError.message}`, 500); }
       if (registrationGate) return Response.json({ error: registrationGate, code: 'excise_registration_missing' }, { status: 400 });
-    } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.projectId || !before.customerName) {
-      return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล, โครงการ และลูกค้า');
+    } else if (!before.quotation || before.quotation.status !== 'accepted' || !before.deal || !before.customerName) {
+      /* ไม่บังคับโครงการแล้ว (มติเจ้าของ 13/11/2026 · mig 0434/P1b ถอดข้อเดียวกันใน RPC ยื่น/อนุมัติ) */
+      return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมี QT Won, ดีล และลูกค้า');
     }
     /* ⭐ **ด่านเอกสารยืนยันคำสั่งซื้ออยู่ตรงนี้ ไม่ใช่ตอนสร้างใบ** (มติผู้ใช้ 2026-08-24)
        AE ที่ยังรอ PO จากลูกค้าต้องตั้งใบร่างไว้ก่อนได้ แต่จะส่งให้คนอื่นอนุมัติโดยไม่มี
