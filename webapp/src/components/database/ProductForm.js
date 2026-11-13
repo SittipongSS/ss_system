@@ -42,7 +42,8 @@ import {
   packagingSummary,
   unitOptions,
 } from "@/lib/master/units";
-import { fmtDate, fmtMoney, naText } from "@/lib/format";
+import { fmtDate, fmtMoney } from "@/lib/format";
+import { formulaLabel, registryLabel, scentLabel } from "@/lib/master/registryLabel";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { apiFetch } from "@/lib/apiFetch";
@@ -255,7 +256,7 @@ export default function ProductForm({
   const pickedScent = scents.find((s) => s.id === form.scentId) || null;
   const scentOptions = fragranceOilScentChoices(scents, form.scentId).map((s) => ({
     value: s.id,
-    label: `${s.code ? `${s.code} · ` : ""}${s.name}`
+    label: scentLabel(s)
       + (s.customerName ? ` · ${s.customerName}` : "")
       + (s.status === "archived" ? " (เลิกใช้แล้ว)" : ""),
   }));
@@ -263,7 +264,7 @@ export default function ProductForm({
     .filter((f) => f.status !== "archived" || f.id === form.formulaId)
     .map((f) => ({
       value: f.id,
-      label: `${f.code ? `${f.code} · ` : ""}${f.name}`
+      label: formulaLabel(f)
         + (f.customerName ? ` · ${f.customerName}` : "")
         + (f.status === "archived" ? " (เก็บเข้ากรุแล้ว)" : ""),
     }));
@@ -570,9 +571,7 @@ export default function ProductForm({
             <div className="form-group col-span-2">
               <label>ข้อมูลสูตรเดิม (ยังไม่ผูกทะเบียน)</label>
               <div className="text-sm text-[var(--text-2)]">
-                {naText(form.formulaName)}
-                {form.formulaCode ? ` · ${form.formulaCode}` : ""}
-                {form.formulaDate ? ` · ${form.formulaDate}` : ""}
+                {registryLabel({ code: form.formulaCode, name: form.formulaName, date: form.formulaDate })}
               </div>
               <span className="text-xs text-[var(--text-3)] mt-1">
                 เลือกสูตรจากทะเบียนด้านบนเพื่อแทนที่ข้อความเดิม

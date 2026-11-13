@@ -17,6 +17,7 @@ import FormZone from "@/components/ui/FormZone";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { isScentUsable } from "@/lib/master/scents";
+import { formulaLabel, formulaSearchText, scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 import { formulaUsableByCustomer, scentUsableByCustomer } from "@/lib/master/registryShares";
 import RegistryShareField, { sharesToField } from "@/components/database/RegistryShareField";
 import styles from "./registryForm.module.css";
@@ -91,8 +92,8 @@ export default function FormulaForm({
       && (!f.customerId || !value.customerId || formulaUsableByCustomer(f, value.customerId)))
     .map((f) => ({
       value: f.id,
-      label: `${f.code ? `${f.code} · ` : ""}${f.name}`,
-      search: [f.code, f.name].filter(Boolean).join(" "),
+      label: formulaLabel(f),
+      search: formulaSearchText(f),
     }));
 
   // กลิ่นที่เลือกได้ = ที่รับเข้าทะเบียนแล้ว + กลิ่นที่ผูกอยู่เดิม (ไม่งั้นแก้สูตรเก่า
@@ -107,9 +108,9 @@ export default function FormulaForm({
     .map((s) => ({
       value: s.id,
       // กลิ่นที่แชร์มา (ม-150) บอกเจ้าของไว้ — เลือกได้ แต่ต้องรู้ว่าไม่ใช่ของลูกค้ารายนี้เอง
-      label: `${s.code ? `${s.name} · ${s.code}` : s.name}${value.customerId && s.customerId && s.customerId !== value.customerId
+      label: `${scentLabel(s)}${value.customerId && s.customerId && s.customerId !== value.customerId
         ? ` (แชร์จาก ${s.customerName || "ลูกค้าอื่น"})` : ""}`,
-      search: [s.name, s.code, s.customerName].filter(Boolean).join(" "),
+      search: scentSearchText(s, s.customerName),
     }));
 
   return (

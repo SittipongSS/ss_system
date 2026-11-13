@@ -6,6 +6,7 @@
 import { customerSearchText } from '@/lib/master/customerAr';
 import { categoryNameBoth, findCategoryByCode } from '@/lib/master/productCategoryOptions';
 import { matchesFormulaSource } from '@/lib/master/formulas';
+import { fmtDate } from '@/lib/format';
 
 /**
  * @param formulas แถวจาก `loadFormulas`
@@ -29,6 +30,8 @@ export function filterFormulas(formulas = [], { search = '', status = '', kind =
     return [
       f.name, f.code, customerSearchText(f.customerId, f.customerName, arIndex),
       f.categoryCode,
+      // วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — ตาเห็น = ค้นเจอ
+      f.formulaDate ? fmtDate(f.formulaDate) : null,
       // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150)
       ...(f.sharedCustomers || []).map((c) => customerSearchText(c.customerId, c.customerName, arIndex)),
       // ค้นชื่อหมวดได้ทั้งไทย/อังกฤษ ไม่ใช่แค่รหัส (มติ 2026-08-12)

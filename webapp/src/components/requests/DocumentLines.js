@@ -30,6 +30,7 @@ import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
 import { isScentUsable } from "@/lib/master/scents";
 import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import styles from "./scentDelivery.module.css";
+import { scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 
 export const emptyDocumentRow = () => ({ docType: "", productId: "", scentId: "", spec: "" });
 
@@ -71,8 +72,9 @@ export default function DocumentLines({
     .filter((s) => s.id === row.scentId || (isScentUsable(s) && (!customerId || scentUsableByCustomer(s, customerId))))
     .map((s) => ({
       value: s.id,
-      label: `${s.code ? `${s.code} · ` : ""}${s.name}`,
-      search: [s.code, s.name, s.customerTradeName].filter(Boolean).join(" "),
+      // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11)
+      label: scentLabel(s),
+      search: scentSearchText(s, s.customerTradeName),
     }));
   const productOptions = products
     .filter((fg) => !customerId || !fg.customerId || fg.customerId === customerId || fg.id === row.productId)

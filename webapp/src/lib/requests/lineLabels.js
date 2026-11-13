@@ -12,6 +12,7 @@
 
 import { attachShares } from '@/lib/master/registrySharesAdmin';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
+import { scentLabel } from '@/lib/master/registryLabel';
 
 /**
  * เติม `label` ให้บรรทัดที่ป้ายมาจากทะเบียน — รูปร่างอื่นคืนของเดิมทั้งก้อน
@@ -33,7 +34,7 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
   const scentIds = [...new Set(items.map((i) => i.scentId))];
   const [{ data: scentRows, error: scentError }, { data: typeRows, error: typeError }] =
     await Promise.all([
-      supabase.from('scents').select('id, code, name, customerId').in('id', scentIds),
+      supabase.from('scents').select('id, code, name, "producedAt", customerId').in('id', scentIds),
       supabase.from('product_types').select('mainCategoryCode, typeCode, nameTh, nameEn'),
     ]);
   if (scentError) return { items: [], error: scentError.message };
@@ -64,7 +65,8 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
     const typeName = type?.nameTh || type?.nameEn || item.categoryCode;
     out.push({
       ...item,
-      label: `${typeName} · ${scent.code ? `${scent.code} ` : ''}${scent.name}`,
+      // กลิ่น = PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11 · lib/master/registryLabel)
+      label: `${typeName} · ${scentLabel(scent)}`,
     });
   }
   return { items: out, error: null };
@@ -87,7 +89,7 @@ async function resolveDocumentProducts(supabase, items, { customerId }) {
   let scentById = new Map();
   if (scentIds.length) {
     const { data, error } = await supabase.from('scents')
-      .select('id, code, name, customerId').in('id', scentIds).limit(scentIds.length);
+      .select('id, code, name, "producedAt", customerId').in('id', scentIds).limit(scentIds.length);
     if (error) return { items: [], error: error.message };
     let shared;
     try {
@@ -115,7 +117,7 @@ async function resolveDocumentProducts(supabase, items, { customerId }) {
       if (customerId && !scentUsableByCustomer(scent, customerId)) {
         return { items: [], error: `รายการที่ ${item.sortOrder}: กลิ่นนี้เป็นของลูกค้าคนละราย` };
       }
-      label = `${label} · ${scent.code || scent.name}`;
+      label = `${label} · ${scentLabel(scent)}`;
     }
     out.push(label === item.label ? item : { ...item, label });
   }

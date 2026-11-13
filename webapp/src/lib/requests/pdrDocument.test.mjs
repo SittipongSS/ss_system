@@ -296,7 +296,8 @@ test('⭐ พัฒนาสูตร NPD: ไม่มีกล่องบร�
   assert.match(html, /ไม่มีบรีฟกลิ่น — กลิ่นเลือกจากทะเบียนในข้อ 2\.1/);
   assert.match(html, /<h4>สินค้าที่ 1 — /);
   assert.match(html, /<h4>สินค้าที่ 2 — /);
-  assert.match(html, /กลิ่น \(จากทะเบียน\)<\/span>\s*<span class="subBody">PF9120101 Lumière Signature/);
+  // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11) — แถวทดสอบไม่มีวันผลิต = ขีด
+  assert.match(html, /กลิ่น \(จากทะเบียน\)<\/span>\s*<span class="subBody">PF9120101 · Lumière Signature · —/);
   assert.match(html, /100 ml · 500 ชิ้น/);
   assert.match(html, /1,000 ชิ้น/, 'MOQ ต้องคั่นหลักพัน');
   // 2.5 พิมพ์ครบทุกตัวเลือกพร้อมช่องติ๊ก

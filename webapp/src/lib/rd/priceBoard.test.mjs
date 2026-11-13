@@ -68,7 +68,7 @@ test('แถวพกบริบทของใบ + ป้ายตัดห�
   assert.equal(row.customerName, 'บริษัท ก');
   assert.equal(row.label, 'EDP กลิ่น A', 'ป้ายพัฒนาสูตรตัดหาง "→ รหัส" เหมือนหัวโมดัลบนหน้าใบ');
   assert.equal(row.name, 'PF1 สูตร A', 'บรรทัดหลัก = ของในทะเบียน');
-  assert.deepEqual(row.registry, { kind: 'formula', id: 'FML-1', code: 'PF1', name: 'สูตร A', categoryCode: '01-002' });
+  assert.deepEqual(row.registry, { kind: 'formula', id: 'FML-1', code: 'PF1', name: 'สูตร A', date: null, categoryCode: '01-002' });
   assert.equal(row.confirmedAt, '2026-09-23');
   assert.equal(row.useCurrent.key, 'FB');
   assert.equal(row.useCurrent.revisionId, 'REV-FB', 'POST เทียบ rev นี้กับตัวล่าสุดก่อนผูก');
@@ -97,7 +97,7 @@ test('แถวกลิ่นล้วน: ของในทะเบียน
     current: [{ key: 'F', price: null, source: { id: 'SCT-1', code: 'SC-1', name: 'Rose' } }],
   }]);
   assert.equal(row.label, 'Rose');
-  assert.deepEqual(row.registry, { kind: 'scent', id: 'SCT-1', code: 'SC-1', name: 'Rose', categoryCode: null });
+  assert.deepEqual(row.registry, { kind: 'scent', id: 'SCT-1', code: 'SC-1', name: 'Rose', date: null, categoryCode: null });
 });
 
 test('จัดกลุ่มตามใบ — ใบที่รอนานสุดขึ้นก่อน · ในใบเรียงวันคอนเฟิร์ม · ยอดรวมนับเป็นรายการ', () => {

@@ -23,6 +23,7 @@ import { ingredientListMissing, rowIngredientPlan } from '@/lib/master/ingredien
 import { PRICE_SLOTS, formulaPriceSlots } from '@/lib/master/priceSlots';
 import { FORMULA_STATUS_LABELS, isFormulaUsable } from '@/lib/master/formulas';
 import { SCENT_STATUS_LABELS, isScentUsable } from '@/lib/master/scents';
+import { formulaLabelDate, scentLabelDate } from '@/lib/master/registryLabel';
 
 const DEPT = 'RD';
 /* ใบร่างยังไม่ถึงฝ่าย · ใบยกเลิก = งานที่ไม่เกิด (คอนเฟิร์มค้างบนใบที่ยกเลิกไม่ใช่ของที่ลูกค้าซื้อ) */
@@ -118,6 +119,8 @@ function baseRow(kind, entity, sources, { arById }) {
     id: entity.id,
     code: entity.code || null,
     name: entity.name || null,
+    // วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — กลิ่น = วันผลิต · สูตร = วันที่สูตร
+    date: (kind === 'scent' ? scentLabelDate(entity) : formulaLabelDate(entity)) || null,
     status: entity.status || null,
     customerId: entity.customerId || null,
     customerName: entity.customerName || null,
@@ -186,7 +189,7 @@ export function priceRegistryRows({ sources, scents = [], formulas = [], prices 
     formulaRows.push(withProgress({
       ...baseRow('formula', formula, list, opts),
       categoryCode: formula.categoryCode || null,
-      scent: scent ? { id: scent.id, code: scent.code || null, name: scent.name || null, status: scent.status || null } : null,
+      scent: scent ? { id: scent.id, code: scent.code || null, name: scent.name || null, producedAt: scent.producedAt || null, status: scent.status || null } : null,
       // ชื่อที่ลูกค้าเรียกอยู่ที่กลิ่นที่เดียว (มติเจ้าของ 04/11) — สูตรอ่านจากกลิ่นของมัน
       customerTradeName: scent?.customerTradeName || null,
       slots: plan.slots,

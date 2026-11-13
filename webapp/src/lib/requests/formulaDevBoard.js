@@ -19,6 +19,7 @@ import { hopLabel } from '@/lib/requests/hops';
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
 import { productDevLabel } from '@/lib/requests/rowLabel';
+import { formulaLabel } from '@/lib/master/registryLabel';
 import { formulaDevRowOrder } from '@/lib/requests/formulaDirections';
 
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
@@ -70,7 +71,8 @@ export function formulaDevBoard(items = []) {
         // ⭐ โจทย์ของรอบนี้ — คอมเมนต์ลูกค้าจากแถวต้นทาง (มติผู้ใช้ 2026-08-25)
         reworkBrief: reworkBriefOf(item, all),
         // รอบแก้แก้จากสูตรตัวไหน (ค่าสดของแถวต้นทาง) — แถวรอบแก้ที่ยังไม่ส่งบอกได้ว่ากำลังแก้อะไร แทนประโยค "ยังไม่มีสูตร" ลอย ๆ
-        reworkOf: parent?.refFormula ? (parent.refFormula.code || parent.refFormula.name || null) : null,
+        // PF · ชื่อ · วันที่ (มติเจ้าของ 13/11)
+        reworkOf: parent?.refFormula ? formulaLabel(parent.refFormula) : null,
         outcome: item.outcome || null,
         outcomeLabel: item.outcome ? hopLabel('outcome', item.outcome) : null,
         outcomeTone: item.outcome ? OUTCOME_TONE[item.outcome] || 'neutral' : null,

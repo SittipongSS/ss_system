@@ -30,6 +30,7 @@ import {
   SCENT_STATUS_LABELS, SCENT_STATUS_TONES, isScentRegistrar, isScentUsable,
   scentFormPayload, scentSourceLabel,
 } from "@/lib/master/scents";
+import { scentLabel } from "@/lib/master/registryLabel";
 
 // โทนของ StatusBadge → สีจริง (การ์ดจัดการรับเป็นค่า CSS ไม่ใช่ชื่อโทน)
 const TONE_COLOR = {
@@ -163,7 +164,7 @@ export default function ScentDetailPage() {
     <RegistryDetailShell
       back={back}
       eyebrow={`ทะเบียนกลิ่น${srcLabel ? ` · ${srcLabel}` : ""}`}
-      title={scent.code ? `${scent.code} · ${scent.name}` : scent.name}
+      title={scentLabel(scent)}
       description={scent.customerName || scent.customerId}
       statusLabel={SCENT_STATUS_LABELS[scent.status] || scent.status}
       statusTone={TONE_COLOR[SCENT_STATUS_TONES[scent.status]] || "var(--blue)"}

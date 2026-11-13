@@ -13,6 +13,7 @@ import GatedAction from "@/components/ui/GatedAction";
 import StatusBadge from "@/components/ui/StatusBadge";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import { NA, fmtDate } from "@/lib/format";
+import { registryLabelParts, registryLabelSub, scentLabel } from "@/lib/master/registryLabel";
 import { REGISTRY_INGREDIENT_STATES, REGISTRY_PRICE_STATES } from "@/lib/rd/priceRegistry";
 import { REQUEST_STATUS_LABELS } from "@/lib/requests/statuses";
 import styles from "./PriceRegistryTable.module.css";
@@ -88,13 +89,14 @@ function EntityCell({ row, categoryLabel }) {
     ? [row.categoryCode, categoryLabel?.(row.categoryCode)].filter(Boolean).join(" ")
     : null;
   const sub = row.kind === "formula"
-    ? [category || "ยังไม่ระบุหมวด", row.scent ? `กลิ่น ${row.scent.code || row.scent.name}` : null]
+    ? [category || "ยังไม่ระบุหมวด", row.scent ? `กลิ่น ${scentLabel(row.scent)}` : null]
     : [row.customerTradeName ? `ลูกค้าเรียก: ${row.customerTradeName}` : null];
   return (
     <>
       <Link href={href} className={styles.entityLink}>
-        <span className={styles.code}>{row.code || "ไม่มีรหัส"}</span>
-        <span className={styles.name}>{row.name || NA}</span>
+        {/* PF บน · ชื่อ · วันที่ล่าง (มติเจ้าของ 13/11) */}
+        <span className={styles.code}>{registryLabelParts(row).code}</span>
+        <span className={styles.name}>{registryLabelSub(row)}</span>
       </Link>
       {sub.filter(Boolean).length ? <div className={styles.sub}>{sub.filter(Boolean).join(" · ")}</div> : null}
     </>

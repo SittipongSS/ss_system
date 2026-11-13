@@ -5,6 +5,7 @@
 //   · งานค้างในคำร้อง — หน่วย = แถวคำร้อง (`priceBoardRows`) · จัดกลุ่มตามใบเป็นค่าตั้งต้น (มติ ม-153 เดิม)
 //   · กลิ่น / สูตร   — หน่วย = ตัวในทะเบียน (`priceRegistryRows`) · ค่าตั้งต้นเห็นเฉพาะ "ยังไม่ครบ"
 // ⚠️ ไฟล์นี้ไม่แตะ React/DOM/DB — ตัวเทียบค่ามาจาก `lib/sortCompare.js` · ชื่อหมวดส่งมาจากจอ (`categoryLabel`)
+import { fmtDate } from '@/lib/format';
 import { compareSortValues } from '@/lib/sortCompare';
 import { bucketList } from '@/lib/listGrouping';
 import { ROW_STAGE_LABELS } from '@/lib/requests/rowStage';
@@ -116,11 +117,14 @@ export function priceSearchText(tab, row, opts = {}) {
     ? [
       row?.docNo, row?.title, row?.customerName, row?.customerArCode, row?.requestedByName,
       row?.label, row?.name, row?.registry?.code, row?.registry?.name, row?.registry?.categoryCode,
+      // วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — ตาเห็น = ค้นเจอ
+      row?.registry?.date ? fmtDate(row.registry.date) : null,
       REQUEST_KIND_LABEL[requestKind(row)], ROW_STAGE_LABELS[row?.stage],
     ]
     : [
       row?.code, row?.name, row?.customerName, row?.customerArCode, row?.customerTradeName,
-      row?.scent?.code, row?.scent?.name,
+      row?.date ? fmtDate(row.date) : null,
+      row?.scent?.code, row?.scent?.name, row?.scent?.producedAt ? fmtDate(row.scent.producedAt) : null,
       row?.categoryCode ? categoryText(row, opts) : null,
       REGISTRY_PRICE_STATES[row?.priceState]?.label,
       row?.ingredientState && row.ingredientState !== 'none' ? `Ingredient List ${REGISTRY_INGREDIENT_STATES[row.ingredientState].label}` : null,

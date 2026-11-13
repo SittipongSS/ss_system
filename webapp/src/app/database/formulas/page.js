@@ -50,6 +50,7 @@ import {
   FORMULA_SOURCES, FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES, canProposeFormula,
   formulaFormPayload, formulaSourceLabel, isFormulaRegistrar, isFormulaUsable,
 } from "@/lib/master/formulas";
+import { formulaLabel, formulaLabelParts, formulaLabelSub, scentLabelParts, scentLabelSub } from "@/lib/master/registryLabel";
 
 export default function FormulasPage() {
   const role = useRole();
@@ -208,9 +209,7 @@ export default function FormulasPage() {
   const scentName = useCallback(
     (id) => scents.find((s) => s.id === id)?.name || null, [scents],
   );
-  const scentCode = useCallback(
-    (id) => scents.find((s) => s.id === id)?.code || null, [scents],
-  );
+  const scentById = useMemo(() => new Map(scents.map((s) => [s.id, s])), [scents]);
 
   /* ⭐ **รหัสลูกค้า (AR) กำกับชื่อกิจการ** (IS-26080003 — เหมือนทะเบียนกลิ่น)
      สูตรของลูกค้าตั้งรหัสล้อกับรหัสลูกค้าเช่นกัน ⇒ ต้องอ่านคู่กันได้ในบรรทัดเดียว
@@ -240,7 +239,8 @@ export default function FormulasPage() {
 
   // สายพันธุ์: id → ป้ายอ่านออก (แผนที่เดียวใช้ทั้งตาราง)
   const formulaLabelById = useMemo(
-    () => new Map(formulas.map((f) => [f.id, f.code || f.name])),
+    // PF · ชื่อ · วันที่ (มติ 13/11) — ป้ายกลางตัวเดียวกับช่องเลือก
+    () => new Map(formulas.map((f) => [f.id, formulaLabel(f)])),
     [formulas],
   );
   const categoryLabel = useCallback((code) => {
@@ -547,8 +547,9 @@ export default function FormulasPage() {
                     <td className={styles.name}>
                       {/* ⭐ ชื่อเป็นทางเข้าหน้ารายละเอียด · รหัสบน ชื่อล่าง (มติ 2026-08-12) */}
                       <Link href={`/database/formulas/${f.id}`}>
-                        <span className="mono block text-[12px] text-[var(--accent)]">{f.code || "ไม่มีรหัส"}</span>
-                        <span className="block">{f.name}</span>
+                        <span className="mono block text-[12px] text-[var(--accent)]">{formulaLabelParts(f).code}</span>
+                        {/* ชื่อ · วันที่สูตร (มติ 13/11) */}
+                        <span className="block">{formulaLabelSub(f)}</span>
                       </Link>
                       {/* ชื่อที่ลูกค้าเรียกไม่อยู่ที่สูตร — อยู่ที่กลิ่นที่เดียว (มติเจ้าของ 04/11 · ม-12) */}
                       {f.derivedFromFormulaId && (
@@ -572,13 +573,11 @@ export default function FormulasPage() {
                           : <span className={styles.muted}>{NA}</span>}
                     </td>
                     <td>
-                      {f.scentId && scentName(f.scentId)
+                      {f.scentId && scentById.get(f.scentId)
                         ? (
                           <>
-                            {scentCode(f.scentId)
-                              ? <span className="mono block text-[11px] text-[var(--text-3)]">{scentCode(f.scentId)}</span>
-                              : null}
-                            {scentName(f.scentId)}
+                            <span className="mono block text-[11px] text-[var(--text-3)]">{scentLabelParts(scentById.get(f.scentId)).code}</span>
+                            {scentLabelSub(scentById.get(f.scentId))}
                           </>
                         )
                         : <span className={styles.muted}>{NA}</span>}

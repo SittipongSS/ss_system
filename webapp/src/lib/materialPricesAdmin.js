@@ -435,13 +435,15 @@ export async function findRequest(supabase, id) {
   const targetScentIds = [...new Set((targets || []).map((t) => t.scentId).filter(Boolean))];
   if (targetScentIds.length) {
     const { data: scentRows, error: scentError } = await supabase
-      .from('scents').select('id, code, name').in('id', targetScentIds);
+      .from('scents').select('id, code, name, "producedAt"').in('id', targetScentIds);
     if (scentError) throw scentError;
     const byId = new Map((scentRows || []).map((x) => [x.id, x]));
     for (const t of targets) {
       const scent = t.scentId ? byId.get(t.scentId) : null;
       t.scentCode = scent?.code || null;
       t.scentName = scent?.name || null;
+      // วันผลิต — ข้อ 2.1 พิมพ์ "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11)
+      t.scentProducedAt = scent?.producedAt || null;
     }
   }
   /* ⭐ พื้นที่ที่ต้องประเมิน (mig 0314) — ของ **ใบ** ไม่ใช่ของทะเบียนโซน

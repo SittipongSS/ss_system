@@ -9,6 +9,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะ DOM และไม่รู้ว่า "วันนี้" คือวันไหน — ผู้เรียกส่งวันไทยมา (กติกาเดียวกับ bomBoard.js)
 import { fmtDate, fmtNationalId, fmtNumber } from '@/lib/format';
 import { brandBoth } from '@/lib/master/brands';
+import { registryLabel } from '@/lib/master/registryLabel';
 import { branchValue } from '@/lib/master/thaiAddress';
 import { BOM_BOARD_TABS, BOM_FORMULA_KIND_LABEL, bomWaitingDays } from '@/lib/rd/bomBoard';
 
@@ -34,13 +35,13 @@ export function bomPrintColumns(tab) {
   ];
 }
 
-/* ช่องสูตร/กลิ่น — ต่อสูตร: "รหัส ชื่อ" · กลิ่นของสูตร/หมวดในชุด · ชื่อที่ลูกค้าเรียก (ของกลิ่น · มติ 04/11) */
+/* ช่องสูตร/กลิ่น — ต่อสูตร: "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) · กลิ่นของสูตร/หมวดในชุด · ชื่อที่ลูกค้าเรียก (ของกลิ่น · มติ 04/11) */
 function formulaLines(formula) {
   const items = formula?.items || [];
   if (!items.length) return 'ไม่มีสูตร';
   return items
     .map((item) => lines(
-      [item.code, item.name].map(text).filter(Boolean).join(' ') || '-',
+      registryLabel(item),
       item.note,
       item.tradeName ? `ลูกค้าเรียก “${text(item.tradeName)}”` : null,
     ))

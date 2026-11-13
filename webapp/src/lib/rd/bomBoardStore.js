@@ -30,9 +30,9 @@ export async function loadBomBoardRows(supabase) {
       fetchAllInChunks(products.map((p) => p.customerId), (chunk) => supabase
         .from('customers').select('id, "arCode", name, "nameEn", "taxId", "branchCode"').in('id', chunk).order('id')),
       fetchAllInChunks(products.map((p) => p.scentId), (chunk) => supabase
-        .from('scents').select('id, code, name, "customerTradeName"').in('id', chunk).order('id')),
+        .from('scents').select('id, code, name, "producedAt", "customerTradeName"').in('id', chunk).order('id')),
       fetchAllInChunks(products.map((p) => p.formulaId), (chunk) => supabase
-        .from('formulas').select('id, code, name').in('id', chunk).order('id')),
+        .from('formulas').select('id, code, name, "formulaDate"').in('id', chunk).order('id')),
       loadProductFormulasMany(supabase, products.filter((p) => isGiftSetCategory(p.categoryCode)).map((p) => p.id)),
     ]);
     return bomBoardRows(products, {

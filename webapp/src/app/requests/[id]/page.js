@@ -119,6 +119,7 @@ import {
   requestLineShape, requestUsesDeliveredRows, requestUsesItems, requestKindLabel,
 } from "@/lib/master/requestTypes";
 import { SCENT_STATUS_LABELS, isScentRegistrar } from "@/lib/master/scents";
+import { formulaLabel, scentLabel } from "@/lib/master/registryLabel";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
 import styles from "./page.module.css";
@@ -2031,7 +2032,8 @@ export default function RequestDetailPage() {
           <p className={styles.headMeta}>
             {[
               req.pdrRefNo ? `เลขที่เอกสาร ${req.pdrRefNo}` : null,
-              req.formulaCode ? `สูตร ${req.formulaCode}` : null,
+              // PF · ชื่อ · วันที่ (มติเจ้าของ 13/11) — ค่าสดจากทะเบียน ถอยไปสำเนาบนใบ
+              req.formulaCode ? `สูตร ${formulaLabel(req.refRequestFormula || { code: req.formulaCode, name: req.formulaName })}` : null,
             ].filter(Boolean).join(" · ")}
           </p>
         )}
@@ -3197,7 +3199,7 @@ export default function RequestDetailPage() {
                     { value: "", label: "— เลือกกลิ่น —" },
                     ...scentOptions.map((s) => ({
                       value: s.id,
-                      label: `${s.code ? `${s.code} · ` : ""}${s.name} (${SCENT_STATUS_LABELS[s.status] || s.status})`,
+                      label: `${scentLabel(s)} (${SCENT_STATUS_LABELS[s.status] || s.status})`,
                     })),
                   ]}
                 />

@@ -6,10 +6,10 @@
 // ⚠️ แยกออกมาจาก component เพราะมันเป็น **กติกาการประกอบข้อความ** ที่ผิดได้เงียบ ๆ
 // (หมวดหาไม่เจอ · กลิ่นถูกลบจากทะเบียน · เลือกยังไม่ครบ) และ CI มองไม่เห็นถ้าฝังใน JSX
 //
-// ⚠️ วันที่ของกลิ่น = `createdAt` (วันที่เข้าทะเบียน) — บอกว่ากลิ่นนี้เก่าแค่ไหน
-// ซึ่งเป็นสิ่งที่ใช้แยกกลิ่นชื่อคล้ายกันของลูกค้าเดียวกัน
-import { fmtDate } from '@/lib/format';
+// ⚠️ วันที่ของกลิ่นอยู่ในป้ายกลิ่นแล้ว — "PF · ชื่อ · วันที่ผลิต" (มติเจ้าของ 13/11/2026 ·
+// lib/master/registryLabel) · เดิมใช้ `createdAt` (วันเข้าทะเบียน) เป็นคำขยาย ⇒ จอนี้บอกคนละวันกับจออื่น
 import { categoryRow } from '@/lib/master/categoryOf';
+import { scentLabel } from '@/lib/master/registryLabel';
 
 // 🐞 เดิมเทียบด้วย `typeCode` เดี่ยว ๆ ⇒ ไม่เคยเจอเลย เพราะรหัสที่เก็บคือ `MM-TTT`
 // (ตัวกลางอยู่ที่ lib/master/categoryOf.js ที่เดียวแล้ว)
@@ -17,9 +17,9 @@ import { categoryRow } from '@/lib/master/categoryOf';
 /**
  * ข้อความของแถว — `{ main, sub }`
  *
- * `main` = "รหัส ชื่อหมวด × รหัส ชื่อกลิ่น" (เท่าที่เลือกแล้ว) · ยังไม่เลือกอะไรเลย
+ * `main` = "รหัส ชื่อหมวด × PF · ชื่อกลิ่น · วันที่ผลิต" (เท่าที่เลือกแล้ว) · ยังไม่เลือกอะไรเลย
  * ถอยไปใช้ "รายการที่ N"
- * `sub` = "วันที่ของกลิ่น · จำนวน+หน่วย" (มติผู้ใช้ 2026-08-09) — สองอย่างนี้เป็น
+ * `sub` = "จำนวน+หน่วย" (มติผู้ใช้ 2026-08-09 · วันที่ย้ายเข้าป้ายกลิ่นแล้ว 13/11) — สองอย่างนี้เป็น
  * ของที่ต่างกันได้ทั้งที่หมวด×กลิ่นเหมือนกัน จึงต้องเห็นตอนแถวยุบ · ว่างได้ทั้งคู่
  */
 export function productDevRowText(row = {}, index = 0, { categories = [], scents = [] } = {}) {
@@ -28,7 +28,7 @@ export function productDevRowText(row = {}, index = 0, { categories = [], scents
   const categoryText = category
     ? [row.categoryCode, category.nameTh || category.nameEn].filter(Boolean).join(' ')
     : '';
-  const scentText = scent ? [scent.code, scent.name].filter(Boolean).join(' ') : '';
+  const scentText = scent ? scentLabel(scent) : '';
   const main = [categoryText, scentText].filter(Boolean).join(' × ');
 
   // ⚠️ จำนวนไม่มีหน่วยก็ยังมีความหมาย (คนกรอก "3" ไว้ก่อน) — โชว์เท่าที่มี
@@ -57,6 +57,6 @@ export function productDevRowText(row = {}, index = 0, { categories = [], scents
   return {
     main: main || `รายการที่ ${index + 1}`,
     short: short || main || `รายการที่ ${index + 1}`,
-    sub: [scent?.createdAt ? fmtDate(scent.createdAt) : '', qtyText].filter(Boolean).join(' · '),
+    sub: qtyText,
   };
 }

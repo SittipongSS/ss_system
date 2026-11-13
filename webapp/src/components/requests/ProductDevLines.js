@@ -35,6 +35,7 @@ import { scentUsableByCustomer } from "@/lib/master/registryShares";
 import { productDevRowText } from "@/lib/requests/productDevLabel";
 import { ALL_UNITS, unitOptions } from "@/lib/master/units";
 import styles from "./scentDelivery.module.css";
+import { scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 
 export const emptyProductDevRow = () => ({
   categoryCode: "", scentId: "", qty: "", unit: "", spec: "",
@@ -62,8 +63,9 @@ export default function ProductDevLines({
     .filter((s) => isScentUsable(s) && (!customerId || scentUsableByCustomer(s, customerId)))
     .map((s) => ({
       value: s.id,
-      label: `${s.code ? `${s.code} · ` : ""}${s.name}`,
-      search: [s.code, s.name, s.customerTradeName].filter(Boolean).join(" "),
+      // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11)
+      label: scentLabel(s),
+      search: scentSearchText(s, s.customerTradeName),
     }));
 
   const at = Math.min(active, Math.max(rows.length - 1, 0));

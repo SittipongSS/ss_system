@@ -26,6 +26,7 @@ import {
 } from "@/lib/excise/giftSetExcise";
 import { exciseFilingChecklist, exciseTaxPreview, formTaxBase, productExciseStatus } from "@/lib/excise/productExciseStatus";
 import { NA, fmtMoney } from "@/lib/format";
+import { formulaLabel } from "@/lib/master/registryLabel";
 
 const pct = (rate) => `${Math.round(rate * 1000) / 10}%`;
 const OPTIONAL = <StatusBadge size="sm" tone="neutral" label="ไม่บังคับตอนบันทึก" />;
@@ -195,7 +196,7 @@ export default function ProductRetailExcise({
                             {categoryName(categoryRow(code, productTypes)) || code}
                             {exciseRows && isExciseCategory(code, productTypes) && <StatusBadge size="sm" tone="accent" label="ฐานภาษี" />}
                           </span>
-                          <span className="block text-xs text-[var(--text-3)]">{formula ? formula.code || formula.name : "ยังไม่เลือกสูตร"}</span>
+                          <span className="block text-xs text-[var(--text-3)]">{formula ? formulaLabel(formula) : "ยังไม่เลือกสูตร"}</span>
                         </td>
                         <td className="py-1.5 px-2 align-middle min-w-32">
                           <MoneyInput

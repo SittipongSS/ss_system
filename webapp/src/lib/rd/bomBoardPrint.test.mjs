@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { bomBoardPrintReport, bomPrintColumns, bomPrintRow } from './bomBoardPrint.js';
 import { bomBoardRows, bomTabRows } from './bomBoard.js';
 import { buildReportPrintHTML } from '../tax/reportPrint.js';
+import { fmtDate, NA } from '../format.js';
 
 const TODAY = '2026-11-04';
 const product = (id, over = {}) => ({
@@ -16,7 +17,7 @@ const product = (id, over = {}) => ({
 const ctx = {
   customersById: new Map([['C-1', { id: 'C-1', arCode: 'AR-1', name: 'บริษัท ไทย', nameEn: 'Thai Co.', taxId: '0105565000001', branchCode: null }]]),
   scentsById: new Map([['SCT-1', { id: 'SCT-1', code: 'SC-01', name: 'มะลิ', customerTradeName: 'Jasmine Night' }]]),
-  formulasById: new Map([['FML-1', { id: 'FML-1', code: 'PF-001', name: 'สูตรสด' }]]),
+  formulasById: new Map([['FML-1', { id: 'FML-1', code: 'PF-001', name: 'สูตรสด', formulaDate: '2026-10-01' }]]),
 };
 
 test('แถวเอกสาร = หน้าตาเดียวกับตาราง: สินค้า · ลูกค้า (Tax ID/สาขา/แบรนด์) · สูตร + กลิ่น + ลูกค้าเรียก · ปริมาตร · ส่งโดย/รอ/รับโดย', () => {
@@ -25,7 +26,8 @@ test('แถวเอกสาร = หน้าตาเดียวกับ�
   assert.equal(out.product, 'FG-A\nชื่อ A\nName A\nส่งรอบที่ 2');
   assert.equal(out.customer, 'AR-1\nบริษัท ไทย\nThai Co.\nTax ID 0-1055-65000-00-1 · สาขา 00000\nแบรนด์ Brand');
   assert.equal(out.kind, 'สูตร');
-  assert.equal(out.formula, 'PF-001 สูตรสด\nกลิ่น มะลิ\nลูกค้าเรียก “Jasmine Night”');
+  // PF · ชื่อ · วันที่ ทั้งสูตรและกลิ่น (มติเจ้าของ 13/11) — กลิ่นไม่มีวันผลิต = ขีด
+  assert.equal(out.formula, `PF-001 · สูตรสด · ${fmtDate('2026-10-01')}\nกลิ่น SC-01 · มะลิ · ${NA}\nลูกค้าเรียก “Jasmine Night”`);
   assert.equal(out.volume, '50 ml\nต่อ 1 ชิ้น');
   assert.equal(out.status, 'ฝ่ายขาย ก\n01/11/2026 · รอ 3 วัน\nรับโดย RD ข');
 });
@@ -42,11 +44,11 @@ test('ช่องท้ายตามแท็บ — ตีกลับ: เ�
 
 test('ชุดของขวัญ: ป้ายชนิดบอกจำนวนสูตร · ทุกสูตรอยู่ในช่องเดียว · ไม่มีสูตร = บอกว่าไม่มีสูตร', () => {
   const set = bomPrintRow({ status: 'queued', formula: { kind: 'set', items: [
-    { code: 'F1', name: 'หนึ่ง', note: 'น้ำหอม', tradeName: null },
-    { code: null, name: 'สอง', note: 'ก้านหอม', tradeName: 'Gift Two' },
+    { code: 'F1', name: 'หนึ่ง', date: '2026-09-01', note: 'น้ำหอม', tradeName: null },
+    { code: null, name: 'สอง', date: null, note: 'ก้านหอม', tradeName: 'Gift Two' },
   ] } });
   assert.equal(set.kind, 'สูตรในชุด (2)');
-  assert.equal(set.formula, 'F1 หนึ่ง\nน้ำหอม\nสอง\nก้านหอม\nลูกค้าเรียก “Gift Two”');
+  assert.equal(set.formula, `F1 · หนึ่ง · ${fmtDate('2026-09-01')}\nน้ำหอม\nไม่มี PF · สอง · ${NA}\nก้านหอม\nลูกค้าเรียก “Gift Two”`);
   const none = bomPrintRow({ status: 'queued', formula: { kind: 'none', items: [] } });
   assert.equal(none.kind, 'ไม่มีสูตร');
   assert.equal(none.formula, 'ไม่มีสูตร');

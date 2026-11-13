@@ -26,6 +26,7 @@ import { REQUEST_DEPT_LABELS, requestKindLabel } from "@/lib/master/requestTypes
 import { statusMeta as exciseStatusMeta } from "@/lib/excise/workflow";
 import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
 import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formulas";
+import { formulaLabelParts, formulaSearchText, scentLabelParts, scentSearchText } from "@/lib/master/registryLabel";
 import { isExciseOrder } from "@/lib/sales/historicalOrders";
 import {
   buildDealRows, contractText, dealRowText, installmentState, installmentText, leadText, matchesQuery, orderText,
@@ -300,8 +301,8 @@ function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
   const stats = useMemo(() => productOrderStats(hub.orderLines, hub.sales.orders), [hub.orderLines, hub.sales.orders]);
   const fgRows = useMemo(() => products.map((p) => ({ id: p.id, product: p, stat: stats.byProduct.get(p.id) || null })), [products, stats]);
   const fgText = (r) => hubText(r.product.fgCode, productNameBoth(r.product), r.product.brandName, r.product.brandNameEn);
-  const scentText = (s) => hubText(s.code, s.name, s.sharedFrom);
-  const formulaText = (f) => hubText(f.code, f.name, f.sharedFrom);
+  const scentText = (s) => hubText(scentSearchText(s), s.sharedFrom);
+  const formulaText = (f) => hubText(formulaSearchText(f), f.sharedFrom);
   const count = (rows, text) => rows.filter((r) => matchesQuery(text(r), query)).length;
   const switcher = (
     <Segmented
@@ -344,7 +345,11 @@ function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
         ]}
         rowHref={(r) => `/database/${isScent ? "scents" : "formulas"}?q=${encodeURIComponent(r.code || r.name)}`}
         columns={[
-          { key: "name", label: isScent ? "กลิ่น" : "สูตร", render: (r) => <><Code>{r.code || "ยังไม่มีรหัส"}</Code><Sub>{r.name}</Sub></> },
+          { key: "name", label: isScent ? "กลิ่น" : "สูตร", render: (r) => {
+            // PF บน · ชื่อ · วันที่ล่าง (มติเจ้าของ 13/11) — วันที่ของกลิ่น = วันผลิต (คอลัมน์ขวาคือวันส่ง คนละวัน)
+            const parts = isScent ? scentLabelParts(r) : formulaLabelParts(r);
+            return <><Code>{parts.code}</Code><Sub>{`${parts.name} · ${parts.date}`}</Sub></>;
+          } },
           { key: "status", label: "สถานะ", render: (r) => <StatusBadge tone={tones[r.status]} label={labels[r.status] || r.status} /> },
           { key: "from", label: "ที่มา", render: (r) => (r.sharedFrom ? `แชร์จาก ${r.sharedFrom}` : "ของลูกค้ารายนี้") },
           { key: "date", label: isScent ? "ส่งให้ลูกค้า" : "วันที่สูตร", render: (r) => fmtDate(isScent ? r.sentAt : r.formulaDate) },

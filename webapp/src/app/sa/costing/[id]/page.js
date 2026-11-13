@@ -60,6 +60,7 @@ import { businessDate } from "@/lib/businessDate";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { customerArIndex, customerHeadline } from "@/lib/master/customerAr";
 import { apiFetch } from "@/lib/apiFetch";
+import { registryLabel } from "@/lib/master/registryLabel";
 
 const money = (value) => (value == null
   ? "—"
@@ -528,7 +529,10 @@ export default function CostingDetailPage() {
               </span>
               {item.fragranceName && <span className="chip">{item.fragranceName}</span>}
               {item.formulaCode && (
-                <span className="chip" style={{ color: "var(--violet)" }}>สูตร {item.formulaCode}</span>
+                <span className="chip" style={{ color: "var(--violet)" }}>
+                  {/* PF · ชื่อ · วันที่ (มติเจ้าของ 13/11) — สำเนาที่ประทับตอนเปิดใบต้นทุน */}
+                  สูตร {registryLabel({ code: item.formulaCode, name: item.formulaName, date: item.formulaDate })}
+                </span>
               )}
               <span className="spacer" style={{ flex: 1 }} />
               <span

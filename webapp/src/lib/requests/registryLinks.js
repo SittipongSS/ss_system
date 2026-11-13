@@ -36,6 +36,9 @@ function refOf(row) {
     code: row.code || null,
     name: row.name || null,
     status: row.status || null,
+    // วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11) — ผู้โหลดต้อง select มาด้วย ไม่มี = ขีด
+    producedAt: row.producedAt || null,
+    formulaDate: row.formulaDate || null,
   };
 }
 

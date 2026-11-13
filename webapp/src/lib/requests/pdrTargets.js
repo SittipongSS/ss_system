@@ -16,6 +16,7 @@ import { ALL_UNITS, VOLUME_UNITS } from '@/lib/master/units';
 import { isScentUsable } from '@/lib/master/scents';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { fmtNumber } from '@/lib/format';
+import { registryLabel } from '@/lib/master/registryLabel';
 
 export const MAX_PDR_TARGETS = 20;
 
@@ -80,7 +81,7 @@ export function pdrTargetSpecText(field, row = {}) {
  * @param {object} row แถวจาก DB (`findRequest` แนบ `scentCode`/`scentName` มาให้แล้ว)
  * @param {{ scentSource: 'briefs'|'registry'|null }} options ที่มาของกลิ่นของใบ
  *   — 'briefs' พิมพ์ 2.1 ว่า "ตามบรีฟ" (กลิ่นอยู่ในบรีฟรายกลิ่น ไม่ใช่รายแถว) ·
- *   'registry' พิมพ์รหัส · ชื่อกลิ่นที่เลือก · อื่น ๆ = ไม่มีข้อ 2.1
+ *   'registry' พิมพ์ PF · ชื่อ · วันที่ผลิตของกลิ่นที่เลือก · อื่น ๆ = ไม่มีข้อ 2.1
  */
 export function pdrTargetFacts(row = {}, { scentSource = null } = {}) {
   const has = (v) => v != null && String(v).trim() !== '';
@@ -90,7 +91,10 @@ export function pdrTargetFacts(row = {}, { scentSource = null } = {}) {
     facts.push({
       key: 'scent', no: PDR_TARGET_LABELS.scent.no, label: 'กลิ่น (จากทะเบียน)',
       // ⚠️ ถอยไปใช้ id เมื่อไม่ได้แนบป้ายมา — ว่างเปล่าจะอ่านเหมือนยังไม่เลือก ทั้งที่เลือกแล้ว
-      value: [row.scentCode, row.scentName].filter(Boolean).join(' ') || String(row.scentId ?? '').trim(),
+      // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11 · lib/master/registryLabel)
+      value: row.scentCode || row.scentName
+        ? registryLabel({ code: row.scentCode, name: row.scentName, date: row.scentProducedAt })
+        : String(row.scentId ?? '').trim(),
     });
   } else if (scentSource === 'briefs') {
     facts.push({ key: 'scent', no: PDR_TARGET_LABELS.scent.no, label: 'กลิ่น', value: 'ตามบรีฟกลิ่นข้อ 2.1 ด้านบน' });

@@ -194,6 +194,8 @@ export default function ScentDeliveryFields({
                     id: PENDING_SCENT_ID,
                     name: String(row.scent?.name ?? "").trim() || "กลิ่นในแท็บนี้",
                     code: String(row.scent?.code ?? "").trim() || null,
+                    // วันผลิตที่กรอกในแท็บนี้ — ป้ายกลิ่น "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11)
+                    producedAt: row.scent?.producedAt || null,
                     customerId: customerId || "",
                   }]}
                   formulas={formulas}

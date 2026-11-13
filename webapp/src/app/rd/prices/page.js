@@ -58,6 +58,7 @@ import {
   priceViewState,
 } from "@/lib/rd/priceBoardView";
 import styles from "./page.module.css";
+import { registryLabelParts, registryLabelSub } from "@/lib/master/registryLabel";
 
 // ⭐ จัดตารางใหม่ (ผู้ใช้ 03/11/2026: "ปรับ layout สี ตำแหน่ง ป้ายต่างๆ ของตารางหน่อย มันดูยาก") — สี่คอลัมน์:
 //   รายการ (รหัสบน·ชื่อล่าง) · ลูกค้าคอนเฟิร์ม (+ รอกี่วัน) · ราคา · Ingredient List
@@ -559,8 +560,9 @@ function ItemCell({ row, showRequest = false }) {
   const name = reg?.name || row.label || null;
   return (
     <>
-      {reg?.code ? <div className={styles.code}>{reg.code}</div> : null}
-      <div className={styles.name}>{naText(name)}</div>
+      {/* PF บน · ชื่อ · วันที่ล่าง (มติเจ้าของ 13/11) — ยังไม่ผูกทะเบียน = ไม่มีรหัส/วันที่ให้บอก */}
+      {reg ? <div className={styles.code}>{registryLabelParts(reg).code}</div> : null}
+      <div className={styles.name}>{reg ? registryLabelSub({ name, date: reg.date }) : naText(name)}</div>
       <div className={styles.sub}>
         {kind}
         {row.label && row.label !== name ? ` · ขอ: ${row.label}` : ""}
