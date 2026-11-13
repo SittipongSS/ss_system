@@ -25,6 +25,20 @@ export function evenPercents(n) {
   return arr;
 }
 
+/* แผนที่เป็น "เกลี่ยเท่ากัน" ที่ % ลงตัวไม่ได้ (3 · 6 · 7 · 9 · 11 · 12 งวด) — % ทุกแถวตรงกับ evenPercents(n) พอดี
+   🐞 12/11/2026 SO-26110406-0: 12 งวดของ ฿44,940 ได้ % = 8.33 ⇒ ยอดงวด = 44,940 × 8.33% = ฿3,743.50 × 11 + งวดท้าย ฿3,761.50
+      แทน ฿3,745.00 เท่ากันทุกงวด (= ฿3,500 + VAT) · ก่อน VAT ของงวด 1 บนโมดัลอนุมัติเลยเป็น ฿3,498.60 แทน ฿3,500.00
+      ต้นเหตุ = 8.33% ไม่ใช่ 1/12 — ยอดที่คิดจาก % ที่ปัดแล้วเพี้ยนทุกงวดและงวดท้ายกวาดเศษสะสมไป (ใบ 12 งวด ฿463,524 เพี้ยน ฿169.95)
+   ⇒ แผนแบบนี้แบ่ง **ยอดเงิน** เท่ากันแทน: ปัดลงรายสตางค์ งวดสุดท้ายรับเศษ (กติกาเดียวกับ installmentReplan.replanEvenAmounts)
+   ⚠️ n ที่ % ลงตัว (2 · 4 · 5 · 8 · 10) ใช้ทางเดิม — ยอดจาก % ถูกอยู่แล้ว และเปลี่ยนวิธีปัดจะทำให้ใบเดิมเพี้ยนหนึ่งสตางค์
+   ⚠️ แถวที่คนพิมพ์ % เองไม่เข้าข่าย (ต้องตรง evenPercents ทุกแถว) — ไม่เดาเจตนาจาก % ที่ "ใกล้เคียง" */
+function evenSplitCount(rows) {
+  const n = rows.length;
+  if (n < 2 || n > MAX_INSTALLMENTS || 10000 % n === 0) return 0;
+  const even = evenPercents(n);
+  return rows.every((r, i) => Math.round(r.percent * 100) === Math.round(even[i] * 100)) ? n : 0;
+}
+
 // คำนวณยอดเงินแต่ละงวดจาก % ของ total (งวดสุดท้ายซับเศษปัดให้ยอดรวม = total พอดี)
 export function computeInstallments(total, installments) {
   const grand = money(total);
@@ -34,6 +48,12 @@ export function computeInstallments(total, installments) {
     percent: pct(it?.percent),
     note: (it?.note ?? '').toString(),
   }));
+  const evenN = evenSplitCount(rows);
+  if (evenN) {
+    const grandC = Math.round(grand * 100);
+    const baseC = Math.floor(grandC / evenN);
+    return rows.map((r, i) => ({ ...r, amount: (i === evenN - 1 ? grandC - baseC * (evenN - 1) : baseC) / 100 }));
+  }
   let acc = 0;
   return rows.map((r, i) => {
     let amount;
@@ -53,6 +73,29 @@ export function paymentScheduleRows(plan) {
     return Array.isArray(plan.installments) ? plan.installments : [];
   }
   return [{ label: 'ชำระเต็มจำนวน', percent: 100, note: '' }];
+}
+
+/**
+ * งวดของแผนที่ **บันทึกแล้ว** — ยอดที่เก็บไว้ในแผน (`installments[].amount` จาก normalizePaymentPlan ตอนบันทึก QT)
+ * ⭐ ยอดที่เก็บไว้ = ยอดที่พิมพ์ลงใบเสนอราคาให้ลูกค้า (quotationMasterTemplate อ่าน `row.amount`) และอยู่ในลายนิ้วมืออนุมัติ
+ *   ⇒ งวดของ SO / ภาพก่อนกด / ป้าย "ปรับแผนหลังอนุมัติ" ต้องยึดตัวนี้ ไม่คิดใหม่จาก % — กติกาคิดเงินเปลี่ยน (เช่นเกลี่ยเท่ากัน 12/11)
+ *   แล้วใบเดิมต้องไม่ขยับเงียบ ๆ ทั้งที่เอกสารที่ส่งลูกค้าไปแล้วยังเป็นยอดเดิม
+ * ⭐ ใช้ยอดที่เก็บไว้เมื่อ **ทุกแถวมียอด และรวมได้เท่า total ถึงสตางค์** — ไม่งั้นคิดใหม่ด้วย computeInstallments
+ *   (แผนแบบเต็มจำนวน · แผนเก่าที่ไม่มียอด · ยอดใบเปลี่ยนแต่แผนยังไม่ถูกบันทึกใหม่)
+ *   วัด prod 12/11/2026: แผนแบ่งงวด 239 ใบ ยอดที่เก็บไว้ = ยอดคิดใหม่ด้วยกติกาเดิมครบทุกใบ และ Σ = ยอดใบทุกใบ ⇒ ตัวนี้ไม่เปลี่ยนตัวเลขของใบไหนในวันที่ขึ้น
+ * ⚠️ ฟอร์มที่กำลังแก้ % ต้องเรียก computeInstallments ตรง ๆ — ยอดที่เก็บไว้เป็นของการบันทึกครั้งก่อน
+ */
+export function planInstallmentAmounts(plan, total) {
+  const schedule = paymentScheduleRows(plan);
+  const computed = computeInstallments(total, schedule);
+  if (plan?.type !== 'installment' || !schedule.length) return computed;
+  const storedC = schedule.map((r) => {
+    const n = r?.amount === null || r?.amount === undefined || r?.amount === '' ? NaN : Number(r.amount);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+  });
+  if (storedC.some((c) => c === null)) return computed;
+  if (storedC.reduce((s, c) => s + c, 0) !== Math.round(money(total) * 100)) return computed;
+  return computed.map((r, i) => ({ ...r, amount: storedC[i] / 100 }));
 }
 
 // ตรวจความถูกต้องของแผน — คืน { ok, error }

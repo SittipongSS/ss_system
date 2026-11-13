@@ -13,7 +13,7 @@
    ⚠️ ผู้เรียกต้องเลือกคอลัมน์งวด `id, seq, status, kind, amount, "dueDate", "paidOn", "taxInvoiceNo", "refundedAt", "frozenAt",
      "updatedAt"` มาด้วย — ขาด `amount` = ยอดเป็น 0 เงียบ ๆ · ขาด `frozenAt` = งวดของใบที่อนุมัติแล้วกลายเป็น "ตามแผน" ทั้งหมด */
 import { INSTALLMENT_STATUS_LABELS, installmentRefunded, installmentVoid, paymentNotRequired, strandedInstallment } from '@/lib/sales/salesOrderPayments';
-import { computeInstallments, paymentScheduleRows } from '@/lib/sales/paymentPlan';
+import { planInstallmentAmounts } from '@/lib/sales/paymentPlan';
 import { isOpeningInstallment } from '@/lib/sales/historicalOrders';
 
 /* ชนิดของชิปงวด — สถานะในฐาน + สองชนิดที่คิดจากบริบท (เลยกำหนด · ตามแผน) */
@@ -99,11 +99,11 @@ export function salesOrderMoneyCell(rows = [], order = {}, { plan = null, todayI
       updatedAt: r.updatedAt ?? null,
     }));
   } else {
-    /* ใบที่ยังไม่มีแถวงวดเลย — ชิปตามแผนใน QT (ยอดแบ่งด้วยตัวคำนวณเดียวกับตอนสร้างงวดจริง) */
-    const schedule = paymentScheduleRows(plan);
+    /* ใบที่ยังไม่มีแถวงวดเลย — ชิปตามแผนใน QT (ยอดแบ่งด้วยตัวคำนวณเดียวกับตอนสร้างงวดจริง: planInstallmentAmounts) */
+    const schedule = planInstallmentAmounts(plan, baht(payableC));
     if (!schedule.length) return null;
     tracked = false;
-    installments = computeInstallments(baht(payableC), schedule).map((r) => ({
+    installments = schedule.map((r) => ({
       id: null, seq: r.no, kind: 'plan', status: 'pending', amount: r.amount, dueDate: null, paidOn: null,
       taxInvoiceNo: null, opening: false, updatedAt: null, label: r.label || null,
     }));

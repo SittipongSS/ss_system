@@ -8,6 +8,7 @@ import {
   computeInstallments,
   evenPercents,
   paymentScheduleRows,
+  planInstallmentAmounts,
 } from "@/lib/sales/paymentPlan";
 import {
   REPLAN_COUNTED_LABEL, REPLAN_VAT_NOTE, monthlyDueDates, replanEvenAmounts, replanEvenPercents, replanSwitchUnit,
@@ -263,7 +264,9 @@ export default function QuotationInstallments({
   const pctSum = split
     ? Math.round(rows.reduce((sum, row) => sum + (Number(row.percent) || 0), 0) * 100) / 100
     : 100;
-  const amounts = computeInstallments(totalAmount, rows);
+  /* อ่านอย่างเดียว = ยอดที่บันทึกไว้ (ตัวเดียวกับที่พิมพ์ลงใบ/ตั้งงวด SO · planInstallmentAmounts) · กำลังแก้ = คิดสดจาก % ที่พิมพ์
+     🪤 คิดสดตอนอ่านอย่างเดียว = ใบที่บันทึกก่อนกติกาเกลี่ยเท่ากัน (12/11/2026) จอโชว์ยอดใหม่แต่ PDF/งวด SO ยังเป็นยอดเดิม */
+  const amounts = disabled ? planInstallmentAmounts(payment, totalAmount) : computeInstallments(totalAmount, rows);
 
   const update = (patch) => {
     if (!disabled) onChange?.({ ...payment, ...patch });

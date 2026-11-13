@@ -500,3 +500,19 @@ test('มติข้อ 10: replanPromptFacts/paymentPlanEditPrompt — ใบ�
   assert.equal(autoCountLine({ ...INST, actualMode: 'order' }, [I1, I2], [null]), '');
   assert.equal(autoCountLine({ ...INST, status: 'approval_revoked' }, [I1, I2], [null]), '');
 });
+
+/* 🔴 12/11/2026 กติกาเกลี่ยเท่ากันของ QT เปลี่ยน (paymentPlan.evenSplitCount) — งวดของใบที่ตั้งจากแผนเดิมต้องยังตรงแผน
+   แผนเดิมเก็บยอดที่คิดจาก 8.33% ไว้ (= ยอดที่พิมพ์ลงใบ) ⇒ installmentsFromPaymentPlan ยึดยอดที่เก็บไว้ ป้าย "ปรับแผน" ไม่ขึ้นผิด
+   (prod 12/11: 7 ใบ SO ที่ตั้งงวดจากแผนแบบนี้แล้ว) */
+test('🔴 installmentsReplanned: แผนเกลี่ยเท่ากันที่บันทึกก่อนกติกาใหม่ — งวดเดิมยังตรงแผน', () => {
+  const amounts = [...Array(11).fill(3743.5), 3761.5];
+  const plan = {
+    type: 'installment',
+    installments: amounts.map((amount, i) => ({ no: i + 1, label: `งวด ${i + 1}`, percent: i === 11 ? 8.37 : 8.33, amount })),
+  };
+  const rows = amounts.map((amount, i) => ({ id: `I${i + 1}`, seq: i + 1, label: `งวด ${i + 1}`, amount, frozenAt: '2026-11-06T00:00:00Z' }));
+  assert.equal(installmentsReplanned(rows, plan, 44940), false);
+  // แผนใหม่ (บันทึกหลังกติกาใหม่) เก็บ 3,745 เท่ากัน — งวดเดิมยอด 3,743.50 = ต่างแผน
+  const fresh = { type: 'installment', installments: plan.installments.map((r) => ({ ...r, amount: 3745 })) };
+  assert.equal(installmentsReplanned(rows, fresh, 44940), true);
+});
