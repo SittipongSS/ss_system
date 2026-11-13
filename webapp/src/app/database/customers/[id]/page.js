@@ -561,6 +561,7 @@ export default function CustomerDetails() {
               ⚠️ แท็บ "การยื่นชำระภาษี" (ตาราง orders 0 แถว) และ "โครงการ" (ถอดโครงการทาง ก.) ถอดแล้ว (H1)
               ⚠️ การ์ดข้อมูลลูกค้า · วางบิล · ไฟล์แนบ · เธรด ยังเป็นของหน้านี้ (ฟอร์ม/ด่าน/เธรดผูกกับ state ที่นี่) — ส่งเข้าแท็บเป็น render function */}
           <CustomerHub
+            customerId={id}
             hub={hub}
             products={products}
             scents={scents}
@@ -733,7 +734,7 @@ export default function CustomerDetails() {
                 {/* เธรดกลาง (mig 0163) — ด่านอนุมัติ master data บังคับกรอกเหตุผลที่ตีกลับ
                     แต่ `rejectionReason` ถูกล้างทั้งตอนอนุมัติและตอนแก้ (resetApprovalOnEdit)
                     → ตีกลับรอบสองลบเหตุผลรอบแรกทิ้ง · เธรดเก็บครบทุกรอบไว้กับตัวลูกค้า */}
-                <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+                <DetailCard icon={MessagesSquare} eyebrow="CUSTOMER THREAD" title="เธรดของลูกค้ารายนี้">
                   <UpdateThread
                     entityType="customer"
                     entityId={id}

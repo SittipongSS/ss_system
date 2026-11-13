@@ -12,6 +12,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import HubListPanel from "./HubListPanel";
 import OverviewTab from "./OverviewTab";
+import ActivityTab from "./ActivityTab";
 import styles from "./customerHub.module.css";
 import { QUOTE_STATUS_LABELS } from "@/components/salesPlanning/ui";
 import { DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
@@ -559,9 +560,10 @@ function ExciseTab({ registrations, hub, query, onQuery }) {
  * ลำดับ: ภาพรวม · ข้อมูลลูกค้า · การขาย · สินค้า · คำร้อง · การเงิน · สรรพสามิต · บริการ · เอกสาร · ความเคลื่อนไหว
  * ⭐ มติ 2: เปิดหน้ามาที่ "ภาพรวม" · ข้อมูลลูกค้า (การ์ดโปรไฟล์ + วางบิล) เป็นแท็บที่สอง
  * `profile` · `docs` · `activity` = เนื้อหาที่หน้าลูกค้าเป็นเจ้าของ (ฟอร์ม/เธรด/ไฟล์แนบ) ส่งมาเป็น render function
+ *   `activity` = เธรดลูกค้าตัวเต็ม — แท็บความเคลื่อนไหว (H3) เปิดมันเมื่อเลือกชิป "ลูกค้า" · สายรวมทุกเธรดมาจาก ActivityTab
  * `hashTabs` — ลิงก์ที่ชี้ส่วนในแท็บ (เช่น `#billing-rule` ของการ์ดวางบิล) ต้องเปิดแท็บนั้นก่อน ไม่งั้นเลื่อนหาไม่เจอ */
 export default function CustomerHub({
-  hub, products = [], scents = [], formulas = [], registrations = [], service = null,
+  customerId, hub, products = [], scents = [], formulas = [], registrations = [], service = null,
   profile = null, docs = null, activity = null, hashTabs = {},
 }) {
   const [query, setQuery] = useState("");
@@ -644,7 +646,7 @@ export default function CustomerHub({
           {current === "excise" && <ExciseTab registrations={registrations} hub={hub} query={query} onQuery={setQuery} />}
           {current === "service" && service.render()}
           {current === "docs" && <div className={styles.tabBody}>{docs()}</div>}
-          {current === "activity" && <div className={styles.tabBody}>{activity()}</div>}
+          {current === "activity" && <ActivityTab customerId={customerId} customerThread={activity} />}
         </>
       )}
     </div>
