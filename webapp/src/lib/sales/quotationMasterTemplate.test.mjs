@@ -16,6 +16,7 @@ import {
   itemTextChars,
   lineIdentityParts,
   paginateQuotationMasterLines,
+  printedInstallmentPercent,
   quotationDocLabels,
 } from './quotationMasterTemplate.js';
 import { SALE_UNIT_EN, saleUnitLabel } from '../master/units.js';
@@ -1089,4 +1090,32 @@ test('ตัวอย่างเดิมทั้งหกแบบไม่�
 test('ป้ายคอลัมน์แพ็คมีครบทั้งสองภาษา และแปลจริง', () => {
   assert.equal(quotationDocLabels('th').t('packQty'), 'แพ็ค/เดือน');
   assert.equal(quotationDocLabels('en').t('packQty'), 'Pack/Month');
+});
+
+/* 🐞 13/11/2026 — ใบเกลี่ยเท่ากัน 12 งวดพิมพ์ 8.33% × 11 + 8.37% ทั้งที่ยอดเท่ากัน ⇒ % บนกระดาษ = ยอดงวด ÷ ยอดใบ (มติเจ้าของ) */
+test('🔴 buildQuotationMasterModelFromQuote: % ในตารางงวดคิดจากยอดของงวด — เกลี่ยเท่ากันพิมพ์ % เท่ากันทุกงวด', () => {
+  const installments = [...Array(11).fill(8.33), 8.37].map((percent, i) => ({ no: i + 1, label: `งวดที่ ${i + 1}`, percent, amount: 3745 }));
+  const model = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT, totalAmount: 44940, paymentPlan: { type: 'installment', installments },
+  });
+  assert.deepEqual(model.installments.map((r) => r.percent), Array(12).fill(8.33));
+  assert.deepEqual(model.installments.map((r) => r.amount), Array(12).fill(3745));
+  // แผนที่ % ลงตัวได้เลขเดิม
+  const even = buildQuotationMasterModelFromQuote({
+    ...QUOTE_WITH_PROJECT, totalAmount: 1000,
+    paymentPlan: { type: 'installment', installments: [{ percent: 30, amount: 300 }, { percent: 30, amount: 300 }, { percent: 40, amount: 400 }] },
+  });
+  assert.deepEqual(even.installments.map((r) => r.percent), [30, 30, 40]);
+  // เต็มจำนวน = 100
+  const full = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, totalAmount: 1234.5, paymentPlan: { type: 'full' } });
+  assert.deepEqual(full.installments.map((r) => r.percent), [100]);
+});
+
+test('printedInstallmentPercent: ปัดครึ่งขึ้นที่ 0.01% จากสตางค์ · ยอดใบ 0/ว่าง = % ที่เก็บไว้', () => {
+  assert.equal(printedInstallmentPercent({ percent: 8.37 }, 3745, 44940), 8.33);
+  assert.equal(printedInstallmentPercent({ percent: 33.34 }, 13803, 41409), 33.33);
+  assert.equal(printedInstallmentPercent({ percent: 50 }, 0.01, 0.03), 33.33);
+  assert.equal(printedInstallmentPercent({ percent: 50 }, 0.02, 0.03), 66.67);
+  assert.equal(printedInstallmentPercent({ percent: 12.5 }, 100, 0), 12.5);
+  assert.equal(printedInstallmentPercent({ percent: 12.5 }, 100, null), 12.5);
 });

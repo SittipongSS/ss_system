@@ -412,6 +412,21 @@ export function previewStandardOf(standard, docType = 'quotation') {
   };
 }
 
+/* ── % ที่พิมพ์ในตารางงวด = ยอดของงวดนั้น ÷ ยอดใบ (มติเจ้าของ 13/11/2026) ─────────────────────────────
+   🐞 ใบ "เกลี่ย % เท่ากัน" 12 งวดเก็บ % = 8.33 × 11 + 8.37 (ต้องรวมได้ 100 ตามด่านของแผน) แต่ยอดเท่ากันทุกงวด
+      (paymentPlan.evenSplitCount · #2041) ⇒ กระดาษพิมพ์ 8.37% บนงวดท้ายทั้งที่ยอดเท่างวดอื่น ลูกค้าถามว่าต่างตรงไหน
+   ⇒ คอลัมน์ % เป็นคำอธิบายของ "จำนวนเงิน" ข้าง ๆ — คิดจากยอดที่พิมพ์ (หน่วย 0.01% ปัดครึ่งขึ้นจากสตางค์จำนวนเต็ม)
+     · แผนที่ % ลงตัว (30/30/40 · 50/50) ได้เลขเดิมทุกตัว · ตารางงวดไม่มีแถวรวม % ⇒ ไม่มีตัวเลขรวมที่ "ไม่ครบ 100" ให้เห็น
+   ⚠️ แสดงผลอย่างเดียว — `paymentPlan.installments[].percent` ที่เก็บ/ลายนิ้วมืออนุมัติ/ฉบับที่ตรึงแล้วไม่ขยับ
+     (payload ตรึงกิน paymentPlan ดิบ ⇒ ฉบับตรึงใหม่ของใบเดิมเกิดเฉพาะตอนเนื้อหาเปลี่ยนจริง)
+   ⚠️ ยอดใบ 0/ว่าง = พิมพ์ % ที่เก็บไว้ (หารไม่ได้) */
+export function printedInstallmentPercent(row, amount, total) {
+  const totalC = Math.round((Number(total) || 0) * 100);
+  const amountC = Math.round((Number(amount) || 0) * 100);
+  if (!(totalC > 0)) return Number(row?.percent || 0);
+  return Math.round((amountC * 10000) / totalC) / 100;
+}
+
 export function allocateInstallmentAmounts(total, installments = []) {
   const safeTotal = roundMoney(total);
   let allocated = 0;
@@ -1367,17 +1382,20 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
 
   const paymentPlan = quote.paymentPlan || {};
   const installments = paymentScheduleRows(paymentPlan)
-    .map((row) => ({
-      // ใบที่ไม่ได้แบ่งงวด: paymentScheduleRows สังเคราะห์แถว "ชำระเต็มจำนวน" ให้เอง
-      // เป็นป้ายของระบบ ไม่ใช่ข้อความที่คนกรอก จึงแปลตามภาษาของใบ (ชื่องวดที่คนตั้งเอง
-      // ในโหมดแบ่งงวดยังพิมพ์ตามที่พิมพ์ไว้)
-      label: paymentPlan.type === 'installment' ? (row.label || '') : L.t('fullPayment'),
-      note: row.note || '',
-      percent: Number(row.percent || 0),
-      amount: paymentPlan.type === 'installment'
+    .map((row) => {
+      const amount = paymentPlan.type === 'installment'
         ? Number(row.amount || 0)
-        : Number(quote.totalAmount || 0),
-    }));
+        : Number(quote.totalAmount || 0);
+      return {
+        // ใบที่ไม่ได้แบ่งงวด: paymentScheduleRows สังเคราะห์แถว "ชำระเต็มจำนวน" ให้เอง
+        // เป็นป้ายของระบบ ไม่ใช่ข้อความที่คนกรอก จึงแปลตามภาษาของใบ (ชื่องวดที่คนตั้งเอง
+        // ในโหมดแบ่งงวดยังพิมพ์ตามที่พิมพ์ไว้)
+        label: paymentPlan.type === 'installment' ? (row.label || '') : L.t('fullPayment'),
+        note: row.note || '',
+        percent: printedInstallmentPercent(row, amount, quote.totalAmount),
+        amount,
+      };
+    });
 
   /* ⭐ ชื่อ/ที่อยู่ลูกค้าเดินตามภาษาของใบ (มติผู้ใช้ 2026-09-03) — ช่องอังกฤษว่างให้
      **ถอยไปไทย** กติกาเดียวกับชื่อสินค้าด้านบน (ไม่เว้นว่าง ไม่กั้นการสลับภาษา ปล่อยให้
