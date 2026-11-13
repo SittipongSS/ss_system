@@ -532,7 +532,6 @@ function RowGroup({ group, byRequest, today, canPrice, linking, collapsed, onTog
             <div>{row.confirmedAt ? fmtDate(row.confirmedAt) : NA}</div>
             <div className={styles.sub}>
               {[
-                row.confirmedQty != null ? `${fmtNumber(row.confirmedQty)}${row.unit ? ` ${row.unit}` : ""}` : null,
                 (() => { const d = waitingDays(row, today); return d == null ? null : `รอมา ${d} วัน`; })(),
               ].filter(Boolean).join(" · ") || NA}
             </div>

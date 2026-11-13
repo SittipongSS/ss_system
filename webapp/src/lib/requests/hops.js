@@ -168,11 +168,11 @@ export function hopValuesError(hop, values = {}, { lineKind = null } = {}) {
   if (!ROW_OUTCOMES.includes(outcome)) return 'ต้องระบุว่าลูกค้าตอบว่าอย่างไร';
   if (!at) return 'ต้องระบุวันที่ลูกค้าตอบ';
 
-  if (outcome === 'confirmed') {
-    const qty = Number(values.confirmedQty);
-    // ⭐ จำนวนนี้ใช้กระทบยอดกับใบสั่งขาย — ไม่มีจำนวน = กระทบยอดไม่ได้
-    if (!Number.isFinite(qty) || qty <= 0) return 'ต้องระบุจำนวนที่ลูกค้าคอนเฟิร์ม';
-  }
+  /* ⭐ **คอนเฟิร์มไม่ถามจำนวน** (ผู้ใช้ทัก 13/11/2026: "คอนเฟิร์ม กลิ่น สูตร ไม่ต้องใส่จำนวน")
+     แถวที่มีก้าวนี้เหลือแค่กลิ่น (scent_dev) กับสูตร (product_dev) — หนึ่งแถว = หนึ่งกลิ่น/หนึ่งสูตร
+     ที่ลูกค้าเลือก ⇒ ไม่มีจำนวนให้ตอบ · ช่องเดิมได้ค่าขยะจริง (กลิ่นสามแถวของ RQ-SB-26100375 กรอก
+     1000 ⇒ ยอดคอนเฟิร์ม 3000 จาก 6 ⇒ ด่านปิดใบปล่อยผ่านทั้งที่ลูกค้าเลือกแค่ 3 กลิ่น)
+     ด่านปิดใบนับ **จำนวนแถว** ที่คอนเฟิร์มแทน (`soReconcile.confirmedQty`) */
   // ⭐ "ไม่เอา" กับ "ขอแก้" บังคับเหตุผลทั้งคู่ แต่คนละเหตุผลกัน:
   //   ไม่เอา — ปิดแถวถาวร ต้องมีหลักฐานว่าทำไม (constraint answer_evidence บังคับ
   //     declineReason เมื่อ answerStatus = 'declined')
@@ -252,7 +252,11 @@ export function hopPatch(hop, values = {}, user = null, today = null, { lineKind
     outcomeByName: by.name,
     outcomeNote: note,
   };
-  if (values.outcome === 'confirmed') patch.confirmedQty = Number(values.confirmedQty);
+  /* ⚠️ **1 ตายตัว ไม่ใช่ตัวเลขจากผู้ใช้** — จอไม่ถามจำนวนแล้ว แต่ CHECK
+     `dept_request_items_confirmed_needs_qty` ของ 0204 ยังบังคับให้มีค่าเมื่อคอนเฟิร์ม ⇒ เขียน 1
+     (หนึ่งแถว = หนึ่งรายการที่ลูกค้าเลือก) แทนการถอด constraint · body ที่ส่ง `confirmedQty` มาถูกทิ้ง
+     ⚠️ ห้ามมีจอไหนเอาคอลัมน์นี้ไปโชว์เป็น "จำนวน" อีก — แถวใหม่เป็น 1 หมด ส่วนแถวเก่าเป็นค่าที่พิมพ์มั่ว */
+  if (values.outcome === 'confirmed') patch.confirmedQty = 1;
   // "ไม่เอา" ปิดแถวทันที — ไม่ต้องรอใส่ราคา · declineReason บังคับโดย constraint
   if (values.outcome === 'rejected') {
     patch.answerStatus = 'declined';
