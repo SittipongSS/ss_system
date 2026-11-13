@@ -19,7 +19,15 @@ const WEBAPP = process.cwd();
    รูปแบบ: { file, rule, witness: { panelTitle } | { headlessSection: true }, reason (≥ 60), decidedAt }
    รายการที่ไม่ตรงกับ violation สักจุด = ข้อยกเว้นค้าง ⇒ เทสต์ตก (ต้องลบทิ้ง)
    วันนี้ว่าง: D1 = ใช่ (คิวคำร้องได้หัวกลับมา) · D4 = ยอมรับข้อเสนอ · D3 (/service/today) ด่านไม่จับ */
-const LIST_PANEL_EXEMPT = [];
+const LIST_PANEL_EXEMPT = [
+  {
+    file: "src/app/database/customers/[id]/page.js",
+    rule: "LP6",
+    witness: { headlessSection: true },
+    reason: "Skeleton ของหน้าลูกค้าคือการโหลดระเบียนลูกค้าครั้งแรกตอนเปิดหน้าเท่านั้น (fetchCustomerData ไม่เคยตั้ง loading กลับเป็น true) ⇒ แถบค้นหาของ CustomerHub ไม่ถูกถอดระหว่างพิมพ์ · ข้อมูลในแท็บโหลดผ่าน relations แยกและไม่สลับ Skeleton",
+    decidedAt: "2026-11-13",
+  },
+];
 
 /* ── ชุดไฟล์ตั้งต้นที่แช่แข็ง (U0-A · 2026-09-15) — ทะเบียนย้ายต้องเป็นสับเซตของชุดนี้เสมอ ──
    ⚠️ ห้ามเติม — ไฟล์ใหม่ที่ผิดทรงต้องแก้ให้ถูกตั้งแต่แรก ไม่ใช่ลงทะเบียนย้าย

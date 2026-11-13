@@ -11,6 +11,7 @@ import { canViewScents } from '@/lib/master/scents';
 import { canViewFormulas } from '@/lib/master/formulas';
 import { sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
+import { customerHubRelations } from '@/lib/master/customerHubData';
 
 // projects ที่ผู้ใช้เห็นได้ (PM เป็นเครื่องมือของ SALES — ต้องมี pm:view).
 function visibleProjects(user, rows) {
@@ -89,9 +90,12 @@ async function scentsAndFormulas(supabase, customerId, user) {
   return { scents: seesScents ? scents : [], formulas };
 }
 
-// ความสัมพันธ์ของลูกค้า 1 ราย → { products, registrations, orders, projects, scents, formulas }.
+// ความสัมพันธ์ของลูกค้า 1 ราย → { products, registrations, scents, formulas, hub }.
+// ⭐ หน้าลูกค้าศูนย์รวม (มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md งวด H1):
+//   · `hub` = ดีล/ใบเสนอราคา/ใบสั่งขาย/งวด/คำร้อง/สัญญา/SO ค่าสรรพสามิต กรองตามสิทธิ์รายโมดูล (customerHubData.js)
+//   · ถอด `orders` (ตารางยื่นภาษีเก่า 0 แถวทั้งระบบ · สรรพสามิตเดินบน SO แล้ว) และ `projects` (ถอดโครงการทาง ก.) ออกจากหน้าลูกค้า
 export async function customerRelations(supabase, customerId, user) {
-  const [prodRes, regRes, orderRes, projRes, registry] = await Promise.all([
+  const [prodRes, regRes, registry, hub] = await Promise.all([
     // 🐞 เคย select `teams` ซึ่ง **ไม่มีในตาราง** (products มี `team` เดี่ยว) → PostgREST
     // ตอบ 42703 ทั้ง query · โค้ดข้างล่างอ่าน `.data || []` โดยไม่ดู `.error` แท็บสินค้า
     // บนหน้าลูกค้าจึงว่างเปล่าทุกราย ทั้งที่ prod มีสินค้าผูกลูกค้า 120 ชิ้น (2026-07-29)
@@ -100,14 +104,10 @@ export async function customerRelations(supabase, customerId, user) {
       .select('id, fgCode, productDescription, productDescriptionEn, brandName, brandNameEn, approvalStatus, isActive, customerId, team, ownerId')
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
     supabase.from('excise_registrations')
-      .select('id, fgCode, productName, brandName, status, approvalNumber, customerId, team, ownerId')
-      .eq('customerId', customerId).order('createdAt', { ascending: false }),
-    supabase.from('orders')
-      .select('id, quotationRef, poReference, status, totalTax, deliveryDate, customerId, team, ownerId')
-      .eq('customerId', customerId).order('createdAt', { ascending: false }),
-    supabase.from('projects').select(PROJECT_COLS)
+      .select('id, fgCode, productName, brandName, status, approvalNumber, customerId, team, ownerId, productId, createdAt')
       .eq('customerId', customerId).order('createdAt', { ascending: false }),
     scentsAndFormulas(supabase, customerId, user),
+    customerHubRelations(supabase, customerId, user),
   ]);
 
   // query พัง = ต้องดัง ไม่ใช่คืนลิสต์ว่าง · `.data || []` เพียว ๆ ทำให้ schema error
@@ -116,8 +116,6 @@ export async function customerRelations(supabase, customerId, user) {
   const failed = [
     ['สินค้า', prodRes.error],
     ['ทะเบียนสรรพสามิต', regRes.error],
-    ['ใบยื่นภาษี', orderRes.error],
-    ['โครงการ', projRes.error],
   ].filter(([, error]) => error);
   if (failed.length) {
     throw new Error(`โหลดข้อมูลที่เกี่ยวข้องไม่สำเร็จ (${failed.map(([label]) => label).join(', ')}): ${failed[0][1].message}`);
@@ -127,12 +125,11 @@ export async function customerRelations(supabase, customerId, user) {
   return {
     products: (prodRes.data || []).filter((p) => canViewRecord(user, 'products', p)),
     registrations: tax ? (regRes.data || []).filter((r) => canViewRecord(user, 'registrations', r)) : [],
-    orders: tax ? (orderRes.data || []).filter((o) => canViewRecord(user, 'orders', o)) : [],
-    projects: visibleProjects(user, projRes.data),
     // ทะเบียนกลิ่น/สูตรไม่มี team/owner จึงไม่มี view-scope รายแถว — เห็นทั้งทะเบียน
     // หรือไม่เห็นเลย ตามเจตนาเดิมของ canViewScents/canViewFormulas (แคตตาล็อกข้ามทีม)
     scents: registry.scents,
     formulas: registry.formulas,
+    hub,
   };
 }
 

@@ -65,7 +65,7 @@ const PROJECT_SURFACES = [
   'src/app/sales-planning/deals/[id]/page.js',       // ปุ่ม "ไปโครงการ" + การ์ดโครงการที่เชื่อมอยู่
   'src/app/sales-planning/sales-orders/[id]/page.js',// การ์ดบริบท "โครงการ"
   'src/app/requests/[id]/page.js',                   // การ์ดบริบท "โครงการ" ของใบคำร้อง
-  'src/app/database/customers/[id]/page.js',         // แถบ facts "โครงการ"
+  // หน้าลูกค้าหลุดจากลิสต์นี้ 13/11/2026 — ถอดแท็บ/ตัวเลข "โครงการ" (ถอดโครงการทาง ก. · docs/customer-hub-plan.md)
   'src/app/database/products/[id]/page.js',          // แถบ facts + หัวข้อ "โครงการที่เกี่ยวข้อง"
   'src/app/pm/tasks/[id]/page.js',                   // การ์ดบริบท "โครงการ"
   'src/components/requests/RequestQueuePanel.js',    // ตัวกรอง "โครงการ" ของคิวคำร้อง
@@ -168,7 +168,7 @@ const ENTITIES = [
     surfaces: [
       'src/app/database/products/page.js',
       'src/app/database/products/[id]/page.js',
-      'src/app/database/customers/[id]/page.js',           // facts "สินค้า"
+      'src/components/database/customerHub/CustomerHub.js', // แท็บ "สินค้า" ของหน้าลูกค้า (H1 · 13/11/2026)
       'src/app/sa/costing/[id]/page.js',                   // facts "สินค้า"
       'src/app/sales-planning/quotations/new/page.js',     // หัวข้อ "รายการสินค้า/บริการ"
       'src/app/sales-planning/quotations/[id]/page.js',

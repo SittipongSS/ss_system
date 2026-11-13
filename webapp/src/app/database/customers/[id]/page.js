@@ -1,17 +1,13 @@
 "use client";
-import { TableScroll } from "@/components/ui/Table";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Building2, Package, ShoppingCart, Archive, ArchiveRestore, FolderKanban, MapPin, MessagesSquare, FlaskConical, Beaker } from "lucide-react";
+import { ArrowLeft, Building2, Archive, ArchiveRestore, ClipboardList, Handshake, MapPin, MessageCircleQuestion, MessagesSquare, Wallet } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
-import { ActionButton } from "@/components/ui/ActionButtons";
-import Tabs from "@/components/ui/Tabs";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useCapUser, useDepartment, useRole, useTeams } from "@/lib/roleContext";
 import { canEditCustomerBillingRule, canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
-import { useIsPortrait } from "@/lib/useResponsiveView";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
 import CustomerBillingRuleCard from "@/components/database/CustomerBillingRuleCard";
@@ -19,16 +15,10 @@ import { customerCreditSummary } from "@/lib/master/customerCredit";
 import { customerNameIn } from "@/lib/master/customerName";
 import { isAutoArCode, isReusableCode, reclaimableArNumber } from "@/lib/master/masterCodes";
 import { approvalStatusOf } from "@/components/ApprovalStatus";
-import OrderDetailModal from "@/components/OrderDetailModal";
-import DetailRow from "@/components/ui/DetailRow";
-import ProductStatusPill from "@/components/ProductStatusPill";
-import OrderStatusPill from "@/components/OrderStatusPill";
-import StatusBadge from "@/components/excise/StatusBadge";
-// ป้ายกลางของ design system — ชื่อชนกับ StatusBadge ของสรรพสามิตข้างบน (คนละตัว:
-// ตัวนั้นรับ `status` ของทะเบียนภาษี ตัวนี้รับ `tone`+`label`) จึงตั้งชื่อแยกไว้
-import RegistryBadge from "@/components/ui/StatusBadge";
 import CustomerZonesPanel from "@/components/service/CustomerZonesPanel";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import CustomerHub from "@/components/database/customerHub/CustomerHub";
+import { hubFacts } from "@/lib/master/customerHub";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Toast from "@/components/ui/Toast";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
@@ -36,15 +26,9 @@ import {
   ADDRESS_USE_LABELS, addressLabel, addressTextIn, customerAddresses, isBillingAddress, isShippingAddress,
 } from "@/lib/master/addresses";
 import { branchLabel } from "@/lib/master/thaiAddress";
-import { brandBothOf, brandBoth, hasBrandField } from "@/lib/master/brands";
-import { fmtPhone, fmtNationalId, productNameBoth, fmtMoney, fmtDate, naText, NA } from "@/lib/format";
-import { isExemptFiling } from "@/lib/tax/exciseBilling";
-import { productDisplayName } from "@/lib/master/productIdentity";
+import { brandBothOf } from "@/lib/master/brands";
+import { fmtPhone, fmtNationalId, fmtMoney, fmtDate, naText } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
-import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
-import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formulas";
-import { isProductTaxable, productExciseBadge } from "@/lib/master/productFilter";
-import { apiCache } from "@/lib/apiCache";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
@@ -83,38 +67,6 @@ function ProfileGroup({ label, hint = null }) {
   );
 }
 
-/* ── การ์ดความสัมพันธ์เป็นลิงก์ทั้งใบ — `href` ไม่ใช่ `onClick` (2026-09-02) ────────
-   เดิมเป็น `<div onClick>` ที่เรียก `router.push(X)` ⇒ เมาส์กดได้ แต่คีย์บอร์ดเข้าไม่ถึง
-   (WCAG 2.1.1) และไม่ได้คลิกกลาง/เปิดแท็บใหม่/เมนูคลิกขวา/สถานะเยี่ยมชม
-   ⇒ ห่อทั้งใบด้วย <Link> ได้ **เพราะข้างในไม่มี interactive เลย**: รับแค่ title/subtitle
-   (สตริง) กับ right ซึ่งทั้งสี่ที่เรียกส่งป้ายสถานะล้วน — span ที่ใส่คลาส ui-badge
-   หรือ RegistryBadge (= ui/StatusBadge.js ที่ไม่มี onClick/button/a เลย)
-   🪤 `<a>` เป็น transparent content model จึงครอบ <div> ได้ถูกสเปก — แต่ห้ามมี
-      interactive descendant ⇒ วันที่ใครส่งปุ่มมาทาง `right` ต้องเลิกห่อทั้งใบก่อน
-
-   🪤 **ถอด `clickable-row cursor-pointer` ออกได้** — `.clickable-row` ให้แค่
-      `cursor: pointer` (ลิงก์แจกให้ฟรี) กับกฎ `:hover td` ที่ไม่มีวันยิงบนการ์ดนี้
-      และ globals.css เขียนห้ามเติม `.clickable-row:focus-visible` ไว้ชัดเจน
-      ⇒ วงโฟกัสมาจาก `.card-link` ซึ่งเป็นคลาสร่วมกับการ์ดของ excise/DataList
-   🪤 `.card-link` จงใจ **ไม่** ประกาศ `display` — ถ้าประกาศ (กฎนอก @layer ชนะ utility
-      ของ Tailwind ทุกตัว) `flex` ของการ์ดใบนี้จะโดนล้างทิ้ง */
-function RelationRow({ title, subtitle, right, href }) {
-  return (
-    <Link
-      href={href}
-      className="glass-panel card-link p-3 flex items-center justify-between gap-3"
-    >
-      <div className="min-w-0">
-        <div className="font-semibold text-sm text-[var(--text)] truncate">{title}</div>
-        {subtitle ? (
-          <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5 truncate">{subtitle}</div>
-        ) : null}
-      </div>
-      {right}
-    </Link>
-  );
-}
-
 export default function CustomerDetails() {
   const params = useParams();
   const router = useRouter();
@@ -139,15 +91,12 @@ export default function CustomerDetails() {
   const superuser = isSuperuser(role);
   // แอดมินแก้เลข AR ได้ทุกใบ รวมใบที่ระบบออกเลขให้ (มติ 2026-08-24) — ด่านจริงอยู่ที่ PATCH
   const canFixArCode = canEditIssuedMasterCode(role);
-  const isPortrait = useIsPortrait();
 
   const [customer, setCustomer] = useState(null);
   const [products, setProducts] = useState([]);
-  // แถวหมวดสินค้า — ใช้ตัดสินธงสรรพสามิต/จดแจ้ง อย. ของหมวด (mig 0131)
-  const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
-  const [orders, setOrders] = useState([]);
   const [regs, setRegs] = useState([]); // excise registrations for this customer (tax-gated)
-  const [projects, setProjects] = useState([]); // PM projects for this customer (pm-gated)
+  /* หน้าลูกค้าศูนย์รวม (H1) — ดีล/QT/SO/งวด/คำร้อง/สัญญา/SO ค่าสรรพสามิต กรองตามสิทธิ์รายโมดูลที่ server · null = ยังโหลดไม่เสร็จ */
+  const [hub, setHub] = useState(null);
   // ทะเบียนกลิ่น/สูตรของลูกค้ารายนี้ (mig 0171) — scents."customerId" เป็น NOT NULL
   // (มติ 9: กลิ่นของลูกค้า A ใช้กับ B ไม่ได้) ความสัมพันธ์จึงเป็นของลูกค้าเต็มตัว
   // ไม่ใช่ของแถม · อ่านอย่างเดียว จัดการจริงที่ /database/scents · /database/formulas
@@ -166,9 +115,6 @@ export default function CustomerDetails() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_CUSTOMER);
 
-  // Table Tabs
-  const [activeTab, setActiveTab] = useState("products");
-  const [selectedOrder, setSelectedOrder] = useState(null);
 
   const fetchCustomerData = async () => {
     try {
@@ -178,7 +124,6 @@ export default function CustomerDetails() {
         /* `billingSkipReady` (ฐานรัน 0393 แล้ว) มาแยกจากแถว — เติมเข้าก้อนที่การ์ด/โมดัลวางบิลอ่าน (`customer.billingSkipReady`) */
         setCustomer(typeof data.billingSkipReady === "boolean" ? { ...data.customer, billingSkipReady: data.billingSkipReady } : data.customer);
         setProducts(data.products || []);
-        setOrders(data.orders || []);
 
         // Populate edit form (fallback ข้อมูลยุคเก่าอยู่ใน customerToForm)
         setFormData(customerToForm(data.customer));
@@ -197,10 +142,6 @@ export default function CustomerDetails() {
     if (id) {
       fetchCustomerData();
     }
-    apiFetch("/api/master/product-types")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => { apiCache.set("/api/master/product-types", d || []); setProductTypes(d || []); })
-      .catch(() => {});
   }, [id]);
 
   /* ลิงก์ "ดูที่ทะเบียนลูกค้า"/"ตั้งรอบ" จากหน้าสร้าง SO · แผงงวด · ทะเบียน FN ชี้ `#billing-rule` (กำหนดวางบิล)
@@ -213,18 +154,18 @@ export default function CustomerDetails() {
     window.requestAnimationFrame(() => document.getElementById(hash)?.scrollIntoView({ block: "start" }));
   }, [hasCustomer]);
 
-  // Cross-module relations (360-view): registrations + projects + ทะเบียนกลิ่น/สูตร
+  // Cross-module relations (360-view): registrations + ทะเบียนกลิ่น/สูตร + `hub` (สายขาย/การเงิน/คำร้อง · H1)
   // from one scoped endpoint instead of fetching every registration and filtering
   // client-side. The endpoint returns [] for relations the user may not see
-  // (tax → history:view, projects → pm:view, กลิ่น/สูตร → products:view), so no
+  // (tax → history:view, hub → สิทธิ์ของแต่ละโมดูล, กลิ่น/สูตร → products:view), so no
   // extra client-side capability gate is needed here.
   useEffect(() => {
-    if (!id) { setRegs([]); setProjects([]); setScents([]); setFormulas([]); return; }
+    if (!id) { setRegs([]); setHub(null); setScents([]); setFormulas([]); return; }
     apiFetch(`/api/master/customers/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!d) return;
-        setRegs(d.registrations || []); setProjects(d.projects || []);
+        setRegs(d.registrations || []); setHub(d.hub || null);
         setScents(d.scents || []); setFormulas(d.formulas || []);
       })
       .catch(() => {});
@@ -438,26 +379,6 @@ export default function CustomerDetails() {
     },
   });
 
-  // Calculations for tax card. The order rollup totals already exclude exempt
-  // items (their per-item tax is 0), so we can sum them directly.
-  const totalExciseTax = orders.reduce((sum, o) => sum + (o.totalExciseTax || 0), 0);
-  const totalLocalTax = orders.reduce((sum, o) => sum + (o.totalLocalTax || 0), 0);
-  const totalTaxAccrued = totalExciseTax + totalLocalTax;
-
-  const totalPaidTax = orders
-    .filter((o) => o.status === "complete")
-    .reduce((sum, o) => sum + (o.totalTax || 0), 0);
-
-  // Outstanding = everything not yet paid and not rejected (pending awaiting
-  // payment, received, or in the middle of filing).
-  const totalPendingTax = orders
-    .filter((o) => ["pending", "received", "filing"].includes(o.status))
-    .reduce((sum, o) => sum + (o.totalTax || 0), 0);
-
-  /* การ์ด "ภาระภาษีสรรพสามิต" ขึ้นเมื่อมีภาษีสะสม หรือมีสินค้าที่ต้องเสียภาษีตามกฎเดียวของระบบ (ธงรายตัวของ RA ชนะหมวด)
-     🐞 เดิม `isExciseTaxable !== false` ⇒ สินค้าแถวเก่าที่ธงว่างในหมวดที่ไม่เสียภาษีก็ทำให้การ์ด 0.00 ขึ้น (ตรวจตัวเลข 26/10 · L16c) */
-  const hasTaxObligation = totalTaxAccrued > 0 || products.some((p) => isProductTaxable(p, productTypes));
-
   if (loading) return <SkeletonRows rows={8} />;
 
   if (error || !customer) {
@@ -484,6 +405,8 @@ export default function CustomerDetails() {
     </div>
   );
 
+  /* ตัวเลขบนหัว (หน้าลูกค้าศูนย์รวม H1) — กลุ่มที่ไม่มีสิทธิ์ = null ⇒ ไม่วาดช่องนั้น */
+  const facts = hubFacts(hub || {});
   const teamsLabel = naText((customer.teams?.length ? customer.teams : customer.team ? [customer.team] : []).map((t) => teamLabelNow(t)).join(", "));
 
   // ที่อยู่ (0202) — แถวที่ยังไม่ backfill อ่านจากช่องเดี่ยวเดิม ไม่ใช่โชว์ว่าง
@@ -589,26 +512,6 @@ export default function CustomerDetails() {
           : null}
       />
 
-      {/* ภาระภาษีสะสม — แทนแถบ KPI เดิม (tax-gated เหมือนเดิม) */}
-      {canViewTax && hasTaxObligation && (
-        <DetailCard icon={Package} eyebrow="EXCISE" title="ภาระภาษีสรรพสามิต">
-          <div className="space-y-3 text-xs">
-            <div className="flex justify-between items-center">
-              <span className="text-[var(--text-3)]">ชำระแล้ว</span>
-              <span className="font-semibold font-mono text-[var(--green)]">{fmtMoney(totalPaidTax)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-[var(--text-3)]">ค้างชำระ</span>
-              <span className={`font-semibold font-mono ${totalPendingTax ? "text-[var(--amber)]" : "text-[var(--text)]"}`}>{fmtMoney(totalPendingTax)}</span>
-            </div>
-            <div className="border-t border-dashed border-[var(--border)] my-2 pt-2 flex justify-between items-center">
-              <span className="text-[var(--text-3)]">สะสมทั้งหมด</span>
-              <span className="font-bold font-mono text-[var(--text)]">{fmtMoney(totalTaxAccrued)}</span>
-            </div>
-            <p className="text-[10px] text-[var(--text-3)]">สรรพสามิต {fmtMoney(totalExciseTax)} + ท้องถิ่น {fmtMoney(totalLocalTax)}</p>
-          </div>
-        </DetailCard>
-      )}
     </>
   );
 
@@ -628,10 +531,12 @@ export default function CustomerDetails() {
         description={<><span>{customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล"}</span><span>สร้างเมื่อ {fmtDate(customer.createdAt)}</span></>}
         badges={<SalesStateBadge label={customer.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={customer.isActive === false ? "var(--text-3)" : "var(--green)"} />}
         facts={[
-          // ตัวเลขความสัมพันธ์อยู่ที่นี่ที่เดียว — รายการเต็มอยู่ในแท็บด้านล่าง
-          { icon: Package, label: "สินค้า", value: `${products.length} รายการ` },
-          ...(canViewTax ? [{ icon: ShoppingCart, label: "ใบสั่งซื้อ", value: `${orders.length} รายการ` }] : []),
-          { icon: FolderKanban, label: "โครงการ", value: `${projects.length} โครงการ` },
+          /* ⭐ ตัวเลขบนหัว (หน้าลูกค้าศูนย์รวม H1) — ช่องที่ผู้ดูไม่มีสิทธิ์ไม่วาด (hubFacts คืน null · มติ 4)
+             Actual = ตัวแบ่งยอดกลาง splitSalesOrderAmounts (ไม่รวมใบย้อนหลัง/ค่าสรรพสามิต · รออนุมัติไม่นับ) */
+          ...(facts.actual ? [{ icon: ClipboardList, label: "ยอด Actual สะสม", value: `${fmtMoney(facts.actual.amount)} · ${facts.actual.orders} ใบ` }] : []),
+          ...(facts.openDeals ? [{ icon: Handshake, label: "ดีลเปิดอยู่", value: `${facts.openDeals.count} ดีล · ${fmtMoney(facts.openDeals.value)}` }] : []),
+          ...(facts.outstanding ? [{ icon: Wallet, label: "ค้างชำระ", value: `${fmtMoney(facts.outstanding.amount)}${facts.outstanding.overdue ? ` · เกินกำหนด ${facts.outstanding.overdue} งวด` : ""}` }] : []),
+          ...(facts.openRequests ? [{ icon: MessageCircleQuestion, label: "คำร้องค้าง", value: `${facts.openRequests.count} ใบ` }] : []),
           { icon: Building2, label: "ทีมดูแล", value: teamsLabel },
         ]}
       />
@@ -777,337 +682,28 @@ export default function CustomerDetails() {
             }}
           />
 
-          {/* ความสัมพันธ์ทั้งหมดอยู่ในแท็บชุดเดียว — ไม่มีการ์ดโครงการซ้ำด้านบนแล้ว */}
-          <div>
-            <Tabs
-              value={activeTab}
-              onChange={setActiveTab}
-              tabs={[
-                { key: "products", label: `รายการสินค้า (${products.length})` },
-                canViewTax && { key: "registrations", label: `การขึ้นทะเบียน (${regs.length})` },
-                canViewTax && { key: "orders", label: `การยื่นชำระภาษี (${orders.length})` },
-                projects.length > 0 && { key: "projects", label: `โครงการ (${projects.length})` },
-                // โผล่เมื่อมีไซต์จริงเท่านั้น — ลูกค้า OEM ส่วนใหญ่ไม่มีระบบกระจายกลิ่น
-                /* 🔑 **แท็บเดียว ไม่ใช่สองแท็บ** (เฟส 3A) — เดิมชื่อ "ไซต์บริการ" ตอบเรื่อง
-                   ปฏิบัติการ (เครื่อง/นัด/น้ำหอม) · ทะเบียนพื้นที่ตอบเรื่องก่อนขาย
-                   แต่ทั้งคู่คือ "สถานที่ของลูกค้ารายนี้" อ่านตารางเดียวกัน สิทธิ์ชุดเดียวกัน
-                   ⇒ วางเคียงกันคือผิดกฎบนหัวไฟล์นี้เอง: "ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว"
-                   ⚠️ **เงื่อนไขโผล่ยังผูกกับไซต์ ไม่ใช่จำนวนพื้นที่** — ผูกกับพื้นที่แล้ว
-                      ลูกค้าที่มีสาขาแต่ยังไม่เคยประเมิน จะได้แท็บที่หายไปทั้งที่มีของ */
-                serviceSites.length > 0 && {
-                  key: "serviceZones",
-                  label: `พื้นที่บริการ (${zoneRegistry?.zoneCount || 0} พื้นที่ · ${serviceSites.length} สถานที่)`,
-                },
-                // แท็บเดียวคุมทั้งกลิ่นและสูตร — สูตรผูกกลิ่น และตอนนี้ทะเบียนกลิ่นยัง
-                // ว่างอยู่ ถ้าแยกสองแท็บจะมีแท็บโล่งค้างบนหน้าลูกค้าทุกราย
-                // โผล่เมื่อมีของจริงเท่านั้น (แพตเทิร์นเดียวกับแท็บโครงการ)
-                (scents.length + formulas.length) > 0
-                  && { key: "registry", label: `กลิ่น & สูตร (${scents.length + formulas.length})` },
-              ]}
-            />
-
-            {/* Products Tab */}
-            {activeTab === "products" && (
-              products.length === 0 ? (
-                <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีสินค้าของลูกค้ารายนี้</div>
-              ) : isPortrait ? (
-                <div className="grid grid-cols-1 gap-3">
-                  {products.map((p) => {
-                    /* ป้าย/ภาษีต่อชิ้นถามกฎเดียวกับการ์ด "ภาระภาษีสรรพสามิต" ข้างบนและทะเบียนสินค้า (`productExciseBadge`)
-                       🐞 เดิมดูธงหมวดล้วน ⇒ ของที่ RA ยกเว้นขึ้น "ภาษีสรรพสามิต" · ของที่ RA บังคับในหมวดอื่นไม่มีป้าย
-                          ทั้งที่การ์ดภาระภาษีนับมัน (ตรวจตัวเลข 26/10 · L16b/L16c) */
-                    const exciseBadge = productExciseBadge(p, productTypes);
-                    const taxRate = exciseBadge === "taxable" ? (p.exciseTax || 0) + (p.localTax || 0) : 0;
-                    return (
-                      /* การ์ดทั้งใบเป็น <Link> ได้เพราะข้างในไม่มี interactive เลย —
-                         `<ProductStatusPill>` คืน <span> ล้วน ที่เหลือเป็น div/span ข้อความ
-                         (ท่าเดียวกับ `RelationRow` ข้างบน · เหตุผลเต็มอยู่ที่นั่น)
-                         prefetch={false}: ลูกค้ารายเดียวมีสินค้าได้หลายสิบใบ — กัน RSC prefetch ต่อการ์ด */
-                      <Link key={p.id} prefetch={false} href={`/database/products/${p.id}`} className="glass-panel card-link p-4 flex flex-col gap-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-[var(--text)] text-sm truncate">{productNameBoth(p)}</div>
-                            {/* กลุ่ม 03/04 ไม่มีแบรนด์ (brands.js) — ต่อ " · " ไปก็ได้ตัวคั่นลอย ๆ ท้ายรหัส */}
-                            <div className="text-[11px] text-[var(--text-3)] font-mono mt-0.5">{[p.fgCode, hasBrandField(p) ? brandBoth(p.brandName, p.brandNameEn) : ""].filter(Boolean).join(" · ")}</div>
-                          </div>
-                          <ProductStatusPill status={p.status} />
-                        </div>
-                        <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
-                          <span className="font-mono text-[var(--text-2)]">{p.volume} {p.volumeUnit || "ml"} · {fmtMoney(p.retailPriceIncVat)}</span>
-                          {/* ป้ายภาษีเฉพาะสินค้าที่ต้องเสีย/ถูกยกเว้นรายตัว — สินค้าที่ไม่เกี่ยวกับภาษี (ส่วนใหญ่) ไม่ต้องพูดถึงภาษี */}
-                          {canViewTax && exciseBadge && (
-                            <span className="flex items-center gap-1.5">
-                              {taxRate > 0 && <span className="font-mono text-[var(--text-2)]">{fmtMoney(taxRate)}</span>}
-                              <span className={`status-pill text-[10px]${exciseBadge === "taxable" ? " warning" : ""}`}>{exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>
-                            </span>
-                          )}
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              ) : (
-                <TableScroll surface="auto">
-                  <table className="premium-table">
-                    <thead>
-                      <tr>
-                        <th>รหัสสินค้า (FG Code)</th>
-                        <th>รายละเอียดสินค้า / แบรนด์</th>
-                        <th>ปริมาตร</th>
-                        <th className="num">ราคาขายปลีก</th>
-                        {canViewTax && <th className="num">ภาษีคำนวณต่อชิ้น</th>}
-                        <th className="text-center">สถานะการอนุมัติ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {products.map((p) => {
-                        // ตัวตัดสินเดียวกับมุมมองการ์ดข้างบน (`productExciseBadge`) — เหตุผลอยู่ที่นั่น
-                        const exciseBadge = productExciseBadge(p, productTypes);
-                        const taxRate = exciseBadge === "taxable" ? (p.exciseTax || 0) + (p.localTax || 0) : 0;
-                        const detailHref = `/database/products/${p.id}`;
-                        return (
-                          /* ทางเข้าของคีย์บอร์ดคือ <Link> ในเซลล์แรก ส่วน onClick ของแถวเป็นทางลัดของเมาส์
-                             — href ต้องเป็น **ตัวแปรเดียวกัน** ทั้งสองที่ (ด่าน ROW_MIRROR เทียบข้อความนิพจน์ตรงตัว) */
-                          <DetailRow key={p.id} href={detailHref} className="clickable-row">
-                            <td className="font-semibold font-mono text-[var(--text)]">
-                              {/* prefetch={false}: ลูกค้าหนึ่งรายมีสินค้าได้หลายสิบรายการ — กัน RSC prefetch ต่อแถว */}
-                              <Link prefetch={false} href={detailHref} className="linklike">{p.fgCode}</Link>
-                            </td>
-                            <td>
-                              <div className="font-semibold text-[var(--text)]">{productNameBoth(p)}</div>
-                              {hasBrandField(p) && (
-                                <div className="text-[10px] text-[var(--text-3)] font-mono mt-0.5">Brand: {naText(brandBoth(p.brandName, p.brandNameEn))}</div>
-                              )}
-                            </td>
-                            <td className="font-mono">{p.volume} {p.volumeUnit || "ml"}</td>
-                            <td className="num font-mono text-[var(--text-2)]">{fmtMoney(p.retailPriceIncVat)}</td>
-                            {canViewTax && (
-                              <td className="num font-mono text-[var(--text-2)]">
-                                {exciseBadge ? (
-                                  <div className="flex items-center justify-end gap-1.5">
-                                    {taxRate > 0 && <span>{fmtMoney(taxRate)}</span>}
-                                    <span className={`status-pill text-[10px]${exciseBadge === "taxable" ? " warning" : ""}`}>{exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>
-                                  </div>
-                                ) : <span className="text-[var(--text-3)]">{NA}</span>}
-                              </td>
-                            )}
-                            <td className="text-center"><ProductStatusPill status={p.status} /></td>
-                          </DetailRow>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-              )
-            )}
-
-            {/* Registrations Tab — tax-gated, read-only (manage in /tax) */}
-            {canViewTax && activeTab === "registrations" && (
-              regs.length === 0 ? (
-                <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีการขึ้นทะเบียนสรรพสามิตของลูกค้ารายนี้</div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3">
-                  {regs.map((r) => (
-                    /* การ์ดทั้งใบเป็น <Link> ได้ — `<StatusBadge>` (excise) คืน <span> ล้วน
-                       ที่เหลือเป็นข้อความ ⇒ ไม่มี interactive descendant ให้ <a> ผิดสเปก */
-                    <Link key={r.id} prefetch={false} href={`/go/registration/${r.id}`} className="glass-panel card-link p-4 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-semibold font-mono text-sm text-[var(--text)]">{r.fgCode}</div>
-                        <div className="text-[11px] text-[var(--text-3)] truncate">{productDisplayName(r)} · {brandBoth(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName)}</div>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        {r.approvalNumber && <span className="font-mono text-[11px] text-[var(--text-3)]">{r.approvalNumber}</span>}
-                        <StatusBadge status={r.status} />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )
-            )}
-
-            {/* Orders Tab — tax-gated */}
-            {canViewTax && activeTab === "orders" && (
-              orders.length === 0 ? (
-                <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีรายการสั่งซื้อในระบบ</div>
-              ) : isPortrait ? (
-                <div className="grid grid-cols-1 gap-3">
-                  {orders.map((o) => {
-                    const isExempt = isExemptFiling(o); // ยอด 0 ≠ ยกเว้น (สินค้าไม่มีราคาขายปลีก)
-                    const itemCount = o.items?.length || 0;
-                    return (
-                      /* ── การ์ดนี้เป็น <button> ไม่ใช่ <Link> — ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง ──
-                         กดแล้วเปิด `<OrderDetailModal>` ในหน้าเดิม (setSelectedOrder) ⇒ ไม่มี URL
-                         ปลายทางให้ลิงก์ · ท่าและเหตุผลเต็มอยู่เหนือ `.card-button` ใน globals.css
-                         🪤 `<div>` ข้างในกลายเป็น `<span>` ทั้งหมด — `<button>` รับได้แค่ phrasing
-                            content · ตัวที่เป็น flex item ถูก blockify ให้เองอยู่แล้ว แต่สองบรรทัด
-                            ข้างใน `min-w-0` **ไม่ใช่** flex item จึงต้องเติม utility `block` เอง
-                            ไม่งั้นมันไหลไปอยู่บรรทัดเดียวกัน (เลขที่ QT ต่อท้ายด้วย "PO: …")
-                            และ `mt-0.5` หายเงียบ ๆ เพราะ margin แนวตั้งไม่มีผลกับ inline */
-                      <button key={o.id} type="button" onClick={() => setSelectedOrder(o)} className="glass-panel card-button p-4 flex flex-col gap-2">
-                        <span className="flex items-start justify-between gap-2">
-                          <span className="min-w-0">
-                            <span className="block font-semibold text-[var(--text)] font-mono text-sm">{o.quotationRef}</span>
-                            <span className="block text-[11px] text-[var(--text-3)] font-mono mt-0.5">PO: {naText(o.poReference)} · {itemCount} รายการ</span>
-                          </span>
-                          <OrderStatusPill status={o.status} />
-                        </span>
-                        <span className="flex items-center justify-between text-xs pt-2 border-t border-[var(--border)]">
-                          <span className="text-[var(--text-3)]">กำหนดส่ง: {naText(o.deliveryDate)}</span>
-                          <span className="font-mono font-bold text-[var(--text)]">
-                            {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <TableScroll surface="auto">
-                  <table className="premium-table">
-                    <thead>
-                      <tr>
-                        <th>เลขที่ใบเสนอราคา</th>
-                        <th>PO Reference</th>
-                        <th className="text-center">จำนวนรายการ</th>
-                        <th className="num">ยอดภาษีรวม</th>
-                        <th className="text-center">กำหนดส่ง</th>
-                        <th className="text-center">สถานะชำระเงิน</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders.map((o) => {
-                        const isExempt = isExemptFiling(o); // ยอด 0 ≠ ยกเว้น (สินค้าไม่มีราคาขายปลีก)
-                        const itemCount = o.items?.length || 0;
-                        return (
-                          /* ── แถวนี้ **ไม่มี** ทางลัดเมาส์บน <tr> โดยตั้งใจ (2026-09-03) ──────────────
-                              ใบสั่งซื้อไม่มีหน้าเป็นของตัวเอง — กดแล้วเปิด `<OrderDetailModal>` ในหน้าเดิม
-                              ⇒ ไม่มี URL ปลายทาง จึงใช้ `DetailRow` ไม่ได้ (href เป็น prop บังคับ และด่าน
-                              ROW_MIRROR เทียบ *ปลายทาง* ของแถวกับลิงก์ในเซลล์) · ทางลัดเมาส์บน <tr> ดิบ
-                              ได้รับยกเว้นที่ `DetailRow` จุดเดียวในระบบ ⇒ แถวนี้ต้องถอด `onClick` ทิ้ง
-                              ไม่งั้นเหลือทางเข้าให้เมาส์อย่างเดียว (ด่าน A11Y_KEYBOARD)
-                              ⇒ ทางเข้าเดียวคือ <button> ในเซลล์แรก · `.text-action-block` ให้ปุ่มกิน
-                              ทั้งเซลล์คืนเป้าเมาส์ที่กว้างขึ้น · `.premium-row` แทน `.clickable-row`
-                              เพราะแถวไม่ใช่ตัวกดแล้ว (ไม่ต้องมี cursor: pointer หลอกตา)
-                              การ์ดจอตั้งของแท็บเดียวกันเป็น <button> ครอบทั้งใบอยู่แล้ว = ท่าเดียวกัน */
-                          <tr key={o.id} className="premium-row">
-                            <td className="font-semibold font-mono text-[var(--text)]">
-                              {/* ไม่มี onClick บนแถวแล้ว ⇒ ไม่ต้อง stopPropagation
-                                  `.text-action` (เส้นประ = เกิดอะไรขึ้นตรงนี้) ไม่ใช่ `.linklike` ซึ่งแปลว่า "ไปที่อื่น" */}
-                              <button
-                                type="button"
-                                className="text-action text-action-block font-semibold"
-                                onClick={() => setSelectedOrder(o)}
-                              >
-                                {o.quotationRef}
-                              </button>
-                            </td>
-                            <td className="font-mono text-xs text-[var(--text-2)]">{naText(o.poReference)}</td>
-                            <td className="text-center font-mono font-semibold">{itemCount}</td>
-                            <td className="num font-mono font-bold text-[var(--text)]">
-                              {isExempt ? <span className="status-pill success text-[10px]">ไม่ต้องเสียภาษี</span> : fmtMoney(o.totalTax)}
-                            </td>
-                            <td className="text-center text-xs">{naText(o.deliveryDate)}</td>
-                            <td className="text-center"><OrderStatusPill status={o.status} /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </TableScroll>
-              )
-            )}
-
-            {/* Projects Tab — PM 360-view, read-only (manage in /sa) */}
-            {activeTab === "projects" && (
-              projects.length === 0 ? (
-                <div className="glass-panel p-10 text-center text-[var(--text-3)]">ยังไม่มีโครงการของลูกค้ารายนี้</div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2">
-                  {projects.map((p) => (
-                    <RelationRow
-                      key={p.id}
-                      href={`/sa/projects/${p.id}`}
-                      title={p.name || p.code}
-                      subtitle={p.code}
-                      right={p.status ? <span className="ui-badge shrink-0">{p.status}</span> : null}
-                    />
-                  ))}
-                </div>
-              )
-            )}
-
-            {/* พื้นที่บริการ — ทะเบียนก่อนขาย (เฟส 3A) · อ่านอย่างเดียวทั้งแท็บ */}
-            {activeTab === "serviceZones" && (
-              <CustomerZonesPanel
-                registry={zoneRegistry}
-                sitesOps={serviceSites}
-                loading={zoneRegistryLoading}
-                error={zoneRegistryError}
-              />
-            )}
-
-            {/* กลิ่น & สูตร — read-only 360-view, จัดการจริงที่ทะเบียน
-                ทะเบียนไม่มีหน้ารายละเอียดรายตัว ลิงก์จึงเป็น "เปิดทะเบียนแล้วค้นให้"
-                ผ่าน ?q= (รหัสก่อน เพราะไม่ซ้ำทั้งบริษัท ตกไปใช้ชื่อเมื่อยังเป็นร่าง) */}
-            {activeTab === "registry" && (
-              <div className="grid grid-cols-1 gap-4">
-                {scents.length > 0 && (
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="flex items-center gap-2 text-[var(--text-2)] text-xs font-semibold">
-                      <FlaskConical size={14} aria-hidden="true" /> กลิ่นของลูกค้ารายนี้ (รวมที่แชร์มา · {scents.length})
-                    </div>
-                    {scents.map((s) => (
-                      <RelationRow
-                        key={s.id}
-                        href={`/database/scents?q=${encodeURIComponent(s.code || s.name)}`}
-                        title={s.name}
-                        subtitle={`${s.code || "ยังไม่มีรหัส"}${s.sentAt ? ` · ส่งเมื่อ ${fmtDate(s.sentAt)}` : " · ยังไม่ส่ง"}${s.sharedFrom ? ` · แชร์จาก ${s.sharedFrom}` : ""}`}
-                        right={(
-                          <RegistryBadge
-                            className="shrink-0"
-                            tone={SCENT_STATUS_TONES[s.status]}
-                            label={SCENT_STATUS_LABELS[s.status]}
-                          />
-                        )}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {formulas.length > 0 && (
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="flex items-center gap-2 text-[var(--text-2)] text-xs font-semibold">
-                      <Beaker size={14} aria-hidden="true" /> สูตรของลูกค้ารายนี้ (รวมที่แชร์มา · {formulas.length})
-                    </div>
-                    {formulas.map((f) => {
-                      // ชื่อกลิ่นหาจากชุดที่โหลดมาแล้ว — ไม่เจอให้เงียบ **ห้ามถอยไปโชว์ id ดิบ**
-                      const scentName = scents.find((s) => s.id === f.scentId)?.name;
-                      return (
-                        <RelationRow
-                          key={f.id}
-                          href={`/database/formulas?q=${encodeURIComponent(f.code || f.name)}`}
-                          title={f.name}
-                          subtitle={[
-                            f.code || "ยังไม่มีรหัส",
-                            scentName ? `กลิ่น: ${scentName}` : null,
-                            f.formulaDate ? fmtDate(f.formulaDate) : null,
-                            f.sharedFrom ? `แชร์จาก ${f.sharedFrom}` : null,
-                          ].filter(Boolean).join(" · ")}
-                          right={(
-                            <RegistryBadge
-                              className="shrink-0"
-                              tone={FORMULA_STATUS_TONES[f.status]}
-                              label={FORMULA_STATUS_LABELS[f.status]}
-                            />
-                          )}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* ⭐ หน้าลูกค้าศูนย์รวม งวด H1 (มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md) — แท็บการขาย (ตามดีล) ·
+              สินค้า · คำร้อง · การเงิน · สรรพสามิต · บริการ · คำค้นช่องเดียวกรองทุกแท็บ · แท็บที่ผู้ดูไม่มีสิทธิ์ไม่โผล่
+              ⚠️ แท็บ "การยื่นชำระภาษี" (ตาราง orders 0 แถว) และ "โครงการ" (ถอดโครงการทาง ก.) ถอดแล้ว */}
+          <CustomerHub
+            hub={hub}
+            products={products}
+            scents={scents}
+            formulas={formulas}
+            registrations={canViewTax ? regs : []}
+            service={serviceSites.length > 0 ? {
+              /* โผล่เมื่อมีไซต์จริงเท่านั้น — ลูกค้า OEM ส่วนใหญ่ไม่มีระบบกระจายกลิ่น (เงื่อนไขผูกกับไซต์ ไม่ใช่จำนวนพื้นที่) */
+              label: `พื้นที่บริการ (${zoneRegistry?.zoneCount || 0} พื้นที่ · ${serviceSites.length} สถานที่)`,
+              render: () => (
+                <CustomerZonesPanel
+                  registry={zoneRegistry}
+                  sitesOps={serviceSites}
+                  loading={zoneRegistryLoading}
+                  error={zoneRegistryError}
+                />
+              ),
+            } : null}
+          />
 
           {/* เอกสารแนบของลูกค้า — แผนที่/สัญญา/หนังสือรับรอง/ภพ.20 ฯลฯ */}
           <AttachmentsPanel
@@ -1164,7 +760,6 @@ export default function CustomerDetails() {
         </form>
       </Modal>
 
-      <OrderDetailModal order={selectedOrder} open={!!selectedOrder} onClose={() => setSelectedOrder(null)} />
       <ConfirmDialog
         open={!!confirmBox}
         onClose={() => setConfirmBox(null)}

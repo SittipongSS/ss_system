@@ -102,7 +102,8 @@ test('เลิก select คอลัมน์ผี — products มี team �
 });
 
 test('error ของทุก query ที่เอาไปแสดงต้องถูกตรวจ ไม่ใช่ปล่อยเป็นลิสต์ว่าง', () => {
-  for (const name of ['prodRes', 'regRes', 'orderRes', 'projRes']) {
+  // orderRes/projRes ถอดแล้ว (หน้าลูกค้าศูนย์รวม H1) — ข้อมูลกลุ่มใหม่อยู่ใน customerHubData ซึ่ง fetchAll throw เอง
+  for (const name of ['prodRes', 'regRes']) {
     assert.match(relationsSource, new RegExp(`${name}\\.error`), `${name} ต้องถูกตรวจ error`);
   }
   assert.match(relationsSource, /throw new Error\(`โหลดข้อมูลที่เกี่ยวข้องไม่สำเร็จ/);
