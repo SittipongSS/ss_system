@@ -12,7 +12,7 @@
 // กติกาของ `'mine'`: เป็นของฉันได้ก็ต่อเมื่อ **ทุกเลน** ที่ตัวนับรวมให้คนนี้เป็นงานส่วนตัว
 import {
   can, canApproveMasterData, canConfirmPayment, canDoFieldWork, canEditProduction,
-  canEditService, canUser, canViewRequests, hasTeamScope, isReadOnlyObserver, isSuperuser,
+  canEditService, canUser, canViewRequests, hasTeamScope, isModuleClosed, isReadOnlyObserver, isSuperuser,
 } from '@/lib/permissions';
 import { NAV_COUNT_KEYS } from '@/lib/nav/useNavCounts';
 import { DEPT_QUEUE_COUNT_KEYS } from '@/lib/nav/navCounts';
@@ -41,7 +41,8 @@ const SCOPE_RULES = {
   tasks: (user) => (can(user?.role, 'pm:view') ? 'mine' : null),
   quotations: (user) => (can(user?.role, 'salesplan:view') ? 'mine' : null),
   visits: (user) => (canDoFieldWork(user) ? 'mine' : null),
-  mgmtTasks: (user) => (can(user?.role, 'mgmt:view') ? 'mine' : null),
+  // งานบริหารปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) — ไม่มีเมนูให้ป้ายนี้เกาะ
+  mgmtTasks: (user) => (!isModuleClosed('mgmt') && can(user?.role, 'mgmt:view') ? 'mine' : null),
 
   // คิวของฝ่าย — งานของทั้งฝ่าย ใครในฝ่ายหยิบก็ได้
   ...Object.fromEntries(Object.entries(DEPT_QUEUE_COUNT_KEYS).map(([dept, key]) => [key,

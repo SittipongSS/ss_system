@@ -8,10 +8,12 @@
 // ถ้าวันไหนมีคนลืมแคบด้วยฝ่าย ทั้งสองระบบจะรั่วหากันโดยไม่มีอะไรฟ้อง
 import test from 'node:test';
 import assert from 'node:assert/strict';
+/* ⛔ วางแผนผลิตปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) — ไฟล์นี้ล็อก **กติกาแยกทีมตอนเปิดใช้**
+   ⇒ ใช้ตัวกติกาภายใต้ชื่อเดิม · ส่วนการ์ดระบบ (`keys`) ล็อกว่าปิดแล้วจริง */
 import {
-  canEditProduction,
+  productionEditRule as canEditProduction,
   canEditService,
-  canViewProduction,
+  productionViewRule as canViewProduction,
   canViewService,
 } from '../permissions.js';
 import { systemsForUser } from '../../config/systems.js';
@@ -31,7 +33,7 @@ test('⭐ ฝ่ายผลิต (PD) เห็นแต่ระบบวา�
   assert.equal(canEditProduction(at(dept)), true);
   assert.equal(canViewService(at(dept)), false);
   assert.equal(canEditService(at(dept)), false);
-  assert.ok(keys(at(dept)).includes('production'));
+  assert.ok(!keys(at(dept)).includes('production')); // ⛔ ปิดแล้ว — การ์ดไม่ขึ้นแม้แต่ PD
   assert.ok(!keys(at(dept)).includes('service'));
 });
 
@@ -44,8 +46,9 @@ test('🔴 โมดูลวางแผนผลิตเหลือ PD/PC �
   // PC กลับเข้ามาเฉพาะฝั่งอ่าน (มติ 2026-09-17) — วางคิวยังเป็นของ PD ฝ่ายเดียว
   assert.equal(canViewProduction(at('PC')), true);
   assert.equal(canEditProduction(at('PC')), false);
-  assert.ok(keys(at('PC')).includes('production'));
-  assert.ok(keys({ role: 'admin', extraCaps: [] }).includes('production'));
+  // ⛔ ปิดแล้ว (มติ 2026-11-13) — การ์ดไม่ขึ้นให้ PC และ admin
+  assert.ok(!keys(at('PC')).includes('production'));
+  assert.ok(!keys({ role: 'admin', extraCaps: [] }).includes('production'));
 });
 
 test('⭐ TS ยังถูกกันออกจากตารางผลิต — คนละทีมปฏิบัติงาน (คนละเหตุผลกับ PC/WH/QC)', () => {

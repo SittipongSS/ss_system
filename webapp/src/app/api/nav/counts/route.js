@@ -63,7 +63,7 @@ import { applyExciseListScope } from '@/lib/excise/listScope';
 import { isSystemAdmin } from '@/lib/issues/access';
 import { attachSourceDeals } from '@/lib/scopedRow';
 import { loadRaFilingQueue } from '@/lib/excise/raFiling';
-import { canEditProduction } from '@/lib/permissions';
+import { canEditProduction, isModuleClosed } from '@/lib/permissions';
 import { ledgerInConfirmQueue } from '@/lib/finance/paymentLedger';
 import {
   DEPT_QUEUE_COUNT_KEYS, LEAD_TODO_STATUS, deptRequestsTodoCount, myTasksTodoCount,
@@ -654,7 +654,8 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   // งานจากที่ประชุม — ⚠️ กรองปีเหมือนหน้ารายการ (ตัวกรองปีของหน้านั้นไม่มีตัวเลือก
   // "ทั้งหมด") ⇒ ป้ายนับปีปัจจุบันเท่านั้น ไม่งั้นเลขบนเมนูมีของที่หน้าไม่แสดง
-  if (can(user.role, 'mgmt:view')) {
+  // ⛔ งานบริหารปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) — ไม่ยิงคิวรีนับให้เมนูที่ไม่มีแล้ว
+  if (!isModuleClosed('mgmt') && can(user.role, 'mgmt:view')) {
     jobs.push(attempt('mgmtTasks', async () => {
       const year = Number(businessDate().slice(0, 4));
       const tasks = await listTasks(supabase, { year });

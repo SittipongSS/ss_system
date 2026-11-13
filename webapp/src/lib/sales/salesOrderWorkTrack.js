@@ -23,6 +23,7 @@ import { JOB_STATUS_LABELS } from '@/lib/pm/productionPlan';
 import { TRACKS, statusMeta } from '@/lib/excise/workflow';
 import { NOT_BILLED_FILING_KINDS } from '@/lib/excise/raFilingRules';
 import { fmtDate, fmtMoney, fmtNumber } from '@/lib/format';
+import { isModuleClosed } from '@/lib/permissions';
 
 /* ประเภทดีลที่มีสายผลิตจริง — ของเข้าและผลิตขึ้นเฉพาะสองตัวนี้
    · SCENT     ขายค่าออกแบบกลิ่น จบที่ RD ส่ง direction ไม่มีของเข้าไม่มีคิวผลิต
@@ -549,6 +550,10 @@ const EXCISE_QUOTE_STATUS_TEXT = (quote) => {
  */
 export function salesOrderWorkTrack({
   scent, readiness, plan, excise, orderId, projectId, dealType, approved = false,
+  /* ⛔ โมดูลวางแผนผลิตปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) ⇒ ไม่มีช่วง "ผลิต"
+     — ช่วงนั้นชวนกด "เปิดคิวงานผลิต" ไปหน้าที่ปิดแล้ว · ของเข้ายังอยู่ (ข้อมูลของใบเอง)
+     ผู้เรียกไม่ต้องส่ง · เทสต์ส่ง `true` เพื่อล็อกพฤติกรรมไว้สำหรับวันที่เปิดคืน */
+  productionOpen = !isModuleClosed('production'),
 } = {}) {
   const hasSupplyChain = DEAL_TYPES_WITH_SUPPLY_CHAIN.includes(dealType);
   const segments = [
@@ -556,7 +561,7 @@ export function salesOrderWorkTrack({
     // ⭐ ขึ้นทะเบียนอยู่ **ก่อน** ของเข้า/ผลิต — ทะเบียนต้องอนุมัติก่อนผลิตและส่งของจริง
     registrationSegment(excise),
     deliverySegment(readiness, projectId, hasSupplyChain),
-    productionSegment(plan, { approved, hasSupplyChain }),
+    productionOpen ? productionSegment(plan, { approved, hasSupplyChain }) : null,
     // ⭐ ยื่นชำระอยู่ท้ายสุดเสมอ — ยื่นหลังขายจริง
     filingSegment(excise, { approved }),
   ].filter(Boolean);

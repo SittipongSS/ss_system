@@ -1,4 +1,4 @@
-import { canUser } from '@/lib/permissions';
+import { canUser, isModuleClosed } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, notFound } from '@/lib/http';
 import { recordAudit } from '@/lib/audit';
 
@@ -16,7 +16,7 @@ async function load(supabase, id) {
 
 // PATCH /api/mgmt/rocks/[id] — แก้ "สิ่งที่ดีขึ้น" + goals.
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
-  if (!canUser(user, 'mgmt:edit')) return forbidden();
+  if (isModuleClosed('mgmt') || !canUser(user, 'mgmt:edit')) return forbidden(); // ⛔ ปิดแล้ว (มติ 2026-11-13)
   const id = await paramId(ctx);
   const before = await load(supabase, id);
   if (!before || before.deletedAt) return notFound('ไม่พบข้อมูล');
@@ -36,7 +36,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
 // DELETE /api/mgmt/rocks/[id] — soft-delete.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
-  if (!canUser(user, 'mgmt:edit')) return forbidden();
+  if (isModuleClosed('mgmt') || !canUser(user, 'mgmt:edit')) return forbidden(); // ⛔ ปิดแล้ว (มติ 2026-11-13)
   const id = await paramId(ctx);
   const before = await load(supabase, id);
   if (!before || before.deletedAt) return notFound('ไม่พบข้อมูล');

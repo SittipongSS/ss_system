@@ -7,9 +7,12 @@ import {
   systemLandingForUser,
   systemsForUser,
 } from './systems.js';
-import { canUser } from '@/lib/permissions';
+import { CLOSED_MODULES, canUser } from '@/lib/permissions';
 
 const keysFor = (user) => systemsForUser(user).map((system) => system.key);
+/* ⛔ วางแผนผลิต + งานบริหารปิดแล้ว (มติผู้ใช้ 2026-11-13 · CLOSED_MODULES) — ยังอยู่ในแคตตาล็อก
+   (ลำดับเดิม) แต่ไม่ขึ้นให้ใครเลย รวม admin */
+const OPEN_SYSTEM_ORDER = SYSTEM_ORDER.filter((key) => !CLOSED_MODULES.includes(key));
 
 // ⚠️ `support` (แจ้งปัญหาระบบ mig 0223) อยู่ท้ายลิสต์ของ **ทุก** เคสโดยเจตนา —
 // เป็นระบบเดียวที่ `isVisible: () => true` เพราะคนที่เจอบั๊กบ่อยที่สุดคือคนที่สิทธิ์
@@ -17,7 +20,7 @@ const keysFor = (user) => systemsForUser(user).map((system) => system.key);
 test('system catalog keeps the agreed global order and role visibility', () => {
   // 'finance' แทรกหลัง 'service' (มติผู้ใช้ 2026-08-13) — โมดูลของฝ่ายอยู่ติดกัน
   assert.deepEqual(SYSTEM_ORDER, ['salesplan', 'rd', 'production', 'service', 'finance', 'tax', 'sahamit', 'master', 'mgmt', 'support']);
-  assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), SYSTEM_ORDER);
+  assert.deepEqual(keysFor({ role: 'admin', team: null, extraCaps: [] }), OPEN_SYSTEM_ORDER);
   /* 🔴 ฝ่ายขายไม่เห็นการ์ด "ธุรกิจบริการ" แล้ว (มติผู้ใช้ 2026-08-30: เข้าได้เฉพาะ TS)
      — ของที่เขายังต้องใช้คือเลือก/สร้างสถานที่จาก *ในใบคำร้อง* ซึ่งไม่ผ่านการ์ดนี้ */
   /* 🔴 ฝ่ายขายไม่เห็นการ์ด "วางแผนผลิต" แล้ว (มติผู้ใช้ 2026-09-16: เปิดให้เฉพาะ PD กับ admin)
@@ -27,14 +30,14 @@ test('system catalog keeps the agreed global order and role visibility', () => {
   assert.deepEqual(keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }), ['salesplan', 'master', 'support']);
   assert.deepEqual(keysFor({ role: 'ae', team: 'KA', extraCaps: [] }), ['salesplan', 'sahamit', 'master', 'support']);
   // secretary/marketing ได้ products:view อ่านอย่างเดียว (มติ 2026-07-20) → เห็นการ์ด "ฐานข้อมูล" ด้วย
-  assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'mgmt', 'support']);
+  assert.deepEqual(keysFor({ role: 'secretary', team: null, extraCaps: [] }), ['master', 'support']); // งานบริหารปิดแล้ว
   assert.deepEqual(keysFor({ role: 'ra', team: null, extraCaps: [] }), ['tax', 'master', 'support']);
 });
 
 test('system visibility covers every supported role and sales team', () => {
   const cases = [
-    ['admin', null, SYSTEM_ORDER],
-    ['secretary', null, ['master', 'mgmt', 'support']],
+    ['admin', null, OPEN_SYSTEM_ORDER],
+    ['secretary', null, ['master', 'support']], // ⛔ งานบริหารปิดแล้ว
     ['ae_supervisor', null, ['salesplan', 'sahamit', 'master', 'support']],
     ['marketing', null, ['salesplan', 'master', 'support']],
     ['ra', null, ['tax', 'master', 'support']],
@@ -48,14 +51,15 @@ test('system visibility covers every supported role and sales team', () => {
     // PR-1 มีแต่หน้าตั้งค่าไลน์ซึ่งผู้สังเกตการณ์ทำอะไรไม่ได้ · เปิดตอน PR-3 (บอร์ด)
     /* 🔴 ผู้สังเกตการณ์ก็ไม่เห็น "ธุรกิจบริการ" แล้ว (มติ 2026-08-30 "เข้าได้เฉพาะ TS")
        — ถ้าวันหนึ่งผู้บริหารต้องดูงานบริการ ให้เปิดเป็นรายงาน ไม่ใช่เปิดโมดูลทั้งก้อน */
-    ['viewer', null, ['salesplan', 'tax', 'sahamit', 'master', 'mgmt', 'support']],
+    ['viewer', null, ['salesplan', 'tax', 'sahamit', 'master', 'support']], // ⛔ งานบริหารปิดแล้ว
     /* ⭐ หนึ่งฝ่าย หนึ่ง role (2026-08-28) — เดิมทั้งห้าฝ่ายเป็น `staff` ตัวเดียว
        การ์ดจึงต้องขึ้นกับ **ฝ่าย** · ตอนนี้ role บอกฝ่ายอยู่แล้ว การ์ดจึงตรงกับ role */
     /* 🔴 **มติผู้ใช้ 2026-09-16: วางแผนผลิตเหลือ PD กับ admin · 17/09 เติม PC คืน
        (อ่านอย่างเดียว)** — WH/QC ยังถือ `production:view` ที่ชั้น role แต่ด่านฝ่าย
        ใน `canViewProduction` ตัดออก */
-    ['pc', null, ['salesplan', 'production', 'master', 'support']],
-    ['pd', null, ['salesplan', 'production', 'master', 'support']],
+    // ⛔ วางแผนผลิตปิดแล้ว (มติ 2026-11-13) — PD/PC ก็ไม่เห็นการ์ดแล้ว
+    ['pc', null, ['salesplan', 'master', 'support']],
+    ['pd', null, ['salesplan', 'master', 'support']],
     ['wh', null, ['salesplan', 'master', 'support']],
     ['qc', null, ['salesplan', 'master', 'support']],
     /* ⭐ TS เป็นฝ่ายเดียวที่ไม่อยู่สายโรงงาน — ได้ธุรกิจบริการแทนวางแผนผลิต
@@ -95,12 +99,9 @@ test('⭐ ฝ่ายโรงงานกับฝ่ายเจ้าหน�
      ⭐ ตอนนี้ cap แคบตั้งแต่ role แล้ว เทสต์นี้จึงล็อกว่า "ให้ cap ถูก role" แทน */
   const at = (role) => keysFor({ role, team: null, extraCaps: [] });
 
-  // ⭐ วางแผนผลิตเหลือ PD (วางคิว) + PC (อ่าน) — WH/QC ถูกด่านฝ่ายตัด (มติ 2026-09-16/17)
-  // ส่วน TS ไม่มี cap ตั้งแต่ชั้น role (คนละทีมปฏิบัติงาน)
-  for (const role of ['pd', 'pc']) {
-    assert.ok(at(role).includes('production'), role);
-  }
-  for (const role of ['wh', 'qc', 'ts']) {
+  // ⛔ วางแผนผลิตปิดแล้ว (มติ 2026-11-13) — ไม่มีฝ่ายไหนเห็น · กติกาฝ่ายเดิม (PD วางคิว · PC อ่าน)
+  //    ล็อกไว้ที่ productionLines.test.mjs ผ่าน productionViewRule สำหรับวันเปิดคืน
+  for (const role of ['pd', 'pc', 'wh', 'qc', 'ts']) {
     assert.ok(!at(role).includes('production'), role);
   }
 
@@ -157,10 +158,11 @@ test('ฐานข้อมูล lands on the product list when the user has no
 
 /* 📌 เทสต์ของ `recentSystemForUser` ถูกลบพร้อมฟังก์ชัน (ADR 0016) — การ์ด "ทำงานต่อ"
    ไม่มีแล้ว · ข้อที่ยังต้องจริงต่อไปคือ **สิทธิ์รายผู้ใช้เปิดระบบให้ได้** จึงย้ายมาไว้ที่นี่ */
-test('สิทธิ์รายผู้ใช้เปิดระบบเพิ่มให้ได้ — SA ที่ได้ mgmt:view มาช่วยเลขา', () => {
+test('⛔ สิทธิ์รายผู้ใช้เปิดระบบที่ปิดแล้วคืนไม่ได้ — SA ที่ได้ mgmt:view มาช่วยเลขา (มติ 2026-11-13)', () => {
+  /* เดิมเทสต์นี้ล็อกว่าสิทธิ์รายคนเปิดการ์ด "งานบริหาร" ให้ได้ · โมดูลนั้นปิดแล้ว ⇒ ตอนนี้ล็อกกลับด้าน:
+     สวิตช์ปิดชนะสิทธิ์รายคนเสมอ (กติกาสิทธิ์รายคนยังอยู่ที่ mgmtAccessRule ใน permissions.test.mjs) */
   const grantedSales = { role: 'ae', team: 'ODM', extraCaps: ['mgmt:view'] };
-  assert.ok(keysFor(grantedSales).includes('mgmt'));
-  assert.ok(!keysFor({ role: 'ae', team: 'ODM', extraCaps: [] }).includes('mgmt'));
+  assert.ok(!keysFor(grantedSales).includes('mgmt'));
 });
 
 // ── ระบบที่ยังไม่เปิดใช้ (มติผู้ใช้ 2026-08-09) ──────────────────────────
@@ -179,8 +181,15 @@ test('⭐ ระบบที่ยังไม่เปิดใช้ยัง�
      แล้วผู้ใช้ทักว่าเกินที่สั่ง ⇒ สองเรื่องนี้แยกกันเสมอ: "ใครเห็น" กับ "กดได้หรือยัง" */
   assert.deepEqual(disabledKeys, ['production', 'mgmt']);
 
+  /* ⛔ สองระบบนี้ **ปิดแล้ว** (มติ 2026-11-13 · CLOSED_MODULES) — คนละสวิตช์กับ "จาง":
+     ปิด = ไม่ขึ้นให้ใครเลย · ธง `disabled` คงไว้ ⇒ วันที่เอาออกจาก CLOSED_MODULES
+     การ์ดจะกลับมา "จาง" ไม่ใช่กดได้ทันที (ไม่รวบ "ใครเห็น" กับ "กดได้หรือยัง") */
   for (const key of disabledKeys) {
-    assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์ระบบ`);
+    if (CLOSED_MODULES.includes(key)) {
+      assert.ok(!keysFor(admin).includes(key), `${key} ปิดแล้ว ต้องไม่ขึ้นแม้แต่ admin`);
+    } else {
+      assert.ok(keysFor(admin).includes(key), `${key} ต้องยังอยู่ในลิสต์ระบบ`);
+    }
   }
 });
 
