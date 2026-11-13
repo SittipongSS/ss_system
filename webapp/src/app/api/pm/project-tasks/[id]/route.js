@@ -9,6 +9,7 @@ import { pickFields } from '@/lib/validate';
 import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { milestoneDoneUpdate } from '@/lib/pm/projectUpdates';
 import { appendUpdate } from '@/lib/master/updates';
+import { loadTaskScope } from '@/lib/pm/dealTimelineScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,35 +26,20 @@ const EDITABLE = [
   'note', 'showNoteInPrint',
 ];
 
-// Load the task + its parent project (for team-scope checks).
-// DL1: task ลอยของดีล (projectId ว่าง — mig 0094) ใช้ scope จากดีลแทน
-// (pseudo-project {team, aeOwner} ให้ pmTaskEditTier/inScope เช็คทีมได้เหมือนเดิม)
-async function loadTaskWithProject(supabase, id) {
-  const { data: task, error: taskError } = await supabase.from('project_tasks').select('*').eq('id', id).maybeSingle();
-  if (taskError) throw taskError;
-  if (!task) return { task: null, project: null, scopeRow: null };
-  if (!task.projectId && task.dealId) {
-    const { data: deal, error: dealError } = await supabase.from('sales_deals')
-      .select('id, team, ownerName').eq('id', task.dealId).maybeSingle();
-    if (dealError) throw dealError;
-    return { task, project: null, scopeRow: deal ? { team: deal.team, aeOwner: deal.ownerName } : null };
-  }
-  const { data: project } = await supabase.from('projects').select('*').eq('id', task.projectId).maybeSingle();
-  return { task, project, scopeRow: project };
-}
-
+// ขั้นตอน + แถวขอบเขต: งานที่มี dealId ใช้ขอบเขตของดีลเสมอ (งวด P2b · ดีล = หน่วยเดียว) ·
+// งานกลางของโครงการ (dealId ว่าง) ใช้โครงการ — ตัวกลางอยู่ที่ lib/pm/dealTimelineScope.js
 // PATCH /api/pm/project-tasks/[id]
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
 
-  const { task, project, scopeRow } = await loadTaskWithProject(supabase, id);
+  const { task, project, scopeRow } = await loadTaskScope(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
 
   // สิทธิ์แก้ไขมี 2 ระดับ (รวม logic ไว้ที่ pmTaskEditTier ใน permissions.js):
   //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโครงการ)
   //   workflow — ผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
   //              อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
-  // task ลอยของดีล (DL1): scopeRow = ทีม/AE ของดีล แทนโครงการ
+  // งานที่มี dealId: scopeRow = ทีม/เจ้าของดีล (มีโครงการหรือไม่ก็ตาม) · งานกลาง: โครงการ
   const tier = pmTaskEditTier(user, task, scopeRow);
   if (tier === 'none') return forbidden();
   const workflowEdit = tier === 'workflow';
@@ -204,7 +190,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
 
-  const { task, project, scopeRow } = await loadTaskWithProject(supabase, id);
+  const { task, project, scopeRow } = await loadTaskScope(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
   if (!inScope(pmEditScope(user?.role), user, scopeRow || {})) {
     return forbidden();

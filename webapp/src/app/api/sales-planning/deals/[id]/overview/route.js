@@ -134,6 +134,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       .eq('dealId', deal.id).is('projectId', null)
       .order('stepOrder', { ascending: true }), []);
   }
+  // Rev. ไทม์ไลน์ของดีล (งวด P2b · mig 0435): เลขสูงสุดที่เคยออก + วันที่ออก — ปุ่ม "ออก Rev. N" กับหัวเอกสารใช้
+  // (Rev. ปัจจุบัน/แก้แล้ว อยู่บนแถวดีลเอง: timelineRev · timelineRevStale)
+  const timelineRevision = await safe('timeline revision', supabase
+    .from('deal_timeline_revisions').select('revNo, createdAt')
+    .eq('dealId', deal.id).order('revNo', { ascending: false }).limit(1).maybeSingle(), null);
   let shipmentPrep = { data: null, warning: null };
   let exciseRegistrations = { data: [], warning: null };
   let sahamitPo = { data: null, warning: null };
@@ -142,10 +147,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     [project, projectProducts, projectTasks, shipmentPrep, exciseRegistrations, sahamitPo, siblingDeals] = await Promise.all([
       safe('project', supabase.from('projects').select('*').eq('id', deal.projectId).maybeSingle(), null),
       safe('project products', supabase.from('project_products').select('*, product:products(id, fgCode, productDescription, productDescriptionEn)').eq('projectId', deal.projectId), []),
-      // เฟส B: หน้าดีลเห็นไทม์ไลน์เฉพาะ segment ของตัวเอง + งานกลางของโครงการ (dealId ว่าง —
-      // ขั้นตอน custom/ข้อมูลก่อน backfill) — ไม่ปนงานของดีลพี่น้อง
-      // DL2: ส่งทั้งแถว — หน้าดีลโชว์ตาราง segment ของตัวเอง (แผนก/วัน/สถานะ) แก้สถานะได้
-      safe('project tasks', supabase.from('project_tasks').select('*').eq('projectId', deal.projectId).or(`dealId.eq.${deal.id},dealId.is.null`).order('stepOrder', { ascending: true }), []),
+      // งวด P2b (ยุบดีล/โครงการ): หน้าดีลเห็น "ขั้นตอนของดีลนี้" เท่านั้น — ชุดเดียวกับที่ Rev. ถ่าย snapshot
+      // และที่ย้อน Rev. เขียนทับ (`.eq('dealId')`) · เดิมรวมงานกลางของโครงการ (dealId ว่าง) มาด้วย ⇒ จอพิมพ์
+      // ขั้นที่ Rev. ไม่ได้เก็บ · งานกลางบน prod ย้ายเข้าดีลหมดแล้วตอน backfill 0435 (เหลือ 0)
+      safe('project tasks', supabase.from('project_tasks').select('*').eq('dealId', deal.id).order('stepOrder', { ascending: true }), []),
       safe('shipment prep', supabase.from('shipment_prep').select('*, lines:shipment_prep_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
       safe('excise registrations', supabase.from('excise_registrations').select('*').eq('projectId', deal.projectId), []),
       safe('sahamit po', supabase.from('sahamit_pos').select('*, lines:sahamit_po_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
@@ -164,6 +169,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     project.warning,
     projectProducts.warning,
     projectTasks.warning,
+    timelineRevision.warning,
     shipmentPrep.warning,
     exciseRegistrations.warning,
     sahamitPo.warning,
@@ -278,6 +284,10 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     project: project.data,
     projectProducts: projectProducts.data,
     projectTasks: projectTasks.data,
+    timelineRevision: {
+      maxRev: timelineRevision.data?.revNo ?? null,
+      revisedAt: timelineRevision.data?.createdAt ?? null,
+    },
     shipmentPrep: shipmentPrep.data,
     exciseRegistrations: exciseRegistrations.data,
     sahamitPo: sahamitPo.data,
