@@ -627,7 +627,7 @@ test('ป้ายบนเมนู: เลนใบรายงวดพก de
 });
 
 test('ป้ายบัญชี (payments): ตัวตัดสินเดียวกับทะเบียน (ledgerInConfirmQueue) — ตัดงวดที่ติดด่านนับ Actual + แถวที่ทะเบียนไม่โชว์', () => {
-  const job = slice(code(NAV_ROUTE), "attempt('payments'", "if (can(user.role, 'mgmt:view'))");
+  const job = slice(code(NAV_ROUTE), "attempt('payments'", "if (!isModuleClosed('mgmt') && can(user.role, 'mgmt:view'))");
   /* 🐞 UAT FN 27/10 ข้อ 2: head-count เดิม (reported − ก้อนที่ติดด่าน) ได้ 27 · ทะเบียนเห็น 21 (ใบยอด 0 · งวดโมฆะ · งวดยังไม่ตรึง)
      ⇒ ดึงงวด reported พร้อมใบ แล้วถามตัวตัดสินของทะเบียน · ใบยกเลิกไม่ติดด่าน (installmentActualPaymentGated — รับรองแล้วคืนเงินได้) */
   assert.match(job, /fetchAllResult\(\(\) => supabase\s*\.from\('sales_order_installments'\)\s*\.select\('id, status, kind, "frozenAt", "actualStatus", so:sales_orders!inner\(id, status, origin, "totalAmount", "actualMode"\)'\)\s*\.eq\('status', 'reported'\)\s*\.not\('frozenAt', 'is', null\)\s*\.order\('id', \{ ascending: true \}\)\)/);

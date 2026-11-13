@@ -21,7 +21,8 @@ test('แอดมินได้ขอบเขตของทุกคีย�
   const admin = user({ role: 'admin' });
   const none = COUNT_SCOPE_KEYS.filter((key) => countScopeFor(key, admin) === null);
   // AD เห็นสองเลนภาษีแต่ไม่เป็นเจ้าของขั้นไหนเลย (ownedStages ว่าง) ⇒ ไม่มีป้าย ตรงกับ route
-  assert.deepEqual(none.sort(), ['taxFilings', 'taxRegistrations']);
+  // ⛔ วางแผนผลิต + งานบริหารปิดแล้ว (มติ 2026-11-13) ⇒ ป้ายสองตัวนั้นไม่ได้ขอบเขตกับใครเลย
+  assert.deepEqual(none.sort(), ['mgmtTasks', 'productionJobs', 'taxFilings', 'taxRegistrations']);
 });
 
 /* 🔴 ข้อห้ามของ ADR 0016: ยอดของทั้งฝ่าย/ทั้งบริษัท ห้ามอ่านว่า "รอคุณ" */

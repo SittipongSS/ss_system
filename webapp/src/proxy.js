@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
-import { can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver, isRdRole } from '@/lib/permissions';
+import { CLOSED_MODULES, can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver, isRdRole } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
 // Responsibilities:
@@ -133,6 +133,15 @@ export async function proxy(request) {
     !canManageCommercialPresets(user.app_metadata?.role)
   ) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/settings', request.url)));
+  }
+
+  /* ⛔ โมดูลที่ปิดแล้ว (มติผู้ใช้ 2026-11-13 · `CLOSED_MODULES` ใน lib/permissions.js)
+     ⚠️ ต้องอยู่ **ก่อน** ด่าน lockdown — ด่านนั้นปล่อย admin ผ่านทุกเส้น แต่มติปิดทุกคน
+     ⚠️ API ตอบ 404 **ทุกเมธอดรวม GET** — `apiWriteAllowed` ปล่อย GET ผ่านเสมอ และ
+        `GET /api/production/jobs?autoDraft=1` เขียนงานร่างลงฐานจริง */
+  if (user && closedModulePath(path)) {
+    if (isApi) return withRefreshedCookies(NextResponse.json({ error: 'ระบบนี้ปิดแล้ว' }, { status: 404 }));
+    return withRefreshedCookies(NextResponse.redirect(new URL('/home', request.url)));
   }
 
   // ── Phased rollout lockdown ───────────────────────────────────────────
@@ -294,6 +303,17 @@ const TEAM_MANAGE_APIS = /^\/api\/(teams(\/|$)|users\/[^/]+\/team$)/;
 /* ⭐ หน้าที่โดนกัน → ไปไหน (มติ 03/11): ลิงก์เดิมของทะเบียน/ใบยื่น (`/tax/registrations/<id>` · `/tax/filings/<id>`) ค้างอยู่ใน
    แจ้งเตือนเก่า 106 แถว (ยังไม่อ่าน 69 · 03/11) ตั้งแต่ก่อนปิด /tax จากฝ่ายขาย (V13) — ฝ่ายขายกดแล้วเคยเด้ง /home เงียบ ๆ
    ⇒ พาไปทางกลาง `/go/...` ซึ่งเลือกหน้าตามสิทธิ์ (ฝ่ายขาย = หน้าสินค้า FG + แผงทะเบียน) · หน้าอื่นที่โดนกัน = /home เหมือนเดิม */
+/* เส้นของโมดูลที่ปิดแล้ว — หน้าและ API ของโมดูลเดียวกันปิดพร้อมกันเสมอ
+   (ปิดแค่หน้า = API ยังตอบ/เขียนได้ · ปิดแค่ API = หน้าเปิดมาเจอ error ทั้งจอ) */
+const CLOSED_MODULE_PREFIXES = {
+  production: ['/production', '/api/production'],
+  mgmt: ['/mgmt', '/api/mgmt'],
+};
+
+export function closedModulePath(path) {
+  return CLOSED_MODULES.some((key) => startsWithAny(String(path || ''), CLOSED_MODULE_PREFIXES[key] || []));
+}
+
 export function lockedOutRedirectPath(path) {
   const match = String(path || '').match(/^\/tax\/(registrations|filings)\/([^/?#]+)\/?$/);
   if (!match) return '/home';

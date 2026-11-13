@@ -1,4 +1,4 @@
-import { canUser } from '@/lib/permissions';
+import { canAccessMgmt, canUser, isModuleClosed } from '@/lib/permissions';
 import { withUser, ok, fail, forbidden, badRequest } from '@/lib/http';
 import { listUpdates, appendUpdate } from '@/lib/mgmt/repo';
 
@@ -9,7 +9,7 @@ const ENTITY_TYPES = ['task', 'meeting', 'rock'];
 // GET /api/mgmt/updates?entityType=task&entityId=MT-... — สายอัพเดท/ประวัติ
 // (ไม่ระบุ entity → feed รวมล่าสุดทั้งโมดูล สำหรับ Overview).
 export const GET = withUser(async ({ user, supabase, req }) => {
-  if (!canUser(user, 'mgmt:view')) return forbidden();
+  if (!canAccessMgmt(user)) return forbidden();
   const sp = new URL(req.url).searchParams;
   try {
     return ok(await listUpdates(supabase, {
@@ -23,7 +23,7 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
 // POST /api/mgmt/updates — เพิ่มคอมเมนต์ลงสายอัพเดทของ entity.
 export const POST = withUser(async ({ user, supabase, req }) => {
-  if (!canUser(user, 'mgmt:edit')) return forbidden();
+  if (isModuleClosed('mgmt') || !canUser(user, 'mgmt:edit')) return forbidden(); // ⛔ ปิดแล้ว (มติ 2026-11-13)
   const body = await req.json().catch(() => ({}));
   const { entityType, entityId } = body;
   const text = (body.body || '').trim();

@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, resolveTeamUpdate, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, mgmtAccessRule, CLOSED_MODULES, isModuleClosed, canViewProduction, canEditProduction, productionViewRule, productionEditRule, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, resolveTeamUpdate, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -217,29 +217,53 @@ test('pmTaskEditTier: workflow edit for assignee / same-dept staff', () => {
   assert.equal(pmTaskEditTier({ role: 'pc', id: 'p', department: 'PC' }, { assigneeId: null, role: 'PC' }, { ownerId: 'u2' }), 'workflow');
 });
 
-test('canAccessMgmt: admin + secretary by role (NOT sales head)', () => {
-  assert.equal(canAccessMgmt({ role: 'admin' }), true);
-  assert.equal(canAccessMgmt({ role: 'secretary' }), true);
+test('mgmtAccessRule: admin + secretary by role (NOT sales head) — กติกาตอนเปิดใช้', () => {
+  assert.equal(mgmtAccessRule({ role: 'admin' }), true);
+  assert.equal(mgmtAccessRule({ role: 'secretary' }), true);
   // sales head must NOT inherit mgmt caps from the superuser set
-  assert.equal(canAccessMgmt({ role: 'ae_supervisor' }), false);
-  assert.equal(canAccessMgmt({ role: 'senior_ae' }), false);
-  assert.equal(canAccessMgmt({ role: 'ae' }), false);
-  assert.equal(canAccessMgmt({ role: 'ra' }), false);
+  assert.equal(mgmtAccessRule({ role: 'ae_supervisor' }), false);
+  assert.equal(mgmtAccessRule({ role: 'senior_ae' }), false);
+  assert.equal(mgmtAccessRule({ role: 'ae' }), false);
+  assert.equal(mgmtAccessRule({ role: 'ra' }), false);
   // viewer is a read-only observer of the WHOLE system → sees mgmt too (read-only)
-  assert.equal(canAccessMgmt({ role: 'viewer' }), true);
+  assert.equal(mgmtAccessRule({ role: 'viewer' }), true);
   for (const role of ['pc', 'pd', 'wh', 'qc', 'ts', 'rd', 'finance']) {
-    assert.equal(canAccessMgmt({ role }), false, role);
+    assert.equal(mgmtAccessRule({ role }), false, role);
   }
   // ⚠️ role ที่ระบบไม่รู้จัก (เช่น `staff` ที่ยกเลิกไปแล้ว) ⇒ อ่านอย่างเดียว
-  assert.equal(canAccessMgmt({ role: 'staff' }), false);
+  assert.equal(mgmtAccessRule({ role: 'staff' }), false);
 });
 
-test('canAccessMgmt: honours a per-user mgmt:view grant (like RA)', () => {
+test('mgmtAccessRule: honours a per-user mgmt:view grant (like RA) — กติกาตอนเปิดใช้', () => {
   // an SA granted mgmt:view to help the secretary — no role change
-  assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:view'] }), true);
-  assert.equal(canAccessMgmt({ role: 'ae_supervisor', extraCaps: ['mgmt:view', 'mgmt:edit'] }), true);
+  assert.equal(mgmtAccessRule({ role: 'ae', extraCaps: ['mgmt:view'] }), true);
+  assert.equal(mgmtAccessRule({ role: 'ae_supervisor', extraCaps: ['mgmt:view', 'mgmt:edit'] }), true);
   // an mgmt:edit-only grant does NOT open the module (pages gate on mgmt:view)
-  assert.equal(canAccessMgmt({ role: 'ae', extraCaps: ['mgmt:edit'] }), false);
+  assert.equal(mgmtAccessRule({ role: 'ae', extraCaps: ['mgmt:edit'] }), false);
+});
+
+test('⛔ งานบริหาร + วางแผนผลิตปิดแล้ว (มติ 2026-11-13) — ด่านจริงตอบ false ทุกคน รวม admin', () => {
+  assert.deepEqual([...CLOSED_MODULES].sort(), ['mgmt', 'production']);
+  assert.equal(isModuleClosed('production'), true);
+  assert.equal(isModuleClosed('mgmt'), true);
+  assert.equal(isModuleClosed('service'), false);
+  const people = [
+    { role: 'admin' },
+    { role: 'secretary' },
+    { role: 'viewer' },
+    { role: 'ae', extraCaps: ['mgmt:view', 'mgmt:edit'] },
+    { role: 'pd', department: 'PD' },
+    { role: 'pc', department: 'PC' },
+  ];
+  for (const user of people) {
+    assert.equal(canAccessMgmt(user), false, `mgmt ${user.role}`);
+    assert.equal(canViewProduction(user), false, `production view ${user.role}`);
+    assert.equal(canEditProduction(user), false, `production edit ${user.role}`);
+  }
+  // กติกาเดิมยังอยู่ครบสำหรับวันที่เปิดคืน — ปิดที่สวิตช์ ไม่ได้ลบกติกา
+  assert.equal(mgmtAccessRule({ role: 'secretary' }), true);
+  assert.equal(productionViewRule({ role: 'pd', department: 'PD' }), true);
+  assert.equal(productionEditRule({ role: 'pd', department: 'PD' }), true);
 });
 
 test('mgmt caps are grantable per-user (whitelist)', () => {
@@ -481,7 +505,8 @@ test('executive: observer เต็มระบบเหมือน viewer + co
   assert.equal(pmEditScope('executive'), 'none');
   assert.equal(deleteScope('executive', 'orders'), 'none');
   assert.equal(canAccessSahamit('executive', null), true);
-  assert.equal(canAccessMgmt(exec), true);
+  assert.equal(mgmtAccessRule(exec), true);
+  assert.equal(canAccessMgmt(exec), false); // ⛔ ปิดแล้ว (มติ 2026-11-13)
   assert.deepEqual(pmTaskScopes('executive'), ['all']);
   // งานที่มอบให้ observer ก็ยังแก้ไม่ได้
   assert.equal(pmTaskEditTier({ id: 'x', role: 'executive' }, { assigneeId: 'x' }, {}), 'none');

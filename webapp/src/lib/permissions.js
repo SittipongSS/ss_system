@@ -1064,7 +1064,32 @@ export const PRODUCTION_VIEWER_DEPARTMENTS = ['PC', 'PD'];
    หัวหน้าฝ่ายขายด้วย ซึ่งมติ 2026-09-16 ไม่ได้ให้เข้าโมดูลนี้ (รูปเดียวกับ
    `canManageTeams`) · ด่านนี้คือตัวเดียวที่การ์ดระบบ · แถบเมนู · และ API
    (`requireProduction`) ใช้ร่วมกัน ⇒ แคบที่นี่ที่เดียวแคบครบทุกทาง */
+/* ── โมดูลที่ปิดแล้ว ───────────────────────────────────────────────────
+   มติผู้ใช้ 2026-11-13: *"ปิด งานผลิต กับ งานบริหาร เลย เพราะไม่ได้ใช้แล้ว"*
+
+   ⭐ ปิด **ทุกคน รวม admin** — ต่างจาก `disabled: true` ใน `config/systems.js` ซึ่งเป็น
+   แค่การ์ดจางที่พิมพ์ URL ตรง ๆ ยังเข้าได้ · สวิตช์นี้คือด่านจริง:
+   - ด่านของโมดูล (`canViewProduction` · `canEditProduction` · `canAccessMgmt`) ตอบ false
+     ⇒ การ์ดระบบ · กลุ่มเมนู · ป้ายตัวเลขบนเมนู · API handler หายพร้อมกัน
+   - `proxy.js` (`closedModulePath`) ส่งหน้าไป /home และตอบ API 404 **ทุกเมธอดรวม GET**
+     — `GET /api/production/jobs?autoDraft=1` เคยสร้างงานร่างจริงแค่เพราะเปิดหน้า
+   - ช่วง "ผลิต" บนรางงานของใบสั่งขายไม่ขึ้น (ไม่ชวนกดไปหน้าที่ปิดแล้ว)
+   ⚠️ **ไม่ได้ลบข้อมูลหรือโค้ด** — ตาราง `production_*` / `mgmt_*` อยู่ครบ · จะเปิดคืน
+   เอาคีย์ออกจากลิสต์นี้ที่เดียว (การ์ดจะกลับมาเป็น "ยังไม่เปิดใช้" ตามธง `disabled` เดิม) */
+export const CLOSED_MODULES = Object.freeze(['production', 'mgmt']);
+
+export function isModuleClosed(key) {
+  return CLOSED_MODULES.includes(key);
+}
+
 export function canViewProduction(user) {
+  return !isModuleClosed('production') && productionViewRule(user); // มติ 2026-11-13 — ดู CLOSED_MODULES
+}
+
+/* กติกาฝ่าย/บทบาทของโมดูลวางแผนผลิต **ตอนเปิดใช้** — แยกจากสวิตช์ปิดเพื่อให้เทสต์ล็อก
+   มติเดิม (PD/PC/admin) ไว้ ไม่หายไปพร้อมการปิด · ⚠️ ห้ามเรียกจากด่านจริง ให้เรียก
+   `canViewProduction` / `canEditProduction` ซึ่งเคารพ CLOSED_MODULES */
+export function productionViewRule(user) {
   if (!canUser(user, 'production:view')) return false;
   if (user?.role === 'admin') return true;
   return PRODUCTION_VIEWER_DEPARTMENTS.includes(departmentOf(user));
@@ -1079,6 +1104,11 @@ export function canViewProduction(user) {
 // (เกิดมาแล้วกับ /api/pm/my-work ที่กั้นด้วย inquiries:respond จน PC ไม่เคยเห็นคิว
 // ตัวเอง — แก้ไปใน #790)
 export function canEditProduction(user) {
+  return !isModuleClosed('production') && productionEditRule(user); // มติ 2026-11-13 — ดู CLOSED_MODULES
+}
+
+// กติกาตอนเปิดใช้ (ดูหมายเหตุที่ productionViewRule)
+export function productionEditRule(user) {
   if (!canUser(user, 'production:edit')) return false;
   // ⚠️ `admin` ไม่ใช่ `isSuperuser` — หัวหน้าฝ่ายขายไม่อยู่ในโมดูลนี้แล้ว (มติ 2026-09-16)
   if (user?.role === 'admin') return true;
@@ -1372,6 +1402,11 @@ export function canAccessSahamit(role, team) {
 // ถูก grant. รับ user object ({ role, extraCaps }) เพื่อให้ grant มีผล.
 // ใช้ที่ /home card, page guard, และ API handlers.
 export function canAccessMgmt(user) {
+  return !isModuleClosed('mgmt') && mgmtAccessRule(user); // มติ 2026-11-13 — ดู CLOSED_MODULES
+}
+
+// กติกาตอนเปิดใช้ (ดูหมายเหตุที่ productionViewRule)
+export function mgmtAccessRule(user) {
   return canUser(user, 'mgmt:view');
 }
 

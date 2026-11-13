@@ -67,11 +67,17 @@ test('ทีมรองต้องนับด้วย — งานสหม
   assert.equal(sahamit(two), true, 'ทีมรอง KA ต้องเปิดเมนูงานสหมิตรให้');
 });
 
-test('สิทธิ์รายคน (extraCaps) เปิดระบบเพิ่มให้ได้ — SA ที่ได้ mgmt:view มาช่วยเลขา', () => {
-  const plain = menuGroupsForUser(user({ role: 'ae' }));
+test('⛔ ระบบที่ปิดแล้วไม่มีกลุ่มเมนูให้ใคร — รวมสิทธิ์รายคนและ admin (มติ 2026-11-13)', () => {
+  /* เดิมเทสต์นี้ล็อกว่า extraCaps `mgmt:view` เปิดกลุ่ม "งานบริหาร" ให้ SA ได้ · โมดูลปิดแล้ว
+     ⇒ สวิตช์ปิด (CLOSED_MODULES) ชนะสิทธิ์รายคนเสมอ */
   const extra = menuGroupsForUser(user({ role: 'ae', extraCaps: ['mgmt:view'] }));
-  assert.ok(!plain.some((g) => g.system === 'mgmt'));
-  assert.ok(extra.some((g) => g.system === 'mgmt'), 'สิทธิ์รายคนต้องเปิดกลุ่มงานบริหาร');
+  const admin = menuGroupsForUser(user({ role: 'admin' }));
+  const pd = menuGroupsForUser(user({ role: 'pd', department: 'PD' }));
+  assert.ok(!extra.some((g) => g.system === 'mgmt'));
+  for (const groups of [admin, pd]) {
+    assert.ok(!groups.some((g) => g.system === 'mgmt' || g.system === 'production'));
+    assert.ok(!groups.some((g) => g.items.some((i) => i.href.startsWith('/production') || i.href.startsWith('/mgmt'))));
+  }
 });
 
 /* ── ทะเบียนขนาดแพ็คเกจ (mig 0398 · มติเจ้าของ 01/10 "เพิ่ม ลบ ได้") ───────────────────────────────

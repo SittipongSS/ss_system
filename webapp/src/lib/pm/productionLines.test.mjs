@@ -8,10 +8,13 @@ import {
   normalizeLineInput,
   overridesByDate,
 } from './productionLines.js';
+/* ⛔ โมดูลปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) ⇒ ด่านจริงตอบ false ทุกคน
+   ไฟล์นี้ล็อก **กติกาตอนเปิดใช้** (PD วางคิว · PC อ่าน · admin ข้ามฝ่าย) ไว้สำหรับวันเปิดคืน
+   ⇒ ใช้ตัวกติกาภายใต้ชื่อเดิม · การปิดล็อกที่ permissions.test.mjs */
 import {
-  canEditProduction,
+  productionEditRule as canEditProduction,
   canEditService,
-  canViewProduction,
+  productionViewRule as canViewProduction,
   DEPARTMENTS,
   DEPARTMENT_NAMES_TH,
   rolesForDepartment,

@@ -145,6 +145,7 @@ import { REPLAN_DONE_MESSAGE } from "@/lib/sales/installmentReplan";
 import { CARRY_DONE_MESSAGE } from "@/lib/sales/installmentCarry";
 import { approvalPrompt, historicalApprovalPrompt } from "@/lib/approvalPrompt";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
+import { isModuleClosed } from "@/lib/permissions";
 import { newExciseQuotationHref } from "@/lib/excise/exciseQuotationLinks";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { liveSpecDocumentCount, salesOrderSpecDocEffect } from "@/lib/sales/productSpecDocView";
@@ -1712,7 +1713,8 @@ export default function SalesOrderDetailPage() {
   //    (สองทางแก้ = สองชุดกฎที่เพี้ยนหากันเสมอ)
   const [production, setProduction] = useState({ jobs: [], lines: [] });
   useEffect(() => {
-    if (!order?.id) return;
+    // ⛔ โมดูลวางแผนผลิตปิดแล้ว (มติ 2026-11-13) — ไม่ยิงเส้นที่ตอบ 404 ทุกครั้งที่เปิดใบ
+    if (!order?.id || isModuleClosed("production")) return;
     apiFetch(`/api/production/jobs?salesOrderId=${order.id}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => setProduction({ jobs: d?.jobs || [], lines: d?.lines || [] }))

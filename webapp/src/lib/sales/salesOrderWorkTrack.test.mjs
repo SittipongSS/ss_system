@@ -2,7 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { salesOrderWorkTrack } from './salesOrderWorkTrack.js';
+import { salesOrderWorkTrack as workTrackAsShipped } from './salesOrderWorkTrack.js';
+
+/* ⛔ วางแผนผลิตปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) ⇒ ของจริงไม่มีช่วง "ผลิต"
+   เทสต์ในไฟล์นี้ล็อก **รูปของรางตอนโมดูลเปิด** ไว้สำหรับวันเปิดคืน ⇒ ส่ง productionOpen: true
+   · พฤติกรรมตอนปิดล็อกที่เทสต์ "⛔ โมดูลวางแผนผลิตปิด" ข้างล่าง (เรียกตัวจริงไม่ส่งธง) */
+const salesOrderWorkTrack = (args = {}) => workTrackAsShipped({ productionOpen: true, ...args });
+
+test('⛔ โมดูลวางแผนผลิตปิด — รางของใบไม่มีช่วง "ผลิต" และไม่มีลิงก์ไป /production (มติ 2026-11-13)', () => {
+  const track = workTrackAsShipped({
+    scent: { hasDesignLines: false },
+    readiness: { state: 'ready', total: 1, arrived: 1, pending: 0, late: 0 },
+    plan: { state: 'none' },
+    dealType: 'NPD',
+    approved: true,
+  });
+  assert.ok(!track.segments.some((seg) => seg.key === 'production'));
+  assert.ok(track.segments.some((seg) => seg.key === 'delivery'), 'ของเข้ายังอยู่ — เป็นข้อมูลของใบเอง');
+  assert.ok(!JSON.stringify(track).includes('/production'));
+});
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { apiWriteAllowed, bypassesSessionGate, lockedOut, lockedOutRedirectPath } from './proxy.js';
+import { apiWriteAllowed, bypassesSessionGate, closedModulePath, lockedOut, lockedOutRedirectPath } from './proxy.js';
 import {
   RD_ROLES, ROLES, can, canAnswerServiceRequests, canEditService, canManagePackageSizes, canSendSurveyResult,
   canViewServiceRegistry,
@@ -1056,4 +1056,30 @@ test('หน้าที่โดนกัน: ลิงก์ทะเบีย
   assert.equal(lockedOutRedirectPath('/mgmt/reports'), '/home');
   const proxy = readFileSync(new URL('./proxy.js', import.meta.url), 'utf8');
   assert.match(proxy, /NextResponse\.redirect\(new URL\(lockedOutRedirectPath\(path\), request\.url\)\)/);
+});
+
+
+/* ⛔ มติผู้ใช้ 2026-11-13 *"ปิด งานผลิต กับ งานบริหาร เลย เพราะไม่ได้ใช้แล้ว"* (CLOSED_MODULES)
+   หน้าและ API ของสองโมดูลปิดพร้อมกัน · ด่านอยู่ **ก่อน** lockdown (ซึ่งปล่อย admin ผ่านทุกเส้น)
+   และ API ตอบ 404 **ทุกเมธอดรวม GET** — `GET /api/production/jobs?autoDraft=1` เขียนงานร่างลงฐาน */
+test('⛔ เส้นของโมดูลที่ปิดแล้ว — หน้า + API ของวางแผนผลิตและงานบริหาร', () => {
+  for (const path of ['/production', '/production/jobs', '/production/board', '/production/lines',
+    '/api/production/jobs', '/api/production/lines/L1/capacity',
+    '/mgmt', '/mgmt/tasks', '/mgmt/meetings', '/mgmt/rocks', '/mgmt/trash', '/api/mgmt/tasks', '/api/mgmt/overview']) {
+    assert.equal(closedModulePath(path), true, path);
+  }
+  // คำนำหน้าที่ใกล้กันต้องไม่โดนเหมารวม · ระบบอื่นเปิดตามเดิม
+  for (const path of ['/productions', '/mgmtx', '/service', '/sa/sales-orders', '/api/pm/my-work', '/api/service/visits', '/home', '', null]) {
+    assert.equal(closedModulePath(path), false, String(path));
+  }
+});
+
+test('⛔ ด่านโมดูลที่ปิดแล้วอยู่ก่อน lockdown และตอบ 404 ทุกเมธอด', () => {
+  const src = readFileSync(fileURLToPath(new URL('./proxy.js', import.meta.url)), 'utf8');
+  const closedAt = src.indexOf('if (user && closedModulePath(path))');
+  const lockAt = src.indexOf('if (user && !isLogin && lockedOut(');
+  assert.ok(closedAt > 0 && lockAt > closedAt, 'ด่านปิดต้องมาก่อน lockdown — admin ผ่าน lockdown ทุกเส้น');
+  const block = src.slice(closedAt, lockAt);
+  assert.match(block, /status: 404/);
+  assert.doesNotMatch(block, /request\.method/, 'ห้ามแยกตามเมธอด — GET ของคิวผลิตเขียนฐาน');
 });
