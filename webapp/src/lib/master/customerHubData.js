@@ -19,6 +19,7 @@ import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { inSalesDocScope } from '@/lib/scopedRow';
 import { canViewRequests } from '@/lib/permissions';
 import { canReadRequestRow } from '@/lib/requests/access';
+import { attachReworkRows } from '@/lib/requests/reworkRows';
 import { latestContractRevisions } from '@/lib/sales/contracts';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { fetchAll } from '@/lib/supabaseFetchAll';
@@ -28,8 +29,11 @@ export const HUB_DEAL_COLS = 'id, code, title, stage, dealType, categoryCode, pr
 export const HUB_QUOTATION_COLS = 'id, quoteNumber, dealId, status, approvalStatus, totalAmount, quoteDate, createdAt, acceptedAt, revisedFromId, baseNumber, revisionNo, origin, sourceSalesOrderId, referenceNote, customerId';
 export const HUB_ORDER_COLS = 'id, orderNumber, dealId, quotationId, status, financeStatus, origin, totalAmount, actualAmount, actualMode, actualCountedAmount, actualSubmittedAmount, orderDate, approvedAt, referenceDoc, sourceSalesOrderId, supersededById, revisionNo, customerId, createdAt';
 // actualStatus/actualAmount/actualApprovedAt = Actual รายงวด (mig 0412) — แท็บภาพรวมคิด Actual รายเดือนด้วยตัวเดียวกับรายงานยอดขาย (reportActualRows)
-export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, actualStatus, actualAmount, actualApprovedAt';
-export const HUB_REQUEST_COLS = 'id, docNo, dept, kind, status, title, dealId, salesOrderId, customerId, requestedById, requestedByName, team, submittedAt, createdAt, committedDueDate, requestedDueDate, closedAt, urgent, pdrRefNo, acknowledgedAt';
+/* ⚠️ `evidence` · `refundedAt` · `frozenAt` = ช่องที่ `installmentDisplayStatus` ใช้ตัดสิน "รับล่วงหน้า" / "คืนเงิน" (งวด H4 แก้)
+   🐞 H1–H3 ไม่ได้ดึงมา ⇒ งวดรับล่วงหน้า (pending + paidOn + หลักฐาน · prod 13/11 มี 6 งวด) ถูกนับว่า "ค้างรับ" บนหน้าลูกค้า
+   ขณะที่หน้า SO บอกว่ารับแล้ว · หลักฐานถูกย่อเหลือแค่จำนวนไฟล์ก่อนส่งให้จอ (`slimInstallment`) — หน้าลูกค้าไม่ต้องรู้ชื่อไฟล์ */
+export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, actualStatus, actualAmount, actualApprovedAt, evidence, refundedAt, frozenAt';
+export const HUB_REQUEST_COLS = 'id, docNo, dept, kind, status, title, dealId, salesOrderId, customerId, requestedById, requestedByName, team, submittedAt, createdAt, committedDueDate, dueCommittedAt, requestedDueDate, closedAt, answeredAt, urgent, pdrRefNo, acknowledgedAt';
 export const HUB_CONTRACT_COLS = 'id, contractNo, kind, status, dealId, quotationId, customerId, contractDate, signedDate, effectiveDate, expiryDate, baseNumber, revisionNo, revisedFromId, createdAt, externalRef, source, team, ownerId';
 export const HUB_LEAD_COLS = 'id, company, contactName, channel, status, assigneeName, createdAt';
 export const HUB_LINE_COLS = 'id, salesOrderId, productId, fgCode, description, qty, unit, lineTotal';
@@ -83,6 +87,12 @@ function scopeSalesDocs(user, rows, dealById, sourceDealById) {
  * กลุ่มที่ไม่มีสิทธิ์ = `visible: false` + ลิสต์ว่าง (จอซ่อนแท็บ · มติ 4 + กติกา "ไม่มีสิทธิ์ = ไม่โชว์")
  * ⚠️ query พัง = throw (ห้ามคืนลิสต์ว่าง — ว่างเพราะพังอ่านเหมือน "ลูกค้าไม่มีดีล")
  */
+/** งวดที่ส่งให้จอ: หลักฐานเหลือแค่จำนวน (ตัวตัดสินรับล่วงหน้าถามแค่ "มีไหม") — ไม่ส่งชื่อ/ที่อยู่ไฟล์สลิปไปหน้าลูกค้า */
+export function slimInstallment(inst) {
+  const files = Array.isArray(inst?.evidence) ? inst.evidence.length : 0;
+  return { ...inst, evidence: Array.from({ length: files }, () => ({})) };
+}
+
 export async function customerHubRelations(supabase, customerId, user) {
   const seesSales = canViewSalesPlanning(user);
   const seesRequests = canViewRequests(user);
@@ -115,20 +125,22 @@ export async function customerHubRelations(supabase, customerId, user) {
 
   const leadIds = [...new Set(deals.map((d) => d.leadId).filter(Boolean))];
   const visibleOrderIds = salesOrders.map((o) => o.id);
-  const [leads, installments, orderLines] = await Promise.all([
+  const [leads, rawInstallments, orderLines] = await Promise.all([
     leadIds.length ? byIds(supabase, 'sales_leads', HUB_LEAD_COLS, 'id', leadIds) : [],
     visibleOrderIds.length ? byIds(supabase, 'sales_order_installments', HUB_INSTALLMENT_COLS, 'salesOrderId', visibleOrderIds) : [],
     visibleOrderIds.length ? byIds(supabase, 'sales_order_lines', HUB_LINE_COLS, 'salesOrderId', visibleOrderIds) : [],
   ]);
 
   // ร่างของคนอื่นไม่ขึ้น — ตรงกับ loadVisibleRequests (lib/requests/visibleRows.js)
+  // + แถวรอบแก้ (`items`) ให้ `liveDueDate` ตัดวันของรอบเก่าที่ถูกตีกลับ — คอลัมน์กำหนดส่ง (มติ 8 · งวด H4)
+  //   พูดเหมือนคิวคำร้อง (ตัวเติมเดียวกับ my-schedule · โหลดพลาด = ไม่มีแถวรอบแก้ ไม่ล้มทั้งหน้า)
   const requests = seesRequests
-    ? requestRows.filter((r) => (r.status !== 'draft' || r.requestedById === user?.id) && canReadRequestRow(user, r))
+    ? await attachReworkRows(supabase, requestRows.filter((r) => (r.status !== 'draft' || r.requestedById === user?.id) && canReadRequestRow(user, r)))
     : [];
 
   return {
     sales: { visible: seesSales, deals, leads, quotations, orders: salesOrders, contracts },
-    finance: { visible: seesSales, installments },
+    finance: { visible: seesSales, installments: rawInstallments.map(slimInstallment) },
     requests: { visible: seesRequests, rows: requests },
     excise: { visible: exciseOrders.length > 0 || seesRa, orders: exciseOrders },
     orderLines,

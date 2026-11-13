@@ -10,6 +10,8 @@ import { installmentDisplayStatus } from '@/lib/sales/salesOrderPayments';
 import { addMonths, businessDayKey, currentMonth } from '@/lib/datePeriods';
 import { reportActualRows, reportOrderMonth } from '@/lib/sales/reportRows';
 import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
+import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted } from '@/lib/requests/closure';
 
 const num = (v) => Number(v) || 0;
 const time = (v) => { const ms = Date.parse(v || ''); return Number.isFinite(ms) ? ms : 0; };
@@ -43,6 +45,76 @@ export function installmentState(inst, order, today = todayKey()) {
   const overdue = outstanding && !!inst?.dueDate && String(inst.dueDate).slice(0, 10) < today;
   return { display, outstanding, overdue };
 }
+
+/* ── แท็บการเงิน: 1 แถว = 1 ใบสั่งขาย (มติ 9 · 13/11/2026 · งวด H4) ─────────────────────────────────────────
+   รวมงวดของแต่ละ SO ด้วยตัวตัดสินสถานะงวดตัวเดียวกับแถวดีลและการ์ดติดตาม (`installmentState`) ⇒ ตัวเลข "ค้างรับ"
+   บนแท็บนี้ = ตัวเลขค้างบนแท็บภาพรวม ไม่ใช่สูตรที่สอง
+   • รับแล้ว = งวดที่ปิดฝั่งเงินแล้ว (ยืนยันรับ · รับล่วงหน้า · แจ้งชำระ) — คืนเงินแล้วไม่นับ
+   • ค้างรับ = งวดที่ยัง outstanding (ใบยกเลิก/ถูกแทนไม่มีค้าง)
+   • งวดถัดไป = งวดค้างที่ครบกำหนดก่อนสุด (ไม่มีวัน = ท้ายสุด) */
+const RECEIVED_DISPLAY = new Set(['confirmed', 'prepaid', 'reported']);
+const money2 = (v) => Math.round(v * 100) / 100;
+const dueKey = (inst) => (inst?.dueDate ? String(inst.dueDate).slice(0, 10) : '9999-12-31');
+
+export const FINANCE_ORDER_STATES = Object.freeze({
+  overdue: { label: 'มีงวดเกินกำหนด', tone: 'danger' },
+  open: { label: 'ค้างชำระ', tone: 'warning' },
+  complete: { label: 'รับครบ', tone: 'success' },
+  void: { label: 'ยกเลิก/ถูกแทน', tone: 'neutral' },
+});
+
+export function financeOrderRows({ orders = [], installments = [], deals = [] } = {}, today = todayKey()) {
+  const orderById = new Map(orders.map((o) => [o.id, o]));
+  const dealById = new Map(deals.map((d) => [d.id, d]));
+  const rows = [];
+  for (const [orderId, insts] of groupBy(installments, (i) => i.salesOrderId)) {
+    const order = orderById.get(orderId) || null;
+    const states = insts
+      .map((inst) => ({ inst, ...installmentState(inst, order, today) }))
+      .sort((a, b) => num(a.inst.seq) - num(b.inst.seq));
+    const received = states.filter((s) => RECEIVED_DISPLAY.has(s.display));
+    const open = states.filter((s) => s.outstanding).sort((a, b) => dueKey(a.inst).localeCompare(dueKey(b.inst)) || num(a.inst.seq) - num(b.inst.seq));
+    const outstanding = money2(open.reduce((sum, s) => sum + num(s.inst.amount), 0));
+    const overdue = states.some((s) => s.overdue);
+    const live = order ? isLiveOrder(order) : true;
+    const next = open[0] || null;
+    rows.push({
+      id: orderId,
+      order,
+      deal: dealById.get(order?.dealId) || null,
+      total: order?.totalAmount != null ? num(order.totalAmount) : money2(states.reduce((sum, s) => sum + num(s.inst.amount), 0)),
+      received: money2(received.reduce((sum, s) => sum + num(s.inst.amount), 0)),
+      outstanding,
+      count: states.length,
+      receivedCount: received.length,
+      next: next ? { seq: next.inst.seq, label: next.inst.label, dueDate: next.inst.dueDate || null, amount: num(next.inst.amount), overdue: next.overdue } : null,
+      overdue,
+      state: !live ? 'void' : outstanding <= 0 ? 'complete' : overdue ? 'overdue' : 'open',
+      installments: states.map((s) => s.inst),
+    });
+  }
+  // ใบใหม่ก่อน (วันที่ใบ → วันที่สร้าง)
+  return rows.sort((a, b) => String(b.order?.orderDate || b.order?.createdAt || '').localeCompare(String(a.order?.orderDate || a.order?.createdAt || '')));
+}
+
+/* ── แท็บคำร้อง: กำหนดส่ง = วันที่ฝ่ายแจ้งเท่านั้น (มติ 8 · 13/11/2026 · งวด H4) ─────────────────────────────
+   อ่านผ่านตัวตัดสินกลาง `liveDueDate` (วันของรอบเก่าที่ถูกตีกลับไม่นับ — ต้องมี `request.items` จาก attachReworkRows)
+   ⇒ คอลัมน์นี้พูดเหมือนคิวคำร้องทุกตัวอักษร · เลิกถอยไป `requestedDueDate` เงียบ ๆ (วันที่ผู้ขออยากได้ ≠ คำสัญญาของฝ่าย)
+   • waiting = ใบยังเดินอยู่ (รอรับ/รับแล้ว) · ไม่มีฝั่งไหนกดปิด (ม-145) · ฝ่ายยังไม่ให้วันของรอบนี้ ⇒ จอขึ้น "รอฝ่ายแจ้ง"
+   • ใบที่จบ/ยกเลิก/ร่าง ไม่มีวัน = ขีด ไม่ใช่ "รอฝ่ายแจ้ง" */
+export function requestDueCell(request) {
+  const requested = request?.requestedDueDate || null;
+  const date = liveDueDate(request);
+  if (date) return { date, waiting: false, requested };
+  const running = request?.status === 'pending' || request?.status === 'acknowledged';
+  return { date: null, waiting: running && !requestClosureStarted(request), requested };
+}
+
+/** ตัวเรียง "กำหนดส่ง": มีวันก่อน (เร็วไปช้า) · รอฝ่ายแจ้งต่อท้าย · ไม่มีวันท้ายสุด */
+export const requestDueSortKey = (request) => {
+  const cell = requestDueCell(request);
+  return cell.date || (cell.waiting ? '9999-01-01' : '9999-12-31');
+};
 
 /* ── เส้นดีล → ใบเสนอราคา → ใบสั่งขาย → ชำระ (มติ 1) ─────────────────────────────────────────── */
 /** ใบเสนอราคาที่แทนดีลบนแถว: ใบที่รับแล้วก่อน · ไม่มีก็ฉบับล่าสุดของสายล่าสุด */
@@ -180,6 +252,10 @@ export const leadText = (l) => hubText(l.company, l.contactName, l.channel, l.as
 export const contractText = (c, dealCode) => hubText(c.contractNo, c.externalRef, dealCode);
 export const requestText = (r, dealCode) => hubText(r.docNo, r.pdrRefNo, r.title, r.requestedByName, dealCode);
 export const installmentText = (i, orderNumber) => hubText(orderNumber, i.label, i.taxInvoiceNo);
+export const financeOrderText = (row) => hubText(
+  row.order?.orderNumber, row.order?.referenceDoc, row.deal?.code, row.deal?.title,
+  (row.installments || []).map((i) => [i.label, i.taxInvoiceNo]),
+);
 export const registrationText = (r) => hubText(r.fgCode, r.productName, r.brandName, r.approvalNumber);
 
 /* ── แท็บภาพรวม (งวด H2 · มติ 2: เปิดหน้ามาที่ภาพรวม) ─────────────────────────────────────────────── */
