@@ -1,5 +1,7 @@
 "use client";
+import { useEffect, useState } from "react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { apiJson } from "@/lib/apiFetch";
 import PersonSelect from "@/components/ui/PersonSelect";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { PROJECT_PEOPLE_ROLES } from "@/lib/pm/projectPeople";
@@ -321,6 +323,50 @@ export default function DealFormFields({
     </div>
   );
 
+  /* ── ดีล SCENT ต้นทาง (ยุบดีล/โครงการ P2c-2 · มติเจ้าของ 13/11/2026 ③) ────────────────────────────────────────
+     เฉพาะดีล NPD — คู่ของกติกา FC "SCENT ปิด Won ⇒ NPD ขึ้น 80" (แทน "ดีลในโครงการเดียวกัน") · ไม่บังคับ
+     รายการ = ดีล SCENT ของลูกค้ารายเดียวกันที่ยังไม่ Lost (server ตรวจซ้ำที่ lib/sales/dealScentSource.js)
+     ⚠️ วางใต้ช่องลูกค้า — เป็นคำถามที่เกิดจากคำตอบของช่องประเภท + ลูกค้า (กติกาลำดับช่องข้อ 3 · docs/form-design-rules.md) */
+  const isNpd = String(form.dealType || "").toUpperCase() === "NPD";
+  const [scentDeals, setScentDeals] = useState([]);
+  const [scentDealsError, setScentDealsError] = useState("");
+  useEffect(() => {
+    if (!isNpd || !form.customerId) { setScentDeals([]); setScentDealsError(""); return undefined; }
+    let alive = true;
+    apiJson(`/api/sales-planning/deals?customerId=${encodeURIComponent(form.customerId)}&dealType=SCENT`, { fallbackError: "โหลดดีล SCENT ของลูกค้าไม่สำเร็จ" })
+      .then((rows) => {
+        if (!alive) return;
+        setScentDealsError("");
+        setScentDeals((Array.isArray(rows) ? rows : []).filter((d) => d.stage !== "lost" && d.id !== form.id));
+      })
+      .catch((error) => { if (alive) { setScentDeals([]); setScentDealsError(error.message || "โหลดดีล SCENT ของลูกค้าไม่สำเร็จ"); } });
+    return () => { alive = false; };
+  }, [isNpd, form.customerId, form.id]);
+  const sourceScentField = isNpd && (
+    <div className="deal-field" key="sourceScent">
+      <span className="deal-field-label">ดีล SCENT ต้นทาง</span>
+      <SearchableSelect
+        value={form.sourceScentDealId || ""}
+        onChange={(sourceScentDealId) => onPatch({ sourceScentDealId })}
+        disabled={!form.customerId}
+        placeholder="ค้นหารหัส/ชื่อดีล SCENT..."
+        options={[
+          { value: "", label: "— ไม่ได้ต่อจากดีล SCENT —" },
+          ...scentDeals.map((d) => ({
+            value: d.id,
+            label: `${d.code || d.id} · ${d.title || ""} · ${STAGE_LABELS[d.stage] || d.stage}`,
+            search: `${d.code || ""} ${d.title || ""}`,
+          })),
+        ]}
+      />
+      <small>
+        {!form.customerId
+          ? "เลือกลูกค้าก่อน — ต้นทางต้องเป็นดีล SCENT ของลูกค้ารายเดียวกัน"
+          : scentDealsError || "ดีล SCENT ปิด Won แล้ว ⇒ FC ของดีล NPD นี้ขึ้น 80% เมื่อออกใบเสนอราคาแล้ว"}
+      </small>
+    </div>
+  );
+
   /* สถานะ + FC% ยุบเป็นแถบขั้นเดียว (มติผู้ใช้ 2026-08-08) — % ของทุกขั้นโชว์
      ใต้ชื่อขั้น คนเห็นผลก่อนกด · ช่อง FC แยกเหลือเฉพาะโหมดแก้ (input) ข้างล่าง
      ⚠️ ขั้น won/lost โผล่เฉพาะเมื่อ caller ส่งมาใน `stages` (เช่น ใบที่ปิดแล้ว
@@ -386,7 +432,7 @@ export default function DealFormFields({
         <small>
           {legacyOn
             ? "ดีลเก่าเลือกขั้นปลาย (Won/Lost) ได้ตอนสร้าง · ขั้นอื่นเดินตามขั้นตอนปกติ"
-            : "NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80% อัตโนมัติ"}
+            : "NPD ที่ดีล SCENT ต้นทางปิด Won แล้ว → 80% อัตโนมัติ"}
         </small>
       ) : null}
     </div>
@@ -509,6 +555,7 @@ export default function DealFormFields({
       {pairRows([dealTypeField])}
       {pairRows([titleField])}
       {pairRows([customerField, brandField])}
+      {pairRows([sourceScentField])}
       {pairRows([projectField])}
 
       {pairRows([stageField])}

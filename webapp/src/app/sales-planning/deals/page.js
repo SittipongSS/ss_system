@@ -497,6 +497,8 @@ export default function SalesPlanningPipelinePage() {
       // AC + AE Supervisor (ยุบดีล/โครงการ P2c-1) — โหลดค่าเดิม · ว่าง = ต้องเลือกก่อนบันทึก (มติ ⑤)
       acOwnerId: deal.acOwnerId || "",
       aeSupervisorId: deal.aeSupervisorId || "",
+      // ดีล SCENT ต้นทาง (P2c-2) — โหลดค่าเดิม ไม่งั้นบันทึกแล้วต้นทางหาย (ฟอร์มส่งช่องนี้ทุกครั้งเมื่อเป็น NPD)
+      sourceScentDealId: deal.sourceScentDealId || "",
       // ทีมปัจจุบันของดีล — เจ้าของที่อยู่หลายทีมย้ายใบนี้ระหว่างทีมตัวเองได้จากช่องนี้
       team: deal.team || "",
     });
