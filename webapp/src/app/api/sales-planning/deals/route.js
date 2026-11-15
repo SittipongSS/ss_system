@@ -1,4 +1,5 @@
 import { genId } from '@/lib/id';
+import { resolveDealPeople } from '@/lib/sales/dealPeople';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
@@ -240,6 +241,14 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
   }
 
+  /* ⭐ AC ผู้ประสานงาน + AE Supervisor ของดีล (ยุบดีล/โครงการ P2c-1 · มติเจ้าของ 13/11/2026 ②⑤) — บังคับทุกครั้งที่สร้าง
+     จากฟอร์ม · ตัวตรวจคนชุดเดียวกับโครงการ (สาย AC + ทีมทับ · หัวหน้าฝ่ายขาย) · ทีมที่เทียบ = ทีมของดีลหลังตัดสินเจ้าของ
+     ⚠️ สายสหมิตร/ภาชนะ SO ย้อนหลัง/backfill เขียน sales_deals ตรง ไม่ผ่าน route นี้ ⇒ ไม่โดนด่าน */
+  const people = await resolveDealPeople(supabase, {
+    body, team: owner?.team || attributionTeam(user, body.team), required: true,
+  });
+  if (!people.ok) return badRequest(people.error);
+
   const row = {
     id: genId('DEAL'),
     customerId: body.customerId || null,
@@ -277,6 +286,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ทีมตามเจ้าของ ไม่ใช่ตามคนกด · เจ้าของอยู่หลายทีมได้ ⇒ ฟอร์มเลือกได้ว่าใบนี้เข้าทีมไหน
     // (validateDealOwner ตีค่าที่ไม่ใช่ทีมของเจ้าของทิ้งแล้ว) · ไม่มีเจ้าของ = ทีมของคนกด
     team: owner?.team || attributionTeam(user, body.team),
+    ...people.patch,
     // ประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER) = คอลัมน์จริง (mig 0088) — ค่าตรงกับ
     // projects.type ส่งต่อเป็น template ตอนสร้างโครงการ PM. transition: เขียน
     // metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/แคชเก่าอ่านได้.

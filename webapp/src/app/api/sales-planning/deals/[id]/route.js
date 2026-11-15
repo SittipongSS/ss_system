@@ -46,6 +46,7 @@ import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { purgeSalesOrderFiles, salesOrderIdsOfDeal } from '@/lib/sales/salesOrderAttachmentAccess';
 import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
+import { DEAL_PEOPLE_KEYS, resolveDealPeople } from '@/lib/sales/dealPeople';
 import { clientDealMetadataOnPatch } from '@/lib/sales/legacyDealSwitch';
 import { loadLeadForLink, releaseLeadAfterDealGone } from '@/lib/sales/dealLeadLinkRepo';
 import { dealLabelForLead } from '@/lib/sales/dealLeadLink';
@@ -259,6 +260,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (missingDates.length) {
       return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
     }
+  }
+  /* ⭐ AC + AE Supervisor (ยุบดีล/โครงการ P2c-1 · มติ ⑤): บันทึกฟอร์ม = บังคับมีทั้งคู่ (ดีลเก่าที่ยังว่างต้องเลือกก่อน) ·
+     action PATCH ส่งมาไม่กี่ช่อง ไม่บังคับ แต่ถ้าส่งค่าว่างมาทับค่าที่มีอยู่ = ล้างไม่ได้ · ภาชนะ SO ย้อนหลังไม่บังคับ
+     ทีมที่เทียบกับ AC = ทีมหลังบันทึก (เปลี่ยนเจ้าของข้ามทีมพร้อมกันได้) */
+  if (DEAL_PEOPLE_KEYS.some((key) => key in body) || (isDealFormSave(body) && !isHistoricalDeal(before))) {
+    const people = await resolveDealPeople(supabase, {
+      body, current: before, team: patch.team || before.team, required: isDealFormSave(body) && !isHistoricalDeal(before),
+    });
+    if (!people.ok) return badRequest(people.error);
+    Object.assign(patch, people.patch);
   }
   if ('title' in body) patch.title = body.title.trim();
   if ('stage' in body) patch.stage = nextStage;

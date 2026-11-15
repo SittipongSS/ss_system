@@ -553,7 +553,8 @@ export async function findRequest(supabase, id) {
     withBriefs.dealId
       // ⚠️ `title` ต้องมาด้วย — เอกสาร PDR พิมพ์ช่อง "โครงการ" เป็น **ชื่อดีล**
       // ไม่ใช่รหัส · รหัสอย่างเดียว RD อ่านแล้วไม่รู้ว่างานอะไร
-      ? supabase.from('sales_deals').select('id, code, title').eq('id', withBriefs.dealId)
+      // ⭐ `ownerName` · `acOwnerName` — PDR ผู้ร้องขอ (AE/AC) อ่านจากดีลก่อนโครงการ (ยุบดีล/โครงการ P2c-1)
+      ? supabase.from('sales_deals').select('id, code, title, "ownerName", "acOwnerName"').eq('id', withBriefs.dealId)
         .maybeSingle().then((r) => r.data)
       : null,
   ]);
