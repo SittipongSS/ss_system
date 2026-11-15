@@ -1,6 +1,6 @@
 # หน้าลูกค้าศูนย์รวม + ถอดโครงการ
 
-> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-13 · มติครบ 9 ข้อ · P1 + H1 + H2 + H3 ขึ้น prod (`0009027c` · `e9d795b9` · `3da427c6` · `472be099`) · P2 "ยุบดีล/โครงการเป็นหน่วยเดียว" มติครบ 6 ข้อ: P2a ขึ้น prod (`81a37536`) · P2b ขึ้น prod (`7eaf255b`) · H4 (มติ 8–9) ขึ้น prod (`f8e975be`) · P2c-1 รอตรวจ · P2c-2 ยังไม่เริ่ม · P3 ยังไม่เริ่ม
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-13 · มติครบ 9 ข้อ · P1 + H1 + H2 + H3 ขึ้น prod (`0009027c` · `e9d795b9` · `3da427c6` · `472be099`) · P2 "ยุบดีล/โครงการเป็นหน่วยเดียว" มติครบ 6 ข้อ: P2a ขึ้น prod (`81a37536`) · P2b ขึ้น prod (`7eaf255b`) · H4 (มติ 8–9) ขึ้น prod (`f8e975be`) · P2c-1 ขึ้น prod (`95285e02`) · P2c-2 รอตรวจ · P3 ยังไม่เริ่ม
 
 ม็อก: artifact `RefYYkNdQkBVhfChFfu1rN` · ต้นทาง `~/ss-team/mockups/customer-hub/index.html` (ข้อมูลจริง AR-148)
 
@@ -187,7 +187,7 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
   - หน้าโครงการไม่แตะ (Rev. ของโครงการยังกดได้จนงวด P2d ซ่อนหน้า) · `pm_restore_snapshot` ของโครงการยังลบป้ายดีลตอนย้อน (บั๊กเดิม · 1 ใบ)
   - ตรวจ: ซ้อม 0436 บน PGlite (ย้อนครบ · ดีลอื่นไม่ถูกแตะ · ดีลย้ายโครงการแล้วได้ projectId ใหม่) · เทสต์ 15,966 · ด่าน CI ครบ ·
     เปิดจอจริง (admin · จอคอม/มือถือ) DL-260900613 ขึ้น Rev. 0 ที่ย้ายมา + ประวัติ · ยังไม่ได้กดออก/ย้อน Rev. จริง (ฐาน dev = prod)
-- **P2c-1 — AC/Sup บนดีล** (รอตรวจ · แบรนช์ `claude/project-removal-p2c` · ไม่มี migration · มติ ②⑤⑥)
+- **P2c-1 — AC/Sup บนดีล** (ขึ้น prod `95285e02` #2054 · ไม่มี migration · มติ ②⑤⑥)
   - ฟอร์ม `DealFormFields` (สร้าง/แก้ตัวเดียว): ช่อง AC (สาย AC · กรองทีมของดีล) + Sup (หัวหน้าฝ่ายขาย) — `PersonSelect` จากทะเบียนคน ·
     คนที่เลือกไว้แต่หลุดเงื่อนไขยังโชว์ · ฟอร์มแก้ทั้งหน้ารายการและหน้ารายละเอียดโหลดค่าเดิม
   - ด่านกลาง `missingDealFieldKeys` (+ `historical` ไม่บังคับ) · server `lib/sales/dealPeople.js` `resolveDealPeople` (ใช้ตัวตรวจคนของโครงการ
@@ -196,9 +196,16 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
   - PDR: ผู้ร้องขอ AE/AC อ่าน `deal.ownerName`/`deal.acOwnerName` ก่อนโครงการ (`pdrContext` · `findRequest` เลือกสองช่องนี้เพิ่ม)
   - เธรดดีลแจ้งเจ้าของ + AC (`UPDATE_ENTITIES.deal.recipients`) · การ์ด "ลูกค้าและเจ้าของดีล" โชว์ AC/Sup (ชื่อสด)
   - prod 13/11: ดีลที่ไม่ใช่ภาชนะย้อนหลังยังไม่มี AC 196 ใบ (ไม่มีโครงการ) — ต้องเลือกตอนบันทึกฟอร์มครั้งถัดไป · backfill ซ้อมรอบใหม่ได้ศูนย์
-- **P2c-2 — ดีล SCENT ต้นทาง + กติกา 80%** (ยังไม่เริ่ม) · ช่องบนดีล NPD (ดีล SCENT ของลูกค้าเดียวกัน) · `dealProbability.js` cascade/decascade/
-  resolve ใช้ `sourceScentDealId` แทน projectId · accept/unaccept route ส่ง id ของ SCENT · POST/PATCH คิด FC ใหม่เมื่อเปลี่ยนต้นทาง/ประเภท ·
-  ป้ายตรวจ audit เดิม (`NPD_CASCADE_AUDIT_TAG`) ต้องอ่านได้ต่อ · เทสต์ cascade ~30 ตัว (`dealProbabilityCascade.test.mjs`) ต้องเปลี่ยนกุญแจ
+- **P2c-2 — ดีล SCENT ต้นทาง + กติกา 80%** (รอตรวจ · แบรนช์ `claude/project-removal-p2c2` · ไม่มี migration · มติ ③)
+  - `dealProbability.js`: กลุ่มของกติกา = SCENT หนึ่งใบ + NPD ที่ชี้มัน (`loadScentGroup` · OR ของ id/sourceScentDealId) · ตัดสินรายแถว
+    "SCENT ต้นทางของแถวนี้ Won ไหม" · `resolveProbability` ถาม `isSourceScentWon` · cascade รับดีลที่ปิด (ไม่ใช่ SCENT = ไม่ทำ) ·
+    ขาถอยทำงานเมื่อย้อน SCENT · ขาตรวจซ้ำอ่านกลุ่มซ้ำ (Dekker เดิม) · `autoProbability` ออปชันเปลี่ยนชื่อเป็น `wonSourceScent`
+  - ป้าย audit ใหม่ "ดีล SCENT ต้นทางปิด Won" · ตัวจับอ่านป้ายรุ่นกุญแจโครงการ (`LEGACY_NPD_CASCADE_AUDIT_TAG`) ได้ต่อ ⇒ 80 เดิมยังถอยได้
+  - route รับใบส่งดีลที่ปิดแทน projectId · POST ดีล `resolveProbability` (NPD ชี้ SCENT Won ได้ 80 ตั้งแต่เกิด) · PATCH ผูก/เปลี่ยนต้นทาง
+    (ไม่ได้ขยับขั้น) ⇒ FC **ขึ้น** ตามกติกา + ป้าย cascade ใน summary ของ audit (`sourceScentLinkAuditTag`) · ถอดต้นทางไม่ลด FC
+  - ช่อง "ดีล SCENT ต้นทาง" ในฟอร์ม (เฉพาะ NPD · ใต้ช่องลูกค้า · รายการจาก GET `/deals?customerId&dealType=SCENT` ที่เพิ่มตัวกรอง) ·
+    server `lib/sales/dealScentSource.js` (SCENT ลูกค้าเดียวกัน · ไม่ Lost · เปลี่ยนประเภทออกจาก NPD = ถอดให้)
+  - เทสต์ cascade เขียนใหม่ทั้งชุดบนกุญแจใหม่ (28 ตัว: ขาเข้า · ขาถอย · พังทีละขา · แข่ง 4 แบบ) · ยาม `dealScentSource.test.mjs`
 - **P2d — ถอดจอโครงการ** · เมนู · หน้าดีล · ฟอร์ม/รายการ · ตัวกรองคำร้อง/งาน · การ์ด SO · ปุ่มสหมิตร · "เลขที่โครงการ" = รหัสดีล ·
   `/sa/projects/**` พาไปหน้าลูกค้า · แก้ลายนิ้วมือ SO-26100379-0
 - **P3 — ลบโค้ดตายแล้วลบตาราง** · ของเข้า · เตรียมส่ง · ปิดโครงการ · project_products · เธรด/ไฟล์โครงการ · เลิกเขียน projectId ทุกตาราง ·

@@ -11,7 +11,8 @@ import {
   exciseFilingsOfDeal, exciseFilingBlockMessage, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
   contractsOfDeal, contractBlockMessage,
 } from '@/lib/forceDelete';
-import { resolveProbability } from '@/lib/sales/dealProbability';
+import { npdWonScentRuleApplies, resolveProbability, sourceScentLinkAuditTag } from '@/lib/sales/dealProbability';
+import { resolveSourceScent } from '@/lib/sales/dealScentSource';
 import { validateDealOwner } from '@/lib/sales/dealOwner';
 import { dealCustomerPatchError } from '@/lib/sales/dealCustomerAdopt';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
@@ -343,6 +344,32 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     patch.dealType = nextType;
     patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: nextType };
   }
+  /* ⭐ ดีล SCENT ต้นทาง (ยุบดีล/โครงการ P2c-2 · มติเจ้าของ 13/11/2026 ③) — คู่ของกติกา FC "SCENT Won ⇒ NPD 80"
+     เฉพาะ NPD · ต้นทางต้องเป็น SCENT ของลูกค้าเดียวกันที่ยังไม่ Lost · เปลี่ยนประเภทออกจาก NPD = ถอดต้นทางให้เอง
+     ⭐ ผูก/เปลี่ยนต้นทาง (ไม่ได้ขยับขั้น) แล้ว SCENT ต้นทาง Won อยู่ ⇒ FC **ขึ้น** ตามกติกาทันที + ติดป้าย cascade ใน audit
+        (ให้ขาถอยตอนย้อนรับใบของ SCENT ใบนั้นถอยได้) · ถอดต้นทางไม่ลด FC ให้ (แยกไม่ออกว่า 80 เดิม AE เลือกเองหรือกติกาตั้ง) */
+  const scentSource = await resolveSourceScent(supabase, {
+    body,
+    current: before,
+    next: {
+      dealType: patch.dealType ?? normalizeDealType(before.dealType ?? before.metadata?.projectType),
+      customerId: 'customerId' in patch ? patch.customerId : before.customerId,
+    },
+  });
+  if (!scentSource.ok) return badRequest(scentSource.error);
+  Object.assign(patch, scentSource.patch);
+  let sourceRuleTag = null;
+  const sourceChanged = 'sourceScentDealId' in patch && (patch.sourceScentDealId || null) !== (before.sourceScentDealId || null);
+  if (sourceChanged && !stageChanged && !alreadyWon) {
+    const nextDeal = { ...before, ...patch };
+    if (npdWonScentRuleApplies(nextDeal)) {
+      const ruled = await resolveProbability(supabase, nextDeal);
+      if (ruled > Number(patch.probability ?? before.probability)) {
+        patch.probability = ruled;
+        sourceRuleTag = sourceScentLinkAuditTag();
+      }
+    }
+  }
   /* สายธุรกิจของดีล (mig 0274) — อีกครึ่งของกุญแจแม่แบบไทม์ไลน์
      ⚠️ ดีลที่ผูกโครงการแล้วห้ามสลับสาย: โครงการประกาศสายของมันเอง และ segment
      ในโครงการถูก gen ด้วยแม่แบบสายนั้นไปแล้ว ⇒ ต้องย้าย/แก้ที่โครงการแทน
@@ -595,7 +622,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       ? `ย้ายเจ้าของดีลของใบสั่งขายย้อนหลัง ${dealAuditLabel(data)}: ${naText(before.ownerName)} → ${naText(data.ownerName)}`
         + ` · ใบย้อนหลังย้ายตาม ${restampedOrders.length} ใบ`
         + (restampedOrders.length ? ` (${restampedOrders.map((o) => o.orderNumber).join(', ')})` : '')
-      : `แก้ไข sales deal ${dealAuditLabel(data)}`,
+      : `แก้ไข sales deal ${dealAuditLabel(data)}${sourceRuleTag ? ` ${sourceRuleTag}` : ''}`,
     request: req,
   });
 

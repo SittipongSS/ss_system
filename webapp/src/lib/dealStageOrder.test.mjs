@@ -74,7 +74,9 @@ test('PATCH ดีล: probability ถูก freeze หลัง Won เหม�
      เลือกเองได้) — **ทั้งสองสาขา** ต้องติด !alreadyWon ไม่ใช่แค่สาขาเดียว */
   assert.match(route, /if \(stageChanged && !alreadyWon\) \{/, 'สาขาขั้นเปลี่ยนต้องมี guard');
   assert.match(route, /\} else if \('probability' in body && !alreadyWon\) \{/, 'สาขาเลือกเองต้องมี guard');
-  assert.doesNotMatch(route, /patch\.probability = (?!await resolveProbability|toProbability\(body\.probability, nextStage\))/,
+  /* ทางที่สาม (ยุบดีล/โครงการ P2c-2): ผูกดีล SCENT ต้นทางแล้ว FC ขึ้นตามกติกา — ต้องติด !alreadyWon เหมือนกัน */
+  assert.match(route, /if \(sourceChanged && !stageChanged && !alreadyWon\) \{/, 'สาขาผูกต้นทางต้องมี guard');
+  assert.doesNotMatch(route, /patch\.probability = (?!await resolveProbability|toProbability\(body\.probability, nextStage\)|ruled;)/,
     'ห้ามมีทางเขียน probability ทางอื่นที่ไม่ผ่าน guard');
   assert.match(route, /if \('projectValue' in body && !alreadyWon\)/, 'ของเดิมต้องยังกันอยู่');
 });
