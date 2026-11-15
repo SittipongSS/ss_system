@@ -1,5 +1,8 @@
 "use client";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import PersonSelect from "@/components/ui/PersonSelect";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { PROJECT_PEOPLE_ROLES } from "@/lib/pm/projectPeople";
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import DealValueLines from "@/components/salesPlanning/DealValueLines";
 import OptionTiles from "@/components/ui/OptionTiles";
@@ -249,6 +252,34 @@ export default function DealFormFields({
     </div>
   );
 
+  /* ── AC ผู้ประสานงาน + AE Supervisor (ยุบดีล/โครงการ P2c-1 · มติเจ้าของ 13/11/2026 ② ⑤) ─────────────────────
+     ย้ายมาจากฟอร์มโครงการ — เลือกเองทุกดีล แก้ได้ · **บังคับทุกครั้งที่บันทึก** (missingDealFieldKeys + server dealPeople.js)
+     รายชื่อกรองด้วย role ชุดเดียวกับที่ server ตรวจ (สาย AC · หัวหน้าฝ่ายขาย) · AC กรองทีมให้ทับทีมของดีล (server ตรวจซ้ำ)
+     ⚠️ คนที่ถูกเลือกไว้เดิมแต่หลุดเงื่อนไข (ย้ายทีม/ถูกระงับ) ยังโชว์ในรายการ ไม่งั้นช่องดูเหมือนว่างทั้งที่มีค่า */
+  const directory = usePeopleDirectory();
+  const dealTeam = teamValue || ownerPick?.team || form.team || null;
+  const teamsOf = (user) => (Array.isArray(user?.teams) && user.teams.length ? user.teams : [user?.team].filter(Boolean));
+  const keepSelected = (list, id) => (id && !list.some((u) => u.id === id) ? [...list, ...directory.filter((u) => u.id === id)] : list);
+  const acUsers = keepSelected(directory.filter((u) => PROJECT_PEOPLE_ROLES.preparedBy.includes(u.role) && !u.disabled
+    && (!dealTeam || !teamsOf(u).length || teamsOf(u).includes(dealTeam))), form.acOwnerId);
+  const supervisorUsers = keepSelected(directory.filter((u) => PROJECT_PEOPLE_ROLES.aeSupervisor.includes(u.role) && !u.disabled), form.aeSupervisorId);
+  const acField = (
+    <div className="deal-field" key="acOwner">
+      <span className="deal-field-label">ผู้ประสานงาน (AC) <span className="required-mark">*</span></span>
+      <PersonSelect users={acUsers} value={form.acOwnerId || ""} onChange={(acOwnerId) => onPatch({ acOwnerId })}
+        emptyLabel="— เลือกผู้ประสานงาน —" ariaLabel="ผู้ประสานงาน (AC)" />
+      <small>ลงชื่อบน FM-PD-05 · ช่องผู้ประสานงานของ PDR · รับแจ้งเตือนของดีล{dealTeam ? ` · คนในทีม ${dealTeam}` : ""}</small>
+    </div>
+  );
+  const supervisorField = (
+    <div className="deal-field" key="aeSupervisor">
+      <span className="deal-field-label">ผู้ตรวจสอบ (AE Supervisor) <span className="required-mark">*</span></span>
+      <PersonSelect users={supervisorUsers} value={form.aeSupervisorId || ""} onChange={(aeSupervisorId) => onPatch({ aeSupervisorId })}
+        emptyLabel="— เลือกผู้ตรวจสอบ —" ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" />
+      <small>ลงชื่อช่องผู้ตรวจสอบบน FM-PD-05 (ไทม์ไลน์ของดีล)</small>
+    </div>
+  );
+
   /* สายธุรกิจของดีล (mig 0275) — **ครึ่งแรกของกุญแจแม่แบบไทม์ไลน์** จึงอยู่เหนือ
      ประเภทดีล: ตอบ "งานนี้จบยังไง" ก่อน แล้วค่อยตอบ "ใบนี้เติมช่วงไหน"
      ⚠️ ล็อกเมื่อดีลผูก/จะผูกโครงการ — โครงการเป็นเจ้าของสายอยู่แล้ว และผูกข้ามสาย
@@ -493,6 +524,7 @@ export default function DealFormFields({
       {pairRows([notesField])}
       {pairRows([ownerField])}
       {pairRows([teamField])}
+      {pairRows([acField, supervisorField])}
     </>
   );
 }

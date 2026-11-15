@@ -66,6 +66,7 @@ import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
+import { isHistoricalDeal } from "@/lib/sales/historicalOrders";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
 import { installmentActualSubLine, wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
@@ -735,6 +736,9 @@ export default function DealOverviewPage() {
       line: deal.line || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
+      // AC + AE Supervisor (ยุบดีล/โครงการ P2c-1) — โหลดค่าเดิม · ว่าง = ต้องเลือกก่อนบันทึก (มติ ⑤)
+      acOwnerId: deal.acOwnerId || "",
+      aeSupervisorId: deal.aeSupervisorId || "",
     });
     setDealFormError("");
     setEditLeadId("");
@@ -751,6 +755,8 @@ export default function DealOverviewPage() {
       // ดีลที่ปิด Won แล้วไม่ต้องมีตารางรายหมวด — หมวด/ปริมาตร/จำนวนมาจากใบที่รับ
       // และจอล็อกตารางไว้อยู่แล้ว (มติผู้ใช้ 2026-09-08)
       alreadyWon,
+      // ดีลภาชนะของใบสั่งขายย้อนหลังไม่บังคับ AC/Sup (server ก็ไม่บังคับ)
+      historical: isHistoricalDeal(deal),
       title: dealForm.title,
     });
     if (missingFields) { setDealFormError(missingFields); setSavingDeal(false); return; }
@@ -1068,6 +1074,9 @@ export default function DealOverviewPage() {
               facts={[
                 { label: "ประเภทดีล", value: DEAL_TYPE_LABELS[dealTypeOf(deal)] || dealTypeOf(deal) },
                 { label: "Forecast", value: naText(deal.forecastMonth) },
+                // ยุบดีล/โครงการ P2c-1: AC + AE Supervisor อยู่บนดีล · ชื่อสดจากบัญชี (สำเนาบนแถวเป็นชื่อบนเอกสาร)
+                { label: "ผู้ประสานงาน (AC)", value: naText(livePersonName(directory, deal.acOwnerId, deal.acOwnerName)) },
+                { label: "ผู้ตรวจสอบ (AE Sup)", value: naText(livePersonName(directory, deal.aeSupervisorId, deal.aeSupervisorName)) },
               ]}
             />
             <ContextCard

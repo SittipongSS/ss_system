@@ -152,8 +152,8 @@ export const PDR_SECTIONS = [
       // ⭐ `inHeader` — เอกสารพิมพ์ไว้บนหัวใบ (มติผู้ใช้ 2026-08-09: "วันที่ [ร้องขอ]
       // ใต้โครงการ") ไม่ใช่ในตาราง · จอแสดงกับฟอร์มไม่มีหัวใบ จึงยังโชว์ในลิสต์ตามเดิม
       { key: 'requestedAt', label: 'วันที่ร้องขอ', type: 'derived', derive: 'requestedAt', from: 'วันที่ยื่นคำร้อง', inHeader: true },
-      { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากผู้ดูแลโครงการ' },
-      { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงานโครงการ' },
+      { key: 'requester', label: 'ผู้ร้องขอ (AE)', type: 'derived', derive: 'requester', from: 'เติมจากเจ้าของดีล' },
+      { key: 'coordinator', label: 'ผู้ร้องขอ (AC)', type: 'derived', derive: 'coordinator', from: 'เติมจากผู้ประสานงาน (AC) ของดีล' },
       { key: 'department', label: 'แผนก', type: 'derived', derive: 'department', from: 'การขายและบริการ' },
       {
         key: 'requestType', column: 'pdrRequestType', max: 40, label: 'ประเภทของคำขอ',
@@ -943,8 +943,10 @@ export function pdrContext({
   const line = primary.line || customer?.line || null;
   return {
     requestedAt: requestedAtText(request),
-    requester: project?.aeOwner || request.requestedByName || null,
-    coordinator: project?.acOwner || null,
+    /* ⭐ ยุบดีล/โครงการ P2c-1 (มติเจ้าของ 13/11/2026 ②): AE = เจ้าของดีล · AC = ผู้ประสานงานบนดีล — ดีลมาก่อน
+       แล้วค่อยถอยไปโครงการ (ใบเก่า/ดีลที่ยังไม่ได้เลือก AC) · ไม่มีทั้งคู่ = ผู้ยื่นคำร้อง (AE) / ว่าง (AC) เหมือนเดิม */
+    requester: deal?.ownerName || project?.aeOwner || request.requestedByName || null,
+    coordinator: deal?.acOwnerName || project?.acOwner || null,
     customer: request.customerName || customer?.name || null,
     // ⚠️ **ชื่องาน ไม่ใช่รหัสดีล** (มติผู้ใช้ 2026-08-09) — ใบมีเลขที่เอกสารเป็นรหัส
     // อยู่แล้ว รหัสที่สองอ่านแล้วสับสนว่าอันไหนคือเลขของใบนี้

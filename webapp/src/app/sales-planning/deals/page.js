@@ -63,6 +63,7 @@ import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { DEAL_DELETE_LEAD_NOTE, canLinkLeadRole, dealLeadLinkBlocker } from "@/lib/sales/dealLeadLink";
 import LeadSourcePicker from "@/components/salesPlanning/LeadSourcePicker";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
+import { isHistoricalDeal } from "@/lib/sales/historicalOrders";
 import { canExportForecastReport } from "@/lib/sales/forecastBreakdown";
 import { DEAL_REVIEW_LIST_URL, dealFacetCounts, dealListPick, dealPassesListFilters, dealPickRows, reviewOptionCount } from "@/lib/sales/dealListFilter";
 /* มูลค่าที่ขึ้นจอของดีลหนึ่งใบ — Won ใช้ยอด Actual (SO อนุมัติแล้ว) นอกนั้นใช้ยอดคาดการณ์
@@ -493,6 +494,9 @@ export default function SalesPlanningPipelinePage() {
       line: deal.line || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
+      // AC + AE Supervisor (ยุบดีล/โครงการ P2c-1) — โหลดค่าเดิม · ว่าง = ต้องเลือกก่อนบันทึก (มติ ⑤)
+      acOwnerId: deal.acOwnerId || "",
+      aeSupervisorId: deal.aeSupervisorId || "",
       // ทีมปัจจุบันของดีล — เจ้าของที่อยู่หลายทีมย้ายใบนี้ระหว่างทีมตัวเองได้จากช่องนี้
       team: deal.team || "",
     });
@@ -512,6 +516,8 @@ export default function SalesPlanningPipelinePage() {
     const missingFields = missingDealFieldsMessage(dealForm, {
       // เหมือนหน้ารายละเอียด — ดีลที่ปิดแล้วไม่บังคับตารางรายหมวด (มติผู้ใช้ 2026-09-08)
       alreadyWon: isWonStage(dealForm.stage),
+      // ดีลภาชนะของใบสั่งขายย้อนหลังไม่บังคับ AC/Sup (server ก็ไม่บังคับ)
+      historical: isHistoricalDeal(editingDeal),
       title: dealForm.title,
     });
     if (missingFields) { setDealFormError(missingFields); setSubmitting(false); return; }

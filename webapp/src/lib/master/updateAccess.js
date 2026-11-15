@@ -129,7 +129,9 @@ export const UPDATE_ENTITIES = {
     async canPost(supabase, parent, user) {
       return canEditSalesPlanning(user) && inSalesEditScope(user, parent);
     },
-    recipients: (parent) => [parent?.ownerId],
+    /* ⭐ ยุบดีล/โครงการ P2c-1 (มติเจ้าของ 13/11/2026 ⑥): เจ้าของ + AC ผู้ประสานงานของดีล (เดิมเธรดโครงการแจ้ง AC)
+       · AE Supervisor ไม่รับ — คนเดียวคุมทุกดีล แจ้งทุกเหตุการณ์ = ท่วมกล่อง */
+    recipients: (parent) => [parent?.ownerId, parent?.acOwnerId],
   },
 
   // ── ลีด (mig 0091) ───────────────────────────────────────────────────
