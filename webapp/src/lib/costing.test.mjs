@@ -395,7 +395,7 @@ test('บริบทดีล: ไม่เลือกดีล = ใบสำ
 test('บริบทดีล: select เฉพาะคอลัมน์ที่มีจริง (regression "ไม่พบดีล" ทุกใบ)', async () => {
   const deal = {
     id: 'D-1', code: 'DL-2601', customerId: 'AR-1', customerName: 'ลูกค้า',
-    projectId: null, team: 'KA', ownerId: 'u-ae',
+    team: 'KA', ownerId: 'u-ae',
   };
   const { api, seen } = dealStub({ data: deal, error: null });
   const out = await resolveCostingDealContext(api, { id: 'u-ae', role: 'ae', team: 'KA' }, 'D-1');
@@ -407,9 +407,23 @@ test('บริบทดีล: select เฉพาะคอลัมน์ท�
     assert.ok(SALES_DEAL_COLUMNS.has(column), `sales_deals ไม่มีคอลัมน์ "${column}"`);
   }
   // ต้องมีครบเท่าที่ปลายทางใช้จริง (scope/บริบท/audit)
-  for (const column of ['id', 'code', 'customerId', 'customerName', 'projectId', 'team', 'ownerId']) {
+  for (const column of ['id', 'code', 'customerId', 'customerName', 'team', 'ownerId']) {
     assert.ok(columns.includes(column), `ขาดคอลัมน์ "${column}" ที่ผู้เรียกต้องใช้`);
   }
+  // ยุบโครงการ P3a (มติ 16/11): ใบใหม่ไม่ผูกโครงการ ⇒ ไม่อ่าน projectId ของดีลอีก
+  assert.equal(columns.includes('projectId'), false, 'บริบทดีลกลับไปอ่าน projectId ของดีล — ใบใหม่ต้องไม่ผูกโครงการ');
+});
+
+test('บริบทดีล: ดีลที่มี projectId (ข้อมูลเก่า) — บริบทใบใหม่ยังไม่ผูกโครงการ (P3a)', async () => {
+  const deal = {
+    id: 'D-1', code: 'DL-2601', customerId: 'AR-1', customerName: 'ลูกค้า',
+    projectId: 'PRJ-OLD', team: 'KA', ownerId: 'u-ae',
+  };
+  const { api } = dealStub({ data: deal, error: null });
+  const out = await resolveCostingDealContext(api, { id: 'u-ae', role: 'ae', team: 'KA' }, 'D-1');
+  assert.equal(out.error, undefined);
+  assert.equal(out.context.dealId, 'D-1');
+  assert.equal(out.context.projectId, null);
 });
 
 test('บริบทดีล: query พังต้องไม่โผล่เป็น "ไม่พบดีล"', async () => {

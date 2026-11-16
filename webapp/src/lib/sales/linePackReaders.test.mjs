@@ -430,12 +430,11 @@ const QTY_READERS = Object.freeze({
   'components/requests/ProductDevLines.js': 'other:dept_request_items',
   'lib/materialPricesAdmin.js': 'other:material_price_revision_tiers',
   'lib/pm/deliveries.js': 'other:material_deliveries',
-  'components/pm/DeliveriesPanel.js': 'other:material_deliveries',
+  // components/pm/DeliveriesPanel.js + app/sa/projects/[id]/shipment-prep/page.js ลบใน P3a (ยุบโครงการ 16/11)
   'components/pm/ProductionJobModal.js': 'other:production_jobs',
   'app/production/board/page.js': 'other:production_jobs',
   'app/production/jobs/page.js': 'other:production_jobs',
   'app/api/production/jobs/route.js': 'other:production_jobs',
-  'app/sa/projects/[id]/shipment-prep/page.js': 'other:shipment_prep_lines',
   'app/settings/design-preview/page.js': 'other:แถวตัวอย่างของหน้าตัวอย่างดีไซน์ (ไม่อ่านฐาน)',
   'lib/service/assetHistory.js': 'other:service_visit_items',
   'lib/service/consumption.js': 'other:service_visit_items',

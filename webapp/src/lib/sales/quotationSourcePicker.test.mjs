@@ -136,8 +136,18 @@ test('เปิดคำร้องไม่บังคับโครงก�
   const requests = routeSource('sa/requests/route.js');
   assert.doesNotMatch(requests, /requestNeedsRef\(kind, 'project'\)/,
     "ด่านโครงการของคำร้องถูกถอดแล้ว (needs เหลือ 'deal')");
-  assert.match(requests, /projectId = dealRow\.projectId \|\| null;/,
-    'โครงการยัง derive จากดีลเหมือนเดิม แค่ว่างได้');
+});
+
+/* ยุบโครงการ P3a (มติ 16/11 ⑩): คำร้องใหม่ไม่ก๊อป projectId จากดีลอีก — โครงการเก็บเป็นประวัติอ่านอย่างเดียว
+   (เดิมเทสต์นี้ตรึงว่า "ยัง derive จากดีล แค่ว่างได้" — กลับทิศเป็นห้าม derive) */
+test('เปิดคำร้องไม่ผูกโครงการ — ไม่อ่าน/ไม่ก๊อป projectId ของดีลลงแถวใหม่', () => {
+  const requests = routeSource('sa/requests/route.js');
+  assert.doesNotMatch(requests, /projectId = dealRow\.projectId/, 'ห้ามกลับไป derive โครงการจากดีล');
+  assert.doesNotMatch(requests, /\.select\('[^']*\bprojectId\b[^']*'\)/, 'select ดีลต้องไม่ดึง projectId มา');
+  const start = requests.indexOf("from('dept_requests').insert({");
+  assert.ok(start >= 0, 'หาจุดเขียนหัวคำร้องไม่เจอ — เทสต์ต้องตามโครงใหม่');
+  const insert = requests.slice(start, requests.indexOf('\n    });', start));
+  assert.doesNotMatch(insert, /\bprojectId\b/, 'แถวคำร้องใหม่ต้องไม่มีคีย์ projectId');
 });
 
 // ── เหตุระดับทะเบียน (2026-07-27) — สามเหตุที่เคยหายเงียบแม้มีตัวบอกเหตุรอบแรก ──

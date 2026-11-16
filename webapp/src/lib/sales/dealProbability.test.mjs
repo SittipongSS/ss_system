@@ -101,12 +101,7 @@ test('สร้างดีล: FC มาจากขั้น (+ ดีล SCEN
     /probability: String\(DEFAULT_PROBABILITY_BY_STAGE\.lead\)/);
 });
 
-test('ผูกโครงการแล้วคิด FC ใหม่ — เพิ่งรู้ว่ามีพี่น้องใบไหน', () => {
-  // เนื้อในของการผูกโครงการย้ายมาอยู่ที่ lib แล้ว (โมดัลปิด Won เรียกตัวเดียวกัน)
-  const src = read('src/lib/sales/dealProjectLink.js');
-  assert.match(src, /resolveProbability\(supabase, \{/);
-  assert.match(src, /probability: nextProbability,/);
-});
+// (ยาม "ผูกโครงการแล้วคิด FC ใหม่" ถอดใน P3a — ยุบโครงการ 16/11 ลบ dealProjectLink · ไม่มีทางผูกโครงการแล้ว)
 
 test('SCENT ปิด Won → cascade ไป NPD ที่ชี้มันเป็นต้นทาง แล้วลงประวัติไว้', () => {
   const src = read('src/app/api/sales-planning/quotations/[id]/accept/route.js');

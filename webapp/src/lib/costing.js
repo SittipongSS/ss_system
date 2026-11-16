@@ -308,7 +308,7 @@ export async function resolveCostingDealContext(supabase, user, dealId, fallback
   // โดยที่ข้อความไม่บอกอะไรเลยว่าเป็นปัญหา schema
   const { data: deal, error } = await supabase
     .from('sales_deals')
-    .select('id, code, customerId, customerName, projectId, team, ownerId')
+    .select('id, code, customerId, customerName, team, ownerId')
     .eq('id', dealId)
     .maybeSingle();
   // แยก "อ่านไม่สำเร็จ" ออกจาก "ไม่มีดีลนี้" เสมอ — ปัญหาคนละเรื่อง คนละวิธีแก้
@@ -324,7 +324,7 @@ export async function resolveCostingDealContext(supabase, user, dealId, fallback
     deal,
     context: {
       dealId: deal.id,
-      projectId: deal.projectId ?? null,
+      projectId: null, // P3a (มติ 16/11 ⑩): ใบใหม่ไม่ผูกโครงการ
       customerId: deal.customerId,
       customerName: deal.customerName ?? null,
       team: deal.team ?? user?.team ?? null,

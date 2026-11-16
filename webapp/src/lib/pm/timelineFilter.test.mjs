@@ -108,36 +108,18 @@ test('timelineStepMatches: ขั้นไม่ระบุฝ่าย/ALL ผ
   assert.equal(timelineStepMatches({ status: 'Completed' }), true);
 });
 
-test('ด่านซอร์ส M18a: แผงกับหน้าโครงการกรอง/นับด้วย timelineStepMatches ตัวเดียว', () => {
+/* หน้ารายละเอียดโครงการ (ตัวเลือกดีลที่นับขั้น · ป้ายแท็บ "งาน" M18b · ปุ่ม "เปิดไทม์ไลน์" M18c) ถูกลบใน P3a
+   — ยุบโครงการ 16/11 · เหลือยามฝั่งแผงไทม์ไลน์ที่หน้าดีลยังใช้ */
+test('ด่านซอร์ส M18a: แผงไทม์ไลน์กรอง/นับด้วย timelineStepMatches ตัวเดียว', () => {
   const table = readSrc('../../components/salesPlanning/DealTimelineTable.js');
   assert.match(table, /const stepMatches = \(task\) => timelineStepMatches\(task, stepFilter\);/);
   assert.equal((table.match(/\.filter\(stepMatches\)/g) || []).length, 2, 'ตาราง/รายการ และหัวเฟส ใช้ตัวกรองเดียวกัน');
   assert.doesNotMatch(table, /const matchDept =|const matchStatus =/, 'ห้ามมีนิยามที่สองในคอมโพเนนต์');
   assert.match(table, /stepFilter: controlledStepFilter = null/);
   assert.match(table, /if \(!controlledStepFilter\) setOwnStepFilter\(next\);\s*onStepFilterChange\?\.\(next\);/);
-  const page = readSrc('../../app/sa/projects/[id]/page.js');
-  assert.match(page, /const stepCountOf = \(selection\) => countTimelineSteps\(allTasks, \{ deals: \[selection\], stepFilter, documentView: view === "document" \}\);/,
-    'ตัวเลือกต้องนับผ่าน countTimelineSteps ตัวเดียวกับเทสต์ ไม่ใช่สูตรในหน้า');
-  assert.match(page, /\$\{deal\.title\} \(\$\{stepCountOf\(deal\.id\)\} ขั้นตอน/);
-  assert.match(page, /งานกลางโครงการ \(\$\{stepCountOf\(TIMELINE_CENTRAL\)\} ขั้นตอน/);
-  assert.doesNotMatch(page, /allTasks\.filter\(\(task\) => (?:!task\.dealId|task\.dealId === deal\.id)\)\.length\} ขั้นตอน/,
-    'ห้ามกลับไปนับขั้นของตัวเลือกด้วยสูตรในหน้าเอง');
-  assert.match(page, /stepFilter=\{stepFilter\}\s*onStepFilterChange=\{setStepFilter\}/);
 });
 
-test('ด่านซอร์ส M18b: ป้ายแท็บ "งาน" นับงานหลังกรองดีล (= ตารางงาน) + คำร้องทั้งหมด (= ตารางคำร้อง)', () => {
-  const page = readSrc('../../app/sa/projects/[id]/page.js');
-  assert.match(page, /tasks: shownPersonalTasks\.length \+ \(p\.inquiries \|\| \[\]\)\.length,/);
-  assert.match(page, /<tbody>\{shownPersonalTasks\.map\(/, 'ตารางงานลิสต์ shownPersonalTasks');
-  assert.match(page, /<RequestQueuePanel\s+scope="mine" rows=\{p\.inquiries \|\| \[\]\}/, 'ตารางคำร้องไม่กรองดีล');
-});
-
-test('ด่านซอร์ส M18c: ปุ่ม "เปิดไทม์ไลน์" ของการ์ดภาพรวมล้างตัวกรองดีล + สถานะ/ฝ่ายก่อนเปิด', () => {
-  const page = readSrc('../../app/sa/projects/[id]/page.js');
-  assert.match(page, /const openWholeTimeline = \(\) => \{\s*setDealFilters\(\[\]\);\s*setStepFilter\(EMPTY_STEP_FILTER\);\s*switchTab\("timeline"\);\s*\};/);
-  assert.match(page, /onClick=\{openWholeTimeline\}/);
-  // การ์ดนับจาก allTasks (ทั้งโครงการ) ⇒ หลังล้างตัวกรอง แผงโชว์ allTasks ครบ
-  assert.match(page, /const total = allTasks\.length;/);
+test('M18c: ล้างตัวกรองดีล + สถานะ/ฝ่ายแล้ว นับได้ครบทุกขั้น', () => {
   assert.equal(countTimelineSteps(steps, { deals: [], stepFilter: EMPTY_STEP_FILTER }), steps.length);
 });
 

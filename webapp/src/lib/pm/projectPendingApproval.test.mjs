@@ -4,8 +4,6 @@
 // Run: npm test
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   hasPendingApproval,
   projectDealValue,
@@ -14,9 +12,6 @@ import {
 } from './projectPendingApproval.js';
 import { rollupDeals } from '../sales/projectRollup.js';
 import { SALES_ORDER_STATUS_LABELS } from '../sales/salesOrderWorkflow.js';
-
-const ROOT = process.cwd();
-const read = (rel) => readFileSync(join(ROOT, rel), 'utf8');
 
 const ALL_STATUSES = ['draft', 'pending_approval', 'approved', 'rejected', 'revised', 'approval_revoked', 'cancelled'];
 
@@ -146,40 +141,6 @@ test('ใบรายงวด: KPI รวม + แถวดีลพก "รอ
   assert.equal(projectDealValue(pendingWon()).instRemaining, 0, 'ใบทั้งใบ = ไม่มีกองนี้');
 });
 
-/* ── ด่านซอร์ส: สองจอต้องเดินผ่านตัวกลาง ─────────────────────────────── */
-const HUB = 'src/components/pm/ProjectDealsHub.js';
-const LIST = 'src/app/sa/projects/page.js';
-
-test('ProjectDealsHub: แถวดีลไม่อ่าน wonValue ดิบ · SO ไม่มีแผนที่สถานะของตัวเอง', () => {
-  const src = read(HUB);
-  assert.doesNotMatch(src, /deal\.wonValue\s*\?\?/, 'แถวดีลต้องอ่านผ่าน projectDealValue (wonAmt)');
-  assert.match(src, /projectDealValue\(deal\)/);
-  assert.match(src, /projectSalesOrderAmount\(order\)/);
-  assert.doesNotMatch(src, /order\.status === "approved" \? order\.actualAmount/, 'ยอดแถว SO ต้องแยกสามทางผ่านตัวกลาง');
-  assert.doesNotMatch(src, /draft: "ร่าง"/, 'ป้ายสถานะ SO มาจาก SALES_ORDER_STATUS_LABELS');
-  assert.match(src, /<PendingApprovalAmount\b/);
-  assert.match(src, /hint=\{hasPendingApproval\(r\)/, 'KPI Actual มีบรรทัดรองรออนุมัติ');
-  // review รอบสี่: กอง "รอนับรายงวด" บน KPI และแถวดีล (ชิ้นกลาง InstRemainingAmount)
-  assert.match(src, /<InstRemainingAmount amount=\{r\.instRemaining\} count=\{r\.instRemainingCount\} \/>/);
-  assert.match(src, /\{closed && <InstRemainingAmount amount=\{instRemaining\} \/>\}/);
-});
-
-test('/sa/projects: KPI + แถวใช้ชิ้นกลาง · ไม่เพิ่มคอลัมน์ · Actual ไม่บวกยอดรออนุมัติ', () => {
-  const src = read(LIST);
-  assert.match(src, /sumProjectRollups\(filtered\)/);
-  assert.equal((src.match(/<PendingApprovalAmount\b/g) || []).length, 2, 'KPI Actual 1 + เซลล์ Actual ต่อแถว 1');
-  assert.equal((src.match(/colSpan=\{8\}/g) || []).length, 2, 'บรรทัดรอง ไม่ใช่คอลัมน์ใหม่');
-  for (const rel of [LIST, HUB]) {
-    assert.doesNotMatch(read(rel), /actual\s*\+[^;\n]*pendingApproval|pendingApproval[^;\n]*\+\s*[\w.]*actual/i,
-      `${rel} บวกยอดรออนุมัติเข้า Actual (มติ 2026-09-11 ห้ามเด็ดขาด)`);
-  }
-});
-
-test('/sa/projects: บรรทัดรออนุมัติใน note ของการ์ด Actual รับขนาดจาก note (ไม่ใหญ่กว่าป้ายการ์ด)', () => {
-  // ตัวกลางตั้ง fs-5 ไว้สำหรับบรรทัดรองในตาราง · note ของการ์ดเป็น fs-1 — ทรงเดียวกับการ์ดบนแดชบอร์ดส่วนตัว
-  const css = read('src/app/sa/projects/page.module.css');
-  const rule = css.match(/\.metricPending:global\(\.so-pending-approval\)\s*\{([^}]*)\}/);
-  assert.ok(rule, 'ต้องต่อ :global(.so-pending-approval) ให้ specificity ชนะกฎตัวกลาง');
-  assert.match(rule[1], /font-size:\s*inherit/);
-  assert.match(read(LIST), /className=\{styles\.metricPending\}/);
-});
+/* ── ด่านซอร์สของสองจอ (pm/ProjectDealsHub · /sa/projects + page.module.css) ถอดใน P3a ──────────────
+   ยุบโครงการ 16/11 ลบทั้งสองจอ — ตัวกลางข้างบน (projectDealValue · projectSalesOrderAmount · sumProjectRollups)
+   ยังมีเทสต์ระดับฟังก์ชันครบ */

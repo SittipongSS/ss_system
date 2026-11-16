@@ -1,6 +1,6 @@
 # หน้าลูกค้าศูนย์รวม + ถอดโครงการ
 
-> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-15 · มติครบ 9 ข้อ · P1 + H1 + H2 + H3 ขึ้น prod (`0009027c` · `e9d795b9` · `3da427c6` · `472be099`) · P2 "ยุบดีล/โครงการเป็นหน่วยเดียว" มติครบ 6 ข้อ: P2a ขึ้น prod (`81a37536`) · P2b ขึ้น prod (`7eaf255b`) · H4 (มติ 8–9) ขึ้น prod (`f8e975be`) · P2c-1 ขึ้น prod (`95285e02`) · P2c-2 ขึ้น prod (`80459529`) · P2d รอตรวจ · P3 ยังไม่เริ่ม
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-16 · มติครบ 11 ข้อ · P1 + H1 + H2 + H3 ขึ้น prod (`0009027c` · `e9d795b9` · `3da427c6` · `472be099`) · P2 "ยุบดีล/โครงการเป็นหน่วยเดียว" มติครบ 6 ข้อ: P2a ขึ้น prod (`81a37536`) · P2b ขึ้น prod (`7eaf255b`) · H4 (มติ 8–9) ขึ้น prod (`f8e975be`) · P2c-1 ขึ้น prod (`95285e02`) · P2c-2 ขึ้น prod (`80459529`) · P2d ขึ้น prod (`edafbe0e`) · P3 มติ ⑩ ⑪ (16/11) · P3a กำลังดำเนินการ
 
 ม็อก: artifact `RefYYkNdQkBVhfChFfu1rN` · ต้นทาง `~/ss-team/mockups/customer-hub/index.html` (ข้อมูลจริง AR-148)
 
@@ -206,7 +206,7 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
   - ช่อง "ดีล SCENT ต้นทาง" ในฟอร์ม (เฉพาะ NPD · ใต้ช่องลูกค้า · รายการจาก GET `/deals?customerId&dealType=SCENT` ที่เพิ่มตัวกรอง) ·
     server `lib/sales/dealScentSource.js` (SCENT ลูกค้าเดียวกัน · ไม่ Lost · เปลี่ยนประเภทออกจาก NPD = ถอดให้)
   - เทสต์ cascade เขียนใหม่ทั้งชุดบนกุญแจใหม่ (28 ตัว: ขาเข้า · ขาถอย · พังทีละขา · แข่ง 4 แบบ) · ยาม `dealScentSource.test.mjs`
-- **P2d — ถอดจอโครงการ** (รอตรวจ · แบรนช์ `claude/project-removal-p2d` · ไม่มี migration · มติ ④)
+- **P2d — ถอดจอโครงการ** (เสร็จสมบูรณ์ · ขึ้น prod `edafbe0e` #2056 16/11 · ไม่มี migration · มติ ④)
   - เมนู `/sa/projects` ถอด · proxy: `/sa/projects` → รายการดีล · `/sa/projects/<id>/**` และ `/pm/projects/<id>` → `/go/project/<id>`
     (อ่าน `customerId` ของโครงการ → หน้าลูกค้าศูนย์รวม · ไม่มีลูกค้า/ไม่พบ → รายการดีล) — ลิงก์เก่าในแจ้งเตือน/เลขเอกสาร PJ ยังพาไปถูกที่
   - หน้าดีล: ถอดปุ่ม "ไปโครงการ" · การ์ดโครงการที่เชื่อมอยู่ · การ์ด "โครงการที่ดีลนี้อยู่" (ย้าย/ดีลอื่นในโครงการ) · ปุ่มสร้าง/ผูกโครงการ ·
@@ -233,8 +233,33 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
     สคริปต์ parity ⑤ ต่าง 1 จาก 368) — **แก้แล้ว 16/11** มติเจ้าของ: การย้ายดีลไป PJ-261100348 ถูกต้อง ⇒ คง `projectId` ปัจจุบัน
     เขียน `approvalFingerprint` ใหม่จากค่าปัจจุบัน (ด่าน: ค่าเก่า = คำนวณด้วยโครงการเดิม · CAS 1 แถว) · audit actor
     `datafix-20261116-so379-fingerprint` · ไม่ออกฉบับตรึงใหม่ · parity ⑤ ต่าง 0 จาก 373 (QT 0 จาก 840)
-- **P3 — ลบโค้ดตายแล้วลบตาราง** · ของเข้า · เตรียมส่ง · ปิดโครงการ · project_products · เธรด/ไฟล์โครงการ · เลิกเขียน projectId ทุกตาราง ·
-  ถอด FK cascade ก่อนลบ `projects` · สหมิตร settle-deal (พักไว้กับงานสหมิตร)
+- **P3 — ปิดโครงการถาวร (เก็บข้อมูลเป็นประวัติ)** · มติ 16/11:
+  ⑩ ข้อมูลโครงการ **เก็บไว้เป็นประวัติ** — ตาราง `projects` และ `projectId` เดิมทุกตารางคงไว้ อ่านอย่างเดียว ไม่มีจอ ·
+  **ไม่ลบตาราง/คอลัมน์** ⇒ ไม่ต้องเขียนลายนิ้วมือ SO ใหม่ · P3 = ตัดทางสร้าง/ผูก/ย้ายโครงการ + เลิกเขียน `projectId` ลงแถวใหม่ + ลบหน้า/API/โค้ดที่ตาย ·
+  ⑪ PO สหมิตร **ถอดโครงการใน P3** — ปุ่มสร้าง/เชื่อมโครงการหาย · ยืนยันดีลจาก PO ได้ตรง · ไม่รื้อส่วนอื่นของสหมิตร
+  ตัวเลข prod 16/11: `projects` 342 · `project_tasks.projectId` 9,674/11,085 (ไม่มี dealId 0) · `sales_orders` 399/409 · `dept_requests` 589/645 ·
+  `production_jobs` 312/312 · `personal_tasks` 557/1,757 · `sales_deals` 610/812 · `sahamit_pos` 0/112 · `excise_registrations` 0/74 ·
+  `project_products` / `material_deliveries` / `shipment_prep` 0 · เธรดโครงการ 759 · แถวใหม่หลัง 13/11 ยังถูกก๊อป `projectId` จากดีล
+  - **P3a — ตัดทางสร้าง/ผูก/ย้าย + เลิกเขียน** (โค้ดล้วน · ไม่มี migration · กำลังดำเนินการ · แบรนช์ `claude/project-removal-p3`):
+    - สหมิตร: settle-deal ไม่บังคับโครงการ (ดีลรวม `projectId` ว่าง · เลิกเขียน `projects.metadata` · ดีล FC ที่มีโครงการเดิมจับคู่ได้) ·
+      หน้า PO ถอดปุ่มเลือก/สร้างโครงการ + โมดัลสองตัว + แบนเนอร์ "ต้องมีโครงการก่อน" · การ์ดเปลี่ยนชื่อเป็น "งานขาย"
+    - ลบ route สร้าง/ผูก: `sahamit/po/[id]/{create,link}-project` · `deals/[id]/{create,link}-project` · `api/sa/projects` · `backfill-projects` ·
+      lib `dealProjectLink` / `dealProjectMove` / `projectLink` / `emptyProjectCleanup` · สคริปต์ `repair-deal-project-mirrors`
+    - ลบหน้า `/sa/projects/**` + คอมโพเนนต์ที่ใช้เฉพาะหน้านั้น (`ProjectDealsHub` · `SalesProjectCreateModal` · `DeliveriesPanel`) —
+      เป็นจุดสุดท้ายที่สร้าง/ผูกโครงการได้ · proxy ยังพาลิงก์เก่าไปหน้าลูกค้า · `docRefs` PJ + เธรดโครงการในกล่องแจ้งเตือนชี้ `/go/project/<id>`
+    - ฟอร์มสร้างดีลไม่มีสาขาผูกโครงการ · ลบดีลไม่เสนอลบโครงการเปล่าแล้ว (ห้ามลบแถว `projects` — FK cascade ของไทม์ไลน์ยังอยู่)
+    - เลิกเขียน `projectId` ลงแถวใหม่: คำร้อง (`api/sa/requests`) · งานส่วนตัว (POST ไม่รับ/ไม่ก๊อป · PATCH ย้ายดีล = ล้างโครงการเดิม) ·
+      งานผลิต (กรอกเอง + auto-draft) · ทะเบียนสรรพสามิต · ใบขอราคา (costing)
+    - ⚠️ **ตั้งใจยังไม่แตะไทม์ไลน์** (`project_tasks` ยังประทับ `projectId` ของดีลเดิม): ลำดับ `stepOrder` ของดีลในโครงการนับร่วมทั้งโครงการ
+      และจุดยึดวันของกราฟอ่านโครงการ ⇒ ถอดต้องย้ายลำดับ/จุดยึดไปผูกดีลก่อน (ไป P3b) · ค่าที่ประทับเป็นของเดิมของดีล ไม่มีทางเปลี่ยนแล้ว
+    - SO ใหม่ยังได้ `projectId` ของดีลเดิมจาก RPC ฝั่งฐาน (`create_sales_order_draft`) ⇒ P3c
+  - **P3b — ลบ API/โค้ดที่ตาย + ผู้อ่านที่เหลือ** (รอดำเนินการ): ไทม์ไลน์ย้ายลำดับ `stepOrder` + จุดยึดวันไปผูกดีล แล้วเลิกประทับ `projectId` ·
+    `api/pm/projects/**` · lib ที่เหลือแต่เทสต์ (`projectLifecycle` · `projectListFilter` · `projectPendingApproval` · `projectRollup` · `projectDealTypes`) ·
+    ของเข้า/เตรียมส่ง · ปิดโครงการ (`closedProjectGate` · ป้าย `projectCloses`) · `quoteLines` seed จาก `project_products` ·
+    ป้ายโครงการบนสัญญา/ใบชำระ/ทะเบียน → รหัสดีล · ลิงก์ `salesOrderWorkTrack` (จัดการที่โครงการ) → ดีล ·
+    สิทธิ์งานส่วนตัวที่อิงทีมโครงการ (`personalTaskAccess`) — ตรวจผลก่อนถอด
+  - **P3c — migration** (รอดำเนินการ): RPC สร้าง SO / ออก Rev. เลิกก๊อป `d."projectId"` (ปะแบบแทนข้อความบนตัวที่รันจริง) ·
+    ลบ `backfill_deal_fields_from_projects` · ยามกันลบ/แก้แถว `projects` (FK `ON DELETE CASCADE` ของไทม์ไลน์ยังอยู่)
 
 กับดัก:
 

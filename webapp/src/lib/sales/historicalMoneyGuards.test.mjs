@@ -489,16 +489,11 @@ test('ดีลภาชนะ: PATCH ตีกลับช่องที่ CH
   assert.match(del, /from\('sales_orders'\)\.select\('id', \{ count: 'exact', head: true \}\)\.eq\('dealId', id\)/);
 });
 
-test('ดีลภาชนะ: ไทม์ไลน์ · สร้างโครงการ · ผูกโครงการ ปฏิเสธก่อนเขียนอะไร', () => {
+// สร้างโครงการ (create-project) · ผูกโครงการ (dealProjectLink) ถูกลบใน P3a — ยุบโครงการ 16/11 เหลือเส้นไทม์ไลน์
+test('ดีลภาชนะ: ไทม์ไลน์ ปฏิเสธก่อนเขียนอะไร', () => {
   const timeline = slice(code('app/api/sales-planning/deals/[id]/timeline/route.js'), 'export const POST');
   const t = timeline.indexOf('isHistoricalDeal(deal)');
   assert.ok(t > 0 && t < timeline.indexOf("from('project_tasks')"));
-  const create = code('app/api/sales-planning/deals/[id]/create-project/route.js');
-  const c = create.indexOf('isHistoricalDeal(deal)');
-  assert.ok(c > 0 && c < create.indexOf("insertRowWithEntityCode(supabase, 'PJ'"));
-  const link = slice(code('lib/sales/dealProjectLink.js'), 'export async function linkDealToProject');
-  const l = link.indexOf('isHistoricalDeal(deal)');
-  assert.ok(l > 0 && l < link.indexOf('loadProject('));
 });
 
 // ── 11–12. เส้นเขียน ─────────────────────────────────────────────────────────────────────────

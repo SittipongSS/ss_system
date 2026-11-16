@@ -85,8 +85,7 @@ const LIST_PANEL_ADOPTERS = Object.freeze([
   ["src/app/sa/costing/page.js", 1],
   ["src/app/sa/dashboard/page.js", 0],
   ["src/app/sa/forecast-review/page.js", 1],
-  ["src/app/sa/projects/[id]/page.js", 2],
-  ["src/app/sa/projects/page.js", 1],
+  /* ยุบโครงการ P3a (16/11): ลบหน้า /sa/projects + รายละเอียดโครงการ (และ pm/DeliveriesPanel · pm/ProjectDealsHub ข้างล่าง) */
   ["src/app/sa/teams/page.js", 0],
   ["src/app/sales-planning/contracts/page.js", 1],
   ["src/app/sales-planning/deals/[id]/page.js", 0],
@@ -112,8 +111,6 @@ const LIST_PANEL_ADOPTERS = Object.freeze([
   ["src/app/users/page.js", 1],
   ["src/components/excise/WorkQueue.js", 1],
   ["src/components/materials/MaterialRegistryPanel.js", 1],
-  ["src/components/pm/DeliveriesPanel.js", 1],
-  ["src/components/pm/ProjectDealsHub.js", 1],
   ["src/components/requests/OwnerWorkloadPanel.js", 1],
   ["src/components/requests/RequestQueuePanel.js", 1],
   ["src/components/salesPlanning/DealTimelineTable.js", 1],

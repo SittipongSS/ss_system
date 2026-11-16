@@ -30,9 +30,8 @@ const TIMELINE_ROUTE = 'app/api/sales-planning/deals/[id]/timeline/route.js';
 const QUOTE_DRAFT = 'lib/sales/createQuotationDraft.js';
 
 // เส้นทางทั้งหมดที่ขยับ stage ของดีล — ทุกเส้นต้องผ่าน advanceStage ตัวเดียวกัน
+// (create-project / link-project ถูกถอดใน P3a — ยุบโครงการ 16/11 ไม่มีทางสร้าง/ผูกโครงการแล้ว)
 const ADVANCING_ROUTES = [
-  'app/api/sales-planning/deals/[id]/create-project/route.js',
-  'lib/sales/dealProjectLink.js',   // เนื้อในของ link-project (โมดัลปิด Won เรียกตัวเดียวกัน)
   TIMELINE_ROUTE,
   QUOTE_DRAFT,
 ];

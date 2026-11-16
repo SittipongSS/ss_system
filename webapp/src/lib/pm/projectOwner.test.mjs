@@ -5,7 +5,7 @@
 // ซึ่งตอนนั้นเขียนจากคนกดสร้าง (admin ไม่มีทีม ⇒ team = null · ownerId = admin)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   PROJECT_OWNER_ROLES, resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor,
 } from './projectOwner.js';
@@ -120,15 +120,15 @@ test('AC/ผู้ตรวจสอบ: ว่างได้เฉพาะต
   assert.equal((await resolveProjectSupervisor(stub, '', { required: true })).ok, false);
 });
 
-test('ทุกทางที่ **สร้าง** โครงการ บังคับครบสามฝ่ายที่ server', () => {
+/* ยุบโครงการ P3a (มติ 16/11): ไม่มีทางสร้างโครงการแล้ว — สามเส้นที่เคยบังคับครบสามฝ่ายถูกลบ
+   (POST /api/sa/projects · create-project ของดีล · create-project ของ PO สหมิตร) ⇒ ยามเปลี่ยนเป็น "ห้ามกลับมา" */
+test('ไม่มีทางสร้างโครงการเหลือ (P3a) · PATCH ไม่บังคับครบสามฝ่าย แต่ล้างของที่มีไม่ได้', () => {
   for (const rel of [
     '../../app/api/sa/projects/route.js',
     '../../app/api/sales-planning/deals/[id]/create-project/route.js',
     '../../app/api/sahamit/po/[id]/create-project/route.js',
   ]) {
-    const src = read(rel);
-    assert.match(src, /resolveProjectAcOwner\([\s\S]{0,160}?\{ required: true \}/, `${rel} AC ต้องบังคับ`);
-    assert.match(src, /resolveProjectSupervisor\([\s\S]{0,120}?\{ required: true \}/, `${rel} ผู้ตรวจสอบต้องบังคับ`);
+    assert.equal(existsSync(new URL(rel, import.meta.url)), false, `${rel} กลับมาแล้ว — โครงการปลดระวาง ห้ามสร้างใหม่`);
   }
   // PATCH ห้ามบังคับ (ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้) แต่ล้างของที่มีอยู่ไม่ได้
   const patch = read('../../app/api/pm/projects/[id]/route.js');
@@ -156,21 +156,13 @@ test('AC: บัญชีที่ถูกระงับ / ไม่มีต�
   assert.equal((await resolveProjectAcOwner(ownerStub({}), 'U-GHOST', 'ODM')).ok, false);
 });
 
-test('ฟอร์มเขียนผู้ประสานงานลง acOwner/acOwnerId ไม่ใช่ preparedBy', () => {
-  const modal = codeOnly(read('../../components/pm/SalesProjectCreateModal.js'));
-  // ช่องที่ล็อกเป็นตัวเองมาจากตารางกลาง (ผังตำแหน่ง 2026-09-24) — ไม่เทียบชื่อตำแหน่งในฟอร์ม
-  assert.match(modal, /lockPeopleField = \(!editingId && myName\) \? projectPeopleFieldForRole\(role\)/);
-  assert.equal(projectPeopleFieldForRole('ac'), 'acOwner', 'AC สร้างโครงการ = ล็อกเป็นผู้ประสานงาน');
-  assert.match(modal, /onChange=\{\(acOwner\) => setForm/);
-  assert.match(modal, /acOwnerId: \(lockPeopleField === "acOwner" \? myName : form\.acOwner\)/);
-  // preparedBy = "ผู้จัดทำ" ของหัว ISO — server ตั้งเป็นผู้สร้าง ฟอร์มไม่ยุ่งอีก
-  assert.doesNotMatch(modal, /form\.preparedBy/, 'ช่อง AC ห้ามกลับไปเขียน preparedBy');
-});
+// (ยาม "ฟอร์มเขียนผู้ประสานงานลง acOwner/acOwnerId" ถอดใน P3a พร้อม SalesProjectCreateModal)
 
 test('ผังตำแหน่ง 2026-09-24: ช่องผู้รับผิดชอบของโครงการรับตำแหน่งตามกลุ่ม · ช่องที่ล็อกเป็นตัวเองตามตำแหน่งคนกด', () => {
   assert.equal(projectPeopleFieldForRole('ae'), 'aeOwner');
   assert.equal(projectPeopleFieldForRole('senior_ae'), 'aeOwner');
   // สาย AC ทุกระดับเป็นผู้ประสานงาน
+  assert.equal(projectPeopleFieldForRole('ac'), 'acOwner');
   assert.equal(projectPeopleFieldForRole('senior_ac'), 'acOwner');
   assert.equal(projectPeopleFieldForRole('ac_supervisor'), 'acOwner');
   // ผู้มีอำนาจตัดสินเป็นผู้ตรวจสอบ
@@ -205,16 +197,10 @@ test('mig 0255: ย้ายเฉพาะบัญชี AC และไม่
   assert.doesNotMatch(sql, /SET[\s\S]{0,80}"preparedBy"\s*=/, 'ห้ามล้าง preparedBy');
 });
 
-test('ทุกทางที่สร้าง/แก้โครงการ ตรวจผู้ประสานงานด้วยตัวกลางตัวเดียว', () => {
-  for (const rel of [
-    '../../app/api/sa/projects/route.js',
-    '../../app/api/sales-planning/deals/[id]/create-project/route.js',
-    '../../app/api/pm/projects/[id]/route.js',
-  ]) {
-    assert.match(read(rel), /resolveProjectAcOwner\(\s*supabase,/, `${rel} ต้องเรียกด่านกลาง`);
-  }
-  // ชื่อมาจาก server — ไม่รับชื่อลอย ๆ จาก client อีก
-  assert.doesNotMatch(codeOnly(read('../../app/api/sa/projects/route.js')), /acOwner: body\.acOwner/);
+// เส้นสร้างสองเส้น (POST /api/sa/projects · create-project ของดีล) ถูกลบใน P3a — เหลือเส้นแก้
+test('ทางแก้โครงการที่เหลือ ตรวจผู้ประสานงานด้วยตัวกลางตัวเดียว', () => {
+  const rel = '../../app/api/pm/projects/[id]/route.js';
+  assert.match(read(rel), /resolveProjectAcOwner\(\s*supabase,/, `${rel} ต้องเรียกด่านกลาง`);
 });
 
 /* ── ผู้ตรวจสอบ (AE Supervisor) = ฝ่ายที่สามของโครงการ ─────────────────────
@@ -277,31 +263,7 @@ test('mig 0256: เพิ่มตัวตนผู้ตรวจสอบ + �
 });
 
 // ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
-test('POST /api/sa/projects เขียนทีม/เจ้าของตามผู้ดูแล และบังคับให้เลือก AE', () => {
-  const post = read('../../app/api/sa/projects/route.js');
-  assert.match(post, /resolveProjectAeOwner\(supabase, body\.aeOwnerId, user, body\.team\)/);
-  assert.match(post, /team: owner\?\.team \|\| attributionTeam\(user, body\.team\)/);
-  assert.match(post, /ownerId: owner\?\.ownerId \|\| user\.id/);
-  // ac / ae_supervisor / admin ปล่อยว่างไม่ได้ — โครงการจะไม่โผล่ในลิสต์ของ AE คนไหนเลย
-  assert.match(post, /else if \(!ownerLockedToSelf\(user\.role\)\)/);
-  // 🐞 ของเดิม: สองช่องนี้มาจากคนกดสร้างตรง ๆ
-  assert.doesNotMatch(codeOnly(post), /team: user\.team \|\| null/, 'ห้ามกลับไปใช้ทีมของคนกด');
-  assert.doesNotMatch(codeOnly(post), /^\s*ownerId: user\.id \|\| null,/m, 'ห้ามกลับไปใช้คนกดเป็นเจ้าของ');
-});
-
-/* ด่านฝั่งฟอร์มต้องบอกตั้งแต่ก่อนกดบันทึก (docs/form-design-rules.md §2) — ไม่ใช่
-   ปล่อยให้ยิงแล้วเจอ 400 · แต่บังคับเฉพาะตอนสร้าง โครงการเก่าที่ผู้ดูแลยังว่างต้องแก้ได้ */
-test('ฟอร์มสร้างโครงการบังคับครบสามฝ่าย (ตอนสร้างเท่านั้น)', () => {
-  const modal = read('../../components/pm/SalesProjectCreateModal.js');
-  /* ⭐ มติผู้ใช้ 2026-08-14: โครงการมีครบสามฝ่ายตั้งแต่วันเกิด — ช่องที่ถูกล็อกเป็นชื่อ
-     ผู้สร้างถือว่ากรอกแล้ว จึงเทียบกับ lockPeopleField **ของช่องนั้น** ไม่ใช่ "ไม่มีล็อกเลย"
-     (ของเดิมเทียบ `!lockPeopleField` ⇒ AC ที่ถูกล็อกช่องตัวเองจะติดด่านช่อง AE ไปด้วย) */
-  assert.match(modal, /\[!editingId && lockPeopleField !== "aeOwner" && !form\.aeOwner, "ผู้ดูแลโครงการ \(AE\)"\]/);
-  assert.match(modal, /\[!editingId && lockPeopleField !== "acOwner" && !form\.acOwner, "ผู้ประสานงาน \(AC\)"\]/);
-  assert.match(modal, /\[!editingId && lockPeopleField !== "aeSupervisor" && !form\.aeSupervisor, "ผู้ตรวจสอบ \(AE Supervisor\)"\]/);
-  // ตอนแก้ไม่บังคับ — ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้ (ทั้งสามเงื่อนไขขึ้นต้นด้วย !editingId)
-  assert.doesNotMatch(modal, /\[!lockPeopleField && !form\.(aeOwner|acOwner|aeSupervisor)/);
-});
+// (ยาม POST /api/sa/projects + ฟอร์มสร้างโครงการบังคับครบสามฝ่าย ถอดใน P3a — ยุบโครงการ 16/11 ลบทั้งสองไฟล์)
 
 test('PATCH โครงการ: เปลี่ยนผู้ดูแลแล้วทีม/เจ้าของย้ายตาม', () => {
   const patch = read('../../app/api/pm/projects/[id]/route.js');

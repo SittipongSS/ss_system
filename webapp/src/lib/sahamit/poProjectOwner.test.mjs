@@ -1,42 +1,46 @@
-// ── โครงการที่เกิดจาก PO สหมิตร ก็ต้องมีผู้ดูแล (AE) จริง ─────────────────────
+// ── PO สหมิตรไม่สร้าง/ผูกโครงการอีกแล้ว (ยุบโครงการ P3a · มติเจ้าของ 16/11 ⑪) ─────────────
 //
-// route นี้เคยตรึง `aeOwner`/`aeOwnerId`/`ownerId` เป็น **คนกดปุ่ม** เสมอ และทีม
-// ถอยไปค่าคงที่ 'KA' ⇒ Admin/หัวหน้าฝ่ายขายกดสร้างเมื่อไร โครงการตกเป็นของคนที่
-// ไม่ใช่ AE (ชื่อผิดบนเอกสาร ISO ที่พิมพ์จากโครงการด้วย) — อาการเดียวกับโครงการ
-// ฝั่งขายที่ mig 0253 ตามเก็บ
+// เดิมไฟล์นี้ตรึงว่า "โครงการที่เกิดจาก PO สหมิตรต้องมีผู้ดูแล (AE) จริง" — route `create-project`
+// เคยตรึงเจ้าของเป็นคนกดปุ่ม · หน้าจอ PO ถามครบสามฝ่ายก่อนสร้าง · และ `settle-deal` บังคับให้
+// PO มีโครงการก่อนออก QT (QT มาตรฐานเคยบังคับ projectId)
+// P3a ปลดระวางโครงการ (ข้อมูลเก่าอ่านอย่างเดียว ไม่มีทางสร้าง/ผูก/ย้าย/ดู) ⇒ ยามกลับทิศเป็น
+// "ทางสร้าง/ผูกโครงการห้ามกลับมา · ยืนยันดีล/ออก QT ไม่ติดด่านโครงการ · ดีลรวมไม่ผูกโครงการ"
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
-const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+const at = (p) => new URL(p, import.meta.url);
+const read = (p) => readFileSync(at(p), 'utf8');
 const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-const route = read('../../app/api/sahamit/po/[id]/create-project/route.js');
-const page = read('../../app/sahamit/po/[id]/page.js');
+const settle = codeOnly(read('../../app/api/sahamit/po/[id]/settle-deal/route.js'));
+const page = codeOnly(read('../../app/sahamit/po/[id]/page.js'));
 
-test('create-project ตรวจผู้ดูแลด้วยตัวกลางตัวเดียวกับโครงการฝั่งขาย', () => {
-  assert.match(route, /resolveProjectAeOwner\(supabase, body\.aeOwnerId, user, body\.team\)/);
-  // ae/senior_ae ยังกดแล้วเป็นของตัวเอง — นอกนั้นปล่อยว่างไม่ได้ (กติกาเดียวกับดีล)
-  assert.match(route, /else if \(!ownerLockedToSelf\(user\.role\)\)/);
+test('route สร้าง/ผูกโครงการของ PO ถูกลบ — ห้ามกลับมา', () => {
+  for (const rel of [
+    '../../app/api/sahamit/po/[id]/create-project/route.js',
+    '../../app/api/sahamit/po/[id]/link-project/route.js',
+  ]) {
+    assert.equal(existsSync(at(rel)), false, `${rel} กลับมาแล้ว — โครงการปลดระวาง (P3a)`);
+  }
 });
 
-test('ทีม/เจ้าของ/ชื่อผู้ดูแล มาจาก AE ที่เลือก ไม่ใช่คนกดปุ่ม', () => {
-  assert.match(route, /aeOwner: owner\?\.aeOwner \|\| user\.name/);
-  assert.match(route, /aeOwnerId: owner\?\.aeOwnerId \|\| user\.id/);
-  assert.match(route, /ownerId: owner\?\.ownerId \|\| user\.id/);
-  // โมดูลนี้เป็นลูกค้าของทีม KA ทีมเดียว จึงยังถอยไป 'KA' ได้เมื่อไม่มีทีมจากทั้งสองฝั่ง
-  assert.match(route, /team: owner\?\.team \|\| primaryTeam\(user\) \|\| 'KA'/);
-  // 🐞 ของเดิม: ทีมของคนกด (ตกเป็น KA เสมอสำหรับ admin) และเจ้าของ = คนกด
-  assert.doesNotMatch(codeOnly(route), /team: user\.team \|\| 'KA'/, 'ทีมของคนกดห้ามกลับมา');
+test('หน้าจอ PO ไม่มีปุ่ม/โมดัลโครงการ และไม่ลิงก์ไปหน้าโครงการ', () => {
+  assert.doesNotMatch(page, /\/create-project|\/link-project/, 'ปุ่มสร้าง/เชื่อมโครงการต้องไม่กลับมา');
+  assert.doesNotMatch(page, /\/api\/pm\/projects/, 'ไม่ต้องโหลดรายชื่อโครงการมาให้เลือกอีก');
+  assert.doesNotMatch(page, /\/sa\/projects\//, 'หน้าโครงการถูกลบแล้ว — ห้ามลิงก์ไป');
+  assert.doesNotMatch(page, /projectConfirmOpen|createProject|submitLinkProject|PROJECT_PEOPLE_ROLES/);
 });
 
-test('หน้าจอ PO ถามผู้ดูแลก่อนสร้าง และส่ง id ไปกับคำขอ', () => {
-  // ⭐ ครบสามฝ่ายตั้งแต่วันเกิด (มติผู้ใช้ 2026-08-14) — PO ก็ต้องถามครบเหมือนฝั่งขาย
-  assert.match(page, /body: JSON\.stringify\(\{ aeOwnerId, acOwnerId: projectAcId, aeSupervisorId: projectSupervisorId \}\)/);
-  assert.match(page, /\[!projectAcId, "ผู้ประสานงาน \(AC\)"\]/);
-  assert.match(page, /\[!projectSupervisorId, "ผู้ตรวจสอบ \(AE Supervisor\)"\]/);
-  // ล็อกไม่ใช่ซ่อน — ae/senior_ae เห็นชื่อตัวเองค้างไว้ ไม่ใช่ช่องหายไปเฉย ๆ
-  assert.match(page, /lockedOwner \? \(/);
-  // รายชื่อมาจาก hook กลาง ห้ามกรอง role เองซ้ำในหน้านี้
-  assert.match(page, /useDealOwners\(meId\)/);
-  assert.doesNotMatch(codeOnly(page), /\["ae", "senior_ae"\]/, 'ห้ามก๊อปกติกา role มาไว้ในหน้า');
+test('settle-deal: ยืนยันดีล/ออก QT ไม่ติดด่านโครงการ', () => {
+  assert.doesNotMatch(settle, /!po\.projectId/, 'ด่าน "PO ยังไม่มีโครงการ" ต้องไม่กลับมา');
+  assert.doesNotMatch(settle, /from\('projects'\)/, 'ไม่อ่าน/เขียนตาราง projects อีก');
+  assert.doesNotMatch(settle, /projectWriteBlockedError/, 'ด่าน "โครงการปิดแล้ว" ไม่เกี่ยวกับเส้นนี้แล้ว');
+  assert.doesNotMatch(settle, /d\.projectId/, 'ดีลที่เคยผูกโครงการ (ข้อมูลเก่า) ยังเลือกรวมได้');
+  // GET ไม่ส่ง projectId ให้จอเตือน และไม่กรองดีลด้วยโครงการ
+  assert.doesNotMatch(settle, /\.is\('projectId', null\)/);
+});
+
+test('settle-deal: ดีลรวมที่สร้างใหม่ไม่ผูกโครงการ', () => {
+  assert.doesNotMatch(settle, /\bprojectId\s*:/, 'แถวดีลรวม/คำตอบต้องไม่มีคีย์ projectId');
+  assert.doesNotMatch(settle, /\bprojectCode\s*:/, 'metadata ของดีลรวมไม่พกรหัสโครงการ');
 });

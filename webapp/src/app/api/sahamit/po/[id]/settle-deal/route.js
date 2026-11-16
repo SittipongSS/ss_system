@@ -4,8 +4,9 @@
 //      ย้าย junction เข้าดีลรวม แล้วปิดด้วยธง merged (สถิติแพ้กรองออกผ่าน
 //      isAdministrativeLoss ใน lib/sales/dashboardMetrics); partial + เลือก "แบ่ง" →
 //      ย้ายเฉพาะส่วนที่ PO ครอบ ต้นทางเปิดต่อรอ PO ถัดไป
-//   2. ผูกดีลรวมเข้าโครงการ PM ของ PO (ต้องสร้างโครงการก่อน — QT มาตรฐานบังคับ projectId)
-//   3. ออก QT "ใบเดียวหลายบรรทัด" ตาม PO (ราคาล็อกจาก master) → คิวเจ้าของดีลเซ็นปกติ
+//   2. ออก QT "ใบเดียวหลายบรรทัด" ตาม PO (ราคาล็อกจาก master) → คิวเจ้าของดีลเซ็นปกติ
+// ⭐ P3a (มติเจ้าของ 16/11 ⑪): เลิกบังคับโครงการ PM — ดีลรวมไม่ผูกโครงการ · ไม่เขียน projects.metadata
+//    (โครงการเก็บเป็นประวัติอ่านอย่างเดียว · QT มาตรฐานเลิกบังคับ projectId ตั้งแต่ P1 mig 0434)
 // เหตุผลดีลรวม: การเก็บเงินผูกกับ PO ทั้งใบ — ลูกค้าเซ็น QT ใบเดียว, งวดชำระชุดเดียว,
 // SO ใบเดียวยอดตรง PO. จากนั้นวิ่งท่อมาตรฐานล้วน: เซ็น → ส่ง → accept (แนบไฟล์ PO +
 // เลือกเดือน = Won) → SO → คิวอนุมัติสองคน → Actual (trigger 0110), ย้อนผ่าน 0116.
@@ -19,7 +20,6 @@ import { recordAudit } from '@/lib/audit';
 import { appendUpdate } from '@/lib/master/updates';
 import { sahamitPoSettleUpdate } from '@/lib/master/recordUpdates';
 import { customerSnapshotName } from '@/lib/master/customerName';
-import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,7 +73,7 @@ export async function GET(request, { params }) {
   // ทุกดีล forecast มี ไม่พึ่ง junction ที่อาจหลุดตอนแก้/ลบรอบ) → map normFg → deals
   const [{ data: deals }, settled] = await Promise.all([
     supabase.from('sales_deals').select('*')
-      .eq('customerId', customerId).is('projectId', null).eq('metadata->>source', 'sahamit-forecast'),
+      .eq('customerId', customerId).eq('metadata->>source', 'sahamit-forecast'),
     loadSettledLines(supabase, customerId, po.id),
   ]);
   const allOpen = (deals || []).filter((d) => !CLOSED.includes(d.stage));
@@ -136,7 +136,6 @@ export async function GET(request, { params }) {
   return Response.json({
     poNumber: po.poNumber,
     poReceivedMonth: receivedMonth,
-    projectId: po.projectId || null, // ต้องมีก่อนถึงออก QT ได้ (UI ใช้เตือน)
     lines,
     // ทุกบรรทัดเชื่อมครบแล้ว = ไม่มีอะไรให้ยืนยันอีก (UI ซ่อนปุ่มยืนยัน)
     allSettled: lines.length > 0 && lines.every((l) => l.settledDealId),
@@ -162,21 +161,6 @@ export async function POST(request, { params }) {
 
   const po = await loadPoWithLines(supabase, customerId, id);
   if (!po) return Response.json({ error: 'ไม่พบ PO นี้' }, { status: 404 });
-
-  // มติ §7: ยืนยัน "ดีล + โครงการ" ก่อนออก QT — และ QT มาตรฐานบังคับดีลต้องมี projectId
-  if (!po.projectId) {
-    return Response.json({ error: 'PO นี้ยังไม่มีโครงการ PM — กด "สร้างโครงการ PM" ก่อน แล้วจึงยืนยันดีล/ออกใบเสนอราคา' }, { status: 400 });
-  }
-  const { data: project, error: projectError } = await supabase
-    .from('projects').select('id, code, metadata, closeStatus').eq('id', po.projectId).maybeSingle();
-  if (projectError) return Response.json({ error: projectError.message }, { status: 500 });
-  if (!project) return Response.json({ error: 'ไม่พบโครงการ PM ที่ผูกกับ PO นี้' }, { status: 400 });
-  // ทางนี้จบด้วยการออก QT เหมือนกัน → อยู่ในขอบเขตด่าน B3 (โครงการปิดแล้วห้ามออกใบใหม่)
-  if (projectWriteBlockedError(project)) {
-    return Response.json({
-      error: `โครงการ ${project.code || 'PM'} ปิดแล้ว — ยืนยันดีล/ออกใบเสนอราคาไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`,
-    }, { status: 400 });
-  }
 
   const activeLines = (po.lines || []).filter((l) => l.status !== 'cancelled' && toQty(l.qty) > 0);
   const products = await loadSahamitProducts(supabase, customerId);
@@ -232,9 +216,6 @@ export async function POST(request, { params }) {
     if (!d || d.customerId !== customer.id || CLOSED.includes(d.stage)) {
       return Response.json({ error: 'ดีลที่เลือกใช้ไม่ได้ (ไม่พบ/ปิดแล้ว) — รีเฟรชหน้าแล้วลองใหม่' }, { status: 400 });
     }
-    if (d.projectId) {
-      return Response.json({ error: `ดีล "${d.title}" ผูกโครงการอื่นอยู่แล้ว` }, { status: 400 });
-    }
     // สิทธิ์ตามสายขายมาตรฐาน (ae=ของตัวเอง, senior/ac=ทีม, superuser=ทั้งหมด)
     if (!inSalesEditScope(user, d)) {
       return Response.json({ error: `ไม่มีสิทธิ์แก้ดีลของ ${d.ownerName || 'ผู้อื่น'} ("${d.title}")` }, { status: 400 });
@@ -279,7 +260,6 @@ export async function POST(request, { params }) {
     ownerId: ownerSrc?.ownerId || user.id || null,
     ownerName: ownerSrc?.ownerName || user.name || null,
     team: 'KA',
-    projectId: po.projectId,
     dealType: 'RE-ORDER',
     // สายสหมิตร = ของที่ออกจากโรงงาน ไม่มีงานหน้างาน ⇒ สายสินค้าเสมอ (mig 0275)
     line: 'PRODUCT',
@@ -289,7 +269,6 @@ export async function POST(request, { params }) {
       sahamitPoId: po.id,
       poNumber: po.poNumber,
       poReceivedDate: po.receivedDate || null,
-      projectCode: project.code || null,
       fgCodes: fgList,
       // กุญแจ "บรรทัดไหนถูก settle แล้ว" — ต้องเป็นราย poLineId ไม่ใช่ fgCode เพราะ PO
       // มีสินค้าเดียวกันได้หลายบรรทัด (คนละเดือนส่ง) ดู loadSettledLines
@@ -474,13 +453,6 @@ export async function POST(request, { params }) {
   await supabase.from('sahamit_pos')
     .update({ salesDealId: po.salesDealId || merged.id, updatedAt: now })
     .eq('id', po.id).eq('customerId', customerId);
-  // โครงการ↔ดีล: เอกสารปลายน้ำ (excise from-project / shipment-prep) snapshot
-  // metadata.salesDealId จากโครงการ — เดิม create-project เป็นคนเขียน ตอนนี้เขียนที่นี่
-  if (!project.metadata?.salesDealId) {
-    chk(await supabase.from('projects')
-      .update({ metadata: { ...(project.metadata || {}), salesDealId: merged.id } })
-      .eq('id', project.id), 'ผูกดีลเข้า metadata โครงการ');
-  }
 
   // เหตุการณ์ลงเธรดของ PO — ไม่เช็ค error โดยเจตนา (action สำเร็จแล้ว)
   // จุดส่งมอบเข้าท่อขาย: อ่านจากตัว PO ได้เลยว่ากลายเป็นดีลไหน ไม่ต้องไปไล่ audit log

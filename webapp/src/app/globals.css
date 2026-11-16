@@ -5201,17 +5201,6 @@ button.empty-state { width: 100%; font: inherit; }
   font-size: var(--fs-7);
   font-weight: var(--fw-medium);
 }
-.project-timeline-card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2-5);
-  margin-left: auto;
-  flex-wrap: wrap;
-}
-@media (max-width: 900px) {
-  .project-timeline-card-actions { width: 100%; }
-}
 
 /* Pill badge — type / role / category tags. Color via inline style or modifier. */
 
@@ -7821,219 +7810,6 @@ td > * > .text-action {
   text-align: left;
 }
 
-/* รายการงานค้างในคำเตือนก่อนปิดโครงการ (StatusNotice) — เตือนอย่างเดียว ไม่บล็อก */
-.close-readiness-list {
-  margin: 0 0 var(--space-1-5);
-  padding-left: var(--space-4-5);
-  list-style: disc;
-}
-.close-readiness-list li {
-  margin-bottom: var(--space-0-5);
-}
-.close-readiness-refs {
-  color: var(--text-3);
-  font-size: var(--fs-5);
-}
-
-/* หลักฐานการปิดโครงการ บนการ์ด Record Control — ใคร/ชนิด/เหตุผล
-   (สถานะกับคำอธิบายอยู่บนหัวการ์ดแล้ว ตรงนี้ไม่ต้องพูดซ้ำ) */
-.project-close-evidence {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0-5);
-  font-size: var(--fs-5);
-  line-height: var(--lh-thai);
-  color: var(--text-3);
-}
-.project-close-evidence strong {
-  color: var(--text-2);
-}
-.project-close-reason {
-  color: var(--text-2);
-  line-height: var(--lh-text);
-}
-
-.shipment-print-sheet {
-  width: 210mm;
-  height: 297mm;
-  overflow: hidden;
-  position: relative;
-  margin: 0 auto var(--space-4);
-  background: #fff;
-  color: #171717;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: var(--space-7);
-  box-shadow: var(--shadow-sm);
-}
-
-.shipment-print-sheet:not(:last-child) {
-  break-after: page;
-  page-break-after: always;
-}
-
-.shipment-page-number {
-  position: absolute;
-  right: 28px;
-  bottom: 18px;
-  color: #525252;
-  font-size: var(--fs-3);
-}
-
-.shipment-print-head {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-6);
-  align-items: flex-start;
-  border-bottom: 2px solid #171717;
-  padding-bottom: var(--space-4-5);
-}
-
-.shipment-print-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3-5);
-  min-width: 0;
-}
-
-/* โลโก้ตัวเต็มเป็นแนวนอนอยู่แล้ว วางลงตรง ๆ ได้ — ไม่ต้องมีกล่องกรมท่าครอบแล้วครอปภาพจัตุรัสอย่างเดิม */
-.shipment-print-logo {
-  height: 64px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-}
-
-.shipment-print-logo img {
-  height: 64px;
-  width: auto;
-  max-width: 180px;
-  display: block;
-}
-
-.shipment-print-kicker {
-  font-size: var(--fs-5);
-  font-weight: var(--fw-bold);
-  color: #525252;
-  text-transform: uppercase;
-}
-
-.shipment-print-head h1 {
-  margin: var(--space-1) 0;
-  font-size: var(--fs-14);
-  line-height: var(--lh-thai);
-  text-wrap: balance;
-}
-
-.shipment-print-head p {
-  margin: 0;
-  color: #404040;
-  font-size: var(--fs-7);
-  text-wrap: pretty;
-}
-
-.shipment-print-meta {
-  min-width: 220px;
-  border: 1px solid #d4d4d4;
-}
-
-.shipment-print-meta div,
-.shipment-print-info div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-2-5);
-  border-bottom: 1px solid #e5e5e5;
-}
-
-.shipment-print-meta div:last-child,
-.shipment-print-info div:last-child {
-  border-bottom: 0;
-}
-
-.shipment-print-meta span,
-.shipment-print-info span {
-  color: #525252;
-  font-size: var(--fs-5);
-}
-
-.shipment-print-info {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border: 1px solid #d4d4d4;
-  margin: var(--space-4-5) 0;
-}
-
-.shipment-print-info div {
-  border-right: 1px solid #e5e5e5;
-  border-bottom: 0;
-  flex-direction: column;
-}
-
-.shipment-print-info div:last-child {
-  border-right: 0;
-}
-
-.shipment-print-table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-  font-size: var(--fs-7);
-}
-
-.shipment-print-table th,
-.shipment-print-table td {
-  border: 1px solid #d4d4d4;
-  padding: 9px var(--space-2-5);
-  vertical-align: top;
-  overflow-wrap: anywhere;
-}
-
-.shipment-print-table th {
-  background: #f5f5f5;
-  text-align: left;
-  font-weight: var(--fw-bold);
-}
-
-/* คอลัมน์รหัส FG ในใบเตรียมส่ง — ผ่านโทเคนเหมือนที่อื่น (เดิมเขียนสแตกดิบ
-   ที่ไม่มี IBM Plex Mono อยู่ในนั้นด้วยซ้ำ = ฟอนต์ที่ห้าบนจอ) · คลาสนี้ขึ้นทั้ง
-   บนจอและบนกระดาษ ไม่ใช่ print-only */
-.shipment-mono {
-  font-family: var(--font-mono);
-}
-
-.shipment-num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-
-.shipment-signatures {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-4-5);
-  margin-top: 54px;
-}
-
-.shipment-signatures div {
-  border-top: 1px solid #171717;
-  padding-top: var(--space-2);
-  text-align: center;
-  min-height: 44px;
-}
-
-.shipment-signatures span {
-  color: #404040;
-  font-size: var(--fs-5);
-}
-
-@media (max-width: 768px) {
-  .shipment-print-sheet { width: 100%; height: auto; min-height: 297mm; padding: var(--space-4-5); }
-  .shipment-print-head { flex-direction: column; }
-  .shipment-print-brand { align-items: flex-start; flex-direction: column; }
-  .shipment-print-meta { width: 100%; }
-  .shipment-print-info { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
 @page {
   size: A4 portrait;
   margin: 10mm;
@@ -8110,18 +7886,6 @@ td > * > .text-action {
   body {
     background: #fff !important;
   }
-  .shipment-print-sheet {
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
-    padding: 0;
-    margin: 0;
-    width: 190mm;
-    height: 277mm;
-  }
-  .shipment-print-head {
-    position: static;
-  }
   /* ตารางตรึง: บนกระดาษไม่มี "กล่องเลื่อน" ⇒ เพดาน/overflow ต้องหายไป **และ** ต้องถอด
      sticky ทุกตัวด้วย ไม่งั้นมันไปปักกับกล่องหน้ากระดาษแทน (แถวรวมทับแถวข้อมูล/โผล่ซ้ำ)
      ⚠️ `.fz-box.fz-box` ชื่อซ้ำสองครั้ง — ต้องเขียนซ้ำที่นี่ด้วยถึงจะชนะเพดานของตัวเอง */
@@ -8136,10 +7900,6 @@ td > * > .text-action {
   .fz-table .fz-cr {
     position: static;
     box-shadow: none;
-  }
-  .shipment-page-number {
-    right: 0;
-    bottom: 0;
   }
   /* แผงรายการบนกระดาษ: หัว + ตารางเท่านั้น — ช่องค้นหา/ตัวกรอง/แบ่งหน้าไม่มีความหมาย
      และ clip ต้องปล่อย ไม่งั้นแถวที่ล้นหน้ากระดาษถูกตัดทิ้ง */

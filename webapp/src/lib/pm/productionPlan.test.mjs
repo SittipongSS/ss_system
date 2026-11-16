@@ -195,6 +195,22 @@ test('SO อนุมัติแล้ว → สร้างงานร่า
   assert.equal(rows[0].status, 'draft');
 });
 
+test('ยุบโครงการ P3a (มติ 16/11): งานร่างจาก SO ไม่ผูกโครงการ แม้ SO เก่าจะถือ projectId อยู่', () => {
+  const rows = draftJobsForSalesOrder(order({ projectId: 'P1' }), [
+    { id: 'L1', productId: 'PRD1', description: 'น้ำหอม A', qty: 500 },
+  ]);
+  assert.equal(rows.length, 1);
+  assert.equal(Object.hasOwn(rows[0], 'projectId'), false, 'งานผลิตใหม่ต้องไม่มีคีย์ projectId');
+  assert.equal(rows[0].dealId, 'D1', 'ยังผูกดีลเหมือนเดิม');
+});
+
+test('ยุบโครงการ P3a (มติ 16/11): งานที่สร้างเองไม่รับ projectId จาก client', () => {
+  const { value, error } = normalizeJobInput({ qty: 10, status: 'draft', projectId: 'P1', dealId: 'D1' });
+  assert.equal(error, null);
+  assert.equal(Object.hasOwn(value, 'projectId'), false, 'ค่าที่จะเขียนลงฐานต้องไม่มี projectId');
+  assert.equal(value.dealId, 'D1');
+});
+
 test('⭐ บรรทัดที่ไม่มีสินค้า (ค่าออกแบบฉลาก/บริการ) ไม่สร้างงานผลิต — ไม่งั้นคิวมีงานที่ผลิตไม่ได้', () => {
   const rows = draftJobsForSalesOrder(order(), [
     { id: 'L1', productId: null, description: 'ค่าออกแบบฉลาก', qty: 1 },
@@ -240,10 +256,11 @@ test('🔴 เลขแพ็คว่าง = ไม่มีอะไรเป
     { id: 'L7', productId: 'PRD7', description: 'ศูนย์', qty: 0 },
   ];
   // ค่าที่คาด = ลอกจากพฤติกรรมวันนี้ (qty: Number(line.qty) · ข้าม ไม่ใช่ตัวเลข / ≤ 0) ไม่ได้คำนวณจากโค้ดที่ทดสอบ
+  // (ไม่มีคีย์ projectId ตั้งแต่ P3a — ยุบโครงการ 16/11 · SO ของเทสต์ยังถือ projectId: 'P1' ของเก่าอยู่)
   const expected = [
-    { projectId: 'P1', dealId: 'D1', salesOrderId: 'SO1', salesOrderLineId: 'L1', productId: 'PRD1', fgCode: 'FG-1',
+    { dealId: 'D1', salesOrderId: 'SO1', salesOrderLineId: 'L1', productId: 'PRD1', fgCode: 'FG-1',
       productName: 'น้ำหอม A', qty: 500, dueDate: '2026-09-01', status: 'draft' },
-    { projectId: 'P1', dealId: 'D1', salesOrderId: 'SO1', salesOrderLineId: 'L2', productId: 'PRD2', fgCode: null,
+    { dealId: 'D1', salesOrderId: 'SO1', salesOrderLineId: 'L2', productId: 'PRD2', fgCode: null,
       productName: 'น้ำหอม B', qty: 300.5, dueDate: '2026-09-01', status: 'draft' },
   ];
   const noKey = draftJobsForSalesOrder(order(), stored);

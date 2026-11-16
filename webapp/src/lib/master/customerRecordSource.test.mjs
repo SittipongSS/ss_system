@@ -44,11 +44,10 @@ test("useCustomerRecord ยิง /api/customers/[id] และมี fallback �
 
 test("picker ลูกค้าทุกจุดใช้ข้อความอธิบายชุดเดียวกันเมื่อค้นไม่เจอ", () => {
   assert.match(read("../uiLabels.js"), /CUSTOMER_PICKER_EMPTY_HINT/);
-  // ProjectFormModal (ฟอร์มโครงการยุค 1:1) ถูกลบแล้ว — ฟอร์มโครงการเหลือตัวเดียว
-  // คือ SalesProjectCreateModal (มติ 2026-08-08: โครงการ = ภาชนะรวมดีล)
+  // ฟอร์มโครงการ (ProjectFormModal ยุค 1:1 แล้วต่อด้วย SalesProjectCreateModal) ถูกลบหมดแล้ว —
+  // SalesProjectCreateModal ลบใน P3a (ยุบโครงการ 16/11 ไม่มีทางสร้างโครงการ)
   for (const path of [
     "../../components/salesPlanning/DealFormFields.js",
-    "../../components/pm/SalesProjectCreateModal.js",
   ]) {
     assert.match(read(path), /emptyText=\{CUSTOMER_PICKER_EMPTY_HINT\}/, path);
   }

@@ -98,7 +98,8 @@ test("หาจุดเรียก RequestQueuePanel ได้ครบ — �
   const full = calls.filter((c) => isFullQueue(c.call));
   const embedded = calls.filter((c) => !isFullQueue(c.call));
   assert.ok(full.length >= 4, `เจอคิวเต็มหน้าแค่ ${full.length} จุด — ตัวจับน่าจะพัง`);
-  assert.ok(embedded.length >= 3, `เจอการ์ดที่ฝังแค่ ${embedded.length} จุด (/rd · หน้าดีล · หน้าโครงการ) — ตัวจับน่าจะพัง`);
+  // หน้าโครงการถูกถอด (P3a · ยุบโครงการ 16/11) ⇒ การ์ดที่ฝังเหลือ /rd · หน้าดีล
+  assert.ok(embedded.length >= 2, `เจอการ์ดที่ฝังแค่ ${embedded.length} จุด (/rd · หน้าดีล) — ตัวจับน่าจะพัง`);
 });
 
 test("ไม่มีจุดไหนปิดหัวแผง — sectionHeader ถูกถอด (มติผู้ใช้ 2026-09-15 แทน 2026-09-07)", () => {

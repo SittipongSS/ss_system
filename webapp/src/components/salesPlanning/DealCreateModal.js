@@ -42,8 +42,8 @@ import LeadSourcePicker from "@/components/salesPlanning/LeadSourcePicker";
 /* ดีลใบแรกดึงค่าจากลีดให้หมดเท่าที่ดึงได้ — ใบถัดไปเป็น NPD เปล่า เพราะกรณีใช้จริงคือ
    "ลูกค้ารายเดียวเปิดทั้งงานกลิ่นและงานพัฒนาสูตร" ไม่ใช่ก๊อปใบเดิม
    เปิดจากหน้ารวมดีล (ไม่มีลีด) = ใบเปล่าล้วน ทั้งใบแรกและใบถัดไป */
-/* `defaults` = ค่าที่ "ที่ทางที่กดเปิดฟอร์ม" รู้อยู่แล้ว (เช่น เปิดจากหน้าโครงการ =
-   รู้ทั้งลูกค้าและโครงการ) — ทับท้ายสุดเสมอ ทั้งใบแรกและใบถัดไป */
+/* `defaults` = ค่าที่ "ที่ทางที่กดเปิดฟอร์ม" รู้อยู่แล้ว (เช่น ต่อสัญญาบริการ =
+   รู้ลูกค้า/สาย/ประเภทดีล) — ทับท้ายสุดเสมอ ทั้งใบแรกและใบถัดไป */
 const firstDeal = (lead, ownerId, defaults) => (lead ? {
   ...initialDealForm,
   ownerId,
@@ -89,9 +89,9 @@ export default function DealCreateModal({
   owners = [],
   defaultOwnerId = "",
   lockedOwner = null,
-  /* ค่าตั้งต้นเพิ่มเติมของทุกใบ — ใช้ตอนเปิดฟอร์มจากบริบทที่รู้ค่าอยู่แล้ว เช่น หน้า
-     โครงการส่ง { customerId, projectId, lockedProjectId } มาเพื่อให้ดีลใหม่ผูกกลับ
-     เข้าโครงการนั้นเสมอ (อ่านตอน mount ครั้งเดียว เหมือน lead) */
+  /* ค่าตั้งต้นเพิ่มเติมของทุกใบ — ใช้ตอนเปิดฟอร์มจากบริบทที่รู้ค่าอยู่แล้ว เช่น ต่อสัญญาบริการ
+     ส่ง { customerId, line, dealType, title } (อ่านตอน mount ครั้งเดียว เหมือน lead)
+     ⚠️ ไม่มีการผูกโครงการแล้ว (P3a · มติ 16/11 ⑩ โครงการเก็บเป็นประวัติ) */
   defaults = null,
   leadPicker = false,
   onClose,
@@ -105,11 +105,10 @@ export default function DealCreateModal({
   const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  /* ⭐ ผลของรอบ submit ที่แล้ว: `_key` → { dealId, linked }
+  /* ⭐ ผลของรอบ submit ที่แล้ว: `_key` → { dealId, deal }
      **หัวใจ**: การสร้างดีลเป็นทีละใบและไม่มี rollback — ถ้าใบที่ 2 พัง ใบที่ 1 เกิดจริง
      ไปแล้ว ของเดิมกดใหม่ = สร้างใบที่ 1 **ซ้ำอีกใบ** (ดีลซ้ำในระบบ ไม่มีอะไรเตือน)
-     เก็บไว้เพื่อข้ามใบที่สำเร็จแล้วตอนกดใหม่ · ถ้าดีลเกิดแล้วแต่ผูกโครงการพลาด
-     รอบถัดไปจะ "ผูกอย่างเดียว" ไม่สร้างดีลใหม่ */
+     เก็บไว้เพื่อข้ามใบที่สำเร็จแล้วตอนกดใหม่ */
   const [done, setDone] = useState({});
   const [failedKey, setFailedKey] = useState(null);
 
@@ -192,9 +191,9 @@ export default function DealCreateModal({
         const state = result[draft._key] || {};
         // ข้ามใบที่สร้างสำเร็จไปแล้วในรอบก่อน — กดใหม่ต้องไม่ได้ดีลซ้ำ
         if (!state.dealId) {
-          // `_key`/`lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล —
+          // `_key`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล —
           // legacy ไปกับ metadata (ธงดีลเก่า — เปิดทางสร้างที่ Won ฝั่ง server · Won แบบนี้ไม่มีมูลค่า)
-          const { _key, lockedProjectId, legacy, ...rest } = draft;
+          const { _key, legacy, ...rest } = draft;
           const payload = {
             ...rest,
             /* โหมดดีลเก่า Won จอไม่มีช่องมูลค่า ⇒ ส่ง "ไม่มีมูลค่า" ชัด ๆ แทนแถวที่ค้างในร่าง (เช่นกรอกไว้ตอนเลือก
@@ -220,32 +219,13 @@ export default function DealCreateModal({
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || `สร้างดีล ${draft.title} ไม่สำเร็จ`);
           /* ดีลเกิดแต่ของประกอบไม่ครบ (ไทม์ไลน์ · แถวมูลค่า · สถานะลีดต้นทาง) — ทักทันทีที่รู้
-             ไม่รอจบลูป: ผูกโครงการข้างล่างพังเมื่อไร ลูปโยนออกแล้วคำเตือนนี้จะหายไปด้วย
-             และโมดัลเป็นที่เดียวที่เห็นทุกทางเข้า (หน้ารวมดีล · หน้าโครงการ · ลีดสองหน้า) */
+             ไม่รอจบลูป: ใบถัดไปพังเมื่อไร ลูปโยนออกแล้วคำเตือนนี้จะหายไปด้วย
+             และโมดัลเป็นที่เดียวที่เห็นทุกทางเข้า (หน้ารวมดีล · ต่อสัญญาบริการ · ลีดสองหน้า) */
           const createdWarning = responseWarningText(data);
           if (createdWarning) notifyToast.warning(`${draft.title}: ${createdWarning}`, RESPONSE_WARNING_TOAST);
-          // บันทึกทันทีที่ดีลเกิด **ก่อน**ลองผูกโครงการ — ถ้าผูกพลาดแล้วผู้ใช้กดใหม่
-          // ต้องไม่สร้างดีลซ้ำ เหลือแค่ผูกอย่างเดียว
+          // บันทึกทันทีที่ดีลเกิด — ใบถัดไปพังแล้วผู้ใช้กดใหม่ ต้องไม่สร้างดีลใบนี้ซ้ำ
           state.dealId = data.id;
           state.deal = data;
-          result[draft._key] = { ...state };
-          setDone({ ...result });
-        }
-        // deal-POST ไม่รับ projectId — ผูกโครงการผ่าน link-project (ต่อ segment ไทม์ไลน์
-        // ให้ด้วย) แพตเทิร์นเดียวกับหน้ารวมดีล
-        if (draft.projectId && !state.linked) {
-          const linkRes = await apiFetch(`/api/sales-planning/deals/${state.dealId}/link-project`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: draft.projectId, startDate: draft.startDate || undefined }),
-          });
-          const linked = await linkRes.json().catch(() => ({}));
-          if (!linkRes.ok) {
-            throw new Error(linked.error || `สร้างดีล ${draft.title} แล้ว แต่เชื่อมโครงการไม่สำเร็จ`);
-          }
-          const linkWarning = responseWarningText(linked);
-          if (linkWarning) notifyToast.warning(`${draft.title}: ${linkWarning}`, RESPONSE_WARNING_TOAST);
-          state.linked = true;
           result[draft._key] = { ...state };
           setDone({ ...result });
         }
