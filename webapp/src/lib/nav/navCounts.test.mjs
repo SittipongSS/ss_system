@@ -227,7 +227,7 @@ test('เส้น /api/nav/counts ไม่มี .limit(5000) เหลือ�
 test('ป้ายใบสั่งขาย: เลนอนุมัติพก submittedBy/origin · ส่ง role · เลนร่างใบย้อนหลังผ่าน historicalRowsOnly', () => {
   const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
   const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
+  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('scents'"));
   assert.ok(job.length > 100, 'หาก้อนตัวนับใบสั่งขายไม่เจอ');
   assert.match(job, /\.select\('id, status, createdBy, submittedBy, origin'\)\s*\.in\('status', \['pending_approval', 'rejected'\]\)/);
   assert.match(job, /fetchAllResult\(\(\) => historicalRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin'\)\)\s*\.eq\('status', 'draft'\)\.eq\('createdBy', user\.id\)\.order\('id', \{ ascending: true \}\)\)/);
@@ -256,7 +256,7 @@ test('ตัวตัดสินของป้าย: ผู้ตรวจไ
 test('ป้ายใบสั่งขาย: เลนย้อนการอนุมัติพก deal.ownerId และโยน error ของเลน', () => {
   const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
   const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
+  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('scents'"));
   // ⭐ ใบย้อนหลังย้อนอนุมัติไม่ได้ (CHECK 0374) — กรอง pipeline ผ่านตัวกลางตัวเดียว (literal ของ origin มีบ้านเดียว)
   assert.match(job, /pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, createdBy, origin, deal:sales_deals\(ownerId\)'\)\)\s*\.eq\('status', 'approval_revoked'\)/);
   assert.match(job, /if \(approvalError \|\| draftError \|\| revokedError \|\| reviewError \|\| backfillError \|\| financeError\) \{\s*throw/);
@@ -329,11 +329,11 @@ test('ตัวตัดสินของป้ายงานเข้าใ�
 test('ป้ายใบสั่งขาย: เลนผู้จัดการตรวจ + เลนเจ้าของดีลตั้งงานบริการ พกคอลัมน์ที่ตัวตัดสินอ่าน · นับใบไม่ซ้ำ', () => {
   const route = readFileSync(new URL('../../app/api/nav/counts/route.js', import.meta.url), 'utf8');
   const code = route.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('projectCloses'"));
+  const job = code.slice(code.indexOf("attempt('salesOrders'"), code.indexOf("attempt('scents'"));
   /* เลนผู้ตรวจฝังโครงการ/ดีล (พร้อม id) ให้ตัวตัดสินสายธุรกิจ — สายเปลี่ยนระหว่างรอตรวจ = ไม่นับ (F1: RPC อนุมัติปฏิเสธ · หน้าใบไม่มีปุ่ม) */
-  assert.match(job, /const reviewLane = can\(user\.role, 'salesplan:view'\) && reviewer\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", project:projects\(id, line\), deal:sales_deals\(id, line\)'\)\)\s*\.eq\('status', 'approved'\)\.eq\('serviceSetupState', 'submitted'\)\.is\('supersededById', null\)\.is\('serviceTermsOpenedAt', null\)/);
+  assert.match(job, /const reviewLane = can\(user\.role, 'salesplan:view'\) && reviewer\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", deal:sales_deals\(id, line\)'\)\)\s*\.eq\('status', 'approved'\)\.eq\('serviceSetupState', 'submitted'\)\.is\('supersededById', null\)\.is\('serviceTermsOpenedAt', null\)/);
   assert.match(job, /\.\.\.\(reviewRows \|\| \[\]\)\.filter\(\(row\) => orderBusinessLineOf\(row\) === 'SERVICE'\)/);
-  assert.match(job, /const backfillLane = can\(user\.role, 'salesplan:view'\)\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('[^']*project:projects\(id, line\), deal:sales_deals!inner\(id, ownerId, line\)'\)\)\s*\.eq\('status', 'approved'\)\.is\('serviceTermsOpenedAt', null\)\.is\('supersededById', null\)\.eq\('deal\.ownerId', user\.id\)/);
+  assert.match(job, /const backfillLane = can\(user\.role, 'salesplan:view'\)\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('[^']*deal:sales_deals!inner\(id, ownerId, line\)'\)\)\s*\.eq\('status', 'approved'\)\.is\('serviceTermsOpenedAt', null\)\.is\('supersededById', null\)\.eq\('deal\.ownerId', user\.id\)/);
   const backfillSelect = job.match(/const backfillLane[\s\S]*?\.select\('([^']*)'\)/)[1];
   for (const column of ['status', 'origin', '"projectId"', '"dealId"', '"supersededById"', '"serviceTermsOpenedAt"', '"serviceSetupState"']) {
     assert.ok(backfillSelect.includes(column), `เลนเจ้าของดีลขาด ${column}`);

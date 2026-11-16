@@ -233,20 +233,19 @@ export const CONTRACT_NUMBER_MONTH = '-';
 //   ออกแบบกลิ่น = ดีล SCENT · จ้างผลิต = NPD/RE-ORDER สาย PRODUCT
 //   บริการ      = NPD/RE-ORDER สาย SERVICE
 //
-// ⚠️ **สายธุรกิจอ่านจากดีลก่อน แล้วค่อยตกไปที่โครงการ** — ดีลถือสายของตัวเองตั้งแต่
-//    mig 0275 (มติผู้ใช้ 2026-08-20) ส่วนดีลเก่าที่ยังไม่ระบุยังสืบจากโครงการที่ผูกอยู่
-//    ซึ่งเป็นกติกาเดียวกับ backfill ของ 0275 ไม่ใช่การเดา
+// ⚠️ **สายธุรกิจอ่านจากดีลอย่างเดียว** — ดีลถือสายของตัวเองตั้งแต่ mig 0275 (มติผู้ใช้ 2026-08-20)
+//    เดิมดีลที่ยังไม่ระบุตกไปถามโครงการที่ผูกอยู่ · งวด P3b-1 ยุบโครงการ (16/11/2026) ถอดทางถอยนั้น —
+//    ตรวจ prod แล้ว 610 ดีลที่ผูกโครงการ `projects.line === sales_deals.line` ทุกใบ ⇒ คำตอบเท่าเดิมทุกดีล
 // ⚠️ NULL คือ "ยังไม่ระบุ" ที่ถูกต้อง ไม่ใช่ข้อผิดพลาด ⇒ ดีลที่ยังไม่มีสายจะออกได้แค่
 //    สัญญาออกแบบกลิ่น (ซึ่งไม่ต้องใช้สาย) · **ห้ามเดาสายให้เอง**
 const SCENT_TYPES = new Set(['SCENT']);
 const DELIVERY_TYPES = new Set(['NPD', 'RE-ORDER']);
 
-export const contractBusinessLine = (deal, project = null) =>
-  deal?.line || project?.line || deal?.project?.line || null;
+export const contractBusinessLine = (deal) => deal?.line || null;
 
-export function contractKindsForDeal(deal, project = null) {
+export function contractKindsForDeal(deal) {
   const type = dealTypeOf(deal);
-  const line = contractBusinessLine(deal, project);
+  const line = contractBusinessLine(deal);
   const kinds = [];
   if (SCENT_TYPES.has(type)) kinds.push('scent_design');
   if (DELIVERY_TYPES.has(type)) {
@@ -268,7 +267,7 @@ export function approvedQuotationsForContract(quotations = []) {
 // ── ด่านออกสัญญา ────────────────────────────────────────────────────────────
 // คืน { ok, reason } — `reason` เป็นข้อความไทยที่เอาไปโชว์ใต้ปุ่มได้ตรง ๆ
 // (ปุ่มจางที่ไม่บอกเหตุผล = คนเดินมาถามผู้ดูแลทีละคน — กติกาเดียวกับการ์ดระบบที่ปิดอยู่)
-export function contractEligibility({ kind, deal, project = null, quotations = [] } = {}) {
+export function contractEligibility({ kind, deal, quotations = [] } = {}) {
   if (!deal) return { ok: false, reason: 'ไม่พบดีลของสัญญานี้' };
   const approved = approvedQuotationsForContract(quotations);
   /* ⭐ ดีลของใบสั่งขายย้อนหลัง (mig 0360) ไม่มีใบเสนอราคาโดยธรรมชาติ (ขายนอกระบบ) ⇒ ข้ามด่านนี้
@@ -277,10 +276,10 @@ export function contractEligibility({ kind, deal, project = null, quotations = [
   if (!approved.length && !isHistoricalDeal(deal)) {
     return { ok: false, reason: 'ออกสัญญาได้หลังใบเสนอราคาของดีลนี้ผ่านการอนุมัติแล้ว' };
   }
-  const allowed = contractKindsForDeal(deal, project);
+  const allowed = contractKindsForDeal(deal);
   if (!allowed.length) {
     const type = dealTypeOf(deal) || 'ไม่ระบุ';
-    const line = contractBusinessLine(deal, project);
+    const line = contractBusinessLine(deal);
     if (DELIVERY_TYPES.has(type) && !line) {
       return { ok: false, reason: 'ดีลนี้ยังไม่ระบุสายธุรกิจ — เลือกสายสินค้า/บริการที่ดีลก่อน' };
     }

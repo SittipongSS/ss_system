@@ -124,22 +124,9 @@ async function loadOrderForUser(supabase, user, id) {
     .from('sales_order_lines').select('id, fgCode, "productId", "serviceKind", "serviceFgCode", categoryCode:metadata->>categoryCode').eq('salesOrderId', order.id);
   if (lineError) throw lineError;
 
-  /* 🐞 **โครงการหายไปจากก้อนที่ส่งให้ด่านเงิน** — ตัวตัดสินสายธุรกิจอ่าน "โครงการก่อน
-     แล้วดีล" แต่ที่นี่แนบมาแต่ดีล ⇒ ใบที่สายมาจากโครงการถูกอ่านว่า "ไม่ใช่ใบบริการ"
-     แล้วด่าน "ต้องมีช่วงครอบก่อนรับรอง" ถูกข้ามเงียบ ๆ (fail-open)
-     ⚠️ ผู้เรียกเคยส่ง `{ project: order.project }` เข้า ctx ซึ่ง **ตัวรับไม่เคยอ่านคีย์นี้**
-       (มันรับ `projectsById`) ⇒ อ่านโค้ดแล้วเข้าใจว่าแก้แล้ว ทั้งที่ไม่เคยมีผล
-       ⇒ ทางแก้คือ **แนบของจริงมาให้** แล้วปล่อยตัวถอยของฟังก์ชันอ่าน `order.project` เอง
-     ⚠️ วัดบนฐานจริง 08/09: ไม่มีใบไหนที่พลิกเข้าด่านเงินจากการแก้นี้ (0 ใบ)
-       ⇒ ไม่มีใครถูกแช่แข็งการรับเงิน · แต่รูปิดไว้ก่อนใบถัดไปจะมา */
-  let project = null;
-  if (order.projectId) {
-    const { data, error: projectError } = await supabase
-      .from('projects').select('id, line').eq('id', order.projectId).maybeSingle();
-    if (projectError) throw projectError;
-    project = data || null;
-  }
-
+  /* สายธุรกิจของใบ (ครึ่งหนึ่งของ "ใบบริการ" ที่ด่านเงินถาม) อ่านจาก `deal` ที่แนบไว้ข้างบน (select '*' มี `line`)
+     ⚠️ งวด P3b-1 ยุบโครงการ: เลิกโหลดโครงการของใบ — เดิมตัวตัดสินถาม "โครงการก่อนแล้วดีล" (บั๊ก 08/09 ที่ลืมแนบโครงการ
+       แล้วด่านช่วงครอบถูกข้ามเงียบ) · วันนี้ตัวตัดสินอ่านดีลอย่างเดียว และสายของโครงการ = สายของดีลทุกใบบน prod */
   /* ⭐ **เอกสารแทนสัญญาของใบย้อนหลัง (0374)** — ด่านช่วงครอบของงวดยกมาต้องรู้วันสิ้นสุดสัญญา
      🐞 **review 23/09: ปุ่มกับ API เคยกั้นคนละวัน** — แผงงวดบนใบมีสัญญาติดมากับใบอยู่แล้ว
        (route ของใบโหลดให้) แล้วส่ง `contractEnd` เข้าด่าน ส่วนที่นี่ไม่เคยโหลด ⇒ ด่านถอยไปอ่าน
@@ -175,7 +162,7 @@ async function loadOrderForUser(supabase, user, id) {
 
   return {
     order: {
-      ...order, quotation: quotation || null, deal, project, lines: lines || [], serviceContract, revisionHistory,
+      ...order, quotation: quotation || null, deal, lines: lines || [], serviceContract, revisionHistory,
     },
   };
 }

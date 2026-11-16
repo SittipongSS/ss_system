@@ -138,9 +138,7 @@ const SEES_HISTORICAL = new Map([
 ]);
 /* ขอบเขตของคำสั่งทำให้ใบย้อนหลังเข้ามาไม่ได้ · count ความหมายเดียวกับข้างบน */
 const SCOPED_SAFE = new Map([
-  ['app/api/pm/projects/[id]/route.js', { count: 1, reason: 'ดีลของโครงการ — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL)' }],
-  ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ดีลของโครงการ — เหตุผลเดียวกัน' }],
-  ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'projectId / ดีลของโครงการ — ใบย้อนหลังไม่มีโครงการ' }],
+  /* (`api/pm/projects/[id]` · `.../deliveries/generate` · `lib/pm/deliveriesRepo.js` ถอดในงวด P3b-1 ยุบโครงการ) */
   ['app/api/sales-planning/quotations/[id]/route.js', { count: 1, reason: 'quotationId ใบเดียว — ใบย้อนหลังไม่มีใบเสนอราคา' }],
   /* PR4: คิว "รอออกใบค่าสรรพสามิต" (exciseHandledOrderIds) หา SO ค่าสรรพสามิตของใบที่รับแล้วผ่าน exciseRowsOnly + quotationId —
      ใบย้อนหลังเข้ามาไม่ได้ · ไม่รวมยอด · count รวมคำสั่งโหลดใบเดียวของ PER_ID_GUARDED ในไฟล์เดียวกัน */
@@ -281,7 +279,7 @@ const DEAL_KPI_ALLOWLIST = new Map([
   ['lib/sales/wonAwaitingSoRollup.js', 'ตัวรวมล้วน — isWonAwaitingSo ตัดดีลภาชนะเองอีกชั้น'],
   ['lib/sales/reportPendingApproval.js', 'ดีลมาจากใบรออนุมัติที่รายงานกรอง pipeline แล้ว — ใบย้อนหลังไม่มีสถานะรออนุมัติ'],
   ['lib/sales/projectRollup.js', 'ดีลของโครงการ — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL)'],
-  ['lib/pm/projectPendingApproval.js', 'ดีลของโครงการ (แถวดีล/KPI หน้าโครงการ) — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL) · กติกาเดียวกับ projectRollup'],
+  /* (`lib/pm/projectPendingApproval.js` ถอดในงวด P3b-1 ยุบโครงการ — ผู้เรียกคือหน้าโครงการที่ลบไปใน P3a) */
   ['app/sales-planning/leads/[id]/page.js', 'ดีลของลีดใบเดียว — ดีลภาชนะไม่มีลีด (CHECK "leadId" IS NULL)'],
   ['app/sales-planning/deals/[id]/page.js', 'หน้าดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts (ใบย้อนหลัง excluded) · คำใต้การ์ดจาก wonDealForecastHint (kind historical)'],
 ]);
@@ -368,8 +366,7 @@ test('🪤 literal "historical" · origin "excise" และตัวกรอ�
 const EXCISE_NO_ORIGIN = new Map([
   ['lib/finance/financeCloseQueue.js', { count: 1, reason: 'แท็บรอปิดใบ (รื้อ PR-4a) — เลนบัญชีชุดเดียวกับป้ายบนเมนู: ใบค่าภาษีไปบัญชีเหมือนใบปกติ (มติ 28/10) · นับจำนวนใบ ไม่รวมยอด' }],
   ['app/api/nav/counts/route.js', { count: 2, reason: 'เลนบัญชี (financeStatus pending — ใบค่าภาษีไปบัญชีเหมือนใบปกติ · มติ 28/10 · นับจำนวนใบ) · ป้ายงานเข้าใหม่ของ TS (planQueue ตัดสินจากบรรทัด/โซน — ใบค่าภาษีไม่มีบรรทัดบริการ · นับแถว ไม่รวมยอด)' }],
-  ['app/api/pm/projects/[id]/deliveries/generate/route.js', { count: 1, reason: 'ใบของดีลในโครงการ (`dealId`) — ใบค่าภาษีไม่มีดีล (CHECK sales_orders_deal_by_origin)' }],
-  ['lib/pm/deliveriesRepo.js', { count: 1, reason: 'ใบของโครงการ/ดีลในโครงการ — ใบค่าภาษีไม่มีทั้งโครงการและดีล (CHECK sales_orders_origin_shape)' }],
+  /* (`.../deliveries/generate` + `lib/pm/deliveriesRepo.js` ถอดในงวด P3b-1 ยุบโครงการ) */
 ]);
 
 test('🪤 ใบค่าสรรพสามิต: คำสั่งอ่านใบสั่งขายที่ไม่กรอง origin ใน query ต้องพก origin ให้ตัวตัดสินระดับแถว', () => {

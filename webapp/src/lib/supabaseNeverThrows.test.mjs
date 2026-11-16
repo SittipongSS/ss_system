@@ -167,7 +167,7 @@ test("ด่านสิทธิ์ไฟล์แนบ: อ่านแถว
    ① update/insert/upsert ที่ทิ้งผล = **ศูนย์** (ยกเว้นโมดูลสหมิตรที่พักรื้อไว้ทั้งเส้น)
    ② ที่เหลือ (ลบย้อนข้อมูลหลังตอบ error ไปแล้ว + สหมิตร) = เพดานสองทาง: เพิ่มไม่ได้ ·
       ลดแล้วต้องลดตัวเลขตาม ไม่งั้นช่องว่างถูกเติมกลับเงียบ ๆ */
-const BARE_WRITE_BUDGET = 38; // 49→48: purgeAttachments อ่าน error ของการลบแถวแล้ว (คืน { count, error }) · 48→47: ถอดทางสลับรายการใบยื่น (v3 02/11) · 47→38: ยุบโครงการ P3a (16/11) ลบ create-project ของดีล + create-project/link-project ของ PO สหมิตร + เขียนโครงการใน settle-deal
+const BARE_WRITE_BUDGET = 36; // 49→48: purgeAttachments อ่าน error ของการลบแถวแล้ว (คืน { count, error }) · 48→47: ถอดทางสลับรายการใบยื่น (v3 02/11) · 47→38: ยุบโครงการ P3a (16/11) ลบ create-project ของดีล + create-project/link-project ของ PO สหมิตร + เขียนโครงการใน settle-deal · 38→36: ยุบโครงการ P3b-1 (16/11) ลบ route ของโครงการ — ลบหัวใบ shipment-prep เมื่อบรรทัดเขียนไม่ลง + ลบงานไทม์ไลน์ที่ตกแม่แบบใน PATCH `pm/projects/[id]`
 
 function bareWrites() {
   const found = [];
@@ -254,8 +254,8 @@ test("ตัวตรวจการอ่านใน GET — จับได�
 /* ⭐ `api/nav/counts` เข้ากองเดียวกัน (ADR 0016 · PR0) — ตัวนับที่กลืน error
    ไม่ได้ "เงียบ" เฉย ๆ มันตอบ **0** ซึ่งอ่านว่า "ไม่มีงานค้าง" แล้วหน้าแรกจะพูดตามนั้น
    (ADR 0016 ห้ามหน้าแรกแสดงตัวนับที่พังเป็น 0) */
-for (const file of ["src/app/api/pm/projects/route.js", "src/app/api/pm/projects/[id]/route.js",
-  "src/app/api/nav/counts/route.js"]) {
+/* (`api/pm/projects/[id]` ถอดในงวด P3b-1 ยุบโครงการ — เหลือลิสต์ที่ /pm/tasks ใช้) */
+for (const file of ["src/app/api/pm/projects/route.js", "src/app/api/nav/counts/route.js"]) {
   test(`${file} — ทุกการอ่านใน GET ต้องรับ error และเช็คก่อนใช้`, () => {
     const problems = uncheckedReads(getHandlerOf(read(file)));
     assert.deepEqual(problems, [], `อ่านแล้วอาจกลายเป็น "ไม่มี" เงียบ ๆ: ${problems.join(", ")}`);

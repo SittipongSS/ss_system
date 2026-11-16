@@ -122,20 +122,16 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return fail('ดีลของใบสั่งขายย้อนหลังออกได้เฉพาะเอกสารแทนสัญญา ชนิดบริการ', 409);
   }
 
-  // โครงการ (สายธุรกิจ) + ใบเสนอราคาของดีล = วัตถุดิบของด่าน
-  const [{ data: project }, { data: quotations, error: quoteError }] = await Promise.all([
-    deal.projectId
-      ? supabase.from('projects').select('id, code, line, name').eq('id', deal.projectId).maybeSingle()
-      : Promise.resolve({ data: null }),
-    // ⚠️ ไล่ทีละหน้า — ใบของดีลหนึ่งใบสะสมได้เรื่อย ๆ ตามจำนวน Rev.
-    fetchAllResult(() => supabase.from('quotations')
-      .select('id, quoteNumber, status, approvalStatus, totalAmount, customerId, customerName, createdAt, "billingAddress"')
-      .eq('dealId', deal.id).order('id', { ascending: true })),
-  ]);
+  /* ใบเสนอราคาของดีล = วัตถุดิบของด่าน · สายธุรกิจอ่านจากดีลเอง (`deal` มาจาก loadScoped — select '*' มี line/code)
+     ⚠️ ไม่อ่านโครงการแล้ว (งวด P3b-1 ยุบโครงการ) — สายของโครงการเท่ากับของดีลทุกใบบน prod */
+  // ⚠️ ไล่ทีละหน้า — ใบของดีลหนึ่งใบสะสมได้เรื่อย ๆ ตามจำนวน Rev.
+  const { data: quotations, error: quoteError } = await fetchAllResult(() => supabase.from('quotations')
+    .select('id, quoteNumber, status, approvalStatus, totalAmount, customerId, customerName, createdAt, "billingAddress"')
+    .eq('dealId', deal.id).order('id', { ascending: true }));
   if (quoteError) return fail(quoteError.message, 500);
 
   const eligibility = contractEligibility({
-    kind: body.kind, deal, project, quotations: quotations || [],
+    kind: body.kind, deal, quotations: quotations || [],
   });
   if (!eligibility.ok) return fail(eligibility.reason, 409);
 
@@ -197,7 +193,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     metadata: {
       dealTitle: deal.title || null,
       dealCode: deal.code || null,
-      projectCode: project?.code || null,
+      /* "เลขที่โครงการ" ของสัญญา = รหัสดีล (มติ P2 · ยุบดีล/โครงการ — QT/SO/ใบยื่นภาษีใช้ค่านี้แล้ว) · ใบที่ออกไปแล้วตรึง HTML ไม่กระทบ */
+      projectCode: deal.code || null,
       quoteNumber: quotation?.quoteNumber ?? null,
       quoteTotal: quotation?.totalAmount ?? null,
     },

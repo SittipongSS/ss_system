@@ -429,8 +429,8 @@ const QTY_READERS = Object.freeze({
   'components/requests/FormulaDevBoard.js': 'other:dept_request_items',
   'components/requests/ProductDevLines.js': 'other:dept_request_items',
   'lib/materialPricesAdmin.js': 'other:material_price_revision_tiers',
-  'lib/pm/deliveries.js': 'other:material_deliveries',
   // components/pm/DeliveriesPanel.js + app/sa/projects/[id]/shipment-prep/page.js ลบใน P3a (ยุบโครงการ 16/11)
+  // lib/pm/deliveries.js ไม่อ่าน .qty แล้ว — ตัวตรวจ/กางรายการของเข้า (normalizeDeliveryInput · chaseRequestBody) ถอดใน P3b-1
   'components/pm/ProductionJobModal.js': 'other:production_jobs',
   'app/production/board/page.js': 'other:production_jobs',
   'app/production/jobs/page.js': 'other:production_jobs',

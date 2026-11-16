@@ -131,7 +131,7 @@ test('read-only export carries compliance flags, numeric usage and date cells', 
     isExcise: true,
     requiresFdaNotice: false,
     createdAt: '2026-07-18T01:00:00.000Z',
-    usage: { products: 91, deals: 39, projects: 6 },
+    usage: { products: 91, deals: 39 },
   }], { now: new Date('2026-07-19T02:00:00.000Z') });
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
@@ -143,8 +143,9 @@ test('read-only export carries compliance flags, numeric usage and date cells', 
   assert.equal(sheet.getRow(2).getCell(9).value, ''); // ไม่ติ๊ก = ช่องว่าง
   assert.equal(sheet.getRow(2).getCell(10).value, 91);
   assert.equal(sheet.getRow(2).getCell(11).value, 39);
-  assert.equal(sheet.getRow(2).getCell(12).value, 6);
-  assert.ok(sheet.getRow(2).getCell(13).value instanceof Date);
+  // คอลัมน์ "โครงการ" ถอดในงวด P3b-1 ยุบโครงการ — ถัดจาก "ดีล" คือวันที่สร้าง
+  assert.equal(sheet.getRow(1).getCell(12).value, 'สร้างเมื่อ');
+  assert.ok(sheet.getRow(2).getCell(12).value instanceof Date);
 });
 
 test('import parser ignores extra compliance columns without bumping PC-IMPORT-1 (มติ: flag แก้ได้เฉพาะหน้าจอจัดการหมวด)', async () => {

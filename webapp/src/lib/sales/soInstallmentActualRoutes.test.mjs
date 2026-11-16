@@ -617,7 +617,7 @@ test('ทะเบียนใบสั่งขาย: งวดของรา
 });
 
 test('ป้ายบนเมนู: เลนใบรายงวดพก deal.ownerId · งวดซอยก้อน + โยน error · ป้อน helper ตัวเดียวกับทะเบียน', () => {
-  const job = slice(code(NAV_ROUTE), "attempt('salesOrders'", "attempt('projectCloses'");
+  const job = slice(code(NAV_ROUTE), "attempt('salesOrders'", "attempt('scents'");
   assert.match(job, /const actualLane = can\(user\.role, 'salesplan:view'\)\s*\? fetchAllResult\(\(\) => pipelineRowsOnly\(supabase\.from\('sales_orders'\)\.select\('id, status, origin, "actualMode", "supersededById", deal:sales_deals\(ownerId\)'\)\)\s*\.eq\('status', 'approved'\)\.eq\('actualMode', 'installment'\)\.is\('supersededById', null\)/);
   assert.match(job, /if \(actualError\) throw actualError;/);
   /* 🐞 review 26/10: ต้องมี "dueDate" — ขาด = เลนเจ้าของดีลนับงวดที่ยังไม่ถึงกำหนด (ป้าย ≠ "รอฉัน" ของทะเบียน) */
@@ -673,8 +673,9 @@ test('ตัวตัดสินของป้าย: งวดที่ยั
 });
 
 // ── 7. select ของจออื่นที่คิดยอด Actual จากแถวใบ ───────────────────────────────────────────────────────────────
-test('หน้าโครงการ/ใบเสนอราคา: แถวใบพก actualMode + cache สองช่อง (ตัวกลาง salesOrderActual · splitSalesOrderAmounts)', () => {
-  for (const rel of ['app/api/pm/projects/[id]/route.js', 'app/api/sales-planning/quotations/[id]/route.js']) {
+/* (หน้าโครงการ `api/pm/projects/[id]` ถอดในงวด P3b-1 ยุบโครงการ — เหลือใบเสนอราคา) */
+test('ใบเสนอราคา: แถวใบพก actualMode + cache สองช่อง (ตัวกลาง salesOrderActual · splitSalesOrderAmounts)', () => {
+  for (const rel of ['app/api/sales-planning/quotations/[id]/route.js']) {
     const route = code(rel);
     const select = route.slice(route.indexOf(".from('sales_orders')"), route.indexOf("')", route.indexOf('.select(', route.indexOf(".from('sales_orders')"))));
     for (const column of ['origin', '"actualMode"', '"actualCountedAmount"', '"actualSubmittedAmount"']) {

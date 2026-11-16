@@ -18,8 +18,7 @@ test("proxy: สร้างทะเบียน = SA (products:edit) หรื
   for (const role of ["viewer", "executive", "rd", "pc", "wh", "fn", "marketing"]) {
     assert.equal(apiWriteAllowed("POST", "/api/excise-registrations", role, []), false, `${role} ต้องสร้างไม่ได้`);
   }
-  // from-project ยังเป็นงานฝ่ายขาย — route ตรวจ products:edit เอง (RA ผ่าน proxy แต่ไปไม่ถึง)
-  assert.match(code("../../app/api/excise-registrations/from-project/route.js"), /can\(user\.role, 'products:edit'\)|can\(user\?\.role, 'products:edit'\)/);
+  // (เส้น from-project — สร้างทะเบียนจากโครงการ — ถอดในงวด P3b-1 ยุบโครงการ · prod ใช้ 0 ครั้ง)
 });
 
 test("V15: RA สร้างเอง = เข้าคิว RA ทันที (pending_legal · metadata.source = 'ra') · แอดมิน/ฝ่ายขาย = ร่างตามเดิม", () => {

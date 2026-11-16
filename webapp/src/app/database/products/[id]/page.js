@@ -169,9 +169,9 @@ export default function ProductDetails() {
     setLoading(false);
   };
 
-  // Cross-module relations (360-view): registrations + orders + projects from one
+  // Cross-module relations (360-view): registrations + orders from one
   // scoped endpoint. Returns [] for relations the user may not see (tax →
-  // history:view, projects → pm:view), so no extra client-side gate is needed.
+  // history:view), so no extra client-side gate is needed.
   /* ลิงก์ทะเบียนจากหน้าอื่น/แจ้งเตือน (`/go/registration/<id>` → `?registration=<id>`) เปิดแท็บสรรพสามิตที่ทะเบียนใบนั้นให้เลย
      อ่านจาก location ครั้งเดียวตอนเปิดหน้า — ไม่ใช้ useSearchParams (หน้านี้ไม่มี Suspense ครอบ) */
   useEffect(() => {

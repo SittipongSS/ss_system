@@ -51,10 +51,10 @@ test('⚠️ ใบที่ยังไม่ระบุสาย ไม่เ
   assert.equal(orderOnServiceLine({}), false);
 });
 
-/* ⭐ สายอ่าน "โครงการก่อน แล้วดีล" — ตัวกว้างต้องเคารพลำดับเดียวกัน */
-test('โครงการทับสายของดีลได้ทั้งสองเกณฑ์', () => {
+/* ⭐ สายอ่านจากดีลอย่างเดียว (งวด P3b-1 ยุบโครงการ — เดิม "โครงการก่อน แล้วดีล") — ตัวกว้างต้องเคารพกติกาเดียวกัน */
+test('ก้อนโครงการที่แนบมากับใบไม่ทับสายของดีลแล้ว', () => {
   const o = order({ dealId: 'D2', deal: PRODUCT_DEAL, projectId: 'P1', project: SERVICE_PROJECT });
-  assert.equal(orderOnServiceLine(o), true);
+  assert.equal(orderOnServiceLine(o), false);
 });
 
 /* ══ ด่านเงินต้องไม่ขยับ ══════════════════════════════════════════════ */
@@ -107,13 +107,13 @@ test('🔑 แท็บสัญญาขึ้นทุกใบ · แท็�
     'ตารางกรอกรอบตีกลับบรรทัดนอกหมวด 02-001 ⇒ เปิดกว้างจะได้แท็บที่ไม่มีแถวให้กรอก');
 });
 
-/* 🐞 ตัวรับ ctx อ่าน `projectsById` ไม่ใช่ `project` ⇒ คีย์นั้นเป็นอาร์กิวเมนต์ตาย
-   ที่อ่านแล้วเข้าใจผิดว่าทำงาน · ของจริงต้องแนบ `order.project` มาให้ */
-test('🔴 ห้ามส่งคีย์ ctx ที่ตัวรับไม่เคยอ่าน และด่านเงินต้องเห็นโครงการ', () => {
+/* 🐞 ตัวรับ ctx เคยอ่าน `projectsById` ไม่ใช่ `project` ⇒ คีย์นั้นเป็นอาร์กิวเมนต์ตายที่อ่านแล้วเข้าใจผิดว่าทำงาน
+   ⭐ งวด P3b-1 ยุบโครงการ: ตัวตัดสินอ่านสายของดีลอย่างเดียวแล้ว ⇒ ด่านเงินต้องเห็น **ดีลของใบ** (select '*' มี line) และไม่อ่านโครงการ */
+test('🔴 ห้ามส่งคีย์ ctx ที่ตัวรับไม่เคยอ่าน และด่านเงินต้องเห็นดีลของใบ', () => {
   const route = code('../../app/api/sales-planning/sales-orders/[id]/installments/route.js');
   assert.doesNotMatch(route, /\{ project: order\.project \}/);
-  assert.match(route, /from\('projects'\)\.select\('id, line'\)/,
-    'ต้องแนบโครงการมาให้ ไม่งั้นด่านเงินอ่านสายจากดีลอย่างเดียว');
+  assert.doesNotMatch(route, /from\('projects'\)/, 'สายธุรกิจอ่านจากดีล — ไม่โหลดโครงการแล้ว');
+  assert.match(route, /from\('sales_deals'\)\.select\('\*'\)\.eq\('id', order\.dealId\)/);
   assert.match(route, /serviceRounds: orderHasServiceRounds\(order, order\.lines\)/);
 
   const page = code('../../app/sales-planning/sales-orders/[id]/page.js');

@@ -95,7 +95,7 @@ export const PROTECTED_PRODUCT_CATEGORY_CODES = Object.freeze([
  * เหตุผลที่ลบหมวดสินค้านี้ไม่ได้ — คืนข้อความไทย หรือ `''` ถ้าลบได้
  *
  * @param row            แถวทะเบียนหมวด
- * @param usage.total    จำนวนที่ใช้งานอยู่รวมสินค้า/ดีล/โครงการ (คำนวณจากฐานจริง)
+ * @param usage.total    จำนวนที่ใช้งานอยู่รวมสินค้า/ดีล (คำนวณจากฐานจริง)
  * @param protectedCode  รหัสนี้ถูกโค้ดอ้างตรง ๆ ไหม (PROTECTED_PRODUCT_CATEGORY_CODES)
  */
 export function productCategoryDeleteBlocker(row, { usage = {}, protectedCode = false } = {}) {
@@ -108,7 +108,6 @@ export function productCategoryDeleteBlocker(row, { usage = {}, protectedCode = 
     const detail = [
       usage.products ? `${usage.products} สินค้า` : null,
       usage.deals ? `${usage.deals} ดีล` : null,
-      usage.projects ? `${usage.projects} โครงการ` : null,
     ].filter(Boolean).join(' · ');
     return `หมวดนี้ถูกใช้ไปแล้ว (${detail}) — ลบไม่ได้เพราะของเดิมจะหาชื่อ/ธงภาษีของหมวดไม่เจอ · ใช้ "พักใช้" แทน`;
   }

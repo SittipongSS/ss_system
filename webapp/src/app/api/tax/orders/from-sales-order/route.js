@@ -76,14 +76,10 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
       ? supabase.from("customers").select("id, taxId, address, team, teams").eq("id", salesOrder.customerId).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
-  // โครงการผูกกับ SO ตรง ๆ (sales_orders.projectId, mig 0107)
-  const { data: project } = salesOrder.projectId
-    ? await supabase.from("projects").select("id, code, name").eq("id", salesOrder.projectId).maybeSingle()
-    : { data: null };
+  /* (โครงการของ SO ไม่ถูกอ่านแล้ว — งวด P3b-1 ยุบโครงการ: "เลขที่โครงการ" บนใบยื่น = รหัสดีลตั้งแต่ P2d · ไม่มีจุดไหนอ่าน `project`) */
   return {
     ...salesOrder,
     deal: deal || null,
-    project: project || null,
     quotation: quotation || null,
     customer: customer || null,
   };

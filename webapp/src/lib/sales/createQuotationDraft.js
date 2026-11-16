@@ -12,7 +12,7 @@ import {
 import { resolvePinnedPresetVersionIds } from '@/lib/admin/commercialPresets';
 import {
   customerMismatchMessage, customerMismatchedLines,
-  enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines, seedLinesFromProject,
+  enforceMasterPrices, exciseChargeLinesAdded, normalizeManualLines,
 } from '@/lib/sales/quoteLines';
 import { exciseChargeLineMessage } from '@/lib/excise/exciseCharge';
 import {
@@ -61,29 +61,16 @@ export async function createQuotationDraft({
   if (chargeLines.length) throw new QuotationDraftError(exciseChargeLineMessage(chargeLines));
   // ราคาบรรทัด FG ล็อกตาม master เสมอ (client ส่งราคามาเองไม่ได้ — มติผู้ใช้ 2026-07-15)
   // ราคาขายในใบ = ราคาผลิตทั้งระบบ (มติ 2026-07-19 — ดู QUOTE_PRICE_FIELD)
-  let lines = await enforceMasterPrices(supabase, manualLines, [], {
+  const lines = await enforceMasterPrices(supabase, manualLines, [], {
     customerId: deal.customerId,
   });
-  // ดึง FG ของโครงการมาตั้งต้นเฉพาะเมื่อขอ (default = ใบเปล่า ให้ใส่รหัส FG เองใน editor)
-  let seeded = false;
-  if (!lines.length && body.seedFromProject) {
-    seeded = true;
-    lines = await seedLinesFromProject(supabase, deal);
-    /* 🪤 ด่านข้างบนตรวจ `body.lines` ซึ่งตอนนี้ว่าง — บรรทัดที่ seed มาจากโครงการ
-       ไม่เคยผ่านด่านเลย · โครงการผูกลูกค้าคนละใบกับดีลได้ ⇒ ต้องตรวจซ้ำที่นี่
-       (ผ่าน `enforceMasterPrices` ด้วย เพื่อให้บรรทัด seed ได้ป้ายเจ้าของเหมือนกัน) */
-    const seedMismatch = await customerMismatchedLines(supabase, lines, { customerId: deal.customerId });
-    if (seedMismatch.length) throw new QuotationDraftError(customerMismatchMessage(seedMismatch));
-    const seedChargeLines = await exciseChargeLinesAdded(supabase, lines);
-    if (seedChargeLines.length) throw new QuotationDraftError(exciseChargeLineMessage(seedChargeLines));
-    lines = await enforceMasterPrices(supabase, lines, [], { customerId: deal.customerId });
-  }
-  /* ด่านเลขแพ็คบน **บรรทัดชุดสุดท้าย** ที่จะถูกเขียน (รวมบรรทัดที่ตั้งต้นจากโครงการ ซึ่งไม่ผ่านตัว normalize) — ก่อนออกเลขใบ
+  /* (ทางตั้งต้นบรรทัดจาก FG ของโครงการ — `body.seedFromProject` — ถอดในงวด P3b-1 ยุบโครงการ: ไม่มีจอไหนส่งมา และ project_products มี 0 แถว) */
+  /* ด่านเลขแพ็คบน **บรรทัดชุดสุดท้าย** ที่จะถูกเขียน — ก่อนออกเลขใบ
      ⭐ มติเจ้าของ 08/10 (A2–A4 · งวด PR-3): บรรทัดหมวด 02-001 ที่ **คนกรอกเอง** ต้องมีเลขแพ็ค 1–9,999 · หมวดอื่นห้ามมี — ปฏิเสธพร้อมเลขรายการ
      ที่ตรงกับแถวบนจอ (`numbering: 'submitted'` — นับจากลำดับที่ส่งมา ก่อนบรรทัดจำนวน 0 ถูกตัด) · เซิร์ฟเวอร์ไม่ตั้ง/ไม่ล้างเลขให้
-     · บรรทัดที่เซิร์ฟเวอร์สร้างเอง (`seeded` จากโครงการ · `serverBuiltLines` ของสายสหมิตร) ยังไม่มีใครกรอก ⇒ ไม่บังคับตอนสร้าง
+     · บรรทัดที่เซิร์ฟเวอร์สร้างเอง (`serverBuiltLines` ของสายสหมิตร) ยังไม่มีใครกรอก ⇒ ไม่บังคับตอนสร้าง
        ด่านจะทักตอนบันทึก/ยื่นครั้งถัดไป เหมือนตอนออก Rev. (มติ 08/10 ข้อ 3) — ค่าผิดรูป/ผิดหมวดยังถูกปฏิเสธเสมอ */
-  const packIssues = linePackIssues(lines, { open: packInputOpen, requireOnCategory: !(seeded || serverBuiltLines), numbering: 'submitted' });
+  const packIssues = linePackIssues(lines, { open: packInputOpen, requireOnCategory: !serverBuiltLines, numbering: 'submitted' });
   if (packIssues.length) throw new QuotationDraftError(linePackMessage(packIssues), 400);
   if (body.status === 'sent' && !lines.length) {
     throw new QuotationDraftError('ต้องมีอย่างน้อย 1 รายการก่อนส่งลูกค้า');

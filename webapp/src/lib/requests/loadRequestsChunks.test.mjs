@@ -50,7 +50,7 @@ function fakeSupabase(tables) {
   return { from, calls };
 }
 
-// 1,200 ใบ (เกินทั้งเพดาน URL ~330 ใบ และเพดาน 1,000 แถว) · ใบละ 1 แถว · ลูกค้า/ดีล/โครงการไม่ซ้ำกันทุกใบ
+// 1,200 ใบ (เกินทั้งเพดาน URL ~330 ใบ และเพดาน 1,000 แถว) · ใบละ 1 แถว · ลูกค้า/ดีลไม่ซ้ำกันทุกใบ
 const N = 1200;
 const requests = Array.from({ length: N }, (_, i) => ({
   id: `DR-${uuid(i)}`,
@@ -77,12 +77,15 @@ test('🔴 ใบ 1,200 ใบ: ทุกคำขอ URL ไม่เกิน�
   // หัวใบครบ (ไล่หน้าเกิน 1,000) และทุกใบได้แถวของตัวเอง + ข้อมูลเติมจากทะเบียน
   assert.equal(rows.length, N);
   assert.ok(rows.every((r) => r.items.length === 1), 'ทุกใบต้องได้แถวของตัวเอง');
-  assert.ok(rows.every((r) => r.customerArCode && r.projectCode), 'ทะเบียนเติมครบทุกใบ');
+  assert.ok(rows.every((r) => r.customerArCode && r.dealCode), 'ทะเบียนเติมครบทุกใบ');
+  // ป้ายโครงการของแถวคิวถอดในงวด P3b-1 (ยุบโครงการ) — ตัวโหลดต้องไม่อ่านตาราง projects อีก
+  assert.equal(supabase.calls.some((c) => c.table === 'projects'), false, 'ไม่อ่านตาราง projects');
+  assert.ok(rows.every((r) => !('projectCode' in r) && !('projectName' in r)));
 
   const tooLong = supabase.calls.filter((c) => c.url.length > POSTGREST_URL_LIMIT);
   assert.deepEqual(tooLong.map((c) => `${c.table} ${c.url.length}`), []);
 
-  for (const table of ['dept_request_items', 'customers', 'projects', 'sales_deals']) {
+  for (const table of ['dept_request_items', 'customers', 'sales_deals']) {
     const chunks = supabase.calls.filter((c) => c.table === table)
       .map((c) => c.filters.find((f) => f.op === 'in')?.value || []);
     assert.ok(chunks.length >= Math.ceil(N / IN_CHUNK_SIZE), `${table}: ต้องยิงหลายก้อน (ได้ ${chunks.length})`);

@@ -151,32 +151,19 @@ function buildExciseRoutes(deal, projectProducts, exciseRegistrations, productTy
 }
 
 // routing: ส่งต่อไประบบที่ทำงานจริง.
-// related = { projectProducts, exciseRegistrations, sahamitPo, shipmentPrep, productTypes }
+// related = { projectProducts, exciseRegistrations, sahamitPo, productTypes }
 // (productTypes = แถวหมวดสินค้า — ใช้ตัดสินสรรพสามิตจาก flag isExcise, mig 0131)
+// ⚠️ การ์ด "เตรียมส่งของ" (สวิตช์ SALES_FEATURES.shipment ที่ปิดมาตลอด · ลิงก์ไปหน้าโครงการ) ถูกถอดในงวด P3b-1
+//    พร้อม route shipment-prep — `shipment_prep` บน prod มี 0 แถว
 function buildRoutes(deal, related) {
   const { projectProducts = [], exciseRegistrations = [], sahamitPo = null, productTypes = [] } = related || {};
-  const hasProject = !!deal.projectId;
-  const projectHref = hasProject ? `/sa/projects/${deal.projectId}` : null;
   const routes = [];
 
   // PM project route is now handled natively in the Timeline card in UI.
   // 2) สรรพสามิต — รายตัว FG หมวดที่ติ๊กเสียภาษีสรรพสามิต ตามสถานะทะเบียน
   for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, productTypes)) routes.push(r);
 
-  // 3) ส่งของ — เมื่อเปิด flag shipment เท่านั้น
-  if (SALES_FEATURES.shipment) {
-    routes.push({
-      kind: 'shipment',
-      label: 'เตรียมส่งของ',
-      status: !hasProject ? 'locked' : related?.shipmentPrep ? 'done' : 'available',
-      href: projectHref,
-      linkLabel: 'เปิด',
-      actionKind: null,
-      hint: !hasProject ? 'สร้างโครงการ PM ก่อน' : related?.shipmentPrep ? 'มีเอกสารส่งของแล้ว' : 'ไปเตรียมเอกสารส่งของใน PM',
-    });
-  }
-
-  // 4) PO สหมิตร — อ่านอย่างเดียว (แสดงเมื่อผูกแล้ว)
+  // 3) PO สหมิตร — อ่านอย่างเดียว (แสดงเมื่อผูกแล้ว)
   if (sahamitPo) {
     routes.push({
       kind: 'sahamit',

@@ -253,7 +253,7 @@ test('ทุกทางที่บันทึกบรรทัดใบเ�
   assert.match(revise, /customerId: quote\.customerId, origin: quote\.origin,/);
   const create = code('../sales/createQuotationDraft.js');
   assert.match(create, /exciseChargeLinesAdded\(supabase, manualLines\)/);
-  assert.match(create, /exciseChargeLinesAdded\(supabase, lines\)/);
+  // (ด่านของบรรทัดที่ตั้งต้นจากโครงการ `exciseChargeLinesAdded(supabase, lines)` ถอดพร้อมทาง seedFromProject — งวด P3b-1 ยุบโครงการ)
 });
 
 /* 🐞 PR2 แก้ H2 ที่ตัวตัดสินแล้ว แต่ตัวโหลดทะเบียนสามตัวไม่ได้ select `isExciseTaxable` ⇒ คำตัดสินของ RA ไม่เคยถึงตัวตัดสินจริง

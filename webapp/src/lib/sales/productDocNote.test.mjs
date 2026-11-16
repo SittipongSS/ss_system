@@ -12,7 +12,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  fgLineNoteMeta, lineNoteEdit, lineNoteFor, seedLinesFromProject,
+  fgLineNoteMeta, lineNoteEdit, lineNoteFor,
 } from './quoteLines.js';
 import { buildQuotationMasterModelFromQuote } from './quotationMasterTemplate.js';
 import { quotationApprovalContent } from './quotationApprovalFingerprint.js';
@@ -77,25 +77,7 @@ test('หมายเหตุอยู่ใน metadata จึงไม่ก�
   assert.deepEqual(plain, withNote);
 });
 
-test('seed บรรทัดจากโครงการ: ได้หมายเหตุของสินค้าติดมาด้วย', async () => {
-  const supabase = {
-    from: () => ({
-      select: () => ({
-        eq: async () => ({
-          data: [
-            { id: 'PP1', productId: 'P1', orderQty: 5, product: BOTH },
-            { id: 'PP2', productId: 'P3', orderQty: 2, product: NO_NOTE },
-          ],
-        }),
-      }),
-    }),
-  };
-  const lines = await seedLinesFromProject(supabase, { projectId: 'PRJ-1' });
-  assert.equal(lines[0].metadata.note, 'บรรจุขวดแก้วพร้อมกล่อง');
-  assert.equal(lines[0].metadata.noteAuto, true);
-  // สินค้าที่ไม่มีหมายเหตุต้องไม่ได้คีย์เปล่าติดมา
-  assert.equal('note' in lines[1].metadata, false);
-});
+/* (เทสต์ seed บรรทัดจากโครงการ ถอดพร้อม `seedLinesFromProject` ในงวด P3b-1 ยุบโครงการ) */
 
 test('แก้เฉพาะหมายเหตุที่ทะเบียนสินค้า: ไม่ต้องอนุมัติใหม่ (มติ 2026-08-30)', () => {
   const approved = { approvalStatus: 'approved', docNote: 'เดิม', docNoteEn: 'old', costPrice: 150 };

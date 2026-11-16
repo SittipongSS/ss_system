@@ -71,8 +71,8 @@ async function loadLedger(supabase, todayIso) {
      ⇒ ดึง `dealId` มาแล้วไป join `sales_deals` เอาชื่อ AE (จัดกลุ่มตามผู้ดูแล) */
   /* `status` + `financeStatus` = สองขั้นแรกของรางสามขั้น (ดู salesOrderListTrack)
      ทะเบียนนี้ต้องพูดภาษาเดียวกับตารางรายการ SO ⇒ ต้องมีข้อมูลชุดเดียวกัน */
-  /* `projectId` เพิ่มมาเพื่อถามสายธุรกิจ — โครงการเป็นเจ้าของค่าสายจริง ดีลเป็นสำเนา
-     (ดู `orderBusinessLineOf` · มติ 2026-08-30 ตัวกรอง "สายบริการ" ของฝ่ายบัญชี) */
+  /* (สายธุรกิจของใบอ่านจากดีล — `line` ใน select ของดีลข้างล่าง · ดู `orderBusinessLineOf` · มติ 2026-08-30 ตัวกรอง
+     "สายบริการ" ของฝ่ายบัญชี · งวด P3b-1 ยุบโครงการ เลิกอ่านโครงการ) */
   /* `referenceDoc` = เอกสารอ้างอิงของใบ (PO ลูกค้า) — บัญชีถูกถามด้วยเลข PO
      บ่อยกว่าเลข SO เสียอีก ("PO ใบนี้เก็บเงินถึงไหนแล้ว") · หน้ารายการ SO ของ
      ฝ่ายขายค้นด้วยเลขนี้ได้ตั้งแต่ IS-26080017 แต่ทะเบียนนี้ยังไม่มีให้ค้น */
@@ -119,20 +119,9 @@ async function loadLedger(supabase, todayIso) {
 
   /* ── เกณฑ์ "ใบมีรอบบริการ" (มติผู้ใช้ 2026-08-30) ─────────────────────────
      สาย SERVICE **และ** มีบรรทัดหมวด 02-001 อย่างน้อยหนึ่งบรรทัด ⇒ ต้องรู้สองอย่าง:
-     สายจากโครงการ/ดีล และบรรทัดของใบ · ตัวตัดสินคือ `orderHasServiceRounds` ตัวกลาง
-     ⚠️ ห่อ `fetchAllResult` ทั้งสองก้อน — PostgREST ตัดที่ 1,000 แถวเงียบ ๆ และ
+     สายจากดีล และบรรทัดของใบ · ตัวตัดสินคือ `orderHasServiceRounds` ตัวกลาง
+     ⚠️ ห่อ `fetchAllResult` — PostgREST ตัดที่ 1,000 แถวเงียบ ๆ และ
      `check:rowcap` เต็มเพดานพอดีทุกตาราง จุดอ่านไร้ขอบเขตใหม่เพิ่มไม่ได้แล้ว */
-  const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
-  const projectsById = new Map();
-  if (projectIds.length) {
-    /* ⚠️ `.order('id')` บังคับ — `fetchAll` ไล่ทีละหน้าด้วย `.range()` ซึ่ง PostgREST
-       ไม่การันตีลำดับถ้าไม่สั่ง ⇒ เกิน 1,000 แถวเมื่อไรได้แถวซ้ำและแถวหายพร้อมกัน
-       ซึ่งแย่กว่าถูกตัด เพราะมันดูเหมือนข้อมูลครบ (ดูหัวไฟล์ lib/supabaseFetchAll.js) */
-    const { data: projects, error: projectError } = await fetchAllResult(() => supabase
-      .from('projects').select('id, line').in('id', projectIds).order('id'));
-    if (projectError) throw projectError;
-    (projects || []).forEach((p) => projectsById.set(p.id, p));
-  }
   const dealsById = new Map([...dealById.entries()]);
 
   /* ⚠️ ก้อนนี้ใหญ่แน่ — ใบจริงมีได้ถึง 10 บรรทัดต่อใบ คูณทุกใบที่มีงวดตรึงแล้วทั้งระบบ
@@ -151,7 +140,7 @@ async function loadLedger(supabase, todayIso) {
   }
   const serviceRoundsByOrder = new Map((orders || []).map((o) => [
     o.id,
-    orderHasServiceRounds(o, linesByOrder.get(o.id) || [], { projectsById, dealsById }),
+    orderHasServiceRounds(o, linesByOrder.get(o.id) || [], { dealsById }),
   ]));
 
   /* ── โซนของรอบขายที่มีผลต่อใบ (PR-C C5 · C-D15) — บรรทัด "เปิดด่านเงินของนัดบริการของใบนี้ถึง … (n โซน)" ในโมดัลรับรอง ──

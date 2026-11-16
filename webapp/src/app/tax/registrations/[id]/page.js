@@ -528,7 +528,6 @@ export default function RegistrationDetailPage() {
               <Field label="รหัสสาขา">{customer?.branchCode}</Field>
               <Field label="ผู้ยื่น">{s.assignee}</Field>
               <Field label="ทีมเจ้าของทะเบียน">{s.team}</Field>
-              <Field label="โครงการ">{s.project ? `${naText(s.project.code)} · ${s.project.name || ""}`.trim() : null}</Field>
               <Field label="เลขที่อนุมัติ">{s.approvalNumber}</Field>
               <Field label="วันที่สร้าง">{fmtDate(s.createdAt)}</Field>
               <Field label={s.status === "approved" ? "วันที่อนุมัติ" : "อัปเดตล่าสุด"}>

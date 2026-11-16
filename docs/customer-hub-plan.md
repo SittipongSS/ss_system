@@ -1,6 +1,6 @@
 # หน้าลูกค้าศูนย์รวม + ถอดโครงการ
 
-> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-16 · มติครบ 11 ข้อ · P1 + H1 + H2 + H3 ขึ้น prod (`0009027c` · `e9d795b9` · `3da427c6` · `472be099`) · P2 "ยุบดีล/โครงการเป็นหน่วยเดียว" มติครบ 6 ข้อ: P2a ขึ้น prod (`81a37536`) · P2b ขึ้น prod (`7eaf255b`) · H4 (มติ 8–9) ขึ้น prod (`f8e975be`) · P2c-1 ขึ้น prod (`95285e02`) · P2c-2 ขึ้น prod (`80459529`) · P2d ขึ้น prod (`edafbe0e`) · P3 มติ ⑩ ⑪ (16/11) · P3a กำลังดำเนินการ
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-16 · มติครบ 11 ข้อ · P1 + H1 + H2 + H3 ขึ้น prod (`0009027c` · `e9d795b9` · `3da427c6` · `472be099`) · P2 "ยุบดีล/โครงการเป็นหน่วยเดียว" มติครบ 6 ข้อ: P2a ขึ้น prod (`81a37536`) · P2b ขึ้น prod (`7eaf255b`) · H4 (มติ 8–9) ขึ้น prod (`f8e975be`) · P2c-1 ขึ้น prod (`95285e02`) · P2c-2 ขึ้น prod (`80459529`) · P2d ขึ้น prod (`edafbe0e`) · P3 มติ ⑩ ⑪ (16/11) · P3a ขึ้น main (`f84369d5` #2057) · P3b-1 กำลังดำเนินการ
 
 ม็อก: artifact `RefYYkNdQkBVhfChFfu1rN` · ต้นทาง `~/ss-team/mockups/customer-hub/index.html` (ข้อมูลจริง AR-148)
 
@@ -240,7 +240,7 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
   ตัวเลข prod 16/11: `projects` 342 · `project_tasks.projectId` 9,674/11,085 (ไม่มี dealId 0) · `sales_orders` 399/409 · `dept_requests` 589/645 ·
   `production_jobs` 312/312 · `personal_tasks` 557/1,757 · `sales_deals` 610/812 · `sahamit_pos` 0/112 · `excise_registrations` 0/74 ·
   `project_products` / `material_deliveries` / `shipment_prep` 0 · เธรดโครงการ 759 · แถวใหม่หลัง 13/11 ยังถูกก๊อป `projectId` จากดีล
-  - **P3a — ตัดทางสร้าง/ผูก/ย้าย + เลิกเขียน** (โค้ดล้วน · ไม่มี migration · กำลังดำเนินการ · แบรนช์ `claude/project-removal-p3`):
+  - **P3a — ตัดทางสร้าง/ผูก/ย้าย + เลิกเขียน** (โค้ดล้วน · ไม่มี migration · รอตรวจ · #2057 `f84369d5`):
     - สหมิตร: settle-deal ไม่บังคับโครงการ (ดีลรวม `projectId` ว่าง · เลิกเขียน `projects.metadata` · ดีล FC ที่มีโครงการเดิมจับคู่ได้) ·
       หน้า PO ถอดปุ่มเลือก/สร้างโครงการ + โมดัลสองตัว + แบนเนอร์ "ต้องมีโครงการก่อน" · การ์ดเปลี่ยนชื่อเป็น "งานขาย"
     - ลบ route สร้าง/ผูก: `sahamit/po/[id]/{create,link}-project` · `deals/[id]/{create,link}-project` · `api/sa/projects` · `backfill-projects` ·
@@ -253,11 +253,20 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
     - ⚠️ **ตั้งใจยังไม่แตะไทม์ไลน์** (`project_tasks` ยังประทับ `projectId` ของดีลเดิม): ลำดับ `stepOrder` ของดีลในโครงการนับร่วมทั้งโครงการ
       และจุดยึดวันของกราฟอ่านโครงการ ⇒ ถอดต้องย้ายลำดับ/จุดยึดไปผูกดีลก่อน (ไป P3b) · ค่าที่ประทับเป็นของเดิมของดีล ไม่มีทางเปลี่ยนแล้ว
     - SO ใหม่ยังได้ `projectId` ของดีลเดิมจาก RPC ฝั่งฐาน (`create_sales_order_draft`) ⇒ P3c
-  - **P3b — ลบ API/โค้ดที่ตาย + ผู้อ่านที่เหลือ** (รอดำเนินการ): ไทม์ไลน์ย้ายลำดับ `stepOrder` + จุดยึดวันไปผูกดีล แล้วเลิกประทับ `projectId` ·
-    `api/pm/projects/**` · lib ที่เหลือแต่เทสต์ (`projectLifecycle` · `projectListFilter` · `projectPendingApproval` · `projectRollup` · `projectDealTypes`) ·
-    ของเข้า/เตรียมส่ง · ปิดโครงการ (`closedProjectGate` · ป้าย `projectCloses`) · `quoteLines` seed จาก `project_products` ·
-    ป้ายโครงการบนสัญญา/ใบชำระ/ทะเบียน → รหัสดีล · ลิงก์ `salesOrderWorkTrack` (จัดการที่โครงการ) → ดีล ·
-    สิทธิ์งานส่วนตัวที่อิงทีมโครงการ (`personalTaskAccess`) — ตรวจผลก่อนถอด
+  - **P3b-1 — ลบ API/โค้ดที่ตาย + ผู้อ่านย้ายไปดีล** (ไม่เปลี่ยนสิ่งที่เห็นบนจอ · กำลังดำเนินการ · แบรนช์ `claude/project-removal-p3b`):
+    ของเข้า/เตรียมส่ง (ธงปิด · 0 แถว) · `api/pm/projects/[id]/**` + `next-code` + `excise-registrations/from-project` ·
+    lib ที่เหลือแต่เทสต์ (`projectCloseReadiness` · `projectRollup` · `projectLifecycle` · `projectListFilter` · `projectPendingApproval` ·
+    `projectDealTypes` · `deliveriesRepo`) · ป้าย `projectCloses` · `quoteLines` seed จาก `project_products` (0 แถว) ·
+    สัญญา: "เลขที่โครงการ" บนกระดาษ = รหัสดีล (ตามมติ P2 ก.) · สายธุรกิจของ SO/การชำระ/คิวบริการอ่านจากดีล
+    (ตรวจ prod 16/11: สายโครงการ = สายดีล ครบ 610/610 ดีล · 399/399 SO ⇒ ผลไม่เปลี่ยน) · ป้าย/ลิงก์โครงการบนหน้าสินค้า/ทะเบียน/งานของ SO
+    ที่เห็นต่างบนจอ (ทั้งหมดเป็นของโครงการที่ไม่มีจอแล้ว): หมวดสินค้าเลิกนับ "N โครงการ" (ลิ้นชัก · Excel · ด่านลบหมวด) ·
+    หน้าทะเบียนสรรพสามิตไม่มีช่อง "โครงการ" (ว่างทั้ง 74 ใบอยู่แล้ว) · แถบ "ของเข้า" บน SO ไม่มีปุ่ม/ลิงก์ไปไทม์ไลน์โครงการ ·
+    สัญญาใหม่เก็บ `metadata.projectCode` = รหัสดีล
+    ยังเหลือ (ไป P3b-2): `deals/[id]/overview` อ่านโครงการ/ไทม์ไลน์ · `findRequest` ใช้ AE/AC ของโครงการเป็นค่าสำรองของ PDR ·
+    SO อ่าน `material_deliveries` (0 แถว) · `api/pm/projects` GET + `projectRollup`
+  - **P3b-2 — ไทม์ไลน์ + สิทธิ์งาน + ด่านปิดโครงการ** (รอดำเนินการ · แตะพฤติกรรม): ย้ายลำดับ `stepOrder` + จุดยึดวันไปผูกดีล แล้วเลิกประทับ `projectId` ·
+    `personalTaskAccess` / `taskScope` / หน้างานที่ใช้ทีมโครงการ (ตรวจข้อมูลก่อนว่าใครจะเห็นงานเปลี่ยน) · `closedProjectGate` / `projectClose`
+    (ปิดแล้ว 0 · รอปิด 1) · `api/pm/projects` GET (หน้างาน)
   - **P3c — migration** (รอดำเนินการ): RPC สร้าง SO / ออก Rev. เลิกก๊อป `d."projectId"` (ปะแบบแทนข้อความบนตัวที่รันจริง) ·
     ลบ `backfill_deal_fields_from_projects` · ยามกันลบ/แก้แถว `projects` (FK `ON DELETE CASCADE` ของไทม์ไลน์ยังอยู่)
 

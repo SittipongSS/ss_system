@@ -5,27 +5,20 @@
 // (Tax/PM) เท่านั้น ไม่มี action เขียนใด ๆ.
 //
 // scope: กรองแถวด้วย view-scope ของผู้ใช้ (เหมือน route อื่น) — registrations/
-// orders/products ใช้ canViewRecord; projects ต้องมี pm:view + team scope.
-import { can, canViewRecord, viewScope, inScope } from '@/lib/permissions';
+// orders/products ใช้ canViewRecord.
+// ⚠️ งวด P3b-1 ยุบโครงการ (16/11/2026): ถอด `projects` (อ่านผ่าน project_products · 0 แถวบน prod) ออกจาก
+//    ความสัมพันธ์ของสินค้า — การ์ดโครงการบนหน้าสินค้าถอดไปตั้งแต่ P2d แล้ว ไม่มีจอไหนอ่านคีย์นั้น
+import { can, canViewRecord } from '@/lib/permissions';
 import { canViewScents } from '@/lib/master/scents';
 import { canViewFormulas } from '@/lib/master/formulas';
 import { sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { customerHubRelations } from '@/lib/master/customerHubData';
 
-// projects ที่ผู้ใช้เห็นได้ (PM เป็นเครื่องมือของ SALES — ต้องมี pm:view).
-function visibleProjects(user, rows) {
-  if (!can(user?.role, 'pm:view')) return [];
-  const scope = viewScope(user?.role);
-  return (rows || []).filter((p) => inScope(scope, user, p));
-}
-
 // ข้อมูลภาษี (registrations/orders) เป็นความลับของระบบภาษี — เปิดให้เฉพาะ role ที่
 // เห็นระบบภาษีได้ (history:view) เท่านั้น. staff/viewer มี viewScope='all' จึงต้อง
 // กั้นด้วย capability ที่ชั้นนี้ ไม่ใช่แค่ scope (กัน leak ผ่าน API ตรง ๆ).
 const seesTax = (user) => can(user?.role, 'history:view');
-
-const PROJECT_COLS = 'id, code, name, status, customerId, team, ownerId';
 
 // ทะเบียนกลิ่น/สูตร (mig 0171) — สรุปพอโชว์ในแท็บ ไม่ดึงโน้ตมาทั้งก้อน
 // `sentAt` = วันที่ส่งกลิ่นให้ลูกค้า อยู่บนตัวกลิ่นเองแล้ว (0205) — กลิ่นตัวหนึ่งถูกส่ง
@@ -134,19 +127,17 @@ export async function customerRelations(supabase, customerId, user) {
   };
 }
 
-// ความสัมพันธ์ของสินค้า 1 ชิ้น → { registrations, orders, projects }.
+// ความสัมพันธ์ของสินค้า 1 ชิ้น → { registrations, orders }.
 // orders = สรุปจาก order_items (dedupe ต่อ order + รวมจำนวนที่สั่งของสินค้านี้).
 export async function productRelations(supabase, productId, user) {
-  // order_items→orders มี FK จริง (cascade) → embed ปลอดภัย. project_products→
-  // projects FK ไม่แน่นอน (ดู no-real-fk-constraints) → query สองสเตปกัน join พัง.
-  const [regRes, itemRes, ppRes] = await Promise.all([
+  // order_items→orders มี FK จริง (cascade) → embed ปลอดภัย.
+  const [regRes, itemRes] = await Promise.all([
     supabase.from('excise_registrations')
       .select('id, fgCode, customerName, status, approvalNumber, customerId, team, ownerId')
       .eq('productId', productId).order('createdAt', { ascending: false }),
     supabase.from('order_items')
       .select('orderId, quantity, order:orders(id, quotationRef, status, customerName, totalTax, customerId, team, ownerId)')
       .eq('productId', productId),
-    supabase.from('project_products').select('projectId').eq('productId', productId),
   ]);
 
   const tax = seesTax(user);
@@ -163,18 +154,8 @@ export async function productRelations(supabase, productId, user) {
     }
   }
 
-  // projects: ดึง id จาก project_products แล้ว query projects แยก (ไม่พึ่ง embed).
-  let projRows = [];
-  const projectIds = [...new Set((ppRes.data || []).map((r) => r.projectId).filter(Boolean))];
-  if (projectIds.length) {
-    const { data, error } = await supabase.from('projects').select(PROJECT_COLS).in('id', projectIds);
-    if (error) throw error;
-    projRows = data || [];
-  }
-
   return {
     registrations: tax ? (regRes.data || []).filter((r) => canViewRecord(user, 'registrations', r)) : [],
     orders: [...orderMap.values()],
-    projects: visibleProjects(user, projRows),
   };
 }

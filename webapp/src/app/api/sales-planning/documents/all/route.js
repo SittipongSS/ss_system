@@ -10,7 +10,7 @@
 // คือ "ยังไม่มีเอกสารชนิดนี้" ซึ่งเป็นข้อมูลของดีล ไม่ใช่เนื้อในคำร้อง
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import { loadScoped } from '@/lib/scopedRow';
-import { canViewSalesPlanning, inSalesEditScope, inSalesViewScope } from '@/lib/salesPlanning';
+import { canViewSalesPlanning, inSalesEditScope } from '@/lib/salesPlanning';
 import { buildEntityDocuments, entityDocumentProgress } from '@/lib/sales/entityDocuments';
 import { ensureGoogleDocAccess } from '@/lib/master/googleDocAccess';
 import { workspaceEmail } from '@/lib/master/googleDocs';
@@ -216,59 +216,17 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   const url = new URL(req.url);
   const dealId = url.searchParams.get('dealId');
-  const projectId = url.searchParams.get('projectId');
-  if (!dealId && !projectId) return badRequest('dealId or projectId is required');
+  /* โหมดโครงการ (`?projectId` · ม-88 — รวมเอกสารของทุกดีลในโครงการ + เอกสารร่วมของตัวโครงการ) ถอดในงวด P3b-1
+     ยุบโครงการ (16/11/2026): หน้าโครงการถูกลบแล้ว ไม่มีจอไหนเรียกโหมดนี้ */
+  if (!dealId) return badRequest('dealId is required');
 
   try {
-    // ── โหมดดีลเดียว (แท็บเอกสารบนหน้าดีล) ────────────────────────────────
-    if (dealId) {
-      const { row: deal, response } = await loadScoped(supabase, 'sales_deals', dealId, user, 'view');
-      if (response) return response;
-      const raw = await collectDealDocuments(supabase, dealId);
-      await grantDocAccess(supabase, raw.attachments, user, inSalesEditScope(user, deal));
-      const rows = buildEntityDocuments(raw);
-      return ok({ rows, progress: entityDocumentProgress(rows) });
-    }
-
-    // ── โหมดโครงการ (ม-88) — รวมของทุกดีลในโครงการ ─────────────────────────
-    // ⚠️ กรองดีลด้วยขอบเขตการเห็นรายใบ (ไม่ใช่เช็คแค่โครงการ) — คนที่เห็นดีลได้
-    // บางใบต้องได้เอกสารเฉพาะใบที่ตัวเองเห็น ไม่ใช่ทั้งโครงการ
-    const { data: deals, error: dealsError } = await supabase
-      .from('sales_deals').select('*').eq('projectId', projectId);
-    raise('อ่านดีลของโครงการไม่สำเร็จ', dealsError);
-    const visible = (deals || []).filter((deal) => inSalesViewScope(user, deal));
-    const collected = await Promise.all(
-      visible.map((deal) => collectDealDocuments(supabase, deal.id).then((raw) => ({ deal, raw }))),
-    );
-    for (const { deal, raw } of collected) {
-      await grantDocAccess(supabase, raw.attachments, user, inSalesEditScope(user, deal));
-    }
-    const dealRows = collected.flatMap(({ deal, raw }) => buildEntityDocuments(raw)
-      // บอกด้วยว่าแถวนี้มาจากดีลไหน — โครงการมีหลายดีล แถวลอย ๆ อ่านไม่ออกว่าของใคร
-      .map((row) => ({
-        ...row,
-        id: `${deal.id}:${row.id}`,
-        note: [row.note, deal.title].filter(Boolean).join(' · '),
-      })));
-
-    // ⭐ เอกสารร่วมของ **ตัวโครงการเอง** (เฟส 2) — ไม่ได้ผูกดีลใบไหน จึงไม่มีทาง
-    // โผล่จากการวนอ่านดีลข้างบน · แถวพวกนี้ไม่มีชื่อดีลต่อท้ายโดยตั้งใจ: มันเป็นของ
-    // ทั้งโครงการ ไม่ใช่ของดีลใดใบหนึ่ง
-    // ⚠️ อ่านได้ก็ต่อเมื่อเห็นตัวโครงการ — ไม่พ่วงกับสิทธิ์ของดีลข้างใน
-    const { data: project, error: projectError } = await supabase
-      .from('projects').select('*').eq('id', projectId).maybeSingle();
-    raise('อ่านโครงการไม่สำเร็จ', projectError);
-    let projectRows = [];
-    if (project && inSalesViewScope(user, project)) {
-      const { data: projectAttachments, error: projectAttError } = await supabase
-        .from('attachments').select('id, fileName, docType, createdAt, metadata, fileUrl')
-        .eq('entityType', 'project').eq('entityId', projectId);
-      raise('อ่านเอกสารร่วมของโครงการไม่สำเร็จ', projectAttError);
-      await grantDocAccess(supabase, projectAttachments, user, inSalesEditScope(user, project));
-      projectRows = buildEntityDocuments({ attachments: projectAttachments || [] });
-    }
-
-    const rows = [...projectRows, ...dealRows];
+    // ── แท็บเอกสารบนหน้าดีล ────────────────────────────────────────────────
+    const { row: deal, response } = await loadScoped(supabase, 'sales_deals', dealId, user, 'view');
+    if (response) return response;
+    const raw = await collectDealDocuments(supabase, dealId);
+    await grantDocAccess(supabase, raw.attachments, user, inSalesEditScope(user, deal));
+    const rows = buildEntityDocuments(raw);
     return ok({ rows, progress: entityDocumentProgress(rows) });
   } catch (e) {
     return fail(e.message, 500);

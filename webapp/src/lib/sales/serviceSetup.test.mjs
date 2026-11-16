@@ -531,12 +531,14 @@ test('ต้องตั้งเฉพาะใบ pipeline บนสาย SER
   assert.equal(serviceSetupRequired(orderOf({ deal: { id: 'DL1', line: null } })), false);
   assert.equal(serviceSetupRequired(orderOf({ origin: 'historical' })), false);
   assert.equal(serviceSetupRequired(null), false);
-  // ค่าที่ตัวโหลดคิดไว้ให้ (order.businessLine) ใช้ได้เมื่อไม่มีก้อนดีล/โครงการแนบ
+  // ค่าที่ตัวโหลดคิดไว้ให้ (order.businessLine) ใช้ได้เมื่อไม่มีก้อนดีลแนบ
   assert.equal(serviceSetupRequired({ origin: 'pipeline', businessLine: 'SERVICE' }), true);
   assert.equal(serviceSetupRequired({ origin: 'pipeline', businessLine: 'PRODUCT' }), false);
-  // คิวหลายใบส่ง Map
-  const ctx = { projectsById: new Map([['PJ', { id: 'PJ', line: 'SERVICE' }]]), dealsById: new Map() };
-  assert.equal(serviceSetupRequired({ origin: 'pipeline', projectId: 'PJ' }, ctx), true);
+  // คิวหลายใบส่ง Map (ดีล — งวด P3b-1 ยุบโครงการ: Map โครงการไม่มีผลแล้ว)
+  const ctx = { dealsById: new Map([['DL1', { id: 'DL1', line: 'SERVICE' }]]) };
+  assert.equal(serviceSetupRequired({ origin: 'pipeline', dealId: 'DL1' }, ctx), true);
+  const projectOnly = { projectsById: new Map([['PJ', { id: 'PJ', line: 'SERVICE' }]]), dealsById: new Map() };
+  assert.equal(serviceSetupRequired({ origin: 'pipeline', projectId: 'PJ' }, projectOnly), false);
 });
 
 test('ขั้นของงาน: pipeline / backfill / stamped / locked / none', () => {
