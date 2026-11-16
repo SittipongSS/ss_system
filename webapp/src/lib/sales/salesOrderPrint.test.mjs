@@ -463,3 +463,13 @@ test('SO: ใบที่ไม่มีเลขแพ็ค (รวม packQty
     }
   }
 });
+
+/* ยุบดีล/โครงการ P2d (มติเจ้าของ 13/11/2026): "เลขที่โครงการ" = รหัสดีล ชุดเดียวกับใบเสนอราคา · ไม่อ่านรหัส PJ ของโครงการแล้ว */
+test('เลขที่โครงการบนใบสั่งขาย = รหัสดีล · ดีลไม่มีรหัส = ขีด (ไม่ถอยไปรหัสโครงการ)', () => {
+  const withCode = buildSalesOrderPrintHTML({ ...order, deal: { ...order.deal, code: 'DL-26070099' }, project: { code: 'PJ-26070038', name: 'x' } });
+  assert.match(withCode, /DL-26070099/);
+  assert.doesNotMatch(withCode, /PJ-26070038/);
+  const noCode = buildSalesOrderPrintHTML({ ...order, project: { code: 'PJ-26070038', name: 'x' } });
+  assert.doesNotMatch(noCode, /PJ-26070038/);
+  assert.match(readFileSync(new URL('./salesOrderPrint.js', import.meta.url), 'utf8'), /value: order\.deal\?\.code \|\| '-'/);
+});

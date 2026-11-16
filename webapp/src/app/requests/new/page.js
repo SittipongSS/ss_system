@@ -196,7 +196,6 @@ export default function NewRequestPage() {
   useUnsavedChanges(!saving && !(confirmPlan && !confirmPlan.ok) && JSON.stringify(form) !== pristine);
   const [toast, setToast] = useState(null);
 
-  const [projects, setProjects] = useState([]);
   const [deals, setDeals] = useState([]);
   const [salesOrders, setSalesOrders] = useState([]);
   // อ้างอิงเพิ่มของขอเอกสาร (ม-88) — QT กรองตามดีลบนจอ · FG ค้นทั้งทะเบียน
@@ -222,7 +221,7 @@ export default function NewRequestPage() {
     if (confirmsBad) return;
     const grab = (url, set) => apiFetch(url, { cache: "no-store" })
       .then((r) => r.json()).then((d) => set(asArray(d))).catch(() => {});
-    grab("/api/pm/projects", setProjects);
+    // รายชื่อโครงการเลิกโหลด — ฟอร์มคำร้องไม่โชว์/ไม่ใช้โครงการแล้ว (ยุบดีล/โครงการ P2d)
     grab("/api/sales-planning/deals", setDeals);
     grab("/api/sales-planning/sales-orders", setSalesOrders);
     grab("/api/sales-planning/quotations", setQuotations);
@@ -494,7 +493,7 @@ export default function NewRequestPage() {
       <div className={styles.form}>
         <RequestForm
           value={form} onChange={setForm} disabled={saving}
-          projects={projects} deals={deals} salesOrders={salesOrders} customers={customers}
+          deals={deals} salesOrders={salesOrders} customers={customers}
           quotations={quotations} products={products} me={me}
           installmentPrefill={installmentPrefill}
           scents={scents} formulas={formulas} productTypes={productTypes}

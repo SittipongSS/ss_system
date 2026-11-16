@@ -77,7 +77,6 @@ export default function TaskFormModal({
   inquirySource = null,      // { inquiryId, code, messageId?, returnTo? }
   chainSource = null,        // { id, title } — งานก่อนหน้าตอนกด "สร้างงานต่อเนื่อง"
   deals = [],
-  projects = [],
   assignableUsers = [],
   me = null,
   canManage = true,
@@ -132,9 +131,6 @@ export default function TaskFormModal({
     ? [{ id: form.dealId, title: task?.deal?.title || "ดีลที่ผูกไว้", customerName: task?.deal?.customerName || "", projectId: task?.projectId || null }, ...deals]
     : deals;
 
-  // ดีลที่เลือกอยู่ — ใช้บอกว่างานนี้จะไปโผล่ในโครงการไหน (หรือไม่โผล่เลย)
-  const pickedDeal = form.dealId ? pickerDeals.find((d) => d.id === form.dealId) : null;
-  const pickedProject = pickedDeal?.projectId ? projects.find((p) => p.id === pickedDeal.projectId) : null;
 
   // ปิดงานที่ "เลยกำหนด" → ต้องระบุสาเหตุ (กรอกในฟอร์ม ไม่ใช่ป๊อปอัปซ้อน)
   const willComplete = editing && form.status === "Completed" && task.status !== "Completed";
@@ -339,30 +335,20 @@ export default function TaskFormModal({
                   </button>
                 )}
               </label>
-              {/* ช่องเดียวจบ — แผงสองชั้นข้างใน (โครงการ | ดีล) ค้นได้ทั้งสองฝั่ง
-                  โครงการไม่ใช่ช่องที่ต้องกรอก เพราะโครงการของงาน mirror จากดีลเสมอ */}
+              {/* ช่องเดียวจบ — แผงสองชั้นข้างใน (ลูกค้า | ดีล) ค้นได้ทั้งสองฝั่ง (ถังซ้ายเป็นลูกค้าตั้งแต่ P2d) */}
               <DealPicker
                 deals={pickerDeals}
-                projects={projects}
                 value={form.dealId}
                 onChange={(v) => set({ dealId: v })}
                 disabled={!!inquirySource || !canManage || noDealLink}
                 clearable={!dealRequired}
                 ariaLabel="ดีลที่ผูกกับงาน" />
-              {/* บอกปลายทางของงานหลังเลือกดีล — โครงการ mirror จากดีลเสมอ ผู้ใช้จึงควรเห็น
-                  ตั้งแต่ตอนกรอกว่างานจะไปโผล่ที่ไหน (หรือไม่โผล่ในโครงการไหนเลย) */}
-              {pickedDeal && (
-                <div className="text-[11px] text-[var(--text-3)] mt-1">
-                  {!pickedDeal.projectId
-                    ? "ดีลนี้ยังไม่ผูกโครงการ — งานจะอยู่กับดีลอย่างเดียว ยังไม่ขึ้นในหน้าโครงการ"
-                    : `งานนี้จะอยู่ในโครงการ ${pickedProject ? `${pickedProject.code ? `${pickedProject.code} · ` : ""}${pickedProject.name}` : "ที่ผูกกับดีลนี้"}`}
-                </div>
-              )}
+              {/* ประโยค "งานนี้จะอยู่ในโครงการ…" ถูกถอด (P2d) — งานอยู่กับดีลเสมอ ไม่มีหน้าโครงการให้ไปโผล่แล้ว */}
               {inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ดีลมาจากคำร้องต้นทาง — แก้ที่นี่ไม่ได้</div>}
               {!deals.length && !inquirySource && <div className="text-[11px] text-[var(--text-3)] mt-1">ไม่พบดีลในทีมของคุณที่สามารถผูกกับงานได้</div>}
-              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ค่าตั้งต้นคือผูกดีล — งานที่ไม่ผูก ดีลกับโครงการจะมองไม่เห็นว่ามีงานนี้ค้างอยู่ และ KPI รายดีลนับไม่ครบ</div>}
+              {dealRequired && !form.dealId && !!deals.length && <div className="text-[11px] text-[var(--text-3)] mt-1">ค่าตั้งต้นคือผูกดีล — งานที่ไม่ผูก หน้าดีลจะมองไม่เห็นว่ามีงานนี้ค้างอยู่ และ KPI รายดีลนับไม่ครบ</div>}
               {/* เลือก "ไม่ผูกดีล" เอง = ต้องรู้ว่าแลกอะไรไป — เตือนตรงจุดที่เพิ่งกด */}
-              {noDealLink && <div className="text-[11px] text-[var(--amber)] mt-1">งานนี้จะไม่โผล่ในหน้าดีลและหน้าโครงการ และไม่ถูกนับใน KPI รายดีล</div>}
+              {noDealLink && <div className="text-[11px] text-[var(--amber)] mt-1">งานนี้จะไม่โผล่ในหน้าดีล และไม่ถูกนับใน KPI รายดีล</div>}
             </div>
           )}
 

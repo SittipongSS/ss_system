@@ -15,7 +15,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown, ChevronRight,
-  FolderKanban, MessageCircleQuestion, Search, Tag, User, Users,
+  Handshake, MessageCircleQuestion, Search, Tag, User, Users,
 } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
@@ -224,7 +224,8 @@ export default function RequestQueuePanel({
   const facetGroups = useMemo(() => [
     { key: "kind", label: "ชนิดคำร้อง", icon: Tag },
     { key: "customer", label: "ลูกค้า", icon: Users },
-    { key: "project", label: "โครงการ", icon: FolderKanban },
+    // มิติ "โครงการ" → "ดีล" (ยุบดีล/โครงการ P2d)
+    { key: "deal", label: "ดีล", icon: Handshake },
     { key: "owner", label: "ผู้รับเรื่อง", icon: User },
   ].map((g) => ({
     ...g,

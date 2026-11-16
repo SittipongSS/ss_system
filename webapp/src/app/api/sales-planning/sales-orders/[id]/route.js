@@ -289,7 +289,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
        ⚠️ ตัวจริงของค่าอยู่ที่โครงการ ดีลเป็นสำเนาที่ใช้ตอนยังไม่มีโครงการ — ต้องดึงทั้งคู่
        ⚠️ เพิ่มชื่อคอลัมน์ที่นี่ปลอดภัยกับฉบับตรึง: `buildIssuedSalesOrderPayload` หยิบจาก
        deal/project แค่ `title`/`name` แบบระบุชื่อฟิลด์ ⇒ fingerprint ไม่ขยับ */
-    supabase.from('sales_deals').select('id, title, stage, dealType, line, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
+    supabase.from('sales_deals').select('id, code, title, stage, dealType, line, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     /* 🪤 คู่ภาษาต้องมาด้วยกันเสมอ — `salesOrderPrint`/`issuedSalesOrderSnapshot` เขียน
        ทางถอย `order.xxxEn || quotation.xxxEn` ไว้ ลืมชื่อคอลัมน์ที่นี่ = ฝั่งขวาเป็น
        undefined เสมอ แล้วใบอังกฤษพิมพ์ชื่อ/ที่อยู่ไทยเงียบ ๆ โดยไม่มีอะไรฟ้อง */

@@ -212,7 +212,8 @@ test('เมนูโมดูลบัญชีครอบทั้ง role fi
    ⚠️ ตัดที่ `visible` ไม่ใช่ที่ `cap` เพราะ cap คุม **สิทธิ์อ่าน** ซึ่งยังต้องเปิด
       (FN กดลิงก์จากใบไปดีล/โครงการยังต้องเข้าได้) */
 test('⭐ เมนูงานขายที่เป็นงานของฝ่ายขายล้วน ๆ ต้องกันฝ่ายบัญชีออก', () => {
-  for (const href of ['/sa/dashboard', '/sa/deals', '/sa/projects', '/sa/tasks']) {
+  // '/sa/projects' หลุดจากลิสต์ — เมนูโครงการถูกถอดในงวด P2d (ยุบดีล/โครงการ · มติเจ้าของ 13/11/2026 ④)
+  for (const href of ['/sa/dashboard', '/sa/deals', '/sa/tasks']) {
     const line = SOURCE.split(/\r?\n/).find((row) => row.includes(`href: '${href}'`));
     assert.ok(line, `ไม่พบเมนู ${href}`);
     assert.match(line, /visible: worksInSalesPipeline/, `${href} ต้องกัน FN ออกจากเมนู`);

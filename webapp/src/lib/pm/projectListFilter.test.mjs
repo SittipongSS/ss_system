@@ -67,8 +67,9 @@ test('🔴 กดป้ายเมนู (ลิงก์ ?count=projectCloses)
 test('ติ๊ก "รอฉันเซ็นปิด" เองในปุ่มตัวกรอง = ไป URL เดียวกับป้าย ⇒ ได้ชุดเดียวกัน', () => {
   const href = projectsWaitingOnMeHref('');
   assert.equal(href, `/sa/projects?count=${PROJECTS_COUNT_KEY}`);
+  // เมนูโครงการ (และป้าย) ถูกถอดในงวด P2d — ป้ายต้องไม่กลับมาชี้หน้าที่ถูกซ่อน
   const menu = read('../../config/menuRegistry.js');
-  assert.match(menu, new RegExp(`countHref: '${href.replace('?', '\\?')}'`), 'ลิงก์ของป้ายเมนูต้องเป็นตัวเดียวกัน');
+  assert.doesNotMatch(menu, new RegExp(`countHref: '${href.replace('?', '\\?')}'`), 'เมนูโครงการถูกถอดแล้ว');
   assert.equal(projectsWaitingOnMeFrom(new URL(href, 'http://x').searchParams), true);
 });
 

@@ -20,7 +20,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Building2, Check, CircleDashed, ClipboardList, FileText, FolderKanban, Handshake, Lock,
+  Building2, Check, CircleDashed, ClipboardList, FileText, Handshake, Lock,
   MapPin, MessageCircleQuestion, Route, UserRound,
 } from "lucide-react";
 import DetailOverview from "@/components/ui/DetailOverview";
@@ -556,11 +556,7 @@ export default function SurveyRequestView({
       key: "deal", icon: Handshake, label: "ดีล", href: `/sa/deals/${request.refDeal.id}`,
       text: [request.refDeal.code, request.refDeal.title].filter(Boolean).join(" · "),
     },
-    request.refProject && {
-      key: "project", icon: FolderKanban, label: "โครงการ",
-      href: `/sa/projects/${request.refProject.code || request.refProject.id}`,
-      text: [request.refProject.code, request.refProject.name].filter(Boolean).join(" · "),
-    },
+    // แถว "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d) — ดีลคือหน่วยเดียว
     request.quotationId && {
       key: "quotation", icon: FileText, label: "ใบเสนอราคา",
       href: request.refQuotation ? `/sa/quotations/${request.quotationId}` : null,

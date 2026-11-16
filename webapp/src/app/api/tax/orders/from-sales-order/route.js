@@ -67,7 +67,8 @@ async function loadSalesOrderContext(supabase, salesOrderId) {
   // เพื่อให้เอกสารพิมพ์เหมือนกันทุกคนที่กด (mig 0167)
   const [{ data: deal }, { data: quotation }, { data: customer }] = await Promise.all([
     // title/dealType ต้องมาด้วย — ใช้ตรึง "โครงการย่อย" ลงใบ (mig 0208) ไม่ใช่แค่เช็คสิทธิ์
-    supabase.from("sales_deals").select("id, team, ownerId, ownerName, title, dealType").eq("id", salesOrder.dealId).maybeSingle(),
+    // `code` = "เลขที่โครงการ" ที่ตรึงลงใบ (ยุบดีล/โครงการ P2d · เดิมเป็นรหัส PJ)
+    supabase.from("sales_deals").select("id, code, team, ownerId, ownerName, title, dealType").eq("id", salesOrder.dealId).maybeSingle(),
     supabase.from("quotations").select("id, quoteNumber, customerTaxId, billingAddress").eq("id", salesOrder.quotationId).maybeSingle(),
     salesOrder.customerId
       // team/teams ต้องอยู่ใน select ด้วย — ใช้ถอยหาทีมเจ้าภาพของใบยื่นเมื่อดีลแม่ไม่มีทีม
@@ -332,8 +333,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
        ด่าน "เลขที่ใบเสนอราคาห้ามซ้ำ" ของ /api/orders) · ไม่เรียกเก็บ = ใบเสนอราคาลูกค้าตามเดิม */
     quotationRef: loaded.exciseQuoteNumber || salesOrder.quotation?.quoteNumber || salesOrder.orderNumber,
     poReference: salesOrder.orderNumber,
-    // ตรึงโครงการลงใบ (mig 0211) — เก็บ null เมื่อไม่มีต้นทาง ไม่ใช่ "-"
-    projectCode: refOrNull(salesOrder.project?.code),
+    // ตรึง "เลขที่โครงการ" ลงใบ (mig 0211) = **รหัสดีล** (P2d · ชุดเดียวกับ QT/SO · คอลัมน์ชื่อเดิม) — null เมื่อไม่มีต้นทาง ไม่ใช่ "-"
+    projectCode: refOrNull(salesOrder.deal?.code),
     dealTitle: refOrNull(salesOrder.deal?.title),
     dealType: refOrNull(dealTypeOf(salesOrder.deal)),
     deliveryDate: NA,

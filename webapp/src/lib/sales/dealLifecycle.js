@@ -15,7 +15,6 @@
 // ⚠️ ด่านจริงอยู่ที่ API เสมอ — ที่นี่คือ "ปุ่มควรโผล่ไหม" ห้ามหลวมกว่า handler
 
 import { defineLifecycle } from "@/lib/recordLifecycle";
-import { can } from "@/lib/permissions";
 import {
   CLOSED_STAGES,
   DEAL_STAGES,
@@ -39,9 +38,9 @@ const STAGE_TONE = {
 };
 
 const STAGE_DESCRIPTION = {
-  lead: "เพิ่งเปิดดีล ยังไม่ผูกโครงการ",
-  qualified: "ผ่านคัดกรองแล้ว — ขั้นถัดไปคือผูกโครงการเพื่อออกใบเสนอราคา",
-  timeline_proposed: "มีโครงการ/ไทม์ไลน์แล้ว ออกใบเสนอราคาได้",
+  lead: "เพิ่งเปิดดีล",
+  qualified: "ผ่านคัดกรองแล้ว — ขั้นถัดไปคือส่งไทม์ไลน์ให้ลูกค้าดู หรือออกใบเสนอราคา",
+  timeline_proposed: "ส่งไทม์ไลน์ให้ลูกค้าดูแล้ว ออกใบเสนอราคาได้",
   quotation: "ออกใบเสนอราคาแล้ว รอลูกค้าตอบ",
   awaiting_confirm: "ลูกค้ากำลังพิจารณา",
   deposit_pending: "รอมัดจำ",
@@ -53,11 +52,9 @@ const STAGE_DESCRIPTION = {
 /* แถบเส้นทางบนการ์ด — ยุบให้เหลือ 4 ขั้นที่คนทำงานแยกออกจริง
    (`in_project` ถูกยุบเข้า won ตั้งแต่ mig 0082 แต่ข้อมูลเก่ายังมี จึงนับเป็นขั้นเดียวกัน) */
 const STEPS = [
-  { id: "open", label: "เปิดดีล", hint: "คัดกรองและตั้งต้น", statuses: ["lead", "qualified"] },
-  // ⚠️ คำใบ้เคยเป็น "ต้องมีก่อนออกใบเสนอราคา" (ถึง 2026-08-24) แล้ว "ต้องมีก่อนปิด Won" (ถึง 13/11/2026)
-  // · ตั้งแต่ mig 0434 ปิด Won ได้โดยไม่มีโครงการ · ขั้นนี้ยังอยู่เพราะสถานะ timeline_proposed ยังใช้ —
-  //   ถอดขั้น/ปุ่มผูกโครงการเป็นงานรอบ P2 (docs/customer-hub-plan.md)
-  { id: "project", label: "ผูกโครงการ", hint: "ไม่บังคับ", statuses: ["timeline_proposed"] },
+  /* ขั้น "ผูกโครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026) — สถานะ timeline_proposed
+     (เสนอไทม์ไลน์) ยังใช้อยู่ จึงยุบเข้าขั้นเปิดดีล: ไทม์ไลน์อยู่ที่ดีลเองแล้ว ไม่ใช่ก้าวแยก */
+  { id: "open", label: "เปิดดีล", hint: "คัดกรองและส่งไทม์ไลน์", statuses: ["lead", "qualified", "timeline_proposed"] },
   { id: "quote", label: "เสนอราคา", hint: "รอลูกค้าตอบ", statuses: ["quotation", "awaiting_confirm", "deposit_pending"] },
   /* ต้องกาง WON_STAGES ห้ามพิมพ์รายชื่อสถานะ Won เองซ้ำ — มีเทสต์ git grep ทั้ง repo
      ห้ามไว้ (นิยามอยู่ที่ salesPlanning.js ที่เดียว) · คอมเมนต์เองก็ห้ามพิมพ์ ตัวสแกน
@@ -69,13 +66,9 @@ const STEPS = [
    หน้าเพจคำนวณเองไม่ได้เพราะ scope ผูกกับทีม/เจ้าของ — จึงอ่านค่าที่ API ส่งมา */
 const canEdit = (deal) => deal?.canEdit === true;
 
-/* 🐞 UI เคยหลวมกว่า API 3 จุด ตรวจพบ 2026-08-01 — รวมมาไว้ที่นี่ให้ครบ:
-   1. ปุ่มลบในหน้ารายการไม่ได้เช็ค "มีใบเสนอราคาที่รับแล้ว" ทั้งที่ API ตอบ 409 เสมอ
-      (แม้ superuser) → ผู้ใช้กดแล้วเจอ error ที่เดาไม่ได้
-   2. ปุ่มเชื่อมโครงการที่หัวหน้ารายละเอียดไม่ได้เช็ค stage !== 'lost' ทั้งที่ API ตอบ 400
-   3. UI ไม่เคยเช็ค `pm:edit` ทั้งที่ link/create-project/timeline ต้องมี — วันนี้ไม่ระเบิด
-      เพราะทุก role ที่มี salesplan:edit ก็มี pm:edit ด้วย แต่พอสิทธิ์แยกกันเมื่อไหร่ก็พัง */
-const canTouchProject = (deal, user) => canEdit(deal) && can(user?.role, "pm:edit");
+/* 🐞 UI เคยหลวมกว่า API ตรวจพบ 2026-08-01: ปุ่มลบในหน้ารายการไม่ได้เช็ค "มีใบเสนอราคาที่รับแล้ว"
+   ทั้งที่ API ตอบ 409 เสมอ (แม้ superuser) → ผู้ใช้กดแล้วเจอ error ที่เดาไม่ได้ (อีกสองข้อเป็นของปุ่มผูก/สร้างโครงการ
+   ซึ่งถอดแล้วใน P2d) */
 const hasAcceptedQuote = (deal) =>
   !!deal?.acceptedQuotationId || !!deal?.metadata?.acceptedQuotationId;
 
@@ -99,33 +92,8 @@ export function createDealLifecycle() {
     cancelledStatuses: ["lost"],
     steps: STEPS,
     transitions: [
-      {
-        /* ผูกโครงการ = ก้าวถัดไปตัวจริงของดีล — เป็น action เดียวในหน้ารายการที่ดัน stage
-           (`advanceStage → timeline_proposed`) และเป็นเงื่อนไข **ก่อนปิด Won**
-           (ไม่ใช่ก่อนออกใบเสนอราคาอีกแล้ว — 2026-08-24)
-           การลงมือเกิดที่ฟอร์มเลือกโครงการ หน้าจึงดักด้วย onSelect */
-        id: "link_project",
-        label: "เชื่อมกับโครงการเดิม",
-        rowLabel: "เชื่อมโครงการ",
-        rowTone: "blue",
-        kind: "submit",
-        slot: "primary",
-        from: DEAL_STAGES.filter((stage) => !CLOSED_STAGES.includes(stage)),
-        to: "timeline_proposed",
-        visible: (deal, user) => canTouchProject(deal, user) && !deal?.projectId,
-      },
-      {
-        /* สร้างโครงการใหม่ = ปลายทางเดียวกัน (ดีลได้ projectId) แต่คนละฟอร์ม
-           อยู่ช่องรองเพราะกรณีปกติคือผูกกับโครงการที่มีอยู่แล้ว */
-        id: "create_project",
-        label: "สร้างโครงการใหม่",
-        rowLabel: "สร้างโครงการ",
-        kind: "submit",
-        slot: "secondary",
-        from: DEAL_STAGES.filter((stage) => !CLOSED_STAGES.includes(stage)),
-        to: "timeline_proposed",
-        visible: (deal, user) => canTouchProject(deal, user) && !deal?.projectId,
-      },
+      /* link_project / create_project ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④)
+         ดีลคือหน่วยเดียว — ไทม์ไลน์ · Rev. · AC/Sup · ดีล SCENT ต้นทาง อยู่บนดีลครบแล้ว */
       {
         /* ไม่ไปต่อ — ปิดดีลถาวร
            ⚠️ **บังคับกรอกเหตุผล** ตามมติผู้ใช้ ข้อ 3 (ทุก transition ที่ถอย/ยกเลิก/ปฏิเสธ)

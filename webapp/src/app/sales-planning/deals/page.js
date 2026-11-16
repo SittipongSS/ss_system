@@ -8,7 +8,7 @@ import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useStickyState from "@/lib/ui/useStickyState";
 import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, FolderKanban, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
 import Modal from "@/components/Modal";
 import DateInput from "@/components/ui/DateInput";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
@@ -16,7 +16,6 @@ import { useCan, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canSeeDealKpi, defaultScope, hasTeam, isSuperuser, salesDealScopes } from "@/lib/permissions";
 import { forecastReviewWindow } from "@/lib/sales/forecastDue";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { createClient } from "@/lib/supabaseBrowser";
 import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
 import { FORECAST_LEVELS, SCOPE_LABELS, businessLineBadge, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge } from "@/components/salesPlanning/ui";
@@ -132,7 +131,6 @@ export default function SalesPlanningPipelinePage() {
      ⚠️ อ่านสดจากทะเบียนเสมอ ไม่ใช่ค่าที่ดีลประทับไว้ — `customerName` บนดีลคือชื่อ ณ วันที่
      ผูก (หลักฐาน) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน */
   const arIndex = useMemo(() => customerArIndex(customers), [customers]);
-  const [projects, setProjects] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -183,7 +181,6 @@ export default function SalesPlanningPipelinePage() {
   const GROUP_OPTIONS = [
     { value: "none", label: "ไม่จัดกลุ่ม" },
     { value: "customer", label: "ลูกค้า" },
-    { value: "project", label: "โครงการ" },
     { value: "brand", label: "แบรนด์" },
     { value: "owner", label: "AE" },
   ];
@@ -232,7 +229,7 @@ export default function SalesPlanningPipelinePage() {
     if (!opts?.background) setLoading(true);
     setError("");
     try {
-      const [dealsRes, customersRes, projectsRes, reviewRes] = await Promise.all([
+      const [dealsRes, customersRes, reviewRes] = await Promise.all([
         /* ตัวกรอง "รอเติมข้อมูล" ต้องดึงทุกเดือนจริง ๆ (deal backfill มี forecastMonth=null
            จึงตกทุกช่วงที่กรอง) — ต่างจากติ๊ก "ทุกเดือน" ที่แปลว่า *ทุกเดือนของปีที่เลือก*
            เดิมสองอย่างนี้ยิง URL เดียวกัน = ติ๊กทุกเดือนแล้วได้ดีลทุกปีมาปนกัน */
@@ -240,7 +237,7 @@ export default function SalesPlanningPipelinePage() {
           ? "/api/sales-planning/deals"
           : `/api/sales-planning/deals?${axisQuery}`),
         apiFetch("/api/master/customers"),
-        apiFetch("/api/pm/projects"),
+        /* รายชื่อโครงการเลิกโหลด (ยุบดีล/โครงการ P2d) — ไม่มีช่อง/กลุ่ม "โครงการ" ในหน้านี้แล้ว */
         /* นอกตัวกรอง "รอเติมข้อมูล" ชุดที่โหลดมาเป็นของงวดเดียว ⇒ เลขท้ายตัวเลือกต้องนับจากชุดทุกงวดอีกคำขอ
            (คัดที่ฐาน เล็ก) · พังก็แค่ไม่โชว์เลข ไม่ล้มทั้งหน้า */
         reviewOnly ? null : apiFetch(DEAL_REVIEW_LIST_URL).catch(() => null),
@@ -258,7 +255,6 @@ export default function SalesPlanningPipelinePage() {
         const txt = await customersRes.text();
         try { if(txt) custData = JSON.parse(txt); } catch(e){}
       }
-      const projData = projectsRes.ok ? await projectsRes.json() : [];
       // อ่านทุกคำตอบให้จบก่อน แล้วค่อยเช็ครอบทีเดียว — เดือนเปลี่ยนไปแล้วก็ทิ้งทั้งก้อน
       // (เขียนบางตัวแล้วทิ้งตัวที่เหลือ = จอกลายเป็นลูกผสมของสองเดือน)
       if (!isLatest()) return;
@@ -266,7 +262,6 @@ export default function SalesPlanningPipelinePage() {
       setReviewDeals(reviewOnly ? null : (Array.isArray(reviewData) ? reviewData : null));
       setPendingPeriod({ inPeriod: pendingPeriodMatcher({ month, allMonths, reviewOnly, period: dealPeriod }), now: new Date() });
       setCustomers(custData);
-      setProjects(projData);
     } catch (e) {
       if (isLatest() && !opts?.background) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
     } finally {
@@ -362,11 +357,6 @@ export default function SalesPlanningPipelinePage() {
         label = deal.customerName || "ไม่ระบุลูกค้า";
         // ⚠️ รหัสไม่ใช่ส่วนหนึ่งของกุญแจ — ดีลเก่าที่ผูกก่อนออกรหัสต้องยังรวมกลุ่มเดียวกัน
         sub = deal.customerId ? arIndex.get(deal.customerId) || null : null;
-      } else if (groupBy === "project") {
-        key = deal.projectId || "__none";
-        label = deal.projectId
-          ? (projects.find((p) => p.id === deal.projectId)?.name || deal.title || "โครงการ")
-          : "ไม่ผูกโครงการ";
       } else if (groupBy === "brand") {
         const raw = String(deal.metadata?.brand || "").trim();
         key = raw ? raw.toLocaleLowerCase("th-TH") : "__none";
@@ -399,7 +389,7 @@ export default function SalesPlanningPipelinePage() {
       if (sortKey === "name") return a.label.localeCompare(b.label, "th");
       return (b.total - a.total) || a.label.localeCompare(b.label, "th");
     });
-  }, [groupBy, filteredDeals, projects, customers, arIndex, ownerNameOf, sortKey, pendingPeriod]);
+  }, [groupBy, filteredDeals, customers, arIndex, ownerNameOf, sortKey, pendingPeriod]);
 
   const allCollapsed = !!groupedDeals?.length && groupedDeals.every((g) => collapsedGroups.has(g.key));
   const toggleGroup = (key) => setCollapsedGroups((prev) => {
@@ -533,14 +523,6 @@ export default function SalesPlanningPipelinePage() {
       });
       const savedDeal = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(savedDeal.error || "บันทึกดีลไม่สำเร็จ");
-      if (dealForm.projectId && !dealForm.lockedProjectId) {
-        const linkRes = await apiFetch(`/api/sales-planning/deals/${savedDeal.id || dealForm.id}/link-project`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
-        });
-        if (!linkRes.ok) throw new Error((await linkRes.json().catch(() => ({}))).error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
-      }
       /* ผูกลีดต้นทางหลังบันทึกดีลสำเร็จ — endpoint เดียวกับปุ่มบนหน้าดีล (ด่านเดียวกัน)
          พลาด = ดีลบันทึกแล้ว แต่บอกในโมดัลให้กดใหม่ได้ (บันทึกซ้ำไม่เสียหาย) */
       if (dealForm.id && editLeadId && !editingDeal?.leadId) {
@@ -564,12 +546,10 @@ export default function SalesPlanningPipelinePage() {
   };
 
   const deleteDeal = async (deal) => {
-    // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
-    // มาผูกแทน; ลบดีลแค่ถอดงานของดีลนี้ออก โครงการยังอยู่ (ลบเองที่หน้าโครงการ)
-    const withPm = deal.projectId ? "\n\nโครงการ (PM) ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะงานของดีลนี้ออก" : "";
+    // ไม่พูดถึงโครงการแล้ว (ยุบดีล/โครงการ P2d — จอโครงการถูกซ่อน) · ลบดีลถอดงานของดีลนี้ออก
     // ลีดต้นทาง: ลบดีล = ถอดลีด (มติ 2026-09-22) — ลีดที่ไม่เหลือดีลกลับไปสถานะก่อนเปิดดีล
     const withLead = deal.leadId ? `\n\n${DEAL_DELETE_LEAD_NOTE}` : "";
-    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withPm}${withLead}\n\nงานที่ผูกดีลนี้จะถูกลบไปด้วย\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
+    if (!(await confirmAction(`ลบดีล "${deal.title}"?${withLead}\n\nงานที่ผูกดีลนี้จะถูกลบไปด้วย\n\nการลบนี้ย้อนกลับไม่ได้`))) return;
     setError("");
     try {
       // admin: ถ้าถูกบล็อกด้วยกฎธุรกิจ จะได้พรีวิว + ถามยืนยันบังคับลบต่อ
@@ -578,9 +558,7 @@ export default function SalesPlanningPipelinePage() {
       // ลบสำเร็จแต่ย้อนสถานะลีดต้นทางไม่ครบ — ดู lib/apiWarnings
       const warning = responseWarningText(result.data);
       if (warning) notifyToast.warning(warning, RESPONSE_WARNING_TOAST);
-      // ดีลใบสุดท้ายของโครงการ → ถามว่าจะลบโครงเปล่าทิ้งด้วยไหม (ไม่ตัดสินใจแทน)
-      const cleanup = await offerDeleteEmptyProject(result.data?.emptyProject);
-      if (cleanup.error) setError(`ลบดีลแล้ว แต่${cleanup.error}`);
+      // ไม่ถามลบโครงการเปล่าแล้ว (P2d) — โครงการค้างในฐานจนงวด P3 ลบตาราง
       await load();
     } catch (e) {
       setError(e.message || "ลบดีลไม่สำเร็จ");
@@ -683,10 +661,6 @@ export default function SalesPlanningPipelinePage() {
     {
       id: "quotations", label: "ใบเสนอราคา", icon: FileText,
       href: `/sa/deals/${deal.id}?tab=quotations`, visible: SALES_FEATURES.quotations,
-    },
-    {
-      id: "project", label: "เปิดโครงการที่ผูกไว้", icon: FolderKanban,
-      href: deal.projectId ? `/sa/projects/${deal.projectId}` : undefined, visible: !!deal.projectId,
     },
     {
       id: "documents", label: "เอกสาร", icon: Paperclip,
@@ -877,13 +851,6 @@ export default function SalesPlanningPipelinePage() {
           user={viewer}
           busy={shippingDealId === deal.id}
           recordLabel={deal.title}
-          onSelect={(transition) => {
-            /* ทั้งผูกและสร้างโครงการลงมือที่ฟอร์มแก้ไขดีล (ต้องเลือกโครงการ)
-               ไม่ใช่ยิง /transition — ดักก่อนการ์ดเปิดกล่องยืนยันเปล่า ๆ */
-            if (!["link_project", "create_project"].includes(transition.id)) return false;
-            openEditDeal(deal);
-            return true;
-          }}
           onTransition={(actionId, values) => runDealTransition(deal, actionId, values)}
           canEdit={!!deal.canEdit}
           canDelete={canDeleteDeal(deal, { role, superuser })}
@@ -963,7 +930,7 @@ export default function SalesPlanningPipelinePage() {
 
   // ⚠️ ไล่ประเภทจาก DEAL_TYPE_LABELS ไม่ใช่พิมพ์เอง — คำโปรยนี้เคยค้างที่ 3 ประเภท
   // อยู่รอบหนึ่งหลังเพิ่ม 'อื่นๆ' (mig 0247/0249) โดยไม่มีอะไรเตือน
-  const dealsSubtitle = `จัดการดีลขาย (${DEAL_TYPES.map((t) => DEAL_TYPE_LABELS[t]).join(" / ")}) และส่งต่อโครงการ PM`;
+  const dealsSubtitle = `จัดการดีลขาย (${DEAL_TYPES.map((t) => DEAL_TYPE_LABELS[t]).join(" / ")}) `;
 
   return (
     <SaWorkspace
@@ -1212,7 +1179,6 @@ export default function SalesPlanningPipelinePage() {
       {createModal && (
         <DealCreateModal
           customers={customers}
-          projects={projects}
           categories={categories}
           stages={CREATABLE_STAGES}
           owners={owners}
@@ -1237,8 +1203,6 @@ export default function SalesPlanningPipelinePage() {
               form={dealForm}
               onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
               customers={customers}
-              projects={projects}
-              showProject
               categories={categories}
               stages={editableStages(isWonStage(dealForm.stage))}
               alreadyWon={isWonStage(dealForm.stage)}

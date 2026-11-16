@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
-  ExternalLink, FileCheck2, FileClock, FileSignature, FileText, FolderKanban, Handshake, History, MapPin,
+  ExternalLink, FileCheck2, FileClock, FileSignature, FileText, Handshake, History, MapPin,
   Pencil, Repeat, ShieldAlert, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
@@ -2639,7 +2639,8 @@ export default function SalesOrderDetailPage() {
             <ContextCard icon={ClipboardList} href={order.sourceSalesOrderId ? `/sa/sales-orders/${order.sourceSalesOrderId}` : undefined} eyebrow="ใบสั่งขายต้นทาง" title={naText(exciseSourceOrderLabel(order))} subtitle="ใบสั่งขายของลูกค้าที่ใบนี้เก็บค่าสรรพสามิต" facts={[{ label: "เจ้าของดีลต้นทาง", value: naText(livePersonName(directory, approvalDeal?.ownerId, approvalDeal?.ownerName)) }]} />
           ) : (
             <>
-              <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
+              {/* การ์ด "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — `sales_orders.projectId`
+                  ยังคงค่าในฐาน (อยู่ในลายนิ้วมือการอนุมัติ ห้ามล้าง) แค่ไม่โชว์ */}
               {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
                   snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
               <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "สถานะ", value: naText(STAGE_LABELS[order.deal?.stage] || order.deal?.stage) }]} />

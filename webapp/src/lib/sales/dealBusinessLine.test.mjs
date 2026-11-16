@@ -78,10 +78,11 @@ test('ผูก/ก่อโครงการ: ข้ามสายไม่�
   assert.match(create, /if \(deal\.line && normalizeBusinessLine\(body\.line\) !== deal\.line\)/);
 });
 
-test('ฟอร์มดีลมีช่องสาย และเลือกโครงการแล้วสายตามโครงการ', () => {
+test('ฟอร์มดีลมีช่องสาย · ไม่มีช่องโครงการ (P2d) · ดีลเก่าในโครงการล็อกสาย', () => {
   const fields = read('src/components/salesPlanning/DealFormFields.js');
   assert.match(fields, /<BusinessLineSelect/);
-  assert.match(fields, /picked\?\.line \? \{ line: picked\.line \}/);
+  assert.doesNotMatch(fields, /const projectField|entity="project"/, 'ช่องโครงการถูกถอด — ห้ามไหลกลับ');
+  assert.match(fields, /const lineLockedByProject = !!form\.projectId \|\| !!form\.lockedProjectId;/);
   const modal = read('src/components/salesPlanning/DealCreateModal.js');
   assert.match(modal, /if \(!draft\.line\)/, 'โมดัลต้องบังคับเลือกสายก่อนยิง API');
 });

@@ -179,7 +179,8 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
     referenceRows: [
       { label: L.t('refQuotation'), value: quotation.quoteNumber || '-' },
       { label: L.t('documentStatus'), value: statusLabel },
-      { label: L.t('projectCode'), value: order.project?.code || '-' },
+      // เลขที่โครงการ = รหัสดีล (ยุบดีล/โครงการ P2d · ชุดเดียวกับใบเสนอราคา) · SO ค่าสรรพสามิตไม่มีดีล = ขีด
+      { label: L.t('projectCode'), value: order.deal?.code || '-' },
       // SO ค่าสรรพสามิต (ไม่มีดีล) — คำเดียวกับใบเสนอราคาค่าสรรพสามิต · ผู้เสนอ = เจ้าของดีลของ SO ต้นทาง
       { label: L.t('projectTitle'), value: order.deal?.title || excisePaperProject(order, docLanguageOf(order.docLanguage)) || '-' },
       { label: L.t('projectType'), value: (order.deal && dealTypeOf(order.deal)) || (excisePaperProject(order) ? EXCISE_PAPER_PROJECT_TYPE : '-') },

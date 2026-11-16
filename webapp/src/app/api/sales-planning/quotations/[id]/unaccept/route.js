@@ -16,7 +16,7 @@ import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 export const dynamic = 'force-dynamic';
 
 // โครงการของดีลมากับแถวเดียวกัน (พรีวิวบอกว่า "ดีลยังอยู่ในโครงการ X" — มติ 25/09 ข้อ 2) · ไม่โหลดแยก (กฎ 6)
-const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
+const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, code, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
 
 // ย้อนการรับใบเสนอราคา (มติผู้ใช้ 2026-07-21): inverse ของ accept สำหรับกรณีรับใบผิด
 // ที่ยังไม่มี Sale Order — มี SO อนุมัติแล้วต้องไปทาง "ยกเลิกใบสั่งขายพร้อมย้อนสถานะ"

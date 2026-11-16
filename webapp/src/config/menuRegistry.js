@@ -10,7 +10,7 @@
 // ⚠️ **หนึ่งเมนูหนึ่งบรรทัด** และคงการย่อหน้าเดิมไว้ — เทสต์หลายตัวอ่านไฟล์นี้ด้วย
 // regex รายบรรทัด (navMenuNames · navCounts · systems · entityIcon · fieldWorkAccess ·
 // issueRouting) จัดรูปใหม่เมื่อไร ด่านพวกนั้นกลายเป็นชุดว่างแล้วผ่านทุกอย่างเงียบ ๆ
-import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, FolderKanban, Hammer, Handshake, Inbox, Layers, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
+import { AirVent, ArrowDownToLine, Beaker, Boxes, Building2, Calculator, CalendarDays, CalendarRange, ClipboardCheck, ClipboardList, Coins, Factory, FileSignature, FileText, FlaskConical, Hammer, Handshake, Inbox, Layers, LayoutDashboard, LifeBuoy, LineChart, ListTodo, MapPin, MessageCircleQuestion, Package, ReceiptText, Ruler, ShoppingCart, SprayCan, Tags, Target, Trash2, Users, Wallet, Wrench } from 'lucide-react';
 import {
   canAccessFinance, canAccessRd, canAnswerServiceRequests, canDoFieldWork, canEditProduction,
   canEditService, canManagePackageSizes, canManageProductCategories, canManageTeams, canUser, canViewCosting,
@@ -112,8 +112,8 @@ export const MENU_GROUPS = [
         // "ดีล" = งานขายแต่ละก้อน (SCENT/NPD/RE-ORDER) — คำ "โครงการ" สงวนให้ตัว
         // project ฝั่ง execution ตามมาตรฐาน IA (SALES_REVAMP_PLAN §5)
         { href: '/sa/deals', name: 'ดีล', icon: Handshake, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/deals' || p.startsWith('/sa/deals/') || p === '/sales-planning/deals' || p.startsWith('/sales-planning/deals/') },
-        // เฟส B: หน้ารวมโครงการ (ภาชนะรวมดีล + KPI rollup) — เดิม /sa/projects เด้งไปหน้าดีล
-        { href: '/sa/projects', name: 'โครงการ', countHref: '/sa/projects?count=projectCloses', icon: FolderKanban, cap: 'salesplan:view', visible: worksInSalesPipeline, match: (p) => p === '/sa/projects' || p.startsWith('/sa/projects/') || p.startsWith('/pm/projects') },
+        /* เมนู "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — ดีลคือหน่วยเดียว · แฟ้มรวมดีลของลูกค้า =
+           หน้าลูกค้าศูนย์รวม · ลิงก์เก่า /sa/projects/** ถูก proxy พาไป /sa/deals หรือ /go/project/<id> → หน้าลูกค้า */
         /* เอกสารร่วมสามชนิด — นิยามอยู่ที่ `SHARED_DOC_ITEMS` เพราะฝ่าย FN มีเมนู
            ชุดนี้ในบ้านตัวเองด้วย (มติผู้ใช้ 2026-08-22) · ขึ้นได้กลุ่มเดียวต่อคน */
         SHARED_DOC_ITEMS.quotations,
