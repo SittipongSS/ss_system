@@ -246,3 +246,38 @@ export function requestRowSummary(items = []) {
   }
   return out;
 }
+
+/**
+ * ก้าวที่ค้างของแถวที่ยังไม่จบ นับเป็น "ฝั่ง × ปุ่ม" — ประโยคของด่านปิดเรื่องอ่านจากตัวนี้
+ *
+ * 🐞 (16/11/2026) ด่านปิดเคยตอบประโยคเดียวทุกกรณี "ตอบให้ครบหรือกด 'ตอบไม่ได้' ก่อน" ซึ่งเป็นคำของฝ่าย
+ *   ⇒ 44 ใบที่คิวขึ้น "รอ SA ทำต่อ" (แถวค้างที่ รับของ · ส่งให้ลูกค้า · บันทึกคำตอบ) RD บอก SA ให้ปิด
+ *   SA กดแล้วอ่านว่ารอ RD ⇒ ต่างฝ่ายต่างรอ · ตัวนี้บอกว่าแถวค้างที่ใคร ปุ่มชื่ออะไร กี่แถว
+ *
+ * คืน `[{ owner, label, count }]` — ฝั่งผู้ขอมาก่อน (คนที่กดปิดคือผู้ขอ) แล้วฝั่งฝ่าย · ในฝั่งเดียวกันเรียงตามขั้นของงาน
+ * · `owner: null` = แถวที่ยังไม่จบแต่ไม่มีก้าวในตาราง (ไม่ควรเกิด — นับไว้ไม่ให้หายจากประโยค)
+ * ⚠️ ชื่อปุ่มมาจาก `nextByStageFor` ตัวเดียวกับปุ่มบนแถว — ประโยคกับปุ่มพูดคำเดียวกันเสมอ
+ */
+const OWNER_ORDER = { requester: 0, dept: 1 };
+export function requestPendingSteps(items = []) {
+  const groups = new Map();
+  for (const row of items) {
+    const stage = rowStage(row);
+    if (SETTLED.has(stage)) continue;
+    const next = nextByStageFor(row)[stage];
+    const owner = next?.owner || null;
+    const label = next?.label || null;
+    const key = `${owner}|${label}`;
+    const at = ROW_STAGES.indexOf(stage);
+    const group = groups.get(key);
+    if (group) {
+      group.count += 1;
+      group.at = Math.min(group.at, at);
+    } else {
+      groups.set(key, { owner, label, count: 1, at });
+    }
+  }
+  return [...groups.values()]
+    .sort((a, b) => (OWNER_ORDER[a.owner] ?? 2) - (OWNER_ORDER[b.owner] ?? 2) || a.at - b.at)
+    .map(({ owner, label, count }) => ({ owner, label, count }));
+}
