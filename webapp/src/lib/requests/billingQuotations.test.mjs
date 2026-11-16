@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   billAmountFor, billFieldInit, billingQuotationError, billingQuotationOptions,
-  billingQuotationSkipHint, billingQuotationSkips, resolveBillAmount,
+  billingQuotationRequestsView, billingQuotationSkipHint, billingQuotationSkips,
+  resolveBillAmount,
 } from './billingQuotations.js';
 
 const qt = (over = {}) => ({
@@ -60,13 +61,51 @@ test('เหตุผลที่ซ่อน — นับข้อแรกท
   ]);
   assert.equal(skips.total, 4);
   assert.equal(skips.notApproved + skips.dead + skips.free + skips.noAmount, skips.total);
-  assert.deepEqual(skips, { notApproved: 1, dead: 1, free: 1, noAmount: 1, total: 4 });
+  assert.deepEqual(skips, { notApproved: 1, dead: 1, closed: 0, revised: 0, free: 1, noAmount: 1, total: 4 });
   /* ⭐ "ให้ฟรี" ต้องอ่านไม่เหมือนความผิดพลาด — ยุบรวมกับ "ยังไม่มียอด" เมื่อไร
      คนอ่านจะนึกว่าระบบพังทั้งกอง ทั้งที่ส่วนใหญ่คือของที่ตั้งใจให้ฟรี */
   const hint = billingQuotationSkipHint(skips);
   assert.match(hint, /ให้ฟรี 1 ใบ/);
   assert.match(hint, /ยังไม่มียอด 1 ใบ/);
   assert.equal(billingQuotationSkipHint(billingQuotationSkips([qt()])), '');
+});
+
+/* ⭐ มติเจ้าของ 16/11/2026: "ดีลที่ Won แล้ว ควรดึงมาเฉพาะใบที่ Won" — ใบพี่น้องที่การรับใบอื่นปิดไว้ (`closed`)
+   กับฉบับเก่าที่มี Rev. ใหม่ (`revised`) ยังอนุมัติอยู่ เดิมจึงหลุดเข้าลิสต์ */
+test('ดีล Won: ใบที่ถูกปิดตอนรับใบอื่น และฉบับเก่าที่มี Rev. ใหม่ ขอเอกสารไม่ได้', () => {
+  assert.match(billingQuotationError(qt({ status: 'closed' })), /ลูกค้ารับใบอื่น/);
+  assert.match(billingQuotationError(qt({ status: 'revised' })), /Rev\. ใหม่/);
+  // ใบที่ลูกค้ารับ = ใบเดียวที่เหลือในดีล Won
+  const won = [
+    qt({ id: 'ACC', status: 'accepted' }),
+    qt({ id: 'SIB', status: 'closed' }),
+    qt({ id: 'OLD', status: 'revised' }),
+  ];
+  assert.deepEqual(billingQuotationOptions(won).map((q) => q.id), ['ACC']);
+  // ดีลที่ยังไม่ Won คงเดิม — ขอ "50% ก่อนผลิต" ได้ก่อนมี SO
+  assert.deepEqual(billingQuotationOptions([qt({ id: 'A' }), qt({ id: 'B', status: 'draft' })]).map((q) => q.id), ['A', 'B']);
+  // ค่าที่เลือกไว้แล้วไม่หาย (เปิดใบเดิมมาแก้)
+  assert.deepEqual(billingQuotationOptions(won, { keepId: 'SIB' }).map((q) => q.id), ['ACC', 'SIB']);
+
+  const skips = billingQuotationSkips(won);
+  assert.deepEqual(skips, { notApproved: 0, dead: 0, closed: 1, revised: 1, free: 0, noAmount: 0, total: 2 });
+  assert.equal(billingQuotationSkipHint(skips), 'ซ่อนไว้ 2 ใบ — ปิดเพราะลูกค้ารับใบอื่น 1 ใบ · ฉบับเก่าที่มี Rev. ใหม่ 1 ใบ');
+  // ⚠️ ยังไม่อนุมัติมาก่อนเสมอ — ใบปิดที่ไม่เคยอนุมัติไม่ถูกนับซ้ำเป็น "ปิด"
+  assert.equal(billingQuotationSkips([qt({ status: 'closed', approvalStatus: 'pending' })]).notApproved, 1);
+});
+
+test('หน้า QT: ใบที่ถูกปิด/มี Rev. ใหม่ยังโชว์คำร้องเดิมแบบอ่านอย่างเดียว · เหตุอื่นซ่อนเหมือนเดิม', () => {
+  assert.deepEqual(billingQuotationRequestsView(qt({ status: 'accepted' })), { visible: true, locked: '' });
+  for (const status of ['closed', 'revised']) {
+    const view = billingQuotationRequestsView(qt({ status }));
+    assert.equal(view.visible, true);
+    assert.equal(view.locked, billingQuotationError(qt({ status })));
+  }
+  // ⚠️ ใบปิดที่ยอด 0 ไม่มีอะไรให้ขออยู่แล้ว — เหตุแรกที่ติดคือ "ปิด" ก็ยังโชว์ (ประวัติคำร้อง) ไม่ใช่ซ่อนเพราะยอด
+  assert.equal(billingQuotationRequestsView(qt({ status: 'closed', totalAmount: 0 })).visible, true);
+  for (const row of [qt({ approvalStatus: 'pending' }), qt({ status: 'cancelled' }), qt({ totalAmount: 0 }), null]) {
+    assert.equal(billingQuotationRequestsView(row).visible, false);
+  }
 });
 
 test('ยอดที่ขอ: โหมด % คูณจากยอดใบ และไม่ปัดเศษ', () => {
