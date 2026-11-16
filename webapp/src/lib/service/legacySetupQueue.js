@@ -167,7 +167,7 @@ function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, c
  * @param lines        บรรทัดของใบ (พก serviceKind · serviceProductId · serviceFgCode · serviceRounds · metadata)
  * @param allocations  `sales_order_line_zones` ของใบ `{ salesOrderId, salesOrderLineId, zoneId, packsPerRound }`
  * @param zonesById    Map zoneId → { siteId } — นับไซต์ของสรุป "ยื่นแล้ว"
- * @param projectsById/dealsById  ตัดสินสายธุรกิจ (โครงการก่อน แล้วดีล) · ดีลพก `ownerName`
+ * @param dealsById    ตัดสินสายธุรกิจ (สายของดีล · งวด P3b-1 ยุบโครงการ เลิกถามโครงการ) · ดีลพก `ownerName`
  * @param contractsById ชิปสัญญาของใบ
  * @param customersWithSite Set ของ customerId ที่มีไซต์ลูกค้าที่ใช้งานในทะเบียน — ไม่มี = แถวบอก TS ให้เพิ่มไซต์ก่อน
  *   (ไม่ส่ง = ไม่ตัดสินเรื่องไซต์)
@@ -176,7 +176,7 @@ function buildRow(order, orderLines, orderAllocations, { zonesById, dealsById, c
  *   · ทั้งสองชุดเรียง **ค้างนานสุดก่อน** (นาฬิกาของ `aging` ที่เริ่มก่อนอยู่หน้า · ไม่มีนาฬิกาอยู่ท้าย) แล้วตามเลขที่ใบ
  */
 export function legacySetupQueue({
-  orders = [], lines = [], allocations = [], zonesById = new Map(), projectsById, dealsById, contractsById = new Map(),
+  orders = [], lines = [], allocations = [], zonesById = new Map(), dealsById, contractsById = new Map(),
   customersWithSite = null, todayIso = null,
 } = {}) {
   const orderList = Array.isArray(orders) ? orders : [];
@@ -184,7 +184,7 @@ export function legacySetupQueue({
 
   const linesByOrder = groupBy(lines, 'salesOrderId');
   const allocationsByOrder = groupBy(allocations, 'salesOrderId');
-  const lineCtx = { projectsById: projectsById || new Map(), dealsById: dealsById || new Map() };
+  const lineCtx = { dealsById: dealsById || new Map() };
 
   const rows = [];
   const unknownLine = [];

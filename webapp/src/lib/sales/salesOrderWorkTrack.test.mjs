@@ -60,7 +60,6 @@ test('ช่วงที่ยังไม่เชื่อมขึ้นค�
     scent: { hasDesignLines: true, count: 2, existing: null, blocked: null },
     readiness: { state: 'unknown' },
     plan: { state: 'none' },
-    projectId: 'PJ1',
     dealType: NPD,
     approved: true,
   });
@@ -68,7 +67,9 @@ test('ช่วงที่ยังไม่เชื่อมขึ้นค�
     assert.equal(seg.steps, undefined, `${seg.key} ไม่ควรมีจุด`);
     assert.ok(seg.connect?.message, `${seg.key} ต้องมีข้อความชวน`);
   }
-  assert.equal(track.segments[1].connect.href, '/sa/projects/PJ1?tab=timeline');
+  /* ยุบโครงการ P3b-1: ที่จัดการของเข้าถูกถอด ⇒ ช่วงของเข้าบอกสถานะอย่างเดียว ไม่ชวนกดไปหน้าโครงการ */
+  assert.equal(track.segments[1].connect.href, null);
+  assert.equal(track.segments[1].connect.actionLabel, null);
 });
 
 test('เปิดคำร้องไม่ได้ → ขึ้นเหตุผล ไม่ขึ้นปุ่ม', () => {

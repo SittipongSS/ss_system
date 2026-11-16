@@ -453,7 +453,6 @@ export default function DealOverviewPage() {
       projectProducts: data?.projectProducts,
       exciseRegistrations: data?.exciseRegistrations,
       sahamitPo: data?.sahamitPo,
-      shipmentPrep: data?.shipmentPrep,
       // หมวดสินค้า — ใช้ตัดสินการ์ดสรรพสามิตจาก flag isExcise (mig 0131)
       productTypes: categories,
     }) : null),
@@ -462,7 +461,7 @@ export default function DealOverviewPage() {
 
   /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" ฝั่ง Record Control — ไฟล์เดียวกับหน้ารายการ (PR #882)
      ⚠️ คนละตัวกับ `lc` (salesPlanningLifecycle) ที่ยังคุมแถบขั้นตอน/การ์ดปลายทาง
-     (ทะเบียนสรรพสามิต · PO สหมิตร · ส่งของ) — สองตัวนี้ตอบคนละคำถาม ยังไม่ยุบรวม */
+     (ทะเบียนสรรพสามิต · PO สหมิตร) — สองตัวนี้ตอบคนละคำถาม ยังไม่ยุบรวม */
   const team = useTeam();
   const teams = useTeams();
   /* dealLifecycle ตัดสินจาก `deal.canEdit` (API ส่งมาต่อใบ) + สิทธิ์ตาม role — ไม่ต้องใช้ id

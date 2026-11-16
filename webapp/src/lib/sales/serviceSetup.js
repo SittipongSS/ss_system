@@ -653,12 +653,12 @@ export function serviceLineLabel(line) {
 
 /* ══ ใบ: ต้องตั้งไหม · อยู่ขั้นไหน · แก้ได้ไหม ══════════════════════════════════════════════════════════ */
 
-/* สายธุรกิจของใบ — ตัวตัดสินเดียวของระบบ (`orderBusinessLineOf`: โครงการก่อนแล้วดีล)
-   ⭐ รับ `order.businessLine` ที่ตัวโหลดบริบท (serviceSetupRepo) คิดมาให้แล้วด้วย เมื่อไม่มีก้อนโครงการ/ดีลแนบมา
+/* สายธุรกิจของใบ — ตัวตัดสินเดียวของระบบ (`orderBusinessLineOf`: สายของดีล)
+   ⭐ รับ `order.businessLine` ที่ตัวโหลดบริบท (serviceSetupRepo) คิดมาให้แล้วด้วย เมื่อไม่มีก้อนดีลแนบมา
      และไม่มี Map ของหลายใบใน ctx — ค่าเดียวกัน แค่คิดไว้ก่อน */
 function businessLineOf(order, ctx = {}) {
-  if (ctx?.projectsById || ctx?.dealsById) return orderBusinessLineOf(order, ctx);
-  if (order && order.businessLine !== undefined && !order.project && !order.deal) return order.businessLine ?? null;
+  if (ctx?.dealsById) return orderBusinessLineOf(order, ctx);
+  if (order && order.businessLine !== undefined && !order.deal) return order.businessLine ?? null;
   return orderBusinessLineOf(order, ctx);
 }
 
@@ -752,7 +752,7 @@ export function serviceBackfillAging(order, { todayIso = null } = {}) {
  *   'backfill' อนุมัติแล้ว ยังไม่ประทับ และมีสิ่งที่ต้องตั้ง — ตั้งย้อนหลังแล้วยื่นตรวจ
  *   'stamped'  อนุมัติแล้วและเปิดงานให้ TS แล้ว
  *   'locked'   ที่เหลือ (รออนุมัติ · ย้อนการอนุมัติ · ถูก Rev. ทับ · ยกเลิก)
- * @param ctx `{ lines }` (หรือบริบทเต็มของ serviceSetupRepo) · `{ projectsById, dealsById }` เมื่อเรียกจากคิวหลายใบ
+ * @param ctx `{ lines }` (หรือบริบทเต็มของ serviceSetupRepo) · `{ dealsById }` เมื่อเรียกจากคิวหลายใบ
  */
 export function serviceSetupFlow(order, ctx = {}) {
   if (!serviceSetupRequired(order, ctx)) return 'none';

@@ -539,7 +539,7 @@ test('หมวดของบรรทัดเพิ่มเองรอด�
      · `packInputOpen: false` ในเทสต์ = ช่องสำหรับเทสต์ รันกิ่ง "ปิด" = **คำตอบของรุ่น PR-1 / PR-2 (รุ่นที่ถอยกลับไปได้)**
      · `packInputOpen: true` (OPEN) ที่เทสต์เดิมส่งไว้ = ค่าตั้งต้นของวันนี้ — คงไว้ให้เห็นว่าเทสต์นั้นหมายถึงกิ่งไหน
    ═══════════════════════════════════════════════════════════════════════════════════════════════════ */
-import { manualLineCategoryPatch, seedLinesFromProject } from './quoteLines.js';
+import { manualLineCategoryPatch } from './quoteLines.js';
 import { LINE_PACK_TEXT, LinePackError, QUOTE_PACK_INPUT_OPEN, linePackIssues, linePackMessage } from './linePacks.js';
 import { quoteLineNet } from '../salesPlanning.js';
 import { emptyHistoricalZone } from './historicalIntakeForm.js';
@@ -747,34 +747,7 @@ test('แพ็ค: เปิดใบ (refreshFgLinesForDisplay) — บรร�
   assert.deepEqual(draft.lines.map((l) => l.lineTotal), [84000, 84000, undefined], 'ยอดไม่ถูกคิดใหม่ตอนเปิดใบ');
 });
 
-test('แพ็ค: บรรทัดที่ตั้งต้นจากโครงการคิดยอดด้วยสูตรกลาง (quoteLineNet) — ปัดสตางค์ ไม่มีเลขแพ็ค · จำนวนเต็มได้ค่าเดิม', async () => {
-  const projectRows = [
-    { id: 'PP-1', productId: 'P1', orderQty: '12', product: { id: 'P1', fgCode: SDS_FG, productDescription: 'ระบบกระจายกลิ่น SDS', saleUnit: 'แพ็คเกจ', costPrice: 3500 } },
-    { id: 'PP-2', productId: 'P2', orderQty: '1.5', product: { id: 'P2', fgCode: 'FG-336-01-009-1290', productDescription: 'น้ำหอม', saleUnit: 'ชิ้น', costPrice: 33.33 } },
-    { id: 'PP-3', productId: 'P3', productionQty: '3', product: { id: 'P3', fgCode: 'FG-336-01-009-1291', productDescription: 'น้ำหอม 2', saleUnit: null, costPrice: 1.005 } },
-  ];
-  const supabase = {
-    from: (table) => {
-      if (table === 'project_products') return { select: () => ({ eq: async () => ({ data: projectRows, error: null }) }) };
-      if (table === 'product_types') return { select: async () => ({ data: [], error: null }) };
-      throw new Error(`unexpected table: ${table}`);
-    },
-  };
-  const lines = await seedLinesFromProject(supabase, { projectId: 'PJ-1' });
-  assert.deepEqual(lines.map((l) => l.lineTotal), [42000, 50, 3.01], 'ปัดสตางค์แล้ว (เดิมเก็บผลคูณดิบ 49.995 / 3.0149999999999997)');
-  for (const line of lines) {
-    assert.deepEqual([line.discountAmount, line.lineTotal], [0, quoteLineNet({ qty: line.qty, unitPrice: line.unitPrice }).lineTotal]);
-    assert.equal('packQty' in line, false, 'ระบบไม่เดาเลขแพ็คให้ — คนออกใบกรอกเอง');
-  }
-  assert.deepEqual(lines.map((l) => l.unit), ['แพ็คเกจ', 'ชิ้น', 'ชิ้น'], 'หน่วยขายของทะเบียนตามเดิม');
-  assert.equal(lines[0].lineTotal, 12 * 3500, 'บรรทัดจำนวนเต็ม × ราคา 2 ตำแหน่ง ได้ค่าเดียวกับที่เคยเก็บ');
-  // บรรทัดที่ตั้งต้นแล้วผ่านตัว normalize ได้ทั้งสองกิ่ง (ไม่มีเลขแพ็ค) และ normalize ซ้ำได้ยอดเดิม
-  assert.deepEqual(normalizeManualLines(lines).map((l) => l.lineTotal), [42000, 50, 3.01]);
-  assert.deepEqual(normalizeManualLines(lines, CLOSED).map((l) => l.lineTotal), [42000, 50, 3.01]);
-  // ด่านของบรรทัดที่เซิร์ฟเวอร์สร้างเอง: ไม่บังคับตอนสร้าง (requireOnCategory: false) — แต่บันทึก/ยื่นครั้งถัดไปต้องกรอก (ค่าตั้งต้น)
-  assert.deepEqual(linePackIssues(lines, { requireOnCategory: false, numbering: 'submitted' }), []);
-  assert.equal(linePackMessage(linePackIssues(lines, { numbering: 'submitted' })), `รายการ 1: ${LINE_PACK_TEXT.required}`);
-});
+/* (เทสต์ `seedLinesFromProject` — บรรทัดที่ตั้งต้นจากโครงการ — ถอดพร้อมตัวฟังก์ชันในงวด P3b-1 ยุบโครงการ) */
 
 /* ═══ ตัวล้างเลขแพ็คสองตัวของจอ (งวด PR-3 · มติเจ้าของ 08/10 · แผน §2.5 + §12 C8) ═══════════════════════════════════
    เลขแพ็คมีได้เฉพาะหมวด 02-001 — คนเปลี่ยนสินค้า/หมวดออกจากหมวดนั้น เลขถูกล้าง **ต่อหน้าคนที่เปลี่ยน** (ยอดบนจอขยับทันที)

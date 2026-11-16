@@ -2,75 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  canEditDeliveries,
-  chaseRequestBody,
-  canViewDeliveries,
-  deliveriesForDeal,
   deliveriesForSalesOrder,
-  deliveriesFromComponents,
   deliveryRollup,
-  deliveryStepBadge,
-  normalizeDeliveryInput,
-  openDeliveriesToChase,
   productionReadiness,
 } from './deliveries.js';
-
-const ae = { id: 'u-ae', role: 'ae', team: 'KA' };
-const pc = { id: 'u-pc', role: 'pc', department: 'PC' };
-const rd = { id: 'u-rd', role: 'rd', department: 'RD' };
-const viewer = { id: 'u-v', role: 'viewer' };
-const project = { id: 'PRJ-1', team: 'KA', ownerId: 'u-ae' };
-
-// ── สิทธิ์ ───────────────────────────────────────────────────────────────
-test('⭐ PC ต้องแก้กำหนดของเข้าได้ ทั้งที่ pmEditScope ของฝ่ายโรงงาน = none', () => {
-  // ถ้ากั้นด้วย scope ของ PM อย่างเดียว คนที่รู้กำหนดจริงจะเป็นคนเดียวที่แก้ไม่ได้
-  // (บทเรียนเดียวกับ /api/pm/my-work ที่ PC ไม่เคยเห็นคิวตัวเอง — #790)
-  assert.equal(canEditDeliveries(pc, project), true);
-});
-
-test('ฝ่ายขายในทีมโครงการแก้ได้ · ทีมอื่น/ผู้อ่านอย่างเดียวแก้ไม่ได้', () => {
-  assert.equal(canEditDeliveries(ae, project), true);
-  assert.equal(canEditDeliveries({ ...ae, team: 'GT' }, project), false);
-  assert.equal(canEditDeliveries(viewer, project), false);
-});
-
-test('RD ไม่ใช่เจ้าของของเข้า — ตอบราคาได้แต่ไม่ได้เป็นคนสั่งของ', () => {
-  assert.equal(canEditDeliveries(rd, project), false);
-});
-
-test('อ่านได้ทุกคนที่เห็นโครงการ (ของเข้าเป็นกำหนดการ ไม่ใช่ต้นทุน)', () => {
-  assert.equal(canViewDeliveries(ae), true);
-  assert.equal(canViewDeliveries(pc), true);
-});
-
-// ── ตรวจข้อมูล ───────────────────────────────────────────────────────────
-const base = { kind: 'PM', label: 'ขวดแก้ว 200ml' };
-
-test('ต้องมีชนิดวัสดุที่ถูกต้องและชื่อ', () => {
-  assert.equal(normalizeDeliveryInput({ ...base, kind: 'labor' }).error, 'ชนิดวัสดุไม่ถูกต้อง');
-  assert.equal(normalizeDeliveryInput({ kind: 'PM', label: '   ' }).error, 'ต้องระบุชื่อวัสดุ');
-  assert.equal(normalizeDeliveryInput(base).error, null);
-});
-
-test('จำนวนว่าง = ยังไม่รู้ยอด ไม่ใช่ 0', () => {
-  // ⚠️ Number(null) = 0 เคยทำให้ "ยังไม่รู้ราคา" กลายเป็น "ฟรี" มาแล้ว
-  assert.equal(normalizeDeliveryInput(base).value.qty, null);
-  assert.equal(normalizeDeliveryInput({ ...base, qty: '' }).value.qty, null);
-  assert.equal(normalizeDeliveryInput({ ...base, qty: 500 }).value.qty, 500);
-  assert.equal(normalizeDeliveryInput({ ...base, qty: 0 }).error, 'จำนวนต้องเป็นตัวเลขมากกว่า 0');
-  assert.equal(normalizeDeliveryInput({ ...base, qty: -5 }).error, 'จำนวนต้องเป็นตัวเลขมากกว่า 0');
-});
-
-test('ปีพิมพ์ผิดถูกจับ — ของจริงบน prod เคยมีปี 2202', () => {
-  assert.match(normalizeDeliveryInput({ ...base, dueDate: '2202-08-06' }).error, /นอกช่วงปี/);
-  assert.equal(normalizeDeliveryInput({ ...base, dueDate: '06/08/2026' }).error, 'กำหนดถึงไม่ถูกต้อง');
-  assert.equal(normalizeDeliveryInput({ ...base, dueDate: '2026-08-06' }).error, null);
-});
-
-test('ของมาก่อนกำหนดได้ (ปกติมาก) — ไม่บล็อก', () => {
-  const { error } = normalizeDeliveryInput({ ...base, dueDate: '2026-09-01', arrivedAt: '2026-08-20' });
-  assert.equal(error, null);
-});
 
 // ── สรุปขึ้นขั้นไทม์ไลน์ ─────────────────────────────────────────────────
 const row = (over = {}) => ({ id: 'MDL-1', kind: 'PM', label: 'x', dueDate: null, arrivedAt: null, ...over });
@@ -95,42 +30,6 @@ test('สรุป: มาครบแล้ว = complete · ไม่มีแ
   assert.equal(deliveryRollup([row({ arrivedAt: '2026-08-01' })], '2026-08-25').complete, true);
   assert.equal(deliveryRollup([], '2026-08-25').complete, false);
   assert.equal(deliveryRollup([], '2026-08-25').lastDue, null);
-});
-
-// ── กางจากใบขอราคาผลิต ──────────────────────────────────────────────────
-const comp = (over = {}) => ({ id: 'C1', kind: 'PM', label: 'ขวด', unitBasis: 'per_piece', ...over });
-
-test('กาง: ตัดบรรทัดค่าดำเนินการ (labor) ออก — ไม่ใช่ของที่ต้องรอเข้า', () => {
-  const { rows } = deliveriesFromComponents([
-    comp({ id: 'C1' }),
-    comp({ id: 'C2', kind: 'labor', unitBasis: 'per_piece' }),
-    comp({ id: 'C3', kind: 'RM_F', unitBasis: 'per_kg' }),
-  ]);
-  assert.deepEqual(rows.map((r) => r.componentId), ['C1', 'C3']);
-});
-
-test('กาง: หน่วยตามชนิด — RM เป็นกิโล PM เป็นชิ้น', () => {
-  const { rows } = deliveriesFromComponents([
-    comp({ id: 'C1', kind: 'PM', unitBasis: 'per_piece' }),
-    comp({ id: 'C2', kind: 'RM_FB', unitBasis: 'per_kg' }),
-  ]);
-  assert.deepEqual(rows.map((r) => r.unit), ['ชิ้น', 'กก.']);
-});
-
-test('⭐ กางซ้ำไม่ได้แถวซ้ำ และบอกว่าข้ามไปกี่แถว', () => {
-  const components = [comp({ id: 'C1' }), comp({ id: 'C2' })];
-  const { rows, skipped } = deliveriesFromComponents(components, { existingComponentIds: ['C1'] });
-  assert.deepEqual(rows.map((r) => r.componentId), ['C2']);
-  assert.equal(skipped, 1);
-  // กางซ้ำทั้งชุด = ไม่มีอะไรใหม่ แต่ไม่ควรเป็น error (ผู้ใช้กดสองครั้งเป็นเรื่องปกติ)
-  const again = deliveriesFromComponents(components, { existingComponentIds: ['C1', 'C2'] });
-  assert.deepEqual(again.rows, []);
-  assert.equal(again.skipped, 2);
-});
-
-test('กาง: บรรทัดซ้ำ id เดียวกันในชุดเดียวนับครั้งเดียว', () => {
-  const { rows } = deliveriesFromComponents([comp({ id: 'C1' }), comp({ id: 'C1' })]);
-  assert.equal(rows.length, 1);
 });
 
 // ── ผูกกับใบสั่งขาย (mig 0177) ───────────────────────────────────────────
@@ -176,72 +75,4 @@ test('พร้อมผลิต: ไม่มีรายการเลย = 
   const r = productionReadiness([], '2026-08-25');
   assert.equal(r.state, 'unknown');
   assert.equal(r.tone, 'neutral');
-});
-
-test('salesOrderId ผ่าน normalize ได้ และว่าง = ยังไม่ผูก', () => {
-  assert.equal(normalizeDeliveryInput({ kind: 'PM', label: 'x' }).value.salesOrderId, null);
-  assert.equal(normalizeDeliveryInput({ kind: 'PM', label: 'x', salesOrderId: 'SO-1' }).value.salesOrderId, 'SO-1');
-});
-
-// ── แยกตามรอบ แต่โครงการยังเห็นรวม (มติผู้ใช้ 2026-07-29) ────────────────
-// ⭐ "โครงการคือศูนย์รวมข้อมูลดีล" — สินค้าตัวหนึ่งมีดีลได้หลายรอบ
-const rnd = (over = {}) => ({ id: 'MDL-1', kind: 'PM', label: 'x', dealId: 'D-1', dueDate: null, arrivedAt: null, ...over });
-
-test('แยกของเข้าตามดีล (รอบ) ได้', () => {
-  const rows = [rnd({ id: 'a' }), rnd({ id: 'b', dealId: 'D-2' }), rnd({ id: 'c', dealId: null })];
-  assert.deepEqual(deliveriesForDeal(rows, 'D-1').map((r) => r.id), ['a']);
-  assert.deepEqual(deliveriesForDeal(rows, 'D-2').map((r) => r.id), ['b']);
-  assert.deepEqual(deliveriesForDeal(rows, null), []);
-});
-
-test('⭐ RE-ORDER รอบใหม่ครบแล้วต้องไม่ถูกรอบเก่าลากให้ดูเหมือนยังไม่ครบ', () => {
-  // รอบเก่า (D-1) มีของค้าง 1 · รอบใหม่ (D-2) ครบแล้ว
-  const rows = [
-    rnd({ id: 'old-1', dealId: 'D-1', arrivedAt: '2026-01-10' }),
-    rnd({ id: 'old-2', dealId: 'D-1' }),
-    rnd({ id: 'new-1', dealId: 'D-2', arrivedAt: '2026-08-01' }),
-  ];
-  const newRound = deliveryStepBadge(deliveriesForDeal(rows, 'D-2'), '2026-08-25');
-  assert.equal(newRound.label, 'ของเข้า 1/1');
-  assert.equal(newRound.tone, 'success');
-  // ถ้าเผลอรวมทั้งโครงการจะได้ 2/3 = ยังไม่ครบ ซึ่งอ่านผิดสำหรับรอบใหม่
-  const wholeProject = deliveryStepBadge(rows, '2026-08-25');
-  assert.equal(wholeProject.label, 'ของเข้า 2/3');
-  assert.notEqual(wholeProject.tone, 'success');
-});
-
-test('ป้ายบอกขอบเขตให้คนอ่านรู้ว่าเป็นของรอบไหน', () => {
-  const rows = [rnd({ arrivedAt: '2026-08-01' })];
-  assert.match(deliveryStepBadge(rows, '2026-08-25', { scope: 'deal' }).title, /เฉพาะรอบ/);
-  assert.match(deliveryStepBadge(rows, '2026-08-25', { scope: 'project' }).title, /รวมทุกรอบ/);
-});
-
-// ── ขอให้ PC อัปเดตกำหนด (kind material_eta) ─────────────────────────────
-const chase = (over = {}) => ({ id: 'MDL-1', kind: 'PM', label: 'ขวด', qty: 5000, unit: 'ชิ้น', dealId: 'D-1', dueDate: '2026-09-01', arrivedAt: null, requestId: null, ...over });
-
-test('ขออัปเดต: เอาเฉพาะของที่ยังไม่มา', () => {
-  const rows = [chase({ id: 'a' }), chase({ id: 'b', arrivedAt: '2026-08-01' })];
-  assert.deepEqual(openDeliveriesToChase(rows).map((r) => r.id), ['a']);
-});
-
-test('⭐ ขออัปเดต: แถวที่ขอไปแล้วไม่ถูกขอซ้ำ — กันคิว PC เต็มด้วยเรื่องเดิม', () => {
-  const rows = [chase({ id: 'a' }), chase({ id: 'b', requestId: 'DR-9' })];
-  assert.deepEqual(openDeliveriesToChase(rows).map((r) => r.id), ['a']);
-});
-
-test('ขออัปเดต: จำกัดเฉพาะรอบได้ (โครงการเดียวมีหลายดีล)', () => {
-  const rows = [chase({ id: 'a', dealId: 'D-1' }), chase({ id: 'b', dealId: 'D-2' })];
-  assert.deepEqual(openDeliveriesToChase(rows, { dealId: 'D-2' }).map((r) => r.id), ['b']);
-  assert.equal(openDeliveriesToChase(rows).length, 2); // ไม่ระบุ = ทั้งโครงการ
-});
-
-test('เนื้อคำร้องอ่านแล้วรู้ว่าต้องอัปเดตอะไร โดยไม่ต้องเปิดโครงการ', () => {
-  const text = chaseRequestBody([
-    chase({ label: 'ขวดแก้ว', qty: 5000, unit: 'ชิ้น', poRef: 'PR-001', dueDate: '2026-09-01' }),
-    chase({ id: 'b', label: 'หัวน้ำหอม', qty: null, unit: null, poRef: null, dueDate: null }),
-  ]);
-  assert.match(text, /2 รายการ/);
-  assert.match(text, /ขวดแก้ว · 5,000 ชิ้น · PR-001 · กำหนดเดิม 2026-09-01/);
-  // แถวที่ยังไม่รู้ยอด/กำหนด ต้องบอกตามจริง ไม่ใช่เว้นว่างให้เดา
-  assert.match(text, /หัวน้ำหอม · ยังไม่มีกำหนด/);
 });

@@ -25,19 +25,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const { row: deal, response } = await loadScoped(supabase, 'sales_deals', dealId, user, 'view');
   if (response) return response;
 
-  const [{ data: project }, { data: quotations, error }] = await Promise.all([
-    deal.projectId
-      ? supabase.from('projects').select('id, code, name, line').eq('id', deal.projectId).maybeSingle()
-      : Promise.resolve({ data: null }),
-    // ⚠️ ไล่ทีละหน้า — เหตุผลเดียวกับ /contracts
-    fetchAllResult(() => supabase.from('quotations')
-      .select('id, "quoteNumber", status, "approvalStatus", "totalAmount", "customerId", "customerName", "createdAt"')
-      .eq('dealId', dealId).order('id', { ascending: true })),
-  ]);
+  /* สายธุรกิจอ่านจากดีลเอง (`deal` จาก loadScoped — select '*') · ไม่อ่านโครงการแล้ว (งวด P3b-1 ยุบโครงการ) */
+  // ⚠️ ไล่ทีละหน้า — เหตุผลเดียวกับ /contracts
+  const { data: quotations, error } = await fetchAllResult(() => supabase.from('quotations')
+    .select('id, "quoteNumber", status, "approvalStatus", "totalAmount", "customerId", "customerName", "createdAt"')
+    .eq('dealId', dealId).order('id', { ascending: true }));
   if (error) return fail(error.message, 500);
 
-  const eligibility = contractEligibility({ deal, project, quotations: quotations || [] });
-  const kinds = contractKindsForDeal(deal, project).map((kind) => ({
+  const eligibility = contractEligibility({ deal, quotations: quotations || [] });
+  const kinds = contractKindsForDeal(deal).map((kind) => ({
     kind,
     label: contractKindLabel(kind),
     ready: hasContractTemplate(kind),
@@ -47,8 +43,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
 
   return ok({
     dealId,
-    // สายธุรกิจที่ใช้ตัดสินจริง — ของดีลก่อน แล้วค่อยตกไปที่โครงการ (mig 0275)
-    businessLine: contractBusinessLine(deal, project),
+    // สายธุรกิจที่ใช้ตัดสินจริง — ของดีล (mig 0275)
+    businessLine: contractBusinessLine(deal),
     ok: eligibility.ok,
     reason: eligibility.reason,
     kinds,
@@ -82,25 +78,17 @@ async function listDealsThatCanIssue({ user, supabase }) {
 
   const { data: deals, error: dealError } = await supabase
     .from('sales_deals')
-    .select('id, code, title, stage, "dealType", team, "ownerId", "ownerName", "customerId", "customerName", "projectId"')
+    /* `line` = สายธุรกิจของดีล — ตัวตัดสินชนิดสัญญา (จ้างผลิต/บริการ) · เดิมอ่านจากโครงการเพราะ select นี้ไม่มี line
+       ⇒ ต้องขอเพิ่มตอนถอดการอ่านโครงการ (งวด P3b-1 ยุบโครงการ) ไม่งั้นดีล NPD/RE-ORDER หลุดทุกใบ */
+    .select('id, code, title, stage, "dealType", line, team, "ownerId", "ownerName", "customerId", "customerName", "projectId"')
     .in('id', [...byDeal.keys()]);
   if (dealError) return fail(dealError.message, 500);
-
-  const projectIds = [...new Set((deals || []).map((deal) => deal.projectId).filter(Boolean))];
-  let projectById = new Map();
-  if (projectIds.length) {
-    const { data: projects, error: projectError } = await supabase
-      .from('projects').select('id, code, name, line').in('id', projectIds);
-    if (projectError) return fail(projectError.message, 500);
-    projectById = new Map((projects || []).map((project) => [project.id, project]));
-  }
 
   const rows = (deals || [])
     .filter((deal) => inSalesViewScope(user, deal))
     .map((deal) => {
-      const project = deal.projectId ? projectById.get(deal.projectId) || null : null;
-      const eligibility = contractEligibility({ deal, project, quotations: byDeal.get(deal.id) || [] });
-      return { deal, project, eligibility };
+      const eligibility = contractEligibility({ deal, quotations: byDeal.get(deal.id) || [] });
+      return { deal, eligibility };
     })
     .filter((row) => row.eligibility.ok)
     .map((row) => ({
@@ -125,7 +113,7 @@ async function listDealsThatCanIssue({ user, supabase }) {
          *ที่มา* ที่ผู้ใช้เลือกทีหลัง (เจนต้องมีแม่แบบ · เอกสารภายนอกไม่ต้อง)
          ⇒ ที่นี่ตอบเฉพาะ "ดีลรองรับชนิดไหน" · จอเป็นคนบวกเงื่อนไขแม่แบบตามที่มาที่เลือก
             (`ContractCreateModal` — `!external && !hasContractTemplate(item)`) */
-      kinds: contractKindsForDeal(row.deal, row.project),
+      kinds: contractKindsForDeal(row.deal),
     }))
     .filter((row) => row.kinds.length)
     .sort((a, b) => String(a.code || '').localeCompare(String(b.code || '')));

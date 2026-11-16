@@ -57,11 +57,10 @@ export function planRoundsSoldText(row) {
 }
 
 /* ── สายธุรกิจของใบสั่งขาย ────────────────────────────────────────────
-   ลำดับการถาม: โครงการก่อน (เจ้าของค่าจริง) แล้วค่อยดีล (สำเนาที่ใช้ตอนยังไม่มี
-   โครงการ) · ตอบไม่ได้ = null ไม่ใช่ 'PRODUCT' */
-export function orderBusinessLine(order, { projectsById = new Map(), dealsById = new Map() } = {}) {
-  const project = order?.projectId ? projectsById.get(order.projectId) : null;
-  if (isBusinessLine(project?.line)) return project.line;
+   อ่านจาก **ดีลของใบ** อย่างเดียว · ตอบไม่ได้ = null ไม่ใช่ 'PRODUCT'
+   ⚠️ งวด P3b-1 ยุบโครงการ (16/11/2026): เดิมถามโครงการก่อน (ตอนนั้นโครงการเป็นเจ้าของค่า) แล้วค่อยดีล — ถอดแล้ว
+      ตรวจ prod: SO 399 ใบที่ผูกโครงการ สายของโครงการ = สายของดีลของใบทุกใบ ⇒ คำตอบเท่าเดิม · ผู้เรียกไม่ต้องโหลดโครงการอีก */
+export function orderBusinessLine(order, { dealsById = new Map() } = {}) {
   const deal = order?.dealId ? dealsById.get(order.dealId) : null;
   if (isBusinessLine(deal?.line)) return deal.line;
   return null;

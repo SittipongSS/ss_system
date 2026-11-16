@@ -248,12 +248,12 @@ async function siblingSiteCountsOf(supabase, customerId, siblings) {
 
 /**
  * ⭐ บริบทของงานบริการหนึ่งใบ — รูปตาม §2.2 ของแผน (ป้อน serviceSetupIssues/Warnings/View/Totals/… ได้ตรง ๆ)
- * @param order แถวใบสั่งขาย (`*`) — ก้อน `project`/`deal` ที่แนบมา (loadOrder · loadScoped) ใช้ได้ถ้ามีคีย์ `line`
+ * @param order แถวใบสั่งขาย (`*`) — ก้อน `deal` ที่แนบมา (loadOrder · loadScoped) ใช้ได้ถ้ามีคีย์ `line`
  * @param lines บรรทัดที่ผู้เรียกมีอยู่แล้ว (เช่น `before.lines` ของ loadOrder) — ไม่ส่ง = อ่านเอง
  * @param extraZoneIds โซนที่ก้อนบันทึกอ้าง (PATCH) — อ่านรวมกับโซนที่ตั้งไว้ ให้ตัวตรวจเห็นไซต์ของมัน
  * @param withFgOptions 🔴 ด่านทุกตัวต้องส่ง true (fail-closed ของ serviceSetupIssues)
  * @param todayIso วันนี้ตามเวลาไทย (ตัดสิน "รอบขายที่ยังมีผล") — ไม่ส่ง = businessDate()
- * @returns ctx: `{ order (+ businessLine · project · deal), lines (+ lineNo), allocations, zonesById, sitesById, productsById,
+ * @returns ctx: `{ order (+ businessLine · deal), lines (+ lineNo), allocations, zonesById, sitesById, productsById,
  *   fgOptions, fgOptionIds, siblingSites, installments, customerBillingRule, contract, liveTermsByZone, predecessor, unsaved: false }`
  * @throws Error ภาษาไทย เมื่ออ่านส่วนไหนไม่ขึ้น (ตัวเลือก FG ด้วยเมื่อขอ) — ผู้เรียกตอบ 500 ห้ามเดา
  */
@@ -264,10 +264,9 @@ export async function loadServiceSetupContext(supabase, order, {
   const customerId = text(order.customerId) || null;
   const today = todayIso || businessDate();
 
-  const [rawLines, allocations, project, deal, installments, customerBillingRule, contract, predecessor, siblings] = await Promise.all([
+  const [rawLines, allocations, deal, installments, customerBillingRule, contract, predecessor, siblings] = await Promise.all([
     Array.isArray(lines) ? lines : loadLines(supabase, order.id),
     loadAllocations(supabase, order.id),
-    businessRowOf(supabase, 'projects', text(order.projectId), order.project),
     businessRowOf(supabase, 'sales_deals', text(order.dealId), order.deal),
     orThrow('อ่านงวดชำระ', () => loadInstallments(supabase, order.id)),
     loadBillingRule(supabase, customerId),
@@ -290,14 +289,13 @@ export async function loadServiceSetupContext(supabase, order, {
   ]);
   const sites = await loadSites(supabase, uniqueIds(zones.map((zone) => zone.siteId)));
 
-  /* สายธุรกิจ = โครงการก่อนแล้วดีล (ตัวตัดสินเดียวของระบบ) · แนบแถวที่ใช้ตัดสินไว้กับใบด้วย ⇒ serviceSetupRequired/Flow
-     ที่อ่านก้อน project/deal ของใบ พูดตรงกับ `businessLine` เสมอ */
-  const projectsById = project?.id ? new Map([[project.id, project]]) : new Map();
+  /* สายธุรกิจ = สายของดีล (ตัวตัดสินเดียวของระบบ · งวด P3b-1 ยุบโครงการ เลิกอ่านโครงการ) · แนบแถวที่ใช้ตัดสินไว้กับใบด้วย
+     ⇒ serviceSetupRequired/Flow ที่อ่านก้อน deal ของใบ พูดตรงกับ `businessLine` เสมอ */
   const dealsById = deal?.id ? new Map([[deal.id, deal]]) : new Map();
-  const businessLine = orderBusinessLine(order, { projectsById, dealsById });
+  const businessLine = orderBusinessLine(order, { dealsById });
 
   return {
-    order: { ...order, project: project ?? null, deal: deal ?? null, businessLine },
+    order: { ...order, deal: deal ?? null, businessLine },
     lines: numbered,
     allocations,
     zonesById: new Map(zones.map((zone) => [zone.id, zone])),

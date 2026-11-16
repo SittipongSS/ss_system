@@ -151,7 +151,7 @@ export async function fillMissingLineCategories(supabase, lines = []) {
 
 /* ── หมายเหตุประจำสินค้า (mig 0317) ────────────────────────────────────────
    ทะเบียนสินค้าตั้งหมายเหตุไว้สองภาษา (`docNote` / `docNoteEn`) แล้วระบบก๊อปลง
-   บรรทัด **ตอนสร้างบรรทัดเท่านั้น** (เลือกสินค้าบนฟอร์ม · seed จากโครงการ)
+   บรรทัด **ตอนสร้างบรรทัดเท่านั้น** (เลือกสินค้าบนฟอร์ม)
    ⚠️ ห้ามก๊อปซ้ำตอนบันทึก/แสดงผล — คนออกใบที่ลบหมายเหตุทิ้งจะได้ของเดิมกลับมา
    ทุกครั้งที่กดบันทึก และใบที่ออกไปแล้วจะเปลี่ยนข้อความเองเมื่อ master ถูกแก้
    (หลักการเดียวกับราคา/ชื่อที่ตรึงลงบรรทัด)
@@ -181,57 +181,9 @@ export function lineNoteFor(line, language) {
   return (language === 'en' && meta.noteAuto && meta.noteEn) ? meta.noteEn : note;
 }
 
-function qtyFromProjectProduct(row) {
-  const raw = row?.orderQty || row?.productionQty || 1;
-  const n = Number(String(raw).replace(/,/g, ''));
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-
-// seed บรรทัดจาก FG ที่ผูกในโครงการของดีล — ราคา freeze จาก master ณ ตอนสร้าง
-// (ราคาผลิต — กติกาเดียวกับ enforceMasterPrices)
-export async function seedLinesFromProject(supabase, deal) {
-  if (!deal.projectId) return [];
-  /* 🔴 อ่านไม่ได้แล้วคืน [] = ใบเสนอราคาถูกสร้างแบบ **ไม่มีบรรทัดสักบรรทัด**
-     โดยไม่มีอะไรบอกว่า seed ล้มเหลว */
-  const { data, error } = await supabase
-    .from('project_products')
-    .select('*, product:products(id, fgCode, categoryCode, productDescription, productDescriptionEn, brandName, brandNameEn, volume, volumeUnit, saleUnit, costPrice, "docNote", "docNoteEn")')
-    .eq('projectId', deal.projectId);
-  if (error) throw error;
-  const types = data?.length ? await productTypesOrNull(supabase) : null;
-  if (types) attachCategoryNames((data || []).map((row) => row.product).filter(Boolean), types);
-  return (data || []).map((row, index) => {
-    const qty = qtyFromProjectProduct(row);
-    const unitPrice = toMoney(row.product?.[QUOTE_PRICE_FIELD]);
-    /* ยอดของบรรทัดคิดด้วยสูตรกลางตัวเดียวกับทุกทาง (quoteLineNet) — เดิมเขียน `qty * unitPrice` เองอีกชุด
-       (สำเนาที่สองของสูตร: ไม่ปัดสตางค์ และจะไม่รู้จักตัวคูณแพ็คของ mig 0407) · บรรทัดที่ตั้งต้นจากโครงการ
-       ไม่มีเลขแพ็ค — คนออกใบกรอกเองในใบ */
-    const net = quoteLineNet({ qty, unitPrice });
-    return {
-      id: genId('QTL'),
-      productId: row.productId || row.product?.id || null,
-      fgCode: row.product?.fgCode || null,
-      description: fgLineDescription(row.product),
-      qty,
-      unit: row.product?.saleUnit || DEFAULT_SALE_UNIT,
-      unitPrice,
-      discountType: null,
-      discountValue: 0,
-      discountAmount: net.discountAmount,
-      lineTotal: net.lineTotal,
-      source: 'project_products',
-      sortOrder: index,
-      metadata: {
-        ...fgLineLanguageMeta(row.product),
-        // หมายเหตุประจำสินค้า (mig 0317) — เส้นนี้เป็น "ตอนสร้างบรรทัด" เหมือนกัน
-        ...fgLineNoteMeta(row.product),
-        projectProductId: row.id,
-        productBrand: fgLineBrand(row.product),
-        ...fgLineCategoryMeta(row.product),
-      },
-    };
-  });
-}
+/* ⚠️ `seedLinesFromProject` (ตั้งต้นบรรทัดจาก FG ที่ผูกโครงการ — `project_products`) ถอดในงวด P3b-1 ยุบโครงการ (16/11/2026):
+   ไม่มีจอไหนส่ง `seedFromProject` มานานแล้ว และ `project_products` บน prod มี 0 แถว · บรรทัดเก่าที่ `source = 'project_products'`
+   ยังอ่าน/บันทึกได้ตามเดิม (normalizeManualLines คงค่า source ไว้) */
 
 // ราคาขายในใบเสนอราคาทั้งระบบ = "ราคาผลิต" (costPrice) — มติผู้ใช้ 2026-07-19.
 // retailPriceIncVat ไม่ใช่ราคาขาย: มีไว้คำนวณภาษีสรรพสามิต (โมดูล tax) เท่านั้น.

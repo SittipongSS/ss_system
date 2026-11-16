@@ -139,19 +139,17 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   const timelineRevision = await safe('timeline revision', supabase
     .from('deal_timeline_revisions').select('revNo, createdAt')
     .eq('dealId', deal.id).order('revNo', { ascending: false }).limit(1).maybeSingle(), null);
-  let shipmentPrep = { data: null, warning: null };
   let exciseRegistrations = { data: [], warning: null };
   let sahamitPo = { data: null, warning: null };
   let siblingDeals = { data: [], warning: null };
   if (deal.projectId) {
-    [project, projectProducts, projectTasks, shipmentPrep, exciseRegistrations, sahamitPo, siblingDeals] = await Promise.all([
+    [project, projectProducts, projectTasks, exciseRegistrations, sahamitPo, siblingDeals] = await Promise.all([
       safe('project', supabase.from('projects').select('*').eq('id', deal.projectId).maybeSingle(), null),
       safe('project products', supabase.from('project_products').select('*, product:products(id, fgCode, productDescription, productDescriptionEn)').eq('projectId', deal.projectId), []),
       // งวด P2b (ยุบดีล/โครงการ): หน้าดีลเห็น "ขั้นตอนของดีลนี้" เท่านั้น — ชุดเดียวกับที่ Rev. ถ่าย snapshot
       // และที่ย้อน Rev. เขียนทับ (`.eq('dealId')`) · เดิมรวมงานกลางของโครงการ (dealId ว่าง) มาด้วย ⇒ จอพิมพ์
       // ขั้นที่ Rev. ไม่ได้เก็บ · งานกลางบน prod ย้ายเข้าดีลหมดแล้วตอน backfill 0435 (เหลือ 0)
       safe('project tasks', supabase.from('project_tasks').select('*').eq('dealId', deal.id).order('stepOrder', { ascending: true }), []),
-      safe('shipment prep', supabase.from('shipment_prep').select('*, lines:shipment_prep_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
       safe('excise registrations', supabase.from('excise_registrations').select('*').eq('projectId', deal.projectId), []),
       safe('sahamit po', supabase.from('sahamit_pos').select('*, lines:sahamit_po_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
       // ดีลอื่นในโครงการเดียวกัน (เฟส B: หลายดีลต่อโครงการ) — ลิงก์ข้ามบนหน้าดีล
@@ -170,7 +168,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     projectProducts.warning,
     projectTasks.warning,
     timelineRevision.warning,
-    shipmentPrep.warning,
     exciseRegistrations.warning,
     sahamitPo.warning,
     taxFilings.warning,
@@ -288,7 +285,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
       maxRev: timelineRevision.data?.revNo ?? null,
       revisedAt: timelineRevision.data?.createdAt ?? null,
     },
-    shipmentPrep: shipmentPrep.data,
     exciseRegistrations: exciseRegistrations.data,
     sahamitPo: sahamitPo.data,
     siblingDeals: siblingDeals.data,

@@ -2,7 +2,7 @@
 //
 // สิ่งที่ชุดนี้ล็อกไว้:
 //   · GET: อ่านใบด้วย loadScoped โหมด view · อ่านพัง (รวมตัวเลือก FG) = 500 ข้อความไทย ไม่เดา · canEdit มาจาก server
-//   · PATCH: ด่านสิทธิ์แก้ก่อนเขียนทุกอย่าง · ล็อกตัดสินจากสายธุรกิจของบริบท (โครงการก่อนดีล) · fieldErrors 400
+//   · PATCH: ด่านสิทธิ์แก้ก่อนเขียนทุกอย่าง · ล็อกตัดสินจากสายธุรกิจของบริบท (สายของดีล · งวด P3b-1 เลิกถามโครงการ) · fieldErrors 400
 //     · เวลาของใบส่งค่าดิบเข้า RPC · workflow_stale = 409 · audit หลัง RPC เท่านั้น
 //   · POST: submit (ขั้นย้อนหลัง + ข้อที่ยังขาด) · approve (ผู้จัดการ · ยื่นเองอนุมัติเองไม่ได้ · Admin ต้องมีเหตุผล 10–500)
 //     · reject (เหตุผลตัดช่องว่างก่อนนับ) · สถานะ 'submitted' ที่ค้างบนใบที่ย้อนการอนุมัติไม่มีผล (D28)
@@ -118,7 +118,7 @@ const SUP2 = { id: 'U-SUP2', role: 'commercial_manager', team: 'T1', teams: ['T1
 const ADMIN = { id: 'U-ADM', role: 'admin', team: null, teams: [], name: 'แอดมิน' };
 const FN = { id: 'U-FN', role: 'finance', team: null, teams: [], name: 'บัญชี' };
 
-/* ── โลกย่อส่วน: ใบสาย SERVICE (โครงการ SERVICE · ดีล PRODUCT) ตั้งงานบริการครบ ──────────────────────────── */
+/* ── โลกย่อส่วน: ใบสาย SERVICE (ดีล SERVICE · โครงการ PRODUCT ที่ต้องไม่ถูกอ่าน — งวด P3b-1 ยุบโครงการ) ตั้งงานบริการครบ ─ */
 const TAX = '0105556000123';
 const soRow = (over = {}) => ({
   id: 'SO1', orderNumber: 'SO-26090001-0', status: 'draft', origin: 'pipeline', customerId: 'C1',
@@ -149,8 +149,8 @@ function world({ order = soRow(), over = {}, lines = null } = {}) {
       { id: 'C2', arCode: 'AR-0790', name: 'บริษัท เอ (สาขา)', taxId: TAX, branchCode: '00001', isActive: true, isForeign: false, approvalStatus: 'approved', billingRule: null },
       { id: 'C3', arCode: 'AR-0999', name: 'บริษัท อื่น', taxId: '0105556000999', branchCode: '00000', isActive: true, isForeign: false, approvalStatus: 'approved', billingRule: null },
     ],
-    projects: [{ id: 'PJ1', line: 'SERVICE' }],
-    sales_deals: [{ id: 'DL1', line: 'PRODUCT', ownerId: 'U-AE', team: 'T1' }],
+    projects: [{ id: 'PJ1', line: 'PRODUCT' }],
+    sales_deals: [{ id: 'DL1', line: 'SERVICE', ownerId: 'U-AE', team: 'T1' }],
     sales_orders: [
       order,
       { id: 'SO-A', orderNumber: 'SO-26080073-0', status: 'approved', supersededById: null },
@@ -199,14 +199,15 @@ const withoutUnset = (tables) => tables.sales_order_lines.map((l) => (l.id === '
 
 /* ══ GET ═══════════════════════════════════════════════════════════════════════════════════════════ */
 
-test('GET — เจ้าของดีลเห็นก้อนเต็มของ serviceSetupView · โหมดแก้ · เวลาของใบดิบ · สายธุรกิจจากโครงการ', async () => {
+test('GET — เจ้าของดีลเห็นก้อนเต็มของ serviceSetupView · โหมดแก้ · เวลาของใบดิบ · สายธุรกิจจากดีล', async () => {
   const f = fakeSupabase(world());
   const res = await serviceSetupGet({ supabase: f.client, user: AE, id: 'SO1' });
   assert.equal(res.status, 200, JSON.stringify(res.body));
   const body = res.body;
   assert.equal(body.orderId, 'SO1');
   assert.equal(body.updatedAt, UPDATED_AT, 'ส่งค่าดิบ (ไมโครวินาที) ให้จอส่งกลับเป็น expectedUpdatedAt');
-  assert.equal(body.flow, 'pipeline', 'ดีล PRODUCT แต่โครงการ SERVICE ⇒ ใบสายบริการ');
+  assert.equal(body.flow, 'pipeline', 'ดีล SERVICE (โครงการ PRODUCT ไม่ถูกอ่าน) ⇒ ใบสายบริการ');
+  assert.equal(f.calls.some((c) => c.table === 'projects'), false, 'ไม่อ่านตาราง projects (งวด P3b-1)');
   assert.equal(body.mode, 'edit');
   assert.equal(body.editBlockedReason, null);
   assert.deepEqual(body.lines.map((l) => [l.lineId, l.lineNo, l.role]), [['L1', 1, 'not_service'], ['L2', 2, 'package'], ['L3', 3, 'not_service']]);
@@ -394,8 +395,11 @@ test('PATCH — ใบรออนุมัติ = 409 ข้อความล
   assert.equal(f.rpcCalls.length, 0);
 });
 
-test('PATCH — สายธุรกิจตัดสินจากบริบท: โครงการไม่มีสาย + ดีล PRODUCT = ไม่ใช่ใบสายบริการ (409)', async () => {
-  const f = fakeSupabase(world({ over: { projects: [{ id: 'PJ1', line: null }] } }));
+test('PATCH — สายธุรกิจตัดสินจากบริบท: ดีล PRODUCT = ไม่ใช่ใบสายบริการ (409) แม้โครงการจะเป็น SERVICE', async () => {
+  const f = fakeSupabase(world({ over: {
+    projects: [{ id: 'PJ1', line: 'SERVICE' }],
+    sales_deals: [{ id: 'DL1', line: 'PRODUCT', ownerId: 'U-AE', team: 'T1' }],
+  } }));
   const res = await serviceSetupPatch({ supabase: f.client, user: AE, id: 'SO1', body: patchBody(), audit: f.audit });
   assert.equal(res.status, 409);
   assert.equal(res.body.error, SERVICE_SETUP_EDIT_TEXT.notService);
@@ -526,9 +530,9 @@ test('POST approve — ใบที่ย้อนการอนุมัติ
   assert.equal(f.rpcCalls.length, 0);
 });
 
-test('F1: POST approve — สายของโครงการเปลี่ยนเป็นสินค้าระหว่างรอตรวจ = 409 บอกทางออก (ตีกลับ) · ไม่ยิง RPC · ตีกลับยังทำได้', async () => {
+test('F1: POST approve — สายของดีลเปลี่ยนเป็นสินค้าระหว่างรอตรวจ = 409 บอกทางออก (ตีกลับ) · ไม่ยิง RPC · ตีกลับยังทำได้', async () => {
   const tables = world({ order: submittedRow() });
-  tables.projects = [{ id: 'PJ1', line: 'PRODUCT' }];
+  tables.sales_deals = [{ id: 'DL1', line: 'PRODUCT', ownerId: 'U-AE', team: 'T1' }];
   const f = fakeSupabase(tables, { rpc: { approve_sales_order_service_setup: approvedResult } });
   const res = await serviceSetupPost({ supabase: f.client, user: SUP, id: 'SO1', body: approveBody(), audit: f.audit });
   assert.equal(res.status, 409);

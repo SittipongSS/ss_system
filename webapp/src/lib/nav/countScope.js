@@ -22,7 +22,6 @@ import { canViewLeads } from '@/lib/sales/leads';
 import { salesPlanningViewScope } from '@/lib/salesPlanning';
 import { canApproveExternalContract } from '@/lib/sales/contracts';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
-import { canApproveProjectClose } from '@/lib/pm/projectClose';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
 import { deptOf, ownedStages } from '@/lib/excise/workflow';
@@ -79,7 +78,6 @@ const SCOPE_RULES = {
     if (!(can(user?.role, 'salesplan:view') || canConfirmPayment(user))) return null;
     return isSalesOrderReviewer(user?.role) || canConfirmPayment(user) ? 'company' : 'mine';
   },
-  projectCloses: (user) => (canApproveProjectClose(user) ? 'company' : null),
 
   scents: (user) => (isScentRegistrar(user) ? companyIfSuper(user, 'dept') : null),
   formulas: (user) => (isFormulaRegistrar(user) ? companyIfSuper(user, 'dept') : null),

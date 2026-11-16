@@ -190,8 +190,9 @@ test('🔴 ด่านเลขแพ็ค (linePackIssues) — หกไฟ�
   ]);
   // ออก Rev. (มติ 08/10 ข้อ 3): ก๊อปบรรทัดตามที่เป็น — ด่านบังคับกรอกทักตอนบันทึก/ยื่นร่างฉบับนั้น (ไม่แตะจากงวด PR-1)
   assert.deepEqual(callArguments(code(REVISE_ROUTE), 'linePackIssues'), ['revisionLines, { requireOnCategory: false }']);
-  // สร้างใบ: ช่องเทสต์ป้อนทั้งตัว normalize และด่าน · บรรทัดที่เซิร์ฟเวอร์สร้างเอง (จากโครงการ · สายสหมิตร) ยังไม่มีใครกรอก
-  assert.deepEqual(callArguments(code(DRAFT_LIB), 'linePackIssues'), ["lines, { open: packInputOpen, requireOnCategory: !(seeded || serverBuiltLines), numbering: 'submitted' }"]);
+  // สร้างใบ: ช่องเทสต์ป้อนทั้งตัว normalize และด่าน · บรรทัดที่เซิร์ฟเวอร์สร้างเอง (สายสหมิตร) ยังไม่มีใครกรอก
+  // (ทางตั้งต้นจากโครงการ `seedFromProject` ถอดในงวด P3b-1 ยุบโครงการ)
+  assert.deepEqual(callArguments(code(DRAFT_LIB), 'linePackIssues'), ["lines, { open: packInputOpen, requireOnCategory: !serverBuiltLines, numbering: 'submitted' }"]);
   // ยื่นอนุมัติ · อนุมัติ (มติข้อ 3): บรรทัดที่เก็บไว้ของใบที่เพิ่งอ่าน — บังคับ (ค่าตั้งต้น)
   assert.deepEqual(callArguments(code(SUBMIT_ROUTE), 'linePackIssues'), ["quote.lines, { numbering: 'stored' }"]);
   assert.deepEqual(callArguments(code(APPROVAL_ROUTE), 'linePackIssues'), ["quote.lines, { numbering: 'stored' }"]);
@@ -240,7 +241,7 @@ test('🔴 ด่านเลขแพ็ค (linePackIssues) — หกไฟ�
   assert.ok(revise.indexOf('linePackIssues(revisionLines') < nextRevRead, 'ก่อนอ่าน/เขียนอะไรของฉบับใหม่ (จุดแรกคืออ่านเลข Rev. ถัดไป)');
   const draft = code(DRAFT_LIB);
   assert.ok(draft.indexOf('linePackIssues(lines') < draft.indexOf('insertQuotationWithNumber(supabase'));
-  assert.ok(draft.indexOf('seedLinesFromProject(supabase, deal)') < draft.indexOf('linePackIssues(lines'), 'ตรวจหลังตั้งต้นจากโครงการ');
+  assert.equal(draft.indexOf('seedLinesFromProject'), -1, 'ทางตั้งต้นจากโครงการถอดแล้ว (P3b-1) — ไม่มีบรรทัดที่ข้ามตัว normalize');
   for (const [file, src, rpcCall] of [[SUBMIT_ROUTE, submit, 'submitQuotationWithSignatureEvidence(supabase'], [APPROVAL_ROUTE, approval, 'approveQuotationWithSignatureEvidence(supabase']]) {
     const gate = src.indexOf('linePackIssues(quote.lines');
     assert.ok(gate > 0 && gate < src.indexOf(rpcCall), `${file}: ด่านต้องอยู่ก่อน RPC ลงนาม`);
@@ -298,7 +299,7 @@ test('🔴 ตัวล้างเลขแพ็คสองตัว (quoteLi
     for (const file of callersOf(name)) {
       assert.ok(!file.startsWith('app/api/') && !file.startsWith('lib/'), `${file}: เซิร์ฟเวอร์/lib ห้ามเรียก ${name} — เซิร์ฟเวอร์ไม่ล้างเลขแพ็ค`);
     }
-    // ใน quoteLines.js เอง: ประกาศอย่างเดียว ไม่มีฟังก์ชันอื่นของไฟล์เรียก (ตัว normalize · ตัว sync ราคา · ตัวตั้งต้นจากโครงการ ใช้ไม่ได้)
+    // ใน quoteLines.js เอง: ประกาศอย่างเดียว ไม่มีฟังก์ชันอื่นของไฟล์เรียก (ตัว normalize · ตัว sync ราคา ใช้ไม่ได้)
     assert.equal(callArguments(code(QUOTE_LINES_LIB), name).length, 1, `${name}: ใน quoteLines.js มีได้แค่บรรทัดประกาศ`);
     assert.match(code(QUOTE_LINES_LIB), new RegExp(`export function ${name}\\(`));
   }
@@ -320,7 +321,7 @@ test('🔴 ตัวล้างเลขแพ็คสองตัว (quoteLi
   assert.match(bodyOf('quoteLineFromProduct'), /if \(packQtyValue\(line\.packQty\) !== null && !lineTakesPacks\(next, product\)\) next\.packQty = null;/);
   assert.match(bodyOf('manualLineCategoryPatch'), /if \(holdsPack && !lineTakesPacks\(\{ \.\.\.line, metadata \}\)\) return \{ metadata, packQty: null \};\s*return \{ metadata \};/);
   assert.match(bodyOf('manualLineCategoryPatch'), /const holdsPack = packQtyValue\(line\?\.packQty\) !== null;/);
-  // ตัว normalize · ตัว sync ราคา · ตัวตั้งต้นจากโครงการ · ตัวเติมสดตอนเปิดใบ ไม่ตั้ง/ไม่ล้าง/ไม่ลบเลขแพ็ค — พกค่าที่อ่านได้เท่านั้น
+  // ตัว normalize · ตัว sync ราคา · ตัวเติมสดตอนเปิดใบ ไม่ตั้ง/ไม่ล้าง/ไม่ลบเลขแพ็ค — พกค่าที่อ่านได้เท่านั้น
   const fnBody = (name) => {
     const from = [`export function ${name}(`, `export async function ${name}(`].map((head) => src.indexOf(head)).find((at) => at >= 0);
     assert.ok(from >= 0, `หา ${name} ไม่เจอ`);
@@ -338,8 +339,8 @@ test('🔴 ตัวล้างเลขแพ็คสองตัว (quoteLi
   const enforce = fnBody('enforceMasterPrices');
   assert.deepEqual(assigns(enforce), []);
   assert.deepEqual(keys(enforce), ['packQty: line.packQty']);
-  // ตัวตั้งต้นจากโครงการ · ตัวเติมสดตอนเปิดใบ: ไม่เอ่ยคีย์นี้เลย (บรรทัดที่ระบบสร้างไม่มีเลขแพ็ค · ตอนเปิดใบไม่แตะ)
-  for (const name of ['seedLinesFromProject', 'refreshFgLinesForDisplay']) {
+  // ตัวเติมสดตอนเปิดใบ: ไม่เอ่ยคีย์นี้เลย (ตอนเปิดใบไม่แตะ) · ตัวตั้งต้นจากโครงการถอดแล้ว (P3b-1)
+  for (const name of ['refreshFgLinesForDisplay']) {
     assert.deepEqual([assigns(fnBody(name)), keys(fnBody(name))], [[], []], name);
     assert.doesNotMatch(fnBody(name), /delete\s/, name);
   }
@@ -535,7 +536,7 @@ const MONEY_RULE_ERROR = { code: '23514', message: 'new row for relation "quotat
 
 /* ฐานปลอมของทางสร้างใบ — INSERT ของบรรทัดตอบ error เสมอ (ค่าตั้งต้น = CHECK ของ 0407 ปฏิเสธ)
    ⇒ เก็บแถวที่ถูกส่งไป INSERT ได้ และทางเดินจบที่ "ถอยใบ" ก่อนถึงการขยับดีล / audit (ซึ่งไม่ใช่เรื่องของเทสต์นี้) */
-function draftDb({ products = [], projectRows = [], lineInsertError = MONEY_RULE_ERROR } = {}) {
+function draftDb({ products = [], lineInsertError = MONEY_RULE_ERROR } = {}) {
   const calls = { tables: [], rpc: [], rpcRows: [], lineInserts: [], quotationDeletes: [] };
   const maybeSingle = (data) => ({ maybeSingle: async () => ({ data, error: null }) });
   return {
@@ -556,7 +557,6 @@ function draftDb({ products = [], projectRows = [], lineInsertError = MONEY_RULE
         };
       }
       if (table === 'product_types') return { select: async () => ({ data: [], error: null }) };
-      if (table === 'project_products') return { select: () => ({ eq: async () => ({ data: projectRows, error: null }) }) };
       if (table === 'customers') return { select: () => ({ eq: () => maybeSingle({ taxId: null, nameEn: null, addresses: [], contacts: [] }) }) };
       if (table === 'document_standard_versions') return { select: () => ({ eq: () => ({ eq: () => maybeSingle(null) }) }) };
       if (table === 'quotation_lines') {
@@ -763,16 +763,9 @@ test('สร้างใบ (ช่องเปิดในเทสต์): ห
   assert.deepEqual(db.calls.lineInserts, []);
 });
 
-test('สร้างใบจากบรรทัดของโครงการ (ค่าตั้งต้น = เปิด · และเมื่อส่งช่องเทสต์ true เอง): บรรทัดหมวด 02-001 ที่ระบบตั้งต้นให้ยังไม่ถูกบังคับเลขแพ็ค — ด่านทักตอนบันทึก/ยื่นครั้งถัดไป', async () => {
-  const projectRows = [{ id: 'PP-1', productId: 'P1', orderQty: '12', product: MASTER[0] }];
-  for (const packInputOpen of [true, undefined]) {
-    const db = draftDb({ products: MASTER, projectRows });
-    const error = await rejected(createQuotationDraft({
-      supabase: db, user: USER, deal: DEAL, body: { seedFromProject: true }, ...(packInputOpen ? { packInputOpen } : {}),
-    }));
-    assert.equal(db.calls.lineInserts.length, 1, 'ผ่านด่านเลขแพ็คไปถึง INSERT');
-    const rows = db.calls.lineInserts[0];
-    assert.deepEqual(rows.map((r) => [r.fgCode, r.lineTotal, r.unit, 'packQty' in r]), [[SDS_FG, 42000, 'แพ็คเกจ', false]]);
-    assert.equal(error.message, LINE_PACK_TEXT.moneyRule);
-  }
+test('สร้างใบ: `seedFromProject` ไม่มีผลแล้ว (ทางตั้งต้นจากโครงการถอดในงวด P3b-1) — ไม่อ่าน project_products · ไม่มีบรรทัด', async () => {
+  const db = draftDb({ products: MASTER });
+  await rejected(createQuotationDraft({ supabase: db, user: USER, deal: DEAL, body: { seedFromProject: true } }));
+  assert.equal(db.calls.tables.includes('project_products'), false, 'ไม่แตะตารางของโครงการ');
+  assert.deepEqual(db.calls.lineInserts, [], 'ใบเปล่า ไม่มีบรรทัดที่ระบบตั้งต้นให้');
 });

@@ -116,7 +116,9 @@ function scentSegment(scent, orderId) {
   };
 }
 
-function deliverySegment(readiness, projectId, hasSupplyChain) {
+/* ⚠️ ไม่มีลิงก์ "ผูกที่ไทม์ไลน์โครงการ" / "จัดการที่โครงการ" แล้ว (งวด P3b-1 ยุบโครงการ 16/11/2026) — ที่จัดการของเข้า
+   (พาเนลบนหน้าโครงการ + route `api/pm/projects/[id]/deliveries/**`) ถูกถอดหมด · ช่วงนี้อ่านอย่างเดียว */
+function deliverySegment(readiness, hasSupplyChain) {
   if (!hasSupplyChain) return null;
   if (!readiness || readiness.state === 'unknown') {
     return {
@@ -125,8 +127,8 @@ function deliverySegment(readiness, projectId, hasSupplyChain) {
       state: 'todo',
       connect: {
         message: 'ยังไม่ผูกรายการของเข้ากับใบนี้',
-        actionLabel: 'ผูกที่ไทม์ไลน์โครงการ',
-        href: projectId ? `/sa/projects/${projectId}?tab=timeline` : null,
+        actionLabel: null,
+        href: null,
       },
     };
   }
@@ -142,7 +144,7 @@ function deliverySegment(readiness, projectId, hasSupplyChain) {
     steps: markSteps(DELIVERY_STEPS, DELIVERY_LABELS, activeIndex, { late: readiness.state === 'blocked' }),
     statusLabel: readiness.label,
     meta: readiness.total ? `มาแล้ว ${readiness.arrived}/${readiness.total}` : null,
-    link: projectId ? { label: 'จัดการที่โครงการ', href: `/sa/projects/${projectId}?tab=timeline` } : null,
+    link: null,
   };
 }
 
@@ -549,7 +551,7 @@ const EXCISE_QUOTE_STATUS_TEXT = (quote) => {
  * ประเภทใหม่ที่ยังไม่ได้นิยามสายงานไปโผล่ช่วงที่ไม่ใช่ของมันเงียบ ๆ
  */
 export function salesOrderWorkTrack({
-  scent, readiness, plan, excise, orderId, projectId, dealType, approved = false,
+  scent, readiness, plan, excise, orderId, dealType, approved = false,
   /* ⛔ โมดูลวางแผนผลิตปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) ⇒ ไม่มีช่วง "ผลิต"
      — ช่วงนั้นชวนกด "เปิดคิวงานผลิต" ไปหน้าที่ปิดแล้ว · ของเข้ายังอยู่ (ข้อมูลของใบเอง)
      ผู้เรียกไม่ต้องส่ง · เทสต์ส่ง `true` เพื่อล็อกพฤติกรรมไว้สำหรับวันที่เปิดคืน */
@@ -560,7 +562,7 @@ export function salesOrderWorkTrack({
     scentSegment(scent, orderId),
     // ⭐ ขึ้นทะเบียนอยู่ **ก่อน** ของเข้า/ผลิต — ทะเบียนต้องอนุมัติก่อนผลิตและส่งของจริง
     registrationSegment(excise),
-    deliverySegment(readiness, projectId, hasSupplyChain),
+    deliverySegment(readiness, hasSupplyChain),
     productionOpen ? productionSegment(plan, { approved, hasSupplyChain }) : null,
     // ⭐ ยื่นชำระอยู่ท้ายสุดเสมอ — ยื่นหลังขายจริง
     filingSegment(excise, { approved }),

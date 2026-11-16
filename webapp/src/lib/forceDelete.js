@@ -220,16 +220,6 @@ export async function cleanupDealOrphans(supabase, dealId, { auditRequests = nul
   if (parentError) throw new Error(`ปลดดีลลูกออกจากดีลนี้ไม่สำเร็จ: ${parentError.message}`);
 }
 
-// ── PROJECT ───────────────────────────────────────────────────────────
-// ลูกโครงการที่ไม่มี FK จริง เพิ่มเติมจาก deleteProjectDeep (ซึ่งเก็บ
-// personal_tasks + project_doc_revisions + dept_requests ให้แล้ว): ทะเบียนสรรพสามิต
-// (mig 0066 — ไม่มี FK) ปกติถูก "บล็อก" การลบ; เมื่อ force ผู้ดูแลเลือกลบพ่วง.
-export async function forceDeleteProjectExcise(supabase, projectId) {
-  // ต้องโยน — ผู้เรียกลบโครงการต่อทันที ลบทะเบียนไม่ลงแล้วเดินต่อ = ทะเบียนกำพร้า (ไม่มี FK)
-  const { error } = await supabase.from('excise_registrations').delete().eq('projectId', projectId);
-  if (error) throw new Error(`ลบทะเบียนสรรพสามิตของโครงการไม่สำเร็จ: ${error.message}`);
-}
-
 // ── ใบยื่นชำระภาษี: ด่านที่ break-glass ก็ข้ามไม่ได้ ────────────────────────
 // orders."salesOrderId" เป็น FK ON DELETE RESTRICT (mig 0160) และ RPC บังคับลบ
 // (force_delete_sales_order / force_delete_quotation, mig 0152/0168) ไม่ได้ล้าง

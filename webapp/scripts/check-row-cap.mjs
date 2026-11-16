@@ -41,6 +41,9 @@ const ROOT = process.cwd();
  * 2026-08-27 — sales_deals 34→33 หลังถอดสาขา `project_tasks` ออกจาก `/api/pm/my-work`
  * (ไม่มีจอไหนอ่านผลนั้นแล้วตั้งแต่ cb3f37a0 — ดูหัวไฟล์ route นั้น) · ตัวอ่าน
  * `project_tasks` เองห่อ `fetchAllResult` อยู่แล้ว ด่านนี้จึงไม่เคยนับ เพดานไม่ขยับ */
+/* 2026-11-16 — ยุบโครงการ P3b-1: ลบ route ที่เหลือของหน้าโครงการ (`api/pm/projects/[id]/**` · next-code ·
+   excise-registrations/from-project · lib/pm/deliveriesRepo) + เลิกอ่านโครงการเพื่อสายธุรกิจ/ป้าย ⇒ project_tasks 14→9 ·
+   personal_tasks 10→9 · sales_deals 26→19 · projects 5→3 · dept_requests 11→8 · sales_orders 10→8 · attachments 4→3 */
 /* 2026-11-16 — ยุบโครงการ P3a: ลบหน้า/route โครงการ (/sa/projects · create/link-project ของดีลและ PO สหมิตร ·
    backfill-projects · dealProjectLink/Move) ⇒ project_tasks 19→14 · sales_deals 27→26 · projects 6→5 · sahamit_po_lines 11→9 */
 /* 2026-09-16 — project_tasks 20→19 หลังหน้ารายการดีล (`api/sales-planning/deals`) ห่อ fetchInChunks + fetchAllResult
@@ -60,15 +63,15 @@ const CAPS = {
      (`.insert(rows).select()`) และจุดที่ห่อ `fetchAll` ไว้บรรทัดก่อนหน้า เป็นความผิด
      ⇒ ตัวเลขบวมเกินจริงจนหกตารางขึ้นไปเกินเพดานเองโดยที่ไม่มีใครเพิ่มจุดอ่านใหม่เลย
      เทียบก่อน/หลังแก้ตัวนับ: sales_deals 39→34 · project_tasks 29→21 · personal_tasks 15→10 */
-  project_tasks: 14,            // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
+  project_tasks: 9,             // 4,653 แถว — เกินเพดานแล้ว (ทุกจุดอ่านมีขอบเขตครบ)
   notifications: 0,             // 3,392 แถว — เกินแล้ว แต่ทุก query กรอง userId + มี limit/cursor
-  personal_tasks: 10,           // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
-  sales_deals: 26,              // 353 · 27 → 26 (2026-11-16 ยุบโครงการ P3a) · 28 → 27 (2026-09-25: cascade FC% ของ NPD อ่านดีลทั้งโครงการผ่าน fetchAll — lib/sales/dealProbability.js)
+  personal_tasks: 9,            // 1,165 แถว — เกินแล้ว (ข้ามพันระหว่าง 16→25/08)
+  sales_deals: 19,              // 353 · 26 → 19 (2026-11-16 ยุบโครงการ P3b-1) · 27 → 26 (2026-11-16 ยุบโครงการ P3a) · 28 → 27 (2026-09-25: cascade FC% ของ NPD อ่านดีลทั้งโครงการผ่าน fetchAll — lib/sales/dealProbability.js)
   products: 21,                 // 281 — ต้นทาง dropdown สินค้าทุกช่องในระบบ · 24 → 22 (ม-150: ด่าน 1 สูตร : 1 FG ถอดแล้ว + attachFormulaUsage ซอยก้อน) · 22 → 21 (2026-11-02 v3 สรรพสามิต: ถอดทางแก้รายการของ PATCH ใบยื่น)
   quotations: 6,                // 198
   customers: 6,                 // 181 — ต้นทาง dropdown ลูกค้าทุกช่องในระบบ · 7 → 6 (2026-09-26 กำหนดวางบิล: ทะเบียนการชำระ FN อ่านลูกค้าแบบแบ่งหน้า)
-  projects: 5,                  // 155 · 6 → 5 (2026-11-16 ยุบโครงการ P3a: ลบหน้า/route โครงการ) · 7 → 6 (2026-11-13 หน้าลูกค้าศูนย์รวม H1: ถอดการอ่านโครงการของลูกค้าออกจาก customerRelations)
-  dept_requests: 11,            // 74 · 188 (2026-09-11) · 12 → 11 (2026-11-15 รูดตามของจริงตอนงวด P2d ยุบดีล/โครงการ)
+  projects: 3,                  // 155 · 5 → 3 (2026-11-16 ยุบโครงการ P3b-1) · 6 → 5 (2026-11-16 ยุบโครงการ P3a: ลบหน้า/route โครงการ) · 7 → 6 (2026-11-13 หน้าลูกค้าศูนย์รวม H1: ถอดการอ่านโครงการของลูกค้าออกจาก customerRelations)
+  dept_requests: 8,             // 74 · 188 (2026-09-11) · 11 → 8 (2026-11-16 ยุบโครงการ P3b-1) · 12 → 11 (2026-11-15 รูดตามของจริงตอนงวด P2d ยุบดีล/โครงการ)
   /* ⚠️ **ขึ้นทะเบียนตอนยังไม่เจ็บ** (2026-09-08 · mig 0350) — 30 แถววันนี้ แต่มันโต
      ตามธุรกรรม (ใบพัฒนากลิ่นละไม่เกิน 40 ก้อน · ไม่มีวันหยุดโต) และรอบนี้เป็น
      **ครั้งแรกที่มีจุดอ่านข้ามใบ** (ตารางงานผู้ปรุงกลิ่น) ⇒ ลงทะเบียนไว้เพื่อบังคับให้
@@ -80,14 +83,14 @@ const CAPS = {
      ⇒ **ตัวนั้นคือหนี้จริง** ที่เพดานนี้ตรึงไว้ให้ไม่โตต่อ (ต้องห่อ fetchAllInChunks
      วันที่ทะเบียนกลิ่นแตะพัน) */
   dept_request_scents: 4,       // 30
-  sales_orders: 10,             // 74
+  sales_orders: 8,              // 74 · 10 → 8 (2026-11-16 ยุบโครงการ P3b-1)
   sales_leads: 6,               // 181
   /* ⚠️ 0 แถววันนี้ แต่ชีต Stock-Machine.xlsx ที่รอนำเข้ามี **1,239 เครื่อง** ⇒ เกิน
      เพดาน 1,000 ตั้งแต่แถวแรกที่ลง · ขึ้นทะเบียนไว้ตั้งแต่ยังว่างเพื่อให้ทุกจุดอ่าน
      ใหม่ถูกบังคับให้ห่อ fetchAll ตั้งแต่ต้น ไม่ใช่ไปไล่ตามหลังตอนตัวเลขเพี้ยนแล้ว
      (mig 0332 · เฟส A ของทะเบียนเครื่อง) */
   service_assets: 0,
-  attachments: 4,
+  attachments: 3,               // 4 → 3 (2026-11-16 ยุบโครงการ P3b-1: เอกสารร่วมของโครงการใน documents/all)
   sahamit_po_lines: 9,          // 11 → 9 (2026-11-16 ยุบโครงการ P3a: ลบ create-project/link-project ของ PO)
   sahamit_forecast_lines: 10,
   sahamit_pos: 6,

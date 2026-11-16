@@ -43,7 +43,6 @@ const deleteBlockerOf = (row) => productCategoryDeleteBlocker(row, {
 const usageText = (usage = {}) => [
   usage.products ? `${usage.products} สินค้า` : null,
   usage.deals ? `${usage.deals} ดีล` : null,
-  usage.projects ? `${usage.projects} โครงการ` : null,
 ].filter(Boolean).join(" · ") || "ยังไม่ถูกใช้งาน";
 
 export default function ProductCategoriesPage() {
@@ -449,7 +448,6 @@ export default function ProductCategoriesPage() {
               <h3>การใช้งานปัจจุบัน</h3>
               <div><span>สินค้า</span><strong>{drawer.row.usage?.products || 0}</strong></div>
               <div><span>ดีล</span><strong>{drawer.row.usage?.deals || 0}</strong></div>
-              <div><span>โครงการ</span><strong>{drawer.row.usage?.projects || 0}</strong></div>
               <p>การพักใช้ไม่ลบข้อมูลเดิม แต่จะไม่ให้เลือกหมวดนี้สำหรับงานใหม่</p>
             </section>
           )}

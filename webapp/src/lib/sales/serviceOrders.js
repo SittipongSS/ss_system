@@ -112,13 +112,13 @@ export const hasServicePackageLine = (lines = [], order = null) =>
 
 const oneEntryMap = (row) => (row?.id ? new Map([[row.id, row]]) : new Map());
 
-/* สายธุรกิจของใบ — **ยืมตัวตัดสินเดียวของระบบ** (`orderBusinessLine`: โครงการก่อน แล้วดีล)
+/* สายธุรกิจของใบ — **ยืมตัวตัดสินเดียวของระบบ** (`orderBusinessLine`: สายของดีล)
    ต่างกันแค่ทางเข้า: คิวงานมี Map ของหลายใบอยู่แล้ว ส่วนหน้ารายละเอียดมีแค่ก้อน
-   `order.project` / `order.deal` ที่ API แนบมาให้ใบเดียว ⇒ ห่อเป็น Map ชั่วคราวให้แทน
-   ⚠️ ห้ามเขียนลำดับ "โครงการก่อนแล้วดีล" ขึ้นใหม่ที่นี่ — วันหนึ่งสองที่จะตอบไม่ตรงกัน */
+   `order.deal` ที่ API แนบมาให้ใบเดียว ⇒ ห่อเป็น Map ชั่วคราวให้แทน
+   ⚠️ ห้ามเขียนกติกาสายขึ้นใหม่ที่นี่ — วันหนึ่งสองที่จะตอบไม่ตรงกัน
+   (ก้อน `order.project` / `ctx.projectsById` ไม่มีผลแล้วตั้งแต่งวด P3b-1 ยุบโครงการ — ดู `orderBusinessLine`) */
 export function orderBusinessLineOf(order, ctx = {}) {
   return orderBusinessLine(order, {
-    projectsById: ctx.projectsById || oneEntryMap(order?.project),
     dealsById: ctx.dealsById || oneEntryMap(order?.deal),
   });
 }

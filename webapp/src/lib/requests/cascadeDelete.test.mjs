@@ -9,7 +9,6 @@ import {
   requestsLinkedTo, snapshotRequestsForAudit, requestCascadeSummary,
 } from './cascadeDelete.js';
 import { cleanupDealOrphans } from '../forceDelete.js';
-import { deleteProjectDeep } from '../pm/projectsRepo.js';
 
 const SENT_AT = '2026-09-03T05:03:25Z';
 
@@ -159,20 +158,6 @@ test('cleanupDealOrphans: snapshot อ่านไม่ขึ้น = หยุ
   assert.ok(!log.some((l) => l.startsWith('rpc:')), 'ห้ามลบคำร้องเมื่อไม่มี snapshot');
 });
 
-test('deleteProjectDeep: audit ของคำร้องต้องเขียนก่อนกวาดเธรดและก่อนลบคำร้อง', async () => {
-  const log = [];
-  const db = fakeDb({ tables: { dept_requests: [REQUEST], entity_updates: [THREAD] }, log });
-  let audited = null;
-  await deleteProjectDeep(db, 'P1', {
-    auditRequests: async (rows) => { log.push('audit'); audited = rows; },
-  });
-  assert.equal(audited?.[0]?.id, 'DR-1');
-  assert.deepEqual(audited[0].thread.map((p) => p.id), ['U1']);
-  const at = (entry) => log.indexOf(entry);
-  assert.ok(at('audit') < at('delete:entity_updates'), log.join(' → '));
-  assert.ok(at('audit') < at('rpc:force_delete_dept_request:DR-1'), log.join(' → '));
-});
-
 // ── ratchet: route ต้องต่อด่าน + audit ไว้จริง (ตัดคอมเมนต์ก่อน ไม่งั้นจับคำในคำอธิบาย) ──
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const codeOnly = (rel) => readFileSync(join(SRC, rel), 'utf8')
@@ -181,7 +166,7 @@ const codeOnly = (rel) => readFileSync(join(SRC, rel), 'utf8')
 
 for (const [rel, column, owner, cleanup] of [
   ['app/api/sales-planning/deals/[id]/route.js', 'dealId', 'ดีล', 'cleanupDealOrphans'],
-  ['app/api/pm/projects/[id]/route.js', 'projectId', 'โครงการ', 'deleteProjectDeep'],
+  /* เส้นลบโครงการ (`api/pm/projects/[id]` · deleteProjectDeep) ถูกถอดในงวด P3b-1 — โครงการเป็นคลังอ่านอย่างเดียว (มติ 16/11/2026) */
 ]) {
   test(`${rel}: ด่านคำร้องที่ส่งแล้วต้องอยู่ก่อน ${cleanup} และ ${cleanup} ต้องได้ auditRequests`, () => {
     const src = codeOnly(rel);

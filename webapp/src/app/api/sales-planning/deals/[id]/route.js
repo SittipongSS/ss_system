@@ -566,7 +566,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // เฟส B: เลิก sync ชื่อดีล→ชื่อโครงการ — โครงการมีได้หลายดีล ชื่อไม่ผูกกันอีกต่อไป
-  // (ฝั่งโครงการ→ดีล ตัดคู่กันใน api/pm/projects/[id]/route.js)
+  // (ฝั่งโครงการ→ดีล ตัดคู่กันแล้ว — route แก้โครงการ `api/pm/projects/[id]` ถอดในงวด P3b-1 ยุบโครงการ)
 
   /* 🐞 เดิมไม่รับ error — insert พัง = ขั้นใน DB เปลี่ยนแล้ว แต่เส้นเรื่องของดีลไม่มี
      บรรทัดนี้ และ `daysInStage` (นับจาก stageHistory[0]) ไปนับจากการเปลี่ยนครั้งก่อน
@@ -648,7 +648,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 // forecast_lines cascade เองผ่าน FK). โครงการ PM ที่ผูกอยู่ "ไม่ลบตาม" — โครงการเป็น
 // เอนทิตีใหญ่กว่าและมีได้หลายดีล (เฟส B) อาจมีดีลอื่นมาผูกแทน แม้เป็นดีลสุดท้ายก็ปล่อย
 // โครงการว่างดีลไว้ได้; ลบดีลจึงแค่ถอด timeline segment ของดีลนี้ออกจากโครงการ.
-// การลบโครงการเองทำที่ /api/pm/projects/[id]. กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
+// โครงการลบจากแอปไม่ได้แล้ว (route `api/pm/projects/[id]` ถอดในงวด P3b-1 — คลังอ่านอย่างเดียว). กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();

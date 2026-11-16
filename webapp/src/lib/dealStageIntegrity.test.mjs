@@ -85,15 +85,4 @@ test('ทุกเส้นทางที่ขยับ stage เขียน�
   }
 });
 
-// ── metadata ของโครงการ: merge ไม่ใช่ replace ────────────────────────────
-// เหตุผลเดียวกับ PATCH ดีล (ซึ่งแก้ไปแล้ว): กุญแจที่ route อื่นเขียนไว้ —
-// `dealOrder` (PUT /deal-order) และ `salesDealId`/`source` (create-project) —
-// จะหลุดหายเงียบ ๆ ถ้า PATCH เขียนทับทั้งก้อนจากสิ่งที่ client ส่งมา
-test('PATCH โครงการต้อง merge metadata ทับของเดิม ไม่ใช่เขียนทับทั้งก้อน', () => {
-  const src = read('app/api/pm/projects/[id]/route.js');
-  assert.match(
-    src,
-    /updates\.metadata\s*=\s*\{\s*\.\.\.\(project\.metadata \|\| \{\}\),\s*\.\.\.updates\.metadata\s*\}/,
-    'metadata ต้อง merge จาก project.metadata เดิมก่อนเขียน',
-  );
-});
+// (ด่าน "PATCH โครงการ merge metadata" ถอดพร้อม route `api/pm/projects/[id]` — งวด P3b-1 ยุบโครงการ: โครงการแก้จากแอปไม่ได้แล้ว)

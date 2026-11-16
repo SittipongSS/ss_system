@@ -120,8 +120,9 @@ function world(over = {}) {
       { id: 'C2', arCode: 'AR-0790', name: 'บริษัท เอ (สาขา)', taxId: TAX, branchCode: '00001', isActive: true, isForeign: false, approvalStatus: 'approved', billingRule: null },
       { id: 'C3', arCode: 'AR-0999', name: 'บริษัท อื่น', taxId: '0105556000999', branchCode: '00000', isActive: true, isForeign: false, approvalStatus: 'approved', billingRule: null },
     ],
-    projects: [{ id: 'PJ1', line: 'SERVICE' }],
-    sales_deals: [{ id: 'DL1', line: 'PRODUCT' }],
+    // ⚠️ โครงการ PRODUCT ต้องไม่ถูกอ่าน — สายของใบมาจากดีล (งวด P3b-1 ยุบโครงการ)
+    projects: [{ id: 'PJ1', line: 'PRODUCT' }],
+    sales_deals: [{ id: 'DL1', line: 'SERVICE' }],
     sales_order_lines: [
       line('L2', 2, { serviceKind: 'package', serviceProductId: 'P1', serviceFgCode: 'FG-0100-02-001-00001', serviceRounds: 12 }),
       line('L1', 1, { fgCode: 'FG-0100-03-002-00009', productId: 'P9', description: 'ค่าขนส่ง' }),
@@ -183,7 +184,7 @@ function world(over = {}) {
 
 /* ── บริบทเต็ม ─────────────────────────────────────────────────────────────────────────────────────────── */
 
-test('loadServiceSetupContext — บริบทเต็มตามรูปของแผน · บรรทัดเรียงตาม sortOrder มีเลขรายการ · สายจากโครงการ', async () => {
+test('loadServiceSetupContext — บริบทเต็มตามรูปของแผน · บรรทัดเรียงตาม sortOrder มีเลขรายการ · สายจากดีล', async () => {
   const { client, calls } = fakeSupabase(world());
   const order = baseOrder({ revisedFromId: 'SO0' });
   const ctx = await loadServiceSetupContext(client, order, { withFgOptions: true, todayIso: TODAY });
@@ -206,9 +207,11 @@ test('loadServiceSetupContext — บริบทเต็มตามรูป�
   assert.deepEqual(ctx.siblingSites, [{ customerId: 'C2', arCode: 'AR-0790', siteCount: 1 }]);
   assert.equal(ctx.unsaved, false);
 
-  /* สายธุรกิจ: โครงการ SERVICE ชนะดีล PRODUCT · บริบทพูดตรงกับตัวตัดสินของ U2a */
+  /* สายธุรกิจ: ดีล SERVICE (โครงการไม่ถูกอ่าน · งวด P3b-1) · บริบทพูดตรงกับตัวตัดสินของ U2a */
   assert.equal(ctx.order.businessLine, 'SERVICE');
-  assert.deepEqual(ctx.order.project, { id: 'PJ1', line: 'SERVICE' });
+  assert.deepEqual(ctx.order.deal, { id: 'DL1', line: 'SERVICE' });
+  assert.equal(calls.some((c) => c.table === 'projects'), false, 'ไม่อ่านตาราง projects');
+  assert.equal('project' in ctx.order, false, 'ไม่แนบก้อนโครงการให้ใบ');
   assert.equal(serviceSetupRequired(ctx.order, ctx), true);
   assert.equal(serviceSetupFlow(ctx.order, ctx), 'pipeline');
   assert.equal(order.businessLine, undefined, 'ไม่แก้วัตถุของผู้เรียก');
@@ -245,19 +248,19 @@ test('loadServiceSetupContext — ส่ง lines มาเอง = ไม่อ
   assert.equal(given[0].lineNo, undefined);
 });
 
-test('loadServiceSetupContext — ใช้โครงการ/ดีลที่แนบมากับใบเมื่อมีค่า line · ขาด line = อ่านเอง', async () => {
+test('loadServiceSetupContext — ใช้ดีลที่แนบมากับใบเมื่อมีค่า line · ขาด line = อ่านเอง · ก้อนโครงการที่แนบมาไม่มีผล', async () => {
   const attached = fakeSupabase(world());
-  const order = baseOrder({ project: { id: 'PJ1', code: 'PJ-1', line: 'PRODUCT' }, deal: { id: 'DL1', ownerId: 'U1', line: 'SERVICE' } });
+  const order = baseOrder({ project: { id: 'PJ1', code: 'PJ-1', line: 'SERVICE' }, deal: { id: 'DL1', ownerId: 'U1', line: 'PRODUCT' } });
   const ctx = await loadServiceSetupContext(attached.client, order, { todayIso: TODAY });
   assert.equal(attached.calls.some((c) => c.table === 'projects' || c.table === 'sales_deals'), false);
-  assert.equal(ctx.order.businessLine, 'PRODUCT');
+  assert.equal(ctx.order.businessLine, 'PRODUCT', 'สายของดีล — โครงการ SERVICE ที่แนบมาไม่ทับ (งวด P3b-1)');
   assert.equal(ctx.order.deal.ownerId, 'U1', 'ก้อนดีลเดิมคงอยู่');
   assert.equal(serviceSetupRequired(ctx.order, ctx), false);
 
-  /* loadScoped แนบดีลมาเต็ม แต่ไม่มีโครงการ ⇒ อ่านโครงการเอง */
+  /* loadScoped แนบดีลมาเต็ม (มี line) ⇒ ไม่อ่านอะไรเพิ่ม · ไม่ไปอ่านโครงการ */
   const scoped = fakeSupabase(world());
-  const ctx2 = await loadServiceSetupContext(scoped.client, baseOrder({ deal: { id: 'DL1', line: 'PRODUCT', team: 'A' } }), { todayIso: TODAY });
-  assert.deepEqual(scoped.calls.filter((c) => c.table === 'projects' || c.table === 'sales_deals').map((c) => c.table), ['projects']);
+  const ctx2 = await loadServiceSetupContext(scoped.client, baseOrder({ deal: { id: 'DL1', line: 'SERVICE', team: 'A' } }), { todayIso: TODAY });
+  assert.deepEqual(scoped.calls.filter((c) => c.table === 'projects' || c.table === 'sales_deals').map((c) => c.table), []);
   assert.equal(ctx2.order.businessLine, 'SERVICE');
   assert.equal(serviceSetupRequired(ctx2.order, ctx2), true);
 
@@ -340,7 +343,7 @@ test('อ่านพังที่ไหน = throw ข้อความไ�
     ['การจัดสรรโซน', (s) => s.table === 'sales_order_line_zones', /อ่านโซนที่ตั้งไว้ของใบนี้ไม่สำเร็จ/],
     ['โซน', (s) => s.table === 'service_zones', /อ่านโซนในทะเบียนไม่สำเร็จ/],
     ['ไซต์', (s) => s.table === 'service_sites' && s.select.includes('code'), /อ่านไซต์ในทะเบียนไม่สำเร็จ/],
-    ['โครงการ', (s) => s.table === 'projects', /อ่านสายธุรกิจของใบไม่สำเร็จ/],
+    ['ดีล', (s) => s.table === 'sales_deals', /อ่านสายธุรกิจของใบไม่สำเร็จ/],
     ['งวด', (s) => s.table === 'sales_order_installments', /อ่านงวดชำระไม่สำเร็จ/],
     ['รอบวางบิล', (s) => s.table === 'customers' && s.select.includes('billingRule'), /อ่านรอบวางบิลของลูกค้าไม่สำเร็จ/],
     ['สัญญา', (s) => s.table === 'sales_contracts', /อ่านสัญญาที่ผูกกับใบไม่สำเร็จ/],

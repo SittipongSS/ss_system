@@ -1,12 +1,7 @@
 // Data-access helpers for PM projects — mirrors the lib/master/* repo pattern.
 // Routes should load projects / team scope / next code through here instead of
 // re-querying Supabase inline (which had drifted into 3 divergent copies).
-import { purgeUpdatesMany } from '@/lib/master/updates';
 import { userTeams } from '@/lib/permissions';
-import { purgeAttachments } from '@/lib/master/attachments';
-import { fetchAllResult } from '@/lib/supabaseFetchAll';
-import { runSteps } from '@/lib/supabaseWriteBatch';
-import { snapshotRequestsForAudit } from '@/lib/requests/cascadeDelete';
 
 // Resolve a URL segment to a project. Internal ids ('PRJ-######') and human
 // project codes ('PJ-YYMMNNN') never collide, so accept either: try id first,
@@ -36,88 +31,8 @@ export async function teamProjectIds(supabase, team) {
   return (data || []).map((p) => p.id);
 }
 
-// Whether a project has excise registrations pointing at it. excise_registrations
-// .projectId is a *logical* link (no FK, migration 0066) so deleting the project
-// would silently orphan tax records — callers block deletion when this is true.
-export async function projectHasExciseRegistrations(supabase, projectId) {
-  const { count, error } = await supabase
-    .from('excise_registrations')
-    .select('id', { count: 'exact', head: true })
-    .eq('projectId', projectId);
-  if (error) throw error;
-  return (count || 0) > 0;
-}
-
-// Delete a project and every child row it owns. FK ON DELETE CASCADE already
-// removes project_tasks / project_products / shipment_prep(+lines); sahamit_pos
-// .projectId is SET NULL. But personal_tasks, project_doc_revisions, dept_requests
-// AND material_deliveries link by a *logical* projectId (no FK, migrations
-// 0019/0040/0104/0176) so we clear them by hand first — otherwise they dangle. dept_requests also own their thread
-// + back-linked personal_tasks (both no-FK), removed transitively. Caller is
-// responsible for permission + blocker checks (see projectHasExciseRegistrations).
-// Returns the removed child counts.
-// `auditRequests(rows)` = caller writes one audit row per dept_request (full row + thread)
-// before anything is purged — requests used to vanish with the project leaving no trace.
-export async function deleteProjectDeep(supabase, projectId, { auditRequests = null } = {}) {
-  const [{ count: taskCount }, { count: revCount }] = await Promise.all([
-    supabase.from('personal_tasks').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
-    supabase.from('project_doc_revisions').select('id', { count: 'exact', head: true }).eq('projectId', projectId),
-  ]);
-  /* 🐞 ทุกขั้นข้างล่างเคย "สั่งแล้วไม่ดูผล" (supabase ไม่ throw) — ขั้นไหนพังก็เดินต่อจน
-     ลบแถวโครงการทิ้ง ⇒ **โครงการหายแต่ลูกที่ไม่มี FK ค้างเป็นกำพร้า** ชี้ไปหาโครงการที่
-     ไม่มีแล้ว และระบบไม่มีถังขยะให้กู้ · อ่านที่พังก็อันตรายเท่ากัน: อ่านรายการคำร้อง
-     ไม่ขึ้น = ได้ลิสต์ว่าง = ข้ามทั้งช่วงไปลบโครงการเลย
-     ⇒ อ่านต้องโยน · เขียนต้องผ่าน runSteps ที่หยุดทันทีก่อนถึงแถวโครงการ */
-  // Logical-link children: remove before the project row disappears.
-  /* ไฟล์แนบของงานใต้โครงการต้องไปก่อนแถว — polymorphic ไม่มี FK cascade
-     (เส้นลบงานทีละใบเรียก purgeAttachments อยู่แล้ว เส้นชุดนี้เคยหลุด) */
-  {
-    // ⚠️ ไล่ทีละหน้า — เหตุผลเดียวกับ forceDelete: ตัดที่ 1,000 = ไฟล์แนบค้างกำพร้า
-    const { data: tasks, error: tasksError } = await fetchAllResult(() => supabase
-      .from('personal_tasks').select('id').eq('projectId', projectId).order('id', { ascending: true }));
-    if (tasksError) throw tasksError;
-    for (const task of tasks || []) await purgeAttachments('personal_task', task.id, supabase);
-  }
-  await runSteps([
-    ['ลบงานใต้โครงการ', () => supabase.from('personal_tasks').delete().eq('projectId', projectId)],
-    ['ลบประวัติเอกสารโครงการ', () => supabase.from('project_doc_revisions').delete().eq('projectId', projectId)],
-    // ของเข้า (mig 0176) — projectId เป็น logical link ไม่มี FK เช่นกัน
-    ['ลบรายการของเข้า', () => supabase.from('material_deliveries').delete().eq('projectId', projectId)],
-  ]);
-  // dept_requests.projectId is a no-FK logical link (mig 0173) — clean the thread +
-  // its messages + any task created from it, else they orphan silently.
-  const { data: inqs, error: inqsError } = await supabase.from('dept_requests').select('id').eq('projectId', projectId);
-  if (inqsError) throw inqsError;
-  const inquiryIds = (inqs || []).map((r) => r.id);
-  if (inquiryIds.length) {
-    // snapshot ก่อนกวาดเธรด — กวาดแล้วค่อยอ่าน = audit ได้เธรดว่าง
-    if (auditRequests) await auditRequests(await snapshotRequestsForAudit(supabase, inquiryIds));
-    // เธรดเป็น polymorphic ไม่มี FK — กวาดเอง (บรรทัด/ชั้นจำนวนมี FK CASCADE แล้ว)
-    await purgeUpdatesMany(supabase, 'dept_request', inquiryIds);
-    {
-      const { data: tasks, error: inqTasksError } = await fetchAllResult(() => supabase
-        .from('personal_tasks').select('id').in('inquiryId', inquiryIds).order('id', { ascending: true }));
-      if (inqTasksError) throw inqTasksError;
-      for (const task of tasks || []) await purgeAttachments('personal_task', task.id, supabase);
-    }
-    await runSteps([
-      ['ลบงานที่เกิดจากคำร้อง', () => supabase.from('personal_tasks').delete().in('inquiryId', inquiryIds)],
-      // ⚠️ guard_dept_request บล็อกการลบคำร้องที่ส่งแล้ว — ต้องผ่าน RPC ทีละใบ
-      ...inquiryIds.map((requestId) => [
-        `ลบคำร้อง ${requestId}`,
-        () => supabase.rpc('force_delete_dept_request', { p_id: requestId }),
-      ]),
-    ]);
-  }
-  // เธรดของตัวโครงการเอง (entity_updates + notifications) — polymorphic ไม่มี FK
-  // เช่นกัน ไม่กวาด = กระดิ่งเหลือแถวที่กดแล้วไปเจอโครงการที่ไม่มีแล้ว
-  await purgeUpdatesMany(supabase, 'project', [projectId]);
-  // เอกสารร่วมของโครงการ (entityType `project`) — กวาดก่อนแถวหาย
-  await purgeAttachments('project', projectId, supabase);
-  const { error } = await supabase.from('projects').delete().eq('id', projectId);
-  if (error) throw error;
-  return { personalTasks: taskCount || 0, docRevisions: revCount || 0, inquiries: inquiryIds.length };
-}
+/* ⚠️ งวด P3b-1 (ยุบโครงการ 16/11/2026): `deleteProjectDeep` + `projectHasExciseRegistrations` ถูกถอดพร้อม route
+   `DELETE /api/pm/projects/[id]` — โครงการเป็นคลังอ่านอย่างเดียวตามมติเจ้าของ 16/11 ไม่มีทางลบจากแอปแล้ว */
 
 // รหัสโครงการฐาน PJ-YYMMXXXX (เลขรัน 4 หลัก ต่อเดือน — mig 0096)
 // แสดงเป็น PJ-YYMMXXXX-R ที่ฝั่ง UI/เอกสาร (R = currentRev ผ่าน entityCodeDisplay)

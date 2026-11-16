@@ -531,7 +531,7 @@ test('หน้าดีล: ใบรายงวดที่อนุมัต
   const hint = wonDealForecastHint({ deal: { stage: 'won' }, forecast: 350000, actual: 100000, actualCount: 1, instRemaining: 200000 });
   assert.deepEqual(hint.keep, ['นับแล้ว ฿100,000.00', 'รอนับรายงวด ฿200,000.00', 'คาดการณ์ ฿350,000.00', 'ต่างเมื่อนับครบ ฿50,000.00']);
   assert.equal(hint.keep.join(' · '), hint.text);
-  assert.match(code('app/api/pm/projects/[id]/route.js'), /"actualMode", "actualCountedAmount", "actualSubmittedAmount"/, 'select ของโครงการพก cache สามช่อง');
+  // (select ของ `api/pm/projects/[id]` ถอดพร้อม route ในงวด P3b-1 ยุบโครงการ)
 });
 
 /* review รอบสาม 26/10 — สองจอที่นับ/บอกเหตุผิดกอง */

@@ -218,7 +218,6 @@ export default function SalesPlanningPipelinePage() {
   const [dashTargetRows, setDashTargetRows] = useState(0);
   const [docLoading, setDocLoading] = useState(false);
   const [docForm, setDocForm] = useState({ kind: "customer_brief", title: "", status: "pending", dueDate: "", notes: "" });
-  const [shippingDealId, setShippingDealId] = useState(null);
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
   const startRun = useLatestRun();
@@ -609,29 +608,6 @@ export default function SalesPlanningPipelinePage() {
   // เปิดฟอร์มหลักฐาน Won (บังคับแนบสลิป/PO/เอกสารยืนยันสั่งซื้อ + วันที่เอกสาร)
   const acceptQuotation = (quote) => setWonQuote(quote);
 
-  // ส่งต่อคลัง: สร้างเอกสารเตรียมส่งของจากโครงการที่ผูกกับ Sales Planning (idempotent ฝั่ง PM)
-  // แล้วเปิดหน้า PM shipment-prep เพื่อดู/พิมพ์ ส่งให้คลังดำเนินการ.
-  const createShipmentPrep = async (deal) => {
-    if (!deal.projectId) return;
-    if (!(await confirmAction(`สร้างเอกสารเตรียมส่งของจากโครงการ "${deal.title}"?`))) return;
-    setShippingDealId(deal.id);
-    setError("");
-    try {
-      const res = await apiFetch(`/api/pm/projects/${deal.projectId}/shipment-prep`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "สร้างเอกสารส่งของไม่สำเร็จ");
-      window.open(`/sa/projects/${deal.projectId}/shipment-prep`, "_blank", "noopener");
-    } catch (e) {
-      setError(e.message || "สร้างเอกสารส่งของไม่สำเร็จ");
-    } finally {
-      setShippingDealId(null);
-    }
-  };
-
   const loadDocuments = async (deal) => {
     setDocLoading(true);
     setError("");
@@ -665,12 +641,6 @@ export default function SalesPlanningPipelinePage() {
     {
       id: "documents", label: "เอกสาร", icon: Paperclip,
       visible: SALES_FEATURES.documents, onClick: () => openDocuments(deal),
-    },
-    {
-      id: "shipment", label: "เตรียมส่งของ", icon: Truck,
-      visible: SALES_FEATURES.shipment && !!deal.projectId && !!deal.canEdit,
-      disabled: shippingDealId === deal.id,
-      onClick: () => createShipmentPrep(deal),
     },
   ];
 
@@ -849,7 +819,6 @@ export default function SalesPlanningPipelinePage() {
           lifecycle={dealLc}
           record={deal}
           user={viewer}
-          busy={shippingDealId === deal.id}
           recordLabel={deal.title}
           onTransition={(actionId, values) => runDealTransition(deal, actionId, values)}
           canEdit={!!deal.canEdit}
