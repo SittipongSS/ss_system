@@ -38,19 +38,22 @@ test('ผู้รับเรื่อง = คนที่กดรับ · �
   assert.equal(none.label, 'ยังไม่มีคนรับ');
 });
 
-test('⭐ โครงการ — ป้ายมาจากรหัส+ชื่อที่ API แนบมา ไม่ใช่ uuid', () => {
-  const withProject = req({ projectId: 'P-1', projectCode: 'PJ-001', projectName: 'ชุดของขวัญปีใหม่' });
-  assert.deepEqual(requestFacet(withProject, 'project'),
-    { key: 'P-1', label: 'PJ-001 — ชุดของขวัญปีใหม่' });
-  // ใบที่ผูกโครงการที่โดนลบไปแล้ว (มี id ไม่มีชื่อ) ต้องยังเป็นกลุ่มของตัวเอง
-  const orphan = requestFacet(req({ projectId: 'P-9' }), 'project');
-  assert.equal(orphan.key, 'P-9');
-  assert.notEqual(orphan.key, FACET_NONE, 'ผูกโครงการอยู่ ไม่ใช่ "ไม่ผูกโครงการ"');
-  assert.equal(requestFacet(req({ projectId: null }), 'project').key, FACET_NONE);
-  assert.equal(requestFacet(req({ projectId: null }), 'project').label, 'ไม่ผูกโครงการ');
+/* มิติ "โครงการ" ถูกแทนด้วย "ดีล" ในงวด P2d (ยุบดีล/โครงการ · มติเจ้าของ 13/11/2026) */
+test('⭐ ดีล — ป้ายมาจากรหัส+ชื่อที่ API แนบมา ไม่ใช่ id · มิติโครงการไม่อยู่ในตัวเลือกจัดกลุ่มแล้ว', () => {
+  const withDeal = req({ dealId: 'D-1', dealCode: 'DL-001', dealName: 'ชุดของขวัญปีใหม่' });
+  assert.deepEqual(requestFacet(withDeal, 'deal'),
+    { key: 'D-1', label: 'DL-001 — ชุดของขวัญปีใหม่' });
+  // ใบที่ผูกดีลที่โดนลบไปแล้ว (มี id ไม่มีชื่อ) ต้องยังเป็นกลุ่มของตัวเอง
+  const orphan = requestFacet(req({ dealId: 'D-9' }), 'deal');
+  assert.equal(orphan.key, 'D-9');
+  assert.notEqual(orphan.key, FACET_NONE, 'ผูกดีลอยู่ ไม่ใช่ "ไม่ผูกดีล"');
+  assert.equal(requestFacet(req({ dealId: null }), 'deal').key, FACET_NONE);
+  assert.equal(requestFacet(req({ dealId: null }), 'deal').label, 'ไม่ผูกดีล');
   // มีแค่ชื่อหรือแค่รหัสก็อ่านออก
-  assert.equal(requestFacet(req({ projectId: 'P-2', projectName: 'ชุด A' }), 'project').label, 'ชุด A');
-  assert.equal(requestFacet(req({ projectId: 'P-3', projectCode: 'PJ-003' }), 'project').label, 'PJ-003');
+  assert.equal(requestFacet(req({ dealId: 'D-2', dealName: 'ชุด A' }), 'deal').label, 'ชุด A');
+  assert.equal(requestFacet(req({ dealId: 'D-3', dealCode: 'DL-003' }), 'deal').label, 'DL-003');
+  assert.ok(!REQUEST_GROUP_OPTIONS.some((o) => o.value === 'project'));
+  assert.ok(REQUEST_GROUP_OPTIONS.some((o) => o.value === 'deal'));
 });
 
 test('⭐ ตัวเลือกในแผงกรองสร้างจากแถวจริง — ไม่ใช่ทะเบียนทั้งก้อน', () => {
@@ -131,8 +134,8 @@ test('⭐ จัดกลุ่มยึดลำดับแถวที่เ�
 
 test('ทุกตัวเลือกจัดกลุ่มต้องจัดกลุ่มได้จริง — กันตัวเลือกที่ไม่มีคนรองรับ', () => {
   const rows = [
-    req({ projectId: 'P-1', projectName: 'ชุด A' }),
-    req({ id: '2', dept: 'PC', kind: 'scent_dev', customerId: 'C2', acknowledgedById: 'U9', projectId: 'P-2', projectName: 'ชุด B' }),
+    req({ dealId: 'D-1', dealName: 'ชุด A' }),
+    req({ id: '2', dept: 'PC', kind: 'scent_dev', customerId: 'C2', acknowledgedById: 'U9', dealId: 'D-2', dealName: 'ชุด B' }),
   ];
   for (const option of REQUEST_GROUP_OPTIONS) {
     if (option.value === 'none') continue;

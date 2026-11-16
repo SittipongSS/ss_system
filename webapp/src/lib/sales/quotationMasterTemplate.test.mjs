@@ -311,6 +311,7 @@ const QUOTE_WITH_PROJECT = {
   lines: [],
   deal: {
     id: 'DL-1',
+    code: 'DL-26070038',
     title: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
     dealType: 'SCENT',
     project: { id: 'PRJ-1', code: 'PJ-26070038', name: 'Signature Bloom' },
@@ -329,7 +330,9 @@ test('อ้างอิงบนใบเสนอราคา: แยกรห
   assert.ok(!labels.includes('โครงการหลัก'));
   // "ผู้จัดทำ" เป็นช่องเซ็น ไม่ใช่แถวอ้างอิง
   assert.ok(!labels.includes('ผู้จัดทำ'));
-  assert.equal(refRow(model, 'เลขที่โครงการ'), 'PJ-26070038');
+  // เลขที่โครงการ = รหัสดีล (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026) — ไม่ใช่รหัส PJ ของโครงการแม่แม้ดีลอยู่ในโครงการ
+  assert.equal(refRow(model, 'เลขที่โครงการ'), 'DL-26070038');
+  assert.equal(refRow(buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, code: null } }), 'เลขที่โครงการ'), '-');
   assert.equal(refRow(model, 'โครงการ'), 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026');
   assert.equal(refRow(model, 'ประเภทโครงการ'), 'SCENT');
   // เอกสารต้องไม่ยุบ "รหัส · ชื่อ" ไว้แถวเดียวอีก
@@ -483,13 +486,13 @@ test('มีหลักฐานการลงนาม → ช่องผู
 });
 
 test('ประกอบอ้างอิงจากข้อมูลเท่าที่มี ไม่เดาประเภทเอง', () => {
-  // ดีลยังไม่ผูกโครงการ
+  // ดีลไม่มีโครงการ = เลขที่โครงการยังเป็นรหัสดีล (ยุบดีล/โครงการ P2d — เดิมพิมพ์ขีด)
   const noProject = buildQuotationMasterModelFromQuote({ ...QUOTE_WITH_PROJECT, deal: { ...QUOTE_WITH_PROJECT.deal, project: null } });
-  assert.equal(refRow(noProject, 'เลขที่โครงการ'), '-');
-  // โครงการยังไม่มีรหัส (ข้อมูลเก่า) → ช่องรหัสเป็นขีด
+  assert.equal(refRow(noProject, 'เลขที่โครงการ'), 'DL-26070038');
+  // ดีลยังไม่มีรหัส (ข้อมูลเก่าก่อนออกรหัส) → ช่องรหัสเป็นขีด · ไม่ถอยไปใช้รหัส PJ ของโครงการ
   const noCode = buildQuotationMasterModelFromQuote({
     ...QUOTE_WITH_PROJECT,
-    deal: { ...QUOTE_WITH_PROJECT.deal, project: { name: 'Signature Bloom' } },
+    deal: { ...QUOTE_WITH_PROJECT.deal, code: null },
   });
   assert.equal(refRow(noCode, 'เลขที่โครงการ'), '-');
   // ไม่มีดีลเลย

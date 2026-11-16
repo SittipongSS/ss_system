@@ -304,7 +304,7 @@ const BASE_QUOTE = Object.freeze({
   },
   references: {
     // ตัวอย่างต้องมีรูปเดียวกับของจริง — เอกสารแยกรหัส/ชื่อ/ประเภท คนละแถว
-    projectCode: 'PJ-26070038',
+    projectCode: 'DL-26070038',
     projectName: 'Signature Bloom',
     dealTitle: 'ผลิตภัณฑ์น้ำหอมปรับอากาศ 2026',
     dealType: 'SCENT',
@@ -1305,8 +1305,10 @@ export function buildQuotationMasterPreview(
 //    ⇒ แถว "โครงการ" บนใบเสนอราคาพิมพ์ '-' มาตลอด
 // เอกสารแยก รหัสโครงการ / ชื่อโครงการ / ชื่อดีล / ประเภทดีล คนละแถว (มติผู้ใช้ 2026-08-05)
 // — ของเดิมยุบเป็น "รหัส · ชื่อ" แถวเดียว อ่านง่ายบนจอแต่ค้นหา/กระทบยอดกับระบบอื่นยาก
-const projectOf = (quote) => quote?.deal?.project || quote?.project || null;
-export const quotationProjectCode = (quote) => String(projectOf(quote)?.code || '').trim() || '-';
+/* ⭐ "เลขที่โครงการ" = **รหัสดีล** (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 — คงคำว่า "โครงการ" ให้ลูกค้าเข้าใจง่าย
+   ค่าเปลี่ยนจากรหัส PJ ของโครงการแม่เป็นรหัสดีล DL- · เดิมดีลไม่มีโครงการพิมพ์ "-") · ใบที่ตรึงแล้ว (issued snapshot) ไม่ขยับ
+   ⚠️ route ที่ส่งใบเข้ากระดาษต้องเลือก `code` ของดีลมาด้วย (quotations/[id] · approval · revise · unaccept) */
+export const quotationProjectCode = (quote) => String(quote?.deal?.code || quote?.dealCode || '').trim() || '-';
 /* ⭐ ใบค่าสรรพสามิต (origin excise · ไม่มีดีล · มติเจ้าของ 29/10 จากกระดาษใบทดลอง) — แถว "โครงการ" = "ค่าภาษีสรรพสามิต" ·
    "ประเภทโครงการ" = OTHER (ไม่ใช่ขีด) · ใช้ร่วมกับกระดาษ SO ค่าสรรพสามิต (salesOrderPrint) ⇒ สองใบพูดคำเดียวกัน */
 export const EXCISE_PAPER_PROJECT = Object.freeze({ th: 'ค่าภาษีสรรพสามิต', en: 'Excise tax recharge' });
@@ -1561,8 +1563,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     // referenceRows/signers ต่างกันตามชนิดเอกสาร — ผู้เรียก (เช่น SO) ส่ง options มา override ได้
     referenceRows: options.referenceRows || [
       // "โครงการ" บนเอกสาร = ดีล (มติผู้ใช้ 2026-08-05) — ลูกค้ามองงานที่สั่งเป็นโครงการ
-      // ของตัวเอง ไม่ได้แยกชั้นโครงการแม่/ดีลแบบที่ฝ่ายขายใช้ · เลขที่โครงการยังเป็นรหัส
-      // PJ ของโครงการแม่ ซึ่งเป็นเลขที่ที่อ้างอิงกันจริงทั้งสองฝั่ง
+      // ของตัวเอง · เลขที่โครงการ = รหัสดีล (P2d · เดิมเป็นรหัส PJ ของโครงการแม่)
       { label: L.t('projectCode'), value: quotationProjectCode(quote) },
       { label: L.t('project'), value: excisePaperProject(quote, language) || quotationDealTitle(quote) },
       { label: L.t('projectType'), value: quotationDealType(quote) },

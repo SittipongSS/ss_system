@@ -47,7 +47,7 @@ function projectProductIsExcise(row, productTypes) {
 }
 
 // nextAction ต่อ stage — label + hint (kind ใช้เลือกปุ่มหลักฝั่ง UI)
-function nextActionFor(stage, hasProject) {
+function nextActionFor(stage) {
   const quoteOn = SALES_FEATURES.quotations;
   switch (stage) {
     case 'lead':
@@ -66,12 +66,10 @@ function nextActionFor(stage, hasProject) {
       return { kind: 'deposit', label: 'รอมัดจำ', hint: 'เมื่อรับมัดจำ → ปิด Won ได้' };
     case 'deposit_pending':
       return { kind: 'quote', label: 'ปิด Won ผ่านใบเสนอราคา', hint: 'เปิดใบเสนอราคาฉบับล่าสุดแล้วกด Won' };
+    /* ยุบดีล/โครงการ P2d (มติ 13/11/2026 ④): ไม่มี "สร้าง/เปิดโครงการ PM" อีกแล้ว — งานหลังปิดอยู่ที่ใบสั่งขายของดีล */
     case 'won':
-      return hasProject
-        ? { kind: 'open_project', label: 'ติดตามงานผลิต', hint: 'เปิดโครงการ PM เพื่อดำเนินงาน' }
-        : { kind: 'create_project', label: 'สร้างโครงการ PM', hint: 'ส่งต่อเข้าสู่การผลิต' };
     case 'in_project':
-      return { kind: 'open_project', label: 'ติดตามงานผลิต', hint: 'งานอยู่ในขั้นผลิต — ติดตามที่โครงการ PM' };
+      return { kind: 'after_sale', label: 'ติดตามงานหลังการขาย', hint: 'ยอดจริงและงานต่อจากนี้อยู่ที่ใบสั่งขายของดีล' };
     case 'lost':
       return null;
     default:
@@ -131,21 +129,18 @@ function matchRegistration(entry, regs) {
 }
 
 // สรรพสามิตรายตัว FG: ยังไม่ขึ้น→สร้างทะเบียน, กำลังขึ้น→ไปทำต่อ, อนุมัติแล้ว→ไปยื่นชำระ
-function buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject, productTypes) {
+function buildExciseRoutes(deal, projectProducts, exciseRegistrations, productTypes) {
   const entries = collectExciseFgEntries(deal, projectProducts, productTypes);
   if (!entries.length) return []; // ไม่มี FG หมวดสรรพสามิต → ไม่โชว์การ์ดสรรพสามิต
-  if (!hasProject) {
-    /* ⚠️ ไม่บอกให้ "สร้างโครงการ PM ก่อน" แล้ว (mig 0434 · ปิด Won ได้โดยไม่มีโครงการ) — ปุ่มสร้างทะเบียนบนการ์ดนี้
-       ใช้เส้น from-project ซึ่งต้องมีโครงการ ⇒ ดีลไม่มีโครงการชี้ไปขึ้นทะเบียนที่หน้าสินค้า FG แทน (เส้นทางกลางของฝ่ายขาย · มติ 02/11 V13) */
-    return [{ kind: 'excise', label: 'ทะเบียนสรรพสามิต', status: 'locked', hint: 'ขึ้นทะเบียนที่หน้าสินค้า FG', actionKind: null, href: null }];
-  }
+  /* ⚠️ ไม่มีปุ่ม "สร้างทะเบียน" บนการ์ดนี้แล้ว (ยุบดีล/โครงการ P2d) — ปุ่มเดิมยิงเส้น from-project ซึ่งต้องมีโครงการ
+     (prod ใช้ 0 ครั้ง) ⇒ ทุกดีลขึ้นทะเบียนที่หน้าสินค้า FG (เส้นทางกลางของฝ่ายขาย · มติ 02/11 V13) · ทะเบียนที่มีอยู่ยังโชว์สถานะ */
   const multi = entries.length > 1;
   return entries.map((e) => {
     const reg = matchRegistration(e, exciseRegistrations);
     const kind = multi ? `excise:${e.fgCode}` : 'excise';
     const label = multi ? `ทะเบียน ${e.fgCode}` : 'ทะเบียนสรรพสามิต';
     if (!reg) {
-      return { kind, label, status: 'available', hint: `${e.fgCode} ยังไม่ขึ้นทะเบียน`, actionKind: 'create-excise', actionLabel: 'สร้างทะเบียน', productId: e.productId, href: null };
+      return { kind, label, status: 'locked', hint: `${e.fgCode} ยังไม่ขึ้นทะเบียน — ขึ้นทะเบียนที่หน้าสินค้า FG`, actionKind: null, href: null };
     }
     if (reg.status === 'approved') {
       /* v3 (มติ 02/11): ฝ่ายขายไม่ยื่นชำระเอง (RA ยื่นจาก SO ค่าสรรพสามิต) และไม่เข้า /tax ⇒ ไม่มีลิงก์ "ไปยื่นชำระ" แล้ว */
@@ -166,7 +161,7 @@ function buildRoutes(deal, related) {
 
   // PM project route is now handled natively in the Timeline card in UI.
   // 2) สรรพสามิต — รายตัว FG หมวดที่ติ๊กเสียภาษีสรรพสามิต ตามสถานะทะเบียน
-  for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, hasProject, productTypes)) routes.push(r);
+  for (const r of buildExciseRoutes(deal, projectProducts, exciseRegistrations, productTypes)) routes.push(r);
 
   // 3) ส่งของ — เมื่อเปิด flag shipment เท่านั้น
   if (SALES_FEATURES.shipment) {
@@ -200,11 +195,10 @@ function buildRoutes(deal, related) {
 // main: คืนทุกอย่างที่หน้าศูนย์ดีลต้องใช้
 export function dealLifecycle(deal, related = {}) {
   if (!deal) return null;
-  const hasProject = !!deal.projectId;
   const open = !CLOSED.includes(deal.stage);
   return {
     steps: buildSteps(deal.stage),
-    nextAction: nextActionFor(deal.stage, hasProject),
+    nextAction: nextActionFor(deal.stage),
     canGo: false, // Won ทำได้จากใบเสนอราคาเท่านั้น
     canNoGo: open, // Lost ได้จากทุกสถานะที่ยังเปิด
     routes: buildRoutes(deal, related),

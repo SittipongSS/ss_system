@@ -58,7 +58,7 @@ export const dynamic = 'force-dynamic';
 // PDF ของฉบับเปลี่ยนภาษาสร้างใน `after` ซึ่งกินเพดานเวลาของ route นี้ — เผื่อ cold start ของ chromium
 export const maxDuration = 60;
 
-const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
+const quoteSelect = '*, lines:quotation_lines(*), deal:sales_deals(id, code, title, stage, dealType, team, ownerId, ownerName, customerId, customerName, projectId, project:projects(id, code, name))';
 
 async function loadQuote(supabase, id) {
   const { data, error } = await supabase.from('quotations').select(quoteSelect).eq('id', id).maybeSingle();

@@ -93,7 +93,6 @@ export default function RequestCreateButton({
               ดีลที่เกี่ยวข้อง
               <DealPicker
                 deals={projectDeals || []}
-                projects={project ? [project] : []}
                 value={pickedDealId}
                 onChange={(dealId) => setPickedDealId(dealId)}
                 placeholder="เลือกดีลของคำร้อง"

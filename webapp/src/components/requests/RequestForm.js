@@ -198,7 +198,7 @@ function itemsForKind() {
 export default function RequestForm({
   value, onChange,
   // ทะเบียน/รายการที่ฟอร์มอ้างตามหัวข้อ (ดู `needs` ใน lib/master/requestTypes.js)
-  projects = [], deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
+  deals = [], salesOrders = [], scents = [], formulas = [], productTypes = [],
   me = null,               // ผู้ใช้ที่กำลังเปิดใบ — ใช้พรีวิว "ผู้ร้องขอ" ก่อนบันทึก
   customers = [], quotations = [], products = [],
   // ล็อกหัวข้อไว้เมื่อบริบทเป็นตัวกำหนดเอง (เปิดจากบรรทัดในใบขอราคาผลิต)
@@ -491,7 +491,8 @@ export default function RequestForm({
       customerName: selectedSo?.customerName || selectedDeal?.customerName || null,
       requestedByName: me?.name || null,
     },
-    project: projects.find((p) => p.id === (pdrDeal?.projectId || value.projectId)) || null,
+    /* ไม่ส่งโครงการแล้ว (ยุบดีล/โครงการ P2d) — AE/AC อยู่บนดีลครบ (P2c-1 · ดีลเก่าคัดลอกจากโครงการแล้ว) */
+    project: null,
     customer: customers.find((c) => c.id === pdrCustomerId) || null,
     deal: pdrDeal,
     targets: value.pdrTargets || [],
@@ -904,7 +905,6 @@ export default function RequestForm({
            (ค่าที่เก็บไม่ปัดอยู่แล้ว — ดู billingQuotations.js) */
         const money = (n) => fmtNumber(n, { maximumFractionDigits: 3 });
         const dealOfQt = deals.find((d) => d.id === billingDealIdOf(picked)) || null;
-        const projectOfDeal = projects.find((p) => p.id === dealOfQt?.projectId) || null;
         return (
           <div className="form-grid cols-2">
             {isEdit ? (
@@ -988,13 +988,12 @@ export default function RequestForm({
             <DerivedField label="ดีล" from="เติมจากใบเสนอราคา"
               value={dealOfQt?.title || lockedRefs.deal || ""} />
             {/* ⭐ AE/AC **ห้ามพิมพ์เอง** (ม-ค) — ในข้อความแชทเขียนมือทุกครั้งแล้วสะกด
-                ไม่ตรงกัน · AE = เจ้าของดีล · AC = ผู้ประสานงานโครงการ (mig 0255)
-                ⚠️ AC ว่างได้ — ดีลที่ยังไม่ผูกโครงการไม่มีผู้ประสานงาน และหัวข้อนี้
-                **ไม่บังคับโครงการ** ⇒ ช่องว่างคือคำตอบที่ถูก ไม่ใช่ของที่ต้องไปตาม */}
+                ไม่ตรงกัน · AE = เจ้าของดีล · AC = ผู้ประสานงานบนดีล (ยุบดีล/โครงการ P2c-1 · เดิมอ่านจากโครงการ)
+                ⚠️ AC ว่างได้ — ดีลเก่าที่ยังไม่เคยบันทึกฟอร์มอาจยังไม่มี AC ⇒ ช่องว่างคือคำตอบที่ถูก */}
             <DerivedField label="AE (เจ้าของดีล)" from="เติมจากดีลของใบ"
               value={dealOfQt?.ownerName || ""} />
-            <DerivedField label="AC (ผู้ประสานงาน)" from="เติมจากโครงการของดีล"
-              value={projectOfDeal?.acOwner || ""} />
+            <DerivedField label="AC (ผู้ประสานงาน)" from="เติมจากดีลของใบ"
+              value={dealOfQt?.acOwnerName || ""} />
 
             {/* ⚠️ **ช่อง "ยอดที่ขอวางบิล" ไม่อยู่แท็บนี้แล้ว** (มติผู้ใช้ 2026-08-24:
                 *"ยอดที่ขอวางบิล ไปอยู่ในรายละเอียดรายการมั้ย ทุกใบมียอดอยู่แล้ว"*)
@@ -1014,8 +1013,7 @@ export default function RequestForm({
             (UAT S4 รอบ 4 ข้อ 2: ฟอร์มแก้ขึ้น "ดีล" สองบรรทัดซ้อนกัน) · ฟอร์มสร้างเท่าเดิม */}
         {!isEdit && !confirmLock && <span className={styles.fieldLabel}>ดีล</span>}
         {/* ตัวเลือกกลางของระบบ (มติผู้ใช้ 2026-08-06) — เดิมเป็นสองช่อง "โครงการ →
-            ดีล" ที่บังคับให้รู้ก่อนว่าดีลอยู่โครงการไหน · โครงการของคำร้องมาจากดีล
-            อยู่แล้ว จึงเก็บ projectId จากดีลที่เลือกแทนการให้ผู้ใช้กรอกซ้ำ
+            ดีล" · ถังซ้ายเป็นลูกค้าตั้งแต่ P2d · projectId ของใบ server เติมจากดีลเอง (ดีลเก่าในโครงการ)
             ⚠️ ในแผงค้นด้วย **ชื่อลูกค้า** ได้ (`dealSearchText` รวม customerName) —
             คนที่คิดจากลูกค้าก่อนพิมพ์ชื่อลูกค้าลงช่องค้นได้เลย ไม่ต้องมีช่องแยก */}
         {dealLock ? (
@@ -1043,7 +1041,6 @@ export default function RequestForm({
         ) : (
         <DealPicker
           deals={deals}
-          projects={projects}
           value={value.dealId}
           disabled={disabled}
           onChange={(dealId, deal) => set({ dealId, projectId: deal?.projectId || "" })}
@@ -1051,17 +1048,9 @@ export default function RequestForm({
           ariaLabel="ดีลของคำร้อง"
         />
         )}
-        {/* ⭐ ดีลลอยเปิดคำร้องได้แล้ว (2026-08-24 — `needs` ไม่มี `'project'` อีก) ·
-            เดิมตรงนี้เป็นคำเตือนว่าเปิดไม่ได้ · ตอนนี้เหลือแค่บอกว่าใบนี้จะยังไม่
-            เกาะโครงการไหน ซึ่งเป็นข้อเท็จจริง ไม่ใช่ด่าน (โครงการจะถูกเติมย้อนหลัง
-            ให้เองเมื่อดีลผูกโครงการ — moveDealMirrors) */}
-        {value.dealId && !value.projectId && !dealLock && (
-          <small className={styles.hint}>
-            ดีลนี้ยังไม่ผูกโครงการ — เปิดคำร้องได้ตามปกติ ใบนี้จะเข้าโครงการเองเมื่อดีลผูกโครงการ
-          </small>
-        )}
+        {/* ประโยค "ดีลนี้ยังไม่ผูกโครงการ — ใบนี้จะเข้าโครงการเอง" ถูกถอด (P2d) — ดีลไม่ผูกโครงการอีกแล้ว */}
       </div>
-      {/* ⭐ **ลูกค้ากับโครงการโชว์กลับเสมอ** (มติผู้ใช้ 2026-08-08: "ต้องเลือกลูกค้า
+      {/* ⭐ **ลูกค้ากับเลขที่โครงการโชว์กลับเสมอ** (มติผู้ใช้ 2026-08-08: "ต้องเลือกลูกค้า
           โครงการ ดีล และเลือกขอเอกสาร") — สองค่านี้ derive จากดีลมาตลอดแต่เดิม
           **หายเงียบ**: เลือกดีลแล้วไม่มีอะไรบอกว่าใบนี้จะเกาะลูกค้า/โครงการไหน
           ต่างจากบล็อกบรีฟกลิ่นที่โชว์ของที่เติมจาก SO ครบ · เป็นตัวอย่างของสิ่งที่
@@ -1071,13 +1060,11 @@ export default function RequestForm({
         value={selectedDeal?.customerName || lockedRefs.customer || confirmLock?.original?.customerName || ""}
       />
       {/* ใบยืนยันหน้างาน (ดีลล็อก): ไม่มีดีลให้เลือก — ช่องว่างต้องไม่ชวน "เติมจากดีลที่เลือก" (UAT S5 sales รอบ 1 · K06) */}
+      {/* "เลขที่โครงการ" = รหัสดีล (มติเจ้าของ 13/11/2026 — คงคำว่าโครงการให้ลูกค้าเข้าใจง่าย ·
+          ค่าเปลี่ยนจากรหัส PJ เป็นรหัสดีลแบบเดียวกับกระดาษ QT/SO) · ยุบดีล/โครงการ P2d */}
       <DerivedField
-        label="โครงการ" from={dealLock ? SURVEY_CONFIRM_FROM_ORIGINAL : "เติมจากดีลที่เลือก"}
-        value={(() => {
-          const project = projects.find((p) => p.id === selectedDeal?.projectId);
-          if (project) return `${project.code ? `${project.code} — ` : ""}${project.name || project.id}`;
-          return lockedRefs.project || "";
-        })()}
+        label="เลขที่โครงการ" from={dealLock ? SURVEY_CONFIRM_FROM_ORIGINAL : "เติมจากดีลที่เลือก"}
+        value={selectedDeal?.code || lockedRefs.dealCode || ""}
       />
 
       {/* ── อ้างอิงเพิ่ม: QT · SO · FG — "ถ้ามี" (ม-88) ──────────────────────

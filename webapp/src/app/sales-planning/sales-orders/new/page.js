@@ -15,7 +15,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Building2, ClipboardList, FileCheck2, FileText, FolderKanban, Handshake, MapPin, Package, Wallet,
+  Building2, ClipboardList, FileCheck2, FileText, Handshake, MapPin, Package, Wallet,
 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -328,7 +328,6 @@ function NewSalesOrderInner() {
   }
 
   const deal = quote.deal || null;
-  const project = deal?.project || null;
   /* ⭐ ใบค่าสรรพสามิต (PR4 · mig 0416) — SO ที่ได้ไม่มีดีล/โครงการ · ไม่นับ Actual · ผู้ยื่น = เจ้าของดีลของ SO ต้นทาง
      (`sourceDeal` ใช้บอกชื่อคนกดยื่นอย่างเดียว ไม่ใช่ดีลของใบ) */
   const excise = isExciseOrder(quote);
@@ -470,14 +469,7 @@ function NewSalesOrderInner() {
           />
         ) : (
           <>
-            <ContextCard
-              icon={FolderKanban}
-              href={deal?.projectId ? `/sa/projects/${deal.projectId}` : undefined}
-              eyebrow="โครงการ"
-              title={project?.name || naText(project?.code)}
-              subtitle={project?.code || "โครงการที่ผูกกับดีล"}
-              facts={[{ label: "การเชื่อมโยง", value: deal?.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]}
-            />
+            {/* การ์ด "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) */}
             <ContextCard
               icon={Handshake}
               href={deal?.id ? `/sa/deals/${deal.id}` : undefined}

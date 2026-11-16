@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  Building2, CalendarClock, FileText, FolderKanban, Handshake, Hash, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
+  Building2, CalendarClock, FileText, Handshake, Hash, History, MessageCircleQuestion, Paperclip, Pencil, Plus, Printer, Send, Ban, Check, CheckCheck, Trash2, Undo2, UserPlus,
 } from "lucide-react";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Workspace from "@/components/ui/Workspace";
@@ -2137,9 +2137,8 @@ export default function RequestDetailPage() {
               deal: req.refDeal
                 ? `${req.refDeal.code || req.dealId}${req.refDeal.title ? ` — ${req.refDeal.title}` : ""}`
                 : req.dealId || "",
-              project: req.projectCode || req.projectName
-                ? [req.projectCode, req.projectName].filter(Boolean).join(" — ")
-                : "",
+              // ช่อง "เลขที่โครงการ" ของฟอร์ม = รหัสดีล (P2d · เดิมเป็นรหัส/ชื่อโครงการ)
+              dealCode: req.refDeal?.code || "",
               customer: req.customerName || "",
               customerId: req.customerId || null,
               quotation: req.refQuotation?.quoteNumber || req.quotationId || "",
@@ -2178,7 +2177,7 @@ export default function RequestDetailPage() {
       {/* ⚠️ โหมดแก้ไม่ต้องมี — แท็บ "งาน" ของฟอร์มโชว์ ลูกค้า/โครงการ/ดีล/ใบที่อ้าง
           ครบอยู่แล้ว (ช่องที่ถูกล็อก) ⇒ วางซ้ำคือของเดียวกันสองที่ในจอเดียว */}
       {!editing && !showKindView
-        && (req.refCustomer || req.refProject || req.refDeal || req.quotationId || req.salesOrderId) && (
+        && (req.refCustomer || req.refDeal || req.quotationId || req.salesOrderId) && (
         <ContextGrid className={styles.contextRow}>
           {req.refCustomer && (
             <ContextCard
@@ -2190,15 +2189,7 @@ export default function RequestDetailPage() {
               facts={[{ label: "ผู้ติดต่อ", value: req.refCustomer.contactPerson }]}
             />
           )}
-          {req.refProject && (
-            <ContextCard
-              href={`/sa/projects/${req.refProject.code || req.refProject.id}`}
-              icon={FolderKanban}
-              eyebrow="โครงการ"
-              title={req.refProject.name || req.refProject.code || req.refProject.id}
-              subtitle={req.refProject.code || undefined}
-            />
-          )}
+          {/* การ์ด "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — ดีลคือหน่วยเดียว */}
           {/* /sa/deals คือ URL คงที่ (rewrite ใน next.config) — เส้น
               /sales-planning/deals โดน redirect หนึ่งเด้ง */}
           {req.refDeal && (

@@ -82,7 +82,6 @@ const nextDeal = (lead, ownerId, defaults) => (lead ? {
 export default function DealCreateModal({
   lead = null,
   customers = [],
-  projects = [],
   categories = [],
   stages,
   /* ผู้รับผิดชอบ (AE) — ดู useDealOwners: owners = รายชื่อให้เลือก (ac/sup/admin)
@@ -374,8 +373,6 @@ export default function DealCreateModal({
                 form={draft}
                 onPatch={(values) => patch(index, values)}
                 customers={customers}
-                projects={projects}
-                showProject
                 categories={categories}
                 /* ค่าตั้งต้น = ทะเบียนกลาง CREATABLE_STAGES — เดิมเป็น DEAL_STAGES ที่ตัดแค่
                    won ทำให้ in_project (ยุบเป็น won ตั้งแต่ mig 0082) โผล่เป็นตัวเลือก

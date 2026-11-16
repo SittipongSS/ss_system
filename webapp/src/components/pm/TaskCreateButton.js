@@ -42,7 +42,6 @@ export default function TaskCreateButton({
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
   const [deals, setDeals] = useState([]);
-  const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [me, setMe] = useState(null);
 
@@ -54,12 +53,11 @@ export default function TaskCreateButton({
     Promise.all([
       cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       projectDeals ? Promise.resolve(null) : apiFetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      // รายชื่อโครงการเลิกโหลด — ตัวเลือกดีลจัดกลุ่มตามลูกค้าแล้ว (ยุบดีล/โครงการ P2d)
       apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null)).catch(() => null),
-    ]).then(([u, d, p, meRow]) => {
+    ]).then(([u, d, meRow]) => {
       setUsers(u || []);
       if (d) setDeals(d || []);
-      setProjects(p || []);
       setMe(meRow);
       setReady(true);
     });
@@ -83,7 +81,6 @@ export default function TaskCreateButton({
         task={null}
         initialForm={dealId ? { dealId } : null}
         deals={projectDeals || deals}
-        projects={projects}
         assignableUsers={assignableUsersFor(me, users)}
         me={me}
         canManage

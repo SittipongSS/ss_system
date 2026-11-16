@@ -10,7 +10,6 @@ import { CLOSED_STAGES, DEAL_STAGES, isWonStage } from "../salesPlanning.js";
 
 const read = (...p) => readFileSync(path.join(process.cwd(), ...p), "utf8");
 const DEAL_ROUTE = read("src", "app", "api", "sales-planning", "deals", "[id]", "route.js");
-const LINK_ROUTE = read("src", "app", "api", "sales-planning", "deals", "[id]", "link-project", "route.js");
 
 const lifecycle = createDealLifecycle();
 const ADMIN = { role: "admin", id: "u-admin" };
@@ -36,27 +35,17 @@ test("ดีลที่ปิดแล้ว (won/in_project/lost) ทำอะ
   }
 });
 
-test("มีโครงการแล้ว = ไม่ต้องผูก/สร้างอีก", () => {
-  const linked = deal({ projectId: "P1" });
-  assert.ok(!ids(linked, ADMIN).includes("link_project"));
-  assert.ok(!ids(linked, ADMIN).includes("create_project"));
-  assert.ok(ids(linked, ADMIN).includes("lost"), "ยังปิดดีลได้");
-});
-
-test("ยังไม่มีโครงการ = ก้าวถัดไปคือเชื่อมโครงการ (primary ตัวเดียว)", () => {
-  const entries = lifecycle.available(deal(), ADMIN);
-  const primary = entries.filter((e) => e.slot === "primary");
-  assert.equal(primary.length, 1);
-  assert.equal(primary[0].id, "link_project");
-  assert.equal(primary[0].rowLabel, "เชื่อมโครงการ");
-});
-
-/* 🐞 UI เคยไม่เช็ค pm:edit ทั้งที่ API บังคับ — วันนี้ไม่ระเบิดเพราะสิทธิ์ทับกันพอดี */
-test("ผูก/สร้างโครงการต้องมี pm:edit ตามที่ API บังคับ", () => {
-  assert.match(LINK_ROUTE, /pm:edit/, "API link-project ต้องเช็ค pm:edit");
-  assert.ok(!ids(deal(), { role: "marketing" }).includes("link_project"),
-    "role ที่ไม่มี pm:edit ต้องไม่เห็นปุ่มผูกโครงการ");
-  assert.ok(ids(deal(), AE).includes("link_project"));
+/* ยุบดีล/โครงการ P2d (มติเจ้าของ 13/11/2026 ④): ไม่มีปุ่มผูก/สร้างโครงการบนดีลแล้ว — มี/ไม่มีโครงการเหมือนกัน */
+test("ไม่มี transition ผูก/สร้างโครงการ · ขั้น \"ผูกโครงการ\" ถูกยุบเข้าเปิดดีล", () => {
+  const all = lifecycle.transitions.map((t) => t.id);
+  for (const banned of ["link_project", "create_project"]) assert.ok(!all.includes(banned), banned);
+  for (const projectId of [null, "P1"]) {
+    assert.deepEqual(ids(deal({ projectId }), ADMIN), ["lost"], String(projectId));
+    assert.deepEqual(ids(deal({ projectId }), AE), ["lost"], String(projectId));
+  }
+  assert.ok(!lifecycle.steps.some((step) => step.id === "project"));
+  assert.ok(lifecycle.steps.find((step) => step.id === "open").statuses.includes("timeline_proposed"),
+    "สถานะ timeline_proposed ยังใช้ — ต้องมีขั้นให้อยู่");
 });
 
 test("ไม่มีสิทธิ์แก้ดีล = ไม่มีปุ่มอะไรเลย", () => {

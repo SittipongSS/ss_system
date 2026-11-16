@@ -58,12 +58,10 @@ function NewQuotationInner() {
   const returnLabel = returnTo === "/sa/quotations" ? "กลับหน้าใบเสนอราคา" : "กลับ";
 
   const [deals, setDeals] = useState([]);
-  const [projectsById, setProjectsById] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   const [customerId, setCustomerId] = useState("");
-  const [projectId, setProjectId] = useState("");
   const [dealId, setDealId] = useState("");
 
   const [customer, setCustomer] = useState(null); // snapshot preview (read-only)
@@ -92,28 +90,23 @@ function NewQuotationInner() {
   // เอกสารอ้างอิง (mig 0267) — ข้อความอิสระ ไม่ผูกกับเอกสารจริงในระบบ (มติผู้ใช้)
   const [referenceNote, setReferenceNote] = useState("");
 
-  // โหลดดีล + โครงการ (ดึงรหัสโครงการมาโชว์ในตัวเลือก) + ทะเบียนลูกค้าไว้ตอบว่า
+  // โหลดดีล + ทะเบียนลูกค้าไว้ตอบว่า (รายชื่อโครงการเลิกโหลด — ยุบดีล/โครงการ P2d)
   // "ลูกค้าที่ค้นมีในทะเบียนแต่ออกใบไม่ได้เพราะอะไร" (ลิสต์นี้กรองทีมอยู่แล้วตามกติกา)
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
       try {
-        const [dRes, pRes, customerData, registryData] = await Promise.all([
+        const [dRes, customerData, registryData] = await Promise.all([
           apiFetch("/api/sales-planning/deals").catch(() => null),
-          apiFetch("/api/pm/projects").catch(() => null),
           cachedFetchJson("/api/customers").catch(() => []),
           // ทะเบียนทั้งหมด — ใช้ตอบ "ทำไมลูกค้ารายนี้ไม่โผล่ในลิสต์เลย" เท่านั้น
           // (รออนุมัติ/พักใช้/ทีมอื่นดูแล) **ห้ามใช้เป็นตัวเลือกให้เลือก**
           cachedFetchJson("/api/customers?manage=1").catch(() => []),
         ]);
         const dealsData = dRes?.ok ? await dRes.json() : [];
-        const projData = pRes?.ok ? await pRes.json() : [];
         if (!alive) return;
         setDeals(Array.isArray(dealsData) ? dealsData : []);
-        const map = {};
-        (Array.isArray(projData) ? projData : []).forEach((p) => { map[p.id] = p; });
-        setProjectsById(map);
         setCustomers(Array.isArray(customerData) ? customerData : []);
         setRegistryCustomers(Array.isArray(registryData) ? registryData : []);
       } catch (e) {
@@ -193,23 +186,18 @@ function NewQuotationInner() {
       : []),
     [eligible, customerId, unassigned],
   );
-  const projectList = useMemo(() => Object.values(projectsById || {}), [projectsById]);
-  const selectedProject = projectId ? projectsById[projectId] : null;
   const selectedDeal = useMemo(() => eligible.find((deal) => deal.id === dealId) || null, [eligible, dealId]);
   const selectedDealType = selectedDeal ? dealTypeOf(selectedDeal) : null;
 
-  // prefill จาก query (?dealId / ?projectId / ?customerId) — รันครั้งเดียวหลังโหลดดีลเสร็จ
+  // prefill จาก query (?dealId / ?customerId) — รันครั้งเดียวหลังโหลดดีลเสร็จ
+  // (?projectId เลิกรับ — ทางเข้าจากหน้าโครงการถูกซ่อนแล้ว · P2d)
   useEffect(() => {
     if (prefilled || loading || !eligible.length) return;
     const qDeal = params.get("dealId");
-    const qProject = params.get("projectId");
     const qCustomer = params.get("customerId");
     if (qDeal) {
       const d = eligible.find((x) => x.id === qDeal);
-      if (d) { setCustomerId(d.customerId); setProjectId(d.projectId); setDealId(d.id); }
-    } else if (qProject) {
-      const d = eligible.find((x) => x.projectId === qProject);
-      if (d) { setCustomerId(d.customerId); setProjectId(qProject); }
+      if (d) { setCustomerId(d.customerId); setDealId(d.id); }
     } else if (qCustomer) {
       if (eligible.some((x) => x.customerId === qCustomer)) setCustomerId(qCustomer);
     }
@@ -278,7 +266,6 @@ function NewQuotationInner() {
   // (ค่าบริการ ฯลฯ) ไม่ผูกลูกค้า เก็บไว้ — ลบงานที่คนพิมพ์เองทิ้งเงียบ ๆ ไม่ได้
   const onCustomer = (v) => {
     setCustomerId(v);
-    setProjectId("");
     setDealId("");
     setCustomer(null);
     setLines((current) => {
@@ -290,9 +277,8 @@ function NewQuotationInner() {
       return kept;
     });
   };
-  // โครงการมาจากดีลเสมอ — ไม่มีช่องให้เลือกเองอีกแล้ว (ยังเก็บ state ไว้เพราะหัวใบ
-  // แสดงชื่อ/รหัสโครงการของดีลที่เลือก)
-  const onDeal = (v, deal) => { setDealId(v); setProjectId(deal?.projectId || ""); };
+  // ไม่มีโครงการให้เลือก/แสดงแล้ว (ยุบดีล/โครงการ P2d) — ช่อง "เลขที่โครงการ" บนกระดาษคือรหัสดีล
+  const onDeal = (v) => { setDealId(v); };
 
   const totals = useMemo(() => quoteTotals(lines, {
     discountType: discountType || null,
@@ -408,9 +394,7 @@ function NewQuotationInner() {
 
   const overviewDescription = (
     <>
-      <span>โครงการ: {selectedProject?.name || selectedProject?.code || "ยังไม่เลือก"}</span>
-      {" · "}
-      <span>ดีล: {selectedDeal?.title || "ยังไม่เลือก"}</span>
+      <span>ดีล: {selectedDeal ? [selectedDeal.code, selectedDeal.title].filter(Boolean).join(" · ") : "ยังไม่เลือก"}</span>
       {selectedDealType ? <>{" · "}<span>ประเภท: {selectedDealType} · {DEAL_TYPE_LABELS[selectedDealType]}</span></> : null}
     </>
   );
@@ -478,7 +462,7 @@ function NewQuotationInner() {
     <Workspace
       icon={<FileText size={22} />}
       title="สร้างใบเสนอราคา"
-      subtitle={selectedDeal ? `${naText(selectedDeal.customerName)} · ${selectedProject?.name || naText(selectedProject?.code)} · ${selectedDeal.title}` : "เลือกที่มาของเอกสารและจัดทำใบเสนอราคาในหน้าเดียว"}
+      subtitle={selectedDeal ? `${naText(selectedDeal.customerName)} · ${naText(selectedDeal.code)} · ${selectedDeal.title}` : "เลือกที่มาของเอกสารและจัดทำใบเสนอราคาในหน้าเดียว"}
       back={{ href: returnTo, label: returnLabel }}
     >
       {error && <div className={styles.errorPanel} role="alert">{error}</div>}
@@ -506,16 +490,14 @@ function NewQuotationInner() {
           />
 
           <section className={styles.card}>
-            <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกลูกค้า แล้วเลือกดีล — โครงการมาจากดีลเอง</span></div>
+            <div className={styles.sectionHeading}><Building2 size={17} /><h2>ที่มาของใบเสนอราคา</h2><span>เลือกลูกค้า แล้วเลือกดีล</span></div>
             <div className={styles.sourceGrid}>
               <label className={styles.customerSource}>ชื่อลูกค้า *<SearchableSelect className={styles.sourceSelect} entity="customer" value={customerId} onChange={onCustomer} ariaLabel="เลือกชื่อลูกค้า" placeholder={loading ? "กำลังโหลด…" : "ค้นหาชื่อลูกค้า…"} options={customerOptions} emptyText={customerEmptyText} /></label>
-              {/* โครงการ+ดีล ยุบเป็นตัวเลือกกลางตัวเดียว (มติผู้ใช้ 2026-08-06) —
-                  โครงการเป็นหัวข้อฝั่งซ้ายในแผง ไม่ใช่ช่องที่ต้องเลือกก่อน · projectId
-                  ยังถูกเก็บไว้ให้หัวใบแสดงชื่อโครงการ แค่มาจากดีลแทนการเลือกเอง */}
+              {/* ตัวเลือกดีลกลาง (มติผู้ใช้ 2026-08-06) — ลิสต์กรองลูกค้าที่เลือกไว้แล้ว ·
+                  ถังซ้ายเป็นลูกค้า (P2d · เดิมเป็นโครงการ) */}
               <label className={styles.dealSource}>ดีล *
                 <DealPicker
                   deals={dealsOfCustomer}
-                  projects={projectList}
                   value={dealId}
                   disabled={!customerId}
                   onChange={onDeal}

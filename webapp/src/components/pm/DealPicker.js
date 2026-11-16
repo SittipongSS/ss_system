@@ -1,16 +1,17 @@
 "use client";
-// ── ตัวเลือกดีลของทั้งระบบ: โครงการ (ซ้าย) → ดีล (ขวา) ────────────────────────
+// ── ตัวเลือกดีลของทั้งระบบ: ลูกค้า (ซ้าย) → ดีล (ขวา) ────────────────────────
 //
-// เป็น **ตัวห่อบาง ๆ** ของ ui/TwoPanePicker — ที่นี่รู้เรื่อง "ดีล/โครงการ" อย่างเดียว
+// เป็น **ตัวห่อบาง ๆ** ของ ui/TwoPanePicker — ที่นี่รู้เรื่อง "ดีล/ลูกค้า" อย่างเดียว
 // (ป้าย ถัง ข้อความค้น) ส่วนพฤติกรรมแผง/การค้น/ขนาด อยู่ที่ตัวกลาง
 //
 // ⭐ ทุกจุดที่ต้องเลือกดีลต้องเรียกตัวนี้ ห้ามประกอบ dropdown เอง — เดิมมีคู่ช่อง
 // "โครงการ + ดีล" กระจายอยู่ 4 หน้า แต่ละที่กรอง/ค้น/เขียนป้ายไม่เหมือนกัน
 // (มติผู้ใช้ 2026-08-06: ยกเป็นดีไซน์กลางแล้วใช้ทั้งระบบ)
-import { FolderKanban, Handshake } from "lucide-react";
+// ⭐ ยุบดีล/โครงการ P2d (มติเจ้าของ 13/11/2026): ถังซ้ายเปลี่ยนจากโครงการเป็นลูกค้า — `projects` เลิกรับแล้ว
+import { Building2, Handshake } from "lucide-react";
 import TwoPanePicker from "@/components/ui/TwoPanePicker";
 import {
-  ALL_DEALS_BUCKET, buildDealBuckets, dealSearchText, NO_PROJECT_BUCKET, projectLabelOf,
+  ALL_DEALS_BUCKET, buildDealBuckets, dealArCode, dealSearchText, NO_CUSTOMER_BUCKET,
 } from "@/lib/pm/dealPickerTree";
 
 // ⚠️ ดีลที่ยังไม่มีลูกค้าต้องบอกไว้ตรงนี้ — บนหน้าออกใบเสนอราคา ดีลกลุ่มนี้โผล่ต่อท้าย
@@ -22,10 +23,9 @@ const dealMeta = (deal) => [
 
 export default function DealPicker({
   deals = [],
-  projects = [],
   value = "",
   // (dealId, deal, item) => void — `deal` คือแถวดีลตัวจริงจาก `deals` (ผู้เรียกที่เก็บ
-  // projectId เองอ่านจากมันได้) · `item` คือตัวบรรยายรายการของแผง ปกติไม่ต้องใช้
+  // ลูกค้า/projectId เองอ่านจากมันได้) · `item` คือตัวบรรยายรายการของแผง ปกติไม่ต้องใช้
   onChange,
   disabled = false,
   // เลือก "ไม่ผูกดีล" ได้ไหม — ปิดไว้เมื่อกติกาบังคับผูก (ตัวเลือกที่กดแล้วโดน API
@@ -35,31 +35,25 @@ export default function DealPicker({
   placeholder = "— เลือกดีล —",
   ariaLabel = "ดีลที่ผูกกับงาน",
 }) {
-  const buckets = buildDealBuckets(deals, projects);
-  const labelOf = (deal) => (deal.projectId
-    ? projectLabelOf(projects.find((p) => p.id === deal.projectId)) || "โครงการอื่น"
-    : "ยังไม่ผูกโครงการ");
+  const buckets = buildDealBuckets(deals);
 
   const groups = buckets.map((bucket) => ({
     key: bucket.key,
-    // ชื่อโครงการได้บรรทัดเต็ม — รหัส PJ-xxxx หน้าตาคล้ายกันทุกใบ อยู่บรรทัดรองคู่กับ
-    // ลูกค้าอ่านง่ายกว่า (ของเดิมเอารหัสนำหน้า ชื่อเลยโดนตัดทุกใบบน prod)
     label: bucket.name || bucket.label,
-    meta: [bucket.code, bucket.customerName].filter(Boolean).join(" · "),
+    meta: bucket.code || "",
     search: bucket.search,
-    // ถังรวม = ไอคอนดีล · ถังอื่นคือโครงการหนึ่งใบ = ไอคอนโครงการ (entityIcon.test.mjs)
-    icon: bucket.key === ALL_DEALS_BUCKET ? Handshake : FolderKanban,
-    emptyText: bucket.key === NO_PROJECT_BUCKET
-      ? "ไม่มีดีลที่ยังไม่ผูกโครงการ"
-      : "โครงการนี้ยังไม่มีดีลที่ผูกงานได้",
+    // ถังรวม = ไอคอนดีล · ถังอื่นคือลูกค้าหนึ่งราย = ไอคอนลูกค้า (entityIcon.test.mjs)
+    icon: bucket.key === ALL_DEALS_BUCKET ? Handshake : Building2,
+    emptyText: bucket.key === NO_CUSTOMER_BUCKET
+      ? "ไม่มีดีลที่ยังไม่มีลูกค้า"
+      : "ลูกค้ารายนี้ยังไม่มีดีลที่ผูกงานได้",
     items: bucket.deals.map((deal) => ({
       value: deal.id,
       label: deal.title,
-      // ในถังรวมต้องบอกด้วยว่าดีลใบนั้นอยู่โครงการไหน — ในถังโครงการมันซ้ำกับที่
-      // เลือกค้างอยู่ฝั่งซ้าย
-      meta: bucket.key === ALL_DEALS_BUCKET ? `${dealMeta(deal)} · ${labelOf(deal)}` : dealMeta(deal),
-      chip: deal.projectId ? projects.find((p) => p.id === deal.projectId)?.code || "" : "",
-      search: dealSearchText(deal, labelOf(deal)),
+      // ในถังรวมบรรทัดรองบอกลูกค้าอยู่แล้ว (dealMeta) — ในถังลูกค้ามันซ้ำกับที่เลือกค้างฝั่งซ้ายแต่ไม่เสียหาย
+      meta: dealMeta(deal),
+      chip: deal.code || dealArCode(deal) || "",
+      search: dealSearchText(deal),
     })),
   }));
 
@@ -67,7 +61,7 @@ export default function DealPicker({
      `item` คือ **ตัวบรรยายรายการของแผง** (ค่า/ป้าย/บรรทัดรอง/คำค้น) ไม่ใช่แถวดีล
      ⇒ ผู้เรียกที่อ่าน `deal.projectId` ตามสัญญาข้างบนได้ `undefined` เสมอ
 
-     ผลจริงที่ผู้ใช้เจอ: เลือกดีลที่ **ผูกโครงการอยู่แล้ว** แล้วฟอร์มยังขึ้นว่า
+     ผลจริงที่ผู้ใช้เจอ (สมัยยังมีโครงการ): เลือกดีลที่ **ผูกโครงการอยู่แล้ว** แล้วฟอร์มยังขึ้นว่า
      "ดีลนี้ยังไม่ผูกโครงการ" ⇒ หัวข้อที่บังคับผูกโครงการ (สอบถามข้อมูล · ขอเอกสาร ·
      พัฒนาสูตร) **เปิดคำร้องไม่ได้เลยสักใบ** · หน้าใบเสนอราคาใหม่ก็ได้ `projectId` ว่าง
      เหมือนกัน — เป็นอาการเดียวกับบั๊กที่ปิดไปแล้วรอบ P5 แค่กลับมาทางตัวเลือกกลาง
@@ -89,9 +83,9 @@ export default function DealPicker({
       placeholder={placeholder}
       headLabel="เลือกดีล"
       headMeta={`ทั้งหมด ${deals.length} ดีล`}
-      groupSearchPlaceholder="ค้นหาโครงการ / ลูกค้า…"
+      groupSearchPlaceholder="ค้นหาลูกค้า / รหัส AR…"
       itemSearchPlaceholder="ค้นหาดีล / ลูกค้า…"
-      groupEmptyText="ไม่พบโครงการที่ตรงกับคำค้น — ถ้ากำลังหาชื่อดีล ให้ค้นที่ช่องขวาในถัง “ดีลทั้งหมด”"
+      groupEmptyText="ไม่พบลูกค้าที่ตรงกับคำค้น — ถ้ากำลังหาชื่อดีล ให้ค้นที่ช่องขวาในถัง “ดีลทั้งหมด”"
       itemEmptyText="ไม่พบดีลที่ตรงกับคำค้นในถังนี้"
       allGroupKey={ALL_DEALS_BUCKET}
       ariaLabel={ariaLabel}

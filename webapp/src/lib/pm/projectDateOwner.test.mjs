@@ -49,12 +49,9 @@ test('ฟอร์มโครงการ: วันเริ่มที่ม
   );
 });
 
-test('ทางเรียกทั้งสามส่งเจ้าของวันมาถูกตัว', () => {
-  // สร้างจากดีล = ของดีลเสมอ
-  assert.match(
-    read('app/sales-planning/deals/[id]/page.js'),
-    /startDateFrom=\{deal \? `ดีล \$\{deal\.code \|\| deal\.id\}` : "ดีลก่อตั้ง"\}/,
-  );
+test('ทางเรียกที่เหลือส่งเจ้าของวันมาถูกตัว', () => {
+  // สร้างโครงการจากหน้าดีลถูกถอด (ยุบดีล/โครงการ P2d) — ห้ามไหลกลับ
+  assert.doesNotMatch(read('app/sales-planning/deals/[id]/page.js'), /SalesProjectCreateModal/);
   // แก้โครงการ = ขึ้นกับว่ามีดีลไหม
   assert.match(
     read('app/sa/projects/[id]/page.js'),

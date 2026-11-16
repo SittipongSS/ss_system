@@ -158,7 +158,6 @@ export default function LeadsPage() {
   const directory = usePeopleDirectory();
   const users = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
   const [customers, setCustomers] = useState([]);
-  const [projects, setProjects] = useState([]);
   // หมวดสินค้า (product-types) — DealFormFields ในโมดัลสร้างดีลใช้ (hotfix: state ตัวนี้
   // หลุดตอนแยกฟอร์มใน #287 ทำหน้า crash ตอนเปิดโมดัล)
   const [categories, setCategories] = useState([]);
@@ -304,9 +303,7 @@ export default function LeadsPage() {
   useEffect(() => {
     if (role === "marketing" || !canLead) return;
     apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(Array.isArray(d) ? d : [])).catch(() => {});
-    // โครงการ — โมดัลแตกดีลจากลีดเลือกโครงการได้เหมือนหน้ารวมดีล (ไม่งั้นดีลที่มาจาก
-    // ลีดจะไม่มีโครงการติดมาเลย แล้วสอบถาม RD ในนามดีลนั้นไม่ได้)
-    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(Array.isArray(d) ? d : [])).catch(() => {});
+    // รายชื่อโครงการเลิกโหลด — ฟอร์มดีลไม่มีช่องโครงการแล้ว (ยุบดีล/โครงการ P2d)
   }, [role, canLead]);
 
   // ชื่อผู้รับผิดชอบที่ควรขึ้นจอ — อ่านจาก `assigneeId` ไม่ใช่สำเนาชื่อในแถว
@@ -904,7 +901,6 @@ export default function LeadsPage() {
           key={dealModal.id}
           lead={dealModal}
           customers={customers}
-          projects={projects}
           categories={categories}
           onClose={() => setDealModal(null)}
         />

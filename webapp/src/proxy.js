@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
+import { oldProjectRedirectTarget } from '@/lib/pm/oldProjectLink';
 import { CLOSED_MODULES, can, canUser, canDeleteRegistrationRole, canManageCommercialPresets, canManageDocumentStandards, canManageProductCategories, isReadOnlyObserver, isRdRole } from '@/lib/permissions';
 
 // Next.js 16 renamed `middleware` -> `proxy`. Runs on the Node.js runtime.
@@ -133,6 +134,15 @@ export async function proxy(request) {
     !canManageCommercialPresets(user.app_metadata?.role)
   ) {
     return withRefreshedCookies(NextResponse.redirect(new URL('/settings', request.url)));
+  }
+
+  /* ⭐ หน้าโครงการเก่า (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④: ซ่อนเมนู + ลิงก์เก่าพาไปหน้าลูกค้าศูนย์รวม)
+     · `/sa/projects` (ทะเบียนเดิม) → รายการดีล · `/sa/projects/<id|PJ>/**` และ `/pm/projects/<…>` → `/go/project/<…>`
+       (หน้า server ที่อ่านลูกค้าของโครงการแล้วพาไปหน้าลูกค้า) · ข้อมูลโครงการอยู่ในฐานต่อ — ลบตารางในงวด P3
+     ⚠️ เฉพาะหน้า ไม่ใช่ API — /api/pm/projects ยังมีผู้เรียกจนกว่าจะถอดครบ · ตรรกะอยู่ lib/pm/oldProjectLink (มีเทสต์) */
+  const oldProjectTarget = isApi ? null : oldProjectRedirectTarget(path);
+  if (user && oldProjectTarget) {
+    return withRefreshedCookies(NextResponse.redirect(new URL(oldProjectTarget, request.url)));
   }
 
   /* ⛔ โมดูลที่ปิดแล้ว (มติผู้ใช้ 2026-11-13 · `CLOSED_MODULES` ใน lib/permissions.js)

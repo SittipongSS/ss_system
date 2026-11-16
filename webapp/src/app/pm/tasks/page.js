@@ -83,10 +83,9 @@ const CHIP_CHAIN_LINK = { ...CHIP_CHAIN, cursor: "pointer" };
 const CHIP_ICON = { flexShrink: 0 };
 const CHIP_TEXT = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const CHIP_SUFFIX = { flexShrink: 0, opacity: 0.75 };
-/* คอลัมน์เชื่อมโยง: โครงการบน · ดีลล่าง — ชื่อดีลยาวได้ จึงตัดด้วย ellipsis
+/* คอลัมน์เชื่อมโยง: ดีล (ชิปโครงการถอดแล้ว · ยุบดีล/โครงการ P2d) — ชื่อดีลยาวได้ จึงตัดด้วย ellipsis
    แล้วบอกชื่อเต็มผ่าน title แทนการปล่อยให้ดันความกว้างคอลัมน์ */
 const LINK_STACK = { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 };
-const LINK_PROJECT = { cursor: "pointer", fontSize: "var(--fs-2)", background: "var(--panel-2)", padding: "2px 6px", borderRadius: 4, border: "1px solid var(--border)" };
 const LINK_DEAL = { cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4, maxWidth: 200, fontSize: "var(--fs-2)", background: "color-mix(in srgb, var(--purple) 10%, transparent)", padding: "2px 7px", borderRadius: 4, color: "var(--purple)" };
 const ROW_CHIPS = { display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4, fontSize: "var(--fs-2)" };
 const MODAL_BODY = { padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 };
@@ -791,32 +790,18 @@ export default function TasksPage() {
     { key: "done", label: "เสร็จแล้ว", count: stats.done, color: "var(--green)", icon: <CheckCircle2 size={18} /> },
   ];
 
-  // ป้ายกำกับ (โครงการ/ไทม์ไลน์) ใช้ซ้ำทั้ง card + table
-  /* คอลัมน์ "เชื่อมโยง" — **โครงการบน · ดีลล่าง** (มติผู้ใช้ 2026-08-17)
-     เรียงบนล่างไม่ใช่ต่อกันในบรรทัดเดียว เพราะเป็นของคนละชั้น (โครงการคือภาชนะ
-     ดีลอยู่ข้างใน) และชื่อดีลยาวจนดันคอลัมน์อื่นเมื่อวางต่อท้ายรหัสโครงการ */
+  // ป้ายกำกับ (ดีล/ไทม์ไลน์) ใช้ซ้ำทั้ง card + table
+  /* คอลัมน์ "เชื่อมโยง" — เดิม **โครงการบน · ดีลล่าง** (มติผู้ใช้ 2026-08-17) · ชิปโครงการถูกถอดในงวด P2d
+     (มติเจ้าของ 13/11/2026 ④ · ดีลคือหน่วยเดียว) — เหลือชิปดีลใบเดียว */
   const linkChip = (t) => {
-    const proj = t.projectId ? resolveProj(t.projectId) : null;
     const deal = t.dealId ? resolveDeal(t.dealId) : null;
-    if (!proj && !deal) return null;
+    if (!deal) return null;
     return (
-      /* ⭐ ชิปทั้งสองใบพาไปคนละหน้า = **ลิงก์แท้** ⇒ <Link> ไม่ใช่ <span onClick>
+      /* ⭐ ชิปพาไปหน้าอื่น = **ลิงก์แท้** ⇒ <Link> ไม่ใช่ <span onClick>
          (เหตุผลเต็มอยู่เหนือ chainBadge — ท่าเดียวกันทุกข้อ รวมทั้งการถอด stopPropagation)
-         🪤 `card-link` เป็นของบังคับ ไม่ใช่ของแถม: LINK_PROJECT **ไม่ประกาศ color**
-            ⇒ ถ้าไม่ล้าง ชิปจะได้สีลิงก์ของเบราว์เซอร์ + เส้นใต้ · ส่วน LINK_DEAL ประกาศ
-            color เองแล้วแต่ยังต้องล้าง text-decoration ของ <a> และรับวงโฟกัส --accent-ink */
+         🪤 `card-link` เป็นของบังคับ: LINK_DEAL ประกาศ color เองแล้วแต่ยังต้องล้าง text-decoration ของ <a>
+            และรับวงโฟกัส --accent-ink */
       <span style={LINK_STACK}>
-        {proj && (
-          <Link
-            prefetch={false}
-            href={`/sa/projects/${proj.code || t.projectId}`}
-            title={`โครงการ ${proj.code || ""}${proj.name ? ` · ${proj.name}` : ""}`.trim()}
-            className="font-mono card-link"
-            style={LINK_PROJECT}
-          >
-            {proj.code}
-          </Link>
-        )}
         {deal && (
           <Link
             prefetch={false}
@@ -1373,7 +1358,6 @@ export default function TasksPage() {
         inquirySource={inquirySource}
         chainSource={chainSource}
         deals={allDeals}
-        projects={allProjects}
         assignableUsers={assignableUsers}
         me={me}
         canManage={editingId ? canManageTask(personalTasks.find((t) => t.id === editingId)) : true}

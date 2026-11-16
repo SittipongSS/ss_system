@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AlertTriangle, Calendar, Clock, CornerDownRight, FolderKanban, Handshake, Link2, ListTodo, MessageCircleQuestion, MessageSquare, PauseCircle, Pencil, Send, Tag, User } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, CornerDownRight, Handshake, Link2, ListTodo, MessageCircleQuestion, MessageSquare, PauseCircle, Pencil, Send, Tag, User } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
 import ReadableText from "@/components/ui/ReadableText";
@@ -64,7 +64,7 @@ export default function TaskDetailPage() {
   const [error, setError] = useState("");
   // ตัวเลือกของโมดัล (ดีล/โครงการ/คน) — โหลดตอนกดแก้ไขเท่านั้น ไม่ใช่ตอนเปิดหน้า
   // (คนส่วนใหญ่เข้ามาดูเฉย ๆ ไม่ได้แก้ — ไม่ควรจ่ายค่าโหลดลิสต์พวกนี้ทุกครั้งที่เปิดหน้า)
-  const [opts, setOpts] = useState({ deals: [], projects: [], assignableUsers: [] });
+  const [opts, setOpts] = useState({ deals: [], assignableUsers: [] });
   const [followUp, setFollowUp] = useState(null); // ค่าตั้งต้นของงานต่อเนื่อง (null = ไม่ได้เปิด)
   // สร้างงานได้ = pm:edit (rd จัดการงานของฝ่ายตัวเองได้ — กติกาเดียวกับหน้ารายการ)
   const role = useRole();
@@ -92,13 +92,12 @@ export default function TaskDetailPage() {
     return Promise.all([
       cachedFetchJson("/api/pm/assignable-users").catch(() => []),
       json("/api/pm/task-deals"),   // ดีลที่ผูกงานได้ (scope ทีม) — ตัวเดียวกับหน้ารายการ
-      json("/api/pm/projects"),     // ใช้แค่ติดรหัสโครงการหน้าชื่อดีลใน dropdown
-    ]).then(([users, deals, projects]) => setOpts({
+      // รายชื่อโครงการเลิกโหลด — ตัวเลือกดีลจัดกลุ่มตามลูกค้าแล้ว (ยุบดีล/โครงการ P2d)
+    ]).then(([users, deals]) => setOpts({
       // ต้องกรองด้วยกติกาเดียวกับ server — ยิงรายชื่อดิบเข้า dropdown จะเห็นคนทั้งบริษัท
       // ทุกฝ่าย เลือกไปก็โดนปฏิเสธ (หน้ารายการกรองอยู่ หน้านี้เคยลืม)
       assignableUsers: assignableUsersFor(task?.me, Array.isArray(users) ? users : []),
       deals: Array.isArray(deals) ? deals : [],
-      projects: Array.isArray(projects) ? projects : [],
     }));
   };
   const openEdit = () => { setEditing(true); loadFormOptions(); };
@@ -211,10 +210,9 @@ export default function TaskDetailPage() {
           </DetailCard>
         )}
 
-        {/* การ์ดรวมของที่ผูกกับงาน — ใช้ไอคอน "ลิงก์" ไม่ใช่ไอคอนโครงการ เพราะข้างในมีทั้ง
-            โครงการ ดีล และคำร้อง (FolderKanban = โครงการอย่างเดียว ดู entityIcon.test.mjs) */}
-        {(task.project || task.deal || task.inquiry) && <DetailCard icon={Link2} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
-          {task.project && <ContextCard icon={FolderKanban} href={`/sa/projects/${task.project.id}`} eyebrow="โครงการ" title={`${task.project.code ? `${task.project.code} · ` : ""}${task.project.name}`} subtitle={task.project.customerName || "รายละเอียดโครงการ"} facts={[{ label: "ทีม", value: naText(task.project.team) }, { label: "AE", value: naText(task.project.aeOwner) }]} />}
+        {/* การ์ดรวมของที่ผูกกับงาน — ใช้ไอคอน "ลิงก์" เพราะข้างในมีทั้งดีลและคำร้อง
+            (การ์ด "โครงการ" ถูกถอดในงวด P2d ยุบดีล/โครงการ · มติเจ้าของ 13/11/2026 ④) */}
+        {(task.deal || task.inquiry) && <DetailCard icon={Link2} eyebrow="Business context" title="งานที่เชื่อมโยง"><ContextGrid>
           {task.deal && <ContextCard icon={Handshake} href={`/sales-planning/deals/${task.deal.id}`} eyebrow="ดีล" title={task.deal.title} subtitle={task.deal.customerName || "รายละเอียดดีล"} facts={[{ label: "ทีม", value: naText(task.deal.team) }, { label: "เจ้าของดีล", value: naText(livePersonName(directory, task.deal.ownerId, task.deal.ownerName)) }]} />}
           {task.inquiry && <ContextCard icon={MessageCircleQuestion} href={`/requests/${task.inquiry.id}`} eyebrow="ข้อความต้นทาง" title={`${task.inquiry.code || "คำร้อง"} · ${task.inquiry.title}`} subtitle="เปิดการสนทนาและข้อมูลประกอบ" badges={<span className="ui-badge">{task.inquiry.status}</span>} />}
         </ContextGrid></DetailCard>}
@@ -228,7 +226,6 @@ export default function TaskDetailPage() {
         onClose={() => setEditing(false)}
         task={task}
         deals={opts.deals}
-        projects={opts.projects}
         assignableUsers={opts.assignableUsers}
         me={task.me}
         canManage={!!task.canManage}
@@ -245,7 +242,6 @@ export default function TaskDetailPage() {
         initialForm={followUp}
         chainSource={{ id: task.id, title: task.title }}
         deals={opts.deals}
-        projects={opts.projects}
         assignableUsers={opts.assignableUsers}
         me={task.me}
         onSaved={() => { setFollowUp(null); load(); }}
