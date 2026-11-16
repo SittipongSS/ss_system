@@ -21,6 +21,20 @@
 export const billingDealIdOf = (row) => row?.dealId || row?.sourceDeal?.id || '';
 const DEAD_QUOTATION_STATUSES = new Set(['rejected', 'cancelled']);
 
+/* ⭐ ใบที่มีใบอื่นแทนแล้ว (มติเจ้าของ 16/11/2026: "ดีลที่ Won แล้ว ควรดึงมาเฉพาะใบที่ Won") — ยังอนุมัติอยู่ แต่ไม่ใช่ใบที่งานเดินต่อ
+     · `closed`  = ใบพี่น้องที่ถูกปิดตอนลูกค้ารับใบอื่นในดีลเดียวกัน (accept_quotation_atomic ปิด draft/sent/rejected ทุกใบ)
+     · `revised` = ฉบับเก่าที่ออก Rev. ใหม่แทนแล้ว (quotations/[id]/revise)
+   ⇒ ดีล Won เหลือเฉพาะใบ `accepted` ในลิสต์เอง (ดีลขายซ้ำมีได้หลายใบ) · ดีลที่ยังไม่ Won คงเดิม (ขอ "50% ก่อนผลิต" ได้ก่อนมี SO)
+   ⚠️ คำร้องที่เปิดไว้แล้วบนใบพวกนี้ยังต้องเห็น (ประวัติ) — หน้า QT อ่านผ่าน `billingQuotationRequestsView` ไม่ใช่ซ่อนทั้งบล็อก
+   ⚠️ ย้อนการรับ (0388) เปิดใบพี่น้องกลับเป็นสถานะเดิม ⇒ ใบกลับมาอยู่ในลิสต์เองโดยไม่ต้องแก้อะไร */
+const SUPERSEDED_QUOTATION_MESSAGES = {
+  closed: 'ใบเสนอราคานี้ถูกปิดตอนลูกค้ารับใบอื่นในดีลเดียวกัน — ขอเอกสารการเงินจากใบที่ลูกค้ารับ',
+  revised: 'ใบเสนอราคานี้มี Rev. ใหม่แทนแล้ว — ขอเอกสารการเงินจากฉบับล่าสุด',
+};
+const supersededMessage = (quotation) => (
+  Object.hasOwn(SUPERSEDED_QUOTATION_MESSAGES, quotation?.status) ? SUPERSEDED_QUOTATION_MESSAGES[quotation.status] : null
+);
+
 /**
  * ขอเอกสารการเงินจากใบนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
  *
@@ -34,6 +48,8 @@ export function billingQuotationError(quotation) {
   if (DEAD_QUOTATION_STATUSES.has(quotation.status)) {
     return 'ใบเสนอราคานี้ถูกตีกลับหรือยกเลิกไปแล้ว — ขอเอกสารการเงินจากใบนี้ไม่ได้';
   }
+  const superseded = supersededMessage(quotation);
+  if (superseded) return superseded;
   /* ⭐ **ยอดสุทธิศูนย์ = ของจริงของธุรกิจ ไม่ใช่ข้อมูลพัง** (มติผู้ใช้ 2026-08-15:
      *"บางทีตั้งใจให้ actual เป็น 0 เพราะบางทีเราให้ลูกค้าฟรี"*)
      ตรวจบน prod แล้ว: ใบที่ยอดสุทธิ 0 ทุกใบมีส่วนลด **เท่ากับยอดก่อนภาษีพอดี**
@@ -76,12 +92,13 @@ export function billingQuotationOptions(quotations = [], { keepId = null } = {})
 export function billingQuotationSkips(quotations = []) {
   // ⚠️ `free` แยกจาก `noAmount` — สองอย่างนี้ทางแก้คนละทาง (ให้ฟรีคือจบแล้ว ไม่ต้องแก้
   // อะไร · ใบว่างคือยังไม่ได้ใส่ของ) ⇒ รวมเป็นตัวเลขเดียวเมื่อไร คนอ่านจะนึกว่าพัง 12 ใบ
-  const out = { notApproved: 0, dead: 0, free: 0, noAmount: 0, total: 0 };
+  const out = { notApproved: 0, dead: 0, closed: 0, revised: 0, free: 0, noAmount: 0, total: 0 };
   for (const qt of Array.isArray(quotations) ? quotations : []) {
     if (billingQuotationError(qt) === null) continue;
     out.total += 1;
     if (qt?.approvalStatus !== 'approved') out.notApproved += 1;
     else if (DEAD_QUOTATION_STATUSES.has(qt?.status)) out.dead += 1;
+    else if (supersededMessage(qt)) out[qt.status] += 1;
     else if (Number(qt?.subtotal) > 0) out.free += 1;
     else out.noAmount += 1;
   }
@@ -93,11 +110,28 @@ export function billingQuotationSkipHint(skips = {}) {
   const parts = [];
   if (skips.notApproved) parts.push(`ยังไม่อนุมัติ ${skips.notApproved} ใบ`);
   if (skips.dead) parts.push(`ตีกลับ/ยกเลิก ${skips.dead} ใบ`);
+  if (skips.closed) parts.push(`ปิดเพราะลูกค้ารับใบอื่น ${skips.closed} ใบ`);
+  if (skips.revised) parts.push(`ฉบับเก่าที่มี Rev. ใหม่ ${skips.revised} ใบ`);
   // ⭐ "ให้ฟรี" ไม่ใช่ความผิดพลาด — คำที่ใช้ต้องไม่ชวนให้คนไปตามแก้ของที่ถูกอยู่แล้ว
   if (skips.free) parts.push(`ให้ฟรี ${skips.free} ใบ`);
   if (skips.noAmount) parts.push(`ยังไม่มียอด ${skips.noAmount} ใบ`);
   if (!parts.length) return '';
   return `ซ่อนไว้ ${skips.total || parts.length} ใบ — ${parts.join(' · ')}`;
+}
+
+/**
+ * บล็อก "เอกสารบัญชีของแต่ละงวด" บนหน้า QT — `{ visible, locked }`
+ *
+ * ⭐ ใบปกติ: ด่านเดียวกับ POST (`billingQuotationError`) — ผ่าน = โชว์ + เปิดคำร้องได้
+ * ⭐ ใบที่มีใบอื่นแทน (`closed` / `revised`): โชว์ต่อแบบอ่านอย่างเดียว (`locked` = เหตุที่เปิดใหม่ไม่ได้)
+ *   — คำร้องที่ขอไว้ก่อนใบถูกปิด/ออก Rev. โดยเฉพาะ "ไม่ระบุงวด" ผูกอยู่กับใบนี้ใบเดียว ซ่อนบล็อก = ประวัติหายจากจอ
+ * ⚠️ ใบที่ไม่ผ่านด้วยเหตุอื่น (ยังไม่อนุมัติ · ตีกลับ/ยกเลิก · ยอด 0) ซ่อนเหมือนเดิม
+ */
+export function billingQuotationRequestsView(quotation) {
+  const error = billingQuotationError(quotation);
+  if (!error) return { visible: true, locked: '' };
+  const superseded = quotation?.approvalStatus === 'approved' && supersededMessage(quotation) === error;
+  return superseded ? { visible: true, locked: error } : { visible: false, locked: error };
 }
 
 // ── ยอดที่ขอ ─────────────────────────────────────────────────────────────

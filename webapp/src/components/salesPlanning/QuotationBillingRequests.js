@@ -8,6 +8,8 @@
 // ⭐ งวดเดียวมีหลายคำร้องได้ (มติข้อ 3) ⇒ ปุ่มอยู่ทุกแถวที่ไม่ติดด่าน แม้มีคำร้องแล้ว · คำร้อง "ไม่ระบุงวด" รวมไว้แถวท้าย
 // ⚠️ ไม่ใช่ช่องของตารางแผน (QuotationInstallments) — ตารางนั้นใช้ร่วมกับโหมดแก้/ปรับแผนของ SO และแก้ได้ระหว่างร่าง
 //   ส่วนบล็อกนี้มีเฉพาะใบที่อนุมัติแล้ว (ด่านเดียวกับ POST เปิดคำร้อง: billingQuotationError)
+// ⭐ ใบที่ถูกปิดตอนรับใบอื่น / มี Rev. ใหม่ (มติ 16/11/2026) = อ่านอย่างเดียว: `lockedReason` บอกเหตุ ไม่มีปุ่มขอใหม่
+//   (หน้า QT ตัดสินผ่าน `billingQuotationRequestsView`) — คำร้องเดิมยังเห็นครบเป็นประวัติ
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Receipt } from "lucide-react";
@@ -37,8 +39,9 @@ function RequestChips({ requests }) {
 /**
  * @param quotation  `{ id }` ของใบเสนอราคาที่อนุมัติแล้ว
  * @param canRequest ผู้ดูเปิดคำร้องได้ไหม (`costing:edit` — ด่านเดียวกับ POST) · ไม่ได้ = อ่านอย่างเดียว ไม่มีปุ่ม
+ * @param lockedReason ใบนี้เปิดคำร้องใหม่ไม่ได้เพราะอะไร ('' = เปิดได้) — โชว์ใต้หัวบล็อก
  */
-export default function QuotationBillingRequests({ quotation, canRequest = false }) {
+export default function QuotationBillingRequests({ quotation, canRequest = false, lockedReason = "" }) {
   const [state, setState] = useState({ loading: true, error: "", choices: null });
 
   useEffect(() => {
@@ -63,9 +66,13 @@ export default function QuotationBillingRequests({ quotation, canRequest = false
           {state.loading ? "กำลังโหลด…"
             : state.error ? state.error
               : choices?.source === "order" ? `งวดของใบสั่งขาย ${choices.orderNumber}`
-                : choices?.source === "plan" ? "งวดตามแผนของใบนี้ — ผูกกับงวดจริงให้เองเมื่อออกใบสั่งขาย"
-                  : "ใบนี้ไม่มีแผนงวดชำระ — ขอเอกสารแบบไม่ระบุงวดได้จากการ์ดจัดการเอกสาร"}
+                : choices?.source === "plan"
+                  // ใบที่ถูกปิด/มี Rev. ใหม่ไม่มีวันออกใบสั่งขาย — ประโยค "ผูกให้เองเมื่อออก SO" ไม่จริงสำหรับใบนั้น
+                  ? (lockedReason ? "งวดตามแผนของใบนี้" : "งวดตามแผนของใบนี้ — ผูกกับงวดจริงให้เองเมื่อออกใบสั่งขาย")
+                  : lockedReason ? "ใบนี้ไม่มีแผนงวดชำระ"
+                    : "ใบนี้ไม่มีแผนงวดชำระ — ขอเอกสารแบบไม่ระบุงวดได้จากการ์ดจัดการเอกสาร"}
         </small>
+        {lockedReason ? <small className={styles.hint}>{lockedReason}</small> : null}
       </div>
       {rows.length || unassigned.length ? (
         <ul className={styles.list}>

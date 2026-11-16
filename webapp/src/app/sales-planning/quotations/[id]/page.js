@@ -70,7 +70,7 @@ import { approvalPrompt } from "@/lib/approvalPrompt";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 import QuotationBillingRequests from "@/components/salesPlanning/QuotationBillingRequests";
-import { billingQuotationError } from "@/lib/requests/billingQuotations";
+import { billingQuotationError, billingQuotationRequestsView } from "@/lib/requests/billingQuotations";
 import { EXCISE_STATUS_NOTE, isExciseOrder } from "@/lib/sales/historicalOrders";
 import { EXCISE_LIST_LABEL } from "@/lib/excise/exciseListRow";
 import { excisePreVatAmount } from "@/lib/excise/exciseSalesOrder";
@@ -229,6 +229,8 @@ export default function QuotationEditorPage() {
      approvalStatus='pending' ไว้เป็นประวัติ ⇒ ถ้าอ่านแกนอนุมัติก่อน รางกับป้ายจะบอก "รอเจ้าของดีลอนุมัติ"
      บนใบที่ตายแล้ว · ทุกกิ่งข้างล่างที่อ่าน approvalStatus ต้องผ่านสองตัวนี้หรือเช็ค isCancelled เอง */
   const isCancelled = quote?.status === "cancelled";
+  // บล็อกคำร้องขอเอกสารการเงินตามงวด — ใบปกติเปิดใหม่ได้ · ใบที่ถูกปิด/มี Rev. ใหม่อ่านอย่างเดียว (billingQuotations.js)
+  const billingView = billingQuotationRequestsView(quote);
   const cancelRecord = quotationCancelRecord(quote);
   const needsSubmit = !!quote && !isCancelled && quote.approvalStatus === "not_submitted";
   const awaitingApproval = !!quote && !isCancelled && quote.approvalStatus === "pending";
@@ -1140,9 +1142,10 @@ export default function QuotationEditorPage() {
               disabled={!editable}
             />
             {/* ⭐ เอกสารบัญชีตามงวด (PR-2 · มติเจ้าของ 28/10/2026) — เฉพาะใบที่ขอเอกสารได้ (ด่านเดียวกับ POST: billingQuotationError)
-                และไม่อยู่ในโหมดแก้ (แผนข้างบนยังขยับได้ระหว่างแก้ ⇒ ปุ่มรายงวดชี้ของที่ยังไม่บันทึก) */}
-            {quote && !billingQuotationError(quote) && !editMode ? (
-              <QuotationBillingRequests quotation={quote} canRequest={canOpenRequest} />
+                และไม่อยู่ในโหมดแก้ (แผนข้างบนยังขยับได้ระหว่างแก้ ⇒ ปุ่มรายงวดชี้ของที่ยังไม่บันทึก)
+                ⭐ ใบที่ถูกปิดตอนรับใบอื่น / มี Rev. ใหม่ (มติ 16/11): โชว์คำร้องเดิมแบบอ่านอย่างเดียว — ไม่มีปุ่มขอใหม่ */}
+            {quote && billingView.visible && !editMode ? (
+              <QuotationBillingRequests quotation={quote} canRequest={canOpenRequest && !billingView.locked} lockedReason={billingView.locked} />
             ) : null}
           </section>
 
