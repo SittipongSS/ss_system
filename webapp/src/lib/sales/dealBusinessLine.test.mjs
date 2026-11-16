@@ -70,13 +70,7 @@ test('PATCH: ค่าว่าง = ไม่แตะ (ดีลเก่า�
   assert.match(route, /const lineChanged = 'line' in patch/, 'สายเปลี่ยนต้อง regen ไทม์ไลน์ด้วย');
 });
 
-test('ผูก/ก่อโครงการ: ข้ามสายไม่ได้ · ดีลเก่าที่ยังไม่มีสายสืบจากโครงการ', () => {
-  const link = read('src/lib/sales/dealProjectLink.js');
-  assert.match(link, /if \(deal\.line && project\.line && deal\.line !== project\.line\)/);
-  assert.match(link, /const adoptedLine = !deal\.line && project\.line \? project\.line : null;/);
-  const create = read('src/app/api/sales-planning/deals/[id]/create-project/route.js');
-  assert.match(create, /if \(deal\.line && normalizeBusinessLine\(body\.line\) !== deal\.line\)/);
-});
+// (ยาม "ผูก/ก่อโครงการ: ข้ามสายไม่ได้" ถอดใน P3a — ยุบโครงการ 16/11 ลบ dealProjectLink + create-project ของดีล)
 
 test('ฟอร์มดีลมีช่องสาย · ไม่มีช่องโครงการ (P2d) · ดีลเก่าในโครงการล็อกสาย', () => {
   const fields = read('src/components/salesPlanning/DealFormFields.js');

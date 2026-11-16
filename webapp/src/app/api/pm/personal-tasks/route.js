@@ -33,7 +33,7 @@ export const GET = withUser(async ({ user, supabase }) => {
 // POST /api/pm/personal-tasks — สร้าง/มอบหมายงาน (Sales Task Management).
 //  - มอบหมาย (assigneeId) ตามลำดับชั้น: superuser→ใครก็ได้, sales role→คนในทีมตัวเอง,
 //    อื่น ๆ→ตัวเองเท่านั้น (canAssignTask). ไม่ผูกกับการมีโครงการอีกต่อไป.
-//  - ผูกได้ทั้งดีล (dealId) และ/หรือโครงการ (projectId) — nullable ทั้งคู่.
+//  - ผูกดีลได้ (dealId · nullable) — โครงการเลิกผูกแล้ว (P3a 16/11)
 export const POST = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view') || isReadOnlyObserver(user.role)) return forbidden();
@@ -43,7 +43,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest('ต้องระบุชื่องาน');
   }
 
-  let projectId = body.projectId || null;
+  /* ⭐ P3a (มติ 16/11 ⑩): งานใหม่ไม่ผูกโครงการอีกแล้ว — ไม่รับ `projectId` จาก client และไม่ก๊อปจากดีล/คำร้อง
+     (โครงการเก็บเป็นประวัติ · งานเดิมที่ถือค่าไว้ยังอ่านได้) */
   let dealId = body.dealId || null;
   // ลิงก์ย้อนกลับไปคำร้องต้นทาง (ปุ่ม "สร้างงานจากคำถาม")
   // ⚠️ คอลัมน์ยังชื่อ inquiryId ตามชื่อระบบเดิม — เป็น logical link ไม่มี FK
@@ -59,7 +60,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     if (!canViewRequest(user, inq)) return forbidden('ไม่มีสิทธิ์ใช้คำร้องนี้สร้างงาน');
     inquiryRecord = inq;
     dealId = inq.dealId || null;
-    projectId = inq.projectId || null;
     inquiryId = inq.id;
     if (body.inquiryMessageId) {
       // 🐞 เคยอ่าน `inquiry_messages` ซึ่งถูก DROP ไปใน mig 0174 — เธรดของคำร้อง
@@ -99,24 +99,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     assigneeName = au.user.user_metadata?.name || au.user.email || null;
   }
 
-  // อ้างอิงโครงการ/ดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
+  // อ้างอิงดีลต้องมีจริง (logical link — เช็กกันข้อมูลเสีย).
   if (dealId) {
-    const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', dealId).maybeSingle();
+    const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, team').eq('id', dealId).maybeSingle();
     if (dealError) return fail(dealError.message, 500);
     if (!deal) return badRequest('ไม่พบดีล');
     // งานจาก Inquiry ใช้ดีลต้นทางตามสิทธิ์ของเรื่องนั้น ส่วนการเลือกดีลเองต้องอยู่ทีมเดียวกัน.
     if (!inquiryRecord && !canLinkTaskToDeal(user, deal)) return forbidden('ผูกงานได้เฉพาะดีลของทีมตัวเอง');
-    if (deal.projectId) {
-      if (projectId && projectId !== deal.projectId) return badRequest('ดีลไม่ได้อยู่ในโครงการที่ระบุ');
-      projectId = deal.projectId;
-    } else if (projectId) {
-      return badRequest('ดีลนี้ยังไม่ผูกโครงการ จึงระบุโครงการร่วมกันไม่ได้');
-    }
-  }
-  if (projectId) {
-    const { data: proj, error: projError } = await supabase.from('projects').select('id').eq('id', projectId).maybeSingle();
-    if (projError) return fail(projError.message, 500);
-    if (!proj) return badRequest('ไม่พบโครงการ');
   }
 
   // ผูกดีลเป็น **ค่าตั้งต้น** (มติผู้ใช้ 2026-08-06) — ผ่อนเป็น "ทางออกที่ต้องกดเอง"
@@ -175,7 +164,6 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     important: !!body.important,
     urgent: !!body.urgent,
     difficulty: normalizeDifficulty(body.difficulty),
-    projectId,
     dealId,
     inquiryId,
     inquiryMessageId,

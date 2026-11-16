@@ -2,9 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
-import SearchableSelect from "@/components/ui/SearchableSelect";
 import Button from "@/components/ui/Button";
-import styles from "./page.module.css";
 import DateInput from "@/components/ui/DateInput";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -27,15 +25,10 @@ import { poTotalQty, poLineCount, PO_STATUS_LABEL } from "@/lib/sahamit/po";
 import { ppcOf, casesText } from "@/lib/sahamit/units";
 import { DestinationToggle, destinationLabel } from "@/components/sahamit/destinations";
 import { useCan } from "@/lib/roleContext";
-import useDealOwners from "@/lib/sales/useDealOwners";
-import usePeopleDirectory from "@/lib/usePeopleDirectory";
-import { PROJECT_PEOPLE_ROLES } from "@/lib/pm/projectPeople";
-import { createClient } from "@/lib/supabaseBrowser";
 import Modal from "@/components/Modal";
 import Toast, { notifyToast } from "@/components/ui/Toast";
 import ReadableText from "@/components/ui/ReadableText";
 import Textarea from "@/components/ui/Textarea";
-import { apiFetch } from "@/lib/apiFetch";
 
 const STATUS_OPTIONS = ["open", "partial", "delivered", "cancelled"];
 const nf = (n) => fmtNumber(n || 0);
@@ -219,7 +212,6 @@ function PoLineRow({ line, tracking, trackingUnknown = false, product, onChanged
 export default function PoDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const canCreateProject = useCan("pm:edit");
   const canSettle = useCan("salesplan:edit");
   const canEdit = useCan("sahamit:edit");
   const id = params.id;
@@ -316,47 +308,11 @@ export default function PoDetailPage() {
   const [busy, setBusy] = useState(false);
   const [hErr, setHErr] = useState("");
   const [headerExpanded, setHeaderExpanded] = useState(false); // ย่อไว้ก่อนแบบหัว ISO
-  const [projectConfirmOpen, setProjectConfirmOpen] = useState(false);
-  const [projectBusy, setProjectBusy] = useState(false);
-  /* ผู้ดูแล (AE) ของโครงการที่จะสร้างจาก PO — เดิม route ตรึงเป็นคนกดปุ่มเสมอ
-     ⇒ Admin/หัวหน้าฝ่ายขายกดแล้วโครงการตกเป็นของคนที่ไม่ใช่ AE (ชื่อผิดบนเอกสาร
-     ISO ด้วย) · ae/senior_ae ยังกดแล้วเป็นของตัวเอง ช่องจึงล็อกไม่ใช่ซ่อน
-     ⚠️ รายชื่อมาจาก hook กลางตัวเดียวกับฟอร์มดีล — คนถือดีลกับผู้ดูแลโครงการเป็น
-     ชุด role เดียวกัน (PROJECT_OWNER_ROLES = DEAL_HOLDER_ROLES) ห้ามกรองเองซ้ำ */
-  const [meId, setMeId] = useState(null);
-  useEffect(() => {
-    createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
-  }, []);
-  const { owners: aeOwners, lockedOwner } = useDealOwners(meId);
-  const [projectAeId, setProjectAeId] = useState("");
-  /* โครงการต้องมีครบสามฝ่ายตั้งแต่วันเกิด (มติผู้ใช้ 2026-08-14) — เดิม route ของ PO
-     เขียนผู้ประสานงาน/ผู้ตรวจสอบเป็นค่าว่างตายตัว ⇒ โครงการจาก PO ไม่มีสองฝ่ายนี้เลย
-     รายชื่อกรองด้วย role เดียวกับที่ server ตรวจ (resolveProjectAcOwner / Supervisor) */
-  const directory = usePeopleDirectory();
-  const acUsers = useMemo(() => directory.filter((u) => PROJECT_PEOPLE_ROLES.preparedBy.includes(u.role) && !u.disabled), [directory]);
-  const supervisorUsers = useMemo(
-    () => directory.filter((u) => PROJECT_PEOPLE_ROLES.aeSupervisor.includes(u.role) && !u.disabled),
-    [directory],
-  );
-  const [projectAcId, setProjectAcId] = useState("");
-  const [projectSupervisorId, setProjectSupervisorId] = useState("");
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleOpen, setSettleOpen] = useState(false);
-  const [settleData, setSettleData] = useState(null); // { poReceivedMonth, projectId, lines } | null=กำลังโหลด
+  const [settleData, setSettleData] = useState(null); // { poReceivedMonth, lines } | null=กำลังโหลด
   const [settleChoices, setSettleChoices] = useState({}); // poLineId -> dealId | "new" | "skip"
   const [settleModes, setSettleModes] = useState({}); // poLineId -> "split" | "whole" (เฉพาะ PO ครอบดีลบางส่วน)
-  // เลือกโครงการเดิมมาเชื่อม (มติ 2026-07-20) — ทางเลือกคู่กับ "สร้างโครงการใหม่"
-  // ผูกโครงการจากในโมดัลยืนยันดีล (แยก state จาก modal "เลือกโครงการเดิม" ที่เปิดเดี่ยว
-  // เพราะสองที่เปิดพร้อมกันได้ และ modal เดี่ยวเด้งออกไปหน้าโครงการหลังผูกเสร็จ)
-  const [inlineProjects, setInlineProjects] = useState([]);
-  const [inlineProjectId, setInlineProjectId] = useState("");
-  const [inlineLoading, setInlineLoading] = useState(false);
-  const [inlineBusy, setInlineBusy] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkBusy, setLinkBusy] = useState(false);
-  const [linkLoading, setLinkLoading] = useState(false);
-  const [linkProjects, setLinkProjects] = useState([]);
-  const [linkProjectId, setLinkProjectId] = useState("");
   const [toast, setToast] = useState(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -433,113 +389,12 @@ export default function PoDetailPage() {
     setBusy(false);
   };
 
-  const createProject = async () => {
-    // ล็อกชื่อตัวเอง (ae/senior_ae) = ไม่ต้องเลือก · นอกนั้นต้องเลือกก่อน ไม่งั้น API ตีกลับ
-    const aeOwnerId = lockedOwner?.id || projectAeId;
-    // ด่านรวมข้อความเดียว (docs/form-design-rules.md §2) — บอกทุกช่องที่ขาดในครั้งเดียว
-    const missing = [
-      [!aeOwnerId, "ผู้ดูแลโครงการ (AE)"],
-      [!projectAcId, "ผู้ประสานงาน (AC)"],
-      [!projectSupervisorId, "ผู้ตรวจสอบ (AE Supervisor)"],
-    ].filter(([absent]) => absent).map(([, label]) => label);
-    if (missing.length) {
-      setToast({ kind: "error", msg: `เลือก ${missing.join(" · ")} ก่อน` });
-      return;
-    }
-    setProjectBusy(true);
-    try {
-      const payload = await sahamitFetch(`/api/sahamit/po/${id}/create-project`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ aeOwnerId, acOwnerId: projectAcId, aeSupervisorId: projectSupervisorId }),
-      });
-      setProjectConfirmOpen(false);
-      const project = payload.project;
-      if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
-      else await reload();
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message || "สร้างโครงการไม่สำเร็จ" });
-    } finally {
-      setProjectBusy(false);
-    }
-  };
-
-  // เลือกโครงการเดิม: โหลดโครงการของลูกค้าสหมิตร (customerId เดียวกับ PO) มาให้เลือก
-  const openLinkProject = async () => {
-    setLinkOpen(true);
-    setLinkLoading(true);
-    setLinkProjects([]);
-    setLinkProjectId("");
-    try {
-      const res = await apiFetch("/api/pm/projects");
-      const rows = res.ok ? await res.json() : [];
-      const mine = (Array.isArray(rows) ? rows : []).filter((p) => p.customerId && p.customerId === po.customerId);
-      setLinkProjects(mine);
-      if (mine.length === 1) setLinkProjectId(mine[0].id);
-    } catch {
-      setLinkProjects([]);
-    } finally {
-      setLinkLoading(false);
-    }
-  };
-  const submitLinkProject = async () => {
-    if (!linkProjectId) { setToast({ kind: "error", msg: "เลือกโครงการที่จะเชื่อมก่อน" }); return; }
-    setLinkBusy(true);
-    try {
-      const payload = await sahamitFetch(`/api/sahamit/po/${id}/link-project`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: linkProjectId }),
-      });
-      setLinkOpen(false);
-      const project = payload.project;
-      if (project?.code || project?.id) router.push(`/sa/projects/${project.code || project.id}`);
-      else await reload();
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message || "เชื่อมโครงการไม่สำเร็จ" });
-    } finally {
-      setLinkBusy(false);
-    }
-  };
-
-  // ผูกโครงการเดิมจาก "ในโมดัลยืนยันดีล" — ต่างจาก submitLinkProject ตรงที่ไม่เด้ง
-  // ออกไปหน้าโครงการ แต่โหลดข้อมูล settle ใหม่ให้ทำงานต่อในโมดัลเดิมได้เลย
-  const linkProjectInline = async () => {
-    if (!inlineProjectId) return;
-    setInlineBusy(true);
-    try {
-      await sahamitFetch(`/api/sahamit/po/${id}/link-project`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: inlineProjectId }),
-      });
-      await reload();
-      const data = await sahamitFetch(`/api/sahamit/po/${id}/settle-deal`);
-      setSettleData(data);
-      setToast({ kind: "success", msg: "ผูกโครงการแล้ว — ยืนยันดีลต่อได้เลย" });
-    } catch (e) {
-      setToast({ kind: "error", msg: e.message || "ผูกโครงการไม่สำเร็จ" });
-    } finally {
-      setInlineBusy(false);
-    }
-  };
-
   // เปิด modal จับคู่รายบรรทัด (โหลด candidate ต่อบรรทัด)
   const openSettleModal = async () => {
     setSettleOpen(true);
     setSettleData(null);
     setSettleChoices({});
     setSettleModes({});
-    // โหลดโครงการของลูกค้าไว้เผื่อ PO นี้ยังไม่มีโครงการ — จะได้เลือกผูกในโมดัลเลย
-    setInlineLoading(true);
-    setInlineProjectId("");
-    apiFetch("/api/pm/projects")
-      .then((r) => (r.ok ? r.json() : []))
-      .then((rows) => setInlineProjects(
-        (Array.isArray(rows) ? rows : []).filter((p) => p.customerId && p.customerId === po.customerId),
-      ))
-      .catch(() => setInlineProjects([]))
-      .finally(() => setInlineLoading(false));
     try {
       const data = await sahamitFetch(`/api/sahamit/po/${id}/settle-deal`);
       setSettleData(data);
@@ -675,22 +530,10 @@ export default function PoDetailPage() {
                 busy={busy || deleteBusy}
               />
               <RelatedDocumentCard
-                title="โครงการและงานขาย"
-                meta="เชื่อม PO ไปยัง PM Project และท่อ QT → SO"
+                title="งานขาย"
+                meta="เชื่อม PO ไปยังท่อ QT → SO"
                 actions={(
                   <div className="flex flex-col gap-2">
-                    {po.projectId ? (
-                      <Link className="btn ghost sm" href={`/sa/projects/${po.projectId}`}><ExternalLink size={13} /> เปิด PM Project</Link>
-                    ) : canCreateProject ? (
-                      <>
-                        <button type="button" className="btn ghost sm" onClick={openLinkProject} disabled={!po.lines?.length}><PackageCheck size={13} /> เลือกโครงการเดิม</button>
-                        <button type="button" className="btn ghost sm" onClick={() => setProjectConfirmOpen(true)} disabled={!po.lines?.length}><PackageCheck size={13} /> สร้างโครงการใหม่</button>
-                      </>
-                    ) : null}
-                    {/* ⚠️ เดิมปุ่มนี้ disabled ตอนยังไม่มีโครงการ → เปิดโมดัลไม่ได้เลย
-                        และคำเตือนในโมดัลกลายเป็นโค้ดตายที่ไม่มีใครได้เห็น · ตอนนี้เปิดได้
-                        แล้วไปแก้ในโมดัล (ยังบังคับว่าต้องมีโครงการก่อนยืนยัน — ปุ่มยืนยัน
-                        ยัง disabled อยู่ · มติผู้ใช้ 2026-07-29: ห้ามสร้างโครงการให้เอง) */}
                     {canSettle ? (
                       <button type="button" className="btn ghost sm" onClick={openSettleModal} disabled={!po.lines?.length}>
                         <PackageCheck size={13} /> {po.salesDealId ? "เชื่อมบรรทัดที่เหลือ" : "ยืนยันดีล + ออกใบเสนอราคา"}
@@ -700,7 +543,7 @@ export default function PoDetailPage() {
                   </div>
                 )}
               >
-                Action ของโครงการและดีลแยกจากการแก้ข้อมูล PO เพื่อไม่ปะปนวงจรเอกสาร
+                Action ของดีลแยกจากการแก้ข้อมูล PO เพื่อไม่ปะปนวงจรเอกสาร
               </RelatedDocumentCard>
             </>
           )}
@@ -864,177 +707,12 @@ export default function PoDetailPage() {
         confirmLabel={deleteBusy ? "กำลังลบ..." : "ลบ PO"}
         danger
       />
-      {/* ⚠️ ไม่ใช่ ConfirmDialog แล้ว — โมดัลนี้ถามค่าที่ต้องบันทึกจริง (ผู้ดูแล AE)
-          ไม่ใช่แค่ยืนยัน · ทีม/เจ้าของของโครงการเดินตามช่องนี้ (mig 0253) */}
-      <Modal
-        open={projectConfirmOpen}
-        onClose={() => !projectBusy && setProjectConfirmOpen(false)}
-        title="สร้าง RE-ORDER Project จาก PO นี้?"
-        size="sm"
-        footer={(
-          <>
-            <Button variant="quiet" onClick={() => setProjectConfirmOpen(false)} disabled={projectBusy}>ยกเลิก</Button>
-            <Button tone="primary" onClick={createProject} disabled={projectBusy || (!lockedOwner && !projectAeId) || !projectAcId || !projectSupervisorId}>
-              {projectBusy ? "กำลังสร้าง..." : "สร้างโครงการ"}
-            </Button>
-          </>
-        )}
-      >
-        <div className="pm-form-grid gap-[12px]">
-          <div className="form-group col-span-2">
-            <ReadableText text={`ระบบจะสร้าง PM project จาก PO ${po?.poNumber || ""} และผูก FG/จำนวนจากรายการใน PO นี้ กดซ้ำภายหลังจะเปิดโครงการเดิม ไม่สร้างซ้ำ`} />
-          </div>
-          <div className="form-group col-span-2">
-            <label>ผู้ดูแลโครงการ (AE) <span className="required-mark">*</span></label>
-            {lockedOwner ? (
-              /* ล็อกไม่ใช่ซ่อน (docs/form-design-rules.md §2) — คนต้องเห็นว่าใบนี้จะเป็นของใคร */
-              <div className="deal-derived">{lockedOwner.name} (คุณ)</div>
-            ) : (
-              <Select
-                className="w-full"
-                value={projectAeId}
-                onChange={(e) => setProjectAeId(e.target.value)}
-                aria-label="ผู้ดูแลโครงการ (AE)"
-              >
-                <option value="">— เลือกผู้ดูแล —</option>
-                {aeOwners.map((u) => (
-                  <option key={u.id} value={u.id}>{u.team ? `${u.name} · ${u.team}` : u.name}</option>
-                ))}
-              </Select>
-            )}
-            <p className="form-note">โครงการจะเข้าลิสต์และทีมของผู้ดูแลคนนี้ — ไม่ใช่ของคนกดสร้าง</p>
-          </div>
-          {/* อีกสองฝ่ายของโครงการ — บังคับเท่ากับผู้ดูแล (มติผู้ใช้ 2026-08-14)
-              เดิม route เขียนสองช่องนี้เป็นค่าว่างตายตัว ⇒ โครงการจาก PO ไม่มีผู้ประสานงาน
-              และไม่มีผู้ตรวจสอบเลยสักใบ */}
-          <div className="form-group col-span-2">
-            <label>ผู้ประสานงาน (AC) <span className="required-mark">*</span></label>
-            <Select
-              className="w-full"
-              value={projectAcId}
-              onChange={(e) => setProjectAcId(e.target.value)}
-              aria-label="ผู้ประสานงาน (AC)"
-            >
-              <option value="">— เลือกผู้ประสานงาน —</option>
-              {acUsers.map((u) => (
-                <option key={u.id} value={u.id}>{u.team ? `${u.name} · ${u.team}` : u.name}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="form-group col-span-2">
-            <label>ผู้ตรวจสอบ (AE Supervisor) <span className="required-mark">*</span></label>
-            <Select
-              className="w-full"
-              value={projectSupervisorId}
-              onChange={(e) => setProjectSupervisorId(e.target.value)}
-              aria-label="ผู้ตรวจสอบ (AE Supervisor)"
-            >
-              <option value="">— เลือกผู้ตรวจสอบ —</option>
-              {supervisorUsers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </Select>
-          </div>
-        </div>
-      </Modal>
-
-      <Modal open={linkOpen} onClose={() => !linkBusy && setLinkOpen(false)} title="เลือกโครงการเดิมมาเชื่อม PO">
-        <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-          {linkLoading ? (
-            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>กำลังโหลดโครงการ…</div>
-          ) : linkProjects.length === 0 ? (
-            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>ยังไม่มีโครงการสหมิตรให้เลือก — ใช้ &quot;สร้างโครงการใหม่&quot; แทน</div>
-          ) : (
-            <>
-              <label style={{ fontSize: "var(--fs-7)", fontWeight: "var(--fw-semibold)" }}>โครงการ</label>
-              {/* ค้นได้ด้วยรหัส/ชื่อโครงการ (มติผู้ใช้ 2026-08-06) — โครงการสหมิตรสะสมทุกรอบ RE-ORDER */}
-              <SearchableSelect className="w-full" entity="project" ariaLabel="โครงการที่จะเชื่อม PO"
-                value={linkProjectId} onChange={setLinkProjectId}
-                options={linkProjects.map((p) => ({
-                  value: p.id,
-                  label: `${p.code ? `${p.code} · ` : ""}${p.name}${p.type ? ` (${p.type})` : ""}`,
-                  search: `${p.code || ""} ${p.name || ""} ${p.type || ""}`,
-                }))}
-                placeholder="— เลือกโครงการ —"
-                searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
-                emptyText="ไม่พบโครงการที่ตรงกับคำค้น" />
-              <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
-                FG และจำนวนจาก PO นี้จะถูกเพิ่มเข้าโครงการที่เลือก แล้วเดินขั้นตอน &quot;ยืนยันดีล + ออกใบเสนอราคา&quot; ต่อได้
-              </div>
-            </>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-            <button type="button" className="btn ghost" onClick={() => !linkBusy && setLinkOpen(false)} disabled={linkBusy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={linkBusy || !linkProjectId}>
-              {linkBusy ? "กำลังเชื่อม…" : "เชื่อมโครงการ"}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
       <Modal open={settleOpen} onClose={() => !settleBusy && setSettleOpen(false)} title="ยืนยันดีล + ออกใบเสนอราคา (รายบรรทัด)" size="lg">
         <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
           {!settleData ? (
             <div style={{ color: "var(--text-3)", fontSize: "var(--fs-7)" }}>กำลังโหลดดีลที่แนะนำ…</div>
           ) : (
             <>
-              {/* ยังไม่มีโครงการ = แก้ตรงนี้เลย ไม่ต้องปิดโมดัลไปหาปุ่มอื่น
-                  ⚠️ ระบบ **ไม่สร้างโครงการให้เอง** โดยเจตนา (มติผู้ใช้ 2026-07-29) —
-                  โครงการคือศูนย์รวมข้อมูลดีลของสินค้าตัวนั้น การเลือกว่า PO ใบนี้เป็น
-                  รอบใหม่ของโครงการเดิม หรือเป็นสินค้าใหม่จริง ๆ เป็นการตัดสินของคน */}
-              {!settleData.projectId && (
-                <div className={`glass-panel ${styles.needProject}`}>
-                  <div>
-                    ⚠ PO นี้ยังไม่มีโครงการ PM — ต้องมีก่อนจึงออกใบเสนอราคาได้
-                    <div className={styles.needProjectWhy}>
-                      โครงการคือศูนย์รวมข้อมูลดีลของสินค้า — RE-ORDER รอบใหม่ควร<b>ผูกโครงการเดิม</b>
-                      เพื่อให้สูตร/กลิ่น/ทะเบียนสรรพสามิต/BOM ที่ทำไว้แล้วอยู่ที่เดียวกัน
-                      สร้างใหม่เฉพาะตอนเป็นสินค้าที่ยังไม่เคยมีโครงการ
-                    </div>
-                  </div>
-                  {inlineProjects.length > 0 ? (
-                    <div className={styles.needProjectPick}>
-                      <Select
-                        value={inlineProjectId}
-                        onChange={(e) => setInlineProjectId(e.target.value)}
-                        aria-label="เลือกโครงการเดิมมาผูก"
-                      >
-                        <option value="">— เลือกโครงการเดิม —</option>
-                        {inlineProjects.map((p) => (
-                          <option key={p.id} value={p.id}>{p.code ? `${p.code} · ` : ""}{p.name}{p.type ? ` (${p.type})` : ""}</option>
-                        ))}
-                      </Select>
-                      <Button
-                        tone="primary" size="sm"
-                        onClick={linkProjectInline}
-                        disabled={inlineBusy || !inlineProjectId}
-                      >
-                        {inlineBusy ? "กำลังผูก…" : "ผูกโครงการนี้"}
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className={styles.needProjectNote}>
-                      {inlineLoading ? "กำลังโหลดโครงการ…" : "ยังไม่มีโครงการของลูกค้ารายนี้ให้เลือก"}
-                    </div>
-                  )}
-                  {canCreateProject && (
-                    /* เปิดโมดัลยืนยัน ไม่ได้พาไปหน้าอื่น จึงเป็นปุ่ม ไม่ใช่ลิงก์
-                       ⚠️ ปุ่มลงบรรทัดใหม่ ไม่ยัดกลางประโยคเหมือนเดิม — `.btn` เป็น
-                       inline-flex สูง 40px วางกลางบรรทัดแล้วดันกล่องบรรทัดพัง
-                       ⚠️ ไม่ใช้ tone="accent" แม้จะ "เริ่มของใหม่" จริง เพราะจอ PO
-                       มีโควตา accent (จอละ 1 ตัว) ไปแล้ว */
-                    <div className={styles.needProjectNote}>
-                      <div>เป็นสินค้าใหม่ที่ยังไม่มีโครงการ?</div>
-                      <Button
-                        size="sm" variant="ghost"
-                        onClick={() => { setSettleOpen(false); setProjectConfirmOpen(true); }}
-                      >
-                        สร้างโครงการใหม่จาก PO นี้
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
               {/* เชื่อมครบแล้ว = ใบเสนอราคาออกไปแล้วตั้งแต่ตอนยืนยัน (action เดียวทำทั้ง
                   รวมดีล + ออกใบ) — พาไปดูใบเดิม ไม่ใช่ปล่อยให้กดยืนยันแล้วเจอ
                   "ไม่มีบรรทัดที่จะเชื่อม" */}
@@ -1062,7 +740,7 @@ export default function PoDetailPage() {
               )}
               <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>
                 จับคู่แต่ละสินค้าใน PO กับดีล FC ของมัน (แนะนำดีลที่เดือนคาดปิดใกล้เดือนรับ PO {naText(settleData.poReceivedMonth)} สุด)
-                — ยืนยันแล้วระบบจะ<b>รวมทุกบรรทัดเป็นดีลเดียว (SHM_PO {settleData.poNumber || ""})</b> ผูกเข้าโครงการ
+                — ยืนยันแล้วระบบจะ<b>รวมทุกบรรทัดเป็นดีลเดียว (SHM_PO {settleData.poNumber || ""})</b>
                 แล้วออก<b>ใบเสนอราคา 1 ใบหลายบรรทัด (ราคาตาม master)</b> เข้าคิวอนุมัติเจ้าของดีล
                 — ยอดเก็บเงิน/งวดชำระ/SO จะตรงกับ PO ทั้งใบ · ดีล FC ต้นทางถูกยุบเข้าดีลรวม
                 (แบ่งได้ถ้า PO ครอบบางส่วน) · Won เกิดตอน accept ใบเสนอราคา (แนบไฟล์ PO + เลือกเดือน)
@@ -1138,7 +816,7 @@ export default function PoDetailPage() {
                 </button>
                 {/* ไม่มีบรรทัดเหลือ = ไม่มีอะไรให้ยืนยัน — ซ่อนปุ่มแทนที่จะให้กดแล้วเด้ง toast */}
                 {!settleData.allSettled && (
-                  <button className="btn btn-primary" onClick={confirmSettle} disabled={settleBusy || !settleData.projectId}>
+                  <button className="btn btn-primary" onClick={confirmSettle} disabled={settleBusy}>
                     {settleBusy ? "กำลังออกใบเสนอราคา…" : "ยืนยัน + ออกใบเสนอราคา"}
                   </button>
                 )}

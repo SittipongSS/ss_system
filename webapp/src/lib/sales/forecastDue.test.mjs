@@ -135,7 +135,7 @@ test('ป้ายในตารางกว้างเท่ากันท�
     'src/app/sales-planning/leads/page.js',
     'src/app/sales-planning/quotations/page.js',
     'src/app/sales-planning/sales-orders/page.js',
-    'src/app/sa/projects/page.js',
+    // src/app/sa/projects/page.js หลุดลิสต์ — ลบหน้าทะเบียนโครงการใน P3a (ยุบโครงการ 16/11)
   ];
   for (const rel of TABLES) {
     const src = readFileSync(join(ROOT, rel), 'utf8');

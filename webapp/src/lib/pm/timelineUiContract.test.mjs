@@ -12,7 +12,9 @@ const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
 
 const TABLE = 'components/salesPlanning/DealTimelineTable.js';
-const PROJECT_PAGE = 'app/sa/projects/[id]/page.js';
+// หน้ารายละเอียดโครงการถูกลบใน P3a (ยุบโครงการ 16/11) — ปุ่ม Rev. ของไทม์ไลน์ย้ายมาอยู่หน้าดีลตั้งแต่ P2b
+const DEAL_PAGE = 'app/sales-planning/deals/[id]/page.js';
+const REV_CONTROLS = 'components/salesPlanning/DealTimelineRevControls.js';
 const STEP_FORM = 'components/pm/StepFormFields.js';
 
 test('คอลัมน์วันที่ชิดขวาเหมือนตัวเลข (UI_DESIGN_SYSTEM §ป้ายในตาราง กฎ 3-4)', () => {
@@ -52,13 +54,17 @@ test('ออก Rev ตอนมีการแก้ค้าง = ต้อง
   const table = read(TABLE);
   assert.match(table, /onDirtyChange\?\.\(dirtyCount\)/, 'TimelineWorkspace ต้องรายงานของค้างขึ้นหน้าแม่');
 
-  const page = read(PROJECT_PAGE);
-  assert.match(page, /onDirtyChange=\{setTimelineDirty\}/, 'หน้าโครงการต้องรับค่านั้นไว้');
+  const page = read(DEAL_PAGE);
+  assert.match(page, /onDirtyChange=\{setTimelineDirty\}/, 'หน้าดีลต้องรับค่านั้นไว้');
+  assert.match(page, /dirtyCount=\{timelineDirty\}/, 'ส่งจำนวนที่ค้างต่อให้ปุ่ม Rev.');
+
+  const rev = read(REV_CONTROLS);
   assert.match(
-    page,
-    /if \(timelineDirty > 0\) \{[\s\S]{0,200}?return;/,
-    'openIssueRev ต้องหยุดเมื่อมีของค้าง — Rev คือ snapshot ของ task ทั้งชุด',
+    rev,
+    /const blockedByDrafts = \(\) => \{\s*if \(dirtyCount <= 0\) return false;/,
+    'ออก/ย้อน Rev ต้องหยุดเมื่อมีของค้าง — Rev คือ snapshot ของ task ทั้งชุด',
   );
+  assert.match(rev, /const openIssue = \(\) => \{\s*if \(blockedByDrafts\(\)\) return;/);
   // จางเฉย ๆ ไม่พอ ต้องบอกว่าทำไมกดไม่ได้ (form-design-rules §2)
-  assert.match(page, /มีการแก้ไขไทม์ไลน์ค้างอยู่/, 'ต้องบอกเหตุผลที่กดไม่ได้ ไม่ใช่เงียบ');
+  assert.match(rev, /มีการแก้ไขไทม์ไลน์ค้างอยู่/, 'ต้องบอกเหตุผลที่กดไม่ได้ ไม่ใช่เงียบ');
 });

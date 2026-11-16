@@ -117,19 +117,4 @@ test('ไม่ใช่ผู้อนุมัติ: ป้ายไม่ม
   assert.equal(filterProjects(rows, withWaitingOnMe({})).length, 0);
 });
 
-test('ด่านซอร์ส: หน้าทะเบียนอ่านตัวกรองจาก URL · ล้างตัวกรองค้างตอนเปิด · ชิปทีมเฉพาะ team · กรองผ่าน lib', () => {
-  const src = read('../../app/sa/projects/page.js');
-  assert.match(src, /projectsWaitingOnMeFrom\(searchParams\)/, 'ตัวกรองต้องมาจาก URL ทุกเรนเดอร์ ไม่ใช่ initializer ของ useState');
-  assert.doesNotMatch(src, /useState\(fromNavCount\)/, 'ห้ามกลับไปอ่าน ?count= ครั้งเดียว');
-  assert.match(src, /router\.replace\(on \? projectsWaitingOnMeHref\(searchParams\) : projectsClearedHref\(searchParams\)/);
-  assert.match(src, /const turnedOn = waitingOnMeOnly && !prevWaitingOnMe\.current;\s*prevWaitingOnMe\.current = waitingOnMeOnly;\s*if \(!turnedOn\) return;\s*const cleared = withWaitingOnMe\(\);\s*setStatusFilter\(cleared\.status\);\s*setQuery\(cleared\.query\);\s*setLineFilter\(cleared\.lines\);/,
-    'เปิด "รอฉันเซ็นปิด" ขณะอยู่บนหน้า ต้องล้างค้นหา/สายธุรกิจ และเปิดทุกสถานะ ด้วยค่าจาก withWaitingOnMe');
-  assert.match(src, /const prevWaitingOnMe = useRef\(waitingOnMeOnly\);/,
-    'ล้างเฉพาะจังหวะปิด→เปิด — ตอนเมานต์ (กดย้อน/F5) ต้องไม่ลบค่าที่ useStickyState คืนมา (มติ 2026-08-25)');
-  assert.match(src, /useState\(waitingOnMeOnly \? withWaitingOnMe\(\)\.status : SCOPE_DEFAULT\)/,
-    'เมานต์พร้อม ?count= (เข้าใหม่จากป้าย) ได้สถานะ "ทั้งหมด" จาก initializer');
-  assert.match(src, /filterProjects\(rows, \{/);
-  assert.match(src, /teamMatches: teamScoped \? myTeams\.matches : null/);
-  assert.match(src, /\{teamScoped && <MyTeamsFilter /);
-  assert.match(src, /canApproveCloses \|\| waitingOnMeOnly \?/, 'ตัวเลือก "รอฉันเซ็นปิด" โชว์เฉพาะผู้อนุมัติ');
-});
+// (ด่านซอร์สของหน้าทะเบียน /sa/projects ถอดใน P3a — ยุบโครงการ 16/11 ลบหน้าทะเบียนโครงการ)

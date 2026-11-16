@@ -516,7 +516,8 @@ test('ทะเบียน SO: แถวใบรายงวดที่อน
 });
 
 /* 🐞 review รอบสอง 26/10: ตาราง SO หน้าดีล/หน้าโครงการโชว์แค่ยอดที่นับแล้วในคอลัมน์ "ยอดก่อน VAT" ไม่มีคำกำกับ (ใบ ฿93k อ่านเป็น ฿31k) */
-test('หน้าดีล + หน้าโครงการ: ใบรายงวดที่อนุมัติแล้ว = ยอดเต็มของใบ + บรรทัดรองบอกกอง (ตัวเดียวกับทะเบียน SO)', () => {
+/* ตาราง SO ของหน้าโครงการ (pm/ProjectDealsHub) ถูกลบใน P3a — ยุบโครงการ 16/11 · เหลือหน้าดีล */
+test('หน้าดีล: ใบรายงวดที่อนุมัติแล้ว = ยอดเต็มของใบ + บรรทัดรองบอกกอง (ตัวเดียวกับทะเบียน SO)', () => {
   const deal = code('app/sales-planning/deals/[id]/page.js');
   const cell = slice(deal, 'const soAmountCell = (order) => {', '\n  };');
   /* ตารางสี่คอลัมน์ในการ์ดแคบ (~440px) = `compact` (ขนาดหมายเหตุรอง) — ท่อนที่กว้างสุดพอดีคอลัมน์ยอด ไม่ดันตารางเกินกล่อง */
@@ -530,8 +531,6 @@ test('หน้าดีล + หน้าโครงการ: ใบราย
   const hint = wonDealForecastHint({ deal: { stage: 'won' }, forecast: 350000, actual: 100000, actualCount: 1, instRemaining: 200000 });
   assert.deepEqual(hint.keep, ['นับแล้ว ฿100,000.00', 'รอนับรายงวด ฿200,000.00', 'คาดการณ์ ฿350,000.00', 'ต่างเมื่อนับครบ ฿50,000.00']);
   assert.equal(hint.keep.join(' · '), hint.text);
-  const hub = code('components/pm/ProjectDealsHub.js');
-  assert.match(hub, /\{amount\.kind === "actual" && \(installmentActualSubLine\(order\)\s*\? <>\{fmtMoney\(amount\.documentAmount\)\}<InstallmentActualSubLine order=\{order\} \/><\/>\s*: fmtMoney\(amount\.amount\)\)\}/);
   assert.match(code('app/api/pm/projects/[id]/route.js'), /"actualMode", "actualCountedAmount", "actualSubmittedAmount"/, 'select ของโครงการพก cache สามช่อง');
 });
 

@@ -68,12 +68,13 @@ test('กด "สร้าง" ใหม่ ต้องข้ามใบที
     'ต้องบันทึกว่าเกิดแล้วทันทีที่ดีลถูกสร้าง');
 });
 
-test('ดีลเกิดแล้วแต่ผูกโครงการพลาด — รอบถัดไปผูกอย่างเดียว ไม่สร้างดีลใหม่', () => {
-  // บันทึก dealId ก่อนเรียก link-project เสมอ ไม่งั้น retry จะสร้างดีลซ้ำ
-  const createAt = src.indexOf('state.dealId = data.id');
-  const linkAt = src.indexOf('/link-project');
-  assert.ok(createAt > 0 && linkAt > createAt, 'ต้องบันทึก dealId ก่อนลองผูกโครงการ');
-  assert.match(src, /if \(draft\.projectId && !state\.linked\)/);
+/* ยุบโครงการ P3a (มติ 16/11 ⑩): เดิมดีลที่เปิดจากหน้าโครงการถูกผูกกลับผ่าน link-project หลังสร้าง
+   (และรอบถัดไป "ผูกอย่างเดียว" ไม่สร้างดีลใหม่) — หน้าโครงการกับ route นั้นถูกลบ ⇒ สร้างดีลจบที่ POST ดีลเท่านั้น */
+test('สร้างดีลไม่ผูกโครงการ — ไม่มีขั้น link-project ต่อท้าย', () => {
+  assert.doesNotMatch(src, /\/link-project/, 'ห้ามกลับไปผูกโครงการหลังสร้างดีล');
+  assert.doesNotMatch(src, /draft\.projectId/, 'ร่างดีลไม่พกโครงการไปผูก');
+  assert.doesNotMatch(src, /state\.linked/, 'ไม่มีสถานะ "ผูกแล้ว" ให้จำอีก');
+  assert.match(src, /state\.dealId = data\.id;/, 'ยังบันทึกว่าเกิดแล้วทันทีที่ดีลถูกสร้าง (กันกดซ้ำได้ดีลซ้ำ)');
 });
 
 test('ปุ่มนับเฉพาะใบที่ยังไม่ได้สร้าง ไม่ใช่จำนวนใบทั้งหมด', () => {
@@ -99,10 +100,12 @@ test('สถานะรายใบผูกกับ _key ไม่ใช่ i
   assert.doesNotMatch(src, /done\[index\]/, 'ห้ามผูกสถานะกับ index');
 });
 
-// `lockedProjectId`/`legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — ต้องถูกตัดออก
+// `legacy` เป็นธงของฟอร์ม ไม่ใช่คอลัมน์ของดีล — ต้องถูกตัดออก
 // ที่จุดเดียวกับ `_key` ก่อนยิง API (legacy เดินทางต่อใน metadata เท่านั้น)
-test('ธงฝั่งจอ (_key / lockedProjectId / legacy) ห้ามหลุดไปกับ body ที่ยิง API', () => {
-  assert.match(src, /const \{ _key, lockedProjectId, legacy, \.\.\.rest \} = draft/);
+// (`lockedProjectId` หายไปพร้อมหน้าโครงการใน P3a — ไม่มีที่ไหนส่งธงนี้มาแล้ว)
+test('ธงฝั่งจอ (_key / legacy) ห้ามหลุดไปกับ body ที่ยิง API', () => {
+  assert.match(src, /const \{ _key, legacy, \.\.\.rest \} = draft/);
+  assert.doesNotMatch(src, /lockedProjectId/, 'ธงล็อกโครงการต้องไม่กลับมา');
   assert.doesNotMatch(src, /JSON\.stringify\(\{[^}]*_key/, '_key ห้ามอยู่ใน body');
 });
 

@@ -3,7 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { requestsLinkedTo, sentRequestsBlockMessage } from '@/lib/requests/cascadeDelete';
 import { requestCascadeAuditor } from '@/lib/requests/cascadeAudit';
 import { caretakerTeamsOf, hasTeam, isSalesManager, userTeams, viewScopeUser } from '@/lib/permissions';
-import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo';
+import { loadProject } from '@/lib/pm/projectsRepo';
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans,
@@ -860,18 +860,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (leadWarning) console.error(`[deal delete ${id}] ลีดต้นทาง ${before.leadId}:`, leadWarning);
   }
 
-  // โครงการที่ไม่เหลือดีลผูกเลย = โครงเปล่า — ไม่ลบให้เอง (เฟส B: อาจรอดีลใหม่มาผูก)
-  // แต่ต้องส่งกลับให้หน้าเว็บถามผู้ใช้ว่าจะลบทิ้งด้วยไหม ไม่งั้นค้างในรายการเงียบ ๆ.
-  // นับพลาดตรงนี้ไม่ใช่เหตุให้ทั้ง request ล้ม (ดีลถูกลบไปแล้ว) — log แล้วไปต่อ.
-  let emptyProject = null;
-  if (project) {
-    try {
-      emptyProject = await emptyProjectAfterDealDelete(supabase, project);
-    } catch (emptyError) {
-      console.error('[deal-delete] ตรวจว่าโครงการเหลือดีลไหมไม่สำเร็จ:', emptyError.message);
-    }
-  }
-
+  /* โครงการที่ไม่เหลือดีลผูก ไม่ถูกเสนอให้ลบอีกแล้ว — P3a (มติ 16/11 ⑩) โครงการเก็บเป็นประวัติ
+     อ่านอย่างเดียว · ⚠️ ห้ามลบแถว projects: FK `ON DELETE CASCADE` ของไทม์ไลน์ (project_tasks) ยังอยู่ */
   const forceNote = force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : '';
   const detachNote = detachedFromProject
     ? ` (ถอดออกจากโครงการ ${project.code || project.id} — โครงการยังอยู่)`
@@ -886,7 +876,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
   return ok({
-    ok: true, deletedProject: null, detachedFromProject, emptyProject, forced: force,
+    ok: true, deletedProject: null, detachedFromProject, forced: force,
     ...(leadWarning ? { leadWarning } : {}),
   });
 });

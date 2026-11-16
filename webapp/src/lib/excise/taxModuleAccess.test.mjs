@@ -57,9 +57,9 @@ test("ลิงก์ทะเบียน/บันทึกการยื่�
   assert.match(filing, /redirect\(`\/sa\/sales-orders\/\$\{encodeURIComponent\(data\.salesOrderId\)\}`\);/);
   // หน้าสินค้าเปิดแผงจาก ?registration=
   assert.match(read("../../app/database/products/[id]/page.js"), /new URLSearchParams\(window\.location\.search\)\.get\("registration"\)/);
-  // ไม่มีลิงก์ตรงเข้า /tax เหลือบนหน้าฝ่ายขาย
+  // ไม่มีลิงก์ตรงเข้า /tax เหลือบนหน้าฝ่ายขาย (หน้ารายละเอียดโครงการหลุดลิสต์ — ลบทิ้งใน P3a ยุบโครงการ 16/11)
   for (const path of [
-    "../../app/database/products/[id]/page.js", "../../app/database/customers/[id]/page.js", "../../app/sa/projects/[id]/page.js",
+    "../../app/database/products/[id]/page.js", "../../app/database/customers/[id]/page.js",
     "../../app/sales-planning/deals/[id]/page.js", "../salesPlanningLifecycle.js", "../sales/salesOrderWorkTrack.js",
   ]) {
     const src = read(path).replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
