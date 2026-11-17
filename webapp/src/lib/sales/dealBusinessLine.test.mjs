@@ -63,20 +63,23 @@ test('API สร้างดีลบังคับเลือกสาย แ
   assert.match(route, /^\s{4}line,$/m, 'ต้องเขียนลงคอลัมน์ line ของแถวดีล');
 });
 
-test('PATCH: ค่าว่าง = ไม่แตะ (ดีลเก่ายังแก้ได้) · ผูกโครงการแล้วห้ามสลับสาย', () => {
+test('PATCH: ค่าว่าง = ไม่แตะ (ดีลเก่ายังแก้ได้) · ดีลเก่าในโครงการสลับสายได้ (มติ ⑫ งวด P3b-2)', () => {
   const route = read('src/app/api/sales-planning/deals/[id]/route.js');
   assert.match(route, /if \('line' in body && \(body\.line \?\? ''\) !== ''\)/);
-  assert.match(route, /if \(before\.projectId\) return badRequest\('ดีลนี้ผูกโครงการแล้ว/);
+  assert.doesNotMatch(route, /ดีลนี้ผูกโครงการแล้ว — เปลี่ยนสายธุรกิจที่โครงการแทน/, 'ปลดล็อกสายของดีลเก่าในโครงการ');
+  assert.match(route, /if \(typeChanged \|\| categoryChanged \|\| lineChanged\) \{/, 'regen ครอบดีลเก่าในโครงการด้วย');
+  assert.doesNotMatch(route, /\.is\('projectId', null\)/, 'ชุดของดีล = ทุกขั้นที่ dealId ตรง (รวมแถวเก่าที่ถือ projectId)');
   assert.match(route, /const lineChanged = 'line' in patch/, 'สายเปลี่ยนต้อง regen ไทม์ไลน์ด้วย');
 });
 
 // (ยาม "ผูก/ก่อโครงการ: ข้ามสายไม่ได้" ถอดใน P3a — ยุบโครงการ 16/11 ลบ dealProjectLink + create-project ของดีล)
 
-test('ฟอร์มดีลมีช่องสาย · ไม่มีช่องโครงการ (P2d) · ดีลเก่าในโครงการล็อกสาย', () => {
+test('ฟอร์มดีลมีช่องสาย · ไม่มีช่องโครงการ (P2d) · ดีลเก่าในโครงการไม่ล็อกสาย (มติ ⑫ งวด P3b-2)', () => {
   const fields = read('src/components/salesPlanning/DealFormFields.js');
   assert.match(fields, /<BusinessLineSelect/);
   assert.doesNotMatch(fields, /const projectField|entity="project"/, 'ช่องโครงการถูกถอด — ห้ามไหลกลับ');
-  assert.match(fields, /const lineLockedByProject = !!form\.projectId \|\| !!form\.lockedProjectId;/);
+  assert.doesNotMatch(fields, /lineLockedByProject/);
+  assert.match(fields, /disabled=\{alreadyWon\}\s+ariaLabel="สายธุรกิจของดีล"/);
   const modal = read('src/components/salesPlanning/DealCreateModal.js');
   assert.match(modal, /if \(!draft\.line\)/, 'โมดัลต้องบังคับเลือกสายก่อนยิง API');
 });

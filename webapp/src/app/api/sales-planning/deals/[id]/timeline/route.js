@@ -4,12 +4,9 @@ import { advanceStage, dealAuditLabel } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
 import { activeProductTypeError } from '@/lib/master/productTypes';
 import { WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
-import { attachRowsToProject, buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
-import { projectWriteBlockedError } from '@/lib/pm/projectClose';
-import { propagateAndPersist } from '@/lib/pm/status';
+import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
 import { canEditDealTimeline } from '@/lib/sales/dealTimelineAccess';
-import { fetchAllResult } from '@/lib/supabaseFetchAll';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,16 +14,14 @@ export const dynamic = 'force-dynamic';
 // ยังไม่มีโครงการ. ตอนผูกโครงการ (link-project/create-project) task ชุดนี้ถูก
 // "รับเลี้ยง" เข้าโครงการ (เติม projectId) — ไม่ gen ซ้ำ.
 // ⭐ งวด P2b (ยุบดีล/โครงการ · มติเจ้าของ 13/11/2026): ดีลที่อยู่ในโครงการสร้าง/ลบไทม์ไลน์ของตัวเองที่หน้าดีลได้
-//    (เดิมตอบ 409 "จัดการที่หน้าโครงการ") — ชุดที่สร้างประทับ projectId ของดีล ต่อท้ายลำดับของโครงการ
-//    และปักหมุดขั้นราก (กติกาเดียวกับ segment ที่ผูกเข้าโครงการ · `attachRowsToProject`)
+// ⭐ งวด P3b-2 (16/11/2026): ไทม์ไลน์เป็นของดีลล้วน — ชุดใหม่ไม่ประทับ projectId · ไม่ต่อลำดับ/ปักหมุดตามโครงการ ·
+//    สายธุรกิจรับจากโมดัลเหมือนดีลทั่วไป (มติ ⑫: ดีลที่เคยอยู่ในโครงการใช้กติกาเดียวกับดีลทั่วไป) ·
+//    ถอดด่าน "โครงการปิดแล้ว" (ปิดแล้ว 0 · ปิดเพิ่มไม่ได้อีก) · ลบชุดแล้วไม่ต้องคำนวณสถานะของดีลอื่น (เส้นข้ามดีล 0)
 
-// ดีล + โครงการที่ดีลชี้อยู่ (join ในคำสั่งเดียว) — แยก `project` ออกจากแถวดีล ไม่ให้ติดไปกับ audit/update
 async function loadDeal(supabase, id) {
-  const { data, error } = await supabase.from('sales_deals').select('*, project:projects(*)').eq('id', id).maybeSingle();
+  const { data, error } = await supabase.from('sales_deals').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
-  if (!data) return { deal: null, project: null };
-  const { project, ...deal } = data;
-  return { deal, project: project || null };
+  return data || null;
 }
 
 // ด่านตัวกลางของไทม์ไลน์ดีล (ใช้ร่วมกับ route Rev.) — lib/sales/dealTimelineAccess.js
@@ -37,7 +32,7 @@ const guard = (user, deal) => (canEditDealTimeline(user, deal) ? null : forbidde
 export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
-  const { deal, project } = await loadDeal(supabase, id);
+  const deal = await loadDeal(supabase, id);
   if (!deal) return notFound('ไม่พบดีล');
   const denied = guard(user, deal);
   if (denied) return denied;
@@ -45,11 +40,9 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      ดีล ⇒ ปล่อยไปชน CHECK ของดีลตอนเปลี่ยนประเภท = งานลอยค้างโดยดีลไม่ขยับ) */
   if (isHistoricalDeal(deal)) return conflict('ดีลของใบสั่งขายย้อนหลังไม่มีไทม์ไลน์');
   if (deal.stage === 'lost') return badRequest('ดีล Lost แล้ว สร้างไทม์ไลน์ไม่ได้');
-  const closedErr = projectWriteBlockedError(project);
-  if (closedErr) return conflict(closedErr);
 
   // นับไม่ขึ้น = ห้ามถือว่ายังไม่มี — ไม่งั้นได้ไทม์ไลน์ซ้อนสองชุด
-  // ⚠️ นับทุกขั้นของดีล (มี/ไม่มี projectId) — ดีลในโครงการมีชุดอยู่แล้ว = ห้ามสร้างซ้อน
+  // ⚠️ นับทุกขั้นของดีล (รวมแถวเก่าที่ยังถือ projectId) — มีชุดอยู่แล้ว = ห้ามสร้างซ้อน
   const { count: existing, error: existingError } = await supabase
     .from('project_tasks').select('id', { count: 'exact', head: true })
     .eq('dealId', deal.id);
@@ -76,23 +69,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   let built;
   try {
     built = await buildDealTimelineRows(supabase, deal, {
-      // ดีลในโครงการ: สายล็อกตามโครงการ (ฟอร์มดีลล็อกช่องนี้อยู่แล้ว) — ไม่รับสายจากโมดัล
-      type: body.type, line: project ? (deal.line || project.line) : body.line,
+      type: body.type, line: body.line,
       categoryCode: body.categoryCode, startDate: body.startDate,
     });
   } catch (error) {
     return fail(error.message || 'โหลด Workflow Template ไม่สำเร็จ', error instanceof WorkflowTemplateError ? error.status : 500);
   }
-  const { genType, genLine, categoryCode } = built;
-  let rows = built.rows;
-  if (project && rows.length) {
-    // ไล่หน้าครบ (check:rowcap) — โครงการใหญ่ไม่ควรถึง 1,000 ขั้น แต่ตัดเงียบ = ลำดับต่อท้ายชนของเดิม
-    const { data: projectTasks, error: projectTasksError } = await fetchAllResult(() => supabase
-      .from('project_tasks').select('id, stepOrder').eq('projectId', project.id)
-      .order('id', { ascending: true }));
-    if (projectTasksError) return fail(projectTasksError.message, 500);
-    rows = attachRowsToProject(rows, project.id, projectTasks || []);
-  }
+  const { genType, genLine, categoryCode, rows } = built;
   // 0 แถว = template หลังกรองหมวดสินค้าไม่เหลือขั้นตอนเลย (หมวดของดีลไม่ตรง step ไหน
   // หรือ published template ของประเภทนี้ว่าง). เดิม insert([]) แล้วตอบ 201 เงียบ ๆ →
   // หน้าโหลดใหม่เจอ 0 task โชว์ปุ่มเดิม = ผู้ใช้เห็นว่า "กดแล้วไม่ขึ้นอะไร". ปฏิเสธพร้อมบอกสาเหตุ
@@ -155,22 +138,18 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 });
 
 // DELETE /api/sales-planning/deals/[id]/timeline — ลบไทม์ไลน์ของดีลทั้งชุด (ไว้สร้างใหม่)
-// งวด P2b: ดีลในโครงการลบชุดของตัวเองได้ด้วย (ลบเฉพาะขั้นที่ dealId = ดีลนี้ · งานกลาง/ดีลอื่นไม่แตะ)
+// ลบเฉพาะขั้นที่ dealId = ดีลนี้ (ดีลอื่นไม่แตะ)
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   const { id } = await ctx.params;
-  const { deal, project } = await loadDeal(supabase, id);
+  const deal = await loadDeal(supabase, id);
   if (!deal) return notFound('ไม่พบดีล');
   const denied = guard(user, deal);
   if (denied) return denied;
-  const closedErr = projectWriteBlockedError(project);
-  if (closedErr) return conflict(closedErr);
 
   const { data: gone, error } = await supabase
     .from('project_tasks').delete().eq('dealId', deal.id).select('id');
   if (error) return fail(error.message, 500);
-  // ขั้นของดีลอื่นในโครงการที่เคยรอขั้นที่ลบไป = พร้อมทำแล้ว → คำนวณสถานะทั้งโครงการใหม่
-  if (project) await propagateAndPersist(supabase, project.id);
 
   await recordAudit({
     user, action: 'update', entityType: 'sales_deal', entityId: deal.id, before: deal,

@@ -15,7 +15,7 @@
 import { MINE_TASK_VIEWS, matchesMineTaskView, responsibleTaskUserId } from './taskViews';
 import { isWaitingStatus } from './tasks';
 import { daysToDue, isUrgent } from './derived';
-import { TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY, isDealTask, isProjectTask } from './dealTaskLink';
+import { isDealTask } from './dealTaskLink';
 
 /** สถานะของตัวกรองสถานะ — ห้าตัวแรกเป็นการ์ดบนหน้า · `todo` มาจากป้ายเมนูเท่านั้น (ไม่มีการ์ด) ·
  *  `waiting_overdue` มาจากบรรทัดรองของการ์ด "รอคนอื่น" (ตรวจตัวเลข L3) */
@@ -77,11 +77,8 @@ const lower = (value) => String(value || '').trim().toLowerCase();
  * @param {string} f.q         คำค้น (ชื่องาน · หมายเหตุ · หมวด)
  * @param {string[]} f.assignees ผู้รับผิดชอบที่แสดงบนตาราง (assigneeId || ownerId)
  * @param {string[]} f.categories
- * @param {string[]} f.deals   id ดีล — ตัดสินด้วย `isDealTask` (รวมงานเดิมของโครงการที่ไม่มี dealId)
- * @param {string|null} f.project id โครงการ — ตัดสินด้วย `isProjectTask` (ชุดเดียวกับแท็บงานของหน้าโครงการ)
- * @param {string|null} f.central ธง `?central=` ของลิงก์หน้าโครงการ — `none` คู่กับ `deals` (ตัดงานไม่มี dealId) ·
- *   `only` คู่กับ `project` (เหลือแต่งานไม่มี dealId) · ไม่มีคู่ = ไม่มีผล (ไม่กรองงานส่วนตัวที่ไม่ผูกดีลทั้งคิว)
- * @param {(dealId: string) => string|null} f.dealProjectOf โครงการของดีล
+ * @param {string[]} f.deals   id ดีล — ตัดสินด้วย `isDealTask`
+ *   (งวด P3b-2 ยุบโครงการ: ถอดตัวกรองโครงการ `project` · ธง `central` · `dealProjectOf` — ส่งมาก็ไม่มีผล)
  */
 export function taskPasses(task, f = {}) {
   if (!task) return false;
@@ -92,16 +89,8 @@ export function taskPasses(task, f = {}) {
   if (assignees.length && !assignees.includes(task.assigneeId || task.ownerId)) return false;
   const categories = f.categories || [];
   if (categories.length && !categories.includes(task.category)) return false;
-  const projectOf = f.dealProjectOf || (() => null);
   const deals = f.deals || [];
-  if (deals.length) {
-    if (!deals.some((id) => isDealTask(task, { id, projectId: projectOf(id) }))) return false;
-    if (f.central === TASK_CENTRAL_EXCLUDE && !task.dealId) return false;
-  }
-  if (f.project) {
-    if (!isProjectTask(task, f.project, projectOf)) return false;
-    if (f.central === TASK_CENTRAL_ONLY && task.dealId) return false;
-  }
+  if (deals.length && !deals.some((id) => isDealTask(task, { id }))) return false;
   return true;
 }
 
@@ -152,9 +141,9 @@ export function taskInScope(task, clauses) {
  * ตัวกรองของคิวตอน **เปิดมาจากหน้าดีล** (`/sa/tasks?dealId=X` · มติเจ้าของ 20/10/2026 M8b ข้อ 1)
  * ขอบเขตกว้างสุดที่มีสิทธิ์ · มุมมอง "ทั้งหมดของฉัน" · สถานะทั้งหมด (งานค้าง) · ล้างคำค้น/หมวด/ผู้รับ · คงชิปดีล
  * ⚠️ ทั้งหน้าคิว (ตอนอ่าน `?dealId=`) และ route ของหน้าดีล (ป้าย "ค้าง n") สร้างตัวกรองจากตัวนี้ตัวเดียว
- * `central` = ธง `?central=` จากลิงก์หน้าโครงการ (`projectTasksQueueHref`) — หน้าดีลไม่ส่ง
+ * (งวด P3b-2 ยุบโครงการ: `projectId` · `central` · `dealProjectOf` เลิกใช้ — ผู้เรียกที่ยังส่งมาถูกเมิน)
  */
-export function dealQueueLanding({ allowedScopes = [], meId = null, dealIds = [], projectId = null, central = null, dealProjectOf } = {}) {
+export function dealQueueLanding({ allowedScopes = [], meId = null, dealIds = [] } = {}) {
   return {
     meId,
     scope: widestTaskScope(allowedScopes),
@@ -163,10 +152,7 @@ export function dealQueueLanding({ allowedScopes = [], meId = null, dealIds = []
     assignees: [],
     categories: [],
     deals: [...dealIds],
-    project: projectId || null,
-    central: central || null,
     status: 'all',
-    dealProjectOf: dealProjectOf || (() => null),
   };
 }
 
@@ -183,9 +169,6 @@ export function tasksNavLanding({ meId = null } = {}) {
     assignees: [],
     categories: [],
     deals: [],
-    project: null,
-    central: null,
     status: TASK_TODO_FILTER,
-    dealProjectOf: () => null,
   };
 }

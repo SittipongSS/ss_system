@@ -51,7 +51,7 @@ export async function planExciseBillingTasks(supabase, dealIds = [], {
   if (!ids.length) return { tasks: [], updates: [] };
 
   const { data: rows, error: taskError } = await fetchAllResult(() => supabase.from('project_tasks')
-    .select('id, "projectId", "dealId", role, name, status, "workflowTemplateStepKey", "actualStartDate", "systemCompletedBy"')
+    .select('id, "dealId", role, name, status, "workflowTemplateStepKey", "actualStartDate", "systemCompletedBy"')
     .in('dealId', ids)
     .eq('role', 'SA')
     .order('id', { ascending: true }));
@@ -60,8 +60,7 @@ export async function planExciseBillingTasks(supabase, dealIds = [], {
   if (!tasks.length) return { tasks: [], updates: [] };
 
   const dealsWithTasks = uniq(tasks.map((task) => task.dealId));
-  const projectIds = uniq(tasks.map((task) => task.projectId));
-  const [approvedResult, awaiting, projectResult] = await Promise.all([
+  const [approvedResult, awaiting] = await Promise.all([
     fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders')
       .select('id, "dealId"')
       .in('dealId', dealsWithTasks)
@@ -69,12 +68,8 @@ export async function planExciseBillingTasks(supabase, dealIds = [], {
       .is('supersededById', null))
       .order('id', { ascending: true })),
     loadAwaiting(supabase, dealsWithTasks),
-    projectIds.length
-      ? fetchAllResult(() => supabase.from('projects').select('id, "closeStatus"').in('id', projectIds).order('id', { ascending: true }))
-      : Promise.resolve({ data: [], error: null }),
   ]);
   raise('โหลดใบสั่งขายของดีลไม่สำเร็จ', approvedResult.error);
-  raise('โหลดโครงการไม่สำเร็จ', projectResult.error);
 
   const dealStates = new Map(dealsWithTasks.map((dealId) => [dealId, { approvedCount: 0, pendingCount: 0 }]));
   for (const order of approvedResult.data || []) {
@@ -83,10 +78,7 @@ export async function planExciseBillingTasks(supabase, dealIds = [], {
   for (const order of awaiting || []) {
     if (dealStates.has(order.dealId)) dealStates.get(order.dealId).pendingCount += 1;
   }
-  const closedProjectIds = new Set((projectResult.data || [])
-    .filter((project) => (project.closeStatus || 'open') === 'closed').map((project) => project.id));
-
-  return { tasks, updates: exciseBillingTaskUpdates(tasks, { dealStates, closedProjectIds, today, now }) };
+  return { tasks, updates: exciseBillingTaskUpdates(tasks, { dealStates, today, now }) };
 }
 
 /** ซิงก์งานของดีลชุดนี้ — คืน `{ updated }` · อ่าน/เขียนพลาด = throw (ผู้เรียกตัดสินเองว่าจะกลืนไหม) */
@@ -98,7 +90,7 @@ export async function syncExciseBillingTasks(supabase, dealIds = [], {
 } = {}) {
   const { updates } = await planExciseBillingTasks(supabase, dealIds, { loadAwaiting, today, now });
   let updated = 0;
-  const graphs = new Map();
+  const graphs = new Set();
   for (const update of updates) {
     const { data, error } = await supabase.from('project_tasks')
       .update(update.patch)
@@ -108,12 +100,11 @@ export async function syncExciseBillingTasks(supabase, dealIds = [], {
     raise('ปรับสถานะงานวางบิลค่าสรรพสามิตไม่สำเร็จ', error);
     if (!data?.length) continue; // มีคนเปลี่ยนสถานะชนกันพอดี — ของคนชนะ
     updated += 1;
-    const key = update.projectId ? `p:${update.projectId}` : `d:${update.dealId}`;
-    graphs.set(key, update);
+    graphs.add(update.dealId);
   }
-  // สถานะขั้นถัดไปเดินตามกราฟ — กติกาเดียวกับคนกดเปลี่ยนสถานะเอง (route PATCH ของขั้นตอน)
-  for (const update of graphs.values()) {
-    await propagate(supabase, update.projectId, { dealId: update.dealId });
+  // สถานะขั้นถัดไปเดินตามกราฟของดีล — กติกาเดียวกับคนกดเปลี่ยนสถานะเอง (route PATCH ของขั้นตอน)
+  for (const dealId of graphs) {
+    await propagate(supabase, dealId);
   }
   return { updated };
 }

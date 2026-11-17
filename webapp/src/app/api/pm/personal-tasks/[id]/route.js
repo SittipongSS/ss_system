@@ -43,13 +43,9 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   const manage = await canManagePersonalTask(supabase, task, user);
   if (!(await canViewPersonalTask(supabase, task, user))) return forbidden();
-  let linkedProject = null;
+  // (งวด P3b-2 ยุบโครงการ: เลิกโหลด/ส่ง `project` — หน้ารายละเอียดงานไม่มีป้ายโครงการแล้ว · `projectId` ดิบยังติดมากับแถว)
   let linkedDeal = null;
   let linkedInquiry = null;
-  if (task.projectId) {
-    const { data } = await supabase.from('projects').select('id, code, name, customerName, team, aeOwner').eq('id', task.projectId).maybeSingle();
-    linkedProject = data || null;
-  }
   if (task.dealId) {
     // ownerId มาด้วยเสมอ — หน้ารายละเอียดงานใช้แปลงเป็นชื่อ *ปัจจุบัน* ของเจ้าของดีล
     const { data } = await supabase.from('sales_deals').select('id, title, customerName, team, ownerId, ownerName, projectId').eq('id', task.dealId).maybeSingle();
@@ -81,7 +77,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
 
   return ok({
     ...task,
-    project: linkedProject,
     deal: linkedDeal,
     inquiry: linkedInquiry,
     predecessor,
@@ -280,7 +275,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   /* อ้างอิงดีลต้องมีจริง · ⭐ P3a (มติ 16/11 ⑩): ไม่รับ/ไม่ก๊อป `projectId` อีกแล้ว — ย้ายงานไปดีลอื่นเมื่อไร
-     ล้างโครงการเดิมทิ้ง (ค่าเดิมจะชี้โครงการของดีลเก่า แล้ว `personalTaskAccess` จะอ่านทีมผิดโครงการ) */
+     ล้างโครงการเดิมทิ้ง (ค่าเดิมจะชี้โครงการของดีลเก่า — คลังโครงการต้องไม่ผูกงานที่ย้ายไปดีลอื่นแล้ว) */
   if ('dealId' in updates) {
     const nextDealId = 'dealId' in updates ? updates.dealId : task.dealId;
     // ทุกงานต้องผูกดีล (มติผู้ใช้ 2026-08-06) — ปลดดีลออกไม่ได้ และงานเก่าที่ยังไม่ผูก

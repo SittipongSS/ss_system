@@ -139,7 +139,7 @@ export async function proxy(request) {
   /* ⭐ หน้าโครงการเก่า (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④: ซ่อนเมนู + ลิงก์เก่าพาไปหน้าลูกค้าศูนย์รวม)
      · `/sa/projects` (ทะเบียนเดิม) → รายการดีล · `/sa/projects/<id|PJ>/**` และ `/pm/projects/<…>` → `/go/project/<…>`
        (หน้า server ที่อ่านลูกค้าของโครงการแล้วพาไปหน้าลูกค้า) · ข้อมูลโครงการอยู่ในฐานต่อ — ลบตารางในงวด P3
-     ⚠️ เฉพาะหน้า ไม่ใช่ API — /api/pm/projects ยังมีผู้เรียกจนกว่าจะถอดครบ · ตรรกะอยู่ lib/pm/oldProjectLink (มีเทสต์) */
+     ⚠️ เฉพาะหน้า ไม่ใช่ API (`/api/pm/projects` ถอดแล้วในงวด P3b-2 ยุบโครงการ) · ตรรกะอยู่ lib/pm/oldProjectLink (มีเทสต์) */
   const oldProjectTarget = isApi ? null : oldProjectRedirectTarget(path);
   if (user && oldProjectTarget) {
     return withRefreshedCookies(NextResponse.redirect(new URL(oldProjectTarget, request.url)));

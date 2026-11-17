@@ -7,7 +7,6 @@ import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning'
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { exciseSalesOrderCreateError } from '@/lib/excise/exciseSalesOrder';
-import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
 /* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
 import {
@@ -448,11 +447,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest(excise ? 'สร้างใบสั่งขายได้เฉพาะใบค่าสรรพสามิตที่ Won แล้ว' : 'สร้างใบสั่งขายได้เฉพาะ QT ที่ Won แล้ว');
   }
   if (!inSalesDocScope(user, quote, 'edit')) return forbidden();
-  // โครงการปิดแล้ว = ออก SO ใบใหม่ไม่ได้ (มติ B3). SO ที่ออกไปแล้วยังยื่น/อนุมัติต่อได้ · ใบค่าสรรพสามิตไม่มีโครงการ
-  if (!excise) {
-    const closedProject = await closedProjectBlock(supabase, quote.deal?.projectId, 'ออกใบสั่งขายใบใหม่');
-    if (closedProject) return badRequest(closedProject);
-  }
+  // (ด่าน "โครงการปิดแล้วออกเอกสารใบใหม่ไม่ได้" (มติ B3) ถอดในงวด P3b-2 ยุบโครงการ — ปิดแล้ว 0 โครงการ และปิดเพิ่มไม่ได้อีก)
 
   /* หลักฐานต้องชี้เข้าโฟลเดอร์ของใบเสนอราคาใบนี้เท่านั้น — กันแนบไฟล์ของใบอื่นมาเป็นหลักฐานของใบนี้
      ⭐ `privateOnly` (2026-10-09): รับเฉพาะไฟล์ใน bucket ส่วนตัว · ref แบบ URL/Drive ไม่ผ่านแล้ว

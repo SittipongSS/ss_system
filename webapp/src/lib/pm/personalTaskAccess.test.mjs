@@ -6,7 +6,9 @@ import {
   canViewPersonalTask,
 } from './personalTaskAccess.js';
 
-function fakeSupabase({ teams = {}, projectTeam = null } = {}) {
+/* ด่านสองตัวอ่านทีม/ฝ่ายของผู้รับผิดชอบจาก auth + ทีมของดีลที่งานผูก (`sales_deals.team`) เท่านั้น
+   (งวด P3b-2 ยุบโครงการ: เลิกอ่าน `projects.team`) ⇒ ตารางอื่น `from()` โยนทันที: ใครเพิ่มการอ่านโครงการกลับเข้ามา เทสต์แดง */
+function fakeSupabase({ teams = {}, deals = {} } = {}) {
   return {
     auth: {
       admin: {
@@ -15,12 +17,15 @@ function fakeSupabase({ teams = {}, projectTeam = null } = {}) {
         },
       },
     },
-    from() {
-      return {
-        select() { return this; },
-        eq() { return this; },
-        async maybeSingle() { return { data: projectTeam ? { team: projectTeam } : null }; },
+    from(table) {
+      if (table !== 'sales_deals') throw new Error(`personalTaskAccess ไม่ควรอ่านตาราง ${table}`);
+      let id = null;
+      const chain = {
+        select() { return chain; },
+        eq(col, val) { if (col === 'id') id = val; return chain; },
+        maybeSingle: async () => ({ data: id && deals[id] ? { team: deals[id] } : null, error: null }),
       };
+      return chain;
     },
   };
 }
@@ -78,4 +83,21 @@ test('view: ผู้มอบหมาย (assignedBy) เห็นงานท
   assert.equal(await canViewPersonalTask(db, assigned, { id: 'boss', role: 'ae', team: null }), true);
   // คนนอกที่ไม่เกี่ยวข้องเลย ยังเห็นไม่ได้
   assert.equal(await canViewPersonalTask(db, assigned, { id: 'stranger', role: 'ae', team: null }), false);
+});
+
+/* งวด P3b-2 ยุบโครงการ: ทีมของโครงการ → ทีมของดีลที่งานผูก (prod: ทีมดีล = ทีมโครงการทุกแถว ⇒ สิทธิ์เท่าเดิม) ·
+   `projectId` ของงานไม่มีผลแล้ว */
+test('ทีมของดีลเปิดสิทธิ์ดู/จัดการ · projectId ไม่มีผล · ดีลทีมอื่น = ไม่ได้', async () => {
+  const legacy = { ...task, projectId: 'PRJ-1', dealId: 'DL-1' };
+  const senior = { id: 'senior', role: 'senior_ae', team: 'KA' };
+  const viewer = { id: 'x', role: 'ae', team: 'KA' };
+  const viaDeal = fakeSupabase({ teams: { worker: 'ODM' }, deals: { 'DL-1': 'KA' } });
+  assert.equal(await canManagePersonalTask(viaDeal, legacy, senior), true, 'ผู้รับผิดชอบทีมอื่น แต่ดีลเป็นของทีม');
+  assert.equal(await canViewPersonalTask(viaDeal, legacy, viewer), true);
+  const otherDeal = fakeSupabase({ teams: { worker: 'ODM' }, deals: { 'DL-1': 'ODM' } });
+  assert.equal(await canManagePersonalTask(otherDeal, legacy, senior), false, 'projectId ไม่เปิดสิทธิ์ให้ใคร');
+  assert.equal(await canViewPersonalTask(otherDeal, legacy, viewer), false);
+  const sameTeam = fakeSupabase({ teams: { worker: 'KA' } });
+  assert.equal(await canManagePersonalTask(sameTeam, { ...task, dealId: null }, senior), true);
+  assert.equal(await canViewPersonalTask(sameTeam, { ...task, dealId: null }, viewer), true);
 });

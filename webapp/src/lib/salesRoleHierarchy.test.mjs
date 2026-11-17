@@ -30,7 +30,6 @@ import {
   canIssueProductSpecDocument, canReviseProductSpecDocument, canSupApproveProductSpecDocument, canVoidProductSpecDocument,
 } from './sales/productSpecDocWorkflow.js';
 import { canApproveExternalContract } from './sales/contracts.js';
-import { canApproveProjectClose } from './pm/projectClose.js';
 import { canKeyHistoricalSalesOrder, canMoveHistoricalDealOwner } from './sales/historicalOrders.js';
 import { canExportForecastReport } from './sales/forecastBreakdown.js';
 import { canCreateDealFromLead, canCreateLead, canEditLead, canWorkLead, inLeadScope } from './sales/leads.js';
@@ -169,7 +168,7 @@ test('อนุมัติ/ตัดสิน: CD · CM · AE Sup (+ admin) เ
     canSupApproveProductSpecDocument: (role) => canSupApproveProductSpecDocument({ role, id: 'u' }),
     canApproveExternalContract: (role) => canApproveExternalContract({ role }),
     canApproveMasterData: (role) => canApproveMasterData(role),
-    canApproveProjectClose: (role) => canApproveProjectClose({ role }),
+    // (canApproveProjectClose ถอดพร้อม lib/pm/projectClose ในงวด P3b-2 ยุบโครงการ — ไม่มีทางปิดโครงการแล้ว)
     canMoveHistoricalDealOwner: (role) => canMoveHistoricalDealOwner({ role }),
     canManageProductCategories: (role) => canManageProductCategories(role),
     canManageDocumentStandards: (role) => canManageDocumentStandards(role),

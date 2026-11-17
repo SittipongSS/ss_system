@@ -128,7 +128,6 @@ export default function TimelineWorkspace({
   canAdd = canEdit,
   canReorder = canEdit,
   dealId,
-  projectId,
   timelineContext,
   documentProject: suppliedDocumentProject,
   canEditProjectFields = false,
@@ -341,8 +340,8 @@ export default function TimelineWorkspace({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
-        // ดีลผูกโครงการแล้ว → เพิ่มเข้าโครงการ tag segment ดีลนี้; ยังไม่ผูก → ชุดลอยของดีล
-        ...(projectId ? { projectId, dealId } : { dealId }),
+        // ขั้นตอนเป็นของดีลเสมอ (งวด P3b-2 ยุบโครงการ — API ไม่รับ projectId แล้ว)
+        dealId,
         ...(addAfterId ? { afterTaskId: addAfterId } : {}),
       }),
     });
@@ -384,7 +383,7 @@ export default function TimelineWorkspace({
     return next;
   });
   const documentProject = suppliedDocumentProject || {
-    id: projectId || `deal-${dealId}`,
+    id: `deal-${dealId}`,
     name: timelineContext?.name || "ไทม์ไลน์ดีล",
     customerName: timelineContext?.customerName || "",
     startDate: timelineContext?.startDate || tasks.find((task) => task.startDate)?.startDate || "",

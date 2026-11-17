@@ -83,7 +83,6 @@ import {
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 import { exciseDeliveryDateBlocker, syncSourceDeliveryDate } from '@/lib/excise/exciseDeliveryDate';
 import { loadExciseRegistrationBlocker } from '@/lib/excise/exciseRegistrationGate';
-import { projectWriteBlockedError } from '@/lib/pm/projectClose';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { ExciseQuotationError, exciseSourceLock, loadExciseRoundState, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
 import { exciseRemainderBlocker, exciseRemainderPatch, exciseRemainderReasonInput } from '@/lib/excise/exciseRemainder';
@@ -297,9 +296,10 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
        undefined เสมอ แล้วใบอังกฤษพิมพ์ชื่อ/ที่อยู่ไทยเงียบ ๆ โดยไม่มีอะไรฟ้อง */
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, "customerNameEn", billingAddress, "billingAddressEn", shippingAddress, "shippingAddressEn", branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
-      // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย) · code/name: ข้อความของด่านนั้น + ฉบับตรึง
+      // code/name: ฉบับตรึง (`projectName` อยู่ในเนื้อหาที่ทำลายนิ้วมือ — เลิกอ่าน = ใบที่ออกแล้วถูกตรึงใหม่ ⇒ คงไว้ อ่านคลังอย่างเดียว)
+      // (closeStatus ของด่าน B3 เลิกขอในงวด P3b-2 ยุบโครงการ — ด่านถอดแล้ว)
       // (`line` เลิกขอแล้ว — สายธุรกิจของใบอ่านจากดีลตั้งแต่งวด P3b-1 ยุบโครงการ · ดู `orderBusinessLineOf`)
-      ? supabase.from('projects').select('id, code, name, closeStatus').eq('id', order.projectId).maybeSingle()
+      ? supabase.from('projects').select('id, code, name').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
     // ⭐ คำร้องพัฒนากลิ่นที่เปิดจากใบนี้ — หน้า SO ใช้ตัดสินว่าโชว์ปุ่ม "เปิดคำร้อง"
@@ -1149,11 +1149,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (isHistoricalOrder(before)) return fail(HISTORICAL_NO_REVISION, 409);
     const exciseRevise = exciseSalesOrderBlock(before, 'revise');
     if (exciseRevise) return fail(exciseRevise, 409);
-    // ฉบับ Rev. = SO ใบใหม่ (เลขใหม่ ใบเดิม superseded) → อยู่ในขอบเขตด่าน B3
-    const closedProject = projectWriteBlockedError(before.project)
-      ? `โครงการ ${[before.project?.code, before.project?.name].filter(Boolean).join(' ') || 'นี้'} ปิดแล้ว — ออก Rev. ใบสั่งขายไม่ได้ ต้องให้ผู้อนุมัติเปิดโครงการใหม่ (RE-ORDER) ก่อน`
-      : null;
-    if (closedProject) return badRequest(closedProject);
+    // (ด่าน "โครงการปิดแล้วออกเอกสารใบใหม่ไม่ได้" (มติ B3) ถอดในงวด P3b-2 ยุบโครงการ — ปิดแล้ว 0 โครงการ และปิดเพิ่มไม่ได้อีก)
     // ⭐ AE เจ้าของดีลออก Rev. เองได้ (มติ 24/09) — ฐานเช็คเจ้าของดีลซ้ำที่ RPC (mig 0385)
     if (!canIssueSalesOrderRevision(before, { reviewer, userId: user.id, deal: before.deal })) {
       return forbidden(before.status === 'approved'

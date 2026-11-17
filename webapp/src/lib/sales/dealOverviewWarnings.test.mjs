@@ -41,9 +41,9 @@ test('ทุกก้อนที่โหลดผ่าน safe() ต้อง
 });
 
 // ⭐ ยืนยันว่าเคย**พังจริง** ไม่ใช่กันของที่ไม่เคยเกิด — สองตัวนี้คือที่ตกหล่น
-test('inquiries กับ siblingDeals อยู่ในลิสต์ warning แล้ว', () => {
+test('inquiries อยู่ในลิสต์ warning แล้ว (siblingDeals ถอดในงวด P3b-2 ยุบโครงการ)', () => {
   const block = src.slice(src.indexOf('const warnings = ['), src.indexOf('.filter(Boolean)'));
-  for (const name of ['inquiries', 'siblingDeals']) {
+  for (const name of ['inquiries']) {
     assert.match(block, new RegExp(`${name}\\.warning`), `${name} ต้องอยู่ในลิสต์ warnings`);
   }
 });

@@ -896,7 +896,7 @@ const RAW_TAILWIND_TYPE_CAP = 131;
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1220                     isToday ? 700 : 500
+     src/app/pm/tasks/page.js:1193                     isToday ? 700 : 500
      src/app/sales-planning/deals/[id]/page.js:162     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:213   … ? 700 : 400

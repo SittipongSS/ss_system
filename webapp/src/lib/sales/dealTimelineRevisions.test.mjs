@@ -4,7 +4,6 @@ import assert from 'node:assert/strict';
 import {
   buildDealTimelineSnapshot, DEAL_SNAPSHOT_FIELDS, liveTimelineRev, nextTimelineRev, restoreSummaryText, timelineRevBadge,
 } from './dealTimelineRevisions.js';
-import { attachRowsToProject } from './dealTimelineGen.js';
 
 test('เลข Rev. ถัดไป = สูงสุดที่เคยออก + 1 · ยังไม่เคยออก = 0', () => {
   assert.equal(nextTimelineRev(null), 0);
@@ -51,15 +50,4 @@ test('ข้อความผลย้อน', () => {
   assert.match(restoreSummaryText({}, 1), /เหมือนสถานะปัจจุบัน/);
 });
 
-test('ชุดไทม์ไลน์ของดีลในโครงการ: ประทับ projectId · ต่อท้ายลำดับโครงการ · ปักหมุดขั้นราก', () => {
-  const rows = [
-    { id: 'r1', stepOrder: 0, predecessors: [] },
-    { id: 'r2', stepOrder: 1, predecessors: ['r1'] },
-  ];
-  const out = attachRowsToProject(rows, 'P1', [{ stepOrder: 7 }, { stepOrder: 12 }]);
-  assert.deepEqual(out.map((r) => [r.id, r.projectId, r.stepOrder, r.startLocked]), [
-    ['r1', 'P1', 13, true],
-    ['r2', 'P1', 14, false],
-  ]);
-  assert.deepEqual(attachRowsToProject(rows, 'P1', []).map((r) => r.stepOrder), [0, 1], 'โครงการยังไม่มีขั้น = เริ่ม 0');
-});
+// (เทสต์ `attachRowsToProject` ถอดในงวด P3b-2 ยุบโครงการ — ชุดใหม่ของดีลไม่ประทับ projectId/ไม่ต่อลำดับโครงการแล้ว · ดู dealTimelineP2b.test.mjs)

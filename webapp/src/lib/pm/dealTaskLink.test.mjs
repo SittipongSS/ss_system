@@ -2,15 +2,13 @@
 // 🐞 หน้าดีลเคยโหลด `dealId = X OR projectId = P` ⇒ งานของดีลพี่น้องในโครงการเดียวกันติดมาทั้งหมด
 //    (โครงการ 2 ดีล ดีลละ 2 งาน ⇒ การ์ดทั้งสองดีลบอก 0/4 · คิวที่กรองดีลใดดีลหนึ่งเจอแค่ 2)
 // ⭐ ตรึงสองเรื่อง: (1) สตริง `.or()` ที่ส่งให้ DB ตอบชุดเดียวกับตัวตัดสินฝั่ง JS ทีละแถว (แปลสตริงจริงแล้วรัน)
-//    (2) ลิงก์จากหน้าดีล/หน้าโครงการพาชุดที่ถูกไปที่คิว
+//    (2) ลิงก์จากหน้าดีลพาชุดที่ถูกไปที่คิว
+// งวด P3b-2 ยุบโครงการ: ถอดสาขา "งานเดิมของโครงการที่ไม่มี dealId" (prod 0 แถว) + ลิงก์/ธงของหน้าโครงการ
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import {
-  TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY, dealTaskOrFilter, idListParam, idParam, isDealTask, isProjectTask,
-  projectSelectionPasses, projectTasksQueueHref, readTasksQueueLink, tasksQueueHref,
-} from './dealTaskLink.js';
+import { dealTaskOrFilter, idListParam, isDealTask, readTasksQueueLink, tasksQueueHref } from './dealTaskLink.js';
 import { dealQueueLanding, taskListRows, taskPoolRows } from './taskListFilter.js';
 
 /* ตัวแปลตัวกรอง PostgREST แบบย่อ — รองรับเฉพาะรูปที่ไฟล์นั้นสร้าง: `col.eq.v` · `col.is.null` · `and(...)` · `or(...)`
@@ -65,103 +63,53 @@ test('🔴 สตริง .or() ที่ส่งให้ DB = ตัวต�
   }
 });
 
-test('🔴 ดีล B ได้งานของตัวเอง + งานเดิมของโครงการ — ไม่ได้งานของดีลพี่น้อง A', () => {
+test('🔴 ดีล B ได้เฉพาะงานของตัวเอง — ไม่ได้งานของดีลพี่น้อง A และไม่ได้งานเดิมที่ถือแค่ projectId', () => {
   const ofB = TASKS.filter((t) => isDealTask(t, DEAL_B)).map((t) => t.id);
-  assert.deepEqual(ofB, ['b1', 'b2', 'legacy']);
+  assert.deepEqual(ofB, ['b1', 'b2']);
   const ofA = TASKS.filter((t) => isDealTask(t, DEAL_A)).map((t) => t.id);
-  assert.deepEqual(ofA, ['a1', 'a2', 'legacy', 'moved']);
-  // ดีลที่ไม่มีโครงการ = เฉพาะงานที่ผูกดีลตรง
+  assert.deepEqual(ofA, ['a1', 'a2', 'moved']);
   assert.deepEqual(TASKS.filter((t) => isDealTask(t, DEAL_LOOSE)).map((t) => t.id), ['loose1']);
+  // projectId ของดีลไม่เปลี่ยนตัวกรองอีกแล้ว (งวด P3b-2) — ดีลมี/ไม่มีโครงการได้สตริงรูปเดียวกัน
+  assert.equal(dealTaskOrFilter(DEAL_A), 'dealId.eq.deal-A');
   assert.equal(dealTaskOrFilter(DEAL_LOOSE), 'dealId.eq.deal-L');
   assert.equal(dealTaskOrFilter(null), null);
   assert.equal(isDealTask(TASKS[0], null), false);
+  assert.equal(TASKS.filter((t) => [DEAL_A, DEAL_B, DEAL_LOOSE].some((d) => isDealTask(t, d))).some((t) => !t.dealId), false);
 });
 
-test('isProjectTask = ชุดของแท็บงานหน้าโครงการ (projectId = P หรือ dealId เป็นดีลของโครงการ)', () => {
-  const projectOf = (id) => ({ 'deal-A': 'proj-1', 'deal-B': 'proj-1', 'deal-L': null }[id] ?? null);
-  // ชุดของ API หน้าโครงการ: projectId.eq.P OR dealId.in.(ดีลของ P)
-  const projectApi = (t) => t.projectId === 'proj-1' || ['deal-A', 'deal-B'].includes(t.dealId);
-  for (const task of TASKS) {
-    assert.equal(isProjectTask(task, 'proj-1', projectOf), projectApi(task), task.id);
-  }
-  assert.equal(isProjectTask(TASKS[0], null, projectOf), false);
-});
-
-test('ลิงก์คิว: ดีล = ?dealId= · หน้าโครงการพาชุดที่เลือก/ทั้งโครงการ ไม่ตกไป /sa/tasks เปล่า', () => {
+test('ลิงก์คิว: ดีล = ?dealId= · ไม่มีดีล = /sa/tasks · อ่านกลับได้ชุดเดิม', () => {
   assert.equal(tasksQueueHref({ dealIds: ['deal-A'] }), '/sa/tasks?dealId=deal-A');
-  assert.equal(tasksQueueHref({ projectId: 'proj-1' }), '/sa/tasks?projectId=proj-1');
+  assert.equal(tasksQueueHref({ dealIds: ['deal-A', 'deal-B'] }), '/sa/tasks?dealId=deal-A%2Cdeal-B');
   assert.equal(tasksQueueHref({}), '/sa/tasks');
-  const CENTRAL = '__central__';
-  assert.equal(projectTasksQueueHref('proj-1', [], CENTRAL), '/sa/tasks?projectId=proj-1');
-  // ดีลอย่างเดียว (ไม่เลือกงานกลาง) = ตัดงานกลางออก (รีวิว M8b — เดิม `isDealTask` รวมงานกลางมาให้ ⇒ หน้าโครงการ 2 คิว 3)
-  assert.equal(projectTasksQueueHref('proj-1', ['deal-A'], CENTRAL), '/sa/tasks?dealId=deal-A&central=none');
-  assert.equal(projectTasksQueueHref('proj-1', ['deal-A', 'deal-B'], CENTRAL), '/sa/tasks?dealId=deal-A%2Cdeal-B&central=none');
-  // หมุด "งานกลางโครงการ" ไม่ใช่ id ดีล — ห้ามหลุดไปเป็น ?dealId=__central__ (บั๊กเดิม)
-  assert.equal(projectTasksQueueHref('proj-1', [CENTRAL], CENTRAL), '/sa/tasks?projectId=proj-1&central=only');
-  assert.equal(projectTasksQueueHref('proj-1', ['deal-A', CENTRAL], CENTRAL), '/sa/tasks?dealId=deal-A');
-  // คู่ผิดถูกทิ้งทั้งตอนสร้างลิงก์และตอนอ่าน
-  assert.equal(tasksQueueHref({ dealIds: ['deal-A'], central: TASK_CENTRAL_ONLY }), '/sa/tasks?dealId=deal-A');
-  assert.equal(tasksQueueHref({ projectId: 'proj-1', central: TASK_CENTRAL_EXCLUDE }), '/sa/tasks?projectId=proj-1');
-  assert.deepEqual(readTasksQueueLink({ dealId: 'deal-A', central: 'only' }), { dealIds: ['deal-A'], projectId: '', central: null });
-  assert.deepEqual(readTasksQueueLink({ projectId: 'proj-1', central: 'none' }), { dealIds: [], projectId: 'proj-1', central: null });
-  assert.deepEqual(readTasksQueueLink({ dealId: 'deal-A', projectId: 'proj-1', central: 'none' }),
-    { dealIds: ['deal-A'], projectId: '', central: 'none' }, 'ดีลมาก่อนโครงการ');
-  assert.deepEqual(readTasksQueueLink({ central: 'bogus' }), { dealIds: [], projectId: '', central: null });
+  // ตัวเลือกโครงการเดิมที่ผู้เรียกเก่ายังส่งมา = ไม่มีผล (ไม่มีหน้าโครงการให้ลิงก์มาแล้ว)
+  assert.equal(tasksQueueHref({ projectId: 'proj-1', central: 'only' }), '/sa/tasks');
+  for (const dealIds of [['deal-A'], ['deal-A', 'deal-B']]) {
+    const params = new URLSearchParams(tasksQueueHref({ dealIds }).split('?')[1]);
+    assert.deepEqual(readTasksQueueLink({ dealId: params.get('dealId') }), { dealIds });
+  }
 });
 
-/* ⭐ รีวิว M8b: ตัวเลือก "ดีลที่แสดง" ของหน้าโครงการ × ลิงก์ "เปิดหน้างาน" — คิวต้องได้ชุดเดียวกับตารางงานของหน้าโครงการ
-   ทุกตัวเลือก (ก่อนตัดขอบเขต/สถานะของคิว — ขอบเขต "ทั้งหมด" + สถานะเดียวกันทั้งสองฝั่ง)
-   หน้าโครงการ: งานของโครงการ (API: projectId = P OR dealId ∈ ดีลของ P) → `projectSelectionPasses`
-   คิว:        งานทั้งระบบ (ขอบเขต "ทั้งหมด") → อ่าน URL (`readTasksQueueLink`) → `dealQueueLanding` → ตัวกรองของคิว */
-test('⭐ M8b: ทุกตัวเลือกบนหน้าโครงการ → ลิงก์ → คิว ได้งานชุดเดียวกับตารางงานของหน้าโครงการ', () => {
-  const CENTRAL = '__central__';
-  const projectOf = (id) => ({ 'deal-A': 'proj-1', 'deal-B': 'proj-1', 'deal-L': null }[id] ?? null);
-  const QUEUE_TASKS = [
+test('ลิงก์เก่าของหน้าโครงการ (?projectId= · ?central=) อ่านแล้วไม่มีผล — คิวได้ชุดเดียวกับไม่มีพารามิเตอร์', () => {
+  assert.deepEqual(readTasksQueueLink({ projectId: 'proj-1', central: 'only' }), { dealIds: [] });
+  assert.deepEqual(readTasksQueueLink({ dealId: 'deal-A', projectId: 'proj-1', central: 'none' }), { dealIds: ['deal-A'] });
+  const rows = [
     ...TASKS,
-    { id: 'a-done', dealId: 'deal-A', projectId: 'proj-1', status: 'Completed' },
-    { id: 'legacy-done', dealId: null, projectId: 'proj-1', status: 'Completed' },
-    { id: 'personal', dealId: null, projectId: null, ownerId: 'u9' }, // งานส่วนตัวไม่ผูกอะไร — ห้ามโผล่ทุกตัวเลือก
+    { id: 'personal', dealId: null, projectId: null, ownerId: 'u9' },
   ].map((t) => ({ status: 'Pending', ownerId: 'u1', ...t }));
-  const projectTasks = QUEUE_TASKS.filter((t) => t.projectId === 'proj-1' || ['deal-A', 'deal-B'].includes(t.dealId));
-  const options = ['deal-A', 'deal-B', CENTRAL];
-  let checked = 0;
-  for (let mask = 0; mask < 1 << options.length; mask += 1) {
-    const selection = options.filter((_, i) => mask & (1 << i));
-    const href = projectTasksQueueHref('proj-1', selection, CENTRAL);
-    const params = new URLSearchParams(href.split('?')[1] || '');
-    const link = readTasksQueueLink({ dealId: params.get('dealId'), projectId: params.get('projectId'), central: params.get('central') });
-    const landing = dealQueueLanding({ allowedScopes: ['mine', 'team', 'all'], meId: 'u1', ...link, dealProjectOf: projectOf });
-    const page = projectTasks.filter((t) => projectSelectionPasses(t, selection, CENTRAL)).map((t) => t.id).sort();
-    const queue = taskPoolRows(QUEUE_TASKS, landing).map((t) => t.id).sort();
-    assert.deepEqual(queue, page, `ตัวเลือก ${JSON.stringify(selection)} → ${href}`);
-    // หลังตัดงานเสร็จ (คิวเปิดที่ "งานค้าง") ก็ยังตรงกับงานค้างของหน้าโครงการ
-    const pageOpen = page.filter((id) => QUEUE_TASKS.find((t) => t.id === id).status !== 'Completed');
-    assert.deepEqual(taskListRows(QUEUE_TASKS, landing).map((t) => t.id).sort(), pageOpen);
-    assert.ok(!queue.includes('personal'));
-    checked += 1;
-  }
-  assert.equal(checked, 8);
-  // ตัวอย่างจากรีวิว: เลือกดีล A อย่างเดียว — หน้าโครงการไม่มีงานกลาง คิวก็ต้องไม่มี
-  const onlyA = readTasksQueueLink(Object.fromEntries(new URLSearchParams(projectTasksQueueHref('proj-1', ['deal-A'], CENTRAL).split('?')[1])));
-  const rowsA = taskPoolRows(QUEUE_TASKS, dealQueueLanding({ allowedScopes: ['all'], ...onlyA, dealProjectOf: projectOf }));
-  assert.ok(!rowsA.some((t) => !t.dealId), 'เลือกดีล A อย่างเดียว ห้ามมีงานกลางโครงการ');
-});
-
-test('ธง central ไม่มีคู่ = ไม่มีผล (ไม่กรองงานส่วนตัวที่ไม่ผูกดีลทั้งคิว)', () => {
-  const rows = [{ id: 'p', dealId: null, projectId: null, status: 'Pending' }, { id: 'd', dealId: 'deal-A', projectId: 'proj-1', status: 'Pending' }];
-  for (const central of [TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY]) {
-    assert.deepEqual(taskPoolRows(rows, { scope: 'all', central }).map((t) => t.id), ['p', 'd'], central);
-  }
+  // ตัวกรองเก่า (project / central / dealProjectOf) ที่ผู้เรียกเก่ายังส่งมา — ถูกเมินทั้งชุด
+  const landing = dealQueueLanding({ allowedScopes: ['mine', 'team', 'all'], meId: 'u1', dealIds: ['deal-A'],
+    projectId: 'proj-1', central: 'none', dealProjectOf: () => 'proj-1' });
+  assert.equal('project' in landing || 'central' in landing || 'dealProjectOf' in landing, false);
+  assert.deepEqual(taskListRows(rows, landing).map((t) => t.id), ['a1', 'a2', 'moved']);
+  const all = taskPoolRows(rows, { scope: 'all', project: 'proj-1', central: 'only' }).map((t) => t.id);
+  assert.deepEqual(all, rows.map((t) => t.id), 'ตัวกรองโครงการเดิมต้องไม่ตัดแถว');
 });
 
 test('อ่าน id จาก URL: ลิสต์คั่นจุลภาค · ค่าที่ไม่ใช่ id ถูกทิ้ง (กันสตริงแปลกไหลเข้า .in())', () => {
   assert.deepEqual(idListParam('deal-A,deal-B'), ['deal-A', 'deal-B']);
-  assert.deepEqual(idListParam(new URLSearchParams(projectTasksQueueHref('p', ['a', 'b']).split('?')[1]).get('dealId')), ['a', 'b']);
   assert.deepEqual(idListParam('a,,a, b'), ['a', 'b']);
   assert.deepEqual(idListParam('x),or(id.neq.0'), []);
   assert.deepEqual(idListParam(null), []);
-  assert.equal(idParam('proj-1'), 'proj-1');
-  assert.equal(idParam('a b'), '');
 });
 
 /* ── ยามซอร์ส: route หน้าดีลใช้นิยามนี้ · หน้าดีล/หน้าโครงการลิงก์ผ่านตัวประกอบลิงก์ ─────────────── */
@@ -182,5 +130,9 @@ test('ยาม: ปุ่มบนหน้าดีลพาตัวกรอ
   assert.match(deal, /href=\{tasksQueueHref\(\{ dealIds: \[deal\.id\] \}\)\}/);
   assert.doesNotMatch(deal, /: "\/sa\/tasks"\}/, 'ห้ามตกไป /sa/tasks เปล่า');
   const queue = read('../../app/pm/tasks/page.js');
-  assert.match(queue, /readTasksQueueLink\(\{\n\s+dealId: linkDealParam, projectId: linkProjectParam, central: linkCentralParam,\n\s+\}\)/);
+  assert.match(queue, /const \{ dealIds: linkDealIds \} = readTasksQueueLink\(\{ dealId: linkDealParam \}\);/);
+  // งวด P3b-2: ลิงก์เก่าของหน้าโครงการถูกถอดออกจาก URL — ไม่กลายเป็นตัวกรองค้าง
+  assert.match(queue, /const STALE_LINK_PARAMS = \["projectId", "central"\];/);
+  assert.match(queue, /router\.replace\(tasksHrefWithout\(searchParams, STALE_LINK_PARAMS\), \{ scroll: false \}\);/);
+  assert.doesNotMatch(queue, /\/api\/pm\/projects/, 'หน้าคิวต้องไม่โหลดรายชื่อโครงการ (route ถอดแล้ว)');
 });

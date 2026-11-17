@@ -20,15 +20,14 @@ export function isExciseBillingTask(task) {
 }
 
 /**
- * แพตช์ของงานที่ต้องเปลี่ยน — `[{ id, prevStatus, patch, projectId, dealId }]`
+ * แพตช์ของงานที่ต้องเปลี่ยน — `[{ id, prevStatus, patch, dealId }]`
  * @param dealStates Map ดีล → `{ approvedCount, pendingCount }` (SO อนุมัติที่ยังมีผล · SO ในคิวรอออกใบ)
- * @param closedProjectIds โครงการที่ปิดแล้ว — ห้ามแก้ขั้นตอน (กติกาเดียวกับ route PATCH ของขั้นตอน)
+ * (ด่าน "โครงการปิดแล้วห้ามแก้ขั้นตอน" ถอดในงวด P3b-2 ยุบโครงการ — ปิดแล้ว 0 โครงการ และปิดเพิ่มไม่ได้อีก)
  */
-export function exciseBillingTaskUpdates(tasks = [], { dealStates = new Map(), closedProjectIds = new Set(), today, now } = {}) {
+export function exciseBillingTaskUpdates(tasks = [], { dealStates = new Map(), today, now } = {}) {
   const updates = [];
   for (const task of tasks || []) {
     if (!isExciseBillingTask(task) || !task.dealId || !dealStates.has(task.dealId)) continue;
-    if (task.projectId && closedProjectIds.has(task.projectId)) continue;
     const { approvedCount = 0, pendingCount = 0 } = dealStates.get(task.dealId) || {};
     const done = approvedCount > 0 && pendingCount === 0;
     let patch = null;
@@ -52,7 +51,7 @@ export function exciseBillingTaskUpdates(tasks = [], { dealStates = new Map(), c
         updatedAt: now,
       };
     }
-    if (patch) updates.push({ id: task.id, prevStatus: task.status, patch, projectId: task.projectId || null, dealId: task.dealId });
+    if (patch) updates.push({ id: task.id, prevStatus: task.status, patch, dealId: task.dealId });
   }
   return updates;
 }

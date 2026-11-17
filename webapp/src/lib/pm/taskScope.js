@@ -8,11 +8,11 @@
 //
 // ขอบเขต (ย้ายมาจาก my-work ตรง ๆ — ดูเหตุผลเต็มที่หัวไฟล์ route นั้น)
 //   • mine = ฉันเป็นเจ้าของ · ผู้รับมอบ · คนดึงมาทำแทน (proxyBy) · คนที่มอบหมาย (assignedBy)
-//   • team = ฝ่าย RD: งานของคนในฝ่าย · ฝ่ายขาย: งานผูกโครงการของทีม ∪ งานผูกดีลของทีม (รวมงานลอยของดีลที่ยังไม่ผูก
-//            โครงการ — 81 แถวเคยหายจากสายตาหัวหน้าทีม 2026-08-22) ∪ งานที่คนในทีมเป็นเจ้าของ/ผู้รับมอบ/ทำแทน
+//   • team = ฝ่าย RD: งานของคนในฝ่าย · ฝ่ายขาย: งานผูกดีลของทีม ∪ งานที่คนในทีมเป็นเจ้าของ/ผู้รับมอบ/ทำแทน
+//            (งวด P3b-2 ยุบโครงการ: ถอดสาขา "งานผูกโครงการของทีม" — ตรวจ prod 16/11 งานที่ถือ projectId ผูกดีลครบ
+//            ทีมดีล = ทีมโครงการ ⇒ ไม่มีงานหลุดขอบเขต 0 แถว)
 //   • all  = ทุกงานในระบบ
 import { normalizeDepartment, isRdRole } from '@/lib/permissions';
-import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { departmentUserIds, teamUserIds } from '@/lib/usersRepo';
 import { whereTeamIn } from '@/lib/teamScope';
 import { mineTaskClauses } from '@/lib/pm/taskListFilter';
@@ -31,14 +31,12 @@ export async function loadTaskScopeClauses(supabase, user, scope) {
       ? [['ownerId', deptIds], ['assigneeId', deptIds], ['proxyBy', deptIds]]
       : [];
   }
-  const [teamProjIds, teamIds, { data: teamDeals }] = await Promise.all([
-    teamProjectIds(supabase, user.teams),
+  const [teamIds, { data: teamDeals }] = await Promise.all([
     teamUserIds(supabase, user.teams),
     whereTeamIn(supabase.from('sales_deals').select('id'), user),
   ]);
   const teamDealIds = (teamDeals || []).map((d) => d.id);
   const clauses = [];
-  if (teamProjIds.length) clauses.push(['projectId', teamProjIds]);
   if (teamDealIds.length) clauses.push(['dealId', teamDealIds]);
   if (teamIds.length) {
     clauses.push(['assigneeId', teamIds]);

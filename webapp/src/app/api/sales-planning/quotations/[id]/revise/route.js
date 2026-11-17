@@ -25,7 +25,6 @@ import {
 import { RETIRED_PEOPLE_CLEARED, stripRetiredPeople } from '@/lib/sales/quotationMetadata';
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
-import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
 
 export const dynamic = 'force-dynamic';
@@ -67,9 +66,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (quote.deal?.stage === 'lost') {
     return badRequest('ดีลนี้ Lost แล้ว — ออก Rev. ใหม่ไม่ได้');
   }
-  // ฉบับ Rev. = เอกสารใบใหม่ (เลขใหม่ ใบเดิมกลายเป็น read-only) → อยู่ในขอบเขตด่าน B3
-  const closedProject = await closedProjectBlock(supabase, quote.deal?.projectId, 'ออก Rev. ใบเสนอราคา');
-  if (closedProject) return badRequest(closedProject);
+  // (ด่าน "โครงการปิดแล้วออกเอกสารใบใหม่ไม่ได้" (มติ B3) ถอดในงวด P3b-2 ยุบโครงการ — ปิดแล้ว 0 โครงการ และปิดเพิ่มไม่ได้อีก)
 
   const body = await req.json().catch(() => ({}));
   /* ⭐ ใบค่าสรรพสามิต: จอส่งบรรทัด/ส่วนลด/VAT มา = ปฏิเสธ · 1 SO = 1 ใบที่มีผล: ใบเดิมกลายเป็น revised ⇒ ฉบับใหม่เป็นใบที่มีผลใบเดียว
