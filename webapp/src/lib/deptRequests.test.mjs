@@ -369,10 +369,18 @@ test('⭐ ปิดใบไม่ได้จนลูกค้าคอนเ�
       Array.from({ length: 3 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }))),
     null,
   );
-  // ส่งเกิน (แถมให้ลูกค้าเลือก) ไม่ใช่เหตุให้ปิดไม่ได้ — มติเดิม "เกินได้จริง"
-  assert.equal(
+  /* ส่งเกิน — มติเดิม "เกินได้จริง" ถูกทับโดย ม-164 (มติเจ้าของ 13/11 ข้อ 2): เกินต้องมีที่มา (SO ที่แนบ หรือของแถมพร้อมเหตุผล)
+     ⇒ เกินที่ยังไม่ระบุ = ปิดไม่ได้ · ระบุแถมบนแถวที่เกินแล้ว = ปิดได้ */
+  assert.match(
     closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }),
       Array.from({ length: 4 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 }))),
+    /เกินที่จ่าย 1 กลิ่น ยังไม่ระบุที่มา/,
+  );
+  assert.equal(
+    closeRequestError(req({ kind: 'scent_dev', status: 'acknowledged', ...so }), [
+      ...Array.from({ length: 3 }, () => ({ answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1 })),
+      { answerStatus: 'done', outcome: 'confirmed', confirmedQty: 1, freebieReason: 'แถมให้ลูกค้าเลือก' },
+    ]),
     null,
   );
   // ⚠️ ลูกค้าไม่เอาสักตัว = ปิดไม่ได้โดยตั้งใจ ทางออกคือยกเลิก

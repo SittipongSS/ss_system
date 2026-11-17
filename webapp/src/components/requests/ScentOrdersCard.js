@@ -126,8 +126,13 @@ export default function ScentOrdersCard({
   // (salesOrderId) => Promise<boolean>
   onAttach,
   onDetach,
+  // ม-164 PR-3 — หน้าถือสถานะโมดัลแนบได้ (เปิดจากโมดัล "คอนเฟิร์มเกินที่จ่าย") · ไม่ส่ง = การ์ดถือเอง
+  attachOpen,
+  onAttachOpenChange,
 }) {
-  const [open, setOpen] = useState(false);
+  const [openLocal, setOpenLocal] = useState(false);
+  const open = attachOpen ?? openLocal;
+  const setOpen = onAttachOpenChange ?? setOpenLocal;
   const attached = request?.attachedOrders || [];
   if (!request || (!attached.length && !canAct)) return null;
 
