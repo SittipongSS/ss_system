@@ -138,6 +138,7 @@ import { surveyVariantsOff } from "@/lib/service/surveyIntake";
 import { surveyReopenDocumentLine } from "@/lib/service/surveyDocumentView";
 /* ⭐ โมดัลลงคิว/แจ้งกำหนดส่ง + ข้อความกล่องรับเรื่อง — ตัวเดียวกับหน้าจัดคิว (มติเจ้าของ 23/09) */
 import CommitDueDialog from "@/components/requests/CommitDueDialog";
+import ScentOrdersCard from "@/components/requests/ScentOrdersCard";
 import { commitDueLabels, deskDueAction } from "@/lib/requests/commitDue";
 /* ชื่อขั้นของรางเมื่อใบประเมินเป็นงานโต๊ะ (ประเมินจากแบบทั้งใบ · งวด S2b กลุ่ม D-2) — ตัวแปลงคำล้วน ไม่มีของ server */
 import { surveyDeskRailSteps } from "@/lib/service/surveyMethodSwitch";
@@ -2234,6 +2235,24 @@ export default function RequestDetailPage() {
             />
           )}
         </ContextGrid>
+      )}
+
+      {/* ⭐ **ใบสั่งขายที่ลูกค้าซื้อเพิ่ม** (ม-164 · PR-2) — เฉพาะพัฒนากลิ่น (`attachedOrders` มาจาก findRequest
+          เฉพาะหัวข้อที่ปิดใบด้วยการกระทบยอด SO) · ปุ่มแนบ/ถอดเป็นของฝั่งผู้ขอ (`_mine` = canManageRequest ของ server)
+          ⚠️ การ์ดคืน null เองเมื่อไม่มี SO แนบและคนดูทำอะไรไม่ได้ — RD เห็นการ์ดเฉพาะตอนมีใบแนบ */}
+      {!editing && !showKindView && Array.isArray(req.attachedOrders) && (
+        <ScentOrdersCard
+          request={req}
+          canAct={!!req._mine}
+          saving={saving}
+          onToast={setToast}
+          onAttach={(salesOrderId) => call("/sales-orders", {
+            method: "POST", body: JSON.stringify({ salesOrderId }),
+          }, "แนบใบสั่งขายแล้ว")}
+          onDetach={(salesOrderId) => call(`/sales-orders/${encodeURIComponent(salesOrderId)}`, {
+            method: "DELETE",
+          }, "ถอดใบสั่งขายแล้ว")}
+        />
       )}
 
       {/* ⭐ **โครงเดียวทุกหัวข้อ** (ม-123 — จบการย้ายทีละหัวข้อที่เริ่มไว้ 2026-08-09):
