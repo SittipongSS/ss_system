@@ -1,5 +1,7 @@
 # Sales ↔ PM Lifecycle — Boundary Map + Roadmap
 
+> สถานะ: **ระงับ** · ตรวจกับโค้ดเมื่อ 2026-11-17 · **ถูกแทนด้วยงานยุบโครงการ** — มติเจ้าของ 13–16/11/2026 ยุบดีล/โครงการเป็นหน่วยเดียว = **ดีล** และเก็บตาราง `projects` เป็นคลังอ่านอย่างเดียว ไม่มีจอ (มติ ⑩ · P3 ขึ้น prod ครบ 17/11 · mig 0437 กันเพิ่ม/ลบแถวโครงการ) ⇒ โมเดลสองชั้น deal=commercial / project=execution ไม่มีแล้ว — ใช้เป็นประวัติการตัดสินใจเท่านั้น · ห้ามหยิบมาทำต่อ · ดู [`docs/customer-hub-plan.md`](../docs/customer-hub-plan.md)
+
 เอกสารสถาปัตยกรรม + roadmap ของ **สายชีวิตงานขาย→ส่งมอบ** ที่ร้อยระบบ Sales Planning · PM ·
 Sahamit · Tax เข้าด้วยกัน เข้าชุดกับ [`BOUNDARY_MAP.md`](BOUNDARY_MAP.md) (contract กลาง),
 [`BOUNDARY_MAP_PLAN.md`](BOUNDARY_MAP_PLAN.md) (roadmap รวม), [`PM_PLAN.md`](PM_PLAN.md),
