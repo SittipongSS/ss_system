@@ -300,8 +300,18 @@ AC ผู้ประสานงาน (5 คน) + AE Supervisor (1 คน) �
       (ชื่อเอกสารควบคุม "เอกสารไทม์ไลน์โครงการ" FM-PD-05 คงไว้)
     - ไม่แตะ: `material_deliveries` บน SO (ผูก SO ไม่ใช่โครงการ) · `siteReferences` (ด่านตรวจค่าตอนเขียนไซต์ — ไซต์ยังได้ `projectId`
       จาก SO จนกว่า P3c) · หน้าตัวอย่างดีไซน์ (`/settings/design-preview`)
-  - **P3c — migration** (รอดำเนินการ): RPC สร้าง SO / ออก Rev. เลิกก๊อป `d."projectId"` (ปะแบบแทนข้อความบนตัวที่รันจริง) ·
-    ลบ `backfill_deal_fields_from_projects` · ยามกันลบ/แก้แถว `projects` (FK `ON DELETE CASCADE` ของไทม์ไลน์ยังอยู่)
+  - **P3c — migration 0437** (กำลังดำเนินการ · แบรนช์ `claude/project-removal-p3c` · DDL ⇒ เจ้าของรันใน SQL Editor · รันก่อน/หลัง deploy ก็ได้):
+    - C1 `create_sales_order_draft` · C2 `revise_approved_sales_order_atomic` · C3 `deal_restore_timeline_revision` — เลิกก๊อป/ประทับ
+      `projectId` (ใส่ NULL · ปะแบบแทนข้อความบนตัวที่รันจริง ข้อความยึดต้องเจอครั้งเดียว ป้าย `0437/C1–C3`)
+    - C4 `sales_order_business_line` = สายของดีลอย่างเดียว (เดิมโครงการก่อน) — มติ ⑫ ปลดล็อกสายดีลเก่า ⇒ สายโครงการที่ค้างอาจไม่ตรง ·
+      คู่กับ `orderBusinessLineOf` ฝั่ง JS (P3b-1) · ตรวจ prod 17/11: 413 SO สายเท่าเดิมทุกใบ (ต่าง 0)
+    - C5 ถอดทริกเกอร์ `project_tasks_mark_rev_stale` (0045 · เขียน `projects."revStale"` ทุกครั้งที่แก้ขั้นที่ถือ projectId) +
+      ลบ `backfill_deal_fields_from_projects` (0435 · ใช้ครั้งเดียว)
+    - C6 ยามคลัง `projects`: **เพิ่ม/ลบ/TRUNCATE ไม่ได้** — ลบ = ไทม์ไลน์หายแบบ CASCADE + `sales_orders."projectId"` ถูก SET NULL
+      (ลายนิ้วมือ SO เพี้ยน) · **แก้แถวยังได้** (mirror ชื่อลูกค้า · รวมลูกค้ายังเขียนคลัง) · ทางออกฉุกเฉิน
+      `SET LOCAL app.projects_archive_unlock = 'on'` ในเซสชัน SQL Editor เท่านั้น
+    - ไม่แตะข้อมูลแถวเดิม · ไม่ลบตาราง/คอลัมน์ (มติ ⑩) · ยาม: `projectArchiveMigration.test.mjs`
+    - คงไว้: `pm_restore_snapshot` (RPC ย้อน Rev. โครงการเดิม · ไม่มีผู้เรียกแล้ว ไม่เขียน `projects`) · ป้าย `projects."revStale"` เดิมค้างตามค่าสุดท้าย
 
 กับดัก:
 
