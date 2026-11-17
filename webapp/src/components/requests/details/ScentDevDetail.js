@@ -164,6 +164,10 @@ export default function ScentDevDetail({
                 ) : null}
               </>
             ) : null}
+            extraMenuItems={rowStep?.topupMenuOf ? (d) => {
+              const item = (request.items || []).find((it) => it.id === d.id);
+              return item ? rowStep.topupMenuOf(item) : [];
+            } : null}
             renderStep={rowStep ? (d) => {
               const item = (request.items || []).find((it) => it.id === d.id);
               return item ? <RowStepActions row={item} {...rowStep} /> : null;

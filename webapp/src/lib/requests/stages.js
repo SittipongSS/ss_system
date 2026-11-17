@@ -13,6 +13,7 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { isRowSettled, requestPendingSteps } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
 import { scentSlotLinesOf } from '@/lib/requests/scentOrderLinks';
+import { paidScentSlots } from '@/lib/requests/scentOverPaid';
 import { closureStatus, reopenWaitClearPatch } from '@/lib/requests/closure';
 import { requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 
@@ -299,7 +300,11 @@ export function closeRowsPendingReason(request, rows = []) {
   return `ยังมีรายการที่ยังเดินไม่จบ — ${parts.join(' · ')}${tail}`;
 }
 
-export function closeRequestError(request, items = []) {
+/**
+ * @param opts.overPaid  ตรวจ "คอนเฟิร์มเกินที่จ่ายยังไม่ระบุ" ด้วยไหม (ม-164 PR-3) — `cancelRequestError` ส่ง false:
+ *   ข้อนี้มีทางออกบนแถวเอง (ระบุแถม/แนบ SO) ⇒ ต้องไม่กลายเป็นเหตุให้ใบที่ตอบแล้ว "ยกเลิกได้" แทนการปิด
+ */
+export function closeRequestError(request, items = [], { overPaid = true } = {}) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'closed') return 'คำร้องนี้ปิดแล้ว';
   if (request.status === 'cancelled') return 'คำร้องนี้ถูกยกเลิกไปแล้ว';
@@ -394,6 +399,15 @@ export function closeRequestError(request, items = []) {
       return `ลูกค้าคอนเฟิร์ม ${reconcile.confirmed} จาก ${reconcile.ordered} ในใบสั่งขาย`
         + ' — ส่งให้ครบก่อน หรือยกเลิกใบถ้าลูกค้าไม่เอาแล้ว';
     }
+    /* ⭐ **เกินที่จ่ายต้องมีที่มา** (ม-164 PR-3 · มติเจ้าของ 13/11 ข้อ 2) — มาจาก SO ที่แนบ (นับใน `ordered` แล้ว) หรือของแถม
+       ที่ระบุบนแถว · ไม่บล็อก = ไม่มีใครระบุ แล้วกลิ่นที่ไม่มีใครจ่ายหายเข้ายอดเงียบ ๆ
+       ⚠️ ใบที่ปิดไปแล้ว (SB-26080013) ไม่แตะ — ด่านนี้ถามตอนกดปิดเท่านั้น */
+    /* ⚠️ เฉพาะใบที่อ่านจำนวนกลิ่นที่จ่ายได้ (`paidScentSlots` ตัวเดียวกับด่านคอนเฟิร์ม) — ใบไม่มี SO/อ่านไม่ได้ = ไม่มีอะไรให้เทียบ
+       🐞 ไม่กันตรงนี้ = ใบไม่มีบรรทัด SO ถูกนับว่า "เกิน" ทุกแถวที่คอนเฟิร์ม แล้วปิดไม่ได้ (ยาม "ทุกสถานะต้องมีทางออก" จับได้) */
+    if (overPaid && reconcile?.state === 'over' && reconcile.unexplained > 0 && paidScentSlots(request) != null) {
+      return `ลูกค้าคอนเฟิร์มเกินที่จ่าย ${reconcile.unexplained} กลิ่น ยังไม่ระบุที่มา`
+        + ' — แนบใบสั่งขายที่ซื้อเพิ่ม หรือกด "ระบุว่าเป็นของแถม" ที่รายการก่อนปิด';
+    }
   }
   return null;
 }
@@ -411,7 +425,7 @@ export function cancelRequestError(request, items = request?.items || []) {
      แล้ว") บอกให้ยกเลิก แต่ด่านนี้ห้ามยกเลิกใบที่ตอบแล้ว ⇒ ผู้ขอกดได้แค่ "ยังไม่จบ" วนไปมา
      (SB-26080005 ค้าง 15 วัน) · กติกา: **ใบที่ยังไม่จบต้องมีทางออกอย่างน้อยหนึ่งทางเสมอ**
      ⇒ ถามด่านปิดตัวเดียวกับปุ่ม · ปิดได้ = ให้ปิด (ประวัติบอกว่าจบด้วยของ) · ปิดไม่ได้ = ยกเลิกได้ */
-  if (request.status === 'answered' && !closeRequestError(request, items)) {
+  if (request.status === 'answered' && !closeRequestError(request, items, { overPaid: false })) {
     return 'คำร้องนี้ตอบแล้ว — ปิดเรื่องแทนการยกเลิก';
   }
   /* ⭐ **บางหัวข้อยกเลิกได้ก่อนฝ่ายรับเรื่องเท่านั้น** (มติข้อ 24 ของใบประเมิน)
