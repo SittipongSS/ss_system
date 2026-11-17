@@ -249,7 +249,7 @@ export default function ProductCategoriesPage() {
     <Workspace
       icon={<Tags size={22} />}
       title="หมวดสินค้า"
-      subtitle="จัดการรหัสและชื่อหมวดที่ใช้ร่วมกันในสินค้า ดีล โครงการ และไทม์ไลน์"
+      subtitle="จัดการรหัสและชื่อหมวดที่ใช้ร่วมกันในสินค้า ดีล และไทม์ไลน์"
       headerRight={(
         <div className={styles.headerActions}>
           <Link prefetch={false} className="btn ghost" href="/api/product-types/export"><Download size={16} /> ส่งออกข้อมูล</Link>
@@ -427,7 +427,7 @@ export default function ProductCategoriesPage() {
               />
               <span>
                 <strong>เสียภาษีสรรพสามิต</strong>
-                <small>ระบบจะคิดภาษีสรรพสามิตให้สินค้าในหมวดนี้ เตือนตอนสร้างสินค้า และเพิ่มขั้นตอนสรรพสามิตในไทม์ไลน์โครงการ</small>
+                <small>ระบบจะคิดภาษีสรรพสามิตให้สินค้าในหมวดนี้ เตือนตอนสร้างสินค้า และเพิ่มขั้นตอนสรรพสามิตในไทม์ไลน์ดีล</small>
               </span>
             </label>
             <label className={styles.checkRow}>
@@ -460,8 +460,8 @@ export default function ProductCategoriesPage() {
         title={form.isExcise ? "เปิดธงเสียภาษีสรรพสามิต" : "ปิดธงเสียภาษีสรรพสามิต"}
         description={drawer?.row ? `${drawer.row.code} — ${categoryNameBoth(form) || categoryNameBoth(drawer.row) || "ไม่ระบุชื่อ"}` : ""}
         detail={form.isExcise
-          ? "สินค้าในหมวดนี้จะถูกคิดภาษีสรรพสามิตอัตโนมัติ มีป้าย/คำเตือนด้านภาษี และไทม์ไลน์โครงการใหม่จะมีขั้นตอนสรรพสามิต — การเปลี่ยนแปลงถูกบันทึกใน audit log"
-          : "ระบบจะเลิกคิดภาษีสรรพสามิตให้สินค้าหมวดนี้ และไทม์ไลน์โครงการใหม่จะไม่มีขั้นตอนสรรพสามิต (โครงการเดิมไม่ถูกแก้อัตโนมัติ) — การเปลี่ยนแปลงถูกบันทึกใน audit log"}
+          ? "สินค้าในหมวดนี้จะถูกคิดภาษีสรรพสามิตอัตโนมัติ มีป้าย/คำเตือนด้านภาษี และไทม์ไลน์ดีลใหม่จะมีขั้นตอนสรรพสามิต — การเปลี่ยนแปลงถูกบันทึกใน audit log"
+          : "ระบบจะเลิกคิดภาษีสรรพสามิตให้สินค้าหมวดนี้ และไทม์ไลน์ดีลใหม่จะไม่มีขั้นตอนสรรพสามิต (ไทม์ไลน์เดิมไม่ถูกแก้อัตโนมัติ) — การเปลี่ยนแปลงถูกบันทึกใน audit log"}
         confirmLabel="ยืนยันและบันทึก"
         tone="danger"
         busy={saving}
@@ -474,7 +474,7 @@ export default function ProductCategoriesPage() {
         title={confirmRow?.isActive === false ? "เปิดใช้งานหมวดสินค้า" : "พักใช้งานหมวดสินค้า"}
         description={confirmRow ? `${confirmRow.code} — ${categoryNameBoth(confirmRow) || "ไม่ระบุชื่อ"}` : ""}
         detail={confirmRow?.isActive === false
-          ? "หมวดนี้จะกลับมาให้เลือกในสินค้า ดีล และโครงการใหม่"
+          ? "หมวดนี้จะกลับมาให้เลือกในสินค้าและดีลใหม่"
           : `${usageText(confirmRow?.usage)} ข้อมูลเดิมจะยังคงอยู่ แต่หมวดนี้จะไม่ปรากฏให้เลือกในงานใหม่`}
         confirmLabel={confirmRow?.isActive === false ? "เปิดใช้งาน" : "พักใช้งาน"}
         tone={confirmRow?.isActive === false ? "default" : "danger"}
@@ -490,7 +490,7 @@ export default function ProductCategoriesPage() {
         open={!!deleteRow}
         title="ลบหมวดสินค้า"
         description={deleteRow ? `${deleteRow.code} — ${categoryNameBoth(deleteRow) || "ไม่ระบุชื่อ"}` : ""}
-        detail="ลบได้เฉพาะหมวดที่ยังไม่มีสินค้า/ดีล/โครงการผูกอยู่ และไม่ใช่หมวดที่ระบบอ้างตรง ๆ ในโค้ด — ถ้าเคยใช้งานแล้วให้ 'พักใช้' แทน"
+        detail="ลบได้เฉพาะหมวดที่ยังไม่มีสินค้า/ดีลผูกอยู่ และไม่ใช่หมวดที่ระบบอ้างตรง ๆ ในโค้ด — ถ้าเคยใช้งานแล้วให้ 'พักใช้' แทน"
         confirmLabel="ลบหมวด"
         tone="danger"
         busy={saving}

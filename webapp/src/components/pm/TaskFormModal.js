@@ -28,7 +28,7 @@ import Textarea from "@/components/ui/Textarea";
 
 export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
-  projectId: "", dealId: "", assigneeId: "",
+  dealId: "", assigneeId: "",
   category: "", important: false, urgent: false, difficulty: 2,
   status: "Pending", blockedReason: "", predecessorId: "",
 };
@@ -50,7 +50,7 @@ const todayLocal = () => {
 export const taskToForm = (t) => ({
   title: t.title || "", note: t.note || "",
   startDate: t.startDate || "", dueDate: t.dueDate || "",
-  projectId: t.projectId || "", dealId: t.dealId || "", assigneeId: t.assigneeId || "",
+  dealId: t.dealId || "", assigneeId: t.assigneeId || "",
   category: t.category || "", important: !!t.important, urgent: !!t.urgent,
   difficulty: t.difficulty ?? 2, status: t.status || "Pending",
   blockedReason: t.blockedReason || "", predecessorId: t.predecessorId || "",
@@ -128,7 +128,7 @@ export default function TaskFormModal({
   // งานที่ผูกดีลนอกขอบเขตของคนที่เปิดฟอร์ม (ทีมอื่น) — ยัดดีลใบนั้นเข้าไปในลิสต์เอง
   // ไม่งั้นช่องจะโชว์ "— เลือกดีล —" ทั้งที่งานผูกดีลอยู่ = อ่านว่ายังไม่ได้ผูก
   const pickerDeals = form.dealId && !deals.some((d) => d.id === form.dealId)
-    ? [{ id: form.dealId, title: task?.deal?.title || "ดีลที่ผูกไว้", customerName: task?.deal?.customerName || "", projectId: task?.projectId || null }, ...deals]
+    ? [{ id: form.dealId, title: task?.deal?.title || "ดีลที่ผูกไว้", customerName: task?.deal?.customerName || "" }, ...deals]
     : deals;
 
 
@@ -147,7 +147,7 @@ export default function TaskFormModal({
     e?.preventDefault?.();
     setError("");
     if (canManage && !form.title.trim()) { setError("ต้องระบุชื่องาน"); return; }
-    if (dealRequired && !form.dealId) { setError("ต้องผูกดีล — เลือกโครงการแล้วเลือกดีลก่อนบันทึก"); return; }
+    if (dealRequired && !form.dealId) { setError("ต้องผูกดีล — เลือกดีลก่อนบันทึก"); return; }
     if (needLateReason && !lateReason.trim()) { setError("ต้องระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน"); return; }
     if (needBlockedReason && !(form.blockedReason || "").trim()) { setError("งานที่รอคนอื่น ต้องระบุว่ารออะไร/รอใคร"); return; }
 
@@ -159,11 +159,10 @@ export default function TaskFormModal({
         // แก้ได้แค่สถานะ = ส่ง blockedReason ไปด้วยได้ (API นับเป็นชุดเดียวกับ status)
         payload = { status: form.status, ...(isBlocked ? { blockedReason: (form.blockedReason || "").trim() } : {}) };
       } else {
-        const { projectId, dealId } = resolvePersonalTaskLink(form, deals);
+        const { dealId } = resolvePersonalTaskLink(form);
         payload = {
           title: form.title, note: form.note,
           startDate: form.startDate || null, dueDate: form.dueDate || null,
-          projectId: noDealLink ? null : projectId,
           dealId: noDealLink ? null : dealId,
           // ธง "ตั้งใจไม่ผูกดีล" — ด่านฝั่ง server ปล่อยผ่านเฉพาะเมื่อมีธงนี้
           // (ค่าตั้งต้นยังเป็น "ผูก" เสมอ — ดูคอมเมนต์ที่ state)
