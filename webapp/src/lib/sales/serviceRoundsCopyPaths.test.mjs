@@ -65,6 +65,8 @@ test('สายใบเสนอราคาไม่มีช่องกร�
 
 /* ร่องรอยของ *ใบเดิม* ที่ฉบับใหม่ต้องเริ่มใหม่ — ตั้งใจไม่ก๊อป */
 const REVISION_RESETS = new Set([
+  // เลขลำดับการเปลี่ยนของ API ภายนอก (mig 0438) — trigger เขียนเองทุก INSERT/UPDATE ห้ามก๊อป
+  'changeSeq', 'changedAt',
   // ตัวฟังก์ชันเซ็ตเอง / เป็นของฉบับใหม่โดยนิยาม
   'id', 'orderNumber', 'revisionNo', 'revisedFromId', 'status', 'orderDate',
   'createdBy', 'createdByName', 'createdAt', 'updatedAt', 'approvalMode',
@@ -188,6 +190,8 @@ test('🪤 Rev. ของใบสั่งขายต้องพาทุก�
 
 /* ของที่ใบใหม่ต้องเริ่มเอง — ตั้งใจไม่ก๊อปจากใบเสนอราคา */
 const DRAFT_OWNED = new Set([
+  // เลขลำดับการเปลี่ยนของ API ภายนอก (mig 0438) — trigger เขียนเองทุก INSERT/UPDATE
+  'changeSeq', 'changedAt',
   // ฟังก์ชันเซ็ตเอง / เป็นของใบใหม่โดยนิยาม
   'id', 'orderNumber', 'status', 'orderDate', 'createdBy', 'createdByName',
   'createdAt', 'updatedAt', 'approvalMode',

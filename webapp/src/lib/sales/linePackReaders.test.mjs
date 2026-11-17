@@ -397,6 +397,8 @@ const QTY_READERS = Object.freeze({
   'lib/sales/productSpecDocOrder.js': 'carry:pack',
   'lib/sales/productSpecDocView.js': 'carry:pack',
   'components/salesPlanning/SalesOrderServiceTab.js': 'carry:lib/service/terms.js',
+  // API อ่าน SO ให้ระบบอื่น (docs/so-external-api-plan.md) — ส่ง qty คู่ packQty ให้ปลายทางกระทบยอดเอง (มติ 8)
+  'lib/extApi/salesOrderDto.js': 'carry:pack',
   // ── ใบสั่งขายย้อนหลัง ──
   /* ⭐ ย้ายความคาดหวังโดยเจตนา (งวด PR-5 · มติเจ้าของ 23/09 "ต้องไม่ควรแตกต่างจาก form ใบเสนอราคา" + 08/10 ข้อ A1–A2 · ข้อวินิจฉัย 7 ·
      แผน IMPL_PLAN_PR5 §5 แถว G4 · mig 0409): เดิมหกแถวนี้เป็น `waived:ใบสั่งขายย้อนหลัง — ไม่มี packQty จนงวด PR-5` (บรรทัดของใบย้อนหลังไม่มีเลขแพ็ค
