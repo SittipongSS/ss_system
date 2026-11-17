@@ -8,11 +8,16 @@
 //
 // เรียกโดย Vercel Cron (ดู vercel.json) ด้วย Authorization: Bearer CRON_SECRET
 // หรือ admin เปิดเองจากเบราว์เซอร์เพื่อทดสอบ — กติกาเดียวกับ daily-digest
+//
+// ➕ งานพ่วง (cron รายวันตัวเดียวที่รันทุกวัน — ไม่เพิ่ม cron ใหม่ใน vercel.json):
+//    ล้างประวัติการเรียก API ภายนอก (`api_client_calls`) ที่เก่ากว่า 90 วัน (มติ 5 · docs/so-external-api-plan.md)
+//    ล้างพลาด = บอกในผลลัพธ์ ไม่ทำให้การปิดเรื่องล้ม
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { AUTO_CLOSE_DAYS, autoClosePatch, isDueForAutoClose } from '@/lib/issues/model';
 import { recordIssueEvent } from '@/lib/issues/notify';
+import { purgeOldApiCalls } from '@/lib/extApi/callLog';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -60,5 +65,17 @@ export async function GET(request) {
     closed.push(updated.code || updated.id);
   }
 
-  return Response.json({ scanned: (data || []).length, closed: closed.length, codes: closed });
+  let apiCallsPurged = null;
+  let apiCallsPurgeError = null;
+  try {
+    apiCallsPurged = await purgeOldApiCalls(supabase, { now });
+  } catch (purgeError) {
+    apiCallsPurgeError = purgeError.message;
+    console.error('[cron close-resolved-issues]', purgeError.message);
+  }
+
+  return Response.json({
+    scanned: (data || []).length, closed: closed.length, codes: closed,
+    apiCallsPurged, ...(apiCallsPurgeError ? { apiCallsPurgeError } : {}),
+  });
 }

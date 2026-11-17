@@ -181,11 +181,16 @@ export async function proxy(request) {
  * เขียนพลาดหนึ่งตัวอักษรแล้วเปิดทั้ง API โดยไม่มีอะไรฟ้อง
  *
  * ⚠️ เพิ่มเส้นใหม่ที่นี่ได้เฉพาะเมื่อ **route นั้นตรวจสิทธิ์ของตัวเองครบแล้ว**
- * (วันนี้: cron ทั้งสองตัวเช็ค `Bearer $CRON_SECRET` หรือ cap `master:manage`)
+ * (วันนี้: cron ทั้งสองตัวเช็ค `Bearer $CRON_SECRET` หรือ cap `master:manage` ·
+ *  `/api/ext/v1/**` ตรวจคีย์ `ssk_…` ใน `extApiGet` ทุกคำขอ)
  */
 export function bypassesSessionGate(path) {
   // ต้องมี `/` ปิดท้าย — `/api/cron` เปล่า ๆ หรือ `/api/crontab` ต้องไม่ผ่าน
   if (path.startsWith('/api/cron/')) return true;
+  /* API อ่าน SO ให้ระบบอื่นของบริษัท (docs/so-external-api-plan.md) — ผู้เรียกคือเซิร์ฟเวอร์ของระบบปลายทาง ไม่มี cookie
+     ⚠️ route ตรวจคีย์เองทุกครั้ง (`extApiGet` · lib/extApi/handler.js) · มี `/` ปิดท้ายและผูกเวอร์ชัน `v1/` —
+     `/api/ext` · `/api/extx/…` · `/api/ext/v2/…` · `/api/ext/v10/…` ต้องไม่ผ่าน (proxy.test.mjs) */
+  if (path.startsWith('/api/ext/v1/')) return true;
   // เลขคอมมิตที่ production รันอยู่ — ผู้เรียกคือ deploy workflow ของ GitHub
   // ⚠️ **เทียบเต็มเส้น ไม่ใช่ startsWith** — เส้นนี้ไม่มีลูก และ prefix จะพา
   // `/api/version-history` หรือชื่อคล้ายกันในอนาคตหลุดด่านตามไปด้วย

@@ -56,6 +56,8 @@ const ROUTES_WITHOUT_OWN_GUARD = {
   'master/scents/[id]/price/route.js': 'ด่านอยู่ใน makeRegistryPriceHandler ตัวเดียวกับฝั่งสูตร',
   'products/[id]/bom/route.js': 'ด่านอยู่ใน makeProductBomHandler (401 ถ้าไม่ล็อกอิน · ฝั่งขาย canEditRecord ทีมที่ดูแล · ฝั่ง RD canAccessRd)',
   'version/route.js': 'คืนเลขคอมมิตของรีโปสาธารณะให้ deploy workflow ตรวจว่าของขึ้นจริง — ไม่แตะฐานข้อมูล ไม่มีพารามิเตอร์',
+  'ext/v1/sales-orders/route.js': 'API ภายนอก — ไม่มี session · ด่านคือคีย์ ssk_… + scope so:read ใน extApiGet (lib/extApi/handler.js) ทุกคำขอ · ยาม handler.test.mjs',
+  'ext/v1/sales-orders/[orderNumber]/route.js': 'API ภายนอก — ด่านคีย์ใน extApiGet ตัวเดียวกับเส้นรายการ',
 };
 
 const GUARD_CALL = /\b(can[A-Z][A-Za-z]*|require[A-Z][A-Za-z]*|getSahamitContext|assert[A-Z][A-Za-z]*)\s*\(/;
