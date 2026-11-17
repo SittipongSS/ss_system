@@ -1,7 +1,8 @@
 // ── ก้าวของแถวคำร้อง (mig 0202) ──────────────────────────────────────────
 //
-// PATCH { hop: 'ack'|'ready'|'pickup'|'send'|'outcome'|'receive'|'refuse'|'unready',
-//         at?, dueAt?, outcome?, note? }   (คอนเฟิร์มไม่รับจำนวน — hopPatch เขียน 1 เอง)
+// PATCH { hop: 'ack'|'ready'|'pickup'|'send'|'outcome'|'receive'|'refuse'|'unready'|'reconfirm'|'freebie',
+//         at?, dueAt?, outcome?, note?, freebieReason? }   (คอนเฟิร์มไม่รับจำนวน — hopPatch เขียน 1 เอง)
+//   reconfirm · freebie · freebieReason — ม-164 PR-3 (ลูกค้าซื้อพัฒนากลิ่นเพิ่ม · คอนเฟิร์มเกินที่จ่าย)
 //
 // ⭐ ทำไมเป็นเส้นรายแถว ไม่ใช่ action บน PATCH ของใบ: **สถานะอยู่ที่แถว ไม่ใช่ที่ใบ**
 // (คนละหมวดส่งไม่พร้อมกันได้) ⇒ การกดแต่ละก้าวเป็นเรื่องของแถวนั้นล้วน ๆ
@@ -49,6 +50,7 @@ import { countRegistryDependents, countRegistryRefs } from '@/lib/master/scentFo
 import { deleteScentError } from '@/lib/master/scents';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { requestedLabel } from '@/lib/requests/rowLabel';
+import { freebieHopError, freebieNotNeededError, overPaidAfterConfirm } from '@/lib/requests/scentOverPaid';
 import { loadRequestInstallments } from '@/lib/sales/installmentRequestsStore';
 
 export const dynamic = 'force-dynamic';
@@ -114,6 +116,29 @@ export async function PATCH(request, { params }) {
   // (ส่งเอกสารการเงินต้องมีเลขที่ · B-3) · รับจาก client เมื่อไรก็ข้ามด่านได้ทันที
   const valueError = hopValuesError(hop, body, { lineKind: row.lineKind });
   if (valueError) return Response.json({ error: valueError }, { status: 400 });
+
+  /* ── คอนเฟิร์มเกินจำนวนที่ลูกค้าจ่าย (ม-164 PR-3 · มติเจ้าของ 13/11 ข้อ 2) ──────────────────────────────
+     ⭐ เกินต้องมีที่มา: SO ที่แนบ (นับเข้าจำนวนกลิ่นแล้ว) หรือของแถมพร้อมเหตุผล · ตัวตัดสินเดียวกับจอ (`scentOverPaid.js`)
+     ⚠️ `freebieReason` มีความหมายเฉพาะสายพัฒนากลิ่น — สายอื่นส่งมา = ตีกลับ (ไม่ติดป้ายแถมให้แถวที่ไม่มีจำนวนให้เทียบ) */
+  const freebieReason = String(body.freebieReason ?? '').trim() || null;
+  if (freebieReason && row.lineKind !== 'scent_dev') {
+    return Response.json({ error: 'ระบุของแถมได้เฉพาะแถวพัฒนากลิ่น' }, { status: 400 });
+  }
+  if ((hop === 'outcome' && body.outcome === 'confirmed' && row.lineKind === 'scent_dev') || hop === 'reconfirm') {
+    const overArgs = { request: before, items: before.items || [], rowId: row.id, freebieReason };
+    const over = overPaidAfterConfirm(overArgs);
+    if (over) {
+      return Response.json({
+        error: over.error, code: over.code, slots: over.slots, confirmed: over.confirmedAfter,
+      }, { status: 409 });
+    }
+    const notNeeded = freebieNotNeededError(overArgs);
+    if (notNeeded) return Response.json({ error: notNeeded }, { status: 400 });
+  }
+  if (hop === 'freebie') {
+    const freebieError = freebieHopError(before, before.items || []);
+    if (freebieError) return Response.json({ error: freebieError }, { status: 409 });
+  }
 
   /* ── ต้องรับเรื่องที่ "ใบ" ก่อน ถึงจะลงมือรายรายการได้ ────────────────────
      ⭐ **มติผู้ใช้ 2026-08-20**: *"ปุ่มรับเรื่องมันเป็นระดับใบนะ ไม่ใช่ระดับรายการ
@@ -325,6 +350,10 @@ export async function PATCH(request, { params }) {
     }
     // ผลลูกค้าบันทึกได้ครั้งเดียว — สองแท็บกด "ขอให้แก้" พร้อมกันต้องไม่เกิดแถวรอบแก้สองแถว
     if (hop === 'outcome') rowUpdate = rowUpdate.is('outcome', null);
+    /* ม-164 PR-3 — เปลี่ยนเป็นคอนเฟิร์มเขียนทับได้เฉพาะแถวที่ยังเป็น "ไม่เอา" · ระบุแถมได้ครั้งเดียวบนแถวที่ยังคอนเฟิร์มอยู่
+       (สองแท็บกดพร้อมกัน = ตัวที่สองไม่เจอแถวให้เขียน → 409 ข้างล่าง) */
+    if (hop === 'reconfirm') rowUpdate = rowUpdate.eq('outcome', 'rejected');
+    if (hop === 'freebie') rowUpdate = rowUpdate.eq('outcome', 'confirmed').is('freebieReason', null);
     const { data: updatedRows, error } = await rowUpdate.select('id');
     if (error) throw error;
     if (!updatedRows?.length) {
@@ -410,7 +439,9 @@ export async function PATCH(request, { params }) {
     // ⚠️ flip เฉพาะ developing → active (เส้นเดียวที่ ALLOWED_TRANSITIONS ของ
     // ทะเบียนอนุญาตจากจุดนี้) — กลิ่นที่ถูกเก็บเข้ากรุระหว่างทางไม่ฟื้นเอง
     // ⚠️ ล้มแล้วไม่ throw — เหตุผลเดียวกับบล็อกวันส่งข้างล่าง
-    if (hop === 'outcome' && body.outcome === 'confirmed' && row.producedScentId) {
+    // ม-164 PR-3 — "ไม่เอา" เป็นคอนเฟิร์ม = ลูกค้าเลือกจริง · ทะเบียนขยับเหมือนคอนเฟิร์มปกติ (กลิ่นที่เข้ากรุไปแล้วไม่ฟื้นเอง)
+    const customerConfirmed = (hop === 'outcome' && body.outcome === 'confirmed') || hop === 'reconfirm';
+    if (customerConfirmed && row.producedScentId) {
       const { error: scentError } = await supabase.from('scents').update({
         status: 'active',
         updatedAt: nowIso,
@@ -421,7 +452,7 @@ export async function PATCH(request, { params }) {
        ลูกค้าคอนเฟิร์มแล้วใช้งานได้พร้อมกัน · ขั้นใส่ราคา FB ที่ตามมาก็ต้องการสูตรที่ใช้งานได้
        ⚠️ เฉพาะแถวพัฒนากลิ่น — สูตรของพัฒนาสูตรเกิดมา active อยู่แล้ว และแถว "ผูกของเดิม" (bind) อาจผูก
        สูตรที่คนอื่นตั้งใจพักไว้ ห้ามปลุกให้เอง */
-    if (hop === 'outcome' && body.outcome === 'confirmed'
+    if (customerConfirmed
         && row.lineKind === 'scent_dev' && row.producedFormulaId) {
       const { error: formulaError } = await supabase.from('formulas').update({
         status: 'active',
@@ -604,6 +635,9 @@ export async function PATCH(request, { params }) {
        `declineReason` บนแถว) — ก้าวนี้ล้างตราของก้าวส่งทิ้งอย่างเดียว ⇒ ถ้าไม่พ่วง
        เหตุผลไว้ในเธรด ผู้ขอจะเห็นแถวเด้งกลับเป็น "กำลังทำ" โดยไม่มีที่ไหนบอกว่าทำไม */
     const unreadyReason = hop === 'unready' ? String(body.note ?? '').trim() : '';
+    /* ม-164 PR-3 — เหตุผลของการเปลี่ยนเป็นคอนเฟิร์ม/การแถม ต้องอยู่ในเธรด (เป็นเหตุเดียวที่ตัวเลขของใบเปลี่ยน) */
+    const topupReason = ['reconfirm', 'freebie'].includes(hop) ? String(body.note ?? '').trim() : '';
+    const freebieSuffix = freebieReason && hop !== 'freebie' ? ` · ของแถม: ${freebieReason}` : '';
     /* ⭐ **ประวัติต้องบอกว่าสูตรตัวไหน** — ป้ายเลิกต่อ "→ รหัส" แล้ว (2026-09-15) ⇒ ไม่ต่อตรงนี้ เธรดของแถวต้นทางกับแถวรอบแก้
        อ่านเหมือนกันทุกตัวอักษร ไม่รู้ว่าลูกค้าคอนเฟิร์มรอบไหน · ส่งงานรอบนี้ใช้สูตรที่เพิ่งผูก · ก้าวอื่นอ่านรหัสสดจากทะเบียน */
     let formulaText = '';
@@ -622,6 +656,7 @@ export async function PATCH(request, { params }) {
       entityId: id,
       kind: hopUpdateKind(hop, body.outcome),
       body: `${label} — ${rowText(row)}${formulaSuffix}${unreadyReason ? ` · ${unreadyReason}` : ''}`
+        + `${topupReason ? ` · ${topupReason}` : ''}${freebieSuffix}`
         // คอนเฟิร์มพลิก/เลิกใช้สูตรและปิดแถวอื่น — ผลข้างเคียงที่ทะเบียนเห็น ต้องมีร่องรอยในใบด้วย (ม-157)
         + confirmText,
       user,

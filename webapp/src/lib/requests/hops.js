@@ -19,12 +19,15 @@ import { isDocLineKind } from '@/lib/requests/docTypes';
 //   receive  ผู้ขอยืนยันว่าได้ไฟล์ที่ใช้ได้จริง (answerStatus = done)
 //   refuse   ฝ่ายปฏิเสธ พร้อมเหตุผลบังคับ (answerStatus = declined)
 //   unready  ฝ่ายดึงงานที่ส่งไปแล้วกลับมาแก้ (แนบไฟล์ผิด — มติผู้ใช้ 2026-08-20)
-export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome', 'receive', 'refuse', 'unready'];
+//   reconfirm ผู้ขอเปลี่ยนแถวพัฒนากลิ่นที่ลูกค้า "ไม่เอา" เป็นคอนเฟิร์ม (ลูกค้าซื้อเพิ่ม · ม-164 PR-3) — เหตุผลบังคับ
+//   freebie   ผู้ขอระบุว่าแถวที่คอนเฟิร์มเกินจำนวนที่จ่ายเป็น "ของแถม" (ม-164 PR-3) — เหตุผลบังคับ
+export const ROW_HOPS = ['ack', 'ready', 'pickup', 'send', 'outcome', 'receive', 'refuse', 'unready', 'reconfirm', 'freebie'];
 
 // ก้าวไหนเป็นของฝั่งไหน — 'dept' = ฝ่ายที่ต้องตอบ · 'requester' = ผู้ขอ
 export const HOP_OWNER = {
   ack: 'dept', ready: 'dept', pickup: 'requester', send: 'requester', outcome: 'requester',
   receive: 'requester', refuse: 'dept', unready: 'dept',
+  reconfirm: 'requester', freebie: 'requester',
 };
 
 // ขั้นที่แถวต้องอยู่ **ก่อน** จะเดินก้าวนี้ได้ (array = ได้หลายขั้น)
@@ -46,6 +49,11 @@ const HOP_FROM_STAGE = {
      ⚠️ หลังผู้ขอกดรับ แถวเป็น `done` ⇒ ด่านขั้นตีกลับเอง — ของที่อีกฝั่งรับไปใช้แล้ว
      ไม่ใช่ของที่เจ้าของถอยคืนได้เงียบ ๆ (ทางออกคือขอให้ผู้ขอเปิดรายการใหม่) */
   unready: 'ready',
+  /* ⭐ ม-164 PR-3 — ของชนิด "เก็บ direction ที่เคยไม่เอา" (ลูกค้าจ่ายเพิ่ม) · ผลลูกค้าบันทึกได้ครั้งเดียว (`.is('outcome', null)`)
+     ⇒ ไม่มีก้าวนี้ = ทำไม่ได้เลย (ทางเดียวคือแก้ฐานตรง · ดู request-row-outcome-undo) */
+  reconfirm: 'declined',
+  // ระบุแถมย้อนหลังบนแถวที่คอนเฟิร์มแล้ว (ใบที่เกินอยู่ก่อนมีด่าน) — ราคาใส่แล้วหรือยังไม่สำคัญ
+  freebie: ['awaiting_price', 'awaiting_ingredients', 'done'],
 };
 
 // ก้าวนี้ใช้กับรูปร่างบรรทัดนี้ได้ไหม — คืนข้อความไทย หรือ null ถ้าผ่าน
@@ -64,6 +72,15 @@ function hopLineKindError(row, hop) {
   if (!doc && ['receive', 'refuse', 'unready'].includes(hop)) {
     return 'ก้าวนี้ใช้กับแถวขอเอกสารเท่านั้น';
   }
+  // ม-164 — จำนวนกลิ่นที่จ่าย/ของแถมมีความหมายเฉพาะสายพัฒนากลิ่น (ด่านปิดใบกระทบยอด SO)
+  if (['reconfirm', 'freebie'].includes(hop) && row?.lineKind !== 'scent_dev') {
+    return 'ก้าวนี้ใช้กับแถวพัฒนากลิ่นเท่านั้น';
+  }
+  // ขั้น `declined` มีสองที่มา (ลูกค้าไม่เอา · ฝ่ายตอบไม่ได้) — เปลี่ยนเป็นคอนเฟิร์มได้เฉพาะลูกค้าไม่เอา
+  if (hop === 'reconfirm' && row?.outcome !== 'rejected') {
+    return 'เปลี่ยนเป็นคอนเฟิร์มได้เฉพาะรายการที่ลูกค้าไม่เอา';
+  }
+  if (hop === 'freebie' && row?.freebieReason) return 'รายการนี้ระบุว่าเป็นของแถมไปแล้ว';
   return null;
 }
 
@@ -154,6 +171,16 @@ export function hopValuesError(hop, values = {}, { lineKind = null } = {}) {
     return null;
   }
 
+  /* ม-164 PR-3 — เปลี่ยนเป็นคอนเฟิร์ม / ระบุของแถม: เหตุผลบังคับ (เป็นหลักฐานเดียวว่าทำไมตัวเลขเปลี่ยน)
+     ⚠️ 500 ตัว = CHECK ของ `freebieReason` (mig 0436) */
+  if (hop === 'reconfirm' || hop === 'freebie') {
+    const reason = String(values.note ?? '').trim();
+    if (!reason) return hop === 'freebie' ? 'ต้องบอกเหตุผลที่แถม' : 'ต้องบอกเหตุผลที่เปลี่ยนเป็นคอนเฟิร์ม';
+    if (reason.length > 500) return 'เหตุผลยาวเกิน 500 ตัวอักษร';
+    if (hop === 'reconfirm' && String(values.freebieReason ?? '').trim().length > 500) return 'เหตุผลที่แถมยาวเกิน 500 ตัวอักษร';
+    return null;
+  }
+
   // ปฏิเสธ — เหตุผลคือหลักฐาน (constraint answer_evidence บังคับคู่ declined+เหตุผล)
   // ไม่มีช่องวันของตัวเอง: เวลาอยู่บนเหตุการณ์ในเธรดแล้ว
   if (hop === 'refuse') {
@@ -182,6 +209,11 @@ export function hopValuesError(hop, values = {}, { lineKind = null } = {}) {
     return 'ต้องระบุสิ่งที่ลูกค้าบอก';
   }
   if (String(values.note ?? '').length > 4000) return 'ข้อความยาวเกิน 4000 ตัวอักษร';
+  // ของแถมมากับคอนเฟิร์มเท่านั้น (CHECK `dept_request_items_freebie_needs_confirm` · mig 0436)
+  if (String(values.freebieReason ?? '').trim()) {
+    if (outcome !== 'confirmed') return 'ระบุของแถมได้เฉพาะตอนคอนเฟิร์ม';
+    if (String(values.freebieReason).trim().length > 500) return 'เหตุผลที่แถมยาวเกิน 500 ตัวอักษร';
+  }
   return null;
 }
 
@@ -244,6 +276,23 @@ export function hopPatch(hop, values = {}, user = null, today = null, { lineKind
     };
   }
 
+  /* ⭐ ม-164 PR-3 — ระบุของแถมย้อนหลังบนแถวที่คอนเฟิร์มแล้ว · คอลัมน์ของ mig 0436 */
+  if (hop === 'freebie') return freebiePatch(values.note, by);
+  /* ⭐ ม-164 PR-3 — "ไม่เอา" เป็นคอนเฟิร์ม: เขียนผลใหม่ทั้งชุดเหมือนคอนเฟิร์มปกติ + ถอดตรา "ไม่เอา"
+     · `answerStatus` กลับเป็น `pending` (ไม่ใช่ null) — แถวไปรอใส่ราคาตามปกติ (สูตรเดียวกับ request-row-outcome-undo)
+     · `declineReason` ล้าง — CHECK ของ 0204 บังคับเหตุผลเฉพาะตอน declined
+     · เหตุผลของการเปลี่ยนลง `outcomeNote` (หลักฐานบนแถว) · แถมได้พร้อมกันเมื่อเกินที่จ่าย */
+  if (hop === 'reconfirm') {
+    return {
+      outcome: 'confirmed', outcomeAt: at, outcomeById: by.id, outcomeByName: by.name,
+      outcomeNote: String(values.note ?? '').trim(),
+      confirmedQty: 1,
+      answerStatus: 'pending',
+      declineReason: null,
+      ...(String(values.freebieReason ?? '').trim() ? freebiePatch(values.freebieReason, by) : {}),
+    };
+  }
+
   const note = String(values.note ?? '').trim() || null;
   const patch = {
     outcome: values.outcome,
@@ -257,6 +306,10 @@ export function hopPatch(hop, values = {}, user = null, today = null, { lineKind
      (หนึ่งแถว = หนึ่งรายการที่ลูกค้าเลือก) แทนการถอด constraint · body ที่ส่ง `confirmedQty` มาถูกทิ้ง
      ⚠️ ห้ามมีจอไหนเอาคอลัมน์นี้ไปโชว์เป็น "จำนวน" อีก — แถวใหม่เป็น 1 หมด ส่วนแถวเก่าเป็นค่าที่พิมพ์มั่ว */
   if (values.outcome === 'confirmed') patch.confirmedQty = 1;
+  // ม-164 PR-3 — คอนเฟิร์มเกินจำนวนที่จ่าย = ของแถม (ด่าน `over_paid` ของ route ตัดสินว่าต้องมีไหม)
+  if (values.outcome === 'confirmed' && String(values.freebieReason ?? '').trim()) {
+    Object.assign(patch, freebiePatch(values.freebieReason, by));
+  }
   // "ไม่เอา" ปิดแถวทันที — ไม่ต้องรอใส่ราคา · declineReason บังคับโดย constraint
   if (values.outcome === 'rejected') {
     patch.answerStatus = 'declined';
@@ -265,6 +318,16 @@ export function hopPatch(hop, values = {}, user = null, today = null, { lineKind
   // "ขอแก้" ไม่ปิด answerStatus — แถวจบในเชิงงาน (rowStage = 'revised') แต่ยังไม่
   // settled ในเชิงข้อมูลจนกว่าจะมีแถวใหม่มาแทน (P1b-3)
   return patch;
+}
+
+/** ช่องของแถม (mig 0436) — เวลาเป็นตราประทับจริง (timestamptz) ไม่ใช่วันที่ผู้ใช้กรอก */
+function freebiePatch(reason, by) {
+  return {
+    freebieReason: String(reason ?? '').trim().slice(0, 500),
+    freebieAt: new Date().toISOString(),
+    freebieById: by.id,
+    freebieByName: by.name,
+  };
 }
 
 // ⚠️ ค่าตั้งต้นของ `outcome` คือ **"บันทึกคำตอบ"** ไม่ใช่ "บันทึกคำตอบลูกค้า" —
@@ -278,6 +341,8 @@ export const hopLabel = (hop, outcome) => (hop === 'outcome'
     // คำที่ล็อกไว้ทั้งระบบ: **ตีกลับ** = ผู้รับส่งคืน · **ดึงกลับ** = คนที่ส่งเอาคืนเอง
     // (stages.js บรรทัดคำศัพท์) — ก้าวนี้คือฝ่ายเอางานของตัวเองคืน จึงเป็น "ดึงกลับ"
     unready: 'ดึงกลับ',
+    // ม-164 PR-3
+    reconfirm: 'เปลี่ยนเป็นคอนเฟิร์ม', freebie: 'ระบุว่าเป็นของแถม',
   }[hop] || hop);
 
 // ป้ายก้าวที่รู้จักสายของแถว
@@ -333,4 +398,6 @@ export const hopUpdateKind = (hop, outcome) => (hop === 'outcome'
   : {
     ack: 'acknowledge', ready: 'ready', pickup: 'pickup', send: 'sent',
     receive: 'received', refuse: 'refused', unready: 'unready',
+    // ม-164 PR-3 — เปลี่ยนเป็นคอนเฟิร์มคือผลลูกค้า (ชนิดเดียวกับคอนเฟิร์ม) · แถมมีชนิดของตัวเอง
+    reconfirm: 'confirmed', freebie: 'freebie',
   }[hop] || 'comment');

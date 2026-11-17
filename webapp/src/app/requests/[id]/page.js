@@ -82,7 +82,8 @@ import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { requestActorSide, requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
-import { SO_RECONCILE_TONE, soReconcile, soReconcileText } from "@/lib/requests/soReconcile";
+import { soReconcile, soReconcileText, soReconcileTone } from "@/lib/requests/soReconcile";
+import { overPaidAfterConfirm, unexplainedOver } from "@/lib/requests/scentOverPaid";
 import { scentSlotLinesOf, scentSlotNote } from "@/lib/requests/scentOrderLinks";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
@@ -167,6 +168,8 @@ const HOP_DATE_LABEL = {
   send: "วันที่ส่งให้ลูกค้า",
   outcome: "วันที่ลูกค้าตอบ",
   receive: "วันที่ได้รับเอกสาร",
+  // ม-164 PR-3 — เปลี่ยน "ไม่เอา" เป็นคอนเฟิร์ม = วันที่ลูกค้าตอบใหม่ (ระบุของแถมไม่มีช่องวัน)
+  reconfirm: "วันที่ลูกค้าคอนเฟิร์ม",
   // refuse ไม่มีช่องวัน — เวลาอยู่บนเหตุการณ์ในเธรด · เหลือแต่เหตุผล (บังคับ)
 };
 
@@ -194,6 +197,8 @@ export default function RequestDetailPage() {
   const [loadError, setLoadError] = useState("");
   // ก้าวของแถว — { item, hop, outcome, at, dueAt, note }
   const [hopDraft, setHopDraft] = useState(null);
+  // ม-164 PR-3 — โมดัลแนบใบสั่งขายเปิดได้จากโมดัลก้าว (ทางแก้ "คอนเฟิร์มเกินที่จ่าย") ⇒ ถือสถานะที่หน้า
+  const [attachOpen, setAttachOpen] = useState(false);
   /* ทะเบียนที่ **ฟอร์มแก้** ต้องใช้ — ช่อง "อ้างอิงเพิ่ม" (QT/SO/FG) ของหัวข้อที่มี
      ⚠️ **โหลดตอนกดแก้เท่านั้น** — ใบส่วนใหญ่ถูกเปิดอ่านอย่างเดียว การลากทะเบียน
      ใบเสนอราคา/ใบสั่งขาย/สินค้าทั้งชุดมาทุกครั้งที่เปิดใบ คือ 3 query ที่ไม่ได้ใช้
@@ -762,6 +767,12 @@ export default function RequestDetailPage() {
       row: hopDraft.item, items: req?.items || [], formulas: registry.formulas, customerId: req?.customerId || null,
     })
     : null;
+  /* ⭐ ม-164 PR-3 — คอนเฟิร์มแถวพัฒนากลิ่นเกินจำนวนที่ลูกค้าจ่าย = ต้องแนบ SO ที่ซื้อเพิ่มก่อน หรือระบุว่าแถม
+     ตัวตัดสินเดียวกับ route (`overPaidAfterConfirm`) ⇒ ไม่ต้องรอ 409 · บอกก่อนกด (#1223) */
+  const overPaid = hopDraft && ((hopDraft.hop === "outcome" && hopDraft.outcome === "confirmed"
+      && hopDraft.item.lineKind === "scent_dev") || hopDraft.hop === "reconfirm")
+    ? overPaidAfterConfirm({ request: req, items: req?.items || [], rowId: hopDraft.item.id })
+    : null;
   const hopError = hopDraft
     ? (hopDraft.hop === "direction" ? directionError
       : hopValuesError(hopDraft.hop, hopDraft, { lineKind: hopDraft.item.lineKind })
@@ -770,7 +781,10 @@ export default function RequestDetailPage() {
       || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
         ? normalizeFormulaDelivery(hopDraft).error || directionError
         : null)
-      || (confirmPreview?.kind === "blocked" ? confirmPreview.error : null))
+      || (confirmPreview?.kind === "blocked" ? confirmPreview.error : null)
+      || (overPaid && !String(hopDraft.freebieReason || "").trim()
+        ? "เกินจำนวนที่ลูกค้าจ่าย — ระบุเหตุผลที่แถม หรือแนบใบสั่งขายที่ซื้อเพิ่มก่อน"
+        : null))
     : null;
   /* ⭐ **ก้าวส่งงานของพัฒนากลิ่นไม่ใช่กล่องก้าวทั่วไป** (IS-26100001) — server ปฏิเสธก้าวนี้บนรางเสมอ (`reworkHopError`) เพราะกลิ่นต้อง
      เข้าทะเบียนพร้อมการส่ง ⇒ ปุ่ม "ส่งงาน" ที่แถวรอบแก้ (ตารางสรุป · แถบท้ายเธรด) ต้องเปิดโมดัลส่งกลิ่นด้วยแท็บของแถวนั้น
@@ -850,9 +864,11 @@ export default function RequestDetailPage() {
           docDueDate: hopDraft.docDueDate || null,
         } : {}),
         ...(hop === "outcome" ? { outcome, note: hopDraft.note } : {}),
+        // ม-164 PR-3 — คอนเฟิร์มเกินที่จ่าย = ของแถม (ส่งเฉพาะตอนเกิน · server ตีกลับถ้ายังไม่เกิน)
+        ...(overPaid && String(hopDraft.freebieReason || "").trim() ? { freebieReason: hopDraft.freebieReason } : {}),
         // 🐞 ปฏิเสธต้องส่งเหตุผล — เดิมลืมสาขานี้ โมดัลกดบันทึกแล้วโดน 400
         // "ต้องบอกเหตุผลที่ปฏิเสธ" ทั้งที่กรอกแล้ว (เจอตอนกดจริงจากตาราง ม-94)
-        ...(["refuse", "unready"].includes(hop) ? { note: hopDraft.note } : {}),
+        ...(["refuse", "unready", "reconfirm", "freebie"].includes(hop) ? { note: hopDraft.note } : {}),
       }),
     }, withExtra ? null : outcome === "revise"
       // บอกผลข้างเคียงที่มองไม่เห็นตอนกด — แถวใหม่ถูกสร้างให้เอง
@@ -860,7 +876,9 @@ export default function RequestDetailPage() {
       : hop === "unready"
         // ก้าวถอยจบแล้วยังมีงานเหลือ — ไม่บอกว่าต้องกลับมากดส่งเอง คนจะนึกว่าจบ
         ? 'ดึงกลับแล้ว · รายการกลับไปขั้น "กำลังทำ" — แก้ไฟล์แล้วกด "ส่งงาน" อีกครั้ง'
-        : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
+        : hop === "reconfirm"
+          ? 'เปลี่ยนเป็นคอนเฟิร์มแล้ว · รายการไปรอ RD ใส่ราคา'
+          : `บันทึก "${hopLabel(hop, outcome)}" แล้ว`);
     /* ⭐ direction ที่เหลือยิงต่อหลังแถวแรกส่งสำเร็จ (แถวแรกต้องส่งก่อน — ด่านของเส้น direction) · ล้ม = แถวแรกส่งแล้วจริง
        ⇒ โมดัลกลายเป็น "ส่ง direction เพิ่ม" ค้างของที่กรอกไว้ให้กดใหม่ ไม่ใช่ปิดทิ้ง */
     if (ok && withExtra) {
@@ -970,7 +988,8 @@ export default function RequestDetailPage() {
   // บรรทัดกระทบยอด **ไม่เคยขึ้นบนจอ** ทั้งที่ `soReconcile` คำนวณไว้แล้ว
   const reconcileProps = {
     reconcile,
-    reconcileTone: reconcile ? SO_RECONCILE_TONE[reconcile.state] : undefined,
+    // ม-164 PR-3 — เกินที่มีแถมรองรับครบ = เขียว (`soReconcileTone`) · เกินที่ยังไม่ระบุ = เตือน
+    reconcileTone: soReconcileTone(reconcile),
     reconcileText: reconcile ? [soReconcileText(reconcile), slotNote].filter(Boolean).join(" · ") : null,
   };
 
@@ -2243,6 +2262,8 @@ export default function RequestDetailPage() {
       {!editing && !showKindView && Array.isArray(req.attachedOrders) && (
         <ScentOrdersCard
           request={req}
+          attachOpen={attachOpen}
+          onAttachOpenChange={setAttachOpen}
           canAct={!!req._mine}
           saving={saving}
           onToast={setToast}
@@ -2395,6 +2416,19 @@ export default function RequestDetailPage() {
           onIngredients: (row) => setIngredientItem(row),
           // ม-157 — ส่ง direction เพิ่มจากแถวพัฒนาสูตรที่ส่งแล้ว (เมนู ⋯ ของแถว · เฉพาะฝ่ายที่ตอบ)
           onAddDirection: canAnswer ? openDirection : null,
+          /* ม-164 PR-3 — เมนู ⋯ ของแถวพัฒนากลิ่น (ฝั่งผู้ขอ · ใบเปิดอยู่): "ไม่เอา" เป็นคอนเฟิร์ม ·
+             ระบุของแถมเมื่อใบเกินที่จ่ายที่ยังไม่ระบุ (ขึ้นเฉพาะตอนเกี่ยว — ไม่ใช่ปุ่มที่ติดด่าน) */
+          topupMenuOf: req._mine && REQUEST_OPEN_STATUSES.includes(req.status) && req.status !== "pending"
+            ? (item) => [
+              item.lineKind === "scent_dev" && item.outcome === "rejected" && {
+                id: "reconfirm", label: "เปลี่ยนเป็นคอนเฟิร์ม", onClick: () => openHopModal(item, "reconfirm"),
+              },
+              item.lineKind === "scent_dev" && item.outcome === "confirmed" && !item.freebieReason
+                && unexplainedOver(req) > 0 && {
+                id: "freebie", label: "ระบุว่าเป็นของแถม", onClick: () => openHopModal(item, "freebie"),
+              },
+            ].filter(Boolean)
+            : null,
         }}
         saving={saving}
         /* ⭐ หัวข้อที่แก้ของกลาง (ทะเบียนกลิ่น/สูตร) ได้จากในใบ ต้องบอกเปลือกให้
@@ -2927,7 +2961,7 @@ export default function RequestDetailPage() {
             {/* ⭐ ก้าวส่ง (ready) ไม่มีช่องวัน (ม-92) — ระบบประทับวันที่กดให้เอง
                 ก้าวอื่นยังถาม: แก้ย้อนหลังได้ตั้งใจ — ของถูกส่งไปก่อนแล้วค่อยมา
                 บันทึกเป็นเรื่องปกติ (migration จึงไม่มี CHECK บังคับให้วันเรียงกัน) */}
-            {!["refuse", "ready", "unready", "direction"].includes(hopDraft.hop) && (
+            {!["refuse", "ready", "unready", "direction", "freebie"].includes(hopDraft.hop) && (
             <div className="form-group">
               <label htmlFor="hop-at">{HOP_DATE_LABEL[hopDraft.hop]}</label>
               <DateInput
@@ -3143,6 +3177,63 @@ export default function RequestDetailPage() {
             {/* ⭐ คอนเฟิร์มแถวพัฒนาสูตร = ทะเบียนเปลี่ยน + ปิดแถวอื่นของกลิ่นนี้ (ม-157) — บอกครบก่อนกด (กติกาโมดัลยืนยัน #1223) */}
             {confirmPreview?.kind === "apply" && confirmPreview.note && (
               <p className={styles.fieldHint}>{confirmPreview.note}</p>
+            )}
+
+            {/* ⭐ ม-164 PR-3 — "ไม่เอา" เป็นคอนเฟิร์ม (ลูกค้าจ่ายเพิ่มเพื่อเก็บ direction นี้) · เหตุผลบังคับ
+                ⚠️ บอกผลก่อนกด (#1223): แถวกลับไปรอใส่ราคา · กลิ่นในทะเบียนขยับเป็นใช้งานเหมือนคอนเฟิร์มปกติ */}
+            {hopDraft.hop === "reconfirm" && (
+              <div className="form-group">
+                <label htmlFor="hop-reconfirm-why">เหตุผลที่เปลี่ยนเป็นคอนเฟิร์ม</label>
+                <Textarea
+                  id="hop-reconfirm-why" rows={3} maxLength={500}
+                  value={hopDraft.note} disabled={saving}
+                  placeholder="เช่น ลูกค้าซื้อเพิ่มตาม SO-26110385-0 เก็บ direction นี้"
+                  onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  รายการจะเปลี่ยนจาก &quot;ลูกค้าไม่เอา&quot; เป็น &quot;ลูกค้าคอนเฟิร์ม&quot; แล้วไปรอ RD ใส่ราคา ·
+                  กลิ่นที่ยังกำลังพัฒนาในทะเบียนจะเปลี่ยนเป็นใช้งาน · เหตุผลนี้ลงเธรดของใบ
+                </p>
+              </div>
+            )}
+
+            {/* ⭐ ม-164 PR-3 — ระบุของแถมย้อนหลัง (ใบที่คอนเฟิร์มเกินอยู่ก่อนมีด่าน) */}
+            {hopDraft.hop === "freebie" && (
+              <div className="form-group">
+                <label htmlFor="hop-freebie-why">เหตุผลที่แถม</label>
+                <Textarea
+                  id="hop-freebie-why" rows={3} maxLength={500}
+                  value={hopDraft.note} disabled={saving}
+                  placeholder="เช่น แถมให้ลูกค้าประจำ · ผู้จัดการฝ่ายขายอนุมัติแล้ว"
+                  onChange={(e) => setHopDraft({ ...hopDraft, note: e.target.value })}
+                />
+                <p className={styles.fieldHint}>
+                  ใบนี้คอนเฟิร์มเกินที่จ่าย {unexplainedOver(req)} กลิ่นที่ยังไม่ระบุ — ระบุแล้วการ์ดกระทบยอดนับรายการนี้เป็นของแถม
+                  และปิดใบได้เมื่อระบุครบ
+                </p>
+              </div>
+            )}
+
+            {/* ⭐ ม-164 PR-3 — เกินจำนวนที่ลูกค้าจ่าย: สองทาง (แนบ SO ที่ซื้อเพิ่ม · ของแถมพร้อมเหตุผล) */}
+            {overPaid && (
+              <div className="form-group">
+                <StatusNotice tone="warning">{overPaid.error}</StatusNotice>
+                <label htmlFor="hop-freebie-reason">เหตุผลที่แถม</label>
+                <Textarea
+                  id="hop-freebie-reason" rows={2} maxLength={500}
+                  value={hopDraft.freebieReason || ""} disabled={saving}
+                  placeholder="กรอกเมื่อเป็นของแถม — ถ้าลูกค้าจ่ายเพิ่ม ให้แนบใบสั่งขายแทน"
+                  onChange={(e) => setHopDraft({ ...hopDraft, freebieReason: e.target.value })}
+                />
+                {req._mine && (
+                  <Button
+                    variant="ghost" size="sm" disabled={saving}
+                    onClick={() => { setHopDraft(null); setAttachOpen(true); }}
+                  >
+                    แนบใบสั่งขายที่ซื้อเพิ่มก่อน
+                  </Button>
+                )}
+              </div>
             )}
 
             {hopDraft.hop === "outcome" && (

@@ -57,6 +57,8 @@ import { formulaLabel } from "@/lib/master/registryLabel";
    (วัด 2026-08-25) ⇒ กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง */
 export default function BriefBoard({
   groups = [], renderStep = null, renderDetail = null, renderGroupStep = null,
+  // ม-164 PR-3 — รายการเพิ่มในเมนู ⋯ ของแถว (เปลี่ยนเป็นคอนเฟิร์ม · ระบุของแถม) · (d) => [{ id, label, onClick }]
+  extraMenuItems = null,
   onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null, due = null,
 }) {
 
@@ -79,7 +81,7 @@ export default function BriefBoard({
      สุดท้าย · เดิมอยู่ติดชื่อ ซึ่งแทรกอยู่กลางสิ่งที่คนกำลังกวาดตาอ่าน */
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
-  const showActions = !!renderStep || canEdit || canDelete;
+  const showActions = !!renderStep || canEdit || canDelete || !!extraMenuItems;
   /* ⭐ **คอลัมน์ราคา** (ผู้ใช้ 2026-09-22: "เมื่อส่งราคาแล้ว อยากให้โชว์ราคาด้วย") — โผล่เมื่อใบนี้มี direction ที่ใส่ราคาแล้ว
      · เซลล์กลาง `RowPriceCell` ตัวเดียวกับตารางพัฒนาสูตร */
   const showPrice = groups.some((g) => g.directions.some((d) => d.prices?.length));
@@ -223,6 +225,7 @@ export default function BriefBoard({
                                     label: "ลบ direction นี้",
                                     onClick: () => onDeleteRow(d),
                                   },
+                                  ...(extraMenuItems?.(d) || []),
                                 ].filter(Boolean)}
                               />
                             </RowStepCell>
