@@ -480,7 +480,7 @@ export default function RequestForm({
     // ⚠️ `requestedDueDate`/`urgent` อยู่บนฟอร์ม ไม่ใช่บนแถวที่บันทึกแล้ว — ส่งเข้าไป
     // ในรูปเดียวกับแถวคำร้อง เพื่อให้ตัวคำนวณเป็นตัวเดียวกันจริง ๆ ไม่ใช่แค่คล้ายกัน
     // ⭐ `requestedByName` = คนที่กำลังเปิดใบ — ทำให้ "ผู้ร้องขอ (AE)" พรีวิวได้
-    //    ตั้งแต่ยังไม่บันทึก (โครงการที่ระบุผู้ดูแลไว้ยังชนะเสมอ ตามลำดับใน pdrContext)
+    //    ตั้งแต่ยังไม่บันทึก (เจ้าของดีลชนะเสมอ ตามลำดับใน pdrContext)
     // ⚠️ `kind`/`variant` ต้องมาด้วย — 1.12 ของใบที่เลือกกลิ่นจากทะเบียนนับจากแถวสินค้า
     //    และ `pdrContext` ถามทะเบียนหัวข้อด้วยทั้งใบ (ไม่ใช่ชื่อหัวข้อ)
     request: {
@@ -491,8 +491,7 @@ export default function RequestForm({
       customerName: selectedSo?.customerName || selectedDeal?.customerName || null,
       requestedByName: me?.name || null,
     },
-    /* ไม่ส่งโครงการแล้ว (ยุบดีล/โครงการ P2d) — AE/AC อยู่บนดีลครบ (P2c-1 · ดีลเก่าคัดลอกจากโครงการแล้ว) */
-    project: null,
+    /* (โครงการ — pdrContext ไม่รับแล้วตั้งแต่งวด P3b-3 ยุบโครงการ · AE/AC อยู่บนดีลครบ) */
     customer: customers.find((c) => c.id === pdrCustomerId) || null,
     deal: pdrDeal,
     targets: value.pdrTargets || [],

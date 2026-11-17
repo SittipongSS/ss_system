@@ -71,7 +71,7 @@ test('route: POST บังคับเสมอ · PATCH บังคับเ�
   assert.match(form, /PROJECT_PEOPLE_ROLES\.aeSupervisor/);
 });
 
-test('PDR: ผู้ร้องขอ AE/AC มาจากดีลก่อนโครงการ', () => {
+test('PDR: ผู้ร้องขอ AE/AC มาจากดีล · โครงการไม่มีผลแล้ว (งวด P3b-3)', () => {
   const ctx = pdrContext({
     request: { requestedByName: 'คนยื่น' },
     project: { aeOwner: 'AE โครงการ', acOwner: 'AC โครงการ' },
@@ -80,7 +80,8 @@ test('PDR: ผู้ร้องขอ AE/AC มาจากดีลก่อ�
   assert.equal(ctx.requester, 'AE ดีล');
   assert.equal(ctx.coordinator, 'AC ดีล');
   const fallback = pdrContext({ request: { requestedByName: 'คนยื่น' }, project: { aeOwner: 'AE โครงการ', acOwner: 'AC โครงการ' }, deal: { title: 'ดีล' } });
-  assert.deepEqual([fallback.requester, fallback.coordinator], ['AE โครงการ', 'AC โครงการ']);
+  assert.deepEqual([fallback.requester, fallback.coordinator], ['คนยื่น', null], 'ไม่ถอยไปโครงการแล้ว');
+  assert.doesNotMatch(read('../materialPricesAdmin.js'), /from\('projects'\)/);
   assert.match(read('../materialPricesAdmin.js'), /select\('id, code, title, "ownerName", "acOwnerName"'\)/);
 });
 

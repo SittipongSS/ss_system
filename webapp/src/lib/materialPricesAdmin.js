@@ -520,13 +520,8 @@ export async function findRequest(supabase, id) {
   // ⚠️ **ประกอบที่ server** ไม่ใช่ให้แต่ละจอไปโหลดเอง — จอแสดงกับเอกสารต้องได้ชื่อ
   // ชุดเดียวกันเสมอ · และเอกสารเป็นฟังก์ชันบริสุทธิ์ที่โหลดอะไรเองไม่ได้อยู่แล้ว
   // ⚠️ โหลดเฉพาะใบเดียวตอนเปิด ไม่ใช่ตอนโหลดคิวทั้งชุด (คิวไม่ได้ใช้ค่าพวกนี้)
-  const [project, customer, deal] = await Promise.all([
-    withBriefs.projectId
-      /* ทางถอยของ PDR ผู้ร้องขอ/ผู้ประสานงาน (`pdrContext` — ดีลก่อน แล้วโครงการ · P2c-1) · ใบเก่าที่ผูกโครงการเท่านั้น
-         (ป้าย `refProject` ของการ์ดบริบทถอดในงวด P3b-1 — ไม่มีจอไหนอ่าน ⇒ ไม่ต้องขอ code/name แล้ว) */
-      ? supabase.from('projects').select('id, "aeOwner", "acOwner"').eq('id', withBriefs.projectId)
-        .maybeSingle().then((r) => r.data)
-      : null,
+  /* (โครงการ — ทางถอยของ PDR ผู้ร้องขอ/ผู้ประสานงาน — เลิกอ่านในงวด P3b-3 ยุบโครงการ: ไม่เคยถูกใช้จริงบน prod) */
+  const [customer, deal] = await Promise.all([
     withBriefs.customerId
       // ⚠️ `arCode` เพิ่มมาเพื่อหัวใบ (ม-98) — ใบเก็บแค่ `customerName` ตอนเปิด
       // รหัสลูกค้าอยู่ที่ทะเบียนที่เดียว ไม่ประทับลงใบ (ดูเหตุผลใน headerFacts.js)
@@ -541,7 +536,7 @@ export async function findRequest(supabase, id) {
     withBriefs.dealId
       // ⚠️ `title` ต้องมาด้วย — เอกสาร PDR พิมพ์ช่อง "โครงการ" เป็น **ชื่อดีล**
       // ไม่ใช่รหัส · รหัสอย่างเดียว RD อ่านแล้วไม่รู้ว่างานอะไร
-      // ⭐ `ownerName` · `acOwnerName` — PDR ผู้ร้องขอ (AE/AC) อ่านจากดีลก่อนโครงการ (ยุบดีล/โครงการ P2c-1)
+      // ⭐ `ownerName` · `acOwnerName` — PDR ผู้ร้องขอ (AE/AC) อ่านจากดีล (ยุบดีล/โครงการ P2c-1 · P3b-3)
       ? supabase.from('sales_deals').select('id, code, title, "ownerName", "acOwnerName"').eq('id', withBriefs.dealId)
         .maybeSingle().then((r) => r.data)
       : null,
@@ -575,7 +570,7 @@ export async function findRequest(supabase, id) {
     .from('product_types').select('"mainCategoryCode", "typeCode", "nameTh", "nameEn"');
 
   withBriefs.pdrContext = pdrContext({
-    request: withBriefs, project, customer, deal, briefs: briefs || [], salesOrderLines,
+    request: withBriefs, customer, deal, briefs: briefs || [], salesOrderLines,
     categories: categories || [],
     // 1.12 ของใบที่ไม่มีใบสั่งขาย (พัฒนาสูตร NPD) นับกลิ่นจากแถวสินค้า
     targets: targets || [],

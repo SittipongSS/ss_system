@@ -401,12 +401,11 @@ test('⭐ ติ๊กว่ามีภาพประกอบแล้วต�
   assert.equal(pdrArtworkError({}, { stage: 'submit' }), null);
 });
 
-test('ค่าที่ระบบเติมให้มาจากโครงการและทะเบียนลูกค้า', () => {
+test('ค่าที่ระบบเติมให้มาจากดีลและทะเบียนลูกค้า', () => {
   const ctx = pdrContext({
     request: { requestedByName: 'คนกดปุ่ม', customerName: 'ลูกค้า ก' },
-    project: { aeOwner: 'ผู้ดูแล AE', acOwner: 'ผู้ประสานงาน AC' },
     customer: { contacts: [{ name: 'คุณเอ', phone: '0812345678', line: '@aei' }] },
-    deal: { code: 'D-26080001' },
+    deal: { code: 'D-26080001', ownerName: 'ผู้ดูแล AE', acOwnerName: 'ผู้ประสานงาน AC' },
     briefs: [{ id: 'B1' }],
   });
   assert.equal(ctx.requester, 'ผู้ดูแล AE');
@@ -415,7 +414,7 @@ test('ค่าที่ระบบเติมให้มาจากโค�
   assert.equal(ctx.contactPhone, '0812345678 · @aei');
   assert.equal(ctx.deal, 'D-26080001');
 
-  // ⚠️ โครงการยังไม่ระบุ AE → ถอยไปใช้คนเปิดใบ (ช่องว่างบนเอกสารที่ต้องมีคน
+  // ⚠️ ดีลยังไม่ระบุ AE → ถอยไปใช้คนเปิดใบ (ช่องว่างบนเอกสารที่ต้องมีคน
   // รับผิดชอบเสมอ แย่กว่าชื่อที่ใกล้ความจริงที่สุด) · AC ไม่มีทางถอย ปล่อยว่าง
   const bare = pdrContext({ request: { requestedByName: 'คนกดปุ่ม' } });
   assert.equal(bare.requester, 'คนกดปุ่ม');
@@ -432,9 +431,8 @@ test('🐞 หน้าเปิดคำร้องกับหน้ารา
   // ค้างเป็นเส้นประ "เติมจาก…" ทั้งที่เลือกใบสั่งขายแล้ว ส่วนอีกสองจอเติมครบ
   const args = {
     request: { requestedDueDate: '2026-08-20', urgent: true, customerName: 'ลูกค้า ก' },
-    project: { aeOwner: 'ผู้ดูแล AE', acOwner: 'ผู้ประสานงาน AC' },
     customer: { contacts: [{ name: 'คุณเอ', phone: '0812345678' }] },
-    deal: { code: 'D-1' },
+    deal: { code: 'D-1', ownerName: 'ผู้ดูแล AE', acOwnerName: 'ผู้ประสานงาน AC' },
     briefs: [{ id: 'B1' }],
   };
   const ctx = pdrContext(args);

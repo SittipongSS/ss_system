@@ -1,6 +1,7 @@
 // ── ย้อนการรับใบเสนอราคา — ส่วนที่อ่านฐาน (พรีวิวให้โมดัล) ─────────────────────────────
 //
-// ⭐ มติเจ้าของ 25/09: ย้อนการรับเปิดใบพี่น้องที่ "การรับใบนี้" ปิดไว้คืนสถานะเดิม (mig 0388) และโครงการที่ผูกไว้คงอยู่
+// ⭐ มติเจ้าของ 25/09: ย้อนการรับเปิดใบพี่น้องที่ "การรับใบนี้" ปิดไว้คืนสถานะเดิม (mig 0388)
+//   (บรรทัด "โครงการคงอยู่ · ย้ายได้ที่หน้าดีล" ถอดในงวด P3b-3 ยุบโครงการ 17/11/2026 — ทางย้ายโครงการถูกถอดตั้งแต่ P3a)
 //   โมดัลต้องบอกผลนี้ก่อนกด (กติกาโมดัลอนุมัติ #1223) ⇒ route ตอบ ?dryRun=1 ด้วยพรีวิวจากไฟล์นี้
 // ⚠️ กติกาว่าใบไหนเปิดเป็นอะไรอยู่ที่ `siblingsReopenedByUnaccept` (quotationUnaccept.js) ที่เดียว — ไฟล์นี้แค่อ่านแถว
 //   ตัวเขียนจริงคือ RPC unaccept_quotation_atomic (0388) ซึ่งคืนรายการที่เปิดจริงกลับมาให้ route ลงเธรด/audit
@@ -13,8 +14,8 @@ import { siblingsReopenedByUnaccept } from '@/lib/sales/quotationUnaccept';
 const SIBLING_COLUMNS = 'id, quoteNumber, status, approvalStatus, updatedAt, closedByAccept:metadata->closedByAccept';
 
 /**
- * @param quote  ใบที่กำลังย้อน — แถวที่ route โหลดและผ่านด่านแล้ว (ต้องมี id · quoteNumber · dealId · acceptedAt · deal.project?)
- * @returns { quoteNumber, reopen: [...], project: { id, code, name } | null }
+ * @param quote  ใบที่กำลังย้อน — แถวที่ route โหลดและผ่านด่านแล้ว (ต้องมี id · quoteNumber · dealId · acceptedAt)
+ * @returns { quoteNumber, reopen: [...] }
  * ⚠️ อ่านไม่ขึ้น = throw — พรีวิวที่บอกว่า "ไม่มีใบให้เปิด" ทั้งที่อ่านไม่ได้ คือโมดัลโกหก
  */
 export async function previewQuotationUnaccept(supabase, quote) {
@@ -26,11 +27,8 @@ export async function previewQuotationUnaccept(supabase, quote) {
     .eq('dealId', dealId)
     .order('id', { ascending: true }));
   if (error) throw new Error(`อ่านใบเสนอราคาของดีลไม่สำเร็จ: ${error.message}`);
-  const project = quote?.deal?.project || null;
   return {
     quoteNumber: quote?.quoteNumber || null,
     reopen: siblingsReopenedByUnaccept(quote, data || []),
-    project: project ? { id: project.id, code: project.code || null, name: project.name || null }
-      : quote?.deal?.projectId ? { id: quote.deal.projectId, code: null, name: null } : null,
   };
 }
