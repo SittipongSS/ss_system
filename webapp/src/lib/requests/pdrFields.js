@@ -929,7 +929,7 @@ function sampleDueText(request = {}) {
 // ⚠️ `salesOrderLines` = บรรทัดของใบสั่งขายที่ผูกอยู่ — ใช้หา **จำนวนกลิ่นที่ขาย**
 // ไม่ใช่จำนวนก้อนบรีฟ (ดูเหตุผลที่ `case 'scentCount'`) · ไม่ส่งมา = ช่องนั้นขึ้น N/A
 export function pdrContext({
-  request = {}, project = null, customer = null, deal = null, briefs = [], salesOrderLines = null,
+  request = {}, customer = null, deal = null, briefs = [], salesOrderLines = null,
   /* แถวสินค้าข้อ 2.x — ใบที่เลือกกลิ่นจากทะเบียน (พัฒนาสูตร NPD) นับ 1.12 จากกลิ่นในแถว
      ⚠️ ใบพัฒนากลิ่นยังนับจาก SO เสมอ (ดูเหตุผลที่ `case 'scentCount'`) */
   targets = null,
@@ -943,10 +943,12 @@ export function pdrContext({
   const line = primary.line || customer?.line || null;
   return {
     requestedAt: requestedAtText(request),
-    /* ⭐ ยุบดีล/โครงการ P2c-1 (มติเจ้าของ 13/11/2026 ②): AE = เจ้าของดีล · AC = ผู้ประสานงานบนดีล — ดีลมาก่อน
-       แล้วค่อยถอยไปโครงการ (ใบเก่า/ดีลที่ยังไม่ได้เลือก AC) · ไม่มีทั้งคู่ = ผู้ยื่นคำร้อง (AE) / ว่าง (AC) เหมือนเดิม */
-    requester: deal?.ownerName || project?.aeOwner || request.requestedByName || null,
-    coordinator: deal?.acOwnerName || project?.acOwner || null,
+    /* ⭐ ยุบดีล/โครงการ P2c-1 (มติเจ้าของ 13/11/2026 ②): AE = เจ้าของดีล · AC = ผู้ประสานงานบนดีล ·
+       ไม่มี = ผู้ยื่นคำร้อง (AE) / ว่าง (AC) เหมือนเดิม
+       (ทางถอยไปผู้ดูแล/ผู้ประสานงานของโครงการ ถอดในงวด P3b-3 ยุบโครงการ 17/11/2026 — ตรวจ prod: คำร้องที่ผูกโครงการ
+       591 ใบ ไม่มีใบไหนได้ชื่อจากทางถอยนี้เลย ⇒ ชื่อบนจอ/เอกสารไม่ขยับ) */
+    requester: deal?.ownerName || request.requestedByName || null,
+    coordinator: deal?.acOwnerName || null,
     customer: request.customerName || customer?.name || null,
     // ⚠️ **ชื่องาน ไม่ใช่รหัสดีล** (มติผู้ใช้ 2026-08-09) — ใบมีเลขที่เอกสารเป็นรหัส
     // อยู่แล้ว รหัสที่สองอ่านแล้วสับสนว่าอันไหนคือเลขของใบนี้

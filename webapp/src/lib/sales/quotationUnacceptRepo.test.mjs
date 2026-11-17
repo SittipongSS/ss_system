@@ -17,7 +17,7 @@ function stub({ rows = [], error = null } = {}) {
 const AT_X = '2026-09-01T03:04:05.123456+00:00';
 const QUOTE = {
   id: 'QT-X', quoteNumber: 'QT-26090001-0', dealId: 'DL-1', acceptedAt: AT_X,
-  deal: { id: 'DL-1', projectId: 'PJ-1', project: { id: 'PJ-1', code: 'PJ-26080001', name: 'บางนา' } },
+  deal: { id: 'DL-1' },
 };
 
 test('พรีวิว: อ่านใบของดีลนี้ดีลเดียว + ตราผ่าน JSON path · คิดรายการด้วยกติกาเดียวกับ RPC', async () => {
@@ -39,14 +39,13 @@ test('พรีวิว: อ่านใบของดีลนี้ดีล
   assert.deepEqual(calls.range, [[0, 999]], 'ไล่ทีละหน้า (fetchAll) — ไม่ใช่ select ไร้ขอบเขต');
   assert.equal(preview.quoteNumber, 'QT-26090001-0');
   assert.deepEqual(preview.reopen.map((r) => [r.id, r.status, r.inferred]), [['QT-A', 'sent', false], ['QT-B', 'draft', true]]);
-  assert.deepEqual(preview.project, { id: 'PJ-1', code: 'PJ-26080001', name: 'บางนา' });
+  assert.ok(!('project' in preview), 'งวด P3b-3: พรีวิวไม่พกโครงการแล้ว');
 });
 
-test('พรีวิว: อ่านไม่ขึ้น = throw (ห้ามตอบ "ไม่มีใบให้เปิด") · โครงการที่ join ไม่มา ถอยเป็น id', async () => {
+test('พรีวิว: อ่านไม่ขึ้น = throw (ห้ามตอบ "ไม่มีใบให้เปิด")', async () => {
   const { supabase } = stub({ error: { message: 'boom' } });
   await assert.rejects(() => previewQuotationUnaccept(supabase, QUOTE), /อ่านใบเสนอราคาของดีลไม่สำเร็จ: boom/);
   const ok = stub({ rows: [] });
-  const preview = await previewQuotationUnaccept(ok.supabase, { id: 'QT-X', dealId: 'DL-1', deal: { id: 'DL-1', projectId: 'PJ-9' } });
-  assert.deepEqual(preview.project, { id: 'PJ-9', code: null, name: null });
+  const preview = await previewQuotationUnaccept(ok.supabase, { id: 'QT-X', dealId: 'DL-1', deal: { id: 'DL-1' } });
   assert.deepEqual(preview.reopen, []);
 });

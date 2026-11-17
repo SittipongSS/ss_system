@@ -132,14 +132,13 @@ test('ตราที่สถานะเดิมเพี้ยน → ถอ
   assert.deepEqual(rows.map((r) => [r.id, r.status, r.inferred]), [['QT-J', 'sent', true]]);
 });
 
-test('โมดัลย้อนการรับบอกผลก่อนกด: ใบไหนเปิดกลับเป็นอะไร + โครงการคงอยู่ ย้ายได้ที่ไหน', () => {
+test('โมดัลย้อนการรับบอกผลก่อนกด: ใบไหนเปิดกลับเป็นอะไร · ไม่พูดถึงโครงการ (งวด P3b-3)', () => {
   const detail = quotationUnacceptPromptDetail({
     quoteNumber: 'QT-26090001-0',
     reopen: [
       { id: 'QT-A', quoteNumber: 'QT-A-0', status: 'sent', approvalStatus: 'approved', inferred: false },
       { id: 'QT-B', quoteNumber: 'QT-B-0', status: 'draft', approvalStatus: 'pending', inferred: true },
     ],
-    project: { id: 'PJ-1', code: 'PJ-26080001', name: 'ห้างสาขาบางนา' },
   });
   assert.match(detail, /สิ่งที่จะเกิดขึ้นทันที/);
   assert.match(detail, /เปิดกลับ 2 ใบ/);
@@ -147,19 +146,17 @@ test('โมดัลย้อนการรับบอกผลก่อน�
   assert.match(detail, /QT-B-0 → รออนุมัติ/);
   assert.match(detail, /กลับเข้าคิวผู้อนุมัติ/);
   assert.match(detail, /QT-B-0 ถูกปิดก่อนระบบเริ่มจำสถานะเดิม/);
-  assert.match(detail, /PJ-26080001 · ห้างสาขาบางนา/);
-  assert.match(detail, /ไม่ถอดโครงการ/);
-  assert.match(detail, /ย้ายไปโครงการอื่น/);
+  assert.doesNotMatch(detail, /โครงการ/, 'ทางย้ายโครงการถูกถอดแล้ว — ห้ามชี้ไปปุ่มที่ไม่มี');
   assert.doesNotMatch(detail, /ถอน/);
 });
 
-test('โมดัลย้อนการรับ: ไม่มีใบให้เปิด = บอกตรง ๆ · ไม่รู้โครงการก็ยังบอกว่าโครงการคงเดิม', () => {
-  const detail = quotationUnacceptPromptDetail({ quoteNumber: 'QT-1', reopen: [], project: null });
+test('โมดัลย้อนการรับ: ไม่มีใบให้เปิด = บอกตรง ๆ · พรีวิวอ่านไม่ขึ้นไม่พัง', () => {
+  const detail = quotationUnacceptPromptDetail({ quoteNumber: 'QT-1', reopen: [] });
   assert.match(detail, /ไม่มีใบเสนอราคาฉบับอื่นที่ต้องเปิดกลับ/);
-  assert.match(detail, /ดีลยังอยู่ในโครงการเดิม/);
-  assert.match(detail, /ย้ายไปโครงการอื่น/);
+  assert.match(detail, /หลักฐานการรับเดิมยังอยู่ในประวัติของใบ/);
   // พรีวิวอ่านไม่ขึ้น (null) ต้องไม่พัง — โมดัลยังต้องเปิดได้
-  assert.match(quotationUnacceptPromptDetail(null), /ย้ายไปโครงการอื่น/);
+  assert.match(quotationUnacceptPromptDetail(null), /หลักฐานการรับเดิมยังอยู่ในประวัติของใบ/);
+  assert.doesNotMatch(quotationUnacceptPromptDetail(null), /โครงการ/);
 });
 
 test('ป้ายสถานะที่เปิดกลับ: ภาษาเดียวกับจอ (sent = อนุมัติแล้ว) · ร่างแยกตามแกนอนุมัติ', () => {

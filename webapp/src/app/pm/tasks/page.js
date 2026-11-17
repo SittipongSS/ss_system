@@ -971,7 +971,7 @@ export default function TasksPage() {
     <SaWorkspace
       icon={<ListTodo size={22} />}
       title="งาน (Tasks)"
-      subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับโครงการและไทม์ไลน์ได้${me && (isTeamLead(me.role) ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
+      subtitle={`มอบหมาย ติดตาม และวัดผลงานรายคน/รายทีม — เชื่อมกับดีลและไทม์ไลน์ได้${me && (isTeamLead(me.role) ? " · คุณติดตามงานของทีมได้" : isSuperuser(me?.role) ? " · คุณติดตามงานได้ทุกทีม" : "")}`}
       headerRight={(canEdit || isRdRole(role)) && <button onClick={openAdd} className="btn btn-accent"><Plus size={16} /> เพิ่มงาน</button>}
     >
       <div className="flex flex-col gap-4">

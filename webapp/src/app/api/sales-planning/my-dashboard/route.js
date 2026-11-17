@@ -158,7 +158,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
       assigneeName: task.assigneeName || task.ownerName || user.name || 'ฉัน',
       assignedByName: task.assignedByName || null,
       dealId: task.dealId || null,
-      projectId: task.projectId || null,
     }));
 
   // คิวรอยต่อเอกสารของฉัน: Won → Sale Order → ใบยื่นชำระภาษี (มติผู้ใช้ 2026-07-28:

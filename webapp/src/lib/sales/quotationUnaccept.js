@@ -139,7 +139,7 @@ export function reopenStatusLabel({ status, approvalStatus } = {}) {
 export const LEGACY_REOPEN_NOTE = 'ใบปิดก่อนระบบจำสถานะเดิม — อ่านจากผลอนุมัติ';
 
 /* ข้อความในกล่องผลลัพธ์ของโมดัลย้อนการรับ (กติกาโมดัลอนุมัติ #1223 — บอกผลก่อนกด ไม่ใช่ "แน่ใจหรือไม่")
-   @param preview  ผลของ POST /unaccept?dryRun=1 ({ quoteNumber, reopen, project }) · null = พรีวิวอ่านไม่ขึ้น
+   @param preview  ผลของ POST /unaccept?dryRun=1 ({ quoteNumber, reopen }) · null = พรีวิวอ่านไม่ขึ้น
    ⭐ มติ 25/09 ข้อ 2: โครงการที่ผูกไว้ (รวมที่ผูกตอนกดรับใบ) **คงอยู่** — รับใบใหม่ใช้โครงการเดิมต่อได้ทันที
      และไม่มีร่องรอยให้ถอดงานไทม์ไลน์/ของที่ย้ายตามอย่างปลอดภัย ⇒ บอกตรง ๆ ว่าคงอยู่ และย้ายได้ที่ไหน */
 export function quotationUnacceptPromptDetail(preview) {
@@ -158,12 +158,8 @@ export function quotationUnacceptPromptDetail(preview) {
   } else {
     lines.push('ไม่มีใบเสนอราคาฉบับอื่นที่ต้องเปิดกลับ');
   }
-  const project = preview?.project;
-  // ไม่มีรหัส/ชื่อ (พรีวิวอ่านโครงการไม่ขึ้น) = พูดว่า "โครงการเดิม" — ไม่โชว์ id ดิบให้คนอ่าน
-  const projectLabel = project?.code
-    ? `${project.code}${project.name ? ` · ${project.name}` : ''}`
-    : project?.name || '';
-  lines.push(`${projectLabel ? `ดีลยังอยู่ในโครงการ ${projectLabel}` : 'ดีลยังอยู่ในโครงการเดิม'} — ย้อนการรับไม่ถอดโครงการ · ถ้าผูกผิดโครงการ ย้ายได้ที่หน้าดีล แท็บไทม์ไลน์ ปุ่ม “ย้ายไปโครงการอื่น”`);
+  /* (บรรทัด "ดีลยังอยู่ในโครงการ … ย้ายได้ที่ปุ่ม 'ย้ายไปโครงการอื่น'" ถอดในงวด P3b-3 ยุบโครงการ 17/11/2026 —
+     ปุ่มนั้นถูกถอดตั้งแต่ P3a และดีลคือหน่วยเดียวแล้ว · เดิมขึ้นทุกใบแม้ดีลไม่มีโครงการ) */
   lines.push('หลักฐานการรับเดิมยังอยู่ในประวัติของใบ');
   return ['สิ่งที่จะเกิดขึ้นทันที:', ...lines.map((line) => `· ${line}`)].join('\n');
 }
