@@ -41,7 +41,7 @@ import { businessDate } from "@/lib/businessDate";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { isExciseOrder } from "@/lib/sales/historicalOrders";
-import { previewInstallments } from "@/lib/sales/salesOrderPayments";
+import { prepaidDueDate, previewInstallments } from "@/lib/sales/salesOrderPayments";
 import { NO_BILLING_TEXT, asksNeed, dateModeOf } from "@/lib/sales/billingRule";
 import {
   createFormDateCheck, createFormInstallmentItems, createFormPlanNote, createFormTermsKind, createFormTermsState,
@@ -672,6 +672,11 @@ function NewSalesOrderInner() {
                     </div>
                   </div>
                 )}
+                {/* กำหนดชำระงวด 1 ที่ว่างจะได้วันที่ลูกค้าจ่าย (`prepaidDueDate` ตัวเดียวกับ POST · 17/11 SO-26110445-0) —
+                    บอกก่อนกดสร้าง ไม่ให้วันโผล่ในตารางงวดของใบแบบไม่มีที่มา */}
+                {firstPaid && plannedRows[0] && prepaidDueDate({ ...plannedRows[0], ...valuesBySeq[plannedRows[0].seq] }, firstPaidOn) ? (
+                  <p className="form-note">งวดที่ 1 ยังไม่ใส่กำหนดชำระ — ระบบจะใช้วันที่ลูกค้าจ่าย ({fmtDate(firstPaidOn)}) เป็นกำหนดชำระ</p>
+                ) : null}
                 <p className={`form-note ${styles.prepaidNote}`}>
                   <b>บันทึกไว้ก่อน ยังไม่ส่งให้บัญชี</b> — ยอดต่องวดยังเดินตามใบเสนอราคาจนกว่าใบสั่งขายจะอนุมัติ
                   ระบบจะเปิดให้บัญชีรับรองการชำระเองตอนนั้น
