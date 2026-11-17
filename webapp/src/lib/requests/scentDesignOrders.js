@@ -91,7 +91,7 @@ export function scentDesignOrderError(order, lines = [], { usedByRequestNo = nul
     return 'ใบสั่งขายนี้ไม่มีบรรทัดงานออกแบบกลิ่น — ต้องเป็นใบที่ขายบริการออกแบบกลิ่น';
   }
   // ⭐ 1 SO : 1 PDR ตายตัว (มติผู้ใช้) — อยากได้เพิ่มต้องออกใบสั่งขายใหม่
-  /* ⭐ ม-163 — SO มีเจ้าของได้สามทาง (SO หลัก · SO แนบ · เป็น Rev. ของใบที่มีเจ้าของ) ⇒ ข้อความมาจาก
+  /* ⭐ ม-164 — SO มีเจ้าของได้สามทาง (SO หลัก · SO แนบ · เป็น Rev. ของใบที่มีเจ้าของ) ⇒ ข้อความมาจาก
      `scentOrderTakenText` ของผู้เรียก (`usedByText`) · ไม่ส่งมา = ข้อความเดิมของ SO หลัก */
   if (usedByText) return usedByText;
   if (usedByRequestNo) {

@@ -5,8 +5,9 @@
 // เมื่อลบตามปกติ (ไม่ใช่ break-glass ของแอดมิน):
 //   1. งานที่ผูกดีล (personal_tasks.dealId, ไม่มี FK) ค้าง 5 แถวชี้ดีลที่ไม่มีแล้ว
 //   2. โครงการที่ไม่เหลือดีลเลย ค้างเป็นโครงเปล่า 3 ใบโดยไม่มีใครรู้ว่ามันว่าง
+//      (P3a 16/11: เลิกเสนอลบแล้ว — โครงการเก็บเป็นประวัติ)
 //
-// เทสต์นี้ล็อกทั้งสองอย่าง: ตัวช่วยตรวจโครงเปล่า (unit) + ratchet อ่าน source
+// เทสต์นี้ล็อก ratchet อ่าน source
 // กันการถอย `cleanupDealOrphans` กลับไปอยู่ใต้ `if (force)` และกันการทิ้ง error
 // ของคำสั่งลบไทม์ไลน์ (ซึ่งเป็นจุดที่ทำให้ไทม์ไลน์ค้าง**ถาวร** — ดูคอมเมนต์ใน route)
 import { test } from 'node:test';
@@ -14,63 +15,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { emptyProjectAfterDealDelete } from './pm/projectsRepo.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DEAL_ROUTE = join(SRC, 'app/api/sales-planning/deals/[id]/route.js');
 
-// stub: ตอบ count ต่อ (table, column) — คืน error ได้เพื่อทดสอบทางพัง
-function stubCounts(map, errors = {}) {
-  return {
-    from(table) {
-      const builder = {
-        select() { return builder; },
-        eq(col, val) {
-          const key = `${table}:${col}`;
-          return Promise.resolve(
-            errors[key]
-              ? { count: null, error: { message: errors[key] } }
-              : { count: map[`${key}:${val}`] ?? map[key] ?? 0, error: null },
-          );
-        },
-      };
-      return builder;
-    },
-  };
-}
-
-const project = { id: 'PRJ-1', code: 'PJ-26070028', name: 'KA_Rinvala_SACHET' };
-
-test('emptyProjectAfterDealDelete: ยังมีดีลอื่นผูกอยู่ → ไม่ใช่โครงเปล่า', async () => {
-  const supabase = stubCounts({ 'sales_deals:projectId': 2, 'project_tasks:projectId': 32 });
-  assert.equal(await emptyProjectAfterDealDelete(supabase, project), null);
-});
-
-test('emptyProjectAfterDealDelete: 0 ดีล 0 ขั้นตอน → คืนโครงเปล่าพร้อมรหัส/ชื่อ', async () => {
-  const supabase = stubCounts({ 'sales_deals:projectId': 0, 'project_tasks:projectId': 0 });
-  const empty = await emptyProjectAfterDealDelete(supabase, project);
-  assert.deepEqual(empty, {
-    id: 'PRJ-1', code: 'PJ-26070028', name: 'KA_Rinvala_SACHET', tasksLeft: 0,
-  });
-});
-
-// ขั้นตอนที่เหลือ = งานกลางที่ไม่ได้ผูกดีลใบไหน — ต้องรายงานจำนวนออกไป เพราะการลบ
-// โครงการจะพาชุดนี้ไปด้วย ผู้ใช้ต้องเห็นตัวเลขก่อนกดยืนยัน ไม่ใช่รู้ตอนมันหายแล้ว
-test('emptyProjectAfterDealDelete: ไม่มีดีลแต่ยังมีขั้นตอนเหลือ → บอกจำนวน', async () => {
-  const supabase = stubCounts({ 'sales_deals:projectId': 0, 'project_tasks:projectId': 4 });
-  assert.equal((await emptyProjectAfterDealDelete(supabase, project)).tasksLeft, 4);
-});
-
-test('emptyProjectAfterDealDelete: ไม่มีโครงการผูก → null (ไม่ต้องยิง query)', async () => {
-  const supabase = { from() { throw new Error('ไม่ควรถูกเรียก'); } };
-  assert.equal(await emptyProjectAfterDealDelete(supabase, null), null);
-});
-
-// query พังต้องไม่ถูกอ่านว่า "นับได้ 0 = โครงเปล่า" — ไม่งั้นจะไปชวนผู้ใช้ลบโครงการ
-// ที่ยังมีดีลผูกอยู่ (count = null → 0) ซึ่งเป็นการลบข้อมูลจริงจากความผิดพลาดของ query
-test('emptyProjectAfterDealDelete: นับดีลพัง → โยน error ไม่ใช่สรุปว่าว่าง', async () => {
-  const supabase = stubCounts({}, { 'sales_deals:projectId': 'column does not exist' });
-  await assert.rejects(() => emptyProjectAfterDealDelete(supabase, project), /column does not exist/);
+// ⭐ P3a (มติ 16/11 ⑩): เลิกเสนอให้ลบโครงการเปล่าหลังลบดีลแล้ว — โครงการเก็บเป็นประวัติ ห้ามลบแถว
+test('ลบดีล: ไม่ตรวจ/ไม่เสนอลบโครงการเปล่าอีก (โครงการเป็นประวัติ)', () => {
+  const src = readFileSync(DEAL_ROUTE, 'utf8');
+  assert.doesNotMatch(src, /emptyProjectAfterDealDelete|emptyProject\b/);
 });
 
 // ── ratchet: อ่าน source ของ route (ตัดคอมเมนต์ก่อน ไม่งั้นจับคำในคำอธิบายเอง) ──

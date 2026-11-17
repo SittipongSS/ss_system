@@ -107,7 +107,7 @@ export function normalizeJobInput(body = {}) {
 
   return {
     value: {
-      projectId: body.projectId || null,
+      // P3a (มติ 16/11 ⑩): งานผลิตใหม่ไม่ผูกโครงการ — โครงการเก็บเป็นประวัติ
       dealId: body.dealId || null,
       salesOrderId: body.salesOrderId || null,
       salesOrderLineId: body.salesOrderLineId || null,
@@ -385,7 +385,6 @@ export function draftJobsForSalesOrder(order, lines = [], { existingLineIds = []
     if (!(qty > 0)) continue;
     taken.add(line.id);
     rows.push({
-      projectId: order.projectId || null,
       dealId: order.dealId || null,
       salesOrderId: order.id,
       salesOrderLineId: line.id,

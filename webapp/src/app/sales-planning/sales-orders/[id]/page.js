@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Building2, CalendarDays, CircleDollarSign, ClipboardList, Package,
-  ExternalLink, FileCheck2, FileClock, FileSignature, FileText, FolderKanban, Handshake, History, MapPin,
+  ExternalLink, FileCheck2, FileClock, FileSignature, FileText, Handshake, History, MapPin,
   Pencil, Repeat, ShieldAlert, Trash2, Undo2, XCircle,
 } from "lucide-react";
 import AlertBanner from "@/components/ui/AlertBanner";
@@ -1762,7 +1762,7 @@ export default function SalesOrderDetailPage() {
     const lines = order.lines || [];
     const blocked = scentDesignOrderError(order, lines, {
       usedByRequestNo: order.scentRequest?.docNo || (order.scentRequest ? order.scentRequest.id : null),
-      // ม-163 — ใบที่แนบอยู่กับคำร้องอื่น/เป็น Rev. ของใบที่มีคำร้อง ได้ข้อความตามบทบาทจาก server
+      // ม-164 — ใบที่แนบอยู่กับคำร้องอื่น/เป็น Rev. ของใบที่มีคำร้อง ได้ข้อความตามบทบาทจาก server
       usedByText: order.scentRequest?.takenText || null,
     });
     return {
@@ -1831,12 +1831,11 @@ export default function SalesOrderDetailPage() {
       plan,
       excise: exciseTrack,
       orderId: order?.id || id,
-      projectId: order?.projectId || null,
       // ⭐ รูปของเส้นมาจากประเภทดีลแม่ — SCENT ไม่มีของเข้า/ผลิต · OTHER ยังไม่นิยามสาย
       dealType: order?.deal ? dealTypeOf(order.deal) : null,
       approved: order?.status === "approved",
     }),
-    [scentBrief, readiness, plan, exciseTrack, order?.id, id, order?.projectId, order?.deal, order?.status],
+    [scentBrief, readiness, plan, exciseTrack, order?.id, id, order?.deal, order?.status],
   );
 
   const installments = useMemo(() => order?.installments || [], [order?.installments]);
@@ -1859,9 +1858,7 @@ export default function SalesOrderDetailPage() {
   );
 
   /* ใบนี้มีรอบบริการไหม — เกณฑ์เดียวกับด่านเงิน (สาย SERVICE + บรรทัดหมวด 02-001)
-     ⚠️ เดิมส่ง `{ project }` เข้า ctx ซึ่ง **ตัวรับไม่เคยอ่านคีย์นี้** (มันรับ `projectsById`)
-       ⇒ เป็นอาร์กิวเมนต์ตายที่อ่านแล้วเข้าใจผิดว่าทำงาน · ตัวถอยของฟังก์ชันอ่าน
-       `order.project` ให้อยู่แล้ว จึงตัดทิ้ง ไม่ใช่แก้ชื่อคีย์ */
+     · สายอ่านจาก `order.deal` ที่ API แนบมา (ตัวถอยของฟังก์ชัน · งวด P3b-1 ยุบโครงการ เลิกอ่านโครงการ) */
   const hasServiceRounds = orderHasServiceRounds(order, order?.lines);
   /* ใบที่ยกเลิกแล้วเงินยกไป/คืนลูกค้าแล้ว = กู้คืนไม่ได้ (PR3 · mig 0378) — ตัวเดียวกับที่ route ใช้ปฏิเสธ (คำใบ้ของปุ่ม) */
   const restoreMoneyBlock = cancelledMoneyRestoreBlock(installments, order?.carriedAway);
@@ -2641,7 +2638,8 @@ export default function SalesOrderDetailPage() {
             <ContextCard icon={ClipboardList} href={order.sourceSalesOrderId ? `/sa/sales-orders/${order.sourceSalesOrderId}` : undefined} eyebrow="ใบสั่งขายต้นทาง" title={naText(exciseSourceOrderLabel(order))} subtitle="ใบสั่งขายของลูกค้าที่ใบนี้เก็บค่าสรรพสามิต" facts={[{ label: "เจ้าของดีลต้นทาง", value: naText(livePersonName(directory, approvalDeal?.ownerId, approvalDeal?.ownerName)) }]} />
           ) : (
             <>
-              <ContextCard icon={FolderKanban} href={order.projectId ? `/sa/projects/${order.projectId}` : undefined} eyebrow="โครงการ" title={order.project?.name || naText(order.project?.code)} subtitle={order.project?.code || "ข้อมูลโครงการที่ผูกกับดีล"} facts={[{ label: "การเชื่อมโยง", value: order.projectId ? "เชื่อมแล้ว" : "ยังไม่เชื่อม" }]} />
+              {/* การ์ด "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — `sales_orders.projectId`
+                  ยังคงค่าในฐาน (อยู่ในลายนิ้วมือการอนุมัติ ห้ามล้าง) แค่ไม่โชว์ */}
               {/* ชื่อเจ้าของดีลอ่านจาก id — `order.approvedByName` ด้านบนไม่แตะ เพราะเป็น
                   snapshot ของการอนุมัติ (ใครเซ็น ณ ตอนนั้น) ไม่ใช่สถานะปัจจุบัน */}
               <ContextCard icon={Handshake} href={`/sa/deals/${order.dealId}`} eyebrow="ดีล" title={naText(order.deal?.title)} subtitle={`${naText(order.deal?.team)} · ${naText(livePersonName(directory, order.deal?.ownerId, order.deal?.ownerName))}`} facts={[{ label: "สถานะ", value: naText(STAGE_LABELS[order.deal?.stage] || order.deal?.stage) }]} />

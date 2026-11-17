@@ -175,14 +175,12 @@ test('ยาม: route ภาพรวมดีลโหลดงานด้ว
   assert.match(route, /if \(can\(user\.role, 'pm:view'\) && !dealTasks\.warning\) \{/);
 });
 
-test('ยาม: ปุ่มบนหน้าดีล/หน้าโครงการพาตัวกรองไปด้วย', () => {
+/* หน้าโครงการ (ปุ่ม projectTasksQueueHref + ตารางงานที่กรองด้วย projectSelectionPasses) ถูกลบใน P3a
+   — ยุบโครงการ 16/11 · เหลือยามฝั่งหน้าดีลกับฝั่งคิวงานที่อ่านลิงก์ */
+test('ยาม: ปุ่มบนหน้าดีลพาตัวกรองไปด้วย', () => {
   const deal = read('../../app/sales-planning/deals/[id]/page.js');
   assert.match(deal, /href=\{tasksQueueHref\(\{ dealIds: \[deal\.id\] \}\)\}/);
-  const project = read('../../app/sa/projects/[id]/page.js');
-  assert.match(project, /href=\{projectTasksQueueHref\(p\.id, dealFilters, TIMELINE_CENTRAL\)\}/);
-  // ตารางงานของหน้าโครงการกรองด้วยตัวตัดสินเดียวกับที่เทสต์ไปกลับข้างบนใช้
-  assert.match(project, /projectPersonalTasks\.filter\(\(task\) => projectSelectionPasses\(task, dealFilters, TIMELINE_CENTRAL\)\)/);
+  assert.doesNotMatch(deal, /: "\/sa\/tasks"\}/, 'ห้ามตกไป /sa/tasks เปล่า');
   const queue = read('../../app/pm/tasks/page.js');
   assert.match(queue, /readTasksQueueLink\(\{\n\s+dealId: linkDealParam, projectId: linkProjectParam, central: linkCentralParam,\n\s+\}\)/);
-  assert.doesNotMatch(project, /: "\/sa\/tasks"\}/, 'ห้ามตกไป /sa/tasks เปล่า');
 });

@@ -61,23 +61,20 @@ test('⭐ สายที่ยังไม่ระบุ (null) ยังไ�
   assert.equal(orderBusinessLineOf(order), null);
 });
 
-test('โครงการมาก่อนดีลเสมอ — โครงการเป็นเจ้าของค่าสายจริง', () => {
+/* ⭐ งวด P3b-1 ยุบโครงการ (16/11/2026): สายอ่านจากดีลอย่างเดียว — เดิม "โครงการมาก่อนดีลเสมอ"
+   (ตรวจ prod: SO 399 ใบที่ผูกโครงการ สายของโครงการ = สายของดีลของใบทุกใบ ⇒ คำตอบเท่าเดิม) */
+test('สายอ่านจากดีล — ก้อนโครงการที่แนบมากับใบไม่มีผลแล้ว', () => {
   const order = { projectId: 'PJ1', project: { id: 'PJ1', line: 'SERVICE' }, dealId: 'DL2', deal: productDeal };
-  assert.equal(orderBusinessLineOf(order), 'SERVICE');
-  assert.equal(orderHasServiceRounds(order, [svcLine()]), true);
-});
-
-test('โครงการที่ยังไม่ระบุสาย ตกไปถามดีลต่อ ไม่ใช่ตอบ null ทันที', () => {
-  const order = { projectId: 'PJ2', project: { id: 'PJ2', line: null }, dealId: 'DL1', deal: serviceDeal };
-  assert.equal(orderBusinessLineOf(order), 'SERVICE');
+  assert.equal(orderBusinessLineOf(order), 'PRODUCT');
+  assert.equal(orderHasServiceRounds(order, [svcLine()]), false);
+  const noDeal = { projectId: 'PJ1', project: { id: 'PJ1', line: 'SERVICE' } };
+  assert.equal(orderBusinessLineOf(noDeal), null, 'ไม่มีดีล = ตอบไม่ได้ ไม่ถอยไปถามโครงการ');
 });
 
 test('เรียกจากคิวงานที่มี Map ของหลายใบก็ได้ผลเดียวกัน', () => {
-  const ctx = {
-    projectsById: new Map([['PJ1', { id: 'PJ1', line: 'SERVICE' }]]),
-    dealsById: new Map([['DL2', productDeal]]),
-  };
-  assert.equal(orderHasServiceRounds({ projectId: 'PJ1', dealId: 'DL2' }, [svcLine()], ctx), true);
+  const ctx = { dealsById: new Map([['DL1', serviceDeal], ['DL2', productDeal]]) };
+  assert.equal(orderHasServiceRounds({ dealId: 'DL1' }, [svcLine()], ctx), true);
+  assert.equal(orderHasServiceRounds({ projectId: 'PJ1', dealId: 'DL2' }, [svcLine()], ctx), false);
 });
 
 test('ไม่ส่ง lines มา ใช้ order.lines ที่ติดมากับใบ', () => {

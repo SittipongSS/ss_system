@@ -67,6 +67,7 @@ test('POST คำร้อง: ไม่มีทีมของตัวเอ�
   const src = readFileSync(new URL('../../app/api/sa/requests/route.js', import.meta.url), 'utf8');
   assert.match(src, /team: attributionTeam\(user, body\.team\) \|\| dealTeam/);
   // ทีมของดีลต้องถูกอ่านมาจริง ไม่ใช่ค้างเป็น null ตลอด
-  assert.match(src, /\.select\('id, projectId, customerId, customerName, team'\)/);
+  // (projectId หลุดจาก select ตั้งแต่ P3a — ยุบโครงการ 16/11 คำร้องใหม่ไม่ผูกโครงการ)
+  assert.match(src, /\.select\('id, customerId, customerName, team'\)/);
   assert.match(src, /dealTeam = dealRow\.team \|\| null/);
 });

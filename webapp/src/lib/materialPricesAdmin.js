@@ -343,25 +343,14 @@ export async function loadRequests(supabase, {
   }
   const npdCandidates = new Set(npdCandidateIds);
 
-  /* ⭐ **ชื่อโครงการมาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ 2026-08-11) — คิวจัดกลุ่ม
-     ตามโครงการได้แล้ว แต่แถวเก็บแค่ `projectId` ⇒ หัวกลุ่มจะเป็น uuid ที่ไม่มีใคร
-     อ่านออก · `findRequest` โหลดโครงการอยู่แล้วแต่นั่นคือตอนเปิด **ใบเดียว**
-     ⚠️ **คิวรวมเดียว ไม่ใช่ N+1** — คิวหนึ่งหน้ามีได้ 100+ ใบ · ดึงรายใบแปลว่า
-     100 query ต่อการเปิดหน้าหนึ่งครั้ง (โรคที่หน้านี้เพิ่งถอด 8 endpoint ทิ้งไป) */
-  const projectIds = lean ? [] : [...new Set(asks.map((a) => a.projectId).filter(Boolean))];
-  let projects = [];
-  if (projectIds.length) {
-    // ซอยลิสต์ — โครงการที่ไม่ซ้ำโตตามจำนวนใบ (ผลเข้า Map ไม่ต้องเรียงซ้ำ)
-    projects = await fetchAllInChunks(projectIds, (chunk) => supabase
-      .from('projects').select('id, code, name').in('id', chunk).order('id'));
-  }
-  const projectById = new Map(projects.map((p) => [p.id, p]));
+  /* (ชื่อ/รหัสโครงการของแถวคิว — `projectCode` · `projectName` — ถอดในงวด P3b-1 ยุบโครงการ 16/11/2026: ไม่มีจอไหนอ่าน
+     และคิวจัดกลุ่มตามดีลแทนแล้ว · ป้ายดีลอยู่ข้างล่าง `dealCode` · `dealName`) */
 
   /* ⭐ **รหัสลูกค้า (AR) มาด้วยตั้งแต่ตอนโหลดคิว** (มติผู้ใช้ IS-26080003) — คิวจัดกลุ่ม
      ตามลูกค้าได้ และแถวโชว์ชื่อกิจการอยู่แล้ว แต่รหัสคือตัวที่เชื่อมกับรหัสกลิ่น/MU
      ⚠️ **อ่านสดจากทะเบียนเสมอ ไม่ประทับลงแถวคำร้อง** — `customerName` ที่แถวเก็บไว้คือ
      ชื่อ ณ วันที่ผูก (หลักฐาน) ส่วนรหัสเป็นตัวชี้กลับทะเบียน ต้องเป็นค่าปัจจุบัน
-     ⚠️ รวมเป็น query เดียวเหมือนโครงการ — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
+     ⚠️ รวมเป็น query เดียว — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
   const customerIds = lean ? [] : [...new Set(asks.map((a) => a.customerId).filter(Boolean))];
   let customers = [];
   if (customerIds.length) {
@@ -378,7 +367,7 @@ export async function loadRequests(supabase, {
      รหัส AR / ชื่อกิจการ / แบรนด์ เป็นก้อนเดียวเหมือนตาราง QT/SO · แบรนด์ไม่ได้อยู่
      บนคำร้อง มันเป็นของ **ดีลต้นทาง** (`metadata.brand` — ที่เดียวกับที่หน้ารายการ
      ดีลอ่าน) ⇒ ใบที่ไม่ผูกดีลไม่มีแบรนด์ ซึ่งถูกแล้ว
-     ⚠️ query เดียวเหมือนโครงการ/ลูกค้า — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
+     ⚠️ query เดียวเหมือนลูกค้า — ดึงรายใบ = 100 query ต่อการเปิดคิวหนึ่งครั้ง */
   const dealIds = lean ? [] : [...new Set(asks.map((a) => a.dealId).filter(Boolean))];
   let deals = [];
   if (dealIds.length) {
@@ -396,10 +385,6 @@ export async function loadRequests(supabase, {
     ...a,
     items: itemsOf(a.id),
     ...(npdCandidates.has(a.id) ? { targets: npdTargets.filter((t) => t.requestId === a.id) } : {}),
-    // แบนเป็นสองช่อง ไม่ใช่ก้อน `project` ซ้อน — แถวคิวถูกส่งลงจอตรง ๆ และของซ้อน
-    // ชั้นทำให้ต้องเช็ค null สองชั้นทุกที่ที่อ่าน
-    projectCode: projectById.get(a.projectId)?.code ?? null,
-    projectName: projectById.get(a.projectId)?.name ?? null,
     customerArCode: arById.get(a.customerId) ?? null,
     // ชื่อแบรนด์ที่คนอ่านออก (TH · EN) — ดีลเก็บข้อความดิบ ทะเบียนของลูกค้าเป็นตัวแปล
     customerBrand: brandDisplayFromList(brandsById.get(a.customerId), brandByDeal.get(a.dealId)) || null,
@@ -537,8 +522,9 @@ export async function findRequest(supabase, id) {
   // ⚠️ โหลดเฉพาะใบเดียวตอนเปิด ไม่ใช่ตอนโหลดคิวทั้งชุด (คิวไม่ได้ใช้ค่าพวกนี้)
   const [project, customer, deal] = await Promise.all([
     withBriefs.projectId
-      // name/code เพิ่มมาเพื่อการ์ดบริบทบน panel (ม-94) — โหลดใบเดียวตอนเปิดอยู่แล้ว
-      ? supabase.from('projects').select('id, code, name, "aeOwner", "acOwner"').eq('id', withBriefs.projectId)
+      /* ทางถอยของ PDR ผู้ร้องขอ/ผู้ประสานงาน (`pdrContext` — ดีลก่อน แล้วโครงการ · P2c-1) · ใบเก่าที่ผูกโครงการเท่านั้น
+         (ป้าย `refProject` ของการ์ดบริบทถอดในงวด P3b-1 — ไม่มีจอไหนอ่าน ⇒ ไม่ต้องขอ code/name แล้ว) */
+      ? supabase.from('projects').select('id, "aeOwner", "acOwner"').eq('id', withBriefs.projectId)
         .maybeSingle().then((r) => r.data)
       : null,
     withBriefs.customerId
@@ -555,7 +541,8 @@ export async function findRequest(supabase, id) {
     withBriefs.dealId
       // ⚠️ `title` ต้องมาด้วย — เอกสาร PDR พิมพ์ช่อง "โครงการ" เป็น **ชื่อดีล**
       // ไม่ใช่รหัส · รหัสอย่างเดียว RD อ่านแล้วไม่รู้ว่างานอะไร
-      ? supabase.from('sales_deals').select('id, code, title').eq('id', withBriefs.dealId)
+      // ⭐ `ownerName` · `acOwnerName` — PDR ผู้ร้องขอ (AE/AC) อ่านจากดีลก่อนโครงการ (ยุบดีล/โครงการ P2c-1)
+      ? supabase.from('sales_deals').select('id, code, title, "ownerName", "acOwnerName"').eq('id', withBriefs.dealId)
         .maybeSingle().then((r) => r.data)
       : null,
   ]);
@@ -566,7 +553,7 @@ export async function findRequest(supabase, id) {
   // บรรทัดไม่ได้ผูก `productId` ซึ่งมีจริงบน prod · ดึงมาแค่ `id, qty` แล้วทุกใบจะนับ
   // ได้ 0 เงียบ ๆ แล้วช่อง 1.12 ขึ้น N/A ทั้งที่ใบนั้นขายกลิ่นอยู่
   let salesOrderLines = [];
-  /* ⭐ **พัฒนากลิ่นอ่านผ่านตัวโหลด SO ของคำร้อง** (ม-163 · mig 0436) — SO หลัก + SO ที่ลูกค้าซื้อเพิ่มแล้วแนบ
+  /* ⭐ **พัฒนากลิ่นอ่านผ่านตัวโหลด SO ของคำร้อง** (ม-164 · mig 0436) — SO หลัก + SO ที่ลูกค้าซื้อเพิ่มแล้วแนบ
      และนับจาก **ใบ Rev. ล่าสุดที่อนุมัติ** (SO ไม่พาคำร้องตามไปใบ Rev. ใหม่ — เดิมอ่านบรรทัดจากใบที่ถูกแทนไปแล้ว)
      ⚠️ `salesOrderLines` ยังเป็นของ SO หลักอย่างเดียว — PDR 1.12 คือบรีฟตั้งต้น ไม่บวก SO แนบ (แผน §8)
         ตัวหารของด่านปิด/การ์ดกระทบยอดคือ `scentSlotLines` (SO หลัก + แนบที่ไม่ใช่ 03-010) */
@@ -646,11 +633,11 @@ export async function findRequest(supabase, id) {
     }
   }
 
-  // การ์ดบริบทบน panel (ม-94) — โครงการ/ดีลที่ใบนี้เกาะอยู่ พร้อมป้ายชื่อจริง
-  // (จอทำลิงก์เอง — id อย่างเดียวกดไปได้แต่บอกไม่ได้ว่าคือใบไหน)
+  // การ์ดบริบทบน panel (ม-94) — ดีลที่ใบนี้เกาะอยู่ พร้อมป้ายชื่อจริง
+  // (จอทำลิงก์เอง — id อย่างเดียวกดไปได้แต่บอกไม่ได้ว่าคือใบไหน · ป้ายโครงการ `refProject` ถอดในงวด P3b-1)
   return {
     ...withBriefs, items, salesOrderLines, refQuotation, refSalesOrder, linkedInstallment,
-    // ⭐ SO แนบ + ตัวหารของด่านปิดใบ (ม-163) — เฉพาะพัฒนากลิ่น · หัวข้ออื่นไม่มีคีย์เหล่านี้ (ผู้อ่านถอยไปทางเดิม)
+    // ⭐ SO แนบ + ตัวหารของด่านปิดใบ (ม-164) — เฉพาะพัฒนากลิ่น · หัวข้ออื่นไม่มีคีย์เหล่านี้ (ผู้อ่านถอยไปทางเดิม)
     ...(scentOrders ? {
       attachedOrders: scentOrders.attachedOrders,
       scentSlotLines: scentOrders.scentSlotLines,
@@ -658,7 +645,6 @@ export async function findRequest(supabase, id) {
       // SO หลักออก Rev. แล้ว = ใบที่ใช้นับจริง (จอบอกว่านับจากใบไหน) · null = ใบเดิม
       countedSalesOrder: scentOrders.mainOrder,
     } : {}),
-    refProject: project ? { id: project.id, code: project.code, name: project.name } : null,
     refDeal: deal,
     // ⚠️ เลือกฟิลด์ทีละตัว ไม่ส่ง `customer` ทั้งแถว — ทะเบียนลูกค้ามีที่อยู่ เครดิต
     // และรายชื่อผู้ติดต่อทั้งชุด ซึ่งหน้าคำร้องไม่ได้ใช้และไม่ควรหลุดออกทาง response

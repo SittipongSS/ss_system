@@ -50,7 +50,7 @@ export const DOC_REF_TYPES = {
   // สัญญามีสองยุคในฐานเดียวกัน: `CT-26080001-0` (ก่อนมติ 2026-08-31) และ
   // `CT-SD-26080001-0` (หลัง) ⇒ ตัวย่อชนิดต้องเป็นของเลือกได้ ไม่ใช่บังคับ
   CT: { label: 'สัญญา', table: 'sales_contracts', column: 'contractNo', body: `${KIND}${RUN}${REV}`, example: 'CT-SD-26080001-0', path: (id) => `/sa/contracts/${id}` },
-  PJ: { label: 'โครงการ', table: 'projects', column: 'code', body: RUN, example: 'PJ-26090001', path: (id) => `/sa/projects/${id}` },
+  PJ: { label: 'โครงการ', table: 'projects', column: 'code', body: RUN, example: 'PJ-26090001', path: (id) => `/go/project/${id}` }, // P3: หน้าโครงการถูกถอด · ลิงก์เดิมพาไปหน้าลูกค้า
   DL: { label: 'ดีล', table: 'sales_deals', column: 'code', body: RUN, example: 'DL-26090001', path: (id) => `/sa/deals/${id}` },
   IS: { label: 'เรื่องแจ้งปัญหา', table: 'system_issues', column: 'code', body: RUN, example: 'IS-26080037', path: (id) => `/support/${id}` },
   SV: { label: 'นัดบริการ', table: 'service_visits', column: 'code', body: RUN, example: 'SV-26090003', path: (id) => `/service/visits/${id}` },

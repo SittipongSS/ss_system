@@ -21,6 +21,8 @@ export function dealFieldLabels({ legacyWon = false } = {}) {
     expectedCloseDate: legacyWon ? 'วันที่ปิดในระบบเดิม' : 'วันที่คาดการณ์ปิด',
     startDate: 'วันที่เริ่ม',
     endDate: 'วันที่สิ้นสุด (ลูกค้าต้องการรับ)',
+    acOwnerId: 'ผู้ประสานงาน (AC)',
+    aeSupervisorId: 'ผู้ตรวจสอบ (AE Supervisor)',
   };
 }
 
@@ -40,7 +42,10 @@ export function dealFieldLabels({ legacyWon = false } = {}) {
  *    🐞 เดิม (2026-09-08) ตอนสร้างดีลเก่าที่ Won ยังบังคับตาราง "มูลค่าที่ปิด" โดยเชื่อว่ายอดนั้นเป็น Actual
  *       — trigger 0110 เขียนทับ wonValue จาก SO อนุมัติทุกครั้ง ยอดที่พิมพ์ไม่เคยนับ (ดู lib/sales/legacyDealSwitch)
  */
-export function missingDealFieldKeys(draft = {}, { alreadyWon = false, legacyWon = false } = {}) {
+/* ⭐ AC ผู้ประสานงาน + AE Supervisor (ยุบดีล/โครงการ P2c-1 · มติเจ้าของ 13/11/2026 ⑤) — บังคับทุกครั้งที่บันทึกฟอร์ม
+ *    ทั้งสร้างและแก้ (ดีลเก่าที่ยังว่างต้องเลือกก่อนบันทึก) · server ตรวจซ้ำที่ `lib/sales/dealPeople.js`
+ *    ⚠️ ดีลภาชนะของใบสั่งขายย้อนหลัง (`historical`) ไม่บังคับ — server ก็ไม่บังคับ */
+export function missingDealFieldKeys(draft = {}, { alreadyWon = false, legacyWon = false, historical = false } = {}) {
   const blank = (value) => !String(value ?? '').trim();
   return [
     ['stage', blank(draft.stage)],
@@ -48,12 +53,14 @@ export function missingDealFieldKeys(draft = {}, { alreadyWon = false, legacyWon
     ['expectedCloseDate', blank(draft.expectedCloseDate)],
     ['startDate', blank(draft.startDate)],
     ['endDate', blank(draft.endDate)],
+    ['acOwnerId', !historical && blank(draft.acOwnerId)],
+    ['aeSupervisorId', !historical && blank(draft.aeSupervisorId)],
   ].filter(([, absent]) => absent).map(([key]) => key);
 }
 
 /** ข้อความเดียวที่บอกทุกช่องที่ขาด — กดครั้งเดียวรู้ครบ ไม่ใช่เจอทีละช่อง */
-export function missingDealFieldsMessage(draft = {}, { legacyWon = false, alreadyWon = false, title = null } = {}) {
-  const keys = missingDealFieldKeys(draft, { alreadyWon, legacyWon });
+export function missingDealFieldsMessage(draft = {}, { legacyWon = false, alreadyWon = false, historical = false, title = null } = {}) {
+  const keys = missingDealFieldKeys(draft, { alreadyWon, legacyWon, historical });
   if (!keys.length) return null;
   const labels = dealFieldLabels({ legacyWon });
   const named = keys.map((key) => labels[key] || key).join(' · ');

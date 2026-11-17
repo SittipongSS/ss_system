@@ -113,7 +113,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       return new Map();
     });
 
-  /* ⭐ ม-163 — เจ้าของมีสามทาง (SO หลัก · SO แนบ · Rev. ของใบที่มีเจ้าของ) ⇒ ตัวโหลดเดียวกับหน้า SO และด่านเปิดคำร้อง
+  /* ⭐ ม-164 — เจ้าของมีสามทาง (SO หลัก · SO แนบ · Rev. ของใบที่มีเจ้าของ) ⇒ ตัวโหลดเดียวกับหน้า SO และด่านเปิดคำร้อง
      · ก้อนที่คืนคงสามคีย์เดิม (`id` · `docNo` · `status`) ที่ฟอร์มเปิดคำร้องใช้กรอง + บทบาท + ข้อความด่าน */
   let scentRequestByOrder = new Map();
   try {
@@ -145,7 +145,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   const quoteIds = [...new Set((orders || []).map((row) => row.quotationId).filter(Boolean))];
   const [{ data: deals, error: dealError }, { data: quotes, error: quoteError }] = await Promise.all([
     dealIds.length
-      /* 🪤 คอลัมน์สายธุรกิจชื่อ `line` ทั้งที่ `sales_deals` และ `projects` — `businessLine`
+      /* 🪤 คอลัมน์สายธุรกิจชื่อ `line` (บน `sales_deals`) — `businessLine`
          เป็นชื่อในโค้ด JS เท่านั้น ไม่มีคอลัมน์นั้นจริง · ไม่ดึงมา = ทุกใบตอบสาย null
          ⇒ ตัวกรองสายบริการว่างเปล่าทั้งที่ข้อมูลมีอยู่ */
       ? fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase.from('sales_deals').select('id, title, stage, dealType, team, ownerId, ownerName, customerName, projectId, line').in('id', chunk).order('id', { ascending: true })))
@@ -182,29 +182,14 @@ export const GET = withUser(async ({ user, supabase }) => {
   const quoteById = new Map((quotes || []).map((row) => [row.id, row]));
 
   /* ── สายธุรกิจของใบ + สรุปงานบริการ (PR-D · มติผู้ใช้ 2026-08-27) ─────────
-     ⚠️ สายธุรกิจอ่าน **โครงการก่อน แล้วดีล** (orderBusinessLine) ⇒ ต้องมีโครงการด้วย
-     ไม่งั้นใบที่อยู่ใต้โครงการสายบริการจะตอบสายตามดีลซึ่งอาจว่าง = หลุดจากตัวกรอง */
-  /* ⭐ โครงการของ **ใบ** ด้วย (ไม่ใช่แค่ของดีล) — ตัวตัดสินอ่าน `order.projectId` ก่อนเสมอ · ใบที่โครงการไม่ตรงกับของดีล
-     เคยตกไปอ่านสายของดีล ⇒ ทะเบียนตอบคนละสายกับหน้าใบ (loadOrder) และป้ายเลนตั้งงานบริการย้อนหลังบนเมนู (ฝังโครงการของใบ) */
-  const projectIds = [...new Set([
-    ...(deals || []).map((row) => row.projectId),
-    ...(orders || []).map((row) => row.projectId),
-  ].filter(Boolean))];
-  // ⚠️ ไล่ทีละหน้า — ทะเบียนโครงการโตเกิน 1,000 ได้ และ id ที่ส่งเข้ามาเป็นชุดใหญ่
-  // ตามจำนวนดีลของทั้งทะเบียน (เพดานตัดเงียบ = ใบบางใบตอบสายผิดโดยไม่มีใครรู้)
-  const { data: projects, error: projectError } = projectIds.length
-    ? await fetchAllResult(() => supabase.from('projects').select('id, line')
-      .in('id', projectIds).order('id', { ascending: true }))
-    : { data: [], error: null };
-  if (projectError) return fail(projectError.message, 500);
-  const projectsById = new Map((projects || []).map((row) => [row.id, row]));
-
+     ⭐ สายธุรกิจอ่านจาก **ดีลของใบ** (orderBusinessLine) — `line` มากับ select ของดีลข้างบนแล้ว
+     ⚠️ งวด P3b-1 ยุบโครงการ: เลิกอ่านตาราง projects (เดิมถามโครงการก่อน) — สายของโครงการ = สายของดีลทุกใบบน prod */
   /* ใบสาย SERVICE ที่มีแพ็คเกจบริการ — ของพ่วงข้างล่างยิงเฉพาะใบกลุ่มนี้
      (ทั้งทะเบียนมีหลายพันใบ แต่ใบบริการมีหลักสิบ ⇒ กรองก่อนค่อยยิง) */
   const serviceOrders = (orders || []).filter((row) => orderHasServiceRounds(
     { ...row, deal: dealById.get(row.dealId) || null },
     linesByOrder.get(row.id) || [],
-    { projectsById, dealsById: dealById },
+    { dealsById: dealById },
   ));
   const serviceOrderIds = serviceOrders.map((row) => row.id);
 
@@ -242,7 +227,7 @@ export const GET = withUser(async ({ user, supabase }) => {
        (แถวคิว "งานบริการ (ใบเดิม)" — z โซนใน s ไซต์ · รอบ) และใบบริการที่ประทับแล้ว (รอบที่ขาย n/N นับรายไซต์ · D23)
        ทั้งทะเบียนมีหลายพันใบ แต่สองกลุ่มนี้หลักสิบ ⇒ กรองก่อนค่อยยิง · ซอยก้อน + ไล่หน้า (หนึ่งบรรทัดมีได้ 500 โซน)
      ⚠️ อ่านไม่ขึ้น = 500 (ห้ามกลืนเป็น "ไม่มีโซน" — แถวคิวจะบอก 0 โซนทั้งที่ตั้งไว้แล้ว) */
-  const lineCtx = { projectsById, dealsById: dealById };
+  const lineCtx = { dealsById: dealById };
   const allocationOrderIds = (orders || [])
     .filter((row) => serviceBackfillAwaitingReview(row) || (serviceIdSet.has(row.id) && row.serviceTermsOpenedAt))
     .map((row) => row.id);
@@ -294,9 +279,9 @@ export const GET = withUser(async ({ user, supabase }) => {
   /* สายธุรกิจรายใบ — คิดครั้งเดียว ใช้ทั้งคอลัมน์ `businessLine` และด่านเลนผู้ตรวจงานบริการ */
   const businessLineById = new Map((orders || []).map((row) => [row.id, orderBusinessLineOf(
     { ...row, deal: dealById.get(row.dealId) || null },
-    { projectsById, dealsById: dealById },
+    { dealsById: dealById },
   )]));
-  /* ⭐ ค่า 'submitted' บนใบที่สายของโครงการ/ดีลเปลี่ยนไปแล้ว (ยื่นตอนเป็นบริการ แล้วแก้สายระหว่างรอตรวจ) — ไม่ใช่งานของผู้ตรวจ:
+  /* ⭐ ค่า 'submitted' บนใบที่สายของดีลเปลี่ยนไปแล้ว (ยื่นตอนเป็นบริการ แล้วแก้สายระหว่างรอตรวจ) — ไม่ใช่งานของผู้ตรวจ:
      RPC อนุมัติปฏิเสธ และหน้าใบไม่มีการ์ดงานบริการ ⇒ ขึ้นคิวแล้วเคลียร์ไม่ได้ · ค่าคงไว้ สายกลับเป็นบริการแล้วกลับมารอตรวจเอง */
   const staleServiceReview = (row) => serviceBackfillAwaitingReview(row) && businessLineById.get(row.id) !== 'SERVICE';
   /* งวดของใบ "Actual รายงวด" (mig 0412) ให้สองเลนของ `_waitingOnMe` / `_awaitingMyApproval` — ใบอื่น = null (เลนไม่นับ · ไม่เดา)

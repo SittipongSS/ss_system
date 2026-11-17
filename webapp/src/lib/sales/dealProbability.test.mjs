@@ -2,7 +2,7 @@
 //
 // มติผู้ใช้ 2026-08-05:
 //   SCENT ตั้งต้น 20% · ออกใบเสนอราคาแล้ว → 50%
-//   NPD   ออกใบเสนอราคาแล้ว → 50% · + โครงการมี SCENT ที่ปิด Won → 80%
+//   NPD   ออกใบเสนอราคาแล้ว → 50% · + ดีล SCENT ต้นทางปิด Won → 80% (ยุบดีล/โครงการ P2c-2: เดิม "โครงการมี SCENT Won")
 //
 // 🐞 ต้นเรื่อง: ทุกเส้นทางที่ขยับ stage **ไม่เคยแตะ probability** เลย ดีลที่ออกใบเสนอ
 // ราคาไปแล้วจึงค้าง FC เดิม ทั้งที่หลักฐานอยู่ในระบบแล้ว ⇒ ยอดถ่วงน้ำหนักต่ำกว่าจริง
@@ -17,7 +17,7 @@ import { DEAL_STAGES, DEFAULT_PROBABILITY_BY_STAGE } from '../salesPlanning.js';
 import { NPD_AFTER_WON_SCENT, autoProbability } from './dealProbability.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
-const withScent = { wonScentInProject: true };
+const withScent = { wonSourceScent: true };
 
 test('SCENT ตั้งต้น 20% — ยังไม่ออกใบเสนอราคาไม่ว่าอยู่ขั้นไหน', () => {
   for (const stage of ['lead', 'qualified', 'timeline_proposed']) {
@@ -30,8 +30,8 @@ test('ออกใบเสนอราคาแล้ว → 50% ทั้ง S
   assert.equal(autoProbability({ stage: 'quotation', dealType: 'NPD' }), 50);
 });
 
-// ⭐ กติกาข้อเดียวที่ "ขั้นอย่างเดียวตอบไม่ได้" — ต้องรู้บริบทของโครงการ
-test('NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80%', () => {
+// ⭐ กติกาข้อเดียวที่ "ขั้นอย่างเดียวตอบไม่ได้" — ต้องรู้ว่าดีล SCENT ต้นทาง Won ไหม
+test('NPD ที่ดีล SCENT ต้นทางปิด Won แล้ว → 80%', () => {
   assert.equal(autoProbability({ stage: 'quotation', dealType: 'NPD' }, withScent), NPD_AFTER_WON_SCENT);
   assert.equal(NPD_AFTER_WON_SCENT, 80);
 });
@@ -43,7 +43,7 @@ test('SCENT ไม่ได้ 80 จากพี่น้องตัวเอ�
 
 /* "และถ้าโครงการที่เชื่อมมีดีล SCENT ที่ won แล้ว**อีกด้วย**" — 80 ต่อยอดจาก 50
    ไม่ใช่ทางลัดข้ามขั้น: NPD ที่ยังไม่ออกใบเสนอราคายังเป็น 20 อยู่ */
-test('NPD ที่ยังไม่ออกใบเสนอราคา ไม่ได้ 80 แม้โครงการจะมี SCENT ที่ Won', () => {
+test('NPD ที่ยังไม่ออกใบเสนอราคา ไม่ได้ 80 แม้ดีล SCENT ต้นทางจะ Won', () => {
   for (const stage of ['lead', 'qualified', 'timeline_proposed']) {
     assert.equal(autoProbability({ stage, dealType: 'NPD' }, withScent), 20, stage);
   }
@@ -91,9 +91,9 @@ test('PATCH ดีล: ขั้นเปลี่ยน = FC มาจากก
   assert.match(src, /\} else if \('probability' in body && !alreadyWon\) \{/);
 });
 
-test('สร้างดีล: FC มาจากขั้น ไม่ใช่จากฟอร์ม', () => {
+test('สร้างดีล: FC มาจากขั้น (+ ดีล SCENT ต้นทางของ NPD) ไม่ใช่จากฟอร์ม', () => {
   const src = read('src/app/api/sales-planning/deals/route.js');
-  assert.match(src, /probability: autoProbability\(\{ stage,/);
+  assert.match(src, /probability: await resolveProbability\(supabase, \{ stage, dealType: createdType, sourceScentDealId:/);
   assert.doesNotMatch(src, /probability: toProbability\(body\.probability/,
     'ฟอร์มเคยส่ง "50" มาตลอดทั้งที่ขั้นตั้งต้นคือ lead');
   // ค่าตั้งต้นของฟอร์มก็ต้องผูกกับขั้น ไม่ใช่เลขลอย
@@ -101,17 +101,20 @@ test('สร้างดีล: FC มาจากขั้น ไม่ใช�
     /probability: String\(DEFAULT_PROBABILITY_BY_STAGE\.lead\)/);
 });
 
-test('ผูกโครงการแล้วคิด FC ใหม่ — เพิ่งรู้ว่ามีพี่น้องใบไหน', () => {
-  // เนื้อในของการผูกโครงการย้ายมาอยู่ที่ lib แล้ว (โมดัลปิด Won เรียกตัวเดียวกัน)
-  const src = read('src/lib/sales/dealProjectLink.js');
-  assert.match(src, /resolveProbability\(supabase, \{/);
-  assert.match(src, /probability: nextProbability,/);
-});
+// (ยาม "ผูกโครงการแล้วคิด FC ใหม่" ถอดใน P3a — ยุบโครงการ 16/11 ลบ dealProjectLink · ไม่มีทางผูกโครงการแล้ว)
 
-test('SCENT ปิด Won → cascade ไป NPD พี่น้อง แล้วลงประวัติไว้', () => {
+test('SCENT ปิด Won → cascade ไป NPD ที่ชี้มันเป็นต้นทาง แล้วลงประวัติไว้', () => {
   const src = read('src/app/api/sales-planning/quotations/[id]/accept/route.js');
-  assert.match(src, /cascadeNpdProbability\(supabase, updatedDeal\?\.projectId \|\| deal\.projectId/);
+  assert.match(src, /cascadeNpdProbability\(supabase, \{ \.\.\.deal, \.\.\.\(updatedDeal \|\| \{\}\) \}/);
   // พลาดตรงนี้ต้องไม่ล้ม accept — ดีลปิดไปแล้วจริง
   assert.match(src, /catch \(cascadeError\)/);
   assert.match(src, /for \(const row of cascaded\)/, 'FC ที่ขยับเองต้องมีร่องรอยให้ตามได้');
+});
+
+test('PATCH ดีล: ผูก/เปลี่ยนดีล SCENT ต้นทาง (ไม่ได้ขยับขั้น) → FC ขึ้นตามกติกา + ติดป้าย cascade ใน audit', () => {
+  const src = read('src/app/api/sales-planning/deals/[id]/route.js');
+  assert.match(src, /if \(sourceChanged && !stageChanged && !alreadyWon\) \{/);
+  assert.match(src, /if \(ruled > Number\(patch\.probability \?\? before\.probability\)\) \{/, 'ขึ้นอย่างเดียว ถอดต้นทางไม่ลด');
+  assert.match(src, /sourceRuleTag = sourceScentLinkAuditTag\(\);/);
+  assert.match(src, /\$\{sourceRuleTag \? ` \$\{sourceRuleTag\}` : ''\}/);
 });

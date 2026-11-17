@@ -1,31 +1,38 @@
-// ── ตัวเลือกดีลแบบสองชั้น (โครงการ → ดีล) — ตรรกะล้วน ────────────────────────
+// ── ตัวเลือกดีลแบบสองชั้น (ลูกค้า → ดีล) — ตรรกะล้วน ────────────────────────
 //
 // ⭐ ทำไมเป็นสองชั้น (มติผู้ใช้ 2026-08-06): ลิสต์ดีลบน prod ยาวเป็นร้อยใบ ชั้นเดียว
-// ต้องเลื่อนยาวหรือรู้ชื่อดีลก่อนถึงจะค้นได้ · เวลาทำงานจริงคนคิดเป็น "โครงการนี้มีดีล
-// อะไรบ้าง" แผงซ้ายจึงเป็นโครงการพร้อมจำนวนดีล แผงขวาเป็นดีลของโครงการนั้น
+// ต้องเลื่อนยาวหรือรู้ชื่อดีลก่อนถึงจะค้นได้ · แผงซ้ายเป็นกลุ่มพร้อมจำนวนดีล แผงขวาเป็นดีลของกลุ่มนั้น
 // แพตเทิร์นเดียวกับปุ่มตัวกรอง (components/ui/FilterPopover) ที่คนในระบบคุ้นอยู่แล้ว
 //
+// ⭐ กลุ่มฝั่งซ้าย = **ลูกค้า** (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026) — เดิมเป็นโครงการ ซึ่งถูกซ่อนแล้ว
+//   และบท "แฟ้มรวมหลายดีลของลูกค้า" ย้ายไปหน้าลูกค้าศูนย์รวม ⇒ คนคิดเป็น "ลูกค้ารายนี้มีดีลอะไรบ้าง"
+//
 // ถังพิเศษสองใบที่ต้องมีเสมอ:
-//   · "ดีลทั้งหมด"        — คนที่จำได้แค่ชื่อดีลต้องค้นข้ามโครงการได้ในคลิกเดียว
-//   · "ยังไม่ผูกโครงการ"  — ดีลกลุ่มนี้มีจริงและผูกงานได้ ถ้าไม่มีถังมันจะหายไปเฉย ๆ
+//   · "ดีลทั้งหมด"     — คนที่จำได้แค่ชื่อดีลต้องค้นข้ามลูกค้าได้ในคลิกเดียว
+//   · "ยังไม่มีลูกค้า"  — ดีลกลุ่มนี้มีจริงและผูกงานได้ ถ้าไม่มีถังมันจะหายไปเฉย ๆ
 
 import { matchesQuery } from '@/lib/ui/pickerSearch';
 
 export const ALL_DEALS_BUCKET = '__all_deals__';
-export const NO_PROJECT_BUCKET = '__no_project__';
+export const NO_CUSTOMER_BUCKET = '__no_customer__';
 
-export const projectLabelOf = (project) => (project
-  ? `${project.code ? `${project.code} · ` : ''}${project.name || ''}`.trim()
-  : '');
+/** รหัส AR ของลูกค้าเจ้าของดีล — มีเมื่อ endpoint ต้นทางแนบแถวลูกค้ามา (GET /deals แนบ `customer`) */
+export const dealArCode = (deal) => deal?.customer?.arCode || deal?.customerArCode || '';
 
-/** ข้อความที่ใช้ค้นดีลหนึ่งใบ — รวมชื่อโครงการด้วย เพื่อให้พิมพ์รหัสโครงการแล้วเจอดีล */
-export const dealSearchText = (deal, projectLabel = '') => [
-  deal?.code, deal?.title, deal?.customerName, deal?.forecastMonth, projectLabel,
-].filter(Boolean).join(' ');
+/** ป้ายลูกค้าของดีล — ว่าง = ยังไม่มีลูกค้า */
+export const dealCustomerLabel = (deal) => String(deal?.customerName || deal?.customer?.name || '').trim();
 
-/** ข้อความที่ใช้ค้นโครงการ — รหัส ชื่อโครงการ **และชื่อลูกค้า** (มติผู้ใช้ 2026-08-06) */
-export const projectSearchText = (project) => [
-  project?.code, project?.name, project?.customerName,
+/* กุญแจกลุ่ม: id ลูกค้าก่อน · ดีลเก่าที่มีแค่ชื่อ (ผูกก่อนมีทะเบียน) รวมด้วยชื่อ — ⚠️ รหัส AR ไม่ใช่ส่วนของกุญแจ
+   (กติกาเดียวกับจัดกลุ่มตามลูกค้าของหน้ารายการดีล) */
+const customerKeyOf = (deal) => {
+  if (deal?.customerId) return `c:${deal.customerId}`;
+  const name = dealCustomerLabel(deal).toLocaleLowerCase('th-TH');
+  return name ? `n:${name}` : NO_CUSTOMER_BUCKET;
+};
+
+/** ข้อความที่ใช้ค้นดีลหนึ่งใบ — รหัส ชื่อ ลูกค้า (ชื่อ + AR) เดือน FC */
+export const dealSearchText = (deal) => [
+  deal?.code, deal?.title, dealCustomerLabel(deal), dealArCode(deal), deal?.forecastMonth,
 ].filter(Boolean).join(' ');
 
 // กติกาค้นมาจากตัวกลางที่เดียว (lib/ui/pickerSearch) — ห้ามเขียนเงื่อนไขค้นซ้ำที่นี่
@@ -33,44 +40,40 @@ export const projectSearchText = (project) => [
 const matches = matchesQuery;
 
 /**
- * ถังฝั่งซ้าย: ดีลทั้งหมด → โครงการ (เรียงตามป้ายที่คนเห็น) → ยังไม่ผูกโครงการ
- * โครงการที่ไม่มีดีลไม่ถูกใส่มา — ถังที่เปิดแล้วว่างเปล่าคือคำโกหกว่ามีของให้เลือก
+ * ถังฝั่งซ้าย: ดีลทั้งหมด → ลูกค้า (เรียงตามชื่อ) → ยังไม่มีลูกค้า
+ * ลูกค้าที่ไม่มีดีลไม่ถูกใส่มา — ถังที่เปิดแล้วว่างเปล่าคือคำโกหกว่ามีของให้เลือก
  */
-export function buildDealBuckets(deals = [], projects = []) {
-  const byProject = new Map();
+export function buildDealBuckets(deals = []) {
+  const byCustomer = new Map();
   for (const deal of deals) {
-    const key = deal.projectId || NO_PROJECT_BUCKET;
-    if (!byProject.has(key)) byProject.set(key, []);
-    byProject.get(key).push(deal);
+    const key = customerKeyOf(deal);
+    if (!byCustomer.has(key)) byCustomer.set(key, []);
+    byCustomer.get(key).push(deal);
   }
 
-  const projectBuckets = [...byProject.entries()]
-    .filter(([key]) => key !== NO_PROJECT_BUCKET)
+  const customerBuckets = [...byCustomer.entries()]
+    .filter(([key]) => key !== NO_CUSTOMER_BUCKET)
     .map(([key, rows]) => {
-      const project = projects.find((p) => p.id === key);
+      const name = rows.map(dealCustomerLabel).find(Boolean) || '';
+      const arCode = rows.map(dealArCode).find(Boolean) || '';
       return {
         key,
-        // โครงการที่อยู่นอกรายการที่โหลดมา (ทีมอื่น) ยังต้องมีถังให้ดีลของมันอยู่
-        label: projectLabelOf(project) || 'โครงการอื่น',
-        // แยก code/name ออกจาก label เพราะแผงซ้ายวางคนละบรรทัด: ชื่อโครงการได้เต็ม
-        // บรรทัด ส่วนรหัส (ยาวและหน้าตาคล้ายกันทุกใบ) ลงไปอยู่บรรทัดรองคู่กับลูกค้า
-        code: project?.code || '',
-        name: project?.name || '',
-        // ชื่อลูกค้าโชว์เป็นบรรทัดรอง — โครงการชื่อคล้ายกันแยกออกได้ด้วยลูกค้า
-        // (ไม่มีในโครงการนอกลิสต์ → fallback เป็นลูกค้าของดีลใบแรกในถัง)
-        customerName: project?.customerName || rows.find((row) => row.customerName)?.customerName || '',
-        search: `${projectSearchText(project)} ${rows.map((row) => row.customerName).filter(Boolean).join(' ')}`,
+        label: name,
+        name,
+        // รหัส AR อยู่บรรทัดรอง — ลูกค้าชื่อคล้ายกันแยกออกได้ด้วยรหัส
+        code: arCode,
+        search: `${name} ${arCode}`.trim(),
         deals: rows,
       };
     })
     .sort((a, b) => a.label.localeCompare(b.label, 'th'));
 
-  const unlinked = byProject.get(NO_PROJECT_BUCKET) || [];
+  const noCustomer = byCustomer.get(NO_CUSTOMER_BUCKET) || [];
   return [
     { key: ALL_DEALS_BUCKET, label: 'ดีลทั้งหมด', search: 'ดีลทั้งหมด all', deals },
-    ...projectBuckets,
-    ...(unlinked.length
-      ? [{ key: NO_PROJECT_BUCKET, label: 'ยังไม่ผูกโครงการ', search: 'ยังไม่ผูกโครงการ', deals: unlinked }]
+    ...customerBuckets,
+    ...(noCustomer.length
+      ? [{ key: NO_CUSTOMER_BUCKET, label: 'ยังไม่มีลูกค้า', search: 'ยังไม่มีลูกค้า', deals: noCustomer }]
       : []),
   ];
 }
@@ -82,15 +85,15 @@ export function filterBuckets(buckets = [], query = '') {
   return buckets.filter((bucket) => bucket.key === ALL_DEALS_BUCKET || matches(bucket.search || bucket.label, needle));
 }
 
-/** กรองฝั่งขวาด้วยคำค้น (ชื่อดีล/ลูกค้า/รหัส/เดือน FC/ชื่อโครงการ) */
-export function filterDeals(deals = [], query = '', labelOf = () => '') {
+/** กรองฝั่งขวาด้วยคำค้น (ชื่อดีล/ลูกค้า/รหัส/เดือน FC) */
+export function filterDeals(deals = [], query = '') {
   const needle = query.trim();
   if (!needle) return deals;
-  return deals.filter((deal) => matches(dealSearchText(deal, labelOf(deal)), needle));
+  return deals.filter((deal) => matches(dealSearchText(deal), needle));
 }
 
 /** ถังที่ควรเปิดค้างไว้ตอนกางแผง — ของดีลที่เลือกอยู่ ไม่ใช่ถังแรกเสมอ */
 export function initialBucketKey(deal) {
   if (!deal) return ALL_DEALS_BUCKET;
-  return deal.projectId || NO_PROJECT_BUCKET;
+  return customerKeyOf(deal);
 }

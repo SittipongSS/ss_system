@@ -11,7 +11,7 @@
 // รู้จัก routing ของทุกโมดูล · entity ที่ไม่มีในนี้ = แจ้งเตือนไม่มีลิงก์ (ยังอ่านได้)
 const HREF = {
   personal_task: (id) => `/pm/tasks/${id}`,
-  project: (id) => `/sa/projects/${id}`,
+  project: (id) => `/go/project/${id}`, // P3: หน้าโครงการถูกถอด · เธรดเก่าพาไปหน้าลูกค้า
   dept_request: (id) => `/requests/${id}`,
   deal: (id) => `/sa/deals/${id}`,
   lead: (id) => `/sa/leads/${id}`,

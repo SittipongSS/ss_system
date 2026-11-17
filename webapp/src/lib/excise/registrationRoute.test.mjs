@@ -11,7 +11,6 @@ const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/
 const detailRoute = read('../../app/api/excise-registrations/[id]/route.js');
 const detailCode = codeOnly(detailRoute);
 const listRoute = read('../../app/api/excise-registrations/route.js');
-const fromProjectRoute = read('../../app/api/excise-registrations/from-project/route.js');
 const migration = read('../../../supabase/migrations/0178_excise_registration_unique.sql');
 const indexRename = read('../../../supabase/migrations/0179_excise_registration_index_name.sql');
 // คอมเมนต์ SQL (`--`) ต้องถูกตัดก่อน assertion แบบ "ต้องไม่มี" — ไม่งั้นบรรทัดที่อธิบายว่า
@@ -60,11 +59,8 @@ test('กันทะเบียนซ้ำครบสองชั้น: ด
   // ด่านฝั่งแอปต้องไม่ทิ้ง error ของ query เช็คซ้ำอีก (เดิม `const { data: dup }`)
   assert.match(listRoute, /const \{ data: dup, error: dupErr \}/);
   assert.match(listRoute, /if \(dupErr\) return/);
-  assert.match(fromProjectRoute, /const \{ data: existing, error: existingError \}/);
-  assert.match(fromProjectRoute, /if \(existingError\) return fail/);
-  // ทั้งสองทางที่สร้างทะเบียนต้องแปลง 23505 เป็นข้อความที่ผู้ใช้อ่านรู้เรื่อง
+  // ทางสร้างทะเบียนต้องแปลง 23505 เป็นข้อความที่ผู้ใช้อ่านรู้เรื่อง (เส้น from-project ถอดในงวด P3b-1 ยุบโครงการ)
   assert.match(listRoute, /error\?\.code === '23505'/);
-  assert.match(fromProjectRoute, /error\.code === '23505'/);
 });
 
 // 0178 ประกาศชื่อ excise_reg_product_customer_uidx แต่ของจริงบน prod ถูกสร้างด้วยชื่อ
@@ -92,8 +88,8 @@ test('ทะเบียนเลิกเก็บสำเนาอัตร�
   const dropSnapshot = read('../../../supabase/migrations/0180_excise_registration_drop_tax_snapshot.sql');
   assert.match(dropSnapshot, /DROP COLUMN IF EXISTS "exciseTax"/);
   assert.match(dropSnapshot, /DROP COLUMN IF EXISTS "localTax"/);
-  // ทั้งสองทางที่สร้างทะเบียนต้องไม่ส่งค่าลงคอลัมน์ที่ถูกตัดแล้ว (ไม่งั้น insert พัง)
-  for (const [name, src] of [['POST', listRoute], ['from-project', fromProjectRoute]]) {
+  // ทางสร้างทะเบียนต้องไม่ส่งค่าลงคอลัมน์ที่ถูกตัดแล้ว (ไม่งั้น insert พัง) · เส้น from-project ถอดในงวด P3b-1 ยุบโครงการ
+  for (const [name, src] of [['POST', listRoute]]) {
     assert.doesNotMatch(codeOnly(src), /^\s*exciseTax:/m, `${name} ห้ามเขียนคอลัมน์ที่ถูกตัดแล้ว`);
     assert.doesNotMatch(codeOnly(src), /^\s*localTax:/m, `${name} ห้ามเขียนคอลัมน์ที่ถูกตัดแล้ว`);
   }

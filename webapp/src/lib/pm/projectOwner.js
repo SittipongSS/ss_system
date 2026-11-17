@@ -99,7 +99,7 @@ export async function resolveProjectAeOwner(supabase, aeOwnerId, actor = null, r
  *
  * @returns {Promise<{ ok: true, aeSupervisorId: string|null, aeSupervisor: string } | { ok: false, error }>}
  */
-export async function resolveProjectSupervisor(supabase, supervisorId, { required = false } = {}) {
+export async function resolveProjectSupervisor(supabase, supervisorId, { required = false, subject = 'โครงการ' } = {}) {
   const id = String(supervisorId || '').trim();
   // ตอน **สร้าง** บังคับครบสามฝ่าย (มติผู้ใช้ 2026-08-14) — ตอนแก้ไม่บังคับ ใบเก่าที่
   // ช่องนี้ว่างต้องแก้ช่องอื่นได้ตามปกติ · ล้างทิ้งไม่ได้ (ดู PATCH)
@@ -117,7 +117,7 @@ export async function resolveProjectSupervisor(supabase, supervisorId, { require
 
   // ผู้มีอำนาจตัดสินของฝ่ายขาย (CD · CM · AE Sup) — ผังตำแหน่ง 2026-09-24 · กลุ่มเดียวกับรายชื่อบนฟอร์ม
   if (!PROJECT_PEOPLE_ROLES.aeSupervisor.includes(user.app_metadata?.role || null)) {
-    return { ok: false, error: 'ผู้ตรวจสอบโครงการต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (CD · CM · AE Supervisor)' };
+    return { ok: false, error: `ผู้ตรวจสอบ${subject}ต้องเป็นตำแหน่งหัวหน้าฝ่ายขาย (CD · CM · AE Supervisor)` };
   }
 
   const name = projectOwnerName(user);
@@ -137,7 +137,7 @@ export async function resolveProjectSupervisor(supabase, supervisorId, { require
  * @param projectTeam ทีมของโครงการ (หลังตัดสินจากผู้ดูแลแล้ว) — ว่าง = ข้ามด่านทีม
  * @returns {Promise<{ ok: true, acOwnerId: string|null, acOwner: string } | { ok: false, error }>}
  */
-export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = null, { required = false } = {}) {
+export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = null, { required = false, subject = 'โครงการ' } = {}) {
   const id = String(acOwnerId || '').trim();
   // บังคับเฉพาะตอนสร้าง — เหตุผลเดียวกับผู้ตรวจสอบ (ดู resolveProjectSupervisor)
   if (!id) {
@@ -154,13 +154,13 @@ export async function resolveProjectAcOwner(supabase, acOwnerId, projectTeam = n
 
   // สาย AC (AC · Senior AC · AC Supervisor) — ผังตำแหน่ง 2026-09-24 · กลุ่มเดียวกับรายชื่อบนฟอร์ม
   if (!PROJECT_PEOPLE_ROLES.preparedBy.includes(user.app_metadata?.role || null)) {
-    return { ok: false, error: 'ผู้ประสานงานโครงการต้องเป็นตำแหน่งสาย AC (AC · Senior AC · AC Supervisor)' };
+    return { ok: false, error: `ผู้ประสานงาน${subject}ต้องเป็นตำแหน่งสาย AC (AC · Senior AC · AC Supervisor)` };
   }
 
   const acTeams = userTeams(user.app_metadata);
   const wanted = userTeams(projectTeam);
   if (wanted.length && acTeams.length && !acTeams.some((t) => wanted.includes(t))) {
-    return { ok: false, error: `ผู้ประสานงานที่เลือกอยู่ทีม ${acTeams.join('/')} แต่โครงการนี้เป็นของทีม ${wanted.join('/')}` };
+    return { ok: false, error: `ผู้ประสานงานที่เลือกอยู่ทีม ${acTeams.join('/')} แต่${subject}นี้เป็นของทีม ${wanted.join('/')}` };
   }
 
   const name = projectOwnerName(user);

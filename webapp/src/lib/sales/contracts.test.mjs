@@ -10,6 +10,7 @@ import {
   canDeleteContract,
   canIssueContract,
   canSignContract,
+  contractBusinessLine,
   contractEligibility,
   contractKindsForDeal,
   CONTRACT_NUMBER_MONTH,
@@ -31,29 +32,32 @@ import { addendumEligibility } from './contractAddenda';
 
 const approvedQuote = { id: 'Q1', approvalStatus: 'approved', status: 'sent' };
 
-test('ชนิดสัญญามาจากคู่ (ประเภทดีล, สายธุรกิจของโครงการ)', () => {
+test('ชนิดสัญญามาจากคู่ (ประเภทดีล, สายธุรกิจของดีล)', () => {
   assert.deepEqual(contractKindsForDeal({ dealType: 'SCENT' }), ['scent_design']);
-  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD' }, { line: 'PRODUCT' }), ['manufacturing']);
-  assert.deepEqual(contractKindsForDeal({ dealType: 'RE-ORDER' }, { line: 'SERVICE' }), ['service']);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD', line: 'PRODUCT' }), ['manufacturing']);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'RE-ORDER', line: 'SERVICE' }), ['service']);
   // สาย PRODUCT ไม่ทำให้ดีล SCENT ออกสัญญาจ้างผลิตได้ — คนละแกน
-  assert.deepEqual(contractKindsForDeal({ dealType: 'SCENT' }, { line: 'PRODUCT' }), ['scent_design']);
-  assert.deepEqual(contractKindsForDeal({ dealType: 'OTHER' }, { line: 'PRODUCT' }), []);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'SCENT', line: 'PRODUCT' }), ['scent_design']);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'OTHER', line: 'PRODUCT' }), []);
 });
 
 test('ยังไม่ระบุสาย = ดีล NPD/RE-ORDER ยังออกสัญญาไม่ได้ (ห้ามเดาสายให้เอง)', () => {
-  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD' }, { line: null }), []);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD', line: null }), []);
   const result = contractEligibility({
-    deal: { dealType: 'NPD' }, project: { line: null }, quotations: [approvedQuote],
+    deal: { dealType: 'NPD' }, quotations: [approvedQuote],
   });
   assert.equal(result.ok, false);
   assert.match(result.reason, /สายธุรกิจ/);
 });
 
-test('สายของดีลเองมาก่อนสายของโครงการ (mig 0275) · ดีลเก่ายังสืบจากโครงการได้', () => {
-  // ดีลถือสายของตัวเองแล้ว — ใช้ค่านั้น
+/* ⭐ งวด P3b-1 ยุบโครงการ (16/11/2026): ถอดทางถอยไปถามสายของโครงการ — ตรวจ prod แล้ว 610 ดีลที่ผูกโครงการ
+   `projects.line === sales_deals.line` ทุกใบ ⇒ ตัวตัดสินอ่านดีลอย่างเดียว อาร์กิวเมนต์โครงการไม่มีผลแล้ว */
+test('สายธุรกิจอ่านจากดีลอย่างเดียว — ก้อนโครงการที่ส่งมา/แนบมาไม่มีผล', () => {
   assert.deepEqual(contractKindsForDeal({ dealType: 'NPD', line: 'SERVICE' }, { line: 'PRODUCT' }), ['service']);
-  // ดีลเก่าที่ยังไม่ระบุ — สืบจากโครงการที่ผูกอยู่
-  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD', line: null }, { line: 'PRODUCT' }), ['manufacturing']);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD', line: null }, { line: 'PRODUCT' }), []);
+  assert.deepEqual(contractKindsForDeal({ dealType: 'NPD', line: null, project: { line: 'PRODUCT' } }), []);
+  assert.equal(contractBusinessLine({ line: 'PRODUCT' }), 'PRODUCT');
+  assert.equal(contractBusinessLine({ line: null, project: { line: 'SERVICE' } }), null);
 });
 
 test('ด่านออกสัญญา = ใบเสนอราคาที่อนุมัติภายในแล้ว ไม่ใช่ลูกค้าตอบรับ', () => {
@@ -857,7 +861,10 @@ test('🐞 /contracts/options ต้องไม่กรองชนิดส�
     new URL('../../app/api/sales-planning/contracts/options/route.js', import.meta.url),
     'utf8',
   );
-  assert.match(route, /kinds: contractKindsForDeal\(row\.deal, row\.project\),/);
+  assert.match(route, /kinds: contractKindsForDeal\(row\.deal\),/);
+  // สายธุรกิจของดีลต้องมากับ select ของดีล — ไม่งั้นดีล NPD/RE-ORDER ไม่มีชนิดสัญญาให้ออก (P3b-1 ถอดการอ่านโครงการ)
+  assert.match(route, /\.select\('id, code, title, stage, "dealType", line, /);
+  assert.doesNotMatch(route, /from\('projects'\)/);
   assert.doesNotMatch(
     route,
     /contractKindsForDeal\([^)]*\)\.filter\(hasContractTemplate\)/,

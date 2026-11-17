@@ -18,6 +18,9 @@ const full = (over = {}) => ({
   expectedCloseDate: '2026-09-30',
   startDate: '2026-09-01',
   endDate: '2026-10-31',
+  // AC + AE Supervisor บังคับทุกครั้งที่บันทึกฟอร์ม (ยุบดีล/โครงการ P2c-1 · มติ ⑤) — ล็อกแยกที่ dealPeople.test.mjs
+  acOwnerId: 'u-ac',
+  aeSupervisorId: 'u-sup',
   ...over,
 });
 

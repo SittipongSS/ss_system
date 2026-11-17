@@ -14,24 +14,28 @@ import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from '../sales/historicalOrders.js
 const projects = new Map([
   ['PJ-S', { id: 'PJ-S', line: 'SERVICE' }],
   ['PJ-P', { id: 'PJ-P', line: 'PRODUCT' }],
-  ['PJ-0', { id: 'PJ-0', line: null }],
 ]);
 const deals = new Map([
   ['DL-S', { id: 'DL-S', line: 'SERVICE' }],
+  ['DL-P', { id: 'DL-P', line: 'PRODUCT' }],
   ['DL-0', { id: 'DL-0', line: null }],
 ]);
-const ctx = { projectsById: projects, dealsById: deals };
+const ctx = { dealsById: deals };
 
 const so = (over = {}) => ({ id: 'SO1', orderNumber: 'SO-2608001', status: 'approved', supersededById: null, approvedAt: '2026-08-20T03:00:00Z', ...over });
 
-test('สายธุรกิจถามโครงการก่อน แล้วค่อยดีล', () => {
-  assert.equal(orderBusinessLine(so({ projectId: 'PJ-S' }), ctx), 'SERVICE');
-  assert.equal(orderBusinessLine(so({ projectId: 'PJ-P', dealId: 'DL-S' }), ctx), 'PRODUCT');
+/* ⭐ งวด P3b-1 ยุบโครงการ (16/11/2026): สายธุรกิจอ่านจากดีลของใบอย่างเดียว — เดิมถามโครงการก่อน
+   (ตรวจ prod: SO 399 ใบที่ผูกโครงการ สายของโครงการ = สายของดีลทุกใบ ⇒ คำตอบเท่าเดิม) */
+test('สายธุรกิจอ่านจากดีลของใบ — โครงการของใบไม่มีผลแล้ว', () => {
   assert.equal(orderBusinessLine(so({ dealId: 'DL-S' }), ctx), 'SERVICE');
+  assert.equal(orderBusinessLine(so({ dealId: 'DL-P' }), ctx), 'PRODUCT');
+  // ส่ง Map โครงการมาก็ไม่ถูกอ่าน (คีย์นั้นเลิกรับแล้ว)
+  assert.equal(orderBusinessLine(so({ projectId: 'PJ-S', dealId: 'DL-P' }), { ...ctx, projectsById: projects }), 'PRODUCT');
+  assert.equal(orderBusinessLine(so({ projectId: 'PJ-S' }), { ...ctx, projectsById: projects }), null);
 });
 
 test('⭐ ตอบไม่ได้ = null ห้ามเดาเป็นสายใดสายหนึ่ง', () => {
-  assert.equal(orderBusinessLine(so({ projectId: 'PJ-0', dealId: 'DL-0' }), ctx), null);
+  assert.equal(orderBusinessLine(so({ dealId: 'DL-0' }), ctx), null);
   assert.equal(orderBusinessLine(so({}), ctx), null);
 });
 

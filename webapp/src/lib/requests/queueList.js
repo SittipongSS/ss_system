@@ -24,7 +24,8 @@ export const REQUEST_GROUP_OPTIONS = [
   { value: 'dept', label: 'ฝ่ายที่ขอไป' },
   { value: 'kind', label: 'ชนิดคำร้อง' },
   { value: 'customer', label: 'ลูกค้า' },
-  { value: 'project', label: 'โครงการ' },
+  // 'project' → 'deal' (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026) — ตัวกรอง/กลุ่มไม่ได้จำข้ามหน้า (useQueueBoard = useState)
+  { value: 'deal', label: 'ดีล' },
   { value: 'owner', label: 'ผู้รับผิดชอบ' },
 ];
 
@@ -57,15 +58,15 @@ export function requestFacet(request = {}, dimension) {
     if (name) return { key: name.toLocaleLowerCase('th-TH'), label: name, sub };
     return { key: FACET_NONE, label: 'ไม่ระบุลูกค้า' };
   }
-  if (dimension === 'project') {
-    /* ⚠️ **ป้ายมาจาก `projectCode`/`projectName` ที่ API แนบมา ไม่ใช่ `projectId`** —
-       id เป็น uuid ที่อ่านไม่ออก · ใบที่ผูกโครงการที่ถูกลบไปแล้วจะได้ id แต่ไม่มีชื่อ
-       ⇒ ยังต้องแยกเป็นกลุ่มของตัวเอง (ไม่ใช่ยุบรวมกับ "ไม่ผูกโครงการ" ซึ่งคนละเรื่อง) */
-    const id = request.projectId || null;
-    if (!id) return { key: FACET_NONE, label: 'ไม่ผูกโครงการ' };
-    const code = String(request.projectCode || '').trim();
-    const name = String(request.projectName || '').trim();
-    const label = [code, name].filter(Boolean).join(' — ') || 'โครงการ (ไม่มีชื่อ)';
+  if (dimension === 'deal') {
+    /* ⭐ แทนมิติ "โครงการ" (ยุบดีล/โครงการ P2d) · ⚠️ **ป้ายมาจาก `dealCode`/`dealName` ที่ API แนบมา
+       ไม่ใช่ `dealId`** — id อ่านไม่ออก · ใบที่ผูกดีลที่ถูกลบไปแล้วจะได้ id แต่ไม่มีชื่อ
+       ⇒ ยังต้องแยกเป็นกลุ่มของตัวเอง (ไม่ใช่ยุบรวมกับ "ไม่ผูกดีล" ซึ่งคนละเรื่อง) */
+    const id = request.dealId || null;
+    if (!id) return { key: FACET_NONE, label: 'ไม่ผูกดีล' };
+    const code = String(request.dealCode || '').trim();
+    const name = String(request.dealName || '').trim();
+    const label = [code, name].filter(Boolean).join(' — ') || 'ดีล (ไม่มีชื่อ)';
     return { key: String(id), label };
   }
   if (dimension === 'owner') {

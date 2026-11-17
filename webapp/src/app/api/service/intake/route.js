@@ -69,7 +69,6 @@ export const GET = withUser(async ({ user, supabase }) => {
     if (orderError) return fail(orderError.message, 500);
 
     const orderIds = (orders || []).map((o) => o.id);
-    const projectIds = [...new Set((orders || []).map((o) => o.projectId).filter(Boolean))];
     const dealIds = [...new Set((orders || []).map((o) => o.dealId).filter(Boolean))];
     /* ใบที่อาจอยู่ในถังใบเดิม — pipeline · ยังไม่ประทับ (อนุมัติ + ยังไม่ถูก Rev. ทับ กรองที่ query แล้ว)
        ⇒ อ่านโซนที่ฝ่ายขายเลือกเฉพาะใบพวกนี้ ไม่กวาดทั้งตาราง */
@@ -77,7 +76,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       .filter((o) => !o.serviceTermsOpenedAt && !isHistoricalOrder(o))
       .map((o) => o.id);
 
-    const [lines, rawTerms, projects, deals, zones, sites, plans, visits, allocations] = await Promise.all([
+    const [lines, rawTerms, deals, zones, sites, plans, visits, allocations] = await Promise.all([
       /* ⚠️ ซอยลิสต์ข้างนอก ไล่หน้าข้างใน — `fetchAllResult` แก้เพดานแถว ไม่ได้แก้
          URL ยาว (มันส่งตัวกรองก้อนเดิมไปทุกหน้า) · ซอยตาม `salesOrderId` ⇒ บรรทัด
          ของใบเดียวกันอยู่ก้อนเดียวเสมอ ลำดับ sortOrder ภายในใบจึงไม่เสีย
@@ -98,12 +97,9 @@ export const GET = withUser(async ({ user, supabase }) => {
           .order('sortOrder', { ascending: true })
           .order('id', { ascending: true })),
       loadTerms(supabase),
-      /* ⚠️ ห่อ fetchAllResult ทั้งคู่ — จำนวนโครงการ/ดีลโตตามจำนวนใบสั่งขาย
-         ที่อนุมัติแล้ว ซึ่งวันหนึ่งเกิน 1,000 แน่ · PostgREST ตัดที่ 1,000 เงียบ ๆ
-         แล้วใบที่หลุดจะ "ตอบไม่ได้ว่าสายอะไร" ทั้งที่โครงการระบุไว้ชัดเจน */
-      fetchAllInChunks(projectIds, (chunk) => supabase.from('projects').select('id, line')
-        .in('id', chunk).order('id', { ascending: true })),
-      /* `ownerName` = ผู้ดูแลฝ่ายขายของใบเดิม (เจ้าของดีลปัจจุบัน · คนที่ต้องตั้งงานบริการ) */
+      /* ⚠️ ห่อ fetchAllResult — จำนวนดีลโตตามจำนวนใบสั่งขายที่อนุมัติแล้ว ซึ่งวันหนึ่งเกิน 1,000 แน่ · PostgREST ตัดที่
+         1,000 เงียบ ๆ แล้วใบที่หลุดจะ "ตอบไม่ได้ว่าสายอะไร" · `line` = สายธุรกิจของใบ (งวด P3b-1 ยุบโครงการ เลิกอ่านโครงการ)
+         `ownerName` = ผู้ดูแลฝ่ายขายของใบเดิม (เจ้าของดีลปัจจุบัน · คนที่ต้องตั้งงานบริการ) */
       fetchAllInChunks(dealIds, (chunk) => supabase.from('sales_deals').select('id, line, "ownerName"')
         .in('id', chunk).order('id', { ascending: true })),
       loadAllZones(supabase),
@@ -117,7 +113,6 @@ export const GET = withUser(async ({ user, supabase }) => {
         .in('salesOrderId', chunk).order('id')),
     ]);
 
-    const projectsById = new Map(projects.map((p) => [p.id, p]));
     const dealsById = new Map(deals.map((d) => [d.id, d]));
     const ordersById = new Map((orders || []).map((o) => [o.id, o]));
     const todayIso = businessDate();
@@ -153,7 +148,7 @@ export const GET = withUser(async ({ user, supabase }) => {
     /* ⭐ `todayIso` (มติเจ้าของ 08/10 "ตามงานค้าง") — ตัวตั้งของชิป "ค้าง n วัน" บนแถวใบเดิม · วันไทยตัวเดียวกับที่คิวข้างล่างใช้
        · นาฬิกาของชิปอ่านจาก approvedAt + สามคอลัมน์ serviceSetup…At ที่ select ข้างบนเลือกมาอยู่แล้ว (ไม่มีคำสั่งอ่านเพิ่ม · ยาม legacySetupQueueGuard) */
     const legacy = legacySetupQueue({
-      orders: orders || [], lines, allocations, projectsById, dealsById, contractsById,
+      orders: orders || [], lines, allocations, dealsById, contractsById,
       zonesById: new Map((zones || []).map((z) => [z.id, z])),
       customersWithSite,
       todayIso,

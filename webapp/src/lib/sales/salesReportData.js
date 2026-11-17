@@ -98,7 +98,7 @@ function shapeOrderRow(o, { person, lineCount, payments = new Map() }) {
     ownerName: person(o.ownerId)?.name || o.ownerName || null,
     // ทีมตามดีล — ตัวเดียวกับที่แถวทีม/รายคนใช้ ⇒ กรอง/จัดกลุ่มตามทีมในตารางใบกระทบกับสรุปได้
     team: reportOrderTeam(o),
-    // ประเภทธุรกิจ (สินค้า/บริการ) ตามตัวกลาง — โครงการก่อน ดีลทีหลัง · ประเภทดีล (SCENT/NPD/RE-ORDER/OTHER) ของดีล
+    // ประเภทธุรกิจ (สินค้า/บริการ) ตามตัวกลาง — สายของดีล · ประเภทดีล (SCENT/NPD/RE-ORDER/OTHER) ของดีล
     // ⚠️ ไม่เติมค่าตั้งต้น (dealTypeOf ตีค่าว่างเป็น NPD) — ว่าง = ขีด ให้เห็นว่าดีลยังไม่ระบุ
     line: orderBusinessLineOf(o),
     dealType: o.deal?.dealType || null,
@@ -158,16 +158,16 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
   /* ── ใบสั่งขายที่อนุมัติแล้ว ─────────────────────────────────────────
      ⭐ ทีมของยอด = `deal:sales_deals(team, …)` — embed ในคิวรีเดียวกัน (พ่วงประเภทดีล `dealType` + สาย `line`
         ของดีลมาด้วย — คอลัมน์ "ประเภทธุรกิจ/ประเภทดีล" ของรายการใบ · มติผู้ใช้ 2026-09-22)
-     ⭐ ประเภทธุรกิจตัดสินด้วย `orderBusinessLineOf` ตัวกลาง: สายของ **โครงการ** ก่อน แล้วค่อยสายของดีล
-        (โครงการเป็นเจ้าของค่าจริง ดีลเป็นสำเนา — กติกาเดียวกับทะเบียนการชำระ/คิว TS) ⇒ embed `project:projects(id, line)` (FK เดียว 0107 · service role
-        ไม่โดน RLS) ⚠️ ห้ามแยกไปถาม `.in('id', dealIds)` — ลิสต์โตตามจำนวนใบ ชนเพดาน URL 16 KB
+     ⭐ ประเภทธุรกิจตัดสินด้วย `orderBusinessLineOf` ตัวกลาง: สายของ **ดีล** (embed `line` มากับ `deal:` แล้ว —
+        กติกาเดียวกับทะเบียนการชำระ/คิว TS) · งวด P3b-1 ยุบโครงการ เลิก embed `project:projects(id, line)` (สายของโครงการ = ของดีลทุกใบบน prod)
+        ⚠️ ห้ามแยกไปถาม `.in('id', dealIds)` — ลิสต์โตตามจำนวนใบ ชนเพดาน URL 16 KB
      ⛔ ใบสั่งขายย้อนหลัง (mig 0360) อนุมัติ ณ เวลาคีย์แต่ไม่ใช่ยอดขาย — ไม่กรอง = งานเก่าทั้งกองโผล่เป็นยอดของเดือนที่คีย์ */
   /* ⭐ ใบ "Actual รายงวด" (mig 0412) ที่อนุมัติ **ก่อน** งวดก็โหลดมาด้วย (`.or` ข้างล่าง) — งวดของมันนับในเดือนที่ AE Sup
      อนุมัติงวด ซึ่งอาจอยู่ในงวดนี้ · ใบทั้งใบยังเป็นช่วงเดิม [from, until) · `status` / แบบการนับ / cache สองช่องมาด้วย
      (ตัวแตกแถว + ส่วนรออนุมัติของงวดอ่าน) · ดีลพ่วง `stage` ให้ส่วนรออนุมัติของงวดนับเฉพาะดีล Won (กติกาเดียวกับแดชบอร์ด) */
   const { data: orders, error: orderError } = await fetchAllResult(() => pipelineRowsOnly(supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", status, "actualMode", "actualCountedAmount", "actualSubmittedAmount", metadata, project:projects(id, line), deal:sales_deals(team, id, line, "dealType", stage)'))
+    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", status, "actualMode", "actualCountedAmount", "actualSubmittedAmount", metadata, deal:sales_deals(team, id, line, "dealType", stage)'))
     .eq('status', 'approved')
     .lt('approvedAt', window.until)
     .or(`approvedAt.gte."${window.from}",actualMode.eq.installment`)
@@ -242,7 +242,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
   const { data: pendingOrders, error: pendingError } = coversToday
     ? await fetchAllResult(() => pipelineRowsOnly(supabase
       .from('sales_orders')
-      .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata, project:projects(id, line)'))
+      .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", status, "submittedAt", "vatAmount", "totalAmount", "actualAmount", metadata'))
       .eq('status', 'pending_approval')
       .order('id', { ascending: true }))
     : { data: [], error: null };
@@ -306,7 +306,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     }
   }
 
-  // ประเภทธุรกิจของใบรออนุมัติ — ตัวกลางเดียวกับใบอนุมัติแล้ว (โครงการของใบก่อน แล้วดีล)
+  // ประเภทธุรกิจของใบรออนุมัติ — ตัวกลางเดียวกับใบอนุมัติแล้ว (สายของดีลของใบ)
   const pendingDealById = new Map((pendingDeals || []).map((d) => [d.id, d]));
   /* ⭐ งวดที่ยื่นแล้วรอ AE Sup ของใบ "Actual รายงวด" (mig 0412 · มติข้อ 5) อยู่ในส่วนรออนุมัติด้วย — ใบที่อนุมัติแล้ว
      ทุกใบอยู่ในก้อน `orders` เมื่องวดคลุมวันนี้ (คิวรีโหลดใบรายงวดทุกใบที่อนุมัติก่อนสิ้นงวด) · แนบงวดให้นับจำนวนงวดได้ */

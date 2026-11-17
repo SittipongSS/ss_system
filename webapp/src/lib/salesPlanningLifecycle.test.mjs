@@ -62,8 +62,10 @@ test('Won ทำผ่านใบเสนอราคาเท่านั้�
 
 test('nextAction ที่ stage สำคัญ', () => {
   assert.equal(dealLifecycle(deal({ stage: 'deposit_pending' })).nextAction.kind, 'quote');
-  assert.equal(dealLifecycle(deal({ stage: 'won' })).nextAction.kind, 'create_project');
-  assert.equal(dealLifecycle(deal({ stage: 'won', projectId: 'P1' })).nextAction.kind, 'open_project');
+  // ยุบดีล/โครงการ P2d: ไม่ชวนสร้าง/เปิดโครงการ PM อีกแล้ว — มี/ไม่มีโครงการได้ขั้นเดียวกัน
+  assert.equal(dealLifecycle(deal({ stage: 'won' })).nextAction.kind, 'after_sale');
+  assert.equal(dealLifecycle(deal({ stage: 'won', projectId: 'P1' })).nextAction.kind, 'after_sale');
+  assert.equal(dealLifecycle(deal({ stage: 'in_project', projectId: 'P1' })).nextAction.kind, 'after_sale');
 });
 
 // PM/ไทม์ไลน์ ไม่ใช่ route ใน dealLifecycle อีกต่อไป — ย้ายไปจัดการที่การ์ด Timeline
@@ -74,7 +76,7 @@ test('routes: ไม่มี pm route (ไทม์ไลน์จัดกา�
   assert.equal(route(dealLifecycle(deal({ stage: 'won', projectId: 'P1' })), 'pm'), undefined);
 });
 
-test('route สรรพสามิต: มีเฉพาะดีลที่มี FG หมวดติ๊ก isExcise; locked ถ้ายังไม่มีโครงการ', () => {
+test('route สรรพสามิต: มีเฉพาะดีลที่มี FG หมวดติ๊ก isExcise; ยังไม่ขึ้นทะเบียน = locked ชี้หน้าสินค้า FG', () => {
   const noExcise = dealLifecycle(deal({ stage: 'won', metadata: { fgCodes: ['FG-A-02-001-1'] } }), related());
   assert.equal(exciseRoute(noExcise), undefined);
 
@@ -86,14 +88,19 @@ test('route สรรพสามิต: มีเฉพาะดีลที่
   assert.equal(newCat.routes.some((r) => r.kind === 'excise' || r.kind.startsWith('excise:')), true);
 });
 
-test('สรรพสามิตราย FG: ยังไม่ขึ้น → สร้างทะเบียน (create-excise)', () => {
-  const lc = dealLifecycle(
-    deal({ stage: 'in_project', projectId: 'P1', metadata: { fgCodes: ['FG-A-01-002-1'] } }),
-    related({ exciseRegistrations: [] }),
-  );
-  const r = exciseRoute(lc);
-  assert.equal(r.status, 'available');
-  assert.equal(r.actionKind, 'create-excise');
+/* ยุบดีล/โครงการ P2d: ปุ่มสร้างทะเบียนบนการ์ดดีลยิงเส้น from-project (ต้องมีโครงการ · prod ใช้ 0) — ถอดแล้ว
+   มี/ไม่มีโครงการได้การ์ดหน้าตาเดียวกัน: ชี้ไปขึ้นทะเบียนที่หน้าสินค้า FG */
+test('สรรพสามิตราย FG: ยังไม่ขึ้น → ชี้หน้าสินค้า FG ไม่มีปุ่มสร้าง (มี/ไม่มีโครงการเหมือนกัน)', () => {
+  for (const projectId of ['P1', null]) {
+    const lc = dealLifecycle(
+      deal({ stage: 'in_project', projectId, metadata: { fgCodes: ['FG-A-01-002-1'] } }),
+      related({ exciseRegistrations: [] }),
+    );
+    const r = exciseRoute(lc);
+    assert.equal(r.status, 'locked', String(projectId));
+    assert.equal(r.actionKind, null, String(projectId));
+    assert.match(r.hint, /หน้าสินค้า FG/, String(projectId));
+  }
 });
 
 test('สรรพสามิตราย FG: ทะเบียนยังไม่อนุมัติ → เปิดทะเบียนไปทำต่อ (ไม่สร้างซ้ำ)', () => {
@@ -136,9 +143,8 @@ test('สรรพสามิตหลาย FG: แยกการ์ดตา
   const rB = lc.routes.find((r) => r.kind === 'excise:FG-B-01-002-2');
   assert.equal(rA.status, 'done'); // อนุมัติ → ยื่นชำระ
   assert.equal(rA.href, null);
-  assert.equal(rB.status, 'available'); // ยังไม่ขึ้น → สร้างทะเบียน
-  assert.equal(rB.actionKind, 'create-excise');
-  assert.equal(rB.productId, 'PB');
+  assert.equal(rB.status, 'locked'); // ยังไม่ขึ้น → ขึ้นทะเบียนที่หน้าสินค้า FG
+  assert.equal(rB.actionKind, null);
 });
 
 test('route สหมิตร: แสดงเมื่อผูก PO แล้ว', () => {

@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Archive, ArchiveRestore, Building2, ShoppingCart, FolderKanban, MessagesSquare, Send } from "lucide-react";
+import { ArrowLeft, Package, Archive, ArchiveRestore, Building2, ShoppingCart, MessagesSquare, Send } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -134,7 +134,6 @@ export default function ProductDetails() {
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [regs, setRegs] = useState([]);
   const [orders, setOrders] = useState([]);     // orders this product appears in (tax-gated)
-  const [projects, setProjects] = useState([]); // PM projects this product is in (pm-gated)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -170,9 +169,9 @@ export default function ProductDetails() {
     setLoading(false);
   };
 
-  // Cross-module relations (360-view): registrations + orders + projects from one
+  // Cross-module relations (360-view): registrations + orders from one
   // scoped endpoint. Returns [] for relations the user may not see (tax →
-  // history:view, projects → pm:view), so no extra client-side gate is needed.
+  // history:view), so no extra client-side gate is needed.
   /* ลิงก์ทะเบียนจากหน้าอื่น/แจ้งเตือน (`/go/registration/<id>` → `?registration=<id>`) เปิดแท็บสรรพสามิตที่ทะเบียนใบนั้นให้เลย
      อ่านจาก location ครั้งเดียวตอนเปิดหน้า — ไม่ใช้ useSearchParams (หน้านี้ไม่มี Suspense ครอบ) */
   useEffect(() => {
@@ -180,10 +179,10 @@ export default function ProductDetails() {
     if (wanted) { setRegKey(wanted); setTab("excise"); }
   }, []);
   const loadRelations = useCallback(() => {
-    if (!id) { setRegs([]); setOrders([]); setProjects([]); return; }
+    if (!id) { setRegs([]); setOrders([]); return; }
     apiFetch(`/api/master/products/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setProjects(d.projects || []); } })
+      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); } })
       .catch(() => {});
   }, [id]);
   useEffect(() => { loadRelations(); }, [loadRelations]);
@@ -682,32 +681,7 @@ export default function ProductDetails() {
                 )}
               </div>
             </DetailCard>
-            {/* PM projects this product is part of — read-only, deep-link to /sa. */}
-            {projects.length > 0 && (
-            <DetailCard icon={FolderKanban} eyebrow="Projects" title={`โครงการที่เกี่ยวข้อง (${projects.length})`}>
-              <div className="space-y-2">
-                {projects.map((p) => (
-                  /* ห่อทั้งแถวด้วย <Link> ได้ — ป้ายสถานะเป็น span ที่ใส่คลาส ui-badge
-                     ที่เหลือเป็นข้อความล้วน ⇒ ไม่มี interactive descendant
-                     🪤 จงใจไม่เขียนชื่อคลาสในรูป `className="…"` ตรงนี้ — badgeFamilies.test.mjs
-                        นับ *สตริงที่มีชื่อคลาส* จากไฟล์ดิบ (ไม่ล้างคอมเมนต์) ⇒ คอมเมนต์ที่ยกโค้ด
-                        มาแปะจะไปบวกตัวเลข "จุดที่ใช้งานจริง" บนหน้าต้นแบบให้เพี้ยน */
-                  <Link
-                    key={p.id}
-                    prefetch={false}
-                    href={`/sa/projects/${p.id}`}
-                    className="card-link flex items-center justify-between text-xs border border-[var(--border)] rounded-lg px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <span className="font-semibold text-[var(--text)]">{p.name || p.code}</span>
-                      <span className="text-[var(--text-3)] font-mono ml-2">{p.code}</span>
-                    </div>
-                    {p.status && <span className="ui-badge shrink-0">{p.status}</span>}
-                  </Link>
-                ))}
-              </div>
-            </DetailCard>
-            )}
+            {/* การ์ด "โครงการที่เกี่ยวข้อง" ถูกถอด (ยุบดีล/โครงการ P2d · project_products บน prod = 0 แถว) */}
           </div>
         )}
 

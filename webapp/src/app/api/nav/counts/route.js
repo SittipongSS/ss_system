@@ -1,7 +1,7 @@
 // ── API ตัวเลขบนเมนูหลัก ─────────────────────────────────────────────────
 // GET /api/nav/counts → { requests?, tasks?, rdRequests?, rdPricing?, rdBom?, financeRequests?,
 //                         serviceRequests?, leads?, quotations?, salesOrders?,
-//                         contracts?, projectCloses?, scents?, formulas?, customers?,
+//                         contracts?, scents?, formulas?, customers?,
 //                         products?, visits?, serviceIntake?, mgmtTasks?,
 //                         taxRegistrations?, taxFilings?, issues?, productionJobs?,
 //                         payments? }
@@ -41,7 +41,6 @@ import { historicalRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrde
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { isContractWaitingOnMe, latestContractRevisions } from '@/lib/sales/contracts';
 import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
-import { canApproveProjectClose, isProjectCloseWaitingOnMe } from '@/lib/pm/projectClose';
 import { isScentRegistrar } from '@/lib/master/scents';
 import { isFormulaRegistrar } from '@/lib/master/formulas';
 import { inSalesViewScope, isWonStage } from '@/lib/salesPlanning';
@@ -183,10 +182,10 @@ export const GET = withUser(async ({ user, supabase }) => {
 
   /* ── เฟส 1: ขาย + ฐานข้อมูล ─────────────────────────────────────────────
      กติกาเดิมทุกข้อ: นับเฉพาะ "รอฉันลงมือ" · เงื่อนไขอยู่ใน helper ของโดเมนนั้น
-     (`isQuotationWaitingOnMe` · `isSalesOrderWaitingOnMe` · `isProjectCloseWaitingOnMe`)
+     (`isQuotationWaitingOnMe` · `isSalesOrderWaitingOnMe`)
      ไม่เขียนใหม่ที่นี่ · route ทำหน้าที่แค่ **แคบชุดข้อมูลก่อนส่งให้ helper กรอง**
 
-     ⚠️ ตัวที่ต้องรู้ "ใครเป็นเจ้าของดีล/ใครขอปิด" ดึงแถวผอม ๆ มากรองใน JS —
+     ⚠️ ตัวที่ต้องรู้ "ใครเป็นเจ้าของดีล" ดึงแถวผอม ๆ มากรองใน JS —
      ใช้ `head: true` ไม่ได้เพราะเงื่อนไขไม่ได้อยู่บนคอลัมน์ของตารางนั้นตัวเดียว
      ส่วนตัวที่เป็นสถานะล้วน (ทะเบียน/ลูกค้า) นับด้วย `head: true` ไม่ดึงแถวเลย */
 
@@ -367,17 +366,17 @@ export const GET = withUser(async ({ user, supabase }) => {
            ถูก Rev. ทับไม่มีผล) · ตัดคนยื่นเอง ยกเว้น admin ⇒ ต้องพก `serviceSetupSubmittedById`
          ⚠️ นับจำนวนใบ ไม่รวมยอด · ใบย้อนหลัง (0374) ไม่มีเส้นนี้ ⇒ pipelineRowsOnly */
       const reviewLane = can(user.role, 'salesplan:view') && reviewer
-        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", project:projects(id, line), deal:sales_deals(id, line)'))
+        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", deal:sales_deals(id, line)'))
           .eq('status', 'approved').eq('serviceSetupState', 'submitted').is('supersededById', null).is('serviceTermsOpenedAt', null)
           .order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
-      /* ⭐ เลนเจ้าของดีลตั้ง: ใบอนุมัติแล้วที่ยังไม่ประทับของดีลที่ฉันเป็นเจ้าของ — ฝังโครงการ/ดีล (พร้อม id) ให้ตัวตัดสิน
-           สายธุรกิจ (โครงการก่อนแล้วดีล) ตอบได้จากแถวเดียว ไม่ต้องยิงรอบสอง · ตัดสายที่ไม่ใช่ SERVICE ใน JS
-           (`project!inner` กรองไม่ได้ — ใบที่ไม่มีโครงการต้องถอยไปอ่านสายของดีล) แล้วค่อยโหลดบรรทัดของใบที่เหลือ
+      /* ⭐ เลนเจ้าของดีลตั้ง: ใบอนุมัติแล้วที่ยังไม่ประทับของดีลที่ฉันเป็นเจ้าของ — ฝังดีล (พร้อม id) ให้ตัวตัดสิน
+           สายธุรกิจ (สายของดีล · งวด P3b-1 ยุบโครงการ เลิกฝังโครงการ) ตอบได้จากแถวเดียว ไม่ต้องยิงรอบสอง · ตัดสายที่ไม่ใช่
+           SERVICE ใน JS แล้วค่อยโหลดบรรทัดของใบที่เหลือ
          ⚠️ ขนาด = ใบที่อนุมัติแล้วยังไม่ประทับของเจ้าของดีลคนนี้ — ไล่หน้าแล้ว แต่ **ไม่ได้เล็กโดยโครงสร้าง**
            (ใบเก่าทั้งหมดของเขา รวมใบสายสินค้า) · บรรทัดโหลดเฉพาะใบสาย SERVICE */
       const backfillLane = can(user.role, 'salesplan:view')
-        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", project:projects(id, line), deal:sales_deals!inner(id, ownerId, line)'))
+        ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "projectId", "dealId", "supersededById", "serviceTermsOpenedAt", "serviceSetupState", "serviceSetupSubmittedById", deal:sales_deals!inner(id, ownerId, line)'))
           .eq('status', 'approved').is('serviceTermsOpenedAt', null).is('supersededById', null).eq('deal.ownerId', user.id)
           .order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
@@ -497,18 +496,8 @@ export const GET = withUser(async ({ user, supabase }) => {
     }));
   }
 
-  if (canApproveProjectClose(user)) {
-    jobs.push(attempt('projectCloses', async () => {
-      // เหตุผลเดียวกับตัวนับใบเสนอราคาข้างบน — ทิ้ง error = ป้ายขึ้น 0 เงียบ
-      const { data, error: closeError } = await fetchAllResult(() => supabase
-        .from('projects')
-        .select('id, "closeStatus", "closeRequestedBy"')
-        .eq('closeStatus', 'pending_close')
-        .order('id', { ascending: true }));
-      if (closeError) throw closeError;
-      return (data || []).filter((row) => isProjectCloseWaitingOnMe(row, user)).length;
-    }));
-  }
+  /* ป้าย "โครงการ N" (`projectCloses` — คำขอปิดโครงการที่รอฉันอนุมัติ) ถอดในงวด P3b-1 ยุบโครงการ (16/11/2026):
+     เมนู /sa/projects ถูกถอดตั้งแต่ P2d และ route ปิดโครงการถูกลบ ⇒ ไม่มีที่ให้ป้ายเกาะ/ให้กดอนุมัติแล้ว */
 
   // ทะเบียนกลิ่น/สูตร: `draft` = "รอเข้าทะเบียน" — งานของผู้รับเข้าทะเบียนเท่านั้น
   // (คนเสนอเห็นสถานะบนแถวของตัวเองอยู่แล้ว ป้ายบนเมนูจะกลายเป็นการทวงตัวเอง)

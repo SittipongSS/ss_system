@@ -33,8 +33,7 @@ const ROLLBACK_ONLY = {
   'app/api/service/surveys/[id]/zones/route.js': 'rollback แถวพื้นที่ที่เพิ่งเพิ่มหน้างานเมื่อออกรหัส ZN ล้ม',
   'app/api/sahamit/forecast/rounds/[id]/create-sales-deal/route.js': 'rollback ดีลที่เพิ่งสร้างจากรอบพยากรณ์',
   'app/api/sahamit/po/[id]/settle-deal/route.js': 'rollback ดีลที่เพิ่งสร้างตอนปิด PO',
-  'app/api/sahamit/po/[id]/create-project/route.js': 'rollback โครงการที่เพิ่งสร้างจาก PO',
-  'app/api/sales-planning/deals/[id]/create-project/route.js': 'rollback โครงการที่เพิ่งสร้างจากดีล',
+  // create-project ของ PO สหมิตร + ของดีล ถูกลบใน P3a (ยุบโครงการ 16/11) — ไม่มีทางสร้างโครงการแล้ว
 };
 
 function jsFiles(dir, out = []) {

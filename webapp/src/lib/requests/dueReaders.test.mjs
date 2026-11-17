@@ -33,6 +33,8 @@ const DECIDERS = [
   'src/lib/rd/perfumerBoard.js',
   // หน้าคำร้องประเมินพื้นที่แบบไทม์ไลน์ (25/09) — นับเลยวันนัด/เลยกำหนดส่งผล ต้องหยุดเมื่อใบปิด/ยกเลิก
   'src/lib/service/surveyJob.js',
+  // หน้าลูกค้าศูนย์รวม แท็บคำร้อง (มติ 8 · 13/11/2026 · งวด H4) — ตัดสิน "รอฝ่ายแจ้ง" / วันส่งของฝ่าย (`requestDueCell`)
+  'src/lib/master/customerHub.js',
 ];
 
 // ตัดคอมเมนต์ออกก่อนเทียบ — คอมเมนต์ที่เล่าว่าเคยผิดยังไงต้องไม่ทำเทสต์แดง
@@ -95,6 +97,7 @@ const CLOSURE_AWARE = [
   'src/app/api/sales-planning/my-schedule/route.js',
   'src/lib/rd/perfumerBoard.js',
   'src/lib/service/surveyJob.js',
+  'src/lib/master/customerHub.js',
 ];
 
 test('🔴 ไฟล์ที่ตัดสินเรื่องวัน ต้องรู้ว่าใบที่มีฝั่งปิดแล้วไม่มีวันให้ทวง', () => {

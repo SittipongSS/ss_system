@@ -10,11 +10,11 @@ import { pdrTargetsSubmitError } from '@/lib/requests/pdrTargets';
 import { npdUncoveredError, npdUncoveredPairs } from '@/lib/requests/npdPairs';
 import { dueIsStale } from '@/lib/requests/dueRound';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
-import { isRowSettled } from '@/lib/requests/rowStage';
+import { isRowSettled, requestPendingSteps } from '@/lib/requests/rowStage';
 import { soReconcile } from '@/lib/requests/soReconcile';
 import { scentSlotLinesOf } from '@/lib/requests/scentOrderLinks';
 import { closureStatus, reopenWaitClearPatch } from '@/lib/requests/closure';
-import { requestSideText } from '@/lib/requests/replyTurn';
+import { requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
 
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
 // ตัวนับคำนวณตอนอ่านเสมอ ห้ามเก็บคอลัมน์ (กัน drift — แพตเทิร์นเดียวกับใบขอราคาผลิต)
@@ -267,6 +267,38 @@ export function closeBeforeAnswerReason(request, { unassessedExit = false } = {}
   return `${requestSideText(request, 'dept', 'ยังไม่ได้ตอบ')} — ปิดเรื่องได้หลังได้รับคำตอบ · ${exit}`;
 }
 
+/**
+ * เหตุที่ปิดเรื่องไม่ได้เพราะแถวยังเดินไม่จบ — **บอกว่าค้างที่ใคร ปุ่มชื่ออะไร กี่แถว**
+ *
+ * 🐞 (16/11/2026 · ผู้ใช้: *"RD บอกให้ SA ปิด แต่ SA ปิดไม่ได้"*) ของเดิมตอบประโยคเดียวทุกกรณี
+ *   `ตอบให้ครบหรือกด "ตอบไม่ได้" ก่อน` — "ตอบ" กับ "ตอบไม่ได้" เป็นงานของฝ่าย แต่คนที่อ่านประโยคนี้คือผู้ขอ
+ *   (ปุ่มปิดเป็นของผู้ขอ) · วัด prod 16/11: 44 ใบที่คิวขึ้น "รอ SA ทำต่อ" ค้างที่ขั้นของ SA เอง
+ *   (บันทึกคำตอบ 66 แถว · รับของ 25 · ส่งให้ลูกค้า 8 · ได้รับแล้ว 7) ⇒ RD เห็นป้ายแล้วบอก SA ให้ปิด
+ *   SA กดแล้วอ่านว่ารอ RD ⇒ ต่างฝ่ายต่างรอ
+ * ⭐ ฝั่งผู้ขอเขียนเป็น **ชื่อปุ่มในเครื่องหมายคำพูด** (ต้องไปหาปุ่มนั้นที่แถว) · ฝั่งฝ่ายเขียนเป็นก้าวเฉย ๆ
+ *   แบบป้ายคิว ("รอ RD ใส่ราคา") — ผู้ขอแค่ต้องรู้ว่ารอใคร ไม่ต้องหาปุ่มของคนอื่น
+ * ⚠️ ด่านไม่เปลี่ยน — แถวต้องเดินครบก่อนปิดเหมือนเดิม เปลี่ยนแค่ประโยค
+ * ⚠️ คงต้น "ยังมีรายการที่ยังเดินไม่จบ" — ข้อความอื่นและเทสต์อ้างคำนี้
+ */
+export function closeRowsPendingReason(request, rows = []) {
+  const steps = requestPendingSteps(rows);
+  const count = (n) => `${n} รายการ`;
+  const sideText = (owner, verbs) => requestWaitLabel(request, owner, verbs);
+  const parts = [];
+  const mine = steps.filter((s) => s.owner === 'requester');
+  if (mine.length) {
+    parts.push(sideText('requester', `กด ${mine.map((s) => `“${s.label}” ${count(s.count)}`).join(' · ')}`));
+  }
+  for (const s of steps.filter((x) => x.owner === 'dept')) {
+    parts.push(`${sideText('dept', s.label)} ${count(s.count)}`);
+  }
+  const loose = steps.filter((s) => !s.owner).reduce((sum, s) => sum + s.count, 0);
+  if (loose) parts.push(`อีก ${count(loose)} ยังไม่จบ`);
+  if (!parts.length) return 'ยังมีรายการที่ยังเดินไม่จบ';
+  const tail = mine.length ? ' — ปุ่มอยู่ที่แถวในตารางรายการ' : '';
+  return `ยังมีรายการที่ยังเดินไม่จบ — ${parts.join(' · ')}${tail}`;
+}
+
 export function closeRequestError(request, items = []) {
   if (!request) return 'ไม่พบคำร้อง';
   if (request.status === 'closed') return 'คำร้องนี้ปิดแล้ว';
@@ -296,7 +328,7 @@ export function closeRequestError(request, items = []) {
   // ตัดสินว่าพอแล้ว (แนวคิดเดิม: คนถามคือคนตัดสินว่าคำตอบใช้ได้จริง)
   const rows = items || [];
   if (rows.length && !requestProgress(rows).complete) {
-    return 'ยังมีรายการที่ยังเดินไม่จบ — ตอบให้ครบหรือกด "ตอบไม่ได้" ก่อน';
+    return closeRowsPendingReason(request, rows);
   }
   if (!rows.length && request.status === 'pending') {
     return 'ยังไม่มีใครรับเรื่องเลย — ยกเลิกแทนการปิด';
@@ -355,7 +387,7 @@ export function closeRequestError(request, items = []) {
     /* ⚠️ นับเฉพาะบรรทัดออกแบบกลิ่น (ตัวหารเดียวกับ PDR 1.12 · `scentCountForOrder`) — SO ใบหนึ่ง
        ขายของอื่นปนได้ (ด่านหน้าประตูบังคับแค่ "มีบรรทัดออกแบบกลิ่นอย่างน้อยหนึ่ง") ⇒ รวมทุกบรรทัด
        = ใบที่ลูกค้าคอนเฟิร์มครบทุกกลิ่นขึ้น "3 จาก 13" แล้วปิดไม่ได้ตลอดกาล (รีวิว ม-146) */
-    /* ⭐ ม-163 — ตัวหารรวม SO ที่ลูกค้าซื้อเพิ่มแล้วแนบ (ยกเว้น 03-010 ของ SO แนบ = รอบแก้ ไม่ใช่กลิ่น)
+    /* ⭐ ม-164 — ตัวหารรวม SO ที่ลูกค้าซื้อเพิ่มแล้วแนบ (ยกเว้น 03-010 ของ SO แนบ = รอบแก้ ไม่ใช่กลิ่น)
        · ตัวโหลดไม่ได้เติมมา = บรรทัดออกแบบกลิ่นของ SO หลักแบบเดิม (`scentSlotLinesOf`) */
     const reconcile = soReconcile({ lines: scentSlotLinesOf(request), items: rows });
     if (reconcile && (reconcile.state === 'pending' || reconcile.state === 'short')) {

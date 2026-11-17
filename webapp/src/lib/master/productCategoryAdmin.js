@@ -11,19 +11,18 @@ export async function loadProductCategoryRows(supabase) {
   return data || [];
 }
 export async function loadProductCategoryManagement(supabase) {
-  /* ⚠️ สามก้อนล่างนับ "หมวดนี้มีใครใช้อยู่บ้าง" จากทั้งตาราง — `.not(... is null)` กรอง
+  /* ⚠️ สองก้อนล่างนับ "หมวดนี้มีใครใช้อยู่บ้าง" จากทั้งตาราง — `.not(... is null)` กรอง
      ค่าว่างออกเฉย ๆ ไม่ได้จำกัดจำนวนแถว ⇒ โดนเพดาน 1,000 เมื่อไร จำนวนที่ใช้งานจะ
-     ต่ำกว่าจริง แล้วหน้าจัดการหมวดจะยอมให้ลบหมวดที่ยังมีของผูกอยู่ (ด่านลบอ่านเลขนี้) */
-  const [items, productsResult, dealsResult, projectsResult] = await Promise.all([
+     ต่ำกว่าจริง แล้วหน้าจัดการหมวดจะยอมให้ลบหมวดที่ยังมีของผูกอยู่ (ด่านลบอ่านเลขนี้)
+     · ตัวนับโครงการ (`projects.productMainCategory`) ถอดในงวด P3b-1 ยุบโครงการ (16/11/2026) — โครงการเป็นคลังอ่านอย่างเดียว ไม่มีจอ */
+  const [items, productsResult, dealsResult] = await Promise.all([
     loadProductCategoryRows(supabase),
     fetchAllResult(() => supabase.from('products').select('categoryCode')
       .not('categoryCode', 'is', null).order('id', { ascending: true })),
     fetchAllResult(() => supabase.from('sales_deals').select('categoryCode')
       .not('categoryCode', 'is', null).order('id', { ascending: true })),
-    fetchAllResult(() => supabase.from('projects').select('productMainCategory')
-      .not('productMainCategory', 'is', null).order('id', { ascending: true })),
   ]);
-  const queryError = productsResult.error || dealsResult.error || projectsResult.error;
+  const queryError = productsResult.error || dealsResult.error;
   if (queryError) throw queryError;
 
   const countBy = (rows, key) => {
@@ -36,15 +35,13 @@ export async function loadProductCategoryManagement(supabase) {
   };
   const productCounts = countBy(productsResult.data, 'categoryCode');
   const dealCounts = countBy(dealsResult.data, 'categoryCode');
-  const projectCounts = countBy(projectsResult.data, 'productMainCategory');
   const rows = items.map((row) => {
     const code = productCategoryCode(row);
     const usage = {
       products: productCounts.get(code) || 0,
       deals: dealCounts.get(code) || 0,
-      projects: projectCounts.get(code) || 0,
     };
-    return { ...row, code, usage: { ...usage, total: usage.products + usage.deals + usage.projects } };
+    return { ...row, code, usage: { ...usage, total: usage.products + usage.deals } };
   });
   return {
     items: rows,

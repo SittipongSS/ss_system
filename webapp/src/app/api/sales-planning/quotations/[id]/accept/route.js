@@ -105,16 +105,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   const accepted = { ...(result?.quotation || {}), lines: quote.lines || [] };
   const updatedDeal = result?.deal;
 
-  // ⭐ SCENT ปิด Won แล้ว → NPD พี่น้องในโครงการเดียวกันขึ้นเป็น 80% (มติผู้ใช้ 2026-08-05)
-  // ลูกค้าจ่ายจริงกับโครงการนี้ไปแล้ว งานพัฒนาสินค้าที่ต่อยอดจึงไม่ใช่ 50% อีกต่อไป
-  // ⚠️ แตะเฉพาะ NPD (มติ 25/09) — ดีลประเภทอื่นในโครงการคง FC% ที่ AE เลือกไว้
-  // ⚠️ ตั้งแต่ 0434 ดีลที่ไม่มีโครงการปิด Won ได้ ⇒ projectId ว่าง = ไม่ cascade (คืน []) ·
-  //    กุญแจใหม่ของ "ดีลพี่น้อง" ต้องตัดสินในรอบ P2 (docs/customer-hub-plan.md)
+  // ⭐ SCENT ปิด Won แล้ว → NPD ที่ชี้ดีลนี้เป็น "ดีล SCENT ต้นทาง" ขึ้นเป็น 80% (มติผู้ใช้ 2026-08-05 ·
+  //    กุญแจเปลี่ยนจากโครงการเป็น sourceScentDealId — ยุบดีล/โครงการ P2c-2 มติเจ้าของ 13/11/2026 ③)
+  // ลูกค้าจ่ายค่าพัฒนากลิ่นไปแล้ว งานพัฒนาสินค้าที่ต่อยอดจึงไม่ใช่ 50% อีกต่อไป
+  // ⚠️ แตะเฉพาะ NPD (มติ 25/09) · ดีลที่ปิดไม่ใช่ SCENT = ไม่ cascade (คืน [])
   // ⚠️ นอก RPC โดยตั้งใจ: กติกาอยู่ใน JS ที่เดียว (dealProbability.js) ถ้าย้ายลง SQL จะมี
   // กติกาสองชุดที่ต้องแก้พร้อมกันตลอดไป · พลาดแล้วไม่ล้ม accept (ดีลปิดไปแล้วจริง)
   let cascaded = [];
   try {
-    cascaded = await cascadeNpdProbability(supabase, updatedDeal?.projectId || deal.projectId, { changedBy: user.id || null });
+    cascaded = await cascadeNpdProbability(supabase, { ...deal, ...(updatedDeal || {}) }, { changedBy: user.id || null });
   } catch (cascadeError) {
     console.error('cascadeNpdProbability failed', cascadeError);
   }

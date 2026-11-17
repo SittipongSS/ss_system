@@ -1,80 +1,67 @@
+// ตัวเลือกดีลสองชั้น — ถังซ้าย = ลูกค้า (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 · เดิมเป็นโครงการ)
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   ALL_DEALS_BUCKET, buildDealBuckets, dealSearchText, filterBuckets, filterDeals,
-  initialBucketKey, NO_PROJECT_BUCKET, projectLabelOf,
+  initialBucketKey, NO_CUSTOMER_BUCKET,
 } from './dealPickerTree.js';
 
-const projects = [
-  { id: 'P2', code: 'PJ-26080033', name: 'ODM_Somchai', customerName: 'สมชายโฮม' },
-  { id: 'P1', code: 'PJ-26080012', name: 'KA_Rinvala', customerName: 'บจก.รินวาลา' },
-];
 const deals = [
-  { id: 'D1', title: 'Rinvala Sachet', customerName: 'บจก.รินวาลา', forecastMonth: '2026-08', projectId: 'P1' },
-  { id: 'D2', title: 'Rinvala Sachet', customerName: 'บจก.รินวาลา', forecastMonth: '2026-11', projectId: 'P1' },
-  { id: 'D3', title: 'Diffuser 100ml', customerName: 'สมชายโฮม', forecastMonth: '2026-09', projectId: 'P2' },
-  { id: 'D4', title: 'กลิ่นใหม่ Q4', customerName: '', forecastMonth: null, projectId: null },
+  { id: 'D1', code: 'DL-1', title: 'Rinvala Sachet', customerId: 'C1', customerName: 'บจก.รินวาลา', customer: { arCode: 'AR-101' }, forecastMonth: '2026-08', projectId: 'P1' },
+  { id: 'D2', code: 'DL-2', title: 'Rinvala Sachet', customerId: 'C1', customerName: 'บจก.รินวาลา', forecastMonth: '2026-11', projectId: 'P1' },
+  { id: 'D3', code: 'DL-3', title: 'Diffuser 100ml', customerId: 'C2', customerName: 'สมชายโฮม', forecastMonth: '2026-09', projectId: null },
+  { id: 'D4', code: 'DL-4', title: 'กลิ่นใหม่ Q4', customerName: '', forecastMonth: null, projectId: null },
+  { id: 'D5', code: 'DL-5', title: 'ดีลเก่าชื่ออย่างเดียว', customerName: 'ร้านเก่า', forecastMonth: '2026-07' },
 ];
 
-test('buildDealBuckets: ดีลทั้งหมดมาก่อน → โครงการเรียงตามป้าย → ยังไม่ผูกโครงการท้ายสุด', () => {
-  const buckets = buildDealBuckets(deals, projects);
-  assert.deepEqual(buckets.map((b) => b.key), [ALL_DEALS_BUCKET, 'P1', 'P2', NO_PROJECT_BUCKET]);
-  assert.deepEqual(buckets.map((b) => b.deals.length), [4, 2, 1, 1]);
-  assert.equal(buckets[1].label, 'PJ-26080012 · KA_Rinvala');
+test('buildDealBuckets: ดีลทั้งหมดมาก่อน → ลูกค้าเรียงตามชื่อ → ยังไม่มีลูกค้าท้ายสุด · ไม่ดูโครงการ', () => {
+  const buckets = buildDealBuckets(deals);
+  assert.deepEqual(buckets.map((b) => b.label), ['ดีลทั้งหมด', 'บจก.รินวาลา', 'ร้านเก่า', 'สมชายโฮม', 'ยังไม่มีลูกค้า']);
+  assert.deepEqual(buckets.map((b) => b.deals.length), [5, 2, 1, 1, 1]);
+  assert.equal(buckets[1].code, 'AR-101', 'รหัส AR จากดีลใบไหนในกลุ่มก็ได้');
+  assert.equal(buckets.at(-1).key, NO_CUSTOMER_BUCKET);
 });
 
-test('buildDealBuckets: ไม่มีดีลลอย = ไม่มีถัง "ยังไม่ผูกโครงการ" (ถังว่างคือคำโกหก)', () => {
-  const buckets = buildDealBuckets(deals.filter((d) => d.projectId), projects);
-  assert.equal(buckets.some((b) => b.key === NO_PROJECT_BUCKET), false);
+test('buildDealBuckets: ดีลชื่อลูกค้าอย่างเดียว (ผูกก่อนมีทะเบียน) รวมกลุ่มด้วยชื่อ · ไม่มีดีลไร้ลูกค้า = ไม่มีถังนั้น', () => {
+  const buckets = buildDealBuckets([
+    { id: 'A', title: 'a', customerName: 'ร้านเก่า' },
+    { id: 'B', title: 'b', customerName: ' ร้านเก่า ' },
+  ]);
+  assert.deepEqual(buckets.map((b) => b.deals.length), [2, 2]);
+  assert.equal(buckets.some((b) => b.key === NO_CUSTOMER_BUCKET), false, 'ถังว่างคือคำโกหก');
 });
 
-test('buildDealBuckets: ดีลที่โครงการอยู่นอกลิสต์ ยังต้องมีถังของตัวเอง', () => {
-  const buckets = buildDealBuckets([{ id: 'DX', title: 'x', projectId: 'P-นอกทีม' }], projects);
-  const bucket = buckets.find((b) => b.key === 'P-นอกทีม');
-  assert.ok(bucket, 'ต้องมีถังให้ดีลใบนั้น ไม่ใช่หายไปเฉย ๆ');
-  assert.equal(bucket.label, 'โครงการอื่น');
-});
-
-test('filterBuckets: ค้นโครงการได้ และถัง "ดีลทั้งหมด" ไม่เคยถูกกรองทิ้ง', () => {
-  const buckets = buildDealBuckets(deals, projects);
-  const found = filterBuckets(buckets, 'PJ-26080033');
-  assert.deepEqual(found.map((b) => b.key), [ALL_DEALS_BUCKET, 'P2']);
-  // คำค้นที่ไม่ตรงอะไรเลย ยังต้องเหลือทางออกให้ผู้ใช้กดดูดีลทั้งหมด
+test('filterBuckets: ค้นลูกค้าด้วยชื่อหรือรหัส AR · ถัง "ดีลทั้งหมด" ไม่เคยถูกกรองทิ้ง', () => {
+  const buckets = buildDealBuckets(deals);
+  assert.deepEqual(filterBuckets(buckets, 'รินวาลา').map((b) => b.key), [ALL_DEALS_BUCKET, 'c:C1']);
+  assert.deepEqual(filterBuckets(buckets, 'AR-101').map((b) => b.key), [ALL_DEALS_BUCKET, 'c:C1']);
   assert.deepEqual(filterBuckets(buckets, 'ไม่มีจริง').map((b) => b.key), [ALL_DEALS_BUCKET]);
 });
 
-test('filterBuckets: ค้นฝั่งโครงการด้วย "ชื่อลูกค้า" ได้ (มติผู้ใช้ 2026-08-06)', () => {
-  const buckets = buildDealBuckets(deals, projects);
-  assert.deepEqual(filterBuckets(buckets, 'รินวาลา').map((b) => b.key), [ALL_DEALS_BUCKET, 'P1']);
-  // โครงการนอกลิสต์ไม่มีชื่อลูกค้าของตัวเอง — ตกไปใช้ลูกค้าของดีลในถังแทน
-  const outside = buildDealBuckets([{ id: 'DX', title: 'x', customerName: 'ลูกค้านอกทีม', projectId: 'PX' }], projects);
-  assert.equal(outside.find((b) => b.key === 'PX').customerName, 'ลูกค้านอกทีม');
-  assert.deepEqual(filterBuckets(outside, 'นอกทีม').map((b) => b.key), [ALL_DEALS_BUCKET, 'PX']);
+test('filterDeals: ค้นได้ทั้งรหัส ชื่อดีล ลูกค้า AR เดือน FC · หลายคำต้องเจอทุกคำ', () => {
+  assert.deepEqual(filterDeals(deals, 'diffuser').map((d) => d.id), ['D3']);
+  assert.deepEqual(filterDeals(deals, 'รินวาลา').map((d) => d.id), ['D1', 'D2']);
+  assert.deepEqual(filterDeals(deals, 'rinvala 2026-11').map((d) => d.id), ['D2']);
+  assert.deepEqual(filterDeals(deals, 'AR-101').map((d) => d.id), ['D1']);
+  assert.deepEqual(filterDeals(deals, 'DL-3').map((d) => d.id), ['D3']);
+  assert.deepEqual(filterDeals(deals, '  diffuser   สมชาย ').map((d) => d.id), ['D3']);
+  assert.equal(filterDeals(deals, '').length, 5);
 });
 
-test('คำค้นหลายคำต้องเจอทุกคำ ไม่ใช่ทั้งประโยคติดกัน', () => {
-  const labelOf = (deal) => projectLabelOf(projects.find((p) => p.id === deal.projectId));
-  assert.deepEqual(filterDeals(deals, 'rinvala 2026-11', labelOf).map((d) => d.id), ['D2']);
-  assert.deepEqual(filterDeals(deals, 'sachet KA_Rinvala', labelOf).map((d) => d.id), ['D1', 'D2']);
-  // เว้นวรรคเกิน/นำหน้า ต้องไม่ทำให้ผลเปลี่ยน
-  assert.deepEqual(filterDeals(deals, '  diffuser   สมชาย ', labelOf).map((d) => d.id), ['D3']);
-});
-
-test('filterDeals: ค้นได้ทั้งชื่อดีล ลูกค้า เดือน FC และชื่อโครงการ', () => {
-  const labelOf = (deal) => projectLabelOf(projects.find((p) => p.id === deal.projectId));
-  assert.deepEqual(filterDeals(deals, 'diffuser', labelOf).map((d) => d.id), ['D3']);
-  assert.deepEqual(filterDeals(deals, 'รินวาลา', labelOf).map((d) => d.id), ['D1', 'D2']);
-  assert.deepEqual(filterDeals(deals, '2026-11', labelOf).map((d) => d.id), ['D2']);
-  assert.deepEqual(filterDeals(deals, 'KA_Rinvala', labelOf).map((d) => d.id), ['D1', 'D2']);
-  assert.equal(filterDeals(deals, '', labelOf).length, 4);
-});
-
-test('initialBucketKey: กางแผงแล้วเปิดค้างที่ถังของดีลที่เลือกอยู่', () => {
-  assert.equal(initialBucketKey(deals[0]), 'P1');
-  assert.equal(initialBucketKey(deals[3]), NO_PROJECT_BUCKET);
+test('initialBucketKey: กางแผงแล้วเปิดค้างที่ถังลูกค้าของดีลที่เลือกอยู่', () => {
+  assert.equal(initialBucketKey(deals[0]), 'c:C1');
+  assert.equal(initialBucketKey(deals[3]), NO_CUSTOMER_BUCKET);
+  assert.equal(initialBucketKey(deals[4]), 'n:ร้านเก่า');
   assert.equal(initialBucketKey(null), ALL_DEALS_BUCKET);
 });
 
 test('dealSearchText: ไม่มีคำว่า undefined/null หลุดเข้าไปในคำค้น', () => {
-  assert.equal(dealSearchText(deals[3], 'ยังไม่ผูกโครงการ'), 'กลิ่นใหม่ Q4 ยังไม่ผูกโครงการ');
+  assert.equal(dealSearchText(deals[3]), 'DL-4 กลิ่นใหม่ Q4');
+});
+
+test('DealPicker ไม่รับ/ไม่อ่านรายชื่อโครงการแล้ว · ถังลูกค้าใช้ไอคอนลูกค้า', () => {
+  const src = readFileSync(new URL('../../components/pm/DealPicker.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src, /projects\s*=\s*\[|projects\.|buildDealBuckets\(deals, /);
+  assert.match(src, /bucket\.key === ALL_DEALS_BUCKET \? Handshake : Building2/);
 });

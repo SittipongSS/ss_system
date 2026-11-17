@@ -416,7 +416,9 @@ test('D-5 ฟอร์ม: โหมดล็อกซ่อนบล็อก�
   // ดีล: ป้ายของตัวเลือกไม่วาด · ช่องเส้นประของงวดมาก่อนกิ่งโหมดแก้ · ประโยค N18 แทนคำใบ้โครงการ
   assert.match(FORM, /\{!isEdit && !confirmLock && <span className=\{styles\.fieldLabel\}>ดีล<\/span>\}/);
   assert.match(FORM, /value=\{confirmLock\.mode === "create" \? confirmLock\.original\?\.dealLabel : \(lockedRefs\.deal \|\| ""\)\}/);
-  assert.match(FORM, /\{value\.dealId && !value\.projectId && !dealLock && \(/);
+  // คำใบ้ "ดีลนี้ยังไม่ผูกโครงการ" ถูกถอดในงวด P2d (ยุบดีล/โครงการ) — ช่อง "เลขที่โครงการ" = รหัสดีล
+  assert.doesNotMatch(FORM, /ดีลนี้ยังไม่ผูกโครงการ/);
+  assert.match(FORM, /label="เลขที่โครงการ" from=\{dealLock \? SURVEY_CONFIRM_FROM_ORIGINAL : "เติมจากดีลที่เลือก"\}/);
   assert.match(FORM, /value=\{selectedDeal\?\.customerName \|\| lockedRefs\.customer \|\| confirmLock\?\.original\?\.customerName \|\| ""\}/);
   // บล็อกสถานที่: อ่านอย่างเดียว · สร้างสถานที่ไม่ได้ · โหมดสร้างไม่ส่งลูกค้า (ไม่ยิงลิสต์ · นิ่งทันที — R4)
   const site = between(FORM, '<SurveySiteFields', '/>');

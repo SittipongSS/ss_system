@@ -7,7 +7,7 @@
 //
 // ประชากร: ใบ pipeline ทุกใบที่ไม่ใช่ cancelled/revised — route งวดถามด่านนี้กับทุกสถานะ (installments/route.js)
 //   รวมร่าง Rev. ที่มีงวดย้ายมา · `select('*')` ทนคอลัมน์ 0392 ที่ยังไม่มีก่อนรัน
-// บริบท: ต้องโหลดโครงการ/ดีลมาด้วย — ไม่งั้นสายของใบเป็น null แล้ว `orderHasServiceRounds` ตอบ false ทุกใบ
+// บริบท: ต้องโหลดดีลมาด้วย (สายของใบ · เลิกถามโครงการตั้งแต่ P3b-1) — ไม่งั้นสายของใบเป็น null แล้ว `orderHasServiceRounds` ตอบ false ทุกใบ
 //   (สคริปต์จะ "ผ่าน" โดยไม่ได้พิสูจน์อะไรเลย) ⇒ ยืนยันว่ามีอย่างน้อยหนึ่งใบที่ธงเป็นจริงด้วย
 //
 // Usage (รันจากโฟลเดอร์ webapp — loader map '@/' ไปที่ <cwd>/src · อ่าน .env.local):
@@ -71,20 +71,14 @@ async function loadFlags() {
   ));
   if (linesError) die('sales_order_lines', linesError);
 
-  const projectIds = orders.map((o) => o.projectId).filter(Boolean);
-  const { data: projects, error: projectsError } = await fetchInChunks(projectIds, (chunk) => fetchAllResult(
-    () => supabase.from('projects').select('id, line').in('id', chunk).order('id'),
-  ));
-  if (projectsError) die('projects', projectsError);
-
   const dealIds = orders.map((o) => o.dealId).filter(Boolean);
   const { data: deals, error: dealsError } = await fetchInChunks(dealIds, (chunk) => fetchAllResult(
     () => supabase.from('sales_deals').select('id, line').in('id', chunk).order('id'),
   ));
   if (dealsError) die('sales_deals', dealsError);
 
+  // สายธุรกิจอ่านจากดีลอย่างเดียว (งวด P3b-1 ยุบโครงการ — ตัวตัดสินเลิกถามโครงการ)
   const ctx = {
-    projectsById: new Map(projects.map((p) => [p.id, p])),
     dealsById: new Map(deals.map((d) => [d.id, d])),
   };
   const linesByOrder = new Map();

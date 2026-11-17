@@ -2,7 +2,6 @@
 import { TableScroll } from "@/components/ui/Table";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import Select from "@/components/ui/Select";
-import SearchableSelect from "@/components/ui/SearchableSelect";
 import Button from "@/components/ui/Button";
 import GatedAction from "@/components/ui/GatedAction";
 import TaskCreateButton from "@/components/pm/TaskCreateButton";
@@ -11,14 +10,12 @@ import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmo
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, FolderKanban, Handshake, Inbox, Layers, Link2, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, Unlink, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, Handshake, Inbox, Layers, Link2, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, Unlink, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
-import DateInput from "@/components/ui/DateInput";
 import MoneyInput from "@/components/ui/MoneyInput";
-import SalesProjectCreateModal from "@/components/pm/SalesProjectCreateModal";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isWonStage, normalizeDealType, stageAtLeast } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isWonStage, normalizeDealType } from "@/lib/salesPlanning";
 import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -31,7 +28,6 @@ import useDealOwners from "@/lib/sales/useDealOwners";
 import { createClient } from "@/lib/supabaseBrowser";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
-import { offerDeleteEmptyProject } from "@/lib/sales/emptyProjectCleanup";
 import { FORECAST_LEVELS, businessLineBadge, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import { customerHeadline } from "@/lib/master/customerAr";
@@ -40,6 +36,7 @@ import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
 import { quotationDealBlocker } from "@/lib/sales/quotationSourcePicker";
 import TimelineWorkspace from "@/components/pm/TimelineWorkspace";
+import DealTimelineRevControls from "@/components/salesPlanning/DealTimelineRevControls";
 import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { tasksQueueHref } from "@/lib/pm/dealTaskLink";
@@ -60,11 +57,11 @@ import { useResponsiveView } from "@/lib/useResponsiveView";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
 import Textarea from "@/components/ui/Textarea";
 import styles from "./page.module.css";
-import { businessDate } from "@/lib/businessDate";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
+import { isHistoricalDeal } from "@/lib/sales/historicalOrders";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
 import { installmentActualSubLine, wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
@@ -176,15 +173,8 @@ function DealStepper({ steps, lost }) {
 }
 
 const ROUTE_COLOR = { done: "var(--green)", available: "var(--accent)", progress: "var(--amber)", locked: "var(--text-3)" };
-function RouteMenuButton({ route, onAction, busy, canEdit }) {
+function RouteMenuButton({ route }) {
   const color = ROUTE_COLOR[route.status] || "var(--text-3)";
-  if (route.actionKind && canEdit) {
-    return (
-      <button type="button" className={`btn sm${route.status === "available" ? " btn-primary" : ""}`} onClick={() => onAction(route)} disabled={busy} title={route.hint} style={{ borderColor: color }}>
-        {route.actionKind?.startsWith("create-") ? <Plus size={13} aria-hidden="true" /> : <FileText size={13} aria-hidden="true" />} {route.actionLabel || route.label}
-      </button>
-    );
-  }
   if (route.href) {
     return <a className="btn sm" href={route.href} title={route.hint} style={{ borderColor: color }}><ExternalLink size={13} aria-hidden="true" /> {route.linkLabel || route.label}</a>;
   }
@@ -231,11 +221,10 @@ export default function DealOverviewPage() {
     load();
   }, [load]);
 
-  // ข้อมูลสำหรับโมดัลแก้ดีล + สร้างโครงการ — โหลดครั้งเดียว
+  // ข้อมูลสำหรับโมดัลแก้ดีล — โหลดครั้งเดียว (รายชื่อโครงการเลิกโหลดแล้ว · P2d)
   useEffect(() => {
     apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).then((d) => setCustomers(d || [])).catch(() => {});
     cachedFetchJson("/api/product-types").then((d) => setCategories(d || [])).catch(() => {});
-    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((d) => setProjects(d || [])).catch(() => {});
   }, []);
 
   const acceptedQuote = useMemo(() => (data?.quotations || []).find((quote) => quote.status === "accepted"), [data]);
@@ -320,8 +309,9 @@ export default function DealOverviewPage() {
     };
   }, [data]);
 
-  // พิมพ์เอกสารไทม์ไลน์ของดีล — ใช้ตัว gen เดียวกับหน้าโครงการ (openGanttPrintWindow)
-  // แต่ไม่ออกเลข Rev / ไม่เก็บประวัติ (rev+revDate = null) ตามมติผู้ใช้.
+  // พิมพ์เอกสารไทม์ไลน์ของดีล (ฉบับสด) — ตัว gen เดียวกับหน้าโครงการ (openGanttPrintWindow)
+  // งวด P2b ยุบดีล/โครงการ: เลขที่เอกสาร = รหัสดีล + Rev. · ออก Rev. แล้วไม่แก้ = ปั๊ม Rev. นั้น · ยังไม่ออก/แก้แล้ว
+  // = ไม่ปั๊มเลข Rev. ทางการ (dealTimelineDocument → liveTimelineRev) · ฉบับทางการเก่าพิมพ์จากประวัติเวอร์ชัน
   const printDealTimeline = () => {
     if (!deal) return;
     openGanttPrintWindow(dealDocumentProject);
@@ -357,10 +347,12 @@ export default function DealOverviewPage() {
   const ownerName = livePersonName(directory, deal?.ownerId, deal?.ownerName);
   const dealDocumentProject = dealTimelineDocument(deal, data || {});
   const canEdit = !!data?.canEdit;
+  // จำนวนขั้นที่แก้ค้างในตารางไทม์ไลน์ (TimelineWorkspace.onDirtyChange) — ด่านกันออก/ย้อน Rev. ตอนยังไม่บันทึก
+  const [timelineDirty, setTimelineDirty] = useState(0);
   /* ปุ่มหัวแผงไทม์ไลน์ของหน้าดีล (มติผู้ใช้ 2026-09-15) — ใช้ร่วมกันสามกิ่งของแท็บไทม์ไลน์ข้างล่าง
      (มีโครงการ · ไทม์ไลน์ของดีลเอง · ยังไม่สร้าง) ⇒ ประกาศครั้งเดียว ไม่ก๊อปปุ่มสามสำเนา */
   const timelinePrintButton = (
-    <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 สำหรับพิมพ์ / บันทึก PDF (ไม่ออกเลข Rev / ไม่เก็บประวัติ)">
+    <button type="button" className="btn ghost" onClick={printDealTimeline} title="เปิดเอกสาร A4 ฉบับปัจจุบันสำหรับพิมพ์ / บันทึก PDF — ฉบับ Rev. ที่ออกแล้วพิมพ์จากประวัติเวอร์ชัน">
       <Printer size={14} aria-hidden="true" /> พิมพ์เอกสาร
     </button>
   );
@@ -461,7 +453,6 @@ export default function DealOverviewPage() {
       projectProducts: data?.projectProducts,
       exciseRegistrations: data?.exciseRegistrations,
       sahamitPo: data?.sahamitPo,
-      shipmentPrep: data?.shipmentPrep,
       // หมวดสินค้า — ใช้ตัดสินการ์ดสรรพสามิตจาก flag isExcise (mig 0131)
       productTypes: categories,
     }) : null),
@@ -470,7 +461,7 @@ export default function DealOverviewPage() {
 
   /* กติกา "ดีลใบนี้ทำอะไรได้บ้าง" ฝั่ง Record Control — ไฟล์เดียวกับหน้ารายการ (PR #882)
      ⚠️ คนละตัวกับ `lc` (salesPlanningLifecycle) ที่ยังคุมแถบขั้นตอน/การ์ดปลายทาง
-     (ทะเบียนสรรพสามิต · PO สหมิตร · ส่งของ) — สองตัวนี้ตอบคนละคำถาม ยังไม่ยุบรวม */
+     (ทะเบียนสรรพสามิต · PO สหมิตร) — สองตัวนี้ตอบคนละคำถาม ยังไม่ยุบรวม */
   const team = useTeam();
   const teams = useTeams();
   /* dealLifecycle ตัดสินจาก `deal.canEdit` (API ส่งมาต่อใบ) + สิทธิ์ตาม role — ไม่ต้องใช้ id
@@ -497,7 +488,6 @@ export default function DealOverviewPage() {
   }, []);
   const { owners: dealOwners } = useDealOwners(meId);
   const [customers, setCustomers] = useState([]);
-  const [projects, setProjects] = useState([]);
   const dealBrand = useMemo(() => {
     const value = String(deal?.metadata?.brand || deal?.brand || "").trim();
     const customer = customers.find((item) => item.id === deal?.customerId);
@@ -515,8 +505,6 @@ export default function DealOverviewPage() {
   const [dealFormError, setDealFormError] = useState("");
   // ลีดต้นทางที่เลือกในฟอร์มแก้ไข (มติผู้ใช้ 2026-09-22 รอบสอง — แก้ดีลแล้วผูกลีดย้อนหลังได้ด้วย)
   const [editLeadId, setEditLeadId] = useState("");
-  const [pmModalOpen, setPmModalOpen] = useState(false);
-  const [pmInitial, setPmInitial] = useState(null);
 
 
   const runAction = useCallback(async (key, url, opts) => {
@@ -564,56 +552,8 @@ export default function DealOverviewPage() {
     return runAction("drop-timeline", `/api/sales-planning/deals/${id}/timeline`, { method: "DELETE" });
   };
 
-  // เฟส B: ผูกดีลเข้า "โครงการเดิม" ของลูกค้า (หลายดีลต่อโครงการ) — โหลดโครงการ
-  // ของลูกค้ารายนี้มาให้เลือก แล้วต่อ task ชุดตามประเภทดีลเป็น segment ใหม่
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkProjects, setLinkProjects] = useState([]);
-  const [linkProjectId, setLinkProjectId] = useState("");
-  const [linkStartDate, setLinkStartDate] = useState("");
-  const [linkLoading, setLinkLoading] = useState(false);
-  // ดีลที่มีโครงการอยู่แล้ว = โมดัลตัวเดียวกันในโหมด "ย้าย" (มติผู้ใช้ 2026-08-06) —
-  // ผูกผิดใบแล้วเดิมแก้ไม่ได้เลย ต้องลบดีลทิ้งสร้างใหม่ ซึ่งพาไทม์ไลน์/ใบเสนอราคาหายไปด้วย
-  const movingProject = !!deal?.projectId;
-  const openLinkProject = async () => {
-    setLinkOpen(true);
-    setLinkLoading(true);
-    setLinkProjects([]);
-    setLinkProjectId("");
-    setLinkStartDate(businessDate());
-    try {
-      const res = await apiFetch("/api/pm/projects");
-      const rows = res.ok ? await res.json() : [];
-      const mine = (Array.isArray(rows) ? rows : []).filter((p) => (
-        (!deal.customerId || !p.customerId || p.customerId === deal.customerId)
-        && p.id !== deal.projectId   // โครงการที่ดีลอยู่แล้ว เลือกไปก็ตีกลับ
-      ));
-      setLinkProjects(mine);
-      if (mine.length === 1) setLinkProjectId(mine[0].id);
-    } catch {
-      setLinkProjects([]);
-    } finally {
-      setLinkLoading(false);
-    }
-  };
-  const submitLinkProject = async () => {
-    if (!linkProjectId) { setError(movingProject ? "เลือกโครงการปลายทางก่อน" : "เลือกโครงการที่จะผูกก่อน"); return; }
-    // ย้าย = โครงการเดิมเสียดีลไปพร้อมของทั้งชุด ต้องยืนยันก่อนเสมอ
-    if (movingProject && !(await confirmAction({
-      title: "ย้ายดีลข้ามโครงการ",
-      description: `ย้ายดีลนี้ออกจากโครงการ ${data?.project?.code || data?.project?.name || "เดิม"} ไปโครงการที่เลือก?`,
-      detail: "ไทม์ไลน์ งาน คำร้อง และใบสั่งขายจะย้ายตามไปทั้งชุด โดยไม่เลื่อนวัน — ยกเว้นรายการ FG ที่ต้องย้ายเองที่หน้าโครงการ",
-      confirmLabel: "ย้ายไปโครงการที่เลือก",
-    }))) return;
-    const okDone = await runAction("link-project", `/api/sales-planning/deals/${id}/link-project`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: linkProjectId,
-        ...(movingProject ? { move: true } : { startDate: linkStartDate || undefined }),
-      }),
-    });
-    if (okDone) setLinkOpen(false);
-  };
+  /* ผูก/ย้าย/สร้างโครงการจากหน้าดีลถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — ดีลคือหน่วยเดียว
+     ไทม์ไลน์ · Rev. · AC/Sup · ดีล SCENT ต้นทาง อยู่บนดีลครบแล้ว (P2a–P2c) */
 
   /* ลีดต้นทาง (มติผู้ใช้ 2026-09-22) — SA ลืมกด "เปิดดีลจากลีดนี้" แล้วเปิดดีลตรงจากหน้าดีล
      ⇒ ผูกย้อนหลังได้จากที่นี่ · รายการลีดมาจาก `?linkable=1` ซึ่ง server กรองด้วยด่านตัวเดียวกับ
@@ -673,31 +613,6 @@ export default function DealOverviewPage() {
     await runAction("unlink-lead", `/api/sales-planning/deals/${id}/link-lead`, { method: "DELETE" });
   };
 
-  // สร้างโครงการ PM ผ่านโมดัล (เหมือนหน้า PM) พร้อมเติมค่าแนะนำจากดีล
-  const openCreatePM = () => {
-    if (!deal) return;
-    setPmInitial({
-      name: deal.title || "",
-      customerId: deal.customerId || "",
-      // ซิงค์วันที่กับดีล: ใช้วันเริ่ม/สิ้นสุดของดีลเป็นค่าตั้งต้น (ไม่มีค่อยตกเป็นวันนี้)
-      startDate: deal.startDate || businessDate(),
-      dueDate: deal.endDate || deal.expectedCloseDate || "",
-      // ⚠️ ไม่ส่ง `type` แล้ว (มติ 2026-08-08: โครงการ = ภาชนะ ไม่มีช่องประเภทงาน) —
-      // endpoint create-project ใช้ประเภทของดีลก่อตั้งเอง (fallback `deal.dealType`)
-      // แม่แบบไทม์ไลน์จึงตรงประเภทดีลเสมอ เลือกผิดไม่ได้อีก
-      // ชื่อ *ปัจจุบัน* + id — ส่งชื่อที่ค้างในแถวไปจะจับคู่บัญชีไม่ได้ แล้วโครงการ
-      // ใหม่เกิดมาพร้อม `aeOwnerId` ว่าง (สาเหตุที่ prod มี 11/14 ใบเป็นแบบนั้น)
-      aeOwner: ownerName,
-      aeOwnerId: deal.ownerId || null,
-      metadata: { brand: deal.metadata?.brand || "" },
-    });
-    setPmModalOpen(true);
-  };
-  const handlePmSuccess = async (payload) => {
-    setPmModalOpen(false);
-    if (payload?.productWarning) setError(payload.productWarning);
-    await load();
-  };
 
   // แก้ไขดีล (โมดัล)
   const openEditDeal = () => {
@@ -731,6 +646,11 @@ export default function DealOverviewPage() {
       line: deal.line || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
       ownerId: deal.ownerId || "",
+      // AC + AE Supervisor (ยุบดีล/โครงการ P2c-1) — โหลดค่าเดิม · ว่าง = ต้องเลือกก่อนบันทึก (มติ ⑤)
+      acOwnerId: deal.acOwnerId || "",
+      aeSupervisorId: deal.aeSupervisorId || "",
+      // ดีล SCENT ต้นทาง (P2c-2) — โหลดค่าเดิม ไม่งั้นบันทึกแล้วต้นทางหาย (ฟอร์มส่งช่องนี้ทุกครั้งเมื่อเป็น NPD)
+      sourceScentDealId: deal.sourceScentDealId || "",
     });
     setDealFormError("");
     setEditLeadId("");
@@ -747,6 +667,8 @@ export default function DealOverviewPage() {
       // ดีลที่ปิด Won แล้วไม่ต้องมีตารางรายหมวด — หมวด/ปริมาตร/จำนวนมาจากใบที่รับ
       // และจอล็อกตารางไว้อยู่แล้ว (มติผู้ใช้ 2026-09-08)
       alreadyWon,
+      // ดีลภาชนะของใบสั่งขายย้อนหลังไม่บังคับ AC/Sup (server ก็ไม่บังคับ)
+      historical: isHistoricalDeal(deal),
       title: dealForm.title,
     });
     if (missingFields) { setDealFormError(missingFields); setSavingDeal(false); return; }
@@ -764,17 +686,6 @@ export default function DealOverviewPage() {
       if (!res.ok) throw new Error(saved.error || "บันทึกไม่สำเร็จ");
       const savedWarning = responseWarningText(saved);
       if (savedWarning) notifyToast.warning(savedWarning, RESPONSE_WARNING_TOAST);
-      if (dealForm.projectId && !deal.projectId) {
-        const linkRes = await apiFetch(`/api/sales-planning/deals/${id}/link-project`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId: dealForm.projectId, startDate: dealForm.startDate || undefined }),
-        });
-        const linked = await linkRes.json().catch(() => ({}));
-        if (!linkRes.ok) throw new Error(linked.error || "บันทึกดีลแล้ว แต่เชื่อมโครงการไม่สำเร็จ");
-        const linkWarning = responseWarningText(linked);
-        if (linkWarning) notifyToast.warning(linkWarning, RESPONSE_WARNING_TOAST);
-      }
       /* ผูกลีดต้นทางหลังบันทึกดีลสำเร็จ — endpoint เดียวกับปุ่ม "ผูกลีดต้นทาง" (ด่านเดียวกัน)
          พลาด = ดีลบันทึกแล้ว แต่บอกในโมดัลให้กดใหม่ได้ (บันทึกซ้ำไม่เสียหาย) */
       if (editLeadId && !deal.leadId) {
@@ -798,14 +709,10 @@ export default function DealOverviewPage() {
   };
   const deleteDeal = async () => {
     if (!deal) return;
-    // เฟส B: ลบดีล "ไม่ลบโครงการ PM" ที่ผูกอยู่ — โครงการมีได้หลายดีลและอาจมีดีลอื่น
-    // มาผูกแทน; ลบดีลแค่ถอดไทม์ไลน์ segment ของดีลนี้ออก (เอกสารส่งของ/ทะเบียนผูกกับ
-    // โครงการ จึงอยู่ต่อ) — ลบโครงการทำที่หน้าโครงการโดยตรง
-    // นับเฉพาะงานของดีลนี้ — projectTasks รวมงานกลางโครงการ (dealId ว่าง) ที่ไม่ถูกลบ
+    // ลบดีลถอดไทม์ไลน์ของดีลนี้ออก — นับเฉพาะงานของดีลนี้ (projectTasks ของดีลเก่าที่อยู่ในโครงการ
+    // รวมงานกลางโครงการ dealId ว่างที่ไม่ถูกลบ) · ไม่พูดถึงโครงการแล้ว (ยุบดีล/โครงการ P2d — จอโครงการถูกซ่อน)
     const ownTaskCount = (data?.projectTasks || []).filter((t) => t.dealId === deal.id).length;
-    const detachText = data?.project
-      ? `\n\nโครงการ (PM)${data.project.code ? ` ${data.project.code}` : ""} ที่ผูกอยู่จะยังอยู่ (ไม่ถูกลบ) — ถอดเฉพาะไทม์ไลน์ของดีลนี้ออก${ownTaskCount ? ` (${ownTaskCount} ขั้นตอน)` : ""}`
-      : ownTaskCount ? `\n\nไทม์ไลน์ของดีลนี้ (${ownTaskCount} ขั้นตอน) จะถูกลบด้วย` : "";
+    const detachText = ownTaskCount ? `\n\nไทม์ไลน์ของดีลนี้ (${ownTaskCount} ขั้นตอน) จะถูกลบด้วย` : "";
     // งานที่ผูกดีลใบนี้จะถูกลบไปด้วย (ไม่งั้นค้างอยู่ในเมนูงานโดยชี้ดีลที่ไม่มีแล้ว) —
     // นับเฉพาะที่ผูก dealId ตรง ๆ · งานที่ผูกผ่านโครงการไม่ถูกแตะ
     const ownDealTasks = (data?.dealTasks || []).filter((t) => t.dealId === deal.id).length;
@@ -821,11 +728,8 @@ export default function DealOverviewPage() {
       // ลบสำเร็จแต่ย้อนสถานะลีดต้นทางไม่ครบ — ดู lib/apiWarnings
       const deleteWarning = responseWarningText(result.data);
       if (deleteWarning) notifyToast.warning(deleteWarning, RESPONSE_WARNING_TOAST);
-      // ดีลใบสุดท้ายของโครงการ → ถามว่าจะลบโครงเปล่าทิ้งด้วยไหม (ไม่ตัดสินใจแทน)
-      const cleanup = await offerDeleteEmptyProject(result.data?.emptyProject);
-      // ลบโครงการพลาด = ดีลลบไปแล้ว แต่ยังต้องบอกให้รู้ จึงคาไว้ที่หน้านี้ ไม่เด้งออก
-      if (cleanup.error) setError(`ลบดีลแล้ว แต่${cleanup.error}`);
-      else router.push("/sa/deals");
+      // ไม่ถามลบโครงการเปล่าแล้ว (ยุบดีล/โครงการ P2d) — โครงการค้างในฐานจนงวด P3 ลบตาราง
+      router.push("/sa/deals");
     } catch (e) {
       setError(e.message || "ลบไม่สำเร็จ");
     }
@@ -839,34 +743,8 @@ export default function DealOverviewPage() {
   // — หน้ารายการกับหน้านี้เคยเขียนคนละชุด แล้วหน้ารายการลืมข้อ "ใบเสนอราคาที่รับแล้ว"
   const superuser = isSuperuser(role);
 
-  // สร้างทะเบียนสรรพสามิต FG ที่ระบุ (reuse action เดียวกับหน้า PM) แล้วพาไปหน้าทะเบียน
-  const doCreateExcise = async (productId) => {
-    if (!deal?.projectId) return;
-    setActionBusy("excise");
-    setError("");
-    try {
-      const res = await apiFetch(`/api/excise-registrations/from-project`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: deal.projectId, ...(productId ? { productId } : {}) }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");
-      // เส้นทางกลางพาไปตามสิทธิ์ (มติ 02/11 V13): ฝ่ายขาย = หน้าสินค้าเปิดแผงทะเบียน · RA/แอดมิน = /tax
-      if (payload.id) router.push(`/go/registration/${payload.id}`);
-      else await load();
-    } catch (e) {
-      setError(e.message || "สร้างทะเบียนสรรพสามิตไม่สำเร็จ");
-    } finally {
-      setActionBusy("");
-    }
-  };
-
-  // dispatch ปุ่ม action ของการ์ด Routing
-  const onRouteAction = (route) => {
-    if (route.actionKind === "create-project") openCreatePM();
-    else if (route.actionKind === "create-excise") doCreateExcise(route.productId);
-  };
+  /* ปุ่มสร้างทะเบียนสรรพสามิตจากการ์ดดีล (เส้น from-project · ต้องมีโครงการ · prod ใช้ 0) ถูกถอด — ยุบดีล/โครงการ P2d
+     การ์ด Routing เหลือลิงก์อย่างเดียว · ขึ้นทะเบียนที่หน้าสินค้า FG (salesPlanningLifecycle buildExciseRoutes) */
   const doLost = async () => {
     const okDone = await runAction("lost", `/api/sales-planning/deals/${id}`, {
       method: "PATCH",
@@ -876,13 +754,9 @@ export default function DealOverviewPage() {
     if (okDone) { setLostOpen(false); setLostReason(""); }
   };
 
-  /* หัวหน้าเหลือแค่ทางไปโครงการ — ปุ่มที่ *เปลี่ยนข้อมูล* ทั้งหมดย้ายไปการ์ด Control
+  /* หัวหน้าไม่มีปุ่ม "ไปโครงการ" แล้ว (ยุบดีล/โครงการ P2d) — ปุ่มที่ *เปลี่ยนข้อมูล* ทั้งหมดอยู่การ์ด Control
      (มติผู้ใช้ 2026-08-01: การควบคุมคือการควบคุม ไม่ว่าจะเดินหน้าหรือจัดการตัวระเบียน) */
-  const headerRight = deal?.projectId ? (
-    <Link href={`/sa/projects/${deal.projectId}`} className="btn btn-secondary">
-      <FolderKanban size={15} aria-hidden="true" /> ไปโครงการ
-    </Link>
-  ) : null;
+  const headerRight = null;
 
   /* จุดเดียวที่ปุ่มบนการ์ดวิ่งเข้า — คืน false = ไม่สำเร็จ การ์ดจะค้างกล่องไว้พร้อมเหตุผล
      ที่พิมพ์ไปแล้ว ผู้ใช้ไม่ต้องพิมพ์ซ้ำ */
@@ -896,13 +770,6 @@ export default function DealOverviewPage() {
     return !!okDone;
   }
 
-  /* ผูก/สร้างโครงการ = ต้องเลือกโครงการในฟอร์มของมันเอง ไม่ใช่ย้ายสถานะเฉย ๆ
-     ดักก่อนการ์ดเปิดกล่องยืนยันเปล่า ๆ คั่นหนึ่งชั้น */
-  function openProjectFlow(transition) {
-    if (transition.id === "link_project") { openLinkProject(); return true; }
-    if (transition.id === "create_project") { openCreatePM(); return true; }
-    return false;
-  }
 
   /* ผูกลีดต้นทางได้ไหม: บทบาทที่ผูกได้ + แก้ดีลใบนี้ได้ (ด่านเดียวกับ /link-lead ฝั่งดีล) */
   const canLinkLead = canEdit && canLinkLeadRole(role);
@@ -1025,7 +892,7 @@ export default function DealOverviewPage() {
             {(lc?.routes || []).length > 0 && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", borderTop: "1px solid var(--border)", paddingTop: 10 }}>
                 {lc.routes.map((route) => (
-                  <RouteMenuButton key={route.kind} route={route} onAction={onRouteAction} busy={!!actionBusy} canEdit={canEdit} />
+                  <RouteMenuButton key={route.kind} route={route} />
                 ))}
               </div>
             )}
@@ -1033,7 +900,7 @@ export default function DealOverviewPage() {
           </SalesDetailOverview>
 
           {/* จุดจัดการเดียวของดีล — แถบขวาทุกแท็บ ท่าเดียวกับหน้าลีดและหน้าเอกสาร
-              เดินหน้า (เชื่อม/สร้างโครงการ) · จัดการตัวระเบียน (แก้ไข/ลบ) · ปิดดีล
+              จัดการตัวระเบียน (แก้ไข/ลบ) · ปิดดีล (ปุ่มเชื่อม/สร้างโครงการถอดแล้ว — P2d)
               แยกด้วย *ช่อง* ในการ์ด ไม่ใช่แยกไปคนละมุมจอเหมือนเดิม
 
               ⚠️ **ยกเว้นแท็บไทม์ไลน์ — ซ่อนการ์ด** (มติผู้ใช้ 2026-08-08 ตามหน้าโครงการ
@@ -1046,7 +913,6 @@ export default function DealOverviewPage() {
               record={deal}
               user={viewer}
               onTransition={runControlTransition}
-              onSelect={openProjectFlow}
               extraActions={recordActions}
               busy={!!actionBusy}
             />
@@ -1064,19 +930,10 @@ export default function DealOverviewPage() {
               facts={[
                 { label: "ประเภทดีล", value: DEAL_TYPE_LABELS[dealTypeOf(deal)] || dealTypeOf(deal) },
                 { label: "Forecast", value: naText(deal.forecastMonth) },
+                // ยุบดีล/โครงการ P2c-1: AC + AE Supervisor อยู่บนดีล · ชื่อสดจากบัญชี (สำเนาบนแถวเป็นชื่อบนเอกสาร)
+                { label: "ผู้ประสานงาน (AC)", value: naText(livePersonName(directory, deal.acOwnerId, deal.acOwnerName)) },
+                { label: "ผู้ตรวจสอบ (AE Sup)", value: naText(livePersonName(directory, deal.aeSupervisorId, deal.aeSupervisorName)) },
               ]}
-            />
-            <ContextCard
-              icon={FolderKanban}
-              href={deal.projectId ? `/sa/projects/${deal.projectId}` : undefined}
-              eyebrow="โครงการที่เชื่อมอยู่"
-              title={data.project ? `${data.project.code ? `${data.project.code} · ` : ""}${data.project.name}` : "ยังไม่ได้เชื่อมโครงการ"}
-              subtitle={data.project ? "เปิดเพื่อดูไทม์ไลน์ งาน และเอกสารโครงการ" : "เชื่อมโครงการเพื่อส่งต่องานหลังการขาย"}
-              badges={data.project?.status ? <span className="ui-badge" style={{ color: "var(--green)" }}>{data.project.status}</span> : null}
-              facts={data.project ? [
-                { label: "วันเริ่ม", value: data.project.startDate ? fmtDate(data.project.startDate) : NA },
-                { label: "กำหนดเสร็จ", value: data.project.dueDate ? fmtDate(data.project.dueDate) : NA },
-              ] : []}
             />
             {/* ลีดต้นทาง (มติผู้ใช้ 2026-09-22) — โชว์เมื่อดีลมีลีด หรือผู้ใช้ผูกได้ (บอกว่ายังไม่ผูก + ทางผูก)
                 ⚠️ ลิงก์ไปหน้าลีดเฉพาะคนที่เปิดลีดใบนั้นได้ (`canOpen` จาก server) — คนเห็นดีลไม่ได้เห็นลีดทุกใบ
@@ -1187,7 +1044,7 @@ export default function DealOverviewPage() {
             <Stat
               label="ไทม์ไลน์คืบหน้า"
               value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total}` : NA}
-              hint={!taskSummary.total ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : !deal.projectId ? "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)" : NA}
+              hint={!taskSummary.total ? "ยังไม่ได้สร้างไทม์ไลน์" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : NA}
             />
             {SALES_FEATURES.quotations && (
               <Stat label="ใบเสนอราคา Won" value={acceptedQuote ? money(Number(acceptedQuote.totalAmount || 0) - Number(acceptedQuote.vatAmount || 0)) : NA} hint={acceptedQuote?.quoteNumber || "ยังไม่มีใบเสนอราคา Won"} />
@@ -1382,7 +1239,7 @@ export default function DealOverviewPage() {
               <div style={{ minWidth: 150 }}>
                 <div style={{ fontWeight: "var(--fw-bold)", fontSize: "var(--fs-9)" }}>ไทม์ไลน์</div>
                 <div style={{ fontSize: "var(--fs-6)", color: "var(--text-3)", marginTop: 2 }}>
-                  {!taskSummary.total ? "ยังไม่ได้สร้าง — กดเพื่อเริ่ม" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : deal.projectId ? `ในโครงการ ${data.project?.code || ""}` : "ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)"}
+                  {!taskSummary.total ? "ยังไม่ได้สร้าง — กดเพื่อเริ่ม" : taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : taskSummary.done === taskSummary.total ? "ครบทุกขั้นตอน" : "ไทม์ไลน์ของดีล"}
                 </div>
               </div>
               {taskSummary.total > 0 && (
@@ -1396,167 +1253,80 @@ export default function DealOverviewPage() {
               <span className="btn btn-primary" style={{ pointerEvents: "none", whiteSpace: "nowrap" }}>เปิดไทม์ไลน์</span>
             </div>
           )}
-          {/* แท็บไทม์ไลน์ (มติผู้ใช้ 2026-09-15: รายการทุกชุด = แผงเดียว) — กล่อง section#deal-pm เดิมถูกถอด:
-              ตัวไทม์ไลน์คือ ListPanel ของ TimelineWorkspace เอง (id="deal-pm" · ปุ่มพิมพ์/สลับมุมมองเป็น
-              panelActions) · ข้อมูลโครงการที่ผูกอยู่เป็น DetailCard แยกเหนือแผง ไม่ซ้อนอยู่ในแผงรายการ */}
-          {tab === "timeline" && (data.project ? (
+          {/* แท็บไทม์ไลน์ (มติผู้ใช้ 2026-09-15: รายการทุกชุด = แผงเดียว) — ตัวไทม์ไลน์คือ ListPanel ของ TimelineWorkspace
+              เอง (id="deal-pm" · ปุ่มเป็น panelActions)
+              ⭐ งวด P2b ยุบดีล/โครงการ (มติเจ้าของ 13/11/2026): ดีลทุกใบถือไทม์ไลน์ของตัวเองเต็มรูปที่หน้านี้ — มี/ไม่มีโครงการ
+                 ได้แผงเดียวกัน: แก้/เพิ่ม/ลบขั้น · ออก Rev. · ประวัติ (พิมพ์ฉบับเก่า/ย้อน) · ลบทั้งชุดแล้วสร้างใหม่
+                 เลขที่เอกสาร = รหัสดีล + Rev. (dealTimelineDocument)
+              ⭐ งวด P2d: การ์ด "โครงการที่ดีลนี้อยู่" + ย้าย/สร้าง/ผูกโครงการ + "ดีลอื่นในโครงการนี้" ถูกถอด —
+                 ดีลอื่นของลูกค้าดูที่หน้าลูกค้าศูนย์รวม (มติ ④) */}
+          {tab === "timeline" && (
             <>
-              <DetailCard
-                icon={FolderKanban}
-                title="โครงการที่ดีลนี้อยู่"
-                meta={`${data.project.code ? `${data.project.code} · ` : ""}${naText(data.project.name)}`}
-                actions={(
-                  <>
-                    {/* ยังไม่มีขั้นตอน = ไม่มีแผงไทม์ไลน์ให้วางปุ่มพิมพ์ ⇒ ปุ่มมาอยู่บนการ์ดนี้แทน
-                        (หัว section#deal-pm เดิมโชว์ปุ่มพิมพ์ทุกกรณี · พิมพ์ได้แม้ tasks ว่าง) */}
-                    {!(data.projectTasks || []).length && timelinePrintButton}
-                    {/* ผูกผิดโครงการเกิดขึ้นจริง — ทางแก้เดิมคือลบดีลทิ้งแล้วสร้างใหม่ ซึ่งพา
-                        ไทม์ไลน์/ใบเสนอราคา/คำร้องหายไปทั้งชุด (มติผู้ใช้ 2026-08-06) */}
-                    {canEdit && deal?.stage !== "lost" && (
-                      <Button variant="quiet" size="sm" onClick={openLinkProject} disabled={!!actionBusy}
-                        icon={<PackageCheck size={14} aria-hidden="true" />}
-                        title="ย้ายดีลนี้ไปโครงการอื่นของลูกค้ารายเดียวกัน — ไทม์ไลน์และของที่ผูกดีลย้ายตามไปทั้งชุด">
-                        ย้ายไปโครงการอื่น
-                      </Button>
-                    )}
-                    <a className="btn ghost" href={`/sa/projects/${data.project.id}`}><ExternalLink size={14} aria-hidden="true" /> เปิด</a>
-                  </>
-                )}
-              >
-                <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                  <Stat label="โครงการ" value={data.project.code || data.project.id} hint={naText(data.project.status)} />
-                  <Stat label="ความคืบหน้า (segment นี้)" value={taskSummary.total ? `${taskSummary.done}/${taskSummary.total} ขั้นตอน` : NA} hint={taskSummary.current ? `กำลังทำ: ${taskSummary.current.name}` : NA} />
-                  <Stat label="ประเภท" value={naText(data.project.type)} hint={data.project.dueDate ? `กำหนด ${data.project.dueDate}` : "ไม่มีกำหนด"} />
-                  <Stat label="รายการ FG" value={data.projectProducts?.length || 0} hint={naText((data.projectProducts || []).slice(0, 2).map((row) => row.product?.fgCode).filter(Boolean).join(", "))} />
-                  {SALES_FEATURES.shipment && (
-                    <Stat label="เอกสารส่งของ" value={data.shipmentPrep ? data.shipmentPrep.status : NA} hint={data.shipmentPrep ? `${data.shipmentPrep.lines?.length || 0} รายการ` : "ยังไม่สร้าง"} />
-                  )}
-                </div>
-                {/* เฟส B: ดีลอื่นในโครงการเดียวกัน (SCENT→NPD→RE-ORDER…) — ลิงก์ข้าม */}
-                {(data.siblingDeals || []).length > 0 && (
-                  <div style={{ marginTop: 12, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
-                    <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", fontWeight: "var(--fw-semibold)", marginBottom: 6 }}>ดีลอื่นในโครงการนี้</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      {data.siblingDeals.map((sib) => (
-                        <Link key={sib.id} href={`/sa/deals/${sib.id}`} className="btn ghost sm" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          {dealTypeBadge(dealTypeOf(sib))}
-                          <span style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sib.title}</span>
-                          {stageBadge(sib.stage)}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </DetailCard>
-              {/* DL2: ตารางขั้นตอน segment ของดีลนี้ (รวมงานกลางที่ไม่ผูกดีล) —
-                  แก้สถานะจากหน้าดีลได้เลย ไม่ต้องเข้าโครงการ (PATCH ตัวเดียวกับฝั่ง PM) */}
-              {(data.projectTasks || []).length > 0 && (
-                <TimelineWorkspace
-                  tasks={data.projectTasks}
-                  requests={data.inquiries || []}
-                  stepBadgeFor={exciseStepBadgeFor}
-                  canEdit={canEdit}
-                  dealId={deal.id}
-                  projectId={data.project?.id || null}
-                  documentProject={dealDocumentProject}
-                  view={timelineView}
-                  onViewChange={setTimelineView}
-                  showViewSwitcher={false}
-                  timelineContext={{
-                    name: deal.title,
-                    customerName: deal.customerName,
-                    startDate: deal.startDate || data.project?.startDate,
-                    brand: deal.brand,
-                    status: data.project?.status || deal.stage,
-                    statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
-                  }}
-                  onChanged={load}
-                  onError={setError}
-                  panelId="deal-pm"
-                  panelActions={<>{timelinePrintButton}{timelineViewSwitcher}</>}
-                />
-              )}
-            </>
-          ) : (data.projectTasks || []).length ? (
-            <>
-              {/* DL1: ไทม์ไลน์ของดีลเอง (ยังไม่ผูกโครงการ) — task ลอย projectId ว่าง
-                  ผูกโครงการเมื่อไหร่ ชุดนี้ถูก "รับเลี้ยง" เข้าโครงการทั้งชุด ไม่ gen ใหม่ */}
-              <TimelineWorkspace
-                tasks={data.projectTasks}
-                stepBadgeFor={exciseStepBadgeFor}
-                canEdit={canEdit}
-                dealId={deal.id}
-                projectId={data.project?.id || null}
-                documentProject={dealDocumentProject}
-                view={timelineView}
-                onViewChange={setTimelineView}
-                showViewSwitcher={false}
-                timelineContext={{
-                  name: deal.title,
-                  customerName: deal.customerName,
-                  startDate: deal.startDate,
-                  brand: deal.brand,
-                  status: deal.stage,
-                  statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
-                }}
-                onChanged={load}
-                onError={setError}
-                panelId="deal-pm"
-                panelSubtitle={`ไทม์ไลน์ของดีล (ยังไม่ผูกโครงการ)${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : ""}`}
-                panelActions={(
-                  <>
-                    {timelinePrintButton}
-                    {canEdit && (
-                      <button type="button" className="btn-icon danger" title="ลบไทม์ไลน์ (ไว้สร้างใหม่)" aria-label="ลบไทม์ไลน์"
-                        disabled={!!actionBusy} onClick={dropOwnTimeline}>
-                        <Trash2 size={14} aria-hidden="true" />
-                      </button>
-                    )}
-                    {timelineViewSwitcher}
-                  </>
-                )}
-              />
-              {canEdit && deal?.stage !== "lost" && (
-                <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                  <button type="button" className="btn btn-primary" onClick={openCreatePM} disabled={!!actionBusy} title="สร้างโครงการ — ไทม์ไลน์ชุดนี้จะย้ายเข้าโครงการทั้งชุด">
-                    <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
-                  </button>
-                  <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy || !deal?.customerId} title={deal?.customerId ? "ผูกดีลเข้าโครงการที่มีอยู่ — ไทม์ไลน์ชุดนี้ย้ายตามไป" : "ต้องผูกลูกค้าก่อน"}>
-                    <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
-                  </button>
-                </div>
-              )}
-            </>
-          ) : (
-            <DetailCard id="deal-pm" icon={ChartGantt} title="ไทม์ไลน์" actions={timelinePrintButton}>
-              <Empty>
-                <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
-                {canEdit && deal?.stage !== "lost" && (
-                  <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                    {/* DL1: ไทม์ไลน์ของดีลเอง — สร้างได้ตั้งแต่ยังไม่มีโครงการ (template ตามประเภท+หมวด) */}
-                    <button type="button" className="btn btn-primary" onClick={openGenTimeline} disabled={!!actionBusy}
-                      title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
-                      <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
-                    </button>
-                    {/* เดิมเป็นลิสต์ชื่อ stage ฮาร์ดโค้ด — พอสลับลำดับ (B4) "เสนอราคา" ย้ายไป
-                        อยู่หลัง "เสนอไทม์ไลน์" แต่ไม่มีในลิสต์ ดีลที่ออกใบแล้วจะกดสร้าง/ผูก
-                        โครงการไม่ได้เลย. เทียบตำแหน่งแทนชื่อ = ลำดับขยับอีกกี่ครั้งก็ไม่พัง */}
-                    {stageAtLeast(deal?.stage, 'timeline_proposed') && (
+              {(data.projectTasks || []).length ? (
+                <>
+                  <TimelineWorkspace
+                    tasks={data.projectTasks}
+                    requests={data.inquiries || []}
+                    stepBadgeFor={exciseStepBadgeFor}
+                    canEdit={canEdit}
+                    dealId={deal.id}
+                    projectId={data.project?.id || null}
+                    documentProject={dealDocumentProject}
+                    view={timelineView}
+                    onViewChange={setTimelineView}
+                    showViewSwitcher={false}
+                    timelineContext={{
+                      name: deal.title,
+                      customerName: deal.customerName,
+                      startDate: deal.startDate || data.project?.startDate,
+                      brand: deal.brand,
+                      status: data.project?.status || deal.stage,
+                      statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
+                    }}
+                    onChanged={load}
+                    onError={setError}
+                    onDirtyChange={setTimelineDirty}
+                    panelId="deal-pm"
+                    panelSubtitle={`ไทม์ไลน์ของดีล · เลขที่เอกสาร ${deal.code || NA}${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : ""}`}
+                    panelActions={(
                       <>
-                        <button type="button" className="btn ghost" onClick={openCreatePM} disabled={!!actionBusy}>
-                          <Plus size={14} aria-hidden="true" /> สร้างโครงการใหม่
-                        </button>
-                        {/* เฟส B: ผูกเข้าโครงการเดิมของลูกค้า (ต่อ segment ตามประเภทดีล) */}
-                        <button type="button" className="btn ghost" onClick={openLinkProject} disabled={!!actionBusy} title="ผูกดีลเข้าโครงการที่มีอยู่">
-                          <PackageCheck size={14} aria-hidden="true" /> ผูกกับโครงการเดิม
-                        </button>
+                        <DealTimelineRevControls
+                          deal={deal}
+                          timelineRevision={data.timelineRevision}
+                          canEdit={canEdit}
+                          dirtyCount={timelineDirty}
+                          onChanged={load}
+                        />
+                        {timelinePrintButton}
+                        {canEdit && (
+                          <button type="button" className="btn-icon danger" title="ลบไทม์ไลน์ของดีลนี้ทั้งชุด (ไว้สร้างใหม่)" aria-label="ลบไทม์ไลน์"
+                            disabled={!!actionBusy} onClick={dropOwnTimeline}>
+                            <Trash2 size={14} aria-hidden="true" />
+                          </button>
+                        )}
+                        {timelineViewSwitcher}
                       </>
                     )}
-                  </div>
-                )}
-              </Empty>
-            </DetailCard>
-          ))}
+                  />
+                </>
+              ) : (
+                <DetailCard id="deal-pm" icon={ChartGantt} title="ไทม์ไลน์" actions={timelinePrintButton}>
+                  <Empty>
+                    <div style={{ marginBottom: 12 }}>ยังไม่ได้สร้างไทม์ไลน์</div>
+                    {canEdit && deal?.stage !== "lost" && (
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+                        {/* DL1: ไทม์ไลน์ของดีลเอง (template ตามประเภท+หมวด) · งวด P2b: ดีลเก่าในโครงการสร้างได้ด้วย (ต่อท้ายลำดับโครงการ) */}
+                        <button type="button" className="btn btn-primary" onClick={openGenTimeline} disabled={!!actionBusy}
+                          title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
+                          <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
+                        </button>
+                      </div>
+                    )}
+                  </Empty>
+                </DetailCard>
+              )}
+            </>
+          )}
 
           {(tab === "quotations" || tab === "overview") && (SALES_FEATURES.quotations || SALES_FEATURES.documents) && (
           <div className="grid gap-5" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
@@ -1727,8 +1497,9 @@ export default function DealOverviewPage() {
           </div>
           <div className={styles.genLineField}>
             สายธุรกิจ (เลือกก่อน — คนละแม่แบบกัน)
-            <BusinessLineSelect value={genLine} onChange={setGenLine} ariaLabel="สายธุรกิจของไทม์ไลน์" />
-            {genLine && genLine !== (deal?.line || "") && (
+            {/* ดีลในโครงการ: สายล็อกตามโครงการ (server ไม่รับสายจากโมดัล — timeline route) */}
+            <BusinessLineSelect value={genLine} onChange={setGenLine} ariaLabel="สายธุรกิจของไทม์ไลน์" disabled={!!data?.project} />
+            {!data?.project && genLine && genLine !== (deal?.line || "") && (
               <span className={styles.genLineSwitchNote}>· จะอัปเดตสายธุรกิจของดีลเป็นค่านี้ให้ด้วย</span>
             )}
           </div>
@@ -1760,46 +1531,6 @@ export default function DealOverviewPage() {
         </div>
       </Modal>
 
-      {/* เฟส B: โมดัลผูกดีลเข้าโครงการเดิมของลูกค้า — เลือกโครงการ + วันเริ่ม segment
-          ดีลที่มีโครงการแล้วใช้โมดัลตัวเดียวกันในโหมด "ย้าย" (ไม่ gen ใหม่ ไม่ตั้งวันใหม่) */}
-      <Modal open={linkOpen} onClose={() => !actionBusy && setLinkOpen(false)} title={movingProject ? "ย้ายไปโครงการอื่น" : "ผูกกับโครงการเดิม"} size="sm">
-        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
-            {movingProject ? (
-              <>ดีลนี้จะย้ายออกจากโครงการ <strong>{data?.project?.code || data?.project?.name || "เดิม"}</strong> ไปโครงการที่เลือก — ไทม์ไลน์ งาน คำร้อง และใบสั่งขายย้ายตามไปทั้งชุด <strong>วันของงานไม่ถูกเลื่อน</strong> ส่วนรายการ FG ไม่ย้ายตาม (ย้ายเองที่หน้าโครงการ)</>
-            ) : (
-              <>ดีลนี้จะถูกผูกเข้าโครงการที่เลือก และต่อขั้นตอนตาม template ประเภท <strong>{DEAL_TYPE_LABELS[dealTypeOf(deal)]}</strong> เป็นช่วงใหม่ท้ายไทม์ไลน์</>
-            )}
-          </div>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-            โครงการของ {deal?.customerName || deal?.customer?.name || "ลูกค้า"}
-            {/* ค้นได้ด้วยรหัส/ชื่อโครงการ — ลูกค้ารายใหญ่มีโครงการหลายสิบ (มติผู้ใช้ 2026-08-06) */}
-            <SearchableSelect className="w-full" entity="project" ariaLabel="โครงการที่จะผูกดีล"
-              value={linkProjectId} onChange={setLinkProjectId} disabled={linkLoading}
-              options={linkProjects.map((p) => ({
-                value: p.id,
-                label: `${p.code || p.id} · ${p.name}${p.type ? ` (${p.type})` : ""}`,
-                search: `${p.code || ""} ${p.name || ""} ${p.type || ""}`,
-              }))}
-              placeholder={linkLoading ? "กำลังโหลด…" : linkProjects.length ? "— เลือกโครงการ —" : "ลูกค้ารายนี้ยังไม่มีโครงการ"}
-              searchPlaceholder="ค้นหารหัสหรือชื่อโครงการ…"
-              emptyText="ไม่พบโครงการที่ตรงกับคำค้น" />
-          </label>
-          {/* ย้ายแล้วไม่ตั้งวันใหม่ — ไทม์ไลน์เดิมมีวันจริง/ความคืบหน้าอยู่แล้ว */}
-          {!movingProject && (
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-7)" }}>
-              วันเริ่มงานช่วงนี้
-              <DateInput value={linkStartDate} onChange={setLinkStartDate} />
-            </label>
-          )}
-          <div className="form-action-bar">
-            <button type="button" className="btn btn-secondary" onClick={() => setLinkOpen(false)} disabled={!!actionBusy}>ยกเลิก</button>
-            <button type="button" className="btn btn-primary" onClick={submitLinkProject} disabled={!!actionBusy || !linkProjectId}>
-              {actionBusy === "link-project" ? (movingProject ? "กำลังย้าย…" : "กำลังผูก…") : (movingProject ? "ย้ายไปโครงการนี้" : "ผูกเข้าโครงการ")}
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* ผูกลีดต้นทาง — โมดัลตัวเดียวกับฝั่งหน้าลีด (ต่างกันแค่เลือกลีด/เลือกดีล) */}
       <DealLeadLinkModal
@@ -1853,8 +1584,6 @@ export default function DealOverviewPage() {
               form={dealForm}
               onPatch={(patch) => setDealForm((f) => ({ ...f, ...patch }))}
               customers={customers}
-              projects={projects}
-              showProject
               categories={categories}
               stages={editableStages(alreadyWon)}
               alreadyWon={alreadyWon}
@@ -1884,22 +1613,6 @@ export default function DealOverviewPage() {
         )}
       </Modal>
 
-      {/* ฟอร์มภาชนะตัวเดียวกับหน้า /sa/projects (มติ 2026-08-08 — ฟอร์มเดียวสองทางเรียก)
-          ดีลใบนี้เป็นดีลก่อตั้ง: แม่แบบไทม์ไลน์มาจากประเภทของมันเองที่ endpoint */}
-      <SalesProjectCreateModal
-        open={pmModalOpen}
-        onClose={() => setPmModalOpen(false)}
-        editingId={null}
-        initialData={pmInitial}
-        onSuccess={handlePmSuccess}
-        customers={customers}
-        categories={categories}
-        createEndpoint={`/api/sales-planning/deals/${id}/create-project`}
-        createLabel="สร้างโครงการจากดีลนี้"
-        /* วันเริ่มของงานเป็นของดีล ไม่ใช่ของโครงการ — โครงการที่เกิดจากดีลจึงไม่ถามซ้ำ */
-        startDateFrom={deal ? `ดีล ${deal.code || deal.id}` : "ดีลก่อตั้ง"}
-        subtitle={deal ? `ดีลก่อตั้ง: ${deal.code || deal.id} · ${deal.title || ""} · ${dealTypeOf(deal)} — ดีลถัดไปของงานเดียวกันผูกเข้าโครงการนี้ได้` : null}
-      />
 
     </Workspace>
   );

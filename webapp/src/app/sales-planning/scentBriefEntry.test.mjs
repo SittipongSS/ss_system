@@ -34,7 +34,7 @@ test('⭐ route ของ SO ถามหาคำร้องด้วยเง
 
   // หลวมกว่านี้ = ปุ่มหายทั้งที่ใบเก่าถูกยกเลิกไปแล้วและเปิดใหม่ได้
   // แคบกว่านี้ = กดแล้วชน unique violation ที่ DB หลังกรอก PDR จนจบ
-  /* ⭐ ม-163 — คำถาม "ใบนี้มีคำร้องแล้วไหม" ย้ายไปตัวโหลดกลาง `loadScentOrderOwners` (SO หลัก + SO แนบ + สาย Rev.)
+  /* ⭐ ม-164 — คำถาม "ใบนี้มีคำร้องแล้วไหม" ย้ายไปตัวโหลดกลาง `loadScentOrderOwners` (SO หลัก + SO แนบ + สาย Rev.)
      ⇒ เงื่อนไขของ SO หลักต้องอยู่ที่ตัวโหลด และ route ทั้งสามต้องเรียกตัวโหลดนั้น ไม่ถามเอง */
   const mainQuery = OWNERS_LOADER.match(/from\('dept_requests'\)\.select\('id, "docNo", status, "salesOrderId"'\)[\s\S]*?\.order\(/);
   assert.ok(mainQuery, 'หาคำสั่งอ่าน SO หลักในตัวโหลดไม่เจอ');
@@ -49,7 +49,7 @@ test('⭐ route ของ SO ถามหาคำร้องด้วยเง
    SO ที่มีใบขอเอกสาร FN อยู่แล้วเปิด PDR ไม่ได้ ทั้งที่ index 0219 กับหน้า SO นับแค่ scent_dev */
 test('🐞 ด่าน 1 SO : 1 PDR ตอนกดส่งนับเฉพาะ scent_dev — ใบหัวข้ออื่นที่อ้าง SO ไม่ล็อก', () => {
   const CREATE_ROUTE = read('../api/sa/requests/route.js');
-  // ม-163 — ด่านถามตัวโหลดกลางตัวเดียวกับหน้า SO (เงื่อนไข kind/status ล็อกไว้ที่ตัวโหลดในเทสต์ข้างบน)
+  // ม-164 — ด่านถามตัวโหลดกลางตัวเดียวกับหน้า SO (เงื่อนไข kind/status ล็อกไว้ที่ตัวโหลดในเทสต์ข้างบน)
   assert.match(CREATE_ROUTE, /loadScentOrderOwners\(supabase, \[soRow\]\)/);
   assert.match(CREATE_ROUTE, /usedByText: takenText/);
   // `revisedFromId` ต้องมากับแถว SO — ไม่งั้นใบ Rev. ของ SO ที่มีคำร้องแล้วเปิดซ้ำได้

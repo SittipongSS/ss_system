@@ -1,4 +1,4 @@
-// ตัวโหลด SO ของคำร้องพัฒนากลิ่น (ม-163) — เดินกับตัวจำลองในหน่วยความจำ ห้ามต่อฐานจริง
+// ตัวโหลด SO ของคำร้องพัฒนากลิ่น (ม-164) — เดินกับตัวจำลองในหน่วยความจำ ห้ามต่อฐานจริง
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

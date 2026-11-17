@@ -31,12 +31,17 @@ function navIcon(href) {
 }
 
 const dealIcon = () => navIcon('/sa/deals');
-const projectIcon = () => navIcon('/sa/projects');
+/* เมนู /sa/projects ถูกถอดในงวด P2d ยุบดีล/โครงการ (มติเจ้าของ 13/11/2026 ④) — โครงการไม่มีเมนูให้อ่านแล้ว
+   แต่จอที่ยังพูดถึงโครงการ (ของเก่าระหว่างรอ P3) ต้องคงรูปเดิม ⇒ ตรึงชื่อไว้ที่นี่ที่เดียว */
+const RETIRED_PROJECT_ICON = 'FolderKanban';
+const projectIcon = () => RETIRED_PROJECT_ICON;
+const iconOf = (nav) => (nav === '/sa/projects' ? projectIcon() : navIcon(nav));
 
-test('เมนูดีลกับเมนูโครงการประกาศไอคอนไว้ชัดเจนและไม่ซ้ำกัน', () => {
+test('เมนูดีลประกาศไอคอนไว้ชัดเจน · ไม่ซ้ำกับไอคอนโครงการ · เมนูโครงการถูกถอดแล้ว (P2d)', () => {
   assert.equal(dealIcon(), 'Handshake');
-  assert.equal(projectIcon(), 'FolderKanban');
   assert.notEqual(dealIcon(), projectIcon());
+  assert.doesNotMatch(read('src/config/menuRegistry.js'), /href: '\/sa\/projects'/,
+    'เมนูโครงการต้องไม่กลับมา — ลิงก์เก่าพาไปหน้าลูกค้าศูนย์รวม (proxy · /go/project/[id])');
 });
 
 /* หน้าที่แสดง "ดีล" — รวมหน้าของดีลเอง และดีลที่โผล่ในบริบทของ entity อื่น
@@ -48,40 +53,20 @@ const DEAL_SURFACES = [
   'src/app/sales-planning/leads/page.js',            // ปุ่มเปิดดีลในแถวคิวลีด
   'src/app/sales-planning/quotations/page.js',       // ตัวกรอง "ประเภทดีล"
   'src/app/sales-planning/sales-orders/[id]/page.js',// การ์ดบริบท "ดีล"
-  'src/app/sa/projects/[id]/page.js',                // แถบ facts "จำนวนดีล"
   'src/app/pm/tasks/page.js',                        // ชิปดีลบนแถวงาน
   'src/app/pm/tasks/[id]/page.js',                   // การ์ดบริบท "ดีล"
-  // เดิมชี้ที่ src/app/sa/projects/[id]/page.js (การ์ด "ดีลในโครงการ" บนแท็บภาพรวม)
-  // — การ์ดชุดนั้นถูกถอดออกเพราะซ้ำกับตารางดีล (2026-08-05) พื้นผิว "ดีลในโครงการ"
-  // ของหน้าโครงการจึงย้ายมาอยู่ที่หัวตารางในคอมโพเนนต์นี้
-  'src/components/pm/ProjectDealsHub.js',            // ตาราง "ดีลในโครงการ"
+  // หน้ารายละเอียดโครงการ + pm/ProjectDealsHub (ตาราง "ดีลในโครงการ") หลุดจากลิสต์นี้ใน P3a — ยุบโครงการ 16/11 ลบหน้า/คอมโพเนนต์ทิ้ง
   'src/components/pm/DealPicker.js',                 // ถังรวมดีลของตัวเลือกดีล
 ];
 
-/* หน้าที่แสดง "โครงการ" — โครงการเองและโครงการที่โผล่ในบริบทของ entity อื่น */
-const PROJECT_SURFACES = [
-  'src/app/sa/projects/page.js',                     // หัวหน้ารวมโครงการ + ทะเบียนโครงการ
-  'src/app/sales-planning/deals/page.js',            // เมนู "เปิดโครงการที่ผูกไว้" ในแถวดีล
-  'src/app/sales-planning/deals/[id]/page.js',       // ปุ่ม "ไปโครงการ" + การ์ดโครงการที่เชื่อมอยู่
-  'src/app/sales-planning/sales-orders/[id]/page.js',// การ์ดบริบท "โครงการ"
-  'src/app/requests/[id]/page.js',                   // การ์ดบริบท "โครงการ" ของใบคำร้อง
-  // หน้าลูกค้าหลุดจากลิสต์นี้ 13/11/2026 — ถอดแท็บ/ตัวเลข "โครงการ" (ถอดโครงการทาง ก. · docs/customer-hub-plan.md)
-  'src/app/database/products/[id]/page.js',          // แถบ facts + หัวข้อ "โครงการที่เกี่ยวข้อง"
-  'src/app/pm/tasks/[id]/page.js',                   // การ์ดบริบท "โครงการ"
-  'src/components/requests/RequestQueuePanel.js',    // ตัวกรอง "โครงการ" ของคิวคำร้อง
-  'src/components/pm/DealPicker.js',                 // ถังซ้าย = โครงการ
-];
+/* PROJECT_SURFACES + เทสต์ "ทุกหน้าที่พูดถึงโครงการ ใช้ไอคอนเดียวกับเมนูโครงการ" ถูกถอดใน P3a (ยุบโครงการ 16/11):
+   ทุกจอที่เหลือหลุดลิสต์ไปตั้งแต่ P2d และตัวสุดท้าย (หน้ารวม /sa/projects) ถูกลบ — ไม่มีจอไหนพูดถึงโครงการแล้ว
+   (ประวัติที่หลุดก่อนหน้า: หน้ารวมดีล · หน้าดีล · ใบสั่งขาย · งาน · คิวคำร้อง · หน้าคำร้อง · หน้าลูกค้า · หน้าสินค้า · DealPicker)
+   ไอคอนโครงการยังตรึงไว้ที่ RETIRED_PROJECT_ICON เพื่อกันดีลถอยไปยืมรูปเดิม (ด่านข้างล่าง) */
 
 test('ทุกหน้าที่พูดถึงดีล ใช้ไอคอนเดียวกับเมนูดีล', () => {
   const icon = dealIcon();
   for (const rel of DEAL_SURFACES) {
-    assert.match(read(rel), new RegExp(`\\b${icon}\\b`), `${rel} ต้องใช้ ${icon}`);
-  }
-});
-
-test('ทุกหน้าที่พูดถึงโครงการ ใช้ไอคอนเดียวกับเมนูโครงการ', () => {
-  const icon = projectIcon();
-  for (const rel of PROJECT_SURFACES) {
     assert.match(read(rel), new RegExp(`\\b${icon}\\b`), `${rel} ต้องใช้ ${icon}`);
   }
 });
@@ -102,7 +87,8 @@ const DEAL_ONLY_FILES = [
   'src/app/sales-planning/leads/page.js',
   'src/app/sales-planning/leads/[id]/page.js',
   'src/app/sales-planning/quotations/page.js',
-  'src/components/pm/ProjectDealsHub.js',
+  'src/app/sales-planning/deals/[id]/page.js',       // P2d: ถอดการ์ด/ปุ่มโครงการหมดแล้ว — ห้ามไหลกลับ
+  'src/app/sales-planning/deals/page.js',            // P2d: ถอดเมนู/ช่อง/กลุ่มโครงการแล้ว — ห้ามไหลกลับ
 ];
 
 test('ไฟล์ที่พูดถึงดีลอย่างเดียว ไม่มีไอคอนโครงการปน', () => {
@@ -118,7 +104,7 @@ test('ไฟล์ที่พูดถึงดีลอย่างเดี�
 test('ตัวสลับมุมมองไม่ยืมไอคอนของ entity', () => {
   const viewSwitcher = read('src/components/ui/ViewSwitcher.js');
   for (const nav of ['/sa/projects', '/sa/quotations']) {
-    const icon = navIcon(nav);
+    const icon = iconOf(nav);
     assert.doesNotMatch(viewSwitcher, new RegExp(`\\b${icon}\\b`),
       `ViewSwitcher ต้องไม่ใช้ ${icon} ซึ่งเป็นไอคอนของ ${nav}`);
   }
@@ -196,7 +182,6 @@ const ENTITIES = [
       'src/app/sales-planning/deals/page.js',              // เมนูแถวดีล "ใบเสนอราคา"
       'src/app/sales-planning/deals/[id]/page.js',         // หัวข้อ "ใบเสนอราคา" ของดีล
       'src/app/sales-planning/sales-orders/[id]/page.js',  // fact "อ้างอิง QT" + การ์ดบริบท
-      'src/components/pm/ProjectDealsHub.js',              // ใบเสนอราคาของดีล/โครงการ
       'src/components/salesPlanning/QuotationNotes.js',
     ],
     forbid: ['/sahamit/po'],
@@ -251,7 +236,7 @@ test('ทุก entity ในตาราง ใช้ไอคอนเดี�
 test('ไอคอนของ entity ไม่ซ้ำกันข้าม entity', () => {
   const used = new Map();
   for (const nav of ['/sa/deals', '/sa/projects', ...ENTITIES.map((e) => e.nav)]) {
-    const icon = navIcon(nav);
+    const icon = iconOf(nav);
     assert.ok(!used.has(icon), `${nav} ใช้ ${icon} ซ้ำกับ ${used.get(icon)} — คนละของกันต้องคนละรูป`);
     used.set(icon, nav);
   }

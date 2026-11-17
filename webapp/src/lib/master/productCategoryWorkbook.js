@@ -134,7 +134,6 @@ export async function buildProductCategoryExportBuffer(rows = [], { now = new Da
     { key: 'requiresFdaNotice', header: 'ต้องจดแจ้ง อย.', width: 16 },
     { key: 'products', header: 'สินค้า', width: 12 },
     { key: 'deals', header: 'ดีล', width: 12 },
-    { key: 'projects', header: 'โครงการ', width: 12 },
     { key: 'createdAt', header: 'สร้างเมื่อ', width: 22 },
     { key: 'updatedAt', header: 'แก้ไขล่าสุด', width: 22 },
   ];
@@ -152,16 +151,15 @@ export async function buildProductCategoryExportBuffer(rows = [], { now = new Da
       requiresFdaNotice: row.requiresFdaNotice ? 'ใช่' : '',
       products: row.usage?.products || 0,
       deals: row.usage?.deals || 0,
-      projects: row.usage?.projects || 0,
       createdAt: row.createdAt ? new Date(row.createdAt) : '',
       updatedAt: row.updatedAt ? new Date(row.updatedAt) : '',
     });
     excelRow.font = { name: FONT, size: 11 };
     excelRow.alignment = { vertical: 'top', wrapText: true };
-    for (const column of [10, 11, 12]) excelRow.getCell(column).numFmt = '#,##0';
-    for (const column of [13, 14]) excelRow.getCell(column).numFmt = 'dd/mm/yyyy hh:mm';
+    for (const column of [10, 11]) excelRow.getCell(column).numFmt = '#,##0';
+    for (const column of [12, 13]) excelRow.getCell(column).numFmt = 'dd/mm/yyyy hh:mm';
   }
-  sheet.autoFilter = { from: 'A1', to: 'N1' };
+  sheet.autoFilter = { from: 'A1', to: 'M1' };
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 

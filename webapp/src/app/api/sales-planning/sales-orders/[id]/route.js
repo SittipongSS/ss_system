@@ -288,18 +288,18 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
   const [{ data: deal }, { data: quotation, error: quotationError }, { data: project }, { data: signatureEvidence, error: signatureEvidenceError }, { data: scentRequest }, { customer, billingSchemaReady }] = await Promise.all([
     /* `line` = สายธุรกิจ (PRODUCT|SERVICE|null) — หน้าใบใช้ตัดสินว่าเป็น "ใบมีรอบบริการ"
        ไหม (มติ 2026-08-30: สาย SERVICE + มีบรรทัดหมวด 02-001 ≥1) ผ่าน `orderHasServiceRounds`
-       ⚠️ ตัวจริงของค่าอยู่ที่โครงการ ดีลเป็นสำเนาที่ใช้ตอนยังไม่มีโครงการ — ต้องดึงทั้งคู่
+       ⭐ ตัวตัดสินอ่านสายของดีลอย่างเดียวตั้งแต่งวด P3b-1 ยุบโครงการ (เดิมโครงการก่อน)
        ⚠️ เพิ่มชื่อคอลัมน์ที่นี่ปลอดภัยกับฉบับตรึง: `buildIssuedSalesOrderPayload` หยิบจาก
        deal/project แค่ `title`/`name` แบบระบุชื่อฟิลด์ ⇒ fingerprint ไม่ขยับ */
-    supabase.from('sales_deals').select('id, title, stage, dealType, line, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
+    supabase.from('sales_deals').select('id, code, title, stage, dealType, line, team, ownerId, ownerName, customerName, projectId').eq('id', order.dealId).maybeSingle(),
     /* 🪤 คู่ภาษาต้องมาด้วยกันเสมอ — `salesOrderPrint`/`issuedSalesOrderSnapshot` เขียน
        ทางถอย `order.xxxEn || quotation.xxxEn` ไว้ ลืมชื่อคอลัมน์ที่นี่ = ฝั่งขวาเป็น
        undefined เสมอ แล้วใบอังกฤษพิมพ์ชื่อ/ที่อยู่ไทยเงียบ ๆ โดยไม่มีอะไรฟ้อง */
     supabase.from('quotations').select('id, quoteNumber, status, wonDocType, wonDocDate, wonDocNo, wonAttachments, customerId, customerTaxId, "customerNameEn", billingAddress, "billingAddressEn", shippingAddress, "shippingAddressEn", branchCode, contactName, contactPhone, paymentPlan, paymentTerms, discountType, discountValue').eq('id', order.quotationId).maybeSingle(),
     order.projectId
-      // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย)
-      // line: สายธุรกิจตัวจริง (โครงการเป็นเจ้าของค่า ดีลเป็นสำเนา) — ดู `orderBusinessLineOf`
-      ? supabase.from('projects').select('id, code, name, line, closeStatus').eq('id', order.projectId).maybeSingle()
+      // closeStatus: ด่าน B3 ใช้ตัดสินว่าออก Rev. ใบใหม่ได้ไหม (หน้าเว็บใช้ซ่อนปุ่มด้วย) · code/name: ข้อความของด่านนั้น + ฉบับตรึง
+      // (`line` เลิกขอแล้ว — สายธุรกิจของใบอ่านจากดีลตั้งแต่งวด P3b-1 ยุบโครงการ · ดู `orderBusinessLineOf`)
+      ? supabase.from('projects').select('id, code, name, closeStatus').eq('id', order.projectId).maybeSingle()
       : Promise.resolve({ data: null }),
     supabase.from('document_signature_evidence').select('id').eq('salesOrderId', id).limit(1).maybeSingle(),
     // ⭐ คำร้องพัฒนากลิ่นที่เปิดจากใบนี้ — หน้า SO ใช้ตัดสินว่าโชว์ปุ่ม "เปิดคำร้อง"
@@ -313,7 +313,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     // ⚠️ อ่านด้วย service-role โดยตั้งใจ — ทะเบียนคำร้องมีขอบเขตของตัวเอง (ผู้ขอเห็น
     // เฉพาะของตัวเอง) ⇒ ถามผ่านทางนั้นจะได้ "ไม่มีใบ" ทั้งที่เพื่อนร่วมทีมเปิดไปแล้ว
     // แล้วปุ่มจะโชว์ให้กดจนไปตายที่ DB · ที่คืนออกไปมีแค่ เลขที่/สถานะ/id
-    /* ⭐ ม-163 — เจ้าของมีสามทาง: SO หลัก · SO แนบ (mig 0436) · เป็น Rev. ของใบที่มีเจ้าของ ⇒ ตัวโหลดเดียวกับด่านเปิดคำร้อง
+    /* ⭐ ม-164 — เจ้าของมีสามทาง: SO หลัก · SO แนบ (mig 0436) · เป็น Rev. ของใบที่มีเจ้าของ ⇒ ตัวโหลดเดียวกับด่านเปิดคำร้อง
        (`loadScentOrderOwners` · เงื่อนไข SO หลักยังตรงกับดัชนี 0219) · ก้อนที่คืนคงสามคีย์เดิม + บทบาท + ข้อความด่าน
        ⚠️ อ่านพลาด = ไม่มีก้อน (log) เหมือนของเดิมที่ไม่เคยอ่าน error ของคำสั่งนี้ — ด่านจริงอยู่ที่ POST เปิดคำร้อง */
     loadScentOrderOwners(supabase, [order])
@@ -666,7 +666,7 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
   }
   // ⭐ ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177 · มติผู้ใช้ 2026-07-29:
   // "PR RM เข้า มันจะเชื่อมกับ SO เพราะว่ามันติดตามเพื่อสู่การผลิต")
-  // อ่านอย่างเดียวที่นี่ — แก้ที่หน้าโครงการซึ่ง PC เป็นเจ้าของงาน
+  // อ่านอย่างเดียว — ทางแก้ (หน้าโครงการ + route deliveries) ถอดแล้วในงวด P3b-1 ยุบโครงการ · prod มี 0 แถว
   // ไม่บล็อกถ้าโหลดไม่ได้: SO ต้องเปิดดูได้เสมอ ของเข้าเป็นข้อมูลประกอบ
   let deliveries = [];
   try {

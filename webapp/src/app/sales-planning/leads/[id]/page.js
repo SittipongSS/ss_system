@@ -136,7 +136,7 @@ export default function LeadDetailPage() {
   const directory = usePeopleDirectory();
   const users = useMemo(() => directory.filter((u) => !u.disabled), [directory]);
   const [dealOpen, setDealOpen] = useState(false);
-  const [dealOptions, setDealOptions] = useState({ customers: [], projects: [], categories: [] });
+  const [dealOptions, setDealOptions] = useState({ customers: [], categories: [] });
 
   useEffect(() => {
     apiFetch("/api/users/me").then((r) => (r.ok ? r.json() : null))
@@ -307,11 +307,10 @@ export default function LeadDetailPage() {
   function openDealForm() {
     Promise.all([
       apiFetch("/api/master/customers").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-      apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).catch(() => []),
+      // รายชื่อโครงการเลิกโหลด — ฟอร์มดีลไม่มีช่องโครงการแล้ว (ยุบดีล/โครงการ P2d)
       apiFetch("/api/product-types").then((r) => (r.ok ? r.json() : [])).catch(() => []),
-    ]).then(([customerRows, projectRows, categoryRows]) => setDealOptions({
+    ]).then(([customerRows, categoryRows]) => setDealOptions({
       customers: Array.isArray(customerRows) ? customerRows : [],
-      projects: Array.isArray(projectRows) ? projectRows : projectRows?.items || [],
       categories: Array.isArray(categoryRows) ? categoryRows : [],
     }));
     setDealOpen(true);
@@ -584,7 +583,6 @@ export default function LeadDetailPage() {
           lockedOwner={dealOwners.lockedOwner}
             lead={lead}
             customers={dealOptions.customers}
-            projects={dealOptions.projects}
             categories={dealOptions.categories}
             onClose={() => setDealOpen(false)}
           />

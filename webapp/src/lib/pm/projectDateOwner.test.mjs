@@ -18,50 +18,11 @@ import { projectDateRange } from './derived.js';
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
 
-test('ผูกดีลเข้าโครงการ: วัน segment ต้องตกมาที่วันเริ่มของดีลก่อนถึงจะเป็นวันนี้', () => {
-  const src = read('lib/sales/dealProjectLink.js');
-  assert.match(
-    src,
-    /startDateInput \|\| deal\.startDate \|\| todayStr\(\)/,
-    'ลำดับต้องเท่ากับ create-project — ข้าม deal.startDate ไปคือ segment เริ่มนับจากวันนี้',
-  );
-  // เส้นทางสร้างโครงการจากดีลใช้ลำดับเดียวกันอยู่แล้ว — ล็อกไว้ไม่ให้เดินหนีกันอีก
-  assert.match(
-    read('app/api/sales-planning/deals/[id]/create-project/route.js'),
-    /body\.startDate \|\| deal\.startDate \|\| todayStr\(\)/,
-  );
-});
-
-test('แผงผูกดีล: เลือกดีลแล้วช่องวันต้องตั้งตามวันของดีลนั้น ไม่ใช่วันนี้', () => {
-  const src = read('components/pm/ProjectDealsHub.js');
-  assert.match(src, /setStartDate\(deal\?\.startDate \|\| localToday\(\)\)/, 'เลือกดีล = ได้วันของดีลมาเป็นค่าตั้งต้น');
-  assert.match(src, /onChange=\{pickDeal\}/, 'ตัวเลือกดีลต้องผ่าน pickDeal ไม่ใช่ setDealId ตรง ๆ');
-});
-
-test('ฟอร์มโครงการ: วันเริ่มที่มาจากดีลเป็นช่องเส้นประอ่านอย่างเดียว และไม่ใช่ช่องบังคับ', () => {
-  const src = read('components/pm/SalesProjectCreateModal.js');
-  assert.match(src, /startDateFrom = null/, 'ต้องมีโหมดผ่าน props ไม่ใช่ฟอร์มคนละไฟล์ (AGENTS.md)');
-  assert.match(src, /startDateFrom \? \(\s*<>\s*<div className="deal-derived">/, 'ค่าที่ระบบรู้แล้วต้องเป็นช่องเส้นประ ไม่ใช่ดรอปดาวน์จาง');
-  assert.match(
-    src,
-    /\[!startDateFrom && !form\.startDate, "วันที่เริ่มโครงการ"\]/,
-    'ช่องที่คนกรอกไม่ได้ ห้ามอยู่ในด่านตรวจช่องบังคับ',
-  );
-});
-
-test('ทางเรียกทั้งสามส่งเจ้าของวันมาถูกตัว', () => {
-  // สร้างจากดีล = ของดีลเสมอ
-  assert.match(
-    read('app/sales-planning/deals/[id]/page.js'),
-    /startDateFrom=\{deal \? `ดีล \$\{deal\.code \|\| deal\.id\}` : "ดีลก่อตั้ง"\}/,
-  );
-  // แก้โครงการ = ขึ้นกับว่ามีดีลไหม
-  assert.match(
-    read('app/sa/projects/[id]/page.js'),
-    /startDateFrom=\{\(p\.deals \|\| \[\]\)\.length \? "ดีลในโครงการ" : null\}/,
-  );
-  // สร้างตรงจากหน้ารวมโครงการ = โครงการเป็นเจ้าของ ห้ามส่ง prop นี้
-  assert.doesNotMatch(read('app/sa/projects/page.js'), /startDateFrom/);
+/* ยามซอร์สสี่ตัวของเส้นผูก/สร้าง/แก้โครงการ (dealProjectLink · create-project · ProjectDealsHub ·
+   SalesProjectCreateModal · หน้ารวม/หน้ารายละเอียดโครงการ) ถูกถอดใน P3a — ยุบโครงการ 16/11 ลบทุกทางสร้าง/ผูก/ดูโครงการ
+   เหลือยามกันโมดัลสร้างโครงการไหลกลับหน้าดีล + ตัวคำนวณช่วงวัน (derived.js ยังอยู่) */
+test('หน้าดีลไม่มีทางสร้างโครงการ (ถอดใน P2d · ไฟล์โมดัลลบใน P3a) — ห้ามไหลกลับ', () => {
+  assert.doesNotMatch(read('app/sales-planning/deals/[id]/page.js'), /SalesProjectCreateModal/);
 });
 
 test('projectDateRange: อ่านจากขั้นตอนจริง ครอบทุก segment + งานกลาง', () => {
@@ -88,13 +49,4 @@ test('projectDateRange: ยังไม่มีขั้นตอน → ตก
   );
   assert.deepEqual(projectDateRange(null), { start: null, finish: null, target: null });
 });
-
-test('หัวโครงการต้องโชว์ช่วงที่คำนวณ ไม่ใช่คอลัมน์สำเนา', () => {
-  const src = read('app/sa/projects/[id]/page.js');
-  /* ⚠️ เดิมเช็ค `|| "-"` — เปลี่ยนเป็น naText() ตอนรวมค่าว่างทั้งระบบเป็น N/A
-     (มติผู้ใช้ 2026-08-14) · เจตนาของด่านนี้เท่าเดิม: หัวโครงการต้องอ่านจาก
-     `dateRange` ที่คำนวณ ไม่ใช่คอลัมน์สำเนาใน `p` */
-  assert.match(src, /value: naText\(dateRange\.start\)/);
-  assert.match(src, /value: naText\(dateRange\.finish\)/);
-  assert.doesNotMatch(src, /label: "วันเริ่ม", value: p\.startDate/, 'ห้ามกลับไปอ่านคอลัมน์สำเนา');
-});
+// (ยาม "หัวโครงการต้องโชว์ช่วงที่คำนวณ" ถอดใน P3a พร้อมหน้ารายละเอียดโครงการ)

@@ -18,7 +18,6 @@ import { QUOTE_STATUS_LABELS } from "@/components/salesPlanning/ui";
 import { DEAL_TYPE_LABELS, STAGE_LABELS } from "@/lib/salesPlanning";
 import { SALES_ORDER_STATUS_LABELS } from "@/lib/sales/salesOrderWorkflow";
 import { FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES } from "@/lib/sales/salesOrderFinanceApproval";
-import { INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES } from "@/lib/sales/salesOrderPayments";
 import { CONTRACT_STATUS_LABELS, CONTRACT_STATUS_TONES, contractKindLabel } from "@/lib/sales/contracts";
 import { LEAD_STATUS_LABELS } from "@/lib/sales/leads";
 import { REQUEST_STATUS_LABELS, requestStatusView } from "@/lib/requests/statuses";
@@ -29,9 +28,10 @@ import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formul
 import { formulaLabelParts, formulaSearchText, scentLabelParts, scentSearchText } from "@/lib/master/registryLabel";
 import { isExciseOrder } from "@/lib/sales/historicalOrders";
 import {
-  buildDealRows, contractText, dealRowText, installmentState, installmentText, leadText, matchesQuery, orderText,
-  productOrderStats, quoteText, registrationText, requestText, hubText, todayKey,
+  buildDealRows, contractText, dealRowText, FINANCE_ORDER_STATES, financeOrderRows, financeOrderText, leadText, matchesQuery,
+  orderText, productOrderStats, quoteText, registrationText, requestDueCell, requestDueSortKey, requestText, hubText, todayKey,
 } from "@/lib/master/customerHub";
+import { requestDueTone } from "@/components/requests/requestUi";
 import { fmtDate, fmtMoney, naText, NA, productNameBoth } from "@/lib/format";
 
 /* ── หน้าลูกค้าศูนย์รวม · แท็บข้อมูลที่เกี่ยวข้อง (งวด H1 · มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md) ─────
@@ -405,7 +405,7 @@ function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
 }
 
 /* ── คำร้อง ──────────────────────────────────────────────────────────────────────────── */
-function RequestsTab({ hub, query, onQuery }) {
+function RequestsTab({ hub, query, onQuery, today }) {
   const rows = hub.requests.rows;
   const dealCode = useMemo(() => new Map(hub.sales.deals.map((d) => [d.id, d.code])), [hub.sales.deals]);
   return (
@@ -427,7 +427,8 @@ function RequestsTab({ hub, query, onQuery }) {
       ]}
       sorts={[
         { value: "recent", label: "ยื่นล่าสุด", dir: "desc", compare: byTime((r) => r.submittedAt || r.createdAt) },
-        { value: "due", label: "กำหนดส่ง", dir: "asc", compare: byText((r) => r.committedDueDate || r.requestedDueDate || "9999") },
+        // กำหนดส่ง = วันที่ฝ่ายแจ้ง (มติ 8) — รอฝ่ายแจ้งต่อท้าย · ไม่มีวันท้ายสุด
+        { value: "due", label: "กำหนดส่ง", dir: "asc", compare: byText(requestDueSortKey) },
       ]}
       rowHref={(r) => `/requests/${r.id}`}
       columns={[
@@ -436,52 +437,74 @@ function RequestsTab({ hub, query, onQuery }) {
         { key: "deal", label: "ดีล", render: (r) => <Code>{naText(dealCode.get(r.dealId))}</Code> },
         { key: "status", label: "สถานะ", render: (r) => { const v = requestStatusView(r); return <StatusBadge tone={v.tone} label={v.label} />; } },
         { key: "date", label: "ยื่นเมื่อ", render: (r) => fmtDate(r.submittedAt || r.createdAt) },
-        { key: "due", label: "กำหนดส่ง", render: (r) => fmtDate(r.committedDueDate || r.requestedDueDate) },
+        /* มติ 8 (13/11/2026 · งวด H4): วันที่ฝ่ายรับผิดชอบแจ้งเท่านั้น — ตัวตัดสินเดียวกับคิวคำร้อง (`requestDueCell` →
+           `liveDueDate` · ป้ายจาก `requestDueTone`) · ฝ่ายยังไม่แจ้ง = "รอฝ่ายแจ้ง" + วันที่ผู้ขอขอไว้เป็นบรรทัดรอง */
+        { key: "due", label: "กำหนดส่ง", render: (r) => {
+          const cell = requestDueCell(r);
+          if (cell.date) {
+            const tone = requestDueTone(r, today);
+            return <><span>{fmtDate(cell.date)}</span>{tone && <StatusBadge tone={tone.color === "var(--red)" ? "danger" : "warning"} label={tone.label} />}</>;
+          }
+          return (
+            <>
+              {cell.waiting ? <StatusBadge tone="warning" label="รอฝ่ายแจ้ง" /> : <span>{NA}</span>}
+              <Sub>{cell.requested ? `ขอไว้ ${fmtDate(cell.requested)}` : null}</Sub>
+            </>
+          );
+        } },
       ]}
       emptyText="ยังไม่มีคำร้องของลูกค้ารายนี้"
     />
   );
 }
 
-/* ── การเงิน (งวดชำระ) ───────────────────────────────────────────────────────────────── */
+/* ── การเงิน · 1 แถว = 1 ใบสั่งขาย (มติ 9 · 13/11/2026 · งวด H4) ──────────────────────────────────────────────
+   เดิม 1 แถว = 1 งวด · ตอนนี้รวมงวดของใบด้วย `financeOrderRows` (ตัวตัดสินสถานะงวดตัวเดียวกับแถวดีล/การ์ดติดตาม)
+   คอลัมน์ชุด "เงินเข้า-ค้าง": ใบสั่งขาย (+ดีล) · ยอด SO · รับแล้ว · ค้างรับ · งวด (รับแล้ว/ทั้งหมด) · งวดถัดไป · สถานะ
+   ⚠️ ตัวเลขเป็นยอดงวดชำระ ไม่ใช่ Actual (Actual อยู่แท็บการขายตามมติ 1) */
 function FinanceTab({ hub, query, onQuery, today }) {
-  const orderById = useMemo(() => new Map(hub.sales.orders.map((o) => [o.id, o])), [hub.sales.orders]);
-  const rows = useMemo(() => hub.finance.installments.map((inst) => {
-    const order = orderById.get(inst.salesOrderId) || null;
-    return { id: inst.id, inst, order, ...installmentState(inst, order, today) };
-  }), [hub.finance.installments, orderById, today]);
+  const rows = useMemo(
+    () => financeOrderRows({ orders: hub.sales.orders, installments: hub.finance.installments, deals: hub.sales.deals }, today),
+    [hub.sales.orders, hub.finance.installments, hub.sales.deals, today],
+  );
+  const stateOptions = Object.entries(FINANCE_ORDER_STATES)
+    .filter(([key]) => rows.some((r) => r.state === key))
+    .map(([value, meta]) => ({ value, label: meta.label }));
   return (
     <HubListPanel
       query={query}
       onQuery={onQuery}
-      stateKey="hub-finance"
+      stateKey="hub-finance-order"
       icon={<Wallet size={17} aria-hidden="true" />}
-      title="งวดชำระ"
-      subtitle="งวดของทุกใบสั่งขายที่คุณเห็นได้ · เกินกำหนดนับตามวันไทย"
-      unit="งวด"
+      title="การชำระตามใบสั่งขาย"
+      subtitle="แถวละใบสั่งขาย · รวมงวดของใบที่คุณเห็นได้ · เกินกำหนดนับตามวันไทย"
+      unit="ใบ"
       rows={rows}
-      searchPlaceholder="ค้นหาเลข SO / ชื่องวด / เลขใบกำกับภาษี"
-      textOf={(r) => installmentText(r.inst, r.order?.orderNumber)}
+      searchPlaceholder="ค้นหาเลข SO / ดีล / ชื่องวด / เลขใบกำกับภาษี"
+      textOf={financeOrderText}
       filters={[
-        { key: "status", label: "สถานะงวด", icon: Flag, options: optionsOf(rows, (r) => r.display, (k) => INSTALLMENT_STATUS_LABELS[k] || k), test: inValues((r) => r.display) },
-        { key: "overdue", label: "กำหนดชำระ", icon: CalendarDays, options: [{ value: "overdue", label: "เกินกำหนด" }, { value: "ok", label: "ยังไม่เกิน / ชำระแล้ว" }], test: (r, values) => values.includes(r.overdue ? "overdue" : "ok") },
-      ]}
-      groups={[
-        { value: "none", label: "ไม่จัดกลุ่ม" },
-        { value: "order", label: "ใบสั่งขาย", weighted: "ยอดงวดรวม", describe: (r) => ({ key: r.inst.salesOrderId, label: r.order?.orderNumber || "ไม่พบใบ", weight: r.inst.amount }) },
+        { key: "state", label: "สถานะ", icon: Flag, options: stateOptions, test: inValues((r) => r.state) },
       ]}
       sorts={[
-        { value: "due", label: "กำหนดชำระ", dir: "desc", compare: byText((r) => r.inst.dueDate) },
-        { value: "amount", label: "ยอด", dir: "desc", compare: byNum((r) => r.inst.amount) },
+        { value: "next", label: "งวดถัดไป", dir: "asc", compare: byText((r) => r.next?.dueDate || "9999-12-31") },
+        { value: "outstanding", label: "ค้างรับ", dir: "desc", compare: byNum((r) => r.outstanding) },
+        { value: "total", label: "ยอด SO", dir: "desc", compare: byNum((r) => r.total) },
       ]}
-      rowHref={(r) => `/sa/sales-orders/${r.inst.salesOrderId}`}
+      rowHref={(r) => `/sa/sales-orders/${r.id}`}
       columns={[
-        { key: "so", label: "ใบสั่งขาย", render: (r) => <Code>{naText(r.order?.orderNumber)}</Code> },
-        { key: "seq", label: "งวด", render: (r) => <><span>{`งวด ${r.inst.seq ?? NA}`}</span><Sub>{r.inst.label}</Sub></> },
-        { key: "due", label: "กำหนดชำระ", render: (r) => fmtDate(r.inst.dueDate) },
-        { key: "status", label: "สถานะ", render: (r) => <><StatusBadge tone={INSTALLMENT_STATUS_TONES[r.display] || "neutral"} label={INSTALLMENT_STATUS_LABELS[r.display] || r.display} />{r.overdue && <StatusBadge tone="danger" label="เกินกำหนด" />}</> },
-        { key: "paid", label: "วันที่รับ", render: (r) => fmtDate(r.inst.paidOn || r.inst.confirmedAt) },
-        { key: "amount", label: "ยอด", className: "num", render: (r) => <Money value={r.inst.amount} /> },
+        { key: "so", label: "ใบสั่งขาย", render: (r) => <><Code>{naText(r.order?.orderNumber)}</Code><Sub>{r.deal?.title || r.deal?.code || null}</Sub></> },
+        { key: "total", label: "ยอด SO", className: "num", render: (r) => <Money value={r.total} /> },
+        { key: "received", label: "รับแล้ว", className: "num", render: (r) => <Money value={r.received} /> },
+        { key: "outstanding", label: "ค้างรับ", className: "num", render: (r) => <Money value={r.outstanding} /> },
+        { key: "count", label: "งวด", render: (r) => `${r.receivedCount}/${r.count}` },
+        { key: "next", label: "งวดถัดไป", render: (r) => (r.next ? (
+          <>
+            <span>{`${r.next.dueDate ? fmtDate(r.next.dueDate) : "ไม่มีกำหนด"} · ${fmtMoney(r.next.amount)}`}</span>
+            {r.next.overdue && <StatusBadge tone="danger" label="เกินกำหนด" />}
+            <Sub>{r.next.label || (r.next.seq != null ? `งวด ${r.next.seq}` : null)}</Sub>
+          </>
+        ) : NA) },
+        { key: "state", label: "สถานะ", render: (r) => <StatusBadge tone={FINANCE_ORDER_STATES[r.state].tone} label={FINANCE_ORDER_STATES[r.state].label} /> },
       ]}
       emptyText="ยังไม่มีงวดชำระของลูกค้ารายนี้"
     />
@@ -579,12 +602,11 @@ export default function CustomerHub({
     if (!hub) return {};
     const hit = (rows, text) => rows.filter((r) => matchesQuery(text(r), query)).length;
     const dealCode = new Map(hub.sales.deals.map((d) => [d.id, d.code]));
-    const orderNo = new Map(hub.sales.orders.map((o) => [o.id, o.orderNumber]));
     const dealRows = buildDealRows({ ...hub.sales, installments: hub.finance.installments, requests: hub.requests.rows }, today);
     return {
       sales: hit(dealRows, dealRowText),
       requests: hit(hub.requests.rows, (r) => requestText(r, dealCode.get(r.dealId))),
-      finance: hit(hub.finance.installments, (i) => installmentText(i, orderNo.get(i.salesOrderId))),
+      finance: hit(financeOrderRows({ orders: hub.sales.orders, installments: hub.finance.installments, deals: hub.sales.deals }, today), financeOrderText),
       excise: hit(registrations, registrationText) + hit(hub.excise.orders, (o) => orderText(o)),
     };
   }, [hub, query, today, registrations]);
@@ -646,7 +668,7 @@ export default function CustomerHub({
               onQuery={setQuery}
             />
           )}
-          {current === "requests" && <RequestsTab hub={hub} query={query} onQuery={setQuery} />}
+          {current === "requests" && <RequestsTab hub={hub} query={query} onQuery={setQuery} today={today} />}
           {current === "finance" && <FinanceTab hub={hub} query={query} onQuery={setQuery} today={today} />}
           {current === "excise" && <ExciseTab registrations={registrations} hub={hub} query={query} onQuery={setQuery} />}
           {current === "service" && service.render()}

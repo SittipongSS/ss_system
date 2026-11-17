@@ -1,5 +1,5 @@
-// ตัวเขียน audit ของคำร้องที่ถูกลบพ่วงดีล/โครงการ — ส่งเข้า `cleanupDealOrphans` /
-// `deleteProjectDeep` เป็น `auditRequests` · แยกไฟล์จาก cascadeDelete.js เพราะ
+// ตัวเขียน audit ของคำร้องที่ถูกลบพ่วงดีล — ส่งเข้า `cleanupDealOrphans` เป็น `auditRequests`
+// (เส้นลบโครงการ `deleteProjectDeep` ถอดแล้วในงวด P3b-1) · แยกไฟล์จาก cascadeDelete.js เพราะ
 // `recordAudit` ดึง client ฝั่งเซิร์ฟเวอร์ ส่วนตัวนั้นถูก import จากเทสต์ของ lib ลบ
 import { recordAudit } from '@/lib/audit';
 import { requestCascadeSummary } from '@/lib/requests/cascadeDelete';

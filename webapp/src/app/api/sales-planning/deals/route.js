@@ -1,9 +1,11 @@
 import { genId } from '@/lib/id';
+import { resolveDealPeople } from '@/lib/sales/dealPeople';
+import { resolveSourceScent } from '@/lib/sales/dealScentSource';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { insertRowWithEntityCode } from '@/lib/entityCode';
 import { recordAudit } from '@/lib/audit';
-import { autoProbability } from '@/lib/sales/dealProbability';
+import { resolveProbability } from '@/lib/sales/dealProbability';
 import { ownerLockedToSelf, validateDealOwner } from '@/lib/sales/dealOwner';
 import { withUser, ok, fail, badRequest, forbidden, unauthorized } from '@/lib/http';
 import {
@@ -68,6 +70,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   /* ⭐ `?review=1` = เฉพาะดีล "รอเติมข้อมูล" ทุกงวด (ตรวจตัวเลข H5 2026-10-19) — ที่มาของเลขท้ายตัวเลือกในแผงกรอง
      (`lib/sales/dealListFilter.js`) · คัดที่ฐาน ไม่ต้องลากดีลทั้งตารางมานับ · ธงตัวเดียวกับ `isNeedsReviewDeal` */
   const reviewOnly = wantsReviewOnly(params);
+  /* ตัวเลือก "ดีล SCENT ต้นทาง" ของฟอร์มดีล NPD (ยุบดีล/โครงการ P2c-2) — ดีลของลูกค้ารายเดียว + ประเภทเดียว ·
+     ขอบเขตสิทธิ์ยังเป็น applyDealScope ตัวเดิม (ไม่เห็นดีล = ไม่มีให้เลือก) */
+  const customerIdFilter = String(params.get('customerId') || '').trim() || null;
+  const dealTypeFilter = params.get('dealType') ? normalizeDealType(params.get('dealType')) : null;
 
   /* ⚠️ **อ่านทุกหน้า ไม่ใช่หน้าแรก** — Supabase ตั้ง Max rows = 1000 และ PostgREST
      ตัดผลลัพธ์ **โดยไม่มี error** ⇒ วันที่ดีลเกินพันใบ ลิสต์นี้จะหายไปเงียบ ๆ พร้อม
@@ -83,6 +89,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     let q = applyDealScope(q0, user);
     if (stage && stage !== 'all') q = q.eq('stage', normalizeStage(stage));
     if (reviewOnly) q = q.eq('metadata->>needsReview', 'true');
+    if (customerIdFilter) q = q.eq('customerId', customerIdFilter);
+    if (dealTypeFilter) q = q.eq('dealType', dealTypeFilter);
     /* งวดที่ query = **อ่านชุดที่ใหญ่กว่าไว้ก่อน** แล้วคัดจริงด้วยตัวตัดสินกลางด้านล่าง (ทั้งสองแกน)
        แกนปิด: ช่วงวัน = วันคาดปิดในช่วง · รายเดือน/ทุกเดือน = เดือน FC ในงวด **หรือ** วันคาดปิดในงวด
        (ตัวตัดสินถอยไปใช้เดือนของวันคาดปิดเมื่อไม่มีเดือน FC — query เดิม `forecastMonth IN` อย่างเดียว
@@ -240,6 +248,19 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
   }
 
+  /* ⭐ AC ผู้ประสานงาน + AE Supervisor ของดีล (ยุบดีล/โครงการ P2c-1 · มติเจ้าของ 13/11/2026 ②⑤) — บังคับทุกครั้งที่สร้าง
+     จากฟอร์ม · ตัวตรวจคนชุดเดียวกับโครงการ (สาย AC + ทีมทับ · หัวหน้าฝ่ายขาย) · ทีมที่เทียบ = ทีมของดีลหลังตัดสินเจ้าของ
+     ⚠️ สายสหมิตร/ภาชนะ SO ย้อนหลัง/backfill เขียน sales_deals ตรง ไม่ผ่าน route นี้ ⇒ ไม่โดนด่าน */
+  const people = await resolveDealPeople(supabase, {
+    body, team: owner?.team || attributionTeam(user, body.team), required: true,
+  });
+  if (!people.ok) return badRequest(people.error);
+  /* ⭐ ดีล SCENT ต้นทาง (ยุบดีล/โครงการ P2c-2 · มติ ③) — เฉพาะ NPD · ต้องเป็น SCENT ของลูกค้าเดียวกันที่ยังไม่ Lost
+     FC% ของ NPD ที่สร้างเลยขั้นเสนอราคาและชี้ SCENT ที่ Won แล้ว = 80 ตั้งแต่เกิด (resolveProbability) */
+  const createdType = normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType);
+  const scentSource = await resolveSourceScent(supabase, { body, next: { dealType: createdType, customerId: body.customerId || null } });
+  if (!scentSource.ok) return badRequest(scentSource.error);
+
   const row = {
     id: genId('DEAL'),
     customerId: body.customerId || null,
@@ -255,9 +276,9 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // FC% มาจากกติกา ไม่ใช่จากฟอร์ม (มติผู้ใช้ 2026-08-05)
     // 🐞 ค่าตั้งต้นของฟอร์มคือ "50" มาตลอด ทั้งที่ขั้นตั้งต้นคือ 'lead' ⇒ ดีลใหม่ทุกใบ
     // เกิดมาที่ 50% ทั้งที่ยังไม่มีใบเสนอราคาสักใบ (ระดับ 50 = ออกใบเสนอราคาแล้ว)
-    // ดีลตอนสร้างยังไม่ผูกโครงการ (POST ไม่รับ projectId — ผูกทีหลังที่ link-project
-    // ซึ่งคิด FC ใหม่ให้) จึงไม่ต้องหาพี่น้อง SCENT ตรงนี้
-    probability: autoProbability({ stage, dealType: normalizeDealType(body.dealType ?? body.projectType ?? body.metadata?.projectType) }),
+    // NPD ที่ชี้ดีล SCENT ต้นทาง (P2c-2) ถามต้นทางว่า Won ไหม — ไม่ชี้ = ฐานของขั้น (ไม่ยิง query)
+    probability: await resolveProbability(supabase, { stage, dealType: createdType, sourceScentDealId: scentSource.patch.sourceScentDealId || null }),
+    ...scentSource.patch,
     // เดือน FC อนุมานจากวันที่คาดปิดเสมอ (มติผู้ใช้ 2026-07-16 — ฟอร์มไม่มีช่องเดือนแล้ว
     // และไม่รับค่าจาก client); ไม่ระบุวันที่คาดปิด → ตกเป็นเดือนปัจจุบัน (default เดิมของฟอร์ม)
     forecastMonth: monthKey(body.expectedCloseDate) || monthKey(new Date().toISOString()),
@@ -277,6 +298,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     // ทีมตามเจ้าของ ไม่ใช่ตามคนกด · เจ้าของอยู่หลายทีมได้ ⇒ ฟอร์มเลือกได้ว่าใบนี้เข้าทีมไหน
     // (validateDealOwner ตีค่าที่ไม่ใช่ทีมของเจ้าของทิ้งแล้ว) · ไม่มีเจ้าของ = ทีมของคนกด
     team: owner?.team || attributionTeam(user, body.team),
+    ...people.patch,
     // ประเภทดีล 3 ค่า (SCENT/NPD/RE-ORDER) = คอลัมน์จริง (mig 0088) — ค่าตรงกับ
     // projects.type ส่งต่อเป็น template ตอนสร้างโครงการ PM. transition: เขียน
     // metadata.projectType คู่ไว้ 1 เฟส ให้โค้ด/แคชเก่าอ่านได้.

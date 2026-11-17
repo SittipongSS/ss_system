@@ -115,19 +115,6 @@ export async function insertRowWithEntityCode(supabase, scope, row, now = new Da
   return { data: Array.isArray(data) ? (data[0] ?? null) : null, error: null };
 }
 
-// พรีวิวรหัสถัดไป "โดยไม่กินเลข" (สำหรับหน้าฟอร์มโชว์เฉย ๆ — ห้ามใช้ตอน insert จริง
-// เพราะไม่ atomic และเลขที่โชว์อาจถูกคนอื่นเอาไปก่อน)
-// ตัวจริงตอนสร้างคือ insertRowWithEntityCode / insertRowsWithEntityCode ข้างบน
-export async function peekNextEntityCode(supabase, scope, now = new Date()) {
-  // ⚠️ อ่านถังนับด้วย **คีย์รอบตัด** (ปีสำหรับ DL/PJ) แต่ประกอบรหัสด้วย **YYMM** —
-  // เผลอใช้ค่าเดียวกันทั้งสองที่เมื่อไร ตัวอย่างที่โชว์จะเป็นคนละเลขกับที่ออกจริง
-  const { data } = await supabase
-    .from('entity_number_counters').select('lastNo')
-    .eq('scope', scope).eq('month', entityCounterKey(scope, now)).maybeSingle();
-  const next = (data?.lastNo || 0) + 1;
-  return `${scope}-${ymKey(now)}${String(next).padStart(entityRunningWidth(scope), '0')}`;
-}
-
 // แสดงรหัสเต็ม = ฐาน + '-' + revision (revise เริ่ม 0). ไม่มีรหัส → '-'.
 export function entityCodeDisplay(baseCode, rev) {
   if (!baseCode) return '-';

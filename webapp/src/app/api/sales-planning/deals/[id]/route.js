@@ -3,7 +3,7 @@ import { recordAudit } from '@/lib/audit';
 import { requestsLinkedTo, sentRequestsBlockMessage } from '@/lib/requests/cascadeDelete';
 import { requestCascadeAuditor } from '@/lib/requests/cascadeAudit';
 import { caretakerTeamsOf, hasTeam, isSalesManager, userTeams, viewScopeUser } from '@/lib/permissions';
-import { emptyProjectAfterDealDelete, loadProject } from '@/lib/pm/projectsRepo';
+import { loadProject } from '@/lib/pm/projectsRepo';
 import {
   isForceRequest, isDryRun, canForceDelete,
   dealForcePreview, cleanupDealOrphans,
@@ -11,7 +11,8 @@ import {
   exciseFilingsOfDeal, exciseFilingBlockMessage, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
   contractsOfDeal, contractBlockMessage,
 } from '@/lib/forceDelete';
-import { resolveProbability } from '@/lib/sales/dealProbability';
+import { npdWonScentRuleApplies, resolveProbability, sourceScentLinkAuditTag } from '@/lib/sales/dealProbability';
+import { resolveSourceScent } from '@/lib/sales/dealScentSource';
 import { validateDealOwner } from '@/lib/sales/dealOwner';
 import { dealCustomerPatchError } from '@/lib/sales/dealCustomerAdopt';
 import { isForeignKeyViolation } from '@/lib/sales/salesOrderWorkflow';
@@ -46,6 +47,7 @@ import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { purgeSalesOrderFiles, salesOrderIdsOfDeal } from '@/lib/sales/salesOrderAttachmentAccess';
 import { isDealFormSave, missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
+import { DEAL_PEOPLE_KEYS, resolveDealPeople } from '@/lib/sales/dealPeople';
 import { clientDealMetadataOnPatch } from '@/lib/sales/legacyDealSwitch';
 import { loadLeadForLink, releaseLeadAfterDealGone } from '@/lib/sales/dealLeadLinkRepo';
 import { dealLabelForLead } from '@/lib/sales/dealLeadLink';
@@ -260,6 +262,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       return badRequest(`กรุณากรอก ${missingDates.map((key) => DEAL_DATE_LABEL[key]).join(' · ')}`);
     }
   }
+  /* ⭐ AC + AE Supervisor (ยุบดีล/โครงการ P2c-1 · มติ ⑤): บันทึกฟอร์ม = บังคับมีทั้งคู่ (ดีลเก่าที่ยังว่างต้องเลือกก่อน) ·
+     action PATCH ส่งมาไม่กี่ช่อง ไม่บังคับ แต่ถ้าส่งค่าว่างมาทับค่าที่มีอยู่ = ล้างไม่ได้ · ภาชนะ SO ย้อนหลังไม่บังคับ
+     ทีมที่เทียบกับ AC = ทีมหลังบันทึก (เปลี่ยนเจ้าของข้ามทีมพร้อมกันได้) */
+  if (DEAL_PEOPLE_KEYS.some((key) => key in body) || (isDealFormSave(body) && !isHistoricalDeal(before))) {
+    const people = await resolveDealPeople(supabase, {
+      body, current: before, team: patch.team || before.team, required: isDealFormSave(body) && !isHistoricalDeal(before),
+    });
+    if (!people.ok) return badRequest(people.error);
+    Object.assign(patch, people.patch);
+  }
   if ('title' in body) patch.title = body.title.trim();
   if ('stage' in body) patch.stage = nextStage;
   /* มูลค่าคาดการณ์ (mig 0264): ฟอร์มส่ง `valueItems` มาทั้งชุด — ยอดรวมกับหมวดของดีล
@@ -331,6 +343,32 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const nextType = normalizeDealType(body.dealType ?? body.projectType);
     patch.dealType = nextType;
     patch.metadata = { ...(patch.metadata || before.metadata || {}), projectType: nextType };
+  }
+  /* ⭐ ดีล SCENT ต้นทาง (ยุบดีล/โครงการ P2c-2 · มติเจ้าของ 13/11/2026 ③) — คู่ของกติกา FC "SCENT Won ⇒ NPD 80"
+     เฉพาะ NPD · ต้นทางต้องเป็น SCENT ของลูกค้าเดียวกันที่ยังไม่ Lost · เปลี่ยนประเภทออกจาก NPD = ถอดต้นทางให้เอง
+     ⭐ ผูก/เปลี่ยนต้นทาง (ไม่ได้ขยับขั้น) แล้ว SCENT ต้นทาง Won อยู่ ⇒ FC **ขึ้น** ตามกติกาทันที + ติดป้าย cascade ใน audit
+        (ให้ขาถอยตอนย้อนรับใบของ SCENT ใบนั้นถอยได้) · ถอดต้นทางไม่ลด FC ให้ (แยกไม่ออกว่า 80 เดิม AE เลือกเองหรือกติกาตั้ง) */
+  const scentSource = await resolveSourceScent(supabase, {
+    body,
+    current: before,
+    next: {
+      dealType: patch.dealType ?? normalizeDealType(before.dealType ?? before.metadata?.projectType),
+      customerId: 'customerId' in patch ? patch.customerId : before.customerId,
+    },
+  });
+  if (!scentSource.ok) return badRequest(scentSource.error);
+  Object.assign(patch, scentSource.patch);
+  let sourceRuleTag = null;
+  const sourceChanged = 'sourceScentDealId' in patch && (patch.sourceScentDealId || null) !== (before.sourceScentDealId || null);
+  if (sourceChanged && !stageChanged && !alreadyWon) {
+    const nextDeal = { ...before, ...patch };
+    if (npdWonScentRuleApplies(nextDeal)) {
+      const ruled = await resolveProbability(supabase, nextDeal);
+      if (ruled > Number(patch.probability ?? before.probability)) {
+        patch.probability = ruled;
+        sourceRuleTag = sourceScentLinkAuditTag();
+      }
+    }
   }
   /* สายธุรกิจของดีล (mig 0274) — อีกครึ่งของกุญแจแม่แบบไทม์ไลน์
      ⚠️ ดีลที่ผูกโครงการแล้วห้ามสลับสาย: โครงการประกาศสายของมันเอง และ segment
@@ -528,7 +566,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   }
 
   // เฟส B: เลิก sync ชื่อดีล→ชื่อโครงการ — โครงการมีได้หลายดีล ชื่อไม่ผูกกันอีกต่อไป
-  // (ฝั่งโครงการ→ดีล ตัดคู่กันใน api/pm/projects/[id]/route.js)
+  // (ฝั่งโครงการ→ดีล ตัดคู่กันแล้ว — route แก้โครงการ `api/pm/projects/[id]` ถอดในงวด P3b-1 ยุบโครงการ)
 
   /* 🐞 เดิมไม่รับ error — insert พัง = ขั้นใน DB เปลี่ยนแล้ว แต่เส้นเรื่องของดีลไม่มี
      บรรทัดนี้ และ `daysInStage` (นับจาก stageHistory[0]) ไปนับจากการเปลี่ยนครั้งก่อน
@@ -584,7 +622,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       ? `ย้ายเจ้าของดีลของใบสั่งขายย้อนหลัง ${dealAuditLabel(data)}: ${naText(before.ownerName)} → ${naText(data.ownerName)}`
         + ` · ใบย้อนหลังย้ายตาม ${restampedOrders.length} ใบ`
         + (restampedOrders.length ? ` (${restampedOrders.map((o) => o.orderNumber).join(', ')})` : '')
-      : `แก้ไข sales deal ${dealAuditLabel(data)}`,
+      : `แก้ไข sales deal ${dealAuditLabel(data)}${sourceRuleTag ? ` ${sourceRuleTag}` : ''}`,
     request: req,
   });
 
@@ -610,7 +648,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 // forecast_lines cascade เองผ่าน FK). โครงการ PM ที่ผูกอยู่ "ไม่ลบตาม" — โครงการเป็น
 // เอนทิตีใหญ่กว่าและมีได้หลายดีล (เฟส B) อาจมีดีลอื่นมาผูกแทน แม้เป็นดีลสุดท้ายก็ปล่อย
 // โครงการว่างดีลไว้ได้; ลบดีลจึงแค่ถอด timeline segment ของดีลนี้ออกจากโครงการ.
-// การลบโครงการเองทำที่ /api/pm/projects/[id]. กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
+// โครงการลบจากแอปไม่ได้แล้ว (route `api/pm/projects/[id]` ถอดในงวด P3b-1 — คลังอ่านอย่างเดียว). กันลบเคสที่จะทำให้ยอด/ประวัติหาย.
 export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   if (!user) return unauthorized();
   if (!canEditSalesPlanning(user)) return forbidden();
@@ -822,18 +860,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     if (leadWarning) console.error(`[deal delete ${id}] ลีดต้นทาง ${before.leadId}:`, leadWarning);
   }
 
-  // โครงการที่ไม่เหลือดีลผูกเลย = โครงเปล่า — ไม่ลบให้เอง (เฟส B: อาจรอดีลใหม่มาผูก)
-  // แต่ต้องส่งกลับให้หน้าเว็บถามผู้ใช้ว่าจะลบทิ้งด้วยไหม ไม่งั้นค้างในรายการเงียบ ๆ.
-  // นับพลาดตรงนี้ไม่ใช่เหตุให้ทั้ง request ล้ม (ดีลถูกลบไปแล้ว) — log แล้วไปต่อ.
-  let emptyProject = null;
-  if (project) {
-    try {
-      emptyProject = await emptyProjectAfterDealDelete(supabase, project);
-    } catch (emptyError) {
-      console.error('[deal-delete] ตรวจว่าโครงการเหลือดีลไหมไม่สำเร็จ:', emptyError.message);
-    }
-  }
-
+  /* โครงการที่ไม่เหลือดีลผูก ไม่ถูกเสนอให้ลบอีกแล้ว — P3a (มติ 16/11 ⑩) โครงการเก็บเป็นประวัติ
+     อ่านอย่างเดียว · ⚠️ ห้ามลบแถว projects: FK `ON DELETE CASCADE` ของไทม์ไลน์ (project_tasks) ยังอยู่ */
   const forceNote = force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : '';
   const detachNote = detachedFromProject
     ? ` (ถอดออกจากโครงการ ${project.code || project.id} — โครงการยังอยู่)`
@@ -848,7 +876,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     request: req,
   });
   return ok({
-    ok: true, deletedProject: null, detachedFromProject, emptyProject, forced: force,
+    ok: true, deletedProject: null, detachedFromProject, forced: force,
     ...(leadWarning ? { leadWarning } : {}),
   });
 });

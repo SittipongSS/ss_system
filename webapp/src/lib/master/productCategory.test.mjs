@@ -75,14 +75,14 @@ test('หมวดที่โค้ดอ้างตรง ๆ ลบไม่
   assert.match(why, /พักใช้/);
 });
 
-test('หมวดที่มีสินค้า/ดีล/โครงการผูกอยู่ ลบไม่ได้ พร้อมบอกจำนวนแยกประเภท', () => {
+test('หมวดที่มีสินค้า/ดีลผูกอยู่ ลบไม่ได้ พร้อมบอกจำนวนแยกประเภท', () => {
   const row = { mainCategoryCode: '01', typeCode: '002' };
   const why = productCategoryDeleteBlocker(row, {
     usage: { total: 5, products: 3, deals: 2 }, protectedCode: false,
   });
   assert.match(why, /3 สินค้า/);
   assert.match(why, /2 ดีล/);
-  assert.doesNotMatch(why, /โครงการ/);   // projects เป็น 0 — ไม่โผล่ในรายละเอียด
+  assert.doesNotMatch(why, /โครงการ/);   // ตัวนับโครงการถอดในงวด P3b-1 ยุบโครงการ
 });
 
 test('ไม่มีแถว = ปฏิเสธก่อนดูเงื่อนไขอื่น', () => {

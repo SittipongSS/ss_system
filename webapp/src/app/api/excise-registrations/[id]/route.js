@@ -64,7 +64,8 @@ export async function GET(request, { params }) {
 /* ของประกอบที่หน้ารายละเอียดต้องเห็น — อ่านทีเดียวจบ ไม่ให้จอไปไล่ยิงเอง
    ⚠️ ทุก query กรองด้วย id ของใบเดียว ⇒ ไม่แตะเพดาน 1,000 แถว */
 async function withRegistrationContext(supabase, reg) {
-  const [product, customer, project, lines, artwork] = await Promise.all([
+  /* ป้าย "โครงการ" ของทะเบียน (projects code/name) ถอดในงวด P3b-1 ยุบโครงการ 16/11/2026 — โครงการไม่มีจอแล้ว */
+  const [product, customer, lines, artwork] = await Promise.all([
     reg.productId
       ? supabase.from('products')
         .select('id, "fgCode", "retailPriceIncVat", "exciseTaxBase", "exciseBasePriceIncVat", "exciseTax", "localTax", "isExciseTaxable", "isActive"')
@@ -74,9 +75,6 @@ async function withRegistrationContext(supabase, reg) {
       ? supabase.from('customers')
         .select('id, name, "nameEn", "taxId", "branchCode", "customerType", email, phone, "contactPhone"')
         .eq('id', reg.customerId).maybeSingle()
-      : { data: null },
-    reg.projectId
-      ? supabase.from('projects').select('id, code, name').eq('id', reg.projectId).maybeSingle()
       : { data: null },
     /* ไล่ทีละหน้า — ทะเบียนหนึ่งใบถูกอ้างได้จากหลายใบยื่นไม่จำกัดจำนวน ⇒ ตัดที่
        เพดาน PostgREST เมื่อไร การ์ด "ใบยื่นที่อ้างทะเบียนนี้" จะบอกน้อยกว่าความจริง */
@@ -88,7 +86,7 @@ async function withRegistrationContext(supabase, reg) {
        ⚠️ อ่านพัง = throw (ทั้งก้อนตอบ 500) — เงียบแล้ว RA เห็น "ไม่มีฉลาก" ทั้งที่ยื่นมาครบ */
     loadRegistrationArtwork(reg, listAttachments),
   ]);
-  for (const res of [product, customer, project, lines]) {
+  for (const res of [product, customer, lines]) {
     if (res?.error) throw res.error;
   }
 
@@ -115,7 +113,6 @@ async function withRegistrationContext(supabase, reg) {
     ...reg,
     product: product.data || null,
     customer: customer.data || null,
-    project: project.data || null,
     labelArtwork: artwork.files,
     filings: orders
       .map((o) => ({ ...o, ...(linesByOrder.get(o.id) || { quantity: 0, totalTax: 0 }) }))

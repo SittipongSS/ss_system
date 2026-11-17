@@ -25,7 +25,7 @@ const req = (over = {}) => {
   return {
     id: `R${seq}`, docNo: `RQ-260800${String(seq).padStart(2, '0')}`, title: `เรื่อง ${seq}`,
     status: 'acknowledged', dept: 'RD', kind: 'material_price', items: [waitDept],
-    customerId: 'C1', customerName: 'ลอรีอัล', projectId: 'P1', projectCode: 'PJ-1', projectName: 'โครงการหนึ่ง',
+    customerId: 'C1', customerName: 'ลอรีอัล', dealId: 'D1', dealCode: 'DL-1', dealName: 'ดีลหนึ่ง',
     acknowledgedAt: '2026-08-01', _mine: false,
     ...over,
   };
@@ -39,11 +39,11 @@ const ROWS = [
   req({ status: 'pending', items: [], acknowledgedAt: null, customerId: 'C2', customerName: 'เอสเต' }),
   req({ ...anan, committedDueDate: '2026-08-01' }),                                               // เลยกำหนด
   req({ ...anan, committedDueDate: '2026-08-05', customerId: 'C2', customerName: 'เอสเต', kind: 'scent_dev' }),
-  req({ ...anan, committedDueDate: '2026-12-31', projectId: null }),                              // กำลังทำ มีวัน
+  req({ ...anan, committedDueDate: '2026-12-31', dealId: null }),                              // กำลังทำ มีวัน
   req({ ...pakita, committedDueDate: null, customerId: null, customerName: '' }),                  // ยังไม่ได้ให้วัน
   req({ ...pakita, committedDueDate: '2026-08-04', customerId: 'C2', customerName: 'เอสเต' }),     // เลยกำหนด คนละคน
   req({ ...pakita, committedDueDate: '2026-08-02', items: [waitRequester] }),                      // รอผู้ขอ เลยกำหนด
-  req({ ...anan, committedDueDate: '2026-12-01', items: [waitRequester], kind: 'scent_dev', projectId: 'P2', projectCode: 'PJ-2', projectName: 'โครงการสอง' }),
+  req({ ...anan, committedDueDate: '2026-12-01', items: [waitRequester], kind: 'scent_dev', dealId: 'D2', dealCode: 'DL-2', dealName: 'ดีลสอง' }),
   req({ ...pakita, items: [waitRequester], customerId: 'C2', customerName: 'เอสเต', _mine: true }),
   req({ dept: 'FN', ...anan, committedDueDate: '2026-08-03' }),
   req({ dept: 'FN', status: 'pending', items: [], acknowledgedAt: null, _mine: true }),
@@ -54,7 +54,7 @@ const ROWS = [
   req({ status: 'draft', items: [], _mine: true }),                                               // ร่างไม่เคยส่ง
 ];
 
-const DIMS = ['kind', 'customer', 'project', 'owner'];
+const DIMS = ['kind', 'customer', 'deal', 'owner'];
 const COUNT_KEYS = [null, ...QUEUE_COUNT_META.map((m) => m.key)];
 const SEARCHES = ['', 'เอสเต', 'RQ-2608000'];
 const FILTER_SETS = [

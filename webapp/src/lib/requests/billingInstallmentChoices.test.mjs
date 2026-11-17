@@ -119,6 +119,8 @@ test('ฟอร์ม: ไทล์ส่งงวดที่เลือกท
 test('หน้า QT: บล็อกตามงวด + ปุ่มรวม — ด่านเดียวกับ POST (billingQuotationError · costing:edit) · ไม่ขึ้นตอนแก้ใบ', () => {
   const qt = readFileSync('src/app/sales-planning/quotations/[id]/page.js', 'utf8');
   assert.match(qt, /const canOpenRequest = useCan\("costing:edit"\);/);
-  assert.match(qt, /quote && !billingQuotationError\(quote\) && !editMode \? \(\s*<QuotationBillingRequests quotation=\{quote\} canRequest=\{canOpenRequest\} \/>/);
+  // ⭐ มติ 16/11: บล็อกตัดสินผ่าน billingQuotationRequestsView — ใบที่ถูกปิด/มี Rev. ใหม่ยังโชว์คำร้องเดิม แต่ไม่มีปุ่มขอใหม่
+  assert.match(qt, /const billingView = billingQuotationRequestsView\(quote\);/);
+  assert.match(qt, /quote && billingView\.visible && !editMode \? \(\s*<QuotationBillingRequests quotation=\{quote\} canRequest=\{canOpenRequest && !billingView\.locked\} lockedReason=\{billingView\.locked\} \/>/);
   assert.match(qt, /visible: !!quote && !billingQuotationError\(quote\) && !editMode && canOpenRequest,\s*href: quote \? quotationBillingRequestHref\(quote\) : undefined,/);
 });

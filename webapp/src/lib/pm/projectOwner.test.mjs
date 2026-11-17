@@ -5,16 +5,13 @@
 // ซึ่งตอนนั้นเขียนจากคนกดสร้าง (admin ไม่มีทีม ⇒ team = null · ownerId = admin)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   PROJECT_OWNER_ROLES, resolveProjectAcOwner, resolveProjectAeOwner, resolveProjectSupervisor,
 } from './projectOwner.js';
 import { projectPeopleFieldForRole } from '@/lib/pm/projectPeople';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
-// assertion แบบ "ต้องไม่มี" ต้องดูเฉพาะโค้ดจริง — คอมเมนต์ที่เล่าบั๊กเดิมต้องพูดถึง
-// สูตรเก่าได้โดยไม่ทำให้เทสต์แดงเอง (แพตเทิร์นเดียวกับ registrationRoute.test.mjs)
-const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 // stub auth admin: id -> user (รูปเดียวกับ dealOwner.test.mjs / leadAssignee.test.mjs)
 const ownerStub = (users) => ({
@@ -120,21 +117,20 @@ test('AC/ผู้ตรวจสอบ: ว่างได้เฉพาะต
   assert.equal((await resolveProjectSupervisor(stub, '', { required: true })).ok, false);
 });
 
-test('ทุกทางที่ **สร้าง** โครงการ บังคับครบสามฝ่ายที่ server', () => {
+/* ยุบโครงการ P3a (มติ 16/11): ไม่มีทางสร้างโครงการแล้ว — สามเส้นที่เคยบังคับครบสามฝ่ายถูกลบ
+   (POST /api/sa/projects · create-project ของดีล · create-project ของ PO สหมิตร) ⇒ ยามเปลี่ยนเป็น "ห้ามกลับมา"
+   ⭐ P3b-1 (16/11): เส้นแก้/ลบ/ปิดโครงการ (`api/pm/projects/[id]/**`) ถูกลบตามไปด้วย — โครงการเป็นคลังอ่านอย่างเดียว */
+test('ไม่มีทางสร้าง/แก้/ลบโครงการเหลือ (P3a · P3b-1)', () => {
   for (const rel of [
     '../../app/api/sa/projects/route.js',
     '../../app/api/sales-planning/deals/[id]/create-project/route.js',
     '../../app/api/sahamit/po/[id]/create-project/route.js',
+    '../../app/api/pm/projects/[id]/route.js',
+    '../../app/api/pm/projects/[id]/close/route.js',
+    '../../app/api/pm/projects/next-code/route.js',
   ]) {
-    const src = read(rel);
-    assert.match(src, /resolveProjectAcOwner\([\s\S]{0,160}?\{ required: true \}/, `${rel} AC ต้องบังคับ`);
-    assert.match(src, /resolveProjectSupervisor\([\s\S]{0,120}?\{ required: true \}/, `${rel} ผู้ตรวจสอบต้องบังคับ`);
+    assert.equal(existsSync(new URL(rel, import.meta.url)), false, `${rel} กลับมาแล้ว — โครงการปลดระวาง ห้ามสร้าง/แก้ใหม่`);
   }
-  // PATCH ห้ามบังคับ (ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้) แต่ล้างของที่มีอยู่ไม่ได้
-  const patch = read('../../app/api/pm/projects/[id]/route.js');
-  assert.doesNotMatch(patch, /resolveProjectAcOwner\([\s\S]{0,120}?required: true/);
-  assert.match(patch, /if \(!updates\.acOwnerId\) return badRequest\('ล้างผู้ประสานงาน/);
-  assert.match(patch, /if \(!updates\.aeSupervisorId\) return badRequest\('ล้างผู้ตรวจสอบ/);
 });
 
 test('AC: ต้องเป็นตำแหน่ง AC จริง และอยู่ทีมเดียวกับงาน', async () => {
@@ -156,21 +152,13 @@ test('AC: บัญชีที่ถูกระงับ / ไม่มีต�
   assert.equal((await resolveProjectAcOwner(ownerStub({}), 'U-GHOST', 'ODM')).ok, false);
 });
 
-test('ฟอร์มเขียนผู้ประสานงานลง acOwner/acOwnerId ไม่ใช่ preparedBy', () => {
-  const modal = codeOnly(read('../../components/pm/SalesProjectCreateModal.js'));
-  // ช่องที่ล็อกเป็นตัวเองมาจากตารางกลาง (ผังตำแหน่ง 2026-09-24) — ไม่เทียบชื่อตำแหน่งในฟอร์ม
-  assert.match(modal, /lockPeopleField = \(!editingId && myName\) \? projectPeopleFieldForRole\(role\)/);
-  assert.equal(projectPeopleFieldForRole('ac'), 'acOwner', 'AC สร้างโครงการ = ล็อกเป็นผู้ประสานงาน');
-  assert.match(modal, /onChange=\{\(acOwner\) => setForm/);
-  assert.match(modal, /acOwnerId: \(lockPeopleField === "acOwner" \? myName : form\.acOwner\)/);
-  // preparedBy = "ผู้จัดทำ" ของหัว ISO — server ตั้งเป็นผู้สร้าง ฟอร์มไม่ยุ่งอีก
-  assert.doesNotMatch(modal, /form\.preparedBy/, 'ช่อง AC ห้ามกลับไปเขียน preparedBy');
-});
+// (ยาม "ฟอร์มเขียนผู้ประสานงานลง acOwner/acOwnerId" ถอดใน P3a พร้อม SalesProjectCreateModal)
 
 test('ผังตำแหน่ง 2026-09-24: ช่องผู้รับผิดชอบของโครงการรับตำแหน่งตามกลุ่ม · ช่องที่ล็อกเป็นตัวเองตามตำแหน่งคนกด', () => {
   assert.equal(projectPeopleFieldForRole('ae'), 'aeOwner');
   assert.equal(projectPeopleFieldForRole('senior_ae'), 'aeOwner');
   // สาย AC ทุกระดับเป็นผู้ประสานงาน
+  assert.equal(projectPeopleFieldForRole('ac'), 'acOwner');
   assert.equal(projectPeopleFieldForRole('senior_ac'), 'acOwner');
   assert.equal(projectPeopleFieldForRole('ac_supervisor'), 'acOwner');
   // ผู้มีอำนาจตัดสินเป็นผู้ตรวจสอบ
@@ -205,17 +193,7 @@ test('mig 0255: ย้ายเฉพาะบัญชี AC และไม่
   assert.doesNotMatch(sql, /SET[\s\S]{0,80}"preparedBy"\s*=/, 'ห้ามล้าง preparedBy');
 });
 
-test('ทุกทางที่สร้าง/แก้โครงการ ตรวจผู้ประสานงานด้วยตัวกลางตัวเดียว', () => {
-  for (const rel of [
-    '../../app/api/sa/projects/route.js',
-    '../../app/api/sales-planning/deals/[id]/create-project/route.js',
-    '../../app/api/pm/projects/[id]/route.js',
-  ]) {
-    assert.match(read(rel), /resolveProjectAcOwner\(\s*supabase,/, `${rel} ต้องเรียกด่านกลาง`);
-  }
-  // ชื่อมาจาก server — ไม่รับชื่อลอย ๆ จาก client อีก
-  assert.doesNotMatch(codeOnly(read('../../app/api/sa/projects/route.js')), /acOwner: body\.acOwner/);
-});
+// (ยาม "ทางแก้โครงการตรวจผู้ประสานงานด้วยตัวกลาง" ถอดใน P3b-1 พร้อม `api/pm/projects/[id]` — ไม่มีเส้นแก้โครงการแล้ว)
 
 /* ── ผู้ตรวจสอบ (AE Supervisor) = ฝ่ายที่สามของโครงการ ─────────────────────
    ดีลมีเจ้าของคนเดียว (AE/Senior) แต่โครงการมีสามฝ่าย · ฝ่ายที่สามเป็น `text` เปล่า ๆ
@@ -249,22 +227,7 @@ test('หัวหน้าที่ระบุบนโครงการต�
   assert.match(access, /parent\?\.ownerId, parent\?\.aeOwnerId, parent\?\.acOwnerId, parent\?\.aeSupervisorId/);
 });
 
-/* ชื่อคนของทั้งสามฝ่ายเขียนจาก server เท่านั้น — รับชื่อจาก client เมื่อไรคือเปิดทาง
-   ให้ "ชื่อบนใบบอกว่าเป็นคนหนึ่ง แต่ id ที่ใช้จริงเป็นอีกคน" ซึ่งเป็นกับดักที่ mig 0190
-   เกิดมาเพื่อแก้ · ฟอร์มส่งคู่กันอยู่แล้ว การตัดออกจึงไม่กระทบทางใช้งานจริง */
-test('PATCH รับเฉพาะ id ของสามฝ่าย ไม่รับชื่อ', () => {
-  const patch = read('../../app/api/pm/projects/[id]/route.js');
-  const editable = patch.slice(patch.indexOf('const EDITABLE'), patch.indexOf('];', patch.indexOf('const EDITABLE')));
-  for (const idField of ["'aeOwnerId'", "'acOwnerId'", "'aeSupervisorId'"]) {
-    assert.ok(editable.includes(idField), `${idField} ต้องแก้ได้`);
-  }
-  for (const nameField of ["'aeOwner'", "'acOwner'", "'aeSupervisor'"]) {
-    assert.ok(!editable.includes(nameField), `${nameField} ต้องมาจาก server เท่านั้น`);
-  }
-  // ช่องที่ไม่มีใครอ่านถูกปลดระวางไปกับ mig 0256
-  assert.ok(!editable.includes("'keyAccountExec'"));
-  assert.match(patch, /resolveProjectSupervisor\(supabase, updates\.aeSupervisorId\)/);
-});
+// (ยาม "PATCH รับเฉพาะ id ของสามฝ่าย ไม่รับชื่อ" ถอดใน P3b-1 พร้อม `api/pm/projects/[id]`)
 
 test('mig 0256: เพิ่มตัวตนผู้ตรวจสอบ + ตัดคอลัมน์ที่ไม่มีใครอ่าน', () => {
   const sql = read('../../../supabase/migrations/0256_project_supervisor_id.sql').replace(/--.*$/gm, '');
@@ -277,45 +240,9 @@ test('mig 0256: เพิ่มตัวตนผู้ตรวจสอบ + �
 });
 
 // ── ด่านจริงอยู่ที่ API เสมอ ────────────────────────────────────────────────
-test('POST /api/sa/projects เขียนทีม/เจ้าของตามผู้ดูแล และบังคับให้เลือก AE', () => {
-  const post = read('../../app/api/sa/projects/route.js');
-  assert.match(post, /resolveProjectAeOwner\(supabase, body\.aeOwnerId, user, body\.team\)/);
-  assert.match(post, /team: owner\?\.team \|\| attributionTeam\(user, body\.team\)/);
-  assert.match(post, /ownerId: owner\?\.ownerId \|\| user\.id/);
-  // ac / ae_supervisor / admin ปล่อยว่างไม่ได้ — โครงการจะไม่โผล่ในลิสต์ของ AE คนไหนเลย
-  assert.match(post, /else if \(!ownerLockedToSelf\(user\.role\)\)/);
-  // 🐞 ของเดิม: สองช่องนี้มาจากคนกดสร้างตรง ๆ
-  assert.doesNotMatch(codeOnly(post), /team: user\.team \|\| null/, 'ห้ามกลับไปใช้ทีมของคนกด');
-  assert.doesNotMatch(codeOnly(post), /^\s*ownerId: user\.id \|\| null,/m, 'ห้ามกลับไปใช้คนกดเป็นเจ้าของ');
-});
+// (ยาม POST /api/sa/projects + ฟอร์มสร้างโครงการบังคับครบสามฝ่าย ถอดใน P3a — ยุบโครงการ 16/11 ลบทั้งสองไฟล์)
 
-/* ด่านฝั่งฟอร์มต้องบอกตั้งแต่ก่อนกดบันทึก (docs/form-design-rules.md §2) — ไม่ใช่
-   ปล่อยให้ยิงแล้วเจอ 400 · แต่บังคับเฉพาะตอนสร้าง โครงการเก่าที่ผู้ดูแลยังว่างต้องแก้ได้ */
-test('ฟอร์มสร้างโครงการบังคับครบสามฝ่าย (ตอนสร้างเท่านั้น)', () => {
-  const modal = read('../../components/pm/SalesProjectCreateModal.js');
-  /* ⭐ มติผู้ใช้ 2026-08-14: โครงการมีครบสามฝ่ายตั้งแต่วันเกิด — ช่องที่ถูกล็อกเป็นชื่อ
-     ผู้สร้างถือว่ากรอกแล้ว จึงเทียบกับ lockPeopleField **ของช่องนั้น** ไม่ใช่ "ไม่มีล็อกเลย"
-     (ของเดิมเทียบ `!lockPeopleField` ⇒ AC ที่ถูกล็อกช่องตัวเองจะติดด่านช่อง AE ไปด้วย) */
-  assert.match(modal, /\[!editingId && lockPeopleField !== "aeOwner" && !form\.aeOwner, "ผู้ดูแลโครงการ \(AE\)"\]/);
-  assert.match(modal, /\[!editingId && lockPeopleField !== "acOwner" && !form\.acOwner, "ผู้ประสานงาน \(AC\)"\]/);
-  assert.match(modal, /\[!editingId && lockPeopleField !== "aeSupervisor" && !form\.aeSupervisor, "ผู้ตรวจสอบ \(AE Supervisor\)"\]/);
-  // ตอนแก้ไม่บังคับ — ใบเก่าที่ช่องว่างต้องแก้ช่องอื่นได้ (ทั้งสามเงื่อนไขขึ้นต้นด้วย !editingId)
-  assert.doesNotMatch(modal, /\[!lockPeopleField && !form\.(aeOwner|acOwner|aeSupervisor)/);
-});
-
-test('PATCH โครงการ: เปลี่ยนผู้ดูแลแล้วทีม/เจ้าของย้ายตาม', () => {
-  const patch = read('../../app/api/pm/projects/[id]/route.js');
-  assert.match(patch, /if \(updates\.aeOwnerId !== undefined && \(updates\.aeOwnerId \|\| null\) !== \(project\.aeOwnerId \|\| null\)\)/);
-  assert.match(patch, /resolveProjectAeOwner\(supabase, updates\.aeOwnerId, user, project\.team\)/);
-  assert.match(patch, /updates\.ownerId = checked\.ownerId/);
-  // ผู้ดูแลใหม่ที่ยังไม่มีทีม ต้องไม่ล้างทีมเดิมของแถวทิ้ง (ทั้งทีมจะมองไม่เห็นงาน)
-  assert.match(patch, /updates\.team = checked\.team \|\| project\.team \|\| null/);
-  // สองช่องนี้ต้องมาจาก server เท่านั้น — เปิดใน EDITABLE เมื่อไรคือยกโครงการเข้าทีม
-  // ที่ตัวเองไม่ได้อยู่ได้ผ่าน body ดิบ ๆ
-  const editable = patch.slice(patch.indexOf('const EDITABLE'), patch.indexOf('];', patch.indexOf('const EDITABLE')));
-  assert.doesNotMatch(editable, /'team'/);
-  assert.doesNotMatch(editable, /'ownerId'/);
-});
+// (ยาม "PATCH โครงการ: เปลี่ยนผู้ดูแลแล้วทีม/เจ้าของย้ายตาม" ถอดใน P3b-1 พร้อม `api/pm/projects/[id]`)
 
 /* 🐞 พบตอนเอาไปรันจริง: `projects."ownerId"` เป็น **uuid** (mig 0008 — ตารางเดียวใน
    ระบบที่เป็น uuid ที่เหลือเป็น text) ส่วน `"aeOwnerId"` เป็น **text** (mig 0190)
@@ -350,10 +277,8 @@ test('mig 0254: เติม aeOwnerId เฉพาะแถวที่ว่�
 
 /* กับดักประจำของระบบนี้: แถวที่ **เห็นในลิสต์** แต่กดเข้าไปแล้ว 403 — ลิสต์ยอมรับสอง
    สาขา (ทีม หรือ เป็นเจ้าของ) ส่วนด่านรายตัวเคยดูแค่ทีม */
-test('ด่านเปิดโครงการรายตัว ใช้เงื่อนไขเดียวกับตัวกรองของลิสต์', () => {
+test('ลิสต์โครงการ (ตัวเลือกของ /pm/tasks) กรองด้วยทีม หรือ เป็นเจ้าของ', () => {
   const list = read('../../app/api/pm/projects/route.js');
   assert.match(list, /\.or\(`\$\{teamInClause\(user\)\},ownerId\.eq\.\$\{own\}`\)/);
-  const detail = read('../../app/api/pm/projects/[id]/route.js');
-  assert.match(detail, /viewScope\(user\?\.role\) === 'team' && !inPmProjectScope\(user, project\)/);
-  assert.doesNotMatch(codeOnly(detail), /!inScope\('team', user, project\)/, 'ด่านที่ดูแค่ทีมห้ามกลับมา');
+  // (ด่านรายตัว GET /api/pm/projects/[id] ถอดใน P3b-1 — ไม่มีหน้ารายละเอียดโครงการให้เปิดแล้ว · เหลือลิสต์ของ /pm/tasks)
 });

@@ -70,7 +70,7 @@ export const STAGE_LABELS = {
 export const SALES_FEATURES = {
   quotations: true, // เฟส D: FM-SA-01 เต็มรูป (เมนู /sa/quotations + editor + revise + พิมพ์)
   documents: false,
-  shipment: false,
+  // `shipment` (เตรียมส่งของ) ถอดในงวด P3b-1 ยุบโครงการ — เส้นทั้งเส้นผูกหน้าโครงการ และ `shipment_prep` มี 0 แถว
   forecastReview: false, // "ทบทวนพยากรณ์ยอด" panel on the overview
   sahamitRisk: false,    // "ความเสี่ยง / ตรวจย้อน FC สหมิตร" KPI + panel
 };

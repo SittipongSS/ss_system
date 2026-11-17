@@ -19,9 +19,8 @@ import { fmtDate } from "@/lib/format";
 import styles from "./entityDocuments.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
-// รับ `dealId` (แท็บบนหน้าดีล) หรือ `projectId` (แท็บบนหน้าโครงการ · ม-88) —
-// โหมดโครงการรวมของทุกดีลข้างใน และบรรทัดรองบอกว่าแถวไหนมาจากดีลไหน
-export default function EntityDocumentsPanel({ dealId, projectId }) {
+// รับ `dealId` (แท็บบนหน้าดีล) · โหมดโครงการ (`projectId` · ม-88) ถอดในงวด P3b-1 ยุบโครงการ — หน้าโครงการถูกลบแล้ว
+export default function EntityDocumentsPanel({ dealId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,12 +28,9 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
   const [viewing, setViewing] = useState(null);
 
   const reload = useCallback(() => {
-    if (!dealId && !projectId) return;
+    if (!dealId) return;
     setLoading(true); setError("");
-    const query = dealId
-      ? `dealId=${encodeURIComponent(dealId)}`
-      : `projectId=${encodeURIComponent(projectId)}`;
-    apiFetch(`/api/sales-planning/documents/all?${query}`, { cache: "no-store" })
+    apiFetch(`/api/sales-planning/documents/all?dealId=${encodeURIComponent(dealId)}`, { cache: "no-store" })
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         if (!r.ok) throw new Error(d?.error || "โหลดเอกสารไม่สำเร็จ");
@@ -43,7 +39,7 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [dealId, projectId]);
+  }, [dealId]);
   useEffect(() => { reload(); }, [reload]);
 
   // แนบไฟล์แล้วต้องเห็นในลิสต์ทันที · ข้ามครั้งแรก (AttachmentsPanel ยิงตอน mount
@@ -128,26 +124,7 @@ export default function EntityDocumentsPanel({ dealId, projectId }) {
       {/* ⭐ ที่แนบไฟล์เข้าดีลโดยตรง (P5c) — แหล่งที่ 1 ของแผงนี้
           ⚠️ ต่อครบ 5 จุดแล้ว (ดู lib/sales/salesAttachmentAccess.js) · ขาดจุดไหนก็
           หลุดเงียบจุดนั้น: ไฟล์ไม่ขึ้น · อัปไม่ได้ · ใครก็ลบได้ · พรีวิวไม่ขึ้น
-          ⚠️ โหมดโครงการ (ม-88) ไม่มีกล่องนี้ — ไฟล์แนบเข้า **ดีล** รายใบ
-          โครงการเป็นแค่ที่รวม แนบตรงนี้จะไม่รู้ว่าเข้าดีลไหน */}
-      {/* ⭐ โครงการแนบ **เอกสารร่วมอย่างเดียว** (เฟส 2) — ร่างสเปก โน้ตประชุม ตาราง
-          เทียบราคา ที่เป็นของทั้งโครงการจริง ๆ · ไม่เปิดอัปไฟล์นิ่งเพราะไฟล์หลักฐาน
-          (PO · มัดจำ) ต้องผูกดีลรายใบ ไม่งั้นไม่รู้ว่าเป็นหลักฐานของดีลไหน
-          — เหตุผลเดียวกับที่โหมดนี้ไม่เคยมีกล่องแนบไฟล์มาก่อน */}
-      {projectId && (
-      <div className={styles.upload}>
-        <div className="toolbar-label">เอกสารร่วมของโครงการ</div>
-        <AttachmentsPanel
-          entityType="project"
-          entityId={projectId}
-          canEdit
-          inlineUpload
-          googleDocs
-          fileUploads={false}
-          onItemsChange={onAttachmentsChange}
-        />
-      </div>
-      )}
+          (กล่องเอกสารร่วมของโครงการ — โหมด `projectId` — ถอดในงวด P3b-1 ยุบโครงการ) */}
 
       {dealId && (
       <div className={styles.upload}>

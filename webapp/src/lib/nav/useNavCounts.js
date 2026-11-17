@@ -35,7 +35,6 @@ export const NAV_COUNT_KEYS = {
   "/sa/quotations": "quotations",
   "/sa/sales-orders": "salesOrders",
   "/sa/contracts": "contracts",
-  "/sa/projects": "projectCloses",
   /* คิวตรวจที่มาของ FC (mig 0337) — ดีลที่มีใบอนุมัติแล้วแต่ FC ยังไม่เดินตามใบ
      ป้ายนี้จะหดลงเรื่อย ๆ ตามที่ AE กดรับ แล้วเหลือเฉพาะดีลที่มีใบหลายฉบับจริง ๆ */
   "/sa/forecast-review": "forecastReview",
@@ -70,7 +69,7 @@ export const NAV_COUNT_KEYS = {
 export const SYSTEM_COUNT_HREFS = {
   salesplan: [
     "/sa/leads", "/sa/tasks", "/requests",
-    "/sa/quotations", "/sa/sales-orders", "/sa/contracts", "/sa/projects",
+    "/sa/quotations", "/sa/sales-orders", "/sa/contracts",
     "/sa/forecast-review",
   ],
   /* ⚠️ ยอดรวมของระบบ RD นับซ้อนกันบางส่วนโดยรู้ตัว (มติผู้ใช้ 2026-10-01) — ใบที่เหลือแค่ราคาอยู่ในคิว "รอ RD ใส่ราคา"

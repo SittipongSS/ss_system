@@ -293,7 +293,7 @@ function wordContexts(source, word) {
 const SELECT_WAIVERS = Object.freeze({
   'app/api/sa/requests/route.js': 'นับจำนวนกลิ่นของบรรทัดออกแบบกลิ่น (หมวด 03-xxx) — เลขแพ็คมีได้เฉพาะหมวด 02-001',
   'lib/materialPricesAdmin.js': 'บริบท PDR: นับจำนวนกลิ่นของบรรทัดออกแบบกลิ่น (หมวด 03-xxx) เท่านั้น',
-  /* ม-163 — ตัวโหลด SO หลัก/SO แนบของคำร้องพัฒนากลิ่น · บรรทัดไปตัวนับกลิ่น (`scentSlotLines` กรองด้วย scentDesignLines) เท่านั้น */
+  /* ม-164 — ตัวโหลด SO หลัก/SO แนบของคำร้องพัฒนากลิ่น · บรรทัดไปตัวนับกลิ่น (`scentSlotLines` กรองด้วย scentDesignLines) เท่านั้น */
   'lib/requests/scentOrderLinksAdmin.js': 'ตัวโหลด SO ของคำร้องพัฒนากลิ่น: qty ป้อนตัวนับกลิ่นของบรรทัดออกแบบกลิ่น (หมวด 03-xxx) เท่านั้น',
   'app/api/sales-planning/sales-orders/route.js': 'ทะเบียนใบสั่งขาย: qty ป้อนตัวนับกลิ่นของบรรทัดออกแบบกลิ่นที่เดียว (ตัวตัดสินงานบริการไม่อ่าน qty)',
   'lib/sales/contractQuotationSource.js': 'สัญญาบริการพิมพ์คำบรรยายของบรรทัดกับ subtotal ของใบ — ไม่มีใครอ่าน qty',
@@ -431,13 +431,12 @@ const QTY_READERS = Object.freeze({
   'components/requests/FormulaDevBoard.js': 'other:dept_request_items',
   'components/requests/ProductDevLines.js': 'other:dept_request_items',
   'lib/materialPricesAdmin.js': 'other:material_price_revision_tiers',
-  'lib/pm/deliveries.js': 'other:material_deliveries',
-  'components/pm/DeliveriesPanel.js': 'other:material_deliveries',
+  // components/pm/DeliveriesPanel.js + app/sa/projects/[id]/shipment-prep/page.js ลบใน P3a (ยุบโครงการ 16/11)
+  // lib/pm/deliveries.js ไม่อ่าน .qty แล้ว — ตัวตรวจ/กางรายการของเข้า (normalizeDeliveryInput · chaseRequestBody) ถอดใน P3b-1
   'components/pm/ProductionJobModal.js': 'other:production_jobs',
   'app/production/board/page.js': 'other:production_jobs',
   'app/production/jobs/page.js': 'other:production_jobs',
   'app/api/production/jobs/route.js': 'other:production_jobs',
-  'app/sa/projects/[id]/shipment-prep/page.js': 'other:shipment_prep_lines',
   'app/settings/design-preview/page.js': 'other:แถวตัวอย่างของหน้าตัวอย่างดีไซน์ (ไม่อ่านฐาน)',
   'lib/service/assetHistory.js': 'other:service_visit_items',
   'lib/service/consumption.js': 'other:service_visit_items',
@@ -770,7 +769,7 @@ test('GA เหตุของการยกเว้นยังจริง: 
   assert.match(count, /const design = scentDesignLines\(lines\);/);
   assert.match(count, /for \(const line of design\) \{\s*const qty = Number\(line\.qty\);/);
   assert.equal((scent.match(/\.qty\b/g) || []).length, 1, 'scentDesignOrders.js อ่าน qty ที่เดียว (ตัวนับกลิ่น)');
-  /* soReconcile ถูกเรียกด้วยบรรทัดออกแบบกลิ่นเท่านั้น — สองจุด · ม-163: ผ่าน `scentSlotLinesOf` (SO หลัก + SO แนบ)
+  /* soReconcile ถูกเรียกด้วยบรรทัดออกแบบกลิ่นเท่านั้น — สองจุด · ม-164: ผ่าน `scentSlotLinesOf` (SO หลัก + SO แนบ)
      ซึ่งกรองด้วย scentDesignLines ทุกทาง (ยามข้างล่างล็อกตัวกรองไว้) */
   const callers = APP_FILES.filter((file) => file !== 'lib/requests/soReconcile.js' && callArguments(code(file), 'soReconcile').length);
   assert.deepEqual(callers, ['app/requests/[id]/page.js', 'lib/requests/stages.js']);

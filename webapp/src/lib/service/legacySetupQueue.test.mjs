@@ -22,7 +22,6 @@ const dealsById = new Map([
   ['DL-P', { id: 'DL-P', line: 'PRODUCT', ownerName: 'Kamonrat Pipattanapong' }],
   ['DL-0', { id: 'DL-0', line: null, ownerName: 'Kamonrat Pipattanapong' }],
 ]);
-const projectsById = new Map();
 
 /* ใบเดิม: อนุมัติแล้ว · ยังไม่ประทับ · สายบริการ — select ของ route พกคอลัมน์ 0392 ครบ */
 const so = (over = {}) => ({
@@ -40,7 +39,7 @@ const manual = (over = {}) => ({ id: 'L1', salesOrderId: 'SO1', fgCode: null, pr
 const fgPackage = (over = {}) => ({ id: 'L2', salesOrderId: 'SO1', fgCode: 'FG-0521-02-001-00012', productId: 'P12', description: 'แพ็คเกจ SDS', qty: 12, unit: 'แพ็ค', metadata: {}, serviceKind: null, serviceProductId: null, serviceFgCode: null, serviceRounds: null, ...over });
 const fgOther = (over = {}) => ({ id: 'L3', salesOrderId: 'SO1', fgCode: 'FG-0521-03-002-00007', productId: 'P7', description: 'น้ำหอมขวด', qty: 2, unit: 'ขวด', metadata: {}, serviceKind: null, serviceProductId: null, serviceFgCode: null, serviceRounds: null, ...over });
 
-const run = (args) => legacySetupQueue({ projectsById, dealsById, ...args });
+const run = (args) => legacySetupQueue({ dealsById, ...args });
 
 test('🔴 select ของใบต้องพก "serviceTermsOpenedAt" — ไม่มี = โยน (ใบที่ประทับแล้วห้ามโผล่เงียบ ๆ)', () => {
   const order = so();

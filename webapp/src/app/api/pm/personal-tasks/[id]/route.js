@@ -18,7 +18,7 @@ export const dynamic = 'force-dynamic';
 
 const EDITABLE = [
   'title', 'note', 'startDate', 'dueDate', 'status', 'category',
-  'important', 'urgent', 'difficulty', 'projectId', 'dealId', 'assigneeId',
+  'important', 'urgent', 'difficulty', 'dealId', 'assigneeId',
   'predecessorId', 'blockedReason',
 ];
 
@@ -167,7 +167,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 
   const manage = await canManagePersonalTask(supabase, task, user);
   const updates = pickFields(body, EDITABLE, {
-    nullable: ['startDate', 'dueDate', 'projectId', 'dealId', 'assigneeId', 'category', 'predecessorId', 'blockedReason'],
+    nullable: ['startDate', 'dueDate', 'dealId', 'assigneeId', 'category', 'predecessorId', 'blockedReason'],
   });
 
   // สิทธิ์แบบ 2 ระดับ: เปลี่ยน "สถานะ" อย่างเดียว → ผู้ทำแทน/ผู้รับผิดชอบ/หัวหน้าก็ได้;
@@ -279,38 +279,26 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (next !== (task.assigneeId || null)) updates.proxyBy = null;
   }
 
-  // อ้างอิงโครงการ/ดีลต้องมีจริงและต้องเป็นคู่เดียวกัน. ถ้าเลือกดีลที่อยู่ใน
-  // โครงการ ระบบ mirror projectId ให้เอง เพื่อให้งานขึ้นทั้งหน้าดีลและหน้าโครงการ.
-  if ('projectId' in updates || 'dealId' in updates) {
-    let nextProjectId = 'projectId' in updates ? updates.projectId : task.projectId;
+  /* อ้างอิงดีลต้องมีจริง · ⭐ P3a (มติ 16/11 ⑩): ไม่รับ/ไม่ก๊อป `projectId` อีกแล้ว — ย้ายงานไปดีลอื่นเมื่อไร
+     ล้างโครงการเดิมทิ้ง (ค่าเดิมจะชี้โครงการของดีลเก่า แล้ว `personalTaskAccess` จะอ่านทีมผิดโครงการ) */
+  if ('dealId' in updates) {
     const nextDealId = 'dealId' in updates ? updates.dealId : task.dealId;
     // ทุกงานต้องผูกดีล (มติผู้ใช้ 2026-08-06) — ปลดดีลออกไม่ได้ และงานเก่าที่ยังไม่ผูก
     // ต้องเลือกดีลตอนแก้ครั้งถัดไป. เกณฑ์คือ**คนที่กดแก้** (แบบเดียวกับตอนสร้าง):
     // ไม่มีข้อยกเว้นตาม role. งานที่มาจากคำร้องยกเว้นเหมือนตอนสร้าง
-    // ⚠️ ด่านนี้ทำงานเฉพาะเมื่อคำขอแตะ projectId/dealId — การอัปเดตสถานะอย่างเดียว
+    // ⚠️ ด่านนี้ทำงานเฉพาะเมื่อคำขอแตะ dealId — การอัปเดตสถานะอย่างเดียว
     // (statusOnly) ต้องผ่านได้เสมอ ไม่งั้นคนที่แก้ได้แค่สถานะจะติดกับงานเก่าที่ไม่มีดีล
     // ผ่อนเป็น "ทางออกที่ต้องกดเอง" 2026-08-08 — เหมือนตอนสร้าง (ดู POST route)
     if (!nextDealId && !task.inquiryId && !body.noDealLink && requiresDealLink(user)) {
       return badRequest('ทุกงานต้องผูกดีล — เลือกดีล หรือปิดสวิตช์ "ผูกดีล" ถ้างานนี้ไม่ได้เกิดจากดีล');
     }
     if (nextDealId) {
-      const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, projectId, team').eq('id', nextDealId).maybeSingle();
+      const { data: deal, error: dealError } = await supabase.from('sales_deals').select('id, team').eq('id', nextDealId).maybeSingle();
       if (dealError) return fail(dealError.message, 500);
       if (!deal) return badRequest('ไม่พบดีล');
       if (nextDealId !== task.dealId && !canLinkTaskToDeal(user, deal)) return forbidden('ผูกงานได้เฉพาะดีลของทีมตัวเอง');
-      if (deal.projectId) {
-        if (nextProjectId && nextProjectId !== deal.projectId) return badRequest('ดีลไม่ได้อยู่ในโครงการที่ระบุ');
-        nextProjectId = deal.projectId;
-        updates.projectId = deal.projectId;
-      } else if (nextProjectId) {
-        return badRequest('ดีลนี้ยังไม่ผูกโครงการ จึงระบุโครงการร่วมกันไม่ได้');
-      }
     }
-    if (nextProjectId) {
-      const { data: proj, error: projError } = await supabase.from('projects').select('id').eq('id', nextProjectId).maybeSingle();
-      if (projError) return fail(projError.message, 500);
-      if (!proj) return badRequest('ไม่พบโครงการ');
-    }
+    if (nextDealId !== (task.dealId || null) && task.projectId) updates.projectId = null;
   }
 
   // จำ "เดดไลน์แรก" ตอนถูกเลื่อนครั้งแรก — เก็บ dueDate เดิมก่อนเปลี่ยน (null = ไม่เคยเลื่อน,

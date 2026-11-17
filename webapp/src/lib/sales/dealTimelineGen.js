@@ -41,6 +41,22 @@ export async function buildDealTimelineRows(supabase, deal, { type, line, catego
   return { rows, genType, genLine, categoryCode: cat, startDate: anchor };
 }
 
+/* ── ไทม์ไลน์ของดีลที่อยู่ในโครงการ (งวด P2b · ยุบดีล/โครงการ) ─────────────────────────────
+   ชุดที่ buildDealTimelineRows สร้างเป็นชุดลอย (projectId ว่าง · stepOrder เริ่ม 0) — ดีลที่อยู่ในโครงการต้อง
+   ประทับ projectId ของดีล ต่อท้ายลำดับของโครงการ และปักหมุดขั้นราก (ไม่มี predecessor) ไว้ที่วันของตัวเอง
+   ⇒ กติกาเดียวกับ `buildAppendedTasks` (lib/pm/schedule.js) ที่ใช้ตอนผูกดีลเข้าโครงการ: recalculateGraph
+   ทั้งโครงการยึดวันเริ่มโครงการ ถ้าไม่ปักหมุด ขั้นรากของดีลใหม่จะถูกดูดกลับไปวันเริ่มโครงการ
+   บริสุทธิ์ (ไม่ต่อฐาน) — ผู้เรียกโหลดขั้นตอนเดิมของโครงการมาให้ */
+export function attachRowsToProject(rows, projectId, existingProjectTasks = []) {
+  const baseOrder = (existingProjectTasks || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
+  return (rows || []).map((row, i) => ({
+    ...row,
+    projectId,
+    stepOrder: baseOrder + i,
+    startLocked: row.startLocked || (row.predecessors || []).length === 0,
+  }));
+}
+
 /* สรุป "ขั้นตอนปัจจุบัน" ต่อดีลจาก task ที่เรียง stepOrder แล้ว — กติกาเดียวกับ
    getCurrentStep ของฝั่ง PM (lib/pm/derived.js): กำลังทำก่อน ไม่มีก็ขั้นแรกที่ยังไม่เสร็จ
    คืน null เมื่อไม่มีไทม์ไลน์ · current=null+total>0 = เสร็จครบทุกขั้น */

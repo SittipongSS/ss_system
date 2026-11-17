@@ -95,9 +95,9 @@ export async function GET(request) {
 //   installmentSeq?: งวดที่เลือกจากแผนของ QT ตอนยังไม่มีแถวงวด (ขอเอกสารจากหน้า QT · mig 0413 — ผูกให้ตอนสร้างแถวงวด) }
 //
 // ⚠️ `title` บังคับทุกหัวข้อ · ของที่ต้องผูก**ต่างกันตามหัวข้อ** (ดู `needs` ใน
-// lib/master/requestTypes.js) — พัฒนากลิ่นผูก SO · พัฒนาสูตรผูกโครงการ+ดีล
+// lib/master/requestTypes.js) — พัฒนากลิ่นผูก SO · พัฒนาสูตรผูกดีล
 // (หมวดกับกลิ่นอยู่รายแถว)
-// ⚠️ `projectId` / `customerId` / `customerName` **ไม่รับจาก client** — derive จาก
+// ⚠️ `customerId` / `customerName` **ไม่รับจาก client** — derive จาก
 // ดีล (หรือจากกลิ่น/สูตรเมื่อหัวข้อไม่ผูกดีล) · `note` เลิกใช้แล้ว
 export async function POST(request) {
   const supabase = getSupabaseAdmin();
@@ -315,7 +315,7 @@ export async function POST(request) {
 
   if (requestNeedsRef(kind, 'salesOrder')) {
     const { data: soRow, error: soError } = await supabase
-      // `revisedFromId` — เจ้าของเดินตามสาย Rev. (ม-163): ใบ Rev. ของ SO ที่มีคำร้องแล้วเปิดซ้ำไม่ได้
+      // `revisedFromId` — เจ้าของเดินตามสาย Rev. (ม-164): ใบ Rev. ของ SO ที่มีคำร้องแล้วเปิดซ้ำไม่ได้
       .from('sales_orders').select('id, dealId, status, "orderNumber", "revisedFromId"').eq('id', body.salesOrderId).maybeSingle();
     if (soError) return Response.json({ error: soError.message }, { status: 500 });
     if (!soRow) return Response.json({ error: 'ไม่พบใบสั่งขายที่เลือก' }, { status: 400 });
@@ -338,7 +338,7 @@ export async function POST(request) {
     // หัวข้ออื่นอ้าง SO ได้ไม่จำกัด (ขอเอกสาร/ขอใบวางบิล · optionalRefs ม-88) · เดิมไม่กรอง
     // ⇒ SO ที่เคยขอเอกสาร FN ไว้เปิด PDR ไม่ได้ ("เปิดคำร้องไปแล้ว (เลขใบขอเอกสาร)")
     // ทั้งที่หน้า SO (กรอง kind แล้ว) บอกว่าเปิดได้ · อ้างสองใบขึ้นไป `maybeSingle` ยัง 500 อีกชั้น
-    /* ⭐ ม-163 — เจ้าของมีสามทาง: SO หลัก (ดัชนี 0219) · SO ที่แนบอยู่กับคำร้องอื่น (mig 0436) · เป็น Rev. ของใบที่มีเจ้าของ
+    /* ⭐ ม-164 — เจ้าของมีสามทาง: SO หลัก (ดัชนี 0219) · SO ที่แนบอยู่กับคำร้องอื่น (mig 0436) · เป็น Rev. ของใบที่มีเจ้าของ
        ⇒ ถามตัวโหลดเดียวกับหน้า SO (`loadScentOrderOwners`) · trigger ของ 0436 เป็นด่านสุดท้ายที่ DB */
     let taken = null;
     let takenText = null;
@@ -366,16 +366,15 @@ export async function POST(request) {
     }
   }
 
-  // โครงการ/ลูกค้าเติมจากดีล **ถ้าหัวข้อนี้ผูกดีล** — หัวข้อขอราคาไม่ผูกดีลแล้ว
+  // ลูกค้าเติมจากดีล **ถ้าหัวข้อนี้ผูกดีล** — หัวข้อขอราคาไม่ผูกดีลแล้ว
   // (มติรอบสอง: กลิ่น/สูตรผูกลูกค้าอยู่แล้ว ใช้รอบไหนก็ได้ · วัสดุเป็นราคากลาง)
-  let projectId = null;
   let customerId = null;
   let customerName = null;
   // ทีมของดีลต้นทาง — ใช้เป็นทีมของคำร้องเมื่อคนเปิดไม่มีทีมของตัวเอง (ดูตอนเขียนแถว)
   let dealTeam = null;
   if (dealId) {
     const { data: dealRow, error: dealError } = await supabase
-      .from('sales_deals').select('id, projectId, customerId, customerName, team')
+      .from('sales_deals').select('id, customerId, customerName, team')
       .eq('id', dealId).maybeSingle();
     if (dealError) return Response.json({ error: dealError.message }, { status: 500 });
     if (!dealRow) return Response.json({ error: 'ไม่พบดีลที่เลือก' }, { status: 400 });
@@ -384,9 +383,8 @@ export async function POST(request) {
        ดีลเป็นตัวกรอง ส่วนไทม์ไลน์ลอยบนดีลได้อยู่แล้ว (DL1 · lib/pm/status.js)
        ⇒ ด่าน "ต้องมีโครงการ" เหลือที่เดียวคือตอนปิด Won (quotations/[id]/accept)
        ซึ่งเป็นจุดที่ของจริงเริ่มเกาะโครงการ (SO → งานผลิต → ส่งของ)
-       ⚠️ `projectId` ยัง derive จากดีลเหมือนเดิม — ว่างได้ แล้วรับค่าย้อนหลังตอนดีล
-       ผูกโครงการ (`moveDealMirrors` ทำงานทั้งเส้นผูกแรกและเส้นย้าย) */
-    projectId = dealRow.projectId || null;
+       ⚠️ P3a (มติ 16/11 ⑩): เลิกก๊อป `projectId` จากดีลลงคำร้องใหม่ — โครงการเก็บเป็นประวัติ
+       คำร้องเดิมยังถือค่าเดิมไว้อ่าน (ไม่ล้าง) */
     // ลูกค้ามาจากดีล ไม่ใช่จาก client — ปล่อยให้ส่งเองคือเปิดช่องให้ราคาเข้าทะเบียน
     // ใต้ชื่อลูกค้าที่ไม่ใช่เจ้าของดีล
     customerId = dealRow.customerId || null;
@@ -562,7 +560,6 @@ export async function POST(request) {
       urgent: !!body.urgent,
       urgentReason: body.urgent ? (body.urgentReason || null) : null,
       dealId,
-      projectId,
       // SO ของบรีฟกลิ่น (บังคับ+ด่านเต็ม) หรือ SO อ้างอิงของขอเอกสาร (ม-88) — ช่องเดียวกัน
       salesOrderId: salesOrderId || optionalSalesOrderId,
       // ⚠️ ใส่คีย์เฉพาะเมื่ออ้างจริง — PostgREST ปฏิเสธ **ทั้งก้อน** เมื่อ body มี

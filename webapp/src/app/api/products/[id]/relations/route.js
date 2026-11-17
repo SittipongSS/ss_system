@@ -6,7 +6,7 @@ import { productRelations } from '@/lib/master/relations';
 export const dynamic = 'force-dynamic';
 
 // GET /api/products/[id]/relations — read-only 360-view summary.
-// → { registrations[], orders[], projects[] } (scoped to the viewer).
+// → { registrations[], orders[] } (scoped to the viewer).
 export async function GET(request, { params }) {
   const { id } = await params;
   const supabase = getSupabaseAdmin();

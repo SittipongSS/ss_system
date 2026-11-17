@@ -436,8 +436,9 @@ const nativeFeedbackDebt = {
    แล้วพบว่า sink ทำให้ป้ายลอยสูง 4.2px ⇒ คืนค่า `3px` เท่ากันสองด้านตามเดิม
    ⇒ เลขดิบสองจุดนั้นกลับมาพร้อมกัน · ห้ามใช้ช่องนี้เป็นข้ออ้างเพิ่มเลขดิบใหม่ 
    📉 155 → 154 (2026-09-06) — `22px` ดิบที่ .overviewHeading ยกเข้า --panel-inset ตอนยุบขอบในของหัวการ์ดให้เหลือเส้นเดียว
-   📉 154 → 153 (2026-09-15) — ช่องค้นหาของหมวดสินค้าเลิกประกาศ `padding: 0 11px` เอง (ย้ายเข้า ListPanel toolbar · ใช้ .search-glass กลาง) · 📉 153 → 152 (2026-09-15) — ถอด TableShell: `.heading p { margin: 3px 0 0 }` ใน Table.module.css ลบไปพร้อมกัน */
-const RAW_SPACING_CAP = 144;
+   📉 154 → 153 (2026-09-15) — ช่องค้นหาของหมวดสินค้าเลิกประกาศ `padding: 0 11px` เอง (ย้ายเข้า ListPanel toolbar · ใช้ .search-glass กลาง) · 📉 153 → 152 (2026-09-15) — ถอด TableShell: `.heading p { margin: 3px 0 0 }` ใน Table.module.css ลบไปพร้อมกัน
+   📉 144 → 140 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร (CSS module ของหน้าเหล่านั้น + บล็อก .shipment-* / .project-close-* ใน globals.css ที่ไม่มีใครเรียกแล้ว) */
+const RAW_SPACING_CAP = 140;
 
 /* ── ระยะห่างที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ────────────────────
    ฝาแฝดฝั่ง Tailwind ของ RAW_SPACING_CAP ข้างบน — ชื่อจงใจล้อ RAW_TAILWIND_TYPE_CAP
@@ -487,8 +488,9 @@ const RAW_SPACING_CAP = 144;
    16px ×111 · …) = 35 เท่าของเพดานนี้ · เป็นงานรอบของมันเอง ไม่ใช่ของที่ลืม 
    📉 32 → 29 (2026-09-06) — `mt-[18px]` สามจุดหายไปพร้อมกล่องครอบที่มีไว้เว้นระยะอย่างเดียว ตอนนี้ .ui-workspace ออก gap ให้เอง
    📉 26 → 23 (2026-11-04) — `my-[18px]` สามจุดของแบนเนอร์หน้าสินค้าหายไปตอนจัดหน้าเป็นแท็บ (แบนเนอร์ทะเบียนถอด · พักใช้เป็น StatusNotice)
-   📉 23 → 19 (2026-11-11) — `mb-[22px]` ของฟอร์มสินค้าเปลี่ยนเป็น `mb-6` ตอนจัดฟอร์มเป็น 4 หัวข้อ (docs/product-form-rework.md) */
-const RAW_TAILWIND_SPACING_CAP = 19;
+   📉 23 → 19 (2026-11-11) — `mb-[22px]` ของฟอร์มสินค้าเปลี่ยนเป็น `mb-6` ตอนจัดฟอร์มเป็น 4 หัวข้อ (docs/product-form-rework.md)
+   📉 19 → 14 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
+const RAW_TAILWIND_SPACING_CAP = 14;
 
 /* ── ขนาด (width/height) ที่เขียนเป็นเลขดิบใน `className` (2026-09-02) ──────
    🔴 **"ขนาด" ไม่เคยมี cap ใดในระบบเลยทั้งสามผิว** — นี่คือด่านแรกของสเกลนี้
@@ -598,8 +600,9 @@ const RAW_LINE_HEIGHT_CAP = 8;
    🪤 **ห้ามเพิ่มชื่อ `--radius-*` ใหม่เพื่อรองรับค่าที่เหลือ** — Tailwind v4 อ่าน
    namespace นี้เองและเอาไปทำ utility `rounded-*` (ในโค้ดมีใช้ 58 จุด) การเพิ่ม
    `--radius-sm` = เปลี่ยนความหมายของ `rounded-sm` ทั้งระบบเงียบ ๆ
-   (เคยเจอทางกลับมาแล้ว: ลบ --radius-xl ที่ "ไม่มีใครใช้" แล้วมุมหด 16→12px) */
-const RAW_RADIUS_CAP = 21;
+   (เคยเจอทางกลับมาแล้ว: ลบ --radius-xl ที่ "ไม่มีใครใช้" แล้วมุมหด 16→12px)
+   📉 21 → 20 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร (CSS module ของหน้าที่ถูกลบ) */
+const RAW_RADIUS_CAP = 20;
 
 /* ── ความมนมุมเลขดิบใน **style object** (2026-09-02) ─────────────────────────
    เพดานคนละตัวกับ RAW_RADIUS_CAP ข้างบนโดยเจตนา ไม่ยุบรวม
@@ -635,8 +638,10 @@ const RAW_RADIUS_CAP = 21;
    คือวิธีที่ 0 กลายเป็นคำโกหกรอบที่แล้ว**:
      src/components/salesPlanning/dashboard/performance/shared.js:71 → `height / 2`
      src/components/ui/Skeleton.js:5 → `radius` (มาจาก prop ค่าตั้งต้น 6)
-   ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่ */
-const RAW_RADIUS_JSX_CAP = 71;
+   ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่
+   📉 71 → 70 (2026-11-15) — ยุบดีล/โครงการ P2d: ชิปโครงการ (LINK_PROJECT · borderRadius 4) บนคิวงาน /pm/tasks ถูกถอด
+   📉 70 → 67 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
+const RAW_RADIUS_JSX_CAP = 67;
 
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -762,8 +767,10 @@ const RAW_OPACITY_JSX_CAP = 24;
    📉 704 → 689 (2026-09-23) — กล่อง glass-panel สีแดงของสหมิตรห้าจอ (รอบ FC · วัสดุ · PO · กระทบยอด · ตรวจธง) ย้ายไปใช้ StatusNotice กลาง
       ตามมติ "ไทยนำ + ดิบเป็นบรรทัดเล็ก" (padding/gap/marginBottom ดิบ 3 จุดต่อกล่อง)
    📉 689 → 687 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): แถบการ์ดของ /sahamit/material เลิกเขียน `Stat` + แถว flex
-      ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้ */
-const RAW_SPACING_JSX_CAP = 684;
+      ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้
+   📉 684 → 674 (2026-11-15) — ยุบดีล/โครงการ P2d: หน้าดีลถอดการ์ด "โครงการที่ดีลนี้อยู่" + แถวปุ่มสร้าง/ผูกโครงการ + โมดัลผูกโครงการ
+   📉 674 → 631 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
+const RAW_SPACING_JSX_CAP = 631;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
@@ -777,8 +784,10 @@ const RAW_SPACING_JSX_CAP = 684;
    ไปเป็น QuoteLineCells (ตัวเดียวกับบรรทัดโซนของใบสั่งขายย้อนหลัง — มติเจ้าของ 23/09)
    📉 303 → 302 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): การ์ด `Stat` ของ /sahamit/material (`minWidth: 120`) ถูกแทนด้วย KpiCard กลาง
    📉 300 → 299 (2026-11-02) — หน้าบันทึกการยื่น (tax/filings/[id]) ถอดช่องกำหนดยื่น `maxWidth: 180` ตอนรื้อเส้น RA v3
-   📉 299 → 298 (2026-11-03) — หน้ายื่นชำระ (tax/filings) เลิกใช้ DataList (ตารางแบบตารางเดิม · มติ V20) ⇒ ช่องติ๊ก `thStyle: { width: 34 }` ไปเป็นคลาส */
-const RAW_SIZE_JSX_CAP = 298;
+   📉 299 → 298 (2026-11-03) — หน้ายื่นชำระ (tax/filings) เลิกใช้ DataList (ตารางแบบตารางเดิม · มติ V20) ⇒ ช่องติ๊ก `thStyle: { width: 34 }` ไปเป็นคลาส
+   📉 298 → 297 (2026-11-15) — ยุบดีล/โครงการ P2d: หน้าดีลถอดรายการ "ดีลอื่นในโครงการนี้" (`maxWidth: 220`)
+   📉 297 → 292 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
+const RAW_SIZE_JSX_CAP = 292;
 
 /* ระยะห่างตัวอักษรที่ยังเป็นค่าดิบ — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
    `0` ไม่นับ (การ *ล้าง* ระยะห่างที่สืบทอดมาไม่ใช่ขั้นของดีไซน์)
@@ -878,15 +887,17 @@ const RAW_LETTER_SPACING_JSX_CAP = 1;
    แต่ก็ยังเป็นขนาดดิบเหมือนกัน จึงนับ) · ถ้านับโดยไม่ตัดคอมเมนต์บล็อกจะได้ 153
    เพราะ `src/components/ui/Input.js` มีคอมเมนต์อธิบายรูนี้ไว้ล่วงหน้าแล้วหนึ่งจุด */
 // 📉 148 → 146 (2026-11-11) — ป้าย "รวม VAT" `text-[10px]` + คำเตือน `text-[11px]` ของหัวข้อราคาขายปลีกเดิมในฟอร์มสินค้า หายไปกับหัวข้อ ④ ใหม่
-const RAW_TAILWIND_TYPE_CAP = 135;
+// 📉 135 → 134 (2026-11-15) — ยุบดีล/โครงการ P2d: ฟอร์มงานถอดบรรทัด `text-[11px]` "งานนี้จะอยู่ในโครงการ…"
+// 📉 134 → 131 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร
+const RAW_TAILWIND_TYPE_CAP = 131;
 
 /* ── น้ำหนักตัวอักษรที่ซ่อนอยู่ในกิ่งของ ternary (style object · 2026-09-02) ──
    `fontWeightViolations` ข้างล่างเป็น **hard-zero ที่พิมพ์ 0 มาตลอด ทั้งที่มีของจริง**
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1235                     isToday ? 700 : 500
-     src/app/sales-planning/deals/[id]/page.js:165     s.state === "current" ? 800 : 650
+     src/app/pm/tasks/page.js:1220                     isToday ? 700 : 500
+     src/app/sales-planning/deals/[id]/page.js:162     s.state === "current" ? 800 : 650
      src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
      src/app/settings/signature-coverage/page.js:213   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500

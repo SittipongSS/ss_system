@@ -1,5 +1,10 @@
 "use client";
+import { useEffect, useState } from "react";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { apiJson } from "@/lib/apiFetch";
+import PersonSelect from "@/components/ui/PersonSelect";
+import usePeopleDirectory from "@/lib/usePeopleDirectory";
+import { PROJECT_PEOPLE_ROLES } from "@/lib/pm/projectPeople";
 import { activeSalesTeams, salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import DealValueLines from "@/components/salesPlanning/DealValueLines";
 import OptionTiles from "@/components/ui/OptionTiles";
@@ -15,7 +20,7 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 //   ประเภทดีล (แผ่นเลือก บนสุด — ตัวเลือกแรกที่กำหนดทุกอย่างถัดไป) → ชื่อดีล
 //   → ลูกค้า | แบรนด์ (ดรอปดาวน์คู่กันซ้าย-ขวา ขนาดเท่ากัน — มติ 2026-08-08 รอบสี่:
 //     กลับจากชิปเป็นดรอปดาวน์)
-//   → โครงการ → สถานะ (แถบขั้น — FC% โชว์ใต้ทุกขั้น ยุบช่อง FC ทิ้ง)
+//   → (ช่องโครงการถอดแล้ว · P2d) → สถานะ (แถบขั้น — FC% โชว์ใต้ทุกขั้น ยุบช่อง FC ทิ้ง)
 //   → **มูลค่าคาดการณ์แยกตามหมวดสินค้า** (ตาราง — มติผู้ใช้ 2026-08-17 · mig 0264:
 //     หมวดเลือกได้หลายรายการ แต่ละแถวมีจำนวน/ราคาต่อหน่วย ยอดรวมล็อกคิดให้เอง
 //     ⇒ ช่อง "หมวดสินค้า" เดี่ยว และช่องเงินช่องเดียวถูกถอดออกทั้งคู่)
@@ -79,8 +84,6 @@ export default function DealFormFields({
   form,
   onPatch,               // (patchObject) => void
   customers = [],
-  projects = [],
-  showProject = false,
   categories = [],
   stages = [],           // ตัวเลือกสถานะ (caller กรอง won เอง · ตอนแก้ใบ Won ส่งชุดที่มี won มา)
   alreadyWon = false,    // ล็อก FC%/เดือน/มูลค่า หลังปิด Won
@@ -127,7 +130,7 @@ export default function DealFormFields({
       {/* ⚠️ เปลี่ยนลูกค้าทั้งที่ผูกโครงการอยู่ = ดีลกับโครงการคนละลูกค้า — ด่านจริงอยู่ที่
           server (`dealCustomerPatchError`) ที่นี่แค่บอกล่วงหน้าว่าจะติดอะไร */}
       {form.lockedProjectId && !alreadyWon && (
-        <small>เปลี่ยนลูกค้าได้เฉพาะรายที่ตรงกับโครงการที่ผูกอยู่ — ถ้าผูกผิดราย ให้ย้ายโครงการก่อน</small>
+        <small>ดีลเก่าที่อยู่ในโครงการ — เปลี่ยนลูกค้าได้เฉพาะรายเดียวกับโครงการเดิม · ผูกผิดรายแจ้งผู้ดูแลระบบ</small>
       )}
     </label>
   );
@@ -153,39 +156,8 @@ export default function DealFormFields({
     </label>
   );
 
-  // เชื่อมโครงการต้องเลือกลูกค้าก่อน (มติผู้ใช้ 2026-07-18) — ตัวเลือกจึงเหลือเฉพาะ
-  // โครงการของลูกค้านั้น (+ โครงการที่ยังไม่ผูกลูกค้า)
-  const projectField = showProject && (
-    <label className="deal-field" key="project">
-      <span className="deal-field-label">โครงการ</span>
-      <SearchableSelect
-        entity="project"
-        value={form.projectId || ""}
-        onChange={(projectId) => {
-          /* โครงการประกาศสายของมันเอง (mig 0191) และดีลกับโครงการต้องสายเดียวกัน
-             (ด่านที่ link-project) ⇒ เลือกโครงการ = ได้สายมาด้วยเลย ไม่ต้องให้คน
-             เดาซ้ำแล้วโดนตีกลับตอนกดบันทึก */
-          const picked = projects.find((project) => project.id === projectId);
-          onPatch({ projectId, ...(picked?.line ? { line: picked.line } : {}) });
-        }}
-        disabled={!form.customerId || !!form.lockedProjectId || alreadyWon}
-        placeholder={form.customerId ? "ค้นหารหัส / ชื่อโครงการ..." : "เลือกลูกค้าก่อน"}
-        options={[
-          { value: "", label: form.customerId ? "— ยังไม่เชื่อมโครงการ —" : "เลือกลูกค้าก่อน" },
-          ...projects
-            .filter((project) => !project.customerId || project.customerId === form.customerId || project.id === form.projectId)
-            .map((project) => ({
-              value: project.id,
-              label: [project.code, project.name].filter(Boolean).join(" — ") || project.id,
-              search: `${project.code || ""} ${project.name || ""} ${project.customerName || ""}`,
-            })),
-        ]}
-      />
-      {/* ล็อกได้ 2 กรณี: ดีลเชื่อมโครงการไปแล้ว (แก้) · เปิดฟอร์มจากหน้าโครงการนั้นเอง (สร้าง)
-          ⇒ ข้อความต้องกลาง ๆ ใช้ได้ทั้งสองทาง */}
-      {form.lockedProjectId && <small>โครงการถูกกำหนดไว้แล้ว — ย้ายโครงการทำที่หน้าดีล (ปุ่ม “ย้ายไปโครงการอื่น”) หรือที่หน้าโครงการ</small>}
-    </label>
-  );
+  /* ช่อง "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — ดีลไม่ผูก/สร้างโครงการอีกแล้ว
+     `form.lockedProjectId` ยังมาจากดีลเก่าที่อยู่ในโครงการ: ใช้ล็อกลูกค้า + สายด้านล่าง (ข้อมูลไทม์ไลน์เดิมยังผูกอยู่) */
 
   /* ดีลเป็นหน้าที่ความรับผิดชอบของ AE / Senior AE (มติผู้ใช้ 2026-08-08) —
      ae/senior_ae เปิดใบ = ล็อกชื่อตัวเอง ไม่มีอะไรให้เลือก · ac/ae_supervisor/admin
@@ -249,10 +221,38 @@ export default function DealFormFields({
     </div>
   );
 
+  /* ── AC ผู้ประสานงาน + AE Supervisor (ยุบดีล/โครงการ P2c-1 · มติเจ้าของ 13/11/2026 ② ⑤) ─────────────────────
+     ย้ายมาจากฟอร์มโครงการ — เลือกเองทุกดีล แก้ได้ · **บังคับทุกครั้งที่บันทึก** (missingDealFieldKeys + server dealPeople.js)
+     รายชื่อกรองด้วย role ชุดเดียวกับที่ server ตรวจ (สาย AC · หัวหน้าฝ่ายขาย) · AC กรองทีมให้ทับทีมของดีล (server ตรวจซ้ำ)
+     ⚠️ คนที่ถูกเลือกไว้เดิมแต่หลุดเงื่อนไข (ย้ายทีม/ถูกระงับ) ยังโชว์ในรายการ ไม่งั้นช่องดูเหมือนว่างทั้งที่มีค่า */
+  const directory = usePeopleDirectory();
+  const dealTeam = teamValue || ownerPick?.team || form.team || null;
+  const teamsOf = (user) => (Array.isArray(user?.teams) && user.teams.length ? user.teams : [user?.team].filter(Boolean));
+  const keepSelected = (list, id) => (id && !list.some((u) => u.id === id) ? [...list, ...directory.filter((u) => u.id === id)] : list);
+  const acUsers = keepSelected(directory.filter((u) => PROJECT_PEOPLE_ROLES.preparedBy.includes(u.role) && !u.disabled
+    && (!dealTeam || !teamsOf(u).length || teamsOf(u).includes(dealTeam))), form.acOwnerId);
+  const supervisorUsers = keepSelected(directory.filter((u) => PROJECT_PEOPLE_ROLES.aeSupervisor.includes(u.role) && !u.disabled), form.aeSupervisorId);
+  const acField = (
+    <div className="deal-field" key="acOwner">
+      <span className="deal-field-label">ผู้ประสานงาน (AC) <span className="required-mark">*</span></span>
+      <PersonSelect users={acUsers} value={form.acOwnerId || ""} onChange={(acOwnerId) => onPatch({ acOwnerId })}
+        emptyLabel="— เลือกผู้ประสานงาน —" ariaLabel="ผู้ประสานงาน (AC)" />
+      <small>ลงชื่อบน FM-PD-05 · ช่องผู้ประสานงานของ PDR · รับแจ้งเตือนของดีล{dealTeam ? ` · คนในทีม ${dealTeam}` : ""}</small>
+    </div>
+  );
+  const supervisorField = (
+    <div className="deal-field" key="aeSupervisor">
+      <span className="deal-field-label">ผู้ตรวจสอบ (AE Supervisor) <span className="required-mark">*</span></span>
+      <PersonSelect users={supervisorUsers} value={form.aeSupervisorId || ""} onChange={(aeSupervisorId) => onPatch({ aeSupervisorId })}
+        emptyLabel="— เลือกผู้ตรวจสอบ —" ariaLabel="ผู้ตรวจสอบ (AE Supervisor)" />
+      <small>ลงชื่อช่องผู้ตรวจสอบบน FM-PD-05 (ไทม์ไลน์ของดีล)</small>
+    </div>
+  );
+
   /* สายธุรกิจของดีล (mig 0275) — **ครึ่งแรกของกุญแจแม่แบบไทม์ไลน์** จึงอยู่เหนือ
      ประเภทดีล: ตอบ "งานนี้จบยังไง" ก่อน แล้วค่อยตอบ "ใบนี้เติมช่วงไหน"
-     ⚠️ ล็อกเมื่อดีลผูก/จะผูกโครงการ — โครงการเป็นเจ้าของสายอยู่แล้ว และผูกข้ามสาย
-     ถูกตีกลับที่ API อยู่ดี ⇒ ให้เห็นค่าที่จะได้ ดีกว่าปล่อยให้เลือกแล้วเด้ง */
+     ⚠️ ล็อกเมื่อเป็นดีลเก่าที่อยู่ในโครงการ — ไทม์ไลน์ในโครงการถูก gen ด้วยแม่แบบสายนั้นไปแล้ว และ API ตีกลับ
+     (PATCH ดีล) ⇒ ให้เห็นค่าเดิม ดีกว่าปล่อยให้เลือกแล้วเด้ง · จอโครงการถูกซ่อนแล้ว (P2d) ข้อความจึงไม่ชี้ไปที่นั่น */
   const lineLockedByProject = !!form.projectId || !!form.lockedProjectId;
   const lineField = (
     <div className="deal-field" key="line">
@@ -265,7 +265,7 @@ export default function DealFormFields({
       />
       <small>
         {lineLockedByProject
-          ? `สายมาจากโครงการที่ผูกไว้${form.line ? ` (${businessLineLabel(form.line)})` : ""} — เปลี่ยนที่โครงการ`
+          ? `ดีลเก่าที่อยู่ในโครงการ — สายล็อกตามไทม์ไลน์เดิม${form.line ? ` (${businessLineLabel(form.line)})` : ""} · ต้องเปลี่ยนแจ้งผู้ดูแลระบบ`
           : "เลือกสายก่อน — ขั้นตอนไทม์ไลน์ของสายสินค้ากับสายบริการเป็นคนละชุด (ยกเว้นงานพัฒนากลิ่นที่เดินเหมือนกัน)"}
       </small>
     </div>
@@ -287,6 +287,50 @@ export default function DealFormFields({
         }))}
         ariaLabel="ประเภทดีล"
       />
+    </div>
+  );
+
+  /* ── ดีล SCENT ต้นทาง (ยุบดีล/โครงการ P2c-2 · มติเจ้าของ 13/11/2026 ③) ────────────────────────────────────────
+     เฉพาะดีล NPD — คู่ของกติกา FC "SCENT ปิด Won ⇒ NPD ขึ้น 80" (แทน "ดีลในโครงการเดียวกัน") · ไม่บังคับ
+     รายการ = ดีล SCENT ของลูกค้ารายเดียวกันที่ยังไม่ Lost (server ตรวจซ้ำที่ lib/sales/dealScentSource.js)
+     ⚠️ วางใต้ช่องลูกค้า — เป็นคำถามที่เกิดจากคำตอบของช่องประเภท + ลูกค้า (กติกาลำดับช่องข้อ 3 · docs/form-design-rules.md) */
+  const isNpd = String(form.dealType || "").toUpperCase() === "NPD";
+  const [scentDeals, setScentDeals] = useState([]);
+  const [scentDealsError, setScentDealsError] = useState("");
+  useEffect(() => {
+    if (!isNpd || !form.customerId) { setScentDeals([]); setScentDealsError(""); return undefined; }
+    let alive = true;
+    apiJson(`/api/sales-planning/deals?customerId=${encodeURIComponent(form.customerId)}&dealType=SCENT`, { fallbackError: "โหลดดีล SCENT ของลูกค้าไม่สำเร็จ" })
+      .then((rows) => {
+        if (!alive) return;
+        setScentDealsError("");
+        setScentDeals((Array.isArray(rows) ? rows : []).filter((d) => d.stage !== "lost" && d.id !== form.id));
+      })
+      .catch((error) => { if (alive) { setScentDeals([]); setScentDealsError(error.message || "โหลดดีล SCENT ของลูกค้าไม่สำเร็จ"); } });
+    return () => { alive = false; };
+  }, [isNpd, form.customerId, form.id]);
+  const sourceScentField = isNpd && (
+    <div className="deal-field" key="sourceScent">
+      <span className="deal-field-label">ดีล SCENT ต้นทาง</span>
+      <SearchableSelect
+        value={form.sourceScentDealId || ""}
+        onChange={(sourceScentDealId) => onPatch({ sourceScentDealId })}
+        disabled={!form.customerId}
+        placeholder="ค้นหารหัส/ชื่อดีล SCENT..."
+        options={[
+          { value: "", label: "— ไม่ได้ต่อจากดีล SCENT —" },
+          ...scentDeals.map((d) => ({
+            value: d.id,
+            label: `${d.code || d.id} · ${d.title || ""} · ${STAGE_LABELS[d.stage] || d.stage}`,
+            search: `${d.code || ""} ${d.title || ""}`,
+          })),
+        ]}
+      />
+      <small>
+        {!form.customerId
+          ? "เลือกลูกค้าก่อน — ต้นทางต้องเป็นดีล SCENT ของลูกค้ารายเดียวกัน"
+          : scentDealsError || "ดีล SCENT ปิด Won แล้ว ⇒ FC ของดีล NPD นี้ขึ้น 80% เมื่อออกใบเสนอราคาแล้ว"}
+      </small>
     </div>
   );
 
@@ -355,7 +399,7 @@ export default function DealFormFields({
         <small>
           {legacyOn
             ? "ดีลเก่าเลือกขั้นปลาย (Won/Lost) ได้ตอนสร้าง · ขั้นอื่นเดินตามขั้นตอนปกติ"
-            : "NPD ที่โครงการมี SCENT ปิด Won แล้ว → 80% อัตโนมัติ"}
+            : "NPD ที่ดีล SCENT ต้นทางปิด Won แล้ว → 80% อัตโนมัติ"}
         </small>
       ) : null}
     </div>
@@ -478,7 +522,7 @@ export default function DealFormFields({
       {pairRows([dealTypeField])}
       {pairRows([titleField])}
       {pairRows([customerField, brandField])}
-      {pairRows([projectField])}
+      {pairRows([sourceScentField])}
 
       {pairRows([stageField])}
       {pairRows([fcField])}
@@ -493,6 +537,7 @@ export default function DealFormFields({
       {pairRows([notesField])}
       {pairRows([ownerField])}
       {pairRows([teamField])}
+      {pairRows([acField, supervisorField])}
     </>
   );
 }
