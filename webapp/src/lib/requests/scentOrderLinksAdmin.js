@@ -111,6 +111,24 @@ export async function loadScentOrderOwners(supabase, orders = []) {
 }
 
 /**
+ * บรรทัดของ SO หลายใบ — Map(salesOrderId → `[{ id, qty, fgCode, description }]`) · **ที่เดียวที่ select บรรทัด SO
+ * ของงานนี้** (ยามเลขแพ็ค GA ยกเว้นไฟล์นี้พร้อมเหตุ: บรรทัดไปตัวนับกลิ่นของหมวด 03-xxx เท่านั้น)
+ * ⚠️ ไม่แตะ `qty` ที่นี่ — ส่งต่อทั้งแถวที่ select มาแล้ว ตัดแค่คีย์ภายใน (ยามเลขแพ็ค GC: ตัวอ่าน qty มีแค่ตัวนับกลิ่น)
+ */
+export async function loadScentOrderLines(supabase, orderIds = []) {
+  const rows = await fetchAllInChunks(orderIds, (chunk) => supabase
+    .from('sales_order_lines').select('id, qty, "fgCode", description, "salesOrderId"')
+    .in('salesOrderId', chunk).order('id', { ascending: true }));
+  const bySo = new Map();
+  for (const line of rows) {
+    const { salesOrderId, ...rest } = line;
+    if (!bySo.has(salesOrderId)) bySo.set(salesOrderId, []);
+    bySo.get(salesOrderId).push(rest);
+  }
+  return bySo;
+}
+
+/**
  * SO ทั้งหมดของคำร้องพัฒนากลิ่นใบเดียว — `findRequest` เรียก
  *
  * @returns `{ salesOrderLines, attachedOrders, scentSlotLines, mainOrder }`
@@ -127,12 +145,8 @@ export async function loadRequestScentOrders(supabase, request) {
 
   const mainCounted = request.salesOrderId ? counted(request.salesOrderId) : null;
   const countedIds = [mainCounted?.id, ...links.map((l) => counted(l.salesOrderId).id)].filter(Boolean);
-  const lines = await fetchAllInChunks(countedIds, (chunk) => supabase
-    .from('sales_order_lines').select('id, qty, "fgCode", description, "salesOrderId"')
-    .in('salesOrderId', chunk).order('id', { ascending: true }));
-  // ⚠️ ไม่แตะ `qty` ที่นี่ — ส่งต่อทั้งแถวที่ select มาแล้ว ตัดแค่คีย์ภายใน (ยามเลขแพ็ค GC: ตัวอ่าน qty มีแค่ตัวนับกลิ่น)
-  const linesOf = (soId) => lines.filter((l) => l.salesOrderId === soId)
-    .map((line) => { const { salesOrderId: _omit, ...rest } = line; return rest; });
+  const linesBySo = await loadScentOrderLines(supabase, countedIds);
+  const linesOf = (soId) => linesBySo.get(soId) || [];
 
   const salesOrderLines = mainCounted ? linesOf(mainCounted.id) : [];
   const attachedOrders = links.map((link) => {

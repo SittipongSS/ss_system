@@ -118,6 +118,7 @@ import { appendRequestEvent } from '@/lib/sales/documentThread';
 import { sanitizeMentions } from '@/lib/master/mentions';
 import { purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
+import { releaseScentOrderLinks } from '@/lib/requests/scentOrderAttachAdmin';
 import { cancelCleanupSummary, cleanupCancelledSurveyZones } from '@/lib/service/surveyCancelCleanup';
 
 export const dynamic = 'force-dynamic';
@@ -1915,6 +1916,14 @@ export async function PATCH(request, { params }) {
       const cleanup = await cleanupCancelledSurveyZones(supabase, { request: after || before });
       const note = cancelCleanupSummary(cleanup);
       if (note) summary = `${summary} — ${note}`;
+    }
+
+    /* ⭐ **ยกเลิกคำร้องพัฒนากลิ่น = ปลด SO ที่แนบกลับเข้าคิว** (ม-164 · แผน §7) — SO หลักว่างเองตามดัชนี 0219
+       แต่ลิงก์ SO แนบอยู่ตารางแยก ไม่ปลด = ใบที่ลูกค้าจ่ายแล้วติดอยู่กับคำร้องที่ตายไปแล้ว แนบที่อื่นไม่ได้ (unique)
+       ⚠️ ทำ **หลัง** ใบยกเลิกสำเร็จ · ไม่โยน error (เหตุผลเดียวกับเก็บกวาดพื้นที่ข้างบน) */
+    if (action === 'cancel' && (before.attachedOrders || []).length) {
+      const released = await releaseScentOrderLinks(supabase, { request: before, user });
+      if (released) summary = `${summary} — ${released}`;
     }
 
     /* ⭐ **"ยังไม่จบ" บนใบประเมินที่ส่งผลแล้ว = เอกสารประเมินที่ใช้อยู่ใช้ไม่ได้** (mig 0401 ⑤ · สเปก PR-2 §6 · มติ 31)
