@@ -21,6 +21,8 @@
 // ⭐ **ช่องแนบไฟล์อยู่ทุกโหมด** (มติผู้ใช้ 2026-08-08: "อยากให้แนบไฟล์ได้ตั้งแต่หน้า
 // สร้างคำร้องเลย") — ไฟล์เก็บใน `value.files` แล้วผู้เรียกอัปหลังได้ id ของคำร้อง
 import { useRef, useState } from "react";
+import ContinueRequestField from "@/components/requests/ContinueRequestField";
+import { briefSourceRequired } from "@/lib/requests/scentContinue";
 import { Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
@@ -55,7 +57,7 @@ import {
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
   requestFormCopy, requestRequiredFiles, requestResultDateOnly, requestVariantAskedLabel,
   requestVariantChosen, requestVariantFieldLabel, requestVariantLabel, requestVariantNotice,
-  requestVariantRequired,
+  requestVariantRequired, requestCloseNeedsSoConfirm,
 } from "@/lib/master/requestTypes";
 import { requestVariantChoices, requestVariantConfirm } from "@/lib/requests/variantSwitch";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
@@ -159,6 +161,8 @@ export const emptyRequestForm = (over = {}) => ({
   // แบบฟอร์ม PDR + บรีฟรายกลิ่น — ใช้เฉพาะหัวข้อที่ประกาศ `hasPdr`
   pdr: emptyPdr(),
   briefs: [],
+  // ม-164 PR-4 — คำร้องพัฒนากลิ่นใบเดิมที่ใบนี้ "ต่อจาก" (ไม่บังคับ)
+  continuesRequestId: "",
   // แถวข้อ 2.2/2.3 ของ PDR (mig 0229) — ตารางลูก เดินสายแยกเหมือนบรีฟ
   pdrTargets: [],
   files: [],       // File[] — อัปหลังคำร้องถูกสร้าง (ยังไม่มี entityId ตอนกรอก)
@@ -507,6 +511,8 @@ export default function RequestForm({
      `null` = ยังไม่รู้ (กำลังโหลด/โหลดพัง) ⇒ ด่านไม่ตีกลับ · โหมดสร้างไม่ส่ง (`undefined`) ⇒ นับตะกร้า
      🔴 ต้องส่งให้ **ทั้งด่านและเกจ** — ลืมตัวใดตัวหนึ่ง = ใบที่มีแบบสามไฟล์ขึ้น "ยังขาด" (ตะกร้าของโหมดแก้ว่างเสมอ) */
   const [savedRequiredCount, setSavedRequiredCount] = useState(null);
+  // ม-164 PR-4 — กลิ่นที่คอนเฟิร์มในใบที่ "ต่อจาก" (ช่อง "แก้จากกลิ่น" ของบรีฟเรียงให้ขึ้นก่อน)
+  const [continueScentIds, setContinueScentIds] = useState([]);
   const fileOpts = { requiredFileCount: isEdit ? savedRequiredCount : undefined };
 
   // ด่านเดียวกับที่ปุ่มส่งใช้ — ฟอร์มไม่คิดกฎเอง (บทเรียน: หน้าจอคำนวณเงื่อนไข
@@ -1266,6 +1272,17 @@ export default function RequestForm({
                 ? `${soDeal.code || soDeal.id}${soDeal.title ? ` — ${soDeal.title}` : ""}`
                 : (lockedRefs.deal || "")}
             />
+            {/* ⭐ ม-164 PR-4 — "ต่อจากคำร้อง": งานเพิ่มที่ต้องมีบรีฟใหม่ หรือใบเดิมปิดไปแล้ว (ใบเดิมไม่เปิดกลับ) */}
+            {requestCloseNeedsSoConfirm(kind) && (
+              <ContinueRequestField
+                value={value.continuesRequestId || ""}
+                customerId={pdrCustomerId}
+                excludeId={isEdit ? (lockedRefs.requestId || null) : null}
+                disabled={disabled}
+                onChange={(continuesRequestId) => set({ continuesRequestId })}
+                onPreferScents={setContinueScentIds}
+              />
+            )}
         </div>
       )}
 
@@ -1495,6 +1512,9 @@ export default function RequestForm({
             customerId={pdrCustomerId}
             // โหมดแก้ล็อกดีลไว้แล้วเสมอ · ฝั่งสร้างถามจากช่องดีลของฟอร์ม
             dealChosen={isEdit || !!value.dealId}
+            /* ม-164 PR-4 — บรีฟ "แก้จากกลิ่น": บังคับเมื่อ SO หลักขายแก้ไขกลิ่นล้วน · กลิ่นของใบเดิมขึ้นก่อน */
+            sourceRequired={briefSourceRequired(selectedSo?.lines || lockedRefs.salesOrderLines || [])}
+            preferScentIds={continueScentIds}
           />
         </SectionRail>
       )}

@@ -47,6 +47,17 @@ export const emptyDeliveryRow = ({ categoryCode = "" } = {}) => ({
   spec: "", briefId: "", targetItemId: "", _files: [], _as: "",
 });
 
+/* ⭐ ม-164 PR-4 — แถวส่งงานของบรีฟก้อนหนึ่ง: บรีฟเลือก "แก้จากกลิ่น" ไว้ (`sourceScentId`) = ตั้งต้นช่อง "แก้มาจากกลิ่น"
+   ให้ RD (เปลี่ยนได้ — ไม่ล็อกเหมือนรอบแก้ เพราะบรีฟคือคำขอ ไม่ใช่ของที่ส่งไปแล้ว) */
+export const briefDeliveryRow = ({ categoryCode = "", brief = null } = {}) => {
+  const base = emptyDeliveryRow({ categoryCode });
+  return {
+    ...base,
+    briefId: brief?.id || "",
+    scent: { ...base.scent, derivedFromScentId: brief?.sourceScentId || "" },
+  };
+};
+
 // ⭐ ช่องของ **รอบแก้** — แถวรออยู่แล้ว บรีฟกับกลิ่นต้นทางระบบรู้แล้ว ⇒ ไม่ถามซ้ำ
 // (ค่าสองตัวนั้นถูก server เขียนทับด้วยของจริงอยู่ดี ดู lib/requests/rework.js)
 // ⭐ ม-148: "ส่งเป็น" ยกจากรอบก่อนเป็นค่าตั้งต้น (เปลี่ยนได้) · สูตรต้นทางยกจากรอบก่อนแล้วล็อก
@@ -223,7 +234,16 @@ export default function ScentDeliveryFields({
                   <label htmlFor={`d-brief-${i}`}>ตอบบรีฟก้อนไหน *</label>
                   <Select
                     id={`d-brief-${i}`} value={row.briefId || ""} disabled={disabled}
-                    onChange={(e) => patch(i, { briefId: e.target.value })}
+                    onChange={(e) => {
+                      /* ม-164 PR-4 — เปลี่ยนบรีฟ = ตั้งต้น "แก้มาจากกลิ่น" ตามบรีฟใหม่ เมื่อ RD ยังไม่ได้เลือกเอง */
+                      const picked = briefs.find((b) => b.id === e.target.value);
+                      const keepOwn = row.scent?.derivedFromScentId
+                        && !briefs.some((b) => b.sourceScentId === row.scent.derivedFromScentId);
+                      patch(i, {
+                        briefId: e.target.value,
+                        ...(keepOwn ? {} : { scent: { ...row.scent, derivedFromScentId: picked?.sourceScentId || "" } }),
+                      });
+                    }}
                     options={[
                       { value: "", label: "— เลือกบรีฟ —" },
                       ...briefs.map((b, n) => ({
