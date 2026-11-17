@@ -27,6 +27,17 @@ test('⭐ เส้นบอกเวอร์ชันต้องข้าม�
   assert.equal(bypassesSessionGate('/api/version'), true);
 });
 
+/* API อ่าน SO ให้ระบบอื่นของบริษัท (docs/so-external-api-plan.md) — ผู้เรียกคือเซิร์ฟเวอร์ของระบบปลายทาง ไม่มี cookie
+   ⚠️ เปิดเฉพาะ `/api/ext/v1/` (มี `/` ปิดท้าย + ผูกเวอร์ชัน) — route ตรวจคีย์เอง (extApiGet) */
+test('⭐ API ภายนอก v1 ข้ามด่าน session · เส้นข้างเคียงต้องไม่ข้าม', () => {
+  assert.equal(bypassesSessionGate('/api/ext/v1/sales-orders'), true);
+  assert.equal(bypassesSessionGate('/api/ext/v1/sales-orders/SO-1'), true);
+  for (const path of ['/api/ext', '/api/ext/', '/api/ext/v1', '/api/extx/v1/sales-orders', '/api/ext/v2/sales-orders',
+    '/api/ext/v10/sales-orders', '/api/external/v1/sales-orders', '/ext/v1/sales-orders']) {
+    assert.equal(bypassesSessionGate(path), false, `${path} ต้องไม่ข้ามด่าน session`);
+  }
+});
+
 test('ด่านที่ข้ามได้ต้องแคบ — เปิดเฉพาะใต้ /api/cron/ กับ /api/version เป๊ะ ๆ', () => {
   // ⚠️ ถ้าเผลอเขียนเป็น startsWith('/api/cron') เปล่า ๆ สองเส้นล่างจะหลุดตามไปด้วย
   // ⚠️ /api/version ต้องเทียบเต็มเส้น — เขียนเป็น startsWith แล้วชื่อคล้ายกันหลุดตาม
