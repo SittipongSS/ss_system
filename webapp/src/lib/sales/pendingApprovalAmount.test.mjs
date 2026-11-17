@@ -19,7 +19,6 @@ import {
   pendingApprovalMonthOf,
   wonAmountOf,
 } from './dashboardMetrics.js';
-import { rollupDeals } from './projectRollup.js';
 
 const ALL_STATUSES = ['draft', 'pending_approval', 'approved', 'rejected', 'revised', 'approval_revoked', 'cancelled'];
 
@@ -114,17 +113,4 @@ test('เดือนของยอดรออนุมัติ = เดื�
   assert.equal(pendingApprovalMonthOf({ stage: 'quotation', metadata: { soPendingAmount: 0, soPendingCount: 1 } }, new Date('2026-09-11T08:00:00Z')), null);
 });
 
-test('rollup โครงการ: รออนุมัติแยกช่อง ไม่อยู่ใน actual / totalValue / variance', () => {
-  const r = rollupDeals([
-    { stage: 'won', dealType: 'NPD', projectValue: 108000, wonValue: 0, metadata: { actualSource: 'sale_order', soPendingAmount: 108000, soPendingCount: 1 } },
-    { stage: 'won', dealType: 'SCENT', projectValue: 50000, wonValue: 50000, metadata: { actualSource: 'sale_order' } },
-    { stage: 'qualified', dealType: 'RE-ORDER', projectValue: 20000, metadata: { soPendingAmount: 999, soPendingCount: 1 } },
-  ]);
-  assert.equal(r.actual, 50000);
-  assert.equal(r.pendingApproval, 108000);
-  assert.equal(r.pendingApprovalCount, 1);
-  assert.equal(r.totalValue, 50000 + 20000);
-  assert.equal(r.variance, 50000 - (108000 + 50000));
-  assert.equal(r.byType.find((b) => b.type === 'NPD').pendingApproval, 108000);
-  assert.equal(r.byType.find((b) => b.type === 'RE-ORDER').pendingApproval, 0);
-});
+/* (เทสต์ rollup โครงการ ถอดพร้อม `lib/sales/projectRollup.js` — งวด P3b-2 ยุบโครงการ: ผู้เรียกคนสุดท้าย `api/pm/projects` ถูกลบ) */

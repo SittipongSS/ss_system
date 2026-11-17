@@ -94,12 +94,12 @@ test('loadLiveExciseSalesOrder: ตัดใบยกเลิก/ถูกแ�
 });
 
 // ── 3. ต่อสายใน route (อ่านซอร์ส — ไม่มี DB ในเทสต์) ─────────────────────────────────────────────────
-test('POST สร้าง SO: ใบค่าสรรพสามิตเติม sourceDeal ก่อนตัดสินสิทธิ์ · ข้ามด่านโครงการ · RPC ของตัวเอง', () => {
+test('POST สร้าง SO: ใบค่าสรรพสามิตเติม sourceDeal ก่อนตัดสินสิทธิ์ · ไม่มีด่านโครงการ · RPC ของตัวเอง', () => {
   const route = code('../../app/api/sales-planning/sales-orders/route.js');
   const attach = route.indexOf('attachSourceDeals(supabase, [quote])');
   const scope = route.indexOf("inSalesDocScope(user, quote, 'edit')");
   assert.ok(attach > 0 && attach < scope, 'ต้องมีดีลต้นทางก่อนตัดสินสิทธิ์ ไม่งั้นใบไม่มีดีลถูกปฏิเสธ/เปิดเงียบ');
-  assert.match(route, /if \(!excise\) \{\s*const closedProject = await closedProjectBlock\(supabase, quote\.deal\?\.projectId/);
+  assert.doesNotMatch(route, /closedProjectBlock/, 'ด่านโครงการปิดถอดในงวด P3b-2 ยุบโครงการ');
   assert.match(route, /excise\s*\? await supabase\.rpc\('create_excise_sales_order_draft', createArgs\)\s*: await supabase\.rpc\('create_sales_order_draft', createArgs\)/);
   assert.match(route, /const exciseError = excise \? exciseSalesOrderCreateError\(error\) : null;/);
   assert.doesNotMatch(route, /quote\.deal\.projectId/, 'ใบไม่มีดีล = TypeError');

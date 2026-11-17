@@ -450,9 +450,7 @@ export default function DealOverviewPage() {
   const [categories, setCategories] = useState([]);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
-      projectProducts: data?.projectProducts,
-      exciseRegistrations: data?.exciseRegistrations,
-      sahamitPo: data?.sahamitPo,
+      /* (projectProducts · ทะเบียนสรรพสามิต · PO สหมิตรของโครงการ — ถอดจาก overview ในงวด P3b-2 ยุบโครงการ: อ่านด้วย projectId ว่างเสมอบน prod) */
       // หมวดสินค้า — ใช้ตัดสินการ์ดสรรพสามิตจาก flag isExcise (mig 0131)
       productTypes: categories,
     }) : null),
@@ -1270,7 +1268,6 @@ export default function DealOverviewPage() {
                     stepBadgeFor={exciseStepBadgeFor}
                     canEdit={canEdit}
                     dealId={deal.id}
-                    projectId={data.project?.id || null}
                     documentProject={dealDocumentProject}
                     view={timelineView}
                     onViewChange={setTimelineView}
@@ -1278,9 +1275,9 @@ export default function DealOverviewPage() {
                     timelineContext={{
                       name: deal.title,
                       customerName: deal.customerName,
-                      startDate: deal.startDate || data.project?.startDate,
+                      startDate: deal.startDate,
                       brand: deal.brand,
-                      status: data.project?.status || deal.stage,
+                      status: deal.stage,
                       statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
                     }}
                     onChanged={load}
@@ -1497,9 +1494,9 @@ export default function DealOverviewPage() {
           </div>
           <div className={styles.genLineField}>
             สายธุรกิจ (เลือกก่อน — คนละแม่แบบกัน)
-            {/* ดีลในโครงการ: สายล็อกตามโครงการ (server ไม่รับสายจากโมดัล — timeline route) */}
-            <BusinessLineSelect value={genLine} onChange={setGenLine} ariaLabel="สายธุรกิจของไทม์ไลน์" disabled={!!data?.project} />
-            {!data?.project && genLine && genLine !== (deal?.line || "") && (
+            {/* (ดีลในโครงการเคยล็อกสายตามโครงการ — ปลดในงวด P3b-2 ยุบโครงการ · มติ ⑫ ใช้กติกาเดียวกับดีลทั่วไป) */}
+            <BusinessLineSelect value={genLine} onChange={setGenLine} ariaLabel="สายธุรกิจของไทม์ไลน์" />
+            {genLine && genLine !== (deal?.line || "") && (
               <span className={styles.genLineSwitchNote}>· จะอัปเดตสายธุรกิจของดีลเป็นค่านี้ให้ด้วย</span>
             )}
           </div>

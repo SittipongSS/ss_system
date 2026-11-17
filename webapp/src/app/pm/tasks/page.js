@@ -38,7 +38,7 @@ import { DIFFICULTY_LABELS, PERSONAL_TASK_STATUSES, TASK_STATUS_BLOCKED, eisenho
 import { daysWaiting } from "@/lib/pm/taskChain";
 import { MINE_TASK_VIEWS, taskRelationship } from "@/lib/pm/taskViews";
 import { TASKS_NAV_COUNT_PARAM, TASK_TODO_FILTER, TASK_TODO_FILTER_LABEL, TASK_WAITING_OVERDUE_FILTER, TASK_WAITING_OVERDUE_FILTER_LABEL, dealQueueLanding, mineViewCounts as countMineViews, taskListRows, taskPoolRows, taskStatusPasses, tasksNavLanding } from "@/lib/pm/taskListFilter";
-import { TASK_CENTRAL_EXCLUDE, TASK_CENTRAL_ONLY, readTasksQueueLink } from "@/lib/pm/dealTaskLink";
+import { readTasksQueueLink } from "@/lib/pm/dealTaskLink";
 import { compactPersonName } from "@/lib/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { RequestStatusBadge, requestDueTone } from "@/components/requests/requestUi";
@@ -164,6 +164,9 @@ const tasksHrefWithout = (searchParams, keys) => {
   return query ? `/sa/tasks?${query}` : "/sa/tasks";
 };
 
+/* พารามิเตอร์ของลิงก์หน้าโครงการเดิม — งวด P3b-2 ยุบโครงการ: ไม่มีผลกับคิวแล้ว เหลือไว้ให้ถอดออกจาก URL เท่านั้น */
+const STALE_LINK_PARAMS = ["projectId", "central"];
+
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
 const EMPTY = [];
@@ -200,10 +203,8 @@ export default function TasksPage() {
     const d = new Date();
     setTodayISO(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
   }, []);
-  const [projectsMap, setProjectsMap] = useState({});
   const [dealsMap, setDealsMap] = useState({});
   const [me, setMe] = useState(null);
-  const [allProjects, setAllProjects] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
   const [users, setUsers] = useState([]);
   const [usersMap, setUsersMap] = useState({});
@@ -216,33 +217,25 @@ export default function TasksPage() {
   // ของการ์ด KPI ด้านบน (มาตรฐาน: KPI/สโคป/เรียงลำดับ อยู่นอกปุ่มกรอง)
   const [assigneeFilter, setAssigneeFilter] = useStickyState("assigneeFilter", EMPTY);
   const [categoryFilter, setCategoryFilter] = useStickyState("categoryFilter", EMPTY);
-  /* ⭐ กรองตามดีล — ตั้งต้นจาก `?dealId=` ที่หน้าดีล/หน้าโครงการส่งมา
+  /* ⭐ กรองตามดีล — ตั้งต้นจาก `?dealId=` ที่หน้าดีลส่งมา
      🐞 พารามิเตอร์ตัวนี้เคย **เปิดโมดัลสร้างงาน** แทนที่จะกรอง: ปุ่มบนหน้าดีลชื่อ
      "เปิด" กับบนหน้าโครงการชื่อ "เปิดหน้างาน" ทั้งคู่มีไอคอนลิงก์ออก ⇒ คนกดเพื่อ
      *ดูรายการ* แต่ได้ฟอร์มสร้างงานทับจอ แถมคิวที่อยู่ข้างหลังก็เป็นงานทั้งระบบ
      ไม่ได้กรองตามดีลที่กดมาเลย · ตอนนี้ "สร้างงาน" มีปุ่มของตัวเองอยู่ในหน้าดีล/
      โครงการแล้ว (โมดัลในหน้า) พารามิเตอร์นี้จึงเหลือความหมายเดียวคือกรอง */
   const [dealFilter, setDealFilter] = useState([]);
-  /* ⭐ กรองตามโครงการ — ตั้งจาก `?projectId=` ที่หน้าโครงการส่งมา (มติเจ้าของ 20/10/2026 · M8b) เมื่อไม่ได้เลือกดีล
-     ชุดเดียวกับแท็บงานของหน้าโครงการ (`isProjectTask`: projectId = P หรือ dealId เป็นดีลของโครงการ) · โชว์เป็นชิป "กรอง: โครงการ … ×" */
-  const [projectFacet, setProjectFacet] = useState(null);
-  /* ธง `?central=` ของลิงก์หน้าโครงการ (รีวิว M8b) — `none` คู่ชิปดีล = ไม่รวมงานกลางโครงการ · `only` คู่ชิปโครงการ = เฉพาะงานกลาง
-     ⇒ คิวได้ชุดเดียวกับตัวเลือก "ดีลที่แสดง" ของหน้าโครงการ (`projectSelectionPasses`) */
-  const [centralFacet, setCentralFacet] = useState(null);
+  /* (งวด P3b-2 ยุบโครงการ: ชิป "กรอง: โครงการ … ×" จาก `?projectId=` + ธง `?central=` ของหน้าโครงการถูกถอด —
+     ลิงก์เก่าที่ยังถือสองพารามิเตอร์นี้ไม่มีผล และถูกถอดออกจาก URL · ดู effect `STALE_LINK_PARAMS` ข้างล่าง) */
   /* ⭐ พารามิเตอร์จากลิงก์อ่านด้วย `useSearchParams` (ไม่ใช่ `window.location` ครั้งเดียวตอนเมานต์) — กดป้ายเมนู/ลิงก์ซ้ำ
      ขณะอยู่หน้านี้ (คอมโพเนนต์ไม่เมานต์ใหม่) ต้องยังติด · แพตเทิร์นเดียวกับ `?count=` ของ /production/jobs (H8) */
   const searchParams = useSearchParams();
   const linkDealParam = searchParams.get("dealId") || "";
-  const linkProjectParam = searchParams.get("projectId") || "";
-  const linkCentralParam = searchParams.get("central") || "";
   const countParam = searchParams.get("count") || "";
-  /* ดีล/โครงการจากลิงก์ส่งไปให้ API ด้วย — **ไม่ได้กรองงาน** แค่การันตีว่าแผนที่ดีล/โครงการมีตัวนั้น (พร้อม projectId
-     ของดีล) แม้ยังไม่มีงานผูกตรง ⇒ ตัวกรองดีลนับงานเดิมของโครงการได้ตรงกับป้าย "ค้าง n" บนหน้าดีล */
-  // ดีลมาก่อนโครงการ · ธง `central` ต้องคู่ถูก (คู่ผิด = ทิ้ง) — ตัวอ่านตัวเดียวกับที่เทสต์ใช้ไปกลับกับ `projectTasksQueueHref`
-  const { dealIds: linkDealIds, projectId: linkProjectId, central: linkCentral } = readTasksQueueLink({
-    dealId: linkDealParam, projectId: linkProjectParam, central: linkCentralParam,
-  });
-  const facetQuery = linkDealIds.length ? `&dealId=${linkDealIds.join(",")}` : linkProjectId ? `&projectId=${linkProjectId}` : "";
+  const hasStaleLinkParam = STALE_LINK_PARAMS.some((key) => searchParams.has(key));
+  /* ดีลจากลิงก์ส่งไปให้ API ด้วย — **ไม่ได้กรองงาน** แค่การันตีว่าแผนที่ดีลมีตัวนั้น (ชื่อบนชิปกรอง)
+     แม้ยังไม่มีงานผูกตรง — ตัวอ่านตัวเดียวกับที่เทสต์ใช้ไปกลับกับ `tasksQueueHref` */
+  const { dealIds: linkDealIds } = readTasksQueueLink({ dealId: linkDealParam });
+  const facetQuery = linkDealIds.length ? `&dealId=${linkDealIds.join(",")}` : "";
   const facetQueryRef = useRef(facetQuery);
   facetQueryRef.current = facetQuery;
   const [sortKey, setSortKey] = useStickyState("sortKey", "created");
@@ -277,7 +270,6 @@ export default function TasksPage() {
       setPersonalTasks(d.personalTasks || []);
       setInquiries(d.inquiries || []);
       setInquiryQueue(d.inquiryQueue || null);
-      setProjectsMap(d.projects || {});
       setDealsMap(d.deals || {});
       if (d.me) setMe(d.me);
       if (d.allowedScopes) setAllowedScopes(d.allowedScopes);
@@ -295,7 +287,6 @@ export default function TasksPage() {
       setUsers(u || []);
       setUsersMap(Object.fromEntries((u || []).map((x) => [x.id, compactPersonName(x.name)])));
     }).catch(() => {});
-    apiFetch("/api/pm/projects").then((r) => (r.ok ? r.json() : [])).then((p) => setAllProjects(p || [])).catch(() => {});
     apiFetch("/api/pm/task-deals").then((r) => (r.ok ? r.json() : [])).then((d) => setAllDeals(d || [])).catch(() => {});
   }, []);
 
@@ -303,7 +294,6 @@ export default function TasksPage() {
   const assignableUsers = useMemo(() => assignableUsersFor(me, users), [me, users]);
 
   const q = search.trim().toLowerCase();
-  const resolveProj = (pid) => projectsMap[pid] || allProjects.find((p) => p.id === pid) || null;
   const resolveDeal = (did) => dealsMap[did] || allDeals.find((d) => d.id === did) || null;
   // ทีมของคนคนนั้น — เป็นอาร์เรย์เพราะคนเดียวอยู่ได้หลายทีม
   const userTeamOf = (id) => userTeams(users.find((u) => u.id === id));
@@ -314,10 +304,8 @@ export default function TasksPage() {
     if (!canEdit && !isRdRole(me.role)) return false; // rd manages its own operational tasks
     if (t.ownerId === me.id || t.assigneeId === me.id) return true;
     if (isSuperuser(me.role)) return true;
-    if (isTeamLead(me.role) && userTeams(me).length) {
-      if (hasTeam(me, userTeamOf(t.assigneeId || t.ownerId))) return true;
-      if (hasTeam(me, resolveProj(t.projectId)?.team)) return true;
-    }
+    // งวด P3b-2 ยุบโครงการ: ถอดสาขา "ทีมของโครงการ" — ตรงกับ server (lib/pm/personalTaskAccess.js)
+    if (isTeamLead(me.role) && userTeams(me).length && hasTeam(me, userTeamOf(t.assigneeId || t.ownerId))) return true;
     return false;
   };
 
@@ -402,8 +390,7 @@ export default function TasksPage() {
   /* ⭐ **ตัวกรองทั้งชุดเป็นก้อนเดียว ส่งให้ตัวตัดสินกลาง** (`lib/pm/taskListFilter.js` · ตรวจตัวเลข M8 · 20/10/2026)
      ตาราง · การ์ดสถานะ · เลขบนแท็บบทบาท อ่านจากก้อนนี้ตัวเดียว ⇒ เลขบนแท็บ = แถวที่ตารางแสดงหลังกดแท็บนั้น
      🐞 เดิมเลขบนแท็บนับ "งานค้างของฉันทั้งหมด" ไม่สนคำค้น/หมวด/ดีล/การ์ดสถานะ ⇒ มาจากหน้าดีล แท็บบอก 23 ตารางขึ้น 2
-     ⚠️ ดีลตัดสินด้วย `isDealTask` (รวมงานเดิมของโครงการที่ไม่มี dealId — ชุดเดียวกับการ์ดบนหน้าดีล · M8c) ⇒ ต้องรู้
-        โครงการของดีล — มาจากแผนที่ดีลของ API (`projectId`) หรือทะเบียนดีลของฟอร์ม */
+     ⚠️ ดีลตัดสินด้วย `isDealTask` (`dealId` ตรงตัว — ชุดเดียวกับการ์ดบนหน้าดีล · M8c) */
   const listFilters = useMemo(() => ({
     meId: me?.id || null,
     scope,
@@ -412,11 +399,8 @@ export default function TasksPage() {
     assignees: assigneeFilter,
     categories: categoryFilter,
     deals: dealFilter,
-    project: projectFacet,
-    central: centralFacet,
     status: statusFilter,
-    dealProjectOf: (id) => (dealsMap[id] || allDeals.find((d) => d.id === id))?.projectId || null,
-  }), [me?.id, scope, mineView, q, assigneeFilter, categoryFilter, dealFilter, projectFacet, centralFacet, statusFilter, dealsMap, allDeals]);
+  }), [me?.id, scope, mineView, q, assigneeFilter, categoryFilter, dealFilter, statusFilter]);
 
   // เลขบนแท็บบทบาท — นับพร้อมตัวกรองอื่นทุกตัว (รวมสถานะ) = แถวที่เห็นหลังกดแท็บ
   const mineViewCounts = useMemo(() => countMineViews(personalTasks, listFilters), [personalTasks, listFilters]);
@@ -469,8 +453,8 @@ export default function TasksPage() {
   // แบ่งหน้าเฉพาะมุมมองแบน (ตาราง/รายการ) — บอร์ด/เมทริกซ์/ปฏิทินแสดงครบตามเดิม
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(visible, {
-      // ⚠️ ดีล/โครงการต้องอยู่ในคีย์ด้วย — เปลี่ยนดีลแล้วค้างหน้า 3 ของชุดเดิม = ตารางว่างทั้งที่ป้ายบอกว่ามีงาน
-      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter.join()}|${categoryFilter.join()}|${dealFilter.join()}|${projectFacet || ""}|${centralFacet || ""}|${sortKey}|${sortDir}`,
+      // ⚠️ ดีลต้องอยู่ในคีย์ด้วย — เปลี่ยนดีลแล้วค้างหน้า 3 ของชุดเดิม = ตารางว่างทั้งที่ป้ายบอกว่ามีงาน
+      resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter.join()}|${categoryFilter.join()}|${dealFilter.join()}|${sortKey}|${sortDir}`,
     });
 
   const handleSort = (key) => {
@@ -486,7 +470,7 @@ export default function TasksPage() {
   const openAdd = () => { setEditingId(null); setInquirySource(null); setChainSource(null); setForm(TASK_BLANK); setShowModal(true); };
 
   /* งานต่อเนื่อง (mig 0266) — "จบใบนี้แล้วต่อใบไหน"
-     ก๊อปบริบทของใบก่อนหน้ามาให้ (ดีล/โครงการ/หมวด/ผู้รับผิดชอบ) เพราะงานที่ต่อกัน
+     ก๊อปบริบทของใบก่อนหน้ามาให้ (ดีล/หมวด/ผู้รับผิดชอบ) เพราะงานที่ต่อกัน
      เป็นสายเดียวกันแทบทุกครั้งอยู่ในดีลเดียวกัน — คนกรอกซ้ำทุกช่องคือค่าใช้จ่ายเปล่า
      สถานะเริ่มต้นปล่อยเป็น Pending แล้วให้ **ฝั่ง API** เป็นคนตัดสินว่าต้องล็อกเป็น
      "รอคนอื่น" ไหม (ใบก่อนหน้ายังไม่ปิด) — ตรรกะอยู่ที่เดียวคือ chainStatusOnLink */
@@ -498,7 +482,6 @@ export default function TasksPage() {
       ...TASK_BLANK,
       predecessorId: t.id,
       dealId: t.dealId || "",
-      projectId: t.projectId || "",
       category: t.category || "",
       assigneeId: t.assigneeId || "",
     });
@@ -508,7 +491,7 @@ export default function TasksPage() {
     const params = new URLSearchParams(window.location.search);
     const inquiryId = params.get("inquiryId");
     const messageId = params.get("messageId");
-    // `?dealId=` / `?projectId=` ไม่ได้อยู่ที่นี่แล้ว — เป็นตัวกรองที่อ่านสดจาก URL (ดู effect ของลิงก์ข้างล่าง)
+    // `?dealId=` ไม่ได้อยู่ที่นี่แล้ว — เป็นตัวกรองที่อ่านสดจาก URL (ดู effect ของลิงก์ข้างล่าง)
     if (deepLinkHandled.current || !inquiryId) return;
     deepLinkHandled.current = true;
     if (inquiryId) {
@@ -554,15 +537,15 @@ export default function TasksPage() {
     }
   }, []);
 
-  /* ── ลิงก์จากหน้าดีล/หน้าโครงการ: `?dealId=a[,b]` · `?projectId=p` (มติเจ้าของ 20/10/2026 · ตรวจตัวเลข M8b ข้อ 1) ──
+  /* ── ลิงก์จากหน้าดีล: `?dealId=a[,b]` (มติเจ้าของ 20/10/2026 · ตรวจตัวเลข M8b ข้อ 1) ──
      ⭐ `?dealId=` = **กรองคิวตามดีล** ไม่ใช่เปิดฟอร์มสร้าง (ดู `dealFilter` ข้างบน)
      ⭐ เปิดที่ **ขอบเขตกว้างสุดที่มีสิทธิ์** + มุมมอง "ทั้งหมดของฉัน" + งานค้าง · ล้างคำค้น/หมวด/ผู้รับ/การ์ดสถานะที่ค้าง ·
         คงชิปดีล — ตัวกรองทั้งชุดมาจาก `dealQueueLanding` ตัวเดียวกับที่ route ของหน้าดีลใช้นับป้าย "ค้าง n"
         ⇒ ป้ายบนหน้าดีล = แถวที่เห็นตอนมาถึง (คนที่มีแค่ "ของฉัน" ได้เลขเฉพาะงานที่คิวของเขาโชว์ได้)
-     🐞 เดิมลงที่ "ของฉัน · ต้องทำ" ⇒ งานคนอื่นในดีลและงานเดิมของโครงการไม่โผล่เลย แม้ผู้ใช้ดูได้ทั้งระบบ
+     🐞 เดิมลงที่ "ของฉัน · ต้องทำ" ⇒ งานคนอื่นในดีลไม่โผล่เลย แม้ผู้ใช้ดูได้ทั้งระบบ
      ⚠️ ลิงก์ถูกถอดจาก URL (กดเมนู/ล้างตัวกรอง) = ถอดตัวกรองที่ลิงก์ตั้งไว้ · ผู้ใช้เปลี่ยนตัวกรองดีลเองในแผง = ถอดลิงก์
         ออกจาก URL ก่อน (`dropLinkParams`) ไม่งั้น URL บอกดีลหนึ่งแต่จอกรองอีกชุด
-     ⚠️ **มาถึงด้วยการกดย้อน/เดินหน้า/รีเฟรช = ตั้งแค่ชิปดีล/โครงการจาก URL** (รีวิว M8b 20/10/2026) — `useStickyState`
+     ⚠️ **มาถึงด้วยการกดย้อน/เดินหน้า/รีเฟรช = ตั้งแค่ชิปดีลจาก URL** (รีวิว M8b 20/10/2026) — `useStickyState`
         คืนตัวกรองที่ผู้ใช้ทิ้งไว้แล้ว (มติ 2026-08-25 "ย้อนกลับ = กลับไปที่เดิม") · ลงทั้งชุดซ้ำ = ทับคำค้น/การ์ดสถานะ/ขอบเขต
         ที่ตั้งไว้ก่อนเปิดงาน · ตัดสินครั้งเดียวต่อการเมานต์ด้วยลายเซ็นลิงก์ตอนนั้น (ถามที่เดียวกับ useStickyState —
         `arrivedByHistory` ตอบซ้ำได้ใน pathname เดิม) ⇒ ลิงก์ใหม่ระหว่างอยู่หน้านี้ยังลงทั้งชุดตามเดิม */
@@ -570,23 +553,19 @@ export default function TasksPage() {
   const linkAppliedRef = useRef(false);
   const linkArrivalRef = useRef(null); // { signature, byHistory } ของการเมานต์นี้
   useEffect(() => {
-    if (!linkDealIds.length && !linkProjectId) {
+    if (!linkDealIds.length) {
       if (linkAppliedRef.current) {
         linkAppliedRef.current = false;
         setDealFilter([]);
-        setProjectFacet(null);
-        setCentralFacet(null);
       }
       return;
     }
-    const signature = `${linkDealIds.join(",")}|${linkProjectId}|${linkCentral || ""}`;
+    const signature = linkDealIds.join(",");
     if (!linkArrivalRef.current) linkArrivalRef.current = { signature, byHistory: arrivedByHistory(pathname) };
     const restoreOnly = linkArrivalRef.current.byHistory && linkArrivalRef.current.signature === signature;
     linkAppliedRef.current = true;
-    const landing = dealQueueLanding({ allowedScopes: pmTaskScopes(role), dealIds: linkDealIds, projectId: linkProjectId, central: linkCentral });
+    const landing = dealQueueLanding({ allowedScopes: pmTaskScopes(role), dealIds: linkDealIds });
     setDealFilter(landing.deals);
-    setProjectFacet(landing.project);
-    setCentralFacet(landing.central);
     if (restoreOnly) return;
     setScope(landing.scope);
     setMineView(landing.mineView);
@@ -595,7 +574,15 @@ export default function TasksPage() {
     setAssigneeFilter(landing.assignees);
     setCategoryFilter(landing.categories);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linkDealParam, linkProjectParam, linkCentral, role]);
+  }, [linkDealParam, role]);
+
+  /* งวด P3b-2 ยุบโครงการ: `?projectId=` / `?central=` มาจากลิงก์ของหน้าโครงการที่ลบไปแล้ว — ไม่มีผลกับคิว
+     ⇒ ถอดออกจาก URL ทันที (ท่าเดียวกับ `count`) ไม่งั้น URL ถือตัวกรองที่จอไม่ได้ใช้ · มี `count` = ให้ effect นั้นถอดรวดเดียว */
+  useEffect(() => {
+    if (!hasStaleLinkParam || countParam === TASKS_NAV_COUNT_PARAM) return;
+    router.replace(tasksHrefWithout(searchParams, STALE_LINK_PARAMS), { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasStaleLinkParam]);
 
   /* ── ป้ายเมนู "งานของฉัน" → `?count=tasks` (ตรวจตัวเลข M9 · docs/task-waiting-and-chain.md §6) ──────────────
      ป้ายนับ `myTasksTodoCount` (ไม่รวมงาน "รอคนอื่น") ⇒ เปิดที่ "ของฉัน · ต้องทำ" + ตัวกรองสถานะ `todo` และล้างตัวกรองอื่นทุกตัว
@@ -613,17 +600,15 @@ export default function TasksPage() {
     setAssigneeFilter(landing.assignees);
     setCategoryFilter(landing.categories);
     setDealFilter(landing.deals);
-    setProjectFacet(landing.project);
-    setCentralFacet(landing.central);
-    router.replace(tasksHrefWithout(searchParams, ["count", "dealId", "projectId", "central"]), { scroll: false });
+    router.replace(tasksHrefWithout(searchParams, ["count", "dealId", ...STALE_LINK_PARAMS]), { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countParam]);
 
   // ถอดพารามิเตอร์ลิงก์ออกจาก URL โดยไม่ให้ effect ข้างบนล้างตัวกรองที่ผู้ใช้เพิ่งตั้งเอง
   const dropLinkParams = () => {
-    if (!linkDealParam && !linkProjectParam && !linkCentralParam) return;
+    if (!linkDealParam) return;
     linkAppliedRef.current = false;
-    router.replace(tasksHrefWithout(searchParams, ["dealId", "projectId", "central"]), { scroll: false });
+    router.replace(tasksHrefWithout(searchParams, ["dealId", ...STALE_LINK_PARAMS]), { scroll: false });
   };
   // แก้ = ส่ง task ให้โมดัลไปเติมฟอร์มเอง (taskToForm) — ไม่ต้อง map ซ้ำที่นี่
   const openEdit = (t) => {
@@ -1101,24 +1086,12 @@ export default function TasksPage() {
             กรอง: {statusFilter === TASK_TODO_FILTER ? TASK_TODO_FILTER_LABEL : statusFilter === TASK_WAITING_OVERDUE_FILTER ? TASK_WAITING_OVERDUE_FILTER_LABEL : STAT_CARDS.find((c) => c.key === statusFilter)?.label} <span style={{ fontWeight: "var(--fw-bold)" }}>×</span>
           </button>
         )}
-        {/* ชิปโครงการจากลิงก์หน้าโครงการ (M8b) — ตัวกรองที่มองไม่เห็นคือตัวกรองที่คนกล่าวหาว่าข้อมูลหาย */}
-        {projectFacet && (
-          <Button size="sm" onClick={() => { setProjectFacet(null); setCentralFacet(null); dropLinkParams(); }}>
-            กรอง: โครงการ {resolveProj(projectFacet)?.code || resolveProj(projectFacet)?.name || "ที่ลิงก์มา"}{centralFacet === TASK_CENTRAL_ONLY ? " · เฉพาะงานกลางโครงการ" : ""} ×
-          </Button>
-        )}
-        {/* ธงจากหน้าโครงการที่เลือกดีลโดยไม่เลือก "งานกลางโครงการ" — ตัดงานเดิมที่ไม่มีดีลออก (ชุดเดียวกับหน้าโครงการ) */}
-        {centralFacet === TASK_CENTRAL_EXCLUDE && dealFilter.length > 0 && (
-          <Button size="sm" onClick={() => { setCentralFacet(null); dropLinkParams(); }}>
-            กรอง: ไม่รวมงานกลางโครงการ ×
-          </Button>
-        )}
         {/* หมวดหมู่/ผู้รับมอบหมาย = ตัวเลือกจากงานที่โหลดมา — ซ่อนหมวดที่มีค่าเดียว
             (กรองแล้วไม่เปลี่ยนอะไร) และซ่อนผู้รับมอบหมายในสโคป "ของฉัน" ตามเดิม */}
         {(categoryOptions.length > 1 || dealOptions.length > 1 || dealFilter.length > 0 || (scope !== "mine" && assigneeOptions.length > 1)) && (
           <FilterPopover
             count={categoryFilter.length + assigneeFilter.length + dealFilter.length}
-            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); setDealFilter([]); if (centralFacet === TASK_CENTRAL_EXCLUDE) setCentralFacet(null); dropLinkParams(); }}
+            onClear={() => { setCategoryFilter([]); setAssigneeFilter([]); setDealFilter([]); dropLinkParams(); }}
             groups={[
               ...(dealOptions.length > 1 || dealFilter.length ? [{
                 key: "deal", label: "ดีล", icon: Handshake,
@@ -1244,7 +1217,7 @@ export default function TasksPage() {
         </div>
       ) : visible.length === 0 ? (
         <EmptyState plain icon={Plus} dashed onClick={canEdit ? openAdd : undefined}>
-          {statusFilter !== "all" || q || assigneeFilter.length || categoryFilter.length || dealFilter.length || projectFacet
+          {statusFilter !== "all" || q || assigneeFilter.length || categoryFilter.length || dealFilter.length
             ? "ไม่มีงานตรงกับตัวกรองนี้"
             : canEdit
               ? "ยังไม่มีงาน — กดเพื่อสร้าง/มอบหมายงาน (เช่น โทรตามลูกค้า, เตรียมใบเสนอราคา)"

@@ -1,111 +1,33 @@
-import { viewScope, pmEditScope, inScope, can } from '@/lib/permissions';
-import { recalculateGraph, resolveSchedule } from '@/lib/pm/schedule';
+import { pmEditScope, inScope } from '@/lib/permissions';
+import { recalculateGraph } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
-import { teamProjectIds } from '@/lib/pm/projectsRepo';
 import { genId } from '@/lib/id';
-import { withUser, ok, fail, forbidden, notFound, badRequest, conflict, unauthorized } from '@/lib/http';
-import { projectWriteBlockedError } from '@/lib/pm/projectClose';
+import { withUser, ok, fail, forbidden, notFound, badRequest } from '@/lib/http';
 import { businessDate } from '@/lib/businessDate';
-import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { DEAL_SCOPE_COLUMNS, dealScopeRow } from '@/lib/pm/dealTimelineScope';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/pm/project-tasks?projectId=...  — team-scoped (via parent project).
-// Without projectId: all tasks the user may see (own team / all).
-export const GET = withUser(async ({ user, supabase, req }) => {
-  // PM is sales-only: gate on pm:view (RA/unknown have scope but no cap).
-  if (!user) return unauthorized();
-  if (!can(user.role, 'pm:view')) return forbidden();
+/* ⭐ งวด P3b-2 ยุบโครงการ (16/11/2026): ถอด GET (ไม่มีจอไหนเรียกแล้ว — หน้าโครงการถูกถอดในงวด P2d) ·
+   POST รับเฉพาะ dealId — ขั้นตอนเป็นของดีลเสมอ ไม่ประทับ projectId แล้ว · ลำดับ/จุดยึดวัน/สถานะคิดในชุดของดีล
+   (เดิม: ดีลในโครงการนับลำดับ+จุดยึดวันร่วมทั้งโครงการ) · ด่าน "โครงการปิดแล้ว" ถอด (ปิดแล้ว 0 · ปิดเพิ่มไม่ได้อีก) */
 
-  const projectId = new URL(req.url).searchParams.get('projectId');
-
-  if (projectId) {
-    // Row-level scope: only return tasks for a project the user may VIEW
-    // (own team / all). Without this any user could read another team's tasks
-    // just by passing its projectId. Mirrors the no-projectId branch below
-    // and the inScope checks on the other PM routes.
-    const { data: project, error: projectError } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
-    if (projectError) return fail(projectError.message, 500);
-    if (!project) return notFound('ไม่พบโครงการ');
-    if (!inScope(viewScope(user?.role), user, project)) return forbidden();
-
-    const { data, error } = await supabase
-      .from('project_tasks')
-      .select('*')
-      .eq('projectId', projectId)
-      .order('stepOrder', { ascending: true });
-    if (error) return fail(error.message, 500);
-    return ok(data);
-  }
-
-  // Cross-project list — limit to the team's projects when team-scoped.
-  //
-  // ⚠️ ทั้งสองสาขาข้างล่างดึง "งานหลายโครงการพร้อมกัน" ⇒ ทะลุเพดาน 1,000 แถวของ
-  // PostgREST ได้จริง (project_tasks = 2,820 แถวตอนพบบั๊ก 2026-08-16) และการถูกตัด
-  // ไม่มี error ให้เห็น · เรียงด้วย `stepOrder` ซึ่งซ้ำกันได้ทั้งตาราง จึงต้องพ่วง `id`
-  // เป็นตัวตัดสินท้ายเพื่อให้ลำดับนิ่งพอจะไล่ทีละหน้าได้ (ดู lib/supabaseFetchAll)
-  if (viewScope(user?.role) === 'team') {
-    const ids = await teamProjectIds(supabase, user?.teams);
-    if (!ids.length) return ok([]);
-    const { data, error } = await fetchAllResult(() => supabase
-      .from('project_tasks')
-      .select('*')
-      .in('projectId', ids)
-      .order('stepOrder', { ascending: true })
-      .order('id', { ascending: true }));
-    if (error) return fail(error.message, 500);
-    return ok(data);
-  }
-
-  const { data, error } = await fetchAllResult(() => supabase
-    .from('project_tasks')
-    .select('*')
-    .order('stepOrder', { ascending: true })
-    .order('id', { ascending: true }));
-  if (error) return fail(error.message, 500);
-  return ok(data);
-});
-
-// POST — add a task to a project (manual). stepOrder = max+1.
-// DL: หรือเพิ่มเข้าไทม์ไลน์ลอยของดีล (ส่ง dealId แทน projectId — mig 0094)
+// POST — เพิ่มขั้นตอนเข้าไทม์ไลน์ของดีล (manual). stepOrder = max+1 ในชุดของดีล
 export const POST = withUser(async ({ user, supabase, req }) => {
   const body = await req.json();
-  if (!body.projectId && !body.dealId) return badRequest('ต้องระบุ projectId หรือ dealId');
+  if (!body.dealId) return badRequest('ต้องระบุ dealId');
 
-  // Row-level scope (งวด P2b · ดีล = หน่วยเดียว):
-  //   • ส่ง dealId มา = ขั้นตอนของดีล → ขอบเขตของดีลตัดสิน · ดีลที่อยู่ในโครงการ ประทับ projectId ของดีลให้เอง
-  //     (เดิมตอบ 400 "ผูกโครงการแล้ว — เพิ่มด้วย projectId" ⇒ หน้าดีลเพิ่มขั้นให้ดีลในโครงการไม่ได้)
-  //   • ส่งแค่ projectId = ขั้นตอนกลางของโครงการ (หน้าโครงการ) → ขอบเขตโครงการเหมือนเดิม
-  let project = null;
-  let projectId = body.projectId || null;
-  if (body.dealId) {
-    const { data: deal, error: dealError } = await supabase.from('sales_deals')
-      .select(DEAL_SCOPE_COLUMNS).eq('id', body.dealId).maybeSingle();
-    if (dealError) return fail(dealError.message, 500);
-    if (!deal) return notFound('ไม่พบดีล');
-    if (projectId && deal.projectId !== projectId) return badRequest('ดีลนี้ไม่ได้อยู่ในโครงการที่ระบุ');
-    if (!inScope(pmEditScope(user?.role), user, dealScopeRow(deal))) return forbidden();
-    projectId = deal.projectId || null;
-  }
-  if (projectId) {
-    const { data: projectRow, error: projectError } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
-    if (projectError) return fail(projectError.message, 500);
-    project = projectRow;
-    if (!project) return notFound('ไม่พบโครงการ');
-    if (!body.dealId && !inScope(pmEditScope(user?.role), user, project)) return forbidden();
-    // ด่านหลังปิด (เฟส F): โครงการ closed เพิ่มขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
-    const closedErr = projectWriteBlockedError(project);
-    if (closedErr) return conflict(closedErr);
-  }
+  // Row-level scope (งวด P2b · ดีล = หน่วยเดียว): ขอบเขตของดีลตัดสิน
+  const { data: deal, error: dealError } = await supabase.from('sales_deals')
+    .select(DEAL_SCOPE_COLUMNS).eq('id', body.dealId).maybeSingle();
+  if (dealError) return fail(dealError.message, 500);
+  if (!deal) return notFound('ไม่พบดีล');
+  if (!inScope(pmEditScope(user?.role), user, dealScopeRow(deal))) return forbidden();
 
-  let taskQuery = supabase.from('project_tasks').select('*');
-  taskQuery = projectId
-    ? taskQuery.eq('projectId', projectId)
-    : taskQuery.is('projectId', null).eq('dealId', body.dealId);
-  const { data: allTasks } = await taskQuery.order('stepOrder', { ascending: true });
+  const { data: allTasks } = await supabase.from('project_tasks').select('*')
+    .eq('dealId', deal.id).order('stepOrder', { ascending: true });
 
   // บั๊ก C: แทรกตรงตำแหน่ง — ถ้าระบุ afterTaskId ให้ stepOrder = ของตัวนั้น+1 แล้ว
   // ดัน stepOrder ของแถวที่อยู่หลังให้เลื่อนลง 1 (กันชน + คงลำดับเฟสติดกัน);
@@ -136,8 +58,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   const row = {
     id: genId('PT'),
-    projectId,
-    dealId: body.dealId || null,
+    dealId: deal.id,
     stepOrder,
     name: body.name || '',
     role: body.role || 'SA',
@@ -166,10 +87,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 
   setHolidays([...(await holidaySet())]);
   const tasksWithNew = [...(allTasks || []), row];
-  // anchor: โครงการใช้วันเริ่มโครงการ; ชุดลอยของดีลใช้วันเริ่มเร็วสุดของชุด (fallback วันนี้)
-  const anchor = project
-    ? resolveSchedule(project).anchor
-    : ((allTasks || []).map((t) => t.startDate).filter(Boolean).sort()[0] || businessDate());
+  // anchor: วันเริ่มเร็วสุดของชุดของดีล (fallback วันนี้)
+  const anchor = (allTasks || []).map((t) => t.startDate).filter(Boolean).sort()[0] || businessDate();
   const recalced = recalculateGraph(tasksWithNew, anchor);
   const finalRow = recalced.find(t => t.id === row.id);
 
@@ -177,8 +96,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
   if (error) return fail(error.message, 500);
 
   // ขั้นใหม่อาจทำให้กราฟเปลี่ยน (เช่นแทรกขั้นที่ไม่มี predecessor = พร้อมทำทันที,
-  // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งโครงการใหม่. client เรียก load() ต่อ.
-  await propagateAndPersist(supabase, projectId, { dealId: body.dealId || null });
+  // หรือไปคั่นกลางทำให้ขั้นถัดไม่พร้อม) → คำนวณสถานะทั้งชุดของดีลใหม่. client เรียก load() ต่อ.
+  await propagateAndPersist(supabase, deal.id);
 
   return ok(data, 201);
 });

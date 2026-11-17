@@ -207,7 +207,8 @@ test(`ลบที่ทิ้งผล + สหมิตร: เพดานส
       ทุกโครงการบน /sa/projects ขึ้น FC Total / Actual / FC คงเหลือ / รออนุมัติ เป็น 0
       ⇒ หน้าตาเหมือน "ยังไม่มีดีล" ทุกประการ · หน้ารายละเอียดโครงการ (ProjectDealsHub)
       เป็นทรงเดียวกันทั้งดีล SO ใบเสนอราคา เธรด งาน สินค้า
-   ⚠️ ด่านนี้ล็อกทั้ง handler GET ของสองไฟล์ — การอ่านใหม่ที่ลืมรับ error ตกทันที */
+   ⚠️ ด่านนี้ล็อกทั้ง handler GET — การอ่านใหม่ที่ลืมรับ error ตกทันที
+   (`api/pm/projects` ถอดในงวด P3b-2 ยุบโครงการ — ตัวตรวจเหลือคุม `api/nav/counts`) */
 const getHandlerOf = (source) => {
   const start = source.indexOf("export const GET = withUser(");
   assert.ok(start >= 0, "หา handler GET ไม่เจอ");
@@ -254,23 +255,13 @@ test("ตัวตรวจการอ่านใน GET — จับได�
 /* ⭐ `api/nav/counts` เข้ากองเดียวกัน (ADR 0016 · PR0) — ตัวนับที่กลืน error
    ไม่ได้ "เงียบ" เฉย ๆ มันตอบ **0** ซึ่งอ่านว่า "ไม่มีงานค้าง" แล้วหน้าแรกจะพูดตามนั้น
    (ADR 0016 ห้ามหน้าแรกแสดงตัวนับที่พังเป็น 0) */
-/* (`api/pm/projects/[id]` ถอดในงวด P3b-1 ยุบโครงการ — เหลือลิสต์ที่ /pm/tasks ใช้) */
-for (const file of ["src/app/api/pm/projects/route.js", "src/app/api/nav/counts/route.js"]) {
+/* (`api/pm/projects/[id]` ถอดในงวด P3b-1 · ลิสต์ `api/pm/projects` ถอดในงวด P3b-2 ยุบโครงการ) */
+for (const file of ["src/app/api/nav/counts/route.js"]) {
   test(`${file} — ทุกการอ่านใน GET ต้องรับ error และเช็คก่อนใช้`, () => {
     const problems = uncheckedReads(getHandlerOf(read(file)));
     assert.deepEqual(problems, [], `อ่านแล้วอาจกลายเป็น "ไม่มี" เงียบ ๆ: ${problems.join(", ")}`);
   });
 }
-
-test("หน้ารวมโครงการ — งาน/ดีลของทุกโครงการอ่านเป็นก้อน ไม่ใช่ .in() ทั้งลิสต์", () => {
-  const get = getHandlerOf(read("src/app/api/pm/projects/route.js"));
-  /* ids = ทุกโครงการที่มองเห็น ⇒ .in() ทั้งลิสต์ยาวเกิน 16 KB ได้ และ project_tasks เกิน 1,000 แถว */
-  assert.doesNotMatch(get, /\.in\('projectId', ids\)/);
-  for (const table of ["project_tasks", "sales_deals"]) {
-    assert.match(get, new RegExp(`fetchInChunks\\(ids, \\(chunk\\) => fetchAllResult\\(\\(\\) => supabase\\s*\\.from\\('${table}'\\)[\\s\\S]*?\\.in\\('projectId', chunk\\)`),
-      `${table} ต้องซอยก้อน + ไล่หน้า`);
-  }
-});
 
 /* ── ตัวนับบนเมนู: "พัง" ต้องไม่กลายเป็น "ศูนย์" (ADR 0016 · PR0) ────────────
    uncheckedReads ข้างบนจับเฉพาะรูป `{ data }` — ตัวนับส่วนใหญ่ของไฟล์นี้เป็น

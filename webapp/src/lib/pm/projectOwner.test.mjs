@@ -119,8 +119,9 @@ test('AC/ผู้ตรวจสอบ: ว่างได้เฉพาะต
 
 /* ยุบโครงการ P3a (มติ 16/11): ไม่มีทางสร้างโครงการแล้ว — สามเส้นที่เคยบังคับครบสามฝ่ายถูกลบ
    (POST /api/sa/projects · create-project ของดีล · create-project ของ PO สหมิตร) ⇒ ยามเปลี่ยนเป็น "ห้ามกลับมา"
-   ⭐ P3b-1 (16/11): เส้นแก้/ลบ/ปิดโครงการ (`api/pm/projects/[id]/**`) ถูกลบตามไปด้วย — โครงการเป็นคลังอ่านอย่างเดียว */
-test('ไม่มีทางสร้าง/แก้/ลบโครงการเหลือ (P3a · P3b-1)', () => {
+   ⭐ P3b-1 (16/11): เส้นแก้/ลบ/ปิดโครงการ (`api/pm/projects/[id]/**`) ถูกลบตามไปด้วย — โครงการเป็นคลังอ่านอย่างเดียว
+   ⭐ P3b-2: ลิสต์ `api/pm/projects` (GET + POST ที่ปิดแล้ว) ถูกลบ — ผู้เรียกคนสุดท้ายคือหน้า /pm/tasks */
+test('ไม่มีทางสร้าง/แก้/ลบโครงการเหลือ (P3a · P3b-1 · P3b-2)', () => {
   for (const rel of [
     '../../app/api/sa/projects/route.js',
     '../../app/api/sales-planning/deals/[id]/create-project/route.js',
@@ -128,6 +129,7 @@ test('ไม่มีทางสร้าง/แก้/ลบโครงกา
     '../../app/api/pm/projects/[id]/route.js',
     '../../app/api/pm/projects/[id]/close/route.js',
     '../../app/api/pm/projects/next-code/route.js',
+    '../../app/api/pm/projects/route.js',
   ]) {
     assert.equal(existsSync(new URL(rel, import.meta.url)), false, `${rel} กลับมาแล้ว — โครงการปลดระวาง ห้ามสร้าง/แก้ใหม่`);
   }
@@ -275,10 +277,4 @@ test('mig 0254: เติม aeOwnerId เฉพาะแถวที่ว่�
   assert.doesNotMatch(sql, /SET "aeOwner"\s*=/, 'ห้ามแตะชื่อบนเอกสาร');
 });
 
-/* กับดักประจำของระบบนี้: แถวที่ **เห็นในลิสต์** แต่กดเข้าไปแล้ว 403 — ลิสต์ยอมรับสอง
-   สาขา (ทีม หรือ เป็นเจ้าของ) ส่วนด่านรายตัวเคยดูแค่ทีม */
-test('ลิสต์โครงการ (ตัวเลือกของ /pm/tasks) กรองด้วยทีม หรือ เป็นเจ้าของ', () => {
-  const list = read('../../app/api/pm/projects/route.js');
-  assert.match(list, /\.or\(`\$\{teamInClause\(user\)\},ownerId\.eq\.\$\{own\}`\)/);
-  // (ด่านรายตัว GET /api/pm/projects/[id] ถอดใน P3b-1 — ไม่มีหน้ารายละเอียดโครงการให้เปิดแล้ว · เหลือลิสต์ของ /pm/tasks)
-});
+/* (ยาม "ลิสต์โครงการกรองด้วยทีม หรือ เป็นเจ้าของ" ถอดพร้อม `api/pm/projects` — งวด P3b-2 ยุบโครงการ: ผู้เรียกคนสุดท้ายคือ /pm/tasks) */

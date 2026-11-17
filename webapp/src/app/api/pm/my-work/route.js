@@ -5,7 +5,7 @@ import { withUser, ok, unauthorized, forbidden } from '@/lib/http';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { attachReworkRows } from '@/lib/requests/reworkRows';
 import { loadTaskScopeClauses, whereForTaskClause } from '@/lib/pm/taskScope';
-import { idListParam, idParam } from '@/lib/pm/dealTaskLink';
+import { idListParam } from '@/lib/pm/dealTaskLink';
 import { loadRequests } from '@/lib/materialPricesAdmin';
 import { loadVisibleRequests, answerableDepts } from '@/lib/requests/visibleRows';
 import { deptHasOwnModule, deptsInSharedQueue } from '@/lib/requests/modules';
@@ -34,12 +34,12 @@ const allPersonal = (supabase, where = (q) => q) => fetchAllResult(() => where(
   supabase.from('personal_tasks').select('*'),
 ).order('createdAt', { ascending: false }).order('id', { ascending: true }));
 
-// GET /api/pm/my-work?scope=mine|team|all[&dealId=a,b][&projectId=p]
-// คืน { scope, personalTasks, inquiries, inquiryQueue, projects, deals } — scope ถูกบังคับตาม role
+// GET /api/pm/my-work?scope=mine|team|all[&dealId=a,b]
+// คืน { scope, personalTasks, inquiries, inquiryQueue, deals } — scope ถูกบังคับตาม role
 // ฝั่ง server. งานส่วนตัว = ของฉันเสมอ (ไม่ปนของคนอื่นแม้ scope ทีม/ทั้งหมด).
-// ⭐ `dealId` / `projectId` **ไม่ได้กรองงาน** — แค่การันตีว่าดีล/โครงการที่ลิงก์จากหน้าดีล/หน้าโครงการส่งมามีอยู่ใน
-//    แผนที่ `deals`/`projects` (พร้อม `projectId` ของดีล) แม้ยังไม่มีงานสักใบผูกตรง ๆ — ตัวกรองดีลของคิว (`isDealTask`)
-//    ต้องรู้โครงการของดีลถึงจะนับงานเดิมของโครงการ (ไม่มี dealId) ได้ตรงกับป้าย "ค้าง n" บนหน้าดีล (M8b/M8c)
+// ⭐ `dealId` **ไม่ได้กรองงาน** — แค่การันตีว่าดีลที่ลิงก์จากหน้าดีลส่งมามีอยู่ในแผนที่ `deals` (ชื่อบนชิปกรอง)
+//    แม้ยังไม่มีงานสักใบผูกตรง ๆ
+// (งวด P3b-2 ยุบโครงการ: ถอดแผนที่ `projects` + พารามิเตอร์ `projectId` — หน้าคิวไม่มีป้าย/ตัวกรองโครงการแล้ว)
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
   if (!can(user.role, 'pm:view')) return forbidden(); // PM เป็นเครื่องมือฝ่ายขาย — RA ไม่มีสิทธิ์
@@ -52,11 +52,10 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const requested = searchParams.get('scope');
   const scope = allowed.includes(requested) ? requested : defaultScope(allowed, user, 'tasks');
   const facetDealIds = idListParam(searchParams.get('dealId'));
-  const facetProjectId = idParam(searchParams.get('projectId'));
 
   // ── งาน personal_tasks (ระบบติดตามงาน — ผู้มีสิทธิ์ต้องเห็น "งาน" ทั้งหมดในขอบเขต) ──
   //   • mine = งานที่ฉันเป็นเจ้าของ ถูกมอบหมายให้ฉัน ดึงมาทำแทน (proxyBy) หรือฉันมอบหมาย (assignedBy)
-  //   • team = งานทุกงานที่คนในทีมฉันเป็นเจ้าของ/ผู้รับมอบ + งานที่ผูกโครงการ/ดีลของทีม
+  //   • team = งานทุกงานที่คนในทีมฉันเป็นเจ้าของ/ผู้รับมอบ + งานที่ผูกดีลของทีม
   //   • all  = ทุกงานในระบบ (admin / sales head ติดตามได้ทุกทีม — วัดผลได้)
   // เดิม team/all ดึงเฉพาะงานที่ "มอบหมาย/ผูกโครงการ" ทำให้งานที่ผู้ใช้สร้างให้ตัวเอง
   // (ไม่มอบหมาย + ไม่ผูกโครงการ เช่นผูกแค่ดีลหรือไม่ผูกเลย) หลุดจากสายตา admin — แก้แล้ว.
@@ -127,22 +126,12 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     }
   }
 
-  // ── projects map สำหรับแสดงรหัส/ชื่อ (รวมโครงการที่งานเพิ่มเติมผูกไว้ด้วย) ──
-  const projIds = [...new Set([...personalTasks.map((t) => t.projectId).filter(Boolean), facetProjectId].filter(Boolean))];
-  let projects = {};
-  if (projIds.length) {
-    const { data: ps } = await supabase
-      .from('projects').select('id, code, name, aeOwner, team, customerName').in('id', projIds);
-    projects = Object.fromEntries((ps || []).map((p) => [p.id, p]));
-  }
-
   // ── deals map สำหรับงานที่ผูกดีล ──
-  // ⚠️ `projectId` ต้องมาด้วย — ตัวกรองดีลของคิวตัดสินงานเดิมของโครงการ (ไม่มี dealId) จากโครงการของดีล (`isDealTask`)
   const dealIds = [...new Set([...personalTasks.map((t) => t.dealId).filter(Boolean), ...facetDealIds])];
   let deals = {};
   if (dealIds.length) {
     const { data: ds } = await supabase
-      .from('sales_deals').select('id, title, customerName, team, stage, projectId').in('id', dealIds);
+      .from('sales_deals').select('id, title, customerName, team, stage').in('id', dealIds);
     deals = Object.fromEntries((ds || []).map((d) => [d.id, d]));
   }
 
@@ -153,7 +142,6 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     personalTasks: personalTasks || [],
     inquiries,
     inquiryQueue,
-    projects,
     deals,
   });
 });

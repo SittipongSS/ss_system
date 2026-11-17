@@ -7,7 +7,6 @@ import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { createQuotationDraft, QuotationDraftError } from '@/lib/sales/createQuotationDraft';
 import { refreshCustomerNameForDisplay } from '@/lib/sales/customerSnapshotFallback';
 import { customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
-import { closedProjectBlock } from '@/lib/sales/closedProjectGate';
 import { dealAwaitsCustomer, dealCustomerAdoptError } from '@/lib/sales/dealCustomerAdopt';
 import { caretakerTeamsOf, hasTeam, userTeams, viewScopeUser } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
@@ -118,9 +117,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
        สิ่งที่ผู้ใช้เพิ่งตั้งใจตั้ง) */
   }
 
-  // โครงการปิดแล้ว = ออกใบใหม่ผูกเข้าโครงการนั้นไม่ได้ (มติ B3)
-  const closedProject = await closedProjectBlock(supabase, workingDeal.projectId, 'ออกใบเสนอราคาใบใหม่');
-  if (closedProject) return badRequest(closedProject);
+  // (ด่าน "โครงการปิดแล้วออกเอกสารใบใหม่ไม่ได้" (มติ B3) ถอดในงวด P3b-2 ยุบโครงการ — ปิดแล้ว 0 โครงการ และปิดเพิ่มไม่ได้อีก)
 
   // core การสร้างใบอยู่ใน lib เดียวกับสายสหมิตร (ยืนยัน PO → ออก QT) — แก้กติกาใบที่นั่น
   try {

@@ -21,8 +21,6 @@ import { myTasksTodoCount } from '../nav/navCounts.js';
 const ME = 'u-me';
 const OVERDUE = '2000-01-01';
 const FAR = '2999-12-31';
-const DEALS = { 'deal-X': 'proj-1', 'deal-Y': 'proj-1', 'deal-Z': null };
-const dealProjectOf = (id) => DEALS[id] ?? null;
 
 let seq = 0;
 const task = (over) => ({
@@ -39,7 +37,7 @@ const ALL_TASKS = [
   task({ ownerId: ME, assigneeId: 'u2', assignedBy: ME, dealId: 'deal-X', projectId: 'proj-1' }), // ฉันมอบให้ u2
   task({ ownerId: 'u2', assigneeId: 'u2', dealId: 'deal-X', projectId: 'proj-1', category: 'ประสานงานภายใน' }), // ของคนอื่นในดีล X
   task({ ownerId: 'u2', assigneeId: 'u3', proxyBy: ME, dealId: 'deal-Y', projectId: 'proj-1' }), // ฉันดึงมาทำแทน · ดีล Y
-  task({ ownerId: 'u3', dealId: null, projectId: 'proj-1', title: 'งานเดิมของโครงการ' }), // งานเดิม (ไม่มี dealId)
+  task({ ownerId: 'u3', dealId: null, projectId: 'proj-1', title: 'งานเดิมของโครงการ' }), // งานเดิม (ไม่มี dealId) — ไม่ใช่งานของดีลไหน (งวด P3b-2)
   task({ ownerId: 'u2', assigneeId: ME, assignedBy: 'u2', dealId: 'deal-Z', title: 'ใบเสนอราคา', dueDate: OVERDUE }), // รับมอบ · ด่วน
   task({ ownerId: 'u3', assigneeId: 'u4', dealId: 'deal-Z' }), // ไม่เกี่ยวกับฉัน
   task({ ownerId: ME, status: 'Blocked', dealId: null }), // ของฉัน รอคนอื่น ไม่ผูกดีล
@@ -51,7 +49,7 @@ const loaded = (clauses) => ALL_TASKS.filter((t) => taskInScope(t, clauses));
 const MINE_ROWS = loaded(mineTaskClauses(ME));
 
 const FACETS = [
-  {}, { deals: ['deal-X'] }, { deals: ['deal-X', 'deal-Z'] }, { project: 'proj-1' }, { q: 'โทร' },
+  {}, { deals: ['deal-X'] }, { deals: ['deal-X', 'deal-Z'] }, { q: 'โทร' },
   { categories: ['ประสานงานภายใน'] }, { assignees: ['u2'] }, { deals: ['deal-Y'], q: 'งาน' },
 ];
 
@@ -59,7 +57,7 @@ test('⭐ M8: เลขบนแท็บบทบาท = แถวหลัง
   let checked = 0;
   for (const facet of FACETS) {
     for (const status of TASK_STATUS_FILTER_KEYS) {
-      const f = { meId: ME, scope: 'mine', mineView: MINE_TASK_VIEWS.RESPONSIBLE, status, dealProjectOf, ...facet };
+      const f = { meId: ME, scope: 'mine', mineView: MINE_TASK_VIEWS.RESPONSIBLE, status, ...facet };
       const counts = mineViewCounts(MINE_ROWS, f);
       for (const view of Object.values(MINE_TASK_VIEWS)) {
         // "กดแท็บ" = เปลี่ยน mineView อย่างเดียว ตัวกรองอื่นอยู่ที่เดิม
@@ -73,19 +71,19 @@ test('⭐ M8: เลขบนแท็บบทบาท = แถวหลัง
 });
 
 test('🔴 M8 ของจริงที่พัง: มาจากหน้าดีล X — แท็บต้องไม่บอกงานค้างของฉันทั้งหมด', () => {
-  const f = { meId: ME, scope: 'mine', mineView: MINE_TASK_VIEWS.ALL, status: 'all', deals: ['deal-X'], dealProjectOf };
+  const f = { meId: ME, scope: 'mine', mineView: MINE_TASK_VIEWS.ALL, status: 'all', deals: ['deal-X'] };
   const counts = mineViewCounts(MINE_ROWS, f);
   const openMine = MINE_ROWS.filter((t) => t.status !== 'Completed').length;
   assert.ok(counts[MINE_TASK_VIEWS.ALL] < openMine, 'เลขเดิม (ไม่สนดีล) ใหญ่กว่าแถวที่เห็น');
   assert.equal(counts[MINE_TASK_VIEWS.ALL], taskListRows(MINE_ROWS, f).length);
-  // งานเดิมของโครงการ (ไม่มี dealId) ไม่ได้อยู่ในขอบเขต "ของฉัน" ของคนนี้ ⇒ ไม่โผล่ · ดีล Y ไม่ปน
-  assert.ok(taskListRows(MINE_ROWS, f).every((t) => isDealTask(t, { id: 'deal-X', projectId: 'proj-1' })));
+  // ดีล Y ไม่ปน · งานที่ไม่มี dealId ไม่ใช่งานของดีล X
+  assert.ok(taskListRows(MINE_ROWS, f).every((t) => isDealTask(t, { id: 'deal-X' })));
 });
 
 test('การ์ดสถานะ: เลขบนการ์ด = แถวหลังกดการ์ด (นับจาก pool ที่ไม่ตัดสถานะ ด้วยตัวตัดสินเดียวกับตาราง)', () => {
   for (const facet of FACETS) {
     for (const current of TASK_STATUS_FILTER_KEYS) {
-      const f = { meId: ME, scope: 'all', status: current, dealProjectOf, ...facet };
+      const f = { meId: ME, scope: 'all', status: current, ...facet };
       const pool = taskPoolRows(ALL_TASKS, f);
       for (const card of ['all', 'progress', 'urgent', 'waiting', 'done']) {
         const onCard = pool.filter((t) => taskStatusPasses(t, card, ME)).length;
@@ -111,7 +109,7 @@ test('⭐ L3: บรรทัดรอง "ในนี้เลยกำหน�
   let nonZero = 0;
   for (const facet of FACETS) {
     for (const current of TASK_STATUS_FILTER_KEYS) {
-      const f = { meId: ME, scope: 'all', status: current, dealProjectOf, ...facet };
+      const f = { meId: ME, scope: 'all', status: current, ...facet };
       const pool = taskPoolRows(WITH_WAITING, f);
       // ตัวนับของหน้า = `count(TASK_WAITING_OVERDUE_FILTER)` บน pool (ไม่ตัดสถานะ)
       const note = pool.filter((t) => taskStatusPasses(t, TASK_WAITING_OVERDUE_FILTER, ME)).length;
@@ -126,7 +124,7 @@ test('⭐ L3: บรรทัดรอง "ในนี้เลยกำหน�
   }
   assert.ok(nonZero > 0, 'ฟิกซ์เจอร์ต้องมีงานรอคนอื่นที่เลยกำหนดจริง');
   // ทั้งระบบไม่กรอง: สองใบที่เลยกำหนด — ไม่รวมใบไม่มีกำหนด · ใบเสร็จ · ใบเลยกำหนดที่อยู่ในมือเรา
-  assert.equal(taskListRows(WITH_WAITING, { meId: ME, scope: 'all', status: TASK_WAITING_OVERDUE_FILTER, dealProjectOf }).length, 2);
+  assert.equal(taskListRows(WITH_WAITING, { meId: ME, scope: 'all', status: TASK_WAITING_OVERDUE_FILTER }).length, 2);
   assert.equal(isWaitingOverdueTask({ status: 'Blocked', dueDate: null }), false);
   assert.equal(isWaitingOverdueTask({ status: 'Blocked', dueDate: FAR }), false);
   assert.equal(isWaitingOverdueTask({ status: 'Blocked', dueDate: OVERDUE }), true);
@@ -152,7 +150,7 @@ test('ยาม L3: หน้าคิวนับบรรทัดรองด
 });
 
 test('สถานะ: งานเสร็จโผล่เฉพาะตัวกรอง "เสร็จแล้ว" · "ต้องรีบ" ไม่รวมงานรอคนอื่น · todo = ของฉันที่ลงมือได้', () => {
-  const f = { meId: ME, scope: 'all', dealProjectOf };
+  const f = { meId: ME, scope: 'all' };
   assert.ok(taskListRows(ALL_TASKS, { ...f, status: 'all' }).every((t) => t.status !== 'Completed'));
   assert.ok(taskListRows(ALL_TASKS, { ...f, status: 'done' }).every((t) => t.status === 'Completed'));
   assert.ok(taskListRows(ALL_TASKS, { ...f, status: 'urgent' }).every((t) => t.status !== 'Blocked'));
@@ -181,20 +179,23 @@ test('⭐ M9: ป้ายเมนู "งานของฉัน" = แถว
   assert.ok(!mine.some((t) => t.assigneeId === 'u2' && t.ownerId === ME));
 });
 
-test('M9: ลงจากป้าย = ล้างตัวกรองอื่นทุกตัว (คำค้น · หมวด · ผู้รับ · ดีล · โครงการ)', () => {
+test('M9: ลงจากป้าย = ล้างตัวกรองอื่นทุกตัว (คำค้น · หมวด · ผู้รับ · ดีล)', () => {
   const landing = tasksNavLanding({ meId: ME });
   assert.deepEqual(
     { scope: landing.scope, mineView: landing.mineView, status: landing.status, q: landing.q, assignees: landing.assignees,
-      categories: landing.categories, deals: landing.deals, project: landing.project },
-    { scope: 'mine', mineView: MINE_TASK_VIEWS.RESPONSIBLE, status: 'todo', q: '', assignees: [], categories: [], deals: [], project: null },
+      categories: landing.categories, deals: landing.deals },
+    { scope: 'mine', mineView: MINE_TASK_VIEWS.RESPONSIBLE, status: 'todo', q: '', assignees: [], categories: [], deals: [] },
   );
+  // งวด P3b-2 ยุบโครงการ: ไม่มีตัวกรองโครงการในก้อนแล้ว
+  assert.equal('project' in landing || 'central' in landing || 'dealProjectOf' in landing, false);
 });
 
 /* ⭐ M8b: ป้าย "ค้าง n" บนหน้าดีล (route) = แถวของคิวตอนเปิดจากปุ่มนั้น — ทุกชนิดขอบเขต
    route: งานของดีล (ตัวกรอง DB เดียวกับ isDealTask) → ตัดด้วยขอบเขต → taskListRows(landing)
-   คิว:   งานทั้งขอบเขต (my-work) → taskListRows(landing) ซึ่งตัดดีลด้วย isDealTask */
+   คิว:   งานทั้งขอบเขต (my-work) → taskListRows(landing) ซึ่งตัดดีลด้วย isDealTask
+   (งวด P3b-2 ยุบโครงการ: นิยามงานของดีล = dealId ตรงตัว — ไม่ต้องรู้โครงการของดีลทั้งสองฝั่ง) */
 test('⭐ M8b: ป้าย "ค้าง n" บนหน้าดีล = แถวของคิวเมื่อกด "เปิดคิวงาน" (ทั้งหมด · ทีม · ของฉันอย่างเดียว)', () => {
-  const deal = { id: 'deal-X', projectId: 'proj-1' };
+  const deal = { id: 'deal-X' };
   const cases = [
     { allowed: ['mine', 'team', 'all'], clauses: null }, // superuser
     { allowed: ['all'], clauses: null }, // ผู้สังเกตการณ์
@@ -208,21 +209,19 @@ test('⭐ M8b: ป้าย "ค้าง n" บนหน้าดีล = แ�
     const meId = clauses && clauses.length && scope === 'mine' ? clauses[0][1][0] : ME;
     // route ของหน้าดีล
     const dealTasks = ALL_TASKS.filter((t) => isDealTask(t, deal));
-    const landing = dealQueueLanding({ allowedScopes: allowed, meId, dealIds: [deal.id],
-      dealProjectOf: (id) => (id === deal.id ? deal.projectId : null) });
+    const landing = dealQueueLanding({ allowedScopes: allowed, meId, dealIds: [deal.id] });
     const card = taskListRows(dealTasks.filter((t) => taskInScope(t, clauses)), landing).length;
-    // คิว: my-work โหลดทั้งขอบเขต แล้วกรองดีลด้วยแผนที่ดีลของ API (มี projectId)
-    const queueLanding = dealQueueLanding({ allowedScopes: allowed, meId, dealIds: [deal.id], dealProjectOf });
-    const queue = taskListRows(loaded(clauses), queueLanding).length;
+    // คิว: my-work โหลดทั้งขอบเขต แล้วกรองดีลด้วยตัวกรองเดียวกัน
+    const queue = taskListRows(loaded(clauses), landing).length;
     assert.equal(card, queue, `${allowed.join('/')} · ${JSON.stringify(clauses)}`);
     assert.equal(landing.scope, scope);
     assert.equal(landing.mineView, MINE_TASK_VIEWS.ALL);
   }
-  // ทั้งระบบ: งานค้างทุกคนในดีล X รวมงานเดิมของโครงการ — ไม่รวมงานเสร็จ ไม่รวมดีล Y
-  const all = dealQueueLanding({ allowedScopes: ['mine', 'team', 'all'], meId: ME, dealIds: ['deal-X'], dealProjectOf });
+  // ทั้งระบบ: งานค้างทุกคนในดีล X — ไม่รวมงานเสร็จ ไม่รวมดีล Y · งานเดิมที่ถือแค่ projectId ไม่โผล่ (งวด P3b-2 · prod 0 แถว)
+  const all = dealQueueLanding({ allowedScopes: ['mine', 'team', 'all'], meId: ME, dealIds: ['deal-X'] });
   const rows = taskListRows(ALL_TASKS, all);
   assert.ok(rows.some((t) => t.ownerId === 'u2'), 'งานคนอื่นในดีลต้องโผล่');
-  assert.ok(rows.some((t) => !t.dealId && t.projectId === 'proj-1'), 'งานเดิมของโครงการต้องโผล่');
+  assert.ok(!rows.some((t) => !t.dealId), 'งานที่ไม่มี dealId ไม่ใช่งานของดีล');
   assert.ok(rows.every((t) => t.status !== 'Completed' && t.dealId !== 'deal-Y'));
 });
 
@@ -251,37 +250,39 @@ test('ยาม: หน้าคิวนับแท็บ/การ์ด/ต�
   assert.match(page, /taskListRows\(personalTasks, listFilters\)\.sort\(comparator\)/);
   assert.match(page, /pool\.filter\(\(t\) => taskStatusPasses\(t, key, me\?\.id\)\)/);
   assert.doesNotMatch(page, /const matchStatus = /, 'ตัวกรองสถานะต้องอยู่ที่ lib ที่เดียว');
-  // pager รีเซ็ตเมื่อดีล/โครงการเปลี่ยน
-  assert.match(page, /\$\{dealFilter\.join\(\)\}\|\$\{projectFacet \|\| ""\}/);
+  // pager รีเซ็ตเมื่อดีลเปลี่ยน
+  assert.match(page, /\$\{dealFilter\.join\(\)\}\|\$\{sortKey\}/);
+  assert.doesNotMatch(page, /projectFacet|centralFacet|resolveProj/, 'ตัวกรอง/ชิปโครงการถอดแล้ว (งวด P3b-2)');
 });
 
-test('ยาม: ?dealId=/?projectId= → dealQueueLanding · ?count=tasks → tasksNavLanding แล้วถอดพารามิเตอร์', () => {
+test('ยาม: ?dealId= → dealQueueLanding · ?count=tasks → tasksNavLanding แล้วถอดพารามิเตอร์', () => {
   const page = read('../../app/pm/tasks/page.js');
-  assert.match(page, /const landing = dealQueueLanding\(\{ allowedScopes: pmTaskScopes\(role\), dealIds: linkDealIds, projectId: linkProjectId, central: linkCentral \}\);/);
+  assert.match(page, /const landing = dealQueueLanding\(\{ allowedScopes: pmTaskScopes\(role\), dealIds: linkDealIds \}\);/);
   assert.match(page, /if \(countParam !== TASKS_NAV_COUNT_PARAM\) return;/);
   assert.match(page, /const landing = tasksNavLanding\(\{\}\);/);
-  assert.match(page, /router\.replace\(tasksHrefWithout\(searchParams, \["count", "dealId", "projectId", "central"\]\), \{ scroll: false \}\);/);
+  // `?projectId=` / `?central=` ของหน้าโครงการเดิมถูกถอดไปด้วย (งวด P3b-2)
+  assert.match(page, /router\.replace\(tasksHrefWithout\(searchParams, \["count", "dealId", \.\.\.STALE_LINK_PARAMS\]\), \{ scroll: false \}\);/);
   assert.match(page, /statusFilter === TASK_TODO_FILTER \? TASK_TODO_FILTER_LABEL/);
   // แต่ละ setter ของตัวกรองถูกตั้งจาก landing (ล้างตัวกรองค้าง) ทั้งสองทาง
-  for (const setter of ['setScope', 'setMineView', 'setStatusFilter', 'setSearch', 'setAssigneeFilter', 'setCategoryFilter', 'setDealFilter', 'setProjectFacet', 'setCentralFacet']) {
+  for (const setter of ['setScope', 'setMineView', 'setStatusFilter', 'setSearch', 'setAssigneeFilter', 'setCategoryFilter', 'setDealFilter']) {
     const n = (page.match(new RegExp(`${setter}\\(landing\\.`, 'g')) || []).length;
     assert.equal(n, 2, `${setter} ต้องถูกตั้งจาก landing ทั้งตอนมาจากดีลและจากป้ายเมนู`);
   }
 });
 
 /* 🐞 รีวิว M8b: กดย้อนกลับมาที่ /sa/tasks?dealId=X (URL ยังมีพารามิเตอร์) เคยลงทั้งชุดซ้ำ ⇒ ทับคำค้น/การ์ดสถานะ/ขอบเขตที่
-   useStickyState เพิ่งคืนให้ (มติ 2026-08-25 "ย้อนกลับ = กลับไปที่เดิม") · ตอนนี้มาจากประวัติ = ตั้งแค่ชิปดีล/โครงการ */
-test('ยาม: ลิงก์ดีล/โครงการ — มาจากการกดย้อน ตั้งแค่ชิปจาก URL ไม่ลงทั้งชุดทับตัวกรองที่คืนมา', () => {
+   useStickyState เพิ่งคืนให้ (มติ 2026-08-25 "ย้อนกลับ = กลับไปที่เดิม") · ตอนนี้มาจากประวัติ = ตั้งแค่ชิปดีล */
+test('ยาม: ลิงก์ดีล — มาจากการกดย้อน ตั้งแค่ชิปจาก URL ไม่ลงทั้งชุดทับตัวกรองที่คืนมา', () => {
   const page = read('../../app/pm/tasks/page.js');
   assert.match(page, /import arrivedByHistory from "@\/lib\/ui\/historyArrival";/);
   assert.match(page, /if \(!linkArrivalRef\.current\) linkArrivalRef\.current = \{ signature, byHistory: arrivedByHistory\(pathname\) \};/);
   const start = page.indexOf('const landing = dealQueueLanding(');
-  const effect = page.slice(start, page.indexOf('}, [linkDealParam, linkProjectParam, linkCentral, role]);', start));
+  const effect = page.slice(start, page.indexOf('}, [linkDealParam, role]);', start));
   assert.ok(effect.length > 0, 'หา effect ของลิงก์ไม่เจอ');
   const stop = effect.indexOf('if (restoreOnly) return;');
   assert.ok(stop > 0, 'ต้องหยุดก่อนลงทั้งชุดเมื่อมาจากประวัติ');
   // ชิปจาก URL ตั้งก่อนจุดหยุด (ไม่ใช่ sticky — ต้องมาจาก URL ทุกครั้ง)
-  for (const setter of ['setDealFilter', 'setProjectFacet', 'setCentralFacet']) {
+  for (const setter of ['setDealFilter']) {
     const at = effect.indexOf(`${setter}(landing.`);
     assert.ok(at >= 0 && at < stop, `${setter} ต้องตั้งก่อน restoreOnly`);
   }

@@ -34,15 +34,14 @@ export function applyAutoStatuses(tasks) {
   return (tasks || []).map((t) => ({ ...t, status: next.get(t.id) ?? t.status }));
 }
 
-// โหลด task ทั้งโครงการ คำนวณสถานะใหม่ แล้ว persist เฉพาะแถวที่เปลี่ยนจริง.
+// โหลด task ทั้งชุดของดีล คำนวณสถานะใหม่ แล้ว persist เฉพาะแถวที่เปลี่ยนจริง.
 // รับ supabase client เข้ามา (lib ไม่ผูกกับ supabaseAdmin โดยตรง).
-// DL1: ไทม์ไลน์ลอยของดีล (ยังไม่ผูกโครงการ) — เรียกด้วย projectId=null + dealId
-export async function propagateAndPersist(supabase, projectId, { dealId = null } = {}) {
-  if (!projectId && !dealId) return;
-  let q = supabase.from('project_tasks').select('*');
-  q = projectId ? q.eq('projectId', projectId) : q.is('projectId', null).eq('dealId', dealId);
-  /* 🔴 อ่านไม่ได้ต้องรู้ — เดิม `const { data: all }` แล้ว `if (!all) return`
-     ⇒ query ที่พังกลายเป็น "ไม่มีงานสักขั้น" แล้วข้ามการคำนวณสถานะทั้งกราฟเงียบ ๆ */
+/* ⭐ งวด P3b-2 ยุบโครงการ (16/11/2026): ขอบเขตกราฟ = **ดีล** เสมอ (เดิม: ทั้งโครงการ เมื่อขั้นมี projectId)
+   ตรวจ prod 16/11: เส้น predecessor ข้ามดีล 0 เส้น · ขั้นที่ไม่มี dealId 0 แถว ⇒ สถานะที่ได้เท่ากับแบบทั้งโครงการทุกขั้น
+   `projectId` ที่ค้างบนแถวเก่าไม่มีผลกับการคำนวณแล้ว */
+export async function propagateAndPersist(supabase, dealId) {
+  if (!dealId) return;
+  const q = supabase.from('project_tasks').select('*').eq('dealId', dealId);
   const { data: all, error: readError } = await q.order('stepOrder', { ascending: true });
   if (readError) throw readError;
   if (!all || !all.length) return;

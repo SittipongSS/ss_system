@@ -41,15 +41,14 @@ test('0436: ขอบเขต = ขั้นของดีลนี้ · proj
   assert.match(MIG, /REVOKE ALL ON FUNCTION public\.deal_restore_timeline_revision\(text, integer\) FROM PUBLIC, anon, authenticated;/);
 });
 
-test('route ไทม์ไลน์ของดีล: ดีลในโครงการสร้าง/ลบที่หน้าดีลได้ · ลบเฉพาะขั้นของดีล · สายล็อกตามโครงการ', () => {
+test('route ไทม์ไลน์ของดีล: ลบเฉพาะขั้นของดีล · งวด P3b-2 ไม่อ่านโครงการ · สายรับจากโมดัล · ชุดใหม่ไม่ประทับ projectId', () => {
   const route = stripComments(read('../../app/api/sales-planning/deals/[id]/timeline/route.js'));
   assert.doesNotMatch(route, /จัดการไทม์ไลน์ที่หน้าโครงการ/);
   assert.match(route, /\.from\('project_tasks'\)\.delete\(\)\.eq\('dealId', deal\.id\)\.select\('id'\)/);
   assert.doesNotMatch(route, /\.delete\(\)\.eq\('dealId', deal\.id\)\.is\('projectId', null\)/);
-  assert.match(route, /line: project \? \(deal\.line \|\| project\.line\) : body\.line/);
-  assert.match(route, /rows = attachRowsToProject\(rows, project\.id, projectTasks \|\| \[\]\)/);
+  assert.match(route, /type: body\.type, line: body\.line,/, 'มติ ⑫: ดีลเก่าในโครงการเลือกสายได้เหมือนดีลทั่วไป');
+  assert.doesNotMatch(route, /attachRowsToProject|projects|projectWriteBlockedError|propagateAndPersist/);
   assert.match(route, /const guard = \(user, deal\) => \(canEditDealTimeline\(user, deal\) \? null : forbidden\(\)\);/, 'ด่านตัวกลางตัวเดียวกับ route Rev.');
-  assert.match(route, /select\('\*, project:projects\(\*\)'\)/, 'โครงการมากับดีลในคำสั่งเดียว');
 });
 
 test('route Rev.: ออก/ย้อน/อ่าน ใช้ด่านของดีล · snapshot ถ่ายจากฐานด้วย dealId', () => {
@@ -67,14 +66,18 @@ test('route Rev.: ออก/ย้อน/อ่าน ใช้ด่านข�
   assert.match(one, /loadScoped\(supabase, 'sales_deals', id, user, 'view'\)/);
 });
 
-test('API งาน: มี dealId = ขอบเขตของดีล · ดีลในโครงการเพิ่มขั้นด้วย dealId อย่างเดียวได้', () => {
+test('API งาน: ขอบเขตของดีล · งวด P3b-2 กราฟ/ลำดับ/จุดยึดวันเป็นชุดของดีล ไม่อ่านโครงการ', () => {
   const create = stripComments(read('../../app/api/pm/project-tasks/route.js'));
   assert.doesNotMatch(create, /ดีลนี้ผูกโครงการแล้ว — เพิ่มขั้นตอนด้วย projectId/);
+  assert.match(create, /if \(!body\.dealId\) return badRequest\('ต้องระบุ dealId'\);/);
   assert.match(create, /inScope\(pmEditScope\(user\?\.role\), user, dealScopeRow\(deal\)\)/);
-  assert.match(create, /projectId = deal\.projectId \|\| null;/);
+  assert.match(create, /\.eq\('dealId', deal\.id\)\.order\('stepOrder', \{ ascending: true \}\)/);
+  assert.doesNotMatch(create, /projectId|projects|resolveSchedule|export const GET/);
   const one = stripComments(read('../../app/api/pm/project-tasks/[id]/route.js'));
   assert.match(one, /await loadTaskScope\(supabase, id\)/);
-  assert.doesNotMatch(one, /loadTaskWithProject/);
+  assert.doesNotMatch(one, /loadTaskWithProject|resolveSchedule|projectWriteBlockedError|entityType: 'project'/);
+  assert.equal((one.match(/\.eq\('dealId', task\.dealId\)\.order\('stepOrder', \{ ascending: true \}\)/g) || []).length, 2, 'PATCH + DELETE คำนวณใหม่ในชุดของดีล');
+  assert.equal((one.match(/await propagateAndPersist\(supabase, task\.dealId\);/g) || []).length, 2);
 });
 
 function fakeSupabase(tables) {
@@ -94,7 +97,7 @@ function fakeSupabase(tables) {
   };
 }
 
-test('ขอบเขตงาน: มี dealId (แม้มีโครงการ) = ดีล · งานกลาง = โครงการ · แถวดีลพก ownerId', async () => {
+test('ขอบเขตงาน: ขอบเขตของดีลเสมอ (แม้มีโครงการค้าง) · ไม่มีดีล = ไม่มีขอบเขต · แถวดีลพก ownerId', async () => {
   const supabase = fakeSupabase({
     project_tasks: [
       { id: 'T1', projectId: 'P1', dealId: 'D1' },
@@ -105,9 +108,9 @@ test('ขอบเขตงาน: มี dealId (แม้มีโครงก
   });
   const dealTask = await loadTaskScope(supabase, 'T1');
   assert.deepEqual(dealTask.scopeRow, { team: 'KA', ownerId: 'u-ae', aeOwner: 'AE' });
-  assert.equal(dealTask.project.id, 'P1', 'โครงการยังโหลดไว้ใช้กับด่านปิดโครงการ/จุดยึดวัน');
+  assert.ok(!('project' in dealTask), 'งวด P3b-2: ไม่โหลดโครงการแล้ว');
   const central = await loadTaskScope(supabase, 'T2');
-  assert.equal(central.scopeRow.team, 'ODM');
+  assert.equal(central.scopeRow, null, 'ขั้นที่ไม่มีดีล (prod 0 แถว) ไม่มีขอบเขต = ด่านสิทธิ์ปฏิเสธ');
   assert.equal(dealScopeRow(null), null);
   assert.equal((await loadTaskScope(supabase, 'nope')).task, null);
 });
@@ -117,7 +120,7 @@ test('หน้าดีล: แผงไทม์ไลน์เดียวท
   assert.equal((page.match(/<TimelineWorkspace\b/g) || []).length, 1, 'สองกิ่ง (มี/ไม่มีโครงการ) ต้องรวมเป็นแผงเดียว');
   assert.match(page, /onDirtyChange=\{setTimelineDirty\}/);
   assert.match(page, /<DealTimelineRevControls[\s\S]*?dirtyCount=\{timelineDirty\}/);
-  assert.match(page, /disabled=\{!!data\?\.project\}/, 'ดีลในโครงการ: สายในโมดัลสร้างไทม์ไลน์ล็อก');
+  assert.doesNotMatch(page, /data\??\.project\b/, 'งวด P3b-2: หน้าดีลไม่อ่านโครงการ · สายในโมดัลสร้างไทม์ไลน์ไม่ล็อก (มติ ⑫)');
   const controls = read('../../components/salesPlanning/DealTimelineRevControls.js');
   assert.match(controls, /if \(blockedByDrafts\(\)\) return;\s+setNote/, 'ออก Rev. ต้องกันแก้ค้าง');
   assert.match(controls, /const restoreRevision = async \(revNo\) => \{\s+if \(blockedByDrafts\(\)\) return;/, 'ย้อนต้องกันแก้ค้าง');
