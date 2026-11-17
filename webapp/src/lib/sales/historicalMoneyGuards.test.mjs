@@ -278,8 +278,7 @@ const DEAL_KPI_ALLOWLIST = new Map([
   ['lib/sales/pendingApprovalRollup.js', 'ตัวรวมล้วน — รับดีลที่แดชบอร์ดตัดที่ query แล้ว'],
   ['lib/sales/wonAwaitingSoRollup.js', 'ตัวรวมล้วน — isWonAwaitingSo ตัดดีลภาชนะเองอีกชั้น'],
   ['lib/sales/reportPendingApproval.js', 'ดีลมาจากใบรออนุมัติที่รายงานกรอง pipeline แล้ว — ใบย้อนหลังไม่มีสถานะรออนุมัติ'],
-  ['lib/sales/projectRollup.js', 'ดีลของโครงการ — ดีลภาชนะไม่มีโครงการ (CHECK "projectId" IS NULL)'],
-  /* (`lib/pm/projectPendingApproval.js` ถอดในงวด P3b-1 ยุบโครงการ — ผู้เรียกคือหน้าโครงการที่ลบไปใน P3a) */
+  /* (`lib/pm/projectPendingApproval.js` ถอดในงวด P3b-1 · `lib/sales/projectRollup.js` ถอดในงวด P3b-2 ยุบโครงการ) */
   ['app/sales-planning/leads/[id]/page.js', 'ดีลของลีดใบเดียว — ดีลภาชนะไม่มีลีด (CHECK "leadId" IS NULL)'],
   ['app/sales-planning/deals/[id]/page.js', 'หน้าดีลใบเดียว — ยอดผ่าน splitSalesOrderAmounts (ใบย้อนหลัง excluded) · คำใต้การ์ดจาก wonDealForecastHint (kind historical)'],
 ]);

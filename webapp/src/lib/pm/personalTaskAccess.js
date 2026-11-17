@@ -12,13 +12,15 @@ async function userIdentity(supabase, id) {
   return { team: userTeams(meta), department: normalizeDepartment(meta.department) || null };
 }
 
-async function taskProjectTeam(supabase, task) {
-  if (!task?.projectId) return null;
-  const { data } = await supabase
-    .from('projects')
-    .select('team')
-    .eq('id', task.projectId)
-    .maybeSingle();
+/* งวด P3b-2 ยุบโครงการ: สาขา "ทีมของโครงการ" (`taskProjectTeam`) ของสองด่านข้างล่าง → **ทีมของดีลที่งานผูก**
+   ตรวจ prod 17/11 (อ่านอย่างเดียว): งานที่ถือ `projectId` 557 แถว ผูกดีลครบ · ทีมดีล = ทีมโครงการทุกแถว ⇒ สิทธิ์เท่าเดิมเป๊ะ
+   (17 แถวที่ทีมโครงการ ≠ ทีมผู้รับผิดชอบ ยังเปิดได้ — ถอดเฉย ๆ = 403 ทั้งที่รายการทีมโชว์) · งานของดีลที่ไม่เคยมีโครงการ
+   ที่ทีมดีล ≠ ทีมผู้รับผิดชอบ = 0 แถว ⇒ ไม่มีใครได้สิทธิ์เพิ่ม · ตรงกับขอบเขตรายการ (`taskScope` — งานผูกดีลของทีม) */
+async function taskDealTeam(supabase, task) {
+  if (!task?.dealId) return null;
+  /* 🔴 ค่านี้ไปเป็นด่านสิทธิ์ — อ่านไม่ได้ต้องรู้ ไม่ใช่คืนว่างแล้วปฏิเสธเงียบ (กติกาเดียวกับ userIdentity) */
+  const { data, error } = await supabase.from('sales_deals').select('team').eq('id', task.dealId).maybeSingle();
+  if (error) throw error;
   return data?.team ?? null;
 }
 
@@ -43,9 +45,8 @@ export async function canManagePersonalTask(supabase, task, user) {
   if (!isTeamLead(user.role) || !userTeams(user).length) return false;
 
   // อยู่หลายทีมได้ ⇒ "ทีมเดียวกัน" = มีทีมร่วมกันอย่างน้อยหนึ่งทีม
-  const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);
-  if (hasTeam(user, responsibleTeam)) return true;
-  return hasTeam(user, await taskProjectTeam(supabase, task));
+  if (hasTeam(user, await personalTaskResponsibleTeam(supabase, task))) return true;
+  return hasTeam(user, await taskDealTeam(supabase, task));
 }
 
 export async function canViewPersonalTask(supabase, task, user) {
@@ -67,9 +68,8 @@ export async function canViewPersonalTask(supabase, task, user) {
   // นี่คือสิทธิ์ "ดู" อย่างเดียว; การจัดการงานของคนอื่นยังสงวนให้ senior_ae (canManagePersonalTask).
   if (!TEAM_ROLES.includes(user.role) || !userTeams(user).length) return false;
 
-  const responsibleTeam = await personalTaskResponsibleTeam(supabase, task);
-  if (hasTeam(user, responsibleTeam)) return true;
-  return hasTeam(user, await taskProjectTeam(supabase, task));
+  if (hasTeam(user, await personalTaskResponsibleTeam(supabase, task))) return true;
+  return hasTeam(user, await taskDealTeam(supabase, task));
 }
 
 export async function canAttachToPersonalTask(supabase, task, user) {

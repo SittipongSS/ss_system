@@ -124,39 +124,19 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     ]);
   }
 
-  let project = { data: null, warning: null };
-  let projectProducts = { data: [], warning: null };
-  // DL1: ยังไม่ผูกโครงการ → ไทม์ไลน์ลอยของดีลเอง (project_tasks ที่ projectId ว่าง)
-  let projectTasks = { data: [], warning: null };
-  if (!deal.projectId) {
-    projectTasks = await safe('deal timeline', supabase
-      .from('project_tasks').select('*')
-      .eq('dealId', deal.id).is('projectId', null)
-      .order('stepOrder', { ascending: true }), []);
-  }
+  /* ไทม์ไลน์ของดีล = ทุกขั้นที่ dealId = ดีลนี้ (ชุดเดียวกับที่ Rev. ถ่าย snapshot และที่ย้อน Rev. เขียนทับ)
+     ⭐ งวด P3b-2 ยุบโครงการ (16/11/2026): ถอดสาขา "ดีลในโครงการ" ทั้งก้อน — โครงการ · project_products (0 แถว) ·
+     ทะเบียนสรรพสามิต/PO สหมิตรที่อ่านด้วย projectId (prod 0/74 · 0/112 ถือค่า ⇒ ว่างเสมอ เท่ากับดีลทั่วไป) ·
+     ดีลพี่น้องในโครงการ (ไม่มีจอไหนอ่าน) · แถวเก่าที่ยังถือ projectId ติดมาด้วยตามเดิม (ค่าตรงกับ projectId ของดีลทุกแถว) */
+  const projectTasks = await safe('deal timeline', supabase
+    .from('project_tasks').select('*')
+    .eq('dealId', deal.id)
+    .order('stepOrder', { ascending: true }), []);
   // Rev. ไทม์ไลน์ของดีล (งวด P2b · mig 0435): เลขสูงสุดที่เคยออก + วันที่ออก — ปุ่ม "ออก Rev. N" กับหัวเอกสารใช้
   // (Rev. ปัจจุบัน/แก้แล้ว อยู่บนแถวดีลเอง: timelineRev · timelineRevStale)
   const timelineRevision = await safe('timeline revision', supabase
     .from('deal_timeline_revisions').select('revNo, createdAt')
     .eq('dealId', deal.id).order('revNo', { ascending: false }).limit(1).maybeSingle(), null);
-  let exciseRegistrations = { data: [], warning: null };
-  let sahamitPo = { data: null, warning: null };
-  let siblingDeals = { data: [], warning: null };
-  if (deal.projectId) {
-    [project, projectProducts, projectTasks, exciseRegistrations, sahamitPo, siblingDeals] = await Promise.all([
-      safe('project', supabase.from('projects').select('*').eq('id', deal.projectId).maybeSingle(), null),
-      safe('project products', supabase.from('project_products').select('*, product:products(id, fgCode, productDescription, productDescriptionEn)').eq('projectId', deal.projectId), []),
-      // งวด P2b (ยุบดีล/โครงการ): หน้าดีลเห็น "ขั้นตอนของดีลนี้" เท่านั้น — ชุดเดียวกับที่ Rev. ถ่าย snapshot
-      // และที่ย้อน Rev. เขียนทับ (`.eq('dealId')`) · เดิมรวมงานกลางของโครงการ (dealId ว่าง) มาด้วย ⇒ จอพิมพ์
-      // ขั้นที่ Rev. ไม่ได้เก็บ · งานกลางบน prod ย้ายเข้าดีลหมดแล้วตอน backfill 0435 (เหลือ 0)
-      safe('project tasks', supabase.from('project_tasks').select('*').eq('dealId', deal.id).order('stepOrder', { ascending: true }), []),
-      safe('excise registrations', supabase.from('excise_registrations').select('*').eq('projectId', deal.projectId), []),
-      safe('sahamit po', supabase.from('sahamit_pos').select('*, lines:sahamit_po_lines(*)').eq('projectId', deal.projectId).maybeSingle(), null),
-      // ดีลอื่นในโครงการเดียวกัน (เฟส B: หลายดีลต่อโครงการ) — ลิงก์ข้ามบนหน้าดีล
-      safe('sibling deals', supabase.from('sales_deals').select('id, title, stage, dealType, projectValue, wonValue, forecastMonth').eq('projectId', deal.projectId).neq('id', deal.id).order('createdAt', { ascending: true }), []),
-    ]);
-  }
-
   const warnings = [
     quotations.warning,
     salesOrders.warning,
@@ -164,12 +144,8 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     stageHistory.warning,
     forecasts.warning,
     dealTasks.warning,
-    project.warning,
-    projectProducts.warning,
     projectTasks.warning,
     timelineRevision.warning,
-    exciseRegistrations.warning,
-    sahamitPo.warning,
     taxFilings.warning,
     // 🐞 สองบรรทัดนี้เคยตกหล่น — `safe()` จับ error ไว้ถูกต้องแล้ว แต่ผู้เรียกลืมเอา
     // warning มาใส่ลิสต์ ⇒ query พังแล้วการ์ด "คำร้อง" กับ "ดีลอื่นในโครงการ" ว่างเปล่า
@@ -178,7 +154,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     // ⚠️ เพิ่ม safe() ใหม่เมื่อไร ต้องมาต่อบรรทัดที่นี่ด้วย — dealOverviewWarnings.test.mjs
     // เทียบทุกตัวที่ใช้ `.data` ว่ามี `.warning` คู่กันครบไหม
     inquiries.warning,
-    siblingDeals.warning,
     valueItems.warning,
     // รหัส AR ของลูกค้า — อ่านไม่ได้ = หัวใบจะเหลือชื่อเปล่า ต้องมีคำเตือน ไม่ใช่เงียบ
     customer.warning,
@@ -209,7 +184,6 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
         allowedScopes: pmTaskScopes(user.role),
         meId: user.id,
         dealIds: [deal.id],
-        dealProjectOf: (dealId) => (dealId === deal.id ? deal.projectId || null : null),
       });
       const clauses = await loadTaskScopeClauses(supabase, user, landing.scope);
       const inScope = enrichedDealTasks.filter((task) => taskInScope(task, clauses));
@@ -278,16 +252,11 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
     dealTasks: enrichedDealTasks,
     stageHistory: stageHistory.data,
     forecasts: forecasts.data,
-    project: project.data,
-    projectProducts: projectProducts.data,
     projectTasks: projectTasks.data,
     timelineRevision: {
       maxRev: timelineRevision.data?.revNo ?? null,
       revisedAt: timelineRevision.data?.createdAt ?? null,
     },
-    exciseRegistrations: exciseRegistrations.data,
-    sahamitPo: sahamitPo.data,
-    siblingDeals: siblingDeals.data,
     warnings,
   });
 });

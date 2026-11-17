@@ -111,7 +111,6 @@ export default function TaskDetailPage() {
       ...TASK_BLANK,
       predecessorId: task.id,
       dealId: task.dealId || "",
-      projectId: task.projectId || "",
       category: task.category || "",
       assigneeId: task.assigneeId || "",
     });
@@ -141,7 +140,7 @@ export default function TaskDetailPage() {
         <SalesDetailOverview
           eyebrow="รายละเอียดงาน"
           title={task.title}
-          description={<><span>{task.category || "งานทั่วไป"}</span>{task.project && <><span>·</span><span>{task.project.name}</span></>}{task.deal && <><span>·</span><span>{task.deal.title}</span></>}</>}
+          description={<><span>{task.category || "งานทั่วไป"}</span>{task.deal && <><span>·</span><span>{task.deal.title}</span></>}</>}
           badges={<SalesStateBadge label={STATUS_LABELS[task.status] || task.status} color={STATUS_COLORS[task.status]} />}
           // ไม่มีช่อง "สถานะ" ในแถวนี้ — ป้ายข้างชื่องานบอกอยู่แล้ว (แบบเดียวกับหน้า
           // สอบถาม RD) เดิมโชว์ซ้ำสองที่ในการ์ดเดียวกัน

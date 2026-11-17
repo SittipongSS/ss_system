@@ -41,7 +41,6 @@ import { activeProductTypeError } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { loadDealValueItems, prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
-import { dealUnlinkedUpdate } from '@/lib/pm/projectUpdates';
 import { dealForecastUpdate } from '@/lib/sales/dealUpdates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { purgeAttachments } from '@/lib/master/attachments';
@@ -371,8 +370,8 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
   /* สายธุรกิจของดีล (mig 0274) — อีกครึ่งของกุญแจแม่แบบไทม์ไลน์
-     ⚠️ ดีลที่ผูกโครงการแล้วห้ามสลับสาย: โครงการประกาศสายของมันเอง และ segment
-     ในโครงการถูก gen ด้วยแม่แบบสายนั้นไปแล้ว ⇒ ต้องย้าย/แก้ที่โครงการแทน
+     (ดีลที่ผูกโครงการเคยห้ามสลับสาย — ปลดในงวด P3b-2 ยุบโครงการ · มติ ⑫ 16/11/2026: ไทม์ไลน์เป็นของดีลแล้ว
+      ดีลเก่าในโครงการใช้กติกาเดียวกับดีลทั่วไป — สลับสาย = regen ไทม์ไลน์ตามเงื่อนไขข้างล่าง)
      ⚠️ ล้างค่าเป็นว่างไม่ได้ (ถอยกลับไปเป็น "ไม่รู้สาย" ไม่มีประโยชน์กับใคร) */
   /* ⚠️ ค่าว่าง = "ไม่แตะช่องนี้" ไม่ใช่ "ล้างสาย" — ฟอร์มแก้ดีลส่งทั้งฟอร์มกลับมา
      เสมอ ⇒ ตีค่าว่างเป็น error จะทำให้ **แก้ดีลเก่า (ก่อน mig 0275) ไม่ได้เลย**
@@ -380,10 +379,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   if ('line' in body && (body.line ?? '') !== '') {
     const nextLine = normalizeBusinessLine(body.line);
     if (!nextLine) return badRequest('สายธุรกิจต้องเป็น PRODUCT หรือ SERVICE');
-    if (nextLine !== (before.line || null)) {
-      if (before.projectId) return badRequest('ดีลนี้ผูกโครงการแล้ว — เปลี่ยนสายธุรกิจที่โครงการแทน');
-      patch.line = nextLine;
-    }
+    if (nextLine !== (before.line || null)) patch.line = nextLine;
   }
   // ชื่อสูตรกลิ่น (SCENT) — แก้ได้ตลอด (จุดปลั๊กอิน RD ในอนาคต)
   if ('formulaName' in body) {
@@ -480,10 +476,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const categoryChanged = 'categoryCode' in patch && (patch.categoryCode || null) !== (before.categoryCode || null);
   // สายเปลี่ยน = แม่แบบคนละใบ ⇒ ต้อง regen ด้วยเงื่อนไขเดียวกับประเภท/หมวด
   const lineChanged = 'line' in patch && (patch.line || null) !== (before.line || null);
-  if ((typeChanged || categoryChanged || lineChanged) && !data.projectId) {
+  /* ⭐ งวด P3b-2 ยุบโครงการ (มติ ⑫): ครอบดีลเก่าที่อยู่ในโครงการด้วย — ชุดของดีลคือทุกขั้นที่ dealId = ดีลนี้
+     (เดิม: เฉพาะดีลที่ไม่มีโครงการ + ขั้นที่ projectId ว่าง) · ชื่อตัวแปร `floating` คงไว้จากยุคไทม์ไลน์ลอย */
+  if (typeChanged || categoryChanged || lineChanged) {
     const { data: floating, error: floatingError } = await supabase
       .from('project_tasks').select('id, status')
-      .eq('dealId', id).is('projectId', null);
+      .eq('dealId', id);
     if (floatingError) {
       console.error(`[deal-patch ${id}] อ่านไทม์ไลน์ลอยก่อน regen ไม่สำเร็จ:`, floatingError.message);
       addTimelineWarning(`บันทึกดีลแล้ว แต่ไทม์ไลน์ยังเป็นชุดเดิม (อ่านไทม์ไลน์เดิมไม่สำเร็จ): ${floatingError.message}`);
@@ -509,7 +507,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         } else {
           const { error: dropError } = await supabase
             .from('project_tasks').delete()
-            .eq('dealId', id).is('projectId', null)
+            .eq('dealId', id)
             .in('id', floating.map((t) => t.id));
           if (!dropError) {
             regenerated = true;
@@ -532,14 +530,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     }
   }
 
-  // วันที่เริ่มดีลเปลี่ยน → เลื่อนไทม์ไลน์ลอยของดีลตาม (sync แบบเดียวกับฝั่งโครงการ
-  // ที่ PATCH startDate แล้ว recalculateGraph ทุกขั้นตอน). เฉพาะดีลที่ยังไม่ผูกโครงการ —
-  // ผูกแล้ว segment อยู่ใต้ anchor ของโครงการ จัดการที่หน้าโครงการตามกติกาเดิม.
+  // วันที่เริ่มดีลเปลี่ยน → เลื่อนไทม์ไลน์ของดีลตาม (recalculateGraph ทุกขั้นตอน)
+  // ⭐ งวด P3b-2 ยุบโครงการ (มติ ⑫): ครอบดีลเก่าที่อยู่ในโครงการด้วย (เดิม: เฉพาะดีลที่ไม่มีโครงการ — ดีลในโครงการ
+  //    อยู่ใต้วันเริ่มโครงการ) · ขั้นที่ปักหมุดไว้ (startLocked) เลื่อนช้าลงได้ ไม่ถอยก่อนวันที่ปัก — กติกาเดิมของ recalculateGraph
   // (regen ข้างบนใช้ startDate ใหม่เป็น anchor แล้ว — ไม่ต้องเลื่อนซ้ำ)
-  if (!regenerated && 'startDate' in body && (data.startDate || null) !== (before.startDate || null) && !data.projectId) {
+  if (!regenerated && 'startDate' in body && (data.startDate || null) !== (before.startDate || null)) {
     const { data: floating, error: floatingError } = await supabase
       .from('project_tasks').select('*')
-      .eq('dealId', id).is('projectId', null)
+      .eq('dealId', id)
       .order('stepOrder', { ascending: true });
     if (floatingError) {
       console.error(`[deal-patch ${id}] อ่านไทม์ไลน์ลอยเพื่อเลื่อนตามวันเริ่มไม่สำเร็จ:`, floatingError.message);
@@ -830,15 +828,8 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   await purgeUpdates(supabase, 'deal', id);
   await purgeSalesOrderFiles(supabase, childOrders.ids);
 
-  // ⚠️ เธรดของ**โครงการแม่**ต้องรู้ว่าดีลใบนี้หลุดไป — ความเคลื่อนไหวของมันที่เคย
-  // ไหลเข้าหน้าโครงการหายไปทั้งชุดพร้อมกัน ถ้าไม่มีบรรทัดอธิบาย เส้นเรื่องจะเป็นรู
-  // (เขียนหลังลบสำเร็จ และไม่เช็ค error — เธรดพลาดต้องไม่ทำให้การลบที่สำเร็จแล้วล้ม)
-  if (detachedFromProject) {
-    await appendUpdate(supabase, {
-      entityType: 'project', entityId: detachedFromProject,
-      ...dealUnlinkedUpdate(before, { reason: force ? 'ลบดีล (บังคับ)' : 'ลบดีล' }), user,
-    });
-  }
+  /* (บรรทัด "ดีลหลุดจากโครงการ" ในเธรดโครงการ — ถอดในงวด P3b-2 ยุบโครงการ: เธรดโครงการไม่มีจอแล้ว ·
+     audit ของการลบยังจดโครงการเดิมไว้ใน summary ด้านล่าง) */
 
   /* ลีดต้นทาง (มติผู้ใช้ 2026-09-22) — ลบดีล = ดีลหลุดจากลีด กติกาเดียวกับ "ถอดลีดต้นทาง":
      ลีดที่ไม่เหลือดีลแล้วกลับไปสถานะก่อนเปิดดีล + บันทึกประวัติ `unlink_deal`

@@ -18,9 +18,11 @@ const route = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'route.
    ⇒ ยามของสาขา projectId/dealId ตามไปล็อกที่ไฟล์นั้น · route ต้องเรียกตัวโหลดนั้น ไม่ใช่เขียนขอบเขตเองอีกชุด */
 const scopeLib = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../../lib/pm/taskScope.js'), 'utf8');
 
-test('my-work scope=team: ต้องดึงทั้งทาง projectId และ dealId', () => {
-  assert.match(scopeLib, /clauses\.push\(\['projectId', teamProjIds\]\)/,
-    'งานของโครงการในทีมต้องยังติดมาเหมือนเดิม');
+/* งวด P3b-2 ยุบโครงการ: สาขา `projectId` (งานผูกโครงการของทีม) ถอดแล้ว — ตรวจ prod 16/11 งานที่ถือ projectId ผูกดีลครบ
+   และทีมดีล = ทีมโครงการ ⇒ สาขา `dealId` ครอบครบ (หลุด 0 แถว) · ยามเปลี่ยนเป็น "ห้ามกลับมา" */
+test('my-work scope=team: ดึงทาง dealId ของทีม — ไม่อ่านโครงการของทีมอีก', () => {
+  assert.doesNotMatch(scopeLib, /\['projectId',/, 'ขอบเขตทีมต้องไม่ย้อนไปอ่านทีมของโครงการ');
+  assert.doesNotMatch(scopeLib, /teamProjectIds/);
   assert.match(scopeLib, /clauses\.push\(\['dealId', teamDealIds\]\)/,
     'งานลอยของดีลในทีมต้องติดมาด้วย');
   assert.match(scopeLib, /whereTeamIn\(supabase\.from\('sales_deals'\)\.select\('id'\), user\)/,

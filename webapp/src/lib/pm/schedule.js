@@ -227,21 +227,7 @@ export function buildProjectTasks(project, projectId, dealId = null, templateOpt
   }));
 }
 
-// ── เฟส B: ต่อ timeline segment ของดีลใหม่เข้าโครงการเดิม ──────────────────
-// ดีลที่ผูกเข้าโครงการภายหลัง (link-project) ได้ task ชุดตาม template ของประเภทดีล
-// ตัวเอง ต่อท้าย stepOrder เดิม โดย anchor ที่วันเริ่มของ segment (ไม่ใช่วันเริ่มโครงการ):
-// task รากของ segment (ไม่มี predecessor) ถูก pin ด้วย startLocked เพื่อไม่ให้ถูกดูด
-// กลับไป anchor โครงการเวลา recalculateGraph ทั้งโครงการ (pin เลื่อนช้าได้ ไม่ถอย).
-export function buildAppendedTasks(project, { dealType, dealId, startDate, existingTasks = [], template, templateVersionId, categoryFlags }) {
-  const segProject = { ...project, type: dealType, startDate: startDate || todayStr(), createdAt: null };
-  const rows = buildProjectTasks(segProject, project.id, dealId, { template, templateVersionId, categoryFlags });
-  const baseOrder = (existingTasks || []).reduce((m, t) => Math.max(m, Number(t.stepOrder ?? 0)), -1) + 1;
-  return rows.map((r, i) => ({
-    ...r,
-    stepOrder: baseOrder + i,
-    startLocked: (r.predecessors || []).length === 0,
-  }));
-}
+// (เฟส B `buildAppendedTasks` — ต่อ segment ของดีลเข้าโครงการ — ถอดในงวด P3b-2 ยุบโครงการ: ไม่มีทางผูกดีลเข้าโครงการแล้ว)
 
 // ── ข้อ 2: ปรับชุดขั้นตอนเมื่อหมวดสินค้าเปลี่ยน (เพิ่ม/ลบเฉพาะขั้นตอนสรรพสามิต) ──
 // คำนวณ "ชุด task เป้าหมาย" ตามหมวด/ประเภทใหม่ โดย **คงความคืบหน้าเดิม**: ขั้นตอน

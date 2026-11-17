@@ -59,7 +59,7 @@ test('ยาม: my-work โหลดแถวชุดเดียวกับ�
 test('ยาม: ตัวนับ "n รอตอบ" พังต้องไม่ล้ม /api/pm/my-work ทั้ง route (คิวงานว่างทั้งหน้า)', () => {
   const route = read('../../app/api/pm/my-work/route.js');
   // ตัวโหลดสองตัว throw เมื่อ PostgREST ตอบ error (fetchAll) และ withUser ไม่จับ ⇒ ต้องอยู่ใน try ของบล็อกนี้เอง
-  const block = route.slice(route.indexOf('if (inquiries.length) {'), route.indexOf('// ── projects map'));
+  const block = route.slice(route.indexOf('if (inquiries.length) {'), route.indexOf('// ── deals map'));
   assert.ok(block.length > 0, 'หาบล็อกตัวนับไม่เจอ');
   const tryAt = block.indexOf('try {');
   const catchAt = block.indexOf('} catch (countError) {');

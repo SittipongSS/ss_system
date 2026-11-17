@@ -72,7 +72,6 @@ test('ตัวตัดสิน: SO อนุมัติแล้ว + ไม
   assert.deepEqual(exciseBillingTaskUpdates([task()], { dealStates: new Map([['DL-1', { approvedCount: 1, pendingCount: 1 }]]) }), [], 'ยังมีใบรอออก');
   assert.deepEqual(exciseBillingTaskUpdates([task()], { dealStates: new Map([['DL-1', { approvedCount: 0, pendingCount: 0 }]]) }), [], 'ยังไม่มี SO อนุมัติ');
   assert.deepEqual(exciseBillingTaskUpdates([task({ status: 'Completed' })], { dealStates: doneStates }), [], 'เสร็จอยู่แล้ว');
-  assert.deepEqual(exciseBillingTaskUpdates([task()], { dealStates: doneStates, closedProjectIds: new Set(['PRJ-1']) }), [], 'โครงการปิดแล้วแก้ขั้นตอนไม่ได้');
   assert.deepEqual(exciseBillingTaskUpdates([task({ dealId: 'DL-9' })], { dealStates: doneStates }), [], 'ดีลที่ไม่ได้ซิงก์รอบนี้');
 });
 
@@ -114,7 +113,6 @@ test('ตัวซิงก์: อ่านงาน+SO+คิว แล้ว�
       { id: 'SO-1', dealId: 'DL-1', status: 'approved', supersededById: null, origin: 'pipeline' },
       { id: 'SO-2', dealId: 'DL-2', status: 'approved', supersededById: null, origin: 'pipeline' },
     ],
-    projects: [{ id: 'PRJ-1', closeStatus: 'open' }],
   });
   const graphs = [];
   const result = await syncExciseBillingTasks(db, ['DL-1', 'DL-2'], {
@@ -122,7 +120,7 @@ test('ตัวซิงก์: อ่านงาน+SO+คิว แล้ว�
       assert.deepEqual(dealIds.sort(), ['DL-1', 'DL-2']);
       return [{ id: 'SO-2', orderNumber: 'SO-2', dealId: 'DL-2' }];
     },
-    propagate: async (_supabase, projectId, { dealId }) => graphs.push([projectId, dealId]),
+    propagate: async (_supabase, dealId) => graphs.push(dealId),
     today: '2026-11-03', now: 'N',
   });
   assert.deepEqual(result, { updated: 1 });
@@ -131,7 +129,7 @@ test('ตัวซิงก์: อ่านงาน+SO+คิว แล้ว�
   assert.equal(db.tables.project_tasks[1].status, 'Pending', 'ดีลที่ยังมีใบรอออก');
   assert.equal(db.tables.project_tasks[2].status, 'Pending', 'งานวางบิลแบบไม่มีสรรพสามิตไม่ใช่ของตัวนี้');
   assert.deepEqual(db.writes[0].filters, [['eq', 'id', 'PT-1'], ['eq', 'status', 'Pending']], 'CAS ด้วยสถานะเดิม');
-  assert.deepEqual(graphs, [['PRJ-1', 'DL-1']]);
+  assert.deepEqual(graphs, ['DL-1'], 'กราฟสถานะเดินรายดีล (งวด P3b-2)');
 
   const empty = fakeDb({ project_tasks: [] });
   let loaded = false;

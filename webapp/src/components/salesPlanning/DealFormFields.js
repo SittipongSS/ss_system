@@ -47,7 +47,6 @@ import { DEAL_TYPES, DEAL_TYPE_LABELS, DEFAULT_PROBABILITY_BY_STAGE, STAGE_LABEL
 import { FORECAST_LEVELS, snapForecastLevel } from "@/components/salesPlanning/ui";
 import { naText } from "@/lib/format";
 import { customerSelectOptions } from "@/components/master/customerOption";
-import { businessLineLabel } from "@/lib/master/businessLines";
 
 // โทนของแผ่นเลือกประเภทดีล — ชุดเดียวกับ DEAL_TYPE_COLORS ของ badge
 // (SCENT=amber · NPD=blue · RE-ORDER=teal · OTHER=violet) แต่ผ่านชื่อโทน ไม่ใช่ค่าสีตรง ๆ
@@ -157,7 +156,7 @@ export default function DealFormFields({
   );
 
   /* ช่อง "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — ดีลไม่ผูก/สร้างโครงการอีกแล้ว
-     `form.lockedProjectId` ยังมาจากดีลเก่าที่อยู่ในโครงการ: ใช้ล็อกลูกค้า + สายด้านล่าง (ข้อมูลไทม์ไลน์เดิมยังผูกอยู่) */
+     `form.lockedProjectId` ยังมาจากดีลเก่าที่อยู่ในโครงการ: ใช้ล็อกลูกค้า (สายปลดแล้วในงวด P3b-2 · มติ ⑫) */
 
   /* ดีลเป็นหน้าที่ความรับผิดชอบของ AE / Senior AE (มติผู้ใช้ 2026-08-08) —
      ae/senior_ae เปิดใบ = ล็อกชื่อตัวเอง ไม่มีอะไรให้เลือก · ac/ae_supervisor/admin
@@ -251,23 +250,18 @@ export default function DealFormFields({
 
   /* สายธุรกิจของดีล (mig 0275) — **ครึ่งแรกของกุญแจแม่แบบไทม์ไลน์** จึงอยู่เหนือ
      ประเภทดีล: ตอบ "งานนี้จบยังไง" ก่อน แล้วค่อยตอบ "ใบนี้เติมช่วงไหน"
-     ⚠️ ล็อกเมื่อเป็นดีลเก่าที่อยู่ในโครงการ — ไทม์ไลน์ในโครงการถูก gen ด้วยแม่แบบสายนั้นไปแล้ว และ API ตีกลับ
-     (PATCH ดีล) ⇒ ให้เห็นค่าเดิม ดีกว่าปล่อยให้เลือกแล้วเด้ง · จอโครงการถูกซ่อนแล้ว (P2d) ข้อความจึงไม่ชี้ไปที่นั่น */
-  const lineLockedByProject = !!form.projectId || !!form.lockedProjectId;
+     (ดีลเก่าที่อยู่ในโครงการเคยล็อกช่องนี้ — ปลดในงวด P3b-2 ยุบโครงการ · มติ ⑫ 16/11/2026: ใช้กติกาเดียวกับดีลทั่วไป ·
+     ไทม์ไลน์เป็นของดีลแล้ว เปลี่ยนสาย = สร้างไทม์ไลน์ใหม่ตามกติกาเดิมของ PATCH ดีล) */
   const lineField = (
     <div className="deal-field" key="line">
       <span className="deal-field-label">สายธุรกิจ <span className="required-mark">*</span></span>
       <BusinessLineSelect
         value={form.line || ""}
         onChange={set("line")}
-        disabled={lineLockedByProject || alreadyWon}
+        disabled={alreadyWon}
         ariaLabel="สายธุรกิจของดีล"
       />
-      <small>
-        {lineLockedByProject
-          ? `ดีลเก่าที่อยู่ในโครงการ — สายล็อกตามไทม์ไลน์เดิม${form.line ? ` (${businessLineLabel(form.line)})` : ""} · ต้องเปลี่ยนแจ้งผู้ดูแลระบบ`
-          : "เลือกสายก่อน — ขั้นตอนไทม์ไลน์ของสายสินค้ากับสายบริการเป็นคนละชุด (ยกเว้นงานพัฒนากลิ่นที่เดินเหมือนกัน)"}
-      </small>
+      <small>เลือกสายก่อน — ขั้นตอนไทม์ไลน์ของสายสินค้ากับสายบริการเป็นคนละชุด (ยกเว้นงานพัฒนากลิ่นที่เดินเหมือนกัน)</small>
     </div>
   );
 

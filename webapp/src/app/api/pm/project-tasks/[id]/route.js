@@ -1,14 +1,11 @@
 import { pmEditScope, inScope, pmTaskEditTier } from '@/lib/permissions';
-import { recalculateGraph, resolveSchedule, todayStr } from '@/lib/pm/schedule';
+import { recalculateGraph, todayStr } from '@/lib/pm/schedule';
 import { setHolidays } from '@/lib/pm/dateHelpers';
 import { durationFromDates } from '@/lib/pm/stepSchedule';
 import { holidaySet } from '@/lib/master/holidays';
 import { propagateAndPersist } from '@/lib/pm/status';
-import { withUser, ok, fail, badRequest, forbidden, notFound, conflict } from '@/lib/http';
+import { withUser, ok, fail, badRequest, forbidden, notFound } from '@/lib/http';
 import { pickFields } from '@/lib/validate';
-import { projectWriteBlockedError } from '@/lib/pm/projectClose';
-import { milestoneDoneUpdate } from '@/lib/pm/projectUpdates';
-import { appendUpdate } from '@/lib/master/updates';
 import { loadTaskScope } from '@/lib/pm/dealTimelineScope';
 
 export const dynamic = 'force-dynamic';
@@ -26,28 +23,26 @@ const EDITABLE = [
   'note', 'showNoteInPrint',
 ];
 
-// ขั้นตอน + แถวขอบเขต: งานที่มี dealId ใช้ขอบเขตของดีลเสมอ (งวด P2b · ดีล = หน่วยเดียว) ·
-// งานกลางของโครงการ (dealId ว่าง) ใช้โครงการ — ตัวกลางอยู่ที่ lib/pm/dealTimelineScope.js
+// ขั้นตอน + แถวขอบเขต: ใช้ขอบเขตของดีลเสมอ (งวด P2b · ดีล = หน่วยเดียว) — ตัวกลางอยู่ที่ lib/pm/dealTimelineScope.js
+// ⭐ งวด P3b-2 ยุบโครงการ (16/11/2026): กราฟที่คำนวณวัน/สถานะใหม่ = **ชุดของดีล** (เดิม: ทั้งโครงการเมื่อขั้นมี projectId)
+//    จุดยึดวัน = วันเริ่มเร็วสุดในชุด (กติกาเดียวกับพรีวิวบนจอ `DealTimelineTable` และชุดลอยเดิม) ·
+//    ถอดด่าน "โครงการปิดแล้ว" (ปิดแล้ว 0 · ปิดเพิ่มไม่ได้อีก) · ตรวจ prod 16/11: เส้นข้ามดีล 0 ⇒ สถานะเท่าเดิมทุกขั้น ·
+//    วันที่: คำนวณรายดีลต่างจากค่าที่เก็บอยู่ 24 ขั้น (แบบทั้งโครงการต่าง 1,105 ขั้นใน 71 ดีล — ของเดิมลากขั้นไปเกาะวันเริ่มโครงการ)
 // PATCH /api/pm/project-tasks/[id]
 export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { id } = await ctx.params;
 
-  const { task, project, scopeRow } = await loadTaskScope(supabase, id);
+  const { task, scopeRow } = await loadTaskScope(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
 
   // สิทธิ์แก้ไขมี 2 ระดับ (รวม logic ไว้ที่ pmTaskEditTier ใน permissions.js):
   //   full     — ฝ่ายขาย/แอดมิน แก้ได้ทั้งโครงแผน (team-scope บนโครงการ)
   //   workflow — ผู้รับผิดชอบ (assigneeId) หรือ staff ฝ่ายเดียวกับขั้นตอน (role===department)
   //              อัปเดตได้เฉพาะสถานะ/ความคืบหน้า/โน้ต ไม่แตะวันเริ่ม/ลำดับ/การมอบหมาย
-  // งานที่มี dealId: scopeRow = ทีม/เจ้าของดีล (มีโครงการหรือไม่ก็ตาม) · งานกลาง: โครงการ
+  // scopeRow = ทีม/เจ้าของดีล (มีโครงการเก่าค้างหรือไม่ก็ตาม)
   const tier = pmTaskEditTier(user, task, scopeRow);
   if (tier === 'none') return forbidden();
   const workflowEdit = tier === 'workflow';
-
-  // ด่านหลังปิด (เฟส F): โครงการ closed ห้ามแก้ขั้นตอน (ทุก tier รวม workflow) —
-  // ต้อง reopen ผ่าน /close ก่อน; task ลอยของดีล (ไม่มี project) ไม่เข้าเงื่อนไขนี้
-  const closedErr = projectWriteBlockedError(project);
-  if (closedErr) return conflict(closedErr);
 
   const body = await req.json();
   // workflowEdit จำกัดเฉพาะ field งาน/สถานะ — กันไม่ให้พนักงานรื้อแผนหรือ reassign
@@ -125,41 +120,29 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
   const { data, error } = await supabase.from('project_tasks').update(updates).eq('id', id).select().single();
   if (error) return fail(error.message, 500);
 
-  // หมุดหมายของโครงการเข้าเธรด — **เฉพาะขั้นที่ติดธง `isMilestone`** เท่านั้น
-  // โครงการหนึ่งมี 20–40 ขั้น ถ้าเอาทุกขั้นที่เปลี่ยนสถานะ เธรดจะกลายเป็น log ของ
-  // ระบบงานแล้วบทสนทนาจม (บทเรียนจากเธรดงานส่วนบุคคล: 92% ของแถวเป็นเหตุการณ์ระบบ)
-  // ⚠️ ต้องอยู่ก่อนบล็อก recalc ด้านล่างซึ่งมีทางออกหลายทาง (return ได้ 2 จุด)
-  // · ขั้นตอนลอยของดีลไม่มีโครงการแม่ = ไม่มีเธรดให้ลง ข้ามไป
-  if (project?.id) {
-    const event = milestoneDoneUpdate(task, data);
-    if (event) await appendUpdate(supabase, { entityType: 'project', entityId: project.id, ...event, user });
-  }
+  /* (หมุดหมายของโครงการเข้าเธรดโครงการ — ถอดในงวด P3b-2 ยุบโครงการ: เธรดโครงการไม่มีจอแล้ว · ทั้งระบบเคยลงแค่ 5 แถว ·
+     ชุดลอยของดีลไม่เคยลงเธรดไหน ⇒ ทุกดีลเหมือนกันแล้ว) */
 
   // ── auto status: แก้สถานะ/predecessors ของขั้นนี้ → คำนวณสถานะทั้งกราฟใหม่
   // (กดเสร็จ → ขั้นถัดไปที่พร้อม เป็น In Progress ; ถอย/แก้ pred → ขั้นถัดที่ไม่พร้อม กลับ Pending).
   // client reload เมื่อ status/predecessors เปลี่ยน จึงเห็นผลกับขั้นอื่นทันที.
   if ('status' in updates || 'predecessors' in updates) {
-    // task ลอยของดีล: propagate ภายในชุดของดีล (projectId ว่าง + dealId)
-    await propagateAndPersist(supabase, project?.id ?? null, { dealId: task.dealId });
+    await propagateAndPersist(supabase, task.dealId);
   }
 
   // ── #1 recalc (dependency-driven): แก้วันเริ่ม/จำนวนวัน/predecessors/ปักหมุด →
-  // คำนวณ timeline ทั้งกราฟใหม่จากวันเริ่มโครงการตามสาย predecessor จริง แล้ว persist
+  // คำนวณ timeline ทั้งกราฟของดีลใหม่จากวันเริ่มเร็วสุดของชุดตามสาย predecessor จริง แล้ว persist
   // เฉพาะแถวที่เปลี่ยน. ขั้นที่ไม่ผูกกับขั้นนี้จะไม่ขยับ (ต่างจาก slice แบบเดิมที่ลากทุกขั้นที่อยู่หลัง) ──
   const schedulingChanged = SCHEDULE_FIELDS.some((k) => k in updates) || 'startLocked' in updates;
-  if (schedulingChanged && (project || task.dealId)) {
+  if (schedulingChanged && task.dealId) {
     setHolidays([...(await holidaySet())]);
-    // ชุดที่ recalc: ทั้งโครงการ หรือชุดลอยของดีล (projectId ว่าง) — anchor ของชุดลอย
-    // = วันเริ่มเร็วสุดในชุด (ไม่มีวันเริ่มโครงการให้อิง)
-    let setQuery = supabase.from('project_tasks').select('*');
-    setQuery = project ? setQuery.eq('projectId', project.id) : setQuery.is('projectId', null).eq('dealId', task.dealId);
-    const { data: all } = await setQuery.order('stepOrder', { ascending: true });
+    // ชุดที่ recalc = ทุกขั้นของดีล · anchor = วันเริ่มเร็วสุดในชุด
+    const { data: all } = await supabase.from('project_tasks').select('*')
+      .eq('dealId', task.dealId).order('stepOrder', { ascending: true });
 
     if (all && all.length) {
       const applied = all.map((t) => (t.id === id ? { ...t, ...updates } : t));
-      const anchor = project
-        ? resolveSchedule(project).anchor
-        : (applied.map((t) => t.startDate).filter(Boolean).sort()[0] || todayStr());
+      const anchor = applied.map((t) => t.startDate).filter(Boolean).sort()[0] || todayStr();
       const recalced = recalculateGraph(applied, anchor);
 
       const sameCells = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -190,15 +173,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
 export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   const { id } = await ctx.params;
 
-  const { task, project, scopeRow } = await loadTaskScope(supabase, id);
+  const { task, scopeRow } = await loadTaskScope(supabase, id);
   if (!task) return notFound('ไม่พบขั้นตอน');
   if (!inScope(pmEditScope(user?.role), user, scopeRow || {})) {
     return forbidden();
   }
-
-  // ด่านหลังปิด (เฟส F): โครงการ closed ลบขั้นตอนไม่ได้ — ต้อง reopen ผ่าน /close ก่อน
-  const closedErr = projectWriteBlockedError(project);
-  if (closedErr) return conflict(closedErr);
 
   const { error } = await supabase.from('project_tasks').delete().eq('id', id);
   if (error) return fail(error.message, 500);
@@ -206,11 +185,10 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
   // ── recalc (dependency-driven): ลบขั้นตอนแล้วคำนวณ timeline ของขั้นที่เหลือใหม่ ──
   // 1) ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น
   // 2) recalculateGraph ทั้งกราฟ → ขั้นที่เคยรอขั้นที่ลบจะขยับมาเร็วขึ้นตามจริง (ไม่กระทบขั้นอิสระ)
-  if (project || task.dealId) {
+  if (task.dealId) {
     setHolidays([...(await holidaySet())]);
-    let setQuery = supabase.from('project_tasks').select('*');
-    setQuery = project ? setQuery.eq('projectId', project.id) : setQuery.is('projectId', null).eq('dealId', task.dealId);
-    const { data: all } = await setQuery.order('stepOrder', { ascending: true });
+    const { data: all } = await supabase.from('project_tasks').select('*')
+      .eq('dealId', task.dealId).order('stepOrder', { ascending: true });
 
     if (all && all.length) {
       // ตัด reference ของขั้นที่ถูกลบออกจาก predecessors ของขั้นอื่น แล้วคำนวณทั้งกราฟใหม่
@@ -219,9 +197,7 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
           ? { ...t, predecessors: t.predecessors.filter((p) => p !== id) }
           : t
       );
-      const anchor = project
-        ? resolveSchedule(project).anchor
-        : (cleaned.map((t) => t.startDate).filter(Boolean).sort()[0] || todayStr());
+      const anchor = cleaned.map((t) => t.startDate).filter(Boolean).sort()[0] || todayStr();
       const recalced = recalculateGraph(cleaned, anchor);
 
       const sameJson = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
@@ -244,7 +220,7 @@ export const DELETE = withUser(async ({ user, supabase, ctx }) => {
     }
 
     // ลบขั้นแล้ว → ขั้นถัดที่อ้างขั้นนี้อาจพร้อมทำงาน → คำนวณสถานะทั้งกราฟใหม่
-    await propagateAndPersist(supabase, project?.id ?? null, { dealId: task.dealId });
+    await propagateAndPersist(supabase, task.dealId);
   }
 
   return ok({ success: true });
