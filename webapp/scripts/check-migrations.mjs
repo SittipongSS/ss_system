@@ -27,6 +27,13 @@ const LEGACY_DUPLICATES = new Map([
        · `0325_unconfirm_service_...`       → `audit_logs` มี 4 แถวของ actorId
          `migration-0325` (งวด 2 · ใบ 2) และงวดเป้าหมายกลับเป็น `reported` ครบ */
   ['0325', ['0325_product_brand_optional.sql', '0325_unconfirm_service_installments_missing_coverage.sql']],
+  /* 2026-11-13 — PR #2051 (คำร้องพัฒนากลิ่น ม-164) กับ #2052 (ยุบดีล/โครงการ P2b) จองเลข 0436 คนละแบรนช์ในวันเดียวกัน
+     **ทั้งคู่รันบน production ไปแล้ว 13/11** จึงเปลี่ยนชื่อไม่ได้ · หลักฐานที่ตรวจ 17/11 (OpenAPI ของ PostgREST บนฐานจริง):
+       · `0436_deal_timeline_restore` → `/rpc/deal_restore_timeline_revision` มีอยู่จริง
+       · `0436_scent_dev_topup`       → ตาราง `dept_request_sales_orders` · `scent_order_dismissals` มีอยู่จริง
+         (ผลตรวจท้ายไฟล์ที่เจ้าของรัน: ตาราง 2 · ช่องใหม่ 3 · trigger 2)
+     ⚠️ ห้ามใช้เลข 0436 ซ้ำอีก · เลขถัดไปเริ่มที่ 0437 */
+  ['0436', ['0436_deal_timeline_restore.sql', '0436_scent_dev_topup.sql']],
 ]);
 
 const files = (await readdir(migrationsDir))
