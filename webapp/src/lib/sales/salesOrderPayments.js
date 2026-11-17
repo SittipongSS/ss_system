@@ -167,6 +167,25 @@ export function installmentPrepaid(row) {
     && Array.isArray(row?.evidence) && row.evidence.length > 0;
 }
 
+/* ── กำหนดชำระของงวดร่างที่บันทึกเงินแล้ว (17/11/2026 · SO-26110445-0) ──────────────────────────────
+   🐞 ฟอร์มสร้างใบ ("ลูกค้าจ่ายงวดที่ 1 มาแล้ว") และปุ่ม "บันทึกว่าลูกค้าจ่ายแล้ว" บนงวดร่าง เก็บ paidOn + สลิป
+     แต่ปล่อย dueDate ว่าง · ด่านยื่นของใบแพ็คเกจ (`due_missing` ใน serviceSetup.js) ยกเว้นเฉพาะงวดที่บัญชีรับรองแล้ว
+     ⇒ SA เห็น "จ่ายแล้ว" แต่ยื่นไม่ได้ · วัด 17/11: งวดที่บันทึกเงินจากฟอร์มสร้างใบ 12 งวด ไม่มีกำหนดชำระ 10
+   ⭐ กติกาเดียวของสองทางเขียน (applyCreateFormPayments + action `report` ของ PATCH งวด) และบรรทัดบอกในโมดัลแจ้งชำระ:
+     กำหนดชำระว่าง = ใช้วันที่ลูกค้าจ่าย · SA พิมพ์วันตามสลิปเองอยู่แล้ว (38/40 ใบ วัด 03/09) ระบบแค่เติมสิ่งที่เขาจะพิมพ์
+   คืนวันที่ต้องเขียน หรือ null = ไม่แตะ:
+     · งวดที่ตรึงแล้ว (ใบอนุมัติแล้ว) — null · เฉพาะงวดร่าง หลังอนุมัติงวดไปถึงบัญชีและพ้นด่านยื่นแล้ว
+     · มีกำหนดชำระอยู่แล้ว — ไม่ทับเด็ดขาด
+     · งวด "รอเหตุการณ์" (billingEvent) — null · เหตุการณ์กับกำหนดชำระอยู่ด้วยกันไม่ได้ (validateInstallmentDates)
+     · งวดยกมา — null · ไม่มีวันเสมอ (CHECK 0374 + 0389)
+   ⚠️ "ถอนการแจ้ง" ไม่ล้างกำหนดชำระที่เติมไว้ — เป็นกำหนดชำระธรรมดาที่ SA แก้ได้เหมือนช่องอื่น */
+export function prepaidDueDate(row, paidOn) {
+  const paid = String(paidOn || '').trim();
+  if (!row || !paid || isInstallmentFrozen(row) || isOpeningInstallment(row)) return null;
+  if (String(row.dueDate || '').trim() || String(row.billingEvent || '').trim()) return null;
+  return paid;
+}
+
 /** สถานะที่ **แสดงบนจอ** — ต่างจาก `status` ใน DB เฉพาะงวดร่างที่บันทึกเงินไว้แล้ว และงวดที่บัญชีบันทึกคืนเงินแล้ว (PR3) */
 export function installmentDisplayStatus(row) {
   if (installmentRefunded(row)) return 'refunded';

@@ -18,6 +18,7 @@ import {
   installmentStartBlock,
   installmentUnconfirmOutcome,
   installmentsFromPaymentPlan,
+  prepaidDueDate,
   installmentsTotalMismatch,
   REVISION_MOVE_SCHEMA_MISSING,
   revisedInstallmentsNote,
@@ -1897,4 +1898,21 @@ test('evidence-add: ใบยกเลิก/ถูกออก Rev. ทับ/�
   assert.equal(installmentActionError(reportedRow(), 'evidence-add', FN_ROLE, opts(CANCELLED_SO)), PIPELINE_CANCELLED_LOCK);
   assert.match(installmentActionError(reportedRow(), 'evidence-add', SA, opts({ ...APPROVED_SO, status: 'revised' })), /ย้ายไป/);
   assert.match(installmentActionError(reportedRow(), 'evidence-add', SA, { orderTotal: 0 }), /ยอดรวม 0 บาท/);
+});
+
+/* ⭐ 17/11/2026 SO-26110445-0 — งวดร่างที่บันทึกเงินแล้วไม่มีกำหนดชำระ ⇒ ด่านยื่นของใบแพ็คเกจ (`due_missing`) ค้างใบ
+   กติกาเดียวของฟอร์มสร้างใบ + action report + บรรทัดบอกในโมดัล: กำหนดชำระว่าง = ใช้วันที่ลูกค้าจ่าย */
+test('prepaidDueDate: งวดร่างที่ไม่มีกำหนดชำระได้วันที่จ่าย · ที่เหลือไม่แตะ', () => {
+  const draft = { status: 'pending', dueDate: null, billingEvent: null, frozenAt: null };
+  assert.equal(prepaidDueDate(draft, '2026-11-17'), '2026-11-17');
+  assert.equal(prepaidDueDate({ ...draft, billingDate: '2026-11-20' }, '2026-11-17'), '2026-11-17',
+    'มีวันวางบิลแต่ไม่มีกำหนดชำระ = ด่านยังขอ ⇒ เติมด้วย');
+  assert.equal(prepaidDueDate({ ...draft, dueDate: '2026-12-01' }, '2026-11-17'), null, 'กำหนดชำระที่มีอยู่ห้ามทับ');
+  assert.equal(prepaidDueDate({ ...draft, billingEvent: 'ก่อนติดตั้ง' }, '2026-11-17'), null,
+    'รอเหตุการณ์อยู่กับกำหนดชำระไม่ได้ (validateInstallmentDates)');
+  assert.equal(prepaidDueDate({ ...draft, frozenAt: '2026-11-18T00:00:00Z' }, '2026-11-17'), null, 'ใบอนุมัติแล้ว = ไม่ใช่ทางนี้');
+  assert.equal(prepaidDueDate({ ...draft, kind: 'opening' }, '2026-11-17'), null, 'งวดยกมาไม่มีวันเสมอ (CHECK 0374)');
+  assert.equal(prepaidDueDate(draft, ''), null);
+  assert.equal(prepaidDueDate(draft, null), null);
+  assert.equal(prepaidDueDate(null, '2026-11-17'), null);
 });

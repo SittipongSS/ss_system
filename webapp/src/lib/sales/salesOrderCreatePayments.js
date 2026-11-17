@@ -5,6 +5,7 @@
 //    กติกา "งวดหนึ่งล้มต้องไม่ลากงวดอื่นและเงินงวดแรกล้มตาม" เคยมีแค่ยามอ่านซอร์สคุม (review S4 26/09)
 import { loadInstallments, updateInstallment } from './salesOrderInstallmentsStore.js';
 import { isOpeningInstallment } from './historicalOrders.js';
+import { prepaidDueDate } from './salesOrderPayments.js';
 
 /**
  * วันของงวด (กำหนดชำระ + วันวางบิล/รอเหตุการณ์) + เงินงวดแรกที่กรอกมาจากฟอร์มหน้าสร้าง
@@ -29,24 +30,33 @@ export async function applyCreateFormPayments(supabase, { orderId, dates, firstP
   const bySeq = new Map(rows.map((row) => [row.seq, row]));
 
   let dateError = null;
+  const written = new Map();
+  const failed = new Set();
   for (const { seq, patch } of dates || []) {
     const row = bySeq.get(seq);
     if (!row || isOpeningInstallment(row)) continue;
     try {
       await updateInstallment(supabase, row.id, patch);
+      written.set(seq, patch);
     } catch (writeError) {
       console.error('create SO: installment dates failed', orderId, seq, writeError);
       dateError = dateError || writeError;
+      failed.add(seq);
     }
   }
 
   if (firstPaidOn) {
     const first = bySeq.get(1);
     if (first) {
+      /* ⭐ กำหนดชำระว่าง = วันที่ลูกค้าจ่าย (`prepaidDueDate` · 17/11 SO-26110445-0) — ตัดสินจากค่าที่ลงฐานจริงแล้ว
+         (แถวสด + วันที่เพิ่งเขียนสำเร็จ) · วันของงวด 1 เขียนล้ม = ไม่เติม: คนกรอกวันไว้แล้ว ให้คำเตือนหลัง 201 พาไปแก้
+         ไม่เอาวันจ่ายไปกลบ (และการผูกเงินต้องไม่ล้มตามช่องวันที่) */
+      const dueDate = failed.has(1) ? null : prepaidDueDate({ ...first, ...(written.get(1) || {}) }, firstPaidOn);
       await updateInstallment(supabase, first.id, {
         paidOn: firstPaidOn,
         evidence: firstEvidence,
         note: first.note || 'ลูกค้าจ่ายมาก่อนออกใบ — บันทึกจากฟอร์มสร้างใบสั่งขาย',
+        ...(dueDate ? { dueDate } : {}),
       });
     }
   }
