@@ -178,7 +178,9 @@
 
 /* ⚠️ เยื้องรอบแก้ที่ **เซลล์** ไม่ใช่ที่เนื้อใน — เส้นตารางต้องลากยาวเต็มความกว้าง
    ไม่งั้นแถวรอบแก้จะอ่านเป็นตารางซ้อนตาราง */
-.childCell { padding-left: var(--space-6); }
+/* 🐞 คลาสเดี่ยวแพ้ `.premium-table td` (ความจำเพาะ 0-1-1) เงียบ ๆ ⇒ รอบแก้ไม่เคยเยื้องจริงบนจอ (วัด 18/11: padding 13px
+   ทุกแถว · ม-165 PR-2) — ผูกกับ `.wrap td` เหมือน `.idleCell` */
+.wrap td.childCell { padding-left: var(--space-6); }
 
 /* ── แถวขยายของรายการ (มติผู้ใช้ 2026-08-18) ─────────────────────────────
    สเปก · หมายเหตุผลลัพธ์ · ไฟล์แนบของแถวนั้น — เต็มความกว้างใต้แถวหลัก
@@ -236,4 +238,61 @@
   font-size: var(--fs-3);
   font-weight: var(--fw-semibold);
   color: var(--text-3);
+}
+
+/* ── แถวบรรทัดเดียว + กดกาง (ม-165 PR-2 · มติเจ้าของ 18/11/2026) ─────────────────────────────
+   ⭐ สองตาราง (พัฒนากลิ่น · พัฒนาสูตร) ใช้ `DevBoardRow` ตัวเดียว · ตารางเอกสารยังใช้ราง/ค้างมาเดิม
+   ⚠️ แถวจบแล้วจางด้วยสีตัวอักษร ไม่ใช่ opacity ทั้งแถว — ปุ่ม/เมนูในแถวต้องยังอ่านชัดและกดได้ */
+.colResult { width: 18%; min-width: 120px; }
+.resultCell { white-space: nowrap; }
+
+.wrap tr.settledRow > td { color: var(--text-3); }
+.settledRow .registryLink span,
+.settledRow .name strong { color: var(--text-3); }
+.rowOpen > td { border-bottom-color: transparent; }
+
+.nameRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1-5);
+}
+.nameBody { min-width: 0; flex: 1 1 auto; }
+
+.expandBtn,
+.expandSpacer {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+}
+.expandBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: transform var(--motion-fast);
+}
+.expandBtn[aria-expanded="true"] { transform: rotate(90deg); }
+.expandBtn:hover { color: var(--text); background: var(--panel-2); }
+.expandBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.noteHint {
+  display: inline-flex;
+  margin-top: var(--space-1);
+  color: var(--accent);
+}
+
+/* ค้างเกิน 7 วัน = แดง (เกณฑ์ที่ `rowTrack.js`) — บรรทัดรองในช่องผลลูกค้า แทนคอลัมน์ "ค้างมา" ที่ถอด */
+.idleLateText { color: var(--red); font-weight: var(--fw-semibold); }
+
+/* สเปกจาก PDR ที่ทุกแถวพูดเหมือนกัน (พัฒนาสูตร) — ขึ้นครั้งเดียวเหนือตาราง */
+.sharedSpec {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--panel-2);
 }
