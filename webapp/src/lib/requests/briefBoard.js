@@ -16,6 +16,7 @@ import { reworkBriefOf } from '@/lib/requests/rework';
 import { briefPerfumer } from '@/lib/requests/briefPerfumer';
 import { isDeliveredAsProduct } from '@/lib/requests/deliveredCategory';
 import { rowPriceLines } from '@/lib/requests/rowPrices';
+import { rowLineage } from '@/lib/requests/devBoardRows';
 
 // ผลลัพธ์จากลูกค้า → ป้าย + โทน · ยังไม่ตอบ = ยังไม่ถึงตาลูกค้า ไม่ใช่ลูกค้าเงียบ
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
@@ -60,6 +61,8 @@ function directionRow(item, all = []) {
     // ⭐ **สายพันธุ์ของงาน** — ฐานเก็บไว้แล้วแต่ตารางไม่เคยใช้ ⇒ รอบแก้ลอยเป็นแถว
     // ธรรมดา อ่านไม่ออกว่าแก้มาจากตัวไหน (ผู้ใช้ทัก 2026-08-10)
     parentId: item.derivedFromItemId || null,
+    // ม-164 — ยืนยันที่ระบุว่าแถม (ป้าย "ยืนยัน · แถม" ของตาราง ม-165)
+    freebie: !!item.freebieReason,
     outcome: item.outcome || null,
     outcomeLabel: item.outcome ? hopLabel('outcome', item.outcome) : null,
     outcomeTone: item.outcome ? OUTCOME_TONE[item.outcome] || 'neutral' : null,
@@ -86,37 +89,9 @@ function directionRow(item, all = []) {
  * เมื่อไร ตารางจะบอกยอดน้อยกว่าที่มีจริงโดยไม่มีอะไรฟ้อง
  */
 
-/**
- * เรียง direction **ตามสายพันธุ์** — ตัวต้นทางก่อน แล้วรอบแก้ที่แตกจากมันตามมาทันที
- *
- * ⭐ ผู้ใช้ยืนยันรูปร่างจริง (2026-08-10): 1 บรีฟพัฒนา 2-3 direction · ลูกค้าขอแก้แล้ว
- * พัฒนาต่ออีก 2-3 ที่ผูกกลับไปหาตัวต้นทาง ⇒ ใบที่เดินครบสองรอบมีได้ ~150 แถว
- * เรียงตาม sortOrder เฉย ๆ ทำให้ FR-04 (ที่แก้มาจาก FR-02) ไปอยู่ท้ายสุด อ่านไม่ออก
- * ว่าเกี่ยวกับใคร ทั้งที่ฐานเก็บ `derivedFromItemId` ไว้แล้ว
- *
- * ⚠️ `depth` ใช้เยื้องบนจอเท่านั้น — จำกัดที่ 1 เพราะรอบแก้ของรอบแก้ยังอ่านเป็น
- * "ลูกของต้นทางเดิม" ได้ ไม่ต้องเยื้องลึกจนคอลัมน์แรกหมดที่
- * ⚠️ ตัวที่พ่อไม่ได้อยู่ในบรีฟเดียวกัน (ข้อมูลเก่าก่อน #1049) ถือเป็นราก — ห้ามหายไป
- */
-function lineage(list = []) {
-  const byId = new Map(list.map((d) => [d.id, d]));
-  const children = new Map();
-  for (const d of list) {
-    if (!d.parentId || !byId.has(d.parentId)) continue;
-    if (!children.has(d.parentId)) children.set(d.parentId, []);
-    children.get(d.parentId).push(d);
-  }
-  const out = [];
-  const push = (d, depth) => {
-    out.push({ ...d, depth });
-    for (const kid of children.get(d.id) || []) push(kid, 1);
-  };
-  for (const d of list) {
-    if (d.parentId && byId.has(d.parentId)) continue;
-    push(d, 0);
-  }
-  return out;
-}
+/* ⭐ เรียงตามสายพันธุ์ (`rowLineage`) — ย้ายไปเป็นของกลางของสองตาราง (ม-165 PR-2 · `devBoardRows.js`) เพราะตารางพัฒนาสูตร
+   ต้องซ้อนรอบแก้ใต้ตัวแม่แบบเดียวกัน · กติกาเดิมครบ (depth ≤ 1 · พ่อไม่อยู่ในชุด = ราก · ไม่เดาจากรหัส) */
+const lineage = rowLineage;
 
 /**
  * สรุปของบรีฟก้อนเดียว — ใช้ทำแถบพับที่อ่านได้โดยไม่ต้องกาง
