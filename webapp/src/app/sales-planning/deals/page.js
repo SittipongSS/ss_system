@@ -18,7 +18,7 @@ import { forecastReviewWindow } from "@/lib/sales/forecastDue";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { createClient } from "@/lib/supabaseBrowser";
 import { CREATABLE_STAGES, DEAL_TYPES, DEAL_TYPE_LABELS, PIPELINE_STAGES, SALES_FEATURES, STAGE_LABELS, canCreateDeal, dealTypeOf, editableStages, isClosedStage, isWonStage, stageIndex } from "@/lib/salesPlanning";
-import { FORECAST_LEVELS, SCOPE_LABELS, businessLineBadge, dealTypeBadge, forecastBadge, initialDealForm, money, quoteStatusBadge, snapForecastLevel, stageBadge } from "@/components/salesPlanning/ui";
+import { FORECAST_LEVELS, SCOPE_LABELS, businessLineBadge, dealTypeBadge, forecastBadge, initialDealForm, snapForecastLevel, stageBadge } from "@/components/salesPlanning/ui";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
@@ -36,7 +36,6 @@ import ExcelDownloadButton from "@/components/ui/ExcelDownloadButton";
 import useReportPeriod from "@/lib/ui/useReportPeriod";
 import { DEAL_AXIS_OPTIONS, dealDeliveryMonth, dealDeliveryState, dealMissingDelivery, normalizeDealAxis } from "@/lib/sales/dealPeriod";
 import { formatMonthLabel } from "@/lib/datePeriods";
-import { linePackFormulaText } from "@/lib/sales/linePackView";
 import Segmented from "@/components/ui/Segmented";
 import MyTeamsFilter from "@/components/ui/MyTeamsFilter";
 import useMyTeamsFilter from "@/lib/useMyTeamsFilter";
@@ -48,8 +47,6 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import DetailRow from "@/components/ui/DetailRow";
 import RecordActionMenu from "@/components/ui/RecordActionMenu";
 import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/lib/sales/dealLifecycle";
-import ReadableText from "@/components/ui/ReadableText";
-import QuotationWonDialog from "@/components/salesPlanning/QuotationWonDialog";
 import { usePagination } from "@/lib/usePagination";
 import Pager from "@/components/ui/Pager";
 import Textarea from "@/components/ui/Textarea";
@@ -206,11 +203,6 @@ export default function SalesPlanningPipelinePage() {
   const [editLeadId, setEditLeadId] = useState("");
   const [createModal, setCreateModal] = useState(false); // โมดัลสร้างดีล (ตัวกลาง ใช้ร่วมกับฝั่งลีด)
   const [submitting, setSubmitting] = useState(false);
-  const [quoteModal, setQuoteModal] = useState(false);
-  const [quoteDeal, setQuoteDeal] = useState(null);
-  const [quotations, setQuotations] = useState([]);
-  const [quoteLoading, setQuoteLoading] = useState(false);
-  const [wonQuote, setWonQuote] = useState(null); // ใบที่กำลังยืนยัน Won (เปิดฟอร์มหลักฐาน)
   const [docModal, setDocModal] = useState(false);
   const [docDeal, setDocDeal] = useState(null);
   const [documents, setDocuments] = useState([]);
@@ -561,50 +553,6 @@ export default function SalesPlanningPipelinePage() {
       setError(e.message || "ลบดีลไม่สำเร็จ");
     }
   };
-
-  const loadQuotations = async (deal) => {
-    setQuoteLoading(true);
-    setError("");
-    try {
-      const res = await apiFetch(`/api/sales-planning/deals/${deal.id}/quotations`);
-      if (!res.ok) throw new Error((await res.json()).error || "โหลด quotation ไม่สำเร็จ");
-      setQuotations(await res.json());
-    } catch (e) {
-      setError(e.message || "โหลด quotation ไม่สำเร็จ");
-    } finally {
-      setQuoteLoading(false);
-    }
-  };
-
-  const openQuotations = async (deal) => {
-    setQuoteDeal(deal);
-    setQuotations([]);
-    setQuoteModal(true);
-    await loadQuotations(deal);
-  };
-
-  const createQuotation = async () => {
-    if (!quoteDeal) return;
-    setQuoteLoading(true);
-    setError("");
-    try {
-      const res = await apiFetch(`/api/sales-planning/deals/${quoteDeal.id}/quotations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "สร้าง quotation ไม่สำเร็จ");
-      await loadQuotations(quoteDeal);
-      await load();
-    } catch (e) {
-      setError(e.message || "สร้าง quotation ไม่สำเร็จ");
-    } finally {
-      setQuoteLoading(false);
-    }
-  };
-
-  // เปิดฟอร์มหลักฐาน Won (บังคับแนบสลิป/PO/เอกสารยืนยันสั่งซื้อ + วันที่เอกสาร)
-  const acceptQuotation = (quote) => setWonQuote(quote);
 
   const loadDocuments = async (deal) => {
     setDocLoading(true);
@@ -1199,95 +1147,6 @@ export default function SalesPlanningPipelinePage() {
           </form>
         )}
       </Modal>
-
-      <Modal open={quoteModal} onClose={() => setQuoteModal(false)} title={`Quotation${quoteDeal?.title ? ` · ${quoteDeal.title}` : ""}`} size="lg">
-        <div style={{ padding: 18 }}>
-          <div className="flex items-center gap-2 mb-3">
-            <div style={{ color: "var(--text-3)", fontSize: "var(--fs-5)" }}>
-              {quoteDeal?.projectId ? "สร้าง line จาก FG ใน PM project และ freeze ราคาขาย ณ วันที่สร้าง" : "ต้องสร้าง/ผูก PM project และ FG ก่อนจึง seed quotation อัตโนมัติได้"}
-            </div>
-            <div className="spacer" />
-            {/* ดีลปิด Won/Lost = ใบเสนอราคาถูกล็อกทั้งชุด — ซ่อนปุ่มสร้าง */}
-            {quoteDeal?.canEdit && !isClosedStage(quoteDeal?.stage) && (
-              <button type="button" className="btn btn-primary" onClick={createQuotation} disabled={quoteLoading || !quoteDeal?.projectId}>
-                <Plus size={15} aria-hidden="true" /> สร้างใบเสนอราคา
-              </button>
-            )}
-          </div>
-            <TableScroll aria-busy={quoteLoading} surface="auto"><table className="w-full text-sm">
-              <thead>
-                <tr>
-                  <th>เลขที่</th>
-                  <th>สถานะ</th>
-                  <th>วันที่</th>
-                  <th className="num">ยอดรวม</th>
-                  <th>รายการ</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {quotations.map((quote) => (
-                  <tr key={quote.id} className="premium-row">
-                    <td className="mono">{quote.quoteNumber}</td>
-                    <td>{quoteStatusBadge(quote.status)}</td>
-                    <td>{naText(quote.quoteDate)}</td>
-                    <td className="num mono">{money(quote.totalAmount)}</td>
-                    <td>
-                      {(quote.lines || []).length ? (
-                        <ul style={{ margin: 0, paddingLeft: 18 }}>
-                          {(quote.lines || []).slice(0, 3).map((line) => (
-                            <li key={line.id}>
-                              {line.fgCode ? <span className="mono">{line.fgCode}</span> : null}
-                              <ReadableText text={line.description} lines={2} empty="ไม่มีรายละเอียด" />
-                              {/* บรรทัดที่มีเลขแพ็ค (mig 0407) = "2 × 12 × 3,500.00" (แพ็ค × จำนวน × ราคา) · บรรทัดอื่นข้อความเดิม */}
-                              <span className="mono">{linePackFormulaText(line) ?? <>{line.qty} x {money(line.unitPrice)}</>}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : NA}
-                    </td>
-                    <td className="num">
-                      {["draft", "sent"].includes(quote.status) && (
-                        <div className="flex items-center gap-2 justify-end">
-                          {quoteDeal?.canEdit && (
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => acceptQuotation(quote)}
-                              disabled={quoteLoading}
-                            >
-                              Won
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {!quotations.length && (
-                  <tr>
-                    <td colSpan={6} style={{ padding: 24, textAlign: "center", color: "var(--text-3)" }}>
-                      ยังไม่มีใบเสนอราคาสำหรับดีลนี้
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table></TableScroll>
-        </div>
-      </Modal>
-
-      <QuotationWonDialog
-        open={!!wonQuote}
-        onClose={() => setWonQuote(null)}
-        quote={wonQuote}
-        deal={quoteDeal}
-        customerName={quoteDeal?.customerName}
-        onDone={async () => {
-          setWonQuote(null);
-          await loadQuotations(quoteDeal);
-          await load();
-        }}
-      />
 
       <Modal open={docModal} onClose={() => setDocModal(false)} title={`Documents${docDeal?.title ? ` · ${docDeal.title}` : ""}`} size="lg">
         <div style={{ padding: 18 }}>
