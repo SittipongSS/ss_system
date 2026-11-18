@@ -51,7 +51,7 @@ import { hasServicePackageLine, orderBusinessLineOf } from '@/lib/sales/serviceO
 import { addDays, daysBetween, isConfirmed, monthEdge, pipelineCoverageIssues, wholeMonthsIn } from '@/lib/sales/paymentCoverage';
 import { NEED_NONE, billingRuleMonthly, billingRuleNeedsBillingDate, installmentNeed } from '@/lib/sales/billingRule';
 import { fillInputRows, fillKindOf, fillTargetsOf } from '@/lib/sales/installmentDateDrafts';
-import { installmentRefunded, installmentVoid, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
+import { installmentCustomerPaid, installmentRefunded, installmentVoid, paymentNotRequired } from '@/lib/sales/salesOrderPayments';
 import { bindTargetError } from '@/lib/service/intake';
 import { isHistoricalOrder, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 import { fmtDate, fmtMoney, fmtNumber, fmtYearMonth } from '@/lib/format';
@@ -1344,11 +1344,6 @@ function coverageIssue(item, { live, covered }) {
     { ...args, between: [prev?.seq ?? '—', row.seq ?? '—'] });
 }
 
-/* ลูกค้าจ่ายงวดนี้แล้ว (ตามที่ฝ่ายขาย/บัญชีบันทึก) — มีวันชำระ และบัญชีไม่ได้ตีกลับหลักฐาน
-   · ตีกลับ (`rejected`) = บัญชีบอกว่าเงินยังไม่เข้าจริง ⇒ กลับไปขอกำหนดชำระเหมือนงวดที่ยังไม่จ่าย (paidOn ยังค้างบนแถว)
-   · ถอนการแจ้ง (`withdraw`) ล้าง paidOn อยู่แล้ว ⇒ กลับมาขอกำหนดชำระเอง */
-const customerPaid = (row) => Boolean(isoDay(row?.paidOn)) && text(row?.status) !== 'rejected';
-
 /* ด่านงวดของใบแพ็คเกจ (D7/D8) — ใช้ร่วมกันทั้งข้อที่ยังขาดและคำเตือน ให้สองฝั่งตัดสินจากชุดเดียวกัน */
 function installmentFindings(ctx, totals) {
   const findings = { issues: [], warnings: [], live: [], unconfirmedCovered: 0, confirmedUncovered: 0 };
@@ -1403,11 +1398,11 @@ function installmentFindings(ctx, totals) {
       findings.issues.push(makeIssue('billing_missing', { ...at, billingMode, dateFill: dateFillOf(row) }, { seq: row.seq, anyday: billingMode === 'anyday' }));
     }
     /* ⭐ มติเจ้าของ 18/11/2026 (SO-26110445-0): งวดมีสามวัน — วันวางบิล · กำหนดชำระ · วันชำระ (จ่ายจริง)
-         **ลูกค้าจ่ายแล้ว = มีวันชำระ ⇒ ไม่ขอกำหนดชำระ** (`customerPaid`) · ยังไม่รอให้บัญชีรับรอง เพราะงวดของใบร่าง
+         **ลูกค้าจ่ายแล้ว = มีวันชำระ ⇒ ไม่ขอกำหนดชำระ** (`installmentCustomerPaid` · salesOrderPayments.js) · ยังไม่รอให้บัญชีรับรอง เพราะงวดของใบร่าง
          ไปถึงบัญชีต่อเมื่อใบอนุมัติแล้ว (ด่านนี้ขอสิ่งที่ไม่มีความหมายกับงวดที่เงินเข้าแล้ว)
        🐞 เดิมขอกำหนดชำระทุกงวดที่บัญชียังไม่รับรอง ⇒ งวดที่บันทึกจ่ายแล้วและขอใบวางบิลแล้ว (ช่องวันล็อก
           `installmentDateLock`) ยื่นไม่ได้และแก้บนจอไม่ได้ (ทางตัน) · #2066 เคยแก้ด้วยการคัดลอกวันชำระลงกำหนดชำระ ถอนแล้ว */
-    if (!isoDay(row.dueDate) && !event && !customerPaid(row)) {
+    if (!isoDay(row.dueDate) && !event && !installmentCustomerPaid(row)) {
       findings.issues.push(makeIssue('due_missing', { ...at, dateFill: dateFillOf(row) }, { seq: row.seq }));
     }
     if (!hasCover(row)) {
