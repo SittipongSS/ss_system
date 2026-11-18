@@ -310,6 +310,21 @@ test('งวดผูกเหตุการณ์ (ไม่มีกำหน
   assert.equal(issues[0].message, 'งวด 4: ยังไม่ใส่กำหนดชำระ — หรือ ‘ยังไม่รู้วัน…’ ในปฏิทินกำหนดชำระ');
 });
 
+/* ⭐ มติเจ้าของ 18/11/2026 (SO-26110445-0) — ลูกค้าจ่ายแล้ว (มีวันชำระ) ไม่ต้องมีกำหนดชำระ แม้บัญชียังไม่รับรอง
+   (งวดที่ขอใบวางบิลแล้วช่องวันล็อก — เดิมด่านขอช่องที่จอไม่ให้กรอก = ทางตัน) · บัญชีตีกลับ = กลับไปขอเหมือนยังไม่จ่าย */
+test('งวดที่ลูกค้าจ่ายแล้ว (มีวันชำระ) ไม่ขอกำหนดชำระ · บัญชีตีกลับหลักฐาน = ขอเหมือนเดิม', () => {
+  const rows = monthlyRows();
+  rows[0] = { ...rows[0], dueDate: null, paidOn: '2026-11-17', status: 'pending', billingRequestId: 'DR-1' };
+  rows[1] = { ...rows[1], dueDate: null, paidOn: '2026-11-18', status: 'reported' };
+  assert.deepEqual(serviceSetupIssues(completeCtx({ installments: rows })), []);
+  rows[1] = { ...rows[1], status: 'rejected' };
+  const issues = serviceSetupIssues(completeCtx({ installments: rows }));
+  assert.deepEqual(keys(issues), ['due_missing']);
+  assert.equal(issues[0].seq, 2);
+  rows[1] = { ...rows[1], status: 'pending', paidOn: null };
+  assert.deepEqual(keys(serviceSetupIssues(completeCtx({ installments: rows }))), ['due_missing'], 'ถอนการแจ้ง (ล้างวันชำระ) = ขอกำหนดชำระอีก');
+});
+
 test('ลูกค้ามีรอบวางบิลรายเดือน: ต้องมีวันวางบิลหรือเหตุการณ์ · ลูกค้าไม่มีเครดิตไม่ต้อง', () => {
   const monthly = { billing: { mode: 'monthly', days: [25] }, payment: { mode: 'credit', days: 30 } };
   const rows = monthlyRows();

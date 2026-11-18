@@ -225,15 +225,3 @@ test('จอ evidence-add: ปุ่มถามด่านเดียวก�
   assert.ok(page.includes('if (action === "report" || action === "evidence-add") {'),
     'ไม่อัปไฟล์ก่อน = ส่ง evidence ว่าง ⇒ 400 ทุกครั้ง');
 });
-
-// ── กำหนดชำระของงวดร่างที่บันทึกเงินแล้ว (17/11/2026 · SO-26110445-0) ───────────────────────────────────
-test('PATCH report: งวดร่างที่ไม่มีกำหนดชำระได้วันที่จ่าย — ผ่านตัวตัดสินกลาง prepaidDueDate ไม่เขียนกติกาเอง', () => {
-  const route = code(ROUTE);
-  const branch = slice(route, "} else if (action === 'report') {", "} else if (action === 'evidence-add') {");
-  assert.ok(branch.includes('prepaidDueDate(row, paidOn)'), 'report ต้องถามตัวตัดสินกลางด้วยแถวสด');
-  assert.ok(branch.includes('...(dueDate ? { dueDate } : {}),'), 'ไม่เติม = ไม่ส่งคีย์ dueDate (ห้ามล้างกำหนดชำระเดิม)');
-  const dialog = code('components/salesPlanning/InstallmentMoneyInDialogs.js');
-  assert.ok(dialog.includes('prepay && prepaidDueDate(row, paidOn)'), 'โมดัลบอกคนกดด้วยกติกาเดียวกับ server');
-  const create = code('app/sales-planning/sales-orders/new/page.js');
-  assert.ok(create.includes('prepaidDueDate({ ...plannedRows[0]'), 'ฟอร์มสร้างใบบอกก่อนกดสร้างด้วยกติกาเดียวกับ POST');
-});

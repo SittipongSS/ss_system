@@ -121,39 +121,3 @@ test('ใบไม่มีงวด / ไม่มีอะไรให้เ�
   await applyCreateFormPayments(none, { orderId: ORDER, dates: [], firstPaidOn: '' });
   assert.deepEqual(none.writes, []);
 });
-
-/* ⭐ 17/11/2026 SO-26110445-0 — "ลูกค้าจ่ายงวดที่ 1 มาแล้ว" โดยไม่ใส่กำหนดชำระงวด 1 เคยได้งวดร่างที่ไม่มีกำหนดชำระ
-   ⇒ ด่านยื่นใบแพ็คเกจ (`due_missing`) ค้าง · ตอนนี้กำหนดชำระว่าง = วันที่ลูกค้าจ่าย (prepaidDueDate) */
-test('จ่ายงวดแรกมาแล้ว + งวด 1 ไม่มีกำหนดชำระ: เติมกำหนดชำระ = วันที่จ่าย ในคำสั่งเดียวกับการผูกเงิน', async () => {
-  const supabase = fakeSupabase(rowsOf());
-  await applyCreateFormPayments(supabase, {
-    orderId: ORDER,
-    dates: [{ seq: 2, patch: { dueDate: '2026-12-25' } }],
-    firstPaidOn: '2026-11-17',
-    firstEvidence: [],
-  });
-  assert.deepEqual(written(supabase), [
-    { id: 'I2', patch: { dueDate: '2026-12-25' } },
-    { id: 'I1', patch: { paidOn: '2026-11-17', evidence: [], note: 'ลูกค้าจ่ายมาก่อนออกใบ — บันทึกจากฟอร์มสร้างใบสั่งขาย', dueDate: '2026-11-17' } },
-  ]);
-});
-
-test('งวด 1 มีวันวางบิลอย่างเดียว: ยังเติมกำหนดชำระ · งวด 1 รอเหตุการณ์ / กรอกกำหนดชำระเอง: ไม่เติม', async () => {
-  const billOnly = fakeSupabase(rowsOf());
-  await applyCreateFormPayments(billOnly, {
-    orderId: ORDER, dates: [{ seq: 1, patch: { billingDate: '2026-11-20' } }], firstPaidOn: '2026-11-17', firstEvidence: [],
-  });
-  assert.equal(written(billOnly)[1].patch.dueDate, '2026-11-17');
-
-  const event = fakeSupabase(rowsOf());
-  await applyCreateFormPayments(event, {
-    orderId: ORDER, dates: [{ seq: 1, patch: { billingEvent: 'ก่อนติดตั้ง' } }], firstPaidOn: '2026-11-17', firstEvidence: [],
-  });
-  assert.ok(!('dueDate' in written(event)[1].patch), 'รอเหตุการณ์อยู่กับกำหนดชำระไม่ได้');
-
-  const typed = fakeSupabase(rowsOf());
-  await applyCreateFormPayments(typed, {
-    orderId: ORDER, dates: [{ seq: 1, patch: { dueDate: '2026-12-01' } }], firstPaidOn: '2026-11-17', firstEvidence: [],
-  });
-  assert.ok(!('dueDate' in written(typed)[1].patch), 'กำหนดชำระที่คนกรอกห้ามทับ');
-});

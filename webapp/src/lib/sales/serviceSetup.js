@@ -1343,6 +1343,11 @@ function coverageIssue(item, { live, covered }) {
     { ...args, between: [prev?.seq ?? '—', row.seq ?? '—'] });
 }
 
+/* ลูกค้าจ่ายงวดนี้แล้ว (ตามที่ฝ่ายขาย/บัญชีบันทึก) — มีวันชำระ และบัญชีไม่ได้ตีกลับหลักฐาน
+   · ตีกลับ (`rejected`) = บัญชีบอกว่าเงินยังไม่เข้าจริง ⇒ กลับไปขอกำหนดชำระเหมือนงวดที่ยังไม่จ่าย (paidOn ยังค้างบนแถว)
+   · ถอนการแจ้ง (`withdraw`) ล้าง paidOn อยู่แล้ว ⇒ กลับมาขอกำหนดชำระเอง */
+const customerPaid = (row) => Boolean(isoDay(row?.paidOn)) && text(row?.status) !== 'rejected';
+
 /* ด่านงวดของใบแพ็คเกจ (D7/D8) — ใช้ร่วมกันทั้งข้อที่ยังขาดและคำเตือน ให้สองฝั่งตัดสินจากชุดเดียวกัน */
 function installmentFindings(ctx, totals) {
   const findings = { issues: [], warnings: [], live: [], unconfirmedCovered: 0, confirmedUncovered: 0 };
@@ -1396,7 +1401,12 @@ function installmentFindings(ctx, totals) {
     if (needsBilling && installmentNeed(row, ctx?.customerBillingRule) !== NEED_NONE && !isoDay(row.billingDate) && !event) {
       findings.issues.push(makeIssue('billing_missing', { ...at, billingMode, dateFill: dateFillOf(row) }, { seq: row.seq, anyday: billingMode === 'anyday' }));
     }
-    if (!isoDay(row.dueDate) && !event) {
+    /* ⭐ มติเจ้าของ 18/11/2026 (SO-26110445-0): งวดมีสามวัน — วันวางบิล · กำหนดชำระ · วันชำระ (จ่ายจริง)
+         **ลูกค้าจ่ายแล้ว = มีวันชำระ ⇒ ไม่ขอกำหนดชำระ** (`customerPaid`) · ยังไม่รอให้บัญชีรับรอง เพราะงวดของใบร่าง
+         ไปถึงบัญชีต่อเมื่อใบอนุมัติแล้ว (ด่านนี้ขอสิ่งที่ไม่มีความหมายกับงวดที่เงินเข้าแล้ว)
+       🐞 เดิมขอกำหนดชำระทุกงวดที่บัญชียังไม่รับรอง ⇒ งวดที่บันทึกจ่ายแล้วและขอใบวางบิลแล้ว (ช่องวันล็อก
+          `installmentDateLock`) ยื่นไม่ได้และแก้บนจอไม่ได้ (ทางตัน) · #2066 เคยแก้ด้วยการคัดลอกวันชำระลงกำหนดชำระ ถอนแล้ว */
+    if (!isoDay(row.dueDate) && !event && !customerPaid(row)) {
       findings.issues.push(makeIssue('due_missing', { ...at, dateFill: dateFillOf(row) }, { seq: row.seq }));
     }
     if (!hasCover(row)) {

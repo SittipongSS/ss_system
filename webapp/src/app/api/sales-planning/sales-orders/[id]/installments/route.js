@@ -17,7 +17,7 @@ import { notifyTaxInvoice } from '@/lib/sales/taxInvoiceNotify';
 import { orderHasServiceRounds } from '@/lib/sales/serviceOrders';
 import {
   INSTALLMENT_STALE_MESSAGE, installmentActionError, installmentReportOutcome,
-  installmentScheduleAllowed, prepaidDueDate, installmentStale, installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock,
+  installmentScheduleAllowed, installmentStale, installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock,
   withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
 import {
@@ -833,14 +833,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          ⚠️ รับเฉพาะตอนส่งมาจริง — ไม่ส่ง = ไม่แตะค่าเดิม (ฝ่ายขายอาจกรอกไว้ก่อนแล้ว) */
       if (coversFrom && !isDate(coversFrom)) return badRequest('รูปแบบวันเริ่มช่วงครอบไม่ถูกต้อง');
       if (coversTo && !isDate(coversTo)) return badRequest('รูปแบบวันสิ้นสุดช่วงครอบไม่ถูกต้อง');
-      /* ⭐ งวดร่างที่ยังไม่มีกำหนดชำระ = ใช้วันที่ลูกค้าจ่าย (`prepaidDueDate` · 17/11 SO-26110445-0) — ไม่งั้นด่านยื่นของ
-         ใบแพ็คเกจ (`due_missing`) ค้างใบที่บันทึกจ่ายแล้ว · มีกำหนดชำระ/รอเหตุการณ์/ตรึงแล้ว = ไม่แตะ */
-      const dueDate = prepaidDueDate(row, paidOn);
       patch = {
         status: outcome,
         paidOn,
         evidence,
-        ...(dueDate ? { dueDate } : {}),
         ...(coversFrom || coversTo ? { coversFrom, coversTo } : {}),
         reportedById: user.id,
         reportedByName: actorName,
