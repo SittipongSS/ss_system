@@ -376,6 +376,15 @@ test('§3 สถานะวางบิล/กำหนดชำระ — ไ�
   assert.equal(dueState(inst(4, { status: 'confirmed', dueDate: '2026-09-01' }), { todayIso: TODAY }).key, 'settled');
 });
 
+/* มติเจ้าของ 18/11/2026 — งวดร่างที่บันทึกว่าลูกค้าจ่ายแล้ว = settled (ไม่แดง "เลยกำหนด" · ไม่ "เลยรอบวางบิล" · ไม่ยิงกระดิ่ง) */
+test('งวดที่ลูกค้าจ่ายแล้ว (pending + วันชำระ) = settled · บัญชีตีกลับ/ไม่มีวันชำระ = แบบเดิม', () => {
+  const paid = inst(1, { status: 'pending', paidOn: '2026-09-01', billingDate: '2026-08-20', dueDate: '2026-09-01' });
+  assert.equal(dueState(paid, { todayIso: TODAY }).key, 'settled');
+  assert.equal(billingState(paid, CREDIT30, { todayIso: TODAY }).key, 'settled');
+  assert.equal(dueState({ ...paid, status: 'rejected' }, { todayIso: TODAY }).key, 'late', 'บัญชีตีกลับ = เงินยังไม่เข้า');
+  assert.equal(dueState({ ...paid, paidOn: null }, { todayIso: TODAY }).key, 'late', 'ไม่มีวันชำระ = ยังไม่จ่าย');
+});
+
 /* ═══ §4 · ตัวอย่าง A–M ══════════════════════════════════════════════════════════════════════════ */
 
 test('§4 A · มีเมตตา — เครดิต 30: 21 ต.ค. → 30 พ.ย. · 8 ต.ค. → 16 พ.ย. · เครดิต 0: 21 ต.ค. → 30 ต.ค. (ตามปฏิทินลูกค้า) · ชิปจากวันนี้', () => {

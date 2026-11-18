@@ -23,6 +23,17 @@ import { isOpeningInstallment } from './historicalOrders.js';
 /* งวดที่ "รับเงินแล้วจริง" — ที่เดียวที่นิยามคำนี้ */
 export const isConfirmed = (row) => String(row?.status || '') === 'confirmed';
 
+/* ── ลูกค้าจ่ายงวดนี้แล้ว (มติเจ้าของ 18/11/2026) ─────────────────────────────────────────────
+   งวดมีสามวัน — วันวางบิล · กำหนดชำระ · วันชำระ · **จ่ายแล้ว = มีวันชำระ** (ต่างจาก `isConfirmed` = บัญชีรับรองแล้ว)
+   ⭐ ตัวตัดสินเดียวของ: ด่านยื่นใบแพ็คเกจ (`due_missing` · #2073) · เซลล์ "กำหนดชำระ / จ่ายจริง" (#2076) ·
+     ป้าย/ตัวนับ "เลยกำหนด" ทุกจอฝั่งขาย (แผงงวด · หัวใบ · รายการ SO · กระดิ่ง) — จ่ายแล้วไม่เลยกำหนด
+   · บัญชีตีกลับ (`rejected`) = เงินยังไม่เข้าจริง ⇒ เหมือนยังไม่จ่าย (paidOn ยังค้างบนแถว)
+   · ถอนการแจ้ง (`withdraw`) ล้าง paidOn อยู่แล้ว ⇒ กลับเป็นยังไม่จ่ายเอง
+   ⚠️ ไม่ใช่ด่านเงินของนัดบริการ (`paidThrough` · `gateHeldBy`) — ด่านนั้นยังรอบัญชีรับรองเหมือนเดิม
+   ⚠️ อยู่ไฟล์นี้ (import แค่ historicalOrders.js) เพื่อให้ billingRuleV4.js ใช้ได้โดยไม่วน import · salesOrderPayments.js ส่งต่อ */
+export const installmentCustomerPaid = (row) => /^\d{4}-\d{2}-\d{2}$/.test(String(row?.paidOn ?? '').trim().slice(0, 10))
+  && String(row?.status ?? '').trim() !== 'rejected';
+
 const dateOf = (value) => {
   const text = String(value ?? '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;

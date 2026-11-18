@@ -329,7 +329,8 @@ test('🔴 แผงงวด: ยอด/เตือนนับจากงว
   assert.match(panel, /const liveRows = saved\.filter\(\(r\) => !installmentVoid\(r, order\)\);/);
   assert.match(panel, /const rollup = paymentRollup\(liveRows, todayIso\);/);
   assert.match(panel, /const rejectedCount = liveRows\.filter\(\(r\) => r\.status === "rejected"\)\.length;/);
-  assert.match(panel, /const overdue = !installmentVoid\(row, order\) && row\.status !== "confirmed" && row\.dueDate && String\(row\.dueDate\) < String\(todayIso\);/);
+  /* ⭐ มติเจ้าของ 18/11/2026: จ่ายแล้ว (`installmentCustomerPaid`) ไม่เลยกำหนด — เงื่อนไขต่อท้ายบรรทัดถัดไป */
+  assert.match(panel, /const overdue = !installmentVoid\(row, order\) && row\.status !== "confirmed" && row\.dueDate && String\(row\.dueDate\) < String\(todayIso\)\s*&& !installmentCustomerPaid\(row\);/);
   assert.match(panel, /\(historical \|\| movedAway \|\| cancelledPipeline \? \[\] : previewInstallments\(/);
   assert.match(panel, /\["reported", "confirmed"\]\.includes\(row\.status\) && !installmentRefunded\(row\)/);
 });
