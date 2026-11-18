@@ -363,7 +363,8 @@ test('แผงงวด: วันงวดสองช่องแยก (ม�
   assert.doesNotMatch(panel, /new URLSearchParams\(/, 'ห้ามประกอบลิงก์คำร้องเองในแผง');
   assert.match(panel, /installmentBillingRequested\(row, requestById\)/);
   // แดง "เลยกำหนด" ยังอ่าน dueDate ช่องเดียว — วันวางบิลไม่มีทางแดง
-  assert.match(panel, /const overdue = !installmentVoid\(row, order\) && row\.status !== "confirmed" && row\.dueDate && String\(row\.dueDate\) < String\(todayIso\);/);
+  /* ⭐ มติเจ้าของ 18/11/2026: จ่ายแล้ว (`installmentCustomerPaid`) ไม่เลยกำหนด — เงื่อนไขต่อท้ายบรรทัดถัดไป */
+  assert.match(panel, /const overdue = !installmentVoid\(row, order\) && row\.status !== "confirmed" && row\.dueDate && String\(row\.dueDate\) < String\(todayIso\)\s*&& !installmentCustomerPaid\(row\);/);
   assert.doesNotMatch(panel, /billingDate[^;\n]*<\s*String\(todayIso\)/);
   const page = code(SO_PAGE);
   assert.match(page, /user=\{\{ id: order\.meId, role, department: order\.meDepartment \}\}/,

@@ -1910,3 +1910,27 @@ test('installmentCustomerPaid: มีวันชำระและบัญช�
   assert.equal(installmentCustomerPaid({ status: 'pending', paidOn: '  ' }), false);
   assert.equal(installmentCustomerPaid(null), false);
 });
+
+/* ⭐ มติเจ้าของ 18/11/2026 — งวดที่ลูกค้าจ่ายแล้ว (มีวันชำระ · บัญชีไม่ได้ตีกลับ) ไม่เลยกำหนด และไม่ใช่ "กำหนดชำระถัดไป"
+   ทั้งแผงงวด/หัวใบ (paymentRollup) และรายการ SO (salesOrderPaymentCell) · บัญชีตีกลับ = ยังไม่จ่าย = เลยกำหนดได้ */
+test('จ่ายแล้วไม่เลยกำหนด: paymentRollup + salesOrderPaymentCell · nextDue ข้ามงวดที่จ่ายแล้ว · ตีกลับยังเลยกำหนด', () => {
+  const TODAY = '2026-11-18';
+  const rows = [
+    { id: 'A', seq: 1, status: 'pending', amount: 100, dueDate: '2026-11-17', paidOn: '2026-11-17' },          // งวดร่างที่บันทึกจ่าย
+    { id: 'B', seq: 2, status: 'reported', amount: 100, dueDate: '2026-11-10', paidOn: '2026-11-12', frozenAt: 'x' }, // แจ้งชำระรอบัญชีตรวจ
+    { id: 'C', seq: 3, status: 'pending', amount: 100, dueDate: '2026-12-01' },                                  // ยังไม่จ่าย ยังไม่ถึง
+  ];
+  const r = paymentRollup(rows, TODAY);
+  assert.equal(r.overdueCount, 0, 'จ่ายแล้วทั้งสองงวด — ไม่มีอะไรเลยกำหนด');
+  assert.equal(r.nextDue, '2026-12-01', 'กำหนดถัดไป = งวดที่ยังไม่จ่าย');
+  assert.equal(salesOrderPaymentCell(rows, null, TODAY).overdue, 0);
+  assert.equal(salesOrderPaymentCell(rows, null, TODAY).nextDue, '2026-12-01');
+
+  const rejected = rows.map((row) => (row.id === 'B' ? { ...row, status: 'rejected' } : row));
+  assert.equal(paymentRollup(rejected, TODAY).overdueCount, 1, 'บัญชีตีกลับ = เงินยังไม่เข้า ⇒ เลยกำหนด');
+  assert.equal(paymentRollup(rejected, TODAY).nextDue, '2026-11-10');
+  assert.equal(salesOrderPaymentCell(rejected, null, TODAY).overdue, 1);
+
+  const unpaid = rows.map((row) => (row.id === 'A' ? { ...row, paidOn: null } : row));
+  assert.equal(paymentRollup(unpaid, TODAY).overdueCount, 1, 'ยังไม่จ่าย + เลยวัน = เลยกำหนดเหมือนเดิม');
+});

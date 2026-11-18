@@ -1036,8 +1036,9 @@ export default function SalesOrderPaymentPanel({
   const timelineRows = setupShown && periodReady && showCoverage && !deadPipeline
     ? liveRows.filter((row) => row.coversFrom && row.coversTo && row.coversFrom <= row.coversTo)
     : [];
+  /* จ่ายแล้ว (ยังไม่รับรอง) = "ยังไม่รับรอง" ไม่ใช่ "เลยกำหนดชำระ" — มติเจ้าของ 18/11/2026 */
   const timelineKind = (row) => (row.status === "confirmed" ? "paid"
-    : row.dueDate && String(row.dueDate) < String(todayIso) ? "overdue" : "planned");
+    : row.dueDate && String(row.dueDate) < String(todayIso) && !installmentCustomerPaid(row) ? "overdue" : "planned");
   const timelineSegments = timelineRows.map((row) => ({
     key: row.id, kind: timelineKind(row), from: row.coversFrom, to: row.coversTo,
     label: `งวด ${row.seq} · ${fmtDate(row.coversFrom)}–${fmtDate(row.coversTo)}`,
@@ -1329,7 +1330,8 @@ export default function SalesOrderPaymentPanel({
             <tbody>
               {rows.map((row) => {
                 // งวดโมฆะของใบยกเลิก/ถูกแทน ไม่ใช่ "เลยกำหนด" (review UI-3 · installmentVoid)
-                const overdue = !installmentVoid(row, order) && row.status !== "confirmed" && row.dueDate && String(row.dueDate) < String(todayIso);
+                const overdue = !installmentVoid(row, order) && row.status !== "confirmed" && row.dueDate && String(row.dueDate) < String(todayIso)
+                  && !installmentCustomerPaid(row); // จ่ายแล้วไม่เลยกำหนด (มติเจ้าของ 18/11/2026)
                 const evidence = Array.isArray(row.evidence) ? row.evidence : [];
 
                 /* ⭐ **ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…"** (มติผู้ใช้ 2026-08-01 · RowActionMenu)
