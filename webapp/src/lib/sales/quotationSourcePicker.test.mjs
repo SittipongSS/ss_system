@@ -231,20 +231,18 @@ test('เปลี่ยนลูกค้า: ต้องมีจริง + 
   );
 });
 
-test('เปลี่ยนลูกค้า: ห้ามให้ดีลกับโครงการเป็นคนละลูกค้า (เคส DL-26080193)', () => {
+/* ⭐ ยุบโครงการ (มติเจ้าของ 18/11/2026): ด่าน "ดีลกับโครงการต้องเป็นลูกค้าเดียวกัน" (เคส DL-26080193) ถอดแล้ว —
+   โครงการเป็นคลังอ่านอย่างเดียว · ดีลเก่าในโครงการใช้กติกาเดียวกับดีลทั่วไป (ล็อกเมื่อมีเอกสารงอก · ล็อกเมื่อ Won) */
+test('เปลี่ยนลูกค้า: ดีลเก่าในโครงการเปลี่ยนเป็นลูกค้ารายอื่นได้ จนกว่าจะมีเอกสารงอก — โครงการไม่มีผลแล้ว', () => {
   const project = { id: 'PRJ-1', code: 'PJ-26080114', customerId: 'CUS-1', customerName: 'ลูกค้า ก' };
-  assert.match(
-    dealCustomerPatchError({ deal: { id: 'D1', projectId: 'PRJ-1' }, customer: CUS2, project }),
-    /PJ-26080114 เป็นของ ลูกค้า ก/,
-  );
-  // ตรงกับโครงการ = ผ่าน
-  assert.equal(dealCustomerPatchError({ deal: { id: 'D1', projectId: 'PRJ-1' }, customer: CUS, project }), null);
-  // ⚠️ ล้างเป็นค่าว่างต้องยังทำได้ทั้งที่ผูกโครงการ — เป็นทางออกจากทางตัน
-  // (ล้างลูกค้า → ย้ายโครงการ → ตั้งลูกค้าใหม่) และตรงกับ hasCompatibleProjectCustomer
-  assert.equal(
-    dealCustomerPatchError({ deal: { id: 'D1', projectId: 'PRJ-1', customerId: 'CUS-1' }, customer: null, project }),
-    null,
-  );
+  const oldDeal = { id: 'D1', projectId: 'PRJ-1', customerId: 'CUS-1' };
+  assert.equal(dealCustomerPatchError({ deal: oldDeal, customer: CUS2, project }), null, 'ส่ง project มาก็ไม่มีผล');
+  assert.equal(dealCustomerPatchError({ deal: oldDeal, customer: CUS2 }), null);
+  assert.equal(dealCustomerPatchError({ deal: oldDeal, customer: null }), null, 'ล้างค่าได้');
+  assert.match(dealCustomerPatchError({ deal: oldDeal, customer: CUS2, counts: { quotations: 1 } }), /ใบเสนอราคา 1/, 'มีเอกสารงอกแล้ว = ล็อก');
+  assert.match(dealCustomerPatchError({ deal: oldDeal, customer: CUS2, isWon: true }), /ปิด Won/);
+  const src = readFileSync(new URL('./dealCustomerAdopt.js', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(src, /project/, 'ตัวตัดสินไม่อ่านโครงการแล้ว');
 });
 
 test('เปลี่ยนลูกค้า: มีเอกสารงอกจากดีลแล้ว = ห้ามเปลี่ยน และต้องบอกว่าติดอะไรกี่ใบ', () => {

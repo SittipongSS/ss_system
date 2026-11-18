@@ -64,9 +64,9 @@ export function dealCustomerAdoptNote(deal, customer) {
    **ตรึงลูกค้าเดิมไว้โดยเจตนา** (หลักฐานการค้า) ⇒ ดีลกับเอกสารของมันจะเถียงกันถาวร
    จึงยอมให้เปลี่ยนเฉพาะตอนที่ยังไม่มีอะไรงอกจากดีลใบนั้น
 
-   ⚠️ **ล้างเป็นค่าว่างได้แม้ผูกโครงการอยู่** — ตรงกับ `hasCompatibleProjectCustomer`
-   ที่ยอมให้ดีลไร้ลูกค้าอยู่ในโครงการได้ · เส้นทางออกจากทางตันคือ ล้างลูกค้า →
-   ย้ายโครงการ → ตั้งลูกค้าใหม่ ปิดกั้นตรงนี้เมื่อไรคือทำให้ดีลที่ผูกผิดแก้ไม่ได้เลย */
+   ⭐ **ยุบโครงการ (มติเจ้าของ 18/11/2026)**: ด่านชั้น "ดีลเก่าในโครงการเปลี่ยนได้เฉพาะลูกค้าของโครงการ" ถอดแล้ว —
+      โครงการเป็นคลังอ่านอย่างเดียว (มติ ⑩) · ดีลเก่าใช้กติกาเดียวกับดีลทั่วไป: เปลี่ยน/ล้างลูกค้าได้จนกว่าจะมีของงอก
+      จากดีล (ใบเสนอราคา · ใบสั่งขาย · คำร้อง) แล้วจึงล็อก · ดีล Won ล็อกเสมอ */
 
 /** สรุปของที่งอกจากดีลแล้ว — ตัวเลขไว้บอกผู้ใช้ว่าติดอะไรอยู่กี่ใบ */
 export function dealAttachmentSummary(counts = {}) {
@@ -80,11 +80,12 @@ export function dealAttachmentSummary(counts = {}) {
 
 /**
  * ด่านเดียวของ "ลูกค้าของดีลเปลี่ยนได้ไหม" — ใช้ที่ `PATCH deals/[id]`
- * `customer` = แถวลูกค้าปลายทาง (null = ล้างค่า) · `project` = โครงการที่ดีลผูกอยู่
+ * `customer` = แถวลูกค้าปลายทาง (null = ล้างค่า)
  * `counts` = จำนวนเอกสารที่ผูกดีล · `isWon` = ดีลปิด Won แล้ว
+ * (`project` — ด่านลูกค้าของโครงการ — ถอดแล้ว 18/11/2026 · ส่งมาก็ไม่มีผล)
  */
 export function dealCustomerPatchError({
-  deal, customer = null, requestedId = null, project = null, counts = {}, isWon = false,
+  deal, customer = null, requestedId = null, counts = {}, isWon = false,
 } = {}) {
   if (!deal) return 'ไม่พบดีล';
   const current = String(deal.customerId || '');
@@ -99,16 +100,7 @@ export function dealCustomerPatchError({
   // ดีลที่ปิดแล้วคือหลักฐาน ไม่ใช่ร่าง — ยอดจริงถูกผูกกับลูกค้ารายนี้ไปแล้ว
   if (isWon) return 'ดีลปิด Won แล้ว — เปลี่ยนลูกค้าไม่ได้ (ยอดจริงและเอกสารผูกกับลูกค้ารายเดิมไปแล้ว)';
 
-  if (next) {
-    if (!isQuotableCustomer(customer)) return 'ลูกค้ารายนี้ยังใช้ออกเอกสารไม่ได้ (รออนุมัติ หรือถูกพักใช้)';
-    // ⚠️ กติกาเดียวกับ hasCompatibleProjectCustomer ของ link-project — ห้ามให้ดีลกับ
-    // โครงการเป็นคนละลูกค้า ไม่ว่าจะเข้ามาทางไหน
-    if (project?.customerId && String(project.customerId) !== next) {
-      const who = project.customerName || project.customerId;
-      const code = project.code || project.id;
-      return `โครงการ ${code} เป็นของ ${who} — ย้ายดีลไปโครงการของลูกค้าใหม่ก่อน หรือเลือกลูกค้าให้ตรงกับโครงการ`;
-    }
-  }
+  if (next && !isQuotableCustomer(customer)) return 'ลูกค้ารายนี้ยังใช้ออกเอกสารไม่ได้ (รออนุมัติ หรือถูกพักใช้)';
 
   // เปลี่ยน/ล้าง "ลูกค้าที่มีอยู่แล้ว" = ต้องยังไม่มีอะไรงอกจากดีลใบนี้
   const attached = current ? dealAttachmentSummary(counts) : '';

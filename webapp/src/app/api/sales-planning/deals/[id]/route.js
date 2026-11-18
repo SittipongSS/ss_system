@@ -174,7 +174,6 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         customer,
         // ขอ id ที่ไม่มีในทะเบียน ต้องตีกลับ ไม่ใช่ตีความเป็น "ล้างลูกค้า"
         requestedId: nextCustomerId,
-        project: before.projectId ? await loadProject(supabase, before.projectId) : null,
         counts,
         isWon: alreadyWon,
       });
