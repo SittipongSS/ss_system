@@ -49,11 +49,15 @@ async function dealOwnerIdOf(supabase, dealId) {
   return data?.ownerId || null;
 }
 
-/** การปัดออกจากคิวของ SO หลายใบ — Map(salesOrderId → แถว) · ตารางยังไม่มี = ว่าง */
+/** การปัดออกจากคิวของ SO หลายใบ — Map(salesOrderId → แถว) · ตารางยังไม่มี = ว่าง (คิว PR-5 ใช้ตัวเดียวกัน) */
+export async function loadScentOrderDismissals(supabase, orderIds) {
+  return loadDismissals(supabase, orderIds);
+}
+
 async function loadDismissals(supabase, orderIds) {
   try {
     const rows = await fetchAllInChunks(orderIds, (chunk) => supabase
-      .from(DISMISSALS_TABLE).select('"salesOrderId", reason, "dismissedAt", "dismissedByName"')
+      .from(DISMISSALS_TABLE).select('"salesOrderId", reason, "dismissedAt", "dismissedById", "dismissedByName"')
       .in('salesOrderId', chunk).order('salesOrderId', { ascending: true }));
     return new Map(rows.map((r) => [r.salesOrderId, r]));
   } catch (error) {

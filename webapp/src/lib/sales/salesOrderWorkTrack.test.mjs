@@ -62,6 +62,7 @@ test('ช่วงที่ยังไม่เชื่อมขึ้นค�
     plan: { state: 'none' },
     dealType: NPD,
     approved: true,
+    orderId: 'SO-1',
   });
   for (const seg of track.segments) {
     assert.equal(seg.steps, undefined, `${seg.key} ไม่ควรมีจุด`);
@@ -70,6 +71,8 @@ test('ช่วงที่ยังไม่เชื่อมขึ้นค�
   /* ยุบโครงการ P3b-1: ที่จัดการของเข้าถูกถอด ⇒ ช่วงของเข้าบอกสถานะอย่างเดียว ไม่ชวนกดไปหน้าโครงการ */
   assert.equal(track.segments[1].connect.href, null);
   assert.equal(track.segments[1].connect.actionLabel, null);
+  // ม-164 PR-5 — ทางรองของบรีฟกลิ่น: แนบเข้าคำร้องเดิม/ปัดออก ที่คิวบนหน้าคำร้อง
+  assert.equal(track.segments[0].connect.more?.href, '/requests');
 });
 
 test('เปิดคำร้องไม่ได้ → ขึ้นเหตุผล ไม่ขึ้นปุ่ม', () => {
@@ -79,6 +82,8 @@ test('เปิดคำร้องไม่ได้ → ขึ้นเหต
   });
   assert.equal(track.segments[0].connect.message, 'ใบนี้ยังไม่อนุมัติ');
   assert.equal(track.segments[0].connect.actionLabel, null);
+  // ใบติดด่านไม่อยู่ในคิว ⇒ ไม่ชวนไปแนบ/ปัดออก
+  assert.equal(track.segments[0].connect.more, null);
 });
 
 /* ⚠️ ใบที่ยังไม่อนุมัติ "ยังไม่มีงานผลิต" เป็นเรื่องปกติ ไม่ใช่สิ่งที่ต้องชวนให้กด */

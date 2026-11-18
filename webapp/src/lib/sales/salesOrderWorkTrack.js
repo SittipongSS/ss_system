@@ -99,6 +99,11 @@ function scentSegment(scent, orderId) {
         href: scent.blocked || !orderId
           ? null
           : `/requests/new?kind=scent_dev&salesOrderId=${encodeURIComponent(orderId)}&returnTo=${encodeURIComponent(back)}`,
+        /* ม-164 PR-5 — ไม่ใช่ทุกใบต้องเปิดคำร้องใหม่: งานต่อจากคำร้องเดิมแนบเข้าใบเดิม · ทำนอกระบบไปแล้วปัดออกพร้อมเหตุผล
+           ⇒ ทั้งสองทางอยู่ที่การ์ดคิวบนหน้าคำร้อง (ที่เดียว ไม่ก๊อปโมดัลมาไว้หน้า SO) · ใบติดด่าน = ไม่อยู่ในคิว ⇒ ไม่มีลิงก์ */
+        more: scent.blocked || !orderId
+          ? null
+          : { label: 'ต่อจากคำร้องเดิม หรือไม่ต้องมีคำร้อง', href: '/requests' },
       },
       meta: scent.count != null ? `${scent.count} กลิ่น` : null,
     };
