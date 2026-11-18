@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewCosting } from '@/lib/permissions';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, productTypeLabel } from '@/lib/master/productTypes';
 import { loadCostTemplates } from '@/lib/master/costTemplateAdmin';
 import { canViewCostingRequest, resolveCostingDealContext } from '@/lib/costing';
 import {
@@ -95,7 +95,7 @@ export async function POST(request) {
     const template = templates.find((t) => t.categoryCode === raw.categoryCode);
     if (!template) {
       return Response.json({
-        error: `${at}: ประเภทสินค้า ${raw.categoryCode} ยังไม่มีแม่แบบต้นทุน — ให้ผู้ดูแลระบบสร้างที่หน้าตั้งค่าก่อน`,
+        error: `${at}: ประเภทสินค้า ${await productTypeLabel(raw.categoryCode)} ยังไม่มีแม่แบบต้นทุน — ให้ผู้ดูแลระบบสร้างที่หน้าตั้งค่าก่อน`,
       }, { status: 400 });
     }
 

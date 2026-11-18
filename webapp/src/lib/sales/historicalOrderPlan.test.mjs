@@ -486,7 +486,7 @@ test('v2 โซน: ต้องเป็นโซนของลูกค้า
 });
 
 test('v2 แพ็คเกจ: สินค้านอกหมวด 02-001 = error (ไม่ใช่คำเตือน) · จำนวนเต็ม > 0 (ว่าง = ตีกลับ ไม่ใช่ 1) · จำนวนรอบบริการ', () => {
-  v2Has(planV2({ zones: zonesWith(0, { productId: 'P-OIL' }) }), 'zones.0.productId', /ไม่ใช่แพ็คเกจบริการ \(หมวด 02-001 หรือ 02-037\)/);
+  v2Has(planV2({ zones: zonesWith(0, { productId: 'P-OIL' }) }), 'zones.0.productId', /ไม่ใช่แพ็คเกจบริการ \(หมวด 02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม \(รายเดือน\)\)/);
   v2Has(planV2({ zones: zonesWith(0, { productId: '' }) }), 'zones.0.productId', /ต้องเลือกแพ็คเกจ/);
   v2Has(planV2({ zones: zonesWith(0, { productId: 'P-NONE' }) }), 'zones.0.productId', /ไม่พบแพ็คเกจ/);
   for (const qty of [0, -1, 1.5, '', null, 'สาม']) {

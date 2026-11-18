@@ -57,7 +57,7 @@ export const dynamic = 'force-dynamic';
 
 /* ป้ายของแถวที่ใช้เล่าในเธรด/audit — พัฒนาสูตรตัดหาง "→ รหัส" ที่ป้ายเก่าในฐานยังมี (2026-09-15) · รหัสนั้นเป็นรหัสตอนส่ง
    ทะเบียนเปลี่ยนแล้วประวัติจะเล่ารหัสที่ไม่มีอยู่ · สูตรที่ได้จริงต่อท้ายแยก (`formulaText` ข้างล่าง) จากทะเบียนสด */
-const rowText = (r) => (r?.lineKind === 'product_dev' ? requestedLabel(r?.label) : r?.label);
+const rowText = (r) => (r?.lineKind === 'product_dev' ? requestedLabel(r?.label, r?.categoryCode) : r?.label);
 
 export async function PATCH(request, { params }) {
   const supabase = getSupabaseAdmin();

@@ -5,7 +5,7 @@
 import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, productTypeLabel } from '@/lib/master/productTypes';
 import { loadCostTemplates } from '@/lib/master/costTemplateAdmin';
 import { canEditCostingRequest, canViewCostingRequest } from '@/lib/costing';
 import {
@@ -152,7 +152,7 @@ export async function PATCH(request, { params }) {
     if (categoryError) return Response.json({ error: categoryError }, { status: 400 });
     if (!templateFor(categoryCode)) {
       return Response.json({
-        error: `ประเภทสินค้า ${categoryCode} ยังไม่มีแม่แบบต้นทุน — ให้ผู้ดูแลระบบสร้างที่หน้าตั้งค่าก่อน`,
+        error: `ประเภทสินค้า ${await productTypeLabel(categoryCode)} ยังไม่มีแม่แบบต้นทุน — ให้ผู้ดูแลระบบสร้างที่หน้าตั้งค่าก่อน`,
       }, { status: 400 });
     }
   }

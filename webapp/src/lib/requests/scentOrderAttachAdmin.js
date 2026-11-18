@@ -11,6 +11,7 @@ import { recordAudit } from '@/lib/audit';
 import { appendUpdate } from '@/lib/master/updates';
 import { customerTaxSiblingIds } from '@/lib/master/customerTaxSiblings';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
+import { loadProductTypeNames } from '@/lib/master/productCategoryNames';
 import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { isMissingTableError, loadScentOrderLines, loadScentOrderOwners, SCENT_ORDER_LINKS_TABLE } from '@/lib/requests/scentOrderLinksAdmin';
 import { scentDesignLines } from '@/lib/requests/scentDesignOrders';
@@ -18,6 +19,16 @@ import {
   attachAdds, attachOrderError, attachPreview, attachPreviewText, attachRequestError, canActOnScentOrders,
   detachOrderError, scentOrderLinesText, slotsAfterDetach,
 } from '@/lib/requests/scentOrderAttach';
+
+/* ชื่อหมวดไว้พูดในข้อความ (รหัส + ชื่อ · มติ 18/11) — อ่านพลาด = รหัสดิบ ไม่ล้มการแนบ/รายการตัวเลือก */
+async function typeNamesOrNone(supabase) {
+  try {
+    return await loadProductTypeNames(supabase);
+  } catch (e) {
+    console.error('[scent-order-attach] อ่านชื่อหมวดไม่สำเร็จ', e?.message || e);
+    return [];
+  }
+}
 
 const DISMISSALS_TABLE = 'scent_order_dismissals';
 // `origin` — ด่านแนบตัดใบย้อนหลัง/ใบค่าสรรพสามิตด้วย `isActualOrder` (ยาม historicalMoneyGuards)
@@ -87,6 +98,7 @@ export async function loadAttachCandidates(supabase, request, deps = {}) {
   const { ownerById } = await loadScentOrderOwners(supabase, scentOrders);
   const free = scentOrders.filter((o) => !ownerById.get(o.id));
   const dismissals = await loadDismissals(supabase, free.map((o) => o.id));
+  const types = free.length ? await typeNamesOrNone(supabase) : [];
   const candidates = free.map((o) => {
     const lines = linesBySo.get(o.id) || [];
     return {
@@ -94,7 +106,7 @@ export async function loadAttachCandidates(supabase, request, deps = {}) {
       orderNumber: o.orderNumber || o.id,
       orderDate: o.orderDate || null,
       customerName: o.customerName || null,
-      linesText: scentOrderLinesText(lines),
+      linesText: scentOrderLinesText(lines, types),
       adds: attachAdds(lines),
       dismissed: dismissals.get(o.id) || null,
     };
@@ -155,7 +167,7 @@ export async function attachScentOrder({ supabase, user, request, salesOrderId, 
 
   const no = order.orderNumber || order.id;
   const numbers = attachPreviewText(preview);
-  const text = `แนบใบสั่งขาย ${no} (${scentOrderLinesText(lines)})${numbers ? ` — ${numbers}` : ''}`;
+  const text = `แนบใบสั่งขาย ${no} (${scentOrderLinesText(lines, await typeNamesOrNone(supabase))})${numbers ? ` — ${numbers}` : ''}`;
   // เธรดแจ้งเตือนฝ่ายที่ถือใบให้เอง (`appendUpdate` → notifyThreadUpdate) · พลาดไม่ล้มการแนบ
   await Promise.resolve(append(supabase, { entityType: 'dept_request', entityId: request.id, kind: 'so_attach', body: text, user })).catch(() => {});
   await audit({

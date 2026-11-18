@@ -32,6 +32,8 @@ import { Pencil, Trash2 } from "lucide-react";
 import styles from "./briefBoard.module.css";
 import { dueCellTracker } from "@/lib/requests/dueCell";
 import { formulaLabel } from "@/lib/master/registryLabel";
+import { categoryCodeLabel } from "@/lib/master/productCategoryOptions";
+import { useProductCategories } from "@/lib/useProductCategories";
 
 /**
  * ⚠️ รับ `groups` ที่ประกอบมาแล้ว **ไม่ประกอบเอง** — แถบตัวเลขบนหน้ารายละเอียดอ่าน
@@ -61,6 +63,7 @@ export default function BriefBoard({
   extraMenuItems = null,
   onEditRegistry = null, onDeleteRow = null, canEditRegistry = false, today = null, due = null,
 }) {
+  const productCategories = useProductCategories(); // "ส่งเป็นสินค้า" = รหัส + ชื่อหมวด (มติ 18/11)
 
   /* ⭐ **ก้อนที่ยังต้องลงมือกางไว้ ก้อนที่จบแล้วพับ** (ทางเลือก ก+ · มติผู้ใช้ 2026-08-10)
      ⚠️ ตั้งค่าเริ่มต้นครั้งเดียวตอน mount — คำนวณใหม่ทุกเรนเดอร์เมื่อไร ก้อนที่ผู้ใช้
@@ -177,7 +180,7 @@ export default function BriefBoard({
                                     <div className={styles.note}>
                                       {d.delivered.product ? (
                                         <>
-                                          ส่งเป็นสินค้า {d.delivered.categoryCode}
+                                          ส่งเป็นสินค้า {categoryCodeLabel(d.delivered.categoryCode, productCategories)}
                                           {d.delivered.formula && (
                                             <>
                                               {" · สูตร "}

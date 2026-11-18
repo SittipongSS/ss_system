@@ -32,6 +32,7 @@ import { applyNpdWorkRows } from '@/lib/requests/npdWorkRowsApply';
 import { npdUncoveredError } from '@/lib/requests/npdPairs';
 import { requestProgress } from '@/lib/requests/stages';
 import { categoryLabel } from '@/lib/master/categoryOf';
+import { requestedLabel } from '@/lib/requests/rowLabel';
 import { PDR_SIGNER_FIELDS, pdrArtworkError } from '@/lib/requests/pdrFields';
 import {
   assignPdrRefNo, issuesPdrRefNoOnAcknowledge, normalizePdrRefNo, pdrRefManualError,
@@ -1264,7 +1265,7 @@ export async function PATCH(request, { params }) {
         // แถวที่แผนจะถอนแต่เพิ่งถูกส่งสูตรระหว่างบันทึก — ไม่ถูกถอน (ตัวเขียนกันไว้) ⇒ ต้องบอก ไม่ใช่เงียบ
         if (applied.kept?.length) {
           npdRowsWarning = [npdRowsWarning,
-            `สินค้า ${applied.kept.map((r) => `"${r.label || r.categoryCode}"`).join(' · ')} เพิ่งถูกส่งสูตร — `
+            `สินค้า ${applied.kept.map((r) => `"${requestedLabel(r.label, r.categoryCode) || r.categoryCode}"`).join(' · ')} เพิ่งถูกส่งสูตร — `
             + 'รายการงานไม่ได้ถูกถอน ใส่สินค้าคู่นั้นกลับเข้าแบบฟอร์ม'].filter(Boolean).join(' · ');
         }
       }

@@ -33,6 +33,8 @@ import ChoiceChips from "@/components/ui/ChoiceChips";
 import Input from "@/components/ui/Input";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { NA, fmtNumber, naText } from "@/lib/format";
+import { categoryCodeLabel } from "@/lib/master/productCategoryOptions";
+import { useProductCategories } from "@/lib/useProductCategories";
 import {
   SERVICE_KIND_NOT_SERVICE, SERVICE_KIND_OPTIONS, SERVICE_KIND_PACKAGE, SERVICE_PERIOD_MODE_LINE, SERVICE_PERIOD_TEXT, SERVICE_ROLE_UNSET,
   SERVICE_QUOTE_LINK_TEXT, SERVICE_SETUP_GRID_TEXT, SERVICE_SETUP_LIMITS, SERVICE_SETUP_LINE_TEXT, lineQtyCrossCheck, lineQuoteSeeds,
@@ -227,7 +229,9 @@ function AnswerButtons({ line, onPick }) {
 /* ── ① งานบริการ? ── */
 /* ใต้คำตอบทุกแบบ (FG · อ่าน · แก้) = ช่วงบริการของรายการ (`period` — props ของ ServiceLinePeriod ที่แถวรายการประกอบให้) */
 function KindCell({ line, editable, error, onPick, period }) {
-  const category = line.categoryCode || null;
+  // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026)
+  const productCategories = useProductCategories();
+  const category = categoryCodeLabel(line.categoryCode, productCategories) || null;
   const periodBlock = <ServiceLinePeriod line={line} editable={editable} {...period} />;
   /* FG: ระบบตัดสินจากหมวดของรหัส (แก้ไม่ได้) */
   if (!line.manual) {
@@ -752,6 +756,7 @@ function GridLine({
 }) {
   const kindError = highlightOf(lineFieldId(line.lineId, "kind"));
   const zonesError = highlightOf(lineFieldId(line.lineId, "zones"));
+  const productCategories = useProductCategories(); // หมวด = รหัส + ชื่อ (มติ 18/11)
   const isPackage = line.role === SERVICE_KIND_PACKAGE;
   /* ช่วงที่ใช้กับรายการนี้ (ชิป "ทุกเดือน ≈ n" · คำเตือนรอบน้อย) — แยกรายรายการ = ช่วงของรายการเอง · ทั้งใบ = ช่วงของใบ */
   const byLine = periodMode === SERVICE_PERIOD_MODE_LINE;
@@ -815,7 +820,7 @@ function GridLine({
       </>
     );
   } else {
-    const category = line.categoryCode || null;
+    const category = categoryCodeLabel(line.categoryCode, productCategories) || null;
     const text = line.role === SERVICE_ROLE_UNSET
       ? (editable ? SERVICE_SETUP_GRID_TEXT.unsetHint : SERVICE_SETUP_GRID_TEXT.unsetRead)
       : !line.manual

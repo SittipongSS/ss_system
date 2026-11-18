@@ -77,7 +77,8 @@ export const SERVICE_PERIOD_MODE_LINE = 'line';
 /* หมวดของแพ็คเกจบริการรายรอบ — ⚠️ ต้องเท่ากับ SERVICE_ROUND_CATEGORIES ของ serviceOrders.js (เทสต์ยึดไว้)
    เขียน literal ซ้ำโดยตั้งใจ: ค่าคงที่ระดับบนสุดห้ามอ่านชื่อที่ import มา (กฎ 16) · 02-037 = มติเจ้าของ 03/11 */
 const PACKAGE_CATEGORIES = Object.freeze(['02-001', '02-037']);
-const PACKAGE_CATEGORY_TEXT = '02-001 หรือ 02-037';
+// ข้อความ = รหัส + ชื่อหมวด (มติเจ้าของ 18/11/2026) · ชื่อตามทะเบียน product_types — เปลี่ยนชื่อหมวดที่หน้าหมวดสินค้าแล้วต้องแก้ตรงนี้ด้วย
+const PACKAGE_CATEGORY_TEXT = '02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม (รายเดือน)';
 const isPackageCategory = (code) => PACKAGE_CATEGORIES.includes(code);
 
 /* คำเรียกจำนวนครั้งที่ไปของบรรทัดแพ็คเกจ (`serviceRounds`) — มติเจ้าของ 29/09: "ไปกี่รอบ" → "จำนวนรอบบริการ"

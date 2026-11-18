@@ -33,6 +33,8 @@ import {
 } from "@/lib/master/customerHub";
 import { requestDueTone } from "@/components/requests/requestUi";
 import { fmtDate, fmtMoney, naText, NA, productNameBoth } from "@/lib/format";
+import { categoryCodeLabel, categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
+import { useProductCategories } from "@/lib/useProductCategories";
 
 /* ── หน้าลูกค้าศูนย์รวม · แท็บข้อมูลที่เกี่ยวข้อง (งวด H1 · มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md) ─────
  *
@@ -70,6 +72,9 @@ const DocLink = ({ href, children }) => <Link prefetch={false} href={href} class
 function SalesTab({ hub, query, onQuery, today }) {
   const { deals, leads, quotations, orders, contracts } = hub.sales;
   const [view, setView] = useState("deal");
+  // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — ตาเห็นชื่อบนแถว = ค้นด้วยชื่อเจอด้วย
+  const productCategories = useProductCategories();
+  const categoryText = (code) => categoryCodeLabel(code, productCategories);
   const [showOldQuotes, setShowOldQuotes] = useState(false);
   const dealCode = useMemo(() => new Map(deals.map((d) => [d.id, d.code || d.title])), [deals]);
   const dealRows = useMemo(() => buildDealRows({
@@ -249,7 +254,7 @@ function SalesTab({ hub, query, onQuery, today }) {
       unit="ดีล"
       rows={dealRows}
       searchPlaceholder="ค้นหาดีล / เลข QT / เลข SO / เลข PO ลูกค้า"
-      textOf={dealRowText}
+      textOf={(r) => hubText(dealRowText(r), categoryText(r.deal.categoryCode))}
       filters={[
         { key: "stage", label: "ขั้น", icon: Flag, options: optionsOf(dealRows, (r) => r.deal.stage, (k) => STAGE_LABELS[k] || k), test: inValues((r) => r.deal.stage) },
         { key: "type", label: "ประเภทดีล", icon: Tag, options: optionsOf(dealRows, (r) => r.deal.dealType, (k) => DEAL_TYPE_LABELS[k] || k), test: inValues((r) => r.deal.dealType) },
@@ -268,7 +273,7 @@ function SalesTab({ hub, query, onQuery, today }) {
       rowHref={(r) => `/sa/deals/${r.deal.id}`}
       columns={[
         { key: "deal", label: "ดีล", render: (r) => <><Code>{r.deal.code || NA}</Code><Sub>{r.deal.title}</Sub></> },
-        { key: "type", label: "ประเภท · หมวด", render: (r) => <><span>{DEAL_TYPE_LABELS[r.deal.dealType] || naText(r.deal.dealType)}</span><Sub>{r.deal.categoryCode || NA}</Sub></> },
+        { key: "type", label: "ประเภท · หมวด", render: (r) => <><span>{DEAL_TYPE_LABELS[r.deal.dealType] || naText(r.deal.dealType)}</span><Sub>{categoryText(r.deal.categoryCode) || NA}</Sub></> },
         { key: "stage", label: "ขั้น", render: (r) => <StatusBadge tone={STAGE_TONES[r.deal.stage] || "neutral"} label={STAGE_LABELS[r.deal.stage] || r.deal.stage} /> },
         {
           key: "quote", label: "ใบเสนอราคา",
@@ -298,9 +303,13 @@ function SalesTab({ hub, query, onQuery, today }) {
 /* ── สินค้า ──────────────────────────────────────────────────────────────────────────── */
 function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
   const [view, setView] = useState("fg");
+  // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — ตัวกรอง/หัวกลุ่ม/เซลล์ · ค้นด้วยชื่อหมวดเจอ
+  const productCategories = useProductCategories();
+  const categoryText = (code) => categoryCodeLabel(code, productCategories);
+  const categoryName = (code) => categoryNameBoth(findCategoryByCode(productCategories, code));
   const stats = useMemo(() => productOrderStats(hub.orderLines, hub.sales.orders), [hub.orderLines, hub.sales.orders]);
   const fgRows = useMemo(() => products.map((p) => ({ id: p.id, product: p, stat: stats.byProduct.get(p.id) || null })), [products, stats]);
-  const fgText = (r) => hubText(r.product.fgCode, productNameBoth(r.product), r.product.brandName, r.product.brandNameEn);
+  const fgText = (r) => hubText(r.product.fgCode, productNameBoth(r.product), r.product.brandName, r.product.brandNameEn, categoryText(r.product.categoryCode));
   const scentText = (s) => hubText(scentSearchText(s), s.sharedFrom);
   const formulaText = (f) => hubText(formulaSearchText(f), f.sharedFrom);
   const count = (rows, text) => rows.filter((r) => matchesQuery(text(r), query)).length;
@@ -371,14 +380,14 @@ function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
       searchPlaceholder="ค้นหารหัส FG / ชื่อสินค้า / แบรนด์"
       textOf={fgText}
       filters={[
-        { key: "cat", label: "หมวด", icon: Layers, options: optionsOf(fgRows, (r) => r.product.categoryCode, (k) => k), test: inValues((r) => r.product.categoryCode) },
+        { key: "cat", label: "หมวด", icon: Layers, options: optionsOf(fgRows, (r) => r.product.categoryCode, (k) => categoryText(k) || k), test: inValues((r) => r.product.categoryCode) },
         { key: "approval", label: "การอนุมัติ", icon: Flag, options: [{ value: "approved", label: "อนุมัติแล้ว" }, { value: "pending", label: "รออนุมัติ" }, { value: "rejected", label: "ไม่อนุมัติ" }], test: inValues((r) => r.product.approvalStatus || r.product.status) },
         { key: "active", label: "การใช้งาน", icon: Tag, options: [{ value: "on", label: "ใช้งานอยู่" }, { value: "off", label: "พักใช้" }], test: (r, values) => values.includes(r.product.isActive === false ? "off" : "on") },
         { key: "ordered", label: "การสั่ง", icon: ClipboardList, options: [{ value: "yes", label: "เคยสั่ง" }, { value: "no", label: "ยังไม่เคยสั่ง" }], test: (r, values) => values.includes(r.stat ? "yes" : "no") },
       ]}
       groups={[
         { value: "none", label: "ไม่จัดกลุ่ม" },
-        { value: "cat", label: "หมวด", weighted: "ยอดสั่งรวม", describe: (r) => ({ key: r.product.categoryCode || "__none", label: r.product.categoryCode || "ไม่ระบุหมวด", weight: r.stat?.total || 0 }) },
+        { value: "cat", label: "หมวด", weighted: "ยอดสั่งรวม", describe: (r) => ({ key: r.product.categoryCode || "__none", label: categoryText(r.product.categoryCode) || "ไม่ระบุหมวด", weight: r.stat?.total || 0 }) },
       ]}
       sorts={[
         { value: "total", label: "ยอดสั่งรวม", dir: "desc", compare: byNum((r) => r.stat?.total) },
@@ -388,7 +397,9 @@ function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
       rowHref={(r) => `/database/products/${r.product.id}`}
       columns={[
         { key: "fg", label: "สินค้า", render: (r) => <><Code>{r.product.fgCode}</Code><Sub>{productNameBoth(r.product)}</Sub></> },
-        { key: "cat", label: "หมวด", render: (r) => <Code>{naText(r.product.categoryCode)}</Code> },
+        { key: "cat", label: "หมวด", render: (r) => (r.product.categoryCode
+          ? <><Code>{r.product.categoryCode}</Code>{categoryName(r.product.categoryCode) ? <Sub>{categoryName(r.product.categoryCode)}</Sub> : null}</>
+          : <Code>{NA}</Code>) },
         { key: "status", label: "การอนุมัติ", render: (r) => <ProductStatusPill status={r.product.status} /> },
         { key: "orders", label: "สั่งแล้ว", className: "num", render: (r) => (r.stat ? `${r.stat.orders} ใบ` : NA) },
         { key: "last", label: "สั่งล่าสุด", render: (r) => (r.stat ? fmtDate(r.stat.lastDate) : NA) },

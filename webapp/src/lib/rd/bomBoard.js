@@ -5,6 +5,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะ DB และไม่รู้ว่า "วันนี้" คือวันไหน — ผู้เรียกส่งวันไทยมา (กติกาเดียวกับ priceBoard)
 import { BOM_STATUS_META, bomStatusOf } from '@/lib/master/productBom';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
+import { categoryCodeName } from '@/lib/master/categoryOf';
 import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
 import { scentLabel, scentLabelDate } from '@/lib/master/registryLabel';
 
@@ -58,7 +59,7 @@ export function bomFormulaView(product, { scentsById = new Map(), formulasById =
       kind: 'set',
       items: (giftSetRows || []).map((row) => ({
         code: row.formulaCode || null, name: row.formulaName || null, date: row.formulaDate || null,
-        note: row.categoryName || null, tradeName: row.scentTradeName || null,
+        note: categoryCodeName(row.categoryCode, row.categoryName) || null, tradeName: row.scentTradeName || null,
       })),
     };
   }

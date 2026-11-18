@@ -16,6 +16,7 @@ import { scentSlotLinesOf } from '@/lib/requests/scentOrderLinks';
 import { paidScentSlots } from '@/lib/requests/scentOverPaid';
 import { closureStatus, reopenWaitClearPatch } from '@/lib/requests/closure';
 import { requestSideText, requestWaitLabel } from '@/lib/requests/replyTurn';
+import { requestedLabel } from '@/lib/requests/rowLabel';
 
 // ── ความคืบหน้า + สถานะที่ derive ────────────────────────────────────────
 // ตัวนับคำนวณตอนอ่านเสมอ ห้ามเก็บคอลัมน์ (กัน drift — แพตเทิร์นเดียวกับใบขอราคาผลิต)
@@ -147,7 +148,7 @@ export function acknowledgeRequestError(request) {
     if (row?.lineKind !== 'product_dev' || row.derivedFromItemId) continue;
     const key = `${row.categoryCode}::${row.scentId}`;
     if (seen.has(key)) {
-      return `รายการ "${row.label || row.categoryCode}" ซ้ำหมวด × กลิ่นกับรายการอื่นในใบ — ให้ผู้ขอแก้รายการหรือตีกลับ`;
+      return `รายการ "${requestedLabel(row.label, row.categoryCode) || row.categoryCode}" ซ้ำหมวด × กลิ่นกับรายการอื่นในใบ — ให้ผู้ขอแก้รายการหรือตีกลับ`;
     }
     seen.add(key);
   }

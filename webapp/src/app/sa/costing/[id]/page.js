@@ -61,6 +61,7 @@ import { cachedFetchJson } from "@/lib/apiCache";
 import { customerArIndex, customerHeadline } from "@/lib/master/customerAr";
 import { apiFetch } from "@/lib/apiFetch";
 import { registryLabel } from "@/lib/master/registryLabel";
+import { categoryCodeLabel } from "@/lib/master/productCategoryOptions";
 
 const money = (value) => (value == null
   ? "—"
@@ -524,8 +525,9 @@ export default function CostingDetailPage() {
           <div key={item.id} className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
               <strong style={{ fontSize: "var(--fs-9)" }}>{item.productLabel}</strong>
+              {/* หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) */}
               <span className="ui-badge" style={{ background: "var(--panel-2)", color: "var(--text-2)" }}>
-                {item.categoryCode}
+                {categoryCodeLabel(item.categoryCode, Array.isArray(productTypes) ? productTypes : [])}
               </span>
               {item.fragranceName && <span className="chip">{item.fragranceName}</span>}
               {item.formulaCode && (

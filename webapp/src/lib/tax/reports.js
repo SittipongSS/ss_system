@@ -26,6 +26,7 @@ import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
 import { withinDateRange } from '@/lib/tax/period';
 import { sortRegistrationsLikeQueue } from '@/lib/tax/registrationQueue';
 import { businessDate } from '@/lib/businessDate';
+import { categoryLabel, categoryOf } from '@/lib/master/categoryOf';
 
 /* ⭐ ช่วงวันของรายงาน = ตัวตัดสินเดียวกับตารางคิว (`withinDateRange` · วันไทยของ createdAt) — ตรวจตัวเลข M7 20/10/2026
    🐞 เดิมแปลง from เป็น Date ตรง ๆ = เที่ยงคืน **UTC** (เครื่อง Vercel) ⇒ ใบที่สร้างตี 1–7 โมงเช้าวันแรกของช่วงหลุดจากไฟล์
@@ -66,7 +67,7 @@ async function fetchProductMap() {
 // ทะเบียนหมวดสินค้า — ใช้ตัดสินว่าหมวดไหนติ๊ก "ต้องเสียภาษีสรรพสามิต"
 async function fetchProductTypes() {
   const { data, error } = await getSupabaseAdmin()
-    .from('product_types').select('"mainCategoryCode", "typeCode", "isExcise"');
+    .from('product_types').select('"mainCategoryCode", "typeCode", "isExcise", "nameTh", "nameEn"');
   if (error) throw error;
   return data || [];
 }
@@ -187,7 +188,8 @@ export async function missingRetailPriceReport(filter = {}) {
       product: [p.fgCode || '-', brandLabel(p.brandName, p.brandNameEn)].filter(Boolean).join(' · ')
         + '\n' + (productDisplayName(p) || ''),
       customer: p.customerName || '',
-      category: p.categoryCode || '',
+      // หมวด = รหัส + ชื่อ (มติ 18/11)
+      category: categoryLabel(p.categoryCode || categoryOf(p.fgCode), types),
       owner: [p.assignee, p.team ? teamName(p.team) : null].filter(Boolean).join('\n'),
       state: [p.approvalStatus === 'approved' ? 'อนุมัติแล้ว' : 'รออนุมัติ',
         p.isActive === false ? 'เลิกใช้' : 'ใช้งาน'].join(' · '),

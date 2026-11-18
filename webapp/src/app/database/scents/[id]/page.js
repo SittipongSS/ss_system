@@ -15,6 +15,7 @@ import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import RegistryShareCard from "@/components/database/RegistryShareCard";
 import { canManageRegistryShares } from "@/lib/master/registryShares";
 import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
+import { useProductCategories } from "@/lib/useProductCategories";
 import ScentFormModal from "@/components/database/ScentFormModal";
 import { scentToForm } from "@/components/database/ScentForm";
 import Toast from "@/components/ui/Toast";
@@ -46,6 +47,7 @@ export default function ScentDetailPage() {
   // แชร์ให้ลูกค้ารายอื่น — การ์ด + ช่องในฟอร์มแก้ ถามตัวเดียวกับ API (RD + Sup ขึ้นไป · มติ 05/10)
   const canShare = canManageRegistryShares(me);
   const [scent, setScent] = useState(null);
+  const productCategories = useProductCategories(); // ชื่อหมวดในคำเตือนราคา F (รหัส + ชื่อ · มติ 18/11)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pricing, setPricing] = useState(false);
@@ -267,7 +269,7 @@ export default function ScentDetailPage() {
         onClose={() => setPricing(false)}
         title={`${hasPrice ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${scent.name}`}
         endpoint={`/api/master/scents/${scent.id}/price`}
-        notice={scentFPriceNotice(scent)}
+        notice={scentFPriceNotice(scent, productCategories)}
         onSaved={(msg) => {
           setPricing(false);
           setToast({ kind: "success", msg });

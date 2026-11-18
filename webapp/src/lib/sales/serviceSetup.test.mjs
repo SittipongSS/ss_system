@@ -254,7 +254,7 @@ test('บรรทัดเดียวกันแต่มีหมวด 02-0
   assert.ok(keys(issues).includes('rounds_missing'));
   assert.ok(keys(issues).includes('zones_missing'));
   assert.ok(keys(issues).includes('period_missing'));
-  assert.equal(issues.find((i) => i.key === 'fg_missing').message, 'รายการ 1: ยังไม่เลือกแพ็คเกจ (FG หมวด 02-001 หรือ 02-037)');
+  assert.equal(issues.find((i) => i.key === 'fg_missing').message, 'รายการ 1: ยังไม่เลือกแพ็คเกจ (FG หมวด 02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม (รายเดือน))');
 });
 
 test('หมวดอื่น (03-002) = ไม่ใช่งานบริการ ไม่มีข้อที่ต้องทำ · ชนิดที่เก็บไว้ชนะหมวด', () => {
@@ -450,7 +450,7 @@ test('แพ็คเกจปิดใช้งาน/ยังไม่อน�
   for (const product of [{ ...PRODUCT, isActive: false }, { ...PRODUCT, approvalStatus: 'pending' }, { ...PRODUCT, fgCode: 'FG-0521-02-002-00012' }]) {
     const issues = serviceSetupIssues(completeCtx({ products: [product] }));
     assert.equal(issues[0].key, 'fg_invalid');
-    assert.equal(issues[0].message, 'รายการ 1: แพ็คเกจ FG-0521-02-001-00012 ใช้ไม่ได้แล้ว (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่หมวด 02-001 หรือ 02-037) — เลือกใหม่');
+    assert.equal(issues[0].message, 'รายการ 1: แพ็คเกจ FG-0521-02-001-00012 ใช้ไม่ได้แล้ว (ปิดใช้งาน/ยังไม่อนุมัติ/ไม่ใช่หมวด 02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม (รายเดือน)) — เลือกใหม่');
   }
 });
 
@@ -998,7 +998,7 @@ test('29/09 รอบสอง: "ไปกี่รอบ" → "จำนวน�
   assert.equal(SERVICE_SETUP_SQL_MESSAGES.service_setup_rounds_invalid.message, 'จำนวนรอบบริการ ต้องเป็นจำนวนเต็ม 1–999');
   assert.match(SERVICE_SETUP_SQL_MESSAGES.sales_order_service_setup_locked.message, / \(จำนวนรอบบริการยังแก้ได้หลังอนุมัติ\)$/);
   assert.equal(SERVICE_KIND_OPTIONS.find((o) => o.value === 'package').description,
-    'แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 หรือ 02-037 → ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ');
+    'แพ็คเกจที่ TS ต้องไปบริการตามรอบ — เลือก FG หมวด 02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม (รายเดือน) → ไซต์ · โซน → รอบละกี่แพ็ค → จำนวนรอบบริการ');
   assert.equal(SERVICE_SETUP_ISSUE_TEXT.rounds_low({ rounds: 1, months: 12, stage: 'read' }),
     'จำนวนรอบบริการ 1 เดือน แต่ช่วงบริการยาว 12 เดือน — ตรวจอีกครั้ง');
 });

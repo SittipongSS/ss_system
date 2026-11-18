@@ -270,7 +270,7 @@ export default function ProductRegistry() {
     }
     // ชุดของขวัญ (01-037 · mig 0403): ทุกแถวต้องมีหมวด (สูตรไม่บังคับ · R2) — ตัวตรวจเดียวกับ API
     // (ก่อนป๊อปอัปเตือนภาษี/อย. — กดยืนยันแล้วค่อยโดนตีกลับเรื่องสูตร = ต้องยืนยันซ้ำ)
-    const giftSetError = giftSetFormError(brandCategory, formData.formulaComponents, formulas);
+    const giftSetError = giftSetFormError(brandCategory, formData.formulaComponents, formulas, productTypes);
     if (giftSetError) { notifyToast.error(giftSetError); return; }
     /* R1 (มติเจ้าของ 11/11 รอบสอง): ไม่บังคับเลือก "รวมชุด / รายชิ้น" ตอนบันทึก — ไปบังคับตอนยื่นขึ้นทะเบียน (เดิม G5 ตีกลับตรงนี้) */
     // เตือนกลับด้านกับของเดิม: popup เฉพาะหมวดที่ติ๊กธงบน product_types (mig 0131 —
@@ -614,7 +614,12 @@ export default function ProductRegistry() {
                   <Link prefetch={false} href={detailHref(p)} className="min-w-0 linklike linklike-block" title="เปิดหน้าสินค้า">
                     <div className="text-[11px] text-[var(--accent)] font-mono">{p.fgCode}</div>
                     <div className="font-semibold text-[var(--text)] text-sm truncate mt-0.5">{productNameBoth(p)}</div>
-                    {cat && <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">{cat.main} · {cat.sub}</div>}
+                    {/* หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) · ทะเบียนหมวดยังไม่มา = รหัสดิบ */}
+                    {(p.categoryCode || categoryOf(p.fgCode)) && (
+                      <div className="text-[10px] text-[var(--text-3)] mt-0.5 truncate">
+                        <span className="mono">{p.categoryCode || categoryOf(p.fgCode)}</span>{cat ? ` ${cat.sub}` : ""}
+                      </div>
+                    )}
                   </Link>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     <ApprovalBadge status={status} />
@@ -717,11 +722,11 @@ export default function ProductRegistry() {
                       </Link>
                     </td>
                     <td>
-                      {cat ? (
+                      {(p.categoryCode || categoryOf(p.fgCode)) ? (
                         <div className="text-xs leading-tight">
-                          {/* รหัสหมวดบน · ชื่อ EN·TH ล่าง — กลุ่มหลักฝังในรหัสอยู่แล้ว */}
+                          {/* รหัสหมวดบน · ชื่อ EN·TH ล่าง — กลุ่มหลักฝังในรหัสอยู่แล้ว · ชื่อยังไม่มา = เหลือรหัส ไม่ใช่ขีด */}
                           <div className="mono text-[11px] text-[var(--text-3)]">{p.categoryCode || categoryOf(p.fgCode)}</div>
-                          <div className="text-[var(--text-2)]">{cat.sub}</div>
+                          {cat ? <div className="text-[var(--text-2)]">{cat.sub}</div> : null}
                         </div>
                       ) : <span className="text-[var(--text-3)]">{NA}</span>}
                     </td>

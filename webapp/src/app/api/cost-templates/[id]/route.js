@@ -7,6 +7,7 @@ import { can, canViewCosting } from '@/lib/permissions';
 import { normalizeCostTemplateLines } from '@/lib/master/costTemplate';
 import { findCostTemplate } from '@/lib/master/costTemplateAdmin';
 import { recordAudit } from '@/lib/audit';
+import { productTypeLabel } from '@/lib/master/productTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function PATCH(request, { params }) {
     const after = await findCostTemplate(supabase, id);
     await recordAudit({
       user, action: 'update', entityType: 'cost_template', entityId: id, before, after,
-      summary: `ซ่อนแม่แบบต้นทุนของหมวด ${before.categoryCode}`, request,
+      summary: `ซ่อนแม่แบบต้นทุนของหมวด ${await productTypeLabel(before.categoryCode)}`, request,
     });
     return Response.json(after);
   }
@@ -86,7 +87,7 @@ export async function PATCH(request, { params }) {
   const after = await findCostTemplate(supabase, id);
   await recordAudit({
     user, action: 'update', entityType: 'cost_template', entityId: id, before, after,
-    summary: `แก้ไขแม่แบบต้นทุนของหมวด ${before.categoryCode} (${lines.length} บรรทัด)`, request,
+    summary: `แก้ไขแม่แบบต้นทุนของหมวด ${await productTypeLabel(before.categoryCode)} (${lines.length} บรรทัด)`, request,
   });
   return Response.json(after);
 }

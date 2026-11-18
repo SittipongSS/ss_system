@@ -36,7 +36,7 @@ const timelinePreviewProject = (standard) => ({
   aeSupervisor: 'ตัวอย่าง ผู้ตรวจสอบ',
   startDate: '2026-07-20',
   dueDate: '2026-09-14',
-  categoryFallback: 'น้ำหอม / Eau de Parfum',
+  categoryFallback: '01-001 น้ำหอม / Eau de Parfum',
   metadata: { brand: 'EXAMPLE', quotationNumber: 'QT-26070001-0', poNumber: 'PO-2607-001' },
   projectProducts: [],
   tasks: [

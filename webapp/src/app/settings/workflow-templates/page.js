@@ -29,6 +29,7 @@ import {
   workflowTemplateLineLabel,
   workflowTemplateLineOf,
   workflowTemplateStatusLabel,
+  workflowCategoryRuleText,
   workflowTemplateSummary,
 } from "@/lib/workflowTemplates";
 import { categoryFlags } from "@/lib/master/categoryOf";
@@ -251,7 +252,7 @@ export default function WorkflowTemplatesPage() {
 
   const saveDraft = async () => {
     if (!selected?.draft || !editor) return;
-    const normalized = normalizeWorkflowTemplateDraft(editor);
+    const normalized = normalizeWorkflowTemplateDraft(editor, { productTypes });
     if (normalized.errors.length) {
       setToast({ kind: "error", msg: normalized.errors.slice(0, 4).join("\n") });
       return;
@@ -371,7 +372,7 @@ export default function WorkflowTemplatesPage() {
   }
 
   const publishedSummary = workflowTemplateSummary(selected?.published);
-  const draftValidation = editor ? normalizeWorkflowTemplateDraft(editor) : null;
+  const draftValidation = editor ? normalizeWorkflowTemplateDraft(editor, { productTypes }) : null;
   const draftDirty = !!(editor && selected?.draft && JSON.stringify(editor) !== JSON.stringify(toEditor(selected.draft)));
   const selectedVersion = versionDrawer?.row;
   const previewSteps = (editor?.steps || []).filter((step) =>
@@ -483,7 +484,7 @@ export default function WorkflowTemplatesPage() {
                           <td><div className={styles.stepIdentity}><span>{index + 1}</span><div><strong>{step.name || "ยังไม่มีชื่อ"}{step.isMilestone && <Milestone size={14} aria-label="Milestone" />}</strong><small>{step.stepKey || "ยังไม่มี Step key"}{step.phase ? ` · ${step.phase}` : ""}</small></div></div></td>
                           <td><span className={styles.roleBadge}>{step.role}</span></td>
                           <td>{step.durationDays} วัน</td>
-                          <td><strong className={styles.dependency}><DependencyLabel step={step} steps={editor.steps} /></strong><small>{step.categoryOnly ? `เฉพาะ ${step.categoryOnly}` : step.categoryExclude ? `ยกเว้น ${step.categoryExclude}` : "ทุกหมวดสินค้า"}</small></td>
+                          <td><strong className={styles.dependency}><DependencyLabel step={step} steps={editor.steps} /></strong><small>{step.categoryOnly ? `เฉพาะ ${workflowCategoryRuleText(step.categoryOnly, productTypes)}` : step.categoryExclude ? `ยกเว้น ${workflowCategoryRuleText(step.categoryExclude, productTypes)}` : "ทุกหมวดสินค้า"}</small></td>
                           <td><div className={styles.rowActions}>
                             <button type="button" className="btn-icon" disabled={index === 0} onClick={() => moveStep(index, -1)} aria-label={`เลื่อน ${step.name} ขึ้น`}><ArrowUp size={15} /></button>
                             <button type="button" className="btn-icon" disabled={index === editor.steps.length - 1} onClick={() => moveStep(index, 1)} aria-label={`เลื่อน ${step.name} ลง`}><ArrowDown size={15} /></button>
@@ -498,7 +499,7 @@ export default function WorkflowTemplatesPage() {
                   <div className={styles.stepCards}>{editor.steps.map((step, index) => (
                     <article key={`${step.stepKey}-${index}`} className={styles.stepCard}>
                       <div className={styles.cardHead}><div className={styles.stepIdentity}><span>{index + 1}</span><div><strong>{step.name || "ยังไม่มีชื่อ"}</strong><small>{step.stepKey || "ยังไม่มี Step key"}</small></div></div><span className={styles.roleBadge}>{step.role}</span></div>
-                      <dl><div><dt>ระยะเวลา</dt><dd>{step.durationDays} วัน</dd></div><div><dt>Dependency</dt><dd><DependencyLabel step={step} steps={editor.steps} /></dd></div><div><dt>หมวดสินค้า</dt><dd>{step.categoryOnly ? `เฉพาะ ${step.categoryOnly}` : step.categoryExclude ? `ยกเว้น ${step.categoryExclude}` : "ทุกหมวด"}</dd></div></dl>
+                      <dl><div><dt>ระยะเวลา</dt><dd>{step.durationDays} วัน</dd></div><div><dt>Dependency</dt><dd><DependencyLabel step={step} steps={editor.steps} /></dd></div><div><dt>หมวดสินค้า</dt><dd>{step.categoryOnly ? `เฉพาะ ${workflowCategoryRuleText(step.categoryOnly, productTypes)}` : step.categoryExclude ? `ยกเว้น ${workflowCategoryRuleText(step.categoryExclude, productTypes)}` : "ทุกหมวด"}</dd></div></dl>
                       <div className={styles.mobileActions}><button type="button" className="btn ghost" onClick={() => openStep(index)}><Edit3 size={15} /> แก้ไข</button><button type="button" className="btn ghost" onClick={() => duplicateStep(index)}><Copy size={15} /> สำเนา</button><button type="button" className="btn ghost" onClick={() => removeStep(index)}><Trash2 size={15} /> ลบ</button><button type="button" className="btn-icon" disabled={index === 0} onClick={() => moveStep(index, -1)} aria-label="เลื่อนขึ้น"><ArrowUp size={15} /></button><button type="button" className="btn-icon" disabled={index === editor.steps.length - 1} onClick={() => moveStep(index, 1)} aria-label="เลื่อนลง"><ArrowDown size={15} /></button></div>
                     </article>
                   ))}</div>

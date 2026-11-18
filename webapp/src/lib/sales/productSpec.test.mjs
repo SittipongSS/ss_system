@@ -1018,7 +1018,7 @@ test('store: ภาพนิ่งเก็บทุกช่องที่ก�
   assert.equal(snapshot.spec.certifications[0].status, 'ready');
   assert.deepEqual(Object.keys(snapshot.spec).sort(), [...SPEC_CONTENT_FIELDS, 'certifications'].sort());
   assert.deepEqual(snapshot.items, [{ sortOrder: 0, itemKey: 'cap', itemLabel: 'ฝา', detail: 'เงิน', preparedByS: true, preparedByCustomer: false, note: null }]);
-  assert.equal(snapshot.product.categoryName, 'SPRAY · สเปรย์');
+  assert.equal(snapshot.product.categoryName, '01-002 SPRAY · สเปรย์'); // รหัส + ชื่อ (มติ 18/11)
   assert.equal(snapshot.product.scentText, 'FIRST PLATE | PF9010103');
   // FG นี้ไม่ผูกสูตร ⇒ ช่องสูตรมีครบคีย์แต่เป็น null ทั้งสี่ (กระดาษถอยไปแถวกลิ่น · มติ 01/10/2569)
   // 🔴 "มีคีย์" คือสัญญาณที่ตัวประกอบแถวใช้แยกของใหม่จากภาพนิ่งเก่า — ตัดคีย์ทิ้งตอนว่าง = ใบใหม่ได้ป้ายกลิ่นเดิม

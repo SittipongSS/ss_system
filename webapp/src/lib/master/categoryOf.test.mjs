@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  categoryOf, categoryFlags, isExciseCategory, categoryInfo, mainCategoryOf, showsRetailPrice, fdaNoticeState,
+  categoryCodeName, categoryOf, categoryFlags, isExciseCategory, categoryInfo, mainCategoryOf, showsRetailPrice, fdaNoticeState,
 } from './categoryOf';
 
 const TYPES = [
@@ -81,4 +81,14 @@ test('หมวดที่ติ๊กสรรพสามิต มีช่�
 test('หมวดที่ไม่ติ๊กสรรพสามิตและไม่ใช่กลุ่ม 01 ยังไม่มีช่องราคาขายปลีก', () => {
   const types = [{ mainCategoryCode: '07', typeCode: '004', isExcise: false }];
   assert.equal(showsRetailPrice('FG-ABC-07-004-0001', types), false);
+});
+
+// ⭐ มติเจ้าของ 18/11/2026: หมวดสินค้า = รหัส + ชื่อเสมอ — ตัวประกอบจากสองช่องที่ server แนบมา
+test('categoryCodeName — รหัส + ชื่อ · ไม่ซ้อนรหัส · ขาดช่องไหนเหลือช่องที่มี', () => {
+  assert.equal(categoryCodeName('01-014', 'แชมพู'), '01-014 แชมพู');
+  assert.equal(categoryCodeName('01-014', '01-014 แชมพู'), '01-014 แชมพู');
+  assert.equal(categoryCodeName('04-002', '04-002'), '04-002'); // หมวดชื่อว่าง: บรรทัดเพิ่มเองเก็บรหัสไว้ในช่องชื่อ
+  assert.equal(categoryCodeName('01-014', ''), '01-014');
+  assert.equal(categoryCodeName('', 'แชมพู'), 'แชมพู');
+  assert.equal(categoryCodeName(null, null), '');
 });

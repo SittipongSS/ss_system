@@ -92,3 +92,18 @@ export function findCategoryByCode(categories = [], code = '') {
   if (!code) return null;
   return (categories || []).find((row) => productCategoryCode(row) === code) || null;
 }
+
+/**
+ * ⭐ ป้ายหมวดสินค้าสำหรับ "แสดงผล" — **รหัส + ชื่อเสมอ** (มติเจ้าของ 18/11/2026 ทั้งระบบ)
+ * ทรงเดียวกับตัวเลือกหมวด (`categoryOptionLabel`): `01-014 Reed Diffuser · ก้านไม้หอม`
+ *
+ * - ยังไม่รู้ชื่อ (รายการหมวดยังโหลดไม่เสร็จ · รหัสไม่อยู่ในทะเบียน · หมวดชื่อว่างทั้งสองภาษา
+ *   ซึ่ง prod มีจริง 5 แถว) ⇒ ถอยเป็นรหัสดิบ **ห้ามคืนค่าว่าง** และห้ามโชว์ชื่ออย่างเดียว
+ * - ไม่มีรหัส ⇒ `''` (ผู้เรียกโชว์ขีดเอง)
+ */
+export function categoryCodeLabel(code, categories = []) {
+  const value = String(code ?? '').trim();
+  if (!value) return '';
+  const name = categoryNameBoth(findCategoryByCode(categories, value));
+  return name ? `${value} ${name}` : value;
+}

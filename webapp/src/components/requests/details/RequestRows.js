@@ -92,7 +92,7 @@ export default function RequestRows({
         >
           <ChevronRight size={15} aria-hidden="true" className={styles.rowChevron} />
           <span className={styles.rowTitle}>
-            <strong>{item.lineKind === "product_dev" ? requestedLabel(item.label) : item.label}</strong>
+            <strong>{item.lineKind === "product_dev" ? requestedLabel(item.label, item.categoryCode) : item.label}</strong>
             <StatusBadge
               tone={ROW_STAGE_TONES[rowStage(item)] || "neutral"}
               label={naText(ROW_STAGE_LABELS[rowStage(item)])}

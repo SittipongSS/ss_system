@@ -10,11 +10,13 @@
 //   • Rev. บนเอกสารสด: ยังไม่เคยออก/แก้หลังออก = ไม่ปั๊มเลข Rev. ทางการ (liveTimelineRev) · พิมพ์ฉบับเก่าส่ง rev มาเอง
 //   • มาตรฐานฟอร์ม: ที่ตรึงใน snapshot ของ Rev. > ที่โครงการตรึงไว้ > ที่เผยแพร่อยู่ (ganttPrint ตัดสินลำดับสุดท้าย)
 import { liveTimelineRev } from './dealTimelineRevisions.js';
+import { categoryLabel } from '../master/categoryOf.js';
 
 /**
  * @param {object} deal แถวดีล (หรือ snapshot.deal ของ Rev. เก่า)
  * @param {object} overview { projectTasks, projectProducts, project, timelineRevision }
  * @param {object} [options] { rev, revDate, standard } — ส่งมาเมื่อพิมพ์ Rev. ที่ออกแล้ว
+ *   · `productTypes` ทะเบียนหมวด ไว้พิมพ์หมวดเป็น "รหัส ชื่อ" (มติ 18/11) — ไม่ส่ง = รหัสดิบ
  */
 export function dealTimelineDocument(deal = {}, overview = {}, options = {}) {
   const tasks = Array.isArray(overview.projectTasks) ? overview.projectTasks : [];
@@ -51,7 +53,8 @@ export function dealTimelineDocument(deal = {}, overview = {}, options = {}) {
     },
     // แถว "โครงการ/ประเภท" บนหัวกระดาษ = ดีลใบนี้ใบเดียว (เดิมไล่ทุกดีลในโครงการ)
     deals: deal.title ? [{ id: deal.id, title: deal.title, dealType: deal.dealType, metadata: deal.metadata }] : [],
-    categoryFallback: deal.categoryCode || project?.productMainCategory || project?.productSubCategory || '',
+    categoryFallback: (deal.categoryCode ? categoryLabel(deal.categoryCode, options.productTypes || []) : '')
+      || project?.productMainCategory || project?.productSubCategory || '',
     projectProducts,
     tasks,
     rev,

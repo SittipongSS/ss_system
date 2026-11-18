@@ -22,6 +22,7 @@ import ExcelJS from 'exceljs';
 import { costPriceVat, VAT_RATE_LABEL } from '@/lib/master/costVat';
 import { fmtDate, productNameBoth } from '@/lib/format';
 import { DEFAULT_VOLUME_UNIT } from '@/lib/master/units';
+import { categoryCodeName } from '@/lib/master/categoryOf';
 import { BOM_STATUS_META, bomFilterValueOf, bomSendBlockerShort } from '@/lib/master/productBom';
 
 const FONT = 'Leelawadee UI';
@@ -67,7 +68,7 @@ export function productFormulaLines(product) {
   if (parts.length) {
     return parts.map((row) => ({
       code: textOf(row.formulaCode) || DASH,
-      name: `${textOf(row.categoryName) || textOf(row.categoryCode) || DASH}: ${textOf(row.formulaName) || DASH}`,
+      name: `${categoryCodeName(textOf(row.categoryCode), textOf(row.categoryName)) || DASH}: ${textOf(row.formulaName) || DASH}`,
       date: dateOf(row.formulaDate),
     }));
   }

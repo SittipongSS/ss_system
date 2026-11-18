@@ -242,7 +242,7 @@ export default function RdPricesPage() {
             <Metric
               label="รอ Ingredient List" value={`${totals.missingIngredients} รายการ`}
               tone={totals.missingIngredients > 0 ? "warning" : undefined}
-              note="สูตรหมวด 01/02 (ยกเว้น 02-020)"
+              note="สูตรหมวด 01/02 (ยกเว้น 02-020 หัวน้ำหอม)"
             />
             <Metric label="ใบคำร้อง" value={`${totals.requests} ใบ`} note="ใส่ครบใบ = RD ตอบใบนั้นแล้ว" />
             <Metric
@@ -270,7 +270,7 @@ export default function RdPricesPage() {
               <Metric
                 label="ยังไม่มี Ingredient List" value={`${tabTotals.missingIngredient} ตัว`}
                 tone={tabTotals.missingIngredient > 0 ? "warning" : undefined}
-                note="สูตรหมวด 01/02 (ยกเว้น 02-020)"
+                note="สูตรหมวด 01/02 (ยกเว้น 02-020 หัวน้ำหอม)"
               />
             ) : null}
             <Metric label="ราคาหมดอายุ" value={`${tabTotals.expiredPrice} ตัว`} note="มีราคาแล้ว แต่ใบขอราคาผลิตจะเตือน" />
@@ -398,6 +398,7 @@ export default function RdPricesPage() {
                     onPrice={setPricing}
                     onUseCurrent={applyCurrentPrice}
                     onIngredients={setIngredientRow}
+                    categoryLabel={categoryLabel}
                   />
                 ))}
               </table>
@@ -506,7 +507,7 @@ export default function RdPricesPage() {
 
 /* หนึ่งถัง — หัวถังพับได้ · ยอดบนหัวเป็นยอดทั้งถัง · จัดกลุ่มตามใบ = ลิงก์ไปใบอยู่ท้ายหัว + "รอนานสุด" (ไม่ใช่ทั้งแถวคลิกได้)
    ไม่จัดกลุ่ม = ถังเดียวไม่มีหัว (`group.label` ว่าง) */
-function RowGroup({ group, byRequest, today, canPrice, linking, collapsed, onToggle, onPrice, onUseCurrent, onIngredients }) {
+function RowGroup({ group, byRequest, today, canPrice, linking, collapsed, onToggle, onPrice, onUseCurrent, onIngredients, categoryLabel }) {
   const items = group.items || [];
   const days = items.map((r) => waitingDays(r, today)).filter((d) => d != null);
   const maxDays = days.length ? Math.max(...days) : null;
@@ -528,7 +529,7 @@ function RowGroup({ group, byRequest, today, canPrice, linking, collapsed, onTog
       ) : null}
       {collapsed ? null : items.map((row) => (
         <tr key={row.itemId}>
-          <td><ItemCell row={row} showRequest={!byRequest} /></td>
+          <td><ItemCell row={row} showRequest={!byRequest} categoryLabel={categoryLabel} /></td>
           <td>
             <div>{row.confirmedAt ? fmtDate(row.confirmedAt) : NA}</div>
             <div className={styles.sub}>
@@ -552,10 +553,14 @@ function RowGroup({ group, byRequest, today, canPrice, linking, collapsed, onTog
 
 /* รายการ — รหัสบน·ชื่อล่าง (กติกาแสดง entity ของตาราง) · บรรทัดรองบอกชนิดของในทะเบียน และของที่ขอมาถ้าชื่อไม่ตรงกัน
    ไม่ได้จัดกลุ่มตามใบ = หัวถังไม่บอกใบ ⇒ บรรทัดรองบอกเลขที่คำร้อง + ลูกค้า (ลิงก์ไปใบ) แทน */
-function ItemCell({ row, showRequest = false }) {
+function ItemCell({ row, showRequest = false, categoryLabel }) {
   const reg = row.registry;
+  // หมวดของสูตร = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) · ชื่อยังไม่มา = รหัสดิบ
+  const categoryText = reg?.categoryCode
+    ? [reg.categoryCode, categoryLabel?.(reg.categoryCode)].filter(Boolean).join(" ")
+    : "";
   const kind = reg?.kind === "formula"
-    ? `สูตร${reg.categoryCode ? ` ${reg.categoryCode}` : ""}`
+    ? `สูตร${categoryText ? ` ${categoryText}` : ""}`
     : reg?.kind === "scent" ? "กลิ่น (หัวน้ำหอม)" : "ยังไม่ผูกทะเบียน";
   const name = reg?.name || row.label || null;
   return (

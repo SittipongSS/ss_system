@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  categoryName, categoryOptionLabel, findCategoryByCode,
+  categoryCodeLabel, categoryName, categoryOptionLabel, findCategoryByCode,
   mainCategoryName, productCategoryOptions,
 } from './productCategoryOptions.js';
 
@@ -88,4 +88,22 @@ test('ชื่อหมวดหลักรับได้ทั้งสา�
   assert.equal(mainCategoryName({ mainCategoryName: 'ODM' }), 'ODM');
   assert.equal(mainCategoryName({ mainCategoryNameTh: 'โอดีเอ็ม' }), 'โอดีเอ็ม');
   assert.equal(mainCategoryName({}), '');
+});
+
+// ⭐ มติเจ้าของ 18/11/2026: หมวดสินค้าโชว์ "รหัส + ชื่อ" เสมอทั้งระบบ — ห้ามรหัสเปล่าเมื่อรู้ชื่อ ห้ามชื่ออย่างเดียว
+test('categoryCodeLabel — รหัส + ชื่อสองภาษา ทรงเดียวกับตัวเลือก', () => {
+  assert.equal(categoryCodeLabel('01-002', rows), '01-002 Scented candle · เทียนหอม');
+  assert.equal(categoryCodeLabel('02-010', rows), '02-010 Service fee');
+  // หมวดพักใช้งานยังต้องตั้งชื่อได้ (สินค้าเก่าที่ยังถือรหัสนี้) แต่ไม่ติด "(พักใช้งาน)" บนป้ายแสดงผล
+  assert.equal(categoryCodeLabel('01-003', rows), '01-003 Reed diffuser · ก้านไม้หอม');
+});
+
+test('categoryCodeLabel — ไม่รู้ชื่อ = รหัสดิบ (ห้ามว่าง) · ไม่มีรหัส = ว่าง', () => {
+  assert.equal(categoryCodeLabel('01-001', rows), '01-001'); // ชื่อว่างทั้งสองภาษา
+  assert.equal(categoryCodeLabel('09-999', rows), '09-999'); // ไม่อยู่ในทะเบียน
+  assert.equal(categoryCodeLabel('01-002', []), '01-002'); // รายการหมวดยังโหลดไม่เสร็จ
+  assert.equal(categoryCodeLabel('01-002'), '01-002');
+  assert.equal(categoryCodeLabel(' 01-002 ', rows), '01-002 Scented candle · เทียนหอม');
+  assert.equal(categoryCodeLabel(null, rows), '');
+  assert.equal(categoryCodeLabel('', rows), '');
 });

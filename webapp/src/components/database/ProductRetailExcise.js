@@ -193,7 +193,8 @@ export default function ProductRetailExcise({
                       <tr key={row.key || row.id || index} className="border-b border-[var(--border)]">
                         <td className="py-1.5 pr-2 align-middle">
                           <span className="flex flex-wrap items-center gap-2">
-                            {categoryName(categoryRow(code, productTypes)) || code}
+                            {/* หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) */}
+                            {[code, categoryName(categoryRow(code, productTypes))].filter(Boolean).join(" ")}
                             {exciseRows && isExciseCategory(code, productTypes) && <StatusBadge size="sm" tone="accent" label="ฐานภาษี" />}
                           </span>
                           <span className="block text-xs text-[var(--text-3)]">{formula ? formulaLabel(formula) : "ยังไม่เลือกสูตร"}</span>

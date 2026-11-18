@@ -585,9 +585,9 @@ test('🔴 จอหน้าสเปคประกอบแถวสูตร
   assert.match(paper, /const formulaRows = productSpecFormulaRows\(product, language\);/);
   assert.match(paper, /\.\.\.formulaRows\.map\(\(row\) => \[row\.label, row\.value\]\),/);
   assert.doesNotMatch(paper, /\['กลิ่น \/ รหัสกลิ่น', product\.scentText\]/);
-  // ตัวประกอบต้องเบา (จอเป็น client component) — import ได้แค่ตัวจัดรูปกลาง
+  // ตัวประกอบต้องเบา (จอเป็น client component) — import ได้แค่ตัวจัดรูปกลาง + ป้ายหมวด (categoryOf ไม่มี server import)
   const row = read('./productSpecFormulaRow.js');
-  assert.deepEqual([...row.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]), ['@/lib/format']);
+  assert.deepEqual([...row.matchAll(/^import .* from '([^']+)';$/gm)].map((m) => m[1]), ['@/lib/format', '@/lib/master/categoryOf']);
   // เส้นของหน้าสเปคส่งช่องสินค้าชุดเดียวกับกระดาษ (รวมช่องสูตร) ให้จอ
   const route = read('../../app/api/products/[id]/spec/route.js');
   assert.match(route, /product: \{ \.\.\.product, \.\.\.printed\.product, team: product\.team, ownerId: product\.ownerId \}/);
@@ -1351,16 +1351,16 @@ test('⭐ ชุดของขวัญ: แถวสูตรแตกเป�
   const rows = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(GIFT_SET) })));
   assert.deepEqual(rows.map(([label]) => label), [
     'ชื่อผลิตภัณฑ์', 'ชื่อแบรนด์', 'รหัสสินค้า', 'ประเภทผลิตภัณฑ์',
-    'สูตร 1 · น้ำหอมสำหรับผิวกาย', 'สูตร 2 · ก้านหอมปรับอากาศ',
+    'สูตร 1 · 01-002 น้ำหอมสำหรับผิวกาย', 'สูตร 2 · 01-006 ก้านหอมปรับอากาศ',
     'ปริมาตรบรรจุ (Size)', 'จำนวนผลิต (Quantity)', 'ลักษณะเนื้อสาร', 'บรรจุภัณฑ์มาตรฐาน',
   ]);
-  assert.deepEqual(rows[4], ['สูตร 1 · น้ำหอมสำหรับผิวกาย', 'Midnight #1 | PF85901 | 10/09/2569']);
-  assert.deepEqual(rows[5], ['สูตร 2 · ก้านหอมปรับอากาศ', 'Midnight Reed | - | -'], 'ชิ้นที่ไม่มีเป็นขีด เหมือนแถวสูตรเดี่ยว');
+  assert.deepEqual(rows[4], ['สูตร 1 · 01-002 น้ำหอมสำหรับผิวกาย', 'Midnight #1 | PF85901 | 10/09/2569']);
+  assert.deepEqual(rows[5], ['สูตร 2 · 01-006 ก้านหอมปรับอากาศ', 'Midnight Reed | - | -'], 'ชิ้นที่ไม่มีเป็นขีด เหมือนแถวสูตรเดี่ยว');
 });
 
 test('ชุดของขวัญบนใบอังกฤษ: วันที่ ค.ศ. · ป้ายไม่แปล (ชื่อหมวดไทยก่อน แบบป้ายแถวอื่นของตาราง)', () => {
   const rows = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(GIFT_SET, englishSnapshot) })));
-  assert.deepEqual(rows[4], ['สูตร 1 · น้ำหอมสำหรับผิวกาย', 'Midnight #1 | PF85901 | 10/09/2026']);
+  assert.deepEqual(rows[4], ['สูตร 1 · 01-002 น้ำหอมสำหรับผิวกาย', 'Midnight #1 | PF85901 | 10/09/2026']);
 });
 
 test('ชุดของขวัญที่ยังไม่ผูกสูตร = แถวสูตรเดี่ยวว่างแบบเดิม (N/A) · ชื่อหมวดหาไม่เจอ = ใช้รหัสหมวด', () => {

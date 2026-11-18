@@ -13,6 +13,7 @@ import { apiJson } from "@/lib/apiFetch";
 import { fmtDateTime, naText } from "@/lib/format";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { dealTimelineDocument } from "@/lib/sales/dealTimelineDocument";
+import { useProductCategories } from "@/lib/useProductCategories";
 import { nextTimelineRev, restoreSummaryText, timelineRevBadge } from "@/lib/sales/dealTimelineRevisions";
 import styles from "./DealTimelineRevControls.module.css";
 
@@ -25,6 +26,7 @@ import styles from "./DealTimelineRevControls.module.css";
  */
 export default function DealTimelineRevControls({ deal, timelineRevision, canEdit = false, dirtyCount = 0, onChanged }) {
   const [issueOpen, setIssueOpen] = useState(false);
+  const productTypes = useProductCategories(); // หมวดบนกระดาษ Rev. เก่า = รหัส + ชื่อ (มติ 18/11)
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [issueError, setIssueError] = useState("");
@@ -87,7 +89,7 @@ export default function DealTimelineRevControls({ deal, timelineRevision, canEdi
       openGanttPrintWindow(dealTimelineDocument(
         snapshot.deal || deal,
         { projectTasks: snapshot.tasks || [], project: snapshot.project || null },
-        { rev: row.revNo, revDate: row.createdAt || null, standard: snapshot.standard || null },
+        { rev: row.revNo, revDate: row.createdAt || null, standard: snapshot.standard || null, productTypes },
       ));
     } catch (error) {
       notifyToast.error(error.message || "ดึงเวอร์ชันไม่สำเร็จ");

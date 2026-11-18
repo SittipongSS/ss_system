@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canAccessSahamit, userTeams } from '@/lib/permissions';
-import { categoryOf } from '@/lib/master/categoryOf';
+import { categoryCodeName, categoryOf } from '@/lib/master/categoryOf';
 import { brandLabel } from '@/lib/master/brands';
 
 // ── SAHAMIT server-side scope guard ───────────────────────────────────
@@ -101,7 +101,8 @@ export async function loadSahamitProducts(supabase, customerId) {
         assignee: p.assignee || null,
         ownerId: p.ownerId || null,
         categoryCode: categoryCode ?? null,
-        category: (categoryCode && typeName.get(categoryCode)) || categoryCode || null,
+        // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — ค่าเดียวกันเป็นทั้งป้ายและค่าตัวกรอง/กลุ่มของจอสหมิตร
+        category: categoryCodeName(categoryCode, categoryCode ? typeName.get(categoryCode) : '') || null,
         // มูลค่า = qty × ราคาผลิต (factory price = costPrice ใน master; ดู products
         // route: `const factoryPrice = costPrice`). ใช้ร่วมทั้งกระทบยอด + รายงานมูลค่า.
         price: p.costPrice ?? null,

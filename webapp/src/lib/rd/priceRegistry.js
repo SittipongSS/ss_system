@@ -69,7 +69,7 @@ export function confirmedRegistrySources(requests = []) {
         itemId: item.id,
         confirmedAt: item.outcomeAt || null,
         stage,
-        label: item.lineKind === 'product_dev' ? requestedLabel(item.label) : (item.label || ''),
+        label: item.lineKind === 'product_dev' ? requestedLabel(item.label, item.categoryCode) : (item.label || ''),
       };
       push(scents, item.producedScentId, source);
       push(formulas, item.producedFormulaId, source);
