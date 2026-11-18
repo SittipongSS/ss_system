@@ -477,8 +477,6 @@ export default function SalesPlanningPipelinePage() {
       startDate: deal.startDate || "",
       endDate: deal.endDate || "",
       notes: deal.notes || "",
-      projectId: deal.projectId || "",
-      lockedProjectId: deal.projectId || "",
       // สายธุรกิจของดีล (mig 0275) — ต้องโหลดมาด้วย ไม่งั้นฟอร์มแก้ส่งค่าว่างไปทับ
       line: deal.line || "",
       // ต้องโหลดมาด้วย ไม่งั้นช่องว่างจะถูกส่งไปทับเจ้าของเดิมตอนกดบันทึก
