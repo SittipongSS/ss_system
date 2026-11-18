@@ -15,7 +15,7 @@ import thaiText from "@/components/ThaiText";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronDown, MoreHorizontal } from "lucide-react";
 import Button from "@/components/ui/Button";
 import styles from "./RowActionMenu.module.css";
 
@@ -26,8 +26,13 @@ const MENU_WIDTH = 232;
  *               href แทน onClick = รายการที่พาไปหน้าอื่น (เรนเดอร์เป็น <Link> จริง)
  *               tone: "neutral" | "warning" | "danger" — คุมสีข้อความ/ไอคอนของรายการ
  * @param label  ข้อความ aria ของปุ่มเปิด (ควรบอกว่าเป็นของแถวไหน)
+ * @param triggerLabel  ปุ่มเปิดเป็น **ปุ่มมีป้าย + ลูกศร** แทนไอคอน ⋯ (ม-165 PR-3 · "บันทึกคำตอบ ▾") — ก้าวถัดไปที่มีหลายทางเลือก
+ *                      ใช้เมนูเดียวกันทุกอย่าง (portal · คีย์บอร์ด · เหตุที่กดไม่ได้) ไม่สร้างดรอปดาวน์ตัวที่สอง
+ * @param triggerTone   โทนของปุ่มมีป้าย (ตั้งต้น primary — เป็นก้าวถัดไปของแถว)
  */
-export default function RowActionMenu({ items = [], label = "การจัดการอื่น", busy = false, className = "" }) {
+export default function RowActionMenu({
+  items = [], label = "การจัดการอื่น", busy = false, className = "", triggerLabel = null, triggerTone = "primary",
+}) {
   const [open, setOpen] = useState(false);
   const [style, setStyle] = useState(null);
   const triggerRef = useRef(null);
@@ -173,16 +178,31 @@ export default function RowActionMenu({ items = [], label = "การจัด�
      เพราะ Button เป็น function component ที่ยังไม่รับ ref (จะได้ไม่ต้องแก้ primitive กลาง) */
   return (
     <span ref={triggerRef} className={`${styles.trigger} ${className}`.trim()}>
-      <Button
-        iconOnly
-        icon={<MoreHorizontal size={16} aria-hidden="true" />}
-        aria-label={label}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        disabled={busy}
-        onClick={() => setOpen((v) => !v)}
-      />
+      {triggerLabel ? (
+        <Button
+          tone={triggerTone}
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          disabled={busy}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {triggerLabel}
+          <ChevronDown size={14} aria-hidden="true" />
+        </Button>
+      ) : (
+        <Button
+          iconOnly
+          icon={<MoreHorizontal size={16} aria-hidden="true" />}
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          disabled={busy}
+          onClick={() => setOpen((v) => !v)}
+        />
+      )}
       {open && typeof document !== "undefined" ? createPortal(menu, document.body) : null}
     </span>
   );
