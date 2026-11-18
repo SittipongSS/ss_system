@@ -30,7 +30,7 @@ const dayDiff = (from, today) => {
  */
 export function scentOrderQueueRows({
   orders = [], linesBySo = new Map(), ownerById = new Map(), dismissals = new Map(), dealsById = new Map(),
-  latestRequestByCustomer = new Map(), today = null,
+  latestRequestByCustomer = new Map(), today = null, productTypes = [],
 } = {}) {
   const pending = [];
   const dismissed = [];
@@ -51,7 +51,8 @@ export function scentOrderQueueRows({
       dealOwnerId: deal?.ownerId || null,
       dealOwnerName: deal?.ownerName || null,
       team: deal?.team || null,
-      linesText: scentOrderLinesText(lines),
+      // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — "03-010 แก้ไขกลิ่น ×1" · ทะเบียนว่าง = รหัสดิบ
+      linesText: scentOrderLinesText(lines, productTypes),
       adds: attachAdds(lines),
       since,
       waitingDays: dayDiff(since, today),

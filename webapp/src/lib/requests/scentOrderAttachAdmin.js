@@ -20,8 +20,8 @@ import {
   detachOrderError, scentOrderLinesText, slotsAfterDetach,
 } from '@/lib/requests/scentOrderAttach';
 
-/* ชื่อหมวดไว้พูดในข้อความ (รหัส + ชื่อ · มติ 18/11) — อ่านพลาด = รหัสดิบ ไม่ล้มการแนบ/รายการตัวเลือก */
-async function typeNamesOrNone(supabase) {
+/* ชื่อหมวดไว้พูดในข้อความ (รหัส + ชื่อ · มติ 18/11) — อ่านพลาด = รหัสดิบ ไม่ล้มการแนบ/รายการตัวเลือก/คิว */
+export async function typeNamesOrNone(supabase) {
   try {
     return await loadProductTypeNames(supabase);
   } catch (e) {

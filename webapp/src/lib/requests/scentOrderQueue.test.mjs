@@ -37,6 +37,12 @@ test('แถวคิว: เฉพาะงานพัฒนากลิ่น
   assert.deepEqual(pending[0].adds, { slots: 0, revisions: 1 });
   assert.equal(pending[0].dealOwnerId, 'U-SA');
   assert.deepEqual(dismissed.map((r) => r.orderNumber), ['SO-X']);
+  // ⭐ มติเจ้าของ 18/11/2026: หมวด = รหัส + ชื่อ — ส่งทะเบียนหมวดมา ชื่อขึ้นในสิ่งที่ SO ขาย
+  const named = scentOrderQueueRows({
+    orders, linesBySo, today: '2026-11-18',
+    productTypes: [{ mainCategoryCode: '03', typeCode: '010', nameTh: 'แก้ไขกลิ่น', nameEn: 'Fragrance Modification' }],
+  });
+  assert.equal(named.pending.find((r) => r.orderNumber === 'SO-A').linesText, '03-010 แก้ไขกลิ่น ×1');
 });
 
 test('ขอบเขต: ของฉัน = ดีลของฉัน · ทั้งหมด = หัวหน้าฝ่ายขาย/แอดมิน (คนอื่นขอทั้งหมดได้ของตัวเอง)', () => {

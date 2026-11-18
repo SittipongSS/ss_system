@@ -9,7 +9,7 @@ import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { isActualOrder, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { loadScentOrderLines, loadScentOrderOwners } from '@/lib/requests/scentOrderLinksAdmin';
-import { loadScentOrderDismissals } from '@/lib/requests/scentOrderAttachAdmin';
+import { loadScentOrderDismissals, typeNamesOrNone } from '@/lib/requests/scentOrderAttachAdmin';
 import { scentDesignLines } from '@/lib/requests/scentDesignOrders';
 import { dismissScentOrderError, scentOrderQueueRows, undismissScentOrderError } from '@/lib/requests/scentOrderQueue';
 
@@ -42,6 +42,7 @@ async function loadQueueContext(supabase, orders, { today }) {
   return scentOrderQueueRows({
     orders: free, linesBySo, ownerById, dismissals,
     dealsById: new Map(deals.map((d) => [d.id, d])), latestRequestByCustomer, today,
+    productTypes: free.length ? await typeNamesOrNone(supabase) : [],
   });
 }
 
