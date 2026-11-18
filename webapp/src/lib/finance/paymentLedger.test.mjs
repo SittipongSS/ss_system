@@ -54,9 +54,12 @@ test('คอลัมน์ที่ส่งออกมีทั้ง SO แ�
 });
 
 // ── เลยกำหนด ─────────────────────────────────────────────────────────────
-test('งวดที่รอบัญชีตรวจแต่เลยกำหนดแล้ว ยังต้องขึ้นธงเลยกำหนด', () => {
-  // เงินอาจเข้าแล้วแต่ยังไม่มีใครรับรอง = ภาระของบัญชี ไม่ใช่ของลูกค้า
-  assert.equal(make({ status: 'reported', dueDate: '2026-08-01' }).overdue, true);
+/* ⭐ มติเจ้าของ 18/11/2026: งวดที่ลูกค้าจ่ายแล้ว (มีวันชำระ · แจ้งชำระรอบัญชีตรวจ) ไม่เลยกำหนด — งานบัญชีอยู่แท็บ "รอตรวจงวด"
+   (เดิม: รอตรวจที่เลยวัน = ขึ้นธงเป็นภาระของบัญชี) · บัญชีตีกลับ = เงินยังไม่เข้า ⇒ เลยกำหนดได้ */
+test('ทะเบียน: งวดที่ลูกค้าจ่ายแล้วไม่เลยกำหนด · ตีกลับ/ยังไม่จ่ายที่เลยวัน = เลยกำหนด', () => {
+  assert.equal(make({ status: 'reported', dueDate: '2026-08-01', paidOn: '2026-08-03' }).overdue, false, 'แจ้งชำระแล้ว รอตรวจ');
+  assert.equal(make({ status: 'rejected', dueDate: '2026-08-01', paidOn: '2026-08-03' }).overdue, true, 'บัญชีตีกลับ');
+  assert.equal(make({ status: 'pending', dueDate: '2026-08-01' }).overdue, true, 'ยังไม่จ่าย + เลยวัน');
   assert.equal(make({ status: 'confirmed', dueDate: '2026-08-01' }).overdue, false);
   assert.equal(make({ status: 'pending', dueDate: '2026-08-20' }).overdue, false);
   // ไม่มีกำหนด = ยังไม่ถูกนัด ไม่ใช่เลยกำหนด
@@ -174,6 +177,15 @@ test('ใบที่มีงวดเลยกำหนดแม้งวด�
   ]);
   assert.deepEqual(groups.map((g) => g.orderNumber), ['SO-LATE', 'SO-WAIT', 'SO-CLEAN']);
   assert.equal(groups[0].overdue, true);
+});
+
+test('ทะเบียน: "กำหนดถัดไป" ของใบข้ามงวดที่ลูกค้าจ่ายแล้ว · ใบที่จ่ายแล้วเลยวันไม่ขึ้นแดง (มติเจ้าของ 18/11/2026)', () => {
+  const [g] = groupLedgerByOrder([
+    rowFor('PAID', 1, { status: 'reported', dueDate: '2026-08-01', paidOn: '2026-08-02' }),
+    rowFor('PAID', 2, { status: 'pending', dueDate: '2026-12-01' }),
+  ]);
+  assert.equal(g.overdue, false);
+  assert.equal(g.nextDue, '2026-12-01');
 });
 
 test('ก้อนสรุปยอดและจำนวนงวดที่เก็บได้ถูกต้อง', () => {
