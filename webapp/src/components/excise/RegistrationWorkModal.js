@@ -13,7 +13,9 @@ import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import StatusBadge from "@/components/excise/StatusBadge";
+import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
+import { workflowStepsFromIndex } from "@/lib/documentControlModel";
+import { statusMeta } from "@/lib/excise/workflow";
 import { apiJson } from "@/lib/apiFetch";
 import { ATTACHMENT_TYPES, customerDocTypes } from "@/lib/master/attachmentTypes";
 import { attachmentHref } from "@/lib/master/attachmentStorage";
@@ -43,6 +45,43 @@ const registrationDocTypes = (status, hasApprovalLetter, hasLegacyLabel) => ATTA
 });
 /* การ์ดเดียวของแผง Artwork — ชนิดเดียวกับการ์ด "Artwork สินค้า" ของแท็บเอกสาร (ไฟล์ชุดเดียวกัน) แต่ป้ายบอกว่าใช้ยื่น */
 const ARTWORK_CARD = [{ key: PRODUCT_ARTWORK_DOC_TYPE, label: ARTWORK_MISSING_LABEL, required: true }];
+
+/* ── การ์ดจัดการทะเบียน (หน้าสินค้าศูนย์รวม มติ 8 · 18/11/2026) ──────────────────────────────────────────────────────
+   ทะเบียนเป็นเอกสารของตัวเอง (เลขที่ · RA อนุมัติ · ไฟล์ของตัวเอง) ⇒ มีการ์ดจัดการทรงเดียวกับเอกสารอื่น (DocumentControlCard):
+   สถานะ · ขั้น (ร่าง → รอ RA → ขึ้นทะเบียน) · กล่องแจ้ง · เช็กลิสต์เอกสารบังคับ · ปุ่มสร้าง/ยื่น/ยื่นใหม่ (ติดด่าน = โชว์ + บอกเหตุ)
+   ⭐ ตัวเดียวของหน้าสินค้า (แท็บสรรพสามิต) และหน้า SO (โมดัล) — V8 ฟอร์มเดียว */
+const REG_STEPS = [
+  { id: "draft", label: "ร่าง · แนบเอกสาร", hint: "ฝ่ายขายแนบเอกสารให้ครบแล้วยื่นให้ RA" },
+  { id: "pending_legal", label: "รอ RA ตรวจ", hint: "ฝ่าย RA ตรวจเอกสารและอนุมัติ" },
+  { id: "approved", label: "ขึ้นทะเบียนแล้ว", hint: "ใช้ยื่นภาษีกับใบสั่งขายได้" },
+];
+const REG_STEP_INDEX = { draft: 0, rejected: 0, pending_legal: 1, approved: 2 };
+const TONE_COLOR = { success: "var(--green)", warning: "var(--amber)", danger: "var(--red)", info: "var(--blue)", neutral: "var(--text-3)" };
+
+function RegistrationControl({ item, reg, busy, primaryAction, notices, children }) {
+  const status = reg?.status || null;
+  const meta = status ? statusMeta(status) : null;
+  const steps = workflowStepsFromIndex(
+    REG_STEPS.map((step, index) => (index === 0 && status === "rejected" ? { ...step, hint: "RA ตีกลับ — แก้แล้วยื่นใหม่" } : step)),
+    status ? REG_STEP_INDEX[status] ?? 0 : 0,
+  );
+  const subject = [reg?.fgCode || item.fgCode, naText(reg?.productName || item.label), naText(reg?.customerName || item.customerName)].join(" · ");
+  return (
+    <DocumentControlCard
+      eyebrow="REGISTRATION CONTROL"
+      title="จัดการทะเบียนสรรพสามิต"
+      statusDescription={subject}
+      status={meta ? meta.label : "ยังไม่มีทะเบียน"}
+      statusColor={meta ? TONE_COLOR[meta.tone] || TONE_COLOR.neutral : TONE_COLOR.neutral}
+      workflowSteps={status ? steps : []}
+      notices={notices}
+      primaryAction={primaryAction}
+      busy={!!busy}
+    >
+      {children}
+    </DocumentControlCard>
+  );
+}
 
 /* ของที่ขาดแต่ละชนิดแก้ที่ไหน — เอกสาร/ข้อมูลลูกค้าเก็บที่ลูกค้า · ราคาขายปลีกเก็บที่สินค้า · ไฟล์ของทะเบียนแนบในแผงนี้ */
 const fixHint = (item, reg) => {
@@ -231,16 +270,26 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
   if (!registrationId) {
     return (
       <section className={styles.section}>
-        <Header item={item} reg={null} />
-        <StatusNotice tone="info">
-          FG นี้ยังไม่มีทะเบียนสรรพสามิตของลูกค้ารายนี้ — สร้างคำขอเป็นฉบับร่าง แล้วแนบเอกสาร ยื่นให้ฝ่าย RA ตรวจจากแผงนี้
-        </StatusNotice>
-        {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
-        {canEdit ? (
-          <div className={styles.actions}>
-            <Button onClick={create} disabled={!!busy}>{busy === "create" ? "กำลังสร้าง…" : "สร้างคำขอทะเบียน"}</Button>
-          </div>
-        ) : <p className={styles.muted}>ต้องมีสิทธิ์แก้ข้อมูลสินค้าจึงสร้างคำขอทะเบียนได้</p>}
+        <RegistrationControl
+          item={item}
+          reg={null}
+          busy={busy}
+          /* ไม่มีสิทธิ์แก้สินค้า = ไม่มีปุ่ม (กฎ "ไม่มีสิทธิ์ = ไม่โชว์") · บอกเหตุในกล่องแจ้งแทน */
+          primaryAction={canEdit ? {
+            id: "create", kind: "submit", variant: "filled",
+            label: busy === "create" ? "กำลังสร้าง…" : "สร้างคำขอทะเบียน",
+            onClick: create, disabled: !!busy,
+          } : null}
+          notices={(
+            <>
+              <StatusNotice tone="info">
+                FG นี้ยังไม่มีทะเบียนสรรพสามิตของลูกค้ารายนี้ — สร้างคำขอเป็นฉบับร่าง แล้วแนบเอกสาร ยื่นให้ฝ่าย RA ตรวจจากการ์ดนี้
+              </StatusNotice>
+              {!canEdit ? <p className={styles.muted}>ต้องมีสิทธิ์แก้ข้อมูลสินค้าจึงสร้างคำขอทะเบียนได้</p> : null}
+              {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
+            </>
+          )}
+        />
       </section>
     );
   }
@@ -262,55 +311,62 @@ function RegistrationWorkItem({ item, registrationId, canEdit, onCreated, onChan
 
   return (
     <section className={styles.section}>
-      <Header item={item} reg={reg} />
-
-      {status === "rejected" && reg.rejectionReason ? (
-        <StatusNotice tone="error">RA ตีกลับ: {reg.rejectionReason} — แก้ตามนี้แล้วกด “ยื่นใหม่”</StatusNotice>
-      ) : null}
-      {status === "pending_legal" ? <StatusNotice tone="info">ยื่นแล้ว — รอฝ่าย RA ตรวจและอนุมัติ</StatusNotice> : null}
-      {status === "approved" ? (
-        <StatusNotice tone="success">
-          อนุมัติแล้ว{reg.approvalNumber ? ` · เลขที่ ${reg.approvalNumber}` : ""}{reg.approvedAt ? ` · ${fmtDate(reg.approvedAt)}` : ""}
-          {reg.isExciseTaxable === false ? " · RA ยกเว้นภาษี" : ""}
-        </StatusNotice>
-      ) : null}
-
-      {/* เช็กลิสต์เอกสารบังคับ — ตัวตรวจเดียวกับด่านยื่นของ server */}
-      {submittable && (
-        <div className={styles.checklist}>
-          <div className={styles.checklistHead}>
-            <strong>เอกสารบังคับก่อนยื่น</strong>
-            <Button size="sm" variant="ghost" onClick={checkRequirements}>ตรวจใหม่</Button>
+      <RegistrationControl
+        item={item}
+        reg={reg}
+        busy={busy}
+        /* ปุ่มยื่น = ปุ่มหลักของการ์ด · ติดด่าน (เอกสารขาด/ยังตรวจไม่เสร็จ/ไม่มีสิทธิ์) = ปุ่มยังอยู่ จาง + เหตุเป็นตัวหนังสือเหนือปุ่ม
+           ⚠️ ไม่มีสิทธิ์แก้ = ยังโชว์ปุ่มพร้อมเหตุ (คงพฤติกรรมเดิมของแผง — ด่านจริงอยู่ที่ server) */
+        primaryAction={submittable ? {
+          id: "submit", kind: "submit", variant: "filled",
+          label: busy === "submit" ? "กำลังยื่น…" : status === "rejected" ? "ยื่นใหม่ให้ RA" : "ยื่นให้ RA",
+          onClick: submit,
+          disabled: !!busy || !!submitBlocker,
+          disabledReason: submitBlocker || undefined,
+        } : null}
+        notices={(status === "rejected" && reg.rejectionReason) || status === "pending_legal" || status === "approved" || error ? (
+          <>
+            {status === "rejected" && reg.rejectionReason ? (
+              <StatusNotice tone="error">RA ตีกลับ: {reg.rejectionReason} — แก้ตามนี้แล้วกด “ยื่นใหม่”</StatusNotice>
+            ) : null}
+            {status === "pending_legal" ? <StatusNotice tone="info">ยื่นแล้ว — รอฝ่าย RA ตรวจและอนุมัติ</StatusNotice> : null}
+            {status === "approved" ? (
+              <StatusNotice tone="success">
+                อนุมัติแล้ว{reg.approvalNumber ? ` · เลขที่ ${reg.approvalNumber}` : ""}{reg.approvedAt ? ` · ${fmtDate(reg.approvedAt)}` : ""}
+                {reg.isExciseTaxable === false ? " · RA ยกเว้นภาษี" : ""}
+              </StatusNotice>
+            ) : null}
+            {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
+          </>
+        ) : null}
+      >
+        {/* เช็กลิสต์เอกสารบังคับ — ตัวตรวจเดียวกับด่านยื่นของ server · อยู่ในการ์ดเหนือปุ่มยื่น (อ่านว่าขาดอะไรแล้วกดได้ทันที) */}
+        {submittable && (
+          <div className={styles.checklist}>
+            <div className={styles.checklistHead}>
+              <strong>เอกสารบังคับก่อนยื่น</strong>
+              <Button size="sm" variant="ghost" onClick={checkRequirements}>ตรวจใหม่</Button>
+            </div>
+            {reqError ? <StatusNotice tone="error">{reqError}</StatusNotice>
+              : !req ? <p className={styles.muted}>กำลังตรวจ…</p>
+                : req.ready ? <p className={styles.ok}>เอกสารครบ — ยื่นให้ RA ได้</p>
+                  : (
+                    <ul className={styles.missing}>
+                      {missing.map((m) => {
+                        const hint = fixHint(m, reg);
+                        return (
+                          <li key={`${m.entity}:${m.docType}`}>
+                            {m.label}
+                            {hint ? <> · <Link href={hint.href} className="linklike">{hint.label}</Link></>
+                              : <span className={styles.muted}> · แนบด้านล่าง</span>}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
           </div>
-          {reqError ? <StatusNotice tone="error">{reqError}</StatusNotice>
-            : !req ? <p className={styles.muted}>กำลังตรวจ…</p>
-              : req.ready ? <p className={styles.ok}>เอกสารครบ — ยื่นให้ RA ได้</p>
-                : (
-                  <ul className={styles.missing}>
-                    {missing.map((m) => {
-                      const hint = fixHint(m, reg);
-                      return (
-                        <li key={`${m.entity}:${m.docType}`}>
-                          {m.label}
-                          {hint ? <> · <Link href={hint.href} className="linklike">{hint.label}</Link></>
-                            : <span className={styles.muted}> · แนบด้านล่าง</span>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-        </div>
-      )}
-
-      {error ? <StatusNotice tone="error">{error}</StatusNotice> : null}
-      {submittable && (
-        <div className={styles.actions}>
-          <Button onClick={submit} disabled={!!busy || !!submitBlocker}>
-            {busy === "submit" ? "กำลังยื่น…" : status === "rejected" ? "ยื่นใหม่ให้ RA" : "ยื่นให้ RA"}
-          </Button>
-          {submitBlocker ? <small className={styles.reason}>{submitBlocker}</small> : null}
-        </div>
-      )}
+        )}
+      </RegistrationControl>
 
       {/* ⭐ Artwork ที่ใช้ยื่น = Artwork ของสินค้า (P1) — แนบที่นี่ = ไฟล์ขึ้นที่แท็บเอกสารของสินค้าด้วย (ชุดเดียวกัน)
           ร่าง/ตีกลับ = แผงไฟล์ของสินค้าตัวจริง · ยื่นแล้ว = ชุดที่ตรึงไว้ตอนยื่น (อ่านอย่างเดียว · RA ตรวจชุดนี้) */}
@@ -381,18 +437,5 @@ export function SubmittedArtwork({ files, live }) {
         </ul>
       ) : <p className={styles.muted}>{live ? "สินค้านี้ยังไม่มี Artwork — แนบที่แท็บเอกสารของสินค้า" : "ไม่พบไฟล์ที่ยื่น"}</p>}
     </div>
-  );
-}
-
-function Header({ item, reg }) {
-  return (
-    <header className={styles.head}>
-      <div>
-        <span className={styles.code}>{reg?.fgCode || item.fgCode}</span>
-        <span className={styles.name}>{naText(reg?.productName || item.label)}</span>
-        <span className={styles.customer}>{naText(reg?.customerName || item.customerName)}</span>
-      </div>
-      {reg ? <StatusBadge status={reg.status} /> : <span className={styles.muted}>ยังไม่มีทะเบียน</span>}
-    </header>
   );
 }

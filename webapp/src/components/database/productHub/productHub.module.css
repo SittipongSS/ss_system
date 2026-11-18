@@ -38,3 +38,50 @@
 .kvIcon { flex: none; color: var(--amber); }
 .kvIconMuted { flex: none; color: var(--text-3); }
 .note { margin: var(--space-2) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+
+/* ── แท็บภาพรวม (S2) — ทรงเดียวกับแท็บภาพรวมของหน้าลูกค้า (customerHub.module.css) ไม่มี media query ของตัวเอง ── */
+.wide { grid-column: 1 / -1; }
+
+.followList,
+.feed { list-style: none; margin: 0; padding: 0; display: grid; }
+
+.followItem {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px dashed var(--border);
+}
+.followItem:last-child { border-bottom: 0; }
+.followDot {
+  width: var(--space-2);
+  height: var(--space-2);
+  margin-top: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--text-3);
+}
+.followDot[data-tone="danger"] { background: var(--red); }
+.followDot[data-tone="warning"] { background: var(--amber); }
+.followDot[data-tone="info"] { background: var(--blue); }
+.followBody { display: grid; gap: var(--space-0-5); min-width: 0; justify-items: start; }
+.followTitle { font-weight: var(--fw-semibold); text-align: left; overflow-wrap: anywhere; }
+.followMeta { font-size: var(--fs-4); color: var(--text-3); overflow-wrap: anywhere; }
+
+/* แถวเหตุการณ์: เวลาซ้าย (กว้างตายตัว) · ข้อความขวา — แคบกว่าที่วางคู่ได้ ข้อความตกลงบรรทัดใหม่เอง (flex-wrap ไม่ใช้ media query) */
+.feedItem {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0-5) var(--space-3);
+  padding-block: var(--space-2);
+  border-bottom: 1px dashed var(--border);
+}
+.feedItem:last-child { border-bottom: 0; }
+.feedWhen { flex: 0 0 9.5rem; font-size: var(--fs-4); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.feedWhat { display: flex; flex: 1 1 16rem; flex-wrap: wrap; gap: var(--space-2); min-width: 0; overflow-wrap: anywhere; }
+.feedActions { display: flex; justify-content: flex-end; margin-top: var(--space-3); }
+
+/* ── S3: แท็บความเคลื่อนไหว · ประวัติราคา ── */
+.activity { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.priceSame { color: var(--text-3); }
+.priceChange { display: inline-flex; align-items: baseline; gap: var(--space-1-5); white-space: nowrap; }
+.priceBefore { color: var(--text-3); text-decoration: line-through; }

@@ -60,9 +60,11 @@ test("แผงทะเบียน: ข้อมูล/ด่านชุด�
   assert.match(panel, /method: "PATCH", json: \{ status: "pending_legal" \}/);
   assert.match(panel, /entityType="registration"/);
   assert.match(panel, /entityType="customer"/);
-  // ปุ่มยื่นติดด่าน = โชว์แล้วบอกเหตุ (ไม่ซ่อน)
-  assert.match(panel, /disabled=\{!!busy \|\| !!submitBlocker\}/);
-  assert.match(panel, /\{submitBlocker \? <small className=\{styles\.reason\}>\{submitBlocker\}<\/small> : null\}/);
+  // ปุ่มยื่นติดด่าน = โชว์แล้วบอกเหตุ (ไม่ซ่อน) — ตั้งแต่ 18/11/2026 ปุ่มยื่นเป็นปุ่มหลักของการ์ดจัดการทะเบียน (DocumentControlCard ·
+  // หน้าสินค้าศูนย์รวม มติ 8) ⇒ เหตุเป็นตัวหนังสือเหนือปุ่มผ่าน `disabledReason` ของการ์ดกลาง แทน <small> ของแผงเดิม
+  assert.match(panel, /disabled: !!busy \|\| !!submitBlocker,/);
+  assert.match(panel, /disabledReason: submitBlocker \|\| undefined,/);
+  assert.match(panel, /<DocumentControlCard[\s\S]*eyebrow="REGISTRATION CONTROL"/);
   assert.doesNotMatch(panel, /href=\{?["`]\/tax\//, "แผงฝั่งขายไม่ลิงก์เข้า /tax");
 });
 
