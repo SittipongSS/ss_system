@@ -2,7 +2,7 @@ import { recordAudit } from '@/lib/audit';
 import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthorized } from '@/lib/http';
 import { advanceStage, dealAuditLabel } from '@/lib/salesPlanning';
 import { genId } from '@/lib/id';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, productTypeLabel } from '@/lib/master/productTypes';
 import { WorkflowTemplateError } from '@/lib/admin/workflowTemplates';
 import { buildDealTimelineRows } from '@/lib/sales/dealTimelineGen';
 import { isHistoricalDeal } from '@/lib/sales/historicalOrders';
@@ -82,7 +82,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   if (!rows.length) {
     return badRequest(
       categoryCode
-        ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ตรวจ Template ที่ตั้งค่า หรือเปลี่ยนหมวดสินค้าบนดีล`
+        ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${await productTypeLabel(categoryCode)} — ตรวจ Template ที่ตั้งค่า หรือเปลี่ยนหมวดสินค้าบนดีล`
         : `Workflow Template ${genType} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ตรวจการตั้งค่าที่ /settings/workflow-templates`,
     );
   }
@@ -131,7 +131,7 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
 
   await recordAudit({
     user, action: 'update', entityType: 'sales_deal', entityId: deal.id, before: deal, after: updatedDeal,
-    summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${genLine ? `${genLine} · ` : ''}${genType}${categoryCode ? ` · หมวด ${categoryCode}` : ''} · ${inserted.length} ขั้นตอน)`,
+    summary: `สร้างไทม์ไลน์ของดีล ${dealAuditLabel(deal)} (${genLine ? `${genLine} · ` : ''}${genType}${categoryCode ? ` · หมวด ${await productTypeLabel(categoryCode)}` : ''} · ${inserted.length} ขั้นตอน)`,
     request: req,
   });
   return ok({ deal: updatedDeal, tasks: inserted, ...(stageHistoryWarning ? { stageHistoryWarning } : {}) }, 201);

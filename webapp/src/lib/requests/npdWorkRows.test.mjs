@@ -64,7 +64,7 @@ test('⭐ เอาสินค้าออกจากแบบฟอร์ม:
 
   const dropSent = planNpdWorkRows({ targets: [T('01-009', 'SC-1')], items });
   assert.deepEqual(dropSent.blocked.map((b) => b.row.id), ['DRI-2']);
-  assert.match(npdWorkRowsError(dropSent), /"ก้านหอม · S2" ส่งสูตรหรือมีผลลูกค้าแล้ว — เอาออกจากแบบฟอร์ม PDR ไม่ได้/);
+  assert.match(npdWorkRowsError(dropSent), /"01-006 ก้านหอม · S2" ส่งสูตรหรือมีผลลูกค้าแล้ว — เอาออกจากแบบฟอร์ม PDR ไม่ได้/);
   // แถวที่มีรอบแก้ต่อจากมันก็นับว่าเดินแล้ว
   const withChild = planNpdWorkRows({
     targets: [], items: [row('DRI-1', '01-009', 'SC-1'), row('DRI-9', '01-009', 'SC-1', { derivedFromItemId: 'DRI-1' })],
@@ -136,7 +136,7 @@ test('⭐ แถวที่มีไฟล์แนบถอนเงียบ 
   const items = [row('DRI-1', '01-006', 'SC-2', { label: 'ก้านหอม · S2' })];
   const plan = planNpdWorkRows({ targets: [T('02-010', 'SC-2')], items, rowsWithFiles: new Set(['DRI-1']) });
   assert.deepEqual(plan.remove, []);
-  assert.match(npdWorkRowsError(plan), /"ก้านหอม · S2" มีไฟล์แนบในรายการงานแล้ว/);
+  assert.match(npdWorkRowsError(plan), /"01-006 ก้านหอม · S2" มีไฟล์แนบในรายการงานแล้ว/);
   // ไม่มีไฟล์ = ถอนได้ตามปกติ
   assert.deepEqual(planNpdWorkRows({ targets: [T('02-010', 'SC-2')], items }).remove.map((r) => r.id), ['DRI-1']);
 });
@@ -283,7 +283,7 @@ test('⭐ รับเรื่องไม่ได้ถ้าแถวพั�
     row('DRI-1', '01-009', 'SC-1', { ackAt: null }),
     row('DRI-2', '01-009', 'SC-1', { ackAt: null, label: 'สเปรย์ · S1' }),
   ];
-  assert.match(acknowledgeRequestError({ ...std, items: dupRows }), /"สเปรย์ · S1" ซ้ำหมวด × กลิ่น/);
+  assert.match(acknowledgeRequestError({ ...std, items: dupRows }), /"01-009 สเปรย์ · S1" ซ้ำหมวด × กลิ่น/);
   // แถวรอบแก้ใช้คู่เดิมได้โดยตั้งใจ
   const rework = [row('DRI-1', '01-009', 'SC-1'), row('DRI-2', '01-009', 'SC-1', { derivedFromItemId: 'DRI-1' })];
   assert.equal(acknowledgeRequestError({ ...std, items: rework }), null);

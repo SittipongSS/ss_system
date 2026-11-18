@@ -28,8 +28,12 @@ import { fmtNumber } from '@/lib/format';
      · 02-011 (ก้านหอมที่ขายน้ำหอมเติมเป็นกิโล) ไม่อยู่ในชุด — สินค้าแบบบริการย้ายไปเปิดในหมวด 037
    ⚠️ ชุดนี้มีสำเนาในฐาน (`public.service_package_category` · mig 0422) — แก้ที่นี่ต้องแก้ฐานด้วย (serviceSetupSqlParity ยึด) */
 export const SERVICE_ROUND_CATEGORIES = Object.freeze(['02-001', '02-037']);
-/** รหัสหมวดในข้อความ ("02-001 หรือ 02-037") */
-export const SERVICE_ROUND_CATEGORY_TEXT = SERVICE_ROUND_CATEGORIES.join(' หรือ ');
+/* ชื่อหมวดไว้พูดในข้อความ (มติเจ้าของ 18/11/2026 หมวด = รหัส + ชื่อเสมอ) — ชื่อตามทะเบียน product_types
+   ⚠️ เปลี่ยนชื่อหมวดที่หน้าหมวดสินค้าแล้วต้องแก้ตรงนี้ด้วย (ข้อความคงที่ ไม่ได้อ่านทะเบียนสด) */
+const SERVICE_ROUND_CATEGORY_NAMES = Object.freeze({ '02-001': 'ระบบกระจายกลิ่น', '02-037': 'ก้านไม้หอม (รายเดือน)' });
+/** หมวดในข้อความ ("02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม (รายเดือน)") */
+export const SERVICE_ROUND_CATEGORY_TEXT = SERVICE_ROUND_CATEGORIES
+  .map((code) => [code, SERVICE_ROUND_CATEGORY_NAMES[code]].filter(Boolean).join(' ')).join(' หรือ ');
 /** หมวดนี้เป็นแพ็คเกจบริการรายรอบไหม — รับรหัสหมวด (ผลของ categoryOf) */
 export const isServiceRoundCategory = (code) => SERVICE_ROUND_CATEGORIES.includes(code);
 

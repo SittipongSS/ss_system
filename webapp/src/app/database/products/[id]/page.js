@@ -39,7 +39,8 @@ import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
 import { useTeams } from "@/lib/roleContext";
-import { categoryOf, categoryFlags, fdaNoticeState } from "@/lib/master/categoryOf";
+import { categoryCodeName, categoryOf, categoryFlags, fdaNoticeState } from "@/lib/master/categoryOf";
+import { categoryCodeLabel } from "@/lib/master/productCategoryOptions";
 import { isMissingRetailPrice } from "@/lib/tax/taxableProducts";
 import { isProductTaxable, productExciseBadge, productShowsRetailPrice } from "@/lib/master/productFilter";
 import { isAutoFgCode, isReusableCode } from "@/lib/master/masterCodes";
@@ -671,7 +672,8 @@ export default function ProductDetails() {
                 </div>
                 <div>
                   <span className="text-[var(--text-3)] block mb-1">หมวดหมู่ (Category)</span>
-                  <span className="font-semibold font-mono text-[var(--text)] text-sm">{naText(product.categoryCode)}</span>
+                  {/* รหัส + ชื่อ EN · TH (มติเจ้าของ 18/11/2026) — ทรงเดียวกับตัวเลือกหมวด */}
+                  <span className="font-semibold text-[var(--text)] text-sm">{naText(categoryCodeLabel(product.categoryCode || categoryOf(product.fgCode), productTypes))}</span>
                 </div>
                 {showBrand && (
                   <div className="md:col-span-2">
@@ -703,7 +705,7 @@ export default function ProductDetails() {
                       <ol className="flex flex-col gap-2">
                         {product.formulaComponents.map((row, index) => (
                           <li key={row.id || index} className="text-sm">
-                            <span className="text-[var(--text-3)]">{`สูตร ${index + 1} · ${row.categoryName || row.categoryCode}`}</span>
+                            <span className="text-[var(--text-3)]">{`สูตร ${index + 1} · ${categoryCodeName(row.categoryCode, row.categoryName)}`}</span>
                             {/* R2 (mig 0433): แถวที่ยังไม่เลือกสูตร — สูตรต้องครบก่อนส่งลง BOM */}
                             {row.formulaId ? (
                               <span className="block">

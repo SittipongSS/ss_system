@@ -33,7 +33,7 @@ import { sourceLeadIdOf } from '@/lib/sales/leads';
 import { leadLinkError } from '@/lib/sales/dealLeadLink';
 import { loadLeadForLink, recordLeadDealOpened } from '@/lib/sales/dealLeadLinkRepo';
 import { CUSTOMER_NAME_SELECT, customerNameIn, customerSnapshotName } from '@/lib/master/customerName';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, productTypeLabel } from '@/lib/master/productTypes';
 import { normalizeBusinessLine } from '@/lib/master/businessLines';
 import { prepareDealValueItems, saveDealValueItems } from '@/lib/sales/dealValueItemsRepo';
 import { missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
@@ -379,7 +379,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
       const { rows: timelineRows, genType } = await buildDealTimelineRows(supabase, data);
       if (!timelineRows.length) {
         timelineWarning = categoryCode
-          ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${categoryCode} — ดีลนี้ยังไม่มีไทม์ไลน์`
+          ? `Workflow Template ${genType} ไม่มีขั้นตอนที่ตรงกับหมวดสินค้า ${await productTypeLabel(categoryCode)} — ดีลนี้ยังไม่มีไทม์ไลน์`
           : `Workflow Template ${genType} ที่เผยแพร่อยู่ไม่มีขั้นตอน — ดีลนี้ยังไม่มีไทม์ไลน์`;
       } else {
         const { error: timelineError } = await supabase.from('project_tasks').insert(timelineRows);

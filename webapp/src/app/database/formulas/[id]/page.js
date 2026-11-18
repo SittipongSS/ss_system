@@ -28,6 +28,8 @@ import {
   isFormulaRegistrar, isFormulaUsable,
 } from "@/lib/master/formulas";
 import { formulaLabel, scentLabel } from "@/lib/master/registryLabel";
+import { categoryCodeLabel } from "@/lib/master/productCategoryOptions";
+import { useProductCategories } from "@/lib/useProductCategories";
 
 const TONE_COLOR = {
   success: "var(--green)", danger: "var(--red)", warn: "var(--amber)", neutral: "var(--text-3)",
@@ -42,6 +44,8 @@ export default function FormulaDetailPage() {
   // แชร์ให้ลูกค้ารายอื่น — การ์ด + ช่องในฟอร์มแก้ ถามตัวเดียวกับ API (RD + Sup ขึ้นไป · มติ 05/10)
   const canShare = canManageRegistryShares(me);
   const [formula, setFormula] = useState(null);
+  // หมวดสินค้าโชว์ "รหัส + ชื่อ" เสมอ (มติ 18/11) — ทะเบียนหมวดโหลดตอนเปิดหน้า ไม่ใช่ตอนกดแก้
+  const productCategories = useProductCategories();
   const [scentName, setScentName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -204,7 +208,7 @@ export default function FormulaDetailPage() {
           { label: "รหัสสูตร", value: formula.code },
           { label: "ชื่อสูตร", value: formula.name },
           { label: "กลิ่นที่ใช้", value: scentName || formula.scentId },
-          { label: "หมวดสินค้า", value: formula.categoryCode },
+          { label: "หมวดสินค้า", value: categoryCodeLabel(formula.categoryCode, productCategories) || null },
           { label: "แก้มาจากสูตร", value: formula.derivedFromFormulaId },
           { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: formula.note, wide: true },

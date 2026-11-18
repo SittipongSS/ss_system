@@ -20,7 +20,7 @@ import { genId } from '@/lib/id';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks, fetchInChunks } from '@/lib/supabaseInChunks';
 import { accountProfileFromAuthUser } from '@/lib/accountProfile';
-import { categoryOf } from '@/lib/master/categoryOf';
+import { categoryCodeName, categoryOf } from '@/lib/master/categoryOf';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
 import { loadProductFormulas } from '@/lib/master/giftSetFormulasStore';
 import { SPEC_ILLUSTRATION_DOC_TYPE, SPEC_ITEM_IMAGE_DOC_TYPE } from '@/lib/master/attachmentTypes';
@@ -651,9 +651,8 @@ export async function loadProductPrintFields(supabase, productId) {
       brandNameEn: product.brandNameEn || null,
       customerName: product.customerName || null,
       categoryCode: category || null,
-      categoryName: typeRow
-        ? [typeRow.nameEn, typeRow.nameTh].filter(Boolean).join(' · ')
-        : (category || null),
+      // หมวด = รหัส + ชื่อเสมอ (มติเจ้าของ 18/11/2026) — ภาพนิ่ง/กระดาษที่ตรึงไปแล้วคงข้อความเดิม
+      categoryName: categoryCodeName(category, typeRow ? [typeRow.nameEn, typeRow.nameTh].filter(Boolean).join(' · ') : '') || null,
       scentName: scent?.name || product.formulaName || null,
       scentCode: scent?.code || product.formulaCode || null,
       scentText: [scent?.name || product.formulaName, scent?.code || product.formulaCode]

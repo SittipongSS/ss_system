@@ -35,6 +35,7 @@ import { requestedLabel } from '@/lib/requests/rowLabel';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
+import { categoryLabel } from '@/lib/master/categoryOf';
 import { businessDate } from '@/lib/businessDate';
 
 export const dynamic = 'force-dynamic';
@@ -117,7 +118,7 @@ export async function POST(request, { params }) {
   try {
     formulaCodes = await fetchAll(() => supabase.from('formulas').select('id, code').order('id'));
     const { data: types, error: typeError } = await supabase.from('product_types')
-      .select('mainCategoryCode, typeCode, isActive');
+      .select('mainCategoryCode, typeCode, isActive, nameTh, nameEn');
     if (typeError) throw typeError;
     productTypes = types || [];
   } catch (e) {
@@ -312,7 +313,7 @@ export async function POST(request, { params }) {
   // ว่า "ส่งไปกี่ตัวเมื่อไร" ไม่ใช่ไล่อ่านทีละบรรทัดที่เกิดพร้อมกัน)
   // ⭐ ม-148 — บอกว่าส่งเป็นอะไร: สินค้าต่อท้ายด้วยรหัสสูตรกับหมวด (ผู้ขอรู้ว่าราคาที่ตามมาเป็น FB)
   const names = created.map(({ row, formula }) => `${row.code} ${row.name}`
-    + (formula ? ` (สูตร ${formula.code} · หมวด ${row.categoryCode})` : ' (หัวน้ำหอม)')).join(' · ');
+    + (formula ? ` (สูตร ${formula.code} · หมวด ${categoryLabel(row.categoryCode, productTypes)})` : ' (หัวน้ำหอม)')).join(' · ');
   await appendUpdate(supabase, {
     entityType: 'dept_request',
     entityId: id,
@@ -474,14 +475,14 @@ async function postFormulaDirections({ supabase, user, before, request }) {
   const names = created.map((f) => formulaName(f)).join(', ');
   await appendUpdate(supabase, {
     entityType: 'dept_request', entityId: id, kind: 'ready',
-    body: `ส่งงาน direction เพิ่ม ${created.length} รายการ — ${requestedLabel(anchor.label)} · สูตร ${names}`,
+    body: `ส่งงาน direction เพิ่ม ${created.length} รายการ — ${requestedLabel(anchor.label, anchor.categoryCode)} · สูตร ${names}`,
     user,
   }).catch(() => {});
   const after = await findRequest(supabase, id).catch(() => null);
   await recordAudit({
     user, action: 'update', entityType: 'dept_request', entityId: id,
     before, after,
-    summary: `ส่ง direction เพิ่ม ${created.length} รายการ (${names}) — ${requestedLabel(anchor.label)} (${before.docNo || id})`,
+    summary: `ส่ง direction เพิ่ม ${created.length} รายการ (${names}) — ${requestedLabel(anchor.label, anchor.categoryCode)} (${before.docNo || id})`,
     request,
   });
   return Response.json({

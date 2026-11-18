@@ -14,6 +14,7 @@ import { requestCloseNeedsSoConfirm } from '@/lib/master/requestTypes';
 import { isActualOrder } from '@/lib/sales/historicalOrders';
 import { scentDesignLines, lineCategoryCode, scentCountForOrder } from '@/lib/requests/scentDesignOrders';
 import { salesOrderQty, confirmedQty } from '@/lib/requests/soReconcile';
+import { categoryLabel } from '@/lib/master/categoryOf';
 import {
   isScentRevisionLine, scentOrderTakenText, scentSlotSummary,
 } from '@/lib/requests/scentOrderLinks';
@@ -109,14 +110,17 @@ export function attachPreviewText(preview) {
   return parts.join(' · ');
 }
 
-/** สิ่งที่ SO ขาย (เฉพาะงานพัฒนากลิ่น) — "03-002 ×1 · 03-010 ×1" · โชว์บนแถวตัวเลือกและการ์ด */
-export function scentOrderLinesText(lines = []) {
+/**
+ * สิ่งที่ SO ขาย (เฉพาะงานพัฒนากลิ่น) — "03-002 ออกแบบกลิ่น ×1 · 03-010 … ×1" · โชว์บนแถวตัวเลือกและการ์ด
+ * `productTypes` = ทะเบียนหมวด ไว้ตั้งชื่อ (มติ 18/11 รหัส + ชื่อเสมอ) · ไม่ส่ง = รหัสดิบ
+ */
+export function scentOrderLinesText(lines = [], productTypes = []) {
   const byCategory = new Map();
   for (const line of scentDesignLines(lines)) {
     const code = lineCategoryCode(line);
     byCategory.set(code, (byCategory.get(code) || 0) + salesOrderQty([line]));
   }
-  return [...byCategory].map(([code, qty]) => `${code} ×${qty}`).join(' · ');
+  return [...byCategory].map(([code, qty]) => `${categoryLabel(code, productTypes)} ×${qty}`).join(' · ');
 }
 
 /**

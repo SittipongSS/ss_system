@@ -372,7 +372,7 @@ export function followUpRowFrom(row, sortOrder) {
     materialId: row.materialId ?? null,
     /* ป้ายสิ่งที่ขอ — ตัดหาง "→ รหัส" ของรอบก่อน (ป้ายเก่าที่ค้างในฐาน) ไม่งั้นรอบแก้ที่ยังไม่ส่งอะไรอ่านเป็นว่าส่งแล้ว
        ⚠️ เฉพาะพัฒนาสูตร — หางลูกศรเคยต่อที่สายนี้สายเดียว · ชื่อกลิ่น/เอกสารพิมพ์ "→" เองได้ ตัดทิ้งแล้วชื่อขาดถาวร */
-    label: row.lineKind === 'product_dev' ? requestedLabel(row.label) : row.label,
+    label: row.lineKind === 'product_dev' ? requestedLabel(row.label, row.categoryCode) : row.label,
     spec: row.spec ?? null,
     componentId: row.componentId ?? null,
     categoryCode: row.categoryCode ?? null,

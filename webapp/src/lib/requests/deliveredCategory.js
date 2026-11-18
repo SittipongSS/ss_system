@@ -15,6 +15,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะ DB — จอ (ฟอร์มส่งงาน) กับ server (`normalizeDeliveryRows`) ถามตัวเดียวกัน
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
 import { productCategoryCode } from '@/lib/master/productCategory';
+import { categoryLabel } from '@/lib/master/categoryOf';
 
 /** หมวดที่แปลว่า "ส่งเป็นหัวน้ำหอม" — มีตัวเดียว (มติผู้ใช้ 2026-09-22: "02-020 อย่างเดียว") */
 export const DELIVERED_FRAGRANCE_CODE = PDR_FRAGRANCE_OIL_CODE;
@@ -79,7 +80,7 @@ export function deliveredCategoryError(categoryCode, productTypes = []) {
   if ((productTypes || []).length) {
     const row = productTypes.find((t) => productCategoryCode(t) === code);
     if (!row) return `ไม่พบหมวด ${code} ในทะเบียนหมวดสินค้า`;
-    if (row.isActive === false) return `หมวด ${code} ปิดใช้งานแล้ว`;
+    if (row.isActive === false) return `หมวด ${categoryLabel(code, productTypes)} ปิดใช้งานแล้ว`;
   }
   return null;
 }
@@ -106,8 +107,9 @@ export function defaultDeliveredCategory(pdrProductKinds = [], productTypes = []
  * ⭐ ปุ่มนี้คือทางที่ราคาเนื้อ EDP เข้ามาเป็นราคาหัวน้ำหอมมากที่สุด (14 จาก 18 ราคา F บน prod) ·
  * **เตือน ไม่บล็อก** — ลูกค้าซื้อหัวน้ำหอมแยกได้จริง และ SDS ตั้งราคา F บนกลิ่นที่มีสูตร 02-001 เป็นปกติ
  * `scent` ต้องผ่าน `findScentDetail` มาแล้ว (มี `deliveredCategoryCode` · `formulas`)
+ * `productTypes` = ทะเบียนหมวด ไว้ตั้งชื่อหมวด (มติ 18/11 รหัส + ชื่อเสมอ) · ไม่ส่ง = รหัสดิบ
  */
-export function scentFPriceNotice(scent) {
+export function scentFPriceNotice(scent, productTypes = []) {
   // ⚠️ สูตรหัวน้ำหอม (02-020) ใส่ได้แค่ F ลงกลิ่นนี้อยู่แล้ว — ชี้ไปหน้าสูตรพวกนี้เพื่อหา B/FB คือทางตัน (รีวิว ม-148 รอบสาม)
   const formulas = (scent?.formulas || [])
     .filter((f) => f && f.status !== 'archived' && f.categoryCode !== DELIVERED_FRAGRANCE_CODE);
@@ -119,7 +121,7 @@ export function scentFPriceNotice(scent) {
     ? 'ราคาเนื้อสินค้า (B · FB) ใส่ที่ขั้นใส่ราคาของคำร้องหลังลูกค้าคอนเฟิร์ม — ช่องนี้คือราคาหัวน้ำหอมล้วน (F)'
     : 'ราคาเนื้อสินค้า (B · FB) ใส่ที่หน้าสูตร — ช่องนี้คือราคาหัวน้ำหอมล้วน (F)';
   if (isDeliveredAsProduct(scent?.deliveredCategoryCode)) {
-    return `กลิ่นนี้ RD ส่งให้ลูกค้าเป็นสินค้าหมวด ${scent.deliveredCategoryCode}`
+    return `กลิ่นนี้ RD ส่งให้ลูกค้าเป็นสินค้าหมวด ${categoryLabel(scent.deliveredCategoryCode, productTypes)}`
       + `${codes.length ? ` (สูตร ${codes.join(', ')})` : ''} · ${tail}`;
   }
   if (codes.length) return `กลิ่นนี้มีสูตรใช้อยู่ ${codes.length} ตัว (${codes.join(', ')}) · ${tail}`;

@@ -35,6 +35,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import RegistryPrice from "@/components/database/RegistryPrice";
 import RegistryPriceModal from "@/components/database/RegistryPriceModal";
 import { scentFPriceNotice } from "@/lib/requests/deliveredCategory";
+import { useProductCategories } from "@/lib/useProductCategories";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { emptyScentForm, scentToForm } from "@/components/database/ScentForm";
 import ScentFormModal from "@/components/database/ScentFormModal";
@@ -123,12 +124,13 @@ export default function ScentsPage() {
      ⚠️ ตารางใช้ `loadScents` ซึ่งไม่ลากสูตร/แถวคำร้องมา (เป็นตัวเลือกกลิ่นทั้งระบบ) ⇒ ถามหน้ารายละเอียด
      ตอนกดปุ่มแทน · อ่านพัง = ไม่มีคำเตือน (ไม่บล็อกการใส่ราคา) · เทียบ id กันคำตอบของแถวก่อนหน้ามาทับ */
   const [pricingNotice, setPricingNotice] = useState(null);
+  const productCategories = useProductCategories(); // ชื่อหมวดในคำเตือน (รหัส + ชื่อ · มติ 18/11)
   const openPricing = (s) => {
     setPricing(s);
     setPricingNotice(null);
     apiFetch(`/api/master/scents/${s.id}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.id === s.id) setPricingNotice({ id: s.id, text: scentFPriceNotice(d) }); })
+      .then((d) => { if (d?.id === s.id) setPricingNotice({ id: s.id, text: scentFPriceNotice(d, productCategories) }); })
       .catch(() => {});
   };
   const [confirm, setConfirm] = useState(null); // { kind, scent }

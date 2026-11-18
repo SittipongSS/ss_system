@@ -7,7 +7,7 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can, canViewCosting } from '@/lib/permissions';
-import { activeProductTypeError } from '@/lib/master/productTypes';
+import { activeProductTypeError, productTypeLabel } from '@/lib/master/productTypes';
 import { isValidCategoryCode, normalizeCostTemplateLines } from '@/lib/master/costTemplate';
 import { findCostTemplate, loadCostTemplates } from '@/lib/master/costTemplateAdmin';
 import { recordAudit } from '@/lib/audit';
@@ -90,7 +90,7 @@ export async function POST(request) {
       console.error('[cost-templates] ซ่อนแม่แบบเปล่าไม่สำเร็จ', templateId, hideError.message);
       return Response.json({
         error: `${insertError.message} — และซ่อนแม่แบบเปล่าที่สร้างค้างไว้ไม่สำเร็จ: `
-          + `โหลดหน้าใหม่ แล้วแก้บรรทัดหรือซ่อนแม่แบบของหมวด ${categoryCode} ใบนั้นแทนการสร้างใหม่`,
+          + `โหลดหน้าใหม่ แล้วแก้บรรทัดหรือซ่อนแม่แบบของหมวด ${await productTypeLabel(categoryCode)} ใบนั้นแทนการสร้างใหม่`,
       }, { status: 500 });
     }
     return Response.json({ error: insertError.message }, { status: 500 });
@@ -99,7 +99,7 @@ export async function POST(request) {
   const created = await findCostTemplate(supabase, templateId);
   await recordAudit({
     user, action: 'create', entityType: 'cost_template', entityId: templateId, after: created,
-    summary: `สร้างแม่แบบต้นทุนของหมวด ${categoryCode} (${lines.length} บรรทัด)`, request,
+    summary: `สร้างแม่แบบต้นทุนของหมวด ${await productTypeLabel(categoryCode)} (${lines.length} บรรทัด)`, request,
   });
   return Response.json(created, { status: 201 });
 }

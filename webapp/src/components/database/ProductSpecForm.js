@@ -149,7 +149,7 @@ export default function ProductSpecForm({
           {derived("ชื่อแบรนด์", productBrandName(product))}
           {derived("รหัสสินค้า", product?.fgCode)}
           {derived("ชื่อผลิตภัณฑ์", productDisplayName(product))}
-          {derived("ประเภทผลิตภัณฑ์", product?.categoryName, product?.categoryCode ? `หมวด ${product.categoryCode}` : "")}
+          {derived("ประเภทผลิตภัณฑ์", product?.categoryName || product?.categoryCode)}
           {formulaRows.map((row, index) => <Fragment key={index}>{derived(row.label, row.value)}</Fragment>)}
           {/* ป้ายเดียวกับกระดาษ "ปริมาตรบรรจุ (Size)" — ค่ามาจากปริมาตร + หน่วยของสินค้า FG ในทะเบียน */}
           {derived("ปริมาตรบรรจุ", product?.volumeText)}

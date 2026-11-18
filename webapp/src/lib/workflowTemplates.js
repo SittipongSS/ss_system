@@ -17,6 +17,8 @@
 // อยู่แล้ว · ส่วนคอลัมน์ `line` (mig 0193) ยังอยู่และเป็น **ป้ายบอกสาย** ของแถว
 // (PRODUCT | SERVICE | BOTH) ให้หน้าตั้งค่าจัดกลุ่ม ไม่ใช่กุญแจค้น
 // ⇒ ห้ามค้นแม่แบบด้วย `line` ตรง ๆ ให้ผ่าน workflowTemplateKeyFor() ที่เดียว
+import { categoryLabel } from './master/categoryOf.js';
+
 export const WORKFLOW_TEMPLATE_KEYS = Object.freeze([
   'SCENT', 'NPD', 'RE-ORDER', 'OTHER',
   'SERVICE-NPD', 'SERVICE-RE-ORDER', 'SERVICE-OTHER',
@@ -73,6 +75,14 @@ export function missingWorkflowTemplatePairs(templates = []) {
 // แทนการอ้างรหัสหมวดตรง ๆ. รหัสหมวดปกติ (เช่น '01-002') ยังเทียบแบบ literal ได้
 // เพื่อรองรับ version เก่าที่ pin ไว้กับโครงการเดิม.
 export const EXCISE_CATEGORY_TOKEN = 'flag:excise';
+
+/** ป้ายของค่าในช่องเงื่อนไขหมวด — token = คำอธิบาย · รหัสหมวด = "รหัส ชื่อ" (มติเจ้าของ 18/11/2026) · ไม่ส่งทะเบียน = รหัสดิบ */
+export function workflowCategoryRuleText(value, productTypes = []) {
+  const code = String(value ?? '').trim();
+  if (!code) return '';
+  if (code === EXCISE_CATEGORY_TOKEN) return 'หมวดที่เสียสรรพสามิต';
+  return categoryLabel(code, productTypes);
+}
 // ⚠️ ชุดนี้ต้องตรงกับ **สองที่ใน DB** เป๊ะ (mig 0192):
 //   · CHECK ของ `workflow_template_steps.role`
 //   · validation ใน RPC `save_workflow_template_draft`
@@ -189,7 +199,7 @@ export function workflowTemplateCycle(stepRows = []) {
   return null;
 }
 
-export function validateWorkflowTemplateSteps(stepRows = []) {
+export function validateWorkflowTemplateSteps(stepRows = [], { productTypes = [] } = {}) {
   const errors = [];
   if (!stepRows.length) errors.push('Template ต้องมีอย่างน้อย 1 ขั้นตอน');
   if (stepRows.length > WORKFLOW_TEMPLATE_LIMITS.maxSteps) {
@@ -245,8 +255,8 @@ export function validateWorkflowTemplateSteps(stepRows = []) {
       // จะกลายเป็น root ที่ไม่ได้ตั้งใจ). generation เดิม (buildProjectTasks) drop dep
       // ที่หายอยู่แล้ว — validator เข้มกว่านี้จึงบล็อก template ที่ใช้ได้จริง (regression 4B)
       if (deps.length && hiddenDependencies.length === deps.length) {
-        const categoryLabel = category === '__other__' || !category ? 'หมวดทั่วไป' : `หมวด ${category}`;
-        errors.push(`${step.name || step.stepKey}: dependency ${hiddenDependencies.join(', ')} ไม่อยู่ใน ${categoryLabel}`);
+        const categoryText = category === '__other__' || !category ? 'หมวดทั่วไป' : `หมวด ${workflowCategoryRuleText(category, productTypes)}`;
+        errors.push(`${step.name || step.stepKey}: dependency ${hiddenDependencies.join(', ')} ไม่อยู่ใน ${categoryText}`);
       }
     }
   }
@@ -256,7 +266,7 @@ export function validateWorkflowTemplateSteps(stepRows = []) {
   return unique(errors);
 }
 
-export function normalizeWorkflowTemplateDraft(input = {}) {
+export function normalizeWorkflowTemplateDraft(input = {}, { productTypes = [] } = {}) {
   const steps = (Array.isArray(input.steps) ? input.steps : []).map(normalizeWorkflowTemplateStep);
   const value = {
     nameTh: text(input.nameTh),
@@ -264,7 +274,7 @@ export function normalizeWorkflowTemplateDraft(input = {}) {
     changeNote: text(input.changeNote) || null,
     steps,
   };
-  const errors = validateWorkflowTemplateSteps(steps);
+  const errors = validateWorkflowTemplateSteps(steps, { productTypes });
   if (!value.nameTh) errors.unshift('กรุณาระบุชื่อ Template');
   if (value.nameTh.length > WORKFLOW_TEMPLATE_LIMITS.nameTh) errors.push('ชื่อ Template ยาวเกินกำหนด');
   if ((value.description || '').length > WORKFLOW_TEMPLATE_LIMITS.description) errors.push('คำอธิบายยาวเกินกำหนด');

@@ -31,6 +31,7 @@ import { deleteWithForce } from "@/lib/forceDeleteClient";
 import { FORECAST_LEVELS, businessLineBadge, dealTypeBadge, quoteStatusBadge, snapForecastLevel, DEAL_TYPE_COLORS } from "@/components/salesPlanning/ui";
 import BusinessLineSelect from "@/components/ui/BusinessLineSelect";
 import { customerHeadline } from "@/lib/master/customerAr";
+import { categoryCodeLabel, categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import { brandThList, normalizeBrands } from "@/lib/master/brands";
 import DealFormFields from "@/components/salesPlanning/DealFormFields";
 import { dealValueItemsToForm } from "@/lib/sales/dealValueItems";
@@ -345,7 +346,10 @@ export default function DealOverviewPage() {
      เป็น snapshot ตามกติกาเดิม (ดู [[entity-updates-plan]]) */
   const directory = usePeopleDirectory();
   const ownerName = livePersonName(directory, deal?.ownerId, deal?.ownerName);
-  const dealDocumentProject = dealTimelineDocument(deal, data || {});
+  /* หมวดสินค้า — ประกาศก่อนเอกสารไทม์ไลน์และ lc (ทั้งสองอ้างถึง · ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
+     🐞 ประกาศหลังที่ใช้ = ReferenceError ตอนเรนเดอร์ หน้าดีลพังทั้งหน้า (เทสต์ไม่จับ — เปิดจอเท่านั้นที่เห็น) */
+  const [categories, setCategories] = useState([]);
+  const dealDocumentProject = dealTimelineDocument(deal, data || {}, { productTypes: categories });
   const canEdit = !!data?.canEdit;
   // จำนวนขั้นที่แก้ค้างในตารางไทม์ไลน์ (TimelineWorkspace.onDirtyChange) — ด่านกันออก/ย้อน Rev. ตอนยังไม่บันทึก
   const [timelineDirty, setTimelineDirty] = useState(0);
@@ -446,8 +450,6 @@ export default function DealOverviewPage() {
     }
     return <span className="muted">{NA}</span>;
   };
-  // หมวดสินค้า (ประกาศก่อน lc — useMemo ข้างล่างอ้างใน deps; ใช้ร่วมกับโมดัลแก้ดีล/สร้าง PM ด้วย)
-  const [categories, setCategories] = useState([]);
   const lc = useMemo(
     () => (deal ? dealLifecycle(deal, {
       /* (projectProducts · ทะเบียนสรรพสามิต · PO สหมิตรของโครงการ — ถอดจาก overview ในงวด P3b-2 ยุบโครงการ: อ่านด้วย projectId ว่างเสมอบน prod) */
@@ -1104,7 +1106,11 @@ export default function DealOverviewPage() {
                     {deal.valueItems.map((item) => (
                       <tr key={item.id} className="premium-row">
                         <td>
-                          <strong>{item.categoryCode}</strong>
+                          {/* หมวด: รหัสบน · ชื่อล่าง (มติเจ้าของ 18/11/2026 รหัส + ชื่อเสมอ) */}
+                          <strong className="mono">{item.categoryCode}</strong>
+                          {categoryNameBoth(findCategoryByCode(categories, item.categoryCode)) ? (
+                            <span className="block">{categoryNameBoth(findCategoryByCode(categories, item.categoryCode))}</span>
+                          ) : null}
                           {item.note && <ReadableText text={item.note} lines={2} className="soft" />}
                         </td>
                         {/* ขนาดต่อหนึ่งหน่วยขาย (mig 0265) — ไม่เข้าสูตรคิดเงิน */}
@@ -1284,7 +1290,7 @@ export default function DealOverviewPage() {
                     onError={setError}
                     onDirtyChange={setTimelineDirty}
                     panelId="deal-pm"
-                    panelSubtitle={`ไทม์ไลน์ของดีล · เลขที่เอกสาร ${deal.code || NA}${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : ""}`}
+                    panelSubtitle={`ไทม์ไลน์ของดีล · เลขที่เอกสาร ${deal.code || NA}${deal.categoryCode ? ` · หมวด ${categoryCodeLabel(deal.categoryCode, categories)}` : ""}`}
                     panelActions={(
                       <>
                         <DealTimelineRevControls
@@ -1314,7 +1320,7 @@ export default function DealOverviewPage() {
                       <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
                         {/* DL1: ไทม์ไลน์ของดีลเอง (template ตามประเภท+หมวด) · งวด P2b: ดีลเก่าในโครงการสร้างได้ด้วย (ต่อท้ายลำดับโครงการ) */}
                         <button type="button" className="btn btn-primary" onClick={openGenTimeline} disabled={!!actionBusy}
-                          title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${deal.categoryCode}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
+                          title={`เลือก/ยืนยัน template ก่อนสร้าง${deal.categoryCode ? ` · หมวด ${categoryCodeLabel(deal.categoryCode, categories)}` : " (ยังไม่ระบุหมวด — แก้ที่ปุ่มแก้ไขดีล)"}`}>
                           <Plus size={14} aria-hidden="true" /> สร้างไทม์ไลน์ของดีล
                         </button>
                       </div>
@@ -1490,7 +1496,7 @@ export default function DealOverviewPage() {
         <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: "var(--fs-7)", color: "var(--text-2)", lineHeight: "var(--lh-relaxed)" }}>
             ระบบจะสร้างขั้นตอนงานจาก <strong>Workflow Template</strong> ตาม “ประเภทดีล” ด้านล่าง
-            {deal?.categoryCode ? <> · หมวดสินค้า <strong>{deal.categoryCode}</strong></> : " (ยังไม่ระบุหมวดสินค้า — แก้ได้ที่ปุ่มแก้ไขดีล)"}
+            {deal?.categoryCode ? <> · หมวดสินค้า <strong>{categoryCodeLabel(deal.categoryCode, categories)}</strong></> : " (ยังไม่ระบุหมวดสินค้า — แก้ได้ที่ปุ่มแก้ไขดีล)"}
           </div>
           <div className={styles.genLineField}>
             สายธุรกิจ (เลือกก่อน — คนละแม่แบบกัน)

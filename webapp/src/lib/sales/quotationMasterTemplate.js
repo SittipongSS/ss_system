@@ -457,7 +457,9 @@ function estimatedTextLines(value, charsPerLine) {
    กว่าจริง แล้วตารางล้นขอบล่างของแผ่นเงียบ ๆ (`.sheet` เป็น overflow:hidden)
    เลขหมวด (`categoryCode`) มีเฉพาะบรรทัดเพิ่มเอง — บรรทัด FG มีหมวดอยู่ในรหัส FG แล้ว (มติผู้ใช้ 2026-11-05) */
 export function lineIdentityParts(line) {
-  return [line?.fgCode, line?.categoryCode, line?.brand, line?.category].filter(Boolean);
+  // 🐞 หมวดที่ชื่อว่างทั้งสองภาษา: บรรทัดเพิ่มเองเก็บรหัสไว้ในช่องชื่อด้วย (manualLineCategoryEdit) ⇒ เคยพิมพ์ "04-002 · 04-002"
+  const category = line?.categoryCode && line?.category === line.categoryCode ? null : line?.category;
+  return [line?.fgCode, line?.categoryCode, line?.brand, category].filter(Boolean);
 }
 
 /* ── จำนวนตัวอักษรต่อบรรทัดของช่องรายละเอียด (บรรทัดรหัส · ชื่อสินค้า · หมายเหตุ) ที่ใช้ประเมินความสูงแถว ──

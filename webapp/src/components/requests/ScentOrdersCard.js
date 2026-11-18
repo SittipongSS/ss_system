@@ -22,6 +22,7 @@ import {
   attachPreviewFromAdds, attachPreviewText, attachRequestError, scentOrderLinesText, slotsAfterDetach,
 } from "@/lib/requests/scentOrderAttach";
 import { scentSlotNote } from "@/lib/requests/scentOrderLinks";
+import { useProductCategories } from "@/lib/useProductCategories";
 import styles from "./scentOrders.module.css";
 
 /* ส่วนที่ใบนี้จะเพิ่ม — "+1 กลิ่น · +1 รอบแก้" (บอกบนไทล์ก่อนเลือก) */
@@ -131,6 +132,7 @@ export default function ScentOrdersCard({
   onAttachOpenChange,
 }) {
   const [openLocal, setOpenLocal] = useState(false);
+  const productTypes = useProductCategories(); // หมวดของ SO = รหัส + ชื่อ (มติ 18/11)
   const open = attachOpen ?? openLocal;
   const setOpen = onAttachOpenChange ?? setOpenLocal;
   const attached = request?.attachedOrders || [];
@@ -187,7 +189,7 @@ export default function ScentOrdersCard({
                 ) : null}
               </div>
               <div className={styles.sub}>
-                {[scentOrderLinesText(row.lines), row.createdAt ? `แนบ ${fmtDate(row.createdAt)}` : null,
+                {[scentOrderLinesText(row.lines, productTypes), row.createdAt ? `แนบ ${fmtDate(row.createdAt)}` : null,
                   row.createdByName ? `โดย ${row.createdByName}` : null].filter(Boolean).join(" · ")}
               </div>
               {canAct ? (

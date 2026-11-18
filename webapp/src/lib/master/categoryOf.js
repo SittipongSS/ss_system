@@ -84,6 +84,19 @@ export function fdaNoticeState(categoryCode, productTypes = []) {
   };
 }
 
+/**
+ * ประกอบป้ายหมวด "รหัส ชื่อ" จากสองช่องที่มีในมือแล้ว (แถวที่แนบ `categoryName` มาจาก server)
+ * ⭐ มติเจ้าของ 18/11/2026: หมวดสินค้าโชว์ **รหัส + ชื่อ** เสมอทั้งระบบ — ห้ามชื่ออย่างเดียว ห้ามรหัสเปล่าเมื่อรู้ชื่อ
+ * ชื่อที่ขึ้นต้นด้วยรหัสอยู่แล้ว = ไม่ซ้อน · ขาดช่องไหนเหลือช่องที่มี · ไม่มีเลย = ''
+ */
+export function categoryCodeName(code, name) {
+  const c = String(code ?? '').trim();
+  const n = String(name ?? '').trim();
+  if (!c) return n;
+  if (!n || n === c || n.startsWith(`${c} `)) return n || c;
+  return `${c} ${n}`;
+}
+
 /** ป้ายอ่านออกของหมวด — "รหัส ชื่อ" · ไม่พบในทะเบียนคืนรหัสดิบ (ห้ามคืนค่าว่าง) */
 export function categoryLabel(categoryCode, productTypes = []) {
   const row = categoryRow(categoryCode, productTypes);

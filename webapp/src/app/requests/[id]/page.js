@@ -100,7 +100,7 @@ import { addDirectionError, directionRowFrom, formulaConfirmPlan } from "@/lib/r
 import { requestedLabel } from "@/lib/requests/rowLabel";
 
 // ป้ายรายการในหัวโมดัล/ข้อความ — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่าในฐาน (2026-09-15 · รหัสตอนส่ง ไม่ใช่รหัสปัจจุบัน)
-const itemText = (item) => (item?.lineKind === "product_dev" ? requestedLabel(item?.label) : item?.label);
+const itemText = (item) => (item?.lineKind === "product_dev" ? requestedLabel(item?.label, item?.categoryCode) : item?.label);
 /* ก้อนที่ส่ง POST /items — คีย์ขีดล่าง (`_files` · `_as` ฯลฯ) เป็นของฟอร์มล้วน ตัดทิ้งทุกระดับ
    (File serialize เป็น {} เปล่า ๆ) · ส่งเป็นหัวน้ำหอม = ไม่มีก้อนสูตร (ม-148) */
 const stripFormKeys = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => !k.startsWith("_")));

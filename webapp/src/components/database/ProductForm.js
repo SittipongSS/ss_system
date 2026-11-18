@@ -128,7 +128,7 @@ function CategoryBox({ categoryCode, fgCode, productTypes }) {
   if (cat.typeInfo.isActive === false) {
     return (
       <div className="mt-2 text-xs text-[var(--red)] bg-[var(--red-soft)] p-2 rounded border border-[var(--border)]">
-        หมวด <strong>{cat.code}</strong> ถูกพักใช้งานแล้ว ข้อมูลเดิมยังดูได้ แต่ไม่สามารถใช้กับสินค้าใหม่หรือเปลี่ยนสินค้าอื่นมาเป็นหมวดนี้
+        หมวด <strong>{[cat.code, categoryNameBoth(cat.typeInfo)].filter(Boolean).join(" ")}</strong> ถูกพักใช้งานแล้ว ข้อมูลเดิมยังดูได้ แต่ไม่สามารถใช้กับสินค้าใหม่หรือเปลี่ยนสินค้าอื่นมาเป็นหมวดนี้
       </div>
     );
   }

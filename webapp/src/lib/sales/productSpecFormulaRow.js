@@ -21,6 +21,7 @@
 // ⚠️ ไฟล์นี้ต้องเบา — จอ (`ProductSpecForm` เป็น client component) เรียกตัวเดียวกับกระดาษ ⇒ ห้าม import เปลือกเอกสาร
 //    (`documentShell` ฝังฟอนต์/โลโก้ทั้งชุด) หรืออะไรที่เป็นของฝั่ง server
 import { BUDDHIST_YEAR_OFFSET, fmtDateNumeric } from '@/lib/format';
+import { categoryCodeName } from '@/lib/master/categoryOf';
 
 /**
  * วันที่บนกระดาษ — DD/MM/YYYY ตามนาฬิกาไทย · **ใบไทย = พ.ศ. · ใบอังกฤษ = ค.ศ.** (มติ 22/09)
@@ -109,7 +110,7 @@ export function productSpecFormulaRows(product, language = 'th') {
   if (!parts.length) return [productSpecFormulaRow(product, language)];
   return parts.map((row, index) => {
     const pieces = [textOf(row?.formulaName), textOf(row?.formulaCode), productSpecDateText(row?.formulaDate, language) || ''];
-    const category = textOf(row?.categoryName) || textOf(row?.categoryCode);
+    const category = categoryCodeName(textOf(row?.categoryCode), textOf(row?.categoryName)); // รหัส + ชื่อ (มติ 18/11)
     return {
       kind: 'formula',
       label: `สูตร ${index + 1}${category ? ` · ${category}` : ''}`,

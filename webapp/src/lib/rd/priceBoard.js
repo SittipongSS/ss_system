@@ -36,7 +36,7 @@ export function awaitingPriceItems(requests = []) {
 export const awaitingPriceCount = (requests = []) => awaitingPriceItems(requests).length;
 
 // ป้ายของรายการที่ขอมา — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่า (ตัวเดียวกับหัวโมดัลใส่ราคาบนหน้าใบ)
-const requestedText = (item) => (item?.lineKind === 'product_dev' ? requestedLabel(item?.label) : (item?.label || ''));
+const requestedText = (item) => (item?.lineKind === 'product_dev' ? requestedLabel(item?.label, item?.categoryCode) : (item?.label || ''));
 
 /**
  * แถวของตาราง — `pairs` จาก `awaitingPriceItems` · `live[i]` จาก `rowsSlotPricesLive` (ลำดับเดียวกัน)

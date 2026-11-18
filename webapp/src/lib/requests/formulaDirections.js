@@ -63,7 +63,7 @@ export function directionRowFrom(anchor, { sortOrder = 0 } = {}) {
     lineKind: 'product_dev',
     sortOrder,
     kind: anchor.kind ?? null,
-    label: requestedLabel(anchor.label),
+    label: requestedLabel(anchor.label, anchor.categoryCode),
     spec: anchor.spec ?? null,
     categoryCode: anchor.categoryCode ?? null,
     scentId: anchor.scentId ?? null,

@@ -107,7 +107,7 @@ export default function EditProductModal({ open, onClose, onSaved, product, bran
       setError("กรุณากรอกชื่อสินค้าอย่างน้อย 1 ภาษา (ไทยหรืออังกฤษ)"); return;
     }
     // ชุดของขวัญ (01-037): ทุกแถวต้องมีหมวด · สูตรไม่บังคับ (R2 · บังคับตอนส่งลง BOM) แต่ห้ามซ้ำ/หมวดต้องตรงกับสูตร — ตัวตรวจเดียวกับ API
-    const giftSetError = giftSetFormError(form.categoryCode || categoryOf(form.fgCode), form.formulaComponents, formulas);
+    const giftSetError = giftSetFormError(form.categoryCode || categoryOf(form.fgCode), form.formulaComponents, formulas, productTypes);
     if (giftSetError) { setError(giftSetError); return; }
     /* R1 (มติเจ้าของ 11/11 รอบสอง): ไม่บังคับเลือก "รวมชุด / รายชิ้น" ตอนบันทึก — ไปบังคับตอนยื่นขึ้นทะเบียน (เดิม G5 ตีกลับตรงนี้) */
     setSubmitting(true);

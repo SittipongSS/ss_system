@@ -61,8 +61,9 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
       return { items: [], error: `รายการที่ ${item.sortOrder}: กลิ่นนี้เป็นของลูกค้าคนละราย` };
     }
     const type = typeByCode.get(item.categoryCode);
-    // หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปใช้รหัส ห้ามป้ายว่าง
-    const typeName = type?.nameTh || type?.nameEn || item.categoryCode;
+    // ⭐ หมวด = รหัส + ชื่อเสมอ (มติเจ้าของ 18/11/2026) · หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — เหลือรหัส ห้ามป้ายว่าง
+    // ⚠️ ห้ามมี " · " ในส่วนหมวด — `productDevLabel` แยกหมวดกับกลิ่นที่ตัวคั่นตัวแรก
+    const typeName = [item.categoryCode, type?.nameTh || type?.nameEn].filter(Boolean).join(' ');
     out.push({
       ...item,
       // กลิ่น = PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11 · lib/master/registryLabel)

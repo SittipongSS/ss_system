@@ -23,6 +23,7 @@ import { pdrTargetSizeText } from '@/lib/requests/pdrTargets';
 import { requestRowsClosurePatch } from '@/lib/requests/stages';
 import { npdTargetPairs, pairKey } from '@/lib/requests/npdPairs';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
+import { requestedLabel } from '@/lib/requests/rowLabel';
 
 // คู่ หมวด × กลิ่น อยู่ `npdPairs.js` (โมดูลใบไม้ที่ `stages.js` ใช้ด้วย) — ส่งต่อให้ผู้เรียกเดิม
 export { npdTargetPairs };
@@ -95,7 +96,7 @@ export function planNpdWorkRows({ targets = [], items = [], rowsWithFiles = null
 export function npdWorkRowsError(plan) {
   const hit = plan?.blocked?.[0];
   if (!hit) return null;
-  const name = hit.row.label || hit.row.categoryCode;
+  const name = requestedLabel(hit.row.label, hit.row.categoryCode) || hit.row.categoryCode;
   if (hit.reason === 'files') {
     return `สินค้า "${name}" มีไฟล์แนบในรายการงานแล้ว — ลบ/ย้ายไฟล์ออกจากรายการนั้นก่อน `
       + 'หรือใส่คู่หมวด × กลิ่นนี้กลับเข้าไปในแบบฟอร์ม';
@@ -139,7 +140,8 @@ export const npdWorkRowsEmpty = (plan) => !plan
 
 /** บรรทัดเล่าในเธรด/สรุปงาน — `inserted`/`removed` เป็นแถวที่มี `label` แล้ว */
 export function npdWorkRowsSummary({ inserted = [], removed = [] } = {}) {
-  const name = (r) => r.label || r.categoryCode;
+  // ป้ายเก่าในฐานมีแต่ชื่อหมวด — เติมรหัสตอนอ่าน (มติ 18/11 รหัส + ชื่อเสมอ)
+  const name = (r) => requestedLabel(r.label, r.categoryCode) || r.categoryCode;
   const parts = [
     inserted.length && `เพิ่ม ${inserted.length} (${inserted.map(name).join(' · ')})`,
     removed.length && `ถอน ${removed.length} (${removed.map(name).join(' · ')})`,

@@ -17,8 +17,12 @@ import { categoryOf } from '@/lib/master/categoryOf';
     ⭐ มติเจ้าของ 03/11: 02-037 (ก้านหอมแบบบริการ) ทำงานเหมือน 02-001 ทุกจุด · 02-011 (ก้านหอมขายเป็นกิโล) ไม่อยู่ในชุด
     ⚠️ เพิ่มหมวดที่นี่ = ต้องแก้ยามในฐานด้วย (0410 → 0422 `quotation_line_pack_keep`) ไม่งั้นเลขแพ็คของหมวดใหม่หายเงียบได้ */
 export const PACK_LINE_CATEGORIES = Object.freeze(['02-001', '02-037']);
-/** รหัสหมวดในข้อความ ("02-001 หรือ 02-037") */
-export const PACK_LINE_CATEGORY_TEXT = PACK_LINE_CATEGORIES.join(' หรือ ');
+/* ชื่อหมวดไว้พูดในข้อความ (มติเจ้าของ 18/11/2026 หมวด = รหัส + ชื่อเสมอ) — ชื่อตามทะเบียน product_types
+   ⚠️ เปลี่ยนชื่อหมวดที่หน้าหมวดสินค้าแล้วต้องแก้ตรงนี้ด้วย · ข้อความที่ยามในฐานตอบ (mig 0410/0422) ยังเป็นรหัสล้วน */
+const PACK_LINE_CATEGORY_NAMES = Object.freeze({ '02-001': 'ระบบกระจายกลิ่น', '02-037': 'ก้านไม้หอม (รายเดือน)' });
+/** หมวดในข้อความ ("02-001 ระบบกระจายกลิ่น หรือ 02-037 ก้านไม้หอม (รายเดือน)") */
+export const PACK_LINE_CATEGORY_TEXT = PACK_LINE_CATEGORIES
+  .map((code) => [code, PACK_LINE_CATEGORY_NAMES[code]].filter(Boolean).join(' ')).join(' หรือ ');
 /** หมวดนี้ต้องมีเลขแพ็คไหม */
 export const isPackLineCategory = (code) => PACK_LINE_CATEGORIES.includes(code);
 /** ช่วงของเลขแพ็ค — เท่ากับ CHECK *_pack_qty_range ของ 0407 และ sales_order_line_zones."packsPerRound" (0392) */

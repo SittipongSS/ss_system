@@ -243,13 +243,6 @@ export default function FormulasPage() {
     () => new Map(formulas.map((f) => [f.id, formulaLabel(f)])),
     [formulas],
   );
-  const categoryLabel = useCallback((code) => {
-    if (!code) return null;
-    // โชว์ "รหัส EN · TH" (มติ 2026-08-12) — helper กลางตัวเดียวกับตัวเลือกหมวด
-    const name = categoryNameBoth(findCategoryByCode(categories, code));
-    // ⚠️ หมวดที่ชื่อว่างทั้งสองภาษามีจริง (prod 5 แถว) — ถอยไปแสดงรหัส ห้ามบรรทัดว่าง
-    return name ? `${code} ${name}` : code;
-  }, [categories]);
 
   /* ⭐ **ใหม่สุดขึ้นก่อน** (มติผู้ใช้ 2026-09-02 · เหมือนทะเบียนกลิ่น) — API เรียงตาม
      ชื่อ ก→ฮ เพราะชุดเดียวกันไปเป็นตัวเลือกในดรอปดาวน์เลือกสูตร ⇒ สูตรที่เพิ่งเพิ่ม

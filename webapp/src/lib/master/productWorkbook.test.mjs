@@ -89,7 +89,7 @@ test('ชุดของขวัญ: หลายบรรทัดในเซ
   assert.equal(sheet.rowCount, 3, 'ไม่แตกแถวต่อสูตร — sum/นับ FG แล้วไม่ซ้ำ');
   const row = sheet.getRow(2);
   assert.equal(row.getCell(3).value, 'PF85901\n—');
-  assert.equal(row.getCell(4).value, 'น้ำหอมสำหรับผิวกาย: Midnight #1\nก้านหอมปรับอากาศ: Midnight Reed');
+  assert.equal(row.getCell(4).value, '01-002 น้ำหอมสำหรับผิวกาย: Midnight #1\n01-006 ก้านหอมปรับอากาศ: Midnight Reed');
   assert.equal(row.getCell(5).value, '10/09/2026\n—');
   for (const col of [3, 4, 5]) assert.equal(row.getCell(col).alignment?.wrapText, true, `คอลัมน์ ${col} ต้องตัดบรรทัด`);
   assert.ok(row.height >= 2 * 18, 'ความสูงพอสำหรับสองบรรทัด');

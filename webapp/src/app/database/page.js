@@ -20,6 +20,8 @@ import { CHART_LINE_TYPE, CHART_CATEGORICAL } from "@/lib/chartTheme";
 import { brandLabel } from "@/lib/master/brands";
 import { productIdentity } from "@/lib/master/productIdentity";
 import { NA, naText } from "@/lib/format";
+import { categoryCodeLabel } from "@/lib/master/productCategoryOptions";
+import { useProductCategories } from "@/lib/useProductCategories";
 import { PENDING_APPROVAL_HREF, isPendingApproval, pendingApprovalCount, registryDefaultCount } from "@/lib/master/pendingApprovalLinks";
 import { customersById, matchesOverviewTeams, overviewTeamOptions, teamsOf } from "@/lib/master/overviewTeamFilter";
 
@@ -147,16 +149,18 @@ export default function DatabaseOverview() {
       .slice(0, 5);
   }, [products]);
 
+  // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — ป้ายตำนาน/ทูลทิปของกราฟวงกลม
+  const productCategories = useProductCategories();
   const categoryData = useMemo(() => {
     const counts = {};
     products.forEach(p => {
-      const cat = p.categoryCode || "ไม่มีหมวดหมู่";
+      const cat = categoryCodeLabel(p.categoryCode, productCategories) || "ไม่มีหมวดหมู่";
       counts[cat] = (counts[cat] || 0) + 1;
     });
     return Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
-  }, [products]);
+  }, [products, productCategories]);
 
   /* ⭐ การ์ด "ทั้งหมด" (มติเจ้าของ 20/10 · ตรวจตัวเลข M19a) = แถวที่ทะเบียนเปล่า ๆ โชว์ (`registryDefaultCount`
      — ไม่รวมใบเลิกใช้) นับจากทะเบียนเต็ม **ไม่ผ่านตัวกรองทีม/ช่วงเวลาของหน้านี้** เหมือนการ์ดรออนุมัติ

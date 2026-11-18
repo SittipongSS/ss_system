@@ -11,21 +11,32 @@ import { scentLabel } from '@/lib/master/registryLabel';
 
 const ARROW = ' → ';
 
-/** ป้ายสิ่งที่ขอ — ตัดตั้งแต่ลูกศรตัวแรกทิ้ง */
-export function requestedLabel(label) {
+const SEP = ' · ';
+
+/**
+ * ป้ายสิ่งที่ขอ — ตัดตั้งแต่ลูกศรตัวแรกทิ้ง
+ *
+ * ⭐ `categoryCode` (แถวพัฒนาผลิตภัณฑ์) — หมวดสินค้าต้องโชว์ **รหัส + ชื่อ** เสมอ (มติเจ้าของ 18/11/2026)
+ *    ป้ายที่เก็บในฐานก่อนวันนั้นมีแต่ชื่อหมวด ("แชมพู · PF… กลิ่น") ⇒ เติมรหัสหน้าชื่อตอนอ่าน
+ *    (ไม่แก้ข้อมูลย้อนหลัง · ป้ายที่ขึ้นต้นด้วยรหัสอยู่แล้ว = ไม่แตะ ไม่ซ้อนรหัส)
+ */
+export function requestedLabel(label, categoryCode = null) {
   const text = String(label ?? '').trim();
   const at = text.indexOf(ARROW);
-  return at === -1 ? text : text.slice(0, at).trim();
+  const base = at === -1 ? text : text.slice(0, at).trim();
+  const code = String(categoryCode ?? '').trim();
+  if (!code || !base.includes(SEP) || base.startsWith(code)) return base;
+  return `${code} ${base}`;
 }
 
 /**
  * ป้ายสิ่งที่ขอของแถวพัฒนาสูตร ประกอบจาก **กลิ่นในทะเบียนสด** — ป้ายเก่าแช่รหัสกลิ่นตอนเปิดใบ (เคยเป็น "-") ·
  * ส่วนหมวดยังมาจากป้าย (ชื่อหมวดไม่ได้อยู่บนแถว) · ไม่มีกลิ่นสดหรือป้ายไม่มีตัวคั่น = ใช้ป้ายที่ตัดหางแล้ว
  */
-export function productDevLabel(label, scent = null) {
-  const base = requestedLabel(label);
+export function productDevLabel(label, scent = null, categoryCode = null) {
+  const base = requestedLabel(label, categoryCode);
   if (!scent?.name) return base || '—';
-  const sep = base.indexOf(' · ');
+  const sep = base.indexOf(SEP);
   const typeName = sep === -1 ? '' : base.slice(0, sep).trim();
   // PF · ชื่อ · วันที่ผลิต (มติเจ้าของ 13/11) — รหัสขีดของข้อมูลเก่านับเป็น "ไม่มีรหัส"
   const code = String(scent.code ?? '').trim();

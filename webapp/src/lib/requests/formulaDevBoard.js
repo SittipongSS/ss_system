@@ -46,7 +46,7 @@ export function formulaDevBoard(items = []) {
         id: item.id,
         /* ⭐ **สิ่งที่ขอ = หมวด · กลิ่นสดจากทะเบียน** (2026-09-15 · ผู้ใช้: ตารางดูยาก) — ป้ายในฐานแช่รหัสตอนเปิดใบ/ตอนส่ง
            ("· - ชื่อกลิ่น → 6731108202601") ⇒ แถวเดียวโชว์สองรหัสของสูตรเดียว และรอบแก้ยกลูกศรของแถวต้นทางมา (`rowLabel.js`) */
-        name: productDevLabel(item.label, item.refScent),
+        name: productDevLabel(item.label, item.refScent, item.categoryCode),
         spec: item.spec || null,
         qty: item.qty ?? null,
         unit: item.unit || null,

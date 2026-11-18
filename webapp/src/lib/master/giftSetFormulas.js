@@ -92,7 +92,7 @@ export function giftSetFormulasError(rows = [], { formulasById = null, categoryN
     const at = `สูตรแถวที่ ${index + 1}`;
     if (!row.categoryCode) return `${at}: เลือกหมวดก่อนว่าสูตรนี้เป็นสินค้าอะไร`;
     if (!isGiftSetComponentCategory(row.categoryCode)) {
-      return `${at}: หมวด ${row.categoryCode} ใช้ในชุดของขวัญไม่ได้ — เลือกได้เฉพาะหมวดในกลุ่ม 01 (ยกเว้น ${GIFT_SET_CATEGORY_CODE} ชุดของขวัญ)`;
+      return `${at}: หมวด ${nameOf(row.categoryCode)} ใช้ในชุดของขวัญไม่ได้ — เลือกได้เฉพาะหมวดในกลุ่ม 01 (ยกเว้น ${GIFT_SET_CATEGORY_CODE} ชุดของขวัญ)`;
     }
     // R2: ไม่มีสูตรได้ — ตรวจซ้ำ/ตรวจกับทะเบียนเฉพาะแถวที่เลือกสูตรแล้ว
     if (row.formulaId && seen.has(row.formulaId)) return `${at}: สูตรนี้อยู่ในชุดแล้ว — สูตรเดียวกันใส่ซ้ำในชุดเดียวไม่ได้ (ใส่จำนวนชิ้นแทน)`;
@@ -129,8 +129,13 @@ export function sameGiftSetFormulas(a = [], b = []) {
  * ด่านฝั่งจอก่อนกดบันทึก (โมดัลเพิ่ม + โมดัลแก้) — ตัวตรวจเดียวกับ API แต่เทียบกับทะเบียนสูตรที่จอโหลดไว้
  * หมวดอื่นที่ไม่ใช่ชุดของขวัญ = ผ่านเสมอ (API ล้างรายการทิ้งเอง)
  */
-export function giftSetFormError(categoryCode, rawRows, formulas = []) {
+export function giftSetFormError(categoryCode, rawRows, formulas = [], productTypes = []) {
   if (!isGiftSetCategory(categoryCode)) return '';
   const formulasById = formulas.length ? new Map(formulas.map((f) => [f.id, f])) : null;
-  return giftSetFormulasError(normalizeGiftSetFormulas(rawRows), { formulasById });
+  // ชื่อหมวดในข้อความ (มติ 18/11 รหัส + ชื่อเสมอ) — ทะเบียนเดียวกับที่ฟอร์มโหลดไว้ · ไม่ส่ง = รหัสดิบ
+  const nameByCode = (code) => {
+    const row = (productTypes || []).find((t) => `${t.mainCategoryCode}-${t.typeCode}` === code);
+    return row ? (clean(row.nameTh) || clean(row.nameEn)) : '';
+  };
+  return giftSetFormulasError(normalizeGiftSetFormulas(rawRows), { formulasById, categoryName: nameByCode });
 }
