@@ -16,7 +16,7 @@
 
 import { NA, fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
-import { paidThrough } from '@/lib/sales/paymentCoverage';
+import { installmentCustomerPaid, paidThrough } from '@/lib/sales/paymentCoverage';
 import {
   installmentConfirmOutlook, installmentRefunded, installmentVoid, paymentNotRequired, pipelineInstallmentLock, strandedInstallment,
 } from '@/lib/sales/salesOrderPayments';
@@ -434,10 +434,13 @@ export function ledgerRow({
     refundedByName: installment.refundedByName || '',
     refundReason: installment.refundReason || '',
     refundCreditNoteNo: installment.refundCreditNoteNo || '',
-    /* เลยกำหนด = มีวันกำหนด ยังไม่ confirmed และวันนั้นผ่านไปแล้ว
-       ⚠️ งวดที่ "รอบัญชีตรวจ" ก็เลยกำหนดได้ — เงินอาจเข้าแล้วแต่ยังไม่มีใครรับรอง
-       ซึ่งเป็นภาระของบัญชี ไม่ใช่ของลูกค้า จึงต้องยังขึ้นธง */
-    overdue: Boolean(due && status !== 'confirmed' && todayIso && String(due) < String(todayIso)),
+    /* เลยกำหนด = มีวันกำหนด ยังไม่ confirmed · ลูกค้ายังไม่จ่าย และวันนั้นผ่านไปแล้ว
+       ⭐ มติเจ้าของ 18/11/2026: งวดที่ลูกค้าจ่ายแล้ว (`installmentCustomerPaid` — แจ้งชำระรอบัญชีตรวจ) **ไม่เลยกำหนด**
+         งานของบัญชีกับงวดพวกนั้นอยู่ที่แท็บ "รอตรวจงวด" แล้ว · แท็บ "เลยกำหนด" = ลูกค้ายังไม่จ่าย (ใบที่ต้องตามเงิน)
+         🐞 เดิมนับงวดรอตรวจด้วย (ตั้งใจให้เป็นภาระของบัญชี) ⇒ งวดเดียวขึ้นสองแท็บ และแดงทั้งที่ลูกค้าจ่ายครบ
+       · บัญชีตีกลับ = เงินยังไม่เข้า ⇒ เลยกำหนดได้ (ตัวตัดสินเดียวกับจอฝั่งขาย #2079) */
+    overdue: Boolean(due && status !== 'confirmed' && todayIso && String(due) < String(todayIso)
+      && !installmentCustomerPaid(installment)),
     reportedByName: installment.reportedByName || '',
     confirmedByName: installment.confirmedByName || '',
     rejectedReason: installment.rejectedReason || '',
@@ -1254,8 +1257,9 @@ export function groupLedgerByOrder(rows = []) {
            ⚠️ ข้ามงวดที่ confirmed แล้ว — วันของงวดที่จบไปแล้วไม่ใช่สิ่งที่ต้องตาม
            ⚠️ ทั้งใบเก็บครบ หรือทุกงวดที่เหลือยังไม่มีกำหนด ⇒ null (หน้าเว็บโชว์ขีด)
            มีไว้เพราะแถวที่ยุบอยู่เคยปล่อยคอลัมน์กำหนดชำระว่างทั้งคอลัมน์ */
+        /* ⭐ มติเจ้าของ 18/11/2026: งวดที่ลูกค้าจ่ายแล้วไม่ใช่ "กำหนดถัดไป" — ตัวตัดสินเดียวกับหัวใบ SO (`installmentsNextDue`) */
         nextDue: rowsInOrder
-          .filter((r) => r.status !== 'confirmed' && r.dueDate)
+          .filter((r) => r.status !== 'confirmed' && r.dueDate && !installmentCustomerPaid(r))
           .map((r) => r.dueDate)
           .sort()[0] || null,
         /* ⭐ วางบิลถัดไป (0389 · คอลัมน์ "วางบิลถัดไป" ของม็อก D) = งวดที่ยังมีงานวางบิลและมีวันวางบิล ใกล้ที่สุด
