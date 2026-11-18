@@ -37,7 +37,10 @@ import ProductSpecCard from "@/components/database/ProductSpecCard";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import ProductSalesTab from "@/components/database/productHub/ProductSalesTab";
 import ProductBomTab from "@/components/database/productHub/ProductBomTab";
-import { productOrderRows, productSalesFacts } from "@/lib/master/productHub";
+import ProductOverviewTab from "@/components/database/productHub/ProductOverviewTab";
+import ProductActivityTab from "@/components/database/productHub/ProductActivityTab";
+import ProductPriceHistory from "@/components/database/productHub/ProductPriceHistory";
+import { productDocEvents, productFollowUps, productOrderRows, productRecentEvents, productSalesFacts } from "@/lib/master/productHub";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
@@ -53,7 +56,7 @@ import { apiCache } from "@/lib/apiCache";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import ProductBomStatus from "@/components/database/ProductBomStatus";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { BOM_STATUS_META, bomSendBlocker, bomStatusOf, hasBomStep } from "@/lib/master/productBom";
+import { BOM_STATUS_META, bomSendBlocker, bomSendBlockerShort, bomStatusOf, hasBomStep } from "@/lib/master/productBom";
 import { useCapUser, useDepartment } from "@/lib/roleContext";
 import { canAccessRd } from "@/lib/permissions";
 import IngredientListText from "@/components/database/IngredientListText";
@@ -141,6 +144,8 @@ export default function ProductDetails() {
   /* ⭐ QT/SO ที่มีสินค้านี้ (หน้าสินค้าศูนย์รวม S1 · docs/product-hub-plan.md) — `visible:false` = ผู้ดูไม่มีสิทธิ์โมดูลขาย (มติ 5)
      null = ยังโหลดไม่เสร็จ/โหลดพลาด ⇒ ไม่วาดตัวเลขยอดและแท็บการขาย (ไม่เดาเป็นศูนย์) */
   const [sales, setSales] = useState(null);
+  /* ประวัติราคา (S3 · มติ 6) — ช่องราคาทุน/ภาษีถูกตัดตามสิทธิ์ที่ server แล้ว */
+  const [priceHistory, setPriceHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -186,10 +191,10 @@ export default function ProductDetails() {
     if (wanted) { setRegKey(wanted); setTab("excise"); }
   }, []);
   const loadRelations = useCallback(() => {
-    if (!id) { setRegs([]); setOrders([]); setSales(null); return; }
+    if (!id) { setRegs([]); setOrders([]); setSales(null); setPriceHistory([]); return; }
     apiFetch(`/api/master/products/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setSales(d.sales || null); } })
+      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setSales(d.sales || null); setPriceHistory(d.priceHistory || []); } })
       .catch(() => {});
   }, [id]);
   useEffect(() => { loadRelations(); }, [loadRelations]);
@@ -418,6 +423,50 @@ export default function ProductDetails() {
   /* ⭐ ส่ง RD เป็นปุ่มหลักเมื่อพร้อมส่งจริงเท่านั้น — FG เก่าที่ยังไม่ผูกสูตร (ส่วนใหญ่ของทะเบียน) ปุ่มหลักยังเป็น "แก้ไข"
      เพราะก้าวถัดไปของมันคือไปผูกสูตรก่อน */
   const bomPrimary = !canDecide && bomSendAction && !bomBlocker;
+  /* ── กลุ่มปุ่มของงานย่อย (หน้าสินค้าศูนย์รวม มติ 8 · 18/11/2026 "อย่าให้หลุดคอนเซปคอนโทลพาแนล") ─────────────────────
+     แยกตามเจ้าของข้อมูล: **BOM เป็นช่องของสินค้า** ⇒ ปุ่มอยู่การ์ดนี้เป็นกลุ่ม "BOM" · **ทะเบียนสรรพสามิตเป็นเอกสารของตัวเอง**
+     ⇒ การ์ดจัดการของมันอยู่แท็บสรรพสามิต (RegistrationWorkPanel) การ์ดนี้มีแค่ปุ่มพาไป
+     ⚠️ ปุ่มละที่เดียวเหมือนเดิม (ม-49/ม-57) · หัวกลุ่มไม่มีจุดสถานะ — สถานะ BOM/สรรพสามิตอยู่การ์ดสรุปสินค้าที่เดียว */
+  const bomGroupActions = [
+    !bomPrimary && bomSendAction,
+    bomStep && canEditProducts && bomStatus === "queued" && {
+      id: "bom-pullback",
+      kind: "withdraw",
+      label: "ดึงกลับจาก RD",
+      disabled: isUpdating,
+      onClick: () => runBom("pullback", {
+        title: "ดึงเรื่องลง BOM กลับ",
+        description: `ดึง ${decideSubject} ออกจากคิว RD`,
+        detail: "RD ยังไม่รับเรื่อง — แถวหายจากคิว RD และสูตร/ปริมาตรกลับมาแก้ได้ · แก้เสร็จแล้วกดส่งใหม่",
+        confirmLabel: "ดึงกลับ",
+        done: "ดึงเรื่องกลับแล้ว — แก้สูตร/ปริมาตรได้",
+      }),
+    },
+    bomStep && rdViewer && bomStatus && bomStatus !== "returned" && {
+      id: "bom-queue",
+      kind: "goto",
+      label: "เปิดคิวลง BOM",
+      href: "/rd/bom",
+    },
+  ].filter(Boolean);
+  /* สรรพสามิต: ปุ่มเดียว = พาไปการ์ดจัดการทะเบียนในแท็บสรรพสามิต (สร้าง/ยื่น/ยื่นใหม่อยู่ที่นั่น) · เฉพาะผู้เห็นระบบภาษีและยังมีงานค้าง
+     (exciseRec = null เมื่อไม่เข้าข่าย/ขึ้นทะเบียนแล้ว/ผู้ดูไม่เห็นภาษี) · ยังไม่มีทะเบียน + แก้ได้ = เปิดรายการ "คำขอใหม่" ให้เลย */
+  const exciseGroupActions = [
+    exciseRec && {
+      id: "excise",
+      kind: "goto",
+      label: exciseRec.kind === "unregistered" && canEditProducts ? "ไปขึ้นทะเบียนสรรพสามิต" : "ไปที่งานทะเบียนสรรพสามิต",
+      onClick: () => {
+        if (exciseRec.kind === "unregistered" && regItems.some((item) => item.key === "new")) setRegKey("new");
+        goTab("excise");
+      },
+    },
+  ].filter(Boolean);
+  const actionGroups = [
+    { id: "bom", label: "BOM", actions: bomGroupActions },
+    { id: "excise", label: "สรรพสามิต", actions: exciseGroupActions },
+  ];
+
   const productActions = {
     /* ปุ่มหลัก = ก้าวถัดไปของระเบียน — ใบที่รออนุมัติและคนดูอนุมัติได้ ก้าวถัดไปคือ
        "อนุมัติ" ไม่ใช่ "แก้ไข" (ผังเดียวกับการ์ด control ของหน้าเอกสาร) */
@@ -441,32 +490,6 @@ export default function ProductDetails() {
       },
       canDecide && editAction,
       bomPrimary && editAction && { ...editAction, variant: "outline" },
-      !bomPrimary && bomSendAction,
-      bomStep && canEditProducts && bomStatus === "queued" && {
-        id: "bom-pullback",
-        kind: "withdraw",
-        label: "ดึงกลับจาก RD",
-        disabled: isUpdating,
-        onClick: () => runBom("pullback", {
-          title: "ดึงเรื่องลง BOM กลับ",
-          description: `ดึง ${decideSubject} ออกจากคิว RD`,
-          detail: "RD ยังไม่รับเรื่อง — แถวหายจากคิว RD และสูตร/ปริมาตรกลับมาแก้ได้ · แก้เสร็จแล้วกดส่งใหม่",
-          confirmLabel: "ดึงกลับ",
-          done: "ดึงเรื่องกลับแล้ว — แก้สูตร/ปริมาตรได้",
-        }),
-      },
-      bomStep && rdViewer && bomStatus && bomStatus !== "returned" && {
-        id: "bom-queue",
-        kind: "goto",
-        label: "เปิดคิวลง BOM",
-        href: "/rd/bom",
-      },
-      canEditProducts && exciseRec?.kind === "unregistered" && regItems.some((item) => item.key === "new") && {
-        id: "excise",
-        kind: "submit",
-        label: "ขึ้นทะเบียนสรรพสามิต",
-        onClick: () => { setRegKey("new"); goTab("excise"); },
-      },
       /* ⚠️ ปุ่มทางลัด "ทะเบียนสรรพสามิตของสินค้านี้" ถอดแล้ว (04/11/2026) — แถว "สรรพสามิต" ในการ์ดสรุปสินค้ากับแท็บสรรพสามิตพาไปที่เดียวกัน
          ปุ่มนี้กินที่การ์ดจัดการ ~56px ซึ่งเป็นตัวที่ดันที่ว่างใต้หัวสินค้า (เจ้าของทักตอนรีวิว) */
       canToggleActive && (product.isActive === false
@@ -499,6 +522,7 @@ export default function ProductDetails() {
     workflowSteps={approvalView.status === "approved" ? [] : workflowSteps}
     primaryAction={productActions.primaryAction}
     secondaryActions={productActions.secondaryActions}
+    actionGroups={actionGroups}
     dangerActions={productActions.dangerActions}
     busy={isUpdating}
     /* เหตุผลที่ถูกตีกลับต้องอยู่ตรงที่คนกำลังจะกดแก้ ไม่ใช่ให้ไปหาในเธรด */
@@ -535,7 +559,7 @@ export default function ProductDetails() {
      รายการหมวดยังไม่มา/หมวดไม่อยู่ในทะเบียน = ไม่โชว์แถว (ไม่เดาว่าไม่ต้องจด) · ไม่มีแท็บของตัวเอง (เก็บเลขที่/ไฟล์ = พักไว้) */
   const fdaNotice = fdaNoticeState(product.categoryCode || categoryOf(product.fgCode), productTypes);
   const lanes = [
-    { key: "approval", label: "ข้อมูลสินค้า", value: approvalView.label, color: approvalView.color, tab: "spec" },
+    { key: "approval", label: "ข้อมูลสินค้า", value: approvalView.label, color: approvalView.color, tab: "info" },
     bomStep && { key: "bom", label: "BOM", value: bomMeta.label, color: bomMeta.color, tab: "bom" },
     exciseLane && { key: "excise", label: "สรรพสามิต", value: exciseLane.label, color: LANE_TONE_COLOR[exciseLane.tone] || LANE_TONE_COLOR.neutral, tab: "excise" },
     fdaNotice && {
@@ -614,6 +638,19 @@ export default function ProductDetails() {
     </>
   );
 
+  /* ── แท็บภาพรวม (S2 · มติ 4) — ตัวตัดสินกลางชุดเดียวกับการ์ดสรุป/การ์ดจัดการ ส่งเข้าตัวคำนวณ pure (lib/master/productHub.js)
+     ทะเบียนสรรพสามิต: เฉพาะผู้เห็นระบบภาษี (exciseRec เป็น null ให้คนอื่นอยู่แล้ว) · การขาย: เฉพาะผู้เห็นโมดูลขาย (sales.visible) */
+  const followUps = productFollowUps({
+    sales,
+    approval: approvalView.status,
+    rejectionReason: product.rejectionReason || "",
+    exciseRec,
+    bom: { step: bomStep, status: bomStatus, reason: product.bomReturnReason || "", blockerShort: bomStep ? bomSendBlockerShort(product) : "" },
+  });
+  const recentEvents = productRecentEvents({ product, sales, registrations: canViewTax ? regs : [] }, { unit });
+  /* ความเคลื่อนไหวรวม (S3 · มติ 7) — เหตุการณ์จากใบ QT/SO/ทะเบียน เรียงรวมกับเธรดสินค้า */
+  const docEvents = productDocEvents({ sales, registrations: canViewTax ? regs : [] }, { unit });
+
   /* รายการในแผงทะเบียน — "คำขอใหม่" ของลูกค้าเจ้าของโผล่เฉพาะคนที่สร้างได้และสินค้าเข้าข่ายต้องขึ้นทะเบียน
      (ด่านเดียวกับปุ่ม "ขึ้นทะเบียนสรรพสามิต" เดิม) · คนดูอย่างเดียวเห็นแค่ทะเบียนที่มีอยู่ */
   const panelItems = regItems.filter((item) => item.key !== "new" || (canEditProducts && exciseRec?.kind === "unregistered"));
@@ -622,7 +659,8 @@ export default function ProductDetails() {
     { key: "overview", label: "ภาพรวม" },
     /* แท็บการขาย (มติ 5) — เฉพาะผู้เห็นโมดูลขาย · ป้าย = ใบสั่งขาย + ใบเสนอราคาฉบับล่าสุด (ตัวเดียวกับมุมมองตั้งต้นในแท็บ) */
     salesFacts && { key: "sales", label: `การขาย (${productOrderRows(sales).length + salesFacts.quotes.count})` },
-    { key: "spec", label: isFragranceOilCategory(product.categoryCode) ? "กลิ่นและบรรจุภัณฑ์" : "สเปคและสูตร" },
+    /* "ข้อมูลสินค้า" (S2 · มติ 4) = ข้อมูลหลัก + สเปคและสูตร — เดิมสองแท็บ (ภาพรวม · สเปคและสูตร/กลิ่นและบรรจุภัณฑ์) */
+    { key: "info", label: "ข้อมูลสินค้า" },
     /* แท็บ BOM (เจ้าของ 18/11/2026 "ต้องเพิ่มแท็บ BOM ด้วย") — เฉพาะ FG ที่มีขั้นลง BOM (กลุ่ม 01/02 · hasBomStep) ·
        บ้านเดียวของสถานะ/ความพร้อม/ของที่ส่ง RD · ปุ่มยังอยู่การ์ดจัดการ (มติ 8) */
     bomStep && { key: "bom", label: "BOM" },
@@ -698,7 +736,23 @@ export default function ProductDetails() {
       <div className={styles.tabsZone}>
         <Tabs id={TABS_ID} ariaLabel="หัวข้อของสินค้า" tabs={tabs} value={currentTab} onChange={setTab} />
 
+        {/* แท็บภาพรวม (S2 · มติ 4) — ต้องตามต่อ · ยอดสั่งซื้อรายเดือน (สลับมูลค่า/จำนวน) · ล่าสุด
+            ⚠️ การ์ด "ข้อมูลหลักสินค้า" เดิมย้ายไปหัวแท็บ "ข้อมูลสินค้า" (รวมกับสเปคและสูตร) */}
         {currentTab === "overview" && (
+          <div className={styles.pane}>
+            <ProductOverviewTab followUps={followUps} sales={sales} events={recentEvents} unit={unit} onGo={goTab} />
+          </div>
+        )}
+
+        {/* แท็บการขาย (มติ 5) — QT/SO ที่มีสินค้านี้ ตัวเลขของบรรทัดสินค้านี้บนใบ · เฉพาะผู้เห็นโมดูลขาย */}
+        {currentTab === "sales" && salesFacts && (
+          <div className={styles.pane}>
+            <ProductSalesTab sales={sales} unit={unit} />
+          </div>
+        )}
+
+        {/* แท็บข้อมูลสินค้า (S2 · มติ 4) = ข้อมูลหลัก (เดิมอยู่แท็บภาพรวม) + สูตรและบรรจุภัณฑ์ + สเปค + หมายเหตุเอกสาร — เรียงตามฟอร์มสินค้า */}
+        {currentTab === "info" && (
           <div className={styles.pane}>
             <DetailCard icon={Package} eyebrow="Product" title="ข้อมูลหลักสินค้า">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
@@ -729,19 +783,6 @@ export default function ProductDetails() {
                 )}
               </div>
             </DetailCard>
-            {/* การ์ด "โครงการที่เกี่ยวข้อง" ถูกถอด (ยุบดีล/โครงการ P2d · project_products บน prod = 0 แถว) */}
-          </div>
-        )}
-
-        {/* แท็บการขาย (มติ 5) — QT/SO ที่มีสินค้านี้ ตัวเลขของบรรทัดสินค้านี้บนใบ · เฉพาะผู้เห็นโมดูลขาย */}
-        {currentTab === "sales" && salesFacts && (
-          <div className={styles.pane}>
-            <ProductSalesTab sales={sales} unit={unit} />
-          </div>
-        )}
-
-        {currentTab === "spec" && (
-          <div className={styles.pane}>
             {/* ⚠️ สถานะลง BOM ย้ายไปแท็บ BOM ของตัวเอง (18/11/2026) — ห้ามวางการ์ดสถานะซ้ำที่นี่ */}
             <DetailCard icon={Package} eyebrow="Product specification" title={isFragranceOilCategory(product.categoryCode) ? "กลิ่นและบรรจุภัณฑ์" : "สูตรและบรรจุภัณฑ์"}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
@@ -1007,16 +1048,19 @@ export default function ProductDetails() {
               </div>
             </DetailCard>
             )}
+            {/* ประวัติราคา (S3 · มติ 6) — ทุกครั้งที่แก้ราคา · ช่องราคาทุน/ภาษีตัดตามสิทธิ์ที่ server แล้ว */}
+            <ProductPriceHistory rows={priceHistory} unit={unit} />
           </div>
         )}
 
         {currentTab === "excise" && (
           <div className={styles.pane}>
             <div className={styles.grid2}>
-              <DetailCard icon={Package} eyebrow="EXCISE" title="การขึ้นทะเบียนสรรพสามิต">
-                {/* ⭐ แผงทะเบียนตัวเดียวกับหน้า SO (`RegistrationWorkModal.js` — ที่นี่ใช้แบบฝังหน้า) · สร้างคำขอ · เช็กลิสต์ด่านยื่น ·
-                    "ใช้ไฟล์นี้ยื่น" · แนบ · ยื่นให้ RA · ยื่นใหม่ — งานทะเบียนของ SA ทั้งหมดอยู่ที่นี่ (มติ 02/11 V7 · V14) */}
-                {panelItems.length ? (
+              {/* ⭐ แผงทะเบียนตัวเดียวกับหน้า SO (`RegistrationWorkModal.js` — ที่นี่ใช้แบบฝังหน้า) · หัวแผง = **การ์ดจัดการทะเบียน** (มติ 8 · 18/11/2026:
+                  สถานะ · ขั้น · เอกสารที่ขาด · ปุ่มสร้าง/ยื่น/ยื่นใหม่) ตามด้วยแผงไฟล์ — งานทะเบียนของ SA ทั้งหมดอยู่ที่นี่ (มติ 02/11 V7 · V14)
+                  ⚠️ ไม่ห่อ DetailCard อีกชั้น — การ์ดจัดการมีกรอบของตัวเองแล้ว (กรอบซ้อนกรอบ) */}
+              {panelItems.length ? (
+                <div className={styles.stack}>
                   <RegistrationWorkPanel
                     key={regKey || "panel"}
                     items={panelItems}
@@ -1024,10 +1068,12 @@ export default function ProductDetails() {
                     canEdit={canEditProducts}
                     onChanged={loadRelations}
                   />
-                ) : (
+                </div>
+              ) : (
+                <DetailCard icon={Package} eyebrow="EXCISE" title="การขึ้นทะเบียนสรรพสามิต">
                   <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด</p>
-                )}
-              </DetailCard>
+                </DetailCard>
+              )}
               <div className={styles.stack}>
                 {isExciseCat && (
                           <DetailCard icon={Package} eyebrow="EXCISE" title="ภาษีสรรพสามิตต่อหน่วย">
@@ -1185,18 +1231,25 @@ export default function ProductDetails() {
 
         {currentTab === "log" && (
           <div className={styles.pane}>
-            {/* เธรดกลาง (mig 0163) — ด่านอนุมัติเดียวกับลูกค้า: เหตุผลที่ตีกลับถูกล้าง
-                ทั้งตอนอนุมัติและตอนแก้ · เธรดเก็บครบทุกรอบไว้กับตัวสินค้า */}
-            <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
-              <UpdateThread
-                entityType="product"
-                entityId={id}
-                reloadToken={threadToken}
-                order="desc"
-                placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเปลี่ยนขนาดบรรจุ..."
-                emptyText="ยังไม่มีความเคลื่อนไหว"
-              />
-            </DetailCard>
+            {/* ความเคลื่อนไหวรวม (S3 · มติ 7): ชิป ทั้งหมด (เธรด + เหตุการณ์จากใบ) · สินค้า (เธรดล้วน) · ใบเสนอราคา · ใบสั่งขาย · ทะเบียน
+                เธรดกลาง (mig 0163) — ด่านอนุมัติเดียวกับลูกค้า: เหตุผลที่ตีกลับถูกล้างทั้งตอนอนุมัติและตอนแก้ · เธรดเก็บครบทุกรอบไว้กับตัวสินค้า */}
+            <ProductActivityTab
+              events={docEvents}
+              onGo={goTab}
+              productThread={(extraItems) => (
+                <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+                  <UpdateThread
+                    entityType="product"
+                    entityId={id}
+                    reloadToken={threadToken}
+                    order="desc"
+                    extraItems={extraItems}
+                    placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเปลี่ยนขนาดบรรจุ..."
+                    emptyText="ยังไม่มีความเคลื่อนไหว"
+                  />
+                </DetailCard>
+              )}
+            />
           </div>
         )}
       </div>

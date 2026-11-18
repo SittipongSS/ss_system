@@ -419,8 +419,10 @@ export default function SalesOrderPaymentPanel({
     requestUnknown: billingUnknown(row),
     gateError: gate(row, "schedule") || "",
   });
+  /* มีงวดให้แก้อย่างน้อยหนึ่งช่อง — นับงวดที่ขอใบวางบิลแล้วแต่ยังเติมกำหนดชำระได้ (`dueOpen` · มติเจ้าของ 18/11/2026) ด้วย
+     ไม่งั้นใบที่งวดเหลือแบบนั้นงวดเดียว (งวดอื่นรับเงินแล้ว) ไม่มีช่องให้กรอกเลย = ทางตันเดิม */
   const dateModeOpen = !isPreview && billingOn && installmentScheduleAllowed(user)
-    && (Boolean(scheduleOrderLock) || saved.some((row) => !dateLockOf(row)));
+    && (Boolean(scheduleOrderLock) || saved.some((row) => { const lock = dateLockOf(row); return !lock || lock.dueOpen; }));
   const saveDates = useCallback((rows) => onAction(null, "schedule-many", { rows }), [onAction]);
   const dateMode = useInstallmentDateMode({
     rows: isPreview ? [] : saved,
@@ -1638,7 +1640,7 @@ export default function SalesOrderPaymentPanel({
                     <td {...cellProps(row, "dueDate")} data-cell="due" data-label="กำหนดชำระ / จ่ายจริง">
                       {/* ⚠️ ธงแดง "เลยกำหนด" อ่าน dueDate ช่องเดียว (ไม่แตะเพราะกำหนดวางบิล) · วันเขียนแบบมีวันในสัปดาห์
                           ให้ตรงกับคอลัมน์วันวางบิลข้าง ๆ (ป้ายเสาร์-อาทิตย์เตือนอย่างเดียว ไม่เลื่อนวัน) */}
-                      {!row.preview && dateMode.canEdit(row) ? (
+                      {!row.preview && dateMode.canEdit(row, "due") ? (
                         <>
                           {/* ⚠️ ฐานยังไม่รัน 0389 (ไม่มีคอลัมน์วันวางบิล) = ไม่มีช่อง — `dateModeOpen` กันไว้แล้ว */}
                           <InstallmentDateCell mode={dateMode} row={row} field="due" />

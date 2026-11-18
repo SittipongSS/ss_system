@@ -52,6 +52,19 @@ const COVER_FIELDS = Object.freeze(['coversFrom', 'coversTo']);
 const WRITE_FIELDS = Object.freeze([...SCHEDULE_FIELDS, ...COVER_FIELDS]);
 const touches = (patch, fields) => fields.some((field) => Object.hasOwn(patch, field));
 
+/* ── ขอใบวางบิลแล้ว: เติมกำหนดชำระที่ยังว่างได้ (มติเจ้าของ 18/11/2026) ─────────────────────────────
+   งวดที่ขอใบวางบิลแล้วล็อกวันงวด (`installmentDateLock` · "บัญชีออกใบตามวันเดิม") — **ยกเว้น** ใส่กำหนดชำระให้งวดที่ยังไม่มี
+   (ว่าง → มีวัน · ไม่แตะวันวางบิล/รอเหตุการณ์/ติ๊ก) · วันเดิมที่มีอยู่ยังล็อก (ใบวางบิลที่ออกไปอ้างวันนั้น)
+   🐞 เดิมล็อกทั้งแถว แต่ด่านยื่นใบแพ็คเกจ (`due_missing`) ขอกำหนดชำระของงวดที่ยังไม่จ่าย ⇒ ยื่นไม่ได้และแก้บนจอไม่ได้
+      (ทางตันเดียวกับ SO-26110445-0 — ทางออกเดียวคือถอดคำร้องแล้วขอใหม่)
+   ⭐ ตัวตัดสินเดียวของ route (ตัวนี้ · ด้วย patch จริง) และจอ (`dateLockView` → `dueOpen` · `draftChanges`) */
+export function requestDueFillOnly(row, patch) {
+  if (!row || !patch) return false;
+  if (String(row.dueDate ?? '').trim() || String(row.billingEvent ?? '').trim()) return false;
+  const keys = SCHEDULE_FIELDS.filter((field) => Object.hasOwn(patch, field));
+  return keys.length === 1 && keys[0] === 'dueDate' && Boolean(String(patch.dueDate ?? '').trim());
+}
+
 /* ค่าที่ลงฐานของติ๊ก — `true` หรือ `null` (ตามลูกค้า) · ไม่มีวันเก็บ false */
 const skipValue = (on) => (on ? true : null);
 /* ติ๊กในแถวที่อ่านจากฐาน — ก่อน 0393 ไม่มีคีย์ (undefined) = ไม่ติ๊ก */
@@ -344,7 +357,7 @@ export function scheduleManyCheck(live = [], sent = [], {
        และ 409 พาจอไปโหลดงวดสดแล้วตรวจร่างใหม่ (ร่างบนงวดล็อกถูกทิ้ง) · 400 จะค้างร่างที่คนลบเองไม่ได้เพราะแถวล็อก
        ⭐ ล็อกนี้เป็นของวันงวด — งวดที่แก้แค่ช่วงครอบไม่ถาม (ด่าน `coverage` ตัดสินเอง · หัวไฟล์) · `patch` null = ค่าผิดรูป (ถามไว้ก่อน) */
     const lock = !patch || touches(patch, SCHEDULE_FIELDS)
-      ? installmentDateLock(row, { order, requested: requestedIds.has(row.id) })
+      ? installmentDateLock(row, { order, requested: requestedIds.has(row.id) && !requestDueFillOnly(row, patch) })
       : null;
     if (lock) conflicts.push({ id: row.id, seq: row.seq, reason: lock });
     else if (installmentStale(row, item.updatedAt)) conflicts.push({ id: row.id, seq: row.seq, reason: SCHEDULE_MANY_ROW_CHANGED });

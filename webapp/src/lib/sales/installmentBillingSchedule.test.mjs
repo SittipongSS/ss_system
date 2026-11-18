@@ -313,7 +313,8 @@ test('แผงงวด: วันงวดสองช่องแยก (ม�
   assert.match(lock, /gateError: gate\(row, "schedule"\) \|\| "",/, 'ด่านสิทธิ์ตัวเดียวกับ route');
   // ไม่มีสิทธิ์ = ไม่มีช่อง (ตารางอ่านอย่างเดียว) · ใบล็อกทั้งใบ = ปุ่มเติมยังอยู่ กดแล้วบอกเหตุ (ติดด่าน = โชว์แล้วบอกเหตุ) ·
   // ⭐ ม็อก split-v6 ข้อ 6 (03/11): ร่างช่วงครอบอยู่ในฮุกเดียวกัน บันทึกครั้งเดียว — สองฝั่งไม่ล็อกกันอีก
-  assert.match(panel, /const dateModeOpen = !isPreview && billingOn && installmentScheduleAllowed\(user\)\s*&& \(Boolean\(scheduleOrderLock\) \|\| saved\.some\(\(row\) => !dateLockOf\(row\)\)\);/);
+  /* ⭐ มติเจ้าของ 18/11/2026: งวดที่ขอใบวางบิลแล้วแต่เติมกำหนดชำระได้ (`dueOpen`) นับเป็นงวดที่แก้ได้ด้วย */
+  assert.match(panel, /const dateModeOpen = !isPreview && billingOn && installmentScheduleAllowed\(user\)\s*&& \(Boolean\(scheduleOrderLock\) \|\| saved\.some\(\(row\) => \{ const lock = dateLockOf\(row\); return !lock \|\| lock\.dueOpen; \}\)\);/);
   assert.match(panel, /const scheduleOrderLock = orderLock \|\| pipelineInstallmentLock\(order, "schedule"\);/);
   assert.match(panel, /blocker: scheduleOrderLock,/, 'ล็อกทั้งใบเป็นเหตุของปุ่ม — ไม่ใช่ปุ่มหาย');
   assert.doesNotMatch(panel, /coverDraftCount|coverModeLock/, 'ร่างช่วงครอบไม่ล็อกช่องวัน · ร่างวันงวดไม่ล็อกช่องช่วงครอบ');
@@ -326,7 +327,8 @@ test('แผงงวด: วันงวดสองช่องแยก (ม�
   const hook = code(MODE_HOOK);
   assert.match(slice(hook, 'const setValue = (row, value) => {', '\n  };'),
     /if \(blocker\) \{ notifyToast\.error\(blocker\); return; \}\s*if \(!edits\.length && !fill\) clearErrorRef\.current\?\.\(\);/);
-  assert.match(hook, /const canEdit = useCallback\(\(row\) => Boolean\(row\) && available && !blocker && !isLocked\(row\), \[available, blocker, isLocked\]\);/);
+  /* ⭐ มติเจ้าของ 18/11/2026: ถามล็อกรายช่องได้ (`field`) — งวดที่ขอใบวางบิลแล้วเปิดเฉพาะกำหนดชำระที่ว่าง · ไม่ส่งช่อง = ทั้งแถวเหมือนเดิม */
+  assert.match(hook, /const canEdit = useCallback\(\(row, field = null\) => Boolean\(row\) && available && !blocker\s*&& !\(field \? lockFor\(row, field\) : isLocked\(row\)\), \[available, blocker, isLocked, lockFor\]\);/);
   assert.doesNotMatch(hook, /const (enter|open|close|tap|choose) = /, 'ไม่มีโหมด/ตัวแก้รายงวด/ไปงวดถัดไปเอง (มติ 02/11)');
   assert.match(slice(hook, 'const openFill = ({ includeDated = false } = {}) => {', '\n  };'), /clearErrorRef\.current\?\.\(\);/);
   // "เอาคืน" ถามด่านล่าสุดของวันงวด (ใบอาจล็อกระหว่าง toast ค้าง) · ช่วงครอบคืนได้เสมอ (ด่านของมันตัดสินตอนบันทึก)

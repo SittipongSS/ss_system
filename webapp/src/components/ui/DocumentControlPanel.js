@@ -235,6 +235,12 @@ export function DocumentControlCard({
   evidence,
   primaryAction,
   secondaryActions = [],
+  /* ⭐ `actionGroups` — **ปุ่มของงานย่อยที่เป็นของระเบียนเอง** เรียงเป็นกลุ่มมีหัวข้อ ต่อจากปุ่มหลัก ก่อนปุ่มรอง
+     `[{ id, label, actions: [action…] }]` (หน้าสินค้าศูนย์รวม มติ 8 · 18/11/2026: กลุ่ม "BOM" · "สรรพสามิต" ในการ์ดจัดการสินค้า)
+     · ปุ่มในกลุ่มเป็นปุ่มชุดเดียวกับช่องปุ่มของการ์ด (DocumentActionSlot — เหตุที่กดไม่ได้เป็นตัวหนังสือเหนือปุ่ม)
+     · กลุ่มที่ไม่เหลือปุ่มที่โชว์ = ไม่วาดหัวข้อ · หัวข้อไม่มีจุดสถานะ (สถานะอยู่การ์ดสรุปที่เดียว)
+     ⚠️ **ไม่ส่งมา = เหมือนเดิมทุก px** ทุกหน้าที่ใช้การ์ดนี้ */
+  actionGroups = [],
   dangerActions = [],
   busy = false,
   footer,
@@ -257,7 +263,10 @@ export function DocumentControlCard({
   className = "",
 }) {
   const actions = normalizeDocumentControlActions({ primaryAction, secondaryActions, dangerActions });
-  const hasActions = actions.primaryAction || actions.secondaryActions.length || actions.dangerActions.length;
+  const groups = (actionGroups || [])
+    .map((group) => ({ ...group, actions: (group?.actions || []).filter((action) => action && action.visible !== false) }))
+    .filter((group) => group.actions.length);
+  const hasActions = actions.primaryAction || actions.secondaryActions.length || actions.dangerActions.length || groups.length;
   /* id ของบรรทัดเหตุผล — ต้องไม่ชนกันเมื่อหน้าหนึ่งมีการ์ดนี้มากกว่าหนึ่งใบ */
   const uid = useId();
   const reasonId = (id) => `${uid}-blocked-${id}`;
@@ -301,6 +310,16 @@ export function DocumentControlCard({
             <DocumentActionSlot action={actions.primaryAction} slot="primary" busy={busy}
               reasonId={reasonId(actions.primaryAction.id)} />
           ) : null}
+          {groups.map((group) => (
+            <div key={group.id} className={styles.actionSection} role="group" aria-label={group.label}>
+              <span className={styles.actionSectionHead}>{group.label}</span>
+              {group.actions.map((action) => (
+                <DocumentActionSlot key={action.id} action={action} slot="secondary" busy={busy}
+                  reasonId={reasonId(action.id)} />
+              ))}
+            </div>
+          ))}
+          {groups.length && actions.secondaryActions.length ? <div className={styles.dangerDivider} /> : null}
           {actions.secondaryActions.map((action) => (
             <DocumentActionSlot key={action.id} action={action} slot="secondary" busy={busy}
               reasonId={reasonId(action.id)} />

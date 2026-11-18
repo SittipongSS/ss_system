@@ -8,6 +8,7 @@
 //  · ⛔ GET ห้ามเขียน · ⚠️ query พัง = throw (ว่างเพราะพังอ่านเหมือน "สินค้านี้ยังไม่เคยขาย")
 //  · ⚠️ ทุก query ผ่าน fetchAll / fetchAllInChunks + เรียงด้วย id (ตัด 1,000 แถวเงียบ · `.in()` 16 KB)
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import { can, canSeeProductCostUser } from '@/lib/permissions';
 import { fetchAll } from '@/lib/supabaseFetchAll';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import {
@@ -74,4 +75,41 @@ export async function productSalesRelations(supabase, productId, user) {
     .map((d) => Object.fromEntries(DEAL_COLS.split(', ').map((k) => [k, d[k] ?? null])));
 
   return { visible: true, quotations, orders, deals };
+}
+
+/* ── ประวัติราคา (งวด S3 · มติ 6) ─────────────────────────────────────────────────────────────────────────
+   `product_price_history` — ระบบเขียนทุกครั้งที่แก้ราคา (lib/master/priceHistory.js) แต่ไม่เคยมีจอไหนอ่าน
+   ⭐ เห็นตามสิทธิ์เดิมของแท็บราคา (ห้ามเขียนด่านใหม่ — ตัดด้วยตัวตัดสินชุดเดียวกับ redactProductMargin / ระบบภาษี):
+      ราคาผลิต (costPrice*)        canSeeProductCostUser (SA · RA · แอดมิน · FN)
+      ภาษีสรรพสามิต/ท้องถิ่น         history:view (ผู้เห็นระบบภาษี)
+      ราคาขายปลีก (รวม/ถอด VAT)    ทุกคนที่เปิดหน้าสินค้าได้ (ตัวเดียวกับที่ GET สินค้าคืนให้อยู่แล้ว)
+   ⚠️ แถวที่หลังตัดแล้วไม่เหลือช่องที่เปลี่ยนให้เห็น = ไม่ส่ง (ไม่โชว์แถวว่างที่บอกแค่ว่า "มีคนแก้อะไรสักอย่าง") */
+export const PRICE_HISTORY_COLS = 'id, productId, changeType, changedByName, createdAt, costPriceBefore, costPriceAfter, retailPriceIncVatBefore, retailPriceIncVatAfter, retailPriceExVatBefore, retailPriceExVatAfter, exciseTaxBefore, exciseTaxAfter, localTaxBefore, localTaxAfter';
+const PRICE_PAIRS = Object.freeze({
+  cost: ['costPrice'],
+  retail: ['retailPriceIncVat', 'retailPriceExVat'],
+  tax: ['exciseTax', 'localTax'],
+});
+const samePrice = (a, b) => ((a == null || a === '') && (b == null || b === '')) || Number(a) === Number(b);
+
+/** ตัดช่องตามสิทธิ์ของผู้ดู — pure (เทสต์ได้โดยไม่ต้องมีฐาน) */
+export function redactPriceHistory(rows, { seesCost = false, seesTax = false } = {}) {
+  const groups = ['retail', ...(seesCost ? ['cost'] : []), ...(seesTax ? ['tax'] : [])];
+  const fields = groups.flatMap((g) => PRICE_PAIRS[g]);
+  return (rows || []).map((row) => {
+    const out = { id: row.id, changeType: row.changeType, changedByName: row.changedByName, createdAt: row.createdAt };
+    for (const f of fields) {
+      out[`${f}Before`] = row[`${f}Before`] ?? null;
+      out[`${f}After`] = row[`${f}After`] ?? null;
+    }
+    out.changed = fields.filter((f) => !samePrice(row[`${f}Before`], row[`${f}After`]));
+    return out;
+  }).filter((row) => row.changed.length > 0);
+}
+
+export async function productPriceHistory(supabase, productId, user) {
+  const rows = await fetchAll(() => supabase
+    .from('product_price_history').select(PRICE_HISTORY_COLS).eq('productId', productId)
+    .order('createdAt', { ascending: false }).order('id', { ascending: true }));
+  return redactPriceHistory(rows, { seesCost: canSeeProductCostUser(user), seesTax: can(user?.role, 'history:view') });
 }

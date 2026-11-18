@@ -67,7 +67,8 @@ export default function InstallmentDateCell({ mode, row, field }) {
   const context = `งวดที่ ${row.seq}`;
   const saved = datesOf(row);
 
-  const lock = mode.lock(row);
+  /* ล็อกรายช่อง (`lockFor`) — งวดที่ขอใบวางบิลแล้วแต่ยังไม่มีกำหนดชำระ เปิดเฉพาะช่องกำหนดชำระ (มติเจ้าของ 18/11/2026) */
+  const lock = mode.lockFor ? mode.lockFor(row, field) : mode.lock(row);
   if (lock) {
     const text = field === "bill"
       ? (saved.billingDate ? formatBillingDate(saved.billingDate) : saved.billingEvent || NA)
