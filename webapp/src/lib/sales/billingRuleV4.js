@@ -40,6 +40,7 @@
 //   'direct' (ลูกค้าไม่ต้องวางบิล — กำหนดชำระคือกำหนดชำระ ไม่มีป้าย) · 'waiting' รอเหตุการณ์
 
 import { isOpeningInstallment } from './historicalOrders.js';
+import { installmentCustomerPaid } from './paymentCoverage.js';
 
 /* ── ค่าคงที่ ────────────────────────────────────────────────────────────────────────────────── */
 export const RULE_VERSION = 4;
@@ -884,7 +885,8 @@ export function billingState(row, value, { todayIso, requested = false } = {}) {
   if (!row) return { key: 'none', days: null };
   if (isOpening(row)) return { key: 'carried', days: null };
   const status = String(row.status || 'pending');
-  if (row.refundedAt || ['reported', 'confirmed', 'refunded'].includes(status)) return { key: 'settled', days: null };
+  /* จ่ายแล้ว (รวมงวดร่างที่บันทึกจ่าย · มติเจ้าของ 18/11/2026) = settled — ไม่ "เลยรอบวางบิล" */
+  if (row.refundedAt || ['reported', 'confirmed', 'refunded'].includes(status) || installmentCustomerPaid(row)) return { key: 'settled', days: null };
   const bill = dateOf(row.billingDate);
   /* คำร้องที่ส่งแล้วเป็นข้อเท็จจริง — ขึ้นก่อน "ไม่ต้องวางบิล" (ลูกค้าเปลี่ยนเป็นไม่ต้องวางบิลทีหลัง คำร้องเดิมไม่หายจากจอ) */
   if (requested) return { key: 'requested', days: bill && dateOf(todayIso) ? daysBetween(todayIso, bill) : null };
@@ -902,7 +904,8 @@ export function dueState(row, { todayIso } = {}) {
   if (!row) return { key: 'none', days: null };
   if (isOpening(row)) return { key: 'carried', days: null };
   const status = String(row.status || 'pending');
-  if (row.refundedAt || ['reported', 'confirmed', 'refunded'].includes(status)) return { key: 'settled', days: null };
+  /* จ่ายแล้ว (รวมงวดร่างที่บันทึกจ่าย · มติเจ้าของ 18/11/2026) = settled — ไม่แดง "เลยกำหนด" ไม่ยิงกระดิ่งใกล้กำหนด */
+  if (row.refundedAt || ['reported', 'confirmed', 'refunded'].includes(status) || installmentCustomerPaid(row)) return { key: 'settled', days: null };
   const due = dateOf(row.dueDate);
   /* รอเหตุการณ์ชนะเสมอ — แถวเก่าที่มีทั้งเหตุการณ์และกำหนดชำระ (CHECK ระดับฐานยังไม่ใส่ · §5.2) ไม่ขึ้นแดง ไม่ยิงกระดิ่ง */
   if (text(row.billingEvent) && !dateOf(row.billingDate)) return { key: 'waiting', days: null };
