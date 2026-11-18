@@ -120,6 +120,8 @@ export default function NewRequestPage() {
     dealId: searchParams.get("dealId") || "",
     projectId: searchParams.get("projectId") || "",
     salesOrderId: searchParams.get("salesOrderId") || "",
+    // ม-164 PR-5 — ปุ่ม "เปิดคำร้องใหม่" ของคิว SO ตั้งต้น "ต่อจากคำร้อง" เป็นใบล่าสุดของลูกค้า (แก้ได้ · server ตรวจซ้ำ)
+    continuesRequestId: searchParams.get("continues") || "",
     quotationId: searchParams.get("quotationId") || "",
     billAmount: searchParams.get("billAmount") ? Number(searchParams.get("billAmount")) : null,
     requestedDueDate: prefillDueDate(searchParams.get("requiredDate")),

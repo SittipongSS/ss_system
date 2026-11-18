@@ -81,6 +81,12 @@ export default function SalesOrderWorkTrack({ track }) {
                     {action.disabled && action.disabledReason ? <small className={styles.reason}>{action.disabledReason}</small> : null}
                   </span>
                 ))}
+                {/* ทางรอง (ม-164 PR-5 · บรีฟกลิ่น) — แนบเข้าคำร้องเดิม / ปัดออก อยู่ที่คิวบนหน้าคำร้อง */}
+                {segment.connect?.more?.href ? (
+                  <Link href={segment.connect.more.href} className={styles.link}>
+                    {segment.connect.more.label} →
+                  </Link>
+                ) : null}
               </div>
             )}
 

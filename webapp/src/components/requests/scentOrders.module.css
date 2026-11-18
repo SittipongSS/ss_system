@@ -44,3 +44,28 @@
   grid-column: 2;
   grid-row: 1 / span 2;
 }
+
+/* ปุ่มท้ายแถว (คิว "SO ออกแบบกลิ่นรอเปิดคำร้อง" · PR-5) — สามปุ่มชิดขวา ตัดบรรทัดเองเมื่อแคบ */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* จอแคบ: ปุ่มลงไปใต้ข้อความ ไม่บีบชื่อลูกค้าจนเหลือคำละบรรทัด */
+@media (max-width: 640px) {
+  .row { grid-template-columns: minmax(0, 1fr); }
+  .row > :last-child:not(.main):not(.sub) {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  .actions { justify-content: flex-start; }
+}
+
+/* เนื้อโมดัลแนบ (คิว PR-5) — คำอธิบาย · ตัวเลือก · ผลลัพธ์ ห่างกันเท่ากัน */
+.stack {
+  display: grid;
+  gap: var(--space-3);
+}
+.stack > p { margin: 0; }

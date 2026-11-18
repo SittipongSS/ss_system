@@ -5,7 +5,7 @@
 //
 // ⭐ route บาง — ด่านทุกข้อมาจาก `lib/requests/scentOrderAttach.js` ตัวเดียวกับปุ่ม · ตัวเขียนอยู่ `scentOrderAttachAdmin.js`
 // ⚠️ proxy ปล่อยเส้นนี้ด้วย prefix `/api/sa/requests` ตัวเดียวกับใบแม่ · ด่านจริงคือ `canViewRequests` +
-//   `canReadRequestRow` (อ่าน) และ `canActOnScentOrders` (แนบ · ผู้ขอ/ทีม · เจ้าของดีลของ SO · หัวหน้าฝ่ายขาย · แอดมิน)
+//   `canReadRequestRow` (GET) และ `canActOnScentOrders` (POST แนบ · ผู้ขอ/ทีม · เจ้าของดีลของ SO · หัวหน้าฝ่ายขาย · แอดมิน)
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { canViewRequests } from '@/lib/permissions';
@@ -42,12 +42,17 @@ export async function POST(request, { params }) {
     const supabase = getSupabaseAdmin();
     const row = await findRequest(supabase, id);
     if (!row) return answer({ error: 'ไม่พบคำร้อง' }, 404);
-    if (!canReadRequestRow(user, row)) return answer({ error: 'ไม่มีสิทธิ์เปิดคำร้องนี้' }, 403);
+    /* ⭐ ม-164 PR-5 — แนบจากคิว "SO รอเปิดคำร้อง": **เจ้าของดีลของ SO แนบได้แม้เปิดใบคำร้องไม่ได้** (มติข้อ 4) ⇒ ไม่ตัดด้วย
+       `canReadRequestRow` ก่อน · ด่านสิทธิ์จริงอยู่ใน `attachScentOrder` (ตรวจสิทธิ์ก่อนข้ออื่น — คนนอกได้แค่ 403 ข้อความกลาง)
+       ⚠️ คนที่เปิดใบไม่ได้ได้คำตอบสั้น ไม่ใช่ทั้งใบ (ไม่หลุดเนื้อคำร้องทาง response) */
+    const canRead = canReadRequestRow(user, row);
     const result = await attachScentOrder({
       supabase, user, request: row, salesOrderId: body?.salesOrderId, httpRequest: request,
     });
     if (result.error) return answer({ error: result.error }, result.status);
-    return answer(await findRequest(supabase, id));
+    return canRead
+      ? answer(await findRequest(supabase, id))
+      : answer({ ok: true, requestId: id, docNo: row.docNo || null });
   } catch (e) {
     console.error('[request-sales-orders] POST', e?.message || e);
     return answer({ error: e?.message || String(e) }, 500);

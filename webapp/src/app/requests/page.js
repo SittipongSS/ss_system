@@ -29,6 +29,8 @@ import {
 } from "@/lib/requests/queueBoard";
 import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import StartHereCard from "@/components/requests/StartHereCard";
+import ScentOrderQueueCard from "@/components/requests/ScentOrderQueueCard";
+import { canUseScentOrderQueue } from "@/lib/requests/scentOrderQueue";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { bouncedDaysText } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
@@ -595,6 +597,10 @@ export default function RequestsPage() {
             : "ไม่มีเรื่องรอคุณอยู่ตอนนี้"}
         />
       )}
+
+      {/* ⭐ SO ออกแบบกลิ่นที่ยังไม่มีคำร้องรับ (ม-164 PR-5) — งานของฝ่ายขาย: เจ้าของดีลเห็นของตัวเอง · หัวหน้าเห็นทั้งหมด
+          ⚠️ ไม่มีใบค้าง = การ์ดไม่ขึ้นเอง · คนนอกฝ่ายขายไม่เรียก API เลย (หน้านี้เป็นหน้าประจำของ RD) */}
+      {tab !== "history" && canUseScentOrderQueue({ role }) && <ScentOrderQueueCard />}
 
       {/* แถบตัวเลข — component เดียวกับภาพรวมฝ่าย · ที่นี่กดแล้ว **กรองในที่**
           ⚠️ ไม่มีในประวัติ (ม-145 · ม-80 ข้อ 3) — ทุกช่องนับเฉพาะใบที่ยังเดินอยู่ ⇒ ศูนย์
