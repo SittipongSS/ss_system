@@ -376,6 +376,10 @@ const QTY_READERS = Object.freeze({
   'lib/pm/productionPlan.js': 'units',
   'lib/service/terms.js': 'units',
   'lib/sales/forecastBreakdown.js': 'units',
+  // หน้าสินค้าศูนย์รวม S1 (docs/product-hub-plan.md มติ 2): จำนวนที่สั่ง = Σ lineUnitsTotal ของบรรทัดสินค้านี้ · จอโชว์ค่าที่ตัวนับคิดแล้ว
+  'lib/master/productHub.js': 'units',
+  'components/database/productHub/ProductSalesTab.js': 'carry:lib/master/productHub.js',
+  'app/database/products/[id]/page.js': 'carry:lib/master/productHub.js',
   // ── ตัวโชว์ ──
   /* งวด PR-4: ตัวเทียบของตารางงานบริการเทียบแพ็คกับ ④ และเดือนกับ ⑤ แยกตัว (ไม่นับหน่วยรวมอีก) ⇒ อ่านเลขแพ็คผ่านตัวช่วยฝั่งโชว์ */
   'lib/sales/serviceSetup.js': 'display',

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
   BOM_COLUMNS, BOM_LOCKED_FIELDS, BOM_TRANSITIONS,
   bomActionPatch, bomFilterValueOf, bomFormulaBound, bomLockMessage, bomLocked, bomLockedFieldChanges,
-  bomSendBlocker, bomStatusOf, bomThreadEvent, bomTransitionError, hasBomStep,
+  bomReadinessItems, bomSendBlocker, bomStatusOf, bomThreadEvent, bomTransitionError, hasBomStep,
 } from './productBom.js';
 import { UPDATE_KINDS, isQuietUpdateKind } from './updateTypes.js';
 
@@ -66,6 +66,22 @@ test('ด่านส่ง: ต้องอนุมัติแล้ว + ผ
   assert.equal(bomSendBlocker(ready({ bomStatus: 'returned' })), '');
   // แถว approvalStatus ว่าง (ก่อน mig 0027) นับเป็นอนุมัติแล้ว — กติกาเดียวกับทั้งระบบ
   assert.equal(bomSendBlocker(ready({ approvalStatus: null })), '');
+});
+
+test('แท็บ BOM: รายการความพร้อมพูดตรงกับด่านส่ง — ทุกข้อพร้อม ⇔ ปุ่มส่งกดได้ (ยังไม่ส่ง/ถูกตีกลับ)', () => {
+  const cases = [
+    ready(), ready({ approvalStatus: 'pending' }), ready({ approvalStatus: 'rejected' }), ready({ isActive: false }),
+    ready({ formulaId: null }), ready({ volume: null }), ready({ volumeUnit: null }), ready({ formulaId: null, volume: 0 }),
+    ready({ categoryCode: '02-020', formulaId: null }), ready({ categoryCode: '02-020', formulaId: null, scentId: 'S1' }),
+    ready({ categoryCode: '02-024', formulaId: null }), ready({ bomStatus: 'returned', formulaId: null }), ready({ bomStatus: 'returned' }),
+  ];
+  for (const product of cases) {
+    const items = bomReadinessItems(product);
+    assert.equal(items.every((i) => i.ready), bomSendBlocker(product) === '', JSON.stringify(product));
+  }
+  assert.deepEqual(bomReadinessItems(ready({ formulaId: null })).filter((i) => !i.ready).map((i) => i.label), ['ผูกสูตรจากทะเบียน']);
+  assert.ok(!bomReadinessItems(ready({ categoryCode: '02-024' })).some((i) => i.id === 'formula'), 'หมวดตัวเครื่องไม่ต้องผูกสูตร');
+  assert.deepEqual(bomReadinessItems(ready({ categoryCode: '03-001' })), [], 'ไม่มีขั้น BOM = ไม่มีรายการ');
 });
 
 test('ทางเดินสถานะ: ดึงกลับได้เฉพาะรอรับเรื่อง · เสร็จจากรอรับเรื่องได้ตรง ๆ · ย้อนจากเสร็จได้', () => {

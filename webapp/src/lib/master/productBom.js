@@ -172,6 +172,29 @@ function sendBlock(product, { formulaComponents = [] } = {}) {
 }
 
 /**
+ * รายการ "ความพร้อมก่อนส่ง RD" ของแท็บ BOM (หน้าสินค้าศูนย์รวม · docs/product-hub-plan.md) — `[{ id, label, ready, detail }]`
+ * ⭐ ข้อเดียวกับด่านส่ง (`sendBlock`) ทีละข้อ: อนุมัติแล้ว · ใช้งานอยู่ · ผูกสูตร/กลิ่น (หมวดที่ต้องผูก) · ปริมาตร
+ *    ⇒ ทุกข้อ ready ⇔ ปุ่ม "ส่ง RD ลง BOM" กดได้ (เมื่อยังไม่ส่ง/ถูกตีกลับ) — เทสต์ยึดคู่นี้ไว้
+ * ⚠️ ไม่รวมด่านสถานะ (ส่งไปแล้ว) — แท็บโชว์รายการนี้เฉพาะตอนยังไม่ส่งหรือถูกตีกลับ · ไม่มีขั้น BOM = `[]`
+ */
+export function bomReadinessItems(product, { formulaComponents = [] } = {}) {
+  if (!product || !hasBomStep(product)) return [];
+  const approval = approvalStatusOf(product);
+  const items = [
+    {
+      id: 'approved', label: 'สินค้าอนุมัติแล้ว', ready: approval === 'approved',
+      detail: approval === 'approved' ? null : approval === 'rejected' ? 'ถูกตีกลับ — แก้ตามเหตุผลแล้วให้หัวหน้าอนุมัติ' : 'รอหัวหน้าอนุมัติ',
+    },
+    { id: 'active', label: 'ใช้งานอยู่ (ไม่ได้พักใช้)', ready: product.isActive !== false, detail: product.isActive === false ? 'เปิดใช้ก่อนจึงส่งได้' : null },
+  ];
+  if (!BOM_NO_FORMULA_CATEGORIES.includes(categoryCodeOf(product))) {
+    items.push({ id: 'formula', label: formulaGap(product).message, ready: bomFormulaBound(product, { formulaComponents }), detail: null });
+  }
+  items.push({ id: 'volume', label: 'กรอกปริมาตร/น้ำหนักบรรจุ', ready: Number(product.volume) > 0 && !!product.volumeUnit, detail: null });
+  return items;
+}
+
+/**
  * ด่าน "ส่ง RD ลง BOM" — คืนข้อความเหตุ (ภาษาไทย) หรือ `''` เมื่อส่งได้
  * ⚠️ ด่าน **เงื่อนไขของสินค้า** ⇒ ปุ่มยังโชว์ กดแล้วบอกเหตุ (กฎ UI) · สิทธิ์ตัดสินที่ผู้เรียก
  */

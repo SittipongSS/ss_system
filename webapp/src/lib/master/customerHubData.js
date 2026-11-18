@@ -47,7 +47,7 @@ const byIds = (supabase, table, cols, column, ids) => fetchAllInChunks(ids, (chu
   .from(table).select(cols).in(column, chunk).order('id', { ascending: true }));
 
 /** ดีลของแถวที่ดีลไม่ได้อยู่ในชุดของลูกค้ารายนี้ (ใบที่ย้ายลูกค้า · ดีลที่ customerId ว่าง) — ใช้ตัดสินสิทธิ์อย่างเดียว */
-async function dealMapFor(supabase, deals, rows) {
+export async function dealMapFor(supabase, deals, rows) {
   const map = new Map(deals.map((d) => [d.id, d]));
   const missing = [...new Set(rows.map((r) => r.dealId).filter((id) => id && !map.has(id)))];
   if (missing.length) {
@@ -57,7 +57,7 @@ async function dealMapFor(supabase, deals, rows) {
 }
 
 /** ดีลต้นทางของใบค่าสรรพสามิต (ไม่มีดีลของตัวเอง) — ผ่าน SO ต้นทาง · แบบเดียวกับ loadSourceDeals ของ scopedRow */
-async function sourceDealMapFor(supabase, rows) {
+export async function sourceDealMapFor(supabase, rows) {
   const sourceIds = [...new Set(rows.filter((r) => !r.dealId && r.sourceSalesOrderId).map((r) => r.sourceSalesOrderId))];
   if (!sourceIds.length) return new Map();
   const sources = await byIds(supabase, 'sales_orders', 'id, dealId', 'id', sourceIds);
@@ -67,8 +67,9 @@ async function sourceDealMapFor(supabase, rows) {
   return new Map(sources.filter((s) => dealById.has(s.dealId)).map((s) => [s.id, dealById.get(s.dealId)]));
 }
 
-/** ติดดีล (หรือดีลต้นทาง) ให้แถว แล้วกรองด้วย inSalesDocScope — คืนแถวเดิมที่ไม่มีก้อนดีลติดไปด้วย */
-function scopeSalesDocs(user, rows, dealById, sourceDealById) {
+/** ติดดีล (หรือดีลต้นทาง) ให้แถว แล้วกรองด้วย inSalesDocScope — คืนแถวเดิมที่ไม่มีก้อนดีลติดไปด้วย
+ *  ⭐ หน้าสินค้าศูนย์รวม (productHubData.js) ใช้สามตัวนี้ด้วย — ด่านเดียวกับหน้าลูกค้า ห้ามเขียนชุดที่สอง */
+export function scopeSalesDocs(user, rows, dealById, sourceDealById) {
   return rows.filter((row) => inSalesDocScope(user, {
     deal: row.dealId ? dealById.get(row.dealId) || null : null,
     sourceDeal: !row.dealId && row.sourceSalesOrderId ? sourceDealById.get(row.sourceSalesOrderId) || null : null,
