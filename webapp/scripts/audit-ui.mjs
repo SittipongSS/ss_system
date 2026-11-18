@@ -770,7 +770,7 @@ const RAW_OPACITY_JSX_CAP = 24;
       ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้
    📉 684 → 674 (2026-11-15) — ยุบดีล/โครงการ P2d: หน้าดีลถอดการ์ด "โครงการที่ดีลนี้อยู่" + แถวปุ่มสร้าง/ผูกโครงการ + โมดัลผูกโครงการ
    📉 674 → 631 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
-const RAW_SPACING_JSX_CAP = 631;
+const RAW_SPACING_JSX_CAP = 628;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ

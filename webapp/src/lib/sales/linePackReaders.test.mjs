@@ -384,7 +384,7 @@ const QTY_READERS = Object.freeze({
   'components/salesPlanning/serviceSetup/ServiceSetupGrid.js': 'display',
   'components/salesPlanning/SpecDocumentContent.js': 'display',
   'components/salesPlanning/SalesOrderFollowUpDocs.js': 'display',
-  'app/sales-planning/deals/page.js': 'display',
+  // app/sales-planning/deals/page.js ไม่อ่าน .qty แล้ว — โมดัลใบเสนอราคาเก่าบนหน้ารายการดีล (โค้ดตาย ไม่มีปุ่มเปิด) ถูกลบ 18/11/2026
   'app/rd/sales-orders/page.js': 'display',
   'lib/sales/productSpecDocument.js': 'display',
   // งวด PR-3: กฎฝั่งจอของช่องกรอก (สูตรใต้ยอด · คำกำกับส่วนลด · ยอดเดิม) — อ่านจำนวนของบรรทัดผ่าน linePackFormulaText / lineUnitsTotal
@@ -904,9 +904,8 @@ test('GD 🔴 ตัวโหลดที่ป้อนตัวนับ/ต�
   }
   /* ตัวอ่านของใบที่โหลดด้วย * (รายการใบเสนอราคาของดีล · หน้าใบ) ได้คอลัมน์มาเองอยู่แล้ว — ยืนยันว่ายังเป็น * */
   assert.match(code('app/api/sales-planning/deals/[id]/quotations/route.js'), /const quoteSelect = '\*, lines:quotation_lines\(\*\)';/);
-  /* จอรายการดีล: บรรทัดที่มีเลขแพ็คได้สูตรสามตัว · บรรทัดอื่นนิพจน์เดิมอยู่หลัง ?? ครบ */
-  assert.match(code('app/sales-planning/deals/page.js'),
-    /<span className="mono">\{linePackFormulaText\(line\) \?\? <>\{line\.qty\} x \{money\(line\.unitPrice\)\}<\/>\}<\/span>/);
+  /* (จอรายการดีลเคยโชว์บรรทัดใบเสนอราคาในโมดัล — ลบแล้ว 18/11/2026 เพราะไม่มีปุ่มเปิด · หน้าใบเสนอราคา/หน้าดีลเป็นตัวโชว์แทน) */
+  assert.doesNotMatch(code('app/sales-planning/deals/page.js'), /line\.qty/, 'จอรายการดีลไม่อ่านจำนวนของบรรทัดแล้ว');
 });
 
 /* ═══ GE ตัวเขียนของเลขแพ็คบนจอ ═════════════════════════════════════════════════════════════════════ */
