@@ -1,0 +1,147 @@
+/* การ์ด "สรุปใบนี้" ของพัฒนากลิ่น/พัฒนาสูตร (ม-165) — หนึ่งรายการต่อหนึ่งบรรทัด
+   ⚠️ ใช้โทเคนกลางเท่านั้น (ด่าน audit:ui) · การ์ดอยู่ในรางกว้าง ~330px ⇒ ชื่อยาวตัดบรรทัดเองในช่องชื่อ ไม่ดันช่องท้าย */
+
+.sectionLabel {
+  margin: var(--space-2) 0 var(--space-1);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+
+.lineName {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lineEnd {
+  flex: 0 0 auto;
+  max-width: 55%;
+  color: var(--text-3);
+  font-size: var(--fs-4);
+  text-align: right;
+}
+
+.muted { color: var(--text-3); }
+
+.tag {
+  margin-left: var(--space-1-5);
+  padding: 0 var(--space-1-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-size: var(--fs-2);
+  white-space: nowrap;
+}
+
+.orders { margin-bottom: var(--space-3); }
+
+.orderLink {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+}
+
+.role { color: var(--text-3); font-size: var(--fs-4); }
+
+.paidLine {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-5);
+  color: var(--text-2);
+}
+
+/* ตัวเลขนำ "ยืนยัน x / y" — กล่องอ่อนตามโทนของด่านปิด (ขาด/เกินที่ยังไม่ระบุ = เตือน · ครบ = เขียว) */
+.lead {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.leadWarning { background: var(--amber-soft); }
+.leadSuccess { background: var(--green-soft); }
+
+.leadTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.leadNumber {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--ls-heading);
+  line-height: var(--lh-thai);
+}
+.leadWarning .leadNumber,
+.leadWarning .leadCaption { color: var(--amber); }
+.leadSuccess .leadNumber,
+.leadSuccess .leadCaption { color: var(--green); }
+
+.leadCaption {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}
+
+.group { margin-top: var(--space-3); }
+
+/* กองที่เป็นศูนย์ — จางแต่ไม่หาย (ตำแหน่งคงที่) · กติกาเดียวกับ `.summaryZero` ของการ์ดเดิม */
+.zero { opacity: var(--op-muted); }
+
+.groupHead {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+  color: var(--text-2);
+  font-size: var(--fs-5);
+}
+.groupHead > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+}
+.groupHead b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.group .list { padding-left: var(--space-5); }
+
+.note {
+  margin: var(--space-1) 0 0 var(--space-5);
+  color: var(--text-3);
+  font-size: var(--fs-4);
+}
+
+.footer {
+  margin-top: var(--space-3);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.footer .group { margin-top: var(--space-2); }
+.footer .group .list { padding-left: 0; }

@@ -772,9 +772,10 @@ test('GA เหตุของการยกเว้นยังจริง: 
   assert.match(count, /for \(const line of design\) \{\s*const qty = Number\(line\.qty\);/);
   assert.equal((scent.match(/\.qty\b/g) || []).length, 1, 'scentDesignOrders.js อ่าน qty ที่เดียว (ตัวนับกลิ่น)');
   /* soReconcile ถูกเรียกด้วยบรรทัดออกแบบกลิ่นเท่านั้น — สองจุด · ม-164: ผ่าน `scentSlotLinesOf` (SO หลัก + SO แนบ)
-     ซึ่งกรองด้วย scentDesignLines ทุกทาง (ยามข้างล่างล็อกตัวกรองไว้) */
+     ซึ่งกรองด้วย scentDesignLines ทุกทาง (ยามข้างล่างล็อกตัวกรองไว้)
+     ม-165: การ์ด "สรุปใบนี้" นับใน `devSummary.js` แทนหน้าคำร้อง (หน้าไม่ประกอบข้อความกระทบยอดเองแล้ว) */
   const callers = APP_FILES.filter((file) => file !== 'lib/requests/soReconcile.js' && callArguments(code(file), 'soReconcile').length);
-  assert.deepEqual(callers, ['app/requests/[id]/page.js', 'lib/requests/stages.js']);
+  assert.deepEqual(callers, ['lib/requests/devSummary.js', 'lib/requests/stages.js']);
   for (const file of callers) {
     for (const args of callArguments(code(file), 'soReconcile')) assert.match(args, /^\{ lines: (scentDesignLines|scentSlotLinesOf)\(/, `${file}: soReconcile(${args.slice(0, 50)})`);
   }
