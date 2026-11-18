@@ -118,7 +118,7 @@ export default function DealFormFields({
         /* ⚠️ ดีลที่ปิด Won แล้วเปลี่ยนลูกค้าไม่ได้ — ยอดจริงและเอกสารผูกกับรายเดิมไปแล้ว
            (ช่องอื่นในฟอร์มล็อกด้วย `alreadyWon` มานานแล้ว ช่องนี้เพิ่งตกสำรวจ) */
         disabled={alreadyWon}
-        onChange={(customerId) => onPatch({ customerId, brand: "", ...(!form.lockedProjectId ? { projectId: "" } : {}) })}
+        onChange={(customerId) => onPatch({ customerId, brand: "" })}
         placeholder="ค้นหารหัส / ชื่อลูกค้า..."
         emptyText={CUSTOMER_PICKER_EMPTY_HINT}
         options={[
@@ -126,11 +126,8 @@ export default function DealFormFields({
           ...customerSelectOptions(customers),
         ]}
       />
-      {/* ⚠️ เปลี่ยนลูกค้าทั้งที่ผูกโครงการอยู่ = ดีลกับโครงการคนละลูกค้า — ด่านจริงอยู่ที่
-          server (`dealCustomerPatchError`) ที่นี่แค่บอกล่วงหน้าว่าจะติดอะไร */}
-      {form.lockedProjectId && !alreadyWon && (
-        <small>ดีลเก่าที่อยู่ในโครงการ — เปลี่ยนลูกค้าได้เฉพาะรายเดียวกับโครงการเดิม · ผูกผิดรายแจ้งผู้ดูแลระบบ</small>
-      )}
+      {/* (คำเตือน "ดีลเก่าในโครงการเปลี่ยนได้เฉพาะลูกค้าเดิมของโครงการ" ถอดแล้ว 18/11/2026 — ใช้กติกาเดียวกับดีลทั่วไป ·
+          ด่านจริงอยู่ที่ server `dealCustomerPatchError`: มีใบเสนอราคา/ใบสั่งขาย/คำร้องแล้ว = เปลี่ยนไม่ได้) */}
     </label>
   );
 
@@ -156,7 +153,7 @@ export default function DealFormFields({
   );
 
   /* ช่อง "โครงการ" ถูกถอด (ยุบดีล/โครงการ P2d · มติเจ้าของ 13/11/2026 ④) — ดีลไม่ผูก/สร้างโครงการอีกแล้ว
-     `form.lockedProjectId` ยังมาจากดีลเก่าที่อยู่ในโครงการ: ใช้ล็อกลูกค้า (สายปลดแล้วในงวด P3b-2 · มติ ⑫) */
+     (`form.lockedProjectId` ที่เคยล็อกลูกค้า/สายของดีลเก่าในโครงการ ถอดแล้ว — สาย: P3b-2 มติ ⑫ · ลูกค้า: 18/11/2026) */
 
   /* ดีลเป็นหน้าที่ความรับผิดชอบของ AE / Senior AE (มติผู้ใช้ 2026-08-08) —
      ae/senior_ae เปิดใบ = ล็อกชื่อตัวเอง ไม่มีอะไรให้เลือก · ac/ae_supervisor/admin
