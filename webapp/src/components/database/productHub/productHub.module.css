@@ -1,0 +1,40 @@
+/* หน้าสินค้าศูนย์รวม — ของร่วมของแท็บใน components/database/productHub (docs/product-hub-plan.md)
+   ⚠️ ไม่มี media query ของตัวเอง — กริดยุบด้วย auto-fit */
+
+/* การ์ดเรียงสองคอลัมน์บนจอกว้าง ยุบเหลือคอลัมน์เดียวเมื่อแคบกว่าสองเท่าของ 22rem */
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  align-items: start;
+  gap: var(--space-4);
+}
+
+/* ป้าย-ค่า แถวละคู่ (จังหวะเดียวกับแถวของ DocumentSummaryCard) */
+.kv { display: flex; flex-direction: column; margin: 0; }
+.kvRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px dashed var(--border);
+}
+.kvRow:last-child { border-bottom: 0; }
+.kvRow dt { flex: none; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.kvRow dd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-4);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-thai);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.kvRow dd.kvStack { flex-direction: column; align-items: flex-end; gap: var(--space-0-5); }
+.kvStack small { color: var(--text-3); font-weight: var(--fw-normal); }
+.kvIcon { flex: none; color: var(--amber); }
+.kvIconMuted { flex: none; color: var(--text-3); }
+.note { margin: var(--space-2) 0 0; color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }

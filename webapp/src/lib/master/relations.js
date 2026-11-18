@@ -14,6 +14,7 @@ import { canViewFormulas } from '@/lib/master/formulas';
 import { sharedIdsForCustomer } from '@/lib/master/registrySharesAdmin';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { customerHubRelations } from '@/lib/master/customerHubData';
+import { productSalesRelations } from '@/lib/master/productHubData';
 
 // ข้อมูลภาษี (registrations/orders) เป็นความลับของระบบภาษี — เปิดให้เฉพาะ role ที่
 // เห็นระบบภาษีได้ (history:view) เท่านั้น. staff/viewer มี viewScope='all' จึงต้อง
@@ -127,18 +128,23 @@ export async function customerRelations(supabase, customerId, user) {
   };
 }
 
-// ความสัมพันธ์ของสินค้า 1 ชิ้น → { registrations, orders }.
+// ความสัมพันธ์ของสินค้า 1 ชิ้น → { registrations, orders, sales }.
 // orders = สรุปจาก order_items (dedupe ต่อ order + รวมจำนวนที่สั่งของสินค้านี้).
+// ⭐ หน้าสินค้าศูนย์รวม (มติเจ้าของ 18/11/2026 · docs/product-hub-plan.md งวด S1): + `sales` = QT/SO ที่มีสินค้านี้
+//    กรองด้วยด่านโมดูลขายชุดเดียวกับหน้าลูกค้า (productHubData.js) · ไม่มีสิทธิ์ = `visible: false`
 export async function productRelations(supabase, productId, user) {
   // order_items→orders มี FK จริง (cascade) → embed ปลอดภัย.
-  const [regRes, itemRes] = await Promise.all([
+  const [regRes, itemRes, sales] = await Promise.all([
     supabase.from('excise_registrations')
       .select('id, fgCode, customerName, status, approvalNumber, customerId, team, ownerId')
       .eq('productId', productId).order('createdAt', { ascending: false }),
     supabase.from('order_items')
       .select('orderId, quantity, order:orders(id, quotationRef, status, customerName, totalTax, customerId, team, ownerId)')
       .eq('productId', productId),
+    productSalesRelations(supabase, productId, user),
   ]);
+  // query พัง = ดัง (route ตอบ 500) — ทะเบียนว่างเพราะพังอ่านเหมือน "ยังไม่ขึ้นทะเบียน"
+  if (regRes.error) throw new Error(`โหลดทะเบียนสรรพสามิตไม่สำเร็จ: ${regRes.error.message}`);
 
   const tax = seesTax(user);
 
@@ -157,5 +163,6 @@ export async function productRelations(supabase, productId, user) {
   return {
     registrations: tax ? (regRes.data || []).filter((r) => canViewRecord(user, 'registrations', r)) : [],
     orders: [...orderMap.values()],
+    sales,
   };
 }

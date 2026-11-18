@@ -1,43 +1,55 @@
-/* หน้ารายละเอียดสินค้า — ผังแท็บ (มติเจ้าของ 04/11/2026 "แท็บตามม็อก")
-   แถวบน: หัวสินค้า + การ์ดจัดการ (DetailPageLayout) · ล่าง: แถบแท็บ + เนื้อของแท็บเต็มกว้าง
+/* หน้ารายละเอียดสินค้า — ผังทรงหน้าลูกค้า (หน้าสินค้าศูนย์รวม มติ 1 · 18/11/2026 · docs/product-hub-plan.md)
+   หัวเต็มกว้าง · ล่าง: DetailPageLayout = แถบแท็บ + เนื้อของแท็บ (ซ้าย) + รางสรุปสินค้า/การ์ดจัดการ (ขวา)
    ⚠️ ไม่มี media query ของตัวเอง — กริดยุบด้วย auto-fit · จุดตัดจอของแถวบนเป็นของ DetailPageLayout (1050px) ที่เดียว */
 
-/* ── แถบสถานะรายเรื่องใต้หัว (ช่องละเรื่อง: ข้อมูลสินค้า · BOM · สรรพสามิต) ── */
-.lanes {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
-  gap: var(--space-2);
-}
-.laneItem { display: flex; min-width: 0; }
-.lane {
+/* ── สถานะรายเรื่องในการ์ด "สรุปสินค้า" (มติ 3 · 18/11/2026 — เดิมเป็นแถบสี่ช่องใต้หัว) ──
+   แถวละเรื่อง: ป้ายซ้าย · จุดสี + ค่าชิดขวา (จังหวะเดียวกับแถว dl ของ DocumentSummaryCard) · แถวที่มีแท็บเป็นปุ่ม */
+.statusBlock {
   display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
   flex-direction: column;
-  gap: var(--space-0-5);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
+  gap: var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.statusHeading {
+  color: var(--text-3);
+  font-size: var(--fs-3);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-label);
+  line-height: var(--lh-thai);
+}
+.statusList { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.statusRow {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1-5) 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;
 }
-button.lane { cursor: pointer; }
-button.lane:hover { border-color: var(--accent); }
-button.lane:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.laneLabel { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
-.laneValue {
+/* แถวที่พาไปแท็บ — ป้ายเปลี่ยนเป็นสี accent ตอนชี้ (แถวชิดขอบเดียวกับแถวตัวเลขข้างบน ไม่มีพื้นยื่นออกนอกแนว) */
+button.statusRow { cursor: pointer; }
+button.statusRow:hover .statusLabel { color: var(--accent); text-decoration: underline; }
+button.statusRow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-md); }
+.statusLabel { color: var(--text-3); font-size: var(--fs-4); line-height: var(--lh-thai); }
+.statusValue {
   display: flex;
   align-items: center;
   gap: var(--space-1-5);
   min-width: 0;
-  font-size: var(--fs-7);
+  font-size: var(--fs-4);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-thai);
+  text-align: right;
   overflow-wrap: anywhere;
 }
-.laneDot {
+.statusDot {
   flex: none;
   width: var(--space-2);
   height: var(--space-2);
@@ -45,12 +57,12 @@ button.lane:focus-visible { outline: 2px solid var(--accent); outline-offset: 2p
   background: var(--lane-color, var(--text-3));
 }
 
-/* ── โซนแท็บ — เต็มกว้างใต้แถวบน ── */
+/* ── โซนแท็บ — คอลัมน์ซ้ายของ DetailPageLayout (รางขวาอยู่ข้าง · มติ 1 · 18/11/2026) ── */
 .tabsZone {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  margin-top: var(--space-4-5);
+  min-width: 0;
 }
 .pane { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .stack { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }

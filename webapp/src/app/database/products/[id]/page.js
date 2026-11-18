@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Package, Archive, ArchiveRestore, Building2, ShoppingCart, MessagesSquare, Send } from "lucide-react";
+import { ArrowLeft, Package, Archive, ArchiveRestore, Building2, ShoppingCart, MessagesSquare, Send, ClipboardList, FileText } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -34,7 +34,10 @@ import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import ProductSpecCard from "@/components/database/ProductSpecCard";
-import { DocumentControlCard } from "@/components/ui/DocumentControlPanel";
+import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
+import ProductSalesTab from "@/components/database/productHub/ProductSalesTab";
+import ProductBomTab from "@/components/database/productHub/ProductBomTab";
+import { productOrderRows, productSalesFacts } from "@/lib/master/productHub";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
@@ -63,7 +66,7 @@ const TABS_ID = "product-tabs";
 const RD_DOC_TYPES = ATTACHMENT_TYPES.product.filter((type) => RD_PRODUCT_DOC_TYPES.includes(type.key));
 /* การ์ดของแผง "COA ประจำล็อต" (P4) — ชุดคงตัวเหมือนข้างบน */
 const QC_DOC_TYPES = ATTACHMENT_TYPES.product.filter((type) => QC_PRODUCT_DOC_TYPES.includes(type.key));
-/* โทนสถานะของสายสรรพสามิต (`statusMeta().tone`) → สีจุดบนแถบสถานะ */
+/* โทนสถานะของสายสรรพสามิต (`statusMeta().tone`) → สีจุดของแถวสถานะในการ์ดสรุปสินค้า */
 const LANE_TONE_COLOR = {
   success: "var(--green)", warning: "var(--amber)", danger: "var(--red)", info: "var(--blue)", neutral: "var(--text-3)",
 };
@@ -135,6 +138,9 @@ export default function ProductDetails() {
   const [productTypes, setProductTypes] = useState(() => apiCache.get("/api/master/product-types") ?? []);
   const [regs, setRegs] = useState([]);
   const [orders, setOrders] = useState([]);     // orders this product appears in (tax-gated)
+  /* ⭐ QT/SO ที่มีสินค้านี้ (หน้าสินค้าศูนย์รวม S1 · docs/product-hub-plan.md) — `visible:false` = ผู้ดูไม่มีสิทธิ์โมดูลขาย (มติ 5)
+     null = ยังโหลดไม่เสร็จ/โหลดพลาด ⇒ ไม่วาดตัวเลขยอดและแท็บการขาย (ไม่เดาเป็นศูนย์) */
+  const [sales, setSales] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -180,10 +186,10 @@ export default function ProductDetails() {
     if (wanted) { setRegKey(wanted); setTab("excise"); }
   }, []);
   const loadRelations = useCallback(() => {
-    if (!id) { setRegs([]); setOrders([]); return; }
+    if (!id) { setRegs([]); setOrders([]); setSales(null); return; }
     apiFetch(`/api/master/products/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); } })
+      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setSales(d.sales || null); } })
       .catch(() => {});
   }, [id]);
   useEffect(() => { loadRelations(); }, [loadRelations]);
@@ -347,7 +353,7 @@ export default function ProductDetails() {
 
   /* สถานะทะเบียนที่ฝ่ายขายต้องทำต่อ — ใช้ตัดสินว่าโชว์ "คำขอใหม่" ในแผงทะเบียน + ปุ่ม "ขึ้นทะเบียนสรรพสามิต" ในการ์ดจัดการ
      (เฉพาะผู้เห็นระบบภาษี · helper คืน null เองเมื่อไม่เข้าข่าย)
-     ⚠️ แบนเนอร์ใต้หัวเดิมถอดแล้ว (04/11/2026) — สถานะอยู่ที่ช่อง "สรรพสามิต" บนแถบสถานะ + แท็บสรรพสามิต (เดิมพูดเรื่องเดียวกัน 4 ที่) */
+     ⚠️ แบนเนอร์ใต้หัวเดิมถอดแล้ว (04/11/2026) — สถานะอยู่ที่แถว "สรรพสามิต" ในการ์ดสรุปสินค้า + แท็บสรรพสามิต (เดิมพูดเรื่องเดียวกัน 4 ที่) */
   const exciseRec = canViewTax ? exciseRecommendationState(product, catFlags, regs) : null;
 
   /* ── ขั้นลง BOM (mig 0419 · มติเจ้าของ 03/11/2026) ────────────────────────────────
@@ -461,7 +467,7 @@ export default function ProductDetails() {
         label: "ขึ้นทะเบียนสรรพสามิต",
         onClick: () => { setRegKey("new"); goTab("excise"); },
       },
-      /* ⚠️ ปุ่มทางลัด "ทะเบียนสรรพสามิตของสินค้านี้" ถอดแล้ว (04/11/2026) — ช่อง "สรรพสามิต" บนแถบสถานะกับแท็บสรรพสามิตพาไปที่เดียวกัน
+      /* ⚠️ ปุ่มทางลัด "ทะเบียนสรรพสามิตของสินค้านี้" ถอดแล้ว (04/11/2026) — แถว "สรรพสามิต" ในการ์ดสรุปสินค้ากับแท็บสรรพสามิตพาไปที่เดียวกัน
          ปุ่มนี้กินที่การ์ดจัดการ ~56px ซึ่งเป็นตัวที่ดันที่ว่างใต้หัวสินค้า (เจ้าของทักตอนรีวิว) */
       canToggleActive && (product.isActive === false
         ? { id: "resume", kind: "resume", icon: ArchiveRestore, label: "เปิดใช้อีกครั้ง", onClick: handleToggleActive, disabled: isUpdating }
@@ -502,7 +508,7 @@ export default function ProductDetails() {
           ? <span className="ui-badge">เหตุผลที่ตีกลับ: {product.rejectionReason}</span>
           : null}
         {/* สถานะ BOM — แกนที่สาม (คนละเรื่องกับอนุมัติ/ใช้งาน) · ปุ่มของมันอยู่ในช่องปุ่มของการ์ดนี้ */}
-        {/* BOM ที่ RD ตีกลับ = ก้าวถัดไปของคนเปิดหน้า ⇒ เหตุผลอยู่ข้างปุ่ม "ส่ง RD อีกครั้ง" · สถานะอื่นของ BOM อยู่บนแถบสถานะ + แท็บสเปค */}
+        {/* BOM ที่ RD ตีกลับ = ก้าวถัดไปของคนเปิดหน้า ⇒ เหตุผลอยู่ข้างปุ่ม "ส่ง RD อีกครั้ง" · สถานะอื่นของ BOM อยู่การ์ดสรุปสินค้า + แท็บ BOM */}
         {bomStatus === "returned" ? <ProductBomStatus product={product} /> : null}
       </>
     ) : null}
@@ -512,9 +518,10 @@ export default function ProductDetails() {
   />
   );
 
-  /* ── แถบสถานะรายเรื่องใต้หัว (มติเจ้าของ 04/11/2026 "แท็บตามม็อก") ─────────────────────────────
-     หนึ่งช่องต่อหนึ่งเรื่องที่เดินคนละด่าน — ข้อมูลสินค้า (อนุมัติ) · BOM · สรรพสามิต · กดช่องที่มีแท็บของตัวเองแล้วพาไปแท็บนั้น
-     ⚠️ ช่องเป็น **ป้ายบอกสถานะ ไม่ใช่ปุ่มทำงาน** — ปุ่มระดับสินค้าอยู่ในการ์ดจัดการที่เดียว (ม-49/ม-57) */
+  /* ── สถานะรายเรื่อง (มติเจ้าของ 04/11/2026 "แท็บตามม็อก" → ย้ายเข้าการ์ด "สรุปสินค้า" บนรางขวา มติ 3 · 18/11/2026) ──────────
+     หนึ่งแถวต่อหนึ่งเรื่องที่เดินคนละด่าน — ข้อมูลสินค้า (อนุมัติ) · BOM · สรรพสามิต · จดแจ้ง อย. · กดแถวที่มีแท็บของตัวเองแล้วพาไปแท็บนั้น
+     ⚠️ แถวเป็น **ป้ายบอกสถานะ ไม่ใช่ปุ่มทำงาน** — ปุ่มระดับสินค้าอยู่ในการ์ดจัดการที่เดียว (ม-49/ม-57) ·
+        สถานะเรื่องเหล่านี้อยู่การ์ดสรุปที่เดียว (มติ 8: หัวข้อย่อยในการ์ดจัดการไม่มีจุดสถานะซ้ำ) */
   const showPriceTab = canSeeCost || showRetailPrice;
   // แท็บสรรพสามิต: กติกาเดิมของการ์ดภาษี (หมวดสรรพสามิต) + ของที่ RA บังคับเสียรายตัว + มีทะเบียน/บันทึกยื่นอยู่แล้ว
   const showExciseTab = canViewTax && (isExciseCat || isTaxable || regs.length > 0 || orders.length > 0);
@@ -525,36 +532,87 @@ export default function ProductDetails() {
         : { label: "ยังไม่ขึ้นทะเบียน", tone: isExciseCat ? "warning" : "neutral" };
   const bomMeta = BOM_STATUS_META[bomStatus || "none"];
   /* จดแจ้ง อย. = ธงของหมวดล้วน (มติเจ้าของ 05/11/2026 "แสดงตามหมวดพอ") — บอกทั้ง "ต้องจด" และ "ไม่ต้องจด" ·
-     รายการหมวดยังไม่มา/หมวดไม่อยู่ในทะเบียน = ไม่โชว์ช่อง (ไม่เดาว่าไม่ต้องจด) · ไม่มีแท็บของตัวเอง (เก็บเลขที่/ไฟล์ = พักไว้) */
+     รายการหมวดยังไม่มา/หมวดไม่อยู่ในทะเบียน = ไม่โชว์แถว (ไม่เดาว่าไม่ต้องจด) · ไม่มีแท็บของตัวเอง (เก็บเลขที่/ไฟล์ = พักไว้) */
   const fdaNotice = fdaNoticeState(product.categoryCode || categoryOf(product.fgCode), productTypes);
   const lanes = [
     { key: "approval", label: "ข้อมูลสินค้า", value: approvalView.label, color: approvalView.color, tab: "spec" },
-    bomStep && { key: "bom", label: "BOM", value: bomMeta.label, color: bomMeta.color, tab: "spec" },
+    bomStep && { key: "bom", label: "BOM", value: bomMeta.label, color: bomMeta.color, tab: "bom" },
     exciseLane && { key: "excise", label: "สรรพสามิต", value: exciseLane.label, color: LANE_TONE_COLOR[exciseLane.tone] || LANE_TONE_COLOR.neutral, tab: "excise" },
     fdaNotice && {
       key: "fda", label: "จดแจ้ง อย.", value: fdaNotice.label, hint: `ตามหมวด ${fdaNotice.categoryLabel}`,
       color: fdaNotice.required ? LANE_TONE_COLOR.info : LANE_TONE_COLOR.neutral,
     },
+    /* วงจรชีวิต (พักใช้/เปิดใช้) — คนละแกนกับด่านอนุมัติ (master-detail-control-panel) · ไม่มีแท็บ */
+    {
+      key: "active", label: "การใช้งาน", value: product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่",
+      color: product.isActive === false ? LANE_TONE_COLOR.neutral : LANE_TONE_COLOR.success,
+    },
   ].filter(Boolean);
 
-  /* `narrow: "hide"` = หลบบนจอโทรศัพท์ (≤480px) ให้การ์ดจัดการขึ้นมาในจอแรก — ราคา/ภาษีมีบ้านของตัวเองในแท็บราคาและแท็บสรรพสามิต
-     (กติกาของ DetailOverview: ซ่อนได้เฉพาะของที่อ่านที่อื่นได้) · ลูกค้ากับขนาดอยู่ครบทุกจอ */
+  /* ── ตัวเลขบนหัว (หน้าสินค้าศูนย์รวม มติ 2 · 5 · 18/11/2026) ──────────────────────────────────────────────
+     ยอด = บรรทัดสินค้านี้ในใบสั่งขายที่อนุมัติแล้วและยังมีผล ก่อน VAT (ตัวตัดสินเดียวกับแท็บสินค้าหน้าลูกค้า) ·
+     ช่องยอด/จำนวน/ใบเสนอราคา **เฉพาะผู้เห็นโมดูลขาย** (server ส่ง visible:false) — ไม่มีสิทธิ์ = ไม่วาดช่อง ไม่ใช่ศูนย์
+     ⚠️ ราคา/ปริมาตร/ภาษีต่อหน่วย ย้ายไปการ์ด "สรุปสินค้า" บนราง (หัวเหลือที่ให้ตัวเลขความสัมพันธ์ ทรงหน้าลูกค้า) */
+  const salesFacts = productSalesFacts(sales);
   const headerFacts = [
-    { key: "customer", icon: Building2, label: "ลูกค้าเจ้าของ", value: naText(product.customerName) },
-    { key: "unit", icon: Package, label: showPackaging ? "ปริมาตร · หน่วยขาย" : "หน่วยขาย", value: showPackaging ? `${formatVolume(product)} · ${unit}` : unit },
-    canSeeCost && { key: "cost", icon: Package, label: `ราคาผลิต/${unit} · ก่อน VAT`, value: fmtMoneyOrDash(product.costPrice), narrow: "hide" },
-    /* ภาษีต่อหน่วยเป็นบรรทัดรองใต้ราคาขายปลีก (ภาษีคิดจากราคานี้) — ช่องที่ 5 เคยตกไปอยู่แถวเดียวโดด ๆ บนจอคอม */
-    showRetailPrice && {
-      key: "retail", icon: Package, label: "ราคาขายปลีก รวม VAT", value: fmtMoneyOrDash(product.retailPriceIncVat), narrow: "hide",
-      sub: canViewTax && isExciseCat
-        ? `ภาษีสรรพสามิต/${unit} ${isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0))}`
-        : null,
+    salesFacts && {
+      key: "ordered", icon: ClipboardList, label: "ยอดสั่งซื้อสะสม · ก่อน VAT", value: fmtMoney(salesFacts.ordered.amount),
+      sub: `${fmtNumber(salesFacts.ordered.orders)} ใบสั่งขาย`,
     },
-    !showRetailPrice && canViewTax && isExciseCat && {
-      key: "tax", icon: Package, label: `ภาษีสรรพสามิต/${unit}`,
-      value: isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0)), narrow: "hide",
+    salesFacts && {
+      key: "qty", icon: Package, label: "จำนวนที่สั่ง", value: `${fmtNumber(salesFacts.ordered.qty)} ${unit}`,
+      sub: salesFacts.ordered.lastDate ? `ล่าสุด ${fmtDate(salesFacts.ordered.lastDate)}` : "ยังไม่มีใบที่อนุมัติ",
     },
+    salesFacts && {
+      key: "quotes", icon: FileText, label: "ใบเสนอราคา", value: `${fmtNumber(salesFacts.quotes.count)} ใบ`,
+      sub: [`Won ${fmtNumber(salesFacts.quotes.won)}`, salesFacts.quotes.lastPrice !== null ? `ราคาล่าสุด ${fmtMoney(salesFacts.quotes.lastPrice)}/${unit}` : null].filter(Boolean).join(" · "),
+      narrow: "hide",
+    },
+    /* `narrow: "hide"` = หลบบนจอโทรศัพท์ (≤480px) — ใบเสนอราคาอ่านได้ที่แท็บการขาย · ลูกค้าเจ้าของอ่านได้ที่แท็บภาพรวม
+       (กติกาของ DetailOverview: ซ่อนได้เฉพาะของที่อ่านที่อื่นได้) · ผู้ไม่เห็นโมดูลขายมีช่องลูกค้าช่องเดียว = ไม่ซ่อน */
+    { key: "customer", icon: Building2, label: "ลูกค้าเจ้าของ", value: naText(product.customerName), narrow: salesFacts ? "hide" : undefined },
   ].filter(Boolean);
+
+  /* ── การ์ด "สรุปสินค้า" (รางขวา · มติ 1 + 3) — ของที่ต้องเห็นตลอดไม่ว่าเปิดแท็บไหน: หมวด · ขนาด · ราคา · ภาษี/หน่วย + สถานะรายเรื่อง
+     ⚠️ ราคา/ภาษีตามสิทธิ์เดิมของหัว (canSeeCost · showRetailPrice · canViewTax) — รายละเอียดเต็มอยู่แท็บราคาและแท็บสรรพสามิต */
+  const taxPerUnit = isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0));
+  const summaryRows = [
+    { id: "category", label: "หมวด", value: categoryCodeLabel(product.categoryCode || categoryOf(product.fgCode), productTypes), stack: true },
+    { id: "unit", label: showPackaging ? "ปริมาตร · หน่วยขาย" : "หน่วยขาย", value: showPackaging ? `${formatVolume(product)} · ${unit}` : unit },
+    canSeeCost && { id: "cost", label: `ราคาผลิต/${unit} · ก่อน VAT`, value: fmtMoneyOrDash(product.costPrice) },
+    showRetailPrice && { id: "retail", label: "ราคาขายปลีก รวม VAT", value: fmtMoneyOrDash(product.retailPriceIncVat) },
+    canViewTax && isExciseCat && { id: "tax", label: `ภาษีสรรพสามิต/${unit}`, value: taxPerUnit },
+  ].filter(Boolean);
+
+  /* รางขวา = การ์ดสรุปสินค้า + การ์ดจัดการ (ทรงเดียวกับรางของหน้าลูกค้า · มติ 1)
+     สถานะรายเรื่องเป็นรายการใต้แถวตัวเลข — แถวที่มีแท็บของตัวเองเป็นปุ่มพาไปแท็บนั้น (ไม่ใช่ปุ่มทำงาน) */
+  const productAside = (
+    <>
+      <DocumentSummaryCard title="สรุปสินค้า" rows={summaryRows}>
+        <div className={styles.statusBlock}>
+          <span className={styles.statusHeading}>สถานะรายเรื่อง</span>
+          <ul className={styles.statusList} aria-label="สถานะรายเรื่องของสินค้า">
+            {lanes.map((lane) => {
+              const body = (
+                <>
+                  <span className={styles.statusLabel}>{lane.label}</span>
+                  <span className={styles.statusValue}><i className={styles.statusDot} style={{ "--lane-color": lane.color }} aria-hidden="true" />{lane.value}</span>
+                </>
+              );
+              return (
+                <li key={lane.key}>
+                  {lane.tab
+                    ? <button type="button" className={styles.statusRow} onClick={() => goTab(lane.tab)} aria-label={`${lane.label}: ${lane.value} — เปิดแท็บ`}>{body}</button>
+                    : <div className={styles.statusRow} title={lane.hint}>{body}</div>}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </DocumentSummaryCard>
+      {controlCard}
+    </>
+  );
 
   /* รายการในแผงทะเบียน — "คำขอใหม่" ของลูกค้าเจ้าของโผล่เฉพาะคนที่สร้างได้และสินค้าเข้าข่ายต้องขึ้นทะเบียน
      (ด่านเดียวกับปุ่ม "ขึ้นทะเบียนสรรพสามิต" เดิม) · คนดูอย่างเดียวเห็นแค่ทะเบียนที่มีอยู่ */
@@ -562,7 +620,12 @@ export default function ProductDetails() {
 
   const tabs = [
     { key: "overview", label: "ภาพรวม" },
+    /* แท็บการขาย (มติ 5) — เฉพาะผู้เห็นโมดูลขาย · ป้าย = ใบสั่งขาย + ใบเสนอราคาฉบับล่าสุด (ตัวเดียวกับมุมมองตั้งต้นในแท็บ) */
+    salesFacts && { key: "sales", label: `การขาย (${productOrderRows(sales).length + salesFacts.quotes.count})` },
     { key: "spec", label: isFragranceOilCategory(product.categoryCode) ? "กลิ่นและบรรจุภัณฑ์" : "สเปคและสูตร" },
+    /* แท็บ BOM (เจ้าของ 18/11/2026 "ต้องเพิ่มแท็บ BOM ด้วย") — เฉพาะ FG ที่มีขั้นลง BOM (กลุ่ม 01/02 · hasBomStep) ·
+       บ้านเดียวของสถานะ/ความพร้อม/ของที่ส่ง RD · ปุ่มยังอยู่การ์ดจัดการ (มติ 8) */
+    bomStep && { key: "bom", label: "BOM" },
     showPriceTab && { key: "price", label: "ราคาและต้นทุน" },
     showExciseTab && { key: "excise", label: regs.length ? `สรรพสามิต (${regs.length})` : "สรรพสามิต" },
     { key: "docs", label: "เอกสาร" },
@@ -571,8 +634,10 @@ export default function ProductDetails() {
   // แท็บที่ถูกขอแต่ไม่มีสำหรับคนนี้ (ลิงก์ทะเบียนของคนที่ไม่เห็นภาษี) = กลับไปภาพรวม
   const currentTab = tabs.some((t) => t && t.key === tab) ? tab : "overview";
 
+  /* ⭐ เปลือก `.ui-workspace` = จังหวะแนวตั้งของหน้า (gap 18px · แถวย้อนกลับ 14px) ตัวเดียวกับหน้าลูกค้า (Workspace)
+     ⚠️ ไม่ใช้ <Workspace> เพราะปุ่มย้อนกลับของหน้านี้เป็น router.back() (เข้าได้จากหลายทาง) */
   return (
-    <>
+    <div className="ui-workspace">
       <Toast toast={toast} onClose={() => setToast(null)} />
       {/* แถวย้อนกลับอย่างเดียว — ใช้ปุ่ม router.back() ไม่ใช่ Workspace.back เพราะหน้านี้เข้าได้จากหลายทาง
           ⚠️ **ปุ่มระดับสินค้าไม่อยู่ที่นี่** (2026-08-30) — อยู่ในการ์ดจัดการทั้งชุด · ห้ามวางกลับ (ม-49/ม-57) */}
@@ -586,69 +651,50 @@ export default function ProductDetails() {
         </button>
       </div>
 
-      {/* ⭐ ผังใหม่ (มติเจ้าของ 04/11/2026 "แท็บตามม็อก" · ทิศเดียวกับมติหน้า SO ข้อ 8): **หัวสินค้า + การ์ดจัดการอยู่แถวบน
-          ข้างกัน** · เนื้อทั้งหมดแยกเป็นแท็บเต็มกว้างด้านล่าง — การ์ดจัดการไม่ตามลงมาแล้ว (รางมีแค่การ์ดนี้ใบเดียว)
-          🐞 เดิมหน้าเดียวยาว 3,744px (มือถือ 7,107px) · รางขวาเลื่อนในตัว (1,813px ในกล่อง 721px) ซ่อนการ์ดภาษีไว้ใต้กล่อง ·
-             มือถือปุ่มจัดการไปอยู่ต่อจากเธรด ~5,900px จากหัว · ราคาโผล่ 5 ที่ · ทะเบียนโผล่ 4 ที่ (วัดจอจริง 04/11)
-          ⚠️ จอแคบ (≤1050px) การ์ดจัดการไหลลงมาต่อจากหัวทันที — ก่อนแถบแท็บ ไม่ใช่ก้นหน้า */}
-      <DetailPageLayout asideLabel="จัดการสินค้า" aside={controlCard}>
-        <SalesDetailOverview
-          eyebrow="PRODUCT MASTER"
-          /* รายละเอียด = "รหัส · ชื่อ EN·TH" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
-          title={`${product.fgCode ? `${product.fgCode} · ` : ""}${productNameBoth(product) || productDisplayName(product)}`}
-          description={<>{showBrand && <span>แบรนด์ {naText(brandBoth(product.brandName, product.brandNameEn))}</span>}<span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
-          /* ⭐ แถวตัวเลขหลักบนหัว (เจ้าของ 04/11/2026 "ที่ว่างใต้หัวสินค้า") — ของที่ทุกคนเปิดหน้ามาดูก่อน อยู่ข้างการ์ดจัดการ
-             ในจอแรก · **บ้านเดียวของตัวเลขสรุป** (การ์ด "สรุปตัวเลข" ในแท็บภาพรวมถอดแล้ว) · รายละเอียดราคา/ภาษีอยู่แท็บของมัน */
-          facts={headerFacts}
-          badges={<>
-            <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
-            {/* ป้ายเดียวกับแถวในทะเบียนสินค้า/หน้าลูกค้า (`productExciseBadge`) — RA ยกเว้น = "ยกเว้นสรรพสามิต" ·
-                RA บังคับในหมวดอื่น = "ภาษีสรรพสามิต" (เดิมดูธงหมวดล้วน · ตรวจตัวเลข 26/10 · L16b) */}
-            {exciseBadge && (
-              <SalesStateBadge
-                label={exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}
-                color={exciseBadge === "taxable" ? "var(--amber)" : "var(--text-3)"}
-              />
-            )}
-            {/* ⚠️ ป้าย "ต้องจดแจ้ง อย." ย้ายไปเป็นช่อง "จดแจ้ง อย." ในแถบสถานะใต้หัว (05/11/2026) — ช่องนั้นบอกทั้งต้อง/ไม่ต้องจด · ห้ามวางป้ายซ้ำที่นี่ */}
-          </>}
-        >
-          <div className={styles.lanes} role="list" aria-label="สถานะรายเรื่องของสินค้า">
-            {lanes.map((lane) => {
-              const body = (
-                <>
-                  <span className={styles.laneLabel}>{lane.label}</span>
-                  <span className={styles.laneValue}><i className={styles.laneDot} style={{ "--lane-color": lane.color }} aria-hidden="true" />{lane.value}</span>
-                </>
-              );
-              return (
-                <div key={lane.key} role="listitem" className={styles.laneItem}>
-                  {lane.tab
-                    ? <button type="button" className={styles.lane} onClick={() => goTab(lane.tab)} aria-label={`${lane.label}: ${lane.value} — เปิดแท็บ`}>{body}</button>
-                    : <div className={styles.lane} title={lane.hint}>{body}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </SalesDetailOverview>
+      {/* ⭐ ผังทรงหน้าลูกค้า (หน้าสินค้าศูนย์รวม มติ 1 · 18/11/2026 · docs/product-hub-plan.md): **หัวเต็มกว้าง** ·
+          ข้างล่างคือเนื้อ (แท็บ) ซ้าย + รางขวา (สรุปสินค้า + การ์ดจัดการ) แบบเดียวกับหน้าลูกค้า
+          🐞 ผังเดิม (04/11 "แท็บตามม็อก") วางหัวกับการ์ดจัดการแถวเดียวกัน — การ์ดจัดการ 556px สูงกว่าหัว ~330px ⇒ ที่ว่าง ~225px ใต้หัว
+             และแถบแท็บเริ่ม y=739 ที่จอ 1440×900 (เจ้าของทัก 18/11 "จัดไม่ดี")
+          ⚠️ ไม่เปิด `controlFirst` — ทรงเดียวกับหน้าลูกค้า (คนเปิดหน้า master มาอ่านข้อมูลก่อน · เหตุผลเต็มอยู่ที่ DetailPageLayout) */}
+      <SalesDetailOverview
+        eyebrow="PRODUCT MASTER"
+        /* รายละเอียด = "รหัส · ชื่อ EN·TH" บรรทัดเดียว (มติผู้ใช้ 2026-08-12) */
+        title={`${product.fgCode ? `${product.fgCode} · ` : ""}${productNameBoth(product) || productDisplayName(product)}`}
+        description={<>{showBrand && <span>แบรนด์ {naText(brandBoth(product.brandName, product.brandNameEn))}</span>}<span>สร้างเมื่อ {fmtDate(product.createdAt)}</span></>}
+        /* ⭐ ตัวเลขความสัมพันธ์บนหัว (หน้าสินค้าศูนย์รวม มติ 2 · 5) — ยอดสั่งซื้อ · จำนวน · ใบเสนอราคา (ผู้เห็นโมดูลขาย) + ลูกค้าเจ้าของ
+           ราคา/ขนาด/ภาษีต่อหน่วยอยู่การ์ด "สรุปสินค้า" บนราง · รายละเอียดเต็มอยู่แท็บของมัน */
+        facts={headerFacts}
+        badges={<>
+          <SalesStateBadge label={product.isActive === false ? "พักใช้งาน" : "ใช้งานอยู่"} color={product.isActive === false ? "var(--text-3)" : "var(--green)"} />
+          {/* ป้ายเดียวกับแถวในทะเบียนสินค้า/หน้าลูกค้า (`productExciseBadge`) — RA ยกเว้น = "ยกเว้นสรรพสามิต" ·
+              RA บังคับในหมวดอื่น = "ภาษีสรรพสามิต" (เดิมดูธงหมวดล้วน · ตรวจตัวเลข 26/10 · L16b) */}
+          {exciseBadge && (
+            <SalesStateBadge
+              label={exciseBadge === "taxable" ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}
+              color={exciseBadge === "taxable" ? "var(--amber)" : "var(--text-3)"}
+            />
+          )}
+          {/* ⚠️ ป้าย "ต้องจดแจ้ง อย." เป็นแถว "จดแจ้ง อย." ในการ์ดสรุปสินค้า (05/11 → 18/11/2026) — แถวนั้นบอกทั้งต้อง/ไม่ต้องจด · ห้ามวางป้ายซ้ำที่นี่ */}
+        </>}
+      />
 
-        {product.isActive === false && (
-          <StatusNotice tone="neutral" title="สินค้านี้ถูกพักใช้งาน">
-            ไม่แสดงในรายการเลือกของระบบอื่น — กด “เปิดใช้อีกครั้ง” ที่การ์ดจัดการเพื่อนำกลับมา
-          </StatusNotice>
-        )}
+      {product.isActive === false && (
+        <StatusNotice tone="neutral" title="สินค้านี้ถูกพักใช้งาน">
+          ไม่แสดงในรายการเลือกของระบบอื่น — กด “เปิดใช้อีกครั้ง” ที่การ์ดจัดการเพื่อนำกลับมา
+        </StatusNotice>
+      )}
 
-        {/* ⚠️ ขาดราคาขายปลีก = ภาษีคิดออกมา 0 — อยู่ใต้หัวทุกแท็บ เพราะไม่มีราคาก็ยื่นขึ้นทะเบียนไม่ผ่านอยู่ดี
-            (ด่านที่ lib/tax/requirements.js) */}
-        {needsRetailPrice && (
-          <StatusNotice tone="warning" title="ยังไม่มีราคาขายปลีก — ภาษีสรรพสามิตจะคิดออกมาเป็น 0">
-            ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT แล้วคูณ 8.8%) · ต้องเติมราคาก่อน จึงจะยื่นขึ้นทะเบียนได้
-          </StatusNotice>
-        )}
-      </DetailPageLayout>
-
-      {/* ── แท็บตามหัวข้อ — ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว (ราคาอยู่แท็บราคา · ภาษี/ทะเบียน/บันทึกยื่นอยู่แท็บสรรพสามิต) ──
-          ⚠️ แท็บสรรพสามิตโผล่เฉพาะคนที่เห็นระบบภาษี (`history:view`) — ของในแท็บนั้นเป็นความลับของสายภาษีทั้งก้อน */}
+      {/* ⚠️ ขาดราคาขายปลีก = ภาษีคิดออกมา 0 — อยู่ใต้หัวทุกแท็บ เพราะไม่มีราคาก็ยื่นขึ้นทะเบียนไม่ผ่านอยู่ดี
+          (ด่านที่ lib/tax/requirements.js) */}
+      {needsRetailPrice && (
+        <StatusNotice tone="warning" title="ยังไม่มีราคาขายปลีก — ภาษีสรรพสามิตจะคิดออกมาเป็น 0">
+          ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT แล้วคูณ 8.8%) · ต้องเติมราคาก่อน จึงจะยื่นขึ้นทะเบียนได้
+        </StatusNotice>
+      )}
+      <DetailPageLayout asideLabel="สรุปสินค้าและการดำเนินการ" aside={productAside}>
+      {/* ── แท็บตามหัวข้อ — ข้อมูลหนึ่งชิ้นมีบ้านหลังเดียว (ราคาอยู่แท็บราคา · ภาษี/ทะเบียน/บันทึกยื่นอยู่แท็บสรรพสามิต · QT/SO อยู่แท็บการขาย) ──
+          ⚠️ แท็บสรรพสามิตโผล่เฉพาะคนที่เห็นระบบภาษี (`history:view`) — ของในแท็บนั้นเป็นความลับของสายภาษีทั้งก้อน
+          ⚠️ แท็บการขายโผล่เฉพาะผู้เห็นโมดูลขาย (server ส่ง sales.visible:false · มติ 5) */}
       <div className={styles.tabsZone}>
         <Tabs id={TABS_ID} ariaLabel="หัวข้อของสินค้า" tabs={tabs} value={currentTab} onChange={setTab} />
 
@@ -687,10 +733,16 @@ export default function ProductDetails() {
           </div>
         )}
 
+        {/* แท็บการขาย (มติ 5) — QT/SO ที่มีสินค้านี้ ตัวเลขของบรรทัดสินค้านี้บนใบ · เฉพาะผู้เห็นโมดูลขาย */}
+        {currentTab === "sales" && salesFacts && (
+          <div className={styles.pane}>
+            <ProductSalesTab sales={sales} unit={unit} />
+          </div>
+        )}
+
         {currentTab === "spec" && (
           <div className={styles.pane}>
-            {/* ลง BOM (mig 0419) — สถานะ/ผู้ส่ง/ผู้รับ/รหัส BOM อยู่ที่นี่ คู่กับสูตร/ปริมาตรที่ล็อกเมื่อส่ง · ปุ่มส่ง/ดึงกลับอยู่ในการ์ดจัดการที่เดียว */}
-            {bomStep ? <ProductBomStatus product={product} /> : null}
+            {/* ⚠️ สถานะลง BOM ย้ายไปแท็บ BOM ของตัวเอง (18/11/2026) — ห้ามวางการ์ดสถานะซ้ำที่นี่ */}
             <DetailCard icon={Package} eyebrow="Product specification" title={isFragranceOilCategory(product.categoryCode) ? "กลิ่นและบรรจุภัณฑ์" : "สูตรและบรรจุภัณฑ์"}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
                 {/* ข้อมูลสูตร (0112 → ทะเบียน 0171) — FG ที่ไม่มีสูตร (กล่อง/บรรจุภัณฑ์)
@@ -883,6 +935,13 @@ export default function ProductDetails() {
                 </div>
               </div>
             </DetailCard>
+          </div>
+        )}
+
+        {/* แท็บ BOM — สถานะ · ความพร้อมก่อนส่ง · ข้อมูลที่ส่ง (ล็อก) · รอบล่าสุด · ไม่มีปุ่ม (ปุ่มอยู่การ์ดจัดการ) */}
+        {currentTab === "bom" && bomStep && (
+          <div className={styles.pane}>
+            <ProductBomTab product={product} />
           </div>
         )}
 
@@ -1141,6 +1200,7 @@ export default function ProductDetails() {
           </div>
         )}
       </div>
+      </DetailPageLayout>
 
       {overrideDialog}
       <EditProductModal open={showEdit} product={product} onClose={() => setShowEdit(false)} onSaved={fetchProduct} brandOptions={brandOptions} customers={customers} />
@@ -1153,6 +1213,6 @@ export default function ProductDetails() {
         confirmLabel={confirmBox?.confirmLabel}
         danger={confirmBox?.danger !== false}
       />
-    </>
+    </div>
   );
 }

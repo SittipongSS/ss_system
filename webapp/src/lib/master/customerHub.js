@@ -170,9 +170,13 @@ export function buildDealRows({ deals = [], quotations = [], orders = [], instal
 
 /* ── การสั่งซื้อรายสินค้า (แท็บสินค้า) ──────────────────────────────────────────────────────
    นับจากบรรทัดของใบสั่งขายที่ **อนุมัติแล้วและยังมีผล** — รวมใบย้อนหลัง (การสั่งจริงในอดีต) · ไม่รวมใบค่าสรรพสามิต
-   ยอด = lineTotal (ก่อน VAT) · "สั่งแล้ว" = จำนวนใบที่มีสินค้านี้ (ไม่ใช่จำนวนบรรทัด) */
+   ยอด = lineTotal (ก่อน VAT) · "สั่งแล้ว" = จำนวนใบที่มีสินค้านี้ (ไม่ใช่จำนวนบรรทัด)
+   ⭐ `countsAsOrdered` = ตัวตัดสิน "ใบที่นับ" ตัวเดียว — หน้าสินค้าศูนย์รวม (docs/product-hub-plan.md มติ 2) เรียกตัวนี้ด้วย
+      ⇒ ยอดของ FG บนแท็บสินค้าหน้าลูกค้า = ยอดบนหัวหน้าสินค้าตัวนั้น · ห้ามเขียนเงื่อนไขซ้ำที่อื่น */
+export const countsAsOrdered = (order) => order?.status === 'approved' && isLiveOrder(order) && !isExciseOrder(order);
+
 export function productOrderStats(lines = [], orders = []) {
-  const orderById = new Map(orders.filter((o) => o.status === 'approved' && isLiveOrder(o) && !isExciseOrder(o)).map((o) => [o.id, o]));
+  const orderById = new Map(orders.filter(countsAsOrdered).map((o) => [o.id, o]));
   const byProduct = new Map();
   const manual = new Map();
   for (const line of lines) {
