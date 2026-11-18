@@ -19,14 +19,15 @@
 // บั๊กรางซ้ำ (#1033): ประกอบ array ของแถวใน JSX เมื่อไร CI จะมองไม่เห็น
 import { Fragment, useState } from "react";
 import Button from "@/components/ui/Button";
-import StatusBadge from "@/components/ui/StatusBadge";
 import {
-  CustomerSay, IngredientSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
+  CustomerSay, IngredientSay, RowDueCell, RowPriceCell, RowStepCell,
 } from "./RowProgressCells";
+import DevBoardRow from "./DevBoardRow";
+import { groupResultText } from "@/lib/requests/devBoardRows";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import Link from "next/link";
-import RegistryCell, { registryHref } from "./RegistryCell";
+import { registryHref } from "./RegistryCell";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Trash2 } from "lucide-react";
 import styles from "./briefBoard.module.css";
@@ -57,6 +58,9 @@ import { useProductCategories } from "@/lib/useProductCategories";
    ⚠️ **"สถานะ" กับ "ผลลัพธ์จากลูกค้า" ถูกถอด ไม่ใช่ย่อ** — ทั้งคู่คิดจาก `stage`
    ตัวเดียวกับที่รางวาดอยู่แล้ว · ผลลัพธ์มีค่าจริงแค่ 2 จาก 68 แถวบน production
    (วัด 2026-08-25) ⇒ กลายเป็นชิปในเซลล์ชื่อเมื่อลูกค้าตอบจริง */
+/* ⭐ **ม-165 PR-2 (มติเจ้าของ 18/11/2026) — ทับดีไซน์ 25/08 เฉพาะตารางนี้กับพัฒนาสูตร**: แถวละบรรทัด (`DevBoardRow`) ·
+   คอลัมน์ "ผลลูกค้า" (ยืนยัน · ขอแก้ · ไม่เอา · รอลูกค้าตอบ — คำเดียวกับการ์ดสรุป) แทนรางจุด + "ค้างมา" ·
+   รอบแก้ซ้อนใต้ตัวแม่ · แถวจบแล้วจาง · รายละเอียด (ลูกค้าบอกว่า · ส่งเป็นอะไร · ไฟล์แนบ) พับไว้ กดแถวเพื่อกาง */
 export default function BriefBoard({
   groups = [], renderStep = null, renderDetail = null, renderGroupStep = null,
   // ม-164 PR-3 — รายการเพิ่มในเมนู ⋯ ของแถว (เปลี่ยนเป็นคอนเฟิร์ม · ระบุของแถม) · (d) => [{ id, label, onClick }]
@@ -77,6 +81,13 @@ export default function BriefBoard({
     if (next.has(key)) next.delete(key); else next.add(key);
     return next;
   });
+  /* ⭐ ม-165 PR-2 — แถว direction พับรายละเอียดเป็นค่าตั้งต้น (กดแถวเพื่อกาง) · คนละชุดกับการพับก้อนบรีฟข้างบน */
+  const [openRows, setOpenRows] = useState(() => new Set());
+  const toggleRow = (id) => setOpenRows((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   if (!groups.length) return null;
 
@@ -88,7 +99,8 @@ export default function BriefBoard({
   /* ⭐ **คอลัมน์ราคา** (ผู้ใช้ 2026-09-22: "เมื่อส่งราคาแล้ว อยากให้โชว์ราคาด้วย") — โผล่เมื่อใบนี้มี direction ที่ใส่ราคาแล้ว
      · เซลล์กลาง `RowPriceCell` ตัวเดียวกับตารางพัฒนาสูตร */
   const showPrice = groups.some((g) => g.directions.some((d) => d.prices?.length));
-  const cols = (showActions ? 4 : 3) + (due ? 1 : 0) + (showPrice ? 1 : 0);
+  // ม-165 — ชื่อ · ผลลูกค้า · [ราคา] · [กำหนดส่ง] · [ก้าวถัดไป] (รางจุด + "ค้างมา" ถอด — ค้างกี่วันอยู่ใต้ป้ายผลลูกค้า)
+  const cols = 2 + (showActions ? 1 : 0) + (due ? 1 : 0) + (showPrice ? 1 : 0);
   /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
      พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
   const showDue = dueCellTracker(due);
@@ -109,10 +121,9 @@ export default function BriefBoard({
           <thead>
             <tr>
               <th className={styles.colName}>direction</th>
+              <th className={styles.colResult}>ผลลูกค้า</th>
               {showPrice && <th className={`${styles.colPrice} num`}>ราคา (บาท/กก.)</th>}
-              <th className={styles.colTrack}>ขั้น</th>
               {due && <th className={styles.colDue}>กำหนดส่ง</th>}
-              <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {showActions && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
@@ -133,9 +144,8 @@ export default function BriefBoard({
                   <TableGroupRow
                     colSpan={cols}
                     label={g.label}
-                    badge={s.rework > 0
-                      ? `${s.total} direction · รอบแก้ ${s.rework}`
-                      : `${s.total} direction`}
+                    /* ⭐ ม-165 — หัวกลุ่มสรุปผลด้วยคำชุดเดียวกับการ์ด "สรุปใบนี้" (ยืนยัน · ขอแก้ · ไม่เอา) */
+                    badge={groupResultText(s)}
                     /* ⭐ **สรุปของก้อนขึ้นเฉพาะตอนพับ** (มติผู้ใช้ 2026-08-18 — "รอลงมือ 1
                        ยังจำเป็นหรอ") · หน้าที่ของบรรทัดนี้คือตอบ "ก้อนนี้มีของค้างไหม"
                        **โดยไม่ต้องกาง** ⇒ พอกางแล้วทุกแถวมีคอลัมน์สถานะกับก้าวถัดไปของ
@@ -162,92 +172,71 @@ export default function BriefBoard({
 
                   {isOpen && g.directions.map((d) => {
                     const detail = renderDetail?.(d);
-                    return (
-                      <Fragment key={d.id}>
-                        <tr>
-                          {/* ⭐ รอบแก้เยื้องใต้ตัวต้นทาง — ใช้สายพันธุ์ที่ฐานเก็บไว้แล้ว
-                              (`derivedFromItemId`) ตอบว่า "ตัวนี้แก้มาจากตัวไหน"
-                              ⚠️ เยื้องที่เซลล์ ไม่ใช่ที่เนื้อใน — เส้นตารางต้องลากเต็มแถว */}
-                          <td className={d.depth ? styles.childCell : undefined}>
-                            <RegistryCell
-                              registry={d.registry}
-                              fallback={d.name}
-                              extra={(
-                                <>
-                                  {d.rework && <span className="ui-badge">รอบแก้</span>}
-                                  {/* ⭐ ส่งเป็นอะไร (ม-148) — ราคาที่ตามมาเป็น F หรือ FB ขึ้นกับบรรทัดนี้ */}
-                                  {d.delivered && (
-                                    <div className={styles.note}>
-                                      {d.delivered.product ? (
-                                        <>
-                                          ส่งเป็นสินค้า {categoryCodeLabel(d.delivered.categoryCode, productCategories)}
-                                          {d.delivered.formula && (
-                                            <>
-                                              {" · สูตร "}
-                                              <Link href={registryHref(d.delivered.formula)}>
-                                                {formulaLabel(d.delivered.formula)}
-                                              </Link>
-                                            </>
-                                          )}
-                                        </>
-                                      ) : "ส่งเป็นหัวน้ำหอม"}
-                                    </div>
-                                  )}
-
-                                  {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
-                                      (มติผู้ใช้ 2026-08-25) — คอลัมน์ที่ว่าง 97% กินที่
-                                      ของสิ่งที่มีค่าทุกแถว · ยังไม่ถึงตาลูกค้า = ไม่มีชิป
-                                      ซึ่งอ่านถูกอยู่แล้วเพราะรางบอกว่าอยู่ขั้นไหน */}
-                                  {d.outcomeLabel && (
-                                    <StatusBadge tone={d.outcomeTone} label={d.outcomeLabel} />
-                                  )}
-                                </>
-                              )}
-                            />
-                          </td>
-                          {showPrice && <RowPriceCell prices={d.prices} />}
-                          <RowStageCell row={d} />
-                          {due && <RowDueCell row={d} due={due} show={showDue(d)} />}
-                          <RowIdleCell row={d} today={today} />
-                          {showActions && (
-                            <RowStepCell>
-                              {renderStep?.(d)}
-                              {/* ⭐ **แก้/ลบ อยู่ในเมนู `⋯`** (มติผู้ใช้ 2026-08-18) —
-                                  ทรงเดียวกับทุกตารางในระบบ: ปุ่มก้าวถัดไป 1 ปุ่ม
-                                  ที่เหลือยุบเข้าเมนู ⇒ คอลัมน์ไม่บวมและอ่านออกว่า
-                                  อันไหนคือสิ่งที่ต้องทำ */}
-                              <RowActionMenu
-                                label={`การจัดการอื่นของ ${d.registry?.code || d.name}`}
-                                items={[
-                                  canEdit && d.registry && {
-                                    id: "edit", icon: Pencil, label: "แก้ในทะเบียนกลิ่น",
-                                    onClick: () => onEditRegistry(d.registry),
-                                  },
-                                  canDelete && {
-                                    id: "delete", icon: Trash2, tone: "danger",
-                                    label: "ลบ direction นี้",
-                                    onClick: () => onDeleteRow(d),
-                                  },
-                                  ...(extraMenuItems?.(d) || []),
-                                ].filter(Boolean)}
-                              />
-                            </RowStepCell>
-                          )}
-                        </tr>
-
-                        {/* ⭐ แถวขยาย — ของยาวของ direction ตัวนี้ (หมายเหตุผลลัพธ์ ·
-                            สเปก · ไฟล์แนบ) · **ไม่มีปุ่มกาง ขึ้นเสมอเมื่อมีเนื้อ**
-                            เพราะสิ่งที่มติ 2026-08-13 ไม่ยอมคือ *การซ่อน* ไม่ใช่ตาราง */}
-                        {(detail || d.outcomeNote || d.reworkBrief || d.ingredientList) && (
-                          <tr className={styles.detailRow}>
-                            <td colSpan={cols}>
-                              <CustomerSay note={d.outcomeNote} brief={d.reworkBrief} />
-                              <IngredientSay text={d.ingredientList} />
-                              {detail}
-                            </td>
-                          </tr>
+                    /* ⭐ ม-165 — แถวละบรรทัด (`DevBoardRow` ตัวเดียวกับตารางพัฒนาสูตร) · ของยาวอยู่ในแถวที่กางได้:
+                       ลูกค้าบอกว่า/โจทย์รอบนี้ · Ingredient List · ส่งเป็นอะไร (ม-148) · ไฟล์แนบ (`renderDetail`) */
+                    const body = (
+                      <>
+                        <CustomerSay note={d.outcomeNote} brief={d.reworkBrief} />
+                        <IngredientSay text={d.ingredientList} />
+                        {/* ⭐ ส่งเป็นอะไร (ม-148) — ราคาที่ตามมาเป็น F หรือ FB ขึ้นกับบรรทัดนี้ */}
+                        {d.delivered && (
+                          <div className={styles.note}>
+                            {d.delivered.product ? (
+                              <>
+                                ส่งเป็นสินค้า {categoryCodeLabel(d.delivered.categoryCode, productCategories)}
+                                {d.delivered.formula && (
+                                  <>
+                                    {" · สูตร "}
+                                    <Link href={registryHref(d.delivered.formula)}>
+                                      {formulaLabel(d.delivered.formula)}
+                                    </Link>
+                                  </>
+                                )}
+                              </>
+                            ) : "ส่งเป็นหัวน้ำหอม"}
+                          </div>
                         )}
-                      </Fragment>
+                        {detail}
+                      </>
+                    );
+                    const hasBody = !!(detail || d.outcomeNote || d.reworkBrief || d.ingredientList || d.delivered);
+                    return (
+                      <DevBoardRow
+                        key={d.id}
+                        row={d}
+                        today={today}
+                        colSpan={cols}
+                        open={openRows.has(d.id)}
+                        onToggle={() => toggleRow(d.id)}
+                        detail={hasBody ? body : null}
+                        cells={(
+                          <>
+                            {showPrice && <RowPriceCell prices={d.prices} />}
+                            {due && <RowDueCell row={d} due={due} show={showDue(d)} />}
+                          </>
+                        )}
+                        step={showActions ? (
+                          <RowStepCell>
+                            {renderStep?.(d)}
+                            {/* ⭐ **แก้/ลบ อยู่ในเมนู `⋯`** (มติผู้ใช้ 2026-08-18) — ปุ่มก้าวถัดไป 1 ปุ่ม ที่เหลือยุบเข้าเมนู */}
+                            <RowActionMenu
+                              label={`การจัดการอื่นของ ${d.registry?.code || d.name}`}
+                              items={[
+                                canEdit && d.registry && {
+                                  id: "edit", icon: Pencil, label: "แก้ในทะเบียนกลิ่น",
+                                  onClick: () => onEditRegistry(d.registry),
+                                },
+                                canDelete && {
+                                  id: "delete", icon: Trash2, tone: "danger",
+                                  label: "ลบ direction นี้",
+                                  onClick: () => onDeleteRow(d),
+                                },
+                                ...(extraMenuItems?.(d) || []),
+                              ].filter(Boolean)}
+                            />
+                          </RowStepCell>
+                        ) : null}
+                      />
                     );
                   })}
                 </Fragment>
