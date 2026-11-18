@@ -423,6 +423,50 @@ export default function ProductDetails() {
   /* ⭐ ส่ง RD เป็นปุ่มหลักเมื่อพร้อมส่งจริงเท่านั้น — FG เก่าที่ยังไม่ผูกสูตร (ส่วนใหญ่ของทะเบียน) ปุ่มหลักยังเป็น "แก้ไข"
      เพราะก้าวถัดไปของมันคือไปผูกสูตรก่อน */
   const bomPrimary = !canDecide && bomSendAction && !bomBlocker;
+  /* ── กลุ่มปุ่มของงานย่อย (หน้าสินค้าศูนย์รวม มติ 8 · 18/11/2026 "อย่าให้หลุดคอนเซปคอนโทลพาแนล") ─────────────────────
+     แยกตามเจ้าของข้อมูล: **BOM เป็นช่องของสินค้า** ⇒ ปุ่มอยู่การ์ดนี้เป็นกลุ่ม "BOM" · **ทะเบียนสรรพสามิตเป็นเอกสารของตัวเอง**
+     ⇒ การ์ดจัดการของมันอยู่แท็บสรรพสามิต (RegistrationWorkPanel) การ์ดนี้มีแค่ปุ่มพาไป
+     ⚠️ ปุ่มละที่เดียวเหมือนเดิม (ม-49/ม-57) · หัวกลุ่มไม่มีจุดสถานะ — สถานะ BOM/สรรพสามิตอยู่การ์ดสรุปสินค้าที่เดียว */
+  const bomGroupActions = [
+    !bomPrimary && bomSendAction,
+    bomStep && canEditProducts && bomStatus === "queued" && {
+      id: "bom-pullback",
+      kind: "withdraw",
+      label: "ดึงกลับจาก RD",
+      disabled: isUpdating,
+      onClick: () => runBom("pullback", {
+        title: "ดึงเรื่องลง BOM กลับ",
+        description: `ดึง ${decideSubject} ออกจากคิว RD`,
+        detail: "RD ยังไม่รับเรื่อง — แถวหายจากคิว RD และสูตร/ปริมาตรกลับมาแก้ได้ · แก้เสร็จแล้วกดส่งใหม่",
+        confirmLabel: "ดึงกลับ",
+        done: "ดึงเรื่องกลับแล้ว — แก้สูตร/ปริมาตรได้",
+      }),
+    },
+    bomStep && rdViewer && bomStatus && bomStatus !== "returned" && {
+      id: "bom-queue",
+      kind: "goto",
+      label: "เปิดคิวลง BOM",
+      href: "/rd/bom",
+    },
+  ].filter(Boolean);
+  /* สรรพสามิต: ปุ่มเดียว = พาไปการ์ดจัดการทะเบียนในแท็บสรรพสามิต (สร้าง/ยื่น/ยื่นใหม่อยู่ที่นั่น) · เฉพาะผู้เห็นระบบภาษีและยังมีงานค้าง
+     (exciseRec = null เมื่อไม่เข้าข่าย/ขึ้นทะเบียนแล้ว/ผู้ดูไม่เห็นภาษี) · ยังไม่มีทะเบียน + แก้ได้ = เปิดรายการ "คำขอใหม่" ให้เลย */
+  const exciseGroupActions = [
+    exciseRec && {
+      id: "excise",
+      kind: "goto",
+      label: exciseRec.kind === "unregistered" && canEditProducts ? "ไปขึ้นทะเบียนสรรพสามิต" : "ไปที่งานทะเบียนสรรพสามิต",
+      onClick: () => {
+        if (exciseRec.kind === "unregistered" && regItems.some((item) => item.key === "new")) setRegKey("new");
+        goTab("excise");
+      },
+    },
+  ].filter(Boolean);
+  const actionGroups = [
+    { id: "bom", label: "BOM", actions: bomGroupActions },
+    { id: "excise", label: "สรรพสามิต", actions: exciseGroupActions },
+  ];
+
   const productActions = {
     /* ปุ่มหลัก = ก้าวถัดไปของระเบียน — ใบที่รออนุมัติและคนดูอนุมัติได้ ก้าวถัดไปคือ
        "อนุมัติ" ไม่ใช่ "แก้ไข" (ผังเดียวกับการ์ด control ของหน้าเอกสาร) */
@@ -446,32 +490,6 @@ export default function ProductDetails() {
       },
       canDecide && editAction,
       bomPrimary && editAction && { ...editAction, variant: "outline" },
-      !bomPrimary && bomSendAction,
-      bomStep && canEditProducts && bomStatus === "queued" && {
-        id: "bom-pullback",
-        kind: "withdraw",
-        label: "ดึงกลับจาก RD",
-        disabled: isUpdating,
-        onClick: () => runBom("pullback", {
-          title: "ดึงเรื่องลง BOM กลับ",
-          description: `ดึง ${decideSubject} ออกจากคิว RD`,
-          detail: "RD ยังไม่รับเรื่อง — แถวหายจากคิว RD และสูตร/ปริมาตรกลับมาแก้ได้ · แก้เสร็จแล้วกดส่งใหม่",
-          confirmLabel: "ดึงกลับ",
-          done: "ดึงเรื่องกลับแล้ว — แก้สูตร/ปริมาตรได้",
-        }),
-      },
-      bomStep && rdViewer && bomStatus && bomStatus !== "returned" && {
-        id: "bom-queue",
-        kind: "goto",
-        label: "เปิดคิวลง BOM",
-        href: "/rd/bom",
-      },
-      canEditProducts && exciseRec?.kind === "unregistered" && regItems.some((item) => item.key === "new") && {
-        id: "excise",
-        kind: "submit",
-        label: "ขึ้นทะเบียนสรรพสามิต",
-        onClick: () => { setRegKey("new"); goTab("excise"); },
-      },
       /* ⚠️ ปุ่มทางลัด "ทะเบียนสรรพสามิตของสินค้านี้" ถอดแล้ว (04/11/2026) — แถว "สรรพสามิต" ในการ์ดสรุปสินค้ากับแท็บสรรพสามิตพาไปที่เดียวกัน
          ปุ่มนี้กินที่การ์ดจัดการ ~56px ซึ่งเป็นตัวที่ดันที่ว่างใต้หัวสินค้า (เจ้าของทักตอนรีวิว) */
       canToggleActive && (product.isActive === false
@@ -504,6 +522,7 @@ export default function ProductDetails() {
     workflowSteps={approvalView.status === "approved" ? [] : workflowSteps}
     primaryAction={productActions.primaryAction}
     secondaryActions={productActions.secondaryActions}
+    actionGroups={actionGroups}
     dangerActions={productActions.dangerActions}
     busy={isUpdating}
     /* เหตุผลที่ถูกตีกลับต้องอยู่ตรงที่คนกำลังจะกดแก้ ไม่ใช่ให้ไปหาในเธรด */
@@ -1037,10 +1056,11 @@ export default function ProductDetails() {
         {currentTab === "excise" && (
           <div className={styles.pane}>
             <div className={styles.grid2}>
-              <DetailCard icon={Package} eyebrow="EXCISE" title="การขึ้นทะเบียนสรรพสามิต">
-                {/* ⭐ แผงทะเบียนตัวเดียวกับหน้า SO (`RegistrationWorkModal.js` — ที่นี่ใช้แบบฝังหน้า) · สร้างคำขอ · เช็กลิสต์ด่านยื่น ·
-                    "ใช้ไฟล์นี้ยื่น" · แนบ · ยื่นให้ RA · ยื่นใหม่ — งานทะเบียนของ SA ทั้งหมดอยู่ที่นี่ (มติ 02/11 V7 · V14) */}
-                {panelItems.length ? (
+              {/* ⭐ แผงทะเบียนตัวเดียวกับหน้า SO (`RegistrationWorkModal.js` — ที่นี่ใช้แบบฝังหน้า) · หัวแผง = **การ์ดจัดการทะเบียน** (มติ 8 · 18/11/2026:
+                  สถานะ · ขั้น · เอกสารที่ขาด · ปุ่มสร้าง/ยื่น/ยื่นใหม่) ตามด้วยแผงไฟล์ — งานทะเบียนของ SA ทั้งหมดอยู่ที่นี่ (มติ 02/11 V7 · V14)
+                  ⚠️ ไม่ห่อ DetailCard อีกชั้น — การ์ดจัดการมีกรอบของตัวเองแล้ว (กรอบซ้อนกรอบ) */}
+              {panelItems.length ? (
+                <div className={styles.stack}>
                   <RegistrationWorkPanel
                     key={regKey || "panel"}
                     items={panelItems}
@@ -1048,10 +1068,12 @@ export default function ProductDetails() {
                     canEdit={canEditProducts}
                     onChanged={loadRelations}
                   />
-                ) : (
+                </div>
+              ) : (
+                <DetailCard icon={Package} eyebrow="EXCISE" title="การขึ้นทะเบียนสรรพสามิต">
                   <p className="text-xs text-[var(--text-3)] italic">ยังไม่มีการขึ้นทะเบียนภาษีให้ลูกค้ารายใด</p>
-                )}
-              </DetailCard>
+                </DetailCard>
+              )}
               <div className={styles.stack}>
                 {isExciseCat && (
                           <DetailCard icon={Package} eyebrow="EXCISE" title="ภาษีสรรพสามิตต่อหน่วย">
