@@ -14,14 +14,14 @@
 //
 // ⚠️ การนับอยู่ที่ `lib/requests/formulaDevBoard.js` ทั้งหมด — ประกอบ array ของแถว
 // ใน JSX เมื่อไร CI จะมองไม่เห็น แล้วผู้ใช้เป็นคนเจอบนจอ (กฎหลังบั๊กรางซ้ำ #1033)
-import { Fragment } from "react";
-import StatusBadge from "@/components/ui/StatusBadge";
+import { useState } from "react";
 import {
-  CustomerSay, IngredientSay, RowDueCell, RowIdleCell, RowPriceCell, RowStageCell, RowStepCell,
+  CustomerSay, IngredientSay, RowDueCell, RowPriceCell, RowStepCell,
 } from "./RowProgressCells";
+import DevBoardRow from "./DevBoardRow";
+import { dropInheritedSpec, liftSharedSpec } from "@/lib/requests/devBoardRows";
 import ReadableText from "@/components/ui/ReadableText";
 import { TableScroll } from "@/components/ui/Table";
-import RegistryCell from "./RegistryCell";
 import RowActionMenu from "@/components/ui/RowActionMenu";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { fmtDate, fmtNumber } from "@/lib/format";
@@ -46,12 +46,25 @@ const money = (n) => fmtNumber(n, { minimumFractionDigits: 2 });
 /* ⭐ `onAddDirection` (ม-157) — "ส่ง direction เพิ่ม" ในเมนู ⋯ ของแถวที่ส่งสูตรแล้วและลูกค้ายังไม่ตอบ (ฝ่ายที่ตอบเท่านั้น ·
    ผู้เรียกส่ง null ให้คนอื่น) · แถวที่ลูกค้าตอบแล้ว = ไม่มีของให้ทำ (สูตรใหม่หลังจากนั้นคือรอบแก้) จึงไม่โชว์ ·
    ด่านที่เหลือ (คู่นี้คอนเฟิร์มไปแล้ว) บอกเหตุตอนกด */
+/* ⭐ **ม-165 PR-2 (มติเจ้าของ 18/11/2026)** — คู่แฝดของ `BriefBoard`: แถวละบรรทัด (`DevBoardRow`) · คอลัมน์ "ผลลูกค้า" แทนรางจุด +
+   "ค้างมา" · รอบแก้ (+ direction เพิ่ม ม-157) ซ้อนใต้ตัวแม่ · แถวจบแล้วจาง · รายละเอียดพับไว้ กดแถวเพื่อกาง ·
+   **สเปกจาก PDR ที่ทุกแถวพูดเหมือนกันขึ้นครั้งเดียวเหนือตาราง** (เดิมพิมพ์ซ้ำใต้ทุกแถว) */
 export default function FormulaDevBoard({
-  rows = [], renderStep = null, renderDetail = null,
+  rows: allRows = [], renderStep = null, renderDetail = null,
   onEditRegistry = null, onDeleteRow = null, onAddDirection = null, canEditRegistry = false, today = null, due = null,
 }) {
+  const [openRows, setOpenRows] = useState(() => new Set());
+  const toggleRow = (id) => setOpenRows((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   // ยังไม่มีแถว = ยังไม่มีอะไรให้สรุป
-  if (!rows.length) return null;
+  if (!allRows.length) return null;
+  const lifted = liftSharedSpec(allRows);
+  const sharedSpec = lifted.shared;
+  // ใบที่สเปกต่างกันตามกลุ่มกลิ่น — รอบแก้ไม่พิมพ์สเปกซ้ำกับตัวแม่
+  const rows = dropInheritedSpec(lifted.rows);
   // ⚠️ ถามจาก **ค่าจริงในใบนี้** ไม่ใช่จากหัวข้อ — ใบที่ไม่กรอกจำนวนเลยไม่ควรมีคอลัมน์
   const showQty = rows.some((r) => r.qty != null);
   /* ⭐ **ราคาเป็นคอลัมน์ของตัวเอง** (ผู้ใช้ 2026-09-22: "เมื่อส่งราคาแล้ว อยากให้โชว์ราคาด้วย") — เดิมเบียดอยู่ใต้
@@ -63,13 +76,19 @@ export default function FormulaDevBoard({
   const canEdit = !!(canEditRegistry && onEditRegistry);
   const canDelete = !!(canEditRegistry && onDeleteRow);
   const showActions = !!renderStep || canEdit || canDelete || !!onAddDirection;
-  const cols = 3 + (showQty ? 1 : 0) + (showPrice ? 1 : 0) + (showActions ? 1 : 0) + (due ? 1 : 0);
+  // ม-165 — ชื่อ · ผลลูกค้า · [จำนวน] · [ราคา] · [กำหนดส่ง] · [ก้าวถัดไป]
+  const cols = 2 + (showQty ? 1 : 0) + (showPrice ? 1 : 0) + (showActions ? 1 : 0) + (due ? 1 : 0);
   /* ⚠️ **สร้างใหม่ทุกเรนเดอร์** — ตัวนี้จำว่าพิมพ์วันไปแล้วหรือยัง (กติกา "วันธรรมดา
      พิมพ์แถวแรกแถวเดียว") · ยกออกไปนอกฟังก์ชันเมื่อไร ตารางรอบสองจะไม่พิมพ์เลย */
   const showDue = dueCellTracker(due);
 
   return (
     <section className={styles.wrap} aria-label="สรุปทั้งใบ">
+      {sharedSpec ? (
+        <div className={styles.sharedSpec}>
+          <ReadableText text={sharedSpec} lines={2} className={styles.note} />
+        </div>
+      ) : null}
       <TableScroll
         family="editable" surface="embedded" cells="stacked"
         // ⚠️ เหตุผลเดียวกับ `BriefBoard` — ห้ามตั้งเกินความกว้างคอลัมน์เนื้อ
@@ -79,11 +98,10 @@ export default function FormulaDevBoard({
           <thead>
             <tr>
               <th className={styles.colName}>รายการ</th>
+              <th className={styles.colResult}>ผลลูกค้า</th>
               {showQty && <th className={`${styles.colQty} num`}>จำนวน</th>}
               {showPrice && <th className={`${styles.colPrice} num`}>ราคา (บาท/กก.)</th>}
-              <th className={styles.colTrack}>ขั้น</th>
               {due && <th className={styles.colDue}>กำหนดส่ง</th>}
-              <th className={`${styles.colIdle} num`}>ค้างมา</th>
               {showActions && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>
@@ -91,90 +109,72 @@ export default function FormulaDevBoard({
             {rows.map((r) => {
               const detail = renderDetail?.(r);
               /* 🐞 สเปกที่ซ้ำกับชื่อไม่ต้องโชว์ — สายพัฒนาสูตร `spec` มักเป็นชื่อกลิ่น
-                 ตัวเดียวกับที่อยู่ใน `name` อยู่แล้ว · เช็คแบบ "อยู่ในกันไหม" ไม่ใช่เท่ากันเป๊ะ */
+                 ตัวเดียวกับที่อยู่ใน `name` อยู่แล้ว · เช็คแบบ "อยู่ในกันไหม" ไม่ใช่เท่ากันเป๊ะ
+                 ⚠️ สเปกที่ทุกแถวพูดเหมือนกันถูกยกขึ้นหัวตารางแล้ว (`liftSharedSpec`) — ที่เหลือคือของเฉพาะแถว */
               const spec = r.spec && !String(r.name || "").includes(r.spec) ? r.spec : null;
+              /* ⭐ ยังไม่ส่งสูตร = บรรทัดที่สองบอกสถานะงาน (เดิมอยู่ใต้ชื่อ) — แถวบรรทัดเดียวย้ายลงแถวที่กางได้ แต่ยังบอกในป้ายผลลูกค้า */
+              const pendingNote = !r.registry
+                ? (r.reworkOf ? `แก้จาก ${r.reworkOf} · ยังไม่ส่งสูตร` : "ยังไม่มีสูตรออกมาจากแถวนี้")
+                : null;
+              const body = (
+                <>
+                  {spec && <ReadableText text={spec} lines={2} className={styles.note} />}
+                  {pendingNote && <div className={styles.note}>{pendingNote}</div>}
+                  <CustomerSay note={r.outcomeNote} brief={r.reworkBrief} />
+                  <IngredientSay text={r.ingredientList} />
+                  {detail}
+                </>
+              );
+              const hasBody = !!(detail || spec || pendingNote || r.outcomeNote || r.reworkBrief || r.ingredientList);
               return (
-                <Fragment key={r.id}>
-                  <tr>
-                    {/* 🐞 **ลิงก์ทะเบียนเคยเป็นการ "ค้นด้วยข้อความ"** (`/database/formulas?q=<ชื่อ>`)
-                        ทั้งที่ `producedFormulaId` อยู่ในมือแล้ว ⇒ สูตรที่เปลี่ยนชื่อไปแล้ว
-                        กดแล้วหาไม่เจอ · ตอนนี้ชี้รายตัวด้วย id และโชว์ค่าสดจากทะเบียน */}
-                    <td>
-                      <RegistryCell
-                        registry={r.registry}
-                        fallback={r.name}
-                        // สิ่งที่ขอ (หมวด · กลิ่น) ของแถวที่ส่งสูตรแล้ว — ไม่พิมพ์เป็นบรรทัดที่สาม ชี้ค้างดูได้
-                        title={r.registry ? r.name : undefined}
-                        extra={(
-                          <>
-                            {r.rework && <span className="ui-badge">รอบแก้</span>}
-                            {/* ⭐ direction ที่เท่าไรของชุด (ม-157) — โผล่เฉพาะชุดที่มี ≥ 2 ตัว */}
-                            {r.direction && <span className="ui-badge">direction {r.direction.no}</span>}
-                            {/* ⭐ ผลลัพธ์จากลูกค้าเป็น **ชิปติดชื่อ** ไม่ใช่คอลัมน์
-                                (มติผู้ใช้ 2026-08-25) — มีค่าจริงแค่ 3% ของแถว ·
-                                คอลัมน์ที่ว่าง 97% กินที่ของสิ่งที่มีค่าทุกแถว */}
-                            {r.outcomeLabel && <StatusBadge tone={r.outcomeTone} label={r.outcomeLabel} />}
-                            {/* สิ่งที่ขอไว้ตอนเปิดใบ — สแนปช็อต ไม่ใช่ค่าทะเบียน
-                                ⚠️ ยังไม่มีสูตร = RD ยังไม่ส่ง บอกตรง ๆ ดีกว่าเว้นว่างให้เดา */}
-                            {/* ⭐ **ส่งสูตรแล้ว = สองบรรทัด** (รหัส · ชื่อสูตร จากทะเบียน · มติผู้ใช้ 2026-09-15) — บรรทัดที่สาม "หมวด · กลิ่น"
-                                พูดซ้ำกับชื่อสูตรเกือบทุกแถว (ชื่อสูตรมีชื่อกลิ่นอยู่แล้ว) และตัดบรรทัดกลางคำ · ย้ายไปเป็น tooltip ของก้อนชื่อ
-                                ⚠️ ยังไม่ส่ง = ยังไม่มีชื่อสูตร ⇒ บรรทัดนี้คือบรรทัดที่สองที่บอกสถานะงาน ต้องคงไว้ */}
-                            {!r.registry && (
-                              <div className={styles.note}>
-                                {r.reworkOf ? `แก้จาก ${r.reworkOf} · ยังไม่ส่งสูตร` : "ยังไม่มีสูตรออกมาจากแถวนี้"}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      />
-                    </td>
-                    {showQty && (
-                    <td className="num">
-                      {r.qty != null ? `${qty(r.qty)}${r.unit ? ` ${r.unit}` : ""}` : null}
-                    </td>
-                    )}
-                    {showPrice && <RowPriceCell prices={r.prices} />}
-                    <RowStageCell row={r} />
-                    {due && <RowDueCell row={r} due={due} show={showDue(r)} />}
-                    <RowIdleCell row={r} today={today} />
-                    {showActions && (
-                      <RowStepCell>
-                        {renderStep?.(r)}
-                        {/* แก้/ลบ อยู่ในเมนู `⋯` — เหตุผลเดียวกับ `BriefBoard` */}
-                        <RowActionMenu
-                          label={`การจัดการอื่นของ ${r.registry?.code || r.name}`}
-                          items={[
-                            onAddDirection && r.formulaId && !r.outcome && !r.settled && {
-                              id: "direction", icon: Plus, label: "ส่ง direction เพิ่ม",
-                              onClick: () => onAddDirection(r),
-                            },
-                            canEdit && r.registry && {
-                              id: "edit", icon: Pencil, label: "แก้ในทะเบียนสูตร",
-                              onClick: () => onEditRegistry(r.registry),
-                            },
-                            canDelete && {
-                              id: "delete", icon: Trash2, tone: "danger",
-                              label: "ลบรายการนี้",
-                              onClick: () => onDeleteRow(r),
-                            },
-                          ].filter(Boolean)}
-                        />
-                      </RowStepCell>
-                    )}
-                  </tr>
-
-                  {/* แถวขยาย — ของยาวของแถวนี้ · ขึ้นเสมอเมื่อมีเนื้อ ไม่มีปุ่มกาง */}
-                  {(detail || spec || r.outcomeNote || r.reworkBrief || r.ingredientList) && (
-                    <tr className={styles.detailRow}>
-                      <td colSpan={cols}>
-                        {spec && <ReadableText text={spec} lines={2} className={styles.note} />}
-                        <CustomerSay note={r.outcomeNote} brief={r.reworkBrief} />
-                        <IngredientSay text={r.ingredientList} />
-                        {detail}
-                      </td>
-                    </tr>
+                <DevBoardRow
+                  key={r.id}
+                  row={r}
+                  today={today}
+                  colSpan={cols}
+                  open={openRows.has(r.id)}
+                  onToggle={() => toggleRow(r.id)}
+                  // สิ่งที่ขอ (หมวด · กลิ่น) ของแถวที่ส่งสูตรแล้ว — ไม่พิมพ์เป็นบรรทัดที่สาม ชี้ค้างดูได้
+                  nameTitle={r.registry ? r.name : undefined}
+                  /* ⭐ direction ที่เท่าไรของชุด (ม-157) — โผล่เฉพาะชุดที่มี ≥ 2 ตัว · ป้าย "รอบแก้" ไม่ต้องแล้ว (ซ้อนใต้ตัวแม่) */
+                  nameExtra={r.direction ? <span className="ui-badge">direction {r.direction.no}</span> : null}
+                  detail={hasBody ? body : null}
+                  cells={(
+                    <>
+                      {showQty && (
+                        <td className="num">
+                          {r.qty != null ? `${qty(r.qty)}${r.unit ? ` ${r.unit}` : ""}` : null}
+                        </td>
+                      )}
+                      {showPrice && <RowPriceCell prices={r.prices} />}
+                      {due && <RowDueCell row={r} due={due} show={showDue(r)} />}
+                    </>
                   )}
-                </Fragment>
+                  step={showActions ? (
+                    <RowStepCell>
+                      {renderStep?.(r)}
+                      {/* แก้/ลบ อยู่ในเมนู `⋯` — เหตุผลเดียวกับ `BriefBoard` */}
+                      <RowActionMenu
+                        label={`การจัดการอื่นของ ${r.registry?.code || r.name}`}
+                        items={[
+                          onAddDirection && r.formulaId && !r.outcome && !r.settled && {
+                            id: "direction", icon: Plus, label: "ส่ง direction เพิ่ม",
+                            onClick: () => onAddDirection(r),
+                          },
+                          canEdit && r.registry && {
+                            id: "edit", icon: Pencil, label: "แก้ในทะเบียนสูตร",
+                            onClick: () => onEditRegistry(r.registry),
+                          },
+                          canDelete && {
+                            id: "delete", icon: Trash2, tone: "danger",
+                            label: "ลบรายการนี้",
+                            onClick: () => onDeleteRow(r),
+                          },
+                        ].filter(Boolean)}
+                      />
+                    </RowStepCell>
+                  ) : null}
+                />
               );
             })}
           </tbody>

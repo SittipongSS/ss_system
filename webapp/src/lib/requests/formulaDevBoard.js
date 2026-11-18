@@ -21,6 +21,7 @@ import { reworkBriefOf } from '@/lib/requests/rework';
 import { productDevLabel } from '@/lib/requests/rowLabel';
 import { formulaLabel } from '@/lib/master/registryLabel';
 import { formulaDevRowOrder } from '@/lib/requests/formulaDirections';
+import { rowLineage } from '@/lib/requests/devBoardRows';
 
 const OUTCOME_TONE = { confirmed: 'success', revise: 'neutral', rejected: 'danger' };
 
@@ -35,7 +36,8 @@ export function formulaDevBoard(items = []) {
   /* ⭐ แถวของกลิ่นเดียวกันอยู่ติดกัน + ป้าย direction (ม-157) — รอบแก้/direction เพิ่มเกิดทีหลังได้ `sortOrder` ท้ายสุด
      เรียงตามเลขล้วน ๆ แล้วไปอยู่ใต้กลิ่นอื่นทั้งใบ */
   const { order, direction } = formulaDevRowOrder(all);
-  return all
+  /* ⭐ ม-165 PR-2 — รอบแก้ซ้อนใต้ตัวแม่ (`rowLineage` ตัวเดียวกับตารางพัฒนากลิ่น) · ลำดับของกลิ่นเดียวกันยังมาจาก `formulaDevRowOrder` */
+  return rowLineage(all
     .filter((i) => i?.lineKind === 'product_dev')
     .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
     .map((item) => {
@@ -86,8 +88,11 @@ export function formulaDevBoard(items = []) {
         stageLabel: ROW_STAGE_LABELS[stage] || stage,
         stageTone: ROW_STAGE_TONES[stage] || 'neutral',
         settled: isRowSettled(item),
+        // ม-165 — สายพันธุ์ (ซ้อนรอบแก้ใต้ตัวแม่) + ยืนยันที่ระบุว่าแถม
+        parentId: item.derivedFromItemId || null,
+        freebie: !!item.freebieReason,
       };
-    });
+    }));
 }
 
 /**
