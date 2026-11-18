@@ -27,6 +27,13 @@ const LIST_PANEL_EXEMPT = [
     reason: "Skeleton ของหน้าลูกค้าคือการโหลดระเบียนลูกค้าครั้งแรกตอนเปิดหน้าเท่านั้น (fetchCustomerData ไม่เคยตั้ง loading กลับเป็น true) ⇒ แถบค้นหาของ CustomerHub ไม่ถูกถอดระหว่างพิมพ์ · ข้อมูลในแท็บโหลดผ่าน relations แยกและไม่สลับ Skeleton",
     decidedAt: "2026-11-13",
   },
+  {
+    file: "src/app/database/products/[id]/page.js",
+    rule: "LP6",
+    witness: { headlessSection: true },
+    reason: "Skeleton ของหน้าสินค้าคือการโหลดระเบียนสินค้าครั้งแรกตอนเปิดหน้าเท่านั้น (fetchProduct ไม่เคยตั้ง loading กลับเป็น true) ⇒ แถบค้นหาของแท็บการขาย (ProductSalesTab) ไม่ถูกถอดระหว่างพิมพ์ · QT/SO โหลดผ่าน relations แยกและไม่สลับ Skeleton · เหตุเดียวกับหน้าลูกค้า (หน้าสินค้าศูนย์รวม S1)",
+    decidedAt: "2026-11-18",
+  },
 ];
 
 /* ── ชุดไฟล์ตั้งต้นที่แช่แข็ง (U0-A · 2026-09-15) — ทะเบียนย้ายต้องเป็นสับเซตของชุดนี้เสมอ ──
