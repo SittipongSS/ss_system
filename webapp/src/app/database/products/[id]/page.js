@@ -37,7 +37,8 @@ import ProductSpecCard from "@/components/database/ProductSpecCard";
 import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
 import ProductSalesTab from "@/components/database/productHub/ProductSalesTab";
 import ProductBomTab from "@/components/database/productHub/ProductBomTab";
-import { productOrderRows, productSalesFacts } from "@/lib/master/productHub";
+import ProductOverviewTab from "@/components/database/productHub/ProductOverviewTab";
+import { productFollowUps, productOrderRows, productRecentEvents, productSalesFacts } from "@/lib/master/productHub";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
@@ -53,7 +54,7 @@ import { apiCache } from "@/lib/apiCache";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import ProductBomStatus from "@/components/database/ProductBomStatus";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { BOM_STATUS_META, bomSendBlocker, bomStatusOf, hasBomStep } from "@/lib/master/productBom";
+import { BOM_STATUS_META, bomSendBlocker, bomSendBlockerShort, bomStatusOf, hasBomStep } from "@/lib/master/productBom";
 import { useCapUser, useDepartment } from "@/lib/roleContext";
 import { canAccessRd } from "@/lib/permissions";
 import IngredientListText from "@/components/database/IngredientListText";
@@ -535,7 +536,7 @@ export default function ProductDetails() {
      รายการหมวดยังไม่มา/หมวดไม่อยู่ในทะเบียน = ไม่โชว์แถว (ไม่เดาว่าไม่ต้องจด) · ไม่มีแท็บของตัวเอง (เก็บเลขที่/ไฟล์ = พักไว้) */
   const fdaNotice = fdaNoticeState(product.categoryCode || categoryOf(product.fgCode), productTypes);
   const lanes = [
-    { key: "approval", label: "ข้อมูลสินค้า", value: approvalView.label, color: approvalView.color, tab: "spec" },
+    { key: "approval", label: "ข้อมูลสินค้า", value: approvalView.label, color: approvalView.color, tab: "info" },
     bomStep && { key: "bom", label: "BOM", value: bomMeta.label, color: bomMeta.color, tab: "bom" },
     exciseLane && { key: "excise", label: "สรรพสามิต", value: exciseLane.label, color: LANE_TONE_COLOR[exciseLane.tone] || LANE_TONE_COLOR.neutral, tab: "excise" },
     fdaNotice && {
@@ -614,6 +615,17 @@ export default function ProductDetails() {
     </>
   );
 
+  /* ── แท็บภาพรวม (S2 · มติ 4) — ตัวตัดสินกลางชุดเดียวกับการ์ดสรุป/การ์ดจัดการ ส่งเข้าตัวคำนวณ pure (lib/master/productHub.js)
+     ทะเบียนสรรพสามิต: เฉพาะผู้เห็นระบบภาษี (exciseRec เป็น null ให้คนอื่นอยู่แล้ว) · การขาย: เฉพาะผู้เห็นโมดูลขาย (sales.visible) */
+  const followUps = productFollowUps({
+    sales,
+    approval: approvalView.status,
+    rejectionReason: product.rejectionReason || "",
+    exciseRec,
+    bom: { step: bomStep, status: bomStatus, reason: product.bomReturnReason || "", blockerShort: bomStep ? bomSendBlockerShort(product) : "" },
+  });
+  const recentEvents = productRecentEvents({ product, sales, registrations: canViewTax ? regs : [] }, { unit });
+
   /* รายการในแผงทะเบียน — "คำขอใหม่" ของลูกค้าเจ้าของโผล่เฉพาะคนที่สร้างได้และสินค้าเข้าข่ายต้องขึ้นทะเบียน
      (ด่านเดียวกับปุ่ม "ขึ้นทะเบียนสรรพสามิต" เดิม) · คนดูอย่างเดียวเห็นแค่ทะเบียนที่มีอยู่ */
   const panelItems = regItems.filter((item) => item.key !== "new" || (canEditProducts && exciseRec?.kind === "unregistered"));
@@ -622,7 +634,8 @@ export default function ProductDetails() {
     { key: "overview", label: "ภาพรวม" },
     /* แท็บการขาย (มติ 5) — เฉพาะผู้เห็นโมดูลขาย · ป้าย = ใบสั่งขาย + ใบเสนอราคาฉบับล่าสุด (ตัวเดียวกับมุมมองตั้งต้นในแท็บ) */
     salesFacts && { key: "sales", label: `การขาย (${productOrderRows(sales).length + salesFacts.quotes.count})` },
-    { key: "spec", label: isFragranceOilCategory(product.categoryCode) ? "กลิ่นและบรรจุภัณฑ์" : "สเปคและสูตร" },
+    /* "ข้อมูลสินค้า" (S2 · มติ 4) = ข้อมูลหลัก + สเปคและสูตร — เดิมสองแท็บ (ภาพรวม · สเปคและสูตร/กลิ่นและบรรจุภัณฑ์) */
+    { key: "info", label: "ข้อมูลสินค้า" },
     /* แท็บ BOM (เจ้าของ 18/11/2026 "ต้องเพิ่มแท็บ BOM ด้วย") — เฉพาะ FG ที่มีขั้นลง BOM (กลุ่ม 01/02 · hasBomStep) ·
        บ้านเดียวของสถานะ/ความพร้อม/ของที่ส่ง RD · ปุ่มยังอยู่การ์ดจัดการ (มติ 8) */
     bomStep && { key: "bom", label: "BOM" },
@@ -698,7 +711,23 @@ export default function ProductDetails() {
       <div className={styles.tabsZone}>
         <Tabs id={TABS_ID} ariaLabel="หัวข้อของสินค้า" tabs={tabs} value={currentTab} onChange={setTab} />
 
+        {/* แท็บภาพรวม (S2 · มติ 4) — ต้องตามต่อ · ยอดสั่งซื้อรายเดือน (สลับมูลค่า/จำนวน) · ล่าสุด
+            ⚠️ การ์ด "ข้อมูลหลักสินค้า" เดิมย้ายไปหัวแท็บ "ข้อมูลสินค้า" (รวมกับสเปคและสูตร) */}
         {currentTab === "overview" && (
+          <div className={styles.pane}>
+            <ProductOverviewTab followUps={followUps} sales={sales} events={recentEvents} unit={unit} onGo={goTab} />
+          </div>
+        )}
+
+        {/* แท็บการขาย (มติ 5) — QT/SO ที่มีสินค้านี้ ตัวเลขของบรรทัดสินค้านี้บนใบ · เฉพาะผู้เห็นโมดูลขาย */}
+        {currentTab === "sales" && salesFacts && (
+          <div className={styles.pane}>
+            <ProductSalesTab sales={sales} unit={unit} />
+          </div>
+        )}
+
+        {/* แท็บข้อมูลสินค้า (S2 · มติ 4) = ข้อมูลหลัก (เดิมอยู่แท็บภาพรวม) + สูตรและบรรจุภัณฑ์ + สเปค + หมายเหตุเอกสาร — เรียงตามฟอร์มสินค้า */}
+        {currentTab === "info" && (
           <div className={styles.pane}>
             <DetailCard icon={Package} eyebrow="Product" title="ข้อมูลหลักสินค้า">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">
@@ -729,19 +758,6 @@ export default function ProductDetails() {
                 )}
               </div>
             </DetailCard>
-            {/* การ์ด "โครงการที่เกี่ยวข้อง" ถูกถอด (ยุบดีล/โครงการ P2d · project_products บน prod = 0 แถว) */}
-          </div>
-        )}
-
-        {/* แท็บการขาย (มติ 5) — QT/SO ที่มีสินค้านี้ ตัวเลขของบรรทัดสินค้านี้บนใบ · เฉพาะผู้เห็นโมดูลขาย */}
-        {currentTab === "sales" && salesFacts && (
-          <div className={styles.pane}>
-            <ProductSalesTab sales={sales} unit={unit} />
-          </div>
-        )}
-
-        {currentTab === "spec" && (
-          <div className={styles.pane}>
             {/* ⚠️ สถานะลง BOM ย้ายไปแท็บ BOM ของตัวเอง (18/11/2026) — ห้ามวางการ์ดสถานะซ้ำที่นี่ */}
             <DetailCard icon={Package} eyebrow="Product specification" title={isFragranceOilCategory(product.categoryCode) ? "กลิ่นและบรรจุภัณฑ์" : "สูตรและบรรจุภัณฑ์"}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-y-4 gap-x-6 text-xs">

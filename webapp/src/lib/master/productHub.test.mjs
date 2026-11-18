@@ -4,7 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { productOrderRows, productQuoteRows, productSalesFacts, productOrderText } from './productHub.js';
+import {
+  productFollowUps, productMonthlyOrders, productOrderRows, productQuoteRows, productRecentEvents, productSalesFacts, productOrderText,
+} from './productHub.js';
 import { productOrderStats } from './customerHub.js';
 import { productSalesRelations } from './productHubData.js';
 
@@ -166,4 +168,77 @@ test('ตัวโหลด: ไม่มีสิทธิ์โมดูลข
 test('ตัวโหลด: query พัง = throw ไม่ใช่ลิสต์ว่าง', async () => {
   const broken = { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ range: () => Promise.resolve({ data: null, error: new Error('boom') }) }) }) }) }) };
   await assert.rejects(() => productSalesRelations(broken, 'P1', { id: 'a', role: 'admin' }), /boom/);
+});
+
+/* ── แท็บภาพรวม (S2 · มติ 4) ─────────────────────────────────────────────────────────────────── */
+test('รายเดือน: 12 เดือนล่าสุดตามเวลาไทย · เดือนอนุมัติ (ถอย orderDate) · ใบที่นับเท่านั้น · มีทั้งมูลค่าและจำนวน', () => {
+  const now = new Date('2026-11-18T05:00:00Z');
+  const sales = {
+    visible: true,
+    quotations: [],
+    orders: [
+      // อนุมัติ 31 ต.ค. 20:00 UTC = 1 พ.ย. ตี 3 เวลาไทย ⇒ พ.ย.
+      { id: 'S1', status: 'approved', origin: 'pipeline', approvedAt: '2026-10-31T20:00:00Z', lines: [line()] },
+      { id: 'S2', status: 'approved', origin: 'historical', orderDate: '2026-08-17', lines: [line({ qty: 1000, lineTotal: 32800 })] },
+      { id: 'S3', status: 'pending_approval', origin: 'pipeline', orderDate: '2026-11-10', lines: [line()] },
+      { id: 'S4', status: 'approved', origin: 'pipeline', approvedAt: '2025-10-01T03:00:00Z', lines: [line()] },
+    ],
+  };
+  const m = productMonthlyOrders(sales, { now });
+  assert.equal(m.months.length, 12);
+  assert.equal(m.months[0].month, '2025-12');
+  assert.equal(m.months[11].month, '2026-11');
+  assert.deepEqual(m.months[11], { month: '2026-11', amount: 98400, qty: 3000, orders: 1 });
+  assert.deepEqual(m.months.find((x) => x.month === '2026-08'), { month: '2026-08', amount: 32800, qty: 1000, orders: 1 });
+  assert.deepEqual(m.total, { amount: 131200, qty: 4000, orders: 2 }, 'ใบเก่ากว่า 12 เดือนไม่เข้ากราฟ · รออนุมัติไม่นับ');
+});
+
+test('ต้องตามต่อ: ตีกลับก่อน → ทะเบียน → SO รออนุมัติ → รออนุมัติสินค้า → BOM · แต่ละรายการพาไปแท็บของเรื่อง', () => {
+  const sales = {
+    visible: true, quotations: [],
+    orders: [
+      { id: 'S1', orderNumber: 'SO-1', status: 'approved', origin: 'pipeline', lines: [line()] },
+      { id: 'S2', orderNumber: 'SO-2', status: 'pending_approval', origin: 'pipeline', lines: [line()] },
+      { id: 'S3', orderNumber: 'SO-3', status: 'revised', supersededById: 'S1', origin: 'pipeline', lines: [line()] },
+    ],
+  };
+  const items = productFollowUps({
+    sales, approval: 'rejected', rejectionReason: 'ราคาผิด',
+    exciseRec: { kind: 'unregistered' }, bom: { step: true, status: 'returned', reason: 'สูตรไม่ตรง' },
+  });
+  assert.deepEqual(items.map((i) => [i.key, i.tab]), [
+    ['approval-rejected', 'info'], ['bom-returned', 'bom'], ['excise-unregistered', 'excise'], ['orders-waiting', 'sales'],
+  ]);
+  assert.match(items[2].detail, /อนุมัติแล้ว 1 ใบ/);
+  assert.equal(items[2].tone, 'warning', 'มีใบสั่งขายแล้วแต่ยังไม่ขึ้นทะเบียน = เตือน');
+  assert.equal(items[3].title, 'ใบสั่งขายยังไม่อนุมัติ 1 ใบ', 'ใบที่ถูก Rev. แทนไม่นับ');
+});
+
+test('ต้องตามต่อ: BOM ยังไม่ส่ง บอกว่าพร้อมส่งหรือติดอะไร · ไม่มีขั้น BOM/ไม่เห็นภาษี/ไม่เห็นการขาย = ไม่มีรายการของเรื่องนั้น', () => {
+  assert.deepEqual(productFollowUps({ bom: { step: true, status: null, blockerShort: 'ยังไม่ผูกสูตร' } }).map((i) => [i.key, i.detail]), [['bom-blocked', 'ยังไม่ผูกสูตร']]);
+  assert.deepEqual(productFollowUps({ bom: { step: true, status: null, blockerShort: '' } }).map((i) => i.key), ['bom-ready']);
+  assert.deepEqual(productFollowUps({ bom: { step: false }, exciseRec: null, sales: { visible: false } }), []);
+  assert.equal(productFollowUps({ exciseRec: { kind: 'unregistered' } })[0].tone, 'neutral', 'ยังไม่มีใบสั่งขาย = แค่บอก ไม่เตือน');
+});
+
+test('ล่าสุด: ใหม่ไปเก่า · ตัดตาม limit · SO เฉพาะใบอนุมัติที่ยังมีผล · QT เฉพาะที่ลูกค้ารับ · ผู้ไม่เห็นการขายไม่มีเหตุการณ์ QT/SO', () => {
+  const product = { fgCode: 'FG-1', createdAt: '2026-07-01T04:00:00Z', approvedAt: '2026-11-02T10:47:00Z', bomSentAt: null };
+  const sales = {
+    visible: true,
+    orders: [
+      { id: 'S1', orderNumber: 'SO-1', status: 'approved', origin: 'pipeline', approvedAt: '2026-11-06T04:46:00Z', lines: [line()] },
+      { id: 'S2', orderNumber: 'SO-2', status: 'pending_approval', origin: 'pipeline', approvedAt: null, lines: [line()] },
+    ],
+    quotations: [
+      { id: 'Q1', quoteNumber: 'QT-1', status: 'accepted', acceptedAt: '2026-11-06T04:32:00Z', lines: [line()] },
+      { id: 'Q2', quoteNumber: 'QT-2', status: 'sent', lines: [line()] },
+    ],
+  };
+  const regs = [{ id: 'R1', customerName: 'สหมิตร', createdAt: '2026-11-03T02:00:00Z' }];
+  const events = productRecentEvents({ product, sales, registrations: regs }, { unit: 'ชิ้น' });
+  assert.deepEqual(events.map((e) => e.code), ['SO-1', 'QT-1', 'สรรพสามิต', 'FG-1', 'FG-1']);
+  assert.equal(events[0].text, 'อนุมัติใบสั่งขาย · 3,000 ชิ้น');
+  assert.equal(events[0].href, '/sa/sales-orders/S1');
+  assert.equal(productRecentEvents({ product, sales, registrations: regs }, { limit: 2 }).length, 2);
+  assert.deepEqual(productRecentEvents({ product, sales: { visible: false }, registrations: [] }).map((e) => e.key), ['p:approved', 'p:created']);
 });
