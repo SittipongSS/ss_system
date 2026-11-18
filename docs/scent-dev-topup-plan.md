@@ -1,6 +1,6 @@
 # ลูกค้าซื้อพัฒนากลิ่นเพิ่ม — ผูก SO ใบใหม่กับคำร้องเดิม (ทาง C)
 
-> สถานะ: **กำลังดำเนินการ** — PR-1 (#2051) · PR-2 (#2063) · PR-3 (#2065) merge แล้ว 17/11 · PR-4 (#2068) merge แล้ว 18/11 · mig 0436 รันบน prod 13/11 · **PR-5 (คิว SO รอเปิดคำร้อง) แบรนช์ `claude/scent-topup-p5`**
+> สถานะ: **รอตรวจ** — โค้ดครบ 5 PR merge แล้ว: PR-1 (#2051) · PR-2 (#2063) · PR-3 (#2065) 17/11 · PR-4 (#2068) · PR-5 (#2070) 18/11 · mig 0436 รันบน prod 13/11 · **เหลือ:** ขึ้น prod แล้วไล่หัวข้อ "หลังขึ้น prod" 4 ข้อ (ทำผ่านจอทั้งหมด) + UAT ครบเส้นหนึ่งรอบ ⇒ เสร็จสมบูรณ์
 
 **ร่าง:** 13/11/2026 จากฐาน `origin/main` `81a37536` · **มติ:** เจ้าของตอบทีละข้อในแชต 13/11/2026 (6 ข้อ ดูตาราง "มติ")
 **บันทึกมติ:** ม-164 ใน `docs/requests-rd-decision-log.md` §35
@@ -280,7 +280,7 @@ PR-1 มีแล้ว: `currentRevisionOf` · `revisionAncestorIds` · `scentO
 
 ### PR-2 แนบ/ถอด SO จากหน้าคำร้อง
 
-> ทำแล้ว (แบรนช์ `claude/scent-topup-p2`): `lib/requests/scentOrderAttach.js` (ด่าน · ตัวเลขก่อน/หลัง · ด่านถอด) ·
+> ทำแล้ว (#2063 merge แล้ว · แบรนช์ `claude/scent-topup-p2`): `lib/requests/scentOrderAttach.js` (ด่าน · ตัวเลขก่อน/หลัง · ด่านถอด) ·
 > `scentOrderAttachAdmin.js` (ตัวเลือก · แนบ · ถอด · ปลดตอนยกเลิก · ตัวเขียนรับเป็นพารามิเตอร์) · route
 > `api/sa/requests/[id]/sales-orders` (GET ตัวเลือก · POST แนบ) + `[salesOrderId]` (DELETE ถอด) · การ์ด `ScentOrdersCard`
 > บนหน้าคำร้อง · เธรดชนิดใหม่ `so_attach` / `so_detach` · ยกเลิกคำร้องปลด SO แนบ
@@ -297,7 +297,7 @@ PR-1 มีแล้ว: `currentRevisionOf` · `revisionAncestorIds` · `scentO
 
 ### PR-3 คอนเฟิร์มเกิน + ระบุแถม + เปลี่ยนไม่เอาเป็นคอนเฟิร์ม
 
-> ทำแล้ว (แบรนช์ `claude/scent-topup-p3`): `lib/requests/scentOverPaid.js` (ด่าน `over_paid` · ระบุแถมย้อนหลัง · เกินที่ยังไม่ระบุ) ·
+> ทำแล้ว (#2065 merge แล้ว · แบรนช์ `claude/scent-topup-p3`): `lib/requests/scentOverPaid.js` (ด่าน `over_paid` · ระบุแถมย้อนหลัง · เกินที่ยังไม่ระบุ) ·
 > `hops.js` ก้าว `reconfirm` / `freebie` (+ `freebieReason` ตอนคอนเฟิร์ม) · `soReconcile` นับแถม (`freebies` · `unexplained` ·
 > `soReconcileTone`) · ด่านปิดใบ "เกินที่ยังไม่ระบุ" (ไม่เปิดทางยกเลิกใบที่ตอบแล้ว · ใบไม่มี SO ไม่โดน) · route แถวคำร้อง ·
 > โมดัลก้าวมีช่องเหตุผล + กล่องเตือนเกินที่จ่าย + ปุ่มไปแนบใบสั่งขาย · เมนู ⋯ ของแถวพัฒนากลิ่น "เปลี่ยนเป็นคอนเฟิร์ม" / "ระบุว่าเป็นของแถม"
@@ -311,7 +311,7 @@ PR-1 มีแล้ว: `currentRevisionOf` · `revisionAncestorIds` · `scentO
 
 ### PR-4 เปิดใบใหม่ต่อจากใบเดิม
 
-> ทำแล้ว (แบรนช์ `claude/scent-topup-p4`): `lib/requests/scentContinue.js` (ด่านใบเดิม · บรีฟต้องมีกลิ่นตั้งต้นเมื่อขาย 03-010 ล้วน ·
+> ทำแล้ว (#2068 merge แล้ว · แบรนช์ `claude/scent-topup-p4`): `lib/requests/scentContinue.js` (ด่านใบเดิม · บรีฟต้องมีกลิ่นตั้งต้นเมื่อขาย 03-010 ล้วน ·
 > เรียงกลิ่นใบเดิมขึ้นก่อน) · `scentContinueAdmin.js` (ตรวจใบเดิม · ตัวเลือก · ตรวจเจ้าของกลิ่นตั้งต้น · ลิงก์สองทาง) ·
 > `GET /api/sa/requests/continue-candidates` · POST/PATCH (update · pdr) เก็บ `continuesRequestId` + `sourceScentId` · ด่านส่ง ·
 > ช่อง `ContinueRequestField` ในฟอร์ม (สร้าง/แก้ตัวเดียวกัน) · "แก้จากกลิ่น" ในบรีฟ (`PdrForm`) · ส่งกลิ่นเติม "แก้มาจากกลิ่น" จากบรีฟ
@@ -324,7 +324,7 @@ PR-1 มีแล้ว: `currentRevisionOf` · `revisionAncestorIds` · `scentO
 
 ### PR-5 คิว SO รอคำร้อง
 
-> ทำแล้ว (แบรนช์ `claude/scent-topup-p5`): `lib/requests/scentOrderQueue.js` (แถวคิว · ขอบเขต · ด่านปัดออก/คืนเข้าคิว ·
+> ทำแล้ว (#2070 merge แล้ว · แบรนช์ `claude/scent-topup-p5`): `lib/requests/scentOrderQueue.js` (แถวคิว · ขอบเขต · ด่านปัดออก/คืนเข้าคิว ·
 > ลิงก์เปิดใบใหม่) · `scentOrderQueueAdmin.js` (โหลดคิวทั้งทะเบียน · ปัดออก · คืนเข้าคิว · audit รับเป็นพารามิเตอร์) ·
 > `GET /api/sa/scent-orders/queue` · `POST/DELETE /api/sa/scent-orders/[salesOrderId]/dismissal` · การ์ด `ScentOrderQueueCard`
 > บน `/requests` (ใต้ "เริ่มที่นี่") · ลิงก์รองบนเส้นเดินงานของหน้า SO · ฟอร์มเปิดใบรับ `?continues=`
