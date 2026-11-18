@@ -235,3 +235,20 @@ test('แผงงวด: งวดที่จ่ายแล้วไม่ม
   assert.ok(cell.includes('row.paidOn ? <small>จ่าย'), 'บรรทัด "จ่าย …" ยังอยู่');
   assert.ok(code('lib/sales/serviceSetup.js').includes('!installmentCustomerPaid(row)'), 'ด่านยื่นใช้ตัวตัดสินเดียวกัน');
 });
+
+// ── ขอใบวางบิลแล้ว: เติมกำหนดชำระที่ว่างได้ (มติเจ้าของ 18/11/2026) ───────────────────────────────────────
+test('ต่อสาย: ช่องกำหนดชำระของแผงงวดถามล็อกรายช่อง — งวดที่ขอใบวางบิลแล้วแต่ไม่มีกำหนดชำระกรอกได้', () => {
+  const cell = slice(code(PANEL), 'data-label="กำหนดชำระ / จ่ายจริง"', '</td>');
+  assert.ok(cell.includes('dateMode.canEdit(row, "due")'), 'เซลล์กำหนดชำระต้องถามช่อง "due" ไม่ใช่ทั้งแถว');
+  const dateCell = code('components/salesPlanning/installmentDates/InstallmentDateCell.js');
+  assert.ok(dateCell.includes('mode.lockFor(row, field)'), 'ตัวช่องถามล็อกรายช่อง');
+  const hook = code('components/salesPlanning/installmentDates/useInstallmentDateMode.js');
+  assert.ok(hook.includes('l?.dueOpen && field === "due" ? null : l'), 'เปิดเฉพาะช่องกำหนดชำระ');
+  const route = code('lib/sales/installmentScheduleMany.js');
+  assert.ok(route.includes('requested: requestedIds.has(row.id) && !requestDueFillOnly(row, patch)'), 'route ตัดสินด้วยตัวเดียวกับจอ');
+});
+
+test('ต่อสาย: แผงงวดเปิดโหมดแก้วันเมื่อเหลือแค่งวดที่เติมกำหนดชำระได้ (dueOpen) — ไม่งั้นไม่มีช่องให้กรอก', () => {
+  const panel = code(PANEL);
+  assert.ok(panel.includes('saved.some((row) => { const lock = dateLockOf(row); return !lock || lock.dueOpen; })'));
+});

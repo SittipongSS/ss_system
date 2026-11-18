@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   SCHEDULE_MANY_MAX, SCHEDULE_MANY_ROW_STALE, billingFlagShapeError, installmentDateLock, installmentsAfterWrite,
   scheduleExceptionSummary, scheduleExceptionText, scheduleExceptionsOf, scheduleManyCheck,
-  scheduleManyConflictMessage, scheduleManyShapeError, scheduleManyStoppedMessage, writeScheduleMany,
+  scheduleManyConflictMessage, scheduleManyShapeError, scheduleManyStoppedMessage, writeScheduleMany, requestDueFillOnly,
 } from './installmentScheduleMany.js';
 import { NO_BILLING_WRITE_ERROR, RULE_UNAVAILABLE_ERROR } from './billingRule.js';
 import { BILLING_V4_SCHEMA_MISSING } from './billingPolicySchema.js';
@@ -754,4 +754,28 @@ test('⭐ route: schedule-many พาช่วงครอบลงงวดเ�
     ['I1', '2026-11-05', '2026-11-01', '2026-11-30', false],
     ['I2', undefined, '2026-12-01', '2026-12-31', false],
   ]);
+});
+
+/* ⭐ มติเจ้าของ 18/11/2026 — งวดที่ขอใบวางบิลแล้วเติมกำหนดชำระที่ยังว่างได้ (ด่านยื่นใบแพ็คเกจขอช่องนี้ · เดิมล็อกทั้งแถว = ทางตัน)
+   ช่องอื่น (วันวางบิล/รอเหตุการณ์/ติ๊ก) และกำหนดชำระที่มีอยู่แล้วยังล็อก — บัญชีออกใบตามวันเดิม */
+test('scheduleManyCheck: ขอใบวางบิลแล้ว — เติมกำหนดชำระที่ว่างได้ · ช่องอื่น/วันเดิมยังล็อก', () => {
+  const live = rows();
+  const requestedIds = new Set(['I1', 'I2']);
+  // I2: ไม่มีวันวางบิล/กำหนดชำระ — ส่งเต็มรูปแบบที่จอส่ง (ทุกช่องวัน) แต่เปลี่ยนแค่กำหนดชำระ
+  const fill = scheduleManyCheck(live, [sent('I2', { billingDate: null, billingEvent: null, dueDate: '2026-11-05' })], { requestedIds });
+  assert.equal(fill.error, undefined, 'ว่าง → มีวัน ผ่าน');
+  assert.deepEqual(fill.rows.map((r) => [r.id, r.patch]), [['I2', { dueDate: '2026-11-05' }]]);
+  // ใส่วันวางบิลพร้อมกัน = ล็อกเหมือนเดิม
+  const both = scheduleManyCheck(live, [sent('I2', { billingDate: '2026-10-20', dueDate: '2026-11-05' })], { requestedIds });
+  assert.equal(both.status, 409);
+  assert.match(both.conflicts[0].reason, /^ขอใบวางบิลแล้ว/);
+  // มีกำหนดชำระอยู่แล้ว (I1) — ย้ายวันไม่ได้
+  assert.equal(scheduleManyCheck(live, [sent('I1', { dueDate: '2026-11-10' })], { requestedIds }).status, 409);
+
+  assert.equal(requestDueFillOnly({ dueDate: null, billingEvent: null }, { dueDate: '2026-11-05' }), true);
+  assert.equal(requestDueFillOnly({ dueDate: null, billingEvent: null }, { dueDate: null }), false, 'ล้างไม่ใช่เติม');
+  assert.equal(requestDueFillOnly({ dueDate: null, billingEvent: 'หลังติดตั้ง' }, { dueDate: '2026-11-05' }), false, 'รอเหตุการณ์');
+  assert.equal(requestDueFillOnly({ dueDate: null }, { dueDate: '2026-11-05', billingSkip: true }), false, 'แตะติ๊ก');
+  assert.equal(requestDueFillOnly({ dueDate: null }, { dueDate: '2026-11-05', coversFrom: '2026-11-01' }), true,
+    'ช่วงครอบเป็นกลุ่มของมันเอง (ด่าน coverage) ไม่ใช่วันงวด');
 });

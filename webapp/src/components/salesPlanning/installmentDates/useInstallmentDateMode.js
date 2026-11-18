@@ -86,6 +86,12 @@ export default function useInstallmentDateMode({
   const lockCache = useMemo(() => new Map(sorted.map((row) => [row.id, lockOf(row)])), [sorted, lockOf]);
   const lock = useCallback((row) => (row ? lockCache.get(row.id) ?? lockOf(row) : null), [lockCache, lockOf]);
   const isLocked = useCallback((row) => Boolean(lock(row)), [lock]);
+  /* ล็อกรายช่อง — งวดที่ขอใบวางบิลแล้วแต่ยังไม่มีกำหนดชำระ (`dueOpen` · มติเจ้าของ 18/11/2026) เปิดเฉพาะช่องกำหนดชำระ
+     แถวยังนับว่าล็อก (`isLocked`) — แผงเติม/เมนูแถว/ติ๊ก/คำเตือนไม่แตะงวดนี้ · ร่างผ่าน `draftChanges` เฉพาะเติมกำหนดชำระที่ว่าง */
+  const lockFor = useCallback((row, field) => {
+    const l = lock(row);
+    return l?.dueOpen && field === "due" ? null : l;
+  }, [lock]);
   const current = useCallback((row) => currentDates(row, drafts), [drafts]);
   const editable = sorted.filter((row) => !isLocked(row));
   const { changes, dropped } = draftChanges(sorted, drafts, lock);
@@ -116,7 +122,8 @@ export default function useInstallmentDateMode({
   /* แถบบันทึก/คำบนการ์ดขึ้นเมื่อมีร่าง หรือแผงเติมเปิด (ไม่มีโหมดให้เข้าแล้ว — รุ่นสองช่องแยก) · หน้าสร้างเปิดตลอด */
   const active = create || dirty || Boolean(fill);
   /* ช่องของงวดนี้แก้ได้ไหม — ไม่มีสิทธิ์ / ร่างช่วงครอบค้าง (`blocker`) / งวดล็อก = ตัวหนังสือเดิม */
-  const canEdit = useCallback((row) => Boolean(row) && available && !blocker && !isLocked(row), [available, blocker, isLocked]);
+  const canEdit = useCallback((row, field = null) => Boolean(row) && available && !blocker
+    && !(field ? lockFor(row, field) : isLocked(row)), [available, blocker, isLocked, lockFor]);
   /* route รับครั้งละไม่เกิน SCHEDULE_MANY_MAX งวด (400) — บอกก่อนกด ไม่ปล่อยให้ตีกลับแล้วไม่มีทางแบ่ง
      (เติมแบบ "จัดใหม่งวดที่มีวันแล้วด้วย" บนสัญญาเกิน 60 งวด) */
   const saveBlocker = edits.length > SCHEDULE_MANY_MAX
@@ -294,7 +301,7 @@ export default function useInstallmentDateMode({
 
   return {
     available, active, blocker, kind, fillKind, ruleValue, creditDays, todayIso, holidays, busy, create,
-    rows: sorted, editable, drafts, current, lock, isLocked, canEdit, changes, dropped: [...dropped, ...coversDropped], changedIds,
+    rows: sorted, editable, drafts, current, lock, lockFor, isLocked, canEdit, changes, dropped: [...dropped, ...coversDropped], changedIds,
     warnings, replaced, saveBlocker, emptyCount, dirty, edits,
     cover, setCover, coverEdited, covers, coverErrors,
     cancel, save, setValue, revert, rowMode, focusField,
