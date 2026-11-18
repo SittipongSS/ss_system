@@ -136,7 +136,7 @@ export async function productRelations(supabase, productId, user) {
   // order_items→orders มี FK จริง (cascade) → embed ปลอดภัย.
   const [regRes, itemRes, sales] = await Promise.all([
     supabase.from('excise_registrations')
-      .select('id, fgCode, customerName, status, approvalNumber, customerId, team, ownerId')
+      .select('id, fgCode, customerName, status, approvalNumber, customerId, team, ownerId, createdAt, rejectionReason')
       .eq('productId', productId).order('createdAt', { ascending: false }),
     supabase.from('order_items')
       .select('orderId, quantity, order:orders(id, quotationRef, status, customerName, totalTax, customerId, team, ownerId)')
