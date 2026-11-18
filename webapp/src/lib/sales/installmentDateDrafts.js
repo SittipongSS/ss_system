@@ -22,7 +22,7 @@
 //   · ไม่มีประมาณการ ไม่มีป้าย "ประมาณการ" ที่ไหนเลย (มติ Q3)
 
 import { addDays, daysBetween } from './paymentCoverage.js';
-import { installmentDateLock } from './installmentScheduleMany.js';
+import { installmentDateLock, requestDueFillOnly } from './installmentScheduleMany.js';
 import {
   BILLING_EVENT_MAX, CALENDAR_MANUAL_HINT, billingRounds, calendarGapFor, calendarGapText, calendarStatus, creditCadenceSuggestion,
   cutoffInfo, dateModeOf, dueDateForBilling, dueSourceOf as dueSourceOfRule, formatBillingDate,
@@ -118,14 +118,25 @@ export function draftChanges(rows = [], drafts = {}, lockOf = () => null) {
     const row = byId.get(id);
     if (!row) { dropped.push({ row: null, id, reason: 'งวดนี้ไม่อยู่ในใบแล้ว' }); continue; }
     const lock = lockOf(row);
-    if (lock) { dropped.push({ row, id, reason: lock.reason }); continue; }
+    if (lock && !lock.dueOpen) { dropped.push({ row, id, reason: lock.reason }); continue; }
     if (sameDates(draft, row)) continue;
+    /* งวดที่ขอใบวางบิลแล้ว (`dueOpen`) — ร่างผ่านได้เฉพาะ "เติมกำหนดชำระที่ว่าง" ช่องอื่นต้องเท่าเดิม (ตัวเดียวกับ route) */
+    if (lock && !requestDueFillOnly(row, changedDateFields(row, draft))) { dropped.push({ row, id, reason: lock.reason }); continue; }
     const base = String(draft.baseUpdatedAt || '');
     const stale = Boolean(base && row.updatedAt && base !== String(row.updatedAt));
     changes.push({ row, from: datesOf(row), to: datesOf(draft), stale });
   }
   const bySeq = (a, b) => Number(a.row?.seq ?? 0) - Number(b.row?.seq ?? 0);
   return { changes: changes.sort(bySeq), dropped: dropped.sort(bySeq) };
+}
+
+/* ช่องวันที่ร่างต่างจากฐาน — รูปเดียวกับ patch ที่ route คิด (ใช้ถาม `requestDueFillOnly`) */
+function changedDateFields(row, draft) {
+  const a = datesOf(row);
+  const b = datesOf(draft);
+  const out = {};
+  for (const key of ['billingDate', 'billingEvent', 'dueDate', 'billingSkip']) if (a[key] !== b[key]) out[key] = b[key];
+  return out;
 }
 
 /* งวดที่กำหนดชำระในฐานถูกแทน/ล้าง — ป้ายเลยกำหนดและด่านนัดช่างนับจากวันใหม่ทันที (ต้องบอกก่อนบันทึก) */
@@ -409,7 +420,9 @@ export function dateLockView(row, {
   }
   if (requested) {
     const [reason, ...rest] = String(installmentDateLock(row, { order, requested: true, requestNo }) || '').split(' — ');
-    return { reason, hint: rest.join(' — ') };
+    /* ⭐ `dueOpen` — กำหนดชำระที่ยังว่างเติมได้ (มติเจ้าของ 18/11/2026 · `requestDueFillOnly` ตัวเดียวกับ route) · ช่องอื่นยังล็อก */
+    const dueOpen = !datesOf(row).dueDate && !datesOf(row).billingEvent;
+    return { reason, hint: rest.join(' — '), ...(dueOpen ? { dueOpen: true } : {}) };
   }
   if (gateError) return { reason: gateError, hint: '' };
   return null;

@@ -746,3 +746,26 @@ test('⭐ scheduleManyRows + ช่วงครอบ: งวดเดียว�
   ]);
   assert.deepEqual(scheduleManyRows(dates), scheduleManyRows(dates, { covers: [] }), 'ไม่มีร่างช่วงครอบ = แถวเดิมทุกตัว');
 });
+
+/* ⭐ มติเจ้าของ 18/11/2026 — จอ: งวดที่ขอใบวางบิลแล้วแต่ยังไม่มีกำหนดชำระ เปิดช่องกำหนดชำระ (`dueOpen`) · ร่างอื่นทิ้งพร้อมเหตุ */
+test('dateLockView + draftChanges: ขอใบวางบิลแล้ว — ร่างเติมกำหนดชำระที่ว่างผ่าน · แตะวันวางบิล/วันเดิม = ทิ้ง', () => {
+  const empty = { id: 'A', seq: 1, status: 'pending', billingDate: null, billingEvent: null, dueDate: null, updatedAt: 'T' };
+  const dated = { id: 'B', seq: 2, status: 'pending', billingDate: null, billingEvent: null, dueDate: '2026-12-01', updatedAt: 'T' };
+  const lockOf = (row) => dateLockView(row, { requested: true, requestNo: 'RQ-DF-1' });
+  assert.equal(lockOf(empty).dueOpen, true);
+  assert.match(lockOf(empty).reason, /^ขอใบวางบิลแล้ว · RQ-DF-1/);
+  assert.equal(lockOf(dated).dueOpen, undefined, 'มีกำหนดชำระแล้ว = ล็อกทั้งแถว');
+  assert.equal(dateLockView({ ...empty, status: 'reported' }, { requested: true }).dueOpen, undefined, 'แจ้งชำระแล้ว = ล็อกด้วยเหตุนั้นก่อน');
+
+  const ok = draftChanges([empty, dated], { A: { ...EMPTY_DATES, dueDate: '2026-11-05' } }, lockOf);
+  assert.deepEqual(ok.changes.map((c) => [c.row.id, c.to.dueDate]), [['A', '2026-11-05']]);
+  assert.deepEqual(ok.dropped, []);
+  const bad = draftChanges([empty, dated], {
+    A: { ...EMPTY_DATES, billingDate: '2026-10-20', dueDate: '2026-11-05' },
+    B: { ...EMPTY_DATES, dueDate: '2026-12-15' },
+  }, lockOf);
+  assert.deepEqual(bad.changes, []);
+  assert.deepEqual(bad.dropped.map((d) => d.id), ['A', 'B']);
+  // ร่างที่เท่าฐาน (พิมพ์แล้วลบ) ไม่ใช่ทั้งร่างและไม่ใช่ของทิ้ง
+  assert.deepEqual(draftChanges([empty], { A: { ...EMPTY_DATES } }, lockOf), { changes: [], dropped: [] });
+});
