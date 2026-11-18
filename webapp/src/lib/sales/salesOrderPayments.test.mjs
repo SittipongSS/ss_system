@@ -11,6 +11,7 @@ import {
   installmentConfirmOutlook,
   installmentDisplayStatus,
   installmentPlanDrift,
+  installmentCustomerPaid,
   installmentPrepaid,
   installmentReportDoneMessage,
   installmentReportOutcome,
@@ -1897,4 +1898,15 @@ test('evidence-add: ใบยกเลิก/ถูกออก Rev. ทับ/�
   assert.equal(installmentActionError(reportedRow(), 'evidence-add', FN_ROLE, opts(CANCELLED_SO)), PIPELINE_CANCELLED_LOCK);
   assert.match(installmentActionError(reportedRow(), 'evidence-add', SA, opts({ ...APPROVED_SO, status: 'revised' })), /ย้ายไป/);
   assert.match(installmentActionError(reportedRow(), 'evidence-add', SA, { orderTotal: 0 }), /ยอดรวม 0 บาท/);
+});
+
+/* มติเจ้าของ 18/11/2026 — จ่ายแล้ว = มีวันชำระ (ตัวตัดสินเดียวของด่านยื่นใบแพ็คเกจ + เซลล์กำหนดชำระบนแผงงวด) */
+test('installmentCustomerPaid: มีวันชำระและบัญชีไม่ได้ตีกลับ = จ่ายแล้ว ไม่ว่าจะรับรองหรือยัง', () => {
+  for (const status of ['pending', 'reported', 'confirmed']) {
+    assert.equal(installmentCustomerPaid({ status, paidOn: '2026-11-17' }), true, status);
+  }
+  assert.equal(installmentCustomerPaid({ status: 'rejected', paidOn: '2026-11-17' }), false, 'บัญชีตีกลับ = เงินยังไม่เข้า');
+  assert.equal(installmentCustomerPaid({ status: 'pending', paidOn: null }), false);
+  assert.equal(installmentCustomerPaid({ status: 'pending', paidOn: '  ' }), false);
+  assert.equal(installmentCustomerPaid(null), false);
 });

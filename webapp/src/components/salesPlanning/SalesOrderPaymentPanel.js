@@ -82,7 +82,7 @@ import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   billingRequestDead, billingRequestedIds, installmentActionError, installmentBillingRequested, installmentConfirmOutlook,
   installmentDisplayStatus, installmentEvidenceRoom, installmentPlanDrift,
-  installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentScheduleAllowed, installmentStartBlock,
+  installmentCustomerPaid, installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentScheduleAllowed, installmentStartBlock,
   installmentUnconfirmOutcome,
   installmentVoid, installmentVoidNote, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
   revisedInstallmentsNote, strandedInstallment,
@@ -1642,7 +1642,10 @@ export default function SalesOrderPaymentPanel({
                           <InstallmentDateCell mode={dateMode} row={row} field="due" />
                           {overdue ? <small className={styles.overdue}>เลยกำหนด</small> : null}
                         </>
-                      ) : (
+                      ) : !row.dueDate && !row.preview && !row.billingEvent && installmentCustomerPaid(row) ? null
+                        /* ⭐ มติเจ้าของ 18/11/2026: จ่ายแล้ว = ใช้วันชำระ ⇒ ไม่มีกำหนดชำระก็ไม่ขึ้น "ยังไม่กำหนด" (อ่านเหมือนข้อมูลขาด)
+                           เหลือ "จ่าย …" + ผู้แจ้ง/ผู้รับรองข้างล่าง · ตัวตัดสินเดียวกับด่านยื่น (`installmentCustomerPaid`) */
+                      : (
                         <>
                           <span className={styles.dateLine}>
                             <span className={overdue ? styles.overdue : undefined}>

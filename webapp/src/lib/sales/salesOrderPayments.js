@@ -183,6 +183,16 @@ export function installmentDisplayStatus(row) {
    ⚠️ `refundedAt` อ่านจาก `select('*')` — ก่อนรัน 0378 คอลัมน์ไม่มี (undefined) = ยังไม่คืน ⇒ จอ/ทะเบียนไม่พัง */
 export const installmentRefunded = (row) => Boolean(String(row?.refundedAt ?? '').trim());
 
+/* ── ลูกค้าจ่ายงวดนี้แล้ว (มติเจ้าของ 18/11/2026) ─────────────────────────────────────────────
+   งวดมีสามวัน — วันวางบิล · กำหนดชำระ · วันชำระ · **จ่ายแล้ว = มีวันชำระ ⇒ ไม่ต้องมีกำหนดชำระ**
+   ⭐ ตัวตัดสินเดียวของ: ด่านยื่นใบแพ็คเกจ (`due_missing` · serviceSetup.js · #2073) · เซลล์ "กำหนดชำระ / จ่ายจริง" บนแผงงวด
+     (จ่ายแล้วไม่มีกำหนดชำระ = ไม่ขึ้น "ยังไม่กำหนด" · 18/11 มี 120 จาก 235 งวดที่จ่ายแล้ว)
+   · บัญชีตีกลับ (`rejected`) = เงินยังไม่เข้าจริง ⇒ เหมือนยังไม่จ่าย (paidOn ยังค้างบนแถว)
+   · ถอนการแจ้ง (`withdraw`) ล้าง paidOn อยู่แล้ว ⇒ กลับเป็นยังไม่จ่ายเอง
+   ⚠️ ไม่ถามบัญชีรับรอง — งวดร่างไปถึงบัญชีต่อเมื่อใบอนุมัติ (installmentReportOutcome) */
+export const installmentCustomerPaid = (row) => /^\d{4}-\d{2}-\d{2}$/.test(String(row?.paidOn ?? '').trim().slice(0, 10))
+  && String(row?.status ?? '').trim() !== 'rejected';
+
 export function strandedInstallment(row, order) {
   if (!row || order?.status !== 'cancelled') return false;
   if (isOpeningInstallment(row)) return false;

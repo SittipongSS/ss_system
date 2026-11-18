@@ -225,3 +225,13 @@ test('จอ evidence-add: ปุ่มถามด่านเดียวก�
   assert.ok(page.includes('if (action === "report" || action === "evidence-add") {'),
     'ไม่อัปไฟล์ก่อน = ส่ง evidence ว่าง ⇒ 400 ทุกครั้ง');
 });
+
+// ── จ่ายแล้ว = ใช้วันชำระ (มติเจ้าของ 18/11/2026) ────────────────────────────────────────────────────
+test('แผงงวด: งวดที่จ่ายแล้วไม่มีกำหนดชำระ ไม่ขึ้น "ยังไม่กำหนด" — ถามตัวตัดสินเดียวกับด่านยื่น', () => {
+  const cell = slice(code(PANEL), 'data-label="กำหนดชำระ / จ่ายจริง"', '</td>');
+  assert.ok(cell.includes('!row.dueDate && !row.preview && !row.billingEvent && installmentCustomerPaid(row) ? null'),
+    'จ่ายแล้วไม่มีกำหนดชำระ = ไม่ขึ้นบรรทัดกำหนดชำระ');
+  assert.ok(cell.indexOf('installmentCustomerPaid(row) ? null') < cell.indexOf('"ยังไม่กำหนด"'), 'ด่านต้องมาก่อนคำ "ยังไม่กำหนด"');
+  assert.ok(cell.includes('row.paidOn ? <small>จ่าย'), 'บรรทัด "จ่าย …" ยังอยู่');
+  assert.ok(code('lib/sales/serviceSetup.js').includes('!installmentCustomerPaid(row)'), 'ด่านยื่นใช้ตัวตัดสินเดียวกัน');
+});
