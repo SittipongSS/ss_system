@@ -82,10 +82,8 @@ import { REQUEST_STATUS_LABELS, requestAwaitingDue, requestStatusView } from "@/
 import { requestActorSide, requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
-import { soReconcile, soReconcileText, soReconcileTone } from "@/lib/requests/soReconcile";
 import { overPaidAfterConfirm, unexplainedOver } from "@/lib/requests/scentOverPaid";
 import { briefSourceMissingError } from "@/lib/requests/scentContinue";
-import { scentSlotLinesOf, scentSlotNote } from "@/lib/requests/scentOrderLinks";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
 import { deliveryRowLabel, normalizeDeliveryRows, normalizeFormulaDelivery } from "@/lib/requests/delivery";
@@ -974,25 +972,9 @@ export default function RequestDetailPage() {
     }).error;
   })();
 
-  // ⚠️ คืน null เมื่อ "ยังไม่มีอะไรให้เทียบ" — แถบจะไม่ขึ้นเลย ดีกว่าขึ้นแถบเขียว
-  // ว่าครบแล้วตอนที่ยังไม่มีใครคอนเฟิร์มอะไร
-  /* ⚠️ ตัวเลขชุดเดียวกับด่านปิด (`closeRequestError` · ม-146) — นับเฉพาะบรรทัดออกแบบกลิ่นของ SO
-     ไม่งั้นการ์ดบอก "3 จาก 13" ขณะที่ด่านตัดสินจาก 3 จาก 3 (หรือกลับกัน) */
-  /* ⭐ ม-164 — ตัวหารรวม SO ที่แนบ (`scentSlotLinesOf` ตัวเดียวกับด่านปิด) · มี SO แนบ = ต่อท้ายว่าแตกมาจากไหน
-     และรอบแก้ที่ซื้อ/ใช้ · ไม่มี SO แนบ (ทุกใบวันนี้) = ข้อความเดิมเป๊ะ */
-  const reconcile = soReconcile({ lines: scentSlotLinesOf(req), items: req.items });
-  const slotNote = scentSlotNote(req.scentSlots);
-  // ⭐ **ก้อนเดียว กระจายสองที่** — เนื้อกลางหน้า (`KindDetail`) กับการ์ดขวา
-  // (`KindPanel`) ต้องได้ชุดเดียวกัน
-  // 🐞 เดิมประกอบสามบรรทัดนี้ไว้ที่ `KindDetail` ที่เดียว แล้ว `KindPanel` ไม่ได้รับเลย
-  // ⇒ `ScentPanel` รับ prop ครบแต่เป็น undefined ทั้งชุด · แถว "กลิ่นตาม SO" กับ
-  // บรรทัดกระทบยอด **ไม่เคยขึ้นบนจอ** ทั้งที่ `soReconcile` คำนวณไว้แล้ว
-  const reconcileProps = {
-    reconcile,
-    // ม-164 PR-3 — เกินที่มีแถมรองรับครบ = เขียว (`soReconcileTone`) · เกินที่ยังไม่ระบุ = เตือน
-    reconcileTone: soReconcileTone(reconcile),
-    reconcileText: reconcile ? [soReconcileText(reconcile), slotNote].filter(Boolean).join(" · ") : null,
-  };
+  /* ⭐ ม-165 — กระทบยอดใบสั่งขาย (ยืนยัน x / y ตัวเดียวกับด่านปิด) ย้ายไปนับใน `lib/requests/devSummary.js` ของการ์ด
+     "สรุปใบนี้" ของพัฒนากลิ่นแล้ว · เปลือกไม่ประกอบข้อความกระทบยอดเองอีก (เดิม `reconcileProps` ส่งให้ทั้ง KindPanel/KindDetail
+     แต่มีแค่ `ScentPanel` ที่กิน) */
 
   // ⭐ บอกปลายทางตอนกำลังจะพิมพ์ — "ใครกำลังถือขั้นนี้อยู่" เปลี่ยนว่าคนจะพิมพ์อะไร
   // (มติผู้ใช้: ฝั่งที่ไม่ใช่ตาตัวเองต้องพิมพ์ได้ทันทีตรงนั้น ไม่ใช่ปุ่มที่เด้งไปที่อื่น)
@@ -2396,7 +2378,8 @@ export default function RequestDetailPage() {
                 formulaBoard={formulaBoard}
                 board={board}
                 briefSummary={briefSummary}
-                {...reconcileProps}
+                /* ม-165 — การ์ดพัฒนากลิ่น/สูตรนับ "ส่งไป n วัน" จากวันเดียวกับตาราง (ห้ามอ่านนาฬิกาตอนเรนเดอร์) */
+                today={today}
               />
             )}
             {/* ⚠️ **ประวัติการทำรายการกับไฟล์แนบไม่อยู่ในรางแล้ว** (2026-08-18) —
@@ -2491,7 +2474,6 @@ export default function RequestDetailPage() {
         docBoard={docBoard}
         today={today}
         due={dueCell}
-        {...reconcileProps}
       />
       )}
 
