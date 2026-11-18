@@ -5,8 +5,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  productFollowUps, productMonthlyOrders, productOrderRows, productQuoteRows, productRecentEvents, productSalesFacts, productOrderText,
+  productDocEvents, productFollowUps, productMonthlyOrders, productOrderRows, productQuoteRows, productRecentEvents, productSalesFacts, productOrderText,
 } from './productHub.js';
+import { redactPriceHistory } from './productHubData.js';
 import { productOrderStats } from './customerHub.js';
 import { productSalesRelations } from './productHubData.js';
 
@@ -241,4 +242,32 @@ test('ล่าสุด: ใหม่ไปเก่า · ตัดตาม l
   assert.equal(events[0].href, '/sa/sales-orders/S1');
   assert.equal(productRecentEvents({ product, sales, registrations: regs }, { limit: 2 }).length, 2);
   assert.deepEqual(productRecentEvents({ product, sales: { visible: false }, registrations: [] }).map((e) => e.key), ['p:approved', 'p:created']);
+});
+
+/* ── S3: ความเคลื่อนไหวรวม (มติ 7) · ประวัติราคา (มติ 6) ─────────────────────────────────────────── */
+test('เหตุการณ์จากใบ: QT ออก/Won · SO อนุมัติ · ทะเบียน — มีแหล่ง (source) ให้กรอง · ใหม่ไปเก่า · ไม่เห็นการขาย = เหลือแต่ทะเบียน', () => {
+  const sales = {
+    visible: true,
+    orders: [{ id: 'S1', orderNumber: 'SO-1', status: 'approved', origin: 'pipeline', approvedAt: '2026-11-06T04:46:00Z', lines: [line()] }],
+    quotations: [{ id: 'Q1', quoteNumber: 'QT-1', status: 'accepted', createdAt: '2026-11-06T04:31:00Z', acceptedAt: '2026-11-06T04:32:00Z', lines: [line()] }],
+  };
+  const regs = [{ id: 'R1', createdAt: '2026-11-07T02:00:00Z' }];
+  const events = productDocEvents({ sales, registrations: regs }, { unit: 'ชิ้น' });
+  assert.deepEqual(events.map((e) => [e.source, e.code]), [['registration', 'สรรพสามิต'], ['order', 'SO-1'], ['quote', 'QT-1'], ['quote', 'QT-1']]);
+  assert.equal(events[3].text, 'ออกใบเสนอราคา · 3,000 ชิ้น · ฿32.80');
+  assert.deepEqual(productDocEvents({ sales: { visible: false }, registrations: regs }).map((e) => e.source), ['registration']);
+  assert.ok(!productRecentEvents({ sales, registrations: [] }).some((e) => e.key.startsWith('qc:')), 'การ์ดล่าสุดไม่เอา "ออกใบเสนอราคา"');
+});
+
+test('ประวัติราคา: ราคาผลิตเฉพาะผู้เห็นราคาทุน · ภาษีเฉพาะผู้เห็นระบบภาษี · แถวที่ตัดแล้วไม่เหลือการเปลี่ยน = ไม่ส่ง', () => {
+  const rows = [
+    { id: 'H1', createdAt: '2026-11-02T10:36:00Z', changedByName: 'SA', costPriceBefore: 32.8, costPriceAfter: 32.8, retailPriceIncVatBefore: null, retailPriceIncVatAfter: 69, exciseTaxBefore: 0, exciseTaxAfter: 5.16 },
+    { id: 'H2', createdAt: '2026-10-01T10:36:00Z', changedByName: 'SA', costPriceBefore: 30, costPriceAfter: 32.8, retailPriceIncVatBefore: 69, retailPriceIncVatAfter: 69 },
+  ];
+  const all = redactPriceHistory(rows, { seesCost: true, seesTax: true });
+  assert.deepEqual(all.map((r) => [r.id, r.changed]), [['H1', ['retailPriceIncVat', 'exciseTax']], ['H2', ['costPrice']]]);
+  const plain = redactPriceHistory(rows, { seesCost: false, seesTax: false });
+  assert.deepEqual(plain.map((r) => r.id), ['H1'], 'H2 เปลี่ยนแค่ราคาทุน — คนไม่เห็นราคาทุนไม่ได้แถวนี้');
+  assert.equal('costPriceAfter' in plain[0], false);
+  assert.equal('exciseTaxAfter' in plain[0], false);
 });

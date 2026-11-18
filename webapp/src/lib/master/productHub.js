@@ -186,6 +186,34 @@ export function productFollowUps({ sales = null, approval = 'approved', rejectio
 const stamp = (v) => { const ms = Date.parse(v || ''); return Number.isFinite(ms) ? ms : 0; };
 
 /**
+ * เหตุการณ์จากวันที่บน **ใบอื่น** ที่มีสินค้านี้ (QT · SO · ทะเบียนสรรพสามิต) — `source` = 'quote' | 'order' | 'registration'
+ * ⭐ ใช้สองที่: การ์ด "ล่าสุด" (ภาพรวม) และสายความเคลื่อนไหว (มติ 7 — เรียงรวมกับเธรดสินค้า · ไม่ดึงความเห็นในเธรดของ QT/SO)
+ * ⚠️ ผู้ไม่เห็นโมดูลขาย (sales.visible:false) ไม่มีเหตุการณ์ QT/SO · ทะเบียน = ชุดที่ผู้เรียกส่งมา (ผู้ไม่เห็นภาษีส่ง [])
+ * @returns {{ key, source, at, code, text, href?: string, tab?: string }[]} ใหม่ไปเก่า
+ */
+export function productDocEvents({ sales = null, registrations = [] } = {}, { unit = '' } = {}) {
+  const out = [];
+  const push = (at, ev) => { if (stamp(at)) out.push({ ...ev, at }); };
+  const qtyText = (row) => `${fmtNumber(row.qty)}${unit ? ` ${unit}` : ''}`;
+  if (sales?.visible) {
+    for (const row of productOrderRows(sales)) {
+      if (!row.live || row.order.status !== 'approved') continue;
+      push(row.order.approvedAt, { key: `o:${row.id}`, source: 'order', code: row.order.orderNumber, text: `อนุมัติใบสั่งขาย · ${qtyText(row)}`, href: `/sa/sales-orders/${row.id}` });
+    }
+    for (const row of productQuoteRows(sales)) {
+      const price = row.unitPrice === null ? 'หลายราคา' : `฿${fmtNumber(row.unitPrice, { minimumFractionDigits: 2 })}`;
+      push(row.quote.createdAt, { key: `qc:${row.id}`, source: 'quote', code: row.quote.quoteNumber, text: `ออกใบเสนอราคา · ${qtyText(row)} · ${price}`, href: `/sa/quotations/${row.id}` });
+      if (row.quote.status !== 'accepted') continue;
+      push(row.quote.acceptedAt, { key: `q:${row.id}`, source: 'quote', code: row.quote.quoteNumber, text: 'ลูกค้ารับใบเสนอราคา (Won)', href: `/sa/quotations/${row.id}` });
+    }
+  }
+  for (const reg of registrations || []) {
+    push(reg.createdAt, { key: `r:${reg.id}`, source: 'registration', code: 'สรรพสามิต', text: `เปิดคำขอทะเบียน${reg.customerName ? ` · ${reg.customerName}` : ''}`, tab: 'excise' });
+  }
+  return out.sort((a, b) => stamp(b.at) - stamp(a.at));
+}
+
+/**
  * "ล่าสุด" — เหตุการณ์จากวันที่บนแถว (สินค้า · BOM · QT · SO · ทะเบียน) ใหม่ไปเก่า · ตัดตาม limit
  * ⚠️ ไม่ใช่เธรด — เธรดเต็ม (ความเห็น · ทุกรอบ) อยู่แท็บความเคลื่อนไหว
  * @returns {{ key, at, code, text, href?: string, tab?: string }[]}
@@ -202,19 +230,7 @@ export function productRecentEvents({ product = null, sales = null, registration
     push(product.bomReturnedAt, { key: 'b:returned', code: 'BOM', text: 'RD ตีกลับเรื่องลง BOM', tab: 'bom' });
     push(product.bomDoneAt, { key: 'b:done', code: 'BOM', text: product.bomCode ? `ลง BOM เสร็จ · ${product.bomCode}` : 'ลง BOM เสร็จ', tab: 'bom' });
   }
-  if (sales?.visible) {
-    for (const row of productOrderRows(sales)) {
-      if (!row.live || row.order.status !== 'approved') continue;
-      const qty = `${fmtNumber(row.qty)}${unit ? ` ${unit}` : ''}`;
-      push(row.order.approvedAt, { key: `o:${row.id}`, code: row.order.orderNumber, text: `อนุมัติใบสั่งขาย · ${qty}`, href: `/sa/sales-orders/${row.id}` });
-    }
-    for (const row of productQuoteRows(sales)) {
-      if (row.quote.status !== 'accepted') continue;
-      push(row.quote.acceptedAt, { key: `q:${row.id}`, code: row.quote.quoteNumber, text: 'ลูกค้ารับใบเสนอราคา (Won)', href: `/sa/quotations/${row.id}` });
-    }
-  }
-  for (const reg of registrations || []) {
-    push(reg.createdAt, { key: `r:${reg.id}`, code: 'สรรพสามิต', text: `เปิดคำขอทะเบียน${reg.customerName ? ` · ${reg.customerName}` : ''}`, tab: 'excise' });
-  }
+  // การ์ด "ล่าสุด" ไม่เอาเหตุการณ์ "ออกใบเสนอราคา" (ทุกใบ Won ตามหลังวันเดียวกัน = ซ้ำ) — สายความเคลื่อนไหวเอาครบ
+  for (const ev of productDocEvents({ sales, registrations }, { unit })) if (!ev.key.startsWith('qc:')) out.push(ev);
   return out.sort((a, b) => stamp(b.at) - stamp(a.at)).slice(0, limit);
 }

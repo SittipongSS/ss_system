@@ -38,7 +38,9 @@ import { DocumentControlCard, DocumentSummaryCard } from "@/components/ui/Docume
 import ProductSalesTab from "@/components/database/productHub/ProductSalesTab";
 import ProductBomTab from "@/components/database/productHub/ProductBomTab";
 import ProductOverviewTab from "@/components/database/productHub/ProductOverviewTab";
-import { productFollowUps, productOrderRows, productRecentEvents, productSalesFacts } from "@/lib/master/productHub";
+import ProductActivityTab from "@/components/database/productHub/ProductActivityTab";
+import ProductPriceHistory from "@/components/database/productHub/ProductPriceHistory";
+import { productDocEvents, productFollowUps, productOrderRows, productRecentEvents, productSalesFacts } from "@/lib/master/productHub";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
 import { approvalControlView, canApproveMasterRecord } from "@/lib/master/approvalControl";
 import useApprovalDecision from "@/components/database/useApprovalDecision";
@@ -142,6 +144,8 @@ export default function ProductDetails() {
   /* ⭐ QT/SO ที่มีสินค้านี้ (หน้าสินค้าศูนย์รวม S1 · docs/product-hub-plan.md) — `visible:false` = ผู้ดูไม่มีสิทธิ์โมดูลขาย (มติ 5)
      null = ยังโหลดไม่เสร็จ/โหลดพลาด ⇒ ไม่วาดตัวเลขยอดและแท็บการขาย (ไม่เดาเป็นศูนย์) */
   const [sales, setSales] = useState(null);
+  /* ประวัติราคา (S3 · มติ 6) — ช่องราคาทุน/ภาษีถูกตัดตามสิทธิ์ที่ server แล้ว */
+  const [priceHistory, setPriceHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -187,10 +191,10 @@ export default function ProductDetails() {
     if (wanted) { setRegKey(wanted); setTab("excise"); }
   }, []);
   const loadRelations = useCallback(() => {
-    if (!id) { setRegs([]); setOrders([]); setSales(null); return; }
+    if (!id) { setRegs([]); setOrders([]); setSales(null); setPriceHistory([]); return; }
     apiFetch(`/api/master/products/${id}/relations`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setSales(d.sales || null); } })
+      .then((d) => { if (d) { setRegs(d.registrations || []); setOrders(d.orders || []); setSales(d.sales || null); setPriceHistory(d.priceHistory || []); } })
       .catch(() => {});
   }, [id]);
   useEffect(() => { loadRelations(); }, [loadRelations]);
@@ -625,6 +629,8 @@ export default function ProductDetails() {
     bom: { step: bomStep, status: bomStatus, reason: product.bomReturnReason || "", blockerShort: bomStep ? bomSendBlockerShort(product) : "" },
   });
   const recentEvents = productRecentEvents({ product, sales, registrations: canViewTax ? regs : [] }, { unit });
+  /* ความเคลื่อนไหวรวม (S3 · มติ 7) — เหตุการณ์จากใบ QT/SO/ทะเบียน เรียงรวมกับเธรดสินค้า */
+  const docEvents = productDocEvents({ sales, registrations: canViewTax ? regs : [] }, { unit });
 
   /* รายการในแผงทะเบียน — "คำขอใหม่" ของลูกค้าเจ้าของโผล่เฉพาะคนที่สร้างได้และสินค้าเข้าข่ายต้องขึ้นทะเบียน
      (ด่านเดียวกับปุ่ม "ขึ้นทะเบียนสรรพสามิต" เดิม) · คนดูอย่างเดียวเห็นแค่ทะเบียนที่มีอยู่ */
@@ -1023,6 +1029,8 @@ export default function ProductDetails() {
               </div>
             </DetailCard>
             )}
+            {/* ประวัติราคา (S3 · มติ 6) — ทุกครั้งที่แก้ราคา · ช่องราคาทุน/ภาษีตัดตามสิทธิ์ที่ server แล้ว */}
+            <ProductPriceHistory rows={priceHistory} unit={unit} />
           </div>
         )}
 
@@ -1201,18 +1209,25 @@ export default function ProductDetails() {
 
         {currentTab === "log" && (
           <div className={styles.pane}>
-            {/* เธรดกลาง (mig 0163) — ด่านอนุมัติเดียวกับลูกค้า: เหตุผลที่ตีกลับถูกล้าง
-                ทั้งตอนอนุมัติและตอนแก้ · เธรดเก็บครบทุกรอบไว้กับตัวสินค้า */}
-            <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
-              <UpdateThread
-                entityType="product"
-                entityId={id}
-                reloadToken={threadToken}
-                order="desc"
-                placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเปลี่ยนขนาดบรรจุ..."
-                emptyText="ยังไม่มีความเคลื่อนไหว"
-              />
-            </DetailCard>
+            {/* ความเคลื่อนไหวรวม (S3 · มติ 7): ชิป ทั้งหมด (เธรด + เหตุการณ์จากใบ) · สินค้า (เธรดล้วน) · ใบเสนอราคา · ใบสั่งขาย · ทะเบียน
+                เธรดกลาง (mig 0163) — ด่านอนุมัติเดียวกับลูกค้า: เหตุผลที่ตีกลับถูกล้างทั้งตอนอนุมัติและตอนแก้ · เธรดเก็บครบทุกรอบไว้กับตัวสินค้า */}
+            <ProductActivityTab
+              events={docEvents}
+              onGo={goTab}
+              productThread={(extraItems) => (
+                <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
+                  <UpdateThread
+                    entityType="product"
+                    entityId={id}
+                    reloadToken={threadToken}
+                    order="desc"
+                    extraItems={extraItems}
+                    placeholder="พิมพ์ข้อความ เช่น ลูกค้าขอเปลี่ยนขนาดบรรจุ..."
+                    emptyText="ยังไม่มีความเคลื่อนไหว"
+                  />
+                </DetailCard>
+              )}
+            />
           </div>
         )}
       </div>
