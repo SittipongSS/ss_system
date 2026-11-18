@@ -11,8 +11,7 @@ import Button from "@/components/ui/Button";
 import DateInput from "@/components/ui/DateInput";
 import PendingFiles from "@/components/ui/PendingFiles";
 import StatusNotice from "@/components/ui/StatusNotice";
-import { fmtDate, fmtMoney } from "@/lib/format";
-import { prepaidDueDate } from "@/lib/sales/salesOrderPayments";
+import { fmtMoney } from "@/lib/format";
 import styles from "./InstallmentMoneyInDialogs.module.css";
 
 /* หัวโมดัลแจ้งชำระ — ตามปลายทางจริงของแถว (งวดร่างบันทึกเก็บไว้ · บัญชีบันทึกจบในก้าวเดียว · ฝ่ายขายแจ้งให้บัญชีตรวจ) */
@@ -40,10 +39,6 @@ export function InstallmentReportDialog({
               ? `ยอด ${fmtMoney(row.amount)} — คุณรับรองการชำระได้เอง บันทึกแล้วงวดนี้ขึ้น “ชำระแล้ว” ทันที ไม่ผ่านคิวตรวจของบัญชี`
               : `ยอด ${fmtMoney(row.amount)} — บัญชีจะตรวจหลักฐานก่อนรับรอง`}
         </p>
-        {/* งวดร่างที่ยังไม่มีกำหนดชำระ — PATCH เติมวันที่จ่ายให้ (`prepaidDueDate` ตัวเดียวกับ server · 17/11 SO-26110445-0) */}
-        {prepay && prepaidDueDate(row, paidOn) ? (
-          <p className="form-note">งวดนี้ยังไม่มีกำหนดชำระ — ระบบจะใช้วันที่ลูกค้าชำระ ({fmtDate(paidOn)}) เป็นกำหนดชำระ</p>
-        ) : null}
         {prompt ? <p className="form-note pre-line">{prompt.detail}</p> : null}
         {/* บัญชีบันทึก = รับรองในก้าวเดียว ⇒ ผู้เรียกบอกเมื่ออ่านรอบขายไม่ขึ้น (บรรทัดด่านเงินของนัดหายจากผลลัพธ์ · review 29/09) */}
         {prompt && gateUnreadNotice ? <StatusNotice tone="warning">{gateUnreadNotice}</StatusNotice> : null}
