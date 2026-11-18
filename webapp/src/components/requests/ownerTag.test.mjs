@@ -36,8 +36,9 @@ test('🔴 ชิปขึ้นเฉพาะตอนสองฝั่งส
   assert.match(code, /const tag = \(canDept && canRequester\)/);
 });
 
-test('⭐ ทุกกิ่งที่มีปุ่มกดได้ต้องมีชิป — outcome (3 ปุ่ม) และปุ่มเดี่ยว', () => {
-  const branches = code.split('return (').filter((b) => /styles\.actions/.test(b) && /<Button/.test(b));
+/* ม-165 PR-3 — กิ่ง outcome เป็นเมนู "บันทึกคำตอบ ▾" (`RowActionMenu` แบบมีป้าย) แทนสามปุ่ม ⇒ นับเมนูเป็นปุ่มกดได้ด้วย */
+test('⭐ ทุกกิ่งที่มีปุ่มกดได้ต้องมีชิป — outcome (เมนูบันทึกคำตอบ) และปุ่มเดี่ยว', () => {
+  const branches = code.split('return (').filter((b) => /styles\.actions/.test(b) && /<Button|<RowActionMenu/.test(b));
   const withTag = branches.filter((b) => /\{tag\}/.test(b));
   assert.equal(withTag.length, 2, `กิ่งที่มีปุ่มกดได้ ${branches.length} · ติดชิป ${withTag.length}`);
 });

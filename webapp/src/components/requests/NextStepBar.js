@@ -13,6 +13,8 @@
 // ⚠️ ขั้น/เจ้าของก้าว อ่านจาก `rowStage.js` + `hops.js` ที่เดียว — ตัวเดียวกับที่คิว
 // ใช้ ⇒ ปุ่มที่นี่กับคอลัมน์ "ก้าวถัดไป" บนคิวขัดกันไม่ได้เชิงโครงสร้าง
 import Button from "@/components/ui/Button";
+import RowActionMenu from "@/components/ui/RowActionMenu";
+import { Check, PencilLine, X } from "lucide-react";
 import { ROW_STAGE_LABELS, rowStage } from "@/lib/requests/rowStage";
 import { HOP_OWNER, ROW_OUTCOMES, hopLabel, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
@@ -56,10 +58,13 @@ const OWNER_OF = { ...HOP_OWNER, price: "dept", ingredients: "dept" };
 const needsIngredients = (row) => !!row?.ingredientPlan?.required && !row.ingredientPlan.current;
 
 // คอนเฟิร์มเป็นทางหลัก · อีกสองทางเป็นเส้นขอบ — เห็นครบแต่ไม่แย่งน้ำหนักกัน
-const OUTCOME_BUTTON = {
-  confirmed: { tone: "primary", variant: "filled" },
-  revise: { tone: undefined, variant: "outline" },
-  rejected: { tone: "danger", variant: "outline" },
+/* ⭐ **ม-165 PR-3 (มติเจ้าของ 18/11/2026) — ปุ่มเดียว "บันทึกคำตอบ ▾" แทนสามปุ่มใหญ่ต่อแถว** — สามปุ่ม (คอนเฟิร์ม ·
+   ขอให้แก้ · ไม่เอา) ซ้ำทุกแถวที่รอคำตอบ ทำให้แถวสูงสามเท่าและบีบคอลัมน์อื่น · เมนูกลาง (`RowActionMenu` แบบมีป้าย) เปิดโมดัล
+   ก้าวเดิมทุกอย่าง (เหตุผล · ด่าน over_paid · บอกผลก่อนกด #1223) — ที่เปลี่ยนคือทางเข้า ไม่ใช่ด่าน */
+const OUTCOME_ITEM = {
+  confirmed: { icon: Check, tone: "neutral" },
+  revise: { icon: PencilLine, tone: "neutral" },
+  rejected: { icon: X, tone: "danger" },
 };
 
 /* ⚠️ **ป้ายพูดชื่อฝ่ายจริงเมื่อผู้เรียกส่งมาให้** (มติผู้ใช้ 2026-08-20) — คำว่า
@@ -148,16 +153,19 @@ export function RowStepActions({
     return (
       <div className={styles.actions}>
         {tag}
-        {ROW_OUTCOMES.map((outcome) => (
-          <Button
-            key={outcome} disabled={busy}
-            tone={OUTCOME_BUTTON[outcome].tone}
-            variant={OUTCOME_BUTTON[outcome].variant}
-            onClick={() => onHop?.(row, "outcome", outcome)}
-          >
-            {hopLabel("outcome", outcome)}
-          </Button>
-        ))}
+        <RowActionMenu
+          triggerLabel="บันทึกคำตอบ"
+          /* ชื่อที่ระบุแถวได้จริง — รหัสทะเบียนก่อน (รอบแก้สองตัวของกลิ่นเดียวกันมีป้ายแถวเดียวกัน) */
+          label={`บันทึกคำตอบลูกค้าของ ${row.refFormula?.code || row.refScent?.code || row.label || "แถวนี้"}`}
+          busy={busy}
+          items={ROW_OUTCOMES.map((outcome) => ({
+            id: outcome,
+            icon: OUTCOME_ITEM[outcome].icon,
+            tone: OUTCOME_ITEM[outcome].tone,
+            label: hopLabel("outcome", outcome),
+            onClick: () => onHop?.(row, "outcome", outcome),
+          }))}
+        />
       </div>
     );
   }
