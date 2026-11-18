@@ -23,6 +23,7 @@ import { pdrTargetScentCheck } from '@/lib/requests/pdrTargetScents';
 import { scentCountForOrder, scentDesignOrderError } from '@/lib/requests/scentDesignOrders';
 import { loadScentOrderOwners } from '@/lib/requests/scentOrderLinksAdmin';
 import { scentOrderTakenText } from '@/lib/requests/scentOrderLinks';
+import { briefSourceScentError, checkContinueTarget } from '@/lib/requests/scentContinueAdmin';
 import { billingQuotationError, resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { loadVisibleRequests } from '@/lib/requests/visibleRows';
 import { normalizeSurveyRequest, surveyZoneNameClash } from '@/lib/service/surveyRequest';
@@ -512,6 +513,9 @@ export async function POST(request) {
         const checked = normalizeScentBriefs(body.briefs, { scentCount });
         if (checked.error) return Response.json({ error: checked.error }, { status: 400 });
         briefs = checked.briefs;
+        /* ⭐ ม-164 PR-4 — กลิ่นตั้งต้นของบรีฟต้องเป็นของลูกค้าเจ้าของใบ (นิติบุคคล · แชร์ได้) — ตรวจก่อน insert (กฎข้างบน) */
+        const sourceError = await briefSourceScentError(supabase, briefs, { customerId });
+        if (sourceError) return Response.json({ error: sourceError }, { status: 400 });
       } else if (Array.isArray(body.briefs) && body.briefs.length) {
         return Response.json({
           error: 'รูปแบบงานนี้ไม่มีบรีฟกลิ่น — เลือกกลิ่นจากทะเบียนในรายการสินค้า (ข้อ 2.1) แทน',
@@ -545,7 +549,20 @@ export async function POST(request) {
         dislikedNotes: b.dislikedNotes,
         // ⛔ ไม่มี scentotypes/scentotypeNotes — 2.1.5 ถอดแล้ว (มติผู้ใช้ 2026-10-19) · คอลัมน์ใช้ค่าตั้งต้น
         performance: b.performance,
+        // ม-164 PR-4 · mig 0436 — กลิ่นตั้งต้นที่บรีฟนี้ขอให้แก้ (ตรวจเจ้าของแล้วข้างบน)
+        sourceScentId: b.sourceScentId || null,
       }));
+    }
+
+    /* ⭐ ม-164 PR-4 — "ต่อจากคำร้อง" (ใบเดิมปิดแล้ว/มีบรีฟใหม่) · ตรวจก่อน insert เหมือนบรีฟ (ตกด่านหลัง insert = ใบร่างค้างที่จอง SO)
+       ลูกค้ามาจาก SO/ดีลที่ derive แล้ว ไม่ใช่ค่าที่ client ส่ง · หัวข้ออื่นส่งมา = ตีกลับ */
+    let continuesRequestId = null;
+    if (String(body.continuesRequestId ?? '').trim()) {
+      const { error: continueError, prev } = await checkContinueTarget(supabase, {
+        prevId: body.continuesRequestId, kind, customerId,
+      });
+      if (continueError) return Response.json({ error: continueError }, { status: 400 });
+      continuesRequestId = prev.id;
     }
 
     // 2) หัวคำร้อง — stepKey มาจากชนิด ไม่ใช่จาก client (กันปักหมุดผิดขั้น)
@@ -562,6 +579,7 @@ export async function POST(request) {
       dealId,
       // SO ของบรีฟกลิ่น (บังคับ+ด่านเต็ม) หรือ SO อ้างอิงของขอเอกสาร (ม-88) — ช่องเดียวกัน
       salesOrderId: salesOrderId || optionalSalesOrderId,
+      ...(continuesRequestId ? { continuesRequestId } : {}),
       // ⚠️ ใส่คีย์เฉพาะเมื่ออ้างจริง — PostgREST ปฏิเสธ **ทั้งก้อน** เมื่อ body มี
       // คอลัมน์ที่ DB ยังไม่มี (mig 0225 ยังไม่รัน = ใบที่ไม่อ้าง QT ต้องยังเปิดได้)
       // บทเรียนเดียวกับ `productTypeId` ที่คอมเมนต์ล่างเล่าไว้

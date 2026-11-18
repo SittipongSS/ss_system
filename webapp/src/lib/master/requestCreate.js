@@ -133,6 +133,8 @@ export function requestPayload(input, extra = {}) {
     // ของที่ผูก — ส่งไปเท่าที่มี server ตรวจตามหัวข้อเอง (ดู `needs`)
     dealId: form.dealId || null,
     salesOrderId: form.salesOrderId || null,
+    // ม-164 PR-4 — คำร้องพัฒนากลิ่นที่ใบนี้ "ต่อจาก" (ไม่บังคับ) · server ตรวจว่าเป็นลูกค้าเดียวกัน · หัวข้ออื่นไม่มีช่องนี้
+    continuesRequestId: form.continuesRequestId || null,
     // อ้างอิงเพิ่มของขอเอกสาร (ม-88) — ว่างได้ · server ตรวจว่าเป็นของดีลเดียวกัน
     // ⭐ หัวข้อขอเอกสารการเงินใช้ช่องนี้เป็น **ต้นทาง** (ม-ค) — server derive ดีล
     // และลูกค้าจากใบนี้ ไม่ใช่จาก `dealId` ที่ฟอร์มเติมไว้ให้ดูเฉย ๆ

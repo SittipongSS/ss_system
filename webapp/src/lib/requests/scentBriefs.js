@@ -157,6 +157,12 @@ export function normalizeScentBriefs(input, { scentCount = null } = {}) {
     if (perf.error) return { briefs: [], error: perf.error };
     brief.performance = perf.value;
 
+    /* ⭐ กลิ่นตั้งต้นที่บรีฟนี้ขอให้แก้ (ม-164 PR-4 · mig 0436) — id ล้วน · เป็นของลูกค้าเดียวกันไหม route ตรวจกับฐาน
+       (`briefSourceScentError`) · บังคับเมื่อใบขายแก้ไขกลิ่นล้วนตอนส่ง (`briefSourceMissingError`) */
+    const sourceScentId = String(raw.sourceScentId ?? '').trim();
+    if (sourceScentId.length > 80) return { briefs: [], error: `${at}: รหัสกลิ่นตั้งต้นไม่ถูกต้อง` };
+    brief.sourceScentId = sourceScentId || null;
+
     briefs.push(brief);
   }
   return { briefs, error: null };

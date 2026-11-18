@@ -2,6 +2,7 @@
 import { pdrContext } from '@/lib/requests/pdrFields';
 import { requestCloseNeedsSoConfirm, requestPdrRowsPickScent, requestUsesDeliveredRows } from '@/lib/master/requestTypes';
 import { loadRequestScentOrders } from '@/lib/requests/scentOrderLinksAdmin';
+import { loadContinueRefs } from '@/lib/requests/scentContinueAdmin';
 import { scentSlotSummary } from '@/lib/requests/scentOrderLinks';
 import { requestRowSummary } from '@/lib/requests/rowStage';
 import { fetchAll } from '@/lib/supabaseFetchAll';
@@ -553,6 +554,8 @@ export async function findRequest(supabase, id) {
      ⚠️ `salesOrderLines` ยังเป็นของ SO หลักอย่างเดียว — PDR 1.12 คือบรีฟตั้งต้น ไม่บวก SO แนบ (แผน §8)
         ตัวหารของด่านปิด/การ์ดกระทบยอดคือ `scentSlotLines` (SO หลัก + แนบที่ไม่ใช่ 03-010) */
   let scentOrders = null;
+  /* ม-164 PR-4 — ลิงก์ "ต่อจากคำร้อง" สองทาง (ใบที่ใบนี้ต่อจาก · ใบที่ต่อจากใบนี้) · เฉพาะพัฒนากลิ่น */
+  const continueRefs = requestCloseNeedsSoConfirm(withBriefs.kind) ? await loadContinueRefs(supabase, withBriefs) : null;
   if (withBriefs.salesOrderId && requestCloseNeedsSoConfirm(withBriefs.kind)) {
     scentOrders = await loadRequestScentOrders(supabase, withBriefs);
     salesOrderLines = scentOrders.salesOrderLines;
@@ -640,6 +643,7 @@ export async function findRequest(supabase, id) {
       // SO หลักออก Rev. แล้ว = ใบที่ใช้นับจริง (จอบอกว่านับจากใบไหน) · null = ใบเดิม
       countedSalesOrder: scentOrders.mainOrder,
     } : {}),
+    ...(continueRefs || {}),
     refDeal: deal,
     // ⚠️ เลือกฟิลด์ทีละตัว ไม่ส่ง `customer` ทั้งแถว — ทะเบียนลูกค้ามีที่อยู่ เครดิต
     // และรายชื่อผู้ติดต่อทั้งชุด ซึ่งหน้าคำร้องไม่ได้ใช้และไม่ควรหลุดออกทาง response

@@ -53,7 +53,7 @@ import {
   requestVariantKey, requestVariantLabel,
   requestShapeError,
   requestResultDateOnly, requestRequiredFileCount, requestRequiredFiles, requestSubmitGapsError,
-  requestVariantFieldLabel,
+  requestVariantFieldLabel, requestCloseNeedsSoConfirm,
 } from '@/lib/master/requestTypes';
 import {
   closureStatus, reopenRequestError, reopenWaitClearPatch, reopenWaitSideError, requestClosure,
@@ -119,6 +119,8 @@ import { sanitizeMentions } from '@/lib/master/mentions';
 import { purgeUpdates } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { releaseScentOrderLinks } from '@/lib/requests/scentOrderAttachAdmin';
+import { briefSourceScentError, checkContinueTarget, loadContinueRefs } from '@/lib/requests/scentContinueAdmin';
+import { briefSourceMissingError } from '@/lib/requests/scentContinue';
 import { cancelCleanupSummary, cleanupCancelledSurveyZones } from '@/lib/service/surveyCancelCleanup';
 
 export const dynamic = 'force-dynamic';
@@ -525,6 +527,9 @@ export async function PATCH(request, { params }) {
       // (ดูเหตุผลเต็มที่ `lib/requests/scentBriefs.js`)
       const briefNameError = scentBriefNameError(before.briefs, { stage: 'submit' });
       if (briefNameError) return Response.json({ error: briefNameError }, { status: 409 });
+      /* ⭐ ม-164 PR-4 — ใบที่ขายแก้ไขกลิ่นล้วน: ทุกบรีฟต้องเลือกกลิ่นตั้งต้นก่อนส่ง (จังหวะเดียวกับชื่อบรีฟ · ร่างยังว่างได้) */
+      const sourceMissing = briefSourceMissingError(before.briefs, before.salesOrderLines);
+      if (sourceMissing) return Response.json({ error: sourceMissing }, { status: 409 });
 
       /* ⭐ **พื้นที่ใหม่ได้รหัส ZN ตรงนี้** (mig 0314) — จังหวะเดียวกับเลขใบ ด้วยเหตุผล
          เดียวกันเป๊ะ: ร่างที่ถูกทิ้งต้องไม่ทิ้งโซนกำพร้าไว้ในทะเบียนของลูกค้า
@@ -778,6 +783,17 @@ export async function PATCH(request, { params }) {
       if (denied) return Response.json({ error: denied }, { status: 403 });
 
       const next = requestEditPatch(body);
+
+      /* ⭐ ม-164 PR-4 — "ต่อจากคำร้อง" แก้ได้ในจังหวะเดียวกับช่องอื่นของหัวใบ · ไม่ส่งคีย์มา = ไม่แตะของเดิม ·
+         ส่งค่าว่าง = ถอดลิงก์ · ลูกค้ามาจากใบ (ทางนี้เปลี่ยนดีลไม่ได้) */
+      if (Object.prototype.hasOwnProperty.call(body, 'continuesRequestId')
+          && requestCloseNeedsSoConfirm(before.kind)) {
+        const { error: continueError, prev } = await checkContinueTarget(supabase, {
+          prevId: body.continuesRequestId, requestId: id, kind: before.kind, customerId: before.customerId,
+        });
+        if (continueError) return Response.json({ error: continueError }, { status: 400 });
+        next.continuesRequestId = prev?.id || null;
+      }
 
       /* ── รูปแบบงาน (พัฒนาสูตร standard ↔ NPD · มติ 2026-09-09) ───────────
          ⚠️ **ไม่ได้อยู่ใน `REQUEST_EDIT_PATCH_FIELDS` โดยตั้งใจ** — ช่องในลิสต์นั้น
@@ -1151,6 +1167,13 @@ export async function PATCH(request, { params }) {
 
         const { briefs, error: briefError } = normalizeScentBriefs(body.briefs, {});
         if (briefError) return Response.json({ error: briefError }, { status: 400 });
+        /* ⭐ ม-164 PR-4 — กลิ่นตั้งต้นของบรีฟเป็นของลูกค้าเจ้าของใบ · ตรวจเฉพาะกลิ่นที่เพิ่งเลือก (กลิ่นเดิมของบรีฟไม่ตรวจซ้ำ ·
+           กติกาเดียวกับกลิ่นรายแถว 2.1) */
+        const heldSources = new Set((before.briefs || []).map((b) => b.sourceScentId).filter(Boolean));
+        const sourceError = await briefSourceScentError(supabase, briefs, {
+          customerId: before.customerId, keep: (scentId) => heldSources.has(scentId),
+        });
+        if (sourceError) return Response.json({ error: sourceError }, { status: 400 });
 
         for (let i = 0; i < briefs.length; i += 1) {
           const row = briefs[i];
@@ -1167,6 +1190,8 @@ export async function PATCH(request, { params }) {
             // ⛔ ไม่เขียน scentotypes/scentotypeNotes — 2.1.5 ถอดแล้ว (มติผู้ใช้ 2026-10-19) ⇒ บรีฟเก่า
             //    ที่เคยติ๊กไว้ยังเก็บค่าเดิมในฐาน ไม่ถูกทับเป็นว่างตอนบันทึก
             performance: row.performance,
+            // ม-164 PR-4 · mig 0436 — กลิ่นตั้งต้นที่บรีฟนี้ขอให้แก้ (ตรวจเจ้าของแล้วข้างบน)
+            sourceScentId: row.sourceScentId || null,
             updatedAt: nowIso,
           };
           const { error: saveError } = target

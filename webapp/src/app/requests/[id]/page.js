@@ -78,12 +78,13 @@ import {
 import { assignBriefPerfumerError } from "@/lib/requests/briefPerfumer";
 import { answerViaBlockedReason, genericAnswerError, requestAnswerVia } from "@/lib/requests/answerVia";
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
-import { requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
+import { REQUEST_STATUS_LABELS, requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { requestActorSide, requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
 import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
 import { soReconcile, soReconcileText, soReconcileTone } from "@/lib/requests/soReconcile";
 import { overPaidAfterConfirm, unexplainedOver } from "@/lib/requests/scentOverPaid";
+import { briefSourceMissingError } from "@/lib/requests/scentContinue";
 import { scentSlotLinesOf, scentSlotNote } from "@/lib/requests/scentOrderLinks";
 import { hopLabel, hopValuesError, hopLabelFor } from "@/lib/requests/hops";
 import { isDocLineKind } from "@/lib/requests/docTypes";
@@ -110,7 +111,7 @@ const deliveryPayload = (rows) => (rows || []).map((row) => {
 import { detailForKind, panelForKind, viewForKind } from "@/components/requests/details";
 import Input from "@/components/ui/Input";
 import ScentDeliveryFields, {
-  emptyDeliveryRow, reworkDeliveryRow,
+  briefDeliveryRow, emptyDeliveryRow, reworkDeliveryRow,
 } from "@/components/requests/ScentDeliveryFields";
 import Tabs from "@/components/ui/Tabs";
 import { reworkHopError, reworkSlotFor, reworkSlots } from "@/lib/requests/rework";
@@ -1287,7 +1288,9 @@ export default function RequestDetailPage() {
         /* ⭐ ไฟล์บังคับ + วันรับผล ของรูปแบบที่มีวันเดียว (ประเมินจากแบบ · S4 C-3) — ฟังก์ชันตัวเดียวกับ route ส่งคำร้อง
            ⇒ toast กับ 409 พูดประโยครวมเดียวกัน · จำนวนไฟล์ยังไม่รู้ (`null`) = ข้ามส่วนไฟล์ ให้ server ตัดสิน */
         const gapsError = shapeError || requestSubmitGapsError(req, { count: requiredFileCount });
-        const briefNameError = gapsError || scentBriefNameError(req.briefs || [], { stage: "submit" });
+        const briefNameError = gapsError || scentBriefNameError(req.briefs || [], { stage: "submit" })
+          // ม-164 PR-4 — ใบขายแก้ไขกลิ่นล้วน: ทุกบรีฟต้องเลือกกลิ่นตั้งต้น (ตัวเดียวกับ server)
+          || briefSourceMissingError(req.briefs || [], req.salesOrderLines || []);
         if (briefNameError) {
           setToast({ kind: "error", msg: briefNameError });
           return;
@@ -1490,7 +1493,11 @@ export default function RequestDetailPage() {
     const waiting = reworkSlots(req.items || [])
       .filter((slot) => !briefId || slot.briefId === briefId)
       .map(reworkDeliveryRow);
-    setDelivery(waiting.length ? waiting : [{ ...emptyDeliveryRow({ categoryCode: deliveryDefault }), briefId: briefId || "" }]);
+    /* ม-164 PR-4 — บรีฟที่เลือก "แก้จากกลิ่น" ไว้ = ช่อง "แก้มาจากกลิ่น" ตั้งต้นให้ (`briefDeliveryRow`)
+       · ใบบรีฟก้อนเดียว (server เลือกบรีฟให้เอง) ก็ได้ค่าตั้งต้นจากก้อนนั้น */
+    const brief = (req.briefs || []).find((b) => b.id === briefId)
+      || ((req.briefs || []).length === 1 ? req.briefs[0] : null);
+    setDelivery(waiting.length ? waiting : [briefDeliveryRow({ categoryCode: deliveryDefault, brief })]);
     setDeliveryTab(0);
   };
 
@@ -1613,6 +1620,8 @@ export default function RequestDetailPage() {
                  (ด่านมีข้อเดียว: มีจริง + อยู่ดีลเดียวกัน · `resolveOptionalRefs`) */
               quotationId: req.quotationId || "",
               salesOrderId: req.salesOrderId || "",
+              // ม-164 PR-4 — ต่อจากคำร้อง (แก้ได้ในหัวใบ · server ตรวจลูกค้าเดียวกัน)
+              continuesRequestId: req.continuesRequestId || "",
               productIds: (req.productRefs || []).map((fg) => fg.id)
                 .concat(!req.productRefs?.length && req.productId ? [req.productId] : []),
               /* แบบฟอร์ม PDR อยู่ในก้อนเดียวกันแล้ว — แท็บ "รายละเอียด" ของฟอร์ม
@@ -2164,6 +2173,9 @@ export default function RequestDetailPage() {
               dealCode: req.refDeal?.code || "",
               customer: req.customerName || "",
               customerId: req.customerId || null,
+              // ม-164 PR-4 — ช่อง "ต่อจากคำร้อง" ไม่ให้เลือกตัวเอง · บรีฟรู้ว่าใบขายแก้ไขกลิ่นล้วนไหม
+              requestId: req.id,
+              salesOrderLines: req.salesOrderLines || [],
               quotation: req.refQuotation?.quoteNumber || req.quotationId || "",
               salesOrder: req.refSalesOrder?.orderNumber || req.salesOrderId || "",
               /* งวดที่ผูก (mig 0413) — งวดจริง (`linkedInstallment` ที่ server ประกอบ) หรือเลขในแผนของ QT ที่ยังรอใบสั่งขาย
@@ -2200,7 +2212,8 @@ export default function RequestDetailPage() {
       {/* ⚠️ โหมดแก้ไม่ต้องมี — แท็บ "งาน" ของฟอร์มโชว์ ลูกค้า/โครงการ/ดีล/ใบที่อ้าง
           ครบอยู่แล้ว (ช่องที่ถูกล็อก) ⇒ วางซ้ำคือของเดียวกันสองที่ในจอเดียว */}
       {!editing && !showKindView
-        && (req.refCustomer || req.refDeal || req.quotationId || req.salesOrderId) && (
+        && (req.refCustomer || req.refDeal || req.quotationId || req.salesOrderId
+          || req.continuesRequest || req.continuedBy?.length) && (
         <ContextGrid className={styles.contextRow}>
           {req.refCustomer && (
             <ContextCard
@@ -2253,6 +2266,26 @@ export default function RequestDetailPage() {
               title={req.refSalesOrder?.orderNumber || "ถูกลบไปแล้ว"}
             />
           )}
+          {/* ⭐ ม-164 PR-4 — ลิงก์ "ต่อจากคำร้อง" สองทาง: ใบนี้ต่อจากใบไหน · ใบไหนต่อจากใบนี้ (ใบที่ปิดแล้วไม่เปิดกลับ) */}
+          {req.continuesRequest && (
+            <ContextCard
+              href={`/requests/${req.continuesRequest.id}`}
+              icon={FileText}
+              eyebrow="ต่อจากคำร้อง"
+              title={req.continuesRequest.docNo || req.continuesRequest.id}
+              subtitle={REQUEST_STATUS_LABELS[req.continuesRequest.status] || req.continuesRequest.status}
+            />
+          )}
+          {(req.continuedBy || []).map((next) => (
+            <ContextCard
+              key={next.id}
+              href={`/requests/${next.id}`}
+              icon={FileText}
+              eyebrow="มีคำร้องต่อจากใบนี้"
+              title={next.docNo || next.id}
+              subtitle={REQUEST_STATUS_LABELS[next.status] || next.status}
+            />
+          ))}
         </ContextGrid>
       )}
 

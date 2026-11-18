@@ -46,6 +46,7 @@ import {
 } from "@/lib/requests/pdrFields";
 import styles from "./requestForm.module.css";
 import { scentLabel, scentSearchText } from "@/lib/master/registryLabel";
+import { orderSourceScents } from "@/lib/requests/scentContinue";
 
 
 // ⭐ **ป้ายชื่อและหัวข้อมาจากทะเบียนกลาง** (`lib/requests/pdrFields.js`) — ฟอร์มยัง
@@ -509,6 +510,9 @@ export default function PdrForm({
   // ทะเบียนกลิ่น + ลูกค้าเจ้าของใบ — ใช้เฉพาะ `scentSource === 'registry'` (ข้อ 2.1)
   // `dealChosen` แยก "ยังไม่เลือกดีล" ออกจาก "ดีลยังไม่ผูกลูกค้า" (สองสถานะ ทางแก้คนละทาง)
   scents = [], customerId = null, dealChosen = false,
+  /* ⭐ ม-164 PR-4 — บรีฟ "แก้จากกลิ่น" (`sourceScentId`): `sourceRequired` = SO หลักขายแก้ไขกลิ่นล้วน (บังคับตอนส่ง) ·
+     `preferScentIds` = กลิ่นที่ลูกค้าคอนเฟิร์มในใบที่ "ต่อจาก" (ขึ้นก่อน) */
+  sourceRequired = false, preferScentIds = [],
 }) {
   // ⚠️ อ่านจาก `context` ก้อนเดียว — ชื่อคีย์ตรงกับที่ `pdrContext()` คืนมาเป๊ะ
   // ห้ามรับเป็นพร็อพแยกอีก (ดูเหตุผลที่หัวพร็อพ)
@@ -518,6 +522,27 @@ export default function PdrForm({
     customerOrigin = null,
   } = context;
   const usesBriefs = scentSource === "briefs";
+  /* ม-164 PR-4 — ตัวเลือก "แก้จากกลิ่น" ของบรีฟ: กลิ่นของลูกค้าเจ้าของใบ (+ ที่แชร์ให้) · กลิ่นที่คอนเฟิร์มในใบที่ "ต่อจาก" ขึ้นก่อน
+     ⚠️ ไม่กรองสถานะกลิ่น — กลิ่นที่เลิกใช้แล้วก็เป็นต้นทางของการแก้ได้ · ยังไม่รู้ลูกค้า (ยังไม่เลือก SO) = ไม่มีตัวเลือก */
+  const sourceScents = customerId ? orderSourceScents(
+    (scents || []).filter((x) => x.customerId === customerId || scentUsableByCustomer(x, customerId)),
+    preferScentIds,
+  ) : [];
+  const sourceOptionsFor = (current) => {
+    const opts = [
+      { value: "", label: "ไม่ได้แก้จากกลิ่นเดิม" },
+      ...sourceScents.map((x) => ({
+        value: x.id,
+        label: `${scentLabel(x)}${(preferScentIds || []).includes(x.id) ? " · คอนเฟิร์มในใบเดิม" : ""}`,
+        search: scentSearchText(x, x.customerTradeName),
+      })),
+    ];
+    if (current && !opts.some((o) => o.value === current)) {
+      const held = (scents || []).find((x) => x.id === current);
+      opts.push({ value: current, label: `${held ? scentLabel(held) : current} (ค่าเดิม)` });
+    }
+    return opts;
+  };
   const pickScent = scentSource === "registry";
   // ที่มาของช่องเส้นประ — ใบที่ผูกแค่ดีลไม่มี SO ให้ "เติมจาก" (ตัวเดียวกับ `pdrFieldFrom` ของจอสรุป)
   const fromOf = (key) => (pickScent && FIELD[key].fromDealOnly) || FIELD[key].from;
@@ -909,6 +934,26 @@ export default function PdrForm({
                 ตั้งชื่อให้ต่างกันแต่ละก้อน — RD ใช้ชื่อนี้บอกว่ากลิ่นที่ส่งกลับมาตอบก้อนไหน
               </small>
             </div>
+            {/* ⭐ ม-164 PR-4 — กลิ่นตั้งต้นที่บรีฟนี้ขอให้แก้ · RD ส่งกลิ่นแล้วช่อง "แก้มาจากกลิ่น" เติมจากค่านี้
+                ⚠️ บังคับตอนส่ง (ไม่ใช่ตอนบันทึกร่าง) เมื่อใบขายแก้ไขกลิ่นล้วน — ด่านจริงที่ server (`briefSourceMissingError`) */}
+            {usesBriefs && (
+              <div className="form-group">
+                <span className={styles.fieldLabel}>แก้จากกลิ่น{sourceRequired ? <> <b>*</b></> : " (ถ้ามี)"}</span>
+                <SearchableSelect
+                  value={brief.sourceScentId || ""}
+                  onChange={(v) => setBrief(i, { sourceScentId: v || null })}
+                  options={sourceOptionsFor(brief.sourceScentId)}
+                  disabled={disabled}
+                  placeholder={customerId ? "เลือกกลิ่นตั้งต้น" : "เลือกใบสั่งขายก่อน"}
+                  ariaLabel={`แก้จากกลิ่น ของบรีฟ ${brief.label || i + 1}`}
+                />
+                <small className={styles.hint}>
+                  {sourceRequired
+                    ? "ใบสั่งขายนี้ขายแก้ไขกลิ่น — ต้องเลือกกลิ่นที่จะแก้ก่อนกดส่ง"
+                    : "เลือกเมื่อบรีฟนี้แก้จากกลิ่นที่มีอยู่แล้ว — RD ได้ค่านี้ไปตอนส่งกลิ่น"}
+                </small>
+              </div>
+            )}
             <div className="form-group">
               <label htmlFor={`brief-body-${i}`}>{PDR_BRIEF_LABELS.brief.label}</label>
               <Textarea
