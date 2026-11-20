@@ -76,8 +76,10 @@ test('0412: ส่งแบบการนับ Actual ไปตัวห่อ
   assert.deepEqual(Object.keys(called.params), [
     'p_order_id', 'p_evidence_id', 'p_expected_updated_at', 'p_document_fingerprint', 'p_approval_note',
     'p_actor_id', 'p_actor_name', 'p_actor_role', 'p_actor_team', 'p_separation_override_reason', 'p_actual_mode',
+    'p_actual_reason',
   ]);
   assert.equal(called.params.p_actual_mode, 'installment');
+  assert.equal(called.params.p_actual_reason, null, 'แบบอื่นไม่ส่งเหตุผล (mig 0439)');
   assert.equal(data.document.actualMode, 'installment');
 });
 

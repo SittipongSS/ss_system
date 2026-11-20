@@ -123,6 +123,9 @@ const REVISION_RESETS = new Set([
      ตอนอนุมัติใบ Rev. (= แบบของใบก่อนหน้า) จออ่านจาก revisedFromId ไม่ใช่จากคอลัมน์นี้
      · cache สองช่อง (Σ งวดที่นับแล้ว / ยื่นแล้ว) คิดจากแถวงวดโดย trigger — แถวที่ย้ายมาใบ Rev. (0376) ปลุก trigger ให้คิดของใบ Rev. เอง */
   'actualMode', 'actualCountedAmount', 'actualSubmittedAmount',
+  /* เหตุผลของ "ไม่นับ Actual" (mig 0439) — คู่กับแบบ: เป็นของการอนุมัติแต่ละรอบ · ใบร่างต้องว่าง (CHECK sales_orders_actual_none_reason)
+     · ค่าตั้งต้นของช่องเหตุผลตอนอนุมัติใบ Rev. จออ่านจากใบก่อนหน้า (GET previousActualNoneReason) */
+  'actualNoneReason',
   /* ใบค่าสรรพสามิต (mig 0414) — ตั้งใจไม่ก๊อป:
      · "sourceSalesOrderId" มีได้เฉพาะใบ origin 'excise' (CHECK `sales_orders_deal_by_origin`) และใบ excise ออก Rev. ไม่ได้
        (`sales_orders_origin_shape` สาย excise บังคับ revisionNo = 0) ⇒ ใบ Rev. ทุกใบเป็น pipeline ที่ไม่มี SO ต้นทาง
@@ -235,6 +238,9 @@ const DRAFT_OWNED = new Set([
   /* แบบการนับ Actual (mig 0412) — ตั้งได้ทางเดียวคือตัวห่อการอนุมัติ (approve_sales_order_with_actual_mode) ⇒ ใบร่างเป็น 'order'
      จาก DEFAULT เสมอ (CHECK ห้ามร่างเป็นรายงวด) · cache สองช่องเริ่ม 0 แล้ว trigger ของงวดดูแล */
   'actualMode', 'actualCountedAmount', 'actualSubmittedAmount',
+  /* เหตุผลของ "ไม่นับ Actual" (mig 0439) — คู่กับแบบ: เป็นของการอนุมัติแต่ละรอบ · ใบร่างต้องว่าง (CHECK sales_orders_actual_none_reason)
+     · ค่าตั้งต้นของช่องเหตุผลตอนอนุมัติใบ Rev. จออ่านจากใบก่อนหน้า (GET previousActualNoneReason) */
+  'actualNoneReason',
   /* ใบค่าสรรพสามิต (mig 0414) — ใบจากใบเสนอราคาขายเป็นสาย pipeline เสมอ ⇒ ไม่มี SO ต้นทาง (CHECK `sales_orders_deal_by_origin`)
      · ใบค่าสรรพสามิตเกิดจาก RPC แยก (create_excise_sales_order_draft · 0416) ไม่ใช่เส้นนี้
      · "ไม่เรียกเก็บในระบบ" / "ปิดยอดค้าง" (0418) ตัดสินได้หลังใบอนุมัติและออกรอบแล้วเท่านั้น ⇒ ใบร่างว่างโดยนิยาม */

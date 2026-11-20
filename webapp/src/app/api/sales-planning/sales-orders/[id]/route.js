@@ -40,11 +40,11 @@ import {
 } from '@/lib/sales/salesOrderWorkflow';
 import { documentWorkflowError } from '@/lib/sales/documentWorkflowErrors';
 /* นับ Actual ทั้งใบ / รายงวด (mig 0412 · docs/so-installment-actual.md) — กติกาอยู่ที่ salesOrderActualMode · ตัวต่อสายของ route อยู่ที่ salesOrderActualRoute */
-import { ACTUAL_MODE_INSTALLMENT, countRestBlocker, installmentActualReasonError } from '@/lib/sales/salesOrderActualMode';
+import { ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_NONE, countRestBlocker, installmentActualReasonError } from '@/lib/sales/salesOrderActualMode';
 import {
   INSTALLMENT_ACTUAL_FREEZE_FAILED, actualModeApproveBlock, actualModeAuditText, actualStartBlocker, installmentActualCounted,
   installmentActualOrderAuditSummary, installmentActualStartOutcome, installmentActualStartRecovery, installmentCountAtFreeze,
-  parseActualModeInput, previousActualModeOf, revokeActualDropText,
+  parseActualModeInput, parseActualNoneReasonInput, previousActualModeOf, previousActualNoneReasonOf, revokeActualDropText,
 } from '@/lib/sales/salesOrderActualRoute';
 import { DELIVERY_DUE_AMEND_TEXT, deliveryDueAmendError, parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import {
@@ -338,7 +338,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
      (`previousActualMode` ข้างล่าง · docs: "Rev. = แบบของใบก่อนหน้า") */
   const { data: revisionHistory, error: revisionHistoryError } = await supabase
     .from('sales_orders')
-    .select('id, orderNumber, revisionNo, status, orderDate, createdAt, "actualMode", "supersededById"')
+    .select('id, orderNumber, revisionNo, status, orderDate, createdAt, "actualMode", "actualNoneReason", "supersededById"')
     .eq('baseNumber', order.baseNumber || order.orderNumber)
     .order('revisionNo', { ascending: false });
   if (revisionHistoryError) throw revisionHistoryError;
@@ -514,6 +514,8 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     /* ⭐ แบบการนับ Actual ของใบที่ใบนี้ออก Rev. แทน ('order' | 'installment') · ไม่ใช่ Rev. = null (mig 0412)
        — โมดัลอนุมัติตั้งตัวเลือกตามนี้ (ใบปกติตั้งต้น "ทั้งใบ") · ค่าของใบนี้เองอยู่ที่ `actualMode` (select *) */
     previousActualMode: previousActualModeOf(order, revisionHistory || []),
+    /* mig 0439: ใบก่อนหน้า "ไม่นับ Actual" = เหตุผลเดิมเป็นค่าตั้งต้นของช่องเหตุผล (แก้ได้) · อื่น ๆ = '' */
+    previousActualNoneReason: previousActualNoneReasonOf(order, revisionHistory || []),
     hasSignatureEvidence: Boolean(signatureEvidence?.id || order.signatureEvidenceId),
     scentRequest: scentRequest || null,
     carrySources,
@@ -1471,6 +1473,15 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const actualModeInput = parseActualModeInput(body.actualMode);
     if (!actualModeInput.ok) return Response.json({ error: actualModeInput.error, code: 'actual_mode_invalid' }, { status: 400 });
     const actualMode = actualModeInput.mode;
+    /* ⭐ **ไม่นับ Actual** (mig 0439 · มติ 20/11) — เหตุผล 10–500 ตัวอักษรบังคับ (400) · ใบ pipeline เท่านั้น (409) · ฐานตรวจซ้ำทั้งสองข้อ */
+    const actualReasonInput = parseActualNoneReasonInput(actualMode, body.actualReason);
+    if (!actualReasonInput.ok) {
+      return Response.json({ error: actualReasonInput.error, code: 'actual_none_reason_required' }, { status: 400 });
+    }
+    if (actualMode === ACTUAL_MODE_NONE) {
+      const ineligible = actualModeApproveBlock(before, actualMode);
+      if (ineligible) return Response.json({ error: ineligible, code: 'actual_none_ineligible' }, { status: 409 });
+    }
     if (actualMode === ACTUAL_MODE_INSTALLMENT) {
       let liveRows;
       try { liveRows = await loadInstallments(supabase, id); }
@@ -1506,8 +1517,9 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         documentFingerprint: salesOrderApprovalFingerprint(before, before.lines),
         note: String(body.note || '').trim() || null,
         overrideReason,
-        // mig 0412: ตัวห่อตั้ง "actualMode" ในทรานแซกชันเดียวกับการอนุมัติ (ส่งทุกครั้ง — ทั้งใบก็ส่ง 'order')
+        // mig 0412: ตัวห่อตั้ง "actualMode" ในทรานแซกชันเดียวกับการอนุมัติ (ส่งทุกครั้ง — แบบเต็มก็ส่ง 'order')
         actualMode,
+        actualReason: actualReasonInput.reason, // mig 0439: เหตุผลของ "ไม่นับ Actual" (แบบอื่น = null)
         user,
       });
     } catch (approvalError) {
@@ -1656,6 +1668,10 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     if (appliedActualMode === ACTUAL_MODE_INSTALLMENT && actualCounted?.count) {
       await logThread('actual_start', { seqs: actualCounted.seqs, amount: actualCounted.amount });
     }
+    /* ไม่นับ Actual (0439 · มติข้อ 2): เธรดดีลบอกว่าใบนี้ไม่เข้า Actual พร้อมเหตุผล — เหตุผลอ่านจากแถวที่ฐานคืน (ฐานคือคนตัดสินสุดท้าย) */
+    if (appliedActualMode === ACTUAL_MODE_NONE) {
+      await logThread('actual_none', { reason: data?.actualNoneReason || actualReasonInput.reason });
+    }
     /* ⭐ mig 0404: ท้ายสรุป audit ของใบที่อนุมัติโดยยังไม่ตั้งงานบริการ — **อ่านจากแถวที่ RPC คืน ไม่ใช่จากด่าน JS**
        (ฐานเห็นว่าครบแล้ว = เปิดรอบขาย + ประทับ ⇒ สรุปห้ามพูดว่ายังไม่ส่ง TS) */
     const approvedWithoutSetup = !!setupCtx && !data?.serviceTermsOpenedAt && serviceSetupDeferred(data)?.stage === 'approved';
@@ -1672,6 +1688,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
         + actualModeAuditText(appliedActualMode, {
           counted: actualCounted, startFailed: installmentActualStartFailed, noRows: installmentActualNoRows,
           alreadyCounted: installmentActualAlreadyCounted, freezeFailed,
+          reason: data?.actualNoneReason || actualReasonInput.reason,
         })
         + (approvedWithoutSetup ? ' · ยังไม่ตั้งงานบริการ (ข้ามตอนยื่น) — ยังไม่ส่ง TS' : ''),
       request: req,

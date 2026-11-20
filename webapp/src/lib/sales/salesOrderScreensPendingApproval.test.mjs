@@ -90,7 +90,7 @@ test('ยอดหัวกลุ่ม: weight = Actual ล้วน · รอ�
   assert.deepEqual(
     splitSalesOrderAmounts(pendingBucket.items),
     { actual: 0, actualCount: 0, pendingApproval: 993000, pendingApprovalCount: 2, instRemaining: 0,
-      pendingOrderCount: 2, pendingOrderAmount: 993000, instPendingCount: 0, instPendingAmount: 0 },
+      pendingOrderCount: 2, pendingOrderAmount: 993000, instPendingCount: 0, instPendingAmount: 0, noneCount: 0 },
   );
 
   // จัดตามลูกค้า — ถังเดียวมีทั้งสองกองได้ (Actual ฿X · รออนุมัติ ฿Y)
@@ -159,7 +159,8 @@ test('ทะเบียน SO: การ์ด KPI คิดจาก rows ช�
   // ยอดรออนุมัติอยู่ใต้การ์ด "รอตรวจอนุมัติ" พร้อมบอกว่ายังไม่นับ — และบอกว่าเป็นใบจากใบเสนอราคา (L11a)
   assert.match(page, /label="รอตรวจอนุมัติ"/);
   assert.match(page, /`ใบจากใบเสนอราคา · \$\{fmtMoney\(summary\.pendingApproval\)\} ก่อน VAT · ยังไม่นับ Actual`/);
-  assert.match(page, /label="อนุมัติแล้ว"\s+value=\{summary\.approved\}\s+note="ใบจากใบเสนอราคา · นับเป็น Actual"/);
+  // mig 0439: หมายเหตุบอกจำนวนใบ "ไม่นับ Actual" เมื่อมี (การ์ดนับใบไม่นับรวมด้วย — กดแล้วกรอง pipeline + approved)
+  assert.match(page, /label="อนุมัติแล้ว"\s+value=\{summary\.approved\}\s+note=\{summary\.noneCount\s+\? `ใบจากใบเสนอราคา · ไม่นับ Actual \$\{fmtNumber\(summary\.noneCount\)\} ใบ`\s+: "ใบจากใบเสนอราคา · นับเป็น Actual"\}/);
   // 🛑 กับดักหลัก: status !== 'approved' ดึงร่าง/ตีกลับ/ยกเลิกมาปน
   assert.doesNotMatch(page, /status\s*!==?\s*["']approved["']/);
   assert.doesNotMatch(page, /status\s*===?\s*["']approved["']\s*\?\s*Number\(row\.actualAmount\)/,

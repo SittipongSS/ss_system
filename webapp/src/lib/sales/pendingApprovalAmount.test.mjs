@@ -49,11 +49,11 @@ test('รวมยอดจากแถว SO: Actual กับรออนุ�
   const rows = ALL_STATUSES.map((status, i) => ({ status, actualAmount: (i + 1) * 100 }));
   assert.deepEqual(splitSalesOrderAmounts(rows), {
     actual: 300, actualCount: 1, pendingApproval: 200, pendingApprovalCount: 1, instRemaining: 0,
-    pendingOrderCount: 1, pendingOrderAmount: 200, instPendingCount: 0, instPendingAmount: 0,
+    pendingOrderCount: 1, pendingOrderAmount: 200, instPendingCount: 0, instPendingAmount: 0, noneCount: 0,
   });
   assert.deepEqual(splitSalesOrderAmounts([]), {
     actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
-    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0,
+    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0, noneCount: 0,
   });
 });
 

@@ -17,6 +17,7 @@ import {
   replanChangeLine, replanDiff, replanExpected, replanStale,
 } from '@/lib/sales/installmentReplan';
 import { isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { isNoActualOrder } from '@/lib/sales/salesOrderActualMode';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 
 export const CARRY_BUTTON = 'ยกเงินจากใบที่ยกเลิก';
@@ -30,7 +31,7 @@ export const INSTALLMENT_CARRY_SCHEMA_MISSING = 'ฐานยังไม่ไ�
    ⇒ ทางออก: ใบ Rev. ที่อนุมัติแบบทั้งใบ (เงินก้อนเดียวครอบทั้งใบ = ทั้งใบ) แล้วยกเข้าใบนั้น
    · คำถามค้างข้อ 1 — ค่าตั้งต้นนี้คงเดิม (เจ้าของยังไม่ตอบ) · ⛔ ห้ามแนะนำ "กดนับที่เหลือทั้งหมดก่อนแล้วยก" (มติข้อ 10 ทำให้ไม่ orphan ก็จริง
      แต่งวดที่นับแล้วลดได้ไม่ถึง 0 ⇒ เงินก้อนเดียวเต็มใบติด installment_carry_counted_locked — ฮาร์เนส 0412 ข้อ 24 พิสูจน์ทั้งสองทาง) */
-const CARRY_REV_WHOLE_ORDER = 'ย้อนการอนุมัติใบนี้แล้วออก Rev. · อนุมัติ Rev. แบบ “Actual ทั้งใบ” แล้วยกเงินเข้าใบ Rev.';
+const CARRY_REV_WHOLE_ORDER = 'ย้อนการอนุมัติใบนี้แล้วออก Rev. · อนุมัติ Rev. แบบ “Actual เต็ม” แล้วยกเงินเข้าใบ Rev.';
 export const CARRY_REMAINDER_WAY_OUT = `ยกเข้าใบรายงวดนี้ไม่ได้ — ${CARRY_REV_WHOLE_ORDER}`;
 /* ยกเกินเพราะติดงวดที่ยื่นขอนับอยู่ (ล็อก) หรืองวดที่นับ Actual แล้ว (ยังไม่มีเงิน · มติข้อ 9 ลดยอดได้แต่ลบไม่ได้) — ไม่ใช่เงินเกินยอดใบ
    ไม่มีทางคืนเงิน (ประโยคท้ายของ installment_carry_counted_locked — สองไฟล์ต้องตรงกันทุกตัวอักษร · documentWorkflowErrors.test)
@@ -440,6 +441,7 @@ export function carryPromptFacts(order, source, before = [], carried = [], built
     actualAmountLabel: fmtMoney(order?.actualAmount),
     actualMonthLabel: actualMonthLabel(order),
     installmentActualLabel: installmentActualLabelOf(order),
+    actualNone: isNoActualOrder(order), // mig 0439: ใบไม่นับ Actual — ยกเงินเข้าไม่กระทบ Actual
     /* Actual ที่นับไว้ตอนอนุมัติใบของงวดที่ถูกแทนทั้งงวด ย้ายไปอยู่กับแถวที่ยกมา (applyCarryIn.actualMoved · RPC 0412 C2) */
     actualMovedLine: built?.actualMoved
       ? `Actual ที่นับไว้ตอนอนุมัติใบของงวดที่ ${built.actualMoved.fromSeqs.join(', ')} ${fmtMoney(built.actualMoved.amount)} (ก่อน VAT)`

@@ -1139,7 +1139,7 @@ export function salesOrderMoneyOutcome(order, rows = [], action, { serviceRounds
       freeReported.length ? `สลิปรอบัญชีตรวจ ${freeReported.length} งวดยังอยู่ในคิวบัญชีตามปกติ` : null,
       heldReported.length
         ? `สลิปของงวดที่ยังไม่นับ Actual ${heldReported.length} งวด ${fmtMoney(sumOf(heldReported, () => true))} บัญชีรับรองไม่ได้จนเจ้าของดีลออก Rev.`
-          + ' (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual ทั้งใบ แล้วบัญชีรับรองได้)'
+          + ' (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual เต็ม แล้วบัญชีรับรองได้)'
         : null,
       /* มติ D2: ใบที่บัญชีปิดแล้วย้อนได้ · ใบ Rev. ไม่สืบสถานะปิดจากใบเดิม (financeStatus เกิดเป็น NULL) */
       order?.financeStatus === 'approved' ? 'บัญชีปิดใบนี้แล้ว — ใบ Rev. จะกลับเข้าคิวให้บัญชีปิดใหม่' : null,

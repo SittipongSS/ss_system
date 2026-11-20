@@ -67,6 +67,8 @@ const DEAL_MIRROR_KIND = {
   actual_approve: 'doc_approve',
   actual_reject: 'doc_return',
   actual_count_rest: 'doc_approve',
+  /* ไม่นับ Actual (mig 0439) — บรรทัดคู่กับ `approve` ของใบเดียวกัน · เหตุผลบังคับ (มติข้อ 2) */
+  actual_none: 'doc_approve',
 };
 const isInstallmentActualAction = (action) => String(action || '').startsWith('actual_');
 const DOC_LABEL = { quotation: 'ใบเสนอราคา', sales_order: 'ใบสั่งขาย' };
@@ -89,7 +91,7 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
   } = opts;
   // ⚠️ `withdraw` อยู่ในชุดนี้ด้วย — เหตุผลตอนดึงกลับไม่มีที่เก็บอื่นแล้ว
   // ⭐ ตีกลับงวด / นับที่เหลือทั้งหมด (0412) บังคับเหตุผล 10–500 ⇒ ต้องอยู่ในข้อความเหมือนกัน
-  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept', 'withdraw', 'actual_reject', 'actual_count_rest'].includes(action)
+  const tail = ['reject', 'revise', 'cancel', 'revoke', 'unaccept', 'withdraw', 'actual_reject', 'actual_count_rest', 'actual_none'].includes(action)
     ? REASON_SUFFIX(reason)
     : '';
   /* งวดของงานรายงวด — งวดเดียว (`seq`) หรือหลายงวด (`seqs` · นับตอนอนุมัติใบ/นับที่เหลือ) · ยอดก่อน VAT ที่เข้า Actual */
@@ -111,7 +113,8 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
     accept: `ลูกค้ารับ ${head}`,
     revise: `${head} ออก Rev. ใหม่${toRevisionNo == null ? '' : ` (Rev.${toRevisionNo})`}`,
     cancel: `ยกเลิก ${head}`,
-    revoke: `ย้อนการอนุมัติ ${head} — ยอดหลุดจาก Actual`,
+    /* ใบ "ไม่นับ Actual" (mig 0439) ไม่เคยเข้า Actual — ไม่พูดว่ายอดหลุด */
+    revoke: doc.actualMode === 'none' ? `ย้อนการอนุมัติ ${head} (ใบนี้ไม่นับ Actual)` : `ย้อนการอนุมัติ ${head} — ยอดหลุดจาก Actual`,
     unaccept: `ย้อนการรับ ${head} — ดีลหลุดจาก Won`,
     withdraw: `${head} ถูกดึงกลับมาแก้ไข`,
     // กู้คืน = ล้าง rejectionReason/cancelReason ทิ้งทั้งชุด → **จุดที่เหตุผลรอบก่อน
@@ -128,6 +131,7 @@ export function dealDocumentUpdate(docType, action, doc, opts = {}) {
     actual_approve: `อนุมัตินับ Actual ${seqText} ของ ${head}${amountText ? ` —${amountText}` : ''}`,
     actual_reject: `คำขอนับ Actual ${seqText} ของ ${head} ถูกตีกลับ`,
     actual_count_rest: `นับ Actual ที่เหลือทั้งหมดของ ${head} (${seqText}${amountText})`,
+    actual_none: `${head} อนุมัติแบบไม่นับ Actual — ยอดใบนี้ไม่เข้า Actual / % เป้า`,
   }[action];
 
   return {

@@ -24,7 +24,9 @@ import { OPENING_INSTALLMENT_LABEL, isHistoricalOrder, isOpeningInstallment } fr
 import { contractInForce } from '@/lib/sales/contracts';
 import { isSalesOrderReviewer } from '@/lib/sales/salesOrderWorkflow';
 /* ใบ "Actual รายงวด" (mig 0412) — ยอดที่นับแล้วต่างจากยอดเต็มและกระจายหลายเดือน ⇒ โมดัลพูดยอดที่นับแล้วแทน (ไฟล์กติกาไม่ import ไฟล์นี้กลับ) */
-import { installmentActualCountRestDone, isInstallmentActualOrder, salesOrderCountedActual } from '@/lib/sales/salesOrderActualMode';
+import {
+  installmentActualCountRestDone, isInstallmentActualOrder, isNoActualOrder, salesOrderCountedActual,
+} from '@/lib/sales/salesOrderActualMode';
 
 /** ป้ายบนแผงงวดและทะเบียนบัญชี (มติ D5 — ฉบับพิมพ์ยังแสดงแผนตาม QT) */
 export const REPLANNED_BADGE = 'ปรับแผนหลังอนุมัติ';
@@ -589,6 +591,7 @@ export function replanPromptFacts(order, before = [], after = [], { serviceRound
     actualAmountLabel: fmtMoney(order?.actualAmount),
     actualMonthLabel: actualMonthLabel(order),
     installmentActualLabel: installmentActualLabelOf(order),
+    actualNone: isNoActualOrder(order), // mig 0439: ใบไม่นับ Actual — โมดัลไม่พูดถึงยอด Actual ที่ "ไม่เปลี่ยน"
     /* มติข้อ 10: ใบที่กดนับที่เหลือทั้งหมดแล้ว — งวดที่เพิ่มนับให้อัตโนมัติตอนบันทึก (ไม่ต้องยื่น) · ใบอื่น = '' */
     actualAutoCountLine: autoCountLine(order, prev, next.map((r) => r.id ?? null)),
     quotationNumber: text(order?.quotation?.quoteNumber),

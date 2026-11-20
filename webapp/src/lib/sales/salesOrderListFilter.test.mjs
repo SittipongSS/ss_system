@@ -202,7 +202,9 @@ test('ด่านซอร์ส L11: หน้ากรองด้วยต�
   assert.ok(strip.includes('note={pendingCardNote.note}\n            title={pendingCardNote.title}'));
   assert.ok(slice(page, 'const pendingCardNoteOf = (summary) => {', '\n};\n')
     .includes('ใบจากใบเสนอราคา · ${fmtMoney(summary.pendingApproval)} ก่อน VAT · ยังไม่นับ Actual'));
-  assert.ok(strip.includes('note="ใบจากใบเสนอราคา · นับเป็น Actual"'));
+  /* mig 0439: การ์ด "อนุมัติแล้ว" รวมใบ "ไม่นับ Actual" (กดแล้วกรอง pipeline + approved) — หมายเหตุบอกจำนวนแยกเมื่อมี */
+  assert.ok(page.includes('approved: amounts.actualCount + amounts.noneCount,'));
+  assert.ok(strip.includes('? `ใบจากใบเสนอราคา · ไม่นับ Actual ${fmtNumber(summary.noneCount)} ใบ`\n              : "ใบจากใบเสนอราคา · นับเป็น Actual"}'));
   assert.ok(strip.includes('note="รวมเฉพาะใบจากใบเสนอราคาที่อนุมัติแล้ว"'));
   assert.ok(ORIGIN_FILTERS[ORIGIN_PIPELINE].label === 'ใบจากใบเสนอราคา', 'คำบนหมายเหตุ = คำบนตัวเลือกที่มาที่การ์ดตั้ง');
 });

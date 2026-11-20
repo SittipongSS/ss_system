@@ -615,7 +615,7 @@ test('หน้าใบ: ท้ายแผงแดงเฉพาะแผง
   /* review รอบห้า 27/10 (มติข้อ 6): ใบ "Actual รายงวด" ที่อนุมัติแล้วคงคำอธิบายรายงวด (นับแล้ว x/y · งวดที่ยื่นได้) + ท้ายเรื่องงานบริการ
      — สามประโยค "ยอดถูกนับเป็น Actual แล้ว" เป็นของใบทั้งใบเท่านั้น */
   assert.match(page, /const backfillServiceWord = setupView\?\.reopened \? "การแก้งานบริการ"\s*: setupView\?\.deferred \? "การตั้งงานบริการทีหลัง" : "การตั้งงานบริการย้อนหลัง";/);
-  assert.match(page, /const backfillActualNote = !showBackfillPanel\s*\? null\s*: instActual && order\.status === "approved"\s*\? `\$\{status\.description\} — \$\{backfillServiceWord\}ไม่เปลี่ยนยอดที่นับ`\s*: \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว \(อนุมัติ \$\{fmtDate\(order\.approvedAt\)\}\) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`\);/);
+  assert.match(page, /const backfillActualNote = !showBackfillPanel\s*\? null\s*: instActual && order\.status === "approved"\s*\? `\$\{status\.description\} — \$\{backfillServiceWord\}ไม่เปลี่ยนยอดที่นับ`\s*(?:\/\*[^*]*\*\/)?\s*: noneActual && order\.status === "approved"\s*\? `\$\{status\.description\} — \$\{backfillServiceWord\}ไม่ทำให้ใบนี้นับ Actual`\s*: \(setupView\?\.reopened\s*\? SERVICE_REOPENED_TEXT\.actualNote\(order\.approvedAt\)\s*: setupView\?\.deferred\s*\? SERVICE_DEFERRED_TEXT\.actualNote\(order\.approvedAt\)\s*: `ยอดถูกนับเป็น Actual แล้ว \(อนุมัติ \$\{fmtDate\(order\.approvedAt\)\}\) — การตั้งงานบริการย้อนหลังไม่เปลี่ยนยอดนี้`\);/);
   assert.ok(page.indexOf('const status = historicalCopy') < page.indexOf('const backfillActualNote = '), 'คำอธิบายสถานะคิดก่อนคำใต้สถานะ');
   assert.equal(SERVICE_DEFERRED_TEXT.actualNote('2026-10-08T04:00:00Z'), 'ยอดถูกนับเป็น Actual แล้ว (อนุมัติ 08/10/2026) — การตั้งงานบริการทีหลังไม่เปลี่ยนยอดนี้');
 });
@@ -627,8 +627,9 @@ test('หน้าใบ: โมดัลอนุมัติ/Admin Override �
   assert.match(approve, /if \(service\?\.issues\?\.length\) setError\(issuesErrorText\(serviceApproveBlockedText\(service\.issues\.length\), service\.issues\)\);/);
   assert.doesNotMatch(approve, /deferred|DEFER|skip/, 'ไม่แตกกิ่งที่จอ');
   /* ⭐ mig 0412: การอนุมัติส่งแบบการนับ Actual ที่ผู้อนุมัติเลือก (ทั้งใบ/รายงวด) อย่างเดียว — ไม่มีอะไรเรื่องการข้าม (ฐานตัดสินจากตราบนใบ) */
-  assert.match(approve, /action: \(\) => requestAction\("approve", \{ actualMode: approveActualModeRef\.current \}\),/,
-    'การอนุมัติส่งแค่แบบการนับ Actual — ไม่ส่งอะไรเรื่องการข้าม (ฐานตัดสินจากตราบนใบ)');
+  assert.match(approve, /return requestAction\("approve", approveActualPayload\(mode, approveActualReasonRef\.current\)\);/,
+    'การอนุมัติส่งแค่แบบการนับ Actual (+ เหตุผลของ "ไม่นับ" · 0439) — ไม่ส่งอะไรเรื่องการข้าม (ฐานตัดสินจากตราบนใบ)');
+  assert.match(page, /const approveActualPayload = \(mode, reason\) => \(mode === ACTUAL_MODE_NONE\s*\? \{ actualMode: mode, actualReason: String\(reason \|\| ""\)\.trim\(\) \}\s*: \{ actualMode: mode \}\);/);
   assert.match(page, /\{setupRequired && setupView\?\.approvalEffects\?\.length \? \(\s*<StatusNotice tone="info" title="งานบริการของใบนี้">/);
 
   /* ของจริงที่โมดัลได้: ใบรออนุมัติที่ยังข้ามอยู่ — ข้อที่ต้องตรวจ = ใบนี้ข้าม (ใคร · เมื่อไร) · ผล = ยังไม่ส่ง TS + ทางเดินต่อ · ไม่มีข้อที่ติด */

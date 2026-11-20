@@ -412,7 +412,7 @@ const INSTALLMENT_ACTUAL_CODES = Object.freeze({
   sales_order_actual_mode_invalid: ['แบบการนับ Actual ไม่ถูกต้อง', 400],
   sales_order_actual_mode_ineligible: ['ใบนี้นับ Actual รายงวดไม่ได้ — ต้องเป็นใบที่ยอดมากกว่า 0 และแบ่งอย่างน้อย 2 งวด', 409],
   installment_actual_not_approved: ['งวดนี้ยังไม่ได้อนุมัตินับ Actual — รอ AE Sup อนุมัตินับงวดนี้ก่อน บัญชีจึงรับรองเงินได้', 409],
-  installment_actual_order_not_installment: ['ใบนี้นับ Actual ทั้งใบ ไม่มีการยื่นรายงวด', 409],
+  installment_actual_order_not_installment: ['ใบนี้ไม่ได้นับ Actual รายงวด (นับเต็มหรือไม่นับ) — ไม่มีการยื่นรายงวด', 409],
   installment_actual_order_not_approved: ['ใบสั่งขายยังไม่อยู่ในสถานะอนุมัติ — ยื่นหรืออนุมัติงวดไม่ได้', 409],
   installment_actual_bad_state: ['สถานะงวดเปลี่ยนไปแล้ว — โหลดหน้าใหม่แล้วลองอีกครั้ง', 409],
   installment_actual_previous_unconfirmed: ['งวดก่อนหน้ายังไม่ได้รับรองเงิน — ยื่นหรืออนุมัติงวดนี้ได้หลังบัญชีรับรองงวดก่อน', 409],

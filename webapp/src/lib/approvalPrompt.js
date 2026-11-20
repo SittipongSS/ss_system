@@ -241,6 +241,13 @@ function pipelineConfirmEffects(orderStatus, {
         : []),
     ];
   }
+  /* ใบ "ไม่นับ Actual" (mig 0439 · มติ 20/11) — เงินเข้าตามปกติ แต่ไม่มี Actual ให้พูดถึง */
+  if (actualMode === 'none') {
+    return [
+      'ถ้าใบนี้ถูกย้อนการอนุมัติ/ออก Rev. เงินงวดนี้ย้ายไปกับใบ Rev. — บัญชีไม่ต้องรับรองซ้ำ',
+      'ใบนี้อนุมัติแบบไม่นับ Actual — การรับรองเงินไม่กระทบยอด Actual ของฝ่ายขาย',
+    ];
+  }
   return [
     'ถ้าใบนี้ถูกย้อนการอนุมัติ/ออก Rev. เงินงวดนี้ย้ายไปกับใบ Rev. — บัญชีไม่ต้องรับรองซ้ำ',
     'ยอด Actual ของฝ่ายขายไม่เปลี่ยน — เป็นยอดเต็มตั้งแต่ใบอนุมัติแล้ว',
@@ -359,6 +366,7 @@ export function paymentPlanEditPrompt({
   orderNumber = '', beforeCount = 0, afterCount = 0, changes = [], lockedCount = 0, lockedAmountLabel = '',
   totalLabel = '', actualAmountLabel = '', actualMonthLabel = '', installmentActualLabel = '', actualAutoCountLine = '',
   quotationNumber = '', serviceRounds = false, paidThroughLabel = '', coverageNotes = [], contractNumber = null, complete = false,
+  actualNone = false,
 } = {}) {
   const rowLines = (Array.isArray(changes) ? changes : []).map((line) => String(line || '').trim()).filter(Boolean);
   if (!rowLines.length) throw new Error('paymentPlanEditPrompt: ต้องมีอย่างน้อย 1 งวดที่เปลี่ยน');
@@ -379,7 +387,10 @@ export function paymentPlanEditPrompt({
         ? `งวดที่รับเงินแล้ว/รอบัญชีตรวจ/มีเอกสารผูก ${lockedCount} งวด ${lockedAmountLabel} ไม่ถูกแตะ (ยอด หลักฐาน ใบกำกับคงเดิม)`
         : null,
       `ยอดรวมทุกงวด ${totalLabel} = ยอดใบ (รวม VAT)`,
-      String(installmentActualLabel || '').trim()
+      /* ใบ "ไม่นับ Actual" (mig 0439) — ไม่มี Actual ให้ไม่เปลี่ยน */
+      actualNone
+        ? 'ใบนี้อนุมัติแบบไม่นับ Actual — ปรับแผนงวดไม่กระทบยอด Actual'
+      : String(installmentActualLabel || '').trim()
         ? `ยอด Actual รายงวดที่นับแล้ว ${String(installmentActualLabel).trim()} ไม่เปลี่ยน — งวดที่นับแล้วปรับยอด/วันได้แต่ Actual ที่นับไว้คงเดิม`
           /* มติข้อ 10: ใบที่กดนับที่เหลือทั้งหมดแล้วไม่มีงวดที่ยื่นอยู่/รอยื่น — บรรทัดถัดไปบอกว่างวดที่เพิ่มนับให้เอง */
           + (autoCount ? '' : ' · งวดที่ยื่นขอนับอยู่ไม่ถูกแตะ · งวดที่ยังไม่นับคิดส่วนแบ่งจากยอดงวดใหม่ตอน AE Sup อนุมัติงวด')
@@ -412,7 +423,7 @@ export function paymentCarryPrompt({
   orderNumber = '', sourceNumber = '', count = 0, amountLabel = '', reportedCount = 0, reportedAmountLabel = '',
   invoiceNos = [], carriedLines = [], changes = [], totalLabel = '', actualAmountLabel = '', actualMonthLabel = '',
   installmentActualLabel = '', actualMovedLine = '', actualAutoCountLine = '', quotationNumber = '', remainingCount = 0,
-  remainingAmountLabel = '', complete = false, warnings = [],
+  remainingAmountLabel = '', complete = false, warnings = [], actualNone = false,
 } = {}) {
   if (!(Number(count) > 0)) throw new Error('paymentCarryPrompt: ต้องยกอย่างน้อย 1 งวด');
   const moved = String(actualMovedLine || '').trim();
@@ -441,7 +452,10 @@ export function paymentCarryPrompt({
       /* (review รอบสอง 26/10) เงินที่ยกมาแทนงวดที่นับตอนอนุมัติใบทั้งงวด = Actual ของงวดนั้นย้ายมาอยู่กับแถวที่ยกแถวแรก (RPC 0412 C2)
          ⇒ แถวนั้นไม่ต้องยื่นอีก · แถวที่ยกมาอื่นยังต้องยื่น-อนุมัติ */
       moved || null,
-      String(installmentActualLabel || '').trim()
+      /* ใบ "ไม่นับ Actual" (mig 0439) — เงินที่ยกเข้าไม่สร้าง Actual */
+      actualNone
+        ? `ใบนี้อนุมัติแบบไม่นับ Actual — ยกเงินเข้าไม่กระทบยอด Actual (${sourceNumber} ยกเลิกแล้วไม่นับ Actual อยู่แล้ว)`
+      : String(installmentActualLabel || '').trim()
         ? `ยอด Actual รายงวดที่นับแล้วของใบนี้ ${String(installmentActualLabel).trim()} ไม่เปลี่ยน — ${autoCount
           ? 'ไม่มีงวดที่ยกมาต้องยื่นขอนับ'
           : moved

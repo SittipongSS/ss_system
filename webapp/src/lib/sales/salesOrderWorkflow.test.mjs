@@ -476,7 +476,7 @@ test('ใบย้อนหลังอนุมัติแล้ว: ไม่
   assert.deepEqual(
     splitSalesOrderAmounts([HISTORICAL_APPROVED, { status: 'approved', actualAmount: 250 }]),
     { actual: 250, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
-      pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0 },
+      pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0, noneCount: 0 },
   );
   // ใบ pipeline ไม่ขยับ — 'legacy'/ว่าง ก็ไม่ใช่ใบย้อนหลัง
   for (const origin of [undefined, 'pipeline', 'legacy']) {
@@ -594,7 +594,7 @@ test('splitSalesOrderAmounts: ตรงกับ cache บนดีลทุก�
   const split = splitSalesOrderAmounts(rows);
   assert.deepEqual(split, {
     actual: 65000, actualCount: 2, pendingApproval: 27000, pendingApprovalCount: 2, instRemaining: 15000,
-    pendingOrderCount: 1, pendingOrderAmount: 2000, instPendingCount: 1, instPendingAmount: 25000,
+    pendingOrderCount: 1, pendingOrderAmount: 2000, instPendingCount: 1, instPendingAmount: 25000, noneCount: 0,
   });
   /* review รอบสาม 26/10: ใบรายงวดที่มีงวดยื่นอยู่สองงวด (แถวที่ยกมา) = **หนึ่งใบ** ใน pendingApprovalCount (ทุกจอวาด "· n ใบ") ·
      จำนวนงวดอยู่ที่ instPendingCount (ป้าย "งวด") · cache ของดีล soInstPendingCount นับใบชุดเดียวกัน (0412 count(DISTINCT)) */
@@ -617,7 +617,7 @@ test('splitSalesOrderAmounts: ตรงกับ cache บนดีลทุก�
   // นับครบทุกงวดแล้ว = ใบรายงวดหน้าตาเหมือนใบทั้งใบ
   assert.deepEqual(splitSalesOrderAmounts([{ ...INSTALLMENT_SO, actualCountedAmount: 100000, actualSubmittedAmount: 0 }]), {
     actual: 100000, actualCount: 1, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
-    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0,
+    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0, noneCount: 0,
   });
 });
 
@@ -666,4 +666,20 @@ test('รอฉันลงมือ — สองเลนของ Actual ร�
   const reviewOnly = { ...INSTALLMENT_SO, id: 'SO-S', serviceSetupState: 'submitted', serviceSetupSubmittedById: 'USR-AE' };
   assert.equal(salesOrderIdsWaitingOnMe({ actualRows: [reviewOnly], actualInstallmentsOf: () => ready }, sup).size, 0);
   assert.equal(salesOrderIdsWaitingOnMe({ actualRows: [INSTALLMENT_SO] }, sup).size, 0, 'ไม่ให้ตัวอ่านงวด = ไม่นับ');
+});
+
+/* ── ไม่นับ Actual (mig 0439 · มติเจ้าของ 20/11/2026) ── */
+test('ใบอนุมัติแบบไม่นับ Actual: kind none · Actual 0 · ไม่อยู่ใน actualCount · นับแยกที่ noneCount', () => {
+  const none = { status: 'approved', origin: 'pipeline', actualMode: 'none', actualNoneReason: 'ของแถมทดแทนสินค้าเสีย', actualAmount: 500 };
+  const whole = { status: 'approved', origin: 'pipeline', actualMode: 'order', actualAmount: 250 };
+  assert.equal(salesOrderAmountKind(none), 'none');
+  assert.equal(salesOrderActual(none), 0);
+  const out = splitSalesOrderAmounts([none, whole]);
+  assert.equal(out.actual, 250);
+  assert.equal(out.actualCount, 1);
+  assert.equal(out.noneCount, 1);
+  assert.equal(out.pendingApproval, 0);
+  assert.equal(out.instRemaining, 0);
+  // ใบรออนุมัติ (แบบยังเป็น order เสมอ) ไม่โดน
+  assert.equal(salesOrderAmountKind({ ...none, status: 'pending_approval', actualMode: 'order' }), 'pending_approval');
 });

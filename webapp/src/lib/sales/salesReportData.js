@@ -3,9 +3,11 @@ import { loadUserDirectory } from '@/lib/usersRepo';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { reportPendingApproval } from '@/lib/sales/reportPendingApproval';
-import { buildReportRows, reportActualRows, reportOrderMonth as orderMonth, reportOrderTeam } from '@/lib/sales/reportRows';
-import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
-import { pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import {
+  buildReportRows, isUncountedReportRow, reportActualRows, reportOrderMonth as orderMonth, reportOrderTeam,
+} from '@/lib/sales/reportRows';
+import { actualModeOf, actualNoneReasonOf, isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
+import { exciseRowsOnly, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
 import { historyAppliesTo, targetFactorOf } from '@/lib/sales/reportPeriod';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
 
@@ -28,6 +30,13 @@ import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
  * ⭐ ใบ "Actual รายงวด" (mig 0412 · มติเจ้าของ 26/10/2026) — **หนึ่งแถวต่อ (ใบ, เดือนที่นับ)** (reportActualRows):
  *   ยอดของแถว = งวดที่ AE Sup อนุมัตินับในเดือนนั้น · วัน/เดือน = เวลาที่นับงวด · ใบที่อนุมัติก่อนงวดก็ต้องโหลด
  *   (งวดของมันอาจนับในงวดนี้) · ส่วนรออนุมัติรวมงวดที่ยื่นแล้วรอ AE Sup · ใบทั้งใบได้ผลเท่าเดิมทุกไบต์
+ *
+ * ⭐ ใบที่ "โชว์แต่ไม่นับ" (มติเจ้าของ 20/11/2026 · mig 0439) คืนเป็นช่อง `uncountedOrders` แยก — รูปแถวเดียวกับ orders[]
+ *   (ยอดที่นับ 0 · ยอดเก็บ/ค้างชำระตามจริง · ป้าย) · ไม่ปนเข้า orders[] / แถวบริษัท-ทีม-คน / pendingApproval / byDay
+ *   ⇒ ตัวสรุป (reportSummary) ที่นับ "ใบสั่งขาย n ใบ" จาก orders[] ได้ผลเท่าเดิมทุกตัว · จอ/Excel ต่อสองก้อนเข้ารายการใบเอง
+ *   - ใบ "ไม่นับ Actual" (actualMode 'none') — มากับคิวรีใบอนุมัติก้อนเดิม (pipeline) + เหตุผล `actualNoneReason`
+ *   - ใบค่าสรรพสามิต (origin 'excise' · mig 0414) — คิวรีแยก (exciseRowsOnly) · ทีม/สาย/ประเภทดีล = ของดีลของ SO ต้นทาง
+ *     (`sourceSalesOrderId` → sales_orders → deal) · ผู้รับผิดชอบ = ownerId ของใบค่าสรรพสามิตเอง
  *
  * ⭐ งวด (lib/sales/reportPeriod · มติผู้ใช้ 2026-09-22):
  *   - แกน `axis` อาจยาวกว่าเดือนที่โชว์ — เดือนเดียวโหลดตั้งแต่ ม.ค. เพื่อคิดทบยอด
@@ -86,7 +95,10 @@ function installmentShape(o, base, installmentById) {
 }
 
 function shapeOrderRow(o, { person, lineCount, payments = new Map() }) {
-  return {
+  /* ใบค่าสรรพสามิตไม่มีดีล — ประเภทธุรกิจ/ประเภทดีลอ่านจากดีลของ SO ต้นทาง (`sourceDeal` ที่ตัวโหลดเติม · ทีมด้วย reportOrderTeam)
+     ใบอื่นไม่มี sourceDeal ⇒ ค่าเดิมทุกตัว */
+  const deal = o.deal || o.sourceDeal || null;
+  const base = {
     id: o.id,
     orderNumber: o.orderNumber,
     quoteNumber: o.metadata?.quoteNumber || null,
@@ -100,8 +112,8 @@ function shapeOrderRow(o, { person, lineCount, payments = new Map() }) {
     team: reportOrderTeam(o),
     // ประเภทธุรกิจ (สินค้า/บริการ) ตามตัวกลาง — สายของดีล · ประเภทดีล (SCENT/NPD/RE-ORDER/OTHER) ของดีล
     // ⚠️ ไม่เติมค่าตั้งต้น (dealTypeOf ตีค่าว่างเป็น NPD) — ว่าง = ขีด ให้เห็นว่าดีลยังไม่ระบุ
-    line: orderBusinessLineOf(o),
-    dealType: o.deal?.dealType || null,
+    line: orderBusinessLineOf(o.excise ? { dealId: deal?.id || null, deal } : o),
+    dealType: deal?.dealType || null,
     month: orderMonth(o),
     day: reportOrderDay(o),
     approvedAt: o.approvedAt,
@@ -125,6 +137,19 @@ function shapeOrderRow(o, { person, lineCount, payments = new Map() }) {
     free: money(o.actualAmount) === 0,
     financeStatus: o.financeStatus || null,
   };
+  if (!isUncountedReportRow(o)) return base;
+  /* ⭐ แถวที่โชว์แต่ไม่นับ (มติเจ้าของ 20/11 · mig 0439) — ยอดที่นับ 0 แต่ **ไม่ใช่ "ไม่คิดเงิน"**:
+     "ไม่คิดเงิน" = ส่วนลดเต็มใบ ⇒ ตัดสินจากยอดก่อน VAT ของเอกสารเอง (ใบไม่นับ Actual = actualAmount เดิมของใบ ·
+     ใบค่าสรรพสามิต actualAmount = 0 เสมอตาม CHECK ของ 0414 ⇒ ยอดหน้าใบ − VAT) · ช่องเพิ่มมีเฉพาะแถวชนิดนี้ (ใบปกติรูปเดิม) */
+  const documentAmount = o.excise ? toSatang(money(o.totalAmount) - money(o.vatAmount)) : money(o.orderActualAmount);
+  return {
+    ...base,
+    free: documentAmount === 0,
+    actualMode: actualModeOf(o),
+    actualNone: Boolean(o.actualNone),
+    actualNoneReason: actualNoneReasonOf(o) || null,
+    excise: Boolean(o.excise),
+  };
 }
 
 /**
@@ -132,7 +157,8 @@ function shapeOrderRow(o, { person, lineCount, payments = new Map() }) {
  *
  * @param period ผลของ parseReportPeriod (ไม่มี error)
  * @returns { period, axis, months, lead, targetFactor[], company, teams, people, pendingApproval,
- *            orders[] (เฉพาะเดือน/วันที่โชว์), byDay{ 'YYYY-MM-DD': count }, historyDropped[] }
+ *            orders[] (เฉพาะเดือน/วันที่โชว์), uncountedOrders[] (ใบที่โชว์แต่ไม่นับ · รูปเดียวกับ orders[] + ธง),
+ *            byDay{ 'YYYY-MM-DD': count }, historyDropped[] }
  *          | { error, status }
  */
 export async function loadSalesReportData(supabase, period, { now = new Date() } = {}) {
@@ -167,13 +193,26 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
      (ตัวแตกแถว + ส่วนรออนุมัติของงวดอ่าน) · ดีลพ่วง `stage` ให้ส่วนรออนุมัติของงวดนับเฉพาะดีล Won (กติกาเดียวกับแดชบอร์ด) */
   const { data: orders, error: orderError } = await fetchAllResult(() => pipelineRowsOnly(supabase
     .from('sales_orders')
-    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", status, "actualMode", "actualCountedAmount", "actualSubmittedAmount", metadata, deal:sales_deals(team, id, line, "dealType", stage)'))
+    .select('id, "orderNumber", "quotationId", "dealId", "projectId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", subtotal, "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", status, "actualMode", "actualCountedAmount", "actualSubmittedAmount", "actualNoneReason", metadata, deal:sales_deals(team, id, line, "dealType", stage)'))
     .eq('status', 'approved')
     .lt('approvedAt', window.until)
     .or(`approvedAt.gte."${window.from}",actualMode.eq.installment`)
     .order('approvedAt', { ascending: true })
     .order('id', { ascending: true }));
   if (orderError) return { error: orderError.message, status: 500 };
+
+  /* ── ใบค่าสรรพสามิตที่อนุมัติในงวด (มติเจ้าของ 20/11 · mig 0414) ── โชว์ในรายการใบด้วยยอดที่นับ 0 (ไม่นับ Actual / FC / เป้า)
+     ช่วงเดียวกับใบทั้งใบ [from, until) · `origin` มาด้วยให้ตัวแตกแถว (reportActualRows · isExciseOrder) ติดธงเอง
+     ⚠️ ไม่มีดีล — ทีม/สาย/ประเภทดีลเติมจาก SO ต้นทางทีหลัง เฉพาะใบในงวดที่โชว์ */
+  const { data: exciseOrders, error: exciseError } = await fetchAllResult(() => exciseRowsOnly(supabase
+    .from('sales_orders')
+    .select('id, "orderNumber", "quotationId", "dealId", "customerName", "customerId", "orderDate", "approvedAt", "ownerId", "ownerName", "discountAmount", "vatAmount", "totalAmount", "actualAmount", "financeStatus", status, origin, "actualMode", "sourceSalesOrderId", metadata'))
+    .eq('status', 'approved')
+    .gte('approvedAt', window.from)
+    .lt('approvedAt', window.until)
+    .order('approvedAt', { ascending: true })
+    .order('id', { ascending: true }));
+  if (exciseError) return { error: exciseError.message, status: 500 };
 
   /* งวดของใบ "Actual รายงวด" — เหตุการณ์ Actual (งวดที่นับแล้ว) + งวดที่ยื่นรอ AE Sup (ส่วนรออนุมัติ) + เงินของแถวงวด
      ใบทั้งใบล้วน = ลิสต์ว่าง ⇒ ไม่ยิงคำถามเพิ่มเลย (fetchInChunks ข้ามเมื่อไม่มี id) */
@@ -196,20 +235,43 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
   }
 
   /* ตัดให้ตรงงวดด้วยวันไทยในโค้ด (ขอบคิวรีเป็นต้นวันไทยแล้ว ตรงนี้กันแถวที่ไม่มี approvedAt)
-     ⭐ ใบรายงวดแตกเป็นแถวต่อ (ใบ, เดือนที่นับ) ก่อน แล้วคัดด้วยวัน/เดือนที่นับงวด (reportActualRows) — ใบทั้งใบผ่านตัวคัดเดิม */
-  const inAxis = reportActualRows(orders || [], {
+     ⭐ ใบรายงวดแตกเป็นแถวต่อ (ใบ, เดือนที่นับ) ก่อน แล้วคัดด้วยวัน/เดือนที่นับงวด (reportActualRows) — ใบทั้งใบผ่านตัวคัดเดิม
+     ⭐ ใบค่าสรรพสามิต / ใบไม่นับ Actual ผ่านตัวคัดเดียวกัน (วันอนุมัติใบ) แล้วแยกออกเป็นก้อนที่ไม่นับ — ก้อนที่นับเหลือ
+        ออบเจกต์เดิม ลำดับเดิม ⇒ แถวยอด/orders[] ของใบปกติเท่าเดิมทุกไบต์ */
+  const actualRows = reportActualRows([...(orders || []), ...(exciseOrders || [])], {
     installmentsOf: (o) => installmentsByOrder.get(o.id) || [],
     keep: (o) => {
       const day = reportOrderDay(o);
       return Boolean(day && day >= window.firstDay && day <= window.lastDay && slot.has(orderMonth(o)));
     },
   });
+  const inAxis = actualRows.filter((o) => !isUncountedReportRow(o));
   // เดือนนำ (ไว้คิดทบยอด) เข้าแถวยอด แต่ไม่เข้ารายการใบของงวดที่โชว์
   const inShown = inAxis.filter((o) => shown.has(orderMonth(o)));
+  const uncountedShown = actualRows.filter((o) => isUncountedReportRow(o) && shown.has(orderMonth(o)));
+
+  /* ทีม/สาย/ประเภทดีลของใบค่าสรรพสามิต = ดีลของ SO ต้นทาง — เติมเป็น `sourceDeal` (ไม่ใช่ `deal` · กติกาเดียวกับ lib/scopedRow)
+     ⚠️ ลิสต์ id โตตามจำนวนใบค่าสรรพสามิตในงวด ⇒ ซอยด้วย fetchInChunks (PostgREST 16 KB) · หาต้นทางไม่เจอ = ทีมว่าง
+     (loadSourceDeals ของ scopedRow ไม่มี line/dealType — คอลัมน์ประเภทธุรกิจ/ประเภทดีลต้องใช้) */
+  const { data: sourceOrders, error: sourceError } = await fetchInChunks(
+    uncountedShown.filter((o) => o.excise).map((o) => o.sourceSalesOrderId),
+    (chunk) => fetchAllResult(() => supabase
+      .from('sales_orders')
+      .select('id, deal:sales_deals(id, team, line, "dealType")')
+      .in('id', chunk)
+      .order('id', { ascending: true })),
+  );
+  if (sourceError) return { error: sourceError.message, status: 500 };
+  const sourceDealById = new Map((sourceOrders || []).map((row) => [row.id, row.deal || null]));
+  const uncountedRows = uncountedShown.map((o) => (o.excise
+    ? { ...o, sourceDeal: sourceDealById.get(o.sourceSalesOrderId) || null }
+    : o));
 
   // จำนวนบรรทัดต่อใบ — บอกว่ากดเข้าไปดูในใบแล้วจะเจอกี่รายการ (รายการจริงอยู่ในใบ)
   const ids = inShown.map((o) => o.id);
-  const { data: lines, error: lineError } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
+  // ใบที่โชว์แต่ไม่นับ (อนุมัติในงวดเหมือนกัน) ได้จำนวนบรรทัด + ยอดเก็บจริงจากสองคำถามเดียวกัน
+  const listedIds = [...ids, ...uncountedRows.map((o) => o.id)];
+  const { data: lines, error: lineError } = await fetchInChunks(listedIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_lines').select('"salesOrderId"').in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
   if (lineError) return { error: lineError.message, status: 500 };
@@ -220,7 +282,7 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
 
   /* งวดชำระของใบในงวดที่โชว์ — ยอดเก็บจริง (confirmed) + ที่รอบัญชีรับรอง (reported)
      เฉพาะงวดที่ยอดหยุดแล้ว (`frozenAt` · B-4 mig 0259) เหมือนทะเบียนการชำระ ⇒ ตัวเลขตรงกับหน้า /finance */
-  const { data: installments, error: installmentError } = await fetchInChunks(ids, (chunk) => fetchAllResult(() => supabase
+  const { data: installments, error: installmentError } = await fetchInChunks(listedIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments').select('"salesOrderId", amount, status').in('salesOrderId', chunk)
     .not('frozenAt', 'is', null)
     .order('salesOrderId', { ascending: true }).order('id', { ascending: true })));
@@ -341,6 +403,8 @@ export async function loadSalesReportData(supabase, period, { now = new Date() }
     people,
     pendingApproval,
     orders: inShown.map((o) => shapeOrder(o, { person, lineCount, payments, installmentById })),
+    // ⭐ โชว์ในรายการใบ (ยอดที่นับ 0 + ป้าย) แต่ไม่อยู่ในตัวเลขไหนเลย — ดูหัวไฟล์ (มติเจ้าของ 20/11 · mig 0439)
+    uncountedOrders: uncountedRows.map((o) => shapeOrder(o, { person, lineCount, payments, installmentById })),
     byDay,
     historyDropped,
     generatedAt: now.toISOString(),
