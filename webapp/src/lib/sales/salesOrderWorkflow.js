@@ -11,7 +11,7 @@ import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 import { serviceBackfillAwaitingReview } from '@/lib/sales/serviceSetup';
 /* นับ Actual ทั้งใบ / รายงวด (mig 0412) — ไฟล์กติกาล้วน ไม่ import ไฟล์นี้กลับ (ไม่มีวง) */
 import {
-  installmentActualAwaitingReview, installmentActualReadyForOwner, salesOrderCountedActual,
+  installmentActualAwaitingReview, installmentActualReadyForOwner, isNoActualOrder, salesOrderCountedActual,
   salesOrderRemainingActual, salesOrderSubmittedActual, salesOrderSubmittedCount,
 } from '@/lib/sales/salesOrderActualMode';
 
@@ -308,9 +308,11 @@ export function salesOrderPendingApprovalAmount(order) {
 //   'excluded'         ร่าง/ตีกลับ/ย้อนอนุมัติ/ออก Rev. แล้ว/ยกเลิก — ไม่นับทั้งสองกอง
 //                      + **ใบสั่งขายย้อนหลังทุกสถานะ** (mig 0360 · ไม่นับ Actual / FC / เป้า)
 //                      + **ใบค่าสรรพสามิตทุกสถานะ** (mig 0414 · เงินรับแทน ไม่ใช่ยอดขาย)
+//   'none'             อนุมัติแล้วแบบ "ไม่นับ Actual" (mig 0439 · มติ 20/11) — ไม่นับทั้งสองกอง แต่จอโชว์ป้าย "ไม่นับ Actual"
+//                      (ไม่ใช่ขีดเปล่าแบบ excluded — ผู้ใช้ต้องรู้ว่าใบอนุมัติแล้วโดยตั้งใจไม่นับ) · ผู้เรียกที่รู้จักแค่สามค่าเดิมตกกิ่ง "ไม่นับ" เอง
 export function salesOrderAmountKind(order) {
   if (!isActualOrder(order)) return 'excluded';
-  if (order?.status === 'approved') return 'actual';
+  if (order?.status === 'approved') return isNoActualOrder(order) ? 'none' : 'actual';
   if (order?.status === 'pending_approval') return 'pending_approval';
   return 'excluded';
 }
@@ -328,11 +330,13 @@ export function salesOrderAmountKind(order) {
      instPendingCount/Amount  = **งวด** ที่ยื่นอยู่ของใบรายงวดที่อนุมัติแล้ว (จำนวนงวด · ป้าย "งวด")
      ⇒ pendingApproval = pendingOrderAmount + instPendingAmount เสมอ
    ⚠️ แถวต้องมี `actualMode` / `actualCountedAmount` / `actualSubmittedAmount` (select ของ route) — ขาด `actualMode`
-     = ถือเป็นใบทั้งใบ (ได้ actualAmount เต็ม ⇒ ยอดเกิน cache ของดีล) */
+     = ถือเป็นใบแบบเต็ม (ได้ actualAmount เต็ม ⇒ ยอดเกิน cache ของดีล)
+   ⭐ ใบ "ไม่นับ Actual" (mig 0439) ไม่เข้ากองไหนเลย — นับแยกที่ `noneCount` (หมายเหตุของการ์ด "ไม่นับ Actual n ใบ") ·
+     ไม่อยู่ใน actualCount (การ์ด "อนุมัติแล้ว · Actual" นับเฉพาะใบที่นับ Actual) */
 export function splitSalesOrderAmounts(orders = []) {
   const out = {
     actual: 0, actualCount: 0, pendingApproval: 0, pendingApprovalCount: 0, instRemaining: 0,
-    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0,
+    pendingOrderCount: 0, pendingOrderAmount: 0, instPendingCount: 0, instPendingAmount: 0, noneCount: 0,
   };
   for (const order of orders || []) {
     const kind = salesOrderAmountKind(order);
@@ -352,6 +356,8 @@ export function splitSalesOrderAmounts(orders = []) {
       out.pendingApprovalCount += 1;
       out.pendingOrderAmount += amount;
       out.pendingOrderCount += 1;
+    } else if (kind === 'none') {
+      out.noneCount += 1;
     }
   }
   return out;

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import {
   actualGateStatus, actualModeApproveBlock, actualModeAuditText, actualStartBlocker, installmentActualAuditSummary,
   installmentActualCounted, installmentActualOrderAuditSummary, installmentActualStartRecovery, installmentCountAtFreeze,
-  parseActualModeInput, previousActualModeOf, revokeActualDropText,
+  parseActualModeInput, parseActualNoneReasonInput, previousActualModeOf, previousActualNoneReasonOf, revokeActualDropText,
 } from './salesOrderActualRoute.js';
 import { installmentActualStartButtonLabel, installmentActualStartPending } from './salesOrderActualMode.js';
 import { freezeInstallments } from './salesOrderInstallmentsStore.js';
@@ -198,8 +198,8 @@ test('installmentActualCounted: เฉพาะงวดที่เพิ่ง
 
 // ── ข้อความ audit ────────────────────────────────────────────────────────────────────────────
 test('actualModeAuditText: บอกแบบเสมอ · รายงวดบอกงวดที่นับทันที · ขั้นนับล้มบอกทางกู้', () => {
-  assert.equal(actualModeAuditText('order'), ' · นับ Actual ทั้งใบ');
-  assert.equal(actualModeAuditText(undefined), ' · นับ Actual ทั้งใบ');
+  assert.equal(actualModeAuditText('order'), ' · นับ Actual เต็ม');
+  assert.equal(actualModeAuditText(undefined), ' · นับ Actual เต็ม');
   assert.match(actualModeAuditText('installment', { counted: { count: 1, amount: 33000, seqs: [1] } }),
     /^ · นับ Actual รายงวด — นับทันที งวดที่ 1 .*33,000\.00 \(ก่อน VAT\)$/);
   assert.match(actualModeAuditText('installment', { startFailed: true }), /นับงวดแรกไม่สำเร็จ.*นับงวด 1/);
@@ -261,4 +261,26 @@ test('revokeActualDropText: ใบทั้งใบ = ยอดเต็ม (�
     'รายงวด นับแล้ว ฿0.00 จาก ฿100,000.00');
   const route = readFileSync(new URL('../../app/api/sales-planning/sales-orders/[id]/route.js', import.meta.url), 'utf8');
   assert.match(route, /summary: `ย้อนการอนุมัติ \$\{before\.orderNumber\} \(Actual \$\{revokeActualDropText\(before\)\} หลุดจากยอด\): \$\{reason\}`/);
+});
+
+/* ── ไม่นับ Actual (mig 0439 · มติเจ้าของ 20/11/2026) ─────────────────────────────────────────────────────────────── */
+test('ไม่นับ Actual (route): แปลงแบบ/เหตุผล · ด่านที่มาของใบ · ค่าตั้งต้นของ Rev. · ข้อความ audit', () => {
+  assert.deepEqual(parseActualModeInput('none'), { ok: true, mode: 'none' });
+  assert.deepEqual(parseActualNoneReasonInput('order', 'อะไรก็ได้ยาวพอสมควร'), { ok: true, reason: null }, 'แบบอื่นไม่เก็บเหตุผล');
+  assert.deepEqual(parseActualNoneReasonInput('none', '  ของแถมทดแทนสินค้าเสีย  '), { ok: true, reason: 'ของแถมทดแทนสินค้าเสีย' });
+  assert.equal(parseActualNoneReasonInput('none', 'สั้น').ok, false);
+  assert.equal(parseActualNoneReasonInput('none', undefined).ok, false);
+  const pipeline = { id: 'SO-2', origin: 'pipeline', totalAmount: 0 };
+  assert.equal(actualModeApproveBlock(pipeline, 'none'), null, 'ใบยอด 0 เลือกไม่นับได้');
+  assert.match(actualModeApproveBlock({ ...pipeline, origin: 'excise' }, 'none'), /ไม่นับ Actual อยู่แล้ว/);
+  const history = [
+    { id: 'SO-1', supersededById: 'SO-2', actualMode: 'none', actualNoneReason: ' ของแถมทดแทนสินค้าเสีย ', origin: 'pipeline' },
+    { id: 'SO-2', supersededById: null, actualMode: 'order', origin: 'pipeline' },
+  ];
+  assert.equal(previousActualModeOf({ id: 'SO-2' }, history), 'none');
+  assert.equal(previousActualNoneReasonOf({ id: 'SO-2' }, history), 'ของแถมทดแทนสินค้าเสีย');
+  assert.equal(previousActualNoneReasonOf({ id: 'SO-2' }, [{ ...history[0], actualMode: 'order' }, history[1]]), '');
+  assert.equal(previousActualNoneReasonOf({ id: 'SO-9' }, history), '');
+  assert.equal(actualModeAuditText('none', { reason: ' ของแถม ' }), ' · ไม่นับ Actual: ของแถม');
+  assert.equal(revokeActualDropText({ origin: 'pipeline', actualMode: 'none', actualAmount: 100000 }), 'ไม่นับ Actual — ไม่มียอด');
 });

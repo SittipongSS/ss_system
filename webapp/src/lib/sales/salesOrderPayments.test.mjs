@@ -1297,7 +1297,7 @@ test('โมดัลย้อนการอนุมัติ (ใบราย
   const lines = salesOrderMoneyOutcome(inst, rows, 'revoke');
   assert.ok(lines.includes('สลิปรอบัญชีตรวจ 1 งวดยังอยู่ในคิวบัญชีตามปกติ'), lines.join('\n'));
   assert.ok(lines.includes('สลิปของงวดที่ยังไม่นับ Actual 1 งวด ฿32,100.00 บัญชีรับรองไม่ได้จนเจ้าของดีลออก Rev.'
-    + ' (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual ทั้งใบ แล้วบัญชีรับรองได้)'), lines.join('\n'));
+    + ' (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual เต็ม แล้วบัญชีรับรองได้)'), lines.join('\n'));
   // ทุกสลิปยังไม่นับ = ไม่มีบรรทัด "อยู่ในคิวตามปกติ"
   const allHeld = salesOrderMoneyOutcome(inst, rows.map((r) => ({ ...r, actualStatus: null })), 'revoke');
   assert.ok(!allHeld.some((l) => l.startsWith('สลิปรอบัญชีตรวจ')), allHeld.join('\n'));
@@ -1836,7 +1836,7 @@ test('คำสั่งรายงวด actual_* ผ่าน installmentActi
   assert.ok(pipelineInstallmentLock(cancelled, 'actual_submit'));
   // ใบทั้งใบ
   assert.equal(installmentActionError(rows[1], 'actual_submit', SA, { ...base, order: { ...INST_ORDER, actualMode: 'order' } }),
-    'ใบนี้นับ Actual ทั้งใบ ไม่มีการยื่นรายงวด');
+    'ใบนี้ไม่ได้นับ Actual รายงวด (นับเต็มหรือไม่นับ) — ไม่มีการยื่นรายงวด');
 });
 
 test('ไฟล์นี้ยังไม่ export ชื่อ actual* (กติกาอยู่ที่ salesOrderActualMode.js ไฟล์เดียว)', () => {

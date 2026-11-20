@@ -98,7 +98,9 @@ const MUST_FILTER = new Map([
   /* ม-164 · PR-2 — ตัวเลือก "แนบใบสั่งขายที่ซื้อเพิ่ม" ของคำร้องพัฒนากลิ่น: ใบย้อนหลังคืองานที่จบแล้ว (ทางของมันคือปัดออกจากคิว) */
   ['lib/requests/scentOrderAttachAdmin.js', { count: 1, reason: 'ตัวเลือก SO ที่แนบเข้าคำร้องพัฒนากลิ่นได้ (ลูกค้าเดียวกัน · อนุมัติแล้ว) — ใบย้อนหลัง/ค่าสรรพสามิตแนบไม่ได้' }],
   ['lib/requests/scentOrderQueueAdmin.js', { count: 1, reason: 'คิว "SO ออกแบบกลิ่นรอเปิดคำร้อง" (ม-164 PR-5) — ใบย้อนหลังคืองานที่จบแล้ว · ใบค่าสรรพสามิตไม่มีงานออกแบบ' }],
-  ['lib/sales/salesReportData.js', { count: 2, reason: 'รายงานยอดขาย (จอ + Excel): ใบอนุมัติในงวด + ใบรออนุมัติ' }],
+  /* mig 0439 · มติ 20/11: ใบค่าสรรพสามิตที่อนุมัติในงวดโชว์ในรายการใบ (ยอดที่นับ 0 · ยอดเก็บตามจริง) — คำสั่งนั้นห่อ exciseRowsOnly ไม่ใช่ pipeline
+     (ใบย้อนหลังยังไม่เข้ารายงานทุกคำสั่ง) · ⚠️ คำสั่งอ่าน SO ต้นทางของใบค่าสรรพสามิตอ่านด้วย id (`.in('id', chunk)`) — นับในชั้น byId */
+  ['lib/sales/salesReportData.js', { count: 3, exciseRows: 1, reason: 'รายงานยอดขาย (จอ + Excel): ใบอนุมัติในงวด + ใบรออนุมัติ + ใบค่าสรรพสามิตที่อนุมัติในงวด (exciseRowsOnly — ยอดที่นับ 0 ไม่นับ Actual · มติเจ้าของ 20/11)' }],
   ['lib/pm/productionJobsRepo.js', { count: 1, reason: 'ร่างงานผลิตอัตโนมัติจากใบอนุมัติทั้งทะเบียน' }],
   /* Q21 (มติ 03/11): งานไทม์ไลน์ "วางบิล + ค่าสรรพสามิต" ปิดเองเมื่อดีลมี SO อนุมัติและไม่มีใบในคิวรอออก — ใบย้อนหลังไม่มีงานนี้ให้ซิงก์ */
   ['lib/pm/exciseBillingTaskSync.js', { count: 1, reason: 'นับ SO อนุมัติของดีลที่มีงานวางบิลค่าสรรพสามิต (ปิดงานอัตโนมัติ)' }],
@@ -171,7 +173,8 @@ test('🪤 ทุกคำสั่งอ่านใบสั่งขายท
       if (byId) t.byId += 1; else t.plain += 1;
       tally.set(rel, t);
       if (MUST_FILTER.has(rel) && !byId) {
-        if (!body.includes('pipelineRowsOnly(')) offenders.push(`${rel}:${line} — ต้องห่อ pipelineRowsOnly(`);
+        const exciseOk = MUST_FILTER.get(rel).exciseRows && body.includes('exciseRowsOnly(');
+        if (!body.includes('pipelineRowsOnly(') && !exciseOk) offenders.push(`${rel}:${line} — ต้องห่อ pipelineRowsOnly(`);
         continue;
       }
       if (byId && PER_ID_GUARDED.has(rel)) continue;

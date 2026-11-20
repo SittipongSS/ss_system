@@ -410,6 +410,14 @@ export default function DealOverviewPage() {
     if (kind === "pending_approval") {
       return <PendingApprovalAmount amount={salesOrderPendingApprovalAmount(order)} count={1} inline />;
     }
+    /* อนุมัติแบบ "ไม่นับ Actual" (mig 0439 · มติ 20/11) — ยอดจาง + ป้าย + เหตุผล (title) */
+    if (kind === "none") {
+      return (
+        <span className="cell-num-idle" title={`อนุมัติแล้วแบบไม่นับ Actual — ${String(order?.actualNoneReason || "").trim() || "ไม่ระบุเหตุผล"}`}>
+          {money(Math.max(0, Number(order?.actualAmount) || 0))} · ไม่นับ Actual
+        </span>
+      );
+    }
     return (
       <span className="cell-num-idle" title="สถานะนี้ไม่นับเป็น Actual และไม่นับเป็นยอดรออนุมัติ">
         {money(Math.max(0, Number(order?.actualAmount) || 0))} · ไม่นับ

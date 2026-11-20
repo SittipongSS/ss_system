@@ -13,14 +13,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  ACTUAL_MODE_INSTALLMENT, INSTALLMENT_ACTUAL_ACTIONS, INSTALLMENT_ACTUAL_AUTO_NOTE, countRestBlocker, installmentActualReasonError,
+  ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_NONE, INSTALLMENT_ACTUAL_ACTIONS, INSTALLMENT_ACTUAL_AUTO_NOTE, countRestBlocker, installmentActualReasonError,
   installmentActualShareAtApproval,
 } from './salesOrderActualMode.js';
 import {
   INSTALLMENT_ACTUAL_FREEZE_FAILED,
   actualGateStatus, actualModeApproveBlock, actualModeAuditText, actualStartBlocker, installmentActualAuditSummary,
   installmentActualCounted, installmentActualOrderAuditSummary, installmentActualStartOutcome, installmentActualStartRecovery,
-  installmentCountAtFreeze, parseActualModeInput, installmentActualAutoCountAuditText, installmentActualAutoCountedAtCommit,
+  installmentCountAtFreeze, parseActualModeInput, parseActualNoneReasonInput, installmentActualAutoCountAuditText, installmentActualAutoCountedAtCommit,
 } from './salesOrderActualRoute.js';
 import { replanAuditSummary, replanReasonError } from './installmentReplan.js';
 import { carryAuditSummary } from './installmentCarry.js';
@@ -98,8 +98,8 @@ function approveModeBranch() {
   const to = source.indexOf('    let setupCtx = null;', from);
   assert.ok(approve > 0 && from > approve && to > from, 'หาก้อนแบบการนับของการอนุมัติไม่เจอ');
   return new AsyncFunction('body', 'before', 'id', 'supabase', 'loadInstallments', 'fail', 'parseActualModeInput',
-    'ACTUAL_MODE_INSTALLMENT', 'actualModeApproveBlock', 'installmentCountAtFreeze',
-    `${source.slice(from, to)}\n    return { actualMode };`);
+    'ACTUAL_MODE_INSTALLMENT', 'actualModeApproveBlock', 'installmentCountAtFreeze', 'parseActualNoneReasonInput', 'ACTUAL_MODE_NONE',
+    `${source.slice(from, to)}\n    return { actualMode, ...(actualReasonInput.reason ? { actualReason: actualReasonInput.reason } : {}) };`);
 }
 async function runApproveMode({ body, before, rows = [], readError = null }) {
   let reads = 0;
@@ -110,7 +110,7 @@ async function runApproveMode({ body, before, rows = [], readError = null }) {
     return rows;
   };
   const out = await approveModeBranch()(body, before, before.id, {}, loadInstallments, http.fail, parseActualModeInput,
-    ACTUAL_MODE_INSTALLMENT, actualModeApproveBlock, installmentCountAtFreeze);
+    ACTUAL_MODE_INSTALLMENT, actualModeApproveBlock, installmentCountAtFreeze, parseActualNoneReasonInput, ACTUAL_MODE_NONE);
   return { out, reads, res: out instanceof Response ? await reply(out) : null };
 }
 const PENDING_SO = {
@@ -127,6 +127,23 @@ test('อนุมัติ: ไม่ส่งแบบ = ทั้งใบ (�
   assert.deepEqual(bad.res, { status: 400, body: { error: msg('sales_order_actual_mode_invalid'), code: 'actual_mode_invalid' } });
   const ok = await runApproveMode({ body: { actualMode: 'installment' }, before: PENDING_SO });
   assert.deepEqual([ok.out, ok.reads], [{ actualMode: 'installment' }, 1]);
+});
+
+/* ── ไม่นับ Actual (mig 0439 · มติ 20/11/2026) ── */
+test('อนุมัติ: ไม่นับ Actual — เหตุผล 10–500 บังคับ (400) · ใบย้อนหลัง/ค่าสรรพสามิต = 409 · ไม่อ่านงวด · ยอด 0 ได้', async () => {
+  const missing = await runApproveMode({ body: { actualMode: 'none' }, before: PENDING_SO });
+  assert.deepEqual(missing.res, { status: 400, body: { error: msg('sales_order_actual_none_reason_required'), code: 'actual_none_reason_required' } });
+  const short = await runApproveMode({ body: { actualMode: 'none', actualReason: '   สั้น   ' }, before: PENDING_SO });
+  assert.equal(short.res.status, 400);
+  const ok = await runApproveMode({ body: { actualMode: 'none', actualReason: '  ของแถมทดแทนสินค้าเสีย  ' }, before: PENDING_SO });
+  assert.deepEqual([ok.out, ok.reads], [{ actualMode: 'none', actualReason: 'ของแถมทดแทนสินค้าเสีย' }, 0]);
+  const zero = await runApproveMode({ body: { actualMode: 'none', actualReason: 'ใบยอดศูนย์บาท ของแถมล้วน' }, before: { ...PENDING_SO, totalAmount: 0 } });
+  assert.equal(zero.out.actualMode, 'none');
+  const excise = await runApproveMode({ body: { actualMode: 'none', actualReason: 'ของแถมทดแทนสินค้าเสีย' }, before: { ...PENDING_SO, origin: 'excise' } });
+  assert.deepEqual(excise.res, { status: 409, body: { error: msg('sales_order_actual_none_ineligible'), code: 'actual_none_ineligible' } });
+  // แบบอื่นส่งเหตุผลมาก็ไม่เก็บ
+  const whole = await runApproveMode({ body: { actualMode: 'order', actualReason: 'ไม่ควรถูกเก็บไว้เลยนะ' }, before: PENDING_SO });
+  assert.deepEqual(whole.out, { actualMode: 'order' });
 });
 
 test('อนุมัติ: รายงวดนับงวดจากตัวหยุดยอด — แผนงวดเดียว/ใบยอด 0 = 409 · อ่านงวดพัง = 500 (ไม่เดาว่างวดเดียว)', async () => {
@@ -304,7 +321,10 @@ test('อนุมัติ (ยามต้นทาง): ส่งแบบเ
   const start = approve.indexOf("supabase.rpc('start_sales_order_installment_actual', {");
   const audit = approve.indexOf('await recordAudit({');
   assert.ok(freeze > 0 && start > freeze && audit > start, 'ลำดับ: freeze → นับงวด → audit');
-  assert.match(approve, /\+ actualModeAuditText\(appliedActualMode, \{\s*counted: actualCounted, startFailed: installmentActualStartFailed, noRows: installmentActualNoRows,\s*alreadyCounted: installmentActualAlreadyCounted, freezeFailed,\s*\}\)/);
+  assert.match(approve, /\+ actualModeAuditText\(appliedActualMode, \{\s*counted: actualCounted, startFailed: installmentActualStartFailed, noRows: installmentActualNoRows,\s*alreadyCounted: installmentActualAlreadyCounted, freezeFailed,\s*reason: data\?\.actualNoneReason \|\| actualReasonInput\.reason,\s*\}\)/);
+  // ไม่นับ Actual (0439): ตัวห่อได้เหตุผล · เธรดดีลบอกพร้อมเหตุผลจากแถวที่ฐานคืน
+  assert.match(rpc, /actualReason: actualReasonInput\.reason,/);
+  assert.match(approve, /if \(appliedActualMode === ACTUAL_MODE_NONE\) \{\s*await logThread\('actual_none', \{ reason: data\?\.actualNoneReason \|\| actualReasonInput\.reason \}\);/);
   assert.match(approve, /\.\.\.\(freezeFailed \? \{ installmentFreezeFailed: true \} : \{\}\),/, 'ตรึงล้ม = บอกจอ (ทักเตือนทางกู้)');
   assert.match(approve, /\} catch \(installmentError\) \{\s*freezeFailed = true;/, 'ตัวหยุดยอดล้ม = จดธงไว้ log คู่กับผลของขั้นนับ');
   assert.match(approve, /await logThread\('actual_start', \{ seqs: actualCounted\.seqs, amount: actualCounted\.amount \}\);/);
@@ -326,8 +346,9 @@ test('signatureEvidence: การอนุมัติใบทุกทาง�
 // ── 3. หน้าใบ GET: แบบของใบก่อนหน้า (Rev.) ─────────────────────────────────────────────────────────────────────
 test('GET ใบ: สายโซ่ Rev. พก actualMode/supersededById · คืน previousActualMode', () => {
   const load = slice(code(SO_ROUTE), 'async function loadOrder(', 'async function loadApproverSignature(');
-  assert.match(load, /\.select\('id, orderNumber, revisionNo, status, orderDate, createdAt, "actualMode", "supersededById"'\)/);
+  assert.match(load, /\.select\('id, orderNumber, revisionNo, status, orderDate, createdAt, "actualMode", "actualNoneReason", "supersededById"'\)/);
   assert.match(load, /previousActualMode: previousActualModeOf\(order, revisionHistory \|\| \[\]\),/);
+  assert.match(load, /previousActualNoneReason: previousActualNoneReasonOf\(order, revisionHistory \|\| \[\]\),/);
   // ใบ + งวดมาด้วย select('*') ⇒ คอลัมน์ใหม่ของ 0412 ถึงจอเอง
   assert.match(load, /\.select\('\*, lines:sales_order_lines\(\*\)'\)/);
 });

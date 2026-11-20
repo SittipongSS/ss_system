@@ -188,8 +188,11 @@ test('หน้าใบ: โมดัลอนุมัติเลือกแ
   const choice = slice(page, 'function ActualModeChoice(', '\n}\n');
   assert.match(choice, /<OptionTiles/);
   assert.doesNotMatch(choice, /<Select|SearchableSelect|<select/, 'ชุดตายตัวสองตัวเลือก = แผ่น (memory: direct controls over dropdowns)');
-  assert.match(choice, /label: "นับ Actual ทั้งใบ"/);
+  // mig 0439 · มติ 20/11: สามแผ่น ไม่นับ · เต็ม ("ทั้งใบ" → "เต็ม") · รายงวด
+  assert.match(choice, /label: "นับ Actual เต็ม"/);
   assert.match(choice, /label: "นับ Actual รายงวด"/);
+  assert.match(choice, /label: "ไม่นับ Actual"/);
+  assert.ok(choice.indexOf('label: "ไม่นับ Actual"') < choice.indexOf('label: "นับ Actual เต็ม"'), 'แผ่นไม่นับอยู่หน้าสุด');
   assert.match(choice, /disabled: !eligible,/, 'เลือกไม่ได้ = แผ่นดับ ไม่ซ่อน');
   assert.match(choice, /\{eligibility && !eligible \? <p className="form-note">\{eligibility\.reason\}<\/p> : null\}/, 'เหตุเป็นตัวหนังสือใต้แผ่น');
 
@@ -199,9 +202,10 @@ test('หน้าใบ: โมดัลอนุมัติเลือกแ
   assert.match(approve, /\.\.\.approveActualLines\(mode, plan\),/);
   /* มติข้อ 10 (review รอบสี่): Rev. ของใบที่กดนับที่เหลือทั้งหมด = ป้ายปุ่มบอกว่านับที่ค้างทั้งหมด ไม่ใช่ "งวด 1" */
   /* UAT 27/10 ข้อ 10: ป้ายของแผ่นรายงวดคิดจากงวดที่ขั้นนับตอนอนุมัติจะนับจริง (plan.start) — ไม่ใช่ "งวด 1" ตายตัว */
-  assert.match(approve, /confirmLabel: mode === ACTUAL_MODE_INSTALLMENT \? approveInstallmentConfirmLabel\(plan\) : APPROVE_CONFIRM_ORDER_LABEL,/);
+  assert.match(approve, /confirmLabel: mode === ACTUAL_MODE_NONE \? APPROVE_CONFIRM_NONE_LABEL\s*: mode === ACTUAL_MODE_INSTALLMENT \? approveInstallmentConfirmLabel\(plan\) : APPROVE_CONFIRM_ORDER_LABEL,/);
   assert.match(approve, /actualEligibility: \{ \.\.\.plan\.eligibility, countRestDone: plan\.countRestDone \},/);
-  assert.match(approve, /action: \(\) => requestAction\("approve", \{ actualMode: approveActualModeRef\.current \}\),/);
+  /* ไม่นับ (0439): เหตุผลผ่านด่านก่อนยิง · ส่ง actualReason คู่แบบ (approveActualPayload) */
+  assert.match(approve, /if \(!actualReasonReady\(mode, approveActualReasonRef\.current\)\) return false;\s*return requestAction\("approve", approveActualPayload\(mode, approveActualReasonRef\.current\)\);/);
   assert.match(page, /const APPROVE_CONFIRM_ORDER_LABEL = "อนุมัติและนับ Actual";/);
   assert.doesNotMatch(page, /"อนุมัติและนับ Actual งวด 1"/, 'ป้าย "งวด 1" ตายตัวต้องไม่กลับมา');
   const labelOf = new Function('fmtNumber', `${slice(page, 'const APPROVE_CONFIRM_COUNT_REST_LABEL = ', ';\n')};\n`
@@ -250,7 +254,8 @@ test('หน้าใบ: โมดัลอนุมัติเลือกแ
 
   /* Admin Override ของใบ pipeline: ตัวเลือกเดียวกัน · ส่งแบบที่เลือก · ป้ายปุ่มตามแบบ */
   const override = slice(page, 'async function approveWithAdminOverride() {', '\n  }\n');
-  assert.match(override, /requestAction\("approve", \{ overrideReason: "", actualMode \}\)/);
+  assert.match(override, /if \(!actualReasonReady\(actualMode, actualReason\)\) return;/);
+  assert.match(override, /requestAction\("approve", \{ overrideReason: "", \.\.\.approveActualPayload\(actualMode, actualReason\) \}\)/);
   assert.match(page, /<ActualModeChoice\s+value=\{overrideActualMode\}/);
   assert.match(page, /\? approveInstallmentConfirmLabel\(overridePlan, \{ override: true \}\)/, 'Override พูดตรงกับโมดัลปกติ');
   assert.match(page, /eligibility=\{\{ \.\.\.overridePlan\.eligibility, countRestDone: overridePlan\.countRestDone \}\}/);
@@ -739,7 +744,7 @@ test('รอบห้า (มติข้อ 6): ใบงานบริกา�
   // คำใต้สถานะ — รันก้อนจริงของหน้า
   const block = slice(page, 'const backfillServiceWord = ', 'const jumpToIssue = ');
   const note = new Function('showBackfillPanel', 'setupView', 'instActual', 'order', 'status', 'SERVICE_REOPENED_TEXT',
-    'SERVICE_DEFERRED_TEXT', 'fmtDate', `${block}\nreturn backfillActualNote;`);
+    'SERVICE_DEFERRED_TEXT', 'fmtDate', 'noneActual = false', `${block}\nreturn backfillActualNote;`);
   const order = { status: 'approved', approvedAt: '2026-10-08T04:00:00Z' };
   const status = { description: 'นับ Actual รายงวด — นับแล้ว 1/12 งวด ฿10,000.00 จาก ฿120,000.00 (ก่อน VAT) · งวดที่ 2 ยื่นขอนับได้แล้ว ที่แท็บการชำระ (“ยื่นขอนับงวดนี้”)' };
   const run = (view, inst = true) => note(true, view, inst, order, status, SERVICE_REOPENED_TEXT, SERVICE_DEFERRED_TEXT, fmtDate);
@@ -750,6 +755,10 @@ test('รอบห้า (มติข้อ 6): ใบงานบริกา�
   assert.equal(run({ deferred: { stage: 'approved' } }, false), SERVICE_DEFERRED_TEXT.actualNote(order.approvedAt));
   assert.equal(run({ reopened: true }, false), SERVICE_REOPENED_TEXT.actualNote(order.approvedAt));
   assert.equal(note(false, {}, true, order, status, SERVICE_REOPENED_TEXT, SERVICE_DEFERRED_TEXT, fmtDate), null);
+  // ใบ "ไม่นับ Actual" (0439) = คงคำอธิบายของแบบนี้ ไม่พูด "ยอดถูกนับเป็น Actual แล้ว"
+  const noneNote = note(true, { deferred: { stage: 'approved' } }, false, order, { description: 'อนุมัติแล้ว · ใบนี้ไม่นับ Actual' },
+    SERVICE_REOPENED_TEXT, SERVICE_DEFERRED_TEXT, fmtDate, true);
+  assert.equal(noneNote, 'อนุมัติแล้ว · ใบนี้ไม่นับ Actual — การตั้งงานบริการทีหลังไม่ทำให้ใบนี้นับ Actual');
   assert.match(page, /\{backfillActualNote \|\| status\.description\}/);
 });
 
@@ -794,7 +803,7 @@ test('UAT 27/10 ข้อ 1: แผงงวดของใบที่งวด
 
 test('UAT 27/10 ข้อ 5 · 7: การ์ดสรุปของหน้าใบเรียงซ้อน + คู่ "ป้าย ฿ยอด" ไม่ขาดกลาง · หมายเหตุ "รอนับรายงวด" ของแดชบอร์ดขนาดเท่าหมายเหตุ', () => {
   const page = code(SO_PAGE);
-  assert.match(page, /stack: amountKind === "actual" && instActual,/);
+  assert.match(page, /stack: \(amountKind === "actual" && instActual\) \|\| \(amountKind === "none" && !!noneReason\),/);
   assert.match(page, /\{keepPhrases\(instSummaryParts\.join\(" · "\), instSummaryParts\)\}/);
   const card = code('components/ui/DocumentControlPanel.js');
   assert.match(card, /row\.stack \? styles\.summaryStack : ""/);

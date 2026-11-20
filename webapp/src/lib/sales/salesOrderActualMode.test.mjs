@@ -16,6 +16,7 @@ import {
   installmentActualReadyForOwner, installmentActualReasonError, installmentActualShareAtApproval, installmentActualShares,
   installmentActualStartPreview, installmentActualStartRows, installmentActualState, installmentPreviousConfirmed,
   installmentRemainingByDue, isActualMode, isInstallmentActualOrder, nextSubmittableInstallment, salesOrderActualEvents,
+  actualNoneEligibility, actualNoneReasonError, actualNoneReasonOf, isNoActualOrder,
   salesOrderCountedActual, salesOrderRemainingActual, salesOrderSubmittedActual, salesOrderSubmittedCount,
 } from './salesOrderActualMode.js';
 import { workflowErrorMessage } from './documentWorkflowErrors.js';
@@ -51,8 +52,10 @@ const ADMIN = { id: 'U-ADM', role: 'admin' };
 const FN = { id: 'U-FN', role: 'finance', department: 'finance' };
 
 /* ── 1. ค่าคงที่ ─────────────────────────────────────────────────────────────────────────────────────────── */
-test('แบบการนับมีสองค่า ป้ายครบ · สถานะแสดงของงวดมีป้าย/โทนครบตามสัญญา', () => {
-  assert.deepEqual(ACTUAL_MODES, ['order', 'installment']);
+test('แบบการนับมีสามค่า (0439 + ไม่นับ) ป้ายครบ · สถานะแสดงของงวดมีป้าย/โทนครบตามสัญญา', () => {
+  assert.deepEqual(ACTUAL_MODES, ['order', 'installment', 'none']);
+  // มติข้อ 4 (20/11): "Actual ทั้งใบ" → "Actual เต็ม"
+  assert.deepEqual(ACTUAL_MODE_LABELS, { order: 'Actual เต็ม', installment: 'Actual รายงวด', none: 'ไม่นับ Actual' });
   assert.equal(ACTUAL_MODE_ORDER, 'order');
   assert.equal(ACTUAL_MODE_INSTALLMENT, 'installment');
   for (const mode of ACTUAL_MODES) assert.ok(ACTUAL_MODE_LABELS[mode], mode);
@@ -804,4 +807,47 @@ test('คำสั้นของช่องสถานะ (UAT FN 27/10 ข�
     'รอ AE Sup ตรึงงวด', 'ให้ผู้อนุมัติคนอื่นกด',
   ]);
   for (const text of shorts) assert.ok(text.length <= 30, `${text} สั้นพอสำหรับช่องสถานะ`);
+});
+
+/* ── ไม่นับ Actual (mig 0439 · มติเจ้าของ 20/11/2026) ─────────────────────────────────────────────────────────────── */
+const NONE_SO = Object.freeze({
+  id: 'SOR-N', status: 'approved', origin: 'pipeline', actualMode: 'none', actualNoneReason: '  ของแถมทดแทนสินค้าเสีย  ',
+  totalAmount: 107000, actualAmount: 100000, actualCountedAmount: 0, actualSubmittedAmount: 0, approvedAt: '2026-11-20T03:00:00.000Z',
+});
+
+test('ไม่นับ Actual: ตัวคิดยอดทุกตัว = 0 / ไม่มีเหตุการณ์ · แบบอ่านจาก actualMode · เหตุผลตัดช่องว่าง', () => {
+  assert.equal(isNoActualOrder(NONE_SO), true);
+  assert.equal(actualModeOf(NONE_SO), 'none');
+  assert.equal(actualNoneReasonOf(NONE_SO), 'ของแถมทดแทนสินค้าเสีย');
+  assert.equal(salesOrderCountedActual(NONE_SO), 0);
+  assert.deepEqual(salesOrderActualEvents(NONE_SO, []), []);
+  assert.deepEqual(salesOrderActualEvents(NONE_SO), []);
+  assert.equal(salesOrderRemainingActual(NONE_SO), 0);
+  assert.equal(salesOrderSubmittedActual(NONE_SO), 0);
+  assert.equal(isInstallmentActualOrder(NONE_SO), false);
+  // ใบแบบเต็มยังเหมือนเดิม
+  const whole = { ...NONE_SO, actualMode: 'order', actualNoneReason: null };
+  assert.equal(isNoActualOrder(whole), false);
+  assert.equal(actualNoneReasonOf(whole), '');
+  assert.equal(salesOrderCountedActual(whole), 100000);
+  // ใบย้อนหลัง/ค่าสรรพสามิตไม่ใช่ "ไม่นับ" โดยตัวเลือก (ไม่นับโดยที่มา)
+  assert.equal(isNoActualOrder({ ...NONE_SO, origin: 'historical' }), false);
+  assert.equal(isNoActualOrder({ ...NONE_SO, origin: 'excise' }), false);
+});
+
+test('ไม่นับ Actual: เลือกได้ทุกใบ pipeline (ยอด 0 ก็ได้) · ใบย้อนหลัง/ค่าสรรพสามิตไม่ได้ · เหตุผล 10–500 หลังตัดช่องว่าง', () => {
+  const pending = { ...NONE_SO, status: 'pending_approval', actualMode: 'order' };
+  assert.deepEqual(actualNoneEligibility(pending), { eligible: true, reason: null });
+  assert.deepEqual(actualNoneEligibility({ ...pending, totalAmount: 0 }), { eligible: true, reason: null });
+  for (const origin of ['historical', 'excise']) {
+    const out = actualNoneEligibility({ ...pending, origin });
+    assert.equal(out.eligible, false, origin);
+    assert.match(out.reason, /ไม่นับ Actual อยู่แล้ว/);
+  }
+  assert.equal(actualNoneEligibility(null).eligible, false);
+  assert.match(actualNoneReasonError(''), /10–500/);
+  assert.match(actualNoneReasonError('   สั้นไป   '), /10–500/);
+  assert.match(actualNoneReasonError('ก'.repeat(501)), /10–500/);
+  assert.equal(actualNoneReasonError('  ของแถมทดแทนสินค้าเสีย  '), null);
+  assert.equal(actualNoneReasonError('ก'.repeat(500)), null);
 });

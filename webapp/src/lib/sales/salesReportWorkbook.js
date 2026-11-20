@@ -13,7 +13,9 @@ import { NO_TEAM_LABEL } from '@/lib/sales/personSlice';
 import { BUSINESS_LINE_LABELS } from '@/lib/master/businessLines';
 import { FINANCE_STATE_BADGE, financeStateOf, orderRowsLabel } from '@/lib/sales/reportOrderView';
 import { reportPeriodLabel } from '@/lib/sales/reportPeriod';
-import { installmentSeqText } from '@/lib/sales/reportRows';
+import {
+  installmentSeqText, isUncountedReportRow, uncountedReportCount, uncountedReportLabel,
+} from '@/lib/sales/reportRows';
 import { teamNameOf } from '@/lib/master/teams';
 
 const FONT = 'Leelawadee UI';
@@ -146,11 +148,15 @@ export const ORDER_SHEET_COLUMNS = [
 /** แถวหนึ่งของชีต "ใบสั่งขาย" — ใช้ในเทสต์ได้โดยไม่ต้องสร้างไฟล์ */
 export function orderSheetRow(o, index, { teamLabel = (c) => c, overriddenMonths = new Set(), origin = null } = {}) {
   const notes = [];
+  /* ใบที่โชว์แต่ไม่นับ (ค่าสรรพสามิต · ไม่นับ Actual — มติเจ้าของ 20/11 · mig 0439) — ยอดที่นับ 0 · บอกชนิด + เหตุผลไว้หน้าสุด
+     (คำเดียวกับป้ายบนจอ — uncountedReportLabel) · ใบปกติไม่มีบรรทัดนี้ = หมายเหตุเท่าเดิม */
+  const uncounted = isUncountedReportRow(o);
+  if (uncounted) notes.push(o.actualNoneReason ? `${uncountedReportLabel(o)} (${o.actualNoneReason})` : uncountedReportLabel(o));
   if (o.free) notes.push('ไม่คิดเงิน');
   /* แถวงวดของใบ "Actual รายงวด" (mig 0412) — ใบเดียวมีได้หลายแถว (แถวละเดือนที่นับ) · ยอด/VAT/เก็บจริงเป็นของงวดในแถว */
   if (o.actualMode === 'installment') notes.push(`Actual รายงวด · ${installmentSeqText(o.installmentSeqs)} (ยอดเฉพาะงวดที่นับในเดือนนี้)`);
-  // ยอดกรอกมือของเดือนนั้นทับยอดใบ ⇒ ใบนี้ไม่อยู่ในขายจริง (บอกไว้ ไม่งั้นรวมคอลัมน์แล้วไม่ตรง)
-  if (overriddenMonths.has(o.month)) notes.push('ไม่นับ · เดือนนี้ใช้ยอดกรอกย้อนหลัง');
+  // ยอดกรอกมือของเดือนนั้นทับยอดใบ ⇒ ใบนี้ไม่อยู่ในขายจริง (บอกไว้ ไม่งั้นรวมคอลัมน์แล้วไม่ตรง) · ใบที่ไม่นับอยู่แล้วไม่ต้องบอกซ้ำ
+  if (!uncounted && overriddenMonths.has(o.month)) notes.push('ไม่นับ · เดือนนี้ใช้ยอดกรอกย้อนหลัง');
   if (Number(o.awaitingAmount || 0) > 0) notes.push(`ค้างชำระรวมที่รอบัญชีรับรอง ${fmtMoney(o.awaitingAmount)}`);
   if (!o.free && !o.installmentCount) notes.push('ยังไม่มีงวดชำระ');
   return {
@@ -341,16 +347,21 @@ export async function buildSalesReportBuffer(data, summary, meta = {}) {
 
   /* ── ใบสั่งขาย ── ทุกใบในงวด (ไม่ใช่เฉพาะที่ค้นบนจอ — ตัวกรองของ Excel ทำหน้าที่นั้น) */
   const overriddenMonths = new Set(summary.monthRows.filter((r) => r.overridden).map((r) => r.month));
-  /* เรียงตามเวลาที่นับ — แถวงวดของใบ "Actual รายงวด" ใช้เวลาที่นับงวด (actualAt · mig 0412) · ใบทั้งใบ = approvedAt เท่าเดิม */
+  /* เรียงตามเวลาที่นับ — แถวงวดของใบ "Actual รายงวด" ใช้เวลาที่นับงวด (actualAt · mig 0412) · ใบทั้งใบ = approvedAt เท่าเดิม
+     ⭐ ใบที่โชว์แต่ไม่นับ (`uncountedOrders` · มติเจ้าของ 20/11 · mig 0439) เข้าชีตนี้ด้วย ยอดที่นับ 0 + หมายเหตุ —
+        ชีตอื่น (สรุป/รายทีม/รายคน) มาจาก summary ซึ่งไม่เห็นก้อนนี้ ⇒ ตัวเลขเท่าเดิม · แถวรวม "ยอดที่นับ" บวก 0 */
   const countedAt = (o) => String(o.actualAt || o.approvedAt || '');
-  const orders = [...(data.orders || [])].sort((a, b) => countedAt(a).localeCompare(countedAt(b)) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
+  const orders = [...(data.orders || []), ...(data.uncountedOrders || [])]
+    .sort((a, b) => countedAt(a).localeCompare(countedAt(b)) || String(a.orderNumber).localeCompare(String(b.orderNumber)));
+  const uncountedCount = uncountedReportCount(orders);
   const orderSheet = book.addWorksheet('ใบสั่งขาย');
   // ปัดสตางค์ — ผลบวกทศนิยมลอยได้ 5611903.140000001 ในเซลล์ (จอโชว์ถูกเพราะ numFmt แต่คนคัดลอกค่าไปใช้ต่อจะเห็นเศษ)
   const orderTotal = (key) => Math.round(orders.reduce((s, o) => s + Number(o[key] || 0), 0) * 100) / 100;
   writeTable(orderSheet, {
     info: [
       stamp,
-      `${orderRowsLabel(orders)} · เฉพาะใบที่อนุมัติแล้ว · กดเลข SO เพื่อเปิดใบในระบบ`,
+      `${orderRowsLabel(orders)} · เฉพาะใบที่อนุมัติแล้ว · กดเลข SO เพื่อเปิดใบในระบบ`
+        + (uncountedCount ? ` · ในนั้นมีใบที่ไม่นับ Actual ${uncountedCount} ใบ (ค่าสรรพสามิต / ไม่นับ Actual — ยอดที่นับ 0 · ดูหมายเหตุ)` : ''),
       'ยอดที่นับ = ยอดหน้าใบ − VAT ท้ายใบ · ยอดเก็บจริง = งวดชำระที่บัญชีรับรองแล้ว (รวม VAT ณ เวลาดาวน์โหลด) · ยอดค้างชำระ = ยอดหน้าใบ − ยอดเก็บจริง (รวมที่รอบัญชีรับรอง) · ใบ "ไม่คิดเงิน" = ส่วนลดท้ายใบเต็มจำนวน นับรวมในจำนวนใบ',
     ],
     /* ⭐ ลำดับคอลัมน์ตามที่ผู้ใช้กำหนด (2026-09-22):

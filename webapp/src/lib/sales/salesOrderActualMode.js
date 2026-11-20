@@ -14,10 +14,15 @@ import { workflowErrorMessage } from '@/lib/sales/documentWorkflowErrors';
 
 export const ACTUAL_MODE_ORDER = 'order';
 export const ACTUAL_MODE_INSTALLMENT = 'installment';
-export const ACTUAL_MODES = Object.freeze([ACTUAL_MODE_ORDER, ACTUAL_MODE_INSTALLMENT]);
+/* ⭐ "ไม่นับ Actual" (mig 0439 · มติเจ้าของ 20/11/2026) — ใบอนุมัติแล้วทุกอย่าง (บริการ · ผลิต · บัญชี · เก็บเงิน เดินปกติ) แต่ไม่เข้า
+   Actual / % เป้า / กองรออนุมัติ-รอนับ **ถาวร** (ข้อ 1 — อยากนับต้องย้อนอนุมัติแล้วออก Rev.) · เหตุผล 10–500 ตัวอักษรบังคับ (ข้อ 2 · "actualNoneReason") */
+export const ACTUAL_MODE_NONE = 'none';
+export const ACTUAL_MODES = Object.freeze([ACTUAL_MODE_ORDER, ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_NONE]);
+/* ข้อ 4 (20/11): "Actual ทั้งใบ" → "Actual เต็ม" ทุกจอ (ค่าในฐานยังเป็น 'order') */
 export const ACTUAL_MODE_LABELS = Object.freeze({
-  [ACTUAL_MODE_ORDER]: 'Actual ทั้งใบ',
+  [ACTUAL_MODE_ORDER]: 'Actual เต็ม',
   [ACTUAL_MODE_INSTALLMENT]: 'Actual รายงวด',
+  [ACTUAL_MODE_NONE]: 'ไม่นับ Actual',
 });
 /* ใบรายงวดต้องแบ่งอย่างน้อยสองงวด — งวดเดียว = ผลเท่ากับทั้งใบ (ค่าตั้งต้นที่ Claude เลือก · docs) */
 export const MIN_INSTALLMENT_ACTUAL_ROWS = 2;
@@ -86,7 +91,7 @@ export function installmentActualPaymentGated(row, { order = null, actualMode } 
       (RPC ต้องใบ approved) ⇒ "รอฝ่ายขายยื่น/AE Sup อนุมัติ" คือทางที่ไม่มีจริง · ทางเดียวคือเจ้าของดีลออก Rev.
    @param order ใบของงวด (หรือ `{ status }`) — ไม่ส่ง = อ่าน `row.orderStatus` (แถวทะเบียนการชำระพกมาเอง) */
 export const INSTALLMENT_ACTUAL_REVOKED_LOCK = 'ใบนี้ถูกย้อนการอนุมัติแล้ว — ยื่น/อนุมัตินับงวดบนใบนี้ไม่ได้'
-  + ' · งวดนี้แจ้งสลิป/รับรองเงินได้เมื่อเจ้าของดีลออก Rev. (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual ทั้งใบ)';
+  + ' · งวดนี้แจ้งสลิป/รับรองเงินได้เมื่อเจ้าของดีลออก Rev. (งวดย้ายไปร่าง Rev. ซึ่งเริ่มนับ Actual เต็ม)';
 
 /* ── มติเจ้าของข้อ 10 (26/10 "นับให้เอง ไม่ต้องยื่น"): ใบที่กด "นับที่เหลือทั้งหมด" แล้ว = นับทั้งก้อนจากนี้ไปถาวร ────────────────
    ⭐ สัญญาณ = มีงวด via count_rest (ตัวเดียวกับ SQL ของ 0412: constraint trigger §5f · v_rest ของ start §6② — ไม่มีคอลัมน์ใหม่)
@@ -304,8 +309,38 @@ export function isInstallmentActualOrder(order) {
   return order?.actualMode === ACTUAL_MODE_INSTALLMENT && !isHistoricalOrder(order);
 }
 
+/* ใบนี้ "ไม่นับ Actual" ไหม (mig 0439) — อ่านจาก `actualMode` ล้วน ไม่ดูสถานะใบ (กติกาเดียวกับ isInstallmentActualOrder) ·
+   ใบย้อนหลัง/ค่าสรรพสามิตไม่นับ Actual อยู่แล้วโดยที่มา (isActualOrder) — ไม่ใช่ตัวเลือกนี้ (CHECK บังคับ pipeline) */
+export function isNoActualOrder(order) {
+  return order?.actualMode === ACTUAL_MODE_NONE && isActualOrder(order);
+}
+
 export function actualModeOf(order) {
-  return isInstallmentActualOrder(order) ? ACTUAL_MODE_INSTALLMENT : ACTUAL_MODE_ORDER;
+  if (isInstallmentActualOrder(order)) return ACTUAL_MODE_INSTALLMENT;
+  return isNoActualOrder(order) ? ACTUAL_MODE_NONE : ACTUAL_MODE_ORDER;
+}
+
+/* เหตุผลของ "ไม่นับ Actual" ที่โชว์คู่ป้าย — ข้อความที่ตัดช่องว่างแล้ว หรือ '' (ใบแบบอื่น) */
+export function actualNoneReasonOf(order) {
+  return isNoActualOrder(order) ? text(order?.actualNoneReason) : '';
+}
+
+/**
+ * เลือก "ไม่นับ Actual" ได้ไหม (ตัวเลือกในโมดัลอนุมัติ) — `{ eligible, reason }` · ตัวเดียวกับ route
+ * ⭐ ใบ pipeline ทุกใบ (ยอด 0 ก็ได้ · งวดเท่าไรก็ได้) · ใบย้อนหลัง/ค่าสรรพสามิตไม่นับอยู่แล้ว (ฐานตอบ sales_order_actual_none_ineligible)
+ */
+export function actualNoneEligibility(order) {
+  if (!order) return { eligible: false, reason: 'ไม่พบใบสั่งขาย' };
+  if (!isActualOrder(order)) return { eligible: false, reason: msg('sales_order_actual_none_ineligible') };
+  return { eligible: true, reason: null };
+}
+
+/* ข้อความไทยเมื่อเหตุผลของ "ไม่นับ Actual" ใช้ไม่ได้ (ตัดช่องว่าง 10–500 ตัวอักษร · คู่กับ RPC ของ 0439) หรือ null */
+export function actualNoneReasonError(reason) {
+  const length = text(reason).length;
+  return length >= INSTALLMENT_ACTUAL_REASON_MIN && length <= INSTALLMENT_ACTUAL_REASON_MAX
+    ? null
+    : msg('sales_order_actual_none_reason_required');
 }
 
 /* ใบรายงวดที่ยังเดินอยู่ — ที่เดียวที่ยื่น/อนุมัติ/ตีกลับงวดได้ (ร่วมของ RPC: pipeline + approved + installment + ไม่ถูกแทน) */
@@ -329,13 +364,13 @@ export function actualModeEligibility(order, installmentCount) {
     return { eligible: false, reason: 'ใบค่าสรรพสามิตไม่นับ Actual — ไม่มีตัวเลือกรายงวด' };
   }
   if (!(toCents(order.totalAmount) > 0)) {
-    return { eligible: false, reason: 'ใบนี้ยอดรวม 0 บาท ไม่มีงวดชำระ — นับ Actual ได้ทั้งใบเท่านั้น' };
+    return { eligible: false, reason: 'ใบนี้ยอดรวม 0 บาท ไม่มีงวดชำระ — นับ Actual ได้แบบเต็มเท่านั้น (หรือไม่นับ)' };
   }
   const count = Array.isArray(installmentCount)
     ? installmentCount.filter(Boolean).length
     : Math.trunc(Number(installmentCount) || 0);
   if (count < MIN_INSTALLMENT_ACTUAL_ROWS) {
-    return { eligible: false, reason: 'ใบนี้มีงวดชำระงวดเดียว — นับ Actual ได้ทั้งใบเท่านั้น (นับรายงวดได้ผลเท่ากัน)' };
+    return { eligible: false, reason: 'ใบนี้มีงวดชำระงวดเดียว — นับ Actual ได้แบบเต็มเท่านั้น (นับรายงวดได้ผลเท่ากัน)' };
   }
   return { eligible: true, reason: null };
 }
@@ -345,7 +380,8 @@ export function actualModeEligibility(order, installmentCount) {
    ⛔ ใบย้อนหลัง/ใบที่ไม่ใช่ approved = 0 (origin = 'pipeline' + status = 'approved' ของ SQL) */
 export function salesOrderCountedActual(order) {
   // ใบค่าสรรพสามิต (0414) = 0 เสมอ — CHECK บังคับ actualAmount = 0 อยู่แล้ว ตัดที่ตัวตัดสินด้วยกันแถวที่ select มาไม่ครบ
-  if (!order || !isActualOrder(order) || order.status !== 'approved') return 0;
+  // ใบ "ไม่นับ Actual" (0439) = 0 เสมอ — ตรงกับ sync ที่บวกเฉพาะ actualMode = 'order'
+  if (!order || !isActualOrder(order) || order.status !== 'approved' || isNoActualOrder(order)) return 0;
   return isInstallmentActualOrder(order)
     ? nonNegative(order.actualCountedAmount)
     : nonNegative(order.actualAmount);
@@ -541,7 +577,7 @@ function orderDateMonth(value) {
  *   (ยอดรวมถูก เดือนอาจผิด) · ส่งอาร์เรย์ว่าง = ใบไม่มีงวด = []
  */
 export function salesOrderActualEvents(order, rows) {
-  if (!order || !isActualOrder(order) || order.status !== 'approved') return [];
+  if (!order || !isActualOrder(order) || order.status !== 'approved' || isNoActualOrder(order)) return [];
   const orderAt = order.approvedAt || null;
   const orderMonth = orderAt ? businessMonthKey(orderAt) : orderDateMonth(order.orderDate);
   if (!isInstallmentActualOrder(order)) {

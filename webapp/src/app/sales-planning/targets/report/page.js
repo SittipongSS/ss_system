@@ -57,7 +57,7 @@ import {
   sortOrders,
 } from "@/lib/sales/reportOrderView";
 import { reportPeriodLabel } from "@/lib/sales/reportPeriod";
-import { installmentSeqText } from "@/lib/sales/reportRows";
+import { installmentSeqText, isUncountedReportRow, uncountedReportCount, uncountedReportLabel } from "@/lib/sales/reportRows";
 import { currentMonth, formatMonthLabel } from "@/lib/datePeriods";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import styles from "./page.module.css";
@@ -88,6 +88,8 @@ const LENSES = [
 ];
 
 const EMPTY_FILTERS = EMPTY_ORDER_FILTERS;
+/* ก้อนว่างตัวเดียว — `|| []` สร้างอาร์เรย์ใหม่ทุกเรนเดอร์ระหว่างโหลด แล้ว useMemo ของรายการใบคิดใหม่ทุกครั้ง */
+const NO_ROWS = Object.freeze([]);
 
 /* ประเภทธุรกิจ/ประเภทดีลของดีลของใบ (มติผู้ใช้ 2026-09-22) — ป้ายกลางชุดเดียวกับหน้ารวมดีล
    ⚠️ ค่าว่างต้องเป็นขีด — `dealTypeBadge(null)` ตีเป็น NPD (normalizeDealType) จะโกหกว่าดีลเป็น NPD */
@@ -293,6 +295,7 @@ export default function SalesReportPage() {
         <div ref={ordersRef} className="scroll-anchor">
           <OrdersPanel
             orders={data?.orders || []}
+            uncounted={data?.uncountedOrders || NO_ROWS}
             summary={summary}
             period={period}
             loading={loading}
@@ -958,8 +961,11 @@ function PendingPanel({ pendingApproval }) {
 /* ── ใบสั่งขายที่อนุมัติแล้ว ─────────────────────────────────────────────
    ⭐ กางทันที แบ่งหน้า 10 แถว (แทนด่าน "กดค้นหาก่อน" ของ 2026-08-27) · ค้นหา/กรองมีผลทันที
    ⚠️ ใบทั้งงวดมากับ response อยู่แล้ว การกรองจึงทำในหน้า — ตัวเลขตรงกับสรุปด้านบนเสมอเพราะมาจากก้อนเดียวกัน
-   ⭐ กดขายจริงในตาราง "แยกยอด" = ชิป "จากแยกยอด: …" + บรรทัดเทียบยอด ✓/✗ */
-function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDrill, chipRef, q, setQ, filters, setFilters }) {
+   ⭐ กดขายจริงในตาราง "แยกยอด" = ชิป "จากแยกยอด: …" + บรรทัดเทียบยอด ✓/✗
+   ⭐ ใบที่โชว์แต่ไม่นับ (`uncounted` · ค่าสรรพสามิต / ไม่นับ Actual · มติเจ้าของ 20/11 · mig 0439) ต่อท้ายรายการ — ยอดที่นับ 0 + ป้าย
+      · ยอดเก็บ/ค้างชำระตามจริง · ⛔ ไม่อยู่ในชุดเจาะจาก "แยกยอด" (เจาะ = ใบที่รวมเป็นยอดของเซลล์นั้นเท่านั้น) */
+function OrdersPanel({ orders: counted, uncounted = NO_ROWS, summary, period, loading, error, drill, onClearDrill, chipRef, q, setQ, filters, setFilters }) {
+  const orders = useMemo(() => (uncounted.length ? [...counted, ...uncounted] : counted), [counted, uncounted]);
   const teamRegistry = useSalesTeams();
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", ORDER_SORT_DEFAULT);
@@ -1022,7 +1028,7 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
     });
   }, [loading, error, orders.length, ownerOptions, teamOptions, monthOptions, monthGroupShown, setFilters]);
 
-  const drilled = useMemo(() => ordersForDrill(orders, drill), [orders, drill]);
+  const drilled = useMemo(() => (drill ? ordersForDrill(counted, drill) : orders), [counted, orders, drill]);
   const filtered = useMemo(() => filterOrders(drilled, { q, ...f }), [drilled, q, f.owners, f.teams, f.finance, f.months, f.kinds, f.lines, f.dealTypes]); // eslint-disable-line react-hooks/exhaustive-deps
   const sorted = useMemo(() => sortOrders(filtered, sortKey, sortDir), [filtered, sortKey, sortDir]);
   const groups = useMemo(() => groupOrders(sorted, groupBy, {
@@ -1079,9 +1085,11 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
   const overridden = summary ? summary.monthRows.filter((r) => r.overridden) : [];
   const historyMonthsAll = summary ? summary.monthRows.filter((r) => r.source === "history").map((r) => r.month) : [];
   const overriddenMonths = new Set(overridden.map((r) => r.month));
+  const uncountedInList = useMemo(() => uncountedReportCount(filtered), [filtered]);
 
   const orderRow = (o) => {
     const badge = FINANCE_STATE_BADGE[financeStateOf(o)];
+    const uncountedLabel = uncountedReportLabel(o);
     return (
       <tr key={o.rowKey || o.id}>
         <td className="w-9 text-center">
@@ -1096,13 +1104,26 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
           <Link className={`table-row-link ${styles.docNo}`} href={`/sa/sales-orders/${o.id}`}>{o.orderNumber}</Link>
           {/* แถวงวดของใบ "Actual รายงวด" (mig 0412) — ยอด/เงินในแถวเป็นของงวดที่นับในเดือนนี้เท่านั้น */}
           {o.actualMode === "installment" && <span className="cell-sub">Actual รายงวด · {installmentSeqText(o.installmentSeqs)}</span>}
+          {/* ใบที่โชว์แต่ไม่นับ (มติเจ้าของ 20/11 · mig 0439) — ป้ายชนิด + เหตุผลบรรทัดเดียว (ตัดด้วยจุดไข่ปลา · ชี้ดูเต็มที่ data-tip ·
+              ข้อความเต็มอยู่ใน DOM ให้โปรแกรมอ่านหน้าจอ) · คำเดียวกับหมายเหตุใน Excel (uncountedReportLabel)
+              ป้าย = StatusBadge ตัวกลาง (ทรงเดียวกับป้าย "ค่าสรรพสามิต" ของทะเบียนใบสั่งขาย) */}
+          {uncountedLabel && (
+            <span className="cell-sub">
+              <StatusBadge tone={o.excise ? "info" : "neutral"} size="sm" label={uncountedLabel} />
+            </span>
+          )}
+          {o.actualNoneReason && (
+            <span className="cell-sub cell-ellipsis" data-tip={o.actualNoneReason} data-tip-label="เหตุผลที่ไม่นับ Actual">
+              {o.actualNoneReason}
+            </span>
+          )}
           {/* ใบที่ส่วนลดท้ายใบเต็มจำนวน — ต้องขึ้นครบทุกใบ ห้ามกรองทิ้ง (มติผู้ใช้) */}
           {o.free && <span className={`ui-badge warning ${styles.docNo}`}>ไม่คิดเงิน</span>}
           {o.quoteNumber && <span className={`cell-sub ${styles.docNo}`}>{o.quoteNumber}</span>}
         </td>
         <td className="num">
           <Money value={o.amount} />
-          {overriddenMonths.has(o.month) && <span className="cell-sub">ไม่นับ · เดือนนี้ใช้ยอดกรอก</span>}
+          {!isUncountedReportRow(o) && overriddenMonths.has(o.month) && <span className="cell-sub">ไม่นับ · เดือนนี้ใช้ยอดกรอก</span>}
         </td>
         <td>{o.customerName || NA}</td>
         <td>
@@ -1249,6 +1270,8 @@ function OrdersPanel({ orders, summary, period, loading, error, drill, onClearDr
                 {!drill && !extraFilters && overridden.length > 0 && (
                   <> · ไม่นับ {overridden.reduce((s, r) => s + r.overridden.count, 0)} ใบ <Money value={overridden.reduce((s, r) => s + r.overridden.amount, 0)} /> (เดือนที่ใช้ยอดกรอกย้อนหลัง)</>
                 )}
+                {/* จำนวนใบในรายการนับรวมใบที่โชว์แต่ไม่นับ — บอกแยกไว้ (มติเจ้าของ 20/11 · ยอดที่นับของใบพวกนี้ = 0) */}
+                {uncountedInList > 0 && <> · ในรายการมีใบที่ไม่นับ Actual {uncountedInList} ใบ (ค่าสรรพสามิต / ไม่นับ Actual)</>}
               </>
             )}
           </div>

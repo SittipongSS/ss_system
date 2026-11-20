@@ -18,7 +18,7 @@ import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole, useShellSystem } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, fmtName, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import { salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import {
   EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
@@ -39,7 +39,7 @@ import {
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
-import { isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
+import { actualNoneReasonOf, isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
 import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
 import {
@@ -528,7 +528,10 @@ export default function SalesOrdersPage() {
       pendingApproval: amounts.pendingOrderAmount,
       instPending: amounts.instPendingCount,
       instPendingAmount: amounts.instPendingAmount,
-      approved: amounts.actualCount,
+      /* การ์ด "อนุมัติแล้ว" กดแล้วกรอง pipeline + approved ⇒ เลข = ใบที่นับ Actual + ใบ "ไม่นับ Actual" (mig 0439) — แถวหลังกดเท่าเลขพอดี
+         · ยอด "Actual ก่อน VAT" ไม่รวมใบไม่นับ (salesOrderActual = 0) */
+      approved: amounts.actualCount + amounts.noneCount,
+      noneCount: amounts.noneCount,
       actual: amounts.actual,
     };
   }, [rows]);
@@ -623,8 +626,13 @@ export default function SalesOrdersPage() {
                   <>
                     {/* ⭐ ใบที่ไม่นับ Actual โดยชนิด (ใบย้อนหลัง · ใบค่าสรรพสามิต — `isActualOrder`) = ขีด + เหตุ (มติเจ้าของ 09/11
                         "Actual มีทั้งมียอดและไม่มียอด") · ร่าง/ตีกลับ/ยกเลิกยังโชว์ยอดหรี่แบบเดิม */}
-                    {isActualOrder(row) ? fmtMoney(row.actualAmount) : NA}
-                    {!isActualOrder(row) ? (
+                    {isActualOrder(row) && amountKind !== "none" ? fmtMoney(row.actualAmount) : NA}
+                    {amountKind === "none" ? (
+                      /* ใบอนุมัติแบบ "ไม่นับ Actual" (mig 0439 · มติ 20/11) — ขีด + ป้าย + เหตุผล (title) */
+                      <span className="cell-sub" title={actualNoneReasonOf(row) || undefined}>
+                        ไม่นับ Actual{actualNoneReasonOf(row) ? ` · ${actualNoneReasonOf(row)}` : ""}
+                      </span>
+                    ) : !isActualOrder(row) ? (
                       <span className="cell-sub">{historical ? "ใบย้อนหลัง" : "ใบค่าสรรพสามิต"} · ไม่นับ Actual</span>
                     ) : (
                       <>{amountKind === "actual"
@@ -763,7 +771,9 @@ export default function SalesOrdersPage() {
             icon={<BadgeCheck />}
             label="อนุมัติแล้ว"
             value={summary.approved}
-            note="ใบจากใบเสนอราคา · นับเป็น Actual"
+            note={summary.noneCount
+              ? `ใบจากใบเสนอราคา · ไม่นับ Actual ${fmtNumber(summary.noneCount)} ใบ`
+              : "ใบจากใบเสนอราคา · นับเป็น Actual"}
             tone="good"
             active={cardActive("approved")} aria-pressed={cardActive("approved")} onClick={() => pickCard("approved")}
           />

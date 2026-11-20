@@ -1,7 +1,10 @@
 import { businessMonthKey } from '@/lib/datePeriods';
 import { historyRowKey } from '@/lib/sales/historyEntry';
 import { personSliceKey } from '@/lib/sales/personSlice';
-import { isInstallmentActualOrder, salesOrderActualEvents } from '@/lib/sales/salesOrderActualMode';
+import {
+  ACTUAL_MODE_LABELS, ACTUAL_MODE_NONE, isInstallmentActualOrder, isNoActualOrder, salesOrderActualEvents,
+} from '@/lib/sales/salesOrderActualMode';
+import { isExciseOrder } from '@/lib/sales/historicalOrders';
 
 /* ── แถวของรายงานยอดขาย (/sa/targets/report) — บริษัท · ทีม · รายคน ─────────────
  * ยกออกจาก api/sales-planning/report/route.js เพื่อให้เทสต์ได้ (route.js export ได้แค่ HTTP handler)
@@ -35,6 +38,29 @@ export const reportOrderMonth = (order) => order?.actualMonth || businessMonthKe
 /** "งวด 1" / "งวด 2, 3" — งวดในแถวของใบ "Actual รายงวด" (mig 0412) · จอรายงานกับไฟล์ Excel ใช้ตัวเดียวกัน */
 export const installmentSeqText = (seqs) => `งวด ${(Array.isArray(seqs) ? seqs : []).join(', ')}`;
 
+/* ── แถวที่ "โชว์แต่ไม่นับ" (มติเจ้าของ 20/11/2026 · mig 0439) ─────────────────────────────────────────
+   ⭐ ใบ "ไม่นับ Actual" (actualMode 'none') และใบค่าสรรพสามิต (origin 'excise' · mig 0414) ที่อนุมัติในงวด
+      ขึ้นในรายการใบ (จอ + Excel) ด้วยยอดที่นับ 0 + ป้าย · ยอดเก็บ/ค้างชำระของใบโชว์ตามจริง
+   ⛔ ไม่เข้า Actual บริษัท/ทีม/คน · % เป้า · กองรออนุมัติ · จำนวน "n ใบ" ของยอดขาย — ตัวโหลดแยกไว้ในก้อน `uncountedOrders`
+      ไม่ปนกับ `orders` (ตัวสรุปนับใบจาก `orders`) และ buildReportRows ข้ามแถวพวกนี้อีกชั้น (ไม่สร้างแถวคน/ทีมศูนย์ล้วน)
+   ธงบนแถว: `actualNone: true` (ใบไม่นับ Actual) · `excise: true` (ใบค่าสรรพสามิต) */
+export const REPORT_ACTUAL_NONE_LABEL = ACTUAL_MODE_LABELS[ACTUAL_MODE_NONE];
+export const REPORT_EXCISE_LABEL = `ค่าสรรพสามิต · ${REPORT_ACTUAL_NONE_LABEL}`;
+
+/** แถวนี้โชว์ในรายการใบแต่ไม่นับยอดขายไหม (ธงที่ reportActualRows ติดให้) */
+export const isUncountedReportRow = (row) => Boolean(row?.actualNone || row?.excise);
+
+/** ป้ายของแถวที่ไม่นับ — จอกับไฟล์ Excel ใช้คำเดียวกัน · แถวที่นับ = null */
+export function uncountedReportLabel(row) {
+  if (row?.excise) return REPORT_EXCISE_LABEL;
+  if (row?.actualNone) return REPORT_ACTUAL_NONE_LABEL;
+  return null;
+}
+
+/** จำนวนใบที่ไม่นับในชุดแถว (นับใบไม่ซ้ำ — ใบสองชนิดนี้มีแถวเดียวต่อใบอยู่แล้ว) */
+export const uncountedReportCount = (rows = []) => new Set((Array.isArray(rows) ? rows : [])
+  .filter(isUncountedReportRow).map((o) => o.id ?? o.orderNumber)).size;
+
 const toSatang = (v) => Math.round((Number(v) || 0) * 100) / 100;
 const laterOf = (a, b) => {
   if (!a) return b || null;
@@ -51,6 +77,9 @@ const laterOf = (a, b) => {
  *    ช่องเพิ่มเฉพาะแถวงวด: `actualMonth` · `actualAt` (เวลานับล่าสุดในแถว) · `rowKey` ('<id>|<เดือน>') ·
  *    `installmentIds` · `installmentSeqs` · `orderActualAmount` (ยอดก่อน VAT ของทั้งใบ)
  * ⚠️ ใบรายงวดต้องส่งงวดมาด้วย (installmentsOf) — ไม่ส่ง = ใบไม่มีงวดที่นับ = ไม่มีแถว (ไม่เดาว่านับทั้งใบ)
+ * ⭐ ใบค่าสรรพสามิต / ใบ "ไม่นับ Actual" (มติเจ้าของ 20/11 · mig 0439) = **สำเนา** หนึ่งแถวต่อใบ ณ วันอนุมัติใบ ·
+ *    `actualAmount: 0` + ธง (`excise` / `actualNone`) + `orderActualAmount` (ยอดก่อน VAT ของใบ — ตัดสิน "ไม่คิดเงิน") ·
+ *    ผู้เรียกแยกด้วย isUncountedReportRow ก่อนรวมยอด (ออบเจกต์ต้นทางไม่ถูกแตะ)
  * @param orders        ใบ approved (แถว sales_orders + embed)
  * @param installmentsOf (order) => งวดของใบ `{ id, seq, actualStatus, actualAmount, actualApprovedAt }`
  * @param keep          (row) => boolean — ตัวคัดงวด/ช่วงวันของผู้เรียก (ใช้กับแถวใบทั้งใบและเหตุการณ์ของใบรายงวด)
@@ -58,6 +87,12 @@ const laterOf = (a, b) => {
 export function reportActualRows(orders = [], { installmentsOf = () => [], keep = () => true } = {}) {
   const out = [];
   for (const order of orders || []) {
+    const uncounted = isExciseOrder(order) ? { excise: true } : isNoActualOrder(order) ? { actualNone: true } : null;
+    if (uncounted) {
+      const row = { ...order, actualAmount: 0, orderActualAmount: order.actualAmount, ...uncounted };
+      if (keep(row)) out.push(row);
+      continue;
+    }
     if (!isInstallmentActualOrder(order)) {
       if (keep(order)) out.push(order);
       continue;
@@ -89,8 +124,10 @@ export function reportActualRows(orders = [], { installmentsOf = () => [], keep 
   return out;
 }
 
-/** ทีมของใบอนุมัติแล้ว = ทีมบนดีลของใบ (embed `deal:sales_deals(team)`) — ไม่ใช่ทีมในบัญชีเจ้าของ */
-export const reportOrderTeam = (order) => order?.deal?.team || null;
+/** ทีมของใบอนุมัติแล้ว = ทีมบนดีลของใบ (embed `deal:sales_deals(team)`) — ไม่ใช่ทีมในบัญชีเจ้าของ
+ *  ⭐ ใบค่าสรรพสามิตไม่มีดีล ⇒ ทีมบนดีลของ SO ต้นทาง (`sourceDeal` ที่ตัวโหลดเติม · มติเจ้าของ 20/11) · หาไม่เจอ = null
+ *  ⛔ ดีลต้นทางไม่เขียนลง `deal` (กติกาเดียวกับ lib/scopedRow `sourceDeal`) */
+export const reportOrderTeam = (order) => (order?.deal || order?.sourceDeal)?.team || null;
 
 /** คีย์แถวทีม "ไม่ระบุทีม" — 🪤 historyRowKey({ team: null }) = 'company' ใช้แทนไม่ได้ (ชนแถวบริษัท) */
 export const NO_TEAM_ROW_KEY = 'team:-';
@@ -148,8 +185,10 @@ export function buildReportRows({
     else companyRow.target[i] += amount;
   }
 
-  /* ── ใบอนุมัติแล้ว ── แถวคน (ทีมของดีล, เจ้าของที่แช่ไว้) + แถวทีมเดียวกัน ก้อนเดียวกัน */
+  /* ── ใบอนุมัติแล้ว ── แถวคน (ทีมของดีล, เจ้าของที่แช่ไว้) + แถวทีมเดียวกัน ก้อนเดียวกัน
+     ⛔ แถวที่โชว์แต่ไม่นับ (ค่าสรรพสามิต / ไม่นับ Actual · mig 0439) ข้าม — บวก 0 ก็สร้างแถวคน/ทีมศูนย์ล้วนให้คนที่ไม่มียอด */
   for (const o of orders || []) {
+    if (isUncountedReportRow(o)) continue;
     const i = slot.get(reportOrderMonth(o));
     if (i == null) continue;
     const amount = money(o.actualAmount);

@@ -1299,7 +1299,10 @@ export default function QuotationEditorPage() {
                           : `Actual ก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)}`
                         : salesOrderAmountKind(quote.salesOrder) === "pending_approval"
                           ? <><PendingApprovalAmount inline amount={quote.salesOrder.actualAmount} count={1} /> ก่อน VAT · ยังไม่นับ Actual</>
-                          : `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · ยังไม่นับ Actual`}
+                          /* อนุมัติแบบ "ไม่นับ Actual" (mig 0439) — ถาวร ไม่ใช่ "ยังไม่" */
+                          : salesOrderAmountKind(quote.salesOrder) === "none"
+                            ? `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · อนุมัติแบบไม่นับ Actual`
+                            : `ยอดก่อน VAT ${fmtMoney(quote.salesOrder.actualAmount)} · ยังไม่นับ Actual`}
                   </span>
                 </div>
               </RelatedDocumentCard>

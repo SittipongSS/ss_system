@@ -140,9 +140,10 @@ test('0412: CHECK — แบบ (รายงวดเฉพาะใบ pipelin
 
 // ═══ 2) คู่ sync / enforce — ใบทั้งใบค่าเดิมทุกตัวอักษร + คีย์ใหม่ ═══════════════════════════════════════════════
 
-test('คู่ sync/enforce: นิยามล่าสุดอยู่ใน 0412 ทั้งคู่ (แก้ข้างเดียวไม่ได้)', () => {
-  assert.equal(latestDefinitionOf('sync_sales_order_actual').file, FILE);
-  assert.equal(latestDefinitionOf('enforce_sales_order_actual_on_deal').file, FILE);
+test('คู่ sync/enforce: นิยามล่าสุดอยู่ไฟล์เดียวกันทั้งคู่ (0439 ไม่นับ Actual · แก้ข้างเดียวไม่ได้)', () => {
+  // 0439 คัดคู่นี้ + _deal_so_actual_extras จาก 0412 ทุกตัวอักษร ยกเว้นตัวกรองแบบ (ยามอยู่ที่ soActualNoneMigration.test.mjs)
+  assert.equal(latestDefinitionOf('sync_sales_order_actual').file, '0439_so_actual_none.sql');
+  assert.equal(latestDefinitionOf('enforce_sales_order_actual_on_deal').file, '0439_so_actual_none.sql');
   for (const fn of ['sync_sales_order_actual', 'enforce_sales_order_actual_on_deal']) {
     assert.equal(RAW.split(`CREATE OR REPLACE FUNCTION public.${fn}(`).length - 1, 1, `${fn} ต้องมีนิยามเดียว`);
   }

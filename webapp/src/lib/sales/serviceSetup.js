@@ -60,7 +60,7 @@ import { isSalesManager } from '@/lib/permissions';
 import { latestTimestamp, serviceAgingOf } from '@/lib/sales/serviceBackfillAging';
 import { linePackQty, linePackQtyText } from '@/lib/sales/linePackView';
 /* นับ Actual ทั้งใบ / รายงวด (mig 0412) — ไฟล์กติกาล้วน ไม่ import ไฟล์นี้กลับ (serviceSetupImports ไล่กราฟให้) */
-import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
+import { isInstallmentActualOrder, isNoActualOrder } from '@/lib/sales/salesOrderActualMode';
 
 /* ══ ค่าคงที่ ══════════════════════════════════════════════════════════════════════════════════════ */
 
@@ -1769,6 +1769,7 @@ function predecessorMoveLine(ctx) {
 /* ยอด Actual ที่ "เท่าเดิม" ในโมดัลอนุมัติ/เปิดแก้งานบริการ — ใบ "Actual รายงวด" (mig 0412) นับเฉพาะงวดที่ AE Sup อนุมัติแล้ว
    คนละเดือนกันได้ ⇒ บอกยอดที่นับแล้วจากยอดเต็ม ไม่ใช่ "Actual <เดือนอนุมัติใบ> <ยอดเต็ม>" · ใบทั้งใบ = ประโยคเดิม */
 function unchangedActualText(order, month) {
+  if (isNoActualOrder(order)) return 'ใบนี้ไม่นับ Actual'; // mig 0439 — ไม่มียอด Actual ให้ "เท่าเดิม"
   return isInstallmentActualOrder(order)
     ? `Actual รายงวด นับแล้ว ${fmtMoney(order.actualCountedAmount)} จาก ${fmtMoney(order.actualAmount)}`
     : `Actual ${month} ${fmtMoney(order.actualAmount)}`;

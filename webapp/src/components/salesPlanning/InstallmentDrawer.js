@@ -50,7 +50,9 @@ export default function InstallmentDrawer({
           {showActual ? (
             <div className={styles.box}>
               <span className={styles.boxLabel}>Actual ก่อน VAT</span>
-              <b className={styles.boxValue}>{isActualOrder(row) ? fmtMoney(row.actualAmount) : NA}</b>
+              {/* ใบ "ไม่นับ Actual" (mig 0439) = ขีด + ป้าย — ไม่โชว์ยอดในช่อง Actual */}
+              <b className={styles.boxValue}>{isActualOrder(row) && row.actualMode !== "none" ? fmtMoney(row.actualAmount) : NA}</b>
+              {row.actualMode === "none" ? <span className={styles.boxLabel}>ไม่นับ Actual</span> : null}
             </div>
           ) : null}
           <div className={styles.box}>

@@ -47,6 +47,9 @@ export function signatureEvidenceRpcError(error, { action = 'approve' } = {}) {
        · route ตรวจแบบ/สิทธิ์เลือกด้วยตัวตัดสิน JS ก่อนยิงแล้ว ⇒ ถึงตรงนี้ได้เมื่อใบเปลี่ยนระหว่างทาง หรือโค้ดลืมส่งแบบ */
     ['sales_order_actual_mode_invalid', workflowErrorMessage('sales_order_actual_mode_invalid'), 400, 'actual_mode_invalid', {}],
     ['sales_order_actual_mode_ineligible', workflowErrorMessage('sales_order_actual_mode_ineligible'), 409, 'actual_mode_ineligible', {}],
+    /* ไม่นับ Actual (mig 0439) — route ตรวจเหตุผล/ที่มาของใบด้วยตัวตัดสิน JS ก่อนยิงแล้ว */
+    ['sales_order_actual_none_reason_required', workflowErrorMessage('sales_order_actual_none_reason_required'), 400, 'actual_none_reason_required', {}],
+    ['sales_order_actual_none_ineligible', workflowErrorMessage('sales_order_actual_none_ineligible'), 409, 'actual_none_ineligible', {}],
   ];
   const match = mappings.find(([token]) => raw.includes(token));
   if (match) {
@@ -102,6 +105,8 @@ export function approveSalesOrderWithSignatureEvidence(supabase, input) {
     p_actor_team: input.user.team || null,
     p_separation_override_reason: input.overrideReason || null,
     p_actual_mode: input.actualMode || 'order',
+    /* mig 0439: เหตุผลของ "ไม่นับ Actual" (แบบอื่นส่ง null — ฐานไม่เก็บ) */
+    p_actual_reason: input.actualMode === 'none' ? (input.actualReason || null) : null,
   });
 }
 

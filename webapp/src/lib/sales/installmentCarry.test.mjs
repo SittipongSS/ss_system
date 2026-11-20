@@ -527,10 +527,10 @@ test('มติข้อ 10: ยกเงินเข้าใบที่กด
   /* 🐞 review รอบสี่ 26/10: ยกงวดเดียว = ชิปเลือกงวดถอดไม่ได้ ⇒ "เลือกยกน้อยลง" อย่างเดียวคือคำแนะนำที่ทำไม่ได้ ·
      ข้อความต้องบอกทางที่มีจริง (Rev. แบบทั้งใบ — ฮาร์เนสข้อ 24) และไม่สั่งคืนเงิน (ไม่ใช่เงินเกินยอดใบ) */
   assert.ok(full.error.endsWith(CARRY_COUNTED_LOCKED), full.error);
-  assert.match(full.error, /ถ้ายกหลายงวดให้เลือกยกน้อยลง · ถ้ายกงวดเดียว: ย้อนการอนุมัติใบนี้แล้วออก Rev\. · อนุมัติ Rev\. แบบ “Actual ทั้งใบ” แล้วยกเงินเข้าใบ Rev\./);
+  assert.match(full.error, /ถ้ายกหลายงวดให้เลือกยกน้อยลง · ถ้ายกงวดเดียว: ย้อนการอนุมัติใบนี้แล้วออก Rev\. · อนุมัติ Rev\. แบบ “Actual เต็ม” แล้วยกเงินเข้าใบ Rev\./);
   assert.doesNotMatch(full.error, /คืนเงิน/);
   assert.ok(CARRY_REMAINDER_WAY_OUT.endsWith(CARRY_COUNTED_LOCKED.slice(CARRY_COUNTED_LOCKED.indexOf('ย้อนการอนุมัติ'))),
     'ทาง Rev. คำเดียวกับทางออกของ orphan');
   assert.doesNotMatch(CARRY_REMAINDER_WAY_OUT, /นับที่เหลือทั้งหมด/, 'ทางออกของ orphan ไม่แนะนำกดนับที่เหลือทั้งหมดแล้วยก');
-  assert.match(CARRY_REMAINDER_WAY_OUT, /ย้อนการอนุมัติใบนี้แล้วออก Rev\. · อนุมัติ Rev\. แบบ “Actual ทั้งใบ” แล้วยกเงินเข้าใบ Rev\./);
+  assert.match(CARRY_REMAINDER_WAY_OUT, /ย้อนการอนุมัติใบนี้แล้วออก Rev\. · อนุมัติ Rev\. แบบ “Actual เต็ม” แล้วยกเงินเข้าใบ Rev\./);
 });

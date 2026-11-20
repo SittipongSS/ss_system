@@ -9,9 +9,10 @@ import { isSalesManager } from '@/lib/permissions';
 import { isActualOrder } from '@/lib/sales/historicalOrders';
 import { documentWorkflowError, workflowErrorMessage } from '@/lib/sales/documentWorkflowErrors';
 import {
-  ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_ORDER, INSTALLMENT_ACTUAL_AFTER_COUNT_REST, INSTALLMENT_ACTUAL_START_LEFT_LABEL,
-  actualModeEligibility, actualModeOf, installmentActualAutoCounted, installmentActualCountRestDone, installmentActualStartPending,
-  isActualMode, isInstallmentActualOrder, salesOrderCountedActual,
+  ACTUAL_MODE_INSTALLMENT, ACTUAL_MODE_NONE, ACTUAL_MODE_ORDER, INSTALLMENT_ACTUAL_AFTER_COUNT_REST, INSTALLMENT_ACTUAL_START_LEFT_LABEL,
+  actualModeEligibility, actualModeOf, actualNoneEligibility, actualNoneReasonError, installmentActualAutoCounted,
+  installmentActualCountRestDone, installmentActualStartPending, isActualMode, isInstallmentActualOrder, isNoActualOrder,
+  salesOrderCountedActual,
 } from '@/lib/sales/salesOrderActualMode';
 import {
   installmentPrepaid, installmentsFromPaymentPlan, isInstallmentFrozen, paymentNotRequired,
@@ -57,13 +58,34 @@ export function installmentCountAtFreeze(existing = [], { plan = null, totalAmou
   return reseed ? seeded : rows.length;
 }
 
-/* ด่านเลือก "Actual รายงวด" ตอนอนุมัติ — ข้อความไทยของเหตุ หรือ null (ใบทั้งใบผ่านเสมอ)
-   ⭐ ตัวตัดสินคือ actualModeEligibility ตัวเดียวกับตัวเลือกในโมดัล · จำนวนงวดจาก installmentCountAtFreeze
-   ⚠️ ฐานตรวจซ้ำแค่ pipeline + ยอด > 0 (sales_order_actual_mode_ineligible) — จำนวนงวดตรวจได้ที่นี่ที่เดียว */
+/* ด่านเลือก "Actual รายงวด" / "ไม่นับ Actual" ตอนอนุมัติ — ข้อความไทยของเหตุ หรือ null (ใบแบบเต็มผ่านเสมอ)
+   ⭐ ตัวตัดสินคือ actualModeEligibility / actualNoneEligibility ตัวเดียวกับตัวเลือกในโมดัล · จำนวนงวดจาก installmentCountAtFreeze
+   ⚠️ ฐานตรวจซ้ำแค่ pipeline + ยอด > 0 (sales_order_actual_mode_ineligible) — จำนวนงวดตรวจได้ที่นี่ที่เดียว
+   · ไม่นับ (mig 0439): ใบ pipeline เท่านั้น — เหตุผลตรวจแยกที่ actualNoneReasonError (400 ไม่ใช่ 409) */
 export function actualModeApproveBlock(order, mode, { installmentCount = 0 } = {}) {
+  if (mode === ACTUAL_MODE_NONE) {
+    const { eligible, reason } = actualNoneEligibility(order);
+    return eligible ? null : reason;
+  }
   if (mode !== ACTUAL_MODE_INSTALLMENT) return null;
   const { eligible, reason } = actualModeEligibility(order, installmentCount);
   return eligible ? null : reason;
+}
+
+/* เหตุผลของ "ไม่นับ Actual" ที่ส่งมากับคำขออนุมัติ (mig 0439 · มติข้อ 2) — `{ ok, reason }` หรือ `{ ok: false, error }`
+   ⭐ แบบอื่น = `reason: null` เสมอ (ส่งมาก็ไม่เก็บ — ฐานล้างให้อีกชั้น) · ไม่นับ = ตัดช่องว่างแล้ว 10–500 ตัวอักษร (ตัวเดียวกับ RPC) */
+export function parseActualNoneReasonInput(mode, value) {
+  if (mode !== ACTUAL_MODE_NONE) return { ok: true, reason: null };
+  const error = actualNoneReasonError(value);
+  return error ? { ok: false, error } : { ok: true, reason: String(value).trim() };
+}
+
+/* เหตุผล "ไม่นับ Actual" ของใบก่อนหน้า — ค่าตั้งต้นของช่องเหตุผลในโมดัลอนุมัติใบ Rev. (แก้ได้) · ไม่ใช่ Rev./ใบก่อนหน้าไม่ใช่ไม่นับ = '' */
+export function previousActualNoneReasonOf(order, history = []) {
+  if (!order?.id) return '';
+  const previous = (Array.isArray(history) ? history : [])
+    .find((row) => row && row.id !== order.id && row.supersededById === order.id);
+  return previous && actualModeOf(previous) === ACTUAL_MODE_NONE ? String(previous.actualNoneReason || '').trim() : '';
 }
 
 /* แบบการนับของใบก่อนหน้า (ใบที่ใบนี้ออก Rev. แทน) — ค่าตั้งต้นของตัวเลือกในโมดัลอนุมัติใบ Rev. (docs: "Rev. = แบบของใบก่อนหน้า")
@@ -185,6 +207,8 @@ export function installmentActualStartRecovery(rows) {
    · ใบรายงวด = เฉพาะที่นับแล้ว (ที่เหลือไม่เคยเข้า Actual) พร้อมยอดเต็มกำกับ — review รอบสอง 26/10 */
 export function revokeActualDropText(order) {
   const full = `${fmtMoney(order?.actualAmount)} บาท`;
+  // ใบ "ไม่นับ Actual" (0439) ไม่เคยเข้า Actual — ไม่มียอดหลุด
+  if (isNoActualOrder(order)) return 'ไม่นับ Actual — ไม่มียอด';
   return isInstallmentActualOrder(order)
     ? `รายงวด นับแล้ว ${fmtMoney(salesOrderCountedActual(order))} จาก ${fmtMoney(order?.actualAmount)}`
     : full;
@@ -199,9 +223,11 @@ export const INSTALLMENT_ACTUAL_FREEZE_FAILED = 'ตรึงงวดชำร�
    · รายงวด: งวดที่นับทันที (ยอดก่อน VAT) · ขั้นนับล้ม = บอกทางกู้ · ใบยังไม่มีงวด = บอกทางกู้สองขั้น
    · ตัวหยุดยอดล้ม (`freezeFailed` · review รอบสาม 26/10) = ไม่ได้นับ (route ข้ามขั้นนับ) — ทางกู้ "นับงวด 1" ตรึงงวดก่อนนับ */
 export function actualModeAuditText(mode, {
-  counted = null, startFailed = false, noRows = false, alreadyCounted = false, freezeFailed = false,
+  counted = null, startFailed = false, noRows = false, alreadyCounted = false, freezeFailed = false, reason = '',
 } = {}) {
-  if (mode !== ACTUAL_MODE_INSTALLMENT) return ' · นับ Actual ทั้งใบ';
+  // ไม่นับ (0439): เหตุผลอยู่ในสรุปเสมอ (หลักฐานว่าใครเลือกและทำไม — มติข้อ 2)
+  if (mode === ACTUAL_MODE_NONE) return ` · ไม่นับ Actual: ${String(reason || '').trim()}`;
+  if (mode !== ACTUAL_MODE_INSTALLMENT) return ' · นับ Actual เต็ม';
   if (startFailed && noRows) {
     return ' · นับ Actual รายงวด — ใบยังไม่มีงวด ยังไม่ได้นับงวดแรก (กด “เริ่มติดตามการชำระ” แล้ว “นับงวด 1” ที่หน้าใบ)';
   }
