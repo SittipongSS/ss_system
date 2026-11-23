@@ -61,6 +61,9 @@ export function deleteRequestRowError(request, row) {
  */
 export function registryOwnedByRow(row) {
   if (!row) return [];
+  /* ⭐ **ผูกของเดิม (`bind`) = แถวไม่ได้สร้างอะไร** — สูตรของลูกค้าอื่นที่แชร์มา (ม-150) · กลิ่นที่ขอซึ่ง RD ส่งไปทั้งตัวไม่ปรับ
+     (หัวน้ำหอม ม-166) ⇒ ลบรายการต้องไม่พาของคนอื่นหายตาม */
+  if (row.producedFormulaAction === 'bind') return [];
   return [
     row.producedFormulaId ? { kind: 'formula', id: row.producedFormulaId } : null,
     row.producedScentId ? { kind: 'scent', id: row.producedScentId } : null,

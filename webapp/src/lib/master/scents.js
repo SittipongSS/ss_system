@@ -335,7 +335,8 @@ export const SCENT_SOURCES = [
 ];
 
 export function scentSourceKind(scent) {
-  return scent?.briefId ? 'request' : 'manual';
+  // ม-166 — กลิ่นลูกที่แถวพัฒนาสูตรหัวน้ำหอมส่งออกมา ไม่มีบรีฟ แต่มาจากคำร้อง (`attachScentSource` ติดธงให้)
+  return scent?.briefId || scent?.sourceRequestItem ? 'request' : 'manual';
 }
 
 /**

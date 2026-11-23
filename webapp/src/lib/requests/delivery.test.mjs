@@ -203,3 +203,15 @@ test('⚠️ ลูกค้าของกลิ่นไม่รับจา�
   const { rows } = normalizeDeliveryRows([mk({ customerId: 'CUS-อื่น' })]);
   assert.equal('customerId' in rows[0], false);
 });
+
+test('normalizeFormulaDelivery { scent: true } (ม-166): ข้อความพูดว่า "กลิ่น" · รับชื่อที่ลูกค้าเรียก · ทางสูตรไม่รับ', () => {
+  assert.equal(normalizeFormulaDelivery({ formula: { code: 'PF1' } }, { scent: true }).error, 'ต้องระบุชื่อกลิ่น');
+  assert.equal(normalizeFormulaDelivery({ formula: { name: 'REV1' } }, { scent: true }).error, 'ต้องระบุรหัสกลิ่น');
+  const { value } = normalizeFormulaDelivery({
+    formula: { name: 'TEA TIME #3.1 REV1', code: 'PF85901010301', formulaDate: '2026-09-10', customerTradeName: ' Peace ' },
+  }, { scent: true });
+  assert.equal(value.formulaDate, '2026-09-10');
+  assert.equal(value.customerTradeName, 'Peace');
+  assert.equal('customerTradeName' in normalizeFormulaDelivery({ formula: { name: 'A', code: 'B', customerTradeName: 'X' } }).value, false);
+  assert.equal(normalizeFormulaDelivery({ formula: { code: 'PF1' } }).error, 'ต้องระบุชื่อสูตร');
+});

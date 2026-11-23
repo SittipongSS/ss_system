@@ -159,7 +159,7 @@ export function RowStepActions({
           triggerLabel="บันทึกคำตอบ"
           triggerSize={size}
           /* ชื่อที่ระบุแถวได้จริง — รหัสทะเบียนก่อน (รอบแก้สองตัวของกลิ่นเดียวกันมีป้ายแถวเดียวกัน) */
-          label={`บันทึกคำตอบลูกค้าของ ${row.refFormula?.code || row.refScent?.code || row.label || "แถวนี้"}`}
+          label={`บันทึกคำตอบลูกค้าของ ${row.refFormula?.code || row.refProducedScent?.code || row.refScent?.code || row.label || "แถวนี้"}`}
           busy={busy}
           items={ROW_OUTCOMES.map((outcome) => ({
             id: outcome,

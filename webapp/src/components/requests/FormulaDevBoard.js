@@ -113,8 +113,10 @@ export default function FormulaDevBoard({
                  ⚠️ สเปกที่ทุกแถวพูดเหมือนกันถูกยกขึ้นหัวตารางแล้ว (`liftSharedSpec`) — ที่เหลือคือของเฉพาะแถว */
               const spec = r.spec && !String(r.name || "").includes(r.spec) ? r.spec : null;
               /* ⭐ ยังไม่ส่งสูตร = บรรทัดที่สองบอกสถานะงาน (เดิมอยู่ใต้ชื่อ) — แถวบรรทัดเดียวย้ายลงแถวที่กางได้ แต่ยังบอกในป้ายผลลูกค้า */
+              // ม-166 — แถวหัวน้ำหอมส่งเป็นกลิ่น ⇒ พูดว่า "กลิ่น"
+              const what = r.deliversScent ? "กลิ่น" : "สูตร";
               const pendingNote = !r.registry
-                ? (r.reworkOf ? `แก้จาก ${r.reworkOf} · ยังไม่ส่งสูตร` : "ยังไม่มีสูตรออกมาจากแถวนี้")
+                ? (r.reworkOf ? `แก้จาก ${r.reworkOf} · ยังไม่ส่ง${what}` : `ยังไม่มี${what}ออกมาจากแถวนี้`)
                 : null;
               const body = (
                 <>
@@ -158,12 +160,13 @@ export default function FormulaDevBoard({
                         className={styles.rowMenu}
                         label={`การจัดการอื่นของ ${r.registry?.code || r.name}`}
                         items={[
-                          onAddDirection && r.formulaId && !r.outcome && !r.settled && {
+                          onAddDirection && r.producedId && !r.outcome && !r.settled && {
                             id: "direction", icon: Plus, label: "ส่ง direction เพิ่ม",
                             onClick: () => onAddDirection(r),
                           },
                           canEdit && r.registry && {
-                            id: "edit", icon: Pencil, label: "แก้ในทะเบียนสูตร",
+                            id: "edit", icon: Pencil,
+                            label: r.registry.kind === "scent" ? "แก้ในทะเบียนกลิ่น" : "แก้ในทะเบียนสูตร",
                             onClick: () => onEditRegistry(r.registry),
                           },
                           canDelete && {
