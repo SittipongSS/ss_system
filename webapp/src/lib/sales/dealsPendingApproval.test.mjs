@@ -158,8 +158,9 @@ test('หน้ารายละเอียดดีล: การ์ด Won =
      · ส่ง `deal` ด้วย — คำของดีลเก่าที่สร้างเป็น Won ตัดสินด้วยตัวบ่งชี้กลางในตัวเลือกคำ (มติผู้ใช้ 2026-09-15) */
   assert.match(page, /import \{ installmentActualSubLine, wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
   assert.match(page,
-    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*instRemaining: soAmounts\.instRemaining,\s*\}\)/);
+    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*instRemaining: soAmounts\.instRemaining,\s*noneCount: soAmounts\.noneCount,\s*\}\)/);
   // ใบ "Actual รายงวด" (mig 0412) — งวดที่ยังไม่ยื่นมาจากแถว SO ชุดเดียวกัน (ไม่ฟ้อง "ต่าง" จากงวดที่ยังไม่ถึงคิว)
+  // ใบ "ไม่นับ Actual" (mig 0439 · ตรวจ 23/11) — noneCount ต้องไปถึงตัวเลือกคำ ไม่งั้นดีลที่มีแต่ใบแบบนี้ขึ้น "ยังไม่มีใบสั่งขายที่ยื่น"
   /* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A) ซ่อนคำส่วนต่าง — บรรทัด "ยอดปิดในระบบเดิม" พูดแทน
      (มติผู้ใช้ 2026-09-14 · lib/sales/legacyDealSwitch) ⇒ คำส่วนต่างยังมาจาก wonHint.text ตัวเดียว
      และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ · UAT 27/10: ท่อน "ป้าย ฿ยอด" ของใบรายงวดห่อด้วย keepPhrases (wonHint.keep — ชนิดอื่นไม่มี = คำเดิม) */
@@ -192,7 +193,8 @@ test('หน้าลีด: API ส่ง metadata ของดีล · กา
   // ส่งเฉพาะคีย์ที่การ์ดอ่าน ไม่ใช่ metadata ทั้งก้อน (คนเปิดหน้าลีดบางตำแหน่งไม่มีสิทธิ์หน้าดีล)
   /* mig 0412: คีย์ของ Actual รายงวด (Actual รายเดือน · งวดยื่นแล้ว · งวดรอนับ) ต้องมาด้วย — ตัวอ่านรออนุมัติของการ์ดรวม soInstPending* */
   assert.match(route, /DEAL_CARD_METADATA_KEYS = \[\s*'actualSource', 'soPendingAmount', 'soPendingCount',\s*'actualByMonth', 'soInstPendingAmount', 'soInstPendingCount', 'soInstRemainingByDue',\s*\]/);
-  assert.match(route, /relatedDeals: \(relatedDeals \|\| \[\]\)\.map\(\(deal\) => \(\{ \.\.\.deal, metadata: dealCardMetadata\(deal\.metadata\) \}\)\)/);
+  // ห่อด้วย attachActualNone (ป้าย "ไม่นับ Actual" ของการ์ด · mig 0439 · ตรวจ 23/11) — metadata ยังผ่าน dealCardMetadata ทุกใบ
+  assert.match(route, /relatedDeals: attachActualNone\(\(relatedDeals \|\| \[\]\)\.map\(\(deal\) => \(\{ \.\.\.deal, metadata: dealCardMetadata\(deal\.metadata\) \}\)\), actualNoneMap\)/);
   /* supabase ไม่ throw — ดีลที่ผูกอ่านไม่ขึ้นแล้วตกเป็น [] = การ์ด "ยังไม่มีดีล" + canDelete เปิด
      ⇒ ต้องเช็ค error ของทั้งสองก้อนก่อนประกอบคำตอบ */
   assert.match(route, /\{ data: relatedDeals, error: relatedDealsError \}/);

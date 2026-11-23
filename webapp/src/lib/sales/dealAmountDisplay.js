@@ -124,12 +124,20 @@ export function sumDealDisplay(deals = [], { inPeriod = null, now } = {}) {
       <PendingApprovalAmount> ของการ์ดเอง — ไม่ซ้ำในคำ · review รอบสาม 26/10)
       + "ต่างเมื่อนับครบ ฿(V−A−P−R)" เฉพาะเมื่อไม่เป็นศูนย์ · ส่วนต่างเทียบ **ยอดปิดเต็ม** (Actual + งวดยื่นแล้ว + รอนับ)
       🐞 ไม่มีกรณีนี้ = ใบรายงวดที่นับงวด 1 แล้วขึ้น "ต่าง ฿(งวดที่ยังไม่ถึงคิว)" อ่านเป็นปิดต่ำกว่าคาด (คลาสเดียวกับ 14/09)
-      ⭐ ใบทั้งใบล้วนไม่มีกองนี้ (instRemaining = 0) ⇒ ทุกกรณีเดิมได้คำเดิมทุกตัวอักษร */
+      ⭐ ใบทั้งใบล้วนไม่มีกองนี้ (instRemaining = 0) ⇒ ทุกกรณีเดิมได้คำเดิมทุกตัวอักษร
+   ⭐ 'actual_none' (mig 0439 · มติเจ้าของ 20/11/2026) — ดีลที่ใบอนุมัติแล้ว **ทุกใบเป็น "ไม่นับ Actual"** (`noneCount` > 0 =
+      splitSalesOrderAmounts().noneCount) และไม่มีใบรออนุมัติ → "คาดการณ์ ฿V · ใบสั่งขายอนุมัติแบบไม่นับ Actual[ n ใบ]" · ไม่มีตัวเลขต่าง
+      (ไม่ได้ตั้งใจนับ — ส่วนต่างเทียบ 0 อ่านเป็นพลาดเป้าทั้งใบ)
+      🐞 ตรวจ 23/11: เดิมได้ 'awaiting_so' "ยังไม่มีใบสั่งขายที่ยื่น" ทั้งที่ใบอนุมัติแล้ว — แดชบอร์ดตัดสินถูก (wonMonth มีค่า ⇒
+         ไม่อยู่ในกอง Won รอยื่น SO) สองจอจึงพูดไม่ตรงกัน
+      · ดีลที่มีใบไม่นับปนกับใบนับ/ใบรออนุมัติ ได้คำชนิดเดิม + ท่อนท้าย "ไม่นับ Actual n ใบ" (ส่วนต่างคิดจาก Actual ตามเดิม —
+        ท่อนนี้บอกว่าเงินของใบไหนไม่อยู่ใน Actual) · ไม่ส่ง `noneCount` = คำเดิมทุกตัวอักษร */
 export const WON_HINT_KINDS = Object.freeze({
   ACTUAL: 'actual',
   WHEN_APPROVED: 'when_approved',
   INSTALLMENT: 'installment',
   AWAITING_SO: 'awaiting_so',
+  ACTUAL_NONE: 'actual_none',
   LEGACY_NO_SO: 'legacy_no_so',
   HISTORICAL: ORIGIN_HISTORICAL,
 });
@@ -141,7 +149,21 @@ export const HISTORICAL_DEAL_HINT_TEXT = 'ดีลของใบสั่ง�
 
 const toSatang = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
-export function wonDealForecastHint({
+/* ท่อน "ไม่นับ Actual n ใบ" ของดีลที่มีใบไม่นับปนกับใบอื่น — ต่อท้ายคำชนิดเดิม (ชนิด 'actual_none' พูดเรื่องนี้ในตัวแล้ว) */
+const NONE_NOTE_SKIP = new Set([WON_HINT_KINDS.ACTUAL_NONE, WON_HINT_KINDS.HISTORICAL, WON_HINT_KINDS.LEGACY_NO_SO]);
+function withNoneNote(hint, noneCount) {
+  if (!(noneCount > 0) || NONE_NOTE_SKIP.has(hint.kind)) return hint;
+  const note = `ไม่นับ Actual ${noneCount} ใบ`;
+  // ท่อนนี้ห้ามขาดกลางเหมือนกัน — ชนิดที่ไม่มี `keep` ได้ `keep` ที่มีแค่ท่อนนี้ (keepPhrases ห่อเฉพาะวลีที่ส่งไป · ส่วนอื่นคำเดิม)
+  return { ...hint, text: `${hint.text} · ${note}`, keep: [...(hint.keep || []), note] };
+}
+
+export function wonDealForecastHint({ noneCount = 0, ...amounts } = {}) {
+  const count = Math.max(0, Math.trunc(Number(noneCount) || 0));
+  return withNoneNote(wonHintOfAmounts({ ...amounts, noneCount: count }), count);
+}
+
+function wonHintOfAmounts({
   deal,
   forecast,
   actual,
@@ -149,6 +171,7 @@ export function wonDealForecastHint({
   pendingApproval,
   pendingApprovalCount,
   instRemaining = 0,
+  noneCount = 0,
 } = {}) {
   // ดีลของใบสั่งขายย้อนหลังมาก่อนทุกกรณี — ยอดใบของมันไม่เคยเป็น Actual/รออนุมัติ ⇒ คำอื่นทุกคำผิดหมด
   if (isHistoricalDeal(deal)) return { kind: WON_HINT_KINDS.HISTORICAL, gap: null, text: HISTORICAL_DEAL_HINT_TEXT };
@@ -178,6 +201,17 @@ export function wonDealForecastHint({
   }
 
   if (!hasApproved && !hasPending) {
+    /* ใบอนุมัติแล้วทุกใบเป็น "ไม่นับ Actual" (mig 0439) — ใบมีแล้ว ไม่ใช่ "ยังไม่มีใบที่ยื่น" · ดีลเก่าที่สร้างเป็น Won ไม่มี SO จึงไม่ชนข้อนี้ */
+    if (noneCount > 0) {
+      /* `keep`: การ์ด Won ของหน้าดีลแคบ — เปิดจอ 23/11 "ไม่นับ / Actual" ขาดคนละบรรทัด (คลาสเดียวกับ UAT 27/10 ข้อ 5) */
+      const noneLabel = `ไม่นับ Actual${noneCount > 1 ? ` ${noneCount} ใบ` : ''}`;
+      return {
+        kind: WON_HINT_KINDS.ACTUAL_NONE,
+        gap: null,
+        text: `${forecastText} · ใบสั่งขายอนุมัติแบบ${noneLabel}`,
+        keep: [forecastText, noneLabel],
+      };
+    }
     if (isLegacyWonAtCreate(deal)) {
       return { kind: WON_HINT_KINDS.LEGACY_NO_SO, gap: null, text: LEGACY_WON_HINT_TEXT };
     }

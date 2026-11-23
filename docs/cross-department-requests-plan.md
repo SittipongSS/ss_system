@@ -23,7 +23,10 @@
 >
 > **สิ่งที่ยังค้างจริง ๆ ย้ายไปอยู่ `request-hub-rebuild-plan.md` (R-5)** — FK
 > `scentId`/`formulaId` ยังเป็น `ON DELETE SET NULL` ทั้ง `dept_requests` และ
-> `material_prices` ⇒ ลบทะเบียนแล้วลิงก์หายเงียบ · ที่เหลือในเล่มนี้ไม่มีอะไรค้าง
+> `material_prices` ⇒ ลบทะเบียนแล้วลิงก์หายเงียบ (R-5 ปิดแล้วด้วย mig 0232)
+>
+> ⚠️ **ตรวจ 2026-11-23: ยังเหลือสองข้อในรายการท้ายเล่ม** — เลิกใช้ `products.formulaName/formulaCode/formulaDate`
+> (อ่านผ่าน `formulaId`) · ถอด scope `IQ` ออกจากเอกสารประกอบ · ส่วน `material_prices_identity_uk` ย้ายไปยึด `formulaId` แล้วใน mig 0181
 
 ---
 
@@ -849,7 +852,7 @@ error ตอน import ชื่อที่ไม่มี และตัว�
 
 - `products.formulaName/formulaCode/formulaDate` → อ่านผ่าน `formulaId` แล้วค่อยเลิกใช้ช่องข้อความ
   (snapshot บนเอกสารที่ออกแล้วห้ามแตะ)
-- `material_prices_identity_uk` เปลี่ยนจาก `formulaCode` (text) → `formulaId`
+- ~~`material_prices_identity_uk` เปลี่ยนจาก `formulaCode` (text) → `formulaId`~~ ✅ ทำแล้วใน mig 0181 (+ 0182)
 - ลบ scope `IQ` ออกจากเอกสารประกอบ
 
 ### PR-6 — รื้อเธรดให้จบ (mig เล็ก: drop 2 ตารางเก่า)
