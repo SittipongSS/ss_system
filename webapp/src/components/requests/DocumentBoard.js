@@ -41,7 +41,8 @@ export default function DocumentBoard({
 
   return (
     <section className={styles.wrap} aria-label="สรุปเอกสารที่ขอ">
-      <div className={styles.head}><strong>เอกสารที่ขอ</strong></div>
+      {/* ⚠️ **ไม่มีหัวของตัวเอง** — หัวข้อ "เอกสารที่ขอ" อยู่ที่หัว `DetailCard` ของผู้เรียก (23/11/2026 · มติ 12/08 ที่สายกลิ่น/สูตรทำแล้ว)
+          🐞 เดิมเป็น `<strong>` ลอยบนพื้นหน้า ไม่มีการ์ด ⇒ หัวกับขอบไม่ตรงการ์ดอื่นบนหน้าเดียวกัน (รายละเอียดคำร้อง · ความเคลื่อนไหว) */}
       <TableScroll surface="embedded" cells="stacked" minWidth={renderStep ? 720 : 560}>
         <table>
           <thead>

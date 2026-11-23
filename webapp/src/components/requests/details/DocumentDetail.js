@@ -18,6 +18,8 @@ import DocumentBoard from "@/components/requests/DocumentBoard";
 import { RowStepActions } from "@/components/requests/NextStepBar";
 import { docLineFileTarget } from "@/lib/requests/productDocLines";
 import RequestRows from "./RequestRows";
+import { DetailCard } from "@/components/ui/DetailPage";
+import { ListChecks } from "lucide-react";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ — เหตุผลเดียวกับ FormulaDevDetail
 // (เปลือกส่ง `canEditAttachments` มาให้เหมือนทุกหัวข้อ แต่หัวข้อนี้จงใจไม่รับ —
@@ -48,6 +50,9 @@ export default function DocumentDetail({
           ⇒ ไฟล์ของแถวย้ายเข้า **แถวขยายในตาราง** (`renderDetail` · โหมด `bare` ของ
           `RequestRows` ก้อนกลาง — ห้ามโคลนการ์ด · ม-34)
           ⚠️ ดูอย่างเดียว: แนบ/ลบทำในโมดัลส่งงานที่เดียว (ม-90) */}
+      {/* ⭐ ครอบด้วย `DetailCard` ไอคอนเดียวกับ "สรุปทั้งใบ" ของพัฒนากลิ่น/สูตร (23/11/2026 "เอาปรับกับคำร้องอื่นๆ") — การ์ดอื่นบนหน้า
+          มีหัวไอคอน + ชื่อ + เส้นคั่นชุดเดียวกัน · ตารางนี้เคยมีหัวเป็นตัวหนาลอยบนพื้นหน้า (มติ 12/08 ที่สองสายนั้นทำไปแล้ว) */}
+      <DetailCard icon={ListChecks} title="เอกสารที่ขอ">
       <DocumentBoard
         today={today}
         due={due}
@@ -97,6 +102,7 @@ export default function DocumentDetail({
           ) : null;
         }}
       />
+      </DetailCard>
     </>
   );
 }
