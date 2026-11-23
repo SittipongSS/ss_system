@@ -5,11 +5,11 @@
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
 import { isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
-import { salesOrderActual, splitSalesOrderAmounts } from '@/lib/sales/salesOrderWorkflow';
+import { salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts } from '@/lib/sales/salesOrderWorkflow';
 import { installmentDisplayStatus } from '@/lib/sales/salesOrderPayments';
 import { addMonths, businessDayKey, currentMonth } from '@/lib/datePeriods';
 import { reportActualRows, reportOrderMonth } from '@/lib/sales/reportRows';
-import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
+import { actualNoneReasonOf, isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
 
@@ -131,6 +131,27 @@ export function currentOrder(orders = []) {
   return sorted.find(isLiveOrder) || sorted[0];
 }
 
+/* ── ใบ "ไม่นับ Actual" (mig 0439 · มติเจ้าของ 20/11/2026 ข้อ 3: แถวโชว์ Actual 0 + ป้าย + เหตุผล) ───────────────────────
+   ⭐ ตัดสินด้วย salesOrderAmountKind = 'none' (ใบ pipeline ที่ **อนุมัติอยู่** แบบไม่นับ) — ตัวเดียวกับทะเบียน SO / หน้าดีล
+      · ย้อนอนุมัติแล้ว: แบบ+เหตุผลยังค้างบนใบ (guard 0439) แต่ใบไม่ได้อนุมัติอยู่ ⇒ ไม่มีป้าย
+   🐞 ตรวจ 23/11: แถวดีลขึ้น ฿0.00 + "อนุมัติแล้ว" ไม่มีคำอธิบาย และตัวโหลดไม่ได้ดึง "actualNoneReason" (HUB_ORDER_COLS) */
+export function orderActualNoneText(order) {
+  if (salesOrderAmountKind(order) !== 'none') return '';
+  const reason = actualNoneReasonOf(order);
+  return reason ? `ไม่นับ Actual · ${reason}` : 'ไม่นับ Actual';
+}
+
+/** ใบไม่นับของดีลหนึ่งแถว (ใบที่ยังมีผล) — null = ไม่มี · หลายใบ = "ไม่นับ Actual n ใบ" (เหตุผลทุกใบอยู่ใน `reasons` ให้ title) */
+export function dealActualNone(orders = []) {
+  const none = orders.filter((o) => salesOrderAmountKind(o) === 'none');
+  if (!none.length) return null;
+  return {
+    count: none.length,
+    text: none.length === 1 ? orderActualNoneText(none[0]) : `ไม่นับ Actual ${none.length} ใบ`,
+    reasons: none.map(actualNoneReasonOf).filter(Boolean),
+  };
+}
+
 export function buildDealRows({ deals = [], quotations = [], orders = [], installments = [], requests = [], contracts = [], leads = [] } = {}, today = todayKey()) {
   const quotesByDeal = groupBy(quotations, (q) => q.dealId);
   const ordersByDeal = groupBy(orders.filter((o) => !isExciseOrder(o)), (o) => o.dealId);
@@ -161,6 +182,7 @@ export function buildDealRows({ deals = [], quotations = [], orders = [], instal
         overdue: states.some((s) => s.overdue),
       },
       actual: liveOrders.reduce((sum, o) => sum + salesOrderActual(o), 0),
+      actualNone: dealActualNone(liveOrders),
       requestCount: (requestsByDeal.get(deal.id) || []).length,
       contractCount: (contractsByDeal.get(deal.id) || []).length,
       year: (businessDayKey(deal.createdAt) || '').slice(0, 4) || null,
@@ -249,9 +271,10 @@ export const dealRowText = (row) => hubText(
   row.deal.code, row.deal.title, row.deal.dealType, row.deal.categoryCode, row.deal.ownerName,
   row.quote?.quoteNumber, row.quote?.referenceNote, row.order?.orderNumber, row.order?.referenceDoc,
   row.lead?.company, row.lead?.contactName,
+  row.actualNone?.text, row.actualNone?.reasons,
 );
 export const quoteText = (q, dealCode) => hubText(q.quoteNumber, q.referenceNote, dealCode);
-export const orderText = (o, dealCode) => hubText(o.orderNumber, o.referenceDoc, dealCode);
+export const orderText = (o, dealCode) => hubText(o.orderNumber, o.referenceDoc, dealCode, orderActualNoneText(o));
 export const leadText = (l) => hubText(l.company, l.contactName, l.channel, l.assigneeName);
 export const contractText = (c, dealCode) => hubText(c.contractNo, c.externalRef, dealCode);
 export const requestText = (r, dealCode) => hubText(r.docNo, r.pdrRefNo, r.title, r.requestedByName, dealCode);
