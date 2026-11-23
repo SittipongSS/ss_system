@@ -51,6 +51,7 @@ const FILES = execSync('git ls-files "src/**/*.js" "src/**/*.jsx"', { cwd: ROOT,
  *   2. `<ตัวแปรที่เป็นจุดเวลา>.slice(0, 10|7)` — ตัดวันออกจาก timestamp ตรง ๆ
  *   3. `.slice(11, 16)` — ตัด **เวลา** HH:MM ออกจาก ISO = เวลา UTC ช้ากว่าไทย 7 ชม.
  *   4. `new Date().getHours()/getMinutes()` — **นาฬิกาของเครื่องผู้ใช้** ไม่ใช่เวลาไทย
+ *   5. timestamp ที่ห่อ `String(...)`/วงเล็บ/`?.` ก่อนตัดวัน (ดู WRAPPED_TS_SLICE · 23/11/2026)
  *      (เปลี่ยนโซนเวลาในมือถือแล้วเวลาที่บันทึกเพี้ยนโดยไม่มีอะไรจับได้)
  * ⇒ เวลาของจุดเวลาต้องมาจาก `businessTimeKey()` (lib/datePeriods.js) เสมอ คู่กับวันไทย
  *
@@ -62,6 +63,12 @@ const FILES = execSync('git ls-files "src/**/*.js" "src/**/*.jsx"', { cwd: ROOT,
  * (ประกอบวันในปฏิทินจากตัวเลข — ไม่เกี่ยวกับโซนเวลา) */
 const NOW_UTC = /new Date\(\)\s*\.toISOString\(\)\s*\.slice\(0,\s*(?:10|7)\)/;
 const TS_SLICE = /\b(?:now|nowIso|iso|createdAt|updatedAt|\w+At)\s*\.slice\(0,\s*(?:10|7)\)/;
+/* 5. timestamp ที่ห่อด้วยวงเล็บ/`String()`/ค่าถอย แล้วตัดวัน — `String(lead.meetingAt).slice(0, 10)` ·
+      `String(r?.submittedAt || r?.createdAt || '').slice(0, 10)` · `row.approvedAt?.slice(0, 10)`
+   🐞 เพิ่ม 23/11/2026 (ตรวจทั้งระบบเรื่องวันกำหนด · docs/due-overdue-system.md) — รูปนี้หลุดข้อ 2 เพราะมี `)` หรือ `?` คั่นระหว่างชื่อช่อง
+      กับ `.slice` ⇒ 12 จุดผ่าน CI มาตลอด: คิวของฉัน (นัด 06:30 แดงในวันนัด) · /tax ค้างมา · ใบตีกลับ · ภาระงาน RD · หน้าราคา RD ฯลฯ
+   ⚠️ จับเฉพาะ **ช่องที่ชื่อลงท้าย At** (ชื่อคอลัมน์ timestamptz ของระบบ) — ตัวแปรชื่อ `iso`/`date` ที่ถือวันล้วนอยู่แล้วไม่ถูกจับ */
+const WRAPPED_TS_SLICE = /\(\s*[\w$]+(?:\??\.[\w$]+)*\??\.[\w$]*At\b[^()]{0,40}\)\s*\.(?:trim\(\)\s*\.)?slice\(0,\s*(?:10|7)\)|\w+At\?\.slice\(0,\s*(?:10|7)\)/;
 const TIME_SLICE = /\.slice\(11,\s*(?:16|19)\)/;
 const LOCAL_CLOCK = /new Date\(\)\s*\.get(?:Hours|Minutes)\(\)|\bd\.get(?:Hours|Minutes)\(\)/;
 const CALENDAR_MATH = /Date\.UTC\(|setUTCDate\(|T00:00:00Z/;
@@ -100,7 +107,7 @@ for (const file of FILES) {
     const line = codeOnly(raw);
     if (!line.trim()) return;
     if (CALENDAR_MATH.test(line) || SANCTIONED.test(line)) return;
-    if (!NOW_UTC.test(line) && !TS_SLICE.test(line)
+    if (!NOW_UTC.test(line) && !TS_SLICE.test(line) && !WRAPPED_TS_SLICE.test(line)
         && !TIME_SLICE.test(line) && !LOCAL_CLOCK.test(line)) return;
     count += 1;
     if (!hits.has(file)) hits.set(file, []);
