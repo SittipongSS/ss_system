@@ -16,6 +16,7 @@
 //    เงื่อนไขเองตรงจุดที่วางปุ่ม ไม่งั้นวันหนึ่งปุ่มกับด่านจะพูดคนละเรื่อง
 //    (กติกาเดียวกับ `quotationDealBlocker` ที่ GatedAction เขียนไว้)
 import { accessConflict } from './sites';
+import { businessDate } from '@/lib/businessDate';
 import { termIsActive } from './terms';
 import { visitClosedAtKey } from './visitStatus';
 import { coversDate, hasOverdueUnconfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
@@ -542,7 +543,13 @@ function moneyStopReason(terms, installmentsByOrderId, visitDate) {
     return 'ใบสั่งขายที่ครอบโซนนี้ยังไม่มีงวดชำระ — ฝ่ายขายต้องเริ่มติดตามการชำระก่อน';
   }
   if (rows.some((r) => hasOverdueUnconfirmed([r], visitDate))) {
-    return 'มีงวดเลยกำหนดที่บัญชียังไม่รับรอง — ค้างชำระอยู่ ยังไม่ควรส่งคนไปเพิ่ม';
+    /* 🐞 เทียบกับ **วันนัด** ไม่ใช่วันนี้ — นัดล่วงหน้าที่งวดยังไม่ถึงกำหนดวันนี้เคยขึ้น "เลยกำหนด…ค้างชำระอยู่" (23/11/2026)
+       ⇒ บอกตามจริงว่าเลยแล้ว หรือ "จะเลยกำหนดก่อนวันนัด" */
+    const today = businessDate();
+    const lateNow = rows.some((r) => hasOverdueUnconfirmed([r], today));
+    return lateNow
+      ? 'มีงวดเลยกำหนดที่บัญชียังไม่รับรอง — ค้างชำระอยู่ ยังไม่ควรส่งคนไปเพิ่ม'
+      : 'มีงวดที่จะเลยกำหนดก่อนวันนัดและบัญชียังไม่รับรอง — ยังไม่ควรส่งคนไปเพิ่ม';
   }
   if (!paidThrough(rows)) {
     return 'ยังไม่มีงวดไหนที่บัญชีรับรอง — รอฝ่ายบัญชีรับรองการชำระก่อน'

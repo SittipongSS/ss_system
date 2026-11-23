@@ -46,7 +46,8 @@ function whenOf(row, todayIso) {
   if (todayIso && row.requestedDate < todayIso) return 'overdue';
   if (todayIso) {
     const days = (Date.parse(`${row.requestedDate}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`)) / 86400000;
-    if (days <= 7) return 'week';
+    // "7 วันข้างหน้า" = วันนี้ + 6 วัน ตรงกับ /service (overview.js · scheduleQueue.js) — เดิม `<= 7` = 8 วัน (23/11/2026)
+    if (days <= 6) return 'week';
   }
   return 'later';
 }

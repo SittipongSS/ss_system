@@ -372,7 +372,8 @@ export default function ServiceOverviewPage() {
                         <td>{naText(site.customerName)}</td>
                         <td className="num">
                           {site.refill?.needsAttention || 0}
-                          {site.refill?.overdue > 0 && <span className={styles.over}>หมดแล้ว {site.refill.overdue}</span>}
+                          {/* "น่าจะ" — ทุกป้ายของเรื่องนี้เป็นการคาด ไม่ใช่ข้อเท็จจริง (กติกาของ refill.js · 23/11/2026) */}
+                          {site.refill?.overdue > 0 && <span className={styles.over}>น่าจะหมดแล้ว {site.refill.overdue}</span>}
                         </td>
                         {/* วันที่เทียบกันข้ามแถว (ไซต์ไหนหมดก่อน) ⇒ .num ให้หลักตรงกัน */}
                         <td className="num">{fmtDate(site.refill?.earliestDue)}</td>

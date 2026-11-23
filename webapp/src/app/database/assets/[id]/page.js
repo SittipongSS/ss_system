@@ -33,9 +33,10 @@ import { MOVE_LABELS, assetMoveOwnerError } from "@/lib/service/assetMoves";
 import { assetDeleteError } from "@/lib/service/assetDelete";
 import { assetTimeline, settingOutlier, settingText } from "@/lib/service/assetHistory";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
-import { refillStatus } from "@/lib/service/refill";
+import { REFILL_VISIT_KINDS, refillStatus } from "@/lib/service/refill";
+import { businessDate } from "@/lib/businessDate";
 import { VISIT_KIND_LABELS } from "@/lib/service/rounds";
-import { isClosedVisit } from "@/lib/service/visitStatus";
+import { isClosedVisit, isOpenVisit } from "@/lib/service/visitStatus";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { countsAsZoneAsset } from "@/lib/service/siteDetailLists";
 import styles from "./page.module.css";
@@ -122,11 +123,15 @@ export default function ServiceAssetPage({ params }) {
   /* วันที่คาดว่าน้ำหอมหมด — ตัวเดียวกับที่หน้าทะเบียนใช้ ห้ามคิดสูตรใหม่ที่นี่ */
   const refill = useMemo(() => {
     if (!asset) return null;
+    /* 🐞 (ตรวจทั้งระบบ 23/11/2026) เดิม "นัดถัดไป" = นัดทุกใบที่ยังไม่ปิด (รวมยกเลิก/เลื่อน/ร่าง/วันที่ผ่านไปแล้ว) ⇒ นัดที่ยกเลิกไป
+       ขึ้นเขียว "มีนัดก่อนหมด" ขณะที่หน้าไซต์และ /service แดง "น่าจะหมดแล้ว" เครื่องเดียวกัน · ตอนนี้กติกาเดียวกับตัวโหลดฝั่ง server
+       (`siteVisitDates`): เติมล่าสุด = นัดเติม/ดูแลที่ปิดแล้ว · นัดถัดไป = นัดที่ยังเปิดอยู่ (`isOpenVisit`) ตั้งแต่วันนี้ */
+    const today = businessDate();
     const lastClosed = (data?.visits || [])
-      .filter((v) => isClosedVisit(v) && v.actualDate)
+      .filter((v) => isClosedVisit(v) && v.actualDate && REFILL_VISIT_KINDS.includes(v.kind))
       .sort((a, b) => String(b.actualDate).localeCompare(String(a.actualDate)))[0];
     const nextVisit = (data?.visits || [])
-      .filter((v) => !isClosedVisit(v) && v.scheduledDate)
+      .filter((v) => isOpenVisit(v) && v.scheduledDate && String(v.scheduledDate) >= today)
       .sort((a, b) => String(a.scheduledDate).localeCompare(String(b.scheduledDate)))[0];
     return refillStatus(asset, {
       lastSiteRefillDate: lastClosed?.actualDate || null,
