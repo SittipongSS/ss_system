@@ -28,7 +28,7 @@
 import { fmtDate, fmtMoney } from '@/lib/format';
 import { canConfirmPayment, canUser } from '@/lib/permissions';
 import { paymentScheduleRows, planInstallmentAmounts } from '@/lib/sales/paymentPlan';
-import { installmentCustomerPaid, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
+import { installmentAwaitingEvent, installmentCustomerPaid, installmentOverdue, isConfirmed, paidThrough } from '@/lib/sales/paymentCoverage';
 import { taxInvoiceActionError } from '@/lib/sales/taxInvoice';
 // งวดยกมาของใบสั่งขายย้อนหลัง (mig 0374) — ไฟล์ตัวตัดสิน import แค่ permissions.js ซึ่งไม่ import อะไร (ไม่มีวงวน · ฝั่ง client ใช้ได้)
 import {
@@ -184,7 +184,7 @@ export function installmentDisplayStatus(row) {
 export const installmentRefunded = (row) => Boolean(String(row?.refundedAt ?? '').trim());
 
 /* ลูกค้าจ่ายงวดนี้แล้ว — นิยามอยู่ที่ paymentCoverage.js (ไฟล์ใบ ไม่วน import) · ส่งต่อให้ผู้เรียกเดิมของไฟล์นี้ */
-export { installmentCustomerPaid };
+export { installmentAwaitingEvent, installmentCustomerPaid, installmentOverdue };
 
 export function strandedInstallment(row, order) {
   if (!row || order?.status !== 'cancelled') return false;
@@ -347,9 +347,8 @@ export function paymentRollup(rows = [], todayIso = null) {
   // ⭐ มติเจ้าของ 18/11/2026: จ่ายแล้ว (`installmentCustomerPaid` — งวดร่างที่บันทึกจ่าย · แจ้งชำระรอบัญชีตรวจ) ไม่เลยกำหนด
   //   🐞 เดิมนับ `reported` + งวดร่างที่จ่ายแล้วด้วย ⇒ แผงงวดขึ้น "เลยกำหนดแล้ว 1 งวด" บนใบที่ลูกค้าจ่ายครบ (SO-26110445-0)
   //   ⚠️ ทะเบียนบัญชี (`paymentLedger` · `overdue`) ยังนับงวดรอตรวจที่เลยกำหนด — เป็นงานค้างของบัญชีเอง (ตั้งใจ)
-  const overdue = todayIso
-    ? open.filter((r) => r.dueDate && String(r.dueDate) < String(todayIso) && !installmentCustomerPaid(r))
-    : [];
+  // ⭐ ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — งวดร่างของใบที่ยังไม่อนุมัติ · งวดรอเหตุการณ์ ไม่นับ
+  const overdue = todayIso ? open.filter((r) => installmentOverdue(r, todayIso)) : [];
 
   const complete = count > 0 && confirmed.length === count;
 
@@ -386,7 +385,8 @@ export function installmentsNextDue(rows = []) {
   /* ⭐ มติเจ้าของ 18/11/2026: งวดที่ลูกค้าจ่ายแล้ว (`installmentCustomerPaid`) ไม่ใช่ "กำหนดชำระถัดไป" — ไม่มีอะไรให้ตามแล้ว
      (หัวใบ "กำหนดชำระ · เลยกำหนด" · บรรทัด "กำหนด …" + การเรียงของรายการ SO อ่านตัวนี้) */
   return (Array.isArray(rows) ? rows : [])
-    .filter((r) => r?.status !== 'confirmed' && r?.dueDate && !installmentCustomerPaid(r))
+    /* งวดรอเหตุการณ์ไม่มีวันให้ตาม (23/11/2026 · `installmentAwaitingEvent` — กติกาเดียวกับ "เลยกำหนด") */
+    .filter((r) => r?.status !== 'confirmed' && r?.dueDate && !installmentCustomerPaid(r) && !installmentAwaitingEvent(r))
     .map((r) => String(r.dueDate))
     .sort()[0] || null;
 }
@@ -1333,9 +1333,8 @@ export function salesOrderPaymentCell(rows = [], plan = null, todayIso = null, o
     const refunded = list.filter(installmentRefunded).length;
     const stranded = dead ? list.filter((r) => strandedInstallment(r, { status: orderStatus })).length : 0;
     /* จ่ายแล้วไม่เลยกำหนด (มติเจ้าของ 18/11/2026 · `installmentCustomerPaid`) — ตัวกรอง "มีงวดเลยกำหนด" ของรายการอ่าน `payment.overdue` ของ salesOrderMoney */
-    const overdue = list.filter(
-      (r) => r.status !== 'confirmed' && r.dueDate && todayIso && String(r.dueDate) < String(todayIso) && !installmentCustomerPaid(r),
-    ).length;
+    // ⭐ ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — งวดร่าง (ใบยังไม่อนุมัติ) · งวดรอเหตุการณ์ ไม่นับ
+    const overdue = list.filter((r) => installmentOverdue(r, todayIso)).length;
     /* ⭐ ใบกำกับภาษี (mig 0348) — **คนละแกนกับเงิน** จึงนับแยก ไม่ใช่ยัดรวมกับ `paid`
        ฐานคือ "งวดที่ต้องมีใบ" = งวดที่แจ้ง/รับรองแล้ว (บริษัทเก็บ VAT ⇒ จ่ายแล้วต้องมีใบ)
        ไม่ใช่จำนวนงวดทั้งใบ — งวดที่ยังไม่ถึงกำหนดจ่ายยังไม่มีเงินให้ออกใบ

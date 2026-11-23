@@ -6,7 +6,7 @@ import { CLOSED_STAGES } from '@/lib/salesPlanning';
 import { isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
 import { salesOrderActual, splitSalesOrderAmounts } from '@/lib/sales/salesOrderWorkflow';
-import { installmentDisplayStatus } from '@/lib/sales/salesOrderPayments';
+import { installmentDisplayStatus, installmentOverdue } from '@/lib/sales/salesOrderPayments';
 import { addMonths, businessDayKey, currentMonth } from '@/lib/datePeriods';
 import { reportActualRows, reportOrderMonth } from '@/lib/sales/reportRows';
 import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
@@ -37,13 +37,15 @@ export const isOpenRequest = (request) => OPEN_REQUEST_STATUSES.has(request?.sta
 
 /* ── งวดชำระ ───────────────────────────────────────────────────────────────────────────────
    ค้างชำระ = งวดของใบที่ยังมีผล ที่ยังไม่ "ชำระแล้ว" (ไม่นับงวดคืนเงิน · งวดที่จ่ายแล้วรอใบอนุมัติ = จ่ายแล้ว)
-   เกินกำหนด = ค้าง + กำหนดชำระ < วันนี้ (วันไทย) */
+   เลยกำหนด = ค้าง + กำหนดชำระ < วันนี้ (วันไทย) */
 export function installmentState(inst, order, today = todayKey()) {
   const display = installmentDisplayStatus(inst);
   const settled = display === 'confirmed' || display === 'prepaid' || display === 'refunded' || display === 'reported';
   const live = order ? isLiveOrder(order) : true;
   const outstanding = live && !settled;
-  const overdue = outstanding && !!inst?.dueDate && String(inst.dueDate).slice(0, 10) < today;
+  /* ⭐ ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — งวดร่างของใบที่ยังไม่อนุมัติ · งวดรอเหตุการณ์ · ลูกค้าจ่ายแล้ว ไม่นับ
+     🐞 เดิมนับจากวันอย่างเดียว ⇒ "มีงวดเลยกำหนด" ค้างบนหน้าลูกค้าตลอดที่ใบยังรออนุมัติ ขณะที่ SO/บัญชีไม่นับ */
+  const overdue = outstanding && installmentOverdue(inst, today);
   return { display, outstanding, overdue };
 }
 
@@ -58,7 +60,8 @@ const money2 = (v) => Math.round(v * 100) / 100;
 const dueKey = (inst) => (inst?.dueDate ? String(inst.dueDate).slice(0, 10) : '9999-12-31');
 
 export const FINANCE_ORDER_STATES = Object.freeze({
-  overdue: { label: 'มีงวดเกินกำหนด', tone: 'danger' },
+  // คำชุด "เลยกำหนด" ทั้งระบบ (มติเจ้าของ 23/11/2026) — เดิม "เกินกำหนด" คำเดียวในระบบที่ต่างจากหน้า SO/บัญชี
+  overdue: { label: 'มีงวดเลยกำหนด', tone: 'danger' },
   open: { label: 'ค้างชำระ', tone: 'warning' },
   complete: { label: 'รับครบ', tone: 'success' },
   void: { label: 'ยกเลิก/ถูกแทน', tone: 'neutral' },
@@ -298,7 +301,7 @@ export function monthlyActual(orders = [], installments = [], { months = 12, now
 
 const ORDER_NEEDS_ACTION = new Set(['draft', 'pending_approval', 'rejected', 'approval_revoked']);
 
-/** "ต้องตามต่อ" — ของที่ยังค้างของลูกค้ารายนี้ เรียงจากเร่งไปเบา (เกินกำหนด → คำร้องค้าง → ใบสั่งขายค้าง → ดีลเปิด)
+/** "ต้องตามต่อ" — ของที่ยังค้างของลูกค้ารายนี้ เรียงจากเร่งไปเบา (เลยกำหนด → คำร้องค้าง → ใบสั่งขายค้าง → ดีลเปิด)
  *  แต่ละรายการ: { key, kind, tone, code, title, href, at } + ช่องตามชนิด (dueDate/amount · dept/status · status · stage/amount)
  *  `href` = หน้าของใบนั้น (ลิงก์ตรง ไม่ต้องไปหาในแท็บ) · ป้ายภาษาไทยของสถานะเป็นหน้าที่ของจอ */
 export function followUps(hub, today = todayKey()) {
@@ -313,7 +316,7 @@ export function followUps(hub, today = todayKey()) {
       if (!st.outstanding || !st.overdue) continue;
       out.push({
         key: `inst:${inst.id}`, kind: 'overdue', tone: 'danger', code: order.orderNumber,
-        title: `งวด ${inst.seq ?? ''} เกินกำหนดชำระ`.trim(), dueDate: inst.dueDate, amount: num(inst.amount),
+        title: `งวด ${inst.seq ?? ''} เลยกำหนดชำระ`.trim(), dueDate: inst.dueDate, amount: num(inst.amount),
         href: `/sa/sales-orders/${order.id}`, at: inst.dueDate,
       });
     }

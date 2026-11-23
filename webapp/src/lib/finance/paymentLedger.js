@@ -16,7 +16,7 @@
 
 import { NA, fmtMonthYear, fmtName } from '@/lib/format';
 import { bucketList } from '@/lib/listGrouping';
-import { installmentCustomerPaid, paidThrough } from '@/lib/sales/paymentCoverage';
+import { installmentAwaitingEvent, installmentCustomerPaid, installmentOverdue, paidThrough } from '@/lib/sales/paymentCoverage';
 import {
   installmentConfirmOutlook, installmentRefunded, installmentVoid, paymentNotRequired, pipelineInstallmentLock, strandedInstallment,
 } from '@/lib/sales/salesOrderPayments';
@@ -438,9 +438,9 @@ export function ledgerRow({
        ⭐ มติเจ้าของ 18/11/2026: งวดที่ลูกค้าจ่ายแล้ว (`installmentCustomerPaid` — แจ้งชำระรอบัญชีตรวจ) **ไม่เลยกำหนด**
          งานของบัญชีกับงวดพวกนั้นอยู่ที่แท็บ "รอตรวจงวด" แล้ว · แท็บ "เลยกำหนด" = ลูกค้ายังไม่จ่าย (ใบที่ต้องตามเงิน)
          🐞 เดิมนับงวดรอตรวจด้วย (ตั้งใจให้เป็นภาระของบัญชี) ⇒ งวดเดียวขึ้นสองแท็บ และแดงทั้งที่ลูกค้าจ่ายครบ
-       · บัญชีตีกลับ = เงินยังไม่เข้า ⇒ เลยกำหนดได้ (ตัวตัดสินเดียวกับจอฝั่งขาย #2079) */
-    overdue: Boolean(due && status !== 'confirmed' && todayIso && String(due) < String(todayIso)
-      && !installmentCustomerPaid(installment)),
+       · บัญชีตีกลับ = เงินยังไม่เข้า ⇒ เลยกำหนดได้ (ตัวตัดสินเดียวกับจอฝั่งขาย #2079)
+       ⭐ ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — งวดรอเหตุการณ์ไม่นับ (เดิม `dueStateKey: 'waiting'` คู่กับ `overdue: true`) */
+    overdue: installmentOverdue(installment, todayIso),
     reportedByName: installment.reportedByName || '',
     confirmedByName: installment.confirmedByName || '',
     rejectedReason: installment.rejectedReason || '',
@@ -1259,7 +1259,7 @@ export function groupLedgerByOrder(rows = []) {
            มีไว้เพราะแถวที่ยุบอยู่เคยปล่อยคอลัมน์กำหนดชำระว่างทั้งคอลัมน์ */
         /* ⭐ มติเจ้าของ 18/11/2026: งวดที่ลูกค้าจ่ายแล้วไม่ใช่ "กำหนดถัดไป" — ตัวตัดสินเดียวกับหัวใบ SO (`installmentsNextDue`) */
         nextDue: rowsInOrder
-          .filter((r) => r.status !== 'confirmed' && r.dueDate && !installmentCustomerPaid(r))
+          .filter((r) => r.status !== 'confirmed' && r.dueDate && !installmentCustomerPaid(r) && !installmentAwaitingEvent(r))
           .map((r) => r.dueDate)
           .sort()[0] || null,
         /* ⭐ วางบิลถัดไป (0389 · คอลัมน์ "วางบิลถัดไป" ของม็อก D) = งวดที่ยังมีงานวางบิลและมีวันวางบิล ใกล้ที่สุด

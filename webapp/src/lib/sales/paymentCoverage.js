@@ -34,6 +34,34 @@ export const isConfirmed = (row) => String(row?.status || '') === 'confirmed';
 export const installmentCustomerPaid = (row) => /^\d{4}-\d{2}-\d{2}$/.test(String(row?.paidOn ?? '').trim().slice(0, 10))
   && String(row?.status ?? '').trim() !== 'rejected';
 
+/**
+ * งวดนี้ **เลยกำหนดชำระ** ไหม — ตัวตัดสินเดียวของทุกจอ (หัว SO · แผงงวด · รายการ SO + ชิป · หน้าลูกค้า · ทะเบียนบัญชี)
+ * (ตรวจทั้งระบบ 23/11/2026 · docs/due-overdue-system.md) — เดิมหกที่คิดเองคนละกติกา
+ *
+ * เลยกำหนด = มีกำหนดชำระที่ผ่านมาแล้ว และ:
+ *   · **งวดตรึงแล้ว** (`frozenAt` · ใบเคยอนุมัติ) — 🐞 เดิมงวดร่างของใบรออนุมัติ/ตีกลับขึ้นแดง "เลยกำหนด" บนหัว SO · แผงงวด ·
+ *     ตัวกรองรายการ · หน้าลูกค้า ขณะที่ชิปแถวเดียวกันบอก "ตามแผน" และทะเบียนบัญชีไม่เห็นงวดนั้นเลย
+ *   · ยังไม่รับรอง/ไม่ได้คืนเงิน · ลูกค้ายังไม่จ่าย (`installmentCustomerPaid` · มติเจ้าของ 18/11/2026) — ตีกลับ = ยังไม่จ่าย
+ *   · **ไม่ใช่งวดรอเหตุการณ์** (มี `billingEvent` แต่ยังไม่มีวันวางบิล) — กติกาเดียวกับ `dueState` ของกระดิ่ง ("รอเหตุการณ์ชนะเสมอ")
+ *     🐞 เดิมกระดิ่งเงียบแต่ทะเบียน/แผงงวด/รายการแดงถาวรด้วยกำหนดชำระเก่าของแถว
+ * ⚠️ ผู้เรียกต้องเลือก `frozenAt` · `billingEvent` · `billingDate` · `paidOn` · `refundedAt` มาด้วย — ขาดช่องไหน = กติกาข้อนั้นไม่ทำงาน (ไม่ใช่พัง)
+ * ⚠️ งวดโมฆะของใบยกเลิก/ถูกแทน (`installmentVoid`) ผู้เรียกกรองเอง (ต้องรู้สถานะใบ)
+ */
+/** งวดรอเหตุการณ์ — มีเหตุการณ์วางบิล (`billingEvent`) แต่ยังไม่มีวันวางบิล ⇒ กำหนดชำระบนแถวยังไม่ใช่วันที่ต้องตาม (`dueState` → 'waiting') */
+export const installmentAwaitingEvent = (row) => !!String(row?.billingEvent ?? '').trim() && !String(row?.billingDate ?? '').trim();
+
+export function installmentOverdue(row, todayIso) {
+  if (!row || !todayIso) return false;
+  const due = String(row.dueDate ?? '').trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due) || due >= String(todayIso)) return false;
+  /* งวดร่าง = ช่อง `frozenAt` ว่างจริง (`null`) — ผู้เรียกที่ไม่ได้เลือกคอลัมน์นี้ (undefined) ได้กติกาเดิม ไม่ใช่ "ไม่มีงวดเลยกำหนดเลย" เงียบ ๆ */
+  if (row.frozenAt === null || row.frozenAt === '') return false;
+  if (row.status === 'confirmed' || String(row.refundedAt ?? '').trim()) return false;
+  if (installmentCustomerPaid(row)) return false;
+  if (installmentAwaitingEvent(row)) return false;
+  return true;
+}
+
 const dateOf = (value) => {
   const text = String(value ?? '').trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
