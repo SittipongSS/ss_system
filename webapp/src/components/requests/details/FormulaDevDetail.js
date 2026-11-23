@@ -70,7 +70,7 @@ export default function FormulaDevDetail({
   const renderStep = rowStep
     ? (boardRow) => {
       const item = itemsById.get(boardRow.id);
-      return item ? <RowStepActions row={item} {...rowStep} /> : null;
+      return item ? <RowStepActions row={item} {...rowStep} size="sm" /> : null; // ปุ่มในตารางขนาดเล็ก เท่าตารางพัฒนากลิ่น (23/11/2026)
     }
     : null;
   /* ⭐ **ใบ NPD มีแถวงานตั้งแต่รับเรื่อง** (ม-144) — ระบบแตกแถวสินค้าใน PDR เป็นแถวส่งสูตร ⇒ กระดาน

@@ -93,29 +93,63 @@ export function TableEmpty({
    "ส่งงาน" ต้องอยู่ในแถวของบรีฟนั้น ไม่ใช่ปุ่มระดับใบที่ไม่รู้ว่าหมายถึงก้อนไหน
    ⚠️ **ปุ่มอยู่นอก `<button>` ของหัวกลุ่ม** — ปุ่มซ้อนปุ่มเป็น HTML ที่ผิด และคลิก
    จะทะลุไปพับกลุ่มด้วย · toggle จึงมีคลาสของตัวเอง (`ui-group-toggle`) แล้วสไตล์
-   ใน globals ผูกกับคลาสนั้น ไม่ใช่กับ `button` ทุกตัวในแถว */
+   ใน globals ผูกกับคลาสนั้น ไม่ใช่กับ `button` ทุกตัวในแถว
+
+   ⭐ `actionsColSpan` (ผู้ใช้ 23/11/2026 "อยาก align") — ตารางที่แถวลูกมีคอลัมน์ปุ่มท้ายแถว ("ก้าวถัดไป")
+   ส่งจำนวนคอลัมน์ท้ายที่ปุ่มของกลุ่มควรนั่ง ⇒ ปุ่มของกลุ่มลงเซลล์ของตัวเองในคอลัมน์นั้น ชิดซ้ายตรงกับปุ่มของแถวลูก
+   🐞 เดิมปุ่มกลุ่มชิดขวาสุดของแถบที่กินทั้งแถว ส่วนปุ่มแถวลูกชิดซ้ายในคอลัมน์ "ก้าวถัดไป" ⇒ สองแนวเหลื่อมกัน
+   ⚠️ แยกเซลล์ **ทุกกลุ่ม** แม้กลุ่มนั้นไม่มีปุ่ม (เซลล์ว่าง) — ไม่งั้นยอดรวมของกลุ่มที่ไม่มีปุ่มเลื่อนไปขวาสุด
+   ไม่ตรงแนวกับกลุ่มอื่น · ไม่ส่ง = ทรงเดิม (ปุ่มชิดขวาในแถบเดียว)
+
+   ⭐ `labelColSpan` (ผู้ใช้ 23/11/2026 รอบสอง "แล้ว พวกนี้ล่ะ") — ชื่อกลุ่มกินแค่ N คอลัมน์แรก · ป้าย (`badge`) กับยอดรวม
+   ลงเซลล์ถัดไป ⇒ ป้ายทุกกลุ่มเริ่มที่ขอบคอลัมน์เดียวกัน ไม่เลื่อนตามความยาวชื่อ
+   ⚠️ เซลล์ป้ายเป็นปุ่มพับ/กางตัวที่สอง (`tabIndex={-1}`) — คงกติกา "กดตรงไหนของแถบก็พับได้" ไว้ โดยไม่เพิ่มจุดแวะ Tab ซ้ำ
+   (คีย์บอร์ดใช้ปุ่มชื่อกลุ่มตัวเดียว · โปรแกรมอ่านจอยังอ่านป้ายได้ ไม่ซ่อนด้วย aria-hidden) */
 export function TableGroupRow({
-  colSpan, label, sub, badge, total, totalTitle, collapsed, onToggle, actions = null,
+  colSpan, label, sub, badge, total, totalTitle, collapsed, onToggle, actions = null, actionsColSpan = 0,
+  labelColSpan = 0,
 }) {
+  const split = actionsColSpan > 0 && actionsColSpan < colSpan;
+  const mainSpan = split ? colSpan - actionsColSpan : colSpan;
+  const splitLabel = labelColSpan > 0 && labelColSpan < mainSpan;
+  const chevron = collapsed
+    ? <ChevronRight size={15} aria-hidden="true" />
+    : <ChevronDown size={15} aria-hidden="true" />;
+  const badgeEl = badge ? <span className="ui-badge">{badge}</span> : null;
+  const totalEl = total ? <span className="ui-group-total mono" title={totalTitle}>{total}</span> : null;
   return (
     <tr className="ui-group-row">
-      <td colSpan={colSpan}>
+      <td colSpan={splitLabel ? labelColSpan : mainSpan}>
         <div className="ui-group-line">
           <button
             type="button" className="ui-group-toggle"
             onClick={onToggle} aria-expanded={!collapsed}
           >
-            {collapsed
-              ? <ChevronRight size={15} aria-hidden="true" />
-              : <ChevronDown size={15} aria-hidden="true" />}
+            {chevron}
             <strong>{label}</strong>
             {sub ? <span className="ar-code">{sub}</span> : null}
-            {badge ? <span className="ui-badge">{badge}</span> : null}
-            {total ? <span className="ui-group-total mono" title={totalTitle}>{total}</span> : null}
+            {splitLabel ? null : badgeEl}
+            {splitLabel ? null : totalEl}
           </button>
-          {actions ? <div className="ui-group-actions">{actions}</div> : null}
+          {actions && !split ? <div className="ui-group-actions">{actions}</div> : null}
         </div>
       </td>
+      {splitLabel ? (
+        <td colSpan={mainSpan - labelColSpan} className="ui-group-summary">
+          <button
+            type="button" className="ui-group-toggle" tabIndex={-1}
+            onClick={onToggle} aria-expanded={!collapsed}
+          >
+            {badgeEl}
+            {totalEl}
+          </button>
+        </td>
+      ) : null}
+      {split ? (
+        <td colSpan={actionsColSpan} className="ui-group-step">
+          {actions ? <div className="ui-group-actions">{actions}</div> : null}
+        </td>
+      ) : null}
     </tr>
   );
 }

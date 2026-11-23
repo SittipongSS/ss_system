@@ -7061,6 +7061,34 @@ button.ui-metric:focus-visible { position: relative; z-index: 1; outline: 2px so
   flex: 0 0 auto;
 }
 
+/* ⭐ ปุ่มของกลุ่มในเซลล์ของคอลัมน์ "ก้าวถัดไป" (`actionsColSpan` · 23/11/2026) — padding-inline มาจากกฎ `td`
+   ของ `Table.module.css` ตัวเดียวกับแถวลูก ⇒ ขอบซ้ายตรงกันเอง · ที่ต้องตั้งคือกึ่งกลางแนวตั้งให้ตรงกับชื่อกลุ่ม
+   ⚠️ `tr.` นำหน้า — `[data-cells="stacked"] td` (0,2,1) สั่งชิดบน · ชื่อกลุ่มที่ตัดสองบรรทัดจะได้ปุ่มลอยบน */
+tr.ui-group-row > td.ui-group-step,
+tr.ui-group-row > td.ui-group-summary {
+  vertical-align: middle;
+}
+/* ⭐ เซลล์ป้ายของกลุ่ม (`labelColSpan` · 23/11/2026) — ป้ายเริ่มที่ขอบเนื้อของคอลัมน์ ตรงกับป้ายของแถวลูก
+   (padding-inline ของ td มาจาก `Table.module.css` ตัวเดียวกับแถวลูก ⇒ ปุ่มข้างในไม่ต้องเว้นซ้ายซ้ำ) */
+tr.ui-group-row > td.ui-group-summary .ui-group-toggle {
+  padding-inline-start: 0;
+}
+/* แถบเดียวแต่ปุ่มพับสองตัว (ชื่อ · ป้าย) — ชี้ตัวไหนก็ไฮไลต์ทั้งคู่ ให้อ่านเป็นแถบเดียวเหมือนเดิม */
+.ui-group-row:has(.ui-group-toggle:hover) .ui-group-toggle {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+/* 🐞 วัดจริง 23/11 (จอ 1440 + รางขวา · คอลัมน์ 224px): ชิป RD + ส่งงาน + แจกงาน ไม่พอ ⇒ "แจกงาน" ถูกบีบตัดเป็น
+   "แจก/งาน" สองบรรทัด · ปุ่มห้ามหดและห้ามตัดคำ — **แต่ขึ้นบรรทัดใหม่ทั้งชิ้นได้**
+   🐞 รอบแรกห้ามขึ้นบรรทัดด้วย ⇒ คอลัมน์ขยายเป็น 243px รับสามชิ้นบรรทัดเดียว แล้วไปแย่งคอลัมน์ชื่อ (จอ 1180: เหลือ 146px
+   ชื่อบรีฟตัด 4 บรรทัด หัวกลุ่มสูง 104px) · จอกว้างยังอยู่บรรทัดเดียว จอแคบ "แจกงาน" ลงบรรทัดสองชิดซ้ายตรงแนวเดิม */
+tr.ui-group-row > td.ui-group-step .ui-group-actions {
+  flex-wrap: wrap;
+}
+tr.ui-group-row > td.ui-group-step .ui-group-actions > * {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 /* ⚠️ ผูกกับคลาสของ toggle ไม่ใช่ `button` ทุกตัว — ไม่งั้นปุ่มลงมือในหัวกลุ่มจะโดน
    ยืดเต็มแถบและกลืนพื้นหลังไปด้วย */
 .ui-group-row .ui-group-toggle {

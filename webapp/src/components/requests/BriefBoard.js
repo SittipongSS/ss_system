@@ -120,7 +120,7 @@ export default function BriefBoard({
         <table>
           <thead>
             <tr>
-              <th className={styles.colName}>direction</th>
+              <th className={styles.colNameBrief}>direction</th>
               <th className={styles.colResult}>ผลลูกค้า</th>
               {showPrice && <th className={`${styles.colPrice} num`}>ราคา (บาท/กก.)</th>}
               {due && <th className={styles.colDue}>กำหนดส่ง</th>}
@@ -159,6 +159,10 @@ export default function BriefBoard({
                     collapsed={!isOpen}
                     onToggle={() => toggle(key)}
                     actions={renderGroupStep?.(g) || null}
+                    /* ⭐ ปุ่มของบรีฟนั่งคอลัมน์ "ก้าวถัดไป" เดียวกับปุ่มของ direction (ผู้ใช้ 23/11/2026 "อยาก align") */
+                    actionsColSpan={showActions ? 1 : 0}
+                    /* ⭐ ป้ายสรุปผลของบรีฟเริ่มที่คอลัมน์ "ผลลูกค้า" ตรงกับป้ายของแถว direction — ไม่เลื่อนตามความยาวชื่อบรีฟ (23/11/2026) */
+                    labelColSpan={1}
                   />
 
                   {/* บรีฟที่ขอไว้ — เห็นว่าขออะไรโดยไม่ต้องข้ามไปแท็บ PDR */}
@@ -220,6 +224,7 @@ export default function BriefBoard({
                             {renderStep?.(d)}
                             {/* ⭐ **แก้/ลบ อยู่ในเมนู `⋯`** (มติผู้ใช้ 2026-08-18) — ปุ่มก้าวถัดไป 1 ปุ่ม ที่เหลือยุบเข้าเมนู */}
                             <RowActionMenu
+                              className={styles.rowMenu}
                               label={`การจัดการอื่นของ ${d.registry?.code || d.name}`}
                               items={[
                                 canEdit && d.registry && {

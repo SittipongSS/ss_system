@@ -29,9 +29,11 @@ const MENU_WIDTH = 232;
  * @param triggerLabel  ปุ่มเปิดเป็น **ปุ่มมีป้าย + ลูกศร** แทนไอคอน ⋯ (ม-165 PR-3 · "บันทึกคำตอบ ▾") — ก้าวถัดไปที่มีหลายทางเลือก
  *                      ใช้เมนูเดียวกันทุกอย่าง (portal · คีย์บอร์ด · เหตุที่กดไม่ได้) ไม่สร้างดรอปดาวน์ตัวที่สอง
  * @param triggerTone   โทนของปุ่มมีป้าย (ตั้งต้น primary — เป็นก้าวถัดไปของแถว)
+ * @param triggerSize   ขนาดปุ่มมีป้าย — ตารางส่ง "sm" ให้เท่าปุ่มก้าวอื่นในคอลัมน์เดียวกัน (23/11/2026)
  */
 export default function RowActionMenu({
   items = [], label = "การจัดการอื่น", busy = false, className = "", triggerLabel = null, triggerTone = "primary",
+  triggerSize = undefined,
 }) {
   const [open, setOpen] = useState(false);
   const [style, setStyle] = useState(null);
@@ -181,6 +183,7 @@ export default function RowActionMenu({
       {triggerLabel ? (
         <Button
           tone={triggerTone}
+          size={triggerSize}
           aria-label={label}
           aria-haspopup="menu"
           aria-expanded={open}
