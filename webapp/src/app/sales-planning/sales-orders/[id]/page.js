@@ -21,6 +21,7 @@ import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import Modal from "@/components/Modal";
 import Select from "@/components/ui/Select";
 import OptionTiles from "@/components/ui/OptionTiles";
+import { EXCISE_ACTUAL_LOCK_REASON, actualModeTileNotes, actualModeTileOptions } from "@/lib/sales/actualModeTiles";
 import { ContextCard, ContextGrid, DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
 import { customerHeadline } from "@/lib/master/customerAr";
 import SalesOrderConfirmationFields from "@/components/salesPlanning/SalesOrderConfirmationFields";
@@ -237,7 +238,7 @@ const ACTION_MESSAGE = {
 };
 
 /* ── นับ Actual เต็ม / รายงวด / ไม่นับ ตอนอนุมัติ (mig 0412 + 0439 · มติเจ้าของ 26/10 + 20/11/2026) ─────────────────────────
-   ⭐ ป้ายปุ่มยืนยันบอกผลของแบบที่เลือก (กติกาโมดัลอนุมัติ #1223) · ปุ่มหลักบนการ์ดจัดการยังเป็น "อนุมัติและนับ Actual" (เลือกแบบในโมดัล)
+   ⭐ ป้ายปุ่มยืนยันบอกผลของแบบที่เลือก (กติกาโมดัลอนุมัติ #1223) · ปุ่มหลักบนการ์ดจัดการเป็น "อนุมัติ" คำกลาง (มติ 23/11 · เลือกแบบในโมดัล)
    ⭐ อนุมัติแบบรายงวด: route ตรึงงวดแล้วนับงวดแรกต่อ (start RPC) — ขั้นนั้นล้ม = ใบอนุมัติแล้วแต่ยังไม่มีงวดไหนนับ
      ⇒ ทักโทนเตือนพร้อมทางกู้ (ปุ่ม "นับงวด 1" บนการ์ดการชำระ · ผู้อนุมัติเท่านั้น) */
 const APPROVE_CONFIRM_ORDER_LABEL = "อนุมัติและนับ Actual";
@@ -329,45 +330,24 @@ const actualStartToast = (data, countRestDone = false) => {
    ⭐ "ไม่นับ Actual" (mig 0439) = ช่องเหตุผลบังคับ 10–500 ตัวอักษรใต้แผ่น (ช่องยาวทรงเดียวของระบบ — Textarea) · ปุ่มยืนยันของโมดัลไม่ดับ
      กดแล้วเหตุผลยังไม่ผ่าน = บอกเหตุในโมดัล (`actualNoneReasonError` — ท่าเดียวกับเหตุผล Admin Override ของงานบริการ) */
 function ActualModeChoice({
-  value, onChange, eligibility, noneEligibility, reason = "", onReasonChange, disabled = false,
+  value, onChange, eligibility, noneEligibility, reason = "", onReasonChange, disabled = false, lockedReason = "",
 }) {
-  const eligible = Boolean(eligibility?.eligible);
-  const noneEligible = Boolean(noneEligibility?.eligible);
   const reasonLength = String(reason || "").trim().length;
+  /* ⭐ `lockedReason` (มติเจ้าของ 23/11 · ใบค่าสรรพสามิต): สามแผ่นหน้าตาเดียวกับใบปกติ — "ไม่นับ" ถูกเลือกไว้ อีกสองแผ่นดับพร้อมเหตุ ·
+     ไม่มีช่องเหตุผล · แผ่นเป็นการแสดงผล (กดอะไรก็ไม่เปลี่ยน — ค่าที่ส่ง API ยังเป็น 'order' · lib/sales/actualModeTiles) */
+  const locked = Boolean(lockedReason);
   return (
     <div className="form-field">
       <span className="form-field-label">นับ Actual แบบไหน</span>
       <OptionTiles
-        value={value}
-        onChange={onChange}
+        value={locked ? ACTUAL_MODE_NONE : value}
+        onChange={locked ? () => {} : onChange}
         disabled={disabled}
         ariaLabel="แบบการนับ Actual ของใบนี้"
-        options={[
-          {
-            value: ACTUAL_MODE_NONE,
-            label: "ไม่นับ Actual",
-            description: noneEligible
-              ? "อนุมัติใบตามปกติ แต่ยอดไม่เข้า Actual / % เป้า — ถาวร (อยากนับต้องย้อนอนุมัติแล้วออก Rev.)"
-              : "ใบนี้เลือกไม่ได้",
-            disabled: !noneEligible,
-          },
-          { value: ACTUAL_MODE_ORDER, label: "นับ Actual เต็ม", description: "ยอดเต็มใบเข้า Actual เดือนนี้" },
-          {
-            value: ACTUAL_MODE_INSTALLMENT,
-            label: "นับ Actual รายงวด",
-            /* มติข้อ 10: Rev. ของใบที่กด "นับที่เหลือทั้งหมด" แล้ว — ไม่มีการยื่นรายงวด (eligibility.countRestDone · review รอบสี่) */
-            description: !eligible
-              ? "ใบนี้เลือกไม่ได้"
-              : eligibility?.countRestDone
-                ? "ใบก่อนหน้ากดนับที่เหลือทั้งหมดแล้ว — งวดที่ยังไม่นับนับให้เดือนนี้ทั้งหมด · ไม่ต้องยื่นรายงวด (มติข้อ 10)"
-                : "งวด 1 เข้าเดือนนี้ · งวดถัดไป ยื่น → AE Sup อนุมัติ → แจ้งสลิป → บัญชีรับรอง",
-            disabled: !eligible,
-          },
-        ]}
+        options={actualModeTileOptions({ eligibility, noneEligibility, lockedReason })}
       />
-      {noneEligibility && !noneEligible ? <p className="form-note">{noneEligibility.reason}</p> : null}
-      {eligibility && !eligible ? <p className="form-note">{eligibility.reason}</p> : null}
-      {value === ACTUAL_MODE_NONE ? (
+      {actualModeTileNotes({ eligibility, noneEligibility, lockedReason }).map((note) => <p key={note} className="form-note">{note}</p>)}
+      {!locked && value === ACTUAL_MODE_NONE ? (
         <label className="form-field">
           <span className="form-field-label">เหตุผลที่ไม่นับ Actual <span className="required-mark">*</span></span>
           <Textarea
@@ -1423,8 +1403,8 @@ export default function SalesOrderDetailPage() {
        · งวดที่เคยนับก่อนย้อนอนุมัติ (ใบ Rev. · มติข้อ 7) กลับมานับในเดือนที่อนุมัติ Rev. — บอกแยกบรรทัด
      ⭐ ค่าเริ่ม = เต็ม · ใบ Rev. = แบบของใบก่อนหน้า (`previousActualMode` ของ GET) เมื่อใบนี้ยังเลือกแบบนั้นได้
        · ใบก่อนหน้าไม่นับ = เหตุผลเดิมเติมให้ในช่อง (`previousActualNoneReason` · แก้ได้)
-     ⭐ `choice` = ใบนี้มีแผ่นให้เลือกไหม — ใบค่าสรรพสามิตไม่นับ Actual โดยที่มา (ทั้งรายงวดและไม่นับเลือกไม่ได้) ⇒ ไม่วาดแผ่น
-       (แผ่น "นับ Actual เต็ม" ที่ถูกเลือกค้างไว้บนใบที่ไม่มีวันนับ = พูดผิด) · ส่ง 'order' ตามเดิม · ใบย้อนหลังไม่มาทางนี้ (openHistoricalApprove) */
+     ⭐ `choice` = ใบนี้มีแผ่นให้เลือกไหม — ใบค่าสรรพสามิตไม่นับ Actual โดยที่มา (ทั้งรายงวดและไม่นับเลือกไม่ได้) ⇒ ไม่มีตัวเลือก
+       แต่เห็นสามแผ่นแบบล็อกที่ "ไม่นับ" (มติเจ้าของ 23/11 · `actualLocked` / lockedReason) · ส่ง 'order' ตามเดิม · ใบย้อนหลังไม่มาทางนี้ (openHistoricalApprove) */
   function approveActualPlan() {
     /* จำนวนงวดหลังหยุดยอด — `installmentCountAtFreeze` ตัวเดียวกับที่ route ตัดสินสิทธิ์ (คู่กับทุกกิ่งของ freezeInstallments)
        🪤 นับ `installments.length` ตรง ๆ ไม่ได้: แถวร่างที่จำนวนไม่ตรงแผนถูกลบแล้วตั้งใหม่ตามแผนตอนอนุมัติ ⇒ จอบอก "เลือกได้"
@@ -1537,7 +1517,7 @@ export default function SalesOrderDetailPage() {
       setError("");
       /* ⭐ นับ Actual เต็ม / รายงวด / ไม่นับ (mig 0412 + 0439): ผลลัพธ์ + ป้ายปุ่มคิดแยกต่อแบบ (`actualModes`) แล้วกล่องวาดตามแผ่นที่เลือกอยู่
          (`actualMode`) — เปลี่ยนแผ่น = รายการผลลัพธ์และปุ่มเปลี่ยนตามทันที · เลือกรายงวด/ไม่นับไม่ได้ = ชุดของแผ่นนั้นคือชุดแบบเต็ม (แผ่นดับอยู่แล้ว)
-         · ใบค่าสรรพสามิต (`plan.choice` เท็จ) = ไม่มีแผ่น ไม่มี `actualModes` — กล่องขนาดเดิม ส่ง 'order' ตามเดิม */
+         · ใบค่าสรรพสามิต (`plan.choice` เท็จ) = ไม่มี `actualModes` แต่เห็นสามแผ่นแบบล็อก (`actualLocked` · มติ 23/11) — ส่ง 'order' ตามเดิม */
       const plan = approveActualPlan();
       const promptFor = (mode) => approvalPrompt({
         title: "อนุมัติ ใบสั่งขาย",
@@ -1554,7 +1534,8 @@ export default function SalesOrderDetailPage() {
           ...(service?.approvalEffects || []),
           "ตรึงลายเซ็นและสำเนาเอกสารฉบับที่อนุมัติ",
         ],
-        confirmLabel: mode === ACTUAL_MODE_NONE ? APPROVE_CONFIRM_NONE_LABEL
+        /* ใบค่าสรรพสามิต (มติ 23/11): แผ่นล็อกที่ "ไม่นับ" ⇒ ปุ่มพูดตรงกัน (เดิมได้ "อนุมัติและนับ Actual" ของแผ่นเต็ม — พูดผิด · ค่าที่ส่งยังเป็น order) */
+        confirmLabel: isExciseOrder(order) || mode === ACTUAL_MODE_NONE ? APPROVE_CONFIRM_NONE_LABEL
           : mode === ACTUAL_MODE_INSTALLMENT ? approveInstallmentConfirmLabel(plan) : APPROVE_CONFIRM_ORDER_LABEL,
       });
       const actualModes = plan.choice ? {
@@ -1566,6 +1547,8 @@ export default function SalesOrderDetailPage() {
       chooseApproveActualReason(plan.initialReason);
       setConfirmState({
         ...(actualModes ? actualModes[plan.initialMode] : promptFor(ACTUAL_MODE_ORDER)),
+        /* ใบค่าสรรพสามิต (มติ 23/11): ไม่มี `actualModes` (เลือกไม่ได้) แต่เห็นสามแผ่นแบบล็อก — กล่อง "md" เท่าใบปกติ */
+        actualLocked: isExciseOrder(order),
         ...(actualModes ? {
           actualModes,
           actualMode: plan.initialMode,
@@ -2524,7 +2507,9 @@ export default function SalesOrderDetailPage() {
           onClick: () => openHistoricalApprove(false),
         }
     : canReviewThis && order.status === "pending_approval"
-      ? { id: "approve", kind: "approve", label: "อนุมัติและนับ Actual", onClick: () => review("approve") }
+      /* มติเจ้าของ 23/11: ปุ่มหลัก = "อนุมัติ" คำกลาง — โมดัลให้เลือก ไม่นับ / เต็ม / รายงวด แล้วปุ่มยืนยันบอกผลของแบบที่เลือก
+         (เดิม "อนุมัติและนับ Actual" สัญญาว่านับ ทั้งที่เลือก "ไม่นับ" ได้ · ใบค่าสรรพสามิตก็ไม่นับ) */
+      ? { id: "approve", kind: "approve", label: "อนุมัติ", onClick: () => review("approve") }
     // สถานะกลางหลังย้อนการอนุมัติ: ออก Rev. เป็นทางเดียวที่เดินต่อได้ จึงเป็นปุ่มหลัก
     : canRevise || reviseBlocked
       ? { id: "revise", kind: "revise", label: "ออก Rev.",
@@ -3358,7 +3343,7 @@ export default function SalesOrderDetailPage() {
               </div>
             </div>
             {/* ⭐ นับ Actual เต็ม / รายงวด / ไม่นับ (mig 0412 + 0439) — ตัวเลือกเดียวกับโมดัลอนุมัติปกติ · รายงวด = บอกผลครบชุด (งวดที่นับทันที · ที่เหลือ · ลำดับยื่น)
-                · ไม่นับ = ช่องเหตุผลใต้แผ่น + บอกผลชุดเดียวกับโมดัลปกติ · ใบค่าสรรพสามิตไม่มีแผ่น (`overridePlan.choice`) */}
+                · ไม่นับ = ช่องเหตุผลใต้แผ่น + บอกผลชุดเดียวกับโมดัลปกติ · ใบค่าสรรพสามิต = สามแผ่นแบบล็อก (มติ 23/11 · ไม่มีตัวเลือก) */}
             {overridePlan?.choice ? (
               <ActualModeChoice
                 value={overrideActualMode}
@@ -3369,6 +3354,8 @@ export default function SalesOrderDetailPage() {
                 onReasonChange={(actualReason) => setOverrideForm((current) => (current ? { ...current, actualReason } : current))}
                 disabled={!!busy}
               />
+            ) : exciseOrder ? (
+              <ActualModeChoice value={ACTUAL_MODE_NONE} lockedReason={EXCISE_ACTUAL_LOCK_REASON} disabled={!!busy} />
             ) : null}
             {overridePlan && overrideActualMode === ACTUAL_MODE_INSTALLMENT ? (
               <StatusNotice tone="info" title="นับ Actual รายงวด">
@@ -3602,7 +3589,7 @@ export default function SalesOrderDetailPage() {
           ⚠️ ช่องเหตุผล Admin Override **ไม่บังคับ** จึงอยู่ในกล่องยืนยันได้ (กติกา ConfirmDialog)
              ถ้าวันไหนเจ้าของสั่งให้บังคับ ต้องย้ายไปเป็น ReasonDialog ไม่ใช่เติมด่านที่นี่ */}
       {/* ⭐ โมดัลอนุมัติใบ pipeline (mig 0412): หัว/ผลลัพธ์/ปุ่มมาจาก `confirmView` = ชุดของแผ่น "ไม่นับ / นับ Actual เต็ม / รายงวด" ที่เลือกอยู่
-          · กล่องกว้างขึ้น ("md") ให้สามแผ่นวางข้างกัน — โมดัลอื่นขนาดเดิม (รวมโมดัลอนุมัติใบค่าสรรพสามิต: ไม่มีแผ่น) */}
+          · กล่องกว้างขึ้น ("md") ให้สามแผ่นวางข้างกัน — รวมโมดัลอนุมัติใบค่าสรรพสามิต (สามแผ่นแบบล็อก · มติ 23/11) · โมดัลอื่นขนาดเดิม */}
       <ConfirmDialog
         open={!!confirmState}
         title={confirmView?.title}
@@ -3610,7 +3597,7 @@ export default function SalesOrderDetailPage() {
         detail={confirmView?.detail}
         confirmLabel={confirmView?.confirmLabel}
         tone={confirmState?.tone}
-        size={confirmState?.actualModes ? "md" : undefined}
+        size={confirmState?.actualModes || confirmState?.actualLocked ? "md" : undefined}
         busy={confirmBusy}
         error={confirmState?.showsError ? error : undefined}
         onConfirm={runConfirmed}
@@ -3625,6 +3612,12 @@ export default function SalesOrderDetailPage() {
             noneEligibility={confirmState.actualNoneEligibility}
             reason={approveActualReason}
             onReasonChange={chooseApproveActualReason}
+            disabled={confirmBusy}
+          />
+        ) : confirmState?.actualLocked ? (
+          <ActualModeChoice
+            value={ACTUAL_MODE_NONE}
+            lockedReason={EXCISE_ACTUAL_LOCK_REASON}
             disabled={confirmBusy}
           />
         ) : null}
