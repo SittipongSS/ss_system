@@ -14,6 +14,9 @@ import {
 import {
   bookLeadAppointment, loadLeadAppointments, loadUpcomingAppointment, releaseLeadAppointments,
 } from '@/lib/sales/leadAppointmentsRepo';
+import { attachActualNone, loadDealActualNone } from '@/lib/sales/dealActualNone';
+import { fetchAllResult } from '@/lib/supabaseFetchAll';
+import { fetchInChunks } from '@/lib/supabaseInChunks';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,12 +77,15 @@ export const GET = withUser(async ({ user, supabase, ctx }) => {
      ⇒ ตอบ error ให้จอบอกว่าโหลดไม่สำเร็จ แทนการโชว์ลีดครึ่งใบ */
   if (eventsError) return fail(`อ่านประวัติลีดไม่สำเร็จ: ${eventsError.message}`, 500);
   if (relatedDealsError) return fail(`อ่านดีลที่ผูกลีดไม่สำเร็จ: ${relatedDealsError.message}`, 500);
+  /* ใบ "ไม่นับ Actual" ของดีล Won (mig 0439 · ตรวจ 23/11) — การ์ดดีลขึ้น ฿0 เฉย ๆ ⇒ แนบสรุปให้จอวาดป้าย (lib/sales/dealActualNone) */
+  const { map: actualNoneMap, error: actualNoneError } = await loadDealActualNone(supabase, relatedDeals || [], { fetchInChunks, fetchAllResult });
+  if (actualNoneError) return fail(`อ่านใบสั่งขายของดีลที่ผูกลีดไม่สำเร็จ: ${actualNoneError.message}`, 500);
   // canDelete คำนวณที่นี่เหมือน canEdit — หน้ารายละเอียดจะได้ไม่ต้องคิดนโยบายซ้ำ
   // (หน้า list คิดฝั่ง client เพราะมีลีดหลายใบในจอเดียว ไม่คุ้มยิงถามทีละใบ)
   return ok({
     ...lead,
     events: events || [],
-    relatedDeals: (relatedDeals || []).map((deal) => ({ ...deal, metadata: dealCardMetadata(deal.metadata) })),
+    relatedDeals: attachActualNone((relatedDeals || []).map((deal) => ({ ...deal, metadata: dealCardMetadata(deal.metadata) })), actualNoneMap),
     canEdit: canEditLead(user, lead),
     /* `appointment` = นัดที่รออยู่ (ธง/การ์ด/เติมกล่องนัดประชุม) · `appointments` = ทุกแถวรวมที่ปิดแล้ว
        (ไทม์ไลน์อ่านห้องของนัดประชุมแต่ละครั้งผ่าน leadEventId) */

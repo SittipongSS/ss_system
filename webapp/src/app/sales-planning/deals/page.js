@@ -71,6 +71,7 @@ import { DEAL_REVIEW_LIST_URL, dealFacetCounts, dealListPick, dealPassesListFilt
 import { compareDealDisplayValue, dealDisplayValue, pendingPeriodMatcher, sumDealDisplay } from "@/lib/sales/dealAmountDisplay";
 import { isKpiDeal, pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import ActualNoneNote from "@/components/salesPlanning/ActualNoneNote";
 import styles from "./page.module.css";
 
 /* 🪤 ค่าตั้งต้นของตัวกรองต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
@@ -307,6 +308,8 @@ export default function SalesPlanningPipelinePage() {
       deal.code, deal.code ? entityCodeDisplay(deal.code, 0) : null,
       deal.title, customerSearchText(deal.customerId, deal.customerName, arIndex),
       ownerNameOf(deal), deal.notes, deal.formulaName,
+      // ป้าย "ไม่นับ Actual" + เหตุผล (title) — ตาเห็นบนแถว = ค้นเจอ
+      deal.actualNone?.short, ...(deal.actualNone?.reasons || []),
     ].some((v) => (v || "").toLowerCase().includes(q));
   }, [query, arIndex, ownerNameOf]);
   const listFilters = useMemo(() => ({
@@ -756,6 +759,8 @@ export default function SalesPlanningPipelinePage() {
             ⭐ บรรทัดนี้ **ไม่คัดงวด** โดยตั้งใจ — มันคือสถานะปัจจุบันของดีลใบนี้ (มีใบค้างอนุมัติอยู่จริง)
                ส่วนยอดรวมหัวกลุ่ม/KPI เป็นยอด "ของงวด" จึงคัดด้วยเดือนปัจจุบัน (pendingPeriod) */}
         <PendingApprovalAmount amount={pendingApprovalAmountOf(deal)} count={pendingApprovalCountOf(deal)} />
+        {/* ใบอนุมัติแบบ "ไม่นับ Actual" (mig 0439) — บอกว่าทำไม Actual ฿0 · เหตุผลใน title (API แนบ `actualNone`) */}
+        {isWonStage(deal.stage) && <ActualNoneNote summary={deal.actualNone} />}
       </td>
       <td className="num" onClick={(event) => event.stopPropagation()}>
         {/* ก้าวถัดไป 1 ปุ่ม + เมนู "…" รวมที่เหลือ (มติผู้ใช้ 2026-08-01)
