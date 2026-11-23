@@ -24,9 +24,11 @@ export const NO_ASSIGNEE = '__no_assignee__';
    🐞 (19/10) เดิมนับเฉพาะ `contacted` ทั้งที่ใบนัดแล้วที่ "บันทึกการติดตาม" หลังประชุมก็ถือวันจริง
    ⇒ แถวแดงในตารางหาด้วยตัวกรองชื่อเดียวกันไม่เจอ
    สี่ค่าแบ่งใบที่มีนาฬิกาติดตามครบไม่ซ้อนกัน = ใบ "ติดต่อแล้ว" ทุกใบ + ใบ "นัดแล้ว" ที่มีวันติดตาม */
-export const LEAD_FOLLOW_FILTERS = ['late', 'today', 'ahead', 'none'];
+/* ⭐ `grace` (มติเจ้าของ 23/11/2026) — เลยวันแล้วไม่เกิน 2 วันทำการ (เหลือง ยังไม่ทวง) · `late` = เกินนั้น (แดง + กระดิ่ง) */
+export const LEAD_FOLLOW_FILTERS = ['late', 'grace', 'today', 'ahead', 'none'];
 export const LEAD_FOLLOW_FILTER_LABELS = {
-  late: 'เลยวันติดตาม',
+  late: 'เลยวันติดตามเกิน 2 วันทำการ',
+  grace: 'เลยวันติดตาม ≤ 2 วันทำการ',
   today: 'ถึงกำหนดวันนี้',
   ahead: 'ยังไม่ถึงกำหนด',
   none: 'ยังไม่มีวันติดตาม',
@@ -34,8 +36,8 @@ export const LEAD_FOLLOW_FILTER_LABELS = {
 
 /** ใบนี้อยู่ช่องไหนของมิติวันติดตาม — `null` = ใบนี้ไม่มีนาฬิกาติดตาม (ไม่อยู่ในมิตินี้)
  *  ⚠️ ห้ามเขียนกติกาเองที่นี่ — ส่งต่อ `leadFollowUpKey` ตัวเดียวกับการ์ดค้างคิว */
-export function leadFollowKey(lead, todayKey) {
-  return leadFollowUpKey(lead, todayKey);
+export function leadFollowKey(lead, todayKey, holidays = null) {
+  return leadFollowUpKey(lead, todayKey, holidays);
 }
 
 export const EMPTY_LEAD_FILTERS = Object.freeze({
@@ -48,22 +50,23 @@ const DIMENSIONS = {
   team: (lead) => lead?.team || NO_TEAM,
   assignee: (lead) => lead?.assigneeId || NO_ASSIGNEE,
   channel: (lead) => lead?.channel,
-  follow: (lead, todayKey) => leadFollowKey(lead, todayKey),
+  // ⚠️ `holidays` — เส้นเหลือง/แดงนับวันทำการ (มติ 23/11/2026) · ตัวเลขในแผงกรองต้องแบ่งตรงกับสีในตาราง
+  follow: (lead, todayKey, holidays) => leadFollowKey(lead, todayKey, holidays),
 };
 export const LEAD_FILTER_DIMENSIONS = Object.keys(DIMENSIONS);
 
-function passes(lead, filters, todayKey, except = null) {
+function passes(lead, filters, todayKey, except = null, holidays = null) {
   for (const key of LEAD_FILTER_DIMENSIONS) {
     if (key === except) continue;
     const picked = filters?.[key] || [];
-    if (picked.length && !picked.includes(DIMENSIONS[key](lead, todayKey))) return false;
+    if (picked.length && !picked.includes(DIMENSIONS[key](lead, todayKey, holidays))) return false;
   }
   return true;
 }
 
 /** ใบที่ผ่านทุกมิติ — `leads` คือชุดที่ผ่านขอบเขต (ของฉัน/ทีม/ทั้งหมด) และคำค้นมาแล้ว */
-export function filterLeadRows(leads = [], filters = EMPTY_LEAD_FILTERS, todayKey) {
-  return (leads || []).filter((lead) => passes(lead, filters, todayKey));
+export function filterLeadRows(leads = [], filters = EMPTY_LEAD_FILTERS, todayKey, holidays = null) {
+  return (leads || []).filter((lead) => passes(lead, filters, todayKey, null, holidays));
 }
 
 /**
@@ -77,12 +80,12 @@ export function filterLeadRows(leads = [], filters = EMPTY_LEAD_FILTERS, todayKe
  * @param leads ชุดหลังขอบเขต + คำค้น (ชุดเดียวกับที่ส่งให้ `filterLeadRows`)
  * @returns { status: {value: n}, team, assignee, channel, follow }
  */
-export function leadFacetCounts(leads = [], filters = EMPTY_LEAD_FILTERS, todayKey) {
+export function leadFacetCounts(leads = [], filters = EMPTY_LEAD_FILTERS, todayKey, holidays = null) {
   const counts = Object.fromEntries(LEAD_FILTER_DIMENSIONS.map((key) => [key, {}]));
   for (const lead of leads || []) {
     for (const key of LEAD_FILTER_DIMENSIONS) {
-      if (!passes(lead, filters, todayKey, key)) continue;
-      const value = DIMENSIONS[key](lead, todayKey);
+      if (!passes(lead, filters, todayKey, key, holidays)) continue;
+      const value = DIMENSIONS[key](lead, todayKey, holidays);
       if (value == null) continue;
       counts[key][value] = (counts[key][value] || 0) + 1;
     }

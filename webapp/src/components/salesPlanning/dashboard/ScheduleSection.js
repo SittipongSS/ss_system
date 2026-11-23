@@ -140,7 +140,16 @@ export default function ScheduleSection() {
 
   const totals = useMemo(() => scheduleTotals(byDay), [byDay]);
   const day = byDay.get(selected) || { meetings: [], due: [], clashes: 0 };
-  const dayOverdue = selected === today ? overdueItems : [];
+  /* 🐞 **ของที่เลยกำหนดในช่วงที่กางอยู่หายจากการ์ด "วันนี้"** (ตรวจทั้งระบบ 23/11/2026) — route ตัดของที่อยู่ในช่วงออกจาก
+     `overdue*` (กันนับซ้ำ) ⇒ มุมมองสัปดาห์ (ค่าตั้งต้น) งานที่เลยมาตั้งแต่จันทร์ไปอยู่ช่องจันทร์อย่างเดียว การ์ดวันพุธขึ้น "เลยกำหนด 0"
+     ⇒ การ์ดวันนี้รวมของเลยกำหนดจากวันก่อนหน้าในช่วงด้วย (ของนอกช่วงมาจาก `overdueItems` ตามเดิม · ไม่ซ้ำกันโดยโครงสร้าง) */
+  const dayOverdue = useMemo(() => {
+    if (selected !== today) return [];
+    const inRange = [...byDay.entries()]
+      .filter(([iso]) => iso < today)
+      .flatMap(([, d]) => (d.due || []).filter((item) => item.overdue));
+    return [...overdueItems, ...inRange];
+  }, [selected, today, byDay, overdueItems]);
   /* ⚠️ เทียบเป็น **เวลา** ไม่ใช่สตริง — `at` มี offset (+07:00) ส่วน `toISOString()`
      เป็น Z ⇒ เทียบสตริงแล้วนัดที่ผ่านไปแล้วโผล่เป็น "นัดถัดไป" ได้
      ⚠️ อ่านนาฬิกาใน effect ไม่ใช่ตอนเรนเดอร์ — เวลาเป็นค่าที่เปลี่ยนทุกครั้งที่เรียก

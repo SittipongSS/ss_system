@@ -446,7 +446,7 @@ export default function LeadDetailPage() {
             busy={busy}
             onCancel={cancelAppointment}
           />
-          <LeadSummary lead={lead} />
+          <LeadSummary lead={lead} holidays={holidays} />
           <LeadFollowUpCard lead={lead} holidays={holidays} />
         </>}>
 
@@ -660,7 +660,8 @@ function LeadFollowUpCard({ lead, holidays }) {
 
   // ผ่านตัวกลางเหมือนทุกจอ (ใบ contacted ได้ค่าเดิมเสมอ) — ไม่มีจอไหนอ่าน `followUpAt` ตรง
   const followUpAt = leadActiveFollowUpAt(lead);
-  const state = followUpAt ? leadFollowUpState(followUpAt) : null;
+  // ⭐ ส่งวันหยุดด้วย — เหลือง (เลยไม่เกิน 2 วันทำการ) / แดง (เกินนั้น + กระดิ่ง) นับวันทำการแบบเดียวกับการทวง (มติ 23/11/2026)
+  const state = followUpAt ? leadFollowUpState(followUpAt, undefined, holidays) : null;
   const daysLate = followUpAt
     ? businessDaysWaiting(followUpAt, new Date().toISOString(), holidays || new Set())
     : null;
@@ -685,7 +686,10 @@ function LeadFollowUpCard({ lead, holidays }) {
         <div className={styles.summaryRow}>
           <span>สถานะ</span>
           <strong className={styles.followUpValue} data-tone={state}>
-            {state === "late" ? `เลยมาแล้ว ${daysLate} วันทำการ` : state === "today" ? "ถึงกำหนดวันนี้" : "ยังไม่ถึงกำหนด"}
+            {/* 🐞 "เลยมาแล้ว 0 วันทำการ" — เลยตามปฏิทินแต่ยังไม่ครบวันทำการ (เสาร์/วันหยุด) ⇒ บอกว่าเลยกำหนดแล้วเฉย ๆ */}
+            {state === "late" || state === "grace"
+              ? (daysLate > 0 ? `เลยกำหนด ${daysLate} วันทำการ` : "เลยกำหนดแล้ว")
+              : state === "today" ? "ถึงกำหนดวันนี้" : "ยังไม่ถึงกำหนด"}
           </strong>
         </div>
         {/* บอกว่า "เข้าเกณฑ์แล้ว" ไม่ใช่ "ถูกส่งกลับแล้ว" — cron ทำงานเป็นรอบ
@@ -708,7 +712,7 @@ function LeadFollowUpCard({ lead, holidays }) {
   </DetailCard>;
 }
 
-function LeadSummary({ lead }) {
+function LeadSummary({ lead, holidays = null }) {
   const followUpAt = leadActiveFollowUpAt(lead);
   return <DetailCard icon={Inbox} eyebrow="Lead summary" title="สรุปลีด">
     <div className={styles.summaryRow}><span>สถานะ</span><strong>{LEAD_STATUS_LABELS[lead.status] || lead.status}</strong></div>
@@ -732,7 +736,7 @@ function LeadSummary({ lead }) {
     {followUpAt && (
       <div className={styles.summaryRow}>
         <span>ติดตามต่อ</span>
-        <strong className={styles.followUpValue} data-tone={leadFollowUpState(followUpAt)}>{fmtDate(followUpAt)}</strong>
+        <strong className={styles.followUpValue} data-tone={leadFollowUpState(followUpAt, undefined, holidays)}>{fmtDate(followUpAt)}</strong>
       </div>
     )}
   </DetailCard>;
