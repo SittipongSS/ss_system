@@ -615,7 +615,8 @@ export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
 export function bouncedDaysText(request, { todayIso = null } = {}) {
   if (!request?.bouncedAt || request.status !== 'draft') return null;
   // วันไทยของตราตีกลับ — ตัดสตริงตรง ๆ = วัน UTC ⇒ ตีกลับตอนตีหนึ่งถึงเจ็ดโมงนับ "ค้าง" เกินหนึ่งวัน (23/11/2026)
-  const at = businessDayKey(String(request.bouncedAt)) || String(request.bouncedAt).slice(0, 10);
+  const at = businessDayKey(String(request.bouncedAt));
+  if (!at) return null; // ตราเสียรูป = ไม่มีวันให้นับ (ไม่ถอยไปตัดสตริงวัน UTC)
   if (!todayIso) return { date: at, note: 'ตีกลับแล้ว', days: null };
   const ms = Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${at}T00:00:00Z`);
   if (!Number.isFinite(ms)) return { date: at, note: 'ตีกลับแล้ว', days: null };
