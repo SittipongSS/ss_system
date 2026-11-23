@@ -13,14 +13,6 @@
   margin-bottom: 0;
 }
 
-.head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-}
-
 /* แถบตัวเลข — โทนบอกน้ำหนัก ไม่ใช่ตกแต่ง (warn = มีของค้างที่ต้องขยับ) */
 .counts {
   display: flex;
