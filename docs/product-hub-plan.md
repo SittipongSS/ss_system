@@ -1,6 +1,6 @@
 # หน้าสินค้าศูนย์รวม
 
-> สถานะ: **รอตรวจ** · มติ 10 ข้อ (18/11/2026) · ครบ 4 งวดบน main — S1 #2083 `18efa9bf` · S2–S4 #2088 `da931423` · เหลือ UAT ด้วยบทบาท AE / RD / RA และขึ้น prod (deploy อัตโนมัติ)
+> สถานะ: **รอตรวจ** · มติ 10 ข้อ (18/11/2026) · ครบ 4 งวดบน main — S1 #2083 `18efa9bf` · S2–S4 #2088 `da931423` · ขึ้น prod แล้ว 18/11 (ตรวจ 2026-11-23) · เหลือ UAT ด้วยบทบาท AE / RD / RA
 
 ม็อก: artifact `B61vojPZobbLbRgTX9VZtx` · ต้นทาง `~/ss-team/mockups/product-hub/index.html` (ข้อมูลจริง FG-109-01-002-0350)
 ต้นแบบ: [customer-hub-plan.md](customer-hub-plan.md) · ของเดิมที่หน้านี้ต่อยอด: [product-detail-tabs.md](product-detail-tabs.md)

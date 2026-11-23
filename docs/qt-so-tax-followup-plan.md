@@ -1,5 +1,7 @@
 # แผนงานต่อจาก PR #739 — QT/SO Workflow, ปุ่มเอกสาร, และ Template ภาษี
 
+> สถานะ: **กำลังดำเนินการ** · ตรวจกับโค้ดเมื่อ 2026-11-23 · PR-A (A1–A4 `c784cdae`) และ B1/B6/B8/C1 (`676e7dbc`) ทำแล้ว 26/07 · ข้ออื่นยังไม่ได้ไล่ตรวจกับโค้ด · D2 `revise_quotation_atomic` ยังไม่มีบน main
+
 เขียนวันที่ 2026-07-26 · ที่มา: รีวิว [PR #739](https://github.com/SittipongSS/ss-system/pull/739) (merged `4febbad1`, commit `144a2976`) เทียบกับ *แผนแม่บทรวม QT / SO / เอกสารภาษี / Document Control / Notification*
 
 เอกสารนี้ **self-contained** — อ่านจบแล้วลงมือได้เลยโดยไม่ต้องย้อนอ่าน session เดิม
