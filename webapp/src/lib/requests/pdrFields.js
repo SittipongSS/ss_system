@@ -30,6 +30,7 @@ import {
 import { BRAND_ARCHETYPES } from '@/lib/requests/kinds/rd/scentBriefTypes';
 import { addressTextIn, customerAddresses, primaryBillingAddress } from '@/lib/master/addresses';
 import { requestPdrRowsPickScent, requestUsesScentBriefs } from '@/lib/master/requestTypes';
+import { businessDayKey } from '@/lib/datePeriods';
 
 export const PDR_REQUEST_TYPES = [
   { value: 'new_product', label: 'New Product' },
@@ -917,7 +918,8 @@ export function pdrSectionGroups(section, request = null, context = {}) {
 // ต้องขึ้น N/A ตามกติกาของช่อง ไม่ใช่ขีดที่อ่านเหมือนว่าไม่มีวัน
 function requestedAtText(request = {}) {
   const at = request.submittedAt || null;
-  return at ? fmtDate(String(at).slice(0, 10)) : null;
+  // วันไทยของตราส่ง (timestamp) — ส่งตอนตีหนึ่งถึงเจ็ดโมงเคยพิมพ์วันก่อนหน้าบนหัวกระดาษ PDR (23/11/2026)
+  return at ? fmtDate(businessDayKey(String(at))) : null;
 }
 
 function sampleDueText(request = {}) {

@@ -37,6 +37,7 @@ import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { categoryLabel } from '@/lib/master/categoryOf';
 import { businessDate } from '@/lib/businessDate';
+import { businessDayKey } from '@/lib/datePeriods';
 
 export const dynamic = 'force-dynamic';
 
@@ -224,7 +225,8 @@ export async function POST(request, { params }) {
     // สองแถวต่อหนึ่งรอบแก้ แถวที่รออยู่จะค้างถาวรเพราะไม่มีกลิ่นผูก ⇒ ใส่ราคาไม่ได้
     // ⇒ ใบปิดไม่ลง · `sortOrder` ของแถวเดิมไม่แตะ — ลำดับบนจอต้องไม่กระโดด
     const base = Math.max(0, ...(before.items || []).map((i) => i.sortOrder || 0));
-    const ackAt = before.acknowledgedAt ? String(before.acknowledgedAt).slice(0, 10) : null;
+    // วันไทยของตรารับเรื่อง — ตัดสตริงตรง ๆ = วัน UTC (รับเรื่องตอนตีหนึ่งถึงเจ็ดโมงได้วันก่อนหน้า · 23/11/2026)
+    const ackAt = before.acknowledgedAt ? businessDayKey(String(before.acknowledgedAt)) : null;
     let fresh = 0;
     const inserts = [];
     for (const { row, scent, formula } of created) {

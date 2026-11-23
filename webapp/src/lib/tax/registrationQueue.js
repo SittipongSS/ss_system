@@ -8,11 +8,14 @@
 // ในนี้ ไม่งั้นค่าจะเปลี่ยนระหว่างเรนเดอร์และเทสต์จะผูกกับวันที่รันเทสต์
 
 import { exciseBasePriceIncVat, hasOwnTaxBase, usesPieceTaxBase } from '@/lib/excise/giftSetExcise';
+import { businessDayKey } from '@/lib/datePeriods';
 
 /** จำนวนวันเต็มจาก `fromIso` ถึง `todayIso` (ทั้งคู่เป็นวันไทย YYYY-MM-DD หรือ timestamp) */
 export function ageInDays(from, todayIso) {
   if (!from || !todayIso) return null;
-  const start = String(from).slice(0, 10);
+  /* 🐞 timestamp → **วันไทย** (`businessDayKey`) ไม่ใช่ตัดสตริงวัน UTC — ทะเบียนที่ส่งตอน 00:00–07:00 ไทยเคยนับเกินหนึ่งวัน
+     และเข้าแถบ "ค้างเกิน 8 วัน" เร็วหนึ่งวัน (ตรวจทั้งระบบ 23/11/2026) · วันล้วน (YYYY-MM-DD) ได้ค่าเดิม */
+  const start = businessDayKey(String(from)) || '';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(todayIso)) return null;
   const ms = Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`);
   if (!Number.isFinite(ms)) return null;

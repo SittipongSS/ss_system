@@ -7,6 +7,8 @@
 // (Distinct from lib/pm/status.js, which is the SERVER-side predecessor-graph
 // auto-status propagation. This file is purely presentation-derived + JSX-free.)
 
+import { businessDate } from '@/lib/businessDate';
+
 // ── Project-level ─────────────────────────────────────────────────────
 // Derived status of a project from its own `status` + its tasks:
 //   Dropped / On Hold (explicit) → Completed → Delayed → New → On Track.
@@ -72,14 +74,13 @@ export const projectDateRange = (p) => {
 export const targetDate = (t) => t.finishDate || t.dueDate || null;
 
 // จำนวนวันถึงกำหนด (ลบ = เลยกำหนด) — null ถ้าไม่มีกำหนด
-export const daysToDue = (t) => {
-  const td = targetDate(t);
-  if (!td) return null;
-  const d = new Date(td);
-  if (isNaN(d.getTime())) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  d.setHours(0, 0, 0, 0);
-  return Math.floor((d - today) / (1000 * 60 * 60 * 24));
+/* 🐞 วันไทย ไม่ใช่นาฬิกาเครื่อง (ตรวจทั้งระบบ 23/11/2026) — เดิม `setHours(0,0,0,0)` ของเครื่องผู้ใช้ ขณะที่ server ตัดสิน
+   "เลยกำหนด" ด้วยวันไทย ⇒ เครื่องที่ตั้งโซนอื่นเห็น "เหลือ 0 วัน" กดปิดแล้วโดน 400 "งานนี้เลยกำหนดแล้ว…" · `today` ส่งได้ (เทสต์/จอที่ถือวันไว้) */
+export const daysToDue = (t, today = businessDate()) => {
+  const td = String(targetDate(t) || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(td) || !today) return null;
+  const diff = Math.round((Date.parse(`${td}T00:00:00Z`) - Date.parse(`${String(today).slice(0, 10)}T00:00:00Z`)) / 86400000);
+  return Number.isFinite(diff) ? diff : null;
 };
 
 // ต้องรีบ = ยังไม่เสร็จ และเลยกำหนด/เหลือ ≤3 วัน
