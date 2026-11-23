@@ -188,13 +188,17 @@ test('หน้าใบ: โมดัลอนุมัติเลือกแ
   const choice = slice(page, 'function ActualModeChoice(', '\n}\n');
   assert.match(choice, /<OptionTiles/);
   assert.doesNotMatch(choice, /<Select|SearchableSelect|<select/, 'ชุดตายตัวสองตัวเลือก = แผ่น (memory: direct controls over dropdowns)');
-  // mig 0439 · มติ 20/11: สามแผ่น ไม่นับ · เต็ม ("ทั้งใบ" → "เต็ม") · รายงวด
-  assert.match(choice, /label: "นับ Actual เต็ม"/);
-  assert.match(choice, /label: "นับ Actual รายงวด"/);
-  assert.match(choice, /label: "ไม่นับ Actual"/);
-  assert.ok(choice.indexOf('label: "ไม่นับ Actual"') < choice.indexOf('label: "นับ Actual เต็ม"'), 'แผ่นไม่นับอยู่หน้าสุด');
-  assert.match(choice, /disabled: !eligible,/, 'เลือกไม่ได้ = แผ่นดับ ไม่ซ่อน');
-  assert.match(choice, /\{eligibility && !eligible \? <p className="form-note">\{eligibility\.reason\}<\/p> : null\}/, 'เหตุเป็นตัวหนังสือใต้แผ่น');
+  // mig 0439 · มติ 20/11: สามแผ่น ไม่นับ · เต็ม ("ทั้งใบ" → "เต็ม") · รายงวด — ชุดแผ่นอยู่ที่ตัวคิดกลาง lib/sales/actualModeTiles (มติ 23/11 ล็อกแผ่นของใบค่าสรรพสามิต)
+  assert.match(choice, /options=\{actualModeTileOptions\(/);
+  const tiles = code('lib/sales/actualModeTiles.js');
+  assert.match(tiles, /label: 'นับ Actual เต็ม'/);
+  assert.match(tiles, /label: 'นับ Actual รายงวด'/);
+  assert.match(tiles, /label: 'ไม่นับ Actual'/);
+  const normal = slice(tiles, 'const eligible = Boolean', '\n  ];\n');
+  assert.ok(normal.indexOf("label: 'ไม่นับ Actual'") < normal.indexOf("label: 'นับ Actual เต็ม'"), 'แผ่นไม่นับอยู่หน้าสุด');
+  assert.match(normal, /disabled: !eligible,/, 'เลือกไม่ได้ = แผ่นดับ ไม่ซ่อน');
+  assert.match(tiles, /eligibility && !eligibility\.eligible \? eligibility\.reason : null/, 'เหตุเป็นตัวหนังสือใต้แผ่น');
+  assert.match(choice, /actualModeTileNotes\([^)]*\)\.map\(\(note\) => <p key=\{note\} className="form-note">\{note\}<\/p>\)/);
 
   /* โมดัลอนุมัติปกติ: ผล/ป้ายปุ่มคิดต่อแบบ · ส่งแบบที่เลือก (ref — closure ตอนเปิดเห็นค่าเก่า) */
   const approve = slice(page, 'if (action === "approve") {', '\n      return;');
@@ -202,7 +206,7 @@ test('หน้าใบ: โมดัลอนุมัติเลือกแ
   assert.match(approve, /\.\.\.approveActualLines\(mode, plan\),/);
   /* มติข้อ 10 (review รอบสี่): Rev. ของใบที่กดนับที่เหลือทั้งหมด = ป้ายปุ่มบอกว่านับที่ค้างทั้งหมด ไม่ใช่ "งวด 1" */
   /* UAT 27/10 ข้อ 10: ป้ายของแผ่นรายงวดคิดจากงวดที่ขั้นนับตอนอนุมัติจะนับจริง (plan.start) — ไม่ใช่ "งวด 1" ตายตัว */
-  assert.match(approve, /confirmLabel: mode === ACTUAL_MODE_NONE \? APPROVE_CONFIRM_NONE_LABEL\s*: mode === ACTUAL_MODE_INSTALLMENT \? approveInstallmentConfirmLabel\(plan\) : APPROVE_CONFIRM_ORDER_LABEL,/);
+  assert.match(approve, /confirmLabel: isExciseOrder\(order\) \|\| mode === ACTUAL_MODE_NONE \? APPROVE_CONFIRM_NONE_LABEL\s*: mode === ACTUAL_MODE_INSTALLMENT \? approveInstallmentConfirmLabel\(plan\) : APPROVE_CONFIRM_ORDER_LABEL,/);
   assert.match(approve, /actualEligibility: \{ \.\.\.plan\.eligibility, countRestDone: plan\.countRestDone \},/);
   /* ไม่นับ (0439): เหตุผลผ่านด่านก่อนยิง · ส่ง actualReason คู่แบบ (approveActualPayload) */
   assert.match(approve, /if \(!actualReasonReady\(mode, approveActualReasonRef\.current\)\) return false;\s*return requestAction\("approve", approveActualPayload\(mode, approveActualReasonRef\.current\)\);/);
@@ -244,7 +248,7 @@ test('หน้าใบ: โมดัลอนุมัติเลือกแ
   assert.match(lines, /"งวดที่ยังไม่นับ: ฝ่ายขายแจ้งสลิป\/บัญชีรับรองเงินได้หลัง AE Sup อนุมัตินับงวดนั้นแล้ว/);
   assert.match(lines, /hasServiceRounds\s*\? "ใบงานบริการ: “จ่ายถึง” และนัดช่างหลังช่วงที่รับรองแล้ว ขยับเมื่อ AE Sup อนุมัติงวดนั้นและบัญชีรับรองเงินแล้ว — ทุกงวด"\s*: null,/);
   assert.match(page, /const hasServiceRounds = orderHasServiceRounds\(order, order\?\.lines\);/);
-  assert.match(slice(page, 'function ActualModeChoice(', '\n}\n'), /"งวด 1 เข้าเดือนนี้ · งวดถัดไป ยื่น → AE Sup อนุมัติ → แจ้งสลิป → บัญชีรับรอง"/);
+  assert.match(code('lib/sales/actualModeTiles.js'), /'งวด 1 เข้าเดือนนี้ · งวดถัดไป ยื่น → AE Sup อนุมัติ → แจ้งสลิป → บัญชีรับรอง'/);
   const plan = slice(page, 'function approveActualPlan() {', '\n  }\n');
   assert.match(plan, /actualModeEligibility\(order, frozenCount\)/, 'สิทธิ์เลือกจากไฟล์กติกาตัวเดียวกับ route');
   // จำนวนงวดตัวเดียวกับ route (installmentCountAtFreeze — คู่กับทุกกิ่งของ freezeInstallments) ไม่ใช่ installments.length ตรง ๆ
@@ -658,8 +662,8 @@ test('รอบสี่: โมดัลยื่น/อนุมัติง�
 /* 🐞 มติข้อ 10: Rev. ของใบที่กดนับที่เหลือทั้งหมด — แผ่น/ปุ่ม/ทักยังสัญญา "งวดถัดไป ยื่น → AE Sup อนุมัติ" ทั้งที่ไม่มีการยื่นรายงวดอีก */
 test('รอบสี่ (มติข้อ 10): แผ่นรายงวด · ปุ่มยืนยัน · ทักหลังอนุมัติ · ทักปุ่มกู้ ของใบที่กดนับที่เหลือทั้งหมด ไม่สัญญาการยื่น/อนุมัติรายงวด', () => {
   const page = code(SO_PAGE);
-  const choice = slice(page, 'function ActualModeChoice(', '\n}\n');
-  assert.match(choice, /eligibility\?\.countRestDone\s*\? "ใบก่อนหน้ากดนับที่เหลือทั้งหมดแล้ว — งวดที่ยังไม่นับนับให้เดือนนี้ทั้งหมด · ไม่ต้องยื่นรายงวด \(มติข้อ 10\)"/);
+  const choice = code('lib/sales/actualModeTiles.js');
+  assert.match(choice, /eligibility\?\.countRestDone\s*\? 'ใบก่อนหน้ากดนับที่เหลือทั้งหมดแล้ว — งวดที่ยังไม่นับนับให้เดือนนี้ทั้งหมด · ไม่ต้องยื่นรายงวด \(มติข้อ 10\)'/);
   assert.match(page, /const APPROVE_CONFIRM_COUNT_REST_LABEL = "อนุมัติและนับ Actual ที่ค้างทั้งหมด";/);
   // ตัวทักสองตัวรันจริงจาก source (ไม่ใช่ regex ของข้อความ)
   const approveToast = approveInstallmentToastOf(page);

@@ -58,10 +58,11 @@ test('ปุ่มอนุมัติของใบย้อนหลัง�
   assert.ok(historicalOverrideNote.length > 20);
 });
 
-test('🔴 "อนุมัติและนับ Actual" เป็นของใบ pipeline เท่านั้น — กิ่งของใบย้อนหลังต้องมาก่อน', () => {
+test('🔴 ปุ่มอนุมัติของใบ pipeline (เปิดโมดัลเลือกแบบนับ Actual) — กิ่งของใบย้อนหลังต้องมาก่อน', () => {
   const page = code(PAGE);
   const historicalBranch = page.indexOf('historical && canReviewThis && order.status === "pending_approval"');
-  const pipelineBranch = page.indexOf('label: "อนุมัติและนับ Actual"');
+  // มติเจ้าของ 23/11: ป้ายปุ่มของใบปกติเป็น "อนุมัติ" คำกลาง (เดิม "อนุมัติและนับ Actual") — ยึดกิ่งด้วยตัวเปิดโมดัล review("approve")
+  const pipelineBranch = page.indexOf('{ id: "approve", kind: "approve", label: "อนุมัติ", onClick: () => review("approve") }');
   assert.ok(historicalBranch > 0, 'ไม่มีกิ่งของใบย้อนหลังในปุ่มหลัก');
   assert.ok(pipelineBranch > historicalBranch, 'กิ่งใบย้อนหลังต้องมาก่อนกิ่งของใบปกติ ไม่งั้นใบย้อนหลังได้ป้ายผิด');
   // ตัวสร้างโมดัลของใบปกติ (approvalPrompt ตรง ๆ) ต้องไม่ถูกเรียกในเส้นของใบย้อนหลัง
