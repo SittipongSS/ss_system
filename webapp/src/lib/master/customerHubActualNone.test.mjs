@@ -33,7 +33,7 @@ test('ใบไม่นับ: ป้าย "ไม่นับ Actual · เ�
 test('แถวดีลที่มีแต่ใบไม่นับ: Actual 0 + ป้ายพร้อมเหตุผล', () => {
   const [row] = buildDealRows({ deals, orders: [NONE_SO] }, TODAY);
   assert.equal(row.actual, 0);
-  assert.deepEqual(row.actualNone, { count: 1, text: `ไม่นับ Actual · ${REASON}`, reasons: [REASON] });
+  assert.deepEqual(row.actualNone, { count: 1, text: `ไม่นับ Actual · ${REASON}`, short: 'ไม่นับ Actual', reasons: [REASON] });
 });
 
 test('แถวดีลที่ใบนับ Actual ตามปกติ = ไม่มีป้าย · ใบไม่นับที่ถูกแทนแล้วไม่นับ', () => {
@@ -48,7 +48,7 @@ test('แถวดีลที่ใบนับ Actual ตามปกติ = 
 test('ใบไม่นับหลายใบในดีลเดียว: "ไม่นับ Actual n ใบ" · เหตุผลทุกใบเก็บไว้ให้ title', () => {
   const second = { ...NONE_SO, id: 'S3', orderNumber: 'SO-26110480-0', actualNoneReason: 'ของแถมงานเปิดตัวสาขา ไม่คิดเงิน' };
   assert.deepEqual(dealActualNone([NONE_SO, second]), {
-    count: 2, text: 'ไม่นับ Actual 2 ใบ', reasons: [REASON, 'ของแถมงานเปิดตัวสาขา ไม่คิดเงิน'],
+    count: 2, text: 'ไม่นับ Actual 2 ใบ', short: 'ไม่นับ Actual 2 ใบ', reasons: [REASON, 'ของแถมงานเปิดตัวสาขา ไม่คิดเงิน'],
   });
   assert.equal(dealActualNone([]), null);
 });

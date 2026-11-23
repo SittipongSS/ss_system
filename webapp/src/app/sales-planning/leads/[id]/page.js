@@ -46,6 +46,7 @@ import { STAGE_LABELS } from "@/lib/salesPlanning";
 import { isWonDeal, pendingApprovalAmountOf, pendingApprovalCountOf } from "@/lib/sales/dashboardMetrics";
 import { dealDisplayValue } from "@/lib/sales/dealAmountDisplay";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import ActualNoneNote from "@/components/salesPlanning/ActualNoneNote";
 
 /* ป้ายของ `lead_events.kind` — ต้องครบทุกค่าที่ CHECK ของตารางยอมรับ (mig 0199)
    ไม่งั้นเหตุการณ์จะโชว์เป็นชื่อ kind ดิบบนไทม์ไลน์
@@ -540,6 +541,8 @@ export default function LeadDetailPage() {
                                 count={pendingApprovalCountOf(deal)}
                                 className={styles.dealPending}
                               />
+                              {/* ใบอนุมัติแบบ "ไม่นับ Actual" (mig 0439) — บอกว่าทำไม ฿0 · เหตุผลใน title */}
+                              <ActualNoneNote summary={deal.actualNone} />
                             </>
                           ),
                         }
