@@ -193,7 +193,8 @@ test('หน้าลีด: API ส่ง metadata ของดีล · กา
   // ส่งเฉพาะคีย์ที่การ์ดอ่าน ไม่ใช่ metadata ทั้งก้อน (คนเปิดหน้าลีดบางตำแหน่งไม่มีสิทธิ์หน้าดีล)
   /* mig 0412: คีย์ของ Actual รายงวด (Actual รายเดือน · งวดยื่นแล้ว · งวดรอนับ) ต้องมาด้วย — ตัวอ่านรออนุมัติของการ์ดรวม soInstPending* */
   assert.match(route, /DEAL_CARD_METADATA_KEYS = \[\s*'actualSource', 'soPendingAmount', 'soPendingCount',\s*'actualByMonth', 'soInstPendingAmount', 'soInstPendingCount', 'soInstRemainingByDue',\s*\]/);
-  assert.match(route, /relatedDeals: \(relatedDeals \|\| \[\]\)\.map\(\(deal\) => \(\{ \.\.\.deal, metadata: dealCardMetadata\(deal\.metadata\) \}\)\)/);
+  // ห่อด้วย attachActualNone (ป้าย "ไม่นับ Actual" ของการ์ด · mig 0439 · ตรวจ 23/11) — metadata ยังผ่าน dealCardMetadata ทุกใบ
+  assert.match(route, /relatedDeals: attachActualNone\(\(relatedDeals \|\| \[\]\)\.map\(\(deal\) => \(\{ \.\.\.deal, metadata: dealCardMetadata\(deal\.metadata\) \}\)\), actualNoneMap\)/);
   /* supabase ไม่ throw — ดีลที่ผูกอ่านไม่ขึ้นแล้วตกเป็น [] = การ์ด "ยังไม่มีดีล" + canDelete เปิด
      ⇒ ต้องเช็ค error ของทั้งสองก้อนก่อนประกอบคำตอบ */
   assert.match(route, /\{ data: relatedDeals, error: relatedDealsError \}/);

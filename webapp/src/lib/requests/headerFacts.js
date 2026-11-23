@@ -16,6 +16,7 @@ import { fmtDate } from '@/lib/format';
 import { requestKindMeta } from '@/lib/master/requestTypes';
 import { requestSideText } from '@/lib/requests/replyTurn';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { requestDueOwed } from '@/lib/requests/queueBoard';
 import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
 /* ประเมินจากแบบ งวด 4 (S4 C-5) — วันที่ผู้ขออยากให้เข้าพื้นที่มีตัวอ่านเดียว (pure · ใช้ได้ทั้งเบราว์เซอร์และ server) */
 import { SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveyWishedVisit } from '@/lib/service/surveyIntake';
@@ -57,6 +58,22 @@ export function countdownLabel(dueDate, now = new Date()) {
   if (days === 0) return 'ครบกำหนดวันนี้';
   if (days > 0) return `อีก ${days} วัน`;
   return `เลยกำหนดมา ${Math.abs(days)} วัน`;
+}
+
+/**
+ * นับถอยหลังของ **วันที่ฝ่ายรับปาก** — คำชุด "เลยกำหนด" (มติเจ้าของ 23/11/2026) · `{ text, tone }` หรือ null
+ *
+ * ⚠️ วันไทยล้วนทั้งคู่ (`YYYY-MM-DD` · หน้าส่ง `businessDate()` ที่จับใน effect) ⇒ เลขคณิตปฏิทินที่ตรึง `T00:00:00Z`
+ *    ไม่ใช่ปฏิทินของเครื่องแบบ `dayDiff` — ป้ายแดงต้องตรงกับคิวทุกเครื่อง ทุกเขตเวลา
+ */
+export function dueCountdown(due, today) {
+  if (!due || !today) return null;
+  const ms = Date.parse(`${due}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return null;
+  const days = Math.round(ms / DAY_MS);
+  if (days < 0) return { text: `เลยกำหนด ${-days} วัน`, tone: 'late' };
+  if (days === 0) return { text: 'ครบกำหนดวันนี้', tone: 'warn' };
+  return { text: `อีก ${days} วัน`, tone: null };
 }
 
 /**
@@ -114,18 +131,21 @@ export function requestHeaderPeople(request, { mine = false } = {}) {
  * @param progress `{ done, total }` ของบรรทัด
  * @param now ฉีดเวลาเข้ามาได้เพื่อให้เทสต์ตรึงค่าได้ (หน้าจอส่งเวลาจริง)
  */
-export function requestHeaderFacts(request, { hasItems = false, progress = null, now = new Date() } = {}) {
+export function requestHeaderFacts(request, { hasItems = false, progress = null, now = new Date(), today = null } = {}) {
   if (!request) return [];
   const facts = [];
 
   // ⭐ **วันที่ส่ง ไม่ใช่วันที่สร้าง** — ร่างที่ยังไม่ส่งไม่มีความหมายกับใครนอกจากคนเปิด
   // และคำถามแรกของคนตามงานคือ "ส่งไปกี่วันแล้ว" (มติผู้ใช้ ม-101)
   if (request.submittedAt) {
+    /* 🐞 ใบที่จบ/ยกเลิก/มีฝั่งปิดแล้วไม่นับ "ค้างมา n วัน" (ตรวจทั้งระบบ 23/11/2026) — เดิมนับขึ้นทุกวันบนใบยกเลิก
+       (RQ-FD-26110585 · ยกเลิกแล้วยังขึ้น "ค้างมา 6 วัน") · ตัวตัดสินชุดเดียวกับ `noCountdown` ข้างล่าง */
+    const ended = requestClosureStarted(request) || requestClosure(request).complete || requestClosure(request).cancelled;
     facts.push({
       key: 'submitted',
       label: 'ส่งเมื่อ',
       value: fmtDate(request.submittedAt),
-      sub: ageLabel(request.submittedAt, now),
+      sub: ended ? null : ageLabel(request.submittedAt, now),
     });
   } else {
     facts.push({ key: 'submitted', label: 'สถานะใบ', value: 'ยังไม่ได้ส่ง', sub: 'ร่างที่ยังไม่เข้าคิวฝ่าย' });
@@ -189,10 +209,16 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
       /* ⚠️ ยื่นเป็นประเมินจากแบบ (หัวหน้าสลับกลับเป็นลงหน้างานแล้วช่องนี้จึงขึ้น) — ไม่มีใครขอวันเข้า: บอกตรง ๆ และ
          **sub เป็น null** · ทางสำรองของวันว่าง ("ใบเก่าที่เปิดก่อนกติกาบังคับวัน") จะเรียกใบที่เพิ่งยื่นว่าใบเก่า */
       value: noWish ? SURVEY_NO_VISIT_WISH_TEXT : (wanted ? fmtDate(wanted) : '—'),
-      sub: noWish ? null : wanted ? (noCountdown ? null : countdownLabel(wanted, now)) : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
+      /* ⭐ **วันที่ผู้ขอขอเป็นวันอ้างอิงเฉย ๆ — ไม่นับถอยหลัง ไม่แดง** (มติเจ้าของ 23/11/2026)
+         🐞 เดิมนับ "เลยกำหนดมา n วัน" จากวันนี้ ขณะที่คิว/ตัวเลข/ปฏิทินนับ "เลยกำหนด" จากวันที่ฝ่ายรับปากเท่านั้น
+            ⇒ หัวใบบอกเลยกำหนดทั้งที่คิวบอก "อีก 3 วัน" · นับถอยหลังย้ายไปช่องวันที่ฝ่ายรับปากข้างล่าง */
+      sub: noWish ? null : wanted ? null : 'ใบเก่าที่เปิดก่อนกติกาบังคับวัน',
     });
 
-    const gap = committed && wanted ? committedVsRequested(committed, wanted) : null;
+    /* ⭐ นับถอยหลังเฉพาะวันที่ฝ่ายยังติดค้าง (`requestDueOwed` — ตัวตัดสินเดียวกับคิว: ตาผู้ขอ/มีฝั่งปิด/ใบจบ = ไม่นับ)
+       · เลยกำหนดแล้วไม่ต่อบรรทัด "เร็ว/ช้ากว่าที่ขอ" (`today` ทำให้ `committedVsRequested` เงียบ — S2b) */
+    const countdown = committed && !noCountdown && requestDueOwed(request) ? dueCountdown(committed, today) : null;
+    const gap = committed && wanted ? committedVsRequested(committed, wanted, { today: countdown?.tone === 'late' ? today : null }) : null;
     facts.push({
       key: 'committedDue',
       label: twoDates
@@ -205,8 +231,10 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
       value: committed ? fmtDate(committed) : (noCountdown ? '—' : 'ยังไม่ระบุ'),
       // ⚠️ คำนี้ต้องตรงกับปุ่ม (มติผู้ใช้ 2026-08-19) — วันกำหนดส่งไม่ได้เกิดตอนกดรับ
       // เรื่องอีกแล้ว มันเป็นก้าว "แจ้งกำหนดส่ง" ที่ฝ่ายกดทีหลังได้
-      sub: committed ? (gap?.text || null) : noDueReason(request, closure),
-      tone: committed ? gap?.tone || null : 'muted',
+      sub: committed
+        ? [countdown?.text, gap?.text].filter(Boolean).join(' · ') || null
+        : noDueReason(request, closure),
+      tone: committed ? countdown?.tone || gap?.tone || null : 'muted',
     });
   }
 

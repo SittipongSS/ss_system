@@ -206,8 +206,11 @@ test('🔴 ป้าย "เลยวันที่รับปากไว้"
   // ⭐ มติเจ้าของ 19/10: ไม่มี `total` — ผลรวมสองตาคือเลขที่ไม่มีลิงก์ไหนเปิดเจอ · หัวป้าย = `dept`
   assert.deepEqual(split, { dept: 1, requester: 1 });
   assert.equal(split.dept, queueRowsFor('/rd/requests?tab=todo&count=overdue', mix, t.todayIso).length);
-  assert.equal(split.requester, queueRowsFor('/rd/requests?tab=waiting&count=overdue', mix, t.todayIso).length);
-  assert.deepEqual(split, deptCountByTurn(mix, 'overdue', { dept: 'RD', todayIso: t.todayIso }));
+  // ⏸ ตาผู้ขอใช้คีย์ `pastDue` (หน้าภาพรวมคงเลขเดิม · มติ 23/11/2026) — `overdue` ของตาผู้ขอเป็น 0 เสมอแล้ว
+  assert.equal(split.requester, queueRowsFor('/rd/requests?tab=waiting&count=pastDue', mix, t.todayIso).length);
+  assert.deepEqual(split, deptCountByTurn(mix, 'pastDue', { dept: 'RD', todayIso: t.todayIso }));
+  assert.deepEqual(deptCountByTurn(mix, 'overdue', { dept: 'RD', todayIso: t.todayIso }), { dept: 1, requester: 0 },
+    'เลยกำหนดของแถบคิว = ตาฝ่ายเท่านั้น (มติเจ้าของ 23/11/2026)');
 });
 
 /* ══ ตัวเลขแยกตามตาใคร (มติเจ้าของ 19/10 · H9 M6) — ตัวเลขหลักนับเฉพาะตา RD · ตาผู้ขอเป็นปุ่มรอง ══════════
@@ -237,12 +240,12 @@ test('🔴 แยกตาแล้วไม่มีใบหาย — สอ�
   const opts = { dept: 'RD', todayIso: t.todayIso };
   const calendar = dueCalendar(openRdRows, { todayIso: t.todayIso });
   const undated = deptCountByTurn(mix, 'undated', opts);
-  const overdue = deptCountByTurn(mix, 'overdue', opts);
+  const overdue = deptCountByTurn(mix, 'pastDue', opts);
   assert.equal(undated.dept + undated.requester, calendar.undated);
   assert.equal(overdue.dept + overdue.requester, calendar.overdue);
   // ตัวนับจากใบทั้งหมด (แถบเตือน) = ตัวนับจากใบที่ยังไม่จบ (ปฏิทิน) — ใบที่ถูกตัดทิ้งไม่เคยเข้าเงื่อนไขอยู่แล้ว
   assert.deepEqual(deptCountByTurn(openRdRows, 'undated', opts), undated);
-  assert.deepEqual(deptCountByTurn(openRdRows, 'overdue', opts), overdue);
+  assert.deepEqual(deptCountByTurn(openRdRows, 'pastDue', opts), overdue);
 });
 
 /** ใบที่ช่องรายวันของปฏิทินทาแดง ทุกสัปดาห์ที่มีใบ — ทำตาม DueWeekPanel (dueCalendar วางวัน · marks ตัดสินสี) */
@@ -328,7 +331,7 @@ test('🔴 หน้า /rd: การ์ดสายพานใช้ลิง
   assert.match(overviewPage, /router\.push\(deptStageQueueHref\(stage\.key, \{ queueHref: "\/rd\/requests", month: today\.slice\(0, 7\) \}\)\)/);
   assert.match(overviewPage, /deptPipeline\(deptRows, \{ todayIso: today \}\)/, 'เดือนของการ์ดกับลิงก์มาจากวันเดียวกัน');
   assert.match(overviewPage, /router\.push\(deptTurnCountHref\("dept", "overdue", \{ queueHref: "\/rd\/requests" \}\)\)/);
-  assert.match(overviewPage, /router\.push\(deptTurnCountHref\("requester", "overdue", \{ queueHref: "\/rd\/requests" \}\)\)/);
+  assert.match(overviewPage, /router\.push\(deptTurnCountHref\("requester", "pastDue", \{ queueHref: "\/rd\/requests" \}\)\)/);
   assert.doesNotMatch(overviewPage, /router\.push\("\/rd\/requests\?tab=(todo|history)"\)/, 'ห้ามพาไปแท็บเปล่า');
 });
 

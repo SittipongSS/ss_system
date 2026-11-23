@@ -165,7 +165,7 @@ export default function RdOverviewPage() {
                 รอ RD {overdue.dept} ใบ
               </Button>
               {overdue.requester > 0 && (
-                <Button size="sm" variant="quiet" onClick={() => router.push(deptTurnCountHref("requester", "overdue", { queueHref: "/rd/requests" }))}>
+                <Button size="sm" variant="quiet" onClick={() => router.push(deptTurnCountHref("requester", "pastDue", { queueHref: "/rd/requests" }))}>
                   ส่งแล้ว รอผู้ขอ {overdue.requester} ใบ
                 </Button>
               )}
@@ -183,7 +183,7 @@ export default function RdOverviewPage() {
           tone="neutral"
           icon={AlarmClock}
           action={(
-            <Button size="sm" onClick={() => router.push(deptTurnCountHref("requester", "overdue", { queueHref: "/rd/requests" }))}>
+            <Button size="sm" onClick={() => router.push(deptTurnCountHref("requester", "pastDue", { queueHref: "/rd/requests" }))}>
               ส่งแล้ว รอผู้ขอ {overdue.requester} ใบ
             </Button>
           )}

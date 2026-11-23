@@ -29,7 +29,7 @@ import { fmtDate, fmtNumber, fmtTime, NA } from "@/lib/format";
 import styles from "./requestForm.module.css";
 import { requestProgress } from "@/lib/deptRequests";
 import {
-  QUEUE_COUNT_META, bouncedDaysText, groupQueueRows,
+  QUEUE_COUNT_FILTER_LABELS, bouncedDaysText, groupQueueRows,
   requestDueText, requestQueueStatus, requestSettled,
 } from "@/lib/requests/queueBoard";
 import { businessDate } from "@/lib/businessDate";
@@ -640,7 +640,7 @@ export default function RequestQueuePanel({
         {countFilter && (
           /* ตัวกรองที่ใช้อยู่เป็นปุ่มกดล้าง — ต้นแบบหน้างานของฉันใช้ทรงเดียวกัน */
           <Button size="sm" onClick={() => setCountFilter(null)}>
-            กรอง: {QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label} ×
+            กรอง: {QUEUE_COUNT_FILTER_LABELS[countFilter]} ×
           </Button>
         )}
         {/* ── ชุดเดียวกับหน้ารายการดีล: กรอง → จัดกลุ่ม → ย่อ/ขยาย → เรียง+ทิศ ──
@@ -710,7 +710,7 @@ export default function RequestQueuePanel({
           {/* ⚠️ ว่างเพราะ "ไม่มีงาน" กับว่างเพราะ "ตัวกรองตัดหมด" ต้องอ่านคนละแบบ —
               ไม่งั้นคนจะปิดหน้าไปทั้งที่งานยังอยู่ แค่ถูกกรองอยู่ */}
           {countFilter
-            ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_META.find((m) => m.key === countFilter)?.label}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
+            ? `ไม่มีคำร้องที่ "${QUEUE_COUNT_FILTER_LABELS[countFilter]}" — กดตัวเลขซ้ำเพื่อดูทั้งหมด`
             /* ⚠️ ว่างเพราะคำค้น/ตัวกรอง ≠ ว่างเพราะไม่มีใบ — ข้อความของผู้เรียกพูดถึงชุดทั้งก้อน
                ("ไม่มีใบที่ยังไม่จบ…") ซึ่งโกหกทันทีที่มีคำค้นค้างอยู่ (รีวิวจับได้ ม-145) */
             : rows.length > 0 && (String(search || "").trim() || filterCount > 0)

@@ -206,6 +206,12 @@ export function nextByStageFor(row) {
   return isDocLineKind(row?.lineKind) ? NEXT_BY_STAGE_DOC : NEXT_BY_STAGE;
 }
 
+/**
+ * ฝั่งที่ถือแถวใน `stage` นี้ — 'dept' · 'requester' · null (จบแล้ว) · รับ **ขั้นที่คิดไว้แล้ว** (แถวของตารางสรุปทั้งใบ)
+ * ⚠️ สองสายพูดตรงกันทุกขั้นที่เกิดได้จริง (ขั้นราคาไม่มีในสายเอกสาร) ⇒ อ่านตารางสายพัฒนาตัวเดียวพอ
+ */
+export const rowStageOwner = (stage) => NEXT_BY_STAGE[stage]?.owner || null;
+
 // คืน { stage, owner, label, isMine } หรือ null ถ้าแถวนี้จบแล้ว
 // `request` ต้องมาด้วยเพราะ "ใครคือฝ่ายที่ต้องตอบ" อยู่บนหัวใบ ไม่ใช่บนแถว
 export function nextStepForRow(row, request, user) {

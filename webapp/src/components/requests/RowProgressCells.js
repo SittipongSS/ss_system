@@ -11,6 +11,7 @@
 import StepTrack from "@/components/ui/StepTrack";
 import ReadableText from "@/components/ui/ReadableText";
 import { idleFromStamps, idleLabel } from "@/lib/requests/rowTrack";
+import { rowOwesDue } from "@/lib/requests/dueCell";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import { INGREDIENT_LIST_LABEL } from "@/lib/master/ingredientList";
 import styles from "./briefBoard.module.css";
@@ -91,7 +92,8 @@ export function RowPriceCell({ prices = [] }) {
    ⚠️ `due` คิดครั้งเดียวที่เปลือก (`requestDueCell`) ไม่ใช่รายแถว — `dueIsStale`
    ไล่ทุกแถวในใบ เรียกรายแถวแล้วเป็น O(n²) */
 export function RowDueCell({ row, due = null, show = true }) {
-  if (!due || row.settled || !show) return <td />;
+  // ⭐ แถวที่ฝ่ายส่งแล้ว (ตาผู้ขอ) ไม่ผูกกับกำหนดนี้เหมือนแถวที่จบ (มติเจ้าของ 23/11/2026 · `rowOwesDue`)
+  if (!due || !rowOwesDue(row) || !show) return <td />;
   return (
     <td className={`${styles.dueCell} ${due.tone ? styles[`due_${due.tone}`] : ""}`.trim()}>
       {due.text}

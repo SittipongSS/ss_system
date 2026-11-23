@@ -15,6 +15,7 @@
 
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
+import { requestDueOwed } from '@/lib/requests/queueBoard';
 import { MEETING_MODE_LABELS } from '@/lib/sales/leads';
 import { APPOINTMENT_MODE_LABELS, STUDIO_ROOM_LABELS } from '@/lib/sales/leadAppointments';
 
@@ -358,6 +359,9 @@ export function buildScheduleDueItems({ tasks = [], requests = [], todayIso = nu
     const committed = isoDay(liveDueDate(request));
     const date = committed || isoDay(request?.requestedDueDate);
     if (!date) continue;
+    /* ⭐ ฝ่ายส่งครบแล้ว (ตาเรา) = ไม่ใช่ "เลยกำหนด" (มติเจ้าของ 23/11/2026 · ตัวตัดสินเดียวกับคิว `requestDueOwed`)
+       🐞 เดิมแดงตามวันที่ฝ่ายรับปากแม้ RD ส่งของแล้วรอเรารับ/ส่งลูกค้า ⇒ จอนี้แดง คิวไม่แดง */
+    const owed = !!committed && !!requestDueOwed(request);
     out.push({
       key: `request:${request.id}`,
       kind: 'request',
@@ -366,12 +370,12 @@ export function buildScheduleDueItems({ tasks = [], requests = [], todayIso = nu
       sub: [request.docNo, request.dept].filter(Boolean).join(' · '),
       date,
       dateNote: committed ? 'ฝ่ายแจ้งวันส่ง' : 'ผู้ขอต้องการรับงาน — ฝ่ายยังไม่แจ้งวันส่ง',
-      statusLabel: committed ? 'รอฝ่ายส่งงาน' : 'รอฝ่ายแจ้งกำหนดส่ง',
+      statusLabel: !committed ? 'รอฝ่ายแจ้งกำหนดส่ง' : owed ? 'รอฝ่ายส่งงาน' : 'ฝ่ายส่งแล้ว — รอเราทำต่อ',
       href: `/requests/${request.id}`,
       urgent: !!request.urgent,
       /* ⚠️ ใบที่ยังไม่มีใครรับปาก **ไม่ใช่ "เลยกำหนด"** — วันที่ในใบเป็นความต้องการของ
          ผู้ขอ ไม่มีใครผิดสัญญา · ป้ายแดงตรงนี้จะกลายเป็นการโทษฝ่ายที่ยังไม่ได้รับปาก */
-      ...(committed ? overdueOf(date, todayIso) : { overdue: false, days: dayDiff(date, todayIso) }),
+      ...(owed ? overdueOf(date, todayIso) : { overdue: false, days: dayDiff(date, todayIso) }),
     });
   }
 

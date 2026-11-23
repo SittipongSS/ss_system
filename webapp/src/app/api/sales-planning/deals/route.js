@@ -40,6 +40,7 @@ import { missingDealDatesAfterWrite } from '@/lib/sales/dealRequiredFields';
 import { clientDealMetadataOnCreate, isLegacyWonCreate, legacyWonCreateError } from '@/lib/sales/legacyDealSwitch';
 import { businessDate } from '@/lib/businessDate';
 import { wantsReviewOnly } from '@/lib/sales/dealListFilter';
+import { loadDealActualNone } from '@/lib/sales/dealActualNone';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,9 +138,15 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     }
   }
 
+  /* ใบ "ไม่นับ Actual" ของดีล Won (mig 0439 · ตรวจ 23/11) — cache บนดีลไม่บวกใบแบบนี้และไม่มีคีย์บอก ⇒ รายการดีล/ลิ้นชักขึ้น ฿0 เฉย ๆ
+     แนบสรุปให้จอวาดป้าย "ไม่นับ Actual" (lib/sales/dealActualNone) · อ่านไม่ขึ้น = ตอบ error เหมือนขั้นตอนไทม์ไลน์ข้างบน */
+  const { map: actualNoneMap, error: actualNoneError } = await loadDealActualNone(supabase, visible, { fetchInChunks, fetchAllResult });
+  if (actualNoneError) return fail(actualNoneError.message, 500);
+
   const rows = visible.map((d) => ({
     ...d,
     canEdit: editor && inSalesEditScope(user, d),
+    actualNone: actualNoneMap.get(d.id) || null,
     forecastDrift: driftMap.get(d.id) || null,
     timelineStep: summarizeTimelineStep(stepMap.get(d.id)),
     /* ชื่อลูกค้าที่ฝังมากับแถวต้องตกไปอังกฤษได้ (แพตเทิร์นเดียวกับ deals/[id]/overview)
