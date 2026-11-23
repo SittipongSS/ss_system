@@ -18,6 +18,8 @@
 > | **R-5 ปิดรูรั่ว `ON DELETE SET NULL`** | ✅ *(2026-08-12 · mig 0232)* | 7 FK เป็น `RESTRICT` แล้ว: `dept_requests.scentId/formulaId` · `dept_request_items.scentId/producedScentId/producedFormulaId` · `material_prices.scentId/formulaId` · `products` คง `SET NULL` ตามมติ · บังคับลบต้องปลดเองก่อนผ่าน `unlinkRegistryRefs()` |
 > | R-6 ผลลัพธ์ต่อหัวข้อ | ✅ *(ตกไปโดยธรรมชาติ)* | `OUTCOME_REGISTRY_BY_KIND` ว่าง **โดยตั้งใจ** — โมเดลใหม่กลิ่นเข้าทะเบียน **ตอน RD กดส่ง** (`producedScentId`) ไม่ใช่ตอนปิดเรื่อง · กลไกเก็บไว้เป็นตาข่าย (ดูคอมเมนต์ใน `lib/requests/outcomes.js`) |
 >
+> ✅ **ปิดแล้ว (ตรวจ 2026-11-23):** mig 0181 + 0182 ย้าย `material_prices_identity_uk` ไปยึด `formulaId` ตั้งแต่ 29/07 ·
+> คอมเมนต์ท้าย 0232 ที่ว่ายังยึด `formulaCode` เขียนผิด · ข้อความเดิม:
 > 🪤 **สิ่งที่ R-5 ไม่ได้แก้ และยังค้างอยู่** — `material_prices_identity_uk` ยังยึด
 > `formulaCode` (text) ไม่ใช่ pointer (`0171:145` เขียนเตือนไว้เอง) ⇒ ตัวตนของราคากับ
 > pointer ยังไม่รวมร่างกัน · หนี้ก้อนนี้มาจาก PR-5 ของแผนเดิม ไม่ใช่ของ R-5

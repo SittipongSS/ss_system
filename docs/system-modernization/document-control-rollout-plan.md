@@ -1,6 +1,8 @@
 # แผนขยาย Contextual Right Rail และ Document Control ทั้งระบบ
 
-> สถานะ: Implementation และ automated acceptance ครบ — PR #738 ผ่าน CI; รอ staging UAT
+> สถานะ: **เสร็จสมบูรณ์** · ตรวจกับโค้ดเมื่อ 2026-11-23 · PR #738 merge 2026-07-26 · ไม่มี staging แยก (ฐาน dev = prod) จึงไม่มีรอบ staging UAT ·
+> Phase 5 "SO ↔ Excise Filing v2" ถูกแทนด้วย [excise-qt-so-rework-plan.md](../excise-qt-so-rework-plan.md) (v3: RA ทำงานใน `/tax` ไม่มีขั้นสร้างใบยื่น)
+> เดิม: Implementation และ automated acceptance ครบ — PR #738 ผ่าน CI; รอ staging UAT
 > เริ่ม: 2026-07-26
 > ฐานโค้ด: `main` หลัง PR #734
 > Branch: `codex/document-control-rollout`
