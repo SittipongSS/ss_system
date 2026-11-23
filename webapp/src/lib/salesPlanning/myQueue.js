@@ -17,7 +17,7 @@ import { BACKLOG_READINESS } from '@/lib/excise/exciseBacklog';
 import { TRACKS } from '@/lib/excise/workflow';
 import { fmtDate } from '@/lib/format';
 import { requestKindLabel, requestLineNoun } from '@/lib/master/requestTypes';
-import { LEAD_STATUS_LABELS } from '@/lib/sales/leads';
+import { LEAD_STATUS_LABELS, leadActiveFollowUpAt, leadFollowUpState } from '@/lib/sales/leads';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosure } from '@/lib/requests/closure';
 import { businessDayKey } from '@/lib/datePeriods';
@@ -115,12 +115,13 @@ const dayDiff = (fromIso, toIso) => {
    🐞 **แยกสองอย่างนี้ไม่ได้แปลว่าโหดกับตัวเอง มันแปลว่าโกหก** — เวอร์ชันแรกให้ทุกแถว
    ใช้กฎเดียวกัน ⇒ ใบเสนอราคาที่เพิ่ง Won เมื่อวาน ขึ้นกลุ่ม "เลยกำหนดแล้ว" ทันที
    ทั้งที่ไม่มีใครเคยรับปากวันไหนไว้เลย · ของแบบนั้นเป็น "ทำได้แล้ววันนี้" ไม่ใช่ "สาย" */
-function row({ kind, id, step, title, sub, due, href, urgent = false, basis = 'deadline', todayIso }) {
+function row({ kind, id, step, title, sub, due, href, urgent = false, basis = 'deadline', todayIso, grace = false }) {
   const days = due ? dayDiff(due, todayIso) : null;
-  const overdue = basis === 'deadline' && days != null && days < 0;
+  /* `grace` = เลยวันแล้วแต่ยังอยู่ในช่วงผ่อนผัน (วันติดตามลีด ≤ 2 วันทำการ · มติเจ้าของ 23/11/2026) — เหลือง ไม่ใช่ "เลยกำหนดแล้ว" */
+  const overdue = basis === 'deadline' && days != null && days < 0 && !grace;
   return {
     key: `${kind}:${id}`,
-    kind, id, step, title, sub: sub || '', href, basis,
+    kind, id, step, title, sub: sub || '', href, basis, grace: !!grace && days != null && days < 0,
     due: due || null,
     days,
     overdue,
@@ -150,7 +151,7 @@ function dueTextOf(days, due, basis) {
 export function myQueueGroupKey(item) {
   if (!item) return 'later';
   if (item.overdue) return 'overdue';
-  if (item.basis === 'waiting') return 'today';
+  if (item.basis === 'waiting' || item.grace) return 'today';
   if (item.days === 0) return 'today';
   if (item.days != null && item.days <= 7) return 'week';
   return 'later';
@@ -247,25 +248,33 @@ export function buildMyQueue({
   }
 
   for (const lead of leads) {
-    const meeting = lead.status === 'meeting' && lead.meetingAt ? String(lead.meetingAt).slice(0, 10) : null;
+    /* 🐞 วันไทย (`businessDayKey`) ไม่ใช่ตัดสตริง UTC — นัด 06:30 ขึ้น "เลย 1 วัน" แดงในวันนัดเอง (23/11/2026) */
+    const meeting = lead.status === 'meeting' && lead.meetingAt ? businessDayKey(lead.meetingAt) : null;
     /* ⭐ วันติดตามต่อ (mig 0289) — **คำสัญญาที่ AE ให้ลูกค้าไว้** จึงเป็นกำหนดจริง
        เหมือนวันนัด ไม่ใช่ "วันที่เริ่มค้าง" · ก่อนมีคอลัมน์นี้ ลีดที่ติดต่อแล้วตกไปใช้
        `assignedAt` แบบ waiting ⇒ ใบที่นัดจะโทรพรุ่งนี้ขึ้นว่า "ค้างมา N วัน"
        ⚠️ วันนัดมาก่อนเสมอ — `meeting` ล้าง followUpAt อยู่แล้ว สองค่านี้จึงไม่ควรมี
        พร้อมกัน แต่เรียงไว้ให้ชัดเผื่อข้อมูลเก่าที่ค้างมาก่อน migration */
-    const followUp = lead.followUpAt ? String(lead.followUpAt).slice(0, 10) : null;
-    const promised = meeting || followUp;
+    /* ⭐ ผ่าน `leadActiveFollowUpAt` (ตัวเดียวกับตาราง/ตัวกรอง) — ใบนัดแล้วที่นัดผ่านไปแล้วใช้วันติดตามหลังประชุม
+       ⚠️ วันนัดที่ยังไม่ถึงมาก่อนวันติดตาม (ใบนัดแล้วมีได้ทั้งสองค่า) */
+    const followUpAt = leadActiveFollowUpAt(lead);
+    const followUp = followUpAt ? businessDayKey(followUpAt) : null;
+    const meetingAhead = meeting && (!followUp || meeting >= String(todayIso)) ? meeting : null;
+    const promised = meetingAhead || followUp;
+    // เลยวันติดตามไม่เกิน 2 วันทำการ = เหลือง (กลุ่มวันนี้) · เกินนั้นแดงพร้อมกระดิ่ง (มติเจ้าของ 23/11/2026)
+    const grace = !meetingAhead && !!followUpAt && leadFollowUpState(followUpAt, todayIso) === 'grace';
     out.push(row({
       kind: 'lead',
       id: lead.id,
-      step: meeting ? 'นัดหมายลูกค้า' : followUp ? 'ติดตามลูกค้า' : 'โทรกลับลูกค้า',
+      step: meetingAhead ? 'นัดหมายลูกค้า' : followUp ? 'ติดตามลูกค้า' : 'โทรกลับลูกค้า',
       title: lead.company || lead.contactName || 'ลีด',
       sub: LEAD_STATUS_LABELS[lead.status] || lead.status || '',
       // ไม่มีวันที่รับปากไว้ = ใช้วันที่ลีดเข้ามาถึงมือเรา ⇒ ลีดที่ดองไว้จะไต่ขึ้นมาเอง
-      due: promised || (lead.assignedAt ? String(lead.assignedAt).slice(0, 10) : null)
-        || (lead.createdAt ? String(lead.createdAt).slice(0, 10) : null),
+      due: promised || (lead.assignedAt ? businessDayKey(lead.assignedAt) : null)
+        || (lead.createdAt ? businessDayKey(lead.createdAt) : null),
       // รับปากวันไหนไว้ = กำหนดจริง · ไม่ได้รับปาก = นับจากวันที่ลีดมาถึงมือเรา
       basis: promised ? 'deadline' : 'waiting',
+      grace,
       href: `/sales-planning/leads/${lead.id}`,
       todayIso,
     }));
@@ -275,7 +284,8 @@ export function buildMyQueue({
     out.push(row({
       kind: 'task',
       id: task.id,
-      step: task.status === 'in_progress' ? 'ทำต่อให้จบ' : 'เริ่มงานนี้',
+      // 🐞 ค่าจริงของงานคือ 'In Progress' (ไม่ใช่ 'in_progress') ⇒ งานที่ทำอยู่เคยขึ้น "เริ่มงานนี้" ทุกใบ (23/11/2026)
+      step: task.status === 'In Progress' || task.status === 'in_progress' ? 'ทำต่อให้จบ' : 'เริ่มงานนี้',
       title: task.title || 'งาน',
       sub: [task.category, task.assignedByName ? `มอบโดย ${task.assignedByName}` : null]
         .filter(Boolean).join(' · '),
@@ -296,7 +306,7 @@ export function buildMyQueue({
       step: 'ออกใบสั่งขาย',
       title: quote.customerName || 'ลูกค้า',
       sub: [quote.quoteNumber, 'Won แล้ว รอออก SO'].filter(Boolean).join(' · '),
-      due: quote.acceptedAt ? String(quote.acceptedAt).slice(0, 10) : null,
+      due: quote.acceptedAt ? businessDayKey(quote.acceptedAt) : null, // วันไทย ไม่ใช่วัน UTC (23/11/2026)
       basis: 'waiting',
       href: `/sa/quotations/${quote.id}`,
       todayIso,
@@ -315,7 +325,7 @@ export function buildMyQueue({
         order.beforeLaunch ? 'ก่อนเปิดระบบ' : null,
         BACKLOG_READINESS[order.readiness]?.label || 'อนุมัติแล้ว รอออกใบค่าสรรพสามิต',
       ].filter(Boolean).join(' · '),
-      due: order.approvedAt ? String(order.approvedAt).slice(0, 10) : null,
+      due: order.approvedAt ? businessDayKey(order.approvedAt) : null, // วันไทย ไม่ใช่วัน UTC (23/11/2026)
       basis: 'waiting',
       href: `/sa/sales-orders/${order.id}`,
       todayIso,

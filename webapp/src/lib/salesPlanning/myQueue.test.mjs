@@ -305,3 +305,32 @@ test('ไม่มีวันให้บอกเลย ถอยไปวั�
   assert.equal(row.due, '2026-08-07');
   assert.notEqual(row.dueText, 'ไม่มีกำหนด');
 });
+
+/* ── ตรวจทั้งระบบเรื่องวันกำหนด 23/11/2026 (docs/due-overdue-system.md) ───────────────────── */
+test('ลีดวันติดตาม: เลยไม่เกิน 2 วันทำการ = กลุ่มวันนี้ (เหลือง) · เกินนั้น = เลยกำหนดแล้ว · ใบนัดแล้วที่นัดผ่านไปใช้วันติดตาม', () => {
+  // วันนี้ 12/08 (พุธ) — 11/08 (อังคาร) = 1 วันทำการ · 07/08 (ศุกร์) = 3 วันทำการ
+  const rows = build({
+    leads: [
+      { id: 'g', status: 'contacted', company: 'เลยนิดหน่อย', followUpAt: '2026-08-11T00:00:00Z' },
+      { id: 'l', status: 'contacted', company: 'เลยนาน', followUpAt: '2026-08-07T00:00:00Z' },
+      { id: 'm', status: 'meeting', company: 'นัดผ่านแล้ว', meetingAt: '2026-08-01T03:00:00Z', followUpAt: '2026-08-07T00:00:00Z' },
+    ],
+  });
+  const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
+  assert.equal(myQueueGroupKey(byId.g), 'today');
+  assert.equal(byId.g.overdue, false);
+  assert.equal(myQueueGroupKey(byId.l), 'overdue');
+  assert.equal(byId.m.step, 'ติดตามลูกค้า', 'นัดผ่านไปแล้ว — ก้าวถัดไปคือวันติดตามหลังประชุม');
+  assert.equal(myQueueGroupKey(byId.m), 'overdue');
+});
+
+test('🐞 นัด 06:30 เวลาไทย = วันของนัดตามวันไทย ไม่ใช่วัน UTC (เดิมแดง "เลย 1 วัน" ในวันนัดเอง)', () => {
+  const [row] = build({ leads: [{ id: 'a', status: 'meeting', company: 'เช้า', meetingAt: '2026-08-11T23:30:00Z' }] });
+  assert.equal(row.due, '2026-08-12');
+  assert.equal(row.overdue, false);
+});
+
+test('🐞 งานที่กำลังทำ (In Progress) = "ทำต่อให้จบ" — เดิมเช็ก in_progress ที่ไม่มีอยู่จริง', () => {
+  const [row] = build({ tasks: [{ id: 't', title: 'งาน', status: 'In Progress', dueDate: '2026-08-20' }] });
+  assert.equal(row.step, 'ทำต่อให้จบ');
+});

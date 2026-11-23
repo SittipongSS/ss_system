@@ -17,7 +17,7 @@
 
 import { after } from 'next/server';
 import { notifyUsers } from '@/lib/notifications';
-import { LEAD_CHANNEL_LABELS } from '@/lib/sales/leads';
+import { LEAD_CHANNEL_LABELS, LEAD_FOLLOW_UP_GRACE_DAYS, leadActiveFollowUpAt } from '@/lib/sales/leads';
 import { hasTeam, SALES_BELL_ROLES, TEAM_SCOPE_ROLES } from '@/lib/permissions';
 import { teamNameOf } from '@/lib/master/teams';
 
@@ -139,7 +139,10 @@ export const OVERDUE_AFTER_BY_STATUS = Object.freeze({
   new: OVERDUE_AFTER_BUSINESS_DAYS,
   screened: OVERDUE_AFTER_BUSINESS_DAYS,
   assigned: OVERDUE_AFTER_BUSINESS_DAYS,
-  contacted: 2,
+  // ⭐ ตัวเดียวกับที่จอใช้แบ่งเหลือง/แดง (`leadFollowUpState` · มติเจ้าของ 23/11/2026)
+  contacted: LEAD_FOLLOW_UP_GRACE_DAYS,
+  // ⭐ ใบนัดแล้วที่บันทึกการติดตามหลังประชุม — เดิมไม่มีนาฬิกาทวง ทั้งที่จอนับเลยวันติดตาม (23/11/2026)
+  meeting: LEAD_FOLLOW_UP_GRACE_DAYS,
 });
 
 /* ⚠️ **แมปนี้มีสามก๊อป ต้องแก้พร้อมกันเสมอ** — ที่นี่ (ตัวกรองว่าใบไหนเข้าข่าย) ·
@@ -157,6 +160,8 @@ const SINCE_OF = {
   screened: (l) => l.screenedAt || l.createdAt,
   assigned: (l) => l.assignedAt || l.createdAt,
   contacted: (l) => l.followUpAt || null,
+  // ใบนัดแล้วนับเฉพาะวันติดตามที่ยังมีผล (`leadActiveFollowUpAt`) — ใบที่ยังไม่บันทึกการติดตามหลังประชุมไม่มีนาฬิกา
+  meeting: (l) => leadActiveFollowUpAt(l),
 };
 
 const preview = (leads) => {
@@ -199,7 +204,8 @@ export function overdueLeadNotices(leads = [], { directory, ageOf, dayKey } = {}
   const stageLabel = (key, group) => {
     if (key === 'screeners') return 'รอคัดกรองเกิน SLA';
     if (key.startsWith('team:')) return 'รอกระจายเกิน SLA';
-    const kinds = new Set(group.map((l) => l.status));
+    // ติดต่อแล้ว + นัดแล้ว = งานเดียวกัน (เลยวันที่นัดติดตามลูกค้า) — นับเป็นชนิดเดียว
+    const kinds = new Set(group.map((l) => (l.status === 'meeting' ? 'contacted' : l.status)));
     if (kinds.size > 1) return 'งานลีดค้าง';
     return kinds.has('contacted') ? 'เลยวันติดตาม' : 'รอติดต่อกลับเกิน SLA';
   };

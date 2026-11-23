@@ -219,3 +219,14 @@ test('ลูกค้ากลับมา: แจ้งเจ้าของล
   assert.equal(byLead.body, 'ลูกค้าทักกลับมา');
   assert.equal(leadHandoffNotice({ action: 'reopen', lead, directory, actorId: 'u-ae', reason: 'x' }), null);
 });
+
+/* ⭐ ใบนัดแล้วที่เลยวันติดตามหลังประชุม (ตรวจทั้งระบบ 23/11/2026) — แดงบน /sa/leads มานาน แต่ไม่เคยถูกทวง */
+test('ใบนัดแล้วที่มีวันติดตาม: ทวงเกณฑ์เดียวกับติดต่อแล้ว · ป้าย "เลยวันติดตาม" (ไม่ใช่กองผสม)', () => {
+  const met = (id, age) => pending(id, { status: 'meeting', followUpAt: '2026-08-05T03:00:00Z', age });
+  assert.equal(overdue([met('M1', 2)]).length, 0, 'ไม่เกิน 2 วันทำการ = ยังไม่ทวง (จอเหลือง)');
+  const [notice] = overdue([met('M2', 3), pending('C1', { status: 'contacted', followUpAt: '2026-08-05T03:00:00Z', age: 4 })]);
+  assert.match(notice.title, /^เลยวันติดตาม 2 ใบ/);
+  // ใบนัดแล้วที่ยังไม่บันทึกการติดตามหลังประชุม = ไม่มีนาฬิกา (ตัวจริงนับอายุจาก leadActiveFollowUpAt = null ⇒ 0)
+  const noFollow = pending('M3', { status: 'meeting', age: 9 });
+  assert.equal(overdueLeadNotices([noFollow], { directory: DIR, ageOf: () => 0, dayKey: '2026-08-10' }).length, 0);
+});

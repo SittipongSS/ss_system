@@ -74,6 +74,6 @@ test('หน้า /sa/leads: หัวคอลัมน์ติดตาม�
   assert.match(pageSrc, /<SortTh label="ติดตามต่อ \/ รับเมื่อ" sortKey="followup"/);
   assert.match(pageSrc, /useStickyState\("sortKey", LEAD_SORT_DEFAULT\)/);
   // ตารางเรียงหลังกรองด้วยตัวกลาง (lib/sales/leadListFilter · 2026-10-08)
-  assert.match(pageSrc, /sortLeads\(filterLeadRows\(searchedLeads, filters, todayKey\), sortKey, sortDir\)/);
+  assert.match(pageSrc, /sortLeads\(filterLeadRows\(searchedLeads, filters, todayKey, holidays\), sortKey, sortDir\)/);
   assert.match(pageSrc, /key: "followup", label: "ติดตามต่อ"/);
 });

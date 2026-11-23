@@ -104,14 +104,14 @@ function channelBadge(channel) {
    ไม่ใช่วันเก่าตัวแดง · ใบนัดแล้วที่บันทึกการติดตามหลังประชุมโชว์วันนั้น และนับในตัวกรอง/การ์ดด้วย
    `todayKey` ตัวเดียวกับตัวกรอง — แถวกับตัวเลขในแผงกรองแบ่ง "เลย/วันนี้" ตรงกัน
    (การ์ดค้างคิวอ่านนาฬิกาเองตอนเรนเดอร์ — ต่างได้เฉพาะตอนข้ามเที่ยงคืนโดยไม่รีโหลด) */
-function followUpCell(lead, todayKey) {
+function followUpCell(lead, todayKey, holidays) {
   const followUpAt = leadActiveFollowUpAt(lead);
   if (!followUpAt) return fmtDateTime(lead.createdAt);
   return (
     <>
       {/* เลยกำหนดแล้วต้องเห็นตั้งแต่กวาดตา — ทวงประจำวันเห็นใบนี้อยู่แล้ว
           แต่ตารางเป็นที่ที่คนเปิดดูเองตอนวางแผนวัน */}
-      <strong className={styles.followUp} data-tone={leadFollowUpState(followUpAt, todayKey)}>
+      <strong className={styles.followUp} data-tone={leadFollowUpState(followUpAt, todayKey, holidays)}>
         {fmtDate(followUpAt)}
       </strong>
       <span className={styles.followUpSub}>รับเมื่อ {fmtDate(lead.createdAt)}</span>
@@ -354,8 +354,8 @@ export default function LeadsPage() {
   }), [statusFilter, teamFilter, assigneeFilter, channelFilter, followFilter]);
 
   const filtered = useMemo(
-    () => sortLeads(filterLeadRows(searchedLeads, filters, todayKey), sortKey, sortDir),
-    [searchedLeads, filters, todayKey, sortKey, sortDir],
+    () => sortLeads(filterLeadRows(searchedLeads, filters, todayKey, holidays), sortKey, sortDir),
+    [searchedLeads, filters, todayKey, holidays, sortKey, sortDir],
   );
 
   /* การ์ดค้างคิวสั่งตัวกรอง **ทั้งชุด** — ล้างคำค้นและมิติที่ไม่เกี่ยวด้วย
@@ -377,7 +377,7 @@ export default function LeadsPage() {
 
   /* จำนวนต่อตัวเลือก = ติ๊กตัวนั้นแล้วตารางจะเหลือกี่ใบ — นับแบบแยกมิติจากชุดเดียวกับตาราง
      (ขอบเขต + คำค้น + ตัวกรองมิติอื่น) · 🐞 เดิมนับจากลีดทั้งบริษัท ใต้ "ของฉัน" จึงโชว์ยอดของคนอื่น */
-  const countBy = useMemo(() => leadFacetCounts(searchedLeads, filters, todayKey), [searchedLeads, filters, todayKey]);
+  const countBy = useMemo(() => leadFacetCounts(searchedLeads, filters, todayKey, holidays), [searchedLeads, filters, todayKey, holidays]);
 
   /* ตัวเลือก "ผู้รับผิดชอบ" มาจาก **คนที่ถือลีดอยู่จริง** ไม่ใช่รายชื่อผู้ใช้ทั้งระบบ —
      ทะเบียนผู้ใช้มีคนที่ไม่เคยแตะคิวลีดเลยเยอะ ถ้าเอามาทั้งหมดจะเลื่อนหาไม่เจอ
@@ -800,7 +800,7 @@ export default function LeadsPage() {
                         )}
                       </td>
                     <td style={{ whiteSpace: "nowrap", fontSize: "var(--fs-6)", color: "var(--text-2)" }}>
-                      {followUpCell(lead, todayKey)}
+                      {followUpCell(lead, todayKey, holidays)}
                     </td>
                     <td className="num" onClick={(event) => event.stopPropagation()}>
                       {/* กติกาว่าปุ่มไหนโผล่มาจาก lifecycle ตัวเดียวกับหน้ารายละเอียด —

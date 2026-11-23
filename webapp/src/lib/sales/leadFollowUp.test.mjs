@@ -67,9 +67,13 @@ test('API เรียก leadFollowUpError ตัวเดียวกับฟ
 
 /* 🪤 จอกับระบบทวงต้องใช้เกณฑ์เดียวกัน — จอแดงตั้งแต่วันแรกที่เลย แต่กระดิ่งเพิ่งเด้ง
    วันที่ 3 = ผู้ใช้เห็นสองมาตรฐานบนเรื่องเดียวกันแล้วเลิกเชื่อทั้งคู่ */
-test('leadFollowUpState: เลย=late · วันนี้=today · ยังไม่ถึง=ahead', () => {
-  const today = '2026-08-26';
-  assert.equal(leadFollowUpState('2026-08-25T00:00:00Z', today), 'late');
+test('leadFollowUpState: เลยเกิน 2 วันทำการ=late · เลยไม่เกิน=grace · วันนี้=today · ยังไม่ถึง=ahead (มติ 23/11/2026)', () => {
+  const today = '2026-08-26'; // พุธ
+  // ⭐ เลย 1–2 วันทำการ = เหลือง (grace) · เกิน = แดง (late) วันเดียวกับกระดิ่ง (OVERDUE_AFTER_BY_STATUS.contacted)
+  assert.equal(leadFollowUpState('2026-08-25T00:00:00Z', today), 'grace');
+  assert.equal(leadFollowUpState('2026-08-24T00:00:00Z', today), 'grace');
+  assert.equal(leadFollowUpState('2026-08-21T00:00:00Z', today), 'late', 'ศุกร์ → พุธ = 3 วันทำการ');
+  assert.equal(leadFollowUpState('2026-08-24T00:00:00Z', today, new Set(['2026-08-25'])), 'grace', 'วันหยุดไม่นับ');
   assert.equal(leadFollowUpState('2026-08-26T00:00:00Z', today), 'today');
   assert.equal(leadFollowUpState('2026-08-27T00:00:00Z', today), 'ahead');
   // ไม่มีวันติดตาม = ไม่ทาสีอะไร ไม่ใช่ "เลยกำหนด"
