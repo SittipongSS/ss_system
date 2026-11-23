@@ -158,8 +158,9 @@ test('หน้ารายละเอียดดีล: การ์ด Won =
      · ส่ง `deal` ด้วย — คำของดีลเก่าที่สร้างเป็น Won ตัดสินด้วยตัวบ่งชี้กลางในตัวเลือกคำ (มติผู้ใช้ 2026-09-15) */
   assert.match(page, /import \{ installmentActualSubLine, wonDealForecastHint \} from "@\/lib\/sales\/dealAmountDisplay"/);
   assert.match(page,
-    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*instRemaining: soAmounts\.instRemaining,\s*\}\)/);
+    /wonDealForecastHint\(\{\s*deal,\s*forecast: deal\?\.projectValue,\s*actual: dealActual,\s*actualCount: soAmounts\.actualCount,\s*pendingApproval: soAmounts\.pendingApproval,\s*pendingApprovalCount: soAmounts\.pendingApprovalCount,\s*instRemaining: soAmounts\.instRemaining,\s*noneCount: soAmounts\.noneCount,\s*\}\)/);
   // ใบ "Actual รายงวด" (mig 0412) — งวดที่ยังไม่ยื่นมาจากแถว SO ชุดเดียวกัน (ไม่ฟ้อง "ต่าง" จากงวดที่ยังไม่ถึงคิว)
+  // ใบ "ไม่นับ Actual" (mig 0439 · ตรวจ 23/11) — noneCount ต้องไปถึงตัวเลือกคำ ไม่งั้นดีลที่มีแต่ใบแบบนี้ขึ้น "ยังไม่มีใบสั่งขายที่ยื่น"
   /* ดีลเก่าที่ล้างยอดแล้ว (mig 0359 บล็อก A) ซ่อนคำส่วนต่าง — บรรทัด "ยอดปิดในระบบเดิม" พูดแทน
      (มติผู้ใช้ 2026-09-14 · lib/sales/legacyDealSwitch) ⇒ คำส่วนต่างยังมาจาก wonHint.text ตัวเดียว
      และบรรทัดรออนุมัติยังตามท้ายการ์ดเสมอ · UAT 27/10: ท่อน "ป้าย ฿ยอด" ของใบรายงวดห่อด้วย keepPhrases (wonHint.keep — ชนิดอื่นไม่มี = คำเดิม) */

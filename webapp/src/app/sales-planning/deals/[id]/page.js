@@ -392,6 +392,8 @@ export default function DealOverviewPage() {
     /* ใบ "Actual รายงวด" (mig 0412): งวดที่ยังไม่ยื่น = กอง "รอนับรายงวด" — คำใต้การ์ดพูด "นับแล้ว ฿a · รอนับรายงวด ฿b"
        แทน "ต่าง ฿(งวดที่ยังไม่ถึงคิว)" · มาจากแถว SO ชุดเดียวกับรออนุมัติ (splitSalesOrderAmounts) */
     instRemaining: soAmounts.instRemaining,
+    /* ใบอนุมัติแบบ "ไม่นับ Actual" (mig 0439) — ไม่อยู่ใน actualCount · ไม่ส่ง = ดีลที่มีแต่ใบแบบนี้ขึ้น "ยังไม่มีใบสั่งขายที่ยื่น" (ตรวจ 23/11) */
+    noneCount: soAmounts.noneCount,
   });
   /* ช่องยอดของ SO หนึ่งใบ — สามสถานะ (salesOrderAmountKind):
        actual           อนุมัติแล้ว = Actual ตามเดิม
