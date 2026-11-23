@@ -42,3 +42,10 @@ test('ใบตีกลับ "ค้าง n วัน": ตีกลับเ
   assert.equal(r.date, '2026-11-16');
   assert.equal(r.days, 7);
 });
+
+test('ภาระงานรายคน "รอนานสุด": ส่งเช้ามืด 16/11 → 23/11 = 7 วัน (เดิม 8) · ใบตีกลับตราเสียรูป = ไม่นับ', async () => {
+  const { ownerWorkload } = await import('../requests/deptOverview.js');
+  const rows = ownerWorkload([{ id: 'r', status: 'pending', submittedAt: DAWN_16, items: [] }], { todayIso: '2026-11-23' });
+  assert.equal(rows[0].waitingDays, 7);
+  assert.equal(bouncedDaysText({ bouncedAt: 'ไม่ใช่วัน', status: 'draft' }, { todayIso: '2026-11-23' }), null);
+});

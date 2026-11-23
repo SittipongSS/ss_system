@@ -85,7 +85,8 @@ export function ownerWorkload(rows = [], { todayIso = null } = {}) {
 
 // รอมากี่วันแล้ว — นับจากวันที่ส่งเข้ามา (ไม่ใช่วันที่สร้างร่าง)
 function daysWaiting(request, todayIso) {
-  const from = String(request?.submittedAt || request?.createdAt || '').slice(0, 10);
+  // วันไทยของตราส่ง (timestamp) — ตัดสตริงตรง ๆ = วัน UTC ⇒ ใบที่ส่งตอนตีหนึ่งถึงเจ็ดโมง "รอนานสุด" เกินหนึ่งวัน (23/11/2026)
+  const from = businessDayKey(String(request?.submittedAt || request?.createdAt || ''));
   if (!from || !todayIso) return 0;
   const ms = Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`);
   if (!Number.isFinite(ms)) return 0;
