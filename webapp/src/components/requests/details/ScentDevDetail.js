@@ -145,6 +145,13 @@ export default function ScentDevDetail({
                 {rowStep && rowStep.canDept && rowStep.canRequester && (
                   <OwnerTag owner="dept" deptLabel={rowStep.deptLabel} />
                 )}
+                {/* ⭐ **ปุ่มหลักมาก่อน ปุ่มแจกงานตามหลัง** (ผู้ใช้ 23/11/2026 "อยาก align") — ปุ่มกลุ่มนั่งคอลัมน์
+                    "ก้าวถัดไป" เดียวกับแถว direction ⇒ "ส่งงาน" ของบรีฟตรงแนวกับปุ่มก้าวของแถว (ชิป RD → ปุ่มหลัก) */}
+                {rowStep?.canDept && onDeliver ? (
+                  <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
+                    <Send size={14} /> ส่งงาน
+                  </Button>
+                ) : null}
                 {/* ⭐ **แจกกลิ่นก้อนนี้จากในใบ** (mig 0350) — ปุ่มรอง ไม่แย่งที่ปุ่มหลัก
                     ⚠️ `blocker` มาจากด่านฝั่งเซิร์ฟเวอร์ตัวเดียวกับที่ API ใช้ปฏิเสธจริง
                     ⇒ โชว์เสมอ บอกเหตุตอนกด (กลิ่นที่ส่งไปแล้วเปลี่ยนผู้ปรุงไม่ได้) */}
@@ -157,11 +164,6 @@ export default function ScentDevDetail({
                     {g.perfumer?.name || "แจกงาน"}
                   </GatedAction>
                 ) : null}
-                {rowStep?.canDept && onDeliver ? (
-                  <Button size="sm" tone="primary" disabled={saving} onClick={() => onDeliver(g.id)}>
-                    <Send size={14} /> ส่งงาน
-                  </Button>
-                ) : null}
               </>
             ) : null}
             extraMenuItems={rowStep?.topupMenuOf ? (d) => {
@@ -170,7 +172,8 @@ export default function ScentDevDetail({
             } : null}
             renderStep={rowStep ? (d) => {
               const item = (request.items || []).find((it) => it.id === d.id);
-              return item ? <RowStepActions row={item} {...rowStep} /> : null;
+              // ปุ่มในตารางขนาดเล็ก เท่าปุ่มของหัวกลุ่ม (23/11/2026) — แถบท้ายเธรดยังขนาดปกติ
+              return item ? <RowStepActions row={item} {...rowStep} size="sm" /> : null;
             } : null}
             /* ⭐ สเปก + ไฟล์แนบของ direction — เนื้อที่เคยอยู่ในการ์ด `RequestRows`
                ที่วางซ้อนเหนือตารางนี้ · ย้ายมาอยู่ในแถวที่มันสังกัด ไม่ใช่ก๊อป

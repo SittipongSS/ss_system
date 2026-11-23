@@ -32,7 +32,7 @@ export default function DocumentDetail({
   const renderStep = rowStep
     ? (boardRow) => {
       const item = itemsById.get(boardRow.id);
-      return item ? <RowStepActions row={item} {...rowStep} /> : null;
+      return item ? <RowStepActions row={item} {...rowStep} size="sm" /> : null; // ปุ่มในตารางขนาดเล็ก เท่าตารางพัฒนากลิ่น (23/11/2026)
     }
     : null;
   return (

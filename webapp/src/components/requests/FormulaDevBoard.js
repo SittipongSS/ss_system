@@ -155,6 +155,7 @@ export default function FormulaDevBoard({
                       {renderStep?.(r)}
                       {/* แก้/ลบ อยู่ในเมนู `⋯` — เหตุผลเดียวกับ `BriefBoard` */}
                       <RowActionMenu
+                        className={styles.rowMenu}
                         label={`การจัดการอื่นของ ${r.registry?.code || r.name}`}
                         items={[
                           onAddDirection && r.formulaId && !r.outcome && !r.settled && {

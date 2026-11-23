@@ -104,6 +104,8 @@ export function OwnerTag({ owner = "dept", deptLabel = null, requesterLabel = nu
 export function RowStepActions({
   row, canDept = false, canRequester = false, busy = false, onHop, onPrice, onIngredients = null,
   deptLabel = null, requesterLabel = null,
+  // ขนาดปุ่ม — ตารางส่ง "sm" ให้เท่าปุ่มของหัวกลุ่ม (ผู้ใช้ 23/11/2026 "อยาก align") · แถบท้ายเธรดใช้ขนาดปกติ
+  size = undefined,
   /* ⭐ **ใบต้องถูกรับเรื่องก่อน** (มติผู้ใช้ 2026-08-20: *"ปุ่มรับเรื่องมันเป็นระดับใบ
      ไม่ใช่ระดับรายการ"*) — ของเดิมทุกแถวมีปุ่ม "รับเรื่อง" ของตัวเอง แล้วแถวแรกที่กด
      ดันสถานะทั้งใบให้เอง ⇒ มีสองทางที่ทำสิ่งเดียวกัน
@@ -130,7 +132,7 @@ export function RowStepActions({
         <span className={styles.waiting}>{waitingText(owner, { deptLabel, requesterLabel })}</span>
         {canUnready && (
           <Button
-            tone="warning" variant="outline" disabled={busy}
+            size={size} tone="warning" variant="outline" disabled={busy}
             onClick={() => onHop?.(row, "unready")}
           >
             {hopLabel("unready")}
@@ -155,6 +157,7 @@ export function RowStepActions({
         {tag}
         <RowActionMenu
           triggerLabel="บันทึกคำตอบ"
+          triggerSize={size}
           /* ชื่อที่ระบุแถวได้จริง — รหัสทะเบียนก่อน (รอบแก้สองตัวของกลิ่นเดียวกันมีป้ายแถวเดียวกัน) */
           label={`บันทึกคำตอบลูกค้าของ ${row.refFormula?.code || row.refScent?.code || row.label || "แถวนี้"}`}
           busy={busy}
@@ -173,7 +176,7 @@ export function RowStepActions({
     <div className={styles.actions}>
       {tag}
       <Button
-        tone="primary" disabled={busy}
+        size={size} tone="primary" disabled={busy}
         onClick={() => {
           if (hop === "price") onPrice?.(row);
           else if (hop === "ingredients") onIngredients?.(row);
@@ -186,14 +189,14 @@ export function RowStepActions({
           ⭐ **ปุ่มหลักเท่าปุ่ม "ใส่ราคา"** (ผู้ใช้ 04/11/2026 — ทรงเดียวกับหน้า "รอใส่ราคา" #1977) — เดิมเป็นปุ่มขอบ อ่านเหมือนทางเลือก
              ทั้งที่เป็นก้าวบังคับเท่ากัน */}
       {hop === "price" && onIngredients && needsIngredients(row) && (
-        <Button tone="primary" disabled={busy} onClick={() => onIngredients(row)}>
+        <Button size={size} tone="primary" disabled={busy} onClick={() => onIngredients(row)}>
           ใส่ Ingredient List
         </Button>
       )}
       {/* สายเอกสารมีทางจบที่สองของฝ่าย: "ปฏิเสธ" + เหตุผลบังคับ (ม-85 · ม-89) */}
       {hop === "ready" && isDocLineKind(row.lineKind) && (
         <Button
-          tone="danger" variant="outline" disabled={busy}
+          size={size} tone="danger" variant="outline" disabled={busy}
           onClick={() => onHop?.(row, "refuse")}
         >
           {hopLabelFor(row, "refuse")}
@@ -203,7 +206,7 @@ export function RowStepActions({
           ปุ่มจริง ⇒ ทางถอยของฝ่ายต้องมาด้วย ไม่งั้นหายไปเฉพาะกับสิทธิ์นี้ */}
       {canUnready && hop !== "unready" && (
         <Button
-          tone="warning" variant="outline" disabled={busy}
+          size={size} tone="warning" variant="outline" disabled={busy}
           onClick={() => onHop?.(row, "unready")}
         >
           {hopLabel("unready")}
