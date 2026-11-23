@@ -12,7 +12,7 @@
      (`actualAmount` · ใบสรรพสามิต/ย้อนหลังไม่นับ Actual แต่ยังมียอดจ่ายที่ต้องตามเก็บ)
    ⚠️ ผู้เรียกต้องเลือกคอลัมน์งวด `id, seq, status, kind, amount, "dueDate", "paidOn", "taxInvoiceNo", "refundedAt", "frozenAt",
      "updatedAt"` มาด้วย — ขาด `amount` = ยอดเป็น 0 เงียบ ๆ · ขาด `frozenAt` = งวดของใบที่อนุมัติแล้วกลายเป็น "ตามแผน" ทั้งหมด */
-import { INSTALLMENT_STATUS_LABELS, installmentRefunded, installmentVoid, paymentNotRequired, strandedInstallment } from '@/lib/sales/salesOrderPayments';
+import { INSTALLMENT_STATUS_LABELS, installmentOverdue, installmentRefunded, installmentVoid, paymentNotRequired, strandedInstallment } from '@/lib/sales/salesOrderPayments';
 import { planInstallmentAmounts } from '@/lib/sales/paymentPlan';
 import { isOpeningInstallment } from '@/lib/sales/historicalOrders';
 
@@ -56,7 +56,8 @@ export function installmentChipKind(row, { todayIso = null } = {}) {
   if (installmentRefunded(row)) return 'refunded';
   if (!row.frozenAt) return text(row.paidOn) ? 'prepaid' : 'plan';
   const status = row.status || 'pending';
-  if (status === 'pending' && text(row.dueDate) && todayIso && text(row.dueDate) < text(todayIso)) return 'overdue';
+  // ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — งวดรอเหตุการณ์ (billingEvent ไม่มีวันวางบิล) ไม่ขึ้น "เลยกำหนด"
+  if (status === 'pending' && installmentOverdue(row, todayIso)) return 'overdue';
   return INSTALLMENT_CHIP_KINDS.includes(status) ? status : 'pending';
 }
 

@@ -600,7 +600,7 @@ export const POST = withUser(async ({ user, supabase, req }) => {
 async function loadListInstallments(supabase, orderIds) {
   const withActual = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments')
-    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt"')
+    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate"')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));
