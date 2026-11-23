@@ -31,6 +31,7 @@ import { customerNameIn } from "@/lib/master/customerName";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
+import { ageText } from "@/lib/dueState";
 
 // ⭐ **ภาษี/ชิ้นกับความพร้อมเอกสารคิดที่ server แล้ว** (`?view=queue`)
 // 🐞 ของเดิมคิดฝั่งจอ จึงต้องโหลด `/api/products` (342 แถวเต็ม) + `/api/customers`
@@ -400,7 +401,7 @@ export default function RegistrationsPage() {
         </div>
       ),
     },
-    { key: "age", label: "ค้างมา", sortValue: (r) => registrationQueueSortValue(r, todayIso), render: (r) => <AgeCell row={r} /> },
+    { key: "age", label: "ค้าง", sortValue: (r) => registrationQueueSortValue(r, todayIso), render: (r) => <AgeCell row={r} /> },
     {
       key: "status", label: "สถานะ",
       render: (r) => (
@@ -463,7 +464,7 @@ export default function RegistrationsPage() {
             {/* โทนมาจากข้อมูล (จำนวนวัน) · ใบที่ขึ้นทะเบียนแล้วไม่มีอะไรค้าง = ไม่มีป้าย */}
             {r.status !== "approved" && (
               <span style={ageTone(days) === "neutral" ? undefined : { color: toneColor(ageTone(days)) }}>
-                ค้างมา {naText(ageLabel(days))}
+                {naText(ageText(days))}
               </span>
             )}
           </span>

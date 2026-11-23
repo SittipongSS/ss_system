@@ -31,12 +31,12 @@ test('มีวันจริง — โชว์วันที่เฉย �
 
 test('เลยกำหนดแล้ว = แดง พร้อมบอกว่าเลยมากี่วัน', () => {
   const c = requestDueCell(req({ committedDueDate: '2026-08-20' }), TODAY);
-  assert.deepEqual(c, { text: '20/08/2026', note: 'เลย 6 วัน', tone: 'late' });
+  assert.deepEqual(c, { text: '20/08/2026', note: 'เลยกำหนด 6 วัน', tone: 'late' });
 });
 
 test('ครบกำหนดวันนี้ = เหลือง', () => {
   const c = requestDueCell(req({ committedDueDate: TODAY }), TODAY);
-  assert.equal(c.note, 'วันนี้');
+  assert.equal(c.note, 'ครบกำหนดวันนี้');
   assert.equal(c.tone, 'wait');
 });
 
@@ -95,7 +95,7 @@ test('⭐ ตาผู้ขอทั้งใบ (ฝ่ายส่งคร�
 });
 
 test('⭐ แถวที่ฝ่ายส่งแล้วไม่แดง แม้ใบยังเป็นตาฝ่าย — แดงเฉพาะแถวที่ยังเป็นงานของฝ่าย', () => {
-  const show = dueCellTracker({ text: 'x', note: 'เลย 6 วัน', tone: 'late' });
+  const show = dueCellTracker({ text: 'x', note: 'เลยกำหนด 6 วัน', tone: 'late' });
   const rows = [live({ stage: 'sent' }), live({ stage: 'ready' }), live(), live({ stage: 'awaiting_price' })];
   assert.deepEqual(rows.map(show), [false, false, true, true]);
   assert.equal(rowOwesDue(live({ stage: 'picked_up' })), false);

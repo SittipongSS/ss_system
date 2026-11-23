@@ -75,7 +75,7 @@ export default function ForecastMonthCell({ deal, currentMonth, canEdit = false,
 
   const label = deal.forecastMonth || "ยังไม่ระบุ";
   const hint = due.overdue
-    ? `ค้างมา ${due.monthsLate} เดือน — เลื่อนเดือน FC ให้ตรงความจริง`
+    ? `ค้าง ${due.monthsLate} เดือน — เลื่อนเดือน FC ให้ตรงความจริง`
     : (due.missing ? "ยังไม่ระบุเดือน FC" : "แก้วันที่คาดปิด (เดือน FC ขยับตาม)");
 
   if (!canEdit) {

@@ -87,7 +87,7 @@ function PoLineRow({ row, product, onSaved, canEdit }) {
       <td>{matCell(t.rmDueDate, t.rmArrivedAt)}</td>
       <td>
         {row.readyDate ? fmtDate(row.readyDate) : NA}
-        {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
+        {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เลยกำหนด (PO/lead)</div>}
       </td>
       <td><span className="ui-badge" style={{ color, borderColor: color }}>{STAGE_LABEL[stage]}</span></td>
       <td>

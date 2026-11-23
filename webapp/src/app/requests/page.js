@@ -33,7 +33,6 @@ import ScentOrderQueueCard from "@/components/requests/ScentOrderQueueCard";
 import { canUseScentOrderQueue } from "@/lib/requests/scentOrderQueue";
 import AlertBanner from "@/components/ui/AlertBanner";
 import { bouncedDaysText } from "@/lib/requests/queueBoard";
-import { businessDate } from "@/lib/businessDate";
 
 // คำโปรยของแต่ละแท็บ — บอกว่ากำลังดูอะไรอยู่ ไม่ใช่ชื่อแท็บซ้ำอีกรอบ
 const TAB_BLURB = {
@@ -50,6 +49,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import {
   dealRequestsLinkLabel, filterByDealRequestsLink, readDealRequestsLink, requestsQueueHref,
 } from "@/lib/requests/dealLink";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
@@ -93,7 +93,8 @@ export default function RequestsPage() {
   // สถานะร่วมของหัวการ์ดกับตาราง (ตัวสลับมุมมอง · ตัวกรองตัวเลข · ค้นหา)
   const board = useQueueBoard();
   // วันไทย (ไม่ใช่วัน UTC) — ตัดสิน "เลยกำหนด" ของตัวเลขทุกตัวบนหน้าและการ์ดเริ่มที่นี่
-  const today = businessDate();
+  // ⭐ `useThaiToday` (งวด 2) — อ่านใน effect · เฟรมแรกเป็น null = ยังไม่ตัดสิน (ตัวนับ "เลยกำหนด" เป็น 0 หนึ่งเฟรม)
+  const today = useThaiToday();
   /* ⭐ **สถานะตัวกรองชุดเดียวกับที่พาเนลกรองตาราง** (`queueFilter.js` · ตรวจตัวเลข 20/10/2026 M4) — เลขบนแท็บ ·
      "ในคิว/ประวัติ" · ชิปฝ่าย · แถบตัวเลข นับผ่าน `filterQueueRows` ด้วยชุดนี้ ⇒ ตรงกับตารางที่กดแล้วเห็น
      ⚠️ `filters` ต้องเป็นชุดที่พาเนลใช้จริง (`tools` ตั้งต้น "full" = ใช้ทั้งชุด) */

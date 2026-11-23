@@ -121,7 +121,7 @@ const makeComparator = (sortKey, dir = "asc") => {
 
 const SORT_OPTIONS = [
   { key: "created", label: "สร้างล่าสุด" },
-  { key: "due", label: "ใกล้ครบกำหนด" },
+  { key: "due", label: "ใกล้กำหนดก่อน" }, // คำชุด "เลยกำหนด" (มติ 23/11/2026) — เลิกใช้ "ใกล้ครบกำหนด"
   { key: "status", label: "สถานะ" },
   { key: "name", label: "ชื่องาน" },
 ];
@@ -1354,7 +1354,7 @@ export default function TasksPage() {
         danger={confirmState?.danger ?? true}
       />
       {lateModal && (
-        <Modal open onClose={() => setLateModal(null)} title="ปิดงานที่เกินกำหนด" size="sm">
+        <Modal open onClose={() => setLateModal(null)} title="ปิดงานที่เลยกำหนด" size="sm">
           <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ fontSize: "var(--fs-7)", color: "var(--text-3)" }}>
               งาน <strong style={{ color: "var(--text)" }}>{lateModal.task.title}</strong> เลยกำหนดแล้ว — ระบุสาเหตุที่ทำเสร็จช้าก่อนปิดงาน

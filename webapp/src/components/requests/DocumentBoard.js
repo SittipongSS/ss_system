@@ -50,7 +50,7 @@ export default function DocumentBoard({
               <th className={styles.colName}>ชนิดเอกสาร</th>
               <th className={styles.colTrack}>ขั้น</th>
               {due && <th className={styles.colDue}>กำหนดส่ง</th>}
-              <th className={`${styles.colIdle} num`}>ค้างมา</th>
+              <th className={`${styles.colIdle} num`}>ค้าง</th>
               {renderStep && <th className={styles.colStep}>ก้าวถัดไป</th>}
             </tr>
           </thead>

@@ -25,6 +25,7 @@ import { requestNextStep } from '@/lib/requests/queueBoard';
 import { requestReplyTurn } from '@/lib/requests/replyTurn';
 import { nextByStageFor, rowStage } from '@/lib/requests/rowStage';
 import { rowIdleStamps } from '@/lib/requests/rowTrack';
+import { ageText, dueText } from '@/lib/dueState';
 
 /* ── ตาผู้ขอในคิวคำร้อง ⇒ แถวของเรา (2026-09-11 · ต่อจาก ม-145) ─────────────────
    🐞 แดชบอร์ดเขียน "รอฝ่ายตอบ" ให้ทุกใบที่ยังไม่ปิด (และ "เลย N วัน" เมื่อวันผ่าน) ขณะที่คิว
@@ -132,13 +133,12 @@ function row({ kind, id, step, title, sub, due, href, urgent = false, basis = 'd
 
 // ข้อความวันบนคอลัมน์ขวา — "อีก N วัน" อ่านง่ายกว่าวันที่ดิบตอนกวาดตา (กติกาเดียว
 // กับคิวคำร้อง) · วันที่จริงเป็นบรรทัดรองให้จอเป็นคนใส่
+/* คำชุดเดียวจากตัวกลาง `lib/dueState` (งวด 2 · มติ 23/11/2026): "เลยกำหนด N วัน" · "ครบกำหนดวันนี้" · "อีก N วัน" · "ค้าง N วัน"
+   (เดิม "เลย N วัน" · "วันนี้" · "พรุ่งนี้" · "ค้างมา N วัน") */
 function dueTextOf(days, due, basis) {
   if (days == null) return due ? fmtDate(due) : 'ไม่มีกำหนด';
-  if (basis === 'waiting') return days < 0 ? `ค้างมา ${Math.abs(days)} วัน` : 'วันนี้';
-  if (days < 0) return `เลย ${Math.abs(days)} วัน`;
-  if (days === 0) return 'วันนี้';
-  if (days === 1) return 'พรุ่งนี้';
-  return `อีก ${days} วัน`;
+  if (basis === 'waiting') return ageText(Math.max(0, -days));
+  return dueText({ key: days < 0 ? 'late' : days === 0 ? 'today' : 'later', days });
 }
 
 /**

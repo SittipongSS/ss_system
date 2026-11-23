@@ -26,6 +26,7 @@ import { dueIsStale, liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted, requestNextStep, requestSettled } from '@/lib/requests/queueBoard';
 import { rowStageOwner } from '@/lib/requests/rowStage';
 import { fmtDate } from '@/lib/format';
+import { dueInfo } from '@/lib/dueState';
 
 /**
  * เนื้อของเซลล์ "กำหนดส่ง" — คิดครั้งเดียวต่อใบ แล้วส่งให้ตารางใช้ทุกแถว
@@ -52,12 +53,11 @@ export function requestDueCell(request, todayIso = null) {
       : { text: 'ยังไม่แจ้ง', note: null, tone: null };
   }
   if (!todayIso) return { text: fmtDate(due), note: null, tone: null };
-  // ⚠️ ต่างกันเป็น "วัน" ทั้งคู่เป็น YYYY-MM-DD ของวันไทย (กติกาเดียวกับ requestDueText)
-  const ms = Date.parse(`${due}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`);
-  if (!Number.isFinite(ms)) return { text: fmtDate(due), note: null, tone: null };
-  const days = Math.round(ms / 86400000);
-  if (days < 0) return { text: fmtDate(due), note: `เลย ${-days} วัน`, tone: 'late' };
-  if (days === 0) return { text: fmtDate(due), note: 'วันนี้', tone: 'wait' };
+  /* คำ/สีจากตัวกลาง `lib/dueState` (งวด 2 · ตัวเดียวกับคิว) — เลย = แดง · ครบวันนี้/อีก ≤ 3 วัน = เหลือง (พิมพ์ทุกแถวที่ยังผูก)
+     · ไกลกว่านั้น = วันธรรมดา (พิมพ์แถวแรกแถวเดียว) */
+  const info = dueInfo(due, todayIso);
+  if (info.key === 'late') return { text: fmtDate(due), note: info.text, tone: 'late' };
+  if (info.key === 'today' || info.key === 'soon') return { text: fmtDate(due), note: info.text, tone: 'wait' };
   return { text: fmtDate(due), note: null, tone: null };
 }
 

@@ -4,6 +4,7 @@
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestStatusView } from "@/lib/requests/statuses";
 import { requestDueOwed } from "@/lib/requests/queueBoard";
+import { dueInfo } from "@/lib/dueState";
 
 /* ⚠️ **ส่ง `request` ทั้งใบ ไม่ใช่ `status` เปล่า ๆ** (มติผู้ใช้ 2026-08-19) — ป้าย
    "รอกำหนดส่ง" เป็นสถานะที่ derive จาก `status` + `committedDueDate` คู่กัน ⇒ ที่ไหน
@@ -24,8 +25,8 @@ export function RequestStatusBadge({ request = null, status = null }) {
 // ⚠️ ส่งใบที่มี `items` (แถวทั้งใบ) — ตาใครตัดสินจากแถว
 export function requestDueTone(request, todayISO) {
   const due = requestDueOwed(request);
-  if (!due || !todayISO) return null;
-  if (due < todayISO) return { color: "var(--red)", label: "เลยกำหนด" };
-  if (due === todayISO) return { color: "var(--amber)", label: "ครบกำหนดวันนี้" };
-  return null;
+  // คำ/ช่วงเตือนจากตัวกลาง `lib/dueState` (งวด 2) — เหลืองตั้งแต่อีก 3 วัน (มติ 23/11/2026)
+  const info = dueInfo(due, todayISO);
+  if (!due || info.key === 'none' || info.key === 'later') return null;
+  return { color: info.key === "late" ? "var(--red)" : "var(--amber)", label: info.text };
 }

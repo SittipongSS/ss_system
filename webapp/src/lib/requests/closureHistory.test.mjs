@@ -176,7 +176,7 @@ test('🐞 ใบที่จบแล้ว/มีฝั่งปิดแล�
   const requesterOnly = ask({ closedAt: CLS });
   assert.equal(requestDueText(requesterOnly, { todayIso: today }).overdue, false);
   // ใบที่ยังค้างที่ฝ่ายยังนับถอยหลังตามเดิม
-  assert.deepEqual(requestDueText(ask(), { todayIso: today }), { date: '2026-09-05', note: 'เลย 6 วัน', overdue: true });
+  assert.deepEqual(requestDueText(ask(), { todayIso: today }), { date: '2026-09-05', note: 'เลยกำหนด 6 วัน', overdue: true, soon: false });
 
   // ⚠️ ตัวกรอง "เลยกำหนด" / "ยังไม่ได้ให้วัน" ต้องตัดสินตรงกับช่องกำหนดส่ง — กดแล้วต้องเจอแถวแดง
   for (const r of [deptOnly, requesterOnly]) {
@@ -317,7 +317,7 @@ test('แดชบอร์ดขาย "คิวของฉัน": ปิด
     requests: [ask({ id: 'E', status: 'answered', answeredAt: '2026-09-10T20:00:00Z' })],
   })[0];
   assert.equal(early.due, '2026-09-11');
-  assert.equal(early.dueText, 'วันนี้');
+  assert.equal(early.dueText, 'วันนี้'); // แถว "ค้าง" (waiting) อายุ 0 วัน = วันนี้ — ไม่ใช่กำหนด
   assert.equal(byId.CLOSED, undefined);
   assert.equal(byId.CANCEL, undefined);
   // API ต้องโหลดใบที่รอเรากดปิดด้วย

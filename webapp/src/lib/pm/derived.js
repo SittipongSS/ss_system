@@ -8,6 +8,7 @@
 // auto-status propagation. This file is purely presentation-derived + JSX-free.)
 
 import { businessDate } from '@/lib/businessDate';
+import { DUE_SOON_DAYS, dueText } from '@/lib/dueState';
 
 // ── Project-level ─────────────────────────────────────────────────────
 // Derived status of a project from its own `status` + its tasks:
@@ -83,11 +84,11 @@ export const daysToDue = (t, today = businessDate()) => {
   return Number.isFinite(diff) ? diff : null;
 };
 
-// ต้องรีบ = ยังไม่เสร็จ และเลยกำหนด/เหลือ ≤3 วัน
+// ต้องรีบ = ยังไม่เสร็จ และเลยกำหนด/อีก ≤ 3 วัน (ช่วงเตือนมาตรฐาน `DUE_SOON_DAYS`)
 export const isUrgent = (t) => {
   if (t.status === "Completed") return false;
   const dd = daysToDue(t);
-  return dd !== null && dd <= 3;
+  return dd !== null && dd <= DUE_SOON_DAYS;
 };
 
 /* ป้ายกำหนดเสร็จของงานติดตาม — ตรรกะล้วน (สี/ไอคอนประกอบที่หน้าจอ)
@@ -109,7 +110,9 @@ export const taskUrgency = (task, { waiting = false } = {}) => {
     return { tone: "active", label: "กำลังทำ", overdue: false };
   }
   const suffix = waiting ? " · รอคนอื่น" : "";
-  if (dd < 0) return { tone: waiting ? "waiting" : "overdue", label: `เลยกำหนด ${Math.abs(dd)} วัน${suffix}`, overdue: true };
-  if (dd <= 3) return { tone: waiting ? "waiting" : "soon", label: `เหลือ ${dd} วัน${suffix}`, overdue: false };
-  return { tone: waiting ? "waiting" : "active", label: `เหลือ ${dd} วัน${suffix}`, overdue: false };
+  if (dd < 0) return { tone: waiting ? "waiting" : "overdue", label: `${dueText({ key: 'late', days: dd })}${suffix}`, overdue: true };
+  // คำ/ช่วงเตือนจากตัวกลาง `lib/dueState` (งวด 2): "อีก N วัน" (เดิม "เหลือ") · เหลือง ≤ DUE_SOON_DAYS · วันครบ = "ครบกำหนดวันนี้"
+  const text = dueText({ key: dd === 0 ? 'today' : 'later', days: dd });
+  if (dd <= DUE_SOON_DAYS) return { tone: waiting ? "waiting" : "soon", label: `${text}${suffix}`, overdue: false };
+  return { tone: waiting ? "waiting" : "active", label: `${text}${suffix}`, overdue: false };
 };

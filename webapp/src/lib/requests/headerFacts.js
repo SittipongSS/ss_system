@@ -20,6 +20,7 @@ import { requestDueOwed } from '@/lib/requests/queueBoard';
 import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
 /* ประเมินจากแบบ งวด 4 (S4 C-5) — วันที่ผู้ขออยากให้เข้าพื้นที่มีตัวอ่านเดียว (pure · ใช้ได้ทั้งเบราว์เซอร์และ server) */
 import { SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveyWishedVisit } from '@/lib/service/surveyIntake';
+import { dueInfo } from '@/lib/dueState';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -48,17 +49,9 @@ export function ageLabel(sentAt, now = new Date()) {
   if (days === null || days < 0) return null;
   if (days === 0) return 'วันนี้';
   if (days === 1) return 'เมื่อวาน';
-  return `ค้างมา ${days} วัน`;
+  return `ค้าง ${days} วัน`; // คำชุด "เลยกำหนด" (มติ 23/11/2026) — เดิม "ค้างมา" 
 }
 
-/** "อีก 3 วัน" / "วันนี้" / "เลยมา 2 วัน" — นับจากวันนี้ถึงวันกำหนด */
-export function countdownLabel(dueDate, now = new Date()) {
-  const days = dayDiff(now, dueDate);
-  if (days === null) return null;
-  if (days === 0) return 'ครบกำหนดวันนี้';
-  if (days > 0) return `อีก ${days} วัน`;
-  return `เลยกำหนดมา ${Math.abs(days)} วัน`;
-}
 
 /**
  * นับถอยหลังของ **วันที่ฝ่ายรับปาก** — คำชุด "เลยกำหนด" (มติเจ้าของ 23/11/2026) · `{ text, tone }` หรือ null
@@ -67,13 +60,10 @@ export function countdownLabel(dueDate, now = new Date()) {
  *    ไม่ใช่ปฏิทินของเครื่องแบบ `dayDiff` — ป้ายแดงต้องตรงกับคิวทุกเครื่อง ทุกเขตเวลา
  */
 export function dueCountdown(due, today) {
-  if (!due || !today) return null;
-  const ms = Date.parse(`${due}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`);
-  if (!Number.isFinite(ms)) return null;
-  const days = Math.round(ms / DAY_MS);
-  if (days < 0) return { text: `เลยกำหนด ${-days} วัน`, tone: 'late' };
-  if (days === 0) return { text: 'ครบกำหนดวันนี้', tone: 'warn' };
-  return { text: `อีก ${days} วัน`, tone: null };
+  // ตัวกลาง `lib/dueState` (งวด 2) — อีก ≤ 3 วันเหลืองเหมือนครบวันนี้ (มติ 23/11/2026)
+  const info = dueInfo(due, today);
+  if (info.key === 'none') return null;
+  return { text: info.text, tone: info.key === 'late' ? 'late' : info.key === 'later' ? null : 'warn' };
 }
 
 /**
