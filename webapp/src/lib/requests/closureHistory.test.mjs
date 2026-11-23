@@ -378,11 +378,34 @@ test('หัวใบ: ใบที่จบ/มีฝั่งปิดแล�
     facts({ status: 'closed', answeredAt: ANS, closedAt: CLS }).committedDue.sub,
     'RD ไม่ได้แจ้งกำหนดส่ง — ปิดครบแล้ว',
   );
-  // ใบที่ยังเดินอยู่ยังนับถอยหลังและทวงวันตามเดิม
+  // ใบที่ยังเดินอยู่ยังทวงวันตามเดิม — แต่ **วันที่ผู้ขอขอไม่นับถอยหลังแล้ว** (มติเจ้าของ 23/11/2026: แดงเฉพาะวันที่ฝ่ายรับปาก)
   const open = facts({});
-  assert.match(open.requestedDue.sub, /เลยกำหนด/);
+  assert.equal(open.requestedDue.sub, null);
   assert.equal(open.committedDue.value, 'ยังไม่ระบุ');
   assert.equal(open.committedDue.sub, 'RD ยังไม่ได้แจ้งกำหนดส่ง');
+});
+
+test('หัวใบ: นับถอยหลังอยู่ที่วันที่ฝ่ายรับปาก · คำชุด "เลยกำหนด" · วันไทย · ตาผู้ขอ/ใบปิดไม่นับ (มติ 23/11/2026)', async () => {
+  const { requestHeaderFacts, dueCountdown } = await import('./headerFacts.js');
+  const today = '2026-09-11';
+  const facts = (over, opts = {}) => Object.fromEntries(
+    requestHeaderFacts(ask({ requestedDueDate: '2026-09-01', committedDueDate: '2026-09-05', ...over }), { today, ...opts })
+      .map((f) => [f.key, f]),
+  );
+  const late = facts({});
+  assert.equal(late.requestedDue.sub, null, 'วันที่ผู้ขอขอเป็นวันอ้างอิง ไม่นับถอยหลัง');
+  assert.equal(late.committedDue.sub, 'เลยกำหนด 6 วัน', 'เลยกำหนดแล้วไม่ต่อบรรทัดเร็ว/ช้ากว่าที่ขอ');
+  assert.equal(late.committedDue.tone, 'late');
+  const dueToday = facts({ committedDueDate: today });
+  assert.match(dueToday.committedDue.sub, /^ครบกำหนดวันนี้/);
+  assert.equal(dueToday.committedDue.tone, 'warn');
+  assert.match(facts({ committedDueDate: '2026-09-14' }).committedDue.sub, /^อีก 3 วัน · /);
+  // ยังไม่รู้วันนี้ (เฟรมแรก) = ไม่ตัดสิน · ใบที่มีฝั่งปิดแล้ว = ไม่นับ
+  assert.equal(facts({}, { today: null }).committedDue.tone, 'late', 'ไม่รู้วันนี้ = ไม่มีนับถอยหลัง เหลือแค่บรรทัดเทียบ (ช้ากว่าที่ขอ)');
+  assert.doesNotMatch(facts({}, { today: null }).committedDue.sub || '', /เลยกำหนด/);
+  assert.doesNotMatch(facts({ closedAt: CLS }).committedDue.sub || '', /เลยกำหนด|ครบกำหนด|อีก/);
+  assert.deepEqual(dueCountdown('2026-09-10', today), { text: 'เลยกำหนด 1 วัน', tone: 'late' });
+  assert.equal(dueCountdown(null, today), null);
 });
 
 test('วันปิดตัวเดียวทุกที่: tooltip หมุด "ปิด" + สายพาน "ปิดเดือนนี้" ใช้ตราหลังสุด (เวลาไทย)', async () => {

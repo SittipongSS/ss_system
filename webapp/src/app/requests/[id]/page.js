@@ -80,7 +80,7 @@ import { answerViaBlockedReason, genericAnswerError, requestAnswerVia } from "@/
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import { REQUEST_STATUS_LABELS, requestAwaitingDue, requestStatusView } from "@/lib/requests/statuses";
 import { requestActorSide, requestSideLabel, requestSideText } from "@/lib/requests/replyTurn";
-import { requestClosure, requestClosureLine, reopenRequestError } from "@/lib/requests/closure";
+import { requestClosure, requestClosureLine, requestClosureStarted, reopenRequestError } from "@/lib/requests/closure";
 import { requestSettled } from "@/lib/requests/queueBoard";
 import { overPaidAfterConfirm, unexplainedOver } from "@/lib/requests/scentOverPaid";
 import { briefSourceMissingError } from "@/lib/requests/scentContinue";
@@ -248,6 +248,10 @@ export default function RequestDetailPage() {
      ⚠️ คิดที่นี่ ไม่ใช่ในตาราง — `dueIsStale` ไล่ทุกแถวในใบ ⇒ เรียกรายแถวแล้วเป็น
      O(n²) ในใบ 25 แถว · และตารางสามตัวจะได้ค่าเดียวกันเสมอโดยไม่ต้องมีใครดูให้ตรง */
   const dueCell = requestDueCell(req, today);
+  /* 🐞 **ใบที่จบแล้วเลิกนับ "ค้าง n วัน"** (ตรวจทั้งระบบ 23/11/2026) — ยกเลิก / ปิดโดยไม่ได้ประเมิน ไม่ปิดแถว ⇒ แถวที่ค้าง
+     อยู่ตอนจบนับอายุขึ้นทุกวัน (แดงเกิน 7 วัน) ทั้งที่ไม่มีใครต้องทำอะไรอีก · ไม่ส่งวันนี้ = ตารางไม่นับ
+     ⚠️ แถวที่จบแล้วยังบอก "จบใน N วัน" ได้ — ตัวเลขนั้นมาจากตราเวลาของแถวล้วน ไม่ใช้วันนี้ (`idleFromStamps`) */
+  const rowToday = req && (requestSettled(req) || requestClosureStarted(req)) ? null : today;
   // เลื่อนวันกำหนดส่งหลังรับเรื่องแล้ว — { date, reason }
   const [reschedule, setReschedule] = useState(null);
   // ช่วงเปลี่ยนผ่าน: RD กรอกเลขที่เอกสารเอง (mig 0272) — null = ปิดโมดัล
@@ -1802,7 +1806,8 @@ export default function RequestDetailPage() {
   // ⚠️ ไอคอนอยู่ที่นี่ ไม่ใช่ในไลบรารี — ไลบรารีต้องไม่ import component ของ React
   // (เทสต์รันด้วย node เปล่า) · คีย์ที่ไม่มีไอคอนไม่ต้องประกาศ
   const FACT_ICONS = { submitted: CalendarClock };
-  const headerFacts = requestHeaderFacts(req, { hasItems, progress })
+  // ⭐ `today` = วันไทยที่จับใน effect (ตัวเดียวกับตาราง) — นับถอยหลังวันที่ฝ่ายรับปากด้วยวันไทย ไม่ใช่ปฏิทินเครื่อง (23/11/2026)
+  const headerFacts = requestHeaderFacts(req, { hasItems, progress, today })
     .map((fact) => ({ ...fact, icon: FACT_ICONS[fact.key] }));
 
   /* ⭐ **ชิปผู้ยื่น** (ม-101) — ใบของใคร อ่านพร้อมเลขที่ใบในสายตาเดียว
@@ -2472,7 +2477,7 @@ export default function RequestDetailPage() {
         briefSummary={briefSummary}
         formulaBoard={formulaBoard}
         docBoard={docBoard}
-        today={today}
+        today={rowToday}
         due={dueCell}
       />
       )}

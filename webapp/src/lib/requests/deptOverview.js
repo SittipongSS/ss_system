@@ -225,7 +225,10 @@ export function deptTurnCountHref(turn, countKey, { queueHref = '/rd/requests' }
  * ⭐ หัวป้าย = `dept` เท่านั้น (มติเจ้าของ 19/10) · `requester` = ปุ่มรองพาไปแท็บรอผู้ขอ ไม่บวกเข้าหัวป้าย
  */
 export function deptOverdueByTurn(rows = [], { dept, todayIso = null } = {}) {
-  return deptCountByTurn(rows, 'overdue', { dept, todayIso });
+  /* ⏸ คีย์ `pastDue` (เลยวันที่รับปาก ไม่ดูตา) ไม่ใช่ `overdue` — ตั้งแต่ 23/11/2026 `overdue` นับเฉพาะตาฝ่าย (ใบตาผู้ขอไม่นับ
+     เลยกำหนดทุกจอ) แต่เจ้าของสั่งคงหน้าภาพรวม /rd ไว้จนกว่าจะรื้อ ⇒ ปุ่มรอง "ส่งแล้ว รอผู้ขอ" ยังนับเลขเดิม
+     · ตาฝ่าย: `pastDue` = `overdue` ทุกใบ (ปุ่ม "รอ RD" ลิงก์ `count=overdue` ได้เลขเดียวกัน) · ลิงก์ตาผู้ขอต้องใช้ `pastDue` */
+  return deptCountByTurn(rows, 'pastDue', { dept, todayIso });
 }
 
 /**
