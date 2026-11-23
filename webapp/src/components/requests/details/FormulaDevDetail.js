@@ -30,7 +30,10 @@ import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { apiFetch } from "@/lib/apiFetch";
 import { responseWarningText } from "@/lib/apiWarnings";
-import { formulaLabel } from "@/lib/master/registryLabel";
+import { formulaLabel, scentLabel } from "@/lib/master/registryLabel";
+
+// ป้ายของที่แถวส่ง — สูตร หรือกลิ่นลูกของแถวหัวน้ำหอม (ม-166) · PF · ชื่อ · วันที่ (ม-162)
+const registryText = (r) => (r?.kind === "scent" ? scentLabel(r) : formulaLabel(r));
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ (`formulaBoard`/`formulaTotals`) — เปลือก
 // ส่งของทุกหัวข้อมาให้ครบ แล้วแต่ละหัวข้อหยิบของตัวเอง ⇒ เพิ่มหัวข้อใหม่ไม่ต้องแก้เปลือก
@@ -138,9 +141,10 @@ export default function FormulaDevDetail({
       <ConfirmDialog
         open={!!deleteRow}
         tone="danger"
-        title={`ลบ ${deleteRow?.registry ? formulaLabel(deleteRow.registry) : deleteRow?.name || "รายการนี้"}`}
-        description={`${deleteRow?.registry
-          ? `ลบออกจากคำร้อง และลบ ${formulaLabel(deleteRow.registry)} ออกจากทะเบียนด้วย`
+        title={`ลบ ${deleteRow?.registry ? registryText(deleteRow.registry) : deleteRow?.name || "รายการนี้"}`}
+        /* ⚠️ แถวที่ "ผูกของเดิม" (bind) ไม่ได้สร้างของในทะเบียน ⇒ server ไม่ลบมัน (`registryOwnedByRow`) — ประโยคต้องตรงกัน */
+        description={`${deleteRow?.registry && !deleteRow.boundExisting
+          ? `ลบออกจากคำร้อง และลบ ${registryText(deleteRow.registry)} ออกจากทะเบียนด้วย`
           : "ลบรายการนี้ออกจากคำร้อง"} · ย้อนกลับไม่ได้`}
         detail="ถ้าของในทะเบียนถูกอ้างที่อื่นแล้ว ระบบจะลบเฉพาะรายการในคำร้อง แล้วบอกไว้ในประวัติ"
         confirmLabel="ลบ"

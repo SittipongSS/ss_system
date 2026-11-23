@@ -185,6 +185,9 @@ test('⭐ ตัดสินที่มาจาก briefId ไม่ใช่ 
   assert.equal(scentSourceKind(fromRequest), 'request');
   assert.equal(scentSourceKind({ briefId: 'B1' }), 'request');
   assert.equal(scentSourceKind({}), 'manual');
+  // ม-166 — กลิ่นลูกจากพัฒนาสูตรหัวน้ำหอม ไม่มีบรีฟแต่มาจากคำร้อง
+  assert.equal(scentSourceKind({ sourceRequestItem: true, sourceRequest: { id: 'R', docNo: 'RQ-FD-1' } }), 'request');
+  assert.equal(scentSourceLabel({ sourceRequestItem: true, sourceRequest: { id: 'R', docNo: 'RQ-FD-1' } }).label, 'คำร้อง RQ-FD-1');
   // ⚠️ ดีลอย่างเดียวไม่พอ — POST /api/master/scents รับ dealId จากคนเพิ่มเองได้
   assert.equal(scentSourceKind({ dealId: 'D-1' }), 'manual');
   assert.equal(scentSourceKind(null), 'manual');

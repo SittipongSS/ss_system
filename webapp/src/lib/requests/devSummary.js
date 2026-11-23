@@ -28,13 +28,15 @@ const daysSince = (stamp, today) => {
 /** ชื่อที่การ์ดโชว์ — ค่าสดจากทะเบียนก่อน (ตัวเดียวกับตาราง) · ยังไม่ผูกทะเบียน = ป้ายของแถว */
 function rowName(item, kind) {
   if (kind === 'formula_dev') {
-    return item.refFormula?.name || productDevLabel(item.label, item.refScent, item.categoryCode);
+    // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น: ของที่ได้คือกลิ่นลูก (`refProducedScent`) คู่ของสูตร
+    return item.refFormula?.name || item.refProducedScent?.name
+      || productDevLabel(item.label, item.refScent, item.categoryCode);
   }
   return item.refScent?.name || item.label || '—';
 }
 
 function rowCode(item, kind) {
-  const ref = kind === 'formula_dev' ? item.refFormula : item.refScent;
+  const ref = kind === 'formula_dev' ? item.refFormula || item.refProducedScent : item.refScent;
   const code = String(ref?.code ?? '').trim();
   return code && code !== '-' ? code : null;
 }

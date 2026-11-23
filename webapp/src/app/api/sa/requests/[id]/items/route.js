@@ -30,6 +30,7 @@ import { findFormulaByIdentity } from '@/lib/master/formulas';
 import { normalizeFormulaDelivery } from '@/lib/requests/delivery';
 import { formulaName, planFormulaDelivery } from '@/lib/requests/formulaRework';
 import { addDirectionError, directionRowFrom } from '@/lib/requests/formulaDirections';
+import { isOilScentRow, planOilScentDelivery, scentName } from '@/lib/requests/oilScentDelivery';
 import { hopPatch } from '@/lib/requests/hops';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 import { fetchAll } from '@/lib/supabaseFetchAll';
@@ -348,6 +349,121 @@ export async function POST(request, { params }) {
   }, { status: 201 });
 }
 
+/* ── direction เพิ่มของแถวพัฒนาสูตรหัวน้ำหอม (ม-166) — ทรงเดียวกับเส้นสูตรข้างล่าง แต่ของที่เกิดคือ **กลิ่นลูก** ─────────────────
+   ⭐ แต่ละ direction = กลิ่นใหม่ "กำลังพัฒนา" ชี้กลับกลิ่นที่ขอ (หรือกลิ่นของรอบก่อน) + แถวพี่น้อง (`directionRowFrom`)
+   ⚠️ ไม่มี transaction — ตรวจทุกตัวก่อน → สร้างกลิ่นทีละตัว → แถวทั้งชุดทีเดียว · ล้ม = ย้อนลบกลิ่นที่เพิ่งสร้าง */
+async function postOilScentDirections({ supabase, user, before, request, anchor, inputs }) {
+  const id = before.id;
+  const items = before.items || [];
+  const shape = { ...directionRowFrom(anchor), id: null };
+  const requested = anchor.scentId ? await findScent(supabase, anchor.scentId).catch(() => null) : null;
+  const values = [];
+  const seen = new Set();
+  for (const [n, input] of inputs.entries()) {
+    const label = `direction ที่ ${n + 1}`;
+    const { value, error } = normalizeFormulaDelivery({ formula: input }, { scent: true });
+    if (error) return Response.json({ error: `${label}: ${error}` }, { status: 400 });
+    const key = value.code.toLowerCase();
+    if (seen.has(key)) return Response.json({ error: `${label}: รหัสกลิ่น ${value.code} ซ้ำกับ direction อื่น` }, { status: 400 });
+    seen.add(key);
+    const plan = planOilScentDelivery({ row: shape, items, requested, code: value.code });
+    if (plan.kind !== 'create') {
+      return Response.json({ error: `${label}: ${plan.error || 'ส่ง direction เพิ่มของกลิ่นนี้ไม่ได้'}` }, { status: 409 });
+    }
+    values.push({ value, plan });
+  }
+  // รหัสชนทะเบียน — บอกก่อนสร้างตัวแรก (ด่านจริงยังเป็นดัชนี scents_code_uk ที่ `createScent` แปลข้อความให้)
+  const { data: clash, error: clashError } = await supabase.from('scents').select('code')
+    .in('code', values.map((v) => v.value.code));
+  if (clashError) return Response.json({ error: `อ่านทะเบียนกลิ่นไม่สำเร็จ: ${clashError.message}` }, { status: 500 });
+  if (clash?.length) return Response.json({ error: `รหัสกลิ่น ${clash.map((c) => c.code).join(', ')} ถูกใช้ไปแล้ว` }, { status: 400 });
+
+  const nowIso = new Date().toISOString();
+  const today = businessDate();
+  const created = [];
+  try {
+    for (const { value, plan } of values) {
+      created.push(await createScent(supabase, {
+        name: value.name,
+        code: value.code,
+        producedAt: value.formulaDate,
+        note: value.note,
+        customerTradeName: value.customerTradeName,
+        customerId: before.customerId || requested?.customerId || null,
+        dealId: before.dealId || null,
+        derivedFromScentId: plan.derivedFromScentId,
+      }, user, { accepted: true }));
+    }
+    const base = Math.max(0, ...items.map((i) => i.sortOrder || 0));
+    const rows = created.map((scent, n) => ({
+      id: `DRI-${randomUUID()}`,
+      ...directionRowFrom(anchor, { sortOrder: base + n + 1 }),
+      ...hopPatch('ready', {}, user, today, { lineKind: 'product_dev' }),
+      producedScentId: scent.id,
+      producedFormulaAction: 'create',
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    }));
+    const { error: insertError } = await supabase.from('dept_request_items').insert(rows);
+    if (insertError) throw insertError;
+    // คอนเฟิร์มแทรกระหว่างตรวจกับเขียน — เหตุผลเดียวกับเส้นสูตร (รีวิว ม-157)
+    const { data: settledNow, error: recheckError } = await supabase.from('dept_request_items')
+      .select('id').eq('requestId', id).eq('lineKind', 'product_dev')
+      .eq('categoryCode', anchor.categoryCode).eq('scentId', anchor.scentId)
+      .or('outcome.eq.confirmed,answerStatus.eq.done');
+    if (recheckError || settledNow?.length) {
+      const { error: rowUndoError } = await supabase.from('dept_request_items').delete().in('id', rows.map((r) => r.id));
+      if (rowUndoError) {
+        console.error('[request items] ถอยแถว direction ไม่สำเร็จ', rowUndoError.message);
+        created.length = 0; // แถวยังถือกลิ่นอยู่ — ห้ามลบกลิ่นตาม
+      }
+      throw new Error(recheckError
+        ? 'ตรวจรายการอื่นของกลิ่นนี้ไม่สำเร็จ — ยังไม่ได้ส่ง ลองกดอีกครั้ง'
+        : 'ลูกค้าเพิ่งคอนเฟิร์มกลิ่นของรายการนี้ — ส่ง direction เพิ่มไม่ได้แล้ว โหลดหน้าใหม่');
+    }
+  } catch (e) {
+    for (const scent of created) {
+      const { error: undoError } = await supabase.from('scents').delete().eq('id', scent.id).eq('status', 'developing');
+      if (undoError) console.error('[request items] ย้อนลบกลิ่น direction ไม่สำเร็จ', scent.id, undoError.message);
+    }
+    return Response.json({ error: `ส่ง direction เพิ่มไม่สำเร็จ: ${e.message}` }, { status: 400 });
+  }
+
+  let statusWarning = null;
+  try {
+    const afterAdd = await findRequest(supabase, id);
+    const closurePatch = requestRowsClosurePatch(afterAdd, afterAdd?.items || [], nowIso, {
+      actorSide: requestActorSide(user, afterAdd),
+    });
+    if (Object.keys(closurePatch).length) {
+      const { error: closureError } = await supabase.from('dept_requests')
+        .update({ ...closurePatch, updatedAt: nowIso }).eq('id', id);
+      if (closureError) throw closureError;
+    }
+  } catch (e) {
+    console.error('[request items] ปรับสถานะใบหลังส่ง direction ไม่สำเร็จ', id, e.message);
+    statusWarning = `ส่ง direction แล้ว แต่ปรับสถานะใบไม่สำเร็จ (${e.message})`;
+  }
+
+  const names = created.map((x) => scentName(x)).join(', ');
+  await appendUpdate(supabase, {
+    entityType: 'dept_request', entityId: id, kind: 'ready',
+    body: `ส่งงาน direction เพิ่ม ${created.length} รายการ — ${requestedLabel(anchor.label, anchor.categoryCode)} · กลิ่น ${names}`,
+    user,
+  }).catch(() => {});
+  const after = await findRequest(supabase, id).catch(() => null);
+  await recordAudit({
+    user, action: 'update', entityType: 'dept_request', entityId: id,
+    before, after,
+    summary: `ส่ง direction เพิ่ม ${created.length} รายการ (กลิ่น ${names}) — ${requestedLabel(anchor.label, anchor.categoryCode)} (${before.docNo || id})`,
+    request,
+  });
+  return Response.json({
+    ...(after || {}),
+    ...(statusWarning ? { _warning: statusWarning } : {}),
+  }, { status: 201 });
+}
+
 /* ── ส่ง direction เพิ่มของพัฒนาสูตร (ม-157 · IS-26100002) ──────────────────────────────────────────────
    ⭐ RD ส่งสูตรของกลิ่นเดียวกันได้หลาย direction — แต่ละตัว = แถวพี่น้องของแถวแรก (`directionRowFrom`) + สูตรใหม่สถานะ
    กำลังพัฒนา (ไม่จองตัวตน หมวด × กลิ่น · mig 0411) · แถวเกิดในขั้น "ส่งงานแล้ว" (ตราส่งของ RD คนกด) แล้วเดินก้าวรายแถว
@@ -365,6 +481,8 @@ async function postFormulaDirections({ supabase, user, before, request }) {
   const inputs = Array.isArray(body.formulas) ? body.formulas : [];
   if (!inputs.length) return Response.json({ error: 'ไม่มี direction ที่จะส่ง' }, { status: 400 });
   if (inputs.length > 10) return Response.json({ error: 'ส่งได้ครั้งละไม่เกิน 10 direction' }, { status: 400 });
+  // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น: direction เพิ่มคือกลิ่นลูกอีกตัว ไม่ใช่สูตร
+  if (isOilScentRow(anchor)) return postOilScentDirections({ supabase, user, before, request, anchor, inputs });
 
   // ── ตรวจทุกตัวก่อนแตะอะไร — ช่องฟอร์ม · รหัสซ้ำกันเอง/ซ้ำทะเบียน · แผนทะเบียน (ตัวเดียวกับพรีวิวบนจอ) ──
   let registry;

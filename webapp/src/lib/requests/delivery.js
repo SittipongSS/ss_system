@@ -253,7 +253,10 @@ export function deliveryItemRow(row, {
 // ⚠️ **ไม่ถามหมวดกับกลิ่นซ้ำ** — สองอย่างนั้นอยู่บนแถวแล้ว และมันคือตัวตนของสูตร
 // พอดี (`formulas_identity_uk`) · ถามซ้ำเมื่อไร ผู้ใช้จะกรอกให้ต่างจากที่ขอไว้ได้
 // แล้วสูตรที่เกิดจะไม่ตรงกับแถวที่สั่ง
-export function normalizeFormulaDelivery(input = {}) {
+/* ⭐ `scent: true` = แถวพัฒนาสูตรหมวดหัวน้ำหอมที่ส่งเป็นกลิ่น (ม-166) — ช่องชุดเดียวกัน (วันที่ = วันผลิตกลิ่น) แต่ข้อความพูดว่า
+   "กลิ่น" และรับชื่อที่ลูกค้าเรียก (ชื่อนี้อยู่ที่ **กลิ่น** — มติ 04/11) */
+export function normalizeFormulaDelivery(input = {}, { scent = false } = {}) {
+  const noun = scent ? 'กลิ่น' : 'สูตร';
   /* ⭐ **ฟอร์มเดียวกับทะเบียน** (มติผู้ใช้ 2026-08-19) — ค่าที่ RD กรอกมาเป็นก้อน
      `formula` ที่ใช้ชื่อช่องชุดเดียวกับ `FormulaForm` ⇒ เพิ่มช่องในทะเบียนแล้ว
      สายคำร้องได้ตามโดยไม่ต้องคิดชื่อใหม่ (เดิมเป็น formulaName/formulaCode สามช่อง
@@ -261,15 +264,15 @@ export function normalizeFormulaDelivery(input = {}) {
   const src = input.formula || {};
 
   const name = String(src.name ?? '').trim().replace(/\s+/g, ' ');
-  if (!name) return { value: null, error: 'ต้องระบุชื่อสูตร' };
-  if (name.length > 200) return { value: null, error: 'ชื่อสูตรยาวเกิน 200 ตัวอักษร' };
+  if (!name) return { value: null, error: `ต้องระบุชื่อ${noun}` };
+  if (name.length > 200) return { value: null, error: `ชื่อ${noun}ยาวเกิน 200 ตัวอักษร` };
 
   // รหัสบังคับ — RD เป็นเจ้าของทะเบียน และนี่คือจังหวะที่สูตรเข้าทะเบียนจริง
   // ปล่อยว่างได้เมื่อไร จะได้สูตรร่างที่ไม่มีใครกลับมาใส่รหัสให้ (โรคเดียวกับกอง
   // "รอจัดระเบียบ" ที่ 0171 ทิ้งไว้)
   const code = String(src.code ?? '').trim();
-  if (!code) return { value: null, error: 'ต้องระบุรหัสสูตร' };
-  if (code.length > 100) return { value: null, error: 'รหัสสูตรยาวเกิน 100 ตัวอักษร' };
+  if (!code) return { value: null, error: `ต้องระบุรหัส${noun}` };
+  if (code.length > 100) return { value: null, error: `รหัส${noun}ยาวเกิน 100 ตัวอักษร` };
 
   const formulaDate = String(src.formulaDate ?? '').trim() || null;
   // ⭐ กติกาเดียวกับ `createFormula` (รูปแบบ + ช่วงปี) — ไม่งั้นผ่านด่านแล้วไปตายหลังกลิ่นเกิด
@@ -279,12 +282,15 @@ export function normalizeFormulaDelivery(input = {}) {
   // ⚠️ ไม่รับชื่อที่ลูกค้าเรียกของสูตรแล้ว — ชื่อที่ลูกค้าเรียกอยู่ที่ **กลิ่นที่เดียว** (มติเจ้าของ 04/11 · ย้อนไป ม-12) — ระดับสูตรคือชื่อสินค้าของ FG
   const note = String(src.note ?? '').trim();
   if (note.length > 2000) return { value: null, error: 'หมายเหตุยาวเกิน 2000 ตัวอักษร' };
+  const customerTradeName = scent ? String(src.customerTradeName ?? '').trim().replace(/\s+/g, ' ') : '';
+  if (customerTradeName.length > 200) return { value: null, error: 'ชื่อที่ลูกค้าเรียกยาวเกิน 200 ตัวอักษร' };
 
   return {
     value: {
       name,
       code,
       formulaDate,
+      ...(scent ? { customerTradeName: customerTradeName || null } : {}),
       // สายพันธุ์สูตร — ด่านข้ามลูกค้าอยู่ฝั่ง server (assertDerivedFromFormula)
       // เพราะต้องอ่านแถวต้นทางมาเทียบ
       derivedFromFormulaId: String(src.derivedFromFormulaId ?? '').trim() || null,

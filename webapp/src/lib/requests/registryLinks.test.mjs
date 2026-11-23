@@ -42,6 +42,24 @@ test('กลิ่นที่แถวขอ (scentId) ใช้ได้เม
   assert.equal(row.refFormula.code, 'FR-77');
 });
 
+test('พัฒนาสูตรหัวน้ำหอมที่ส่งเป็นกลิ่น (ม-166): refScent = กลิ่นที่ขอ · refProducedScent = กลิ่นที่ได้', () => {
+  const scents = [
+    { id: 'SC-3', code: 'PF859010103', name: 'TEA TIME #3', status: 'developing' },
+    { id: 'SC-R1', code: 'PF85901010301', name: 'TEA TIME #3.1 REV1', status: 'active', producedAt: '2026-09-10' },
+  ];
+  const [oil, scentDev] = attachRegistryLinks([
+    { id: 'a', lineKind: 'product_dev', categoryCode: '02-020', scentId: 'SC-3', producedScentId: 'SC-R1' },
+    { id: 'b', lineKind: 'scent_dev', scentId: 'SC-3', producedScentId: 'SC-R1' },
+  ], { scents });
+  assert.equal(oil.refScent.code, 'PF859010103');
+  assert.equal(oil.refProducedScent.code, 'PF85901010301');
+  assert.equal(oil.refProducedScent.producedAt, '2026-09-10');
+  assert.equal(oil.refFormula, null);
+  // สายพัฒนากลิ่นไม่เปลี่ยน — refScent ยังเป็นกลิ่นที่เกิดจากแถว
+  assert.equal(scentDev.refScent.code, 'PF85901010301');
+  assert.equal(scentDev.refProducedScent, null);
+});
+
 test('ประวัติเขียนเฉพาะตอนชื่อ/รหัสเปลี่ยน และต้องมีค่าเดิมเสมอ', () => {
   assert.equal(
     registryRenameBody('scent', { code: 'PF-1', name: 'A' }, { code: 'PF-2', name: 'A' }),
