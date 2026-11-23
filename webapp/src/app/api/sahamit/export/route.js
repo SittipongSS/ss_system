@@ -142,7 +142,7 @@ function buildReport(view, data, filters = {}) {
         received: po.receivedDate, ready: v.readyDate, due: l.dueDate,
         pm: t.pmArrivedAt ? `มาแล้ว ${t.pmArrivedAt}` : (t.pmDueDate ? `กำหนด ${t.pmDueDate}` : ''),
         rm: t.rmArrivedAt ? `มาแล้ว ${t.rmArrivedAt}` : (t.rmDueDate ? `กำหนด ${t.rmDueDate}` : ''),
-        actual: l.actualDeliveredDate, late: v.ourSlip ? 'เราส่งช้า' : (v.lateVsDue ? 'เกินกำหนด(PO/lead)' : ''),
+        actual: l.actualDeliveredDate, late: v.ourSlip ? 'เราส่งช้า' : (v.lateVsDue ? 'เลยกำหนด(PO/lead)' : ''),
       });
     }
     return {

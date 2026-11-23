@@ -223,8 +223,8 @@ test('queueWords: "ที่ไหน" ของไซต์ · อายุค�
   assert.equal(queueWords.siteWhereText({ routeZone: 'BKK' }), 'เขต BKK');
   assert.equal(queueWords.siteWhereText({ address: '12 ถ.สุขุมวิท' }), '12 ถ.สุขุมวิท');
   assert.equal(queueWords.siteWhereText(null), '');
-  // ส่ง 10:00 น. เวลาไทยของวันที่ 23 · วันนี้ 24 ⇒ ค้างมา 1 วัน
-  assert.equal(queueWords.requestAgeText({ submittedAt: '2026-09-23T03:00:00.000Z' }, '2026-09-24'), 'ส่งเมื่อ พ. 23 ก.ย. · ค้างมา 1 วัน');
+  // ส่ง 10:00 น. เวลาไทยของวันที่ 23 · วันนี้ 24 ⇒ ค้าง 1 วัน
+  assert.equal(queueWords.requestAgeText({ submittedAt: '2026-09-23T03:00:00.000Z' }, '2026-09-24'), 'ส่งเมื่อ พ. 23 ก.ย. · ค้าง 1 วัน');
   // ⚠️ ส่งตี 1 เวลาไทย (ยังเป็นวันก่อนตามนาฬิกา UTC) = วันไทย ไม่ใช่วัน UTC
   assert.equal(queueWords.requestAgeText({ submittedAt: '2026-09-23T18:30:00.000Z' }, '2026-09-24'), 'ส่งเมื่อ พฤ. 24 ก.ย.');
   assert.equal(queueWords.requestAgeText({}, '2026-09-24'), '');
@@ -346,7 +346,7 @@ test('การ์ดรอรับเรื่อง: วันที่ต้
   assert.equal(row.timeLine, 'ช่วง 10:00');
   assert.deepEqual(row.rel, { text: 'อีก 3 วัน', tone: '' });
   assert.equal(row.who.text, 'ผู้ขอ วิภา ขายเก่ง');
-  assert.equal(row.who.sub, 'ส่งเมื่อ ส. 19 ก.ย. · ค้างมา 3 วัน');
+  assert.equal(row.who.sub, 'ส่งเมื่อ ส. 19 ก.ย. · ค้าง 3 วัน');
   assert.equal(row.who.linkId, null);
   assert.equal(row.siteLoadText, 'ต้องการผล อ. 29 ก.ย.');
   assert.equal(row.dayLoad.text, 'วันนั้นว่าง 2 จาก 2 คน');
@@ -390,7 +390,7 @@ test('การ์ดนัดหลุด: วันเดิมที่รั
   assert.equal(row.dateLine, 'นัดเดิม พ. 23 ก.ย.');
   assert.equal(row.timeLine, 'เวลา 13:30');
   assert.deepEqual(row.rel, { text: 'พรุ่งนี้', tone: '' });
-  assert.equal(row.who.sub, 'ส่งเมื่อ ศ. 18 ก.ย. · ค้างมา 4 วัน · มอบหมายไว้ สมชาย ใจดี');
+  assert.equal(row.who.sub, 'ส่งเมื่อ ศ. 18 ก.ย. · ค้าง 4 วัน · มอบหมายไว้ สมชาย ใจดี');
   assert.equal(row.siteLoadText, 'รับปากส่งผล ส. 26 ก.ย.');
   assert.equal(row.dayLoad.text, 'วันนั้นว่าง 1 จาก 2 คน');
   assert.deepEqual(row.status, { label: 'ลงคิวใหม่', tone: 'warning', text: 'นัดเดิม SV-99 ยกเลิก — ลงคิวใหม่' });
@@ -476,7 +476,7 @@ test('⭐ S2b การ์ดงานโต๊ะรอรับเรื่อ
   assert.equal(row.code, 'AS-26090015');
   assert.equal(row.href, '/requests/R-desk');
   assert.equal(row.who.text, 'ผู้ขอ วิภา ขายเก่ง');
-  assert.equal(row.who.sub, 'ส่งเมื่อ จ. 21 ก.ย. · ค้างมา 1 วัน');
+  assert.equal(row.who.sub, 'ส่งเมื่อ จ. 21 ก.ย. · ค้าง 1 วัน');
   assert.equal(row.title, 'ประเมินจากแบบ 3 ห้องประชุม');
   // ทั้งการ์ดไม่มีคำของงานหน้างาน
   assert.doesNotMatch(row.haystack, /ลงคิวเข้าพื้นที่|ต้องการเข้า|วันนั้นว่าง|ช่วง 10:00/);
@@ -621,7 +621,7 @@ test('🔴 S2b การ์ดของใบลงหน้างานเท�
     code: 'AS-26090011', href: '/requests/R-ack', kind: 'survey', kindLabel: 'ประเมินพื้นที่',
     siteCode: 'ST-1001 · BKK-C', siteName: 'เซ็นทรัลเวิลด์', customer: 'บจก. เซ็นทรัล',
     dateLine: 'ต้องการเข้า ศ. 25 ก.ย.', timeLine: 'ช่วง 10:00', rel: { text: 'อีก 3 วัน', tone: '' },
-    who: { text: 'ผู้ขอ วิภา ขายเก่ง', tone: '', sub: 'ส่งเมื่อ ส. 19 ก.ย. · ค้างมา 3 วัน', linkId: null },
+    who: { text: 'ผู้ขอ วิภา ขายเก่ง', tone: '', sub: 'ส่งเมื่อ ส. 19 ก.ย. · ค้าง 3 วัน', linkId: null },
     siteLoadText: 'ต้องการผล อ. 29 ก.ย.',
     dayLoad: { text: 'วันนั้นว่าง 2 จาก 2 คน', tone: 'ok', free: crewPeople },
     gateItems: [],
@@ -631,7 +631,7 @@ test('🔴 S2b การ์ดของใบลงหน้างานเท�
     actions: {
       acknowledge: true, commitDue: false, release: false, open: false, assign: false, report: false, calendar: false, delete: false,
     },
-    haystack: 'as-26090011 ประเมินพื้นที่ รอรับเรื่อง รอรับเรื่อง st-1001 · bkk-c เซ็นทรัลเวิลด์ บจก. เซ็นทรัล ต้องการเข้า ศ. 25 ก.ย. ช่วง 10:00 อีก 3 วัน ผู้ขอ วิภา ขายเก่ง ส่งเมื่อ ส. 19 ก.ย. · ค้างมา 3 วัน ต้องการผล อ. 29 ก.ย. วันนั้นว่าง 2 จาก 2 คน ขั้น 1/2 ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่ ประเมินล็อบบี้ชั้น 1 คำร้องประเมินพื้นที่ · ยังไม่มีนัด รับเรื่อง',
+    haystack: 'as-26090011 ประเมินพื้นที่ รอรับเรื่อง รอรับเรื่อง st-1001 · bkk-c เซ็นทรัลเวิลด์ บจก. เซ็นทรัล ต้องการเข้า ศ. 25 ก.ย. ช่วง 10:00 อีก 3 วัน ผู้ขอ วิภา ขายเก่ง ส่งเมื่อ ส. 19 ก.ย. · ค้าง 3 วัน ต้องการผล อ. 29 ก.ย. วันนั้นว่าง 2 จาก 2 คน ขั้น 1/2 ยังไม่มีใครรับเรื่อง — รับเรื่องก่อน แล้วจึงลงคิวเข้าพื้นที่ ประเมินล็อบบี้ชั้น 1 คำร้องประเมินพื้นที่ · ยังไม่มีนัด รับเรื่อง',
   };
   const { request, site, ...row } = rowOf(surveyRequests[0]);
   assert.deepEqual(row, { ...today, methodChip: null });

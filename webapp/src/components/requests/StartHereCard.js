@@ -63,7 +63,7 @@ export default function StartHereCard({
             ("…โรงแรม A" + "DR-0042" อ่านเป็น "ADR-0042") */}
         <div className={styles.docSub}>{docLine}</div>
         <div className={styles.meta}>
-          <span className={`ui-badge ${due?.overdue ? styles.overdue : ""}`.trim()}>
+          <span className={`ui-badge ${due?.overdue ? styles.overdue : due?.soon ? styles.dueSoon : ""}`.trim()}>
             {due
               ? `กำหนด ${fmtDate(due.date)}${due.note ? ` · ${due.note}` : ""}`
               : groupLabel}

@@ -24,10 +24,11 @@ import { raQueueItem, raWorkHref } from "@/lib/excise/raQueueItem";
 import { businessDate } from "@/lib/businessDate";
 import { PERIODS, taxQueueHref, withinPeriod } from "@/lib/tax/period";
 import {
-  AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageLabel, ageTone, lateRegistrations, registrationAge,
+  AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageTone, lateRegistrations, registrationAge,
 } from "@/lib/tax/registrationQueue";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./tax.module.css";
+import { ageText } from "@/lib/dueState";
 
 export default function TaxDashboard() {
   const canSA = useCan("sales:act");
@@ -170,7 +171,8 @@ export default function TaxDashboard() {
   const ageChip = (days) => {
     if (!Number.isFinite(days)) return null;
     const tone = ageTone(days);
-    return { label: `ค้างมา ${ageLabel(days)}`, color: tone === "neutral" ? null : toneColor(tone) };
+    // คำชุดเดียว "ค้าง N วัน" (ตัวกลาง `lib/dueState` · เดิม "ค้างมา") — วันนี้ = "วันนี้"
+    return { label: ageText(days), color: tone === "neutral" ? null : toneColor(tone) };
   };
 
   // Build the role's action queue.
@@ -256,7 +258,7 @@ export default function TaxDashboard() {
                 ทะเบียนค้างรออนุมัติเกิน {AGE_LATE_DAYS} วัน · {late.length} ใบ
               </div>
               <div className={styles.alertNote}>
-                ใบที่นานที่สุดค้างมา {ageLabel(oldestLate)} — เอกสารครบแล้วรอฝ่าย RA ตรวจอย่างเดียว
+                ใบที่นานที่สุด{ageText(oldestLate)} — เอกสารครบแล้วรอฝ่าย RA ตรวจอย่างเดียว
                 {timeRange !== "all" && " · นับทุกใบที่ค้าง ไม่ขึ้นกับช่วงเวลาที่เลือก"}
               </div>
             </div>

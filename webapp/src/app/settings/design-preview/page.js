@@ -33,6 +33,7 @@ import { TableScroll, TableEmpty } from "@/components/ui/Table";
 import StatusBadge from "@/components/ui/StatusBadge";
 import Tag from "@/components/ui/Tag";
 import CountBadge from "@/components/ui/CountBadge";
+import DueBadge from "@/components/ui/DueBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import AlertBanner from "@/components/ui/AlertBanner";
 /* ⚠️ ต้องตั้งชื่อใหม่ — ไฟล์นี้อิมพอร์ต `Tooltip` ของ recharts ไว้ใช้กับกราฟแล้ว
@@ -1007,7 +1008,7 @@ export default function DesignPreviewPage() {
           </div>
         </Section>
 
-        <Section group="data" active={group} title="ป้ายสถานะ" subtitle="StatusBadge · Tag · CountBadge">
+        <Section group="data" active={group} title="ป้ายสถานะ" subtitle="StatusBadge · Tag · CountBadge · DueBadge">
           <div className={styles.stack}>
             <div className={styles.row}>
               <span className={styles.caption}>StatusBadge</span>
@@ -1020,6 +1021,13 @@ export default function DesignPreviewPage() {
               <Tag tone="accent">สหมิตร</Tag>
               <Tag tone="info" onRemove={() => {}}>กรองแล้ว</Tag>
               <CountBadge count={12} tone="warning" />
+            </div>
+            {/* ⭐ ป้ายวันกำหนด — คำ/สีจากตัวกลาง `lib/dueState` (งวด 2 · มติ 23/11/2026) · วันตายตัวในหน้าต้นแบบ (ไม่อ่านนาฬิกา) */}
+            <div className={styles.row}>
+              <span className={styles.caption}>DueBadge</span>
+              <DueBadge due="2026-11-20" today="2026-11-23" />
+              <DueBadge due="2026-11-23" today="2026-11-23" />
+              <DueBadge due="2026-11-25" today="2026-11-23" />
             </div>
 
             {/* ⚠️ ตั้งใจโชว์ชื่อเก่าไว้เทียบ — ไม่ใช่ตัวอย่างให้ลอกไปใช้
@@ -3156,7 +3164,7 @@ export default function DesignPreviewPage() {
               <span className={styles.caption}>ActionQueue — คิวงานค้างบนหน้าภาพรวม</span>
               <ActionQueue
                 items={[
-                  { id: "a1", title: "ใบเสนอราคา 3 ใบรออนุมัติ", subtitle: "เกินกำหนด 1 ใบ", tone: "warning", onClick: () => {} },
+                  { id: "a1", title: "ใบเสนอราคา 3 ใบรออนุมัติ", subtitle: "เลยกำหนด 1 ใบ", tone: "warning", onClick: () => {} },
                   { id: "a2", title: "ลีดใหม่ 5 รายรอคัดกรอง", tone: "info", onClick: () => {} },
                 ]}
               />

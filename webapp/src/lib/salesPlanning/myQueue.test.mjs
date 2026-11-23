@@ -41,7 +41,7 @@ test('⭐ ใบตีกลับใช้วันที่ถูกตีก�
   const bounced = rows.find((r) => r.id === 'B');
   assert.equal(bounced.step, 'แก้แล้วส่งใหม่');
   assert.equal(bounced.days, -4);
-  assert.equal(bounced.dueText, 'ค้างมา 4 วัน');
+  assert.equal(bounced.dueText, 'ค้าง 4 วัน');
   assert.equal(bounced.urgent, true, 'ใบตีกลับคือของค้างที่ไม่มีใครทำอยู่ ⇒ ด่วนเสมอ');
   // ⚠️ ไม่ใช่ "เลยกำหนด" — ไม่มีใครเคยรับปากวันไหนไว้กับใบที่ถูกตีกลับ
   assert.equal(bounced.overdue, false);
@@ -137,12 +137,12 @@ test('🔴 "ค้าง" ไม่ใช่ "สาย" — ของที่�
   });
   const quote = rows.find((r) => r.id === 'Q');
   assert.equal(quote.overdue, false);
-  assert.equal(quote.dueText, 'ค้างมา 1 วัน');
+  assert.equal(quote.dueText, 'ค้าง 1 วัน');
   assert.equal(myQueueGroupKey(quote), 'today');
   // ส่วนงานที่มีวันกำหนดจริงและเลยไปแล้ว = สายจริง
   const task = rows.find((r) => r.id === 'T');
   assert.equal(task.overdue, true);
-  assert.equal(task.dueText, 'เลย 2 วัน');
+  assert.equal(task.dueText, 'เลยกำหนด 2 วัน');
   assert.equal(myQueueGroupKey(task), 'overdue');
 });
 
@@ -235,7 +235,7 @@ test('⭐ สอบถามที่ฝ่ายตอบในเธรดล�
   assert.equal(row.overdue, false);
   // ตี 3 วันที่ 10 เวลาไทย = 9 ส.ค. UTC — วันเริ่มค้างต้องเป็นวันไทย
   assert.equal(row.due, '2026-08-10');
-  assert.equal(row.dueText, 'ค้างมา 2 วัน');
+  assert.equal(row.dueText, 'ค้าง 2 วัน');
   assert.equal(myQueueGroupKey(row), 'today');
 });
 

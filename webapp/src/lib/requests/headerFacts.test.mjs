@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ageLabel, committedVsRequested, countdownLabel, requestHeaderFacts, requestHeaderPeople,
+  ageLabel, committedVsRequested, requestHeaderFacts, requestHeaderPeople,
 } from './headerFacts.js';
 
 const NOW = new Date('2026-08-11T09:00:00+07:00');
@@ -154,14 +154,16 @@ const daysAgo = (n) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
 test('คำบอกอายุใบอ่านเป็นภาษาคน', () => {
   assert.equal(ageLabel(daysAgo(0), NOW), 'วันนี้');
   assert.equal(ageLabel(daysAgo(1), NOW), 'เมื่อวาน');
-  assert.equal(ageLabel(daysAgo(6), NOW), 'ค้างมา 6 วัน');
+  assert.equal(ageLabel(daysAgo(6), NOW), 'ค้าง 6 วัน');
   assert.equal(ageLabel(null, NOW), null);
 });
 
-test('นับถอยหลังบอกทั้งก่อนและหลังกำหนด', () => {
-  assert.equal(countdownLabel('2026-08-14', NOW), 'อีก 3 วัน');
-  assert.equal(countdownLabel('2026-08-11', NOW), 'ครบกำหนดวันนี้');
-  assert.equal(countdownLabel('2026-08-09', NOW), 'เลยกำหนดมา 2 วัน');
+test('นับถอยหลังบอกทั้งก่อนและหลังกำหนด — คำชุดเดียวจากตัวกลาง (งวด 2 · เหลืองตั้งแต่อีก 3 วัน)', async () => {
+  const { dueCountdown } = await import('./headerFacts.js');
+  assert.deepEqual(dueCountdown('2026-08-14', '2026-08-11'), { text: 'อีก 3 วัน', tone: 'warn' });
+  assert.deepEqual(dueCountdown('2026-08-15', '2026-08-11'), { text: 'อีก 4 วัน', tone: null });
+  assert.deepEqual(dueCountdown('2026-08-11', '2026-08-11'), { text: 'ครบกำหนดวันนี้', tone: 'warn' });
+  assert.deepEqual(dueCountdown('2026-08-09', '2026-08-11'), { text: 'เลยกำหนด 2 วัน', tone: 'late' });
 });
 
 test('เทียบสองวัน — ตรงวันพอดีก็ต้องบอก ไม่ใช่เงียบ', () => {

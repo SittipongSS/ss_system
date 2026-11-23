@@ -73,6 +73,7 @@
 }
 
 .overdue { color: var(--red); }
+.dueSoon { color: var(--amber); } /* ครบวันนี้ / อีก ≤ 3 วัน (`lib/dueState`) */
 
 .rest { color: var(--text-3); font-size: var(--fs-3); }
 
