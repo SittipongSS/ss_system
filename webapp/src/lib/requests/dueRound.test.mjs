@@ -173,7 +173,9 @@ test('🔴 คิวต้องไม่ขึ้น "เลยกำหนด"
   assert.equal(requestDueText(stale, { todayIso: today }), null);
 
   // ใบปกติที่เลยกำหนดจริงต้องยังแดงเหมือนเดิมทุกตัวอักษร
-  const real = req({ items: [doneRow({ outcome: 'confirmed' })] });
+  // ⚠️ ต้องยังเป็นตาฝ่าย (มีแถวที่ RD ยังทำอยู่) — ใบที่ทุกแถวจบแล้วเป็นตาผู้ขอ "รอปิดเรื่อง" ไม่นับเลยกำหนด (มติ 23/11/2026)
+  const working = reworkRow({ id: 'w', derivedFromItemId: null, createdAt: ACKED });
+  const real = req({ items: [doneRow({ outcome: 'confirmed' }), working] });
   assert.equal(requestDueTone(real, today).label, 'เลยกำหนด');
   assert.equal(requestGroupKey(real, { todayIso: today }), 'overdue');
   assert.equal(matchesQueueCount(real, 'overdue', { todayIso: today }), true);

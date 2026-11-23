@@ -8,6 +8,7 @@ import { businessDate } from '@/lib/businessDate';
 import { attachReworkRows } from '@/lib/requests/reworkRows';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
+import { requestDueOwed } from '@/lib/requests/queueBoard';
 
 export const dynamic = 'force-dynamic';
 
@@ -147,7 +148,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     overdueTasks: tasks.filter((task) => isOverdue(task.dueDate) && !inRange(task.dueDate)),
     overdueRequests: requests.filter((request) => {
       // ⚠️ ยังไม่แจ้งวัน = ไม่มีใครผิดสัญญา ไม่นับว่าค้าง · วันของรอบที่ส่งไปแล้วก็เช่นกัน
-      const date = liveDueDate(request);
+      // ⭐ ฝ่ายส่งครบแล้ว (ตาเรา) ก็ไม่ใช่ของเลยกำหนด (มติ 23/11/2026 · `requestDueOwed` ตัวเดียวกับคิว)
+      const date = requestDueOwed(request);
       return isOverdue(date) && !inRange(date);
     }),
   });

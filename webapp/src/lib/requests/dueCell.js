@@ -23,6 +23,8 @@
 // ⚠️ อ่านผ่าน `liveDueDate` เหมือนทุกจอ — ใบที่มีรอบแก้ค้างจะไม่โชว์วันของรอบก่อน
 // เป็นคำสัญญาที่ยังอยู่ (ดู lib/requests/dueRound.js)
 import { dueIsStale, liveDueDate } from '@/lib/requests/dueRound';
+import { requestClosureStarted, requestNextStep, requestSettled } from '@/lib/requests/queueBoard';
+import { rowStageOwner } from '@/lib/requests/rowStage';
 import { fmtDate } from '@/lib/format';
 
 /**
@@ -34,6 +36,12 @@ import { fmtDate } from '@/lib/format';
  * @returns {{text:string, note:string|null, tone:'late'|'wait'|null}}
  */
 export function requestDueCell(request, todayIso = null) {
+  /* 🐞 **ใบที่จบแล้วไม่มีคอลัมน์นี้** (ตรวจทั้งระบบ 23/11/2026) — ยกเลิก (`status: 'cancelled'`) กับ "ปิดโดยไม่ได้ประเมิน"
+     ไม่ปิดแถว ⇒ ตัวเดิมที่ไม่ดูสถานะใบพิมพ์แดง "เลย n วัน" บนใบที่จบไปแล้วทุกวัน · บั๊กเดียวกับที่ `requestDueText`
+     แก้ไว้ตาม ม-145 · null = ตารางไม่วาดคอลัมน์กำหนดส่ง (หัวคอลัมน์ผูกกับค่านี้)
+     ⭐ ตาผู้ขอทั้งใบก็เช่นกัน (มติเจ้าของ 23/11/2026) — ฝ่ายส่งของครบแล้ว ไม่มีแถวไหนผูกกับวันนี้ */
+  if (!request || requestClosureStarted(request) || requestSettled(request)) return null;
+  if (requestNextStep(request)?.owner !== 'dept') return null;
   const due = liveDueDate(request);
   if (!due) {
     /* ⭐ **สองสถานะที่ไม่มีวันเหมือนกัน แต่คนละเรื่อง** (กติกาเดียวกับ `requestDueTone`)
@@ -61,10 +69,18 @@ export function requestDueCell(request, todayIso = null) {
  * ⚠️ อยู่ที่นี่ที่เดียว ไม่ให้สามตารางเขียนกติกาเอง — สามชุดที่ต้องคอยดูให้ตรงกัน
  * คือโรคเดิมที่ทั้งงานนี้พยายามปิด
  */
+/**
+ * แถวนี้ยังผูกกับกำหนดส่งของใบไหม — ยังไม่จบ **และเป็นตาฝ่าย** (รับเรื่อง · ส่งงาน · ใส่ราคา · Ingredient List)
+ *
+ * ⭐ แถวที่ฝ่ายส่งแล้ว (รับของ · ส่งลูกค้า · บันทึกคำตอบ · ได้รับแล้ว) ไม่ผูกอีก (มติเจ้าของ 23/11/2026) —
+ *    เดิมพิมพ์แดง "เลย n วัน" ทุกแถวที่ยังไม่จบ ⇒ แถวที่ RD ส่งตรงเวลาแล้วรอลูกค้าตอบก็แดง
+ */
+export const rowOwesDue = (row) => !!row && !row.settled && rowStageOwner(row.stage) === 'dept';
+
 export function dueCellTracker(due = null) {
   let printed = false;
   return (row) => {
-    if (!due || row?.settled) return false;
+    if (!due || !rowOwesDue(row)) return false;
     // สถานะที่ต้องระวังพิมพ์ทุกแถว — ไม่นับเข้าโควตา "แถวแรก"
     if (due.tone) return true;
     if (printed) return false;

@@ -136,7 +136,7 @@ test('งานไม่มีวันครบกำหนด = ไม่เ�
 test('คำร้องที่ฝ่ายแจ้งวันส่งแล้วนับว่าเลยกำหนดได้ · ใบที่ยังไม่แจ้งไม่นับ (ไม่มีใครผิดสัญญา)', () => {
   const [committed, requested] = buildScheduleDueItems({
     requests: [
-      { id: 'R1', title: 'แจ้งวันส่งแล้ว', committedDueDate: '2026-08-18', docNo: 'RQ-1' },
+      { id: 'R1', title: 'แจ้งวันส่งแล้ว', status: 'acknowledged', committedDueDate: '2026-08-18', docNo: 'RQ-1' },
       { id: 'R2', title: 'ยังไม่แจ้งวันส่ง', requestedDueDate: '2026-08-19' },
     ],
     todayIso: '2026-08-21',
@@ -146,6 +146,16 @@ test('คำร้องที่ฝ่ายแจ้งวันส่งแ�
   assert.equal(committed.dateNote, 'ฝ่ายแจ้งวันส่ง');
   assert.equal(requested.overdue, false);
   assert.match(requested.dateNote, /ยังไม่แจ้งวันส่ง/);
+});
+
+test('⭐ ฝ่ายส่งครบแล้ว (ตาเรา) — ไม่แดงแม้เลยวันที่ฝ่ายรับปาก · ป้ายบอกว่ารอเรา (มติเจ้าของ 23/11/2026)', () => {
+  const sent = { id: 'i1', lineKind: 'scent_dev', answerStatus: 'pending', ackAt: '2026-08-10', readyAt: '2026-08-15' };
+  const [item] = buildScheduleDueItems({
+    requests: [{ id: 'R3', title: 'ส่งของแล้ว', status: 'acknowledged', committedDueDate: '2026-08-18', items: [sent] }],
+    todayIso: '2026-08-21',
+  });
+  assert.equal(item.overdue, false);
+  assert.equal(item.statusLabel, 'ฝ่ายส่งแล้ว — รอเราทำต่อ');
 });
 
 test('เรียงตามวัน แล้วด่วนก่อนเมื่อวันเท่ากัน', () => {

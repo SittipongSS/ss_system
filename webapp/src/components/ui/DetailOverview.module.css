@@ -151,6 +151,8 @@
    จะกลายเป็นแถบสีรุ้งที่ไม่มีอะไรเด่นเลย */
 .quickFacts > div[data-tone="late"] strong,
 .quickFacts > div[data-tone="late"] .factSub { color: var(--red); }
+/* ครบกำหนดวันนี้ — เหลืองเหมือนคิว (คำชุด "เลยกำหนด" · มติ 23/11/2026) */
+.quickFacts > div[data-tone="warn"] .factSub { color: var(--amber); }
 .quickFacts > div[data-tone="ok"] strong,
 .quickFacts > div[data-tone="ok"] .factSub { color: var(--green); }
 .quickFacts > div[data-tone="muted"] strong { color: var(--text-3); }
