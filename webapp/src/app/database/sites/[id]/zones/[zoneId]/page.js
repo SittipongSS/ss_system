@@ -26,7 +26,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { termIsActive, termsSoldNow, latestTermOfZone } from "@/lib/service/terms";
 import { ZONE_PACK_SINGLE, ZONE_STANDARD_PARTIAL, ZONE_STANDARD_SUM, standardMlText, zoneStandardMl } from "@/lib/service/termStandardMl";
 import { zoneSaleFacts } from "@/lib/service/zoneRegistry";
-import { businessDate } from "@/lib/businessDate";
+
 import { usageBadge, usageSummary, usageVsStandard } from "@/lib/service/consumption";
 import { ASSET_KIND_LABELS } from "@/lib/service/assetKinds";
 import { VISIT_KIND_LABELS, VISIT_STATUS_LABELS } from "@/lib/service/rounds";
@@ -44,6 +44,7 @@ const SPOT_PREVIEW = 12;
    🐞 เดิม `slice(0, 6)` เงียบ ⇒ หัว "8 ตัว" แต่ลิสต์ 6 แถว (ตรวจตัวเลข L7b · 26/10/2026) */
 const ASSET_PREVIEW = 6;
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 /* แถวประวัติการเข้า — ลิงก์ไปใบส่งงานเมื่อคนดูเปิดใบได้ · ไม่ได้ = กล่องหน้าตาเดียวกันที่กดไม่ได้
    (ข้อมูลในแถวเท่ากันทุกคน ต่างกันแค่มีทางไปต่อหรือไม่) */
@@ -53,6 +54,7 @@ function VisitRow({ href, children }) {
 }
 
 export default function ServiceZonePage({ params }) {
+  const zoneToday = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const { id, zoneId } = use(params);
   /* หน้านี้เป็นของ **ทะเบียน** (เปิดอ่านได้ทุกคนที่เข้าฐานข้อมูล) · ใบส่งงานเปิดได้เฉพาะฝ่ายบริการ + ฝ่ายขาย
      ⇒ แถวประวัติเป็นลิงก์เฉพาะคนที่เปิดใบได้จริง — คนอื่นเห็นข้อมูลเท่ากัน แต่ไม่มีทางกดไปเจอ Forbidden */
@@ -105,19 +107,19 @@ export default function ServiceZonePage({ params }) {
      (SO-26090247-0 ลงสองบรรทัดบนโซน Office) · 🐞 เดิมอ่านแค่ `activeTerm` (รอบแรกที่เจอ) ⇒ เทียบกับครึ่งเดียว
      ไม่มีรอบที่มีผลเลย = ถอยไปรอบล่าสุดเหมือนเดิม · ตารางเทียบกับหัวใบใช้ค่าเดียวกันเสมอ */
   const zoneStd = useMemo(
-    () => zoneStandardMl(data?.terms || [], ordersById, businessDate()),
-    [data?.terms, ordersById],
+    () => zoneStandardMl(data?.terms || [], ordersById, zoneToday),
+    [data?.terms, ordersById, zoneToday],
   );
   /* ก้อนการขายชุดเดียวกับป้ายหน้าไซต์/แท็บลูกค้า ("ขายแล้ว n แพ็ค/รอบ") — ช่อง "แพ็คที่ขาย" ต้องพูดเลขเดียวกัน (review 29/09) */
   const sale = useMemo(
-    () => zoneSaleFacts(zoneId, { terms: data?.terms || [], ordersById, todayIso: businessDate() }),
-    [zoneId, data?.terms, ordersById],
+    () => zoneSaleFacts(zoneId, { terms: data?.terms || [], ordersById, todayIso: zoneToday }),
+    [zoneId, data?.terms, ordersById, zoneToday],
   );
   /* รอบที่ "ขายอยู่ตอนนี้" ตัวแรก — ใบเก่าที่ช่วงบริการจบแล้วยังมีผลตามใบได้ (term ของ 0392 ไม่มีวัน) ⇒ กลิ่น/แพ็คของหัวหน้า
      ต้องมาจากใบปัจจุบัน ไม่ใช่ใบแรกที่ `termIsActive` เจอ (ตัวเดียวกับที่ใช้รวมมาตรฐาน) */
   const nowTerm = useMemo(
-    () => termsSoldNow(data?.terms || [], ordersById, businessDate())[0] || null,
-    [data?.terms, ordersById],
+    () => termsSoldNow(data?.terms || [], ordersById, zoneToday)[0] || null,
+    [data?.terms, ordersById, zoneToday],
   );
   const standardMl = zoneStd.live > 0 ? zoneStd.value : (latestTerm?.standardMlPerMonth ?? null);
   const standardNote = zoneStd.live > 0 && zoneStd.missing > 0

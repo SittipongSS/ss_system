@@ -9,7 +9,7 @@ import { useCan, useRole } from "@/lib/roleContext";
 import { MonthPicker, thisMonth } from "@/components/salesPlanning/ui";
 import DayRangePicker from "@/components/ui/DayRangePicker";
 import Segmented from "@/components/ui/Segmented";
-import { addDays, businessDayKey } from "@/lib/datePeriods";
+import { addDays } from "@/lib/datePeriods";
 import { displayYear } from "@/lib/datePeriods";
 import Select from "@/components/ui/Select";
 import Button from "@/components/ui/Button";
@@ -23,6 +23,7 @@ import KpiLeadsTab from "@/components/salesPlanning/dashboard/KpiLeadsTab";
 import PerformanceTab from "@/components/salesPlanning/dashboard/performance/PerformanceTab";
 import Tabs from "@/components/ui/Tabs";
 import SkeletonRows from "@/components/ui/Skeleton";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 // หน้า /sa/dashboard — ศูนย์รวมแดชบอร์ดฝ่ายขาย 5 แท็บ. แท็บ "ผลงานขาย" แทน
 // "KPI ดีล" เดิม (2026-07-18): บอร์ดประชุมเช้า + ทบยอด + เจาะรายคน/ทีม —
@@ -67,7 +68,7 @@ function DashboardContent() {
      เหมือนเดิม เพราะตัวเลขของมัน (FC/Actual/เป้า) เป็นของรายเดือนโดยธรรมชาติ
      ⚠️ วันนี้คิดจากวันไทย ไม่ใช่ `new Date()` ของเบราว์เซอร์ — ไม่งั้น "สัปดาห์นี้"
      ของเครื่องที่ตั้ง timezone อื่นจะคนละสัปดาห์กับที่ server นับ */
-  const todayTh = businessDayKey(new Date().toISOString());
+  const todayTh = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const [leadPeriodMode, setLeadPeriodMode] = useState("month");
   const [leadRange, setLeadRange] = useState(() => ({ from: addDays(todayTh, -13), to: todayTh }));
   /* ปีของแท็บผลงานขายเป็น state แยก ไม่ได้เฉือนมาจาก `month` — ของเดิมใช้

@@ -27,14 +27,12 @@ import { SCENT_STATUS_LABELS, SCENT_STATUS_TONES } from "@/lib/master/scents";
 import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formulas";
 import { formulaLabelParts, formulaSearchText, scentLabelParts, scentSearchText } from "@/lib/master/registryLabel";
 import { isExciseOrder } from "@/lib/sales/historicalOrders";
-import {
-  buildDealRows, contractText, dealRowText, orderActualNoneText, FINANCE_ORDER_STATES, financeOrderRows, financeOrderText, leadText, matchesQuery,
-  orderText, productOrderStats, quoteText, registrationText, requestDueCell, requestDueSortKey, requestText, hubText, todayKey,
-} from "@/lib/master/customerHub";
+import { buildDealRows, contractText, dealRowText, orderActualNoneText, FINANCE_ORDER_STATES, financeOrderRows, financeOrderText, leadText, matchesQuery, orderText, productOrderStats, quoteText, registrationText, requestDueCell, requestDueSortKey, requestText, hubText } from "@/lib/master/customerHub";
 import { requestDueTone } from "@/components/requests/requestUi";
 import { fmtDate, fmtMoney, naText, NA, productNameBoth } from "@/lib/format";
 import { categoryCodeLabel, categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import { useProductCategories } from "@/lib/useProductCategories";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 /* ── หน้าลูกค้าศูนย์รวม · แท็บข้อมูลที่เกี่ยวข้อง (งวด H1 · มติเจ้าของ 13/11/2026 · docs/customer-hub-plan.md) ─────
  *
@@ -611,7 +609,7 @@ export default function CustomerHub({
   profile = null, docs = null, activity = null, hashTabs = {},
 }) {
   const [query, setQuery] = useState("");
-  const today = useMemo(() => todayKey(), []);
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const ready = Boolean(hub);
   /* ตัวเลขบนแท็บ = จำนวนที่ตรงคำค้น (มติ 7) — คำค้นว่าง = จำนวนทั้งหมด · ตัวนับใช้ข้อความค้นชุดเดียวกับตาราง */
   const counts = useMemo(() => {

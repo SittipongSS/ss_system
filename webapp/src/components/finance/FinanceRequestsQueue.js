@@ -17,11 +17,12 @@ import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
-import { businessDate } from "@/lib/businessDate";
+
 import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs } from "@/lib/requests/queueBoard";
 import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const DEPT = "FN";
 /* ปลายทางของแท็บนี้ — ตัวเดียวกับทางเด้งของ `/finance/requests` (next.config.mjs) */
@@ -34,6 +35,7 @@ export const FINANCE_REQUESTS_BLURB = {
 };
 
 export default function FinanceRequestsQueue() {
+  const queueToday = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const router = useRouter();
   const searchParams = useSearchParams();
   const board = useQueueBoard();
@@ -101,7 +103,7 @@ export default function FinanceRequestsQueue() {
 
   /* ⭐ **ทุกตัวเลขนับด้วยตัวตัดสินเดียวกับตาราง** (`queueFilter.js` · ตรวจตัวเลข 20/10/2026 M2 M3) */
   const queueState = {
-    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: businessDate(),
+    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: queueToday,
   };
   const counts = queueStripCounts(rows, queueState);
   const tabCount = (key) => filterQueueRows(deptQueueRows(requests, { dept: DEPT, tab: key }), queueState, { except: "count" }).length;

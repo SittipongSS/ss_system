@@ -33,7 +33,7 @@ import Segmented from "@/components/ui/Segmented";
 import Textarea from "@/components/ui/Textarea";
 import { apiJson } from "@/lib/apiFetch";
 import { RESPONSE_WARNING_TOAST } from "@/lib/apiWarnings";
-import { businessDate } from "@/lib/businessDate";
+
 import { notifyToast } from "@/lib/feedback";
 import { customerNameIn } from "@/lib/master/customerName";
 import {
@@ -52,6 +52,7 @@ import CalendarEditor from "./billingCalendar/CalendarEditor";
 import CutoffTimeField from "./billingCalendar/CutoffTimeField";
 import useHolidayMap from "@/lib/useHolidayMap";
 import styles from "./CustomerBillingRule.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const NEED_OPTIONS = [
   { value: "required", label: "ต้องวางบิล", description: "ส่งใบวางบิลก่อนได้เงิน · มีวันวางบิล → กำหนดชำระ" },
@@ -103,7 +104,7 @@ export default function CustomerBillingRuleModal({ open = true, onClose, custome
   const q2Ref = useRef(null);
   const q3Ref = useRef(null);
 
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const legacyTerms = String(customer?.creditTerms ?? "").trim();
   const result = evaluateForm(form);
   const block = saveBlockOf(result, customer?.billingSkipReady);

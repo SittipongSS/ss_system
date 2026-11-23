@@ -20,7 +20,7 @@ import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyOrDash, fmtNumber, naText } from "@/lib/format";
 import { exciseBaseLabel, exciseBaseMissingText, exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
-import { businessDate } from "@/lib/businessDate";
+
 import { useApiList } from "@/lib/excise/useApiList";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import useLatestRun from "@/lib/ui/useLatestRun";
@@ -49,6 +49,7 @@ import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 import { httpLoadFailure, sourcesFailureDetail, thrownLoadFailure } from "@/lib/ui/loadFailure";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 // ภาษี/ชิ้น อ่านจากทะเบียนสินค้าเสมอ (ดูเหตุผลเต็มที่หน้ารายการทะเบียน) — ทะเบียน
 // สรรพสามิตตัดสินแค่ว่า "เสียภาษีไหม" ส่วนตัวเลขอัตรามาจากราคาขายปลีกของ FG
@@ -123,7 +124,7 @@ export default function RegistrationDetailPage() {
   const customerLabel = customerNameIn(customer);
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกาไทย — ห้ามอ่านนาฬิกาตอนเรนเดอร์ */
-  const todayIso = useMemo(() => businessDate(), []);
+  const todayIso = useThaiToday({ seed: true }); // เดิม useMemo([]) ⇒ แท็บค้างข้ามคืนนับ "ค้าง" ของเมื่อวาน (งวด 2)
   const ageDays = s ? registrationAge(s, todayIso) : null;
   // สีของ "อยู่สถานะนี้มา" พูดว่า "ค้าง" — ใบที่ขึ้นทะเบียนแล้วไม่ค้าง ⇒ สีปกติ (ตัวเลขยังโชว์ตามจริง)
   const ageToneNow = ageTone(s ? registrationPendingAge(s, todayIso) : null);

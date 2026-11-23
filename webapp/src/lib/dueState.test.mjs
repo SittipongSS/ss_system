@@ -73,3 +73,37 @@ test('🔴 คำชุด "เลยกำหนด": ไม่มี เลย
   }
   assert.deepEqual(hits, [], `คำที่เลิกใช้แล้วกลับมา:\n${hits.join('\n')}`);
 });
+
+/* ── ยาม: "วันนี้" ระดับคอมโพเนนต์ต้องมาจาก `useThaiToday` (งวด 2) ─────────────────────────────────────
+   🐞 ก่อนงวดนี้ ~25 จอเขียน `const today = businessDate();` / `useMemo(() => businessDate(), [])` ในตัวคอมโพเนนต์ ⇒
+      แท็บที่เปิดค้างข้ามคืนพูด "ครบกำหนดวันนี้" ของเมื่อวาน · `useThaiToday({ seed: true })` อ่านค่าแรกแบบเดิมและอ่านใหม่เมื่อกลับมาที่แท็บ
+   ⚠️ จับเฉพาะ **ระดับคอมโพเนนต์** (ย่อหน้า 2 ช่อง) — ค่าตั้งต้นของฟอร์ม/ในตัวจัดการปุ่มอ่านนาฬิกาตอนกดได้ ไม่ใช่ปัญหานี้
+   ⭐ เพดานรายไฟล์ ขึ้นไม่ได้ ลงได้อย่างเดียว (ลดเมื่อแก้ ต้องรูดเพดานลงด้วย) */
+const RENDER_TODAY_ALLOWED = new Map([
+  // ⏸ ใบต้นทุน — ด่านส่งใบอ่านวันเดียวกัน (พักไว้ตาม check:thaitime · มติผู้ใช้ 2026-08-26)
+  ['src/app/sa/costing/[id]/page.js', 1],
+  // ⏸ โมดูลวางแผนผลิตปิดอยู่ (มติ 13/11/2026 · closed-modules) — ไม่แตะจนกว่าจะเปิดใหม่
+  ['src/app/production/page.js', 1],
+  ['src/app/production/board/page.js', 1],
+  // ⏸ หน้าภาพรวม /rd — เจ้าของสั่ง "ข้ามไปก่อน เพราะต้องรื้อ" (23/11/2026)
+  ['src/app/rd/page.js', 1],
+  // ⏸ ตัวแปรที่ไม่มีใครอ่าน (ฟอร์มสร้าง SO) — ถอดได้เมื่อแตะไฟล์นี้ครั้งหน้า
+  ['src/app/sales-planning/sales-orders/new/page.js', 1],
+]);
+const RENDER_TODAY = /^ {2}const [A-Za-z_]\w* = (?:businessDate\(\)|todayKey\(\)|businessDayKey\(new Date\(\)\.toISOString\(\)\));|useMemo\(\(\) => (?:businessDate|todayKey)\(\), \[\]\)/gm;
+
+test('🔴 "วันนี้" ระดับคอมโพเนนต์มาจาก useThaiToday — ไม่อ่านนาฬิกาตอนเรนเดอร์ (เพดานรายไฟล์)', () => {
+  const files = execSync('git ls-files "src/**/*.js"', { encoding: 'utf8' }).split('\n').filter((f) => f && !f.includes('.test.'));
+  const found = new Map();
+  for (const file of files) {
+    let src;
+    try { src = readFileSync(file, 'utf8'); } catch { continue; }
+    if (!/^["']use client["']/m.test(src)) continue;
+    const n = (stripComments(src).match(RENDER_TODAY) || []).length;
+    if (n) found.set(file, n);
+  }
+  const over = [...found].filter(([f, n]) => n > (RENDER_TODAY_ALLOWED.get(f) ?? 0)).map(([f, n]) => `${f}: ${n}`);
+  assert.deepEqual(over, [], `อ่าน "วันนี้" ตอนเรนเดอร์ — ใช้ useThaiToday({ seed: true }):\n${over.join('\n')}`);
+  const stale = [...RENDER_TODAY_ALLOWED].filter(([f, cap]) => (found.get(f) ?? 0) < cap).map(([f]) => f);
+  assert.deepEqual(stale, [], 'เพดานเกินของจริง — รูดลงใน RENDER_TODAY_ALLOWED');
+});

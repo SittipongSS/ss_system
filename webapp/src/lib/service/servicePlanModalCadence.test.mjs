@@ -135,7 +135,7 @@ test('ทุก N วัน: ช่องตัวเลข 1–365 autoComplete
 /* ═══ บรรทัดสรุป · นัดถัดไป · วันหยุด ═══════════════════════════════════════════════════════════ */
 
 test('⭐ บรรทัดสรุป: จำนวนรอบบริการ · ความถี่ · ตกวันหยุดไปไหน · ได้กี่นัด — เทียบจำนวนรอบบริการแบบไม่บล็อก', () => {
-  assert.match(MODAL, /const summary = planSummary\(form, \{ todayIso: businessDate\(\), holidays \}\);/);
+  assert.match(MODAL, /const planToday = useThaiToday\(\{ seed: true \}\);[^\n]*\n\s*const summary = planSummary\(form, \{ todayIso: planToday, holidays \}\);/);
   assert.match(MODAL, /const estimate = summary\.estimate;/);
   assert.match(BOX, /\{summary\.pending \|\| summary\.text\}/);
   assert.match(BOX, /\{summary\.shiftText \? <>\{" · "\}\{summary\.shiftText\}<\/> : null\}/);
@@ -157,7 +157,7 @@ test('⭐ วันหยุดมาจากตาราง holidays (useHolid
   const submit = between(MODAL, 'const submit = async () => {', '\n  };');
   assert.doesNotMatch(submit, /gapText|gapYears|holidays/, 'คำเตือนวันหยุดไม่ใช่เหตุให้บันทึกไม่ได้');
   // "วันนี้" จากนาฬิกาไทย — ไม่มีนาฬิกาเครื่อง/ตัดสตริง ISO ในโมดัล (check:thaitime)
-  assert.match(MODAL, /import \{ businessDate \} from "@\/lib\/businessDate";/);
+  assert.match(MODAL, /import useThaiToday from "@\/lib\/ui\/useThaiToday";/);
   assert.doesNotMatch(MODAL, /new Date\(|toISOString|\.slice\(0, 10\)/);
 });
 

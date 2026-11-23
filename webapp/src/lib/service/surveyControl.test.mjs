@@ -1394,7 +1394,7 @@ test('หน้าคำร้องของฝ่ายขาย (ไม่ม
   const page = readFileSync(new URL('../../app/service/surveys/[id]/page.js', import.meta.url), 'utf8');
   /* ทะเบียนชุดเดียว (`null` = server อ่านไม่สำเร็จ) ไปสามที่: การ์ดควบคุม · ตัวตัดสินร่าง · ตารางเคาะ */
   assert.match(page, /const packageSizes = data\?\.packageSizes \?\? null;/);
-  assert.match(page, /today: businessDate\(\),[\s\S]{0,260}?\n    packageSizes,\n  \}\), \[[^\]]*packageSizes\]\);/,
+  assert.match(page, /today: surveyToday,[\s\S]{0,260}?\n    packageSizes,\n  \}\), \[[^\]]*packageSizes, surveyToday\]\);/,
     'การ์ดควบคุมต้องได้ทะเบียน และ useMemo ต้องคิดใหม่เมื่อทะเบียนเปลี่ยน');
   assert.match(page, /packageSizes=\{packageSizes\}/, 'ตารางเคาะได้ทะเบียนชุดเดียวกับการ์ดควบคุม');
   assert.doesNotMatch(page, /skipPackageRegistry/);

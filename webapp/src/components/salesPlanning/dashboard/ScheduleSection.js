@@ -22,7 +22,7 @@ import MonthGrid from "@/components/ui/MonthGrid";
 import SkeletonRows from "@/components/ui/Skeleton";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { WorkspaceSection } from "@/components/ui/Workspace";
-import { businessDate } from "@/lib/businessDate";
+
 import { cachedFetchJson } from "@/lib/apiCache";
 import { NA, fmtDate, fmtDayMonth } from "@/lib/format";
 import {
@@ -33,6 +33,7 @@ import {
 } from "@/lib/salesPlanning/mySchedule";
 import styles from "./ScheduleSection.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const WEEKDAYS_TH = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const MONTHS_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน",
@@ -55,7 +56,7 @@ function rangeLabel(view, anchor, range) {
 }
 
 export default function ScheduleSection() {
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const [view, setView] = useState(DEFAULT_SCHEDULE_VIEW);
   const [anchor, setAnchor] = useState(today);
   const [selected, setSelected] = useState(today);

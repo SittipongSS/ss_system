@@ -9,7 +9,7 @@ import Modal from "@/components/Modal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
-import { businessDate } from "@/lib/businessDate";
+
 import { dayParam, withinDateRange } from "@/lib/tax/period";
 import { useApiList } from "@/lib/excise/useApiList";
 import { sourcesFailureDetail } from "@/lib/ui/loadFailure";
@@ -32,6 +32,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./page.module.css";
 import { ageText } from "@/lib/dueState";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 // ⭐ **ภาษี/ชิ้นกับความพร้อมเอกสารคิดที่ server แล้ว** (`?view=queue`)
 // 🐞 ของเดิมคิดฝั่งจอ จึงต้องโหลด `/api/products` (342 แถวเต็ม) + `/api/customers`
@@ -86,7 +87,7 @@ export default function RegistrationsPage() {
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จากนาฬิกา **ไทย** — ห้ามอ่านนาฬิกาตอนเรนเดอร์
      (ค่าจะขยับระหว่างเรนเดอร์ และเครื่องที่ตั้งโซนเวลาอื่นจะได้คนละวัน) */
-  const todayIso = useMemo(() => businessDate(), []);
+  const todayIso = useThaiToday({ seed: true }); // เดิม useMemo([]) ⇒ แท็บค้างข้ามคืนนับ "ค้าง" ของเมื่อวาน (งวด 2)
 
   const [userName, setUserName] = useState("");
   // RA lands on their queue; everyone else sees all. A ?status= deep-link

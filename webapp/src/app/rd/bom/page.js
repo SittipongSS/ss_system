@@ -24,7 +24,7 @@ import AccessDenied from "@/components/ui/AccessDenied";
 import SkeletonRows from "@/components/ui/Skeleton";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { apiJson } from "@/lib/apiFetch";
-import { businessDate } from "@/lib/businessDate";
+
 import { NA, fmtDate, fmtNationalId, fmtNumber, naText } from "@/lib/format";
 import { brandBoth } from "@/lib/master/brands";
 import { branchValue } from "@/lib/master/thaiAddress";
@@ -48,6 +48,7 @@ import {
 import { bomBoardPrintReport, bomTabLabel } from "@/lib/rd/bomBoardPrint";
 import { openReportPrintWindow } from "@/lib/tax/reportPrint";
 import styles from "./page.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 
 export default function RdBomPage() {
@@ -92,7 +93,7 @@ export default function RdBomPage() {
   useRevalidateOnFocus(load);
 
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า "รอมาแล้ว" จะนับผิดไปหนึ่งวัน
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const totals = useMemo(() => bomBoardTotals(rows, { todayIso: today }), [rows, today]);
   /* ⭐ ตัวเดียวกับเอกสารพิมพ์และ route ไฟล์ Excel (`bomViewOf`) — แถวที่ตาเห็น = แถวที่ออก ลำดับเดียวกัน */
   const viewState = useMemo(() => ({ tab, q, filters, sortKey, sortDir, groupBy }), [tab, q, filters, sortKey, sortDir, groupBy]);

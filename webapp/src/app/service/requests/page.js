@@ -18,11 +18,12 @@ import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import { businessDate } from "@/lib/businessDate";
+
 import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs } from "@/lib/requests/queueBoard";
 import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const DEPT = "TS";
 
@@ -33,6 +34,7 @@ const TAB_BLURB = {
 };
 
 export default function ServiceRequestsPage() {
+  const queueToday = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const router = useRouter();
   const searchParams = useSearchParams();
   const board = useQueueBoard();
@@ -99,7 +101,7 @@ export default function ServiceRequestsPage() {
      · เลขบนแท็บ = แท็บนั้น + คำค้น + แผงกรอง (ไม่รวมตัวกรองตัวเลข เพราะ `setTab` ล้างมัน)
      ⚠️ `filters` ชุดเดียวกับที่พาเนลใช้ (`tools` ตั้งต้น "full") */
   const queueState = {
-    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: businessDate(),
+    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: queueToday,
   };
   const counts = queueStripCounts(rows, queueState);
   const tabCount = (key) => filterQueueRows(deptQueueRows(requests, { dept: DEPT, tab: key }), queueState, { except: "count" }).length;

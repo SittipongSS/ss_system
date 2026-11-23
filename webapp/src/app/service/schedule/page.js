@@ -85,12 +85,13 @@ import {
 import { usePagination } from "@/lib/usePagination";
 import { navCountFor, useNavCountsState } from "@/lib/nav/useNavCounts";
 import styles from "./page.module.css";
-import { businessDate } from "@/lib/businessDate";
+
 import { addDays, weekStartOf } from "@/lib/datePeriods";
 import { fmtMonthShort, fmtNumber, naText } from "@/lib/format";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 // ขั้นเข้าติดตั้ง PR-3c — กลุ่มคำขอติดตั้งรอ TS ยืนยันวัน (ม็อก B1') · โมดัลตัวเดียวกับแท็บรอติดตั้ง
 import InstallScheduleGroup from "@/components/service/install/InstallScheduleGroup";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const UNASSIGNED = "__unassigned__";
@@ -126,7 +127,7 @@ export default function ServiceSchedulePage() {
   const canSeeRequests = useMemo(() => canAnswerServiceRequests(viewer), [viewer]);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const todayIso = businessDate();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
 
   /* ── สถานะใน URL (เปิดลิงก์แล้วได้หน้าเดิม · KPI ของหน้าภาพรวมลิงก์ตรงมาที่ถัง) ── */
   const bucketParam = searchParams.get("tab");

@@ -21,26 +21,17 @@ import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
 /* ประเมินจากแบบ งวด 4 (S4 C-5) — วันที่ผู้ขออยากให้เข้าพื้นที่มีตัวอ่านเดียว (pure · ใช้ได้ทั้งเบราว์เซอร์และ server) */
 import { SURVEY_NO_VISIT_WISH_TEXT, surveyFiledAsDrawing, surveyWishedVisit } from '@/lib/service/surveyIntake';
 import { dueInfo } from '@/lib/dueState';
+import { calendarDays } from '@/lib/dueState';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 // วันแบบปฏิทิน — เทียบที่ "วัน" ไม่ใช่ที่ชั่วโมง เพราะหน้าจอพูดว่า "อีก 3 วัน"
 //
-// ⚠️ **นับตามปฏิทินของเครื่องที่เรนเดอร์** (กติกาเดียวกับ `fmtDate`) — ตั้งใจให้ตรงกับ
-// วันที่ที่พิมพ์อยู่ข้าง ๆ กัน ไม่ใช่ตรงกับเวลาไทยเสมอ · เทสต์จึงต้องสร้างวันจาก "ตอนนี้"
-// ไม่ใช่สะกดเวลาพร้อม offset (เทสต์แบบหลังผ่านบนเครื่องไทยแต่แดงบน CI ที่เป็น UTC)
-// ⚠️ ตัดเวลาทิ้งทั้งสองฝั่งก่อนลบกัน ไม่งั้นใบที่ส่งเมื่อ 23:50 จะกลายเป็น "1 วันก่อน"
-// ตอนตีหนึ่ง ซึ่งจริงแต่ไม่ใช่คำตอบที่คนถาม
+// ⭐ **วันไทยเสมอ** (ตัวกลาง `calendarDays` · งวด 2) — 🐞 เดิมนับตามปฏิทินของเครื่องที่เรนเดอร์ ⇒ เครื่องที่ตั้งโซนอื่น
+//    (หรือเรนเดอร์ฝั่ง server ที่เป็น UTC) นับ "ค้าง n วัน" ของใบที่ส่งตอนเช้ามืดผิดหนึ่งวัน
+// ⚠️ ค่าว่าง = null (ไม่ใช่ 1 ม.ค. 1970) · ตัดเวลาทิ้งทั้งสองฝั่ง (วันของตราไทย) — ใบที่ส่ง 23:50 ไม่กลายเป็น "1 วันก่อน" ตอนตีหนึ่ง
 function dayDiff(fromValue, toValue) {
-  // ⚠️ กันค่าว่างก่อนเสมอ — `new Date(null)` คือ 1 ม.ค. 1970 ซึ่ง **เป็นวันที่ที่ถูกต้อง**
-  // ⇒ ใบที่ยังไม่มีวันจะได้คำตอบว่า "เร็วกว่าที่ขอ 20,679 วัน" แทนที่จะเงียบ
   if (!fromValue || !toValue) return null;
-  const from = new Date(fromValue);
-  const to = new Date(toValue);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
-  const f = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
-  const t = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
-  return Math.round((t - f) / DAY_MS);
+  return calendarDays(fromValue, toValue);
 }
 
 /** "ค้างมา 3 วัน" / "เมื่อวาน" / "วันนี้" — นับจากวันที่ส่งถึงวันนี้ */

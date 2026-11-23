@@ -185,7 +185,7 @@ test('🔴 L1: ทุกป้าย × ตัวกรองที่ค้า�
 
 test('ด่านซอร์ส L1: ป้ายสรุปเป็นปุ่มที่ตั้งตัวกรองทั้งชุด · นับด้วยตัวตัดสินกลาง · แผงกรองมีมิติเลยกำหนด', () => {
   const table = readSrc('../../components/salesPlanning/DealTimelineTable.js');
-  assert.match(table, /const today = businessDate\(\);\s*const summaryCounts = timelineSummaryCounts\(tasks, today\);/);
+  assert.match(table, /const today = useThaiToday\(\{ seed: true \}\);[^\n]*\s*const summaryCounts = timelineSummaryCounts\(tasks, today\);/);
   assert.match(table, /const pickSummary = \(kind\) => setStepFilter\(timelineSummaryActive\(stepFilter, kind\) \? EMPTY_STEP_FILTER : timelineSummaryPick\(kind\)\);/);
   assert.match(table, /<button key=\{kind\} type="button" className="ui-badge" aria-pressed=\{pressed\} onClick=\{\(\) => pickSummary\(kind\)\}/);
   assert.match(table, /\{label\} \{summaryCounts\[kind\]\}/);
