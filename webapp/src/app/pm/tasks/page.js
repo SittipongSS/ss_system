@@ -45,6 +45,7 @@ import { RequestStatusBadge, requestDueTone } from "@/components/requests/reques
 import Textarea from "@/components/ui/Textarea";
 import { liveDueDate } from "@/lib/requests/dueRound";
 import { apiFetch } from "@/lib/apiFetch";
+import { businessDate } from "@/lib/businessDate";
 
 // ระบบมอบหมาย/ติดตามงาน (Sales Task Management) — งานทั้งหมดมาจาก personal_tasks
 // (งานที่กรอก/มอบหมายเอง) เท่านั้น. ไม่ดึงงานขั้นตอนจากไทม์ไลน์ (project_tasks)
@@ -199,10 +200,8 @@ export default function TasksPage() {
   // ลิงก์ "ดูทั้งหมด" + ป้าย "n รอตอบ" ของบล็อกคำร้อง — แท็บ "รอตอบ" ของคิวปลายทาง คิดที่ API (ตรวจตัวเลข M8d)
   const [inquiryQueue, setInquiryQueue] = useState(null);
   const [todayISO, setTodayISO] = useState(null); // วันนี้ (client) — ป้ายเลยกำหนด SLA
-  useEffect(() => {
-    const d = new Date();
-    setTodayISO(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-  }, []);
+  // วันไทย (ไม่ใช่นาฬิกาเครื่อง) — ตัวเดียวกับที่ server ใช้ตัดสินเลยกำหนด (23/11/2026)
+  useEffect(() => { setTodayISO(businessDate()); }, []);
   const [dealsMap, setDealsMap] = useState({});
   const [me, setMe] = useState(null);
   const [allDeals, setAllDeals] = useState([]);
@@ -643,9 +642,8 @@ export default function TasksPage() {
     if (status === t.status) return;
     // ปิดงานที่ "เลยกำหนด" → เปิดช่องกรอกสาเหตุในโมดัล (แทนป๊อปอัป prompt)
     if (status === "Completed" && t.dueDate) {
-      const d = new Date();
-      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      if (String(t.dueDate) < today) { setLateModal({ task: t, reason: "" }); return; }
+      // วันไทย = ด่านเดียวกับ server (personal-tasks/[id]) — เดิมนาฬิกาเครื่อง ⇒ โมดัลไม่ขึ้นแต่ server ตีกลับ 400 (23/11/2026)
+      if (String(t.dueDate) < businessDate()) { setLateModal({ task: t, reason: "" }); return; }
     }
     // เข้าสถานะ "รอคนอื่น" → ต้องบอกว่ารออะไร (ด่านเดียวกับฝั่ง API) ไม่งั้นคิวจะเต็มไปด้วย
     // งานที่ไม่มีใครรู้ว่าค้างอยู่ที่ใคร แล้วไม่มีใครตามได้

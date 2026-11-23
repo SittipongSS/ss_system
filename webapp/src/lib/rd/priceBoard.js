@@ -13,6 +13,7 @@ import { ingredientListMissing } from '@/lib/master/ingredientList';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 import { NO_PRICE_SLOTS_REASON, currentPriceToUse } from '@/lib/master/priceSlots';
+import { businessDayKey } from '@/lib/datePeriods';
 
 const DEPT = 'RD';
 
@@ -105,7 +106,8 @@ export function priceBoardRows(pairs = [], live = []) {
 /* รอมาแล้วกี่วัน นับจากวันที่ลูกค้าคอนเฟิร์มถึงวันไทยที่ผู้เรียกส่งมา · ไม่มีวัน = null (ไม่ใช่ 0) */
 export function waitingDays(row, todayIso) {
   if (!row?.confirmedAt || !todayIso) return null;
-  const a = Date.parse(`${String(row.confirmedAt).slice(0, 10)}T00:00:00Z`);
+  // วันไทยของตราคอนเฟิร์ม (timestamp) — ตัดสตริงตรง ๆ = วัน UTC ช่วงตีหนึ่งถึงเจ็ดโมงนับเกินหนึ่งวัน (23/11/2026)
+  const a = Date.parse(`${businessDayKey(String(row.confirmedAt))}T00:00:00Z`);
   const b = Date.parse(`${String(todayIso).slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return Math.max(0, Math.round((b - a) / 86400000));

@@ -17,6 +17,7 @@ import { npdUncoveredPairs } from '@/lib/requests/npdPairs';
 // re-export ไฟล์นี้ด้วย การ import กลับไปหามันคือวงกลม
 import { compareRequestUrgency } from '@/lib/requests/queue';
 import { liveDueDate } from '@/lib/requests/dueRound';
+import { businessDayKey } from '@/lib/datePeriods';
 
 // ── ก้าวถัดไปของ "ทั้งใบ" ────────────────────────────────────────────────
 //
@@ -613,7 +614,8 @@ export function dueSoonRows(rows = [], { dept, todayIso, days = 7 } = {}) {
  */
 export function bouncedDaysText(request, { todayIso = null } = {}) {
   if (!request?.bouncedAt || request.status !== 'draft') return null;
-  const at = String(request.bouncedAt).slice(0, 10);
+  // วันไทยของตราตีกลับ — ตัดสตริงตรง ๆ = วัน UTC ⇒ ตีกลับตอนตีหนึ่งถึงเจ็ดโมงนับ "ค้าง" เกินหนึ่งวัน (23/11/2026)
+  const at = businessDayKey(String(request.bouncedAt)) || String(request.bouncedAt).slice(0, 10);
   if (!todayIso) return { date: at, note: 'ตีกลับแล้ว', days: null };
   const ms = Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${at}T00:00:00Z`);
   if (!Number.isFinite(ms)) return { date: at, note: 'ตีกลับแล้ว', days: null };

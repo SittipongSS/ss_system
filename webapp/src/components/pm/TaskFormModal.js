@@ -25,6 +25,7 @@ import PersonSelect from "@/components/ui/PersonSelect";
 import { uploadAttachment } from "@/lib/master/attachmentUpload";
 import { apiJson } from "@/lib/apiFetch";
 import Textarea from "@/components/ui/Textarea";
+import { businessDate } from "@/lib/businessDate";
 
 export const TASK_BLANK = {
   title: "", note: "", startDate: "", dueDate: "",
@@ -39,11 +40,8 @@ export const STATUS_OPTIONS = PERSONAL_TASK_STATUSES.map((value) => [value, TASK
 // สีป้าย "ต่อจากงาน" — ค่าคงที่ระดับโมดูล (ไม่ใช่ inline object ใหม่ทุก render)
 const CHAIN_BADGE = { color: "var(--purple)" };
 
-// วันที่วันนี้ตามเครื่องผู้ใช้ (ไทย = ICT) — ใช้เทียบ "เลยกำหนด" ฝั่ง client
-const todayLocal = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+// วันนี้ **ตามวันไทย** — เทียบ "เลยกำหนด" ฝั่ง client ให้ตรงกับด่าน server (เดิมนาฬิกาเครื่อง · 23/11/2026)
+const todayLocal = () => businessDate();
 
 // ช่องเลือกดีลเป็นเมนูเดียว (มติผู้ใช้ 2026-08-06) — ไม่มีช่อง "โครงการ" ให้กรองก่อน
 // อีกแล้ว จึงไม่ต้องเดาว่าดีลเดิมของงานอยู่โครงการไหนเพื่อให้มันโผล่ใน dropdown

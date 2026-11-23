@@ -5,6 +5,7 @@
 // 0157: วัสดุเป็น **ข้อมูลหลัก** (มีสถานะ + ตัวตนที่ไม่ซ้ำ) และราคา 1 rev
 // มีได้ **หลายชั้นจำนวน** — ราคาไม่ได้อยู่บน rev แล้ว อยู่ที่ rev.tiers
 import { canQuoteCosting, isSuperuser, normalizeDepartment } from '@/lib/permissions';
+import { businessDayKey } from '@/lib/datePeriods';
 
 // ชนิดวัสดุ = ชุดย่อยของบรรทัดแม่แบบ (ไม่รวม labor — ค่าดำเนินการไม่ใช่ "วัสดุ")
 // ⭐ RM_B (mig 0372 · ม-148) — นิยามผู้ใช้ 2026-09-22: *"F คือกลิ่น(หัวน้ำหอม) / B คือเบส / FB คือ เบสที่ใส่กลิ่น"*
@@ -107,10 +108,11 @@ export function revisionValidUntil(revision, ttlDays = DEFAULT_PRICE_TTL_DAYS) {
   if (!revision) return null;
   if (revision.validUntil) return String(revision.validUntil).slice(0, 10);
   if (!revision.quotedAt) return null;
-  const base = new Date(revision.quotedAt);
-  if (Number.isNaN(base.getTime())) return null;
-  base.setDate(base.getDate() + ttlDays);
-  return base.toISOString().slice(0, 10);
+  /* 🐞 วันไทยของตราเสนอราคา + เลขคณิตปฏิทิน (ตรวจทั้งระบบ 23/11/2026) — เดิมบวกวันด้วยนาฬิกาเครื่องแล้วตัดวัน UTC
+     ⇒ ราคาที่เสนอตอนตีหนึ่งถึงเจ็ดโมงไทยหมดอายุเร็วหนึ่งวัน */
+  const day = businessDayKey(String(revision.quotedAt));
+  if (!day) return null;
+  return new Date(Date.parse(`${day}T00:00:00Z`) + ttlDays * 86400000).toISOString().slice(0, 10);
 }
 
 // ราคาเกินอายุแล้วหรือยัง เทียบกับ "วันนี้" (ส่ง todayIso มาเพื่อทดสอบได้)

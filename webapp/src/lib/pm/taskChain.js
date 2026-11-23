@@ -10,6 +10,7 @@
 //   2. ปิดงานใบหนึ่ง → งานถัดไปที่ยังติดล็อกอยู่ เด้งกลับเป็น "รอดำเนินการ" ให้เอง
 //      (ไม่กระโดดไป "กำลังทำ" — คนต้องกดเริ่มเอง แบบเดียวกับ lib/pm/status.js)
 import { TASK_STATUS_BLOCKED, TASK_STATUS_COMPLETED, TASK_STATUS_PENDING } from '@/lib/pm/tasks';
+import { businessDayKey } from '@/lib/datePeriods';
 
 // ข้อความ "รออะไรอยู่" ของงานที่ติดล็อกเพราะรอใบก่อนหน้า — ต้องอ่านรู้เรื่องเดี่ยว ๆ
 // เพราะมันไปโผล่ในคิวของคนอื่นที่ไม่รู้จักสายงานนี้
@@ -60,8 +61,10 @@ export const UNLOCK_PATCH = {
 // จำนวนวันที่รออยู่ — null เมื่อไม่รู้ว่าเริ่มรอเมื่อไร (ข้อมูลเก่าก่อน mig 0266)
 export function daysWaiting(task, today) {
   if (!task?.blockedSince || !today) return null;
-  const from = new Date(task.blockedSince);
-  const to = new Date(today);
-  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return null;
-  return Math.max(0, Math.floor((to - from) / 86400000));
+  /* 🐞 วันไทยทั้งสองฝั่ง + เลขคณิตปฏิทิน (ตรวจทั้งระบบ 23/11/2026) — เดิมเทียบวันล้วน (= 07:00 ไทย) กับ timestamp แล้วปัดลง
+     ⇒ รอตั้งแต่ 10:00 เมื่อวาน วันนี้ยังขึ้น 0 วัน */
+  const from = businessDayKey(String(task.blockedSince));
+  const to = businessDayKey(String(today));
+  if (!from || !to) return null;
+  return Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000));
 }
