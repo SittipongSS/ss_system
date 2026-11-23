@@ -87,6 +87,7 @@
 - ใบไม่นับ = อนุมัติทุกอย่างเหมือนใบเต็ม (งานบริการ · ผลิต · ภาษี · บัญชี · เก็บเงิน · บัญชีปิดใบ) — ตัวเลือกนี้ย้ายแค่ Actual
 - ดีลยัง Won (ใบเสนอราคาถูกรับ) · `wonValue` ไม่รวมใบนี้ · `wonMonth` = เดือนอนุมัติใบล่าสุด (ความหมายเดิม — ดีลไม่ใช่ "Won รอยื่น SO")
 - การ์ด "อนุมัติแล้ว" ของทะเบียน SO นับใบไม่นับรวม (กดแล้วกรอง pipeline + อนุมัติแล้ว = เลขเดียวกัน) + หมายเหตุ "ไม่นับ Actual n ใบ" · การ์ด "Actual ก่อน VAT" ไม่รวม
+- (ตรวจ 23/11) คำใต้การ์ด "มูลค่าปิดจริง (Won)" ของหน้าดีล: ใบอนุมัติแล้วทุกใบเป็นไม่นับ (ไม่มีใบรออนุมัติ) = "คาดการณ์ ฿V · ใบสั่งขายอนุมัติแบบไม่นับ Actual[ n ใบ]" ไม่มีตัวเลขต่าง · มีใบไม่นับปนกับใบนับ/ใบรออนุมัติ = คำชนิดเดิม + ท่อนท้าย "ไม่นับ Actual n ใบ" (ส่วนต่างคิดจาก Actual ตามเดิม) · 🐞 ก่อนแก้ ดีลที่มีแต่ใบไม่นับขึ้น "ยังไม่มีใบสั่งขายที่ยื่น" ทั้งที่แดชบอร์ดไม่นับดีลนี้เป็น Won รอยื่น SO
 - เอกสาร SO ที่พิมพ์ไม่โชว์แบบการนับ (เรื่องภายใน — กติกาเดิม)
 
 ### สัญญาเทคนิค (0439)
@@ -102,7 +103,7 @@
   `sales_order_actual_none_ineligible` (409 · ใบย้อนหลัง/ค่าสรรพสามิต)
 - JS (`salesOrderActualMode.js`): `ACTUAL_MODE_NONE` · `isNoActualOrder` · `actualNoneReasonOf` · `actualNoneEligibility` · `actualNoneReasonError` ·
   `salesOrderCountedActual` / `salesOrderActualEvents` = 0 / [] · `salesOrderAmountKind` = `'none'` (ใหม่ — จอโชว์ "ไม่นับ Actual") ·
-  `splitSalesOrderAmounts.noneCount` · route: `parseActualNoneReasonInput` · `previousActualNoneReasonOf` · เธรดดีล `actual_none`
+  `splitSalesOrderAmounts.noneCount` · `wonDealForecastHint({ noneCount })` ชนิด `actual_none` (หน้าดีลส่ง `soAmounts.noneCount`) · route: `parseActualNoneReasonInput` · `previousActualNoneReasonOf` · เธรดดีล `actual_none`
 - §0 ลายนิ้วมือ: เนื้อ (ยุบช่องว่าง) ของห้าตัวที่คัดมาต้องเป็นของ 0412 หรือ 0439 บนฐานจริง ไม่งั้น `mig_0439_live_drift` (บทเรียน 0425 — ไม่ทับแพตช์เงียบ)
 - 🧪 ฮาร์เนส PGlite (นอก repo · โหลด schema + 0001–0438 จริง): 0439 สองรอบดีลเดิมค่าเดิมทุกตัวอักษร · ฐานที่ guard ถูกปะทับ = หยุด · 24 ข้อผ่าน
 
