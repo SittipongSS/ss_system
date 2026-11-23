@@ -191,11 +191,14 @@ function dueOf(request, today) {
         ? { text: `ส่งแล้ว ก่อนกำหนด ${early} วัน`, tone: 'success' }
         : early === 0
           ? { text: 'ส่งแล้ว ตรงกำหนด', tone: 'success' }
-          : { text: `ส่งแล้ว ช้ากว่ากำหนด ${-early} วัน`, tone: 'warning' },
+          /* ยังไม่มีวันที่ TS รับปาก = เทียบกับความต้องการของผู้ขอ ไม่ใช่ "กำหนด" (มติเจ้าของ 23/11/2026) */
+          : { text: committed ? `ส่งแล้ว ช้ากว่ากำหนด ${-early} วัน` : `ส่งแล้ว ช้ากว่าที่ผู้ขอต้องการ ${-early} วัน`, tone: 'warning' },
       note: `ส่งจริง ${stampText(request.answeredAt)}`,
     };
   }
-  const rel = today ? relDayText(date, today, 'เลยกำหนด') : null;
+  /* ⭐ **แดง "เลยกำหนด" เฉพาะวันที่ TS รับปาก** (มติเจ้าของ 23/11/2026) — วันที่ผู้ขอต้องการเป็นวันอ้างอิง ไม่นับถอยหลัง
+     🐞 เดิมถอยไปนับจากวันที่ผู้ขอขอ ⇒ หน้าคำร้องแดง "เลยกำหนด n วัน" ทั้งที่ไม่มีใครรับปากวันส่งผล ขณะที่คิว/ปฏิทินไม่นับ */
+  const rel = today && committed ? relDayText(date, today, 'เลยกำหนด') : null;
   /* เลยวันที่รับปากแล้ว = ไม่มีบรรทัด "เร็วกว่าที่ขอ" (S2b แก้หลังตรวจจอ sales-minor-3 · กติกาอยู่ที่ `committedVsRequested`) */
   const gap = committed && wanted ? committedVsRequested(committed, wanted, { today }) : null;
   return {

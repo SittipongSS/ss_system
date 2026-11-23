@@ -314,5 +314,10 @@ test('🔴 ยามอ่านซอร์ส: หน้าใช้ todayPage
   assert.match(page, /apiFetch\(`\/api\/service\/my-visits\?\$\{todayPageVisitsQuery\(\{ assignee: viewingOther \? viewUserId : "" \}\)\}`\)/);
   assert.doesNotMatch(page, /my-visits\?scope=mine/);
   assert.doesNotMatch(page, /พรุ่งนี้ \{counts\.tomorrow\}/);
-  assert.match(nav, /from: shift\(-WAITING_ON_ME_BACK_DAYS\), to: shift\(14\), assigneeId: String\(user\.id\)/);
+  assert.match(nav, /const from = shift\(-WAITING_ON_ME_BACK_DAYS\);/);
+  assert.match(nav, /loadVisits\(supabase, \{ from, to: shift\(14\), assigneeId: String\(user\.id\) \}\)/);
+  // ⭐ + นัดที่ยังเปิดอยู่ก่อนช่วง (ตรวจทั้งระบบ 23/11/2026 · เดิมพ้น 14 วันหายจากป้าย/หน้า) — ทั้งสองที่ใช้ตัวโหลดเดียวกัน
+  assert.match(nav, /loadOverdueVisits\(supabase, \{ assigneeId: String\(user\.id\), before: from \}\)/);
+  const route = live(readFileSync(new URL('../../app/api/service/my-visits/route.js', import.meta.url), 'utf8'));
+  assert.match(route, /loadOverdueVisits\(supabase, \{ assigneeId, before: from \}\)/);
 });

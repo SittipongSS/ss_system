@@ -23,7 +23,7 @@ import { addDays } from '@/lib/datePeriods';
 import { usesCrewShell } from '@/lib/permissions';
 import { myWorkWindow } from '@/lib/service/crew/workWindow';
 import { requireService } from '@/lib/service/sitesRepo';
-import { enrichMyWork, loadMyWorkRows, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
+import { enrichMyWork, loadMyWorkRows, loadOverdueVisits, loadVisits, sitesForVisits } from '@/lib/service/visitsRepo';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,9 +62,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     if (rawFrom == null && rawTo == null) {
       const back = clampDays(url.searchParams.get('back'), 14, 90);
       const ahead = clampDays(url.searchParams.get('ahead'), 14, 90);
-      const visits = await loadVisits(supabase, {
-        from: addDays(today, -back), to: addDays(today, ahead), assigneeId,
-      });
+      const from = addDays(today, -back);
+      const inRange = await loadVisits(supabase, { from, to: addDays(today, ahead), assigneeId });
+      /* 🐞 **นัดค้างเกิน `back` วันหายจากมือช่าง** (ตรวจทั้งระบบ 23/11/2026) — หน้า "วันนี้" ย้อน 14 วัน ⇒ นัดที่ไม่ปิดเมื่อ 1 พ.ย.
+         หายจาก "ค้างอยู่" และป้ายเมนูตั้งแต่ 16 พ.ย. ขณะที่หน้าจัดคิวยังนับ "นัดค้าง" · ต่อท้ายนัดที่ยังเปิดอยู่ก่อนช่วง
+         (ไม่มีขอบล่าง · ตัวเดียวกับคิวงาน `loadOverdueVisits`) — ไม่ซ้ำกับในช่วงเพราะตัดที่วัน `from` */
+      const older = back > 0 ? await loadOverdueVisits(supabase, { assigneeId, before: from }) : [];
+      const visits = [...older, ...inRange];
       const sites = await sitesForVisits(supabase, visits);
       return ok({ scope, visits, sites: [...sites.values()] });
     }
