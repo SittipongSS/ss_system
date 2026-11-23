@@ -28,7 +28,7 @@ import { FORMULA_STATUS_LABELS, FORMULA_STATUS_TONES } from "@/lib/master/formul
 import { formulaLabelParts, formulaSearchText, scentLabelParts, scentSearchText } from "@/lib/master/registryLabel";
 import { isExciseOrder } from "@/lib/sales/historicalOrders";
 import {
-  buildDealRows, contractText, dealRowText, FINANCE_ORDER_STATES, financeOrderRows, financeOrderText, leadText, matchesQuery,
+  buildDealRows, contractText, dealRowText, orderActualNoneText, FINANCE_ORDER_STATES, financeOrderRows, financeOrderText, leadText, matchesQuery,
   orderText, productOrderStats, quoteText, registrationText, requestDueCell, requestDueSortKey, requestText, hubText, todayKey,
 } from "@/lib/master/customerHub";
 import { requestDueTone } from "@/components/requests/requestUi";
@@ -64,7 +64,8 @@ const QUOTE_TONES = { draft: "neutral", sent: "info", accepted: "success", rejec
 const ORDER_TONES = { draft: "neutral", pending_approval: "warning", approved: "success", rejected: "danger", revised: "neutral", approval_revoked: "warning", cancelled: "danger" };
 
 const Code = ({ children }) => <span className="font-mono text-xs">{children}</span>;
-const Sub = ({ children }) => (children ? <span className="block text-xs text-[var(--text-3)] truncate">{children}</span> : null);
+/* `title` = ข้อความเต็มตอนชี้เมาส์ — บรรทัดรองตัดด้วย truncate (เช่นเหตุผลของ "ไม่นับ Actual" ยาวได้ถึง 500 ตัวอักษร) */
+const Sub = ({ children, title }) => (children ? <span className="block text-xs text-[var(--text-3)] truncate" title={title || undefined}>{children}</span> : null);
 const Money = ({ value }) => <span className="font-mono">{fmtMoney(value)}</span>;
 const DocLink = ({ href, children }) => <Link prefetch={false} href={href} className="linklike font-mono text-xs">{children}</Link>;
 
@@ -182,7 +183,8 @@ function SalesTab({ hub, query, onQuery, today }) {
           { key: "no", label: "เลขที่", render: (o) => <><Code>{o.orderNumber}</Code><Sub>{o.referenceDoc ? `PO ${o.referenceDoc}` : null}</Sub></> },
           { key: "deal", label: "ดีล", render: (o) => <Code>{naText(dealCode.get(o.dealId))}</Code> },
           { key: "date", label: "วันที่", render: (o) => fmtDate(o.orderDate || o.createdAt) },
-          { key: "status", label: "สถานะ", render: (o) => <StatusBadge tone={ORDER_TONES[o.status] || "neutral"} label={SALES_ORDER_STATUS_LABELS[o.status] || o.status} /> },
+          /* ใบอนุมัติแบบ "ไม่นับ Actual" (mig 0439) — ป้าย + เหตุผลใต้สถานะ · ค้นเจอด้วย orderText */
+          { key: "status", label: "สถานะ", render: (o) => <><StatusBadge tone={ORDER_TONES[o.status] || "neutral"} label={SALES_ORDER_STATUS_LABELS[o.status] || o.status} /><Sub title={orderActualNoneText(o)}>{orderActualNoneText(o)}</Sub></> },
           { key: "finance", label: "บัญชี", render: (o) => (o.financeStatus ? <StatusBadge tone={FINANCE_STATUS_TONES[o.financeStatus] || "neutral"} label={FINANCE_STATUS_LABELS[o.financeStatus] || o.financeStatus} /> : NA) },
           { key: "total", label: "ยอดรวม", className: "num", render: (o) => <Money value={o.totalAmount} /> },
         ]}
@@ -290,10 +292,13 @@ function SalesTab({ hub, query, onQuery, today }) {
         {
           key: "pay", label: "ชำระ",
           render: (r) => (r.payment.count
-            ? <><span>{`${r.payment.paid}/${r.payment.count} งวด`}</span>{r.payment.outstanding > 0 && <Sub>{`ค้าง ${fmtMoney(r.payment.outstanding)}`}</Sub>}{r.payment.overdue && <StatusBadge tone="danger" label="เกินกำหนด" />}</>
+            ? <><span>{`${r.payment.paid}/${r.payment.count} งวด`}</span>{r.payment.outstanding > 0 && <Sub>{`ค้าง ${fmtMoney(r.payment.outstanding)}`}</Sub>}{r.payment.overdue && <StatusBadge tone="danger" label="เลยกำหนด" />}</>
             : NA),
         },
-        { key: "actual", label: "Actual", className: "num", render: (r) => (r.order ? <Money value={r.actual} /> : NA) },
+        /* ใบ "ไม่นับ Actual" (mig 0439 · มติ 20/11 ข้อ 3) — ยอด 0 + ป้ายพร้อมเหตุผลใต้ยอด (ตัวเดียวกับทะเบียน SO) · หลายใบ = title รวมเหตุผล */
+        { key: "actual", label: "Actual", className: "num", render: (r) => (r.order
+          ? <><Money value={r.actual} /><Sub title={r.actualNone?.reasons.join(" / ")}>{r.actualNone?.text}</Sub></>
+          : NA) },
       ]}
       emptyText="ยังไม่มีดีลของลูกค้ารายนี้"
     />
@@ -488,7 +493,7 @@ function FinanceTab({ hub, query, onQuery, today }) {
       stateKey="hub-finance-order"
       icon={<Wallet size={17} aria-hidden="true" />}
       title="การชำระตามใบสั่งขาย"
-      subtitle="แถวละใบสั่งขาย · รวมงวดของใบที่คุณเห็นได้ · เกินกำหนดนับตามวันไทย"
+      subtitle="แถวละใบสั่งขาย · รวมงวดของใบที่คุณเห็นได้ · เลยกำหนดนับตามวันไทย"
       unit="ใบ"
       rows={rows}
       searchPlaceholder="ค้นหาเลข SO / ดีล / ชื่องวด / เลขใบกำกับภาษี"
@@ -511,7 +516,7 @@ function FinanceTab({ hub, query, onQuery, today }) {
         { key: "next", label: "งวดถัดไป", render: (r) => (r.next ? (
           <>
             <span>{`${r.next.dueDate ? fmtDate(r.next.dueDate) : "ไม่มีกำหนด"} · ${fmtMoney(r.next.amount)}`}</span>
-            {r.next.overdue && <StatusBadge tone="danger" label="เกินกำหนด" />}
+            {r.next.overdue && <StatusBadge tone="danger" label="เลยกำหนด" />}
             <Sub>{r.next.label || (r.next.seq != null ? `งวด ${r.next.seq}` : null)}</Sub>
           </>
         ) : NA) },

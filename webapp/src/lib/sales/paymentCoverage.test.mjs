@@ -491,3 +491,25 @@ test('splitCoverageByPeriod — งวดเดียว = ครอบทั้
   assert.equal(error, null);
   assert.deepEqual(out.map((r) => [r.coversFrom, r.coversTo]), [['2026-10-01', '2026-10-20']]);
 });
+
+/* ── งวดเลยกำหนด — ตัวตัดสินเดียวทุกจอ (ตรวจทั้งระบบ 23/11/2026 · docs/due-overdue-system.md) ───────────────── */
+test('installmentOverdue: ตัวเดียวของหัว SO · แผงงวด · รายการ · ชิป · หน้าลูกค้า · ทะเบียนบัญชี', async () => {
+  const { installmentOverdue, installmentAwaitingEvent } = await import('./paymentCoverage.js');
+  const today = '2026-11-23';
+  const row = (over = {}) => ({ status: 'pending', dueDate: '2026-11-20', frozenAt: '2026-11-01T03:00:00Z', ...over });
+  assert.equal(installmentOverdue(row(), today), true, 'งวดตรึงแล้ว ยังไม่จ่าย เลยวัน = เลยกำหนด');
+  assert.equal(installmentOverdue(row({ dueDate: today }), today), false, 'วันครบกำหนดเองยังไม่เลย');
+  assert.equal(installmentOverdue(row(), null), false, 'ไม่รู้วันนี้ = ไม่ตัดสิน');
+  // 🐞 งวดร่างของใบที่ยังไม่อนุมัติ (ชิป "ตามแผน") เคยแดงบนหัว SO/แผงงวด/หน้าลูกค้า
+  assert.equal(installmentOverdue(row({ frozenAt: null }), today), false, 'งวดร่าง = แผน ไม่เลยกำหนด');
+  assert.equal(installmentOverdue(row({ frozenAt: undefined }), today), true, 'ผู้เรียกไม่ได้เลือก frozenAt = กติกาเดิม ไม่เงียบ');
+  // 🐞 งวดรอเหตุการณ์เคยแดงถาวรด้วยกำหนดชำระเก่า ขณะที่กระดิ่งเงียบ (dueState → waiting)
+  assert.equal(installmentOverdue(row({ billingEvent: 'ก่อนส่งสินค้า' }), today), false);
+  assert.equal(installmentAwaitingEvent(row({ billingEvent: 'ก่อนส่งสินค้า' })), true);
+  assert.equal(installmentOverdue(row({ billingEvent: 'ก่อนส่งสินค้า', billingDate: '2026-11-15' }), today), true, 'มีวันวางบิลแล้ว = ตามด้วยวัน');
+  // จ่ายแล้วไม่เลยกำหนด (มติ 18/11) · ตีกลับ = ยังไม่จ่าย
+  assert.equal(installmentOverdue(row({ status: 'reported', paidOn: '2026-11-19' }), today), false);
+  assert.equal(installmentOverdue(row({ status: 'rejected', paidOn: '2026-11-19' }), today), true);
+  assert.equal(installmentOverdue(row({ status: 'confirmed' }), today), false);
+  assert.equal(installmentOverdue(row({ status: 'confirmed', refundedAt: '2026-11-21T03:00:00Z' }), today), false);
+});

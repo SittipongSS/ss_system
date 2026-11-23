@@ -82,7 +82,7 @@ import {
   INSTALLMENT_STATUS_LABELS, INSTALLMENT_STATUS_TONES, MIN_REJECT_REASON,
   billingRequestDead, billingRequestedIds, installmentActionError, installmentBillingRequested, installmentConfirmOutlook,
   installmentDisplayStatus, installmentEvidenceRoom, installmentPlanDrift,
-  installmentCustomerPaid, installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentScheduleAllowed, installmentStartBlock,
+  installmentCustomerPaid, installmentOverdue, installmentPrepaid, installmentRefunded, installmentReportOutcome, installmentScheduleAllowed, installmentStartBlock,
   installmentUnconfirmOutcome,
   installmentVoid, installmentVoidNote, openingCoverageEnd, paymentNotRequired, paymentRollup, pipelineInstallmentLock, previewInstallments,
   revisedInstallmentsNote, strandedInstallment,
@@ -1332,8 +1332,8 @@ export default function SalesOrderPaymentPanel({
             <tbody>
               {rows.map((row) => {
                 // งวดโมฆะของใบยกเลิก/ถูกแทน ไม่ใช่ "เลยกำหนด" (review UI-3 · installmentVoid)
-                const overdue = !installmentVoid(row, order) && row.status !== "confirmed" && row.dueDate && String(row.dueDate) < String(todayIso)
-                  && !installmentCustomerPaid(row); // จ่ายแล้วไม่เลยกำหนด (มติเจ้าของ 18/11/2026)
+                // ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — จ่ายแล้ว · งวดร่างของใบที่ยังไม่อนุมัติ · งวดรอเหตุการณ์ ไม่เลยกำหนด
+                const overdue = !installmentVoid(row, order) && installmentOverdue(row, todayIso);
                 const evidence = Array.isArray(row.evidence) ? row.evidence : [];
 
                 /* ⭐ **ปุ่มก้าวถัดไป 1 ปุ่ม + เมนู "…"** (มติผู้ใช้ 2026-08-01 · RowActionMenu)

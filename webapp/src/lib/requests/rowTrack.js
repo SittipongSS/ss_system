@@ -97,13 +97,15 @@ export function rowIdleStamps(row) {
  * @returns {{days:number, settled:boolean, late:boolean}|null}
  */
 export function idleFromStamps(stamps, today = null) {
-  const now = dayStart(today);
-  if (!stamps || stamps.at === null || now === null) return null;
+  if (!stamps || stamps.at === null) return null;
   if (stamps.settled) {
     // จบไปแล้ว — เลขที่มีความหมายคือ "ใช้เวลาทั้งหมดกี่วัน" ไม่ใช่อายุนับถึงวันนี้
+    // ⚠️ ไม่ต้องรู้วันนี้ — ใบที่จบแล้วส่ง `today = null` ให้เลิกนับแถวที่ค้างอยู่ตอนจบ (23/11/2026) แต่แถวจบยังบอกเลขนี้ได้
     if (stamps.born === null) return null;
     return { days: Math.max(0, Math.round((stamps.at - stamps.born) / DAY)), settled: true, late: false };
   }
+  const now = dayStart(today);
+  if (now === null) return null;
   const days = Math.max(0, Math.round((now - stamps.at) / DAY));
   // ⚠️ เกณฑ์ 7 วันเป็นของ **คอลัมน์นี้** ไม่ใช่ของกำหนดส่ง — วันกำหนดส่งเป็นคำสัญญา
   // ที่ฝ่ายให้ไว้ ส่วนตัวนี้คือ "ไม่มีใครแตะแถวนี้มานานแค่ไหน" คนละคำถาม

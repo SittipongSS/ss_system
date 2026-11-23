@@ -2703,8 +2703,10 @@ export default function SalesOrderDetailPage() {
               icon: CalendarDays,
               label: "กำหนดชำระ",
               value: paymentSummary.nextDue ? fmtDate(paymentSummary.nextDue) : NA,
-              tone: !paymentSummary.nextDue ? "muted" : paymentSummary.nextDue < todayIso ? "late" : undefined,
-              sub: paymentSummary.nextDue && paymentSummary.nextDue < todayIso ? "เลยกำหนด" : undefined,
+              /* ⭐ แดงเมื่อมีงวดเลยกำหนดจริง (`overdueCount` · ตัวตัดสินเดียว `installmentOverdue` · 23/11/2026)
+                 🐞 เดิมแดงจากวันอย่างเดียว ⇒ ใบรออนุมัติ/ตีกลับที่งวดแรกผ่านวันไปแล้วขึ้น "เลยกำหนด" ทั้งที่ชิปบอก "ตามแผน" */
+              tone: !paymentSummary.nextDue ? "muted" : paymentSummary.nextDue < todayIso && paymentSummary.overdueCount > 0 ? "late" : undefined,
+              sub: paymentSummary.nextDue && paymentSummary.nextDue < todayIso && paymentSummary.overdueCount > 0 ? "เลยกำหนด" : undefined,
             },
             { icon: FileText, label: "อ้างอิง QT", value: naText(order.quotation?.quoteNumber) },
             { icon: CircleDollarSign, label: "ยอดก่อน VAT", value: fmtMoney(exciseOrder ? excisePreVatAmount(order) : order.actualAmount) },
