@@ -43,7 +43,7 @@ function refOf(row) {
 }
 
 /**
- * ติดข้อมูลทะเบียนสดให้แต่ละแถว — `refScent` · `refFormula`
+ * ติดข้อมูลทะเบียนสดให้แต่ละแถว — `refScent` · `refFormula` · `refProducedScent` (พัฒนาสูตรหัวน้ำหอม · ม-166)
  *
  * ⚠️ ฟังก์ชันบริสุทธิ์ ไม่ยิง DB เอง (ผู้เรียกโหลดมาให้) — เทสต์ได้โดยไม่ต้องมีฐาน
  * และ route เป็นคนคุมว่าโหลดกี่ครั้ง
@@ -53,12 +53,18 @@ export function attachRegistryLinks(items = [], { scents = [], formulas = [] } =
   const formulaById = new Map((formulas || []).map((f) => [f.id, f]));
   return (items || []).map((item) => {
     if (!item) return item;
-    const scent = scentById.get(item.producedScentId) || scentById.get(item.scentId) || null;
+    /* ⭐ **แถวพัฒนาสูตรหัวน้ำหอมที่ส่งเป็นกลิ่น (ม-166)** มีกลิ่นสองตัว — `refScent` คงเป็นกลิ่นที่ **ขอ** (ชื่อแถว "หมวด · กลิ่น"
+       ทุกจอของพัฒนาสูตรอ่านจากมัน) · กลิ่นที่ **ได้** แยกไปอยู่ `refProducedScent` (คู่ของ `refFormula`)
+       ⚠️ สายพัฒนากลิ่นยังเหมือนเดิม: `refScent` = กลิ่นที่เกิดจากแถว */
+    const productDev = item.lineKind === 'product_dev';
+    const scent = (productDev ? null : scentById.get(item.producedScentId))
+      || scentById.get(item.scentId) || scentById.get(item.producedScentId) || null;
+    const producedScent = productDev ? scentById.get(item.producedScentId) || null : null;
     const formula = formulaById.get(item.producedFormulaId) || null;
     /* ⭐ Ingredient List ของสูตร (ม-158) ติดไปกับลิงก์สูตร — ตารางในใบโชว์ใต้แถว (อ่านสดจากทะเบียน ไม่มีสำเนาบนแถว)
        ⚠️ ผู้โหลดต้อง select คอลัมน์นี้มาด้วย (`withRegistryLinks`) — ไม่มี = null (ไม่ใช่ "ยังไม่ใส่" ที่ผิด) */
     const refFormula = formula ? { ...refOf(formula), ingredientList: formula.ingredientList || null } : null;
-    return { ...item, refScent: refOf(scent), refFormula };
+    return { ...item, refScent: refOf(scent), refFormula, refProducedScent: refOf(producedScent) };
   });
 }
 

@@ -95,6 +95,8 @@ import { rowStage } from "@/lib/requests/rowStage";
 import FormulaForm, { emptyFormulaForm } from "@/components/database/FormulaForm";
 import { formulaDeliveryPreview } from "@/lib/requests/formulaRework";
 import { addDirectionError, directionRowFrom, formulaConfirmPlan } from "@/lib/requests/formulaDirections";
+import { isOilScentRow, oilScentConfirmPlan, oilScentDeliveryPreview } from "@/lib/requests/oilScentDelivery";
+import OilScentDeliveryForm from "@/components/requests/OilScentDeliveryForm";
 import { requestedLabel } from "@/lib/requests/rowLabel";
 
 // ป้ายรายการในหัวโมดัล/ข้อความ — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่าในฐาน (2026-09-15 · รหัสตอนส่ง ไม่ใช่รหัสปัจจุบัน)
@@ -382,6 +384,8 @@ export default function RequestDetailPage() {
       scentId: item?.scentId || "",
       categoryCode: item?.categoryCode || "",
       ...(preview.lockLineage ? { derivedFromFormulaId: preview.parentId } : {}),
+      /* ม-166 — แถวหัวน้ำหอมส่งเป็นกลิ่น: วันที่ = วันผลิตกลิ่น ตั้งต้นวันนี้ (เหมือนส่งงานพัฒนากลิ่น · RD เพิ่งผลิตเสร็จ) */
+      ...(isOilScentRow(item) ? { formulaDate: businessDate() } : {}),
     };
   }, [req?.customerId, formulaPreviewFor]);
   // ช่องที่ฟอร์มส่งสูตรล็อก — รอบแก้ที่ server จะใช้ต้นทางจริงล็อกต้นทางด้วย
@@ -390,6 +394,36 @@ export default function RequestDetailPage() {
     : ["customerId", "scentId", "categoryCode"]);
   // ประโยคบอกผลก่อนกด (เก็บสูตรเดิม · ผูกของเดิม · ติดร่าง) — ต้องรู้ก่อนกด ไม่ใช่ไปเจอในทะเบียน
   const formulaReworkNote = (item) => formulaPreviewFor(item).note;
+  /* ⭐ **แถวหัวน้ำหอม (02-020) ส่งเป็นกลิ่น** (ม-166 · มติเจ้าของ 23/11 "มันคือกลิ่นนะ") — ฟอร์มทะเบียนกลิ่นแทนฟอร์มสูตร ·
+     ประโยคก่อนกด/ด่านถามแผนตัวเดียวกับ server (`oilScentDelivery.js`) · ทั้งสามทางเข้า (รายแถว · direction · ส่งรวบ) ใช้ตัวนี้ */
+  const oilPreviewFor = (item, code = "") => oilScentDeliveryPreview({
+    row: item, items: req?.items || [], scents: registry.scents, code,
+  });
+  const deliveryNoteFor = (item, draft) => (isOilScentRow(item) ? oilPreviewFor(item, draft?.code).note : formulaReworkNote(item));
+  const producedNoun = (item) => (isOilScentRow(item) ? "กลิ่น" : "สูตร");
+  const deliveryForm = ({ item, value, onChange, key, idPrefix }) => (isOilScentRow(item) ? (
+    <OilScentDeliveryForm
+      key={key} idPrefix={idPrefix}
+      value={value} disabled={saving}
+      customers={registry.customers}
+      scents={registry.scents}
+      customerId={req?.customerId || ""}
+      parentScentId={oilPreviewFor(item, value?.code).parentId || ""}
+      onChange={onChange}
+    />
+  ) : (
+    <FormulaForm
+      key={key}
+      mode="create" canSetCode codeRequired
+      value={value} disabled={saving}
+      customers={registry.customers}
+      scents={registry.scents}
+      formulas={registry.formulas}
+      categories={productTypes}
+      locked={formulaLockedFor(item)}
+      onChange={onChange}
+    />
+  ));
   /* ⭐ **direction เพิ่ม (ม-157)** — แถวที่กำลังจะเกิดจากแถวนี้ (`directionRowFrom` ตัวเดียวกับ server) ⇒ ค่าตั้งต้น · ช่องล็อก ·
      ประโยคก่อนกด ถามแผนเดียวกับแถวจริง (ต้นทางรอบแก้เดียวกัน · ตัวที่ใช้งานอยู่จะถูกแทนตอนคอนเฟิร์ม) */
   const directionShapeOf = (item) => ({ ...directionRowFrom(item), id: null });
@@ -753,22 +787,34 @@ export default function RequestDetailPage() {
   const directionError = (() => {
     if (!formulaTabs || !(hopDraft.extra || []).length) return null;
     const codes = new Set(hopDraft.hop === "ready" ? [String(hopDraft.formula?.code || "").trim().toLowerCase()] : []);
+    const oil = isOilScentRow(hopDraft.item);
     for (const [i, draft] of hopDraft.extra.entries()) {
-      const { value, error } = normalizeFormulaDelivery({ formula: draft });
+      const { value, error } = normalizeFormulaDelivery({ formula: draft }, { scent: oil });
       if (error) return `${directionLabel(i)}: ${error}`;
       const key = value.code.toLowerCase();
-      if (codes.has(key)) return `${directionLabel(i)}: รหัสสูตร ${value.code} ซ้ำกับ direction อื่นในหน้าต่างนี้`;
+      if (codes.has(key)) return `${directionLabel(i)}: รหัส${producedNoun(hopDraft.item)} ${value.code} ซ้ำกับ direction อื่นในหน้าต่างนี้`;
       codes.add(key);
+      // ม-166 — direction เพิ่มของหัวน้ำหอมต้องเป็นกลิ่นตัวใหม่ (รหัสของกลิ่นที่ขอใช้ไม่ได้)
+      if (oil) {
+        const oilPlan = oilPreviewFor(directionShapeOf(hopDraft.item), value.code).plan;
+        if (oilPlan.kind !== "create") return `${directionLabel(i)}: ${oilPlan.error || "ส่ง direction เพิ่มของกลิ่นนี้ไม่ได้"}`;
+      }
     }
+    if (oil) return null;
     const plan = formulaPreviewFor(directionShapeOf(hopDraft.item)).plan;
     return plan.kind === "create" ? null : (plan.error || "ส่ง direction เพิ่มของกลิ่นนี้ไม่ได้");
   })();
   // ลูกค้าคอนเฟิร์มแถวพัฒนาสูตร — ทะเบียนกับแถวอื่นจะเปลี่ยนอย่างไร (แผนตัวเดียวกับ server · บอกก่อนกด #1223)
   const confirmPreview = hopDraft?.hop === "outcome" && hopDraft.outcome === "confirmed"
     && hopDraft.item.lineKind === "product_dev"
-    ? formulaConfirmPlan({
-      row: hopDraft.item, items: req?.items || [], formulas: registry.formulas, customerId: req?.customerId || null,
-    })
+    ? (isOilScentRow(hopDraft.item)
+      // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น: กลิ่นลูกตัวอื่นเลิกใช้ · แถวค้างปิด (แผนตัวเดียวกับ server)
+      ? oilScentConfirmPlan({
+        row: hopDraft.item, items: req?.items || [], scents: registry.scents, customerId: req?.customerId || null,
+      })
+      : formulaConfirmPlan({
+        row: hopDraft.item, items: req?.items || [], formulas: registry.formulas, customerId: req?.customerId || null,
+      }))
     : null;
   /* ⭐ ม-164 PR-3 — คอนเฟิร์มแถวพัฒนากลิ่นเกินจำนวนที่ลูกค้าจ่าย = ต้องแนบ SO ที่ซื้อเพิ่มก่อน หรือระบุว่าแถม
      ตัวตัดสินเดียวกับ route (`overPaidAfterConfirm`) ⇒ ไม่ต้องรอ 409 · บอกก่อนกด (#1223) */
@@ -782,7 +828,7 @@ export default function RequestDetailPage() {
       // ⚠️ เรียกด่านของ **ใบ** ตัวเดียวกับ server ไม่เขียนเงื่อนไขเองที่นี่
       || (ackPromotesRequest ? acknowledgeRequestError(req) : null)
       || (hopDraft.hop === "ready" && hopDraft.item.lineKind === "product_dev"
-        ? normalizeFormulaDelivery(hopDraft).error || directionError
+        ? normalizeFormulaDelivery(hopDraft, { scent: isOilScentRow(hopDraft.item) }).error || directionError
         : null)
       || (confirmPreview?.kind === "blocked" ? confirmPreview.error : null)
       || (overPaid && !String(hopDraft.freebieReason || "").trim()
@@ -846,8 +892,8 @@ export default function RequestDetailPage() {
     const { item, hop, outcome } = hopDraft;
     const extra = hopDraft.extra || [];
     if (hop === "direction") {
-      const done = await postDirections(item, extra, `ส่ง direction เพิ่ม ${extra.length} รายการ · สูตรเข้าทะเบียนแล้ว (กำลังพัฒนา)`);
-      if (done) { setHopDraft(null); refreshFormulas(); }
+      const done = await postDirections(item, extra, `ส่ง direction เพิ่ม ${extra.length} รายการ · ${producedNoun(item)}เข้าทะเบียนแล้ว (กำลังพัฒนา)`);
+      if (done) { setHopDraft(null); refreshFormulas(); if (isOilScentRow(item)) refreshScents(); }
       return;
     }
     const withExtra = hop === "ready" && item.lineKind === "product_dev" && extra.length > 0;
@@ -885,8 +931,9 @@ export default function RequestDetailPage() {
     /* ⭐ direction ที่เหลือยิงต่อหลังแถวแรกส่งสำเร็จ (แถวแรกต้องส่งก่อน — ด่านของเส้น direction) · ล้ม = แถวแรกส่งแล้วจริง
        ⇒ โมดัลกลายเป็น "ส่ง direction เพิ่ม" ค้างของที่กรอกไว้ให้กดใหม่ ไม่ใช่ปิดทิ้ง */
     if (ok && withExtra) {
-      const more = await postDirections(item, extra, `ส่งงาน ${extra.length + 1} direction · สูตรเข้าทะเบียนแล้ว (กำลังพัฒนา)`);
+      const more = await postDirections(item, extra, `ส่งงาน ${extra.length + 1} direction · ${producedNoun(item)}เข้าทะเบียนแล้ว (กำลังพัฒนา)`);
       refreshFormulas();
+      if (isOilScentRow(item)) refreshScents();
       if (!more) {
         setHopDraft({ ...hopDraft, hop: "direction", formula: null, tab: 0, directionBase: 1 });
         return;
@@ -894,7 +941,10 @@ export default function RequestDetailPage() {
     }
     if (ok) {
       setHopDraft(null);
-      if (item.lineKind === "product_dev" && (hop === "ready" || outcome === "confirmed")) refreshFormulas();
+      if (item.lineKind === "product_dev" && (hop === "ready" || outcome === "confirmed")) {
+        refreshFormulas();
+        if (isOilScentRow(item)) refreshScents();
+      }
     }
   };
 
@@ -906,7 +956,7 @@ export default function RequestDetailPage() {
     if (!bulkReady) return null;
     for (let i = 0; i < bulkReady.rows.length; i += 1) {
       const row = bulkReady.rows[i];
-      const bad = normalizeFormulaDelivery(row).error;
+      const bad = normalizeFormulaDelivery(row, { scent: isOilScentRow(row.item) }).error;
       if (bad) return `${itemText(row.item)}: ${bad}`;
     }
     return hopValuesError("ready", { at: bulkReady.at });
@@ -938,7 +988,7 @@ export default function RequestDetailPage() {
       }
     } finally { setSaving(false); }
     await load();
-    if (sent) refreshFormulas();
+    if (sent) { refreshFormulas(); if (bulkReady.rows.some((r) => isOilScentRow(r.item))) refreshScents(); }
     if (failed.length) {
       setBulkReady({ ...bulkReady, rows: failed });
       setToast({
@@ -953,7 +1003,7 @@ export default function RequestDetailPage() {
       });
     } else {
       setBulkReady(null);
-      setToast({ kind: "success", msg: `ส่งงาน ${sent} รายการ — สูตรเข้าทะเบียนแล้ว` });
+      setToast({ kind: "success", msg: `ส่งงาน ${sent} รายการ — เข้าทะเบียนแล้ว` });
     }
   };
 
@@ -2871,7 +2921,7 @@ export default function RequestDetailPage() {
           รายแถว ⇒ สามทางเข้าตรวจเหมือนกันเป๊ะ */}
       <Modal
         open={!!bulkReady} onClose={() => setBulkReady(null)} size="lg" dismissible={!saving}
-        title={bulkReady ? `ส่งงาน ${bulkReady.rows.length} รายการ — สูตรเข้าทะเบียนทันที` : ""}
+        title={bulkReady ? `ส่งงาน ${bulkReady.rows.length} รายการ — เข้าทะเบียนทันที` : ""}
       >
         {bulkReady && (
           <>
@@ -2882,20 +2932,15 @@ export default function RequestDetailPage() {
                 {row.error && <p className={styles.error}>{row.error}</p>}
                 {/* ฟอร์มเดียวกับทะเบียนสูตร — ลูกค้า/กลิ่น/หมวดของแถวนี้เทาไว้ให้อ่านได้
                     ว่าสูตรที่กำลังจะเกิดผูกกับอะไร */}
-                {formulaReworkNote(row.item) && <p className={styles.fieldHint}>{formulaReworkNote(row.item)}</p>}
-                <FormulaForm
-                  mode="create" canSetCode codeRequired
-                  value={row.formula} disabled={saving}
-                  customers={registry.customers}
-                  scents={registry.scents}
-                  formulas={registry.formulas}
-                  categories={productTypes}
-                  locked={formulaLockedFor(row.item)}
-                  onChange={(value) => setBulkReady({
+                {deliveryNoteFor(row.item, row.formula) && <p className={styles.fieldHint}>{deliveryNoteFor(row.item, row.formula)}</p>}
+                {/* ม-166 — แถวหัวน้ำหอม = ฟอร์มทะเบียนกลิ่น · แถวอื่น = ฟอร์มทะเบียนสูตร */}
+                {deliveryForm({
+                  item: row.item, value: row.formula, idPrefix: `bulk-${i}`,
+                  onChange: (value) => setBulkReady({
                     ...bulkReady,
                     rows: bulkReady.rows.map((r, j) => (i === j ? { ...r, formula: value } : r)),
-                  })}
-                />
+                  }),
+                })}
                 <div className="form-grid">
                   {/* ไฟล์ประกอบ (ม-91) — แถวมีอยู่แล้ว อัปตรงเข้าแถวนั้นทันที */}
                   <div className="form-group col-span-2">
@@ -3110,24 +3155,18 @@ export default function RequestDetailPage() {
                     รับของ · ส่งลูกค้า · ผลลูกค้า แยกจาก direction อื่น · ลูกค้าคอนเฟิร์มตัวไหน ตัวนั้นใช้งาน ที่เหลือปิดให้เอง
                     · ไฟล์ประกอบแนบที่การ์ดรายการหลังส่ง
                   </p>
-                  {formulaReworkNote(directionShapeOf(hopDraft.item)) && (
-                    <p className={styles.fieldHint}>{formulaReworkNote(directionShapeOf(hopDraft.item))}</p>
+                  {deliveryNoteFor(directionShapeOf(hopDraft.item), hopDraft.extra[extraTab]) && (
+                    <p className={styles.fieldHint}>{deliveryNoteFor(directionShapeOf(hopDraft.item), hopDraft.extra[extraTab])}</p>
                   )}
                 </div>
-                <FormulaForm
-                  key={`direction-${extraTab}`}
-                  mode="create" canSetCode codeRequired
-                  value={hopDraft.extra[extraTab]} disabled={saving}
-                  customers={registry.customers}
-                  scents={registry.scents}
-                  formulas={registry.formulas}
-                  categories={productTypes}
-                  locked={formulaLockedFor(directionShapeOf(hopDraft.item))}
-                  onChange={(value) => setHopDraft({
+                {deliveryForm({
+                  item: directionShapeOf(hopDraft.item), value: hopDraft.extra[extraTab],
+                  key: `direction-${extraTab}`, idPrefix: `direction-${extraTab}`,
+                  onChange: (value) => setHopDraft({
                     ...hopDraft,
                     extra: hopDraft.extra.map((x, j) => (j === extraTab ? value : x)),
-                  })}
-                />
+                  }),
+                })}
               </>
             )}
 
@@ -3136,26 +3175,26 @@ export default function RequestDetailPage() {
                 {/* ⚠️ ประโยค "สูตรเข้าทะเบียนทันที" จริงเฉพาะแผนสร้าง/รอบแก้ — แผนผูกของเดิม/ติดร่าง ประโยคบอกผลข้างล่างพูดแทน
                     (สองประโยคขัดกันบนจอเดียว = คนเชื่อตัวใหญ่ · รีวิว ม-147) */}
                 <div className={styles.formulaHints}>
-                  {formulaPreviewFor(hopDraft.item).plan.kind === "create" && (
+                  {!isOilScentRow(hopDraft.item) && formulaPreviewFor(hopDraft.item).plan.kind === "create" && (
                     <p className={styles.fieldHint}>
                       บันทึกแล้ว<strong>สูตรเข้าทะเบียนทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนสูตร
                       · ลูกค้า · กลิ่น · หมวด ยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
                     </p>
                   )}
-                  {formulaReworkNote(hopDraft.item) && (
-                    <p className={styles.fieldHint}>{formulaReworkNote(hopDraft.item)}</p>
+                  {isOilScentRow(hopDraft.item) && (
+                    <p className={styles.fieldHint}>
+                      บันทึกแล้ว<strong>กลิ่นเข้าทะเบียนกลิ่นทันที</strong> — ฟอร์มเดียวกับหน้าทะเบียนกลิ่น
+                      · ลูกค้ากับกลิ่นต้นทางยกมาจากรายการนี้เอง ({itemText(hopDraft.item)}) จึงเทาไว้
+                    </p>
+                  )}
+                  {deliveryNoteFor(hopDraft.item, hopDraft.formula) && (
+                    <p className={styles.fieldHint}>{deliveryNoteFor(hopDraft.item, hopDraft.formula)}</p>
                   )}
                 </div>
-                <FormulaForm
-                  mode="create" canSetCode codeRequired
-                  value={hopDraft.formula} disabled={saving}
-                  customers={registry.customers}
-                  scents={registry.scents}
-                  formulas={registry.formulas}
-                  categories={productTypes}
-                  locked={formulaLockedFor(hopDraft.item)}
-                  onChange={(value) => setHopDraft({ ...hopDraft, formula: value })}
-                />
+                {deliveryForm({
+                  item: hopDraft.item, value: hopDraft.formula, idPrefix: "ready",
+                  onChange: (value) => setHopDraft({ ...hopDraft, formula: value }),
+                })}
                 {/* ไฟล์ประกอบ (ม-91) — สามสายกดส่งแล้วจบในโมดัลเดียวเหมือนกัน ·
                     ไม่บังคับ: ตัวงานคือสูตรที่เข้าทะเบียน ไฟล์เป็นของแถม (ต่างจาก
                     สายเอกสารที่ไฟล์คือตัวงาน จึงบังคับ ≥ 1) · แถวมีอยู่แล้ว อัปตรง */}

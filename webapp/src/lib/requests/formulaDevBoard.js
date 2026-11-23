@@ -19,7 +19,8 @@ import { hopLabel } from '@/lib/requests/hops';
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
 import { reworkBriefOf } from '@/lib/requests/rework';
 import { productDevLabel } from '@/lib/requests/rowLabel';
-import { formulaLabel } from '@/lib/master/registryLabel';
+import { formulaLabel, scentLabel } from '@/lib/master/registryLabel';
+import { isOilScentRow } from '@/lib/requests/oilScentDelivery';
 import { formulaDevRowOrder } from '@/lib/requests/formulaDirections';
 import { rowLineage } from '@/lib/requests/devBoardRows';
 
@@ -52,12 +53,20 @@ export function formulaDevBoard(items = []) {
         spec: item.spec || null,
         qty: item.qty ?? null,
         unit: item.unit || null,
-        // ⭐ สูตรที่เกิดจากแถวนี้ — ว่าง = RD ยังไม่ส่ง
+        // ⭐ สูตรที่เกิดจากแถวนี้ — ว่าง = ยังไม่ส่ง หรือแถวหัวน้ำหอมที่ส่งเป็นกลิ่น (ม-166)
         formulaId: item.producedFormulaId || null,
+        /* ⭐ ของที่เกิดจากแถวนี้ไม่ว่าชนิดไหน — สูตร หรือกลิ่นลูกของแถวหัวน้ำหอม (ม-166) · ว่าง = RD ยังไม่ส่ง
+           ⚠️ ตัวนับ "ส่งแล้ว/ยังไม่ส่ง" กับเมนู direction ถามตัวนี้ ไม่ใช่ `formulaId` (แถวกลิ่นจะถูกนับว่ายังไม่ส่งตลอด) */
+        producedId: item.producedFormulaId || item.producedScentId || null,
+        // แถวหัวน้ำหอม (02-020) ที่ส่งงานเป็นกลิ่น — คำบนจอพูดว่า "กลิ่น" แทน "สูตร"
+        deliversScent: isOilScentRow(item),
+        // ผูกของที่มีอยู่แล้ว (ไม่ได้สร้าง) — ลบรายการแล้วของในทะเบียนอยู่ต่อ (`registryOwnedByRow`)
+        boundExisting: item.producedFormulaAction === 'bind',
         /* ⭐ **ค่าสดจากทะเบียน** (มติผู้ใช้ 2026-08-18) — สูตรที่ออกจากแถวนี้ ·
            แถวที่ยังไม่มีสูตรได้ null · ดู `lib/requests/registryLinks.js`
            ⚠️ กลิ่นที่แถวนี้ *ขอ* อยู่คนละช่อง (`scent`) — คนละตัวกับสูตรที่ได้ */
-        registry: item.refFormula ? { ...item.refFormula, kind: 'formula' } : null,
+        registry: item.refFormula ? { ...item.refFormula, kind: 'formula' }
+          : item.refProducedScent ? { ...item.refProducedScent, kind: 'scent' } : null,
         scent: item.refScent ? { ...item.refScent, kind: 'scent' } : null,
         // ⭐ ราคาที่ออกจากแถวนี้ (ช่องว่างข้อ 5) — `findRequest` เติมจาก rev ที่
         // `answeredRevisionId` ชี้ · null = ยังไม่ถึงขั้นราคา
@@ -74,7 +83,8 @@ export function formulaDevBoard(items = []) {
         reworkBrief: reworkBriefOf(item, all),
         // รอบแก้แก้จากสูตรตัวไหน (ค่าสดของแถวต้นทาง) — แถวรอบแก้ที่ยังไม่ส่งบอกได้ว่ากำลังแก้อะไร แทนประโยค "ยังไม่มีสูตร" ลอย ๆ
         // PF · ชื่อ · วันที่ (มติเจ้าของ 13/11)
-        reworkOf: parent?.refFormula ? formulaLabel(parent.refFormula) : null,
+        reworkOf: parent?.refFormula ? formulaLabel(parent.refFormula)
+          : parent?.refProducedScent ? scentLabel(parent.refProducedScent) : null,
         outcome: item.outcome || null,
         outcomeLabel: item.outcome ? hopLabel('outcome', item.outcome) : null,
         outcomeTone: item.outcome ? OUTCOME_TONE[item.outcome] || 'neutral' : null,
@@ -104,9 +114,9 @@ export function formulaDevBoard(items = []) {
 export function formulaDevTotals(rows = []) {
   return {
     asked: rows.length,
-    delivered: rows.filter((r) => r.formulaId).length,
-    // ยังไม่ส่ง = ยังไม่มีสูตรออกมาจากแถวนี้ และแถวยังเดินอยู่
-    pending: rows.filter((r) => !r.formulaId && !r.settled).length,
+    delivered: rows.filter((r) => r.producedId).length,
+    // ยังไม่ส่ง = ยังไม่มีสูตร/กลิ่น (ม-166) ออกมาจากแถวนี้ และแถวยังเดินอยู่
+    pending: rows.filter((r) => !r.producedId && !r.settled).length,
     waitingCustomer: rows.filter((r) => r.stage === 'sent').length,
     awaitingPrice: rows.filter((r) => r.stage === 'awaiting_price').length,
     confirmed: rows.filter((r) => r.outcome === 'confirmed').length,

@@ -105,3 +105,31 @@ test('รอบแก้ที่แถวต้นทางไม่มีส�
   const [parentAlone] = formulaDevBoard([row({ id: 'P', outcome: 'revise', outcomeNote: note })]);
   assert.equal(parentAlone.outcomeNote, note);
 });
+
+
+test('แถวหัวน้ำหอมที่ส่งเป็นกลิ่น (ม-166): นับว่าส่งแล้ว · ของที่ได้คือกลิ่นลูก · ชื่อแถวยังเป็นกลิ่นที่ขอ', () => {
+  const oil = {
+    id: 'O1', lineKind: 'product_dev', categoryCode: '02-020', label: 'หัวน้ำหอม · PF859010103 TEA TIME #3',
+    scentId: 'SC-3', producedScentId: 'SC-R1', producedFormulaAction: 'create', readyAt: '2026-09-11', answerStatus: 'pending',
+    refScent: { id: 'SC-3', code: 'PF859010103', name: 'TEA TIME #3', producedAt: '2026-07-21' },
+    refProducedScent: { id: 'SC-R1', code: 'PF85901010301', name: 'TEA TIME #3.1 REV1', producedAt: '2026-09-10' },
+    refFormula: null,
+  };
+  const rework = {
+    id: 'O2', lineKind: 'product_dev', categoryCode: '02-020', label: oil.label, scentId: 'SC-3', derivedFromItemId: 'O1',
+    answerStatus: 'pending', refScent: oil.refScent, refFormula: null, refProducedScent: null,
+  };
+  const rows = formulaDevBoard([oil, rework]);
+  const flat = (list) => list.flatMap((r) => [r, ...flat(r.children || [])]);
+  const [a, b] = ['O1', 'O2'].map((id) => flat(rows).find((r) => r.id === id));
+  assert.equal(a.registry.kind, 'scent');
+  assert.equal(a.registry.code, 'PF85901010301');
+  assert.equal(a.formulaId, null);
+  assert.equal(a.producedId, 'SC-R1');
+  assert.equal(a.deliversScent, true);
+  assert.match(a.name, /TEA TIME #3/);
+  assert.match(b.reworkOf, /^PF85901010301 · TEA TIME #3.1 REV1/);
+  const totals = formulaDevTotals(flat(rows));
+  assert.equal(totals.delivered, 1);
+  assert.equal(totals.pending, 1);
+});

@@ -28,6 +28,11 @@ test('ของในทะเบียนที่แถวเป็นคน�
   assert.deepEqual(registryOwnedByRow({ scentId: 'SCT-9', producedFormulaId: 'FM-1' }), [{ kind: 'formula', id: 'FM-1' }]);
   assert.deepEqual(registryOwnedByRow({ scentId: 'SCT-9' }), []);
   assert.deepEqual(registryOwnedByRow(null), []);
+  // ผูกของเดิม (bind) ไม่ได้สร้างอะไร — สูตรที่แชร์มา (ม-150) · กลิ่นที่ขอซึ่งส่งไปทั้งตัว (หัวน้ำหอม ม-166)
+  assert.deepEqual(registryOwnedByRow({ producedFormulaId: 'FM-X', producedFormulaAction: 'bind' }), []);
+  assert.deepEqual(registryOwnedByRow({ lineKind: 'product_dev', scentId: 'SCT-3', producedScentId: 'SCT-3', producedFormulaAction: 'bind' }), []);
+  assert.deepEqual(registryOwnedByRow({ lineKind: 'product_dev', scentId: 'SCT-3', producedScentId: 'SCT-R1', producedFormulaAction: 'create' }),
+    [{ kind: 'scent', id: 'SCT-R1' }]);
 });
 
 test('⭐ ม-148 พัฒนากลิ่นที่ส่งเป็นสินค้า: ลบสูตรก่อนกลิ่นเสมอ (formulas.scentId เป็น SET NULL)', () => {

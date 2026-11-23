@@ -36,8 +36,11 @@ import { deleteFormulaError, findFormulaByIdentity } from '@/lib/master/formulas
 import { formulaUsableByCustomer } from '@/lib/master/registryShares';
 import { ensureShared } from '@/lib/master/registrySharesAdmin';
 import {
-  countProductsUsingFormula, createFormula, findScent, loadFormulas, updateFormula,
+  countProductsUsingFormula, createFormula, createScent, findScent, loadFormulas, updateFormula, updateScent,
 } from '@/lib/master/scentFormulaAdmin';
+import {
+  isOilScentRow, oilPairScentIds, oilScentConfirmPlan, planOilScentDelivery, scentName,
+} from '@/lib/requests/oilScentDelivery';
 import {
   formulaActionFor, formulaBindWarning, formulaName, planFormulaDelivery, reworkParentFormulaId, reworkUndoDecision,
 } from '@/lib/requests/formulaRework';
@@ -163,10 +166,13 @@ export async function PATCH(request, { params }) {
   // จึงไม่ถามซ้ำ (ถามซ้ำ = เปิดทางให้กรอกต่างจากที่ขอไว้)
   let formulaDelivery = null;
   if (hop === 'ready' && row.lineKind === 'product_dev') {
-    const { value, error } = normalizeFormulaDelivery(body);
+    const { value, error } = normalizeFormulaDelivery(body, { scent: isOilScentRow(row) });
     if (error) return Response.json({ error }, { status: 400 });
     formulaDelivery = value;
   }
+  /* ⭐ **พัฒนาสูตรหมวดหัวน้ำหอม (02-020) ส่งเป็นกลิ่น** (ม-166 · มติเจ้าของ 23/11/2026 "มันคือกลิ่นนะ") — ช่องฟอร์มชุดเดียวกัน
+     (ชื่อ · รหัส · วันที่ · หมายเหตุ) แต่ของที่เข้าทะเบียนคือกลิ่นลูก ไม่ใช่สูตร · กติกาอยู่ที่ `oilScentDelivery.js` */
+  const oilDelivery = !!formulaDelivery && isOilScentRow(row);
 
   // ── ส่งเอกสารต้องมีไฟล์แนบบนแถวก่อน (ม-89) ─────────────────────────────
   //
@@ -233,6 +239,18 @@ export async function PATCH(request, { params }) {
       row, items: before.items || [], formulas: registryFormulas, customerId: before.customerId || null,
     });
     if (confirmPlan.kind === 'blocked') return Response.json({ error: confirmPlan.error }, { status: 409 });
+  } else if (hop === 'outcome' && body.outcome === 'confirmed' && row.lineKind === 'product_dev' && row.producedScentId) {
+    // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น: กลิ่นลูกตัวอื่นของคู่นี้เลิกใช้ · แถวค้างปิด (คู่ของ ม-157 ฝั่งสูตร)
+    const ids = oilPairScentIds(row, before.items || []);
+    const { data: pairScents, error: pairError } = await supabase.from('scents')
+      .select('id, code, name, status, "customerId"').in('id', ids);
+    if (pairError) {
+      return Response.json({ error: `อ่านทะเบียนกลิ่นไม่สำเร็จ — ลองบันทึกอีกครั้ง (${pairError.message})` }, { status: 500 });
+    }
+    confirmPlan = oilScentConfirmPlan({
+      row, items: before.items || [], scents: pairScents || [], customerId: before.customerId || null,
+    });
+    if (confirmPlan.kind === 'blocked') return Response.json({ error: confirmPlan.error }, { status: 409 });
   }
 
   const nowIso = new Date().toISOString();
@@ -243,14 +261,43 @@ export async function PATCH(request, { params }) {
 
   // ⚠️ อยู่นอก try — catch ต้องรู้ว่าคำขอนี้สร้างสูตรไปแล้วหรือยัง (เก็บกวาดสูตรที่ไม่มีแถวถือ · รีวิว ม-157)
   let createdFormula = null;
+  let createdScent = null; // คู่ของ createdFormula — กลิ่นลูกของแถวหัวน้ำหอม (ม-166)
   try {
     const patch = { ...hopPatch(hop, body, user, today, { lineKind: row.lineKind }), updatedAt: nowIso };
 
     let deliveryWarning = null;
     let deliveredFormula = null;
+    let deliveredScent = null;
     let expectedFormulaAction = null;
     let guardFormulaAction = false;
-    if (formulaDelivery) {
+    if (oilDelivery) {
+      /* ⭐ ม-166 — รหัสใหม่ = กลิ่นลูก "กำลังพัฒนา" ชี้กลับกลิ่นที่ขอ (หรือกลิ่นของรอบก่อน) · รหัสเดียวกับกลิ่นที่ขอ = ส่งกลิ่นเดิม (ผูก)
+         ⚠️ ลูกค้ามาจาก **ใบ** ก่อน แล้วถอยไปเจ้าของกลิ่นที่ขอ — เหตุผลเดียวกับทางสูตรข้างล่าง */
+      const requested = row.scentId ? await findScent(supabase, row.scentId) : null;
+      const plan = planOilScentDelivery({ row, items: before.items || [], requested, code: formulaDelivery.code });
+      if (plan.kind === 'blocked') return Response.json({ error: plan.error }, { status: 409 });
+      if (plan.kind === 'bind') {
+        deliveredScent = requested;
+        patch.producedScentId = requested.id;
+        patch.producedFormulaAction = 'bind';
+        deliveryWarning = `รหัสตรงกับกลิ่นที่ขอ — ผูกรายการกับกลิ่น ${scentName(requested)} เดิม (ชื่อ/วันที่ที่กรอกไม่ได้ใช้)`;
+      } else {
+        const scent = await createScent(supabase, {
+          name: formulaDelivery.name,
+          code: formulaDelivery.code,
+          producedAt: formulaDelivery.formulaDate,
+          note: formulaDelivery.note,
+          customerTradeName: formulaDelivery.customerTradeName,
+          customerId: before.customerId || requested?.customerId || null,
+          dealId: before.dealId || null,
+          derivedFromScentId: plan.derivedFromScentId,
+        }, user, { accepted: true });
+        createdScent = scent;
+        deliveredScent = scent;
+        patch.producedScentId = scent.id;
+        patch.producedFormulaAction = 'create';
+      }
+    } else if (formulaDelivery) {
       /* ⭐ **ทุกการส่ง = สูตรใหม่ "กำลังพัฒนา"** (ม-157 · เหตุผลที่ `formulaRework.js`) — รอบแก้ชี้กลับต้นทาง · ตัวที่ใช้งานอยู่
          ของคู่นี้ยังใช้งานจนลูกค้าคอนเฟิร์ม · ทางผูกเหลือกรณีเดียว: สูตรของคู่นี้เป็นของลูกค้ารายอื่น (แชร์มา) และ **ต้องบอก**
          ว่าฟอร์มไม่ได้ใช้ (🐞 เดิมผูกเงียบ ๆ ⇒ ของที่ RD กรอกหายไม่มีใครรู้) */
@@ -342,6 +389,7 @@ export async function PATCH(request, { params }) {
        รายงานว่าสำเร็จพร้อมเธรด/audit ปลอม (รีวิว ม-147 รอบสี่) · ก้าวอื่นเขียนตามเดิม */
     let rowUpdate = supabase.from('dept_request_items').update(patch).eq('id', itemId);
     if (hop === 'ready') rowUpdate = rowUpdate.is('readyAt', null);
+    if (oilDelivery) rowUpdate = rowUpdate.is('producedScentId', null);
     // เฉพาะส่งสูตร — แถวเอกสาร/ใบวางบิลไม่แตะคอลัมน์ของ mig 0358
     if (formulaDelivery && guardFormulaAction) {
       rowUpdate = expectedFormulaAction
@@ -359,11 +407,17 @@ export async function PATCH(request, { params }) {
     if (!updatedRows?.length) {
       // บอกเหตุที่ตรง: ถูกลบ · บันทึกไปแล้ว · อีกแท็บกำลังส่ง/เพิ่งล้ม — และบอกเสมอถ้าคำขอนี้แตะทะเบียนไปแล้ว
       const { data: still, error: stillError } = await supabase.from('dept_request_items')
-        .select('id, "readyAt", "producedFormulaId"').eq('id', itemId).maybeSingle();
+        .select('id, "readyAt", "producedFormulaId", "producedScentId"').eq('id', itemId).maybeSingle();
       /* อีกหน้าจอบันทึกรายการด้วยสูตรที่คำขอนี้เพิ่งสร้าง (ส่งซ้ำผูกสูตรกำพร้าของตัวเอง) = การส่งสำเร็จแล้วจริง ⇒ ไม่เรียกว่า
          "สูตรค้าง" (คนจะไปเลิกใช้สูตรที่รายการถืออยู่) · ร่องรอยการเก็บสูตรเดิมมีแค่คำขอนี้ที่รู้ ⇒ ลงเธรดให้ (รีวิว ม-147 รอบเจ็ด) */
       if (still?.readyAt && createdFormula && still.producedFormulaId === createdFormula.id) {
         return Response.json({ error: 'รายการนี้ถูกบันทึกจากอีกหน้าจอด้วยสูตรเดียวกันแล้ว — โหลดหน้าใหม่' }, { status: 409 });
+      }
+      // ม-166 — กลิ่นลูกที่คำขอนี้เพิ่งสร้างแต่ไม่มีแถวถือ = ลบทิ้ง (กำลังพัฒนา ไม่มีใครอ้าง) เหตุผลเดียวกับสูตรข้างล่าง
+      if (createdScent && still?.producedScentId !== createdScent.id) {
+        const { error: scentUndoError } = await supabase.from('scents').delete()
+          .eq('id', createdScent.id).eq('status', 'developing');
+        if (scentUndoError) console.error('[requests] ลบกลิ่นที่ไม่มีแถวถือไม่สำเร็จ:', createdScent.id, scentUndoError.message);
       }
       const reason = stillError ? 'บันทึกรายการไม่สำเร็จ'
         : !still ? 'รายการนี้ถูกลบไปแล้ว'
@@ -466,7 +520,49 @@ export async function PATCH(request, { params }) {
        ⚠️ **เลิกใช้ก่อน แล้วพลิก** — ดัชนีตัวตนยอมตัวใช้งานได้ตัวเดียว · พลิกไม่สำเร็จ = คืนตัวเดิมเป็นใช้งาน ไม่งั้นคู่นี้ไม่มีสูตรใช้งานเลย */
     let confirmText = '';
     let confirmWarning = null;
-    if (hop === 'outcome' && confirmPlan?.kind === 'apply') {
+    /* ── ม-166: คอนเฟิร์มแถวหัวน้ำหอมที่ส่งเป็นกลิ่น — กลิ่นลูกตัวอื่นของคู่นี้ที่ใบนี้สร้างเลิกใช้ · แถวค้างปิด "ไม่ถูกเลือก"
+       ⚠️ ตัวที่ได้พลิกเป็นใช้งานที่บล็อกกลางข้างบนแล้ว · กลิ่นแม่ไม่ถูกแตะ · ห้ามโยนต่อจากนี้ (แถวบันทึกผลไปแล้ว) */
+    if (hop === 'outcome' && confirmPlan?.kind === 'apply' && confirmPlan.registry === 'scent') {
+      const { chosen, archive, close } = confirmPlan;
+      const where = `${rowText(row)} (${before.docNo || id})`;
+      const problems = [];
+      const archived = [];
+      for (const s of archive) {
+        try {
+          await updateScent(supabase, s.id, { status: 'archived' });
+          archived.push(s);
+          await recordAudit({
+            user, action: 'update', entityType: 'scent', entityId: s.id,
+            before: s, after: { ...s, status: 'archived' },
+            summary: `เลิกใช้กลิ่น ${scentName(s)} — ลูกค้าคอนเฟิร์ม ${scentName(chosen)} ของ ${where}`, request,
+          });
+        } catch (e) {
+          problems.push(`เลิกใช้ ${scentName(s)} ไม่สำเร็จ (${e.message}) — เลิกใช้เองที่ทะเบียนกลิ่น`);
+        }
+      }
+      const reason = notChosenReason(chosen);
+      const closed = [];
+      for (const sibling of close) {
+        const { data: hit, error: closeError } = await supabase.from('dept_request_items')
+          .update({ answerStatus: 'declined', declineReason: reason, updatedAt: nowIso })
+          .eq('id', sibling.id).is('outcome', null).or('answerStatus.is.null,answerStatus.eq.pending')
+          .select('id');
+        if (closeError) problems.push(`ปิด ${rowText(sibling)} ไม่สำเร็จ (${closeError.message})`);
+        else if (hit?.length) closed.push(sibling);
+      }
+      if (closed.length) {
+        await recordAudit({
+          user, action: 'update', entityType: 'dept_request', entityId: id,
+          before: { items: closed.map((c) => ({ id: c.id, answerStatus: c.answerStatus })) },
+          after: { items: closed.map((c) => ({ id: c.id, answerStatus: 'declined', declineReason: reason })) },
+          summary: `ปิด ${closed.length} รายการเป็น "ไม่ถูกเลือก" — ${reason} (${where})`, request,
+        });
+      }
+      confirmText = (chosen.status === 'developing' ? ` · กลิ่น ${scentName(chosen)} ใช้งานได้` : '')
+        + (archived.length ? ` · เลิกใช้ ${archived.map((x) => scentName(x)).join(', ')}` : '')
+        + (closed.length ? ` · ปิดรายการอื่นของกลิ่นนี้ ${closed.length} รายการ (ไม่ถูกเลือก)` : '');
+      if (problems.length) confirmWarning = `บันทึกคอนเฟิร์มแล้ว แต่${problems.join(' · ')}`;
+    } else if (hop === 'outcome' && confirmPlan?.kind === 'apply') {
       const { chosen, activate, archive, close, replaced } = confirmPlan;
       const where = `${rowText(row)} (${before.docNo || id})`;
       const problems = [];
@@ -641,7 +737,18 @@ export async function PATCH(request, { params }) {
     /* ⭐ **ประวัติต้องบอกว่าสูตรตัวไหน** — ป้ายเลิกต่อ "→ รหัส" แล้ว (2026-09-15) ⇒ ไม่ต่อตรงนี้ เธรดของแถวต้นทางกับแถวรอบแก้
        อ่านเหมือนกันทุกตัวอักษร ไม่รู้ว่าลูกค้าคอนเฟิร์มรอบไหน · ส่งงานรอบนี้ใช้สูตรที่เพิ่งผูก · ก้าวอื่นอ่านรหัสสดจากทะเบียน */
     let formulaText = '';
-    if (row.lineKind === 'product_dev') {
+    let producedWord = 'สูตร';
+    if (row.lineKind === 'product_dev' && (deliveredScent || (row.producedScentId && !row.producedFormulaId))) {
+      // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น
+      producedWord = 'กลิ่น';
+      if (deliveredScent) {
+        formulaText = deliveredScent.code || deliveredScent.name || '';
+      } else {
+        const { data: heldScent } = await supabase.from('scents')
+          .select('code, name').eq('id', row.producedScentId).maybeSingle();
+        formulaText = heldScent?.code || heldScent?.name || '';
+      }
+    } else if (row.lineKind === 'product_dev') {
       if (deliveredFormula) {
         formulaText = deliveredFormula.code || deliveredFormula.name || '';
       } else if (row.producedFormulaId) {
@@ -650,7 +757,7 @@ export async function PATCH(request, { params }) {
         formulaText = heldFormula?.code || heldFormula?.name || '';
       }
     }
-    const formulaSuffix = formulaText ? ` · สูตร ${formulaText}${row.derivedFromItemId ? ' (รอบแก้)' : ''}` : '';
+    const formulaSuffix = formulaText ? ` · ${producedWord} ${formulaText}${row.derivedFromItemId ? ' (รอบแก้)' : ''}` : '';
     await appendUpdate(supabase, {
       entityType: 'dept_request',
       entityId: id,
@@ -675,6 +782,15 @@ export async function PATCH(request, { params }) {
     /* ⭐ **สูตรที่คำขอนี้สร้างแต่ไม่มีแถวถือ = ลบทิ้ง** (รีวิว ม-157) — เขียนแถวโยน error (เน็ตสะดุด/หมดเวลา) แล้วสูตรกำลังพัฒนาค้าง
        ⇒ กดซ้ำชน "รหัสสูตรนี้ถูกใช้ไปแล้ว" (ตัวตนไม่นับกำลังพัฒนาแล้ว จึงไม่ผูกตัวค้างให้เองเหมือนเดิม) · อ่านแถวไม่ได้ = ไม่ลบ
        (ไม่รู้ว่าแถวถือมันอยู่ไหม) */
+    if (createdScent) {
+      const { data: heldRow, error: heldRowError } = await supabase.from('dept_request_items')
+        .select('"producedScentId"').eq('id', itemId).maybeSingle();
+      if (!heldRowError && heldRow?.producedScentId !== createdScent.id) {
+        const { error: orphanError } = await supabase.from('scents').delete()
+          .eq('id', createdScent.id).eq('status', 'developing');
+        if (orphanError) console.error('[requests] ลบกลิ่นที่ไม่มีแถวถือไม่สำเร็จ:', createdScent.id, orphanError.message);
+      }
+    }
     if (createdFormula) {
       const { data: held, error: heldError } = await supabase.from('dept_request_items')
         .select('"producedFormulaId"').eq('id', itemId).maybeSingle();

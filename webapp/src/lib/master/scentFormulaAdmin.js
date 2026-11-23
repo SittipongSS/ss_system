@@ -76,14 +76,25 @@ export async function loadScents(supabase, { status = null, customerId = null } 
 // `loadScents` ด้วย และไม่ควรจ่ายค่า query เพิ่มถ้าทะเบียนยังไม่เคยมีของจากสายงาน
 async function attachScentSource(supabase, rows) {
   const briefIds = [...new Set(rows.map((s) => s.briefId).filter(Boolean))];
-  if (!briefIds.length) return rows.map((s) => ({ ...s, sourceRequest: null }));
+  /* ⭐ **กลิ่นลูกจากพัฒนาสูตรหัวน้ำหอม (ม-166)** ไม่มีบรีฟ — ที่มาคือแถวคำร้องที่ส่งมันออกมา (`producedScentId` ของแถว
+     product_dev) · ไม่ตามทางนี้ = ป้าย "เพิ่มเอง" ทั้งที่เกิดจากคำร้อง (โกหกเรื่องที่มา — กติกาข้างล่าง) */
+  const noBrief = rows.filter((s) => !s.briefId).map((s) => s.id);
+  const oilRows = noBrief.length
+    ? await fetchAllInChunks(noBrief, (chunk) => supabase.from('dept_request_items')
+      .select('id, "producedScentId", "requestId"').eq('lineKind', 'product_dev').in('producedScentId', chunk)
+      // แถวที่ "ผูกกลิ่นที่ขอ" (bind) ไม่ได้สร้างกลิ่นนั้น — ที่มาของมันอยู่ที่อื่น
+      .or('producedFormulaAction.is.null,producedFormulaAction.neq.bind').order('id'))
+    : [];
+  const requestIdByOilScent = new Map(oilRows.map((r) => [r.producedScentId, r.requestId]));
+  if (!briefIds.length && !requestIdByOilScent.size) return rows.map((s) => ({ ...s, sourceRequest: null }));
 
-  const { data: briefs, error: briefError } = await supabase
-    .from('dept_request_scents').select('id, "requestId"').in('id', briefIds);
+  const { data: briefs, error: briefError } = briefIds.length
+    ? await supabase.from('dept_request_scents').select('id, "requestId"').in('id', briefIds)
+    : { data: [], error: null };
   if (briefError) throw briefError;
   const requestIdByBrief = new Map((briefs || []).map((b) => [b.id, b.requestId]));
 
-  const requestIds = [...new Set([...requestIdByBrief.values()].filter(Boolean))];
+  const requestIds = [...new Set([...requestIdByBrief.values(), ...requestIdByOilScent.values()].filter(Boolean))];
   const { data: requests, error: requestError } = requestIds.length
     ? await supabase.from('dept_requests').select('id, "docNo"').in('id', requestIds)
     : { data: [], error: null };
@@ -93,8 +104,14 @@ async function attachScentSource(supabase, rows) {
   return rows.map((s) => {
     // ⚠️ `briefId` มีแต่ตามกลับไม่เจอ = คำร้องถูกลบไปแล้ว — ยังต้องนับว่า "มาจาก
     // คำร้อง" อยู่ดี · ตกเป็น "เพิ่มเอง" เมื่อไรคือโกหกเรื่องที่มาของข้อมูล
-    const request = requestById.get(requestIdByBrief.get(s.briefId)) || null;
-    return { ...s, sourceRequest: request ? { id: request.id, docNo: request.docNo || null } : null };
+    const request = requestById.get(requestIdByBrief.get(s.briefId))
+      || requestById.get(requestIdByOilScent.get(s.id)) || null;
+    return {
+      ...s,
+      sourceRequest: request ? { id: request.id, docNo: request.docNo || null } : null,
+      // ม-166 — กลิ่นลูกของแถวหัวน้ำหอม: มาจากคำร้องแม้ไม่มีบรีฟ (`scentSourceKind`)
+      ...(requestIdByOilScent.has(s.id) ? { sourceRequestItem: true } : {}),
+    };
   });
 }
 
