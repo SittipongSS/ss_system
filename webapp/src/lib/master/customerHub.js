@@ -5,11 +5,12 @@
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
 import { isExciseOrder, isHistoricalOrder } from '@/lib/sales/historicalOrders';
 import { latestQuotationRevisions } from '@/lib/sales/quotationRevisionChain';
-import { salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts } from '@/lib/sales/salesOrderWorkflow';
-import { installmentDisplayStatus } from '@/lib/sales/salesOrderPayments';
+import { salesOrderActual, splitSalesOrderAmounts } from '@/lib/sales/salesOrderWorkflow';
+import { installmentDisplayStatus, installmentOverdue } from '@/lib/sales/salesOrderPayments';
 import { addMonths, businessDayKey, currentMonth } from '@/lib/datePeriods';
 import { reportActualRows, reportOrderMonth } from '@/lib/sales/reportRows';
-import { actualNoneReasonOf, isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
+import { isInstallmentActualOrder } from '@/lib/sales/salesOrderActualMode';
+import { orderActualNoneText, summarizeActualNone } from '@/lib/sales/dealActualNone';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { requestClosureStarted } from '@/lib/requests/closure';
 
@@ -36,13 +37,15 @@ export const isOpenRequest = (request) => OPEN_REQUEST_STATUSES.has(request?.sta
 
 /* ── งวดชำระ ───────────────────────────────────────────────────────────────────────────────
    ค้างชำระ = งวดของใบที่ยังมีผล ที่ยังไม่ "ชำระแล้ว" (ไม่นับงวดคืนเงิน · งวดที่จ่ายแล้วรอใบอนุมัติ = จ่ายแล้ว)
-   เกินกำหนด = ค้าง + กำหนดชำระ < วันนี้ (วันไทย) */
+   เลยกำหนด = ค้าง + กำหนดชำระ < วันนี้ (วันไทย) */
 export function installmentState(inst, order, today = todayKey()) {
   const display = installmentDisplayStatus(inst);
   const settled = display === 'confirmed' || display === 'prepaid' || display === 'refunded' || display === 'reported';
   const live = order ? isLiveOrder(order) : true;
   const outstanding = live && !settled;
-  const overdue = outstanding && !!inst?.dueDate && String(inst.dueDate).slice(0, 10) < today;
+  /* ⭐ ตัวตัดสินเดียว `installmentOverdue` (23/11/2026) — งวดร่างของใบที่ยังไม่อนุมัติ · งวดรอเหตุการณ์ · ลูกค้าจ่ายแล้ว ไม่นับ
+     🐞 เดิมนับจากวันอย่างเดียว ⇒ "มีงวดเลยกำหนด" ค้างบนหน้าลูกค้าตลอดที่ใบยังรออนุมัติ ขณะที่ SO/บัญชีไม่นับ */
+  const overdue = outstanding && installmentOverdue(inst, today);
   return { display, outstanding, overdue };
 }
 
@@ -57,7 +60,8 @@ const money2 = (v) => Math.round(v * 100) / 100;
 const dueKey = (inst) => (inst?.dueDate ? String(inst.dueDate).slice(0, 10) : '9999-12-31');
 
 export const FINANCE_ORDER_STATES = Object.freeze({
-  overdue: { label: 'มีงวดเกินกำหนด', tone: 'danger' },
+  // คำชุด "เลยกำหนด" ทั้งระบบ (มติเจ้าของ 23/11/2026) — เดิม "เกินกำหนด" คำเดียวในระบบที่ต่างจากหน้า SO/บัญชี
+  overdue: { label: 'มีงวดเลยกำหนด', tone: 'danger' },
   open: { label: 'ค้างชำระ', tone: 'warning' },
   complete: { label: 'รับครบ', tone: 'success' },
   void: { label: 'ยกเลิก/ถูกแทน', tone: 'neutral' },
@@ -132,25 +136,10 @@ export function currentOrder(orders = []) {
 }
 
 /* ── ใบ "ไม่นับ Actual" (mig 0439 · มติเจ้าของ 20/11/2026 ข้อ 3: แถวโชว์ Actual 0 + ป้าย + เหตุผล) ───────────────────────
-   ⭐ ตัดสินด้วย salesOrderAmountKind = 'none' (ใบ pipeline ที่ **อนุมัติอยู่** แบบไม่นับ) — ตัวเดียวกับทะเบียน SO / หน้าดีล
-      · ย้อนอนุมัติแล้ว: แบบ+เหตุผลยังค้างบนใบ (guard 0439) แต่ใบไม่ได้อนุมัติอยู่ ⇒ ไม่มีป้าย
+   ⭐ ตัวคิดกลางอยู่ที่ lib/sales/dealActualNone (ตัวเดียวกับรายการดีล · ลิ้นชักแดชบอร์ด · การ์ดดีลหน้าลีด) — ที่นี่แค่ส่งต่อชื่อเดิม
    🐞 ตรวจ 23/11: แถวดีลขึ้น ฿0.00 + "อนุมัติแล้ว" ไม่มีคำอธิบาย และตัวโหลดไม่ได้ดึง "actualNoneReason" (HUB_ORDER_COLS) */
-export function orderActualNoneText(order) {
-  if (salesOrderAmountKind(order) !== 'none') return '';
-  const reason = actualNoneReasonOf(order);
-  return reason ? `ไม่นับ Actual · ${reason}` : 'ไม่นับ Actual';
-}
-
-/** ใบไม่นับของดีลหนึ่งแถว (ใบที่ยังมีผล) — null = ไม่มี · หลายใบ = "ไม่นับ Actual n ใบ" (เหตุผลทุกใบอยู่ใน `reasons` ให้ title) */
-export function dealActualNone(orders = []) {
-  const none = orders.filter((o) => salesOrderAmountKind(o) === 'none');
-  if (!none.length) return null;
-  return {
-    count: none.length,
-    text: none.length === 1 ? orderActualNoneText(none[0]) : `ไม่นับ Actual ${none.length} ใบ`,
-    reasons: none.map(actualNoneReasonOf).filter(Boolean),
-  };
-}
+export { orderActualNoneText };
+export const dealActualNone = summarizeActualNone;
 
 export function buildDealRows({ deals = [], quotations = [], orders = [], installments = [], requests = [], contracts = [], leads = [] } = {}, today = todayKey()) {
   const quotesByDeal = groupBy(quotations, (q) => q.dealId);
@@ -312,7 +301,7 @@ export function monthlyActual(orders = [], installments = [], { months = 12, now
 
 const ORDER_NEEDS_ACTION = new Set(['draft', 'pending_approval', 'rejected', 'approval_revoked']);
 
-/** "ต้องตามต่อ" — ของที่ยังค้างของลูกค้ารายนี้ เรียงจากเร่งไปเบา (เกินกำหนด → คำร้องค้าง → ใบสั่งขายค้าง → ดีลเปิด)
+/** "ต้องตามต่อ" — ของที่ยังค้างของลูกค้ารายนี้ เรียงจากเร่งไปเบา (เลยกำหนด → คำร้องค้าง → ใบสั่งขายค้าง → ดีลเปิด)
  *  แต่ละรายการ: { key, kind, tone, code, title, href, at } + ช่องตามชนิด (dueDate/amount · dept/status · status · stage/amount)
  *  `href` = หน้าของใบนั้น (ลิงก์ตรง ไม่ต้องไปหาในแท็บ) · ป้ายภาษาไทยของสถานะเป็นหน้าที่ของจอ */
 export function followUps(hub, today = todayKey()) {
@@ -327,7 +316,7 @@ export function followUps(hub, today = todayKey()) {
       if (!st.outstanding || !st.overdue) continue;
       out.push({
         key: `inst:${inst.id}`, kind: 'overdue', tone: 'danger', code: order.orderNumber,
-        title: `งวด ${inst.seq ?? ''} เกินกำหนดชำระ`.trim(), dueDate: inst.dueDate, amount: num(inst.amount),
+        title: `งวด ${inst.seq ?? ''} เลยกำหนดชำระ`.trim(), dueDate: inst.dueDate, amount: num(inst.amount),
         href: `/sa/sales-orders/${order.id}`, at: inst.dueDate,
       });
     }

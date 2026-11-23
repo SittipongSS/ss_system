@@ -35,7 +35,14 @@ const DECIDERS = [
   'src/lib/service/surveyJob.js',
   // หน้าลูกค้าศูนย์รวม แท็บคำร้อง (มติ 8 · 13/11/2026 · งวด H4) — ตัดสิน "รอฝ่ายแจ้ง" / วันส่งของฝ่าย (`requestDueCell`)
   'src/lib/master/customerHub.js',
+  // ตาราง "สรุปทั้งใบ" ในหน้ารายละเอียด (มติ 26/08) — ตกรายการมาตั้งแต่เกิด ⇒ ใบยกเลิกยังแดง "เลย n วัน" (ตรวจทั้งระบบ 23/11/2026)
+  'src/lib/requests/dueCell.js',
 ];
+
+/* ⭐ ไฟล์ที่ถาม `requestDueOwed` (queueBoard · มติ 23/11/2026) ได้ทั้ง `liveDueDate` และการปิด และตาใครในตัวเดียว
+   — นับเป็นคำตอบที่ถูกของทั้งสองยาม ไม่ต้อง import สองตัวนั้นซ้ำ */
+const ASKS_LIVE = /liveDueDate|requestDueOwed/;
+const ASKS_CLOSURE = /requestClosureStarted|requestClosure\(|requestDueOwed/;
 
 // ตัดคอมเมนต์ออกก่อนเทียบ — คอมเมนต์ที่เล่าว่าเคยผิดยังไงต้องไม่ทำเทสต์แดง
 const code = (p) => readFileSync(p, 'utf8')
@@ -49,7 +56,7 @@ test('🔴 ไฟล์ที่ตัดสินเรื่องวัน �
       `${path} อ่าน committedDueDate ตรง ๆ — ต้องผ่าน liveDueDate() ไม่งั้นใบที่รอแจ้ง`
       + ' วันของรอบใหม่จะขึ้น "เลยกำหนด" ขัดกับรางบนหน้ารายละเอียด',
     );
-    assert.match(src, /liveDueDate/, `${path} ต้อง import liveDueDate`);
+    assert.match(src, ASKS_LIVE, `${path} ต้อง import liveDueDate (หรือ requestDueOwed)`);
   }
 });
 
@@ -98,12 +105,13 @@ const CLOSURE_AWARE = [
   'src/lib/rd/perfumerBoard.js',
   'src/lib/service/surveyJob.js',
   'src/lib/master/customerHub.js',
+  'src/lib/requests/dueCell.js',
 ];
 
 test('🔴 ไฟล์ที่ตัดสินเรื่องวัน ต้องรู้ว่าใบที่มีฝั่งปิดแล้วไม่มีวันให้ทวง', () => {
   for (const path of CLOSURE_AWARE) {
     assert.match(
-      code(path), /requestClosureStarted|requestClosure\(/,
+      code(path), ASKS_CLOSURE,
       `${path} ต้องถาม requestClosureStarted (หรือ requestClosure) — ไม่งั้นใบที่ผู้ขอปิดแล้ว`
       + ' จะขึ้น "เลยกำหนด" ขัดกับคิวที่บอก "รอ RD ปิด"',
     );

@@ -6,6 +6,7 @@
 // และหาวันด้วย businessDayKey (เวลาไทย) ตัวเดียวเท่านั้น — ดูเหตุผลที่ slaBusinessDays
 import { countBusinessDays } from '@/lib/pm/dateHelpers';
 import { businessDayKey } from '@/lib/datePeriods';
+import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
 import { can, hasTeam, hasTeamScope, isDealHolder, isReadOnlyObserver, isSuperuser, isTeamLead } from '@/lib/permissions';
 import { whereTeamIn } from '@/lib/teamScope';
 import { toMoney } from '@/lib/salesPlanning';
@@ -400,12 +401,22 @@ export function leadHandoffContext(events = []) {
  *  00:00Z ซึ่งคือ 07:00 ของวันเดียวกันตามเวลาไทย เทียบด้วย UTC จะกลายเป็น "เลยแล้ว"
  *  ตั้งแต่เที่ยงคืน
  */
-export function leadFollowUpState(followUpAt, todayKey = businessDayKey(new Date().toISOString())) {
+export function leadFollowUpState(followUpAt, todayKey = businessDayKey(new Date().toISOString()), holidays = null) {
   const due = businessDayKey(followUpAt);
   if (!due || !todayKey) return 'ahead';
-  if (due < todayKey) return 'late';
+  /* ⭐ **เลยวันแล้วยังไม่แดงทันที** (มติเจ้าของ 23/11/2026) — เลยไม่เกิน `LEAD_FOLLOW_UP_GRACE_DAYS` วันทำการ = `grace` (เหลือง)
+     · เกินกว่านั้น = `late` (แดง) วันเดียวกับที่กระดิ่ง `lead_overdue` เด้ง (ตัวนับวันทำการตัวเดียวกับ cron: `businessDaysWaiting`)
+     🐞 เดิมแดงตั้งแต่วันแรกที่เลย แต่กระดิ่งมาเมื่อเกิน 2 วันทำการ ⇒ จอแดงสามวันก่อนกระดิ่ง อ่านเหมือนกระดิ่งเสีย
+     ⚠️ `holidays` ไม่ส่ง = นับแค่เสาร์อาทิตย์ (เฟรมก่อนโหลดวันหยุด) — คลาดได้แค่ช่วงวันหยุดนักขัตฤกษ์ */
+  if (due < todayKey) {
+    const age = businessDaysWaiting(`${due}T00:00:00+07:00`, `${todayKey}T12:00:00+07:00`, holidays || new Set());
+    return age > LEAD_FOLLOW_UP_GRACE_DAYS ? 'late' : 'grace';
+  }
   return due === todayKey ? 'today' : 'ahead';
 }
+
+/** วันทำการที่ปล่อยให้เลยวันติดตามได้ก่อน "แดง + กระดิ่ง" — ตัวเดียวของจอและการทวง (`OVERDUE_AFTER_BY_STATUS`) · มติเจ้าของ 23/11/2026 */
+export const LEAD_FOLLOW_UP_GRACE_DAYS = 2;
 
 /** สถานะที่ใบจบแล้ว — เปิดลูกค้าแล้ว (งานย้ายไปเป็นดีล) / ไม่ไปต่อ */
 export const LEAD_CLOSED_STATUSES = ['qualified', 'disqualified'];
@@ -444,9 +455,9 @@ export function leadActiveFollowUpAt(lead) {
  *  ⇒ "เลยวันติดตาม" บนการ์ด = ตัวเลือกในแผงกรอง = แถวที่ตารางทาสีแดง
  *  ⚠️ `none` เฉพาะ `contacted` — ติดต่อแล้วแต่ไม่มีวัน = ไม่มีอะไรทวงให้ · ใบนัดแล้วที่ไม่มีวันติดตาม
  *  มีวันประชุมเป็นนาฬิกาของมันเอง ไม่ใช่ "ยังไม่มีวันติดตาม" */
-export function leadFollowUpKey(lead, todayKey) {
+export function leadFollowUpKey(lead, todayKey, holidays = null) {
   const due = leadActiveFollowUpAt(lead);
-  if (due) return leadFollowUpState(due, todayKey);
+  if (due) return leadFollowUpState(due, todayKey, holidays);
   return lead?.status === 'contacted' ? 'none' : null;
 }
 

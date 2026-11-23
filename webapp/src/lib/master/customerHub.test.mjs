@@ -46,7 +46,7 @@ test('ใบค่าสรรพสามิตไม่อยู่ในแ�
   assert.equal(row.order, null);
 });
 
-test('งวดชำระ: ค้าง = ยังไม่ชำระของใบที่มีผล · เกินกำหนดเทียบวันไทย · จ่ายรอใบอนุมัติ/รอบัญชีตรวจ ไม่นับค้าง', () => {
+test('งวดชำระ: ค้าง = ยังไม่ชำระของใบที่มีผล · เลยกำหนดเทียบวันไทย · จ่ายรอใบอนุมัติ/รอบัญชีตรวจ ไม่นับค้าง', () => {
   const order = { id: 'S1', status: 'approved' };
   assert.deepEqual(installmentState({ status: 'pending', dueDate: '2026-11-12' }, order, TODAY), { display: 'pending', outstanding: true, overdue: true });
   assert.equal(installmentState({ status: 'pending', dueDate: '2026-11-13' }, order, TODAY).overdue, false, 'ครบกำหนดวันนี้ยังไม่เกิน');
@@ -56,7 +56,7 @@ test('งวดชำระ: ค้าง = ยังไม่ชำระขอ
   assert.equal(installmentState({ status: 'pending' }, { status: 'cancelled' }, TODAY).outstanding, false, 'งวดของใบยกเลิกไม่ใช่ค้างชำระ');
 });
 
-test('แถวดีลสรุปงวด: จำนวน · จ่ายแล้ว · ยอดค้าง · เกินกำหนด', () => {
+test('แถวดีลสรุปงวด: จำนวน · จ่ายแล้ว · ยอดค้าง · เลยกำหนด', () => {
   const [row] = buildDealRows({
     deals: [{ id: 'D1', createdAt: '2026-10-01' }],
     orders: [{ id: 'S1', dealId: 'D1', status: 'approved', origin: 'pipeline', createdAt: '2026-10-02' }],
@@ -234,7 +234,7 @@ test('Actual รายเดือน: เดือนอนุมัติต�
   assert.equal(total, 2400);
 });
 
-test('ต้องตามต่อ: เกินกำหนดก่อน → คำร้องค้าง → SO ยังไม่อนุมัติ → ดีลเปิด · ลิงก์ตรงไปที่ใบ', () => {
+test('ต้องตามต่อ: เลยกำหนดก่อน → คำร้องค้าง → SO ยังไม่อนุมัติ → ดีลเปิด · ลิงก์ตรงไปที่ใบ', () => {
   const items = followUps({
     sales: {
       visible: true,
@@ -302,7 +302,7 @@ test('มติ 8: วันของรอบเก่าที่ถูกต�
 });
 
 /* ── งวด H4 · มติ 9: การเงินแถวละ SO ─────────────────────────────────────────────────────────── */
-test('มติ 9: รวมงวดเป็นแถวละใบ — รับแล้ว · ค้างรับ · งวด x/y · งวดถัดไป · สถานะเกินกำหนด', () => {
+test('มติ 9: รวมงวดเป็นแถวละใบ — รับแล้ว · ค้างรับ · งวด x/y · งวดถัดไป · สถานะเลยกำหนด', () => {
   const rows = financeOrderRows({
     orders: [
       { id: 'SO1', orderNumber: 'SO-1', dealId: 'D1', status: 'approved', totalAmount: 120000, orderDate: '2026-10-01' },

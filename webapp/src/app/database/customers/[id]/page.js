@@ -538,7 +538,7 @@ export default function CustomerDetails() {
              Actual = ตัวแบ่งยอดกลาง splitSalesOrderAmounts (ไม่รวมใบย้อนหลัง/ค่าสรรพสามิต · รออนุมัติไม่นับ) */
           ...(facts.actual ? [{ icon: ClipboardList, label: "ยอด Actual สะสม", value: `${fmtMoney(facts.actual.amount)} · ${facts.actual.orders} ใบ` }] : []),
           ...(facts.openDeals ? [{ icon: Handshake, label: "ดีลเปิดอยู่", value: `${facts.openDeals.count} ดีล · ${fmtMoney(facts.openDeals.value)}` }] : []),
-          ...(facts.outstanding ? [{ icon: Wallet, label: "ค้างชำระ", value: `${fmtMoney(facts.outstanding.amount)}${facts.outstanding.overdue ? ` · เกินกำหนด ${facts.outstanding.overdue} งวด` : ""}` }] : []),
+          ...(facts.outstanding ? [{ icon: Wallet, label: "ค้างชำระ", value: `${fmtMoney(facts.outstanding.amount)}${facts.outstanding.overdue ? ` · เลยกำหนด ${facts.outstanding.overdue} งวด` : ""}` }] : []),
           ...(facts.openRequests ? [{ icon: MessageCircleQuestion, label: "คำร้องค้าง", value: `${facts.openRequests.count} ใบ` }] : []),
           { icon: Building2, label: "ทีมดูแล", value: teamsLabel },
         ]}

@@ -26,7 +26,8 @@
 /* วันติดตามต่อบนการ์ดสรุป — สถานะมาจาก `leadFollowUpState` (data-tone ไม่ใช่ inline style · ratchet) */
 .followUpValue { color: var(--text-2); }
 .followUpValue[data-tone="late"] { color: var(--red); }
-.followUpValue[data-tone="today"] { color: var(--amber); }
+.followUpValue[data-tone="today"],
+.followUpValue[data-tone="grace"] { color: var(--amber); } /* เลยไม่เกิน 2 วันทำการ = เหลือง (มติ 23/11/2026) */
 
 /* ข้อความบนการ์ดการติดตามตอนใบไม่มีวันติดตาม — บอกว่าระบบจะไม่ทำอะไรให้ ต้องลงมือเอง */
 .followUpNote {

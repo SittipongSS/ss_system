@@ -30,7 +30,8 @@
    ⚠️ เป็นคลาสไม่ใช่ inline style: audit:ui มีเพดาน ratchet ของชั้นเก่าอยู่ */
 .followUp { color: var(--text-2); }
 .followUp[data-tone="late"] { color: var(--red); }
-.followUp[data-tone="today"] { color: var(--amber); }
+.followUp[data-tone="today"],
+.followUp[data-tone="grace"] { color: var(--amber); } /* เลยไม่เกิน 2 วันทำการ = เหลือง (มติ 23/11/2026) */
 .followUpSub { display: block; color: var(--text-3); font-size: var(--fs-5); }
 
 /* ป้าย "ส่งกลับ รอบที่ N" ใต้สถานะในคิว — เหลือง = เคยกลับมา · แดง = ครบโควตารอบแล้ว

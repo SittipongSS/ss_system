@@ -212,6 +212,14 @@ export function matchesQueueCount(request, key, { todayIso = null } = {}) {
   // กำหนดให้เลย จึงไม่ใช่ "เลยกำหนด" แต่เป็น "ยังไม่รับเรื่อง" (คนละปัญหา
   // คนละทางแก้ · รวมกันเมื่อไรตัวเลขจะบอกไม่ได้ว่าต้องไปทำอะไร)
   if (key === 'overdue') {
+    // ⭐ ตาผู้ขอไม่นับ (มติเจ้าของ 23/11/2026) — ตัวตัดสินเดียวกับช่องกำหนดส่ง/ป้าย/ตารางในใบ
+    const due = requestDueOwed(request);
+    return !!todayIso && !!due && String(due) < String(todayIso);
+  }
+  /* ⏸ **ปุ่มรอง "ส่งแล้ว รอผู้ขอ" ของหน้าภาพรวม /rd เท่านั้น** (มติเจ้าของ 19/10 · H9) — เลยวันที่รับปากไว้ **ไม่ดูตาใคร**
+     ⚠️ ไม่ใช่ "เลยกำหนด" และไม่อยู่ในแถบตัวเลข (`QUEUE_COUNT_META`) — มติ 23/11/2026 ใบตาผู้ขอไม่นับเลยกำหนดทุกจอ
+     แต่เจ้าของสั่ง "ข้ามภาพรวม rd ไปก่อน เพราะต้องรื้อ เก็บไว้" ⇒ หน้านั้นคงเลขเดิมผ่านคีย์นี้จนกว่าจะรื้อ */
+  if (key === 'pastDue') {
     const due = liveDueDate(request);
     return !closureStarted && !!todayIso && !!due && String(due) < String(todayIso);
   }
@@ -309,6 +317,26 @@ export function requestSettled(request) {
   return !requestNextStep(request);
 }
 
+/**
+ * วันกำหนดส่งที่ **ฝ่ายยังติดค้างอยู่** — ตัวตัดสินเดียวของคำว่า "เลยกำหนด" / "ครบกำหนดวันนี้" ทุกจอ
+ * (มติเจ้าของ 23/11/2026 · ขยายมติ 19/10 จากปฏิทิน /rd ไปทุกจอ)
+ *
+ * คืน `YYYY-MM-DD` หรือ null เมื่อไม่มีใครผิดสัญญาได้:
+ *   · ฝ่ายยังไม่รับปาก / วันเป็นของรอบที่ส่งไปแล้ว (`liveDueDate`)
+ *   · มีฝั่งปิดแล้ว (ม-145) · ใบจบ/ยกเลิก
+ *   · **ตาผู้ขอ** — ฝ่ายส่งของครบแล้ว ที่เหลือคือรับของ/ส่งลูกค้า/บันทึกคำตอบ/ปิดเรื่อง
+ *     ⇒ ใบไปอยู่กอง "รอผู้ขอทำต่อ" ไม่ใช่ "เลยกำหนด" (คนละคนต้องลงมือ)
+ *
+ * 🐞 ก่อนตัวนี้: ปฏิทิน /rd ไม่แดงใบตาผู้ขอ แต่คิว · แถบตัวเลข · ตารางภาระงาน · ตารางสรุปทั้งใบ
+ *    ของใบเดียวกันขึ้นแดง "เลย n วัน" ⇒ RD ที่ส่งของครบตรงเวลาถูกนับเลยกำหนดเพราะลูกค้ายังไม่ตอบ
+ * ⚠️ ต้องมี `request.items` (แถวทั้งใบ) — `requestNextStep` ตัดสินตาจากแถว · จอที่โหลดหัวใบล้วนใช้ `attachReworkRows`
+ */
+export function requestDueOwed(request) {
+  const due = liveDueDate(request);
+  if (!due || requestClosureStarted(request)) return null;
+  return requestNextStep(request)?.owner === 'dept' ? due : null;
+}
+
 // ตัวตัดสิน "เลิกนับถอยหลังวันส่ง" อยู่ที่ closure.js — ส่งต่อให้จอที่ import จากไฟล์นี้
 export { requestClosureStarted };
 
@@ -393,6 +421,12 @@ export function requestsNavLanding() {
 //
 // ⭐ ทำให้ลำดับที่ `compareRequestUrgency` จัดไว้ **มองเห็นได้** — ของเดิมเรียงถูก
 // แล้วแต่คนอ่านไม่รู้ว่าทำไมใบนี้อยู่บน เพราะไม่มีอะไรบอกว่าเส้นแบ่งอยู่ตรงไหน
+/** ป้ายของทุกคีย์ที่ `?count=` รับได้ — แถบตัวเลข + คีย์ที่ไม่อยู่บนแถบ (ป้าย "กรอง: …" ต้องอ่านออกเสมอ) */
+export const QUEUE_COUNT_FILTER_LABELS = Object.freeze({
+  ...Object.fromEntries(QUEUE_COUNT_META.map((m) => [m.key, m.label])),
+  pastDue: 'เลยวันที่รับปาก · ส่งแล้ว รอผู้ขอ',
+});
+
 export const QUEUE_GROUPS = [
   /* ⭐ **บนสุด** (2026-08-11) — ใบตีกลับคือใบเดียวในคิวที่ *คนเปิดหน้าอยู่* ต้องลงมือ
      เอง ไม่ใช่รอใคร ⇒ ขวางงานตัวเองอยู่ · เดิม `status` กลับเป็น `draft` ซึ่งไม่อยู่
@@ -419,10 +453,9 @@ export function requestGroupKey(request, { todayIso = null } = {}) {
   if (request.status === 'pending') return 'unacked';
   /* ⚠️ ใบที่มีตราปิดแล้วไม่ใช่ "เลยกำหนด" — ฝั่งหนึ่งบอกแล้วว่างานจบ ที่ค้างคือการกดปิด
      ของอีกฝั่ง (ตัวตัดสินเดียวกับช่องกำหนดส่งและแถบตัวเลข · `requestClosureStarted`) */
-  const due = liveDueDate(request);
-  if (todayIso && due && String(due) < String(todayIso) && !requestClosureStarted(request)) {
-    return 'overdue';
-  }
+  // ⭐ ตาผู้ขอไม่ตกกลุ่ม "เลยกำหนด" (มติเจ้าของ 23/11/2026 · `requestDueOwed`)
+  const due = requestDueOwed(request);
+  if (todayIso && due && String(due) < String(todayIso)) return 'overdue';
   return 'open';
 }
 
@@ -596,7 +629,9 @@ export function requestDueText(request, { todayIso = null } = {}) {
   /* 🐞 **ใบที่จบแล้ว/มีฝั่งปิดแล้วไม่นับถอยหลังอีก** (ม-145) — ของเดิมไม่ดูสถานะเลย
      ⇒ ใบที่ปิดครบสองฝั่งขึ้น "เลย 37 วัน" สีแดง ซึ่งเป็นสัญญาณ "ยังไม่จบ" ที่ดังที่สุด
      บนแถว · วันที่ยังโชว์ (เป็นหลักฐานว่าตกลงวันไหนไว้) แต่ไม่มีคำนับถอยหลัง */
-  if (!todayIso || requestClosureStarted(request) || requestSettled(request)) {
+  /* ⭐ ตาผู้ขอก็ไม่นับถอยหลัง (มติเจ้าของ 23/11/2026) — ฝ่ายส่งของครบแล้ว วันนี้ไม่ใช่เส้นตายของใครอีก
+     · `requestDueOwed` รวมกติกาใบจบ/มีฝั่งปิดไว้แล้ว */
+  if (!todayIso || !requestDueOwed(request)) {
     return { date: due, note: null, overdue: false };
   }
 

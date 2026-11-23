@@ -21,7 +21,7 @@ import styles from "./customerHub.module.css";
 /* ── แท็บภาพรวมของหน้าลูกค้า (งวด H2 · มติเจ้าของ 13/11/2026 ข้อ 2: เปิดหน้ามาเจอแท็บนี้) ─────────────────
  *
  * สามคำถามที่คนเปิดหน้าลูกค้าอยากรู้ก่อน:
- *  1 ต้องตามอะไรต่อ — งวดเกินกำหนด · คำร้องค้าง · ใบสั่งขายยังไม่อนุมัติ · ดีลที่ยังเปิด (ลิงก์ตรงไปที่ใบ)
+ *  1 ต้องตามอะไรต่อ — งวดเลยกำหนด · คำร้องค้าง · ใบสั่งขายยังไม่อนุมัติ · ดีลที่ยังเปิด (ลิงก์ตรงไปที่ใบ)
  *  2 ลูกค้าซื้อเท่าไรช่วงนี้ — Actual 12 เดือน ตัวคิดเดียวกับรายงานยอดขาย (monthlyActual)
  *  3 ล่าสุดเกิดอะไรขึ้น — เหตุการณ์จากวันที่บนใบ 6 รายการ (ความเคลื่อนไหวรวมจากทุกเธรดคืองวด H3)
  * ⚠️ กลุ่มที่ผู้ดูไม่มีสิทธิ์ (server ส่ง visible:false) ไม่มีรายการ/ไม่มีกราฟ — จอไม่ตัดสินสิทธิ์เอง (มติ 4)
@@ -30,7 +30,8 @@ const FOLLOW_LIMIT = 8;
 const KIND_ICON = { overdue: Wallet, request: MessageCircleQuestion, order: ClipboardList, deal: Handshake };
 
 function followDetail(item) {
-  if (item.kind === "overdue") return `ครบกำหนด ${fmtDate(item.dueDate)} · ${fmtMoney(item.amount)}`;
+  // "กำหนดชำระ" ไม่ใช่ "ครบกำหนด" — แถวนี้เลยวันไปแล้ว (ป้าย "เลยกำหนด" ข้างบน) · คำว่าครบกำหนดอ่านเหมือนยังไม่ถึง (23/11/2026)
+  if (item.kind === "overdue") return `กำหนดชำระ ${fmtDate(item.dueDate)} · ${fmtMoney(item.amount)}`;
   if (item.kind === "request") return [REQUEST_DEPT_LABELS[item.dept]?.name || item.dept, REQUEST_STATUS_LABELS[item.status]].filter(Boolean).join(" · ");
   if (item.kind === "order") return SALES_ORDER_STATUS_LABELS[item.status] || item.status;
   return [STAGE_LABELS[item.stage] || item.stage, item.amount ? fmtMoney(item.amount) : null].filter(Boolean).join(" · ");
@@ -59,7 +60,7 @@ export default function OverviewTab({ hub, today, onGo }) {
                   <div className={styles.followBody}>
                     <div className={styles.followHead}>
                       <Link prefetch={false} href={item.href} className="linklike font-mono">{item.code || "ร่าง"}</Link>
-                      {item.kind === "overdue" && <StatusBadge tone="danger" label="เกินกำหนด" />}
+                      {item.kind === "overdue" && <StatusBadge tone="danger" label="เลยกำหนด" />}
                     </div>
                     <span className={styles.followTitle}>{item.title}</span>
                     <span className={styles.followMeta}>{followDetail(item)}</span>

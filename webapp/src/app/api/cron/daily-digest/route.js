@@ -4,6 +4,7 @@ import { can, SALES_BELL_ROLES } from '@/lib/permissions';
 import { holidaySet } from '@/lib/master/holidays';
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
 import { overdueLeadNotices } from '@/lib/sales/leadNotify';
+import { leadActiveFollowUpAt } from '@/lib/sales/leads';
 import { overdueSignatureNotices, pendingApprovalContracts, pendingApprovalNotices } from '@/lib/sales/contractNotify';
 import { externalDocReadyIds } from '@/lib/sales/contractExternalDocs';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -48,7 +49,8 @@ async function notifyOverdueLeads(supabase) {
     .select('id, contactName, status, team, assigneeId, createdAt, screenedAt, assignedAt, followUpAt')
     // ⭐ `contacted` เข้ามาพร้อม mig 0289 — สถานะนี้เคยไม่มีนาฬิกาเลย ลีดที่ติดต่อแล้ว
     // จึงเงียบหายไปจากการทวงทั้งหมด · นับจาก `followUpAt` (วันที่ AE รับปากลูกค้าไว้)
-    .in('status', ['new', 'screened', 'assigned', 'contacted']);
+    // ⭐ `meeting` (23/11/2026) — ใบนัดแล้วที่เลยวันติดตามหลังประชุม แดงบนจอแต่ไม่เคยถูกทวง
+    .in('status', ['new', 'screened', 'assigned', 'contacted', 'meeting']);
   if (error) return { sent: 0, error: error.message };
   if (!data?.length) return { sent: 0, reason: 'ไม่มีลีดค้าง' };
 
@@ -65,6 +67,7 @@ async function notifyOverdueLeads(supabase) {
     screened: (l) => l.screenedAt || l.createdAt,
     assigned: (l) => l.assignedAt || l.createdAt,
     contacted: (l) => l.followUpAt || null,
+    meeting: (l) => leadActiveFollowUpAt(l),
   };
   const notices = overdueLeadNotices(data, {
     directory,

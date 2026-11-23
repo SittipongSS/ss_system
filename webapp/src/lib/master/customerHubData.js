@@ -33,7 +33,7 @@ export const HUB_ORDER_COLS = 'id, orderNumber, dealId, quotationId, status, fin
 /* ⚠️ `evidence` · `refundedAt` · `frozenAt` = ช่องที่ `installmentDisplayStatus` ใช้ตัดสิน "รับล่วงหน้า" / "คืนเงิน" (งวด H4 แก้)
    🐞 H1–H3 ไม่ได้ดึงมา ⇒ งวดรับล่วงหน้า (pending + paidOn + หลักฐาน · prod 13/11 มี 6 งวด) ถูกนับว่า "ค้างรับ" บนหน้าลูกค้า
    ขณะที่หน้า SO บอกว่ารับแล้ว · หลักฐานถูกย่อเหลือแค่จำนวนไฟล์ก่อนส่งให้จอ (`slimInstallment`) — หน้าลูกค้าไม่ต้องรู้ชื่อไฟล์ */
-export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, actualStatus, actualAmount, actualApprovedAt, evidence, refundedAt, frozenAt';
+export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, billingEvent, actualStatus, actualAmount, actualApprovedAt, evidence, refundedAt, frozenAt';
 export const HUB_REQUEST_COLS = 'id, docNo, dept, kind, status, title, dealId, salesOrderId, customerId, requestedById, requestedByName, team, submittedAt, createdAt, committedDueDate, dueCommittedAt, requestedDueDate, closedAt, answeredAt, urgent, pdrRefNo, acknowledgedAt';
 export const HUB_CONTRACT_COLS = 'id, contractNo, kind, status, dealId, quotationId, customerId, contractDate, signedDate, effectiveDate, expiryDate, baseNumber, revisionNo, revisedFromId, createdAt, externalRef, source, team, ownerId';
 export const HUB_LEAD_COLS = 'id, company, contactName, channel, status, assigneeName, createdAt';

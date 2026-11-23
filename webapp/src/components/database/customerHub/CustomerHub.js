@@ -292,7 +292,7 @@ function SalesTab({ hub, query, onQuery, today }) {
         {
           key: "pay", label: "ชำระ",
           render: (r) => (r.payment.count
-            ? <><span>{`${r.payment.paid}/${r.payment.count} งวด`}</span>{r.payment.outstanding > 0 && <Sub>{`ค้าง ${fmtMoney(r.payment.outstanding)}`}</Sub>}{r.payment.overdue && <StatusBadge tone="danger" label="เกินกำหนด" />}</>
+            ? <><span>{`${r.payment.paid}/${r.payment.count} งวด`}</span>{r.payment.outstanding > 0 && <Sub>{`ค้าง ${fmtMoney(r.payment.outstanding)}`}</Sub>}{r.payment.overdue && <StatusBadge tone="danger" label="เลยกำหนด" />}</>
             : NA),
         },
         /* ใบ "ไม่นับ Actual" (mig 0439 · มติ 20/11 ข้อ 3) — ยอด 0 + ป้ายพร้อมเหตุผลใต้ยอด (ตัวเดียวกับทะเบียน SO) · หลายใบ = title รวมเหตุผล */
@@ -493,7 +493,7 @@ function FinanceTab({ hub, query, onQuery, today }) {
       stateKey="hub-finance-order"
       icon={<Wallet size={17} aria-hidden="true" />}
       title="การชำระตามใบสั่งขาย"
-      subtitle="แถวละใบสั่งขาย · รวมงวดของใบที่คุณเห็นได้ · เกินกำหนดนับตามวันไทย"
+      subtitle="แถวละใบสั่งขาย · รวมงวดของใบที่คุณเห็นได้ · เลยกำหนดนับตามวันไทย"
       unit="ใบ"
       rows={rows}
       searchPlaceholder="ค้นหาเลข SO / ดีล / ชื่องวด / เลขใบกำกับภาษี"
@@ -516,7 +516,7 @@ function FinanceTab({ hub, query, onQuery, today }) {
         { key: "next", label: "งวดถัดไป", render: (r) => (r.next ? (
           <>
             <span>{`${r.next.dueDate ? fmtDate(r.next.dueDate) : "ไม่มีกำหนด"} · ${fmtMoney(r.next.amount)}`}</span>
-            {r.next.overdue && <StatusBadge tone="danger" label="เกินกำหนด" />}
+            {r.next.overdue && <StatusBadge tone="danger" label="เลยกำหนด" />}
             <Sub>{r.next.label || (r.next.seq != null ? `งวด ${r.next.seq}` : null)}</Sub>
           </>
         ) : NA) },

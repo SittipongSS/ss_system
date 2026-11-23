@@ -15,7 +15,8 @@ import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
 import MoneyInput from "@/components/ui/MoneyInput";
-import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isWonStage, normalizeDealType } from "@/lib/salesPlanning";
+import { DEAL_TYPES, DEAL_TYPE_LABELS, SALES_FEATURES, STAGE_LABELS, dealTypeOf, editableStages, isClosedStage, isWonStage, normalizeDealType } from "@/lib/salesPlanning";
+import { businessDate } from "@/lib/businessDate";
 import { fmtDate, fmtDateTime, fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import { livePersonName } from "@/lib/ui/personName";
@@ -332,10 +333,13 @@ export default function DealOverviewPage() {
   const daysInStage = daysSince(stageSinceAt);
   const dealAgeDays = daysSince(data?.deal?.createdAt);
   // วันคงเหลือถึงวันคาดปิด (ติดลบ = เลยกำหนด)
+  /* 🐞 (ตรวจทั้งระบบ 23/11/2026) เดิมนับจากเที่ยงคืน **ของเครื่อง** (`new Date('YYYY-MM-DDT00:00:00')`) และขึ้นบนดีลที่ปิดแล้วด้วย
+     ⇒ ดีล Won ขึ้น "เลยกำหนด 54 วัน" ตลอดไป · ตอนนี้วันไทยล้วน (เลขคณิตปฏิทิน) และดีลปิดแล้วไม่นับ */
   const daysToClose = useMemo(() => {
-    const d = data?.deal?.expectedCloseDate;
-    if (!d || nowMs == null) return null;
-    const diff = Math.ceil((new Date(`${d}T00:00:00`) - nowMs) / 86400000);
+    const d = String(data?.deal?.expectedCloseDate || '').slice(0, 10);
+    if (!d || nowMs == null || isClosedStage(data?.deal?.stage)) return null;
+    const today = businessDate(new Date(nowMs));
+    const diff = Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
     return Number.isFinite(diff) ? diff : null;
   }, [data, nowMs]);
 
@@ -1042,7 +1046,7 @@ export default function DealOverviewPage() {
             <Stat
               label="คาดปิด"
               value={naText(deal.expectedCloseDate)}
-              hint={daysToClose == null ? "ยังไม่กำหนด" : daysToClose >= 0 ? `อีก ${daysToClose} วัน` : `เลยกำหนด ${Math.abs(daysToClose)} วัน`}
+              hint={isClosedStage(deal.stage) ? "ดีลปิดแล้ว" : daysToClose == null ? "ยังไม่กำหนด" : daysToClose >= 0 ? `อีก ${daysToClose} วัน` : `เลยกำหนด ${Math.abs(daysToClose)} วัน`}
             />
             <Stat
               label="อยู่ในสถานะนี้"
