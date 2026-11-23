@@ -122,3 +122,15 @@ test('ป้ายสรุปยกเรื่อง "หมดแล้ว" �
 test('สถานะที่ต้องมีคนทำอะไรต่อมีแค่ overdue กับ soon', () => {
   assert.deepEqual(NEEDS_ATTENTION, ['overdue', 'soon']);
 });
+
+/* ── ตรวจทั้งระบบเรื่องวันกำหนด 23/11/2026 ─────────────────────────────────────── */
+test('ป้ายเติมน้ำหอม: วันครบ = "คาดว่าหมดวันนี้" (ไม่ใช่ "อีก 0 วัน") · วันที่บนป้ายจัดรูปแบบ (ไม่ใช่ ISO ดิบ)', async () => {
+  const { refillStatus, REFILL_VISIT_KINDS } = await import('./refill.js');
+  const asset = { status: 'installed', refillIntervalDays: 30, lastRefillDate: '2026-10-24' };
+  const today = refillStatus(asset, { todayIso: '2026-11-23' });
+  if (today.state === 'soon' && today.daysLeft === 0) assert.equal(today.label, 'ใกล้หมด — คาดว่าหมดวันนี้');
+  for (const s of [today, refillStatus(asset, { todayIso: '2026-12-30' }), refillStatus(asset, { todayIso: '2026-11-01', nextVisitDate: '2026-11-10' })]) {
+    assert.doesNotMatch(s.label, /\d{4}-\d{2}-\d{2}/, `ISO ดิบบนป้าย: ${s.label}`);
+  }
+  assert.deepEqual([...REFILL_VISIT_KINDS], ['refill', 'maintenance', 'install']);
+});

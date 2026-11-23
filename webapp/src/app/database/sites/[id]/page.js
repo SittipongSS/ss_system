@@ -59,6 +59,7 @@ import {
   visitTimeText,
 } from "@/lib/service/rounds";
 import { visitDeleteBlocker, visitDeleteButton } from "@/lib/service/visitDelete";
+import { isOpenVisit } from "@/lib/service/visitStatus";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService, canViewVisitReport } from "@/lib/permissions";
@@ -448,15 +449,24 @@ export default function ServiceSiteDetailPage({ params }) {
 
   // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("เจ้าหน้าที่จะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
   const todayIso = businessDate();
+  /* 🐞 (ตรวจทั้งระบบ 23/11/2026) เดิม "ที่จะถึง" = scheduled เท่านั้น และ "ประวัติ" = วันผ่านแล้ว **หรือ** ไม่ใช่ scheduled
+     ⇒ นัดที่เลยวันแต่ยังไม่ปิดตกไปอยู่ประวัติโดยไม่มีป้ายค้าง · นัดที่กำลังทำ (in_progress) หายจาก "ที่จะถึง"
+     ตอนนี้แบ่งด้วย `isOpenVisit` ตัวเดียวกับคิวงาน: เปิดอยู่ = ที่จะถึง (ที่เลยวันขึ้นก่อนพร้อม "ค้าง n วัน") · ที่เหลือ = ประวัติ */
   const upcoming = useMemo(
-    () => visits.filter((v) => v.scheduledDate >= todayIso && v.status === "scheduled"),
+    () => visits.filter((v) => isOpenVisit(v) && v.scheduledDate >= todayIso),
     [visits, todayIso],
   );
+  const overdueOpen = useMemo(
+    () => visits.filter((v) => isOpenVisit(v) && v.scheduledDate && v.scheduledDate < todayIso)
+      .sort((a, b) => String(a.scheduledDate).localeCompare(String(b.scheduledDate))),
+    [visits, todayIso],
+  );
+  const upcomingRows = useMemo(() => [...overdueOpen, ...upcoming], [overdueOpen, upcoming]);
   const history = useMemo(
-    () => [...visits].filter((v) => v.scheduledDate < todayIso || v.status !== "scheduled")
+    () => [...visits].filter((v) => !isOpenVisit(v))
       .sort((a, b) => String(b.scheduledDate).localeCompare(String(a.scheduledDate)))
       .slice(0, 20),
-    [visits, todayIso],
+    [visits],
   );
 
   /* ⭐ เปลือกโหลด/ไม่พบ/พัง เป็น hideHeader เหมือนหน้าที่โหลดเสร็จ — ทรงเดียวกันทั้งสี่หน้า
@@ -1008,13 +1018,13 @@ export default function ServiceSiteDetailPage({ params }) {
         )}
       </DetailCard>
 
-      <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด`}>
+      <DetailCard icon={CalendarClock} eyebrow="Upcoming visits" title="นัดที่จะถึง" meta={`${upcoming.length} นัด${overdueOpen.length ? ` · ค้าง ${overdueOpen.length}` : ""}`}>
         {visitError ? (
           <StatusNotice tone="warning" title="โหลดนัดไม่สำเร็จ"
             action={<Button size="sm" onClick={() => load()}>ลองใหม่</Button>}>
             {visitError}
           </StatusNotice>
-        ) : upcoming.length === 0 ? (
+        ) : upcomingRows.length === 0 ? (
           <EmptyState icon={CalendarClock} plain>ยังไม่มีนัดที่จะถึงของไซต์นี้</EmptyState>
         ) : (
           /* 📱 จอ ≤ 680 (กล่อง < 600) พับเหลือ วันที่ · ปุ่มลบ — เวลา/งาน/ใบสั่งขาย/เจ้าหน้าที่/รหัส
@@ -1034,8 +1044,12 @@ export default function ServiceSiteDetailPage({ params }) {
                   {canEdit && <th aria-label="การทำงาน" />}</tr>
               </thead>
               <tbody>
-                {upcoming.map((visit) => {
+                {upcomingRows.map((visit) => {
                   const kindLabel = VISIT_KIND_LABELS[visit.kind] || visit.kind;
+                  // นัดที่เลยวันแต่ยังไม่ปิด — "ค้าง n วัน" คำเดียวกับคิวงาน TS
+                  const staleDays = visit.scheduledDate < todayIso
+                    ? Math.round((Date.parse(`${todayIso}T00:00:00Z`) - Date.parse(`${visit.scheduledDate}T00:00:00Z`)) / 86400000)
+                    : 0;
                   const order = orderOfVisit(visit);
                   /* ด่านลบตัวเดียวกับ API — แอดมินข้ามได้ (เส้น force) · คนอื่นเห็นถังขยะตามกติกาเดียวกับหน้าจัดคิว */
                   const deleteRule = visitDeleteBlocker(visit);
@@ -1046,6 +1060,7 @@ export default function ServiceSiteDetailPage({ params }) {
                     {/* วันที่ · เวลา · รหัส ห้ามตัดกลาง — ตารางเลื่อนข้างแทนการบีบ (ดู .nowrap) */}
                     <td>
                       <span className={styles.nowrap}>{visit.scheduledDate}</span>
+                      {staleDays > 0 && <div className={`cell-num-bad ${styles.nowrap}`}>ค้าง {staleDays} วัน</div>}
                       {/* 📱 จอแคบ: คอลัมน์ที่ซ่อนมาอยู่บรรทัดนี้ ลำดับเดียวกับหัวตาราง */}
                       <div className={`${styles.muted} ${styles.narrowLine}`}>
                         {/* ป้ายสั้นห้ามตัดกลางคำ ("ยังไม่มอบ|หมาย" ที่จอ 320) — ชื่อคนยังตัดได้ */}

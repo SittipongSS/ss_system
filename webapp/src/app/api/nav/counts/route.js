@@ -47,7 +47,7 @@ import { inSalesViewScope, isWonStage } from '@/lib/salesPlanning';
 import {
   FORECAST_ELIGIBLE_APPROVALS, FORECAST_ELIGIBLE_STATUSES, forecastSourceView,
 } from '@/lib/sales/forecastSource';
-import { loadVisits } from '@/lib/service/visitsRepo';
+import { loadOverdueVisits, loadVisits } from '@/lib/service/visitsRepo';
 import { loadTerms } from '@/lib/service/termsRepo';
 import { planQueue } from '@/lib/service/intake';
 import { orderBusinessLineOf } from '@/lib/sales/serviceOrders';
@@ -558,10 +558,12 @@ export const GET = withUser(async ({ user, supabase }) => {
         return toLocalISODate(d);
       };
       // ⚠️ ย้อนเท่าที่หน้างานวันนี้โหลด (`todayPageVisitsQuery`) — ตัวเลขเดียวกันทั้งสองที่
-      const visits = await loadVisits(supabase, {
-        from: shift(-WAITING_ON_ME_BACK_DAYS), to: shift(14), assigneeId: String(user.id),
-      });
-      return waitingOnMeVisitCount(visits, today);
+      const from = shift(-WAITING_ON_ME_BACK_DAYS);
+      const visits = await loadVisits(supabase, { from, to: shift(14), assigneeId: String(user.id) });
+      // ⭐ + นัดที่ยังเปิดอยู่ก่อนช่วง (ไม่มีขอบล่าง) — ชุดเดียวกับที่หน้า "วันนี้" โหลด (23/11/2026 · เดิมหายหลัง 14 วัน)
+      // ⚠️ ยิงเฉพาะคนที่ทำงานหน้างาน (กั้นด้วย canDoFieldWork ข้างบน) · แถวน้อย (นัดเปิดของคนเดียว)
+      const older = await loadOverdueVisits(supabase, { assigneeId: String(user.id), before: from });
+      return waitingOnMeVisitCount([...older, ...visits], today);
     }));
   }
 

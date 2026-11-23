@@ -1,5 +1,6 @@
 // ── Data access ของรอบบริการ + ตารางนัด (mig 0188) ───────────────────────
 import { conflict, forbidden, notFound } from '@/lib/http';
+import { REFILL_VISIT_KINDS } from '@/lib/service/refill';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { canDoFieldWork, canViewService, canViewVisitReport } from '@/lib/permissions';
 import { crewClosedEditError, crewNotRunningError, visitWriteAccess } from './visitAccess';
@@ -244,7 +245,7 @@ export async function siteScheduleContext(supabase, siteIds = [], todayIso) {
     /* 🐞 เดิม `.eq('status','done')` ⇒ นัดที่เติมได้ 4 จาก 10 เครื่อง (partial) ไม่นับเป็น
        วันเติมล่าสุด ทั้งที่เติมจริง แล้วระบบเตือน "น้ำหอมจะหมด" ซ้ำทั้งที่เพิ่งไปเติมมา */
     .in('status', CLOSED_VISITED)
-    .in('kind', ['refill', 'maintenance', 'install'])
+    .in('kind', REFILL_VISIT_KINDS)
     .order('actualDate', { ascending: false })
     .order('id', { ascending: true }));
   for (const row of done || []) {

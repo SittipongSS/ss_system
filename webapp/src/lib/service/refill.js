@@ -8,9 +8,14 @@
 import { toLocalISODate } from '@/lib/pm/dateHelpers';
 import { refillDueDate, isAssetOnSite, ASSET_STATUS_LABELS } from './sites';
 import { businessDate } from '@/lib/businessDate';
+import { fmtDate } from '@/lib/format';
 
 // ใกล้หมดภายในกี่วันถึงเรียกว่า "ต้องรีบ" — 14 วันคือเวลาที่ยังจัดรอบวิ่งทันโดยไม่ต้องแทรกคิว
 export const REFILL_SOON_DAYS = 14;
+
+/* ชนิดนัดที่เติม/ดูแลน้ำหอมจริง — "เติมล่าสุด" นับเฉพาะนัดชนิดนี้ที่ปิดแล้ว (ตัวเดียวกับตัวโหลดฝั่ง server `siteVisitDates`)
+   ⚠️ หน้าเครื่องเคยนับนัดทุกชนิด (รวมเก็บเครื่อง/ประเมิน) เป็น "เติมล่าสุด" ⇒ คาดวันหมดคนละวันกับหน้าไซต์ (23/11/2026) */
+export const REFILL_VISIT_KINDS = Object.freeze(['refill', 'maintenance', 'install']);
 
 const daysBetween = (fromIso, toIso) => {
   const a = new Date(`${fromIso}T00:00:00`);
@@ -67,14 +72,16 @@ export function refillStatus(asset, {
 
   // มีนัดก่อนวันหมด = ครอบแล้ว · เท่ากับวันหมดพอดีก็นับว่าครอบ (เข้าวันนั้นก็ทัน)
   if (nextVisitDate && String(nextVisitDate) <= String(dueDate)) {
-    return { state: 'covered', dueDate, daysLeft, label: `มีนัดก่อนหมด (${nextVisitDate})`, tone: 'success' };
+    // วันที่บนป้ายจัดรูปแบบเดียวกับทั้งระบบ (เดิมพิมพ์ ISO ดิบ · 23/11/2026)
+    return { state: 'covered', dueDate, daysLeft, label: `มีนัดก่อนหมด (${fmtDate(nextVisitDate)})`, tone: 'success' };
   }
 
   if (daysLeft !== null && daysLeft < 0) {
-    return { state: 'overdue', dueDate, daysLeft, label: `น่าจะหมดแล้วตั้งแต่ ${dueDate}`, tone: 'danger' };
+    return { state: 'overdue', dueDate, daysLeft, label: `น่าจะหมดแล้วตั้งแต่ ${fmtDate(dueDate)}`, tone: 'danger' };
   }
   if (daysLeft !== null && daysLeft <= soonDays) {
-    return { state: 'soon', dueDate, daysLeft, label: `ใกล้หมด — อีก ${daysLeft} วัน`, tone: 'warning' };
+    // วันครบเอง = "คาดว่าหมดวันนี้" ไม่ใช่ "อีก 0 วัน" (23/11/2026)
+    return { state: 'soon', dueDate, daysLeft, label: daysLeft === 0 ? 'ใกล้หมด — คาดว่าหมดวันนี้' : `ใกล้หมด — อีก ${daysLeft} วัน`, tone: 'warning' };
   }
   return { state: 'ok', dueDate, daysLeft, label: `คาดว่าหมด ${dueDate}`, tone: 'neutral' };
 }
