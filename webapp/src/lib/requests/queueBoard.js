@@ -18,6 +18,7 @@ import { npdUncoveredPairs } from '@/lib/requests/npdPairs';
 import { compareRequestUrgency } from '@/lib/requests/queue';
 import { liveDueDate } from '@/lib/requests/dueRound';
 import { businessDayKey } from '@/lib/datePeriods';
+import { dueInfo } from '@/lib/dueState';
 
 // ── ก้าวถัดไปของ "ทั้งใบ" ────────────────────────────────────────────────
 //
@@ -636,12 +637,9 @@ export function requestDueText(request, { todayIso = null } = {}) {
     return { date: due, note: null, overdue: false };
   }
 
-  // ⚠️ ต่างกันเป็น "วัน" ไม่ใช่ชั่วโมง — ทั้งสองค่าเป็น YYYY-MM-DD ของวันไทย
-  // (businessDate) · ใช้ Date.parse กับ T00:00:00Z ทั้งคู่จึงไม่มีปัญหาเขตเวลา
-  const ms = Date.parse(`${due}T00:00:00Z`) - Date.parse(`${todayIso}T00:00:00Z`);
-  if (!Number.isFinite(ms)) return { date: due, note: null, overdue: false };
-  const days = Math.round(ms / 86400000);
-  if (days < 0) return { date: due, note: `เลย ${-days} วัน`, overdue: true };
-  if (days === 0) return { date: due, note: 'วันนี้', overdue: false };
-  return { date: due, note: `อีก ${days} วัน`, overdue: false };
+  /* ⭐ คำ/สีจากตัวกลาง `lib/dueState` (งวด 2) — "เลยกำหนด N วัน" (แดง) · "ครบกำหนดวันนี้" / "อีก N วัน" ≤ 3 วัน (เหลือง)
+     · เดิม "เลย n วัน" / "วันนี้" และเหลืองแค่วันครบ (มติเจ้าของ 23/11/2026: เตือนล่วงหน้า 3 วันเหมือนทุกโมดูล) */
+  const info = dueInfo(due, todayIso);
+  if (info.key === 'none') return { date: due, note: null, overdue: false };
+  return { date: due, note: info.text, overdue: info.key === 'late', soon: info.key === 'today' || info.key === 'soon' };
 }

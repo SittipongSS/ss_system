@@ -88,7 +88,7 @@ function MaterialRow({ row, product, onSaved, canEdit }) {
         <td>{row.receivedDate ? fmtDate(row.receivedDate) : NA}</td>
         <td>
           {row.readyDate ? fmtDate(row.readyDate) : NA}
-          {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เกินกำหนด (PO/lead)</div>}
+          {row.lateVsDue && <div style={{ fontSize: "var(--fs-2)", color: "var(--amber)" }}>เลยกำหนด (PO/lead)</div>}
         </td>
         <td>{row.dueDate ? fmtDate(row.dueDate) : NA}</td>
         <td>{matCell(t.pmDueDate, t.pmArrivedAt)}</td>
@@ -262,7 +262,7 @@ export default function MaterialPage() {
           <div className="kpi-grid">
             <KpiCard label="บรรทัด PO ทั้งหมด" value={stats.all} tone="accent" onClick={() => pickCard("all")} />
             <KpiCard label={`นอก FC (lead ${LEAD_OUT_FC} วันทำการ)`} value={stats.outFc} color="var(--violet)" hint="ไม่มี FC ของเดือนส่ง — ต้องสั่ง PM + RM" onClick={() => pickCard("outFc")} />
-            <KpiCard label="เกินกำหนด (PO/lead)" value={stats.late} tone="warning" hint="วันส่งแนะนำเลยวันกำหนด" onClick={() => pickCard("late")} />
+            <KpiCard label="เลยกำหนด (PO/lead)" value={stats.late} tone="warning" hint="วันส่งแนะนำเลยวันกำหนด" onClick={() => pickCard("late")} />
             <KpiCard label="เราส่งช้า" value={stats.slip} tone="danger" hint="ส่งจริงหลังวันส่งแนะนำ" onClick={() => pickCard("slip")} />
           </div>
 
@@ -277,7 +277,7 @@ export default function MaterialPage() {
               groups={[
                 { key: "fc", label: "ในแผน (FC)", options: [{ value: "in", label: "ตรง FC" }, { value: "out", label: "นอก FC" }], selected: fcSel, onChange: setFcSel },
                 { key: "stage", label: "สถานะ", options: stageOptions, selected: stageSel, onChange: setStageSel },
-                { key: "issue", label: "ปัญหา", options: [{ value: "late", label: "เกินกำหนด (PO/lead)" }, { value: "slip", label: "เราส่งช้า" }], selected: issueSel, onChange: setIssueSel },
+                { key: "issue", label: "ปัญหา", options: [{ value: "late", label: "เลยกำหนด (PO/lead)" }, { value: "slip", label: "เราส่งช้า" }], selected: issueSel, onChange: setIssueSel },
               ]}
             />
             {(filterCount > 0 || q) && <span style={{ fontSize: "var(--fs-5)", color: "var(--text-3)" }}>แสดง {filteredRows.length} จาก {rows.length} บรรทัด</span>}

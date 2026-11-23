@@ -32,7 +32,6 @@ import {
   QUEUE_COUNT_FILTER_LABELS, bouncedDaysText, groupQueueRows,
   requestDueText, requestQueueStatus, requestSettled,
 } from "@/lib/requests/queueBoard";
-import { businessDate } from "@/lib/businessDate";
 import {
   REQUEST_GROUP_OPTIONS, REQUEST_SORT_OPTIONS, groupRequestRows,
   requestFilterCount, sortRequestRows,
@@ -52,6 +51,7 @@ import StepTrack from "@/components/ui/StepTrack";
 // ⚠️ ชื่อฝ่ายอ่านจากทะเบียน ไม่ใช่พิมพ์รหัส "RD" ลงข้อความ — จอเดียวกันเคยพูด
 // ทั้ง "ฝ่ายวิจัยและพัฒนา" (หัวหน้า) และ "ฝ่าย RD" (ข้อความว่าง) ในหน้าเดียว
 import { REQUEST_DEPT_LABELS, requestKindLabelFull, requestLineNoun } from "@/lib/master/requestTypes";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 export default function RequestQueuePanel({
   scope = "mine", dept = null, rows = [],
@@ -106,7 +106,8 @@ export default function RequestQueuePanel({
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
-  const today = businessDate();
+  // ⭐ `useThaiToday` (งวด 2) — อ่านใน effect ไม่ใช่ตอนเรนเดอร์ · แท็บที่เปิดค้างข้ามคืนขยับวันเองตอนกลับมาที่แท็บ
+  const today = useThaiToday();
   const ownBoard = useQueueBoard();
   const {
     view, countFilter, setCountFilter, search, setSearch,
@@ -558,7 +559,7 @@ export default function RequestQueuePanel({
             <>
               <div className={styles.smallCell}>{fmtDate(due.date)}</div>
               {due.note && (
-                <div className={`${styles.subText} ${due.overdue ? styles.overdue : ""}`.trim()}>
+                <div className={`${styles.subText} ${due.overdue ? styles.overdue : due.soon ? styles.dueSoon : ""}`.trim()}>
                   {due.note}
                 </div>
               )}
@@ -756,7 +757,7 @@ export default function RequestQueuePanel({
                   : null;
                 const cardDue = closedText
                   ? { text: closedText, overdue: false }
-                  : due ? { text: `กำหนด ${fmtDate(due.date)}${due.note ? ` · ${due.note}` : ""}`, overdue: due.overdue }
+                  : due ? { text: `กำหนด ${fmtDate(due.date)}${due.note ? ` · ${due.note}` : ""}`, overdue: due.overdue, soon: due.soon }
                     : null;
                 // ใบตีกลับไม่มีกำหนดส่งให้นับถอยหลัง — สิ่งที่ต้องทวงคือค้างมากี่วัน
                 const bounced = bouncedDaysText(ask, { todayIso: today });
@@ -816,7 +817,7 @@ export default function RequestQueuePanel({
                         <span className={`ui-badge ${styles.overdue}`}>ตีกลับ · {bounced.note}</span>
                       )}
                       {!bounced && cardDue && (
-                        <span className={`ui-badge ${cardDue.overdue ? styles.overdue : ""}`.trim()}>
+                        <span className={`ui-badge ${cardDue.overdue ? styles.overdue : cardDue.soon ? styles.dueSoon : ""}`.trim()}>
                           {cardDue.text}
                         </span>
                       )}

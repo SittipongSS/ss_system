@@ -10,6 +10,7 @@
 import { fmtMonthShort } from '@/lib/format';
 import { businessDate } from '@/lib/businessDate';
 import { accessConflict, accessTimeText, siteAddressText } from './sites';
+import { ageText } from '@/lib/dueState';
 
 const DAY_LABELS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 
@@ -96,7 +97,7 @@ export function requestAgeText(request, todayIso) {
   const age = submittedOn ? Math.max(0, daysBetween(submittedOn, todayIso)) : null;
   return [
     submittedOn ? `ส่งเมื่อ ${dayText(submittedOn)}` : '',
-    age ? `ค้างมา ${age} วัน` : '',
+    age ? ageText(age) : '', // "ค้าง N วัน" คำชุดเดียว (เดิม "ค้างมา")
   ].filter(Boolean).join(' · ');
 }
 
