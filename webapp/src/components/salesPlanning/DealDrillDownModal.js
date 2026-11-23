@@ -19,6 +19,7 @@ import { INSTALLMENT_REMAINING_NOTE, InstRemainingAmount } from "@/components/sa
 import { currentMonth } from "@/lib/datePeriods";
 import { PENDING_APPROVAL_LABEL } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
+import ActualNoneNote from "@/components/salesPlanning/ActualNoneNote";
 import { fmtDateTime, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
 import { useRole } from "@/lib/roleContext";
@@ -398,6 +399,8 @@ const res = await apiFetch(new URL("/api/sales-planning/deals", window.location.
                         )}
                         {/* "รอนับรายงวด ฿X" (mig 0412) — งวดของใบรายงวดที่ยังไม่ยื่นในงวดนี้ · ไม่รวมกับ Actual ข้างบน */}
                         {showInstRemainingSubLine(deal) && <InstRemainingAmount amount={instRemainingOf(deal)} />}
+                        {/* ใบอนุมัติแบบ "ไม่นับ Actual" (mig 0439) — บอกว่าทำไม Actual ของแถวเป็น 0 · ไม่รวมกับยอดข้างบน */}
+                        {filter.metric === "won" && <ActualNoneNote summary={deal.actualNone} className={styles.pendingSubLine} />}
                         {/* "Won รอยื่น SO ฿มูลค่าดีล" — คำกำกับคือสัญญาณ ไม่ใช่สี · ไม่รวมกับ Actual ข้างบน */}
                         {showAwaitingSoSubLine(deal) && (
                           <span

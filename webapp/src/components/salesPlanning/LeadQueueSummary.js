@@ -185,6 +185,12 @@ export default function LeadQueueSummary({
                   ถึงกำหนดวันนี้ {summary.followUp.dueToday}
                 </button>
               )}
+              {/* ⭐ เลยวันติดตามไม่เกิน 2 วันทำการ = เหลือง ยังไม่ทวง · เกินนั้นแดงพร้อมกระดิ่ง (มติเจ้าของ 23/11/2026) */}
+              {summary.followUp.grace > 0 && (
+                <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillWarn}`} onClick={() => onPick?.({ follow: "grace" })}>
+                  เลยวันติดตาม ≤ 2 วันทำการ {summary.followUp.grace}
+                </button>
+              )}
               {!showOwners && summary.followUp.late.count > 0 && (
                 <button type="button" className={`${styles.pill} ${styles.pillAction} ${styles.pillLate}`} onClick={() => onPick?.({ follow: "late" })}>
                   เลยวันติดตาม {summary.followUp.late.count}

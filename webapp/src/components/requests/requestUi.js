@@ -3,8 +3,7 @@
 // ระบบสอบถามใน mig 0174
 import StatusBadge from "@/components/ui/StatusBadge";
 import { requestStatusView } from "@/lib/requests/statuses";
-import { liveDueDate } from "@/lib/requests/dueRound";
-import { requestClosureStarted } from "@/lib/requests/closure";
+import { requestDueOwed } from "@/lib/requests/queueBoard";
 
 /* ⚠️ **ส่ง `request` ทั้งใบ ไม่ใช่ `status` เปล่า ๆ** (มติผู้ใช้ 2026-08-19) — ป้าย
    "รอกำหนดส่ง" เป็นสถานะที่ derive จาก `status` + `committedDueDate` คู่กัน ⇒ ที่ไหน
@@ -15,24 +14,18 @@ export function RequestStatusBadge({ request = null, status = null }) {
   return <StatusBadge tone={view.tone} label={view.label} />;
 }
 
-// ป้ายกำหนดตอบ: แดง = เลยกำหนด · เหลือง = วันนี้/พรุ่งนี้ — เฉพาะเรื่องที่ยังเดินอยู่
+// ป้ายกำหนดตอบ: แดง = เลยกำหนด · เหลือง = ครบกำหนดวันนี้ — เฉพาะวันที่ฝ่ายยังติดค้างอยู่
 // วัดจากวันที่ฝ่ายผู้ตอบรับปากไว้ตอนกด "แจ้งกำหนดส่ง" (committedDueDate) ไม่ใช่วันที่
 // ผู้ขอต้องการรับงาน ซึ่งเป็นความคาดหวังฝ่ายเดียว · ยังไม่แจ้งวัน = ไม่มีกำหนด = ไม่มีป้าย
 //
-// ⚠️ คนละตัวกับ requestDueTone() ใน lib/deptRequests.js โดยตั้งใจ: ตัวนั้นทำป้าย
-// ของ "คิว" (บอกว่ายังไม่มีใครรับด้วย) ส่วนตัวนี้ทำป้ายเตือนบนการ์ดที่แสดงคู่กับ
-// วันที่อยู่แล้ว จึงเงียบเมื่อยังไม่ถึงกำหนด
+// ⭐ **ตัวตัดสินเดียวกับคิว** (`requestDueOwed` · ตรวจทั้งระบบ 23/11/2026) — ตาผู้ขอ / มีฝั่งปิด / ใบจบ = ไม่มีป้าย
+// 🐞 เดิมเหลือง "ใกล้ครบกำหนด" ครอบวันนี้ **และพรุ่งนี้** ขณะที่คิวเหลือง "ครบกำหนดวันนี้" วันเดียว ⇒ หน้าลูกค้า
+//    (ซึ่งเขียนว่าใช้ตัวตัดสินเดียวกับคิว) กับ /pm/tasks ขึ้นป้ายที่คิวไม่มี · คำ/หน้าต่างตามคิว (คำชุด "เลยกำหนด" มติ 23/11)
+// ⚠️ ส่งใบที่มี `items` (แถวทั้งใบ) — ตาใครตัดสินจากแถว
 export function requestDueTone(request, todayISO) {
-  // ⚠️ วันของรอบก่อน = ไม่มีกำหนด = ไม่มีป้าย (ตรวจย้อนหลัง 2026-08-26)
-  const due = liveDueDate(request);
-  const open = request?.status === "pending" || request?.status === "acknowledged";
-  // มีฝั่งปิดแล้ว = ไม่มีวันให้ตามอีก (ม-145 · ตัวตัดสินเดียวกับคิว) — ผู้ขอปิดแล้วแต่ฝ่าย
-  // ยังไม่กดคือของที่ต้องกดปิด ไม่ใช่งานที่ "เลยกำหนด"
-  if (!due || !open || !todayISO || requestClosureStarted(request)) return null;
+  const due = requestDueOwed(request);
+  if (!due || !todayISO) return null;
   if (due < todayISO) return { color: "var(--red)", label: "เลยกำหนด" };
-  const t = new Date(`${todayISO}T00:00:00`);
-  t.setDate(t.getDate() + 1);
-  const tomorrow = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
-  if (due <= tomorrow) return { color: "var(--amber)", label: "ใกล้ครบกำหนด" };
+  if (due === todayISO) return { color: "var(--amber)", label: "ครบกำหนดวันนี้" };
   return null;
 }

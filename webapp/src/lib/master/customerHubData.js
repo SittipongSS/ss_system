@@ -27,12 +27,13 @@ import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 
 export const HUB_DEAL_COLS = 'id, code, title, stage, dealType, categoryCode, projectValue, wonValue, ownerId, ownerName, team, line, leadId, createdAt, customerId';
 export const HUB_QUOTATION_COLS = 'id, quoteNumber, dealId, status, approvalStatus, totalAmount, quoteDate, createdAt, acceptedAt, revisedFromId, baseNumber, revisionNo, origin, sourceSalesOrderId, referenceNote, customerId';
-export const HUB_ORDER_COLS = 'id, orderNumber, dealId, quotationId, status, financeStatus, origin, totalAmount, actualAmount, actualMode, actualCountedAmount, actualSubmittedAmount, orderDate, approvedAt, referenceDoc, sourceSalesOrderId, supersededById, revisionNo, customerId, createdAt';
+// actualNoneReason = เหตุผลของใบ "ไม่นับ Actual" (mig 0439) — ป้ายบนแถวดีล/ตารางใบสั่งขาย (orderActualNoneText)
+export const HUB_ORDER_COLS = 'id, orderNumber, dealId, quotationId, status, financeStatus, origin, totalAmount, actualAmount, actualMode, actualNoneReason, actualCountedAmount, actualSubmittedAmount, orderDate, approvedAt, referenceDoc, sourceSalesOrderId, supersededById, revisionNo, customerId, createdAt';
 // actualStatus/actualAmount/actualApprovedAt = Actual รายงวด (mig 0412) — แท็บภาพรวมคิด Actual รายเดือนด้วยตัวเดียวกับรายงานยอดขาย (reportActualRows)
 /* ⚠️ `evidence` · `refundedAt` · `frozenAt` = ช่องที่ `installmentDisplayStatus` ใช้ตัดสิน "รับล่วงหน้า" / "คืนเงิน" (งวด H4 แก้)
    🐞 H1–H3 ไม่ได้ดึงมา ⇒ งวดรับล่วงหน้า (pending + paidOn + หลักฐาน · prod 13/11 มี 6 งวด) ถูกนับว่า "ค้างรับ" บนหน้าลูกค้า
    ขณะที่หน้า SO บอกว่ารับแล้ว · หลักฐานถูกย่อเหลือแค่จำนวนไฟล์ก่อนส่งให้จอ (`slimInstallment`) — หน้าลูกค้าไม่ต้องรู้ชื่อไฟล์ */
-export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, actualStatus, actualAmount, actualApprovedAt, evidence, refundedAt, frozenAt';
+export const HUB_INSTALLMENT_COLS = 'id, salesOrderId, seq, label, amount, dueDate, status, paidOn, confirmedAt, kind, taxInvoiceNo, billingDate, billingEvent, actualStatus, actualAmount, actualApprovedAt, evidence, refundedAt, frozenAt';
 export const HUB_REQUEST_COLS = 'id, docNo, dept, kind, status, title, dealId, salesOrderId, customerId, requestedById, requestedByName, team, submittedAt, createdAt, committedDueDate, dueCommittedAt, requestedDueDate, closedAt, answeredAt, urgent, pdrRefNo, acknowledgedAt';
 export const HUB_CONTRACT_COLS = 'id, contractNo, kind, status, dealId, quotationId, customerId, contractDate, signedDate, effectiveDate, expiryDate, baseNumber, revisionNo, revisedFromId, createdAt, externalRef, source, team, ownerId';
 export const HUB_LEAD_COLS = 'id, company, contactName, channel, status, assigneeName, createdAt';

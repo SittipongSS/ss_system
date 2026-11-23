@@ -9,7 +9,7 @@
 // (route เหลือหน้าที่ query + ประกอบข้อความ)
 
 import { businessDaysWaiting } from '@/lib/sales/handoffQueue';
-import { leadFollowUpKey } from '@/lib/sales/leads';
+import { leadActiveFollowUpAt, leadFollowUpKey } from '@/lib/sales/leads';
 import { AUTO_BOUNCE_STATUSES } from '@/lib/sales/leadAutoBounce';
 import { businessDayKey } from '@/lib/datePeriods';
 
@@ -26,6 +26,7 @@ const SINCE_OF = {
   screened: (lead) => lead.screenedAt || lead.createdAt,
   assigned: (lead) => lead.assignedAt || lead.createdAt,
   contacted: (lead) => lead.followUpAt || null,
+  meeting: (lead) => leadActiveFollowUpAt(lead),
 };
 
 function ageOf(lead, asOf, holidays) {
@@ -76,10 +77,13 @@ export function summarizeLeadQueue(leads = [], {
      ใบ "ติดต่อแล้ว" ทุกใบ + ใบ "นัดแล้ว" ที่บันทึกการติดตามหลังประชุม
      🐞 (19/10) เดิมเอาเฉพาะ `contacted` ⇒ ใบนัดแล้วที่เลยวันติดตามแดงในตาราง แต่การ์ดไม่นับ */
   const todayKey = businessDayKey(asOf);
-  const followKey = (lead) => leadFollowUpKey(lead, todayKey);
+  // ⭐ ส่งวันหยุดเข้าไปด้วย — เส้นเหลือง/แดงนับวันทำการ (มติเจ้าของ 23/11/2026) ต้องตรงกับกระดิ่งที่นับด้วยวันหยุดชุดเดียวกัน
+  const followKey = (lead) => leadFollowUpKey(lead, todayKey, holidays);
   const followUp = leads.filter((lead) => followKey(lead) != null);
   const dueToday = followUp.filter((l) => followKey(l) === 'today');
   const overdue = followUp.filter((l) => followKey(l) === 'late');
+  // เลยวันติดตามแต่ยังไม่เกิน 2 วันทำการ = เหลือง ยังไม่ทวง (มติเจ้าของ 23/11/2026)
+  const grace = followUp.filter((l) => followKey(l) === 'grace');
   /* 🔴 ใบที่ติดต่อแล้วแต่ **ไม่มีวันติดตามเลย** — ของก่อน mig 0289 ที่ไม่มีนาฬิกาจับ
      ตีกลับอัตโนมัติก็ไม่แตะ (planAutoBounce ข้ามใบที่ไม่มีจุดเริ่ม) ⇒ นอนเงียบตลอดกาล
      ถ้าไม่นับแยกไว้ หน้าจอจะขึ้น "เลยวันติดตาม 0" ทั้งที่มีใบรออยู่ร้อยกว่าใบ */
@@ -108,6 +112,7 @@ export function summarizeLeadQueue(leads = [], {
     followUp: {
       count: followUp.length,
       dueToday: dueToday.length,
+      grace: grace.length,
       noPlan: noPlan.length,
       late: {
         count: overdue.length,

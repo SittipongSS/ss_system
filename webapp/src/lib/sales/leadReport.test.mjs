@@ -129,16 +129,19 @@ test('วันติดตามต่อ: แถวที่ไฟล์มี
 
   // "เลย" ในไฟล์ = สตริงวันไทยน้อยกว่าวันนี้ (กรองใน Excel แบบข้อความได้ตรง ๆ)
   const lateInFile = file.filter((r) => r.followUpAt && r.followUpAt < TODAY).map((r) => r.id).sort();
-  // แถวที่ตารางทาสีแดง
-  const red = rows.filter((l) => leadActiveFollowUpAt(l) && leadFollowUpState(leadActiveFollowUpAt(l), TODAY) === 'late')
-    .map((l) => l.id).sort();
-  assert.deepEqual(lateInFile, red);
+  // แถวที่ตารางทาสี (เหลือง = เลยไม่เกิน 2 วันทำการ · แดง = เกินนั้น — มติเจ้าของ 23/11/2026) = "เลย" ทั้งหมดในไฟล์
+  const stateOf = (l) => leadFollowUpState(leadActiveFollowUpAt(l), TODAY);
+  const passed = rows.filter((l) => leadActiveFollowUpAt(l) && ['late', 'grace'].includes(stateOf(l))).map((l) => l.id).sort();
+  assert.deepEqual(lateInFile, passed);
   assert.deepEqual(lateInFile, ['met-late', 'open-late']);
-  // ตัวกรอง "เลยวันติดตาม" ของตาราง · ตัวเลขท้ายตัวเลือกในแผงกรอง · การ์ดค้างคิว
-  assert.deepEqual(filterLeadRows(rows, leadQueuePick({ follow: 'late' }), TODAY).map((l) => l.id).sort(), lateInFile);
-  assert.equal(leadFacetCounts(rows, EMPTY_LEAD_FILTERS, TODAY).follow.late, lateInFile.length);
+  // แดง = เกิน 2 วันทำการ (01/08 → 19/10) · 18/10 (อาทิตย์) → 19/10 (จันทร์) = 1 วันทำการ = เหลือง
+  assert.deepEqual(rows.filter((l) => leadActiveFollowUpAt(l) && stateOf(l) === 'late').map((l) => l.id), ['open-late']);
+  // ตัวกรอง "เลยวันติดตาม" สองช่อง ของตาราง · ตัวเลขท้ายตัวเลือกในแผงกรอง · การ์ดค้างคิว
+  assert.deepEqual(filterLeadRows(rows, leadQueuePick({ follow: ['late', 'grace'] }), TODAY).map((l) => l.id).sort(), lateInFile);
+  const facet = leadFacetCounts(rows, EMPTY_LEAD_FILTERS, TODAY).follow;
+  assert.equal(facet.late + facet.grace, lateInFile.length);
   const s = summarizeLeadQueue(rows, { asOf: `${TODAY}T05:00:00Z`, holidays: new Set() });
-  assert.equal(s.followUp.late.count, lateInFile.length);
+  assert.equal(s.followUp.late.count + s.followUp.grace, lateInFile.length);
   // ครบวันนี้ก็ตรงกัน
   const todayInFile = file.filter((r) => r.followUpAt === TODAY).length;
   assert.equal(todayInFile, s.followUp.dueToday);

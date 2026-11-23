@@ -1,5 +1,6 @@
 import { withUser, ok, fail, unauthorized } from '@/lib/http';
-import { monthKey } from '@/lib/salesPlanning';
+import { leadActiveFollowUpAt } from '@/lib/sales/leads';
+import { isClosedStage, monthKey } from '@/lib/salesPlanning';
 import { summarizeOpenTasks } from '@/lib/pm/taskSummary';
 import { taskCreditId } from '@/lib/permissions';
 import { loadHandoffQueue, loadMyExciseRegistrations } from '@/lib/sales/handoffQueueData';
@@ -99,9 +100,13 @@ export const GET = withUser(async ({ user, supabase, req }) => {
   const todayStr = businessDate(now);
   /* ⚠️ `meetingAt` เป็น timestamptz — วันของนัดต้องเป็นวันไทย (`businessDayKey`) เดิมตัด
      `.slice(0, 10)` จากสตริง ISO = วันตาม UTC ⇒ นัดก่อน 7 โมงเช้าหลุดจากรายการในวันนัดเอง */
+  /* 🐞 **ลีดที่นัดติดตามไว้ไม่เคยเข้าคิวของฉัน** (ตรวจทั้งระบบ 23/11/2026) — ฟอร์มบอกว่า "วันนี้จะไปโผล่ในคิวของฉัน"
+     แต่ตัวกรองนี้รับแค่ assigned/screened + นัดที่ยังไม่ถึง ⇒ ใบติดต่อแล้ว/นัดแล้วที่มีวันติดตามหายจากคิวทั้งที่ /sa/leads แดง
+     ⇒ รับใบที่มีวันติดตามที่ยังมีผล (`leadActiveFollowUpAt` · ตัวเดียวกับตาราง/ตัวกรอง/การ์ดค้างคิว) */
   const actionLeads = activeLeads.filter(l =>
     ['assigned', 'screened'].includes(l.status) ||
-    (l.status === 'meeting' && l.meetingAt && (businessDayKey(l.meetingAt) || '') >= todayStr)
+    (l.status === 'meeting' && l.meetingAt && (businessDayKey(l.meetingAt) || '') >= todayStr) ||
+    !!leadActiveFollowUpAt(l)
   );
 
   // Feed ส่วนตัว: รวมความเคลื่อนไหวของดีลที่ผู้ใช้ดูแลกับงานที่ผู้ใช้รับผิดชอบ
@@ -136,7 +141,8 @@ export const GET = withUser(async ({ user, supabase, req }) => {
         createdByName: activity.authorName || user.name || 'ฝ่ายขาย',
         createdAt: activity.createdAt,
         updatedAt: activity.editedAt || null,
-        urgent: !!(dueDate && dueDate <= todayBangkok),
+        // 🐞 ดีลที่ปิดแล้ว (Won/Lost) ไม่ใช่ "ต้องติดตาม" — เดิมค้างแดงตลอดและบวกเข้าชิป "ด่วน" (23/11/2026)
+        urgent: !!(dueDate && dueDate <= todayBangkok) && !isClosedStage(deal?.stage),
       };
     });
   }
