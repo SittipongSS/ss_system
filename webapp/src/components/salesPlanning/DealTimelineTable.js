@@ -150,6 +150,9 @@ export default function TimelineWorkspace({
   onStepFilterChange,
   // โครงการที่ปิด/พักอยู่ — จางเฉพาะเนื้อแผง หัวแผงยังกดพิมพ์/ดูประวัติเวอร์ชันได้
   locked = false,
+  /* ดีลที่ไม่นับ "เลยกำหนด" แล้ว (ดีล Lost · `timelineOverdueSilenced` · มติ 24/11/2026) — ป้าย/ตัวกรองเลยกำหนดเงียบ
+     ส่วนสถานะของขั้นยังโชว์ตามจริง */
+  overdueSilenced = false,
   onChanged,
   onError,
   /* จำนวนขั้นตอนที่แก้ค้างยังไม่บันทึก — หน้าแม่ต้องรู้เพื่อกัน "ออก Rev ทับงานที่ยังไม่บันทึก"
@@ -191,7 +194,7 @@ export default function TimelineWorkspace({
   const setStatusFilter = (statuses) => setStepFilter({ ...stepFilter, statuses });
   const setDeptFilter = (depts) => setStepFilter({ ...stepFilter, depts });
   const setOverdueFilter = (overdue) => setStepFilter({ ...stepFilter, overdue });
-  const stepMatches = (task) => timelineStepMatches(task, stepFilter);
+  const stepMatches = (task) => timelineStepMatches(task, stepFilter, undefined, { silenced: overdueSilenced });
   const [collapsedPhases, setCollapsedPhases] = useState(new Set());
   const [drafts, setDrafts] = useState({});
   // ปฏิทินวันหยุดจริงจาก DB ต้องเข้า module-global ของ dateHelpers ก่อนพรีวิว recalc —
@@ -367,7 +370,7 @@ export default function TimelineWorkspace({
      กด = ตัวกรองขั้นชุดใหม่ทั้งชุด (`timelineSummaryPick` · ล้างฝ่ายที่ค้าง เพราะป้ายนับทุกฝ่าย) ⇒ เลขบนป้าย = ขั้นที่เหลือหลังกด
      · กดป้ายที่ใช้อยู่ซ้ำ = ล้างตัวกรอง · "วันนี้" ของเลยกำหนดมาจากนาฬิกาไทย (`businessDate`) */
   const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
-  const summaryCounts = timelineSummaryCounts(tasks, today);
+  const summaryCounts = timelineSummaryCounts(tasks, today, { silenced: overdueSilenced });
   const done = summaryCounts.completed;
   /* ⚠️ **เก็บค่าดิบไม่ปัด** — ตัวเดียวกันนี้ถูกใช้สองงาน: เลขใหญ่ที่คนอ่าน (จัดรูปเป็น
      2 ตำแหน่งตอนพิมพ์) กับ `width` ของแถบความคืบหน้าซึ่งเป็นหน่วย CSS ต้องเป็นตัวเลขดิบ
@@ -434,13 +437,14 @@ export default function TimelineWorkspace({
           selected: deptFilter,
           onChange: setDeptFilter,
         }] : []),
-        /* มิติเลยกำหนด (ตรวจตัวเลข L1) — ป้าย "เลยกำหนด n" ตั้งตัวนี้ ⇒ ต้องเห็นและถอดได้จากแผงกรองด้วย */
-        {
+        /* มิติเลยกำหนด (ตรวจตัวเลข L1) — ป้าย "เลยกำหนด n" ตั้งตัวนี้ ⇒ ต้องเห็นและถอดได้จากแผงกรองด้วย
+           · ดีล Lost (`overdueSilenced`) ไม่มีมิตินี้ — เว้นแต่ตัวกรองค้างอยู่ (ต้องถอดได้) */
+        ...(!overdueSilenced || stepFilter.overdue ? [{
           key: "due", label: "กำหนด",
           options: [{ value: "overdue", label: "เลยกำหนด" }],
           selected: stepFilter.overdue ? ["overdue"] : [],
           onChange: (values) => setOverdueFilter(values.includes("overdue")),
-        },
+        }] : []),
       ]}
     />
   );

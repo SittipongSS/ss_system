@@ -41,26 +41,36 @@ export function timelineStepStatusKey(task) {
   return 'pending';
 }
 
-/** ขั้นนี้เลยกำหนดไหม — ยังไม่เสร็จ และวันเสร็จตามแผนอยู่ก่อนวันนี้ (วันไทย) · ตัวเดียวของป้ายและตัวกรอง */
-export function timelineStepOverdue(task, today = businessDate()) {
+/* ── ดีลที่ปิดแล้วกับ "เลยกำหนด" — มติเจ้าของ 24/11/2026 (ถามทีละข้อ · docs/due-overdue-system.md §8 ข้อ 8) ──
+   · ดีล **Lost** = เงียบทั้งดีล — ขั้นที่ค้างไม่แดง ไม่นับในป้าย "เลยกำหนด n" (ขั้นยังโชว์สถานะเดิม)
+     🐞 เดิมขั้นที่ค้างของดีลที่แพ้ไปแล้วแดงตลอดไป ไม่มีทางหาย (ไม่มีใครต้องตามแล้ว)
+   · ดีล **Won** = แดงต่อทุกขั้น — ยังมีขั้นหลังขายจริง (เตรียมผลิต · ผลิต · QC · ส่งมอบ) · ขั้นช่วงขายที่ค้างหายเมื่อกด "เสร็จ" */
+export function timelineOverdueSilenced(dealStage) {
+  return dealStage === 'lost';
+}
+
+/** ขั้นนี้เลยกำหนดไหม — ยังไม่เสร็จ และวันเสร็จตามแผนอยู่ก่อนวันนี้ (วันไทย) · ตัวเดียวของป้ายและตัวกรอง
+ *  @param opts.silenced ดีลที่ไม่นับเลยกำหนดแล้ว (`timelineOverdueSilenced` · ดีล Lost) ⇒ ไม่เลยเสมอ */
+export function timelineStepOverdue(task, today = businessDate(), { silenced = false } = {}) {
+  if (silenced) return false;
   return task?.status !== 'Completed' && !!task?.finishDate && task.finishDate < today;
 }
 
 /** ขั้นนี้ผ่านตัวกรองสถานะ/ฝ่าย/เลยกำหนดของแผงไทม์ไลน์ไหม — ว่าง = ทั้งหมด
  *  @param today วันไทย 'YYYY-MM-DD' ของมิติเลยกำหนด (ค่าตั้งต้น = นาฬิกาไทยตอนนี้ · เทสต์ส่งเอง) */
-export function timelineStepMatches(task, stepFilter = EMPTY_STEP_FILTER, today = undefined) {
+export function timelineStepMatches(task, stepFilter = EMPTY_STEP_FILTER, today = undefined, { silenced = false } = {}) {
   const statuses = stepFilter?.statuses || [];
   const depts = stepFilter?.depts || [];
   if (statuses.length && !statuses.includes(timelineStepStatusKey(task))) return false;
   if (depts.length && task?.role && task.role !== 'ALL' && !depts.includes(task.role)) return false;
-  if (stepFilter?.overdue && !timelineStepOverdue(task, today ?? businessDate())) return false;
+  if (stepFilter?.overdue && !timelineStepOverdue(task, today ?? businessDate(), { silenced })) return false;
   return true;
 }
 
 /** จำนวนขั้นที่แผงไทม์ไลน์จะโชว์ — ดีลที่เลือก (`filterTimelineTasks`) × ตัวกรองขั้น (ข้ามเมื่อเป็นมุมมองเอกสาร) */
-export function countTimelineSteps(tasks, { deals = [], stepFilter = EMPTY_STEP_FILTER, documentView = false, today = undefined } = {}) {
+export function countTimelineSteps(tasks, { deals = [], stepFilter = EMPTY_STEP_FILTER, documentView = false, today = undefined, silenced = false } = {}) {
   const scoped = filterTimelineTasks(tasks, deals);
-  return documentView ? scoped.length : scoped.filter((task) => timelineStepMatches(task, stepFilter, today)).length;
+  return documentView ? scoped.length : scoped.filter((task) => timelineStepMatches(task, stepFilter, today, { silenced })).length;
 }
 
 /* ── ป้ายสรุปบนแผง (รอดำเนินการ · กำลังทำ · เสร็จแล้ว · เลยกำหนด) — ตรวจตัวเลข L1 (26/10) ──────────────
@@ -71,11 +81,11 @@ export function countTimelineSteps(tasks, { deals = [], stepFilter = EMPTY_STEP_
 export const TIMELINE_SUMMARY_KINDS = Object.freeze(['pending', 'progress', 'completed', 'overdue']);
 
 /** เลขบนป้ายสรุปทั้งสี่ — นับด้วยตัวตัดสินเดียวกับตัวกรอง (`timelineStepStatusKey` · `timelineStepOverdue`) */
-export function timelineSummaryCounts(tasks, today = businessDate()) {
+export function timelineSummaryCounts(tasks, today = businessDate(), { silenced = false } = {}) {
   const counts = { pending: 0, progress: 0, completed: 0, overdue: 0 };
   for (const task of tasks || []) {
     counts[timelineStepStatusKey(task)] += 1;
-    if (timelineStepOverdue(task, today)) counts.overdue += 1;
+    if (timelineStepOverdue(task, today, { silenced })) counts.overdue += 1;
   }
   return counts;
 }

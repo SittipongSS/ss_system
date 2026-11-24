@@ -43,6 +43,7 @@ import ViewSwitcher from "@/components/pm/ViewSwitcher";
 import { openGanttPrintWindow } from "@/lib/pm/ganttPrint";
 import { tasksQueueHref } from "@/lib/pm/dealTaskLink";
 import { exciseBillingStepBadge } from "@/lib/pm/exciseBillingTask";
+import { timelineOverdueSilenced } from "@/lib/pm/timelineFilter";
 import SalesDetailTabs from "@/components/salesPlanning/SalesDetailTabs";
 import DealContractsCard from "@/components/salesPlanning/DealContractsCard";
 import EntityDocumentsPanel from "@/components/salesPlanning/EntityDocumentsPanel";
@@ -1298,6 +1299,7 @@ export default function DealOverviewPage() {
                       status: deal.stage,
                       statusLabel: STAGE_LABELS[deal.stage] || deal.stage,
                     }}
+                    overdueSilenced={timelineOverdueSilenced(deal.stage)}
                     onChanged={load}
                     onError={setError}
                     onDirtyChange={setTimelineDirty}
