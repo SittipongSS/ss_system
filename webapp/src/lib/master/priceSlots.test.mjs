@@ -6,7 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   NO_PRICE_SLOTS_REASON, PRICE_SLOTS, currentPriceToUse, formulaPriceSlots, isFragranceOilFormula, mainPriceEntry,
-  normalizeSlotPrices, primaryPriceSlot, priceSlotsBlocker, priceSlotsFor,
+  normalizeSlotPrices, primaryPriceSlot, priceSlotsBlocker, priceSlotsFor, slotSourceLabel,
 } from './priceSlots.js';
 
 const formulaSlots = priceSlotsFor({ scentId: 'SCT-1', formulaId: 'FML-1' });
@@ -108,9 +108,10 @@ test('formulaPriceSlots: ประกอบอาร์กิวเมนต์�
   const ok = formulaPriceSlots(formula, { status: 'developing', code: 'PF1' });
   assert.deepEqual(ok.slots.map((s) => `${s.key}:${s.id}`), ['F:S1']);
   assert.equal(ok.blocker, '');
-  const archived = formulaPriceSlots(formula, { status: 'archived', code: 'PF1', name: 'Rose' });
+  const archived = formulaPriceSlots(formula, { status: 'archived', code: 'PF1', name: 'Rose', producedAt: '2026-09-10' });
   assert.deepEqual(archived.slots, []);
-  assert.match(archived.blocker, /กลิ่น PF1 สถานะ "เลิกใช้"/);
+  // ม-162 — ป้ายกลิ่นในเหตุครบ "PF · ชื่อ · วันผลิต" (เจ้าของย้ำ 24/11)
+  assert.match(archived.blocker, /กลิ่น PF1 · Rose · 10\/09\/2026 สถานะ "เลิกใช้"/);
   // ไม่รู้สถานะกลิ่น (จอยังโหลดไม่เสร็จ) = ถือว่าใช้ได้ — ด่านจริงอยู่ที่ server
   assert.deepEqual(formulaPriceSlots(formula, null).slots.map((s) => s.key), ['F']);
   assert.deepEqual(formulaPriceSlots({ ...formula, categoryCode: '01-002' }, { status: 'draft' }).slots.map((s) => s.key), ['B', 'FB']);
@@ -174,4 +175,14 @@ test('🔴 ม-153 ช่องหลักหมดอายุ = บอกเ�
     assert.doesNotMatch(blocker, /กด "ใส่ราคา"/);
   }
   assert.equal(currentPriceToUse([priced('FB')]).blocker, '');
+});
+
+test('slotSourceLabel: ช่อง F = ป้ายกลิ่น (วันผลิต) · B/FB = ป้ายสูตร (วันที่สูตร) — ม-162', () => {
+  const source = { code: 'PF1', name: 'Rose', producedAt: '2026-09-10', formulaDate: '2026-10-01' };
+  assert.equal(slotSourceLabel(PRICE_SLOTS.F, source), 'PF1 · Rose · 10/09/2026');
+  assert.equal(slotSourceLabel(PRICE_SLOTS.FB, source), 'PF1 · Rose · 01/10/2026');
+  // รายการ `current` ของ rowsSlotPricesLive มี `kind` ไม่มี `stampColumn` · ของเก่ามีแต่ `key`
+  assert.equal(slotSourceLabel({ kind: 'RM_F' }, source), 'PF1 · Rose · 10/09/2026');
+  assert.equal(slotSourceLabel({ key: 'F' }, source), 'PF1 · Rose · 10/09/2026');
+  assert.equal(slotSourceLabel({ kind: 'RM_B' }, null, 'ทะเบียน'), 'ทะเบียน');
 });

@@ -123,6 +123,7 @@ import { releaseScentOrderLinks } from '@/lib/requests/scentOrderAttachAdmin';
 import { briefSourceScentError, checkContinueTarget, loadContinueRefs } from '@/lib/requests/scentContinueAdmin';
 import { briefSourceMissingError } from '@/lib/requests/scentContinue';
 import { cancelCleanupSummary, cleanupCancelledSurveyZones } from '@/lib/service/surveyCancelCleanup';
+import { scentRef } from '@/lib/master/registryLabel';
 
 export const dynamic = 'force-dynamic';
 
@@ -620,7 +621,7 @@ export async function PATCH(request, { params }) {
         const ids = [...new Set(npdRowsPlan.insert.map((p) => p.scentId))];
         if (ids.length) {
           const { data: scentRows, error: scentError } = await supabase
-            .from('scents').select('id, code, name, "customerId"').in('id', ids);
+            .from('scents').select('id, code, name, "producedAt", "customerId"').in('id', ids);
           if (scentError) throw scentError;
           // ลูกค้าที่ได้รับแชร์ (ม-150) — ด่านเจ้าของถาม `scentUsableByCustomer`
           const sharedRows = await attachShares(supabase, scentRows || [], 'scent');
@@ -1276,10 +1277,11 @@ export async function PATCH(request, { params }) {
       /* ⭐ แถวสินค้าด้วย (mig 0352) — สเปก 2.4–2.7 ย้ายลงแถวแล้ว ไม่ตามมาดูแถว = RD แก้
          ขนาด/กลิ่นของสินค้าแล้ว SA ไม่มีทางรู้ · ป้ายกลิ่นจากทะเบียน (ของเดิมติดมากับ
          `findRequest` · ของใหม่มาจากด่านกลิ่นข้างบน) ไม่ใช่ id ที่ไม่มีใครอ่านออก */
+      // ม-162 — ป้ายครบ "PF · ชื่อ · วันผลิต" (`findRequest` แนบ `scentProducedAt` · ด่านกลิ่นโหลด `producedAt`)
       const scentText = new Map([
         ...(before.targets || []).filter((t) => t.scentId)
-          .map((t) => [t.scentId, [t.scentCode, t.scentName].filter(Boolean).join(' ')]),
-        ...nextTargetScents.map((x) => [x.id, [x.code, x.name].filter(Boolean).join(' ')]),
+          .map((t) => [t.scentId, scentRef({ code: t.scentCode, name: t.scentName, producedAt: t.scentProducedAt })]),
+        ...nextTargetScents.map((x) => [x.id, scentRef(x)]),
       ]);
       // หมวดเป็นชื่อจากทะเบียน (ชุดเดียวกับจอ/กระดาษ · `findRequest` แนบมาใน pdrContext) ไม่ใช่รหัสดิบ
       const categories = before.pdrContext?.categories || [];

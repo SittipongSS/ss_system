@@ -407,23 +407,23 @@ export default function ScentsPage() {
       return {
         title: draft ? "ลบร่างกลิ่น" : "ลบกลิ่นออกจากทะเบียน",
         message: draft
-          ? `ลบร่าง "${confirm.scent.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`
+          ? `ลบร่าง "${scentLabel(confirm.scent)}" ทิ้ง? ทำแล้วย้อนไม่ได้`
           : isAdmin
-            ? `ลบ "${confirm.scent.name}" ออกจากทะเบียน? ถ้ามีของอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`
-            : `ลบ "${confirm.scent.name}" ออกจากทะเบียน? ทำแล้วย้อนไม่ได้ · ถ้ามีคำร้อง ราคา สูตร หรือสินค้าอ้างอยู่ ระบบจะไม่ให้ลบและบอกว่าติดที่ไหน`,
+            ? `ลบ "${scentLabel(confirm.scent)}" ออกจากทะเบียน? ถ้ามีของอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`
+            : `ลบ "${scentLabel(confirm.scent)}" ออกจากทะเบียน? ทำแล้วย้อนไม่ได้ · ถ้ามีคำร้อง ราคา สูตร หรือสินค้าอ้างอยู่ ระบบจะไม่ให้ลบและบอกว่าติดที่ไหน`,
         confirmLabel: draft ? "ลบร่าง" : "ลบกลิ่น",
       };
     }
     if (confirm.kind === "archive") {
       return {
         title: "เก็บกลิ่นเข้ากรุ",
-        message: `"${confirm.scent.name}" จะไม่ถูกเลือกในคำร้องขอราคาอีก แต่ประวัติยังอยู่ครบ`,
+        message: `"${scentLabel(confirm.scent)}" จะไม่ถูกเลือกในคำร้องขอราคาอีก แต่ประวัติยังอยู่ครบ`,
         confirmLabel: "เก็บเข้ากรุ",
       };
     }
     return {
       title: "เปิดใช้กลิ่นอีกครั้ง",
-      message: `นำ "${confirm.scent.name}" กลับมาใช้งาน`,
+      message: `นำ "${scentLabel(confirm.scent)}" กลับมาใช้งาน`,
       confirmLabel: "เปิดใช้",
     };
   };
@@ -786,7 +786,7 @@ export default function ScentsPage() {
           ขั้นนี้มีไว้ยืนยันความถูกต้อง ถ้าไม่เห็นข้อมูลก็ยืนยันอะไรไม่ได้ */}
       <Modal
         open={!!accept} onClose={() => setAccept(null)} size="md" dismissible={!saving}
-        title={accept ? `ยืนยันข้อมูลกลิ่น — ${accept.scent.name}` : ""}
+        title={accept ? `ยืนยันข้อมูลกลิ่น — ${scentLabel(accept.scent)}` : ""}
         footer={accept && (
           <>
             <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
@@ -867,7 +867,7 @@ export default function ScentsPage() {
           ไม่ใช่ช่องข้อความค้างในโมดัล */}
       <Modal
         open={!!sending} onClose={() => setSending(null)} size="sm" dismissible={!saving}
-        title={sending ? `วันที่ส่งกลิ่น — ${sending.scent.name}` : ""}
+        title={sending ? `วันที่ส่งกลิ่น — ${scentLabel(sending.scent)}` : ""}
         footer={sending && (
           <>
             <Button variant="quiet" onClick={() => setSending(null)} disabled={saving}>ยกเลิก</Button>
@@ -896,7 +896,7 @@ export default function ScentsPage() {
       <RegistryPriceModal
         open={!!pricing}
         onClose={() => setPricing(null)}
-        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${pricing.name}` : ""}
+        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${scentLabel(pricing)}` : ""}
         endpoint={pricing ? `/api/master/scents/${pricing.id}/price` : ""}
         notice={pricing && pricingNotice?.id === pricing.id ? pricingNotice.text : null}
         onSaved={(msg) => {

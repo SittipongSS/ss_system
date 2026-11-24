@@ -71,3 +71,11 @@ export const scentSearchText = (s, ...extra) =>
   registrySearchText({ code: s?.code, name: s?.name, date: scentLabelDate(s) }, ...extra);
 export const formulaSearchText = (f, ...extra) =>
   registrySearchText({ code: f?.code, name: f?.name, date: formulaLabelDate(f) }, ...extra);
+
+/* ป้ายในประโยค — ข้อความแจ้ง · เธรดคำร้อง · กระดิ่ง · error (มติเจ้าของ 24/11/2026 ย้ำ ม-162:
+   "กลิ่น หรือ สูตร ต้องแสดง รหัส+ชื่อ+วันที่ผลิต เสมอ") — เดิมประโยคพวกนี้ใช้ "รหัส หรือ ชื่อ" ตัวเดียว
+   · มีตัว (มีรหัสหรือชื่อ) = ป้ายเต็มสามท่อน · ไม่มีตัวเลย = คำแทนที่ผู้เรียกส่งมา
+   ⚠️ แถวที่ส่งเข้ามาต้อง select วันที่มาด้วย (`producedAt` / `formulaDate`) ไม่งั้นท่อนวันที่ขึ้นขีดเงียบ ๆ */
+const hasIdentity = (row) => Boolean(row && (text(row.code) || text(row.name)));
+export const scentRef = (s, fallback = '') => (hasIdentity(s) ? scentLabel(s) : fallback);
+export const formulaRef = (f, fallback = '') => (hasIdentity(f) ? formulaLabel(f) : fallback);

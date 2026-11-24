@@ -11,6 +11,7 @@
 //
 // ⚠️ ไฟล์นี้ **ล้วน ไม่แตะ DB** — server (route ของแถว) กับจอ (โมดัลส่งงาน) ถามตัวเดียวกัน ⇒ ประโยคก่อนกดตรงกับที่เกิดจริง
 import { findFormulaByIdentity } from '@/lib/master/formulas';
+import { formulaRef } from '@/lib/master/registryLabel';
 
 /** สูตรที่แถวต้นทางของรอบแก้นี้ส่งไว้ — null = ไม่ใช่รอบแก้ หรือแถวต้นทางไม่มีสูตร (ข้อมูลเก่า) */
 export function reworkParentFormulaId(row, items = []) {
@@ -19,7 +20,8 @@ export function reworkParentFormulaId(row, items = []) {
   return source?.producedFormulaId || null;
 }
 
-export const formulaName = (f, fallback = 'สูตรเดิม') => f?.code || f?.name || fallback;
+/** สูตรในประโยค — "PF · ชื่อ · วันที่" (ม-162) · ไม่มีสูตร = คำแทน ⚠️ แถวต้องมี `formulaDate` */
+export const formulaName = (f, fallback = 'สูตรเดิม') => formulaRef(f, fallback);
 
 const foreignTo = (formula, customerId) => !!(customerId && formula?.customerId && formula.customerId !== customerId);
 

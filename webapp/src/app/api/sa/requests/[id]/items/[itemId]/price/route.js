@@ -27,7 +27,7 @@ import { canViewRequests } from '@/lib/permissions';
 import { REQUEST_OPEN_STATUSES, REQUEST_STATUS_LABELS } from '@/lib/requests/statuses';
 import { canAnswerRequest, canReadRequestRow } from '@/lib/deptRequests';
 import { canPriceRow } from '@/lib/requests/rowStage';
-import { currentPriceToUse, mainPriceEntry, normalizeSlotPrices } from '@/lib/master/priceSlots';
+import { currentPriceToUse, mainPriceEntry, normalizeSlotPrices, slotSourceLabel } from '@/lib/master/priceSlots';
 import { findRequest, priceRegistrySlots } from '@/lib/materialPricesAdmin';
 import { loadPriceSlotSource, rowPricePlanLive, rowsSlotPricesLive } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
@@ -148,8 +148,8 @@ export async function POST(request, { params }) {
 
     // หนึ่งเหตุการณ์ต่อการใส่ราคาหนึ่งครั้ง — ทุกช่องในบรรทัดเดียว (ช่องไหนลงทะเบียนตัวไหนบอกด้วยรหัส)
     const lines = written.map((w) => `${w.slot.short} ${fmtNumber(w.price)}`
-      + (w.slot.stampColumn === main.slot.stampColumn ? '' : ` (${w.source.code || w.source.name})`));
-    const target = main.source.code || main.source.name;
+      + (w.slot.stampColumn === main.slot.stampColumn ? '' : ` (${slotSourceLabel(w.slot, w.source)})`));
+    const target = slotSourceLabel(main.slot, main.source);
     await appendUpdate(supabase, {
       entityType: 'dept_request',
       entityId: id,
@@ -204,7 +204,7 @@ async function linkCurrentPrice({ supabase, request, user, id, itemId, before, r
     if (waitIngredients) await recordRowPrice(supabase, { itemId, revisionId: entry.price.revisionId, nowIso });
     else await settleRow(supabase, { id, itemId, revisionId: entry.price.revisionId, user, nowIso });
 
-    const target = entry.source?.code || entry.source?.name || 'ทะเบียน';
+    const target = slotSourceLabel(entry, entry.source, 'ทะเบียน');
     const rev = entry.price.revisionNo != null ? ` (rev ${entry.price.revisionNo})` : '';
     await appendUpdate(supabase, {
       entityType: 'dept_request',

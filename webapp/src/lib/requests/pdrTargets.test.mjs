@@ -192,15 +192,15 @@ test('⭐ ด่านกดส่งของ NPD: ต้องมีสิน�
 test('⭐ กลิ่นที่อ้างต้องมีจริง · ของลูกค้าเจ้าของใบ · ใช้ทำสูตรได้', () => {
   const scents = [
     { id: 'SC-1', code: 'S001', name: 'มะลิ', customerId: 'C-1', status: 'active' },
-    { id: 'SC-2', code: 'S002', name: 'กุหลาบ', customerId: 'C-2', status: 'active' },
+    { id: 'SC-2', code: 'S002', name: 'กุหลาบ', producedAt: '2026-09-10', customerId: 'C-2', status: 'active' },
     { id: 'SC-3', code: 'S003', name: 'ร่าง', customerId: 'C-1', status: 'draft' },
   ];
   const at = (scentId) => pdrTargetScentError([{ scentId }], scents, { customerId: 'C-1' });
   assert.equal(at('SC-1'), null);
   assert.match(at('SC-9'), /ไม่พบกลิ่นนี้ในทะเบียน/);
   // มติ 9: กลิ่นข้ามลูกค้าไม่ได้ — ตัวกรองบนจอไม่กันคนยิง API ตรง
-  assert.match(at('SC-2'), /S002 เป็นของลูกค้ารายอื่น/);
-  assert.match(at('SC-3'), /S003 ยังใช้ทำสูตรไม่ได้/);
+  assert.match(at('SC-2'), /กลิ่น S002 · กุหลาบ · 10\/09\/2026 เป็นของลูกค้ารายอื่น/);
+  assert.match(at('SC-3'), /S003 · ร่าง · — ยังใช้ทำสูตรไม่ได้/);
   assert.equal(pdrTargetScentError([{ scentId: null }], scents, { customerId: 'C-1' }), null);
 });
 

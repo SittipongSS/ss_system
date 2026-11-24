@@ -285,7 +285,7 @@ test('🔴 สูตรหัวน้ำหอม 02-020 ที่กลิ่�
     audit,
     kind: 'RM_FB',
     stampColumn: 'formulaId',
-    slotsOf: (f) => formulaPriceSlots(f, { status: 'archived', code: 'PF859010103' }),
+    slotsOf: (f) => formulaPriceSlots(f, { status: 'archived', code: 'PF859010103', name: 'Rose', producedAt: '2026-09-10' }),
     findOther: async () => ({ source: SCENT }),
     entityType: 'formula',
     entityLabel: 'สูตร',
@@ -295,7 +295,7 @@ test('🔴 สูตรหัวน้ำหอม 02-020 ที่กลิ่�
   for (const body of [{ prices: { B: 300, FB: 950 } }, { prices: { F: 2800 } }, { price: 950 }]) {
     const { res, data, supabase } = await callFormula(h, body);
     assert.equal(res.status, 400);
-    assert.match(data.error, /สูตรหัวน้ำหอม \(02-020\) ใส่ได้แค่ราคา F .*กลิ่น PF859010103 สถานะ "เลิกใช้"/);
+    assert.match(data.error, /สูตรหัวน้ำหอม \(02-020\) ใส่ได้แค่ราคา F .*กลิ่น PF859010103 · Rose · 10\/09\/2026 สถานะ "เลิกใช้"/);
     assert.equal(supabase.calls.rpcs.length, 0);
     assert.equal(materialInserts(supabase).length, 0);
   }

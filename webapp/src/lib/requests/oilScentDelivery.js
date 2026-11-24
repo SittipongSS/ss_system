@@ -18,12 +18,13 @@
 // ⚠️ จอกับ server ถามตัวเดียวกันทุกข้อ (กติกาเดียวกับ `formulaRework.js`)
 import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
 import { isConfirmedOpenRow, isRowSettled } from '@/lib/requests/rowStage';
+import { scentRef } from '@/lib/master/registryLabel';
 
 const text = (v) => String(v ?? '').trim();
 const sameCode = (a, b) => !!text(a) && text(a).toLowerCase() === text(b).toLowerCase();
 
-/** ชื่อสั้นของกลิ่นในประโยค — รหัสก่อน ไม่มีรหัสใช้ชื่อ */
-export const scentName = (s, fallback = 'กลิ่นเดิม') => s?.code || s?.name || fallback;
+/** กลิ่นในประโยค — "PF · ชื่อ · วันผลิต" (ม-162) · ไม่มีกลิ่น = คำแทน ⚠️ แถวต้องมี `producedAt` */
+export const scentName = (s, fallback = 'กลิ่นเดิม') => scentRef(s, fallback);
 
 /** แถวพัฒนาสูตรที่ส่งงานเป็นกลิ่น (หมวดหัวน้ำหอม) — แถวเก่าที่ส่งเป็นสูตรไปแล้วไม่นับ (เดินทางเดิม) */
 export function isOilScentRow(row) {
@@ -76,7 +77,7 @@ export function oilScentDeliveryPreview({ row, items = [], scents = [], code = '
     note = `${lineage}หัวน้ำหอมส่งเป็นกลิ่น — บันทึกแล้วได้กลิ่นใหม่ในทะเบียนกลิ่น (กำลังพัฒนา) ที่แก้มาจาก ${scentName(parent, 'กลิ่นที่ขอ')}`
       + ' · ราคา F ลงที่กลิ่นใหม่ · ลูกค้าคอนเฟิร์มแล้วใช้งานได้'
       + (requested?.code && !row?.derivedFromItemId && !row?.directionOfItemId
-        ? ` · ส่งกลิ่น ${requested.code} เดิมไม่ปรับ = ใส่รหัส ${requested.code}`
+        ? ` · ส่งกลิ่น ${scentName(requested)} เดิมไม่ปรับ = ใส่รหัส ${requested.code}`
         : '');
   } else if (plan.kind === 'bind') {
     note = `รหัสตรงกับกลิ่นที่ขอ — ผูกรายการกับกลิ่น ${scentName(requested)} เดิม ไม่สร้างกลิ่นใหม่ (ชื่อ/วันที่ที่กรอกไม่ได้ใช้)`;

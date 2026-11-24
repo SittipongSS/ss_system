@@ -16,6 +16,7 @@
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
 import { productCategoryCode } from '@/lib/master/productCategory';
 import { categoryLabel } from '@/lib/master/categoryOf';
+import { formulaRef } from '@/lib/master/registryLabel';
 
 /** หมวดที่แปลว่า "ส่งเป็นหัวน้ำหอม" — มีตัวเดียว (มติผู้ใช้ 2026-09-22: "02-020 อย่างเดียว") */
 export const DELIVERED_FRAGRANCE_CODE = PDR_FRAGRANCE_OIL_CODE;
@@ -113,7 +114,7 @@ export function scentFPriceNotice(scent, productTypes = []) {
   // ⚠️ สูตรหัวน้ำหอม (02-020) ใส่ได้แค่ F ลงกลิ่นนี้อยู่แล้ว — ชี้ไปหน้าสูตรพวกนี้เพื่อหา B/FB คือทางตัน (รีวิว ม-148 รอบสาม)
   const formulas = (scent?.formulas || [])
     .filter((f) => f && f.status !== 'archived' && f.categoryCode !== DELIVERED_FRAGRANCE_CODE);
-  const codes = formulas.map((f) => f.code || f.name).filter(Boolean);
+  const codes = formulas.map((f) => formulaRef(f)).filter(Boolean);
   /* ⚠️ สูตรที่ยัง "กำลังพัฒนา" (เกิดจากส่งงานพัฒนากลิ่น · รอลูกค้าคอนเฟิร์ม) ใส่ราคาที่หน้าสูตรไม่ได้ (ปุ่มโผล่เฉพาะสูตร
      ใช้งาน) ⇒ ชี้ไปหน้าสูตรตอนนั้นคือทางตัน — บอกทางที่ใช้ได้จริง (รีวิว ม-148 รอบสอง) */
   const allDeveloping = formulas.length > 0 && formulas.every((f) => f.status !== 'active');

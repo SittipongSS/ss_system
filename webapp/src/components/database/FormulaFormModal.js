@@ -13,6 +13,7 @@
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import FormulaForm from "@/components/database/FormulaForm";
+import { formulaLabel } from "@/lib/master/registryLabel";
 
 export default function FormulaFormModal({
   form, onChange, onClose, onSubmit, saving = false,
@@ -21,7 +22,7 @@ export default function FormulaFormModal({
   return (
     <Modal
       open={!!form} onClose={onClose} size="md" dismissible={!saving}
-      title={form?.mode === "edit" ? `แก้ข้อมูลสูตร — ${form.formula?.name}` : "เพิ่มสูตรเข้าทะเบียน"}
+      title={form?.mode === "edit" ? `แก้ข้อมูลสูตร — ${formulaLabel(form.formula)}` : "เพิ่มสูตรเข้าทะเบียน"}
       footer={form && (
         <>
           <Button variant="quiet" onClick={onClose} disabled={saving}>ยกเลิก</Button>

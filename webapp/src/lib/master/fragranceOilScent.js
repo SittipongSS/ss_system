@@ -12,6 +12,7 @@
 //    `productScentSnapshot` (scentFormulaAdmin.js)
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
 import { SCENT_STATUS_LABELS, SCENT_USABLE_STATUSES } from '@/lib/master/scents';
+import { scentRef } from '@/lib/master/registryLabel';
 
 /** หมวดหัวน้ำหอม — ตัวเดียวกับที่สายขอ RD นับเป็น "ส่งเป็นหัวน้ำหอม" (02-020 อย่างเดียว) */
 export const FRAGRANCE_OIL_CATEGORY_CODE = PDR_FRAGRANCE_OIL_CODE;
@@ -43,5 +44,5 @@ export function fragranceOilScentError(scent, { currentScentId = null } = {}) {
   if (currentScentId && scent.id === currentScentId) return null;
   if (SCENT_USABLE_STATUSES.includes(scent.status)) return null;
   const label = SCENT_STATUS_LABELS[scent.status] || scent.status;
-  return `กลิ่น "${scent.name}" สถานะ "${label}" ผูกกับสินค้าไม่ได้ — ต้องเป็นกลิ่นที่ RD รับเข้าทะเบียนแล้ว`;
+  return `กลิ่น ${scentRef(scent)} สถานะ "${label}" ผูกกับสินค้าไม่ได้ — ต้องเป็นกลิ่นที่ RD รับเข้าทะเบียนแล้ว`;
 }

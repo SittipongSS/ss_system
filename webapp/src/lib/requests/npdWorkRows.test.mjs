@@ -154,8 +154,9 @@ test('สเปกย่อตามแบบฟอร์มถึงแถว�
 test('⭐ กลิ่นของคู่ที่จะงอกต้องมีจริงและเป็นของลูกค้าเจ้าของใบ — อ้างเลขสินค้าในแบบฟอร์ม', () => {
   const targets = [T('01-009', 'SC-1'), T('01-009', 'SC-1', { sizeValue: 50 }), T('01-006', 'SC-2')];
   const plan = planNpdWorkRows({ targets, items: [] });
-  const scents = [{ id: 'SC-1', code: 'S1', customerId: 'C-1' }, { id: 'SC-2', code: 'S2', customerId: 'C-9' }];
-  assert.match(npdWorkRowsScentError(plan, targets, scents, { customerId: 'C-1' }), /สินค้ารายการที่ 3: กลิ่น S2 เป็นของลูกค้ารายอื่นแล้ว/);
+  const scents = [{ id: 'SC-1', code: 'S1', customerId: 'C-1' }, { id: 'SC-2', code: 'S2', name: 'กุหลาบ', producedAt: '2026-09-10', customerId: 'C-9' }];
+  // ม-162 — กลิ่นในประโยคครบ "PF · ชื่อ · วันผลิต"
+  assert.match(npdWorkRowsScentError(plan, targets, scents, { customerId: 'C-1' }), /สินค้ารายการที่ 3: กลิ่น S2 · กุหลาบ · 10\/09\/2026 เป็นของลูกค้ารายอื่นแล้ว/);
   assert.match(npdWorkRowsScentError(plan, targets, scents.slice(0, 1), { customerId: 'C-1' }), /สินค้ารายการที่ 3: ไม่พบกลิ่นนี้/);
   assert.equal(npdWorkRowsScentError(plan, targets, [scents[0], { ...scents[1], customerId: 'C-1' }], { customerId: 'C-1' }), null);
 });
@@ -236,7 +237,7 @@ test('จอข้ามกลิ่นที่ไม่พบในทะเ�
   assert.match(npdWorkRowsScentError(plan, targets, scents, { customerId: 'CUS-1' }), /สินค้ารายการที่ 1: ไม่พบกลิ่น/);
   assert.match(
     npdWorkRowsScentError(plan, targets, scents, { customerId: 'CUS-1', skipMissing: true }),
-    /สินค้ารายการที่ 2: กลิ่น X เป็นของลูกค้ารายอื่นแล้ว/,
+    /สินค้ารายการที่ 2: กลิ่น X · — · — เป็นของลูกค้ารายอื่นแล้ว/,
   );
   assert.equal(npdWorkRowsScentError(plan, targets, [], { customerId: 'CUS-1', skipMissing: true }), null);
 });

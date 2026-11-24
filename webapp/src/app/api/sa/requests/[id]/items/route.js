@@ -197,7 +197,7 @@ export async function POST(request, { params }) {
          ก้อนไหน · ตอนนี้ยังไม่มีแถวคำร้องสักแถว ⇒ ล้มทั้งชุดแล้วย้อนลบกลิ่นได้สะอาด
          กดส่งใหม่ไม่เกิดของซ้ำ */
       if (stampError) {
-        throw new Error(`บันทึกวันผลิต/บรีฟลงกลิ่น ${row.code} ไม่สำเร็จ: ${stampError.message}`);
+        throw new Error(`บันทึกวันผลิต/บรีฟลงกลิ่น ${scentName(row)} ไม่สำเร็จ: ${stampError.message}`);
       }
 
       /* ⭐ **ส่งเป็นสินค้า = สูตรเกิดพร้อมกลิ่น** (ม-148) — หมวดที่ RD เลือก × กลิ่นที่เพิ่งเกิด
@@ -315,8 +315,9 @@ export async function POST(request, { params }) {
   // 3) ร่องรอย — หนึ่งเหตุการณ์ต่อการส่งหนึ่งครั้ง ไม่ใช่ต่อแถว (คนอ่านเธรดสนใจ
   // ว่า "ส่งไปกี่ตัวเมื่อไร" ไม่ใช่ไล่อ่านทีละบรรทัดที่เกิดพร้อมกัน)
   // ⭐ ม-148 — บอกว่าส่งเป็นอะไร: สินค้าต่อท้ายด้วยรหัสสูตรกับหมวด (ผู้ขอรู้ว่าราคาที่ตามมาเป็น FB)
-  const names = created.map(({ row, formula }) => `${row.code} ${row.name}`
-    + (formula ? ` (สูตร ${formula.code} · หมวด ${categoryLabel(row.categoryCode, productTypes)})` : ' (หัวน้ำหอม)')).join(' · ');
+  // ⭐ ม-162 — กลิ่น/สูตรในเธรดครบ "PF · ชื่อ · วันที่" · วันผลิตมาจากแถวที่ส่ง (ตัวกลิ่นถูกประทับวันทีหลัง `createScent`)
+  const names = created.map(({ row, scent, formula }) => scentName({ ...scent, producedAt: row.producedAt || scent?.producedAt })
+    + (formula ? ` (สูตร ${formulaName(formula)} · หมวด ${categoryLabel(row.categoryCode, productTypes)})` : ' (หัวน้ำหอม)')).join(' · ');
   await appendUpdate(supabase, {
     entityType: 'dept_request',
     entityId: id,

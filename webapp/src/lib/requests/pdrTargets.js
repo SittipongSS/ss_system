@@ -16,7 +16,7 @@ import { ALL_UNITS, VOLUME_UNITS } from '@/lib/master/units';
 import { isScentUsable } from '@/lib/master/scents';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { fmtNumber } from '@/lib/format';
-import { registryLabel } from '@/lib/master/registryLabel';
+import { registryLabel, scentRef } from '@/lib/master/registryLabel';
 
 export const MAX_PDR_TARGETS = 20;
 
@@ -339,10 +339,10 @@ export function pdrTargetScentError(rows = [], scents = [], { customerId = null 
     //    กลิ่นที่ "ไม่มีเจ้าของ" — ใบที่ยังไม่รู้ลูกค้า (ไม่มีดีล) ต่างหากที่ข้ามข้อนี้
     // ⭐ ของลูกค้ารายนี้ = เจ้าของ หรือได้รับแชร์ (ม-150) — `scents` ต้องติด `sharedCustomerIds` มา
     if (customerId && !scentUsableByCustomer(scent, customerId)) {
-      return `${at}: กลิ่น ${scent.code || scent.name} เป็นของลูกค้ารายอื่น — เลือกได้เฉพาะกลิ่นของลูกค้าเจ้าของดีล (หรือที่ RD แชร์ให้)`;
+      return `${at}: กลิ่น ${scentRef(scent)} เป็นของลูกค้ารายอื่น — เลือกได้เฉพาะกลิ่นของลูกค้าเจ้าของดีล (หรือที่ RD แชร์ให้)`;
     }
     if (!isScentUsable(scent)) {
-      return `${at}: กลิ่น ${scent.code || scent.name} ยังใช้ทำสูตรไม่ได้ (รอเข้าทะเบียน/เลิกใช้) — เลือกกลิ่นอื่น`;
+      return `${at}: กลิ่น ${scentRef(scent)} ยังใช้ทำสูตรไม่ได้ (รอเข้าทะเบียน/เลิกใช้) — เลือกกลิ่นอื่น`;
     }
   }
   return null;

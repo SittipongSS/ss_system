@@ -19,7 +19,7 @@ export async function pdrTargetScentCheck(supabase, targets = [], { customerId =
   const ids = [...new Set((targets || []).map((t) => t?.scentId).filter(Boolean))];
   if (!ids.length) return { error: null, scents: [] };
   const { data, error } = await supabase
-    .from('scents').select('id, code, name, "customerId", status').in('id', ids);
+    .from('scents').select('id, code, name, "producedAt", "customerId", status').in('id', ids);
   if (error) throw error;
   // ⭐ ลูกค้าที่ได้รับแชร์ (ม-150) — ด่านเจ้าของถาม `scentUsableByCustomer`
   const scents = await attachShares(supabase, data || [], 'scent');

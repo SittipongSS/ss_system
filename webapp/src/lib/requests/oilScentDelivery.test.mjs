@@ -10,8 +10,8 @@ const R = (id, over = {}) => ({
   id, requestId: 'REQ-1', lineKind: 'product_dev', label: 'หัวน้ำหอม · PF859010103 THE MOMENT OF TEA TIME #3',
   categoryCode: '02-020', scentId: 'SCT-3', answerStatus: 'pending', ackAt: '2026-09-10', sortOrder: 1, ...over,
 });
-const S = (id, over = {}) => ({ id, code: id, name: id, status: 'developing', customerId: 'CUS-A', ...over });
-const parent = S('SCT-3', { code: 'PF859010103', name: 'THE MOMENT OF TEA TIME #3', status: 'developing' });
+const S = (id, over = {}) => ({ id, code: id, name: id, producedAt: '2026-09-10', status: 'developing', customerId: 'CUS-A', ...over });
+const parent = S('SCT-3', { code: 'PF859010103', name: 'THE MOMENT OF TEA TIME #3', producedAt: '2026-08-01', status: 'developing' });
 
 test('แถวไหนเดินทางกลิ่น: พัฒนาสูตร 02-020 ที่ยังไม่มีสูตร · แถวที่ส่งเป็นสูตรไปแล้ว (ก่อน ม-166) เดินทางเดิม', () => {
   assert.equal(isOilScentRow(R('A')), true);
@@ -56,7 +56,8 @@ test('ประโยคก่อนกด: บอกว่าได้กลิ
   assert.match(p.note, /ใส่รหัส PF859010103/);
   const bind = oilScentDeliveryPreview({ row: R('A'), scents: [parent], code: 'PF859010103' });
   assert.equal(bind.parentId, null);
-  assert.match(bind.note, /ผูกรายการกับกลิ่น PF859010103 เดิม/);
+  // ม-162 — กลิ่นในประโยคครบ "PF · ชื่อ · วันผลิต"
+  assert.match(bind.note, /ผูกรายการกับกลิ่น PF859010103 · THE MOMENT OF TEA TIME #3 · 01\/08\/2026 เดิม/);
 });
 
 test('คอนเฟิร์ม: กลิ่นลูกตัวอื่นที่ใบนี้สร้างเลิกใช้ · แถวค้างปิด · กลิ่นแม่กับตัวที่ผูกของเดิมไม่ถูกแตะ', () => {
@@ -70,7 +71,7 @@ test('คอนเฟิร์ม: กลิ่นลูกตัวอื่น
   assert.equal(plan.registry, 'scent');
   assert.deepEqual(plan.archive.map((s) => s.id), ['SCT-B']);
   assert.deepEqual(plan.close.map((i) => i.id), ['D2', 'D3']);
-  assert.match(plan.note, /SCT-A เปลี่ยนเป็น "ใช้งานได้" · SCT-B เปลี่ยนเป็น "เลิกใช้" · ปิดรายการอื่น/);
+  assert.match(plan.note, /SCT-A · SCT-A · 10\/09\/2026 เปลี่ยนเป็น "ใช้งานได้" · SCT-B · SCT-B · 10\/09\/2026 เปลี่ยนเป็น "เลิกใช้" · ปิดรายการอื่น/);
   assert.deepEqual(oilPairScentIds(d1, items).sort(), ['SCT-3', 'SCT-A', 'SCT-B']);
 });
 

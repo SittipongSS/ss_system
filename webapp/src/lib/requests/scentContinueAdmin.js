@@ -8,6 +8,7 @@ import { attachShares } from '@/lib/master/registrySharesAdmin';
 import { scentUsableByCustomer } from '@/lib/master/registryShares';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { continueRequestError } from '@/lib/requests/scentContinue';
+import { scentRef } from '@/lib/master/registryLabel';
 
 const defaultDeps = { siblings: customerTaxSiblingIds };
 // ใบของลูกค้ารายหนึ่ง (ทั้งนิติบุคคล) — เพดานกันพัง ไม่ใช่กติกา (ลูกค้าที่มีคำร้องพัฒนากลิ่นเกินนี้ = ต้องค้นด้วยเลขที่)
@@ -69,7 +70,7 @@ export async function briefSourceScentError(supabase, briefs = [], { customerId,
   const { siblings } = { ...defaultDeps, ...deps };
   const ids = [...new Set((briefs || []).map((b) => b?.sourceScentId).filter((id) => id && !keep(id)))];
   if (!ids.length) return null;
-  const { data, error } = await supabase.from('scents').select('id, code, name, "customerId", status').in('id', ids);
+  const { data, error } = await supabase.from('scents').select('id, code, name, "producedAt", "customerId", status').in('id', ids);
   if (error) throw error;
   const scents = await attachShares(supabase, data || [], 'scent');
   const byId = new Map(scents.map((s) => [s.id, s]));
@@ -81,7 +82,7 @@ export async function briefSourceScentError(supabase, briefs = [], { customerId,
     const scent = byId.get(id);
     if (!scent) return `${at}: ไม่พบกลิ่นตั้งต้นในทะเบียน — อาจถูกลบไปแล้ว เลือกใหม่`;
     if (customerId && !siblingIds.includes(scent.customerId) && !scentUsableByCustomer(scent, customerId)) {
-      return `${at}: กลิ่น ${scent.code || scent.name} เป็นของลูกค้ารายอื่น — เลือกได้เฉพาะกลิ่นของลูกค้าเจ้าของใบ`;
+      return `${at}: กลิ่น ${scentRef(scent)} เป็นของลูกค้ารายอื่น — เลือกได้เฉพาะกลิ่นของลูกค้าเจ้าของใบ`;
     }
   }
   return null;

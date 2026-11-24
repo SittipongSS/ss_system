@@ -17,6 +17,7 @@ import {
 import { INGREDIENT_LIST_LABEL, formulaNeedsIngredientList, ingredientListInput } from '@/lib/master/ingredientList';
 import { saveFormulaIngredientList } from '@/lib/master/ingredientListAdmin';
 import { canForceDelete, formulaForcePreview, unlinkRegistryRefs, isDryRun, isForceRequest } from '@/lib/forceDelete';
+import { formulaRef } from '@/lib/master/registryLabel';
 
 export const dynamic = 'force-dynamic';
 
@@ -197,14 +198,14 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
          (ใช้งาน/ร่าง) และครอบการพลิก กำลังพัฒนา → ใช้งาน ด้วย (เดิมไม่มีทางชน เพราะคู่หนึ่งมีกำลังพัฒนาได้ตัวเดียว) */
       if (next === 'active' && ['archived', 'developing'].includes(formula.status) && formula.categoryCode && formula.scentId) {
         const { data: holder, error: holderError } = await supabase.from('formulas')
-          .select('id, code, name, status').eq('categoryCode', formula.categoryCode).eq('scentId', formula.scentId)
+          .select('id, code, name, "formulaDate", status').eq('categoryCode', formula.categoryCode).eq('scentId', formula.scentId)
           .in('status', ['draft', 'active']).neq('id', id).limit(1).maybeSingle();
         if (holderError) return fail(holderError.message, 500);
         if (holder) {
           // ร่างเลิกใช้ไม่ได้ ("ลบทิ้งแทน") — ชี้ทางที่ทำได้จริง ไม่ใช่ทางที่ด่านถัดไปจะตีกลับ
           return badRequest(holder.status === 'draft'
-            ? `หมวด × กลิ่นนี้มีร่างสูตร ${holder.code || holder.name} อยู่ — ลบร่างหรือรับเข้าทะเบียนก่อน แล้วค่อยเปิดใช้สูตรนี้`
-            : `หมวด × กลิ่นนี้มีสูตร ${holder.code || holder.name} ใช้งานอยู่ — เลิกใช้สูตรนั้นก่อน แล้วค่อยเปิดใช้สูตรนี้`);
+            ? `หมวด × กลิ่นนี้มีร่างสูตร ${formulaRef(holder)} อยู่ — ลบร่างหรือรับเข้าทะเบียนก่อน แล้วค่อยเปิดใช้สูตรนี้`
+            : `หมวด × กลิ่นนี้มีสูตร ${formulaRef(holder)} ใช้งานอยู่ — เลิกใช้สูตรนั้นก่อน แล้วค่อยเปิดใช้สูตรนี้`);
         }
       }
       const data = await updateFormula(supabase, id, { status: next });

@@ -155,7 +155,7 @@ export default function FormulasPage() {
   const [toast, setToast] = useState(null);
   const [pricing, setPricing] = useState(null); // สูตรที่กำลังใส่ราคา FB
   // ช่องราคา + เหตุที่ใส่ไม่ได้ของสูตรนั้น — `scentStatus`/`scentName` ติดมากับแถว (attachFormulaUsage)
-  const pricingPlan = pricing ? formulaPriceSlots(pricing, { status: pricing.scentStatus, name: pricing.scentName }) : null;
+  const pricingPlan = pricing ? formulaPriceSlots(pricing, { status: pricing.scentStatus, code: pricing.scentCode, name: pricing.scentName, producedAt: pricing.scentProducedAt }) : null;
 
   // ⚠️ โหลดกลิ่นมาพร้อมกันใน reload เดียวกัน ไม่ใช่ useEffect แยกตอน mount —
   // ตารางแปลง scentId เป็นชื่อกลิ่นจากชุดนี้ ถ้าโหลดพลาดครั้งเดียวแล้วปุ่มรีเฟรช
@@ -360,23 +360,23 @@ export default function FormulasPage() {
       return {
         title: draft ? "ลบร่างสูตร" : "ลบสูตรออกจากทะเบียน",
         message: draft
-          ? `ลบร่าง "${confirm.formula.name}" ทิ้ง? ทำแล้วย้อนไม่ได้`
+          ? `ลบร่าง "${formulaLabel(confirm.formula)}" ทิ้ง? ทำแล้วย้อนไม่ได้`
           : isAdmin
-            ? `ลบ "${confirm.formula.name}" ออกจากทะเบียน? ถ้ามีสินค้าอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`
-            : `ลบ "${confirm.formula.name}" ออกจากทะเบียน? ทำแล้วย้อนไม่ได้ · ถ้ามีคำร้อง ราคา สินค้า หรือสูตรที่แก้ต่ออ้างอยู่ ระบบจะไม่ให้ลบและบอกว่าติดที่ไหน`,
+            ? `ลบ "${formulaLabel(confirm.formula)}" ออกจากทะเบียน? ถ้ามีสินค้าอ้างอยู่ ระบบจะแสดงรายการให้ยืนยันอีกครั้ง`
+            : `ลบ "${formulaLabel(confirm.formula)}" ออกจากทะเบียน? ทำแล้วย้อนไม่ได้ · ถ้ามีคำร้อง ราคา สินค้า หรือสูตรที่แก้ต่ออ้างอยู่ ระบบจะไม่ให้ลบและบอกว่าติดที่ไหน`,
         confirmLabel: draft ? "ลบร่าง" : "ลบสูตร",
       };
     }
     if (confirm.kind === "archive") {
       return {
         title: "เก็บสูตรเข้ากรุ",
-        message: `"${confirm.formula.name}" จะไม่ถูกเลือกในคำร้องขอราคาอีก แต่ประวัติยังอยู่ครบ`,
+        message: `"${formulaLabel(confirm.formula)}" จะไม่ถูกเลือกในคำร้องขอราคาอีก แต่ประวัติยังอยู่ครบ`,
         confirmLabel: "เก็บเข้ากรุ",
       };
     }
     return {
       title: "เปิดใช้สูตรอีกครั้ง",
-      message: `นำ "${confirm.formula.name}" กลับมาใช้งาน`,
+      message: `นำ "${formulaLabel(confirm.formula)}" กลับมาใช้งาน`,
       confirmLabel: "เปิดใช้",
     };
   };
@@ -672,7 +672,7 @@ export default function FormulasPage() {
 
       <Modal
         open={!!accept} onClose={() => setAccept(null)} size="sm" dismissible={!saving}
-        title={accept ? `รับเข้าทะเบียน — ${accept.formula.name}` : ""}
+        title={accept ? `รับเข้าทะเบียน — ${formulaLabel(accept.formula)}` : ""}
         footer={accept && (
           <>
             <Button variant="quiet" onClick={() => setAccept(null)} disabled={saving}>ยกเลิก</Button>
@@ -788,7 +788,7 @@ export default function FormulasPage() {
       <RegistryPriceModal
         open={!!pricing}
         onClose={() => setPricing(null)}
-        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคาใหม่" : "ใส่ราคา"} — ${pricing.name}` : ""}
+        title={pricing ? `${pricing.price?.unitPrice != null ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formulaLabel(pricing)}` : ""}
         endpoint={pricing ? `/api/master/formulas/${pricing.id}/price` : ""}
         /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่อง + เหตุที่ใส่ไม่ได้ตัวเดียวกับ API */
         slots={pricingPlan ? pricingPlan.slots : null}

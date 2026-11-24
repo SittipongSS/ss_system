@@ -12,7 +12,7 @@ const R = (id, over = {}) => ({
   categoryCode: '02-020', scentId: 'SCT-HR', answerStatus: 'pending', ackAt: '2026-09-24', sortOrder: 1, ...over,
 });
 const F = (id, over = {}) => ({
-  id, code: id, name: id, categoryCode: '02-020', scentId: 'SCT-HR', status: 'developing', customerId: 'CUS-A', ...over,
+  id, code: id, name: id, formulaDate: '2026-10-19', categoryCode: '02-020', scentId: 'SCT-HR', status: 'developing', customerId: 'CUS-A', ...over,
 });
 
 // ── สภาพจริงของ RQ-FD-26090194 (19/10/2026) — แถวที่ส่งก่อน ม-157: สูตรรอบแก้ active · ต้นทางเลิกใช้แล้ว ──
@@ -68,8 +68,9 @@ test('⭐ คอนเฟิร์ม direction 2: เลิกใช้ตั�
   assert.equal(plan.activate, true);
   assert.deepEqual(plan.archive.map((f) => f.id), ['P11']);
   assert.deepEqual(plan.close.map((r) => r.id), ['RR1']);
-  assert.match(plan.note, /P12 เปลี่ยนเป็น "ใช้งานได้" · P11 เปลี่ยนเป็น "เลิกใช้" · ปิดรายการอื่นของกลิ่นนี้ที่ยังค้าง 1 รายการ/);
-  assert.equal(notChosenReason(plan.chosen), 'ลูกค้าเลือก P12 แล้ว');
+  // ม-162 — สูตรในประโยคครบ "PF · ชื่อ · วันที่"
+  assert.match(plan.note, /P12 · P12 · 19\/10\/2026 เปลี่ยนเป็น "ใช้งานได้" · P11 · P11 · 19\/10\/2026 เปลี่ยนเป็น "เลิกใช้" · ปิดรายการอื่นของกลิ่นนี้ที่ยังค้าง 1 รายการ/);
+  assert.equal(notChosenReason(plan.chosen), 'ลูกค้าเลือก P12 · P12 · 19/10/2026 แล้ว');
 });
 
 test('⭐ คอนเฟิร์ม direction 1 ที่ส่งก่อน ม-157 (active อยู่แล้ว): ไม่พลิกซ้ำ · เลิกใช้ direction 2 ที่กำลังพัฒนา', () => {
@@ -99,9 +100,9 @@ test('⭐ ตีกลับก่อนเขียน: คู่นี้ค�
   const a = R('A', { producedFormulaId: 'FA', sentAt: '2026-10-02', readyAt: '2026-10-01' });
   const b = R('B', { directionOfItemId: 'A', producedFormulaId: 'FB', sentAt: '2026-10-02', readyAt: '2026-10-01', outcome: 'confirmed' });
   assert.match(formulaConfirmPlan({ row: a, items: [a, b], formulas: [F('FA'), F('FB', { status: 'active' })] }).error,
-    /คอนเฟิร์มสูตร FB ของกลิ่นนี้ในใบนี้ไปแล้ว/);
+    /คอนเฟิร์มสูตร FB · FB · 19\/10\/2026 ของกลิ่นนี้ในใบนี้ไปแล้ว/);
   assert.match(formulaConfirmPlan({ row: a, items: [a], formulas: [F('FA'), F('D', { status: 'draft' })] }).error,
-    /D เป็นร่างในทะเบียน/);
+    /มีสูตร D · D · 19\/10\/2026 เป็นร่างในทะเบียน/);
   assert.match(formulaConfirmPlan({
     row: a, items: [a], formulas: [F('FA'), F('X', { status: 'active', customerId: 'CUS-B', customerName: 'บริษัท บี' })], customerId: 'CUS-A',
   }).error, /เป็นของ บริษัท บี/);

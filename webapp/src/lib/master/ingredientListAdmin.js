@@ -14,6 +14,7 @@ import { updateFormula } from '@/lib/master/scentFormulaAdmin';
 import { appendUpdate } from '@/lib/master/updates';
 import { recordAudit } from '@/lib/audit';
 import { INGREDIENT_LIST_LABEL } from '@/lib/master/ingredientList';
+import { formulaRef } from '@/lib/master/registryLabel';
 
 /**
  * @param formula แถวสูตรก่อนแก้ (อ่านจากฐานแล้ว)
@@ -29,7 +30,7 @@ export async function saveFormulaIngredientList(supabase, { formula, value, user
     await recordAudit({
       user, action: 'update', entityType: 'formula', entityId: formula.id, request,
       before: formula, after,
-      summary: `${verb} ${INGREDIENT_LIST_LABEL} สูตร ${after?.code || after?.name || formula.id}${via ? ` ${via}` : ''}`,
+      summary: `${verb} ${INGREDIENT_LIST_LABEL} สูตร ${formulaRef(after, formula.id)}${via ? ` ${via}` : ''}`,
     });
   }
   const settled = value ? await settleRowsAwaitingIngredients(supabase, { formula: after, user, request }) : [];
@@ -48,7 +49,7 @@ async function settleRowsAwaitingIngredients(supabase, { formula, user, request 
   if (error) throw error;
   const requestIds = [...new Set((rows || []).map((r) => r.requestId))];
   const settled = [];
-  const target = formula.code || formula.name || formula.id;
+  const target = formulaRef(formula, formula.id);
   for (const requestId of requestIds) {
     const ask = await findRequest(supabase, requestId);
     if (!ask || !REQUEST_OPEN_STATUSES.includes(ask.status)) continue;

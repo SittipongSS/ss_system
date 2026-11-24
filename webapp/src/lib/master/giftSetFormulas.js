@@ -15,6 +15,8 @@
 // ⚠️ ไฟล์นี้ต้องเบา (logic ล้วน) — ฟอร์มสินค้าฝั่ง client กับ API ใช้ตัวตรวจตัวเดียวกัน
 //    (กฎ: เงื่อนไขที่ปุ่มรู้แต่ฟอร์มไม่รู้ห้ามมี) · ของที่แตะฐานอยู่ giftSetFormulasStore.js
 
+import { formulaRef } from '@/lib/master/registryLabel';
+
 export const GIFT_SET_CATEGORY_CODE = '01-037';
 const COMPONENT_MAIN_CATEGORY = '01';
 
@@ -109,7 +111,7 @@ export function giftSetFormulasError(rows = [], { formulasById = null, categoryN
       if (!formula) return `${at}: ไม่พบสูตรที่เลือกในทะเบียนสูตร`;
       const own = clean(formula.categoryCode);
       if (own && own !== row.categoryCode) {
-        return `${at}: สูตร ${clean(formula.code) || clean(formula.name)} เป็นสูตรหมวด ${nameOf(own)} — ไม่ใช่ ${nameOf(row.categoryCode)}`;
+        return `${at}: สูตร ${formulaRef(formula)} เป็นสูตรหมวด ${nameOf(own)} — ไม่ใช่ ${nameOf(row.categoryCode)}`;
       }
     }
   }
