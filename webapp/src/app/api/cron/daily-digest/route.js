@@ -378,15 +378,16 @@ async function notifyInstallmentOverdue(supabase) {
   return out;
 }
 
-/* คำร้องเลยวันที่ฝ่ายรับปาก → ผู้ถือใบในฝ่าย (มติ "ผู้ถือใบในฝ่าย") · ตาผู้ขอ/ใบจบ ไม่ยิง (`requestDueOwed`)
-   ⚠️ ต้องแนบแถวของใบ (`attachReworkRows`) — ตาฝ่าย/ตาผู้ขอตัดสินจากแถว · ใบน้อย (หน้าต่าง 7 วัน) ⇒ `.in()` ไม่โตตามข้อมูล */
+/* คำร้องเลยวันที่ฝ่ายรับปาก → ผู้ถือใบในฝ่าย (มติ "ผู้ถือใบในฝ่าย") · ตาผู้ขอ/ใบจบ ไม่ยิง (`requestBellDue`)
+   ⚠️ ต้องแนบแถวของใบ (`attachReworkRows`) — ตาฝ่าย/ตาผู้ขอตัดสินจากแถว · ใบน้อย (หน้าต่าง 7 วัน) ⇒ `.in()` ไม่โตตามข้อมูล
+   ⚠️ หน้าต่างดูสองคอลัมน์ — ใบประเมินพื้นที่นับวันส่งผล (`committedResultDate`) ซึ่งมาหลังวันนัด (`committedDueDate`) */
 async function notifyRequestOverdue(supabase) {
   const todayIso = businessDate();
   const result = await fetchAllResult(() => supabase
     .from('dept_requests').select('*')
     .in('status', REQUEST_OPEN_STATUSES)
-    .gte('committedDueDate', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
-    .lt('committedDueDate', todayIso)
+    .or(['committedDueDate', 'committedResultDate']
+      .map((col) => `and(${col}.gte.${addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS)},${col}.lt.${todayIso})`).join(','))
     .order('id', { ascending: true }));
   if (result.error) return { sent: 0, error: result.error.message };
   if (!result.data?.length) return { sent: 0, reason: `ไม่มีคำร้องที่เลยวันรับปากใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
@@ -394,7 +395,13 @@ async function notifyRequestOverdue(supabase) {
     attachReworkRows(supabase, result.data),
     loadUserDirectory(supabase).catch(() => new Map()),
   ]);
+  // โหลดแถวพัง = ตัดสินตาไม่ได้ (ตัวคัดข้ามใบเหล่านั้นเอง) — ต้องขึ้นเป็น error ของรอบ ไม่ใช่ "ไม่มีคำร้องเลยกำหนด" เงียบ ๆ
+  const rowsLost = requests.some((r) => !Array.isArray(r.items));
   const notices = requestOverdueNotices(requests, { todayIso, directory });
+  if (rowsLost) {
+    const { sent, error } = await sendNotices(supabase, notices);
+    return { sent, notices: notices.length, error: ['โหลดแถวของคำร้องไม่สำเร็จ — ข้ามทุกใบที่ตัดสินตาไม่ได้', error].filter(Boolean).join(' · ') };
+  }
   if (!notices.length) return { sent: 0, reason: 'ไม่มีคำร้องเลยกำหนดที่เป็นตาฝ่าย (หรือยังไม่มีผู้ถือใบ)' };
   const { sent, error } = await sendNotices(supabase, notices);
   return error ? { sent, notices: notices.length, error } : { sent, notices: notices.length };
@@ -406,7 +413,8 @@ async function notifyTaskOverdue(supabase) {
   const result = await fetchAllResult(() => supabase
     .from('personal_tasks')
     .select('id, title, status, "dueDate", "ownerId", "assigneeId", "proxyBy"')
-    .neq('status', 'Completed')
+    // ⚠️ `.neq` ตัดแถว status NULL ทิ้งด้วย (SQL: NULL <> x = NULL) — งานที่ไม่มีสถานะ = ยังไม่เสร็จ
+    .or('status.is.null,status.neq.Completed')
     .gte('dueDate', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
     .lt('dueDate', todayIso)
     .order('id', { ascending: true }));
@@ -423,10 +431,13 @@ async function notifyTaskOverdue(supabase) {
    ⭐ ตัวโหลดเดียวกับทะเบียน (`loadRenewalContext`) แต่ไม่ตัดขอบเขต (`null`) — ทุกไซต์ทุกทีม */
 async function notifyRenewals(supabase) {
   const todayIso = businessDate();
-  const ctx = await loadRenewalContext(supabase, null);
+  const [ctx, directory] = await Promise.all([
+    loadRenewalContext(supabase, null),
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
   const rows = enrichedRenewalRows(ctx, renewalRowsOf(ctx, todayIso));
   if (!rows.length) return { sent: 0, reason: 'ไม่มีไซต์ที่รอบบริการใกล้หมด/หมดแล้ว' };
-  return sendRenewalNotices(supabase, rows);
+  return sendRenewalNotices(supabase, rows, { directory });
 }
 
 /* ⭐ เตือน "ถึงรอบวางบิล" ก่อนวันวางบิลของงวด 0..BILLING_REMIND_DAYS วัน (กำหนดวางบิล · มติเจ้าของ 25–26/09)

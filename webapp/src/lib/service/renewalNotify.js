@@ -32,12 +32,14 @@ export const renewalExpiredDedupeKey = (siteId, endDate) => `renewal_expired:${s
  * ⚠️ **ไม่ยิงแถวที่มีคนรับเรื่องแล้ว** (`followup` เปิดอยู่) — คนนั้นกำลังตามอยู่แล้ว
  *   แจ้งซ้ำคือเสียงรบกวน · แถวที่ยังไม่มีใครแตะเท่านั้นที่เป็น "งานที่ยังไม่มีเจ้าของ"
  */
-export function renewalNotices(rows = [], { lookbackDays = DUE_BELL_LOOKBACK_DAYS } = {}) {
+export function renewalNotices(rows = [], { lookbackDays = DUE_BELL_LOOKBACK_DAYS, directory = null } = {}) {
   const notices = [];
   for (const row of rows) {
     if (row?.followup) continue;
     const ownerId = row?.deal?.ownerId;
     if (!ownerId || !row.siteId || !row.endDate) continue;
+    // เจ้าของดีลที่ปิดบัญชีแล้วไม่ได้กระดิ่ง (ไม่รู้จัก ≠ ปิดบัญชี — อ่านทะเบียนผู้ใช้พังต้องไม่ทำให้เงียบ)
+    if (directory?.get?.(String(ownerId))?.disabled) continue;
     const expired = row.state === 'expired';
     // หมดแล้ว: เฉพาะรอบที่เพิ่งหมด 1..lookbackDays วัน (`daysLeft` ติดลบ) — ไม่ยิงย้อนไซต์ที่หมดมานาน
     if (expired && !(Number(row.daysLeft) < 0 && -Number(row.daysLeft) <= lookbackDays)) continue;
@@ -64,8 +66,8 @@ export function renewalNotices(rows = [], { lookbackDays = DUE_BELL_LOOKBACK_DAY
  * ยิงจริง — cron daily-digest เรียกหลังโหลดแถวของทุกไซต์ (สิทธิ์ admin) · คืน `{ sent, notices, error? }`
  * ⚠️ `notifyUsers` กลืน error เอง — ส่งขึ้นเป็น error ของรอบนี้ (ไม่งั้นพังเงียบแบบที่ดูเหมือน "ไม่มีไซต์ใกล้หมด")
  */
-export async function sendRenewalNotices(supabase, rows = [], { actorName = 'สรุปประจำวัน' } = {}) {
-  const notices = renewalNotices(rows);
+export async function sendRenewalNotices(supabase, rows = [], { actorName = 'สรุปประจำวัน', directory = null } = {}) {
+  const notices = renewalNotices(rows, { directory });
   let sent = 0;
   let error = null;
   for (const notice of notices) {
