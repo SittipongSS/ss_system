@@ -582,11 +582,15 @@ test('🔴 ร่าง/ตัวอย่างของ FG ที่ไม่�
   assert.match(sample.html, NEW_EMPTY);
   assert.doesNotMatch(sample.html, /กลิ่น \/ รหัสกลิ่น/);
   // มีกลิ่นแต่ไม่ผูกสูตร ⇒ พิมพ์กลิ่นใต้ป้ายกลิ่น (ไม่พิมพ์รหัสกลิ่นใต้คำว่า "รหัสสูตร")
+  // ⭐ ร่างอ่านสด ⇒ ได้แถวกลิ่นสามชิ้น "ชื่อ | รหัส | วันผลิต" (มติเจ้าของ 24/11/2026) · กลิ่นยังไม่กรอกวันผลิต = ขีด
   const base = seed(FORMULA_TODAY);
   base.products[0] = { ...base.products[0], scentId: 'SCT-1' };
   const scented = await paper(fakeDb(base, { users: USERS }), '2');
-  assert.match(scented.html, SCENT_ROW);
+  assert.match(scented.html, /<th>กลิ่น \/ รหัสกลิ่น \/ วันที่<\/th><td>THE MOMENT OF TEA TIME #3 \| PF859010103 \| -<\/td>/);
   assert.doesNotMatch(scented.html, /สูตร \/ รหัสสูตร \/ วันที่/);
+  base.scents = base.scents.map((row) => (row.id === 'SCT-1' ? { ...row, producedAt: '2026-08-05' } : row));
+  const dated = await paper(fakeDb(base, { users: USERS }), '2');
+  assert.match(dated.html, /<th>กลิ่น \/ รหัสกลิ่น \/ วันที่<\/th><td>THE MOMENT OF TEA TIME #3 \| PF859010103 \| 05\/08\/2569<\/td>/);
 });
 
 test('🪤 รออนุมัติ/ตีกลับที่ยื่นก่อน 01/10/2569 = แถวกลิ่นจากภาพนิ่งของมันเอง แม้วันนี้ FG ผูกสูตรแล้ว (ไม่อ่านสด ไม่ใช่ขีดสามตัว)', async () => {

@@ -609,7 +609,7 @@ export async function loadProductPrintFields(supabase, productId) {
   }
   let scent = null;
   if (product.scentId) {
-    const res = await supabase.from('scents').select('code, name').eq('id', product.scentId).maybeSingle();
+    const res = await supabase.from('scents').select('code, name, producedAt').eq('id', product.scentId).maybeSingle();
     if (res.error) return { error: messageOf(res.error) };
     scent = res.data || null;
   }
@@ -657,6 +657,11 @@ export async function loadProductPrintFields(supabase, productId) {
       scentCode: scent?.code || product.formulaCode || null,
       scentText: [scent?.name || product.formulaName, scent?.code || product.formulaCode]
         .filter(Boolean).join(' | ') || null,
+      /* ⭐ วันผลิตของกลิ่น — ชิ้นที่สามของแถวกลิ่น (มติเจ้าของ 24/11/2026 "รหัส+ชื่อ+วันที่ผลิต เสมอ") · ชิ้นดิบ ประกอบตอนพิมพ์
+         ตามภาษาของใบ (`productSpecFormulaRow`) · ⚠️ คีย์ต้องอยู่ในก้อนเสมอแม้เป็น null (สัญญาณแยกภาพนิ่งใหม่จากเก่า)
+         · ทางถอยชุดเดียวกับชื่อ/รหัสข้างบน: ไม่มีกลิ่นในทะเบียน (กอง "รอจัดระเบียบ") = วันที่ที่พิมพ์ไว้คู่ชื่อนั้นบนแถวสินค้า
+         · มีกลิ่นแต่ยังไม่กรอกวันผลิต = null (ขีด) — ไม่ยืมวันที่ของสูตรมาแทน */
+      scentProducedAt: scent ? (scent.producedAt || null) : (product.formulaDate || null),
       // ⭐ ชิ้นดิบของสูตรที่ผูก (ไม่ผูก = null ทั้งสี่) — ไม่ประกอบเป็นข้อความที่นี่ เพราะวันที่พิมพ์ตามภาษาของใบ
       formulaId: formula?.id || null,
       formulaName: formula?.name || null,
