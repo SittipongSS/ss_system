@@ -136,7 +136,8 @@ test('ตัวเลือกที่มาของใบใช้ค่า�
    (มติ 22/09: ฝ่ายขายทุกตำแหน่ง + Admin · เดิมข้อ 15 ให้แค่ AE Sup/Admin) · กฎบ้าน: ไม่มีสิทธิ์ = **ไม่โชว์** */
 test('⭐ ปุ่ม "SO ย้อนหลัง" ขึ้นเฉพาะผู้คีย์ใบย้อนหลังได้ และเป็น **ลิงก์ไปหน้าฟอร์มเต็ม** ไม่ใช่โมดัล', () => {
   const page = code(REGISTER);
-  assert.match(page, /const canKeyHistorical = canKeyHistoricalSalesOrder\(\{ role: useRole\(\) \}\);/);
+  // role อ่านครั้งเดียวต้นคอมโพเนนต์ (24/11/2026 — กล่องตีกลับของผู้ตรวจใช้ตัวเดียวกัน) · ยังเป็น role ของคนดูจาก useRole
+  assert.match(page, /const role = useRole\(\);\s*const canKeyHistorical = canKeyHistoricalSalesOrder\(\{ role \}\);/);
   assert.doesNotMatch(page, /isSuperuser/, 'ต้องเทียบ role ตรง ๆ');
   assert.match(page, /headerRight=\{canKeyHistorical \? \(/, 'ปุ่มอยู่ใน headerRight ของ Workspace');
   assert.match(page, /<Button as=\{Link\} href=\{HISTORICAL_NEW_PATH\} tone="neutral"/,

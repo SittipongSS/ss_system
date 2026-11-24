@@ -9,7 +9,7 @@ import {
   installmentBounceWaitingOnMe, isSalesOrderWaitingOnMe, salesOrderBouncedToMe, salesOrderIdsWaitingOnMe,
 } from './salesOrderWorkflow.js';
 import { salesOrderBounced } from './salesOrderListFilter.js';
-import { salesOrderBounceLine, salesOrderDocRejectText } from './salesOrderMoneyText.js';
+import { salesOrderBounceFixer, salesOrderBounceLine, salesOrderDocRejectText } from './salesOrderMoneyText.js';
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const ME = 'U-ME';
@@ -100,11 +100,29 @@ test('ด่านซอร์ส: หน้าทะเบียน — กา�
   assert.ok(strip.indexOf('pickCard("pending")') < strip.indexOf('pickCard("bounced")'), 'การ์ดตีกลับอยู่ถัดจากการ์ดรออนุมัติ');
   assert.ok(strip.indexOf('pickCard("bounced")') < strip.indexOf('pickCard("approved")'));
   assert.match(page, /const bounced = rows\.filter\(salesOrderBounced\);/, 'เลขบนการ์ด = ตัวตัดสินเดียวกับตัวกรองของการ์ด');
-  assert.match(page, /const bounceQueue = useMemo\(\(\) => \(financeShell \? \[\] : rows\.filter\(\(row\) => row\._bouncedToMe\)\), \[rows, financeShell\]\);/);
-  assert.match(page, /title="ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้"/);
+  /* ผู้ตรวจ (AE Sup · CM · CD · admin) เห็นกล่องตามงาน: ใบตีกลับทั้งขอบเขต (ชุดเดียวกับการ์ด) · คนอื่นเห็นเฉพาะใบที่รอตัวเองแก้ (ธงของ server) */
+  assert.match(page, /const bounceReviewer = !financeShell && isSalesOrderReviewer\(role\);/);
+  assert.match(page, /\(\) => \(financeShell \? \[\] : rows\.filter\(\(row\) => \(bounceReviewer \? salesOrderBounced\(row\) : row\._bouncedToMe\)\)\),\s*\[rows, financeShell, bounceReviewer\],/);
+  assert.match(page, /title=\{bounceReviewer \? "ต้องตามตอนนี้ — ถูกตีกลับ รอทีมแก้" : "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้"\}/);
+  assert.match(page, /bounceReviewer \? salesOrderBounceFixer\(o\) : null/, 'แถวของผู้ตรวจบอกคนที่ต้องแก้');
   assert.match(page, /const bounceHref = \(o\) => \(o\.status === "rejected" \? `\/sa\/sales-orders\/\$\{o\.id\}` : `\/sa\/sales-orders\/\$\{o\.id\}\?tab=payment`\);/,
     'งวดตีกลับพาไปแท็บการชำระ (ปุ่มแจ้งชำระใหม่อยู่ที่นั่น)');
   // ถอดตัวกรองการ์ดได้ทุกทาง: ชิป · ล้างของกล่องกรอง · เปิดชิปงานบริการ
   assert.match(page, /\{bouncedOnly && \(\s*<Button size="sm" onClick=\{\(\) => setBouncedOnly\(false\)\}>กรอง: ตีกลับ รอแก้ ×<\/Button>/);
   assert.match(page.slice(page.indexOf('onClear={() => {'), page.indexOf('groups={[')), /setBouncedOnly\(false\);/);
+});
+
+test('กล่องผู้ตรวจ: คนที่ต้องแก้ — ใบตีกลับ = คนสร้างใบ · งวดตีกลับ = เจ้าของดีล · ใบค่าสรรพสามิต = เจ้าของดีลต้นทาง', () => {
+  assert.equal(salesOrderBounceFixer({ status: 'rejected', createdByName: 'AC ก', deal: { ownerName: 'AE ข' } }), 'รอ AC ก แก้');
+  assert.equal(salesOrderBounceFixer({ status: 'rejected', deal: { ownerName: 'AE ข' } }), 'รอ AE ข แก้', 'ไม่รู้ชื่อคนสร้าง = เจ้าของดีล');
+  assert.equal(salesOrderBounceFixer({ status: 'approved', createdByName: 'AC ก', deal: { ownerName: 'AE ข' } }), 'รอ AE ข แก้');
+  assert.equal(salesOrderBounceFixer({ status: 'approved', deal: null, sourceDeal: { ownerName: 'AE ค' } }), 'รอ AE ค แก้');
+  assert.equal(salesOrderBounceFixer({ status: 'approved', deal: null }), null, 'ไม่รู้ชื่อ = ไม่เดา');
+  assert.equal(salesOrderBounceFixer(null), null);
+});
+
+test('ด่านซอร์ส: ป้ายบนเมนูของผู้ตรวจไม่นับใบตีกลับของทีม (มติ "เห็นกล่อง ป้ายไม่นับ") — เลนงวดตีกลับยังตัดสินด้วยคนแจ้ง/เจ้าของดีลเท่านั้น', () => {
+  const wf = read('./salesOrderWorkflow.js');
+  const fn = wf.slice(wf.indexOf('export function installmentBounceWaitingOnMe('), wf.indexOf('export function salesOrderBouncedToMe('));
+  assert.doesNotMatch(fn, /reviewer|role/, 'ไม่มีเลนผู้ตรวจในเลนงวดตีกลับ');
 });
