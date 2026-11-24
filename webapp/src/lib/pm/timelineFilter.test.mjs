@@ -10,6 +10,7 @@ import {
   filterTimelineTasks,
   singleSelectedDeal,
   timelinePhaseGroups,
+  timelineOverdueSilenced,
   timelineStepMatches,
   timelineStepOverdue,
   timelineStepStatusKey,
@@ -112,7 +113,7 @@ test('timelineStepMatches: ขั้นไม่ระบุฝ่าย/ALL ผ
    — ยุบโครงการ 16/11 · เหลือยามฝั่งแผงไทม์ไลน์ที่หน้าดีลยังใช้ */
 test('ด่านซอร์ส M18a: แผงไทม์ไลน์กรอง/นับด้วย timelineStepMatches ตัวเดียว', () => {
   const table = readSrc('../../components/salesPlanning/DealTimelineTable.js');
-  assert.match(table, /const stepMatches = \(task\) => timelineStepMatches\(task, stepFilter\);/);
+  assert.match(table, /const stepMatches = \(task\) => timelineStepMatches\(task, stepFilter, undefined, \{ silenced: overdueSilenced \}\);/);
   assert.equal((table.match(/\.filter\(stepMatches\)/g) || []).length, 2, 'ตาราง/รายการ และหัวเฟส ใช้ตัวกรองเดียวกัน');
   assert.doesNotMatch(table, /const matchDept =|const matchStatus =/, 'ห้ามมีนิยามที่สองในคอมโพเนนต์');
   assert.match(table, /stepFilter: controlledStepFilter = null/);
@@ -185,7 +186,7 @@ test('🔴 L1: ทุกป้าย × ตัวกรองที่ค้า�
 
 test('ด่านซอร์ส L1: ป้ายสรุปเป็นปุ่มที่ตั้งตัวกรองทั้งชุด · นับด้วยตัวตัดสินกลาง · แผงกรองมีมิติเลยกำหนด', () => {
   const table = readSrc('../../components/salesPlanning/DealTimelineTable.js');
-  assert.match(table, /const today = useThaiToday\(\{ seed: true \}\);[^\n]*\s*const summaryCounts = timelineSummaryCounts\(tasks, today\);/);
+  assert.match(table, /const today = useThaiToday\(\{ seed: true \}\);[^\n]*\s*const summaryCounts = timelineSummaryCounts\(tasks, today, \{ silenced: overdueSilenced \}\);/);
   assert.match(table, /const pickSummary = \(kind\) => setStepFilter\(timelineSummaryActive\(stepFilter, kind\) \? EMPTY_STEP_FILTER : timelineSummaryPick\(kind\)\);/);
   assert.match(table, /<button key=\{kind\} type="button" className="ui-badge" aria-pressed=\{pressed\} onClick=\{\(\) => pickSummary\(kind\)\}/);
   assert.match(table, /\{label\} \{summaryCounts\[kind\]\}/);
@@ -253,4 +254,37 @@ test('ด่านซอร์ส L13: หัวเฟส · สีเฟส · 
   assert.match(table, /key=\{`\$\{g\.phase\}\|\$\{g\.index\}`\}/);
   assert.match(table, /\{group\.index \+ 1\}\. \{group\.phase \|\| "ไม่ระบุเฟส"\}/);
   assert.doesNotMatch(table, /\{gi \+ 1\}\.|PHASE_COLORS\[gi %|groupIndex/, 'ห้ามกลับไปใช้ลำดับในอาร์เรย์ที่กรองแล้ว');
+});
+
+test('🔴 มติ 24/11: ดีล Lost = เงียบทั้งดีล · ดีล Won = แดงต่อทุกขั้น', () => {
+  const TODAY_X = '2026-11-24';
+  const steps = [
+    { id: 'S1', status: 'Pending', finishDate: '2026-10-01' },      // ช่วงขาย ค้าง
+    { id: 'S2', status: 'In Progress', finishDate: '2026-11-20' },  // ผลิต ค้าง
+    { id: 'S3', status: 'Completed', finishDate: '2026-09-01' },
+    { id: 'S4', status: 'Pending', finishDate: '2026-12-01' },
+  ];
+  assert.equal(timelineOverdueSilenced('lost'), true);
+  for (const stage of ['won', 'lead', 'proposal', 'negotiation', undefined, null, '']) {
+    assert.equal(timelineOverdueSilenced(stage), false, `stage ${stage} ต้องยังนับเลยกำหนด`);
+  }
+  // Won / เปิดอยู่ — เหมือนเดิม
+  assert.equal(timelineSummaryCounts(steps, TODAY_X).overdue, 2);
+  assert.deepEqual(steps.filter((t) => timelineStepMatches(t, { statuses: [], depts: [], overdue: true }, TODAY_X)).map((t) => t.id), ['S1', 'S2']);
+  // Lost — ป้าย 0 · ตัวกรองเลยกำหนดเหลือ 0 ขั้น · สถานะของขั้นยังนับตามจริง
+  const silenced = { silenced: timelineOverdueSilenced('lost') };
+  const lostCounts = timelineSummaryCounts(steps, TODAY_X, silenced);
+  assert.equal(lostCounts.overdue, 0);
+  assert.deepEqual({ pending: lostCounts.pending, progress: lostCounts.progress, completed: lostCounts.completed }, { pending: 2, progress: 1, completed: 1 });
+  assert.equal(timelineStepOverdue(steps[0], TODAY_X, silenced), false);
+  assert.equal(countTimelineSteps(steps, { stepFilter: { statuses: [], depts: [], overdue: true }, today: TODAY_X, ...silenced }), 0);
+  assert.equal(countTimelineSteps(steps, { stepFilter: { statuses: ['pending'], depts: [], overdue: false }, today: TODAY_X, ...silenced }), 2);
+});
+
+test('ด่านซอร์ส มติ 24/11: หน้าดีลส่งสถานะดีลเข้าแผงไทม์ไลน์ · แผงซ่อนมิติเลยกำหนดของดีล Lost', () => {
+  const page = readSrc('../../app/sales-planning/deals/[id]/page.js');
+  assert.match(page, /overdueSilenced=\{timelineOverdueSilenced\(deal\.stage\)\}/);
+  const table = readSrc('../../components/salesPlanning/DealTimelineTable.js');
+  assert.match(table, /overdueSilenced = false,/);
+  assert.match(table, /\.\.\.\(!overdueSilenced \|\| stepFilter\.overdue \? \[\{\s*key: "due"/);
 });
