@@ -20,7 +20,7 @@ const headers = (sheet) => sheet.getRow(1).values.slice(1);
 test('มีสิทธิ์เห็นต้นทุน → ได้คอลัมน์ราคาผลิตสามตัว และเลขถูก', async () => {
   const sheet = await sheetOf(await buildProductExportBuffer(ROWS, { includeCost: true, now: NOW }));
   assert.deepEqual(headers(sheet), [
-    'FG Code', 'ชื่อสินค้า', 'รหัสสูตร', 'ชื่อสูตร', 'วันที่สูตร', 'ปริมาตร', 'หน่วย',
+    'FG Code', 'ชื่อสินค้า', 'รหัสสูตร / กลิ่น', 'ชื่อสูตร / กลิ่น', 'วันที่สูตร / กลิ่น', 'ปริมาตร', 'หน่วย',
     'ราคาผลิต (ก่อน VAT)', 'VAT 7%', 'ราคาผลิต (รวม VAT)', 'สถานะ BOM', 'รหัส BOM (Express)',
   ]);
   const row = sheet.getRow(2);
@@ -35,7 +35,7 @@ test('มีสิทธิ์เห็นต้นทุน → ได้คอ
 test('ไม่มีสิทธิ์ → ไฟล์ต้องไม่มีคอลัมน์ราคาผลิตเลย (ไม่ใช่คอลัมน์ว่าง)', async () => {
   const sheet = await sheetOf(await buildProductExportBuffer(ROWS, { includeCost: false, now: NOW }));
   assert.deepEqual(headers(sheet), [
-    'FG Code', 'ชื่อสินค้า', 'รหัสสูตร', 'ชื่อสูตร', 'วันที่สูตร', 'ปริมาตร', 'หน่วย', 'สถานะ BOM', 'รหัส BOM (Express)',
+    'FG Code', 'ชื่อสินค้า', 'รหัสสูตร / กลิ่น', 'ชื่อสูตร / กลิ่น', 'วันที่สูตร / กลิ่น', 'ปริมาตร', 'หน่วย', 'สถานะ BOM', 'รหัส BOM (Express)',
   ]);
   assert.equal(sheet.getRow(1).cellCount, 9);
 });
@@ -110,6 +110,39 @@ test('FG ไม่ผูกสูตร = เซลล์ว่าง · ข้�
   // ชุดของขวัญที่ยังไม่ผูกสูตร = ว่างเหมือน FG ทั่วไป · หมวดหาชื่อไม่เจอ = ใช้รหัสหมวด
   assert.deepEqual(productFormulaLines({ formulaComponents: [] }), []);
   assert.equal(productFormulaLines({ formulaComponents: [{ categoryCode: '01-022', formulaName: 'X' }] })[0].name, '01-022: X');
+});
+
+/* ── หัวน้ำหอม 02-020 ผูกกลิ่น ไม่มีสูตร (มติ 02/11 · ม-166) — ป้ายตาม ม-162 รหัส · ชื่อ · วันผลิต ─────────────── */
+const OIL = {
+  fgCode: 'FG-0859-02-020-10067', categoryCode: '02-020', productDescription: 'หัวน้ำหอม', volume: 1, volumeUnit: 'kg',
+  scentId: 'SCT-1', oilScent: { id: 'SCT-1', code: 'PF85901010301', name: 'THE MOMENT OF TEA TIME #3.1 REV1', producedAt: '2026-09-10' },
+};
+
+test('FG หัวน้ำหอม 02-020: สามคอลัมน์เดิมเป็นกลิ่นที่ผูก — รหัส · ชื่อ · วันผลิต (ไม่ใช่เซลล์ว่าง)', async () => {
+  const sheet = await sheetOf(await buildProductExportBuffer([OIL, SINGLE], { includeCost: false, now: NOW }));
+  assert.deepEqual([3, 4, 5].map((c) => sheet.getRow(2).getCell(c).value),
+    ['PF85901010301', 'THE MOMENT OF TEA TIME #3.1 REV1', '10/09/2026']);
+  assert.deepEqual([3, 4, 5].map((c) => sheet.getRow(3).getCell(c).value),
+    ['PF5180601', 'FIRST THINGS FIRST OPEN WINDOW EDP', '31/07/2026'], 'แถวสูตรไม่โดนผลกระทบ');
+});
+
+test('FG หัวน้ำหอม 02-020: ขาดรหัส = "ไม่มี PF" · ขาดวันผลิต = ขีด · ยังไม่ผูก = ว่าง · ไม่ถอยไปอ่านช่องสูตร', () => {
+  assert.deepEqual(productFormulaLines({ ...OIL, oilScent: { code: '', name: 'Draft Oil', producedAt: null } }), [
+    { code: 'ไม่มี PF', name: 'Draft Oil', date: '—' },
+  ]);
+  // วันที่ของกลิ่นคือวันผลิต — วันส่งลูกค้า (sentAt) ไม่ใช่คำตอบ (ม-162)
+  assert.equal(productFormulaLines({ ...OIL, oilScent: { ...OIL.oilScent, producedAt: null, sentAt: '2026-10-01' } })[0].date, '—');
+  assert.deepEqual(productFormulaLines({ ...OIL, scentId: null, oilScent: undefined }), []);
+  // หมวดนี้ไม่มีสูตรตามมติ — ข้อความสูตรเก่าที่ค้างบนแถวไม่ใช่คำตอบ
+  assert.deepEqual(productFormulaLines({ ...OIL, oilScent: undefined, formulaName: 'สูตรเก่า', formulaCode: 'PF1' }), []);
+  // หมวดอื่นที่มี oilScent ติดมา (ไม่ควรเกิด) ยังอ่านสูตรตามเดิม
+  assert.equal(productFormulaLines({ ...SINGLE, categoryCode: '01-002', oilScent: OIL.oilScent })[0].code, 'PF5180601');
+});
+
+test('route export เติมกลิ่นสดจากทะเบียนเฉพาะ FG หัวน้ำหอม', () => {
+  const route = readFileSync(new URL('../../app/api/products/export/route.js', import.meta.url), 'utf8');
+  assert.match(route, /\.from\('scents'\)\.select\('id, code, name, "producedAt"'\)/);
+  assert.match(route, /isFragranceOilCategory\(p\.categoryCode\) && p\.scentId/);
 });
 
 test('route export อ่านสูตรสดจากทะเบียน + รายการของชุดของขวัญ ก่อนสร้างไฟล์', () => {
