@@ -994,7 +994,7 @@ test('store: ภาพนิ่งเก็บทุกช่องที่ก�
       customerName: 'ลูกค้าในทะเบียน', categoryCode: '01-002', volume: 50, volumeUnit: 'ml', scentId: 'SCT1',
     }],
     product_types: [{ mainCategoryCode: '01', typeCode: '002', nameTh: 'สเปรย์', nameEn: 'SPRAY' }],
-    scents: [{ id: 'SCT1', code: 'PF9010103', name: 'FIRST PLATE' }],
+    scents: [{ id: 'SCT1', code: 'PF9010103', name: 'FIRST PLATE', producedAt: '2026-07-01' }],
     attachments: [
       { id: 'A2', entityType: 'product', entityId: 'PRD1', docType: 'spec_illustration', mimeType: 'image/png', fileName: 'b.png', metadata: { sortOrder: 1, caption: 'ด้านข้าง' }, createdAt: NOW },
       { id: 'A1', entityType: 'product', entityId: 'PRD1', docType: 'spec_illustration', mimeType: 'image/png', fileName: 'a.png', metadata: { sortOrder: 0, caption: ' ด้านหน้า ' }, createdAt: NOW },
@@ -1020,6 +1020,8 @@ test('store: ภาพนิ่งเก็บทุกช่องที่ก�
   assert.deepEqual(snapshot.items, [{ sortOrder: 0, itemKey: 'cap', itemLabel: 'ฝา', detail: 'เงิน', preparedByS: true, preparedByCustomer: false, note: null }]);
   assert.equal(snapshot.product.categoryName, '01-002 SPRAY · สเปรย์'); // รหัส + ชื่อ (มติ 18/11)
   assert.equal(snapshot.product.scentText, 'FIRST PLATE | PF9010103');
+  // วันผลิตของกลิ่น = ชิ้นที่สามของแถวกลิ่น (มติเจ้าของ 24/11/2026) — ชิ้นดิบ ประกอบตอนพิมพ์ตามภาษาของใบ
+  assert.equal(snapshot.product.scentProducedAt, '2026-07-01');
   // FG นี้ไม่ผูกสูตร ⇒ ช่องสูตรมีครบคีย์แต่เป็น null ทั้งสี่ (กระดาษถอยไปแถวกลิ่น · มติ 01/10/2569)
   // 🔴 "มีคีย์" คือสัญญาณที่ตัวประกอบแถวใช้แยกของใหม่จากภาพนิ่งเก่า — ตัดคีย์ทิ้งตอนว่าง = ใบใหม่ได้ป้ายกลิ่นเดิม
   assert.deepEqual(
@@ -1106,6 +1108,14 @@ test('store: FG ไม่ผูกสูตร = ช่องสูตร null �
   const legacy = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', now: NOW });
   assert.deepEqual(formulaOf(legacy.snapshot.product), { formulaId: null, formulaName: null, formulaCode: null, formulaDate: null });
   assert.equal(legacy.snapshot.product.scentText, 'ROSE GARDEN | RG-01');
+  // กอง "รอจัดระเบียบ" ถอยไปวันที่ที่พิมพ์คู่ชื่อนั้นบนแถวสินค้า (ทางถอยชุดเดียวกับชื่อ/รหัส)
+  assert.equal(legacy.snapshot.product.scentProducedAt, '2025-01-05');
+  // มีกลิ่นในทะเบียนแต่ยังไม่กรอกวันผลิต = null (ขีด) — ไม่ยืมวันที่ของสูตร · 🔴 คีย์ต้องอยู่เสมอ (สัญญาณภาพนิ่งใหม่)
+  assert.equal('scentProducedAt' in scentOnly.snapshot.product, true);
+  assert.equal(scentOnly.snapshot.product.scentProducedAt, null);
+  seed.products[0] = { ...seed.products[0], scentId: null, formulaName: null, formulaCode: null, formulaDate: null };
+  const bare = await buildDocumentSnapshot(fakeDb(seed), { productId: 'PRD1', now: NOW });
+  assert.deepEqual(['scentProducedAt' in bare.snapshot.product, bare.snapshot.product.scentProducedAt], [true, null]);
 });
 
 test('store: formulaId ชี้อยู่แต่ไม่พบแถวสูตร (ไม่ควรเกิด) = สำเนาบนแถวสินค้า — ไม่ทิ้งแถวไปกลิ่นทั้งที่ FG บอกว่าผูกสูตร', async () => {

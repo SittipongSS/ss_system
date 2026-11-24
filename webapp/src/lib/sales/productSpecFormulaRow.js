@@ -44,6 +44,11 @@ export function productSpecDateText(value, language = 'th') {
 /* ป้ายแถว — ชุดเดียวทั้งสองภาษา (มติเจ้าของ: ป้ายแถวในตารางไม่แปล · เปลี่ยนเฉพาะหัวข้อ) */
 export const PRODUCT_SPEC_FORMULA_ROW_LABEL = 'สูตร / รหัสสูตร / วันที่';
 export const PRODUCT_SPEC_SCENT_ROW_LABEL = 'กลิ่น / รหัสกลิ่น';
+/* ⭐ มติเจ้าของ 24/11/2026 — *"กลิ่น หรือ สูตร ต้องแสดง รหัส+ชื่อ+วันที่ผลิต เสมอ"* (ย้ำ ม-162 · เดิมยกเว้นเอกสารตรึง)
+   แถวกลิ่น (FG หัวน้ำหอม 02-020 · FG ที่ไม่ผูกสูตรแต่มีกลิ่น) ได้วันผลิตเป็นชิ้นที่สาม ทรงเดียวกับแถวสูตรในใบเดียวกัน
+   "ชื่อ | รหัส | วันที่" · วันที่ของกลิ่น = **วันผลิต** (`scents.producedAt` · ไม่ใช่วันส่งลูกค้า) พิมพ์ตามภาษาของใบ
+   · เฉพาะภาพนิ่งที่มีคีย์ `scentProducedAt` (ยื่นตั้งแต่ 24/11/2569) — ภาพนิ่งเก่าไม่มีคีย์นี้ ⇒ แถวกลิ่นสองชิ้นเดิมทุกตัวอักษร */
+export const PRODUCT_SPEC_SCENT_DATE_ROW_LABEL = 'กลิ่น / รหัสกลิ่น / วันที่';
 
 /* ตัวคั่นเดียวกับแถวกลิ่นเดิม ("ชื่อ | รหัส") · ชิ้นที่ไม่มี = ขีดแบบที่ใบนี้ใช้ในค่าที่ประกอบจากหลายชิ้น
    (ผู้ติดต่อ "- · 08x…" ของกล่องผู้ซื้อ) — ไม่ใช่ N/A ซึ่งเป็นของช่องที่ว่างทั้งช่อง */
@@ -56,6 +61,9 @@ const textOf = (value) => String(value ?? '').trim();
    ครบทั้งสี่เสมอ (ไม่ผูก = null · เทสต์ของ store ตรึงไว้) ⇒ "มีคีย์" คือสัญญาณเดียวที่แยกของใหม่ออกจากของเก่าได้
    ⚠️ ไม่มีก้อนสินค้าเลย (null/undefined — จอที่ยังโหลดไม่เสร็จ) ไม่ใช่ภาพนิ่งเก่า */
 const predatesFormulaRow = (product) => typeof product === 'object' && product !== null && !('formulaId' in product);
+/* ภาพนิ่งที่ยื่นตั้งแต่ 24/11/2569 มีคีย์ `scentProducedAt` เสมอ (ไม่มีวันผลิต = null) — "มีคีย์" แยกแถวกลิ่นสามชิ้นออกจากสองชิ้นเดิม
+   กติกาเดียวกับ `formulaId` ข้างบน · ตัดคีย์ทิ้งตอนว่าง = ใบใหม่ถูกอ่านเป็นใบเก่า */
+const carriesScentDate = (product) => typeof product === 'object' && product !== null && 'scentProducedAt' in product;
 
 /**
  * แถวสูตรของ Product Overview — ป้าย + ค่า พร้อมพิมพ์
@@ -67,7 +75,9 @@ const predatesFormulaRow = (product) => typeof product === 'object' && product !
  *
  * สามทาง เรียงตามนี้:
  *   1. ผูกสูตรและมีชิ้นให้พิมพ์ ⇒ ป้ายสูตร + "ชื่อ | รหัส | วันที่" (ชิ้นที่ไม่มีเป็นขีด)
- *   2. มีกลิ่นให้พิมพ์ (`scentText`) หรือเป็นภาพนิ่งเก่า ⇒ แถวกลิ่นเดิม (ป้าย "กลิ่น / รหัสกลิ่น")
+ *   2. มีกลิ่นให้พิมพ์ (`scentText`) หรือเป็นภาพนิ่งเก่า ⇒ แถวกลิ่น — ภาพนิ่งที่มีคีย์ `scentProducedAt` (ยื่นตั้งแต่
+ *      24/11/2569) ได้ "กลิ่น / รหัสกลิ่น / วันที่" + "ชื่อ | รหัส | วันผลิต" (ชิ้นที่ไม่มีเป็นขีด) · ไม่มีคีย์ = ป้าย
+ *      "กลิ่น / รหัสกลิ่น" + `scentText` สองชิ้นเดิม
  *   3. ที่เหลือ (ของใหม่ที่ไม่มีทั้งสูตรและกลิ่น · ยังไม่มีก้อนสินค้า) ⇒ ป้ายสูตร ช่องว่าง
  *
  * ⭐ **ภาพนิ่งเก่า** (ยื่นก่อน 01/10/2569 — รออนุมัติ/ถูกตีกลับ) ไม่มีช่องสูตรเลย ⇒ ได้แถวกลิ่นจาก `scentText` ของมันเอง
@@ -89,6 +99,14 @@ export function productSpecFormulaRow(product, language = 'th') {
     };
   }
   const scent = textOf(product?.scentText);
+  if (scent && carriesScentDate(product)) {
+    const pieces = [textOf(product?.scentName), textOf(product?.scentCode), productSpecDateText(product?.scentProducedAt, language) || ''];
+    return {
+      kind: 'scent',
+      label: PRODUCT_SPEC_SCENT_DATE_ROW_LABEL,
+      value: pieces.map((part) => part || MISSING_PART).join(PART_SEPARATOR),
+    };
+  }
   if (scent || predatesFormulaRow(product)) {
     return { kind: 'scent', label: PRODUCT_SPEC_SCENT_ROW_LABEL, value: scent || null };
   }

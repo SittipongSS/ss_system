@@ -7,7 +7,7 @@ import {
   productSpecSignedSteps, productSpecWatermark, renderProductSpecDocument, supersededWatermark,
 } from './productSpecDocument.js';
 import {
-  PRODUCT_SPEC_FORMULA_ROW_LABEL, PRODUCT_SPEC_SCENT_ROW_LABEL, productSpecDateText as formulaRowDateText,
+  PRODUCT_SPEC_FORMULA_ROW_LABEL, PRODUCT_SPEC_SCENT_ROW_LABEL, PRODUCT_SPEC_SCENT_DATE_ROW_LABEL, productSpecDateText as formulaRowDateText,
   productSpecFormulaRow,
 } from './productSpecFormulaRow.js';
 import {
@@ -494,6 +494,43 @@ test('FG ที่ไม่ผูกสูตรแต่มีกลิ่น =
   const html = renderProductSpecDocument(baseInput({ snapshot: withProduct(noFormula) }));
   assert.deepEqual(overviewRows(html)[4], ['กลิ่น / รหัสกลิ่น', 'THE MOMENT OF TEA TIME #3 | PF859010103']);
   assert.doesNotMatch(html, /สูตร \/ รหัสสูตร \/ วันที่/, 'ไม่พิมพ์รหัสกลิ่นใต้ป้าย "รหัสสูตร"');
+});
+
+/* ⭐ มติเจ้าของ 24/11/2026 — "กลิ่น หรือ สูตร ต้องแสดง รหัส+ชื่อ+วันที่ผลิต เสมอ" · แถวกลิ่นได้วันผลิตเป็นชิ้นที่สาม
+   เฉพาะภาพนิ่งที่มีคีย์ `scentProducedAt` (ยื่นตั้งแต่ 24/11) — ภาพนิ่งเก่าสองชิ้นเดิมทุกตัวอักษร (เทสต์ข้างบนคงอยู่) */
+const OIL_SCENT = {
+  scentName: 'THE MOMENT OF TEA TIME #3.1 REV1', scentCode: 'PF85901010301', scentText: 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301',
+  scentProducedAt: '2026-09-10', formulaId: null, formulaName: null, formulaCode: null, formulaDate: null,
+};
+
+test('⭐ FG หัวน้ำหอม (ไม่ผูกสูตร · ผูกกลิ่น) ภาพนิ่งใหม่: "กลิ่น / รหัสกลิ่น / วันที่" + ชื่อ | รหัส | วันผลิต ตามภาษาของใบ', () => {
+  const th = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(OIL_SCENT) })));
+  assert.deepEqual(th[4], ['กลิ่น / รหัสกลิ่น / วันที่', 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | 10/09/2569']);
+  assert.equal(th.length, 9, 'แถวอยู่ตำแหน่งเดิม จำนวนแถวเท่าเดิม');
+  const en = overviewRows(renderProductSpecDocument(baseInput({ snapshot: withProduct(OIL_SCENT, englishSnapshot) })));
+  assert.deepEqual(en[4], ['กลิ่น / รหัสกลิ่น / วันที่', 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | 10/09/2026']);
+});
+
+test('แถวกลิ่นสามชิ้น: ไม่มีวันผลิต/รหัส = ขีดตรงชิ้นนั้น · ไม่มีกลิ่นเลย = ทางเดิม · ภาพนิ่งเก่า (ไม่มีคีย์) = สองชิ้นเดิม', () => {
+  assert.equal(PRODUCT_SPEC_SCENT_DATE_ROW_LABEL, 'กลิ่น / รหัสกลิ่น / วันที่');
+  assert.deepEqual(productSpecFormulaRow({ ...OIL_SCENT, scentProducedAt: null }), {
+    kind: 'scent', label: PRODUCT_SPEC_SCENT_DATE_ROW_LABEL, value: 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301 | -',
+  });
+  assert.deepEqual(productSpecFormulaRow({ ...OIL_SCENT, scentCode: null, scentText: 'Draft Oil', scentName: 'Draft Oil' }), {
+    kind: 'scent', label: PRODUCT_SPEC_SCENT_DATE_ROW_LABEL, value: 'Draft Oil | - | 10/09/2569',
+  });
+  // ไม่มีกลิ่นให้พิมพ์ = ป้ายสูตร ช่องว่าง (ทาง ③ เดิม) — คีย์วันผลิตอย่างเดียวไม่ทำให้เกิดแถวกลิ่น
+  assert.deepEqual(productSpecFormulaRow({ ...OIL_SCENT, scentText: null, scentName: null, scentCode: null }), {
+    kind: 'formula', label: PRODUCT_SPEC_FORMULA_ROW_LABEL, value: null,
+  });
+  // ผูกสูตร = แถวสูตรเหมือนเดิม (วันผลิตของกลิ่นไม่แทรก)
+  assert.equal(productSpecFormulaRow({ ...OIL_SCENT, ...TEA_FORMULA, scentProducedAt: '2026-09-01' }).label, PRODUCT_SPEC_FORMULA_ROW_LABEL);
+  // ภาพนิ่งที่ยื่นก่อน 24/11 ไม่มีคีย์ ⇒ สองชิ้นเดิมทุกตัวอักษร
+  const { scentProducedAt, ...before } = OIL_SCENT;
+  assert.equal(scentProducedAt, '2026-09-10');
+  assert.deepEqual(productSpecFormulaRow(before), {
+    kind: 'scent', label: PRODUCT_SPEC_SCENT_ROW_LABEL, value: 'THE MOMENT OF TEA TIME #3.1 REV1 | PF85901010301',
+  });
 });
 
 /* 🐞 ของจริงบน prod 01/10/2569 (อ่านด้วย GET): สินค้า 593 · ผูกสูตร 4 · FG ที่ไม่ผูกสูตร **ไม่มีตัวไหนมีกลิ่น** · สินค้าที่มีสเปค
