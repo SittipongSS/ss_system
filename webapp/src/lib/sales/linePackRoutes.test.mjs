@@ -240,7 +240,7 @@ async function patchQuote({ quote, body, products = MASTER, rpcError = null, use
 }
 
 /* POST …/revise ของใบ `quote` (อนุมัติแล้ว) */
-async function reviseQuote({ quote, body = {}, products = MASTER, lineInsertError = null }) {
+async function reviseQuote({ quote, body = {}, products = MASTER, lineInsertError = null, customer = {} }) {
   const db = fakeDb({
     quotations: (q) => {
       if (q.op === 'select' && filterOf(q, 'eq', 'id')) return { data: structuredClone(quote), error: null };
@@ -255,7 +255,7 @@ async function reviseQuote({ quote, body = {}, products = MASTER, lineInsertErro
       if (q.op === 'delete') return { data: null, error: null };
       throw new Error(`unexpected quotation_lines ${q.op}`);
     },
-    customers: () => ({ data: { addresses: [], address: null, shippingAddress: null, branchCode: null, taxId: null, nameEn: null, contacts: [], contactPerson: null, contactPhone: null }, error: null }),
+    customers: () => ({ data: { addresses: [], address: null, shippingAddress: null, branchCode: null, taxId: null, nameEn: null, contacts: [], contactPerson: null, contactPhone: null, ...customer }, error: null }),
     products: productsAnswer(products),
     product_types: () => ({ data: [], error: null }),
   });
@@ -284,14 +284,25 @@ const pending = (lines, by = 'U-2', over = {}) => {
   return { ...quote, approvalFingerprint: quotationApprovalFingerprint(quote, lines) };
 };
 
-/* POST …/submit และ POST …/approval ของใบ `quote` — ฐานปลอมมี **ตารางเดียว** (quotations) + RPC ลงนามตัวเดียว:
-   handler ไปอ่านตารางอื่น (เช่นทะเบียนสินค้า) หรือเรียก RPC อื่น = เทสต์แดง (แผน PR-3 §12 C12: ด่านตัดสินจากบรรทัดที่เก็บไว้) */
-async function workflowCall({ handler, action, rpcName, quote, user = USER, body = {} }) {
+/* POST …/submit และ POST …/approval ของใบ `quote` — ฐานปลอมมีใบ (quotations) + ทะเบียนลูกค้า + RPC ลงนามตัวเดียว:
+   handler ไปอ่านตารางอื่น (เช่นทะเบียนสินค้า) หรือเรียก RPC อื่น = เทสต์แดง (แผน PR-3 §12 C12: ด่านตัดสินจากบรรทัดที่เก็บไว้)
+   · ทะเบียนลูกค้า: ด่านยื่นอ่านชื่อสดเพื่อตรึงลงร่าง (draftCustomerNameStamp · 🐞 QT-26110656-4) — ค่าตั้งต้น = ชื่อตรงกับใบ ⇒ ไม่มีอะไรต้องเขียน
+   · เขียนใบตรง ๆ ได้ทางเดียว: ยื่นอนุมัติ + คีย์ชื่อลูกค้าล้วน · ทางอื่น/คีย์อื่น = เทสต์แดงเหมือนเดิม
+     `stampMatches: false` = จำลองว่ายามกันชน (updatedAt · ยังไม่ยื่น) ไม่เจอแถว */
+const NAME_STAMP_KEYS = new Set(['customerName', 'customerNameEn']);
+async function workflowCall({
+  handler, action, rpcName, quote, user = USER, body = {},
+  customer = { id: 'CUS-1', name: 'ลูกค้าทดสอบ', nameEn: null }, customerError = null, stampMatches = true,
+}) {
   const db = fakeDb({
     quotations: (q) => {
+      if (q.op === 'update' && action === 'submit' && Object.keys(q.payload).every((key) => NAME_STAMP_KEYS.has(key))) {
+        return { data: stampMatches ? { id: quote.id } : null, error: null };
+      }
       if (q.op !== 'select') throw new Error(`${action} ต้องเขียนใบผ่าน RPC ลงนามเท่านั้น — เจอ ${q.op} quotations`);
       return { data: structuredClone(quote), error: null };
     },
+    customers: () => ({ data: customer, error: customerError }),
   }, {
     [rpcName]: (args) => ({
       data: {
@@ -305,7 +316,8 @@ async function workflowCall({ handler, action, rpcName, quote, user = USER, body
   const request = new Request(`http://localhost/api/sales-planning/quotations/${quote.id}/${action}`, { method: 'POST', body: JSON.stringify(body) });
   const result = await answer(await handler(request, { params: Promise.resolve({ id: quote.id }) }));
   const signs = db.calls.filter((c) => c.op === 'rpc');
-  return { ...result, db, signs, sign: signs[0]?.args ?? null };
+  const stamps = db.calls.filter((c) => c.table === 'quotations' && c.op === 'update');
+  return { ...result, db, signs, sign: signs[0]?.args ?? null, stamps };
 }
 const submitQuote = (args) => workflowCall({ handler: SUBMIT, action: 'submit', rpcName: 'submit_quotation_with_signature_evidence_atomic', ...args });
 const approveQuote = (args) => workflowCall({ handler: APPROVE, action: 'approval', rpcName: 'approve_quotation_with_signature_evidence_atomic', ...args });
@@ -1130,4 +1142,76 @@ test('🔴 สวิตช์เป็น false บนโค้ดงวด PR-3
   assert.deepEqual(pick(obeyed.save.p_lines, ['qty', 'lineTotal']), [[12, 27600], [12, 42000], [3, 300]], '2 × 12 × 3,500 − 14,400 = 69,600 หดเหลือ 12 × 3,500 − 14,400 = 27,600 เงียบ ๆ');
   // ค่าคงที่จริงของไฟล์นี้ยังเป็น true — เทสต์ linePacks.test.mjs ยึดทั้งค่าและประโยคห้ามตั้งกลับ
   assert.equal(realPacks.QUOTE_PACK_INPUT_OPEN, true);
+});
+
+/* ═══ ชื่อลูกค้าบนใบ: ชื่อที่ร่างโชว์ = ชื่อที่ถูกตรึง (ไม่ใช่เรื่องเลขแพ็ค — อาศัยฐานปลอมชุดเดียวกัน) ═══════════════════════
+   🐞 24/11/2026 QT-26110656-4: แก้ชื่อลูกค้า AR-792 'JUNE MOON HOME LLC' → 'Issara Signature' → ออก Rev. → ร่างโชว์ชื่อใหม่
+   (refreshCustomerNameForDisplay แสดงผลอย่างเดียว) → กดยื่น → ชื่อดีดกลับเป็นชื่อเก่า เพราะ Rev. ลอกคอลัมน์ของฉบับก่อน
+   และด่านยื่นไม่เคยเขียนชื่อลงใบ (ทั้งที่คอมเมนต์ใน customerSnapshotFallback.js บอกว่าเขียน) */
+const RENAMED = { id: 'CUS-1', name: 'Issara Signature', nameEn: null };
+
+test('ชื่อลูกค้า · ออก Rev. หลังแก้ชื่อลูกค้า → ฉบับใหม่ถือชื่อปัจจุบันของทะเบียน (ไม่ลอกชื่อของฉบับก่อน)', async () => {
+  const run = await reviseQuote({ quote: approved(PLAIN_LINES(), { customerName: 'JUNE MOON HOME LLC' }), customer: { name: 'Issara Signature' } });
+  assert.equal(run.status, 201, JSON.stringify(run.body));
+  assert.equal(run.header.customerName, 'Issara Signature');
+  const select = run.db.calls.find((c) => c.table === 'customers');
+  assert.match(select.columns, /(^|[\s,])name([\s,]|$)/, 'ต้อง select คอลัมน์ name — ไม่หยิบมา = ชื่อสดไม่มีให้อ่าน แล้วถอยไปลอกชื่อเก่าเงียบ ๆ');
+});
+
+test('ชื่อลูกค้า · ออก Rev. · ทะเบียนไม่มีชื่อสักภาษา (หรือหาลูกค้าไม่เจอ) = สืบชื่อของฉบับก่อน ไม่ล้างเป็นค่าว่าง', async () => {
+  const run = await reviseQuote({ quote: approved(PLAIN_LINES(), { customerName: 'ชื่อบนใบเดิม' }), customer: { name: '  ', nameEn: null } });
+  assert.equal(run.status, 201, JSON.stringify(run.body));
+  assert.deepEqual([run.header.customerName, run.header.customerNameEn], ['ชื่อบนใบเดิม', null]);
+});
+
+test('ชื่อลูกค้า · ยื่นร่างที่ถือชื่อเก่า → เขียนชื่อปัจจุบันลงใบก่อนลงนาม พร้อมยามกันชน (updatedAt เดิม · ยังไม่ยื่น)', async () => {
+  const quote = quoteOf(PLAIN_LINES(), { customerName: 'JUNE MOON HOME LLC', updatedAt: '2026-11-24T09:41:28Z' });
+  const run = await submitQuote({ quote, customer: RENAMED });
+  assert.equal(run.status, 200, JSON.stringify(run.body));
+  assert.equal(run.stamps.length, 1);
+  const [stamp] = run.stamps;
+  assert.deepEqual(stamp.payload, { customerName: 'Issara Signature' }, 'เขียนเฉพาะคีย์ที่ต่าง — ไม่แตะ updatedAt (ยามของ RPC ลงนามยังต้องผ่าน)');
+  assert.deepEqual(
+    [filterOf(stamp, 'eq', 'id'), filterOf(stamp, 'eq', 'updatedAt'), filterOf(stamp, 'eq', 'approvalStatus')],
+    ['QT-1', '2026-11-24T09:41:28Z', 'not_submitted'],
+  );
+  const order = run.db.calls.filter((c) => c.op !== 'select').map((c) => c.op);
+  assert.deepEqual(order, ['update', 'rpc'], 'ตรึงชื่อก่อนลงนาม — ลงนามก่อนแล้วค่อยเขียน = ใบรออนุมัติถือชื่อเก่าเมื่อขั้นหลังพลาด');
+  assert.equal(run.sign.p_expected_updated_at, quote.updatedAt);
+  assert.equal(run.sign.p_document_fingerprint, quotationApprovalFingerprint(quote, quote.lines), 'ชื่อลูกค้าไม่อยู่ในลายนิ้วมือ — เขียนชื่อแล้วลายนิ้วมือต้องเท่าเดิม');
+});
+
+test('ชื่อลูกค้า · ยื่นร่างภาษาอังกฤษ → ชื่ออังกฤษของทะเบียนตรึงคู่กัน (ทะเบียนไม่มีอังกฤษ = คงของใบ)', async () => {
+  const withEn = await submitQuote({
+    quote: quoteOf(PLAIN_LINES(), { customerName: 'บริษัท ก จำกัด', customerNameEn: 'Old Co., Ltd.', updatedAt: 'T1' }),
+    customer: { id: 'CUS-1', name: 'บริษัท ก จำกัด', nameEn: 'New Co., Ltd.' },
+  });
+  assert.deepEqual(withEn.stamps.map((c) => c.payload), [{ customerNameEn: 'New Co., Ltd.' }]);
+  const noEn = await submitQuote({
+    quote: quoteOf(PLAIN_LINES(), { customerName: 'บริษัท ก จำกัด', customerNameEn: 'Old Co., Ltd.', updatedAt: 'T1' }),
+    customer: { id: 'CUS-1', name: 'บริษัท ก จำกัด', nameEn: '' },
+  });
+  assert.deepEqual(noEn.stamps, [], 'ทะเบียนว่างฝั่งอังกฤษ = ไม่ล้างชื่ออังกฤษของใบ');
+  assert.equal(noEn.status, 200);
+});
+
+test('ชื่อลูกค้า · ยื่นร่างที่ชื่อตรงทะเบียนอยู่แล้ว = ไม่เขียนอะไรนอกจาก RPC ลงนาม', async () => {
+  const run = await submitQuote({ quote: quoteOf(PLAIN_LINES()) });
+  assert.equal(run.status, 200, JSON.stringify(run.body));
+  assert.deepEqual(run.stamps, []);
+  assert.equal(run.signs.length, 1);
+});
+
+test('ชื่อลูกค้า · ยื่น · อ่านทะเบียนไม่สำเร็จ = ปฏิเสธการยื่น ไม่ลงนามด้วยชื่อที่จอไม่ได้โชว์', async () => {
+  const run = await submitQuote({ quote: quoteOf(PLAIN_LINES(), { customerName: 'ชื่อเก่า' }), customer: null, customerError: { message: 'boom' } });
+  assert.equal(run.status, 500);
+  assert.match(run.body.error, /อ่านชื่อลูกค้าจากทะเบียนไม่สำเร็จ/);
+  assert.deepEqual([run.stamps, run.signs], [[], []]);
+});
+
+test('ชื่อลูกค้า · ยื่น · ยามกันชนไม่เจอแถว (อีกหน้าต่างเพิ่งแก้/ยื่น) = 409 และไม่ลงนาม', async () => {
+  const run = await submitQuote({ quote: quoteOf(PLAIN_LINES(), { customerName: 'ชื่อเก่า', updatedAt: 'T1' }), customer: RENAMED, stampMatches: false });
+  assert.equal(run.status, 409);
+  assert.equal(run.stamps.length, 1);
+  assert.deepEqual(run.signs, []);
 });
