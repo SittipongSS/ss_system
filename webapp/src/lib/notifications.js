@@ -153,6 +153,12 @@ export const SERVICE_BELL_KINDS = Object.freeze([
      ใบออกจากคิวของผู้วางคิวแล้ว ไม่มีช่างมากด "ส่งงาน" ให้ `survey_field_done` เด้ง ⇒ ตัวนี้คือสัญญาณเดียวว่าถึงคิวหัวหน้า
      ⚠️ ยิงจาก `lib/service/surveyMethodNotify.js` (`SURVEY_DESK_READY_KIND`) */
   'survey_desk_ready',
+  /* ⭐ งวด 4 วันกำหนด (มติเจ้าของ 24/11/2026) — ยิงจาก `lib/service/serviceDueBells.js` ผ่าน cron daily-digest
+     · นัดเลยวันแต่ยังไม่ปิดงาน → ช่างหลักของนัด (ไม่มีช่าง → Planner) · entityType 'service_visit' (`VISIT_OVERDUE_KIND`)
+     · น้ำหอมใกล้หมด / น่าจะหมดแล้ว รายไซต์ → Planner · entityType 'service_site' (`REFILL_SOON_KIND` · `REFILL_OVERDUE_KIND`) */
+  'service_visit_overdue',
+  'service_refill_soon',
+  'service_refill_overdue',
 ]);
 
 /* ⭐ **สัญญาเข้ากระดิ่ง แต่เข้าทาง `kinds`** (2026-09-06) — เหตุผลเดียวกับลีด
@@ -273,6 +279,19 @@ export const PRODUCT_SPEC_DOC_BELL_KINDS = Object.freeze([
 export const CUSTOMER_BELL_KINDS = Object.freeze([
   // ลูกค้าที่วางบิลตามปฏิทินใกล้หมดปี → ฝ่ายขายทีมที่ดูแล + FN · หนึ่งแถวต่อลูกค้าต่อสัปดาห์ (ยิงจาก billingDueNotify.js `CALENDAR_MISSING_KIND`)
   'customer_billing_calendar_missing',
+  // หนังสือรับรองบริษัทเพิ่งหมดอายุ (6 เดือน) → ฝ่ายขายทีมที่ดูแล · งวด 4 วันกำหนด (ยิงจาก master/certificateBell.js `CERTIFICATE_EXPIRED_KIND`)
+  'customer_certificate_expired',
+]);
+
+/* ── ใบเสนอราคา: เข้ากระดิ่งทาง `kinds` (งวด 4 วันกำหนด · มติเจ้าของ 24/11/2026) ───────────────────────────────────
+ * ⭐ ใบที่รอลูกค้าตอบ (`sent`) เลยวันยืนราคา → เจ้าของดีล · ยิงจาก `lib/sales/quoteValidityBell.js` (`QUOTE_VALIDITY_KIND`)
+ * 🪤 ใบเสนอราคา **ไม่มีเธรดของตัวเอง** (เหตุการณ์สะท้อนเข้าเธรดดีล) ⇒ ใส่ลง `entityTypes` ไม่ได้
+ * ⚠️ ชุดนี้ต้องตรงกับ kind ที่ยิงจริง · notifications.test.mjs กวาดทั้ง src หา `quotation_…` มาเทียบ */
+export const QUOTATION_BELL_KINDS = Object.freeze([
+  'quotation_validity_expired',
+  /* QT ถูกยกเลิก → ผู้รับของคำร้องที่อ้างใบนั้น (`quotationCancelRepo.js`) · ยิงด้วย `entityType: 'dept_request'` ซึ่งอยู่ในกล่องอยู่แล้ว
+     ประกาศไว้ที่นี่เพื่อให้ทะเบียนนี้ตอบได้ครบว่า "กระดิ่งเรื่องใบเสนอราคามีอะไรบ้าง" (ท่าเดียวกับ `survey_send_back`) */
+  'quotation_cancelled',
 ]);
 
 /* ── งาน (เมนูงานของฉัน): เข้ากระดิ่งทาง `kinds` ไม่ใช่ทั้ง entity — เธรดงาน 92% เป็นเหตุการณ์ระบบ ─────────────
@@ -290,7 +309,7 @@ export const NOTIFICATION_BOXES = {
     kinds: [
       ...TASK_BELL_KINDS,
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
-      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS,
+      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS, ...QUOTATION_BELL_KINDS,
     ],
   },
 };

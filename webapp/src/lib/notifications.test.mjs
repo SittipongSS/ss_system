@@ -22,7 +22,7 @@ function* walk(dir) {
 }
 
 import {
-  CONTRACT_BELL_KINDS, CUSTOMER_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS,
+  CONTRACT_BELL_KINDS, CUSTOMER_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS, QUOTATION_BELL_KINDS,
   SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS, TASK_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
@@ -264,7 +264,7 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   assert.deepEqual(calls.ors, [
     'entityType.eq.dept_request,entityType.eq.system_issue,'
     + [...TASK_BELL_KINDS, ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
-      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS]
+      ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS, ...QUOTATION_BELL_KINDS]
       .map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
@@ -275,7 +275,8 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
     [...TASK_BELL_KINDS, ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
-      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS]);
+      ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS,
+      ...QUOTATION_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────
@@ -465,6 +466,23 @@ test('CUSTOMER_BELL_KINDS ครบทุก kind ที่ยิงจริง
     assert.ok(CUSTOMER_BELL_KINDS.includes(kind),
       `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน CUSTOMER_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
   }
+});
+
+/* ── ใบเสนอราคาเข้ากระดิ่ง (งวด 4 วันกำหนด · มติเจ้าของ 24/11/2026) ─────────────────────────────────────────
+   ⚠️ ดริฟต์ตัวเดียวกับใบสั่งขาย: ไฟล์ที่ประกาศ kind (`sales/quoteValidityBell.js`) กับไฟล์ที่ยิง (cron) คนละไฟล์ */
+test('QUOTATION_BELL_KINDS ครบทุก kind ที่ยิงจริง · เข้าทาง kinds ไม่ใช่ทั้ง entity', () => {
+  const kinds = new Set();
+  for (const file of walk(new URL('..', import.meta.url))) {
+    const src = readFileSync(file, 'utf8');
+    for (const [, kind] of src.matchAll(/kind: '(quotation_[a-z_]+)'/g)) kinds.add(kind);
+    for (const [, kind] of src.matchAll(/_KIND = '(quotation_[a-z_]+)'/g)) kinds.add(kind);
+  }
+  assert.ok(kinds.size >= 1, 'หา kind ของแจ้งเตือนใบเสนอราคาไม่เจอเลย — เทสต์นี้ตาบอดแล้ว');
+  for (const kind of kinds) {
+    assert.ok(QUOTATION_BELL_KINDS.includes(kind), `${kind} ยิงอยู่จริงแต่ยังไม่อยู่ใน QUOTATION_BELL_KINDS ⇒ ไม่ขึ้นกระดิ่ง`);
+  }
+  assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('quotation'), false);
+  for (const kind of QUOTATION_BELL_KINDS) assert.ok(NOTIFICATION_BOXES.bell.kinds.includes(kind), `${kind} หลุดจากกระดิ่ง`);
 });
 
 test('กล่อง + กุญแจหน้าถัดไปอยู่ด้วยกันได้ — or สองก้อนถูก and กันที่ PostgREST', async () => {

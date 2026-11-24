@@ -68,7 +68,8 @@ function ProfileGroup({ label, hint = null }) {
 }
 
 /* ส่วนในแท็บที่มีลิงก์ชี้เข้ามา — ประกาศนอกคอมโพเนนต์ให้อ้างอิงคงที่ (CustomerHub ผูก listener กับค่านี้) */
-const BILLING_RULE_HASH_TABS = Object.freeze({ "billing-rule": "profile" });
+/* ลิงก์ที่ชี้ส่วนในแท็บ — `#billing-rule` (การ์ดวางบิล) · `#customer-docs` (แท็บเอกสาร: กระดิ่งหนังสือรับรองหมดอายุ · งวด 4 วันกำหนด) */
+const BILLING_RULE_HASH_TABS = Object.freeze({ "billing-rule": "profile", "customer-docs": "docs" });
 
 export default function CustomerDetails() {
   const params = useParams();

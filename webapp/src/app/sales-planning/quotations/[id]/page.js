@@ -9,6 +9,8 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Building2, CalendarDays, CheckCircle2, CircleDollarSign, ClipboardList, ExternalLink, FileClock, Package, Plus, UserRound } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import useThaiToday from "@/lib/ui/useThaiToday";
+import { quoteValidityState } from "@/lib/sales/quoteValidityBell";
 import DateInput from "@/components/ui/DateInput";
 import Select from "@/components/ui/Select";
 import QuotationCustomerFields from "@/components/salesPlanning/QuotationCustomerFields";
@@ -81,10 +83,23 @@ import { quotationBillingRequestHref } from "@/lib/sales/billingRequestHref";
 
 const money = (v) => fmtMoney(v);
 
+/* ป้ายใต้ "ยืนราคาถึง" (งวด 4 วันกำหนด · มติเจ้าของ 24/11/2026) — ตัวตัดสินเดียวกับกระดิ่ง "เลยวันยืนราคา" (`quoteValidityState`):
+   เฉพาะใบที่รอลูกค้าตอบ (อนุมัติแล้ว) ของดีลที่ยังไม่ปิด · คำ/สีชุดกลาง (`dueInfo`) · ยังไกลกว่า 3 วัน = วันที่เฉย ๆ
+   ⚠️ อ่านวันจากฟอร์ม (ช่องที่หัวใบโชว์อยู่) — แก้วันแล้วป้ายตามทันทีก่อนบันทึก */
+const VALIDITY_FACT_TONE = { danger: "late", warning: "warn" };
+const VALIDITY_FACT_KEYS = ["late", "today", "soon"];
+function validityFact(quote, validUntil, todayIso) {
+  const value = validUntil ? fmtDate(validUntil) : "ไม่ระบุ";
+  const state = quoteValidityState({ ...quote, validUntil }, { todayIso, dealStage: quote?.deal?.stage || null });
+  if (!state || !VALIDITY_FACT_KEYS.includes(state.key)) return { value };
+  return { value, sub: state.text, tone: VALIDITY_FACT_TONE[state.tone] };
+}
+
 export default function QuotationEditorPage() {
   const { id } = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · ป้ายวันยืนราคา (งวด 4 วันกำหนด)
   // ⚠️ **URL ขอโหมดแก้ไขได้ แต่ไม่ได้แปลว่าได้** — ตัวจริงคือ `editMode` ข้างล่าง
   // ซึ่งคูณกับ `canEditDocument` (ดูเหตุผลเต็มที่บรรทัดนั้น · IS-26080011)
   const editRequested = searchParams.get("edit") === "1";
@@ -1020,7 +1035,7 @@ export default function QuotationEditorPage() {
             badges={<><SalesStateBadge label={statusMeta.label} color={statusMeta.color} />{quote.revisionNo > 0 ? <span className="ui-badge">Revision {quote.revisionNo}</span> : null}</>}
             facts={[
               { icon: CalendarDays, label: "วันที่ออกใบ", value: form.quoteDate ? fmtDate(form.quoteDate) : NA },
-              { icon: CalendarDays, label: "ยืนราคาถึง", value: form.validUntil ? fmtDate(form.validUntil) : "ไม่ระบุ" },
+              { icon: CalendarDays, label: "ยืนราคาถึง", ...validityFact(quote, form.validUntil, todayIso) },
               { icon: CircleDollarSign, label: "ภาษี", value: form.vatRate > 0 ? `+ VAT ${form.vatRate}%` : "รวม VAT แล้ว" },
               { icon: Package, label: "รายการ", value: `${lines.length} รายการ` },
             ]}
