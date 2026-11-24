@@ -56,10 +56,18 @@ export const ORIGIN_FILTERS = {
   [ORIGIN_HISTORICAL]: { label: 'ใบย้อนหลัง', match: (row) => isHistoricalOrder(row) },
 };
 
+/* ── ใบตีกลับ (เจ้าของ 24/11/2026 "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") ─────────────────────────────────────────────
+   สองแบบรวมกัน (มติ "นับทั้งสองแบบ"): ใบที่ AE Sup ตีกลับ (`status = rejected`) **หรือ** ใบที่มีงวดบัญชีตีกลับ (`payment.rejected` —
+   ตัวนับของคอลัมน์งวด ตัดงวดโมฆะแล้ว) ⇒ การ์ด "ตีกลับ รอแก้" นับด้วยตัวนี้ และกดแล้วกรองด้วยตัวนี้ตัวเดียว (เลข = แถว)
+   ⚠️ เป็นมิติของตัวเอง (`bounced`) ไม่ใช่ status + payment — สองกลุ่มนั้น AND กัน แต่ "ตีกลับ" คือ OR ข้ามสองแกน */
+export function salesOrderBounced(row) {
+  return row?.status === 'rejected' || (row?.payment?.rejected || 0) > 0;
+}
+
 /** ตัวกรองว่างทั้งชุด — รูปเดียวกับที่หน้าส่งเข้า `salesOrderPassesListFilters` (lineView 'all' = ทุกสาย) */
 export const EMPTY_SALES_ORDER_FILTERS = Object.freeze({
   query: '', status: Object.freeze([]), payment: Object.freeze([]), invoice: Object.freeze([]), origin: Object.freeze([]),
-  lineView: 'all', waitingOnMe: false, serviceSetupPending: false,
+  lineView: 'all', waitingOnMe: false, serviceSetupPending: false, bounced: false,
 });
 
 /**
@@ -71,6 +79,7 @@ export function salesOrderPassesListFilters(row, filters = EMPTY_SALES_ORDER_FIL
   const f = { ...EMPTY_SALES_ORDER_FILTERS, ...(filters || {}) };
   if (f.waitingOnMe && !row._waitingOnMe) return false;
   if (f.serviceSetupPending && !row._serviceSetupPending) return false;
+  if (f.bounced && !salesOrderBounced(row)) return false;
   /* แท็บ "สรรพสามิต" (มติเจ้าของ 03/11) = ใบ SO ค่าสรรพสามิตอย่างเดียว — ใบนั้นไม่มีดีล ⇒ ไม่มีสายธุรกิจ (อยู่ใน "ทุกสาย" เสมอ) */
   if (f.lineView === EXCISE_LINE_VIEW) {
     if (!isExciseOrder(row)) return false;
@@ -89,11 +98,13 @@ export function salesOrderPassesListFilters(row, filters = EMPTY_SALES_ORDER_FIL
    pending  "รอตรวจอนุมัติ"   = ใบจากใบเสนอราคา + รออนุมัติ (= pendingOrderCount — **ใบ** pending_approval ล้วน · งวดที่ยื่นของใบรายงวด
                                 อนุมัติแล้วไม่อยู่ในเลขนี้ (คนละสถานะ — กดแล้วไม่มีทางขึ้น) · หมายเหตุใต้เลขบอกแยก · review รอบสาม 26/10)
    approved "อนุมัติแล้ว" · "Actual ก่อน VAT" = ใบจากใบเสนอราคา + อนุมัติแล้ว (= actualCount · Σ salesOrderActual = actual)
-   ⚠️ ที่มา = ใบจากใบเสนอราคาเสมอ — ใบย้อนหลังไม่อยู่ในกองของการ์ด (salesOrderAmountKind = 'excluded') */
+   ⚠️ ที่มา = ใบจากใบเสนอราคาเสมอ — ใบย้อนหลังไม่อยู่ในกองของการ์ด (salesOrderAmountKind = 'excluded')
+   bounced  "ตีกลับ รอแก้" (24/11/2026) = `salesOrderBounced` ทุกที่มา — ใบย้อนหลังที่ถูกตีกลับก็ต้องแก้ (ไม่ใช่การ์ดเงิน ไม่ตัดที่มา) */
 export const SALES_ORDER_CARD_PICKS = Object.freeze({
   total: EMPTY_SALES_ORDER_FILTERS,
   pending: Object.freeze({ ...EMPTY_SALES_ORDER_FILTERS, status: Object.freeze(['pending_approval']), origin: Object.freeze([ORIGIN_PIPELINE]) }),
   approved: Object.freeze({ ...EMPTY_SALES_ORDER_FILTERS, status: Object.freeze(['approved']), origin: Object.freeze([ORIGIN_PIPELINE]) }),
+  bounced: Object.freeze({ ...EMPTY_SALES_ORDER_FILTERS, bounced: true }),
 });
 
 const sameSet = (a = [], b = []) => a.length === b.length && a.every((value) => b.includes(value));
@@ -104,7 +115,8 @@ export function salesOrderPickActive(filters, pick) {
   return String(f.query || '').trim() === String(pick.query || '')
     && sameSet(f.status, pick.status) && sameSet(f.payment, pick.payment) && sameSet(f.invoice, pick.invoice)
     && sameSet(f.origin, pick.origin) && f.lineView === pick.lineView
-    && !!f.waitingOnMe === !!pick.waitingOnMe && !!f.serviceSetupPending === !!pick.serviceSetupPending;
+    && !!f.waitingOnMe === !!pick.waitingOnMe && !!f.serviceSetupPending === !!pick.serviceSetupPending
+    && !!f.bounced === !!pick.bounced;
 }
 
 /* ── หัวกลุ่มเมื่อ "จัดกลุ่ม" (ตรวจตัวเลข L11c) ────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   EMPTY_SALES_ORDER_FILTERS, ORIGIN_FILTERS, SALES_ORDER_CARD_PICKS,
-  historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,
+  historicalPendingCount, historicalPendingNote, salesOrderBounced, salesOrderPassesListFilters, salesOrderPickActive,
 } from './salesOrderListFilter.js';
 import { ORIGIN_HISTORICAL, ORIGIN_PIPELINE } from './historicalOrders.js';
 import { salesOrderActual, splitSalesOrderAmounts } from './salesOrderWorkflow.js';
@@ -72,14 +72,16 @@ const tableRows = (filters) => {
 const STALE = [
   {}, { query: 'ลูกค้า ก' }, { query: 'SO-2610' }, { status: ['pending_approval'] }, { status: ['approved', 'draft'] },
   { payment: ['overdue'] }, { invoice: ['missing'] }, { origin: [ORIGIN_HISTORICAL] }, { origin: [ORIGIN_PIPELINE, ORIGIN_HISTORICAL] },
-  { lineView: 'SERVICE' }, { lineView: 'PRODUCT' }, { waitingOnMe: true }, { serviceSetupPending: true },
-  { query: 'ข', status: ['rejected'], payment: ['complete'], invoice: ['complete'], origin: [ORIGIN_HISTORICAL], lineView: 'SERVICE', waitingOnMe: true, serviceSetupPending: true },
+  { lineView: 'SERVICE' }, { lineView: 'PRODUCT' }, { waitingOnMe: true }, { serviceSetupPending: true }, { bounced: true },
+  { query: 'ข', status: ['rejected'], payment: ['complete'], invoice: ['complete'], origin: [ORIGIN_HISTORICAL], lineView: 'SERVICE', waitingOnMe: true, serviceSetupPending: true, bounced: true },
 ];
 
 test('🔴 L11: ทุกการ์ด × ตัวกรองที่ค้าง — กดแล้วตารางเหลือเท่าเลขบนการ์ด (นิยามของการ์ดไม่เปลี่ยน)', () => {
   const amounts = splitSalesOrderAmounts(ROWS); // ตัวเดียวกับที่หน้าคิด summary
   // การ์ด "รอตรวจอนุมัติ" = ใบ pending_approval ล้วน (pendingOrderCount) — งวดที่ยื่นของใบรายงวดอยู่นอกเลขการ์ด (review รอบสาม 26/10)
-  const expected = { total: ROWS.length, pending: amounts.pendingOrderCount, approved: amounts.actualCount };
+  /* "ตีกลับ รอแก้" (เจ้าของ 24/11/2026) — ตัวตัดสินเดียวกับที่หน้านับเลขบนการ์ด (`salesOrderBounced`) · ทุกที่มา */
+  const expected = { total: ROWS.length, pending: amounts.pendingOrderCount, approved: amounts.actualCount, bounced: ROWS.filter(salesOrderBounced).length };
+  assert.ok(expected.bounced > ROWS.filter((row) => row.status === 'rejected').length, 'ชุดทดสอบมีทั้งใบที่ AE Sup ตีกลับและใบที่มีงวดบัญชีตีกลับ');
   assert.equal(amounts.instPendingCount, 2, 'ชุดทดสอบมีงวดที่ยื่นของใบรายงวด (ใบย้อนหลังไม่นับ)');
   assert.equal(amounts.instPendingAmount, 60000);
   assert.equal(amounts.pendingApproval, amounts.pendingOrderAmount + amounts.instPendingAmount, 'กองรออนุมัติรวม = ใบ + งวด (มติข้อ 5)');
@@ -167,9 +169,9 @@ test('🔴 L11c: หัวกลุ่ม — ใบย้อนหลังท�
   assert.equal(historicalPendingCount(null), 0);
 });
 
-test('ด่านซอร์ส L11: หน้ากรองด้วยตัวตัดสินกลาง · การ์ดสี่ใบเป็นปุ่มที่ตั้ง state ทุกตัวของตารางจาก pick', () => {
+test('ด่านซอร์ส L11: หน้ากรองด้วยตัวตัดสินกลาง · การ์ดห้าใบเป็นปุ่มที่ตั้ง state ทุกตัวของตารางจาก pick', () => {
   const page = read('../../app/sales-planning/sales-orders/page.js');
-  assert.match(page, /import \{\s*EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,\s*historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,\s*\} from "@\/lib\/sales\/salesOrderListFilter";/);
+  assert.match(page, /import \{\s*EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,\s*historicalPendingCount, historicalPendingNote, salesOrderBounced, salesOrderPassesListFilters, salesOrderPickActive,\s*\} from "@\/lib\/sales\/salesOrderListFilter";/);
   const memo = slice(page, 'const filtered = useMemo(', '\n\n');
   assert.match(memo, /return rows\.filter\(\(row\) => salesOrderPassesListFilters\(row, filters, \{ matchesSearch \}\)\);/);
   assert.doesNotMatch(memo, /Filter\.length && !|lineView !== "all"|_waitingOnMe|_serviceSetupPending/, 'ห้ามเขียนเงื่อนไขของมิติซ้ำในหน้า');
@@ -191,9 +193,9 @@ test('ด่านซอร์ส L11: หน้ากรองด้วยต�
   // การ์ด: ปุ่มจริง · aria-pressed · กดซ้ำ = ล้าง
   assert.match(page, /const pickCard = \(key\) => applyOrderPick\(cardActive\(key\) \? EMPTY_SALES_ORDER_FILTERS : SALES_ORDER_CARD_PICKS\[key\]\);/);
   const strip = slice(page, '<SaMetricStrip>', '</SaMetricStrip>');
-  assert.equal((strip.match(/<SaMetric\s/g) || []).length, 4);
-  assert.equal((strip.match(/as="button" type="button"/g) || []).length, 4, 'การ์ดทั้งสี่กดได้');
-  for (const key of ['total', 'pending', 'approved']) {
+  assert.equal((strip.match(/<SaMetric\s/g) || []).length, 5);
+  assert.equal((strip.match(/as="button" type="button"/g) || []).length, 5, 'การ์ดทั้งห้ากดได้');
+  for (const key of ['total', 'pending', 'approved', 'bounced']) {
     assert.ok(strip.includes(`active={cardActive("${key}")} aria-pressed={cardActive("${key}")} onClick={() => pickCard("${key}")}`), key);
   }
   assert.equal((strip.match(/pickCard\("approved"\)/g) || []).length, 2, '"อนุมัติแล้ว" กับ "Actual ก่อน VAT" ชุดเดียวกัน');

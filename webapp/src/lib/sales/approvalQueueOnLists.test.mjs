@@ -67,7 +67,9 @@ test('ธง _awaitingMyApproval ติดที่ server ทั้งสอง
      + สายธุรกิจ ซึ่ง helper ไม่มี) ⇒ route คิดครั้งเดียวแล้วส่งเข้าไป · ป้ายบนเมนูคิดแบบเดียวกัน */
   /* ⭐ ใบที่สายเปลี่ยนเป็นอย่างอื่นระหว่างรอตรวจงานบริการ ไม่ใช่งานของผู้ตรวจ (RPC อนุมัติปฏิเสธ · หน้าใบไม่มีปุ่ม) ⇒ ตัดเลนผู้ตรวจ */
   /* ⭐ + เลนนับ Actual รายงวด (mig 0412) — ส่งงวดของใบรายงวดให้ helper (ป้ายบนเมนูส่ง actualRows/actualInstallmentsOf ชุดเดียวกัน) */
-  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \}, \{\s*userId: user\.id, reviewer: reviewer && !staleServiceReview\(row\), role: user\.role,\s*serviceBackfillNeeded: setupPendingIds\.has\(row\.id\),\s*actualInstallments: actualInstallmentsOf\(row\),\s*\}\)/);
+  assert.match(orders, /_waitingOnMe: isSalesOrderWaitingOnMe\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \}, \{\s*userId: user\.id, reviewer: reviewer && !staleServiceReview\(row\), role: user\.role,\s*serviceBackfillNeeded: setupPendingIds\.has\(row\.id\),\s*actualInstallments: actualInstallmentsOf\(row\),\s*bounceInstallments: installmentsByOrder\.get\(row\.id\) \|\| \[\],\s*\}\)/);
+  /* ⭐ ใบตีกลับรอฉันแก้ (24/11/2026) — ตัวตัดสินกลาง + แถวแนบ deal (เลนงวดตีกลับนับให้เจ้าของดีล) + งวดชุดเดียวกับ `_waitingOnMe` */
+  assert.match(orders, /_bouncedToMe: salesOrderBouncedToMe\(\{ \.\.\.row, deal: dealById\.get\(row\.dealId\) \|\| null \}, \{\s*userId: user\.id, installments: installmentsByOrder\.get\(row\.id\) \|\| \[\],\s*\}\),/);
   assert.match(orders, /const reviewer = isSalesOrderReviewer\(user\.role\);/);
   /* แกนที่สองของใบเดียวกัน — ขั้นบัญชีปิดใบ (mig 0250)
      ⭐ ตั้งแต่มติ 2026-08-30 ด่านนี้ขึ้นกับ **งวดชำระ** ⇒ ต้องป้อนงวดของใบนั้นเข้าไปด้วย
@@ -376,7 +378,8 @@ test('ตามงานค้าง: บรรทัดสรุปของค
   const panel = slice(page, '<ListPanel', 'toolbar={(');
   assert.match(panel, /subtitle=\{serviceSetupPendingOnly && serviceAgingSummary \? serviceAgingSummary : "ค้นหา ตรวจเอกสาร และติดตามขั้นตอนอนุมัติจากจุดเดียว"\}/);
   assert.equal((page.match(/<ListPanel\b/g) || []).length, 1, 'ไม่เพิ่มแผง');
-  assert.equal((page.match(/<SaMetric\s/g) || []).length, 4, 'ไม่เพิ่มการ์ดสรุปบนหัวหน้า');
+  // 4 → 5 เมื่อ 24/11/2026: การ์ด "ตีกลับ รอแก้" (เจ้าของ "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") — ไม่ใช่การ์ดของคิวงานบริการ
+  assert.equal((page.match(/<SaMetric\s/g) || []).length, 5, 'ไม่เพิ่มการ์ดสรุปบนหัวหน้า (นอกจากการ์ดตีกลับ)');
 });
 
 /* ผลตรวจทาน 08/10 (หลังเห็นจอจริงกับข้อมูลจริง): เปิดชิป "ยังไม่ตั้งงานบริการ" แล้วตารางยังเรียง "ล่าสุด" — หน้าแรก (25 ใบ) มีแต่ใบที่ค้าง
@@ -428,11 +431,12 @@ test('M15: เปิดชิป "ยังไม่ตั้งงานบร�
   // ทุก state ที่ memo ของตารางอ่าน (dependency) ต้องถูกล้างบนทางเปิด — เพิ่มตัวกรองใหม่แล้วลืมล้าง = เลขบนชิปไม่ตรงอีก
   const memo = slice(page, 'const filtered = useMemo(', '\n\n');
   const deps = /\}, \[([^\]]*)\]\);/.exec(memo)[1].split(',').map((d) => d.trim()).filter(Boolean);
-  assert.deepEqual(deps.slice().sort(), ['invoiceFilter', 'lineView', 'originFilter', 'paymentFilter', 'query', 'rows', 'serviceSetupPendingOnly', 'statusFilter', 'waitingOnMeOnly'].sort(),
+  assert.deepEqual(deps.slice().sort(), ['bouncedOnly', 'invoiceFilter', 'lineView', 'originFilter', 'paymentFilter', 'query', 'rows', 'serviceSetupPendingOnly', 'statusFilter', 'waitingOnMeOnly'].sort(),
     'ตัวกรองของตารางเปลี่ยน — ทบทวนว่าเปิดชิปล้างครบไหม แล้วแก้ชุดนี้');
   const CLEARS = {
     query: 'setQuery("")', statusFilter: 'setStatusFilter([])', paymentFilter: 'setPaymentFilter([])',
     invoiceFilter: 'setInvoiceFilter([])', originFilter: 'setOriginFilter([])', waitingOnMeOnly: 'setWaitingOnMeOnly(false)',
+    bouncedOnly: 'setBouncedOnly(false)',
   };
   for (const dep of deps) {
     if (dep === 'rows' || dep === 'serviceSetupPendingOnly') continue;
