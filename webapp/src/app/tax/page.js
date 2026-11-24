@@ -21,7 +21,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import { NA, fmtNumber, naText } from "@/lib/format";
 import { isExemptFiling } from "@/lib/tax/exciseBilling";
 import { raQueueItem, raWorkHref } from "@/lib/excise/raQueueItem";
-import { businessDate } from "@/lib/businessDate";
+
 import { PERIODS, taxQueueHref, withinPeriod } from "@/lib/tax/period";
 import {
   AGE_LATE_DAYS, LATE_REGISTRATIONS_HREF, ageTone, lateRegistrations, registrationAge,
@@ -29,6 +29,7 @@ import {
 import { toneColor } from "@/lib/ui/tone";
 import styles from "./tax.module.css";
 import { ageText } from "@/lib/dueState";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 export default function TaxDashboard() {
   const canSA = useCan("sales:act");
@@ -97,7 +98,7 @@ export default function TaxDashboard() {
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จาก **นาฬิกาไทย**
      🐞 ของเดิมเรียก `new Date()` ตอนเรนเดอร์ในตัวกรองช่วงเวลา ⇒ ใช้นาฬิกาเครื่อง
      ผู้ใช้ (โซนเวลาอื่น = คนละ "เดือนนี้") และค่าขยับระหว่างเรนเดอร์ */
-  const todayIso = useMemo(() => businessDate(), []);
+  const todayIso = useThaiToday({ seed: true }); // เดิม useMemo([]) ⇒ แท็บค้างข้ามคืนนับ "ค้าง" ของเมื่อวาน (งวด 2)
 
   // Filter data based on selected time range
   const regs = useMemo(

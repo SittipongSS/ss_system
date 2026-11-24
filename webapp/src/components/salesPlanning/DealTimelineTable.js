@@ -38,8 +38,9 @@ import {
   timelineSummaryActive, timelineSummaryCounts, timelineSummaryPick,
 } from "@/lib/pm/timelineFilter";
 import { requestKindLabel } from "@/lib/master/requestTypes";
-import { businessDate } from "@/lib/businessDate";
+
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const STATUS_META = {
   Pending: { label: "รอดำเนินการ", color: "var(--text-3)" },
@@ -365,7 +366,7 @@ export default function TimelineWorkspace({
   /* ⭐ ป้ายสรุปสี่ตัว (ตรวจตัวเลข L1 · 26/10) — นับด้วยตัวตัดสินเดียวกับตัวกรอง (`timelineSummaryCounts`) และกดได้:
      กด = ตัวกรองขั้นชุดใหม่ทั้งชุด (`timelineSummaryPick` · ล้างฝ่ายที่ค้าง เพราะป้ายนับทุกฝ่าย) ⇒ เลขบนป้าย = ขั้นที่เหลือหลังกด
      · กดป้ายที่ใช้อยู่ซ้ำ = ล้างตัวกรอง · "วันนี้" ของเลยกำหนดมาจากนาฬิกาไทย (`businessDate`) */
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const summaryCounts = timelineSummaryCounts(tasks, today);
   const done = summaryCounts.completed;
   /* ⚠️ **เก็บค่าดิบไม่ปัด** — ตัวเดียวกันนี้ถูกใช้สองงาน: เลขใหญ่ที่คนอ่าน (จัดรูปเป็น

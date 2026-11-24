@@ -97,7 +97,7 @@ import { productionReadiness } from "@/lib/pm/deliveries";
 import { salesOrderPlanSummary } from "@/lib/pm/productionPlan";
 import Textarea from "@/components/ui/Textarea";
 import Input from "@/components/ui/Input";
-import { businessDate } from "@/lib/businessDate";
+
 import { uploadFileBytes } from "@/lib/master/uploadFile";
 import SalesOrderWorkTrack from "@/components/salesPlanning/SalesOrderWorkTrack";
 import SalesOrderPaymentPanel from "@/components/salesPlanning/SalesOrderPaymentPanel";
@@ -182,6 +182,7 @@ import { exciseNotBilledTitle } from "@/lib/excise/exciseNotBilled";
 import {
   EXCISE_ORDER_MODAL_COPY, EXCISE_ORDER_STATUS_DESCRIPTION, excisePreVatAmount, exciseSourceOrderLabel, salesOrderApprovalDeal,
 } from "@/lib/excise/exciseSalesOrder";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 /* โทนของ `historicalStatusCopy` → สีของป้ายสถานะบนหัวใบ/การ์ดจัดการ (ชิ้นพวกนั้นรับ `color` ไม่ใช่ tone)
    ⚠️ แผนที่ของ **การแสดงผล** เท่านั้น — ตัวตัดสินว่าสถานะไหนโทนอะไรอยู่ที่ historicalOrderCopy ที่เดียว */
@@ -1783,7 +1784,7 @@ export default function SalesOrderDetailPage() {
 
   // ของเข้าที่สั่งมาเพื่อผลิตใบนี้ (mig 0177) — สรุปเป็น "พร้อมผลิตหรือยัง"
   const deliveries = useMemo(() => order?.deliveries || [], [order?.deliveries]);
-  const todayIso = businessDate();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const readiness = useMemo(
     () => productionReadiness(deliveries, todayIso),
     [deliveries, todayIso],

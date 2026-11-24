@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { businessDate } from "@/lib/businessDate";
+
 import { notifyToast } from "@/lib/feedback";
 import { NO_BILLING_TEXT, NO_CREDIT_TEXT, fmtDate, policyPreview, ruleOf, sourceLabel } from "@/lib/sales/billingRule";
 import CustomerBillingRuleModal from "./CustomerBillingRuleModal";
@@ -30,6 +30,7 @@ import { calendarCardOf, hasRuleChange, policyWordsOf, reminderChipsOf, stampTex
 import { PairList, PolicySentence, ReminderChips } from "./CustomerBillingRuleRounds";
 import useHolidayMap from "@/lib/useHolidayMap";
 import styles from "./CustomerBillingRule.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const calendarFileHref = (fileId) => `/api/master/attachments/${encodeURIComponent(fileId)}/file`;
 
@@ -69,7 +70,7 @@ export default function CustomerBillingRuleCard({ customer, canEdit = false, onS
   const rule = ruleOf(value);
   const words = policyWordsOf(value);
   const asking = words.need === "unknown" || words.need === "legacy";
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const legacyTerms = String(customer?.creditTerms ?? "").trim();
   const stamp = stampTextOf(customer?.billingRuleUpdatedAt);
   const by = customer?.billingRuleUpdatedByName || "";

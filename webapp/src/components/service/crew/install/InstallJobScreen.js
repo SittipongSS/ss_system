@@ -17,7 +17,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
 import StepTrack from "@/components/ui/StepTrack";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
-import { businessDate } from "@/lib/businessDate";
+
 import { notifyToast } from "@/lib/feedback";
 import { fmtDate } from "@/lib/format";
 import { isInstallStepVisit } from "@/lib/service/visitGate";
@@ -28,6 +28,7 @@ import {
 import InstallZonePage from "./InstallZonePage";
 import InstallSendSheet from "./InstallSendSheet";
 import styles from "./InstallJob.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const slot = (visit) => (visit?.startTime && visit?.endTime
   ? `${String(visit.startTime).slice(0, 5)}–${String(visit.endTime).slice(0, 5)}`
@@ -41,7 +42,7 @@ export default function InstallJobScreen({ visitId }) {
   const [zoneOpen, setZoneOpen] = useState(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [starting, setStarting] = useState(false);
-  const todayIso = businessDate();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
 
   const load = useCallback(async () => {
     try {

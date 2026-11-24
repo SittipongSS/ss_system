@@ -24,6 +24,7 @@ const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 /** วันไทย `YYYY-MM-DD` ของค่าวันล้วนหรือ timestamp — null เมื่ออ่านไม่ออก */
 export function thaiDay(value) {
   if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : businessDayKey(value.toISOString());
   const text = String(value).trim();
   if (ISO_DAY.test(text)) return text;
   return businessDayKey(text);

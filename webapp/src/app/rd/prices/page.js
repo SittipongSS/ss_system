@@ -38,7 +38,7 @@ import IngredientListModal from "@/components/database/IngredientListModal";
 import PriceRegistryTable from "@/components/rd/PriceRegistryTable";
 import { apiJson } from "@/lib/apiFetch";
 import { cachedFetchJson } from "@/lib/apiCache";
-import { businessDate } from "@/lib/businessDate";
+
 import { NA, fmtDate, fmtNumber, naText } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import { useCapUser, useDepartment } from "@/lib/roleContext";
@@ -59,6 +59,7 @@ import {
 } from "@/lib/rd/priceBoardView";
 import styles from "./page.module.css";
 import { registryLabelParts, registryLabelSub } from "@/lib/master/registryLabel";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 // ⭐ จัดตารางใหม่ (ผู้ใช้ 03/11/2026: "ปรับ layout สี ตำแหน่ง ป้ายต่างๆ ของตารางหน่อย มันดูยาก") — สี่คอลัมน์:
 //   รายการ (รหัสบน·ชื่อล่าง) · ลูกค้าคอนเฟิร์ม (+ รอกี่วัน) · ราคา · Ingredient List
@@ -160,7 +161,7 @@ export default function RdPricesPage() {
   );
 
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า `toISOString()` ยังให้เมื่อวาน แล้ว "รอมาแล้ว" จะนับผิดไปหนึ่งวันทุกเช้า
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const totals = useMemo(() => priceBoardTotals(rows, { todayIso: today }), [rows, today]);
   const scentTotals = useMemo(() => priceRegistryTotals(registry.scents), [registry.scents]);
   const formulaTotals = useMemo(() => priceRegistryTotals(registry.formulas), [registry.formulas]);

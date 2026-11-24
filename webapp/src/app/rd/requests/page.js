@@ -19,7 +19,7 @@ import ViewSwitcher from "@/components/ui/ViewSwitcher";
 import RequestQueuePanel from "@/components/requests/RequestQueuePanel";
 import QueueCountStrip from "@/components/requests/QueueCountStrip";
 import { useQueueBoard } from "@/lib/requests/useQueueBoard";
-import { businessDate } from "@/lib/businessDate";
+
 import { DEPT_QUEUE_TAB_KEYS, deptQueueRows, deptQueueTabs } from "@/lib/requests/queueBoard";
 import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { isMonthKey, requestClosedInMonth } from "@/lib/requests/deptOverview";
@@ -27,6 +27,7 @@ import Button from "@/components/ui/Button";
 import { fmtMonthYear } from "@/lib/format";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const DEPT = "RD";
 
@@ -40,6 +41,7 @@ const TAB_BLURB = {
 };
 
 export default function RdRequestsPage() {
+  const queueToday = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const router = useRouter();
   const searchParams = useSearchParams();
   /* ⭐ ตั้งต้นเรียงตาม **วันที่ร้องขอ** ใหม่ก่อน (มติผู้ใช้ 2026-08-15) — ต่างจากคิวรวม
@@ -140,7 +142,7 @@ export default function RdRequestsPage() {
      ⚠️ `filters` ชุดเดียวกับที่พาเนลใช้ (`tools` ตั้งต้น "full") — `?closed=` อยู่ใน `rows` แล้ว และหลุดเองตอนสลับแท็บ
      ⇒ เลขบนแท็บประวัติไม่รวมเดือน = ตรงกับที่กดแล้วเห็น */
   const queueState = {
-    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: businessDate(),
+    countFilter: board.countFilter, search: board.search, filters: board.filters, todayIso: queueToday,
   };
   const counts = queueStripCounts(rows, queueState);
   const tabCount = (key) => filterQueueRows(deptQueueRows(requests, { dept: DEPT, tab: key }), queueState, { except: "count" }).length;

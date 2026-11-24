@@ -18,7 +18,7 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import Select from "@/components/ui/Select";
 import StatusNotice from "@/components/ui/StatusNotice";
 import CustomerBillingRuleDayGrid from "@/components/database/CustomerBillingRuleDayGrid";
-import { businessDate } from "@/lib/businessDate";
+
 import { fmtDate } from "@/lib/format";
 import useHolidayMap from "@/lib/useHolidayMap";
 import { CADENCE_TEXT, cadenceText, holidayGapText, sameCadence, suggestCadence } from "@/lib/service/cadence";
@@ -32,6 +32,7 @@ import {
 } from "./servicePlanForm";
 import styles from "./ServiceSiteModal.module.css";
 import planStyles from "./ServicePlanModal.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 /* คำของปุ่ม "ใช้" ในแคตตาล็อกชื่อขึ้นต้นด้วย `use…` (ใช้ความถี่ / ป้ายปุ่ม) — หยิบออกมาตั้งชื่อใหม่ที่ระดับโมดูล
    ไม่งั้นกฎ react-hooks อ่าน `CADENCE_TEXT.useSuggestionAria(…)` ในเงื่อนไขเป็นการเรียก hook */
@@ -116,7 +117,8 @@ export default function ServicePlanModal({
      รอบจริงเลื่อน/งด/แถมได้ตามหน้างาน · บรรทัดสรุปมีไว้ให้คนตั้งความถี่เห็นผลทันที
      ⚠️ ไม่มีวันสิ้นสุด = ประมาณไม่ได้ ⇒ บอกตรง ๆ ว่าต้องใส่วันสิ้นสุดก่อน
      ตัวเลขทั้งหมดมาจาก cadence.js ตัวเดียวกับตัวสร้างนัดของ server (ผ่าน `planSummary`) */
-  const summary = planSummary(form, { todayIso: businessDate(), holidays });
+  const planToday = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
+  const summary = planSummary(form, { todayIso: planToday, holidays });
   const estimate = summary.estimate;
   const gapText = holidayGapText(summary.gapYears);
   const ranged = form.dayMode === "range";

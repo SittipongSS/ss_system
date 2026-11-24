@@ -26,7 +26,7 @@ import GatedAction from "@/components/ui/GatedAction";
 import BriefPerfumerModal from "@/components/requests/BriefPerfumerModal";
 import Link from "next/link";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
-import { businessDate } from "@/lib/businessDate";
+
 import { NA, fmtDate, naText } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import { useCapUser, useDepartment } from "@/lib/roleContext";
@@ -37,6 +37,7 @@ import {
   compareBoardRows, isOverdue, perfumerBoardTotals, perfumerGroups,
 } from "@/lib/rd/perfumerBoard";
 import styles from "./page.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const COLS = 5;
 
@@ -97,7 +98,7 @@ export default function RdPerfumersPage() {
 
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า `toISOString()` ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const totals = useMemo(() => perfumerBoardTotals(rows, { todayIso: today }), [rows, today]);
   const groups = useMemo(
     () => perfumerGroups(rows, { todayIso: today })

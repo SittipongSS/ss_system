@@ -64,9 +64,10 @@ import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useDepartment, useRole, useTeam, useTeams } from "@/lib/roleContext";
 import { canBeServiceAssignee, canEditService, canViewVisitReport } from "@/lib/permissions";
 import styles from "./page.module.css";
-import { businessDate } from "@/lib/businessDate";
+
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
@@ -448,7 +449,7 @@ export default function ServiceSiteDetailPage({ params }) {
   ];
 
   // นัดที่จะถึง / ประวัติ — แยกกันเพราะคนละคำถาม ("เจ้าหน้าที่จะมาเมื่อไหร่" กับ "ที่ผ่านมาทำอะไรบ้าง")
-  const todayIso = businessDate();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   /* 🐞 (ตรวจทั้งระบบ 23/11/2026) เดิม "ที่จะถึง" = scheduled เท่านั้น และ "ประวัติ" = วันผ่านแล้ว **หรือ** ไม่ใช่ scheduled
      ⇒ นัดที่เลยวันแต่ยังไม่ปิดตกไปอยู่ประวัติโดยไม่มีป้ายค้าง · นัดที่กำลังทำ (in_progress) หายจาก "ที่จะถึง"
      ตอนนี้แบ่งด้วย `isOpenVisit` ตัวเดียวกับคิวงาน: เปิดอยู่ = ที่จะถึง (ที่เลยวันขึ้นก่อนพร้อม "ค้าง n วัน") · ที่เหลือ = ประวัติ */

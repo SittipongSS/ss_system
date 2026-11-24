@@ -25,7 +25,7 @@ import { requestNextStep } from '@/lib/requests/queueBoard';
 import { requestReplyTurn } from '@/lib/requests/replyTurn';
 import { nextByStageFor, rowStage } from '@/lib/requests/rowStage';
 import { rowIdleStamps } from '@/lib/requests/rowTrack';
-import { ageText, dueText } from '@/lib/dueState';
+import { ageText, calendarDays, dueText } from '@/lib/dueState';
 
 /* ── ตาผู้ขอในคิวคำร้อง ⇒ แถวของเรา (2026-09-11 · ต่อจาก ม-145) ─────────────────
    🐞 แดชบอร์ดเขียน "รอฝ่ายตอบ" ให้ทุกใบที่ยังไม่ปิด (และ "เลย N วัน" เมื่อวันผ่าน) ขณะที่คิว
@@ -95,12 +95,8 @@ export const MY_QUEUE_GROUPS = [
   { key: 'later', label: 'ภายหลัง', tone: 'neutral' },
 ];
 
-const dayDiff = (fromIso, toIso) => {
-  const a = Date.parse(`${String(fromIso).slice(0, 10)}T00:00:00Z`);
-  const b = Date.parse(`${String(toIso).slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return Math.round((a - b) / 86400000);
-};
+// เหลือกี่วัน (ลบ = เลย) — ตัวกลาง `calendarDays` (วันไทย · งวด 2) แทนตัวนับของตัวเอง
+const dayDiff = (fromIso, toIso) => calendarDays(toIso, fromIso);
 
 /**
  * แถวหนึ่งของคิว — รูปเดียวกันทุกชนิด

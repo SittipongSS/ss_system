@@ -29,12 +29,13 @@ import { VISIT_STATUS_LABELS, isClosedVisit } from "@/lib/service/visitStatus";
 import { closeVisitPayload, groupVisits, openCount, overdueDays, todayPageVisitsQuery } from "@/lib/service/myVisits";
 import { accessWindowText } from "@/lib/service/sites";
 import styles from "./page.module.css";
-import { businessDate } from "@/lib/businessDate";
+
 import { fmtDate, fmtDayMonth, naText } from "@/lib/format";
 import { SURVEY_VISIT_KIND } from "@/lib/service/surveyVisit";
 // นัดติดตั้งจากคำขอคิว (ขั้นเข้าติดตั้ง PR-5b) — ทำงานที่หน้างาน `/service/today/[visitId]` ไม่ใช่แผ่นปิดงาน
 import { isInstallStepVisit } from "@/lib/service/visitGate";
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const SECTIONS = [
   { key: "overdue", title: "ค้างอยู่", tone: "danger" },
@@ -144,7 +145,7 @@ export default function TodayPage() {
   useRevalidateOnFocus(load);
 
   const sitesById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
-  const todayIso = businessDate();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const groups = useMemo(() => groupVisits(visits, todayIso), [visits, todayIso]);
   const counts = useMemo(() => openCount(groups), [groups]);
 

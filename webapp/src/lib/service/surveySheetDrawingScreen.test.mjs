@@ -547,7 +547,7 @@ test('วันส่งผลของงานโต๊ะ: แถวบนก
   assert.equal(tags.length, 1, 'หนึ่งหน้า หนึ่งโมดัล');
   for (const prop of [
     /open=\{!!deskDueDialog\}/, /request=\{\{ \.\.\.req, surveyNeedsVisit: false \}\}/, /mode=\{deskDueDialog\?\.mode\}/,
-    /today=\{businessDate\(\)\}/, /busy=\{deskDueBusy\}/, /onClose=\{\(\) => !deskDueBusy && setDeskDueDialog\(null\)\}/, /onSubmit=\{submitDeskDue\}/,
+    /today=\{surveyToday\}/, /busy=\{deskDueBusy\}/, /onClose=\{\(\) => !deskDueBusy && setDeskDueDialog\(null\)\}/, /onSubmit=\{submitDeskDue\}/,
   ]) assert.match(tags[0], prop);
   assert.doesNotMatch(tags[0], /technicians/, 'ทรงงานโต๊ะไม่มีตัวเลือกคน');
   const fn = between(PAGE, 'const submitDeskDue = async', 'const zones = useMemo(');

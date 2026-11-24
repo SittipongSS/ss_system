@@ -57,11 +57,12 @@ import {
 } from "@/lib/master/attachmentTypes";
 import { toLocalISODate } from "@/lib/pm/dateHelpers";
 import { useFileIntake } from "@/lib/ui/useFileIntake";
-import { businessDate } from "@/lib/businessDate";
+
 import PhotoThumb from "@/components/ui/PhotoThumb";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { panelFileGate, panelItemsByType, panelVisibleItems } from "./attachmentsPanelItems";
 import styles from "./AttachmentsPanel.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 // เช็คขนาดก่อนอัป (กันเสียแบนด์วิดท์อัปแล้วโดน server ปฏิเสธ). server บังคับซ้ำเสมอ.
 /* โหมด `photoCapture` รับเฉพาะรูปในทะเบียนชนิดที่ระบบเปิดดูได้ — iOS แปลง HEIC ให้เองตามลิสต์นี้
@@ -594,7 +595,7 @@ export default function AttachmentsPanel({
 
   // วันนี้ (ISO ตามเวลาเครื่องผู้ใช้) — ใช้ตัดสินว่าเอกสารพ้นอายุหรือยัง · คำนวณ
   // ครั้งเดียวต่อ render เพื่อให้ทุกการ์ด/ทุกแถวตัดสินด้วยวันเดียวกัน
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
 
   // ไฟล์ Drive (private) เปิดผ่าน proxy ที่เช็กสิทธิ์ + stream; ไฟล์เก่าบน Supabase
   // (driveFileId ว่าง) ใช้ public URL ตรงเหมือนเดิม.

@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { fmtDate, fmtDateTime, fmtMoney, fmtPercent, NA } from "@/lib/format";
 import { periodScopeLabel, yearOfMonth } from "@/lib/datePeriods";
-import { businessDate } from "@/lib/businessDate";
+
 import Button from "@/components/ui/Button";
 import Segmented from "@/components/ui/Segmented";
 import EmptyState from "@/components/ui/EmptyState";
@@ -35,6 +35,7 @@ import ScheduleSection from "./ScheduleSection";
 import styles from "./DashboardShell.module.css";
 import tabStyles from "./MyDashboardTab.module.css";
 import { apiFetch } from "@/lib/apiFetch";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const ACTIVITY_KIND_LABEL = {
   note: "บันทึก",
@@ -78,7 +79,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   // เปลี่ยนตัวกรองหรืองวด = เริ่มนับหน้าฟีดใหม่ ไม่งั้นจะค้างจำนวนที่กางไว้จากชุดก่อน
   useEffect(() => { setVisible(FEED_PAGE); }, [filter, month, allMonths]);
 
-  const today = businessDate();
+  const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const handoff = data?.handoff || {};
   const queue = useMemo(() => buildMyQueue({
     requests: data?.myRequests || [],

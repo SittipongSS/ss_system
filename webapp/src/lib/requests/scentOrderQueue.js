@@ -9,13 +9,10 @@
 import { isSalesRole, isSuperuser } from '@/lib/permissions';
 import { scentDesignLines } from '@/lib/requests/scentDesignOrders';
 import { attachAdds, scentOrderLinesText } from '@/lib/requests/scentOrderAttach';
+import { ageDays } from '@/lib/dueState';
 
-const DAY = 24 * 60 * 60 * 1000;
-const dayDiff = (from, today) => {
-  const a = Date.parse(String(from || '').slice(0, 10));
-  const b = Date.parse(String(today || '').slice(0, 10));
-  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, Math.round((b - a) / DAY)) : null;
-};
+/* 🐞 เดิมตัดสตริงวัน UTC ของตราอนุมัติ ⇒ SO ที่อนุมัติตอนเช้ามืด "ค้าง n วัน" เกินหนึ่งวัน — ตัวกลาง `ageDays` (วันไทย · งวด 2) */
+const dayDiff = (from, today) => ageDays(from, today);
 
 /**
  * แถวของคิว — SO ที่อนุมัติแล้ว มีงานพัฒนากลิ่น และยังไม่มีคำร้องเป็นเจ้าของ

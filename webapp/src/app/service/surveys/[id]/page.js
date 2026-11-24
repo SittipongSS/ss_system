@@ -96,8 +96,9 @@ import { surveyPendingDecisions } from "@/lib/service/surveyDecision";
 import { surveyRowNameClash } from "@/lib/service/surveyRequest";
 import { floorLabel, normalizeFloor } from "@/lib/service/zoneCode";
 import { apiJson } from "@/lib/apiFetch";
-import { businessDate } from "@/lib/businessDate";
+
 import styles from "./page.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 /* เหตุผลที่ตัดพื้นที่ออก — ขั้นต่ำเดียวกับ server (ฝ่ายขายจะเห็นข้อความนี้ · ไม่ได้ไปหน้างานเอง) */
 const CUT_REASON_MIN = 5;
@@ -153,6 +154,7 @@ const sameInstant = (a, b) => {
 const textLines = (value) => (Array.isArray(value) ? value.filter((line) => typeof line === "string") : []);
 
 export default function SurveySheetPage({ params }) {
+  const surveyToday = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const { id } = use(params);
   const router = useRouter();
   const params$ = useSearchParams();
@@ -992,10 +994,10 @@ export default function SurveySheetPage({ params }) {
     dirtyZoneIds,
     pendingDecisionZoneIds,
     tab,
-    today: businessDate(),
+    today: surveyToday,
     /* ทะเบียนขนาดแพ็คเกจ (mig 0398) — `null` = server อ่านไม่สำเร็จ ⇒ การ์ดบล็อกส่งผลด้วยเหตุเดียวกับ route */
     packageSizes,
-  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab, docLocal, packageSizes]);
+  }), [data, zones, filesByZone, dirtyZoneIds, pendingDecisionZoneIds, tab, docLocal, packageSizes, surveyToday]);
 
   const canDecide = data?.canDecide === true;
   /* ⭐ มติเจ้าของ 26/09 "ช่างเห็นแค่งานตัวเอง" — ช่าง (เขียนผลวัดได้ · ไม่ได้เคาะ) ไม่มีจอสรุปส่งผลแล้ว
@@ -1579,7 +1581,7 @@ export default function SurveySheetPage({ params }) {
       visitCode={visit?.code || null}
       visitHref={visit?.id ? `/service/visits/${visit.id}` : null}
       /* กำหนดส่งผล — เดิมเป็นช่อง "TS จะส่งผล" ของหัวใบที่ถอดไป (ม็อก AW-2 วางไว้ใต้สถานะของการ์ด) */
-      dueLine={surveyDueLine({ due: view.due, locked: view.flags.locked, today: businessDate() })}
+      dueLine={surveyDueLine({ due: view.due, locked: view.flags.locked, today: surveyToday })}
       /* บานรายการ 320px (สองบาน 1000–1199) — การ์ดไม่แบ่งสองคอลัมน์ตามเส้นจอ 1050 ของการ์ดกลาง */
       inPane={split}
     />
@@ -2251,7 +2253,7 @@ export default function SurveySheetPage({ params }) {
         open={!!deskDueDialog}
         request={{ ...req, surveyNeedsVisit: false }}
         mode={deskDueDialog?.mode}
-        today={businessDate()}
+        today={surveyToday}
         busy={deskDueBusy}
         onClose={() => !deskDueBusy && setDeskDueDialog(null)}
         onSubmit={submitDeskDue}

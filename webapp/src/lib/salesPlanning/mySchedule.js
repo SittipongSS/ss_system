@@ -18,6 +18,7 @@ import { requestClosureStarted } from '@/lib/requests/closure';
 import { requestDueOwed } from '@/lib/requests/queueBoard';
 import { MEETING_MODE_LABELS } from '@/lib/sales/leads';
 import { APPOINTMENT_MODE_LABELS, STUDIO_ROOM_LABELS } from '@/lib/sales/leadAppointments';
+import { calendarDays } from '@/lib/dueState';
 
 /** มุมมองปฏิทิน — คีย์ตรงกับค่าที่จำไว้ใน localStorage */
 export const SCHEDULE_VIEWS = [
@@ -76,7 +77,6 @@ export function meetingTimeLabel(meeting) {
 }
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const DAY_MS = 86400000;
 const pad = (value) => String(value).padStart(2, '0');
 
 /** วัน ISO ของค่าที่รับมา — คืน null ถ้าไม่ใช่วันที่ (ไม่ throw: ข้อมูลเก่ามีค่าเพี้ยนได้) */
@@ -114,11 +114,9 @@ export function shiftDays(iso, days) {
   return at.toISOString().slice(0, 10);
 }
 
+// เหลือกี่วัน (ลบ = เลย) — ตัวกลาง `calendarDays` (วันไทยของ timestamp · งวด 2) แทนตัดสตริงเอง
 export function dayDiff(fromIso, toIso) {
-  const a = Date.parse(`${isoDay(fromIso)}T00:00:00Z`);
-  const b = Date.parse(`${isoDay(toIso)}T00:00:00Z`);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return Math.round((a - b) / DAY_MS);
+  return calendarDays(toIso, fromIso);
 }
 
 /** วันในสัปดาห์แบบ 0 = อาทิตย์

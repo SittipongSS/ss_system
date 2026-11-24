@@ -194,7 +194,7 @@ test('🔴 ยามอ่านซอร์ส: หน้าจัดคิว�
   // โปรแกรมอ่านจอ: ชื่อขึ้นต้นด้วยข้อความที่ตาเห็น แล้วบอกว่ากดเพื่อล้าง ("×" ซ่อน ไม่ให้อ่านว่า "คูณ")
   assert.match(chip, /aria-label=\{`กรอง: \$\{QUEUE_RANGE_TODAY_LABEL\} \$\{dayText\(todayIso\)\} — กดเพื่อล้างตัวกรอง`\}/);
   // วันนี้ของหน้าจัดคิวก็จากนาฬิกาไทย
-  assert.match(page, /const todayIso = businessDate\(\);/);
+  assert.match(page, /const todayIso = useThaiToday\(\{ seed: true \}\);/);
   // แถบเลือกช่วงยังเป็นสามช่วงเดิม (today ไม่ใช่ปุ่มบนแถบ)
   assert.match(page, /const rangeOptions = QUEUE_RANGES\.map\(/);
 });

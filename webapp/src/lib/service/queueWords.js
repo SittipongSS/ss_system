@@ -10,7 +10,7 @@
 import { fmtMonthShort } from '@/lib/format';
 import { businessDate } from '@/lib/businessDate';
 import { accessConflict, accessTimeText, siteAddressText } from './sites';
-import { ageText } from '@/lib/dueState';
+import { ageText, calendarDays } from '@/lib/dueState';
 
 const DAY_LABELS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
 
@@ -25,11 +25,7 @@ export function dayText(iso) {
 
 /** จำนวนวันระหว่างสองวันที่ (b − a) — ใช้บอก "อีก 3 วัน" · เลขคณิตของปฏิทินล้วน (UTC เที่ยงคืน) */
 export function daysBetween(a, b) {
-  const toUtc = (iso) => {
-    const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-    return Date.UTC(y, m - 1, d);
-  };
-  return Math.round((toUtc(b) - toUtc(a)) / 86400000);
+  return calendarDays(a, b); // ตัวกลาง (งวด 2) — timestamp ก็ได้วันไทย · อ่านไม่ออก = null (เดิม NaN)
 }
 
 /**

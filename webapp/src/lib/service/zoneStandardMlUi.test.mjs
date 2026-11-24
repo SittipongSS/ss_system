@@ -19,8 +19,8 @@ const code = (p) => fs.readFileSync(path.join(WEBAPP, p), 'utf8')
 test('⭐ มาตรฐานของโซน = zoneStandardMl ของรอบขายทั้งหมด (วันนี้ตามนาฬิกาไทย)', () => {
   const src = code(PAGE);
   assert.match(src, /import \{[^}]*\bzoneStandardMl\b[^}]*\} from "@\/lib\/service\/termStandardMl";/);
-  assert.match(src, /import \{ businessDate \} from "@\/lib\/businessDate";/);
-  assert.match(src, /const zoneStd = useMemo\(\s*\(\) => zoneStandardMl\(data\?\.terms \|\| \[\], ordersById, businessDate\(\)\),\s*\[data\?\.terms, ordersById\],?\s*\);/);
+  assert.match(src, /import useThaiToday from "@\/lib\/ui\/useThaiToday";/);
+  assert.match(src, /const zoneStd = useMemo\(\s*\(\) => zoneStandardMl\(data\?\.terms \|\| \[\], ordersById, zoneToday\),\s*\[data\?\.terms, ordersById, zoneToday\],?\s*\);/);
 });
 
 test('⭐ ตารางเทียบกับหัวใบใช้ค่าเดียวกัน — มีรอบที่มีผล = ผลรวม · ไม่มี = รอบล่าสุด (ของเดิม)', () => {
@@ -46,7 +46,7 @@ test('ตั้งไม่ครบทุกรอบ = บอกใต้ค�
 test('🔴 แพ็คที่ขาย: หลายรอบขายของใบที่ประทับ = ผลรวมต่อรอบจาก zoneSaleFacts (เลขเดียวกับป้ายหน้าไซต์)', () => {
   const src = code(PAGE);
   assert.match(src, /import \{[^}]*\bzoneSaleFacts\b[^}]*\} from "@\/lib\/service\/zoneRegistry";/);
-  assert.match(src, /const sale = useMemo\(\s*\(\) => zoneSaleFacts\(zoneId, \{ terms: data\?\.terms \|\| \[\], ordersById, todayIso: businessDate\(\) \}\),/);
+  assert.match(src, /const sale = useMemo\(\s*\(\) => zoneSaleFacts\(zoneId, \{ terms: data\?\.terms \|\| \[\], ordersById, todayIso: zoneToday \}\),/);
   const fact = src.slice(src.indexOf('key: "pack"'), src.indexOf('key: "std"'));
   assert.match(fact, /packFact/);
   const pack = src.slice(src.indexOf('const packFact ='), src.indexOf(';', src.indexOf('const packFact =')));

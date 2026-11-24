@@ -294,7 +294,7 @@ test('ยาม: คิวรายฝ่ายสามหน้านับแ
   assert.match(finance, /export const FINANCE_REQUESTS_HREF = "\/finance\/payments\?view=requests";/);
   for (const page of ['rd', 'finance', 'service']) {
     const src = page === 'finance' ? finance : live(`../../app/${page}/requests/page.js`);
-    assert.match(src, /countFilter: board\.countFilter, search: board\.search, filters: board\.filters, todayIso: businessDate\(\)/, page);
+    assert.match(src, /countFilter: board\.countFilter, search: board\.search, filters: board\.filters, todayIso: queueToday/, page);
     assert.match(src, /const counts = queueStripCounts\(rows, queueState\);/, page);
     assert.match(src, /filterQueueRows\(deptQueueRows\(requests, \{ dept: DEPT, tab: key \}\), queueState, \{ except: "count" \}\)\.length/, page);
     assert.match(src, /count: tabCount\(t\.key\),/, page);

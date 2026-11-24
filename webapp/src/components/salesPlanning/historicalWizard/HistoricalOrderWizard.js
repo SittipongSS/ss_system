@@ -35,7 +35,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { DetailPageLayout } from "@/components/ui/DetailPage";
 import { apiJson } from "@/lib/apiFetch";
 import { cachedFetchJson, dropCache } from "@/lib/apiCache";
-import { businessDate } from "@/lib/businessDate";
+
 import { notifyToast } from "@/lib/feedback";
 import { useCan, useRole, useTeams } from "@/lib/roleContext";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -73,6 +73,7 @@ import WizardZonesStep from "./WizardZonesStep";
 import WizardMoneyStep from "./WizardMoneyStep";
 import WizardReviewStep from "./WizardReviewStep";
 import styles from "./HistoricalOrderWizard.module.css";
+import useThaiToday from "@/lib/ui/useThaiToday";
 
 const REGISTER_PATH = "/sa/sales-orders";
 const ORDER_PATH = (id) => `/sa/sales-orders/${id}`;
@@ -164,7 +165,7 @@ export default function HistoricalOrderWizard({ orderId = null }) {
     if (!key) return;
     setRevealedSteps((current) => (current.has(key) ? current : new Set([...current, key])));
   }, []);
-  const todayIso = businessDate();
+  const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
 
   useEffect(() => {
     let alive = true;
