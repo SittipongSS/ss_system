@@ -56,3 +56,23 @@ export function installmentStatusLine(row) {
   return note ? { tone: NOTE_TONE[note.tone] || "", text: `${note.label}${due}` } : null;
 }
 
+
+/* เหตุที่ AE Sup ตีกลับใบ — บรรทัดแดงใต้รางขั้นในแถว (24/11/2026) · null = ใบไม่ได้ถูกตีกลับ/ไม่มีเหตุผล
+   ⭐ เช็ก `status` ด้วย — `rejectionReason` ล้างตอนยื่นใหม่/กู้คืนอยู่แล้ว แต่ค่าค้างบนใบสถานะอื่นต้องไม่พูด */
+export function salesOrderDocRejectText(row) {
+  if (row?.status !== "rejected" || !row?.rejectionReason) return null;
+  return `ตีกลับโดย ${row.rejectedByName || "ผู้อนุมัติ"}: ${row.rejectionReason}`;
+}
+
+/* บรรทัดรองของแถวในกล่อง "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้" (เจ้าของ 24/11/2026) — บอกว่าใครตีกลับและต้องแก้อะไร
+   · ใบที่ AE Sup ตีกลับมาก่อน (แก้ใบแล้วยื่นใหม่ · งวดยังแจ้งไม่ได้จนใบผ่าน) · ไม่มีเหตุผล = บอกแค่ว่าใครตีกลับ
+   · งวดที่บัญชีตีกลับ: งวดแรกที่ถูกตีกลับ + เหตุผล · หลายงวด = "บัญชีตีกลับ n งวด · งวด a: …" (ครบอยู่ใต้ชิปงวดในตาราง)
+   @returns string | null (ใบไม่ได้ถูกตีกลับ) */
+export function salesOrderBounceLine(row) {
+  if (row?.status === "rejected") return salesOrderDocRejectText(row) || `ตีกลับโดย ${row.rejectedByName || "ผู้อนุมัติ"}`;
+  const rejected = (row?.money?.installments || []).filter((i) => i.kind === "rejected");
+  if (!rejected.length) return null;
+  const first = rejected[0];
+  const head = rejected.length > 1 ? `บัญชีตีกลับ ${rejected.length} งวด · งวด ${first.seq}` : `บัญชีตีกลับงวด ${first.seq}`;
+  return first.rejectedReason ? `${head}: ${first.rejectedReason}` : head;
+}

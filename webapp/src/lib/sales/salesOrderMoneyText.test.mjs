@@ -57,7 +57,7 @@ test('เหตุผลตีกลับ (เจ้าของ 24/11/2026): �
 
 test('หน้ารายการ SO: เหตุผลที่ใบถูกตีกลับใต้รางขั้น (เฉพาะสถานะ rejected) + เหตุผลงวดใต้ชิปผ่านชิ้นเดียวกัน', () => {
   const page = readFileSync(new URL('../../app/sales-planning/sales-orders/page.js', import.meta.url), 'utf8');
-  assert.match(page, /row\.status === "rejected" && row\.rejectionReason \? \(\s*<RejectReasonLine className="mt-1\.5" text=\{`ตีกลับโดย \$\{row\.rejectedByName \|\| "ผู้อนุมัติ"\}: \$\{row\.rejectionReason\}`\} \/>/);
+  assert.match(page, /<RejectReasonLine className="mt-1\.5" text=\{salesOrderDocRejectText\(row\)\} \/>/);
   const cells = readFileSync(new URL('../../components/salesPlanning/SalesOrderMoneyCells.js', import.meta.url), 'utf8');
   assert.match(cells, /rejects\.lines\.map\(\(r\) => <RejectReasonLine key=\{r\.seq\} text=\{r\.text\} \/>\)/);
 });

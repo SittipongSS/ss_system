@@ -6,6 +6,8 @@ import {
   isExciseOrder, isHistoricalOrder,
 } from '@/lib/sales/historicalOrders';
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
+/* งวดโมฆะของใบที่ตายแล้ว (ยกเลิก/ออก Rev. ทับ) — ตัวตัดสินเดียวกับคอลัมน์งวด · ไฟล์นั้นไม่ import ไฟล์นี้กลับ (ไม่มีวง) */
+import { installmentVoid } from '@/lib/sales/salesOrderPayments';
 import { ownerLockedToSelf } from '@/lib/sales/dealOwner';
 /* งานบริการรายบรรทัด (mig 0392) — ตัวตัดสินล้วน ใช้ได้ทั้งจอและ API · ไฟล์นั้นไม่ import ไฟล์นี้กลับ (ไม่มีวง · serviceSetupImports) */
 import { serviceBackfillAwaitingReview } from '@/lib/sales/serviceSetup';
@@ -60,6 +62,27 @@ export function isInstallmentActualWaitingOnMe(order, installments, { userId = '
   }) || installmentActualReadyForOwner(order, installments, { userId });
 }
 
+/* ── ใบตีกลับรอฉันแก้ (เจ้าของ 24/11/2026 "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") ─────────────────────────────────
+   ตีกลับมีสองแบบ ⇒ คนแก้คนละคน:
+     · เอกสาร — AE Sup ตีกลับใบ (`status = rejected`) → **คนสร้างใบ** (เลนเดิมของ isSalesOrderWaitingOnMe · ไม่เปลี่ยน)
+     · งวด — บัญชีตีกลับการแจ้งชำระ (งวด `status = rejected` ที่ไม่โมฆะ) → **คนที่แจ้งชำระงวดนั้น** (`reportedById` — ตีกลับไม่ล้างช่องนี้ ·
+       แจ้งใหม่ทับเอง) **และเจ้าของดีลปัจจุบัน** (AC แจ้งแทนได้ แต่เงินของดีลเป็นงานของเจ้าของดีล — มติเลือก "นับทั้งสองแบบ" 24/11)
+   ⚠️ ผู้เรียกต้องส่งงวด `{ status, kind, reportedById }` (+ แนบ `deal.ownerId` กับแถวใบ) · ไม่ส่งงวด (ไม่ใช่อาร์เรย์) = เลนงวดไม่นับ (ไม่เดา)
+   ⚠️ งวดโมฆะ (ใบยกเลิก/ถูก Rev. ทับ · `installmentVoid`) ไม่ใช่งาน — ใบที่ตายแล้วไม่ต้องตามเก็บ */
+export function installmentBounceWaitingOnMe(order, installments, { userId = '' } = {}) {
+  if (!order || !userId || !Array.isArray(installments)) return false;
+  return installments.some((row) => row?.status === 'rejected' && !installmentVoid(row, order)
+    && (row.reportedById === userId || order.deal?.ownerId === userId));
+}
+
+/* ใบนี้ถูกตีกลับมาให้ฉันแก้ไหม (ธง `_bouncedToMe` ของทะเบียน · กล่อง "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้") — สองเลนข้างบน
+   ⭐ เป็นชุดย่อยของ "รอฉันลงมือ" (`isSalesOrderWaitingOnMe` ถามเลนเดียวกันทั้งสอง) ⇒ ป้ายบนเมนูนับใบในกล่องนี้ครบ */
+export function salesOrderBouncedToMe(order, { userId = '', installments = null } = {}) {
+  if (!order || !userId) return false;
+  if (order.status === 'rejected' && order.createdBy === userId) return true;
+  return installmentBounceWaitingOnMe(order, installments, { userId });
+}
+
 /* "รอฉันลงมือ" ของใบสั่งขาย — ใบที่ผู้รีวิว **ตีกลับ** มาให้คนสร้างแก้
    ⚠️ `draft` ไม่นับ แม้จะเป็นใบของตัวเอง — ร่างที่ยังไม่เคยยื่นไม่มีใครรออยู่ปลายทาง
    (กติกาเดียวกับใบร่างคำร้อง ม-112 และใบเสนอราคา) · ต่างกันตรงใบสั่งขายเก็บ "ตีกลับ"
@@ -87,10 +110,12 @@ export function isInstallmentActualWaitingOnMe(order, installments, { userId = '
    ⚠️ ผู้เรียกต้องส่ง `actualInstallments` = งวดของใบ `{ id, seq, status, dueDate, actualStatus, actualSubmittedById }` (+ แนบ `deal`)
      ไม่ส่ง = สองเลนนี้ไม่นับ (ไม่เดา — แถวใบไม่มีข้อมูลรายงวด) · เลนเหล่านี้ **บวกเพิ่ม** (OR) ไม่ตัดเลนเดิม */
 export function isSalesOrderWaitingOnMe(order, {
-  userId = '', reviewer = false, role = '', serviceBackfillNeeded = false, actualInstallments = null,
+  userId = '', reviewer = false, role = '', serviceBackfillNeeded = false, actualInstallments = null, bounceInstallments = null,
 } = {}) {
   if (!order) return false;
   if (isInstallmentActualWaitingOnMe(order, actualInstallments, { userId, reviewer, role })) return true;
+  /* งวดที่บัญชีตีกลับ (24/11/2026 · `installmentBounceWaitingOnMe`) — ผู้เรียกส่งงวดของใบ · ไม่ส่ง = ไม่นับ */
+  if (installmentBounceWaitingOnMe(order, bounceInstallments, { userId })) return true;
   if (reviewer && serviceBackfillAwaitingReview(order)) {
     return role === 'admin' || order.serviceSetupSubmittedById !== userId;
   }
@@ -119,10 +144,12 @@ export function isSalesOrderWaitingOnMe(order, {
    @param financeRows  แถวเลนบัญชี — `financeWaiting(row)` = awaitsFinanceReview กับงวดของใบ (ผู้เรียกโหลดงวดมาแล้ว)
    @param actualRows   แถวเลนนับ Actual รายงวด (mig 0412) — ใบ `approved` + `actualMode = 'installment'` ที่ยังไม่ถูกแทน
                        (แนบ `deal.ownerId`) · `actualInstallmentsOf(row)` = งวดของใบ `{ id, seq, status, dueDate, actualStatus, actualSubmittedById }`
+   @param bounceRows   แถวเลนงวดที่บัญชีตีกลับ (24/11/2026) — ใบที่มีงวด `rejected` (แนบ `deal.ownerId` · `status`) ·
+                       `bounceInstallmentsOf(row)` = งวดของใบ `{ status, kind, reportedById }`
    → Set ของ id (ป้าย = `.size`) · ตรงกับทะเบียน: `_waitingOnMe || _awaitingMyApproval || _awaitingMyServiceReview || _awaitingFinanceReview` */
 export function salesOrderIdsWaitingOnMe({
   rows = [], backfillRows = [], backfillNeeded = () => false, financeRows = [], financeWaiting = () => false,
-  actualRows = [], actualInstallmentsOf = () => null,
+  actualRows = [], actualInstallmentsOf = () => null, bounceRows = [], bounceInstallmentsOf = () => null,
 } = {}, { userId = '', reviewer = false, role = '' } = {}) {
   const ids = new Set();
   for (const row of rows || []) {
@@ -135,6 +162,11 @@ export function salesOrderIdsWaitingOnMe({
      (เช่นรอตรวจงานบริการ ที่ rows กรองสายธุรกิจไว้แล้ว) กลับเข้ามาโดยไม่ผ่านตัวกรองของมัน */
   for (const row of actualRows || []) {
     if (isInstallmentActualWaitingOnMe(row, actualInstallmentsOf(row), { userId, reviewer, role })) ids.add(row.id);
+  }
+  /* งวดที่บัญชีตีกลับ (24/11/2026) — ถามเลนงวดตัวเดียว (ไม่ผ่าน isSalesOrderWaitingOnMe ทั้งตัว เหตุผลเดียวกับ actualRows)
+     `bounceRows` = ใบที่มีงวดถูกตีกลับ (แนบ `deal.ownerId`) · `bounceInstallmentsOf(row)` = งวด `{ status, kind, reportedById }` ของใบ */
+  for (const row of bounceRows || []) {
+    if (installmentBounceWaitingOnMe(row, bounceInstallmentsOf(row), { userId })) ids.add(row.id);
   }
   for (const row of financeRows || []) {
     if (financeWaiting(row)) ids.add(row.id);

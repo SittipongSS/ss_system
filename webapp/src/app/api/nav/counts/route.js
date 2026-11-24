@@ -398,6 +398,14 @@ export const GET = withUser(async ({ user, supabase }) => {
         ? fetchAllResult(() => pipelineRowsOnly(supabase.from('sales_orders').select('id, status, origin, "actualMode", "supersededById", deal:sales_deals(ownerId)'))
           .eq('status', 'approved').eq('actualMode', 'installment').is('supersededById', null).order('id', { ascending: true }))
         : Promise.resolve({ data: [] });
+      /* ── งวดที่บัญชีตีกลับ (เจ้าของ 24/11/2026 "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") ─────────────────────────────────
+         ⭐ เลนเดียวกับกล่อง "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้" ของทะเบียน (`installmentBounceWaitingOnMe`) — คนแจ้งชำระงวดนั้น + เจ้าของดีลปัจจุบัน
+         ⭐ ชุดเล็กโดยโครงสร้าง (งวดที่ตีกลับค้างจริงเท่านั้น) ⇒ ดึงทุกงวด rejected แล้วดึงใบของมัน (status + deal.ownerId) ให้ helper ตัดสิน
+         ⚠️ งวดต้องพก `reportedById` + `kind` · ใบต้องพก `status` (งวดของใบยกเลิก/ถูก Rev. ทับ = โมฆะ · `installmentVoid`) */
+      const bounceLane = can(user.role, 'salesplan:view')
+        ? fetchAllResult(() => supabase.from('sales_order_installments').select('id, "salesOrderId", status, kind, "reportedById"')
+          .eq('status', 'rejected').order('id', { ascending: true }))
+        : Promise.resolve({ data: [] });
       const [
         { data: approvalRows, error: approvalError },
         { data: draftRows, error: draftError },
@@ -406,12 +414,31 @@ export const GET = withUser(async ({ user, supabase }) => {
         { data: backfillRows, error: backfillError },
         { data: financeRows, error: financeError },
         { data: actualOrderRows, error: actualError },
-      ] = await Promise.all([approvalLane, draftLane, revokedLane, reviewLane, backfillLane, financeLane, actualLane]);
+        { data: bounceInstallments, error: bounceError },
+      ] = await Promise.all([approvalLane, draftLane, revokedLane, reviewLane, backfillLane, financeLane, actualLane, bounceLane]);
       // ทิ้ง error ที่นี่ = เลนนั้นกลายเป็น [] ⇒ ป้ายนับขาดเงียบ (เลนบัญชีเคยเป็นทั้งเลน)
       if (approvalError || draftError || revokedError || reviewError || backfillError || financeError) {
         throw approvalError || draftError || revokedError || reviewError || backfillError || financeError;
       }
       if (actualError) throw actualError;
+      // 🔴 เลนงวดตีกลับอ่านไม่ขึ้น = โยน (ไม่ใช่ [] — ป้ายที่ขาดเงียบคือสิ่งที่เลนนี้เกิดมากัน)
+      if (bounceError) throw bounceError;
+      const bounceInstallmentsByOrder = new Map();
+      for (const row of bounceInstallments || []) {
+        const list = bounceInstallmentsByOrder.get(row.salesOrderId) || [];
+        list.push(row);
+        bounceInstallmentsByOrder.set(row.salesOrderId, list);
+      }
+      let bounceOrders = [];
+      if (bounceInstallmentsByOrder.size) {
+        const { data: bounceOrderRows, error: bounceOrderError } = await fetchInChunks([...bounceInstallmentsByOrder.keys()], (chunk) => fetchAllResult(() => supabase
+          .from('sales_orders')
+          .select('id, status, deal:sales_deals(ownerId)')
+          .in('id', chunk)
+          .order('id', { ascending: true })));
+        if (bounceOrderError) throw bounceOrderError;
+        bounceOrders = bounceOrderRows || [];
+      }
 
       /* งวดของใบรายงวด — ช่องที่สองเลนอ่าน (`id, seq, status, dueDate, actualStatus, actualSubmittedById, actualApprovedVia`) · ซอยก้อน + ไล่หน้า (ใบละหลายงวด)
          · `actualApprovedVia` = สัญญาณ "กดนับที่เหลือทั้งหมดแล้ว" (มติข้อ 10 — ไม่มีงวดให้ยื่น ⇒ เลนเจ้าของดีลไม่นับ · installmentActualState 'auto')
@@ -467,6 +494,9 @@ export const GET = withUser(async ({ user, supabase }) => {
         // นับ Actual รายงวด (mig 0412) — ใบเดียวกันที่อยู่หลายเลนนับครั้งเดียว (Set ของ id)
         actualRows: actualOrders,
         actualInstallmentsOf: (row) => actualInstallmentsByOrder.get(row.id) || [],
+        // งวดที่บัญชีตีกลับ (24/11/2026) — ชุดเดียวกับธง `_bouncedToMe` / `_waitingOnMe` ของทะเบียน
+        bounceRows: bounceOrders,
+        bounceInstallmentsOf: (row) => bounceInstallmentsByOrder.get(row.id) || [],
       };
       if (!(financeRows || []).length) return salesOrderIdsWaitingOnMe(lanes, waitingOptions).size;
 
