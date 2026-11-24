@@ -70,9 +70,47 @@ export async function fillCustomerSnapshotFromMaster(supabase, record) {
 //
 // ⚠️ **แสดงผลอย่างเดียว ไม่เขียนกลับ** — คอลัมน์ `customerName` บนใบยังเป็น snapshot
 // เหมือนเดิม (quotations ประกาศเป็น 'frozen' ใน customerNameMirrors.js) · ค่าที่ตรึง
-// จริงจะถูกเขียนตอนกดยื่นอนุมัติ ซึ่งเป็นจังหวะที่เนื้อใบกลายเป็นหลักฐาน
+// จริงถูกเขียนตอนกดยื่นอนุมัติ (`draftCustomerNameStamp` ข้างล่าง · submit/route.js)
+// ซึ่งเป็นจังหวะที่เนื้อใบกลายเป็นหลักฐาน
+//
+// 🐞 24/11/2026 QT-26110656-4: คอมเมนต์บรรทัดบนเขียนไว้ตั้งแต่ 27/08 แต่ route ยื่นอนุมัติ
+// **ไม่เคยเขียนชื่อลงใบเลย** ⇒ แก้ชื่อลูกค้า → ออก Rev. (ลอกชื่อเก่าจากฉบับก่อน) → ร่างโชว์
+// ชื่อใหม่ (แสดงผลตรงนี้) → กดยื่น → ด่านนี้ปิด ⇒ จอถอยไปโชว์คอลัมน์ที่ยังถือชื่อเก่า
+// "ชื่อดีดกลับ" · ทางแก้: จอกับด่านยื่นถามคู่ชื่อจากฟังก์ชันเดียวกัน (`liveCustomerNameFields`)
+// ⇒ ชื่อที่ร่างโชว์ = ชื่อที่ถูกตรึง เสมอ
 import { isEditableQuotation } from '@/lib/sales/quotationWorkflow';
 import { customerNameIn, CUSTOMER_NAME_SELECT } from '@/lib/master/customerName';
+
+/* คู่ชื่อ (ไทย · อังกฤษ) ที่ใบควรถือตามทะเบียน ณ ตอนนี้ — ใช้สามที่: จอของร่าง (แสดงผล) ·
+   ด่านยื่นอนุมัติ (ตรึงลงใบ) · ออก Rev. (ฉบับใหม่เริ่มจากทะเบียน เหมือนที่อยู่/เลขภาษี)
+   ⚠️ ต้อง**คู่ภาษา**เสมอ — รีเฟรชแต่ไทย แล้วใบอังกฤษจะได้ชื่อไทยสดคู่กับชื่ออังกฤษที่ค้างจาก
+   วันสร้างใบ (หรือว่างเปล่าสำหรับใบก่อน mig 0343) ทั้งที่คนเพิ่งกรอก nameEn ลงทะเบียนไป
+   ทะเบียนว่าง (ทั้งภาษาหรือแค่อังกฤษ) = คงค่าเดิมของใบ ไม่ล้างทิ้ง */
+export function liveCustomerNameFields(live, quote = {}) {
+  const liveEn = String(live?.nameEn || '').trim();
+  return {
+    customerName: customerNameIn(live) || quote.customerName || null,
+    customerNameEn: liveEn || quote.customerNameEn || null,
+  };
+}
+
+/* ด่านยื่นอนุมัติ: คีย์ชื่อที่ต้องเขียนลงร่างก่อนลงนาม — `patch: null` = ใบถือชื่อตรงทะเบียนอยู่แล้ว
+   (หรือไม่ใช่ร่างที่ยังไม่ยื่น / ไม่ผูกลูกค้า / หาลูกค้าไม่เจอ)
+   ⚠️ อ่านทะเบียนไม่สำเร็จ = คืน `error` ให้ผู้เรียก**ปฏิเสธการยื่น** — ต่างจากตัวแสดงผลที่กลืน error:
+   ยื่นต่อเงียบ ๆ คือการตรึงชื่อที่จอไม่ได้โชว์ ซึ่งคือบั๊กตัวนี้เอง */
+export async function draftCustomerNameStamp(supabase, quote) {
+  if (!quote?.customerId || !isEditableQuotation(quote)) return { patch: null, error: null };
+  const { data, error } = await supabase
+    .from('customers').select(CUSTOMER_NAME_SELECT).eq('id', quote.customerId).maybeSingle();
+  if (error) return { patch: null, error };
+  if (!data) return { patch: null, error: null };
+  const next = liveCustomerNameFields(data, quote);
+  const patch = {};
+  for (const [key, value] of Object.entries(next)) {
+    if ((quote[key] ?? null) !== value) patch[key] = value;
+  }
+  return { patch: Object.keys(patch).length ? patch : null, error: null };
+}
 
 export async function refreshCustomerNameForDisplay(supabase, quotes = []) {
   const targets = quotes.filter((q) => q?.customerId && isEditableQuotation(q));
@@ -90,13 +128,8 @@ export async function refreshCustomerNameForDisplay(supabase, quotes = []) {
   const byId = new Map((data || []).map((c) => [c.id, c]));
   for (const q of targets) {
     const live = byId.get(q.customerId);
-    if (!live) continue;
-    q.customerName = customerNameIn(live) || q.customerName;
-    /* ⚠️ ต้องรีเฟรช**คู่ภาษา**พร้อมกัน — รีเฟรชแต่ไทย แล้วร่างภาษาอังกฤษจะโชว์ชื่อไทยสด
-       คู่กับชื่ออังกฤษที่ค้างจากวันสร้างใบ (หรือว่างเปล่าสำหรับใบก่อน mig 0343)
-       ทั้งที่คนเพิ่งกรอก nameEn ลงทะเบียนไป · แสดงผลอย่างเดียว ไม่เขียนกลับฐาน */
-    const liveEn = String(live.nameEn || '').trim();
-    if (liveEn) q.customerNameEn = liveEn;
+    // แสดงผลอย่างเดียว ไม่เขียนกลับฐาน — ตัวตรึงจริงคือ draftCustomerNameStamp (ตัวตัดสินคู่ชื่อตัวเดียวกัน)
+    if (live) Object.assign(q, liveCustomerNameFields(live, q));
   }
   return quotes;
 }

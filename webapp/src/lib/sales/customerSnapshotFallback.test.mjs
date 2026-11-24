@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fillCustomerSnapshotFromMaster, refreshCustomerNameForDisplay } from './customerSnapshotFallback.js';
+import {
+  draftCustomerNameStamp, fillCustomerSnapshotFromMaster, liveCustomerNameFields, refreshCustomerNameForDisplay,
+} from './customerSnapshotFallback.js';
 
 // mock supabase: .from('customers').select(...).eq('id', x).maybeSingle() → { data }
 function mockSupabase(customerRow, spy = {}) {
@@ -152,4 +154,47 @@ test('ใบที่ไม่ผูกลูกค้า / ไม่มีใ�
   await refreshCustomerNameForDisplay(spy, [{ status: 'draft', approvalStatus: 'not_submitted' }]);
   await refreshCustomerNameForDisplay(spy, []);
   assert.equal(called, false);
+});
+
+/* ── ตัวตัดสินคู่ชื่อตัวเดียวของจอ (แสดงผล) · ด่านยื่น (ตรึง) · ออก Rev. ──────────────────────────────
+   🐞 24/11/2026 QT-26110656-4: จอกับด่านยื่นเคยตัดสินคนละที่ (ด่านยื่นไม่ตัดสินเลย) ⇒ ชื่อดีดกลับตอนกดยื่น */
+test('liveCustomerNameFields: ทะเบียนชนะ · ว่าง = คงของใบ · ไม่มีทั้งคู่ = null', () => {
+  const quote = { customerName: 'ชื่อบนใบ', customerNameEn: 'On Doc' };
+  assert.deepEqual(liveCustomerNameFields({ name: 'ชื่อใหม่', nameEn: 'New' }, quote), { customerName: 'ชื่อใหม่', customerNameEn: 'New' });
+  assert.deepEqual(liveCustomerNameFields({ name: ' ', nameEn: '' }, quote), { customerName: 'ชื่อบนใบ', customerNameEn: 'On Doc' });
+  assert.deepEqual(liveCustomerNameFields({ name: '', nameEn: 'Only EN' }, {}), { customerName: 'Only EN', customerNameEn: 'Only EN' }, 'ลูกค้าต่างชาติ: ไทยตกไปอังกฤษ');
+  assert.deepEqual(liveCustomerNameFields(null, {}), { customerName: null, customerNameEn: null });
+});
+
+const customerRowStub = (result, seen = []) => ({
+  from(table) {
+    seen.push(table);
+    return { select() { return { eq() { return { maybeSingle() { return result; } }; } }; } };
+  },
+});
+
+test('draftCustomerNameStamp: ร่างที่ยังไม่ยื่น → คีย์ที่ต่างจากทะเบียน', async () => {
+  const quote = { customerId: 'CUS-1', customerName: 'JUNE MOON HOME LLC', customerNameEn: null, status: 'draft', approvalStatus: 'not_submitted' };
+  const res = await draftCustomerNameStamp(customerRowStub({ data: { id: 'CUS-1', name: 'Issara Signature', nameEn: null }, error: null }), quote);
+  assert.deepEqual(res, { patch: { customerName: 'Issara Signature' }, error: null });
+  const same = await draftCustomerNameStamp(customerRowStub({ data: { id: 'CUS-1', name: 'JUNE MOON HOME LLC', nameEn: null }, error: null }), quote);
+  assert.deepEqual(same, { patch: null, error: null });
+});
+
+test('draftCustomerNameStamp: ใบที่ยื่น/อนุมัติแล้ว หรือไม่ผูกลูกค้า = ไม่อ่านทะเบียนเลย', async () => {
+  const seen = [];
+  const stub = customerRowStub({ data: { id: 'CUS-1', name: 'ชื่อใหม่' }, error: null }, seen);
+  for (const q of [
+    { customerId: 'CUS-1', customerName: 'เก่า', status: 'draft', approvalStatus: 'pending' },
+    { customerId: 'CUS-1', customerName: 'เก่า', status: 'sent', approvalStatus: 'approved' },
+    { customerId: null, customerName: 'เก่า', status: 'draft', approvalStatus: 'not_submitted' },
+  ]) assert.deepEqual(await draftCustomerNameStamp(stub, q), { patch: null, error: null });
+  assert.deepEqual(seen, []);
+});
+
+test('draftCustomerNameStamp: อ่านทะเบียนไม่สำเร็จ = คืน error ให้ผู้เรียกปฏิเสธ (ไม่กลืนแบบตัวแสดงผล)', async () => {
+  const quote = { customerId: 'CUS-1', customerName: 'เก่า', status: 'draft', approvalStatus: 'not_submitted' };
+  const res = await draftCustomerNameStamp(customerRowStub({ data: null, error: { message: 'boom' } }), quote);
+  assert.equal(res.patch, null);
+  assert.equal(res.error.message, 'boom');
 });

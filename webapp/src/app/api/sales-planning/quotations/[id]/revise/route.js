@@ -26,6 +26,7 @@ import { RETIRED_PEOPLE_CLEARED, stripRetiredPeople } from '@/lib/sales/quotatio
 import { isRevisableQuotationApprovalStatus } from '@/lib/sales/quotationWorkflow';
 import { loadDealOwnerContact } from '@/lib/sales/dealOwner';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
+import { liveCustomerNameFields } from '@/lib/sales/customerSnapshotFallback';
 
 export const dynamic = 'force-dynamic';
 
@@ -169,9 +170,15 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
   // ⭐ "สดใหม่ของที่อยู่ **ตัวเดิม**" — ใบเดิมเลือกสาขา/คลังไหนไว้ ฉบับ Rev. ต้องอยู่
   // ที่นั่น (0203) ไม่ใช่เด้งกลับที่อยู่หลักเงียบ ๆ เพราะ master มีหลายที่อยู่แล้ว
   const { data: cust } = quote.customerId
-    ? await supabase.from('customers').select('addresses, address, shippingAddress, branchCode, taxId, "nameEn", contacts, contactPerson, contactPhone').eq('id', quote.customerId).maybeSingle()
+    ? await supabase.from('customers').select('name, addresses, address, shippingAddress, branchCode, taxId, "nameEn", contacts, contactPerson, contactPhone').eq('id', quote.customerId).maybeSingle()
     : { data: null };
   const revAddresses = pickDocumentAddresses(cust, quote);
+  /* ชื่อกิจการ (ไทย + อังกฤษ) ของฉบับ Rev. อ่านสดจากทะเบียน — กติกาเดียวกับที่อยู่/เลขภาษีข้างบน
+     ("อยากได้ข้อมูลใหม่บนใบต้องออก Rev." มติผู้ใช้ 2026-08-27 · customerNameMirrors.js)
+     🐞 24/11/2026 QT-26110656-4: เดิมลอก `quote.customerName` ของฉบับก่อน ⇒ แก้ชื่อลูกค้าแล้วออก Rev.
+     ร่างโชว์ชื่อใหม่ (refreshCustomerNameForDisplay แสดงผลอย่างเดียว) แต่คอลัมน์ยังถือชื่อเก่า
+     กดยื่นปุ๊บชื่อดีดกลับ · ทะเบียนว่าง/หาลูกค้าไม่เจอ = สืบของใบเดิม */
+  const revName = liveCustomerNameFields(cust, quote);
 
   /* ผู้ติดต่อของฉบับ Rev.: จอส่ง contactIndex มากับ payload เดียวกับตอนแก้ใบ (page.js
      quotationPayload) — เดิมที่นี่ไม่อ่านคีย์นี้เลย ⇒ เลือกผู้ติดต่อคนใหม่แล้วกด "ออก Rev."
@@ -200,13 +207,13 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
       quoteDate: businessDate(),
       validUntil,
       customerId: quote.customerId,
-      customerName: quote.customerName,
+      customerName: revName.customerName,
       /* ชื่อกิจการอังกฤษอ่านสดจากทะเบียนเหมือน taxId/ที่อยู่ (มติผู้ใช้ 2026-09-03)
          ⚠️ ไม่สืบทอดอย่างเดียว เพราะคอลัมน์นี้เพิ่งมี — ใบเก่าทุกใบเป็น null (ไม่ backfill)
          ⇒ ถ้ารอสืบทอด ฉบับ Rev. ของใบอังกฤษจะพิมพ์ชื่อไทยต่อไปไม่จบสักที
          ทะเบียนไม่มีอังกฤษ = สืบของใบเดิม · ไม่มีทั้งคู่ก็ปล่อย null (หน้าต่างพิมพ์เตือน
          แล้วถอยไปไทยเอง ไม่ใช่ถอยให้เงียบ ๆ ตรงนี้) */
-      customerNameEn: (cust?.nameEn || '').trim() || quote.customerNameEn || null,
+      customerNameEn: revName.customerNameEn,
       // snapshot: ที่อยู่ refresh สดจาก master; งวดชำระสืบทอดจากใบเดิม · ผู้ติดต่อ =
       // ที่จอเลือกไว้ตอนออก Rev. ถ้าไม่ได้เลือกก็สืบทอดของใบเดิม
       billingAddress: revAddresses.snapshot.billingAddress ?? quote.billingAddress ?? null,

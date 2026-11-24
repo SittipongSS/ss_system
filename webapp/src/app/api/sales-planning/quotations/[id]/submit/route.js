@@ -12,6 +12,7 @@ import {
   signatureEvidenceErrorResponse,
 } from '@/lib/admin/signatureEvidence';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
+import { draftCustomerNameStamp } from '@/lib/sales/customerSnapshotFallback';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,6 +62,23 @@ export const POST = withUser(async ({ user, supabase, req, ctx }) => {
      ข้อความบอกปุ่มที่ต้องกด ("แก้ไขข้อมูล") — เซิร์ฟเวอร์ไม่เติมเลขให้ */
   const packIssues = linePackIssues(quote.lines, { numbering: 'stored' });
   if (packIssues.length) return badRequest(linePackGateMessage(packIssues, 'submit'));
+
+  /* ⭐ ตรึงชื่อลูกค้าที่ร่างโชว์อยู่ลงใบ **ก่อน**ลงนาม — ร่างที่ยังไม่ยื่นโชว์ชื่อสดจากทะเบียน
+     (refreshCustomerNameForDisplay · แสดงผลอย่างเดียว) ⇒ จังหวะยื่นคือจังหวะเดียวที่ค่านั้นต้องลงคอลัมน์
+     🐞 24/11/2026 QT-26110656-4: ไม่มีบล็อกนี้ ⇒ แก้ชื่อลูกค้าแล้วร่างโชว์ชื่อใหม่ กดยื่นปุ๊บชื่อดีดกลับเป็นชื่อเก่า
+     · ชื่อลูกค้าไม่อยู่ในลายนิ้วมือการอนุมัติ (quotationApprovalFingerprint.js) ⇒ เขียนตรงนี้ไม่ทำให้ลายนิ้วมือเพี้ยน
+     · `updatedAt` เดิม + ยังไม่ยื่น = ยามกันเขียนทับใบที่อีกหน้าต่างเพิ่งแก้/ยื่น (ไม่ตั้ง updatedAt ใหม่ ⇒ ยามของ RPC ข้างล่างยังผ่าน)
+     · ยื่นไม่ผ่านหลังบล็อกนี้ = ร่างถือชื่อตามทะเบียน ซึ่งคือชื่อที่จอโชว์อยู่แล้ว ไม่มีอะไรต้องถอน */
+  const nameStamp = await draftCustomerNameStamp(supabase, quote);
+  if (nameStamp.error) return fail(`อ่านชื่อลูกค้าจากทะเบียนไม่สำเร็จ — ลองยื่นใหม่อีกครั้ง (${nameStamp.error.message})`, 500);
+  if (nameStamp.patch) {
+    const { data: stamped, error: stampError } = await supabase
+      .from('quotations').update(nameStamp.patch)
+      .eq('id', id).eq('updatedAt', quote.updatedAt).eq('approvalStatus', 'not_submitted')
+      .select('id').maybeSingle();
+    if (stampError) return fail(stampError.message, 500);
+    if (!stamped) return fail('ใบเสนอราคาถูกแก้ไขพร้อมกัน — รีเฟรชแล้วลองใหม่', 409);
+  }
 
   let result;
   try {
