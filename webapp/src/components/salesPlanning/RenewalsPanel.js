@@ -13,7 +13,7 @@
 // ⚠️ **รายชื่อคำนวณสดที่ server ทุกครั้ง** — ไม่มีสถานะ "ใกล้หมด" เก็บในฐานให้เน่า
 //   ⇒ ไม่มีตัวกรองสถานะแบบทะเบียนอื่น (สถานะของแถวเป็นผลของวันที่ ไม่ใช่ของที่คนตั้ง)
 //
-// ⚠️ กระดิ่งถูกกวาดตอนโหลดข้อมูลนี้ (ระบบไม่มี cron) — ดู lib/service/renewalNotify.js
+// ⭐ กระดิ่งใกล้หมด/หมดแล้วยิงจาก cron สรุปประจำวัน (งวด 3 วันกำหนด 24/11/2026) — เปิดทะเบียนนี้ไม่เขียนอะไร · ดู lib/service/renewalNotify.js
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import useStickyState from "@/lib/ui/useStickyState";
@@ -28,13 +28,14 @@ import DealCreateModal from "@/components/salesPlanning/DealCreateModal";
 import useDealOwners from "@/lib/sales/useDealOwners";
 import { useCan } from "@/lib/roleContext";
 import { fmtDate, fmtName, naText, NA } from "@/lib/format";
+import { dueText } from "@/lib/dueState";
 import { usePagination } from "@/lib/usePagination";
 import { apiJson } from "@/lib/apiFetch";
 import { LINE_PERIOD_END_NOTE, ORDER_PERIOD_END_NOTE } from "@/lib/service/renewals";
 
 export const EMPTY_RENEWAL_COUNTS = { expired: 0, dueIn30: 0, dueSoon: 0, following: 0 };
 
-/* ป้ายวันหมดของแถว — โทนเดียวกับตัวเลขในตารางทั้งระบบ
+/* ป้ายวันหมดของแถว — โทนเดียวกับตัวเลขในตารางทั้งระบบ · คำชุดเดียว `dueText` (มติ 2 วันกำหนด 23/11/2026: เลิกใช้ "เลยมาแล้ว")
    ⚠️ "หมดแล้ว" ต้องเด่นกว่า "ใกล้หมด" เสมอ: ของจริงคือเครื่องยังอยู่หน้างานโดยไม่มี
    สัญญาครอบ ซึ่งเป็นสถานะที่แย่ที่สุดในทะเบียนนี้ */
 function dueCell(row) {
@@ -43,7 +44,8 @@ function dueCell(row) {
     <>
       <span className={expired ? "cell-num-bad" : undefined}>{fmtDate(row.endDate)}</span>
       <span className={`cell-sub ${expired ? "cell-num-bad" : ""}`.trim()}>
-        {expired ? `เลยมาแล้ว ${Math.abs(row.daysLeft)} วัน` : `อีก ${row.daysLeft} วัน`}
+        {/* `daysLeft` นับที่ server ด้วยวันไทยตัวเดียวกับ `state` (expired = daysLeft < 0) ⇒ ส่งสถานะเข้า `dueText` ตรง ๆ */}
+        {dueText({ key: expired ? "late" : row.daysLeft === 0 ? "today" : "later", days: row.daysLeft })}
       </span>
       {/* PR-C: ใบเปิดงานบริการแล้วแต่ยังไม่ผูกสัญญา — วันนี้คือวันจบช่วงบริการของใบ ไม่ใช่ของสัญญา */}
       {row.endSource === "order_period" && <span className="cell-sub">{ORDER_PERIOD_END_NOTE}</span>}
@@ -55,8 +57,7 @@ function dueCell(row) {
 
 /**
  * ⚠️ **ข้อมูลถูกโหลดที่หน้าแม่ ไม่ใช่ที่นี่** — เลขบนหัวแท็บ ("ต่อสัญญา 3") ต้องรู้
- * ตั้งแต่ยังไม่มีใครกดเข้าแท็บ · และการกวาดกระดิ่งจะได้เกิดทุกครั้งที่เปิดทะเบียนสัญญา
- * ไม่ใช่เฉพาะตอนกดแท็บ (ระบบไม่มี cron — ยิ่งกวาดบ่อยยิ่งมีคนรู้ตัวทัน)
+ * ตั้งแต่ยังไม่มีใครกดเข้าแท็บ · กระดิ่งไม่ได้ผูกกับการเปิดจอนี้แล้ว (cron สรุปประจำวัน)
  *
  * @param data     { rows, counts } จาก /api/sales-planning/renewals
  * @param reload   ให้หน้าแม่โหลดใหม่หลังบันทึกผล
