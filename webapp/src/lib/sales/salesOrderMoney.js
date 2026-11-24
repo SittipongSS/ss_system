@@ -11,7 +11,9 @@
    ⭐ ยอดจ่ายก่อน VAT = `totalAmount − vatAmount` (คอลัมน์ของใบเอง · ไม่คูณ/หาร 1.07 เดา) — คนละตัวกับ Actual
      (`actualAmount` · ใบสรรพสามิต/ย้อนหลังไม่นับ Actual แต่ยังมียอดจ่ายที่ต้องตามเก็บ)
    ⚠️ ผู้เรียกต้องเลือกคอลัมน์งวด `id, seq, status, kind, amount, "dueDate", "paidOn", "taxInvoiceNo", "refundedAt", "frozenAt",
-     "updatedAt"` มาด้วย — ขาด `amount` = ยอดเป็น 0 เงียบ ๆ · ขาด `frozenAt` = งวดของใบที่อนุมัติแล้วกลายเป็น "ตามแผน" ทั้งหมด */
+     "updatedAt"` มาด้วย — ขาด `amount` = ยอดเป็น 0 เงียบ ๆ · ขาด `frozenAt` = งวดของใบที่อนุมัติแล้วกลายเป็น "ตามแผน" ทั้งหมด
+   ⭐ `"rejectedReason", "rejectedByName"` (ไม่บังคับ · 24/11/2026) ของงวดสถานะ `rejected` เท่านั้น — ข้อความจากบัญชีตอนกดตีกลับ
+     (แจ้งชำระใหม่ล้างสองช่องนี้ทิ้งอยู่แล้ว · งวดสถานะอื่นที่ค่าค้างไม่พูดซ้ำ) · ไม่ได้เลือกมา = ไม่มีบรรทัดเหตุผล ไม่พัง */
 import { INSTALLMENT_STATUS_LABELS, installmentOverdue, installmentRefunded, installmentVoid, paymentNotRequired, strandedInstallment } from '@/lib/sales/salesOrderPayments';
 import { planInstallmentAmounts } from '@/lib/sales/paymentPlan';
 import { isOpeningInstallment } from '@/lib/sales/historicalOrders';
@@ -98,6 +100,8 @@ export function salesOrderMoneyCell(rows = [], order = {}, { plan = null, todayI
       taxInvoiceNo: text(r.taxInvoiceNo) || null,
       opening: isOpeningInstallment(r),
       updatedAt: r.updatedAt ?? null,
+      rejectedReason: r.status === 'rejected' ? text(r.rejectedReason) || null : null,
+      rejectedByName: r.status === 'rejected' ? text(r.rejectedByName) || null : null,
     }));
   } else {
     /* ใบที่ยังไม่มีแถวงวดเลย — ชิปตามแผนใน QT (ยอดแบ่งด้วยตัวคำนวณเดียวกับตอนสร้างงวดจริง: planInstallmentAmounts) */
@@ -106,7 +110,7 @@ export function salesOrderMoneyCell(rows = [], order = {}, { plan = null, todayI
     tracked = false;
     installments = schedule.map((r) => ({
       id: null, seq: r.no, kind: 'plan', status: 'pending', amount: r.amount, dueDate: null, paidOn: null,
-      taxInvoiceNo: null, opening: false, updatedAt: null, label: r.label || null,
+      taxInvoiceNo: null, opening: false, updatedAt: null, rejectedReason: null, rejectedByName: null, label: r.label || null,
     }));
   }
 
@@ -167,6 +171,7 @@ export function ledgerOrderMoney(ledgerRows = [], { todayIso = null, orderIds = 
     const rows = list.map((r) => ({
       id: r.id, seq: r.seq, status: r.status, kind: r.kind, amount: r.amount, dueDate: r.dueDate, paidOn: r.paidOn,
       taxInvoiceNo: r.taxInvoiceNo, refundedAt: r.refundedAt, updatedAt: r.updatedAt, frozenAt: true,
+      rejectedReason: r.rejectedReason, rejectedByName: r.rejectedByName,
     }));
     const money = salesOrderMoneyCell(rows, order, { todayIso });
     if (money) out[orderId] = money;

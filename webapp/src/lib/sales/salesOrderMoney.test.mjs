@@ -129,6 +129,19 @@ test('งวดยกมาของใบย้อนหลังติดธ�
   assert.equal(cell.installments[0].opening, true);
 });
 
+test('เหตุผลตีกลับ (24/11/2026): พกเฉพาะงวดสถานะ rejected · งวดอื่นที่ค่าค้างไม่พูด · ไม่ได้เลือกมา = null', () => {
+  const cell = salesOrderMoneyCell([
+    inst({ seq: 1, status: 'rejected', rejectedReason: '  สลิปยอดไม่ตรง  ', rejectedByName: 'บัญชี ก' }),
+    inst({ seq: 2, status: 'reported', rejectedReason: 'ค่าค้างรอบก่อน', rejectedByName: 'บัญชี ก' }),
+    inst({ seq: 3, status: 'rejected' }),
+  ], order({ totalAmount: 385200 }), { todayIso: TODAY });
+  assert.deepEqual(cell.installments.map((i) => [i.kind, i.rejectedReason, i.rejectedByName]), [
+    ['rejected', 'สลิปยอดไม่ตรง', 'บัญชี ก'],
+    ['reported', null, null],
+    ['rejected', null, null],
+  ]);
+});
+
 test('route รายการ SO: ส่งก้อน money ทุกแถว และ select งวดชุดแรกพกช่องที่ก้อนเงินต้องใช้', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../../app/api/sales-planning/sales-orders/route.js', import.meta.url), 'utf8');
@@ -137,7 +150,7 @@ test('route รายการ SO: ส่งก้อน money ทุกแถ�
   const selects = [...loader.matchAll(/\.from\('sales_order_installments'\)\s*\.select\('([^']+)'\)/g)].map((m) => m[1]);
   assert.equal(selects.length, 3, 'สามชุด: ปัจจุบัน · ก่อน 0412 · ก่อน 0378');
   // ชุดถอยสองชุดไม่รันบน production แล้ว (0378/0412 รันครบ) — ตรึงเฉพาะชุดแรก
-  for (const col of ['id', 'seq', 'amount', '"paidOn"', '"frozenAt"', '"updatedAt"', '"dueDate"', '"taxInvoiceNo"', '"refundedAt"', 'kind']) {
+  for (const col of ['id', 'seq', 'amount', '"paidOn"', '"frozenAt"', '"updatedAt"', '"dueDate"', '"taxInvoiceNo"', '"refundedAt"', 'kind', '"rejectedReason"', '"rejectedByName"']) {
     assert.ok(selects[0].includes(col), `select งวดชุดแรกขาด ${col}: ${selects[0]}`);
   }
 });
@@ -156,6 +169,8 @@ test('ก้อนเงินจากแถวทะเบียนบัญ�
   assert.equal(money.A.collected, 128400);
   assert.equal(money.A.reviewing, 128400);
   assert.deepEqual(money.A.installments.map((i) => i.kind), ['confirmed', 'reported'], 'แถวทะเบียนตรึงแล้วทุกแถว — ไม่ใช่ "ตามแผน"');
+  const rejected = ledgerOrderMoney([{ ...all[1], status: 'rejected', rejectedReason: 'สลิปไม่ชัด' }], { todayIso: TODAY });
+  assert.equal(rejected.A.installments[0].rejectedReason, 'สลิปไม่ชัด', 'แถวทะเบียนพกเหตุผลตีกลับไปที่ชิป (กล่องลอยฝั่งบัญชี)');
   const everything = ledgerOrderMoney(all, { todayIso: TODAY });
   assert.equal(everything.B.installments[0].kind, 'overdue');
   assert.deepEqual(ledgerOrderMoney([{ ...all[0], orderTotal: null }], { todayIso: TODAY }), {}, 'ยอดใบไม่รู้ = ไม่มีก้อน');

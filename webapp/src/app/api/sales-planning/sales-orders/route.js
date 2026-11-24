@@ -596,11 +596,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
      จำนวนงวดที่ยื่นรอ (`actualSubmittedCount`) — ชุดเดียวกับที่ป้ายบนเมนูอ่าน · `"actualApprovedVia"` = สัญญาณ "กดนับที่เหลือทั้งหมดแล้ว"
      (มติข้อ 10 — ใบแบบนั้นไม่มีงวดให้ยื่น ⇒ เลนเจ้าของดีลไม่ชี้งวดที่ยื่นไม่ได้) · `"frozenAt"` = งวดยังไม่ตรึง (review รอบสี่ —
      ยื่นไม่ได้จน AE Sup กดปุ่มกู้ ⇒ เลนเจ้าของดีลไม่นับ · ป้ายเมนูอ่านชุดเดียวกัน) · ⚠️ ก่อนรัน 0412 = 42703 ⇒ ถอยเป็นชุดของ 0378
-     (ใบยังไม่มี "actualMode" ⇒ ทุกใบเป็นทั้งใบ · เลนไม่นับ) */
+     (ใบยังไม่มี "actualMode" ⇒ ทุกใบเป็นทั้งใบ · เลนไม่นับ)
+   ⭐ `"rejectedReason", "rejectedByName"` (เจ้าของ 24/11/2026 "โชว์เหตุผลตีกลับในตาราง SO") = เหตุที่บัญชีตีกลับงวด — บรรทัดแดงใต้ชิปงวด
+     (`installmentRejectLines`) + กล่องลอยของชิป · ต่อท้ายชุดแรกเท่านั้น (สองชุดถอยไม่มีเหตุผล = ไม่มีบรรทัด ไม่พัง) */
 async function loadListInstallments(supabase, orderIds) {
   const withActual = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments')
-    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate"')
+    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate", "rejectedReason", "rejectedByName"')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));
