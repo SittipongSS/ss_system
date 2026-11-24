@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Repeat, Search, UserRound, Wallet } from "lucide-react";
+import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Repeat, Search, Undo2, UserRound, Wallet } from "lucide-react";
 import SaWorkspace, { ListPanel, Metric as SaMetric, MetricStrip as SaMetricStrip } from "@/components/ui/Workspace";
 import DetailRow from "@/components/ui/DetailRow";
 import Button from "@/components/ui/Button";
@@ -22,8 +22,9 @@ import { fmtDate, fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format"
 import { salesOrderTaxInvoiceNote } from "@/lib/sales/salesOrderPayments";
 import {
   EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
-  historicalPendingCount, historicalPendingNote, salesOrderPassesListFilters, salesOrderPickActive,
+  historicalPendingCount, historicalPendingNote, salesOrderBounced, salesOrderPassesListFilters, salesOrderPickActive,
 } from "@/lib/sales/salesOrderListFilter";
+import { salesOrderBounceLine, salesOrderDocRejectText } from "@/lib/sales/salesOrderMoneyText";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import {
   PENDING_APPROVAL_LABEL, SALES_ORDER_STATUS_LABELS, salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts,
@@ -297,6 +298,9 @@ export default function SalesOrdersPage() {
      จาก server = `serviceBackfillNeeded` ตัวเดียวกับหน้าใบ/เลน "รอฉันลงมือ"/คิว TS) · **ปุ่มสลับบนแถบ ไม่ใช่ตัวเลือกใน
      กล่องกรอง** (กฎ direct controls — ของค้าง ~59 ใบต้องเห็นตัวเลขโดยไม่ต้องเปิดกล่อง) ⇒ ไม่นับใน `filterCount` */
   const [serviceSetupPendingOnly, setServiceSetupPendingOnly] = useStickyState("serviceSetupPendingOnly", false);
+  /* ⭐ การ์ด "ตีกลับ รอแก้" (เจ้าของ 24/11/2026) — มิติของตัวเอง (`salesOrderBounced` · OR ข้ามสถานะใบกับงวด) ตั้งได้จากการ์ดทางเดียว ·
+     ถอดด้วยการ์ดซ้ำ / ชิป "กรอง: ตีกลับ รอแก้ ×" / ปุ่มล้างของกล่องกรอง */
+  const [bouncedOnly, setBouncedOnly] = useStickyState("bouncedOnly", false);
   // ⚠️ นับจาก `rows` ทั้งหมด ไม่ใช่ `filtered` — ตัวเลขบนชิปไม่หดตามตัวกรองอื่น (ฐานเดียวกับการ์ดสรุปบนหัว)
   const serviceSetupPendingCount = useMemo(
     () => rows.filter((row) => row._serviceSetupPending).length,
@@ -358,7 +362,7 @@ export default function SalesOrdersPage() {
     setQueueSortChosen(false);
     if (serviceSetupPendingOnly) { setServiceSetupPendingOnly(false); return; }
     setQuery(""); setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
-    setWaitingOnMeOnly(false);
+    setWaitingOnMeOnly(false); setBouncedOnly(false);
     if (lineView === "PRODUCT") setLineView("SERVICE");
     setServiceSetupPendingOnly(true);
   };
@@ -368,12 +372,12 @@ export default function SalesOrdersPage() {
   const applyOrderPick = (pick) => {
     setQuery(pick.query); setStatusFilter([...pick.status]); setPaymentFilter([...pick.payment]); setInvoiceFilter([...pick.invoice]);
     setOriginFilter([...pick.origin]); setLineView(pick.lineView); setWaitingOnMeOnly(pick.waitingOnMe);
-    setServiceSetupPendingOnly(pick.serviceSetupPending);
+    setServiceSetupPendingOnly(pick.serviceSetupPending); setBouncedOnly(pick.bounced);
     // ไม่ต้องล้าง queueSortChosen — การ์ดไม่เปิดคิวงานบริการ (ทางเข้าคิวทางเดียวคือชิป ซึ่งล้างธงนั้นเองตอนเปิด)
   };
   const activeFilters = {
     query, status: statusFilter, payment: paymentFilter, invoice: invoiceFilter, origin: originFilter,
-    lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly,
+    lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly, bounced: bouncedOnly,
   };
   const cardActive = (key) => salesOrderPickActive(activeFilters, SALES_ORDER_CARD_PICKS[key]);
   const pickCard = (key) => applyOrderPick(cardActive(key) ? EMPTY_SALES_ORDER_FILTERS : SALES_ORDER_CARD_PICKS[key]);
@@ -385,7 +389,7 @@ export default function SalesOrdersPage() {
     const q = query.trim().toLowerCase();
     const filters = {
       status: statusFilter, payment: paymentFilter, invoice: invoiceFilter, origin: originFilter,
-      lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly,
+      lineView, waitingOnMe: waitingOnMeOnly, serviceSetupPending: serviceSetupPendingOnly, bounced: bouncedOnly,
     };
     const matchesSearch = (row) => {
       // ⭐ เอกสารอ้างอิงอยู่ในชุดค้นด้วย (IS-26080017) — เหตุผลหลักที่ช่องนี้เกิดคือ
@@ -406,7 +410,7 @@ export default function SalesOrdersPage() {
         .some((value) => String(value || "").toLowerCase().includes(q));
     };
     return rows.filter((row) => salesOrderPassesListFilters(row, filters, { matchesSearch }));
-  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, serviceSetupPendingOnly, lineView]);
+  }, [query, rows, statusFilter, paymentFilter, invoiceFilter, originFilter, waitingOnMeOnly, serviceSetupPendingOnly, bouncedOnly, lineView]);
 
   /* `recent` = ลำดับที่ API ส่งมา (ล่าสุดก่อน) — ไม่คิดใหม่ที่นี่ ไม่งั้นมีกติกา
      "ล่าสุด" สองชุดที่เพี้ยนหากันได้ · สลับทิศคือกลับลำดับเดิม */
@@ -460,7 +464,7 @@ export default function SalesOrdersPage() {
     + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${lineView}|${activeSortKey}|${activeSortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${bouncedOnly}|${lineView}|${activeSortKey}|${activeSortDir}` });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)
@@ -523,6 +527,10 @@ export default function SalesOrdersPage() {
      · งวดที่ยื่นของใบรายงวด (มติข้อ 5: อยู่กองรออนุมัติ) บอกแยกในหมายเหตุ ไม่เข้าเลขของการ์ด */
   const summary = useMemo(() => {
     const amounts = splitSalesOrderAmounts(rows);
+    /* การ์ด "ตีกลับ รอแก้" (เจ้าของ 24/11/2026) — ตัวตัดสินเดียวกับตัวกรองของการ์ด (`salesOrderBounced`) ⇒ กดแล้วแถว = เลข ·
+       หมายเหตุแยกสองแบบ: ใบที่ AE Sup ตีกลับ · ใบที่มีงวดบัญชีตีกลับ (ใบที่โดนทั้งสองอย่างนับเป็นแบบแรก — แก้ใบก่อน) */
+    const bounced = rows.filter(salesOrderBounced);
+    const bouncedDoc = bounced.filter((row) => row.status === "rejected").length;
     return {
       total: rows.length,
       pending: amounts.pendingOrderCount,
@@ -534,9 +542,21 @@ export default function SalesOrdersPage() {
       approved: amounts.actualCount + amounts.noneCount,
       noneCount: amounts.noneCount,
       actual: amounts.actual,
+      bounced: bounced.length,
+      bouncedDoc,
+      bouncedInstallment: bounced.length - bouncedDoc,
     };
   }, [rows]);
   const pendingCardNote = pendingCardNoteOf(summary);
+  const bouncedCardNote = summary.bounced
+    ? [summary.bouncedDoc ? `AE Sup ตีกลับ ${fmtNumber(summary.bouncedDoc)} ใบ` : "", summary.bouncedInstallment ? `บัญชีตีกลับงวด ${fmtNumber(summary.bouncedInstallment)} ใบ` : ""]
+      .filter(Boolean).join(" · ")
+    : "ไม่มีใบรอแก้";
+  /* ⭐ กล่อง "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้" (เจ้าของ 24/11/2026 "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") — ทรงเดียวกับกล่องรออนุมัติ
+     · ธง `_bouncedToMe` ของ server (`salesOrderBouncedToMe`): ใบที่ AE Sup ตีกลับ → คนสร้าง · งวดที่บัญชีตีกลับ → คนแจ้งชำระงวดนั้น + เจ้าของดีล
+     · เปลือกบัญชีไม่มีกล่องนี้ (บัญชีเป็นคนตีกลับ ไม่ใช่คนแก้) · งวดตีกลับพาไปแท็บการชำระ (ปุ่มแจ้งชำระใหม่อยู่ที่นั่น) */
+  const bounceQueue = useMemo(() => (financeShell ? [] : rows.filter((row) => row._bouncedToMe)), [rows, financeShell]);
+  const bounceHref = (o) => (o.status === "rejected" ? `/sa/sales-orders/${o.id}` : `/sa/sales-orders/${o.id}?tab=payment`);
 
   /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────
      ⚠️ ฟังก์ชันตัวเดียว ไม่ใช่ markup สองสำเนาในสองสาขาของ tbody (AGENTS.md) */
@@ -586,9 +606,7 @@ export default function SalesOrdersPage() {
                     {/* ⭐ เหตุที่ใบถูกตีกลับ (เจ้าของ 24/11/2026 "โชว์เหตุผลตีกลับในตาราง SO") — ใต้หมุดแดงของราง ผู้ยื่นรู้ว่าต้องแก้อะไร
                         โดยไม่ต้องเปิดใบ · `rejectionReason` ล้างทิ้งตอนยื่นใหม่/กู้คืนอยู่แล้ว ⇒ เช็ก status ด้วยกันค่าค้าง
                         (เหตุที่บัญชีตีกลับ "งวด" อยู่ใต้ชิปงวดในคอลัมน์งวด — InstallmentsCell) */}
-                    {row.status === "rejected" && row.rejectionReason ? (
-                      <RejectReasonLine className="mt-1.5" text={`ตีกลับโดย ${row.rejectedByName || "ผู้อนุมัติ"}: ${row.rejectionReason}`} />
-                    ) : null}
+                    <RejectReasonLine className="mt-1.5" text={salesOrderDocRejectText(row)} />
                     {/* ⭐ "ค้าง n วัน · งานบริการ · ยังไม่ยื่นตรวจ / รอผู้จัดการตรวจ" (มติเจ้าของ 08/10 "ตามงานค้าง") — เฉพาะใบที่อนุมัติแล้วแต่
                         งานบริการยังไม่ถึง TS (`row.serviceAging` ของ server · ฐานเดียวกับชิป "ยังไม่ตั้งงานบริการ")
                         ⚠️ ต้องมีคำบอกว่าเป็นเรื่องงานบริการและอยู่ขั้นไหน (คำของขั้น "ยังไม่ยื่นตรวจ" ไม่ชี้ว่าใครถือ — ลูกค้าที่ไม่มีไซต์
@@ -749,7 +767,7 @@ export default function SalesOrdersPage() {
         )}
 
         <SaMetricStrip>
-          {/* ⭐ การ์ดทั้งสี่เป็นปุ่มตัวกรอง (ตรวจตัวเลข L11 · 26/10) — กด = ตัวกรองชุดใหม่ทั้งชุด (`pickCard`) ⇒ ตารางเหลือเท่าเลขบนการ์ด
+          {/* ⭐ การ์ดทั้งห้าเป็นปุ่มตัวกรอง (ตรวจตัวเลข L11 · 26/10) — กด = ตัวกรองชุดใหม่ทั้งชุด (`pickCard`) ⇒ ตารางเหลือเท่าเลขบนการ์ด
               · การ์ดเงินนับเฉพาะ **ใบจากใบเสนอราคา** (ใบย้อนหลังไม่นับ Actual · mig 0360) — หมายเหตุใต้เลขบอกชุดตรง ๆ
                 เพราะตัวเลือกสถานะคำเดียวกัน ("รออนุมัติ" · "อนุมัติแล้ว") รวมใบย้อนหลังด้วย */}
           <SaMetric
@@ -772,6 +790,17 @@ export default function SalesOrdersPage() {
             title={pendingCardNote.title}
             tone={summary.pending ? "warning" : "good"}
             active={cardActive("pending")} aria-pressed={cardActive("pending")} onClick={() => pickCard("pending")}
+          />
+          {/* ⭐ "ตีกลับ รอแก้" ข้างการ์ดรออนุมัติ (เจ้าของ 24/11/2026 "สำคัญพอ ๆ กัน") — นับสองแบบ (มติ "นับทั้งสองแบบ"):
+              ใบที่ AE Sup ตีกลับ + ใบที่มีงวดบัญชีตีกลับ · ทุกที่มา (ใบย้อนหลังที่โดนตีกลับก็ต้องแก้) · กด = กรองชุดเดียวกัน */}
+          <SaMetric
+            as="button" type="button"
+            icon={<Undo2 />}
+            label="ตีกลับ รอแก้"
+            value={summary.bounced}
+            note={bouncedCardNote}
+            tone={summary.bounced ? "danger" : "good"}
+            active={cardActive("bounced")} aria-pressed={cardActive("bounced")} onClick={() => pickCard("bounced")}
           />
           <SaMetric
             as="button" type="button"
@@ -832,6 +861,17 @@ export default function SalesOrdersPage() {
             </Button>
           )}
         />
+        <ApprovalQueue
+          items={bounceQueue}
+          unit="ใบ"
+          title="ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้"
+          primary={(o) => o.orderNumber}
+          secondary={(o) => `${naText(o.customerName)} · ${salesOrderBounceLine(o) || "ถูกตีกลับ"}`}
+          rowHref={bounceHref}
+          renderAction={(o) => (
+            <Button as={Link} href={bounceHref(o)} tone="primary" size="sm">เปิดใบเพื่อแก้</Button>
+          )}
+        />
 
         {/* แผงรายการ (มติผู้ใช้ 2026-09-15 · UI_DESIGN_SYSTEM.md §รายการ) — ป้ายจำนวน = ใบหลังค้นหา/กรอง
             ทุกหน้า (เท่ายอดของ Pager) · แถบควบคุมทรงเดียวกับทุกตาราง: สายธุรกิจ · ค้นหา · ตัวกรอง · จัดกลุ่ม | เรียง */}
@@ -869,7 +909,7 @@ export default function SalesOrdersPage() {
               count={filterCount}
               onClear={() => {
                 setStatusFilter([]); setPaymentFilter([]); setInvoiceFilter([]); setOriginFilter([]);
-                setWaitingOnMeOnly(false); setServiceSetupPendingOnly(false); setQueueSortChosen(false);
+                setWaitingOnMeOnly(false); setBouncedOnly(false); setServiceSetupPendingOnly(false); setQueueSortChosen(false);
               }}
               groups={[
                 {
@@ -903,6 +943,9 @@ export default function SalesOrdersPage() {
               ]}
             />
             {/* ชิปล้างตัวกรองที่ใช้อยู่ — ทรงเดียวกับทะเบียนสัญญา/งาน/งานผลิต */}
+            {bouncedOnly && (
+              <Button size="sm" onClick={() => setBouncedOnly(false)}>กรอง: ตีกลับ รอแก้ ×</Button>
+            )}
             {originFilter.length > 0 && (
               <Button size="sm" onClick={() => setOriginFilter([])}>
                 กรอง: {originFilter.map((key) => ORIGIN_FILTERS[key]?.label).filter(Boolean).join(" · ")} ×

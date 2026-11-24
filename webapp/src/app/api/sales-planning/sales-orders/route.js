@@ -7,7 +7,7 @@ import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning'
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
 import { exciseSalesOrderCreateError } from '@/lib/excise/exciseSalesOrder';
-import { isSalesOrderReviewer, isSalesOrderWaitingOnMe } from '@/lib/sales/salesOrderWorkflow';
+import { isSalesOrderReviewer, isSalesOrderWaitingOnMe, salesOrderBouncedToMe } from '@/lib/sales/salesOrderWorkflow';
 /* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
 import {
   installmentActualAwaitingReview, installmentActualReadyForOwner, isInstallmentActualOrder,
@@ -336,8 +336,15 @@ export const GET = withUser(async ({ user, supabase }) => {
         userId: user.id, reviewer: reviewer && !staleServiceReview(row), role: user.role,
         serviceBackfillNeeded: setupPendingIds.has(row.id),
         actualInstallments: actualInstallmentsOf(row),
+        bounceInstallments: installmentsByOrder.get(row.id) || [],
       })
         || (canConfirmPayment(user) && awaitsFinanceReview(row, installmentsByOrder.get(row.id) || [])),
+      /* ⭐ ใบตีกลับรอฉันแก้ (เจ้าของ 24/11/2026 "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") — กล่อง "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้" ·
+         สองเลน: ใบที่ AE Sup ตีกลับ → คนสร้าง · งวดที่บัญชีตีกลับ → คนแจ้งชำระงวดนั้น + เจ้าของดีล (`salesOrderBouncedToMe`)
+         ⭐ ชุดย่อยของ `_waitingOnMe` ข้างบน (ตัวตัดสินเลนเดียวกัน) ⇒ ป้ายบนเมนูนับใบในกล่องครบ */
+      _bouncedToMe: salesOrderBouncedToMe({ ...row, deal: dealById.get(row.dealId) || null }, {
+        userId: user.id, installments: installmentsByOrder.get(row.id) || [],
+      }),
       /* ⭐ ชุดย่อย "รอฉันอนุมัติ" — ตัดใบที่ตัวเองสร้าง/ยื่นออก เพราะอนุมัติเองไม่ได้
          (admin ใช้สิทธิ์ฉุกเฉินได้ แต่ต้องไปทำที่หน้าใบพร้อมเหตุผล ไม่ใช่จากคิว)
          ⭐ + ใบรายงวดที่มี **งวดยื่นรออนุมัตินับ Actual** ที่ไม่ใช่ของตัวเอง (mig 0412 · คิว "งวดรออนุมัติ" ของมติ 26/10) —
@@ -597,12 +604,13 @@ export const POST = withUser(async ({ user, supabase, req }) => {
      (มติข้อ 10 — ใบแบบนั้นไม่มีงวดให้ยื่น ⇒ เลนเจ้าของดีลไม่ชี้งวดที่ยื่นไม่ได้) · `"frozenAt"` = งวดยังไม่ตรึง (review รอบสี่ —
      ยื่นไม่ได้จน AE Sup กดปุ่มกู้ ⇒ เลนเจ้าของดีลไม่นับ · ป้ายเมนูอ่านชุดเดียวกัน) · ⚠️ ก่อนรัน 0412 = 42703 ⇒ ถอยเป็นชุดของ 0378
      (ใบยังไม่มี "actualMode" ⇒ ทุกใบเป็นทั้งใบ · เลนไม่นับ)
+   ⭐ `"reportedById"` (24/11/2026) = คนแจ้งชำระงวด — เลนงวดที่บัญชีตีกลับของ `_waitingOnMe` / `_bouncedToMe` (installmentBounceWaitingOnMe)
    ⭐ `"rejectedReason", "rejectedByName"` (เจ้าของ 24/11/2026 "โชว์เหตุผลตีกลับในตาราง SO") = เหตุที่บัญชีตีกลับงวด — บรรทัดแดงใต้ชิปงวด
      (`installmentRejectLines`) + กล่องลอยของชิป · ต่อท้ายชุดแรกเท่านั้น (สองชุดถอยไม่มีเหตุผล = ไม่มีบรรทัด ไม่พัง) */
 async function loadListInstallments(supabase, orderIds) {
   const withActual = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_order_installments')
-    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate", "rejectedReason", "rejectedByName"')
+    .select('id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate", "rejectedReason", "rejectedByName", "reportedById"')
     .in('salesOrderId', chunk)
     .order('salesOrderId', { ascending: true })
     .order('id', { ascending: true })));
