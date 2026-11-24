@@ -12,13 +12,15 @@ import { readFileSync } from 'node:fs';
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 const stripComments = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
 
+/* ตัวโหลดย้ายจาก route มา lib/service/renewalContext.js (งวด 3 วันกำหนด 24/11/2026) — ยามตามโค้ดไป · route ยังต้องใช้ตัวช่วยรอบนำ */
+const LOADER = stripComments(read('./renewalContext.js'));
 const ROUTE = stripComments(read('../../app/api/sales-planning/renewals/route.js'));
 const PANEL = stripComments(read('../../components/salesPlanning/RenewalsPanel.js'));
 
 test('route ดึงช่วงบริการ + ตราเปิดงานบริการของใบมาให้ตัวตัดสิน', () => {
-  const at = ROUTE.indexOf("from('sales_orders')");
+  const at = LOADER.indexOf("from('sales_orders')");
   assert.ok(at > 0, 'ต้องมีคำสั่งอ่านใบสั่งขาย');
-  const select = ROUTE.slice(at).match(/\.select\('([^']+)'\)/)?.[1] || '';
+  const select = LOADER.slice(at).match(/\.select\('([^']+)'\)/)?.[1] || '';
   assert.match(select, /"serviceContractId"/, 'ทางไปหาสัญญายังต้องอยู่');
   assert.match(select, /"servicePeriodTo"/);
   assert.match(select, /"serviceTermsOpenedAt"/);
@@ -28,7 +30,8 @@ test('route ดึงช่วงบริการ + ตราเปิดง�
 
 test('route เลือกรอบนำของแถวด้วยตัวช่วยตัวเดียวกันทั้ง GET และ POST', () => {
   assert.match(ROUTE, /renewalLeadTerm/);
-  assert.doesNotMatch(ROUTE, /row\.terms\.find\(/, 'ห้ามหา "รอบที่หมดเร็วที่สุด" เองในไฟล์นี้อีก');
+  assert.match(LOADER, /renewalLeadTerm/, 'แถวพร้อมดีล (จอ + กระดิ่ง) ใช้รอบนำตัวเดียวกัน');
+  for (const src of [ROUTE, LOADER]) assert.doesNotMatch(src, /row\.terms\.find\(/, 'ห้ามหา "รอบที่หมดเร็วที่สุด" เองอีก');
 });
 
 test('จอบอกใต้วันว่าวันหมดมาจากช่วงบริการของใบ และค้นเจอด้วยข้อความเดียวกัน', () => {

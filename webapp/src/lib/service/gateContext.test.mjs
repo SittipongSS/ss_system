@@ -85,7 +85,8 @@ test('ตัวโหลดสัญญาของด่านเข้าไ�
     return code.slice(at).match(/\.select\('([^']+)'\)/)[1];
   };
   const gate = select('./gateContext.js');
-  const renewals = select('../../app/api/sales-planning/renewals/route.js');
+  // ตัวโหลดของทะเบียนต่อสัญญาย้ายจาก route มา lib (งวด 3 วันกำหนด 24/11/2026 — cron กระดิ่งใช้ตัวเดียวกัน)
+  const renewals = select('./renewalContext.js');
   assert.equal(gate, renewals);
   assert.match(gate, /"approvedAt"/);
   assert.match(gate, /"cancelledAt"/);

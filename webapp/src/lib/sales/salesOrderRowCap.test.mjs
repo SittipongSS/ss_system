@@ -21,7 +21,8 @@ const FILES = [
   'src/app/api/service/visits/route.js',
   // ก้อนภาระ/ด่านของตารางสัปดาห์ย้ายมาอยู่ที่นี่ (2026-09-22) — ยามต้องตามโค้ดไปด้วย
   'src/lib/service/visitBundle.js',
-  'src/app/api/sales-planning/renewals/route.js',
+  // ตัวโหลดทะเบียนต่อสัญญาย้ายจาก api/sales-planning/renewals/route.js (งวด 3 วันกำหนด 24/11/2026) — ยามตามโค้ดไป
+  'src/lib/service/renewalContext.js',
   'src/app/api/service/plans/route.js',
   // ตัวโหลดของรายงานยอดขายย้ายจาก api/sales-planning/report/route.js (2026-09-22) — ยามตามโค้ดไป
   'src/lib/sales/salesReportData.js',
