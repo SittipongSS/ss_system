@@ -12,6 +12,12 @@
 //    · ไม่แตกเป็นหลายแถวต่อ FG — คนรับไฟล์ sum ราคาผลิต/นับจำนวน FG แล้วจะนับชุดซ้ำ
 //    · FG ที่ไม่ผูกสูตร = เซลล์ว่าง (กติกาเดียวกับราคาที่ยังไม่ตั้ง)
 //
+// ⭐ FG หัวน้ำหอม (02-020) ไม่มีสูตร ผูกกลิ่นตรง (มติผู้ใช้ 02/11 · ม-166) — สามคอลัมน์เดิมใส่ **กลิ่น** แทน
+//    · หัวคอลัมน์ "… สูตร / กลิ่น" ทรงเดียวกับ Excel บอร์ด BOM · ตำแหน่งไม่ขยับ (ไฟล์ที่อ้างคอลัมน์ไว้ไม่เพี้ยน)
+//    · ป้ายตาม ม-162 "รหัส · ชื่อ · วันที่" — วันที่ของกลิ่น = **วันผลิต** · ประกอบผ่าน `scentLabelParts` ตัวกลางเท่านั้น
+//      (ขาดรหัส = "ไม่มี PF" · ขาดวัน = ขีด) — เจ้าของย้ำ 24/11 *"กลิ่น หรือ สูตร ต้องแสดง รหัส+ชื่อ+วันที่ผลิต เสมอ"*
+//    · route เติม `oilScent` (อ่านสดจากทะเบียนกลิ่น) · ยังไม่ผูกกลิ่น = เซลล์ว่าง
+//
 // ⭐ สถานะ BOM + รหัส BOM ใน Express (mig 0419 · มติเจ้าของ 03/11) — ป้ายเต็มชุดเดียวกับตัวกรองบนจอ
 //    · กลุ่ม 03/04 (ไม่มีขั้น BOM) = เซลล์ว่าง ไม่ใช่ "ยังไม่ส่ง RD" — ไม่มีอะไรให้ส่ง จึงไม่ใช่งานค้าง
 //
@@ -24,6 +30,8 @@ import { fmtDate, productNameBoth } from '@/lib/format';
 import { DEFAULT_VOLUME_UNIT } from '@/lib/master/units';
 import { categoryCodeName } from '@/lib/master/categoryOf';
 import { BOM_STATUS_META, bomFilterValueOf, bomSendBlockerShort } from '@/lib/master/productBom';
+import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
+import { scentLabelParts } from '@/lib/master/registryLabel';
 
 const FONT = 'Leelawadee UI';
 const HEADER_FILL = 'FFC17A52';
@@ -38,9 +46,9 @@ const VOLUME = '#,##0.##';
 const BASE_COLUMNS = [
   { key: 'fgCode', header: 'FG Code', width: 24 },
   { key: 'name', header: 'ชื่อสินค้า', width: 46 },
-  { key: 'formulaCode', header: 'รหัสสูตร', width: 20 },
-  { key: 'formulaName', header: 'ชื่อสูตร', width: 44 },
-  { key: 'formulaDate', header: 'วันที่สูตร', width: 14 },
+  { key: 'formulaCode', header: 'รหัสสูตร / กลิ่น', width: 20 },
+  { key: 'formulaName', header: 'ชื่อสูตร / กลิ่น', width: 44 },
+  { key: 'formulaDate', header: 'วันที่สูตร / กลิ่น', width: 14 },
   { key: 'volume', header: 'ปริมาตร', width: 12 },
   { key: 'volumeUnit', header: 'หน่วย', width: 10 },
 ];
@@ -61,9 +69,16 @@ const dateOf = (value) => (value ? fmtDate(value) : DASH);
 /**
  * สูตรของ FG เป็นบรรทัด `[{ code, name, date }]` — ชุดของขวัญได้บรรทัดละสูตร (ชื่อนำด้วยหมวด) · FG สูตรเดี่ยวได้บรรทัดเดียว
  * · ไม่ผูกสูตร = `[]` (เซลล์ว่าง) · สินค้ารุ่นก่อนทะเบียนสูตรที่มีแต่ข้อความ `formulaName` ค้าง = พิมพ์ข้อความนั้น (หน้ารายละเอียดก็โชว์)
- * @param product แถวสินค้า — route เติม `formulaComponents` (ชุดของขวัญ) และค่าสดจากทะเบียนสูตรให้ก่อน
+ * · หมวดหัวน้ำหอม (02-020) = บรรทัดเดียวของ **กลิ่น** ที่ผูก (`oilScent`) · ยังไม่ผูก = `[]` — ไม่ถอยไปอ่านช่องสูตร
+ *   เพราะหมวดนี้ไม่มีสูตรตามมติ (ข้อความสูตรเก่าที่ค้างบนแถวคือของผิด ไม่ใช่คำตอบ)
+ * @param product แถวสินค้า — route เติม `formulaComponents` (ชุดของขวัญ) · ค่าสดจากทะเบียนสูตร · `oilScent` ให้ก่อน
  */
 export function productFormulaLines(product) {
+  if (isFragranceOilCategory(product?.categoryCode)) {
+    if (!product?.oilScent) return [];
+    const { code, name, date } = scentLabelParts(product.oilScent);
+    return [{ code, name, date }];
+  }
   const parts = Array.isArray(product?.formulaComponents) ? product.formulaComponents : [];
   if (parts.length) {
     return parts.map((row) => ({

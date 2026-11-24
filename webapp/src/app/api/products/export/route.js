@@ -13,6 +13,7 @@ import { canSeeProductCostUser } from '@/lib/permissions';
 import { filterProducts } from '@/lib/master/productFilter';
 import { buildProductExportBuffer, productExportFilename } from '@/lib/master/productWorkbook';
 import { isGiftSetCategory } from '@/lib/master/giftSetFormulas';
+import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
 import { loadProductFormulasMany } from '@/lib/master/giftSetFormulasStore';
 import { fetchAllInChunks } from '@/lib/supabaseInChunks';
 import { GET as listProducts } from '../route';
@@ -25,7 +26,8 @@ const csv = (value) => String(value || '').split(',').map((s) => s.trim()).filte
 /* สูตรของแต่ละ FG สำหรับสามคอลัมน์สูตร (มติผู้ใช้ 2026-10-05)
    ⭐ อ่าน **สดจากทะเบียนสูตร** แบบเดียวกับใบสเปค FM-SA-04 — `products.formulaName/Code/Date` เป็นสำเนาที่เขียนตอนบันทึก FG
       เท่านั้น RD แก้ชื่อ/ออกรหัสทีหลังแล้วสำเนาไม่ตาม · หาแถวสูตรไม่เจอ = ใช้สำเนาบนแถวเดิม
-   ⭐ ชุดของขวัญ (01-037 · mig 0403) ได้ `formulaComponents` จากตาราง product_formulas (หลายบรรทัดในเซลล์) */
+   ⭐ ชุดของขวัญ (01-037 · mig 0403) ได้ `formulaComponents` จากตาราง product_formulas (หลายบรรทัดในเซลล์)
+   ⭐ หัวน้ำหอม (02-020) ไม่มีสูตร — ได้ `oilScent` สดจากทะเบียนกลิ่น (รหัส · ชื่อ · วันผลิต ตาม ม-162) ลงสามคอลัมน์เดียวกัน */
 async function withFormulas(supabase, rows) {
   const components = await loadProductFormulasMany(
     supabase, rows.filter((p) => isGiftSetCategory(p.categoryCode)).map((p) => p.id),
@@ -33,12 +35,18 @@ async function withFormulas(supabase, rows) {
   const formulas = await fetchAllInChunks(rows.map((p) => p.formulaId).filter(Boolean), (chunk) => supabase
     .from('formulas').select('id, code, name, "formulaDate"').in('id', chunk).order('id'));
   const formulaById = new Map(formulas.map((f) => [f.id, f]));
+  const oilScentIds = rows.filter((p) => isFragranceOilCategory(p.categoryCode) && p.scentId).map((p) => p.scentId);
+  const scents = await fetchAllInChunks(oilScentIds, (chunk) => supabase
+    .from('scents').select('id, code, name, "producedAt"').in('id', chunk).order('id'));
+  const scentById = new Map(scents.map((s) => [s.id, s]));
   return rows.map((p) => {
     const live = p.formulaId ? formulaById.get(p.formulaId) : null;
+    const oilScent = isFragranceOilCategory(p.categoryCode) && p.scentId ? scentById.get(p.scentId) : null;
     return {
       ...p,
       ...(live ? { formulaCode: live.code, formulaName: live.name, formulaDate: live.formulaDate } : {}),
       ...(components.has(p.id) ? { formulaComponents: components.get(p.id) } : {}),
+      ...(oilScent ? { oilScent } : {}),
     };
   });
 }
