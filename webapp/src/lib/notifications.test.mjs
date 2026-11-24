@@ -23,7 +23,7 @@ function* walk(dir) {
 
 import {
   CONTRACT_BELL_KINDS, CUSTOMER_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS,
-  SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS,
+  SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS, TASK_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -262,8 +262,8 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
   const { calls, supabase } = pageStub([]);
   await listNotificationPage(supabase, 'u-1', { box: notificationBox('bell') });
   assert.deepEqual(calls.ors, [
-    'entityType.eq.dept_request,entityType.eq.system_issue,kind.eq.task_assign,'
-    + [...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
+    'entityType.eq.dept_request,entityType.eq.system_issue,'
+    + [...TASK_BELL_KINDS, ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
       ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS]
       .map((k) => `kind.eq.${k}`).join(','),
   ]);
@@ -274,7 +274,7 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   // เมื่อไรกระดิ่งก็กลับไปเป็นกองเดิมที่ไม่มีใครอ่าน
   assert.equal(NOTIFICATION_BOXES.bell.entityTypes.includes('personal_task'), false);
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
-    ['task_assign', ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
+    [...TASK_BELL_KINDS, ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
       ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS]);
 });
 

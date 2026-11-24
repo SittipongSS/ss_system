@@ -101,7 +101,7 @@ export async function loadVisitGateContext(supabase, siteIds = [], { withSetupOr
 
     /* ⭐ `approvedAt` + `cancelledAt` (มติ 24/09/2026) — สัญญาที่ถูกยกเลิกหลังลงนามยังครอบนัดก่อนวันยกเลิก
        (`contractCoverageOn`) · ไม่ดึงมา = ด่านเห็นเป็นใบที่ไม่เคยมีผล ⇒ ใบส่งงานเก่ากลายเป็น "งดบริการ" ย้อนหลังเงียบ ๆ
-       ⚠️ ชุดคอลัมน์ต้องเท่ากับของทะเบียนต่อสัญญา (renewals/route.js) — gateContext.test ล็อกไว้ */
+       ⚠️ ชุดคอลัมน์ต้องเท่ากับของทะเบียนต่อสัญญา (lib/service/renewalContext.js) — gateContext.test ล็อกไว้ */
     const contractIds = [...new Set((orders || []).map((o) => o.serviceContractId).filter(Boolean))];
     if (contractIds.length) {
       const { data: contracts, error: contractError } = await fetchInChunks(contractIds, (chunk) => fetchAllResult(() => supabase.from('sales_contracts')
