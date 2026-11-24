@@ -140,7 +140,7 @@ export default function ContractsPage() {
   useEffect(() => { setTab(urlTab); }, [urlTab]);
   /* ⭐ โหลดข้อมูลต่อสัญญาที่หน้านี้ **ตั้งแต่เปิดทะเบียน** ไม่ใช่ตอนกดเข้าแท็บ:
        1. เลขบนหัวแท็บ ("ต่อสัญญา 3") ต้องรู้ก่อนกด ไม่งั้นไม่มีใครรู้ว่ามีงานค้าง
-       2. การกวาดกระดิ่งอยู่ใน GET ตัวนี้ (ระบบไม่มี cron) ⇒ ยิ่งกวาดบ่อย คนยิ่งรู้ตัวทัน
+       🪦 ข้อ 2 เดิม "กวาดกระดิ่งใน GET ตัวนี้" — ย้ายไป cron สรุปประจำวันแล้ว (งวด 3 วันกำหนด 24/11/2026) · GET ไม่เขียนข้อมูล
      ⚠️ ผิดพลาดที่แท็บนี้ต้องไม่ทำให้ทะเบียนสัญญาพัง — เก็บ error แยกคนละตัว */
   const [renewals, setRenewals] = useState({ rows: [], counts: EMPTY_RENEWAL_COUNTS });
   const [renewalsLoading, setRenewalsLoading] = useState(true);
