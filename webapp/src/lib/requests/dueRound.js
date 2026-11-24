@@ -86,6 +86,30 @@ export function dueIsStale(request, items = []) {
  * รับปากวันไว้ ห้ามขึ้นกลุ่มเลยกำหนด — จะกลายเป็นการโทษฝ่ายที่ยังไม่ได้รับปาก*
  */
 export function liveDueDate(request) {
+  /* ⭐ **ใบที่มีวันส่งผลแยก (ประเมินพื้นที่) นับ "เลยกำหนด" จากวันส่งผล** (มติเจ้าของ 24/11/2026 "นับจากวันส่งผล")
+     — `committedDueDate` ของใบนี้คือ **วันนัดเข้าพื้นที่** · กำหนดที่ TS รับปากกับฝ่ายขายคือ `committedResultDate`
+     (มติผู้ใช้ 21/09 mig 0368 · จอใบประเมิน `surveyJob.dueOf` นับตัวนี้อยู่แล้ว)
+     🐞 เดิมคิว/แถบตัวเลข/ป้ายเมนู/ปฏิทิน/กำหนดการ แดง "เลยกำหนด" วันถัดจากวันนัด ทั้งที่จอใบประเมินบอกยังไม่ถึงวันส่งผล
+     ⚠️ TS แจ้งวันนัดแล้วแต่ยังไม่แจ้งวันส่งผล = ยังไม่มีกำหนด ("รอกำหนดส่ง") ไม่ถอยไปวันนัด
+     ⚠️ ผู้ที่ต้องการ **วันนัด** (รางขั้นลงคิวของใบประเมิน) ใช้ `liveCommittedDueDate` */
+  if (requestCountsResultDate(request)) {
+    const result = String(request?.committedResultDate ?? '').trim();
+    if (!result) return null;
+    return dueIsStale(request, request?.items) ? null : result;
+  }
+  return liveCommittedDueDate(request);
+}
+
+/* หัวข้อที่ "เลยกำหนด" นับจากวันส่งผล — ทะเบียนหัวข้อประกาศ `form.resultDueLabel` (วันส่งผลแยกจากวันเข้าพื้นที่)
+   ⚠️ ค่าคงที่ ไม่อ่านทะเบียนตรง ๆ (ไฟล์นี้ถูก import จากทุกจอ — ลากทะเบียนหัวข้อทั้งชุดเข้ามาไม่คุ้ม) · เทสต์ตรึงให้ตรงทะเบียน */
+export const RESULT_DUE_KINDS = Object.freeze(['site_survey']);
+export const requestCountsResultDate = (request) => RESULT_DUE_KINDS.includes(request?.kind);
+
+/**
+ * `committedDueDate` ที่ยังเป็นคำสัญญาอยู่ (รอบก่อน = null) — ทุกหัวข้อ · ใบประเมินพื้นที่ = **วันนัดเข้าพื้นที่**
+ * ⚠️ ไม่ใช่ตัวตัดสิน "เลยกำหนด" — ใช้ `liveDueDate`
+ */
+export function liveCommittedDueDate(request) {
   const due = String(request?.committedDueDate ?? '').trim();
   if (!due) return null;
   return dueIsStale(request, request?.items) ? null : due;

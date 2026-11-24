@@ -15,7 +15,7 @@
 import { fmtDate } from '@/lib/format';
 import { requestKindMeta } from '@/lib/master/requestTypes';
 import { requestSideText } from '@/lib/requests/replyTurn';
-import { liveDueDate } from '@/lib/requests/dueRound';
+import { liveCommittedDueDate, liveDueDate } from '@/lib/requests/dueRound';
 import { requestDueOwed } from '@/lib/requests/queueBoard';
 import { requestClosure, requestClosureStarted } from '@/lib/requests/closure';
 /* ประเมินจากแบบ งวด 4 (S4 C-5) — วันที่ผู้ขออยากให้เข้าพื้นที่มีตัวอ่านเดียว (pure · ใช้ได้ทั้งเบราว์เซอร์และ server) */
@@ -160,7 +160,9 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
   const wish = surveyWishedVisit(request);
   const wanted = wish.known ? String(wish.date).trim() : '';
   // ⚠️ วันของรอบก่อน = ยังไม่มีวันของรอบนี้ ⇒ การ์ดหัวใบต้องไม่ขัดกับรางใต้มัน
-  const committed = liveDueDate(request) || '';
+  // ⚠️ ช่องนี้คือ `committedDueDate` (ใบประเมิน = วันนัด) — ตัวนับ "เลยกำหนด" คือ `liveDueDate` (ใบประเมิน = วันส่งผล · มติ 24/11/2026)
+  const committed = liveCommittedDueDate(request) || '';
+  const dueDate = liveDueDate(request) || '';
 
   /* ⚠️ ใบที่จบแล้ว/มีฝั่งปิดแล้วไม่นับถอยหลังอีก (ม-145) — "เลยกำหนดมา 22 วัน" ข้างการ์ดที่เขียน
      "ปิดครบ 2/2" คือสัญญาณ "ยังไม่จบ" ที่คิว/แดชบอร์ดเลิกพูดไปแล้ว (รีวิวจับได้) */
@@ -198,7 +200,8 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
 
     /* ⭐ นับถอยหลังเฉพาะวันที่ฝ่ายยังติดค้าง (`requestDueOwed` — ตัวตัดสินเดียวกับคิว: ตาผู้ขอ/มีฝั่งปิด/ใบจบ = ไม่นับ)
        · เลยกำหนดแล้วไม่ต่อบรรทัด "เร็ว/ช้ากว่าที่ขอ" (`today` ทำให้ `committedVsRequested` เงียบ — S2b) */
-    const countdown = committed && !noCountdown && requestDueOwed(request) ? dueCountdown(committed, today) : null;
+    /* ⭐ หัวข้อสองวัน (ประเมินพื้นที่): นับถอยหลังที่ช่อง **วันส่งผล** ข้างล่าง ไม่ใช่ช่องวันนัด (มติเจ้าของ 24/11/2026) */
+    const countdown = committed && !twoDates && !noCountdown && requestDueOwed(request) ? dueCountdown(committed, today) : null;
     const gap = committed && wanted ? committedVsRequested(committed, wanted, { today: countdown?.tone === 'late' ? today : null }) : null;
     facts.push({
       key: 'committedDue',
@@ -224,11 +227,13 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
         กับวันที่ส่งของกลับ · สองช่องข้างบนพูดถึง **วันที่ไป** เท่านั้น
      ⚠️ ขึ้นเฉพาะหัวข้อที่ทะเบียนประกาศป้ายไว้ — ใบหัวข้ออื่นไม่มีวันชุดนี้ และการ์ด
         ที่ขึ้นเป็นขีดเปล่า ๆ สองช่องคือสัญญาณรบกวนล้วน ๆ
-     ⚠️ **ไม่นับถอยหลัง** ที่ช่องนี้ — ตัวที่ระบบใช้นับ "เลยกำหนด" ยังเป็นวันเข้าพื้นที่
-        ตัวเดิม · มีสองนาฬิกาบนหัวเดียวกันเมื่อไร ไม่มีใครรู้ว่าอันไหนคือตัวจริง */
+     ⭐ **นับถอยหลังที่ช่องนี้** (มติเจ้าของ 24/11/2026 "นับจากวันส่งผล") — คิว/แถบตัวเลข/กระดิ่งนับ "เลยกำหนด" จากวันส่งผล
+        (`liveDueDate`) แล้ว · ช่องวันนัดข้างบนเลิกนับ ⇒ ยังมีนาฬิกาเดียวบนหัวใบ
+        🪦 เดิม (21/09) นับที่วันเข้าพื้นที่ และช่องนี้ไม่นับ */
   if (twoDates) {
     const wantedResult = String(request.requestedResultDate || '').trim();
     const committedResult = String(request.committedResultDate || '').trim();
+    const resultCountdown = dueDate && !noCountdown && requestDueOwed(request) ? dueCountdown(dueDate, today) : null;
     facts.push({
       key: 'requestedResultDue',
       label: `ผู้ขอ: ${copy.resultDueLabel}`,
@@ -239,8 +244,8 @@ export function requestHeaderFacts(request, { hasItems = false, progress = null,
       key: 'committedResultDue',
       label: `${request.dept || 'ฝ่าย'}: ${copy.committedResultLabel || 'วันที่จะส่งผล'}`,
       value: committedResult ? fmtDate(committedResult) : (noCountdown ? '—' : 'ยังไม่ระบุ'),
-      sub: committedResult ? null : requestSideText(request, 'dept', 'ยังไม่ได้แจ้งวันส่งผล'),
-      tone: committedResult ? null : 'muted',
+      sub: committedResult ? resultCountdown?.text || null : requestSideText(request, 'dept', 'ยังไม่ได้แจ้งวันส่งผล'),
+      tone: committedResult ? resultCountdown?.tone || null : 'muted',
     });
   }
 

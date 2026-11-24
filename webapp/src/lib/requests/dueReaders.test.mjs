@@ -41,7 +41,9 @@ const DECIDERS = [
 
 /* ⭐ ไฟล์ที่ถาม `requestDueOwed` (queueBoard · มติ 23/11/2026) ได้ทั้ง `liveDueDate` และการปิด และตาใครในตัวเดียว
    — นับเป็นคำตอบที่ถูกของทั้งสองยาม ไม่ต้อง import สองตัวนั้นซ้ำ */
-const ASKS_LIVE = /liveDueDate|requestDueOwed/;
+/* ⭐ `liveCommittedDueDate` (มติเจ้าของ 24/11/2026) = วันนัดของใบประเมินผ่านด่านรอบเดียวกัน — ทางที่ถูกของจอที่พูดถึง "วันนัด"
+   (`liveDueDate` ของใบประเมินคือวันส่งผลแล้ว) · ยังไม่ใช่การอ่านคอลัมน์ดิบ */
+const ASKS_LIVE = /liveDueDate|requestDueOwed|liveCommittedDueDate/;
 const ASKS_CLOSURE = /requestClosureStarted|requestClosure\(|requestDueOwed/;
 
 // ตัดคอมเมนต์ออกก่อนเทียบ — คอมเมนต์ที่เล่าว่าเคยผิดยังไงต้องไม่ทำเทสต์แดง
