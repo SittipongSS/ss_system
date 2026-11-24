@@ -36,7 +36,8 @@ import { fmtMoney } from '@/lib/format';
 import { customerNameIn } from '@/lib/master/customerName';
 import { canEditCustomerBillingRule, caretakerTeamsOf, departmentOf, hasTeam } from '@/lib/permissions';
 import { historicalInstallmentLock, isOpeningInstallment } from '@/lib/sales/historicalOrders';
-import { installmentVoid, paymentNotRequired, pipelineInstallmentLock } from '@/lib/sales/salesOrderPayments';
+import { installmentOverdue, installmentVoid, paymentNotRequired, pipelineInstallmentLock } from '@/lib/sales/salesOrderPayments';
+import { DUE_BELL_LOOKBACK_DAYS, calendarDays, dueBellFresh, dueNewlyLate } from '@/lib/dueState';
 import {
   BELL, BILLING_REMIND_DAYS, CALENDAR_MANUAL_HINT, DUE_REMIND_DAYS, LEDGER_HREF, bellsFor, billingState,
   calendarReminder, calendarStatus, canRequestBilling, cutoffDigest, formatBillingDate, ledgerFlags,
@@ -430,6 +431,102 @@ export function dueSoonNotices(installments = [], {
     }))
     .filter(Boolean);
   const fn = dueSoonFnNotice(candidates, { todayIso, directory });
+  return { candidates, sales, fn };
+}
+
+/* ══ งวด 3 · กระดิ่ง "เลยกำหนดชำระ" (มติเจ้าของ 24/11/2026 · docs/due-overdue-system.md §11) ═══════════════════════
+   ⭐ ผู้รับชุดเดียวกับกระดิ่งครบกำหนด (มติ "ขาย + FN แบบเดิม"): ฝ่ายขาย = เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่องวด ·
+     FN = แถวสรุปวันละแถว → ทะเบียน `?overdue=1`
+   ⭐ ตัวตัดสิน "เลยกำหนด" = `installmentOverdue` ตัวเดียวกับป้ายแดงทุกจอ (งวดตรึงแล้ว · ลูกค้ายังไม่จ่าย · ไม่ใช่งวดรอเหตุการณ์)
+     + ด่านระดับใบ `collectibleOf` ชุดเดียวกับกระดิ่งวางบิล/ครบกำหนด (ใบยังเก็บเงิน · ไม่ใช่งวดยกมา · ไม่ใช่สหมิตร)
+   ⭐ ครั้งเดียวต่องวดต่อกำหนดชำระ (กุญแจมีกำหนดชำระ — แก้กำหนดชำระแล้วเลยอีก = เตือนใหม่) · ไม่ยิงย้อนงวดที่เลยเกิน 7 วัน
+   ⚠️ แถว FN นับเฉพาะงวดที่ **เพิ่งเลยตั้งแต่เช้าที่แล้ว** (`dueNewlyLate`) — ไม่งั้นงวดเดียวกันโผล่ในแถวสรุปทุกเช้าเจ็ดวันติด
+     · ลิงก์เปิดทะเบียน `?overdue=1` ซึ่งโชว์ **ทุกงวดที่เลย** ⇒ หัวข้อพูดว่า "เลยกำหนดใหม่" ไม่ใช่ยอดรวมของทะเบียน */
+export const OVERDUE_KIND = 'sales_order_overdue';
+export const OVERDUE_FN_KIND = 'sales_order_overdue_fn';
+export const OVERDUE_FN_HREF = '/finance/payments?overdue=1';
+export const overdueDedupeKey = (installmentId, dueDate) => `due_overdue:${installmentId}:${dueDate}`;
+export const overdueFnDedupeKey = (todayIso) => `due_overdue_fn:${todayIso}`;
+
+/**
+ * งวดที่ต้องเตือน "เลยกำหนดชำระ" เช้านี้ — เลยแล้ว 1..7 วัน (`dueBellFresh`) และยังไม่จ่าย
+ * @returns `[{ installment, order, customer, daysLate, fresh }]` เรียงตามกำหนดชำระ · `fresh` = เพิ่งเลยตั้งแต่เช้าที่แล้ว (แถว FN)
+ */
+export function overdueCandidates(installments = [], {
+  todayIso, ordersById = new Map(), customersById = new Map(), skipArCodes = [], lookbackDays = DUE_BELL_LOOKBACK_DAYS,
+} = {}) {
+  const skip = new Set((skipArCodes || []).map(text).filter(Boolean));
+  const out = [];
+  for (const installment of installments || []) {
+    if (!installmentOverdue(installment, todayIso)) continue;
+    const due = text(installment.dueDate).slice(0, 10);
+    if (!dueBellFresh(due, todayIso, { lookbackDays })) continue;
+    if (!(Number(installment.amount) > 0)) continue;
+    const hit = collectibleOf(installment, { ordersById, customersById, skip });
+    if (!hit) continue;
+    out.push({
+      installment, order: hit.order, customer: hit.customer,
+      daysLate: calendarDays(due, todayIso), fresh: dueNewlyLate(due, todayIso),
+    });
+  }
+  return out.sort(byDueDate);
+}
+
+/** กระดิ่งฝั่งขาย หนึ่งแถวต่องวด — "เลยกำหนดชำระ N วัน · SO งวด ยอด" → แท็บการชำระของใบ */
+export function overdueNotice({ installment, order, customer = null, directory = null, daysLate = null } = {}) {
+  const dueDate = text(installment?.dueDate).slice(0, 10);
+  if (!installment?.id || !order?.id || !text(order.orderNumber) || !dueDate) return null;
+  const userIds = billingDueRecipients(order, { directory });
+  if (!userIds.length) return null;
+  const late = Number(daysLate) > 0 ? ` ${daysLate} วัน` : '';
+  return {
+    userIds,
+    entityType: BILLING_DUE_ENTITY_TYPE,
+    entityId: order.id,
+    kind: OVERDUE_KIND,
+    dedupeKey: overdueDedupeKey(installment.id, dueDate),
+    title: `เลยกำหนดชำระ${late} · ${text(order.orderNumber)} ${installmentName(installment)} ${fmtMoney(installment.amount)}`,
+    body: [customerLine(order, customer), `กำหนดชำระ ${formatBillingDate(dueDate, { withYear: false })}`].filter(Boolean).join(' · '),
+    href: `/sa/sales-orders/${order.id}?tab=payment`,
+  };
+}
+
+/** แถวสรุป FN วันละแถว — งวดที่ **เพิ่งเลยกำหนด** เช้านี้ (`fresh`) → ทะเบียน `?overdue=1` */
+export function overdueFnNotice(candidates = [], { todayIso, directory = null } = {}) {
+  const fresh = (candidates || []).filter((c) => c.fresh);
+  if (!fresh.length || !text(todayIso)) return null;
+  const userIds = financeRecipientIds(directory);
+  if (!userIds.length) return null;
+  const sorted = [...fresh].sort(byDueDate);
+  const total = sorted.reduce((sum, { installment }) => sum + (Number(installment.amount) || 0), 0);
+  const lines = sorted.slice(0, FN_LINES).map(({ installment, order, customer }) => {
+    const who = text(customer?.arCode) || text(order.customerName) || customerNameIn(customer);
+    const when = formatBillingDate(installment.dueDate, { withYear: false });
+    return [`${text(order.orderNumber)} ${installmentName(installment)} ${fmtMoney(installment.amount)}`, who, `กำหนด ${when}`]
+      .filter(Boolean).join(' · ');
+  });
+  const more = sorted.length > FN_LINES ? ` และอีก ${sorted.length - FN_LINES} งวด` : '';
+  return {
+    userIds,
+    entityType: BILLING_DUE_ENTITY_TYPE,
+    entityId: sorted[0].order.id,
+    kind: OVERDUE_FN_KIND,
+    dedupeKey: overdueFnDedupeKey(text(todayIso)),
+    title: `เลยกำหนดชำระใหม่ · ${sorted.length} งวด ${fmtMoney(total)}`,
+    body: `${lines.join(' / ')}${more}`,
+    href: OVERDUE_FN_HREF,
+  };
+}
+
+/** รอบเช้าของกระดิ่งเลยกำหนดในคำสั่งเดียว — cron เรียกตัวนี้ · `{ candidates, sales: [payload], fn: payload | null }` */
+export function overdueNotices(installments = [], {
+  todayIso, ordersById, customersById, skipArCodes = [], directory = null,
+} = {}) {
+  const candidates = overdueCandidates(installments, { todayIso, ordersById, customersById, skipArCodes });
+  const sales = candidates
+    .map(({ installment, order, customer, daysLate }) => overdueNotice({ installment, order, customer, directory, daysLate }))
+    .filter(Boolean);
+  const fn = overdueFnNotice(candidates, { todayIso, directory });
   return { candidates, sales, fn };
 }
 

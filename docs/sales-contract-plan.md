@@ -368,7 +368,7 @@ import ไม่ได้ในเทสต์) · แม่แบบแต่�
 
 ⚠️ **ไม่มีคอลัมน์ใหม่** — "เคยมีผล" = `status='cancelled' AND "approvedAt" IS NOT NULL` (0323 บังคับให้ทุกใบที่เคย signed
 มี `approvedAt` และการยกเลิกไม่ล้าง) · ผู้ยกเลิกเก็บที่ `metadata.cancelledById/cancelledByName/cancelledFromStatus`
-⚠️ ตัวโหลดสัญญาของด่าน (`gateContext.js`) กับทะเบียนต่อสัญญา (`renewals/route.js`) ต้อง select `approvedAt`/`cancelledAt`
+⚠️ ตัวโหลดสัญญาของด่าน (`gateContext.js`) กับทะเบียนต่อสัญญา (`lib/service/renewalContext.js` · ย้ายจาก `renewals/route.js` 24/11/2026) ต้อง select `approvedAt`/`cancelledAt`
 ชุดเดียวกัน — ลืม = ด่านถือว่าไม่เคยมีผล (gateContext.test ล็อก)
 🔒 ยาม: `lib/sales/contractSignedCancel.test.mjs` · `lib/service/visitGate.test.mjs` · `lib/service/renewals.test.mjs` ·
 `lib/documents/stampWatermark.test.mjs`

@@ -18,16 +18,26 @@ import { addDays } from '@/lib/sales/paymentCoverage';
 import { BILLING_REMIND_DAYS, DUE_REMIND_DAYS } from '@/lib/sales/billingRule';
 import {
   BILLING_CUTOFF_LOOKAHEAD_DAYS, BILLING_CUTOFF_LOOKBACK_DAYS, billingCutoffNotices, billingDueNotices, calendarMissingNotices,
-  dueSoonNotices,
+  dueSoonNotices, overdueNotices,
 } from '@/lib/sales/billingDueNotify';
+import { DUE_BELL_LOOKBACK_DAYS } from '@/lib/dueState';
+import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
+import { attachReworkRows } from '@/lib/requests/reworkRows';
+import { requestOverdueNotices } from '@/lib/requests/dueBell';
+import { taskOverdueNotices } from '@/lib/pm/taskDueBell';
+import { enrichedRenewalRows, loadRenewalContext, rowsOf as renewalRowsOf } from '@/lib/service/renewalContext';
+import { sendRenewalNotices } from '@/lib/service/renewalNotify';
 import { billingV4SchemaError } from '@/lib/sales/billingPolicySchema';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+/* ⚠️ 120 (เดิม 60) — งวด 3 วันกำหนด (24/11/2026) เพิ่มสี่เรื่องในรอบเดียว (งวดเลยกำหนด · คำร้อง · งาน · ต่อรอบบริการ ซึ่งโหลด
+   ไซต์/โซน/รอบขายทั้งระบบ) · ทุกเรื่องวิ่งต่อกัน — หมดเวลากลางทาง = เรื่องที่เหลือเงียบทั้งเช้า */
+export const maxDuration = 120;
 
 // GET /api/cron/daily-digest — ทวงงานค้างเข้ากล่องแจ้งเตือน **รายคน**
-// วันนี้มีเจ็ดเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
+// งวด 3 วันกำหนด (24/11/2026) เพิ่มอีกสี่: งวดชำระเลยกำหนด · คำร้องเลยวันรับปาก · งานเลยกำหนด · รอบบริการใกล้หมด/หมดแล้ว
+// (ย้ายจากตอนเปิดทะเบียน) · เดิมมีเจ็ดเรื่อง: ลีดค้างเกิน SLA · สัญญาค้างรอลงนามเกินเกณฑ์ · สัญญารอ AE Sup อนุมัติ
 // · งวดชำระถึงรอบวางบิล (กำหนดวางบิล · mig 0389) · งวดใกล้ครบกำหนดชำระ (รุ่นสี่ · system-design §6 ช่วง 4a)
 // · เช้าวันตัดรอบของลูกค้า + ขอปฏิทินปีหน้า (v5 ปฏิทินรายปี · มติเจ้าของ 29/09)
 // เรียกโดย Vercel Cron (08:30 ไทย จ-ศ, ดู webapp/vercel.json) ด้วย Authorization:
@@ -319,6 +329,106 @@ async function notifyDueSoon(supabase) {
   return out;
 }
 
+/* ── งวด 3 วันกำหนด (มติเจ้าของ 24/11/2026 · docs/due-overdue-system.md §11) — กระดิ่ง "เลยกำหนด" ─────────────────────
+   ทุกเรื่องยิงครั้งเดียวต่อ (ของ × วันกำหนด) และไม่ยิงย้อนของที่เลยเกิน `DUE_BELL_LOOKBACK_DAYS` วัน · ตัวตัดสินอยู่ใน lib ของเรื่องนั้น
+   ⚠️ admin เปิด route นี้เองจากเบราว์เซอร์ = ยิงจริงถึงคนจริง (ฐาน dev = ฐาน prod) — dedupe กันแค่รอบซ้ำ ไม่กันรอบแรก */
+
+/* ยิงชุด payload แล้วรวมผล — `notifyUsers` กลืน error เอง ต้องขึ้นเป็น error ของรอบนี้ */
+async function sendNotices(supabase, notices) {
+  let sent = 0;
+  let error = null;
+  for (const notice of notices) {
+    const out = await notifyUsers(supabase, { ...notice, actorName: 'สรุปประจำวัน' });
+    sent += out.sent || 0;
+    if (out.error && !error) error = `${notice.kind}: ${out.error}`;
+  }
+  return { sent, error };
+}
+
+/* งวดชำระเลยกำหนด → เจ้าของดีล + เจ้าของใบ (รายงวด) · FN แถวสรุปงวดที่เพิ่งเลยเช้านี้ (มติ "ขาย + FN แบบเดิม")
+   ⚠️ query กรองหน้าต่าง dueDate [วันนี้ − 7, เมื่อวาน] และไม่เอางวดที่บัญชีรับรองแล้ว — ตัวตัดสินจริงคือ `installmentOverdue`
+      (ลูกค้าแจ้งจ่ายแล้ว · งวดรอเหตุการณ์ · งวดร่าง ตกที่ตัวนั้น) ⇒ ต้องเลือก paidOn/frozenAt/billingEvent/billingDate/refundedAt มาครบ */
+async function notifyInstallmentOverdue(supabase) {
+  const todayIso = businessDate();
+  const result = await fetchAllResult(() => supabase
+    .from('sales_order_installments')
+    .select('id, "salesOrderId", seq, label, amount, status, kind, "frozenAt", "refundedAt", "paidOn", "billingDate", "billingEvent", "dueDate"')
+    .neq('status', 'confirmed')
+    .not('frozenAt', 'is', null)
+    .gte('dueDate', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
+    .lt('dueDate', todayIso)
+    .order('id', { ascending: true }));
+  if (result.error) return { sent: 0, error: result.error.message };
+  const rows = result.data || [];
+  if (!rows.length) return { sent: 0, reason: `ไม่มีงวดที่เลยกำหนดใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
+
+  const context = await loadBellContext(supabase, rows);
+  if (context.error) return { sent: 0, error: context.error };
+  const { ordersById, customersById, directory } = context;
+  const { candidates, sales, fn } = overdueNotices(rows, {
+    todayIso, ordersById, customersById, directory, skipArCodes: [SAHAMIT_AR_CODE],
+  });
+  if (!candidates.length) return { sent: 0, reason: 'ไม่มีงวดเลยกำหนด (จ่ายแล้ว/รอเหตุการณ์/ใบไม่ต้องเก็บเงิน/ลูกค้านอกระบบ)' };
+  const { sent, error } = await sendNotices(supabase, [...sales, fn].filter(Boolean));
+  const out = { sent, candidates: candidates.length, sales: sales.length, fresh: candidates.filter((c) => c.fresh).length };
+  const errors = [];
+  if (error) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${error}`);
+  if (!fn && candidates.some((c) => c.fresh)) errors.push('มีงวดเพิ่งเลยกำหนด แต่ไม่พบผู้ใช้ฝ่าย FN ที่เปิดอยู่ — กระดิ่งฝั่งบัญชีไม่ถูกส่ง');
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
+/* คำร้องเลยวันที่ฝ่ายรับปาก → ผู้ถือใบในฝ่าย (มติ "ผู้ถือใบในฝ่าย") · ตาผู้ขอ/ใบจบ ไม่ยิง (`requestDueOwed`)
+   ⚠️ ต้องแนบแถวของใบ (`attachReworkRows`) — ตาฝ่าย/ตาผู้ขอตัดสินจากแถว · ใบน้อย (หน้าต่าง 7 วัน) ⇒ `.in()` ไม่โตตามข้อมูล */
+async function notifyRequestOverdue(supabase) {
+  const todayIso = businessDate();
+  const result = await fetchAllResult(() => supabase
+    .from('dept_requests').select('*')
+    .in('status', REQUEST_OPEN_STATUSES)
+    .gte('committedDueDate', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
+    .lt('committedDueDate', todayIso)
+    .order('id', { ascending: true }));
+  if (result.error) return { sent: 0, error: result.error.message };
+  if (!result.data?.length) return { sent: 0, reason: `ไม่มีคำร้องที่เลยวันรับปากใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
+  const [requests, directory] = await Promise.all([
+    attachReworkRows(supabase, result.data),
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const notices = requestOverdueNotices(requests, { todayIso, directory });
+  if (!notices.length) return { sent: 0, reason: 'ไม่มีคำร้องเลยกำหนดที่เป็นตาฝ่าย (หรือยังไม่มีผู้ถือใบ)' };
+  const { sent, error } = await sendNotices(supabase, notices);
+  return error ? { sent, notices: notices.length, error } : { sent, notices: notices.length };
+}
+
+/* งานเลยกำหนด (เมนูงานของฉัน) → ผู้รับผิดชอบงาน (มติ "ส่งผู้รับผิดชอบงาน") · งานรอคนอื่น/เสร็จแล้ว ไม่ยิง */
+async function notifyTaskOverdue(supabase) {
+  const todayIso = businessDate();
+  const result = await fetchAllResult(() => supabase
+    .from('personal_tasks')
+    .select('id, title, status, "dueDate", "ownerId", "assigneeId", "proxyBy"')
+    .neq('status', 'Completed')
+    .gte('dueDate', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
+    .lt('dueDate', todayIso)
+    .order('id', { ascending: true }));
+  if (result.error) return { sent: 0, error: result.error.message };
+  if (!result.data?.length) return { sent: 0, reason: `ไม่มีงานที่เลยกำหนดใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
+  const directory = await loadUserDirectory(supabase).catch(() => new Map());
+  const notices = taskOverdueNotices(result.data, { todayIso, directory });
+  if (!notices.length) return { sent: 0, reason: 'ไม่มีงานเลยกำหนดที่อยู่ในมือใคร (รอคนอื่น/ไม่มีผู้รับผิดชอบ)' };
+  const { sent, error } = await sendNotices(supabase, notices);
+  return error ? { sent, notices: notices.length, error } : { sent, notices: notices.length };
+}
+
+/* รอบบริการใกล้หมด/หมดแล้ว → เจ้าของดีลที่ขายรอบนั้น (มติ "ย้ายเข้า cron ไม่ยิงย้อน")
+   ⭐ ตัวโหลดเดียวกับทะเบียน (`loadRenewalContext`) แต่ไม่ตัดขอบเขต (`null`) — ทุกไซต์ทุกทีม */
+async function notifyRenewals(supabase) {
+  const todayIso = businessDate();
+  const ctx = await loadRenewalContext(supabase, null);
+  const rows = enrichedRenewalRows(ctx, renewalRowsOf(ctx, todayIso));
+  if (!rows.length) return { sent: 0, reason: 'ไม่มีไซต์ที่รอบบริการใกล้หมด/หมดแล้ว' };
+  return sendRenewalNotices(supabase, rows);
+}
+
 /* ⭐ เตือน "ถึงรอบวางบิล" ก่อนวันวางบิลของงวด 0..BILLING_REMIND_DAYS วัน (กำหนดวางบิล · มติเจ้าของ 25–26/09)
    ฝ่ายขาย = หนึ่งแถวต่องวด (เจ้าของดีล + เจ้าของใบ) · FN = แถวสรุปวันละแถว ทุกคนในฝ่าย (มติรอบสาม ข้อ 5)
    กติกา "งวดไหนต้องเตือน ใครได้ ข้อความว่าอะไร" อยู่ที่ `billingDueNotices` (lib/sales/billingDueNotify.js)
@@ -532,6 +642,26 @@ export async function GET(request) {
     results.calendarMissing = await notifyCalendarMissing(supabase);
   } catch (e) {
     results.calendarMissing = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.installmentOverdue = await notifyInstallmentOverdue(supabase);
+  } catch (e) {
+    results.installmentOverdue = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.requestOverdue = await notifyRequestOverdue(supabase);
+  } catch (e) {
+    results.requestOverdue = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.taskOverdue = await notifyTaskOverdue(supabase);
+  } catch (e) {
+    results.taskOverdue = { sent: 0, error: e?.message || String(e) };
+  }
+  try {
+    results.renewals = await notifyRenewals(supabase);
+  } catch (e) {
+    results.renewals = { sent: 0, error: e?.message || String(e) };
   }
 
   return Response.json({ ok: true, at: new Date().toISOString(), results });

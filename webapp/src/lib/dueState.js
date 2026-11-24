@@ -87,3 +87,36 @@ export function ageText(days) {
   if (days == null) return null;
   return days === 0 ? 'วันนี้' : `ค้าง ${days} วัน`;
 }
+
+/* ── กระดิ่ง "เลยกำหนด" (งวด 3 · มติเจ้าของ 24/11/2026) ────────────────────────────────────────────────
+   ⭐ ยิงครั้งเดียวต่อ (ของ × วันกำหนด) — ผู้เรียกใส่วันกำหนดในกุญแจกันซ้ำ ⇒ เลื่อนวันใหม่แล้วเลยอีก = ยิงใหม่
+   ⭐ ไม่ยิงย้อน: ของที่เลยมาเกิน `DUE_BELL_LOOKBACK_DAYS` วันไม่เด้ง (มติ "ใบที่เลยมานานก่อนวันขึ้นระบบไม่ยิงย้อน")
+   ⚠️ หน้าต่าง 1..7 วัน ไม่ใช่ "เลยวันแรกพอดี" — cron วิ่ง จ–ศ ⇒ ของที่ครบวันศุกร์เลยวันเสาร์ ถึงมือเช้าวันจันทร์ (เลย 3 วัน)
+      · วันหยุดยาว / cron พลาดหนึ่งเช้า ก็ยังทัน · กุญแจกันซ้ำคือสิ่งที่ทำให้เด้งแค่เช้าแรก */
+export const DUE_BELL_LOOKBACK_DAYS = 7;
+
+/** เลยกำหนดแล้วและยังอยู่ในหน้าต่างกระดิ่ง (เลย 1..lookbackDays วัน) — วันครบเองยังไม่เลย */
+export function dueBellFresh(due, today, { lookbackDays = DUE_BELL_LOOKBACK_DAYS } = {}) {
+  const days = calendarDays(due, today);
+  return days !== null && days >= 1 && days <= lookbackDays;
+}
+
+/** วันทำงาน (จ–ศ) ก่อนหน้า `today` — ขอบล่างของ "เพิ่งเลยตั้งแต่เช้าที่แล้ว" ของแถวสรุปรายวัน (cron วิ่ง จ–ศ) */
+export function previousWeekday(today) {
+  const day = thaiDay(today);
+  if (!day) return null;
+  const at = new Date(`${day}T00:00:00Z`);
+  do { at.setUTCDate(at.getUTCDate() - 1); } while (at.getUTCDay() === 0 || at.getUTCDay() === 6);
+  return at.toISOString().slice(0, 10);
+}
+
+/**
+ * เพิ่งเลยกำหนด "ตั้งแต่เช้าที่ cron วิ่งครั้งก่อน" — แถวสรุปรายวัน (เช่น FN) นับของแต่ละชิ้นเช้าเดียว
+ * วันกำหนดอยู่ในช่วง [วันทำงานก่อนหน้า, เมื่อวาน] · จันทร์ = ศุกร์–อาทิตย์ · อังคาร–ศุกร์ = เมื่อวาน
+ */
+export function dueNewlyLate(due, today) {
+  const d = thaiDay(due);
+  const from = previousWeekday(today);
+  const late = calendarDays(d, today);
+  return Boolean(d && from && late !== null && late >= 1 && d >= from);
+}

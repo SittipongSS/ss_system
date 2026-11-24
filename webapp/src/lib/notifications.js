@@ -214,6 +214,12 @@ export const SALES_ORDER_BELL_KINDS = Object.freeze([
   'sales_order_due_soon',
   // สรุปงวดที่ใกล้ครบกำหนด → ทุกคนในฝ่าย FN วันละแถว → ทะเบียน `?due=soon` (ข้อยกเว้นมติ 14 ชุดเดียวกับแถว FN ของวางบิล)
   'sales_order_due_soon_fn',
+  /* ⭐ เลยกำหนดชำระ (งวด 3 · มติเจ้าของ 24/11/2026 "ขาย + FN แบบเดิม") — cron daily-digest ยิงงวดที่เลยกำหนด 1–7 วันและลูกค้ายังไม่จ่าย
+     ยิงจาก `lib/sales/billingDueNotify.js` (`OVERDUE_KIND` / `OVERDUE_FN_KIND`) */
+  // งวดเลยกำหนด → เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่องวด (ครั้งเดียวต่องวดต่อกำหนดชำระ)
+  'sales_order_overdue',
+  // สรุปงวดที่เพิ่งเลยกำหนดเช้านี้ → ทุกคนในฝ่าย FN วันละแถว → ทะเบียน `?overdue=1` (ข้อยกเว้นมติ 14 ชุดเดียวกัน)
+  'sales_order_overdue_fn',
   /* ⭐ เช้าวันตัดรอบ (v5 · มติเจ้าของ 29/09 "เตือนดีกว่า") — เช้าวันทำงานก่อนเส้นตาย + เช้าวันสุดท้าย · งวดที่ยังรอวางบิลของรอบ
      ยิงจาก `lib/sales/billingDueNotify.js` (`BILLING_CUTOFF_KIND` / `BILLING_CUTOFF_FN_KIND`) */
   // ใบที่มีงวดรอวางบิลในรอบ → เจ้าของดีล + เจ้าของใบ หนึ่งแถวต่อใบต่อรอบ → แท็บการชำระ (งวดเดียว = ปุ่ม "ขอใบวางบิลงวดนี้")
@@ -269,11 +275,20 @@ export const CUSTOMER_BELL_KINDS = Object.freeze([
   'customer_billing_calendar_missing',
 ]);
 
+/* ── งาน (เมนูงานของฉัน): เข้ากระดิ่งทาง `kinds` ไม่ใช่ทั้ง entity — เธรดงาน 92% เป็นเหตุการณ์ระบบ ─────────────
+ * ⚠️ ชุดนี้ต้องตรงกับ kind ที่ยิงจริง · dueBells.test.mjs / notifications.test.mjs ตรึงไว้ */
+export const TASK_BELL_KINDS = Object.freeze([
+  'task_assign',   // มอบหมายงาน → ผู้รับงาน (lib/pm/taskAssignNotify.js)
+  /* ⭐ งานเลยกำหนด (งวด 3 · มติเจ้าของ 24/11/2026) → ผู้รับผิดชอบงานคนเดียว ครั้งเดียวต่องานต่อวันกำหนด
+     ยิงจาก `lib/pm/taskDueBell.js` (`TASK_OVERDUE_KIND`) ผ่าน cron daily-digest */
+  'task_overdue',
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
     kinds: [
-      'task_assign',
+      ...TASK_BELL_KINDS,
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
       ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS,
     ],

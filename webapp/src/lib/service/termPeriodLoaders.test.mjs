@@ -38,7 +38,7 @@ const KNOWN = [
   'app/api/service/intake/route.js',
   'app/api/service/customers/[customerId]/zones/route.js',
   'app/api/service/sites/[id]/zones/[zoneId]/detail/route.js',
-  'app/api/sales-planning/renewals/route.js',
+  'lib/service/renewalContext.js', // ย้ายจาก app/api/sales-planning/renewals/route.js (งวด 3 วันกำหนด 24/11/2026)
   'lib/service/zoneSalesRepo.js',
 ];
 
