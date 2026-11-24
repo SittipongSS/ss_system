@@ -8,6 +8,7 @@
 // ⚠️ นับที่นี่ที่เดียว ห้ามประกอบใน JSX (กฎหลังบั๊กรางซ้ำ #1033)
 // ⚠️ แถวรอบแก้ข้อมูลเก่าที่ไม่มี `derivedFromItemId` ไม่ถูกเดาจากรหัส PF — เดาผิด = ผูกผิดเงียบ ๆ (แผน "ข้อที่ตัดสินเอง")
 import { productDevLabel } from '@/lib/requests/rowLabel';
+import { formulaRef, scentRef } from '@/lib/master/registryLabel';
 import { nextByStageFor, rowStage } from '@/lib/requests/rowStage';
 import { requestWaitLabel } from '@/lib/requests/replyTurn';
 import { salesOrderQty, soReconcile, soReconcileTone } from '@/lib/requests/soReconcile';
@@ -33,6 +34,15 @@ function rowName(item, kind) {
       || productDevLabel(item.label, item.refScent, item.categoryCode);
   }
   return item.refScent?.name || item.label || '—';
+}
+
+/** ป้ายที่การ์ดโชว์ — ของในทะเบียน "PF · ชื่อ · วันที่" (ม-162 · เจ้าของย้ำ 24/11) · ยังไม่ผูกทะเบียน = ชื่อของแถว
+   ⚠️ `name` ดิบยังอยู่ — `childShortName` ตัดชื่อรอบแก้จากชื่อดิบ ไม่ใช่จากป้ายเต็ม */
+function rowLabel(item, kind) {
+  if (kind === 'formula_dev') {
+    return formulaRef(item.refFormula) || scentRef(item.refProducedScent) || rowName(item, kind);
+  }
+  return scentRef(item.refScent) || rowName(item, kind);
 }
 
 function rowCode(item, kind) {
@@ -117,7 +127,7 @@ export function devRequestSummary(request, kind, { today = null } = {}) {
   const all = request?.items || [];
   const items = all.filter((row) => row?.lineKind === lineKind);
   const unit = UNIT[kind];
-  const named = (item) => ({ id: item.id, name: rowName(item, kind), code: rowCode(item, kind) });
+  const named = (item) => ({ id: item.id, name: rowName(item, kind), code: rowCode(item, kind), label: rowLabel(item, kind) });
 
   // ── ใบสั่งขาย + ตัวเลขนำ (ด่านปิดตัวเดียวกัน) ─────────────────────────────
   const orders = kind === 'scent_dev' ? ordersOf(request) : [];
@@ -188,6 +198,7 @@ export function devRequestSummary(request, kind, { today = null } = {}) {
       working.push({
         id: `brief:${brief.id}`,
         name: brief.label || 'บรีฟไม่มีชื่อ',
+        label: brief.label || 'บรีฟไม่มีชื่อ', // บรีฟยังไม่มีกลิ่นในทะเบียน — ไม่มีรหัส/วันที่ให้โชว์
         code: null,
         stageText: request?.status === 'draft' ? 'ยังไม่ได้ส่ง' : requestWaitLabel(request, 'dept', 'ส่งงาน'),
         brief: true,

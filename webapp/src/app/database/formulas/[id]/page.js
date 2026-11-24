@@ -4,6 +4,7 @@
 // ⚠️ เปลือกเดียวกับทะเบียนกลิ่น (`RegistryDetailShell`) — ต่างกันแค่ข้อเท็จจริง
 // กับปุ่ม · เขียนสองเปลือกเมื่อไรมันจะเพี้ยนหากัน (กฎ AGENTS.md)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, Beaker, Pencil, Trash2 } from "lucide-react";
@@ -46,7 +47,9 @@ export default function FormulaDetailPage() {
   const [formula, setFormula] = useState(null);
   // หมวดสินค้าโชว์ "รหัส + ชื่อ" เสมอ (มติ 18/11) — ทะเบียนหมวดโหลดตอนเปิดหน้า ไม่ใช่ตอนกดแก้
   const productCategories = useProductCategories();
-  const [scentName, setScentName] = useState("");
+  // แถวกลิ่นของสูตร — ป้าย "PF · ชื่อ · วันผลิต" + เหตุช่อง F ของโมดัลราคา (ม-162)
+  const [scentRow, setScentRow] = useState(null);
+  const scentName = scentRow ? scentLabel(scentRow) : "";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pricing, setPricing] = useState(false);
@@ -122,8 +125,8 @@ export default function FormulaDetailPage() {
       if (data?.scentId) {
         const sRes = await apiFetch(`/api/master/scents/${data.scentId}`, { cache: "no-store" });
         const sData = await sRes.json().catch(() => null);
-        if (sRes.ok && sData) setScentName(scentLabel(sData));
-      } else setScentName("");
+        setScentRow(sRes.ok && sData ? sData : null);
+      } else setScentRow(null);
     } catch (e) { setError(e.message); }
     setLoading(false);
   }, [id]);
@@ -149,7 +152,7 @@ export default function FormulaDetailPage() {
   const hasPrice = formula.price?.unitPrice != null;
   /* ⭐ ม-148 — สูตรใส่ได้ F · B · FB (F ลงกลิ่นของสูตร) · ช่อง + เหตุที่ใส่ไม่ได้มาจากตัวเดียวกับ API
      (หัวน้ำหอม 02-020 ที่กลิ่นเป็นร่าง/เลิกใช้ = โมดัลบอกเหตุ ไม่เปิดช่อง B/FB ให้) */
-  const pricePlan = formulaPriceSlots(formula, { status: formula.scentStatus, name: scentName });
+  const pricePlan = formulaPriceSlots(formula, { ...(scentRow || {}), status: formula.scentStatus || scentRow?.status });
 
 
   return (
@@ -209,7 +212,10 @@ export default function FormulaDetailPage() {
           { label: "ชื่อสูตร", value: formula.name },
           { label: "กลิ่นที่ใช้", value: scentName || formula.scentId },
           { label: "หมวดสินค้า", value: categoryCodeLabel(formula.categoryCode, productCategories) || null },
-          { label: "แก้มาจากสูตร", value: formula.derivedFromFormulaId },
+          /* ป้ายเต็มของตัวแม่ + ลิงก์ (ม-162) · อ่านตัวแม่ไม่ได้ = id เดิม (`attachDerivedFrom`) */
+          { label: "แก้มาจากสูตร", value: formula.derivedFrom
+            ? <Link prefetch={false} href={`/database/formulas/${encodeURIComponent(formula.derivedFrom.id)}`} className="linklike">{formulaLabel(formula.derivedFrom)}</Link>
+            : formula.derivedFromFormulaId },
           { label: "ที่มา", value: srcLabel },
           { label: "หมายเหตุ", value: formula.note, wide: true },
         ]}
@@ -238,7 +244,7 @@ export default function FormulaDetailPage() {
       <RegistryPriceModal
         open={pricing}
         onClose={() => setPricing(false)}
-        title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formula.name}`}
+        title={`${hasPrice ? "ออกราคาใหม่" : "ใส่ราคา"} — ${formulaLabel(formula)}`}
         endpoint={`/api/master/formulas/${formula.id}/price`}
         slots={pricePlan.slots}
         blocker={pricePlan.blocker}
@@ -252,7 +258,7 @@ export default function FormulaDetailPage() {
       <ConfirmDialog
         open={confirmDelete}
         tone="danger"
-        title={`ลบสูตร ${formula.code || formula.name}`}
+        title={`ลบสูตร ${formulaLabel(formula)}`}
         description="ลบออกจากทะเบียนถาวร ย้อนกลับไม่ได้"
         detail="ถ้ามีคำร้อง ราคา สินค้า หรือสูตรที่แก้ต่ออ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
         confirmLabel="ลบ"

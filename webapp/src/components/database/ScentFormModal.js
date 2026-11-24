@@ -5,6 +5,7 @@
 import Modal from "@/components/Modal";
 import Button from "@/components/ui/Button";
 import ScentForm from "@/components/database/ScentForm";
+import { scentLabel } from "@/lib/master/registryLabel";
 
 export default function ScentFormModal({
   form, onChange, onClose, onSubmit, saving = false,
@@ -17,7 +18,7 @@ export default function ScentFormModal({
       /* ⚠️ หัวโมดัลต้องบอกผลลัพธ์จริงของคนกด (mig 0269) — ฝ่ายขายกดแล้วได้ **ร่าง**
          ไม่ใช่แถวในทะเบียน (toast บอกถูกมาตลอด แต่หัวเรื่องเคยสวนกันเอง) */
       title={form?.mode === "edit"
-        ? `แก้ข้อมูลกลิ่น — ${form.scent?.name}`
+        ? `แก้ข้อมูลกลิ่น — ${scentLabel(form.scent)}`
         : (proposal ? "เสนอกลิ่นเข้าทะเบียน" : "เพิ่มกลิ่นเข้าทะเบียน")}
       footer={form && (
         <>

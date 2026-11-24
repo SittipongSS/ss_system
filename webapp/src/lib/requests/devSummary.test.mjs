@@ -144,6 +144,26 @@ test('⭐ พัฒนาสูตร: ทรงเดียวกัน ไม�
   assert.equal(unsent.working[0].stageText, 'รอ RD ส่งงาน');
 });
 
+/* ⭐ ม-162 (เจ้าของย้ำ 24/11/2026 "รหัส+ชื่อ+วันที่ผลิต เสมอ") — การ์ดโชว์ `label` ครบสามท่อน · `name` ดิบไว้ตัดชื่อรอบแก้ */
+test('⭐ ป้ายบนการ์ด = "PF · ชื่อ · วันที่" ของทะเบียน · รอบแก้ได้ป้ายของตัวเอง · ยังไม่ผูก = ชื่อแถว', () => {
+  const f = (id, over) => ({ id, lineKind: 'product_dev', label: 'หัวน้ำหอม · PF859010103 THE MOMENT OF TEA TIME #3', answerStatus: 'pending', ...over });
+  const req = {
+    id: 'F2', kind: 'formula_dev', dept: 'RD', status: 'acknowledged',
+    items: [
+      f('a', { refFormula: { code: 'PF281020101', name: 'WHITE TEA 02 #1', formulaDate: '2026-09-29' }, readyAt: '2026-09-29', sentAt: '2026-09-30', outcome: 'revise' }),
+      f('b', { derivedFromItemId: 'a', refFormula: { code: 'PF28102010201', name: 'WHITE TEA 02 #1.1', formulaDate: '2026-10-14' }, readyAt: '2026-10-14', sentAt: '2026-10-14' }),
+      // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น: ป้ายมาจากกลิ่นลูก (วันผลิต)
+      f('c', { refProducedScent: { code: 'PF85901010301', name: 'THE MOMENT OF TEA TIME #3.1 REV1', producedAt: '2026-09-10' }, readyAt: '2026-09-10', sentAt: '2026-09-11', outcome: 'confirmed' }),
+      f('d', {}),
+    ],
+  };
+  const s = devRequestSummary(req, 'formula_dev', { today: '2026-11-24' });
+  assert.equal(s.revise.rows[0].label, 'PF281020101 · WHITE TEA 02 #1 · 29/09/2026');
+  assert.deepEqual(s.revise.rows[0].children.map((c) => [c.label, c.short]), [['PF28102010201 · WHITE TEA 02 #1.1 · 14/10/2026', '#1.1']]);
+  assert.equal(s.confirmed.rows[0].label, 'PF85901010301 · THE MOMENT OF TEA TIME #3.1 REV1 · 10/09/2026');
+  assert.equal(s.working[0].label, 'หัวน้ำหอม · PF859010103 THE MOMENT OF TEA TIME #3');
+});
+
 test('ชื่อสั้นของรอบแก้ — ตัดได้เฉพาะชื่อฐานตามด้วย "#" · นอกนั้นชื่อเต็ม', () => {
   assert.equal(childShortName('ALMOST HERE', 'ALMOST HERE #1'), '#1');
   assert.equal(childShortName('WHITE TEA 02 #1', 'WHITE TEA 02 #1.1'), '#1.1');

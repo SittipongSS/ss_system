@@ -39,6 +39,9 @@
 
 .muted { color: var(--text-3); }
 
+/* รอบแก้ใต้ต้นทาง (ม-165 · ป้ายเต็ม ม-162) */
+.child { padding-left: var(--space-3); }
+
 .tag {
   margin-left: var(--space-1-5);
   padding: 0 var(--space-1-5);

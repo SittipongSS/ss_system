@@ -243,7 +243,7 @@ export async function PATCH(request, { params }) {
     // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น: กลิ่นลูกตัวอื่นของคู่นี้เลิกใช้ · แถวค้างปิด (คู่ของ ม-157 ฝั่งสูตร)
     const ids = oilPairScentIds(row, before.items || []);
     const { data: pairScents, error: pairError } = await supabase.from('scents')
-      .select('id, code, name, status, "customerId"').in('id', ids);
+      .select('id, code, name, "producedAt", status, "customerId"').in('id', ids);
     if (pairError) {
       return Response.json({ error: `อ่านทะเบียนกลิ่นไม่สำเร็จ — ลองบันทึกอีกครั้ง (${pairError.message})` }, { status: 500 });
     }
@@ -360,12 +360,12 @@ export async function PATCH(request, { params }) {
         if (plan.warn) deliveryWarning = formulaBindWarning(existing);
         if (foreignFormula && !formulaUsableByCustomer(existing, before.customerId)) {
           await ensureShared(supabase, 'formula', existing, before.customerId, before.customerName || null, user);
-          const note = `สูตร ${existing.code || existing.name} เป็นของ ${existing.customerName || 'ลูกค้ารายอื่น'} — แชร์ให้ลูกค้าของใบนี้ให้แล้ว`;
+          const note = `สูตร ${formulaName(existing)} เป็นของ ${existing.customerName || 'ลูกค้ารายอื่น'} — แชร์ให้ลูกค้าของใบนี้ให้แล้ว`;
           deliveryWarning = deliveryWarning ? `${deliveryWarning} · ${note}` : note;
           await recordAudit({
             user, action: 'update', entityType: 'formula', entityId: existing.id,
             before: existing, after: { ...existing, sharedCustomerIds: [...(existing.sharedCustomerIds || []), before.customerId] },
-            summary: `แชร์สูตร ${existing.code || existing.name} ให้ ${before.customerName || before.customerId} — ผูกตอนส่งงาน ${rowText(row)} (${before.docNo || id})`,
+            summary: `แชร์สูตร ${formulaName(existing)} ให้ ${before.customerName || before.customerId} — ผูกตอนส่งงาน ${rowText(row)} (${before.docNo || id})`,
             request,
           });
         }
@@ -435,7 +435,7 @@ export async function PATCH(request, { params }) {
       return Response.json({
         error: `${reason} — โหลดหน้าใหม่`
           + (orphanKept
-            ? ` (สูตร ${createdFormula.code || createdFormula.name} ที่เพิ่งสร้างยังอยู่ในทะเบียน — ตรวจที่หน้ารายการทะเบียนสูตร)`
+            ? ` (สูตร ${formulaName(createdFormula)} ที่เพิ่งสร้างยังอยู่ในทะเบียน — ตรวจที่หน้ารายการทะเบียนสูตร)`
             : ''),
       }, { status: 409 });
     }
@@ -742,19 +742,19 @@ export async function PATCH(request, { params }) {
       // ม-166 — แถวหัวน้ำหอมที่ส่งเป็นกลิ่น
       producedWord = 'กลิ่น';
       if (deliveredScent) {
-        formulaText = deliveredScent.code || deliveredScent.name || '';
+        formulaText = scentName(deliveredScent, '');
       } else {
         const { data: heldScent } = await supabase.from('scents')
-          .select('code, name').eq('id', row.producedScentId).maybeSingle();
-        formulaText = heldScent?.code || heldScent?.name || '';
+          .select('code, name, "producedAt"').eq('id', row.producedScentId).maybeSingle();
+        formulaText = scentName(heldScent, '');
       }
     } else if (row.lineKind === 'product_dev') {
       if (deliveredFormula) {
-        formulaText = deliveredFormula.code || deliveredFormula.name || '';
+        formulaText = formulaName(deliveredFormula, '');
       } else if (row.producedFormulaId) {
         const { data: heldFormula } = await supabase.from('formulas')
-          .select('code, name').eq('id', row.producedFormulaId).maybeSingle();
-        formulaText = heldFormula?.code || heldFormula?.name || '';
+          .select('code, name, "formulaDate"').eq('id', row.producedFormulaId).maybeSingle();
+        formulaText = formulaName(heldFormula, '');
       }
     }
     const formulaSuffix = formulaText ? ` · ${producedWord} ${formulaText}${row.derivedFromItemId ? ' (รอบแก้)' : ''}` : '';
@@ -863,7 +863,7 @@ export async function DELETE(request, { params }) {
     if (row?.producedFormulaAction === 'revise' && parentFormulaId && row.producedFormulaId
         && row.producedFormulaId !== parentFormulaId) {
       const { data: pair, error: pairError } = await supabase.from('formulas')
-        .select('id, code, name, status, "derivedFromFormulaId", "categoryCode", "scentId"')
+        .select('id, code, name, "formulaDate", status, "derivedFromFormulaId", "categoryCode", "scentId"')
         .in('id', [row.producedFormulaId, parentFormulaId]);
       if (pairError) throw pairError;
       const produced = (pair || []).find((f) => f.id === row.producedFormulaId) || null;
@@ -959,18 +959,18 @@ export async function DELETE(request, { params }) {
         ? { error: { message: 'มีสินค้าผูกสูตรรอบแก้ระหว่างลบ' } }
         : await supabase.from('formulas').delete().eq('id', produced.id);
       if (formulaError) {
-        undoWarning = `ลบรายการแล้ว แต่ลบสูตรรอบแก้ ${produced.code || produced.name} ไม่สำเร็จ — `
-          + `เลิกใช้ตัวนั้นแล้วเปิดใช้ ${parent.code || parent.name} ที่หน้ารายการทะเบียนสูตร`;
+        undoWarning = `ลบรายการแล้ว แต่ลบสูตรรอบแก้ ${formulaName(produced)} ไม่สำเร็จ — `
+          + `เลิกใช้ตัวนั้นแล้วเปิดใช้ ${formulaName(parent)} ที่หน้ารายการทะเบียนสูตร`;
       } else {
         await purgeUpdates(supabase, 'formula', produced.id);
-        registryRemoved = produced.code || produced.name || produced.id;
+        registryRemoved = formulaName(produced, produced.id);
         await recordAudit({
           user, action: 'delete', entityType: 'formula', entityId: produced.id, before: produced, request,
           summary: `ลบสูตรรอบแก้ ${registryRemoved} — ลบรายการ ${rowText(row)} (${before.docNo || id})`,
         });
         // ตัวที่จองตัวตนเท่านั้น (ใช้งาน/ร่าง) — direction ที่กำลังพัฒนาไม่กันการคืน (mig 0411 · ม-157)
         const { data: holder, error: holderError } = await supabase.from('formulas')
-          .select('id, code, name').eq('categoryCode', parent.categoryCode).eq('scentId', parent.scentId)
+          .select('id, code, name, "formulaDate"').eq('categoryCode', parent.categoryCode).eq('scentId', parent.scentId)
           .in('status', ['draft', 'active']).limit(1).maybeSingle();
         const restored = !holderError && !holder
           && await updateFormula(supabase, parent.id, { status: 'active' }).then(() => true, () => false);
@@ -979,11 +979,11 @@ export async function DELETE(request, { params }) {
           await recordAudit({
             user, action: 'update', entityType: 'formula', entityId: parent.id,
             before: parent, after: { ...parent, status: 'active' }, request,
-            summary: `คืนสูตร ${parent.code || parent.name} เป็นใช้งาน — ถอยการส่งรอบแก้ (${before.docNo || id})`,
+            summary: `คืนสูตร ${formulaName(parent)} เป็นใช้งาน — ถอยการส่งรอบแก้ (${before.docNo || id})`,
           });
         } else {
-          undoWarning = `ลบรายการและสูตรรอบแก้แล้ว แต่คืนสูตรเดิม ${parent.code || parent.name} เป็นใช้งานไม่สำเร็จ`
-            + (holder ? ` (หมวด × กลิ่นนี้มีสูตร ${holder.code || holder.name} ใช้งานอยู่)` : '')
+          undoWarning = `ลบรายการและสูตรรอบแก้แล้ว แต่คืนสูตรเดิม ${formulaName(parent)} เป็นใช้งานไม่สำเร็จ`
+            + (holder ? ` (หมวด × กลิ่นนี้มีสูตร ${formulaName(holder)} ใช้งานอยู่)` : '')
             + ' — เปิดใช้เองที่หน้ารายการทะเบียนสูตร';
         }
       }
@@ -1012,7 +1012,7 @@ export async function DELETE(request, { params }) {
           .from(table).select('*').eq('id', own.id).maybeSingle();
         if (readError) throw readError;
         if (!entity) continue; // ไม่มีแล้วจริง (มีคนลบไปก่อน) — ตัวถัดไปเดินต่อได้
-        label = entity.code || entity.name || own.id;
+        label = own.kind === 'formula' ? formulaName(entity, own.id) : scentName(entity, own.id);
         const refs = await countRegistryRefs(supabase, own.kind, own.id);
         const dependents = await countRegistryDependents(supabase, own.kind, own.id);
         const blocked = own.kind === 'formula'
@@ -1055,7 +1055,7 @@ export async function DELETE(request, { params }) {
       body: `ลบรายการ ${rowText(row) || itemId}`
         + (registryRemoved ? ` · ลบออกจากทะเบียนด้วย (${registryRemoved})` : '')
         + (registryKept ? ` · ${registryKept}` : '')
-        + (restoredParent ? ` · คืนสูตรเดิม ${restoredParent.code || restoredParent.name} เป็นใช้งาน` : ''),
+        + (restoredParent ? ` · คืนสูตรเดิม ${formulaName(restoredParent)} เป็นใช้งาน` : ''),
       user,
     });
     await recordAudit({

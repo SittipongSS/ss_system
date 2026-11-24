@@ -9,7 +9,7 @@ import {
 const parentRow = { id: 'DRI-1', requestId: 'REQ-1', lineKind: 'product_dev', categoryCode: '01-009', scentId: 'SC-1', producedFormulaId: 'FML-A', outcome: 'revise' };
 const reworkRow = { id: 'DRI-2', requestId: 'REQ-1', lineKind: 'product_dev', categoryCode: '01-009', scentId: 'SC-1', derivedFromItemId: 'DRI-1' };
 const items = [parentRow, reworkRow];
-const F = (id, over = {}) => ({ id, code: id, name: id, categoryCode: '01-009', scentId: 'SC-1', status: 'active', ...over });
+const F = (id, over = {}) => ({ id, code: id, name: id, formulaDate: '2026-10-19', categoryCode: '01-009', scentId: 'SC-1', status: 'active', ...over });
 
 test('สูตรต้นทางของรอบแก้มาจากแถวต้นทาง · แถวปกติ/ข้อมูลเก่าไม่มี', () => {
   assert.equal(reworkParentFormulaId(reworkRow, items), 'FML-A');
@@ -58,7 +58,8 @@ test('⭐ สูตรของคู่นี้เป็นของลูก�
     planFormulaDelivery({ row: parentRow, items, existing: foreign, customerId: 'CUS-A' }),
     { kind: 'bind', formulaId: 'FML-Q', warn: true },
   );
-  assert.match(formulaBindWarning(foreign), /ใช้สูตร FML-Q ของ บริษัท บี .*ไม่ได้ใช้/);
+  // ม-162 — สูตรในประโยคครบ "PF · ชื่อ · วันที่"
+  assert.match(formulaBindWarning(foreign), /ใช้สูตร FML-Q · FML-Q · 19\/10\/2026 ของ บริษัท บี .*ไม่ได้ใช้/);
   for (const row of [reworkRow, { ...parentRow, id: 'DRI-9', directionOfItemId: 'DRI-1' }]) {
     const plan = planFormulaDelivery({ row, items, existing: foreign, customerId: 'CUS-A' });
     assert.equal(plan.kind, 'blocked');
@@ -79,7 +80,7 @@ test('⭐ ประโยคก่อนกดมาจากแผนตัว�
   const normal = formulaDeliveryPreview({ row: reworkRow, items, formulas: [F('FML-A')] });
   assert.equal(normal.plan.kind, 'create');
   assert.equal(normal.lockLineage, true);
-  assert.match(normal.note, /ได้สูตรใหม่ที่ชี้กลับ FML-A .*"กำลังพัฒนา" จนลูกค้าคอนเฟิร์ม .*FML-A ยังใช้งานอยู่ระหว่างรอ .*เลิกใช้/);
+  assert.match(normal.note, /ได้สูตรใหม่ที่ชี้กลับ FML-A · FML-A · 19\/10\/2026 .*"กำลังพัฒนา" จนลูกค้าคอนเฟิร์ม .*FML-A · FML-A · 19\/10\/2026 ยังใช้งานอยู่ระหว่างรอ .*เลิกใช้/);
   // direction ที่สองของรอบเดียวกัน: ตัวแรก (กำลังพัฒนา) ไม่จองตัวตน ⇒ ตัวที่ถูกแทนยังเป็นต้นทาง
   const second = formulaDeliveryPreview({
     row: { ...reworkRow, id: 'DRI-3', directionOfItemId: 'DRI-2' }, items,

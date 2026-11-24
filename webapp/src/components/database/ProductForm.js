@@ -43,7 +43,7 @@ import {
   unitOptions,
 } from "@/lib/master/units";
 import { fmtDate, fmtMoney } from "@/lib/format";
-import { formulaLabel, registryLabel, scentLabel } from "@/lib/master/registryLabel";
+import { formulaLabel, registryLabel, scentLabel, scentRef } from "@/lib/master/registryLabel";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { customerSelectOptions } from "@/components/master/customerOption";
 import { apiFetch } from "@/lib/apiFetch";
@@ -560,7 +560,7 @@ export default function ProductForm({
               {!formulas.length
                 ? "ยังไม่มีสูตรในทะเบียน — เพิ่มที่ ฐานข้อมูล → ทะเบียนสูตร ก่อน"
                 : pickedFormula
-                  ? `กลิ่น: ${pickedFormula.scentName || "— สูตรยังไม่ผูกกลิ่น —"} · วันที่สูตร ${pickedFormula.formulaDate ? fmtDate(pickedFormula.formulaDate) : "— ยังไม่ระบุ —"} · ดึงจากทะเบียนอัตโนมัติ`
+                  ? `กลิ่น: ${scentRef({ code: pickedFormula.scentCode, name: pickedFormula.scentName, producedAt: pickedFormula.scentProducedAt }, "— สูตรยังไม่ผูกกลิ่น —")} · วันที่สูตร ${pickedFormula.formulaDate ? fmtDate(pickedFormula.formulaDate) : "— ยังไม่ระบุ —"} · ดึงจากทะเบียนอัตโนมัติ`
                   : "กลิ่นของสินค้าจะตามสูตรที่เลือก"}
             </span>
           </div>

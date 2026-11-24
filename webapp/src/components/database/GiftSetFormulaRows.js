@@ -16,7 +16,7 @@
 //    ตัวเลือกของแถวล่างจะค้างค่าของแถวที่ถูกลบ
 import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
-import { formulaLabel } from "@/lib/master/registryLabel";
+import { formulaLabel, scentRef } from "@/lib/master/registryLabel";
 import Input from "@/components/ui/Input";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import SearchableSelect from "@/components/ui/SearchableSelect";
@@ -93,7 +93,7 @@ export default function GiftSetFormulaRows({ rows = [], onRows, formulas = [], p
                     />
                     {picked && (
                       <span className="text-xs text-[var(--text-3)] mt-1 block">
-                        {`กลิ่น: ${picked.scentName || "— สูตรยังไม่ผูกกลิ่น —"} · วันที่สูตร ${picked.formulaDate ? fmtDate(picked.formulaDate) : "— ยังไม่ระบุ —"}`}
+                        {`กลิ่น: ${scentRef({ code: picked.scentCode, name: picked.scentName, producedAt: picked.scentProducedAt }, "— สูตรยังไม่ผูกกลิ่น —")} · วันที่สูตร ${picked.formulaDate ? fmtDate(picked.formulaDate) : "— ยังไม่ระบุ —"}`}
                       </span>
                     )}
                   </div>

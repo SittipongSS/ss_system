@@ -22,6 +22,7 @@ import { attachShares, sharedIdsForCustomer } from '@/lib/master/registrySharesA
 import { countGiftSetsUsingFormula, giftSetsUsingFormulas } from '@/lib/master/giftSetFormulasStore';
 import { fragranceOilScentError } from '@/lib/master/fragranceOilScent';
 import { rowIngredientPlan } from '@/lib/master/ingredientList';
+import { scentRef } from '@/lib/master/registryLabel';
 
 // ── กลิ่น ────────────────────────────────────────────────────────────────
 //
@@ -312,7 +313,7 @@ async function attachFormulaUsage(supabase, rows) {
   let scentById = new Map();
   if (scentIds.length) {
     const { data: scents, error: scentError } = await supabase
-      .from('scents').select('id, name, status').in('id', scentIds);
+      .from('scents').select('id, code, name, "producedAt", status').in('id', scentIds);
     if (scentError) throw scentError;
     scentById = new Map((scents || []).map((s) => [s.id, s]));
   }
@@ -321,6 +322,9 @@ async function attachFormulaUsage(supabase, rows) {
     ...r,
     usedByProducts: byFormula.get(r.id) || [],
     scentName: scentById.get(r.scentId)?.name || null,
+    // ม-162 — ป้ายกลิ่นของสูตรบนจอ (คำใบ้ฟอร์มสินค้า · เหตุช่อง F) ต้องครบ "PF · ชื่อ · วันผลิต" ไม่ใช่ชื่ออย่างเดียว
+    scentCode: scentById.get(r.scentId)?.code || null,
+    scentProducedAt: scentById.get(r.scentId)?.producedAt || null,
     // ม-148 — โมดัลราคาเปิดช่อง F (ลงกลิ่นของสูตร) เฉพาะกลิ่นที่ใส่ราคาได้ · ตัวเดียวกับที่ route ตัดสิน
     scentStatus: scentById.get(r.scentId)?.status || null,
   }));
@@ -567,7 +571,7 @@ export async function loadPriceSlotSource(supabase, slot) {
   if (!isScentUsable(scent)) {
     return {
       source: null,
-      error: `กลิ่น ${scent.code || scent.name} สถานะ "${SCENT_STATUS_LABELS[scent.status] || scent.status}" ยังใส่ราคา F ไม่ได้`,
+      error: `กลิ่น ${scentRef(scent)} สถานะ "${SCENT_STATUS_LABELS[scent.status] || scent.status}" ยังใส่ราคา F ไม่ได้`,
     };
   }
   return { source: scent };
@@ -766,9 +770,22 @@ export async function attachRegistryPrice(supabase, rows, { column, kind, as = '
  * ⚠️ ต้องต่อ "ที่มา" และ "ราคา" ชุดเดียวกับหน้ารายการ ไม่งั้นเปิดใบเดียวกันจาก
  * สองทางแล้วเห็นข้อมูลไม่เท่ากัน — โรคเดียวกับที่ AGENTS.md ห้ามเรื่องฟอร์ม
  */
+/* ⭐ "แก้มาจาก" บนหน้ารายละเอียด — ป้ายเต็มของตัวแม่ "PF · ชื่อ · วันที่" (ม-162 · เจ้าของย้ำ 24/11)
+   🐞 เดิมการ์ดโชว์ `derivedFromScentId` / `derivedFromFormulaId` ดิบ (SCT-… / FML-…) ซึ่งไม่มีใครอ่านออก
+   ⚠️ อ่านพัง = null (การ์ดถอยไปโชว์ id เดิม) — ไม่ทำให้ทั้งหน้าโหลดไม่ขึ้น */
+async function attachDerivedFrom(supabase, row, { table, column, dateColumn }) {
+  const parentId = row?.[column];
+  if (!parentId) return { ...row, derivedFrom: null };
+  const { data, error } = await supabase.from(table)
+    .select(`id, code, name, "${dateColumn}", status`).eq('id', parentId).maybeSingle();
+  if (error) console.error('[registry] อ่านตัวแม่ของ "แก้มาจาก" ไม่สำเร็จ:', parentId, error.message);
+  return { ...row, derivedFrom: error ? null : data || null };
+}
+
 export async function findScentDetail(supabase, id) {
-  const scent = await findScentShared(supabase, id);
-  if (!scent) return null;
+  const found = await findScentShared(supabase, id);
+  if (!found) return null;
+  const scent = await attachDerivedFrom(supabase, found, { table: 'scents', column: 'derivedFromScentId', dateColumn: 'producedAt' });
   const [withSource] = await attachScentSource(supabase, [scent]);
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
     column: 'scentId', kind: 'RM_F',
@@ -786,7 +803,7 @@ async function attachScentDelivery(supabase, scent) {
   const [{ data: rows, error: rowError }, { data: formulas, error: formulaError }] = await Promise.all([
     supabase.from('dept_request_items').select('"categoryCode", "producedFormulaId"')
       .eq('producedScentId', scent.id).not('categoryCode', 'is', null).limit(1),
-    supabase.from('formulas').select('id, code, name, "categoryCode", status')
+    supabase.from('formulas').select('id, code, name, "formulaDate", "categoryCode", status')
       .eq('scentId', scent.id).neq('status', 'archived').order('code'),
   ]);
   if (rowError) throw rowError;
@@ -799,8 +816,9 @@ async function attachScentDelivery(supabase, scent) {
 }
 
 export async function findFormulaDetail(supabase, id) {
-  const formula = await findFormulaShared(supabase, id);
-  if (!formula) return null;
+  const found = await findFormulaShared(supabase, id);
+  if (!found) return null;
+  const formula = await attachDerivedFrom(supabase, found, { table: 'formulas', column: 'derivedFromFormulaId', dateColumn: 'formulaDate' });
   const [withSource] = await attachFormulaSource(supabase, [formula]);
   const [withPrice] = await attachRegistryPrice(supabase, [withSource], {
     column: 'formulaId', kind: 'RM_FB',

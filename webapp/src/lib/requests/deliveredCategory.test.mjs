@@ -170,8 +170,9 @@ test('⭐ รอบแก้: หมวดตั้งต้นจากรอ�
 
 test('คำเตือนปุ่มใส่ราคา F บนทะเบียนกลิ่น — ส่งเป็นสินค้า / มีสูตรใช้อยู่ / ไม่มีอะไร', () => {
   assert.match(
-    scentFPriceNotice({ deliveredCategoryCode: '01-002', formulas: [{ code: 'PF-1', status: 'developing' }] }),
-    /ส่งให้ลูกค้าเป็นสินค้าหมวด 01-002 \(สูตร PF-1\)/,
+    scentFPriceNotice({ deliveredCategoryCode: '01-002', formulas: [{ code: 'PF-1', name: 'EDP A', formulaDate: '2026-09-12', status: 'developing' }] }),
+    // ม-162 — สูตรในคำเตือนครบ "PF · ชื่อ · วันที่"
+    /ส่งให้ลูกค้าเป็นสินค้าหมวด 01-002 \(สูตร PF-1 · EDP A · 12\/09\/2026\)/,
   );
   assert.match(
     scentFPriceNotice({ deliveredCategoryCode: null, formulas: [{ code: 'PF-9', status: 'active' }] }),

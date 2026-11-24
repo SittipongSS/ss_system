@@ -14,7 +14,7 @@ import { findRequest } from '@/lib/materialPricesAdmin';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { canPriceRow } from '@/lib/requests/rowStage';
 import { canAnswerRequest } from '@/lib/deptRequests';
-import { currentPriceToUse } from '@/lib/master/priceSlots';
+import { currentPriceToUse, slotSourceLabel } from '@/lib/master/priceSlots';
 import { rowsSlotPricesLive } from '@/lib/master/scentFormulaAdmin';
 import { INGREDIENT_LIST_LABEL, ingredientListMissing } from '@/lib/master/ingredientList';
 import { recordRowPrice, settleRow } from '@/lib/requests/rowSettle';
@@ -95,7 +95,7 @@ export async function linkRegistryPriceToWaitingRows(supabase, {
 
     // ใบละหนึ่งบรรทัดเธรด + audit (แพตเทิร์นเดียวกับตัวเขียน Ingredient List)
     const { entry } = links[0];
-    const target = entry.source?.code || entry.source?.name || 'ทะเบียน';
+    const target = slotSourceLabel(entry, entry.source, 'ทะเบียน');
     const rev = entry.price.revisionNo != null ? ` (rev ${entry.price.revisionNo})` : '';
     const waitCount = links.filter((l) => l.waitIngredients).length;
     await append(supabase, {

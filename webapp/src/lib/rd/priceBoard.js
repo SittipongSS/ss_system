@@ -14,6 +14,7 @@ import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { requestedLabel } from '@/lib/requests/rowLabel';
 import { NO_PRICE_SLOTS_REASON, currentPriceToUse } from '@/lib/master/priceSlots';
 import { businessDayKey } from '@/lib/datePeriods';
+import { registryLabel } from '@/lib/master/registryLabel';
 
 const DEPT = 'RD';
 
@@ -71,8 +72,8 @@ export function priceBoardRows(pairs = [], live = []) {
       customerArCode: request.customerArCode || null,
       requestedByName: request.requestedByName || null,
       label: requestedText(item),
-      // ชื่อที่โชว์เป็นบรรทัดหลัก = ของในทะเบียน (รหัส + ชื่อ) · ยังไม่ผูก = ป้ายที่ขอมา — หัวโมดัล/กล่องยืนยันใช้ตัวเดียวกัน
-      name: [registry?.code, registry?.name].filter(Boolean).join(' ') || requestedText(item),
+      // ชื่อของหัวโมดัล/กล่องยืนยัน = ของในทะเบียน "PF · ชื่อ · วันที่" (ม-162) · ยังไม่ผูก = ป้ายที่ขอมา
+      name: registry ? registryLabel(registry) : requestedText(item),
       lineKind: item.lineKind || null,
       sortOrder: item.sortOrder ?? 0,
       // ขั้นของแถว — `awaiting_price` (ปุ่มราคา) · `awaiting_ingredients` (ราคาลงแล้ว เหลือ Ingredient List)

@@ -10,7 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   NO_PF, scentLabel, formulaLabel, scentLabelSub, formulaLabelSub,
-  scentLabelParts, registryLabel, scentSearchText, formulaSearchText,
+  scentLabelParts, registryLabel, scentSearchText, formulaSearchText, scentRef, formulaRef,
 } from './registryLabel.js';
 import { fmtDate, NA } from '../format.js';
 
@@ -42,4 +42,17 @@ test('ค้นหาเจอทั้งรหัส ชื่อ วันท
     assert.ok(hay.includes(needle), needle);
   }
   assert.equal(formulaSearchText({ name: 'X' }), 'X');
+});
+
+/* ⭐ ป้ายในประโยค (เธรด · กระดิ่ง · ข้อความแจ้ง) — เจ้าของย้ำ 24/11/2026 "รหัส+ชื่อ+วันที่ผลิต เสมอ"
+   เดิมประโยคใช้ "รหัส หรือ ชื่อ" ตัวเดียว · มีตัว = ป้ายเต็ม · ไม่มีตัวเลย = คำแทน */
+test('scentRef / formulaRef: มีตัว = ป้ายเต็มสามท่อน · ไม่มีตัว = คำแทน', () => {
+  assert.equal(scentRef({ code: 'PF85901010301', name: 'THE MOMENT OF TEA TIME #3.1 REV1', producedAt: '2026-09-10' }),
+    'PF85901010301 · THE MOMENT OF TEA TIME #3.1 REV1 · 10/09/2026');
+  assert.equal(formulaRef({ code: 'PF1', name: 'สูตร A', formulaDate: '2026-11-01' }), `PF1 · สูตร A · ${fmtDate('2026-11-01')}`);
+  // มีแต่ชื่อ = ยังเป็นป้ายเต็ม (ขาดตรงไหนบอกว่าขาด)
+  assert.equal(scentRef({ name: 'Rose' }), `${NO_PF} · Rose · ${NA}`);
+  assert.equal(scentRef(null, 'กลิ่นเดิม'), 'กลิ่นเดิม');
+  assert.equal(formulaRef({ id: 'FML-1', code: ' ', name: '' }, 'สูตรเดิม'), 'สูตรเดิม');
+  assert.equal(formulaRef(undefined), '');
 });

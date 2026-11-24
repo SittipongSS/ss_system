@@ -58,7 +58,7 @@ import {
   priceViewState,
 } from "@/lib/rd/priceBoardView";
 import styles from "./page.module.css";
-import { registryLabelParts, registryLabelSub } from "@/lib/master/registryLabel";
+import { registryLabel, registryLabelParts, registryLabelSub } from "@/lib/master/registryLabel";
 import useThaiToday from "@/lib/ui/useThaiToday";
 
 // ⭐ จัดตารางใหม่ (ผู้ใช้ 03/11/2026: "ปรับ layout สี ตำแหน่ง ป้ายต่างๆ ของตารางหน่อย มันดูยาก") — สี่คอลัมน์:
@@ -471,7 +471,7 @@ export default function RdPricesPage() {
       <RegistryPriceModal
         open={!!entityPricing}
         onClose={() => setEntityPricing(null)}
-        title={entityPricing ? `${entityPricing.needsPrice ? "ใส่ราคา" : "ออกราคาใหม่"} — ${[entityPricing.code, entityPricing.name].filter(Boolean).join(" ")}` : ""}
+        title={entityPricing ? `${entityPricing.needsPrice ? "ใส่ราคา" : "ออกราคาใหม่"} — ${registryLabel(entityPricing)}` : ""}
         endpoint={entityPricing
           ? `/api/master/${entityPricing.kind === "formula" ? "formulas" : "scents"}/${entityPricing.id}/price` : ""}
         slots={entityPricing?.kind === "formula" ? entityPricing.slots : null}
@@ -487,7 +487,7 @@ export default function RdPricesPage() {
       <IngredientListModal
         open={!!entityIngredients}
         onClose={() => setEntityIngredients(null)}
-        subtitle={entityIngredients ? [entityIngredients.code, entityIngredients.name].filter(Boolean).join(" · ") : ""}
+        subtitle={entityIngredients ? registryLabel(entityIngredients) : ""}
         current={entityIngredients?.ingredient?.current || null}
         required={!!entityIngredients?.ingredient?.required}
         endpoint={entityIngredients ? `/api/master/formulas/${entityIngredients.id}` : ""}

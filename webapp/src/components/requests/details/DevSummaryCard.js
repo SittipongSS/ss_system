@@ -6,6 +6,7 @@
 // ⭐ พัฒนาสูตรไม่มีก้อน SO (ไม่มีใบไหนผูก SO) · ตัวเลขนำไม่มีตัวหาร
 // ⚠️ ที่นี่วาดอย่างเดียว — ตัวเลข/รายการทั้งหมดมาจาก `lib/requests/devSummary.js` (กฎหลังบั๊กรางซ้ำ #1033)
 // ⚠️ แถวศูนย์ของสามกอง (ยืนยัน/ขอแก้/ไม่เอา) **จางแต่ไม่หาย** — ตำแหน่งคงที่ให้กวาดตาข้ามใบได้ (กติกาเดิมของการ์ดสรุป)
+import { Fragment } from "react";
 import Link from "next/link";
 import { Pencil, X } from "lucide-react";
 import { DocumentSummaryCard } from "@/components/ui/DocumentControlPanel";
@@ -15,9 +16,9 @@ import styles from "./devSummary.module.css";
 
 const n = (v) => fmtNumber(v);
 
-function Line({ name, code, end = null, tag = null, muted = false }) {
+function Line({ name, code, end = null, tag = null, muted = false, child = false }) {
   return (
-    <li className={`${styles.line} ${muted ? styles.muted : ""}`.trim()} title={code || undefined}>
+    <li className={[styles.line, muted ? styles.muted : "", child ? styles.child : ""].filter(Boolean).join(" ")} title={code || undefined}>
       <span className={styles.lineName}>
         {name}
         {tag ? <span className={styles.tag}>{tag}</span> : null}
@@ -92,7 +93,7 @@ export default function DevSummaryCard({ request, kind, today = null }) {
         {confirmed.rows.length ? (
           <ul className={styles.list}>
             {confirmed.rows.map((r) => (
-              <Line key={r.id} name={r.name} code={r.code} end={r.stageText} tag={r.freebie ? "แถม" : null} />
+              <Line key={r.id} name={r.label} code={r.code} end={r.stageText} tag={r.freebie ? "แถม" : null} />
             ))}
           </ul>
         ) : null}
@@ -101,13 +102,13 @@ export default function DevSummaryCard({ request, kind, today = null }) {
       <Group icon={Pencil} label="ขอแก้" count={revise.count}>
         {revise.rows.length ? (
           <ul className={styles.list}>
+            {/* ⭐ รอบแก้แต่ละตัวเป็นของใหม่ มีรหัส/วันที่ของตัวเอง (ม-8) ⇒ บรรทัดย่อยละตัว ป้ายเต็ม (ม-162) —
+                เดิมต่อท้าย "→ #1.1 · #1.2" ในบรรทัดเดียว ซึ่งไม่บอกรหัสและวันที่ของรอบแก้ */}
             {revise.rows.map((r) => (
-              <Line
-                key={r.id}
-                name={r.children.length ? `${r.name} → ${r.children.map((c) => c.short).join(" · ")}` : r.name}
-                code={r.code}
-                end={r.children.length ? null : "ยังไม่มีรอบแก้"}
-              />
+              <Fragment key={r.id}>
+                <Line name={r.label} code={r.code} end={r.children.length ? null : "ยังไม่มีรอบแก้"} />
+                {r.children.map((c) => <Line key={c.id} name={`→ ${c.label}`} code={c.code} child />)}
+              </Fragment>
             ))}
           </ul>
         ) : null}
@@ -123,7 +124,7 @@ export default function DevSummaryCard({ request, kind, today = null }) {
         {rejected.rows.length ? (
           <ul className={styles.list}>
             {rejected.rows.map((r) => (
-              <Line key={r.id} name={r.name} code={r.code} tag={r.fromRevision ? "รอบแก้" : null} muted />
+              <Line key={r.id} name={r.label} code={r.code} tag={r.fromRevision ? "รอบแก้" : null} muted />
             ))}
           </ul>
         ) : null}
@@ -134,7 +135,7 @@ export default function DevSummaryCard({ request, kind, today = null }) {
           {s.waitingCustomer.length ? (
             <ul className={styles.list}>
               {s.waitingCustomer.map((r) => (
-                <Line key={r.id} name={r.name} code={r.code} end={r.sentDays != null ? `ส่งไป ${n(r.sentDays)} วัน` : null} />
+                <Line key={r.id} name={r.label} code={r.code} end={r.sentDays != null ? `ส่งไป ${n(r.sentDays)} วัน` : null} />
               ))}
             </ul>
           ) : null}
@@ -143,7 +144,7 @@ export default function DevSummaryCard({ request, kind, today = null }) {
           <Group label="กำลังทำ" count={s.working.length}>
             <ul className={styles.list}>
               {s.working.map((r) => (
-                <Line key={r.id} name={r.name} code={r.code} end={r.stageText} tag={r.brief ? "บรีฟ" : null} />
+                <Line key={r.id} name={r.label} code={r.code} end={r.stageText} tag={r.brief ? "บรีฟ" : null} />
               ))}
             </ul>
           </Group>

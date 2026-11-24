@@ -56,7 +56,7 @@ const ready = (key, unitPrice) => ({
 });
 const liveCtx = (over = {}) => ({
   slots: [{ key: 'F' }, { key: 'B' }, { key: 'FB' }],
-  formula: { id: 'FML-1', code: 'PF1', name: 'สูตร A', categoryCode: '01-002' },
+  formula: { id: 'FML-1', code: 'PF1', name: 'สูตร A', formulaDate: '2026-09-12', categoryCode: '01-002' },
   scent: null,
   current: [{ key: 'F', price: null }, { key: 'B', price: null }, ready('FB', 436)],
   ...over,
@@ -67,8 +67,8 @@ test('แถวพกบริบทของใบ + ป้ายตัดห�
   assert.equal(row.docNo, 'RQ-FD-26090093');
   assert.equal(row.customerName, 'บริษัท ก');
   assert.equal(row.label, 'EDP กลิ่น A', 'ป้ายพัฒนาสูตรตัดหาง "→ รหัส" เหมือนหัวโมดัลบนหน้าใบ');
-  assert.equal(row.name, 'PF1 สูตร A', 'บรรทัดหลัก = ของในทะเบียน');
-  assert.deepEqual(row.registry, { kind: 'formula', id: 'FML-1', code: 'PF1', name: 'สูตร A', date: null, categoryCode: '01-002' });
+  assert.equal(row.name, 'PF1 · สูตร A · 12/09/2026', 'หัวโมดัล = ของในทะเบียน "PF · ชื่อ · วันที่" (ม-162)');
+  assert.deepEqual(row.registry, { kind: 'formula', id: 'FML-1', code: 'PF1', name: 'สูตร A', date: '2026-09-12', categoryCode: '01-002' });
   assert.equal(row.confirmedAt, '2026-09-23');
   assert.equal(row.useCurrent.key, 'FB');
   assert.equal(row.useCurrent.revisionId, 'REV-FB', 'POST เทียบ rev นี้กับตัวล่าสุดก่อนผูก');
@@ -278,7 +278,7 @@ test('🔴 แถวพัฒนาสูตรหัวน้ำหอม 02-02
   // ผู้ใช้ 2026-10-05 — เดิมตกไปช่อง B/FB ของสูตร · กลิ่นมีราคา F เก่าที่ยังไม่หมดอายุก็ต้องไม่ถูกผูก
   const oilTables = (scentStatus) => ({
     formulas: [{ id: 'FML-1', code: 'PF85901010301', name: 'หัวน้ำหอม A', scentId: 'SCT-1', categoryCode: '02-020' }],
-    scents: [{ id: 'SCT-1', code: 'PF859010103', name: 'Rose', status: scentStatus }],
+    scents: [{ id: 'SCT-1', code: 'PF859010103', name: 'Rose', producedAt: '2026-09-10', status: scentStatus }],
     material_prices: [{ id: 'M-F', kind: 'RM_F', label: 'Rose', scentId: 'SCT-1', status: 'active' }],
     material_price_revisions: [
       { id: 'R-F-1', materialId: 'M-F', revisionNo: 1, unitBasis: 'per_kg', quotedAt: '2026-09-20T03:00:00Z', validUntil: '2026-12-31' },
@@ -289,7 +289,7 @@ test('🔴 แถวพัฒนาสูตรหัวน้ำหอม 02-02
 
   const [ctx] = await rowsSlotPricesLive(fakeSupabase(oilTables('archived')), [confirmed()], { today: TODAY });
   assert.deepEqual(ctx.slots, []);
-  assert.match(ctx.blocker, /สูตรหัวน้ำหอม \(02-020\) ใส่ได้แค่ราคา F .*กลิ่น PF859010103 สถานะ "เลิกใช้"/);
+  assert.match(ctx.blocker, /สูตรหัวน้ำหอม \(02-020\) ใส่ได้แค่ราคา F .*กลิ่น PF859010103 · Rose · 10\/09\/2026 สถานะ "เลิกใช้"/);
   const [row] = priceBoardRows(pairs, [ctx]);
   assert.equal(row.priceBlocker, ctx.blocker);
   assert.equal(row.useCurrent, null);

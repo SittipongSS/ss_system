@@ -18,7 +18,7 @@ const row = (over = {}) => ({
   ...over,
 });
 const priced = (key, revisionId, over = {}) => ({
-  key, short: key, text: `ราคา ${key}`, source: { id: 'X', code: 'PF1', name: 'กลิ่น' },
+  key, short: key, text: `ราคา ${key}`, source: { id: 'X', code: 'PF1', name: 'กลิ่น', producedAt: '2026-09-10' },
   price: { state: 'ready', unitPrice: 2866.7, revisionId, revisionNo: 2, ...over },
 });
 const live = (current, ingredient = { required: false }) => ({ current, ingredient });
@@ -100,7 +100,8 @@ test('🔴 ทั้งเส้น: แถว SOFT RELEASE #1 ได้รา�
   assert.deepEqual(calls.settle, [{ id: 'RQ-1', itemId: 'a', revisionId: 'REV-NEW', user: RD, nowIso: '2026-11-11T03:00:00.000Z' }]);
   assert.equal(calls.record.length, 0);
   assert.equal(calls.append.length, 1);
-  assert.match(calls.append[0].body, /^ใส่ราคาที่ทะเบียน PF1 — F 2,866\.7.* ฿\/กก\. \(rev 2\) · ผูกเข้า 1 รายการ$/);
+  // ม-162 — กลิ่นที่ช่อง F ลง ครบ "PF · ชื่อ · วันผลิต"
+  assert.match(calls.append[0].body, /^ใส่ราคาที่ทะเบียน PF1 · กลิ่น · 10\/09\/2026 — F 2,866\.7.* ฿\/กก\. \(rev 2\) · ผูกเข้า 1 รายการ$/);
   assert.equal(calls.audit.length, 1);
   assert.equal(calls.audit[0].entityId, 'RQ-1');
 });

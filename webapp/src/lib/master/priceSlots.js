@@ -16,6 +16,7 @@
 import { normalizeQuotedPrice } from '@/lib/materialPrices';
 import { PDR_FRAGRANCE_OIL_CODE } from '@/lib/requests/pdrFields';
 import { SCENT_STATUS_LABELS, isScentUsable } from '@/lib/master/scents';
+import { formulaRef, scentRef } from '@/lib/master/registryLabel';
 
 /** เหตุเมื่อไม่มีช่องให้ใส่เลย (แถว/รายการยังไม่ผูกกลิ่นหรือสูตร) — ข้อความเดียวทั้ง API · จอ · หน้า "รอใส่ราคา" */
 export const NO_PRICE_SLOTS_REASON = 'รายการนี้ยังไม่ผูกกลิ่นหรือสูตรในทะเบียน — ใส่ราคาไม่ได้';
@@ -103,9 +104,18 @@ export function formulaPriceSlots(formula, scent = null) {
     categoryCode: formula?.categoryCode || null,
     scentUsable: scent?.status ? isScentUsable(scent) : true,
     scentStatus: scent?.status || '',
-    scentLabel: scent?.code || scent?.name || '',
+    // ม-162 — "PF · ชื่อ · วันผลิต" · ผู้เรียกส่งแถวกลิ่น (หรือ `{ code, name, producedAt }` ของสูตร) มาเอง
+    scentLabel: scentRef(scent),
   };
   return { slots: priceSlotsFor(args), blocker: priceSlotsBlocker(args) };
+}
+
+/** กลิ่น/สูตรที่ช่องราคาลง ในประโยค (เธรด "ใส่ราคา" · ข้อความแจ้ง) — "PF · ชื่อ · วันที่" (ม-162)
+ * ช่อง F = กลิ่น (วันผลิต) · B/FB = สูตร (วันที่สูตร) · `slot` = ช่องจาก `PRICE_SLOTS` หรือรายการ `current` (มี `kind`) */
+export function slotSourceLabel(slot, source, fallback = '') {
+  const scentSlot = slot?.stampColumn ? slot.stampColumn === 'scentId'
+    : slot?.kind ? slot.kind === PRICE_SLOTS.F.kind : slot?.key === PRICE_SLOTS.F.key;
+  return scentSlot ? scentRef(source, fallback) : formulaRef(source, fallback);
 }
 
 /** ช่องที่ถือว่าเป็น "ราคาของสิ่งนี้" เมื่อมีช่องเดียวให้เลือก (ทางเข้าเก่าที่ส่ง `price` ตัวเดียว) */

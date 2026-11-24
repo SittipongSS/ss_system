@@ -7,6 +7,7 @@
 // ⚠️ เปลือกและปุ่มมาจากของกลาง (`RegistryDetailShell`) ที่ใช้ร่วมกับทะเบียนสูตร —
 // เขียนสองเปลือกเมื่อไรมันจะเพี้ยนหากัน (กฎเดียวกับฟอร์มสร้าง/แก้ใน AGENTS.md)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { BadgeDollarSign, FlaskConical, Pencil, Trash2 } from "lucide-react";
@@ -226,7 +227,10 @@ export default function ScentDetailPage() {
           { label: "รหัสกลิ่น", value: scent.code },
           { label: "ชื่อกลิ่น", value: scent.name },
           { label: "ชื่อที่ลูกค้าเรียก", value: scent.customerTradeName },
-          { label: "แก้มาจากกลิ่น", value: scent.derivedFromScentId },
+          /* ป้ายเต็มของตัวแม่ + ลิงก์ (ม-162) · อ่านตัวแม่ไม่ได้ = id เดิม (`attachDerivedFrom`) */
+          { label: "แก้มาจากกลิ่น", value: scent.derivedFrom
+            ? <Link prefetch={false} href={`/database/scents/${encodeURIComponent(scent.derivedFrom.id)}`} className="linklike">{scentLabel(scent.derivedFrom)}</Link>
+            : scent.derivedFromScentId },
           /* ⚠️ **ไม่มี "เจ้าของกลิ่น (RD)" และไม่มี "ผู้ปรุงกลิ่น" ในการ์ดนี้แล้ว**
              (มติผู้ใช้ 2026-09-02) — เจ้าของกลิ่นถูกถอดทิ้ง (ค่าในนั้นคือคนที่ *กดรับ*
              กลิ่นเข้าทะเบียน ซึ่งวัดจริง 115 กลิ่นแล้วเป็นผู้ประสานงาน/แอดมินล้วน
@@ -267,7 +271,7 @@ export default function ScentDetailPage() {
       <RegistryPriceModal
         open={pricing}
         onClose={() => setPricing(false)}
-        title={`${hasPrice ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${scent.name}`}
+        title={`${hasPrice ? "ออกราคา F ใหม่" : "ใส่ราคา F"} — ${scentLabel(scent)}`}
         endpoint={`/api/master/scents/${scent.id}/price`}
         notice={scentFPriceNotice(scent, productCategories)}
         onSaved={(msg) => {
@@ -280,7 +284,7 @@ export default function ScentDetailPage() {
       <ConfirmDialog
         open={confirmDelete}
         tone="danger"
-        title={`ลบกลิ่น ${scent.code || scent.name}`}
+        title={`ลบกลิ่น ${scentLabel(scent)}`}
         description="ลบออกจากทะเบียนถาวร ย้อนกลับไม่ได้"
         detail="ถ้ามีคำร้อง ราคา สูตร สินค้า หรือกลิ่นที่แก้ต่ออ้างอยู่ ระบบจะไม่ยอมให้ลบ และจะบอกว่าติดที่ไหน"
         confirmLabel="ลบ"
