@@ -630,7 +630,7 @@ test('ทะเบียนใบสั่งขาย: งวดของรา
   const list = code(LIST_ROUTE);
   const loader = slice(list, 'async function loadListInstallments(', '\n}\n');
   // ช่องเงิน (amount · paidOn · updatedAt) + ช่องวางบิล (billingEvent · billingDate — งวดรอเหตุการณ์ไม่เลยกำหนด 23/11/2026) ต่อท้ายชุดแรก — ก้อน `money` ของรื้อรายการ SO + บัญชี PR-1 (salesOrderMoney.test.mjs ตรึงเอง)
-  const first = loader.indexOf('.select(\'id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate"\')');
+  const first = loader.indexOf('.select(\'id, salesOrderId, seq, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt", "actualStatus", "actualSubmittedById", "actualApprovedVia", "frozenAt", amount, "paidOn", "updatedAt", "billingEvent", "billingDate", "rejectedReason", "rejectedByName"\')');
   const fallback = loader.indexOf('.select(\'salesOrderId, status, kind, "dueDate", "coversFrom", "coversTo", "taxInvoiceNo", "refundedAt"\')');
   assert.ok(first > 0 && fallback > first, 'ชุดของ 0412 ก่อน · ถอยเป็นชุดของ 0378');
   assert.match(loader, /if \(withActual\.error\?\.code !== '42703'\) return withActual;/);

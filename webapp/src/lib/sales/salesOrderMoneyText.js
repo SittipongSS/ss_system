@@ -16,7 +16,21 @@ export function installmentChipText(inst, total) {
   if (inst.taxInvoiceNo) parts.push(`ใบกำกับ ${inst.taxInvoiceNo}`);
   else if (inst.kind === "confirmed" && !inst.opening) parts.push("ยังไม่ออกใบกำกับ");
   if (inst.opening) parts.push("งวดยกมา");
+  if (inst.kind === "rejected" && inst.rejectedReason) parts.push(`เหตุผลตีกลับ: ${inst.rejectedReason}`);
   return { head, note: parts.join(" · ") };
+}
+
+/* เหตุที่บัญชีตีกลับงวด — บรรทัดแดงใต้ชิปงวดในแถวใบสั่งขาย (เจ้าของ 24/11/2026 "โชว์เหตุผลตีกลับในตาราง SO ของบริหารงานขาย")
+   ⭐ ฝ่ายขายต้องรู้ว่าต้องแก้อะไรก่อนแจ้งชำระใหม่ โดยไม่ต้องเปิดใบ (กฎเดียวกับการ์ดงวดบนหน้าใบ: เหตุผลตีกลับโชว์เสมอ ไม่ซ่อน)
+   ⭐ เฉพาะชิปชนิด `rejected` ที่มีเหตุผล (เหตุผลบังคับตอนตีกลับ · งวดเก่าที่ไม่มีเหตุผล = ไม่มีบรรทัด ชิปแดงบอกอยู่แล้ว)
+   ⭐ เกิน `max` งวด = บรรทัดท้าย "และอีก n งวด" — ใบ 12 งวดต้องไม่ดันแถวสูงจนอ่านตารางไม่ได้ (รายละเอียดครบอยู่ในลิ้นชัก/หน้าใบ)
+   @returns { lines: [{ seq, text }], more } */
+export function installmentRejectLines(row, { max = 2 } = {}) {
+  const list = (row?.money?.installments || []).filter((i) => i.kind === "rejected" && i.rejectedReason);
+  return {
+    lines: list.slice(0, max).map((i) => ({ seq: i.seq, text: `บัญชีตีกลับงวด ${i.seq}: ${i.rejectedReason}` })),
+    more: Math.max(0, list.length - max),
+  };
 }
 
 /* บรรทัดงวดถัดไป — เลยกำหนดมาก่อน (แดง + จำนวนวันจาก server) · ไม่มีก็คำสถานะเดิมของคอลัมน์งวด (`salesOrderPaymentNote`) +

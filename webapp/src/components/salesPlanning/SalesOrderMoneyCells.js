@@ -4,11 +4,12 @@
    (`salesOrderMoneyCell` · lib/sales/salesOrderMoney.js) จอไม่บวกเงินเอง
      PayableCell     ยอดจ่าย รวม VAT บรรทัดบน · ก่อน VAT บรรทัดล่าง (มติ "รวมเป็นคอลัมน์เดียว")
      CollectedCell   เก็บแล้ว (บัญชีรับรองเท่านั้น · มติข้อ 1) + แถบ + ค้าง · รอบัญชีตรวจแยกเป็นบรรทัดฟ้า · ใบยกเลิก = เงินค้าง
-     InstallmentsCell จ่ายแล้ว x/y งวด + ชิปรายงวด + บรรทัดงวดถัดไป (เลยกำหนด n วัน แดง)
+     InstallmentsCell จ่ายแล้ว x/y งวด + ชิปรายงวด + บรรทัดงวดถัดไป (เลยกำหนด n วัน แดง) + เหตุผลที่บัญชีตีกลับงวด (24/11/2026)
    ⚠️ ตัวนับ "x/y" อ่านจาก `payment` (salesOrderPaymentCell) ตัวเดิม — ตัวกรอง "การชำระ" ของตารางตัดสินด้วยก้อนนั้น
      สองตัวต้องไม่พูดคนละเลข (PR-1 ตรวจกับข้อมูลจริงแล้วว่าตรงกันทุกใบ) */
 import { fmtMoney, NA } from "@/lib/format";
-import { installmentStatusLine } from "@/lib/sales/salesOrderMoneyText";
+import { installmentRejectLines, installmentStatusLine } from "@/lib/sales/salesOrderMoneyText";
+import RejectReasonLine from "@/components/salesPlanning/RejectReasonLine";
 import InstallmentChips from "@/components/salesPlanning/InstallmentChips";
 import styles from "./SalesOrderMoneyCells.module.css";
 
@@ -67,17 +68,22 @@ export function InstallmentsCell({ row, onOpen = null, highlightKinds = null }) 
   const payment = row?.payment;
   if (!money?.installments?.length) return <span className="cell-num-idle">{NA}</span>;
   const line = installmentStatusLine(row);
+  const rejects = installmentRejectLines(row);
   const count = payment?.count ?? money.installments.length;
   const paid = payment?.tracked ? payment.paid : 0;
   return (
-    <span className={styles.stack}>
+    /* div (ไม่ใช่ span) — ข้างในมี ReadableText ของเหตุผลตีกลับซึ่งเป็น div */
+    <div className={styles.stack}>
       <span className={styles.count}>
         <b>{paid}/{count}</b> <span className="cell-num-idle">{payment?.tracked ? "งวดจ่ายแล้ว" : "งวด"}</span>
       </span>
       <InstallmentChips installments={money.installments} onOpen={onOpen} highlightKinds={highlightKinds}
         ariaLabel={`สถานะรายงวดของ ${row.orderNumber || "ใบนี้"}`} />
       {line ? <span className={`cell-sub ${line.tone}`.trim()}>{line.text}</span> : null}
-    </span>
+      {/* ⭐ เหตุผลที่บัญชีตีกลับงวด (เจ้าของ 24/11/2026) — ฝ่ายขายรู้ว่าต้องแก้อะไรก่อนแจ้งใหม่โดยไม่ต้องเปิดใบ */}
+      {rejects.lines.map((r) => <RejectReasonLine key={r.seq} text={r.text} />)}
+      {rejects.more ? <span className="cell-sub cell-num-bad">และอีก {rejects.more} งวดที่ถูกตีกลับ</span> : null}
+    </div>
   );
 }
 

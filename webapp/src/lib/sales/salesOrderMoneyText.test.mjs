@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { installmentChipText, installmentStatusLine } from './salesOrderMoneyText.js';
+import { installmentChipText, installmentRejectLines, installmentStatusLine } from './salesOrderMoneyText.js';
 
 const money = (over = {}) => ({ tracked: true, installments: [{ seq: 1, kind: 'pending' }], next: null, ...over });
 const payment = (over = {}) => ({ tracked: true, paid: 0, count: 1, complete: false, overdue: 0, reviewing: 0, rejected: 0, stranded: 0, refunded: 0, nextDue: null, ...over });
@@ -40,4 +40,24 @@ test('บรรทัดงวด: วันที่ = payment.nextDue ตั�
 test('ไฟล์คำไม่อ่าน paymentDueDate ค่าตายของใบ', () => {
   const src = readFileSync(new URL('./salesOrderMoneyText.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /paymentDueDate/);
+});
+
+test('เหตุผลตีกลับ (เจ้าของ 24/11/2026): กล่องลอยของชิปพูดเหตุผล · บรรทัดใต้ชิปเฉพาะงวดตีกลับที่มีเหตุผล · เกินสองงวด = "และอีก n"', () => {
+  assert.match(installmentChipText({ seq: 1, kind: 'rejected', amount: 1, rejectedReason: 'สลิปยอดไม่ตรง' }, 1).note, /เหตุผลตีกลับ: สลิปยอดไม่ตรง$/);
+  assert.doesNotMatch(installmentChipText({ seq: 1, kind: 'reported', amount: 1, rejectedReason: 'ค่าค้าง' }, 1).note, /เหตุผล/);
+  const one = installmentRejectLines({ money: money({ installments: [
+    { seq: 1, kind: 'confirmed' }, { seq: 2, kind: 'rejected', rejectedReason: 'สลิปไม่ชัด' }, { seq: 3, kind: 'rejected', rejectedReason: null },
+  ] }) });
+  assert.deepEqual(one, { lines: [{ seq: 2, text: 'บัญชีตีกลับงวด 2: สลิปไม่ชัด' }], more: 0 });
+  const many = installmentRejectLines({ money: money({ installments: [1, 2, 3, 4].map((seq) => ({ seq, kind: 'rejected', rejectedReason: `เหตุ ${seq}` })) }) });
+  assert.deepEqual(many.lines.map((l) => l.seq), [1, 2]);
+  assert.equal(many.more, 2);
+  assert.deepEqual(installmentRejectLines({ money: null }), { lines: [], more: 0 });
+});
+
+test('หน้ารายการ SO: เหตุผลที่ใบถูกตีกลับใต้รางขั้น (เฉพาะสถานะ rejected) + เหตุผลงวดใต้ชิปผ่านชิ้นเดียวกัน', () => {
+  const page = readFileSync(new URL('../../app/sales-planning/sales-orders/page.js', import.meta.url), 'utf8');
+  assert.match(page, /row\.status === "rejected" && row\.rejectionReason \? \(\s*<RejectReasonLine className="mt-1\.5" text=\{`ตีกลับโดย \$\{row\.rejectedByName \|\| "ผู้อนุมัติ"\}: \$\{row\.rejectionReason\}`\} \/>/);
+  const cells = readFileSync(new URL('../../components/salesPlanning/SalesOrderMoneyCells.js', import.meta.url), 'utf8');
+  assert.match(cells, /rejects\.lines\.map\(\(r\) => <RejectReasonLine key=\{r\.seq\} text=\{r\.text\} \/>\)/);
 });

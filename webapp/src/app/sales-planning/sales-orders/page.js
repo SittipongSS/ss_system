@@ -39,6 +39,7 @@ import {
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import ServiceAgingChip from "@/components/salesPlanning/ServiceAgingChip";
+import RejectReasonLine from "@/components/salesPlanning/RejectReasonLine";
 import { actualNoneReasonOf, isInstallmentActualOrder } from "@/lib/sales/salesOrderActualMode";
 import { installmentActualSubLine } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
@@ -582,6 +583,12 @@ export default function SalesOrdersPage() {
                          (กำหนดชำระยุบเข้าเซลล์งวดชำระ) ให้ตารางแคบลงจริง ๆ */
                       <StepTrack steps={track.steps} />
                     )}
+                    {/* ⭐ เหตุที่ใบถูกตีกลับ (เจ้าของ 24/11/2026 "โชว์เหตุผลตีกลับในตาราง SO") — ใต้หมุดแดงของราง ผู้ยื่นรู้ว่าต้องแก้อะไร
+                        โดยไม่ต้องเปิดใบ · `rejectionReason` ล้างทิ้งตอนยื่นใหม่/กู้คืนอยู่แล้ว ⇒ เช็ก status ด้วยกันค่าค้าง
+                        (เหตุที่บัญชีตีกลับ "งวด" อยู่ใต้ชิปงวดในคอลัมน์งวด — InstallmentsCell) */}
+                    {row.status === "rejected" && row.rejectionReason ? (
+                      <RejectReasonLine className="mt-1.5" text={`ตีกลับโดย ${row.rejectedByName || "ผู้อนุมัติ"}: ${row.rejectionReason}`} />
+                    ) : null}
                     {/* ⭐ "ค้าง n วัน · งานบริการ · ยังไม่ยื่นตรวจ / รอผู้จัดการตรวจ" (มติเจ้าของ 08/10 "ตามงานค้าง") — เฉพาะใบที่อนุมัติแล้วแต่
                         งานบริการยังไม่ถึง TS (`row.serviceAging` ของ server · ฐานเดียวกับชิป "ยังไม่ตั้งงานบริการ")
                         ⚠️ ต้องมีคำบอกว่าเป็นเรื่องงานบริการและอยู่ขั้นไหน (คำของขั้น "ยังไม่ยื่นตรวจ" ไม่ชี้ว่าใครถือ — ลูกค้าที่ไม่มีไซต์
