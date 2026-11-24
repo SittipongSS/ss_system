@@ -2,6 +2,7 @@ import { genId } from '@/lib/id';
 import { recordAudit } from '@/lib/audit';
 import { requestsLinkedTo, sentRequestsBlockMessage } from '@/lib/requests/cascadeDelete';
 import { requestCascadeAuditor } from '@/lib/requests/cascadeAudit';
+import { documentCascadeAuditor } from '@/lib/sales/documentCascadeAudit';
 import { caretakerTeamsOf, hasTeam, isSalesManager, userTeams, viewScopeUser } from '@/lib/permissions';
 import { loadProject } from '@/lib/pm/projectsRepo';
 import {
@@ -9,7 +10,7 @@ import {
   dealForcePreview, cleanupDealOrphans,
   dealSignedDocuments, dealSignedBlockMessage, forceDeleteDealDocuments,
   exciseFilingsOfDeal, exciseFilingBlockMessage, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
-  contractsOfDeal, contractBlockMessage,
+  contractsOfDeal, contractBlockMessage, snapshotDealDocumentsForAudit,
 } from '@/lib/forceDelete';
 import { npdWonScentRuleApplies, resolveProbability, sourceScentLinkAuditTag } from '@/lib/sales/dealProbability';
 import { resolveSourceScent } from '@/lib/sales/dealScentSource';
@@ -768,6 +769,17 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // แค่ถอด timeline segment ของดีลนี้ออก; การลบโครงการทำที่หน้าโครงการโดยตรง.
   const detachedFromProject = project?.id || null;
 
+  /* ใบเสนอราคา/ใบสั่งขายที่จะหายไปกับดีล — บังคับลบวิ่งผ่าน RPC ที่ไม่จด audit · ทางปกติหายตาม FK cascade
+     ⇒ อ่านเต็มแถวไว้ตอนนี้ (ก่อนแตะอะไร) แล้วจดทีละใบก่อนยิงลบ · 🐞 prod 24/11: DL-261000645 พา QT 4 + SO ที่อนุมัติแล้วหายไม่มีร่องรอย
+     ⚠️ อ่านไม่ขึ้น = หยุด ไม่ใช่ลบต่อโดยไม่มีที่กู้ */
+  const cascadeCause = `การลบดีล ${before.code || id}${force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : ''}`;
+  let documentSnapshot;
+  try {
+    documentSnapshot = await snapshotDealDocumentsForAudit(supabase, id);
+  } catch (snapshotError) {
+    return fail(`${snapshotError.message} — ยังไม่ได้ลบดีล`, 500);
+  }
+
   // เก็บกวาดลูกดีลที่ไม่มี FK จริง (งานส่วนตัว/คำร้องข้ามฝ่าย/parent-ref) ก่อนลบแม่ —
   // ต้องทำ **ทุกครั้ง** ไม่ใช่เฉพาะตอน force: เดิมอยู่ใต้ `if (force)` ทำให้การลบดีล
   // ตามปกติทิ้งงานที่ผูกดีลค้างไว้ชี้ดีลที่ไม่มีอยู่แล้ว — เข้าถึงจากดีลไม่ได้อีกและ
@@ -777,7 +789,7 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     await cleanupDealOrphans(supabase, id, {
       auditRequests: requestCascadeAuditor({
         user, request: req,
-        cause: `การลบดีล ${before.code || id}${force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : ''}`,
+        cause: cascadeCause,
       }),
     });
   } catch (cleanupError) {
@@ -791,6 +803,9 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
   // ที่เหลือทิ้ง กลายเป็นแถวไร้เจ้าของที่ตามเก็บไม่ได้อีกเลย = ไทม์ไลน์ค้างถาวร.
   const { error: taskError } = await supabase.from('project_tasks').delete().eq('dealId', id);
   if (taskError) return fail(`ลบไทม์ไลน์ของดีลไม่สำเร็จ: ${taskError.message} — ยังไม่ได้ลบดีล`, 500);
+
+  // จด audit ของเอกสารทีละใบก่อนลบจริง (ทั้งสองทาง) — พลาดหลังจด = audit เกิน · กลับลำดับแล้วพลาด = หายไม่มีที่กู้
+  await documentCascadeAuditor({ user, request: req, cause: cascadeCause })(documentSnapshot);
 
   // บังคับลบ: เอกสารการขายต้องไปทาง RPC break-glass เสมอ (mig 0152/0168) ไม่ใช่ปล่อยให้
   // cascade ของ DB จัดการ — หลักฐาน/ฉบับตรึงเป็น RESTRICT ที่ cascade ข้ามไม่ได้ และ RPC

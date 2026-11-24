@@ -7,8 +7,9 @@ import {
   isForceRequest, isDryRun, canForceDelete,
   quotationForcePreview, cleanupQuotationOrphans, QUOTATION_CHILD_ORDERS,
   exciseFilingBlockMessage, exciseFilingsOfQuotation, exciseQuotationBlockMessage, exciseQuotationsReferencingOrders,
-  contractsOfQuotation, contractBlockMessage,
+  contractsOfQuotation, contractBlockMessage, snapshotSalesOrdersForAudit,
 } from '@/lib/forceDelete';
+import { documentCascadeAuditor } from '@/lib/sales/documentCascadeAudit';
 import { loadMovedOutOfOrders } from '@/lib/sales/salesOrderInstallmentsStore';
 import { movedOutDeleteBlock } from '@/lib/sales/salesOrderPayments';
 import {
@@ -698,6 +699,18 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
     return artifacts || [];
   })();
 
+  /* ใบสั่งขายลูกที่หายไปกับใบนี้ (RPC วนลบ / FK quotationId cascade) — `before` ของใบนี้พกแค่สรุปของมัน
+     ⇒ อ่านเต็มแถวไว้ก่อนแตะอะไร แล้วจดทีละใบก่อนยิงลบ · 🐞 prod 24/11 (DL-261000645): SO ที่อนุมัติแล้วหายไม่มีร่องรอย
+     ⚠️ อ่านไม่ขึ้น = หยุด ไม่ใช่ลบต่อโดยไม่มีที่กู้ */
+  let childOrderSnapshots = [];
+  if (childOrderIds.length) {
+    try {
+      childOrderSnapshots = await snapshotSalesOrdersForAudit(supabase, childOrderIds);
+    } catch (snapshotError) {
+      return fail(`${snapshotError.message} — ยังไม่ได้ลบใบ`, 500);
+    }
+  }
+
   // force: ปลด logical ref (metadata.acceptedQuotationId) ที่ชี้มาใบนี้ก่อนลบ.
   // sales_orders.quotationId เป็น ON DELETE CASCADE จึงหายเองที่ระดับ DB.
   // ⚠️ มันโยนเมื่ออ่าน/ปลดไม่สำเร็จ (ยังไม่มีอะไรถูกลบ ณ จุดนี้) — withUser ไม่ดัก exception
@@ -709,6 +722,12 @@ export const DELETE = withUser(async ({ user, supabase, req, ctx }) => {
       return fail(e.message, 500);
     }
   }
+
+  // จด audit ของใบสั่งขายลูกก่อนลบจริง — พลาดหลังจด = audit เกิน · กลับลำดับแล้วพลาด = หายไม่มีที่กู้
+  await documentCascadeAuditor({
+    user, request: req,
+    cause: `การลบใบเสนอราคา ${before.quoteNumber || id}${force ? ' (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)' : ''}`,
+  })({ salesOrders: childOrderSnapshots });
 
   // ใบที่มีหลักฐาน/ฉบับตรึงต้องลบผ่าน RPC break-glass (mig 0152) — มันตั้ง session flag ให้
   // guard ยอม DELETE แล้วเก็บกวาดตามลำดับ FK: SO ลูก (ซึ่ง cascade เองไม่ได้เพราะลูกของมัน

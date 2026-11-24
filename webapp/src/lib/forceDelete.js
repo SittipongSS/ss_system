@@ -407,6 +407,116 @@ export async function forceDeleteDealDocuments(supabase, dealId, actor = {}) {
   return (quotes || []).length;
 }
 
+// ── audit ของใบเสนอราคา/ใบสั่งขายที่หายพ่วง ───────────────────────────────
+// 🐞 24/11/2026 บังคับลบดีล DL-261000645 บน prod: QT-26100448-0…-3 + SO-26100348-0 (อนุมัติแล้ว
+//    314,580) หายไปกับดีล แต่ audit_logs ได้แค่ 3 แถว (ดีล + คำร้อง 2) — RPC `force_delete_quotation`
+//    (0152/0168/0381) ไม่จด audit และ `before` ของดีลเก็บแค่แถวดีล ⇒ แหล่งยอด Actual หายโดยไม่มีที่กู้
+//    นอกจาก backup รายวัน · เส้นลบใบเสนอราคาก็จดแค่ตัวใบ SO ลูกที่ cascade ตามหายเงียบเหมือนกัน
+// ⭐ snapshot เต็มแถว + ลูกที่หายตาม: บรรทัด · งวด · แพ็คต่อรอบ · ฉบับตรึง (`resolvedPayload` = เนื้อเอกสาร
+//    ที่ออกจริง) · หลักฐานลายเซ็น — ผู้เรียกเขียน audit ทีละใบ **ก่อน** ยิงลบ (พลาดหลังจด = audit เกิน
+//    ข้อมูลไม่เสีย · กลับลำดับแล้วพลาด = ข้อมูลหายไม่มีที่กู้)
+// ⚠️ อ่านไม่ขึ้น = โยน ผู้เรียกต้องหยุดก่อนลบ — snapshot ที่ขาดคือ audit ที่ขาดเงียบ ๆ
+// ⚠️ ไฟล์ PDF/ไฟล์แนบใน Storage ไม่อยู่ใน snapshot (หายตามทางเดิม) — มีแค่แถวที่ชี้ไฟล์
+
+// `result` = ผลของ fetchAllResult (ไล่หน้าครบ — snapshot ที่ถูกตัดคือ audit ที่ขาดแถวเงียบ ๆ)
+async function rowsOf(label, result) {
+  const { data, error } = await result;
+  if (error) throw new Error(`อ่าน${label}ก่อนลบไม่สำเร็จ: ${error.message}`);
+  return data || [];
+}
+
+function groupBy(rows, key) {
+  const map = new Map();
+  for (const row of rows) {
+    const id = String(row[key]);
+    if (!map.has(id)) map.set(id, []);
+    map.get(id).push(row);
+  }
+  return (id) => map.get(String(id)) || [];
+}
+
+// ฉบับตรึง + หลักฐานลายเซ็นของเอกสารชุดหนึ่ง — จับคู่ด้วย documentType/documentId ตามที่ RPC ใช้ลบ
+// (ฉบับตรึงของ SO ก็พก quotationId ⇒ กรองด้วย quotationId จะนับ SO ปนเข้ามาเป็นของใบเสนอราคา)
+async function documentProofsOf(supabase, documentType, ids) {
+  if (!ids.length) return { issued: () => [], evidence: () => [] };
+  const [issued, evidence] = await Promise.all([
+    rowsOf('ฉบับตรึง', fetchAllResult(() => supabase.from('issued_documents').select('*')
+      .eq('documentType', documentType).in('documentId', ids).order('id', { ascending: true }))),
+    rowsOf('หลักฐานลายเซ็น', fetchAllResult(() => supabase.from('document_signature_evidence').select('*')
+      .eq('documentType', documentType).in('documentId', ids).order('id', { ascending: true }))),
+  ]);
+  return { issued: groupBy(issued, 'documentId'), evidence: groupBy(evidence, 'documentId') };
+}
+
+/** ใบสั่งขายเต็มแถว + ลูกที่ cascade ตาม — `[{ ...order, lines, installments, lineZones, issuedDocuments, signatureEvidence }]` */
+export async function snapshotSalesOrdersForAudit(supabase, orderIds) {
+  const ids = [...new Set((orderIds || []).filter(Boolean))];
+  if (!ids.length) return [];
+  const [orders, lines, installments, lineZones, proofs] = await Promise.all([
+    rowsOf('ใบสั่งขาย', fetchAllResult(() => supabase.from('sales_orders').select('*').in('id', ids).order('id', { ascending: true }))),
+    rowsOf('บรรทัดใบสั่งขาย', fetchAllResult(() => supabase.from('sales_order_lines').select('*')
+      .in('salesOrderId', ids).order('id', { ascending: true }))),
+    rowsOf('งวดชำระ', fetchAllResult(() => supabase.from('sales_order_installments').select('*')
+      .in('salesOrderId', ids).order('id', { ascending: true }))),
+    rowsOf('แพ็คต่อรอบของใบสั่งขาย', fetchAllResult(() => supabase.from('sales_order_line_zones').select('*')
+      .in('salesOrderId', ids).order('id', { ascending: true }))),
+    documentProofsOf(supabase, 'sales_order', ids),
+  ]);
+  const linesOf = groupBy(lines, 'salesOrderId');
+  const installmentsOf = groupBy(installments, 'salesOrderId');
+  const zonesOf = groupBy(lineZones, 'salesOrderId');
+  return orders.map((order) => ({
+    ...order,
+    lines: linesOf(order.id),
+    installments: installmentsOf(order.id),
+    lineZones: zonesOf(order.id),
+    issuedDocuments: proofs.issued(order.id),
+    signatureEvidence: proofs.evidence(order.id),
+  }));
+}
+
+/** ใบเสนอราคาทุกใบของดีล + ใบสั่งขายที่หายตาม (ทั้งตาม quotationId ที่ RPC วนลบ และ dealId ที่ FK cascade) */
+export async function snapshotDealDocumentsForAudit(supabase, dealId) {
+  const quotes = await rowsOf('ใบเสนอราคาของดีล', fetchAllResult(() => supabase.from('quotations').select('*')
+    .eq('dealId', dealId).order('id', { ascending: true })));
+  const quoteIds = quotes.map((quote) => quote.id);
+  const [lines, proofs, ordersOfDeal, ordersOfQuotes] = await Promise.all([
+    quoteIds.length
+      ? rowsOf('บรรทัดใบเสนอราคา', fetchAllResult(() => supabase.from('quotation_lines').select('*')
+        .in('quotationId', quoteIds).order('id', { ascending: true })))
+      : [],
+    documentProofsOf(supabase, 'quotation', quoteIds),
+    rowsOf('ใบสั่งขายของดีล', fetchAllResult(() => supabase.from('sales_orders').select('id')
+      .eq('dealId', dealId).order('id', { ascending: true }))),
+    quoteIds.length
+      ? rowsOf('ใบสั่งขายของใบเสนอราคา', fetchAllResult(() => supabase.from('sales_orders').select('id')
+        .in('quotationId', quoteIds).order('id', { ascending: true })))
+      : [],
+  ]);
+  const linesOf = groupBy(lines, 'quotationId');
+  const salesOrders = await snapshotSalesOrdersForAudit(
+    supabase, [...ordersOfDeal, ...ordersOfQuotes].map((row) => row.id),
+  );
+  return {
+    quotations: quotes.map((quote) => ({
+      ...quote,
+      lines: linesOf(quote.id),
+      issuedDocuments: proofs.issued(quote.id),
+      signatureEvidence: proofs.evidence(quote.id),
+    })),
+    salesOrders,
+  };
+}
+
+/** summary ของ audit ต่อใบ — `cause` เช่น "การลบดีล DL-261000645 (บังคับลบ — สิทธิ์ผู้ดูแลระบบ)" */
+export function documentCascadeSummary(kind, row, cause) {
+  const label = kind === 'sales_order'
+    ? `ใบสั่งขาย ${row?.orderNumber || row?.id}`
+    : `ใบเสนอราคา ${row?.quoteNumber || row?.id}`;
+  const status = row?.status ? ` (สถานะ ${row.status})` : '';
+  return `ลบ${label}${status} พ่วง${cause}`;
+}
+
 // ── QUOTATION ─────────────────────────────────────────────────────────
 // preview การลบใบเสนอราคาหนึ่งใบ. quotation_lines cascade เอง (FK); sales_orders
 // .quotationId เป็น ON DELETE CASCADE → Sale Order (แหล่งยอด Actual) หายตามทันที
