@@ -121,14 +121,38 @@ test('คำร้อง: ไม่มีวันรับปาก · ไม�
   assert.deepEqual(requestOverdueNotices([request({ assigneeId: null, assigneeName: '', acknowledgedById: null })], { todayIso: TUE }), []);
   assert.deepEqual(requestOverdueNotices([request()], { todayIso: TUE, directory: new Map([['U-RD', { disabled: true }]]) }), []);
   assert.deepEqual(requestOverdueNotices([request({ committedDueDate: '2026-11-10' })], { todayIso: TUE }), []);
-  const [survey] = requestOverdueNotices([request({ kind: 'site_survey' })], { todayIso: TUE });
+  const [survey] = requestOverdueNotices([request({ kind: 'site_survey', committedResultDate: '2026-11-21' })], { todayIso: TUE });
   assert.equal(survey.href, '/service/surveys/RQ-1');
 });
 
 test('คำร้อง: ตาผู้ขอไม่ยิง — ตัวตัดสินเดียวกับคิว (`requestDueOwed`)', () => {
-  const src = readFileSync('src/lib/requests/dueBell.js', 'utf8');
+  // ตัดคอมเมนต์ก่อน — หัวไฟล์เล่าว่าทำไมใบประเมินไม่ใช้ committedDueDate (คำอธิบาย ไม่ใช่โค้ดที่อ่านค่า)
+  const src = readFileSync('src/lib/requests/dueBell.js', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   assert.match(src, /requestDueOwed\(request\)/);
   assert.doesNotMatch(src, /committedDueDate/, 'ห้ามอ่านวันรับปากดิบ — ต้องผ่าน requestDueOwed (ตา · รอบแก้ · ใบจบ)');
+});
+
+/* 🐞 รีวิว 24/11/2026 ก่อน cron เช้าแรก: ใบประเมินพื้นที่ `committedDueDate` = **วันนัดเข้าพื้นที่** · กำหนดของใบคือวันส่งผล */
+test('ใบประเมินพื้นที่: นับวันส่งผลที่ TS รับปาก ไม่ใช่วันนัด — วันนัดผ่านแล้วแต่ผลยังไม่ถึงกำหนด = ไม่ยิง', () => {
+  const survey = (over) => request({ kind: 'site_survey', docNo: 'RQ-SV-26110001', committedDueDate: '2026-11-23', ...over });
+  assert.deepEqual(requestOverdueNotices([survey({ committedResultDate: '2026-11-27' })], { todayIso: TUE }), [],
+    'นัด 23/11 ส่งผล 27/11 · วันนี้ 24/11 = ยังไม่เลย');
+  assert.deepEqual(requestOverdueNotices([survey({ committedResultDate: null })], { todayIso: TUE }), [],
+    'ยังไม่แจ้งวันส่งผล = ไม่ยิง (ไม่ถอยไปวันนัด)');
+  const [late] = requestOverdueNotices([survey({ committedResultDate: '2026-11-22' })], { todayIso: TUE });
+  assert.equal(late.dedupeKey, 'request_overdue:RQ-1:2026-11-22');
+  assert.match(late.title, /^คำร้องเลยกำหนด 2 วัน · RQ-SV-26110001/);
+  assert.match(late.body, /รับปากส่งผล/);
+  assert.equal(late.href, '/service/surveys/RQ-1');
+});
+
+test('คำร้อง: โหลดแถวของใบไม่ขึ้น (ไม่มี items) = ตัดสินตาไม่ได้ ⇒ ไม่ยิง (ไม่เดาว่าเป็นตาฝ่าย)', () => {
+  const { items: _items, ...bare } = request();
+  assert.deepEqual(requestOverdueNotices([bare], { todayIso: TUE }), []);
+  const cron = readFileSync('src/app/api/cron/daily-digest/route.js', 'utf8');
+  assert.match(cron, /committedResultDate/, 'หน้าต่างของ cron ต้องดึงใบประเมินตามวันส่งผลด้วย');
+  assert.match(cron, /โหลดแถวของคำร้องไม่สำเร็จ/, 'โหลดแถวพังต้องขึ้นเป็น error ของรอบ');
+  assert.match(cron, /status\.is\.null,status\.neq\.Completed/, 'งานที่ status ว่างยังไม่เสร็จ — .neq ตัด NULL ทิ้ง');
 });
 
 /* ── งานของฉัน ───────────────────────────────────────────────────────────────── */
@@ -170,6 +194,11 @@ test('ต่อรอบบริการ: "หมดแล้ว" ใช้ก
   assert.equal(soon.dedupeKey, 'renewal:ST1:2026-12-04', 'กุญแจใกล้หมดคงรูปเดิม — แถวที่ยิงไปแล้วไม่เด้งซ้ำ');
   assert.deepEqual(renewalNotices([renewal({ daysLeft: -8, endDate: '2026-11-16' })]), [], 'หมดมานาน = ดูจากทะเบียน');
   assert.equal(renewalNotices([renewal({ daysLeft: -7, endDate: '2026-11-17' })]).length, 1);
+});
+
+test('ต่อรอบบริการ: เจ้าของดีลที่ปิดบัญชีแล้วไม่ได้กระดิ่ง · ไม่รู้จัก ≠ ปิดบัญชี', () => {
+  assert.deepEqual(renewalNotices([renewal()], { directory: new Map([['U-AE', { disabled: true }]]) }), []);
+  assert.equal(renewalNotices([renewal()], { directory: new Map() }).length, 1);
 });
 
 test('ต่อรอบบริการ: กวาดจาก cron ไม่ใช่ตอนเปิดทะเบียน (GET ไม่เขียนข้อมูลแล้ว)', () => {
