@@ -181,3 +181,22 @@ test('🔴 คิวต้องไม่ขึ้น "เลยกำหนด"
   assert.equal(matchesQueueCount(real, 'overdue', { todayIso: today }), true);
   assert.equal(requestDueText(real, { todayIso: today }).overdue, true);
 });
+
+/* ── ใบที่มีวันส่งผลแยก (มติเจ้าของ 24/11/2026 "นับจากวันส่งผล") ─────────────────────────────── */
+import { RESULT_DUE_KINDS, liveCommittedDueDate, liveDueDate as liveDue } from './dueRound.js';
+import { REQUEST_KINDS } from './kinds/registry.js';
+
+test('ประเมินพื้นที่: liveDueDate = วันส่งผล · liveCommittedDueDate = วันนัด · ยังไม่แจ้งวันส่งผล = ยังไม่มีกำหนด', () => {
+  const survey = { kind: 'site_survey', committedDueDate: '2026-11-23', committedResultDate: '2026-11-27', items: [] };
+  assert.equal(liveDue(survey), '2026-11-27');
+  assert.equal(liveCommittedDueDate(survey), '2026-11-23');
+  assert.equal(liveDue({ ...survey, committedResultDate: null }), null, 'ไม่ถอยไปวันนัด');
+  assert.equal(liveDue({ kind: 'scent_dev', committedDueDate: '2026-11-23', committedResultDate: '2026-11-27', items: [] }), '2026-11-23',
+    'หัวข้ออื่นยังนับ committedDueDate');
+});
+
+test('RESULT_DUE_KINDS ตรงกับหัวข้อที่ทะเบียนประกาศวันส่งผลแยก (form.resultDueLabel)', () => {
+  const declared = Object.entries(REQUEST_KINDS).filter(([, meta]) => meta?.form?.resultDueLabel).map(([key]) => key).sort();
+  assert.deepEqual([...RESULT_DUE_KINDS].sort(), declared);
+});
+

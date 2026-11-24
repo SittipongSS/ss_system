@@ -7,11 +7,10 @@
 // ⭐ ครั้งเดียวต่อ (ใบ × วันรับปาก) — เลื่อนวันรับปากใหม่แล้วเลยอีก = กุญแจใหม่ = ยิงใหม่ · ไม่ยิงย้อนใบที่เลยเกิน 7 วัน
 // ⚠️ ฟังก์ชันบริสุทธิ์ — cron daily-digest ดึงใบ (+ แถวของใบ ผ่าน `attachReworkRows`) แล้วส่ง `todayIso` วันไทยเข้ามา
 // ⚠️ ใบประเมินพื้นที่ (`kind: 'site_survey'`) พาไปจอฝ่ายบริการ — ช่างเปิดหน้าคำร้องไม่ได้ (role `ts` ⇒ 403)
-// 🐞 ใบประเมินพื้นที่นับ **วันส่งผล** (`committedResultDate` · มติผู้ใช้ 21/09 mig 0368) ไม่ใช่ `committedDueDate` ซึ่งของใบนี้คือ
-//    **วันนัดเข้าพื้นที่** — รีวิว 24/11/2026 ก่อน cron เช้าแรก: เดิมช่างจะได้ "คำร้องเลยกำหนด" วันถัดจากวันนัด ทั้งที่จอใบประเมิน
-//    (`surveyJob.dueOf` · `surveyControl` due) ยังบอกว่าวันส่งผลอีกหลายวัน
+// ⭐ ใบประเมินพื้นที่นับ **วันส่งผล** — `requestDueOwed` → `liveDueDate` รู้เองแล้ว (มติเจ้าของ 24/11/2026 · ตัวเดียวกับคิว)
+//    🪦 #2115 เคยมีตัวแยก `requestBellDue` ระหว่างที่คิวยังนับจากวันนัด
 import { requestAssignee } from '@/lib/requests/assign';
-import { requestClosureStarted, requestDueOwed, requestNextStep } from '@/lib/requests/queueBoard';
+import { requestDueOwed } from '@/lib/requests/queueBoard';
 import { calendarDays, dueBellFresh } from '@/lib/dueState';
 import { fmtDate } from '@/lib/format';
 
@@ -20,17 +19,6 @@ export const requestOverdueDedupeKey = (requestId, due) => `request_overdue:${re
 
 const SURVEY_REQUEST_KIND = 'site_survey';
 const text = (value) => String(value ?? '').trim();
-
-/**
- * วันที่ฝ่ายยังติดค้างสำหรับกระดิ่ง — ใบทั่วไป = `requestDueOwed` (ตัวเดียวกับคิว) · ใบประเมินพื้นที่ = วันส่งผลที่ TS รับปาก
- * (ตาฝ่ายเท่านั้น · ใบจบ/เริ่มปิดแล้วไม่นับ — ด่านชุดเดียวกับ `requestDueOwed`) · ไม่มีวันส่งผล = ไม่ยิง (ไม่ถอยไปวันนัด)
- */
-export function requestBellDue(request) {
-  if (request?.kind !== SURVEY_REQUEST_KIND) return requestDueOwed(request);
-  const result = text(request.committedResultDate).slice(0, 10);
-  if (!result || requestClosureStarted(request)) return null;
-  return requestNextStep(request)?.owner === 'dept' ? result : null;
-}
 
 /** ลิงก์ของใบ — ใบประเมินพื้นที่ไปจอของฝ่ายบริการ · ที่เหลือไปหน้าคำร้อง */
 export function requestOverdueHref(request) {
@@ -49,7 +37,7 @@ export function requestOverdueNotices(requests = [], { todayIso, directory = nul
     /* ⚠️ ไม่มีแถวของใบ (โหลดแถวพัง — `attachReworkRows` คืนใบเปล่าแทนการ throw) = ตัดสินตาไม่ได้ ⇒ ไม่ยิง
        (ใบไม่มีแถว `requestNextStep` อ่านเป็น "ตาฝ่าย" ⇒ ใบตาผู้ขอจะได้กระดิ่งผิดฝั่ง · รีวิว 24/11/2026) */
     if (!request?.id || !Array.isArray(request.items)) continue;
-    const due = requestBellDue(request);
+    const due = requestDueOwed(request);
     if (!due || !dueBellFresh(due, todayIso)) continue;
     const holder = text(requestAssignee(request).id);
     if (!holder || directory?.get?.(holder)?.disabled) continue;

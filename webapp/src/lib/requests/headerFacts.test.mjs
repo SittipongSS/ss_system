@@ -69,6 +69,24 @@ test('🔴 ประเมินพื้นที่: หัวใบต้อ�
   assert.equal(byKey(facts, 'committedResultDue').value, '24/08/2026');
 });
 
+/* ⭐ มติเจ้าของ 24/11/2026 "นับจากวันส่งผล" — นาฬิกา "เลยกำหนด" ของใบประเมินย้ายจากวันนัดไปวันส่งผล */
+test('ประเมินพื้นที่: นับถอยหลังที่วันส่งผล ไม่ใช่วันนัด — นัดผ่านไปแล้วแต่ผลยังไม่ถึงกำหนด = ไม่แดง', () => {
+  const survey = {
+    ...base, dept: 'TS', kind: 'site_survey', status: 'acknowledged', acknowledgedAt: '2026-08-10T03:00:00Z',
+    committedDueDate: '2026-08-07', committedResultDate: '2026-08-13', items: [],
+  };
+  const facts = requestHeaderFacts(survey, { now: NOW, today: '2026-08-11' });
+  const visit = byKey(facts, 'committedDue');
+  assert.equal(visit.value, '07/08/2026', 'ช่องวันนัดยังโชว์วันนัด');
+  assert.doesNotMatch(String(visit.sub || ''), /เลยกำหนด/, 'วันนัดไม่นับถอยหลังแล้ว');
+  assert.notEqual(visit.tone, 'late');
+  const result = byKey(facts, 'committedResultDue');
+  assert.equal(result.sub, 'อีก 2 วัน');
+  const late = byKey(requestHeaderFacts({ ...survey, committedResultDate: '2026-08-09' }, { now: NOW, today: '2026-08-11' }), 'committedResultDue');
+  assert.equal(late.sub, 'เลยกำหนด 2 วัน');
+  assert.equal(late.tone, 'late');
+});
+
 test('หัวข้อที่มีวันเดียวยังใช้คำกลางเดิม — ไม่มีช่องวันส่งผลโผล่มาเป็นขีดเปล่า', () => {
   const facts = requestHeaderFacts(base, { now: NOW });
   assert.equal(byKey(facts, 'requestedDue').label, 'ผู้ขอต้องการรับงาน');

@@ -14,7 +14,8 @@ import { requestKindMeta, requestResultDateOnly, requestVariants } from '@/lib/m
 import { requestAssignee } from '@/lib/requests/assign';
 import { requestClosure, requestClosureLine, requestClosureStarted } from '@/lib/requests/closure';
 import { committedVsRequested } from '@/lib/requests/headerFacts';
-import { liveDueDate } from '@/lib/requests/dueRound';
+/* ⚠️ วันนัดเข้าพื้นที่ = `liveCommittedDueDate` — `liveDueDate` ของใบประเมินคือวันส่งผลแล้ว (มติเจ้าของ 24/11/2026) */
+import { liveCommittedDueDate } from '@/lib/requests/dueRound';
 import { requestRailSteps } from '@/lib/requests/requestRail';
 import { requestSideLabel, requestWaitLabel } from '@/lib/requests/replyTurn';
 import { accessWindowText } from './sites';
@@ -538,7 +539,7 @@ function dateFacts(request, visit, today, assignee, { finished = false, deskJob 
      · ไม่มีวันที่ขอ ⇒ บรรทัดเทียบ "ตรงกับที่ขอ / ช้ากว่าที่ขอ" ใต้วันนัดหายไปเอง */
   const wish = surveyWishedVisit(request);
   const wanted = wish.known ? String(wish.date).trim() : '';
-  const committed = liveDueDate(request) || '';
+  const committed = liveCommittedDueDate(request) || '';
   const wantedResult = String(request.requestedResultDate || '').trim();
   const committedResult = String(request.committedResultDate || '').trim();
   /* 🐞 **นัดเลยวันแล้วยังขึ้นเขียว "ตรงกับที่ขอ"** (RQ-AS-26090190 · นัด 24/09 ค้าง "นัดไว้" ถึง 25/09) —
@@ -807,7 +808,7 @@ export function surveyJobView({
       });
       if (requeue) queueStep.badge = { label: 'ต้องลงคิวใหม่', tone: 'warning' };
     } else {
-      const liveDue = liveDueDate(request);
+      const liveDue = liveCommittedDueDate(request);
       const gap = liveDue && wish.known ? committedVsRequested(liveDue, wish.date) : null;
       if (gap && stage !== 'overdue' && !finished) queueStep.lines.push({ text: gap.text, tone: gap.tone });
     }
