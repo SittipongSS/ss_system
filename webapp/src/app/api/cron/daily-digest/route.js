@@ -20,20 +20,26 @@ import {
   BILLING_CUTOFF_LOOKAHEAD_DAYS, BILLING_CUTOFF_LOOKBACK_DAYS, billingCutoffNotices, billingDueNotices, calendarMissingNotices,
   dueSoonNotices, overdueNotices,
 } from '@/lib/sales/billingDueNotify';
-import { DUE_BELL_LOOKBACK_DAYS } from '@/lib/dueState';
+import { DUE_BELL_LOOKBACK_DAYS, dueBellFresh } from '@/lib/dueState';
 import { REQUEST_OPEN_STATUSES } from '@/lib/requests/statuses';
 import { attachReworkRows } from '@/lib/requests/reworkRows';
 import { requestOverdueNotices } from '@/lib/requests/dueBell';
 import { taskOverdueNotices } from '@/lib/pm/taskDueBell';
 import { enrichedRenewalRows, loadRenewalContext, rowsOf as renewalRowsOf } from '@/lib/service/renewalContext';
 import { sendRenewalNotices } from '@/lib/service/renewalNotify';
+import { refillNotices, visitOverdueNotices } from '@/lib/service/serviceDueBells';
+import { loadSites } from '@/lib/service/sitesRepo';
+import { assetsForSites, siteScheduleContext, sitesForVisits } from '@/lib/service/visitsRepo';
+import { QUOTE_AWAITING_STATUS, quoteValidityNotices } from '@/lib/sales/quoteValidityBell';
+import { CERTIFICATE_DOC_TYPE, certificateExpiredNotices, latestCertificate } from '@/lib/master/certificateBell';
 import { billingV4SchemaError } from '@/lib/sales/billingPolicySchema';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/server';
 
 export const dynamic = 'force-dynamic';
 /* ⚠️ 120 (เดิม 60) — งวด 3 วันกำหนด (24/11/2026) เพิ่มสี่เรื่องในรอบเดียว (งวดเลยกำหนด · คำร้อง · งาน · ต่อรอบบริการ ซึ่งโหลด
    ไซต์/โซน/รอบขายทั้งระบบ) · ทุกเรื่องวิ่งต่อกัน — หมดเวลากลางทาง = เรื่องที่เหลือเงียบทั้งเช้า */
-export const maxDuration = 120;
+/* 60 → 120 (งวด 3: ไซต์/โซน/รอบขายทั้งระบบ) → 180 (งวด 4: เครื่อง + นัดเติมของทุกไซต์ · ใบเสนอราคา · หนังสือรับรอง) */
+export const maxDuration = 180;
 
 // GET /api/cron/daily-digest — ทวงงานค้างเข้ากล่องแจ้งเตือน **รายคน**
 // งวด 3 วันกำหนด (24/11/2026) เพิ่มอีกสี่: งวดชำระเลยกำหนด · คำร้องเลยวันรับปาก · งานเลยกำหนด · รอบบริการใกล้หมด/หมดแล้ว
@@ -440,6 +446,119 @@ async function notifyRenewals(supabase) {
   return sendRenewalNotices(supabase, rows, { directory });
 }
 
+/* ── งวด 4 วันกำหนด (มติเจ้าของ 24/11/2026 · docs/due-overdue-system.md §12) ───────────────────────────────────────── */
+
+/* นัดค้าง → ช่างหลักของนัด (ไม่มีช่าง/ช่างปิดบัญชี → Planner) · หน้าต่างวันนัด [วันนี้ − 7, เมื่อวาน] · เฉพาะนัดที่ยังเปิด */
+async function notifyVisitOverdue(supabase) {
+  const todayIso = businessDate();
+  const result = await fetchAllResult(() => supabase
+    .from('service_visits')
+    .select('id, code, status, kind, "scheduledDate", "siteId", "assigneeId"')
+    .in('status', ['scheduled', 'in_progress'])
+    .gte('scheduledDate', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
+    .lt('scheduledDate', todayIso)
+    .order('id', { ascending: true }));
+  if (result.error) return { sent: 0, error: result.error.message };
+  if (!result.data?.length) return { sent: 0, reason: `ไม่มีนัดค้างใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
+  const [sitesById, directory] = await Promise.all([
+    sitesForVisits(supabase, result.data),
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const { notices, unrouted } = visitOverdueNotices(result.data, { todayIso, sitesById, directory });
+  const { sent, error } = await sendNotices(supabase, notices);
+  const out = { sent, notices: notices.length };
+  const errors = [];
+  if (error) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${error}`);
+  if (unrouted) errors.push(`นัดค้าง ${unrouted} นัดไม่มีช่างและไม่พบ Planner ที่เปิดอยู่ — ไม่มีใครได้กระดิ่ง`);
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
+/* น้ำหอมใกล้หมด / น่าจะหมดแล้ว รายไซต์ → Planner · ตัวโหลดชุดเดียวกับ /api/service/sites?withSchedule=1 (จอภาพรวมบริการ) */
+async function notifyRefill(supabase) {
+  const todayIso = businessDate();
+  const sites = await loadSites(supabase, { includeInactive: false, kind: 'customer' });
+  if (!sites.length) return { sent: 0, reason: 'ไม่มีไซต์ลูกค้าที่ใช้งานอยู่' };
+  const siteIds = sites.map((site) => site.id);
+  const [scheduleBySite, assetsBySite, directory] = await Promise.all([
+    siteScheduleContext(supabase, siteIds, todayIso),
+    assetsForSites(supabase, siteIds),
+    loadUserDirectory(supabase).catch(() => new Map()),
+  ]);
+  const { notices, unrouted } = refillNotices(sites, { todayIso, assetsBySite, scheduleBySite, directory });
+  if (!notices.length && !unrouted) return { sent: 0, sites: sites.length, reason: 'ไม่มีไซต์ที่น้ำหอมใกล้หมด/เพิ่งหมดโดยไม่มีนัดรองรับ' };
+  const { sent, error } = await sendNotices(supabase, notices);
+  const out = { sent, sites: sites.length, notices: notices.length };
+  const errors = [];
+  if (error) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${error}`);
+  if (unrouted) errors.push(`ไซต์ ${unrouted} แห่งน้ำหอมใกล้หมด/หมดแล้ว แต่ไม่พบ Planner ที่เปิดอยู่`);
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
+/* ใบเสนอราคาที่รอลูกค้าตอบเลยวันยืนราคา → เจ้าของดีล · หน้าต่างวันยืนราคา [วันนี้ − 7, เมื่อวาน] */
+async function notifyQuoteValidity(supabase) {
+  const todayIso = businessDate();
+  const result = await fetchAllResult(() => supabase
+    .from('quotations')
+    .select('id, "quoteNumber", status, "validUntil", "customerName", "totalAmount", "dealId", "createdBy"')
+    .eq('status', QUOTE_AWAITING_STATUS)
+    .gte('validUntil', addDays(todayIso, -DUE_BELL_LOOKBACK_DAYS))
+    .lt('validUntil', todayIso)
+    .order('id', { ascending: true }));
+  if (result.error) return { sent: 0, error: result.error.message };
+  if (!result.data?.length) return { sent: 0, reason: `ไม่มีใบเสนอราคาที่เลยวันยืนราคาใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
+  const dealIds = [...new Set(result.data.map((q) => q.dealId).filter(Boolean))];
+  const deals = await fetchInChunks(dealIds, (chunk) => fetchAllResult(() => supabase
+    .from('sales_deals').select('id, "ownerId", stage').in('id', chunk).order('id', { ascending: true })));
+  const directory = await loadUserDirectory(supabase).catch(() => new Map());
+  // ⚠️ อ่านดีลไม่ขึ้น = ตัดสิน "ดีลปิดแล้ว" ไม่ได้ ⇒ ไม่ยิงทั้งรอบ (ยิงใบของดีล Won/Lost = เตือนผิดคน)
+  if (deals.error) return { sent: 0, error: `โหลดดีลไม่สำเร็จ — ${deals.error.message}` };
+  const dealsById = new Map((deals.data || []).map((deal) => [deal.id, deal]));
+  const notices = quoteValidityNotices(result.data, { todayIso, dealsById, directory });
+  if (!notices.length) return { sent: 0, reason: 'ไม่มีใบที่ต้องเตือน (ดีลปิดแล้ว/ไม่มีเจ้าของ)' };
+  const { sent, error } = await sendNotices(supabase, notices);
+  return error ? { sent, notices: notices.length, error } : { sent, notices: notices.length };
+}
+
+/* หนังสือรับรองบริษัทเพิ่งหมดอายุ → ฝ่ายขายทีมที่ดูแลลูกค้า · คัดลูกค้าจากไฟล์แนบก่อน แล้วค่อยโหลดเฉพาะลูกค้าที่ถึงคิว */
+async function notifyCertificateExpired(supabase) {
+  const todayIso = businessDate();
+  const result = await fetchAllResult(() => supabase
+    .from('attachments')
+    .select('id, "entityId", "docType", metadata')
+    .eq('entityType', 'customer')
+    .eq('docType', CERTIFICATE_DOC_TYPE)
+    .order('id', { ascending: true }));
+  if (result.error) return { sent: 0, error: result.error.message };
+  const attachmentsByCustomer = new Map();
+  for (const row of result.data || []) {
+    if (!attachmentsByCustomer.has(row.entityId)) attachmentsByCustomer.set(row.entityId, []);
+    attachmentsByCustomer.get(row.entityId).push(row);
+  }
+  const dueIds = [...attachmentsByCustomer.entries()]
+    .filter(([, rows]) => {
+      const cert = latestCertificate(rows, todayIso);
+      return cert && dueBellFresh(cert.expiresAt, todayIso);
+    })
+    .map(([customerId]) => customerId);
+  if (!dueIds.length) return { sent: 0, reason: `ไม่มีหนังสือรับรองที่เพิ่งหมดอายุใน ${DUE_BELL_LOOKBACK_DAYS} วัน` };
+  const customers = await fetchInChunks(dueIds, (chunk) => fetchAllResult(() => supabase
+    .from('customers').select('id, "arCode", name, "nameEn", team, teams, "isActive"').in('id', chunk).order('id', { ascending: true })));
+  const directory = await loadUserDirectory(supabase).catch(() => new Map());
+  if (customers.error) return { sent: 0, error: `โหลดลูกค้าไม่สำเร็จ — ${customers.error.message}` };
+  const { notices, unrouted } = certificateExpiredNotices(customers.data || [], {
+    todayIso, attachmentsByCustomer, directory, skipArCodes: [SAHAMIT_AR_CODE],
+  });
+  const { sent, error } = await sendNotices(supabase, notices);
+  const out = { sent, due: dueIds.length, notices: notices.length };
+  const errors = [];
+  if (error) errors.push(`ยิงกระดิ่งไม่สำเร็จ — ${error}`);
+  if (unrouted) errors.push(`ลูกค้า ${unrouted} รายหนังสือรับรองหมดอายุ แต่ไม่มีฝ่ายขายทีมที่ดูแล (ลูกค้าไม่มีทีม)`);
+  if (errors.length) out.error = errors.join(' · ');
+  return out;
+}
+
 /* ⭐ เตือน "ถึงรอบวางบิล" ก่อนวันวางบิลของงวด 0..BILLING_REMIND_DAYS วัน (กำหนดวางบิล · มติเจ้าของ 25–26/09)
    ฝ่ายขาย = หนึ่งแถวต่องวด (เจ้าของดีล + เจ้าของใบ) · FN = แถวสรุปวันละแถว ทุกคนในฝ่าย (มติรอบสาม ข้อ 5)
    กติกา "งวดไหนต้องเตือน ใครได้ ข้อความว่าอะไร" อยู่ที่ `billingDueNotices` (lib/sales/billingDueNotify.js)
@@ -673,6 +792,19 @@ export async function GET(request) {
     results.renewals = await notifyRenewals(supabase);
   } catch (e) {
     results.renewals = { sent: 0, error: e?.message || String(e) };
+  }
+  // งวด 4 วันกำหนด (มติเจ้าของ 24/11/2026)
+  for (const [key, run] of [
+    ['visitOverdue', notifyVisitOverdue],
+    ['refill', notifyRefill],
+    ['quoteValidity', notifyQuoteValidity],
+    ['certificateExpired', notifyCertificateExpired],
+  ]) {
+    try {
+      results[key] = await run(supabase);
+    } catch (e) {
+      results[key] = { sent: 0, error: e?.message || String(e) };
+    }
   }
 
   return Response.json({ ok: true, at: new Date().toISOString(), results });

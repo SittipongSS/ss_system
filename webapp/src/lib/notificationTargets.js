@@ -41,6 +41,9 @@ const HREF = {
   /* เอกสารใบสเปคสินค้า FM-SA-04 (mig 0370) — แจ้งเตือนยื่น/อนุมัติ/ตีกลับพาไปที่หน้าเอกสาร
      ซึ่งเป็นที่ที่กดอนุมัติ/ตีกลับได้จริง (ไม่ใช่หน้าสเปคของสินค้า ที่ไม่มีด่านอนุมัติแล้ว) */
   product_spec_document: (id) => `/sales-planning/spec-documents/${id}`,
+  /* งวด 4 วันกำหนด (24/11/2026) — กระดิ่งส่ง href เองเสมอ · ตัวนี้เป็นทางสำรองของหน้า "ดูทั้งหมด" */
+  quotation: (id) => `/sales-planning/quotations/${id}`,
+  service_site: (id) => `/database/sites/${id}`,
 };
 
 // ป้ายที่ขึ้นหัวแจ้งเตือน — ใช้ชื่อเอกสารจากแถวแม่ถ้ามี ไม่มีก็ใช้ id ดิบเป็นทางสุดท้าย
@@ -65,6 +68,8 @@ export const ENTITY_LABEL = {
   drive_orphans: 'ไฟล์กำพร้าบน Drive',
   service_renewal: 'รอบบริการใกล้หมด',
   product_spec_document: 'รายละเอียดผลิตภัณฑ์ (FM-SA-04)',
+  quotation: 'ใบเสนอราคา',
+  service_site: 'ไซต์บริการ',
 };
 
 export function notificationHref(entityType, entityId) {
