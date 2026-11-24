@@ -76,3 +76,15 @@ export function salesOrderBounceLine(row) {
   const head = rejected.length > 1 ? `บัญชีตีกลับ ${rejected.length} งวด · งวด ${first.seq}` : `บัญชีตีกลับงวด ${first.seq}`;
   return first.rejectedReason ? `${head}: ${first.rejectedReason}` : head;
 }
+
+/* คนที่ต้องแก้ใบตีกลับ — บรรทัดรองของกล่องหัวหน้า "ต้องตามตอนนี้ — ถูกตีกลับ รอทีมแก้" (เจ้าของ 24/11/2026 "หัวหน้ากับ admin ควรเห็น เพราะเป็นผู้ตรวจ")
+   ⭐ เลนเดียวกับกล่องของคนแก้ (`salesOrderBouncedToMe`): ใบที่ AE Sup ตีกลับ → คนสร้างใบ · งวดที่บัญชีตีกลับ → เจ้าของดีล
+     (คนแจ้งชำระงวดนั้นก็เห็นในกล่องของตัวเอง แต่หัวหน้าตามที่เจ้าของดีล — คนรับผิดชอบเงินของดีล)
+   · ใบค่าสรรพสามิตไม่มีดีลของตัวเอง ⇒ เจ้าของดีลของ SO ต้นทาง (`sourceDeal` ของ API) · ไม่รู้ชื่อ = null (ไม่เดา)
+   @returns "รอ {ชื่อ} แก้" | null */
+export function salesOrderBounceFixer(row) {
+  if (!row) return null;
+  const owner = row.deal?.ownerName || row.sourceDeal?.ownerName || "";
+  const name = row.status === "rejected" ? (row.createdByName || owner) : owner;
+  return name ? `รอ ${name} แก้` : null;
+}

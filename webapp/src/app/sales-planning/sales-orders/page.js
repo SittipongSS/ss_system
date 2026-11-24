@@ -24,10 +24,11 @@ import {
   EMPTY_SALES_ORDER_FILTERS, EXCISE_LINE_VIEW, INVOICE_FILTERS, ORIGIN_FILTERS, PAYMENT_FILTERS, SALES_ORDER_CARD_PICKS,
   historicalPendingCount, historicalPendingNote, salesOrderBounced, salesOrderPassesListFilters, salesOrderPickActive,
 } from "@/lib/sales/salesOrderListFilter";
-import { salesOrderBounceLine, salesOrderDocRejectText } from "@/lib/sales/salesOrderMoneyText";
+import { salesOrderBounceFixer, salesOrderBounceLine, salesOrderDocRejectText } from "@/lib/sales/salesOrderMoneyText";
 import { salesOrderListTrack } from "@/lib/sales/salesOrderListTrack";
 import {
-  PENDING_APPROVAL_LABEL, SALES_ORDER_STATUS_LABELS, salesOrderActual, salesOrderAmountKind, splitSalesOrderAmounts,
+  PENDING_APPROVAL_LABEL, SALES_ORDER_STATUS_LABELS, isSalesOrderReviewer, salesOrderActual, salesOrderAmountKind,
+  splitSalesOrderAmounts,
 } from "@/lib/sales/salesOrderWorkflow";
 import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmount";
 import StepTrack from "@/components/ui/StepTrack";
@@ -276,7 +277,8 @@ export default function SalesOrdersPage() {
   const canView = useCan("salesplan:view");
   /* ⚠️ เทียบ role ตรง ๆ ไม่ใช่ isSuperuser — ชุด role = HISTORICAL_KEYER_ROLES ตัวเดียวกับ literal ใน RPC ของ 0374
      (มติ 22/09: ฝ่ายขายทุกตำแหน่ง + Admin) */
-  const canKeyHistorical = canKeyHistoricalSalesOrder({ role: useRole() });
+  const role = useRole();
+  const canKeyHistorical = canKeyHistoricalSalesOrder({ role });
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -554,8 +556,16 @@ export default function SalesOrdersPage() {
     : "ไม่มีใบรอแก้";
   /* ⭐ กล่อง "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้" (เจ้าของ 24/11/2026 "ใบที่ตีกลับสำคัญพอ ๆ กับใบที่รออนุมัติ") — ทรงเดียวกับกล่องรออนุมัติ
      · ธง `_bouncedToMe` ของ server (`salesOrderBouncedToMe`): ใบที่ AE Sup ตีกลับ → คนสร้าง · งวดที่บัญชีตีกลับ → คนแจ้งชำระงวดนั้น + เจ้าของดีล
-     · เปลือกบัญชีไม่มีกล่องนี้ (บัญชีเป็นคนตีกลับ ไม่ใช่คนแก้) · งวดตีกลับพาไปแท็บการชำระ (ปุ่มแจ้งชำระใหม่อยู่ที่นั่น) */
-  const bounceQueue = useMemo(() => (financeShell ? [] : rows.filter((row) => row._bouncedToMe)), [rows, financeShell]);
+     · เปลือกบัญชีไม่มีกล่องนี้ (บัญชีเป็นคนตีกลับ ไม่ใช่คนแก้) · งวดตีกลับพาไปแท็บการชำระ (ปุ่มแจ้งชำระใหม่อยู่ที่นั่น)
+     ⭐ **ผู้ตรวจ (AE Sup · CM · CD · admin — `isSalesOrderReviewer`) เห็นกล่องตามงานแทน** (เจ้าของ 24/11/2026 "หัวหน้ากับ admin ควรเห็น
+       เพราะเป็นผู้ตรวจ" · มติ "เห็นกล่อง ป้ายไม่นับ"): ใบตีกลับ **ทุกใบในขอบเขตที่ดูได้** (`salesOrderBounced` ชุดเดียวกับการ์ด) ·
+       ชื่อ "ต้องตามตอนนี้ — ถูกตีกลับ รอทีมแก้" · แถวบอกคนที่ต้องแก้ (`salesOrderBounceFixer`) · ป้ายบนเมนูของผู้ตรวจ **ไม่นับ** ชุดนี้
+       (ป้าย = งานที่รอตัวเองลงมือ · ชุดของทีมดูที่การ์ด/กล่อง) ⇒ ไม่แตะ `_waitingOnMe` / nav counts */
+  const bounceReviewer = !financeShell && isSalesOrderReviewer(role);
+  const bounceQueue = useMemo(
+    () => (financeShell ? [] : rows.filter((row) => (bounceReviewer ? salesOrderBounced(row) : row._bouncedToMe))),
+    [rows, financeShell, bounceReviewer],
+  );
   const bounceHref = (o) => (o.status === "rejected" ? `/sa/sales-orders/${o.id}` : `/sa/sales-orders/${o.id}?tab=payment`);
 
   /* ── แถวของใบสั่งขายหนึ่งใบ — ใช้ทั้งโหมดปกติและโหมดจัดกลุ่ม ────────────
@@ -864,12 +874,13 @@ export default function SalesOrdersPage() {
         <ApprovalQueue
           items={bounceQueue}
           unit="ใบ"
-          title="ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้"
+          title={bounceReviewer ? "ต้องตามตอนนี้ — ถูกตีกลับ รอทีมแก้" : "ต้องทำตอนนี้ — ถูกตีกลับ รอคุณแก้"}
           primary={(o) => o.orderNumber}
-          secondary={(o) => `${naText(o.customerName)} · ${salesOrderBounceLine(o) || "ถูกตีกลับ"}`}
+          secondary={(o) => [naText(o.customerName), salesOrderBounceLine(o) || "ถูกตีกลับ", bounceReviewer ? salesOrderBounceFixer(o) : null]
+            .filter(Boolean).join(" · ")}
           rowHref={bounceHref}
           renderAction={(o) => (
-            <Button as={Link} href={bounceHref(o)} tone="primary" size="sm">เปิดใบเพื่อแก้</Button>
+            <Button as={Link} href={bounceHref(o)} tone="primary" size="sm">{bounceReviewer ? "เปิดใบ" : "เปิดใบเพื่อแก้"}</Button>
           )}
         />
 
