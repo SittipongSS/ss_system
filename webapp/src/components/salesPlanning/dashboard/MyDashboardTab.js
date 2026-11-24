@@ -299,7 +299,7 @@ export default function MyDashboardTab({ month, allMonths = false }) {
                           <div className={styles.rowMeta}>{item.sub}</div>
                         </td>
                         <td className="num">
-                          <div className={item.overdue ? styles.rowOverdue : undefined}>{item.dueText}</div>
+                          <div className={styles.rowDue} data-tone={item.dueTone}>{item.dueText}</div>
                           {item.due && <div className={styles.rowMeta}>{fmtDate(item.due)}</div>}
                         </td>
                       </DetailRow>

@@ -55,7 +55,9 @@
 .rowTitle { font-weight: var(--fw-medium); }
 .rowUrgent { color: var(--red); margin-left: var(--space-1-5); }
 .rowMeta { color: var(--text-3); font-size: var(--fs-3); }
-.rowOverdue { color: var(--red); }
+/* ข้อความวันในคิวของฉัน — โทนจาก `dueTone` ของแถว (แดง = เลย · เหลือง = ครบวันนี้/อีก 1–3 วัน) */
+.rowDue[data-tone="danger"] { color: var(--red); }
+.rowDue[data-tone="warning"] { color: var(--amber); }
 
 /* หัวกลุ่มความเร่ง — ป้ายบอกตำแหน่ง ไม่ใช่แถวข้อมูล (ทรงเดียวกับคิวคำร้อง) */
 .groupRow td {

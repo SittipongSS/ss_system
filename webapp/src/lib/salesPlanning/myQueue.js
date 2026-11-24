@@ -25,7 +25,7 @@ import { requestNextStep } from '@/lib/requests/queueBoard';
 import { requestReplyTurn } from '@/lib/requests/replyTurn';
 import { nextByStageFor, rowStage } from '@/lib/requests/rowStage';
 import { rowIdleStamps } from '@/lib/requests/rowTrack';
-import { ageText, calendarDays, dueText } from '@/lib/dueState';
+import { DUE_SOON_DAYS, ageText, calendarDays, dueText, dueTone } from '@/lib/dueState';
 
 /* ── ตาผู้ขอในคิวคำร้อง ⇒ แถวของเรา (2026-09-11 · ต่อจาก ม-145) ─────────────────
    🐞 แดชบอร์ดเขียน "รอฝ่ายตอบ" ให้ทุกใบที่ยังไม่ปิด (และ "เลย N วัน" เมื่อวันผ่าน) ขณะที่คิว
@@ -124,7 +124,19 @@ function row({ kind, id, step, title, sub, due, href, urgent = false, basis = 'd
     overdue,
     urgent: !!urgent,
     dueText: dueTextOf(days, due, basis),
+    dueTone: dueToneOf(days, basis, overdue, grace),
   };
+}
+
+/* สีของข้อความวัน — โทนจากตัวกลาง `lib/dueState` (แดง = เลย · เหลือง = ครบวันนี้/อีก 1–3 วัน · ที่เหลือกลาง)
+   🐞 เดิมจอรู้แค่ `overdue` ⇒ "อีก 2 วัน" ในคิวของฉันเป็นสีดำ ขณะที่คิวคำร้องแถวเดียวกันขึ้นเหลือง (ตรวจบน prod 24/11/2026)
+   · `grace` (ลีดเลยวันติดตาม ≤ 2 วันทำการ) = เหลือง ตามมติ 23/11 ข้อ 6 (docs/due-overdue-system.md §8)
+   · `waiting` = วันเริ่มค้าง ไม่ใช่คำสัญญา ⇒ กลาง (อายุงาน ไม่ใช่วันกำหนด) */
+function dueToneOf(days, basis, overdue, grace) {
+  if (days == null || basis === 'waiting') return 'neutral';
+  if (overdue) return 'danger';
+  if (days < 0) return grace ? 'warning' : 'neutral';
+  return dueTone({ key: days === 0 ? 'today' : days <= DUE_SOON_DAYS ? 'soon' : 'later', days });
 }
 
 // ข้อความวันบนคอลัมน์ขวา — "อีก N วัน" อ่านง่ายกว่าวันที่ดิบตอนกวาดตา (กติกาเดียว

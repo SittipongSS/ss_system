@@ -334,3 +334,38 @@ test('🐞 งานที่กำลังทำ (In Progress) = "ทำต่
   const [row] = build({ tasks: [{ id: 't', title: 'งาน', status: 'In Progress', dueDate: '2026-08-20' }] });
   assert.equal(row.step, 'ทำต่อให้จบ');
 });
+
+test('🐞 สีข้อความวัน = โทนตัวกลาง — "อีก 1–3 วัน" เหลืองเหมือนคิวคำร้อง (เดิมดำ · ตรวจบน prod 24/11/2026)', () => {
+  // วันนี้ 12/08 (พุธ)
+  const rows = build({
+    tasks: [
+      { id: 'late', title: 'สาย', dueDate: '2026-08-10' },
+      { id: 'd0', title: 'วันนี้', dueDate: '2026-08-12' },
+      { id: 'd1', title: 'พรุ่งนี้', dueDate: '2026-08-13' },
+      { id: 'd3', title: 'อีกสามวัน', dueDate: '2026-08-15' },
+      { id: 'd4', title: 'อีกสี่วัน', dueDate: '2026-08-16' },
+    ],
+    awaitingSalesOrder: [{ id: 'Q', quoteNumber: 'QT-1', acceptedAt: '2026-08-01' }],
+    leads: [{ id: 'g', status: 'contacted', company: 'เลยนิดหน่อย', followUpAt: '2026-08-11T00:00:00Z' }],
+  });
+  const tone = Object.fromEntries(rows.map((r) => [r.id, r.dueTone]));
+  assert.equal(tone.late, 'danger');
+  assert.equal(tone.d0, 'warning');
+  assert.equal(tone.d1, 'warning');
+  assert.equal(tone.d3, 'warning', 'ช่วงเตือน 3 วัน (DUE_SOON_DAYS) — มติ 23/11 ข้อ 5');
+  assert.equal(tone.d4, 'neutral');
+  // ลีดเลยวันติดตาม ≤ 2 วันทำการ = เหลือง (มติ 23/11 ข้อ 6) ไม่ใช่แดง ไม่ใช่ดำ
+  assert.equal(tone.g, 'warning');
+  // "ค้าง N วัน" = อายุงาน ไม่ใช่คำสัญญา ⇒ กลาง แม้ค้างนาน
+  assert.equal(tone.Q, 'neutral');
+});
+
+test('จอใช้โทนของแถว — ไม่ตัดสินสีจาก overdue เอง', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../../components/salesPlanning/dashboard/MyDashboardTab.js', import.meta.url), 'utf8');
+  assert.match(src, /data-tone=\{item\.dueTone\}/);
+  assert.doesNotMatch(src, /item\.overdue \? styles\./);
+  const css = await readFile(new URL('../../components/salesPlanning/dashboard/DashboardShell.module.css', import.meta.url), 'utf8');
+  assert.match(css, /\.rowDue\[data-tone="warning"\]\s*\{\s*color:\s*var\(--amber\)/);
+  assert.match(css, /\.rowDue\[data-tone="danger"\]\s*\{\s*color:\s*var\(--red\)/);
+});
