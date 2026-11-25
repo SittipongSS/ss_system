@@ -81,7 +81,7 @@ import {
   isDryRun, isForceRequest, salesOrderForcePreview,
 } from '@/lib/forceDelete';
 import { EXCISE_TASK_SYNC } from '@/lib/pm/exciseBillingTaskSync';
-import { exciseDeliveryDateBlocker, syncSourceDeliveryDate } from '@/lib/excise/exciseDeliveryDate';
+import { applySubmitDeliveryDate, exciseDeliveryDateBlocker, loadSourceDelivery, syncSourceDeliveryDate } from '@/lib/excise/exciseDeliveryDate';
 import { loadExciseRegistrationBlocker } from '@/lib/excise/exciseRegistrationGate';
 import { inSalesDocScope, loadScoped, loadSourceDeals } from '@/lib/scopedRow';
 import { ExciseQuotationError, exciseSourceLock, loadExciseRoundState, loadLiveExciseQuotation } from '@/lib/excise/exciseQuotation';
@@ -496,10 +496,16 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     ? await loadSourceDeals(supabase, [order.sourceSalesOrderId])
     : { data: null, error: null };
   if (sourceDealError) throw sourceDealError;
+  /* ⭐ โมดัลยื่นอนุมัติของใบค่าสรรพสามิตโชว์ "วันที่ส่งของ" + กำหนดส่งปัจจุบันของ SO ต้นทางที่จะถูกเขียนทับ (มติเจ้าของ 25/11)
+     · เฉพาะ GET (`extras`) · อ่านไม่ขึ้นไม่บล็อกหน้าใบ — ก้อนถือ `error` ให้โมดัลบอกตรง ๆ */
+  const sourceDelivery = extras && isExciseOrder(order) && order.sourceSalesOrderId
+    ? await loadSourceDelivery(supabase, order.sourceSalesOrderId)
+    : null;
 
   return {
     ...order,
     ...(sourceDeals ? { sourceDeal: sourceDeals.get(order.sourceSalesOrderId) || null } : {}),
+    ...(sourceDelivery ? { sourceDelivery } : {}),
     billingRequests,
     billingRequestsError,
     ...(historicalExtras || {}),
@@ -895,6 +901,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       summary: `แก้กำหนดส่งสินค้าใบสั่งขาย ${before.orderNumber} (อนุมัติแล้ว): ${dateText(before.deliveryDueDate)} → ${dateText(deliveryDue.value)}`,
       request: req,
     });
+    /* ⭐ ใบค่าสรรพสามิต: แก้วันที่ส่งของหลังอนุมัติ = เขียนกลับ SO ต้นทางด้วย (มติเจ้าของ 25/11 "ลิงก์ย้อนกลับทั้งหมด") — ตัวเดียวกับตอนยื่น
+       · รอบล่าสุดเป็นตัวกำหนด (V22) · พลาดไม่ล้มการแก้ (วันของใบนี้บันทึกแล้ว) */
+    if (isExciseOrder(before)) {
+      const synced = await syncSourceDeliveryDate(supabase, data, { user, request: req });
+      if (synced.error) console.error('[sales-orders] เขียนวันที่ส่งของกลับ SO ต้นทางไม่สำเร็จ', synced.error);
+    }
     return ok(data);
   }
 
@@ -1344,7 +1356,11 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (!before.quotation || before.quotation.status !== 'accepted' || !before.sourceSalesOrderId || !before.customerName) {
         return badRequest('เอกสารอ้างอิงไม่ครบ: ต้องมีใบค่าสรรพสามิตที่ Won แล้ว ใบสั่งขายต้นทาง และลูกค้า');
       }
-      /* ⭐ วันที่ส่งของ (มติเจ้าของ 03/11 V21): SA ใส่ก่อนยื่น — RA แบ่งรายการยื่นรายเดือนด้วยวันนี้ · ยื่นสำเร็จเขียนกลับ SO ต้นทาง (ท้าย action) */
+      /* ⭐ วันที่ส่งของ (มติเจ้าของ 03/11 V21): SA ใส่ก่อนยื่น — RA แบ่งรายการยื่นรายเดือนด้วยวันนี้ · ยื่นสำเร็จเขียนกลับ SO ต้นทาง (ท้าย action)
+         · ช่องในโมดัลยื่นแก้วันได้ (มติ 25/11) ⇒ คำขอพก `deliveryDueDate` มา = บันทึกลงใบก่อน แล้วยื่นด้วยแถวใหม่ (updatedAt ใหม่ให้ RPC) */
+      const dated = await applySubmitDeliveryDate(supabase, before, body, { user, request: req });
+      if (dated.error) return fail(dated.error, dated.status);
+      before = dated.order;
       const deliveryGate = exciseDeliveryDateBlocker(before);
       if (deliveryGate) return badRequest(deliveryGate);
       /* ⭐ ทะเบียน (มติเจ้าของ 04/11 V32 · ผ่อน 09/11 V34): ทุก FG ต้องมีทะเบียนที่ RA อนุมัติแล้ว **หรือยื่นถึง RA แล้วรอตรวจ**

@@ -71,7 +71,7 @@ test("Excel: แผ่นงานจริงตรึงหัวตารา�
   const loaded = new ExcelJS.Workbook();
   await loaded.xlsx.load(await wb.xlsx.writeBuffer());
   const ws = loaded.worksheets[0];
-  assert.equal(ws.getCell(3, 1).value, "เดือนที่ยื่น");
+  assert.equal(ws.getCell(3, 1).value, "เดือนที่ส่ง");
   assert.equal(ws.views[0].state, "frozen");
   assert.equal(ws.views[0].ySplit, 3);
   assert.ok(ws.autoFilter, "มีปุ่มกรอง");
@@ -94,7 +94,7 @@ test("พิมพ์ตามจอ: หัวเดือน (ยอดเด�
   assert.deepEqual(sections.map((r) => r._level), [1, 2, 2, 1, 2, 1, 2]);
   assert.equal(sections[0]._label, "รายการชำระภาษีสรรพสามิต M.11/69 · พ.ย. 2569 · 2 งาน · 3 รายการ · ภาษีรวม 140,609.50", "ยอดเดือนอยู่บรรทัดหลัก · ไม่มี ฿ (ทั้งใบเขียนเงินแบบเดียวกับตาราง)");
   assert.equal(sections[1]._label, "SO-26080009-0 · เซนท์ สตูดิโอ · รอ RA · 1 รายการ · ภาษีรวม 57,000.00\nใบสั่งขายค่าสรรพสามิต SO-X1 อนุมัติแล้ว · ยังไม่มีทะเบียน 1 รายการ — เริ่มยื่นไม่ได้");
-  assert.match(sections[5]._label, /^รายการชำระภาษีสรรพสามิต \(ยังไม่รู้เดือน\) · ยังโหลดรายการสินค้าไม่ได้ · 1 งาน · 0 รายการ · ภาษีรวม 0\.00 \(ไม่รวม 1 งานที่ยังไม่มีรายการ\)$/);
+  assert.match(sections[5]._label, /^รายการชำระภาษีสรรพสามิต \(ยังไม่มีวันที่ส่ง\) · ยังไม่มีวันที่ส่งของ · 1 งาน · 0 รายการ · ภาษีรวม 0\.00 \(ไม่รวม 1 งานที่ยังไม่มีรายการ\)$/);
   const lines = report.rows.filter((r) => !r._kind);
   assert.equal(lines[0].date, "10/11/2026");
   assert.equal(lines[0].taxPerUnit, "95.00\nไม่ตรงสูตร · 8.8% = 97.87", "คำเตือนเดียวกับจอ (บรรทัดรองในช่อง)");
@@ -106,12 +106,12 @@ test("พิมพ์ตามจอ: หัวเดือน (ยอดเด�
 
 test("เปลือกพิมพ์: หัวกลุ่มเป็นแถวเต็มความกว้าง · เงินในช่อง multiline ยังจัดรูป · หัวกลุ่มไม่ห้อยท้ายหน้า · หัวใบบอกตัวกรองเพิ่ม", () => {
   const report = raFilingPrintReport(rows);
-  const html = buildReportPrintHTML(report, { extraRows: [{ label: "เดือนที่ยื่น", value: "ทุกเดือน" }, { label: "สถานะ", value: "" }] }, {}, { toolbar: false });
+  const html = buildReportPrintHTML(report, { extraRows: [{ label: "เดือนที่ส่ง", value: "ทุกเดือน" }, { label: "สถานะ", value: "" }] }, {}, { toolbar: false });
   assert.match(html, /<tr class="sec sec1"><td colspan="9">รายการชำระภาษีสรรพสามิต M\.11\/69/);
   assert.match(html, /<tr class="sec sec2"><td colspan="9">SO-26080009-0/);
   assert.match(html, /<td style="text-align:right">97\.87<\/td>/, "ตัวเลขในคอลัมน์ multiline = รูปเงินของกระดาษ");
   assert.match(html, /95\.00<div class="sub">ไม่ตรงสูตร · 8\.8% = 97\.87<\/div>/);
-  assert.match(html, /เดือนที่ยื่น/);
+  assert.match(html, /เดือนที่ส่ง/);
   assert.equal(reportRowLines(report.rows[0], report.columns), 1, "หัวเดือนบรรทัดเดียว");
   assert.equal(reportRowLines(report.rows[1], report.columns), 2, "หัวงาน = บรรทัดหลัก + ขั้น/ด่าน");
   // หัวกลุ่มต้องไปเปิดหน้าใหม่พร้อมแถวถัดไป — เติมแถวบรรทัดเดียวจนเกือบเต็มหน้า แล้ววางหัวกลุ่ม + แถว
@@ -134,8 +134,8 @@ test("ใบสรุปรายการยื่นถอดแล้ว (เ
   assert.match(page, /\[line\.fgCode, line\.brand, line\.description\]/);
   const table = read("../../components/excise/FilingLinesTable.js");
   assert.doesNotMatch(table, /row\.printKey/, "ช่องติ๊กทุกแถว");
-  // เดือนว่าง = งานที่ยังโหลดรายการไม่ได้ (ไม่ใช่ "ยังไม่มีวันที่ส่งของ" ของรุ่นก่อน V24)
-  assert.match(read("./raFilingMonth.js"), /ยังโหลดรายการสินค้าไม่ได้/);
+  // เดือนว่าง = งานที่ยังไม่มีวันที่ส่ง (มติเจ้าของ 25/11: แบ่งตามเดือนที่ส่ง — กลับมาเป็นคำของรุ่นก่อน V24)
+  assert.match(read("./raFilingMonth.js"), /short: '\(ยังไม่มีวันที่ส่ง\)', long: 'ยังไม่มีวันที่ส่งของ'/);
 });
 
 test("หน้า /tax/filings: ปุ่มพิมพ์/Excel ประกอบจากแถวบนจอ — ไม่ใช่รายงานบันทึกการยื่นของ server อีกแล้ว", () => {

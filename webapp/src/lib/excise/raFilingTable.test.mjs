@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  filingDeliveryDate, filingTableBlockers, filingTableLine, filingWorkMonth, loadRaFilingTable, quoteLineTableLine, retailPriceExVat, taxPerUnitCheck, volumeText,
+  filingDeliveryDate, filingDeliveryMonth, filingTableBlockers, filingTableLine, isSahamitFilingOrder, loadRaFilingTable, salesOrderPoDocDate, quoteLineTableLine, retailPriceExVat, taxPerUnitCheck, volumeText,
 } from './raFilingTable.js';
 import { filingDateText, filingMonthLabel } from './raFilingMonth.js';
 import { EXCISE_DELIVERY_DATE_TEXT, exciseDeliveryDateBlocker, syncSourceDeliveryDate } from './exciseDeliveryDate.js';
@@ -55,11 +55,13 @@ test('วันที่ส่งของ (เจ้าของ 04/11): วั
   assert.equal(filingDeliveryDate({ salesOrder: { deliveryDueDate: '2026-10-20' } }), '2026-10-20', 'งานไม่เรียกเก็บ = กำหนดส่งของ SO ลูกค้า');
   assert.equal(filingDeliveryDate({ salesOrder: { orderDate: '2026-10-22T03:00:00Z' } }), null, 'วันที่ PO ไม่ใช่วันที่ส่งของ');
   assert.equal(filingDeliveryDate({}), null);
-  // V24: เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย — บันทึก = เดือนที่เริ่มยื่น (วันไทย) · ยังไม่ยื่น = เดือนนี้
-  assert.equal(filingWorkMonth({ record: null, thisMonth: '2026-11' }), '2026-11');
-  assert.equal(filingWorkMonth({ record: { filingStartedAt: '2026-10-31T18:30:00Z', createdAt: '2026-10-31T18:30:00Z' }, thisMonth: '2026-11' }), '2026-11', '01:30 น. ไทย 1 พ.ย.');
-  assert.equal(filingWorkMonth({ record: { createdAt: '2026-10-20T03:00:00Z' }, thisMonth: '2026-11' }), '2026-10');
+  // มติเจ้าของ 25/11 (แทน V24 "เดือนที่ยื่น"): เดือนของตาราง = เดือนของวันที่ส่ง · ไม่มีวัน = null (กองท้าย)
+  assert.equal(filingDeliveryMonth('2026-11-30'), '2026-11');
+  assert.equal(filingDeliveryMonth('2026-12-01'), '2026-12', 'วันในปฏิทิน — ไม่เลื่อนตามเขตเวลา');
+  assert.equal(filingDeliveryMonth(null), null);
+  assert.equal(filingDeliveryMonth('2026-11-30T18:00:00Z'), null, 'รับเฉพาะวันล้วน');
   assert.deepEqual(filingMonthLabel('2026-10'), { short: 'M.10/69', long: 'ต.ค. 2569' });
+  assert.deepEqual(filingMonthLabel(null), { short: '(ยังไม่มีวันที่ส่ง)', long: 'ยังไม่มีวันที่ส่งของ' });
   assert.doesNotMatch(filingDateText({ deliveryDate: '2026-10-22' }), /PO/);
   assert.equal(filingDateText({ deliveryDate: null }), '', 'ยังไม่ส่ง = ว่าง · จอโชว์ "—"');
   assert.doesNotMatch(read('./raFilingMonth.js'), /PO มาวันที่ \$/, 'ไม่มีทางกลับไปเขียน "PO มาวันที่"');
@@ -81,8 +83,9 @@ function fakeDb(tables) {
     from: (table) => {
       const q = { table, filters: [] };
       const builder = {
-        select: () => builder, order: () => builder, range: () => builder,
+        select: () => builder, order: () => builder, range: () => builder, limit: () => builder,
         in: (column, value) => { q.filters.push([column, value]); return builder; },
+        eq: (column, value) => { q.filters.push([column, [value]]); return builder; },
         then: (resolve, reject) => Promise.resolve(run(q)).then(resolve, reject),
       };
       return builder;
@@ -105,7 +108,6 @@ test('ตัวโหลด: คิวที่พร้อม = รายกา
     ],
   });
   const table = await loadRaFilingTable(db, {
-    thisMonth: '2026-11',
     loadQueue: async () => [
       { key: 'excise:SO-E', ready: true, salesOrder: { id: 'SO-A' }, exciseOrder: { id: 'SO-E' } },
       { key: 'upcoming:QT-9', ready: false, salesOrder: { id: 'SO-U' }, exciseQuote: { id: 'QT-9' } },
@@ -124,18 +126,73 @@ test('ตัวโหลด: คิวที่พร้อม = รายกา
   assert.equal(byKey.get('excise:SO-E').deliveryDate, null, 'SO ค่าสรรพสามิตยังไม่มีวัน = ยังไม่ส่ง (ไม่ถอยไปวันของ SO ต้นทาง)');
   assert.deepEqual(byKey.get('excise:SO-E').blockers, ['ยังไม่มีทะเบียน 1 รายการ — เริ่มยื่นไม่ได้']);
   const upcoming = byKey.get('upcoming:QT-9');
-  assert.equal(upcoming.month, '2026-11', 'ยังไม่ยื่น = เดือนนี้ (V24)');
+  assert.equal(upcoming.month, null, 'ยังไม่มีวันที่ส่ง = ไม่อยู่เดือนไหน (มติ 25/11 · เดิม V24 = เดือนนี้)');
   assert.equal(upcoming.deliveryDate, null, 'กำลังมา = ยังไม่ส่ง (ไม่ใช่วันที่ PO)');
   assert.deepEqual(upcoming.lines.map((line) => [line.brand, line.quantity, line.totalTax]), [['COZE', 5040, 9286.07]], 'รายการจากใบเสนอราคา (V25) · ตัดบรรทัดที่ไม่ใช่ค่าภาษี');
-  assert.equal(byKey.get('excise:SO-E').month, '2026-11');
+  assert.equal(byKey.get('excise:SO-E').month, null, 'SO ค่าสรรพสามิตยังไม่มีวัน = กอง "ยังไม่มีวันที่ส่ง"');
   const record = byKey.get('order:ORD-1');
   assert.equal(record.deliveryDate, '2026-10-15', 'บันทึก: วันของ SO ค่าสรรพสามิตของรอบนั้น');
-  assert.equal(record.month, '2026-10', 'บันทึก: เดือนที่เริ่มยื่น');
+  assert.equal(record.month, '2026-10', 'บันทึก: เดือนของวันที่ส่ง (15 ต.ค.) ไม่ใช่เดือนที่เริ่มยื่น (มติ 25/11)');
+  assert.equal(record.deliveryDateKind, 'delivery');
   assert.deepEqual(record.lines.map((line) => [line.brand, line.quantity, line.retailPriceExVat]), [['Scent Studio', 600, 1112.15]]);
   const page = read('../../app/tax/filings/page.js');
   assert.match(page, /useApiList\(canReadTable \? "\/api\/tax\/orders\/table" : null\)/);
   assert.match(page, /const detail = detailByKey\.get\(row\.key\) \|\| null;[\s\S]*?return \{ \.\.\.row, detail, search:/, 'ติดรายการกับแถวงานด้วยคีย์');
   assert.match(page, /if \(month !== "all" && r\.detail\?\.month !== month\) return false;/);
+});
+
+test('สหมิตร (มติเจ้าของ 25/11): ช่องวันที่ = วันที่เอกสาร PO แทนวันที่ส่งของ · แบ่งเดือนด้วยวันนั้น · จอนำด้วย "PO"', async () => {
+  const sahamit = { customerId: 'CUS-S', confirmDocType: 'po', confirmDocDate: '2026-11-05', deliveryDueDate: '2027-01-13' };
+  assert.equal(isSahamitFilingOrder(sahamit, 'CUS-S'), true);
+  assert.equal(isSahamitFilingOrder(sahamit, null), false, 'ไม่รู้รหัสลูกค้าสหมิตร = ไม่ใช่ (ไม่เดา)');
+  assert.equal(isSahamitFilingOrder({ customerId: 'CUS-X' }, 'CUS-S'), false);
+  assert.equal(salesOrderPoDocDate(sahamit), '2026-11-05');
+  assert.equal(salesOrderPoDocDate({ ...sahamit, confirmDocType: 'order_confirmation' }), null, 'เอกสารยืนยันชนิดอื่นไม่ใช่วันที่ PO');
+  assert.equal(filingDeliveryDate({ salesOrder: sahamit, sahamitCustomerId: 'CUS-S' }), '2026-11-05', 'ไม่เรียกเก็บ (รวมในราคา) = วันที่ PO ไม่ใช่กำหนดส่ง');
+  assert.equal(
+    filingDeliveryDate({ exciseOrder: { deliveryDueDate: '2027-01-20' }, salesOrder: sahamit, sahamitCustomerId: 'CUS-S' }),
+    '2026-11-05', 'งานค่าสรรพสามิตของสหมิตรก็ใช้วันที่ PO ของ SO ลูกค้า',
+  );
+  assert.equal(filingDeliveryDate({ salesOrder: { ...sahamit, confirmDocType: null, confirmDocDate: null }, sahamitCustomerId: 'CUS-S' }), null,
+    'สหมิตรที่ไม่มี PO = "—" (ไม่ถอยไปวันส่ง)');
+  assert.equal(filingDeliveryDate({ salesOrder: sahamit }), '2027-01-13', 'ไม่ส่งรหัสสหมิตร = กติกาเดิม');
+  assert.equal(filingDateText({ deliveryDate: '2026-11-05', deliveryDateKind: 'po' }), 'PO 05/11/2026');
+  assert.equal(filingDateText({ deliveryDate: '2026-11-05', deliveryDateKind: 'delivery' }), '05/11/2026');
+
+  const db = fakeDb({
+    orders: [],
+    customers: [{ id: 'CUS-S', arCode: 'AR-109' }, { id: 'CUS-X', arCode: 'AR-001' }],
+    sales_orders: [],
+    products: [],
+    quotation_lines: [],
+  });
+  const table = await loadRaFilingTable(db, {
+    loadQueue: async () => [
+      { key: 'notbilled:SO-S', ready: true, salesOrder: { id: 'SO-S' } },
+      { key: 'notbilled:SO-N', ready: true, salesOrder: { id: 'SO-N' } },
+    ],
+    loadSource: async (_supabase, { salesOrderId }) => ({
+      salesOrder: salesOrderId === 'SO-S'
+        ? { id: 'SO-S', ...sahamit }
+        : { id: 'SO-N', customerId: 'CUS-X', confirmDocType: 'po', confirmDocDate: '2026-10-01', deliveryDueDate: '2026-12-11' },
+      exciseOrder: null,
+      resolved: { lines: [] },
+    }),
+  });
+  const byKey = new Map(table.map((row) => [row.key, row]));
+  assert.deepEqual(
+    [byKey.get('notbilled:SO-S').deliveryDate, byKey.get('notbilled:SO-S').deliveryDateKind, byKey.get('notbilled:SO-S').month],
+    ['2026-11-05', 'po', '2026-11'],
+    'สหมิตร: วันที่ PO 5 พ.ย. ⇒ M.11/69 (ไม่ใช่เดือนส่ง ม.ค.)',
+  );
+  assert.deepEqual(
+    [byKey.get('notbilled:SO-N').deliveryDate, byKey.get('notbilled:SO-N').deliveryDateKind, byKey.get('notbilled:SO-N').month],
+    ['2026-12-11', 'delivery', '2026-12'],
+    'ลูกค้าอื่นที่มี PO: ยังเป็นวันที่ส่งของ',
+  );
+  const loader = read('./raFilingTable.js');
+  assert.match(loader, /supabase\.from\('customers'\)\.select\('id'\)\.eq\('arCode', SAHAMIT_AR_CODE\)\.limit\(1\)/);
+  assert.match(loader, /\.select\('id, "deliveryDueDate", "customerId", "confirmDocType", "confirmDocDate"'\)/, 'กลุ่มกำลังมา/บันทึกอ่านช่อง PO ด้วย');
 });
 
 test('วันที่ส่งของของ SO ค่าสรรพสามิต: ยื่นไม่ได้ถ้าว่าง · ยื่นแล้วเขียนกลับ SO ต้นทาง (รอบล่าสุดเขียนทับ · audit)', async () => {

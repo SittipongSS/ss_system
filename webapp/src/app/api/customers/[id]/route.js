@@ -304,7 +304,7 @@ export async function PATCH(request, { params }) {
     // (ด่านนี้กันเฉพาะ "ย้ายรหัสนี้ออก" — การย้ายรหัสนี้ไปให้รายอื่นถูกกันด้วยด่านซ้ำอยู่แล้ว)
     if (customer.arCode === SAHAMIT_AR_CODE) {
       return Response.json(
-        { error: `${SAHAMIT_AR_CODE} เป็นรหัสของลูกค้าสหมิตรซึ่งถูกอ้างไว้ในโค้ดของโมดูลสหมิตร — แก้รหัสนี้ต้องแก้ค่าคงที่ SAHAMIT_AR_CODE (src/lib/sahamit/server.js) พร้อมกัน` },
+        { error: `${SAHAMIT_AR_CODE} เป็นรหัสของลูกค้าสหมิตรซึ่งถูกอ้างไว้ในโค้ดของโมดูลสหมิตร — แก้รหัสนี้ต้องแก้ค่าคงที่ SAHAMIT_AR_CODE (src/lib/sahamit/customer.js) พร้อมกัน` },
         { status: 400 },
       );
     }

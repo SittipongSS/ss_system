@@ -180,6 +180,8 @@ import ExciseNotBilledDialog from "@/components/excise/ExciseNotBilledDialog";
 import ExciseRoundsCard from "@/components/excise/ExciseRoundsCard";
 import ExciseRemainderDialog from "@/components/excise/ExciseRemainderDialog";
 import RegistrationWorkModal from "@/components/excise/RegistrationWorkModal";
+import ExciseSubmitDeliveryDate from "@/components/excise/ExciseSubmitDeliveryDate";
+import { EXCISE_DELIVERY_DATE_TEXT } from "@/lib/excise/exciseDeliveryDate";
 import { statusMeta } from "@/lib/excise/workflow";
 import { exciseNotBilledTitle } from "@/lib/excise/exciseNotBilled";
 import {
@@ -447,6 +449,9 @@ export default function SalesOrderDetailPage() {
   const [rejectForm, setRejectForm] = useState(null);
   const [workflowForm, setWorkflowForm] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
+  /* วันที่ส่งของในโมดัลยื่น SO ค่าสรรพสามิต (มติ 25/11) — คู่ ref ท่าเดียวกับ overrideReasonRef */
+  const [submitDeliveryDate, setSubmitDeliveryDate] = useState("");
+  const submitDeliveryDateRef = useRef("");
   const [confirmBusy, setConfirmBusy] = useState(false);
   /* เหตุผล Admin Override ของใบย้อนหลัง — ไม่บังคับ (พาริตี้กับสาย pipeline · มติ 2026-07-25)
      ⚠️ เก็บคู่กับ ref เพราะ `confirmState.action` ถูกสร้างตอน *เปิด* โมดัล ⇒ closure ของมันเห็นค่าตอนนั้น
@@ -839,8 +844,13 @@ export default function SalesOrderDetailPage() {
     submitLineRef.current = null;
     const warningLines = submitWarningsRef.current;
     submitWarningsRef.current = [];
+    /* ⭐ SO ค่าสรรพสามิต: ช่อง "วันที่ส่งของ" ในโมดัลก่อนกดยื่น — เห็น + แก้ได้ (มติเจ้าของ 25/11) · ตั้งต้นจากวันของใบ (ว่าง = ให้ใส่ในโมดัล)
+       ปุ่มยื่นส่งวันในช่องไปกับคำขอ (route บันทึกลงใบก่อนยื่น · `applySubmitDeliveryDate`) — อ่านผ่าน ref เพราะ action ถูกสร้างตอนเปิดโมดัล */
+    const exciseDelivery = isExciseOrder(order);
+    if (exciseDelivery) chooseSubmitDeliveryDate(order.deliveryDueDate || "");
     setConfirmState({
       title: "ยื่นอนุมัติ ใบสั่งขาย",
+      exciseDelivery,
       description: `ยืนยันยื่น ${order.orderNumber} ให้ AE Supervisor ตรวจอนุมัติหรือไม่`,
       detail: [
         ...submitMoneyLines(),
@@ -852,8 +862,24 @@ export default function SalesOrderDetailPage() {
          ของคอลัมน์ ⇒ โมดัลบังไว้หมด · ด่านของ `submit` ตอบหลายข้อจริง ๆ (ใบขยับไปแล้ว · ยังไม่มี
          หลักฐานยืนยันคำสั่งซื้อ · บรรทัดไม่ครบ) ⇒ เงียบแล้วคนกดจะกดซ้ำโดยไม่รู้ว่าติดอะไร */
       showsError: true,
-      action: () => requestAction("submit"),
+      action: exciseDelivery ? submitWithDeliveryDate : () => requestAction("submit"),
     });
+  }
+
+  /* ช่องวันที่ส่งของในโมดัลยื่น (SO ค่าสรรพสามิต) — state วาดช่อง · ref ให้ `confirmState.action` (สร้างตอนเปิด) อ่านค่าล่าสุด */
+  function chooseSubmitDeliveryDate(next) {
+    submitDeliveryDateRef.current = next || "";
+    setSubmitDeliveryDate(next || "");
+  }
+
+  /* ยื่นใบค่าสรรพสามิตพร้อมวันในช่อง — ว่าง = ไม่ยิง บอกเหตุในโมดัล (โมดัลค้าง) · ด่านจริงอยู่ที่ route ตัวเดียวกัน */
+  async function submitWithDeliveryDate() {
+    const date = submitDeliveryDateRef.current;
+    if (!date) {
+      setError(EXCISE_DELIVERY_DATE_TEXT.required);
+      return false;
+    }
+    return requestAction("submit", { deliveryDueDate: date });
   }
 
   /* ⭐ งานบริการรายบรรทัด (mig 0392 · แผน §2.10 ข้อ 5) — ด่านก่อนเปิดโมดัล "ยื่นอนุมัติ" / "ยื่นตรวจงานบริการ"
@@ -893,6 +919,7 @@ export default function SalesOrderDetailPage() {
 
   /* ปุ่ม "ยื่นอนุมัติ" ของใบ pipeline — ใบที่ไม่ต้องตั้งงานบริการเปิดโมดัลเดิมทันที */
   async function pressSubmit() {
+    /* SO ค่าสรรพสามิตที่ยังไม่มีวันที่ส่งของ = เปิดโมดัลให้ใส่ในช่อง (มติ 25/11 "แก้ได้ในป๊อป") · ยื่นว่างไม่ได้ (`submitWithDeliveryDate` + route) */
     if (!setupRequired) {
       submitLineRef.current = null;
       submitWarningsRef.current = [];
@@ -3654,6 +3681,14 @@ export default function SalesOrderDetailPage() {
           <ActualModeChoice
             value={ACTUAL_MODE_NONE}
             lockedReason={EXCISE_ACTUAL_LOCK_REASON}
+            disabled={confirmBusy}
+          />
+        ) : confirmState?.exciseDelivery ? (
+          <ExciseSubmitDeliveryDate
+            order={order}
+            source={order.sourceDelivery}
+            value={submitDeliveryDate}
+            onChange={chooseSubmitDeliveryDate}
             disabled={confirmBusy}
           />
         ) : null}

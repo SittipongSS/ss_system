@@ -235,7 +235,7 @@ export function buildReportPrintHTML(report, meta = {}, company, options = {}) {
       meta.from || meta.to ? { label: 'ช่วงวันที่', value: `${meta.from || '...'} – ${meta.to || '...'}` } : null,
       // ชื่อลูกค้ายาวได้เกินคอลัมน์ ⇒ แถวเดียวของหัวใบที่ยอมให้ตัดบรรทัด (ไม่ใช่เลขที่)
       meta.customerName ? { label: 'ลูกค้า', value: meta.customerName, wrap: true } : null,
-      // ตัวกรองอื่นที่ผู้เรียกบอกเอง (ตารางยื่นชำระ: เดือนที่ยื่น · สถานะ) — `[{ label, value }]`
+      // ตัวกรองอื่นที่ผู้เรียกบอกเอง (ตารางยื่นชำระ: เดือนที่ส่ง · สถานะ) — `[{ label, value }]`
       ...(meta.extraRows || []).filter((row) => row?.value),
       { label: 'พิมพ์เมื่อ', value: printedAt },
     ],
