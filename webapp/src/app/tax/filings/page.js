@@ -27,12 +27,11 @@ import FilingLinesTable from "@/components/excise/FilingLinesTable";
 import Select from "@/components/ui/Select";
 import { FILING_MONTH_FILTER_LABEL, filingMonthLabel } from "@/lib/excise/raFilingMonth";
 import FilterBar from "@/components/excise/FilterBar";
-import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 
 
 /* ── งานหนึ่งแถวของรายการ (แผนรื้อสรรพสามิต v3 · มติเจ้าของ 02/11) ─────────────────────────────────────────
    รายการเดียวของ RA: แถวคิวที่ยังไม่มีบันทึก (กำลังมา · รอ RA — คำนวณสดจาก /api/tax/orders/queue) + บันทึกการยื่น
-   (กำลังยื่น · ชำระแล้ว — /api/orders) · ไม่มีขั้นสร้างใบยื่น: กดงานรอ RA = เปิดงาน (`?start=`) แล้วกด "เริ่มยื่น"
+   (กำลังยื่น · ชำระแล้ว — /api/orders) · ไม่มีขั้นสร้างใบยื่น: กดงานรอ RA = เปิดหน้างาน (/tax/filings/work/<คีย์> · 25/11) แล้วกด "เริ่มยื่น"
    ⚠️ ใบสรุปรายการยื่น (V9 · `printKey`) ถอดแล้ว 04/11 (เจ้าของ: "ยื่นกรมยื่นให้ระบบกรมอยู่แล้ว") — ทุกแถวติ๊กได้ ใช้กับพิมพ์/Excel */
 const queueWorkRow = (row) => ({
   key: row.key,
@@ -120,10 +119,12 @@ function FilingsPageInner() {
   /* เดือนที่ส่ง (หัวตารางเดิม "M.11/69" · มติเจ้าของ 25/11 แทน V24 "เดือนที่ยื่น": เดือนของวันที่ส่งของ · สหมิตร = วันที่เอกสาร PO) — "all" = ทุกเดือน */
   const [month, setMonth] = useState("all");
 
-  /* ── งานที่เปิดอยู่ (`?start=<คีย์งาน>`) — มาจากแถวในรายการ หรือคิวบนภาพรวม /tax · `?create=` คือคีย์เดิมของ PR5 ── */
+  /* ── ลิงก์เก่า `?start=<คีย์งาน>` (แจ้งเตือน/บุ๊กมาร์กก่อน 25/11 · `?create=` คือคีย์เดิมของ PR5) → หน้าเต็มของงาน ──
+     เจ้าของ 25/11: งานรอ RA/กำลังมาเป็นหน้าเต็ม + ปุ่มในการ์ดจัดการ (โมดัลเดิมถอดแล้ว) */
   const startKey = searchParams.get("start") || searchParams.get("create") || "";
-  const startRow = useMemo(() => raQueue.find((row) => row.key === startKey) || null, [raQueue, startKey]);
-  const closeWork = () => router.replace("/tax/filings", { scroll: false });
+  useEffect(() => {
+    if (startKey) router.replace(raWorkHref({ key: startKey }));
+  }, [startKey, router]);
 
   /* ── โหลดพัง ≠ ไม่มีงาน · และรายชื่อลูกค้าที่ดึงไม่ได้ ≠ "ไม่มีลูกค้าให้เลือก" ─────────────────────
      ป้ายเดียวของจอ (ท่าเดียวกับ /tax · /database) — ทุก useApiList ของหน้านี้อยู่ในก้อน sources ⇒ ได้ประโยคเดียวกัน
@@ -389,20 +390,6 @@ function FilingsPageInner() {
       )}
       </ListPanel>
 
-      {canFile && startKey && queueLoaded && !startRow && (
-        <StatusNotice tone="warning" className="mt-4" action={<Button size="sm" variant="ghost" onClick={closeWork}>ปิด</Button>}>
-          ไม่พบงานนี้ในคิวรอ RA แล้ว — อาจเริ่มยื่นไปแล้ว หรือใบสั่งขายถูกยกเลิก (ดูในรายการด้านบน)
-        </StatusNotice>
-      )}
-      <SalesOrderFilingModal
-        open={!!startRow}
-        row={startRow}
-        onClose={closeWork}
-        onStarted={async (record) => {
-          await Promise.all([reload(), reloadQueue(), reloadTable()]);
-          router.push(`/tax/filings/${record.id}`);
-        }}
-      />
     </Workspace>
   );
 }

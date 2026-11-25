@@ -23,7 +23,7 @@ test("cap tax:module: RA + แอดมิน + ผู้ดูเท่าน�
 });
 
 test("proxy: หน้า /tax/* เปิดได้เฉพาะคนถือ tax:module · ฝ่ายขายพิมพ์ URL เองก็ถูกเด้ง · API อ่านของหน้าฝ่ายขายยังเปิด", () => {
-  for (const path of ["/tax", "/tax/registrations", "/tax/registrations/REG-1", "/tax/filings", "/tax/filings?start=excise:SX1"]) {
+  for (const path of ["/tax", "/tax/registrations", "/tax/registrations/REG-1", "/tax/filings", "/tax/filings?start=excise:SX1", "/tax/filings/work/excise%3ASX1"]) {
     for (const role of TAX) assert.equal(lockedOut({ role, extraCaps: [] }, path.split("?")[0], "GET", false), false, `${role} ${path}`);
     for (const role of SALES) assert.equal(lockedOut({ role, extraCaps: [] }, path.split("?")[0], "GET", false), true, `${role} ${path}`);
   }

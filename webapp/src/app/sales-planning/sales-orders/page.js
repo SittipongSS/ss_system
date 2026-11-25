@@ -35,6 +35,7 @@ import StepTrack from "@/components/ui/StepTrack";
 import Segmented from "@/components/ui/Segmented";
 import { BUSINESS_LINE_LABELS } from "@/lib/master/businessLines";
 import { apiFetch } from "@/lib/apiFetch";
+import { deliveryShownText } from "@/lib/excise/raFilingMonth";
 import {
   EXCISE_STATUS_NOTE, HISTORICAL_NEW_PATH, canKeyHistoricalSalesOrder, historicalRefsOf, isActualOrder, isExciseOrder, isHistoricalOrder,
 } from "@/lib/sales/historicalOrders";
@@ -150,6 +151,15 @@ const CONTRACT_STATUS_NOTE = {
   awaiting_approval: "รอหัวหน้ารับรอง",
   cancelled: "ยกเลิกแล้ว",
 };
+
+/* แท็บสรรพสามิต (เจ้าของ 25/11): วันที่ส่งของของใบค่าสรรพสามิต · สหมิตร = "PO วันที่เอกสาร" (`row.exciseDelivery` ของ API · กติกาเดียวกับตาราง RA)
+   ไม่มีวัน = แดง "ยังไม่ใส่" — ใบที่ยื่นแล้วต้องมีวันเสมอ (ด่านยื่น) ⇒ ที่ขึ้นแดงคือใบร่าง หรือสหมิตรที่ไม่มีเอกสาร PO */
+function exciseDeliveryCell(row) {
+  const shown = row?.exciseDelivery || null;
+  const text = deliveryShownText(shown?.date, shown?.kind);
+  if (text) return <span title={shown?.kind === "po" ? "สหมิตร: ใช้วันที่เอกสาร PO แทนวันที่ส่งของ" : undefined}>{text}</span>;
+  return <span className="cell-num-bad">{shown?.kind === "po" ? "ยังไม่มีวันที่ PO" : "ยังไม่ใส่"}</span>;
+}
 
 function roundsCell(service) {
   if (!service || !service.roundsSold) return <span className="cell-num-idle">{NA}</span>;
@@ -485,7 +495,9 @@ export default function SalesOrdersPage() {
      · **Actual ขึ้นเฉพาะเปลือกงานขาย** — มติ "บัญชีไม่สนใจ Actual · สนใจยอดจ่าย" ⇒ เปลือกบัญชีไม่มีคอลัมน์นี้
      ⚠️ colSpan ของหัวกลุ่ม/แถวว่างเดินตามตัวนี้ */
   const showActual = !financeShell;
-  const columnCount = 6 + (showActual ? 1 : 0) + (serviceView ? 2 : 0);
+  /* แท็บสรรพสามิต: คอลัมน์ "วันที่ส่งของ" (เจ้าของ 25/11 · บังคับใส่ตอนยื่นแล้ว) — สหมิตร = วันที่เอกสาร PO (`row.exciseDelivery` จาก API) */
+  const exciseView = lineView === EXCISE_LINE_VIEW;
+  const columnCount = 6 + (showActual ? 1 : 0) + (serviceView ? 2 : 0) + (exciseView ? 1 : 0);
   /* ลิ้นชักรายงวด — เปิดจากชิปงวดบนแถว (มติข้อ 3: ฝ่ายขายดูอย่างเดียว) · จำแถวด้วย id แล้วหาแถวสดจาก `rows` ทุกเรนเดอร์ */
   const [drawer, setDrawer] = useState(null);
   /* จอแคบ = การ์ดรายใบ (PR-2) — ตารางเดิมเลื่อนข้างจนช่องเงินอยู่นอกจอบนมือถือ · เส้นเดียวกับ CSS (680px) */
@@ -653,6 +665,8 @@ export default function SalesOrdersPage() {
                     <span className="cell-sub">
                       {historical ? `AE ${naText(row.deal?.ownerName)}` : excise ? `ค่าสรรพสามิต · ${naText(row.sourceDeal?.title)}` : naText(row.deal?.title)}
                     </span>
+                    {/* การ์ดจอแคบไม่มีคอลัมน์แยก — วันที่ส่งของของแท็บสรรพสามิตต่อท้ายลูกค้า */}
+                    {narrow && exciseView && excise ? <span className="cell-sub">วันที่ส่งของ {exciseDeliveryCell(row)}</span> : null}
                   </>
                   </>
     );
@@ -708,6 +722,7 @@ export default function SalesOrdersPage() {
                     {docRest}
                   </td>
                   <td>{customer}</td>
+                  {exciseView && <td className="mono">{exciseDeliveryCell(row)}</td>}
                   {/* ใบที่ยังไม่อนุมัติเคยโชว์ 0.00 เฉย ๆ ซึ่งอ่านเหมือน "ใบนี้ไม่มีมูลค่า"
                       ⇒ หรี่สีลง + บอกเหตุเป็นบรรทัดรอง ไม่ใช่ปล่อยให้เดาเอง
                       ⭐ **สามทาง** (มติผู้ใช้ 2026-09-11 · mig 0353) ผ่าน `salesOrderAmountKind`:
@@ -1037,6 +1052,7 @@ export default function SalesOrdersPage() {
                     ไม่ใช่แกนแยก ⇒ คอลัมน์ของมันว่างครึ่งคอลัมน์และกินความกว้างที่รางต้องการ */}
                 <thead><tr>
                   <th>เอกสาร / ความคืบหน้า</th><th>ลูกค้า</th>
+                  {exciseView && <th>วันที่ส่งของ</th>}
                   {/* ⭐ "ยอดก่อน VAT" ไม่ใช่ "Actual ก่อน VAT" (มติผู้ใช้ 2026-09-11) — คอลัมน์นี้
                       โชว์ยอดของใบทุกสถานะ (รออนุมัติ/ร่าง/ตีกลับ) · แถวไหนเป็น Actual หรือไม่
                       บอกด้วยบรรทัดรองในเซลล์ ส่วน Actual รวมอยู่ที่การ์ดบนหัวหน้า */}

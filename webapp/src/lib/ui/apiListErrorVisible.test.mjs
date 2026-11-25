@@ -1521,6 +1521,8 @@ const DETAIL_SCREENS = [
   /* สหมิตร: เดิมเป็นกล่อง glass-panel สีแดงที่ขึ้นแต่ข้อความดิบ (ไม่มีประโยคไทยเลย) — ย้ายมาใช้กล่องกลาง
      (forecast · material · po · po/[id] · reconcile ย้ายขึ้นไปอยู่ใน SCREENS แล้วเมื่อ 25/09 — ยังอยู่ในทะเบียนนี้ผ่าน `...SCREENS`) */
   "app/sahamit/review/page.js",
+  /* หน้าเต็มของงานรอ RA/กำลังมา (เจ้าของ 25/11 — แทนโมดัลบนหน้ารายการ) · สายเดียว (คิวงาน RA) */
+  "app/tax/filings/work/[key]/page.js",
 ];
 
 const hookSource = () => read("lib/excise/useApiList.js").replace(/\/\*[\s\S]*?\*\/|\/\/.*/g, "");

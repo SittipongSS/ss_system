@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ClipboardCheck, Plus } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import Button from "@/components/ui/Button";
@@ -355,9 +356,16 @@ export default function RegistrationsPage() {
     },
     {
       key: "customerName", label: "ลูกค้า",
+      /* ⭐ เจ้าของ 25/11: ชื่อลูกค้ากดไปหน้ารายละเอียดลูกค้า + เบอร์โทร (สดจากทะเบียนลูกค้า · `customerPhone` ของ API)
+         · ลิงก์อยู่ในเซลล์ของแถวที่กดทั้งแถวได้ — DetailRow ไม่พาไปหน้าทะเบียนเมื่อกดโดนลิงก์ (isInteractiveTarget) */
       render: (r) => (
         <div>
-          <div className="muted">{naText(r.customerName)}</div>
+          {r.customerId ? (
+            <Link prefetch={false} href={`/database/customers/${r.customerId}`} className="linklike" title="เปิดหน้าลูกค้า">
+              {naText(r.customerName)}
+            </Link>
+          ) : <div className="muted">{naText(r.customerName)}</div>}
+          {r.customerPhone ? <div className="cell-sub font-mono">โทร {r.customerPhone}</div> : null}
           {/* เลขผู้เสียภาษีคือสิ่งที่ต้องตรงกับเอกสารสรรพสามิต — อยู่บนแถวเดียวกับชื่อ */}
           <div className="cell-sub font-mono">{naText(r.taxId)}</div>
         </div>
@@ -431,8 +439,10 @@ export default function RegistrationsPage() {
           <StatusBadge status={r.status} />
         </div>
         <div className={styles.cardLine}>
+          {/* การ์ดทั้งใบเป็นลิงก์ไปหน้าทะเบียน ⇒ ลิงก์ลูกค้าซ้อนไม่ได้ (a ใน a) — การ์ดโชว์เบอร์ · ไปหน้าลูกค้าจากตาราง/หน้าทะเบียน */}
           <span className="muted truncate">
             {naText(r.customerName)}
+            {r.customerPhone ? <span className="cell-sub font-mono"> · โทร {r.customerPhone}</span> : null}
             {r.taxId ? <span className="cell-sub font-mono"> · {r.taxId}</span> : null}
           </span>
           <span className="font-mono">{taxText(r)}</span>

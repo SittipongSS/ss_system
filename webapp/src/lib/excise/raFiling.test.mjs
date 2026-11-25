@@ -223,7 +223,7 @@ test('คิวรอยื่นกรม: ใบเสนอราคาค่
   assert.ok(!rows.some((r) => r.key === 'upcoming:QX7'), 'ใบที่ยังไม่อนุมัติไม่ขึ้น');
 });
 
-test('แถวคิว → แถวของ WorkQueue (v3): รอ RA = "เปิดงาน" · กำลังมา = "ดูงาน" — ทั้งสองเปิดงานที่ ?start= · เริ่มยื่นบอกเหตุในโมดัล', async () => {
+test('แถวคิว → แถวของ WorkQueue (v3): รอ RA = "เปิดงาน" · กำลังมา = "ดูงาน" — ทั้งสองเปิดหน้าเต็มของงาน (25/11) · เริ่มยื่นบอกเหตุในการ์ดจัดการ', async () => {
   const { raQueueItem, raQueueText, raWorkHref, UPCOMING_START_BLOCKER } = await import('./raQueueItem.js');
   let opened = 0;
   const readyRow = { key: 'excise:SX1', ready: true, salesOrder: { orderNumber: 'SO-1', customerName: 'ลูกค้า' }, exciseOrder: { orderNumber: 'SO-X1' } };
@@ -238,10 +238,10 @@ test('แถวคิว → แถวของ WorkQueue (v3): รอ RA = "เ
   assert.equal(upcoming.cta, 'ดูงาน');
   upcoming.onClick();
   assert.equal(opened, 2, 'กำลังมาเปิดดูได้ (เริ่มยื่นไม่ได้)');
-  assert.equal(raWorkHref(readyRow), '/tax/filings?start=excise%3ASX1');
+  assert.equal(raWorkHref(readyRow), '/tax/filings/work/excise%3ASX1', 'หน้าเต็มของงาน (เจ้าของ 25/11) — เดิมโมดัล ?start=');
   assert.match(raQueueText(upcomingRow).subtitle, /^QT-X5 · รอลูกค้ารับใบ$/);
   assert.match(UPCOMING_START_BLOCKER, /ใบสั่งขายค่าสรรพสามิตอนุมัติ/);
-  const modal = readFileSync(new URL('../../components/excise/SalesOrderFilingModal.js', import.meta.url), 'utf8');
-  assert.match(modal, /UPCOMING_START_BLOCKER/, 'โมดัลบอกเหตุของแถวกำลังมา');
+  const modal = readFileSync(new URL('../../components/excise/FilingWorkView.js', import.meta.url), 'utf8');
+  assert.match(modal, /UPCOMING_START_BLOCKER/, 'หน้างานบอกเหตุของแถวกำลังมา');
   assert.match(modal, /\/api\/tax\/orders\/queue\?\$\{query\}/, 'พรีวิวจากคิวของ RA');
 });
