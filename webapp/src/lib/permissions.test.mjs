@@ -2,7 +2,7 @@
 // Pure functions → fully testable without a DB. Run: npm test
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, mgmtAccessRule, CLOSED_MODULES, isModuleClosed, canViewProduction, canEditProduction, productionViewRule, productionEditRule, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCost, validateIdentity, resolveTeamAssignment, resolveTeamUpdate, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
+import { RD_ROLES, isRdRole, capsFor as capsForRole, pmTaskScopes, pmTaskEditTier, inPmProjectScope, deleteScope, canDeleteRegistrationRole, canAccessMgmt, mgmtAccessRule, CLOSED_MODULES, isModuleClosed, canViewProduction, canEditProduction, productionViewRule, productionEditRule, canAccessRd, canAccessSahamit, canSeeTaskKpi, can, canUser, capsFor, editScope, viewScope, pmEditScope, sanitizeExtraCaps, canAssignTask, assignableUsersFor, canEditRecord, canViewRecord, caretakerTeamsOf, canDeleteRecord, taskCreditId, canPullTask, canReleaseTask, canChangeTaskStatus, canChangeTaskAssignee, GRANTABLE_CAPS, canApproveMasterData, canEditIssuedMasterCode, canManageProductCategories, canManageDocumentStandards, canManageCommercialPresets, isReadOnlyObserver, canCreateServiceSite, canEditService, canViewCosting, canQuoteCosting, canApproveCosting, redactProductMargin, canSeeProductCostUser, validateIdentity, resolveTeamAssignment, resolveTeamUpdate, attributionTeam, userTeams, primaryTeam, hasTeam, TEAMS, rolesForDepartment, departmentFor, ROLES, ROLE_LABELS, DEPARTMENTS } from './permissions';
 
 test('canManageProductCategories: AE Supervisor และ Admin เท่านั้น', () => {
   assert.equal(canManageProductCategories('admin'), true);
@@ -530,7 +530,7 @@ test('finance (FN) เห็นราคาผลิต แต่ไม่เห
   const fn = { role: 'finance' };
   assert.equal(canUser(fn, 'products:cost'), true);
   assert.equal(canUser(fn, 'products:margin'), false);
-  assert.equal(canSeeProductCost('finance'), true);
+  assert.equal(canSeeProductCostUser({ role: 'finance' }), true);
   const redacted = redactProductMargin(fn, {
     id: 'p1', costPrice: 100, materialCost: 65, laborCost: 5, shippingCost: 1, factoryProfit: 29,
   });
@@ -543,10 +543,10 @@ test('finance (FN) เห็นราคาผลิต แต่ไม่เห
 // ฝ่ายที่ไม่ควรเห็นราคาผลิต — กันไม่ให้ cap ใหม่หลุดไปติดใครโดยไม่ตั้งใจ
 test('ราคาผลิตยังปิดสำหรับ staff / rd / viewer / marketing / secretary', () => {
   for (const role of ['pc', 'pd', 'wh', 'qc', 'ts', 'rd', 'viewer', 'marketing', 'secretary', 'executive']) {
-    assert.equal(canSeeProductCost(role), false, role);
+    assert.equal(canSeeProductCostUser({ role }), false, role);
   }
   for (const role of ['ae', 'ac', 'senior_ae', 'ae_supervisor', 'ra', 'admin', 'finance']) {
-    assert.equal(canSeeProductCost(role), true, role);
+    assert.equal(canSeeProductCostUser({ role }), true, role);
   }
 });
 

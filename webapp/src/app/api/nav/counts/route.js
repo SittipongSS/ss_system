@@ -676,7 +676,7 @@ export const GET = withUser(async ({ user, supabase }) => {
   // งานจากที่ประชุม — ⚠️ กรองปีเหมือนหน้ารายการ (ตัวกรองปีของหน้านั้นไม่มีตัวเลือก
   // "ทั้งหมด") ⇒ ป้ายนับปีปัจจุบันเท่านั้น ไม่งั้นเลขบนเมนูมีของที่หน้าไม่แสดง
   // ⛔ งานบริหารปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) — ไม่ยิงคิวรีนับให้เมนูที่ไม่มีแล้ว
-  if (!isModuleClosed('mgmt') && can(user.role, 'mgmt:view')) {
+  if (!isModuleClosed('mgmt') && canUser(user, 'mgmt:view')) {
     jobs.push(attempt('mgmtTasks', async () => {
       const year = Number(businessDate().slice(0, 4));
       const tasks = await listTasks(supabase, { year });

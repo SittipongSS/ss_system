@@ -1,5 +1,5 @@
 import { withUser, fail, forbidden, ok, unauthorized } from "@/lib/http";
-import { can } from "@/lib/permissions";
+import { canUser } from "@/lib/permissions";
 import { loadRaFilingTable } from "@/lib/excise/raFilingTable";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
    (คีย์เดียวกับแถวงานของหน้า /tax/filings) · สิทธิ์เดียวกับใบสรุปรายการยื่น (ra:view / ra:approve) */
 export const GET = withUser(async ({ user, supabase }) => {
   if (!user) return unauthorized();
-  if (!can(user.role, "ra:view") && !can(user.role, "ra:approve")) return forbidden();
+  /* canUser ไม่ใช่ can(role) — สิทธิ์เสริมรายคน ra:view ต้องเปิดได้เท่าที่จอ /tax/filings เปิดให้ (useCan) */
+  if (!canUser(user, "ra:view") && !canUser(user, "ra:approve")) return forbidden();
   try {
     return ok(await loadRaFilingTable(supabase));
   } catch (error) {
