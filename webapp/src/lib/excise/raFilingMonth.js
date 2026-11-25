@@ -2,11 +2,12 @@
 import { MONTH_LABELS } from '@/lib/datePeriods';
 import { fmtDate } from '@/lib/format';
 
-/** หัวเดือนแบบตารางเดิม — 'YYYY-MM' → `{ short: 'M.10/69', long: 'ต.ค. 2569' }` · ไม่มีเดือน = ยังไม่มีวันที่ */
+/** หัวเดือนแบบตารางเดิม — 'YYYY-MM' → `{ short: 'M.10/69', long: 'ต.ค. 2569' }` · ไม่มีเดือน = ยังไม่มีวันที่ส่ง */
 export function filingMonthLabel(month) {
   const match = /^(\d{4})-(\d{2})$/.exec(String(month || ''));
-  /* ไม่มีเดือน = งานที่ยังโหลดรายการไม่ได้ (เดือน = เดือนที่ยื่น · V24 — ไม่เกี่ยวกับวันที่ส่งของแล้ว) */
-  if (!match) return { short: '(ยังไม่รู้เดือน)', long: 'ยังโหลดรายการสินค้าไม่ได้' };
+  /* ไม่มีเดือน (มติเจ้าของ 25/11: เดือน = เดือนที่ส่ง) = งานที่ยังไม่มีวันที่ส่งของ (กำลังมา · SO ยังไม่ใส่วัน · สหมิตรไม่มีวันที่ PO)
+     หรือยังโหลดรายการไม่ขึ้น */
+  if (!match) return { short: '(ยังไม่มีวันที่ส่ง)', long: 'ยังไม่มีวันที่ส่งของ' };
   const year = Number(match[1]) + 543;
   const index = Number(match[2]) - 1;
   return { short: `M.${Number(match[2])}/${String(year).slice(-2)}`, long: `${MONTH_LABELS[index]} ${year}` };
@@ -32,7 +33,12 @@ export function filingMonthTotals(rows = []) {
   };
 }
 
-/** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = '' (จอโชว์ "—" · เจ้าของ 04/11 เลิกโชว์ "PO มาวันที่ …" แบบตารางเดิม) */
+/** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = '' (จอโชว์ "—" · เจ้าของ 04/11 เลิกโชว์ "PO มาวันที่ …" แบบตารางเดิม)
+ *  ⭐ ยกเว้นสหมิตร (มติ 25/11): วันในช่องคือวันที่เอกสาร PO (`deliveryDateKind` 'po') ⇒ นำด้วย "PO " ให้รู้ว่าไม่ใช่วันส่ง */
 export function filingDateText(detail) {
-  return detail?.deliveryDate ? fmtDate(detail.deliveryDate) : '';
+  if (!detail?.deliveryDate) return '';
+  return detail.deliveryDateKind === 'po' ? `PO ${fmtDate(detail.deliveryDate)}` : fmtDate(detail.deliveryDate);
 }
+
+/** ป้ายใต้ตัวกรอง/หัวรายงาน — คำเดียวกันทุกจุด */
+export const FILING_MONTH_FILTER_LABEL = 'เดือนที่ส่ง';

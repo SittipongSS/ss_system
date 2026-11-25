@@ -20,7 +20,7 @@ const AMEND_NOTE = "แก้ได้โดยไม่ต้องออก Re
  * (วันออกใบ แก้ไม่ได้) และ "กำหนดชำระ" (อยู่ที่งวดในการ์ดการชำระ) · ทั้งสามค่าอยู่ใกล้กัน
  * บนจอ จึงต้องมีคำกำกับบอกว่าอันไหนคืออะไร ไม่ใช่ปล่อยให้เดาจากป้าย
  *
- * ⚠️ **ไม่บังคับกรอก** — AE ที่ยังรอลูกค้าเคาะวันส่งต้องตั้งใบร่างไว้ก่อนได้
+ * ⚠️ **ไม่บังคับกรอก** (ยกเว้นใบค่าสรรพสามิต `excise` — ต้องมีก่อนยื่น · ดาวแดง) — AE ที่ยังรอลูกค้าเคาะวันส่งต้องตั้งใบร่างไว้ก่อนได้
  * ว่าง = "ยังไม่ตกลงวันส่ง" ซึ่งเป็นข้อเท็จจริง ไม่ใช่ข้อมูลขาด ⇒ โหมดอ่านขึ้นข้อความนั้น
  * ตรง ๆ ไม่ใช่ขีดเปล่า ๆ ที่อ่านแล้วไม่รู้ว่าลืมกรอกหรือยังไม่ตกลง
  *
@@ -95,7 +95,8 @@ export default function SalesOrderDeliveryDueField({
             </div>
             {errorText ? <p className={styles.error} role="alert">{errorText}</p> : null}
             {!draft && !busy ? <p className="form-note">{DELIVERY_DUE_AMEND_TEXT.empty}</p> : null}
-            <p className="form-note">{AMEND_NOTE}</p>
+            {/* ใบค่าสรรพสามิต: บันทึกแล้วเขียนกลับ SO ต้นทางด้วย (มติ 25/11) — คนละเรื่องกับ FM-SA-04 ของใบปกติ */}
+            <p className="form-note">{excise ? EXCISE_DELIVERY_DATE_TEXT.amendNote : AMEND_NOTE}</p>
           </div>
         </div>
       );
@@ -104,7 +105,7 @@ export default function SalesOrderDeliveryDueField({
       <div className="readable-field">
         {value
           ? fmtDate(value)
-          : <span className="readable-field-empty">ยังไม่ตกลงวันส่ง</span>}
+          : <span className="readable-field-empty">{excise ? EXCISE_DELIVERY_DATE_TEXT.readEmpty : "ยังไม่ตกลงวันส่ง"}</span>}
       </div>
     );
     return (
@@ -128,7 +129,8 @@ export default function SalesOrderDeliveryDueField({
   }
   return (
     <label>
-      <span>{label}</span>
+      {/* ใบค่าสรรพสามิตบังคับวันก่อนยื่น (มติ 03/11 V21 · ย้ำ 25/11) ⇒ ดาวแดง · ใบปกติเว้นว่างได้ */}
+      <span>{label}{excise ? <> <span className="required-mark">*</span></> : null}</span>
       <DateInput
         value={value || ""}
         disabled={disabled}

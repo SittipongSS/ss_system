@@ -25,7 +25,7 @@ import { Building2 } from "lucide-react";
 import styles from "./page.module.css";
 import FilingLinesTable from "@/components/excise/FilingLinesTable";
 import Select from "@/components/ui/Select";
-import { filingMonthLabel } from "@/lib/excise/raFilingMonth";
+import { FILING_MONTH_FILTER_LABEL, filingMonthLabel } from "@/lib/excise/raFilingMonth";
 import FilterBar from "@/components/excise/FilterBar";
 import SalesOrderFilingModal from "@/components/excise/SalesOrderFilingModal";
 
@@ -117,7 +117,7 @@ function FilingsPageInner() {
   const canReadTable = useCan("ra:view") || canFile;
   const { data: tableRows, loading: lTable, error: tableError, staleError: tableStale, errorDetail: tableDetail, loaded: tableLoaded, reload: reloadTable } = useApiList(canReadTable ? "/api/tax/orders/table" : null);
   const detailByKey = useMemo(() => new Map((tableRows || []).map((row) => [row.key, row])), [tableRows]);
-  /* เดือนที่ยื่นทำจ่าย (หัวตารางเดิม "M.10/69" · มติ 03/11 V24: ยื่นแล้ว = เดือนที่เริ่มยื่น · ยังไม่ยื่น = เดือนนี้) — "all" = ทุกเดือน */
+  /* เดือนที่ส่ง (หัวตารางเดิม "M.11/69" · มติเจ้าของ 25/11 แทน V24 "เดือนที่ยื่น": เดือนของวันที่ส่งของ · สหมิตร = วันที่เอกสาร PO) — "all" = ทุกเดือน */
   const [month, setMonth] = useState("all");
 
   /* ── งานที่เปิดอยู่ (`?start=<คีย์งาน>`) — มาจากแถวในรายการ หรือคิวบนภาพรวม /tax · `?create=` คือคีย์เดิมของ PR5 ── */
@@ -221,7 +221,7 @@ function FilingsPageInner() {
         if (r.kind !== "record") return false;
         if (!withinDateRange(r.createdAt, filedFrom, filedTo)) return false;
       }
-      // เดือนที่ยื่นทำจ่าย (V24) — งานที่ยังโหลดรายการไม่ขึ้นไม่อยู่ในเดือนไหน
+      // เดือนที่ส่ง (มติเจ้าของ 25/11 · แทน "เดือนที่ยื่น" V24) — งานที่ยังไม่มีวันที่ส่ง/ยังโหลดรายการไม่ขึ้นไม่อยู่ในเดือนไหน
       if (month !== "all" && r.detail?.month !== month) return false;
       if (!q) return true;
       return r.search.some((v) => (v || "").toLowerCase().includes(q));
@@ -251,7 +251,7 @@ function FilingsPageInner() {
     extraRows: [
       from || to ? { label: "วันที่ส่งของ", value: rangeText(from, to) } : null,
       filedFrom || filedTo ? { label: "เริ่มยื่น", value: rangeText(filedFrom, filedTo) } : null,
-      { label: "เดือนที่ยื่น", value: month === "all" ? "ทุกเดือน" : `${filingMonthLabel(month).short} · ${filingMonthLabel(month).long}` },
+      { label: FILING_MONTH_FILTER_LABEL, value: month === "all" ? "ทุกเดือน" : `${filingMonthLabel(month).short} · ${filingMonthLabel(month).long}` },
       { label: "สถานะ", value: filterLabel },
       search.trim() ? { label: "ค้นหา", value: search.trim() } : null,
       selected.size ? { label: "เลือก", value: `${exportRows.length} งาน` } : null,
@@ -335,10 +335,10 @@ function FilingsPageInner() {
               onChange: setCustomerIds,
             }]}
           />
-          {/* เดือนที่ยื่นทำจ่าย (หัวตารางเดิม "M.10/69" · มติ 03/11 V24) */}
+          {/* เดือนที่ส่ง (หัวตารางเดิม "M.11/69" · มติเจ้าของ 25/11 แทน "เดือนที่ยื่น" V24 · สหมิตร = เดือนของวันที่เอกสาร PO) */}
           <label className={styles.rangeLabel}>
-            เดือนที่ยื่น
-            <Select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="เดือนที่ยื่น">
+            {FILING_MONTH_FILTER_LABEL}
+            <Select value={month} onChange={(event) => setMonth(event.target.value)} aria-label={FILING_MONTH_FILTER_LABEL}>
               <option value="all">ทุกเดือน</option>
               {monthOptions.map((key) => {
                 const label = filingMonthLabel(key);

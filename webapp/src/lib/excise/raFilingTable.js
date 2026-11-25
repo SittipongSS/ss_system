@@ -5,19 +5,21 @@
 //   V21 วันที่ส่งของ = `deliveryDueDate` ของ SO ค่าสรรพสามิต (SA ใส่ตอนยื่น · `exciseDeliveryDate.js`) · ยังไม่มี = "—"
 //       (เจ้าของ 04/11: เลิกโชว์ "PO มาวันที่" แบบตารางเดิม) · เป็นคอลัมน์บอกข้อมูล (เดือนดู V24 ข้างล่าง)
 //   V23 มีเฉพาะงานที่ถึง RA แล้ว (คิว RA + บันทึกการยื่น) — SO ที่ SA ยังไม่ออกใบไม่อยู่ในตารางนี้
-//   ⭐ แก้ 03/11 รอบสอง (เจ้าของดูจอจริง): **เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย** (V24) — บันทึก = เดือนที่เริ่มยื่น ·
-//      ยังไม่ยื่น (กำลังมา · รอ RA) = เดือนปัจจุบัน · วันที่ส่งของเป็นคอลัมน์บอกข้อมูล ไม่ใช่ตัวแบ่งเดือน
+//   ~~แก้ 03/11 รอบสอง: เดือนของตาราง = เดือนที่ RA ยื่นทำจ่าย (V24)~~ ⇒ ⭐ **มติเจ้าของ 25/11/2026: "รายการชำระภาษีสรรพสามิต M.11/69
+//      คือแบ่งตามเดือนที่ส่ง"** — เดือน = เดือนของวันที่ส่งของ (ทุกงาน รวมบันทึกที่ยื่นแล้ว) · ไม่มีวันที่ส่ง = กองท้าย "ยังไม่มีวันที่ส่ง"
+//      · ⭐ **ยกเว้นสหมิตร (AR-109): โชว์ "วันที่เอกสาร PO" แทนวันที่ส่งของ** (`confirmDocDate` ของ SO ลูกค้าที่ชนิดเอกสารยืนยันเป็น PO)
+//        และแบ่งเดือนด้วยวันนั้น · ตัวเลือกบนจอ "เดือนที่ส่ง" · ช่วง "จาก–ถึง" ใช้วันเดียวกับคอลัมน์
 //      **งานกำลังมาดึงรายการจากใบเสนอราคาค่าสรรพสามิตที่อนุมัติแล้ว** (V25 — ใบมีรายการ ปริมาตร ราคา จำนวนอยู่แล้ว)
 // ⭐ กลุ่ม = แถวงานเดิมของหน้า (คีย์เดียวกับ `queueWorkRow` / `recordWorkRow`) ⇒ หน้าเติมรายการลงแถวด้วยคีย์ ไม่มีตัวนับสองชุด
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
-import { businessDayKey, currentMonth } from '@/lib/datePeriods';
 import { lineUnitsTotal } from '@/lib/sales/linePacks';
 import { productBrandName, productDisplayNameFor } from '@/lib/master/productIdentity';
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { loadFilingSource, loadRaFilingQueue } from '@/lib/excise/raFiling';
 import { productTaxRates } from '@/lib/tax/exciseBilling';
 import { exciseBasePriceIncVat, hasOwnTaxBase } from '@/lib/excise/giftSetExcise';
+import { SAHAMIT_AR_CODE } from '@/lib/sahamit/customer';
 
 const VAT_RATE = 0.07;
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -101,12 +103,20 @@ export function quoteLineTableLine(line, product) {
   });
 }
 
-/** เดือนของงาน (V24) — บันทึก = เดือนที่เริ่มยื่น (วันไทย) · ยังไม่ยื่น = เดือนปัจจุบัน */
-export function filingWorkMonth({ record = null, thisMonth = currentMonth() } = {}) {
-  if (!record) return thisMonth;
-  const day = businessDayKey(record.filingStartedAt || record.createdAt);
-  return day ? day.slice(0, 7) : thisMonth;
+/** เดือนของงาน (มติเจ้าของ 25/11 · แทน V24 "เดือนที่ยื่น") = เดือนของวันในคอลัมน์ (วันที่ส่งของ · สหมิตร = วันที่เอกสาร PO)
+ *  'YYYY-MM-DD' → 'YYYY-MM' · ไม่มีวัน = null (จอรวมไว้กอง "ยังไม่มีวันที่ส่ง") — วันในปฏิทิน ไม่ใช่จุดเวลา ⇒ ตัดสตริงตรง ๆ */
+export function filingDeliveryMonth(date) {
+  const match = /^(\d{4}-\d{2})-\d{2}$/.exec(String(date || ''));
+  return match ? match[1] : null;
 }
+
+/** ใบของสหมิตร (ลูกค้า AR-109) — ตัดสินจาก `customerId` ของ SO ลูกค้า · ไม่รู้รหัสลูกค้าสหมิตร = ไม่ใช่ */
+export const isSahamitFilingOrder = (salesOrder, sahamitCustomerId) => Boolean(
+  sahamitCustomerId && salesOrder?.customerId && salesOrder.customerId === sahamitCustomerId,
+);
+
+/** วันที่เอกสาร PO ของ SO ลูกค้า — เฉพาะเอกสารยืนยันชนิด PO (`confirmDocType` 'po') · ชนิดอื่น/ไม่มี = null (จอโชว์ "—") */
+export const salesOrderPoDocDate = (salesOrder) => (salesOrder?.confirmDocType === 'po' ? salesOrder.confirmDocDate || null : null);
 
 /**
  * วันที่ส่งของของกลุ่ม — 'YYYY-MM-DD' หรือ null (จอโชว์ "—")
@@ -115,7 +125,9 @@ export function filingWorkMonth({ record = null, thisMonth = currentMonth() } = 
  *   ⚠️ ไม่ถอยไปกำหนดส่งของ SO ต้นทาง: แบ่งรอบแล้ว SO ต้นทางถือวันของรอบล่าสุด (V22) ⇒ รอบที่ยังไม่ส่งจะได้วันของรอบอื่น
  * · งานไม่เรียกเก็บ / บันทึกเก่าที่ไม่ผูก SO ค่าสรรพสามิต = กำหนดส่งของ SO ลูกค้า
  */
-export function filingDeliveryDate({ exciseOrder = null, salesOrder = null, viaExcise = Boolean(exciseOrder) } = {}) {
+export function filingDeliveryDate({ exciseOrder = null, salesOrder = null, viaExcise = Boolean(exciseOrder), sahamitCustomerId = null } = {}) {
+  /* ⭐ สหมิตร (มติเจ้าของ 25/11): "ยกเว้นสหมิตรที่จะโชว์เป็นวันที่เอกสาร PO แทน" — ทั้งงานค่าสรรพสามิตและไม่เรียกเก็บ (PO อยู่ที่ SO ลูกค้า) */
+  if (isSahamitFilingOrder(salesOrder, sahamitCustomerId)) return salesOrderPoDocDate(salesOrder);
   if (viaExcise) return exciseOrder?.deliveryDueDate || null;
   return salesOrder?.deliveryDueDate || null;
 }
@@ -135,17 +147,21 @@ const raise = (label, error) => {
 };
 
 /**
- * รายการของทุกงาน RA — `[{ key, deliveryDate, month, lines, blockers }]` (คีย์เดียวกับแถวงานของหน้า)
+ * รายการของทุกงาน RA — `[{ key, deliveryDate, deliveryDateKind, month, lines, blockers }]` (คีย์เดียวกับแถวงานของหน้า)
  * · คิวที่พร้อม (SO ค่าสรรพสามิต / ไม่เรียกเก็บ) = ข้อมูลสดจาก SO ตัวโหลดเดียวกับตอนเริ่มยื่น (`loadFilingSource`)
  * · กำลังมา = ยังไม่มี SO ค่าสรรพสามิต ⇒ ไม่มีรายการ (หัวกลุ่มบอกขั้น) · บันทึก = รายการที่ตรึงในบันทึก
  * อ่านพลาด = throw · งานที่โหลดรายการไม่ได้ (เช่น SO ถูกย้อนอนุมัติระหว่างทาง) = กลุ่มพร้อมข้อความ ไม่ล้มทั้งตาราง
  */
-export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueue, loadSource = loadFilingSource, thisMonth = currentMonth() } = {}) {
-  const [queue, recordResult] = await Promise.all([
+export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueue, loadSource = loadFilingSource } = {}) {
+  const [queue, recordResult, sahamitResult] = await Promise.all([
     loadQueue(supabase, { upcoming: true }),
     fetchAllResult(() => supabase.from('orders').select(ORDER_SELECT).order('id', { ascending: true })),
+    /* รหัสลูกค้าสหมิตร (AR-109) — วันที่ของสหมิตรเป็นวันที่เอกสาร PO (มติ 25/11) */
+    supabase.from('customers').select('id').eq('arCode', SAHAMIT_AR_CODE).limit(1),
   ]);
   raise('โหลดบันทึกการยื่นไม่สำเร็จ', recordResult.error);
+  raise('โหลดลูกค้าสหมิตรไม่สำเร็จ', sahamitResult.error);
+  const sahamitCustomerId = sahamitResult.data?.[0]?.id || null;
   const records = recordResult.data || [];
 
   const groups = [];
@@ -206,7 +222,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   const orderIds = [...new Set(groups.flatMap((group) => [group.salesOrderId, group.exciseOrderId]).filter(Boolean))];
   const [dateResult, productResult] = await Promise.all([
     fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase.from('sales_orders')
-      .select('id, "deliveryDueDate"').in('id', chunk).order('id', { ascending: true }))),
+      .select('id, "deliveryDueDate", "customerId", "confirmDocType", "confirmDocDate"').in('id', chunk).order('id', { ascending: true }))),
     fetchInChunks([...productIds], (chunk) => fetchAllResult(() => supabase.from('products')
       .select('*').in('id', chunk).order('id', { ascending: true }))),
   ]);
@@ -218,7 +234,7 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
   return groups.map((group) => {
     const salesOrder = group.salesOrder || datesById.get(group.salesOrderId) || null;
     const exciseOrder = group.exciseOrder || (group.exciseOrderId ? datesById.get(group.exciseOrderId) || null : null);
-    const deliveryDate = filingDeliveryDate({ exciseOrder, salesOrder, viaExcise: group.viaExcise });
+    const deliveryDate = filingDeliveryDate({ exciseOrder, salesOrder, viaExcise: group.viaExcise, sahamitCustomerId });
     let lines;
     if (group.items) {
       lines = group.items.map((item) => filingTableLine(item.product || null, {
@@ -232,7 +248,9 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
     return {
       key: group.key,
       deliveryDate,
-      month: filingWorkMonth({ record: group.record || null, thisMonth }),
+      /* 'po' = วันในคอลัมน์คือวันที่เอกสาร PO ของสหมิตร (จอเขียนนำว่า "PO") · 'delivery' = วันที่ส่งของ */
+      deliveryDateKind: isSahamitFilingOrder(salesOrder, sahamitCustomerId) ? 'po' : 'delivery',
+      month: filingDeliveryMonth(deliveryDate),
       lines,
       blockers: group.blockers,
     };

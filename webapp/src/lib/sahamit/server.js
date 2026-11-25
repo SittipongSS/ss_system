@@ -15,7 +15,9 @@ import { brandLabel } from '@/lib/master/brands';
 
 // The single customer this module serves. If S&S ever onboards another customer
 // into the same module, this becomes a per-request lookup instead of a constant.
-export const SAHAMIT_AR_CODE = 'AR-109';
+import { SAHAMIT_AR_CODE } from '@/lib/sahamit/customer';
+
+export { SAHAMIT_AR_CODE };
 
 // Returns { ok:true, user, customer, supabase, customerId }
 //      or { ok:false, status, error } — pass the latter to sahamitError().

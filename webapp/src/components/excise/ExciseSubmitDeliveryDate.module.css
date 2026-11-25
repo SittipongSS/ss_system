@@ -1,0 +1,50 @@
+/* กล่องวันที่ส่งของในโมดัลยื่นอนุมัติ SO ค่าสรรพสามิต — เด่นกว่ารายการผลลัพธ์ เพราะเป็นของที่ผู้ยื่นต้องตรวจก่อนกด */
+.box {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3-5);
+  border: 1px solid color-mix(in srgb, var(--blue) 35%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--blue-soft);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--text-2);
+}
+
+.label {
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+}
+
+.effect,
+.note,
+.changed,
+.missing {
+  margin: 0;
+  line-height: var(--lh-relaxed);
+}
+
+.changed {
+  color: var(--blue);
+  font-size: var(--fs-7);
+  font-weight: var(--fw-semibold);
+}
+
+.missing {
+  color: var(--red);
+  font-size: var(--fs-7);
+}
+
+.effect {
+  color: var(--text-1);
+  font-size: var(--fs-7);
+}
+
+.note {
+  color: var(--text-3);
+  font-size: var(--fs-5);
+}

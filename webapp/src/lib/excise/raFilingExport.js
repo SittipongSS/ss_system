@@ -88,12 +88,13 @@ export function raFilingExcelReport(rows = []) {
     title: RA_FILING_EXPORT_TITLE,
     excel: { freezeHeader: true, autoFilter: true },
     columns: [
-      { key: 'month', label: 'เดือนที่ยื่น', width: 13 },
+      { key: 'month', label: 'เดือนที่ส่ง', width: 13 },
       { key: 'salesOrder', label: 'ใบสั่งขาย', width: 17 },
       { key: 'customer', label: 'ลูกค้า', width: 34 },
       { key: 'stage', label: 'เอกสาร / ขั้น', width: 40 },
       { key: 'status', label: 'สถานะ', width: 12 },
-      { key: 'deliveryDate', label: 'วันที่ส่งของ', date: true, width: 13 },
+      /* สหมิตร = วันที่เอกสาร PO (มติเจ้าของ 25/11) — ช่องวันที่เป็นวันล้วน ใส่คำนำ "PO" ไม่ได้ ⇒ บอกที่หัวคอลัมน์ */
+      { key: 'deliveryDate', label: 'วันที่ส่งของ (สหมิตร = วันที่ PO)', date: true, width: 15 },
       { key: 'brand', label: 'แบรนด์', width: 16 },
       { key: 'description', label: 'รายการ', width: 40 },
       { key: 'fgCode', label: 'รหัส FG', width: 22 },

@@ -543,7 +543,10 @@ test('หน้าใบ: สองบรรทัดเรื่องเงิ
   assert.equal(count(page, /submitMoneyLines\(\)/g), 3, 'ประกาศ + โมดัลยื่นปกติ + โมดัลข้าม');
   const confirm = slice(page, 'function openSubmitConfirm() {', '\n  }\n');
   assert.match(confirm, /detail: \[\s*\.\.\.submitMoneyLines\(\),\s*submitLine,\s*\.\.\.warningLines,\s*\]\.filter\(Boolean\)\.join\("\\n"\),/);
-  assert.match(confirm, /action: \(\) => requestAction\("submit"\),/, 'ยื่นปกติไม่ส่งธงข้าม');
+  /* ใบค่าสรรพสามิตยื่นพร้อมวันที่ส่งของจากช่องในโมดัล (มติ 25/11 · `submitWithDeliveryDate`) — ใบอื่นยื่นเปล่าเหมือนเดิม · ทั้งคู่ไม่ส่งธงข้าม */
+  assert.match(confirm, /action: exciseDelivery \? submitWithDeliveryDate : \(\) => requestAction\("submit"\),/, 'ยื่นปกติไม่ส่งธงข้าม');
+  assert.doesNotMatch(confirm, /deferServiceSetup/, 'ยื่นปกติไม่ส่งธงข้าม');
+  assert.doesNotMatch(slice(page, 'async function submitWithDeliveryDate() {', '\n  }\n'), /deferServiceSetup/);
 });
 
 test('หน้าใบ: requestAction — ข้ามไม่ผ่านโหลดก้อนงานบริการใหม่เสมอ + ทักเหตุเมื่อ route ตอบข้อ · ทักหลังสำเร็จอ่านจากแถวที่ route คืน', () => {
