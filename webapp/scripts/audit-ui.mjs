@@ -1596,6 +1596,9 @@ const jsxFontWeightBranchList = [];
 /* ไฟล์ที่ได้รับอนุญาตให้ใช้ `family="matrix"` (คอลัมน์แรกแช่แข็ง) — 9 ไฟล์ 15 จุด
    ณ 2026-07-31 · ดูเหตุผลและข้อควรระวังที่จุดตรวจด้านล่าง */
 const MATRIX_FAMILY_ALLOWLIST = new Set([
+  // สิทธิ์ตามตำแหน่ง (รื้อระบบสิทธิ์งวด 3): 29 ตำแหน่ง × 14 ระบบ เลื่อนแนวนอนแน่นอน — ชื่อตำแหน่งต้องอ่านได้
+  // ตลอดการเลื่อน ไม่งั้นไม่รู้ว่าระดับในช่องเป็นของตำแหน่งไหน · ตรงเจตนาของ matrix
+  "src/components/users/RolePermissionsTab.js",
   "src/app/sahamit/forecast/page.js",
   "src/app/sahamit/reconcile/page.js",
   "src/components/sahamit/CellDetailModal.js",

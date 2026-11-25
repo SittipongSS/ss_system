@@ -23,6 +23,9 @@ import {
   userTeams,
 } from "@/lib/permissions";
 import { GrantSummary } from "@/components/users/GrantManager";
+import RolePermissionsTab from "@/components/users/RolePermissionsTab";
+import { GrantHistoryTab, GrantRegistryTab, useAllGrants } from "@/components/users/GrantRegistry";
+import Tabs from "@/components/ui/Tabs";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Modal from "@/components/Modal";
 import { fmtDate, fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
@@ -62,6 +65,12 @@ const personLabel = (u) => [u.firstName, u.lastName].filter(Boolean).join(" ")
 
 export default function UserManagement() {
   const canManage = useCan("users:manage");
+  /* ⭐ users:view (สิทธิ์เสริมรายคน) เปิดหน้านี้แบบอ่านอย่างเดียวได้ทุกแท็บ (มติข้อ 5 · งวด 3)
+     — ปุ่มทุกปุ่มยังผูก `canManage` · proxy ปล่อย /users ให้ users:view อยู่แล้ว · API อ่านตรวจ canUser */
+  const canView = useCan("users:view") || canManage;
+  /* แท็บ (มติข้อ 1: เรื่องสิทธิ์อยู่หน้าเดียวกับผู้ใช้) — ทะเบียนสิทธิ์เสริมโหลดครั้งเดียวให้สองแท็บใช้ร่วม */
+  const [tab, setTab] = useState("users");
+  const registry = useAllGrants(canView);
   const router = useRouter();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -104,9 +113,9 @@ export default function UserManagement() {
   };
 
   useEffect(() => {
-    if (canManage) fetchUsers();
+    if (canView) fetchUsers();
     else setLoading(false);
-  }, [canManage]);
+  }, [canView]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -324,7 +333,7 @@ export default function UserManagement() {
     }
   };
 
-  if (!canManage) {
+  if (!canView) {
     return (
       <div className="glass-panel p-12 text-center text-[var(--text-3)]">
         คุณไม่มีสิทธิ์เข้าถึงหน้าจัดการผู้ใช้
@@ -350,6 +359,23 @@ export default function UserManagement() {
           ของหัวแผงที่เดียว (เดิมซ้ำสามที่: ป้ายหัวหน้า · คำอธิบาย · Pager) · ปุ่มเพิ่ม = action
           ของเนื้อหาในแผง จึงอยู่ช่อง `actions` (มติผู้ใช้ 2026-08-21) · โหลดครั้งแรกใช้ `loading`
           ของแผง หัวแผงไม่หายระหว่างโหลด */}
+        <Tabs
+          ariaLabel="ส่วนของหน้าผู้ใช้งาน"
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { key: "users", label: "รายชื่อผู้ใช้" },
+            { key: "roles", label: "สิทธิ์ตามตำแหน่ง" },
+            { key: "grants", label: "สิทธิ์เสริมรายคน" },
+            { key: "history", label: "ประวัติการให้สิทธิ์" },
+          ]}
+        />
+        {tab === "roles" && <RolePermissionsTab users={users} />}
+        {tab === "grants" && (
+          <GrantRegistryTab users={users} registry={registry} canManage={canManage} onChanged={fetchUsers} />
+        )}
+        {tab === "history" && <GrantHistoryTab users={users} registry={registry} />}
+        {tab === "users" && (
         <ListPanel
           icon={<Users size={17} aria-hidden="true" />}
           title="รายชื่อผู้ใช้"
@@ -500,6 +526,7 @@ export default function UserManagement() {
             />
           )}
         </ListPanel>
+        )}
 
       {/* Create user modal */}
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="เพิ่มผู้ใช้ใหม่" size="md">
@@ -525,7 +552,7 @@ export default function UserManagement() {
       >
         {editForm && (
           <form onSubmit={handleEdit}>
-            <UserFields form={editForm} setForm={setEditForm} edit user={editUser} onGrantsChanged={fetchUsers} />
+            <UserFields form={editForm} setForm={setEditForm} edit user={editUser} onGrantsChanged={async () => { await fetchUsers(); await registry.reload(); }} />
             <div className="form-action-bar">
               <button type="button" onClick={() => setEditUser(null)} className="btn">
                 ยกเลิก
