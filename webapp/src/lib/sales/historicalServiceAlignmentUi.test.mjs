@@ -60,7 +60,8 @@ test('PR-D ⭐ QuotationReadOnlyLineItems: showPacksPerRound ปิดเป็�
   const rounds = ro.indexOf('{showServiceRounds && lineIsServicePackage(line) ? (');
   const packs = ro.indexOf('{showPacksPerRound && lineIsServicePackage(line) ? (');
   const point = ro.indexOf('{showInstallationPoint ? ');
-  const note = ro.indexOf('{line.metadata?.note ? (');
+  /* หมายเหตุ: ตัวอ่าน `QuoteLineNoteRead` หรือช่องแก้ของใบสั่งขาย (`renderLineNote` · มติเจ้าของ 25/11/2026) — ตำแหน่งเดิม ท้ายสุด */
+  const note = ro.indexOf('{renderLineNote ? renderLineNote(line, index) : <QuoteLineNoteRead');
   assert.ok(point > 0 && packs > point && rounds > packs && note > rounds, 'ป้ายรอบละกี่แพ็คต้องอยู่ก่อนป้ายจำนวนรอบบริการ (มติ 08/10 รอบสอง)');
   const roundsTag = slice(ro, '{showServiceRounds && lineIsServicePackage(line) ? (', ') : null}');
   assert.match(roundsTag, /\{SERVICE_ROUNDS_LABEL\}: <strong>\{line\.serviceRounds \? `\$\{fmtNumber\(line\.serviceRounds\)\} \$\{SERVICE_ROUNDS_UNIT\}` : NA\}<\/strong>/);

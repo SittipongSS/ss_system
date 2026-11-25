@@ -104,10 +104,11 @@ function lockLabel(view, editable) {
  * @param summaryRows / grandTotal / highlightRows ส่งต่อให้กล่องยอดท้ายตาราง (ตัวเดียวกับใบเสนอราคา)
  * @param onReopen `() => void` ปุ่ม "แก้งานบริการ" ของใบที่ประทับแล้ว (หน้าเปิดโมดัลเหตุผลเอง) · ไม่ส่ง = ไม่มีปุ่ม
  * @param reopenBusy หน้ากำลังยิงคำสั่ง/โหลดก้อนสด (ปุ่มดับ — ไม่ใช่ด่านของข้อมูล)
+ * @param renderLineNote ช่องหมายเหตุรายบรรทัดที่แก้ได้ (หน้าใบสั่งขายส่ง `SalesOrderLineNote`) — ส่งต่อให้ตารางราคาตรง ๆ
  */
 export default function SalesOrderServiceLines({
   order, setup, mode, highlight = EMPTY_MAP, onSaved, onDirtyChange, canEditRounds = false, onRoundsSave,
-  summaryRows = [], grandTotal, highlightRows = [], id = "service-setup", onReopen, reopenBusy = false,
+  summaryRows = [], grandTotal, highlightRows = [], id = "service-setup", onReopen, reopenBusy = false, renderLineNote = null,
 }) {
   const view = setup?.data || null;
   const registry = setup?.registry || EMPTY_REGISTRY;
@@ -341,6 +342,7 @@ export default function SalesOrderServiceLines({
           summaryRows={summaryRows}
           grandTotal={grandTotal}
           highlightRows={highlightRows}
+          renderLineNote={renderLineNote}
         />
         {view ? (
           <p className={styles.pointer}>
