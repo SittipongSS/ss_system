@@ -58,6 +58,18 @@ const packsPerRoundText = (value) => {
   return Number.isInteger(packs) && packs > 0 ? `${fmtNumber(packs)} แพ็ค` : NA;
 };
 
+/* หมายเหตุรายบรรทัดฝั่งอ่าน ("หมายเหตุ: …") — ตัวเดียวของตารางอ่านอย่างเดียว และของช่องแก้หมายเหตุบนใบสั่งขาย
+   (`SalesOrderLineNote` · มติเจ้าของ 25/11/2026) ⇒ หน้าตาของหมายเหตุตอนไม่ได้แก้ตรงกันทุกจอ */
+export function QuoteLineNoteRead({ note }) {
+  if (!note) return null;
+  return (
+    <span className={styles.noteReadonly}>
+      <strong>หมายเหตุ:</strong>
+      <ReadableText text={note} lines={2} />
+    </span>
+  );
+}
+
 export function QuotationReadOnlyLineItems({
   lines = [],
   /* ⭐ `showServiceRounds` — โชว์ "จำนวนรอบบริการ: n เดือน" (`SERVICE_ROUNDS_LABEL` · มติ 29/09 · หน่วย `SERVICE_ROUNDS_UNIT` ·
@@ -82,6 +94,10 @@ export function QuotationReadOnlyLineItems({
   grandTotalLabel = "ยอดรวมทั้งสิ้น",
   highlightRows = [],
   emptyText = "ยังไม่มีรายการ",
+  /* ⭐ `renderLineNote(line, index)` — วาดช่องหมายเหตุของบรรทัดแทนตัวอ่านอย่างเดียว (หน้าใบสั่งขายส่ง `SalesOrderLineNote`
+     ที่แก้หมายเหตุได้ · มติเจ้าของ 25/11/2026) · ไม่ส่ง = หมายเหตุอ่านอย่างเดียวตามเดิม (ใบเสนอราคา · ฟอร์มสร้างใบสั่งขาย · ใบย้อนหลัง)
+     ⚠️ ช่องอื่นของตารางยังอ่านอย่างเดียวทั้งหมด — บรรทัดใบสั่งขายเป็น snapshot จากใบเสนอราคา หมายเหตุคือข้อยกเว้นที่มีด่านของตัวเอง */
+  renderLineNote = null,
 }) {
   /* ⭐ คอลัมน์ "แพ็ค/เดือน" (mig 0407 · งวด PR-2 · docs/qt-pack-column.md) — ตัดสิน **ทั้งตาราง** จากบรรทัดเอง:
        มีบรรทัดที่มีเลขแพ็คอย่างน้อยหนึ่งบรรทัด = ทุกแถวได้ช่องนี้ (แถวที่ไม่มีขึ้นขีด) · ไม่มีเลย = ตารางเดิมทุกช่อง (ใบเดิมหน้าตาเดิม)
@@ -129,12 +145,7 @@ export function QuotationReadOnlyLineItems({
                             {SERVICE_ROUNDS_LABEL}: <strong>{line.serviceRounds ? `${fmtNumber(line.serviceRounds)} ${SERVICE_ROUNDS_UNIT}` : NA}</strong>
                           </span>
                         ) : null}
-                        {line.metadata?.note ? (
-                          <span className={styles.noteReadonly}>
-                            <strong>หมายเหตุ:</strong>
-                            <ReadableText text={line.metadata.note} lines={2} />
-                          </span>
-                        ) : null}
+                        {renderLineNote ? renderLineNote(line, index) : <QuoteLineNoteRead note={line.metadata?.note} />}
                       </div>
                     </td>
                     {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}

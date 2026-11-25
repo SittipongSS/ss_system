@@ -110,6 +110,9 @@ import SalesOrderServiceTab from "@/components/salesPlanning/SalesOrderServiceTa
 import SalesOrderDocumentsPanel, { installmentFilesKey, useSalesOrderDocuments } from "@/components/salesPlanning/SalesOrderDocumentsPanel";
 import { orderHasServiceRounds, orderOnServiceLine } from "@/lib/sales/serviceOrders";
 import { serviceRoundsEditError } from "@/lib/sales/serviceRoundsEntry";
+/* หมายเหตุรายการ — แก้ในโหมด "แก้ไขข้อมูล" แล้วไปกับ "บันทึกร่าง" (มติเจ้าของ 25/11/2026 · lib/sales/salesOrderLineNote.js) */
+import { SO_LINE_NOTE_TEXT, changedLineNotes, lineNoteTooLong } from "@/lib/sales/salesOrderLineNote";
+import SalesOrderLineNote from "@/components/salesPlanning/SalesOrderLineNote";
 import { deliveryDueAmendError } from "@/lib/sales/salesOrderDeliveryDue";
 /* ⭐ งานบริการรายบรรทัด (mig 0392 · PR-A) — ตัวตัดสินทุกตัวอยู่ที่ serviceSetup.js · ก้อน GET `…/service-setup`
    (useServiceSetup) คือความจริงเดียวของตาราง/แผงแดง/การ์ดราง/แถบผู้อนุมัติ/หัวใบ — หน้านี้แค่ต่อสาย */
@@ -435,6 +438,8 @@ export default function SalesOrderDetailPage() {
   const [installReadiness, setInstallReadiness] = useState(null);
   const onInstallLoaded = useCallback((data) => setInstallReadiness(data?.enabled ? (data.readiness || null) : null), []);
   const [dirty, setDirty] = useState(false);
+  /* ร่างหมายเหตุรายการที่พิมพ์ค้างในโหมดแก้ `{ [lineId]: ข้อความ }` — ล้างทุกครั้งที่โหลดใบ/ออกจากโหมดแก้ (เหมือน `form`) */
+  const [lineNotes, setLineNotes] = useState({});
   /* ร่างวันงวดที่ยังไม่บันทึก (โหมดตั้งวันในแท็บการชำระ · มติ 28/09) — แผงบอกผ่าน `onDatesDirty` ⇒ ออกจากหน้า/สลับแท็บต้องถามก่อน
      (แผงถูกถอดทั้งก้อนตอนสลับแท็บ = ร่างหายเงียบ) */
   const [datesDirty, setDatesDirty] = useState(false);
@@ -548,6 +553,7 @@ export default function SalesOrderDetailPage() {
     setForm({ referenceDoc: data.referenceDoc || "", notes: data.notes || "", deliveryDueDate: data.deliveryDueDate || "" });
     setConfirmation(confirmationDraft(data));
     setConfirmFiles([]);
+    setLineNotes({});
     setDirty(false);
     return true;
   }, [id]);
@@ -773,6 +779,13 @@ export default function SalesOrderDetailPage() {
   }
 
   async function save() {
+    /* หมายเหตุรายการไปกับก้อนเดียวกัน — เฉพาะบรรทัดที่ต่างจากของเดิม (ไม่เปลี่ยน = ไม่ส่งคีย์ · route ไม่แตะบรรทัด)
+       ยาวเกินตัดสินก่อนอัปไฟล์ — ช่องขึ้นแดงอยู่แล้ว ไม่ต้องรออัปไฟล์เสร็จแล้วค่อยโดนตีกลับ */
+    const lineNotesPatch = changedLineNotes(lineNotes, order.lines);
+    if (lineNotesPatch && Object.values(lineNotesPatch).some(lineNoteTooLong)) {
+      setError(SO_LINE_NOTE_TEXT.tooLong);
+      return;
+    }
     /* ⚠️ ไฟล์เอกสารยืนยันอัปก่อนบันทึก แล้วส่งไปทั้งก้อน — ที่เก็บของมันคือโฟลเดอร์ของ
        **ใบเสนอราคาต้นทาง** (ไฟล์ถูกอัปตั้งแต่ตอนสร้างใบซึ่งใบยังไม่มี id) จึงใช้
        entityType เดียวกับหน้าสร้าง เพื่อให้ทั้งสองทางลงที่เดียวกัน */
@@ -802,7 +815,9 @@ export default function SalesOrderDetailPage() {
         return;
       }
     }
-    const saved = await requestAction("save", { ...form, confirmation: { ...confirmation, attachments } });
+    const saved = await requestAction("save", {
+      ...form, confirmation: { ...confirmation, attachments }, ...(lineNotesPatch ? { lineNotes: lineNotesPatch } : {}),
+    });
     if (!saved) return;
     setConfirmFiles([]);
     setEditMode(false);
@@ -1419,6 +1434,7 @@ export default function SalesOrderDetailPage() {
     setForm({ referenceDoc: order.referenceDoc || "", notes: order.notes || "", deliveryDueDate: order.deliveryDueDate || "" });
     setConfirmation(confirmationDraft(order));
     setConfirmFiles([]);
+    setLineNotes({});
     setDirty(false);
     setSaveState("idle");
     setEditMode(false);
@@ -2308,6 +2324,23 @@ export default function SalesOrderDetailPage() {
   const canEditServiceRounds = canEdit && !serviceRoundsEditError(order, { canEdit });
   /* ดินสอกำหนดส่งของใบที่อนุมัติแล้ว (มติ 2026-09-29) — ด่านตัวเดียวกับ route `set_delivery_due` · ใบร่างแก้ในโหมดแก้ของใบตามเดิม */
   const canAmendDeliveryDue = canEdit && !editMode && !deliveryDueAmendError(order, { canEdit });
+  /* ช่องหมายเหตุรายการ (มติเจ้าของ 25/11/2026) — ขึ้นเฉพาะโหมด "แก้ไขข้อมูล" ของใบร่าง/ตีกลับ (`editable` ตัวเดียวกับช่องอื่นของใบ)
+     แล้วไปกับ "บันทึกร่าง" · ยื่นแล้ว/อนุมัติแล้วไม่มีโหมดแก้ ⇒ แก้ไม่ได้ ต้องดึงกลับหรือออก Rev. (มติรอบสอง)
+     นอกโหมดแก้ = ไม่ส่ง ⇒ ตารางโชว์หมายเหตุอ่านอย่างเดียวตามเดิม */
+  const renderLineNote = editable
+    ? (line, index) => {
+      const drafted = Object.prototype.hasOwnProperty.call(lineNotes, line.id);
+      return (
+        <SalesOrderLineNote
+          value={drafted ? lineNotes[line.id] : (line.metadata?.note || "")}
+          index={index}
+          fromMaster={!drafted && !!line.metadata?.noteAuto}
+          disabled={busy === "save"}
+          onChange={(text) => { setLineNotes((current) => ({ ...current, [line.id]: text })); setDirty(true); }}
+        />
+      );
+    }
+    : null;
   /* ⚠️ `requestAction` ไม่จับ throw — เน็ตหลุด (ApiNetworkError · PATCH ไม่ลองซ้ำ) ค้าง `busy` ไว้ ⇒ ปุ่มจัดการใบทั้งการ์ดจางค้าง
      จนกด F5 · คืน `busy` + ขึ้นแถบ error ที่นี่ แล้วส่ง throw ต่อให้ช่องบอกเหตุใต้ตัวเอง */
   const amendDeliveryDue = async (next) => {
@@ -3010,6 +3043,7 @@ export default function SalesOrderDetailPage() {
               onRoundsSave={setServiceRounds}
               onReopen={openServiceReopen}
               reopenBusy={!!busy}
+              renderLineNote={renderLineNote}
               summaryRows={[
                 { id: "subtotal", label: "ยอดก่อนส่วนลด", value: fmtMoney(order.subtotal) },
                 discountRow,
@@ -3023,6 +3057,7 @@ export default function SalesOrderDetailPage() {
             <QuotationReadOnlyLineItems
               lines={sortedLines}
               showServiceRounds
+              renderLineNote={renderLineNote}
               /* ใบย้อนหลัง: หนึ่งบรรทัด = หนึ่งโซน ⇒ บอกไซต์ · โซนใต้คำอธิบาย (บรรทัดของโซนต่าง ๆ หน้าตาเหมือนกันทุกช่อง) */
               showInstallationPoint={historical}
               summaryRows={[

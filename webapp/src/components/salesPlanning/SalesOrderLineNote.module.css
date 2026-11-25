@@ -1,0 +1,26 @@
+/* ช่องหมายเหตุรายการในโหมด "แก้ไขข้อมูล" ของใบสั่งขาย (SalesOrderLineNote · มติเจ้าของ 25/11/2026)
+   ป้ายบน ช่องล่าง (ทรงเดียวกับช่องรอบบริการใต้คำอธิบาย) · ช่องข้อความยาวใช้ทรงกลางของระบบ (Textarea — ห้ามตั้งความสูงเองที่นี่) */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-top: var(--space-1-5);
+}
+
+.label {
+  color: var(--text-2);
+  font-size: var(--fs-6);
+  font-weight: var(--fw-bold);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
+.error {
+  color: var(--red);
+  font-size: var(--fs-6);
+}

@@ -92,6 +92,7 @@ import {
 } from '@/lib/excise/exciseNotBilled';
 import { serviceContractLinkError } from '@/lib/sales/serviceContractLink';
 import { serviceRoundsEditError, validateServiceRoundsPatch } from '@/lib/sales/serviceRoundsEntry';
+import { validateLineNotesPatch } from '@/lib/sales/salesOrderLineNote';
 import {
   SERVICE_SETUP_LINE_TEXT, SERVICE_SETUP_SQL_MESSAGES, serviceSetupApprovalGate, serviceSetupDeferred, serviceSetupIssues, serviceSetupRequired,
   serviceSetupSkipState, serviceSetupSqlIssues, serviceSetupTotals,
@@ -1281,6 +1282,16 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       if (!deliveryDue.ok) return badRequest(deliveryDue.error);
       deliveryPatch = { deliveryDueDate: deliveryDue.value };
     }
+    /* ⭐ หมายเหตุรายการ (`metadata.note` · มติเจ้าของ 25/11/2026 · `lib/sales/salesOrderLineNote.js`) — แก้ในโหมด "แก้ไขข้อมูล"
+       แล้วมากับ "บันทึกร่าง" ก้อนเดียวกับช่องอื่น · ไม่ส่งคีย์ = ไม่แตะบรรทัด · ตรวจครบก่อนเขียนอะไรสักแถว
+       ⚠️ เขียนบรรทัด **หลัง** อัปเดตหัวใบผ่าน (`.eq('status')` ด้านล่าง = ด่านซ้ำว่าใบยังเป็นร่าง/ตีกลับที่แถวจริง)
+          ⇒ อีกหน้าต่างยื่นใบระหว่างนี้ = หัวใบไม่ผ่าน ไม่มีหมายเหตุหลุดเข้าใบที่ผู้อนุมัติกำลังดู */
+    let lineNoteChanges = [];
+    if ('lineNotes' in body && body.lineNotes !== null) {
+      const { changes, error: lineNoteError } = validateLineNotesPatch(body.lineNotes, before.lines || []);
+      if (lineNoteError) return badRequest(lineNoteError);
+      lineNoteChanges = changes;
+    }
     const patch = {
       referenceDoc: referenceDoc || null,
       notes: String(body.notes || '').trim() || null,
@@ -1291,7 +1302,25 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     const { data, error } = await supabase.from('sales_orders').update(patch).eq('id', id).eq('status', before.status).select('*').maybeSingle();
     if (error) return fail(`บันทึกใบสั่งขายไม่สำเร็จ: ${error.message}`, 500);
     if (!data) return badRequest('สถานะ SO เปลี่ยนแล้ว กรุณาโหลดใหม่');
+    for (const change of lineNoteChanges) {
+      const { error: lineError } = await supabase.from('sales_order_lines')
+        .update({ metadata: change.metadata }).eq('id', change.line.id).eq('salesOrderId', id);
+      /* หัวใบบันทึกไปแล้ว — กดบันทึกซ้ำได้ปลอดภัย (หัวใบเขียนค่าเดิม · บรรทัดที่เขียนแล้วไม่ต่างอีก) */
+      if (lineError) return fail(`บันทึกหมายเหตุรายการไม่สำเร็จ: ${lineError.message}`, 500);
+    }
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `edit ${before.orderNumber}`, request: req });
+    if (lineNoteChanges.length) {
+      const quoteNote = (text) => (text ? `"${text}"` : '(ว่าง)');
+      const lineLabel = (line) => [line.fgCode, String(line.description || '').trim().slice(0, 40)].filter(Boolean).join(' · ') || line.id;
+      await recordAudit({
+        user, action: 'update', entityType: 'sales_order', entityId: id,
+        before: { lines: lineNoteChanges.map(({ line }) => ({ id: line.id, fgCode: line.fgCode || null, metadata: line.metadata || {} })) },
+        after: { lines: lineNoteChanges.map(({ line, metadata }) => ({ id: line.id, fgCode: line.fgCode || null, metadata })) },
+        summary: `แก้หมายเหตุรายการของใบสั่งขาย ${before.orderNumber} — `
+          + lineNoteChanges.map(({ line, previous, note }) => `${lineLabel(line)}: ${quoteNote(previous)} → ${quoteNote(note)}`).join(' · '),
+        request: req,
+      });
+    }
     return ok(data);
   }
 
