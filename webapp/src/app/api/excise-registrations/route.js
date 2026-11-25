@@ -170,7 +170,7 @@ export async function POST(request) {
 async function withQueueFacts(supabase, rows, user) {
   if (!rows.length) return rows;
   const productIds = [...new Set(rows.map((r) => r.productId).filter(Boolean))];
-  /* ⭐ เบอร์โทรลูกค้าในคอลัมน์ลูกค้า (เจ้าของ 25/11) — อ่านสดจากทะเบียนลูกค้า ไม่ใช่สำเนาในทะเบียนสรรพสามิต (เบอร์เปลี่ยนได้) ·
+  /* ⭐ เบอร์โทรบริษัทในคอลัมน์ลูกค้า (เจ้าของ 25/11 · "เบอร์ที่โชว์ในสรรพสามิตคือเบอร์บริษัท" — ไม่ถอยไปเบอร์ผู้ติดต่อ) — อ่านสดจากทะเบียนลูกค้า ·
      เฉพาะ id ที่อยู่ในคิว · ทีละก้อน (id ลูกค้ายาว — URL 16 KB) · `.limit(chunk.length)` ตามกติกา check:rowcap */
   const customerIds = [...new Set(rows.map((r) => r.customerId).filter(Boolean))];
   const [{ data: products, error: prodErr }, readiness, { data: customers, error: customerErr }] = await Promise.all([
@@ -189,13 +189,13 @@ async function withQueueFacts(supabase, rows, user) {
       .in('id', chunk).limit(chunk.length)),
     registrationRequirementsBatch(supabase, rows),
     fetchInChunks(customerIds, (chunk) => supabase.from('customers')
-      .select('id, phone, "contactPhone"')
+      .select('id, phone')
       .in('id', chunk).limit(chunk.length)),
   ]);
   if (prodErr) throw prodErr;
   if (customerErr) throw customerErr;
   const productOf = new Map((products || []).map((p) => [p.id, p]));
-  const phoneOf = new Map((customers || []).map((c) => [c.id, String(c.phone || c.contactPhone || '').trim() || null]));
+  const phoneOf = new Map((customers || []).map((c) => [c.id, String(c.phone || '').trim() || null]));
 
   return rows.map((r) => {
     const product = productOf.get(r.productId) || null;

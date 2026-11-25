@@ -48,7 +48,8 @@ test('② งานรอ RA/กำลังมา = หน้าเต็ม /t
 
 test('③ ขึ้นทะเบียน: API แนบเบอร์โทรลูกค้า (สดจากทะเบียนลูกค้า) · คอลัมน์ลูกค้ากดไปหน้าลูกค้า · การ์ดจอแคบไม่ซ้อนลิงก์', () => {
   const api = read('../../app/api/excise-registrations/route.js');
-  assert.match(api, /fetchInChunks\(customerIds, \(chunk\) => supabase\.from\('customers'\)\s*\.select\('id, phone, "contactPhone"'\)\s*\.in\('id', chunk\)\.limit\(chunk\.length\)\)/);
+  assert.match(api, /fetchInChunks\(customerIds, \(chunk\) => supabase\.from\('customers'\)\s*\.select\('id, phone'\)\s*\.in\('id', chunk\)\.limit\(chunk\.length\)\)/);
+  assert.match(api, /\[c\.id, String\(c\.phone \|\| ''\)\.trim\(\) \|\| null\]/, 'เบอร์บริษัทอย่างเดียว — ไม่ถอยไปเบอร์ผู้ติดต่อ (เจ้าของ 25/11)');
   assert.match(api, /customerPhone: phoneOf\.get\(r\.customerId\) \|\| null,/);
   const page = read('../../app/tax/registrations/page.js');
   assert.match(page, /<Link prefetch=\{false\} href=\{`\/database\/customers\/\$\{r\.customerId\}`\} className="linklike" title="เปิดหน้าลูกค้า">/);
@@ -56,7 +57,7 @@ test('③ ขึ้นทะเบียน: API แนบเบอร์โท�
   assert.match(page, /\{r\.customerPhone \? <span className="cell-sub font-mono"> · โทร \{r\.customerPhone\}<\/span> : null\}/, 'การ์ดโชว์เบอร์ (ทั้งการ์ดเป็นลิงก์อยู่แล้ว)');
 });
 
-test('④ เบอร์โทรลูกค้าบังคับตอนยื่นทะเบียน (เจ้าของ 25/11 "ถ้าไม่มี ต้องบังคับใส่ ไม่งั้นกดยื่นไม่ได้") — ขาด = ยื่นไม่ได้ · แก้ที่หน้าลูกค้า', async () => {
+test('④ เบอร์โทรบริษัทบังคับตอนยื่นทะเบียน (เจ้าของ 25/11 "ถ้าไม่มี ต้องบังคับใส่" + "เบอร์ที่โชว์คือเบอร์บริษัท") — ขาด = ยื่นไม่ได้ · เบอร์ผู้ติดต่อไม่นับ', async () => {
   const { registrationMissing } = await import('../tax/requirements.js');
   const base = {
     registration: { id: 'R1', customerId: 'C1', productId: null },
@@ -66,10 +67,10 @@ test('④ เบอร์โทรลูกค้าบังคับตอน�
   const ok = { email: 'a@b.c', taxId: '0105565024543', branchCode: '00000' };
   const without = registrationMissing({ ...base, customer: { ...ok, phone: '', contactPhone: null } });
   assert.equal(without.ready, false);
-  assert.deepEqual(without.missing.map((m) => [m.entity, m.docType, m.label]), [['customer', 'phone', 'เบอร์โทรลูกค้า']]);
+  assert.deepEqual(without.missing.map((m) => [m.entity, m.docType, m.label]), [['customer', 'phone', 'เบอร์โทรบริษัทของลูกค้า']]);
   assert.equal(without.warnings.some((w) => w.field === 'customerPhone'), false, 'ไม่ใช่คำเตือนเบา ๆ แล้ว');
   assert.equal(registrationMissing({ ...base, customer: { ...ok, phone: '02-123-4567' } }).ready, true, 'เบอร์บริษัทพอ');
-  assert.equal(registrationMissing({ ...base, customer: { ...ok, phone: '  ', contactPhone: '081-234-5678' } }).ready, true, 'เบอร์ผู้ติดต่อพอ');
+  assert.equal(registrationMissing({ ...base, customer: { ...ok, phone: '  ', contactPhone: '081-234-5678' } }).ready, false, 'มีแต่เบอร์ผู้ติดต่อ = ยังยื่นไม่ได้ (เลือก "เบอร์บริษัทอย่างเดียว")');
   const panel = read('../../components/excise/RegistrationWorkModal.js');
   assert.match(panel, /item\.entity === "customer" && \["taxId", "branchCode", "phone"\]\.includes\(item\.docType\)/, 'เช็กลิสต์มีลิงก์ "แก้ที่หน้าลูกค้า"');
 });
