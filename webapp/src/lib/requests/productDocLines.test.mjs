@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { docLineSubjectValues } from './docLineSubject.js';
 import { normalizeDocumentItems, normalizeDocLines } from './lines.js';
 import { BILLING_DOC_VOCABULARY } from './kinds/fn/billingDocTypes.js';
 import { REQUEST_DOC_VOCABULARY, REQUEST_PRODUCT_DOC_TYPES } from './docTypes.js';
@@ -37,8 +38,12 @@ test('บรรทัดใหม่ MSDS / Spec Sheet ต้องเลือ�
 test('ชนิดอื่นทิ้ง FG เสมอ · ขอชนิดเดียวกันของสอง FG ในใบเดียวได้ · FG เดียวกันซ้ำ = ซ้ำ', () => {
   const ifra = normalizeDocumentItems([{ docType: 'ifra', productId: 'PRD-1', scentId: 'SC-1', spec: '' }]);
   assert.equal(ifra.items[0].productId, null, 'FG ที่ค้างจากชนิดเดิมต้องไม่ติดไปกับบรรทัด IFRA');
-  assert.equal(normalizeDocumentItems([{ docType: 'msds', productId: 'PRD-1', scentId: 'SC-1', spec: '' }]).items[0].scentId, null,
-    'กลิ่นที่ค้างต้องไม่ติดไปกับบรรทัด MSDS');
+  /* ⭐ ม-167 (25/11/2026): บรรทัด MSDS ของ FG หมวด 02-020 ที่ยังไม่ผูก **เก็บกลิ่นได้** ⇒ ตัวตรวจพกกลิ่นไปให้ `resolveLineLabels`
+     ซึ่งรู้หมวดของ FG แล้วตัดทิ้งเมื่อไม่ใช่หมวดกลิ่น (`docLineSubjectValues`) — กลิ่นค้างกับ FG หมวดสูตรยังไม่ติดไปเหมือนเดิม */
+  const msds = normalizeDocumentItems([{ docType: 'msds', productId: 'PRD-1', scentId: 'SC-1', spec: '' }]).items[0];
+  assert.equal(msds.scentId, 'SC-1');
+  assert.equal(docLineSubjectValues(msds, { id: 'PRD-1', categoryCode: '02-011' }).scentId, null,
+    'กลิ่นที่ค้างต้องไม่ติดไปกับบรรทัด MSDS ของ FG หมวดสูตร');
   assert.equal(normalizeDocumentItems([
     { docType: 'msds', productId: 'PRD-1', spec: '' }, { docType: 'msds', productId: 'PRD-2', spec: '' },
   ]).error, null);

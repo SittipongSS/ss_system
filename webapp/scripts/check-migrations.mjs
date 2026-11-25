@@ -34,6 +34,13 @@ const LEGACY_DUPLICATES = new Map([
          (ผลตรวจท้ายไฟล์ที่เจ้าของรัน: ตาราง 2 · ช่องใหม่ 3 · trigger 2)
      ⚠️ ห้ามใช้เลข 0436 ซ้ำอีก · เลขถัดไปเริ่มที่ 0437 */
   ['0436', ['0436_deal_timeline_restore.sql', '0436_scent_dev_topup.sql']],
+  /* 2026-11-25 — PR #2133 (รื้อระบบสิทธิ์งวด 2) กับ #2132 (คำร้องขอเอกสาร IFRA/MSDS ม-167) จองเลข 0440 คนละแบรนช์ในวันเดียวกัน
+     **ทั้งคู่รันบน production ไปแล้ว 25/11** (เจ้าของกดใน SQL Editor ก่อน merge ทั้งสองใบ) จึงเปลี่ยนชื่อไม่ได้ · หลักฐานที่ตรวจ 25/11
+     (PostgREST บนฐานจริงด้วย service role):
+       · `0440_user_capability_grants`        → ตาราง `user_capability_grants` มีอยู่จริง (6 แถว = ของเดิมที่ย้ายมา)
+       · `0440_doc_request_customer_subject`  → `dept_request_items."formulaId"` · `"typedSubjectName"` · `dept_requests."customerAddressId"` อ่านได้
+     ⚠️ ห้ามใช้เลข 0440 ซ้ำอีก · เลขถัดไปเริ่มที่ 0441 */
+  ['0440', ['0440_doc_request_customer_subject.sql', '0440_user_capability_grants.sql']],
 ]);
 
 const files = (await readdir(migrationsDir))

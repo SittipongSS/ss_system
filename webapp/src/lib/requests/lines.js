@@ -8,6 +8,7 @@
 // ใบเดิมตอนลูกค้าคอนเฟิร์ม ไม่ใช่บรรทัดที่ต้องตรวจตอนเปิดใบ
 import { ALL_UNITS } from '@/lib/master/units';
 import { REQUEST_DOC_VOCABULARY } from '@/lib/requests/docTypes';
+import { TYPED_SUBJECT_MAX } from '@/lib/requests/docLineSubject';
 
 export const MAX_REQUEST_ITEMS = 40;
 
@@ -140,9 +141,17 @@ export function normalizeDocLines(input, vocab) {
     /* ⭐ ชนิดที่เก็บที่กลิ่น (IFRA · P3 · มติเจ้าของ 09/11/2026 "บังคับเลือก") — กติกาเดียวกับ FG ข้างบน: บังคับเฉพาะบรรทัดใหม่ ·
        ชนิดอื่นทิ้งกลิ่นเสมอ · "กลิ่นมีจริง + ใช้กับลูกค้าของใบได้" ตรวจที่ `resolveLineLabels` */
     const scentTarget = Boolean(vocab.scentTarget?.(docType));
-    const scentId = scentTarget ? (String(raw.scentId ?? '').trim() || null) : null;
+    /* ⭐ ม-167 (25/11/2026): บรรทัด MSDS พกกลิ่น/สูตร/ชื่อที่พิมพ์ของ FG ที่ยังไม่ผูก — **เก็บตามที่ส่งมา** ที่นี่ (ยังไม่รู้หมวดของ FG)
+       ตัดของผิดชนิด + บังคับ "ต้องมีอย่างใดอย่างหนึ่ง" ที่ `resolveLineLabels` ซึ่งอ่าน FG แล้ว (`docLineSubjectValues/Error`) */
+    const subjectTarget = Boolean(vocab.subjectTarget?.(docType));
+    const scentId = scentTarget || subjectTarget ? (String(raw.scentId ?? '').trim() || null) : null;
     if (scentTarget && !scentId && !rowId) {
       return { items: [], error: `${at}: เลือกกลิ่นที่ขอ ${vocab.label(docType)}` };
+    }
+    const formulaId = subjectTarget ? (String(raw.formulaId ?? '').trim() || null) : null;
+    const typedSubjectName = subjectTarget ? (String(raw.typedSubjectName ?? '').trim() || null) : null;
+    if (typedSubjectName && typedSubjectName.length > TYPED_SUBJECT_MAX) {
+      return { items: [], error: `${at}: ชื่อกลิ่น/สูตรยาวเกิน ${TYPED_SUBJECT_MAX} ตัวอักษร` };
     }
 
     // ชนิดซ้ำได้ถ้ารายละเอียดต่างกัน (ขอ COA ของสองล็อต) — ซ้ำทั้งคู่คือของชิ้นเดียวกัน
@@ -158,6 +167,8 @@ export function normalizeDocLines(input, vocab) {
       docType,
       productId,
       scentId,
+      /* ม-167 · mig 0440 — เฉพาะชุดคำศัพท์ที่มีชนิดถามกลิ่น/สูตร (RD) · ใบวางบิลไม่พกคีย์เลย */
+      ...(vocab.subjectTarget ? { formulaId, typedSubjectName } : {}),
       // label เป็น NOT NULL — ป้ายอ่านออกของแถวคือชื่อชนิดเอกสาร
       label: vocab.label(docType),
       spec: spec || null,

@@ -15,6 +15,8 @@ import {
 } from '@/lib/permissions';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveLineLabels } from '@/lib/requests/lineLabels';
+import { docCustomerAddressError } from '@/lib/requests/docCustomer';
+import { loadDocCustomerRow } from '@/lib/requests/docRequestContextAdmin';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { normalizeScentBriefs } from '@/lib/requests/scentBriefs';
 import { normalizePdr } from '@/lib/requests/pdr';
@@ -393,6 +395,21 @@ export async function POST(request) {
     dealTeam = dealRow.team || null;
   }
 
+  /* ⭐ ที่อยู่ลูกค้าบน IFRA / MSDS (ม-167 · mig 0440) — ผู้ขอเลือก 1 ที่อยู่ต่อใบ · ว่าง = ที่อยู่ออกเอกสารหลัก
+     ต้องเป็นที่อยู่ของลูกค้าของใบ (ลูกค้า derive จากดีลแล้วข้างบน ไม่ใช่ค่าที่ client ส่ง)
+     ⚠️ ตรวจก่อน insert (กฎ "ตรวจก่อนเขียน" ของ handler นี้) · หัวข้ออื่นส่งมา = ทิ้ง (ไม่มีความหมาย) */
+  const customerAddressId = lineShape === 'document' ? (String(body.customerAddressId ?? '').trim() || null) : null;
+  if (customerAddressId) {
+    let addressCustomer;
+    try {
+      addressCustomer = await loadDocCustomerRow(supabase, customerId);
+    } catch (e) {
+      return Response.json({ error: e.message }, { status: 500 });
+    }
+    const addressError = docCustomerAddressError(addressCustomer, customerAddressId);
+    if (addressError) return Response.json({ error: addressError }, { status: 400 });
+  }
+
   // ── อ้างอิงเพิ่มแบบไม่บังคับ: QT · SO · FG (ม-88) ───────────────────────
   //
   // ⭐ มติผู้ใช้ 2026-08-08: "ใส่รายละเอียดที่เกี่ยวข้อง QT SO FG **(ถ้ามี)**" —
@@ -584,6 +601,8 @@ export async function POST(request) {
       // คอลัมน์ที่ DB ยังไม่มี (mig 0225 ยังไม่รัน = ใบที่ไม่อ้าง QT ต้องยังเปิดได้)
       // บทเรียนเดียวกับ `productTypeId` ที่คอมเมนต์ล่างเล่าไว้
       ...(quotationId ? { quotationId } : {}),
+      // ที่อยู่ลูกค้าของใบขอเอกสาร (ม-167 · mig 0440) — ใส่คีย์เฉพาะเมื่อเลือก เหตุผลเดียวกับบรรทัดบน
+      ...(customerAddressId ? { customerAddressId } : {}),
       /* ใบยืนยันหน้างาน (งวด S5 · คอลัมน์จาก mig 0408) — ลิงก์ไปใบต้นทาง **เขียนตอนสร้างครั้งเดียว** ไม่มีทางแก้ทีหลัง
          ⚠️ ใส่คีย์เฉพาะใบยืนยัน ด้วยเหตุผลเดียวกับ `quotationId` บรรทัดบน — ใบปกติไม่พกคีย์นี้เลย */
       ...(confirmOf ? { surveyConfirmOfId: confirmOf.id } : {}),
@@ -739,6 +758,9 @@ export async function POST(request) {
         productId: item.productId ?? null,
         // กลิ่นของบรรทัด IFRA (P3 · คอลัมน์เดิมของบรรทัด) — ตรวจแล้วที่ resolveLineLabels · ชนิดอื่น = null
         scentId: item.scentId ?? null,
+        /* สูตร/ชื่อที่พิมพ์ของบรรทัด MSDS ที่ FG ยังไม่ผูก (ม-167 · mig 0440) — ตรวจแล้วที่ resolveLineLabels
+           ⚠️ ใส่คีย์เฉพาะชุดคำศัพท์ที่มี (RD) — ใบวางบิลไม่พกคีย์ (normalize ไม่เติมให้) */
+        ...('formulaId' in item ? { formulaId: item.formulaId ?? null, typedSubjectName: item.typedSubjectName ?? null } : {}),
       }));
       const { error: itemError } = await supabase.from('dept_request_items').insert(itemRows);
       if (itemError) {

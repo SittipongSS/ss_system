@@ -27,12 +27,21 @@ import SearchableSelect from "@/components/ui/SearchableSelect";
 import SectionRail from "@/components/ui/SectionRail";
 import Textarea from "@/components/ui/Textarea";
 import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
+import Input from "@/components/ui/Input";
 import { isScentUsable } from "@/lib/master/scents";
-import { scentUsableByCustomer } from "@/lib/master/registryShares";
+import { formulaUsableByCustomer, scentUsableByCustomer } from "@/lib/master/registryShares";
 import styles from "./scentDelivery.module.css";
-import { scentLabel, scentSearchText } from "@/lib/master/registryLabel";
+import { formulaLabel, formulaSearchText, scentLabel, scentSearchText } from "@/lib/master/registryLabel";
+import {
+  FG_SUBJECT_NOUN, TYPED_SUBJECT_MAX, docLineSubjectError, fgBoundSubjectId, fgNeedsLineSubject, fgSubjectKind,
+} from "@/lib/requests/docLineSubject";
 
-export const emptyDocumentRow = () => ({ docType: "", productId: "", scentId: "", spec: "" });
+export const emptyDocumentRow = () => ({
+  docType: "", productId: "", scentId: "", formulaId: "", typedSubjectName: "", spec: "",
+});
+
+/* สูตรที่บรรทัด MSDS เลือกได้ — กำลังพัฒนา/ใช้งานได้ (ร่างกับเก็บเข้ากรุไม่ให้เลือกใหม่ · กติกาเดียวกับกลิ่น) */
+const FORMULA_PICKABLE = ["developing", "active"];
 
 /* ชื่อของแถวบนราง — ชนิดที่เลือกแล้วคือคำตอบที่ดีที่สุด · ยังไม่เลือก = บอกเลขที่
    ⚠️ ชื่อสั้น (`short`) ไม่ใช่ชื่อเต็ม — ราง 13rem ใส่ "COA — Certificate of Analysis"
@@ -56,6 +65,9 @@ export default function DocumentLines({
   /* ⭐ บรรทัดชนิดที่เก็บที่กลิ่น (IFRA · P3 · มติเจ้าของ 09/11/2026) — เลือกกลิ่นของลูกค้าของใบ (เจ้าของหรือได้รับแชร์ · ม-150)
      ตัวกรองเดียวกับบรรทัดพัฒนาสูตร (`ProductDevLines`) · server ตรวจซ้ำที่ resolveLineLabels */
   scents = [],
+  /* ⭐ บรรทัด MSDS ของ FG ที่ยังไม่ผูกสูตร (ม-167 · 25/11/2026) — เลือกสูตรของลูกค้าของใบ (เจ้าของ · ได้รับแชร์ · สูตรฐาน)
+     หมวด 02-020 ใช้ทะเบียนกลิ่น (`scents`) แทน · ไม่มีในทะเบียน = พิมพ์ชื่อ */
+  formulas = [],
 }) {
   // ⚠️ จำเป็น **ตำแหน่ง** ไม่ใช่ id — บรรทัดยังไม่มี id จนกว่าจะบันทึก · ลบแถวแล้ว
   // ต้องเลื่อนตัวที่เลือกอยู่ให้ไม่ชี้ช่องว่าง (กันด้วย `Math.min` ตอนเรนเดอร์)
@@ -76,6 +88,36 @@ export default function DocumentLines({
       label: scentLabel(s),
       search: scentSearchText(s, s.customerTradeName),
     }));
+  /* ── กลิ่น/สูตรของ FG (MSDS · ม-167) — ผูกแล้ว = โชว์ของ FG · ยังไม่ผูก = ผู้ขอเลือก/พิมพ์ชื่อ ── */
+  const productById = new Map(products.map((p) => [p.id, p]));
+  const asLine = (r) => ({ ...r, lineKind: vocabulary.lineKind });
+  const subjectMissing = (r) => Boolean(vocabulary.subjectTarget?.(r.docType))
+    && Boolean(docLineSubjectError(asLine(r), productById.get(r.productId) || null));
+  const wantsSubject = Boolean(vocabulary.subjectTarget?.(row.docType));
+  const pickedProduct = wantsSubject ? productById.get(row.productId) || null : null;
+  const subjectKind = pickedProduct ? fgSubjectKind(pickedProduct) : null;
+  const subjectNoun = subjectKind ? FG_SUBJECT_NOUN[subjectKind] : "";
+  const boundId = pickedProduct ? fgBoundSubjectId(pickedProduct) : null;
+  const boundLabel = !boundId ? "" : subjectKind === "scent"
+    ? scentLabel(scents.find((sc) => sc.id === boundId) || {})
+    : formulaLabel(formulas.find((f) => f.id === boundId) || {
+      code: pickedProduct.formulaCode, name: pickedProduct.formulaName, formulaDate: pickedProduct.formulaDate,
+    });
+  const needsLineSubject = pickedProduct ? fgNeedsLineSubject(pickedProduct) : false;
+  // ⚠️ โหมด "พิมพ์ชื่อ" เป็นของจอ (คีย์ `subjectMode` ไม่ไปถึงฐาน) — แถวที่มีชื่อพิมพ์ไว้แล้วเปิดมาที่โหมดนั้นเอง
+  const subjectMode = row.subjectMode || (row.typedSubjectName ? "typed" : "registry");
+  const subjectOptions = !needsLineSubject ? [] : subjectKind === "scent"
+    ? scents
+      .filter((sc) => sc.id === row.scentId || (isScentUsable(sc) && (!customerId || scentUsableByCustomer(sc, customerId))))
+      .map((sc) => ({ value: sc.id, label: scentLabel(sc), search: scentSearchText(sc, sc.customerTradeName) }))
+    : formulas
+      .filter((f) => f.id === row.formulaId
+        || (FORMULA_PICKABLE.includes(f.status) && (!customerId || formulaUsableByCustomer(f, customerId))))
+      .map((f) => ({ value: f.id, label: formulaLabel(f), search: formulaSearchText(f, f.customerName) }));
+  const pickSubject = (v) => patch(subjectKind === "scent"
+    ? { scentId: v || "", formulaId: "", typedSubjectName: "" }
+    : { formulaId: v || "", scentId: "", typedSubjectName: "" });
+
   const productOptions = products
     .filter((fg) => !customerId || !fg.customerId || fg.customerId === customerId || fg.id === row.productId)
     .map((fg) => ({
@@ -98,7 +140,7 @@ export default function DocumentLines({
   };
 
   const rowReady = (r) => Boolean(r.docType) && (!vocabulary.needsDetail(r.docType) || r.spec.trim())
-    && !productMissing(r) && !scentMissing(r);
+    && !productMissing(r) && !scentMissing(r) && !subjectMissing(r);
 
   return (
     <div className={styles.wrap}>
@@ -161,6 +203,8 @@ export default function DocumentLines({
                   /* เปลี่ยนชนิดแล้วล้างเป้าที่ไม่ใช่ของชนิดใหม่ — FG ค้างไปกับ IFRA หรือกลิ่นค้างไปกับ MSDS ไม่ได้ */
                   ...(vocabulary.productTarget?.(v) ? {} : { productId: "" }),
                   ...(vocabulary.scentTarget?.(v) ? {} : { scentId: "" }),
+                  // กลิ่น/สูตรของ FG (ม-167) เป็นของ MSDS เท่านั้น — เปลี่ยนชนิดแล้วไม่พาไปด้วย
+                  ...(vocabulary.subjectTarget?.(v) ? {} : { formulaId: "", typedSubjectName: "", subjectMode: "" }),
                 })}
                 disabled={disabled}
                 ariaLabel={`ชนิดเอกสารของ${rowTitle(row, at, vocabulary)}`}
@@ -181,13 +225,73 @@ export default function DocumentLines({
                 <SearchableSelect
                   value={row.productId || ""}
                   disabled={disabled}
-                  onChange={(v) => patch({ productId: v || "" })}
+                  /* เปลี่ยน FG = ล้างกลิ่น/สูตรที่เลือกให้ FG เดิม (ม-167) — หมวดใหม่อาจคนละชนิด (กลิ่น ↔ สูตร) */
+                  onChange={(v) => patch({
+                    productId: v || "",
+                    ...(vocabulary.subjectTarget?.(row.docType)
+                      ? { scentId: "", formulaId: "", typedSubjectName: "", subjectMode: "" } : {}),
+                  })}
                   options={productOptions}
                   placeholder="— เลือกสินค้า —"
                   emptyText={customerId ? "ลูกค้ารายนี้ยังไม่มีสินค้าในทะเบียน" : "ยังไม่มีสินค้าในทะเบียน"}
                 />
                 <p className={styles.hint}>ไฟล์ที่ RD ส่งจะเก็บที่สินค้านี้ — ขึ้นที่แท็บเอกสารของสินค้าด้วย</p>
                 {productMissing(row) && <p className={styles.error}>เลือก FG ที่ขอ {vocabulary.label(row.docType)}</p>}
+              </div>
+            )}
+
+            {wantsSubject && pickedProduct && (
+              <div className="form-group col-span-2">
+                {/* ⭐ ม-167 (มติเจ้าของ 25/11/2026) — MSDS ต้องมีชื่อกลิ่น (หมวด 02-020) หรือสูตร (หมวดอื่น) ของ FG */}
+                <span className="form-field-label">
+                  {subjectKind === "giftSet" ? "สูตรของชุดของขวัญ" : `${subjectNoun}ของ FG`}
+                  {row.id && needsLineSubject ? <span className={styles.hint}> (บรรทัดเดิม · ไม่บังคับ)</span> : null}
+                </span>
+                {subjectKind === "giftSet" ? (
+                  <p className={styles.locked}>ชุดของขวัญผูกหลายสูตร — RD ดูรายการสูตรที่หน้าสินค้า</p>
+                ) : boundId ? (
+                  <p className={styles.locked}>{boundLabel || `FG ผูก${subjectNoun}ไว้แล้ว`} <span className={styles.hint}>(ผูกไว้ที่ FG)</span></p>
+                ) : (
+                  <>
+                    <OptionTiles
+                      value={subjectMode}
+                      disabled={disabled}
+                      ariaLabel={`ที่มาของ${subjectNoun}`}
+                      onChange={(mode) => patch(mode === "typed"
+                        ? { subjectMode: "typed", scentId: "", formulaId: "" }
+                        : { subjectMode: "registry", typedSubjectName: "" })}
+                      options={[
+                        { value: "registry", label: `เลือกจากทะเบียน${subjectNoun}`, description: "กรองตามลูกค้าของใบ + ที่แชร์ให้" },
+                        { value: "typed", label: "ยังไม่มีในทะเบียน", description: `พิมพ์ชื่อ${subjectNoun}เอง` },
+                      ]}
+                    />
+                    {subjectMode === "typed" ? (
+                      <Input
+                        value={row.typedSubjectName || ""}
+                        disabled={disabled}
+                        maxLength={TYPED_SUBJECT_MAX}
+                        placeholder={`ชื่อ${subjectNoun}ที่ลูกค้าใช้ เช่น shadow Elite`}
+                        aria-label={`ชื่อ${subjectNoun} (พิมพ์เอง)`}
+                        onChange={(e) => patch({ typedSubjectName: e.target.value })}
+                      />
+                    ) : (
+                      <SearchableSelect
+                        value={(subjectKind === "scent" ? row.scentId : row.formulaId) || ""}
+                        disabled={disabled}
+                        onChange={pickSubject}
+                        options={subjectOptions}
+                        placeholder={`— เลือก${subjectNoun} —`}
+                        emptyText={customerId ? `ลูกค้ารายนี้ยังไม่มี${subjectNoun}ในทะเบียน — เลือก "ยังไม่มีในทะเบียน"` : `ยังไม่มี${subjectNoun}ในทะเบียน`}
+                      />
+                    )}
+                    <p className={styles.hint}>
+                      FG นี้ยังไม่ผูก{subjectNoun} — ที่เลือกที่นี่อยู่ในคำร้องเท่านั้น · หน้าสินค้าจะขึ้นคำแนะนำให้ผูก + ยื่นขออนุมัติ
+                    </p>
+                    {subjectMissing(row) && (
+                      <p className={styles.error}>เลือก{subjectNoun}จากทะเบียน หรือพิมพ์ชื่อ{subjectNoun}</p>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

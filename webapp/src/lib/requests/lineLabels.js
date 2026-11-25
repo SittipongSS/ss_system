@@ -11,8 +11,9 @@
 // (POST เดิมโยนในบล็อก try ⇒ ออกเป็น 500 · ทางแก้ใบตอบ 400 ซึ่งตรงความจริงกว่า)
 
 import { attachShares } from '@/lib/master/registrySharesAdmin';
-import { scentUsableByCustomer } from '@/lib/master/registryShares';
-import { scentLabel } from '@/lib/master/registryLabel';
+import { formulaUsableByCustomer, scentUsableByCustomer } from '@/lib/master/registryShares';
+import { formulaLabel, scentLabel } from '@/lib/master/registryLabel';
+import { docLineSubjectError, docLineSubjectValues, docLineWantsSubject } from '@/lib/requests/docLineSubject';
 
 /**
  * เติม `label` ให้บรรทัดที่ป้ายมาจากทะเบียน — รูปร่างอื่นคืนของเดิมทั้งก้อน
@@ -76,21 +77,43 @@ export async function resolveLineLabels(supabase, items = [], { lineShape, custo
 async function resolveDocumentProducts(supabase, items, { customerId }) {
   const productIds = [...new Set(items.map((i) => i.productId).filter(Boolean))];
   const scentIds = [...new Set(items.map((i) => i.scentId).filter(Boolean))];
-  if (!productIds.length && !scentIds.length) return { items, error: null };
+  const formulaIds = [...new Set(items.map((i) => i.formulaId).filter(Boolean))];
+  /* ⭐ ม-167: บรรทัด MSDS ใหม่ที่ไม่มี FG ก็ยังต้องผ่านด่าน FG ของ normalize (ตกก่อนมาถึงนี่) · ไม่มีอะไรให้อ่าน = จบ
+     ⚠️ แต่บรรทัด MSDS ที่มี FG ต้องอ่าน FG เสมอ — ด่าน "ต้องมีกลิ่น/สูตร" ตัดสินจากหมวด + การผูกของ FG */
+  if (!productIds.length && !scentIds.length && !formulaIds.length) return { items, error: null };
 
   let productById = new Map();
   if (productIds.length) {
+    /* หมวด + การผูก (`formulaId` · `scentId`) ของ FG — ด่านกลิ่น/สูตรของ MSDS (ม-167) ตัดสินจากสองค่านี้ */
     const { data, error } = await supabase.from('products')
-      .select('id, "fgCode", "customerId"').in('id', productIds).limit(productIds.length);
+      .select('id, "fgCode", "customerId", "categoryCode", "formulaId", "scentId"').in('id', productIds).limit(productIds.length);
     if (error) return { items: [], error: error.message };
     productById = new Map((data || []).map((p) => [p.id, p]));
   }
-  /* ⭐ กลิ่นของบรรทัด IFRA (P3 · 09/11/2026) — ต้องมีจริง และใช้กับลูกค้าของใบได้ (เจ้าของหรือได้รับแชร์ · ม-150)
-     กติกาเดียวกับกลิ่นของบรรทัดพัฒนาสูตรข้างล่าง */
+
+  /* ⭐ ม-167: ตัดค่าผิดชนิดออกก่อนอ่านทะเบียน — FG หมวดสูตรที่พกกลิ่นค้าง (หรือกลับกัน) / FG ที่ผูกแล้ว ไม่เก็บอะไรในบรรทัด
+     ⚠️ บรรทัด IFRA ไม่ผ่านทางนี้ (กลิ่นของ IFRA คือเป้าของบรรทัด ไม่ใช่ตัวตนของ FG) */
+  const shaped = items.map((item) => {
+    if (!docLineWantsSubject(item) || !item.productId) return item;
+    const product = productById.get(item.productId);
+    if (!product) return item;
+    return { ...item, ...docLineSubjectValues(item, product) };
+  });
+  for (const item of shaped) {
+    const product = item.productId ? productById.get(item.productId) : null;
+    const subjectError = docLineSubjectError(item, product, { at: `รายการที่ ${item.sortOrder}` });
+    if (subjectError) return { items: [], error: subjectError };
+  }
+
+  const liveScentIds = [...new Set(shaped.map((i) => i.scentId).filter(Boolean))];
+  const liveFormulaIds = [...new Set(shaped.map((i) => i.formulaId).filter(Boolean))];
+
+  /* ⭐ กลิ่นของบรรทัด IFRA (P3 · 09/11/2026) + กลิ่นของบรรทัด MSDS หมวด 02-020 (ม-167) — ต้องมีจริง และใช้กับลูกค้าของใบได้
+     (เจ้าของหรือได้รับแชร์ · ม-150) กติกาเดียวกับกลิ่นของบรรทัดพัฒนาสูตรข้างล่าง */
   let scentById = new Map();
-  if (scentIds.length) {
+  if (liveScentIds.length) {
     const { data, error } = await supabase.from('scents')
-      .select('id, code, name, "producedAt", customerId').in('id', scentIds).limit(scentIds.length);
+      .select('id, code, name, "producedAt", customerId').in('id', liveScentIds).limit(liveScentIds.length);
     if (error) return { items: [], error: error.message };
     let shared;
     try {
@@ -100,9 +123,23 @@ async function resolveDocumentProducts(supabase, items, { customerId }) {
     }
     scentById = new Map(shared.map((r) => [r.id, r]));
   }
+  /* ⭐ สูตรของบรรทัด MSDS (ม-167 · mig 0440) — มีจริง + ลูกค้าของใบใช้ได้ (สูตรฐาน · เจ้าของ · ได้รับแชร์) · เก็บเข้ากรุแล้ว = เลือกใหม่ไม่ได้ */
+  let formulaById = new Map();
+  if (liveFormulaIds.length) {
+    const { data, error } = await supabase.from('formulas')
+      .select('id, code, name, "formulaDate", "customerId", status').in('id', liveFormulaIds).limit(liveFormulaIds.length);
+    if (error) return { items: [], error: error.message };
+    let shared;
+    try {
+      shared = await attachShares(supabase, data || [], 'formula');
+    } catch (e) {
+      return { items: [], error: e.message };
+    }
+    formulaById = new Map(shared.map((r) => [r.id, r]));
+  }
 
   const out = [];
-  for (const item of items) {
+  for (const item of shaped) {
     let label = item.label;
     if (item.productId) {
       const product = productById.get(item.productId);
@@ -120,6 +157,19 @@ async function resolveDocumentProducts(supabase, items, { customerId }) {
       }
       label = `${label} · ${scentLabel(scent)}`;
     }
+    if (item.formulaId) {
+      const formula = formulaById.get(item.formulaId);
+      if (!formula) return { items: [], error: `ไม่พบสูตรที่เลือกในรายการที่ ${item.sortOrder}` };
+      if (formula.status === 'archived' && !item.id) {
+        return { items: [], error: `รายการที่ ${item.sortOrder}: สูตร ${formulaLabel(formula)} เก็บเข้ากรุแล้ว — เลือกสูตรอื่น` };
+      }
+      if (customerId && !formulaUsableByCustomer(formula, customerId)) {
+        return { items: [], error: `รายการที่ ${item.sortOrder}: สูตรนี้เป็นของลูกค้าคนละราย` };
+      }
+      label = `${label} · ${formulaLabel(formula)}`;
+    }
+    // ชื่อที่พิมพ์เอง (ม-167) — ติดป้ายให้อ่านออกในเธรด/ประวัติ · ไม่ใช่ป้าย PF (ไม่มีในทะเบียน)
+    if (item.typedSubjectName) label = `${label} · ${item.typedSubjectName}`;
     out.push(label === item.label ? item : { ...item, label });
   }
   return { items: out, error: null };

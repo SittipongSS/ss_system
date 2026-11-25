@@ -57,7 +57,7 @@ import {
   requestKindFamily, requestKindLabel, requestKindMeta, requestNeedsRef, requestStepLabel,
   requestFormCopy, requestRequiredFiles, requestResultDateOnly, requestVariantAskedLabel,
   requestVariantChosen, requestVariantFieldLabel, requestVariantLabel, requestVariantNotice,
-  requestVariantRequired, requestCloseNeedsSoConfirm,
+  requestVariantRequired, requestCloseNeedsSoConfirm, requestLineShape,
 } from "@/lib/master/requestTypes";
 import { requestVariantChoices, requestVariantConfirm } from "@/lib/requests/variantSwitch";
 import { requestFormBlocker } from "@/lib/master/requestCreate";
@@ -80,6 +80,8 @@ import { isFormulaUsable } from "@/lib/master/formulas";
 import { formulaLabel, formulaSearchText, scentLabel, scentSearchText } from "@/lib/master/registryLabel";
 import { MAX_MENTIONS } from "@/lib/master/mentions";
 import styles from "./requestForm.module.css";
+import { DocCustomerField } from "./DocCustomerCard";
+import { requestNeedsDocCustomer } from "@/lib/requests/docCustomer";
 
 
 // ช่องที่ **ระบบเติมให้** — เส้นประ อ่านอย่างเดียว ไม่ใช่ดรอปดาวน์ที่จางลง
@@ -130,6 +132,8 @@ export const emptyRequestForm = (over = {}) => ({
   dealId: "",
   salesOrderId: "",   // บรีฟกลิ่น (บังคับ) หรืออ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88)
   quotationId: "",    // อ้างอิงของขอเอกสาร (ไม่บังคับ · ม-88) · **ต้นทาง**ของขอเอกสารการเงิน (ม-ค)
+  /* ที่อยู่ลูกค้าบน IFRA / MSDS (ม-167 · mig 0440) — id ของแถวในทะเบียนลูกค้า · ว่าง = ที่อยู่ออกเอกสารหลัก */
+  customerAddressId: "",
   billPercent: null,  // ยอดที่ขอวางบิล (B-2) — เก็บคู่กันเสมอ ไม่ใช่เก็บอันที่พิมพ์
   billAmount: null,
   productIds: [],     // FG หลายรายการ (ไม่บังคับ · ม-89)
@@ -1048,7 +1052,8 @@ export default function RequestForm({
           deals={deals}
           value={value.dealId}
           disabled={disabled}
-          onChange={(dealId, deal) => set({ dealId, projectId: deal?.projectId || "" })}
+          /* เปลี่ยนดีล = ลูกค้าอาจเปลี่ยน ⇒ ล้างที่อยู่ที่เลือกให้ลูกค้ารายเดิม (ม-167) — ไม่งั้น server ตีกลับ "ไม่ใช่ที่อยู่ของลูกค้า" */
+          onChange={(dealId, deal) => set({ dealId, projectId: deal?.projectId || "", customerAddressId: "" })}
           placeholder="เลือกดีลของคำร้อง"
           ariaLabel="ดีลของคำร้อง"
         />
@@ -1434,12 +1439,27 @@ export default function RequestForm({
           — กฎ AGENTS.md "ปุ่มแก้ไขต้องเปิดฟอร์มตัวเดียวกับตอนสร้าง" · เดิมตารางสอง
           ตัวนี้อยู่ที่นี่ที่เดียว ⇒ ฝั่งแก้จึงไม่มีบรรทัดให้แก้เลย (ผู้ใช้แจ้ง 2026-08-24)
           ⚠️ การเลือกตารางตามรูปร่างบรรทัดย้ายเข้าไปในของกลางแล้ว — ที่นี่ไม่ตัดสินเอง */}
+      {/* ⭐ ข้อมูลลูกค้าบน IFRA / MSDS (ม-167 · มติเจ้าของ 25/11/2026) — ผู้ขอเลือกที่อยู่ · ชื่อ/ที่อยู่/เบอร์ ไทยคู่อังกฤษ
+          · ขึ้นเฉพาะใบที่มีบรรทัด IFRA หรือ MSDS · อังกฤษ/เบอร์ขาด = บันทึกร่างได้ แต่กดส่งไม่ได้ (ด่านเดียวกับ server) */}
+      {requestLineShape(value) === "document" && requestNeedsDocCustomer(items.map((r) => ({ ...r, lineKind: "document" }))) && (
+        <div className="form-group col-span-2">
+          <span className={styles.fieldLabel}>ข้อมูลลูกค้าบนเอกสาร (IFRA / MSDS)</span>
+          <DocCustomerField
+            customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
+            value={value.customerAddressId || ""}
+            onChange={(addressId) => set({ customerAddressId: addressId })}
+            disabled={disabled}
+          />
+        </div>
+      )}
+
       <RequestLineFields
         subject={value}
         value={items}
         onChange={(rows) => set({ items: rows })}
         categories={productTypes}
         scents={scents}
+        formulas={formulas}
         products={products}
         customerId={selectedDeal?.customerId || lockedRefs.customerId || null}
         disabled={disabled}
