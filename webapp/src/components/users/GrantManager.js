@@ -13,6 +13,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import Textarea from "@/components/ui/Textarea";
 import DateInput from "@/components/ui/DateInput";
 import Button from "@/components/ui/Button";
+import PersonSelect from "@/components/ui/PersonSelect";
 import { notifyToast } from "@/components/ui/Toast";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { apiJson } from "@/lib/apiFetch";
@@ -37,7 +38,7 @@ export function useUserGrants(userId) {
   const [grants, setGrants] = useState(null);
   const [error, setError] = useState("");
   const reload = useCallback(async () => {
-    if (!userId) return;
+    if (!userId) { setGrants(null); return; }
     try {
       const data = await apiJson(`/api/users/${userId}/grants`, { fallbackError: "โหลดสิทธิ์เสริมไม่สำเร็จ" });
       setGrants(data.grants || []);
@@ -92,10 +93,17 @@ export function GrantSummary({ user, canManage, onChanged }) {
   );
 }
 
-/** ให้/ถอนสิทธิ์เสริม — ทางเดียว (มติข้อ 2–4) */
-export function GrantDialog({ user, grants = [], onClose, onChanged }) {
+/** ให้/ถอนสิทธิ์เสริม — ทางเดียว (มติข้อ 2–4)
+ *  - ส่ง `user` + `grants` มา (โมดัลแก้ผู้ใช้) = ล็อกคน ใช้ทะเบียนที่ผู้เรียกโหลดไว้
+ *  - ส่ง `users` มาไม่ส่ง `user` (ปุ่ม "ให้สิทธิ์เสริม" ของแท็บทะเบียน · งวด 3) = เลือกคนก่อน แล้วโหลดทะเบียนของคนนั้นเอง */
+export function GrantDialog({ user: fixedUser = null, users = [], grants: givenGrants = null, onClose, onChanged }) {
   // seed: ตัวตรวจต้องรู้วันนี้ตั้งแต่เฟรมแรก (วันหมดอายุห้ามย้อนหลัง) · หน้าต่างเปิดฝั่ง client เสมอ
   const today = useThaiToday({ seed: true });
+  const [pickedId, setPickedId] = useState(fixedUser?.id || "");
+  const user = fixedUser || users.find((u) => u.id === pickedId) || null;
+  const own = useUserGrants(givenGrants ? null : user?.id);
+  const grants = givenGrants ?? own.grants ?? [];
+  const changed = async () => { if (!givenGrants) await own.reload(); await onChanged?.(); };
   const activeRows = grants.filter((g) => !g.revokedAt);
   const activeCaps = activeCapsFromRows(activeRows);
   const [caps, setCaps] = useState([]);
@@ -114,6 +122,7 @@ export function GrantDialog({ user, grants = [], onClose, onChanged }) {
 
   const expiry = expiryKind === "none" ? { kind: "none" } : expiryKind === "date" ? { kind: "date", date: expiryDate } : null;
   const check = validateGrantRequest({ caps, reason, expiry }, { role: user?.role, activeCaps, today });
+  if (!user) check.errors.unshift("เลือกผู้ใช้");
 
   const save = async () => {
     if (check.errors.length) return;
@@ -124,7 +133,7 @@ export function GrantDialog({ user, grants = [], onClose, onChanged }) {
       });
       notifyToast.success(`ให้สิทธิ์เสริมแล้ว ${caps.length} ข้อ`);
       setCaps([]); setReason(""); setExpiryKind(null); setExpiryDate("");
-      await onChanged?.();
+      await changed();
     } catch (e) {
       notifyToast.error(e.message || "ให้สิทธิ์เสริมไม่สำเร็จ");
     }
@@ -142,7 +151,7 @@ export function GrantDialog({ user, grants = [], onClose, onChanged }) {
     try {
       await apiJson(`/api/users/${user.id}/grants/${g.id}`, { method: "DELETE", fallbackError: "ถอนสิทธิ์ไม่สำเร็จ" });
       notifyToast.success(`ถอน "${capLabel(g.cap)}" แล้ว`);
-      await onChanged?.();
+      await changed();
     } catch (e) {
       notifyToast.error(e.message || "ถอนสิทธิ์ไม่สำเร็จ");
     }
@@ -152,7 +161,7 @@ export function GrantDialog({ user, grants = [], onClose, onChanged }) {
     <Modal
       open
       onClose={onClose}
-      title={`สิทธิ์เสริม: ${personOf(user)}`}
+      title={user ? `สิทธิ์เสริม: ${personOf(user)}` : "ให้สิทธิ์เสริม"}
       subtitle="สิทธิ์เพิ่มจากตำแหน่ง มีผลข้ามทุกทีม · ใช้เมื่อจำเป็นเท่านั้น"
       size="md"
       footer={(
@@ -169,6 +178,23 @@ export function GrantDialog({ user, grants = [], onClose, onChanged }) {
       )}
     >
       <div className="flex flex-col gap-4">
+        {!fixedUser && (
+          /* ช่องที่เปลี่ยนความหมายของทุกช่องข้างล่าง (ตำแหน่ง · ที่ถืออยู่) อยู่บนสุด — กฎลำดับคำถามของฟอร์ม */
+          <div className="form-group">
+            <label>ให้ใคร <span className="text-[var(--red)]">*</span></label>
+            <PersonSelect
+              users={users.filter((u) => !u.disabled)}
+              value={pickedId}
+              onChange={(e) => {
+                setPickedId(e?.target ? e.target.value : e);
+                setCaps([]);
+              }}
+              emptyLabel="— เลือกผู้ใช้ —"
+              ariaLabel="ให้ใคร"
+            />
+          </div>
+        )}
+        {!user ? null : (<>
         {activeRows.length > 0 && (
           <section className="flex flex-col gap-2">
             <h3 className="text-[length:var(--fs-8)] font-semibold">ถืออยู่ตอนนี้</h3>
@@ -217,6 +243,7 @@ export function GrantDialog({ user, grants = [], onClose, onChanged }) {
             )}
           </div>
         </section>
+        </>)}
       </div>
     </Modal>
   );

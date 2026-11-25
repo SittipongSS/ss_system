@@ -271,3 +271,32 @@ export async function runGrantExpiry(supabase, { now = new Date(), notify, audit
   }
   return { today, expired: expired.length, warned: warned.length };
 }
+
+// ── ตัวตัดสินของแท็บทะเบียน/ประวัติในหน้า /users (งวด 3) — ล้วน ไม่แตะฐาน ───────────────────────────────
+
+/** ผลจริงของสิทธิ์เสริมหนึ่งแถว — ซ้ำกับตำแหน่ง / ระบบปิด = ไม่มีผล (ถอนได้โดยไม่มีใครเสียอะไร) */
+export function grantEffect(grant, role) {
+  if (can(role, grant.cap)) return "dup";
+  if (isModuleClosed(String(grant.cap).split(":")[0])) return "closed";
+  return "ok";
+}
+
+/** สำเนาใน app_metadata ตรงกับทะเบียนไหม — ไม่ตรง = มีคนเขียน extraCaps นอกทางเดียว */
+export function copyDrift(user, activeRows) {
+  const want = activeCapsFromRows(activeRows);
+  const have = [...new Set(user?.extraCaps || [])].sort();
+  return want.length !== have.length || want.some((cap) => !have.includes(cap));
+}
+
+/** แถวที่ย้ายมาจากสิทธิ์เสริมเดิม (mig 0440) — ไม่มีคนให้ · `grantedAt` = เวลารัน migration ไม่ใช่เวลาให้จริง */
+export const isMigratedGrant = (g) => !!g && !g.grantedById;
+
+/** หนึ่งแถวของทะเบียน = เหตุการณ์ "ให้" (หรือ "ย้ายของเดิม") เสมอ + "ถอน/หมดอายุ" อีกหนึ่งเมื่อถอนแล้ว · เรียงใหม่สุดก่อน */
+export function grantEvents(grants = []) {
+  const events = [];
+  for (const g of grants) {
+    events.push({ key: `${g.id}-g`, at: g.grantedAt, kind: isMigratedGrant(g) ? "migrated" : "grant", g });
+    if (g.revokedAt) events.push({ key: `${g.id}-r`, at: g.revokedAt, kind: g.revokeKind === "expired" ? "expired" : "revoke", g });
+  }
+  return events.sort((a, b) => String(b.at).localeCompare(String(a.at)) || a.key.localeCompare(b.key));
+}
