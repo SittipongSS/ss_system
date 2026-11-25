@@ -11,7 +11,7 @@ import Toast from "@/components/ui/Toast";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import SignatureVault from "@/components/account/SignatureVault";
 import { DEPARTMENT_LABELS, DEPARTMENT_NAMES_TH, ROLE_LABELS, userTeams } from "@/lib/permissions";
-import { fmtDateTime, fmtName, naText, NA } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtName, naText, NA } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -86,7 +86,8 @@ export default function AccountPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "บันทึกข้อมูลส่วนตัวไม่สำเร็จ");
-      setProfile(data.profile);
+      // PATCH ตอบแค่โปรไฟล์ — คงสิทธิ์เสริมที่โหลดมาจาก GET ไว้
+      setProfile((prev) => ({ ...data.profile, grants: data.profile?.grants ?? prev?.grants ?? null }));
       setForm({
         firstName: data.profile.firstName || "",
         lastName: data.profile.lastName || "",
@@ -196,6 +197,19 @@ export default function AccountPage() {
                 <div className={styles.fact}><dt>บทบาท</dt><dd>{roleLabel}</dd></div>
                 <div className={styles.fact}><dt>ฝ่าย</dt><dd title={departmentName || undefined}>{departmentCode}</dd></div>
                 <div className={styles.fact}><dt>ทีม</dt><dd>{teamLabel}</dd></div>
+                {/* สิทธิ์เสริม (mig 0440) — ปลายทางของกระดิ่ง "สิทธิ์เสริมใกล้หมด/หมดแล้ว" · ไม่มี = ไม่โชว์แถว */}
+                {profile.grants?.length > 0 && (
+                  <div className={styles.fact}>
+                    <dt>สิทธิ์เสริม</dt>
+                    <dd>
+                      {profile.grants.map((g) => (
+                        <span key={g.id} className="block">
+                          {g.label} · {g.expiresOn ? `ถึง ${fmtDate(g.expiresOn)}` : "ไม่มีกำหนด"}
+                        </span>
+                      ))}
+                    </dd>
+                  </div>
+                )}
                 <div className={styles.fact}><dt>เข้าใช้ล่าสุด</dt><dd>{formatDateTime(profile.lastSignInAt)}</dd></div>
               </dl>
             </section>

@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
   GRANTABLE_CAPS, GRANTABLE_CAP_LABELS, CLOSED_MODULES,
-  grantableNow, blockedNewGrants, blockedGrantError, sanitizeExtraCaps, canUser,
+  grantableNow, sanitizeExtraCaps, canUser,
 } from '@/lib/permissions';
 
 const SRC = fileURLToPath(new URL('..', import.meta.url));
@@ -96,27 +96,17 @@ test('ทุกสิทธิ์ที่แจกได้มีป้าย�
   for (const cap of GRANTABLE_CAPS) assert.ok(GRANTABLE_CAP_LABELS[cap], cap);
 });
 
-test('blockedNewGrants: นับเฉพาะที่ขอเพิ่มใหม่ — ของที่ถืออยู่แล้วไม่ทำให้แก้ชื่อ/เบอร์โดนปฏิเสธ', () => {
-  assert.deepEqual(blockedNewGrants([], ['mgmt:edit', 'ra:view']), ['mgmt:edit']);
-  assert.deepEqual(blockedNewGrants(['mgmt:view', 'mgmt:edit'], ['mgmt:view', 'mgmt:edit']), []);
-  assert.deepEqual(blockedNewGrants(['mgmt:view'], ['mgmt:view', 'mgmt:edit']), ['mgmt:edit']);
-  // ถอดออกได้เสมอ
-  assert.deepEqual(blockedNewGrants(['mgmt:view', 'ra:view'], []), []);
-  // ค่าเพี้ยน/ของนอกรายการถูกทิ้งก่อนตัดสิน (sanitizeExtraCaps) — ไม่ใช่ "ถูกปฏิเสธ"
-  assert.deepEqual(blockedNewGrants(null, ['users:manage', 'ra:view']), []);
+test('sanitizeExtraCaps ทิ้งของนอกรายการแจกได้ — สำเนาใน app_metadata ถูกแก้มือก็ยกสิทธิ์ไม่ได้', () => {
   assert.deepEqual(sanitizeExtraCaps(['users:manage', 'ra:view']), ['ra:view']);
 });
 
-test('blockedGrantError: ผ่าน = null · ไม่ผ่าน = ข้อความไทยที่บอกชื่อสิทธิ์', () => {
-  assert.equal(blockedGrantError([], ['ra:view']), null);
-  const msg = blockedGrantError([], ['mgmt:view']);
-  assert.match(msg, /ปิดอยู่ทั้งระบบ/);
-  assert.ok(msg.includes(GRANTABLE_CAP_LABELS['mgmt:view']));
-});
-
-test('API สร้าง/แก้ผู้ใช้ถามตัวตัดสินเดียวกัน (blockedGrantError) — แก้ผู้ใช้เทียบกับของเดิม', () => {
+test('⭐ API สร้าง/แก้ผู้ใช้เขียนสิทธิ์เสริมตรงไม่ได้ — ทางเดียวคือ /api/users/[id]/grants (งวด 2)', () => {
   const create = readFileSync(fileURLToPath(new URL('../app/api/users/route.js', import.meta.url)), 'utf8');
   const update = readFileSync(fileURLToPath(new URL('../app/api/users/[id]/route.js', import.meta.url)), 'utf8');
-  assert.match(create, /blockedGrantError\(\[\], extraCaps\)/);
-  assert.match(update, /blockedGrantError\(existingMeta\.extraCaps, extraCaps\)/);
+  // สร้าง: มี extraCaps มา = ปฏิเสธ · และไม่เขียน extraCaps ลง app_metadata ตอนสร้าง
+  assert.match(create, /if \(sanitizeExtraCaps\(body\.extraCaps\)\.length\) \{\s*return Response\.json\(\{ error:/);
+  assert.doesNotMatch(create, /\.\.\.\(extraCaps\.length \? \{ extraCaps \}/);
+  // แก้: ค่าที่เขียนกลับคือของเดิมเสมอ · ส่งชุดต่างมา = ปฏิเสธ
+  assert.match(update, /const extraCaps = sanitizeExtraCaps\(existingMeta\.extraCaps\);/);
+  assert.match(update, /if \(!same\) \{\s*return Response\.json\(\{ error:/);
 });

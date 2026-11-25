@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { accountProfileFromAuthUser, normalizeAccountProfile } from "@/lib/accountProfile";
 import { recordAudit, userAuditSnapshot } from "@/lib/audit";
 import { invalidateCache } from "@/lib/serverCache";
+import { GRANT_TABLE, capLabel } from "@/lib/capabilityGrants";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,16 @@ export async function GET() {
     return Response.json({ error: "ไม่พบบัญชีผู้ใช้" }, { status: 404 });
   }
 
-  return Response.json({ profile: accountProfileFromAuthUser(data.user) });
+  return Response.json({ profile: { ...accountProfileFromAuthUser(data.user), grants: await myGrants(admin, me.id) } });
+}
+
+/* สิทธิ์เสริมที่ถืออยู่ + วันหมดอายุ (mig 0440) — ปลายทางของกระดิ่ง "สิทธิ์เสริมใกล้หมด/หมดแล้ว" ฝั่งคนถือ
+   ⚠️ อ่านพลาด (เช่นตารางยังไม่มี) = `null` แล้วหน้าบัญชีไม่โชว์แถวนี้ — ห้ามทำให้หน้าบัญชีทั้งหน้าพัง */
+async function myGrants(admin, userId) {
+  const { data, error } = await admin.from(GRANT_TABLE).select("id, cap, expiresOn")
+    .eq("userId", String(userId)).is("revokedAt", null).order("cap");
+  if (error) return null;
+  return (data || []).map((g) => ({ id: g.id, cap: g.cap, label: capLabel(g.cap), expiresOn: g.expiresOn }));
 }
 
 export async function PATCH(request) {

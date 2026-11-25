@@ -770,7 +770,7 @@ const RAW_OPACITY_JSX_CAP = 24;
       ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้
    📉 684 → 674 (2026-11-15) — ยุบดีล/โครงการ P2d: หน้าดีลถอดการ์ด "โครงการที่ดีลนี้อยู่" + แถวปุ่มสร้าง/ผูกโครงการ + โมดัลผูกโครงการ
    📉 674 → 631 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
-const RAW_SPACING_JSX_CAP = 628;
+const RAW_SPACING_JSX_CAP = 626;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
@@ -889,7 +889,7 @@ const RAW_LETTER_SPACING_JSX_CAP = 1;
 // 📉 148 → 146 (2026-11-11) — ป้าย "รวม VAT" `text-[10px]` + คำเตือน `text-[11px]` ของหัวข้อราคาขายปลีกเดิมในฟอร์มสินค้า หายไปกับหัวข้อ ④ ใหม่
 // 📉 135 → 134 (2026-11-15) — ยุบดีล/โครงการ P2d: ฟอร์มงานถอดบรรทัด `text-[11px]` "งานนี้จะอยู่ในโครงการ…"
 // 📉 134 → 131 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร
-const RAW_TAILWIND_TYPE_CAP = 131;
+const RAW_TAILWIND_TYPE_CAP = 129;
 
 /* ── น้ำหนักตัวอักษรที่ซ่อนอยู่ในกิ่งของ ternary (style object · 2026-09-02) ──
    `fontWeightViolations` ข้างล่างเป็น **hard-zero ที่พิมพ์ 0 มาตลอด ทั้งที่มีของจริง**
