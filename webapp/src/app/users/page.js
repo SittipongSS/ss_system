@@ -21,10 +21,8 @@ import {
   departmentFor,
   rolesForDepartment,
   userTeams,
-  GRANTABLE_CAPS,
-  GRANTABLE_CAP_LABELS,
-  grantableNow,
 } from "@/lib/permissions";
+import { GrantSummary } from "@/components/users/GrantManager";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Modal from "@/components/Modal";
 import { fmtDate, fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
@@ -45,7 +43,7 @@ import { FORCE_REFRESH_ISSUED_EVENT } from "@/lib/ui/forceRefresh";
    และโชว์จำนวนดีล/เป้าที่ค้างก่อนกด) ⇒ ทางที่แคบกว่าและรู้ผลกระทบมากกว่าอยู่รอด
    ⚠️ **บัญชีขายที่เพิ่งเปิดจะยังไม่มีทีม** — ป้าย "ยังไม่ได้จัดเข้าทีม" ในตารางกับ
    โมดัลหลังสร้างบัญชีคือสองจุดเดียวที่กันไม่ให้คนใหม่ล็อกอินแล้วเจอจอว่างเงียบ ๆ */
-const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae", extraCaps: [] };
+const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae" };
 
 // ป้ายทีมของผู้ใช้หนึ่งคน — ทีมหลักขึ้นก่อนเสมอ ต่อด้วยทีมอื่นที่สังกัด
 // (เหลือไว้จุดเดียว: แยกคนชื่อซ้ำในดรอปดาวน์ "โอนงานให้ใคร" — ทรงเดียวกับ PersonSelect)
@@ -162,7 +160,6 @@ export default function UserManagement() {
       phone: u.phone || "",
       department: u.department || departmentFor(u.role) || DEPARTMENTS[0],
       role: u.role || "ae",
-      extraCaps: Array.isArray(u.extraCaps) ? u.extraCaps : [],
       // เบอร์เข้าระบบ — มีเฉพาะบัญชีที่ล็อกอินด้วยเบอร์ (เปลี่ยนซิมแล้วต้องแก้ได้)
       loginPhone: (u.loginPhone || "").replace(/\D/g, ""),
       password: "",
@@ -179,8 +176,8 @@ export default function UserManagement() {
       role: editForm.role,
       department: editForm.department,
       /* ⚠️ **ไม่ส่ง team/teams** — route จะเก็บค่าเดิมไว้ให้ (ดูคอมเมนต์ที่
-         api/users/[id]/route.js) · ส่ง null มาเมื่อไรคือล้างทีมของคนนั้นทิ้ง */
-      extraCaps: editForm.extraCaps || [],
+         api/users/[id]/route.js) · ส่ง null มาเมื่อไรคือล้างทีมของคนนั้นทิ้ง
+         ⚠️ **ไม่ส่ง extraCaps** — สิทธิ์เสริมให้/ถอนผ่าน GrantDialog เท่านั้น (งวด 2 · route ปฏิเสธชุดที่ต่างจากเดิม) */
     };
     /* ส่งเบอร์เข้าระบบเฉพาะตอนที่ *เปลี่ยนจริง* — ส่งทุกครั้งจะเขียนอีเมลของบัญชีซ้ำ
        โดยไม่จำเป็น และ route จะตีกลับบัญชีที่ล็อกอินด้วยอีเมล */
@@ -528,7 +525,7 @@ export default function UserManagement() {
       >
         {editForm && (
           <form onSubmit={handleEdit}>
-            <UserFields form={editForm} setForm={setEditForm} edit user={editUser} />
+            <UserFields form={editForm} setForm={setEditForm} edit user={editUser} onGrantsChanged={fetchUsers} />
             <div className="form-action-bar">
               <button type="button" onClick={() => setEditUser(null)} className="btn">
                 ยกเลิก
@@ -625,15 +622,9 @@ function SectionHeading({ children }) {
 
 // Shared form fields for create + edit. `edit` hides email; password optional.
 // Grouped into three sections: personal info, login credentials, role & grants.
-function UserFields({ form, setForm, requirePassword, edit, user = null }) {
+function UserFields({ form, setForm, requirePassword, edit, user = null, onGrantsChanged }) {
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const deptRoles = rolesForDepartment(form.department);
-  const grants = form.extraCaps || [];
-  const toggleGrant = (cap) =>
-    setForm((f) => {
-      const cur = f.extraCaps || [];
-      return { ...f, extraCaps: cur.includes(cap) ? cur.filter((c) => c !== cap) : [...cur, cap] };
-    });
 
   // สลับฝ่าย = ตั้งตำแหน่งเป็นค่าตั้งต้นของฝ่ายนั้น — ฝ่ายขายเรียงลิสต์ตามผังตำแหน่ง (ตัวแรก = CD)
   // ⇒ ห้ามใช้ตัวแรกของลิสต์ ไม่งั้นเปิดบัญชีขายใหม่แล้วได้ CD เงียบ ๆ (ดู DEPARTMENT_DEFAULT_ROLE)
@@ -780,37 +771,18 @@ function UserFields({ form, setForm, requirePassword, edit, user = null }) {
       {/* ⭐ **ไม่มีช่องทีมที่นี่แล้ว** (มติผู้ใช้ 2026-09-06) — จัดทีมอยู่ที่ /sa/teams
           ที่เดียว ซึ่งตรวจกับทะเบียนทีมจริง (ปฏิเสธทีมที่ปิดแล้ว) และบอกจำนวนดีล/เป้า
           ที่ค้างก่อนย้าย · บัญชีขายที่สร้างจากที่นี่จะยังไม่มีทีมจนกว่าจะจัดที่หน้านั้น */}
-      {/* —— สิทธิ์เสริมรายคน (grants) —— */}
+      {/* —— สิทธิ์เสริมรายคน — สรุปอ่านอย่างเดียว + ปุ่มจัดการ (มติข้อ 4 · งวด 2) ——
+          ⭐ ให้/ถอนทางเดียวคือ GrantDialog (บังคับเหตุผล + เลือกวันหมดอายุ · ทะเบียน user_capability_grants)
+          ⚠️ ตอนสร้างบัญชียังไม่มี id ให้ผูก ⇒ บอกทางไว้แทนช่อง */}
       <SectionHeading>สิทธิ์เสริม (นอกเหนือจากตำแหน่ง)</SectionHeading>
-      <div className="form-group col-span-2" style={{ marginTop: -4 }}>
-        <p className="text-[11px] text-[var(--text-3)] mb-2">
-          ให้สิทธิ์เพิ่มกับผู้ใช้รายนี้ เช่น ให้คนนอกฝ่าย RA เห็นสถานะภาษีทุกทีม
-          หรือให้เห็นต้นทุน/กำไรโรงงานเพื่อทำรายงานผู้บริหาร — มีผลข้ามทุกทีม ใช้เมื่อจำเป็นเท่านั้น
-        </p>
-        <div className="flex flex-col gap-2">
-          {GRANTABLE_CAPS.map((cap) => {
-            /* ระบบที่ปิดอยู่ (CLOSED_MODULES) แจกใหม่ไม่ได้ — ล็อกพร้อมบอกเหตุ ไม่ซ่อน (มติ 25/11/2026)
-               ⚠️ ของที่ถืออยู่แล้วยังติ๊กออกได้ · API ปฏิเสธด้วยตัวตัดสินเดียวกัน (`blockedGrantError`) */
-            const locked = !grantableNow(cap) && !grants.includes(cap);
-            return (
-              <label key={cap} className={`flex items-start gap-2 text-[13px] ${locked ? "cursor-not-allowed opacity-[var(--op-muted)]" : "cursor-pointer"}`}>
-                <input
-                  type="checkbox"
-                  checked={grants.includes(cap)}
-                  disabled={locked}
-                  onChange={() => toggleGrant(cap)}
-                  style={{ marginTop: 2 }}
-                />
-                <span className="text-[var(--text-2)]">
-                  {GRANTABLE_CAP_LABELS[cap] || cap}
-                  {!grantableNow(cap) && (
-                    <span className="block text-[length:var(--fs-3)] text-[var(--text-3)]">ระบบนี้ปิดอยู่ทั้งระบบ — แจกใหม่ไม่ได้จนกว่าจะเปิด</span>
-                  )}
-                </span>
-              </label>
-            );
-          })}
-        </div>
+      <div className="form-group col-span-2">
+        {edit && user?.id ? (
+          <GrantSummary user={user} canManage onChanged={onGrantsChanged} />
+        ) : (
+          <p className="text-[length:var(--fs-5)] text-[var(--text-3)]">
+            ให้สิทธิ์เสริมได้หลังสร้างบัญชีแล้ว — กด "แก้ไข" ที่แถวของผู้ใช้ แล้วใช้ปุ่ม "จัดการสิทธิ์เสริม"
+          </p>
+        )}
       </div>
     </div>
   );

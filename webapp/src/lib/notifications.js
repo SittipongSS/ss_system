@@ -303,6 +303,15 @@ export const TASK_BELL_KINDS = Object.freeze([
   'task_overdue',
 ]);
 
+/* ── สิทธิ์เสริมรายคน (รื้อระบบสิทธิ์งวด 2 · mig 0440 · มติเจ้าของ 25/11/2026) ─────────────────────────
+ * ⭐ ใกล้หมด (เหลือ ≤ 3 วัน) / หมดแล้วระบบถอดให้ → คนถือ + คนให้ · ยิงจาก `runGrantExpiry` (lib/capabilityGrants.js)
+ *    ผ่าน cron รายวัน close-resolved-issues · entityType `user_grant` ไม่มีเธรด ⇒ เข้ากล่องทาง `kinds`
+ * ⚠️ ชุดนี้ต้องตรงกับ GRANT_EXPIRING_KIND / GRANT_EXPIRED_KIND — capabilityGrants.test.mjs ตรึงไว้ */
+export const GRANT_BELL_KINDS = Object.freeze([
+  'grant_expiring',
+  'grant_expired',
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
@@ -310,6 +319,7 @@ export const NOTIFICATION_BOXES = {
       ...TASK_BELL_KINDS,
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
       ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS, ...QUOTATION_BELL_KINDS,
+      ...GRANT_BELL_KINDS,
     ],
   },
 };

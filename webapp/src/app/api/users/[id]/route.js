@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, blockedGrantError, resolveTeamUpdate } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamUpdate } from '@/lib/permissions';
 import { isPhoneLogin, normalizeLoginPhone, phoneLoginEmail } from '@/lib/auth/loginIdentity';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
@@ -34,16 +34,18 @@ export async function PATCH(request, { params }) {
   // → viewer/RA), we must send team: null AND teams: [] explicitly to overwrite
   // the stale values, otherwise the user keeps their old team scope after the
   // role change — teams[] คือช่องที่คุมขอบเขตจริง ลืมล้างแล้วสิทธิ์ค้างเงียบ ๆ
-  // Per-user capability grants: use the sanitized body value if the client sent
-  // one, otherwise preserve what's already stored (so an unrelated edit doesn't
-  // wipe a grant). Whitelisted to GRANTABLE_CAPS — never mints admin-system caps.
-  const extraCaps = body.extraCaps !== undefined
-    ? sanitizeExtraCaps(body.extraCaps)
-    : sanitizeExtraCaps(existingMeta.extraCaps);
-  /* สิทธิ์ของระบบที่ปิดอยู่แจก **ใหม่** ไม่ได้ (มติ 25/11/2026 · grantableNow) — ของที่ถืออยู่แล้วไม่นับ
-     ⇒ แก้ชื่อ/เบอร์ของคนที่ยังถือสิทธิ์ระบบปิดค้างอยู่ ไม่โดนปฏิเสธ */
-  const grantError = blockedGrantError(existingMeta.extraCaps, extraCaps);
-  if (grantError) return Response.json({ error: grantError }, { status: 400 });
+  /* ⭐ สิทธิ์เสริมแก้ที่นี่ไม่ได้แล้ว (รื้อระบบสิทธิ์งวด 2 · mig 0440) — `app_metadata.extraCaps` เป็นสำเนาของ
+     ทะเบียน `user_capability_grants` ที่ `POST/DELETE /api/users/[id]/grants` เขียนให้ (บังคับเหตุผล + วันหมดอายุ)
+     ⇒ คงค่าเดิมเสมอ · คำขอที่ส่งชุด **ต่าง** จากของเดิมมา = ปฏิเสธดัง ๆ (ทิ้งเงียบ = แอดมินคิดว่าให้แล้ว)
+     ⚠️ ส่งชุดเดิมมา (จอเก่าที่ยังแนบทั้งฟอร์ม) ผ่านได้ — ไม่ใช่การเปลี่ยน */
+  const extraCaps = sanitizeExtraCaps(existingMeta.extraCaps);
+  if (body.extraCaps !== undefined) {
+    const asked = sanitizeExtraCaps(body.extraCaps);
+    const same = asked.length === extraCaps.length && asked.every((cap) => extraCaps.includes(cap));
+    if (!same) {
+      return Response.json({ error: 'ให้/ถอนสิทธิ์เสริมด้วยปุ่ม "จัดการสิทธิ์เสริม" (ต้องกรอกเหตุผลและวันหมดอายุ)' }, { status: 400 });
+    }
+  }
 
   if (body.role !== undefined) {
     /* ⚠️ **ไม่ส่งทีมมา = ไม่แตะทีม** (ตั้งแต่หน้าผู้ใช้ถอดช่องทีมออก 2026-09-06)
@@ -75,9 +77,9 @@ export async function PATCH(request, { params }) {
     }
     const department = normalizeDepartment(body.department) || departmentFor(body.role);
     updates.app_metadata = { role: body.role, department, must_change_password: mustChange, team, teams, extraCaps };
-  } else if (body.extraCaps !== undefined || mustChange !== !!existingMeta.must_change_password) {
-    // extraCaps-only change, or a password reset without a role change — persist
-    // the flag + grants while keeping the rest of app_metadata intact.
+  } else if (mustChange !== !!existingMeta.must_change_password) {
+    // a password reset without a role change — persist the flag while keeping the
+    // rest of app_metadata intact (extraCaps = ของเดิม · เขียนผ่าน /grants เท่านั้น)
     updates.app_metadata = { ...existingMeta, must_change_password: mustChange, extraCaps };
   }
 
