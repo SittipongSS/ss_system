@@ -367,7 +367,8 @@ const OTHER_KINDS = {
   info: () => ({ kind: 'info', dept: 'RD', title: 'สอบถามสเปก', dealId: 'D-1', requestedDueDate: '2026-10-20' }),
   document: () => ({
     kind: 'document', title: 'ขอเอกสาร MSDS', dealId: 'D-1', requestedDueDate: '2026-10-20',
-    items: [{ docType: 'msds', productId: 'PRD-1', spec: 'MSDS ภาษาไทย' }],   // P2b: MSDS ต้องเลือก FG
+    // P2b: MSDS ต้องเลือก FG · ม-167: FG ที่ยังไม่ผูกสูตรต้องมีสูตรหรือชื่อที่พิมพ์
+    items: [{ docType: 'msds', productId: 'PRD-1', typedSubjectName: 'สูตรทดสอบ', spec: 'MSDS ภาษาไทย' }],
   }),
   billing_doc: () => ({
     kind: 'billing_doc', title: 'ขอใบวางบิล', quotationId: 'QT-1', billAmount: 5350, requestedDueDate: '2026-10-20',

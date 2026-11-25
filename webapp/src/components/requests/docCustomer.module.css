@@ -1,0 +1,80 @@
+/* ข้อมูลลูกค้าสำหรับ IFRA / MSDS (ม-167) — ตารางสามคอลัมน์ หัวข้อ · ไทย · อังกฤษ · จอแคบเรียงเป็นแถวเดียว */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.head,
+.row {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+}
+
+.head {
+  font-size: var(--fs-6);
+  color: var(--text-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.row + .row { border-top: 1px solid var(--border); }
+
+.row dt {
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}
+
+.row dd {
+  margin: 0;
+  min-width: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.span2 { grid-column: span 2; }
+
+/* ป้ายภาษาในเซลล์ — ใช้เฉพาะจอแคบ (หัวตารางหายไป) */
+.lang {
+  display: none;
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}
+
+.value { color: var(--text); }
+.empty { color: var(--text-3); }
+
+.missing {
+  margin: 0;
+  font-size: var(--fs-6);
+  color: var(--red);
+}
+
+.note {
+  margin: 0;
+  font-size: var(--fs-6);
+  color: var(--text-3);
+}
+
+.gaps {
+  margin: 0;
+  font-size: var(--fs-6);
+  color: var(--red);
+}
+
+@media (max-width: 640px) {
+  .head { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+  .span2 { grid-column: auto; }
+  .lang { display: block; }
+}

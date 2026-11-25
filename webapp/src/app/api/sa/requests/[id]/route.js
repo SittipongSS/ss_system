@@ -70,6 +70,8 @@ import {
 } from '@/lib/requests/requestLineEdit';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
 import { resolveLineLabels } from '@/lib/requests/lineLabels';
+import { docCustomerAddressError, docCustomerSubmitError, requestNeedsDocCustomer } from '@/lib/requests/docCustomer';
+import { attachDocLineSubjects, loadDocCustomerRow, loadDocCustomerView } from '@/lib/requests/docRequestContextAdmin';
 import { resolveOptionalRefs } from '@/lib/requests/optionalRefs';
 import { resolveBillAmount } from '@/lib/requests/billingQuotations';
 import { isScentRegistrar } from '@/lib/master/scents';
@@ -372,12 +374,31 @@ export async function GET(request, { params }) {
         surveyUnknown: extras.unknown,
       };
     }
+    /* ⭐ **ข้อมูลลูกค้า + กลิ่น/สูตรของ FG ของใบขอเอกสาร** (ม-167 · 25/11/2026) — RD อ่านจากใบไปพิมพ์ IFRA / MSDS
+       · `docCustomer` = ชื่อ · ที่อยู่ที่ใบเลือก · เบอร์ ทั้งไทย/อังกฤษ (อ่านสดจากทะเบียนลูกค้า) · `item.docSubject` = กลิ่น/สูตรของบรรทัด MSDS
+       ⚠️ หลังด่านอ่านรายแถว · เฉพาะหัวข้อขอเอกสารของ RD · อ่านพัง = ไม่ล้มหน้า (`docCustomerUnknown` ให้จอบอก "อ่านไม่ได้") */
+    let docExtras = null;
+    if (requestLineShape(row) === 'document') {
+      const [docCustomer, docItems] = await Promise.all([
+        loadDocCustomerView(getSupabaseAdmin(), row.customerId, row.customerAddressId).catch((e) => {
+          console.error('[requests] อ่านข้อมูลลูกค้าของใบขอเอกสารล้ม', row.id, e?.message || e);
+          return undefined;
+        }),
+        attachDocLineSubjects(getSupabaseAdmin(), row.items || []).catch((e) => {
+          console.error('[requests] อ่านกลิ่น/สูตรของบรรทัด MSDS ล้ม', row.id, e?.message || e);
+          return null;
+        }),
+      ]);
+      docExtras = docCustomer === undefined ? { docCustomer: null, docCustomerUnknown: true } : { docCustomer };
+      if (docItems) row.items = docItems;
+    }
     // ฝั่ง client ไม่รู้ user id ของตัวเอง (roleContext มีแค่ role/team/ฝ่าย) —
     // ติดธงมาจาก server ให้ปุ่มส่ง/ยกเลิกโผล่เฉพาะกับผู้เปิดคำร้องจริง ๆ
     return Response.json(
       {
         ...row,
         ...surveyExtras,
+        ...docExtras,
         ...(surveyDocument ? { surveyDocument } : {}),
         ...(surveyConfirmLink ? { surveyConfirmLink } : {}),
         /* ⭐ ค่าสวิตช์ "ประเมินจากแบบ" ให้ฟอร์มแก้ใบ (S4 A-7) — จอรู้ทางนี้ทางเดียว (สวิตช์อ่านได้ที่ server เท่านั้น)
@@ -493,6 +514,20 @@ export async function PATCH(request, { params }) {
       }
       const err = submitRequestError(before, before.items);
       if (err) return Response.json({ error: err }, { status: 409 });
+
+      /* ⭐ **ข้อมูลลูกค้าของ IFRA / MSDS ต้องครบก่อนส่ง** (ม-167 · มติเจ้าของ 25/11/2026 "บังคับก่อนส่ง") — ชื่อ + ที่อยู่ภาษาอังกฤษ
+         ของที่อยู่ที่ใบเลือก + เบอร์ (บริษัท หรือผู้ติดต่อของที่อยู่นั้น) · ร่างบันทึกได้ไม่ติดด่าน
+         ประโยคจาก `docCustomerSubmitError` ตัวเดียวกับที่หน้าคำร้องถามก่อนเปิดโมดัล · อ่านทะเบียนพัง = 500 ยังไม่ได้เขียนอะไร */
+      if (requestLineShape(before) === 'document' && requestNeedsDocCustomer(before.items)) {
+        let docCustomer;
+        try {
+          docCustomer = await loadDocCustomerView(supabase, before.customerId, before.customerAddressId);
+        } catch (e) {
+          return Response.json({ error: e?.message || String(e) }, { status: 500 });
+        }
+        const customerError = docCustomerSubmitError(docCustomer);
+        if (customerError) return Response.json({ error: customerError }, { status: 409 });
+      }
 
       /* ⭐ **ช่องไฟล์บังคับ + วันรับผล = ข้อความเดียวตอนกดส่ง** (ประเมินจากแบบ งวด 4 · แผน §3.1 ข้อ 3 · S4 A-6)
          ประโยคมาจาก `requestSubmitGapsError` ตัวเดียวกับด่านก่อนกดบนหน้าคำร้อง ⇒ จอกับ server พูดตรงกัน
@@ -785,6 +820,25 @@ export async function PATCH(request, { params }) {
       if (denied) return Response.json({ error: denied }, { status: 403 });
 
       const next = requestEditPatch(body);
+
+      /* ⭐ ที่อยู่ลูกค้าของใบขอเอกสาร (ม-167 · mig 0440) — แก้ได้จังหวะเดียวกับหัวใบ · ไม่ส่งคีย์ = ไม่แตะ · ว่าง = กลับไปที่อยู่หลัก
+         ต้องเป็นที่อยู่ของลูกค้าของใบ (ทางแก้เปลี่ยนดีลไม่ได้ ⇒ ลูกค้าคือ `before.customerId`) · ค่าเดิมไม่เปลี่ยน = ไม่อ่านทะเบียน */
+      if (Object.prototype.hasOwnProperty.call(body, 'customerAddressId') && requestLineShape(before) === 'document') {
+        const wantedAddress = String(body.customerAddressId ?? '').trim() || null;
+        if (wantedAddress !== (before.customerAddressId || null)) {
+          if (wantedAddress) {
+            let addressCustomer;
+            try {
+              addressCustomer = await loadDocCustomerRow(supabase, before.customerId);
+            } catch (e) {
+              return Response.json({ error: e?.message || String(e) }, { status: 500 });
+            }
+            const addressError = docCustomerAddressError(addressCustomer, wantedAddress);
+            if (addressError) return Response.json({ error: addressError }, { status: 400 });
+          }
+          next.customerAddressId = wantedAddress;
+        }
+      }
 
       /* ⭐ ม-164 PR-4 — "ต่อจากคำร้อง" แก้ได้ในจังหวะเดียวกับช่องอื่นของหัวใบ · ไม่ส่งคีย์มา = ไม่แตะของเดิม ·
          ส่งค่าว่าง = ถอดลิงก์ · ลูกค้ามาจากใบ (ทางนี้เปลี่ยนดีลไม่ได้) */

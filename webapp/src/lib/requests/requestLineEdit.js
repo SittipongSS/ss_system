@@ -28,7 +28,8 @@ import { rowStage } from '@/lib/requests/rowStage';
 const WRITABLE_BY_SHAPE = Object.freeze({
   /* + `productId` (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) — FG ที่บรรทัด MSDS / Spec Sheet ขอ · ผู้ขอเป็นเจ้าของ (ตรวจที่ resolveLineLabels) */
   /* + `scentId` (P3) — กลิ่นที่บรรทัด IFRA ขอ (คอลัมน์เดิมของบรรทัด · ไม่ต้องมี migration) */
-  document: Object.freeze(['docType', 'productId', 'scentId', 'label', 'spec']),
+  /* + `formulaId` · `typedSubjectName` (ม-167 · mig 0440) — สูตร/ชื่อที่พิมพ์ของบรรทัด MSDS ที่ FG ยังไม่ผูก (กลิ่นใช้ `scentId` เดิม) */
+  document: Object.freeze(['docType', 'productId', 'scentId', 'formulaId', 'typedSubjectName', 'label', 'spec']),
   billing_doc: Object.freeze(['docType', 'label', 'spec']),
   product_dev: Object.freeze(['categoryCode', 'scentId', 'label', 'spec', 'qty', 'unit']),
 });
@@ -180,6 +181,9 @@ export function lineFormRows(items = [], lineShape = null) {
     // FG ของบรรทัด MSDS / Spec Sheet (mig 0428) — สตริงเสมอด้วยเหตุผลเดียวกับช่องอื่น (controlled component)
     productId: it.productId || '',
     scentId: it.scentId || '',
+    // ม-167 — สูตร/ชื่อที่พิมพ์ของบรรทัด MSDS (ใบวางบิลไม่มีสองช่องนี้ · สตริงว่างไม่ถูกส่งเป็นค่า)
+    formulaId: it.formulaId || '',
+    typedSubjectName: it.typedSubjectName || '',
     spec: it.spec || '',
   }));
 }

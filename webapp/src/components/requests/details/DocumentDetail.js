@@ -19,7 +19,9 @@ import { RowStepActions } from "@/components/requests/NextStepBar";
 import { docLineFileTarget } from "@/lib/requests/productDocLines";
 import RequestRows from "./RequestRows";
 import { DetailCard } from "@/components/ui/DetailPage";
-import { ListChecks } from "lucide-react";
+import { Building2, ListChecks } from "lucide-react";
+import DocCustomerCard from "@/components/requests/DocCustomerCard";
+import { requestNeedsDocCustomer } from "@/lib/requests/docCustomer";
 
 // ⚠️ รับก้อนของ **หัวข้อตัวเอง** ตามชื่อ — เหตุผลเดียวกับ FormulaDevDetail
 // (เปลือกส่ง `canEditAttachments` มาให้เหมือนทุกหัวข้อ แต่หัวข้อนี้จงใจไม่รับ —
@@ -52,6 +54,13 @@ export default function DocumentDetail({
           ⚠️ ดูอย่างเดียว: แนบ/ลบทำในโมดัลส่งงานที่เดียว (ม-90) */}
       {/* ⭐ ครอบด้วย `DetailCard` ไอคอนเดียวกับ "สรุปทั้งใบ" ของพัฒนากลิ่น/สูตร (23/11/2026 "เอาปรับกับคำร้องอื่นๆ") — การ์ดอื่นบนหน้า
           มีหัวไอคอน + ชื่อ + เส้นคั่นชุดเดียวกัน · ตารางนี้เคยมีหัวเป็นตัวหนาลอยบนพื้นหน้า (มติ 12/08 ที่สองสายนั้นทำไปแล้ว) */}
+      {/* ⭐ ข้อมูลลูกค้าสำหรับ IFRA / MSDS (ม-167 · มติเจ้าของ 25/11/2026) — RD ก๊อปไปพิมพ์ลงเอกสาร: ชื่อ · ที่อยู่ที่ใบเลือก · เบอร์
+          ไทยคู่อังกฤษ · อ่านสดจากทะเบียนลูกค้า (GET ใบ `docCustomer`) · ขึ้นเฉพาะใบที่มีบรรทัด IFRA/MSDS */}
+      {requestNeedsDocCustomer(request.items) && (
+        <DetailCard icon={Building2} title="ข้อมูลลูกค้าสำหรับเอกสาร" meta="ชื่อ · ที่อยู่ · เบอร์ ไทย / อังกฤษ — อ่านจากทะเบียนลูกค้า">
+          <DocCustomerCard view={request.docCustomer || null} unknown={!!request.docCustomerUnknown} />
+        </DetailCard>
+      )}
       <DetailCard icon={ListChecks} title="เอกสารที่ขอ">
       <DocumentBoard
         today={today}

@@ -6,6 +6,7 @@ import { ArrowLeft, Package, Archive, ArchiveRestore, Building2, ShoppingCart, M
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import StatusNotice from "@/components/ui/StatusNotice";
+import FgSubjectSuggestions from "@/components/database/FgSubjectSuggestions";
 import { useCan, useRole } from "@/lib/roleContext";
 import { isRdRole, isSalesManager } from "@/lib/permissions";
 import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/master/units";
@@ -914,6 +915,15 @@ export default function ProductDetails() {
                 )}
                 </>
                 )}
+                {/* ⭐ ม-167 (มติเจ้าของ 25/11/2026) — คำร้องขอ MSDS ระบุกลิ่น/สูตรให้ FG ที่ยังไม่ผูก ⇒ แนะนำให้ผูก + ยื่นขออนุมัติ
+                    (FG ผูกแล้ว/ชุดของขวัญ = API ส่งลิสต์ว่าง ไม่มีก้อนนี้) */}
+                <FgSubjectSuggestions
+                  productId={id}
+                  suggestions={product.docSubjectSuggestions || []}
+                  canEdit={canEditProducts}
+                  approved={product.approvalStatus === "approved"}
+                  onBound={fetchProduct}
+                />
                 {/* กลุ่ม 03/04 ไม่มีของให้วัดขนาด — ไม่มีช่องนี้ทั้งในฟอร์มและหน้านี้ (ดู units.js)
                     โชว์เป็นขีดไว้เฉย ๆ ไม่ได้ เพราะขีดแปลว่า "ยังไม่กรอก" ซึ่งชวนให้คนไปหาอะไรมาใส่ */}
                 {showPackaging && (

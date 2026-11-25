@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/DocumentControlPanel";
 import SalesDetailOverview from "@/components/ui/DetailOverview";
 import RequestForm, { emptyRequestForm } from "@/components/requests/RequestForm";
+import { docCustomerSubmitError, requestNeedsDocCustomer } from "@/lib/requests/docCustomer";
 import { docLineFileTarget } from "@/lib/requests/productDocLines";
 /* ช่องไฟล์บังคับของรูปแบบคำร้อง (ประเมินจากแบบ = แบบ / ผังพื้นที่) — บล็อกเดียวกับในฟอร์ม โหมดใบที่บันทึกแล้ว (S4 C-2) */
 import RequiredFilesBlock from "@/components/requests/RequiredFilesBlock";
@@ -342,7 +343,8 @@ export default function RequestDetailPage() {
   const needsCustomers = needsScents || req?.kind === "scent_dev";
   /* ⭐ ม-148 — พัฒนากลิ่นที่ส่งเป็นสินค้าสร้างสูตรด้วย ⇒ ฟอร์มส่งงานต้องมีทะเบียนสูตร (ตัวเลือก "แก้มาจากสูตร"
      + ด่านรหัสสูตรซ้ำก่อนกดส่ง) เหมือนใบพัฒนาสูตร */
-  const needsFormulas = hasFormulaRows || req?.kind === "scent_dev";
+  /* + ใบขอเอกสาร (ม-167 · 25/11/2026) — บรรทัด MSDS ของ FG ที่ยังไม่ผูกสูตรเลือกสูตรในฟอร์มแก้ */
+  const needsFormulas = hasFormulaRows || req?.kind === "scent_dev" || req?.kind === "document";
   useEffect(() => {
     if (!needsCustomers) return;
     const get = (url) => apiFetch(url, { cache: "no-store" })
@@ -1323,7 +1325,11 @@ export default function RequestDetailPage() {
         const shapeError = submitRequestError(req, req.items || []);
         /* ⭐ ไฟล์บังคับ + วันรับผล ของรูปแบบที่มีวันเดียว (ประเมินจากแบบ · S4 C-3) — ฟังก์ชันตัวเดียวกับ route ส่งคำร้อง
            ⇒ toast กับ 409 พูดประโยครวมเดียวกัน · จำนวนไฟล์ยังไม่รู้ (`null`) = ข้ามส่วนไฟล์ ให้ server ตัดสิน */
-        const gapsError = shapeError || requestSubmitGapsError(req, { count: requiredFileCount });
+        /* ⭐ ม-167 — ข้อมูลลูกค้าของ IFRA / MSDS ต้องครบก่อนส่ง (ชื่อ/ที่อยู่อังกฤษ + เบอร์) · ประโยคเดียวกับ route (`docCustomerSubmitError`)
+           อ่านทะเบียนลูกค้าไม่ได้ (`docCustomerUnknown`) = ข้าม ให้ server ตัดสิน */
+        const customerError = requestLineShape(req) === "document" && requestNeedsDocCustomer(req.items || [])
+          && !req.docCustomerUnknown ? docCustomerSubmitError(req.docCustomer || null) : null;
+        const gapsError = shapeError || customerError || requestSubmitGapsError(req, { count: requiredFileCount });
         const briefNameError = gapsError || scentBriefNameError(req.briefs || [], { stage: "submit" })
           // ม-164 PR-4 — ใบขายแก้ไขกลิ่นล้วน: ทุกบรีฟต้องเลือกกลิ่นตั้งต้น (ตัวเดียวกับ server)
           || briefSourceMissingError(req.briefs || [], req.salesOrderLines || []);
@@ -1656,6 +1662,8 @@ export default function RequestDetailPage() {
                  (ด่านมีข้อเดียว: มีจริง + อยู่ดีลเดียวกัน · `resolveOptionalRefs`) */
               quotationId: req.quotationId || "",
               salesOrderId: req.salesOrderId || "",
+              // ที่อยู่ลูกค้าของใบขอเอกสาร (ม-167) — แก้ได้ในหัวใบ · server ตรวจว่าเป็นของลูกค้าของใบ
+              customerAddressId: req.customerAddressId || "",
               // ม-164 PR-4 — ต่อจากคำร้อง (แก้ได้ในหัวใบ · server ตรวจลูกค้าเดียวกัน)
               continuesRequestId: req.continuesRequestId || "",
               productIds: (req.productRefs || []).map((fg) => fg.id)
@@ -2232,6 +2240,8 @@ export default function RequestDetailPage() {
             products={editRefs.products}
             productTypes={productTypes}
             scents={registry.scents}
+            /* ทะเบียนสูตร — บรรทัด MSDS ของ FG ที่ยังไม่ผูกสูตรเลือกสูตรในฟอร์มแก้ (ม-167 · ฟอร์มเดียวกับตอนเปิดใบ) */
+            formulas={registry.formulas}
             me={me}
           />
         </DetailCard>
