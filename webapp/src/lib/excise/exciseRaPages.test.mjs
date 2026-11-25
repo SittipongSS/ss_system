@@ -55,3 +55,21 @@ test('③ ขึ้นทะเบียน: API แนบเบอร์โท�
   assert.match(page, /\{r\.customerPhone \? <div className="cell-sub font-mono">โทร \{r\.customerPhone\}<\/div> : null\}/);
   assert.match(page, /\{r\.customerPhone \? <span className="cell-sub font-mono"> · โทร \{r\.customerPhone\}<\/span> : null\}/, 'การ์ดโชว์เบอร์ (ทั้งการ์ดเป็นลิงก์อยู่แล้ว)');
 });
+
+test('④ เบอร์โทรลูกค้าบังคับตอนยื่นทะเบียน (เจ้าของ 25/11 "ถ้าไม่มี ต้องบังคับใส่ ไม่งั้นกดยื่นไม่ได้") — ขาด = ยื่นไม่ได้ · แก้ที่หน้าลูกค้า', async () => {
+  const { registrationMissing } = await import('../tax/requirements.js');
+  const base = {
+    registration: { id: 'R1', customerId: 'C1', productId: null },
+    hasArtwork: true,
+    customerDocTypes: new Set(['address_map']),
+  };
+  const ok = { email: 'a@b.c', taxId: '0105565024543', branchCode: '00000' };
+  const without = registrationMissing({ ...base, customer: { ...ok, phone: '', contactPhone: null } });
+  assert.equal(without.ready, false);
+  assert.deepEqual(without.missing.map((m) => [m.entity, m.docType, m.label]), [['customer', 'phone', 'เบอร์โทรลูกค้า']]);
+  assert.equal(without.warnings.some((w) => w.field === 'customerPhone'), false, 'ไม่ใช่คำเตือนเบา ๆ แล้ว');
+  assert.equal(registrationMissing({ ...base, customer: { ...ok, phone: '02-123-4567' } }).ready, true, 'เบอร์บริษัทพอ');
+  assert.equal(registrationMissing({ ...base, customer: { ...ok, phone: '  ', contactPhone: '081-234-5678' } }).ready, true, 'เบอร์ผู้ติดต่อพอ');
+  const panel = read('../../components/excise/RegistrationWorkModal.js');
+  assert.match(panel, /item\.entity === "customer" && \["taxId", "branchCode", "phone"\]\.includes\(item\.docType\)/, 'เช็กลิสต์มีลิงก์ "แก้ที่หน้าลูกค้า"');
+});

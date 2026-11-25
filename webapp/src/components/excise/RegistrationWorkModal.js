@@ -85,7 +85,8 @@ function RegistrationControl({ item, reg, busy, primaryAction, notices, children
 
 /* ของที่ขาดแต่ละชนิดแก้ที่ไหน — เอกสาร/ข้อมูลลูกค้าเก็บที่ลูกค้า · ราคาขายปลีกเก็บที่สินค้า · ไฟล์ของทะเบียนแนบในแผงนี้ */
 const fixHint = (item, reg) => {
-  if (item.entity === "customer" && (item.docType === "taxId" || item.docType === "branchCode")) {
+  /* เบอร์โทรลูกค้า (บังคับตั้งแต่ 25/11) แก้ที่หน้าลูกค้าเหมือนเลขผู้เสียภาษี/สาขา */
+  if (item.entity === "customer" && ["taxId", "branchCode", "phone"].includes(item.docType)) {
     return reg?.customerId ? { href: `/database/customers/${encodeURIComponent(reg.customerId)}`, label: "แก้ที่หน้าลูกค้า" } : null;
   }
   if (item.docType === "retailPriceIncVat") {
