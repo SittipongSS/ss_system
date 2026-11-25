@@ -137,7 +137,8 @@ export default function ScentDevDetail({
                Control Panel · กดที่ก้อนไหน โมดัลผูกบรีฟก้อนนั้นให้เลย ไม่ต้องเลือกซ้ำ
                ⚠️ เงื่อนไขเดียวกับปุ่มเดิมเป๊ะ (`rowStep.canDept` = ฝ่ายปลายทางที่รับเรื่อง
                แล้ว) — ที่ย้ายคือ *ที่วาง* ไม่ใช่ด่าน */
-            renderGroupStep={(perfumerStep?.canAssign || (rowStep?.canDept && onDeliver)) ? (g) => (
+            /* ⭐ บรีฟที่จบแล้ว (`summary.done` = ยืนยันแล้ว ไม่มีอะไรค้างฝั่งเรา) ไม่มีปุ่ม — ผู้ใช้ 25/11/2026 */
+            renderGroupStep={(perfumerStep?.canAssign || (rowStep?.canDept && onDeliver)) ? (g) => g.summary?.done ? null : (
               <>
                 {/* ⚠️ ชิปตัวเดียวกับปุ่มรายแถว **และกติกาเดียวกัน** — ตารางเดียวมีปุ่ม
                     ติดชิปกับไม่ติดปนกันไม่ได้ ⇒ เงื่อนไขต้องตรงกับ `RowStepActions`
