@@ -7,7 +7,8 @@ import { fmtNumber, naText } from "@/lib/format";
 export const UPCOMING_START_BLOCKER = "ยังเริ่มยื่นไม่ได้ — งานถึง RA เมื่อใบสั่งขายค่าสรรพสามิตอนุมัติแล้ว";
 
 /** หน้าการยื่นชำระพร้อมเปิดงานนี้ (`?start=<คีย์งาน>`) — ทางเดียวของคิวบนภาพรวมและแถวในรายการ */
-export const raWorkHref = (row) => `/tax/filings?start=${encodeURIComponent(row?.key || "")}`;
+/* หน้าเต็มของงาน (เจ้าของ 25/11 "กดเข้าไปต้องเป็นรายละเอียดหน้าเต็ม แล้ว action ใน control panel") — เดิม `/tax/filings?start=` เปิดโมดัล */
+export const raWorkHref = (row) => `/tax/filings/work/${encodeURIComponent(row?.key || "")}`;
 
 /** ป้ายรอบของงาน (แบ่งรอบ · D19) — "รอบที่ 2/3 · SO ลูกค้ายังค้าง x หน่วย" · รอบเดียวที่ไม่ค้าง = ว่าง (ไม่พูดเรื่องรอบเลย) */
 export function raRoundLabel(row) {

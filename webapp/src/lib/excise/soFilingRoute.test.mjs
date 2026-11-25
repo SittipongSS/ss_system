@@ -86,7 +86,7 @@ test("โหลดเลขใบเสนอราคาแบบยิงท�
 // โมดัลต้องโชว์รายการที่จะยื่นจริง ไม่ใช่แค่จำนวน — API ส่ง lines มาครบอยู่แล้ว
 test("โมดัลสร้างใบยื่นวาดตารางรายการ และไม่ใช้ style ดิบ (งบ inlineStyle เต็มเพดาน)", () => {
   const modal = readFileSync(
-    new URL("../../components/excise/SalesOrderFilingModal.js", import.meta.url),
+    new URL("../../components/excise/FilingWorkView.js", import.meta.url), // เดิมโมดัล · หน้าเต็มตั้งแต่ 25/11
     "utf8",
   );
   // PR5: โมดัลเป็นของ RA — พรีวิวจากคิวรอยื่นกรม (GET /api/tax/orders/queue?…)

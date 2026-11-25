@@ -117,7 +117,7 @@ const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/
 const route = codeOnly(read("../../app/api/orders/[id]/route.js"));
 const startRoute = codeOnly(read("../../app/api/tax/orders/from-sales-order/route.js"));
 const page = codeOnly(read("../../app/tax/filings/[id]/page.js"));
-const modal = codeOnly(read("../../components/excise/SalesOrderFilingModal.js"));
+const modal = codeOnly(read("../../components/excise/FilingWorkView.js")); // เดิมโมดัล · หน้าเต็มตั้งแต่ 25/11
 
 test("route: ตารางกลางตัดสินขั้นชำระแล้ว · ยกเว้นจากทะเบียน (stampExemptFlags) · บันทึกตรึงรายการ ห้ามแก้/คิดใหม่", () => {
   assert.match(route, /filingTransitionError\(\{\s*from: order\.status, to: target, caps: \{ sales: isSales, ra: isLegal \}, exempt, fields,/);
@@ -143,7 +143,10 @@ test("เริ่มยื่น: route เขียนบันทึกสถ
   assert.doesNotMatch(startRoute, /status: "draft"/, "ขั้นร่างของ PR5 ห้ามกลับมา");
   assert.match(startRoute, /const gateError = filingStartGateError\(filingStartGates\(\{/);
   assert.match(modal, /filingStartGateError\(preview\.gates\)/, "โมดัลอ่านด่านจากตัวตัดสินเดียวกับ route");
-  assert.match(modal, /aria-disabled=\{!!startBlocker\}/, "ติดด่าน = ปุ่มยังอยู่ (aria-disabled) กดแล้วบอกเหตุ");
+  /* หน้าเต็มของงาน (25/11): ปุ่มอยู่การ์ดจัดการ — ติดด่าน = ปุ่มยังอยู่ (DocumentAction วาด aria-disabled) + เหตุเหนือปุ่ม (disabledReason) */
+  const workPage = codeOnly(read("../../app/tax/filings/work/[key]/page.js"));
+  assert.match(workPage, /disabled: Boolean\(startBlocker\) \|\| busy,\s*disabledReason: startBlocker \|\| undefined,/, "ติดด่าน = ปุ่มยังอยู่ บอกเหตุ");
+  assert.match(workPage, /const record = await work\.start\(\);\s*if \(!record\) return;\s*await reload\(\);\s*router\.push\(`\/tax\/filings\/\$\{record\.id\}`\);/, "เริ่มยื่นสำเร็จ = ไปหน้าบันทึกการยื่น");
   assert.match(modal, /if \(startBlocker\) \{\s*setError\(startBlocker\);/);
   // หน้าบันทึก: ไม่มีปุ่มรับเงิน/พิมพ์ใบแจ้งชำระถึงลูกค้า/ตีกลับ/คิดใหม่
   assert.doesNotMatch(page, /ReceiveDialog|openBillPrintWindow|"sales:act"|recalcFromSalesOrder|"rejected"\)/);

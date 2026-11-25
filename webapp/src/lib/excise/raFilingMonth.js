@@ -33,11 +33,55 @@ export function filingMonthTotals(rows = []) {
   };
 }
 
+/** เดือนของงาน (มติเจ้าของ 25/11 · แทน V24 "เดือนที่ยื่น") = เดือนของวันในคอลัมน์ (วันที่ส่งของ · สหมิตร = วันที่เอกสาร PO)
+ *  'YYYY-MM-DD' → 'YYYY-MM' · ไม่มีวัน = null (จอรวมไว้กอง "ยังไม่มีวันที่ส่ง") — วันในปฏิทิน ไม่ใช่จุดเวลา ⇒ ตัดสตริงตรง ๆ */
+export function filingDeliveryMonth(date) {
+  const match = /^(\d{4}-\d{2})-\d{2}$/.exec(String(date || ''));
+  return match ? match[1] : null;
+}
+
+/** ใบของสหมิตร (ลูกค้า AR-109) — ตัดสินจาก `customerId` ของ SO ลูกค้า · ไม่รู้รหัสลูกค้าสหมิตร = ไม่ใช่ */
+export const isSahamitFilingOrder = (salesOrder, sahamitCustomerId) => Boolean(
+  sahamitCustomerId && salesOrder?.customerId && salesOrder.customerId === sahamitCustomerId,
+);
+
+/** วันที่เอกสาร PO ของ SO ลูกค้า — เฉพาะเอกสารยืนยันชนิด PO (`confirmDocType` 'po') · ชนิดอื่น/ไม่มี = null (จอโชว์ "—") */
+export const salesOrderPoDocDate = (salesOrder) => (salesOrder?.confirmDocType === 'po' ? salesOrder.confirmDocDate || null : null);
+
+/**
+ * วันที่ส่งของของกลุ่ม — 'YYYY-MM-DD' หรือ null (จอโชว์ "—")
+ * เจ้าของ 04/11: "ใส่แค่วันที่ส่งของ ถ้ายังไม่ส่งก็ต้อง - ไว้" ⇒ เลิกถอยไปวันที่ PO ("PO มาวันที่ …" ของตารางเดิม)
+ * · งานที่มีใบค่าสรรพสามิต (`viaExcise` — กำลังมา · รอ RA · บันทึกรายรอบ) = วันของ SO ค่าสรรพสามิตเท่านั้น (SA ใส่ตอนยื่น · V21)
+ *   ⚠️ ไม่ถอยไปกำหนดส่งของ SO ต้นทาง: แบ่งรอบแล้ว SO ต้นทางถือวันของรอบล่าสุด (V22) ⇒ รอบที่ยังไม่ส่งจะได้วันของรอบอื่น
+ * · งานไม่เรียกเก็บ / บันทึกเก่าที่ไม่ผูก SO ค่าสรรพสามิต = กำหนดส่งของ SO ลูกค้า
+ */
+export function filingDeliveryDate({ exciseOrder = null, salesOrder = null, viaExcise = Boolean(exciseOrder), sahamitCustomerId = null } = {}) {
+  /* ⭐ สหมิตร (มติเจ้าของ 25/11): "ยกเว้นสหมิตรที่จะโชว์เป็นวันที่เอกสาร PO แทน" — ทั้งงานค่าสรรพสามิตและไม่เรียกเก็บ (PO อยู่ที่ SO ลูกค้า) */
+  if (isSahamitFilingOrder(salesOrder, sahamitCustomerId)) return salesOrderPoDocDate(salesOrder);
+  if (viaExcise) return exciseOrder?.deliveryDueDate || null;
+  return salesOrder?.deliveryDueDate || null;
+}
+
+/**
+ * วันที่ในคอลัมน์ "วันที่ส่งของ" ของ SO ค่าสรรพสามิตใบหนึ่ง (ทะเบียน SO แท็บสรรพสามิต · เจ้าของ 25/11 "แสดงวันที่ส่งของด้วย")
+ * — กติกาเดียวกับตาราง RA: วันของใบค่าสรรพสามิต · สหมิตร = วันที่เอกสาร PO ของ SO ลูกค้าต้นทาง
+ * คืน `{ date, kind }` · kind 'po' | 'delivery' · ไม่มีวัน = date null
+ */
+export function exciseOrderDeliveryShown(exciseOrder, sourceOrder, sahamitCustomerId) {
+  const date = filingDeliveryDate({ exciseOrder, salesOrder: sourceOrder, viaExcise: true, sahamitCustomerId });
+  return { date, kind: isSahamitFilingOrder(sourceOrder, sahamitCustomerId) ? 'po' : 'delivery' };
+}
+
+/** ข้อความของวันในคอลัมน์ — สหมิตรนำด้วย "PO " ให้รู้ว่าไม่ใช่วันส่ง · ไม่มีวัน = '' */
+export function deliveryShownText(date, kind) {
+  if (!date) return '';
+  return kind === 'po' ? `PO ${fmtDate(date)}` : fmtDate(date);
+}
+
 /** ช่อง "วันที่ส่งของ" — ยังไม่มีวันส่ง = '' (จอโชว์ "—" · เจ้าของ 04/11 เลิกโชว์ "PO มาวันที่ …" แบบตารางเดิม)
  *  ⭐ ยกเว้นสหมิตร (มติ 25/11): วันในช่องคือวันที่เอกสาร PO (`deliveryDateKind` 'po') ⇒ นำด้วย "PO " ให้รู้ว่าไม่ใช่วันส่ง */
 export function filingDateText(detail) {
-  if (!detail?.deliveryDate) return '';
-  return detail.deliveryDateKind === 'po' ? `PO ${fmtDate(detail.deliveryDate)}` : fmtDate(detail.deliveryDate);
+  return deliveryShownText(detail?.deliveryDate, detail?.deliveryDateKind);
 }
 
 /** ป้ายใต้ตัวกรอง/หัวรายงาน — คำเดียวกันทุกจุด */

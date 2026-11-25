@@ -6,6 +6,8 @@ import { withUser, ok, fail, badRequest, conflict, forbidden, notFound, unauthor
 import { canEditSalesPlanning, canViewSalesPlanning } from '@/lib/salesPlanning';
 import { attachSourceDeals, inSalesDocScope } from '@/lib/scopedRow';
 import { isExciseOrder } from '@/lib/sales/historicalOrders';
+import { exciseOrderDeliveryShown } from '@/lib/excise/raFilingMonth';
+import { SAHAMIT_AR_CODE } from '@/lib/sahamit/customer';
 import { exciseSalesOrderCreateError } from '@/lib/excise/exciseSalesOrder';
 import { isSalesOrderReviewer, isSalesOrderWaitingOnMe, salesOrderBouncedToMe } from '@/lib/sales/salesOrderWorkflow';
 /* นับ Actual รายงวด (mig 0412) — เลนงวดรออนุมัติ/งวดที่ยื่นได้ ตัวเดียวกับป้ายบนเมนู (nav/counts → salesOrderIdsWaitingOnMe) */
@@ -288,12 +290,18 @@ export const GET = withUser(async ({ user, supabase }) => {
   const actualInstallmentsOf = (row) => (isInstallmentActualOrder(row) ? (installmentsByOrder.get(row.id) || []) : null);
 
   const exciseStages = await exciseStagesPending;
+  /* ⭐ คอลัมน์ "วันที่ส่งของ" ของแท็บสรรพสามิต (เจ้าของ 25/11) — กติกาเดียวกับตาราง RA: วันของใบค่าสรรพสามิต · สหมิตร (AR-109) =
+     วันที่เอกสาร PO ของ SO ลูกค้าต้นทาง · ใบต้นทางอยู่ในชุด `orders` นี้แล้ว (ทะเบียนอ่านทุกใบ) ไม่ต้องยิงเพิ่ม */
+  const sahamitCustomerId = [...arById].find(([, ar]) => ar === SAHAMIT_AR_CODE)?.[0] || null;
 
   const visible = (orders || [])
     .map((row) => ({
       ...row,
       customerArCode: arById.get(row.customerId) ?? null,
       exciseStage: exciseStages.get(row.id) || null,
+      ...(isExciseOrder(row)
+        ? { exciseDelivery: exciseOrderDeliveryShown(row, orderById.get(row.sourceSalesOrderId) || null, sahamitCustomerId) }
+        : {}),
       lines: linesByOrder.get(row.id) || [],
       deal: dealById.get(row.dealId) || null,
       ...(row.dealId ? {} : { sourceDeal: dealById.get(sourceDealIdOf(row)) || null }),

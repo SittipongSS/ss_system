@@ -124,7 +124,7 @@ test("เปลือกพิมพ์: หัวกลุ่มเป็นแ
 
 test("ใบสรุปรายการยื่นถอดแล้ว (เจ้าของ 04/11: ยื่นกรมผ่านระบบของกรม) · ทุกงานติ๊กได้ (รวมกำลังมา) · ค้นหาครอบรายการสินค้า", () => {
   const page = read("../../app/tax/filings/page.js");
-  for (const [rel, src] of [["page", page], ["record", read("../../app/tax/filings/[id]/page.js")], ["modal", read("../../components/excise/SalesOrderFilingModal.js")]]) {
+  for (const [rel, src] of [["page", page], ["record", read("../../app/tax/filings/[id]/page.js")], ["work", read("../../components/excise/FilingWorkView.js")], ["workPage", read("../../app/tax/filings/work/[key]/page.js")]]) {
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
     assert.doesNotMatch(code, /printFilingSummary|พิมพ์ใบสรุป/, `${rel}: ไม่มีปุ่มใบสรุปแล้ว`);
   }

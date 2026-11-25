@@ -170,7 +170,10 @@ export async function POST(request) {
 async function withQueueFacts(supabase, rows, user) {
   if (!rows.length) return rows;
   const productIds = [...new Set(rows.map((r) => r.productId).filter(Boolean))];
-  const [{ data: products, error: prodErr }, readiness] = await Promise.all([
+  /* ⭐ เบอร์โทรลูกค้าในคอลัมน์ลูกค้า (เจ้าของ 25/11) — อ่านสดจากทะเบียนลูกค้า ไม่ใช่สำเนาในทะเบียนสรรพสามิต (เบอร์เปลี่ยนได้) ·
+     เฉพาะ id ที่อยู่ในคิว · ทีละก้อน (id ลูกค้ายาว — URL 16 KB) · `.limit(chunk.length)` ตามกติกา check:rowcap */
+  const customerIds = [...new Set(rows.map((r) => r.customerId).filter(Boolean))];
+  const [{ data: products, error: prodErr }, readiness, { data: customers, error: customerErr }] = await Promise.all([
     // จำกัดแถวชัดเจน — อ่านได้อย่างมากเท่าจำนวน id ที่ขอ (ดู check:rowcap)
     /* ⭐ **คอลัมน์เพิ่มไม่ใช่แถวเพิ่ม** (มติผู้ใช้ 2026-08-28) — คิวโชว์ข้อมูลชุด
        เดียวกับรายงานแล้ว (ขนาด · ราคาปลีกรวม/ถอด VAT · ต้นทุนแจกแจง+กำไร) ยังเป็น
@@ -185,9 +188,14 @@ async function withQueueFacts(supabase, rows, user) {
         + ' "exciseTax", "localTax", "isExciseTaxable"')
       .in('id', chunk).limit(chunk.length)),
     registrationRequirementsBatch(supabase, rows),
+    fetchInChunks(customerIds, (chunk) => supabase.from('customers')
+      .select('id, phone, "contactPhone"')
+      .in('id', chunk).limit(chunk.length)),
   ]);
   if (prodErr) throw prodErr;
+  if (customerErr) throw customerErr;
   const productOf = new Map((products || []).map((p) => [p.id, p]));
+  const phoneOf = new Map((customers || []).map((c) => [c.id, String(c.phone || c.contactPhone || '').trim() || null]));
 
   return rows.map((r) => {
     const product = productOf.get(r.productId) || null;
@@ -210,6 +218,7 @@ async function withQueueFacts(supabase, rows, user) {
       docsReady: req ? req.ready : null,
       // ป้ายบนคิวต้องบอกได้ว่า "ขาดอะไร" ไม่ใช่แค่ "ไม่ครบ" — ไม่งั้นต้องเปิดใบถึงรู้
       missingLabels: req ? req.missing.map((m) => m.label) : [],
+      customerPhone: phoneOf.get(r.customerId) || null,
     };
   });
 }
