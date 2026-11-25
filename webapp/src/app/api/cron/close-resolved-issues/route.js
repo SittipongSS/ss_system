@@ -12,12 +12,17 @@
 // ➕ งานพ่วง (cron รายวันตัวเดียวที่รันทุกวัน — ไม่เพิ่ม cron ใหม่ใน vercel.json):
 //    ล้างประวัติการเรียก API ภายนอก (`api_client_calls`) ที่เก่ากว่า 90 วัน (มติ 5 · docs/so-external-api-plan.md)
 //    ล้างพลาด = บอกในผลลัพธ์ ไม่ทำให้การปิดเรื่องล้ม
+//    สิทธิ์เสริมครบกำหนด → ถอด + กระดิ่งคนถือ/คนให้ · เหลือ ≤ 3 วัน → เตือนครั้งเดียว (mig 0440 · runGrantExpiry)
+//    "ถึงวันที่ D" ใช้ได้ถึงสิ้นวัน D ⇒ ถอดรอบ 09:00 ของวันถัดไป · พลาด = บอกในผลลัพธ์ ไม่ทำให้งานอื่นล้ม
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import { can } from '@/lib/permissions';
 import { AUTO_CLOSE_DAYS, autoClosePatch, isDueForAutoClose } from '@/lib/issues/model';
 import { recordIssueEvent } from '@/lib/issues/notify';
 import { purgeOldApiCalls } from '@/lib/extApi/callLog';
+import { runGrantExpiry } from '@/lib/capabilityGrants';
+import { notifyUsers } from '@/lib/notifications';
+import { recordAudit } from '@/lib/audit';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -74,8 +79,20 @@ export async function GET(request) {
     console.error('[cron close-resolved-issues]', purgeError.message);
   }
 
+  let grants = null;
+  let grantsError = null;
+  try {
+    grants = await runGrantExpiry(supabase, {
+      now, notify: (args) => notifyUsers(supabase, args), audit: (entry) => recordAudit(entry),
+    });
+  } catch (grantError) {
+    grantsError = grantError.message;
+    console.error('[cron close-resolved-issues] grants', grantError.message);
+  }
+
   return Response.json({
     scanned: (data || []).length, closed: closed.length, codes: closed,
     apiCallsPurged, ...(apiCallsPurgeError ? { apiCallsPurgeError } : {}),
+    grants, ...(grantsError ? { grantsError } : {}),
   });
 }

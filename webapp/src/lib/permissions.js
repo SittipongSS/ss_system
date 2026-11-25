@@ -908,23 +908,10 @@ export const GRANTABLE_CAP_LABELS = {
 /* ⭐ แจก **ใหม่** ได้ไหมตอนนี้ (มติเจ้าของ 25/11/2026) — สิทธิ์ของระบบที่ปิดทั้งระบบ (CLOSED_MODULES)
    แจกเพิ่มไม่ได้ เพราะได้ไปก็ไม่มีผล (เมนู · หน้า · API ปิดหมดแล้ว) และจะค้างเป็นสิทธิ์ผีรอวันเปิดระบบ
    ⚠️ **ไม่ใช่ตัวกรองตอนอ่าน** — `sanitizeExtraCaps` ยังเก็บของเดิมไว้ ระบบเปิดกลับเมื่อไรคนที่ถืออยู่ได้คืนเอง
+   ⚠️ ผู้ถามคือ `validateGrantRequest` (lib/capabilityGrants.js · ทางเดียวที่ให้สิทธิ์เสริม — งวด 2) และช่องติ๊กบนจอ
    ⚠️ ชื่อระบบ = ส่วนหน้าเครื่องหมาย `:` ของ cap (`mgmt:view` → `mgmt`) ตรงกับคีย์ใน CLOSED_MODULES */
 export function grantableNow(cap) {
   return GRANTABLE_CAPS.includes(cap) && !isModuleClosed(String(cap).split(':')[0]);
-}
-
-/** สิทธิ์ที่ขอเพิ่มใหม่ (ไม่อยู่ใน `before`) แต่แจกตอนนี้ไม่ได้ — คืน [] เมื่อผ่าน
- *  ของที่ถืออยู่แล้วไม่นับ ⇒ แก้ชื่อ/เบอร์ของคนที่ถือสิทธิ์ระบบปิดอยู่ไม่โดนปฏิเสธ */
-export function blockedNewGrants(before, after) {
-  const had = new Set(sanitizeExtraCaps(before));
-  return sanitizeExtraCaps(after).filter((cap) => !had.has(cap) && !grantableNow(cap));
-}
-
-/** ข้อความปฏิเสธของ API สร้าง/แก้ผู้ใช้ — null = ผ่าน (ตัวเดียวที่สองเส้นใช้ ข้อความจึงตรงกัน) */
-export function blockedGrantError(before, after) {
-  const blocked = blockedNewGrants(before, after);
-  if (!blocked.length) return null;
-  return `แจกสิทธิ์เสริมนี้ตอนนี้ไม่ได้ เพราะระบบปิดอยู่ทั้งระบบ: ${blocked.map((cap) => GRANTABLE_CAP_LABELS[cap] || cap).join(' · ')}`;
 }
 
 // Keep only whitelisted, de-duplicated grants. Accepts anything, returns [].

@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, normalizeRole, sanitizeExtraCaps, blockedGrantError, userTeams, resolveTeamAssignment } from '@/lib/permissions';
+import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, normalizeRole, sanitizeExtraCaps, userTeams, resolveTeamAssignment } from '@/lib/permissions';
 import {
   LOGIN_PHONE_DOMAIN, isPhoneLogin, loginLabel, loginPhoneOf, normalizeLoginPhone, phoneLoginEmail,
 } from '@/lib/auth/loginIdentity';
@@ -116,12 +116,12 @@ export async function POST(request) {
   const invalid = validateIdentity(role, teams, body.department, { validCodes: salesCodes });
   if (invalid) return Response.json({ error: invalid }, { status: 400 });
   const department = normalizeDepartment(body.department) || departmentFor(role);
-  // Per-user capability grants — whitelisted (GRANTABLE_CAPS) so a create call
-  // can never mint admin-system caps. Stored in app_metadata (service-role-only).
-  const extraCaps = sanitizeExtraCaps(body.extraCaps);
-  // สิทธิ์ของระบบที่ปิดอยู่แจกใหม่ไม่ได้ (มติ 25/11/2026 · grantableNow)
-  const grantError = blockedGrantError([], extraCaps);
-  if (grantError) return Response.json({ error: grantError }, { status: 400 });
+  /* ⭐ สิทธิ์เสริมให้ตอนสร้างบัญชีไม่ได้แล้ว (รื้อระบบสิทธิ์งวด 2 · mig 0440) — ทางเดียวคือ
+     `POST /api/users/[id]/grants` ซึ่งบังคับเหตุผล + เลือกวันหมดอายุ และเขียนทะเบียน `user_capability_grants`
+     ⚠️ ปฏิเสธดัง ๆ ไม่ใช่ทิ้งเงียบ — สคริปต์/จอเก่าที่ยังส่งมาจะรู้ว่าสิทธิ์ไม่ได้ถูกให้ */
+  if (sanitizeExtraCaps(body.extraCaps).length) {
+    return Response.json({ error: 'ให้สิทธิ์เสริมหลังสร้างบัญชีแล้ว ด้วยปุ่ม "จัดการสิทธิ์เสริม" (ต้องกรอกเหตุผลและวันหมดอายุ)' }, { status: 400 });
+  }
 
   const { data, error } = await supabase.auth.admin.createUser({
     email,
@@ -134,7 +134,7 @@ export async function POST(request) {
     // must_change_password forces a self-service password change on first login
     // (the admin-assigned password is temporary). Stored in app_metadata so the
     // user can't clear it client-side — only our /api/account/password route does.
-    app_metadata: { role, department, must_change_password: true, ...(team ? { team, teams } : {}), ...(extraCaps.length ? { extraCaps } : {}) },
+    app_metadata: { role, department, must_change_password: true, ...(team ? { team, teams } : {}) },
   });
   if (error) return Response.json({ error: error.message }, { status: 400 });
   invalidateCache('assignable-users'); // dropdown ผู้รับผิดชอบเห็นคนใหม่ทันที

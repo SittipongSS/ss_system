@@ -44,6 +44,9 @@ const HREF = {
   /* งวด 4 วันกำหนด (24/11/2026) — กระดิ่งส่ง href เองเสมอ · ตัวนี้เป็นทางสำรองของหน้า "ดูทั้งหมด" */
   quotation: (id) => `/sales-planning/quotations/${id}`,
   service_site: (id) => `/database/sites/${id}`,
+  /* สิทธิ์เสริมใกล้หมด/หมดอายุ (mig 0440) — กระดิ่งส่ง href เองเสมอ (คนถือ → /account · คนให้ → /users)
+     ตัวนี้เป็นทางสำรองของแถวที่ไม่มี href */
+  user_grant: () => '/account',
 };
 
 // ป้ายที่ขึ้นหัวแจ้งเตือน — ใช้ชื่อเอกสารจากแถวแม่ถ้ามี ไม่มีก็ใช้ id ดิบเป็นทางสุดท้าย
@@ -70,6 +73,7 @@ export const ENTITY_LABEL = {
   product_spec_document: 'รายละเอียดผลิตภัณฑ์ (FM-SA-04)',
   quotation: 'ใบเสนอราคา',
   service_site: 'ไซต์บริการ',
+  user_grant: 'สิทธิ์เสริม',
 };
 
 export function notificationHref(entityType, entityId) {
