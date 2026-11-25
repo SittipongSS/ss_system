@@ -96,10 +96,16 @@ export function registrationMissing({
     if (!customer.branchCode || !String(customer.branchCode).trim()) {
       missing.push({ entity: 'customer', docType: 'branchCode', label: 'รหัสสาขาของลูกค้า (เช่น 00000 = สำนักงานใหญ่)' });
     }
+    /* ⭐ เบอร์โทรลูกค้า = **บังคับ** (เจ้าของ 25/11/2026: "เบอร์ตอนยื่น ถ้าไม่มี ต้องบังคับใส่ด้วย ไม่งั้นกดยื่นไม่ได้")
+       — เดิมเป็นคำเตือนเบา ๆ · ฝ่าย RA ใช้ตามลูกค้า และหน้าคิวขึ้นทะเบียนโชว์เบอร์ในคอลัมน์ลูกค้า (V40)
+       · `phone` (เบอร์บริษัท) หรือ `contactPhone` (เบอร์ผู้ติดต่อ) อย่างใดอย่างหนึ่งพอ — ตัวเดียวกับที่คิวโชว์
+       · ด่านเดียวกับเลขผู้เสียภาษี/สาขา: ยื่นทะเบียน (SA) + อนุมัติทะเบียนที่ RA สร้างเอง · แก้ที่หน้าลูกค้า */
+    if (!String(customer.phone || '').trim() && !String(customer.contactPhone || '').trim()) {
+      missing.push({ entity: 'customer', docType: 'phone', label: 'เบอร์โทรลูกค้า' });
+    }
 
     // Soft warnings (ไม่บล็อก): ข้อมูลติดต่อช่วยให้ฝ่าย RA ตามลูกค้าได้.
     if (!customer.email) warnings.push({ field: 'customerEmail', message: 'ยังไม่มีอีเมลลูกค้า' });
-    if (!customer.phone && !customer.contactPhone) warnings.push({ field: 'customerPhone', message: 'ยังไม่มีเบอร์โทรลูกค้า' });
   }
 
   return { ready: missing.length === 0, missing, warnings };
