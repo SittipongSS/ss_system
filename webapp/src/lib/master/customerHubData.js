@@ -14,7 +14,7 @@
 //  · มติ 3 — ลีดขึ้นเฉพาะที่เป็นดีลแล้ว (ผ่าน `sales_deals.leadId`) · `sales_leads.customerId` ไม่ใช้
 //  · ⛔ GET ห้ามเขียน — ไม่เรียก syncContractsAgainstQuotations (ตัวนั้นเขียนฐาน) ⇒ สถานะสัญญาที่โชว์คือค่าบนแถว
 //  · ⚠️ query ทุกตัวผ่าน fetchAll + เรียงด้วย id (ตัด 1,000 แถวเงียบ) · `.in()` ผ่าน fetchAllInChunks (16 KB)
-import { can } from '@/lib/permissions';
+import { canUser } from '@/lib/permissions';
 import { canViewSalesPlanning, inSalesViewScope } from '@/lib/salesPlanning';
 import { inSalesDocScope } from '@/lib/scopedRow';
 import { canViewRequests } from '@/lib/permissions';
@@ -98,7 +98,8 @@ export function slimInstallment(inst) {
 export async function customerHubRelations(supabase, customerId, user) {
   const seesSales = canViewSalesPlanning(user);
   const seesRequests = canViewRequests(user);
-  const seesRa = can(user?.role, 'ra:view') || can(user?.role, 'ra:approve');
+  // canUser — นับสิทธิ์เสริมรายคน ra:view ด้วย (ไม่ใช่แค่ตำแหน่ง RA)
+  const seesRa = canUser(user, 'ra:view') || canUser(user, 'ra:approve');
 
   const [dealRows, quoteRows, orderRows, contractRows, requestRows] = await Promise.all([
     seesSales ? byCustomer(supabase, 'sales_deals', HUB_DEAL_COLS, customerId) : [],

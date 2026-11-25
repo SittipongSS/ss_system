@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { loadSalesTeamCodes } from '@/lib/master/teamsRepo';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, normalizeRole, sanitizeExtraCaps, userTeams, resolveTeamAssignment } from '@/lib/permissions';
+import { can, canUser, validateIdentity, departmentFor, normalizeDepartment, normalizeRole, sanitizeExtraCaps, blockedGrantError, userTeams, resolveTeamAssignment } from '@/lib/permissions';
 import {
   LOGIN_PHONE_DOMAIN, isPhoneLogin, loginLabel, loginPhoneOf, normalizeLoginPhone, phoneLoginEmail,
 } from '@/lib/auth/loginIdentity';
@@ -119,6 +119,9 @@ export async function POST(request) {
   // Per-user capability grants — whitelisted (GRANTABLE_CAPS) so a create call
   // can never mint admin-system caps. Stored in app_metadata (service-role-only).
   const extraCaps = sanitizeExtraCaps(body.extraCaps);
+  // สิทธิ์ของระบบที่ปิดอยู่แจกใหม่ไม่ได้ (มติ 25/11/2026 · grantableNow)
+  const grantError = blockedGrantError([], extraCaps);
+  if (grantError) return Response.json({ error: grantError }, { status: 400 });
 
   const { data, error } = await supabase.auth.admin.createUser({
     email,

@@ -18,7 +18,7 @@ import {
   canEditProductSpec, canSeeSpecItemCost, normalizeProductSpecInput, normalizeSpecCertifications, normalizeSpecContent,
   normalizeSpecItems, prepareSpecItemRows, productSpecDeleteBlock, productSpecPermissions, redactSpecForViewer,
 } from './productSpecWorkflow.js';
-import { canSeeProductCost } from '@/lib/permissions';
+import { canSeeProductCostUser } from '@/lib/permissions';
 import { formatSpecDocNo, parseProductSpecDocNo, productSpecDocNoParts } from './productSpecDocNo.js';
 
 /* ── ทะเบียน checklist ─────────────────────────────────────────────── */
@@ -248,7 +248,7 @@ const IMG3 = 'aaaaaaaa-0000-4000-8000-000000000003';
 
 test('⭐ ทุกตำแหน่งที่แก้สเปคได้เห็นราคาทุนของสินค้าอยู่แล้ว — ไม่มีคนแก้สเปคที่กรอกแถวได้แต่ไม่เห็นคอลัมน์ราคาทุน', () => {
   for (const role of SPEC_EDIT_ROLES) {
-    assert.equal(canSeeProductCost(role), true, role);
+    assert.equal(canSeeProductCostUser({ role }), true, role);
     assert.equal(canSeeSpecItemCost({ role }), true, role);
   }
   // ด่านเดียวกับราคาทุนของทะเบียนสินค้า: ผู้ดูที่ไม่ใช่ฝ่ายขายบางตำแหน่งเห็น (FN · RA) · RD/ผู้ดูไม่เห็น

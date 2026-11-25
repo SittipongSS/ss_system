@@ -171,7 +171,8 @@ const codeOnly = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/
 
 test("route: คิวอ่านได้เฉพาะฝ่าย RA (ไม่ผ่านด่านหน้าขาย) · สร้างได้เฉพาะ ra:approve · หน้าใบยื่นแนบแผงสรุป", () => {
   const queue = codeOnly(read("../../app/api/tax/orders/queue/route.js"));
-  assert.match(queue, /if \(!can\(user\.role, "ra:view"\) && !can\(user\.role, "ra:approve"\)\) return forbidden\(\);/);
+  // canUser — สิทธิ์เสริมรายคน ra:view ต้องผ่านเท่ากับจอ /tax/filings (grantableCapsHonored.test.mjs)
+  assert.match(queue, /if \(!canUser\(user, "ra:view"\) && !canUser\(user, "ra:approve"\)\) return forbidden\(\);/);
   assert.doesNotMatch(queue, /canViewSalesPlanning/, "RA ไม่มีสิทธิ์หน้าขาย — คิวต้องไม่ผ่านด่านนั้น");
   const create = codeOnly(read("../../app/api/tax/orders/from-sales-order/route.js"));
   const post = create.slice(create.indexOf("export const POST"));
