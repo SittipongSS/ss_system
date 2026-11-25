@@ -49,10 +49,13 @@ export function docTypeNeedsDetail(value) {
 //
 // ⚠️ เอาสองชุดมารวมลิสต์เดียวไม่ได้ — คำร้องขอเอกสารของ RD จะมีตัวเลือก
 // "ใบกำกับภาษี" โผล่ขึ้นมา ซึ่งไม่ใช่ของที่ RD ออกให้ได้
-export function docVocabulary({ lineKind, types, detailValue = 'other', productDocTypes = [], scentDocTypes = [] }) {
+export function docVocabulary({
+  lineKind, types, detailValue = 'other', productDocTypes = [], scentDocTypes = [], subjectDocTypes = null,
+}) {
   const byValue = new Map(types.map((t) => [t.value, t]));
   const productTargets = new Set(productDocTypes);
   const scentTargets = new Set(scentDocTypes);
+  const subjectTargets = new Set(subjectDocTypes || []);
   // ชื่ออ่านได้ทุกชนิด · เลือก/ส่งได้เฉพาะชนิดที่ยังไม่เลิก (`retired`)
   const offered = types.filter((t) => !t.retired);
   return {
@@ -67,6 +70,9 @@ export function docVocabulary({ lineKind, types, detailValue = 'other', productD
     productTarget: (value) => productTargets.has(value),
     /* ⭐ ชนิดที่ **เก็บที่กลิ่น** (IFRA · P3 · มติเจ้าของ 09/11/2026 "IFRA เก็บ by กลิ่น") — บรรทัดต้องเลือกกลิ่น · ไฟล์ลงที่กลิ่น */
     scentTarget: (value) => scentTargets.has(value),
+    /* ⭐ ชนิดที่ต้องรู้ **กลิ่นหรือสูตรของ FG** (MSDS · ม-167 · 25/11/2026) — FG ยังไม่ผูก = ผู้ขอเลือก/พิมพ์ชื่อในบรรทัด
+       ⚠️ ชุดที่ไม่ประกาศ (บัญชี) = ไม่มีฟังก์ชันนี้เลย ⇒ ตัวตรวจไม่ใส่คีย์ `formulaId`/`typedSubjectName` ให้บรรทัดของชุดนั้น */
+    ...(subjectDocTypes ? { subjectTarget: (value) => subjectTargets.has(value) } : {}),
   };
 }
 
@@ -75,10 +81,17 @@ export function docVocabulary({ lineKind, types, detailValue = 'other', productD
 export const REQUEST_PRODUCT_DOC_TYPES = Object.freeze(['msds', 'spec_sheet']);
 /* ⭐ IFRA = ระดับกลิ่น · RD ออก · เก็บที่กลิ่น (P3 · 09/11/2026) — คีย์ตรงกับ docType ของกลิ่น (`SCENT_IFRA_DOC_TYPE` · เทสต์ยึด) */
 export const REQUEST_SCENT_DOC_TYPES = Object.freeze(['ifra']);
+/* ⭐ ชนิดที่ RD ต้องพิมพ์ **ข้อมูลลูกค้า** ลงเอกสาร (มติเจ้าของ 25/11/2026 ม-167) — ชื่อ · ที่อยู่ · เบอร์ ทั้งไทยและอังกฤษ
+   ⇒ ใบที่มีบรรทัดชนิดนี้ต้องเลือกที่อยู่ และส่งไม่ได้จนทะเบียนลูกค้ามีชื่อ/ที่อยู่อังกฤษ + เบอร์ (`lib/requests/docCustomer.js`) */
+export const REQUEST_CUSTOMER_DOC_TYPES = Object.freeze(['ifra', 'msds']);
+/* ⭐ ชนิดที่ต้องรู้ **กลิ่นหรือสูตรของ FG** (ม-167) — หมวด 02-020 = กลิ่น · หมวดอื่น = สูตร · FG ยังไม่ผูก = ผู้ขอเลือก/พิมพ์ชื่อในบรรทัด
+   (`lib/requests/docLineSubject.js`) */
+export const REQUEST_FG_SUBJECT_DOC_TYPES = Object.freeze(['msds']);
 
 export const REQUEST_DOC_VOCABULARY = docVocabulary({
   lineKind: 'document', types: REQUEST_DOC_TYPES,
   productDocTypes: REQUEST_PRODUCT_DOC_TYPES, scentDocTypes: REQUEST_SCENT_DOC_TYPES,
+  subjectDocTypes: REQUEST_FG_SUBJECT_DOC_TYPES,
 });
 
 // ── รูปร่างบรรทัดที่เป็น "เอกสาร" — ที่เดียวของระบบ ──────────────────────

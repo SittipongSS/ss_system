@@ -25,6 +25,7 @@ import { productDisplayName } from '@/lib/master/productIdentity';
 import { clearedPackagingFields } from '@/lib/master/units';
 import { clearedBrandFields } from '@/lib/master/brands';
 import { productFormulaSnapshot, productScentSnapshot } from '@/lib/master/scentFormulaAdmin';
+import { loadFgSubjectSuggestions } from '@/lib/requests/docRequestContextAdmin';
 import { customerSnapshotName } from '@/lib/master/customerName';
 import { isGiftSetCategory, sameGiftSetFormulas } from '@/lib/master/giftSetFormulas';
 import { isFragranceOilCategory } from '@/lib/master/fragranceOilScent';
@@ -108,10 +109,16 @@ export async function GET(request, { params }) {
     const byId = new Map((scentRows || []).map((row) => [row.id, row]));
     fgScents = fgScentIds.map((sid) => byId.get(sid)).filter(Boolean);
   }
+  /* ⭐ คำแนะนำผูกกลิ่น/สูตรจากคำร้องขอ MSDS (ม-167 · มติเจ้าของ 25/11/2026) — FG ยังไม่ผูก + ผู้ขอเลือก/พิมพ์ไว้ในบรรทัด
+     ⇒ หน้าสินค้าขึ้นปุ่ม "ผูก + ยื่นขออนุมัติ" (PATCH ทางเดิมของฟอร์มสินค้า) · อ่านพัง = `[]` ไม่ล้มหน้าสินค้า */
+  const docSubjectSuggestions = await loadFgSubjectSuggestions(supabase, data).catch((e) => {
+    console.error('[products] อ่านคำแนะนำกลิ่น/สูตรจากคำร้องล้ม', id, e?.message || e);
+    return [];
+  });
   // Strip the confidential cost breakdown/profit for non-margin roles.
   return Response.json({
     ...redactProductMargin(user, data), customerType, scentName, scentCode, scentProducedAt, formulaComponents,
-    formulaIngredientList, formulaCategoryCode, fgScents,
+    formulaIngredientList, formulaCategoryCode, fgScents, docSubjectSuggestions,
   });
 }
 

@@ -100,7 +100,8 @@ test('ด่านส่งงาน · แท็บเอกสารของ�
   assert.match(code('../../app/api/sales-planning/documents/all/route.js'), /for \(const entityType of \['product', 'scent'\]\)/);
   assert.match(code('../../components/requests/details/DocumentDetail.js'), /entityType=\{target\.entityType\}/);
   assert.match(code('../../components/requests/DocumentLines.js'), /const wantsScent = Boolean\(vocabulary\.scentTarget\?\.\(row\.docType\)\);/);
-  assert.match(code('../../components/requests/RequestEditableFields.js'), /scents=\{scents\}\s+customerId=\{customerId\}\s+\/>/);
+  // + `formulas` (ม-167) — บรรทัด MSDS ของ FG ที่ยังไม่ผูกสูตรเลือกสูตรในตารางเดียวกัน
+  assert.match(code('../../components/requests/RequestEditableFields.js'), /scents=\{scents\}\s+formulas=\{formulas\}\s+customerId=\{customerId\}\s+\/>/);
   assert.match(code('../../app/requests/[id]/page.js'), /const needsScents = hasFormulaRows \|\| pdrPicksScent \|\| req\?\.kind === "document";/);
   assert.match(code('../../app/api/sa/requests/route.js'), /scentId: item\.scentId \?\? null,/);
 });

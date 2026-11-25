@@ -220,6 +220,8 @@ export function RequestLineFields({
   categories = [], scents = [], customerId = null,
   /* ทะเบียน FG ของฟอร์ม — บรรทัด MSDS / Spec Sheet เลือก FG ที่ขอ (mig 0428 · ศูนย์กลางเอกสารของสินค้า P2b) */
   products = [],
+  /* ทะเบียนสูตร — บรรทัด MSDS ของ FG ที่ยังไม่ผูกสูตร เลือกสูตรในบรรทัด (ม-167) */
+  formulas = [],
   /* ⭐ **บรรทัดหยุดแก้ก่อนหัวใบหนึ่งขั้น** (มติผู้ใช้ 2026-09-01) — ใบที่รับเรื่องแล้ว
      ยังแก้หัวใบได้ แต่แถวเดินก้าวไปแล้วทั้งใบ ⇒ ตารางต้อง **เทาพร้อมบอกเหตุ**
      ไม่ใช่ปล่อยให้พิมพ์แล้วโดน 409 ตอนกดบันทึก (กฎเดียวกับ `pdrDisabled` ของฟอร์ม)
@@ -262,6 +264,7 @@ export function RequestLineFields({
           detailExtra={detailExtra}
           products={products}
           scents={scents}
+          formulas={formulas}
           customerId={customerId}
         />
       )}

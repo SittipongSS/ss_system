@@ -139,6 +139,9 @@ export function requestPayload(input, extra = {}) {
     // ⭐ หัวข้อขอเอกสารการเงินใช้ช่องนี้เป็น **ต้นทาง** (ม-ค) — server derive ดีล
     // และลูกค้าจากใบนี้ ไม่ใช่จาก `dealId` ที่ฟอร์มเติมไว้ให้ดูเฉย ๆ
     quotationId: form.quotationId || null,
+    /* ที่อยู่ลูกค้าบน IFRA / MSDS (ม-167 · mig 0440) — เฉพาะหัวข้อที่บรรทัดเป็นเอกสารของ RD · หัวข้ออื่นไม่ส่งคีย์
+       server ตรวจว่าเป็นที่อยู่ของลูกค้าของดีล · ว่าง = ที่อยู่ออกเอกสารหลัก */
+    ...(requestLineShape(form) === 'document' ? { customerAddressId: form.customerAddressId || null } : {}),
     // ยอดที่ขอวางบิล (B-2) — `billAmount` คือค่าที่บัญชีเอาไปออกเอกสาร ส่วนอีกสองค่า
     // ตอบว่ามันมาจากไหน · ⚠️ server คิดใหม่จากยอดจริงของใบเสมอ ไม่เชื่อ base ที่ส่งมา
     billPercent: form.billPercent === '' || form.billPercent == null ? null : Number(form.billPercent),

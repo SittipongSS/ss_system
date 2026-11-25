@@ -62,6 +62,12 @@ export default function DocumentBoard({
               <tr>
                 <td>
                   <div className={styles.name}>{r.name}</div>
+                  {/* ม-167 — MSDS: ชื่อ FG + กลิ่น/สูตรของ FG (ของ FG · ผู้ขอเลือก · พิมพ์ชื่อ) */}
+                  {r.subject && (
+                    <div className={r.subject.missing ? styles.warn : styles.note}>
+                      {r.subject.fgDescription ? `${r.subject.fgDescription} · ` : ""}{r.subject.text}
+                    </div>
+                  )}
                   {r.spec && <ReadableText text={r.spec} lines={2} className={styles.note} />}
                   {/* ⭐ ผลลัพธ์ของแถว (B-3 · R-6) — เลขที่เอกสารคือของที่ตกผลึกจาก
                       คำร้องใบนี้ · ต้องอยู่ติดแถวเดียวกับชนิด ไม่ใช่ให้ไปหาในเธรด

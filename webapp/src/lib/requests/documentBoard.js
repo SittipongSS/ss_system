@@ -16,6 +16,7 @@ import { lineShapeVocab } from '@/lib/requests/kinds/lineShapes';
    เคยบอกขั้นด้วยป้ายคำเดี่ยว ๆ ซึ่งตอบได้แค่ "ตอนนี้อยู่ไหน" ไม่ได้บอกว่าเหลืออีกไกล
    แค่ไหน · ประกอบที่นี่ (ตัวสร้างแถว) ไม่ใช่ใน JSX — กฎหลังบั๊กรางซ้ำ #1033 */
 import { rowIdleStamps, rowTrackSteps } from '@/lib/requests/rowTrack';
+import { docLineSubjectText } from '@/lib/requests/docLineSubject';
 
 // ⭐ ป้ายขั้นฉบับสายเอกสาร (ม-85) — ชุดกลาง (`ROW_STAGE_LABELS`) เล่าสายพัฒนา
 // ("รอไปรับ" · "เสร็จ" · "ไม่ได้ใช้") ซึ่งอ่านผิดความหมายกับเอกสาร:
@@ -68,6 +69,13 @@ export function documentBoard(items = []) {
         // ⚠️ ว่างได้เสมอ: แถวที่ยังไม่ถูกส่ง · แถวของ RD ซึ่งไม่มีเลขที่ให้กรอก
         docNumber: item.docNumber || null,
         docDueDate: item.docDueDate || null,
+        /* ⭐ กลิ่น/สูตรของ FG ของบรรทัด MSDS (ม-167 · อ่านสดที่ GET ใบ `item.docSubject`) — RD ต้องรู้ว่า MSDS ของ FG นี้คือกลิ่น/สูตรไหน
+           ⚠️ ไม่มีคีย์ `docSubject` (คิว/ใบเก่า/อ่านพัง) = null · ประโยคประกอบที่ `docLineSubjectText` ไม่ใช่ใน JSX */
+        subject: item.docSubject ? {
+          text: docLineSubjectText(item.docSubject),
+          fgDescription: item.docSubject.fg?.description || null,
+          missing: item.docSubject.source === 'none',
+        } : null,
       };
     });
 }
