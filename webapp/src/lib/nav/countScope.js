@@ -41,7 +41,7 @@ const SCOPE_RULES = {
   quotations: (user) => (can(user?.role, 'salesplan:view') ? 'mine' : null),
   visits: (user) => (canDoFieldWork(user) ? 'mine' : null),
   // งานบริหารปิดแล้ว (มติ 2026-11-13 · CLOSED_MODULES) — ไม่มีเมนูให้ป้ายนี้เกาะ
-  mgmtTasks: (user) => (!isModuleClosed('mgmt') && can(user?.role, 'mgmt:view') ? 'mine' : null),
+  mgmtTasks: (user) => (!isModuleClosed('mgmt') && canUser(user, 'mgmt:view') ? 'mine' : null),
 
   // คิวของฝ่าย — งานของทั้งฝ่าย ใครในฝ่ายหยิบก็ได้
   ...Object.fromEntries(Object.entries(DEPT_QUEUE_COUNT_KEYS).map(([dept, key]) => [key,

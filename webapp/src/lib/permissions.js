@@ -62,7 +62,7 @@
 //                  | products:cost
 //     (products:margin = see the factory cost BREAKDOWN + profit — RA + admin.
 //      products:cost = see the factory costPrice ALONE, without the breakdown.
-//      ⚠️ products:view is NOT enough to see costPrice — ดู canSeeProductCost:
+//      ⚠️ products:view is NOT enough to see costPrice — ดู canSeeProductCostUser:
 //      ต้องถือ products:edit (SA) หรือ products:margin (RA/admin) หรือ
 //      products:cost (FN — มติผู้ใช้ 2026-08-28: บัญชีต้องเห็นราคาผลิต แต่ไม่เห็น
 //      โครงสร้างต้นทุน/กำไรโรงงาน).)
@@ -904,6 +904,28 @@ export const GRANTABLE_CAP_LABELS = {
   'users:view': 'ดูรายชื่อผู้ใช้ (/users) — อ่านอย่างเดียว ไม่เพิ่ม/แก้/ลบ',
   'team:manage': 'จัดทีมของฝ่ายตัวเอง (สร้าง/ปิดทีม · ย้ายคน · ตั้งหัวหน้าทีม)',
 };
+
+/* ⭐ แจก **ใหม่** ได้ไหมตอนนี้ (มติเจ้าของ 25/11/2026) — สิทธิ์ของระบบที่ปิดทั้งระบบ (CLOSED_MODULES)
+   แจกเพิ่มไม่ได้ เพราะได้ไปก็ไม่มีผล (เมนู · หน้า · API ปิดหมดแล้ว) และจะค้างเป็นสิทธิ์ผีรอวันเปิดระบบ
+   ⚠️ **ไม่ใช่ตัวกรองตอนอ่าน** — `sanitizeExtraCaps` ยังเก็บของเดิมไว้ ระบบเปิดกลับเมื่อไรคนที่ถืออยู่ได้คืนเอง
+   ⚠️ ชื่อระบบ = ส่วนหน้าเครื่องหมาย `:` ของ cap (`mgmt:view` → `mgmt`) ตรงกับคีย์ใน CLOSED_MODULES */
+export function grantableNow(cap) {
+  return GRANTABLE_CAPS.includes(cap) && !isModuleClosed(String(cap).split(':')[0]);
+}
+
+/** สิทธิ์ที่ขอเพิ่มใหม่ (ไม่อยู่ใน `before`) แต่แจกตอนนี้ไม่ได้ — คืน [] เมื่อผ่าน
+ *  ของที่ถืออยู่แล้วไม่นับ ⇒ แก้ชื่อ/เบอร์ของคนที่ถือสิทธิ์ระบบปิดอยู่ไม่โดนปฏิเสธ */
+export function blockedNewGrants(before, after) {
+  const had = new Set(sanitizeExtraCaps(before));
+  return sanitizeExtraCaps(after).filter((cap) => !had.has(cap) && !grantableNow(cap));
+}
+
+/** ข้อความปฏิเสธของ API สร้าง/แก้ผู้ใช้ — null = ผ่าน (ตัวเดียวที่สองเส้นใช้ ข้อความจึงตรงกัน) */
+export function blockedGrantError(before, after) {
+  const blocked = blockedNewGrants(before, after);
+  if (!blocked.length) return null;
+  return `แจกสิทธิ์เสริมนี้ตอนนี้ไม่ได้ เพราะระบบปิดอยู่ทั้งระบบ: ${blocked.map((cap) => GRANTABLE_CAP_LABELS[cap] || cap).join(' · ')}`;
+}
 
 // Keep only whitelisted, de-duplicated grants. Accepts anything, returns [].
 export function sanitizeExtraCaps(extraCaps) {
@@ -1922,23 +1944,20 @@ export function allowedEditFields(user, resource, salesEditable) {
 // UI card alone would still leak it via a direct fetch.
 export const MARGIN_FIELDS = ['materialCost', 'laborCost', 'shippingCost', 'factoryProfit'];
 
-// May this role see the factory costPrice? SA (products:edit) own it; RA/admin
+// May this user see the factory costPrice? SA (products:edit) own it; RA/admin
 // (products:margin) see it too; FN (products:cost) เห็นราคาผลิตอย่างเดียวโดยไม่เห็น
 // โครงสร้างต้นทุน. Staff/viewers with read-only catalog access (products:view but
-// none of the three) do NOT.
-export function canSeeProductCost(role) {
-  return can(role, 'products:margin') || can(role, 'products:edit') || can(role, 'products:cost');
-}
-
-// User-aware variant — honours a per-user products:margin grant (needed so a
+// none of the three) do NOT. Honours a per-user products:margin grant (needed so a
 // grantee sees costPrice both in the API redaction below and in the client UI).
+/* ⛔ ฟังก์ชัน `canSeeProductCost(role)` ถอดแล้ว (25/11/2026) — ไม่มีโค้ดจริงเรียก แต่ถามแค่ตำแหน่ง
+   จึงเป็นกับดักให้คนหยิบไปใช้แล้วคนที่ได้ products:margin รายคนไม่เห็นราคาผลิต · ส่ง `{ role }` แทนได้ */
 export function canSeeProductCostUser(user) {
   return canUser(user, 'products:margin') || canUser(user, 'products:edit')
     || canUser(user, 'products:cost');
 }
 
 // Return a copy of `product` redacted for `user`: strip MARGIN_FIELDS unless
-// they hold products:margin, and strip costPrice too unless canSeeProductCost.
+// they hold products:margin, and strip costPrice too unless canSeeProductCostUser.
 // Pass-through (same ref) for margin-holders / falsy input. Use
 // `.map(p => redactProductMargin(user, p))` for list responses.
 export function redactProductMargin(user, product) {

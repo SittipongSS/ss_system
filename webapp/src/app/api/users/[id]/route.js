@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, resolveTeamUpdate } from '@/lib/permissions';
+import { can, validateIdentity, departmentFor, normalizeDepartment, isSuperuser, sanitizeExtraCaps, blockedGrantError, resolveTeamUpdate } from '@/lib/permissions';
 import { isPhoneLogin, normalizeLoginPhone, phoneLoginEmail } from '@/lib/auth/loginIdentity';
 import { recordAudit, userAuditSnapshot } from '@/lib/audit';
 import { invalidateCache } from '@/lib/serverCache';
@@ -40,6 +40,10 @@ export async function PATCH(request, { params }) {
   const extraCaps = body.extraCaps !== undefined
     ? sanitizeExtraCaps(body.extraCaps)
     : sanitizeExtraCaps(existingMeta.extraCaps);
+  /* สิทธิ์ของระบบที่ปิดอยู่แจก **ใหม่** ไม่ได้ (มติ 25/11/2026 · grantableNow) — ของที่ถืออยู่แล้วไม่นับ
+     ⇒ แก้ชื่อ/เบอร์ของคนที่ยังถือสิทธิ์ระบบปิดค้างอยู่ ไม่โดนปฏิเสธ */
+  const grantError = blockedGrantError(existingMeta.extraCaps, extraCaps);
+  if (grantError) return Response.json({ error: grantError }, { status: 400 });
 
   if (body.role !== undefined) {
     /* ⚠️ **ไม่ส่งทีมมา = ไม่แตะทีม** (ตั้งแต่หน้าผู้ใช้ถอดช่องทีมออก 2026-09-06)

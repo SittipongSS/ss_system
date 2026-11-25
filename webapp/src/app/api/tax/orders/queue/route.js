@@ -3,7 +3,7 @@
 //   ?exciseSalesOrderId=… | ?salesOrderId=… → พรีวิวใบยื่นหนึ่งใบ (รายการ · คำเตือน · ด่านเริ่มยื่น) ก่อน RA กดสร้าง
 // ⚠️ ไม่ผ่าน canViewSalesPlanning — RA ไม่มีสิทธิ์หน้าขาย · อ่านด้วยบัญชีระบบแล้วส่งเฉพาะช่องที่ใบยื่นใช้
 import { withUser, fail, forbidden, ok, unauthorized } from "@/lib/http";
-import { can } from "@/lib/permissions";
+import { canUser } from "@/lib/permissions";
 import { findFilingFor, loadFilingSource, loadRaFilingQueue } from "@/lib/excise/raFiling";
 import { filingStartGates } from "@/lib/excise/raFilingRules";
 
@@ -16,7 +16,8 @@ const pickOrder = (row) => (row ? {
 
 export const GET = withUser(async ({ user, supabase, req }) => {
   if (!user) return unauthorized();
-  if (!can(user.role, "ra:view") && !can(user.role, "ra:approve")) return forbidden();
+  /* canUser ไม่ใช่ can(role) — สิทธิ์เสริมรายคน ra:view ต้องเปิดได้เท่าที่จอ /tax/filings เปิดให้ (useCan) */
+  if (!canUser(user, "ra:view") && !canUser(user, "ra:approve")) return forbidden();
   const url = new URL(req.url);
   const exciseSalesOrderId = url.searchParams.get("exciseSalesOrderId")?.trim() || "";
   const salesOrderId = url.searchParams.get("salesOrderId")?.trim() || "";
