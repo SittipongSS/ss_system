@@ -150,6 +150,32 @@ test('สรุปต่อบรีฟบอกได้ว่าก้อน�
   assert.equal(empty.untouched, true);
 });
 
+test('⭐ บรีฟจบแล้ว (summary.done) = ยืนยันแล้ว + ไม่มีแถวที่ RD ยังไม่ส่ง — ปุ่มหัวบรีฟซ่อน (ผู้ใช้ 25/11/2026)', () => {
+  const B = [{ id: 'B1', label: 'ก' }];
+  const doneOf = (items) => briefBoard(B, items)[0].summary.done;
+  // ยืนยันแล้ว ราคาครบ
+  assert.equal(doneOf([dir({ id: 'D1', outcome: 'confirmed', answerStatus: 'done' })]), true);
+  // ⚠️ ยืนยันแล้วแต่รอใส่ราคา — งานอยู่หน้าราคา ไม่ใช่ปุ่มส่งงาน ⇒ ก้อนนี้จบแล้ว
+  assert.equal(doneOf([dir({ id: 'D1', outcome: 'confirmed' })]), true);
+  // ยืนยันตัวหนึ่ง อีกตัวส่งไปรอลูกค้าตอบ — ไม่มีอะไรให้ส่งเพิ่ม
+  assert.equal(doneOf([
+    dir({ id: 'D1', outcome: 'confirmed', answerStatus: 'done' }),
+    dir({ id: 'D2', sentAt: '2026-08-05' }),
+  ]), true);
+  // ⚠️ ยืนยันตัวหนึ่ง แต่อีกตัวขอแก้ → แถวรอบแก้รอ RD ส่ง = ยังไม่จบ (ปุ่มหัวบรีฟคือทางส่งรอบแก้)
+  assert.equal(doneOf([
+    dir({ id: 'D1', outcome: 'confirmed', answerStatus: 'done' }),
+    dir({ id: 'D2', outcome: 'revise', sentAt: '2026-08-05' }),
+    dir({ id: 'D3', derivedFromItemId: 'D2', readyAt: null, ackAt: null }),
+  ]), false);
+  // ⚠️ "ไม่เอา" ทั้งก้อน ไม่ใช่จบ — บรีฟยังไม่ได้กลิ่น RD ต้องส่ง direction ใหม่ได้
+  assert.equal(doneOf([dir({ id: 'D1', outcome: 'rejected' })]), false);
+  // ส่งไปรอลูกค้าตอบ ยังไม่มีใครยืนยัน
+  assert.equal(doneOf([dir({ id: 'D1', sentAt: '2026-08-05' })]), false);
+  // บรีฟยังไม่มี direction
+  assert.equal(briefBoard([{ id: 'B9', label: 'ว่าง' }], [])[0].summary.done, false);
+});
+
 test('ยอดรวมทั้งใบยังตรงกับตารางหลังเพิ่มสายพันธุ์', () => {
   const items = [
     dir({ id: 'D1', label: 'FR-01', outcome: 'confirmed' }),

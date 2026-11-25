@@ -99,17 +99,30 @@ const lineage = rowLineage;
  * ⚠️ `needsAction` = มีตัวที่ **รอฝั่งเราทำอะไร** (ยังไม่ส่ง/ยังไม่ตั้งราคา) ไม่ใช่
  * "ยังไม่จบ" — ตัวที่ส่งไปแล้วรอลูกค้าตอบไม่ใช่ของที่เราต้องลงมือ ⇒ ก้อนนั้นพับได้
  */
+// แถวที่ RD ยังไม่ได้ส่งของลงไป — ขั้นเดียวกับ `FILLABLE` ของ rework.js (ส่งแล้ว = `ready` ขึ้นไป)
+const UNDELIVERED_STAGES = new Set(['awaiting_ack', 'developing']);
+
 function groupSummary(directions = []) {
   const outcome = (v) => directions.filter((d) => d.outcome === v).length;
   const waiting = directions.filter((d) => d.stage !== 'sent' && d.stage !== 'done').length;
+  const confirmed = outcome('confirmed');
   return {
     total: directions.length,
     rework: directions.filter((d) => d.rework).length,
-    confirmed: outcome('confirmed'),
+    confirmed,
     revise: outcome('revise'),
     rejected: outcome('rejected'),
     waiting,
     needsAction: waiting > 0,
+    /* ⭐ **บรีฟจบแล้ว** (ผู้ใช้ 25/11/2026 "อันไหนจบแล้ว ก็ไม่ควรโชว์ปุ่ม") = ลูกค้ายืนยันกลิ่นของก้อนนี้แล้ว
+       และไม่มีอะไรค้างฝั่งเรา ⇒ ปุ่มหัวบรีฟ (ส่งงาน · แจกงาน) ซ่อน — "ทำไปแล้ว" ไม่ใช่ด่าน (กฎ ui-visibility)
+       ⚠️ "ไม่เอา" ทั้งก้อน **ไม่นับว่าจบ** — บรีฟยังไม่ได้กลิ่น RD ต้องส่ง direction ใหม่ได้ ไม่งั้นด่านปิดใบ
+       (คอนเฟิร์มครบตาม SO · ม-146) ตันโดยไม่มีปุ่มให้กด
+       ⚠️ ยืนยันแล้วแต่ยังมีแถวที่ RD ยังไม่ส่งของ (รอบแก้ของอีกตัว · ขั้น `awaiting_ack`/`developing` ชุดเดียวกับ
+       `FILLABLE` ของ rework.js) = ยังไม่จบ — ปุ่มหัวบรีฟคือทางส่งรอบแก้ทั้งก้อน
+       ⚠️ **ห้ามใช้ `waiting`** — มันนับ "รอใส่ราคา" / "รอ Ingredient List" (งานที่หน้าราคา ไม่ใช่ปุ่มส่งงาน)
+       และนับแถว ไม่เอา/ขอแก้ ด้วย ⇒ บรีฟที่ยืนยันแล้วรอราคาจะไม่มีวันจบ */
+    done: confirmed > 0 && !directions.some((d) => UNDELIVERED_STAGES.has(d.stage)),
   };
 }
 
