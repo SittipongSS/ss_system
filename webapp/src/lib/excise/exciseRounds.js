@@ -34,7 +34,8 @@ export const roundLinesLinked = (lines = []) => (lines || []).length > 0 && (lin
  * แถวคงเหลือรายบรรทัด SO — ตัวเดียวของหน้าออกใบ หน้าใบ และเส้นเดินงานบน SO
  * @param templateLines บรรทัดค่าภาษี **เต็มจำนวน** ของ SO (buildExciseQuotationLines · qty = หน่วยที่ยื่นภาษีทั้งบรรทัด)
  * @param otherQuotes   ใบค่าสรรพสามิตที่ยังมีผลของ SO นี้ **ยกเว้นใบที่กำลังแก้** — พก `lines`
- * @returns `[{ sourceSalesOrderLineId, fgCode, description, unit, unitPrice, ordered, issued, remaining }]` ตามลำดับบรรทัด SO
+ * @returns `[{ sourceSalesOrderLineId, fgCode, description, unit, unitPrice, excisePerUnit, localPerUnit, ordered, issued, remaining }]` ตามลำดับบรรทัด SO
+ *          (`excisePerUnit`/`localPerUnit` = ช่อง ภส. ที่บรรทัดตรึงไว้ — แจกแจงภาษี/ชิ้น · ไม่มี = null)
  */
 export function exciseRoundRows({ templateLines = [], otherQuotes = [] } = {}) {
   const issued = new Map();
@@ -51,6 +52,8 @@ export function exciseRoundRows({ templateLines = [], otherQuotes = [] } = {}) {
       description: line.metadata?.descriptionTh || line.description || '',
       unit: line.unit || '',
       unitPrice: Number(line.unitPrice) || 0,
+      excisePerUnit: line.metadata?.excisePerUnit ?? null,
+      localPerUnit: line.metadata?.localPerUnit ?? null,
       ordered,
       issued: used,
       remaining: Math.max(0, round4(ordered - used)),

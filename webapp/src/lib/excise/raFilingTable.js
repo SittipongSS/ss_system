@@ -80,14 +80,29 @@ export function taxPerUnitCheck(retailIncVat, taxPerUnit) {
   return { expected, ok: legacy, legacy };
 }
 
+const partOf = (value) => (value === null || value === undefined || value === '' || !Number.isFinite(Number(value)) ? null : round2(value));
+/* ช่อง ภส. สองช่องที่ใช้แจกแจงได้ = มีครบ และรวมกันเท่าภาษี/หน่วยของแถว (metadata เพี้ยน = ไม่แจกแจง ดีกว่าโชว์เลขที่ขัดกัน) */
+function taxSplitOf(excise, local, unitTax) {
+  const e = partOf(excise);
+  const l = partOf(local);
+  if (e === null || l === null || unitTax === null || round2(e + l) !== round2(unitTax)) return { excise: null, local: null };
+  return { excise: e, local: l };
+}
+
 /** แถวสินค้าหนึ่งแถวของตาราง — แบรนด์/ชื่อ **อังกฤษก่อน** แบบตารางเดิมของ RA (เจ้าของดูจอจริง 03/11: "Scent Studio" ไม่ใช่ "เซนท์ สตูดิโอ")
  *  ไม่มีชื่ออังกฤษ = ชื่อไทย (`productDisplayNameFor` ไม่แปลเอง)
- *  `taxPerUnit` = ภาษีรวม/หน่วยที่ใบคิดไว้ (สรรพสามิต + ท้องถิ่น) · ไม่ส่ง = ถอดจากภาษีรวม ÷ จำนวน */
-export function filingTableLine(product, { quantity = 0, totalTax = 0, fgCode = '', description = '', retailPriceIncVat: frozenIncVat = null, taxPerUnit = null } = {}) {
+ *  `taxPerUnit` = ภาษีรวม/หน่วยที่ใบคิดไว้ (สรรพสามิต + ท้องถิ่น) · ไม่ส่ง = ถอดจากภาษีรวม ÷ จำนวน
+ *  `excisePerUnit`/`localPerUnit` (หรือชื่อของบรรทัดใบยื่น `exciseRatePerUnit`/`localTaxRatePerUnit`) = ช่อง ภส. ที่ใบตรึงไว้
+ *  — แจกแจงภาษี/หน่วย (เจ้าของ 26/11) · ไม่มี / รวมกันไม่เท่าภาษี/หน่วย = null (ไม่โชว์แจกแจงที่ขัดกับยอด) */
+export function filingTableLine(product, {
+  quantity = 0, totalTax = 0, fgCode = '', description = '', retailPriceIncVat: frozenIncVat = null, taxPerUnit = null,
+  excisePerUnit = null, localPerUnit = null, exciseRatePerUnit = null, localTaxRatePerUnit = null,
+} = {}) {
   const qty = Number(quantity) || 0;
   const unitTax = Number.isFinite(Number(taxPerUnit)) && taxPerUnit !== null
     ? round2(taxPerUnit)
     : (qty > 0 ? round2((Number(totalTax) || 0) / qty) : null);
+  const split = taxSplitOf(excisePerUnit ?? exciseRatePerUnit, localPerUnit ?? localTaxRatePerUnit, unitTax);
   const retailInc = retailPriceIncVat(product, frozenIncVat);
   return {
     fgCode: product?.fgCode || fgCode || '',
@@ -98,6 +113,8 @@ export function filingTableLine(product, { quantity = 0, totalTax = 0, fgCode = 
     retailPriceIncVat: retailInc,
     retailPriceExVat: retailPriceExVat(product, { frozenIncVat }),
     taxPerUnit: unitTax,
+    excisePerUnit: split.excise,
+    localPerUnit: split.local,
     taxCheck: taxPerUnitCheck(retailInc, unitTax),
     totalTax: round2(totalTax || 0),
   };
@@ -113,6 +130,8 @@ export function quoteLineTableLine(line, product) {
     description: meta.descriptionEn || meta.descriptionTh || line?.description || '',
     retailPriceIncVat: meta.retailPriceIncVat ?? null,
     taxPerUnit: Number(line?.unitPrice) > 0 ? Number(line.unitPrice) : null,
+    excisePerUnit: meta.excisePerUnit ?? null,
+    localPerUnit: meta.localPerUnit ?? null,
   });
 }
 
@@ -225,6 +244,8 @@ export async function loadRaFilingTable(supabase, { loadQueue = loadRaFilingQueu
         quantity: item.quantity,
         totalTax: item.totalTax,
         taxPerUnit: round2((Number(item.exciseRatePerUnit) || 0) + (Number(item.localTaxRatePerUnit) || 0)) || null,
+        excisePerUnit: item.exciseRatePerUnit,
+        localPerUnit: item.localTaxRatePerUnit,
       }));
     }
     else if (group.quoteId) lines = (linesByQuote.get(group.quoteId) || []).map((line) => quoteLineTableLine(line, productById.get(line.metadata?.sourceProductId)));

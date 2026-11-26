@@ -10,6 +10,7 @@ import Modal from "@/components/Modal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
 import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
+import { exciseSplitText } from "@/lib/excise/exciseTaxSteps";
 
 import { dayParam, withinDateRange } from "@/lib/tax/period";
 import { useApiList } from "@/lib/excise/useApiList";
@@ -42,6 +43,8 @@ import useThaiToday from "@/lib/ui/useThaiToday";
 const registrationBrand = (r) => brandLabel(r.metadata?.brandNameTh, r.metadata?.brandNameEn || r.brandName);
 const registrationProduct = (r) => productDisplayName(r);
 const taxText = (r) => (r.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(r.taxPerUnit || 0));
+// แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") — บรรทัดรองใต้ยอด · ยกเว้นภาษี = ไม่มีบรรทัด
+const taxSplit = (r) => (r.isExciseTaxable === false ? null : exciseSplitText(r.excisePerUnit, r.localPerUnit));
 // ประโยคของสายที่ป้อนฟอร์มสร้างทะเบียน — ดูมติที่ก้อน sources
 const FORM_BLOCKED_NOTE = "ยังสร้างทะเบียนใหม่ไม่ได้ เพราะฟอร์มต้องใช้ข้อมูลชุดนี้เลือกลูกค้าและ FG ที่ยังไม่ขึ้นทะเบียน";
 /* ⭐ **คิวเล่าเรื่องเดียวกับรายงาน** (มติผู้ใช้ 2026-08-28) — เดิมต้องเปิด /tax/reports
@@ -374,7 +377,12 @@ export default function RegistrationsPage() {
     {
       key: "tax", label: "ภาษี/ชิ้น", align: "right",
       sortValue: (r) => r.taxPerUnit || 0,
-      render: (r) => <span className="font-mono">{taxText(r)}</span>,
+      render: (r) => (
+        <div>
+          <div className="font-mono">{taxText(r)}</div>
+          {taxSplit(r) ? <div className="cell-sub font-mono">{taxSplit(r)}</div> : null}
+        </div>
+      ),
     },
     {
       /* ฐานที่ใช้คิดภาษี — ฝ่าย RA อนุมัติโดยเห็นที่มาของตัวเลข ไม่ใช่ตัวเลขลอย ๆ
@@ -445,7 +453,10 @@ export default function RegistrationsPage() {
             {r.customerPhone ? <span className="cell-sub font-mono"> · โทร {r.customerPhone}</span> : null}
             {r.taxId ? <span className="cell-sub font-mono"> · {r.taxId}</span> : null}
           </span>
-          <span className="font-mono">{taxText(r)}</span>
+          <span className="text-right">
+            <span className="font-mono block">{taxText(r)}</span>
+            {taxSplit(r) ? <span className="cell-sub font-mono block">{taxSplit(r)}</span> : null}
+          </span>
         </div>
         {/* ตัวเลขชุดเดียวกับตาราง — การ์ดกับตารางต้องเล่าเรื่องเดียวกัน ไม่ใช่คนละชุด
             ⚠️ ป้ายอยู่ซ้าย ค่าอยู่ขวาแบบซ้อนสองบรรทัด (ทรงเดียวกับ `cardLine` อื่น) —

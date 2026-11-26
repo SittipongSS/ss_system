@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import Modal from "@/components/Modal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { fmtMoney } from "@/lib/format";
+import { exciseSplitText, productTaxPerUnit } from "@/lib/excise/exciseTaxSteps";
 import { CUSTOMER_NAME_LABEL } from "@/lib/uiLabels";
 import { productSelectOptions } from "@/components/master/productOption";
 import TeamPickerField from "@/components/ui/TeamPickerField";
@@ -20,6 +21,13 @@ import { apiFetch } from "@/lib/apiFetch";
 // 1 FG ขึ้นทะเบียนให้ลูกค้ารายหนึ่งได้ครั้งเดียว (unique productId+customerId) →
 // ตัวที่ขึ้นแล้วถูกซ่อนพร้อมบอกจำนวน กันผู้ใช้เลือกไปชน 409.
 // Create → POST; edit (registration prop set) → PATCH the link fields.
+/* ภาษี/ชิ้นของสินค้าที่เลือก + แจกแจง — "฿23.85 (สรรพสามิต 21.68 + ท้องถิ่น 2.17)" */
+const selectedTaxText = (product) => {
+  const tax = productTaxPerUnit(product);
+  const split = exciseSplitText(tax.excisePerUnit, tax.localPerUnit);
+  return split ? `${fmtMoney(tax.taxPerUnit)} (${split})` : fmtMoney(tax.taxPerUnit);
+};
+
 export default function RegistrationFormModal({ open, onClose, onSaved, registration, products = [], customers = [], registrations = [], userName }) {
   const editing = !!registration;
   const [customerId, setCustomerId] = useState("");
@@ -169,7 +177,8 @@ export default function RegistrationFormModal({ open, onClose, onSaved, registra
                   <div style={{ marginTop: 6, fontSize: "var(--fs-5)", color: "var(--text-3)" }} className="font-mono flex gap-4 flex-wrap">
                     <span>ปริมาตร: {selected.volume} {selected.volumeUnit || "ml"}</span>
                     <span>ราคาขายปลีก: {fmtMoney(selected.retailPriceIncVat || 0)}</span>
-                    <span>ภาษี/ชิ้น: {selected.isExciseTaxable === false ? "ยกเว้น" : fmtMoney((selected.exciseTax || 0) + (selected.localTax || 0))}</span>
+                    {/* ตัวคิดกลาง (ไม่บวกค่าดิบเอง) + แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") */}
+                    <span>ภาษี/ชิ้น: {selected.isExciseTaxable === false ? "ยกเว้น" : selectedTaxText(selected)}</span>
                   </div>
                 )}
               </>

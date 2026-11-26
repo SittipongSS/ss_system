@@ -10,6 +10,7 @@
 import { fmtNumber, naText } from '@/lib/format';
 import { statusMeta } from '@/lib/excise/workflow';
 import { filingDateText, filingLinesTaxTotal, filingMonthLabel, filingMonthTotals } from '@/lib/excise/raFilingMonth';
+import { exciseSplitShort } from '@/lib/excise/exciseTaxSteps';
 
 export const RA_FILING_EXPORT_TITLE = 'รายการชำระภาษีสรรพสามิต';
 
@@ -45,6 +46,16 @@ const taxCheckText = (line) => {
   if (line.taxCheck.ok) return line.taxCheck.legacy ? 'ตรงสูตรเดิม (ก่อน 26/11/69)' : 'ตรงสูตร';
   return `ไม่ตรงสูตร · ควรเป็น ${paperMoney(line.taxCheck.expected)}`;
 };
+/* ช่องภาษี/หน่วยบนกระดาษ: ยอด · แจกแจง "สรรพสามิต + ท้องถิ่น" (หัวคอลัมน์บอกลำดับ · เจ้าของ 26/11) · คำเตือนไม่ตรงสูตร
+   ไม่มีบรรทัดรองเลย = ตัวเลขล้วน (คอลัมน์ money จัดรูปให้) */
+const paperTaxPerUnit = (line) => {
+  if (line.taxPerUnit === null || line.taxPerUnit === undefined) return '—';
+  const extra = [
+    exciseSplitShort(line.excisePerUnit, line.localPerUnit),
+    line.taxCheck && !line.taxCheck.ok ? taxCheckText(line) : null,
+  ].filter(Boolean);
+  return extra.length ? [paperMoney(line.taxPerUnit), ...extra].join('\n') : line.taxPerUnit;
+};
 const summaryLabel = (totals) => `รวม ${fmtNumber(totals.jobs)} งาน · ${fmtNumber(totals.lines)} รายการ${totals.missing ? ` (ไม่รวม ${fmtNumber(totals.missing)} งานที่ยังไม่มีรายการ)` : ''}`;
 
 /** Excel แบน — แถวละสินค้า · งานที่ไม่มีรายการ = หนึ่งแถวบอกเหตุ */
@@ -77,6 +88,8 @@ export function raFilingExcelReport(rows = []) {
           retailPriceIncVat: line.retailPriceIncVat ?? '',
           retailPriceExVat: line.retailPriceExVat ?? '',
           taxPerUnit: line.taxPerUnit ?? '',
+          excisePerUnit: line.excisePerUnit ?? '',
+          localPerUnit: line.localPerUnit ?? '',
           taxCheck: taxCheckText(line),
           totalTax: Number(line.totalTax) || 0,
         });
@@ -104,6 +117,9 @@ export function raFilingExcelReport(rows = []) {
       { key: 'retailPriceIncVat', label: 'ราคาขายปลีก (รวม VAT)', money: true, width: 16 },
       { key: 'retailPriceExVat', label: 'ราคาขายปลีกก่อน VAT', money: true, width: 16 },
       { key: 'taxPerUnit', label: 'ภาษี/หน่วย (สรรพสามิต + ท้องถิ่น)', money: true, width: 15 },
+      // แจกแจงภาษี/หน่วย (เจ้าของ 26/11) — Excel แยกคอลัมน์ (กรอง/รวมได้) · กระดาษเป็นบรรทัดรองในช่องภาษี/หน่วย
+      { key: 'excisePerUnit', label: 'สรรพสามิต/หน่วย (8%)', money: true, width: 14 },
+      { key: 'localPerUnit', label: 'ท้องถิ่น/หน่วย (10% ของสรรพสามิต)', money: true, width: 16 },
       { key: 'taxCheck', label: 'ตรวจสูตร (8% + ท้องถิ่น 10%)', width: 24 },
       { key: 'totalTax', label: 'ภาษีรวม', money: true, width: 16 },
     ],
@@ -152,9 +168,7 @@ export function raFilingPrintReport(rows = []) {
           quantity: Number(line.quantity) || 0,
           retailPriceIncVat: line.retailPriceIncVat ?? '—',
           retailPriceExVat: line.retailPriceExVat ?? '—',
-          taxPerUnit: line.taxCheck && !line.taxCheck.ok
-            ? `${paperMoney(line.taxPerUnit)}\n${taxCheckText(line)}`
-            : (line.taxPerUnit ?? '—'),
+          taxPerUnit: paperTaxPerUnit(line),
           totalTax: Number(line.totalTax) || 0,
         });
       }

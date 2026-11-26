@@ -45,7 +45,7 @@ test("Excel แบน: แถวละสินค้า มีเดือน/S
   assert.deepEqual(report.excel, { freezeHeader: true, autoFilter: true });
   assert.deepEqual(report.columns.map((c) => c.key), [
     "month", "salesOrder", "customer", "stage", "status", "deliveryDate", "brand", "description", "fgCode", "volume", "quantity",
-    "retailPriceIncVat", "retailPriceExVat", "taxPerUnit", "taxCheck", "totalTax",
+    "retailPriceIncVat", "retailPriceExVat", "taxPerUnit", "excisePerUnit", "localPerUnit", "taxCheck", "totalTax",
   ]);
   assert.equal(report.rows.length, 5, "2 + 1 + 1 สินค้า + 1 งานที่ยังไม่มีรายการ");
   const [first] = report.rows;
@@ -76,9 +76,10 @@ test("Excel: แผ่นงานจริงตรึงหัวตารา�
   assert.equal(ws.views[0].ySplit, 3);
   assert.ok(ws.autoFilter, "มีปุ่มกรอง");
   assert.ok(ws.getCell(4, 6).value instanceof Date, "วันที่ส่งของเป็นวันจริง");
-  assert.equal(ws.getCell(4, 16).value, 57000);
-  assert.equal(ws.getCell(4, 16).numFmt, "#,##0.00");
-  assert.equal(ws.getCell(ws.rowCount, 16).value, 141588.2, "แถวสรุป");
+  // ภาษีรวม = คอลัมน์ 18 (หลังแจกแจงสรรพสามิต/ท้องถิ่น ต่อหน่วย 2 คอลัมน์ · 26/11)
+  assert.equal(ws.getCell(4, 18).value, 57000);
+  assert.equal(ws.getCell(4, 18).numFmt, "#,##0.00");
+  assert.equal(ws.getCell(ws.rowCount, 18).value, 141588.2, "แถวสรุป");
 
   const plain = fillReportWorkbook(new ExcelJS.Workbook(), { title: "x", columns: [{ key: "a", label: "A" }], rows: [{ a: 1 }] });
   assert.deepEqual(plain.worksheets[0].views, [], "รายงานเดิม (ทะเบียน · บัญชี · สหมิตร) หน้าตาเท่าเดิม");

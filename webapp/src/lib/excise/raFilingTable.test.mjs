@@ -25,8 +25,8 @@ test('แถวสินค้า: แบรนด์ · ชื่อ · ปร�
     { quantity: 5040, totalTax: 1234.567 });
   assert.deepEqual(line, {
     fgCode: 'FG-1-01-002-1', brand: 'COZE', description: line.description, volume: '30 ML', quantity: 5040,
-    retailPriceIncVat: null, retailPriceExVat: 167.29, taxPerUnit: 0.24, taxCheck: null, totalTax: 1234.57,
-  }, 'ไม่ส่งภาษี/หน่วย = ถอดจากภาษีรวม ÷ จำนวน · ไม่มีราคารวม VAT = รีเช็คไม่ได้');
+    retailPriceIncVat: null, retailPriceExVat: 167.29, taxPerUnit: 0.24, excisePerUnit: null, localPerUnit: null, taxCheck: null, totalTax: 1234.57,
+  }, 'ไม่ส่งภาษี/หน่วย = ถอดจากภาษีรวม ÷ จำนวน · ไม่มีราคารวม VAT = รีเช็คไม่ได้ · ไม่มีช่อง ภส. = ไม่แจกแจง');
   assert.ok(line.description, 'ชื่อสินค้าจาก productDisplayName');
   assert.equal(filingTableLine(null, { fgCode: 'FG-X', description: 'ของพิมพ์เอง', quantity: 2 }).description, 'ของพิมพ์เอง');
 });
@@ -306,4 +306,18 @@ test('จัดแนว (เจ้าของ 05/11 "align ข้อมูล 
   assert.equal((month.match(/<td\b/g) || []).length, 4, 'หัวเดือน = 1 ช่องข้อความ + 3 ช่องท้าย');
   const css = read('../../components/excise/FilingLinesTable.module.css');
   assert.match(css, /\.groupHead \{\s*display: grid;\s*grid-template-columns: auto 8\.5rem minmax\(0, 16rem\) minmax\(0, 1fr\);/, 'เลข SO · ลูกค้า · ขั้น ตั้งตรงกันทุกงาน');
+});
+
+// แจกแจงภาษี/หน่วย (เจ้าของ 26/11 "มันต้องแจกแจงภาษีด้วยมั้ย" → "ทำทั้งหมดที่เกี่ยว")
+test('แจกแจงภาษี/หน่วย: ช่อง ภส. ที่ใบตรึงไว้ · ทั้งบรรทัด QT / ใบยื่น / ผล resolve · รวมไม่เท่ายอด = ไม่แจกแจง', () => {
+  const qt = quoteLineTableLine({ qty: 10, unitPrice: 23.85, lineTotal: 238.5, metadata: { lineKind: 'excise_charge', retailPriceIncVat: 290, excisePerUnit: 21.68, localPerUnit: 2.17 } }, null);
+  assert.deepEqual([qt.taxPerUnit, qt.excisePerUnit, qt.localPerUnit], [23.85, 21.68, 2.17]);
+  const filed = filingTableLine(null, { quantity: 2, totalTax: 212.18, taxPerUnit: 106.09, excisePerUnit: 96.45, localPerUnit: 9.64 });
+  assert.deepEqual([filed.excisePerUnit, filed.localPerUnit], [96.45, 9.64], 'ใบเก่า (D1) แจกแจงตามที่ตรึงไว้');
+  const resolved = filingTableLine(null, { quantity: 1, totalTax: 106.1, taxPerUnit: 106.1, exciseRatePerUnit: 96.45, localTaxRatePerUnit: 9.65 });
+  assert.deepEqual([resolved.excisePerUnit, resolved.localPerUnit], [96.45, 9.65], 'ชื่อช่องของ exciseTaxLine ก็อ่านได้');
+  const broken = filingTableLine(null, { quantity: 1, totalTax: 100, taxPerUnit: 100, excisePerUnit: 96.45, localPerUnit: 9.65 });
+  assert.deepEqual([broken.excisePerUnit, broken.localPerUnit], [null, null], 'ช่องรวมไม่เท่ายอด = ไม่โชว์เลขที่ขัดกัน');
+  const table = read('../../components/excise/FilingLinesTable.js');
+  assert.match(table, /<span className=\{styles\.taxSplit\}>\{exciseSplitText\(line\.excisePerUnit, line\.localPerUnit\)\}<\/span>/);
 });
