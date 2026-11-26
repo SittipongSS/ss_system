@@ -52,6 +52,12 @@
   font-size: var(--fs-5);
   color: var(--text-2);
 }
+/* FG ที่เพิ่มแล้ว — สองชั้นแบบตัวเลือกสินค้า (.product-option-* ใน globals.css) · ชื่อยาวขึ้นบรรทัดใหม่ได้
+   ไม่ตัดท้ายแบบชื่อไฟล์ เพราะท้ายชื่อคือปริมาตรซึ่งเป็นตัวแยก FG ที่ชื่อซ้ำกัน */
+.fgName {
+  flex: 1;
+  min-width: 0;
+}
 .mentionPicker {
   display: flex;
   flex-wrap: wrap;

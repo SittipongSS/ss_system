@@ -32,6 +32,7 @@ import OptionTiles from "@/components/ui/OptionTiles";
 import BillingInstallmentPicker from "@/components/requests/BillingInstallmentPicker";
 import Button from "@/components/ui/Button";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { productOptionDisplay, productSelectOptions } from "@/components/master/productOption";
 import Input from "@/components/ui/Input";
 import DealPicker from "@/components/pm/DealPicker";
 import FormZone from "@/components/ui/FormZone";
@@ -532,6 +533,8 @@ export default function RequestForm({
   // ⚠️ ตัวที่ "เลือกค้างไว้" ยังไม่ใช่ข้อมูลของคำร้อง — มันเข้า `value.productIds`
   // ตอนกด "เพิ่ม" เท่านั้น · เก็บไว้ในนี้เพื่อให้ฟอร์มยัง controlled ล้วนเหมือนเดิม
   const [fgPick, setFgPick] = useState("");
+  // ทะเบียน FG ทั้งชุด (หลายร้อยตัว) — ช่องค้นกับป้ายตัวที่เพิ่มแล้วหาแถวด้วย id ไม่ต้องไล่ทั้งลิสต์ทุกตัว
+  const productById = new Map(products.map((fg) => [fg.id, fg]));
   /* ใบเสนอราคาที่ใบนี้ยึด + ยอดเต็มของมัน — **ยกขึ้นมาระดับบนสุด** (2026-08-24)
      เพราะช่อง "ยอดที่ขอวางบิล" ย้ายไปอยู่ในเนื้อของบรรทัด (แท็บ "รายละเอียด") แล้ว
      แต่ตัวเลือกใบยังอยู่แท็บ "งาน" ⇒ สองแท็บต้องอ่านฐานยอดตัวเดียวกัน
@@ -1147,13 +1150,16 @@ export default function RequestForm({
                 <SearchableSelect
                   value={fgPick} disabled={disabled}
                   onChange={setFgPick}
-                  options={products
-                    .filter((fg) => !(value.productIds || []).includes(fg.id))
-                    .map((fg) => ({
-                      value: fg.id,
-                      label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
-                      search: `${fg.fgCode || ""} ${fg.productDescription || ""} ${fg.customerName || ""}`,
-                    }))}
+                  /* ⭐ สองชั้นแบบดรอปดาวน์ FG ของใบเสนอราคา (มติผู้ใช้ 2026-11-26) — บน: รหัส · แบรนด์ ·
+                     ชื่อหมวด · ล่าง: ชื่อสินค้า · ปริมาตร · ค้นด้วยชื่อลูกค้าได้เหมือนเดิม (ช่องนี้ไม่กรองตามดีล) */
+                  options={productSelectOptions(
+                    products.filter((fg) => !(value.productIds || []).includes(fg.id)),
+                    undefined,
+                    { withCategory: true },
+                  ).map((option) => ({
+                    ...option,
+                    search: `${option.search} ${productById.get(option.value)?.customerName || ""}`,
+                  }))}
                   placeholder="— เลือกสินค้า —"
                   emptyText="ยังไม่มีสินค้าในทะเบียน"
                   ariaLabel="เลือกสินค้า (FG) ที่จะเพิ่ม"
@@ -1175,13 +1181,13 @@ export default function RequestForm({
               {!!(value.productIds || []).length && (
                 <ul className={styles.fileList}>
                   {(value.productIds || []).map((fgId) => {
-                    const fg = products.find((x) => x.id === fgId);
-                    const label = fg
-                      ? [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ")
-                      : fgId;
+                    const fg = productById.get(fgId);
+                    // ตัวที่เพิ่มแล้วโชว์สองชั้นเหมือนในดรอปดาวน์ — อ่านทวนได้ว่าเลือกตัวไหนไป
+                    const shown = fg ? productOptionDisplay(fg, { withCategory: true }) : null;
+                    const label = shown?.text || fgId;
                     return (
                       <li key={fgId} className={styles.fileRow}>
-                        <span className={styles.fileName}>{label}</span>
+                        <span className={shown ? styles.fgName : styles.fileName}>{shown?.render || label}</span>
                         <Button
                           iconOnly icon={<X size={13} />} disabled={disabled}
                           onClick={() => set({

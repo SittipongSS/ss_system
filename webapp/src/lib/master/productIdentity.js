@@ -97,3 +97,33 @@ export function productIdentity(product, { fallback = '-' } = {}) {
   ].map(clean).filter(Boolean).join(' ');
   return { code, brand, category, name, volume, meta, detail, text, search };
 }
+
+/* ป้ายเจ้าของ — ขึ้นเฉพาะ FG ที่ไม่ได้อยู่ใต้ใบลูกค้าที่กำลังออกเอกสารให้ แต่เป็นของ
+   ใบอื่นในนิติบุคคลเดียวกัน (`GET /api/products?taxSiblings=1` เป็นคนแนบมา)
+   ⇒ **มีป้าย = ของอีกใบ · ไม่มีป้าย = ของใบนี้เอง** ซึ่งเป็นสัญญาณเดียวที่คนเลือกมี
+   เพราะลิสต์เรียงตามรหัส FG ปนกันทุกเจ้าของ */
+export function productOwnerTag(p) {
+  if (!p?.ownerArCode && !p?.ownerName) return '';
+  const who = p.ownerArCode || p.ownerName;
+  return p.ownerBranchCode ? `${who} · สาขา ${p.ownerBranchCode}` : String(who);
+}
+
+/* สองชั้นของตัวเลือกสินค้ามาตรฐาน — ชั้นบน (รอง) `รหัส · แบรนด์ [· ชื่อหมวด] [· เจ้าของ]`
+   ชั้นล่าง (หลัก) `ชื่อสินค้า · ปริมาตร` · `text` = สองชั้นต่อกันเป็นบรรทัดเดียว
+   (ช่องที่เลือกแล้ว · aria · snapshot ที่ server เก็บลงใบ) — server กับจอจึงได้ประโยคเดียวกัน
+   `withCategory` — ต่อ **ชื่อ**หมวดท้ายแบรนด์ ไม่ใส่รหัสหมวดเพราะอยู่ในรหัส FG แล้ว
+   (มติผู้ใช้ 2026-09-22 ใบเสนอราคา · 2026-11-26 คำร้องทุกช่องที่เลือก FG)
+   ⚠️ ชื่อหมวดมาจาก `categoryName` ที่แปะมากับแถว (`attachCategoryNames`) — ไม่มีก็แค่ไม่ขึ้น */
+export function productOptionParts(product, { withCategory = false } = {}) {
+  const identity = productIdentity(product);
+  const ownerTag = productOwnerTag(product);
+  const category = withCategory ? identity.category : '';
+  const meta = [identity.meta, category, ownerTag].filter(Boolean).join(' · ');
+  return {
+    meta,
+    detail: identity.detail,
+    text: [meta, identity.detail].filter(Boolean).join(' · ') || identity.text,
+    // ตาเห็นบนแถว = ต้องค้นเจอ — ชื่อบริษัทเจ้าของก็ต้องค้นเจอแม้ป้ายจะโชว์แค่รหัส AR
+    search: [identity.search, category, ownerTag, product?.ownerName].filter(Boolean).join(' '),
+  };
+}

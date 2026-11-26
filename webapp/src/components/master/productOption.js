@@ -1,45 +1,40 @@
 import { createElement } from "react";
-import { productIdentity } from "@/lib/master/productIdentity";
+import { productOptionParts, productOwnerTag } from "@/lib/master/productIdentity";
 import { naText } from "@/lib/format";
 
 // มาตรฐาน dropdown สินค้าทั้งระบบ:
 // รหัส · แบรนด์ (รอง) / ชื่อสินค้า · ปริมาตร (หลัก)
 // ใช้ได้ทั้ง product master (/api/products: productDescription/brandName/volume)
 // และ shape อื่นที่มี fgCode+name (เช่น /api/sahamit/products, ทะเบียนสรรพสามิต).
+// ตัวประกอบประโยคอยู่ที่ `productOptionParts` (lib — server ใช้ตัวเดียวกันตอนเก็บ snapshot)
 
-/* ป้ายเจ้าของ — ขึ้นเฉพาะ FG ที่ไม่ได้อยู่ใต้ใบลูกค้าที่กำลังออกเอกสารให้ แต่เป็นของ
-   ใบอื่นในนิติบุคคลเดียวกัน (`GET /api/products?taxSiblings=1` เป็นคนแนบมา)
-   ⇒ **มีป้าย = ของอีกใบ · ไม่มีป้าย = ของใบนี้เอง** ซึ่งเป็นสัญญาณเดียวที่คนเลือกมี
-   เพราะลิสต์เรียงตามรหัส FG ปนกันทุกเจ้าของ */
-export function productOwnerTag(p) {
-  if (!p?.ownerArCode && !p?.ownerName) return "";
-  const who = p.ownerArCode || p.ownerName;
-  return p.ownerBranchCode ? `${who} · สาขา ${p.ownerBranchCode}` : String(who);
-}
+// ย้ายไปอยู่ lib แล้ว (server ต้องใช้) — ส่งต่อจากที่เดิมให้คนที่ import จากที่นี่
+export { productOwnerTag };
 
-/* `withCategory` — ต่อชื่อหมวดสินค้าท้ายรหัส · แบรนด์ (มติผู้ใช้ 2026-09-22: ดรอปดาวน์เลือก FG
-   ของใบเสนอราคา) · opt-in เพราะมาตรฐานนี้ใช้ทั้งระบบ แต่ที่ขอคือเอกสารขายเท่านั้น
+/* `withCategory` — ต่อชื่อหมวดสินค้าท้ายรหัส · แบรนด์ · opt-in: ใบเสนอราคา (มติผู้ใช้ 2026-09-22)
+   และทุกช่องที่เลือก FG ในคำร้อง (มติผู้ใช้ 2026-11-26)
    ⚠️ ชื่อหมวดมาจาก `categoryName` ที่ `GET /api/products` แปะมา — ลิสต์จากแหล่งอื่นไม่มี
    ก็แค่ไม่ขึ้น ไม่พัง */
-export function productOptionDisplay(p, { withCategory = false } = {}) {
-  const identity = productIdentity(p);
-  const ownerTag = productOwnerTag(p);
-  const category = withCategory ? identity.category : "";
-  const meta = [identity.meta, category, ownerTag].filter(Boolean).join(" · ");
+export function productOptionDisplay(p, display = {}) {
+  const { meta, detail, text, search } = productOptionParts(p, display);
   return {
     // native <option>, trigger และ aria ใช้บรรทัดเดียว; menu ที่รองรับ render ใช้ 2 ชั้น.
-    text: [meta, identity.detail].filter(Boolean).join(" · ") || identity.text,
-    // ตาเห็นบนแถว = ต้องค้นเจอ — ชื่อบริษัทเจ้าของก็ต้องค้นเจอแม้ป้ายจะโชว์แค่รหัส AR
-    search: [identity.search, category, ownerTag, p?.ownerName].filter(Boolean).join(" "),
-    render: createElement(
-      "span",
-      { className: "product-option-label" },
-      meta
-        ? createElement("span", { className: "product-option-meta" }, meta)
-        : null,
-      createElement("span", { className: "product-option-name" }, naText(identity.detail)),
-    ),
+    text,
+    search,
+    render: productOptionRender(meta, detail),
   };
+}
+
+/** สองชั้นบนจอ (ชั้นบนรอง · ชั้นล่างหลัก) — คลาสอยู่ใน globals.css ใช้ได้ทั้งในเมนูและนอกเมนู */
+function productOptionRender(meta, detail) {
+  return createElement(
+    "span",
+    { className: "product-option-label" },
+    meta
+      ? createElement("span", { className: "product-option-meta" }, meta)
+      : null,
+    createElement("span", { className: "product-option-name" }, naText(detail)),
+  );
 }
 
 // สร้าง options ให้ SearchableSelect: เรียงตามรหัส FG (ตัวไม่มีรหัสไปท้ายลิสต์)
