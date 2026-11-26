@@ -23,6 +23,7 @@
 import { useRef, useState } from "react";
 import ContinueRequestField from "@/components/requests/ContinueRequestField";
 import { briefSourceRequired } from "@/lib/requests/scentContinue";
+import { requestTeamFor } from "@/lib/requests/requestTeam";
 import { Plus, X, AtSign } from "lucide-react";
 import Tabs from "@/components/ui/Tabs";
 import SectionRail from "@/components/ui/SectionRail";
@@ -327,7 +328,6 @@ export default function RequestForm({
   /* ทีมของคนเปิดใบ — มาจาก `me` (/api/users/me) ไม่ใช่ context เพราะฟอร์มนี้ถูกใช้
      ทั้งในหน้าเปิดคำร้องและโมดัลของหน้าอื่น ซึ่งส่ง `me` มาให้อยู่แล้ว */
   const myTeams = userTeams(me);
-  const myTeam = me?.team || null;
   const items = value.items || [];
   const kind = value.kind || "";
   const meta = requestKindMeta(kind) || {};
@@ -1582,7 +1582,9 @@ export default function RequestForm({
             ผ่านฟอร์มแก้เมื่อไร ใบจะหายจากคิวของทีมเดิมโดยไม่มีใครรู้ */}
         <TeamPickerField
           teams={myTeams}
-          value={myTeams.includes(value.team) ? value.team : (myTeam || myTeams[0])}
+          /* ทีมตั้งต้น = สูตรเดียวกับ server (requestTeamFor) — ไม่ได้กดเลือก + ผูกดีลของทีมที่ตัวเองอยู่ = ทีมของดีล
+             (ตรวจบัญชีสองทีม 26/11/2026: เดิมชี้ทีมหลักเสมอ ⇒ คำร้องคาดีล SV เข้าคิว ODM) */
+          value={requestTeamFor(me, { requested: value.team, dealTeam: selectedDeal?.team }) || myTeams[0]}
           onChange={(team) => set({ team })}
           disabled={disabled || isEdit}
           label="ทีมเจ้าของคำร้อง"

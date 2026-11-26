@@ -116,7 +116,9 @@ export function enrichedRenewalRows(ctx, rows) {
       ...rest,
       zoneCount: row.terms.length,
       order: order ? { id: order.id, orderNumber: order.orderNumber } : null,
-      deal: deal ? { id: deal.id, title: deal.title, ownerId: deal.ownerId, ownerName: deal.ownerName } : null,
+      /* `team` = ทีมของดีลรอบที่กำลังหมด — ฟอร์ม "ต่อสัญญา" ตั้งทีมของดีลใหม่ตามนี้ (ตรวจบัญชีสองทีม 26/11:
+         ไม่ส่งมา = ดีลต่อสัญญาของ AE ที่อยู่ ODM+SV ตกเข้าทีมหลัก ODM เงียบ ๆ ทั้งที่งานบริการเป็นของ SV) */
+      deal: deal ? { id: deal.id, title: deal.title, ownerId: deal.ownerId, ownerName: deal.ownerName, team: deal.team || null } : null,
     };
   });
 }

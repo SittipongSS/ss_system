@@ -23,6 +23,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { fmtMoney, fmtName, fmtNumber, naText, NA } from "@/lib/format";
 import usePeopleDirectory from "@/lib/usePeopleDirectory";
 import useDealOwners from "@/lib/sales/useDealOwners";
+import { editFormLockedOwner } from "@/lib/sales/dealOwner";
 import { livePersonName } from "@/lib/ui/personName";
 import { cachedFetchJson } from "@/lib/apiCache";
 import { brandDisplayFromList, brandThList } from "@/lib/master/brands";
@@ -1127,6 +1128,8 @@ export default function SalesPlanningPipelinePage() {
               stages={editableStages(isWonStage(dealForm.stage))}
               alreadyWon={isWonStage(dealForm.stage)}
               owners={owners}
+              /* AE ไม่มีรายชื่อเจ้าของ ⇒ ส่งตัวเองแบบล็อก ไม่งั้นช่อง "ทีมเจ้าของงาน" ไม่โผล่ (ดู editFormLockedOwner) */
+              lockedOwner={editFormLockedOwner({ owners, lockedOwner, ownerId: dealForm.ownerId })}
             />
             {/* ลีดต้นทาง — ตัวเดียวกับฟอร์มเพิ่มดีลและฟอร์มแก้ของหน้าดีล · mount เฉพาะตอนโมดัลเปิด
                 (ตัวเลือกโหลดตอน mount) · สิทธิ์: แก้ดีลใบนี้ได้ + บทบาทที่ผูกลีดได้ */}

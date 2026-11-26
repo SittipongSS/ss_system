@@ -14,7 +14,7 @@
 //   ⇒ ไม่มีตัวกรองสถานะแบบทะเบียนอื่น (สถานะของแถวเป็นผลของวันที่ ไม่ใช่ของที่คนตั้ง)
 //
 // ⭐ กระดิ่งใกล้หมด/หมดแล้วยิงจาก cron สรุปประจำวัน (งวด 3 วันกำหนด 24/11/2026) — เปิดทะเบียนนี้ไม่เขียนอะไร · ดู lib/service/renewalNotify.js
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import useStickyState from "@/lib/ui/useStickyState";
 import { CalendarClock, CircleAlert, PhoneCall, RefreshCw, Search } from "lucide-react";
@@ -31,6 +31,7 @@ import { fmtDate, fmtName, naText, NA } from "@/lib/format";
 import { dueText } from "@/lib/dueState";
 import { usePagination } from "@/lib/usePagination";
 import { apiJson } from "@/lib/apiFetch";
+import { createClient } from "@/lib/supabaseBrowser";
 import { LINE_PERIOD_END_NOTE, ORDER_PERIOD_END_NOTE } from "@/lib/service/renewals";
 
 export const EMPTY_RENEWAL_COUNTS = { expired: 0, dueIn30: 0, dueSoon: 0, following: 0 };
@@ -73,7 +74,14 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
   const [followRow, setFollowRow] = useState(null);
   // ต่อสัญญา = เปิดฟอร์มสร้างดีลตัวเดิมของระบบ ไม่ใช่สร้างดีลเงียบ ๆ ให้เอง
   const [dealDefaults, setDealDefaults] = useState(null);
-  const dealOwners = useDealOwners();
+  /* ⚠️ ต้องส่งไอดีตัวเองเข้า useDealOwners เหมือนผู้เรียกอีกสี่ที่ — ไม่ส่ง = หาตัวเองในทะเบียนไม่เจอ
+     ⇒ `lockedOwner` เป็น null ⇒ ฟอร์มไม่มีชื่อเจ้าของและไม่ถามทีม แล้วดีลต่อสัญญาของ AE ที่อยู่สองทีม
+     ตกเข้าทีมหลักเงียบ ๆ (ตรวจบัญชี ODM+SV 26/11/2026) */
+  const [meId, setMeId] = useState(null);
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
+  }, []);
+  const dealOwners = useDealOwners(meId);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -108,6 +116,9 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
           line: "SERVICE",
           dealType: "RE-ORDER",
           title: `${row.site.customerName || row.site.name} — ต่อสัญญาบริการ`,
+          /* ทีมของดีลรอบที่หมด — ฟอร์มถามทีมเฉพาะเจ้าของที่อยู่หลายทีม และตั้งชิปไว้ที่ทีมนี้
+             (เจ้าของไม่ได้อยู่ทีมนี้ = server ถอยเป็นทีมหลักของเจ้าของเองผ่าน attributionTeam) */
+          ...(row.deal?.team ? { team: row.deal.team } : {}),
         });
       }
     } finally {

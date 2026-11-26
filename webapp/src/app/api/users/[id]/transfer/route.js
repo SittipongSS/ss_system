@@ -1,11 +1,11 @@
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
-import { can, normalizeRole } from '@/lib/permissions';
+import { can, normalizeRole, userTeams } from '@/lib/permissions';
 import { recordAudit } from '@/lib/audit';
 import { genId } from '@/lib/id';
 import { businessDate } from '@/lib/businessDate';
 import { CLOSED_STAGES } from '@/lib/salesPlanning';
-import { planTargetTransfer, nextMonthKey } from '@/lib/usersTransfer';
+import { planTargetTransfer, nextMonthKey, transferTeam } from '@/lib/usersTransfer';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { historicalRowsOnly } from '@/lib/sales/historicalOrders';
 
@@ -40,7 +40,7 @@ export async function GET(request, { params }) {
 // body: { toUserId, transferDeals=true, transferTargets=true, fromPeriod='YYYY-MM' }
 //
 // นโยบายพนักงานเข้า-ออก (ดู EMPLOYEE_TURNOVER_GUIDE.md):
-//   - ดีลเปิด (ยังไม่ won/lost) → เปลี่ยนผู้ดูแล+ทีมเป็นคนรับ — FC ย้ายตาม
+//   - ดีลเปิด (ยังไม่ won/lost) → เปลี่ยนผู้ดูแลเป็นคนรับ · ทีมคงเดิมถ้าคนรับอยู่ทีมนั้น ไม่งั้นทีมหลักคนรับ — FC ย้ายตาม
 //   - ดีล won/lost ไม่แตะ — AT อยู่กับคนปิดจริง ประวัติไม่เพี้ยน
 //   - เป้า (TG) โยกเฉพาะ period >= fromPeriod (default เดือนถัดไป) —
 //     เดือนเก่าไม่โยก; ต้นทางตั้ง 0 (แถว ghost ในวางเป้าจะหายเพราะโชว์เฉพาะ >0)
@@ -77,6 +77,10 @@ export async function POST(request, { params }) {
   const fromName = fromRes.user.user_metadata?.name || fromRes.user.email || fromId;
   const toName = toUser.user_metadata?.name || toUser.email || toUserId;
   const toTeam = toUser.app_metadata?.team || null;
+  /* คนรับอยู่ได้หลายทีม — งานที่โอนไปคงทีมเดิมถ้าคนรับอยู่ทีมนั้น (transferTeam) · ไม่งั้นลงทีมหลักของคนรับ
+     🐞 ตรวจบัญชีสองทีม 26/11/2026: เดิมประทับ `toTeam` ทับทุกแถว ⇒ ดีล/เป้า SV ที่โอนให้ AE ODM+SV
+     (ทีมหลัก ODM) ย้ายเข้า ODM ทั้งก้อน แล้วหัวหน้าทีม SV มองไม่เห็นดีลที่ทีมตัวเองถืออยู่ */
+  const toWho = { id: toUserId, team: toTeam, teams: userTeams(toUser.app_metadata) };
   const now = new Date().toISOString();
 
   const result = { deals: 0, targetMonths: 0, targetAmount: 0, fromPeriod };
@@ -84,23 +88,44 @@ export async function POST(request, { params }) {
   // ── ดีลเปิด: เปลี่ยนผู้ดูแล + ทีม (FC เดือนปัจจุบัน/อนาคตย้ายตามในแดชบอร์ดทันที) ──
   let movedDeals = [];
   if (transferDeals) {
-    const { data, error } = await supabase
+    /* อ่านก่อนแล้วเขียนเป็นกลุ่มตามทีมปลายทาง — ทีมของแต่ละใบขึ้นกับทีมเดิมของใบ (คำสั่ง update ก้อนเดียว
+       ประทับทีมเดียวทับทุกใบไม่ได้แล้ว) · เงื่อนไข ownerId + ดีลเปิด ซ้ำในคำสั่งเขียนด้วย กันใบที่เพิ่งปิด/ย้ายระหว่างทาง */
+    const { data: openDeals, error: readError } = await fetchAllResult(() => supabase
       .from('sales_deals')
-      .update({ ownerId: toUserId, ownerName: toName, team: toTeam, updatedAt: now })
+      .select('id, title, stage, team')
       .eq('ownerId', fromId)
       // เฉพาะดีลที่ยังเปิด — สร้างจากนิยามกลางเพื่อไม่ให้ลิสต์ในสตริง SQL เพี้ยนจากที่อื่น
       .not('stage', 'in', `(${CLOSED_STAGES.join(',')})`)
-      .select('id, title, stage');
-    if (error) return Response.json({ error: `โอนดีลไม่สำเร็จ: ${error.message}` }, { status: 500 });
-    movedDeals = data || [];
+      .order('id', { ascending: true }));
+    if (readError) return Response.json({ error: `อ่านดีลที่ต้องโอนไม่สำเร็จ: ${readError.message}` }, { status: 500 });
+    const idsByTeam = new Map();
+    for (const deal of openDeals || []) {
+      const team = transferTeam(toWho, deal.team);
+      idsByTeam.set(team, [...(idsByTeam.get(team) || []), deal.id]);
+    }
+    /* ทีละ 200 ใบ — ลิสต์ id ใน `.in()` โตตามจำนวนดีลของคนออก (เพดาน URL ของ PostgREST ~16 KB) */
+    const CHUNK = 200;
+    for (const [team, ids] of idsByTeam) {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const { data, error } = await supabase
+          .from('sales_deals')
+          .update({ ownerId: toUserId, ownerName: toName, team, updatedAt: now })
+          .in('id', ids.slice(i, i + CHUNK))
+          .eq('ownerId', fromId)
+          .not('stage', 'in', `(${CLOSED_STAGES.join(',')})`)
+          .select('id, title, stage, team');
+        if (error) return Response.json({ error: `โอนดีลไม่สำเร็จ: ${error.message}` }, { status: 500 });
+        movedDeals.push(...(data || []));
+      }
+    }
     result.deals = movedDeals.length;
   }
 
-  // ── เป้ารายเดือน: โยกยอดตั้งแต่ fromPeriod เข้าแถวของคนรับ (ทีมของคนรับ) ──
+  // ── เป้ารายเดือน: โยกยอดตั้งแต่ fromPeriod เข้าแถวของคนรับ (ทีมเดิมของแถวถ้าคนรับอยู่ทีมนั้น · ไม่งั้นทีมหลักคนรับ) ──
   if (transferTargets) {
     const { data: fromRows, error: tErr } = await supabase
       .from('sales_targets')
-      .select('id, period, targetAmount')
+      .select('id, period, team, targetAmount')
       .eq('ownerId', fromId)
       .eq('periodType', 'month')
       .gte('period', fromPeriod);
@@ -113,7 +138,7 @@ export async function POST(request, { params }) {
          ⇒ ตัววางแผนสร้างแถวใหม่ทับแทนที่จะรวมยอด · เส้นนี้เขียนข้อมูลจริง */
       const { data, error } = await supabase
         .from('sales_targets')
-        .select('id, period, targetAmount')
+        .select('id, period, team, targetAmount')
         .eq('ownerId', toUserId)
         .eq('periodType', 'month')
         .in('period', periods);
@@ -121,7 +146,7 @@ export async function POST(request, { params }) {
       toRows = data || [];
     }
 
-    const plan = planTargetTransfer(fromRows || [], toRows, { id: toUserId, name: toName, team: toTeam });
+    const plan = planTargetTransfer(fromRows || [], toRows, { ...toWho, name: toName });
     for (const item of plan.add) {
       if (item.existingId) {
         const { error } = await supabase.from('sales_targets')
@@ -134,7 +159,7 @@ export async function POST(request, { params }) {
           period: item.period,
           periodType: 'month',
           targetMonth: item.period,
-          team: toTeam,
+          team: item.team,
           ownerId: toUserId,
           ownerName: toName,
           targetAmount: item.amount,
@@ -167,7 +192,7 @@ export async function POST(request, { params }) {
     entityId: fromId,
     after: {
       transferredTo: { id: toUserId, name: toName, team: toTeam },
-      deals: movedDeals.map((d) => ({ id: d.id, title: d.title, stage: d.stage })),
+      deals: movedDeals.map((d) => ({ id: d.id, title: d.title, stage: d.stage, team: d.team })),
       targetMonths: result.targetMonths,
       targetAmount: result.targetAmount,
       fromPeriod,

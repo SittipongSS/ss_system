@@ -152,7 +152,8 @@ test('PATCH ดีล: ดีลภาชนะที่ยังมีใบย
 test('โอนงานพนักงาน: ดีลเปิดเท่านั้นที่ย้าย · พรีวิว (GET) และผลลัพธ์บอกดีลภาชนะที่ยังค้าง', () => {
   const route = stripComments(read('app/api/users/[id]/transfer/route.js'));
   assert.match(route, /export async function GET\(/);
-  const update = slice(route, ".from('sales_deals')\n      .update(", '.select(');
+  // คำสั่งเขียนอยู่ในลูปกลุ่มทีม (คงทีมเดิมของดีลที่โอน · ตรวจบัญชีสองทีม 26/11/2026) ⇒ ย่อหน้าลึกขึ้น
+  const update = slice(route, ".from('sales_deals')\n          .update(", '.select(');
   assert.ok(update.includes(".not('stage', 'in'"), 'ดีลที่ย้ายต้องยังกรองเฉพาะดีลเปิด');
   assert.doesNotMatch(update, /origin/);
   assert.ok(route.includes('historicalRowsOnly('));

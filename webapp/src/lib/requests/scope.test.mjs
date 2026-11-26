@@ -65,7 +65,9 @@ test('ชุดขอบเขตตรงกับที่ตัวสลั�
 test('POST คำร้อง: ไม่มีทีมของตัวเอง → ใช้ทีมของดีลต้นทาง', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../../app/api/sa/requests/route.js', import.meta.url), 'utf8');
-  assert.match(src, /team: attributionTeam\(user, body\.team\) \|\| dealTeam/);
+  /* ตัวตัดสินย้ายไป lib/requests/requestTeam.js (ตรวจบัญชีสองทีม 26/11/2026 — คนอยู่ทีมของดีลได้ทีมของดีล
+     แทนทีมหลัก) · พฤติกรรม "ไม่มีทีมของตัวเอง → ทีมของดีล" คุมด้วยเทสต์หน่วยที่ lib/multiTeamUsePaths.test.mjs */
+  assert.match(src, /team: requestTeamFor\(user, \{ requested: body\.team, dealTeam \}\)/);
   // ทีมของดีลต้องถูกอ่านมาจริง ไม่ใช่ค้างเป็น null ตลอด
   // (projectId หลุดจาก select ตั้งแต่ P3a — ยุบโครงการ 16/11 คำร้องใหม่ไม่ผูกโครงการ)
   assert.match(src, /\.select\('id, customerId, customerName, team'\)/);

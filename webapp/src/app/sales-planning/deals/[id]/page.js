@@ -26,6 +26,7 @@ import { canDeleteDeal, createDealLifecycle, DEAL_PATCH_TRANSITIONS } from "@/li
 import RecordControlCard from "@/components/ui/RecordControlCard";
 import { useRole, useTeam, useTeams } from "@/lib/roleContext";
 import useDealOwners from "@/lib/sales/useDealOwners";
+import { editFormLockedOwner } from "@/lib/sales/dealOwner";
 import { createClient } from "@/lib/supabaseBrowser";
 import { isSuperuser } from "@/lib/permissions";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
@@ -501,7 +502,7 @@ export default function DealOverviewPage() {
   useEffect(() => {
     createClient().auth.getUser().then(({ data: { user } }) => setMeId(user?.id || null)).catch(() => {});
   }, []);
-  const { owners: dealOwners } = useDealOwners(meId);
+  const { owners: dealOwners, lockedOwner: dealLockedOwner } = useDealOwners(meId);
   const [customers, setCustomers] = useState([]);
   const dealBrand = useMemo(() => {
     const value = String(deal?.metadata?.brand || deal?.brand || "").trim();
@@ -664,6 +665,9 @@ export default function DealOverviewPage() {
       aeSupervisorId: deal.aeSupervisorId || "",
       // ดีล SCENT ต้นทาง (P2c-2) — โหลดค่าเดิม ไม่งั้นบันทึกแล้วต้นทางหาย (ฟอร์มส่งช่องนี้ทุกครั้งเมื่อเป็น NPD)
       sourceScentDealId: deal.sourceScentDealId || "",
+      /* ทีมปัจจุบันของดีล — เหมือนฟอร์มแก้ของหน้ารวมดีล · 🐞 เดิมไม่โหลด ⇒ ส่ง ownerId โดยไม่มีทีม แล้ว server
+         ถอยเป็นทีมหลักของเจ้าของ: แก้ดีล SV ของคนที่อยู่ ODM+SV ครั้งเดียว ดีลย้ายไป ODM (ตรวจบัญชีสองทีม 26/11/2026) */
+      team: deal.team || "",
     });
     setDealFormError("");
     setEditLeadId("");
@@ -1605,6 +1609,8 @@ export default function DealOverviewPage() {
               stages={editableStages(alreadyWon)}
               alreadyWon={alreadyWon}
               owners={dealOwners}
+              /* AE ไม่มีรายชื่อเจ้าของ ⇒ ส่งตัวเองแบบล็อก ไม่งั้นช่อง "ทีมเจ้าของงาน" ไม่โผล่ (ดู editFormLockedOwner) */
+              lockedOwner={editFormLockedOwner({ owners: dealOwners, lockedOwner: dealLockedOwner, ownerId: dealForm.ownerId })}
             />
             {/* ลีดต้นทาง — ตัวเดียวกับฟอร์มเพิ่มดีล · ผูกแล้ว = บอกทางถอด (แผงจัดการ) แทนช่องเลือก */}
             {canLinkLead && (
