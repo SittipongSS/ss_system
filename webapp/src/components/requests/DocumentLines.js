@@ -24,6 +24,7 @@ import { Plus, Trash2 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import OptionTiles from "@/components/ui/OptionTiles";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { productSelectOptions } from "@/components/master/productOption";
 import SectionRail from "@/components/ui/SectionRail";
 import Textarea from "@/components/ui/Textarea";
 import { REQUEST_DOC_VOCABULARY } from "@/lib/requests/docTypes";
@@ -118,13 +119,13 @@ export default function DocumentLines({
     ? { scentId: v || "", formulaId: "", typedSubjectName: "" }
     : { formulaId: v || "", scentId: "", typedSubjectName: "" });
 
-  const productOptions = products
-    .filter((fg) => !customerId || !fg.customerId || fg.customerId === customerId || fg.id === row.productId)
-    .map((fg) => ({
-      value: fg.id,
-      label: [fg.fgCode, fg.productDescription].filter(Boolean).join(" · ") || fg.id,
-      search: `${fg.fgCode || ""} ${fg.productDescription || ""}`,
-    }));
+  /* ⭐ สองชั้นแบบดรอปดาวน์ FG ของใบเสนอราคา (มติผู้ใช้ 2026-11-26) — บน: รหัส · แบรนด์ · ชื่อหมวด
+     ล่าง: ชื่อสินค้า · ปริมาตร · FG ครึ่งหนึ่งไม่มีชื่อสินค้าและชื่อซ้ำกันเยอะ แบรนด์กับปริมาตรจึงเป็นตัวแยก */
+  const productOptions = productSelectOptions(
+    products.filter((fg) => !customerId || !fg.customerId || fg.customerId === customerId || fg.id === row.productId),
+    undefined,
+    { withCategory: true },
+  );
 
   const patch = (next) => onChange(rows.map((r, j) => (at === j ? { ...r, ...next } : r)));
   const addRow = () => {

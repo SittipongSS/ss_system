@@ -9,6 +9,20 @@
 // (ด่านยาวเป็นร้อยบรรทัดอยู่ที่ POST) · ที่นี่คือของที่ **ว่างได้ทุกช่อง** และด่าน
 // มีข้อเดียว: "มีจริง และอยู่ดีลเดียวกัน"
 import { requestNeedsRef, requestOptionalRefs } from '@/lib/master/requestTypes';
+import { productOptionParts } from '@/lib/master/productIdentity';
+import { attachCategoryNames, loadProductTypeNames } from '@/lib/master/productCategoryNames';
+
+// คอลัมน์เท่าที่ป้าย FG ใช้ (รหัส · แบรนด์ · หมวด / ชื่อ · ปริมาตร) — ไม่ดึงราคา/ต้นทุนมาลงคำร้อง
+const FG_REF_COLUMNS = 'id, "fgCode", "categoryCode", "productDescription", "productDescriptionEn", '
+  + '"brandName", "brandNameEn", volume, "volumeUnit"';
+
+/* ป้าย snapshot ของ FG ที่อ้างถึง — บรรทัดเดียวของตัวเลือกสินค้ามาตรฐานแบบมีชื่อหมวด
+   (มติผู้ใช้ 2026-11-26: "รหัส · แบรนด์ · ชื่อหมวด · ชื่อสินค้า · ปริมาตร" เหมือนดรอปดาวน์ FG ของ QT)
+   ⚠️ ใบเก่าเก็บ "รหัส · ชื่อ" ไว้แล้ว ไม่ย้อนแก้ — snapshot คือของที่ตอนนั้นอ้าง */
+export function fgRefLabel(fg) {
+  if (!fg) return '';
+  return productOptionParts(fg, { withCategory: true }).text || fg.id;
+}
 
 /**
  * ตรวจอ้างอิงเพิ่มแล้วคืนคอลัมน์ที่จะเขียน — `{ patch, error }`
@@ -65,16 +79,15 @@ export async function resolveOptionalRefs(supabase, kind, body = {}, { dealId = 
     let refProduct = [];
     if (wanted.length) {
       const { data: fgs, error } = await supabase
-        .from('products').select('id, "fgCode", "productDescription"').in('id', wanted);
+        .from('products').select(FG_REF_COLUMNS).in('id', wanted);
       if (error) return { patch: {}, error: error.message };
       const byId = new Map((fgs || []).map((f) => [f.id, f]));
       if (wanted.some((id) => !byId.has(id))) {
         return { patch: {}, error: 'ไม่พบสินค้า (FG) ที่อ้างถึงบางรายการ' };
       }
-      refProduct = wanted.map((id) => {
-        const fg = byId.get(id);
-        return { id, label: [fg.fgCode, fg.productDescription].filter(Boolean).join(' · ') || id };
-      });
+      // ชื่อหมวดเป็นของประกอบ — ทะเบียนหมวดอ่านไม่ได้ = ป้ายไม่มีชื่อหมวด ไม่ใช่บันทึกใบไม่ได้
+      try { attachCategoryNames(fgs, await loadProductTypeNames(supabase)); } catch { /* ข้ามชื่อหมวด */ }
+      refProduct = wanted.map((id) => ({ id, label: fgRefLabel(byId.get(id)) }));
     }
     patch.productRefs = refProduct;
     // คู่เดิม (productId/productName) เก็บตัวแรกไว้ให้จอเก่าที่ยังอ่านช่องเดี่ยว
