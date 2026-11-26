@@ -6,6 +6,7 @@ import { categoryOf, isExciseCategory } from "@/lib/master/categoryOf";
 import { brandLabel } from "@/lib/master/brands";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { exciseTaxLineForRegistration } from "@/lib/tax/exciseBilling";
+import { exciseSplitText } from "@/lib/excise/exciseTaxSteps";
 import { apiFetch } from "@/lib/apiFetch";
 
 // RA approval for an excise registration: approval number + taxability override.
@@ -40,9 +41,12 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
     : isExciseCategory(categoryOf(registration.fgCode), productTypes);
   // ภาษี/ชิ้น มาจากทะเบียนสินค้า (อัตราคิดจากราคาขายปลีกของ FG ซึ่งอัปเดตได้) — จอที่
   // ฝ่าย RA ใช้ตัดสินใจอนุมัติต้องเห็นเลขเดียวกับที่ใบยื่นจะคิดจริง ไม่ใช่สำเนาเก่า
-  const taxPerUnit = exciseTaxLineForRegistration({
+  const taxLine = exciseTaxLineForRegistration({
     registration, product, quantity: 1,
-  }).totalTax;
+  });
+  const taxPerUnit = taxLine.totalTax;
+  // แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว")
+  const taxSplit = exciseSplitText(taxLine.exciseRatePerUnit, taxLine.localTaxRatePerUnit);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -74,6 +78,7 @@ export default function ApproveDialog({ open, onClose, onDone, registration, pro
             <span style={{ color: "var(--text-3)" }}>ลูกค้า: {naText(registration.customerName)}</span>
             <span style={{ color: "var(--text-3)" }}>
               ภาษี/ชิ้น (ปัจจุบัน): <span className="font-mono">{registration.isExciseTaxable === false ? "ยกเว้น" : fmtMoney(taxPerUnit)}</span>
+              {registration.isExciseTaxable !== false && taxSplit ? <span className="font-mono">{` (${taxSplit})`}</span> : null}
             </span>
           </div>
 

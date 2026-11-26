@@ -20,6 +20,7 @@ import StatusBadge from "@/components/excise/StatusBadge";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { filingDateText, filingLinesTaxTotal, filingMonthLabel, filingMonthTotals } from "@/lib/excise/raFilingMonth";
 import { raFilingMonthBuckets } from "@/lib/excise/raFilingExport";
+import { exciseSplitText } from "@/lib/excise/exciseTaxSteps";
 import styles from "./FilingLinesTable.module.css";
 
 const TAX_PER_UNIT = "ภาษี/หน่วย (สรรพสามิต + ท้องถิ่น)";
@@ -160,6 +161,10 @@ export default function FilingLinesTable({ rows = [], selected, onToggle, allChe
                     <td className={`${styles.num} mono`}>{money(line.retailPriceExVat)}</td>
                     <td className={`${styles.num} mono`}>
                       {money(line.taxPerUnit)}
+                      {/* แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") — ช่อง ภส. ที่ใบตรึงไว้ */}
+                      {exciseSplitText(line.excisePerUnit, line.localPerUnit) ? (
+                        <span className={styles.taxSplit}>{exciseSplitText(line.excisePerUnit, line.localPerUnit)}</span>
+                      ) : null}
                       {line.taxCheck && !line.taxCheck.ok ? (
                         <span className={styles.taxMismatch} role="note">ไม่ตรงสูตร · ควรเป็น {fmtMoney(line.taxCheck.expected)}</span>
                       ) : null}

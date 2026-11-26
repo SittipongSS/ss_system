@@ -206,9 +206,13 @@ async function withQueueFacts(supabase, rows, user) {
        products:cost/edit ตัดราคาผลิตทิ้งด้วย ⇒ ค่าที่คนไม่มีสิทธิ์ไม่ควรเห็น
        **ไม่ถูกส่งลง browser เลย** ไม่ใช่ส่งไปแล้วซ่อนด้วย CSS */
     const factory = redactProductMargin(user, facts.factory);
+    const taxLine = exciseTaxLineForRegistration({ registration: r, product, quantity: 1 });
     return {
       ...r,
-      taxPerUnit: exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax,
+      taxPerUnit: taxLine.totalTax,
+      // แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") — สองช่องจากบรรทัดเดียวกัน ⇒ รวมกันเท่า taxPerUnit เสมอ
+      excisePerUnit: taxLine.exciseRatePerUnit,
+      localPerUnit: taxLine.localTaxRatePerUnit,
       retailPriceIncVat: facts.retailPriceIncVat,
       retailPriceExVat: facts.retailPriceExVat,
       taxBasis: facts.taxBasis,

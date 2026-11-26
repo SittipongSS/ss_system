@@ -31,7 +31,7 @@ import { productDisplayName } from "@/lib/master/productIdentity";
 import { registryLabel, scentLabel } from "@/lib/master/registryLabel";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
 import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, exciseBaseLabel, exciseBasePriceIncVat, giftSetExcise, giftSetExciseSummary, giftSetPriceModeOf } from "@/lib/excise/giftSetExcise";
-import { EXCISE_FORMULA_TEXT, exciseTaxSteps } from "@/lib/excise/exciseTaxSteps";
+import { EXCISE_FORMULA_TEXT, exciseSplitText, exciseTaxSteps } from "@/lib/excise/exciseTaxSteps";
 import ExciseTaxSteps from "@/components/excise/ExciseTaxSteps";
 import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
@@ -606,13 +606,15 @@ export default function ProductDetails() {
   /* ── การ์ด "สรุปสินค้า" (รางขวา · มติ 1 + 3) — ของที่ต้องเห็นตลอดไม่ว่าเปิดแท็บไหน: หมวด · ขนาด · ราคา · ภาษี/หน่วย + สถานะรายเรื่อง
      ⚠️ ราคา/ภาษีตามสิทธิ์เดิมของหัว (canSeeCost · showRetailPrice · canViewTax) — รายละเอียดเต็มอยู่แท็บราคาและแท็บสรรพสามิต */
   // ตัวเดียวกับแท็บสรรพสามิต (`exciseSteps` · ปัดทีละขั้น มติ 26/11) — การ์ดสรุปกับแท็บต้องพูดเลขเดียวกัน
-  const taxPerUnit = isExempt ? "ยกเว้น" : fmtMoney(exciseSteps?.taxPerUnit || 0);
+  // + แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") ต่อท้ายยอด
+  const taxSplitText = exciseSteps ? exciseSplitText(exciseSteps.exciseTax, exciseSteps.localTax) : null;
+  const taxPerUnit = isExempt ? "ยกเว้น" : `${fmtMoney(exciseSteps?.taxPerUnit || 0)}${taxSplitText ? ` (${taxSplitText})` : ""}`;
   const summaryRows = [
     { id: "category", label: "หมวด", value: categoryCodeLabel(product.categoryCode || categoryOf(product.fgCode), productTypes), stack: true },
     { id: "unit", label: showPackaging ? "ปริมาตร · หน่วยขาย" : "หน่วยขาย", value: showPackaging ? `${formatVolume(product)} · ${unit}` : unit },
     canSeeCost && { id: "cost", label: `ราคาผลิต/${unit} · ก่อน VAT`, value: fmtMoneyOrDash(product.costPrice) },
     showRetailPrice && { id: "retail", label: "ราคาขายปลีก รวม VAT", value: fmtMoneyOrDash(product.retailPriceIncVat) },
-    canViewTax && isExciseCat && { id: "tax", label: `ภาษีสรรพสามิต/${unit}`, value: taxPerUnit },
+    canViewTax && isExciseCat && { id: "tax", label: `ภาษีสรรพสามิต/${unit}`, value: taxPerUnit, stack: Boolean(taxSplitText) && !isExempt },
   ].filter(Boolean);
 
   /* รางขวา = การ์ดสรุปสินค้า + การ์ดจัดการ (ทรงเดียวกับรางของหน้าลูกค้า · มติ 1)

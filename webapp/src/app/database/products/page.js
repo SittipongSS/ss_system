@@ -36,6 +36,7 @@ import {
 } from "@/lib/master/masterCodes";
 import { brandBoth, hasBrandField, normalizeBrands } from "@/lib/master/brands";
 import { productNameBoth, fmtMoney, fmtMoneyOrDash, naText, NA } from "@/lib/format";
+import { exciseSplitText, productTaxPerUnit } from "@/lib/excise/exciseTaxSteps";
 import CostVatLines from "@/components/database/CostVatLines";
 import { apiFetch } from "@/lib/apiFetch";
 import { canApproveMasterRecord } from "@/lib/master/approvalControl";
@@ -403,7 +404,7 @@ export default function ProductRegistry() {
     volume: (p) => p.volume ?? null,
     cost: (p) => p.costPrice ?? null,
     retail: (p) => p.retailPriceIncVat ?? null,
-    tax: (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0)),
+    tax: (p) => productTaxPerUnit(p).taxPerUnit,
     // ตามทางเดินของงาน (ยังไม่ส่ง → รอรับ → กำลังลง → ตีกลับ → ลงแล้ว) · กลุ่ม 03/04 ไม่มีค่า = ท้ายตาราง
     bom: (p) => { const v = bomFilterValueOf(p); return v ? BOM_FILTER_VALUES.indexOf(v) : null; },
   }, { key: "product", dir: "asc" });
@@ -422,7 +423,9 @@ export default function ProductRegistry() {
      ⚠️ มุมมองตารางข้างล่างประกาศ `const detailHref` (สตริง) ของตัวเองในลูป **บังชื่อนี้**
         อยู่ — ตั้งใจให้อ่านเหมือนกันทั้งสองมุมมอง แต่คนละชนิด (ที่นี่เป็นฟังก์ชัน) */
   const detailHref = (p) => `/database/products/${p.id}`;
-  const taxPerUnit = (p) => (p.isExciseTaxable === false ? 0 : (p.exciseTax || 0) + (p.localTax || 0));
+  // ตัวคิดกลาง (`exciseTaxLine`) ไม่บวกค่าดิบเอง · แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") = บรรทัดรองใต้ยอด
+  const taxPerUnit = (p) => productTaxPerUnit(p).taxPerUnit;
+  const taxSplit = (p) => { const t = productTaxPerUnit(p); return exciseSplitText(t.excisePerUnit, t.localPerUnit); };
 
   /* ปุ่มส่งออกพกตัวกรองปัจจุบันไปด้วย — server กรองซ้ำด้วย filterProducts ตัวเดียวกัน
      (ส่งเป็น query ไม่ใช่ POST พร้อมรายการ id: proxy กั้น POST ของ /api/products ไว้ที่
@@ -648,7 +651,7 @@ export default function ProductRegistry() {
                     {/* ป้ายเฉพาะสินค้าที่ต้องเสียสรรพสามิต (กฎเดียวของระบบ) / หมวดที่ติ๊กจดแจ้ง อย. — รายละเอียดการยกเว้นดูที่การ์ดภาษีในหน้ารายละเอียด */}
                     {(taxable || exempt || flags.requiresFdaNotice) && (
                       <div className="mt-0.5 flex flex-wrap items-center justify-end gap-1.5">
-                        {taxable && taxPerUnit(p) > 0 && <span className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                        {taxable && taxPerUnit(p) > 0 && <span className="text-[10px] text-[var(--text-3)]">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}{taxSplit(p) ? ` (${taxSplit(p)})` : ""}</span>}
                         {/* ป้ายเดียวสองความหมาย (ไม่เขียนสองป้าย = ขนาดดิบไม่เพิ่มในด่าน audit:ui) */}
                         {(taxable || exempt) && <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ภาษีสรรพสามิต" : "ยกเว้นสรรพสามิต"}</span>}
                         {(taxable || exempt) && <ProductRegistrationBadge product={p} productTypes={productTypes} taxable={taxable} />}
@@ -749,6 +752,7 @@ export default function ProductRegistry() {
                             ? <ProductRegistrationBadge product={p} productTypes={productTypes} taxable={taxable} />
                             : <span className={`status-pill text-[10px]${taxable ? " warning" : ""}`}>{taxable ? "ต้องเสีย" : "ยกเว้น"}</span>}
                           {taxable && taxPerUnit(p) > 0 && <span className="text-[11px] text-[var(--text-3)] font-normal">ภาษี/ชิ้น: {fmtMoney(taxPerUnit(p))}</span>}
+                          {taxable && taxSplit(p) ? <span className="cell-sub font-normal font-mono">{taxSplit(p)}</span> : null}
                         </div>
                       ) : <span className="text-[var(--text-3)]">{NA}</span>}
                     </td>

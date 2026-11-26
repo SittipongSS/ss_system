@@ -22,6 +22,7 @@ import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
 import { fmtNumber } from '@/lib/format';
 import { exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
+import { exciseSplitShort } from '@/lib/excise/exciseTaxSteps';
 import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
 import { withinDateRange } from '@/lib/tax/period';
 import { sortRegistrationsLikeQueue } from '@/lib/tax/registrationQueue';
@@ -88,6 +89,8 @@ export async function registrationReport(filter = {}) {
   const rows = regs.map((r) => {
     const p = products.get(r.productId) || {};
     const exVat = p.retailPriceExVat != null ? p.retailPriceExVat : (p.retailPriceIncVat ? p.retailPriceIncVat / 1.07 : 0);
+    // ทะเบียนที่ติ๊กยกเว้น = ไม่มีบรรทัดภาษี ("ยกเว้น" ทุกช่อง — ตัดสินจากธง ไม่ใช่จากยอด · #1923)
+    const taxLine = r.isExciseTaxable === false ? null : exciseTaxLineForRegistration({ registration: r, product: p, quantity: 1 });
     const row = {
       id: r.id,
       product: [
@@ -100,9 +103,13 @@ export async function registrationReport(filter = {}) {
       /* ภาษี/ชิ้น + เลขทะเบียน — สองค่าที่คิวบนจอมีแต่รายงานไม่มี (มติผู้ใช้ 03/11/2026)
          ⚠️ ภาษีคิดด้วยตัวเดียวกับคิว (`/api/excise-registrations`) และใบยื่นจริง: อัตราจากสินค้า
             ทะเบียนที่ติ๊กยกเว้น = "ยกเว้น" ไม่ใช่ 0 (ตัดสินจากธง ไม่ใช่จากยอด — #1923) */
-      tax: r.isExciseTaxable === false
-        ? 'ยกเว้น'
-        : exciseTaxLineForRegistration({ registration: r, product: p, quantity: 1 }).totalTax,
+      tax: taxLine ? taxLine.totalTax : 'ยกเว้น',
+      /* แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") — Excel แยกสองคอลัมน์ · กระดาษเป็นบรรทัดรองในช่องภาษี/ชิ้น (หัวบอกลำดับ) */
+      excisePerUnit: taxLine ? taxLine.exciseRatePerUnit : 'ยกเว้น',
+      localPerUnit: taxLine ? taxLine.localTaxRatePerUnit : 'ยกเว้น',
+      taxPaper: taxLine
+        ? [money(taxLine.totalTax), exciseSplitShort(taxLine.exciseRatePerUnit, taxLine.localTaxRatePerUnit)].filter(Boolean).join('\n')
+        : 'ยกเว้น',
       approvalNumber: r.approvalNumber || '-',
       owner: two(r.assignee || '-', teamName(r.team)),
       status: statusLabel(r.status),
@@ -131,7 +138,10 @@ export async function registrationReport(filter = {}) {
     ...(margin ? [{ key: 'factory', label: 'ราคาผลิต / กำไร (แจกแจงต้นทุน)', multiline: true }] : []),
     // หัวสั้น — "(รวม VAT)" / "(ถอด VAT)" อยู่ในค่าทุกบรรทัดแล้ว · หัวยาวเคยเป็นตัวกำหนดความกว้างคอลัมน์ (~35mm บนกระดาษ)
     { key: 'retail', label: 'ราคาขายปลีก', multiline: true },
-    { key: 'tax', label: 'ภาษี/ชิ้น', money: true },
+    { key: 'tax', label: 'ภาษี/ชิ้น', money: true, only: 'excel' },
+    { key: 'excisePerUnit', label: 'สรรพสามิต/ชิ้น (8%)', money: true, only: 'excel' },
+    { key: 'localPerUnit', label: 'ท้องถิ่น/ชิ้น (10% ของสรรพสามิต)', money: true, only: 'excel' },
+    { key: 'taxPaper', label: 'ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น)', multiline: true, only: 'print' },
     { key: 'owner', label: 'ผู้รับผิดชอบ / ทีม', multiline: true },
     /* Excel ได้สถานะกับเลขทะเบียนแยกคอลัมน์ (กรอง/เรียงได้) · กระดาษรวมเป็นคอลัมน์เดียว
        🐞 03/11/2026 เลขทะเบียน 28 ตัวอักษรไม่มีช่องว่าง = ตัดบรรทัดไม่ได้ ⇒ เป็นคอลัมน์ของตัวเอง

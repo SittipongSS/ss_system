@@ -8,6 +8,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import Input from "@/components/ui/Input";
 import { fmtMoney, fmtNumber, NA } from "@/lib/format";
+import { exciseSplitText } from "@/lib/excise/exciseTaxSteps";
 import styles from "./ExciseRoundQuantities.module.css";
 
 const toNumber = (value) => {
@@ -74,7 +75,13 @@ export default function ExciseRoundQuantities({ rows = [], values = {}, editable
                 <td className={`num mono ${over ? styles.over : after > 0 ? styles.left : ""}`}>
                   {over ? `เกิน ${fmtNumber(-after)}` : fmtNumber(after)}
                 </td>
-                <td className="num mono">{fmtMoney(row.unitPrice)}</td>
+                <td className="num mono">
+                  {fmtMoney(row.unitPrice)}
+                  {/* แจกแจงภาษี/ชิ้น (เจ้าของ 26/11 "ทำทั้งหมดที่เกี่ยว") */}
+                  {exciseSplitText(row.excisePerUnit, row.localPerUnit) ? (
+                    <div className="cell-sub">{exciseSplitText(row.excisePerUnit, row.localPerUnit)}</div>
+                  ) : null}
+                </td>
               </tr>
             );
           })}
