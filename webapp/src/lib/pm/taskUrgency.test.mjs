@@ -1,14 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { taskUrgency } from './derived';
+import { businessDate } from '@/lib/businessDate';
+import { addDays } from '@/lib/datePeriods';
 
 // วันที่สัมพัทธ์กับ "วันนี้" เสมอ — เทสต์ที่ตรึงวันไว้จะเน่าเมื่อเวลาผ่านไป
-const shiftDays = (days) => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + days);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+/* ⚠️ "วันนี้" ต้องเป็น **วันไทย** ตัวเดียวกับที่ `daysToDue` ใช้ (businessDate) — ไม่ใช่นาฬิกาเครื่อง
+   🐞 เดิมสร้างวันจาก `new Date()` ของเครื่อง ⇒ CI รันเวลา UTC · ช่วง 00:00–07:00 ไทย (17:00–24:00 UTC)
+      วันไทยนำวัน UTC อยู่หนึ่งวัน ⇒ "เลยกำหนด 10 วัน" กลายเป็น 11 · CI ของ main แดงทุกคืน
+      (เจอ 26/11/2026 ตอน merge #2136 ตีสอง — deploy ถูกปฏิเสธเพราะหัว main แดง) */
+const shiftDays = (days) => addDays(businessDate(), days);
 
 test('🐞 งานสถานะ "รอดำเนินการ" ที่เลยกำหนดแล้ว ต้องบอกว่าเลยกำหนด — ไม่ใช่ "ยังไม่เริ่ม"', () => {
   const u = taskUrgency({ status: 'Pending', dueDate: shiftDays(-10) });
