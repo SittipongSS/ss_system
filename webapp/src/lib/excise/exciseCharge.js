@@ -9,10 +9,29 @@ import { categoryOf } from '@/lib/master/categoryOf';
 import { exciseBasePriceIncVat } from '@/lib/excise/giftSetExcise';
 import { composeFgCode, customerCodeSegment } from '@/lib/master/masterCodes';
 import { quoteLineMoney } from '@/lib/salesPlanning';
+import { fmtNumber } from '@/lib/format';
 
 /** หมวด "ค่าภาษีสรรพสามิต" — ระบบอ้างตรง ๆ (PROTECTED_PRODUCT_CATEGORY_CODES) · ห้ามติ๊ก isExcise ของหมวดนี้ */
 export const EXCISE_CHARGE_CATEGORY_CODE = '04-003';
 export const EXCISE_CHARGE_LINE_KIND = 'excise_charge';
+
+/**
+ * ราคาขายปลีก (รวม VAT) ที่แจ้งไว้ของบรรทัดค่าสรรพสามิต — ใต้รายการในใบเสนอราคา/ใบสั่งขายค่าสรรพสามิต และบนจอ
+ * (เจ้าของ 26/11/2026: "ใบเสนอราคาสรรพสามิต อยากให้ใส่ราคาขายปลีกรวม VAT ด้วย เพราะลูกค้าและเราจะได้รู้ว่าแจ้งราคาไว้เท่าไหร่")
+ * ⭐ อ่านจาก `metadata.retailPriceIncVat` ที่ตรึงไว้ตอนออกใบ (ฐานที่ภาษีบรรทัดนี้คิดจาก · ชุดของขวัญคละ = ราคาน้ำหอมในชุด)
+ *    ไม่ใช่ราคาปัจจุบันของสินค้า — ราคาบนสินค้าแก้ทีหลังได้ แต่ใบพูดถึงราคาที่ภาษีบนใบคิดไว้
+ * @returns ข้อความหนึ่งบรรทัดตามภาษาใบ · ไม่ใช่บรรทัดค่าสรรพสามิต / ไม่มีราคา = ''
+ */
+export function exciseDeclaredRetailText(line, language = 'th') {
+  const meta = line?.metadata || {};
+  if (meta.lineKind !== EXCISE_CHARGE_LINE_KIND) return '';
+  const price = Number(meta.retailPriceIncVat);
+  if (!Number.isFinite(price) || price <= 0) return '';
+  const amount = fmtNumber(price, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return language === 'en'
+    ? `Declared retail price (incl. VAT): THB ${amount}`
+    : `ราคาขายปลีกที่แจ้งไว้ (รวม VAT): ${amount} บาท`;
+}
 export const EXCISE_CHARGE_PRODUCT_NAME = 'ค่าภาษีสรรพสามิต';
 export const EXCISE_CHARGE_PRODUCT_NAME_EN = 'Excise tax recharge';
 

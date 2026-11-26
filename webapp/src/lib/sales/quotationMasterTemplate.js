@@ -1,4 +1,5 @@
 import { fmtDate, fmtNumber } from '@/lib/format';
+import { exciseDeclaredRetailText } from '@/lib/excise/exciseCharge';
 import { branchValue } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
 import { DOCUMENT_FORMS, documentFormLine } from '@/lib/documentBrand';
@@ -1364,7 +1365,9 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
       /* หมายเหตุรายบรรทัด: ใบภาษาอังกฤษพิมพ์คู่ภาษาของ master ได้เฉพาะตอนที่ข้อความ
          ยังไม่ถูกแก้ (noteAuto) — ข้อความที่คนออกใบพิมพ์เองไม่มีคู่แปล จึงพิมพ์ตามที่
          พิมพ์ไว้ทั้งสองภาษา (mig 0317) */
-      note: lineNoteFor(line, language),
+      /* + บรรทัดค่าสรรพสามิต: ราคาขายปลีกที่แจ้งไว้ (รวม VAT) เป็นบรรทัดของหมายเหตุ (เจ้าของ 26/11 · ขึ้นบรรทัดใหม่ — itemNote เป็น pre-wrap)
+         อยู่ในคีย์ note เดิม ⇒ ตัวแบ่งหน้านับความสูงแถวรวมบรรทัดนี้ด้วย และคีย์ของบรรทัดคงชุดเดิม (ยาม MODEL_LINE_KEYS) */
+      note: [lineNoteFor(line, language), exciseDeclaredRetailText(line, language)].filter(Boolean).join('\n'),
       qty: Number(line.qty || 0),
       // หน่วยแปลตามภาษาใบ (IS-26080025) — ต่างจากข้อความที่คนกรอกตรงที่มันมาจากลิสต์ปิด
       // ของ lib/master/units.js จึงแปลได้โดยไม่ต้องให้ใครกรอกเพิ่ม · ค่าที่ไม่อยู่ในลิสต์

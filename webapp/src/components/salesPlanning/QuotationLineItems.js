@@ -12,6 +12,7 @@ import ReadableText from "@/components/ui/ReadableText";
 import { quoteTotals } from "@/lib/salesPlanning";
 import { fmtMoney, fmtNumber, naText, NA } from "@/lib/format";
 import { lineNoteEdit, manualLineCategoryPatch, quoteLineFromProduct } from "@/lib/sales/quoteLines";
+import { exciseDeclaredRetailText } from "@/lib/excise/exciseCharge";
 import { cachedFetchJson } from "@/lib/apiCache";
 import ProductCategorySelect from "@/components/ui/ProductCategorySelect";
 import { findCategoryByCode } from "@/lib/master/productCategoryOptions";
@@ -60,6 +61,14 @@ const packsPerRoundText = (value) => {
 
 /* หมายเหตุรายบรรทัดฝั่งอ่าน ("หมายเหตุ: …") — ตัวเดียวของตารางอ่านอย่างเดียว และของช่องแก้หมายเหตุบนใบสั่งขาย
    (`SalesOrderLineNote` · มติเจ้าของ 25/11/2026) ⇒ หน้าตาของหมายเหตุตอนไม่ได้แก้ตรงกันทุกจอ */
+/* บรรทัดค่าสรรพสามิต: ราคาขายปลีกที่แจ้งไว้ (รวม VAT) ใต้รายการ — คำเดียวกับใบพิมพ์ (`exciseDeclaredRetailText` · เจ้าของ 26/11)
+   บรรทัดอื่น = ไม่วาด */
+export function ExciseDeclaredRetail({ line }) {
+  const text = exciseDeclaredRetailText(line);
+  if (!text) return null;
+  return <span className={styles.exciseDeclared}>{text}</span>;
+}
+
 export function QuoteLineNoteRead({ note }) {
   if (!note) return null;
   return (
@@ -146,6 +155,7 @@ export function QuotationReadOnlyLineItems({
                           </span>
                         ) : null}
                         {renderLineNote ? renderLineNote(line, index) : <QuoteLineNoteRead note={line.metadata?.note} />}
+                        <ExciseDeclaredRetail line={line} />
                       </div>
                     </td>
                     {/* data-label = ป้ายที่ใช้ตอนตารางแปลงเป็นการ์ดบนจอแคบ (หัวตารางถูกซ่อน) */}
@@ -336,6 +346,7 @@ export default function QuotationLineItems({
                       <ReadableText text={line.metadata.note} lines={3} />
                     </div>
                   ))}
+                <ExciseDeclaredRetail line={line} />
               </QuoteLineItemCell>
               <QuoteLineMoneyCells
                 line={line}

@@ -36,7 +36,9 @@ import { resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh }
 //        payload พกคีย์ packQty ของบรรทัดนั้นมาตั้งแต่งวดก่อน (เนื้อหา = quotationApprovalContent)
 //        **ใบที่ไม่มีเลขแพ็ค: artifact และ payload เหมือนเดิมทุกไบต์** (ป้ายนี้ไม่ถูกใช้ตัดสินอะไร —
 //        RPC ใช้ฉบับเดิมซ้ำตามลายนิ้วมือเนื้อหาเท่านั้น)
-export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.6';
+// v4.7 = บรรทัดค่าสรรพสามิตพิมพ์ "ราคาขายปลีกที่แจ้งไว้ (รวม VAT)" ใต้รายการ (เจ้าของ 26/11/2026 · V45) — artifact เปลี่ยน payload ไม่เปลี่ยน
+//        **ใบที่ไม่มีบรรทัดค่าสรรพสามิต: artifact เหมือนเดิมทุกไบต์** · ใบที่ตรึงไปแล้วพิมพ์ซ้ำจาก artifact เดิม (ไม่มีบรรทัดนี้)
+export const ISSUED_QUOTATION_LAYOUT_VERSION = 'quote-master-v4.7';
 export const ISSUED_QUOTATION_LOCALE = 'th-TH';
 
 /* ── docLanguage กับฉบับตรึง: ตัดสินแล้ว (2026-08-12) ────────────────────────

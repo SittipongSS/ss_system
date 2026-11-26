@@ -140,6 +140,13 @@
   text-align: center;
 }
 
+/* ราคาขายปลีกที่แจ้งไว้ (รวม VAT) ใต้บรรทัดค่าสรรพสามิต — ทรงเดียวกับหมายเหตุ (ตัวรอง) · เจ้าของ 26/11 */
+.exciseDeclared {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--fs-6);
+}
+
 .noteReadonly {
   display: grid;
   min-width: 0;
