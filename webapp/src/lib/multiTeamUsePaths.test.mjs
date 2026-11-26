@@ -7,13 +7,19 @@
 //   3. เปิดดีลจากลีด — ชิปทีมไม่ตั้งตามทีมของลีด
 //   4. คำร้อง RQ — ทีมตั้งต้นไม่ดูทีมของดีลที่ผูก
 //   5. ปุ่มโอนงานพนักงาน — เทสต์อยู่ที่ lib/usersTransfer.test.mjs
+//
+// รอบสอง (26/11 · Senior AE/AC ที่อยู่สองทีม — ยังไม่มีบัญชีจริง แก้ก่อนเกิด):
+//   6. รายชื่อเจ้าของดีลกรองด้วยทีมหลัก ⇒ เปิดแก้ดีลของ AE ทีม SV แล้วช่องเจ้าของว่าง
+//   7. ตารางลีดส่งตัวคนดูโดยไม่มี teams ⇒ ปุ่มทำงานของลีดทีมที่สองหาย (หน้ารายละเอียดส่งครบ)
+//   8. แท็บ KPI งานซ่อนตัวเลือกทีมของหัวหน้า ⇒ หัวหน้าสองทีมติดทีมหลัก
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { requestTeamFor } from './requests/requestTeam.js';
-import { editFormLockedOwner } from './sales/dealOwner.js';
+import { assignableOwners, editFormLockedOwner } from './sales/dealOwner.js';
+import { canEditLead, canWorkLead } from './sales/leads.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => readFileSync(join(SRC, rel), 'utf8');
@@ -124,4 +130,54 @@ test('ดีลจากลีด: ใบแรกและใบถัดไป
     const body = src.slice(src.indexOf(`const ${fn} = `), src.indexOf('});', src.indexOf(`const ${fn} = `)));
     assert.match(body, /\.\.\.leadTeam\(lead\),[\s\S]*\.\.\.defaults,/, `${fn} ต้องตั้งทีมตามลีด`);
   }
+});
+
+/* ── 6. รายชื่อเจ้าของดีล (Senior AE/AC สองทีม) ──────────────────────────────── */
+
+const OWNER_DIRECTORY = [
+  { id: 'U-AE-ODM', role: 'ae', team: 'ODM', teams: ['ODM'] },
+  { id: 'U-AE-SV', role: 'ae', team: 'SV', teams: ['SV'] },
+  { id: 'U-AE-KA', role: 'ae', team: 'KA', teams: ['KA'] },
+];
+
+test('assignableOwners: คนเปิดอยู่ ODM+SV ส่งทั้งชุด ⇒ เห็น AE ทั้งสองทีม ไม่เห็น KA', () => {
+  const ids = assignableOwners(OWNER_DIRECTORY, ['ODM', 'SV']).map((u) => u.id);
+  assert.deepEqual(ids.sort(), ['U-AE-ODM', 'U-AE-SV']);
+});
+
+test('useDealOwners กรองรายชื่อด้วยชุดทีม (teams) ไม่ใช่ทีมหลัก — และ memo ขึ้นกับ teams', () => {
+  const src = read('lib/sales/useDealOwners.js');
+  assert.match(src, /assignableOwners\(directory, teams\.length \? teams : team\)/);
+  assert.doesNotMatch(src, /assignableOwners\(directory, team\)/);
+  assert.match(src, /\[directory, role, team, teams, meId\]/);
+});
+
+/* ── 7. ตารางลีด ───────────────────────────────────────────────────────────── */
+
+test('canWorkLead/canEditLead: Senior AE ที่อยู่ ODM+SV ทำงานลีด SV ได้เมื่อส่ง teams มา', () => {
+  const lead = { id: 'L1', team: 'SV', status: 'assigned', assigneeId: 'U-OTHER' };
+  const withTeams = { role: 'senior_ae', id: 'U-SEN', team: 'ODM', teams: ['ODM', 'SV'] };
+  assert.equal(canWorkLead(withTeams, lead), true);
+  // ⚠️ ตัวคนดูที่ไม่มี teams = เห็นแค่ทีมหลัก — นี่คือของเดิมของตารางลีดที่ทำปุ่มหาย
+  assert.equal(canWorkLead({ role: 'senior_ae', id: 'U-SEN', team: 'ODM' }, lead), false);
+  assert.equal(typeof canEditLead(withTeams, lead), 'boolean');
+});
+
+test('ตารางลีด: ตัวคนดูมี teams และทุกด่านในแถวใช้ตัวเดียวกัน', () => {
+  const src = read('app/sales-planning/leads/page.js');
+  assert.match(src, /const viewer = useMemo\(\(\) => \(\{ role, id: meId, team, teams \}\), \[role, meId, team, teams\]\);/);
+  assert.match(src, /canEditLead\(viewer, lead\)/);
+  assert.match(src, /canDeleteLead\(viewer, lead\)/);
+  assert.doesNotMatch(src, /\{ role, id: meId, team \}/);
+});
+
+/* ── 8. แท็บ KPI งาน ───────────────────────────────────────────────────────── */
+
+test('KPI งาน: API ส่งทีมที่หัวหน้าเลือกได้ และจอโชว์ช่องเลือกเมื่อมีมากกว่าหนึ่งทีม', () => {
+  const route = read('app/api/sales-planning/task-kpi/route.js');
+  assert.match(route, /pickableTeams: isTeamLead\(user\.role\) \? userTeams\(user\) : availableTeams/);
+  const screen = read('components/pm/SalesKpiDashboard.js');
+  assert.match(screen, /const canPickTeam = data\?\.scope === "all" \|\| pickableTeams\.length > 1;/);
+  // หัวหน้าไม่มีตัวเลือก "ทุกทีม" — API คืนทีมเดียวเสมอสำหรับ scope 'team'
+  assert.match(screen, /\{!teamScoped && <option value="">ทุกทีม<\/option>\}/);
 });

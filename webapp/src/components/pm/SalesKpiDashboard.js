@@ -67,7 +67,12 @@ export default function SalesKpiDashboard() {
 
   const summary = data?.summary || {};
   const teams = data?.teams || [];
-  const canPickTeam = data?.scope === "all";
+  /* หัวหน้าทีม (scope 'team') เลือกได้เฉพาะทีมของตัวเอง — อยู่ทีมเดียว = ไม่มีอะไรให้เลือก ช่องไม่โผล่
+     🐞 เดิมซ่อนช่องทุกครั้งที่ scope = 'team' ⇒ หัวหน้าที่อยู่สองทีมดู KPI ได้แค่ทีมหลัก ทั้งที่ API ยอมให้เลือก
+     (ตรวจคนสองทีม 26/11/2026) · ไม่มีตัวเลือก "ทุกทีม" สำหรับหัวหน้า — API คืนทีมเดียวเสมอ */
+  const teamScoped = data?.scope === "team";
+  const pickableTeams = (teamScoped ? data?.pickableTeams : data?.availableTeams) || [];
+  const canPickTeam = data?.scope === "all" || pickableTeams.length > 1;
 
   // Filter individual rows by selected team from the chart
   const rows = useMemo(() => {
@@ -97,8 +102,8 @@ export default function SalesKpiDashboard() {
         <DateInput value={to} onChange={setTo} style={{ width: 170 }} />
         {canPickTeam && (
           <Select compact value={team} onChange={(e) => setTeam(e.target.value)} title="กรองทีม">
-            <option value="">ทุกทีม</option>
-            {(data?.availableTeams || []).map((t) => <option key={t} value={t}>{t}</option>)}
+            {!teamScoped && <option value="">ทุกทีม</option>}
+            {pickableTeams.map((t) => <option key={t} value={t}>{t}</option>)}
           </Select>
         )}
         <div className="spacer" />

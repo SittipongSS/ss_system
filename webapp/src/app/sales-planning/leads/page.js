@@ -487,7 +487,9 @@ export default function LeadsPage() {
     await load();
   };
 
-  const viewer = useMemo(() => ({ role, id: meId, team }), [role, meId, team]);
+  /* ⚠️ ต้องมี `teams` — canWorkLead/canEditLead ถาม hasTeam ซึ่งอ่านชุดทีม · ส่งแต่ทีมหลัก = Senior AE/AC ที่อยู่สองทีม
+     ไม่เห็นปุ่มทำงานของลีดทีมที่สองในตาราง ทั้งที่หน้ารายละเอียด (ส่ง teams) และ API ทำได้ (ตรวจคนสองทีม 26/11/2026) */
+  const viewer = useMemo(() => ({ role, id: meId, team, teams }), [role, meId, team, teams]);
   /* ผู้รับผิดชอบ (AE) ของดีลที่จะเปิดจากลีดนี้ — กติกา "เฉพาะทีมตัวเอง" อยู่ใน hook
      ที่เดียว (หน้ารวมดีลใช้ตัวเดียวกัน) */
   const dealOwners = useDealOwners(meId);
@@ -510,8 +512,8 @@ export default function LeadsPage() {
     return { ...action, label: action.rowLabel };
   };
   // นโยบายเดียวกับ API (lib/sales/leads.js) — ปุ่มโชว์เฉพาะเมื่อ action จะสำเร็จจริง
-  const canEditRow = (lead) => canEditLead({ role, id: meId, team }, lead);
-  const canDeleteRow = (lead) => canDeleteLead({ role, id: meId, team }, lead);
+  const canEditRow = (lead) => canEditLead(viewer, lead);
+  const canDeleteRow = (lead) => canDeleteLead(viewer, lead);
 
   const slaPct = (s) => (s && s.checked ? fmtPercent((s.hit / s.checked) * 100) : NA);
 
