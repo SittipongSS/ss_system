@@ -37,7 +37,10 @@ export default function useDealOwners(meId = null) {
       // ae: ยกดีลให้คนอื่นไม่ได้อยู่แล้ว — มีแค่ชื่อตัวเองที่ล็อกไว้
       return { owners: [], defaultOwnerId: lockedOwner ? meId : "", lockedOwner };
     }
-    const owners = assignableOwners(directory, team);
+    /* กรองด้วย **ทุกทีมที่สังกัด** ไม่ใช่ทีมหลัก — Senior AE/AC ที่อยู่ ODM+SV ต้องเห็น AE ของทั้งสองทีม
+       (server validateDealOwner ยอมรับทุกคนที่มีทีมร่วมอยู่แล้ว) · 🐞 เดิมส่ง `team` ⇒ เปิดแก้ดีลของ AE ทีม SV
+       แล้วช่องเจ้าของว่างเปล่า (เจอบนจอตอนตรวจคนสองทีม 26/11/2026) · ไม่มีทีมเลย (admin/หัวหน้า) = เห็นทุกคนเหมือนเดิม */
+    const owners = assignableOwners(directory, teams.length ? teams : team);
     return { owners, defaultOwnerId: lockedOwner ? meId : "", lockedOwner };
-  }, [directory, role, team, meId]);
+  }, [directory, role, team, teams, meId]);
 }

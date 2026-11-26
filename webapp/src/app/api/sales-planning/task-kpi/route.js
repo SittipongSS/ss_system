@@ -77,6 +77,9 @@ export const GET = withUser(async ({ user, supabase, req }) => {
     scope: isTeamLead(user.role) ? 'team' : 'all',
     weights: TASK_KPI_WEIGHTS,
     availableTeams,
+    /* ทีมที่จอเลือกได้ — หัวหน้าทีม = ทีมของตัวเองทุกทีม (ด่านข้างบนยอมให้เลือกได้อยู่แล้ว) · ที่เหลือ = ทุกทีม
+       🐞 เดิมจอซ่อนตัวเลือกทีมเมื่อ scope = 'team' ⇒ หัวหน้าที่อยู่สองทีมติดที่ทีมหลักตลอด (ตรวจคนสองทีม 26/11/2026) */
+    pickableTeams: isTeamLead(user.role) ? userTeams(user) : availableTeams,
     summary,
     rows,
     teams,

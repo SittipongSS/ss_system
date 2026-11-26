@@ -48,7 +48,8 @@ export function ownerLockedToSelf(role) {
 
 /**
  * รายชื่อสำหรับดรอปดาวน์ "ผู้รับผิดชอบ (AE)"
- * @param viewerTeam ทีมของคนที่เปิดฟอร์ม — ว่าง (admin/ผู้กำกับดูแล) = เห็นทุกคน
+ * @param viewerTeam ทีม **หรือชุดทีม** ของคนที่เปิดฟอร์ม — ว่าง (admin/ผู้กำกับดูแล) = เห็นทุกคน
+ *   ⚠️ คนเปิดอยู่หลายทีม = ส่งทั้งชุด (useDealOwners ส่ง teams) ไม่ใช่ทีมหลัก — ไม่งั้นรายชื่อขาด AE ของทีมที่สอง
  * ⚠️ กติกาเดียวกับ `assignableFor` ของลีด: คนที่ไม่มีทีม (admin) ติดมาด้วยเสมอ
  */
 export function assignableOwners(users = [], viewerTeam = null) {
