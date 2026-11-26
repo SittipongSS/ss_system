@@ -31,17 +31,18 @@ test("SO filing keeps only taxable lines from excise-enabled categories", () => 
 
 /* ⭐ มติ Q2 + D1 (28/10): ภาษี/ชิ้นปัดครั้งเดียวจากอัตรารวม · สรรพสามิต/ชิ้นปัดจากอัตราสรรพสามิต · ท้องถิ่น = ส่วนที่เหลือ
    1.005 + 0.335 = 1.34/ชิ้น · สรรพสามิต 1.005 → 1.01 (ปัดด้วยสตางค์ — float เดิมได้ 1.00) · ท้องถิ่น 0.33 */
-test("tax is snapshotted from product rates: rounded once, split from the rounded total", () => {
+// มติ 26/11 (V43): ภาษี/ชิ้น = ปัด(สรรพสามิต) + ปัด(ท้องถิ่น) — แทน Q2 "ปัดผลรวมครั้งเดียวแล้วแตกช่อง" (เดิมได้ 1.34 = 1.01 + 0.33)
+test("tax is snapshotted from product rates: each part rounded, per-unit = excise + local", () => {
   const result = resolveSoFiling({
     salesOrder,
     productTypes,
     products: [{ id: "P-1", fgCode: products[0].fgCode, exciseTax: 1.005, localTax: 0.335 }],
     lines: [{ id: "L-1", productId: "P-1", qty: 3 }],
   });
-  assert.equal(result.lines[0].taxPerUnit, 1.34);
+  assert.equal(result.lines[0].taxPerUnit, 1.35);
   assert.equal(result.lines[0].exciseRatePerUnit, 1.01);
-  assert.equal(result.lines[0].localTaxRatePerUnit, 0.33);
-  assert.equal(result.totalTax, 4.02);
+  assert.equal(result.lines[0].localTaxRatePerUnit, 0.34);
+  assert.equal(result.totalTax, 4.05);
   assert.equal(result.totalExciseTax + result.totalLocalTax, result.totalTax);
 });
 

@@ -53,7 +53,7 @@ test("Excel แบน: แถวละสินค้า มีเดือน/S
   assert.equal(first.salesOrder, "SO-26080009-0");
   assert.equal(first.status, "รอ RA");
   assert.equal(first.deliveryDate, "2026-11-10");
-  assert.equal(first.taxCheck, "ไม่ตรงสูตร · 8.8% = 97.87");
+  assert.equal(first.taxCheck, "ไม่ตรงสูตร · ควรเป็น 97.87");
   const upcoming = report.rows.filter((r) => r.salesOrder === "SO-26080010-0");
   assert.deepEqual(upcoming.map((r) => [r.status, r.deliveryDate, r.volume, r.quantity, r.taxCheck]), [
     ["กำลังมา", null, "50 ML", 600, "ตรงสูตร"], ["กำลังมา", null, "5 ML", 2750, "ตรงสูตร"],
@@ -88,7 +88,7 @@ test("Excel: แผ่นงานจริงตรึงหัวตารา�
 test("พิมพ์ตามจอ: หัวเดือน (ยอดเดือน) → หัวงาน (เลข SO · ลูกค้า · สถานะ · ยอดงาน · ขั้น · ด่าน) → แถวละสินค้า · คอลัมน์เดียวกับจอ", () => {
   const report = raFilingPrintReport(rows);
   assert.deepEqual(report.columns.map((c) => c.label), [
-    "วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (8.8%)", "ภาษีรวม",
+    "วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก (รวม VAT)", "ราคาขายปลีกก่อน VAT", "ภาษี/หน่วย (สรรพสามิต + ท้องถิ่น)", "ภาษีรวม",
   ]);
   const sections = report.rows.filter((r) => r._kind === "section");
   assert.deepEqual(sections.map((r) => r._level), [1, 2, 2, 1, 2, 1, 2]);
@@ -97,7 +97,7 @@ test("พิมพ์ตามจอ: หัวเดือน (ยอดเด�
   assert.match(sections[5]._label, /^รายการชำระภาษีสรรพสามิต \(ยังไม่มีวันที่ส่ง\) · ยังไม่มีวันที่ส่งของ · 1 งาน · 0 รายการ · ภาษีรวม 0\.00 \(ไม่รวม 1 งานที่ยังไม่มีรายการ\)$/);
   const lines = report.rows.filter((r) => !r._kind);
   assert.equal(lines[0].date, "10/11/2026");
-  assert.equal(lines[0].taxPerUnit, "95.00\nไม่ตรงสูตร · 8.8% = 97.87", "คำเตือนเดียวกับจอ (บรรทัดรองในช่อง)");
+  assert.equal(lines[0].taxPerUnit, "95.00\nไม่ตรงสูตร · ควรเป็น 97.87", "คำเตือนเดียวกับจอ (บรรทัดรองในช่อง)");
   assert.equal(lines[1].date, "—", "ยังไม่ส่ง = ขีด (V26)");
   assert.equal(lines[1].taxPerUnit, 97.87);
   assert.equal(lines.at(-1).description, "ยังไม่มีรายการสินค้า");
@@ -110,7 +110,7 @@ test("เปลือกพิมพ์: หัวกลุ่มเป็นแ
   assert.match(html, /<tr class="sec sec1"><td colspan="9">รายการชำระภาษีสรรพสามิต M\.11\/69/);
   assert.match(html, /<tr class="sec sec2"><td colspan="9">SO-26080009-0/);
   assert.match(html, /<td style="text-align:right">97\.87<\/td>/, "ตัวเลขในคอลัมน์ multiline = รูปเงินของกระดาษ");
-  assert.match(html, /95\.00<div class="sub">ไม่ตรงสูตร · 8\.8% = 97\.87<\/div>/);
+  assert.match(html, /95\.00<div class="sub">ไม่ตรงสูตร · ควรเป็น 97\.87<\/div>/);
   assert.match(html, /เดือนที่ส่ง/);
   assert.equal(reportRowLines(report.rows[0], report.columns), 1, "หัวเดือนบรรทัดเดียว");
   assert.equal(reportRowLines(report.rows[1], report.columns), 2, "หัวงาน = บรรทัดหลัก + ขั้น/ด่าน");

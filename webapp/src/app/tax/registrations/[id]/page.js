@@ -39,9 +39,10 @@ import { brandLabel } from "@/lib/master/brands";
 import { customerNameIn } from "@/lib/master/customerName";
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { REGISTRATION_LINK_EDITABLE_STATUSES, REGISTRATION_LINK_LOCKED_MESSAGE, statusMeta } from "@/lib/excise/workflow";
+import ExciseTaxSteps from "@/components/excise/ExciseTaxSteps";
+import { EXCISE_FORMULA_TEXT } from "@/lib/excise/exciseTaxSteps";
 import {
-  EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, EXCISE_TOTAL_RATE, EXCISE_VAT_RATE,
-  exciseTaxLineForRegistration, productTaxRates,
+  exciseTaxLineForRegistration,
 } from "@/lib/tax/exciseBilling";
 import { ageLabel, ageTone, registrationAge, registrationPendingAge } from "@/lib/tax/registrationQueue";
 import { workflowStepsFromIndex } from "@/lib/documentControlModel";
@@ -55,13 +56,6 @@ import useThaiToday from "@/lib/ui/useThaiToday";
 // สรรพสามิตตัดสินแค่ว่า "เสียภาษีไหม" ส่วนตัวเลขอัตรามาจากราคาขายปลีกของ FG
 const taxPerUnit = (r, product) =>
   exciseTaxLineForRegistration({ registration: r, product, quantity: 1 }).totalTax;
-
-/* 0.07 * 100 = 7.000000000000001 ในเลขทศนิยมฐานสอง ⇒ เช็ค "ลงตัวไหม" ตรง ๆ จะได้
-   "7.0%" แทน "7%" · ปัดก่อนแล้วค่อยเทียบ */
-const pct = (rate) => {
-  const value = Math.round(rate * 1000) / 10;
-  return `${Number.isInteger(value) ? value : value.toFixed(1)}%`;
-};
 
 // ประโยคท้ายป้ายของสายที่ป้อนฟอร์มแก้ไขเท่านั้น (สินค้า · ลูกค้า · รายการขึ้นทะเบียน) — ดูมติที่ก้อน sources
 const EDIT_BLOCKED_NOTE = "ยังแก้ไขทะเบียนนี้ไม่ได้ เพราะฟอร์มแก้ไขต้องใช้ข้อมูลชุดนี้เลือกลูกค้าและ FG ที่ยังไม่ขึ้นทะเบียน";
@@ -400,7 +394,6 @@ export default function RegistrationDetailPage() {
   const exempt = s?.isExciseTaxable === false;
   // ฐานภาษี — ชุดของขวัญคละ = ราคาน้ำหอมในชุด ไม่ใช่ราคาทั้งชุด (มติ 11/11 · mig 0430) · ตัวเดียวกับด่านยื่นทะเบียน
   const taxBase = exciseBasePriceIncVat(taxProduct);
-  const rates = productTaxRates(taxBase, { taxable: !exempt });
   const perUnit = s ? taxPerUnit(s, taxProduct) : 0;
 
   return (
@@ -550,7 +543,7 @@ export default function RegistrationDetailPage() {
               ⚠️ อัตรามาจาก **สินค้า** เสมอ ทะเบียนไม่เก็บสำเนา (mig 0180) ราคาขายปลีก
               ขยับเมื่อไร ตัวเลขตรงนี้ขยับตามทันที */}
           <DetailCard icon={Calculator} eyebrow="TAX BASE" title="ฐานคิดภาษีสรรพสามิต"
-            meta={exempt ? "ทะเบียนนี้ได้รับยกเว้นภาษี" : `อัตรารวม ${pct(EXCISE_TOTAL_RATE)} ของราคาขายปลีกถอด VAT`}>
+            meta={exempt ? "ทะเบียนนี้ได้รับยกเว้นภาษี" : EXCISE_FORMULA_TEXT}>
             {exempt ? (
               <div className={styles.exemptNote}>
                 ฝ่าย RA กำหนดให้ทะเบียนนี้ <b className={styles.exemptWord}>ยกเว้นภาษี</b> — ภาษีต่อชิ้นเป็น 0 เพราะได้รับยกเว้นจริง ไม่ใช่เพราะข้อมูลขาด
@@ -570,9 +563,10 @@ export default function RegistrationDetailPage() {
                   <Field label="ราคาขายปลีกทั้งชุด (รวม VAT)">{fmtMoneyOrDash(taxProduct.retailPriceIncVat)}</Field>
                 )}
                 <Field label={exciseBaseLabel(taxProduct)}>{fmtMoney(taxBase)}</Field>
-                <Field label={`ถอด VAT ${pct(EXCISE_VAT_RATE)}`}>{fmtMoney(rates.retailPriceExVat)}</Field>
-                <Field label={`ภาษีสรรพสามิต ${pct(EXCISE_RATE)}`}>{fmtMoney(rates.exciseTax)}</Field>
-                <Field label={`ภาษีท้องถิ่น ${pct(LOCAL_TAX_RATE_OF_EXCISE)} ของสรรพสามิต`}>{fmtMoney(rates.localTax)}</Field>
+                {/* ⭐ ขั้นคิดทีละบรรทัด (มติเจ้าของ 26/11 · V43) — ถอด VAT → ① สรรพสามิต 8% → ② ท้องถิ่น 10% ของสรรพสามิต · ปัดทุกขั้น */}
+                <Field label="ขั้นคิดภาษีต่อชิ้น" full>
+                  <ExciseTaxSteps base={taxBase} total={false} />
+                </Field>
                 <Field label="ภาษีต่อชิ้น (ยื่นจริง)" full>
                   <b className={styles.taxTotal}>{fmtMoney(perUnit)}</b>
                 </Field>

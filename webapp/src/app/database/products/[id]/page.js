@@ -30,7 +30,9 @@ import { fmtDate, fmtMoney, fmtMoneyOrDash, fmtNumber, productNameBoth, naText, 
 import { productDisplayName } from "@/lib/master/productIdentity";
 import { registryLabel, scentLabel } from "@/lib/master/registryLabel";
 import { isGiftSetCategory } from "@/lib/master/giftSetFormulas";
-import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, giftSetExcise, giftSetExciseSummary, giftSetPriceModeOf } from "@/lib/excise/giftSetExcise";
+import { EXCISE_TAX_BASE, GIFT_SET_EXCISE_KIND, exciseBaseLabel, exciseBasePriceIncVat, giftSetExcise, giftSetExciseSummary, giftSetPriceModeOf } from "@/lib/excise/giftSetExcise";
+import { EXCISE_FORMULA_TEXT, exciseTaxSteps } from "@/lib/excise/exciseTaxSteps";
+import ExciseTaxSteps from "@/components/excise/ExciseTaxSteps";
 import { isFragranceOilCategory } from "@/lib/master/fragranceOilScent";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -344,9 +346,12 @@ export default function ProductDetails() {
   // ต้องเสียภาษีตามกฎเดียวของระบบ (ธงรายตัวของ RA ชนะหมวด) — ป้ายหัว/คำกำกับราคาพูดตามตัวนี้ ไม่ใช่ธงหมวดล้วน
   const isTaxable = isProductTaxable(product, productTypes);
   const exciseBadge = productExciseBadge(product, productTypes);
+  // ฐานภาษี + ขั้นคิด (แท็บสรรพสามิต) — สูตรเดียวกับที่บันทึกลงสินค้า (มติ 26/11 · V43)
+  const exciseTaxBase = exciseBasePriceIncVat(product);
+  const exciseSteps = exciseTaxSteps(exciseTaxBase);
 
   /* ⚠️ **สินค้าที่ต้องเสียภาษีแต่ยังไม่มีราคาขายปลีก = ภาษีคิดออกมา 0**
-     ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT × 8.8%) ⇒ ไม่มีราคา = ยื่นภาษีขาด
+     ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT → สรรพสามิต 8% → ท้องถิ่น 10% ของสรรพสามิต) ⇒ ไม่มีราคา = ยื่นภาษีขาด
      · ราคานี้กรอกตั้งแต่ตอนเปิดสินค้าไม่ได้ มันมาทีหลัง ระบบจึงบล็อกที่ "ยื่นขึ้นทะเบียน"
      (lib/tax/requirements.js) — ที่นี่คือให้คนที่เปิดสินค้ามาเห็นก่อนว่าต้องเติม
      ⚠️ ขึ้นเฉพาะสินค้าที่ต้องเสียภาษีจริง (กฎเดียวของระบบ — ธงรายตัวของ RA ชนะหมวด) · ไม่ขึ้นถ้า RA ยกเว้นรายตัวไว้
@@ -600,7 +605,8 @@ export default function ProductDetails() {
 
   /* ── การ์ด "สรุปสินค้า" (รางขวา · มติ 1 + 3) — ของที่ต้องเห็นตลอดไม่ว่าเปิดแท็บไหน: หมวด · ขนาด · ราคา · ภาษี/หน่วย + สถานะรายเรื่อง
      ⚠️ ราคา/ภาษีตามสิทธิ์เดิมของหัว (canSeeCost · showRetailPrice · canViewTax) — รายละเอียดเต็มอยู่แท็บราคาและแท็บสรรพสามิต */
-  const taxPerUnit = isExempt ? "ยกเว้น" : fmtMoney((product.exciseTax || 0) + (product.localTax || 0));
+  // ตัวเดียวกับแท็บสรรพสามิต (`exciseSteps` · ปัดทีละขั้น มติ 26/11) — การ์ดสรุปกับแท็บต้องพูดเลขเดียวกัน
+  const taxPerUnit = isExempt ? "ยกเว้น" : fmtMoney(exciseSteps?.taxPerUnit || 0);
   const summaryRows = [
     { id: "category", label: "หมวด", value: categoryCodeLabel(product.categoryCode || categoryOf(product.fgCode), productTypes), stack: true },
     { id: "unit", label: showPackaging ? "ปริมาตร · หน่วยขาย" : "หน่วยขาย", value: showPackaging ? `${formatVolume(product)} · ${unit}` : unit },
@@ -727,7 +733,7 @@ export default function ProductDetails() {
           (ด่านที่ lib/tax/requirements.js) */}
       {needsRetailPrice && (
         <StatusNotice tone="warning" title="ยังไม่มีราคาขายปลีก — ภาษีสรรพสามิตจะคิดออกมาเป็น 0">
-          ภาษีสรรพสามิตคิดจากราคาขายปลีก (ถอด VAT แล้วคูณ 8.8%) · ต้องเติมราคาก่อน จึงจะยื่นขึ้นทะเบียนได้
+          ภาษีสรรพสามิตคิดจากราคาขายปลีก ({EXCISE_FORMULA_TEXT}) · ต้องเติมราคาก่อน จึงจะยื่นขึ้นทะเบียนได้
         </StatusNotice>
       )}
       <DetailPageLayout asideLabel="สรุปสินค้าและการดำเนินการ" aside={productAside}>
@@ -1093,26 +1099,22 @@ export default function ProductDetails() {
                                 <p className="text-[10px] text-[var(--text-3)] mt-1">สินค้านี้ได้รับยกเว้น ไม่ต้องชำระภาษีสรรพสามิต</p>
                               </div>
                             ) : (
+                              /* ⭐ ขั้นคิดทีละบรรทัด (มติเจ้าของ 26/11 · V43): ฐานภาษี → ถอด VAT → ① สรรพสามิต 8% → ② ท้องถิ่น 10% ของสรรพสามิต
+                                 ตัวเลขจาก `exciseTaxSteps` (สูตรเดียวกับที่บันทึกลงสินค้า) · ฐาน = `exciseBasePriceIncVat` (ชุดของขวัญรายชิ้น = ราคาน้ำหอมในชุด)
+                                 🐞 เดิมบวก `exciseTax + localTax` ที่เก็บเต็มความละเอียด ⇒ 96.45 + 9.64 = 106.09 ทั้งที่กดเครื่องคิดเลขได้ 106.10 */
                               <div className="space-y-4 text-xs">
                                 <div className="flex justify-between items-center">
-                                  <span className="text-[var(--text-3)]">ราคาขายปลีกรวม VAT</span>
-                                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.retailPriceIncVat)}</span>
+                                  <span className="text-[var(--text-3)]">{exciseBaseLabel(product)}</span>
+                                  <span className="font-bold text-[var(--text)] font-mono">{fmtMoneyOrDash(exciseTaxBase)}</span>
                                 </div>
-                                <div className="flex justify-between items-center text-[var(--text-3)] pl-3">
-                                  <span>ราคาขายปลีกก่อน VAT (7%)</span><span className="font-mono">{fmtMoneyOrDash(product.retailPriceExVat)}</span>
-                                </div>
-                                <div className="border-t border-dashed border-[var(--border)] my-2 pt-2"></div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[var(--text-3)]">ภาษีสรรพสามิต (8%)</span>
-                                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.exciseTax)}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[var(--text-3)]">ภาษีบำรุงท้องถิ่น (10% ของสรรพสามิต)</span>
-                                  <span className="font-semibold text-[var(--text)] font-mono">{fmtMoneyOrDash(product.localTax)}</span>
-                                </div>
+                                {exciseSteps ? (
+                                  <ExciseTaxSteps base={exciseTaxBase} unit={unit} total={false} compact />
+                                ) : (
+                                  <p className="text-[var(--text-3)]">ยังไม่มีฐานภาษี — {EXCISE_FORMULA_TEXT}</p>
+                                )}
                                 <div className="bg-[var(--red-soft)] p-4 rounded-xl border border-[var(--border)] mt-4">
-                                  <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อ{unit} (Total Tax Rate)</span>
-                                  <div className="text-2xl font-bold font-mono text-[var(--red)] mt-1">{fmtMoney((product.exciseTax || 0) + (product.localTax || 0))}</div>
+                                  <span className="text-[var(--red)] font-semibold block text-[10px] uppercase tracking-wider">ภาษีรวมต่อ{unit} (1 + 2)</span>
+                                  <div className="text-2xl font-bold font-mono text-[var(--red)] mt-1">{fmtMoney(exciseSteps?.taxPerUnit || 0)}</div>
                                 </div>
                               </div>
                             )}

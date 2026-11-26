@@ -84,7 +84,8 @@ function createDb({ liveQuote = null, lines, products, registrations = [] } = {}
     },
   };
 }
-const FG = { id: 'P-1', fgCode: 'FG-0108-01-002-00001', exciseTax: 8.044, localTax: 0.8044, retailPriceIncVat: 107.5, isExciseTaxable: true };
+// อัตราของสินค้า = productTaxRates(107.5) ตามสูตรปัดทีละขั้น (26/11 · V43): ถอด VAT 100.47 → ① 8.04 → ② 0.80 ⇒ 8.84/ชิ้น
+const FG = { id: 'P-1', fgCode: 'FG-0108-01-002-00001', exciseTax: 8.04, localTax: 0.8, retailPriceIncVat: 107.5, isExciseTaxable: true };
 const SO_LINE = { id: 'L-1', productId: 'P-1', fgCode: FG.fgCode, qty: 10, unit: 'ขวด', description: 'น้ำหอม A' };
 const chargeProduct = { id: 'PRD-X', fgCode: 'FG-0108-04-003', categoryCode: '04-003', customerId: 'C-1' };
 
@@ -105,12 +106,12 @@ test('createExciseQuotationDraft: ใบ origin excise ไม่มีดีล 
   assert.equal(row.approvalStatus, 'not_submitted');
   assert.equal(row.referenceNote, 'SO-26100001-0 / QT-26100001-0');
   assert.deepEqual(row.paymentPlan, { type: 'full' });
-  assert.equal(row.subtotal, 88.5, '10 × 8.85');
-  assert.equal(row.totalAmount, 94.7, '+VAT 7%');
+  assert.equal(row.subtotal, 88.4, '10 × 8.84');
+  assert.equal(row.totalAmount, 94.59, '+VAT 7%');
   const lines = db.writes.find((w) => w.table === 'quotation_lines').rows;
   assert.equal(lines.length, 1);
   assert.equal(lines[0].productId, 'PRD-X');
-  assert.equal(lines[0].unitPrice, 8.85);
+  assert.equal(lines[0].unitPrice, 8.84);
   assert.equal(lines[0].quotationId, row.id);
   assert.equal('packQty' in lines[0], false);
   assert.equal(result.chargeProductCreated, true);
@@ -174,10 +175,10 @@ test('previewExciseQuotationDraft: ได้หัวใบ+บรรทัด�
   assert.equal(preview.quote.dealId, null);
   assert.equal(preview.quote.quoteNumber, undefined, 'ยังไม่มีเลข');
   assert.equal(preview.quote.referenceNote, 'SO-26100001-0 / QT-26100001-0');
-  assert.equal(preview.quote.subtotal, 88.5);
-  assert.equal(preview.quote.totalAmount, 94.7);
+  assert.equal(preview.quote.subtotal, 88.4);
+  assert.equal(preview.quote.totalAmount, 94.59);
   assert.equal(preview.quote.lines.length, 1);
-  assert.equal(preview.quote.lines[0].unitPrice, 8.85);
+  assert.equal(preview.quote.lines[0].unitPrice, 8.84);
   assert.deepEqual(preview.sourceOrder, { id: 'SO-1', orderNumber: 'SO-26100001-0' });
   assert.deepEqual(preview.sourceDeal, { id: 'D-1', title: 'ดีลต้นทาง', ownerName: 'AE' });
   // แบ่งรอบ: จอได้แถวคงเหลือ + บรรทัดเต็มจำนวนไว้คิดยอดตามจำนวนที่พิมพ์
@@ -213,7 +214,7 @@ test('createExciseQuotationDraft + overrides: หัวใบที่แก้�
   assert.equal(row.metadata.remarksPresetVersionId, null, 'ชุดที่ตรวจไม่ผ่าน = ไม่ตรึง');
   assert.equal(row.metadata.exciseSource.salesOrderId, 'SO-1');
   assert.equal(presetCalls.length, 1);
-  assert.equal(row.subtotal, 88.5, 'บรรทัด/ยอดไม่ขยับตามหัวใบ');
+  assert.equal(row.subtotal, 88.4, 'บรรทัด/ยอดไม่ขยับตามหัวใบ');
 });
 
 test('ปุ่มบน SO ลูกค้าพาไปหน้าออกใบ (ไม่ยิง POST) · หน้าออกใบโหลดพรีวิวแล้วบันทึกทางเดิมพร้อมหัวใบ · route แยกพรีวิว', () => {
@@ -388,8 +389,8 @@ test('แบ่งรอบ: รอบใหม่ตั้งต้น = คง
   const row = byDefault.writes.find((w) => w.rpc === 'create_quotation_with_number').args.p_row;
   const [line] = byDefault.writes.find((w) => w.table === 'quotation_lines').rows;
   assert.equal(line.qty, 6, 'สั่ง 10 ออกรอบแรก 4 ⇒ รอบนี้ 6');
-  assert.equal(line.lineTotal, 53.1, '6 × 8.85');
-  assert.equal(row.subtotal, 53.1);
+  assert.equal(line.lineTotal, 53.04, '6 × 8.84');
+  assert.equal(row.subtotal, 53.04);
   assert.deepEqual(row.metadata.exciseSource.orderedByLine, { 'L-1': 10 }, 'ยอดสั่งตรึงบนใบ — คิว SA รู้ว่ายังค้าง');
 
   const asked = createDb({ liveQuote: firstRound, lines: [SO_LINE], products: [FG] });

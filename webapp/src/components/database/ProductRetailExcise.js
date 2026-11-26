@@ -20,7 +20,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import { TableScroll } from "@/components/ui/Table";
 import { RETAIL_PRICE_MAIN_CATEGORY, categoryRow, isExciseCategory } from "@/lib/master/categoryOf";
 import { categoryName } from "@/lib/master/productCategoryOptions";
-import { EXCISE_TOTAL_RATE, EXCISE_VAT_RATE } from "@/lib/tax/exciseBilling";
+import ExciseTaxSteps from "@/components/excise/ExciseTaxSteps";
 import {
   EXCISE_TAX_BASE, GIFT_SET_PRICE_MODE_OPTIONS, giftSetPiecePrice, giftSetPieceQty, giftSetPiecesTotal, giftSetPriceMode,
 } from "@/lib/excise/giftSetExcise";
@@ -28,7 +28,6 @@ import { exciseFilingChecklist, exciseTaxPreview, formTaxBase, productExciseStat
 import { NA, fmtMoney } from "@/lib/format";
 import { formulaLabel } from "@/lib/master/registryLabel";
 
-const pct = (rate) => `${Math.round(rate * 1000) / 10}%`;
 const OPTIONAL = <StatusBadge size="sm" tone="neutral" label="ไม่บังคับตอนบันทึก" />;
 
 /* บรรทัดภาษีต่อหน่วย (F4) — ฐานว่าง = บอกว่ากรอกแล้วจะคิดให้ */
@@ -39,10 +38,10 @@ function TaxPreview({ base, unit }) {
       <span>ภาษีสรรพสามิตต่อ{unit}</span>
       <strong className="font-mono tabular-nums text-[var(--text)]">{preview ? fmtMoney(preview.taxPerUnit) : NA}</strong>
       <span className="text-xs text-[var(--text-3)]">
-        {preview
-          ? `ถอด VAT ${pct(EXCISE_VAT_RATE)} = ${fmtMoney(preview.retailPriceExVat)} × ${pct(EXCISE_TOTAL_RATE)} (สรรพสามิต + ท้องถิ่น) · ตัวเลขจริงคิดตอนบันทึก`
-          : "กรอกราคาครบแล้วจะคิดให้ทันที"}
+        {preview ? "ตัวเลขจริงคิดตอนบันทึก (สูตรเดียวกัน)" : "กรอกราคาครบแล้วจะคิดให้ทันที"}
       </span>
+      {/* ⭐ ขั้นคิดทีละบรรทัด (มติเจ้าของ 26/11 · V43) — ตัวเดียวกับหน้าสินค้า/หน้าทะเบียน */}
+      {preview ? <div className="basis-full"><ExciseTaxSteps base={base} unit={unit} total={false} compact /></div> : null}
     </div>
   );
 }

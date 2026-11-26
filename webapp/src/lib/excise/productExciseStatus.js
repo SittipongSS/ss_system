@@ -58,7 +58,7 @@ export function productExciseStatus({ categoryCode, productTypes = [], giftSetRo
 }
 
 /**
- * ภาษีต่อหน่วยที่จะคิดได้จากฐานภาษี (F4) — ตัวคิดเดียวกับระบบ: `productTaxRates` (ถอด VAT × 8.8%) → `exciseTaxLine` (ปัดครั้งเดียว)
+ * ภาษีต่อหน่วยที่จะคิดได้จากฐานภาษี (F4) — ตัวคิดเดียวกับระบบ: `productTaxRates` (ถอด VAT → สรรพสามิต 8% → ท้องถิ่น 10% ของสรรพสามิต ปัดทีละขั้น · มติ 26/11) → `exciseTaxLine`
  * @returns `{ taxPerUnit, retailPriceExVat }` · ฐานว่าง/0 = null
  */
 export function exciseTaxPreview(basePriceIncVat) {

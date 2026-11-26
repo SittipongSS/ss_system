@@ -17,7 +17,7 @@ import { lineUnitsTotal } from '@/lib/sales/linePacks';
 import { productBrandName, productDisplayNameFor } from '@/lib/master/productIdentity';
 import { ORDER_SELECT } from '@/lib/tax/orders';
 import { loadFilingSource, loadRaFilingQueue } from '@/lib/excise/raFiling';
-import { productTaxRates } from '@/lib/tax/exciseBilling';
+import { EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, productTaxRates } from '@/lib/tax/exciseBilling';
 import { exciseBasePriceIncVat, hasOwnTaxBase } from '@/lib/excise/giftSetExcise';
 import { SAHAMIT_AR_CODE } from '@/lib/sahamit/customer';
 /* กติกาวันที่/เดือนของงาน (สหมิตร = วันที่ PO) อยู่ไฟล์บริสุทธิ์ — ทะเบียน SO แท็บสรรพสามิตใช้ตัวเดียวกัน (มติ 25/11) */
@@ -58,17 +58,26 @@ function retailPriceIncVat(product, frozenIncVat) {
   return incVat ? round2(incVat) : null;
 }
 
+/* สูตรก่อนมติ 26/11/2026 (Q2 28/10): ราคาถอด VAT เต็มความละเอียด × 8.8% แล้วปัดครั้งเดียว — ใช้**รีเช็คใบเก่าเท่านั้น**
+   ใบที่คิดก่อนวันนั้นตรึงภาษี/ชิ้นตามสูตรนี้ (= เงินที่ลูกค้าจ่ายจริง · เจ้าของเลือก "ใช้กับใบใหม่เท่านั้น")
+   ⇒ ห้ามฟ้อง "ไม่ตรงสูตร" กับใบพวกนั้น ไม่งั้นราวหนึ่งในสามของบรรทัดเก่าแดงทั้งที่ถูกตามกติกาของวันที่ออกใบ */
+const legacyTaxPerUnit = (retailIncVat) =>
+  round2((Number(retailIncVat) / (1 + VAT_RATE)) * EXCISE_RATE * (1 + LOCAL_TAX_RATE_OF_EXCISE));
+
 /**
  * รีเช็คภาษีต่อหน่วยกับสูตร (เจ้าของ 03/11: "แทรกราคาขายปลีกมาด้วย เพื่อรีเช็คว่าค่าภาษีคำนวณถูก")
- * สูตรเดียวกับทะเบียนสินค้า (`productTaxRates`): ราคาขายปลีกถอด VAT × 8.8% ปัดครั้งเดียว (มติ Q2)
- * @returns `{ expected, ok }` · ไม่มีราคาขายปลีก/ไม่มีภาษีต่อหน่วย = null (เทียบไม่ได้)
+ * สูตรเดียวกับทะเบียนสินค้า (`productTaxRates`): ถอด VAT → สรรพสามิต 8% → ท้องถิ่น 10% ของสรรพสามิต ปัดทีละขั้น (มติ 26/11 · V43)
+ * ⚠️ ตรงสูตรเดิม (ก่อน 26/11) ก็นับว่าตรง — `legacy: true` บอกว่าเป็นเลขของสูตรเดิม (ใบเก่า)
+ * @returns `{ expected, ok, legacy }` · ไม่มีราคาขายปลีก/ไม่มีภาษีต่อหน่วย = null (เทียบไม่ได้)
  */
 export function taxPerUnitCheck(retailIncVat, taxPerUnit) {
   const unit = Number(taxPerUnit);
   if (!(Number(retailIncVat) > 0) || !Number.isFinite(unit)) return null;
-  const rates = productTaxRates(retailIncVat);
-  const expected = round2(rates.exciseTax + rates.localTax);
-  return { expected, ok: Math.abs(expected - round2(unit)) < 0.005 };
+  const expected = productTaxRates(retailIncVat).taxPerUnit;
+  const same = (value) => Math.abs(value - round2(unit)) < 0.005;
+  if (same(expected)) return { expected, ok: true, legacy: false };
+  const legacy = same(legacyTaxPerUnit(retailIncVat));
+  return { expected, ok: legacy, legacy };
 }
 
 /** แถวสินค้าหนึ่งแถวของตาราง — แบรนด์/ชื่อ **อังกฤษก่อน** แบบตารางเดิมของ RA (เจ้าของดูจอจริง 03/11: "Scent Studio" ไม่ใช่ "เซนท์ สตูดิโอ")

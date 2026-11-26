@@ -42,7 +42,8 @@ const statusText = (row) => statusMeta(row?.status).label;
 const paperMoney = (value) => fmtNumber(Number(value) || 0, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const taxCheckText = (line) => {
   if (!line?.taxCheck) return '';
-  return line.taxCheck.ok ? 'ตรงสูตร' : `ไม่ตรงสูตร · 8.8% = ${paperMoney(line.taxCheck.expected)}`;
+  if (line.taxCheck.ok) return line.taxCheck.legacy ? 'ตรงสูตรเดิม (ก่อน 26/11/69)' : 'ตรงสูตร';
+  return `ไม่ตรงสูตร · ควรเป็น ${paperMoney(line.taxCheck.expected)}`;
 };
 const summaryLabel = (totals) => `รวม ${fmtNumber(totals.jobs)} งาน · ${fmtNumber(totals.lines)} รายการ${totals.missing ? ` (ไม่รวม ${fmtNumber(totals.missing)} งานที่ยังไม่มีรายการ)` : ''}`;
 
@@ -102,8 +103,8 @@ export function raFilingExcelReport(rows = []) {
       { key: 'quantity', label: 'จำนวน', num: true, width: 10 },
       { key: 'retailPriceIncVat', label: 'ราคาขายปลีก (รวม VAT)', money: true, width: 16 },
       { key: 'retailPriceExVat', label: 'ราคาขายปลีกก่อน VAT', money: true, width: 16 },
-      { key: 'taxPerUnit', label: 'ภาษี/หน่วย (8.8%)', money: true, width: 15 },
-      { key: 'taxCheck', label: 'ตรวจสูตร 8.8%', width: 22 },
+      { key: 'taxPerUnit', label: 'ภาษี/หน่วย (สรรพสามิต + ท้องถิ่น)', money: true, width: 15 },
+      { key: 'taxCheck', label: 'ตรวจสูตร (8% + ท้องถิ่น 10%)', width: 24 },
       { key: 'totalTax', label: 'ภาษีรวม', money: true, width: 16 },
     ],
     rows: out,
@@ -172,7 +173,7 @@ export function raFilingPrintReport(rows = []) {
       { key: 'retailPriceIncVat', label: 'ราคาขายปลีก (รวม VAT)', money: true },
       { key: 'retailPriceExVat', label: 'ราคาขายปลีกก่อน VAT', money: true },
       // ไม่ตรงสูตร = บรรทัดรองในช่อง (คำเตือนเดียวกับจอ) ⇒ multiline · ค่าปกติเป็นตัวเลข
-      { key: 'taxPerUnit', label: 'ภาษี/หน่วย (8.8%)', money: true, multiline: true },
+      { key: 'taxPerUnit', label: 'ภาษี/หน่วย (สรรพสามิต + ท้องถิ่น)', money: true, multiline: true },
       { key: 'totalTax', label: 'ภาษีรวม', money: true },
     ],
     rows: out,

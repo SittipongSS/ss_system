@@ -36,9 +36,10 @@ test("สถานะตามกติกาเดียวกับตอน�
   assert.equal(productExciseStatus({ categoryCode: "", productTypes: TYPES }).reason, "เลือกหมวดสินค้าก่อน");
 });
 
-test("F4: ภาษีต่อหน่วยในฟอร์ม = ตัวคิดเดียวกับระบบ (ถอด VAT × 8.8% ปัดครั้งเดียว) · ฐานว่าง/0 = ไม่โชว์", () => {
-  assert.deepEqual(exciseTaxPreview(890), { taxPerUnit: 73.2, retailPriceExVat: 890 / 1.07 });
-  assert.equal(exciseTaxPreview(970).taxPerUnit, 79.78);
+test("F4: ภาษีต่อหน่วยในฟอร์ม = ตัวคิดเดียวกับระบบ (ถอด VAT → สรรพสามิต 8% → ท้องถิ่น 10% ปัดทีละขั้น · 26/11) · ฐานว่าง/0 = ไม่โชว์", () => {
+  // 890 → 831.78 → ① 66.54 → ② 6.65 = 73.19 (สูตร Q2 เดิม 73.20) · 970 → 906.54 → ① 72.52 → ② 7.25 = 79.77 (เดิม 79.78)
+  assert.deepEqual(exciseTaxPreview(890), { taxPerUnit: 73.19, retailPriceExVat: 831.78 });
+  assert.equal(exciseTaxPreview(970).taxPerUnit, 79.77);
   assert.equal(exciseTaxPreview(""), null);
   assert.equal(exciseTaxPreview(0), null);
 });

@@ -8,6 +8,7 @@ import {
 } from './exciseCharge.js';
 import { ensureExciseChargeProduct } from './exciseChargeProduct.js';
 import { resolveSoFiling } from './soFiling.js';
+import { round2 } from '../tax/exciseBilling.js';
 import { exciseChargeLinesAdded, enforceMasterPrices } from '../sales/quoteLines.js';
 import { isProductCategorySelectable } from '../master/productCategory.js';
 import { quoteLineNet } from '../salesPlanning.js';
@@ -37,7 +38,8 @@ test('isExciseChargeProduct: หมวดของแถวก่อน · ห�
 // ── 2. ตัวสร้างบรรทัด ────────────────────────────────────────────────────────────────────
 const productTypes = [{ mainCategoryCode: '01', typeCode: '002', isExcise: true }];
 const salesOrder = { id: 'SO-1', status: 'approved', customerId: 'C-1' };
-const fg = { id: 'P-1', fgCode: 'FG-0108-01-002-00001', exciseTax: 8.044, localTax: 0.8044, retailPriceIncVat: 107.5, saleUnit: 'ขวด' };
+// อัตราของสินค้า = productTaxRates(107.5) ตามสูตรปัดทีละขั้น (26/11 · V43): ถอด VAT 100.47 → ① 8.04 → ② 0.80 ⇒ 8.84/ชิ้น
+const fg = { id: 'P-1', fgCode: 'FG-0108-01-002-00001', exciseTax: 8.04, localTax: 0.8, retailPriceIncVat: 107.5, saleUnit: 'ขวด' };
 const fgNoPrice = { id: 'P-2', fgCode: 'FG-0108-01-002-00002', exciseTax: 0, localTax: 0 };
 const charge = { id: 'PRD-X', fgCode: 'FG-0108-04-003', categoryCode: '04-003', customerId: 'C-1' };
 const soLines = [
@@ -45,7 +47,7 @@ const soLines = [
   { id: 'L-2', productId: 'P-2', fgCode: fgNoPrice.fgCode, qty: 5, unit: 'ชิ้น', description: 'น้ำหอม B' },
 ];
 
-test('buildExciseQuotationLines: บรรทัดละ FG ต้นทาง · จำนวน = หน่วยรวม · ราคา = ภาษี/ชิ้น ปัดครั้งเดียว · ยอดตามกฎเงินของบรรทัด', () => {
+test('buildExciseQuotationLines: บรรทัดละ FG ต้นทาง · จำนวน = หน่วยรวม · ราคา = ภาษี/ชิ้น (สรรพสามิต + ท้องถิ่น) · ยอดตามกฎเงินของบรรทัด', () => {
   const filing = resolveSoFiling({ salesOrder, productTypes, products: [fg, fgNoPrice], lines: soLines });
   const lines = buildExciseQuotationLines({ filing, chargeProduct: charge, sourceLines: soLines, products: [fg, fgNoPrice] });
   assert.equal(lines.length, 2, 'บรรทัดที่ภาษีเป็น 0 (ไม่มีฐานภาษี) ยังอยู่ ให้ผู้ออกใบเห็นว่าขาดอะไร');
@@ -53,16 +55,16 @@ test('buildExciseQuotationLines: บรรทัดละ FG ต้นทาง 
   assert.equal(first.productId, 'PRD-X');
   assert.equal(first.fgCode, 'FG-0108-04-003');
   assert.equal(first.qty, 24, '2 แพ็ค × 12 = 24 หน่วย');
-  assert.equal(first.unitPrice, 8.85, '8.044 + 0.8044 → ปัดครั้งเดียว 8.85');
+  assert.equal(first.unitPrice, 8.84, '8.04 + 0.80');
   assert.equal(first.unit, 'ขวด');
-  assert.equal(first.lineTotal, 212.4);
+  assert.equal(first.lineTotal, 212.16);
   assert.equal(first.lineTotal, quoteLineNet({ qty: first.qty, unitPrice: first.unitPrice }).lineTotal, 'ตรงกับกฎเงินของบรรทัด (CHECK 0407)');
   assert.equal('packQty' in first, false, 'ไม่มีเลขแพ็ค (ทริกเกอร์ 0410 ดูเฉพาะ 02-001)');
   assert.equal(first.source, EXCISE_CHARGE_LINE_KIND);
   assert.equal(first.metadata.lineKind, EXCISE_CHARGE_LINE_KIND);
   assert.equal(first.metadata.sourceSalesOrderLineId, 'L-1');
   assert.equal(first.metadata.sourceFgCode, fg.fgCode);
-  assert.equal(first.metadata.excisePerUnit + first.metadata.localPerUnit, 8.85);
+  assert.equal(round2(first.metadata.excisePerUnit + first.metadata.localPerUnit), 8.84);
   assert.equal(first.metadata.retailPriceIncVat, 107.5);
   // มติ 29/10: คำอธิบาย = รหัส FG ต้นทาง + ชื่อ (ชื่อสินค้า 04-003 อยู่บรรทัดแรกของรายการแล้ว)
   assert.equal(first.description, 'FG-0108-01-002-00001 น้ำหอม A');
