@@ -4,8 +4,9 @@ import { readFileSync } from "node:fs";
 import {
   EXCISE_VAT_RATE, billedTaxLine, billedTaxTotals, orderAmountToCollect,
   exciseTaxLine, exciseTaxLineForRegistration, exciseTaxTotals, resolveProductTaxable, round2,
-  EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, EXCISE_TOTAL_RATE, productTaxRates,
+  EXCISE_RATE, LOCAL_TAX_RATE_OF_EXCISE, productTaxRates,
 } from "./exciseBilling.js";
+import * as billing from "./exciseBilling.js";
 import { buildBillPrintHTML } from "./billPrint.js";
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -104,31 +105,52 @@ test("VAT คิดที่ lib เดียว — ห้ามฮาร์ด
 // ── ตัวคิดบรรทัดภาษี: ทางเดียวของทั้งระบบ (มติผู้ใช้ 2026-07-29) ────────────────
 // อัตรามาจากราคาขายปลีกของ FG ซึ่งเก็บที่ products.exciseTax/localTax — ราคาใน SO
 // เป็นราคาผลิต ใช้คิดภาษีไม่ได้ ทุกทางจึงต้องอ้างเลข FG กลับไปดึงอัตราจากสินค้า
-/* ⭐ มติ Q2 (28/10/2026 · ข้อ ข): ภาษี/ชิ้น = ปัด(อัตรารวม 8.8%) ครั้งเดียว — ไม่ใช่ปัดสองอัตราแยกแล้วบวก
-   8.044 + 0.8044 = 8.8484 → 8.85/ชิ้น (สูตรเดิม 8.04 + 0.80 = 8.84 ⇒ ขาดสตางค์ต่อชิ้น) ·
-   มติ D1: สรรพสามิต/ชิ้น = ปัด(8.044) = 8.04 · ท้องถิ่น/ชิ้น = 8.85 − 8.04 = 0.81 (ช่อง ภส. สองช่องรวมกันเท่ายอดที่เก็บ) */
-test('exciseTaxLine: ภาษี/ชิ้นปัดครั้งเดียวจากอัตรารวม แล้วคูณจำนวน · แตกสองช่องจากยอดที่ปัดแล้ว', () => {
-  const line = exciseTaxLine({ exciseRatePerUnit: 8.044, localTaxRatePerUnit: 0.8044, quantity: 10 });
-  assert.equal(line.taxPerUnit, 8.85);
-  assert.equal(line.exciseRatePerUnit, 8.04);
-  assert.equal(line.localTaxRatePerUnit, 0.81);
-  assert.equal(line.totalTax, 88.5);
-  assert.equal(line.totalExciseTax, 80.4);
-  assert.equal(line.totalLocalTax, 8.1);
+/* ⭐ มติเจ้าของ 26/11/2026 (V43 · แทน Q2 28/10 "ปัดครั้งเดียวจาก 8.8%"): ปัดทีละขั้น ตามตัวอย่างที่เจ้าของพิมพ์มา
+   ราคา 1,290 → ถอด VAT 7% = 1,205.61 → ① สรรพสามิต 8% = 96.45 → ② ท้องถิ่น 10% ของสรรพสามิต = 96.45 × 10% = 9.645 → 9.65
+   ภาษี/ชิ้น = 106.10 (สูตร Q2 ได้ 106.09 = 96.45 + 9.64) */
+test('productTaxRates: ตัวอย่างของเจ้าของ 1,290 → 1,205.61 · 96.45 · 9.65 · ภาษี/ชิ้น 106.10 (ปัดทีละขั้น · 26/11)', () => {
+  assert.deepEqual(productTaxRates(1290), { retailPriceExVat: 1205.61, exciseTax: 96.45, localTax: 9.65, taxPerUnit: 106.1 });
+});
+
+test('exciseTaxLine: ภาษี/ชิ้น = สรรพสามิต/ชิ้น + ท้องถิ่น/ชิ้น แล้วคูณจำนวน · สองช่องรวมกันเท่ายอดเสมอ', () => {
+  const rates = productTaxRates(1290);
+  const line = exciseTaxLine({ exciseRatePerUnit: rates.exciseTax, localTaxRatePerUnit: rates.localTax, quantity: 10 });
+  assert.deepEqual(
+    { t: line.taxPerUnit, e: line.exciseRatePerUnit, l: line.localTaxRatePerUnit, total: line.totalTax, te: line.totalExciseTax, tl: line.totalLocalTax },
+    { t: 106.1, e: 96.45, l: 9.65, total: 1061, te: 964.5, tl: 96.5 },
+  );
   // กระทบยอดด้วยมือได้: ภาษี/ชิ้น × จำนวน = ยอดรวมของบรรทัดเป๊ะ · สองช่องรวมกันเท่ายอด ทั้งรายชิ้นและทั้งบรรทัด
   assert.equal(round2(line.taxPerUnit * line.quantity), line.totalTax);
   assert.equal(round2(line.exciseRatePerUnit + line.localTaxRatePerUnit), line.taxPerUnit);
   assert.equal(round2(line.totalExciseTax + line.totalLocalTax), line.totalTax);
 });
 
-// ตัวอย่างของแผน: ราคาขายปลีก 100 รวม VAT → ฐาน 93.4579… → 8.8% = 8.2243 → 8.22/ชิ้น (สูตรเดิมได้ 7.48 + 0.75 = 8.23)
-test('exciseTaxLine: ราคาขายปลีก 100 → ภาษี 8.22/ชิ้น · สรรพสามิต 7.48 · ท้องถิ่น 0.74', () => {
+/* ⚠️ ใบที่ออกก่อน 26/11 ตรึงช่อง ภส. ตามมติ D1 (96.45 + 9.64 = 106.09) — เจ้าของเลือก "ใช้กับใบใหม่เท่านั้น"
+   ⇒ ส่งช่องที่ตรึงไว้เข้าตัวคิดกลาง ต้องได้ยอดเดิมของใบทุกสตางค์ (ใบยื่นจาก SO ค่าสรรพสามิตอ่านช่องเหล่านี้) */
+test('exciseTaxLine: ช่องที่ใบเก่าตรึงไว้ (96.45 + 9.64) ได้ยอดเดิม 106.09 — สูตรใหม่ไม่ย้อนเปลี่ยนเงินที่ตกลงแล้ว', () => {
+  const line = exciseTaxLine({ exciseRatePerUnit: 96.45, localTaxRatePerUnit: 9.64, quantity: 2 });
+  assert.deepEqual({ t: line.taxPerUnit, e: line.exciseRatePerUnit, l: line.localTaxRatePerUnit, total: line.totalTax }, { t: 106.09, e: 96.45, l: 9.64, total: 212.18 });
+});
+
+// ราคาขายปลีก 100 รวม VAT → ถอด VAT 93.46 → ① 7.48 (7.4768) → ② 0.75 (0.748) → 8.23/ชิ้น (สูตร Q2 ได้ 8.22)
+test('exciseTaxLine: ราคาขายปลีก 100 → สรรพสามิต 7.48 · ท้องถิ่น 0.75 · ภาษี 8.23/ชิ้น', () => {
   const rates = productTaxRates(100);
   const line = exciseTaxLine({ exciseRatePerUnit: rates.exciseTax, localTaxRatePerUnit: rates.localTax, quantity: 1 });
   assert.deepEqual(
-    { t: line.taxPerUnit, e: line.exciseRatePerUnit, l: line.localTaxRatePerUnit },
-    { t: 8.22, e: 7.48, l: 0.74 },
+    { x: rates.retailPriceExVat, t: line.taxPerUnit, e: line.exciseRatePerUnit, l: line.localTaxRatePerUnit },
+    { x: 93.46, t: 8.23, e: 7.48, l: 0.75 },
   );
+});
+
+// ท้องถิ่นคิดจาก "สรรพสามิตที่ปัดแล้ว" ไม่ใช่จากราคา — ครึ่งสตางค์ปัดขึ้นจริง (คิดเป็นสตางค์จำนวนเต็ม ไม่ตกหลุม float)
+test('productTaxRates: ท้องถิ่น = ปัด(สรรพสามิตที่ปัดแล้ว × 10%) · ครึ่งสตางค์ปัดขึ้น', () => {
+  for (const price of [107.5, 110, 120, 299, 359, 390, 1290, 2490, 3990]) {
+    const r = productTaxRates(price);
+    assert.equal(r.retailPriceExVat, round2(price / 1.07), `ถอด VAT ${price}`);
+    assert.equal(r.exciseTax, round2(r.retailPriceExVat * 0.08), `สรรพสามิต ${price}`);
+    assert.equal(r.localTax, round2(r.exciseTax * 0.1), `ท้องถิ่น ${price}`);
+    assert.equal(r.taxPerUnit, round2(r.exciseTax + r.localTax), `รวม ${price}`);
+  }
 });
 
 // 🐞 float: 1.005 × 100 = 100.49999… ⇒ สูตรเดิมปัดครึ่งสตางค์ลง · ปัดด้วยสตางค์จำนวนเต็มต้องขึ้น
@@ -227,7 +249,8 @@ test('อัตราต้องเป็นค่าที่ธุรกิ�
   assert.equal(EXCISE_RATE, 0.08);
   assert.equal(LOCAL_TAX_RATE_OF_EXCISE, 0.1);
   assert.equal(EXCISE_VAT_RATE, 0.07);
-  assert.equal(round2(EXCISE_TOTAL_RATE * 100), 8.8);
+  // ตัวคูณรวม 8.8% ถูกถอด (26/11 · V43) — สูตรปัดทีละขั้น "ถอด VAT × 8.8%" ไม่ใช่สูตรอีกต่อไป ห้ามกลับมาให้ใครหยิบไปคิดเงิน
+  assert.equal(billing.EXCISE_TOTAL_RATE, undefined);
 });
 
 test('productTaxRates: เดินเลขตามตัวอย่างที่ผู้ใช้ยืนยัน 107 → 8.80 → 9.42', () => {
@@ -243,7 +266,7 @@ test('productTaxRates: เดินเลขตามตัวอย่างท
 
 test('productTaxRates: ไม่มีราคา / ยกเว้นภาษี → 0 ทั้งชุด ไม่ใช่ NaN', () => {
   for (const v of [null, undefined, 0, '', -1]) {
-    assert.deepEqual(productTaxRates(v), { retailPriceExVat: 0, exciseTax: 0, localTax: 0 });
+    assert.deepEqual(productTaxRates(v), { retailPriceExVat: 0, exciseTax: 0, localTax: 0, taxPerUnit: 0 });
   }
-  assert.deepEqual(productTaxRates(107, { taxable: false }), { retailPriceExVat: 0, exciseTax: 0, localTax: 0 });
+  assert.deepEqual(productTaxRates(107, { taxable: false }), { retailPriceExVat: 0, exciseTax: 0, localTax: 0, taxPerUnit: 0 });
 });

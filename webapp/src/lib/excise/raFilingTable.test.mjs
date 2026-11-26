@@ -72,7 +72,8 @@ test('ไม่มีคอลัมน์สถานะทะเบียน (
     'ยังไม่มีทะเบียน 2 รายการ — เริ่มยื่นไม่ได้', 'ไม่มีราคาขายปลีก 1 รายการ (ภาษี ฿0)',
   ]);
   const table = read('../../components/excise/FilingLinesTable.js');
-  assert.match(table, /const COLUMNS = \["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", "ภาษี\/หน่วย \(8\.8%\)", "ภาษีรวม", "สถานะชำระ"\];/);
+  assert.match(table, /const TAX_PER_UNIT = "ภาษี\/หน่วย \(สรรพสามิต \+ ท้องถิ่น\)";/, 'หัวคอลัมน์ไม่พูด "8.8%" แล้ว (สูตรปัดทีละขั้น · 26/11)');
+  assert.match(table, /const COLUMNS = \["วันที่ส่งของ", "แบรนด์", "รายการ", "ปริมาณ", "จำนวน", "ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", TAX_PER_UNIT, "ภาษีรวม", "สถานะชำระ"\];/);
   assert.doesNotMatch(table.match(/const COLUMNS = \[[^\]]*\]/)[0], /ทะเบียน/, 'ไม่มีคอลัมน์ทะเบียน');
 });
 
@@ -238,10 +239,13 @@ test('วันที่ส่งของของ SO ค่าสรรพส�
   }
 });
 
-test('รีเช็คภาษี (เจ้าของ 03/11): ราคาขายปลีกรวม VAT + ภาษี/หน่วย · ระบบคิดสูตร 8.8% ซ้ำแล้วเตือนแถวที่ไม่ตรง', () => {
-  // ตัวอย่างจริงของ QT-26100568-2: Rosé Rose 50 ML ราคา 1,190 รวม VAT → ถอด VAT 1,112.15 × 8.8% = 97.87
-  assert.deepEqual(taxPerUnitCheck(1190, 97.87), { expected: 97.87, ok: true });
-  assert.deepEqual(taxPerUnitCheck(110, 9.05), { expected: 9.05, ok: true });
+test('รีเช็คภาษี (เจ้าของ 03/11): ราคาขายปลีกรวม VAT + ภาษี/หน่วย · ระบบคิดสูตรซ้ำแล้วเตือนแถวที่ไม่ตรง', () => {
+  // ตัวอย่างจริงของ QT-26100568-2: Rosé Rose 50 ML ราคา 1,190 รวม VAT → ถอด VAT 1,112.15 → ① 88.97 → ② 8.90 = 97.87
+  assert.deepEqual(taxPerUnitCheck(1190, 97.87), { expected: 97.87, ok: true, legacy: false });
+  // สูตรปัดทีละขั้น (26/11 · V43): 110 → 102.80 → ① 8.22 → ② 0.82 = 9.04
+  assert.deepEqual(taxPerUnitCheck(110, 9.04), { expected: 9.04, ok: true, legacy: false });
+  // ใบเก่าคิดสูตร Q2 (ถอด VAT × 8.8% ปัดครั้งเดียว = 9.05) — เงินที่ลูกค้าจ่ายจริงตามกติกาของวันนั้น ⇒ ไม่เตือน แต่บอกว่าเป็นสูตรเดิม
+  assert.deepEqual(taxPerUnitCheck(110, 9.05), { expected: 9.04, ok: true, legacy: true });
   assert.equal(taxPerUnitCheck(1190, 95).ok, false, 'ภาษี/หน่วยไม่ตรงสูตร');
   assert.equal(taxPerUnitCheck(null, 97.87), null, 'ไม่มีราคาขายปลีก = เทียบไม่ได้');
   const row = quoteLineTableLine({ qty: 600, packQty: null, unitPrice: 97.87, lineTotal: 58722, metadata: { lineKind: 'excise_charge', retailPriceIncVat: 1190 } }, null);
@@ -252,7 +256,8 @@ test('รีเช็คภาษี (เจ้าของ 03/11): ราคา
   const record = filingTableLine({ retailPriceIncVat: 1190 }, { quantity: 10, totalTax: 978.7, taxPerUnit: 88.97 + 8.9 });
   assert.equal(record.taxPerUnit, 97.87, 'บันทึก: สรรพสามิต/หน่วย + ท้องถิ่น/หน่วย');
   const table = read('../../components/excise/FilingLinesTable.js');
-  assert.match(table, /"ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", "ภาษี\/หน่วย \(8\.8%\)", "ภาษีรวม"/);
+  assert.match(table, /"ราคาขายปลีก \(รวม VAT\)", "ราคาขายปลีกก่อน VAT", TAX_PER_UNIT, "ภาษีรวม"/);
+  assert.match(table, /ไม่ตรงสูตร · ควรเป็น \{fmtMoney\(line\.taxCheck\.expected\)\}/, 'คำเตือนไม่พูด "8.8%" แล้ว');
   assert.match(table, /line\.taxCheck && !line\.taxCheck\.ok/);
 });
 
@@ -292,7 +297,7 @@ test('ยอดรวม (เจ้าของ 04/11): หัวเดือน
 
 test('จัดแนว (เจ้าของ 05/11 "align ข้อมูล จะได้ตรวจง่าย"): หัวเดือน/หัวงานลงคอลัมน์เดียวกับแถวสินค้า', () => {
   const table = read('../../components/excise/FilingLinesTable.js');
-  assert.match(table, /const LEAD_SPAN = COLUMNS\.indexOf\("ภาษี\/หน่วย \(8\.8%\)"\);/, 'ข้อความของหัวกินคอลัมน์ก่อน "ภาษี/หน่วย"');
+  assert.match(table, /const LEAD_SPAN = COLUMNS\.indexOf\(TAX_PER_UNIT\);/, 'ข้อความของหัวกินคอลัมน์ก่อน "ภาษี/หน่วย"');
   // หัวงาน: ข้อความ (LEAD_SPAN) + จำนวนรายการ + ยอดรวม + สถานะ = ครบทุกคอลัมน์ ⇒ ยอด/สถานะตั้งตรงกับแถวสินค้า
   const group = table.slice(table.indexOf('<td colSpan={LEAD_SPAN}>'), table.indexOf('if (!open) return [header];'));
   assert.equal((group.match(/<td\b/g) || []).length, 4, 'หัวงาน = 1 ช่องข้อความ + 3 ช่องท้าย');
