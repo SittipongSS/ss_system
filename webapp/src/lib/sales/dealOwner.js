@@ -63,6 +63,16 @@ export function assignableOwners(users = [], viewerTeam = null) {
   });
 }
 
+/* ฟอร์ม "แก้ไขดีล" ต้องรู้ว่าเจ้าของใบนี้คือใคร (และอยู่ทีมไหนบ้าง) ถึงจะถามช่อง "ทีมเจ้าของงาน" ได้
+   · คนที่มอบดีลได้ (Senior AE/AC/หัวหน้า) มีรายชื่อ `owners` ให้ฟอร์มหาเจ้าของเองอยู่แล้ว ⇒ คืน null
+   · AE ไม่มีรายชื่อ (ยกดีลให้ใครไม่ได้) ⇒ ฟอร์มหาเจ้าของไม่เจอ แล้วชิปทีมไม่โผล่ — ตรวจบัญชีสองทีม 26/11/2026:
+     AE ที่อยู่ ODM+SV เลือกทีมผิดตอนสร้างแล้ว **แก้กลับเองไม่ได้เลย** ⇒ ส่งตัวเองเป็นเจ้าของแบบล็อก
+   ⚠️ เฉพาะดีลที่เป็นของตัวเองจริง — ดีลของคนอื่น (เปิดดูได้แต่แก้ไม่ได้) ต้องไม่โผล่ชื่อตัวเองเป็นเจ้าของ */
+export function editFormLockedOwner({ owners = [], lockedOwner = null, ownerId = null } = {}) {
+  if (owners.length || !lockedOwner?.id) return null;
+  return String(ownerId || '') === String(lockedOwner.id) ? lockedOwner : null;
+}
+
 /** ชื่อที่แสดง — กติกาเดียวกับ /api/pm/assignable-users (name → email) */
 export const dealOwnerName = (u) =>
   (u?.user_metadata?.name || '').trim() || (u?.email || '').trim();

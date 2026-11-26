@@ -11,9 +11,10 @@ import { randomUUID } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabaseAdmin';
 import { getCurrentUser } from '@/lib/authUser';
 import {
-  REQUEST_ANSWER_DEPARTMENTS, attributionTeam, canAnswerRequestsFor, canUser, canViewRequests,
+  REQUEST_ANSWER_DEPARTMENTS, canAnswerRequestsFor, canUser, canViewRequests,
 } from '@/lib/permissions';
 import { normalizeLinesFor } from '@/lib/requests/kinds/lineShapes';
+import { requestTeamFor } from '@/lib/requests/requestTeam';
 import { resolveLineLabels } from '@/lib/requests/lineLabels';
 import { docCustomerAddressError } from '@/lib/requests/docCustomer';
 import { loadDocCustomerRow } from '@/lib/requests/docRequestContextAdmin';
@@ -650,7 +651,7 @@ export async function POST(request) {
         requestedResultDate: survey.requestedResultDate,
       } : {}),
       /* ทีมเจ้าของคำร้อง — คนอยู่หลายทีมเลือกได้ว่าใบนี้เข้าคิวทีมไหน
-         (ค่าที่ไม่ใช่ทีมของตัวเองถูกตีเป็นทีมหลักเสมอ — ดู attributionTeam)
+         (ค่าที่ไม่ใช่ทีมของตัวเองไม่มีผล — ดู requestTeamFor)
          ⭐ คนที่ **ไม่มีทีมเลย** (admin/หัวหน้าฝ่ายขาย/RD/PC) เปิดใบแล้วเคยได้ team = null
          ⇒ ใบนั้นไม่โผล่ในคิวทีมไหนเลย เห็นได้แค่คิวของฝ่ายที่ต้องตอบกับตัวคนเปิดเอง
          ทั้งที่ใบส่วนใหญ่ของกลุ่มนี้เปิดคาดีลของทีมใดทีมหนึ่งอยู่แล้ว ⇒ ถอยไปใช้
@@ -658,7 +659,10 @@ export async function POST(request) {
          ขอบเขตเดินตามงาน ไม่ใช่ตามคนกด — mig 0253 / lib/pm/projectOwner.js)
          ⚠️ ไม่ผูกดีล + คนเปิดไม่มีทีม = null เหมือนเดิม (ไม่มีอะไรให้เดา และใบแบบนั้น
          เป็นงานระหว่างคนเปิดกับฝ่ายที่ตอบ ไม่ใช่งานของทีมขายทีมใดทีมหนึ่ง) */
-      team: attributionTeam(user, body.team) || dealTeam,
+      /* ⭐ ไม่ได้เลือกทีมมา (ฟอร์มส่ง team ว่าง) = **ทีมของดีลต้นทาง** ถ้าคนเปิดอยู่ทีมนั้น — ตรวจบัญชีสองทีม 26/11/2026:
+         AE ODM+SV เปิดคำร้องคาดีล SV แล้วใบเข้าคิว ODM (ทีมหลัก) · จอโชว์ทีมตั้งต้นด้วยสูตรเดียวกัน
+         (lib/requests/requestTeam.js) ⇒ สิ่งที่เห็นบนชิป = สิ่งที่บันทึก */
+      team: requestTeamFor(user, { requested: body.team, dealTeam }),
       // ⚠️ เลิกเขียน `note` (มติผู้ใช้ 2026-08-03: "ไม่ต้องมีหมายเหตุ") — คำร้องมี
       // "รายละเอียด" (body) ที่ทำงานเดียวกันอยู่แล้ว สองช่องข้อความอิสระบนเรื่อง
       // เดียวทำให้คนเขียนต้องเดาว่าอะไรควรอยู่ช่องไหน และผู้ตอบต้องอ่านสองที่

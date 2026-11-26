@@ -190,7 +190,12 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
      ยังเห็นแถวหลังแก้อยู่ไหม ไม่ได้ตรวจว่าผู้รับเป็นใคร) */
   let ownerTeam = null;
   if ('ownerId' in body) {
-    const checked = await validateDealOwner(supabase, body.ownerId, user, body.team);
+    /* ทีมที่ขอ = `body.team` ถ้าส่งมา ไม่งั้น **ทีมเดิมของดีล** — ฟอร์มแก้ส่ง `ownerId` ทุกครั้ง (กันเจ้าของหาย)
+       🐞 ตรวจบัญชีสองทีม 26/11/2026: หน้ารายละเอียดดีลไม่ส่ง `team` ⇒ attributionTeam ถอยเป็นทีมหลักของเจ้าของ
+       ⇒ แก้แค่หมายเหตุบนดีล SV ของ AE ที่อยู่ ODM+SV (ทีมหลัก ODM) = ดีลย้ายไป ODM เงียบ ๆ
+       เจ้าของใหม่ไม่ได้อยู่ทีมเดิม = ยังถอยเป็นทีมหลักของเจ้าของใหม่เหมือนเดิม (attributionTeam) */
+    const requestedTeam = 'team' in body ? body.team : before.team;
+    const checked = await validateDealOwner(supabase, body.ownerId, user, requestedTeam);
     if (!checked.ok) return badRequest(checked.error);
     patch.ownerId = checked.ownerId;
     patch.ownerName = checked.ownerName;
