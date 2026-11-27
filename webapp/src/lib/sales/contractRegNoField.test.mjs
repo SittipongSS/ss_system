@@ -23,3 +23,8 @@ test('ฟอร์มสัญญามีทางของชนิด taxId �
   assert.match(src, /<NationalIdInput value=\{text\.replace\(\/\\D\/g, ""\)\}/);
   assert.match(src, /\/\[\^\\d\\s-\]\/\.test\(text\)/);
 });
+
+test('หน้ารายละเอียดสัญญา (โหมดอ่าน) จัดช่องชนิด taxId ด้วย fmtTaxId — ไม่โชว์ตัวเลขล้วนข้างกระดาษที่มีขีด', () => {
+  const page = fs.readFileSync(path.resolve(import.meta.dirname, '../../app/sales-planning/contracts/[id]/page.js'), 'utf8');
+  assert.match(page, /field\.type === "taxId" \? fmtTaxId\(contract\.fields\?\.\[field\.key\]\)/);
+});
