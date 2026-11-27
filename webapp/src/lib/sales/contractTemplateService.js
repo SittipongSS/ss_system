@@ -36,7 +36,7 @@ export const SERVICE_TEMPLATE = {
   fields: [
     { key: 'contractPlace', label: 'ทำที่', type: 'text', required: true, default: 'บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด' },
     { key: 'clientName', label: 'ชื่อผู้ว่าจ้าง (ตามหนังสือรับรอง)', type: 'text', required: true, source: 'customer' },
-    { key: 'clientRegNo', label: 'เลขทะเบียนนิติบุคคล/เลขประจำตัวผู้เสียภาษี', type: 'text', required: true, source: 'customer' },
+    { key: 'clientRegNo', label: 'เลขทะเบียนนิติบุคคล/เลขประจำตัวผู้เสียภาษี', type: 'taxId', required: true, source: 'customer' },
     { key: 'clientAddress', label: 'ที่อยู่ผู้ว่าจ้าง', type: 'textarea', required: true, source: 'customer' },
     /* ⚠️ **สาขาแยกจากที่อยู่** — ต้นฉบับพูดถึงสาขาสามที่ (ข้อ 1 · ข้อ 2 · ข้อ 2.1)
        และตัวอย่างกรอกไม่ตรงกันเอง ⇒ แยกเป็นช่องเดียวใช้ร่วมทุกที่ จะได้ขัดกันไม่ได้ */
