@@ -189,7 +189,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order, mode = "fi
                 <div className="form-group">
                   <label htmlFor="tax-form-ref">เลขที่รับแบบ <span className="required-mark">*</span></label>
                   <input id="tax-form-ref" className={`premium-input w-full font-mono${blank(formRef) ? " is-invalid" : ""}`}
-                    value={formRef} onChange={(e) => setFormRef(e.target.value)} placeholder="เช่น 6920073720" autoComplete="off" />
+                    value={formRef} onChange={(e) => setFormRef(e.target.value)} placeholder="ตัวเลข 10 หลักใต้คำว่า เลขที่รับ" autoComplete="off" />
                   <p className={styles.hint}>“เลขที่รับ” ในกรอบสำหรับเจ้าหน้าที่ มุมขวาบนของแบบ — ไม่ใช่ชื่อแบบ ภส.03-07</p>
                 </div>
                 {docBlock("tax_form", "แบบ ภส.")}
@@ -202,7 +202,7 @@ export default function FileTaxDialog({ open, onClose, onDone, order, mode = "fi
                   <div className="form-group">
                     <label htmlFor="tax-receipt-number">เลขที่ใบเสร็จ <span className="required-mark">*</span></label>
                     <input id="tax-receipt-number" className={`premium-input w-full font-mono${blank(receiptNumber) ? " is-invalid" : ""}`}
-                      value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} placeholder="เช่น N00030069/0072584" autoComplete="off" />
+                      value={receiptNumber} onChange={(e) => setReceiptNumber(e.target.value)} placeholder="รูปแบบ Nxxxxxxxx/xxxxxxx" autoComplete="off" />
                   </div>
                   <div className="form-group">
                     <label>วันรับเงิน <span className="required-mark">*</span></label>

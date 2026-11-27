@@ -16,7 +16,7 @@ const ADMIN = { sales: true, ra: true };
 const ALL = ["draft", "pending", "received", "filing", "complete", "delivered", "rejected"];
 const ok = (args) => filingTransitionError(args) === null;
 // ช่องบังคับครบสี่ช่องของขั้นชำระแล้ว (มติเจ้าของ 27/11 — แบบ ภส. + ใบเสร็จกรม)
-const PAID = { taxFormRef: "6920073720", exciseReceiptNumber: "N00030069/0072584", taxPaidDate: "2026-07-07", exciseTaxPaidAmount: 737721.6 };
+const PAID = { taxFormRef: "6900000001", exciseReceiptNumber: "N00000000/0000001", taxPaidDate: "2026-07-07", exciseTaxPaidAmount: 110000 };
 
 test("v3: บันทึกมีสองขั้น กำลังยื่น → ชำระแล้ว · ปลายทางเดียวในตาราง · ใบเสร็จกรมบังคับตอนปิด", () => {
   assert.deepEqual(TRACKS.payment.stages.map((s) => s.key), ["filing", "complete"]);

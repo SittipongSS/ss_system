@@ -8,16 +8,16 @@ import {
 import { ATTACHMENT_TYPES } from "../master/attachmentTypes.js";
 
 /* ⭐ มติเจ้าของ 27/11/2026 — เอกสารชำระสรรพสามิตมีสองชุด (แบบ ภส.03-07 + ใบเสร็จกรม) ต้องกรอก + แนบทั้งคู่ก่อนปิดงาน
-   ตัวเลขจากเอกสารจริงของ LACANA รอบ มิ.ย. 2569: สรรพสามิต 670,656.00 + มหาดไทย 67,065.60 = 737,721.60
-   ใบเสร็จแตกมหาดไทยเป็น 63,712.32 + 3,353.28 (95/5) — รวมแล้วเท่ากัน */
-const TOTAL = 737721.6;
-const FULL = { taxFormRef: "6920073720", exciseReceiptNumber: "N00030069/0072584", taxPaidDate: "2026-07-07", exciseTaxPaidAmount: "737721.60" };
+   เลขสมมติรูปเดียวกับเอกสารจริง (repo public — ห้ามลงเลข/ยอด/ชื่อลูกค้าจริง): สรรพสามิต 100,000.00 + มหาดไทย 10,000.00 = 110,000.00
+   ใบเสร็จแตกมหาดไทยเป็น 9,500.00 + 500.00 (95/5) — รวมแล้วเท่ากัน */
+const TOTAL = 110000;
+const FULL = { taxFormRef: "6900000001", exciseReceiptNumber: "N00000000/0000001", taxPaidDate: "2026-07-07", exciseTaxPaidAmount: "110000.00" };
 const BOTH = ["tax_form", "tax_receipt"];
 const TODAY = "2026-11-27";
 const pass = (over = {}) => filingPaymentError({ fields: FULL, docTypes: BOTH, totalTax: TOTAL, today: TODAY, ...over });
 
-test("ชุดจริงของ LACANA ผ่าน — ใบเสร็จแตกมหาดไทยสองบรรทัดแต่ยอดรวมตรงยอดยื่น", () => {
-  assert.equal(670656 + 63712.32 + 3353.28, TOTAL);
+test("ชุดรูปเอกสารจริงผ่าน — ใบเสร็จแตกมหาดไทยสองบรรทัดแต่ยอดรวมตรงยอดยื่น", () => {
+  assert.equal(100000 + 9500 + 500, TOTAL);
   assert.equal(pass(), null);
   assert.deepEqual(paidAmountCheck(TOTAL, FULL.exciseTaxPaidAmount), { expected: TOTAL, paid: TOTAL, diff: 0, matches: true });
 });
@@ -34,8 +34,8 @@ test("ยกเว้นภาษีทั้งใบ = ไม่มีเอ�
 });
 
 test("ยอดไม่ตรงยอดยื่น = ไม่บล็อก แต่ต้องมีเหตุผล 10–500 ตัว · ยอด 0/ติดลบ/ไม่ใช่ตัวเลข = ไม่ผ่าน", () => {
-  const withPenalty = { ...FULL, exciseTaxPaidAmount: "738721.60" };
-  assert.match(pass({ fields: withPenalty }), /ยอดตามใบเสร็จ ฿738,721\.60 ไม่ตรงกับยอดยื่น ฿737,721\.60 — ระบุเหตุผล \(10–500/);
+  const withPenalty = { ...FULL, exciseTaxPaidAmount: "111000.00" };
+  assert.match(pass({ fields: withPenalty }), /ยอดตามใบเสร็จ ฿111,000\.00 ไม่ตรงกับยอดยื่น ฿110,000\.00 — ระบุเหตุผล \(10–500/);
   assert.match(pass({ fields: withPenalty, amountReason: "ปรับ" }), /ระบุเหตุผล/);
   assert.equal(pass({ fields: withPenalty, amountReason: "เบี้ยปรับยื่นช้า 1 เดือน" }), null);
   assert.match(pass({ fields: withPenalty, amountReason: "x".repeat(501) }), /ระบุเหตุผล/);
@@ -59,10 +59,10 @@ test("ค่าหลังรวม: ส่งมา (รวมค่าว่�
 });
 
 test("เหตุการณ์ลงเธรดบอกยอดทั้งสองฝั่ง + ส่วนต่างมีเครื่องหมาย + เหตุผล", () => {
-  const note = paymentAmountNote({ ...paidAmountCheck(TOTAL, 738721.6), reason: "  เบี้ยปรับยื่นช้า  " });
+  const note = paymentAmountNote({ ...paidAmountCheck(TOTAL, 111000), reason: "  เบี้ยปรับยื่นช้า  " });
   assert.equal(note.kind, "payment");
-  assert.equal(note.body, "ยอดตามใบเสร็จ ฿738,721.60 ต่างจากยอดยื่น ฿737,721.60 (+฿1,000.00) — เบี้ยปรับยื่นช้า");
-  assert.match(paymentAmountNote({ ...paidAmountCheck(TOTAL, 737000), reason: "x" }).body, /\(−฿721\.60\)/);
+  assert.equal(note.body, "ยอดตามใบเสร็จ ฿111,000.00 ต่างจากยอดยื่น ฿110,000.00 (+฿1,000.00) — เบี้ยปรับยื่นช้า");
+  assert.match(paymentAmountNote({ ...paidAmountCheck(TOTAL, 109278.4), reason: "x" }).body, /\(−฿721\.60\)/);
 });
 
 test("อ่านไฟล์แนบของบันทึก: กรองเฉพาะสองชนิด · ไม่นับแถวที่กำลังจะลบ · อ่านพัง = คืน error (ห้ามถือว่าไม่มี/มีครบ)", async () => {
