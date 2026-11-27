@@ -292,7 +292,6 @@ test('marketing holds the lead cap + read-only products, nothing else', () => {
   assert.deepEqual(capsFor('marketing'), ['salesplan:lead', 'products:view', 'issues:report']);
   assert.equal(can('marketing', 'salesplan:view'), false);
   assert.equal(can('marketing', 'customers:view'), false);
-  assert.equal(can('marketing', 'sales:view'), false);
   assert.equal(can('marketing', 'products:view'), true);
   assert.equal(can('marketing', 'products:edit'), false);
   assert.equal(can('marketing', 'products:margin'), false);
@@ -309,7 +308,7 @@ test('sales targets are limited to admin and sales head', () => {
 test('viewer: sees every module read-only, but can never write', () => {
   // Holds every :view capability across all modules...
   for (const cap of [
-    'customers:view', 'products:view', 'sales:view', 'ra:view', 'history:view',
+    'customers:view', 'products:view', 'ra:view', 'history:view',
     'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
   ]) {
     assert.equal(can('viewer', cap), true, `viewer should hold ${cap}`);
@@ -319,7 +318,7 @@ test('viewer: sees every module read-only, but can never write', () => {
   // ...but holds NO write/act/delete/approve/manage capability.
   for (const cap of [
     'customers:edit', 'customers:delete', 'products:edit', 'products:delete',
-    'sales:act', 'sales:delete', 'ra:approve', 'pm:edit', 'salesplan:edit',
+    'sales:act', 'ra:approve', 'pm:edit', 'salesplan:edit',
     'salesplan:target', 'salesplan:review', 'sahamit:edit', 'mgmt:edit',
     'users:manage', 'master:manage', 'audit:view', 'products:margin',
   ]) {
@@ -397,7 +396,7 @@ test('rd: reads deals/projects everywhere, works its own queue, never edits sale
   // ...but never writes deals/plans and never sees cost margin or tax/sahamit/mgmt.
   for (const cap of [
     'salesplan:edit', 'salesplan:lead', 'salesplan:target', 'pm:edit',
-    'customers:edit', 'products:edit', 'products:margin', 'sales:view', 'sales:act',
+    'customers:edit', 'products:edit', 'products:margin', 'sales:act',
     'ra:view', 'ra:approve', 'history:view', 'sahamit:view', 'mgmt:view',
     'users:manage', 'master:manage', 'audit:view',
   ]) {

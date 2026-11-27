@@ -70,7 +70,7 @@
 //   tax:module     (เข้าระบบภาษีสรรพสามิต /tax — การ์ดระบบ · เมนู · ป้ายตัวเลข · หน้า · มติเจ้าของ 02/11 V13:
 //     RA + แอดมิน + ผู้ดู (viewer/executive) เท่านั้น · ฝ่ายขายทุกตำแหน่งไม่เข้า /tax แล้ว — ทำงานทะเบียนจากแผงบน
 //     หน้าสินค้า/หน้า SO · ⚠️ แยกจาก history:view ซึ่งยังเปิด "ข้อมูลภาษี" บนหน้าสินค้า/ลูกค้าของฝ่ายขายตามเดิม)
-//   sales:view     | sales:act      | sales:delete   (sales = the order/PO workflow)
+//   sales:act      (ใบยื่นชำระภาษี — sales:view/sales:delete ถอดแล้ว 27/11/2026: ไม่มีด่านไหนเช็ก)
 //   history:view   | audit:view
 //   master:manage  (edit shared master taxonomy, e.g. product_types categories)
 //   pm:view        | pm:edit        (project management — SALES only)
@@ -569,7 +569,7 @@ export function resolveTeamUpdate(role, body = {}, existingMeta = {}, options = 
 const SALES_OPS = [
   'customers:view', 'customers:edit',
   'products:view', 'products:edit',
-  'sales:view', 'sales:act',
+  'sales:act',
   'pm:view', 'pm:edit',
   'salesplan:view', 'salesplan:edit',
   // ลีด (เฟส C): ทุก sales role ทำงานคิวลีดได้ (คัดกรอง/กระจาย/ติดต่อ — row-level
@@ -597,7 +597,10 @@ const SUPERUSER_CAPS = [
   'products:view', 'products:edit', 'products:delete', 'products:margin', 'products:cost',
   // ลบกลิ่น/สูตรในทะเบียนได้ทุกสถานะ (ยังต้องไม่มีใครอ้าง) — ดู ROLE_CAPS.rd_coordinator
   'registry:delete',
-  'sales:view', 'sales:act', 'sales:delete',
+  /* ⚠️ ไม่มี `sales:view` / `sales:delete` แล้ว (ถอด 27/11/2026) — ไม่เคยมีด่านไหนเช็กสองตัวนี้ แต่แท็บ
+     "สิทธิ์ตามตำแหน่ง" โชว์ว่าใครถือ ⇒ ตารางบอกเกินความจริง · การเขียนใบยื่นกรมทุกเส้นใช้ `ra:approve`
+     (proxy `/api/orders`) · การลบรายทีมตัดสินที่ `deleteScope` (ตำแหน่ง) ไม่ใช่ cap */
+  'sales:act',
   'ra:view', 'ra:approve', 'tax:module',
   'history:view', 'audit:view',
   'users:manage', 'users:view',
@@ -661,7 +664,7 @@ const SALES_HEAD_CAPS = SUPERUSER_CAPS.filter((c) => !SALES_HEAD_EXCLUDED.includ
 // this set PLUS its costing authority (see ROLE_CAPS.executive).
 const OBSERVER_CAPS = [
   'customers:view', 'products:view',
-  'sales:view', 'ra:view', 'history:view', 'tax:module',
+  'ra:view', 'history:view', 'tax:module',
   'pm:view', 'salesplan:view', 'sahamit:view', 'mgmt:view',
   'production:view', 'service:view',
 ];
@@ -684,16 +687,16 @@ const ROLE_CAPS = {
      ⚠️ ชี้ไปที่ชุดเดียวกัน ไม่ก๊อป — วันแก้ cap ของหัวหน้าฝ่ายขาย สามตำแหน่งขยับตามกัน */
   commercial_director: SALES_HEAD_CAPS,
   commercial_manager: SALES_HEAD_CAPS,
-  // team lead: ops + may delete orders (scoped to own team via deleteScope).
-  // Target planning is reserved for the sales head and admin.
-  senior_ae: [...SALES_OPS, 'sales:delete'],
+  // team lead: same caps as AE — what makes a lead is the ROLE (isTeamLead → deleteScope 'team'),
+  // not a cap. Target planning is reserved for the sales head and admin.
+  senior_ae: SALES_OPS,
   /* Senior AC = AC + สิทธิ์หัวหน้าทีม (มติข้อ 2) — cap ชุดเดียวกับ Senior AE · ต่างกันที่
      ไม่ถือดีล/เป้า (DEAL_HOLDER_ROLES) ไม่ใช่ที่ cap */
-  senior_ac: [...SALES_OPS, 'sales:delete'],
+  senior_ac: SALES_OPS,
   /* AC Supervisor = งานของ AC ทุกทีม (ขอบเขต 'all' ผ่าน isSuperuser) + สิทธิ์หัวหน้าทีม
      ⚠️ **ไม่ใช่ SALES_HEAD_CAPS** — ไม่ตั้งเป้า (salesplan:target/review) · ไม่ลบลูกค้า/สินค้า ·
         ไม่จัดทีม · ไม่เห็นสถานะภาษี (ra:view) — ส่วนนั้นเป็นของผู้มีอำนาจตัดสิน (มติข้อ 1) */
-  ac_supervisor: [...SALES_OPS, 'sales:delete'],
+  ac_supervisor: SALES_OPS,
   // back-office + front-office: same capabilities, differ only by edit SCOPE
   ac: SALES_OPS,
   ae: SALES_OPS,
