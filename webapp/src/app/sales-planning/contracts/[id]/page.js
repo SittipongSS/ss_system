@@ -25,7 +25,7 @@ import ContractAddendaCard from "@/components/salesPlanning/ContractAddendaCard"
 import ContractFormFields from "@/components/salesPlanning/ContractFormFields";
 import { contractKindBadge, contractStatusBadge } from "@/components/salesPlanning/ui";
 import { useCan, useRole } from "@/lib/roleContext";
-import { fmtDate, naText, NA } from "@/lib/format";
+import { fmtDate, fmtTaxId, naText, NA } from "@/lib/format";
 import { notifyToast } from "@/lib/feedback";
 import {
   CONTRACT_SOURCE_LABELS, EXTERNAL_DOC_KINDS, EXTERNAL_DOC_KIND_LABELS,
@@ -621,7 +621,8 @@ export default function ContractDetailPage() {
               ) : templateFields.map((field) => (
                 <div key={field.key}>
                   <dt>{field.label}</dt>
-                  <dd>{naText(contract.fields?.[field.key])}</dd>
+                  {/* เลขทะเบียน (ชนิด taxId) ออกรูปเดียวกับช่องกรอกและกระดาษสัญญา (คำขอเจ้าของ 27/11) */}
+                  <dd>{naText(field.type === "taxId" ? fmtTaxId(contract.fields?.[field.key]) : contract.fields?.[field.key])}</dd>
                 </div>
               ))}
             </dl>
