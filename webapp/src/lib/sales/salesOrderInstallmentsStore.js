@@ -13,6 +13,7 @@ import { INSTALLMENT_CARRY_SCHEMA_MISSING, carrySourcesFrom } from '@/lib/sales/
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
 import { fetchInChunks } from '@/lib/supabaseInChunks';
 import { historicalSchemaMissing, pipelineRowsOnly } from '@/lib/sales/historicalOrders';
+import { orderPaymentPlan, orderPlanSyncOps } from '@/lib/sales/salesOrderPaymentPlan';
 import { claimPendingRequests, releaseInstallmentRequests } from '@/lib/sales/installmentRequestsStore';
 
 const TABLE = 'sales_order_installments';
@@ -85,7 +86,8 @@ export async function ensureInstallments(supabase, {
   if (existing.length) return { rows: existing, created: false };
 
   const rows = buildInstallmentsForOrder(
-    order.quotation?.paymentPlan,
+    /* แผนของใบ (0441) ถ้ามี ไม่งั้นแผนของ QT — orderPaymentPlan เป็นตัวตัดสินตัวเดียว */
+    orderPaymentPlan(order),
     order.totalAmount,
     {
       // เอกสารยืนยันคำสั่งซื้อของใบ (ใบเก่าถอยไปอ่านหลักฐาน Won ของ QT ต้นทาง) —
@@ -190,7 +192,7 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
     return { rows: existing, frozen: false };
   }
 
-  const plan = installmentsFromPaymentPlan(order.quotation?.paymentPlan, order.totalAmount);
+  const plan = installmentsFromPaymentPlan(orderPaymentPlan(order), order.totalAmount);
   const draft = existing.filter((row) => !isInstallmentFrozen(row));
 
   // จำนวนไม่ตรงแผนล่าสุด ⇒ ตั้งใหม่ทั้งชุด — **เว้นใบที่มีเงินบันทึกไว้แล้ว** (ดูเหตุผลข้างบน)
@@ -297,7 +299,7 @@ export async function freezeInstallments(supabase, { order, user, now = null, bo
      ⇒ ใบที่ SA กด "เริ่มติดตาม" ไว้ก่อน ต้องได้งวดแรกเป็น `reported` พร้อมสลิปจากตอน
      ปิด Won เหมือนใบที่ไม่เคยกด ไม่งั้นการกดปุ่มเร็วกลายเป็นการเสียสิทธิ์ */
   const bySeq = new Map(plan.map((row) => [row.seq, row]));
-  const seeded = buildInstallmentsForOrder(order.quotation?.paymentPlan, order.totalAmount, {
+  const seeded = buildInstallmentsForOrder(orderPaymentPlan(order), order.totalAmount, {
     confirmation: borrowConfirmation ? orderConfirmationOf(order, order.quotation) : null,
     actor: { id: user?.id || null, name: user?.name || user?.email || null },
     now: stamp,
@@ -592,4 +594,53 @@ export const INSTALLMENT_BILLING_SCHEMA_MISSING = 'ฐานยังไม่�
 export function installmentBillingSchemaError(error) {
   if (!error || !(error.code === 'PGRST204' || error.code === '42703')) return null;
   return /billing(Date|Event|Rule)/.test(String(error.message || '')) ? INSTALLMENT_BILLING_SCHEMA_MISSING : null;
+}
+
+/**
+ * ทำให้งวดร่างของใบตรงกับแผนใหม่ของใบ (mig 0441 · ปรับแผนงวดก่อนอนุมัติ · มติเจ้าของ 27/11/2026)
+ *
+ * ⭐ เรียกหลังเขียน `sales_orders.paymentPlan` สำเร็จแล้วเท่านั้น — ชุดคำสั่งมาจาก `orderPlanSyncOps` (logic ล้วน · มีเทสต์)
+ *   ลำดับ: ลบงวดที่หายไป → ทับงวดที่คงอยู่ → เพิ่มงวดใหม่ (seq ไม่ชน `sales_order_installments_seq_uk` ของ 0245)
+ * ⚠️ ไม่ใช่ทรานแซกชันเดียว — ล้มกลางทาง = งวดร่างตามแผนไม่ครบ แต่ไม่มีเงินหาย: แถวล็อก (เงิน/เอกสารผูก) ไม่อยู่ในชุดลบ
+ *   (orderPlanChange กันไว้แล้ว) · งวดร่างยังเดินตามแผนของใบสด ๆ ตอนอ่าน (withLiveAmounts) และตอนอนุมัติ freezeInstallments
+ *   ตั้งให้ตรงแผนของใบอีกรอบ ⇒ ผู้เรียกบอกผู้ใช้ให้กดบันทึกซ้ำได้
+ * ⚠️ ใบที่ยังไม่มีงวดเลย (สร้างงวดไม่สำเร็จตอนออกใบ) = ไม่ทำอะไร — ปุ่ม "เริ่มติดตามการชำระ" / การอนุมัติสร้างจากแผนของใบให้เอง
+ */
+export async function syncDraftInstallmentsToPlan(supabase, { order, planRows, user = null }) {
+  const existing = await loadInstallments(supabase, order.id);
+  if (!existing.length) return { rows: [], changed: false };
+  const { updates, inserts, deletes } = orderPlanSyncOps(existing, planRows);
+  if (deletes.length) {
+    const release = await releaseInstallmentRequests(supabase, deletes);
+    if (release.error) {
+      console.error('[syncDraftInstallmentsToPlan] ปล่อยคำร้องออกจากงวดที่ลบไม่สำเร็จ', order.id, release.error?.message || release.error);
+    }
+    const { error } = await supabase.from(TABLE).delete().in('id', deletes);
+    if (error) throw error;
+  }
+  const stamp = new Date().toISOString();
+  for (const { id, patch } of updates) {
+    const { error } = await supabase.from(TABLE).update({ ...patch, updatedAt: stamp }).eq('id', id);
+    if (error) throw error;
+  }
+  if (inserts.length) {
+    const { error } = await supabase.from(TABLE).insert(inserts.map((row) => ({
+      id: genId('SOI'),
+      salesOrderId: order.id,
+      seq: row.seq,
+      label: row.label,
+      percent: row.percent,
+      amount: row.amount,
+      status: 'pending',
+      evidence: [],
+      note: row.note || null,
+      createdById: user?.id || null,
+      createdByName: user?.name || user?.email || null,
+    })));
+    if (error) throw error;
+  }
+  return {
+    rows: await loadInstallments(supabase, order.id),
+    changed: !!(updates.length || inserts.length || deletes.length),
+  };
 }

@@ -9,6 +9,7 @@ import { canSwitchSalesOrderDocLanguage } from '@/lib/sales/salesOrderWorkflow';
 import { dealTypeOf } from '@/lib/salesPlanning';
 import { prepareQuotePrintWindow, showQuotePrintError } from '@/lib/sales/quotePrint';
 import { apiFetch } from "@/lib/apiFetch";
+import { orderPaymentPlan } from '@/lib/sales/salesOrderPaymentPlan';
 import {
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
@@ -139,7 +140,8 @@ export function buildSalesOrderPrintHTML(order, company = null, standard = null,
     vatAmount: order.vatAmount,
     vatRate,
     totalAmount: order.totalAmount,
-    paymentPlan: quotation.paymentPlan,
+    /* ⭐ แผนของใบ (0441 · มติเจ้าของ 27/11 ข้อ 3: กระดาษ SO พิมพ์แผนที่ปรับก่อนอนุมัติ · QT ไม่แตะ) ไม่งั้นแผนของ QT */
+    paymentPlan: orderPaymentPlan(order, quotation),
     paymentTerms: quotation.paymentTerms,
     notes,
     // ภาษาของใบ (mig 0295) — ใบเก่าก่อนคอลัมน์นี้เป็นไทยทั้งหมด

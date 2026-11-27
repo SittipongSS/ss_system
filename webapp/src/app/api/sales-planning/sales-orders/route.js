@@ -17,7 +17,8 @@ import {
 import { isSalesOrderSelfApproval } from '@/lib/sales/salesOrderApprovalOverride';
 import { awaitsFinanceReview } from '@/lib/sales/salesOrderFinanceApproval';
 import { canConfirmPayment } from '@/lib/permissions';
-import { salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
+import { installmentsFromPaymentPlan, salesOrderPaymentCell } from '@/lib/sales/salesOrderPayments';
+import { orderPaymentPlan, orderPlanAuditSummary, orderPlanChange } from '@/lib/sales/salesOrderPaymentPlan';
 import { salesOrderMoneyCell } from '@/lib/sales/salesOrderMoney';
 import { ensureInstallments } from '@/lib/sales/salesOrderInstallmentsStore';
 import {
@@ -312,7 +313,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       //   (กำหนดวางบิลรอบสอง 26/09) — คิดจาก `status` + `dueDate` ที่ loadListInstallments เลือกมาอยู่แล้ว ไม่ต้องอ่านเพิ่ม
       payment: salesOrderPaymentCell(
         installmentsByOrder.get(row.id) || [],
-        quoteById.get(row.quotationId)?.paymentPlan,
+        orderPaymentPlan(row, quoteById.get(row.quotationId)),
         todayIso,
         row.totalAmount,
         // ใบ revised (mig 0376: งวดย้ายไปใบ Rev. ทั้งแถว) = ไม่มีคอลัมน์งวด — ไม่ใช่ "ยังไม่เริ่มติดตาม" จากแผน QT
@@ -324,7 +325,7 @@ export const GET = withUser(async ({ user, supabase }) => {
       money: salesOrderMoneyCell(
         installmentsByOrder.get(row.id) || [],
         row,
-        { plan: quoteById.get(row.quotationId)?.paymentPlan, todayIso },
+        { plan: orderPaymentPlan(row, quoteById.get(row.quotationId)), todayIso },
       ),
       /* ธงเดียวกับที่ป้ายตัวเลขบนเมนูนับ (ม-114) — ติดที่ server ด้วย helper ตัวเดียวกัน
          ไม่ให้จอเดาเอง ไม่งั้นเลขบนเมนูกับลิสต์ที่กรองแล้วไม่ตรงกัน
@@ -538,6 +539,17 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     return fail(BILLING_V4_SCHEMA_MISSING, 503);
   }
 
+  /* ⭐ แผนงวดของใบ (mig 0441 · มติเจ้าของ 27/11/2026 ข้อ 1) — ปรับได้ตั้งแต่หน้าสร้าง · ไม่ส่ง = เดินตามแผนของ QT ตามเดิม
+     · ตรวจ **ก่อนออกเลขใบ** (เลขใบใช้ซ้ำไม่ได้ · 0241) ด้วยตัวตัดสินเดียวกับจอ — เท่า QT = ไม่ตั้งแผน · ต่าง = บังคับเหตุผล (ข้อ 4)
+     · ยอดใบ = ยอดของ QT ต้นทาง (RPC ก๊อปบรรทัดมาทั้งชุด) — หลังออกใบตรวจซ้ำกับยอดจริงของใบอีกที */
+  let planChange = null;
+  if (body.paymentPlan !== undefined && body.paymentPlan !== null) {
+    planChange = orderPlanChange({
+      plan: body.paymentPlan, reason: body.paymentPlanReason, total: quote.totalAmount, quotePlan: quote.paymentPlan, rows: [],
+    });
+    if (planChange.error) return badRequest(planChange.error);
+  }
+
   const orderId = genId('SOR');
   const createArgs = {
     p_quote_id: quotationId,
@@ -584,10 +596,51 @@ export const POST = withUser(async ({ user, supabase, req }) => {
      ⚠️ **ล้มแล้วไม่ล้มทั้งคำขอ** — ใบเกิดแล้วใน RPC ที่ commit ไปแล้ว ตอบ error กลับไป
      เท่ากับผู้ใช้เห็น "สร้างไม่สำเร็จ" ทั้งที่ใบมีอยู่จริง · งวดเป็นของที่ derive จาก QT
      กู้ได้ด้วยปุ่ม "เริ่มติดตามการชำระ" ที่ยังอยู่บนการ์ด และตอนอนุมัติก็สร้างให้อยู่ดี */
+  /* ⭐ แผนงวดของใบ (0441) — เขียนลงใบก่อนตั้งงวด เพื่อให้งวดร่างเกิดตามแผนนี้ตั้งแต่แถวแรก
+     ⚠️ ล้มแล้วไม่ล้มทั้งคำขอ (ใบเกิดแล้ว · เหตุผลเดียวกับงวดข้างล่าง) — ใบเดินตามแผนของ QT ไปก่อน แล้วบอกให้ปรับซ้ำที่หน้าใบ
+     ⚠️ ยอดใบจริงต่างจาก QT (ไม่ควรเกิด) = ตรวจแผนซ้ำกับยอดใบ · ไม่ผ่าน = ไม่ตั้งแผน + บอกเหตุ */
+  let ownPlan = {};
+  let planWarning = null;
+  if (planChange?.plan) {
+    const recheck = Math.round(Number(order.totalAmount) * 100) === Math.round(Number(quote.totalAmount) * 100)
+      ? planChange
+      : orderPlanChange({
+        plan: body.paymentPlan, reason: body.paymentPlanReason, total: order.totalAmount, quotePlan: quote.paymentPlan, rows: [],
+      });
+    if (recheck.error || !recheck.plan) {
+      planWarning = `ออกใบสำเร็จ แต่ตั้งแผนงวดที่ปรับไว้ไม่ได้ (${recheck.error || 'แผนเท่าใบเสนอราคา'}) — ปรับแผนงวดอีกครั้งที่การ์ด "การชำระ" บนใบ`;
+    } else {
+      const stamp = new Date().toISOString();
+      const planPatch = {
+        paymentPlan: recheck.plan,
+        paymentPlanReason: recheck.reason,
+        paymentPlanSetAt: stamp,
+        paymentPlanSetById: user.id || null,
+        paymentPlanSetByName: user.name || user.email || null,
+      };
+      const { error: planError } = await supabase.from('sales_orders').update(planPatch).eq('id', orderId).eq('status', 'draft');
+      if (planError) {
+        console.error('create SO: payment plan failed', orderId, planError);
+        planWarning = 'ออกใบสำเร็จ แต่บันทึกแผนงวดที่ปรับไว้ไม่สำเร็จ — ใบเดินตามแผนของใบเสนอราคา ปรับแผนงวดอีกครั้งที่การ์ด "การชำระ" บนใบ';
+      } else {
+        ownPlan = planPatch;
+        await recordAudit({
+          user, action: 'update', entityType: 'sales_order', entityId: orderId,
+          before: { paymentPlan: null }, after: { paymentPlan: recheck.plan, paymentPlanReason: recheck.reason },
+          summary: orderPlanAuditSummary(order.orderNumber, {
+            beforeCount: installmentsFromPaymentPlan(quote.paymentPlan, order.totalAmount).length,
+            afterCount: recheck.rows.length, reason: recheck.reason,
+          }),
+          request: req,
+        });
+      }
+    }
+  }
+
   let installmentWarning = null;
   try {
     await ensureInstallments(supabase, {
-      order: { ...order, quotation: { paymentPlan: quote.paymentPlan } },
+      order: { ...order, ...ownPlan, quotation: { paymentPlan: quote.paymentPlan } },
       user,
     });
     await applyCreateFormPayments(supabase, {
@@ -598,7 +651,8 @@ export const POST = withUser(async ({ user, supabase, req }) => {
     installmentWarning = 'ออกใบสำเร็จ แต่ตั้งงวดชำระ (กำหนดชำระ · วันวางบิล) ตามที่กรอกไม่สำเร็จ — ตรวจการ์ด "การชำระ" บนใบ';
   }
 
-  return ok(installmentWarning ? { ...order, warning: installmentWarning } : order, 201);
+  const warning = [planWarning, installmentWarning].filter(Boolean).join(' · ') || null;
+  return ok(warning ? { ...order, ...ownPlan, warning } : { ...order, ...ownPlan }, 201);
 }, EXCISE_TASK_SYNC.createdSalesOrder);
 
 /* งวดของใบในหน้ารายการ — `taxInvoiceNo` = ตัวนับ "ใบกำกับ x/y" (mig 0348 · เอาแค่ "มีหรือยัง" ไม่ลากไฟล์มา) ·

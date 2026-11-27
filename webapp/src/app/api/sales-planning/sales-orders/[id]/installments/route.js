@@ -20,6 +20,7 @@ import {
   installmentScheduleAllowed, installmentStale, installmentStartBlock, openingCoverageEnd, pipelineInstallmentLock,
   withLiveAmounts,
 } from '@/lib/sales/salesOrderPayments';
+import { orderPaymentPlan } from '@/lib/sales/salesOrderPaymentPlan';
 import {
   carryInstallments, confirmationBorrowable, ensureInstallments, freezeInstallments, installmentBillingSchemaError,
   installmentRefundSchemaError, loadInstallment, loadInstallments, replanInstallments, updateInstallment,
@@ -69,7 +70,7 @@ const isDate = (v) => typeof v === 'string' && ISO_DATE.test(v) && !Number.isNaN
       และงวดของใบนี้ยังไม่หยุดยอดจน AE Sup อนุมัติ ⇒ ตัวทับจะเห็นทุกแถวเป็นร่าง (ตัวเดียวกับที่ loadOrder ของหน้าใบข้าม) */
 const installmentsForScreen = (order, rows) => (isHistoricalOrder(order)
   ? rows
-  : withLiveAmounts(rows, order.quotation?.paymentPlan, order.totalAmount));
+  : withLiveAmounts(rows, orderPaymentPlan(order), order.totalAmount));
 
 /* งวดสดหลัง RPC ปรับแผน/ยกเงินเข้าคืน (สถานะที่ COMMIT จริง — รวมงวดที่ trigger แบบเลื่อนของ 0412 นับให้เอง · มติข้อ 10)
    ⚠️ อ่านพลาด = null (ไม่โยน): งานลงฐานแล้ว — audit ต้องลงต่อด้วยภาพของ RPC ไม่ใช่หลุดไป catch นอกแล้วตอบ 500 โดยไม่มีประวัติ */

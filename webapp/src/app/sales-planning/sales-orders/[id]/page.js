@@ -135,6 +135,7 @@ import { salesOrderWorkTrack } from "@/lib/sales/salesOrderWorkTrack";
 import {
   cancelledMoneyRestoreBlock, installmentReportDoneMessage, installmentVoid, paymentRollup, previewInstallments, salesOrderMoneyOutcome,
 } from "@/lib/sales/salesOrderPayments";
+import { orderPaymentPlan } from "@/lib/sales/salesOrderPaymentPlan";
 /* ⭐ นับ Actual เต็ม / รายงวด / ไม่นับ (mig 0412 + 0439 · มติเจ้าของ 26/10 + 20/11/2026 · docs/so-installment-actual.md) — กติกาทั้งหมดอยู่ที่ไฟล์นี้ไฟล์เดียว
    (สิทธิ์เลือกแบบ · งวดที่นับทันที · ส่วนแบ่งก่อน VAT คู่กับ SQL · เหตุผลของ "ไม่นับ") · หน้านี้แค่วาดตัวเลือก/ผลลัพธ์ แล้วส่ง `actualMode`
    (+ `actualReason` ของ "ไม่นับ") ไปกับการอนุมัติ */
@@ -1316,6 +1317,35 @@ export default function SalesOrderDetailPage() {
     }
   }
 
+  /* ── ปรับแผนงวดก่อนอนุมัติ (mig 0441 · มติเจ้าของ 27/11/2026) — ใบร่าง/ถูกตีกลับ · PATCH ของใบ ─────────────────────
+     ⭐ สำเร็จ = ดึงใบสด (`refreshOrder` — แผนของใบ + งวดร่างที่ route ตั้งตามแผนใหม่ มาในก้อนเดียว · ไม่ทับฟอร์มที่พิมพ์ค้าง)
+     ⚠️ ไม่ลองซ้ำเอง (apiFetch ไม่ retry PATCH) */
+  async function runPaymentPlanEdit({ plan, reason }) {
+    setBusy("payment-plan");
+    setError("");
+    setToast(null);
+    try {
+      const res = await apiFetch(`/api/sales-planning/sales-orders/${id}`, {
+        method: "PATCH",
+        json: { action: "set_payment_plan", paymentPlan: plan, reason },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 409) refreshOrder();
+        setError(data.error || "ปรับแผนงวดไม่สำเร็จ");
+        return false;
+      }
+      await refreshOrder();
+      setToast(data.warning ? { kind: "warning", msg: data.warning } : { kind: "success", msg: data.message || "ปรับแผนงวดแล้ว" });
+      return true;
+    } catch (planError) {
+      setError(planError.message || "ปรับแผนงวดไม่สำเร็จ");
+      return false;
+    } finally {
+      setBusy("");
+    }
+  }
+
   /* ── ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378 · มติ D4) — คำสั่งของทั้งใบ (ใบนี้ = ใบปลายทาง · ไม่มี installmentId) ──────────
      ⭐ แผงประกอบ body ครบแล้ว (ใบต้นทาง + งวดที่เลือก + expected ของแถวที่ตาเห็นตอนเปิดโมดัล + เหตุผล) — ที่นี่แค่ยิงแล้วบอกผล
      ⭐ 409 (มีคนแก้งวด/ยกไปก่อนจากอีกหน้าต่าง) = ดึงใบสด ⇒ แผงเห็นว่า base เก่าแล้วบอกให้เปิดโมดัลใหม่
@@ -1453,7 +1483,7 @@ export default function SalesOrderDetailPage() {
     /* จำนวนงวดหลังหยุดยอด — `installmentCountAtFreeze` ตัวเดียวกับที่ route ตัดสินสิทธิ์ (คู่กับทุกกิ่งของ freezeInstallments)
        🪤 นับ `installments.length` ตรง ๆ ไม่ได้: แถวร่างที่จำนวนไม่ตรงแผนถูกลบแล้วตั้งใหม่ตามแผนตอนอนุมัติ ⇒ จอบอก "เลือกได้"
           แต่ route ตอบ 409 (หรือกลับกัน) · ตั้งใหม่ = ภาพก่อนกดใช้แผนของ QT ชุดที่การอนุมัติจะตั้งให้ */
-    const plan = order?.quotation?.paymentPlan;
+    const plan = orderPaymentPlan(order); // แผนของใบ (0441) ถ้ามี ไม่งั้นแผนของ QT — ชุดเดียวกับที่ freezeInstallments ตั้งให้
     const frozenCount = installmentCountAtFreeze(installments, { plan, totalAmount: order?.totalAmount });
     const planRows = installments.length && frozenCount === installments.length
       ? installments
@@ -3321,6 +3351,9 @@ export default function SalesOrderDetailPage() {
             onAction={runInstallmentAction}
             onReplan={runInstallmentReplan}
             onCarry={runInstallmentCarry}
+            /* ปรับแผนงวดก่อนอนุมัติ (mig 0441) — ใบร่าง/ตีกลับ · สิทธิ์ = canEdit ของ server (มติ 27/11 ข้อ 2) */
+            onPlanEdit={runPaymentPlanEdit}
+            canEditPlan={canEdit}
             /* โหมดตั้งวันบอกว่ามีร่างค้าง — ออกจากหน้า/สลับแท็บถามก่อน (useUnsavedChanges + selectTab) */
             onDatesDirty={setDatesDirty}
             /* กลับจากแท็บทะเบียนลูกค้า (ลิงก์ "ตั้งกำหนดวางบิล" · มติ 28/09) = ดึงใบสด — `refreshOrder` ไม่แตะฟอร์มที่พิมพ์ค้าง */

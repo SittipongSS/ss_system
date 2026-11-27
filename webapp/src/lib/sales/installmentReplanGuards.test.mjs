@@ -85,7 +85,7 @@ test('แผง: ปุ่ม "ปรับแผนงวด" = GatedAction ใ
   assert.match(actions, /onClick=\{openReplan\}/);
   assert.match(actions, /ปรับแผนงวด/);
   assert.match(actions, /label=\{REPLANNED_BADGE\}/, 'ป้าย D5 อยู่หัวการ์ด — คนที่ไม่มีปุ่มก็เห็น');
-  assert.match(panel, /const replanned = !historical && saved\.length > 0 && saved\.every\(\(r\) => r\.frozenAt\)\s+&& installmentsReplanned\(saved, order\?\.quotation\?\.paymentPlan, order\?\.totalAmount\);/);
+  assert.match(panel, /const replanned = !historical && saved\.length > 0 && saved\.every\(\(r\) => r\.frozenAt\)\s+&& installmentsReplanned\(saved, orderPaymentPlan\(order\), order\?\.totalAmount\);/);
 });
 
 test('แผง: โมดัลปรับแผนอยู่ในแผง · ตัวแก้คือ QuotationInstallments โหมด replan · ยืนยันผ่าน paymentPlanEditPrompt · ส่ง expected ของแถวที่ตาเห็น', () => {
@@ -139,7 +139,7 @@ test('ทะเบียนบัญชี: อ่านแผนของ QT �
   const route = code(LEDGER_ROUTE);
   assert.match(route, /\.from\('quotations'\)\.select\('id, "quoteNumber", "paymentPlan", status'\)/); // status = ล็อกของร่างที่ QT ตาย (ledgerRowLock)
   const load = slice(route, 'async function loadLedger(', '\nconst listParam');
-  assert.match(load, /stampOrderReplanned\(ledger, planByQuotation\);\s*return ledger;/,
+  assert.match(load, /stampOrderReplanned\(ledger, planByQuotation, planByOrder\);\s*return ledger;/,
     'ค่าระดับใบต้องประทับจากชุดก่อนกรอง (ใน loadLedger — ตัวกรองของ GET ทำงานทีหลัง)');
   const page = code(LEDGER_PAGE);
   assert.match(page, /group\.replanned \? <StatusBadge size="sm" tone="info" label=\{REPLANNED_BADGE\}/);
