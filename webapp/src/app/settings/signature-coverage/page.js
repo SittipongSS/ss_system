@@ -8,6 +8,7 @@ import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 // มีไว้เพื่อ "รู้ว่าต้องตามใคร" ก่อนเปิดใช้จริง ไม่มีปุ่มแก้ให้โดยตั้งใจ
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { Signature, AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCan, useRole } from "@/lib/roleContext";
 import { ROLE_LABELS } from "@/lib/permissions";
@@ -53,7 +54,7 @@ export default function SignatureCoveragePage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useStickyState("filter", "all");
 
   const load = useCallback(async (signal) => {
     setLoading(true);
@@ -96,7 +97,7 @@ export default function SignatureCoveragePage() {
     pendingQuotations: (r) => r.pendingQuotations,
     submittableDocs: (r) => r.submittableDocs || 0,
     hasSignature: (r) => (r.hasSignature ? 1 : 0),
-  });
+  }, null, { stickyKey: "table" });
 
   const gate = accessState(role, canView);
   if (gate === "loading") return <SkeletonRows rows={6} />;

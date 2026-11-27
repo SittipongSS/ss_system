@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { ArrowRight, CalendarClock, CheckCircle2, ClipboardCheck, Layers, Link2, Pencil } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
@@ -53,7 +54,8 @@ export default function ForecastReviewPage() {
   const [rows, setRows] = useState([]);
   const [counts, setCounts] = useState({ total: 0, mismatch: 0, sync: 0, multiple: 0, missingDates: 0 });
   const [missingDates, setMissingDates] = useState([]);
-  const [kind, setKind] = useState("mismatch");
+  // แท็บกรองชนิดงาน จำไว้ (กดเข้าดีลแล้วกดกลับ ได้แท็บเดิม)
+  const [kind, setKind] = useStickyState("kind", "mismatch");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   /* โหลดรายการไม่สำเร็จ แยกจาก `error` (กดรับยอด/คงยอดพลาด) — ของแรกอยู่ในเนื้อแผงพร้อมปุ่ม

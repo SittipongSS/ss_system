@@ -13,7 +13,7 @@
 // ⭐ **ทางสร้างมีหลายทางโดยตั้งใจ** — หน้าดีล · หน้าใบเสนอราคา · หน้าโครงการ ·
 //    หัวทะเบียนนี้ · ทุกทางเรียก `ContractCreateModal` ตัวเดียวกัน ต่างกันแค่ว่ารู้ดีล
 //    มาแล้วหรือยัง (prop `dealId` / `dealIds`) ⇒ ไม่มีฟอร์มชุดที่สองให้ดูแล
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,10 +65,16 @@ export default function ContractsPage() {
      · ของเดิมสองแบบนี้หน้าตาเหมือนกันทั้งตาราง แยกไม่ออกจนต้องเปิดทีละใบ */
   const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", EMPTY);
   // ?waiting=1 มาจากลิงก์บนหน้าอื่น (การ์ดคิว) — ตัวกรองที่ "ติดมาจากลิงก์" ต้องมีปุ่มล้าง
-  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(params.get("waiting") === "1");
-  /* ⭐ "ค้างเกิน n วัน" (ตรวจตัวเลข L2) — ตั้งจากการ์ดบนแถบ (หรือ ?late=1) · ไม่จำข้ามการเปิดหน้า (ทรงเดียวกับ "รอฉันลงมือ")
+  /* ⭐ ธงสองตัวนี้จำไว้ด้วย useStickyState (กดเข้าใบแล้วกลับมาได้ค่าเดิม) · มีพารามิเตอร์ใน URL = ผู้ใช้เพิ่งกดลิงก์มา
+     ⇒ URL ชนะค่าที่จำไว้ (effect ประกาศหลังฮุก ⇒ วิ่งหลังตัวคืนค่า) · เฝ้าแค่พารามิเตอร์ ไม่เฝ้าธง — ผู้ใช้ยังกดล้างได้ */
+  const waitingParam = params.get("waiting") === "1";
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useStickyState("waitingOnMeOnly", waitingParam);
+  useEffect(() => { if (waitingParam) setWaitingOnMeOnly(true); }, [waitingParam, setWaitingOnMeOnly]);
+  /* ⭐ "ค้างเกิน n วัน" (ตรวจตัวเลข L2) — ตั้งจากการ์ดบนแถบ (หรือ ?late=1) · ทรงเดียวกับ "รอฉันลงมือ"
      ตัวตัดสินคือ `isSignatureLate` ตัวเดียวกับเลขบนการ์ด · ติดอยู่ = มีชิป "กรอง: … ×" ให้ถอด */
-  const [lateOnly, setLateOnly] = useState(params.get("late") === "1");
+  const lateParam = params.get("late") === "1";
+  const [lateOnly, setLateOnly] = useStickyState("lateOnly", lateParam);
+  useEffect(() => { if (lateParam) setLateOnly(true); }, [lateParam, setLateOnly]);
   /* ⭐ เวลาอ้างอิงเดียวต่อการโหลด (ตรวจตัวเลข L2) — การ์ด · ตาราง · รางอ่านนาฬิกาตัวเดียวกัน
      🐞 เดิมการ์ดใช้เวลาตอนโหลด ส่วนตารางอ่าน `new Date()` ใหม่ทุกครั้งที่กด ⇒ ใบที่ข้ามเกณฑ์ระหว่างเปิดหน้าค้างไว้
         ขึ้นในตาราง (และรางแดง) แต่การ์ดไม่นับ · โหลดใหม่ = ขยับเวลาอ้างอิงไปพร้อมแถว */
@@ -107,6 +113,7 @@ export default function ContractsPage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(filtered, {
     resetKey: `${query}|${statusFilter.join()}|${kindFilter.join()}|${sourceFilter.join()}|${waitingOnMeOnly}|${lateOnly}`,
+    stickyKey: "list",
   });
 
   const summary = useMemo(() => ({
@@ -134,10 +141,18 @@ export default function ContractsPage() {
      ส่วนต่อสัญญาคือ *ไซต์* ที่คำนวณจากวันหมดของรอบขาย (`service_zone_terms`)
      ⇒ ยุบเป็นตารางเดียวไม่ได้: ไซต์ที่ยังไม่เคยผูกสัญญาก็ต้องขึ้นแท็บต่อสัญญา
      ⚠️ กติกา UI: สลับ "หน้า/มุมมองคนละชุดข้อมูล" = Tabs · กรองในชุดเดิม = segmented
-     ⚠️ แท็บอยู่ใน URL (?tab=) เพื่อให้กระดิ่งลิงก์ตรงเข้าแท็บได้ และปุ่ม back ทำงาน */
-  const urlTab = params.get("tab") === "renewals" ? "renewals" : "contracts";
-  const [tab, setTab] = useState(urlTab);
-  useEffect(() => { setTab(urlTab); }, [urlTab]);
+     ⚠️ แท็บอยู่ใน URL (?tab=) เพื่อให้กระดิ่งลิงก์ตรงเข้าแท็บได้ และปุ่ม back ทำงาน
+     ⭐ จำแท็บไว้ด้วย useStickyState — ปุ่ม "← กลับ" ของหน้าใบพามาที่ URL เปล่า (ไม่มี ?tab=) ⇒ ไม่จำ = ตกแท็บทะเบียนทุกครั้ง
+        URL ชนะเมื่อมี ?tab= หรือเมื่อ ?tab= เปลี่ยนระหว่างเปิดหน้าอยู่ (กดเมนู/กระดิ่ง) · URL เปล่าตอนเข้า = ใช้ค่าที่จำไว้ */
+  const tabParam = params.get("tab");
+  const urlTab = tabParam === "renewals" ? "renewals" : "contracts";
+  const [tab, setTab] = useStickyState("tab", urlTab);
+  const tabParamRef = useRef(tabParam);
+  useEffect(() => {
+    const changed = tabParamRef.current !== tabParam;
+    tabParamRef.current = tabParam;
+    if (tabParam !== null || changed) setTab(urlTab);
+  }, [tabParam, urlTab, setTab]);
   /* ⭐ โหลดข้อมูลต่อสัญญาที่หน้านี้ **ตั้งแต่เปิดทะเบียน** ไม่ใช่ตอนกดเข้าแท็บ:
        1. เลขบนหัวแท็บ ("ต่อสัญญา 3") ต้องรู้ก่อนกด ไม่งั้นไม่มีใครรู้ว่ามีงานค้าง
        🪦 ข้อ 2 เดิม "กวาดกระดิ่งใน GET ตัวนี้" — ย้ายไป cron สรุปประจำวันแล้ว (งวด 3 วันกำหนด 24/11/2026) · GET ไม่เขียนข้อมูล

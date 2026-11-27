@@ -12,6 +12,7 @@ import SortControl from "@/components/ui/SortControl";
 // (PATCH/POST/DELETE /api/pm/project-tasks) — สิทธิ์+คำนวณวัน+สถานะอัตโนมัติฝั่ง server.
 // แก้ dependency (ขึ้นกับ) ยังทำที่หน้าโครงการ (แสดงเป็นชิปอย่างเดียวที่นี่).
 import { useEffect, useMemo, useState } from "react";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { AlertTriangle, ArrowDown, ArrowUp, Calendar, ChartGantt, Check, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, MessageCircleQuestion, Clock, Flag, Pencil, Plus, Trash2, TrendingUp, User } from "lucide-react";
 import FilterPopover from "@/components/ui/FilterPopover";
 import ReadableText from "@/components/ui/ReadableText";
@@ -172,7 +173,8 @@ export default function TimelineWorkspace({
   const [addAfterId, setAddAfterId] = useState(null); // แทรกหลังแถวนี้ (null = ต่อท้าย)
   const [addOpen, setAddOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [tableSort, setTableSort] = useState("step");
+  /* ตัวกรอง/การเรียง/เฟสที่ย่อ จำไว้ (กดเข้างาน/คำร้องแล้วกดกลับ ได้ที่เดิม) · คีย์ขึ้นต้น "timeline." — แผงนี้อยู่ใต้ pathname ของหน้าดีล */
+  const [tableSort, setTableSort] = useStickyState("timeline.sort", "step");
   // หมุดคำร้อง → ขั้นตอน · จับคู่ด้วย stepKey ไม่ใช่ id ของ task เพราะ resync
   // แม่แบบลบ/สร้าง task ใหม่ (ดู lib/pm/schedule.js) ผูก id ตรง ๆ แล้วหมุดหลุดเงียบ
   // ⚠️ ไม่ส่งขอบเขตเข้าไปแล้ว — การจับคู่หมุดกับขั้นใช้ **ดีลของขั้นนั้น** (ดู
@@ -183,7 +185,7 @@ export default function TimelineWorkspace({
   // เกี่ยวกับทุกคน จึงติดมาด้วยเสมอ; ใช้กับมุมมอง list/table (เอกสารโชว์ครบทุกฝ่าย)
   const myDept = useDepartment();
   /* ⭐ กติกาการกรองอยู่ที่ `timelineStepMatches` ตัวเดียว — หน้าโครงการนับเลขบนตัวเลือกดีลด้วยตัวเดียวกัน */
-  const [ownStepFilter, setOwnStepFilter] = useState(EMPTY_STEP_FILTER);
+  const [ownStepFilter, setOwnStepFilter] = useStickyState("timeline.stepFilter", EMPTY_STEP_FILTER);
   const stepFilter = controlledStepFilter || ownStepFilter;
   const setStepFilter = (next) => {
     if (!controlledStepFilter) setOwnStepFilter(next);
@@ -195,7 +197,7 @@ export default function TimelineWorkspace({
   const setDeptFilter = (depts) => setStepFilter({ ...stepFilter, depts });
   const setOverdueFilter = (overdue) => setStepFilter({ ...stepFilter, overdue });
   const stepMatches = (task) => timelineStepMatches(task, stepFilter, undefined, { silenced: overdueSilenced });
-  const [collapsedPhases, setCollapsedPhases] = useState(new Set());
+  const [collapsedPhases, setCollapsedPhases] = useStickySet("timeline.collapsedPhases");
   const [drafts, setDrafts] = useState({});
   // ปฏิทินวันหยุดจริงจาก DB ต้องเข้า module-global ของ dateHelpers ก่อนพรีวิว recalc —
   // ไม่งั้นฝั่ง client คิดด้วย THAI_HOLIDAYS (hardcode) แล้วพรีวิว ≠ ผลที่ server บันทึกจริง.

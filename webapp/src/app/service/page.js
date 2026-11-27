@@ -41,6 +41,7 @@ import styles from "./page.module.css";
 import { businessDate } from "@/lib/businessDate";
 import { fmtDayMonth, naText, NA } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import useStickyState from "@/lib/ui/useStickyState";
 
 /* ── นัดของหน้านี้มาจาก API ของรายการงาน (`/api/service/visits/queue?view=load`) ไม่ใช่ช่วงวัน (ตรวจตัวเลข 20/10 · M24g) ──
    🐞 เดิมดึง `/api/service/visits?from=วันนี้-120&to=วันนี้+6` ⇒ การ์ด "นัดค้าง N" ไม่นับนัดที่ค้างเกิน 120 วัน แต่แท็บ
@@ -141,7 +142,8 @@ export default function ServiceOverviewPage() {
   const today = useMemo(() => todayByTechnician(windowVisits, todayIso), [windowVisits, todayIso]);
   /* แผงไซต์ที่น้ำหอมกำลังจะหมด = ปลายทางของการ์ด "เครื่องที่ต้องเข้าเติม" — การ์ดกดแล้วเปิดแผงนี้ครบทุกไซต์
      (H14 ตรวจตัวกรอง 08/10 · ดู `refillWatchView`) · ตั้งต้นย่อเหลือ WATCHLIST_LIMIT */
-  const [watchAll, setWatchAll] = useState(false);
+  // กาง/ย่อจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — กดเข้าไซต์/นัดแล้วกลับมาต้องได้แผงที่กางค้างไว้
+  const [watchAll, setWatchAll] = useStickyState("watchAll", false);
   const watch = useMemo(
     () => refillWatchView(sites, { all: watchAll, limit: WATCHLIST_LIMIT }),
     [sites, watchAll],
@@ -149,11 +151,11 @@ export default function ServiceOverviewPage() {
   const openWatchlist = useCallback(() => {
     setWatchAll(true);
     document.getElementById(WATCHLIST_ID)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
+  }, [setWatchAll]);
 
   /* แผง "ต้องจัดการก่อน" ตั้งต้นย่อเหลือ ATTENTION_LIMIT · ปุ่ม "ดูทั้งหมด" ขยายในแผงเดียวกัน (ตรวจตัวเลข L8 · 26/10)
      🐞 เดิมตัดเหลือ 8 แล้วชี้ "ที่เหลืออยู่ในตารางเข้าบริการ" — ชื่อเก่าของหน้าจัดคิว ซึ่งไม่มีตัวกรองชุดนี้ ⇒ หา N ที่เหลือไม่เจอ */
-  const [attentionAll, setAttentionAll] = useState(false);
+  const [attentionAll, setAttentionAll] = useStickyState("attentionAll", false);
   const attentionShown = useMemo(
     () => attentionView(attention, { all: attentionAll, limit: ATTENTION_LIMIT }),
     [attention, attentionAll],

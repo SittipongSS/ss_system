@@ -1,7 +1,8 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import Button from "@/components/ui/Button";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { ChevronRight, TriangleAlert } from "lucide-react";
 import { matchReport } from "@/lib/sahamit/dashboard";
@@ -35,7 +36,7 @@ export default function PoVsFcView({ rounds, pos, coverages = [], products, unit
   const isValue = unit === "value";
   const rep = useMemo(() => matchReport(rounds, pos, coverages, products, { years }), [rounds, pos, coverages, products, years]);
   const prodIdx = useMemo(() => indexProducts(products), [products]);
-  const [open, setOpen] = useState(null); // fgCode ที่กางอยู่
+  const [open, setOpen] = useStickyState("poVsFc.open", null); // fgCode ที่กางอยู่
 
   if (!rep.rows.length) {
     return <div className="glass-panel empty-state" style={{ padding: 40 }}>ไม่มีข้อมูล FC/PO ตามตัวกรองที่เลือก</div>;

@@ -50,6 +50,7 @@ import {
   dealRequestsLinkLabel, filterByDealRequestsLink, readDealRequestsLink, requestsQueueHref,
 } from "@/lib/requests/dealLink";
 import useThaiToday from "@/lib/ui/useThaiToday";
+import useStickyState from "@/lib/ui/useStickyState";
 
 // คิวมีได้ฝ่ายละแท็บ — ปกติคนหนึ่งอยู่ฝ่ายเดียวจึงเห็นแท็บเดียว แต่ admin ตอบแทน
 // ได้ทั้งสองฝ่าย (break-glass) ต้องเห็นครบทั้งคู่ ไม่ใช่เห็นแต่ RD แล้วคิว PC หายไปเฉย ๆ
@@ -122,12 +123,14 @@ export default function RequestsPage() {
      ⚠️ มุมมองนี้ **ไม่ใช่แท็บที่สี่** (R-4) — เลขบนแท็บ/ใบตีกลับในแท็บ "ที่ฉันเปิด" เท่าเดิม · กดแท็บ/ขอบเขต/ชิป × = ออก
      ⚠️ ถอด `count` ออกจาก URL ทันทีหลังตั้งค่า (แพตเทิร์น M9 ของงานของฉัน) — กดป้ายซ้ำขณะอยู่หน้านี้ต้องลงใหม่ทุกครั้ง */
   const countParam = searchParams.get("count") || "";
-  const [navLanding, setNavLanding] = useState(() => countParam === REQUESTS_NAV_COUNT_PARAM);
+  /* จำไว้ (useStickyState) — ลงจากป้ายแล้วเปิดใบ กดกลับต้องได้มุมมองลงจอดเดิม (`?count=` ถูกถอดจาก URL ไปแล้ว) */
+  const [navLanding, setNavLanding] = useStickyState("navLanding", countParam === REQUESTS_NAV_COUNT_PARAM);
   /* ลงจอดครั้งที่เท่าไร — ใส่ใน `key` ของแผงรายการ ⇒ **ทุกครั้งที่กดป้าย** แผงเริ่มหน้า 1 (รีวิว L20 · 26/10)
      🐞 ไม่มีตัวนี้: อยู่แท็บ "รอฉันตอบ" หน้า 2 ไม่มีตัวกรอง → กดป้าย = คีย์รีเซ็ตหน้าของแผง (ขอบเขต/คอลัมน์/คำค้น/ตัวกรอง)
         เท่าเดิมทุกตัว ⇒ ลงหน้า 2 ของมุมมองลงจอด · ใบเร่งที่สุด (รวมใบตีกลับที่มุมมองนี้มีไว้โชว์) อยู่หน้า 1 มองไม่เห็น
         · กดป้ายซ้ำขณะอยู่ในมุมมองแล้วก็เหมือนกัน (`navLanding` true อยู่แล้ว) จึงต้องนับรอบ ไม่ใช่ใช้ธงอย่างเดียว */
-  const [navLandingSeq, setNavLandingSeq] = useState(0);
+  /* จำไว้คู่กับ `navLanding` — เป็นส่วนหนึ่งของชื่อที่แผงจำหน้าที่อยู่ (`pagerKey`) ⇒ กลับจากใบได้หน้าเดิม · กดป้ายรอบใหม่ได้หน้า 1 */
+  const [navLandingSeq, setNavLandingSeq] = useStickyState("navLandingSeq", 0);
   // ⚠️ ลิงก์เก่ายังชี้ `queue-RD` / `queue` อยู่หลายที่ (การ์ดคำร้องบนหน้าดีล ·
   // แจ้งเตือน · /go/DR-…) — เด้งเข้าแท็บที่กลืนมันไป ไม่ใช่ตกลง "ที่ฉันเปิด" เงียบ ๆ
   const wanted = String(urlTab || "").startsWith("queue") ? "todo" : urlTab;
@@ -137,7 +140,15 @@ export default function RequestsPage() {
      ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้ */
   const inHistory = tab === "history";
   const { setSort } = board;
-  useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
+  /* ⭐ แบบเรียงจำไว้คู่กับ "ฝั่งไหน" (คิว/ประวัติ) — กดเข้าใบแล้วกลับมาฝั่งเดิม = คงแบบเรียงที่ผู้ใช้เลือก (คำขอเจ้าของ 27/11)
+     · ข้ามฝั่ง (กดแท็บ · ปุ่มกลับของใบที่ปิดแล้วพามา `?tab=history`) = แบบเรียงตั้งต้นของฝั่งนั้น
+     🐞 เดิมตั้งทุกครั้งที่เมานต์ ⇒ ทับแบบเรียงที่ `useQueueBoard` เพิ่งคืนค่า · ตั้งต้น `false` = แบบเรียงตั้งต้นของฮุกคือฝั่งคิว */
+  const [sortInHistory, setSortInHistory, , sortSideHydrated] = useStickyState("sortInHistory", false);
+  useEffect(() => {
+    if (!sortSideHydrated || sortInHistory === inHistory) return;
+    setSortInHistory(inHistory);
+    setSort(inHistory ? "closed" : "urgency");
+  }, [sortSideHydrated, sortInHistory, inHistory, setSort, setSortInHistory]);
 
   /* ⚠️ **สลับแท็บแล้วล้างตัวกรองตัวเลขทุกครั้ง** (ตรวจตัวเลข 20/10/2026 M4 · ขยายจาก ม-145 ที่ล้างเฉพาะตอน
      เข้าประวัติ) — แถบในแท็บ "รอฉันตอบ" ไม่มีกล่อง "ตีกลับ" · แท็บ "ที่ฉันเปิด" ไม่มีกล่อง "ยังไม่ได้ให้วัน" ·
@@ -181,7 +192,8 @@ export default function RequestsPage() {
      ของดีลใบหนึ่งเปิดโดยใครก็ได้ในทีม (AC เปิดแทน AE เป็นเรื่องปกติ) แต่ "ของฉัน"
      ฝั่ง API = `requestedById` ของเราเท่านั้น ⇒ กด "ดูคำร้อง" จากหน้าดีลแล้วเจอ
      รายการว่างใต้หัวข้อ "คำร้องของดีล … เท่านั้น" ทั้งที่ดีลมีใบค้างอยู่ */
-  const [scope, setScope] = useState(() => {
+  /* ⭐ จำไว้ (useStickyState · คำขอเจ้าของ 27/11) — ค่าตั้งต้นจากลิงก์ยังชนะตอนเข้าใหม่ (เข้าจากเมนู/ลิงก์ = ค่าตั้งต้นเสมอ) */
+  const [scope, setScope] = useStickyState("scope", (() => {
     // ใช้ `wanted` ไม่ใช่ `urlTab` ดิบ ⇒ ลิงก์เก่า (`?tab=queue-RD`) ที่ถูกแปลงเป็น
     // "todo" ได้ขอบเขตที่ทำให้แท็บนั้นมีผลด้วยเหมือนกัน
     /* ⭐ **`?tab=history` ไม่บีบขอบเขตแล้ว** (ม-145) — ทีม/ทั้งหมดมีประวัติของตัวเอง
@@ -194,7 +206,7 @@ export default function RequestsPage() {
     const allowed = REQUEST_SCOPES.filter((s) => canUseScope(me, s));
     if (dealLink) return allowed[allowed.length - 1] || "mine";
     return defaultScope(allowed, me, "requests") || "mine";
-  });
+  })());
   const [activeScope, setActiveScope] = useState("mine");
 
   // กันคำตอบมาผิดลำดับเมื่อตัวกรองขยับเร็วกว่าที่ API ตอบ (ดู lib/ui/latestRun)
@@ -251,7 +263,7 @@ export default function RequestsPage() {
     () => filterByDealRequestsLink(scopedRequests, dealLink),
     [scopedRequests, dealLink],
   );
-  const [deptFilter, setDeptFilter] = useState("all");
+  const [deptFilter, setDeptFilter] = useStickyState("deptFilter", "all");
   /* ⭐ ลงจากป้ายเมนู (L20) — ตั้ง **ทุกชั้นที่ตัดแถว** จาก `requestsNavLanding` แล้วถอด `?count=` (และลิงก์ดีล/แท็บ) ออกจาก URL
      ⇒ แถว = `waitingOnMeRows` ของชุด "ของฉัน" ทั้งก้อน = เลขบนป้าย · ตัวสลับฝ่าย/คำค้นที่กดต่อจากนี้แคบลงได้ตามปกติ */
   useEffect(() => {
@@ -268,7 +280,7 @@ export default function RequestsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countParam]);
   // ลิงก์ที่ระบุแท็บ/ดีลมาเองระหว่างอยู่ในมุมมองลงจอด (แจ้งเตือน · หน้าดีล) = ออกจากมุมมองนั้น
-  useEffect(() => { if (urlTab || dealLink) setNavLanding(false); }, [urlTab, dealLink]);
+  useEffect(() => { if (urlTab || dealLink) setNavLanding(false); }, [urlTab, dealLink, setNavLanding]);
   const requests = useMemo(
     () => (deptFilter === "all" ? linkedRequests : linkedRequests.filter((r) => r.dept === deptFilter)),
     [linkedRequests, deptFilter],
@@ -622,6 +634,7 @@ export default function RequestsPage() {
         /* เข้า/ออกมุมมองลงจอด หรือกดป้ายซ้ำ = แผงใหม่ (หน้า 1 · แถวต่อหน้ากลับ 25) — คีย์รีเซ็ตหน้าในแผงไม่รู้จักมุมมองนี้ (L20)
            ⚠️ state อื่นของแผง (มุมมอง/เรียง/จัดกลุ่ม/พับกลุ่ม) อยู่ใน `board` ของหน้านี้ ไม่หายตอนแผงเมานต์ใหม่ */
         key={navLanding ? `nav-landing-${navLandingSeq}` : "queue"}
+        pagerKey={navLanding ? `nav-landing-${navLandingSeq}` : null}
         scope={tab === "mine" ? "mine" : "queue"} dept={null}
         /* หัวแผงรายการกลับมา (มติผู้ใช้ 2026-09-15 · D1 — แทนมติถอดหัวการ์ด 2026-09-07) */
         icon={<MessageCircleQuestion size={17} aria-hidden="true" />}

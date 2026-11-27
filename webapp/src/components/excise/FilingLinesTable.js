@@ -6,13 +6,13 @@
       (สูตร = สรรพสามิต 8% ของราคาถอด VAT + ท้องถิ่น 10% ของสรรพสามิต ปัดทีละขั้น · มติ 26/11 · ใบเก่าที่ตรงสูตรเดิมไม่เตือน)
    ⚠️ ข้อมูลรายการมาจาก `/api/tax/orders/table` ติดกับแถวงานด้วยคีย์ — แถวที่ยังไม่มีรายการ (กำลังมา · โหลดไม่ขึ้น) บอกเหตุในกลุ่ม
    ⭐ ย่อ/ขยาย (เจ้าของ 04/11): หัวเดือน = ย่อทั้งเดือน + ปุ่ม "ย่อทุกงาน/ขยายทุกงาน" ของเดือนนั้น · หัวงาน = ย่อรายการของงานนั้น
-      — ปุ่มลูกศรแยกจากลิงก์เลข SO (ปุ่มซ้อนลิงก์ไม่ได้) · ป้ายสถานะ/ด่านอยู่บนหัวเสมอ · จำในจอเท่านั้น (เปิดหน้าใหม่ = กางหมด)
+      — ปุ่มลูกศรแยกจากลิงก์เลข SO (ปุ่มซ้อนลิงก์ไม่ได้) · ป้ายสถานะ/ด่านอยู่บนหัวเสมอ · จำเมื่อกดเข้างานแล้วกลับมา (เข้าจากเมนู = กางหมด)
    ⭐ ยอดรวม (เจ้าของ 04/11): หัวเดือน = "n งาน · n รายการ · ภาษีรวม ฿…" ของแถวที่ผ่านตัวกรอง (ยอดที่ RA ยื่นชำระเดือนนั้น) ·
       หัวงาน = "n รายการ · ภาษีรวม ฿…" โชว์ตลอด (ไม่ใช่เฉพาะตอนย่อ) · ไม่รวมจำนวนชิ้น (หลายขนาดปนกัน รวมแล้วไม่มีความหมาย)
    ⭐ จัดแนว (เจ้าของ 05/11 "align ข้อมูล จะได้ตรวจง่าย"): หัวเดือน/หัวงานลงคอลัมน์เดียวกับแถวสินค้า — จำนวนรายการใต้ "ภาษี/หน่วย" ·
       ยอดรวมใต้ "ภาษีรวม" (ชิดขวา ทรงเดียวกับยอดของแถว) · ป้ายสถานะใต้ "สถานะชำระ" · ฝั่งซ้ายของหัวงานเป็นกริดคอลัมน์ตายตัว
       (ลูกศร · เลข SO · ลูกค้า · ขั้น/ด่าน) ⇒ เลข SO/ลูกค้า/ขั้นของทุกงานตั้งตรงกันลงมา ไม่ไหลต่อกันเป็นประโยค */
-import { useState } from "react";
+import { useStickySet } from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { TableScroll } from "@/components/ui/Table";
@@ -35,7 +35,8 @@ const monthBuckets = raFilingMonthBuckets;
 
 export default function FilingLinesTable({ rows = [], selected, onToggle, allChecked, onToggleAll, selectable = true, detailLoading = false, empty }) {
   /* คีย์ที่ย่อไว้ — `month:<YYYY-MM>` (ทั้งเดือน) · คีย์งาน (รายการของงานนั้น) */
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  /* จำไว้เมื่อกดเข้างานแล้วกลับมา (useStickySet) · เข้าจากเมนู = กางหมด */
+  const [collapsed, setCollapsed] = useStickySet("linesTable.collapsed");
   if (!rows.length) return <div className={styles.empty}>{empty}</div>;
   const toggle = (key) => setCollapsed((prev) => {
     const next = new Set(prev);

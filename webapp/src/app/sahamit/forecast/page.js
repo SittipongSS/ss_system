@@ -4,6 +4,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter, useSearchParams } from "next/navigation";
 import { LineChart, Plus, Trash2, Pencil, Download, Send, X, CheckCircle2, Search, AlertCircle, SlidersHorizontal } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -168,11 +169,11 @@ function ForecastPageInner() {
     || (usersLoaded && !aeList.length ? "ยังไม่มี AE / Senior AE ทีม KA ให้เลือกเป็นผู้ดูแล" : null);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [selectedNo, setSelectedNo] = useState(null);
-  const [tab, setTab] = useState("matrix");
-  const [matrixUnit, setMatrixUnit] = useState("piece"); // หน่วยแสดงผลตาราง Matrix (ชิ้น/ลัง)
-  const [search, setSearch] = useState("");
-  const [catSel, setCatSel] = useState([]); // หมวดสินค้าที่เลือกกรอง
+  const [selectedNo, setSelectedNo, , roundHydrated] = useStickyState("round", null);
+  const [tab, setTab] = useStickyState("tab", "matrix");
+  const [matrixUnit, setMatrixUnit] = useStickyState("matrixUnit", "piece"); // หน่วยแสดงผลตาราง Matrix (ชิ้น/ลัง)
+  const [search, setSearch] = useStickyState("search", "");
+  const [catSel, setCatSel] = useStickyState("catSel", []); // หมวดสินค้าที่เลือกกรอง
   const q = search.trim().toLowerCase();
   /* ค้นไม่เจอตอนทะเบียนสินค้ายังไม่มาถึง ≠ ไม่มีสินค้านั้น — passFg ค้นชื่อไทย/อังกฤษจากทะเบียนด้วย
      ⇒ ไม่มีทะเบียน = ค้นได้แค่รหัสกับชื่อที่บันทึกในรอบ ต้องบอกแบบนั้น ไม่ใช่ "ไม่พบสินค้าตรงเงื่อนไข"
@@ -188,12 +189,13 @@ function ForecastPageInner() {
   const [dealModalOpen, setDealModalOpen] = useState(false); // modal ยืนยันสร้างแผนการขาย
 
   // Default selection = ?round= (กลับมาจากหน้าลง/แก้รอบ) ถ้ามี ไม่งั้นรอบล่าสุด.
+  // รอคืนค่าที่จำไว้ก่อน — รอบมาจากแคชได้ตั้งแต่เรนเดอร์แรก ไม่รอแล้วค่าตั้งต้นทับรอบที่ผู้ใช้เลือกไว้
   useEffect(() => {
-    if (!rounds.length || selectedNo != null) return;
+    if (!roundHydrated || !rounds.length || selectedNo != null) return;
     const wanted = Number(searchParams.get("round"));
     const hit = wanted && rounds.find((r) => r.roundNo === wanted);
     setSelectedNo(hit ? wanted : rounds[rounds.length - 1].roundNo);
-  }, [rounds, selectedNo, searchParams]);
+  }, [roundHydrated, rounds, selectedNo, searchParams, setSelectedNo]);
 
   const selectedIndex = useMemo(
     () => rounds.findIndex((r) => r.roundNo === selectedNo),

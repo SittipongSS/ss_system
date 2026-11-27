@@ -116,8 +116,8 @@ test("SortTh: คอลัมน์ที่ไม่ใช่ none มีได
   assert.match(jsx, /aria-sort=\{active \?/,
     "aria-sort ต้องถูกขับด้วย active ตัวเดียวกัน ไม่ใช่เงื่อนไขคนละชุด");
 
-  /* ฝั่ง hook ที่ถือค่าจริง — useState เดี่ยว ไม่ใช่คอลเลกชัน */
-  assert.match(SORTABLE, /const \[sortKey, setSortKey\] = useState\(/,
+  /* ฝั่ง hook ที่ถือค่าจริง — ค่าเดี่ยว ไม่ใช่คอลเลกชัน (useStickyState ตั้งแต่ 27/11/2026: จำการเรียงตอนกดกลับ) */
+  assert.match(SORTABLE, /const \[sortKey, setSortKey\] = useStickyState\(/,
     "useSortableTable ต้องเก็บคีย์เดียว");
   assert.ok(!/setSortKey\(\s*\[/.test(SORTABLE), "sortKey ต้องไม่ถูกตั้งเป็นอาร์เรย์");
 });

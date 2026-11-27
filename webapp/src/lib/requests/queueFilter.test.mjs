@@ -300,6 +300,10 @@ test('ยาม: คิวรายฝ่ายสามหน้านับแ
     assert.match(src, /count: tabCount\(t\.key\),/, page);
     assert.match(src, /labelRows=\{requests\}/, page);
     assert.doesNotMatch(src, /queueCounts\(/, page);
+    /* มาถึงด้วย URL เปล่า (ปุ่ม "กลับรายการคำร้อง" ของใบ · คำขอเจ้าของ 27/11) ≠ กดเมนูซ้ำ — ตอนมาถึงแค่เขียนแท็บที่จำไว้
+       (useStickyState) ลง URL ไม่ล้างตัวกรอง · ล้างเฉพาะ URL ที่กลายเป็นเปล่าระหว่างอยู่หน้านี้ */
+    assert.match(src, /if \(arriving\) \{\s*if \(bareUrl\) router\.replace\(`[^`]*tab=\$\{tab\}`, \{ scroll: false \}\);\s*return;\s*\}/, page);
+    assert.match(src, /const tab = tabKeys\.includes\(urlTab\) \? urlTab : tabKeys\.includes\(lastTab\) \? lastTab : "todo";/, page);
     // URL เปล่า (เมนู) = ล้างทุกชั้นแล้วเขียน ?tab=todo ทับ
     if (page === 'finance') continue;
     assert.match(src, /const bareUrl = searchParams\.toString\(\) === "";/, page);

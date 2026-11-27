@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter } from "next/navigation";
@@ -28,7 +29,8 @@ export default function MgmtMeetingsPage() {
   const canEdit = useCan("mgmt:edit");
   const canMgmt = useCan("mgmt:view");
 
-  const [year, setYear] = useState(nowYear);
+  // ปีของรายการประชุม จำไว้ตอนกดย้อนกลับมา
+  const [year, setYear] = useStickyState("year", nowYear);
   const [meetings, setMeetings] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [users, setUsers] = useState([]);

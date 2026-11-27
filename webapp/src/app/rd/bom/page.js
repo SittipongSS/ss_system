@@ -34,7 +34,7 @@ import { canAccessRd } from "@/lib/permissions";
 import { accessState } from "@/lib/accessGate";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { BOM_CODE_MAX, BOM_NOTE_MAX } from "@/lib/master/productBom";
@@ -61,15 +61,15 @@ export default function RdBomPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [tab, setTab] = useState("queued");
+  const [tab, setTab] = useStickyState("tab", "queued");
   /* มุมมองของตาราง (มติเจ้าของ 04/11: กรอง · จัดกลุ่ม · เรียง · เลือก แล้วพิมพ์/ดาวน์โหลดตามนั้น)
-     ค้นหา/ตัวกรอง/กลุ่ม/เรียง จำไว้ตอนกดย้อนกลับมา (useStickyState) · ที่ติ๊กไม่จำ (งานของรอบนี้) */
+     แท็บ/ค้นหา/ตัวกรอง/กลุ่ม/เรียง/กลุ่มที่ย่อ จำไว้ตอนกดย้อนกลับมา (useStickyState) · ที่ติ๊กไม่จำ (งานของรอบนี้) */
   const [q, setQ] = useStickyState("q", "");
   const [filters, setFilters] = useStickyState("filters", EMPTY_BOM_FILTERS);
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", BOM_SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", BOM_SORT_DIR[BOM_SORT_DEFAULT]);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
   const [selected, setSelected] = useState(() => new Set());
   const [busyId, setBusyId] = useState(null);
   const [dialog, setDialog] = useState(null); // { mode: 'done' | 'return', row }

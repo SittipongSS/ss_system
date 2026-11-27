@@ -3,6 +3,7 @@ import { TableScroll, TableGroupRow } from "@/components/ui/Table";
 // ปฏิทินวันหยุด — ข้อมูลปฏิบัติการ แก้ตรงบนตารางเดิม (Decision 0012 ฉบับแก้ไขครั้งที่ 2:
 // ไม่ใช้ชั้นร่าง/เผยแพร่) — เพิ่มผ่าน Modal ทางเดียว ส่วนการลบยืนยันผ่าน ConfirmDialog (no-auto-save)
 import { Fragment, useState, useEffect, useMemo, useCallback } from "react";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { AlertTriangle, CalendarDays, Plus, Trash2, Info, ChevronLeft, ChevronRight, List, CalendarRange, CalendarPlus } from "lucide-react";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import DateInput from "@/components/ui/DateInput";
@@ -47,11 +48,11 @@ export default function HolidaysPage() {
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [tab, setTab] = useState("calendar"); // calendar | list
+  const [tab, setTab] = useStickyState("tab", "calendar"); // calendar | list
   // ปีที่แท็บรายการกำลังโชว์: null = ยังไม่เลือกเอง (ใช้ปีตั้งต้น) · "all" = ทุกปี
-  const [listYear, setListYear] = useState(null);
+  const [listYear, setListYear] = useStickyState("listYear", null);
   // ปีที่พับไว้ในตาราง (หัวกลุ่มรายปี) — ป้ายจำนวนยังนับวันทั้งหมด ไม่ใช่แถวที่กางอยู่
-  const [collapsedYears, setCollapsedYears] = useState(() => new Set());
+  const [collapsedYears, setCollapsedYears] = useStickySet("collapsedYears");
   // ฟอร์มเพิ่ม: null = ปิด; { date, name, lockDate } = เปิด Modal
   const [addForm, setAddForm] = useState(null);
   // การลบผ่าน dialog ยืนยัน: { date, name }
@@ -62,7 +63,7 @@ export default function HolidaysPage() {
   const [toast, setToast] = useState(null);
 
   const now = useMemo(() => new Date(), []);
-  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const [cursor, setCursor] = useStickyState("cursor", { y: now.getFullYear(), m: now.getMonth() });
   const todayISO = toISO(now.getFullYear(), now.getMonth(), now.getDate());
 
   const load = useCallback(async () => {

@@ -1,5 +1,5 @@
 "use client";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useMemo } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { ListPanel } from "@/components/ui/Workspace";
@@ -8,7 +8,7 @@ import FilterPopover from "@/components/ui/FilterPopover";
 import { CollapseAllButton, GroupMenu, SortDirButton, SortMenu } from "@/components/ui/ViewMenus";
 import DetailRow from "@/components/ui/DetailRow";
 import Pager from "@/components/ui/Pager";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { usePagination } from "@/lib/usePagination";
 import { allBucketsCollapsed, bucketList, toggleBucketKey } from "@/lib/listGrouping";
 import { matchesQuery } from "@/lib/master/customerHub";
@@ -51,7 +51,7 @@ export default function HubListPanel({
   const [groupBy, setGroupBy] = useStickyState(`${stateKey}:group`, "none");
   const [sortKey, setSortKey] = useStickyState(`${stateKey}:sort`, sorts[0].value);
   const [sortDir, setSortDir] = useStickyState(`${stateKey}:dir`, sorts[0].dir);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useStickySet(`${stateKey}:collapsed`);
 
   const filterValues = (key) => selected?.[key] || NO_FILTER;
   const filterCount = filters.reduce((n, f) => n + filterValues(f.key).length, 0);
@@ -76,6 +76,7 @@ export default function HubListPanel({
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(sorted, {
     resetKey: `${query}|${JSON.stringify(selected)}|${sortKey}|${sortDir}`,
+    stickyKey: `${stateKey}:list`,
   });
 
   const renderRow = (row) => {

@@ -38,6 +38,7 @@ import {
 } from "@/lib/rd/perfumerBoard";
 import styles from "./page.module.css";
 import useThaiToday from "@/lib/ui/useThaiToday";
+import useStickyState from "@/lib/ui/useStickyState";
 
 const COLS = 5;
 
@@ -50,7 +51,8 @@ export default function RdPerfumersPage() {
   const [loadError, setLoadError] = useState("");
   const [assigning, setAssigning] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [collapsed, setCollapsed] = useState({});
+  // กลุ่มที่ย่อไว้จำไว้ (useStickyState · คำขอเจ้าของ 27/11) — เปิดคำร้องแล้วกดกลับต้องได้หน้าตาเดิม
+  const [collapsed, setCollapsed] = useStickyState("collapsed", {});
   const startRun = useLatestRun();
 
   /* ⚠️ ด่านของจอต้องเป็น **ฟังก์ชันตัวเดียวกับที่ API ใช้ปฏิเสธ** — คิดเงื่อนไขขึ้นเอง

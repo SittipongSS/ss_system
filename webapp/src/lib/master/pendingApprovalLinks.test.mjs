@@ -20,7 +20,9 @@ test('ทะเบียนปลายทางอ่าน `?count=` ค่า
   assert.match(products, /fromNavCount \? PENDING_ONLY : EMPTY/);
   const customers = src('../../app/database/customers/page.js');
   assert.match(customers, new RegExp(`useSearchParams\\(\\)\\.get\\("count"\\) === "${read(PENDING_APPROVAL_HREF.customers)}"`));
-  assert.match(customers, /useState\(fromNavCount \? \["pending"\] : \[\]\)/);
+  // จำค่าไว้ตอนกดกลับ (useStickyState) — ค่าจากป้ายเมนูยังเป็นค่าตั้งต้นของการเข้าใหม่ (ทรงเดียวกับหน้าสินค้า)
+  assert.match(customers, /useStickyState\("statusFilter", fromNavCount \? PENDING_ONLY : EMPTY\)/);
+  assert.match(customers, /const PENDING_ONLY = \["pending"\];/);
 });
 
 test('การ์ดรออนุมัติบน /database ใช้ลิงก์ชุดนี้ — ไม่เปิดทะเบียนเปล่าอีก', () => {
@@ -115,7 +117,8 @@ test('การ์ดภาพรวม · แถบตัวเลขข้า�
   assert.match(src('./productFilter.js'), /passesApprovalFilters\(p, \{ statuses, showInactive \}\)/);
   // `?count=` ไม่ได้ติ๊ก "รวมที่เลิกใช้" ให้ — ใบเลิกใช้ที่ไม่ได้รออนุมัติต้องไม่ติดมาด้วย (COUNT_STATE ข้างบน)
   for (const page of [products, customers]) {
-    assert.match(page, /const \[showInactive, setShowInactive\] = useState\(false\);/);
+    // ค่าตั้งต้น = ไม่ติ๊ก · จำไว้ตอนกดกลับ (useStickyState) — เข้าใหม่ (รวมลิงก์ `?count=`) ได้ค่าตั้งต้นเสมอ
+    assert.match(page, /const \[showInactive, setShowInactive\] = useStickyState\("showInactive", false\);/);
   }
 });
 

@@ -16,7 +16,7 @@
 // (ตาฝ่าย) เท่านั้น · ใบตาผู้ขอยังอยู่ในวันที่รับปากไว้ แต่เป็นเส้นประจาง ไม่แดงแม้เลยวัน
 // 🐞 เดิมแดงตาม `dueCalendar` (ทุกใบที่เลยวัน ไม่ดูตา) ⇒ ตาฝ่าย 0 · กล่องเทาบอก "ไม่มีงานที่เลยวัน"
 //    แต่ช่องรายวันข้างล่างแดงสองใบ (รีวิว 19/10)
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarClock, ChevronLeft, ChevronRight } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -24,6 +24,7 @@ import { WorkspaceSection } from "@/components/ui/Workspace";
 import { fmtDate, fmtDayMonth } from "@/lib/format";
 import { dueCalendar, weekOffsetLabel, weekRangeText, weekStart } from "@/lib/requests/dueCalendar";
 import { deptCalendarMarks, deptTurnCountHref } from "@/lib/requests/deptOverview";
+import useStickyState from "@/lib/ui/useStickyState";
 import styles from "./dueWeek.module.css";
 
 export default function DueWeekPanel({
@@ -39,7 +40,9 @@ export default function DueWeekPanel({
   overdue,
 }) {
   const router = useRouter();
-  const [offset, setOffset] = useState(0);
+  /* สัปดาห์ที่เลื่อนไปดูจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — กดใบบนปฏิทินแล้วกลับมาต้องได้สัปดาห์เดิม
+     · คีย์มีคำนำหน้า เพราะแผงอยู่ใต้ pathname ของหน้าภาพรวมฝ่าย */
+  const [offset, setOffset] = useStickyState("dueWeek.offset", 0);
   const calendar = useMemo(
     () => dueCalendar(rows, { startIso: weekStart(todayIso, offset), todayIso }),
     [rows, todayIso, offset],

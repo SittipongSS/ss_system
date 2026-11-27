@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import useStickyState from "@/lib/ui/useStickyState";
 import { AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Hourglass, Search, X } from "lucide-react";
 import Button from "@/components/ui/Button";
 import ConfirmDialog, { confirmAction } from "@/components/ui/ConfirmDialog";
@@ -109,6 +110,18 @@ const isRealDay = (value) => Boolean(value) && addDays(value, 0) === value;
    · ค่าที่ไม่ใช่วันจริง (2026-13-45 · 2026-02-30) ถอยไปสัปดาห์นี้ ไม่ใช่ตาราง NaN และไม่ปัดข้ามไป
      สัปดาห์ของวันที่ปฏิทินเลื่อนให้ (Date.UTC พับ 30 ก.พ. เป็น 2 มี.ค. เงียบ ๆ) */
 
+/* พารามิเตอร์ของ URL ที่เป็น "มุมมองของรายการ" (ถัง · ช่วง · สัปดาห์) — จำไว้คืนตอนกลับมาที่ URL เปล่า
+   ⚠️ ไม่รวม `visit` — เป็นคำสั่งเปิดนัดครั้งเดียว ไม่ใช่มุมมอง */
+const LIST_QUERY_KEYS = ["tab", "range", "week"];
+const pickListQuery = (params) => {
+  const out = new URLSearchParams();
+  for (const key of LIST_QUERY_KEYS) {
+    const value = params.get(key);
+    if (value) out.set(key, value);
+  }
+  return out.toString();
+};
+
 const arrayOf = (value) => (Array.isArray(value) ? value : []);
 const objectOf = (value) => (value && typeof value === "object" ? value : {});
 const mergeById = (...lists) => {
@@ -130,14 +143,42 @@ export default function ServiceSchedulePage() {
   const todayIso = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
 
   /* ── สถานะใน URL (เปิดลิงก์แล้วได้หน้าเดิม · KPI ของหน้าภาพรวมลิงก์ตรงมาที่ถัง) ── */
-  const bucketParam = searchParams.get("tab");
+  /* ⭐ ถัง/ช่วง/สัปดาห์จำไว้ด้วย (useStickyState · คำขอเจ้าของ 27/11) — ปุ่ม "← จัดคิวเจ้าหน้าที่" บนหน้านัดพามาที่ URL เปล่า
+     ⇒ ไม่มีพารามิเตอร์บอกว่าเคยอยู่ถังไหน/สัปดาห์ไหน · มาถึงด้วย URL เปล่า + มีค่าที่จำไว้ = อ่านจากค่าที่จำไว้แล้วเขียนกลับลง URL
+     · URL ที่มีพารามิเตอร์ชนะเสมอ · URL กลายเป็นเปล่าระหว่างอยู่หน้านี้ (กดเมนูซ้ำ) = ค่าตั้งต้นเหมือนเดิม
+     ⚠️ อ่านค่าที่จำไว้ **ตั้งแต่เรนเดอร์ที่คืนค่า** ไม่ใช่รอ URL — ไม่งั้นถังเปลี่ยนหลังตัวแบ่งหน้าคืนหน้าเดิมแล้ว ⇒ ถูกพากลับหน้า 1 */
+  const urlListQuery = pickListQuery(searchParams);
+  const [savedListQuery, setSavedListQuery, , listQueryHydrated] = useStickyState("listQuery", "");
+  // undefined = ยังไม่ตัดสินตอนมาถึง · สตริง = รอ URL เขียนตามค่าที่คืน · null = อ่าน URL ตรง ๆ
+  const [restoringQuery, setRestoringQuery] = useState(undefined);
+  const listQuery = urlListQuery
+    || (restoringQuery === undefined ? (listQueryHydrated ? savedListQuery : "") : (restoringQuery || ""));
+  const listParams = useMemo(() => new URLSearchParams(listQuery), [listQuery]);
+  useEffect(() => {
+    if (!listQueryHydrated) return;
+    if (restoringQuery === undefined) {
+      if (!urlListQuery && savedListQuery) {
+        setRestoringQuery(savedListQuery);
+        const next = new URLSearchParams(searchParams.toString());
+        new URLSearchParams(savedListQuery).forEach((value, key) => next.set(key, value));
+        router.replace(`/service/schedule?${next}`, { scroll: false });
+        return;
+      }
+      setRestoringQuery(null);
+    } else if (restoringQuery) {
+      if (!urlListQuery) return;
+      setRestoringQuery(null);
+    }
+    setSavedListQuery(urlListQuery);
+  }, [listQueryHydrated, restoringQuery, urlListQuery, savedListQuery, searchParams, router, setSavedListQuery]);
+  const bucketParam = listParams.get("tab");
   const bucket = QUEUE_BUCKETS.includes(bucketParam) ? bucketParam : "waiting";
   /* ⭐ อ่านจาก useSearchParams ทุกรอบวาด (ไม่ใช่ state ที่ตั้งครั้งเดียวตอนเมานต์) ⇒ ลิงก์ที่พามาขณะอยู่บนหน้านี้แล้วก็ติดตัวกรอง
      · `today` = ช่วงที่มากับลิงก์ของการ์ด "นัดวันนี้" (H15 · มติเจ้าของ 19/10) — ไม่อยู่บนแถบเลือกช่วง โชว์เป็นป้าย "กรอง: … ×" */
-  const rangeParam = searchParams.get("range");
+  const rangeParam = listParams.get("range");
   const range = queueRangeFrom(rangeParam);
   const todayOnly = range === QUEUE_RANGE_TODAY;
-  const weekParam = searchParams.get("week");
+  const weekParam = listParams.get("week");
   const weekIso = (isRealDay(weekParam) && weekStartOf(weekParam)) || weekStartOf(todayIso);
   const visitParam = searchParams.get("visit");
   const setQuery = useCallback((patch) => {
@@ -172,17 +213,23 @@ export default function ServiceSchedulePage() {
   /* ⭐ ทีมเจ้าหน้าที่บริการ (mig 0310 · T-4) — โหลดทะเบียนทีมของฝ่าย TS มาใช้ **เป็นมุมมอง**
      ⚠️ ไม่ใช่ด่านสิทธิ์: กรองแล้วยังกดดูทีมอื่นได้เสมอ ตัวกั้นจริงยังเป็น canEditService */
   const [crew, setCrew] = useState({ teams: [], members: [], people: [] });
-  const [teamFilter, setTeamFilter] = useState(ALL_TEAMS);
+  // ทีม/มุมมองจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — เปิดหน้านัดแล้วกดกลับต้องได้หน้าตาเดิม
+  const [teamFilter, setTeamFilter] = useStickyState("teamFilter", ALL_TEAMS);
+  /* ทะเบียนทีมโหลดเสร็จแล้ว (สำเร็จหรือพัง) — ตัวคืนทีม "ทุกทีม" เมื่อทีมที่เลือกหายต้องรอมันก่อน
+     ไม่งั้นทีมที่เพิ่งคืนค่าถูกล้างทิ้งตอนตัวเลือกยังไม่ครบ */
+  const [crewReady, setCrewReady] = useState(false);
   /* ⭐ มุมมอง (F-6) — กริดสัปดาห์อ่านภาพรวมได้ดี แต่ **บนมือถือกับตอนแจกงานรายวัน
-     มันคือตารางที่ต้องเลื่อนสองแกน** · "รายการ" คือมุมมองเดียวที่ใช้ได้จริงบนจอแคบ */
-  const [view, setView] = useState("week");
+     มันคือตารางที่ต้องเลื่อนสองแกน** · "รายการ" คือมุมมองเดียวที่ใช้ได้จริงบนจอแคบ
+     · `null` = ยังไม่ได้เลือก (ใช้กริดสัปดาห์) — แยกจาก "เลือกกริดเอง" เพื่อให้ค่าที่คืนมาไม่ถูกขนาดจอทับ */
+  const [viewPick, setView, , viewHydrated] = useStickyState("view", null);
+  const view = viewPick ?? "week";
   /* 🐞 เดิมเปิดกริดสัปดาห์ทุกขนาดจอ ⇒ มือถือเห็นวันเดียวครึ่งแถว · จอแคบเริ่มที่ "รายการ"
      เลือกครั้งเดียวตอนเปิดหน้า (ปุ่มสลับยังพากลับกริดได้) · ⚠️ ห้ามย้ายไป initializer
      ของ useState — server ไม่รู้ขนาดจอ ได้ hydration mismatch · กริดไม่กะพริบเพราะ
-     loading เริ่มเป็น true */
+     loading เริ่มเป็น true · ⚠️ เฉพาะตอนยังไม่มีมุมมองที่จำไว้ (กดย้อนกลับมาต้องได้มุมมองเดิม) */
   useEffect(() => {
-    if (window.matchMedia("(max-width: 768px)").matches) setView("list");
-  }, []);
+    if (viewHydrated && viewPick === null && window.matchMedia("(max-width: 768px)").matches) setView("list");
+  }, [viewHydrated, viewPick, setView]);
 
   const weekStart = useMemo(() => new Date(`${weekIso}T00:00:00`), [weekIso]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
@@ -285,6 +332,7 @@ export default function ServiceSchedulePage() {
           });
         }
       } catch { /* เงียบได้ — ตารางยังใช้งานได้เต็มที่โดยไม่มีทีม */ }
+      setCrewReady(true);
     })();
   }, []);
 
@@ -392,11 +440,14 @@ export default function ServiceSchedulePage() {
     return teamFilterOptions(crew.teams, [...keys].map((key) => ({ key })), crewByUser);
   }, [crew.teams, rows, queue.visits, crewByUser]);
   /* ทีมที่เลือกไว้หายจากตัวเลือก (ถังว่างลง/ทีมถูกปิด) ⇒ กลับไป "ทุกทีม" ไม่ค้างตัวกรองที่มองไม่เห็น */
+  /* ⚠️ ตัดสินเมื่อของครบแล้วเท่านั้น (ทะเบียนทีม + รายการงาน + ตาราง) — ทีมที่คืนค่ามา (useStickyState) ต้องไม่ถูกล้าง
+     ตอนตัวเลือกยังไม่ครบ (ถัง "ยังไม่อยู่ทีมไหน" ขึ้นกับแถวที่โหลดมา) */
   useEffect(() => {
-    if (teamFilter !== ALL_TEAMS && teamOptions.length > 1 && !teamOptions.some((o) => o.value === teamFilter)) {
+    if (!crewReady || !queueLoadedOnce || loading) return;
+    if (teamFilter !== ALL_TEAMS && !teamOptions.some((o) => o.value === teamFilter)) {
       setTeamFilter(ALL_TEAMS);
     }
-  }, [teamOptions, teamFilter]);
+  }, [crewReady, queueLoadedOnce, loading, teamOptions, teamFilter, setTeamFilter]);
   /* ⭐ เลือกทีม = คนในทีม + แถว "ยังไม่มอบหมาย" (ทุกทีมหยิบได้) — ความหมายเดียวกับแผงรายการงาน */
   const teamRows = useMemo(
     () => teamViewRows(rows, teamFilter, crewByUser, UNASSIGNED),
@@ -439,11 +490,14 @@ export default function ServiceSchedulePage() {
   }, [boardVisits, sitesById]);
 
   /* ── แผงรายการงาน ── */
-  const [search, setSearch] = useState("");
-  const [farOn, setFarOn] = useState(false);
-  const [within, setWithin] = useState(null);   // { from, to } — ชิป "วันเสนอ …" จากบรรทัดร่างของตาราง
+  // คำค้น/ตัวกรองของแผงจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — กลับจากหน้านัดต้องได้รายการเดิม
+  const [search, setSearch] = useStickyState("search", "");
+  const [farOn, setFarOn] = useStickyState("farOn", false);
+  const [within, setWithin] = useStickyState("within", null);   // { from, to } — ชิป "วันเสนอ …" จากบรรทัดร่างของตาราง
   /* กลุ่ม "รอฝ่ายอื่น" พับไว้ตั้งต้น — TS แก้เองไม่ได้ ถ้ากางไว้จะดันงานที่ทำได้ลงไปข้างล่าง
      ⚠️ จำต่อคนดูด้วย localStorage แบบกันพัง (โหมดส่วนตัว/บล็อกข้อมูลไซต์ = ใช้ค่าตั้งต้น) */
+  /* ⚠️ ไม่ใช้ useStickyState — จำใน localStorage อยู่แล้ว (ยาวกว่า: ข้ามแท็บ/ข้ามวัน ⇒ กดกลับก็ได้ค่าเดิมด้วย)
+     ข้อยกเว้นลงไว้ที่ LIST_STATE_EXEMPT (lib/ui/listStateSticky.test.mjs) */
   const [collapsed, setCollapsed] = useState({ others: true });
   useEffect(() => {
     try {
@@ -513,6 +567,7 @@ export default function ServiceSchedulePage() {
   const pagination = usePagination(flatRows, {
     defaultSize: QUEUE_PAGE_SIZE,
     resetKey: `${bucket}|${range}|${search}|${teamFilter}|${farOn}|${within?.from || ""}|${JSON.stringify(collapsed)}`,
+    stickyKey: "queue",
   });
   /* หน้าหนึ่งตัดกลางกลุ่มได้ — หัวกลุ่มต้องบอกยอดทั้งกลุ่มเสมอ (ท่าเดียวกับคิวคำร้อง #1640)
      และบอก "(ต่อ)" เมื่อกลุ่มเริ่มมาจากหน้าก่อน ไม่งั้นอ่านเป็นกลุ่มใหม่ที่ยอดไม่ตรงกับแถว */

@@ -32,6 +32,7 @@ import {
 import styles from "./page.module.css";
 import { fmtNumber, naText } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import useStickyState from "@/lib/ui/useStickyState";
 
 // คิวเปิดมาเห็น "งานที่ยังต้องตัดสินใจ" ก่อน — จบ/ยกเลิกไม่ใช่คิว
 const OPEN_STATUSES = "draft,planned,in_progress";
@@ -47,7 +48,8 @@ export default function ProductionJobsPage() {
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [showDone, setShowDone] = useState(false);
+  // สวิตช์ "แสดงงานที่จบแล้ว" จำไว้ (useStickyState · คำขอเจ้าของ 27/11) — กดย้อนกลับมาต้องได้คิวชุดเดิม
+  const [showDone, setShowDone] = useStickyState("showDone", false);
   /* ⭐ ตัวกรองจากลิงก์ — `?count=productionJobs` ของป้ายเมนู (ม-118 · งานร่างรอวางคิว) และ
      `?filter=running` ของการ์ด "กำลังผลิต" บนภาพรวม (H8 ตรวจตัวกรอง 08/10) · ป้าย/การ์ดนับ N งาน
      ⇒ กดแล้วต้องเจอ N งานนั้น ไม่ใช่คิวทั้งโรงงาน · กติกาอยู่ที่ `productionJobsLink.js` ที่เดียว

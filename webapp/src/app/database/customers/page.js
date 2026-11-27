@@ -51,6 +51,7 @@ const teamsOf = (c) => (c?.teams?.length ? c.teams : c?.team ? [c.team] : []);
 /* 🪤 ค่าตั้งต้นที่เป็น array ต้องเป็น **ตัวเดียวกันทุกเรนเดอร์** — `[]` เขียนสด
    ในวงเล็บจะเป็น array ใหม่ทุกครั้ง ซึ่งทำให้ตัวเทียบค่าคิดว่า "เปลี่ยนแล้ว" ตลอด */
 const EMPTY = [];
+const PENDING_ONLY = ["pending"];
 
 export default function CustomerDirectory() {
   const canEdit = useCan("customers:edit");
@@ -85,11 +86,13 @@ export default function CustomerDirectory() {
      ⚠️ ตอนนี้ยังอ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — **เป็นงานค้างที่รู้อยู่** (H3 · ภาคผนวก ม-115 ใน
         docs/requests-rd-decision-log.md): กติกา "อ่านครั้งเดียว" ของ ม-115 ถูกแทนแล้วด้วย "URL เป็นแหล่งเดียว ·
         × เขียน URL ใหม่" (`productionJobsLink` #1915 · `projectListFilter` M17a) ⇒ ย้ายหน้านี้ตามแพตเทิร์นนั้น
-        อย่าก๊อปการอ่านครั้งเดียวไปหน้าอื่น */
+        อย่าก๊อปการอ่านครั้งเดียวไปหน้าอื่น
+     ⭐ จำค่า (useStickyState) แบบหน้าสินค้า — ลิงก์ป้ายเมนูเป็นค่าตั้งต้น ⇒ เข้าจากป้ายได้ "รออนุมัติ" เสมอ
+        ส่วนกดกลับจากหน้าลูกค้าได้ค่าที่ตั้งไว้ก่อนเข้าใบ */
   const fromNavCount = useSearchParams().get("count") === "customers";
-  const [statusFilter, setStatusFilter] = useState(fromNavCount ? ["pending"] : []);
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", fromNavCount ? PENDING_ONLY : EMPTY);
   const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
-  const [showInactive, setShowInactive] = useState(false);
+  const [showInactive, setShowInactive] = useStickyState("showInactive", false);
   const [view, setView] = useResponsiveView({ portrait: "cards", landscape: "table" });
 
   const [formData, setFormData] = useState(EMPTY_CUSTOMER);
@@ -254,11 +257,12 @@ export default function CustomerDirectory() {
     branchCode: (c) => branchValue(c.branchCode),
     brands: (c) => c.brands?.length || 0,
     address: (c) => c.address || "",
-  });
+  }, null, { stickyKey: "table" });
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
       resetKey: `${q}|${statusFilter.join(",")}|${teamFilter.join(",")}|${showInactive}|${sort.sortKey}|${sort.sortDir}`,
+      stickyKey: "list",
     });
 
   /* ── ปลายทางของระเบียนนี้ยกเป็นตัวเดียว (2026-09-02) ────────────────────────

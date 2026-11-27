@@ -13,6 +13,7 @@ import MorningBoard from "./MorningBoard";
 import YearHeatmap from "./YearHeatmap";
 import DrillSection from "./DrillSection";
 import { apiFetch } from "@/lib/apiFetch";
+import useStickyState from "@/lib/ui/useStickyState";
 
 // แท็บ "ผลงานขาย" (/sa/dashboard?tab=performance) — แทน "KPI ดีล" เดิม (2026-07-18).
 // ดีไซน์จากไฟล์ HTML ของผู้ใช้: บอร์ดประชุมเช้า + ทบยอด + heatmap + เจาะรายคน/ทีม.
@@ -21,6 +22,9 @@ import { apiFetch } from "@/lib/apiFetch";
 //
 // state หลักเก็บใน URL params → คัดลอกลิงก์/แชร์มุมมองได้ และการ์ดในแดชบอร์ดของฉัน
 // ลิงก์เข้ามาแบบเจาะตัวเองได้ (?tab=performance&scope=person&person=<id>)
+
+// พารามิเตอร์ของมุมมองแท็บนี้ใน URL — มีตัวใดตัวหนึ่งตอนเปิด = ลิงก์เจาะมา (URL ชนะค่าที่จำไว้)
+const PERF_URL_KEYS = ["carry", "bp", "scope", "team", "person", "period"];
 
 // ดึง dashboard ปีหนึ่ง ๆ แบบ stale-while-revalidate (แพตเทิร์นเดียวกับ load() เดิมของหน้า /sa)
 async function fetchYear(year) {
@@ -127,15 +131,23 @@ export default function PerformanceTab({ year }) {
   // ค่าเริ่มต้น = มุมมองประชุมเช้า: เดือนปัจจุบัน · เป้าปกติ (ไม่ทบยอด) · รวมทั้งบริษัท
   // — ทบยอดเป็นมุมมองเสริมที่กดเปิดเอง (มติผู้ใช้ 2026-07-18)
   const defaultBp = yearNum === now.year ? `${year}-${String(now.monthIdx + 1).padStart(2, "0")}` : year;
-  const [view, setView] = useState(() => ({
-    carry: searchParams.get("carry") === "1",
-    bp: searchParams.get("bp") || defaultBp,
-    scope: ["company", "team", "person"].includes(searchParams.get("scope")) ? searchParams.get("scope") : "company",
-    team: searchParams.get("team") || SALES_TEAMS[0],
-    person: searchParams.get("person") || "",
-    period: ["month", "quarter", "year"].includes(searchParams.get("period")) ? searchParams.get("period") : "month",
+  /* ⭐ จำมุมมองไว้ด้วย useStickyState (คีย์ "perf.view" ใต้ pathname ของแดชบอร์ด) — ลิงก์กลับเข้าหน้านี้ที่ไม่มีพารามิเตอร์
+     ต้องได้มุมมองเดิม · มีพารามิเตอร์ของแท็บนี้ใน URL ตอนเปิด = ลิงก์ที่ตั้งใจเจาะมา ⇒ URL ชนะค่าที่จำไว้
+     (ภาพของ URL ตอนเปิดเก็บครั้งเดียว · effect ประกาศหลังฮุก จึงวิ่งหลังตัวคืนค่า) */
+  const [urlView] = useState(() => ({
+    present: PERF_URL_KEYS.some((key) => searchParams.has(key)),
+    view: {
+      carry: searchParams.get("carry") === "1",
+      bp: searchParams.get("bp") || defaultBp,
+      scope: ["company", "team", "person"].includes(searchParams.get("scope")) ? searchParams.get("scope") : "company",
+      team: searchParams.get("team") || SALES_TEAMS[0],
+      person: searchParams.get("person") || "",
+      period: ["month", "quarter", "year"].includes(searchParams.get("period")) ? searchParams.get("period") : "month",
+    },
   }));
-  const update = useCallback((patch) => setView((v) => ({ ...v, ...patch })), []);
+  const [view, setView] = useStickyState("perf.view", urlView.view);
+  useEffect(() => { if (urlView.present) setView(urlView.view); }, [urlView, setView]);
+  const update = useCallback((patch) => setView((v) => ({ ...v, ...patch })), [setView]);
 
   // sync ลง URL แบบ replace (ไม่ดัน history ทุกคลิก, ไม่ scroll) — คง param อื่นเช่น tab
   useEffect(() => {
@@ -156,7 +168,7 @@ export default function PerformanceTab({ year }) {
   const drillTo = useCallback((patch) => {
     setView((v) => ({ ...v, ...patch }));
     setTimeout(() => drillRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-  }, []);
+  }, [setView]);
 
   // คลิกช่อง Actual ในบอร์ด → modal รายดีลชุดเดียวกับแดชบอร์ดเดิม (กติกา wonMonth ตรงกัน)
   // บรรทัด "รออนุมัติ" ใต้ Actual → modal เดียวกัน metric 'pendingApproval' เดือนปัจจุบัน (2026-09-11)

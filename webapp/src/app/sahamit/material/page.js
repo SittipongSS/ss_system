@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { notifyToast } from "@/components/ui/Toast";
 import { useMemo, useState, useEffect } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { Boxes, ChevronRight, ChevronDown, Save, Download, Search, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -200,10 +201,10 @@ export default function MaterialPage() {
     </StatusNotice>
   ) : null;
 
-  const [search, setSearch] = useState("");
-  const [fcSel, setFcSel] = useState([]);     // "in" | "out"
-  const [stageSel, setStageSel] = useState([]); // stage keys
-  const [issueSel, setIssueSel] = useState([]); // "late" | "slip"
+  const [search, setSearch] = useStickyState("search", "");
+  const [fcSel, setFcSel] = useStickyState("fcSel", []);     // "in" | "out"
+  const [stageSel, setStageSel] = useStickyState("stageSel", []); // stage keys
+  const [issueSel, setIssueSel] = useStickyState("issueSel", []); // "late" | "slip"
   const q = search.trim().toLowerCase();
 
   // ตัวเลือกสถานะ = เฉพาะ stage ที่มีจริงในข้อมูล (เรียงตามลำดับ label)

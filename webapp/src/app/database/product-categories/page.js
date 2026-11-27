@@ -14,6 +14,7 @@ import Select from "@/components/ui/Select";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { TableScroll } from "@/components/ui/Table";
 import { useRole } from "@/lib/roleContext";
+import useStickyState from "@/lib/ui/useStickyState";
 import { canManageProductCategories } from "@/lib/permissions";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
@@ -51,8 +52,9 @@ export default function ProductCategoriesPage() {
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({ mainCategories: 0, total: 0, active: 0, inactive: 0, used: 0 });
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState("active");
+  // จำคำค้น/สถานะไว้ตอนออกไปหน้านำเข้าแล้วกดกลับ
+  const [query, setQuery] = useStickyState("query", "");
+  const [status, setStatus] = useStickyState("status", "active");
   const [drawer, setDrawer] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);

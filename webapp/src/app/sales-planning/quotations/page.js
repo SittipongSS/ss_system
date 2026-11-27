@@ -5,7 +5,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 // หน้ารวมใบเสนอราคา (/sa/quotations — เฟส D, มติผู้ใช้: เมนูแยกเพื่อง่ายต่อการค้นหา)
 // ทุกใบยังผูก โครงการ›ดีล เสมอ — สร้างใหม่ต้องเลือกดีลก่อน แล้วไปแก้ต่อที่หน้า editor.
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, Clock3, FileText, Flag, Handshake, Pencil, Plus, Search, Printer, Trash2, User } from "lucide-react";
@@ -109,17 +109,21 @@ export default function QuotationsPage() {
      ตั้งเป็นอาร์เรย์เมื่อโหลดสำเร็จเท่านั้น — `awaitingSalesOrderIdSet` อ่าน null เป็นชุดว่าง */
   const [salesOrders, setSalesOrders] = useState(null);
   const navCountParam = useSearchParams().get("count") || "";
-  const [pendingSoOnly, setPendingSoOnly] = useState(false);
+  const navWaitingOnMe = navCountParam === "quotations";
+  const [pendingSoOnly, setPendingSoOnly] = useStickyState("pendingSoOnly", false);
   /* ⭐ `?count=quotations` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบที่รอฉันลงมือ"
      (รอฉันอนุมัติ + ใบของฉันที่ถูกตีกลับ) ⇒ กดแล้วต้องเจอเท่านั้น
      ⚠️ ธง `_waitingOnMe` มาจาก **server** ด้วย helper ตัวเดียวกับที่ป้ายใช้นับ — จอไม่รู้ว่า
      ใครเป็นผู้อนุมัติ (ต้องรู้เจ้าของดีล + ดีลปิดยัง) คำนวณเองเมื่อไรเลขก็ไม่ตรงกัน
-     ⚠️ อ่านครั้งเดียวตอนเปิดหน้า ไม่เฝ้าค่า — ไม่งั้นผู้ใช้กดล้างตัวกรองไม่ได้ */
-  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "quotations");
+     ⚠️ ไม่เฝ้าค่าของธง (เฝ้าแค่พารามิเตอร์) — ไม่งั้นผู้ใช้กดล้างตัวกรองไม่ได้
+     ⭐ จำไว้ด้วย useStickyState · แต่มี `?count=` ใน URL = ผู้ใช้เพิ่งกดป้ายเมนู ⇒ URL ชนะค่าที่จำไว้
+        (effect ประกาศหลังฮุก ⇒ วิ่งหลังตัวคืนค่าในคอมมิตเดียวกัน ค่าของ URL จึงเป็นตัวสุดท้าย) */
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useStickyState("waitingOnMeOnly", navWaitingOnMe);
+  useEffect(() => { if (navWaitingOnMe) setWaitingOnMeOnly(true); }, [navWaitingOnMe, setWaitingOnMeOnly]);
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", sortDirOf(SORT_DEFAULT));
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
 
   // สร้างใบใหม่ = ไปหน้าเต็ม /sa/quotations/new (cascade ลูกค้า→โครงการ→ดีล) — ไม่มี modal
   const load = useCallback(async () => {
@@ -242,12 +246,14 @@ export default function QuotationsPage() {
     });
   }, [sorted, groupBy, ownerNameOf]);
 
-  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), [setCollapsed]);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, {
-      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoActive}|${waitingOnMeOnly}|${sortKey}|${sortDir}`,
+      /* ⚠️ ธง pendingSoOnly ไม่ใช่ pendingSoActive — ตัวหลังพลิกตอนรายการ SO โหลดเสร็จ ⇒ หน้าที่คืนมาถูกรีเซ็ตเป็น 1 */
+      resetKey: `${query}|${statusFilter.join()}|${typeFilter.join()}|${ownerFilter.join()}|${pendingSoOnly}|${waitingOnMeOnly}|${sortKey}|${sortDir}`,
+      stickyKey: "list",
     });
   // ใบที่ **รอคนที่กำลังดูอยู่อนุมัติ** — ธงมาจาก server (helper ตัวเดียวกับป้ายบนเมนู)
   const approvalQueue = useMemo(() => rows.filter((q) => q._awaitingMyApproval), [rows]);

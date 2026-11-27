@@ -26,7 +26,7 @@ import { keepVisibleSelection } from "@/lib/sales/salesOrderBundle";
 import { salesTeamLabel, useSalesTeams } from "@/lib/master/salesTeamRegistry";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import useReportPeriod from "@/lib/ui/useReportPeriod";
 import { usePagination } from "@/lib/usePagination";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -130,7 +130,8 @@ export default function SalesReportPage() {
   const periodState = useReportPeriod({ defaultAllMonths: true, now });
   const { period, query, today: todayTh, thisMonth, setMode: setPeriodMode, setRange } = periodState;
   const [lens, setLens] = useStickyState("lens", "month");
-  const [drill, setDrill] = useState(null);
+  /* ชิป "จากแยกยอด" = ตัวกรองของรายการใบ ⇒ จำไว้ด้วย (กดเข้าใบแล้วกลับมาต้องยังเจาะอยู่) */
+  const [drill, setDrill, , drillHydrated] = useStickyState("drill", null);
   /* คำค้น + ตัวกรองของรายการใบอยู่ที่หน้า ไม่ใช่ใน OrdersPanel — กดยอดใน "แยกยอด" ต้องล้างสองตัวนี้ได้
      (ตรวจตัวเลข M14 · 2026-10-20) · คีย์จำค่าเดิม ("q" / "filters" ผูก pathname) ค่าที่จำไว้จึงไม่หาย */
   const [orderQ, setOrderQ] = useStickyState("q", "");
@@ -175,7 +176,16 @@ export default function SalesReportPage() {
   useEffect(() => { load(); }, [load]);
   useRevalidateOnFocus(load);
   // เปลี่ยนงวด = ตัวกรองจากตารางแยกยอดหมดความหมาย (เดือน/เจ้าของอาจไม่มีในงวดใหม่)
-  useEffect(() => { setDrill(null); }, [query]);
+  /* ⚠️ ล้างเฉพาะตอนงวด "เปลี่ยนจริง" หลังคืนค่าเสร็จ — งวดกับ drill คืนค่าในคอมมิตเดียวกัน ถ้าล้างตอน mount/ตอนงวดเพิ่งคืน
+     ชิปที่จำไว้จะหายทุกครั้งที่กดกลับ · จดงวดตอนคืนเสร็จเป็นจุดตั้งต้น (ทรงเดียวกับ usePagination) */
+  const drillQueryRef = useRef(null);
+  useEffect(() => {
+    if (!drillHydrated) return;
+    if (drillQueryRef.current === null) { drillQueryRef.current = query; return; }
+    if (drillQueryRef.current === query) return;
+    drillQueryRef.current = query;
+    setDrill(null);
+  }, [drillHydrated, query, setDrill]);
 
   const summary = data?.summary || null;
   const ordersRef = useRef(null);
@@ -193,7 +203,7 @@ export default function SalesReportPage() {
       ordersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       chipRef.current?.focus({ preventScroll: true });
     });
-  }, [setOrderQ, setOrderFilters]);
+  }, [setOrderQ, setOrderFilters, setDrill]);
 
   const switchToRange = useCallback((from, to) => {
     setPeriodMode("range");
@@ -970,7 +980,7 @@ function OrdersPanel({ orders: counted, uncounted = NO_ROWS, summary, period, lo
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
   const [sortKey, setSortKey] = useStickyState("sortKey", ORDER_SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("sortDir", ORDER_SORT_DIR[ORDER_SORT_DEFAULT]);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
 
   const teamLabels = useMemo(() => Object.fromEntries((teamRegistry || []).map((t) => [t.code, t.name])), [teamRegistry]);
   const f = { ...EMPTY_FILTERS, ...(filters || {}) };
@@ -1040,7 +1050,7 @@ function OrdersPanel({ orders: counted, uncounted = NO_ROWS, summary, period, lo
      หัวกลุ่มยังบอกจำนวน/ยอดของทั้งกลุ่ม (ข้ามหน้า) · ใบเรียงตามลำดับกลุ่มก่อนตัดหน้า */
   const ordered = useMemo(() => (grouped ? groups.flatMap((g) => g.orders) : sorted), [grouped, groups, sorted]);
   const resetKey = `${period.mode}|${period.from}|${period.to}|${q}|${JSON.stringify(f)}|${JSON.stringify(drill)}|${groupBy}|${sortKey}|${sortDir}`;
-  const pager = usePagination(ordered, { defaultSize: 10, resetKey });
+  const pager = usePagination(ordered, { defaultSize: 10, resetKey, stickyKey: "orders" });
   const pageGroups = useMemo(() => {
     if (!grouped) return [{ key: "all", label: null, orders: pager.pageRows }];
     // คีย์แถว = rowKey ของแถวงวด (ใบ "Actual รายงวด" มีได้หลายแถวต่อใบ · mig 0412) · ใบทั้งใบ = id เท่าเดิม
