@@ -239,8 +239,10 @@ export default function AddendumDetailPage() {
           </table></TableScroll>
         </DetailCard>
 
+        {/* ⚠️ `surface="embedded"` — DetailCard คือกรอบเดียว (เดิม glass-panel ของแผงซ้อนในการ์ด · เจ้าของ 27/11 · คู่กับหน้าสัญญา) */}
         <DetailCard icon={FileText} title="ไฟล์ของบันทึก" meta="อัปโหลดฉบับที่ลูกค้าเซ็นแล้วที่นี่">
           <AttachmentsPanel
+            surface="embedded"
             entityType="contract_addendum"
             entityId={addendum.id}
             canEdit={canEdit}

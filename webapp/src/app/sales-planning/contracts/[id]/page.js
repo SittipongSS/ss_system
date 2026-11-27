@@ -632,13 +632,15 @@ export default function ContractDetailPage() {
         <ContractAddendaCard contract={contract} canEdit={canEdit} />
 
         {/* ⭐ ไฟล์ฉบับลงนามอยู่ในการ์ดไฟล์แนบตัวเดียวกับที่ทั้งระบบใช้ — ไม่ทำท่ออัปโหลด
-            ของตัวเอง เพราะจะได้ทางอัปไฟล์ที่สองที่ไม่ผ่านด่านเดียวกับของเดิม */}
+            ของตัวเอง เพราะจะได้ทางอัปไฟล์ที่สองที่ไม่ผ่านด่านเดียวกับของเดิม
+            ⚠️ `surface="embedded"` — DetailCard คือกรอบเดียว (เดิมแผงวาด glass-panel ของตัวเองซ้อนในการ์ด · เจ้าของ 27/11) */}
         <DetailCard
           icon={FileText}
           title="ไฟล์ของสัญญา"
           meta={external ? "เอกสารที่ใช้แทนสัญญาอยู่ที่นี่" : "อัปโหลดฉบับที่ลูกค้าเซ็นแล้วที่นี่"}
         >
           <AttachmentsPanel
+            surface="embedded"
             entityType="contract"
             entityId={contract.id}
             /* ตรึงระหว่างรอ AE Sup อนุมัติใบสั่งขายย้อนหลัง — ด่านเดียวกับ /api/attachments (ตีกลับ 409) */
