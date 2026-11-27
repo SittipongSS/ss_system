@@ -68,6 +68,10 @@ import {
   installmentReplanBlocker, installmentsReplanned, replanDraftFrom, replanExpected, replanPromptFacts,
   replanReasonError, replanRequestRows, replanStale,
 } from "@/lib/sales/installmentReplan";
+import {
+  ORDER_PLAN_BADGE, ORDER_PLAN_REASON_MAX, ORDER_PLAN_REASON_MIN, orderHasOwnPlan, orderPaymentPlan, orderPlanChange,
+  orderPlanEditBlocker,
+} from "@/lib/sales/salesOrderPaymentPlan";
 import { CONFIRM_DOC_TYPE_LABELS, orderConfirmationOf } from "@/lib/sales/orderConfirmationDocs";
 import {
   NO_BILLING_TEXT, SKIP_TEXT, billingNeed, billingState, canRequestBilling, dateModeOf, formatBillingDate, installmentNeed,
@@ -161,6 +165,10 @@ export default function SalesOrderPaymentPanel({
        · ตอบทุกคำขอด้วย `onDateFillRequestDone(opened)` (หน้าล้างคำขอ · เปิดไม่ได้ = หน้าไปที่ช่องแทน) */
   servicePeriod, setupFlow, highlight = null, onFillCoverage, canEditSetup = canStart, onOpenTab,
   dateFillRequest = null, onDateFillRequestDone,
+  /* ── ปรับแผนงวดก่อนอนุมัติ (mig 0441 · มติเจ้าของ 27/11/2026) ──────────────────────────────────────────────
+     `onPlanEdit({ plan, reason })` → Promise<boolean> = PATCH ของใบ `{action:'set_payment_plan'}` · ไม่ส่ง = ไม่มีปุ่ม
+     `canEditPlan` = สิทธิ์แก้ใบนี้ (canEdit จาก server — SA เจ้าของใบ + AE Sup/admin ในขอบเขตแก้ · มติข้อ 2) */
+  onPlanEdit, canEditPlan = canEditSetup,
 }) {
   const [reportFor, setReportFor] = useState(null);
   /* แนบหลักฐานเพิ่มในงวดที่แจ้งแล้ว (มติ 29/10 — ลูกค้าโอนงวดเดียวหลายรอบ) · `{ row, files }` */
@@ -176,6 +184,8 @@ export default function SalesOrderPaymentPanel({
   /* ⭐ ตัวปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377) — `base` = งวดที่ตาเห็นตอนเปิด (ตัวล็อกข้อมูลเก่า = expected ของ RPC)
      · `draft` = แถวเปิดในตัวแก้ · `unit` = บาท/% · `confirming` = โมดัลยืนยันเปิดอยู่ (กัน Escape ปิดสองชั้น) */
   const [replan, setReplan] = useState(null);
+  /* ⭐ ปรับแผนงวดก่อนอนุมัติ (mig 0441) — `plan` = ร่างแผนในตัวแก้ (รูปเดียวกับแผนของ QT) · `reason` */
+  const [planEdit, setPlanEdit] = useState(null);
   /* ⭐ ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378) — `base` = งวดของใบนี้ที่ตาเห็นตอนเปิด · `sources` = ต้นทางที่ตาเห็นตอนเปิด
      (ตัวล็อกข้อมูลเก่า = expected ของ RPC) · `sourceId` + `ids` = ใบ/งวดที่เลือกยก */
   const [carry, setCarry] = useState(null);
@@ -220,7 +230,7 @@ export default function SalesOrderPaymentPanel({
   const rows = saved.length
     ? saved
     : installmentsReadError ? []
-    : (historical || movedAway || cancelledPipeline ? [] : previewInstallments(order?.quotation?.paymentPlan, order?.totalAmount));
+    : (historical || movedAway || cancelledPipeline ? [] : previewInstallments(orderPaymentPlan(order), order?.totalAmount));
   const isPreview = !saved.length;
   const single = rows.length === 1;
   /* ⭐ ยอด/เตือนนับจากงวดที่ไม่โมฆะ (review UI-3) — งวดที่ยังไม่ชำระของใบยกเลิก/ถูกแทน = โมฆะ (installmentVoid ตัวเดียวกับทะเบียนบัญชี)
@@ -234,7 +244,7 @@ export default function SalesOrderPaymentPanel({
      แต่กดได้คนละอย่าง จึงต้องแยกชื่อให้ชัดตั้งแต่ตัวแปร */
   const draftRows = saved.filter((r) => !r.frozenAt);
   const isDraftPlan = saved.length > 0 && draftRows.length === saved.length;
-  const drift = historical ? null : installmentPlanDrift(saved, order?.quotation?.paymentPlan, order?.totalAmount);
+  const drift = historical ? null : installmentPlanDrift(saved, orderPaymentPlan(order), order?.totalAmount);
   // มีเงินบันทึกไว้แล้ว = freeze จะไม่ตั้งงวดใหม่ทับ (ดู `freezeInstallments`) ⇒ คำเตือนคนละใจความ
   const hasPrepaid = saved.some(installmentPrepaid);
   // ใบที่ยกเลิก/ตีกลับ/ถูกออก Rev. ทับไม่มีอะไรให้ติดตาม — ด่านเดียวกับที่ route POST ของงวดใช้
@@ -566,7 +576,7 @@ export default function SalesOrderPaymentPanel({
        ⚠️ เฉพาะชุดที่ตรึงยอดครบ (งวดร่างเดินตาม QT สด ๆ อยู่แล้ว) · ใบย้อนหลังไม่มี QT */
   const replanGate = installmentReplanBlocker(order, saved, user);
   const replanned = !historical && saved.length > 0 && saved.every((r) => r.frozenAt)
-    && installmentsReplanned(saved, order?.quotation?.paymentPlan, order?.totalAmount);
+    && installmentsReplanned(saved, orderPaymentPlan(order), order?.totalAmount);
   const replanBuild = replan ? buildReplanRows(order, replan.base, replan.draft, {
     unit: replan.unit, serviceRounds: hasServiceRounds, requestById,
   }) : null;
@@ -599,6 +609,27 @@ export default function SalesOrderPaymentPanel({
       rows: replanRequestRows(replanBuild), expected: replanExpected(replan.base), reason: replan.reason.trim(),
     });
     if (done) setReplan(null);
+  };
+  /* ── ปรับแผนงวดก่อนอนุมัติ (mig 0441 · มติเจ้าของ 27/11/2026) ────────────────────────────────────────────────
+     ⭐ ใบร่าง/ถูกตีกลับ — ปุ่มกับ route ถามด่านตัวเดียวกัน (`orderPlanEditBlocker`) · ใบที่อนุมัติแล้วใช้ปุ่มของ 0377 ข้างบน
+       (สองปุ่มชื่อเดียวกันไม่ขึ้นพร้อมกัน: ด่านหนึ่งรับเฉพาะร่าง/ตีกลับ อีกด่านรับเฉพาะ approved)
+     ⭐ ตัวแก้ = `QuotationInstallments` โหมดใบเสนอราคา (ฟอร์มแผนตัวเดียวกับหน้า QT · กฎ AGENTS.md ฟอร์มเดียวหลายทางเรียก)
+     ⭐ ตรวจด้วย `orderPlanChange` ตัวเดียวกับ route — งวดที่มีเงิน/เอกสารผูกต้องอยู่ที่เลขเดิมยอดเท่าเดิม · เท่า QT = ล้างแผน (ไม่ต้องมีเหตุผล) */
+  const planEditGate = onPlanEdit ? orderPlanEditBlocker(order, saved, { canEdit: !!canEditPlan }) : { visible: false, blocker: null };
+  const ownPlan = !historical && orderHasOwnPlan(order);
+  const planEditCheck = planEdit ? orderPlanChange({
+    plan: planEdit.plan, reason: planEdit.reason, total: order?.totalAmount,
+    quotePlan: order?.quotation?.paymentPlan, rows: saved,
+  }) : null;
+  const openPlanEdit = () => {
+    onClearError?.();
+    const current = orderPaymentPlan(order) || { type: "full" };
+    setPlanEdit({ plan: JSON.parse(JSON.stringify(current)), reason: order?.paymentPlanReason || "" });
+  };
+  const submitPlanEdit = async () => {
+    if (!planEdit || !planEditCheck || planEditCheck.error) return;
+    const done = await onPlanEdit({ plan: planEdit.plan, reason: planEdit.reason.trim() });
+    if (done) setPlanEdit(null);
   };
   /* ── ยกเงินจากใบที่ยกเลิก (PR3 · mig 0378 · แผน so-payment-unlock-replan · มติเจ้าของ 23/09 D4) ─────────────────
      ⭐ ต้นทาง = ใบที่ยกเลิกของดีลเดียวกันที่มีเงินค้าง (route ของหน้าใบโหลดมาให้ `order.carrySources`)
@@ -806,7 +837,8 @@ export default function SalesOrderPaymentPanel({
   };
   const actualCardActions = countRestGate.visible || actualStartVisible;
 
-  const cardActions = replanned || replanGate.visible || carryGate.visible || (dateMode.available && !dateMode.fill) || actualCardActions ? (
+  const cardActions = replanned || ownPlan || planEditGate.visible || replanGate.visible || carryGate.visible
+    || (dateMode.available && !dateMode.fill) || actualCardActions ? (
     <>
       {/* ⭐ นับ Actual รายงวด (mig 0412) — ปุ่มระดับใบของผู้อนุมัติ: ทางกู้ "นับงวด 1"/"นับงวดที่ค้าง" (ขั้นนับตอนอนุมัติยังมีงวดค้าง) · "นับที่เหลือทั้งหมด" (ทางเดียว)
           · ใบนับครบแล้ว = ปุ่มอยู่ กดแล้วบอกเหตุ (countRestBlocker · GatedAction) */}
@@ -828,6 +860,17 @@ export default function SalesOrderPaymentPanel({
       <InstallmentDateFillButton mode={dateMode} disabled={!!busy} />
       {replanned ? (
         <StatusBadge size="sm" tone="info" label={REPLANNED_BADGE} title={REPLANNED_BADGE_TITLE} />
+      ) : null}
+      {/* ⭐ มติ 27/11 ข้อ 3: แผนของใบต่างจาก QT ที่ลูกค้าถือ — เหตุผลอยู่ในกล่องลอย (ข้อ 4) */}
+      {ownPlan ? (
+        <StatusBadge size="sm" tone="warning" label={ORDER_PLAN_BADGE}
+          title={`ปรับก่อนอนุมัติ${order?.paymentPlanSetByName ? ` โดย ${order.paymentPlanSetByName}` : ""}: ${order?.paymentPlanReason || ""}`} />
+      ) : null}
+      {planEditGate.visible ? (
+        <GatedAction size="sm" variant="ghost" icon={<CalendarRange size={13} aria-hidden="true" />}
+          blocker={planEditGate.blocker} disabled={!!busy} onClick={openPlanEdit}>
+          ปรับแผนงวด
+        </GatedAction>
       ) : null}
       {carryGate.visible ? (
         <GatedAction size="sm" variant="ghost" icon={<ArrowRightLeft size={13} aria-hidden="true" />}
@@ -874,7 +917,7 @@ export default function SalesOrderPaymentPanel({
     ? (installmentsReadError ? "อ่านงวดชำระไม่สำเร็จ"
       : movedAway ? "งวดย้ายไปใบ Rev. แล้ว"
       : cancelledPipeline ? (carriedAway.length ? "งวดยกไปใบใหม่แล้ว" : "ใบยกเลิกแล้ว — ไม่มีงวด")
-      : historical ? "ยังไม่มีงวด" : `แผนจากใบเสนอราคา${single ? "" : ` · ${rows.length} งวด`}`)
+      : historical ? "ยังไม่มีงวด" : `${ownPlan ? "แผนที่ปรับไว้ของใบนี้" : "แผนจากใบเสนอราคา"}${single ? "" : ` · ${rows.length} งวด`}`)
     /* ใบ pipeline ที่ยกเลิก (review UI-3): ไม่มีอะไรให้ตามเก็บ — เรื่องเดียวที่เหลือคือเงินค้าง/คืนเงินแล้ว (ไม่ใช่ "ค้างรับ") */
     : cancelledPipeline
       ? (strandedRows.length ? `ใบยกเลิกแล้ว · เงินค้าง ${fmtMoney(strandedAmount)}`
@@ -2062,6 +2105,49 @@ export default function SalesOrderPaymentPanel({
           if (done) setConfirmFor(null);
         }}
       />
+
+      {/* ⭐ ปรับแผนงวดก่อนอนุมัติ (mig 0441 · มติ 27/11) — ใบร่าง/ถูกตีกลับ · ตัวแก้แผนตัวเดียวกับหน้า QT และหน้าสร้าง SO
+          · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล) · ไม่มีโมดัลยืนยันซ้อน: ใบยังไม่อนุมัติ ไม่มีเงินเข้าบัญชี
+            (งวดที่มีเงิน/เอกสารผูก ด่าน orderPlanChange กันไว้แล้ว) และ AE Sup เห็นแผน + เหตุผลอีกครั้งตอนอนุมัติ */}
+      {planEdit ? (
+        <Modal open onClose={() => setPlanEdit(null)} title="ปรับแผนงวดชำระ" size="xl" dismissible={!busy}>
+          <div className={styles.dialog}>
+            {error ? <StatusNotice tone="error" role="alert">{error}</StatusNotice> : null}
+            <p className="form-note">
+              {`${order?.orderNumber || ""} · ยอดใบ ${fmtMoney(order?.totalAmount)} (รวม VAT) — ใบสั่งขายพิมพ์แผนนี้ · `
+                + `ใบเสนอราคา ${naText(order?.quotation?.quoteNumber)} ที่ลูกค้าถือไม่เปลี่ยน · ยื่นอนุมัติแล้วแก้ที่นี่ไม่ได้`}
+            </p>
+            <QuotationInstallments
+              value={planEdit.plan}
+              onChange={(plan) => setPlanEdit((current) => (current ? { ...current, plan } : current))}
+              totalAmount={Number(order?.totalAmount) || 0}
+              disabled={!!busy}
+            />
+            {planEditCheck?.cleared ? (
+              <StatusNotice tone="info">แผนนี้เท่ากับใบเสนอราคา — บันทึกแล้วใบกลับไปใช้แผนตามใบเสนอราคา (ไม่ต้องใส่เหตุผล)</StatusNotice>
+            ) : null}
+            {!planEditCheck?.cleared ? (
+              <label className={styles.field}>
+                <span>เหตุผลที่ปรับแผน *</span>
+                <Textarea rows={3} value={planEdit.reason} maxLength={ORDER_PLAN_REASON_MAX} disabled={!!busy}
+                  placeholder={`เช่น ลูกค้าขอเปลี่ยนมัดจำเป็น 30% — อย่างน้อย ${ORDER_PLAN_REASON_MIN} ตัวอักษร`}
+                  onChange={(event) => {
+                    const reason = event.target.value;
+                    setPlanEdit((current) => (current ? { ...current, reason } : current));
+                  }} />
+              </label>
+            ) : null}
+            {planEditCheck?.error ? <StatusNotice tone="warning">{planEditCheck.error}</StatusNotice> : null}
+            <div className="action-bar">
+              <Button variant="ghost" onClick={() => setPlanEdit(null)} disabled={!!busy}>ยกเลิก</Button>
+              <Button tone="primary" disabled={!!busy || !!planEditCheck?.error}
+                title={planEditCheck?.error || undefined} onClick={submitPlanEdit}>
+                {busy === "payment-plan" ? "กำลังบันทึก…" : "บันทึกแผนงวด"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {/* ⭐ ปรับแผนงวดหลังอนุมัติ (PR2 · mig 0377) — โมดัลอยู่ในแผง (ไม่ใช่ page.js) · ตัวแก้คือ QuotationInstallments
           โหมด replan (ฟอร์มงวดตัวเดียวของระบบ) · error ของ API ขึ้นในโมดัล (แถบของหน้าอยู่ใต้โมดัล)

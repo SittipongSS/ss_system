@@ -24,6 +24,7 @@ import {
 } from './salesOrderActualRoute.js';
 import { replanAuditSummary, replanReasonError } from './installmentReplan.js';
 import { carryAuditSummary } from './installmentCarry.js';
+import { orderPaymentPlan } from './salesOrderPaymentPlan.js';
 import {
   INSTALLMENT_STALE_MESSAGE, installmentActionError, installmentStale, pipelineInstallmentLock,
 } from './salesOrderPayments.js';
@@ -99,6 +100,7 @@ function approveModeBranch() {
   assert.ok(approve > 0 && from > approve && to > from, 'หาก้อนแบบการนับของการอนุมัติไม่เจอ');
   return new AsyncFunction('body', 'before', 'id', 'supabase', 'loadInstallments', 'fail', 'parseActualModeInput',
     'ACTUAL_MODE_INSTALLMENT', 'actualModeApproveBlock', 'installmentCountAtFreeze', 'parseActualNoneReasonInput', 'ACTUAL_MODE_NONE',
+    'orderPaymentPlan',
     `${source.slice(from, to)}\n    return { actualMode, ...(actualReasonInput.reason ? { actualReason: actualReasonInput.reason } : {}) };`);
 }
 async function runApproveMode({ body, before, rows = [], readError = null }) {
@@ -110,7 +112,8 @@ async function runApproveMode({ body, before, rows = [], readError = null }) {
     return rows;
   };
   const out = await approveModeBranch()(body, before, before.id, {}, loadInstallments, http.fail, parseActualModeInput,
-    ACTUAL_MODE_INSTALLMENT, actualModeApproveBlock, installmentCountAtFreeze, parseActualNoneReasonInput, ACTUAL_MODE_NONE);
+    ACTUAL_MODE_INSTALLMENT, actualModeApproveBlock, installmentCountAtFreeze, parseActualNoneReasonInput, ACTUAL_MODE_NONE,
+    orderPaymentPlan);
   return { out, reads, res: out instanceof Response ? await reply(out) : null };
 }
 const PENDING_SO = {

@@ -13,6 +13,7 @@ import {
 } from '@/lib/sales/salesOrderPayments';
 import { OPENING_INSTALLMENT_LABEL, isOpeningInstallment } from '@/lib/sales/historicalOrders';
 import { installmentRequests } from '@/lib/sales/installmentRequests';
+import { orderPaymentPlan } from '@/lib/sales/salesOrderPaymentPlan';
 
 const text = (value) => String(value ?? '').trim();
 const money = (value) => Math.round((Number(value) || 0) * 100) / 100;
@@ -65,7 +66,8 @@ function choicesOf({ quotation, order, rows, list }) {
       })),
     };
   }
-  const plan = quotation ? installmentsFromPaymentPlan(quotation.paymentPlan, quotation.totalAmount) : [];
+  /* แผนของใบ (0441 · ปรับก่อนอนุมัติ) ชนะแผนของ QT เมื่อมีใบแล้ว */
+  const plan = quotation ? installmentsFromPaymentPlan(orderPaymentPlan(order, quotation), quotation.totalAmount) : [];
   if (!plan.length) return { source: 'none', orderId: order?.id || null, orderNumber: order?.orderNumber || '', rows: [] };
   return {
     source: 'plan',

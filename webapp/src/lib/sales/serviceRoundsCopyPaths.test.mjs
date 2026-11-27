@@ -136,6 +136,10 @@ const REVISION_RESETS = new Set([
   'exciseNotBilledKind', 'exciseNotBilledReason', 'exciseNotBilledRef',
   'exciseNotBilledAt', 'exciseNotBilledById', 'exciseNotBilledByName',
   'exciseRemainderClosedAt', 'exciseRemainderClosedById', 'exciseRemainderClosedByName', 'exciseRemainderClosedReason',
+  /* แผนงวดของใบ (mig 0441 · ปรับก่อนอนุมัติ) — **ก๊อปไปใบ Rev. โดย trigger `sales_order_payment_plan_carry` (BEFORE INSERT)**
+     ไม่ใช่ INSERT ของฟังก์ชันออก Rev. ⇒ ยามนี้มองไม่เห็น · salesOrderPaymentPlan.test.mjs ยืนยันรูปของ trigger แทน
+     (ไม่ก๊อป = งวดที่ย้ายมาถูกเทียบกับแผน QT แล้วขึ้น "ปรับแผนหลังอนุมัติ" ผิดบนใบ Rev.) */
+  'paymentPlan', 'paymentPlanReason', 'paymentPlanSetAt', 'paymentPlanSetById', 'paymentPlanSetByName',
 ]);
 
 test('🪤 Rev. ของใบสั่งขายต้องพาทุกคอลัมน์ที่ยังมีความหมายไปด้วย', () => {
@@ -248,6 +252,9 @@ const DRAFT_OWNED = new Set([
   'exciseNotBilledKind', 'exciseNotBilledReason', 'exciseNotBilledRef',
   'exciseNotBilledAt', 'exciseNotBilledById', 'exciseNotBilledByName',
   'exciseRemainderClosedAt', 'exciseRemainderClosedById', 'exciseRemainderClosedByName', 'exciseRemainderClosedReason',
+  /* แผนงวดของใบ (mig 0441) — ใบใหม่จาก RPC เริ่มที่ NULL (= เดินตามแผนของ QT) · หน้าสร้างที่ปรับแผนไว้ให้ route POST
+     เขียนห้าช่องนี้ต่อหลัง RPC สร้างใบ (ตัวตรวจ orderPlanChange ตัวเดียวกับจอ) — ไม่ใช่ของที่ต้องยกจากใบเสนอราคา */
+  'paymentPlan', 'paymentPlanReason', 'paymentPlanSetAt', 'paymentPlanSetById', 'paymentPlanSetByName',
 ]);
 
 /* 🪤 **ทะเบียนนี้ต้องไม่มีชื่อที่ไม่ใช่คอลัมน์จริง** — ของที่ประกาศเกินไม่ทำให้เทสต์แดง

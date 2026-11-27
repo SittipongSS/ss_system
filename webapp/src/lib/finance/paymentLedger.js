@@ -777,8 +777,10 @@ export function stampConfirmOutlook(rows = []) {
  * ⚠️ ไม่ประทับ: ใบย้อนหลัง (ไม่มี QT — แผนว่างอ่านเป็น "ชำระเต็มจำนวน") · ใบยกเลิก/ถูกออก Rev. ทับ
  *   (แถวโมฆะถูกตัดตั้งแต่ PR0 ⇒ ชุดไม่ครบ) · ใบที่ไม่รู้แผน (QT ไม่อยู่ในชุดที่โหลด)
  * @param planByQuotation Map|object ของ quotationId → paymentPlan
+ * @param planByOrder     Map ของ orderId → แผนของใบเอง (mig 0441 · ปรับก่อนอนุมัติ) — มีแล้วชนะแผนของ QT
+ *   ⚠️ ต้องรายใบ ไม่ใช่ราย QT: ใบ Rev. หลายใบใช้ QT ใบเดียวกัน
  */
-export function stampOrderReplanned(rows = [], planByQuotation = new Map()) {
+export function stampOrderReplanned(rows = [], planByQuotation = new Map(), planByOrder = new Map()) {
   const list = Array.isArray(rows) ? rows : [];
   const planOf = (id) => (planByQuotation instanceof Map ? planByQuotation.get(id) : planByQuotation?.[id]);
   const byOrder = new Map();
@@ -790,7 +792,8 @@ export function stampOrderReplanned(rows = [], planByQuotation = new Map()) {
   }
   for (const [, group] of byOrder) {
     const head = group[0];
-    const plan = head.quotationId ? planOf(head.quotationId) : undefined;
+    const own = planByOrder instanceof Map ? planByOrder.get(head.orderId) : undefined;
+    const plan = own ?? (head.quotationId ? planOf(head.quotationId) : undefined);
     const replanned = !isHistoricalOrder({ origin: head.origin }) && !head.orderDead && plan !== undefined
       && installmentsReplanned(group, plan, head.orderTotal);
     for (const row of group) row.orderReplanned = Boolean(replanned);
