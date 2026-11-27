@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import { useParams, useRouter } from "next/navigation";
-import { ReceiptText, FileCheck, MessagesSquare, ExternalLink, PencilLine } from "lucide-react";
+import { ReceiptText, FileCheck, MessagesSquare, ExternalLink, PencilLine, Package } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -320,48 +320,60 @@ export default function FilingDetailPage() {
             </div>
           </div>
 
-          <div className="glass-panel" style={{ padding: 16 }}>
-            <div className="drawer-section-title" style={{ marginBottom: 10 }}>รายการสินค้า ({o.items?.length || 0})</div>
-            {untaxedIds.size > 0 && (
-              <StatusNotice tone="warning">
-                มี {untaxedIds.size} รายการที่ภาษีเป็น ฿0 เพราะตอนเริ่มยื่น สินค้ายังไม่มีราคาขายปลีก — ยอดในบันทึกนี้ขาดจากที่ต้องยื่นจริง
-                {canApprove && o.status === "filing" && " · เติมราคาขายปลีกแล้วยกเลิกการเริ่มยื่น จากนั้นกดเริ่มยื่นใหม่"}
-              </StatusNotice>
-            )}
-            <TableScroll surface="embedded"><table style={{ width: "100%", borderCollapse: "collapse", fontSize: "var(--fs-7)" }}>
-              <thead>
-                <tr style={{ color: "var(--text-3)", fontSize: "var(--fs-5)", borderBottom: "1px solid var(--border)" }}>
-                  <th style={{ padding: "0 0 6px", fontWeight: "var(--fw-semibold)", textAlign: "left" }}>รายการสินค้า</th>
-                  <th style={{ padding: "0 8px 6px", fontWeight: "var(--fw-semibold)", textAlign: "right", whiteSpace: "nowrap" }}>จำนวน</th>
-                  <th style={{ padding: "0 0 6px", fontWeight: "var(--fw-semibold)", textAlign: "right", whiteSpace: "nowrap" }}>รวมภาษี</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(o.items || []).map((it) => {
-                  const p = it.product || it.registration || {};
-                  return (
-                    <tr key={it.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={{ padding: "8px 0", verticalAlign: "top" }}>
-                        <div className="font-mono" style={{ fontSize: "var(--fs-4)", color: "var(--text-3)" }}>{naText(p.fgCode)}</div>
-                        <div>{productDisplayName(p)}</div>
-                        {untaxedIds.has(it.id) && (
-                          <div className={styles.untaxed}>ไม่มีราคาขายปลีก · ภาษี ฿0</div>
-                        )}
-                      </td>
-                      <td className="font-mono" style={{ padding: "8px", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtNumber((it.quantity || 0))}</td>
-                      <td className="font-mono" style={{ padding: "8px 0", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>{fmtMoney(it.totalTax || 0)}</td>
+          {/* ⭐ ตารางระเบียนในหน้ารายละเอียด = DetailCard + TableScroll embedded (UI_DESIGN_SYSTEM §ListPanel ·
+              ทรงเดียวกับ "ORDER LINES" ของหน้า SO และ "USAGE" ของหน้าทะเบียน)
+              🐞 เจ้าของ 27/11 "ระยะห่างมันแปลกๆ": เดิมเป็น glass-panel padding 16 + embedded ที่เว้น
+              --panel-inset ของตัวเองซ้ำ ⇒ กรอบตารางลึกกว่าหัวการ์ด 16px ทั้งซ้ายขวา และ inline padding
+              `0 0 6px` ทับ padding-inline ของตารางกลาง ⇒ หัวคอลัมน์/ตัวเลขชิดเส้นกรอบ
+              ⚠️ ห้ามกลับไปเขียน padding/textAlign ราย th/td — ระยะ จังหวะแถว และแถวรวมเป็นของ Table.module.css */}
+          <DetailCard icon={Package} eyebrow="FILING LINES" title="รายการสินค้า" meta={`${o.items?.length || 0} รายการ`}>
+            <div className={styles.itemsBody}>
+              {untaxedIds.size > 0 && (
+                <StatusNotice tone="warning">
+                  มี {untaxedIds.size} รายการที่ภาษีเป็น ฿0 เพราะตอนเริ่มยื่น สินค้ายังไม่มีราคาขายปลีก — ยอดในบันทึกนี้ขาดจากที่ต้องยื่นจริง
+                  {canApprove && o.status === "filing" && " · เติมราคาขายปลีกแล้วยกเลิกการเริ่มยื่น จากนั้นกดเริ่มยื่นใหม่"}
+                </StatusNotice>
+              )}
+              {/* `cells="stacked"` = เซลล์สินค้าสองบรรทัด (รหัสบน · ชื่อล่าง) ⇒ ชิดบนทั้งแถว ตัวเลขอยู่แนวบรรทัดรหัส (กฎ 5 §ป้ายในตาราง) */}
+              <TableScroll surface="embedded" cells="stacked">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>รายการสินค้า</th>
+                      <th className={`num ${styles.numCol}`}>จำนวน</th>
+                      <th className={`num ${styles.numCol}`}>รวมภาษี</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr style={{ fontWeight: "var(--fw-bold)" }}>
-                  <td colSpan={2} style={{ padding: "8px 8px 0 0", textAlign: "right" }}>รวมภาษี</td>
-                  <td className="font-mono" style={{ padding: "8px 0 0", textAlign: "right", color: "var(--red)" }}>{taxText(o)}</td>
-                </tr>
-              </tfoot>
-            </table></TableScroll>
-          </div>
+                  </thead>
+                  <tbody>
+                    {(o.items || []).map((it) => {
+                      const p = it.product || it.registration || {};
+                      return (
+                        <tr key={it.id}>
+                          {/* `ui-cell-wide` ถอดเพดาน 220px ของเซลล์ลิสต์ — ชื่อสินค้ายาวต้องขึ้นบรรทัดใหม่ ไม่ใช่ถูกตัด "…" */}
+                          <td className="ui-cell-wide">
+                            <div className={styles.itemCode}>{naText(p.fgCode)}</div>
+                            <div>{productDisplayName(p)}</div>
+                            {untaxedIds.has(it.id) && (
+                              <div className={styles.untaxed}>ไม่มีราคาขายปลีก · ภาษี ฿0</div>
+                            )}
+                          </td>
+                          <td className="num">{fmtNumber((it.quantity || 0))}</td>
+                          <td className="num">{fmtMoney(it.totalTax || 0)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={2} className="num">รวมภาษี</td>
+                      {/* สีอยู่ที่ span ไม่ใช่ td — กฎสีของ td ในตารางกลาง (0,2,1) ชนะคลาสโมดูลเดี่ยวเสมอ */}
+                      <td className="num"><span className={styles.totalTax}>{taxText(o)}</span></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </TableScroll>
+            </div>
+          </DetailCard>
 
           <div className="glass-panel" style={{ padding: 16 }}>
             <AttachmentsPanel

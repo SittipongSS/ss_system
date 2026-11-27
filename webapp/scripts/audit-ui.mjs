@@ -769,8 +769,10 @@ const RAW_OPACITY_JSX_CAP = 24;
    📉 689 → 687 (2026-10-26) — ตรวจตัวเลขระดับต่ำ (L6): แถบการ์ดของ /sahamit/material เลิกเขียน `Stat` + แถว flex
       ด้วย style เอง (padding/gap/marginBottom ดิบ) ย้ายไปใช้ KpiCard กลางที่กดได้
    📉 684 → 674 (2026-11-15) — ยุบดีล/โครงการ P2d: หน้าดีลถอดการ์ด "โครงการที่ดีลนี้อยู่" + แถวปุ่มสร้าง/ผูกโครงการ + โมดัลผูกโครงการ
-   📉 674 → 631 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
-const RAW_SPACING_JSX_CAP = 626;
+   📉 674 → 631 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร
+   📉 626 → 623 (2026-11-27) — การ์ดรายการสินค้าหน้าใบยื่นสรรพสามิตย้ายเป็น DetailCard + ตารางกลาง (เจ้าของ "ระยะห่างมันแปลกๆ"):
+      padding ของ glass-panel · marginBottom หัวการ์ด · padding ราย th/td ถอดทิ้ง */
+const RAW_SPACING_JSX_CAP = 623;
 
 /* ขนาดในผิว style object — คนละเรื่องกับระยะห่าง จึงแยกเพดาน
    🪤 สเกลนี้ **ไม่มีบันไดตัวเลข** ให้ยกเข้า (ดู RAW_TAILWIND_SIZE_CAP) มีแต่ชื่อ
