@@ -54,9 +54,7 @@ export const CAPABILITY_MODULES = Object.freeze([
     { cap: 'history:view', tier: 1, label: 'เห็นข้อมูลภาษีบนหน้าสินค้า/ลูกค้า' },
     { cap: 'tax:module', tier: 1, label: 'เข้าระบบภาษีสรรพสามิต' },
     { cap: 'ra:view', tier: 1, label: 'ดูสถานะภาษีทุกทีม' },
-    { cap: 'sales:view', tier: 1, label: 'ดูใบยื่นชำระภาษี' },
     { cap: 'sales:act', tier: 2, label: 'สร้าง/ดำเนินการใบยื่นชำระภาษี' },
-    { cap: 'sales:delete', tier: 3, label: 'ลบใบยื่นชำระภาษี', scope: 'ตามขอบเขตทีม' },
     { cap: 'ra:approve', tier: 3, label: 'อนุมัติทะเบียน/ยื่นกรม' },
   ] },
   { key: 'production', name: 'ผลิต', icon: 'Hammer', caps: [
