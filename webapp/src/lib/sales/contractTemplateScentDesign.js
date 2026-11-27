@@ -44,7 +44,7 @@ export const SCENT_DESIGN_TEMPLATE = {
   fields: [
     { key: 'contractPlace', label: 'ทำที่', type: 'text', required: true, default: 'บริษัท เซนท์ แอนด์ เซนส์ แลบอราทอรี่ จำกัด' },
     { key: 'clientName', label: 'ชื่อผู้ว่าจ้าง (ตามหนังสือรับรอง)', type: 'text', required: true, source: 'customer' },
-    { key: 'clientRegNo', label: 'เลขทะเบียนนิติบุคคล/เลขประจำตัวผู้เสียภาษี', type: 'text', required: true, source: 'customer' },
+    { key: 'clientRegNo', label: 'เลขทะเบียนนิติบุคคล/เลขประจำตัวผู้เสียภาษี', type: 'taxId', required: true, source: 'customer' },
     { key: 'clientAddress', label: 'ที่อยู่ผู้ว่าจ้าง', type: 'textarea', required: true, source: 'customer' },
     { key: 'clientSignerName', label: 'ชื่อผู้ลงนามฝ่ายผู้ว่าจ้าง', type: 'text', required: false, hint: 'เว้นว่างได้ — จะเป็นเส้นประให้เขียนมือ' },
     /* ⚠️ **ไม่มีค่าตั้งต้น** (มติผู้ใช้ 2026-08-21) — ต้นฉบับฉบับ 13 ส.ค. 2569 ตัดบรรทัด
