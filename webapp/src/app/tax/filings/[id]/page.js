@@ -176,7 +176,7 @@ export default function FilingDetailPage() {
   const workflowSteps = workflowStepsFromIndex([
     { id: "queued", label: "รอ RA", hint: "งานถึง RA เมื่อใบสั่งขายค่าสรรพสามิตอนุมัติ" },
     { id: "filing", label: "กำลังยื่น", hint: o?.filingStartedAt ? `เริ่ม ${startedText}` : "ฝ่าย RA ยื่นแบบต่อกรมสรรพสามิต" },
-    { id: "complete", label: "ชำระแล้ว", hint: "บันทึกเลขที่ใบเสร็จและวันที่ชำระ" },
+    { id: "complete", label: "ชำระแล้ว", hint: "แนบแบบ ภส.03-07 + ใบเสร็จกรม พร้อมเลขที่ วันรับเงิน และยอด" },
   ], STEP_OF[o?.status] ?? 1);
   const primaryAction = canApprove && canTransitionFiling(o?.status, "complete")
     ? {
@@ -210,8 +210,9 @@ export default function FilingDetailPage() {
                   { id: "tax-before-vat", label: "ค่าภาษี (ก่อน VAT)", value: taxText(o) },
                   { id: "items", label: "รายการสินค้า", value: `${o.items?.length || 0} รายการ` },
                   { id: "started", label: "เริ่มยื่น", value: startedText },
+                  { id: "form-ref", label: "เลขที่รับแบบ ภส.", value: naText(o.taxFormRef) },
                   { id: "receipt", label: "ใบเสร็จสรรพสามิต", value: naText(o.exciseReceiptNumber) },
-                  { id: "paid", label: "วันที่ชำระ", value: paidText },
+                  { id: "paid", label: "วันรับเงิน", value: paidText },
                   // เลข ET = เลขอ้างอิงภายในของบันทึก (trigger 0162) — ไม่ส่งลูกค้า
                   { id: "ref", label: "เลขอ้างอิงภายใน", value: naText(o.taxNoticeNumber) },
                 ]}
@@ -228,7 +229,7 @@ export default function FilingDetailPage() {
                    ใบสรุปรายการยื่น (V9) ถอดแล้ว 04/11 (เจ้าของ: ยื่นกรมผ่านระบบของกรม) — พิมพ์/Excel อยู่ที่หน้ารายการ */
                 secondaryActions={[
                   {
-                    // D11: แก้เลขที่ใบเสร็จ/วันที่/ยอดหลังชำระแล้ว — ฟอร์มเดียวกับตอนบันทึกผลชำระ (เติมค่าเดิม)
+                    // D11: แก้เลขที่รับแบบ/เลขที่ใบเสร็จ/วันรับเงิน/ยอด/แนบไฟล์ใหม่หลังชำระแล้ว — ฟอร์มเดียวกับตอนบันทึกผลชำระ (เติมค่าเดิม)
                     id: "edit-paid", label: "แก้ข้อมูลการชำระ", kind: "edit", icon: PencilLine,
                     onClick: () => setEditPaidOpen(true),
                     visible: canApprove && o.status === "complete" && !isExempt,
@@ -312,10 +313,10 @@ export default function FilingDetailPage() {
               <Field label="ใบสั่งขายลูกค้า">{naText(o.poReference)}</Field>
               <Field label="เริ่มยื่น">{startedText}</Field>
               <Field label="ยอดภาษีรวม">{taxText(o)}</Field>
+              <Field label="เลขที่รับแบบ ภส.">{naText(o.taxFormRef)}</Field>
               <Field label="ใบเสร็จสรรพสามิต">{naText(o.exciseReceiptNumber)}</Field>
-              {o.taxPaidDate && <Field label="วันที่ชำระจริง">{fmtDate(o.taxPaidDate)}</Field>}
-              {o.exciseTaxPaidAmount != null && <Field label="ยอดชำระจริง">{fmtMoney(o.exciseTaxPaidAmount)}</Field>}
-              {o.taxFormRef && <Field label="แบบ ภส.">{o.taxFormRef}</Field>}
+              {o.taxPaidDate && <Field label="วันรับเงิน">{fmtDate(o.taxPaidDate)}</Field>}
+              {o.exciseTaxPaidAmount != null && <Field label="ยอดตามใบเสร็จ">{fmtMoney(o.exciseTaxPaidAmount)}</Field>}
             </div>
           </div>
 
