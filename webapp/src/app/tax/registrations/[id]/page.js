@@ -598,9 +598,11 @@ export default function RegistrationDetailPage() {
 
           {/* ฉลากที่ทะเบียนใช้ = Artwork ของสินค้า (P1) — ยื่นแล้ว = ชุดที่ตรึงไว้ตอนยื่น · ร่าง/ตีกลับ = ชุดปัจจุบันของสินค้า
               (แนบ/ลบที่หน้าสินค้า หรือแผงทะเบียนของฝ่ายขาย) · ตัวเดียวกับแผงทะเบียนของฝ่ายขาย */}
+          {/* ⚠️ แผงเอกสาร `surface="embedded"` — การ์ดนี้คือกรอบเดียว (เดิม glass-panel ซ้อน glass-panel ของแผง · เจ้าของ 27/11) */}
           <div className={`glass-panel ${styles.panel} ${styles.panelStack}`}>
             <SubmittedArtwork files={s.labelArtwork} live={usesLiveArtwork(s.status)} />
             <AttachmentsPanel
+              surface="embedded"
               entityType="registration"
               entityId={s.id}
               canEdit={(canEdit && s.status !== "approved") || canApprove}
@@ -614,18 +616,18 @@ export default function RegistrationDetailPage() {
           {/* Customer documents (incl. แผนที่บริษัท) — same shared customer record.
               The map is pulled from here; if missing, SA can attach it and it is
               saved to the customer (not duplicated on the registration). */}
+          {/* วางแผงเปล่า — AttachmentsPanel โหมดการ์ดเป็น glass-panel ของตัวเองอยู่แล้ว
+              (เดิมห่อ glass-panel อีกชั้น = กรอบซ้อนกรอบ · เจ้าของ 27/11 · ทรงเดียวกับหน้าใบยื่น #2152) */}
           {s.customerId && (
-            <div className={`glass-panel ${styles.panel}`}>
-              <AttachmentsPanel
-                entityType="customer"
-                entityId={s.customerId}
-                canEdit={canEdit}
-                docTypes={customerDocTypes(customer?.customerType)}
-                title={`เอกสารลูกค้า${customerLabel ? ` — ${customerLabel}` : ""} (ฐานข้อมูลเดียวกับหน้าลูกค้า)`}
-                onItemsChange={setCustItems}
-                cardColumns={1}
-              />
-            </div>
+            <AttachmentsPanel
+              entityType="customer"
+              entityId={s.customerId}
+              canEdit={canEdit}
+              docTypes={customerDocTypes(customer?.customerType)}
+              title={`เอกสารลูกค้า${customerLabel ? ` — ${customerLabel}` : ""} (ฐานข้อมูลเดียวกับหน้าลูกค้า)`}
+              onItemsChange={setCustItems}
+              cardColumns={1}
+            />
           )}
 
           {/* ⭐ ใบยื่นที่อ้างทะเบียนนี้ — คำตอบของ "ทะเบียนนี้ถูกใช้ไปแล้วหรือยัง"
