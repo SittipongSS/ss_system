@@ -121,6 +121,11 @@ export default function AttachmentsPanel({
   onItemsChange,
   cardColumns = 2, // การ์ดเอกสารจำเป็น: จำนวนคอลัมน์สูงสุด (1 = แถวละใบ เห็นชื่อเต็ม)
   inlineUpload = false, // แสดง action แนบไฟล์และรายการไฟล์แบบไม่มีการ์ด
+  /* โหมดการ์ด: `surface="embedded"` = อยู่ในการ์ดของผู้เรียกแล้ว ⇒ ไม่วาดกรอบ glass-panel + padding ของตัวเอง
+     (คำเดียวกับ TableScroll) · เนื้อในเหมือนเดิมทุกอย่าง — หัว · แถวชนิดเอกสาร · ลากวาง/Ctrl+V (zoneProps อยู่ที่ราก)
+     🐞 เจ้าของ 27/11: หน้าทะเบียนสรรพสามิตวาง Artwork กับแผงนี้ในการ์ดเดียว (มติ P1 09/11) ⇒ กรอบซ้อนกรอบ
+     ⚠️ ห่อด้วยการ์ดเปล่า ๆ เพื่อ "ให้มีพื้น" ไม่ต้องใช้โหมดนี้ — วางแผงเปล่าแทน (หน้าใบยื่น #2152) */
+  surface = "card",
   // เปิดปุ่มสร้าง/ผูก Google Doc·Sheet (เอกสารมีชีวิต) — เฉพาะ entity ที่มีโฟลเดอร์
   // ของตัวเองบน Drive · ปุ่ม "ดู" ของแถวเอกสาร Google **ขึ้นเสมอ** ไม่ต้องรอ flag นี้
   // เพราะการอ่านไม่ใช่การเพิ่มของ (จอที่แค่แสดงผลก็ควรเปิดดูได้)
@@ -1229,7 +1234,7 @@ export default function AttachmentsPanel({
   }
 
   return (
-    <div className="glass-panel p-[20px]" {...intake.zoneProps}>
+    <div className={surface === "embedded" ? undefined : "glass-panel p-[20px]"} {...intake.zoneProps}>
       <div className="flex items-center justify-between border-b border-[var(--border)] pb-3 mb-4 gap-3 flex-wrap">
         <h3 className="font-semibold text-sm text-[var(--text)] flex items-center gap-2">
           <Paperclip size={16} className="text-[var(--accent)]" />
