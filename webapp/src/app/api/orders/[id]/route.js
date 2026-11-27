@@ -6,7 +6,11 @@ import { recordAudit } from '@/lib/audit';
 import { appendUpdate, purgeUpdates } from '@/lib/master/updates';
 import { purgeAttachments } from '@/lib/master/attachments';
 import { orderStatusUpdate } from '@/lib/master/recordUpdates';
-import { filingTransitionError } from '@/lib/excise/workflow';
+import { FILING_TRANSITIONS, filingTransitionError } from '@/lib/excise/workflow';
+import {
+  filingPaymentError, mergedPaidFields, paidAmountCheck, paidAmountError, paidDateError, paymentAmountNote, paymentDocTypesOf,
+} from '@/lib/excise/filingPayment';
+import { businessDate } from '@/lib/businessDate';
 import { loadFilingSummary } from '@/lib/excise/raFiling';
 import { FILING_REASON_MAX, FILING_REASON_MIN } from '@/lib/excise/raFilingRules';
 import { fetchAllResult } from '@/lib/supabaseFetchAll';
@@ -108,13 +112,21 @@ export async function PATCH(request, { params }) {
       }
     }
     // ช่องบังคับนับทั้งค่าที่ส่งมากับคำขอนี้ และค่าที่เก็บไว้บนใบแล้ว (ส่งเลขมารอบก่อนก็ผ่าน)
-    const fields = {
-      exciseReceiptNumber: updates.exciseReceiptNumber !== undefined ? updates.exciseReceiptNumber : order.exciseReceiptNumber,
-    };
+    const fields = mergedPaidFields(updates, order);
     const blocked = filingTransitionError({
       from: order.status, to: target, caps: { sales: isSales, ra: isLegal }, exempt, fields,
     });
     if (blocked) return Response.json({ error: blocked.error }, { status: blocked.status });
+    /* ⭐ มติเจ้าของ 27/11: ปิดงานได้เมื่อไฟล์ **แบบ ภส. + ใบเสร็จกรม** อยู่บนบันทึกแล้ว (โมดัลแนบก่อนแล้วค่อยยิงตัวนี้)
+       + ยอดตามใบเสร็จไม่ตรงยอดยื่น = ต้องมีเหตุผล · ใบยกเว้นภาษีทั้งใบไม่มีเอกสารจากกรม ⇒ ข้าม */
+    if (target === 'complete' && !exempt) {
+      const docs = await paymentDocTypesOf(supabase, id);
+      if (docs.error) return Response.json({ error: `ตรวจไฟล์แนบของบันทึกไม่สำเร็จ: ${docs.error}` }, { status: 500 });
+      const paymentError = filingPaymentError({
+        fields, docTypes: docs.types, totalTax: order.totalTax, amountReason: body.paidAmountReason, today: businessDate(),
+      });
+      if (paymentError) return Response.json({ error: paymentError }, { status: 400 });
+    }
     updates.status = target;
     if (target === 'complete') {
       // ชำระแล้ว: ใคร/เมื่อไรที่บันทึก (วันชำระจริงของกรมอยู่ที่ taxPaidDate จากโมดัล)
@@ -128,10 +140,33 @@ export async function PATCH(request, { params }) {
   for (const key of ['taxInvoiceNumber', 'exciseReceiptNumber']) {
     if (typeof updates[key] === 'string') updates[key] = updates[key].trim();
   }
-  /* D11: แก้เลขใบเสร็จหลังชำระแล้วได้ แต่ห้ามล้างจนว่าง — ด่าน "ต้องมีเลขใบเสร็จ" ของขั้นชำระแล้วต้องจริงตลอดชีวิตของบันทึก */
-  if (order.status === 'complete' && updates.exciseReceiptNumber !== undefined && !updates.exciseReceiptNumber && order.exciseReceiptNumber) {
-    return Response.json({ error: 'กรุณาระบุเลขที่ใบเสร็จสรรพสามิต — ล้างเลขของบันทึกที่ชำระแล้วไม่ได้' }, { status: 400 });
+  if (typeof updates.taxFormRef === 'string') updates.taxFormRef = updates.taxFormRef.trim();
+  /* D11: แก้ข้อมูลการชำระหลังชำระแล้วได้ แต่ห้ามล้างช่องบังคับจนว่าง — ด่านของขั้นชำระแล้วต้องจริงตลอดชีวิตของบันทึก
+     (มติ 27/11: ช่องบังคับเพิ่มจากเลขใบเสร็จเป็นสี่ช่อง ⇒ ตรวจครบทุกช่องในตาราง) */
+  const editingPaid = order.status === 'complete' && (body.status === undefined || body.status === order.status);
+  if (editingPaid) {
+    const cleared = FILING_TRANSITIONS.complete.requires
+      .filter(([key]) => updates[key] !== undefined && String(updates[key] ?? '').trim() === '' && String(order[key] ?? '').trim() !== '')
+      .map(([, label]) => label);
+    if (cleared.length) {
+      return Response.json({ error: `กรุณาระบุ${cleared.join(' และ ')} — ล้างข้อมูลของบันทึกที่ชำระแล้วไม่ได้` }, { status: 400 });
+    }
   }
+  /* ยอดตามใบเสร็จไม่ตรงยอดยื่น = ต้องมีเหตุผล — ทั้งตอนปิดงาน (ตรวจแล้วข้างบน) และตอนแก้ยอดของบันทึกที่ชำระแล้ว
+     ⚠️ แก้ช่องอื่นโดยไม่แตะยอด = ไม่ถามซ้ำ (ยอดเดิมผ่านด่านมาแล้ว) */
+  const amountTouched = updates.exciseTaxPaidAmount !== undefined
+    && paidAmountCheck(0, updates.exciseTaxPaidAmount).paid !== paidAmountCheck(0, order.exciseTaxPaidAmount).paid;
+  const amountCheck = paidAmountCheck(order.totalTax, updates.exciseTaxPaidAmount ?? order.exciseTaxPaidAmount);
+  if (editingPaid && amountTouched) {
+    const amountError = paidAmountError(order.totalTax, updates.exciseTaxPaidAmount, body.paidAmountReason);
+    if (amountError) return Response.json({ error: amountError }, { status: 400 });
+  }
+  const editedDateError = editingPaid && updates.taxPaidDate !== undefined ? paidDateError(updates.taxPaidDate, businessDate()) : null;
+  if (editedDateError) return Response.json({ error: editedDateError }, { status: 400 });
+  const amountNote = ((updates.status === 'complete' && order.status !== 'complete') || (editingPaid && amountTouched))
+    && amountCheck.paid != null && !amountCheck.matches && String(body.paidAmountReason ?? '').trim()
+    ? paymentAmountNote({ ...amountCheck, reason: body.paidAmountReason })
+    : null;
   /* ⭐ v3: บันทึกการยื่นตรึงรายการ ณ ตอนเริ่มยื่น — ไม่มีทางแก้/คิดรายการใหม่ (ยกเลิกการเริ่มยื่นแล้วเริ่มใหม่แทน · D10) */
   if (Array.isArray(body.items) || body.recalcFromSalesOrder === true) {
     return Response.json({
@@ -162,6 +197,10 @@ export async function PATCH(request, { params }) {
     if (threadEvent) {
       await appendUpdate(supabase, { entityType: 'excise_order', entityId: id, ...threadEvent, user });
     }
+  }
+  // เหตุผลที่ยอดตามใบเสร็จไม่ตรงยอดยื่น — ไม่มีคอลัมน์ เก็บในเธรดที่เดียว (แก้ยอดหลายรอบ = ประวัติครบทุกรอบ)
+  if (amountNote) {
+    await appendUpdate(supabase, { entityType: 'excise_order', entityId: id, ...amountNote, user });
   }
   // Audit เก็บ header แบบ plain — ตัด items/registrations ที่ฝังมา (ORDER_SELECT +
   // attachRegistrations) ออก กันบวมและให้ changedKeys เทียบกับ before (plain) ได้ตรง.
