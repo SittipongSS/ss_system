@@ -10,7 +10,7 @@ import PendingApprovalAmount from "@/components/salesPlanning/PendingApprovalAmo
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, Handshake, Inbox, Layers, Link2, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, Unlink, UserRound, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowRightLeft, Ban, Building2, ChartGantt, CheckCircle2, Circle, ClipboardList, ExternalLink, FileText, Handshake, Inbox, Layers, Link2, ListTodo, MessageSquare, Paperclip, PackageCheck, Pencil, Plus, Printer, Save, Send, Trash2, Trophy, Unlink, UserRound, Users } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
 import ReadableText from "@/components/ui/ReadableText";
 import Modal from "@/components/Modal";
@@ -66,6 +66,8 @@ import { notifyToast } from "@/components/ui/Toast";
 import { RESPONSE_WARNING_TOAST, responseWarningText } from "@/lib/apiWarnings";
 import { missingDealFieldsMessage } from "@/lib/sales/dealRequiredFields";
 import { isHistoricalDeal } from "@/lib/sales/historicalOrders";
+import { canHandoverSalesWork } from "@/lib/sales/handover";
+import HandoverDealDialog from "@/components/salesPlanning/handover/HandoverDealDialog";
 import { SALES_ORDER_STATUS_LABELS, dealActualFromSalesOrders, salesOrderActual, salesOrderAmountKind, salesOrderPendingApprovalAmount, splitSalesOrderAmounts } from "@/lib/sales/salesOrderWorkflow";
 import { installmentActualSubLine, wonDealForecastHint } from "@/lib/sales/dealAmountDisplay";
 import InstallmentActualSubLine from "@/components/salesPlanning/InstallmentActualSubLine";
@@ -487,6 +489,8 @@ export default function DealOverviewPage() {
 
   const [actionBusy, setActionBusy] = useState("");
   const [lostOpen, setLostOpen] = useState(false);
+  /* ส่งต่องาน (มติเจ้าของ 27/11/2026) — หน้าต่างโหลดดีลจากตัวตัดสินกลางเอง */
+  const [handoverOpen, setHandoverOpen] = useState(false);
   const [lostReason, setLostReason] = useState("");
 
   // ฟีดความเคลื่อนไหวย้ายไปเธรดกลางแล้ว (mig 0169) — โพสต์/แก้/ลบ/แนบรูป/พรีวิวรูป
@@ -814,6 +818,18 @@ export default function DealOverviewPage() {
       visible: canLinkLead && !!deal?.leadId && (data?.sourceLead ? !!data.sourceLead.canUnlink : true),
       disabled: !!actionBusy,
       onClick: unlinkLead,
+    },
+    /* ส่งต่องาน (มติเจ้าของ 27/11/2026 ข้อ 1–2) — สิทธิ์ AE Supervisor/Admin ไม่ผ่าน = ไม่โชว์ (กฎ ui-visibility)
+       ดีลที่ไม่มีงานให้ส่งต่อ (Lost · ดีลภาชนะ) = โชว์แล้วบอกเหตุ · Won ที่งานจบแล้วรู้ได้จากเอกสารลูก
+       ⇒ หน้าต่างถามตัวตัดสินกลาง (GET /api/sales-planning/handover?dealId=) แล้วบอกเหตุเอง */
+    {
+      id: "handover", kind: "edit", slot: "secondary", label: "ส่งต่องาน", icon: ArrowRightLeft,
+      visible: !!deal && canHandoverSalesWork({ role }),
+      disabled: !!actionBusy || deal?.stage === "lost" || (!!deal && isHistoricalDeal(deal)),
+      disabledReason: deal?.stage === "lost"
+        ? "ดีลนี้ปิดเป็น Lost แล้ว — อยู่กับคนเดิม"
+        : (deal && isHistoricalDeal(deal) ? "ดีลของใบสั่งขายย้อนหลังย้ายเจ้าของที่ฟอร์มแก้ไขดีล (ช่องผู้รับผิดชอบ)" : null),
+      onClick: () => setHandoverOpen(true),
     },
     {
       id: "delete", kind: "delete", slot: "danger", label: "ลบดีลนี้", icon: Trash2,
@@ -1636,7 +1652,13 @@ export default function DealOverviewPage() {
         )}
       </Modal>
 
-
+      <HandoverDealDialog
+        open={handoverOpen}
+        dealId={deal?.id}
+        onClose={() => setHandoverOpen(false)}
+        onDone={() => load()}
+        onToast={(t) => notifyToast(t.msg, { kind: t.kind })}
+      />
     </Workspace>
   );
 }

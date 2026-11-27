@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { noteReturnTrip } from "@/lib/ui/historyArrival";
-import { ArrowLeft, Building2, Archive, ArchiveRestore, ClipboardList, Handshake, MapPin, MessageCircleQuestion, MessagesSquare, Wallet } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, Building2, Archive, ArchiveRestore, ClipboardList, Handshake, MapPin, MessageCircleQuestion, MessagesSquare, Wallet } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
 import { useCan, useCapUser, useDepartment, useRole, useTeams } from "@/lib/roleContext";
+import { canHandoverSalesWork } from "@/lib/sales/handover";
+import HandoverCustomerDialog from "@/components/salesPlanning/handover/HandoverCustomerDialog";
 import { canEditCustomerBillingRule, canEditIssuedMasterCode, isSuperuser } from "@/lib/permissions";
 import Modal from "@/components/Modal";
 import CustomerForm, { EMPTY_CUSTOMER, customerToForm } from "@/components/database/CustomerForm";
@@ -117,6 +119,8 @@ export default function CustomerDetails() {
 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
+  /* ส่งต่องาน (มติเจ้าของ 27/11/2026) — งานของลูกค้ารายนี้ ทุกเจ้าของ */
+  const [handoverOpen, setHandoverOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState(EMPTY_CUSTOMER);
 
@@ -461,6 +465,11 @@ export default function CustomerDetails() {
         onClick: () => sendDecision(customer.id, "rejected", { subject: decideSubject }),
       },
       canDecide && editAction,
+      /* ส่งต่องาน (มติ 27/11 ข้อ 1–2) — AE Supervisor/Admin เท่านั้น ไม่ผ่าน = ไม่โชว์ (กฎ ui-visibility)
+         ⚠️ ปุ่มระดับลูกค้าอยู่ใน Control Panel นี้ที่เดียว (ม-49/ม-57) — ไม่มีงานค้าง หน้าต่างบอกเหตุเอง */
+      canHandoverSalesWork({ role }) && {
+        id: "handover", kind: "edit", icon: ArrowRightLeft, label: "ส่งต่องาน", onClick: () => setHandoverOpen(true),
+      },
       canEdit && (customer.isActive === false
         ? { id: "resume", kind: "resume", icon: ArchiveRestore, label: "เปิดใช้อีกครั้ง", onClick: handleToggleActive }
         : { id: "pause", kind: "pause", icon: Archive, label: "พักใช้งานลูกค้า", onClick: handleToggleActive }),
@@ -787,6 +796,14 @@ export default function CustomerDetails() {
         message={confirmBox?.message}
         confirmLabel={confirmBox?.confirmLabel}
         danger={confirmBox?.danger !== false}
+      />
+      <HandoverCustomerDialog
+        open={handoverOpen}
+        customerId={customer.id}
+        customerName={customerNameIn(customer)}
+        onClose={() => setHandoverOpen(false)}
+        onDone={() => fetchCustomerData()}
+        onToast={setToast}
       />
     </Workspace>
   );
