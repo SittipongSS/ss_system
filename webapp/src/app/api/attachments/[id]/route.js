@@ -22,6 +22,7 @@ import {
 } from '@/lib/master/costingAttachmentAccess';
 
 import { canViewSalesPlanning } from '@/lib/salesPlanning';
+import { PAYMENT_DOC_TYPES, paymentDocLabel, paymentDocTypesOf } from '@/lib/excise/filingPayment';
 import {
   SALES_ATTACHMENT_TABLE, canAttachToSalesEntity, isSalesAttachment,
 } from '@/lib/sales/salesAttachmentAccess';
@@ -308,6 +309,24 @@ export async function DELETE(request, { params }) {
 
   const denied = await guardAttachmentWrite(supabase, att, user, 'ลบเอกสาร');
   if (denied) return denied;
+
+  /* ⭐ เอกสารการชำระสรรพสามิต (มติเจ้าของ 27/11) — บันทึกที่ "ชำระแล้ว" ต้องมีไฟล์แบบ ภส. + ใบเสร็จกรมตลอดชีวิต
+     (ด่านปิดงานใน PATCH /api/orders/[id] บังคับตอนปิด · ที่นี่กันลบไฟล์สุดท้ายของชนิดนั้นทีหลัง) · เปลี่ยนไฟล์ = แนบใหม่ก่อนแล้วค่อยลบไฟล์เดิม
+     ⚠️ อ่านพัง = 500 ไม่ใช่ปล่อยลบ (supabase ไม่ throw) · ไม่มีทางข้ามของแอดมิน — ตัวเดียวกับ "ห้ามล้างเลขใบเสร็จ" */
+  if (att.entityType === 'order' && PAYMENT_DOC_TYPES.includes(att.docType)) {
+    const { data: paidOrder, error: paidOrderError } = await supabase
+      .from('orders').select('id, status').eq('id', att.entityId).maybeSingle();
+    if (paidOrderError) return Response.json({ error: paidOrderError.message }, { status: 500 });
+    if (paidOrder?.status === 'complete') {
+      const left = await paymentDocTypesOf(supabase, att.entityId, { exceptId: att.id });
+      if (left.error) return Response.json({ error: `ตรวจไฟล์ที่เหลือของบันทึกไม่สำเร็จ: ${left.error}` }, { status: 500 });
+      if (!left.types.includes(att.docType)) {
+        return Response.json({
+          error: `บันทึกนี้ชำระแล้ว ต้องมีไฟล์${paymentDocLabel(att.docType)}อย่างน้อย 1 ไฟล์ — แนบไฟล์ใหม่ก่อน แล้วค่อยลบไฟล์นี้`,
+        }, { status: 409 });
+      }
+    }
+  }
 
   // ⚠️ ต้องมาก่อนคำสั่งลบแถวเสมอ — ลบไปแล้วไม่มีอะไรให้ปลดระวาง และไฟล์ถูกปล่อยทิ้งแล้ว
   if (att.entityType === 'product' && att.docType === SPEC_ILLUSTRATION_DOC_TYPE) {

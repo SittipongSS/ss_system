@@ -74,9 +74,20 @@ export const TRACKS = {
       ไม่มีขั้นร่าง/ตีกลับ/ส่งเอกสารแล้ว · ถอยจากกำลังยื่น = ยกเลิกการเริ่มยื่น (DELETE + เหตุผล) ไม่ใช่สถานะ
      by          RA = ฝ่าย RA (ra:approve) · (SA ไม่มีปลายทางไหนเหลือแล้ว)
      from        สถานะต้นทางที่ยอม
-     requires    ช่องที่ต้องมีค่า (จาก body หรือที่เก็บไว้แล้ว) — ใบยกเว้นภาษีทั้งใบไม่ต้อง */
+     requires    ช่องที่ต้องมีค่า (จาก body หรือที่เก็บไว้แล้ว) — ใบยกเว้นภาษีทั้งใบไม่ต้อง
+   ⭐ มติเจ้าของ 27/11: เอกสารจากกรมมีสองชุด (แบบ ภส.03-07 + ใบเสร็จ) ⇒ ช่องบังคับเพิ่มเป็นสี่ช่อง เรียงตามลำดับบนจอ
+      ไฟล์ทั้งสองชุด + เหตุผลเมื่อยอดไม่ตรง ตัดสินที่ `lib/excise/filingPayment.js` (ต้องอ่านตารางไฟล์แนบ — ตารางนี้ไม่แตะฐาน) */
 export const FILING_TRANSITIONS = {
-  complete: { by: "RA", from: ["filing"], requires: [["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"]] },
+  complete: {
+    by: "RA",
+    from: ["filing"],
+    requires: [
+      ["taxFormRef", "เลขที่รับแบบ ภส."],
+      ["exciseReceiptNumber", "เลขที่ใบเสร็จสรรพสามิต"],
+      ["taxPaidDate", "วันรับเงิน"],
+      ["exciseTaxPaidAmount", "ยอดรวมตามใบเสร็จ"],
+    ],
+  },
 };
 
 const filled = (value) => String(value ?? "").trim() !== "";
@@ -87,7 +98,7 @@ const filled = (value) => String(value ?? "").trim() !== "";
  * @param to      สถานะปลายทาง
  * @param caps    `{ sales, ra }` — ถือ sales:act / ra:approve ไหม (แอดมินถือทั้งคู่)
  * @param exempt  ยกเว้นภาษีทั้งใบไหม (`isExemptFiling` — ไม่ใช่ยอด 0) ⇒ ไม่ต้องมีเลขใบเสร็จ
- * @param fields  ค่าหลังรวมของที่ส่งมากับที่เก็บไว้ `{ exciseReceiptNumber }`
+ * @param fields  ค่าหลังรวมของที่ส่งมากับที่เก็บไว้ (`mergedPaidFields` ของ filingPayment)
  */
 export function filingTransitionError({ from, to, caps = {}, exempt = false, fields = {} } = {}) {
   const rule = FILING_TRANSITIONS[to];

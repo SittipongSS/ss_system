@@ -348,6 +348,8 @@ export const UPDATE_KINDS = {
   excise_order: {
     comment: { label: 'ข้อความ', color: 'var(--accent)', authorable: true },
     status: { label: 'เปลี่ยนสถานะ', color: 'var(--blue)' },
+    // ยอดตามใบเสร็จกรมไม่ตรงยอดยื่น + เหตุผล (มติเจ้าของ 27/11 · `paymentAmountNote`)
+    payment: { label: 'ยอดชำระไม่ตรง', color: 'var(--amber)' },
     reject: { label: 'ตีกลับให้แก้ไข', color: 'var(--red)' },
   },
   // ── PO สหมิตร ────────────────────────────────────────────────────────
