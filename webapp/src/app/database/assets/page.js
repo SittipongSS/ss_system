@@ -242,11 +242,12 @@ export default function ServiceAssetsPage() {
     zone: (a) => a.zoneName || "",
     installedAt: (a) => a.installedAt || null,
     status: (a) => ASSET_STATUS_LABELS[a.status] || a.status || "",
-  }, { key: "serial", dir: "asc" });
+  }, { key: "serial", dir: "asc" }, { stickyKey: "table" });
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
       resetKey: `${q}|${locationFilter.join(",")}|${modelFilter.join(",")}|${statusFilter.join(",")}|${conditionFilter.join(",")}|${customerFilter.join(",")}|${zoneFilter.join(",")}|${sort.sortKey}|${sort.sortDir}`,
+      stickyKey: "list",
     });
 
   const filterCount = locationFilter.length + modelFilter.length + statusFilter.length

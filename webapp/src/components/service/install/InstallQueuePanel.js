@@ -15,7 +15,7 @@ import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 import StatusBadge from "@/components/ui/StatusBadge";
 import StatusNotice from "@/components/ui/StatusNotice";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { NA, fmtDate, naText } from "@/lib/format";
 import {
@@ -36,7 +36,7 @@ export default function InstallQueuePanel({ data, loading, error, onReload, tech
   const [groupBy, setGroupBy] = useStickyState("installGroupBy", INSTALL_GROUP_DEFAULT);
   const [sortKey, setSortKey] = useStickyState("installSortKey", INSTALL_SORT_DEFAULT);
   const [sortDir, setSortDir] = useStickyState("installSortDir", INSTALL_SORT_DIR[INSTALL_SORT_DEFAULT]);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useStickySet("installCollapsed");
   const [confirmFor, setConfirmFor] = useState(null);
 
   const rows = useMemo(() => data?.rows || [], [data]);

@@ -10,6 +10,7 @@
 // ⚠️ ขอบเขตการมองเห็นไม่ได้ตัดที่หน้าจอ — หน้านี้แสดงทุกอย่างที่ API ส่งมา
 // ตัวตัดคือ `canReadIssueRow` + `listIssues` (มติ Q12)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import { Bug, LifeBuoy } from "lucide-react";
@@ -62,7 +63,7 @@ export default function SupportPage() {
 
   const [open, setOpen] = useState([]);      // เรื่องที่ยังเดินอยู่ — ใช้ทั้งตัวเลขและสามแท็บแรก
   const [extra, setExtra] = useState(null);  // { tab, items } ของแท็บ "ทั้งหมด"/"ที่ฉันรับผิดชอบ"
-  const [tab, setTab] = useState("pending");
+  const [tab, setTab, , tabHydrated] = useStickyState("tab", "pending");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reporting, setReporting] = useState(false);
@@ -109,7 +110,8 @@ export default function SupportPage() {
       if (isLatest()) setError(e.message);
     } finally { if (isLatest()) setLoading(false); }
   }, [admin, tab, startRun]);
-  useEffect(() => { load(); }, [load]);
+  // รอคืนแท็บที่จำไว้ก่อนค่อยยิง — ไม่งั้นได้คำขอของแท็บตั้งต้นทิ้งหนึ่งรอบ
+  useEffect(() => { if (tabHydrated) load(); }, [load, tabHydrated]);
 
   const counts = useMemo(() => ({
     pending: open.filter((r) => r.status === "pending").length,

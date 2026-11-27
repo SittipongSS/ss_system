@@ -2,12 +2,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { noteReturnTrip } from "@/lib/ui/historyArrival";
 import { ArrowLeft, Package, Archive, ArchiveRestore, Building2, ShoppingCart, MessagesSquare, Send, ClipboardList, FileText } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import { ActionButton } from "@/components/ui/ActionButtons";
 import StatusNotice from "@/components/ui/StatusNotice";
 import FgSubjectSuggestions from "@/components/database/FgSubjectSuggestions";
 import { useCan, useRole } from "@/lib/roleContext";
+import useStickyState from "@/lib/ui/useStickyState";
 import { isRdRole, isSalesManager } from "@/lib/permissions";
 import { DEFAULT_SALE_UNIT, formatVolume, hasPackagingFields } from "@/lib/master/units";
 import OrderStatusPill from "@/components/OrderStatusPill";
@@ -158,7 +160,8 @@ export default function ProductDetails() {
   const [toast, setToast] = useState(null);
   const [confirmBox, setConfirmBox] = useState(null); // { title, message, confirmLabel, danger, onConfirm }
   /* แท็บที่เปิดอยู่ (มติเจ้าของ 04/11/2026 "แท็บตามม็อก") · `regKey` = รายการที่แผงทะเบียนในแท็บสรรพสามิตเลือกไว้ก่อน */
-  const [tab, setTab] = useState("overview");
+  // แท็บจำไว้ (useStickyState) — เปิดใบจากแท็บการขายแล้วย้อนกลับ ต้องกลับมาที่แท็บเดิม · ?registration= ยังชนะ (effect ข้างล่าง)
+  const [tab, setTab] = useStickyState("tab", "overview");
   const [regKey, setRegKey] = useState(null);
   /* ช่องสถานะ/ปุ่มในการ์ดจัดการพาไปแท็บ — เลื่อนให้แถบแท็บอยู่บนจอ (จอแคบการ์ดจัดการอยู่เหนือแถบ) */
   const goTab = (key) => {
@@ -192,7 +195,7 @@ export default function ProductDetails() {
   useEffect(() => {
     const wanted = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("registration") : null;
     if (wanted) { setRegKey(wanted); setTab("excise"); }
-  }, []);
+  }, [setTab]);
   const loadRelations = useCallback(() => {
     if (!id) { setRegs([]); setOrders([]); setSales(null); setPriceHistory([]); return; }
     apiFetch(`/api/master/products/${id}/relations`)
@@ -312,7 +315,7 @@ export default function ProductDetails() {
     return (
       <div className="glass-panel p-12 text-center">
         <h2 className="text-xl font-semibold text-[var(--text)] mb-2">{error || "ไม่พบข้อมูลสินค้านี้"}</h2>
-        <Link href="/database/products" className="btn btn-primary inline-flex items-center gap-2 mt-4">
+        <Link href="/database/products" onClick={() => noteReturnTrip("/database/products")} className="btn btn-primary inline-flex items-center gap-2 mt-4">
           <ArrowLeft size={16} /> กลับไปฐานข้อมูลสินค้า
         </Link>
       </div>

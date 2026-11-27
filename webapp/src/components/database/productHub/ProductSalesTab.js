@@ -1,10 +1,11 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ClipboardList, FileText, Flag, Wallet } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
 import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import HubListPanel from "@/components/database/customerHub/HubListPanel";
+import useStickyState from "@/lib/ui/useStickyState";
 import { QUOTE_STATUS_LABELS } from "@/components/salesPlanning/ui";
 import { SALES_ORDER_STATUS_LABELS } from "@/lib/sales/salesOrderWorkflow";
 import { FINANCE_STATUS_LABELS, FINANCE_STATUS_TONES } from "@/lib/sales/salesOrderFinanceApproval";
@@ -41,9 +42,10 @@ const qtyText = (row, unit) => `${fmtNumber(row.qty)} ${row.packed ? "แพ็�
 const priceCell = (row) => (row.unitPrice === null ? <span className="text-xs text-[var(--text-3)]">หลายราคา</span> : <Money value={row.unitPrice} />);
 
 export default function ProductSalesTab({ sales, unit }) {
-  const [view, setView] = useState("order");
-  const [query, setQuery] = useState("");
-  const [showOldQuotes, setShowOldQuotes] = useState(false);
+  // มุมมอง · คำค้น · Rev. เก่า จำไว้ตอนเปิดใบแล้วย้อนกลับ (คีย์ขึ้นต้น "psales." — เนมสเปซหน้าสินค้า)
+  const [view, setView] = useStickyState("psales.view", "order");
+  const [query, setQuery] = useStickyState("psales.query", "");
+  const [showOldQuotes, setShowOldQuotes] = useStickyState("psales.oldQuotes", false);
 
   const dealCode = useMemo(() => new Map((sales?.deals || []).map((d) => [d.id, d.code || d.title])), [sales]);
   const orderRows = useMemo(() => productOrderRows(sales), [sales]);

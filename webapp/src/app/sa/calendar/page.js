@@ -11,6 +11,7 @@
 // นัดนั้นจะไปโผล่ผิดวัน (server จึงส่งช่วงเผื่อขอบมาให้ ดู calendarRange)
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
@@ -66,21 +67,25 @@ export default function SalesCalendarPage() {
   const router = useRouter();
 
   const now = useMemo(() => new Date(), []);
-  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  /* เดือนที่ดู · มุมมอง · ขอบเขต จำไว้ (กดเข้าลีดแล้วกดกลับ ได้เดือน/มุมมองเดิม) */
+  const [cursor, setCursor] = useStickyState("cursor", { y: now.getFullYear(), m: now.getMonth() });
   const [entries, setEntries] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [meId, setMeId] = useState(null);
-  const [view, setView] = useState("month");
-  const [scope, setScope] = useState(null);
+  /* null = ยังไม่ได้เลือกเอง ⇒ ใช้ค่าตั้งต้นตามจอ (ข้างล่าง) · ค่าที่ผู้ใช้เลือกแล้วจำไว้ ไม่ถูกค่าตั้งต้นทับ */
+  const [viewChoice, setView] = useStickyState("view", null);
+  const [narrow, setNarrow] = useState(false);
+  const view = viewChoice ?? (narrow ? "list" : "month");
+  const [scope, setScope] = useStickyState("scope", null);
 
   useEffect(() => { if (role && !canLead) router.replace("/home"); }, [role, canLead, router]);
 
   /* มือถือเริ่มที่มุมมองรายการ — ตาราง 7 คอลัมน์บนจอ 375px อ่านไม่ออก
      ตั้งครั้งเดียวตอน mount แล้วปล่อยให้ผู้ใช้สลับเอง (ไม่บังคับซ้ำตอนหมุนจอ) */
   useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 768) setView("list");
+    if (typeof window !== "undefined" && window.innerWidth < 768) setNarrow(true);
   }, []);
 
   useEffect(() => {

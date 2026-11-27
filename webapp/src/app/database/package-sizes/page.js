@@ -35,6 +35,7 @@ import {
 } from "@/lib/service/packageSizes";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
+import useStickyState from "@/lib/ui/useStickyState";
 import { usePagination } from "@/lib/usePagination";
 import styles from "./page.module.css";
 
@@ -47,7 +48,7 @@ export default function PackageSizesPage() {
   const [canEdit, setCanEdit] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useStickyState("filter", "all"); // จำไว้ตอนกดกลับเข้าหน้า
   const [editing, setEditing] = useState(null);   // null = ปิด · {} = เพิ่มใหม่ · แถว = แก้
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(null);
@@ -91,7 +92,7 @@ export default function PackageSizesPage() {
   const rows = useMemo(() => packageSizeRows(sizes, filter), [sizes, filter]);
   const warnings = useMemo(() => packageRegistryWarnings(sizes), [sizes]);
   const legend = useMemo(() => packageSizeLegendText(sizes), [sizes]);
-  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: filter });
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: filter, stickyKey: "list" });
 
   const save = async (payload) => {
     setBusy(true);

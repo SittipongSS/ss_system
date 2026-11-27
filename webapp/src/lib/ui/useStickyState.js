@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import arrivedByHistory from "./historyArrival";
 
@@ -48,7 +48,10 @@ function readStored(storageKey, fallback) {
 
 export default function useStickyState(key, initialValue) {
   const pathname = usePathname();
-  const storageKey = `${PREFIX}${pathname}:${key}`;
+  /* `key = null` = ไม่จำ (ทำตัวเหมือน useState) — ให้ฮุกกลางอย่าง usePagination/useSortableTable
+     เปิดการจำเป็นราย call site ได้โดยไม่ต้องเรียกฮุกแบบมีเงื่อนไข (ผิดกฎ hooks) */
+  const persist = key !== null && key !== undefined;
+  const storageKey = persist ? `${PREFIX}${pathname}:${key}` : null;
   const [value, setValue] = useState(initialValue);
 
   /* ค่าตั้งต้นอาจเป็นค่าที่คำนวณสด (เช่น เดือนปัจจุบัน) — เก็บไว้ในกล่องเพื่อให้
@@ -61,9 +64,10 @@ export default function useStickyState(key, initialValue) {
      ⇒ ตัวเขียนที่วิ่งต่อทันทีเห็น ref เป็น true แต่ `value` ยังเป็นค่าตั้งต้นของ
      เรนเดอร์นี้ แล้วเขียนทับของเดิมทิ้ง · เป็น state แล้ว React รวมสองการอัปเดต
      เป็นเรนเดอร์เดียว ตัวเขียนจึงเห็น `hydrated` กับ `value` ที่ตรงกันเสมอ */
-  const [hydrated, setHydrated] = useState(false);
+  const [hydrated, setHydrated] = useState(!persist);
 
   useEffect(() => {
+    if (!storageKey) return;
     /* ⚠️ ถามที่เดียวกับที่ตัวคืนตำแหน่งไถถาม (lib/ui/historyArrival.js) — ธงถูกกิน
        ทีละ pathname ไม่ใช่ทีละคนเรียก หน้าหนึ่งจึงมี useStickyState กี่ตัวก็ได้
        คำตอบเดียวกันทั้งหมด */
@@ -82,7 +86,7 @@ export default function useStickyState(key, initialValue) {
   useEffect(() => {
     /* 🪤 ห้ามเขียนก่อนอ่าน — เรนเดอร์แรกค่ายังเป็นค่าตั้งต้น ถ้าเขียนทันที
        ค่าที่ผู้ใช้ตั้งไว้จะถูกทับตั้งแต่ยังไม่ทันได้อ่านกลับมา */
-    if (!hydrated) return;
+    if (!hydrated || !storageKey) return;
     try {
       window.sessionStorage.setItem(storageKey, JSON.stringify(value));
     } catch {}
@@ -90,11 +94,31 @@ export default function useStickyState(key, initialValue) {
 
   const reset = useCallback(() => {
     setValue(initialRef.current);
+    if (!storageKey) return;
     try { window.sessionStorage.removeItem(storageKey); } catch {}
   }, [storageKey]);
 
-  return [value, setValue, reset];
+  /* ตัวที่สี่ `hydrated` = อ่านค่าที่จำไว้เสร็จแล้ว — usePagination ใช้แยก "ตัวกรองเพิ่งคืนค่า" ออกจาก
+     "ผู้ใช้เปลี่ยนตัวกรอง" (อย่างหลังเท่านั้นที่ต้องพากลับหน้า 1) */
+  return [value, setValue, reset, hydrated];
 }
+
+/** จำ `Set` (เช่นกลุ่มที่ย่อไว้) — JSON เก็บ Set ไม่ได้ จึงเก็บเป็น array แล้วแปลงกลับ
+ *  ⚠️ ค่าในชุดต้องเป็นสตริง/ตัวเลขที่ JSON แปลงกลับมาได้ */
+export function useStickySet(key) {
+  const [list, setList, reset, hydrated] = useStickyState(key, EMPTY_LIST);
+  const value = useMemo(() => new Set(Array.isArray(list) ? list : []), [list]);
+  const setValue = useCallback((next) => {
+    setList((prev) => {
+      const current = new Set(Array.isArray(prev) ? prev : []);
+      const resolved = typeof next === "function" ? next(current) : next;
+      return Array.from(resolved ?? []);
+    });
+  }, [setList]);
+  return [value, setValue, reset, hydrated];
+}
+
+const EMPTY_LIST = [];
 
 /** ล้างค่าที่จำไว้ของหน้าหนึ่ง — ใช้กับปุ่ม "ล้างตัวกรอง" ที่ต้องล้างหลายตัวพร้อมกัน */
 export function clearStickyState(pathname) {

@@ -14,9 +14,9 @@ const arrivalSource = readFileSync(join(here, "historyArrival.js"), "utf8");
    ยังเป็นค่าตั้งต้นของเรนเดอร์นั้น แล้วเขียนทับค่าที่ผู้ใช้จำไว้ทิ้ง
    อาการที่เห็น: กรองไว้ กดเข้าใบ กดย้อนกลับ แล้วตัวกรองว่างเปล่าเหมือนเดิม */
 test("ธง hydrated เป็น state ไม่ใช่ ref — ไม่งั้นค่าที่จำไว้ถูกทับตอน mount", () => {
-  assert.match(source, /const \[hydrated, setHydrated\] = useState\(false\)/,
+  assert.match(source, /const \[hydrated, setHydrated\] = useState\(!persist\)/,
     "ต้องเป็น state เพื่อให้ React รวมกับ setValue เป็นเรนเดอร์เดียว");
-  assert.match(source, /if \(!hydrated\) return;/, "effect ตัวเขียนต้องข้ามจนกว่าจะอ่านเสร็จ");
+  assert.match(source, /if \(!hydrated \|\| !storageKey\) return;/, "effect ตัวเขียนต้องข้ามจนกว่าจะอ่านเสร็จ");
   assert.doesNotMatch(source, /hydratedRef/, "กลับไปใช้ ref = บั๊กเดิมกลับมา");
 });
 

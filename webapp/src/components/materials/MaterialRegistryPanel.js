@@ -10,6 +10,7 @@ import { TableScroll } from "@/components/ui/Table";
 // (เดิมเป็นแท็บหนึ่งของ /sa/materials คู่กับคิวเคสขอราคา ซึ่งแยกไปเป็นเมนู
 //  "คำร้อง" แล้ว ตัวทะเบียนจึงย้ายไปอยู่กับข้อมูลหลักตัวอื่นใต้ "ฐานข้อมูล")
 import { useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import {
   Boxes, RefreshCw, History, Pencil, Check, Archive,
   ArchiveRestore, Search, Trash2, Coins,
@@ -68,8 +69,9 @@ export default function MaterialRegistryPanel({
   // superuser แต่บังคับลบไม่ได้ ดู lib/forceDelete.js)
   const isAdmin = role === "admin";
 
-  const [statusFilter, setStatusFilter] = useState("open"); // open = ไม่รวมที่เก็บเข้ากรุ
-  const [search, setSearch] = useState("");
+  // จำไว้ตอนออกจากหน้าแล้วกดกลับ — คีย์ขึ้นต้น "materials." เพราะพาเนลอยู่ในเนมสเปซของหน้าแม่
+  const [statusFilter, setStatusFilter] = useStickyState("materials.status", "open"); // open = ไม่รวมที่เก็บเข้ากรุ
+  const [search, setSearch] = useStickyState("materials.search", "");
 
   const [history, setHistory] = useState(null);
   const [pricing, setPricing] = useState(null);    // material ที่กำลังออกราคา

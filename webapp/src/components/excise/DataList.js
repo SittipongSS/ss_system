@@ -46,6 +46,11 @@ export default function DataList({
   initialSort = null,
   empty = "ไม่มีข้อมูล",
   emptyIcon,
+  /* จำการเรียง + หน้า/ขนาดหน้า เมื่อกดเข้าใบแล้วกลับมา (useStickyState) — ไม่ส่ง = ไม่จำ
+     ⚠️ ส่ง stickyKey ต้องส่ง `resetKey` (ตัวกรองที่ผู้ใช้ตั้ง) ด้วย — ไม่งั้นถอยไปใช้จำนวนแถว
+     ซึ่งเปลี่ยนตอนข้อมูลโหลดเสร็จ ⇒ หน้าที่เพิ่งคืนถูกรีเซ็ตเป็น 1 */
+  stickyKey = null,
+  resetKey,
 }) {
   const [view] = useResponsiveView({ portrait: "card", landscape: "table" });
 
@@ -58,12 +63,13 @@ export default function DataList({
     return acc;
   }, [columns]);
 
-  const sort = useSortableTable(rows, accessors, initialSort);
+  const sort = useSortableTable(rows, accessors, initialSort, { stickyKey: stickyKey ? `${stickyKey}.sort` : undefined });
 
   const { page, setPage, pageSize: size, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
       defaultSize: pageSize,
-      resetKey: `${rows.length}|${sort.sortKey}|${sort.sortDir}`,
+      resetKey: `${resetKey ?? rows.length}|${sort.sortKey}|${sort.sortDir}`,
+      stickyKey: stickyKey ? `${stickyKey}.pager` : undefined,
     });
 
   if (!rows.length) {

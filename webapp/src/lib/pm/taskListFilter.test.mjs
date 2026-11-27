@@ -281,7 +281,7 @@ test('ยาม: ลิงก์ดีล — มาจากการกดย�
   assert.ok(effect.length > 0, 'หา effect ของลิงก์ไม่เจอ');
   const stop = effect.indexOf('if (restoreOnly) return;');
   assert.ok(stop > 0, 'ต้องหยุดก่อนลงทั้งชุดเมื่อมาจากประวัติ');
-  // ชิปจาก URL ตั้งก่อนจุดหยุด (ไม่ใช่ sticky — ต้องมาจาก URL ทุกครั้ง)
+  // ชิปจาก URL ตั้งก่อนจุดหยุด — ชิปดีลจำไว้ด้วย (27/11/2026) แต่มี `?dealId=` = URL ชนะทุกครั้ง
   for (const setter of ['setDealFilter']) {
     const at = effect.indexOf(`${setter}(landing.`);
     assert.ok(at >= 0 && at < stop, `${setter} ต้องตั้งก่อน restoreOnly`);

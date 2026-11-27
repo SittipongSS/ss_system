@@ -43,7 +43,7 @@ test('docs/historical-sales-orders.md §8: โน้ตถังตั้งร�
   assert.match(s8, /~~หน้าคิว \*\*สลับไปถัง "รอตั้งรอบ"[^\n]*~~\n {2}🔄 \*\*0392 \(D14\): ตัวสลับถอดแล้ว — แท็บตั้งต้นคือ "รอตั้งรอบ" เสมอ\*\*/);
   // ตัวเลขที่เอกสารอ้างต้องมีจริงในโค้ด
   assert.match(code('../../app/api/nav/counts/route.js'), /return plan\.length;/);
-  assert.match(intake, /const \[tab, setTab\] = useState\("plan"\);/);
+  assert.match(intake, /const \[tab, setTab\] = useStickyState\("tab", "plan"\);/);
 });
 
 test('docs/service-field-operations.md: แถวนำเข้าไม่ส่งไปคีย์ที่งานเข้าใหม่ · ด่านโซนไม่มีรอบขายบอกว่า 0392 ย้ายเป็นของฝ่ายขาย', () => {

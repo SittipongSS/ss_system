@@ -95,7 +95,7 @@ export default function RenewalsPanel({ data, loading = false, error = "", reloa
   }, [rows, query]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(filtered, { resetKey: query });
+    usePagination(filtered, { resetKey: query, stickyKey: "renewals.list" });
 
   const saveFollowup = async (payload) => {
     setBusy(true);

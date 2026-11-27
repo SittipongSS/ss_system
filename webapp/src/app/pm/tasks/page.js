@@ -3,7 +3,7 @@ import { TableGroupRow, TableScroll } from "@/components/ui/Table";
 import { Fragment, useCallback, useState, useEffect, useMemo, useRef } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import arrivedByHistory from "@/lib/ui/historyArrival";
 import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
@@ -221,8 +221,9 @@ export default function TasksPage() {
      "เปิด" กับบนหน้าโครงการชื่อ "เปิดหน้างาน" ทั้งคู่มีไอคอนลิงก์ออก ⇒ คนกดเพื่อ
      *ดูรายการ* แต่ได้ฟอร์มสร้างงานทับจอ แถมคิวที่อยู่ข้างหลังก็เป็นงานทั้งระบบ
      ไม่ได้กรองตามดีลที่กดมาเลย · ตอนนี้ "สร้างงาน" มีปุ่มของตัวเองอยู่ในหน้าดีล/
-     โครงการแล้ว (โมดัลในหน้า) พารามิเตอร์นี้จึงเหลือความหมายเดียวคือกรอง */
-  const [dealFilter, setDealFilter] = useState([]);
+     โครงการแล้ว (โมดัลในหน้า) พารามิเตอร์นี้จึงเหลือความหมายเดียวคือกรอง
+     ⭐ จำไว้ด้วย (ดีลที่เลือกเองในแผงกรอง ต้องยังอยู่หลังกดเข้างานแล้วกดกลับ) · มี `?dealId=` = effect ของลิงก์ตั้งทับเสมอ (URL ชนะ) */
+  const [dealFilter, setDealFilter] = useStickyState("dealFilter", EMPTY);
   /* (งวด P3b-2 ยุบโครงการ: ชิป "กรอง: โครงการ … ×" จาก `?projectId=` + ธง `?central=` ของหน้าโครงการถูกถอด —
      ลิงก์เก่าที่ยังถือสองพารามิเตอร์นี้ไม่มีผล และถูกถอดออกจาก URL · ดู effect `STALE_LINK_PARAMS` ข้างล่าง) */
   /* ⭐ พารามิเตอร์จากลิงก์อ่านด้วย `useSearchParams` (ไม่ใช่ `window.location` ครั้งเดียวตอนเมานต์) — กดป้ายเมนู/ลิงก์ซ้ำ
@@ -240,9 +241,10 @@ export default function TasksPage() {
   const [sortKey, setSortKey] = useStickyState("sortKey", "created");
   const [sortDir, setSortDir] = useStickyState("sortDir", "asc");
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน)
-  const [calRef, setCalRef] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
+  // ปฏิทิน: เดือนที่กำลังดู (เริ่มที่เดือนปัจจุบัน · จำไว้ตอนกดกลับ)
+  const calNow = useMemo(() => new Date(), []);
+  const [calRef, setCalRef] = useStickyState("calRef", { y: calNow.getFullYear(), m: calNow.getMonth() });
 
   // task modal
   const [showModal, setShowModal] = useState(false);
@@ -446,7 +448,7 @@ export default function TasksPage() {
     });
   }, [visible, groupBy, view, usersMap]);
 
-  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), [setCollapsed]);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
 
   // แบ่งหน้าเฉพาะมุมมองแบน (ตาราง/รายการ) — บอร์ด/เมทริกซ์/ปฏิทินแสดงครบตามเดิม
@@ -454,6 +456,7 @@ export default function TasksPage() {
     usePagination(visible, {
       // ⚠️ ดีลต้องอยู่ในคีย์ด้วย — เปลี่ยนดีลแล้วค้างหน้า 3 ของชุดเดิม = ตารางว่างทั้งที่ป้ายบอกว่ามีงาน
       resetKey: `${scope}|${mineView}|${q}|${statusFilter}|${assigneeFilter.join()}|${categoryFilter.join()}|${dealFilter.join()}|${sortKey}|${sortDir}`,
+      stickyKey: "list",
     });
 
   const handleSort = (key) => {

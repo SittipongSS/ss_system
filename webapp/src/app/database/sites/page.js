@@ -185,6 +185,7 @@ export default function ServiceSitesPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sorted, {
       resetKey: `${q}|${provinceFilter.join(",")}|${customerFilter.join(",")}|${zoneFilter.join(",")}|${showInactive}|${sortKey}|${sortDir}`,
+      stickyKey: "list",
     });
 
   const filterCount = provinceFilter.length + customerFilter.length + zoneFilter.length + (showInactive ? 1 : 0);

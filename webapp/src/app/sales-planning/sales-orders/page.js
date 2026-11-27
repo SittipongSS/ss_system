@@ -2,7 +2,7 @@
 import { TableEmpty, TableGroupRow, TableScroll } from "@/components/ui/Table";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { BadgeCheck, CircleDollarSign, ClipboardCheck, ClipboardList, FileText, Flag, History, Repeat, Search, Undo2, UserRound, Wallet } from "lucide-react";
@@ -303,9 +303,13 @@ export default function SalesOrdersPage() {
   const [originFilter, setOriginFilter] = useStickyState("originFilter", EMPTY);
   /* ⭐ `?count=salesOrders` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายนับ "ใบของฉันที่ถูก
      ตีกลับ" ⇒ กรองด้วยธง `_waitingOnMe` จาก server ไม่ใช่ status='rejected' เฉย ๆ
-     (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา) */
+     (ใบที่คนอื่นโดนตีกลับก็ status เดียวกัน แต่ไม่ใช่ของค้างของเรา)
+     ⭐ จำไว้ด้วย useStickyState · มี `?count=` ใน URL = เพิ่งกดป้ายเมนู ⇒ URL ชนะค่าที่จำไว้
+        (effect ประกาศหลังฮุก ⇒ วิ่งหลังตัวคืนค่า · เฝ้าแค่พารามิเตอร์ ไม่เฝ้าธง — ผู้ใช้ยังกดล้างได้) */
   const navCountParam = useSearchParams().get("count") || "";
-  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(navCountParam === "salesOrders");
+  const navWaitingOnMe = navCountParam === "salesOrders";
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useStickyState("waitingOnMeOnly", navWaitingOnMe);
+  useEffect(() => { if (navWaitingOnMe) setWaitingOnMeOnly(true); }, [navWaitingOnMe, setWaitingOnMeOnly]);
   /* ⭐ ชิป "ยังไม่ตั้งงานบริการ" (mig 0392 · D26) — ใบที่อนุมัติแล้วแต่ยังต้องตั้งงานบริการย้อนหลัง (ธง `_serviceSetupPending`
      จาก server = `serviceBackfillNeeded` ตัวเดียวกับหน้าใบ/เลน "รอฉันลงมือ"/คิว TS) · **ปุ่มสลับบนแถบ ไม่ใช่ตัวเลือกใน
      กล่องกรอง** (กฎ direct controls — ของค้าง ~59 ใบต้องเห็นตัวเลขโดยไม่ต้องเปิดกล่อง) ⇒ ไม่นับใน `filterCount` */
@@ -393,7 +397,7 @@ export default function SalesOrdersPage() {
   };
   const cardActive = (key) => salesOrderPickActive(activeFilters, SALES_ORDER_CARD_PICKS[key]);
   const pickCard = (key) => applyOrderPick(cardActive(key) ? EMPTY_SALES_ORDER_FILTERS : SALES_ORDER_CARD_PICKS[key]);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
 
   /* ตัวตัดสินของตาราง = `salesOrderPassesListFilters` (lib/sales/salesOrderListFilter) — ตัวเดียวกับที่เทสต์ใช้พิสูจน์ว่า
      แถวหลังกดการ์ดบนแถบ = เลขบนการ์ด · มิติทั้งหมดอยู่ที่ lib · **ชุดค้นเป็นของหน้า** (สิ่งที่ตาเห็นบนแถว) ส่งเป็น matchesSearch */
@@ -470,13 +474,13 @@ export default function SalesOrdersPage() {
   /* ชุดเอกสาร QT · SO · การชำระ (ZIP) โหลดที่รายงานยอดขายที่เดียว (มติเจ้าของ 03/11 — เดิมมีช่องติ๊ก + ปุ่มที่นี่ด้วย · 27/10)
      ⇒ ทะเบียนนี้ไม่มีช่องติ๊กแล้ว (ช่องติ๊กมีไว้เลือกใบให้ปุ่มนั้นอย่างเดียว) */
 
-  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), [setCollapsed]);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
   const filterCount = statusFilter.length + paymentFilter.length + invoiceFilter.length + originFilter.length
     + (waitingOnMeOnly ? 1 : 0);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${bouncedOnly}|${lineView}|${activeSortKey}|${activeSortDir}` });
+    usePagination(sorted, { resetKey: `${query}|${statusFilter.join()}|${paymentFilter.join()}|${invoiceFilter.join()}|${originFilter.join()}|${waitingOnMeOnly}|${serviceSetupPendingOnly}|${bouncedOnly}|${lineView}|${activeSortKey}|${activeSortDir}`, stickyKey: "list" });
 
   /* ⭐ **คิวบนหัวหน้าเดินตามเปลือกของคนดู** (มติผู้ใช้ 2026-08-25)
      ทะเบียนใบสั่งขายอยู่ในเมนูของทั้งสายขายและฝ่ายบัญชี (มติ 2026-08-22 · SHARED_DOC_ITEMS)

@@ -14,6 +14,7 @@
 // ⚠️ **สามแหล่งมีความละเอียดเวลาไม่เท่ากัน** นัดมีเวลาจริง · งาน/คำร้องเป็นวันล้วน
 // ⇒ งานกับคำร้องอยู่แถว "ทั้งวัน" เท่านั้น ห้ามเดาเวลาให้มัน (กติกาอยู่ที่ lib/salesPlanning/mySchedule)
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { Building2, CalendarCheck, CalendarClock, CalendarDays, ChevronLeft, ChevronRight, Clock, ListTodo, MessageCircleQuestion, Monitor, Car, TriangleAlert, Phone } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -58,8 +59,10 @@ function rangeLabel(view, anchor, range) {
 export default function ScheduleSection() {
   const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const [view, setView] = useState(DEFAULT_SCHEDULE_VIEW);
-  const [anchor, setAnchor] = useState(today);
-  const [selected, setSelected] = useState(today);
+  /* ช่วงที่กาง + วันที่เลือก จำไว้ (กดเข้าลีด/งานแล้วกดกลับ ได้สัปดาห์/วันเดิม) · คีย์ขึ้นต้น "schedule." — อยู่ใต้ pathname ของแดชบอร์ด
+     มุมมอง (วัน/สัปดาห์/เดือน) จำยาวใน localStorage อยู่แล้ว (ข้างล่าง) จึงไม่ต้องซ้ำ */
+  const [anchor, setAnchor] = useStickyState("schedule.anchor", today);
+  const [selected, setSelected, , scheduleHydrated] = useStickyState("schedule.selected", today);
   const [data, setData] = useState(null);
   const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,14 +87,16 @@ export default function ScheduleSection() {
        (ขัดกับกฎของหน้านี้เองที่ว่าการ์ดซ้ายผูกกับวันที่เลือก) */
     if (safe === "day") setAnchor(selected);
     try { window.localStorage.setItem(SCHEDULE_VIEW_STORAGE_KEY, safe); } catch { /* เหมือนขาอ่าน */ }
-  }, [selected]);
+  }, [selected, setAnchor]);
 
   const range = useMemo(() => scheduleRange(view, anchor), [view, anchor]);
 
   // วันที่เลือกต้องอยู่ในช่วงที่กางเสมอ ไม่งั้นการ์ดซ้ายชี้วันที่ไม่มีบนปฏิทิน
+  /* ⚠️ รอคืนค่าก่อน — รอบ mount ช่วงยังเป็นของวันนี้ ถ้าบีบตอนนั้น วันที่เลือกที่จำไว้ (สัปดาห์อื่น) จะถูกดึงกลับมาวันนี้ */
   useEffect(() => {
+    if (!scheduleHydrated) return;
     setSelected((current) => clampSelected(current, range, today));
-  }, [range, today]);
+  }, [scheduleHydrated, range, today, setSelected]);
 
   const load = useCallback(async () => {
     if (!range) return;

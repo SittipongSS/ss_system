@@ -11,6 +11,7 @@ import Button from "@/components/ui/Button";
 import StatusBadge from "@/components/ui/StatusBadge";
 import ProductStatusPill from "@/components/ProductStatusPill";
 import HubListPanel from "./HubListPanel";
+import useStickyState from "@/lib/ui/useStickyState";
 import OverviewTab from "./OverviewTab";
 import ActivityTab from "./ActivityTab";
 import styles from "./customerHub.module.css";
@@ -70,11 +71,13 @@ const DocLink = ({ href, children }) => <Link prefetch={false} href={href} class
 /* ── การขาย ──────────────────────────────────────────────────────────────────────────── */
 function SalesTab({ hub, query, onQuery, today }) {
   const { deals, leads, quotations, orders, contracts } = hub.sales;
-  const [view, setView] = useState("deal");
+  /* มุมมอง/ตัวเลือก Rev. เก่า จำไว้ (useStickyState) — กดเปิดใบแล้วย้อนกลับ ได้รายการเดิม
+     คีย์ขึ้นต้น "hub." เพราะอยู่ในเนมสเปซของหน้าลูกค้า */
+  const [view, setView] = useStickyState("hub.salesView", "deal");
   // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — ตาเห็นชื่อบนแถว = ค้นด้วยชื่อเจอด้วย
   const productCategories = useProductCategories();
   const categoryText = (code) => categoryCodeLabel(code, productCategories);
-  const [showOldQuotes, setShowOldQuotes] = useState(false);
+  const [showOldQuotes, setShowOldQuotes] = useStickyState("hub.oldQuotes", false);
   const dealCode = useMemo(() => new Map(deals.map((d) => [d.id, d.code || d.title])), [deals]);
   const dealRows = useMemo(() => buildDealRows({
     deals, quotations, orders, installments: hub.finance.installments, requests: hub.requests.rows, contracts, leads,
@@ -305,7 +308,7 @@ function SalesTab({ hub, query, onQuery, today }) {
 
 /* ── สินค้า ──────────────────────────────────────────────────────────────────────────── */
 function ProductsTab({ products, scents, formulas, hub, query, onQuery }) {
-  const [view, setView] = useState("fg");
+  const [view, setView] = useStickyState("hub.productsView", "fg");
   // หมวด = รหัส + ชื่อ (มติเจ้าของ 18/11/2026) — ตัวกรอง/หัวกลุ่ม/เซลล์ · ค้นด้วยชื่อหมวดเจอ
   const productCategories = useProductCategories();
   const categoryText = (code) => categoryCodeLabel(code, productCategories);
@@ -527,7 +530,7 @@ function FinanceTab({ hub, query, onQuery, today }) {
 
 /* ── สรรพสามิต (มติ 6) ─────────────────────────────────────────────────────────────────── */
 function ExciseTab({ registrations, hub, query, onQuery }) {
-  const [view, setView] = useState(registrations.length ? "reg" : "order");
+  const [view, setView] = useStickyState("hub.exciseView", registrations.length ? "reg" : "order");
   const orders = hub.excise.orders;
   const count = (rows, text) => rows.filter((r) => matchesQuery(text(r), query)).length;
   const switcher = (
@@ -608,7 +611,8 @@ export default function CustomerHub({
   customerId, hub, products = [], scents = [], formulas = [], registrations = [], service = null,
   profile = null, docs = null, activity = null, hashTabs = {},
 }) {
-  const [query, setQuery] = useState("");
+  // คำค้น + แท็บที่เปิด จำไว้ตอนเปิดใบแล้วย้อนกลับ (useStickyState) — ไม่งั้นกลับมาเจอแท็บภาพรวม ตัวกรองของแท็บหายไปด้วย
+  const [query, setQuery] = useStickyState("hub.query", "");
   const today = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
   const ready = Boolean(hub);
   /* ตัวเลขบนแท็บ = จำนวนที่ตรงคำค้น (มติ 7) — คำค้นว่าง = จำนวนทั้งหมด · ตัวนับใช้ข้อความค้นชุดเดียวกับตาราง */
@@ -642,7 +646,7 @@ export default function CustomerHub({
      ทั้งตอนเข้าหน้าพร้อม hash (อ่านตอนเริ่ม — แท็บวาดฝั่ง client หลังโหลดลูกค้าเสร็จเสมอ) และตอน hash เปลี่ยนบนหน้าเดิม
      (ลิงก์ในหน้าเดียวกัน = ไม่ mount ใหม่) · เลื่อนไปหาส่วนนั้นหลังแท็บวาดแล้ว */
   const hashTab = () => (typeof window === "undefined" ? null : hashTabs[window.location.hash.slice(1)] || null);
-  const [active, setActive] = useState(() => hashTab() || "overview");
+  const [active, setActive] = useStickyState("hub.tab", hashTab() || "overview");
   const [scrollTo, setScrollTo] = useState(null);
   useEffect(() => {
     const onHash = () => {
@@ -653,7 +657,7 @@ export default function CustomerHub({
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
-  }, [hashTabs]);
+  }, [hashTabs, setActive]);
   useEffect(() => {
     if (!scrollTo) return;
     window.requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView({ block: "start" }));

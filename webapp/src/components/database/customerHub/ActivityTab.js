@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MessagesSquare, Paperclip } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
+import useStickyState from "@/lib/ui/useStickyState";
 import Button from "@/components/ui/Button";
 import StatusNotice from "@/components/ui/StatusNotice";
 import EmptyState from "@/components/ui/EmptyState";
@@ -31,7 +32,8 @@ const SOURCE_LABELS = {
 const SOURCE_ORDER = ["all", "deal", "dept_request", "lead", "customer", "excise_registration"];
 
 export default function ActivityTab({ customerId, customerThread }) {
-  const [source, setSource] = useState("all");
+  // ชิปแหล่งจำไว้ตอนเปิดใบแล้วย้อนกลับ (เนมสเปซหน้าลูกค้า)
+  const [source, setSource] = useStickyState("hub.activitySource", "all");
   const [items, setItems] = useState([]);
   const [sources, setSources] = useState({});
   const [counts, setCounts] = useState(null);

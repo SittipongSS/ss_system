@@ -5,7 +5,7 @@ import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { SortTh } from "@/lib/useSortableTable";
 import Link from "next/link";
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Ban, CalendarClock, CheckCircle2, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, ExternalLink, FileText, Flag, Handshake, Layers, PackageCheck, Paperclip, Plus, Save, Search, Trash2, Trophy, Truck } from "lucide-react";
@@ -139,7 +139,7 @@ export default function SalesPlanningPipelinePage() {
   /* จัดกลุ่มรายการดีล (มติผู้ใช้ 2026-08-08) — ดูภาพรวมเป็นก้อนต่อลูกค้า/โครงการ/แบรนด์/AE
      แล้วกดย่อ-ขยายทีละกลุ่มได้ · ตัวเลือกน้อยจึงเป็น Segmented ไม่ใช่ dropdown (มาตรฐานระบบ) */
   const [groupBy, setGroupBy] = useStickyState("groupBy", "none");
-  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useStickySet("collapsedGroups");
   // มุมมอง KPI: ของฉัน/ทีม/ทั้งหมด — PR #275 ใช้ตัวแปรพวกนี้แต่ไม่ได้ประกาศ (หน้า crash)
   const team = useTeam();
   const teams = useTeams();
@@ -436,8 +436,11 @@ export default function SalesPlanningPipelinePage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filteredDeals, {
-      /* ทุกอย่างที่เปลี่ยนชุดแถวต้องพาไปหน้า 1 — กดแถบตอนอยู่หน้า 3 แล้วค้างหน้า 3 = เห็นแถวไม่ครบ */
-      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${dueFilter.join()}|${deliveryFilter.join()}|${reviewOnly}|${activeScope}|${teamFilter.selected.join()}|${sortKey}|${sortDir}|${axisQuery}|${groupBy}`,
+      /* ทุกอย่างที่เปลี่ยนชุดแถวต้องพาไปหน้า 1 — กดแถบตอนอยู่หน้า 3 แล้วค้างหน้า 3 = เห็นแถวไม่ครบ
+         ⚠️ ขอบเขตใช้ `scope` (ที่ผู้ใช้เลือก) ไม่ใช่ activeScope — ค่าตั้งต้นของตัวหลังขยับตอนสิทธิ์/ทีมโหลดเสร็จ
+            ⇒ หน้าที่เพิ่งคืนจากการกดกลับถูกรีเซ็ตเป็น 1 */
+      resetKey: `${query}|${stageFilter.join()}|${typeFilter.join()}|${dueFilter.join()}|${deliveryFilter.join()}|${reviewOnly}|${scope}|${teamFilter.selected.join()}|${sortKey}|${sortDir}|${axisQuery}|${groupBy}`,
+      stickyKey: "list",
     });
 
   const openNewDeal = () => setCreateModal(true);

@@ -253,6 +253,9 @@ test('ทุกหน้าที่มีแท็บประวัติ: เ
   for (const page of ['app/requests/page.js', 'app/rd/requests/page.js', 'components/finance/FinanceRequestsQueue.js', 'app/service/requests/page.js']) {
     const src = readFileSync(new URL(`../../${page}`, import.meta.url), 'utf8');
     assert.match(src, /setSort\(inHistory \? "closed" : "(urgency|created)"\)/, page);
+    /* ตั้งแบบเรียงเฉพาะตอน **ข้ามฝั่ง** (คิว ↔ ประวัติ) ไม่ใช่ทุกครั้งที่เมานต์ — ไม่งั้นทับแบบเรียงที่ useQueueBoard
+       เพิ่งคืนค่าตอนกดกลับจากใบ (คำขอเจ้าของ 27/11) */
+    assert.match(src, /if \(!sortSideHydrated \|\| sortInHistory === inHistory\) return;\s*setSortInHistory\(inHistory\);\s*setSort\(/, page);
     assert.match(src, /tab !== "history" && \(\s*<QueueCountStrip/, page);
     assert.match(src, /columns=\{tab === "history" \? "history" : "queue"\}/, page);
     /* ตรวจตัวเลข 20/10/2026 M3 M4 — ล้างตัวกรองตัวเลขทุกครั้งที่สลับแท็บ (ขยายจาก ม-145 ที่ล้างเฉพาะประวัติ)

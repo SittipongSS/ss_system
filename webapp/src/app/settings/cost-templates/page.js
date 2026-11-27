@@ -10,6 +10,7 @@ import { categoryNameBoth } from "@/lib/master/productCategoryOptions";
 // ลบไม่ได้ ทำได้แค่ซ่อน (มติ 2026-07-22 + guard ที่ฐานข้อมูล) เพื่อให้ตามรอยได้ว่า
 // ใบขอราคาเก่ากางมาจากแม่แบบใบไหน
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { Layers, Plus, Pencil, EyeOff, Trash2, GripVertical } from "lucide-react";
 import Modal from "@/components/Modal";
 import AccessDenied from "@/components/ui/AccessDenied";
@@ -247,7 +248,7 @@ export default function CostTemplatesPage() {
   const [productTypes, setProductTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [showHidden, setShowHidden] = useState(false);
+  const [showHidden, setShowHidden] = useStickyState("showHidden", false);
   const [editing, setEditing] = useState(null); // { mode, id }
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);

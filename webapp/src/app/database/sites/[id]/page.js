@@ -51,6 +51,7 @@ import {
   zoneBuildingKey,
 } from "@/lib/service/siteDetailLists";
 import { usePagination } from "@/lib/usePagination";
+import useStickyState from "@/lib/ui/useStickyState";
 import { siteRoundsSoldText } from "@/lib/sales/serviceOrders";
 import {
   ROUNDS_SOLD_LABEL,
@@ -68,6 +69,9 @@ import styles from "./page.module.css";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
 import { deleteWithForce } from "@/lib/forceDeleteClient";
 import useThaiToday from "@/lib/ui/useThaiToday";
+
+// ค่าตั้งต้นของตัวกรองหลายค่า — array ตัวเดียวกันทุกเรนเดอร์
+const NO_VALUES = [];
 
 export default function ServiceSiteDetailPage({ params }) {
   const { id } = use(params);
@@ -374,15 +378,16 @@ export default function ServiceSiteDetailPage({ params }) {
      ⭐ ตัวคิดอยู่ lib/service/siteDetailLists.js (เทสต์ได้) · ไซต์เล็กหน้าตาแทบเท่าเดิม: ไม่ถึงหน้า Pager ไม่ขึ้น ·
         อาคารเดียว ชิปไม่ขึ้น
      ⚠️ เลขบนชิปอาคาร = จำนวนที่จะเห็นถ้ากด (กรองคำค้น/รุ่น/สถานะแล้ว ยกเว้นอาคาร) · ชิปที่เลือกไว้หายไป
-        (แก้ชื่ออาคาร) ⇒ กลับเป็น "ทุกอาคาร" ไม่ใช่ค้างตัวกรองที่มองไม่เห็น */
-  const [zoneQuery, setZoneQuery] = useState("");
-  const [zoneBuilding, setZoneBuilding] = useState(ALL_BUILDINGS);
-  const [assetQuery, setAssetQuery] = useState("");
-  const [assetBuilding, setAssetBuilding] = useState(ALL_BUILDINGS);
-  const [assetModels, setAssetModels] = useState([]);
-  const [assetStatuses, setAssetStatuses] = useState([]);
+        (แก้ชื่ออาคาร) ⇒ กลับเป็น "ทุกอาคาร" ไม่ใช่ค้างตัวกรองที่มองไม่เห็น
+     ⭐ จำค่า (useStickyState) — กดเข้าหน้าโซน/เครื่องแล้วกดกลับ ได้คำค้น · อาคาร · ตัวกรอง · หน้าเดิม */
+  const [zoneQuery, setZoneQuery] = useStickyState("zones.query", "");
+  const [zoneBuilding, setZoneBuilding] = useStickyState("zones.building", ALL_BUILDINGS);
+  const [assetQuery, setAssetQuery] = useStickyState("assets.query", "");
+  const [assetBuilding, setAssetBuilding] = useStickyState("assets.building", ALL_BUILDINGS);
+  const [assetModels, setAssetModels] = useStickyState("assets.models", NO_VALUES);
+  const [assetStatuses, setAssetStatuses] = useStickyState("assets.statuses", NO_VALUES);
   // ตัวกรองจากปุ่ม "ดู N รายการ" ของแถบยังไม่ระบุโซน — ขึ้นเป็นป้าย "กรอง: ยังไม่ระบุโซน ×" บนแถบเครื่องมือ
-  const [assetUnzoned, setAssetUnzoned] = useState(false);
+  const [assetUnzoned, setAssetUnzoned] = useStickyState("assets.unzoned", false);
 
   const buildingNames = useMemo(() => zones.map((z) => z.building), [zones]);
   // นับเครื่องต่อโซนครั้งเดียว — เดิม filter ทั้งกองต่อแถว (247 โซน × 292 เครื่องทุกเรนเดอร์)
@@ -398,7 +403,9 @@ export default function ServiceSiteDetailPage({ params }) {
     () => filterZones(zonesByQuery, { building: zoneBuildingShown }),
     [zonesByQuery, zoneBuildingShown],
   );
-  const zonePaging = usePagination(shownZones, { resetKey: `${zoneQuery}|${zoneBuildingShown}` });
+  /* ⚠️ resetKey ใช้ค่าที่ผู้ใช้เลือก (`zoneBuilding`) ไม่ใช่ `zoneBuildingShown` — ตัวหลังเปลี่ยนตอนข้อมูลโหลดเสร็จ
+     ⇒ หน้าที่เพิ่งคืนค่าจะถูกดีดกลับหน้า 1 ทุกครั้งที่กดกลับ */
+  const zonePaging = usePagination(shownZones, { resetKey: `${zoneQuery}|${zoneBuilding}`, stickyKey: "zones.list" });
 
   const modelSummary = useMemo(() => assetModelSummary(assets), [assets]);
   const assetStatusOptions = useMemo(
@@ -425,7 +432,8 @@ export default function ServiceSiteDetailPage({ params }) {
     [assetsByFilters, zonesById, assetBuildingShown],
   );
   const assetPaging = usePagination(shownAssets, {
-    resetKey: JSON.stringify([assetQuery, assetBuildingShown, assetModels, assetStatuses, assetUnzoned]),
+    resetKey: JSON.stringify([assetQuery, assetBuilding, assetModels, assetStatuses, assetUnzoned]),
+    stickyKey: "assets.list",
   });
   /* ปุ่ม "ดู N รายการ" ของแถบยังไม่ระบุโซน = ตั้งตัวกรองทั้งชุด (ล้างคำค้น/อาคาร/รุ่น/สถานะที่ค้าง) ⇒ ตารางเท่าเลขบนแถบ */
   const showUnzonedAssets = () => {

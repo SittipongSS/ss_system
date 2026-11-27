@@ -3,6 +3,7 @@ import { TableScroll } from "@/components/ui/Table";
 import DetailRow from "@/components/ui/DetailRow";
 import { notifyToast } from "@/components/ui/Toast";
 import { useCallback, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { ShoppingCart, Plus, ChevronRight, ChevronDown, Pencil, Download, Search, ArrowUp, ArrowDown, AlertCircle } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
@@ -179,19 +180,19 @@ export default function PoPage() {
       {loadError}
     </StatusNotice>
   ) : null;
-  const [openPo, setOpenPo] = useState({});
-  const [search, setSearch] = useState("");
-  const [statusSel, setStatusSel] = useState([]);  // คำบนป้ายสถานะ (poDisplayStatus().label) ที่เลือกไว้
-  const [deliverySel, setDeliverySel] = useState([]); // คีย์ poRollupStatus ของหมวด "การส่งของ" (ตัวเดียวกับที่ภาพรวมนับ)
-  const [destSel, setDestSel] = useState([]);       // destination keys
+  const [openPo, setOpenPo] = useStickyState("openPo", {});
+  const [search, setSearch] = useStickyState("search", "");
+  const [statusSel, setStatusSel] = useStickyState("statusSel", []);  // คำบนป้ายสถานะ (poDisplayStatus().label) ที่เลือกไว้
+  const [deliverySel, setDeliverySel] = useStickyState("deliverySel", []); // คีย์ poRollupStatus ของหมวด "การส่งของ" (ตัวเดียวกับที่ภาพรวมนับ)
+  const [destSel, setDestSel] = useStickyState("destSel", []);       // destination keys
   const canEdit = useCan("sahamit:edit");
-  const [view, setView] = useState("grouped"); // grouped (รายใบ) | table (รายบรรทัด)
+  const [view, setView] = useStickyState("view", "grouped"); // grouped (รายใบ) | table (รายบรรทัด)
   /* เรียงตาราง — คอมพาเรเตอร์ยังทำเองในหน้านี้ (เรียงจากค่าที่ *คำนวณ* เช่น มูลค่าก่อน VAT
      กับสถานะรวมของใบ ซึ่ง accessors ของ useSortableTable รับไม่ได้ตรง ๆ) แต่ **ทรงของ state
      ทำให้ตรงกับที่ useSortableTable คืน** = { sortKey, sortDir, sortBy } เพื่อส่งเข้า
      <SortTh> ได้ตรง ๆ ⇒ หัวตารางกดด้วยคีย์บอร์ดได้และมี aria-sort เหมือนทั้งระบบ
      (WCAG 2.1.1 Keyboard · 1.3.1 · 4.1.2) โดยไม่ต้องยกคอมพาเรเตอร์ออกไปที่ hook */
-  const [sortState, setSortState] = useState({ sortKey: null, sortDir: "asc" });
+  const [sortState, setSortState] = useStickyState("sort", { sortKey: null, sortDir: "asc" });
   const { sortKey, sortDir } = sortState;
   const sortBy = (key) => setSortState((s) => (s.sortKey === key
     ? { sortKey: key, sortDir: s.sortDir === "asc" ? "desc" : "asc" }
@@ -288,7 +289,7 @@ export default function PoPage() {
     }[sortKey]);
     return [...filteredPos].sort((a, b) => { const ka = key(a), kb = key(b); return (ka < kb ? -1 : ka > kb ? 1 : 0) * s; });
   }, [filteredPos, sortKey, sortDir, priceByFg, statusOf]);
-  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${deliverySel.join(",")}|${destSel.join(",")}|${sortKey}|${sortDir}` });
+  const grouped = usePagination(sortedGroupedPos, { resetKey: `${q}|${statusSel.join(",")}|${deliverySel.join(",")}|${destSel.join(",")}|${sortKey}|${sortDir}`, stickyKey: "grouped" });
 
   const toggle = (id) => setOpenPo((s) => ({ ...s, [id]: !s[id] }));
 
@@ -548,7 +549,7 @@ function PoLinesTable({ lines, priceByFg, prodIdx, resetKey, sort }) {
   }, [lines, priceByFg, sortKey, sortDir]);
 
   const totalExVat = rows.reduce((s, r) => s + (r.value || 0), 0); // รวมทุกหน้า (ไม่ใช่เฉพาะหน้าปัจจุบัน)
-  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${resetKey}|${sortKey}|${sortDir}` });
+  const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } = usePagination(rows, { resetKey: `${resetKey}|${sortKey}|${sortDir}`, stickyKey: "lines" });
   /* 🪤 เดิมมีคอมโพเนนต์ `Th` ประกาศ **ซ้อนอยู่ตรงนี้** — ห้ามเอากลับมา: React เห็นเป็น
      type ใหม่ทุกเรนเดอร์ ⇒ remount <th> ทั้งช่องทุกครั้งที่ state ขยับ ซึ่งแปลว่า
      **โฟกัสบนปุ่มเรียงหลุดทันทีที่กด** = คีย์บอร์ดยังใช้งานจริงไม่ได้ทั้งที่มีปุ่มแล้ว

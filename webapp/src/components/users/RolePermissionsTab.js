@@ -4,7 +4,8 @@
 // ⭐ อ่านอย่างเดียว — สิทธิ์ตามตำแหน่งอยู่ในโค้ด (มติทาง A) · แก้ที่นี่ไม่ได้ และไม่มีปุ่มให้แก้
 // ⭐ ข้อมูลทั้งหมดมาจาก `capsFor(role)` + ทะเบียนป้าย `lib/capabilityCatalog.js` — ไม่มีตารางที่ต้องดูแลซ้ำ
 // ⚠️ cap บอกแค่ "ถือสิทธิ์" — ด่านจริงหลายตัวแคบอีกชั้น (ป้ายฟ้า `scope`) ห้ามเขียนจอนี้ให้ดูกว้างกว่าที่ระบบทำ
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import {
   Briefcase, Building2, Calculator, ChartLine, Check, FlaskConical, FolderKanban, Hammer, Handshake,
   IdCard, Landmark, MessageCircleQuestion, Minus, Package, Shield, Wallet, Wrench,
@@ -47,10 +48,11 @@ function LevelChip({ level }) {
 }
 
 export default function RolePermissionsTab({ users = [] }) {
-  const [view, setView] = useState("matrix");
-  const [hideUnused, setHideUnused] = useState(false);
-  const [role, setRole] = useState(null);
-  const [collapsed, setCollapsed] = useState(() => new Set());
+  /* มุมมอง/ตัวกรอง/กลุ่มที่พับ จำไว้เมื่อออกจากหน้าแล้วกดกลับ — คีย์นำหน้า "roles." (อยู่ในหน้า /users) */
+  const [view, setView] = useStickyState("roles.view", "matrix");
+  const [hideUnused, setHideUnused] = useStickyState("roles.hideUnused", false);
+  const [role, setRole] = useStickyState("roles.role", null);
+  const [collapsed, setCollapsed] = useStickySet("roles.collapsed");
   const toggleDept = (dept) => setCollapsed((prev) => {
     const next = new Set(prev);
     if (next.has(dept)) next.delete(dept); else next.add(dept);
