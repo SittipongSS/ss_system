@@ -375,15 +375,16 @@ export default function FilingDetailPage() {
             </div>
           </DetailCard>
 
-          <div className="glass-panel" style={{ padding: 16 }}>
-            <AttachmentsPanel
-              entityType="order"
-              entityId={o.id}
-              canEdit={canApprove}
-              title="เอกสารการชำระสรรพสามิต"
-              cardColumns={1}
-            />
-          </div>
+          {/* ⚠️ วางเปล่า ไม่ห่อการ์ดอีกชั้น — AttachmentsPanel (โหมดการ์ด) เป็น glass-panel ของตัวเองอยู่แล้ว
+              🐞 เดิมห่อ glass-panel padding 16 ⇒ กรอบซ้อนกรอบ หัว "เอกสารการชำระสรรพสามิต" ลึกกว่าการ์ดข้างเคียง
+              (เจ้าของ 27/11 · คู่กับการ์ดรายการสินค้าข้างบน) · ทรงเดียวกับหน้ากลิ่น/หน้างาน */}
+          <AttachmentsPanel
+            entityType="order"
+            entityId={o.id}
+            canEdit={canApprove}
+            title="เอกสารการชำระสรรพสามิต"
+            cardColumns={1}
+          />
 
           {/* เธรดกลาง (mig 0163) — บันทึกเหตุการณ์ระหว่างยื่น (เช่น ยื่นแบบ ภส. แล้ว รอใบเสร็จ) */}
           <DetailCard icon={MessagesSquare} eyebrow="ACTIVITY" title="ความเคลื่อนไหว">
