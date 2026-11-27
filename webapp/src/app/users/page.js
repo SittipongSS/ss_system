@@ -1,6 +1,5 @@
 "use client";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
-import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
@@ -10,7 +9,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Tag from "@/components/ui/Tag";
 import { Users, Plus, Pencil, Trash2, Lock, Unlock, ArrowRightLeft, ShieldOff, TriangleAlert, RefreshCw } from "lucide-react";
-import { nextMonthKey } from "@/lib/usersTransfer";
 import { useCan } from "@/lib/roleContext";
 import {
   ROLE_LABELS,
@@ -29,7 +27,7 @@ import { GrantHistoryTab, GrantRegistryTab, useAllGrants } from "@/components/us
 import Tabs from "@/components/ui/Tabs";
 import OptionTiles from "@/components/ui/OptionTiles";
 import Modal from "@/components/Modal";
-import { fmtDate, fmtNumber, fmtPhone, naText, NA } from "@/lib/format";
+import { fmtDate, fmtPhone, naText, NA } from "@/lib/format";
 import PhoneInput from "@/components/ui/PhoneInput";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { usePagination } from "@/lib/usePagination";
@@ -48,10 +46,6 @@ import { FORCE_REFRESH_ISSUED_EVENT } from "@/lib/ui/forceRefresh";
    ⚠️ **บัญชีขายที่เพิ่งเปิดจะยังไม่มีทีม** — ป้าย "ยังไม่ได้จัดเข้าทีม" ในตารางกับ
    โมดัลหลังสร้างบัญชีคือสองจุดเดียวที่กันไม่ให้คนใหม่ล็อกอินแล้วเจอจอว่างเงียบ ๆ */
 const emptyForm = { email: "", loginKind: "email", loginPhone: "", password: "", firstName: "", lastName: "", phone: "", department: "SA", role: "ae" };
-
-// ป้ายทีมของผู้ใช้หนึ่งคน — ทีมหลักขึ้นก่อนเสมอ ต่อด้วยทีมอื่นที่สังกัด
-// (เหลือไว้จุดเดียว: แยกคนชื่อซ้ำในดรอปดาวน์ "โอนงานให้ใคร" — ทรงเดียวกับ PersonSelect)
-const teamLabelsOf = (u) => userTeams(u).map((t) => teamLabelNow(t));
 
 /* ตำแหน่งฝ่ายขายที่ยังไม่ถูกจัดเข้าทีม — `teams[]` คือขอบเขตการเห็นข้อมูลจริง
    คนที่ว่างอยู่จะล็อกอินได้แต่ไม่เห็นดีล/ลูกค้า/เป้าเลย โดยไม่มี error ให้เห็น */
@@ -82,11 +76,6 @@ export default function UserManagement() {
 
   const [editUser, setEditUser] = useState(null); // the user being edited
   const [editForm, setEditForm] = useState(null);
-
-  // โอนงานพนักงาน (offboarding): ดีลเปิด + เป้าเดือนอนาคต → คนรับ ในคลิกเดียว
-  const [transferUser, setTransferUser] = useState(null); // คนต้นทาง
-  const [transferForm, setTransferForm] = useState({ toUserId: "", transferDeals: true, transferTargets: true, fromPeriod: "" });
-  const [transferResult, setTransferResult] = useState(null);
 
   const sort = useSortableTable(users, {
     firstName: (u) => u.firstName || "",
@@ -300,42 +289,6 @@ export default function UserManagement() {
     }
   };
 
-  // โอนงาน: ยิง API แล้วโชว์สรุปผลในโมดัลเดิม (ไม่ปิดทันที ให้เห็นว่าย้ายอะไรไปเท่าไหร่)
-  const handleTransfer = async (e) => {
-    e.preventDefault();
-    if (!transferForm.toUserId) { notifyToast.error("กรุณาเลือกผู้รับโอน"); return; }
-    const to = users.find((x) => x.id === transferForm.toUserId);
-    const toLabel = to ? `${to.firstName || ""} ${to.lastName || ""}`.trim() || to.email : "";
-    /* ดีลของใบสั่งขายย้อนหลังไม่ย้ายตาม (คำตอบข้อ 4 · mig 0360) — บอกจำนวนก่อนกดยืนยัน */
-    let historicalNote = "";
-    try {
-      const previewRes = await apiFetch(`/api/users/${transferUser.id}/transfer`);
-      const preview = await previewRes.json();
-      if (!previewRes.ok) historicalNote = "\n(นับดีลของใบสั่งขายย้อนหลังไม่สำเร็จ)";
-      else if (preview.historicalDeals > 0) {
-        historicalNote = `\nดีลของใบสั่งขายย้อนหลัง ${preview.historicalDeals} ใบจะยังเป็นของคนเดิม — ต้องย้ายเจ้าของทีละใบ`;
-      }
-    } catch {
-      historicalNote = "\n(นับดีลของใบสั่งขายย้อนหลังไม่สำเร็จ)";
-    }
-    if (!(await confirmAction(`โอนงานของ ${transferUser.email} → ${toLabel}?\n(ดีลที่ปิด Won แล้วจะไม่ถูกย้าย — ประวัติคงเดิม)${historicalNote}`))) return;
-    setSubmitting(true);
-    try {
-      const res = await apiFetch(`/api/users/${transferUser.id}/transfer`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transferForm),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "โอนงานไม่สำเร็จ");
-      setTransferResult(data);
-    } catch (err) {
-      notifyToast.error(err.message || "โอนงานไม่สำเร็จ");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   if (!canView) {
     return (
       <div className="glass-panel p-12 text-center text-[var(--text-3)]">
@@ -472,17 +425,16 @@ export default function UserManagement() {
                             >
                               <Pencil size={16} />
                             </button>
-                            <button
-                              onClick={() => {
-                                setTransferResult(null);
-                                setTransferForm({ toUserId: "", transferDeals: true, transferTargets: true, fromPeriod: nextMonthKey() });
-                                setTransferUser(u);
-                              }}
+                            {/* โอนงานพนักงาน → หน้าโอนงาน (มติเจ้าของ 27/11/2026) — เลือกทีม+คนรับทีละรายการ
+                                ไม่ใช่โมดัลที่ยกดีลเปิดทั้งหมดให้คนเดียวแบบเดิม */}
+                            <Link
+                              href={`/users/${u.id}/handover`}
                               className="text-[var(--text-2)] hover:opacity-70"
-                              title="โอนงาน (ดีลเปิด + เป้าเดือนอนาคต) ให้คนอื่น"
+                              title="โอนงาน (ดีล · ลีด · เป้า) ให้คนอื่น"
+                              aria-label={`โอนงานของ ${u.email}`}
                             >
                               <ArrowRightLeft size={16} />
-                            </button>
+                            </Link>
                             {/* ⭐ ถอนสิทธิ์เอกสารร่วมบน Drive — เคสที่ต้องกดจริงคือ
                                 **ย้ายทีมทั้งที่ยังทำงานอยู่**: ระบบตัดสิทธิ์เห็นดีลเก่า
                                 ทันที แต่ไฟล์ที่เคยเปิดยังเปิดได้ผ่านลิงก์เดิม
@@ -568,75 +520,6 @@ export default function UserManagement() {
         )}
       </Modal>
 
-      {/* โอนงานพนักงาน (offboarding): ดีลเปิด + เป้าเดือนอนาคต → คนรับ */}
-      <Modal
-        open={!!transferUser}
-        onClose={() => setTransferUser(null)}
-        title={`โอนงานของ: ${transferUser?.email || ""}`}
-        size="md"
-      >
-        {transferResult ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <div className="status-pill success" style={{ height: "auto", padding: "10px 12px", width: "100%", fontSize: "var(--fs-7)" }}>
-              โอนงานให้ {transferResult.toName} เรียบร้อย
-            </div>
-            <ul style={{ margin: 0, paddingLeft: 20, fontSize: "var(--fs-7)", color: "var(--text-2)", display: "flex", flexDirection: "column", gap: 4 }}>
-              <li>ดีลเปิดที่ย้ายผู้ดูแล: <b>{transferResult.deals}</b> ใบ (FC ย้ายตามทันที)</li>
-              <li>เป้าที่โยก: <b>{transferResult.targetMonths}</b> เดือน รวม <b>{fmtNumber(transferResult.targetAmount || 0)}</b> บาท (ตั้งแต่ {transferResult.fromPeriod})</li>
-              {transferResult.historicalDeals > 0 && (
-                <li>ดีลของใบสั่งขายย้อนหลังที่ยังเป็นของคนเดิม: <b>{transferResult.historicalDeals}</b> ใบ — ไม่ย้ายอัตโนมัติ ต้องให้ AE Supervisor/Admin ย้ายเจ้าของทีละใบ</li>
-              )}
-              <li>ดีลที่ปิด Won/Lost แล้ว และเป้าเดือนที่ผ่านมา: ไม่ถูกแตะ (ประวัติคงเดิม)</li>
-            </ul>
-            <div className="form-action-bar">
-              <button type="button" className="btn btn-primary" onClick={() => setTransferUser(null)}>ปิด</button>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleTransfer} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label>โอนให้ (ผู้รับ) <span className="text-[var(--red)]">*</span></label>
-              <Select
-                value={transferForm.toUserId}
-                onChange={(e) => setTransferForm((f) => ({ ...f, toUserId: e.target.value }))}
-                options={users
-                  .filter((x) => !x.disabled && x.role && x.role !== "user" && x.id !== transferUser?.id)
-                  .map((x) => {
-                    const teams = teamLabelsOf(x);
-                    const name = `${x.firstName || ""} ${x.lastName || ""}`.trim() || x.email;
-                    return { value: x.id, label: teams.length ? `${name} · ${teams.join(" + ")}` : name };
-                  })}
-                placeholder="เลือกพนักงานที่รับช่วงต่อ"
-              />
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)" }}>
-              <input type="checkbox" checked={transferForm.transferDeals} onChange={(e) => setTransferForm((f) => ({ ...f, transferDeals: e.target.checked }))} />
-              โอนดีลที่ยังเปิดทั้งหมด (Forecast ย้ายตามผู้ดูแลใหม่)
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-7)", flexWrap: "wrap" }}>
-              <input type="checkbox" checked={transferForm.transferTargets} onChange={(e) => setTransferForm((f) => ({ ...f, transferTargets: e.target.checked }))} />
-              โยกเป้า (Target) ตั้งแต่เดือน
-              <input
-                type="month"
-                className="premium-input"
-                style={{ width: 150 }}
-                value={transferForm.fromPeriod}
-                onChange={(e) => setTransferForm((f) => ({ ...f, fromPeriod: e.target.value }))}
-                disabled={!transferForm.transferTargets}
-              />
-            </label>
-            <div style={{ fontSize: "var(--fs-5)", color: "var(--text-3)", background: "var(--panel-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "8px 10px" }}>
-              เดือนที่ผ่านมาแล้วและดีลที่ปิด Won จะไม่ถูกย้าย — Target/Actual ย้อนหลังคงใต้ชื่อเดิมเสมอ (ค่าเริ่มต้น = เดือนถัดไป; เดือนปัจจุบันแนะนำวัดที่ระดับทีม)
-            </div>
-            <div className="form-action-bar">
-              <button type="button" onClick={() => setTransferUser(null)} className="btn">ยกเลิก</button>
-              <button type="submit" disabled={submitting} className="btn btn-primary">
-                {submitting ? "กำลังโอน..." : "โอนงาน"}
-              </button>
-            </div>
-          </form>
-        )}
-      </Modal>
     </Workspace>
   );
 }
