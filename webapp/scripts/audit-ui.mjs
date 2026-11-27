@@ -641,7 +641,7 @@ const RAW_RADIUS_CAP = 20;
    ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่
    📉 71 → 70 (2026-11-15) — ยุบดีล/โครงการ P2d: ชิปโครงการ (LINK_PROJECT · borderRadius 4) บนคิวงาน /pm/tasks ถูกถอด
    📉 70 → 67 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
-const RAW_RADIUS_JSX_CAP = 67;
+const RAW_RADIUS_JSX_CAP = 66;
 
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 
@@ -896,10 +896,10 @@ const RAW_TAILWIND_TYPE_CAP = 129;
    เพราะ regex บังคับให้ตัวเลขตามหลัง `fontWeight:` ทันทีแล้วปิดท้ายด้วย `,` หรือ `}`
    ⇒ รูป `fontWeight: cond ? 700 : 500` หลุดทุกใบ · วัด 2026-09-02: style object มี
    `fontWeight` 282 จุด เป็นโทเคน --fw-* 274 · **หลุด 8 จุด และทั้ง 8 เป็น ternary**
-     src/app/pm/tasks/page.js:1191                     isToday ? 700 : 500
+     src/app/pm/tasks/page.js:1194                     isToday ? 700 : 500
      src/app/sales-planning/deals/[id]/page.js:166     s.state === "current" ? 800 : 650
-     src/app/settings/signature-coverage/page.js:210   … ? 700 : 400
-     src/app/settings/signature-coverage/page.js:213   … ? 700 : 400
+     src/app/settings/signature-coverage/page.js:211   … ? 700 : 400
+     src/app/settings/signature-coverage/page.js:214   … ? 700 : 400
      src/components/pm/ProjectDocumentView.js:470      weekend ? 400 : 500
      src/components/ui/FilterPopover.js:137            isActive ? 600 : 500
      src/components/ui/FilterPopover.js:196            checked ? 600 : 400

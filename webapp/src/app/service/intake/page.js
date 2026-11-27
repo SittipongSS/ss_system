@@ -52,6 +52,7 @@ import { serviceAgingSummaryText } from "@/lib/sales/serviceBackfillAging";
 import { fmtDate, fmtNumber, naText } from "@/lib/format";
 import styles from "./page.module.css";
 import { apiFetch, apiJson } from "@/lib/apiFetch";
+import useStickyState from "@/lib/ui/useStickyState";
 /* ⭐ แท็บรอตั้งรอบ (PR-C · C7) — ข้อเท็จจริงของแถวคำนวณที่ route (`intakePlanFacts`) · หน้าวาด + ตั้งรอบจากแถว */
 import ServicePlanModal from "@/components/service/ServicePlanModal";
 import OrphanPlanStrip from "@/components/service/intakePlan/OrphanPlanStrip";
@@ -159,13 +160,15 @@ function PaidBadge({ readiness, label = "จ่ายถึง" }) {
 export default function ServiceIntakePage() {
   /* ⭐ แท็บตั้งต้น = "รอตั้งรอบ" เสมอ (mig 0392 · D14) — ทุกใบมาถึง TS ที่ถังนี้ก่อน (รอบขายเกิดตอนอนุมัติ)
      🔄 ถอดตัวสลับแท็บอัตโนมัติ "ถังผูกโซนว่างแล้วไปถังตั้งรอบ" (มติ 22/09) — ถังผูกโซนไม่มีแล้ว แท็บแรกคือถังตั้งรอบอยู่แล้ว */
-  const [tab, setTab] = useState("plan");
+  /* แท็บ/ตัวกรอง/คำค้น/หน้าที่อยู่จำไว้ (useStickyState · คำขอเจ้าของ 27/11) — เปิดใบสั่งขายแล้วกดย้อนกลับมาต้องได้รายการเดิม
+     · `?tab=install` จากกระดิ่งยังชนะ (effect ข้างล่างประกาศหลังตัวนี้) */
+  const [tab, setTab] = useStickyState("tab", "plan");
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   /* ตัวกรองสถานะ + คำค้นของแท็บใบเดิม — ใช้เฉพาะแท็บนั้น (แท็บอื่นไม่มีแถบเครื่องมือนี้) */
-  const [legacyFilter, setLegacyFilter] = useState("all");
-  const [search, setSearch] = useState("");
+  const [legacyFilter, setLegacyFilter] = useStickyState("legacyFilter", "all");
+  const [search, setSearch] = useStickyState("search", "");
 
   /* ⭐ ตั้งรอบจากแถว (PR-C · C-D12) — ปุ่มเป็นของฝ่ายบริการ (`POST /api/service/plans` บังคับ `canEditService`)
      ⇒ ถามด่านตัวเดียวกันที่จอ · ไม่มีสิทธิ์ = ไม่มีปุ่ม (กติกา "ไม่มีสิทธิ์ = ไม่โชว์")
@@ -256,7 +259,7 @@ export default function ServiceIntakePage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (new URLSearchParams(window.location.search).get("tab") === "install") setTab("install");
-  }, []);
+  }, [setTab]);
   const installOn = install?.enabled === true;
   const installCount = installOn ? (install.rows || []).length : 0;
   useEffect(() => {
@@ -341,32 +344,33 @@ export default function ServiceIntakePage() {
     setTab(key);
     setSearch("");
     setLegacyFilter("all");
-  }, []);
+  }, [setTab, setSearch, setLegacyFilter]);
   const viewPageSize = view === "cards" ? CARD_PAGE_SIZE : DEFAULT_PAGE_SIZE;
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(tabRows, { resetKey: `${tab}|${legacyFilter}|${needle}`, defaultSize: viewPageSize });
+    usePagination(tabRows, { resetKey: `${tab}|${legacyFilter}|${needle}`, defaultSize: viewPageSize, stickyKey: "list" });
   /* มุมมองตัดสินหลัง mount (ก่อน mount ถือเป็นจอนอน = ตาราง) ⇒ `defaultSize` ตอนเริ่มไม่พอ
-     ต้องตามมุมมองที่เปลี่ยน · แต่ถ้าคนเลือกจำนวนต่อหน้าเองแล้ว สลับมุมมองต้องไม่ทับค่าที่เลือก */
-  const pageSizePicked = useRef(false);
+     ต้องตามมุมมองที่เปลี่ยน · แต่ถ้าคนเลือกจำนวนต่อหน้าเองแล้ว สลับมุมมองต้องไม่ทับค่าที่เลือก
+     ⚠️ "เลือกเองแล้ว" จำคู่กับขนาดหน้า (useStickyState) — เป็น ref เมื่อไร กลับมาจากใบแล้วขนาดที่เลือกไว้ถูกทับเป็นของมุมมอง */
+  const [pageSizePicked, setPageSizePicked] = useStickyState("list.sizePicked", false);
   /* 🐞 เปลี่ยนขนาดหน้า = usePagination พากลับหน้า 1 ⇒ สลับมุมมองจากการ์ดหน้า 4 (ใบที่ 31–33)
      ไปตารางแล้วตกหน้า 1 หลงที่ · จำ "แถวแรกที่เห็นอยู่" ไว้ แล้วไปหน้าที่มีแถวนั้นหลังรีเซ็ต
      ⚠️ effect ตัวที่สองต้องประกาศ **หลัง** usePagination — effect รันตามลำดับประกาศ
         setPage(1) ของ hook มาก่อน ค่าที่ตั้งตรงนี้จึงชนะ */
   const keepFirstRow = useRef(null);
   useEffect(() => {
-    if (pageSizePicked.current || pageSize === viewPageSize) return;
+    if (pageSizePicked || pageSize === viewPageSize) return;
     keepFirstRow.current = (page - 1) * pageSize;
     setPageSize(viewPageSize);
-  }, [viewPageSize, page, pageSize, setPageSize]);
+  }, [pageSizePicked, viewPageSize, page, pageSize, setPageSize]);
   useEffect(() => {
     if (keepFirstRow.current === null) return;
     setPage(Math.floor(keepFirstRow.current / pageSize) + 1);
     keepFirstRow.current = null;
   }, [pageSize, setPage]);
   const pickPageSize = useCallback((size) => {
-    pageSizePicked.current = true;
+    setPageSizePicked(true);
     setPageSize(size);
-  }, [setPageSize]);
+  }, [setPageSize, setPageSizePicked]);
   // โหลดพัง = ไม่รู้ตัวเลข ⇒ ไม่โชว์ตัวเลขเก่าหรือศูนย์บนแท็บ/ถังใบไม่ระบุสาย
   const showCounts = Boolean(data) && !loadError;
   /* ใบสั่งขายย้อนหลังในถังตั้งรอบ — เลขที่ใบ (ไม่ซ้ำ) สำหรับโน้ต "โซนผูกจากฝ่ายขายแล้ว" */

@@ -2,6 +2,7 @@
 import { TableScroll } from "@/components/ui/Table";
 import { notifyToast } from "@/components/ui/Toast";
 import { useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { Flag, ChevronRight, ChevronDown, Save } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -84,7 +85,7 @@ const TABS = [{ key: "open", label: "ต้องตรวจ" }, { key: "all", 
 export default function ReviewPage() {
   const { data: flags, loading, error, errorDetail, reload } = useApiList("/api/sahamit/flags");
   const canEdit = useCan("sahamit:edit");
-  const [tab, setTab] = useState("open");
+  const [tab, setTab] = useStickyState("tab", "open");
   const shown = useMemo(() => (tab === "open" ? flags.filter((f) => f.status === "open") : flags), [flags, tab]);
 
   return (

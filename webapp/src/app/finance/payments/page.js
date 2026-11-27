@@ -46,6 +46,7 @@ import StatusNotice from "@/components/ui/StatusNotice";
 import Pager from "@/components/ui/Pager";
 import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { usePagination } from "@/lib/usePagination";
+import { useStickySet } from "@/lib/ui/useStickyState";
 import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
 import {
   LEDGER_BILLING_CUTOFF, LEDGER_BILLING_MISSING_TAG, LEDGER_BILLING_RULE_UNSET, LEDGER_BILLING_WAITING_TAG,
@@ -425,15 +426,25 @@ export default function FinancePaymentsPage() {
   /* ⚠️ แบ่งหน้าเฉพาะตอน **ไม่จัดกลุ่ม** — แบ่งหน้าทับการจัดกลุ่มจะหั่นถังคาหน้า
      แล้วยอดที่หัวถังไม่ตรงกับแถวที่เห็น (กติกาเดียวกับตารางไปป์ไลน์ดีล)
      ⇒ โหมดจัดกลุ่มใช้ย่อ/ขยายถังคุมความยาวแทน */
+  /* ⭐ จำหน้าที่อยู่ (stickyKey · คำขอเจ้าของ 27/11) — เปิดใบแล้วกดย้อนกลับมาต้องได้หน้าเดิม ไม่ใช่หน้า 1
+     · ตัวกรอง/มุมมองอยู่ใน URL อยู่แล้ว (ปุ่มย้อนของเบราว์เซอร์พากลับมาครบ) */
   const { page, setPage, pageCount, pageSize, setPageSize, pageRows, total } = usePagination(sortedGroups, {
     resetKey: `${query}|${sortKey}|${sortDir}`,
+    stickyKey: "ledger",
   });
 
   /* ถังที่ย่ออยู่ · รีเซ็ตเมื่อเปลี่ยนหัวข้อจัดกลุ่มหรือผลลัพธ์เปลี่ยน — ไม่งั้นกุญแจ
-     ของถังเก่าค้างอยู่แล้วไปย่อถังที่คนไม่ได้สั่งย่อ (บทเรียนเดียวกับ Set ของแถวที่กาง) */
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  useEffect(() => { setCollapsed(new Set()); }, [groupBy, query]);
-  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), []);
+     ของถังเก่าค้างอยู่แล้วไปย่อถังที่คนไม่ได้สั่งย่อ (บทเรียนเดียวกับ Set ของแถวที่กาง)
+     ⭐ จำไว้ (useStickySet) — ล้างเฉพาะตอนค่า **เปลี่ยน** ไม่ใช่ตอนเมานต์ ไม่งั้นถังที่ย่อไว้หายทุกครั้งที่กดย้อนกลับมา */
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
+  const collapseScope = `${groupBy}|${query}`;
+  const collapseScopeRef = useRef(collapseScope);
+  useEffect(() => {
+    if (collapseScopeRef.current === collapseScope) return;
+    collapseScopeRef.current = collapseScope;
+    setCollapsed(new Set());
+  }, [collapseScope, setCollapsed]);
+  const toggleBucket = useCallback((key) => setCollapsed((current) => toggleBucketKey(current, key)), [setCollapsed]);
   const allCollapsed = allBucketsCollapsed(buckets, collapsed);
 
   /* ⚠️ ดาวน์โหลดผ่าน blob ไม่ใช่เปิดแท็บใหม่ — endpoint ต้องการ cookie เซสชัน

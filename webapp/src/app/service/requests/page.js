@@ -8,7 +8,7 @@
 //
 // ⭐ **มุมของฝ่าย ไม่ใช่มุมของคน** — `/requests` ตอบว่า "ตอนนี้เป็นตาใคร" ส่วนหน้านี้
 // ตอบว่า "งานของฝ่ายเราค้างตรงไหน" ⇒ กรองด้วยฝ่ายก่อนเสมอ
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MessageCircleQuestion } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -24,6 +24,7 @@ import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
 import useThaiToday from "@/lib/ui/useThaiToday";
+import useStickyState from "@/lib/ui/useStickyState";
 
 const DEPT = "TS";
 
@@ -45,13 +46,23 @@ export default function ServiceRequestsPage() {
   // แท็บอยู่ใน URL — ลิงก์ตรงและปุ่มย้อนกลับของเบราว์เซอร์ทำงานได้จริง
   const tabKeys = DEPT_QUEUE_TAB_KEYS;
   const urlTab = searchParams.get("tab");
-  const tab = tabKeys.includes(urlTab) ? urlTab : "todo";
+  /* ⭐ แท็บล่าสุดจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — ปุ่ม "กลับรายการคำร้อง" บนใบพามาที่ URL เปล่า
+     (`deptQueueHref`) ⇒ ไม่มี `?tab=` บอกว่าเคยอยู่แท็บไหน · `?tab=` ใน URL ชนะเสมอ */
+  const [lastTab, setLastTab, , tabHydrated] = useStickyState("tab", "todo");
+  const tab = tabKeys.includes(urlTab) ? urlTab : tabKeys.includes(lastTab) ? lastTab : "todo";
+  useEffect(() => { if (tabKeys.includes(urlTab)) setLastTab(urlTab); }, [tabKeys, urlTab, setLastTab]);
   /* ⭐ ประวัติเรียง "ปิดล่าสุดก่อน" (ม-145) — ความเร่งไม่มีความหมายกับใบที่จบแล้ว และดัน
      ใบที่ยกเลิกก่อนมีใครรับเรื่องขึ้นบนสุด · ออกจากประวัติกลับไปแบบเรียงตั้งต้นของหน้า
-     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้ */
+     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้
+     ⭐ ฝั่งที่แบบเรียงนี้ตั้งให้จำไว้ด้วย (เหตุผลเต็มที่ `/rd/requests`) — กลับจากใบมาฝั่งเดิม = คงแบบเรียงที่ผู้ใช้เลือก */
   const inHistory = tab === "history";
   const { setSort } = board;
-  useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
+  const [sortInHistory, setSortInHistory, , sortSideHydrated] = useStickyState("sortInHistory", false);
+  useEffect(() => {
+    if (!sortSideHydrated || sortInHistory === inHistory) return;
+    setSortInHistory(inHistory);
+    setSort(inHistory ? "closed" : "urgency");
+  }, [sortSideHydrated, sortInHistory, inHistory, setSort, setSortInHistory]);
   /* ⚠️ **สลับแท็บแล้วล้างตัวกรองตัวเลขทุกครั้ง** (ตรวจตัวเลข 20/10/2026 M3 · ขยายจาก ม-145 ที่ล้างเฉพาะ
      ตอนเข้าประวัติ) — บางช่องมีได้แท็บเดียว ("กำลังดำเนินการ" เป็น 0 เสมอในแท็บรอผู้ขอ · "รอผู้ขอทำต่อ"
      เป็น 0 เสมอในแท็บรอฝ่าย · ประวัติไม่มีแถบเลย) ⇒ ตัวกรองที่ค้างมาให้ตารางว่างทั้งที่เลขบนแท็บบอกว่ามีใบ
@@ -86,11 +97,21 @@ export default function ServiceRequestsPage() {
      `?tab=todo` ทับ ให้กดเมนูครั้งถัดไปจับได้ */
   const bareUrl = searchParams.toString() === "";
   const { setSearch, clearFilters, setCountFilter } = board;
+  /* ⚠️ มาถึงด้วย URL เปล่า ≠ กดเมนูซ้ำ (เหตุผลเต็มที่ `/rd/requests`) — ตอนมาถึงแค่เขียน `?tab=` ของแท็บที่ได้ (ปุ่มกลับจากใบ
+     ต้องได้คิวที่ตั้งไว้คืน) · ล้างทุกชั้นเฉพาะ URL ที่กลายเป็นเปล่าระหว่างอยู่หน้านี้ */
+  const arrivedRef = useRef(false);
   useEffect(() => {
+    if (!tabHydrated) return;
+    const arriving = !arrivedRef.current;
+    arrivedRef.current = true;
+    if (arriving) {
+      if (bareUrl) router.replace(`/service/requests?tab=${tab}`, { scroll: false });
+      return;
+    }
     if (!bareUrl) return;
     setSearch(""); clearFilters(); setCountFilter(null);
     router.replace("/service/requests?tab=todo", { scroll: false });
-  }, [bareUrl, setSearch, clearFilters, setCountFilter, router]);
+  }, [tabHydrated, bareUrl, tab, setSearch, clearFilters, setCountFilter, router]);
 
   const rows = useMemo(
     () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),

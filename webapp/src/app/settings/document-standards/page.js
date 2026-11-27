@@ -3,6 +3,7 @@ import { fmtDateTime, naText, NA } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { AlertTriangle, ChevronDown, Edit3, Expand, Eye, FileBadge2, Save, Send, Trash2 } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
@@ -275,7 +276,7 @@ export default function DocumentStandardsPage() {
   const role = useRole();
   const canManage = canManageDocumentStandards(role);
   const [standards, setStandards] = useState([]);
-  const [selectedKey, setSelectedKey] = useState(DOCUMENT_STANDARD_KEYS[0]);
+  const [selectedKey, setSelectedKey] = useStickyState("docKey", DOCUMENT_STANDARD_KEYS[0]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -286,8 +287,9 @@ export default function DocumentStandardsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [confirm, setConfirm] = useState(null);
   const [toast, setToast] = useState(null);
-  // ฉบับของใบตัวอย่างที่กำลังดู (เฉพาะชนิดที่มีสองฉบับ — PreviewAudienceSwitch) · เริ่มที่ฉบับลูกค้าเสมอ
-  const [previewAudience, setPreviewAudience] = useState(DOCUMENT_AUDIENCES[0]);
+  // ฉบับของใบตัวอย่างที่กำลังดู (เฉพาะชนิดที่มีสองฉบับ — PreviewAudienceSwitch) · เข้าจากเมนู = ฉบับลูกค้าเสมอ
+  // จำไว้ตอนกดดูหน้าพรีวิวเต็มแล้วกลับมา (คู่กับแท็บชนิดเอกสาร)
+  const [previewAudience, setPreviewAudience] = useStickyState("previewAudience", DOCUMENT_AUDIENCES[0]);
 
   const controlBarRef = useRef(null);
   const editTitleRef = useRef(null);

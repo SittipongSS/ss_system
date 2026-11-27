@@ -3,6 +3,7 @@ import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { noteReturnTrip } from "@/lib/ui/historyArrival";
 import { ArrowLeft, Building2, Archive, ArchiveRestore, ClipboardList, Handshake, MapPin, MessageCircleQuestion, MessagesSquare, Wallet } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
@@ -27,7 +28,7 @@ import {
 } from "@/lib/master/addresses";
 import { branchLabel } from "@/lib/master/thaiAddress";
 import { brandBothOf } from "@/lib/master/brands";
-import { fmtPhone, fmtNationalId, fmtMoney, fmtDate, naText } from "@/lib/format";
+import { fmtPhone, fmtTaxId, fmtMoney, fmtDate, naText } from "@/lib/format";
 import { customerDocTypes } from "@/lib/master/attachmentTypes";
 import SalesDetailOverview, { DetailStateBadge as SalesStateBadge } from "@/components/ui/DetailOverview";
 import { DetailCard, DetailPageLayout } from "@/components/ui/DetailPage";
@@ -394,7 +395,7 @@ export default function CustomerDetails() {
         <p className="text-[var(--text-3)] mb-6">
           ลูกค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
-        <Link href="/database/customers" className="btn btn-primary inline-flex items-center gap-2">
+        <Link href="/database/customers" onClick={() => noteReturnTrip("/database/customers")} className="btn btn-primary inline-flex items-center gap-2">
           <ArrowLeft size={16} /> กลับไปยังข้อมูลลูกค้า
         </Link>
       </div>
@@ -476,7 +477,7 @@ export default function CustomerDetails() {
         rows={[
           { id: "type", label: "ประเภทลูกค้า", value: customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล" },
           { id: "team", label: "ทีมดูแล", value: teamsLabel },
-          { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtNationalId(customer.taxId) : "" },
+          { id: "tax", label: "เลขผู้เสียภาษี", value: customer.taxId ? fmtTaxId(customer.taxId) : "" },
           /* วางบิลและกำหนดชำระ (mig 0390 → รุ่นสี่ 0393) — ประโยคนโยบาย (รูปย่อชุดเดียวกับทะเบียนการชำระ · "ไม่ต้องวางบิล" …)
              ยังไม่ระบุ = ข้อความเดิมที่พิมพ์ไว้ (บอกว่าเป็นของเดิม) · ไม่มีทั้งคู่ = ขีด
              ⭐ ป้ายชื่อเดียวกับหัวการ์ดข้างล่าง (review 29/09 — ค่าเป็นคำตอบรุ่นสี่แล้ว "เงื่อนไขเครดิต: ไม่ต้องวางบิล" อ่านไม่รู้เรื่อง)
@@ -597,7 +598,7 @@ export default function CustomerDetails() {
                     <Field label="ประเภทลูกค้า" value={customer.customerType === "individual" ? "บุคคลธรรมดา" : "นิติบุคคล (บริษัท)"} />
                     <Field label="ทีมดูแล" value={teamsLabel} />
                     <Field label="รหัสลูกค้า AR Code" value={customer.arCode} mono />
-                    <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtNationalId(customer.taxId) : ""} mono />
+                    <Field label="เลขผู้เสียภาษี (Tax ID)" value={customer.taxId ? fmtTaxId(customer.taxId) : ""} mono />
                     <Field label="เบอร์โทร (Phone)" value={customer.phone ? fmtPhone(customer.phone) : ""} mono />
                     {/* เงื่อนไขเครดิตย้ายไปการ์ด "เครดิตและรอบวางบิล" ข้างล่าง (มติ 26/09) — ฟอร์มลูกค้าไม่มีช่องนี้แล้ว
                         การ์ดนี้เรียงตามฟอร์ม จึงไม่มีช่องนี้เหมือนกัน */}

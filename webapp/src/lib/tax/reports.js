@@ -20,7 +20,7 @@ import { statusMeta } from '@/lib/excise/workflow';
 import { teamNameOf } from '@/lib/master/teams';
 import { brandLabel } from '@/lib/master/brands';
 import { productBrandName, productDisplayName } from '@/lib/master/productIdentity';
-import { fmtNumber } from '@/lib/format';
+import { fmtNumber, fmtTaxId } from '@/lib/format';
 import { exciseTaxLineForRegistration } from '@/lib/tax/exciseBilling';
 import { exciseSplitShort } from '@/lib/excise/exciseTaxSteps';
 import { missingRetailPriceProducts } from '@/lib/tax/taxableProducts';
@@ -98,7 +98,7 @@ export async function registrationReport(filter = {}) {
         productDisplayName(r),
       ].filter(Boolean).join('\n'),
       size: p.volume != null ? `${p.volume} ${p.volumeUnit || 'ml'}` : '-',
-      customer: two(r.customerName || '-', r.taxId || '-'),
+      customer: two(r.customerName || '-', fmtTaxId(r.taxId) || '-'),
       retail: two(`${money(p.retailPriceIncVat)} (รวม VAT)`, `${money(exVat)} (ถอด VAT)`),
       /* ภาษี/ชิ้น + เลขทะเบียน — สองค่าที่คิวบนจอมีแต่รายงานไม่มี (มติผู้ใช้ 03/11/2026)
          ⚠️ ภาษีคิดด้วยตัวเดียวกับคิว (`/api/excise-registrations`) และใบยื่นจริง: อัตราจากสินค้า

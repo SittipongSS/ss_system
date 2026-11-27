@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, fmtTaxId, NA, naText } from "@/lib/format";
 import { exciseSplitText } from "@/lib/excise/exciseTaxSteps";
 
 import { dayParam, withinDateRange } from "@/lib/tax/period";
@@ -103,12 +103,23 @@ export default function RegistrationsPage() {
     () => REGISTRATION_FILTERS.filter((f) => f.key !== "mine" || myDept === "SA" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "pending_legal" : "all"));
+  const [filter, setFilter] = useStickyState("filter", deptOf(role) === "RA" ? "pending_legal" : "all");
   /* ⭐ "ค้างรออนุมัติเกินเกณฑ์" — มาจากแถบบนหน้าภาพรวม (`?late=1` · ตรวจตัวเลข H2 2026-10-19)
      🐞 เดิมแถบบอก 9 ใบแต่คิวเปิดรออนุมัติทั้งหมด 17 ใบ — คิวไม่มีตัวกรองอายุเลย
      ⚠️ ตัดสินด้วย `isLateRegistration` ตัวเดียวกับที่แถบนับ · ตั้งครั้งเดียวตอนเปิดหน้า (เหมือน `?status=`)
         แล้วโชว์เป็นป้าย "กรอง: … ×" ที่กดล้างได้ — ตัวกรองที่มองไม่เห็นคือตัวกรองที่คนกล่าวหาว่าข้อมูลหาย */
-  const [lateOnly, setLateOnly] = useState(false);
+  const [lateOnly, setLateOnly] = useStickyState("lateOnly", false);
+  const [search, setSearch] = useStickyState("search", "");
+  const [formOpen, setFormOpen] = useState(false);
+  /* ⭐ ตัวกรองที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
+     — ลูกค้า + ช่วงวันที่ · ทำงานร่วมกับชิปและช่องค้นหาเป็น **ชุดเดียว**
+     ไม่มีตัวกรองชุดที่สองสำหรับ "รายงาน" ให้ตั้งค่าซ้ำแล้วสงสัยว่าอันไหนมีผล */
+  const [customerIds, setCustomerIds] = useStickyState("customerIds", []);
+  const [from, setFrom] = useStickyState("from", "");
+  const [to, setTo] = useStickyState("to", "");
+  const [selected, setSelected] = useState(() => new Set());
+  /* ⚠️ ต้องประกาศหลัง useStickyState ทุกตัวที่มันตั้ง — effect วิ่งตามลำดับ ⇒ พารามิเตอร์ใน URL ทับค่าที่คืนจากที่จำไว้
+     (ลิงก์จากภาพรวม = เจตนาของผู้กด ต้องชนะ) · ไม่มีพารามิเตอร์ = ไม่แตะ */
   useEffect(() => {
     setUserName(localStorage.getItem("userName") || "SA User");
     const params = new URLSearchParams(window.location.search);
@@ -124,16 +135,7 @@ export default function RegistrationsPage() {
     // Legacy ?open=<id> deep-link → go straight to the detail page.
     const openId = params.get("open");
     if (openId) router.replace(`/tax/registrations/${openId}`);
-  }, [router]);
-  const [search, setSearch] = useStickyState("search", "");
-  const [formOpen, setFormOpen] = useState(false);
-  /* ⭐ ตัวกรองที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
-     — ลูกค้า + ช่วงวันที่ · ทำงานร่วมกับชิปและช่องค้นหาเป็น **ชุดเดียว**
-     ไม่มีตัวกรองชุดที่สองสำหรับ "รายงาน" ให้ตั้งค่าซ้ำแล้วสงสัยว่าอันไหนมีผล */
-  const [customerIds, setCustomerIds] = useState([]);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [selected, setSelected] = useState(() => new Set());
+  }, [router, setFilter, setLateOnly, setFrom, setTo]);
   /* ลิสต์ลูกค้าโหลดเมื่อ **กางตัวกรอง** หรือเปิดโมดัลครั้งแรก — ไม่ใช่ตอนเปิดหน้า
      (508 แถว · เหตุผลเดียวกับ picker ของโมดัล) */
   const [pickerReady, setPickerReady] = useState(false);
@@ -235,7 +237,7 @@ export default function RegistrationsPage() {
          ถูกการ์ด "เดือนนี้" นับ แต่หลุดจากคิวที่กรองเดือนเดียวกัน (ตรวจตัวเลข M7) */
       if (!withinDateRange(r.createdAt, from, to)) return false;
       if (!q) return true;
-      return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, r.approvalNumber, r.assignee,
+      return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, fmtTaxId(r.taxId), r.approvalNumber, r.assignee,
         r.metadata?.productNameTh, r.metadata?.productNameEn,
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
@@ -370,7 +372,7 @@ export default function RegistrationsPage() {
           ) : <div className="muted">{naText(r.customerName)}</div>}
           {r.customerPhone ? <div className="cell-sub font-mono">โทร {r.customerPhone}</div> : null}
           {/* เลขผู้เสียภาษีคือสิ่งที่ต้องตรงกับเอกสารสรรพสามิต — อยู่บนแถวเดียวกับชื่อ */}
-          <div className="cell-sub font-mono">{naText(r.taxId)}</div>
+          <div className="cell-sub font-mono">{naText(fmtTaxId(r.taxId))}</div>
         </div>
       ),
     },
@@ -451,7 +453,7 @@ export default function RegistrationsPage() {
           <span className="muted truncate">
             {naText(r.customerName)}
             {r.customerPhone ? <span className="cell-sub font-mono"> · โทร {r.customerPhone}</span> : null}
-            {r.taxId ? <span className="cell-sub font-mono"> · {r.taxId}</span> : null}
+            {r.taxId ? <span className="cell-sub font-mono"> · {fmtTaxId(r.taxId)}</span> : null}
           </span>
           <span className="text-right">
             <span className="font-mono block">{taxText(r)}</span>
@@ -592,6 +594,9 @@ export default function RegistrationsPage() {
         card={card}
         /* เรียงเก่าสุดขึ้นก่อน — คิวงานที่เรียงตามรหัสสินค้าไม่ได้ตอบว่า "ทำอันไหนก่อน" */
         initialSort={{ key: "age", dir: "desc" }}
+        /* จำการเรียง + หน้าที่อยู่ (กดเข้าใบแล้วกลับมาต้องได้ที่เดิม) · resetKey = ตัวกรองที่ผู้ใช้ตั้งเท่านั้น */
+        stickyKey="list"
+        resetKey={JSON.stringify([filter, search, lateOnly, customerIds, from, to])}
         empty={search || filter !== "all" || lateOnly ? "ไม่พบรายการ" : "ยังไม่มีการขึ้นทะเบียน"}
         emptyIcon={ClipboardCheck}
       />

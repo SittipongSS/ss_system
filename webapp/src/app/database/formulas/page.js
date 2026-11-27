@@ -128,7 +128,8 @@ export default function FormulasPage() {
      ⚠️ **ไม่ก๊อปฟอร์มไปไว้หน้ารายละเอียด** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่ม
      (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
   const linkedEditId = useSearchParams().get("edit") || "";
-  const [search, setSearch] = useState(linkedQuery);
+  // จำคำค้น/สถานะไว้ตอนกดเข้าใบแล้วกดกลับ — ค่าจากลิงก์ (?q= · ?count=) เป็นค่าตั้งต้นของการเข้าใหม่
+  const [search, setSearch] = useStickyState("search", linkedQuery);
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", "");
   /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
@@ -141,7 +142,7 @@ export default function FormulasPage() {
      ของเดิมตั้งต้น "เปิดอยู่" ซึ่งซ่อนของที่เก็บเข้ากรุตั้งแต่วินาทีแรก ⇒ คนมาค้นสูตร
      แล้วไม่เจอ ทั้งที่มันอยู่ในฐาน · ทะเบียนคือของกลางไว้ **ค้น** ไม่ใช่คิวงาน
      ⚠️ ยังเคารพ `?count=` (ป้ายตัวเลขบนเมนู) เหมือนเดิม — ทางนั้นผู้ใช้ขอตัวกรองมาเอง */
-  const [statusFilter, setStatusFilter] = useState(fromNavCount ? "draft" : "");
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", fromNavCount ? "draft" : "");
   // ⭐ สูตรของลูกค้ากับสูตรฐานเป็นของคนละชนิดกัน — สูตรฐานมีน้อยแต่ปนอยู่ในลิสต์
   // เดียวกันทำให้ไล่หาของลูกค้ารายหนึ่งยาก · แยกด้วยตัวกรอง ไม่ใช่แถวคั่น เพราะ
   // ทะเบียนมีหน้าละหลายสิบแถวและแถวคั่นจะกระจายข้ามหน้า
@@ -250,7 +251,7 @@ export default function FormulasPage() {
   const sorted = useMemo(() => sortFormulasNewestFirst(visible), [visible]);
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
-    usePagination(sorted, { resetKey: `${search}|${statusFilter}|${kindFilter}|${sourceFilter}` });
+    usePagination(sorted, { resetKey: `${search}|${statusFilter}|${kindFilter}|${sourceFilter}`, stickyKey: "list" });
 
   // ── actions ──────────────────────────────────────────────────────────
   const call = async (url, options, okMsg) => {

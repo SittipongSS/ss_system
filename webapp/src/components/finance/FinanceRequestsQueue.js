@@ -9,7 +9,7 @@
 //   ของกลางทั้งหมด (`RequestQueuePanel` · `queueBoard` · `useQueueBoard`) ใช้ตัวเดิม **ห้ามโคลนของกลาง**
 // ⚠️ ตัวใบยังเป็นจอเดียวกันทั้งระบบ (`/requests/[id]` · ม-31) — ที่แยกคือคิว ไม่ใช่ใบ
 // ⚠️ คีย์ใน URL ของแท็บนี้ (`tab` `owner` `count`) ไม่ชนคีย์ของทะเบียน (FILTER_KEYS + group/sort/dir) — สองชุดอยู่ใน URL เดียวกันได้
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Receipt } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
@@ -23,6 +23,7 @@ import { filterQueueRows, queueStripCounts } from "@/lib/requests/queueFilter";
 import { compareRequestUrgency } from "@/lib/deptRequests";
 import { apiFetch } from "@/lib/apiFetch";
 import useThaiToday from "@/lib/ui/useThaiToday";
+import useStickyState from "@/lib/ui/useStickyState";
 
 const DEPT = "FN";
 /* ปลายทางของแท็บนี้ — ตัวเดียวกับทางเด้งของ `/finance/requests` (next.config.mjs) */
@@ -46,12 +47,22 @@ export default function FinanceRequestsQueue() {
   // แท็บย่อยอยู่ใน URL — ลิงก์ตรงและปุ่มย้อนกลับของเบราว์เซอร์ทำงานได้จริง
   const tabKeys = DEPT_QUEUE_TAB_KEYS;
   const urlTab = searchParams.get("tab");
-  const tab = tabKeys.includes(urlTab) ? urlTab : "todo";
+  /* ⭐ แท็บย่อยล่าสุดจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — ปุ่ม "กลับรายการคำร้อง" บนใบพามาที่ `?view=requests` เปล่า
+     ⇒ ไม่มี `&tab=` บอกว่าเคยอยู่แท็บไหน · `&tab=` ใน URL ชนะเสมอ · คีย์มีคำนำหน้า เพราะอยู่ใต้ pathname ของหน้างานบัญชี */
+  const [lastTab, setLastTab, , tabHydrated] = useStickyState("requestsQueue.tab", "todo");
+  const tab = tabKeys.includes(urlTab) ? urlTab : tabKeys.includes(lastTab) ? lastTab : "todo";
+  useEffect(() => { if (tabKeys.includes(urlTab)) setLastTab(urlTab); }, [tabKeys, urlTab, setLastTab]);
   /* ⭐ ประวัติเรียง "ปิดล่าสุดก่อน" (ม-145) — ความเร่งไม่มีความหมายกับใบที่จบแล้ว · ออกจากประวัติกลับไปเรียงตั้งต้น
-     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้ */
+     ⚠️ เฝ้าแค่ "เข้า/ออกประวัติ" ไม่ใช่ทุกแท็บ — ผู้ใช้ยังเปลี่ยนแบบเรียงเองในแท็บเดิมได้
+     ⭐ ฝั่งที่แบบเรียงนี้ตั้งให้จำไว้ด้วย (เหตุผลเต็มที่ `/rd/requests`) — กลับจากใบมาฝั่งเดิม = คงแบบเรียงที่ผู้ใช้เลือก */
   const inHistory = tab === "history";
   const { setSort } = board;
-  useEffect(() => { setSort(inHistory ? "closed" : "urgency"); }, [inHistory, setSort]);
+  const [sortInHistory, setSortInHistory, , sortSideHydrated] = useStickyState("requestsQueue.sortInHistory", false);
+  useEffect(() => {
+    if (!sortSideHydrated || sortInHistory === inHistory) return;
+    setSortInHistory(inHistory);
+    setSort(inHistory ? "closed" : "urgency");
+  }, [sortSideHydrated, sortInHistory, inHistory, setSort, setSortInHistory]);
   /* ⚠️ **สลับแท็บแล้วล้างตัวกรองตัวเลขทุกครั้ง** (ตรวจตัวเลข 20/10/2026 M3) — บางช่องมีได้แท็บเดียว ⇒ ตัวกรองที่ค้างมาให้ตารางว่าง
      ทั้งที่เลขบนแท็บบอกว่ามีใบ · กดแท็บที่เปิดอยู่ซ้ำ = "ทั้งแท็บ" · คำค้นกับแผงกรองยังตามไป (เลขบนแท็บนับพร้อมมันแล้ว) */
   const setTab = (next) => {
@@ -90,11 +101,21 @@ export default function FinanceRequestsQueue() {
      มาจากเมนูทางเดียว (`setTab` เขียน `&tab=` เสมอ) ⇒ ล้างทุกชั้นแล้วเขียน `&tab=todo` ทับ ให้กดเมนูครั้งถัดไปจับได้ */
   const bareUrl = searchParams.toString() === "view=requests";
   const { setSearch, clearFilters } = board;
+  /* ⚠️ มาถึงด้วย URL เปล่า ≠ กดเมนูซ้ำ (เหตุผลเต็มที่ `/rd/requests`) — ตอนมาถึงแค่เขียน `&tab=` ของแท็บที่ได้ (ปุ่มกลับจากใบ
+     ต้องได้คิวที่ตั้งไว้คืน) · ล้างทุกชั้นเฉพาะ URL ที่กลายเป็นเปล่าระหว่างอยู่แท็บนี้ */
+  const arrivedRef = useRef(false);
   useEffect(() => {
+    if (!tabHydrated) return;
+    const arriving = !arrivedRef.current;
+    arrivedRef.current = true;
+    if (arriving) {
+      if (bareUrl) router.replace(`${FINANCE_REQUESTS_HREF}&tab=${tab}`, { scroll: false });
+      return;
+    }
     if (!bareUrl) return;
     setSearch(""); clearFilters(); setCountFilter(null);
     router.replace(`${FINANCE_REQUESTS_HREF}&tab=todo`, { scroll: false });
-  }, [bareUrl, setSearch, clearFilters, setCountFilter, router]);
+  }, [tabHydrated, bareUrl, tab, setSearch, clearFilters, setCountFilter, router]);
 
   const rows = useMemo(
     () => deptQueueRows(requests, { dept: DEPT, tab }).slice().sort(compareRequestUrgency),

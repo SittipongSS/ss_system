@@ -1,6 +1,7 @@
 "use client";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, ListTodo, CheckCircle2, Clock3, Circle, AlertTriangle } from "lucide-react";
@@ -26,7 +27,7 @@ export default function MgmtOverviewPage() {
   const role = useRole();
   const canMgmt = useCan("mgmt:view");
   const router = useRouter();
-  const [year, setYear] = useState(nowYear);
+  const [year, setYear] = useStickyState("year", nowYear); // จำปีไว้ — กดการ์ดไปรายการงานแล้วกดกลับ ได้ปีเดิม
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 

@@ -12,6 +12,7 @@
 // ที่นี่แค่วาด · ตัวเลขบนแถบนับจาก **คิวเดียวกับตารางข้างล่าง** เสมอ (ของเดิมนับ
 // คนละที่กัน แล้วเลขไม่ตรงกันได้โดยไม่มีใครรู้)
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import {
   Activity, ArrowUpRight, CheckCircle2, Handshake, ListTodo, Percent, Target,
@@ -51,10 +52,12 @@ export default function MyDashboardTab({ month, allMonths = false }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState("all");
+  /* ชิปกรองของฟีด/คิว จำไว้ (กดเข้าใบแล้วกดกลับ ได้ชิปเดิม) · คีย์ขึ้นต้น "my." — แท็บนี้อยู่ใต้ pathname ของแดชบอร์ด
+     ⚠️ `visible` (กางฟีดไปกี่รายการ) ไม่จำ — ตัวนับถูกตั้งใหม่ทุกครั้งที่ตัวกรอง/งวดเปลี่ยน ซึ่งรวมจังหวะคืนค่า */
+  const [filter, setFilter] = useStickyState("my.feedFilter", "all");
   const [visible, setVisible] = useState(FEED_PAGE);
   // ชิปกรองของคิว — null = ทุกชนิด (คีย์มาจาก `MY_QUEUE_KINDS`)
-  const [kind, setKind] = useState(null);
+  const [kind, setKind] = useStickyState("my.queueKind", null);
 
   const load = useCallback(async () => {
     setLoading(true);

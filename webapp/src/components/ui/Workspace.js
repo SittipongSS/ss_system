@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import SkeletonRows, { Skeleton } from "@/components/ui/Skeleton";
 import { NA, naText } from "@/lib/format";
 import { metricValueLen } from "@/lib/ui/metricValueLen";
+import { noteReturnTrip } from "@/lib/ui/historyArrival";
 
 // Canonical shell for every application module. Sales management established
 // the visual hierarchy; keeping it here prevents module-specific drift.
@@ -28,7 +29,8 @@ export default function Workspace({
       {(back || backActions) && (
         <div className="ui-workspace-back-row">
           {back && (
-            <Link href={back.href} className="ui-workspace-back">
+            /* ⭐ ปุ่มกลับไปหน้าที่เปิดใบนี้มา = กดย้อน ⇒ ตัวกรอง/การเรียง/ตำแหน่งที่ไถคืนครบ (lib/ui/historyArrival.js) */
+            <Link href={back.href} className="ui-workspace-back" onClick={() => noteReturnTrip(back.href)}>
               <ArrowLeft size={16} aria-hidden="true" /> {back.label}
             </Link>
           )}

@@ -528,7 +528,7 @@ test('⭐ ร่าง = ภาษาของ SO ปัจจุบัน + ก
   const { html } = res;
   assert.match(html, /<h1>PRODUCT SPEC<\/h1>/);
   assert.match(html, /<strong>CURRENT CUSTOMER CO\., LTD\.<\/strong>/);
-  assert.match(html, /<dt>Tax ID<\/dt><dd>0105561234567<\/dd>/);
+  assert.match(html, /<dt>Tax ID<\/dt><dd>0-1055-61234-56-7<\/dd>/);
   assert.match(html, /<dt>Branch<\/dt><dd>00003<\/dd>/);
   assert.match(html, /<dt>Shipping Address<\/dt><dd>Current billing EN<\/dd>/, 'ไม่มีที่อยู่จัดส่ง = ตามที่อยู่เอกสาร');
   assert.match(html, /<dt>Contact<\/dt><dd>คุณเบลล์ · 084-432-6199<\/dd>/);

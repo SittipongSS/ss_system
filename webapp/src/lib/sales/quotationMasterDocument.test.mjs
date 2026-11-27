@@ -108,7 +108,7 @@ test('V4 doc: บล็อกลูกค้า — โชว์เลขภา�
     branchCode: '00001',
   };
   const html = buildQuotationMasterHTML(q, {});
-  assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0105561000000/);
+  assert.match(html, /เลขผู้เสียภาษี<\/dt><dd>0-1055-61000-00-0/);
   // เลขเปล่า — แถวมีป้าย 'สาขา' อยู่แล้ว ไม่ต้องมี 'สาขาที่' ซ้ำ (มติผู้ใช้ 2026-08-27)
   assert.match(html, /<dt>สาขา<\/dt><dd>00001</);
   assert.match(html, /ที่อยู่จัดส่ง<\/dt><dd>ที่อยู่จัดส่งต่างหาก/);

@@ -53,7 +53,24 @@ import StepTrack from "@/components/ui/StepTrack";
 import { REQUEST_DEPT_LABELS, requestKindLabelFull, requestLineNoun } from "@/lib/master/requestTypes";
 import useThaiToday from "@/lib/ui/useThaiToday";
 
-export default function RequestQueuePanel({
+/* ⭐ ฮุกของพาเนลเองเรียก **เฉพาะตอนหน้าแม่ไม่ส่ง `board` มา** — `useQueueBoard` จำค่าใน sessionStorage
+   (คีย์ `queue.*` ของ pathname เดียวกับฮุกของหน้าแม่) · 🐞 เดิมเรียกทุกครั้งแล้วทิ้ง ⇒ ฮุกเงาตัวที่สองเขียน
+   ค่าตั้งต้นทับของหน้าแม่ทุกครั้งที่พาเนลเมานต์ใหม่ (คีย์ลงจอดของ /requests · แบบเรียงตั้งต้นของ /rd/requests)
+   ⇒ กดเข้าใบแล้วกลับมาได้ตัวกรอง/แบบเรียงตั้งต้นแทนของที่ตั้งไว้
+   ⚠️ ส่ง `toolbarEnd`/`headerActions` ต่อแบบระบุชื่อ (ไม่ซ่อนใน `...rest`) — ด่านทรงรายการ (scripts/listPanelShape.mjs)
+   ตามช่องพวกนี้เข้าไปดูว่าลงที่แถบเครื่องมือของ ListPanel · ซ่อนใน spread แล้วมันตามไม่เจอ ตัวสลับมุมมองของหน้าคิวจะถูกนับว่าอยู่นอกแผง */
+export default function RequestQueuePanel({ board = null, toolbarEnd = null, headerActions = null, ...rest }) {
+  return board
+    ? <QueuePanelView {...rest} board={board} toolbarEnd={toolbarEnd} headerActions={headerActions} />
+    : <OwnBoardQueuePanel {...rest} toolbarEnd={toolbarEnd} headerActions={headerActions} />;
+}
+
+function OwnBoardQueuePanel({ toolbarEnd = null, headerActions = null, ...rest }) {
+  const board = useQueueBoard();
+  return <QueuePanelView {...rest} board={board} toolbarEnd={toolbarEnd} headerActions={headerActions} />;
+}
+
+function QueuePanelView({
   scope = "mine", dept = null, rows = [],
   // 🐞 **เคยรับทะเบียน 9 ชุด (materials · products · projects · deals · salesOrders ·
   // scents · formulas · productTypes · mentionPeople) แล้วไม่ได้ใช้สักตัว** — ตกค้าง
@@ -102,19 +119,21 @@ export default function RequestQueuePanel({
      (เช่น `?owner=` ที่ตามมาตอนสลับแท็บ) ⇒ ตัวเลือกนั้นยังเขียนชื่อคนได้ ไม่ใช่ "ไม่มีในมุมมองนี้"
      ⚠️ ไม่ใช่ชุดที่นับ — ตัวเลขทุกตัวนับจาก `rows` (ชุดของแท็บนี้) เท่านั้น */
   labelRows = null,
+  /* ต่อท้ายชื่อที่ใช้จำหน้าที่อยู่ของตัวแบ่งหน้า — หน้าที่เมานต์แผงใหม่ด้วย `key` (มุมมองลงจอดของ /requests) ส่งคีย์ชุดเดียวกันมา
+     ⇒ แผงใหม่เริ่มหน้า 1 จริง ไม่ไปอ่านหน้าที่จำไว้ของแผงก่อน (หน้าที่มาถึงด้วยการกดย้อนยังคืนค่าอยู่ตลอดที่อยู่หน้าเดิม) */
+  pagerKey = null,
 }) {
   const router = useRouter();
   // วันไทย ไม่ใช่วัน UTC — ก่อนเจ็ดโมงเช้า toISOString() ยังให้เมื่อวาน แล้ว
   // "เลยกำหนด" จะนับผิดไปหนึ่งวันทุกเช้า
   // ⭐ `useThaiToday` (งวด 2) — อ่านใน effect ไม่ใช่ตอนเรนเดอร์ · แท็บที่เปิดค้างข้ามคืนขยับวันเองตอนกลับมาที่แท็บ
   const today = useThaiToday();
-  const ownBoard = useQueueBoard();
   const {
     view, countFilter, setCountFilter, search, setSearch,
     filters = {}, setFilter, clearFilters,
     groupBy = "none", setGroupBy, collapsed, setCollapsed, toggleGroup,
     sortKey = "urgency", sortDir = "asc", setSort, toggleSortDir,
-  } = board || ownBoard;
+  } = board;
 
   /* ความกว้างตายตัวของคอลัมน์ที่เนื้อคงที่ — ที่เหลือปล่อยให้ยืดตามเนื้อ
      (คลาสอยู่ใน requestForm.module.css ตามด่าน audit:ui ห้าม inline style) */
@@ -184,6 +203,8 @@ export default function RequestQueuePanel({
     /* ⚠️ ชุดคอลัมน์อยู่ในคีย์ด้วย (ม-145) — สลับแท็บคิว ↔ ประวัติ ส่ง `columns` คนละชุด
        แต่ `scope` เท่าเดิม ⇒ ไม่มีคีย์นี้ = เปิดประวัติมาค้างที่หน้า N ของคิว */
     resetKey: `${scope}|${dept}|${Array.isArray(columns) ? columns.join(",") : columns}|${countFilter}|${search}|${sortKey}|${sortDir}|${groupBy}|${JSON.stringify(filters)}`,
+    /* จำหน้าที่อยู่/แถวต่อหน้า — กดเข้าใบแล้วกลับมาต้องได้หน้าเดิม · เฉพาะคิวเต็มหน้า (การ์ดฝังไม่แบ่งหน้า) */
+    stickyKey: showTools ? `queue.pager${pagerKey ? `.${pagerKey}` : ""}` : null,
   });
   const paged = showTools;
   const groups = useMemo(() => {

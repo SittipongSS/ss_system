@@ -23,6 +23,7 @@ import { notifyToast } from "@/lib/feedback";
 import { fmtDate } from "@/lib/format";
 import { REQUEST_STATUS_LABELS } from "@/lib/requests/statuses";
 import { scentOrderNewRequestHref } from "@/lib/requests/scentOrderQueue";
+import useStickyState from "@/lib/ui/useStickyState";
 import styles from "./scentOrders.module.css";
 
 const addsText = (adds) => [
@@ -113,8 +114,10 @@ function AttachTargetModal({ row, onClose, onDone, onToast }) {
 const appToast = ({ kind, msg }) => notifyToast(msg, { kind });
 
 export default function ScentOrderQueueCard({ onToast = appToast }) {
-  const [scope, setScope] = useState("mine");
-  const [view, setView] = useState("pending");
+  /* ขอบเขต/กองจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — กดเลข SO เข้าใบแล้วกลับมาต้องได้กองเดิม
+     · คีย์มีคำนำหน้า เพราะการ์ดอยู่ใต้ pathname ของหน้าคิวคำร้อง */
+  const [scope, setScope] = useStickyState("scentQueue.scope", "mine");
+  const [view, setView] = useStickyState("scentQueue.view", "pending");
   const [state, setState] = useState({ loading: true, error: "", data: null });
   const [attachRow, setAttachRow] = useState(null);
   const [dismiss, setDismiss] = useState(null); // { row, reason, error }

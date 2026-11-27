@@ -1,4 +1,4 @@
-import { fmtDate, fmtNumber } from '@/lib/format';
+import { fmtDate, fmtNumber, fmtTaxId } from '@/lib/format';
 import { exciseDeclaredRetailText } from '@/lib/excise/exciseCharge';
 import { branchValue } from '@/lib/master/thaiAddress';
 import { DEFAULT_SALE_UNIT, saleUnitLabel } from '@/lib/master/units';
@@ -1427,7 +1427,7 @@ export function buildQuotationMasterModelFromQuote(quote, options = {}) {
     // ของช่องนี้บนเอกสาร ต่างกันแค่ตอนนี้ที่อยู่ออกบิลเป็นภาษาของใบแล้ว
     shippingAddress: headerText(language, quote.shippingAddress, quote.shippingAddressEn)
       || billingAddress,
-    taxId: quote.customerTaxId || '-',
+    taxId: fmtTaxId(quote.customerTaxId) || '-',
     branch: quotationBranchText(quote.branchCode),
     contactName: quote.contactName || '-',
     contactPhone: quote.contactPhone || '-',

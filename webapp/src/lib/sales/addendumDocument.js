@@ -10,7 +10,7 @@
 import {
   documentFileName, documentHeader, esc, renderDocumentHTML, watermarkBlock,
 } from '@/lib/documents/documentShell';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtTaxId } from '@/lib/format';
 import { ADDENDUM_DOC_TITLE } from '@/lib/sales/contractAddenda';
 import {
   BLANK, CONTRACT_CSS, PAGINATE_SCRIPT, contractToolbarControls, fillTokensHtml, paragraph,
@@ -36,7 +36,8 @@ export function addendumTokenValues(addendum, { contract = {}, company = {} } = 
     // วันมีผลของสัญญาแม่ — ใบที่ยังไม่กรอกวันมีผลใช้วันลงนามแทน (ค่าที่ระบบมีจริง)
     effectiveDateTh: thaiContractDate(contract.effectiveDate || contract.signedDate) || '',
     contractorName: company.legalNameTh || company.nameTh || '',
-    contractorRegNo: company.taxId || '',
+    clientRegNo: fmtTaxId(addendum?.fields?.clientRegNo ?? contractFields.clientRegNo),
+    contractorRegNo: fmtTaxId(company.taxId),
     contractorAddress: company.address || '',
     contractorSignerName: addendum?.fields?.contractorSignerName || contractFields.contractorSignerName || '',
   };

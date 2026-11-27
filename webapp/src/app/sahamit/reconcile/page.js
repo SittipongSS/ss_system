@@ -1,6 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
 import { useMemo, useState, useEffect } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { ClipboardCheck, Download, Search, Maximize2, Minimize2, AlertCircle, SlidersHorizontal } from "lucide-react";
 import Workspace, { Spinner } from "@/components/ui/Workspace";
 import StatusNotice from "@/components/ui/StatusNotice";
@@ -154,15 +155,15 @@ export default function ReconcilePage() {
     return m;
   }, [flags]);
   const canEdit = useCan("sahamit:edit");
-  const [view, setView] = useState("recon");
-  const [unit, setUnit] = useState("piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
+  const [view, setView] = useStickyState("view", "recon");
+  const [unit, setUnit] = useStickyState("unit", "piece"); // หน่วยแสดงผล (ชิ้น/ลัง)
   const [cellSel, setCellSel] = useState(null); // { fg, m } → เปิด modal รายละเอียด
-  const [search, setSearch] = useState("");
-  const [roundSel, setRoundSel] = useState("all"); // ดูการรับ PO ในรอบ FC ที่เลือก
+  const [search, setSearch] = useStickyState("search", "");
+  const [roundSel, setRoundSel] = useStickyState("roundSel", "all"); // ดูการรับ PO ในรอบ FC ที่เลือก
   const [expanded, setExpanded] = useState(false); // ขยายกริดเต็มจอ (overlay)
-  const [brands, setBrands] = useState([]);
-  const [volumes, setVolumes] = useState([]);
-  const [categories, setCategories] = useState([]);
+  const [brands, setBrands] = useStickyState("brands", []);
+  const [volumes, setVolumes] = useStickyState("volumes", []);
+  const [categories, setCategories] = useStickyState("categories", []);
   const q = search.trim().toLowerCase();
 
   /* ของที่อ่านจากรายการสินค้าเมื่อยังไม่มีมันในมือ — `null` = มีแล้ว ใช้ตามปกติ

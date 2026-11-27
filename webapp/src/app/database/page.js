@@ -1,10 +1,11 @@
 "use client";
 import { ChartCanvas } from "@/components/ui/ChartCard";
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, Package, Building2, ChevronRight, TrendingUp, BarChart3, PieChart as PieChartIcon, Hourglass, CalendarRange, Users, AlertCircle } from "lucide-react";
 import Workspace from "@/components/ui/Workspace";
+import useStickyState from "@/lib/ui/useStickyState";
 import ActionQueue from "@/components/ui/ActionQueue";
 import FilterPopover from "@/components/ui/FilterPopover";
 import KpiCard from "@/components/ui/KpiCard";
@@ -28,6 +29,8 @@ import { customersById, matchesOverviewTeams, overviewTeamOptions, teamsOf } fro
 /* ชุดจำแนกประเภทกลาง (ดู chartTheme.js) — เดิมเป็นลิสต์เฉพาะหน้าเริ่มด้วย accent
    ซึ่งชนสีปุ่ม · ลำดับ segment ของ v1 ขยับตามชุดกลางโดยเจตนา */
 const COLORS = CHART_CATEGORICAL;
+// ค่าตั้งต้นของตัวกรองต้องเป็น array ตัวเดียวกันทุกเรนเดอร์
+const EMPTY = [];
 
 export default function DatabaseOverview() {
   const router = useRouter();
@@ -87,8 +90,9 @@ export default function DatabaseOverview() {
 
   // ตัวกรองรวมใน FilterPopover เดียว (มาตรฐานทั้งระบบ มติ 2026-07-18) —
   // ทุกหมวด multi-select, ว่าง = ทั้งหมด (ช่วงเวลาหลายค่า = รวมกัน/union)
-  const [timeframe, setTimeframe] = useState([]);
-  const [teamFilter, setTeamFilter] = useState([]);
+  // จำไว้ตอนกดเข้าใบในคิวรออนุมัติแล้วกดกลับ (useStickyState)
+  const [timeframe, setTimeframe] = useStickyState("timeframe", EMPTY);
+  const [teamFilter, setTeamFilter] = useStickyState("teamFilter", EMPTY);
 
   /* ⭐ ตัวกรอง "ทีมดูแล" (ตรวจตัวเลข 26/10 · L17 · `lib/master/overviewTeamFilter.js`) — สินค้าตามทีมดูแลของ
      **ลูกค้าเจ้าของ** ไม่ใช่ `p.team` (ทีมของคนที่เปิดสินค้า · มติ 2026-07-20: เจ้าของสินค้าคือลูกค้า)

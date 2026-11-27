@@ -207,7 +207,7 @@ test('หน้างานเข้าใหม่: ถังตั้งรอ
   assert.doesNotMatch(src, /รอตั้งไซต์\/โซน/);
   /* 🔄 mig 0392 (D14): แท็บตั้งต้นคือ "รอตั้งรอบ" เสมอ — ตัวสลับแท็บอัตโนมัติ (มติ 22/09) ถอดแล้ว
      เพราะถังผูกโซนที่มันหลบไม่มีแล้ว */
-  assert.match(src, /const \[tab, setTab\] = useState\("plan"\);/);
+  assert.match(src, /const \[tab, setTab\] = useStickyState\("tab", "plan"\);/);
   assert.doesNotMatch(src, /autoTabDone/);
   assert.doesNotMatch(src, /setTab\(\(current\) => \(current === "bind" \? "plan" : current\)\)/);
   /* 🔄 mig 0404: ใบใหม่ที่ฝ่ายขายยื่นโดยยังไม่ตั้งงานบริการก็มาแท็บใบเดิมโดยไม่มีโซน ⇒ ห้ามบอกว่า "ใบใหม่มาพร้อมโซนและรอบ" ทุกใบ */

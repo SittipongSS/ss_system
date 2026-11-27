@@ -26,6 +26,7 @@ import { businessDate } from "@/lib/businessDate";
 import { weekStartOf } from "@/lib/datePeriods";
 import { fmtMonthShort, fmtNumber, fmtPercent } from "@/lib/format";
 import { apiFetch } from "@/lib/apiFetch";
+import useStickyState from "@/lib/ui/useStickyState";
 
 const DAY_LABELS = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 const WEEKS = 4;
@@ -46,7 +47,9 @@ export default function ProductionBoardPage() {
   const department = useDepartment();
   const canEdit = useMemo(() => canEditProduction({ role, team, teams, department }), [role, team, teams, department]);
 
-  const [start, setStart] = useState(thisWeekStart);
+  /* สัปดาห์ที่เลื่อนไปดูจำไว้ (useStickyState · คำขอเจ้าของ 27/11) — เก็บเป็นสตริงวัน (JSON เก็บ Date ไม่ได้) · null = สัปดาห์นี้ */
+  const [startIso, setStartIso] = useStickyState("weekStart", null);
+  const start = useMemo(() => (startIso ? new Date(`${startIso}T00:00:00`) : thisWeekStart()), [startIso]);
   const [lines, setLines] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [capacityDays, setCapacityDays] = useState([]);
@@ -118,11 +121,11 @@ export default function ProductionBoardPage() {
     await load();
   };
 
-  const shiftWeeks = (n) => setStart((prev) => {
-    const next = new Date(prev);
+  const shiftWeeks = (n) => {
+    const next = new Date(start);
     next.setDate(next.getDate() + n * 7);
-    return next;
-  });
+    setStartIso(toLocalISODate(next));
+  };
 
   const todayIso = businessDate();
   const rangeLabel = `${days[0].date.getDate()} ${fmtMonthShort(days[0].date)} – ${days[days.length - 1].date.getDate()} ${fmtMonthShort(days[days.length - 1].date)} ${days[days.length - 1].date.getFullYear()}`;
@@ -154,7 +157,7 @@ export default function ProductionBoardPage() {
             <Button tone="neutral" variant="quiet" iconOnly aria-label="ย้อน 1 สัปดาห์" onClick={() => shiftWeeks(-1)} icon={<ChevronLeft size={16} aria-hidden="true" />} />
             <strong className={styles.rangeLabel}>{rangeLabel}</strong>
             <Button tone="neutral" variant="quiet" iconOnly aria-label="ถัดไป 1 สัปดาห์" onClick={() => shiftWeeks(1)} icon={<ChevronRight size={16} aria-hidden="true" />} />
-            <Button tone="neutral" variant="quiet" size="sm" onClick={() => setStart(thisWeekStart())}>สัปดาห์นี้</Button>
+            <Button tone="neutral" variant="quiet" size="sm" onClick={() => setStartIso(null)}>สัปดาห์นี้</Button>
             <div className="spacer" />
             {overloaded > 0 && <strong className={styles.overCount}>เกินกำลัง {overloaded} ช่อง</strong>}
           </>

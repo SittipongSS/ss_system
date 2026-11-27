@@ -136,7 +136,8 @@ test('คิวคำร้อง: มาจากหน้าดีล (?dealId
   assert.match(src, /if \(dealLink\) return allowed\[allowed\.length - 1\] \|\| "mine";/,
     'ลิงก์จากหน้าดีลต้องถอยไปขอบเขตกว้างสุด');
   const declAt = src.indexOf('const dealLink = useMemo(() => readDealRequestsLink(searchParams)');
-  const scopeAt = src.indexOf('const [scope, setScope] = useState(');
+  // ขอบเขตจำไว้ตอนกดย้อนกลับมา (useStickyState · คำขอเจ้าของ 27/11) — ค่าตั้งต้นจากลิงก์ยังคิดในตัวเดียวกัน
+  const scopeAt = src.indexOf('const [scope, setScope] = useStickyState("scope", (() => {');
   assert.ok(declAt > -1 && declAt < scopeAt, 'dealLink ต้องประกาศก่อน state ของขอบเขต');
 });
 

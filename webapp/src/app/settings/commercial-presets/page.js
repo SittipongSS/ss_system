@@ -3,6 +3,7 @@ import { fmtDateTime, naText, NA } from "@/lib/format";
 import { TableScroll } from "@/components/ui/Table";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { AlertTriangle, Edit3, Eye, FilePlus2, WalletCards } from "lucide-react";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import AccessDenied from "@/components/ui/AccessDenied";
@@ -114,7 +115,7 @@ export default function CommercialPresetsPage() {
   const role = useRole();
   const canManage = canManageCommercialPresets(role);
   const [presets, setPresets] = useState([]);
-  const [kind, setKind] = useState("payment");
+  const [kind, setKind] = useStickyState("kind", "payment");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

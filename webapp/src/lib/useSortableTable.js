@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import useStickyState from "@/lib/ui/useStickyState";
 
 export { compareSortValues } from "./sortCompare";
 import { compareSortValues } from "./sortCompare";
@@ -13,11 +14,14 @@ import { compareSortValues } from "./sortCompare";
  * @param {Object} accessors map ของ columnKey -> (row) => ค่าที่ใช้เปรียบเทียบ
  *                           (คืน string | number | Date | null ได้)
  * @param {Object} [initial] ค่าเริ่มต้น { key, dir } (dir = "asc" | "desc")
+ * @param {Object} [opts]
+ * @param {string} [opts.stickyKey] ชื่อสำหรับจำการเรียง (useStickyState) — กดเข้าใบแล้วกดกลับต้องเรียงแบบเดิม
+ *   · หน้าที่มีหลายตารางต้องตั้งชื่อไม่ซ้ำกัน · ไม่ส่ง = ไม่จำ (ตารางในโมดัล/ตารางย่อยในหน้ารายละเอียด)
  * @returns {{ sorted: Array, sortKey: string|null, sortDir: string, sortBy: (key)=>void }}
  */
-export function useSortableTable(rows, accessors, initial = null) {
-  const [sortKey, setSortKey] = useState(initial?.key ?? null);
-  const [sortDir, setSortDir] = useState(initial?.dir ?? "asc");
+export function useSortableTable(rows, accessors, initial = null, { stickyKey } = {}) {
+  const [sortKey, setSortKey] = useStickyState(stickyKey ? `${stickyKey}.sortKey` : null, initial?.key ?? null);
+  const [sortDir, setSortDir] = useStickyState(stickyKey ? `${stickyKey}.sortDir` : null, initial?.dir ?? "asc");
 
   const sortBy = (key) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
