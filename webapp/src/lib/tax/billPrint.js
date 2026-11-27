@@ -1,7 +1,7 @@
 import { notifyToast } from "@/lib/feedback";
 import { resolveCompanyBlock, getCompanyProfileForPrint } from '@/lib/companyProfile';
 import { productIdentity } from '@/lib/master/productIdentity';
-import { fmtDate, fmtNumber } from '@/lib/format';
+import { fmtDate, fmtNumber, fmtTaxId } from '@/lib/format';
 import {
   getDocumentStandardsForPrint,
   resolveDocumentAccentKey,
@@ -218,7 +218,7 @@ export function buildBillPrintHTML(order, customer = {}, company, activeStandard
       headingEn: '/ CUSTOMER',
       name: customer.name || order.customerName,
       address,
-      rows: [{ label: 'เลขผู้เสียภาษี', value: taxId }],
+      rows: [{ label: 'เลขผู้เสียภาษี', value: fmtTaxId(taxId) }],
     },
     reference: {
       heading: 'ข้อมูลอ้างอิง',

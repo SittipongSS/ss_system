@@ -943,6 +943,9 @@ const MAIN_ONSITE_PAGES_SHA256 = Object.freeze({
   'customer-on': '6fd2d2b532aeebe09276b6a7253f28115c222db33888c1754e4abdee00466765',
   'internal-on': '68f22e0b547799bebd906528aca5a9926cff6faa543cc669dbcb7b83ff6627ff',
 });
+/* ความต่างที่ตั้งใจหลัง 954861d8 ตัวเดียว: เลขผู้เสียภาษีบริษัทออกรูปมีขีด (fmtTaxId · คำขอเจ้าของ 27/11/2026)
+   ⇒ คืนบรรทัดนั้นเป็นรูปเดิมก่อนแฮช — ตัวเลขทองคำไม่ขยับ และทุกไบต์ที่เหลือยังต้องเท่า main เดิม */
+const PRE_TAXID_DASHES = (markup) => markup.replaceAll('เลขประจำตัวผู้เสียภาษี 0-1055-57081-66-5', 'เลขประจำตัวผู้เสียภาษี 0105557081665');
 const pagesMarkup = (html) => {
   const open = '<article class="sheet su-page"';
   const close = '</article>';
@@ -973,7 +976,7 @@ test('🔴 S3 ทองคำใบลงหน้างาน (O3 = ข): marku
   for (const [rule, inputs] of Object.entries(sets)) {
     for (const version of ['customer', 'internal']) {
       const { html } = paper(inputs, version);
-      assert.equal(sha256(pagesMarkup(html)), MAIN_ONSITE_PAGES_SHA256[`${version}-${rule}`], `${version} · ลายเซ็น${rule === 'on' ? 'เปิด' : 'ปิด'}`);
+      assert.equal(sha256(PRE_TAXID_DASHES(pagesMarkup(html))), MAIN_ONSITE_PAGES_SHA256[`${version}-${rule}`], `${version} · ลายเซ็น${rule === 'on' ? 'เปิด' : 'ปิด'}`);
     }
   }
 });

@@ -1,5 +1,5 @@
 "use client";
-import { fmtDateTime, naText, NA } from "@/lib/format";
+import { fmtDateTime, fmtTaxId, naText, NA } from "@/lib/format";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Building2 } from "lucide-react";
@@ -17,6 +17,7 @@ import { hasPublishableChangeNote, organizationSettingStatusLabel } from "@/lib/
 import { branchLabel } from "@/lib/master/thaiAddress";
 import styles from "./page.module.css";
 import Textarea from "@/components/ui/Textarea";
+import NationalIdInput from "@/components/ui/NationalIdInput";
 import { apiFetch } from "@/lib/apiFetch";
 
 const EMPTY_FORM = {
@@ -246,7 +247,7 @@ export default function CompanySettingsPage() {
               <p className={styles.address}>{data.published.registeredAddressTh}</p>
             </div>
             <div className={styles.metaGrid}>
-              <div><span>เลขผู้เสียภาษี</span><strong>{data.published.taxId}</strong></div>
+              <div><span>เลขผู้เสียภาษี</span><strong>{fmtTaxId(data.published.taxId)}</strong></div>
               {/* ผ่าน branchLabel — '00000' คือ "สำนักงานใหญ่" ไม่ใช่เลขที่ต้องอ่าน
                   (หน้าทะเบียนลูกค้าใช้ตัวเดียวกันอยู่แล้ว · lib/master/thaiAddress.js) */}
               <div><span>สาขา</span><strong>{branchLabel(data.published.branchCode)}</strong></div>
@@ -296,7 +297,8 @@ export default function CompanySettingsPage() {
             <div className={styles.formGrid}>
               <label className={styles.full}>ชื่อนิติบุคคลภาษาไทย <b>*</b><input className="premium-input" value={form.legalNameTh} onChange={(event) => setForm({ ...form, legalNameTh: event.target.value })} required maxLength={200} /></label>
               <label className={styles.full}>ชื่อนิติบุคคลภาษาอังกฤษ<input className="premium-input" value={form.legalNameEn} onChange={(event) => setForm({ ...form, legalNameEn: event.target.value })} maxLength={200} /></label>
-              <label>เลขประจำตัวผู้เสียภาษี <b>*</b><input className="premium-input" inputMode="numeric" value={form.taxId} onChange={(event) => setForm({ ...form, taxId: event.target.value })} required maxLength={17} /></label>
+              {/* ช่องเดียวกับฟอร์มลูกค้า (NationalIdInput) — ขีดขึ้นเองตอนพิมพ์ เก็บตัวเลขล้วน (คำขอเจ้าของ 27/11) */}
+              <label>เลขประจำตัวผู้เสียภาษี <b>*</b><NationalIdInput value={form.taxId} onChange={(taxId) => setForm({ ...form, taxId })} required /></label>
               {/* ⚠️ บังคับกรอกที่นี่ (ต่างจากฝั่งลูกค้าที่ว่างได้) เพราะเป็นเลขสาขา
                   **ของบริษัทเอง** ที่ต้องพิมพ์ลงหัวเอกสารทุกใบ · แต่ต้องสอนความหมาย
                   ให้ตรงกับฝั่งลูกค้า (AddressesEditor เขียน "ว่าง = สำนักงานใหญ่")

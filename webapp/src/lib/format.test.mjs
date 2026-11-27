@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, formatPhoneInput, dateFieldText, isoDateToDisplay, isoDateToWeekdayText, normalizeTime, parseNumberInput, isBlank, naText, fmtMoneyOrDash, NA } from "./format.js";
+import { displayDateToIso, fmtDateNumeric, fmtDateTime, fmtDayTime, fmtDayMonth, fmtDayMonthYear, fmtMonthYear, fmtYearMonth, fmtMoney, fmtMoneyCompact, fmtNumber, fmtPercent, fmtTime, formatMoneyInput, formatMoneyInputWhileTyping, formatNationalIdInput, fmtTaxId, formatPhoneInput, dateFieldText, isoDateToDisplay, isoDateToWeekdayText, normalizeTime, parseNumberInput, isBlank, naText, fmtMoneyOrDash, NA } from "./format.js";
 
 test("money input accepts raw and grouped values", () => {
   assert.equal(parseNumberInput("1,000,000.50"), 1000000.5);
@@ -72,6 +72,22 @@ test("phone and national ID inputs format progressively", () => {
   assert.equal(formatPhoneInput("08123"), "081-23");
   assert.equal(formatNationalIdInput("1234567890123"), "1-2345-67890-12-3");
   assert.equal(formatNationalIdInput("123456"), "1-2345-6");
+});
+
+test("tax ID displays in the same dashed shape as the input, whatever the stored shape", () => {
+  // ฐานเก็บตัวเลขล้วน · แถวยุคเก่ามีขีดผิดตำแหน่ง/ศูนย์นำหน้าหาย — จอ/กระดาษต้องออกรูปเดียวกัน
+  assert.equal(fmtTaxId("0123456789012"), "0-1234-56789-01-2");
+  assert.equal(fmtTaxId("0-1234-56789-01-2"), "0-1234-56789-01-2");
+  assert.equal(fmtTaxId("0123456789-012"), "0-1234-56789-01-2"); // ขีดผิดตำแหน่ง (แถวยุคเก่า)
+  assert.equal(fmtTaxId(" 0123456789012 "), "0-1234-56789-01-2");
+  assert.equal(fmtTaxId("123456789012"), "0-1234-56789-01-2"); // 12 หลัก = ศูนย์หายตอนผ่าน Excel
+  assert.equal(fmtTaxId(fmtTaxId("0123456789012")), "0-1234-56789-01-2"); // จัดซ้ำไม่เพี้ยน
+  // เลขต่างชาติ/พาสปอร์ต และความยาวผิดรูป — แสดงตามที่เก็บ ไม่เดาขีด
+  assert.equal(fmtTaxId("AB1234567"), "AB1234567");
+  assert.equal(fmtTaxId("1234567890"), "1234567890");
+  assert.equal(fmtTaxId("ทะเบียนเลขที่ 0105557081665"), "ทะเบียนเลขที่ 0105557081665"); // ข้อความอิสระในสัญญา
+  assert.equal(fmtTaxId(null), "");
+  assert.equal(fmtTaxId("  "), "");
 });
 
 test("number input preserves valid zero and rejects incomplete input", () => {

@@ -13,7 +13,7 @@
 import {
   DocumentSummaryCard, RelatedDocumentCard,
 } from "@/components/ui/DocumentControlPanel";
-import { fmtDate, fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtNumber, fmtTaxId, naText } from "@/lib/format";
 import { INSTALLMENT_STATUS_LABELS, installmentDisplayStatus } from "@/lib/sales/salesOrderPayments";
 import RequestSummaryPanel from "./RequestSummaryPanel";
 import styles from "./details.module.css";
@@ -43,7 +43,7 @@ export default function BillingDocPanel({ request }) {
      *ยังไม่ได้เลื่อนดู* (ที่อยู่ออกบิลว่าง = ต้องไปถาม ไม่ใช่ออกบิลไปเลย) */
   const billToRows = qt ? [
     { id: "name", label: "ออกบิลในนาม", value: naText(qt.customerName || request.customerName) },
-    { id: "tax", label: "เลขผู้เสียภาษี", value: naText(qt.customerTaxId) },
+    { id: "tax", label: "เลขผู้เสียภาษี", value: naText(fmtTaxId(qt.customerTaxId)) },
     { id: "branch", label: "สาขา", value: naText(qt.branchCode) },
     { id: "addr", label: "ที่อยู่ออกบิล", value: naText(qt.billingAddress) },
   ] : [];

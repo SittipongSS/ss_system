@@ -41,7 +41,8 @@ test('หัวคอลัมน์ตรงชุดที่ประกา�
 test('เลขผู้เสียภาษี/สาขาเป็นข้อความ — ศูนย์นำหน้าไม่หาย', async () => {
   const sheet = await sheetOf(await buildCustomerExportBuffer([COMPANY], { now: NOW }));
   const col = (key) => CUSTOMER_EXPORT_COLUMNS.findIndex((c) => c.key === key) + 1;
-  assert.equal(sheet.getRow(2).getCell(col('taxId')).value, '0105555012345');
+  // รูปเดียวกับจอ/ช่องกรอก (fmtTaxId · 27/11) — ยังเป็นข้อความ ศูนย์นำหน้าไม่หาย
+  assert.equal(sheet.getRow(2).getCell(col('taxId')).value, '0-1055-55012-34-5');
   assert.equal(sheet.getRow(2).getCell(col('branchCode')).value, '00000');
   assert.equal(sheet.getRow(2).getCell(col('taxId')).numFmt, '@');
 });

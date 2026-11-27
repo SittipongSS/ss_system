@@ -15,6 +15,8 @@ import {
 //   • YYYY-MM (fmtYearMonth) สำหรับระดับเดือน
 //   • DD/MM/YYYY HH:MM (fmtDateTime) เมื่อต้องการเวลา
 // อย่า format เงิน/วันที่เองด้วย toLocaleString/toLocaleDateString — import จากไฟล์นี้เสมอ.
+// เลขผู้เสียภาษี/บัตรประชาชน: x-xxxx-xxxxx-xx-x ทุกจอ · กระดาษ · Excel (fmtTaxId) — รูปเดียวกับช่องกรอก
+//   NationalIdInput · ฐานเก็บตัวเลขล้วน (คำขอเจ้าของ 27/11/2026 · ยาม taxIdDisplayGuard.test.mjs).
 
 // เงินเต็ม: ฿ + ทศนิยม 2 ตำแหน่งเสมอ (เช่น "฿1,234.50").
 export const fmtMoney = (amount) =>
@@ -336,6 +338,22 @@ export const fmtNationalId = (raw) => {
   const d = String(raw ?? "").replace(/\D/g, "");
   if (d.length !== 13) return raw ? String(raw) : "";
   return `${d[0]}-${d.slice(1, 5)}-${d.slice(5, 10)}-${d.slice(10, 12)}-${d[12]}`;
+};
+
+// เลขผู้เสียภาษี/เลขประจำตัวประชาชน ที่โชว์บนจอ · กระดาษ · Excel — รูปเดียวกับช่องกรอก
+// (NationalIdInput) ทั้งระบบ (คำขอเจ้าของ 27/11/2026) · ฐานเก็บตัวเลขล้วน (taxIdStore)
+// ⇒ ใส่ขีดตอนแสดงเท่านั้น ห้ามเขียนรูปมีขีดกลับลงฐาน
+// · มีอะไรนอกจากตัวเลข/ขีด/เว้นวรรค = เลขต่างชาติ/พาสปอร์ต หรือข้อความที่คนพิมพ์เอง
+//   (ช่อง "เลขทะเบียนนิติบุคคล" ของสัญญาเป็นข้อความอิสระ) ⇒ แสดงตามที่กรอก ห้ามดึงตัวเลขออกมาจัดใหม่
+// · 12 หลัก = ศูนย์นำหน้าหายตอนผ่าน Excel ⇒ เติม 0 คืน (กติกาเดียวกับ taxIdKey)
+// · ความยาวอื่น = ข้อมูลผิดรูป ⇒ แสดงตามที่เก็บ ไม่เดาตำแหน่งขีด
+export const fmtTaxId = (raw) => {
+  const text = String(raw ?? "").trim();
+  if (!text) return "";
+  if (/[^\d\s-]/.test(text)) return text;
+  const digits = text.replace(/\D/g, "");
+  const full = digits.length === 12 ? `0${digits}` : digits;
+  return full.length === 13 ? fmtNationalId(full) : text;
 };
 
 export const formatNationalIdInput = (raw) => {

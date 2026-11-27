@@ -18,7 +18,7 @@ import DetailRow from "@/components/ui/DetailRow";
 import StatusNotice from "@/components/ui/StatusNotice";
 import Button from "@/components/ui/Button";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyOrDash, fmtNumber, naText } from "@/lib/format";
+import { fmtDate, fmtDateTime, fmtMoney, fmtMoneyOrDash, fmtNumber, fmtTaxId, naText } from "@/lib/format";
 import { exciseBaseLabel, exciseBaseMissingText, exciseBasePriceIncVat, usesPieceTaxBase } from "@/lib/excise/giftSetExcise";
 
 import { useApiList } from "@/lib/excise/useApiList";
@@ -518,7 +518,7 @@ export default function RegistrationDetailPage() {
           <div className={`glass-panel ${styles.panel}`}>
             <div className={styles.fieldGrid}>
               <Field label="ลูกค้า" full>{s.customerName || customerLabel}</Field>
-              <Field label="เลขผู้เสียภาษี">{s.taxId}</Field>
+              <Field label="เลขผู้เสียภาษี">{fmtTaxId(s.taxId)}</Field>
               <Field label="รหัสสาขา">{customer?.branchCode}</Field>
               <Field label="ผู้ยื่น">{s.assignee}</Field>
               <Field label="ทีมเจ้าของทะเบียน">{s.team}</Field>
