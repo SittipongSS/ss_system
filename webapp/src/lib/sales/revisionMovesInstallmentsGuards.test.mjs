@@ -83,7 +83,7 @@ test('payment-file: อ่าน movedFrom ของงวด แล้วถา
 // ── 4. ตารางรายการ SO: ใบ revised ไม่มีคอลัมน์งวด ───────────────────────────────────────────────────────
 test('ลิสต์ SO ส่งสถานะใบเข้า salesOrderPaymentCell (ใบ revised = null)', () => {
   const route = code(LIST_ROUTE);
-  assert.match(route, /payment: salesOrderPaymentCell\(\s*installmentsByOrder\.get\(row\.id\) \|\| \[\],\s*quoteById\.get\(row\.quotationId\)\?\.paymentPlan,\s*todayIso,\s*row\.totalAmount,\s*row\.status,\s*\)/);
+  assert.match(route, /payment: salesOrderPaymentCell\(\s*installmentsByOrder\.get\(row\.id\) \|\| \[\],\s*orderPaymentPlan\(row, quoteById\.get\(row\.quotationId\)\),\s*todayIso,\s*row\.totalAmount,\s*row\.status,\s*\)/);
 });
 
 // ── 5. แผงงวด: ใบ revised · โมดัลถอนคำรับรอง ───────────────────────────────────────────────────────

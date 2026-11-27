@@ -42,6 +42,9 @@ import { branchLabel } from "@/lib/master/thaiAddress";
 import { customerHeadline } from "@/lib/master/customerAr";
 import { isExciseOrder } from "@/lib/sales/historicalOrders";
 import { previewInstallments } from "@/lib/sales/salesOrderPayments";
+import { ORDER_PLAN_BADGE, ORDER_PLAN_REASON_MAX, ORDER_PLAN_REASON_MIN, orderPlanChange } from "@/lib/sales/salesOrderPaymentPlan";
+import QuotationInstallments from "@/components/salesPlanning/QuotationInstallments";
+import StatusBadge from "@/components/ui/StatusBadge";
 import { NO_BILLING_TEXT, asksNeed, dateModeOf } from "@/lib/sales/billingRule";
 import {
   createFormDateCheck, createFormInstallmentItems, createFormPlanNote, createFormTermsKind, createFormTermsState,
@@ -196,9 +199,22 @@ function NewSalesOrderInner() {
     vatAmount: Number(quote?.vatAmount || 0),
     totalAmount: Number(quote?.totalAmount || 0),
   }), [quote]);
+  /* ⭐ ปรับแผนงวดตั้งแต่หน้าสร้าง (mig 0441 · มติเจ้าของ 27/11/2026 ข้อ 1) — `planDraft` null = เดินตามแผนของ QT ·
+     ตัวแก้ = `QuotationInstallments` ตัวเดียวกับหน้า QT และโมดัล "ปรับแผนงวด" ของใบร่าง (กฎ AGENTS.md ฟอร์มเดียวหลายทางเรียก)
+     ⭐ ตารางวันงวดข้างล่างเดินตามแผนที่ปรับทันที (วันที่กรอกไว้ติดเลขงวด) · ตรวจด้วย `orderPlanChange` ตัวเดียวกับ POST
+       — เท่า QT = ไม่ส่งแผน (ไม่ต้องมีเหตุผล) · ต่าง = บังคับเหตุผล (ข้อ 4) */
+  const [planDraft, setPlanDraft] = useState(null);
+  const [planReason, setPlanReason] = useState("");
+  const effectivePlan = planDraft ?? quote?.paymentPlan;
+  const planCheck = useMemo(
+    () => (planDraft ? orderPlanChange({
+      plan: planDraft, reason: planReason, total: totals.totalAmount, quotePlan: quote?.paymentPlan, rows: [],
+    }) : null),
+    [planDraft, planReason, totals.totalAmount, quote?.paymentPlan],
+  );
   const plannedInstallments = useMemo(
-    () => previewInstallments(quote?.paymentPlan, totals.totalAmount),
-    [quote?.paymentPlan, totals.totalAmount],
+    () => previewInstallments(effectivePlan, totals.totalAmount),
+    [effectivePlan, totals.totalAmount],
   );
   /* ⭐ ช่องวันงวดตัวเดียวกับใบ SO (สองช่องแยก · มติ 02/11 · AGENTS.md สร้าง/แก้ใช้ตัวเดียว) — งวดตามแผนของ QT เป็นแถวของร่าง
      (id ชั่วคราวตามลำดับงวด · ยังไม่มีแถวในฐาน) · ไม่มีบันทึกแยก (`create`) — ร่างไปกับคำขอสร้างใบ
@@ -246,7 +262,7 @@ function NewSalesOrderInner() {
   );
   const blockedReason = !confirmationCheck.ok
     ? confirmationCheck.error
-    : (paymentError || dateCheck.error);
+    : (planCheck?.error || paymentError || dateCheck.error);
 
   const uploadOne = useCallback(async (file) => {
     // ไบต์ขึ้น bucket ส่วนตัวตรงจากเบราว์เซอร์ด้วย signed URL — ไม่ผ่าน function
@@ -289,6 +305,8 @@ function NewSalesOrderInner() {
           // กำหนดชำระ + วันวางบิล/รอเหตุการณ์ (+ ติ๊กไม่ต้องวางบิล) รายงวด — เฉพาะงวดที่มีค่า (ไม่ตั้ง = ไม่ส่ง)
           installments: createFormInstallmentItems(plannedInstallments, valuesBySeq, itemOptions),
           firstPayment: firstPaid ? { paidOn: firstPaidOn, evidence: firstEvidence } : null,
+          // แผนงวดที่ปรับ (0441) — ส่งเฉพาะตอนต่างจาก QT (planCheck.plan) · เท่า QT/ไม่ได้ปรับ = ไม่ส่ง (เดินตามแผน QT)
+          ...(planCheck?.plan ? { paymentPlan: planDraft, paymentPlanReason: planReason.trim() } : {}),
         }),
       });
       if (!res.ok) throw new Error(await describeResponseError(res, "สร้างใบสั่งขายไม่สำเร็จ"));
@@ -307,7 +325,7 @@ function NewSalesOrderInner() {
       setError(e.message || "สร้างใบสั่งขายไม่สำเร็จ");
       setCreating(false);
     }
-  }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, deliveryDueDate, confirmation, plannedInstallments, valuesBySeq, itemOptions, firstPaid, firstPaidOn, router]);
+  }, [blockedReason, confirmFiles, firstFiles, uploadOne, quotationId, referenceDoc, notes, deliveryDueDate, confirmation, plannedInstallments, valuesBySeq, itemOptions, firstPaid, firstPaidOn, planCheck, planDraft, planReason, router]);
 
   if (!canEdit) return <AccessDenied title="สร้างใบสั่งขาย" message="ไม่มีสิทธิ์สร้างใบสั่งขาย" />;
 
@@ -587,11 +605,55 @@ function NewSalesOrderInner() {
           eyebrow="PAYMENT"
           title="การชำระ"
           meta={plannedInstallments.length
-            ? `${plannedInstallments.length} งวดตามแผนของ ${naText(quote.quoteNumber)} · รวม ${fmtMoney(totals.totalAmount)}`
+            ? (planDraft && !planCheck?.cleared
+              ? `${plannedInstallments.length} งวดตามแผนที่ปรับ (ต่างจาก ${naText(quote.quoteNumber)}) · รวม ${fmtMoney(totals.totalAmount)}`
+              : `${plannedInstallments.length} งวดตามแผนของ ${naText(quote.quoteNumber)} · รวม ${fmtMoney(totals.totalAmount)}`)
             : "ใบเสนอราคาต้นทางไม่ได้ระบุแผนการชำระ"}
+          actions={plannedInstallments.length && totals.totalAmount > 0 ? (
+            <>
+              {planDraft && !planCheck?.cleared ? <StatusBadge size="sm" tone="warning" label={ORDER_PLAN_BADGE} /> : null}
+              {planDraft ? (
+                <Button size="sm" variant="ghost" disabled={creating}
+                  onClick={() => { setPlanDraft(null); setPlanReason(""); }}>
+                  ใช้แผนตามใบเสนอราคา
+                </Button>
+              ) : (
+                <Button size="sm" variant="ghost" disabled={creating}
+                  onClick={() => setPlanDraft(JSON.parse(JSON.stringify(quote?.paymentPlan || { type: "full" })))}>
+                  ปรับแผนงวด
+                </Button>
+              )}
+            </>
+          ) : null}
         >
           {plannedInstallments.length ? (
             <>
+              {/* ⭐ ตัวแก้แผน (0441) — เปิดเมื่อกด "ปรับแผนงวด" · ใบเสนอราคาที่ลูกค้าถือไม่เปลี่ยน · ใบสั่งขายพิมพ์แผนนี้ (มติข้อ 3) */}
+              {planDraft ? (
+                <div className={styles.prepaidBox}>
+                  <QuotationInstallments
+                    value={planDraft}
+                    onChange={setPlanDraft}
+                    totalAmount={totals.totalAmount}
+                    disabled={creating}
+                  />
+                  {planCheck?.cleared ? (
+                    <p className="form-note">แผนนี้เท่ากับใบเสนอราคา — ใบสั่งขายจะเดินตามแผนของ {naText(quote.quoteNumber)} (ไม่ต้องใส่เหตุผล)</p>
+                  ) : (
+                    <label>
+                      <span>เหตุผลที่ปรับแผนงวด *</span>
+                      <Textarea rows={2} value={planReason} maxLength={ORDER_PLAN_REASON_MAX} disabled={creating}
+                        placeholder={`เช่น ลูกค้าขอเปลี่ยนมัดจำเป็น 30% — อย่างน้อย ${ORDER_PLAN_REASON_MIN} ตัวอักษร`}
+                        onChange={(event) => setPlanReason(event.target.value)} />
+                    </label>
+                  )}
+                  {planCheck?.error ? <StatusNotice tone="warning">{planCheck.error}</StatusNotice> : null}
+                  <p className="form-note">
+                    {`ใบเสนอราคา ${naText(quote.quoteNumber)} ที่ลูกค้าถือไม่เปลี่ยน · ใบสั่งขายพิมพ์แผนนี้ · `
+                      + "แก้ต่อได้จนกว่าจะยื่นอนุมัติ (การ์ด “การชำระ” บนใบ)"}
+                  </p>
+                </div>
+              ) : null}
               {termsNotice}
               {/* ⭐ ตารางงวดของหน้าสร้าง — ช่องวันสองช่องแยก (`InstallmentDateCell` ตัวเดียวกับแผงงวดของใบ · มติ 02/11)
                   ⚠️ เรียง **วันวางบิล → กำหนดชำระ** เสมอ (เจ้าของ 28/09) · ไม่รู้กติกา = คอลัมน์กำหนดชำระอย่างเดียวแบบเดิม
@@ -673,7 +735,7 @@ function NewSalesOrderInner() {
                   </div>
                 )}
                 <p className={`form-note ${styles.prepaidNote}`}>
-                  <b>บันทึกไว้ก่อน ยังไม่ส่งให้บัญชี</b> — ยอดต่องวดยังเดินตามใบเสนอราคาจนกว่าใบสั่งขายจะอนุมัติ
+                  <b>บันทึกไว้ก่อน ยังไม่ส่งให้บัญชี</b> — ยอดต่องวดยังเดินตามแผนของใบจนกว่าใบสั่งขายจะอนุมัติ
                   ระบบจะเปิดให้บัญชีรับรองการชำระเองตอนนั้น
                 </p>
               </div>

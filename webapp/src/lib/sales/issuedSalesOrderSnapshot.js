@@ -15,6 +15,7 @@ import { fillCustomerSnapshotFromMaster } from '@/lib/sales/customerSnapshotFall
 import { fillMissingLineCategories } from '@/lib/sales/quoteLines';
 import { packLineUnit } from '@/lib/sales/linePacks';
 import { linePackQty } from '@/lib/sales/linePackView';
+import { orderHasOwnPlan } from '@/lib/sales/salesOrderPaymentPlan';
 import {
   loadSignatureImageDataUri,
   loadActiveSignatureAsset,
@@ -75,6 +76,9 @@ export function buildIssuedSalesOrderPayload(order = {}, company) {
       discountAmount: Number(order.discountAmount || 0),
       vatAmount: Number(order.vatAmount || 0),
       totalAmount: Number(order.totalAmount || 0),
+      /* แผนงวดของใบ (0441 · มติ 27/11 ข้อ 3 — กระดาษพิมพ์แผนนี้) — **มีคีย์เฉพาะใบที่ตั้งแผนของตัวเอง**
+         ⛔ ห้ามใส่ null ให้ทุกใบ: canonical JSON เก็บ null ไว้ ⇒ contentFingerprint ของใบเดิมขยับทั้งระบบ (เหตุผลเดียวกับ packQty) */
+      ...(orderHasOwnPlan(order) ? { paymentPlan: order.paymentPlan } : {}),
     },
     customer: {
       customerName: trimOrNull(order.customerName),

@@ -49,9 +49,12 @@ import {
 import { DELIVERY_DUE_AMEND_TEXT, deliveryDueAmendError, parseDeliveryDueDate } from '@/lib/sales/salesOrderDeliveryDue';
 import {
   confirmationBorrowable, freezeInstallments, historicalCancelSettleReady, installmentMoveColumnError, loadCarrySources, loadInstallments,
-  loadMovedOut,
+  loadMovedOut, syncDraftInstallmentsToPlan,
 } from '@/lib/sales/salesOrderInstallmentsStore';
 import { withLiveAmounts } from '@/lib/sales/salesOrderPayments';
+import {
+  ORDER_PLAN_SCHEMA_MISSING, orderPaymentPlan, orderPlanAuditSummary, orderPlanChange, orderPlanEditBlocker,
+} from '@/lib/sales/salesOrderPaymentPlan';
 import {
   cancelledMoneyRestoreBlock, installmentsTotalMismatch, movedOutDeleteBlock, paymentNotRequired,
   revisionAuditSummary,
@@ -537,7 +540,7 @@ async function loadOrder(supabase, id, { extras = false } = {}) {
     installmentsError: installmentsError ? `อ่านงวดชำระไม่สำเร็จ: ${installmentsError.message || installmentsError}` : null,
     installments: historical
       ? installmentRows
-      : withLiveAmounts(installmentRows, quotation?.paymentPlan, order.totalAmount),
+      : withLiveAmounts(installmentRows, orderPaymentPlan(order, quotation), order.totalAmount),
   };
 }
 
@@ -1532,7 +1535,7 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
       try { liveRows = await loadInstallments(supabase, id); }
       catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
       const ineligible = actualModeApproveBlock(before, actualMode, {
-        installmentCount: installmentCountAtFreeze(liveRows, { plan: before.quotation?.paymentPlan, totalAmount: before.totalAmount }),
+        installmentCount: installmentCountAtFreeze(liveRows, { plan: orderPaymentPlan(before), totalAmount: before.totalAmount }),
       });
       if (ineligible) return Response.json({ error: ineligible, code: 'actual_mode_ineligible' }, { status: 409 });
     }
@@ -1774,6 +1777,69 @@ export const PATCH = withUser(async ({ user, supabase, req, ctx }) => {
     await recordAudit({ user, action: 'update', entityType: 'sales_order', entityId: id, before, after: data, summary: `reject ${before.orderNumber}: ${reason}`, request: req });
     // แจ้งทีมขาย: SO ถูกตีกลับ ให้ผู้ยื่นแก้แล้วยื่นใหม่
     return ok(data);
+  }
+
+  /* ── ปรับแผนงวดก่อนอนุมัติ (mig 0441 · มติเจ้าของ 27/11/2026) ─────────────────────────────────────────────────
+     ⭐ ใบร่าง/ถูกตีกลับ · คนที่แก้ใบได้ (ด่าน edit scope ด้านบน = SA เจ้าของใบ + AE Sup/admin · มติข้อ 2)
+     ⭐ ด่าน = `orderPlanEditBlocker` + `orderPlanChange` ตัวเดียวกับแผงงวดบนจอ (ข้อความเดียวกันทั้งสองฝั่ง)
+       · เท่าแผนของ QT = ล้างแผนของใบ (ไม่ต้องมีเหตุผล) · ต่าง = บังคับเหตุผล 10–500 (มติข้อ 4)
+     ⭐ เขียนแผนลงใบก่อน (`.eq('status')` = ด่านซ้ำว่ายังเป็นร่าง/ตีกลับที่แถวจริง · trigger 0441 ด่านที่สาม)
+       แล้วจึงตั้งงวดร่างตามแผนใหม่ (`syncDraftInstallmentsToPlan`) — ล้มตรงนั้นไม่ลากการบันทึกแผนล้ม: งวดร่างยังเดินตาม
+       แผนของใบสด ๆ ตอนอ่าน และตอนอนุมัติ freezeInstallments ตั้งให้ตรงแผนของใบอีกรอบ ⇒ ตอบ 200 + `warning` ให้กดซ้ำ */
+  if (action === 'set_payment_plan') {
+    let rows;
+    try { rows = await loadInstallments(supabase, id); }
+    catch (error) { return fail(`อ่านงวดชำระของใบไม่สำเร็จ: ${error.message}`, 500); }
+    const gate = orderPlanEditBlocker(before, rows, { canEdit: true });
+    if (gate.blocker) return fail(gate.blocker, 409);
+    const change = orderPlanChange({
+      plan: body.paymentPlan, reason: body.reason, total: before.totalAmount,
+      quotePlan: before.quotation?.paymentPlan, rows,
+    });
+    if (change.error) return badRequest(change.error);
+    const stamp = new Date().toISOString();
+    const patch = change.plan
+      ? {
+        paymentPlan: change.plan,
+        paymentPlanReason: change.reason,
+        paymentPlanSetAt: stamp,
+        paymentPlanSetById: user.id || null,
+        paymentPlanSetByName: user.name || user.email || null,
+        updatedAt: stamp,
+      }
+      : {
+        paymentPlan: null, paymentPlanReason: null, paymentPlanSetAt: null,
+        paymentPlanSetById: null, paymentPlanSetByName: null, updatedAt: stamp,
+      };
+    const { data, error } = await supabase.from('sales_orders').update(patch)
+      .eq('id', id).eq('status', before.status).select('*').maybeSingle();
+    if (error) {
+      if (error.code === '42703' || error.code === 'PGRST204') return fail(ORDER_PLAN_SCHEMA_MISSING, 503);
+      const mapped = documentWorkflowError(error, { context: `sales order set_payment_plan ${id}` });
+      return fail(mapped.message, mapped.status);
+    }
+    if (!data) return fail('สถานะใบสั่งขายเปลี่ยนแล้ว — โหลดหน้าใหม่', 409);
+    let warning = null;
+    try {
+      await syncDraftInstallmentsToPlan(supabase, { order: data, planRows: change.rows, user });
+    } catch (syncError) {
+      console.error(`[sales order ${id}] set_payment_plan: sync draft installments failed`, syncError);
+      warning = 'บันทึกแผนงวดแล้ว แต่ตั้งงวดร่างตามแผนใหม่ไม่ครบ — กด "บันทึกแผนงวด" ซ้ำอีกครั้ง';
+    }
+    await recordAudit({
+      user, action: 'update', entityType: 'sales_order', entityId: id,
+      before: { paymentPlan: before.paymentPlan ?? null, paymentPlanReason: before.paymentPlanReason ?? null },
+      after: { paymentPlan: data.paymentPlan ?? null, paymentPlanReason: data.paymentPlanReason ?? null },
+      summary: orderPlanAuditSummary(before.orderNumber, {
+        beforeCount: rows.length, afterCount: change.rows.length, reason: change.reason, cleared: change.cleared,
+      }),
+      request: req,
+    });
+    return ok({
+      ...data,
+      ...(warning ? { warning } : {}),
+      message: change.cleared ? 'ใบนี้กลับไปใช้แผนงวดตามใบเสนอราคาแล้ว' : `ปรับแผนงวดแล้ว — ${change.rows.length} งวด`,
+    });
   }
 
   if (action === 'cancel') {

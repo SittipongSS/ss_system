@@ -94,7 +94,7 @@ async function loadLedger(supabase, todayIso) {
   const { data: orders, error: orderError } = await fetchInChunks(orderIds, (chunk) => fetchAllResult(() => supabase
     .from('sales_orders')
     /* money-decider feed */
-    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode", "sourceSalesOrderId", "vatAmount"')
+    .select('id, "orderNumber", "quotationId", "referenceDoc", "dealId", "projectId", "customerId", "customerName", status, "financeStatus", "totalAmount", "approvedAt", "approvedByName", origin, "historicalQuoteRef", "historicalExpressRef", "historicalInvoiceRef", "serviceTermsOpenedAt", "supersededById", "serviceContractId", "actualMode", "sourceSalesOrderId", "vatAmount", "paymentPlan"')
     .in('id', chunk)
     .order('id', { ascending: true })));
   if (orderError) throw orderError;
@@ -172,6 +172,8 @@ async function loadLedger(supabase, todayIso) {
     (quotes || []).forEach((q) => quoteById.set(q.id, q));
   }
   const planByQuotation = new Map([...quoteById.values()].map((q) => [q.id, q.paymentPlan ?? null]));
+  /* แผนของใบเอง (0441 · ปรับก่อนอนุมัติ) ชนะแผนของ QT — รายใบ (ใบ Rev. หลายใบใช้ QT ใบเดียวกัน) */
+  const planByOrder = new Map((orders || []).filter((o) => o.paymentPlan).map((o) => [o.id, o.paymentPlan]));
 
   const customerIds = [...new Set((orders || []).map((o) => o.customerId).filter(Boolean))];
   const customerById = new Map();
@@ -267,7 +269,7 @@ async function loadLedger(supabase, todayIso) {
     })
     .filter(Boolean);
   /* ป้ายระดับใบ — ประทับที่นี่ = ชุดก่อนกรองเสมอ (ตัวกรองของ GET ทำงานหลังฟังก์ชันนี้คืนค่า) */
-  stampOrderReplanned(ledger, planByQuotation);
+  stampOrderReplanned(ledger, planByQuotation, planByOrder);
   return ledger;
 }
 

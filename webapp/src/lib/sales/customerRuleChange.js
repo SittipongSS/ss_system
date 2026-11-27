@@ -11,6 +11,7 @@
 import { planRuleChange } from '@/lib/sales/billingRule';
 import { installmentActionError, pipelineInstallmentLock, withLiveAmounts } from '@/lib/sales/salesOrderPayments';
 import { historicalInstallmentLock, isHistoricalOrder } from '@/lib/sales/historicalOrders';
+import { orderPaymentPlan } from '@/lib/sales/salesOrderPaymentPlan';
 import {
   installmentDateLock, scheduleManyCheck, scheduleManyConflictMessage, scheduleManyShapeError,
 } from '@/lib/sales/installmentScheduleMany';
@@ -31,7 +32,7 @@ export const scheduleGateOptions = (order, rows) => ({
 /* งวดของใบในรูปที่จอเห็น — งวดร่างของใบ pipeline เดินตามแผน QT สด ๆ (ตัวเดียวกับ route งวด · ใบย้อนหลังไม่ทับ) */
 export const installmentsForScreen = (order, rows) => (isHistoricalOrder(order)
   ? rows
-  : withLiveAmounts(rows, order?.quotation?.paymentPlan, order?.totalAmount));
+  : withLiveAmounts(rows, orderPaymentPlan(order), order?.totalAmount));
 
 const orderCode = (order) => String(order?.orderNumber || '').trim() || String(order?.id || '');
 const rowFacts = (row, order) => ({
