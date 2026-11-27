@@ -48,6 +48,9 @@ export function salesOrderApprovalContent(order = {}, lines = order.lines || [])
     actualAmount: money(order.actualAmount),
     notes: String(order.notes || '').trim(),
     lines: normalizedLines,
+    /* แผนงวดของใบ (mig 0441 · ปรับก่อนอนุมัติ) — **มีคีย์เฉพาะใบที่ตั้งแผนของตัวเอง**
+       ⛔ ใส่ `paymentPlan: null` ให้ทุกใบ = ลายนิ้วมือของใบที่อนุมัติแล้วทุกใบขยับพร้อมกัน (เหตุผลเดียวกับ packQty · ยาม Golden) */
+    ...(order.paymentPlan && typeof order.paymentPlan === 'object' ? { paymentPlan: order.paymentPlan } : {}),
   };
 }
 
