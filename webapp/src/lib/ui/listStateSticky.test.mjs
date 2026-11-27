@@ -16,6 +16,8 @@ import { join, relative } from "node:path";
      LS1 useState ที่ชื่อเป็นค่าของรายการ (ค้นหา · ตัวกรอง · เรียง · จัดกลุ่ม · กลุ่มที่ย่อ) — ใช้ useStickyState/useStickySet
      LS2 usePagination(...) ไม่ส่ง stickyKey — กดกลับแล้วได้หน้า 1 ทั้งที่อ่านอยู่หน้า 4
      LS3 useSortableTable(...) ไม่ส่ง { stickyKey } — กดกลับแล้วลำดับคอลัมน์หาย
+     LS4 แท็บกรอง (Segmented · Tabs · ChoiceChips) ที่ value ผูกกับ useState — ชื่อตัวแปรอะไรก็ได้ (ทั้งหมด/ฉบับร่าง/
+         รออนุมัติ… ชื่อ `tab` `status` `view` ที่ LS1 ไม่จับ · คำถามเจ้าของ 27/11 "แท็บพวกนี้ทั้งระบบค้างสถานะด้วยใช่ไหม")
    ข้อยกเว้น = LIST_STATE_EXEMPT ข้างล่าง (ต้องมีเหตุผล) · ข้อยกเว้นที่ไม่ตรง violation จริงสักจุด = ค้าง ⇒ ตก */
 
 const WEBAPP = process.cwd();
@@ -70,6 +72,17 @@ function scan() {
         const m = line.match(/const \[(\w+), set\w+\] = useState\b/);
         if (m && LIST_STATE_NAME.test(m[1])) found.push({ file, rule: "LS1", name: m[1], line: i + 1 });
       });
+      /* LS4 — ตัวแปรที่ value ของแท็บชี้ ประกาศด้วย useState ตรง ๆ ในไฟล์เดียวกัน */
+      const tabRe = /<(Segmented|Tabs|ChoiceChips)\b([\s\S]*?)\/?>/g;
+      let tm;
+      while ((tm = tabRe.exec(src))) {
+        const bound = tm[2].match(/\b(?:value|active|selected)=\{([A-Za-z_$][\w$]*)\}/);
+        if (!bound) continue;
+        const name = bound[1];
+        if (new RegExp(`const \\[\\s*${name}\\s*,\\s*set\\w+\\s*\\]\\s*=\\s*useState\\b`).test(src)) {
+          found.push({ file, rule: "LS4", name, line: src.slice(0, tm.index).split("\n").length });
+        }
+      }
       for (const [rule, call] of [["LS2", "usePagination("], ["LS3", "useSortableTable("]]) {
         let at = src.indexOf(call);
         while (at !== -1) {
@@ -94,6 +107,18 @@ function scan() {
 const DEMO_REASON = "หน้าตัวอย่าง primitive (/settings/design-preview) — ตารางเดโมไม่มีแถวที่กดเข้าใบได้ จึงไม่มีการกลับมาให้จำค่า";
 const LIST_STATE_EXEMPT = [
   {
+    file: "src/app/database/assets/page.js",
+    rule: "LS4",
+    name: "tab",
+    reason: "แท็บ เครื่อง/รุ่น ถืออยู่ใน URL (?tab= · router.replace + effect ซิงก์) — กดย้อนได้คืนจาก URL · ปุ่มกลับจากหน้าเครื่องพากลับแท็บเครื่องซึ่งเป็นค่าตั้งต้นอยู่แล้ว และแท็บรุ่นไม่มีแถวที่กดเข้าใบ",
+  },
+  {
+    file: "src/app/requests/page.js",
+    rule: "LS4",
+    name: "activeScope",
+    reason: "activeScope = ขอบเขตที่ server ยอมให้จริง (header X-Request-Scope) ไม่ใช่ค่าที่ผู้ใช้เลือก — ค่าที่ผู้ใช้เลือกคือ `scope` ซึ่งเป็น useStickyState แล้ว",
+  },
+  {
     file: "src/app/service/schedule/page.js",
     rule: "LS1",
     name: "collapsed",
@@ -103,6 +128,15 @@ const LIST_STATE_EXEMPT = [
   { file: "src/app/settings/design-preview/page.js", rule: "LS1", name: "filters", reason: DEMO_REASON },
   { file: "src/app/settings/design-preview/page.js", rule: "LS1", name: "teamFilter", reason: DEMO_REASON },
   { file: "src/app/settings/design-preview/page.js", rule: "LS1", name: "demoChipFilter", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "tab", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "view", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "queueTab", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "demoBrand", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "demoChipFilter", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "demoListView", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "recordStatus", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "recordRole", reason: DEMO_REASON },
+  { file: "src/app/settings/design-preview/page.js", rule: "LS4", name: "group", reason: DEMO_REASON },
 ];
 
 test("LS1–LS3: ค่าที่กำหนดแถว/ลำดับ/หน้าของรายการต้องจำไว้ตอนกดเข้าใบแล้วกดกลับ", () => {

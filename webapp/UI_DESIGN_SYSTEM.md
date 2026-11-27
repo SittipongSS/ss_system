@@ -397,7 +397,8 @@ Segmented เป็นขอบเขตหน้าหรือรายกา�
   (หน้าที่เพิ่งคืนจะถูกดีดกลับหน้า 1) · Pager บีบเลขหน้าที่เกินเองแล้ว
 - ค่าจาก URL (ลิงก์ป้ายตัวเลขบนเมนู `?count=` · `?tab=`) คือความตั้งใจที่ชัดกว่า — ต้องชนะค่าที่จำไว้
 - **ไม่จำ**: ช่องค้นหาในตัวเลือก/โมดัล · ฟอร์ม · แถวที่ติ๊กเลือก · สถานะเปิดโมดัล
-- ด่าน `src/lib/ui/listStateSticky.test.mjs` (LS1 `useState` ชื่อค่ารายการ · LS2 Pager ไม่มี `stickyKey` · LS3 ตารางเรียงไม่มี `stickyKey`)
+- ด่าน `src/lib/ui/listStateSticky.test.mjs` (LS1 `useState` ชื่อค่ารายการ · LS2 Pager ไม่มี `stickyKey` · LS3 ตารางเรียงไม่มี `stickyKey` ·
+  LS4 แท็บกรอง `Segmented`/`Tabs`/`ChoiceChips` ที่ `value` ผูกกับ `useState` ไม่ว่าชื่ออะไร)
   ตรวจทุกไฟล์ที่ import เครื่องมือรายการหรือ `ListPanel` · ข้อยกเว้นอยู่ใน `LIST_STATE_EXEMPT` พร้อมเหตุผล
 
 ## เปลือกตั้งค่า — `/settings` · `/users` · `/audit` (มติผู้ใช้ 2026-08-20)
