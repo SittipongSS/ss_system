@@ -23,7 +23,7 @@ function* walk(dir) {
 
 import {
   CONTRACT_BELL_KINDS, CUSTOMER_BELL_KINDS, EXCISE_BELL_KINDS, LEAD_BELL_KINDS, PRODUCT_SPEC_DOC_BELL_KINDS, QUOTATION_BELL_KINDS,
-  SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS, TASK_BELL_KINDS, GRANT_BELL_KINDS,
+  SALES_ORDER_BELL_KINDS, SERVICE_BELL_KINDS, TASK_BELL_KINDS, GRANT_BELL_KINDS, HANDOVER_BELL_KINDS,
   NOTIFICATION_BOXES, entityLabel, entityTitle, listNotificationPage, markAllRead,
   notificationBox, notificationCursor, notificationHref, notifyThreadUpdate,
   recipientsForUpdate, threadParticipants, unreadCount,
@@ -265,7 +265,7 @@ test('⭐ กระดิ่งกรองเหลือคำร้อง + �
     'entityType.eq.dept_request,entityType.eq.system_issue,'
     + [...TASK_BELL_KINDS, ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
       ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS, ...QUOTATION_BELL_KINDS,
-      ...GRANT_BELL_KINDS]
+      ...GRANT_BELL_KINDS, ...HANDOVER_BELL_KINDS]
       .map((k) => `kind.eq.${k}`).join(','),
   ]);
 });
@@ -277,7 +277,7 @@ test('⭐ มอบหมายงานเข้ากล่องด้วย 
   assert.deepEqual(NOTIFICATION_BOXES.bell.kinds,
     [...TASK_BELL_KINDS, ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS,
       ...CONTRACT_BELL_KINDS, ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS,
-      ...QUOTATION_BELL_KINDS, ...GRANT_BELL_KINDS]);
+      ...QUOTATION_BELL_KINDS, ...GRANT_BELL_KINDS, ...HANDOVER_BELL_KINDS]);
 });
 
 /* ── ลีดเข้ากระดิ่ง (2026-08-25) ────────────────────────────────────────────

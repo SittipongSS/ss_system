@@ -39,9 +39,9 @@
     "settings": {
       "legacyTable": 8,
       "legacySurface": 23,
-      "inlineStyle": 63,
-      "rawButtonClass": 87,
-      "rawInputClass": 32
+      "inlineStyle": 54,
+      "rawButtonClass": 84,
+      "rawInputClass": 31
     },
     "shared": {
       "legacyTable": 2,
