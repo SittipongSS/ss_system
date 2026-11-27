@@ -132,7 +132,7 @@ test('ชื่อเอกสารอยู่กลางหน้าเน�
 test('ข้อมูลคู่สัญญาและวันที่พิมพ์เป็นตัวหนา · ตัวเลขเงื่อนไขไม่หนา', () => {
   const html = buildContractHTML(CONTRACT, { company: COMPANY });
   assert.match(html, /<strong class="fill">บริษัท ลา วิช บางกอก จำกัด<\/strong>/);
-  assert.match(html, /<strong class="fill">0105563135135<\/strong>/);
+  assert.match(html, /<strong class="fill">0-1055-63135-13-5<\/strong>/);
   assert.match(html, /<strong class="fill">20 เดือน สิงหาคม พ.ศ. 2569<\/strong>/);
   // เงื่อนไขตัวเลขต้องเป็นข้อความธรรมดา — หนาหมดทั้งฉบับ = ไม่มีอะไรเด่น
   assert.doesNotMatch(html, /<strong class="fill">30-45<\/strong>/);
@@ -285,7 +285,7 @@ test('เอกสารบันทึกเพิ่มเติมใช้�
   assert.match(html, /ฉบับลงวันที่ <strong class="fill">20 สิงหาคม พ\.ศ\. 2569<\/strong>/);
   /* ฝั่งผู้รับจ้างในความนำต้องมีเลขทะเบียนนิติบุคคลเท่าฝั่งผู้ว่าจ้าง (ต้นฉบับเขียนไว้ฝั่งเดียว)
      — มติผู้ใช้ 2026-08-21 บันทึกไว้ที่ docs/sales-contract-plan.md §5.2 */
-  assert.match(html, /กับ .{0,80}เลขทะเบียนนิติบุคคล <strong class="fill">0105557081665<\/strong>/);
+  assert.match(html, /กับ .{0,80}เลขทะเบียนนิติบุคคล <strong class="fill">0-1055-57081-66-5<\/strong>/);
   assert.doesNotMatch(html, /docSubtitle/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
 });

@@ -7,7 +7,7 @@
 // ⭐ คอลัมน์ = หน้าตาเดียวกับตาราง (ช่องละหลายบรรทัด: บรรทัดแรกเป็นตัวหลัก ที่เหลือเป็นบรรทัดรองตัวเล็ก) ·
 //   ช่องท้ายเปลี่ยนตามแท็บเหมือนช่องที่ห้าของตาราง (ส่งโดย · ตีกลับ · ลงเสร็จ) · ไม่มีคอลัมน์ปุ่ม
 // ⚠️ ไฟล์นี้ไม่แตะ DOM และไม่รู้ว่า "วันนี้" คือวันไหน — ผู้เรียกส่งวันไทยมา (กติกาเดียวกับ bomBoard.js)
-import { fmtDate, fmtNationalId, fmtNumber } from '@/lib/format';
+import { fmtDate, fmtTaxId, fmtNumber } from '@/lib/format';
 import { brandBoth } from '@/lib/master/brands';
 import { registryLabel } from '@/lib/master/registryLabel';
 import { branchValue } from '@/lib/master/thaiAddress';
@@ -85,7 +85,7 @@ export function bomPrintRow(row, { todayIso = null } = {}) {
       row?.customerArCode || '-',
       row?.customerNameTh,
       row?.customerNameEn,
-      hasCustomer ? `Tax ID ${row?.customerTaxId ? fmtNationalId(row.customerTaxId) : '-'} · สาขา ${branchValue(row?.customerBranchCode)}` : null,
+      hasCustomer ? `Tax ID ${row?.customerTaxId ? fmtTaxId(row.customerTaxId) : '-'} · สาขา ${branchValue(row?.customerBranchCode)}` : null,
       brand ? `แบรนด์ ${brand}` : null,
     ),
     kind: `${BOM_FORMULA_KIND_LABEL[kind] || ''}${kind === 'set' && items.length ? ` (${items.length})` : ''}`,

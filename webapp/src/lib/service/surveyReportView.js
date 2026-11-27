@@ -44,7 +44,7 @@
 //   คำต้องห้ามในหมายเหตุพื้นที่ + อักขระที่ฟอนต์ของกระดาษไม่มี (ทุกข้อความที่ลูกค้าเห็น)
 import { documentFormLine } from '@/lib/documentBrand';
 import { uncoveredChars } from '@/lib/documents/documentFontRanges';
-import { fmtDate, fmtDateTime, fmtNumber, isoDateToWeekdayText } from '@/lib/format';
+import { fmtDate, fmtDateTime, fmtNumber, fmtTaxId, isoDateToWeekdayText } from '@/lib/format';
 import { packageMixText } from './packageSizes';
 /* ป้ายแถวภาคผนวก ง ของใบยืนยันหน้างาน (งวด S5 · F1: ประโยคของงวดอยู่ไฟล์นั้นที่เดียว) — ไฟล์นั้นเป็นตรรกะล้วน ไม่แตะฐาน */
 import { SURVEY_CONFIRM_OF_LABEL } from './surveyConfirmLink';
@@ -164,7 +164,7 @@ const zoneTagOf = (zone) => [DRAWING_WORD, text(zone.drawingBy), zone.drawingAt 
 export function surveyReportCompanyLines(company) {
   const c = company || {};
   const contact = [c.tel && `โทร ${c.tel}`, c.line && `Line ${c.line}`, c.website].filter(Boolean).join(' · ');
-  return [c.address, c.taxId && `เลขประจำตัวผู้เสียภาษี ${c.taxId}`, contact].filter(Boolean);
+  return [c.address, c.taxId && `เลขประจำตัวผู้เสียภาษี ${fmtTaxId(c.taxId)}`, contact].filter(Boolean);
 }
 
 function headPart(snapshot) {

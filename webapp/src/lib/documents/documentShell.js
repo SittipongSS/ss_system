@@ -16,7 +16,7 @@ import { SYSTEM_DOCUMENT_LOGO_URL } from '@/lib/documentBrand';
 import { DOCUMENT_FONT_FACE_CSS } from '@/lib/sales/quotationDocumentFonts';
 import { PRINT_FONT_STACK } from '@/lib/printTheme';
 import { PAPER_SIZES } from '@/lib/documents/paperSize';
-import { fmtNumber } from '@/lib/format';
+import { fmtNumber, fmtTaxId } from '@/lib/format';
 
 export const esc = (s) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -136,7 +136,7 @@ export function documentHeader({
         <div>
           <strong>${val(companyName)}</strong>
           <p>${val(company.address)}</p>
-          <p>${esc(label.taxId)} ${val(company.taxId)}</p>
+          <p>${esc(label.taxId)} ${val(fmtTaxId(company.taxId))}</p>
           <p>${esc(label.phone)} ${val(company.phone)} · ${esc(label.line)} ${val(company.line)}${company.website ? ` · ${esc(company.website)}` : ''}</p>
         </div>
       </div>

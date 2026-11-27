@@ -20,7 +20,7 @@ import { amountInWords } from '@/lib/documents/amountInWords';
 import { englishDocumentGaps, englishGapMessages } from '@/lib/sales/docLanguageGaps';
 // คอลัมน์แพ็คต่อเดือน: ตัวตัดสินของทั้งใบ + ตัวอ่านเลขแพ็คของบรรทัด — ชุดเดียวกับจอและตัวแบ่งหน้า (ห้ามมีสำเนาที่นี่)
 import { hasPackColumn, linePackQty } from '@/lib/sales/linePackView';
-import { fmtNumber, fmtPercent, fmtPhone } from '@/lib/format';
+import { fmtNumber, fmtPercent, fmtPhone, fmtTaxId } from '@/lib/format';
 import {
   DOCUMENT_ACCENT_THEMES,
   ITEM_TABLE_PACK_CSS,
@@ -89,7 +89,7 @@ function partyGrid(model, L) {
       name: model.customer.name,
       address: model.customer.address,
       rows: [
-        { label: L.t('customerTaxId'), value: model.customer.taxId },
+        { label: L.t('customerTaxId'), value: fmtTaxId(model.customer.taxId) },
         /* ⭐ สาขากลับมาอยู่บนเอกสาร — แถวนี้เคยถูกตัดออก (2026-08-05) ด้วยเหตุผลว่า
            "สาขาอยู่ในที่อยู่อยู่แล้ว" ซึ่งเป็นจริงตอนที่อยู่ยังเป็นข้อความก้อนเดียว
            วันรุ่งขึ้น (2026-08-06) เลขสาขากลับมาเป็น **ฟิลด์แยกของแถวที่อยู่** และ
