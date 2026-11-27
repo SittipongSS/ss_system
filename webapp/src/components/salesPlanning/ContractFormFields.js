@@ -15,6 +15,7 @@ import MoneyInput from "@/components/ui/MoneyInput";
 import Textarea from "@/components/ui/Textarea";
 import FormZone from "@/components/ui/FormZone";
 import DateInput from "@/components/ui/DateInput";
+import NationalIdInput from "@/components/ui/NationalIdInput";
 
 // ช่องที่เป็น "คู่สัญญา" — ที่เหลือถือเป็นเงื่อนไขทั้งหมด
 const PARTY_KEYS = new Set([
@@ -28,6 +29,17 @@ function FieldControl({ field, value, disabled, onChange }) {
   }
   if (field.type === "money") {
     return <MoneyInput value={value ?? ""} disabled={disabled} onChange={onChange} />;
+  }
+  /* เลขทะเบียน/เลขผู้เสียภาษี — ช่องเดียวกับฟอร์มลูกค้า: ขีดขึ้นเองตอนพิมพ์ เก็บตัวเลขล้วน
+     (คำขอเจ้าของ 27/11 · กระดาษสัญญาจัดรูปด้วย fmtTaxId อยู่แล้ว จอตอนกรอกต้องตรงกัน)
+     ⚠️ ค่าที่มีตัวอักษร (ลูกค้าต่างชาติ — ค่าตั้งต้นเติมจาก `customer.taxId`) ใช้ช่องข้อความเดิม
+        เพราะ NationalIdInput ทิ้งทุกอย่างที่ไม่ใช่ตัวเลข = เลขพาสปอร์ตหายเงียบตอนแก้ */
+  if (field.type === "taxId") {
+    const text = String(value ?? "");
+    if (/[^\d\s-]/.test(text)) {
+      return <Input value={text} disabled={disabled} onChange={(e) => onChange(e.target.value)} />;
+    }
+    return <NationalIdInput value={text.replace(/\D/g, "")} disabled={disabled} onChange={onChange} />;
   }
   if (field.type === "number") {
     return (
