@@ -100,13 +100,13 @@ export default function OrderDetailModal({ order, open, onClose }) {
             )}
             {order.exciseTaxPaidAmount != null && (
               <div>
-                <div className="text-[var(--text-3)] text-xs">ยอดชำระจริง</div>
+                <div className="text-[var(--text-3)] text-xs">ยอดตามใบเสร็จ</div>
                 <div className="font-mono text-[var(--text-2)]">{fmtMoney(order.exciseTaxPaidAmount)}</div>
               </div>
             )}
             {order.taxFormRef && (
               <div>
-                <div className="text-[var(--text-3)] text-xs">แบบ ภส.</div>
+                <div className="text-[var(--text-3)] text-xs">เลขที่รับแบบ ภส.</div>
                 <div className="font-mono text-[var(--text-2)]">{order.taxFormRef}</div>
               </div>
             )}

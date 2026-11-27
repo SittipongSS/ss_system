@@ -641,7 +641,7 @@ const RAW_RADIUS_CAP = 20;
    ทั้งคู่คำนวณตอนรัน ไม่มีลิเทอรัลให้อ่าน ⇒ ไม่อยู่ในเลข 73 และจะไม่มีวันอยู่
    📉 71 → 70 (2026-11-15) — ยุบดีล/โครงการ P2d: ชิปโครงการ (LINK_PROJECT · borderRadius 4) บนคิวงาน /pm/tasks ถูกถอด
    📉 70 → 67 (2026-11-16) — ยุบโครงการ P3a: ถอดหน้าโครงการ (/sa/projects · รายละเอียด · shipment-prep) + ProjectDealsHub · DeliveriesPanel · SalesProjectCreateModal + ปุ่ม/โมดัลโครงการบนหน้า PO สหมิตร */
-const RAW_RADIUS_JSX_CAP = 67;
+const RAW_RADIUS_JSX_CAP = 66;
 
 /* เงาที่ยังเขียนเอง — เพดานรวม กติกาเดียวกับ RAW_SPACING_CAP
 

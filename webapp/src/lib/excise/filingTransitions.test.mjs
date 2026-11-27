@@ -15,17 +15,19 @@ const RA = { sales: false, ra: true };
 const ADMIN = { sales: true, ra: true };
 const ALL = ["draft", "pending", "received", "filing", "complete", "delivered", "rejected"];
 const ok = (args) => filingTransitionError(args) === null;
+// ช่องบังคับครบสี่ช่องของขั้นชำระแล้ว (มติเจ้าของ 27/11 — แบบ ภส. + ใบเสร็จกรม)
+const PAID = { taxFormRef: "6920073720", exciseReceiptNumber: "N00030069/0072584", taxPaidDate: "2026-07-07", exciseTaxPaidAmount: 737721.6 };
 
 test("v3: บันทึกมีสองขั้น กำลังยื่น → ชำระแล้ว · ปลายทางเดียวในตาราง · ใบเสร็จกรมบังคับตอนปิด", () => {
   assert.deepEqual(TRACKS.payment.stages.map((s) => s.key), ["filing", "complete"]);
   assert.equal(TRACKS.payment.stages.find((s) => s.key === "filing").owner, "RA");
   assert.equal(TRACKS.payment.stages.at(-1).done, true, "ชำระแล้ว = จบ (ไม่มีขั้นส่งเอกสาร)");
   assert.deepEqual(Object.keys(FILING_TRANSITIONS), ["complete"], "กำลังยื่นเกิดตอนเขียนบันทึก ไม่ใช่ปลายทางของ PATCH");
-  assert.ok(ok({ from: "filing", to: "complete", caps: RA, fields: { exciseReceiptNumber: "ER-1" } }));
+  assert.ok(ok({ from: "filing", to: "complete", caps: RA, fields: PAID }));
 });
 
 test("ข้ามขั้นไม่ได้ — ทุกคู่ที่ไม่อยู่ในตาราง ตอบ 400 แม้เป็นแอดมิน · ปลายทางเก่าของ PR5 ปิดหมด", () => {
-  const fields = { exciseReceiptNumber: "x", rejectionReason: "x" };
+  const fields = { ...PAID, rejectionReason: "x" };
   for (const from of ALL) {
     const result = filingTransitionError({ from, to: "complete", caps: ADMIN, fields });
     if (from === "filing") assert.equal(result, null);
@@ -42,12 +44,15 @@ test("ข้ามขั้นไม่ได้ — ทุกคู่ที่
 });
 
 test("ใครทำ: ฝ่ายขายไม่มีขั้นไหนบนเส้นนี้ (403)", () => {
-  assert.equal(filingTransitionError({ from: "filing", to: "complete", caps: SA, fields: { exciseReceiptNumber: "x" } }).status, 403);
+  assert.equal(filingTransitionError({ from: "filing", to: "complete", caps: SA, fields: PAID }).status, 403);
 });
 
-test("เลขใบเสร็จบังคับที่ server — ว่าง/ช่องว่างล้วนไม่ผ่าน · ยกเว้นภาษีทั้งใบไม่ต้องมีเลขใบเสร็จ", () => {
-  for (const blank of [undefined, null, "", "   "]) {
-    assert.match(filingTransitionError({ from: "filing", to: "complete", caps: RA, fields: { exciseReceiptNumber: blank } }).error, /ใบเสร็จสรรพสามิต/);
+test("ช่องบังคับสี่ช่องที่ server — ว่าง/ช่องว่างล้วนไม่ผ่าน ทีละช่อง · ยกเว้นภาษีทั้งใบไม่ต้องมีอะไร", () => {
+  const labels = { taxFormRef: /เลขที่รับแบบ ภส\./, exciseReceiptNumber: /ใบเสร็จสรรพสามิต/, taxPaidDate: /วันรับเงิน/, exciseTaxPaidAmount: /ยอดรวมตามใบเสร็จ/ };
+  for (const [key, label] of Object.entries(labels)) {
+    for (const blank of [undefined, null, "", "   "]) {
+      assert.match(filingTransitionError({ from: "filing", to: "complete", caps: RA, fields: { ...PAID, [key]: blank } }).error, label, `${key}=${blank}`);
+    }
   }
   assert.ok(ok({ from: "filing", to: "complete", caps: RA, exempt: true }));
 });
@@ -122,11 +127,18 @@ const modal = codeOnly(read("../../components/excise/FilingWorkView.js")); // �
 test("route: ตารางกลางตัดสินขั้นชำระแล้ว · ยกเว้นจากทะเบียน (stampExemptFlags) · บันทึกตรึงรายการ ห้ามแก้/คิดใหม่", () => {
   assert.match(route, /filingTransitionError\(\{\s*from: order\.status, to: target, caps: \{ sales: isSales, ra: isLegal \}, exempt, fields,/);
   assert.match(route, /stampExemptFlags\(supabase, \[\{ \.\.\.order, items: exemptItems \|\| \[\] \}\]\)/);
-  assert.match(route, /exciseReceiptNumber: updates\.exciseReceiptNumber !== undefined \? updates\.exciseReceiptNumber : order\.exciseReceiptNumber/);
+  assert.match(route, /const fields = mergedPaidFields\(updates, order\);/, "ช่องบังคับนับค่าที่ส่งมา + ค่าที่เก็บไว้");
   assert.match(route, /if \(Array\.isArray\(body\.items\) \|\| body\.recalcFromSalesOrder === true\)/, "แก้รายการ/คิดใหม่ต้องถูกปฏิเสธ");
   assert.doesNotMatch(route, /insertOrderItems|filingItemRows|skipMoneyReason/, "ทางสลับรายการ + ด่านข้ามของ PR5 ต้องไม่กลับมา");
-  // D11: แก้เลขใบเสร็จหลังชำระแล้วได้ แต่ห้ามล้างจนว่าง
-  assert.match(route, /order\.status === 'complete' && updates\.exciseReceiptNumber !== undefined && !updates\.exciseReceiptNumber/);
+  // D11: แก้ข้อมูลการชำระหลังชำระแล้วได้ แต่ห้ามล้างช่องบังคับช่องไหนจนว่าง (ตารางเดียวกับด่านปิดงาน)
+  assert.match(route, /if \(editingPaid\) \{\s*const cleared = FILING_TRANSITIONS\.complete\.requires/);
+});
+
+test("มติ 27/11: ปิดงานต้องมีไฟล์แบบ ภส. + ใบเสร็จบนบันทึก (อ่านพัง = 500) · ยอดไม่ตรงต้องมีเหตุผล · เหตุผลลงเธรด", () => {
+  assert.match(route, /if \(target === 'complete' && !exempt\) \{\s*const docs = await paymentDocTypesOf\(supabase, id\);\s*if \(docs\.error\) return Response\.json\([^)]*\{ status: 500 \}\);/);
+  assert.match(route, /filingPaymentError\(\{\s*fields, docTypes: docs\.types, totalTax: order\.totalTax, amountReason: body\.paidAmountReason, today: businessDate\(\),/);
+  assert.match(route, /if \(editingPaid && amountTouched\) \{\s*const amountError = paidAmountError\(order\.totalTax, updates\.exciseTaxPaidAmount, body\.paidAmountReason\);/);
+  assert.match(route, /if \(amountNote\) \{\s*await appendUpdate\(supabase, \{ entityType: 'excise_order', entityId: id, \.\.\.amountNote, user \}\);/);
 });
 
 test("D10 ยกเลิกการเริ่มยื่น: เฉพาะ RA · เฉพาะกำลังยื่น (แอดมินทุกสถานะ) · เหตุผล 10–500 ตัว · audit เก็บเหตุผล", () => {
