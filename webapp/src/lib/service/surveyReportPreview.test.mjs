@@ -299,7 +299,8 @@ test('ตัวสลับฉบับ: ไม่ส่ง/ค่าแปล�
   assert.doesNotMatch(control, /<select|MenuSelect|<Select\b/);
   assert.match(page, /buildStandardPreviewHTML\(documentKey, standard, \{ audience \}\)/);
   assert.match(page, /\[documentKey, standard, audience\]/);
-  assert.match(page, /useState\(DOCUMENT_AUDIENCES\[0\]\)/);
+  // ค่าตั้งต้น = ฉบับลูกค้า (จำไว้เฉพาะตอนกดกลับมาจากหน้าพรีวิวเต็ม — useStickyState)
+  assert.match(page, /useStickyState\("previewAudience", DOCUMENT_AUDIENCES\[0\]\)/);
   assert.match(page, /setSelectedKey\(key\); setEditRow\(null\); setViewRow\(null\); setPreviewAudience\(DOCUMENT_AUDIENCES\[0\]\);/);
   // ทุกที่ที่วาดใบตัวอย่าง (ดูเฉย ๆ · คอลัมน์ขวาตอนแก้ · ลิ้นชัก) มีตัวสลับคู่กัน และส่งค่าเดียวกันให้พรีวิว
   assert.equal(count(page, '<PreviewAudienceSwitch '), 3);

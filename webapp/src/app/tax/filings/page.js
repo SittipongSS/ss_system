@@ -73,21 +73,23 @@ function FilingsPageInner() {
     () => FILING_FILTERS.filter((f) => f.key !== "mine" || myDept === "RA"),
     [myDept],
   );
-  const [filter, setFilter] = useState(() => (deptOf(role) === "RA" ? "mine" : "all"));
+  const [filter, setFilter] = useStickyState("filter", deptOf(role) === "RA" ? "mine" : "all");
   const [search, setSearch] = useStickyState("search", "");
   /* ⭐ ตัวกรอง + ปุ่มโหลดที่ย้ายมาจากหน้า /tax/reports ที่ถูกยุบทิ้ง (มติผู้ใช้ 2026-08-29)
      — ชุดเดียวกับชิปและช่องค้นหา ไม่มีตัวกรอง "รายงาน" แยกอีกชุด */
-  const [customerIds, setCustomerIds] = useState([]);
+  const [customerIds, setCustomerIds] = useStickyState("customerIds", []);
   /* ⭐ จาก–ถึง = **วันที่ส่งของ** (เจ้าของ 04/11 · V31 — คอลัมน์แรกของตาราง) · งานที่ยังไม่ส่ง ("—") ผ่านเสมอ (กติกาเดียวกับ withinDateRange)
      🐞 เดิมกรองด้วยวันที่งานถึงขั้นปัจจุบัน (ใบค่าสรรพสามิตอนุมัติ) ซึ่งไม่มีบนจอ ⇒ งานหายโดยไม่มีอะไรบอกเหตุ */
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useStickyState("from", "");
+  const [to, setTo] = useStickyState("to", "");
   /* ช่วงวันเริ่มยื่นจากการ์ด "กำลังยื่น/ชำระแล้ว" บนภาพรวม (`?filedFrom=&filedTo=` · ตัวนับเดียวกับการ์ด · ตรวจตัวเลข M7)
      — ป้ายบอกพร้อมปุ่มล้างเหนือตาราง ไม่ใช่ตัวกรองที่มองไม่เห็น */
-  const [filedFrom, setFiledFrom] = useState("");
-  const [filedTo, setFiledTo] = useState("");
+  const [filedFrom, setFiledFrom] = useStickyState("filedFrom", "");
+  const [filedTo, setFiledTo] = useStickyState("filedTo", "");
   const [selected, setSelected] = useState(() => new Set());
   const [exporting, setExporting] = useState(""); // "" · "print" · "xlsx"
+  /* ⚠️ ต้องประกาศหลัง useStickyState ที่มันตั้ง — effect วิ่งตามลำดับ ⇒ พารามิเตอร์ใน URL ทับค่าที่คืนจากที่จำไว้
+     (ลิงก์จากการ์ดภาพรวม = เจตนาของผู้กด ต้องชนะ) · ไม่มีพารามิเตอร์ = ไม่แตะ */
   useEffect(() => {
     const params = searchParams;
     const s = params.get("status");
@@ -117,7 +119,7 @@ function FilingsPageInner() {
   const { data: tableRows, loading: lTable, error: tableError, staleError: tableStale, errorDetail: tableDetail, loaded: tableLoaded, reload: reloadTable } = useApiList(canReadTable ? "/api/tax/orders/table" : null);
   const detailByKey = useMemo(() => new Map((tableRows || []).map((row) => [row.key, row])), [tableRows]);
   /* เดือนที่ส่ง (หัวตารางเดิม "M.11/69" · มติเจ้าของ 25/11 แทน V24 "เดือนที่ยื่น": เดือนของวันที่ส่งของ · สหมิตร = วันที่เอกสาร PO) — "all" = ทุกเดือน */
-  const [month, setMonth] = useState("all");
+  const [month, setMonth] = useStickyState("month", "all");
 
   /* ── ลิงก์เก่า `?start=<คีย์งาน>` (แจ้งเตือน/บุ๊กมาร์กก่อน 25/11 · `?create=` คือคีย์เดิมของ PR5) → หน้าเต็มของงาน ──
      เจ้าของ 25/11: งานรอ RA/กำลังมาเป็นหน้าเต็ม + ปุ่มในการ์ดจัดการ (โมดัลเดิมถอดแล้ว) */

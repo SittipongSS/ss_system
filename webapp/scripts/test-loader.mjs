@@ -26,7 +26,8 @@ register(
       }
       if (s.startsWith('@/')) s = SRC + s.slice(2);
       // next/server ใน package exports ของ next ต้องลงท้าย .js เมื่อ resolve ด้วย Node ตรง ๆ
-      if (s === 'next/server') s = 'next/server.js';
+      // next/navigation เหมือนกัน — ฮุกกลางของหน้ารายการ (useStickyState) ถูกโหลดผ่านไฟล์ lib ที่เทสต์ import
+      if (s === 'next/server' || s === 'next/navigation') s = s + '.js';
       if ((s.startsWith('./') || s.startsWith('../') || s.startsWith('file:')) && !/\\.[mc]?js$/.test(s)) {
         try { return await next(s, ctx); } catch { return next(s + '.js', ctx); }
       }

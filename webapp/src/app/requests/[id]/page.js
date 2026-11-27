@@ -100,8 +100,10 @@ import { isOilScentRow, oilScentConfirmPlan, oilScentDeliveryPreview } from "@/l
 import OilScentDeliveryForm from "@/components/requests/OilScentDeliveryForm";
 import { requestedLabel } from "@/lib/requests/rowLabel";
 
+/* คิวของฝ่ายที่เป็นทางเด้ง → ปลายทางจริง (คู่กับ redirects ใน next.config.mjs) — ใช้กับปุ่ม "กลับรายการคำร้อง" */
+const QUEUE_REDIRECTS = { "/finance/requests": "/finance/payments?view=requests" };
 // ป้ายรายการในหัวโมดัล/ข้อความ — พัฒนาสูตรตัดหาง "→ รหัส" ของป้ายเก่าในฐาน (2026-09-15 · รหัสตอนส่ง ไม่ใช่รหัสปัจจุบัน)
-const itemText = (item) => (item?.lineKind === "product_dev" ? requestedLabel(item?.label, item?.categoryCode) : item?.label);
+const itemText =(item) => (item?.lineKind === "product_dev" ? requestedLabel(item?.label, item?.categoryCode) : item?.label);
 /* ก้อนที่ส่ง POST /items — คีย์ขีดล่าง (`_files` · `_as` ฯลฯ) เป็นของฟอร์มล้วน ตัดทิ้งทุกระดับ
    (File serialize เป็น {} เปล่า ๆ) · ส่งเป็นหัวน้ำหอม = ไม่มีก้อนสูตร (ม-148) */
 const stripFormKeys = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => !k.startsWith("_")));
@@ -608,9 +610,13 @@ export default function RequestDetailPage() {
   const backTab = req && requestSettled(req)
     ? "history"
     : req?._mine === false ? `queue-${req.dept}` : "mine";
-  const ownQueue = req?.dept === department ? deptQueueHref(department) : null;
+  /* ⚠️ ชี้ **ปลายทางจริง** ไม่ใช่ทางเด้ง — `/finance/requests` เด้งไป `/finance/payments?view=requests` (next.config.mjs)
+     ⇒ pathname ของลิงก์ไม่ตรงหน้าที่เปิดใบนี้มา ปุ่มกลับจึงถูกนับเป็น "เข้าใหม่" แล้วคิวล้างตัวกรองทิ้ง (lib/ui/historyArrival) */
+  const ownQueue = req?.dept === department ? (QUEUE_REDIRECTS[deptQueueHref(department)] || deptQueueHref(department)) : null;
   // คิวของฝ่ายก็มีแท็บประวัติ (`DEPT_QUEUE_TAB_KEYS`) — ใบที่จบแล้วกลับไปที่นั่นเหมือนกัน
-  const ownQueueHref = ownQueue && backTab === "history" ? `${ownQueue}?tab=history` : ownQueue;
+  const ownQueueHref = ownQueue && backTab === "history"
+    ? `${ownQueue}${ownQueue.includes("?") ? "&" : "?"}tab=history`
+    : ownQueue;
   const back = { href: ownQueueHref || `/requests?tab=${backTab}`, label: "กลับรายการคำร้อง" };
   if (loading) return <Workspace hideHeader back={back}><SkeletonRows rows={5} /></Workspace>;
   if (loadError || !req) {

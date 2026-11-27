@@ -14,6 +14,7 @@
 //   รีเซ็ตรหัสผ่าน — ยังเป็นของแอดมินที่ /users เหมือนเดิม (และตั้งแต่ 2026-09-06
 //   ทางกลับก็จริง: /users ไม่มีช่องทีมแล้ว ทีมมีเจ้าของที่นี่ที่เดียว)
 import { useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { Plus, Search, Shield, UserRound, Users } from "lucide-react";
 import Button from "@/components/ui/Button";
@@ -68,11 +69,12 @@ export default function TeamManager({ department, title, subtitle }) {
      🐞 คอลัมน์ "ประเภท" กินทั้งคอลัมน์เพื่อพิมพ์ "ทีมปฏิบัติงาน" ซ้ำทุกแถว (ค้นด้วยคำนี้ยังเจอ) */
   const multiKind = allowedKindsFor(department).length > 1;
 
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState("active");
-  const [needLead, setNeedLead] = useState(false);
-  const [sortKey, setSortKey] = useState("order");
-  const [dir, setDir] = useState("asc");
+  /* ค้นหา/ตัวกรอง/การเรียง จำไว้เมื่อกดเข้าทีมแล้วกลับมา — คีย์นำหน้า "teams." (อยู่ในหน้าของผู้เรียก) */
+  const [q, setQ] = useStickyState("teams.q", "");
+  const [status, setStatus] = useStickyState("teams.status", "active");
+  const [needLead, setNeedLead] = useStickyState("teams.needLead", false);
+  const [sortKey, setSortKey] = useStickyState("teams.sortKey", "order");
+  const [dir, setDir] = useStickyState("teams.dir", "asc");
   const [draft, setDraft] = useState(null);   // ฟอร์มสร้างทีม (null = ปิด)
   const [assigning, setAssigning] = useState(null);  // คนที่กำลังจัดเข้าทีมครั้งแรก
   const [view] = useResponsiveView({ portrait: "card", landscape: "table" });

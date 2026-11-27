@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import { CalendarDays, ChevronLeft, ChevronRight, Users, ListTodo } from "lucide-react";
 import { useRole, useCan } from "@/lib/roleContext";
@@ -16,7 +17,8 @@ export default function MgmtCalendarPage() {
   const canMgmt = useCan("mgmt:view");
   const router = useRouter();
   const now = new Date();
-  const [cursor, setCursor] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  // เดือนที่ดู จำไว้ (กดเข้ารายการแล้วกดกลับ ได้เดือนเดิม)
+  const [cursor, setCursor] = useStickyState("cursor", { y: now.getFullYear(), m: now.getMonth() });
   const [tasks, setTasks] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [holidays, setHolidays] = useState([]);

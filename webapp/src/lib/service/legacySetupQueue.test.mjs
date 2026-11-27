@@ -536,7 +536,8 @@ test('🔴 M24h: หน้างานเข้าใหม่ — ตัวน�
   assert.match(page, /const legacyCounts = useMemo\(\(\) => legacySetupFilterCounts\(legacySearched\), \[legacySearched\]\);/);
   assert.match(page, /return legacySearched\.filter\(\(row\) => legacySetupMatchesFilter\(row, legacyFilter\)\);/);
   assert.doesNotMatch(page, /legacySetupFilterCounts\(legacyRows\)/, 'ห้ามนับจากแถวก่อนค้นหา');
-  const pickTab = page.match(/const pickTab = useCallback\(\(key\) => \{[\s\S]*?\}, \[\]\);/)?.[0] || '';
+  // ตัวตั้งค่าเป็นของ useStickyState (จำแท็บ/คำค้น/ตัวกรอง · คำขอเจ้าของ 27/11) ⇒ อยู่ใน deps ของ useCallback
+  const pickTab = page.match(/const pickTab = useCallback\(\(key\) => \{[\s\S]*?\}, \[setTab, setSearch, setLegacyFilter\]\);/)?.[0] || '';
   assert.match(pickTab, /setTab\(key\);/);
   assert.match(pickTab, /setSearch\(""\);/);
   assert.match(pickTab, /setLegacyFilter\("all"\);/);

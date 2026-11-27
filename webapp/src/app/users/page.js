@@ -5,6 +5,7 @@ import { notifyToast } from "@/components/ui/Toast";
 import Select from "@/components/ui/Select";
 import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import { useEffect, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Tag from "@/components/ui/Tag";
@@ -69,7 +70,7 @@ export default function UserManagement() {
      — ปุ่มทุกปุ่มยังผูก `canManage` · proxy ปล่อย /users ให้ users:view อยู่แล้ว · API อ่านตรวจ canUser */
   const canView = useCan("users:view") || canManage;
   /* แท็บ (มติข้อ 1: เรื่องสิทธิ์อยู่หน้าเดียวกับผู้ใช้) — ทะเบียนสิทธิ์เสริมโหลดครั้งเดียวให้สองแท็บใช้ร่วม */
-  const [tab, setTab] = useState("users");
+  const [tab, setTab] = useStickyState("tab", "users");
   const registry = useAllGrants(canView);
   const router = useRouter();
   const [users, setUsers] = useState([]);
@@ -95,11 +96,13 @@ export default function UserManagement() {
     role: (u) => ROLE_LABELS[u.role] || u.role || "",
     department: (u) => DEPARTMENT_LABELS[u.department || departmentFor(u.role)] || "",
     lastSignInAt: (u) => (u.lastSignInAt ? new Date(u.lastSignInAt).getTime() : null),
-  });
+  }, null, { stickyKey: "users" });
   const sortedUsers = sort.sorted;
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sortedUsers, {
-      resetKey: `${users.length}|${sort.sortKey}|${sort.sortDir}`,
+      // ⚠️ ห้ามใส่ users.length — เปลี่ยนตอนโหลดเสร็จ ⇒ หน้าที่เพิ่งคืนถูกรีเซ็ตเป็น 1
+      resetKey: `${sort.sortKey}|${sort.sortDir}`,
+      stickyKey: "users",
     });
 
   const fetchUsers = async () => {

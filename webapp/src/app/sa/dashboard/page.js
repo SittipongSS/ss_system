@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowUpRight, LayoutDashboard } from "lucide-react";
@@ -58,33 +59,35 @@ function DashboardContent() {
       .catch(() => { /* ลิงก์ตกไปเป็นแบบไม่เจาะคน — ไม่ต้องล้มทั้งหน้าเพราะเรื่องนี้ */ });
   }, []);
   const currentMonth = thisMonth();
-  const [month, setMonth] = useState(currentMonth);
+  /* แท็บ + งวดทุกตัวของหน้า จำไว้ด้วย useStickyState (กดเข้าใบจากคิว/ฟีดแล้วกดกลับ ได้แท็บและงวดเดิม) */
+  const [month, setMonth] = useStickyState("month", currentMonth);
   /* ติ๊ก "ทุกเดือน" = ทุกเดือน**ของปีที่เลือก** (มติ 2026-07-29 · ท่าเดียวกับหน้าลีด/ดีล)
      ⚠️ อยู่ที่หน้านี้ ไม่ใช่ในแต่ละแท็บ — มันเป็นคู่กับตัวเลือกเดือนบนหัวหน้าซึ่งอยู่ที่นี่
      แท็บที่กินเดือน (`TAB_PERIOD === "month"`) ต้องรับไปใช้ทุกตัว ไม่งั้นติ๊กแล้ว
      ตัวเลขไม่ขยับ = ตัวคุมที่โกหก */
-  const [allMonths, setAllMonths] = useState(false);
+  const [allMonths, setAllMonths] = useStickyState("allMonths", false);
   /* งวดของแท็บ "KPI ลีด" เลือกเป็นช่วงวันได้ (IS-26080023) — แท็บอื่นยังรายเดือน/รายปี
      เหมือนเดิม เพราะตัวเลขของมัน (FC/Actual/เป้า) เป็นของรายเดือนโดยธรรมชาติ
      ⚠️ วันนี้คิดจากวันไทย ไม่ใช่ `new Date()` ของเบราว์เซอร์ — ไม่งั้น "สัปดาห์นี้"
      ของเครื่องที่ตั้ง timezone อื่นจะคนละสัปดาห์กับที่ server นับ */
   const todayTh = useThaiToday({ seed: true }); // วันไทย · อัปเดตเองเมื่อกลับมาที่แท็บข้ามคืน (useThaiToday · งวด 2)
-  const [leadPeriodMode, setLeadPeriodMode] = useState("month");
-  const [leadRange, setLeadRange] = useState(() => ({ from: addDays(todayTh, -13), to: todayTh }));
+  const [leadPeriodMode, setLeadPeriodMode] = useStickyState("leadPeriodMode", "month");
+  const [leadRange, setLeadRange] = useStickyState("leadRange", { from: addDays(todayTh, -13), to: todayTh });
   /* ปีของแท็บผลงานขายเป็น state แยก ไม่ได้เฉือนมาจาก `month` — ของเดิมใช้
      month.slice(0,4) ทำให้ตัวเลือกเดือนกลายเป็นตัวเลือกปีที่พาเดือนติดไปด้วย
      แยกกันแล้ว สลับแท็บไปกลับจึงไม่ลากค่าของอีกฝั่งเปลี่ยนตาม */
-  const [year, setYear] = useState(() => currentMonth.slice(0, 4));
+  const [year, setYear] = useStickyState("year", currentMonth.slice(0, 4));
   // 3 ปีย้อนหลัง–3 ปีข้างหน้า — ชุดเดียวกับหน้าเป้าหมาย (/sa/targets)
   const yearOptions = useMemo(() => {
     const base = Number(currentMonth.slice(0, 4));
     return Array.from({ length: 7 }, (_, index) => String(base - 3 + index));
   }, [currentMonth]);
-  const [tab, setTab] = useState(normalizeTab(searchParams.get("tab")) || "my");
+  /* ?tab= ใน URL (ลิงก์/กระดิ่ง) ชนะค่าที่จำไว้ — effect ประกาศหลังฮุก จึงวิ่งหลังตัวคืนค่า */
+  const [tab, setTab] = useStickyState("tab", normalizeTab(searchParams.get("tab")) || "my");
   useEffect(() => {
     const t = normalizeTab(searchParams.get("tab"));
     if (t) setTab(t);
-  }, [searchParams]);
+  }, [searchParams, setTab]);
 
   /* สิทธิ์ + แท็บที่แสดงจริง + "ถูกปฏิเสธไหม" มาจากตัวเดียวที่ lib (มีเทสต์คุม)
      ⚠️ ส่ง **state `tab`** เข้าไป ไม่ใช่อ่าน searchParams ซ้ำ — กดสลับแท็บเขียนลง state

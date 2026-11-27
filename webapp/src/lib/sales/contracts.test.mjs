@@ -1606,7 +1606,10 @@ test('ด่านซอร์ส L2: ทะเบียนกรองด้ว
   }
   assert.match(page, /กรอง: รอลงนามเกิน \{SIGNATURE_LATE_DAYS\} วัน ×/);
   assert.match(page, /setSourceFilter\(\[\]\); setLateOnly\(false\); \}\}/, 'ล้างตัวกรองล้างมิตินี้ด้วย');
-  assert.match(page, /useState\(params\.get\("late"\) === "1"\)/);
+  // ?late=1 ยังตั้งตัวกรองได้ · ธงจำไว้ด้วย useStickyState (กดกลับจากใบ) แต่พารามิเตอร์ใน URL ชนะค่าที่จำไว้
+  assert.match(page, /const lateParam = params\.get\("late"\) === "1";/);
+  assert.match(page, /useStickyState\("lateOnly", lateParam\)/);
+  assert.match(page, /useEffect\(\(\) => \{ if \(lateParam\) setLateOnly\(true\); \}, \[lateParam, setLateOnly\]\);/);
   assert.doesNotMatch(page, /> SIGNATURE_LATE_DAYS/, 'ห้ามเทียบเกณฑ์เองในหน้า');
   for (const rel of ['../../app/sales-planning/contracts/[id]/page.js', './contractListTrack.js', './contractNotify.js']) {
     const src = readSrc(rel);

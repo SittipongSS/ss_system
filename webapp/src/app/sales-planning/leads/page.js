@@ -372,7 +372,9 @@ export default function LeadsPage() {
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(filtered, {
-      resetKey: `${activeScope}|${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${followFilter.join()}|${sortKey}|${sortDir}`,
+      /* ⚠️ `scope` (ที่ผู้ใช้เลือก) ไม่ใช่ activeScope — ค่าตั้งต้นขยับตอนสิทธิ์/ทีมโหลด ⇒ หน้าที่คืนมาถูกรีเซ็ต */
+      resetKey: `${scope}|${query}|${statusFilter.join()}|${teamFilter.join()}|${assigneeFilter.join()}|${channelFilter.join()}|${followFilter.join()}|${sortKey}|${sortDir}`,
+      stickyKey: "list",
     });
 
   /* จำนวนต่อตัวเลือก = ติ๊กตัวนั้นแล้วตารางจะเหลือกี่ใบ — นับแบบแยกมิติจากชุดเดียวกับตาราง

@@ -48,7 +48,7 @@ import { isFormulaRegistrar } from "@/lib/master/formulas";
 import { categoryNameBoth, findCategoryByCode } from "@/lib/master/productCategoryOptions";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
-import useStickyState from "@/lib/ui/useStickyState";
+import useStickyState, { useStickySet } from "@/lib/ui/useStickyState";
 import { allBucketsCollapsed, toggleBucketKey } from "@/lib/listGrouping";
 import { priceBoardTotals, usablePriceNote, waitingDays } from "@/lib/rd/priceBoard";
 import { priceRegistryTotals } from "@/lib/rd/priceRegistry";
@@ -92,8 +92,9 @@ export default function RdPricesPage() {
   const [entityPricing, setEntityPricing] = useState(null);
   const [entityIngredients, setEntityIngredients] = useState(null);
   const [entityBusy, setEntityBusy] = useState(null);
-  const [collapsed, setCollapsed] = useState(() => new Set());
-  /* มุมมองจำไว้ตอนกดย้อนกลับมา (useStickyState) — แยกต่อแท็บ: ตัวกรองของแท็บสูตร (หมวด · Ingredient List) ไม่มีในแท็บอื่น */
+  const [collapsed, setCollapsed] = useStickySet("collapsed");
+  /* มุมมองจำไว้ตอนกดย้อนกลับมา (useStickyState) — แยกต่อแท็บ: ตัวกรองของแท็บสูตร (หมวด · Ingredient List) ไม่มีในแท็บอื่น
+     · กลุ่มที่ย่อไว้ก็จำ (สลับแท็บ/เปลี่ยนการจัดกลุ่มยังล้างเหมือนเดิม) */
   const [rawTab, setTab] = useStickyState("tab", "requests");
   const [views, setViews] = useStickyState("views", DEFAULT_PRICE_VIEWS);
   const tab = isPriceTab(rawTab) ? rawTab : "requests";

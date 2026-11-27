@@ -5,6 +5,7 @@ import Workspace, { ListPanel } from "@/components/ui/Workspace";
 import SkeletonRows from "@/components/ui/Skeleton";
 import Segmented from "@/components/ui/Segmented";
 import { useEffect, useMemo, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { History, Search, Eye } from "lucide-react";
 import AccessDenied from "@/components/ui/AccessDenied";
 import { useCan, useRole } from "@/lib/roleContext";
@@ -54,16 +55,18 @@ export default function AuditLogPage() {
   const [total, setTotal] = useState(null);
   const [directory, setDirectory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [months, setMonths] = useState("6");
-  const [entityType, setEntityType] = useState("");
-  const [action, setAction] = useState("");
-  const [actor, setActor] = useState("");
-  const [q, setQ] = useState("");
+  /* ตัวกรอง/คำค้น จำไว้เมื่อออกไปแล้วกดกลับ (useStickyState) — ทุกตัวคืนค่าในคอมมิตเดียวกัน ⇒ ถามธงของตัวแรกตัวเดียวพอ */
+  const [months, setMonths, , filtersHydrated] = useStickyState("months", "6");
+  const [entityType, setEntityType] = useStickyState("entityType", "");
+  const [action, setAction] = useStickyState("action", "");
+  const [actor, setActor] = useStickyState("actor", "");
+  const [q, setQ] = useStickyState("q", "");
   const [detail, setDetail] = useState(null); // log ที่กำลังดู before/after
 
   // โหลดเมื่อ filter (นอกจาก q) เปลี่ยน + debounce q.
+  // รอคืนค่าที่จำไว้ก่อนค่อยยิง — ไม่งั้นได้คำขอของค่าตั้งต้นทิ้งหนึ่งรอบ
   useEffect(() => {
-    if (!canView) return;
+    if (!canView || !filtersHydrated) return;
     const ctrl = new AbortController();
     const t = setTimeout(async () => {
       setLoading(true);
@@ -87,7 +90,7 @@ export default function AuditLogPage() {
       }
     }, q ? 300 : 0);
     return () => { ctrl.abort(); clearTimeout(t); };
-  }, [canView, months, entityType, action, actor, q]);
+  }, [canView, filtersHydrated, months, entityType, action, actor, q]);
 
   /* ตัวเลือก "ผู้ทำ" = ทะเบียนผู้ใช้ทั้งระบบ + ผู้ทำที่เห็นในแถว (บัญชีที่ถูกลบ)
      🐞 เดิมสร้างจากแถวที่โหลดมาอย่างเดียว ⇒ ชนเพดาน 500 แล้วคนที่ทำรายการเก่ากว่านั้นไม่มีให้เลือก (H4) */
@@ -100,9 +103,10 @@ export default function AuditLogPage() {
     actorName: (r) => r.actorName || "",
     action: (r) => r.action || "",
     entityType: (r) => r.entityType || "",
-  });
+  }, null, { stickyKey: "table" });
   const { page, setPage, pageSize, setPageSize, pageCount, total: pagedTotal, pageRows } =
-    usePagination(sort.sorted, { resetKey: `${rows.length}|${sort.sortKey}|${sort.sortDir}` });
+    /* ⚠️ resetKey = ตัวกรองที่ผู้ใช้ตั้งเท่านั้น — ห้ามใส่ rows.length (เปลี่ยนตอนโหลดเสร็จ ⇒ หน้าที่เพิ่งคืนถูกรีเซ็ตเป็น 1) */
+    usePagination(sort.sorted, { resetKey: `${months}|${entityType}|${action}|${actor}|${q}|${sort.sortKey}|${sort.sortDir}`, stickyKey: "table" });
 
   const gate = accessState(role, canView);
   if (gate === "loading") return <SkeletonRows rows={6} />;

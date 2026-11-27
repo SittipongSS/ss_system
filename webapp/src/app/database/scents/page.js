@@ -96,7 +96,8 @@ export default function ScentsPage() {
      ⚠️ **ไม่ก๊อปฟอร์มไปไว้หน้ารายละเอียด** — ฟอร์มแก้คือตัวเดียวกับตอนเพิ่ม
      (กฎ AGENTS.md) ⇒ ทางเข้าเดียว ไม่ใช่สองชุดที่ต้องคอยให้ตรงกัน */
   const linkedEditId = useSearchParams().get("edit") || "";
-  const [search, setSearch] = useState(linkedQuery);
+  // จำคำค้น/สถานะไว้ตอนกดเข้าใบแล้วกดกลับ — ค่าจากลิงก์ (?q= · ?count=) เป็นค่าตั้งต้นของการเข้าใหม่
+  const [search, setSearch] = useStickyState("search", linkedQuery);
   /* ⭐ `?count=<key>` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-114) · ป้ายบอกว่ามีของ "รอเข้าทะเบียน"
      กี่ตัว ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่ทะเบียนทั้งก้อนให้ไล่หาเอง
      ⚠️ ตั้งเป็น **ค่าเริ่มต้นของตัวกรอง ไม่ใช่ตัวกรองซ่อน** — ช่องสถานะบนหน้าโชว์ค่า
@@ -109,7 +110,7 @@ export default function ScentsPage() {
      ไม่ใช่คิวงานที่ต้องกรองของที่จบแล้วทิ้ง
      ⚠️ ยังเคารพ `?count=` (ป้ายตัวเลขบนเมนู) และคำค้นจากลิงก์เหมือนเดิม — สองทางนั้น
      ผู้ใช้ *ขอ* ตัวกรองมาเอง ต่างจากการเปิดหน้าเปล่า ๆ */
-  const [statusFilter, setStatusFilter] = useState(fromNavCount ? "draft" : "");
+  const [statusFilter, setStatusFilter] = useStickyState("statusFilter", fromNavCount ? "draft" : "");
   // ที่มา: '' = ทั้งหมด · ตั้งต้นไม่กรอง — ทะเบียนคือของกลางที่ทุกฝ่ายมาหาข้อมูล
   // ไม่ใช่คิวงานของสายพัฒนากลิ่น ⇒ ซ่อนของที่เพิ่มเองตั้งแต่แรกไม่ได้
   const [sourceFilter, setSourceFilter] = useStickyState("sourceFilter", "");
@@ -226,7 +227,7 @@ export default function ScentsPage() {
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     // ⚠️ ตัวกรองทุกตัวต้องอยู่ใน resetKey — ตกตัวไหนไป เปลี่ยนตัวกรองนั้นแล้วยังค้าง
     // อยู่หน้าเดิมซึ่งอาจไม่มีแถวเหลือแล้ว ⇒ ตารางว่างทั้งที่ผลลัพธ์มีจริง
-    usePagination(sorted, { resetKey: `${search}|${statusFilter}|${sourceFilter}|${perfumerFilter}` });
+    usePagination(sorted, { resetKey: `${search}|${statusFilter}|${sourceFilter}|${perfumerFilter}`, stickyKey: "list" });
 
   const draftCount = useMemo(() => scents.filter((s) => s.status === "draft").length, [scents]);
 

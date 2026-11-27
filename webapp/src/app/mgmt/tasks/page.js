@@ -2,6 +2,7 @@
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import { useState, useEffect, useMemo, useCallback } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -59,7 +60,8 @@ export default function MgmtTasksPage() {
   const [departments, setDepartments] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  // คำค้น/แผนก/ลำดับ + ธง "รอฉันลงมือ" จำไว้ตอนกดย้อนกลับมา (ปี/สถานะ/งานด่วนอยู่ใน URL อยู่แล้ว)
+  const [filters, setFilters] = useStickyState("filters", EMPTY_FILTERS);
   /* ⭐ `?count=mgmtTasks` — ลิงก์จากป้ายตัวเลขบนเมนู (ม-116) · ป้ายนับงานที่ยังไม่จบและ
      มอบหมายให้ฉัน ⇒ กดแล้วต้องเจอเท่านั้น ไม่ใช่งานทั้งปีของทุกฝ่าย
      ⚠️ ธง `_waitingOnMe` มาจาก server ด้วย helper ตัวเดียวกับที่ป้ายใช้นับ — หน้านี้ไม่รู้
@@ -69,7 +71,7 @@ export default function MgmtTasksPage() {
         effect วิ่งใหม่ทุกครั้ง · 🐞 รุ่นก่อนล้างเฉพาะตอนธง "เพิ่งติด" ⇒ อยู่ที่ `?count=` แล้วพิมพ์ค้น → กดป้ายซ้ำ
         (URL เดิม ไม่มีอะไรเปลี่ยน) คำค้นค้าง แถวน้อยกว่าเลขบนป้าย (รีวิว L4 · 26/10) */
   const badgeParam = link.waitingOnMe;
-  const [waitingOnMeOnly, setWaitingOnMeOnly] = useState(badgeParam);
+  const [waitingOnMeOnly, setWaitingOnMeOnly] = useStickyState("waitingOnMeOnly", badgeParam);
   useEffect(() => {
     if (!badgeParam) return;
     setWaitingOnMeOnly(true);

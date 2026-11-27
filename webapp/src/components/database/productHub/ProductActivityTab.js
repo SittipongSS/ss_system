@@ -1,8 +1,9 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { MessagesSquare } from "lucide-react";
 import Segmented from "@/components/ui/Segmented";
+import useStickyState from "@/lib/ui/useStickyState";
 import EmptyState from "@/components/ui/EmptyState";
 import { DetailCard } from "@/components/ui/DetailPage";
 import { fmtDateTime } from "@/lib/format";
@@ -32,7 +33,8 @@ export const docEventsToThreadItems = (events) => events.map((e) => ({
 }));
 
 export default function ProductActivityTab({ events = [], productThread, onGo }) {
-  const [source, setSource] = useState("all");
+  // ชิปแหล่งจำไว้ตอนเปิดใบแล้วย้อนกลับ (เนมสเปซหน้าสินค้า)
+  const [source, setSource] = useStickyState("pactivity.source", "all");
   const counts = useMemo(() => {
     const out = {};
     for (const e of events) out[e.source] = (out[e.source] || 0) + 1;

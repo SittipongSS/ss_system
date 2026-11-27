@@ -3,6 +3,7 @@ import { teamLabelNow } from "@/lib/master/salesTeamRegistry";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { noteReturnTrip } from "@/lib/ui/historyArrival";
 import { ArrowLeft, Building2, Archive, ArchiveRestore, ClipboardList, Handshake, MapPin, MessageCircleQuestion, MessagesSquare, Wallet } from "lucide-react";
 import UpdateThread from "@/components/updates/UpdateThread";
 import Workspace from "@/components/ui/Workspace";
@@ -394,7 +395,7 @@ export default function CustomerDetails() {
         <p className="text-[var(--text-3)] mb-6">
           ลูกค้าที่คุณกำลังพยายามเข้าถึงอาจถูกลบหรือไม่มีอยู่ในระบบ
         </p>
-        <Link href="/database/customers" className="btn btn-primary inline-flex items-center gap-2">
+        <Link href="/database/customers" onClick={() => noteReturnTrip("/database/customers")} className="btn btn-primary inline-flex items-center gap-2">
           <ArrowLeft size={16} /> กลับไปยังข้อมูลลูกค้า
         </Link>
       </div>

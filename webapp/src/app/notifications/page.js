@@ -10,6 +10,7 @@
 // ⚠️ หน้านี้ไม่ได้ตัดสิทธิ์อะไรเอง — API ตัดขอบเขตด้วย user ที่ล็อกอินเสมอ
 // (`/api/notifications` ไม่รับพารามิเตอร์ `userId` โดยเจตนา)
 import { useCallback, useEffect, useState } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import useLatestRun from "@/lib/ui/useLatestRun";
 import useRevalidateOnFocus from "@/lib/ui/useRevalidateOnFocus";
 import Link from "next/link";
@@ -68,7 +69,7 @@ export default function NotificationsPage() {
   const [unread, setUnread] = useState(0);
   const [total, setTotal] = useState(0);
   const [cursor, setCursor] = useState(null);
-  const [scope, setScope] = useState("all");
+  const [scope, setScope, , scopeHydrated] = useStickyState("scope", "all");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -101,7 +102,8 @@ export default function NotificationsPage() {
       setItems([]);
     } finally { if (isLatest()) setLoading(false); }
   }, [scope, startRun]);
-  useEffect(() => { load(); }, [load]);
+  // รอคืนขอบเขตที่จำไว้ก่อนค่อยยิง — ไม่งั้นได้คำขอของ "ทั้งหมด" ทิ้งหนึ่งรอบ
+  useEffect(() => { if (scopeHydrated) load(); }, [load, scopeHydrated]);
   useRevalidateOnFocus(load);
 
   const loadMore = async () => {

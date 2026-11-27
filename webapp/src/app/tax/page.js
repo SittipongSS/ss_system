@@ -2,7 +2,8 @@
 import Select from "@/components/ui/Select";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import {
   AlarmClock, AlertCircle, BadgeCheck, BarChart3, Calendar, ChevronRight, ClipboardCheck,
   Clock3, LayoutDashboard, ReceiptText, RotateCcw, Send,
@@ -93,7 +94,7 @@ export default function TaxDashboard() {
   // skeleton ให้เองระหว่างรอ (ไม่ต้องมีสถานะปุ่มซ้อนอีกชั้น)
   const retryLoad = () => failing.forEach((s) => s.reload());
 
-  const [timeRange, setTimeRange] = useState("all"); // 'all', 'month', 'quarter'
+  const [timeRange, setTimeRange] = useStickyState("timeRange", "all"); // 'all', 'month', 'quarter'
 
   /* ⚠️ "วันนี้" อ่านครั้งเดียวตอน mount จาก **นาฬิกาไทย**
      🐞 ของเดิมเรียก `new Date()` ตอนเรนเดอร์ในตัวกรองช่วงเวลา ⇒ ใช้นาฬิกาเครื่อง

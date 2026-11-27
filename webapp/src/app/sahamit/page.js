@@ -1,6 +1,7 @@
 "use client";
 import { TableScroll } from "@/components/ui/Table";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { LayoutDashboard, LineChart, ShoppingCart, AlertCircle, Clock, TrendingUp, GitCompareArrows, Target, Tags, Ruler, Package, CalendarRange } from "lucide-react";
@@ -105,13 +106,13 @@ export default function SahamitOverview() {
   // กด "ลองใหม่" = รอบหน้าบ้าน ⇒ `l1..l4` เป็น true ⇒ `Workspace loading` (ด้านล่าง)
   // สลับเนื้อเป็น skeleton ให้เองระหว่างรอ — ไม่ต้องมีสถานะปุ่มซ้อนอีกชั้น
 
-  const [tab, setTab] = useState("overview");
-  const [unit, setUnit] = useState("qty"); // 'qty' | 'value'
+  const [tab, setTab] = useStickyState("tab", "overview");
+  const [unit, setUnit] = useStickyState("unit", "qty"); // 'qty' | 'value'
   // ตัวกรอง multi-select (มาตรฐาน FilterPopover ทั้งระบบ): หมวด/ปริมาตร/สินค้า/ปี
-  const [cats, setCats] = useState([]);
-  const [vols, setVols] = useState([]);
-  const [skus, setSkus] = useState([]);
-  const [years, setYears] = useState([]);
+  const [cats, setCats] = useStickyState("cats", []);
+  const [vols, setVols] = useStickyState("vols", []);
+  const [skus, setSkus] = useStickyState("skus", []);
+  const [years, setYears] = useStickyState("years", []);
   const filterCount = cats.length + vols.length + skus.length + years.length;
 
   // ตัวเลือกตัวกรองจากข้อมูลจริง
@@ -133,7 +134,7 @@ export default function SahamitOverview() {
       options: productSelectOptions(products, (p) => p.fgCode) },
     { key: "year", label: "ปี", icon: CalendarRange, selected: years, onChange: setYears,
       options: yrOpts.map((y) => ({ value: y, label: y })) },
-  ], [catOpts, volOpts, yrOpts, volUnitOf, products, cats, vols, skus, years]);
+  ], [catOpts, volOpts, yrOpts, volUnitOf, products, cats, vols, skus, years, setCats, setVols, setSkus, setYears]);
 
   const clearFilters = () => { setCats([]); setVols([]); setSkus([]); setYears([]); };
 

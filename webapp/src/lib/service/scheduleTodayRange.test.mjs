@@ -185,7 +185,9 @@ test('🔴 ยามอ่านซอร์ส: หน้าจัดคิว�
   const page = live(readFileSync(new URL('../../app/service/schedule/page.js', import.meta.url), 'utf8'));
   assert.match(page, /const searchParams = useSearchParams\(\);/);
   assert.match(page, /const range = queueRangeFrom\(rangeParam\);/);
-  assert.match(page, /const rangeParam = searchParams\.get\("range"\);/);
+  /* อ่านจากชุดพารามิเตอร์ของรายการ (URL หรือค่าที่จำไว้ตอนกลับมาที่ URL เปล่า · คำขอเจ้าของ 27/11) — ยังเป็นค่าดิบของ `range` */
+  assert.match(page, /const rangeParam = listParams\.get\("range"\);/);
+  assert.match(page, /const listParams = useMemo\(\(\) => new URLSearchParams\(listQuery\), \[listQuery\]\);/);
   // ⚠️ รูปเดิม `QUEUE_RANGES.includes(rangeParam)` ทิ้ง today เงียบ ๆ ⇒ การ์ดพาไปทั้งหมด
   assert.doesNotMatch(page, /QUEUE_RANGES\.includes\(rangeParam\)/);
   const chip = page.match(/bucket === "scheduled" && todayOnly && \([\s\S]*?<\/Button>/)?.[0] || '';

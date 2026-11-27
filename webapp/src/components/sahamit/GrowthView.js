@@ -1,7 +1,8 @@
 "use client";
 import { ChartCanvas } from "@/components/ui/ChartCard";
 import { TableScroll } from "@/components/ui/Table";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import useStickyState from "@/lib/ui/useStickyState";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -23,7 +24,7 @@ const fmtPeriod = (p, level) => {
 };
 
 export default function GrowthView({ pos, products, unit = "qty", years = [] }) {
-  const [level, setLevel] = useState("month");
+  const [level, setLevel] = useStickyState("growth.level", "month");
   const isValue = unit === "value";
   const unitLbl = isValue ? "฿" : "ชิ้น";
   const fmtVal = (n) => (isValue ? fmtMoney(n) : fmtNumber(n));

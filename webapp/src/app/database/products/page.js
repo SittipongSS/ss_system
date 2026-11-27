@@ -106,11 +106,11 @@ export default function ProductRegistry() {
   // การขึ้นทะเบียนสรรพสามิต ('none'|'in_progress'|'approved') — มีความหมายเฉพาะ
   // หมวดสรรพสามิต: เลือกแล้วสินค้าหมวดอื่นถูกตัดออกทั้งหมด
   const [regFilter, setRegFilter] = useStickyState("regFilter", EMPTY);
-  const [showInactive, setShowInactive] = useState(false);
-  const [missingPrice, setMissingPrice] = useState(false);
+  const [showInactive, setShowInactive] = useStickyState("showInactive", false);
+  const [missingPrice, setMissingPrice] = useStickyState("missingPrice", false);
   /* ⭐ "ต้องเสียสรรพสามิต" — ตัวกรองคู่ของการ์ดชื่อเดียวกัน (ตรวจตัวเลข 26/10 · L16b) · ตัวตัดสิน `isProductTaxable`
      ตัวเดียวกับเลขบนการ์ด (`productStatCounts`) และป้าย "ภาษีสรรพสามิต" บนแถว */
-  const [taxableOnly, setTaxableOnly] = useState(false);
+  const [taxableOnly, setTaxableOnly] = useStickyState("taxableOnly", false);
   /* ⭐ สถานะลง BOM (mig 0419 · มติเจ้าของ 03/11) — ฝ่ายขายดูภาพรวมจากทะเบียนนี้ ไม่มีหน้าแยก (คิวแยกเป็นของ RD ที่ /rd/bom)
      ค่า = `BOM_FILTER_VALUES` · เลือกแล้วกลุ่ม 03/04 หายทั้งหมด (ไม่มีขั้น BOM) */
   const [bomFilter, setBomFilter] = useStickyState("bomFilter", EMPTY);
@@ -397,7 +397,8 @@ export default function ProductRegistry() {
 
   // Default ordering: by product code (FG Code). The first column shows both the
   // description and the FG code, so it sorts by code to match the "(FG Code)" header.
-  const sort = useSortableTable(filteredProducts, {
+  /* ตัวดึงค่าแยกออกมาก่อน — ด่าน LS3 (listStateSticky.test) อ่านจุดเรียกถึง `;` แรก ตัวดึงค่าที่มี `;` ข้างในจะบัง stickyKey */
+  const sortAccessors = {
     product: (p) => p.fgCode || p.productDescription || "",
     category: (p) => { const c = categoryLabelOf(p); return c ? `${c.main} ${c.sub}` : ""; },
     brand: (p) => p.brandName || "",
@@ -407,11 +408,13 @@ export default function ProductRegistry() {
     tax: (p) => productTaxPerUnit(p).taxPerUnit,
     // ตามทางเดินของงาน (ยังไม่ส่ง → รอรับ → กำลังลง → ตีกลับ → ลงแล้ว) · กลุ่ม 03/04 ไม่มีค่า = ท้ายตาราง
     bom: (p) => { const v = bomFilterValueOf(p); return v ? BOM_FILTER_VALUES.indexOf(v) : null; },
-  }, { key: "product", dir: "asc" });
+  };
+  const sort = useSortableTable(filteredProducts, sortAccessors, { key: "product", dir: "asc" }, { stickyKey: "table" });
 
   const { page, setPage, pageSize, setPageSize, pageCount, total, pageRows } =
     usePagination(sort.sorted, {
       resetKey: `${q}|${statusFilter.join(",")}|${regFilter.join(",")}|${showInactive}|${missingPrice}|${taxableOnly}|${bomFilter.join(",")}|${sort.sortKey}|${sort.sortDir}`,
+      stickyKey: "list",
     });
 
   /* ── ปลายทางของระเบียนนี้ยกเป็นตัวเดียว (2026-09-02) ────────────────────────
