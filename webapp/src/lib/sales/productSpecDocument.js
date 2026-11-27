@@ -104,7 +104,7 @@ import { positionTitle } from '@/lib/documents/positionTitles';
 import {
   resolveDocumentAccentKey, resolveDocumentForm, resolveDocumentTitleTh,
 } from '@/lib/documentStandards';
-import { fmtNumber, fmtPhone } from '@/lib/format';
+import { fmtNumber, fmtPhone, fmtTaxId } from '@/lib/format';
 import { saleUnitLabel, volumeUnitLabel } from '@/lib/master/units';
 import { PRODUCT_SPEC_CERT_STATUS_LABELS, productSpecCertPendingLabel } from '@/lib/sales/productSpecChecklist';
 import { formatSpecDocNo } from '@/lib/sales/productSpecDocNo';
@@ -290,7 +290,7 @@ function paperIdentity({ snapshot, language, L }) {
     name: pick(customer.name || order.customerName || product.customerName, customer.nameEn),
     address: billing,
     rows: [
-      { label: L.t('customerTaxId'), value: customer.taxId || null },
+      { label: L.t('customerTaxId'), value: fmtTaxId(customer.taxId) || null },
       /* สาขาเป็นเลขล้วนจาก quotationBranchText ตัวเดียวกับใบเสนอราคา (สำนักงานใหญ่ = 00000)
          ⚠️ ไม่มีใบเสนอราคาให้อ่าน (ตัวอย่าง/ภาพนิ่ง v1) = ขีด ไม่ใช่เดาว่าสำนักงานใหญ่ */
       { label: L.t('branchRow'), value: hasBranch ? quotationBranchText(customer.branchCode) : null },
@@ -633,7 +633,7 @@ export function planProductSpecPaper({
     companyName: headerText(language, companyBlock.nameTh, companyBlock.nameEn),
     companyLines: [
       companyBlock.address,
-      `${headerLabels.taxId} ${companyBlock.taxId || '-'}`,
+      `${headerLabels.taxId} ${fmtTaxId(companyBlock.taxId) || '-'}`,
       `${headerLabels.phone} ${companyBlock.phone || '-'} · ${headerLabels.line} ${companyBlock.line || '-'}${companyBlock.website ? ` · ${companyBlock.website}` : ''}`,
     ],
   });

@@ -25,7 +25,7 @@ import SkeletonRows from "@/components/ui/Skeleton";
 import { confirmAction } from "@/components/ui/ConfirmDialog";
 import { apiJson } from "@/lib/apiFetch";
 
-import { NA, fmtDate, fmtNationalId, fmtNumber, naText } from "@/lib/format";
+import { NA, fmtDate, fmtTaxId, fmtNumber, naText } from "@/lib/format";
 import { brandBoth } from "@/lib/master/brands";
 import { branchValue } from "@/lib/master/thaiAddress";
 import { notifyToast } from "@/lib/feedback";
@@ -389,7 +389,7 @@ function BomRow({ row, today, busy, selected, onToggle, onAccept, onDone, onRetu
         <div className={styles.code}>{row.customerArCode || NA}</div>
         <div>{naText(row.customerNameTh)}</div>
         {row.customerNameEn ? <div className={styles.sub}>{row.customerNameEn}</div> : null}
-        <div className={styles.sub}>Tax ID {row.customerTaxId ? fmtNationalId(row.customerTaxId) : NA} · สาขา {branchValue(row.customerBranchCode)}</div>
+        <div className={styles.sub}>Tax ID {row.customerTaxId ? fmtTaxId(row.customerTaxId) : NA} · สาขา {branchValue(row.customerBranchCode)}</div>
         {brandBoth(row.brandName, row.brandNameEn) ? <div className={styles.sub}>แบรนด์ {brandBoth(row.brandName, row.brandNameEn)}</div> : null}
       </td>
       <td>

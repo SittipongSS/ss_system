@@ -11,7 +11,7 @@
 // ⚠️ ค่าที่ไม่มี = เซลล์ว่าง (null) ไม่ใช่ขีด — คนรับไฟล์กรอง "ว่าง" ใน Excel ได้ (กติกาเดียวกับ Excel สูตร)
 // รูปแบบชีตลอกจาก `productWorkbook.js` (ฟอนต์ · หัวตาราง · ชื่อไฟล์) — ไฟล์ที่ระบบส่งออกหน้าตาเดียวกัน
 import ExcelJS from 'exceljs';
-import { fmtDate, fmtPhone } from '@/lib/format';
+import { fmtDate, fmtPhone, fmtTaxId } from '@/lib/format';
 import { approvalStatusOf } from '@/lib/master/approvalStatus';
 import { masterRecordTeams } from '@/lib/master/approvalControl';
 import { brandEn, brandTh } from '@/lib/master/brands';
@@ -75,7 +75,7 @@ export function customerExportRow(customer) {
     // ค่าที่ไม่ใช่ 'individual' = นิติบุคคล — ค่าตั้งต้นเดียวกับฟอร์มและ API
     customerType: CUSTOMER_TYPE_LABELS[c.customerType === 'individual' ? 'individual' : 'company'],
     origin: c.isForeign === true ? 'ต่างประเทศ' : 'ไทย',
-    taxId: orNull(c.taxId),
+    taxId: orNull(fmtTaxId(c.taxId)),
     branchCode: branchValue(c.branchCode),
     phone: c.phone ? fmtPhone(c.phone) : null,
     contactPerson: orNull(c.contactPerson),

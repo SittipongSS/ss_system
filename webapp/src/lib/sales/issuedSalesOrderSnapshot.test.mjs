@@ -89,7 +89,7 @@ test('capture เติมข้อมูลลูกค้าที่ว่า
   assert.equal(sink.args.p_resolved_payload.customer.customerTaxId, '0105561000000');
   assert.equal(sink.args.p_resolved_payload.customer.contactName, 'คุณบี');
   assert.equal(sink.args.p_resolved_payload.customer.branchCode, '00001');
-  assert.match(sink.args.p_artifact_html, /0105561000000/);
+  assert.match(sink.args.p_artifact_html, /0-1055-61000-00-0/); // payload เก็บตัวเลขล้วน · กระดาษใส่ขีด (fmtTaxId)
   assert.match(sink.args.p_artifact_html, /คุณบี/);
 });
 

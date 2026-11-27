@@ -9,7 +9,7 @@
 //   (ค่าที่ไม่มีเป็นบรรทัดว่าง ไม่ใช่ข้ามบรรทัด — ข้ามแล้วบรรทัดเลื่อนไปจับคู่ผิดสูตร)
 // รูปแบบชีตลอกจาก `formulaWorkbook.js` (ฟอนต์ · หัวตาราง · ชื่อไฟล์) — ไฟล์ที่ระบบส่งออกหน้าตาเดียวกัน
 import ExcelJS from 'exceljs';
-import { fmtDate, fmtNationalId } from '@/lib/format';
+import { fmtDate, fmtTaxId } from '@/lib/format';
 import { brandBoth } from '@/lib/master/brands';
 import { branchValue } from '@/lib/master/thaiAddress';
 import { BOM_BOARD_TABS, BOM_FORMULA_KIND_LABEL, BOM_TODO_STATUSES, bomWaitingDays } from '@/lib/rd/bomBoard';
@@ -101,7 +101,7 @@ export function bomExportRow(row, { todayIso = null } = {}) {
     customerArCode: textOf(row?.customerArCode) || null,
     customerNameTh: textOf(row?.customerNameTh) || null,
     customerNameEn: textOf(row?.customerNameEn) || null,
-    customerTaxId: row?.customerTaxId ? fmtNationalId(row.customerTaxId) : null,
+    customerTaxId: row?.customerTaxId ? fmtTaxId(row.customerTaxId) : null,
     // สาขาว่าง = สำนักงานใหญ่ (กติกาเดียวกับตาราง · `branchValue`) — ลูกค้าไม่อยู่ในทะเบียน = ว่าง
     customerBranch: row?.customerArCode || row?.customerTaxId ? branchValue(row?.customerBranchCode) : null,
     brand: brandBoth(row?.brandName, row?.brandNameEn) || null,

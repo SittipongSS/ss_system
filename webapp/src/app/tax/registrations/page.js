@@ -9,7 +9,7 @@ import Button from "@/components/ui/Button";
 import Modal from "@/components/Modal";
 import StatusNotice from "@/components/ui/StatusNotice";
 import { useRole, useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, fmtNumber, NA, naText } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtNumber, fmtTaxId, NA, naText } from "@/lib/format";
 import { exciseSplitText } from "@/lib/excise/exciseTaxSteps";
 
 import { dayParam, withinDateRange } from "@/lib/tax/period";
@@ -237,7 +237,7 @@ export default function RegistrationsPage() {
          ถูกการ์ด "เดือนนี้" นับ แต่หลุดจากคิวที่กรองเดือนเดียวกัน (ตรวจตัวเลข M7) */
       if (!withinDateRange(r.createdAt, from, to)) return false;
       if (!q) return true;
-      return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, r.approvalNumber, r.assignee,
+      return [r.fgCode, r.productName, r.brandName, r.customerName, r.taxId, fmtTaxId(r.taxId), r.approvalNumber, r.assignee,
         r.metadata?.productNameTh, r.metadata?.productNameEn,
         r.metadata?.brandNameTh, r.metadata?.brandNameEn]
         .some((v) => (v || "").toLowerCase().includes(q));
@@ -372,7 +372,7 @@ export default function RegistrationsPage() {
           ) : <div className="muted">{naText(r.customerName)}</div>}
           {r.customerPhone ? <div className="cell-sub font-mono">โทร {r.customerPhone}</div> : null}
           {/* เลขผู้เสียภาษีคือสิ่งที่ต้องตรงกับเอกสารสรรพสามิต — อยู่บนแถวเดียวกับชื่อ */}
-          <div className="cell-sub font-mono">{naText(r.taxId)}</div>
+          <div className="cell-sub font-mono">{naText(fmtTaxId(r.taxId))}</div>
         </div>
       ),
     },
@@ -453,7 +453,7 @@ export default function RegistrationsPage() {
           <span className="muted truncate">
             {naText(r.customerName)}
             {r.customerPhone ? <span className="cell-sub font-mono"> · โทร {r.customerPhone}</span> : null}
-            {r.taxId ? <span className="cell-sub font-mono"> · {r.taxId}</span> : null}
+            {r.taxId ? <span className="cell-sub font-mono"> · {fmtTaxId(r.taxId)}</span> : null}
           </span>
           <span className="text-right">
             <span className="font-mono block">{taxText(r)}</span>

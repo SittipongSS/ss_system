@@ -9,7 +9,7 @@
 // ⚠️ ไฟล์นี้ไม่แตะ React/DOM/DB — route ฝั่ง server import ได้ (ตัวเทียบค่ามาจาก `lib/sortCompare.js` ไม่ใช่ hook)
 import { compareSortValues } from '@/lib/sortCompare';
 import { bucketList } from '@/lib/listGrouping';
-import { fmtDate, fmtNationalId } from '@/lib/format';
+import { fmtDate, fmtTaxId } from '@/lib/format';
 import { brandBoth } from '@/lib/master/brands';
 import { BOM_FORMULA_KIND_LABEL, bomTabRows } from '@/lib/rd/bomBoard';
 
@@ -73,7 +73,7 @@ export function bomSearchText(row) {
   return [
     row?.fgCode, row?.nameTh, row?.nameEn,
     row?.customerArCode, row?.customerNameTh, row?.customerNameEn,
-    taxDigits, taxDigits ? fmtNationalId(taxDigits) : null,
+    taxDigits, taxDigits ? fmtTaxId(taxDigits) : null,
     row?.brandName, row?.brandNameEn,
     BOM_FORMULA_KIND_LABEL[row?.formula?.kind || 'none'],
     // + วันที่บนป้าย "PF · ชื่อ · วันที่" (มติเจ้าของ 13/11)

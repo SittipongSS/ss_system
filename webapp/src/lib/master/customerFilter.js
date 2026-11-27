@@ -7,13 +7,15 @@
 import { passesApprovalFilters } from '@/lib/master/pendingApprovalLinks';
 import { masterRecordTeams } from '@/lib/master/approvalControl';
 import { brandEn, brandTh } from '@/lib/master/brands';
+import { fmtTaxId } from '@/lib/format';
 
 /** ช่องที่คำค้นวิ่งไล่ — ตาเห็นบนแถว = ต้องค้นเจอ
  *  ⚠️ ชื่ออังกฤษต้องค้นเจอด้วย (กติกา entity: ค้นหาต้องเจอทุกภาษาที่มี) — ลูกค้าที่มีแต่ชื่ออังกฤษจะหาไม่เจอเลยถ้าลืมคีย์นี้
  *  รหัสสาขาเป็นคอลัมน์บนตารางและเป็นครึ่งหนึ่งของคีย์ซ้ำ (เลขผู้เสียภาษี + สาขา) ⇒ คนที่ถือเลขสาขาจากเอกสาร
  *  ต้องค้นเจอใบที่ถูกต้องได้ */
 function searchHaystack(c) {
-  return [c.arCode, c.name, c.nameEn, c.taxId, c.branchCode, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])];
+  // เลขภาษีบนจอโชว์แบบมีขีด (fmtTaxId) ⇒ คนที่ก๊อปจากจอไปวางต้องค้นเจอด้วย ไม่ใช่แค่ตัวเลขล้วน
+  return [c.arCode, c.name, c.nameEn, c.taxId, fmtTaxId(c.taxId), c.branchCode, c.phone, ...(c.brands || []).flatMap((b) => [brandTh(b), brandEn(b)])];
 }
 
 /**

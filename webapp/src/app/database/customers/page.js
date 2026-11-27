@@ -23,7 +23,7 @@ import EmptyState from "@/components/ui/EmptyState";
 import StatCards from "@/components/database/StatCards";
 import ApprovalQueue from "@/components/ui/ApprovalQueue";
 import { brandBothOf } from "@/lib/master/brands";
-import { fmtPhone, fmtNationalId, naText, NA } from "@/lib/format";
+import { fmtPhone, fmtTaxId, naText, NA } from "@/lib/format";
 import { useSortableTable, SortTh } from "@/lib/useSortableTable";
 import { useResponsiveView } from "@/lib/useResponsiveView";
 import { usePagination } from "@/lib/usePagination";
@@ -420,7 +420,7 @@ export default function CustomerDirectory() {
                   </div>
                 </div>
                 <div className="text-[11px] text-[var(--text-3)] font-mono">
-                  Tax {c.taxId ? fmtNationalId(c.taxId) : NA} · สาขา {branchValue(c.branchCode)}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
+                  Tax {c.taxId ? fmtTaxId(c.taxId) : NA} · สาขา {branchValue(c.branchCode)}{teamsOf(c).length ? ` · ทีม ${teamsOf(c).join(", ")}` : ""}
                 </div>
                 {c.brands?.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -476,7 +476,7 @@ export default function CustomerDirectory() {
                     <Link prefetch={false} href={`/database/customers/${c.id}`} className="linklike linklike-block" title="เปิดหน้าลูกค้า">
                       <span className="block font-semibold font-mono text-[12px] text-[var(--accent)]">{c.arCode}</span>
                       <strong className="block font-medium text-[var(--text)] mt-0.5">{customerNameIn(c)}</strong>
-                      <span className="block text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtNationalId(c.taxId) : NA}</span>
+                      <span className="block text-[11px] text-[var(--text-3)] font-mono mt-1">Tax ID: {c.taxId ? fmtTaxId(c.taxId) : NA}</span>
                       {c.phone && <span className="block text-[11px] text-[var(--text-3)] font-mono mt-0.5">โทร: {fmtPhone(c.phone)}</span>}
                     </Link>
                   </td>

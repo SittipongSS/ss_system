@@ -16,7 +16,7 @@
 //    🪤 สคริปต์พังหรือไม่ทำงาน = ยังเห็นเนื้อครบทั้งฉบับ (สายเนื้อหาเดิมไม่ถูกซ่อนก่อน
 //    สร้างแผ่นเสร็จ) เสียแค่การแบ่งหน้า — ตรงข้ามกับการเดาเป็นมิลลิเมตรที่พังแล้วเงียบ
 
-import { fmtNumber } from '@/lib/format';
+import { fmtNumber, fmtTaxId } from '@/lib/format';
 import {
   documentFileName,
   documentHeader,
@@ -93,7 +93,9 @@ export function contractTokenValues(contract, { company = {}, template = null } 
     contractNo: contract?.contractNo || '',
     contractDateTh: thaiContractDate(contract?.contractDate) || '',
     contractorName: company.legalNameTh || company.nameTh || '',
-    contractorRegNo: company.taxId || '',
+    // เลขทะเบียนทั้งสองฝั่งออกรูปเดียวกับช่องกรอก (คำขอเจ้าของ 27/11) · ข้อความที่คนพิมพ์เองผ่านไปตามเดิม
+    clientRegNo: fmtTaxId(raw.clientRegNo),
+    contractorRegNo: fmtTaxId(company.taxId),
     contractorAddress: company.address || '',
     contractorSignerName: company.authorizedSignerName || raw.contractorSignerName || '',
     // เลขที่ใบเสนอราคาที่สัญญาอ้างถึง — สัญญาทุกฉบับออกจากใบเสนอราคา (มติ 2026-09-03)

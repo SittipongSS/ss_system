@@ -112,7 +112,7 @@ test('ด่านซอร์ส: ตัวอ่านของคิวอ่
   assert.match(route, /\.from\('formulas'\)\.select\('id, code, name, "formulaDate"'\)/, 'ไม่อ่านชื่อที่ลูกค้าเรียกของสูตร (อยู่ที่กลิ่น)');
   assert.match(route, /formulasById: new Map\(formulas\.map\(\(f\) => \[f\.id, f\]\)\),/);
   const page = readFileSync(new URL('../../app/rd/bom/page.js', import.meta.url), 'utf8');
-  assert.match(page, /Tax ID \{row\.customerTaxId \? fmtNationalId\(row\.customerTaxId\) : NA\} · สาขา \{branchValue\(row\.customerBranchCode\)\}/);
+  assert.match(page, /Tax ID \{row\.customerTaxId \? fmtTaxId\(row\.customerTaxId\) : NA\} · สาขา \{branchValue\(row\.customerBranchCode\)\}/);
   assert.match(page, /แบรนด์ \{brandBoth\(row\.brandName, row\.brandNameEn\)\}/);
   assert.match(page, /ลูกค้าเรียก “\{item\.tradeName\}”/);
   const store = readFileSync(new URL('../master/giftSetFormulasStore.js', import.meta.url), 'utf8');

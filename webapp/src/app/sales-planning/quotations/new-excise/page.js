@@ -29,7 +29,7 @@ import ExciseRoundQuantities, { roundInputsFrom, roundInputsOver, roundInputsPay
 import { applyRoundQuantities, roundQuantitiesFromInputs } from "@/lib/excise/exciseRounds";
 import { quoteTotals } from "@/lib/salesPlanning";
 import { useCan } from "@/lib/roleContext";
-import { fmtDate, fmtMoney, naText, NA } from "@/lib/format";
+import { fmtDate, fmtMoney, fmtTaxId, naText, NA } from "@/lib/format";
 import { addValidityDays, validityDaysBetween } from "@/lib/sales/quoteValidity";
 import { validatePaymentPlan } from "@/lib/sales/paymentPlan";
 import { apiJson } from "@/lib/apiFetch";
@@ -277,7 +277,7 @@ function NewExciseQuotationInner() {
               title={naText(quote.customerName)}
               subtitle={quote.billingAddress}
               facts={[
-                { label: "เลขผู้เสียภาษี", value: quote.customerTaxId },
+                { label: "เลขผู้เสียภาษี", value: fmtTaxId(quote.customerTaxId) },
                 { label: "ผู้ติดต่อ", value: [quote.contactName, quote.contactPhone].filter(Boolean).join(" · ") },
               ]}
             />
