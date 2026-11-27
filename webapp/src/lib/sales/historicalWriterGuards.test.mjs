@@ -149,15 +149,15 @@ test('PATCH ดีล: ดีลภาชนะที่ยังมีใบย
   assert.ok(patch.indexOf(".in('status', [...HISTORICAL_UNAPPROVED_STATUSES])") < patch.indexOf('.update(patch)'));
 });
 
-test('โอนงานพนักงาน: ดีลเปิดเท่านั้นที่ย้าย · พรีวิว (GET) และผลลัพธ์บอกดีลภาชนะที่ยังค้าง', () => {
+test('โอนงานพนักงาน: ปุ่มเป้าไม่ย้ายดีลแล้ว · พรีวิว (GET) บอกดีลภาชนะที่ยังค้าง', () => {
+  /* ส่งต่องาน (มติเจ้าของ 27/11/2026) — ดีล/ลีดย้ายผ่าน /api/sales-planning/handover ทีละใบ
+     (ตัวคิด `dealHandoverGroup` ตัดดีลภาชนะออกจากรายการด้วย isHistoricalDeal · เทสต์ใน handover.test.mjs)
+     เส้นนี้เหลือแบ่งเป้า ⇒ ห้ามมีคำสั่งเขียน sales_deals อีก */
   const route = stripComments(read('app/api/users/[id]/transfer/route.js'));
   assert.match(route, /export async function GET\(/);
-  // คำสั่งเขียนอยู่ในลูปกลุ่มทีม (คงทีมเดิมของดีลที่โอน · ตรวจบัญชีสองทีม 26/11/2026) ⇒ ย่อหน้าลึกขึ้น
-  const update = slice(route, ".from('sales_deals')\n          .update(", '.select(');
-  assert.ok(update.includes(".not('stage', 'in'"), 'ดีลที่ย้ายต้องยังกรองเฉพาะดีลเปิด');
-  assert.doesNotMatch(update, /origin/);
   assert.ok(route.includes('historicalRowsOnly('));
-  assert.ok(route.includes('result.historicalDeals ='));
+  assert.doesNotMatch(route, /from\('sales_deals'\)\s*\.update\(/);
+  assert.ok(route.includes('validateTargetSplit('), 'POST แบ่งเป้าต้องผ่านตัวตรวจผลรวมกลาง');
 });
 
 test('POST สัญญา: ดีลภาชนะรับเฉพาะเอกสารแทนสัญญาชนิดบริการ · ไม่แตะใบเสนอราคาที่ไม่มีอยู่จริง', () => {

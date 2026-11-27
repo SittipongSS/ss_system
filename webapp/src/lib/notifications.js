@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto';
 import { updateEntityConfig, updateRecipients } from '@/lib/master/updateAccess';
 import { isQuietUpdateKind, isSystemUpdateItem, updateKindMeta } from '@/lib/master/updateTypes';
 import { mentionIdsOf } from '@/lib/master/mentions';
+import { withoutHandedOff } from '@/lib/sales/handover';
 // ปลายทาง/ป้ายชื่ออยู่แยกเพราะหน้าจอต้อง import ด้วย (ไฟล์นี้ลากของฝั่ง server มา)
 // re-export ไว้ให้ผู้เรียกเดิมไม่ต้องแก้ — ทะเบียนยังมีชุดเดียว
 import { ENTITY_LABEL, entityLabel, notificationHref } from '@/lib/notificationTargets';
@@ -312,6 +313,15 @@ export const GRANT_BELL_KINDS = Object.freeze([
   'grant_expired',
 ]);
 
+/* ── ส่งต่องานบริหารงานขาย (มติเจ้าของ 27/11/2026 · docs/sales-handover.md) ──────────────────────────────
+ * ⭐ คนรับได้กระดิ่งหนึ่งครั้งต่อคำขอส่งต่อ (โอน 30 ใบ = 1 กระดิ่งสรุป) · ยิงจาก /api/sales-planning/handover
+ *    ผ่าน `handoverNotices` (lib/sales/handoverWrite.js) · entityType `deal`/`lead` มีเธรดอยู่แล้ว
+ *    แต่เธรดไม่เข้ากระดิ่ง ⇒ เข้ากล่องทาง `kinds` เหมือนลีด
+ * ⚠️ ชุดนี้ต้องตรงกับ HANDOVER_NOTIFY_KIND ของ route — handover.test.mjs ตรึงไว้ */
+export const HANDOVER_BELL_KINDS = Object.freeze([
+  'sales_handover',
+]);
+
 export const NOTIFICATION_BOXES = {
   bell: {
     entityTypes: ['dept_request', 'system_issue'],
@@ -319,7 +329,7 @@ export const NOTIFICATION_BOXES = {
       ...TASK_BELL_KINDS,
       ...LEAD_BELL_KINDS, ...EXCISE_BELL_KINDS, ...SERVICE_BELL_KINDS, ...CONTRACT_BELL_KINDS,
       ...SALES_ORDER_BELL_KINDS, ...PRODUCT_SPEC_DOC_BELL_KINDS, ...CUSTOMER_BELL_KINDS, ...QUOTATION_BELL_KINDS,
-      ...GRANT_BELL_KINDS,
+      ...GRANT_BELL_KINDS, ...HANDOVER_BELL_KINDS,
     ],
   },
 };
@@ -401,8 +411,12 @@ export async function recipientsForUpdate(supabase, { entityType, entityId, pare
   ]);
   // คนที่ถูก @ ถึงในข้อความนี้ — id ถูกกรองด้วยด่านของ entity ตั้งแต่ตอนโพสต์แล้ว
   // (ดู lib/master/mentions) จึงเชื่อได้ตรงนี้
-  const all = new Set([...owners, ...threadParticipants(thread), ...mentionIdsOf(update)]);
+  const mentions = mentionIdsOf(update);
+  const all = new Set([...owners, ...threadParticipants(thread), ...mentions]);
   if (actorId) all.delete(String(actorId));
+  /* ⭐ คนที่ส่งต่อดีลออกไปแล้วไม่ได้กระดิ่งเธรดของดีลนั้นอีก (มติ 27/11/2026 ข้อ 6) — ยกเว้นถูก @ ถึง
+     ต้องตัด **หลัง** รวมชุดคนเคยโพสต์ — คนเดิมที่เคยกดยื่น/อนุมัติในเธรดจะติดมาจากชุดนั้นเสมอ */
+  if (entityType === 'deal') return withoutHandedOff([...all], parent, mentions);
   return [...all];
 }
 
